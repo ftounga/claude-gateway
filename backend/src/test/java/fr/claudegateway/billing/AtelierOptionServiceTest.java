@@ -68,7 +68,7 @@ class AtelierOptionServiceTest {
 
     private void withProperties(BillingProperties props) {
         service = new AtelierOptionService(subscriptionService, subscriptionRepository,
-                new AtelierEntitlementService(subscriptionService, accessGrantService, administratorEntitlement),
+                new SpaceEntitlementService(subscriptionService, accessGrantService, administratorEntitlement),
                 billingProvider, props);
     }
 

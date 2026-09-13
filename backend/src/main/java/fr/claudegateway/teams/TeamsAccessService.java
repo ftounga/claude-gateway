@@ -6,13 +6,14 @@ import org.springframework.stereotype.Service;
 
 import fr.claudegateway.auth.AuthenticatedUser;
 import fr.claudegateway.auth.CurrentUser;
-import fr.claudegateway.billing.TeamsEntitlementService;
+import fr.claudegateway.billing.EntitlementSpace;
+import fr.claudegateway.billing.SpaceEntitlementService;
 import fr.claudegateway.user.UserRole;
 
 /**
  * Contrôle d'accès au <b>volet Teams</b> (F-89 / SF-89-01). Jumeau exact d'{@code AtelierAccessService} :
  * il résout l'identité du contexte de sécurité, applique le <b>bypass administrateur</b> et pose
- * l'exception ; la question « ce compte a-t-il payé ? » vit dans {@link TeamsEntitlementService},
+ * l'exception ; la question « ce compte a-t-il payé ? » vit dans {@link SpaceEntitlementService} (espace Vigie),
  * paquet {@code billing}.
  *
  * <p><b>Deux façons de poser la question, et elles ne servent pas au même endroit :</b></p>
@@ -31,9 +32,9 @@ import fr.claudegateway.user.UserRole;
 public class TeamsAccessService {
 
     private final CurrentUser currentUser;
-    private final TeamsEntitlementService entitlementService;
+    private final SpaceEntitlementService entitlementService;
 
-    public TeamsAccessService(CurrentUser currentUser, TeamsEntitlementService entitlementService) {
+    public TeamsAccessService(CurrentUser currentUser, SpaceEntitlementService entitlementService) {
         this.currentUser = currentUser;
         this.entitlementService = entitlementService;
     }
@@ -79,13 +80,13 @@ public class TeamsAccessService {
         return currentUser.principal()
                 .filter(principal -> userId.equals(principal.id()))
                 .map(this::isAllowed)
-                .orElseGet(() -> entitlementService.isEntitled(userId));
+                .orElseGet(() -> entitlementService.isEntitled(userId, EntitlementSpace.VIGIE));
     }
 
     private boolean isAllowed(AuthenticatedUser principal) {
         if (principal.role() == UserRole.ADMIN) {
             return true; // Bypass administrateur : aucun abonnement n'est consulté.
         }
-        return entitlementService.isEntitled(principal.id());
+        return entitlementService.isEntitled(principal.id(), EntitlementSpace.VIGIE);
     }
 }

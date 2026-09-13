@@ -19,7 +19,7 @@ import fr.claudegateway.billing.provider.CheckoutSession;
 /**
  * Souscription et résiliation de l'<b>option Atelier</b> (F-40 / SF-40-02). L'option est un
  * abonnement mensuel <b>distinct</b> de celui du plan : elle ouvre le droit d'accès à l'Atelier
- * (règle portée par {@link AtelierEntitlementService}) <b>sans changer aucun quota</b>.
+ * (règle portée par {@link SpaceEntitlementService}, espace Forge) <b>sans changer aucun quota</b>.
  *
  * <p>Toutes les opérations prennent le {@code userId} du contexte de sécurité — jamais un paramètre
  * client — et passent par {@link SubscriptionService#getOrCreateForUser(UUID)}, filtré sur
@@ -36,14 +36,14 @@ public class AtelierOptionService {
 
     private final SubscriptionService subscriptionService;
     private final SubscriptionRepository subscriptionRepository;
-    private final AtelierEntitlementService entitlementService;
+    private final SpaceEntitlementService entitlementService;
     private final BillingProvider billingProvider;
     private final BillingProperties properties;
 
     public AtelierOptionService(
             SubscriptionService subscriptionService,
             SubscriptionRepository subscriptionRepository,
-            AtelierEntitlementService entitlementService,
+            SpaceEntitlementService entitlementService,
             BillingProvider billingProvider,
             BillingProperties properties) {
         this.subscriptionService = subscriptionService;
@@ -81,7 +81,7 @@ public class AtelierOptionService {
     public CheckoutSession startCheckout(UUID userId, String email) {
         Subscription subscription = subscriptionService.getOrCreateForUser(userId);
 
-        if (entitlementService.isIncludedInPlan(subscription)) {
+        if (entitlementService.isIncludedInPlan(subscription, EntitlementSpace.FORGE)) {
             throw new AtelierOptionIncludedInPlanException();
         }
         if (!isCarriedByLivePlan(subscription)) {
@@ -132,8 +132,8 @@ public class AtelierOptionService {
         PlanCode plan = subscription.getPlanCode();
         return new AtelierOptionView(
                 properties.stripe().atelierOptionDisplayPrice(plan),
-                entitlementService.isEntitled(subscription),
-                entitlementService.isIncludedInPlan(subscription),
+                entitlementService.isEntitled(subscription, EntitlementSpace.FORGE),
+                entitlementService.isIncludedInPlan(subscription, EntitlementSpace.FORGE),
                 subscription.getAtelierOptionStatus(),
                 subscription.getAtelierOptionCancelAt(),
                 properties.stripe().isAtelierOptionConfigured(plan),
@@ -142,7 +142,7 @@ public class AtelierOptionService {
     }
 
     private boolean isCarriedByLivePlan(Subscription subscription) {
-        return entitlementService.isOptionCarrier(subscription.getPlanCode())
+        return entitlementService.isOptionCarrier(subscription.getPlanCode(), EntitlementSpace.FORGE)
                 && subscription.getStatus() != null
                 && LIVE_STATUSES.contains(subscription.getStatus());
     }

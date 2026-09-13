@@ -4,14 +4,15 @@ import org.springframework.stereotype.Service;
 
 import fr.claudegateway.auth.AuthenticatedUser;
 import fr.claudegateway.auth.CurrentUser;
-import fr.claudegateway.billing.AtelierEntitlementService;
+import fr.claudegateway.billing.EntitlementSpace;
+import fr.claudegateway.billing.SpaceEntitlementService;
 import fr.claudegateway.user.UserRole;
 
 /**
  * Contrôle d'accès à l'Atelier (F-28 / SF-28-06, amendé par F-40 / SF-40-01). L'Atelier est ouvert
  * aux utilisateurs de rôle {@code ADMIN} (bypass) <b>ou</b> à ceux qui ont le <b>droit d'Atelier</b>,
- * tel que défini par {@link AtelierEntitlementService} : plan Gold actif, ou option Atelier active
- * sur un plan Solo/Pro actif. Toute autre situation est refusée (fail-closed).
+ * tel que défini par {@link SpaceEntitlementService} pour l'espace Forge (F-107 / SF-107-02) :
+ * plan Gold actif, option Forge active sur un plan porteur actif, ou accès offert. Toute autre situation est refusée (fail-closed).
  *
  * <p>Ce service ne connaît plus les plans : il résout l'identité du contexte de sécurité, applique
  * le bypass administrateur et pose l'exception. La question « cet utilisateur a-t-il payé pour
@@ -24,9 +25,9 @@ import fr.claudegateway.user.UserRole;
 public class AtelierAccessService {
 
     private final CurrentUser currentUser;
-    private final AtelierEntitlementService entitlementService;
+    private final SpaceEntitlementService entitlementService;
 
-    public AtelierAccessService(CurrentUser currentUser, AtelierEntitlementService entitlementService) {
+    public AtelierAccessService(CurrentUser currentUser, SpaceEntitlementService entitlementService) {
         this.currentUser = currentUser;
         this.entitlementService = entitlementService;
     }
@@ -59,6 +60,6 @@ public class AtelierAccessService {
         if (principal.role() == UserRole.ADMIN) {
             return true; // Bypass administrateur : aucun abonnement n'est consulté.
         }
-        return entitlementService.isEntitled(principal.id());
+        return entitlementService.isEntitled(principal.id(), EntitlementSpace.FORGE);
     }
 }

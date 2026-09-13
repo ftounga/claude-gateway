@@ -13,8 +13,8 @@ import fr.claudegateway.user.UserRole;
  *
  * <p>Un utilisateur de rôle {@link UserRole#ADMIN} a <b>tous les droits de fonctionnalité</b>, quel
  * que soit son plan : Forge, volet Teams, Radar — et tout droit futur. Cette source unique est lue
- * <b>par les services de droits eux-mêmes</b> ({@link AtelierEntitlementService},
- * {@link TeamsEntitlementService}, et demain {@code SpaceEntitlementService}), jamais par un écran :
+ * <b>par le service de droits lui-même</b> ({@link SpaceEntitlementService}, qui a absorbé en SF-107-02
+ * les droits Atelier et Teams), jamais par un écran :
  * un droit ajouté demain l'hérite en appelant ce composant.</p>
  *
  * <p><b>Le rôle est lu en base</b> ({@code users.role}), pas dans le principal : les chemins qui

@@ -19,7 +19,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import fr.claudegateway.auth.AuthenticatedUser;
 import fr.claudegateway.auth.CurrentUser;
-import fr.claudegateway.billing.AtelierEntitlementService;
+import fr.claudegateway.billing.SpaceEntitlementService;
 import fr.claudegateway.billing.PlanCode;
 import fr.claudegateway.billing.Subscription;
 import fr.claudegateway.billing.SubscriptionService;
@@ -30,7 +30,7 @@ import fr.claudegateway.user.UserRole;
  * Tests unitaires du gating de l'Atelier (F-28 / SF-28-06, amendé F-40 / SF-40-01) : accès réservé
  * aux administrateurs (bypass) et aux détenteurs du <b>droit</b> d'Atelier, fail-closed sinon.
  *
- * <p>La règle du droit est ici la <b>vraie</b> ({@link AtelierEntitlementService} branché sur un
+ * <p>La règle du droit est ici la <b>vraie</b> ({@link SpaceEntitlementService} branché sur un
  * {@link SubscriptionService} simulé) et non un bouchon : c'est la composition des deux services qui
  * garde le comportement d'avant F-40, et c'est donc elle qu'on veut voir.</p>
  */
@@ -51,7 +51,7 @@ class AtelierAccessServiceTest {
     @BeforeEach
     void setUp() {
         service = new AtelierAccessService(currentUser,
-                new AtelierEntitlementService(subscriptionService, accessGrantService,
+                new SpaceEntitlementService(subscriptionService, accessGrantService,
                         administratorEntitlement));
     }
 
