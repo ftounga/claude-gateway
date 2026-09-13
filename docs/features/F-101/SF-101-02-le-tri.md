@@ -13,7 +13,7 @@
 
 ## Statut
 
-`in-progress`
+`done` — livrée le 2026-09-13 (PR #506)
 
 ## Date de création
 
