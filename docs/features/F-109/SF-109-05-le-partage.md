@@ -13,7 +13,7 @@
 
 ## Statut
 
-`in-review`
+`done` — mergée le 2026-09-14 (PR #575)
 
 ## Date de création
 
