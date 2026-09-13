@@ -247,6 +247,20 @@ class ToolDispatcherTest {
     }
 
     @Test
+    void remetLeRapportDeRetourArriereDansLaTrameReady() throws Exception {
+        // F-111 / SF-111-05 : le runner revenu dit à la gateway pourquoi.
+        com.fasterxml.jackson.databind.node.ObjectNode report = MAPPER.createObjectNode()
+                .put("from", "1.0.0").put("to", "1.1.0").put("result", "rolled_back").put("reason", "motif");
+
+        JsonNode ready = MAPPER.readTree(dispatcher.readyFrame(RunnerBuild.of("1.0.0", null, null), true, report));
+
+        assertEquals("rolled_back", ready.path("lastUpdate").path("result").asText());
+        assertEquals("1.1.0", ready.path("lastUpdate").path("to").asText());
+        assertTrue(MAPPER.readTree(dispatcher.readyFrame(RunnerBuild.of("1.0.0", null, null), true))
+                .path("lastUpdate").isMissingNode());
+    }
+
+    @Test
     void annonceLaCapaciteFichiersDansLaTrameReady() throws Exception {
         JsonNode ready = MAPPER.readTree(dispatcher.readyFrame("1.2.3"));
 

@@ -38,6 +38,8 @@ public final class LauncherHome {
     static final String SHA = "runner.jar.sha256";
     static final String CURRENT = "current-version";
     static final String NEXT = "next-version";
+    static final String HEALTH = "connected";
+    static final String REPORT = "update-report.json";
 
     private final Path root;
 
@@ -131,6 +133,159 @@ public final class LauncherHome {
         }
     }
 
+    // ------------------------------------------------------------------ santé (F-111 / SF-111-05)
+
+    /** Le témoin de santé : écrit par le runner quand sa liaison est établie. */
+    public Path healthFile() {
+        return root.resolve(HEALTH);
+    }
+
+    /** Efface le témoin avant de démarrer une version à l'essai. */
+    public void clearHealth() {
+        try {
+            Files.deleteIfExists(healthFile());
+        } catch (IOException e) {
+            // Un témoin qui reste ne vaut que pour la version qu'il nomme.
+        }
+    }
+
+    /** Écrit le témoin : {@code <id> <pid>}. Appelé par le runner, pas par le lanceur. */
+    public void markConnected(String id, long pid) throws IOException {
+        requireId(id);
+        Files.createDirectories(root);
+        writeAtomically(healthFile(), id + " " + pid);
+    }
+
+    /** La version qui s'est déclarée connectée, si le témoin existe et est lisible. */
+    public Optional<String> connectedVersion() {
+        try {
+            if (!Files.isRegularFile(healthFile())) {
+                return Optional.empty();
+            }
+            String[] parts = Files.readString(healthFile(), StandardCharsets.US_ASCII).trim().split(" ");
+            return RunnerBuild.parseId(parts[0]).isPresent() ? Optional.of(parts[0]) : Optional.empty();
+        } catch (IOException | RuntimeException e) {
+            return Optional.empty();
+        }
+    }
+
+    // ------------------------------------------------------------------ rapport (F-111 / SF-111-05)
+
+    /** Un retour arrière, à dire à la gateway par le runner revenu. */
+    public record UpdateReport(String from, String to, String result, String reason) {
+    }
+
+    /** Écrit le rapport d'un retour arrière (JSON minimal, sans dépendance). */
+    public void writeReport(UpdateReport report) throws IOException {
+        Files.createDirectories(root);
+        writeAtomically(root.resolve(REPORT), "{\"from\":" + quote(report.from()) + ",\"to\":" + quote(report.to())
+                + ",\"result\":" + quote(report.result()) + ",\"reason\":" + quote(report.reason()) + "}");
+    }
+
+    /** Le fichier du rapport en attente (lu par le runner avec Jackson). */
+    public Path reportFile() {
+        return root.resolve(REPORT);
+    }
+
+    public void clearReport() {
+        try {
+            Files.deleteIfExists(reportFile());
+        } catch (IOException e) {
+            // Relu et renvoyé à la prochaine connexion : la gateway ignore un rapport déjà appliqué.
+        }
+    }
+
+    // ------------------------------------------------------------------ rétention (F-111 / SF-111-05)
+
+    /**
+     * Garde la version courante et les {@code keepPrevious} versions installées les plus récentes <b>sous</b>
+     * elle ; supprime les autres dossiers de {@code versions/} (y compris une version plus récente qui a
+     * échoué). Une suppression impossible (fichier verrouillé sous Windows) est ignorée : elle sera
+     * retentée à la prochaine rétention.
+     *
+     * @return les versions supprimées
+     */
+    public java.util.List<String> prune(String current, int keepPrevious) {
+        java.util.List<String> removed = new java.util.ArrayList<>();
+        RunnerBuild currentBuild = RunnerBuild.parseId(current).orElse(null);
+        if (currentBuild == null) {
+            return removed;
+        }
+        java.util.List<RunnerBuild> older = new java.util.ArrayList<>();
+        java.util.List<String> all = installedIds();
+        for (String id : all) {
+            RunnerBuild build = RunnerBuild.parseId(id).orElse(null);
+            if (build != null && !id.equals(current) && build.compareTo(currentBuild) < 0) {
+                older.add(build);
+            }
+        }
+        older.sort((a, b) -> b.compareTo(a));
+        java.util.Set<String> kept = new java.util.HashSet<>();
+        kept.add(current);
+        older.stream().limit(Math.max(0, keepPrevious)).forEach(build -> kept.add(build.id()));
+        for (String id : all) {
+            if (!kept.contains(id) && deleteVersion(id)) {
+                removed.add(id);
+            }
+        }
+        return removed;
+    }
+
+    /** Supprime le dossier d'une version. Vrai si plus rien ne reste. */
+    public boolean deleteVersion(String id) {
+        if (RunnerBuild.parseId(id).isEmpty()) {
+            return false;
+        }
+        Path dir = versionDir(id);
+        if (!Files.exists(dir)) {
+            return true;
+        }
+        try (java.util.stream.Stream<Path> walk = Files.walk(dir)) {
+            java.util.List<Path> paths = walk.sorted(java.util.Comparator.reverseOrder()).toList();
+            for (Path path : paths) {
+                Files.deleteIfExists(path);
+            }
+            return true;
+        } catch (IOException | RuntimeException e) {
+            return false;
+        }
+    }
+
+    /** Les identifiants des dossiers de {@code versions/} (validés). */
+    public java.util.List<String> installedIds() {
+        Path versions = root.resolve("versions");
+        java.util.List<String> ids = new java.util.ArrayList<>();
+        if (!Files.isDirectory(versions)) {
+            return ids;
+        }
+        try (java.util.stream.Stream<Path> list = Files.list(versions)) {
+            list.filter(Files::isDirectory)
+                    .map(path -> path.getFileName().toString())
+                    .filter(name -> RunnerBuild.parseId(name).isPresent())
+                    .forEach(ids::add);
+        } catch (IOException e) {
+            // Dossier illisible : rien à supprimer.
+        }
+        return ids;
+    }
+
+    private static String quote(String value) {
+        if (value == null) {
+            return "null";
+        }
+        StringBuilder out = new StringBuilder("\"");
+        for (char c : value.toCharArray()) {
+            if (c == '"' || c == '\\') {
+                out.append('\\').append(c);
+            } else if (c < 0x20) {
+                out.append(String.format("\\u%04x", (int) c));
+            } else {
+                out.append(c);
+            }
+        }
+        return out.append('"').toString();
+    }
+
     /** Empreinte SHA-256 hexadécimale d'un fichier. */
     public static String sha256(Path file) throws IOException {
         try (InputStream in = Files.newInputStream(file)) {
@@ -174,7 +329,8 @@ public final class LauncherHome {
 
     private static void writeAtomically(Path target, String content) throws IOException {
         Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
-        Files.writeString(tmp, content, StandardCharsets.US_ASCII);
+        // UTF-8 : le rapport de retour porte un motif en français (les identifiants restent ASCII).
+        Files.writeString(tmp, content, StandardCharsets.UTF_8);
         move(tmp, target);
     }
 

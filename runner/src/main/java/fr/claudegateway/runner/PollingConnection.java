@@ -86,8 +86,14 @@ public final class PollingConnection {
         if (currentUpdater != null) {
             currentUpdater.attach(sender);
         }
+        // F-111 / SF-111-05 : un retour arrière du lanceur est dit à la gateway dans cette trame.
+        com.fasterxml.jackson.databind.JsonNode lastUpdate =
+                fr.claudegateway.runner.launcher.LauncherWatch.pendingReport(System.getenv());
         sender.send(dispatcher.readyFrame(RunnerBuild.current(),
-                fr.claudegateway.runner.launcher.LauncherWatch.underLauncher(System.getenv())));
+                fr.claudegateway.runner.launcher.LauncherWatch.underLauncher(System.getenv()), lastUpdate));
+        if (lastUpdate != null) {
+            fr.claudegateway.runner.launcher.LauncherWatch.clearReport(System.getenv());
+        }
 
         try {
             loop(router);
@@ -114,6 +120,8 @@ public final class PollingConnection {
                 backoff.reset();
                 // Un poll qui aboutit EST la preuve que ce transport porte la session.
                 journal.established(TransportJournal.Transport.POLLING);
+                // F-111 / SF-111-05 : la liaison tient — le lanceur confirme une version à l'essai.
+                fr.claudegateway.runner.launcher.LauncherWatch.reportConnected(System.getenv());
             } catch (PollingTransport.ChannelClosedException e) {
                 // La gateway a coupé (coupe-circuit, balayage) : repoller n'y changerait rien.
                 console.warn(e.getMessage());

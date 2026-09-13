@@ -205,6 +205,8 @@ public final class RunnerConnection {
         }
         console.info("Runner connecté.");
         journal.established(TransportJournal.Transport.WEBSOCKET);
+        // F-111 / SF-111-05 : la liaison tient — le lanceur confirme une version à l'essai.
+        fr.claudegateway.runner.launcher.LauncherWatch.reportConnected(System.getenv());
         // La file d'émission est branchée sur la socket courante avant toute trame sortante.
         sender.attach(frame -> ws.sendText(frame, true));
         // F-111 : la version réelle, et la présence du lanceur (SF-111-02) — sans lui, aucune mise à
@@ -214,8 +216,14 @@ public final class RunnerConnection {
         if (currentUpdater != null) {
             currentUpdater.attach(sender);
         }
+        // F-111 / SF-111-05 : un retour arrière du lanceur est dit à la gateway dans cette trame.
+        com.fasterxml.jackson.databind.JsonNode lastUpdate =
+                fr.claudegateway.runner.launcher.LauncherWatch.pendingReport(System.getenv());
         sender.send(dispatcher.readyFrame(RunnerBuild.current(),
-                fr.claudegateway.runner.launcher.LauncherWatch.underLauncher(System.getenv())));
+                fr.claudegateway.runner.launcher.LauncherWatch.underLauncher(System.getenv()), lastUpdate));
+        if (lastUpdate != null) {
+            fr.claudegateway.runner.launcher.LauncherWatch.clearReport(System.getenv());
+        }
         startHeartbeat();
     }
 

@@ -28,6 +28,57 @@ public final class LauncherWatch {
         return launcherPid(env).isPresent();
     }
 
+    private static final java.util.concurrent.atomic.AtomicBoolean CONNECTED_REPORTED =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    /**
+     * Dit au lanceur que la liaison tient (F-111 / SF-111-05) : écrit le témoin de santé, une fois par
+     * processus. C'est ce qui confirme une version à l'essai. Ne lève jamais.
+     */
+    public static void reportConnected(Map<String, String> env) {
+        if (!underLauncher(env) || !CONNECTED_REPORTED.compareAndSet(false, true)) {
+            return;
+        }
+        try {
+            LauncherHome.resolve(env, System.getProperty("user.home"))
+                    .markConnected(fr.claudegateway.runner.RunnerBuild.current().id(), ProcessHandle.current().pid());
+        } catch (java.io.IOException | RuntimeException e) {
+            CONNECTED_REPORTED.set(false); // réessayé à la prochaine connexion
+        }
+    }
+
+    /**
+     * Le rapport d'un retour arrière laissé par le lanceur (F-111 / SF-111-05), à remettre dans la trame
+     * {@code ready} ; {@code null} s'il n'y en a pas ou s'il est illisible (il est alors effacé).
+     */
+    public static com.fasterxml.jackson.databind.JsonNode pendingReport(Map<String, String> env) {
+        if (!underLauncher(env)) {
+            return null;
+        }
+        LauncherHome home = LauncherHome.resolve(env, System.getProperty("user.home"));
+        java.nio.file.Path file = home.reportFile();
+        if (!java.nio.file.Files.isRegularFile(file)) {
+            return null;
+        }
+        try {
+            com.fasterxml.jackson.databind.JsonNode report =
+                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(file.toFile());
+            if (report != null && report.isObject() && report.path("to").isTextual()
+                    && report.path("result").isTextual()) {
+                return report;
+            }
+        } catch (java.io.IOException | RuntimeException e) {
+            // illisible : effacé ci-dessous
+        }
+        home.clearReport();
+        return null;
+    }
+
+    /** Efface le rapport une fois remis. */
+    public static void clearReport(Map<String, String> env) {
+        LauncherHome.resolve(env, System.getProperty("user.home")).clearReport();
+    }
+
     /** Démarre la surveillance si ce processus a un lanceur. Ne fait rien sinon. */
     public static void startIfUnderLauncher(Map<String, String> env, Console console) {
         Optional<Long> pid = launcherPid(env);

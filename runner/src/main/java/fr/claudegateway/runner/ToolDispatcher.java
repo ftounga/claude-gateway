@@ -109,7 +109,18 @@ public final class ToolDispatcher implements AutoCloseable {
      * clic, requise, ou manuelle.
      */
     public String readyFrame(RunnerBuild build, boolean launcher) {
+        return readyFrame(build, launcher, null);
+    }
+
+    /**
+     * La même trame, avec le <b>rapport</b> d'un retour arrière laissé par le lanceur (F-111 / SF-111-05) :
+     * {@code lastUpdate: {from, to, result, reason}}.
+     */
+    public String readyFrame(RunnerBuild build, boolean launcher, JsonNode lastUpdate) {
         ObjectNode frame = readyNode(build.id());
+        if (lastUpdate != null && lastUpdate.isObject()) {
+            frame.set("lastUpdate", lastUpdate);
+        }
         ObjectNode detail = frame.putObject("runnerBuild");
         detail.put("version", build.version());
         if (build.stamp() != null) {
