@@ -137,39 +137,171 @@
   }
 }
 
+/* LE POSTE OUVERT (F-98 / SF-98-02) — un en-tête et des onglets, sur le fond de page : plus de
+   carte, plus de filet d'appartenance. L'identité du poste entre par sa pastille de 48 px et par le
+   filet de sa ligne dans la colonne (§16). */
 .poste {
   display: flex;
   flex-direction: column;
   gap: var(--cg-space-3);
-  padding: var(--cg-space-4);
-
-  /* Filet d'appartenance (F-49 / SF-49-03) : la couleur du poste, dérivée de son nom, posée en
-     ligne par le template. Un FILET, jamais un fond — la charte §8 interdit le fond coloré sur les
-     cartes, et un aplat teinté derrière du texte remettrait le contraste en jeu à chaque ton. */
-  border-left: 6px solid var(--cg-divider);
+  min-width: 0;
 
   &__head {
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--cg-space-2);
+    align-items: flex-start;
+    gap: var(--cg-space-3);
   }
 
-  &__identity {
+  &__title {
+    min-width: 0;
+    flex: 1 1 280px;
+
+    h2 {
+      margin: 0;
+      font-family: var(--cg-font-heading);
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+  }
+
+  &__sub {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cg-space-1) var(--cg-space-3);
+    margin-top: var(--cg-space-1);
+    font-size: 12px;
+    color: var(--cg-text-secondary);
+  }
+
+  &__fact {
+    white-space: nowrap;
+
+    .poste__mono {
+      color: var(--cg-text-primary);
+    }
+  }
+
+  &__presence {
+    font-size: 12px;
+  }
+
+  &__actions {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: var(--cg-space-2);
+    margin-left: auto;
 
-    h2 {
-      margin: 0;
-      font-size: 20px;
+    app-live-badge {
+      margin-left: var(--cg-space-1);
+    }
+  }
+
+  &__menu-trigger {
+    min-width: 0;
+    padding: 0 var(--cg-space-2);
+  }
+
+  /* — Onglets (D3) : filet orange de 2 px sous l'onglet actif (§16), filet bas `--cg-divider`. */
+  &__tabs {
+    display: flex;
+    gap: 2px;
+    overflow-x: auto;
+    border-bottom: 1px solid var(--cg-divider);
+  }
+
+  &__tab {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cg-space-2);
+    margin-bottom: -1px;
+    padding: var(--cg-space-2) var(--cg-space-3);
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--cg-text-secondary);
+    font-family: var(--cg-font-body);
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+
+    &:hover {
+      color: var(--cg-text-primary);
     }
 
-    /* La pastille d'initiales ouvre l'en-tête ; le nom du poste la suit, écrit, en h2. */
-    app-host-badge {
-      margin-right: var(--cg-space-1);
+    &:focus-visible {
+      outline: 2px solid var(--cg-accent);
+      outline-offset: -2px;
+    }
+
+    &--active {
+      color: var(--cg-text-primary);
+      border-bottom-color: var(--cg-orange);
+    }
+  }
+
+  /* Le résumé de l'onglet, sans l'ouvrir : un fait chiffré, en mono, sans couleur d'état. */
+  &__tab-count {
+    padding: 0 var(--cg-space-2);
+    border-radius: 999px;
+    background: var(--cg-bg);
+    color: var(--cg-text-secondary);
+    font-family: var(--cg-font-mono);
+    font-size: 11px;
+  }
+
+  &__tab-flag {
+    font-size: 11px;
+  }
+
+  &__panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cg-space-3);
+    min-width: 0;
+  }
+
+  /* F-96 : une mise à jour attend — le MÊME bandeau que l'écran Gouvernance, ton d'information. */
+  &__update {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--cg-space-2);
+    padding: var(--cg-space-3);
+    border-left: 4px solid var(--cg-accent);
+    border-radius: 8px;
+    background: var(--cg-bg);
+
+    p {
+      margin: 0;
+      max-width: 72ch;
+      font-size: 14px;
+    }
+
+    mat-icon {
+      color: var(--cg-accent);
+    }
+  }
+
+  &__gouvernance-link {
+    align-self: flex-start;
+  }
+
+  &__activity-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--cg-space-1);
+
+    li {
+      display: flex;
+      align-items: baseline;
+      gap: var(--cg-space-2);
     }
   }
 
@@ -210,20 +342,6 @@
     margin-left: var(--cg-space-1);
   }
 
-  /* Côté droit de l'en-tête : l'activité observée, puis le menu de dépassement (F-69 / SF-69-02).
-     Aucune couleur propre — le menu est neutre, et c'est voulu : un geste destructif ne doit pas
-     se signaler par un aplat rouge sur une carte de consultation. Le rouge n'apparaît que dans le
-     dialogue, sur le bouton `color="warn"` de la charte (§5). */
-  &__head-side {
-    display: flex;
-    align-items: center;
-    gap: var(--cg-space-2);
-  }
-
-  &__menu-trigger {
-    color: var(--cg-text-secondary);
-  }
-
   &__activity {
     color: var(--cg-text-secondary);
     font-size: 12px;
@@ -231,24 +349,6 @@
     &--live {
       color: var(--cg-accent);
       font-weight: 500;
-    }
-  }
-
-  &__facts {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--cg-space-4);
-    margin: 0;
-
-    dt {
-      color: var(--cg-text-secondary);
-      font-size: 12px;
-      margin: 0 0 var(--cg-space-1);
-    }
-
-    dd {
-      margin: 0;
-      font-size: 14px;
     }
   }
 
@@ -343,23 +443,19 @@
 // AUCUNE couleur nouvelle — il ne prend pas les dix tons d'identité du §9 (réservés à
 // l'identification d'une MACHINE) et garde le gris « archivé / inactif » du §5. L'absence de
 // couleur n'est pas un quatrième registre.
-.poste--heberge {
-  border-left-color: var(--cg-divider);
-}
-
 .poste__heberge-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: var(--cg-surface-2);
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: #F5F5F5;
   color: var(--cg-text-secondary);
 }
 
 .poste__heberge-hint {
-  margin: 0 0 var(--cg-space-2);
+  margin: 0;
   color: var(--cg-text-secondary);
   font-size: 13px;
 }
@@ -433,9 +529,7 @@
    ni le signe de vie (§11). Un fichier de carte encore vide se lit au gris, un fichier rempli à
    l'encre ordinaire — la différence ne repose donc jamais sur la seule couleur. */
 .poste__carte {
-  margin: var(--cg-space-3) 0 0;
-  padding-left: var(--cg-space-4);
-  border-left: 2px solid var(--cg-divider);
+  margin: 0;
 }
 
 .poste__carte-title {
@@ -584,5 +678,4 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--cg-space-2);
-  margin-top: var(--cg-space-3);
 }

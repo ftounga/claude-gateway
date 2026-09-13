@@ -79,6 +79,15 @@ import {
   hostRef,
 } from './forge-fleet';
 import {
+  FORGE_TAB_LABELS,
+  ForgeTab,
+  GovernanceTabSummary,
+  effectiveTab,
+  governanceTabSummary,
+  mapTabSummary,
+  tabsFor,
+} from './forge-tabs';
+import {
   KillHostDialogComponent,
   KillHostDialogData,
 } from '../shared/kill-host-dialog/kill-host-dialog.component';
@@ -433,10 +442,35 @@ export class PostesComponent implements OnInit {
   /** Le poste dont le repli des clôturées a déjà été ouvert d'office — une fois, pas à chaque lecture. */
   private closedRevealedFor: string | null = null;
 
+  // ------------------------------------------------ les onglets du poste (F-98 / SF-98-02)
+
+  /** L'onglet demandé par `?onglet=` — lu dans l'URL pour qu'un lien ou un retour arrière y ramène. */
+  private readonly routeTab = toSignal(
+    this.route.queryParamMap.pipe(map((params) => params.get('onglet'))),
+    { initialValue: null },
+  );
+
+  /** L'onglet ouvert : celui de l'URL s'il existe pour ce poste, sinon Projets. */
+  readonly activeTab = computed<ForgeTab>(() => effectiveTab(this.routeTab(), this.selectedHost()));
+
+  /**
+   * **Paquets à mettre à jour, par poste** (F-96), lus sur `GET /api/governance/hosts`. C'est ce qui
+   * fait dire « à appliquer » à l'onglet Gouvernance **sans l'ouvrir**. Lu une fois par page et sur
+   * « Rafraîchir » — jamais au sondage : un paquet ne se republie pas toutes les quinze secondes.
+   */
+  private readonly outdatedByHost = signal<Record<string, number>>({});
+
+  /** L'activité du poste ouvert : ses projets, du plus récent au plus ancien, ceux sans trace à la fin. */
+  readonly selectedActivity = computed<HostProjectSummary[]>(() =>
+    [...this.selectedHost().projects]
+      .filter((project) => !!project.lastActivityAt || project.active)
+      .sort((a, b) => (b.lastActivityAt ?? '').localeCompare(a.lastActivityAt ?? '')));
+
   ngOnInit(): void {
     this.redirectLegacyFragment();
     this.load(true);
     this.loadTeamsAccess();
+    this.loadGovernanceHosts();
     this.startPolling();
     document.addEventListener('visibilitychange', this.onVisibilityChange);
     // Les libellés datés avancent à la seconde, sans appel (F-97 / SF-97-02).
@@ -497,7 +531,81 @@ export class PostesComponent implements OnInit {
     this.foldersRead.clear();
     this.mapsRead.clear();
     this.integritesRead.clear();
+    this.loadGovernanceHosts();
     this.load(this.hosts().length === 0);
+  }
+
+  // ------------------------------------------------ onglets (F-98 / SF-98-02)
+
+  /** Les onglets de ce poste : quatre pour une machine, Projets seul pour « Hébergé ». */
+  tabsFor(host: RunnerHostOverview): readonly ForgeTab[] {
+    return tabsFor(host);
+  }
+
+  tabLabel(tab: ForgeTab): string {
+    return FORGE_TAB_LABELS[tab];
+  }
+
+  /**
+   * Ouvre un onglet : il entre dans l'URL (`?onglet=`), et dans l'historique — un retour arrière
+   * ramène à l'onglet d'avant. Projets, l'onglet par défaut, n'encombre pas l'adresse.
+   */
+  selectTab(tab: ForgeTab): void {
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { onglet: tab === 'projets' ? null : tab },
+      queryParamsHandling: 'merge',
+    });
+  }
+
+  /** Le résumé de l'onglet Carte, sans l'ouvrir : « 12 faits », « hors ligne », ou rien. */
+  mapTabSummary(host: RunnerHostOverview): string | null {
+    return mapTabSummary(this.hostMap(host), this.online(host));
+  }
+
+  /** Le résumé de l'onglet Gouvernance, sans l'ouvrir : « à appliquer », « à corriger », ou rien. */
+  governanceTabSummary(host: RunnerHostOverview): GovernanceTabSummary | null {
+    const hostId = host.id;
+    if (hostId === null) {
+      return null;
+    }
+    return governanceTabSummary(this.outdatedOn(host), this.integrites()[hostId] ?? null);
+  }
+
+  /** Nombre de paquets actifs sur ce poste dont une version plus récente existe (F-96). */
+  outdatedOn(host: RunnerHostOverview): number {
+    return host.id === null ? 0 : this.outdatedByHost()[host.id] ?? 0;
+  }
+
+  /**
+   * Lit, une fois, le nombre de mises à jour qui attendent sur chaque poste (F-96). **Échec
+   * silencieux** : sans ce compte, l'onglet ne dit rien — il ne ment pas, et un rouge ici enverrait
+   * chercher au mauvais endroit.
+   */
+  private loadGovernanceHosts(): void {
+    this.governance.getHosts().subscribe({
+      next: (hosts) => {
+        const byHost: Record<string, number> = {};
+        for (const summary of hosts ?? []) {
+          if (summary.id) {
+            byHost[summary.id] = summary.outdated ?? 0;
+          }
+        }
+        this.outdatedByHost.set(byHost);
+      },
+      error: () => this.outdatedByHost.set({}),
+    });
+  }
+
+  /** L'état écrit dans la pastille de l'en-tête : « En ligne », « Hors ligne », « Jamais connecté ». */
+  presenceState(host: RunnerHostOverview): string {
+    const [state] = this.hostStateLabel(host).split(' · ');
+    return state.charAt(0).toUpperCase() + state.slice(1);
+  }
+
+  /** « vu il y a 12 s », à côté de la pastille — ou `null` pour un poste qui n'a jamais battu. */
+  presenceSeen(host: RunnerHostOverview): string | null {
+    return this.hostStateLabel(host).split(' · ')[1] ?? null;
   }
 
   /**

@@ -163,581 +163,557 @@
   }
 </section>
 
-<!-- La carte d'un poste. Un seul gabarit pour la vue principale et pour le repli : une mission
-     clôturée reste EXACTEMENT la même carte — mêmes projets, même terminal, même possibilité de la
-     rouvrir. C'est ce qui distingue « ranger » de « masquer ». -->
+<!-- LE POSTE OUVERT (F-98 / SF-98-02) : un en-tête et quatre onglets, là où une carte empilait onze
+     blocs. Un seul gabarit pour une machine, une mission clôturée et « Hébergé » : une mission
+     clôturée reste EXACTEMENT le même poste — c'est ce qui distingue « ranger » de « masquer ». -->
 <ng-template #posteCard let-host>
-  <mat-card
-    class="poste"
-    [class.poste--heberge]="isHosted(host)"
-    [style.borderLeftColor]="tone(host)?.solid"
-  >
+  <section class="poste" [class.poste--heberge]="isHosted(host)">
     <header class="poste__head">
-      <div class="poste__identity">
-        <!-- Identité visuelle du poste (F-49 / SF-49-03) : ses initiales sur sa couleur,
-             dérivée de son nom. Le nom reste écrit — ici en h2 juste à côté — parce que la
-             couleur ne porte jamais seule l'information.
+      <!-- Identité visuelle du poste (F-49 / SF-49-03) : ses initiales sur sa couleur, dérivée de son
+           nom. Le nom reste ÉCRIT juste à côté — la couleur ne porte jamais seule l'information. -->
+      @if (isHosted(host)) {
+        <!-- « Hébergé » (F-71) n'est pas une machine : AUCUN ton d'identité du §9, gris neutre §5. -->
+        <span class="poste__heberge-badge" aria-hidden="true">
+          <mat-icon>cloud</mat-icon>
+        </span>
+      } @else {
+        <app-host-badge [name]="host.name" size="lg" [showName]="false"></app-host-badge>
+      }
 
-             ATTENTION (piège du cadrage F-60) : le filet de la carte et cette pastille sont les
-             SEULS porteurs de la couleur d'identité. L'état de mission, lui, prend la palette de
-             STATUT (§5) et n'entre que par sa propre pastille — jamais un second filet, jamais un
-             fond de carte. Deux questions, deux registres. -->
-        @if (isHosted(host)) {
-          <!-- POSTE « HÉBERGÉ » (F-71 / SF-71-03) : ce n'est pas une machine, il ne prend donc
-               AUCUN des dix tons d'identité du §9 — ceux-ci identifient une machine, et lui n'en
-               est pas une. Gris neutre du §5, pastille `cloud`, et rien de plus : pas de
-               quatrième registre de couleur. -->
-          <span class="poste__heberge-badge" aria-hidden="true">
-            <mat-icon>cloud</mat-icon>
-          </span>
-          <h2>{{ host.name }}</h2>
-        } @else {
-          <app-host-badge [name]="host.name" size="lg" [showName]="false"></app-host-badge>
-          <h2 [style.color]="tone(host)?.ink">{{ host.name }}</h2>
-        }
-
-        <!-- État de MISSION : où en est-on. Choisi par l'utilisateur, jamais déduit.
-             Absent du poste « Hébergé » : une mission se déclare chez un client, et il n'y a ici
-             ni client ni machine. -->
-        @if (!isHosted(host)) {
-        <button
-          type="button"
-          class="poste__mission"
-          [matMenuTriggerFor]="missionMenu"
-          [disabled]="savingHostId() === host.id"
-          [attr.aria-label]="
-            'Mission de ' + host.name + ' : ' + missionLabel(mission(host)) + '. Changer l’état.'
-          "
-          matTooltip="Changer l'état de la mission"
-        >
-          <app-mission-badge [status]="mission(host)"></app-mission-badge>
-          @if (savingHostId() === host.id) {
-            <mat-spinner class="poste__mission-spinner" diameter="14"></mat-spinner>
+      <div class="poste__title">
+        <h2>{{ host.name }}</h2>
+        <div class="poste__sub">
+          @if (isHosted(host)) {
+            <!-- Ce que ce « poste » est vraiment : le bac à sable de la gateway, et non une machine. -->
+            <span class="poste__heberge-hint">
+              Ces projets vivent <strong>chez la gateway</strong>, pas sur une de vos machines : un
+              dépôt GitHub, une archive importée. Rien à appairer, rien à lancer.
+            </span>
           } @else {
-            <mat-icon class="poste__mission-caret">arrow_drop_down</mat-icon>
-          }
-        </button>
-        <mat-menu #missionMenu="matMenu">
-          @for (status of missionStatuses; track status) {
+            <!-- État de MISSION (F-60) : choisi par l'utilisateur, jamais déduit. Toujours écrit ici,
+                 pour les trois valeurs — c'est l'écran de référence (§10). -->
             <button
-              mat-menu-item
               type="button"
-              (click)="setMission(host, status)"
-              [disabled]="mission(host) === status"
-              [matTooltip]="missionHint(status)"
+              class="poste__mission"
+              [matMenuTriggerFor]="missionMenu"
+              [disabled]="savingHostId() === host.id"
+              [attr.aria-label]="
+                'Mission de ' + host.name + ' : ' + missionLabel(mission(host)) + '. Changer l’état.'
+              "
+              matTooltip="Changer l'état de la mission"
             >
-              <mat-icon>{{ missionIcon(status) }}</mat-icon>
-              <span>{{ missionLabel(status) }}</span>
+              <app-mission-badge [status]="mission(host)"></app-mission-badge>
+              @if (savingHostId() === host.id) {
+                <mat-spinner class="poste__mission-spinner" diameter="14"></mat-spinner>
+              } @else {
+                <mat-icon class="poste__mission-caret">arrow_drop_down</mat-icon>
+              }
+            </button>
+            <mat-menu #missionMenu="matMenu">
+              @for (status of missionStatuses; track status) {
+                <button
+                  mat-menu-item
+                  type="button"
+                  (click)="setMission(host, status)"
+                  [disabled]="mission(host) === status"
+                  [matTooltip]="missionHint(status)"
+                >
+                  <mat-icon>{{ missionIcon(status) }}</mat-icon>
+                  <span>{{ missionLabel(status) }}</span>
+                </button>
+              }
+            </mat-menu>
+
+            <!-- État TECHNIQUE, DATÉ (F-97) : la pastille écrit l'état, la date suit. Il ne dit rien de
+                 l'avancement — c'est précisément pourquoi l'état de mission existe. -->
+            <span
+              class="badge poste__presence"
+              [class.badge--success]="online(host)"
+              [class.badge--neutral]="!online(host)"
+            >
+              <mat-icon>{{ online(host) ? 'cloud_done' : 'cloud_off' }}</mat-icon>
+              {{ presenceState(host) }}
+            </span>
+            @if (host.rootName) {
+              <span class="poste__mono poste__fact" matTooltip="Racine du poste">{{ host.rootName }}</span>
+            }
+            @if (host.os || host.shell) {
+              <span class="poste__fact">
+                {{ host.os }}@if (host.os && host.shell) { · }<span class="poste__mono">{{ host.shell }}</span>
+              </span>
+            }
+            <!-- F-81 / SF-81-03 : la version DÉCLARÉE par le runner. Elle répond à « est-il à jour ? »,
+                 elle ne juge rien et n'ouvre aucun geste. -->
+            @if (host.runnerVersion) {
+              <span class="poste__fact">Runner <span class="poste__mono">{{ host.runnerVersion }}</span></span>
+            }
+            @if (presenceSeen(host); as seen) {
+              <span class="poste__fact">{{ seen }}</span>
+            }
+            @if (host.elevated) {
+              <span
+                class="badge badge--warning"
+                matTooltip="Le runner de ce poste tourne avec les droits de l'administrateur"
+              >
+                <mat-icon>shield</mat-icon>
+                Administrateur
+              </span>
+            }
+          }
+          <!-- SIGNE DE VIE (F-70) : la même pastille que dans la barre du terminal, et le mot écrit. -->
+          @if (host.liveTerminals) {
+            <app-live-badge scope="host" [count]="host.liveTerminals"></app-live-badge>
+          }
+        </div>
+      </div>
+
+      <div class="poste__actions">
+        @if (!isHosted(host)) {
+          <!-- LE TERMINAL DU POSTE (F-74) : dans l'en-tête, plus de bloc dédié. Un terminal comme les
+               autres — `git`, un VPN, `terraform` n'appartiennent à aucun projet. -->
+          <button
+            mat-stroked-button
+            type="button"
+            class="poste__host-terminal"
+            [disabled]="openingTerminalHostId() !== null"
+            (click)="openHostTerminal(host)"
+            [attr.aria-label]="'Ouvrir le terminal du poste ' + host.name"
+            matTooltip="Un terminal à la racine du poste — là où vit la carte, et pour ce qui n'appartient à aucun projet"
+          >
+            @if (openingTerminalHostId() === host.id) {
+              <mat-spinner diameter="18"></mat-spinner>
+            } @else {
+              <mat-icon>terminal</mat-icon>
+            }
+            Terminal du poste
+            @if (host.hostTerminalLive) {
+              <app-live-badge scope="host"></app-live-badge>
+            }
+          </button>
+
+          <!-- LE TERMINAL TEAMS (F-89 / SF-89-03). PAS DE BOUTON SANS LE DROIT — ni grisé, ni menant à
+               un refus. Son ouverture est inchangée : il déménagera dans la Vigie (F-106). -->
+          @if (showTeamsTerminal(host)) {
+            <button
+              mat-stroked-button
+              type="button"
+              class="poste__teams-terminal"
+              [disabled]="openingTeamsHostId() !== null"
+              (click)="openTeamsTerminal(host)"
+              [attr.aria-label]="'Ouvrir le terminal Teams de ' + host.name"
+              matTooltip="Un terminal à part pour Teams — on y parle de réunions et de conversations, pas de code"
+            >
+              @if (openingTeamsHostId() === host.id) {
+                <mat-spinner diameter="18"></mat-spinner>
+              } @else {
+                <mat-icon>forum</mat-icon>
+              }
+              Teams
+              @if (host.teamsTerminalLive) {
+                <app-live-badge scope="host"></app-live-badge>
+              }
             </button>
           }
-        </mat-menu>
 
-        }
-
-        <!-- État TECHNIQUE : joignable ou non. Il ne dit rien de l'avancement, et c'est
-             précisément pourquoi l'état de mission existe.
-             Le poste « Hébergé » n'a pas de runner : « connecté » n'y voudrait rien dire, et
-             « jamais connecté » ferait croire à une machine en panne. -->
-        @if (!isHosted(host)) {
-          <span
-            class="badge"
-            [class.badge--success]="online(host)"
-            [class.badge--neutral]="!online(host)"
+          <!-- Les gestes destructifs, TOUS sous menu de dépassement et derrière un dialogue (F-69,
+               F-82) — jamais en accès direct. -->
+          <button
+            mat-stroked-button
+            type="button"
+            class="poste__menu-trigger"
+            [matMenuTriggerFor]="hostMenu"
+            [disabled]="deletingHostId() === host.id || killingHostId() === host.id"
+            [attr.aria-label]="'Actions sur ' + host.name"
+            matTooltip="Actions sur ce poste"
           >
-            <mat-icon>{{ online(host) ? 'cloud_done' : 'cloud_off' }}</mat-icon>
-            {{ hostStateLabel(host) }}
-          </span>
-        }
-        <!-- SIGNE DE VIE (F-70 / SF-70-01) : LA MÊME pastille que dans la barre du terminal, et le
-             mot écrit à côté. « Terminal connecté » plutôt que « connecté » tout court : le mot est
-             déjà pris, deux pastilles plus haut, par l'état du RUNNER. Aucune couleur nouvelle — le
-             point hérite de l'encre de la carte (§11). -->
-        @if (host.liveTerminals) {
-          <app-live-badge scope="host" [count]="host.liveTerminals"></app-live-badge>
-        }
-        @if (host.elevated) {
-          <span
-            class="badge badge--warning"
-            matTooltip="Le runner de ce poste tourne avec les droits de l'administrateur"
-          >
-            <mat-icon>shield</mat-icon>
-            Administrateur
-          </span>
-        }
-      </div>
-      <div class="poste__head-side">
-        @if (activityLabel(host); as activity) {
-          <span class="poste__activity" [class.poste__activity--live]="host.activeProjects > 0">
-            {{ activity }}
-          </span>
-        }
-        <!-- Les gestes destructifs de cet écran, et ils y sont parce que les postes ne sont listés
-             nulle part ailleurs. TOUS sous menu de dépassement, derrière un dialogue — jamais en
-             accès direct sur la carte.
-             « Supprimer le poste » (F-69 / SF-69-02) est refusé par la gateway tant qu'il reste des
-             projets. « Couper la liaison » (F-82 / SF-82-02) le rejoint ici : son bouton ne vivait
-             que dans l'en-tête d'un terminal, donc introuvable sur un poste connecté SANS AUCUN
-             projet — qui n'a pas de terminal. C'était exactement la situation vécue.
-             Absents du poste « Hébergé » : ce n'est pas une machine (F-71). -->
-        @if (!isHosted(host)) {
-        <button
-          mat-icon-button
-          type="button"
-          class="poste__menu-trigger"
-          [matMenuTriggerFor]="hostMenu"
-          [disabled]="deletingHostId() === host.id || killingHostId() === host.id"
-          [attr.aria-label]="'Actions sur ' + host.name"
-          matTooltip="Actions sur ce poste"
-        >
-          @if (deletingHostId() === host.id || killingHostId() === host.id) {
+            @if (deletingHostId() === host.id || killingHostId() === host.id) {
+              <mat-spinner diameter="18"></mat-spinner>
+            } @else {
+              <mat-icon class="poste__menu-icon">more_horiz</mat-icon>
+            }
+          </button>
+          <mat-menu #hostMenu="matMenu">
+            <button mat-menu-item type="button" (click)="killHost(host)">
+              <mat-icon>power_settings_new</mat-icon>
+              <span>Couper la liaison…</span>
+            </button>
+            <mat-divider></mat-divider>
+            <button mat-menu-item type="button" (click)="deleteHost(host)">
+              <mat-icon>delete_outline</mat-icon>
+              <span>Supprimer le poste</span>
+            </button>
+          </mat-menu>
+        } @else {
+          <!-- LES DEUX SOURCES SANS MACHINE (F-72 / SF-72-04) : un dépôt ou une archive n'a pas de
+               machine, il vit ici. -->
+          <input
+            #zipInput
+            type="file"
+            class="poste__zip-input"
+            [accept]="archiveAccept"
+            hidden
+            (change)="onZipPicked($event)"
+          />
+          @if (creating()) {
             <mat-spinner diameter="18"></mat-spinner>
-          } @else {
-            <mat-icon>more_vert</mat-icon>
           }
-        </button>
-        <mat-menu #hostMenu="matMenu">
-          <button mat-menu-item type="button" (click)="killHost(host)">
-            <mat-icon>power_settings_new</mat-icon>
-            <span>Couper la liaison…</span>
+          <button
+            mat-stroked-button
+            type="button"
+            [disabled]="creating()"
+            (click)="openGitRepo()"
+            matTooltip="Le jeton GitHub se règle une fois pour toutes dans vos réglages"
+          >
+            <mat-icon>hub</mat-icon>
+            Ouvrir un dépôt GitHub
           </button>
-          <mat-divider></mat-divider>
-          <button mat-menu-item type="button" (click)="deleteHost(host)">
-            <mat-icon>delete_outline</mat-icon>
-            <span>Supprimer le poste</span>
+          <button
+            mat-stroked-button
+            type="button"
+            [disabled]="creating()"
+            (click)="zipInput.click()"
+            matTooltip="Importer un projet depuis une archive"
+          >
+            <mat-icon>upload_file</mat-icon>
+            Importer une archive .zip
           </button>
-        </mat-menu>
         }
       </div>
     </header>
 
-    @if (isHosted(host)) {
-      <!-- Ce que ce « poste » est vraiment : le bac à sable de la gateway, et non une machine. -->
-      <p class="poste__heberge-hint">
-        Ces projets vivent <strong>chez la gateway</strong>, pas sur une de vos machines : un dépôt
-        GitHub, une archive importée. Rien à appairer, rien à lancer.
-      </p>
-    }
+    <!-- LES ONGLETS (D3) : chacun porte ce qui compte SANS L'OUVRIR. Filet orange sous l'onglet actif
+         (§16). L'onglet vit dans l'URL (`?onglet=`). -->
+    <nav class="poste__tabs" role="tablist" [attr.aria-label]="'Sections de ' + host.name">
+      @for (tab of tabsFor(host); track tab) {
+        <button
+          type="button"
+          role="tab"
+          class="poste__tab"
+          [class.poste__tab--active]="tab === activeTab()"
+          [attr.aria-selected]="tab === activeTab()"
+          [attr.data-tab]="tab"
+          (click)="selectTab(tab)"
+        >
+          {{ tabLabel(tab) }}
+          @switch (tab) {
+            @case ('projets') {
+              <span class="poste__tab-count">{{ host.projects.length }}</span>
+            }
+            @case ('carte') {
+              @if (mapTabSummary(host); as summary) {
+                <span class="poste__tab-count">{{ summary }}</span>
+              }
+            }
+            @case ('gouvernance') {
+              @if (governanceTabSummary(host); as summary) {
+                <span
+                  class="badge poste__tab-flag"
+                  [class.badge--warning]="summary.tone === 'warning'"
+                  [class.badge--error]="summary.tone === 'error'"
+                >{{ summary.label }}</span>
+              }
+            }
+          }
+        </button>
+      }
+    </nav>
 
-    <dl class="poste__facts">
-      @if (!isHosted(host)) {
-      @if (host.rootName) {
-        <div>
-          <dt>Racine</dt>
-          <dd class="poste__mono">{{ host.rootName }}</dd>
-        </div>
-      }
-      @if (host.os) {
-        <div>
-          <dt>Système</dt>
-          <dd>{{ host.os }}</dd>
-        </div>
-      }
-      @if (host.shell) {
-        <div>
-          <dt>Interpréteur</dt>
-          <dd class="poste__mono">{{ host.shell }}</dd>
-        </div>
-      }
-      <!-- F-81 / SF-81-03 : la version DÉCLARÉE par le runner. Elle répond à « est-il à jour ? »,
-           elle ne juge rien et n'ouvre aucun geste — un poste qui travaille n'est pas arrêté
-           parce qu'une version a bougé. Absente tant qu'aucun runner ne l'a déclarée. -->
-      @if (host.runnerVersion) {
-        <div>
-          <dt>Runner</dt>
-          <dd class="poste__mono">{{ host.runnerVersion }}</dd>
-        </div>
-      }
-      }
-    </dl>
+    @switch (activeTab()) {
+      @case ('projets') {
+        <div class="poste__panel" role="tabpanel">
+          @if (host.projects.length === 0) {
+            <p class="poste__no-project">
+              @if (isHosted(host)) {
+                Aucun projet hébergé.
+              } @else {
+                <!-- LE SECOND DES DEUX GESTES (F-72 / SF-72-03) : à ce stade, aucun projet n'existe —
+                     et c'est normal, on vient de brancher une machine. -->
+                Aucun projet sous ce poste — c'est normal si vous venez de le connecter.
+                Ajoutez-en un en cliquant un dossier de sa racine. Et si la racine est
+                <strong>vide</strong>, le <strong>terminal du poste</strong> permet d'y cloner un dépôt.
+              }
+            </p>
+          } @else {
+            <ul class="poste__projects">
+              @for (project of host.projects; track project.id) {
+                <li
+                  class="projet"
+                  [class.projet--active]="project.active"
+                  [style.borderLeftColor]="tone(host)?.solid"
+                >
+                  <div class="projet__main">
+                    <span class="projet__name">{{ project.name }}</span>
+                    @if (project.active) {
+                      <span class="badge badge--success">
+                        <mat-icon>bolt</mat-icon>
+                        Actif
+                      </span>
+                    }
+                    @if (project.liveTerminal) {
+                      <app-live-badge scope="host"></app-live-badge>
+                    }
+                    @if (!isHosted(host)) {
+                      <span class="projet__path poste__mono">{{ projectPathLabel(project) }}</span>
+                    }
+                  </div>
+                  <!-- PREMIÈRE DENSITÉ (F-76 / SF-76-02) : on voit qu'un agent attend quelque chose SANS
+                       RIEN OUVRIR. -->
+                  <app-terminal-preview
+                    class="projet__preview"
+                    [preview]="project.terminalPreview"
+                    density="card"
+                  ></app-terminal-preview>
+                  <div class="projet__side">
+                    @if (projectActivityLabel(project); as activity) {
+                      <span class="projet__activity">{{ activity }}</span>
+                    }
+                    <button
+                      mat-stroked-button
+                      type="button"
+                      (click)="openTerminal(project)"
+                      [attr.aria-label]="'Ouvrir le terminal de ' + project.name"
+                    >
+                      <mat-icon>terminal</mat-icon>
+                      Terminal
+                    </button>
+                  </div>
+                </li>
+              }
+            </ul>
+          }
 
-    @if (host.projects.length === 0) {
-      <p class="poste__no-project">
-        @if (isHosted(host)) {
-          Aucun projet hébergé.
-        } @else {
-          <!-- LE SECOND DES DEUX GESTES (F-72 / SF-72-03) : à ce stade, aucun projet n'existe —
-               et c'est normal, on vient de brancher une machine. Le dire ici évite exactement le
-               moment où le parcours d'avant faisait perdre le fil. -->
-          Aucun projet sous ce poste — c'est normal si vous venez de le connecter.
-          Ajoutez-en un en cliquant un dossier de sa racine. Et si la racine est <strong>vide</strong>,
-          le <strong>terminal du poste</strong> ci-dessous permet d'y cloner un dépôt.
-        }
-      </p>
-    } @else {
-      <ul class="poste__projects">
-        @for (project of host.projects; track project.id) {
-          <li
-            class="projet"
-            [class.projet--active]="project.active"
-            [style.borderLeftColor]="tone(host)?.solid"
-          >
-            <div class="projet__main">
-              <span class="projet__name">{{ project.name }}</span>
-              @if (project.active) {
-                <span class="badge badge--success">
-                  <mat-icon>bolt</mat-icon>
-                  Actif
-                </span>
+          @if (!isHosted(host)) {
+            <!-- LA DÉCOUVERTE SANS LA CRÉATION (F-72 / SF-72-03) : on voit ce que la machine contient
+                 SANS que rien ne soit créé. En retrait et en gris (§5) : des dossiers, pas des projets. -->
+            @if (unopenedFolders(host); as unopened) {
+              @if (unopened.length > 0) {
+                <section class="poste__unopened">
+                  <p class="poste__unopened-title">
+                    Dossiers de la racine que vous n'avez pas encore ouverts
+                  </p>
+                  <ul class="poste__unopened-list">
+                    @for (folder of unopened; track folder.path) {
+                      <li>
+                        <button
+                          type="button"
+                          class="poste__unopened-item"
+                          [disabled]="openingFolder() !== null"
+                          (click)="openFolderAsProject(host, folder)"
+                          [attr.aria-label]="'Ouvrir un projet sur ' + folder.name"
+                          matTooltip="Ouvrir un projet sur ce dossier"
+                        >
+                          @if (openingFolder() === folder.path) {
+                            <mat-spinner diameter="14"></mat-spinner>
+                          } @else {
+                            <mat-icon>create_new_folder</mat-icon>
+                          }
+                          <span class="poste__mono">{{ folder.name }}</span>
+                        </button>
+                      </li>
+                    }
+                  </ul>
+                  @if (moreFolders(host); as more) {
+                    <!-- Une liste tronquée se DIT (SF-38-21). -->
+                    <p class="poste__unopened-more">{{ more }}</p>
+                  }
+                </section>
               }
-              <!-- « Actif » dit qu'une commande a TOURNÉ récemment ; la pastille de vie dit qu'un
-                   onglet VIT. Les deux peuvent être vrais séparément, et c'est pourquoi elles
-                   coexistent au lieu de se remplacer. -->
-              @if (project.liveTerminal) {
-                <app-live-badge scope="host"></app-live-badge>
-              }
-              @if (!isHosted(host)) {
-                <span class="projet__path poste__mono">{{ projectPathLabel(project) }}</span>
-              }
-            </div>
-            <!-- PREMIÈRE DENSITÉ (F-76 / SF-76-02) : quelques lignes sous le nom du projet. On voit
-                 qu'un agent attend quelque chose SANS RIEN OUVRIR — la vue de supervision reste un
-                 écran qu'on ouvre quand on surveille, mais l'accueil le dit déjà.
-                 Rien n'est affiché quand il n'y a rien à dire : une ligne « Inactif » sous chaque
-                 projet n'apprendrait rien de plus que la pastille de vie. -->
-            <app-terminal-preview
-              class="projet__preview"
-              [preview]="project.terminalPreview"
-              density="card"
-            ></app-terminal-preview>
-            <div class="projet__side">
-              @if (projectActivityLabel(project); as activity) {
-                <span class="projet__activity">{{ activity }}</span>
-              }
+            }
+
+            <div class="poste__card-actions">
+              <!-- « Ajouter un projet », autant de fois qu'on veut, SANS JAMAIS RÉAPPAIRER (F-48). -->
               <button
                 mat-stroked-button
                 type="button"
-                (click)="openTerminal(project)"
-                [attr.aria-label]="'Ouvrir le terminal de ' + project.name"
+                (click)="addProject(host)"
+                [attr.aria-label]="'Ajouter un projet à ' + host.name"
+                matTooltip="Choisir un dossier de la racine — aucun nom à saisir"
               >
-                <mat-icon>terminal</mat-icon>
-                Terminal
+                <mat-icon>add</mat-icon>
+                Ajouter un projet
               </button>
             </div>
-          </li>
-        }
-      </ul>
-    }
-
-    @if (!isHosted(host)) {
-      <!-- LA DÉCOUVERTE SANS LA CRÉATION (F-72 / SF-72-03, demande du PO du 2026-09-12) : on voit
-           ce que la machine contient SANS que rien ne soit créé, et le geste d'ouverture reste
-           celui de l'utilisateur. Créer un projet par dossier noierait la vue — un ~/dev de
-           consultant en contient vingt ou trente, dont deux servent.
-
-           EN RETRAIT et en GRIS : ce sont des dossiers, pas des projets. C'est un quatrième OBJET,
-           pas un quatrième registre de couleur — le gris « archivé / inactif » du §5 existe déjà
-           pour « ce qui n'est pas actif », et aucun ton d'identité (§9) n'est emprunté. -->
-      @if (unopenedFolders(host); as unopened) {
-        @if (unopened.length > 0) {
-          <section class="poste__unopened">
-            <p class="poste__unopened-title">
-              Dossiers de la racine que vous n'avez pas encore ouverts
-            </p>
-            <ul class="poste__unopened-list">
-              @for (folder of unopened; track folder.path) {
-                <li>
-                  <button
-                    type="button"
-                    class="poste__unopened-item"
-                    [disabled]="openingFolder() !== null"
-                    (click)="openFolderAsProject(host, folder)"
-                    [attr.aria-label]="'Ouvrir un projet sur ' + folder.name"
-                    matTooltip="Ouvrir un projet sur ce dossier"
-                  >
-                    @if (openingFolder() === folder.path) {
-                      <mat-spinner diameter="14"></mat-spinner>
-                    } @else {
-                      <mat-icon>create_new_folder</mat-icon>
-                    }
-                    <span class="poste__mono">{{ folder.name }}</span>
-                  </button>
-                </li>
-              }
-            </ul>
-            @if (moreFolders(host); as more) {
-              <!-- Une liste tronquée se DIT (SF-38-21) : un dossier manquant en silence, ce sont
-                   dix minutes à chercher ce que le système savait ne pas avoir envoyé. -->
-              <p class="poste__unopened-more">{{ more }}</p>
-            }
-          </section>
-        }
+          }
+        </div>
       }
 
-      <!-- LA CARTE DU POSTE (F-92 / SF-92-03). C'est la pièce qui manquait : le produit savait
-           porter le TRAVAIL — les projets ci-dessus — mais pas le SAVOIR. La carte, ce sont les
-           fichiers `.md` posés à la RACINE, à côté des dossiers de projets ; les projets sont des
-           dossiers, la carte des fichiers, et les deux ne se confondent jamais.
-
-           LA MONTRER ICI EST CE QUI LA FAIT EXISTER : un fichier qu'on ne voit jamais n'est pas un
-           savoir, c'est un fichier. On voit ce que la machine sait SANS OUVRIR UN TERMINAL.
-
-           AUCUN REGISTRE DE COULEUR DE PLUS : un fichier encore vide emprunte le gris « inactif »
-           du §5, exactement comme les dossiers non ouverts ci-dessus. Ni ton d'identité (§9), ni
-           pastille de mission (§10), ni signe de vie (§11). -->
-      <section class="poste__carte">
-        <p class="poste__carte-title">
-          <mat-icon>map</mat-icon>
-          Carte du poste
-          @if (hostMap(host); as map) {
-            @if (map.governed && map.readable) {
-              <span class="poste__carte-summary">{{ mapSummary(map) }}</span>
-            }
-          }
-        </p>
-
-        @if (!online(host)) {
-          <!-- AUCUN APPEL n'est parti : le dire coûte moins qu'un délai pour l'apprendre. -->
-          <p class="poste__carte-hint">
-            La carte n'a pas été lue : lancez le runner sur la machine, puis
-            <strong>Rafraîchir</strong>.
-          </p>
-        } @else {
-          @if (hostMap(host); as map) {
-          @if (!map.governed || !map.readable) {
-            <!-- Le message du serveur, REPRIS TEL QUEL : il porte déjà son action corrective, et
-                 la réécrire ici la ferait diverger au premier changement. -->
-            <p class="poste__carte-hint">{{ map.message }}</p>
-            @if (!map.governed) {
-              <a mat-stroked-button routerLink="/governance">
-                <mat-icon>gavel</mat-icon>
-                Ouvrir la gouvernance
-              </a>
-            }
-          } @else {
-            @if (map.facts === 0) {
-              <p class="poste__carte-hint">
-                La carte est posée mais encore vide. Chaque projet ouvert sous ce poste doit y
-                laisser ce qu'il a appris : <strong>à chaque projet, la connaissance augmente</strong>.
-              </p>
-            }
-            <ul class="poste__carte-list">
-              @for (file of map.files; track file.path) {
-                <li>
-                  <button
-                    type="button"
-                    class="poste__carte-item"
-                    [class.poste__carte-item--empty]="file.facts === 0"
-                    (click)="openMapFile(host, file)"
-                    [attr.aria-label]="'Ouvrir ' + file.path"
-                    [matTooltip]="file.message ?? 'Lire ce fichier de la carte'"
-                  >
-                    <mat-icon>{{ file.present ? 'description' : 'help_outline' }}</mat-icon>
-                    <span class="poste__carte-item-title">{{ file.title }}</span>
-                    <span class="poste__mono poste__carte-item-path">{{ file.path }}</span>
-                    <span class="poste__carte-item-facts">{{ mapFileLabel(file) }}</span>
-                  </button>
-                </li>
+      @case ('carte') {
+        <!-- LA CARTE DU POSTE (F-92 / SF-92-03) : ce que la machine SAIT, à sa racine. La montrer est ce
+             qui la fait exister. Aucun registre de couleur de plus. -->
+        <section class="poste__panel poste__carte" role="tabpanel">
+          <p class="poste__carte-title">
+            <mat-icon>map</mat-icon>
+            Carte du poste
+            @if (hostMap(host); as map) {
+              @if (map.governed && map.readable) {
+                <span class="poste__carte-summary">{{ mapSummary(map) }}</span>
               }
-            </ul>
+            }
+          </p>
+
+          @if (!online(host)) {
+            <!-- AUCUN APPEL n'est parti : le dire coûte moins qu'un délai pour l'apprendre. -->
+            <p class="poste__carte-hint">
+              La carte n'a pas été lue : lancez le runner sur la machine, puis
+              <strong>Rafraîchir</strong>.
+            </p>
+          } @else {
+            @if (hostMap(host); as map) {
+              @if (!map.governed || !map.readable) {
+                <!-- Le message du serveur, REPRIS TEL QUEL : il porte déjà son action corrective. -->
+                <p class="poste__carte-hint">{{ map.message }}</p>
+                @if (!map.governed) {
+                  <a mat-stroked-button routerLink="/gouvernance">
+                    <mat-icon>gavel</mat-icon>
+                    Ouvrir la gouvernance
+                  </a>
+                }
+              } @else {
+                @if (map.facts === 0) {
+                  <p class="poste__carte-hint">
+                    La carte est posée mais encore vide. Chaque projet ouvert sous ce poste doit y
+                    laisser ce qu'il a appris : <strong>à chaque projet, la connaissance augmente</strong>.
+                  </p>
+                }
+                <ul class="poste__carte-list">
+                  @for (file of map.files; track file.path) {
+                    <li>
+                      <button
+                        type="button"
+                        class="poste__carte-item"
+                        [class.poste__carte-item--empty]="file.facts === 0"
+                        (click)="openMapFile(host, file)"
+                        [attr.aria-label]="'Ouvrir ' + file.path"
+                        [matTooltip]="file.message ?? 'Lire ce fichier de la carte'"
+                      >
+                        <mat-icon>{{ file.present ? 'description' : 'help_outline' }}</mat-icon>
+                        <span class="poste__carte-item-title">{{ file.title }}</span>
+                        <span class="poste__mono poste__carte-item-path">{{ file.path }}</span>
+                        <span class="poste__carte-item-facts">{{ mapFileLabel(file) }}</span>
+                      </button>
+                    </li>
+                  }
+                </ul>
+              }
+
+              <!-- CE QUE LA CARTE A GAGNÉ (F-93 / SF-93-03) : une phrase, trois lignes, et rien d'autre.
+                   Il n'apparaît que s'il a quelque chose à dire. -->
+              @if (mapGrowth(map); as growth) {
+                <p class="poste__carte-gain">
+                  <mat-icon>trending_up</mat-icon>
+                  <span>{{ mapGrowthLabel(map, growth) }}</span>
+                </p>
+                @if (mapRecentGains(growth).length) {
+                  <ul class="poste__carte-gain-list">
+                    @for (gain of mapRecentGains(growth); track gain.path) {
+                      <li class="poste__mono">{{ mapGainLabel(gain) }}</li>
+                    }
+                  </ul>
+                }
+              }
+            }
           }
 
-          <!-- CE QUE LA CARTE A GAGNÉ (F-93 / SF-93-03). C'est le point que le PO attend : sans
-               cela, la promotion reste une corvée invisible — on la demande à chaque tour et elle
-               ne rend jamais rien à celui qui la fait. Ici, elle rend une phrase qu'on constate.
+          <!-- CE QUE LE TERMINAL DU POSTE SERT (F-92 / SF-92-03). -->
+          <p class="poste__carte-hint">
+            Le <strong>terminal du poste</strong> s'ouvre à la racine, là où vit la carte : c'est de là
+            qu'on l'écrit.
+          </p>
+        </section>
+      }
 
-               CE N'EST PAS UN TABLEAU DE BORD : une phrase, trois lignes, et rien d'autre. Pas de
-               courbe, pas de pourcentage, pas de « score de connaissance ».
+      @case ('gouvernance') {
+        <section class="poste__panel poste__gouvernance" role="tabpanel">
+          <!-- UNE MISE À JOUR ATTEND (F-96 / SF-96-03). Rien ne s'est mis à jour tout seul : le produit
+               n'écrit jamais sur la machine d'un client sans qu'on le lui ait demandé. Ton
+               d'information, pas d'erreur. -->
+          @if (outdatedOn(host) > 0) {
+            <div class="poste__update" role="status">
+              <mat-icon>sync</mat-icon>
+              <p>
+                Une version plus récente de <strong>{{ outdatedOn(host) }} paquet(s)</strong> existe.
+                <strong>Rien n'a été écrit sur cette machine</strong> : appliquez-la depuis la
+                gouvernance. Les fichiers que vous avez modifiés seront conservés.
+              </p>
+            </div>
+          }
 
-               IL N'APPARAÎT QUE S'IL A QUELQUE CHOSE À DIRE. Un « +0 depuis le 2 septembre »
-               affiché chaque jour se lirait comme un reproche et deviendrait invisible en trois
-               jours.
-
-               AUCUN REGISTRE DE COULEUR DE PLUS : l'encre ordinaire pour la phrase, le gris du §5
-               pour les lignes. Pas de vert « ça monte » — un gain n'est pas un succès, c'est un
-               fait, et l'icône porte le sens plutôt que la couleur. -->
-          @if (mapGrowth(map); as growth) {
-            <p class="poste__carte-gain">
-              <mat-icon>trending_up</mat-icon>
-              <span>{{ mapGrowthLabel(map, growth) }}</span>
-            </p>
-            @if (mapRecentGains(growth).length) {
-              <ul class="poste__carte-gain-list">
-                @for (gain of mapRecentGains(growth); track gain.path) {
-                  <li class="poste__mono">{{ mapGainLabel(gain) }}</li>
+          <!-- L'INTÉGRITÉ DU POSTE (F-95 / SF-95-03) : les avertissements n'ont AUCUN autre lecteur.
+               Deux niveaux, jamais mêlés ; le message est repris tel quel. Il n'apparaît que s'il a
+               quelque chose à dire. -->
+          @if (hostIntegrite(host); as integrite) {
+            @if (integrite.errors.length) {
+              <p class="poste__carte-gain">
+                <mat-icon>error_outline</mat-icon>
+                <span>Intégrité — à corriger</span>
+              </p>
+              <ul class="poste__carte-constats">
+                @for (constat of integriteConstats(integrite.errors); track constat.rule + constat.target) {
+                  <li>
+                    <span class="poste__mono">{{ constat.target }}</span>
+                    {{ constat.message }}
+                  </li>
+                }
+              </ul>
+            }
+            @if (integrite.warnings.length) {
+              <p class="poste__carte-gain">
+                <mat-icon>info_outline</mat-icon>
+                <span>Intégrité — à surveiller, sans urgence</span>
+              </p>
+              <ul class="poste__carte-constats">
+                @for (constat of integriteConstats(integrite.warnings); track constat.rule + constat.target) {
+                  <li>
+                    <span class="poste__mono">{{ constat.target }}</span>
+                    {{ constat.message }}
+                  </li>
                 }
               </ul>
             }
           }
+
+          @if (outdatedOn(host) === 0 && !hostIntegrite(host)) {
+            <p class="poste__carte-hint">Rien à appliquer, aucun constat d'intégrité.</p>
           }
-        }
 
-        <!-- L'INTÉGRITÉ DU POSTE (F-95 / SF-95-03). C'est ici que vivent les AVERTISSEMENTS, et
-             c'est ce qui justifie ce bloc : un verdict de fin de tour ne connaît que « passer » ou
-             « bloquer », donc un avertissement n'a AUCUN autre lecteur. Sans cet écran, la moitié
-             informative de la feature serait écrite et jamais lue.
+          <a mat-stroked-button routerLink="/gouvernance" class="poste__gouvernance-link">
+            <mat-icon>gavel</mat-icon>
+            Ouvrir la gouvernance
+          </a>
+        </section>
+      }
 
-             DEUX NIVEAUX, JAMAIS MÊLÉS : les erreurs d'abord, sous leur intitulé ; les
-             avertissements ensuite, sous le leur. La gateway les rend déjà séparés — l'écran n'a
-             rien à trier, et ne peut donc pas présenter un avertissement comme un refus.
-
-             LE MESSAGE EST REPRIS TEL QUEL : il porte déjà son action corrective, et le réécrire
-             ici le ferait diverger au premier correctif.
-
-             IL N'APPARAÎT QUE S'IL A QUELQUE CHOSE À DIRE — même règle que le gain : un « aucune
-             erreur » permanent deviendrait invisible en trois jours.
-
-             AUCUN REGISTRE DE COULEUR DE PLUS : l'ICÔNE porte le sens, l'encre reste celle du
-             texte. C'est déjà la règle de cette carte. -->
-        @if (hostIntegrite(host); as integrite) {
-          @if (integrite.errors.length) {
-            <p class="poste__carte-gain">
-              <mat-icon>error_outline</mat-icon>
-              <span>Intégrité — à corriger</span>
+      @case ('activite') {
+        <section class="poste__panel poste__activite" role="tabpanel">
+          @if (activityLabel(host); as activity) {
+            <p class="poste__activity" [class.poste__activity--live]="host.activeProjects > 0">
+              {{ activity }}
             </p>
-            <ul class="poste__carte-constats">
-              @for (constat of integriteConstats(integrite.errors); track constat.rule + constat.target) {
-                <li>
-                  <span class="poste__mono">{{ constat.target }}</span>
-                  {{ constat.message }}
-                </li>
-              }
-            </ul>
-          }
-          @if (integrite.warnings.length) {
-            <p class="poste__carte-gain">
-              <mat-icon>info_outline</mat-icon>
-              <span>Intégrité — à surveiller, sans urgence</span>
-            </p>
-            <ul class="poste__carte-constats">
-              @for (constat of integriteConstats(integrite.warnings); track constat.rule + constat.target) {
-                <li>
-                  <span class="poste__mono">{{ constat.target }}</span>
-                  {{ constat.message }}
-                </li>
-              }
-            </ul>
-          }
-        }
-
-        <!-- CE QUE LE TERMINAL DU POSTE SERT (F-92 / SF-92-03) : aujourd'hui, rien ne l'indique.
-             Il s'ouvre à la racine — là où vit la carte — et c'est de là qu'on l'écrit. -->
-        <p class="poste__carte-hint">
-          Le <strong>terminal du poste</strong> s'ouvre à la racine, là où vit la carte : c'est de là
-          qu'on l'écrit.
-        </p>
-      </section>
-
-      <div class="poste__card-actions">
-        <!-- « Ajouter un projet », autant de fois qu'on veut, SANS JAMAIS RÉAPPAIRER : c'est tout
-             le bénéfice de F-48, enfin atteignable depuis l'écran. -->
-        <button
-          mat-stroked-button
-          type="button"
-          (click)="addProject(host)"
-          [attr.aria-label]="'Ajouter un projet à ' + host.name"
-          matTooltip="Choisir un dossier de la racine — aucun nom à saisir"
-        >
-          <mat-icon>add</mat-icon>
-          Ajouter un projet
-        </button>
-
-        <!-- LE TERMINAL DU POSTE (F-74 / SF-74-02). Il est ICI, à côté d'« Ajouter un projet »,
-             parce que c'est le geste de l'autre moitié du premier jour : la racine est vide, il
-             n'y a AUCUN dossier à ajouter, et il faut pourtant un terminal pour cloner. Et
-             au-delà du premier jour, `git`, un VPN, `terraform` n'appartiennent à aucun projet.
-
-             UN TERMINAL COMME LES AUTRES : même bouton, même icône, même destination — l'écran de
-             terminal habituel, sa conversation, son historique, ses réglages. Rien de nouveau à
-             apprendre, et AUCUN registre de couleur de plus : le bouton est celui de la carte, et
-             la pastille de vie est exactement celle de F-70. -->
-        <button
-          mat-stroked-button
-          type="button"
-          class="poste__host-terminal"
-          [disabled]="openingTerminalHostId() !== null"
-          (click)="openHostTerminal(host)"
-          [attr.aria-label]="'Ouvrir le terminal du poste ' + host.name"
-          matTooltip="Un terminal à la racine du poste — là où vit la carte, et pour ce qui n'appartient à aucun projet"
-        >
-          @if (openingTerminalHostId() === host.id) {
-            <mat-spinner diameter="18"></mat-spinner>
           } @else {
-            <mat-icon>terminal</mat-icon>
+            <p class="poste__carte-hint">Rien n'a encore tourné sur ce poste.</p>
           }
-          Terminal du poste
-        </button>
-        @if (host.hostTerminalLive) {
-          <app-live-badge scope="host"></app-live-badge>
-        }
 
-        <!-- LE TERMINAL TEAMS (F-89 / SF-89-03). Il est ICI, à côté du terminal du poste, parce
-             que c'est la même nature de geste : un terminal rattaché à la MACHINE — celle dont on
-             observe le navigateur (F-87) — et non à un projet.
+          <!-- Le terminal du poste (F-74) travaille comme un autre : il dit donc ce qu'il fait (F-76). -->
+          <app-terminal-preview
+            class="poste__host-terminal-preview"
+            [preview]="host.hostTerminalPreview"
+            density="card"
+          ></app-terminal-preview>
 
-             PAS DE BOUTON SANS LE DROIT. Ni grisé, ni menant à un refus : le terminal Teams existe,
-             ou il n'existe pas. Un bouton qui mène à un 403 n'est pas une porte, c'est un piège.
-
-             TOUJOURS PAS D'ÉCRAN À BOUTONS : ce geste-ci n'ouvre pas une fonctionnalité, il ouvre
-             une CONVERSATION. Tout le reste — les mentions, un compte rendu, ce qu'on attend de
-             vous — se demande en parlant, et c'est la décision fondatrice du cadrage. -->
-        @if (showTeamsTerminal(host)) {
-          <button
-            mat-stroked-button
-            type="button"
-            class="poste__teams-terminal"
-            [disabled]="openingTeamsHostId() !== null"
-            (click)="openTeamsTerminal(host)"
-            [attr.aria-label]="'Ouvrir le terminal Teams de ' + host.name"
-            matTooltip="Un terminal à part pour Teams — on y parle de réunions et de conversations, pas de code"
-          >
-            @if (openingTeamsHostId() === host.id) {
-              <mat-spinner diameter="18"></mat-spinner>
-            } @else {
-              <mat-icon>forum</mat-icon>
-            }
-            Terminal Teams
-          </button>
-          @if (host.teamsTerminalLive) {
-            <app-live-badge scope="host"></app-live-badge>
+          @if (selectedActivity().length > 0) {
+            <ul class="poste__activity-list">
+              @for (project of selectedActivity(); track project.id) {
+                <li>
+                  <span class="projet__name">{{ project.name }}</span>
+                  @if (projectActivityLabel(project); as activity) {
+                    <span class="projet__activity poste__mono">{{ activity }}</span>
+                  }
+                </li>
+              }
+            </ul>
           }
-        }
-      </div>
-      <!-- Le terminal du poste (F-74) travaille comme un autre : il dit donc ce qu'il fait comme
-           un autre (F-76 / SF-76-02). Le taire ici le laisserait apparaître dans la vue de
-           supervision sans que la carte en dise un mot — deux densités qui se contrediraient. -->
-      <app-terminal-preview
-        class="poste__host-terminal-preview"
-        [preview]="host.hostTerminalPreview"
-        density="card"
-      ></app-terminal-preview>
-    } @else {
-      <!-- LES DEUX SOURCES SANS MACHINE (F-72 / SF-72-04). Elles étaient sous « Nouveau projet »,
-           à la racine — la porte qui faisait partir du PROJET au lieu du poste. Le geste est le
-           même au mot près ; seul son emplacement change, et il est enfin juste : un dépôt ou une
-           archive n'a pas de machine, il vit ici. -->
-      <input
-        #zipInput
-        type="file"
-        class="poste__zip-input"
-        [accept]="archiveAccept"
-        hidden
-        (change)="onZipPicked($event)"
-      />
-      <div class="poste__card-actions">
-        @if (creating()) {
-          <mat-spinner diameter="18"></mat-spinner>
-        }
-        <button
-          mat-stroked-button
-          type="button"
-          [disabled]="creating()"
-          (click)="openGitRepo()"
-          matTooltip="Le jeton GitHub se règle une fois pour toutes dans vos réglages"
-        >
-          <mat-icon>hub</mat-icon>
-          Ouvrir un dépôt GitHub
-        </button>
-        <button
-          mat-stroked-button
-          type="button"
-          [disabled]="creating()"
-          (click)="zipInput.click()"
-          matTooltip="Importer un projet depuis une archive"
-        >
-          <mat-icon>upload_file</mat-icon>
-          Importer une archive .zip
-        </button>
-      </div>
+        </section>
+      }
     }
-  </mat-card>
+  </section>
 </ng-template>
