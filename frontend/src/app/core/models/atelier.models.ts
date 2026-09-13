@@ -213,10 +213,11 @@ export interface ExecutionTargetRequest {
 /**
  * État runner d'un projet (F-38 / SF-38-02), réponse de `GET /api/workspaces/{id}/runner/status`.
  *
- * <p>`connected` n'est **pas** du temps réel : le backend le calcule à partir du registre de
- * présence et de la fraîcheur du dernier heartbeat (`app.runner.heartbeat.stale-after`, 90 s par
- * défaut). Un runner coupé par `Ctrl-C` reste donc annoncé connecté jusqu'à ce délai — l'écran doit
- * le dire plutôt que de laisser croire à une pastille instantanée.</p>
+ * <p>`connected` n'est **pas** du temps réel : depuis F-97 / SF-97-01, le backend le calcule à partir
+ * de la **seule** fraîcheur du dernier battement (`app.runner.heartbeat.stale-after`, 90 s par
+ * défaut). Un runner coupé en silence reste donc annoncé connecté jusqu'à ce délai — c'est pourquoi
+ * l'écran **date** l'état (« en ligne · vu il y a 12 s ») et le lit dans `HostPresenceService`, que
+ * tout refus « poste hors ligne » met à jour sur-le-champ (F-97 / SF-97-02).</p>
  */
 export interface RunnerStatus {
   connected: boolean;

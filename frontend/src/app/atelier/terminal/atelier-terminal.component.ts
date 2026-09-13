@@ -45,6 +45,7 @@ import {
   RunnerStatus,
   WorkspaceExecutionTarget,
 } from '../../core/models/atelier.models';
+import { HostPresenceService, presenceLabel } from '../../core/services/host-presence.service';
 import {
   AtelierExecStreamingItem,
   AtelierPendingConfirmation,
@@ -286,9 +287,6 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    */
   @Input() runnerStatus: RunnerStatus | null = null;
 
-  /** Dernière activité du runner, déjà formatée par le parent, ou `null`. */
-  @Input() runnerLastSeenLabel: string | null = null;
-
   /** Coupe-circuit en vol : le bouton reste inerte le temps de l'aller-retour. */
   @Input() killingRunner = false;
 
@@ -507,7 +505,10 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     if (this.runnerStatus === null) {
       return 'ma machine — état inconnu';
     }
-    return this.runnerStatus.connected ? 'ma machine — connectée' : 'ma machine — hors ligne';
+    // F-97 / SF-97-02 : l'état DATE au lieu d'affirmer — « en ligne · vu il y a 12 s ». La date
+    // avance à la seconde sans appel ; un statut qui date se lit juste même quand il est en retard.
+    return `ma machine — ${presenceLabel(this.runnerStatus.connected, this.runnerStatus.lastSeenAt,
+      this.presence.now())}`;
   }
 
   /** Icône de la pastille de moteur : le nuage pour l'hébergé, la machine pour le local. */
@@ -646,6 +647,9 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
   private readonly changeDetector = inject(ChangeDetectorRef);
   private readonly snackBar = inject(MatSnackBar);
+  /** Horloge des libellés datés (F-97 / SF-97-02), partagée avec la Forge. */
+  private readonly presence = inject(HostPresenceService);
+  private readonly releaseClock = this.presence.watchClock();
 
   /** Image courante du spinner ; seule la ligne vivante la lit. */
   spinnerFrame = AtelierTerminalComponent.SPINNER_FRAMES[0];
@@ -667,6 +671,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
   ngOnDestroy(): void {
     this.stopSpinner();
+    this.releaseClock();
   }
 
   private startSpinner(): void {

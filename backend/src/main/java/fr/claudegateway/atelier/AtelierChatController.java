@@ -397,6 +397,18 @@ public class AtelierChatController {
                 public void onConfirmResolved(AtelierConfirmResolved resolved) {
                     turn.publishApprovalResolved(resolved, resolved.toolUseId());
                 }
+
+                /**
+                 * Le poste vient de refuser un appel (F-97 / SF-97-02). L'instant est celui du
+                 * SERVEUR : l'écran le compare au dernier battement connu, lui aussi en heure
+                 * serveur, pour qu'un refus rejoué par le tampon du tour ne rende pas hors ligne un
+                 * poste revenu depuis.
+                 */
+                @Override
+                public void onRunnerOffline(UUID hostId) {
+                    turn.publish("runner_offline",
+                            new StreamRunnerOffline(hostId.toString(), System.currentTimeMillis()));
+                }
             };
             AtelierChatResult result = atelierChatService.chatStreaming(userId, workspaceId, message, listener);
             turn.publish("done", new StreamDone(result.reply(), result.actions(), result.messageId(),
@@ -468,6 +480,10 @@ public class AtelierChatController {
     }
 
     record StreamProgress(long tokens) {
+    }
+
+    /** Le poste du projet a refusé un appel (F-97 / SF-97-02) ; {@code at} en ms, heure serveur. */
+    record StreamRunnerOffline(String hostId, long at) {
     }
 
     record StreamError(String error) {

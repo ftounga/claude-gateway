@@ -15,6 +15,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { AtelierService } from '../core/services/atelier.service';
 import { GovernanceService } from '../core/services/governance.service';
+import { HostPresenceService } from '../core/services/host-presence.service';
 import {
   GovernanceIntegrite,
   GovernanceIntegriteConstat,
@@ -181,6 +182,11 @@ export class PostesComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef);
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialog = inject(MatDialog);
+  /**
+   * État des postes partagé par tout l'écran (F-97 / SF-97-02) : cette vue l'alimente à chaque
+   * lecture, et le lit — si bien qu'un refus reçu dans un terminal la fait suivre sans rien relire.
+   */
+  private readonly presence = inject(HostPresenceService);
 
   /** Les trois états proposés au choix, dans l'ordre : du plus vivant au plus rangé. */
   readonly missionStatuses = MISSION_STATUSES;
@@ -371,7 +377,10 @@ export class PostesComponent implements OnInit {
     this.loadTeamsAccess();
     this.startPolling();
     document.addEventListener('visibilitychange', this.onVisibilityChange);
+    // Les libellés datés avancent à la seconde, sans appel (F-97 / SF-97-02).
+    const releaseClock = this.presence.watchClock();
     this.destroyRef.onDestroy(() => {
+      releaseClock();
       this.stopPolling();
       document.removeEventListener('visibilitychange', this.onVisibilityChange);
     });
@@ -703,7 +712,7 @@ export class PostesComponent implements OnInit {
       const hostId = host.id;
       // Le poste « Hébergé » n'a pas de machine ; un poste déconnecté n'a personne pour lister —
       // et la carte n'affiche alors aucune section, plutôt qu'une liste vide qui mentirait.
-      if (hostId === null || !host.connected || this.foldersRead.has(hostId)) {
+      if (hostId === null || !this.online(host) || this.foldersRead.has(hostId)) {
         continue;
       }
       this.foldersRead.add(hostId);
@@ -868,7 +877,7 @@ export class PostesComponent implements OnInit {
   private loadMaps(hosts: RunnerHostOverview[]): void {
     for (const host of hosts) {
       const hostId = host.id;
-      if (hostId === null || !host.connected || this.mapsRead.has(hostId)) {
+      if (hostId === null || !this.online(host) || this.mapsRead.has(hostId)) {
         continue;
       }
       this.mapsRead.add(hostId);
@@ -1286,13 +1295,20 @@ export class PostesComponent implements OnInit {
     return `il y a ${Math.floor(elapsed / 86_400)} j`;
   }
 
-  /** État de la machine, en une phrase : « Connecté » ou depuis quand on ne l'a plus vue. */
+  /**
+   * <b>En ligne ou non</b>, selon l'état partagé de l'écran (F-97 / SF-97-02) : le dernier relevé, ou
+   * un refus plus récent reçu n'importe où — terminal, aperçu, tuile. À défaut, la donnée lue ici.
+   */
+  online(host: RunnerHostOverview): boolean {
+    return this.presence.isOnline(host.id, host.connected);
+  }
+
+  /**
+   * État de la machine, <b>daté</b> plutôt qu'affirmé (F-97 / SF-97-02) : « en ligne · vu il y a
+   * 12 s », « hors ligne · vu il y a 18 min », « jamais connecté ». La date avance à la seconde.
+   */
   hostStateLabel(host: RunnerHostOverview): string {
-    if (host.connected) {
-      return 'Connecté';
-    }
-    const seen = this.elapsedLabel(host.lastSeenAt);
-    return seen ? `Vu ${seen}` : 'Jamais connecté';
+    return this.presence.label(host.id, host.connected, host.lastSeenAt);
   }
 
   /** Chemin du projet sous la racine du poste — la racine elle-même quand il est vide. */
@@ -1344,6 +1360,11 @@ export class PostesComponent implements OnInit {
     }
     this.atelier.runnerHostsOverview().subscribe({
       next: (hosts) => {
+        // L'état partagé d'abord (F-97 / SF-97-02) : c'est lui que lisent la pastille et les lectures
+        // qui suivent. Un refus plus récent que ce relevé y reste en vigueur.
+        for (const host of hosts) {
+          this.presence.record(host.id, host.connected, host.lastSeenAt);
+        }
         this.hosts.set(hosts.map((host) => ({ ...host, projects: host.projects ?? [] })));
         // La racine de chaque poste connecté, lue UNE fois (F-72 / SF-72-03, arbitrage A1) : le
         // sondage de 15 s ne la rejoue pas — lire la machine du client 240 fois par heure pour une

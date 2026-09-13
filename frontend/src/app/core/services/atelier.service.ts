@@ -1,8 +1,9 @@
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, tap } from 'rxjs';
 
 import { AuthService } from './auth.service';
+import { HostPresenceService } from './host-presence.service';
 import {
   AtelierAgentStreamAction,
   AtelierFileDiff,
@@ -80,6 +81,8 @@ export function proxyRelayDownloadPath(platform: ProxyRelayPlatform): string {
 export class AtelierService {
   private readonly http = inject(HttpClient);
   private readonly auth = inject(AuthService);
+  /** État des postes partagé par tout l'écran (F-97 / SF-97-02) : tout refus y est écrit. */
+  private readonly presence = inject(HostPresenceService);
 
   /** Crée un workspace à partir d'une archive `.zip` (multipart, champ `file`, `name` optionnel). */
   createWorkspace(file: File, name?: string): Observable<WorkspaceDetail> {
@@ -365,6 +368,9 @@ export class AtelierService {
       cursor?: number;
       startedAt?: number;
       droppedThrough?: number;
+      /** Poste qui vient de refuser un appel, et l'instant serveur du refus (F-97 / SF-97-02). */
+      hostId?: string;
+      at?: number;
     };
     try {
       payload = JSON.parse(data);
@@ -453,6 +459,15 @@ export class AtelierService {
       handlers.onTruncated?.(
         typeof payload.droppedThrough === 'number' ? payload.droppedThrough : 0,
       );
+    } else if (event === 'runner_offline') {
+      // F-97 / SF-97-02 : le poste du projet vient de refuser un appel. Écrit dans l'état PARTAGÉ,
+      // pas seulement dans ce flux : la Forge, l'en-tête du projet et une tuile suivent sans
+      // attendre leur sondage. L'instant est celui de la gateway, comparé à un battement lui aussi
+      // en heure serveur — un refus rejoué ne rend pas hors ligne un poste revenu.
+      if (typeof payload.hostId === 'string' && payload.hostId) {
+        this.presence.markOffline(payload.hostId,
+          typeof payload.at === 'number' ? payload.at : Date.now());
+      }
     } else if (event === 'error') {
       handlers.onError(payload.error ?? 'provider_error');
     }
@@ -853,7 +868,15 @@ export class AtelierService {
    */
   runnerHostFolders(hostId: string, path?: string): Observable<HostFoldersResponse> {
     const params = path ? new HttpParams().set('path', path) : undefined;
-    return this.http.get<HostFoldersResponse>(`/api/runner-hosts/${hostId}/folders`, { params });
+    return this.http.get<HostFoldersResponse>(`/api/runner-hosts/${hostId}/folders`, { params })
+      .pipe(tap({
+        // F-97 / SF-97-02 : ce refus-là porte son poste — il met le poste à jour dans tout l'écran.
+        error: (err: unknown) => {
+          if (isRunnerBrowseUnavailable(err)) {
+            this.presence.markOffline(hostId);
+          }
+        },
+      }));
   }
 
   /**
@@ -990,4 +1013,16 @@ export class AtelierService {
   downloadProxyRelay(platform: ProxyRelayPlatform): Observable<Blob> {
     return this.http.get(proxyRelayDownloadPath(platform), { responseType: 'blob' });
   }
+}
+
+/**
+ * Le 409 « le runner de ce poste n'est pas joignable » de la navigation dans les dossiers
+ * (F-38 / SF-38-17), reconnu à son code — jamais à son message.
+ */
+function isRunnerBrowseUnavailable(err: unknown): boolean {
+  if (!(err instanceof HttpErrorResponse) || err.status !== 409) {
+    return false;
+  }
+  const body = err.error as { error?: unknown } | null;
+  return body?.error === 'runner_browse_unavailable';
 }

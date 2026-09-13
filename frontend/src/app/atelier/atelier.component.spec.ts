@@ -18,6 +18,7 @@ import { AtelierComponent, delayLabel, toThreadItem } from './atelier.component'
 import { AtelierService } from '../core/services/atelier.service';
 import { ApiKeyService } from '../core/services/api-key.service';
 import { LiveTerminalService } from '../core/services/live-terminal.service';
+import { HostPresenceService } from '../core/services/host-presence.service';
 import { ApiKeyStatus } from '../core/models/api-key.models';
 import {
   AtelierMessage,
@@ -3537,7 +3538,6 @@ describe('AtelierComponent — écrans runner (F-38 SF-38-06)', () => {
     setup(runnerDetail);
     expect(service.getRunnerStatus).toHaveBeenCalledWith('w1');
     expect(component.runnerStatusLabel()).toBe('Runner connecté');
-    expect(component.runnerLastSeenLabel()).toContain('dernier signe de vie');
     fixture.destroy();
   });
 
@@ -3555,6 +3555,36 @@ describe('AtelierComponent — écrans runner (F-38 SF-38-06)', () => {
     fixture.destroy();
   });
 
+  // ------------------------------------------------ F-97 / SF-97-02 : le statut dit vrai
+
+  it('un refus reçu ailleurs met l’en-tête hors ligne, sans nouveau relevé', () => {
+    setup(runnerDetail);
+    service.getRunnerStatus.and.returnValue(of({
+      connected: true, lastSeenAt: new Date(Date.now() - 5_000).toISOString(), hostId: 'h1' }));
+    component.refreshRunnerStatus();
+    expect(component.displayedRunnerStatus()?.connected).toBeTrue();
+    const calls = service.getRunnerStatus.calls.count();
+
+    TestBed.inject(HostPresenceService).markOffline('h1', Date.now());
+
+    expect(component.displayedRunnerStatus()?.connected).toBeFalse();
+    expect(component.runnerStatusLabel()).toBe('Aucun runner connecté');
+    expect(service.getRunnerStatus.calls.count()).toBe(calls);
+    fixture.destroy();
+  });
+
+  it('le relevé du projet alimente l’état partagé que lit la Forge', () => {
+    setup(runnerDetail);
+    const seen = new Date(Date.now() - 5_000).toISOString();
+    service.getRunnerStatus.and.returnValue(of({ connected: true, lastSeenAt: seen, hostId: 'h1' }));
+
+    component.refreshRunnerStatus();
+
+    expect(TestBed.inject(HostPresenceService).presence('h1'))
+      .toEqual({ connected: true, lastSeenAt: seen, refusedAt: null });
+    fixture.destroy();
+  });
+
   it('annonce « aucun runner connecté » quand la passerelle ne voit personne', () => {
     setup(runnerDetail);
     service.getRunnerStatus.and.returnValue(of({ connected: false, lastSeenAt: null }));
@@ -3562,7 +3592,6 @@ describe('AtelierComponent — écrans runner (F-38 SF-38-06)', () => {
     component.refreshRunnerStatus();
 
     expect(component.runnerStatusLabel()).toBe('Aucun runner connecté');
-    expect(component.runnerLastSeenLabel()).toBeNull();
     fixture.destroy();
   });
 

@@ -10,6 +10,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { POSTES_REFRESH_MS, PostesComponent } from './postes.component';
 import { AtelierService } from '../core/services/atelier.service';
 import { GovernanceService } from '../core/services/governance.service';
+import { HostPresenceService } from '../core/services/host-presence.service';
 import { GovernanceIntegrite, GovernanceMap } from '../core/models/governance.models';
 import { RunnerHostOverview, WorkspaceDetail } from '../core/models/atelier.models';
 import { hostInitials, hostTone } from '../shared/host-identity';
@@ -216,7 +217,8 @@ describe('PostesComponent', () => {
       .querySelectorAll('.poste:not(.poste--heberge)');
     expect(cards.length).toBe(1);
     expect(text()).toContain('Poste CAGIP');
-    expect(text()).toContain('Connecté');
+    // F-97 / SF-97-02 : l'état DATE au lieu d'affirmer.
+    expect(text()).toContain('en ligne · vu il y a');
   });
 
   // F-56 / SF-56-01 — les pastilles de statut viennent de la charte (DESIGN_SYSTEM.md §5). Elles
@@ -392,10 +394,46 @@ describe('PostesComponent', () => {
   });
 
   it("dit depuis quand une machine déconnectée n’a plus donné signe", () => {
+    setup([{ ...poste, connected: false, lastSeenAt: new Date(Date.now() - 18 * 60_000).toISOString() }]);
+    expect(component.hostStateLabel(component.realHosts()[0]))
+      .toBe('hors ligne · vu il y a 18 min');
+  });
+
+  it('dit « jamais connecté » quand la machine n’a jamais battu', () => {
+    const jamais = { ...poste, id: 'h9', connected: false, lastSeenAt: null };
+    setup([jamais]);
+    expect(component.hostStateLabel(jamais)).toBe('jamais connecté');
+  });
+
+  // ------------------------------------------------ F-97 / SF-97-02 : le statut dit vrai
+
+  it('un refus reçu ailleurs fait passer la pastille hors ligne, sans relire la vue', () => {
     setup();
-    expect(component.hostStateLabel({ ...poste, connected: false })).toContain('Vu il y a');
-    expect(component.hostStateLabel({ ...poste, connected: false, lastSeenAt: null }))
-      .toBe('Jamais connecté');
+    expect(text()).toContain('en ligne · vu il y a');
+    const calls = service.runnerHostsOverview.calls.count();
+
+    // Le terminal vient de recevoir « poste hors ligne » pour ce poste.
+    TestBed.inject(HostPresenceService).markOffline('h1', Date.now() + 1_000);
+    fixture.detectChanges();
+
+    const badge = (fixture.nativeElement as HTMLElement)
+      .querySelector('.poste:not(.poste--heberge) .badge--neutral') as HTMLElement;
+    expect(badge).not.toBeNull();
+    expect(badge.textContent).toContain('hors ligne · vu il y a');
+    expect(service.runnerHostsOverview.calls.count()).toBe(calls);
+  });
+
+  it('le libellé daté avance avec l’horloge de l’écran, sans requête', () => {
+    setup([{ ...poste, lastSeenAt: new Date(Date.now() - 10_000).toISOString() }]);
+    const presence = TestBed.inject(HostPresenceService);
+    const calls = service.runnerHostsOverview.calls.count();
+    const before = component.hostStateLabel(component.realHosts()[0]);
+
+    presence.now.set(presence.now() + 120_000);
+
+    expect(before).toMatch(/^en ligne · vu il y a \d+ s$/);
+    expect(component.hostStateLabel(component.realHosts()[0])).toMatch(/^en ligne · vu il y a 2 min$/);
+    expect(service.runnerHostsOverview.calls.count()).toBe(calls);
   });
 
   // ------------------------------------------------------------------ navigation
@@ -1042,9 +1080,9 @@ describe('PostesComponent', () => {
     // aucun, et ne porte donc pas la pastille d'initiales.
     expect(component.tone(heberge)).toBeNull();
     expect(card.querySelector('.host-badge__mark')).toBeNull();
-    // Ni « Connecté », ni « Jamais connecté » : il n'a pas de runner.
-    expect(card.textContent).not.toContain('Connecté');
-    expect(card.textContent).not.toContain('Jamais connecté');
+    // Ni « en ligne », ni « jamais connecté » : il n'a pas de runner.
+    expect(card.textContent).not.toContain('en ligne');
+    expect(card.textContent).not.toContain('jamais connecté');
     // Ni mission, ni menu de suppression.
     expect(card.querySelector('.poste__mission')).toBeNull();
     expect(card.querySelector('.poste__menu-trigger')).toBeNull();

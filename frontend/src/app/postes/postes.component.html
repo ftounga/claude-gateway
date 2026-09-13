@@ -269,10 +269,10 @@
         @if (!isHosted(host)) {
           <span
             class="badge"
-            [class.badge--success]="host.connected"
-            [class.badge--neutral]="!host.connected"
+            [class.badge--success]="online(host)"
+            [class.badge--neutral]="!online(host)"
           >
-            <mat-icon>{{ host.connected ? 'cloud_done' : 'cloud_off' }}</mat-icon>
+            <mat-icon>{{ online(host) ? 'cloud_done' : 'cloud_off' }}</mat-icon>
             {{ hostStateLabel(host) }}
           </span>
         }
@@ -513,7 +513,7 @@
           }
         </p>
 
-        @if (!host.connected) {
+        @if (!online(host)) {
           <!-- AUCUN APPEL n'est parti : le dire coûte moins qu'un délai pour l'apprendre. -->
           <p class="poste__carte-hint">
             La carte n'a pas été lue : lancez le runner sur la machine, puis

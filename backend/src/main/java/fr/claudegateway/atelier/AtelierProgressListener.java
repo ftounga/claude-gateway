@@ -121,6 +121,23 @@ public interface AtelierProgressListener {
         // Aucun relais : le bloc reste dans la transcription du tour.
     }
 
+    /**
+     * <b>Le poste de ce projet vient de refuser un appel : il est hors ligne</b> (F-97 / SF-97-02).
+     *
+     * <p>Sans cet événement, un {@code runner_unavailable} ne sortait de la boucle qu'en prose, dans
+     * la réponse du modèle : l'écran l'apprenait par le texte et continuait d'afficher « connecté »
+     * jusqu'au sondage suivant. Le relayer tel quel permet à <b>tout</b> l'écran — terminal, Forge,
+     * supervision — de mettre ce poste à jour sur-le-champ.</p>
+     *
+     * <p>Volontairement <b>par défaut neutre</b> : additif, le mode synchrone n'a personne à qui
+     * relayer.</p>
+     *
+     * @param hostId poste du projet, jamais {@code null}
+     */
+    default void onRunnerOffline(java.util.UUID hostId) {
+        // Aucun relais : mode synchrone.
+    }
+
     /** Listener neutre : n'émet rien (mode synchrone historique). */
     AtelierProgressListener NOOP = new AtelierProgressListener() {
         @Override

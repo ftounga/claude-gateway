@@ -40,9 +40,6 @@
       >
         <mat-icon class="engine-chip-icon">{{ engineIcon() }}</mat-icon>
         {{ engineLabel() }}
-        @if (runnerLastSeenLabel && engine === 'LOCAL_MACHINE') {
-          <span class="engine-last-seen">— {{ runnerLastSeenLabel }}</span>
-        }
       </span>
       <!-- SIGNE DE VIE (F-70 / SF-70-01) : une pastille ET le mot « connecté ». Le MÊME signe se
            retrouve sur la carte du poste — c'est la décision du PO, et c'est ce qui permet de voir

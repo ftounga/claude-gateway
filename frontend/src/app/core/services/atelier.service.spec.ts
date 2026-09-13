@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { provideHttpClient } from '@angular/common/http';
 
 import { AtelierService } from './atelier.service';
+import { HostPresenceService } from './host-presence.service';
 import {
   AtelierTurnState,
   AtelierChatResponse,
@@ -226,6 +227,68 @@ describe('AtelierService', () => {
     });
 
     expect(seen).toEqual(['action:bash:npm test', 'output:ok 1\n', 'output:ok 2\n', 'done:Terminé.']);
+  });
+
+  // ------------------------------------------ F-97 / SF-97-02 : un refus met le poste à jour partout
+
+  it("écrit event:runner_offline dans l'état partagé des postes, avec l'instant serveur", async () => {
+    const presence = TestBed.inject(HostPresenceService);
+    presence.record('h1', true, '2026-09-13T09:59:00Z');
+    fakeSseFetch([
+      `event:runner_offline\ndata:{"hostId":"h1","at":${Date.parse('2026-09-13T10:00:00Z')}}`,
+      'event:done\ndata:{"reply":"Le poste est hors ligne.","actions":[],"messageId":"m1"}',
+    ]);
+
+    await service.streamChat('w1', 'lance', {
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: () => undefined,
+      onError: () => undefined,
+    });
+
+    expect(presence.isOnline('h1', true)).toBeFalse();
+    expect(presence.presence('h1')?.refusedAt).toBe(Date.parse('2026-09-13T10:00:00Z'));
+  });
+
+  it('ignore un event:runner_offline sans poste', async () => {
+    const presence = TestBed.inject(HostPresenceService);
+    const markOffline = spyOn(presence, 'markOffline').and.callThrough();
+    fakeSseFetch([
+      'event:runner_offline\ndata:{}',
+      'event:done\ndata:{"reply":"Fini.","actions":[],"messageId":"m1"}',
+    ]);
+
+    await service.streamChat('w1', 'go', {
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: () => undefined,
+      onError: () => undefined,
+    });
+
+    expect(markOffline).not.toHaveBeenCalled();
+  });
+
+  it('un 409 runner_browse_unavailable des dossiers d’un poste invalide ce poste', () => {
+    const presence = TestBed.inject(HostPresenceService);
+    presence.record('h1', true, new Date().toISOString());
+
+    service.runnerHostFolders('h1').subscribe({ error: () => undefined });
+    httpMock.expectOne('/api/runner-hosts/h1/folders').flush(
+      { error: 'runner_browse_unavailable', message: 'Le runner de ce poste n’est pas connecté' },
+      { status: 409, statusText: 'Conflict' });
+
+    expect(presence.isOnline('h1', true)).toBeFalse();
+  });
+
+  it('une autre erreur des dossiers ne dit rien du poste', () => {
+    const presence = TestBed.inject(HostPresenceService);
+    presence.record('h1', true, new Date().toISOString());
+
+    service.runnerHostFolders('h1').subscribe({ error: () => undefined });
+    httpMock.expectOne('/api/runner-hosts/h1/folders').flush(
+      { error: 'invalid_project_path' }, { status: 400, statusText: 'Bad Request' });
+
+    expect(presence.isOnline('h1', false)).toBeTrue();
   });
 
   it("un appelant sans onOutput ignore l'événement sans erreur (additif, F-38 / SF-38-07)", async () => {
