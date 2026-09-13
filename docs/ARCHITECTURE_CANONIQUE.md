@@ -751,6 +751,18 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   - Endpoints **`POST/GET /admin/access-codes`** (ADMIN) et **`POST /access-code/redeem`**,
     **`GET /access-code/grant`** (JWT).
 
+- **runner_update_journal** — les **mises à jour du runner** d'un poste : journal **et** état courant (F-111 /
+  SF-111-04, migration `104`).
+  - `runner_update_journal` : `id (uuid)`, `user_id (uuid, NOT NULL)` — le **propriétaire** du poste, jamais
+    l'ADMIN qui a cliqué —, `host_id (uuid, NOT NULL, FK runner_hosts ON DELETE CASCADE)`, `requested_by (uuid,
+    NOT NULL)`, `from_version (varchar 64)`, `to_version (varchar 64, NOT NULL)`, `forced (boolean, NOT NULL)`,
+    `state (varchar 16 : REQUESTED | DOWNLOADING | WAITING | RESTARTING | SUCCEEDED | FAILED | ROLLED_BACK)`,
+    `detail (varchar 500)`, `requested_at`, `updated_at`, `finished_at`. Index `(host_id, requested_at)`.
+  - La dernière ligne d'un poste est son état de mise à jour (`active` = non terminale, nouvelles < 10 min).
+    Écrite par `RunnerUpdateService` : à la demande (`POST /runner-hosts/{hostId}/runner-update`, propriétaire
+    ou ADMIN), sur les trames `update_status` et `ready` du **poste de la session** runner.
+  - Colonnes associées sur `runner_hosts` (migration `101`, SF-111-01) : `runner_contract`, `runner_java`,
+    `runner_launcher`, `runner_capabilities` — ce que le runner déclare de lui-même dans `ready`.
 - **runner_hosts** — le **poste** (F-48 / SF-48-01, migration `064`). Une machine connectée, avec
   **une racine**, **un runner** et **un seul appairage** ; les projets deviennent des dossiers sous
   cette racine. C'est le déplacement d'unité de F-48 : jusque-là, chaque dossier exigeait son code

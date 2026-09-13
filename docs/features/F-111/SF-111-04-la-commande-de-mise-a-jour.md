@@ -10,7 +10,7 @@
 
 ## Statut
 
-`in-progress`
+`done` — PR #572 mergée le 2026-09-14
 
 ## Date de création
 
