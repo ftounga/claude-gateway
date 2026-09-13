@@ -17,6 +17,10 @@ public interface RadarSyncRepository extends JpaRepository<RadarSync, UUID> {
 
     List<RadarSync> findByUserIdAndHostIdOrderByStartedAtDesc(UUID userId, UUID hostId, Pageable page);
 
+    /** La dernière synchro du poste dans l'un de ces statuts (fenêtre de lecture, SF-100-02). */
+    Optional<RadarSync> findFirstByUserIdAndHostIdAndStatusInOrderByStartedAtDesc(UUID userId, UUID hostId,
+            java.util.Collection<RadarSyncStatus> statuses);
+
     /** Ajoute la consommation d'une analyse à sa synchro (F-101 / SF-101-01), sans relire la ligne. */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("update RadarSync x set x.consumedTokens = x.consumedTokens + :tokens"

@@ -30,10 +30,6 @@ import fr.claudegateway.runner.channel.RunnerTarget;
  */
 class RadarVerificationApiIntegrationTest extends RadarSyncIntegrationTestBase {
 
-    private static RunnerCallResult ok(String json) {
-        return new RunnerCallResult(true, json, false, null, 12L, null, null, null, "", false);
-    }
-
     private static String runner(boolean session, boolean conversations, boolean meetings, String transcriptReason) {
         boolean transcripts = "SEEN".equals(transcriptReason);
         return "{\"tool\":\"teams_radar_verify\",\"checks\":{"

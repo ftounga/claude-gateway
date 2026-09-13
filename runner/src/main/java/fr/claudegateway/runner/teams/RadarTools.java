@@ -24,6 +24,9 @@ final class RadarTools {
     /** La vérification guidée (SF-100-01). */
     static final String VERIFY = "teams_radar_verify";
 
+    /** Le lancement de la synchro du soir (SF-100-02). */
+    static final String COLLECT = "teams_radar_collect";
+
     /** Fenêtre de décodage de la vérification : large, on compte ce que Teams a servi. */
     private static final Duration VERIFY_LOOKBACK = Duration.ofDays(400);
 
@@ -32,13 +35,37 @@ final class RadarTools {
     private final Supplier<TeamsLedger> ledger;
     private final BrowserLink.Sleeper sleeper;
     private final String disabledReason;
+    private final RadarSyncAgent agent;
 
     RadarTools(TeamsSession session, Supplier<TeamsLedger> ledger, BrowserLink.Sleeper sleeper,
-            String disabledReason) {
+            String disabledReason, RadarSyncAgent agent) {
         this.session = session;
         this.ledger = ledger;
         this.sleeper = sleeper;
         this.disabledReason = disabledReason == null ? "" : disabledReason;
+        this.agent = agent;
+    }
+
+    // ------------------------------------------------------------------ synchro (SF-100-02)
+
+    /**
+     * <b>Lance la synchro</b> demandée par la gateway : le runner accepte et rend la main, le travail
+     * tourne en tâche de fond et rend compte par la remontée. Un seul à la fois.
+     */
+    ToolOutcome collect(com.fasterxml.jackson.databind.JsonNode input) {
+        if (session == null || agent == null) {
+            ObjectNode refused = mapper.createObjectNode();
+            refused.put("accepted", false);
+            refused.put("reason", session == null ? "TEAMS_DISABLED" : "NO_UPLINK");
+            return ToolOutcome.ok(refused.toString());
+        }
+        RadarAssignment assignment;
+        try {
+            assignment = RadarAssignment.from(input);
+        } catch (IllegalArgumentException e) {
+            return ToolOutcome.error("invalid_input", "Synchro illisible : " + e.getMessage() + ".");
+        }
+        return ToolOutcome.ok(agent.accept(assignment).toJson(mapper).toString());
     }
 
     // ------------------------------------------------------------------ vérification (SF-100-01)

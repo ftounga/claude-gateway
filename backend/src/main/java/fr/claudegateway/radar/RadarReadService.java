@@ -241,7 +241,8 @@ public class RadarReadService {
         Map<UUID, RadarSyncAnalysisView> analysis = analysisReport.bySync(scope, page);
         return page.stream()
                 .map(s -> new SyncView(s.getId(), s.getStatus(), s.getStartedAt(), s.getFinishedAt(),
-                        parse(s.getCoverage()), s.getConsumedTokens(), analysis.get(s.getId())))
+                        parse(s.getCoverage()), s.getConsumedTokens(), analysis.get(s.getId()),
+                        s.getTriggerKind(), s.getScheduledFor(), s.getHeartbeatAt(), parse(s.getProgress())))
                 .toList();
     }
 

@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-100 / SF-100-02 — LA PLANIFICATION DE LA SYNCHRO DU SOIR.
+
+      radar_host_settings :
+        - enabled, client_authorized_at : l'activation (§14 : l'autorisation du client est confirmée)
+        - sync_time (HH:mm), time_zone (IANA) : l'heure du poste, 22:00 Europe/Paris par défaut
+        - last_slot_date : le dernier créneau traité (date locale du poste)
+        - missed_slot_at : créneau manqué (runner muet), en attente de rattrapage
+        - running_sync_id : LE VERROU — une seule synchro à la fois par poste, pris par mise à jour
+          conditionnelle (null → identifiant), tous pods confondus
+      radar_syncs :
+        - trigger_kind (SCHEDULED, MANUAL, CATCH_UP), scheduled_for (le créneau d'un rattrapage)
+        - heartbeat_at : dernier battement du runner (abandon après 15 min sans battement)
+        - progress : où en est la collecte (JSON borné)
+
+      Un seul changeset : les types valent pour PostgreSQL et H2.
+    -->
+
+    <changeSet id="087-radar-sync-schedule" author="claude-gateway">
+        <addColumn tableName="radar_host_settings">
+            <column name="enabled" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="client_authorized_at" type="timestamp with time zone"/>
+            <column name="sync_time" type="varchar(5)" defaultValue="22:00"><constraints nullable="false"/></column>
+            <column name="time_zone" type="varchar(64)" defaultValue="Europe/Paris"><constraints nullable="false"/></column>
+            <column name="last_slot_date" type="date"/>
+            <column name="missed_slot_at" type="timestamp with time zone"/>
+            <column name="running_sync_id" type="uuid"/>
+        </addColumn>
+        <createIndex tableName="radar_host_settings" indexName="idx_radar_host_settings_enabled">
+            <column name="enabled"/>
+        </createIndex>
+        <addColumn tableName="radar_syncs">
+            <column name="trigger_kind" type="varchar(16)"/>
+            <column name="scheduled_for" type="timestamp with time zone"/>
+            <column name="heartbeat_at" type="timestamp with time zone"/>
+            <column name="progress" type="varchar(4000)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="radar_syncs" columnName="progress"/>
+            <dropColumn tableName="radar_syncs" columnName="heartbeat_at"/>
+            <dropColumn tableName="radar_syncs" columnName="scheduled_for"/>
+            <dropColumn tableName="radar_syncs" columnName="trigger_kind"/>
+            <dropIndex tableName="radar_host_settings" indexName="idx_radar_host_settings_enabled"/>
+            <dropColumn tableName="radar_host_settings" columnName="running_sync_id"/>
+            <dropColumn tableName="radar_host_settings" columnName="missed_slot_at"/>
+            <dropColumn tableName="radar_host_settings" columnName="last_slot_date"/>
+            <dropColumn tableName="radar_host_settings" columnName="time_zone"/>
+            <dropColumn tableName="radar_host_settings" columnName="sync_time"/>
+            <dropColumn tableName="radar_host_settings" columnName="client_authorized_at"/>
+            <dropColumn tableName="radar_host_settings" columnName="enabled"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

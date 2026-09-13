@@ -1004,6 +1004,13 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     `(user_id, host_id)` — `verification` (JSON des quatre cases de la **vérification guidée** : session,
     conversations, réunions, transcriptions ; des compteurs et des états, jamais un titre, un nom ou une
     adresse) et `verified_at`. Effacée par la purge du Radar.
+  - **Planification de la synchro du soir** (F-100 / SF-100-02, migration `087`) : sur
+    `radar_host_settings`, `enabled`, `client_authorized_at` (autorisation du client confirmée, §14),
+    `sync_time` (`HH:mm`, 22:00 par défaut), `time_zone` (IANA, `Europe/Paris` par défaut),
+    `last_slot_date` (dernier créneau traité, date locale), `missed_slot_at` (créneau manqué en attente de
+    rattrapage) et **`running_sync_id` — le verrou : une seule synchro par poste, pris par mise à jour
+    conditionnelle**. Sur `radar_syncs`, `trigger_kind` (`SCHEDULED`, `MANUAL`, `CATCH_UP`),
+    `scheduled_for`, `heartbeat_at` (abandon après 15 min sans battement) et `progress` (JSON borné).
 
 Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 réel est porté par les migrations Liquibase (`db/changelog/migrations/`).
 
