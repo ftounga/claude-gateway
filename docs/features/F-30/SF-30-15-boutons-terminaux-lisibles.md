@@ -37,7 +37,7 @@ juste après).
 
 ## Statut
 
-`in-progress`
+`done` — mergée le 2026-09-14 (PR #580)
 
 ## Date de création
 
