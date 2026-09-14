@@ -16,6 +16,8 @@ import org.mockito.quality.Strictness;
 
 import fr.claudegateway.agent.AgentTool;
 import fr.claudegateway.atelier.Workspace;
+import fr.claudegateway.runner.host.ClientSpace;
+import fr.claudegateway.runner.host.HostSpaceService;
 
 /**
  * <b>La garde du volet Teams</b> (F-89 / SF-89-01, cadrage §5.4).
@@ -33,18 +35,24 @@ import fr.claudegateway.atelier.Workspace;
 class TeamsToolCatalogTest {
 
     @Mock private TeamsAccessService teamsAccess;
+    @Mock private HostSpaceService spaces;
 
     private TeamsToolCatalog catalog;
     private final UUID userId = UUID.randomUUID();
+    private final UUID hostId = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
-        catalog = new TeamsToolCatalog(teamsAccess);
+        catalog = new TeamsToolCatalog(teamsAccess, spaces);
+        // F-106 / SF-106-07 : par défaut le client est activé dans la Vigie — la garde ajoutée par
+        // cette subfeature ne change rien aux cas d'avant. Les tests du retrait le remettent à faux.
+        when(spaces.isActive(userId, hostId, ClientSpace.VIGIE)).thenReturn(true);
     }
 
-    private static Workspace teamsTerminal() {
+    private Workspace teamsTerminal() {
         Workspace workspace = new Workspace();
         workspace.setTeamsTerminal(true);
+        workspace.setHostId(hostId);
         return workspace;
     }
 
@@ -114,6 +122,76 @@ class TeamsToolCatalogTest {
         assertThat(catalog.isClosedFor(userId, projectTerminal())).isFalse();
         org.mockito.Mockito.verifyNoInteractions(teamsAccess);
         assertThat(TeamsToolCatalog.none().isClosedFor(userId, teamsTerminal())).isFalse();
+    }
+
+    // --------------------------------------------- F-106 / SF-106-07 : la garde de la Vigie
+
+    @Test
+    @DisplayName("SF-106-07 : client retiré de la Vigie — AUCUN outil teams_*, même avec le droit")
+    void noToolWhenTheClientLeftTheVigie() {
+        when(teamsAccess.hasAccess(userId)).thenReturn(true);
+        when(spaces.isActive(userId, hostId, ClientSpace.VIGIE)).thenReturn(false);
+
+        assertThat(catalog.toolsFor(userId, teamsTerminal())).isEmpty();
+    }
+
+    @Test
+    @DisplayName("SF-106-07 : poste introuvable ou d'autrui (isActive lève) — fermé, sans bruit")
+    void closedWhenTheSpaceLookupThrows() {
+        when(teamsAccess.hasAccess(userId)).thenReturn(true);
+        when(spaces.isActive(userId, hostId, ClientSpace.VIGIE))
+                .thenThrow(new RuntimeException("poste d'autrui"));
+
+        assertThat(catalog.toolsFor(userId, teamsTerminal())).isEmpty();
+    }
+
+    @Test
+    @DisplayName("SF-106-07 : sans hostId, un terminal Teams n'est jamais dans la Vigie — RIEN")
+    void noToolWithoutAHostId() {
+        when(teamsAccess.hasAccess(userId)).thenReturn(true);
+        Workspace workspace = new Workspace();
+        workspace.setTeamsTerminal(true);
+
+        assertThat(catalog.toolsFor(userId, workspace)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("SF-106-07 : droit + client hors Vigie — retiré de la Vigie, la consigne devra le dire")
+    void aTeamsTerminalOutOfTheVigieIsRemoved() {
+        when(teamsAccess.hasAccess(userId)).thenReturn(true);
+        when(spaces.isActive(userId, hostId, ClientSpace.VIGIE)).thenReturn(false);
+
+        assertThat(catalog.isRemovedFromVigie(userId, teamsTerminal())).isTrue();
+        // Pas fermé : le volet Teams EST actif sur le compte — les deux consignes s'excluent.
+        assertThat(catalog.isClosedFor(userId, teamsTerminal())).isFalse();
+        assertThat(TeamsToolCatalog.REMOVED_FROM_VIGIE_NOTICE)
+                .contains("retiré de la Vigie")
+                .contains("Ne cherche pas la réponse sur la machine")
+                .contains("réactiver ce client dans la Vigie");
+    }
+
+    @Test
+    @DisplayName("SF-106-07 : droit + client dans la Vigie — pas retiré")
+    void aTeamsTerminalInTheVigieIsNotRemoved() {
+        when(teamsAccess.hasAccess(userId)).thenReturn(true);
+
+        assertThat(catalog.isRemovedFromVigie(userId, teamsTerminal())).isFalse();
+    }
+
+    @Test
+    @DisplayName("SF-106-07 : sans droit, ce n'est pas « retiré de la Vigie » mais « fermé » (SF-89-04)")
+    void withoutTheRightItIsClosedNotRemoved() {
+        when(teamsAccess.hasAccess(userId)).thenReturn(false);
+
+        assertThat(catalog.isRemovedFromVigie(userId, teamsTerminal())).isFalse();
+        assertThat(catalog.isClosedFor(userId, teamsTerminal())).isTrue();
+    }
+
+    @Test
+    @DisplayName("SF-106-07 : un terminal de projet et none() ne sont jamais « retirés de la Vigie »")
+    void aProjectTerminalAndNoneAreNeverRemoved() {
+        assertThat(catalog.isRemovedFromVigie(userId, projectTerminal())).isFalse();
+        assertThat(TeamsToolCatalog.none().isRemovedFromVigie(userId, teamsTerminal())).isFalse();
     }
 
     @Test
@@ -381,7 +459,8 @@ class TeamsToolCatalogTest {
                 org.mockito.Mockito.mock(fr.claudegateway.billing.AdministratorEntitlement.class);
         when(administrators.isAdministrator(userId)).thenReturn(true);
         TeamsToolCatalog real = new TeamsToolCatalog(new TeamsAccessService(currentUser,
-                new fr.claudegateway.billing.SpaceEntitlementService(subscriptions, grants, administrators)));
+                new fr.claudegateway.billing.SpaceEntitlementService(subscriptions, grants, administrators)),
+                spaces);
 
         assertThat(real.toolsFor(userId, teamsTerminal()))
                 .extracting(AgentTool::name)

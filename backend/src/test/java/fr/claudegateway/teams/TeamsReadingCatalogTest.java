@@ -18,6 +18,8 @@ import org.mockito.quality.Strictness;
 
 import fr.claudegateway.agent.AgentTool;
 import fr.claudegateway.atelier.Workspace;
+import fr.claudegateway.runner.host.ClientSpace;
+import fr.claudegateway.runner.host.HostSpaceService;
 
 /**
  * F-88 / SF-88-03 — <b>le catalogue réellement donné à l'agent</b>.
@@ -54,19 +56,24 @@ class TeamsReadingCatalogTest {
             "teams_replace_version");
 
     @Mock private TeamsAccessService teamsAccess;
+    @Mock private HostSpaceService spaces;
 
     private TeamsToolCatalog catalog;
     private final UUID userId = UUID.randomUUID();
+    private final UUID hostId = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
-        catalog = new TeamsToolCatalog(teamsAccess);
+        catalog = new TeamsToolCatalog(teamsAccess, spaces);
         when(teamsAccess.hasAccess(userId)).thenReturn(true);
+        // F-106 / SF-106-07 : le client est activé dans la Vigie — condition de la panoplie complète.
+        when(spaces.isActive(userId, hostId, ClientSpace.VIGIE)).thenReturn(true);
     }
 
-    private static Workspace teamsTerminal() {
+    private Workspace teamsTerminal() {
         Workspace workspace = new Workspace();
         workspace.setTeamsTerminal(true);
+        workspace.setHostId(hostId);
         return workspace;
     }
 

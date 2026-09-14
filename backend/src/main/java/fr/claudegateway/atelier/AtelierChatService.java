@@ -2166,6 +2166,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         // projet. Placé juste après le rôle : c'est ce qui change le sens de tout le reste.
         if (teamsToolCatalog.isClosedFor(userId, workspace)) {
             system.append(fr.claudegateway.teams.TeamsToolCatalog.CLOSED_NOTICE).append("\n\n");
+        } else if (teamsToolCatalog.isRemovedFromVigie(userId, workspace)) {
+            // F-106 / SF-106-07 : le volet Teams est bien actif sur le compte, mais ce client a été
+            // retiré de la Vigie — l'agent n'a plus ses outils teams_*, et il le dit plutôt que de
+            // fouiller la machine (même doctrine que SF-89-04).
+            system.append(fr.claudegateway.teams.TeamsToolCatalog.REMOVED_FROM_VIGIE_NOTICE).append("\n\n");
         }
         // F-104 / SF-104-03 : le Radar du client, sous la même garde que ses outils — registre d'abord, et la
         // parole de l'utilisateur pour seule preuve d'une écriture.
