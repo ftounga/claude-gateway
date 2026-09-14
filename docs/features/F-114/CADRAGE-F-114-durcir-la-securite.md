@@ -1,8 +1,9 @@
 # F-114 — Durcir la sécurité de l'application, et être reconnu plutôt que caché
 
 > Cadrage du 2026-09-14, à la demande du PO. **Cadrage seul : la livraison attend le go du PO.**
-> Deux volets : **A. protéger l'application** ; **B. supprimer les faux positifs des outils de sécurité
-> du client — par la reconnaissance, pas par la dissimulation.**
+> **Réduit au volet B, sur décision du PO du 2026-09-14** : le durcissement applicatif (ancien volet A)
+> et la fiche DSI enrichie (ancienne SF-114-09) sont retirés. Reste : **supprimer les faux positifs des
+> outils de sécurité du client — par la reconnaissance, pas par la dissimulation.**
 
 ## 0. La ligne que ce cadrage ne franchit pas
 
@@ -24,54 +25,6 @@ bancaire : signature, réputation, liste blanche.
 
 ---
 
-## A. Protéger l'application
-
-### SF-114-01 — En-têtes et défenses HTTP
-- En-têtes de sécurité sur toutes les réponses : `Content-Security-Policy` stricte pour le frontend
-  (distincte du bac à sable des pages F-109), `Strict-Transport-Security`, `X-Content-Type-Options`,
-  `Referrer-Policy`, `X-Frame-Options`/`frame-ancestors` (l'app ne s'encadre pas), `Permissions-Policy`.
-- Limites de débit par compte et par IP sur les routes sensibles (connexion, appairage, code d'accès,
-  MCP F-112, envoi de courriel F-110), avec réponse nommée plutôt que 500.
-- Taille de corps bornée partout (déjà 155 Mo à l'ingress) ; délais bornés (règle F-77) sur tout appel
-  sortant.
-
-### SF-114-02 — Authentification et sessions durcies
-- Verrouillage progressif après échecs de connexion, journal des connexions (date, IP, appareil),
-  écran « mes sessions » avec révocation.
-- Rotation des secrets de signature JWT, jetons courts, `refresh` rotatif (aligné sur F-112).
-- Vérification que **toute** route porte sa garde (rejoint SF-73-05) ; test d'architecture qui casse
-  si une route de `/api/**` (hors liste blanche explicite : santé, `.well-known`, liens partagés
-  F-109) n'est pas authentifiée.
-
-### SF-114-03 — Secrets et journaux
-- Masquage des secrets à l'écriture, partout où du texte est persisté : audit runner, historique du
-  terminal, journaux applicatifs, journal MCP, courriels (reprend et généralise SF-38-30).
-- Revue des secrets d'exécution : aucun secret en variable d'environnement lisible par un tour ;
-  audit des accès à `backend-secrets`.
-- Journal d'audit **inviolable en ajout seul** pour les actions sensibles (appairage, coupe-circuit,
-  autorisations, révocations, actions ADMIN).
-
-### SF-114-04 — Dépendances et chaîne de construction
-- Analyse des dépendances (backend, frontend, runner) à chaque construction, échec sur vulnérabilité
-  critique connue ; **SBOM** publié par artefact.
-- Construction reproductible du runner (déjà signée en F-111) ; empreintes publiées.
-- Scan de secrets sur le dépôt en intégration continue.
-
-### SF-114-05 — Cloisonnement et surface
-- Revue du cloisonnement `user_id` + `host_id` sur tout accès (test d'architecture existant étendu).
-- Revue des routes publiques (santé, téléchargement runner, liens partagés) : chacune justifiée,
-  aucune fuite d'information.
-- Politique réseau du cluster : le backend ne sort que vers ce dont il a besoin (fournisseur IA, SMTP,
-  S3, base) ; le reste refusé.
-
-### SF-114-06 — Ce que le client peut vérifier
-- Une page **« Sécurité »** publique et une **fiche de conformité** : chiffrement en transit et au
-  repos, isolation multi-tenant, ce qui reste sur la machine du client, journal d'audit, la doctrine
-  du runner (consentement, coupe-circuit, aucun secret rapatrié). Ce que l'équipe sécurité d'un client
-  demande avant d'autoriser.
-
----
-
 ## B. Zéro faux positif — par la reconnaissance
 
 ### SF-114-07 — Signer et notariser le runner
@@ -90,18 +43,10 @@ bancaire : signature, réputation, liste blanche.
 - Nom de processus et chemins **clairs et stables**, aucun packing, aucune obfuscation — c'est ce qui
   distingue un outil professionnel d'un logiciel hostile aux yeux d'un EDR.
 
-### SF-114-09 — La fiche DSI enrichie pour la liste blanche
-- Étend la fiche « Pour votre DSI » (F-45 / SF-45-03) avec ce qu'une équipe sécurité met en liste
-  blanche : éditeur et empreinte du certificat, empreintes des binaires, chemins d'installation
-  (`~/.claude-runner/…`), processus attendus, connexions sortantes (domaine, 443, HTTPS+WSS), et la
-  demande d'**exclusion nominative** (par éditeur signé, pas par contournement).
-- Générée par l'écran, à jour de la version réellement servie, copiable et imprimable.
-
 ## Découpage et ordre
 
-Volet A d'abord (protège tout de suite, sans dépendance externe) : SF-114-01 → 06.
-Volet B ensuite, car il dépend d'achats du PO (certificats) : SF-114-07 → 09. SF-114-07 prolonge la
-signature de mise à jour de F-111.
+SF-114-07 (signer) puis SF-114-08 (réputation). SF-114-07 prolonge la signature de mise à jour de F-111.
+Rien ne peut être signé avant que le PO ait acquis les certificats (voir « décisions »).
 
 ## Préoccupations transversales
 
@@ -117,6 +62,23 @@ signature de mise à jour de F-111.
 | Compte Apple Developer + notarisation | Oui — supprime le blocage Gatekeeper sur Mac |
 | Soumission VirusTotal automatique | Oui — la réputation se construit, elle ne se décrète pas |
 | ~~Techniques de dissimulation / anti-détection~~ | **Écarté (§0)** : contre-productif et hors périmètre |
+
+## Ce que ça coûte
+
+| Poste | Coût | Nature |
+|---|---|---|
+| Certificat de signature Windows **OV** | ≈ 200–400 € / an | annuel, par autorité de certification (Sectigo, DigiCert…) |
+| Certificat de signature Windows **EV** (réputation SmartScreen immédiate) | ≈ 300–700 € / an, **+ jeton matériel ou HSM** | annuel ; l'EV supprime l'avertissement dès la première signature, l'OV le supprime après une montée en réputation |
+| Compte **Apple Developer** (notarisation macOS) | **99 $ / an** (≈ 92 €) | annuel |
+| **VirusTotal** (soumission publique) | **gratuit** | l'API publique suffit à publier et suivre |
+| Empreintes, SBOM, page de comportement | **0** | du développement, pas un abonnement |
+| **Développement** (SF-114-07 et 08) | inclus dans la vague, **0 € externe** | — |
+
+**En clair : le seul argent qui sort, ce sont les certificats** — de l'ordre de **100 € à 800 € par an**
+selon Windows OV ou EV, plus 92 € pour Apple. Tout le reste (VirusTotal, empreintes, SBOM) est gratuit,
+et le code est livré dans la vague. Recommandation : **Apple à 99 $** (indispensable, peu cher) et
+**Windows EV** si le budget le permet (réputation SmartScreen immédiate), sinon **OV** (moins cher, la
+réputation se construit en quelques semaines d'usage).
 
 ## Hors périmètre
 
