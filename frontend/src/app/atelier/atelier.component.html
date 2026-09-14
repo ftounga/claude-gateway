@@ -145,6 +145,8 @@
     (reasonChange)="setConfirmationReason($event)"
     (toggleAskBeforeBash)="toggleAskBeforeBash()"
     (quit)="leaveTerminal()"
+    [threadTurns]="resumeTurns()"
+    (restart)="restartThread()"
     (resetSandbox)="resetSandbox()"
     (openFiles)="openFileExplorer()"
     (publish)="openPushDialog()"

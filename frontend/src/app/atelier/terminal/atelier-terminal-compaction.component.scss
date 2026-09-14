@@ -1,0 +1,46 @@
+// CINQUIÈME FEUILLE (F-117 / SF-117-03), pour la raison qui en avait imposé plusieurs (F-83 /
+// SF-83-02, F-89 / SF-89-03) : le budget de style par composant (12 ko, `angular.json`) est une
+// limite de BUILD, et la feuille du terminal y était déjà « à un cheveu ». La suggestion de nouveau
+// départ vit donc à part, dans un fichier qui la nomme.
+//
+// Même registre que le filet de plafond (DESIGN_SYSTEM §11, filet `--cg-accent`), non bloquant :
+// aucune couleur nouvelle, aucun espacement hors de la grille de 4 px (`--cg-space-*`).
+.terminal-compaction-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-2) var(--cg-space-3);
+  border-bottom: 1px solid var(--cg-navy-2);
+  border-left: 3px solid var(--cg-accent);
+  color: var(--cg-divider);
+  font-size: 13px;
+}
+
+.terminal-compaction-hint-icon {
+  color: var(--cg-accent);
+  flex-shrink: 0;
+}
+
+.terminal-compaction-hint-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.terminal-compaction-hint-title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.terminal-compaction-hint-note {
+  margin: var(--cg-space-1) 0 0;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.terminal-compaction-hint-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  flex-shrink: 0;
+  font-size: 12px;
+}

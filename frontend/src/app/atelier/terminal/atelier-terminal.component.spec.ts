@@ -267,6 +267,52 @@ describe('AtelierTerminalComponent', () => {
     expect(emitted).toEqual(['files', 'reset', 'quit']);
   });
 
+  // ------------------------------------------------ nouveau départ visible (F-117 / SF-117-03)
+
+  it('émet restart depuis l\'action « Nouveau départ » de l\'en-tête', () => {
+    let restarted = 0;
+    component.restart.subscribe(() => (restarted += 1));
+    fixture.detectChanges();
+
+    const button = fixture.nativeElement.querySelector('.terminal-restart') as HTMLButtonElement;
+    expect(button).not.toBeNull();
+    button.click();
+
+    expect(restarted).toBe(1);
+  });
+
+  it('suggère un nouveau départ au-delà du seuil de taille de fil, pas en dessous', () => {
+    component.threadTurns = 5;
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.terminal-compaction-hint')).toBeNull();
+
+    component.threadTurns = 60;
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.terminal-compaction-hint')).not.toBeNull();
+  });
+
+  it('la suggestion est fermable (« Plus tard ») et ne bloque rien', () => {
+    component.threadTurns = 60;
+    fixture.detectChanges();
+    const later = Array.from(
+      fixture.nativeElement.querySelectorAll('.terminal-compaction-hint-actions button'),
+    ).find((b) => (b as HTMLElement).textContent?.includes('Plus tard')) as HTMLButtonElement;
+
+    later.click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.terminal-compaction-hint')).toBeNull();
+    // L'invite d'envoi reste disponible : la suggestion n'a rien bloqué.
+    expect(fixture.nativeElement.querySelector('.terminal-input, textarea, input')).not.toBeNull();
+  });
+
+  it('n\'affiche pas la suggestion en lecture seule', () => {
+    component.readOnly = true;
+    component.threadTurns = 60;
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.terminal-compaction-hint')).toBeNull();
+  });
+
   it('n\'émet pas send sur une saisie vide, ni pendant un envoi', () => {
     let sent = 0;
     component.send.subscribe(() => (sent += 1));
