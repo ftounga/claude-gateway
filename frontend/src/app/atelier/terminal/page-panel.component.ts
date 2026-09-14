@@ -73,6 +73,11 @@ import { pageViewerPath } from './page-block';
       height: 100%;
       background: var(--cg-surface);
       border-left: 1px solid var(--cg-divider);
+      /* ÎLOT BLANC posé sur le terminal sombre : celui-ci redéfinit l'ink des boutons-icônes sur une
+         encre claire (F-30 / SF-30-15), qui se propage ici par héritage de variables CSS et rendrait
+         Partager / Plein écran / Fermer clair-sur-blanc. On rétablit l'encre foncée sur notre
+         surface. */
+      --mdc-icon-button-icon-color: var(--cg-text-secondary);
     }
 
     .page-panel__bar {
