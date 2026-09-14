@@ -96,24 +96,13 @@
 
 ## D. Sécurité et exploitation
 
-### SF-38-30 — Les secrets ne restent pas en clair dans le journal ni l'historique
-- **Constat** (production, 2026-09-13) : un mot de passe d'entreprise tapé dans une commande figure en
-  clair dans `runner_audit` et dans l'historique du terminal. **Le PO a refusé l'effacement des lignes
-  existantes** : ce correctif ne vaut que **pour la suite**.
-- **Attendu** : masquage à l'écriture (journal d'audit, trajectoire et transcription persistées, blocs du
-  terminal) des secrets reconnus (affectations explicites de mot de passe, jetons, clés privées,
-  en-têtes d'autorisation) ; la consigne de l'agent demande de ne jamais mettre un mot de passe dans une
-  commande et propose le trousseau du système avec saisie par l'utilisateur.
-- **Critère** : une commande `PW='…'` est journalisée `PW='•••'` ; l'agent propose le trousseau.
+> **Annulé par le PO le 2026-09-14** : toutes les features de sécurité de cette section — SF-38-30
+> (masquage des secrets) et SF-73-05 (garde de toutes les routes) — sont **abandonnées**, avec F-114.
+> *« Oublie toutes les features que j'ai évoquées sur la sécu. »* Restent uniquement SF-00-DEP
+> (déploiement automatique, exploitation, non sécurité) et SF-30-16 (budgets de style).
 
-### SF-73-05 — Toutes les routes de l'Atelier exigent leur droit
-- **Constat** (audit du 2026-09-12) : sept routes de l'Atelier n'appelaient pas la garde d'accès
-  (`/workspaces/{id}/agent/*` et `/workspaces/{id}/git/*`) ; l'état actuel compte encore des routes sans
-  garde explicite.
-- **Attendu** : chaque route de ces contrôleurs vérifie droit et appartenance ; test par route (sans
-  droit → 403, projet d'autrui → 404) ; test d'architecture qui échoue si une nouvelle route de
-  `/workspaces/**` n'appelle pas la garde.
-- **Critère** : le test d'architecture est vert et casse en retirant une garde.
+### ~~SF-38-30~~ — abandonnée (PO, 2026-09-14)
+### ~~SF-73-05~~ — abandonnée (PO, 2026-09-14)
 
 ### SF-00-DEP — Le déploiement automatique
 - **Constat** : `backend.yml` a le déploiement automatique désactivé (secrets GitHub absents) ;
