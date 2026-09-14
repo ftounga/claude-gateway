@@ -790,6 +790,20 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     `result (varchar 16 : OK | ERROR | DENIED, NOT NULL)`, `duration_ms (bigint)`, `created_at (NOT
     NULL)`. Index `(user_id, created_at)`. Écrit par un **décorateur d'outils** (`McpServerConfig`) via
     `McpJournalService`, best-effort ; lu par l'utilisateur sur l'écran « IA connectées ».
+- **promotion_reportee** — la **promotion reportée faute de poste**, persistée (F-93 / SF-93-05,
+  migration `106`). Quand la machine est hors ligne pendant un tour, un contrôle de fin de tour
+  reporte la promotion au lieu de refuser trois fois une écriture impossible (SF-93-04) ; cette table
+  garde ce report pour qu'il soit **réclamé une fois** au premier tour où le runner répond, **quel que
+  soit le pod** et après un redémarrage — là où SF-93-04 le gardait en mémoire du processus.
+  - `promotion_reportee` : `id (uuid)`, `user_id (uuid, NOT NULL)` — le **propriétaire** du projet —,
+    `host_id (uuid, NOT NULL)` — le **poste** hors ligne —, `workspace_id (uuid, NOT NULL, FK
+    workspaces ON DELETE CASCADE)`, `elements (text — PostgreSQL / varchar(1000000) — H2 : les
+    éléments non rangés, à plat, un par ligne)`, `dette (int, NOT NULL, défaut 0)`, `reported_at (NOT
+    NULL)`. Clé **unique `(user_id, host_id, workspace_id)`**, index `(reported_at)`.
+  - Écrite/lue par `JpaPromotionReporteeStore` (bean `@Primary` de `PromotionReporteeStore` ; l'autre
+    implémentation est en mémoire, pour les tests). Cumul (éléments sans doublon, dette maximale, date
+    du premier report), **durée de vie 7 jours**, borne 500 entrées. **Réclamation atomique** : lecture
+    sous verrou pessimiste puis suppression dans la même transaction (claim-once multi-pods).
 - **runner_hosts** — le **poste** (F-48 / SF-48-01, migration `064`). Une machine connectée, avec
   **une racine**, **un runner** et **un seul appairage** ; les projets deviennent des dossiers sous
   cette racine. C'est le déplacement d'unité de F-48 : jusque-là, chaque dossier exigeait son code
@@ -1170,7 +1184,7 @@ Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 rée
 
 Règle d'isolation des données :
 Tout accès aux données filtre obligatoirement sur **`user_id`**
-(documents/messages/subscriptions/uploaded_files/usage_counters/usage_turns/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/host_seat_months/live_terminals/runner_tokens/runner_pairing_codes/runner_audit/governance_selections/governance_activations/governance_host_activations/governance_map_growth/governance_deposited_files/pages/page_versions/page_shares/page_events via `user_id` ; tables `radar_*` via `user_id` **et** `host_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
+(documents/messages/subscriptions/uploaded_files/usage_counters/usage_turns/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/host_seat_months/live_terminals/runner_tokens/runner_pairing_codes/runner_audit/governance_selections/governance_activations/governance_host_activations/governance_map_growth/governance_deposited_files/pages/page_versions/page_shares/page_events via `user_id` ; tables `radar_*` via `user_id` **et** `host_id` ; `promotion_reportee` via `user_id` + `host_id` + `workspace_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
 
 ---
 
