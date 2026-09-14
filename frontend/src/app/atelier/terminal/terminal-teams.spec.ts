@@ -375,4 +375,78 @@ describe('AtelierTerminalComponent — le compte rendu Teams (F-89 / SF-89-03)',
 
     expect(host().querySelector('.teams-card')).toBeNull();
   });
+
+  // ---------------------------------------- F-89 / SF-89-11 : Teams n'a pas pu être lu
+
+  const failedCard: AtelierTeamsCard = {
+    kind: 'READ_FAILED',
+    title: 'Teams n\'a pas pu être lu',
+    subtitle: 'Teams n\'a rien servi : ouvrez l\'écran voulu dans Teams, puis réessayez.',
+    window: '',
+    sections: [],
+    moments: [],
+    gaps: [],
+    reason: 'NOTHING_SERVED',
+  };
+
+  const fallbackCard: AtelierTeamsCard = {
+    kind: 'PROJECT_FALLBACK',
+    title: 'Réponse basée sur le projet, pas sur Teams',
+    subtitle: 'Vous avez autorisé le repli : cette réponse vient des fichiers du poste, pas de Teams.',
+    window: '',
+    sections: [],
+    moments: [],
+    gaps: [],
+  };
+
+  it('un zéro de lecture pose un BLOC D\'ÉCHEC coloré, avec le motif et DEUX actions', () => {
+    render(failedCard);
+
+    const block = host().querySelector('.teams-read-failed');
+    expect(block).not.toBeNull();
+    expect(block?.getAttribute('role')).toBe('alert');
+    expect(text()).toContain('Teams n\'a pas pu être lu');
+    expect(text()).toContain('ouvrez l\'écran voulu dans Teams');
+    const buttons = host().querySelectorAll('.teams-read-failed__actions button');
+    expect(buttons.length).toBe(2);
+    expect(buttons[0].textContent).toContain('Réessayer');
+    expect(buttons[1].textContent).toContain('Chercher dans le projet');
+    // Jamais rendu en carte de compte rendu : ce n'est pas un compte rendu.
+    expect(host().querySelector('.teams-card')).toBeNull();
+  });
+
+  it('LA COULEUR PORTE L\'INFORMATION : ambre par défaut, ROUGE si la liaison est rompue', () => {
+    render(failedCard);
+    expect(host().querySelector('.teams-read-failed--broken')).toBeNull();
+
+    render({ ...failedCard, reason: 'SESSION_EXPIRED' });
+    expect(host().querySelector('.teams-read-failed--broken')).not.toBeNull();
+  });
+
+  it('les deux boutons déposent la précision de Réessayer / de repli', () => {
+    render(failedCard);
+    const retry = spyOn(component.teamsRetryRead, 'emit');
+    const fallback = spyOn(component.teamsSearchProject, 'emit');
+
+    const buttons = host().querySelectorAll('.teams-read-failed__actions button');
+    (buttons[0] as HTMLButtonElement).click();
+    (buttons[1] as HTMLButtonElement).click();
+
+    expect(retry).toHaveBeenCalled();
+    expect(fallback).toHaveBeenCalled();
+  });
+
+  it('un repli autorisé se marque d\'un BANDEAU « basée sur le projet, pas sur Teams »', () => {
+    render(fallbackCard);
+
+    const banner = host().querySelector('.teams-fallback-banner');
+    expect(banner).not.toBeNull();
+    expect(banner?.textContent).toContain('Réponse basée sur le projet, pas sur Teams');
+  });
+
+  it('sur un terminal de projet, un bloc d\'échec Teams ne prend jamais la peau colorée', () => {
+    render(failedCard, false);
+
+    expect(host().querySelector('.teams-read-failed')).toBeNull();
+  });
 });

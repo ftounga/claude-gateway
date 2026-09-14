@@ -39,10 +39,23 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
  * @param moments  moments (image + phrase prononcée), vide hors d'un bloc moment
  * @param gaps     <b>ce qui n'a pas pu être lu</b>, en toutes lettres ; vide = aucun manque signalé
  * @param recordingNotice <b>la mention d'un enregistrement local</b> (F-91 / SF-91-03), ou vide
+ * @param reason   <b>le motif machine d'un bloc d'échec de lecture Teams</b> (F-89 / SF-89-11), ou
+ *                 vide pour tout autre genre : c'est lui qui porte la <b>couleur</b> (attention/ambre
+ *                 ou liaison rompue/rouge), jamais le texte seul
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record TeamsBlockCard(Kind kind, String title, String subtitle, String window,
-        List<Section> sections, List<Moment> moments, List<String> gaps, String recordingNotice) {
+        List<Section> sections, List<Moment> moments, List<String> gaps, String recordingNotice,
+        String reason) {
+
+    /**
+     * La forme d'avant F-89 / SF-89-11 : aucun motif d'échec. Gardée pour les appelants et les blocs
+     * relus qui n'en portent pas.
+     */
+    public TeamsBlockCard(Kind kind, String title, String subtitle, String window,
+            List<Section> sections, List<Moment> moments, List<String> gaps, String recordingNotice) {
+        this(kind, title, subtitle, window, sections, moments, gaps, recordingNotice, "");
+    }
 
     /**
      * La forme d'avant F-91. Gardée pour les appelants et les blocs relus qui n'ont pas de mention :
@@ -50,11 +63,12 @@ public record TeamsBlockCard(Kind kind, String title, String subtitle, String wi
      */
     public TeamsBlockCard(Kind kind, String title, String subtitle, String window,
             List<Section> sections, List<Moment> moments, List<String> gaps) {
-        this(kind, title, subtitle, window, sections, moments, gaps, "");
+        this(kind, title, subtitle, window, sections, moments, gaps, "", "");
     }
 
     public TeamsBlockCard {
         recordingNotice = recordingNotice == null ? "" : recordingNotice.strip();
+        reason = reason == null ? "" : reason.strip();
     }
 
     /**
@@ -70,14 +84,32 @@ public record TeamsBlockCard(Kind kind, String title, String subtitle, String wi
         return recordingNotice != null && !recordingNotice.isBlank();
     }
 
-    /** Les trois genres de bloc riche. Liste close : l'écran en connaît exactement trois. */
+    /**
+     * Les genres de bloc riche. Liste close : l'écran les connaît exactement.
+     *
+     * <p>Les trois premiers sont des <b>comptes rendus</b> (F-89 / SF-89-02) : ils portent des lignes
+     * sourcées ou des moments. Les deux derniers (F-89 / SF-89-11) sont <b>display-only</b> et ne
+     * portent aucune ligne : ils disent l'<b>état</b> d'une lecture Teams, pas son contenu.</p>
+     */
     public enum Kind {
         /** La carte d'une réunion : plusieurs sections de lignes sourcées. */
         MEETING_CARD,
         /** Une liste : engagements, mentions — une seule suite de lignes sourcées. */
         LIST,
         /** Des moments : une image posée à côté de la phrase prononcée pendant qu'elle s'affichait. */
-        MOMENTS
+        MOMENTS,
+        /**
+         * <b>La lecture Teams n'a rien rendu d'exploitable</b> (F-89 / SF-89-11), après réseau ET
+         * écran. Bloc coloré (couleur portée par {@link #reason}) avec deux actions — Réessayer,
+         * Chercher dans le projet. Aucune ligne : ce n'est pas un compte rendu, c'est un échec visible.
+         */
+        READ_FAILED,
+        /**
+         * <b>Le bandeau « réponse basée sur le projet, pas sur Teams »</b> (F-89 / SF-89-11) : posé
+         * quand l'utilisateur a explicitement autorisé le repli sur le poste. Il marque la source de
+         * la réponse qui suit, par la couleur autant que par le texte.
+         */
+        PROJECT_FALLBACK
     }
 
     /**

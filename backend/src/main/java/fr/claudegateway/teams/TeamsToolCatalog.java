@@ -74,11 +74,24 @@ public class TeamsToolCatalog {
      * rouvrir cinq fois des écrans déjà ouverts, alors que le contenu était arrivé sans être reconnu. Le
      * remède n'est pas le même, et la règle voyage là où l'agent la lit.
      */
+    /**
+     * <b>La règle NON négociable de l'échec de lecture Teams</b> (F-89 / SF-89-11). Remplace la
+     * complaisance de {@link #NOTHING_RULE} par un ordre : sur un zéro, un <b>bloc d'échec</b> est déjà
+     * posé dans le fil avec deux actions (Réessayer / Chercher dans le projet), et l'agent <b>s'arrête
+     * là</b>. Il ne substitue JAMAIS le contenu du projet à Teams sans un geste explicite de
+     * l'utilisateur — le repli sur le poste est un choix, jamais un réflexe silencieux.
+     */
+    public static final String READ_FAILURE_RULE = "RÈGLE NON NÉGOCIABLE — sur un zéro de lecture Teams, "
+            + "NE réponds JAMAIS la question de fond depuis le projet, bash, grep ou les fichiers du poste : "
+            + "un bloc d'échec est posé dans le fil avec deux choix pour l'utilisateur (Réessayer / Chercher "
+            + "dans le projet). Arrête-toi et laisse-le choisir. Ne substitue le contenu du projet à Teams "
+            + "qu'après son autorisation explicite.";
     public static final String NOTHING_RULE = "Sur un zéro, lis le manque : « NOTHING_SERVED » = Teams n'a rien "
             + "servi, propose UNE fois à l'utilisateur d'ouvrir l'écran voulu dans Teams ; « NOTHING_CLASSIFIED » "
             + "= le contenu est arrivé mais le runner ne l'a pas reconnu : NE demande PAS de rouvrir, cliquer ou "
             + "rafraîchir (ça n'y changera rien), dis-le tel quel, et donne l'inventaire des chemins non "
-            + "reconnus de teams_status (diagnostic.observation.unknownPaths) si on te le demande.";
+            + "reconnus de teams_status (diagnostic.observation.unknownPaths) si on te le demande. "
+            + READ_FAILURE_RULE;
     /**
      * L'enregistrement d'une réunion (F-88 / SF-88-02) — <b>rapatrié sur la machine par Chrome</b>
      * depuis F-108 / SF-108-05. Une lecture : aucune confirmation.

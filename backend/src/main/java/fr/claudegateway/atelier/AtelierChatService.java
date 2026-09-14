@@ -706,6 +706,29 @@ public class AtelierChatService implements RelayInterruptTarget {
          * aussi — le fichier a bel et bien été écrit.
          */
         java.util.Set<String> writtenPaths = new java.util.LinkedHashSet<>();
+        /**
+         * F-89 / SF-89-11 : une lecture Teams a rendu un zéro dans CE tour. Tant que c'est vrai — et
+         * que l'utilisateur n'a pas autorisé le repli —, les outils de fond du poste (bash, read_file…)
+         * sont refusés : on ne répond pas la question depuis le projet sans un geste explicite.
+         */
+        boolean teamsReadFailedThisTurn = false;
+        /**
+         * F-89 / SF-89-11 : l'utilisateur a explicitement autorisé le repli sur le poste (bouton
+         * « Chercher dans le projet », ou précision équivalente). Le repli est alors permis, et un
+         * bandeau marque la réponse comme venant du projet, pas de Teams.
+         */
+        boolean fallbackAuthorized = workspace.isTeamsTerminal()
+                && fr.claudegateway.teams.block.TeamsReadFailure.authorizesFallback(userText);
+        // F-89 / SF-89-11 : le repli autorisé se voit AVANT la réponse — un bandeau « réponse basée
+        // sur le projet, pas sur Teams », posé en tête du tour, par la couleur autant que par le texte.
+        if (fallbackAuthorized) {
+            String bannerId = "project-fallback-" + UUID.randomUUID();
+            fr.claudegateway.teams.block.TeamsBlockCard banner =
+                    fr.claudegateway.teams.block.TeamsReadFailure.fallbackBanner();
+            listener.onCard(bannerId, banner);
+            transcript.add(new AtelierTurnReport.Block("teams_project_fallback", null, bannerId, null,
+                    "", false, false, false, banner));
+        }
         String finalText = "";
 
         log.info("Tour d'atelier ouvert (workspace={}, cible={}, plafond={} étapes)",
@@ -906,7 +929,14 @@ public class AtelierChatService implements RelayInterruptTarget {
                     listener.onAction(step);
                 }
                 ToolOutcome outcome;
-                if ("explore".equals(call.name())) {
+                if (teamsReadFailedThisTurn && !fallbackAuthorized
+                        && fr.claudegateway.teams.block.TeamsReadFailure.isProjectAnswerTool(call.name())) {
+                    // F-89 / SF-89-11 : le SECOND VERROU. Une lecture Teams a échoué dans ce tour et
+                    // l'utilisateur n'a pas choisi le repli : on refuse de répondre la question de
+                    // fond depuis le poste (bash, read_file, grep…). La règle est vraie, pas suggérée.
+                    outcome = ToolOutcome.error(
+                            fr.claudegateway.teams.block.TeamsReadFailure.GATE_MESSAGE);
+                } else if ("explore".equals(call.name())) {
                     // Délégation (F-39 / SF-39-14) : bornée en nombre, et sa consommation revient
                     // dans les compteurs du TOUR — déléguer ne doit jamais permettre de passer sous
                     // le plafond par message (D4).
@@ -952,11 +982,35 @@ public class AtelierChatService implements RelayInterruptTarget {
                 if (outcome.action() != null) {
                     actions.add(outcome.action());
                 }
-                toolResults.add(new AgentContentBlock.ToolResult(callId, outcome.content(), outcome.isError()));
+                // F-89 / SF-89-11 : une lecture Teams qui n'a rien rendu d'exploitable, APRÈS réseau
+                // ET écran (SF-89-06), devient un échec TYPÉ, VISIBLE et BLOQUANT. Le PREMIER VERROU :
+                // un bloc riche d'échec est posé dans le fil (couleur portée par le motif), et le
+                // modèle reçoit la règle non négociable de s'arrêter. Pas de repli silencieux.
+                String modelContent = outcome.content();
+                if (workspace.isTeamsTerminal()
+                        && fr.claudegateway.teams.block.TeamsReadFailure.isReadingTool(call.name())) {
+                    java.util.Optional<fr.claudegateway.teams.block.TeamsReadFailure.Reason> readFailure =
+                            fr.claudegateway.teams.block.TeamsReadFailure.classify(call.name(),
+                                    outcome.content());
+                    if (readFailure.isPresent()) {
+                        fr.claudegateway.teams.block.TeamsBlockCard failCard =
+                                fr.claudegateway.teams.block.TeamsReadFailure.card(readFailure.get());
+                        // Le bloc voyage sur l'appel de lecture : relayé au fil de l'eau ET écrit dans
+                        // la transcription (comme les autres blocs riches), il survit au rechargement.
+                        cardsOfTurn.put(callId, failCard);
+                        listener.onCard(callId, failCard);
+                        // L'écran garde le résultat BRUT du runner ; le modèle, lui, reçoit l'ordre de
+                        // s'arrêter — la règle non négociable, en plus de la garde du second verrou.
+                        modelContent = (modelContent == null ? "" : modelContent) + "\n\n"
+                                + fr.claudegateway.teams.block.TeamsReadFailure.STOP_INSTRUCTION;
+                        teamsReadFailedThisTurn = true;
+                    }
+                }
+                toolResults.add(new AgentContentBlock.ToolResult(callId, modelContent, outcome.isError()));
                 // Mémoire du tour (SF-39-03) : l'appel ET son résultat, appariés — le fournisseur
                 // refuse un tool_use orphelin au rejeu.
                 tracedCalls.add(new AtelierToolTrace.Call(callId, call.name(), call.input(),
-                        AtelierToolTrace.boundResult(outcome.content()), outcome.isError()));
+                        AtelierToolTrace.boundResult(modelContent), outcome.isError()));
                 // Transcription du tour (SF-39-17) : ce que l'écran relit après un rechargement.
                 // Elle ne l'était pas, et une coupure de connexion effaçait tout ce qui s'était
                 // passé — l'acquis §4 n°7 de F-30 ne valait pas pour le moteur qui exécute.
@@ -2351,6 +2405,12 @@ public class AtelierChatService implements RelayInterruptTarget {
             // retiré de la Vigie — l'agent n'a plus ses outils teams_*, et il le dit plutôt que de
             // fouiller la machine (même doctrine que SF-89-04).
             system.append(fr.claudegateway.teams.TeamsToolCatalog.REMOVED_FROM_VIGIE_NOTICE).append("\n\n");
+        } else if (workspace.isTeamsTerminal()) {
+            // F-89 / SF-89-11 : quand les outils Teams SONT donnés (volet ouvert, client dans la
+            // Vigie), la règle non négociable de l'échec de lecture voyage aussi dans la consigne
+            // système — pas seulement dans les descriptions d'outils. Sur un zéro : bloc d'échec et
+            // arrêt, jamais un repli silencieux sur le poste.
+            system.append(fr.claudegateway.teams.TeamsToolCatalog.READ_FAILURE_RULE).append("\n\n");
         }
         // F-104 / SF-104-03 : le Radar du client, sous la même garde que ses outils — registre d'abord, et la
         // parole de l'utilisateur pour seule preuve d'une écriture.

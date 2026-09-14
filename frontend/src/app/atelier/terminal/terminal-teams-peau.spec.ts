@@ -405,6 +405,8 @@ describe('AtelierTerminalComponent — la peau du terminal Teams (F-89 / SF-89-0
       // Les couleurs d'état de la charte APPROFONDIES pour le fond clair.
       '--cg-terminal-teams-error',
       '--cg-terminal-teams-add',
+      // F-89 / SF-89-11 : l'ambre de l'attention (§12), approfondi pour l'AA sur le papier.
+      '--cg-terminal-teams-warn',
     ];
     for (const ground of grounds) {
       for (const ink of inks) {
@@ -430,6 +432,54 @@ describe('AtelierTerminalComponent — la peau du terminal Teams (F-89 / SF-89-0
 
     // Le balayage a réellement vu le terminal chargé — sinon il passerait sur un écran vide.
     expect(result.texts).toBeGreaterThan(40);
+    expect(result.failures).withContext(JSON.stringify(result.failures, null, 2)).toEqual([]);
+  });
+
+  it('F-89 / SF-89-11 — le bloc d\'échec de lecture et le bandeau de repli tiennent l\'AA (balayage)', () => {
+    component.teamsTerminal = true;
+    component.streaming = {
+      status: 'running',
+      tokens: null,
+      text: '',
+      plan: [],
+      blocks: [
+        {
+          tool: 'teams_project_fallback', toolUseId: 'b0', threadId: null, output: '',
+          hasOutput: false, error: false, expanded: false,
+          card: {
+            kind: 'PROJECT_FALLBACK', title: 'Réponse basée sur le projet, pas sur Teams',
+            subtitle: 'Vous avez autorisé le repli : cette réponse vient des fichiers du poste.',
+            window: '', sections: [], moments: [], gaps: [],
+          },
+        },
+        {
+          tool: 'teams_find_conversations', toolUseId: 'b1', threadId: null, output: '',
+          hasOutput: false, error: false, expanded: false,
+          card: {
+            kind: 'READ_FAILED', title: 'Teams n\'a pas pu être lu',
+            subtitle: 'Teams n\'a rien servi : ouvrez l\'écran voulu dans Teams, puis réessayez.',
+            window: '', sections: [], moments: [], gaps: [], reason: 'NOTHING_SERVED',
+          },
+        },
+        {
+          tool: 'teams_meeting_transcript', toolUseId: 'b2', threadId: null, output: '',
+          hasOutput: false, error: false, expanded: false,
+          card: {
+            kind: 'READ_FAILED', title: 'Teams n\'a pas pu être lu',
+            subtitle: 'La session Microsoft a expiré : reconnectez-vous à Teams.',
+            window: '', sections: [], moments: [], gaps: [], reason: 'SESSION_EXPIRED',
+          },
+        },
+      ],
+    } as AtelierExecStreamingItem;
+    fixture.detectChanges();
+
+    // Les deux blocs et le bandeau sont bien rendus (ambre ET rouge).
+    expect(view().querySelectorAll('.teams-read-failed').length).toBe(2);
+    expect(view().querySelector('.teams-read-failed--broken')).not.toBeNull();
+    expect(view().querySelector('.teams-fallback-banner')).not.toBeNull();
+    // Et tout ce qu'ils écrivent tient l'AA sur la surface « Papier ».
+    const result = sweep(view());
     expect(result.failures).withContext(JSON.stringify(result.failures, null, 2)).toEqual([]);
   });
 
