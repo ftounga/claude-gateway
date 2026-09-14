@@ -257,6 +257,14 @@ public class AnthropicAgentProvider implements AiAgentProvider {
                 return apiCall.execute();
             } catch (RestClientResponseException ex) {
                 int status = ex.getStatusCode().value();
+                // Dépassement de la fenêtre du modèle (F-117 / SF-117-02) : un 400 « prompt too long »
+                // n'est pas rejouable tel quel (le rejouer redonnerait le même 400) — il demande de
+                // RÉDUIRE le contexte. On le traduit en signal neutre pour que la boucle compacte puis
+                // relance, au lieu de mourir sans filet. Les autres 400 restent un échec fournisseur.
+                if (status == 400 && isPromptTooLong(ex)) {
+                    throw new AgentPromptTooLongException(
+                            "Le contexte dépasse la fenêtre du modèle.", ex);
+                }
                 long delay = AgentRetryPolicy.retryableStatus(status) && retryPolicy.hasAttemptLeft(attempt)
                         ? retryPolicy.delayMs(attempt, retryAfterHeader(ex), waited)
                         : AgentRetryPolicy.NO_DELAY;
@@ -586,6 +594,21 @@ public class AnthropicAgentProvider implements AiAgentProvider {
     private AIProviderException providerFailure(String model, RestClientException ex) {
         log.warn("Appel agent au fournisseur IA en échec (modèle={})", model);
         return new AIProviderException("Échec de l'appel au fournisseur IA.", ex);
+    }
+
+    /**
+     * Vrai si ce refus est le 400 « prompt too long » du fournisseur (F-117 / SF-117-02). On se fie
+     * au <b>corps</b> du message d'erreur ({@code "prompt is too long: N tokens > M maximum"}) plutôt
+     * qu'à un code dédié, qui n'existe pas : le fournisseur range ce cas dans un
+     * {@code invalid_request_error} générique. La comparaison est insensible à la casse et tolère
+     * l'absence de corps.
+     */
+    private static boolean isPromptTooLong(RestClientResponseException ex) {
+        String body = ex.getResponseBodyAsString();
+        if (body == null || body.isBlank()) {
+            return false;
+        }
+        return body.toLowerCase(java.util.Locale.ROOT).contains("prompt is too long");
     }
 
     /** Première valeur de l'en-tête {@code Retry-After}, ou {@code null}. */

@@ -121,6 +121,16 @@ public class AtelierChatService implements RelayInterruptTarget {
     static final String SPEND_CAP_REPLY =
             "Ce message a atteint son plafond de consommation ; le travail déjà fait est conservé, "
                     + "relance-moi pour continuer.";
+    /**
+     * Réponse rendue quand la fenêtre du modèle est dépassée <b>malgré</b> la compaction (F-117 /
+     * SF-117-02). Le filet réactif a résumé l'historique et relancé une fois, mais la conversation
+     * déborde encore : plutôt qu'un échec dur silencieux (le comportement d'avant F-117), un message
+     * clair qui dit quoi faire — un « nouveau départ » (SF-117-03).
+     */
+    static final String PROMPT_TOO_LONG_REPLY =
+            "Cette conversation est devenue trop longue pour la fenêtre du modèle : j'ai résumé "
+                    + "l'historique, mais elle dépasse encore. Fais un « nouveau départ » pour "
+                    + "repartir propre — la conversation reste affichée.";
     /** Garde-fou : longueur max de la consigne système (CLAUDE.md + skills). */
     private static final int SYSTEM_MAX_CHARS = 40_000;
     private static final List<String> SKILL_PREFIXES = List.of(".claude/skills/", "skills/");
@@ -626,6 +636,13 @@ public class AtelierChatService implements RelayInterruptTarget {
         long largestIterationTokens = 0L;
         boolean interrupted = false;
         boolean spendCapReached = false;
+        /**
+         * Filet réactif du dépassement de fenêtre (F-117 / SF-117-02) : posé à la première
+         * compaction forcée déclenchée par un 400 « prompt too long ». Borne le filet à <b>une</b>
+         * compaction + relance par message — si ça déborde encore, on rend un message clair plutôt
+         * que de boucler.
+         */
+        boolean promptTooLongHandled = false;
         /** Explorations déjà déléguées dans ce message (F-39 / SF-39-14). */
         int delegations = 0;
         /**
@@ -683,26 +700,65 @@ public class AtelierChatService implements RelayInterruptTarget {
                         .build());
                 listener.onSteerApplied(steer, iteration + 1);
             }
-            AgentTurnRequest turnRequest =
-                    new AgentTurnRequest(model, system, messages, tools, apiKey, reasoning, contextPolicy);
             // Streaming mot à mot (F-116 / SF-116-01) : quand le flux est actif, le texte défile dans
             // la ligne vivante DÈS le premier delta, au lieu d'attendre la fin du tour (~100 % de
             // l'écart de ressenti avec Claude Code). Le sink note s'il a émis du texte, pour ne pas
             // relayer une SECONDE fois le commentaire complet plus bas — le corps de requête, le cache
             // et le décompte d'usage restent, eux, strictement ceux du non streamé.
+            //
+            // Repli sur débordement de fenêtre (F-117 / SF-117-02) : un 400 « prompt too long » remonte
+            // désormais en AgentPromptTooLongException. Au lieu de tuer le tour, on force une compaction
+            // (SF-117-01), on rebâtit la conversation depuis la nouvelle frontière + résumé, et on
+            // relance UNE fois. Si ça dépasse encore, message clair — plus jamais d'échec dur.
             boolean textAlreadyStreamed = false;
-            AgentTurn turn;
-            if (streaming) {
+            AgentTurn turn = null;
+            boolean promptOverflow = false;
+            while (turn == null) {
                 boolean[] streamed = {false};
-                turn = agentProvider.nextTurn(turnRequest, delta -> {
-                    if (delta != null && !delta.isEmpty()) {
-                        streamed[0] = true;
-                        listener.onText(delta);
+                AgentTurnRequest turnRequest =
+                        new AgentTurnRequest(model, system, messages, tools, apiKey, reasoning, contextPolicy);
+                try {
+                    if (streaming) {
+                        turn = agentProvider.nextTurn(turnRequest, delta -> {
+                            if (delta != null && !delta.isEmpty()) {
+                                streamed[0] = true;
+                                listener.onText(delta);
+                            }
+                        });
+                        textAlreadyStreamed = streamed[0];
+                    } else {
+                        turn = agentProvider.nextTurn(turnRequest);
                     }
-                });
-                textAlreadyStreamed = streamed[0];
-            } else {
-                turn = agentProvider.nextTurn(turnRequest);
+                } catch (fr.claudegateway.agent.AgentPromptTooLongException ex) {
+                    if (compactionService == null || promptTooLongHandled) {
+                        promptOverflow = true;
+                        break;
+                    }
+                    promptTooLongHandled = true;
+                    AtelierCompactionService.CompactionOutcome forced =
+                            compactionService.compactNow(userId, workspace, apiKey);
+                    inputTokens += forced.inputTokens();
+                    outputTokens += forced.outputTokens();
+                    cacheReadTokens += forced.cacheReadTokens();
+                    cacheWriteTokens += forced.cacheWriteTokens();
+                    if (!forced.compacted()) {
+                        // Rien à réduire (fil déjà court, ou l'appel de résumé a lui-même débordé) :
+                        // on ne peut pas relancer utilement, on rend un message clair.
+                        promptOverflow = true;
+                        break;
+                    }
+                    // Rebâtir depuis la nouvelle frontière + résumé : le message utilisateur et les
+                    // précisions sont déjà persistés, donc relus de la base. Les messages en vol de
+                    // cette itération (le cas échéant) sont abandonnés — au pire la 1re itération, où
+                    // il n'y en a pas ; remplacer toute la liste évite tout tool_use orphelin.
+                    messages = buildReplayMessages(userId, workspace);
+                    log.info("Contexte débordé : fil compacté puis tour relancé une fois (workspace={}).",
+                            workspaceId);
+                }
+            }
+            if (promptOverflow) {
+                finalText = PROMPT_TOO_LONG_REPLY;
+                break;
             }
             inputTokens += turn.inputTokens();
             outputTokens += turn.outputTokens();
@@ -1019,6 +1075,9 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
         if (TRUNCATED_REPLY.equals(finalText)) {
             return "réponse coupée au plafond de sortie";
+        }
+        if (PROMPT_TOO_LONG_REPLY.equals(finalText)) {
+            return "contexte débordé malgré compaction";
         }
         return "réponse rendue";
     }

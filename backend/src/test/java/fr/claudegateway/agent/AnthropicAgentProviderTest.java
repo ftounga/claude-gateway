@@ -523,6 +523,40 @@ class AnthropicAgentProviderTest {
     }
 
     @Test
+    void translatesPromptTooLongIntoANeutralException() {
+        build(null);
+        // Corps réellement renvoyé par le fournisseur dans ce cas (F-117 / SF-117-02).
+        server.expect(ExpectedCount.once(), requestTo(URL))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(HttpStatusCode.valueOf(400)).body("""
+                        {"type":"error","error":{"type":"invalid_request_error",
+                         "message":"prompt is too long: 250000 tokens > 200000 maximum"}}""")
+                        .contentType(MediaType.APPLICATION_JSON));
+
+        // Signal NEUTRE (pas une AIProviderException) : la boucle doit pouvoir compacter puis relancer.
+        assertThatThrownBy(this::call).isInstanceOf(AgentPromptTooLongException.class);
+
+        // Un seul appel : rejouer tel quel redonnerait le même 400 — il faut d'abord réduire.
+        server.verify();
+        assertThat(waits).isEmpty();
+    }
+
+    @Test
+    void keepsOtherBadRequestsAsProviderFailure() {
+        build(null);
+        server.expect(ExpectedCount.once(), requestTo(URL))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(HttpStatusCode.valueOf(400)).body("""
+                        {"type":"error","error":{"type":"invalid_request_error",
+                         "message":"messages: unexpected role"}}""")
+                        .contentType(MediaType.APPLICATION_JSON));
+
+        // Un autre 400 reste un échec fournisseur, pas un débordement de contexte.
+        assertThatThrownBy(this::call).isInstanceOf(AIProviderException.class);
+        server.verify();
+    }
+
+    @Test
     void neverRetriesAServerErrorBecauseTheCallMayHaveBeenProcessed() {
         build(null);
         respondWithStatus(500, null);

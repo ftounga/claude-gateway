@@ -128,6 +128,27 @@ public class AtelierCompactionService {
         if (estimated <= properties.triggerTokens()) {
             return CompactionOutcome.NONE;
         }
+        return doCompact(workspace, apiKey, replayable, estimated);
+    }
+
+    /**
+     * Compaction <b>forcée</b>, sans la garde de seuil (F-117 / SF-117-02). Filet réactif du
+     * dépassement de fenêtre : quand le fournisseur a réellement refusé le contexte
+     * ({@code AgentPromptTooLongException}), l'estimation heuristique a sous-compté — on compacte quand
+     * même. Best-effort comme {@link #compactIfOversized} : si même l'appel de résumé déborde, on
+     * renvoie {@link CompactionOutcome#NONE} et l'appelant rend un message clair.
+     */
+    public CompactionOutcome compactNow(UUID userId, Workspace workspace, String apiKey) {
+        if (!Boolean.TRUE.equals(properties.enabled())) {
+            return CompactionOutcome.NONE;
+        }
+        List<AtelierMessage> replayable = replayable(userId, workspace);
+        return doCompact(workspace, apiKey, replayable,
+                estimateReplayTokens(workspace.getChatThreadSummary(), replayable));
+    }
+
+    private CompactionOutcome doCompact(Workspace workspace, String apiKey,
+            List<AtelierMessage> replayable, long estimated) {
         // On garde les derniers tours entiers ; tout ce qui précède (résumé existant compris) est
         // résumé. S'il n'y a rien d'ancien à résumer, la compaction ne peut rien réduire.
         int splitIndex = Math.max(0, replayable.size() - properties.keepRecentTurns());
