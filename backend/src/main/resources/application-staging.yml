@@ -23,6 +23,9 @@ server:
 # corrigée seule. Et la poser dans le profil de base, c'est la faire passer par les tests.
 app:
   frontend-url: ${APP_FRONTEND_URL:https://portal.ng-itconsulting.com}
+  mcp:
+    # Origine du portail : seule origine de navigateur autorisée à joindre /api/mcp.
+    allowed-origins: ${APP_MCP_ALLOWED_ORIGINS:https://portal.ng-itconsulting.com}
 logging:
   level:
     fr.claudegateway: INFO

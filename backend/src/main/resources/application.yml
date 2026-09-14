@@ -73,6 +73,11 @@ app:
   # URL du frontend, utilisée pour construire les liens d'e-mail (vérification, reset) et
   # la redirection post-connexion OAuth.
   frontend-url: ${APP_FRONTEND_URL:http://localhost:4200}
+  mcp:
+    # Serveur MCP (F-112 / SF-112-01). Origines de navigateur autorisées à joindre /api/mcp
+    # (protection anti-rebinding DNS). Vide = toute origine acceptée (dev) ; les clients IA sans
+    # navigateur n'envoient pas d'Origin et passent quoi qu'il arrive. Restreindre en production.
+    allowed-origins: ${APP_MCP_ALLOWED_ORIGINS:}
   email:
     # Fournisseur d'e-mail : `logging` par défaut (dev/tests, journalise le lien sans SMTP) ;
     # `smtp` en prod (SmtpEmailService via JavaMailSender, config spring.mail.* ci-dessus).
