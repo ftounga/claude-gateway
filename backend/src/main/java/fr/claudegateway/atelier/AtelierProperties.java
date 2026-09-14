@@ -1,6 +1,7 @@
 package fr.claudegateway.atelier;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
 /**
  * Réglages de l'Atelier (F-28). Externalisés pour être ajustables sans changement de code.
@@ -39,6 +40,14 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param maxDelegations nombre maximal d'explorations déléguées dans un même message
  *                       (F-39 / SF-39-14, défaut 3). Au-delà, c'est le travail principal qu'il faut
  *                       redécouper — pas la délégation qu'il faut ouvrir.
+ * @param streaming     appel modèle en <b>flux</b> de la boucle maison (F-116 / SF-116-01), défaut
+ *                      {@code true}. Actif, chaque tour consomme le flux SSE du fournisseur et fait
+ *                      défiler le texte mot à mot dans le terminal ; le corps de requête, le cache, le
+ *                      retry et le décompte d'usage sont inchangés — seul le <b>moment</b> d'affichage
+ *                      change. <b>Coupe-circuit</b> : le passer à {@code false} rétablit l'appel
+ *                      complet (texte affiché en fin de tour) par variable d'environnement, sans
+ *                      livraison. Un refus ou une coupure du flux replie de toute façon sur l'appel
+ *                      complet, tour par tour.
  * @param maxTurnTokens plafond de consommation d'un <b>message</b> de la boucle maison
  *                      (F-39 / SF-39-15), en tokens traités — cache compris, comme le compteur de
  *                      quota (SF-39-01). Défaut {@code 1 500 000}, calibré sur l'usage réel du
@@ -62,7 +71,8 @@ public record AtelierProperties(
         Boolean contextPruning,
         Long maxTurnTokens,
         Integer maxDelegations,
-        Boolean storageExecution) {
+        Boolean storageExecution,
+        Boolean streaming) {
 
     /** Modèle de la boucle maison à défaut de configuration (F-39 / SF-39-10). */
     public static final String DEFAULT_MODEL = "claude-opus-5";
@@ -93,6 +103,9 @@ public record AtelierProperties(
      */
     public static final long MAX_TURN_TOKENS_CEILING = 10_000_000L;
 
+    // Le record porte un second constructeur (compatibilité pré-F-116) : la liaison de configuration
+    // doit désigner explicitement le constructeur canonique, sans quoi elle serait ambiguë.
+    @ConstructorBinding
     public AtelierProperties {
         if (storage == null || storage.isBlank()) {
             storage = "in-memory";
@@ -142,5 +155,22 @@ public record AtelierProperties(
         if (maxTurnTokens > MAX_TURN_TOKENS_CEILING) {
             maxTurnTokens = MAX_TURN_TOKENS_CEILING;
         }
+        // Absent => flux actif : même règle que les autres drapeaux, un réglage manquant ne change pas
+        // le comportement livré (F-116 / SF-116-01).
+        if (streaming == null) {
+            streaming = Boolean.TRUE;
+        }
+    }
+
+    /**
+     * Constructeur de compatibilité, sans le drapeau de flux (F-116) : le flux est actif par défaut.
+     * Évite de réécrire les appelants antérieurs à F-116 pour un réglage qu'ils n'expriment pas.
+     */
+    public AtelierProperties(String storage, String bucket, String prefix, Long maxTotalBytes,
+            Integer maxEntries, Long maxFileBytes, Integer maxIterations, String model, String effort,
+            Boolean contextPruning, Long maxTurnTokens, Integer maxDelegations,
+            Boolean storageExecution) {
+        this(storage, bucket, prefix, maxTotalBytes, maxEntries, maxFileBytes, maxIterations, model,
+                effort, contextPruning, maxTurnTokens, maxDelegations, storageExecution, Boolean.TRUE);
     }
 }

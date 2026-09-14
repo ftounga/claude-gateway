@@ -635,4 +635,294 @@ class AnthropicAgentProviderTest {
         assertThat(turn.text()).isEqualTo("D'après le web…");
         assertThat(turn.finished()).isTrue();
     }
+
+    // ------------------------------------------- F-116 / SF-116-01 : l'appel modèle en flux
+
+    /**
+     * Flux SSE représentatif : raisonnement signé, texte en deux deltas, appel d'outil dont le JSON
+     * d'entrée arrive en deux fragments, puis usage final et {@code stop_reason: tool_use}.
+     */
+    private static final String SSE_TOOL_USE = String.join("\n",
+            "event: message_start",
+            "data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":10,"
+                    + "\"cache_creation_input_tokens\":2000,\"cache_read_input_tokens\":30000,"
+                    + "\"output_tokens\":5}}}",
+            "",
+            "event: content_block_start",
+            "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":"
+                    + "{\"type\":\"thinking\",\"thinking\":\"\"}}",
+            "",
+            "event: content_block_delta",
+            "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":"
+                    + "{\"type\":\"thinking_delta\",\"thinking\":\"je regarde\"}}",
+            "",
+            "event: content_block_delta",
+            "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":"
+                    + "{\"type\":\"signature_delta\",\"signature\":\"sig-1\"}}",
+            "",
+            "event: content_block_stop",
+            "data: {\"type\":\"content_block_stop\",\"index\":0}",
+            "",
+            "event: content_block_start",
+            "data: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":"
+                    + "{\"type\":\"text\",\"text\":\"\"}}",
+            "",
+            "event: content_block_delta",
+            "data: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":"
+                    + "{\"type\":\"text_delta\",\"text\":\"Je \"}}",
+            "",
+            "event: content_block_delta",
+            "data: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":"
+                    + "{\"type\":\"text_delta\",\"text\":\"lis.\"}}",
+            "",
+            "event: content_block_stop",
+            "data: {\"type\":\"content_block_stop\",\"index\":1}",
+            "",
+            "event: content_block_start",
+            "data: {\"type\":\"content_block_start\",\"index\":2,\"content_block\":"
+                    + "{\"type\":\"tool_use\",\"id\":\"tu_1\",\"name\":\"read_file\",\"input\":{}}}",
+            "",
+            "event: content_block_delta",
+            "data: {\"type\":\"content_block_delta\",\"index\":2,\"delta\":"
+                    + "{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"path\\\":\"}}",
+            "",
+            "event: content_block_delta",
+            "data: {\"type\":\"content_block_delta\",\"index\":2,\"delta\":"
+                    + "{\"type\":\"input_json_delta\",\"partial_json\":\"\\\"a.txt\\\"}\"}}",
+            "",
+            "event: content_block_stop",
+            "data: {\"type\":\"content_block_stop\",\"index\":2}",
+            "",
+            "event: message_delta",
+            "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},"
+                    + "\"usage\":{\"output_tokens\":20}}",
+            "",
+            "event: message_stop",
+            "data: {\"type\":\"message_stop\"}",
+            "", "");
+
+    /** Réponse non streamée équivalente au flux {@link #SSE_TOOL_USE}. */
+    private static final String JSON_TOOL_USE = """
+            {"content": [
+               {"type": "thinking", "thinking": "je regarde", "signature": "sig-1"},
+               {"type": "text", "text": "Je lis."},
+               {"type": "tool_use", "id": "tu_1", "name": "read_file", "input": {"path": "a.txt"}}],
+             "stop_reason": "tool_use",
+             "usage": {"input_tokens": 10, "cache_creation_input_tokens": 2000,
+                       "cache_read_input_tokens": 30000, "output_tokens": 20}}
+            """;
+
+    private void respondWithSse(String sse) {
+        server.expect(ExpectedCount.once(), requestTo(URL))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess(sse, MediaType.TEXT_EVENT_STREAM));
+    }
+
+    private void respondWithJson(String json) {
+        server.expect(ExpectedCount.once(), requestTo(URL))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess(json, MediaType.APPLICATION_JSON));
+    }
+
+    private AgentTurn callStreamed(List<String> deltas) {
+        return provider.nextTurn(
+                new AgentTurnRequest("claude-model", "consigne",
+                        List.of(AgentMessage.userText("bonjour")),
+                        List.of(new AgentTool("read_file", "Lit un fichier",
+                                java.util.Map.of("type", "object"))),
+                        null),
+                delta -> deltas.add(delta));
+    }
+
+    @Test
+    void theStreamedTurnIsStrictlyEquivalentToTheNonStreamedOne() {
+        // L'invariant central de F-116 : le streaming ne change QUE le moment d'affichage. Le tour
+        // reconstitué depuis le flux doit être égal, champ pour champ, à celui de l'appel complet.
+        build(null);
+        respondWithSse(SSE_TOOL_USE);
+        AgentTurn streamed = callStreamed(new ArrayList<>());
+
+        build(null);
+        respondWithJson(JSON_TOOL_USE);
+        AgentTurn nonStreamed = provider.nextTurn(new AgentTurnRequest("claude-model", "consigne",
+                List.of(AgentMessage.userText("bonjour")),
+                List.of(new AgentTool("read_file", "Lit un fichier", java.util.Map.of("type", "object"))),
+                null));
+
+        assertThat(streamed).isEqualTo(nonStreamed);
+        // …et, explicitement, chacun des champs qui font l'équivalence.
+        assertThat(streamed.text()).isEqualTo("Je lis.");
+        assertThat(streamed.finished()).isFalse();
+        assertThat(streamed.truncated()).isFalse();
+        assertThat(streamed.toolCalls()).hasSize(1);
+        assertThat(streamed.toolCalls().get(0).name()).isEqualTo("read_file");
+        assertThat(streamed.toolCalls().get(0).input().path("path").asText()).isEqualTo("a.txt");
+        assertThat(streamed.reasoning()).containsExactly(
+                new AgentContentBlock.Reasoning("je regarde", "sig-1"));
+        assertThat(streamed.inputTokens()).isEqualTo(32_010);
+        assertThat(streamed.outputTokens()).isEqualTo(20);
+        assertThat(streamed.cacheReadTokens()).isEqualTo(30_000);
+        assertThat(streamed.cacheWriteTokens()).isEqualTo(2_000);
+    }
+
+    @Test
+    void pushesTextDeltasInOrderAndNeverTheReasoning() {
+        build(null);
+        respondWithSse(SSE_TOOL_USE);
+        List<String> deltas = new ArrayList<>();
+
+        callStreamed(deltas);
+
+        // Le texte défile fragment par fragment, dans l'ordre ; le raisonnement n'y figure jamais.
+        assertThat(deltas).containsExactly("Je ", "lis.");
+    }
+
+    @Test
+    void reconstructsUsageFromStartAndTheFinalOutputFromMessageDelta() {
+        build(null);
+        respondWithSse(SSE_TOOL_USE);
+
+        AgentTurn turn = callStreamed(new ArrayList<>());
+
+        // L'entrée et le cache viennent de message_start ; la sortie FINALE de message_delta (20),
+        // pas la valeur initiale de message_start (5).
+        assertThat(turn.outputTokens()).isEqualTo(20);
+        assertThat(turn.inputTokens()).isEqualTo(32_010);
+    }
+
+    @Test
+    void marksAStreamedTurnTruncatedWhenItHitsTheOutputCap() {
+        build(null);
+        respondWithSse(String.join("\n",
+                "data: {\"type\":\"message_start\",\"message\":{\"usage\":"
+                        + "{\"input_tokens\":1,\"output_tokens\":1}}}",
+                "",
+                "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":"
+                        + "{\"type\":\"text\",\"text\":\"\"}}",
+                "",
+                "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":"
+                        + "{\"type\":\"text_delta\",\"text\":\"Je vais créer\"}}",
+                "",
+                "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"max_tokens\"},"
+                        + "\"usage\":{\"output_tokens\":8}}",
+                "",
+                "data: {\"type\":\"message_stop\"}",
+                "", ""));
+
+        AgentTurn turn = callStreamed(new ArrayList<>());
+
+        assertThat(turn.truncated()).isTrue();
+        assertThat(turn.finished()).isTrue();
+    }
+
+    @Test
+    void sendsTheSameBodyAsTheNonStreamedPathPlusStreamTrue() {
+        build(null);
+        java.util.concurrent.atomic.AtomicReference<String> captured =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        server.expect(requestTo(URL))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(request -> captured.set(
+                        ((org.springframework.mock.http.client.MockClientHttpRequest) request)
+                                .getBodyAsString()))
+                .andRespond(withSuccess(SSE_TOOL_USE, MediaType.TEXT_EVENT_STREAM));
+
+        callStreamed(new ArrayList<>());
+
+        try {
+            JsonNode body = new com.fasterxml.jackson.databind.ObjectMapper().readTree(captured.get());
+            // Le flux est demandé…
+            assertThat(body.path("stream").asBoolean()).isTrue();
+            // …et le préfixe caché est intact : système en liste de blocs marquée, dernier bloc du
+            // dernier message marqué. Le corps est celui du non streamé + `stream:true`.
+            assertThat(body.path("system").get(0).path("cache_control").path("type").asText())
+                    .isEqualTo("ephemeral");
+            JsonNode messages = body.get("messages");
+            assertThat(messages.get(messages.size() - 1).get("content").get(0)
+                    .path("cache_control").path("type").asText()).isEqualTo("ephemeral");
+            // Deux marqueurs, comme le non streamé (SF-39-01) : le flux n'en ajoute aucun.
+            assertThat(captured.get().split("cache_control", -1).length - 1).isEqualTo(2);
+        } catch (Exception ex) {
+            throw new IllegalStateException(ex);
+        }
+    }
+
+    @Test
+    void retriesTheStreamedCallAfterATemporaryRefusalWithTheSameBody() {
+        build(null);
+        List<String> bodies = new ArrayList<>();
+        server.expect(ExpectedCount.once(), requestTo(URL))
+                .andExpect(request -> bodies.add(
+                        ((org.springframework.mock.http.client.MockClientHttpRequest) request)
+                                .getBodyAsString()))
+                .andRespond(withStatus(HttpStatusCode.valueOf(429)));
+        server.expect(ExpectedCount.once(), requestTo(URL))
+                .andExpect(request -> bodies.add(
+                        ((org.springframework.mock.http.client.MockClientHttpRequest) request)
+                                .getBodyAsString()))
+                .andRespond(withSuccess(SSE_TOOL_USE, MediaType.TEXT_EVENT_STREAM));
+
+        AgentTurn turn = callStreamed(new ArrayList<>());
+
+        // Le refus temporaire est rejoué exactement comme le non streamé, corps identique.
+        assertThat(turn.text()).isEqualTo("Je lis.");
+        assertThat(waits).hasSize(1);
+        assertThat(bodies).hasSize(2);
+        assertThat(bodies.get(1)).isEqualTo(bodies.get(0));
+        server.verify();
+    }
+
+    @Test
+    void fallsBackToTheFullCallWhenTheProviderRefusesTheStream() {
+        build(null);
+        // Refus permanent du flux (400) : au lieu de tuer le tour, on retombe sur l'appel complet.
+        server.expect(ExpectedCount.once(), requestTo(URL))
+                .andRespond(withStatus(HttpStatusCode.valueOf(400)));
+        respondWithJson(JSON_TOOL_USE);
+
+        AgentTurn turn = callStreamed(new ArrayList<>());
+
+        assertThat(turn.text()).isEqualTo("Je lis.");
+        assertThat(turn.toolCalls()).hasSize(1);
+        server.verify();
+    }
+
+    @Test
+    void fallsBackToTheFullCallWhenTheStreamIsCutBeforeTheEnd() {
+        build(null);
+        // Flux coupé : la ligne `message_stop` n'arrive jamais.
+        server.expect(ExpectedCount.once(), requestTo(URL))
+                .andRespond(withSuccess(String.join("\n",
+                        "data: {\"type\":\"message_start\",\"message\":{\"usage\":"
+                                + "{\"input_tokens\":1,\"output_tokens\":1}}}",
+                        "",
+                        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":"
+                                + "{\"type\":\"text\",\"text\":\"\"}}",
+                        "",
+                        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":"
+                                + "{\"type\":\"text_delta\",\"text\":\"Je li\"}}",
+                        "", ""), MediaType.TEXT_EVENT_STREAM));
+        respondWithJson(JSON_TOOL_USE);
+
+        AgentTurn turn = callStreamed(new ArrayList<>());
+
+        // Repli propre sur l'appel complet : le tour n'est pas perdu.
+        assertThat(turn.text()).isEqualTo("Je lis.");
+        server.verify();
+    }
+
+    @Test
+    void doesNotFallBackWhenTemporaryRefusalsAreExhausted() {
+        build(null, 3);
+        // 429 sur les trois tentatives streamées : c'est une surcharge, pas un refus du flux — on ne
+        // gaspille pas un appel complet de repli qui échouerait de la même manière.
+        respondWithStatus(429, null);
+        respondWithStatus(429, null);
+        respondWithStatus(429, null);
+
+        assertThatThrownBy(() -> callStreamed(new ArrayList<>()))
+                .isInstanceOf(AIProviderException.class);
+        server.verify();
+        assertThat(waits).hasSize(2);
+    }
 }

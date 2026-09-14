@@ -78,6 +78,13 @@ public class AtelierChatService implements RelayInterruptTarget {
     /** Coupe-circuit de la cible {@code SANDBOX} de la boucle maison (F-39 / SF-39-16). */
     private final boolean storageExecution;
     /**
+     * Appel modèle en <b>flux</b> (F-116 / SF-116-01) : quand il est actif, chaque tour consomme le
+     * flux SSE du fournisseur et fait défiler le texte mot à mot dès le premier delta. Le corps de
+     * requête, le cache, le retry et le décompte d'usage sont inchangés — seul le moment d'affichage
+     * change. Coupe-circuit : à {@code false}, l'appel complet historique (texte en fin de tour).
+     */
+    private final boolean streaming;
+    /**
      * Budget de temps d'un tour (F-38 / SF-38-07). Sans lui, 12 itérations × 120 s de {@code bash}
      * dépassent largement la durée de vie du flux SSE : l'émetteur se clôt, l'écran se fige, et la
      * boucle continue d'exécuter des commandes sur la machine de l'utilisateur. Le budget garantit
@@ -448,6 +455,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.maxTurnTokens = atelierProperties.maxTurnTokens();
         this.maxDelegations = atelierProperties.maxDelegations();
         this.storageExecution = atelierProperties.storageExecution();
+        this.streaming = !Boolean.FALSE.equals(atelierProperties.streaming());
         this.model = atelierProperties.model();
         this.reasoning = new AgentReasoning(true, atelierProperties.effort());
         this.contextPolicy = Boolean.TRUE.equals(atelierProperties.contextPruning())
@@ -654,8 +662,27 @@ public class AtelierChatService implements RelayInterruptTarget {
                         .build());
                 listener.onSteerApplied(steer, iteration + 1);
             }
-            AgentTurn turn = agentProvider.nextTurn(
-                    new AgentTurnRequest(model, system, messages, tools, apiKey, reasoning, contextPolicy));
+            AgentTurnRequest turnRequest =
+                    new AgentTurnRequest(model, system, messages, tools, apiKey, reasoning, contextPolicy);
+            // Streaming mot à mot (F-116 / SF-116-01) : quand le flux est actif, le texte défile dans
+            // la ligne vivante DÈS le premier delta, au lieu d'attendre la fin du tour (~100 % de
+            // l'écart de ressenti avec Claude Code). Le sink note s'il a émis du texte, pour ne pas
+            // relayer une SECONDE fois le commentaire complet plus bas — le corps de requête, le cache
+            // et le décompte d'usage restent, eux, strictement ceux du non streamé.
+            boolean textAlreadyStreamed = false;
+            AgentTurn turn;
+            if (streaming) {
+                boolean[] streamed = {false};
+                turn = agentProvider.nextTurn(turnRequest, delta -> {
+                    if (delta != null && !delta.isEmpty()) {
+                        streamed[0] = true;
+                        listener.onText(delta);
+                    }
+                });
+                textAlreadyStreamed = streamed[0];
+            } else {
+                turn = agentProvider.nextTurn(turnRequest);
+            }
             inputTokens += turn.inputTokens();
             outputTokens += turn.outputTokens();
             cacheReadTokens += turn.cacheReadTokens();
@@ -721,8 +748,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                 break;
             }
 
-            // Commentaire du tour (le cas échéant) relayé avant l'exécution de ses outils.
-            if (turn.text() != null && !turn.text().isBlank()) {
+            // Commentaire du tour (le cas échéant) relayé avant l'exécution de ses outils. En flux, il
+            // a DÉJÀ défilé mot à mot via les deltas (F-116) : le relayer entier ici le doublerait.
+            if (!textAlreadyStreamed && turn.text() != null && !turn.text().isBlank()) {
                 listener.onText(turn.text());
             }
 

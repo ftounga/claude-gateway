@@ -179,6 +179,13 @@ app:
     # Le compteur additionne les tokens TRAITÉS, cache compris : sur un tour long, l'essentiel est
     # relu au dixième du tarif, et relever le plafond ne multiplie pas la facture d'autant.
     max-turn-tokens: ${APP_ATELIER_MAX_TURN_TOKENS:4000000}
+    # Appel modèle en FLUX de la boucle maison (F-116 / SF-116-01). Actif par défaut : chaque tour
+    # consomme le flux SSE du fournisseur et fait défiler le texte mot à mot, comme Claude Code. Le
+    # corps de requête, le cache de prompt, le retry 429/529 et le décompte d'usage sont INCHANGÉS —
+    # seul le MOMENT d'affichage change (premier affichage de 9-15 s à 1-2 s par étape). Un refus ou
+    # une coupure du flux replie de toute façon sur l'appel complet, tour par tour. COUPE-CIRCUIT :
+    # `false` rétablit l'appel complet (texte en fin de tour) sans livraison.
+    streaming: ${APP_ATELIER_STREAMING:true}
     agent:
       # Managed Agents (F-28 / Phase 2, ADR-013). Flag OFF par défaut : tant que `enabled` est faux
       # et qu'aucune config n'existe, AUCUN appel réseau ni coût runtime (bootstrap inerte).

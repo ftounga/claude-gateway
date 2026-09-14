@@ -145,6 +145,65 @@ class AtelierChatServiceTest {
         assertThat(result.messageId()).isNotNull();
     }
 
+    // ------------------------------------------- F-116 / SF-116-01 : le texte défile mot à mot
+
+    @Test
+    void relaysTheAnswerAsTextDeltasWhenStreamingIsOn() {
+        // Le flux est actif par défaut : le texte de la réponse défile mot à mot via onText, au lieu
+        // d'être découvert d'un bloc à la fin du tour.
+        stubHappyPath();
+        agentProvider.emitTextDeltas = true;
+        agentProvider.enqueueFinal("bonjour le monde");
+        RecordingListener listener = new RecordingListener();
+
+        AtelierChatResult result = service.chatStreaming(userId, workspaceId, "salut", listener);
+
+        assertThat(listener.texts).containsExactly("bonjour ", "le ", "monde");
+        // La réponse persistée reste le texte complet : seul le MOMENT d'affichage change.
+        assertThat(result.reply()).isEqualTo("bonjour le monde");
+    }
+
+    @Test
+    void doesNotAlsoRelayTheFullCommentWhenItWasAlreadyStreamed() {
+        // Le commentaire d'un tour à outils défile via les deltas ; le relayer une seconde fois entier
+        // le doublerait à l'écran. Garde-fou anti-duplication (SF-116-01, D4).
+        stubHappyPath();
+        agentProvider.emitTextDeltas = true;
+        agentProvider.enqueueToolCallWithReasoning("read_file", "sig-1", "path", "notes.txt");
+        agentProvider.enqueueFinal("fini");
+        RecordingListener listener = new RecordingListener();
+
+        service.chatStreaming(userId, workspaceId, "lis notes.txt", listener);
+
+        // Le commentaire « je regarde » a défilé en deltas — jamais relayé entier en plus.
+        assertThat(listener.texts).containsExactly("je ", "regarde", "fini");
+        assertThat(listener.texts).doesNotContain("je regarde");
+    }
+
+    @Test
+    void relaysTheWholeCommentOnceWhenStreamingIsOff() {
+        // Coupe-circuit : flux désactivé => appel complet, commentaire relayé entier en fin de tour
+        // (comportement historique).
+        AtelierChatService noStream = new AtelierChatService(workspaceService, messageRepository,
+                (AiAgentProvider) agentProvider, byokKeyService, quotaService,
+                new fr.claudegateway.atelier.git.GitWorkspaceService(workspaceService, gitTokenService,
+                        gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
+                runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
+                fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(), runnerHostService,
+                new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null,
+                        null, true, false));
+        stubHappyPath();
+        agentProvider.emitTextDeltas = true; // même si le stub sait streamer, le service ne le demande pas
+        agentProvider.enqueueToolCallWithReasoning("read_file", "sig-1", "path", "notes.txt");
+        agentProvider.enqueueFinal("fini");
+        RecordingListener listener = new RecordingListener();
+
+        noStream.chatStreaming(userId, workspaceId, "lis notes.txt", listener);
+
+        // Aucun delta : le commentaire intermédiaire est relayé entier, comme avant F-116.
+        assertThat(listener.texts).containsExactly("je regarde");
+    }
+
     /** Dernier {@code tool_result} transmis au modèle : ce que l'outil a réellement rendu. */
     private String lastToolResultText() {
         AgentContentBlock.ToolResult found = null;
