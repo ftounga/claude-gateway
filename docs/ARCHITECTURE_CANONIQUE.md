@@ -771,6 +771,25 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     ou ADMIN), sur les trames `update_status` et `ready` du **poste de la session** runner.
   - Colonnes associées sur `runner_hosts` (migration `101`, SF-111-01) : `runner_contract`, `runner_java`,
     `runner_launcher`, `runner_capabilities` — ce que le runner déclare de lui-même dans `ready`.
+- **mcp_personal_tokens / mcp_token_hosts / mcp_journal** — les **jetons personnels** MCP, l'**accès
+  poste par poste** et le **journal MCP** (F-112 / SF-112-03, migration `105`). Tout est cloisonné par
+  `user_id`.
+  - `mcp_personal_tokens` : `id (uuid)`, `user_id (uuid, NOT NULL)`, `name (varchar 120, NOT NULL)`,
+    `token_hash (varchar 64, NOT NULL, UNIQUE)` — **SHA-256** du secret, jamais le clair —,
+    `token_prefix (varchar 24, NOT NULL)` — préfixe affichable `cgmcp_…` —, `scopes (varchar 500, NOT
+    NULL)` — périmètres séparés par des espaces —, `created_at (NOT NULL)`, `expires_at (NOT NULL)` —
+    **expiration obligatoire**, ≤ 90 j (imposé par le service) —, `last_used_at`, `revoked_at`. Index
+    `(user_id, created_at)`. Écrites par `McpPersonalTokenService` ; le secret n'existe qu'à la
+    création (rendu **une seule fois**).
+  - `mcp_token_hosts` : `token_id (uuid, FK mcp_personal_tokens ON DELETE CASCADE)`, `host_id (uuid,
+    FK runner_hosts ON DELETE CASCADE)`, PK `(token_id, host_id)` — les **postes accessibles** par un
+    jeton (accès poste par poste ; un poste non listé n'est pas accessible).
+  - `mcp_journal` : `id (uuid)`, `user_id (uuid, NOT NULL)`, `client (varchar 200)`, `token_id (uuid)`,
+    `auth_kind (varchar 16 : OAUTH | PERSONAL, NOT NULL)`, `tool (varchar 120)`, `host_id (uuid)`,
+    `params_summary (varchar 500)` — **les clés des paramètres, jamais leurs valeurs** (cadrage §6.6) —,
+    `result (varchar 16 : OK | ERROR | DENIED, NOT NULL)`, `duration_ms (bigint)`, `created_at (NOT
+    NULL)`. Index `(user_id, created_at)`. Écrit par un **décorateur d'outils** (`McpServerConfig`) via
+    `McpJournalService`, best-effort ; lu par l'utilisateur sur l'écran « IA connectées ».
 - **runner_hosts** — le **poste** (F-48 / SF-48-01, migration `064`). Une machine connectée, avec
   **une racine**, **un runner** et **un seul appairage** ; les projets deviennent des dossiers sous
   cette racine. C'est le déplacement d'unité de F-48 : jusque-là, chaque dossier exigeait son code
