@@ -1,0 +1,161 @@
+<div class="mcp-page">
+  <header class="mcp-header">
+    <h1>IA connectées</h1>
+    <p class="intro">
+      Connectez une IA (Claude Code, Claude Desktop, Codex…) à votre application par le serveur MCP.
+      Créez ici un <strong>jeton personnel</strong> pour les usages sans navigateur (script, intégration
+      continue). Le jeton agit avec vos droits et votre cloisonnement.
+    </p>
+    <div class="provider-warning" role="note">
+      <mat-icon aria-hidden="true">warning</mat-icon>
+      <span>
+        Ce qu'un outil renvoie part chez le fournisseur de l'IA connectée. Donnez l'accès poste par
+        poste, et n'accordez que les périmètres nécessaires.
+      </span>
+    </div>
+  </header>
+
+  @if (createdSecret(); as created) {
+    <mat-card class="secret-card" appearance="outlined">
+      <mat-card-header>
+        <mat-card-title>Votre nouveau jeton — copiez-le maintenant</mat-card-title>
+      </mat-card-header>
+      <mat-card-content>
+        <p class="secret-note">Il ne sera plus jamais affiché. S'il est perdu, révoquez-le et créez-en un autre.</p>
+        <code class="secret-value">{{ created.secret }}</code>
+        <div class="secret-actions">
+          <button mat-flat-button color="primary" type="button" (click)="copySecret()">
+            <mat-icon>content_copy</mat-icon> Copier
+          </button>
+          <button mat-button type="button" (click)="dismissSecret()">J'ai copié le jeton</button>
+        </div>
+      </mat-card-content>
+    </mat-card>
+  }
+
+  <mat-card class="create-card" appearance="outlined">
+    <mat-card-header>
+      <mat-card-title>Créer un jeton personnel</mat-card-title>
+    </mat-card-header>
+    <mat-card-content>
+      <form [formGroup]="form" (ngSubmit)="create()">
+        <mat-form-field appearance="outline" class="full">
+          <mat-label>Nom du jeton</mat-label>
+          <input matInput formControlName="name" maxlength="120" placeholder="Ex : mon poste CI" />
+          @if (form.controls.name.hasError('required') && form.controls.name.touched) {
+            <mat-error>Le nom est obligatoire.</mat-error>
+          }
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" class="full">
+          <mat-label>Expiration</mat-label>
+          <mat-select formControlName="expiresInDays">
+            @for (days of expiryChoices; track days) {
+              <mat-option [value]="days">{{ days }} jours</mat-option>
+            }
+          </mat-select>
+          <mat-hint>Expiration obligatoire, 90 jours au plus.</mat-hint>
+        </mat-form-field>
+
+        <fieldset class="group">
+          <legend>Périmètres</legend>
+          @for (scope of scopeOptions; track scope.value) {
+            <mat-checkbox
+              [checked]="selectedScopes().has(scope.value)"
+              (change)="toggleScope(scope.value, $event.checked)"
+            >
+              {{ scope.label }} <code>{{ scope.value }}</code>
+            </mat-checkbox>
+          }
+        </fieldset>
+
+        <fieldset class="group">
+          <legend>Postes accessibles</legend>
+          @if (hosts().length === 0) {
+            <p class="empty">Aucun poste : le jeton n'ouvrira aucun poste tant que vous n'en ajoutez pas.</p>
+          } @else {
+            @for (host of hosts(); track host.id) {
+              <mat-checkbox
+                [checked]="selectedHosts().has(host.id)"
+                (change)="toggleHost(host.id, $event.checked)"
+              >
+                {{ host.name }}
+              </mat-checkbox>
+            }
+          }
+        </fieldset>
+
+        <button mat-flat-button color="primary" type="submit" [disabled]="submitting()">
+          Créer le jeton
+        </button>
+      </form>
+    </mat-card-content>
+  </mat-card>
+
+  <mat-card class="tokens-card" appearance="outlined">
+    <mat-card-header>
+      <mat-card-title>Mes jetons</mat-card-title>
+    </mat-card-header>
+    <mat-card-content>
+      @if (tokens().length === 0) {
+        <p class="empty">Aucun jeton pour l'instant.</p>
+      } @else {
+        <ul class="token-list">
+          @for (token of tokens(); track token.id) {
+            <li class="token-row" [class.inactive]="token.revoked || token.expired">
+              <div class="token-main">
+                <span class="token-name">{{ token.name }}</span>
+                <code class="token-prefix">{{ token.prefix }}…</code>
+                @if (token.revoked) {
+                  <span class="badge badge-off">Révoqué</span>
+                } @else if (token.expired) {
+                  <span class="badge badge-off">Expiré</span>
+                } @else {
+                  <span class="badge badge-on">Actif</span>
+                }
+              </div>
+              <div class="token-meta">
+                <span>Expire le {{ token.expiresAt | date: 'dd/MM/yyyy' }}</span>
+                @if (token.lastUsedAt) {
+                  <span>· Dernier usage {{ token.lastUsedAt | date: 'dd/MM/yyyy HH:mm' }}</span>
+                }
+                <span>· {{ token.scopes.length }} périmètre(s) · {{ token.hostIds.length }} poste(s)</span>
+              </div>
+              @if (!token.revoked) {
+                <button mat-button color="warn" type="button" (click)="revoke(token)">Révoquer</button>
+              }
+            </li>
+          }
+        </ul>
+      }
+    </mat-card-content>
+  </mat-card>
+
+  <mat-card class="journal-card" appearance="outlined">
+    <mat-card-header>
+      <mat-card-title>Journal MCP</mat-card-title>
+      <mat-card-subtitle>Les appels des IA connectées — sans jamais le contenu échangé.</mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      @if (journal().length === 0) {
+        <p class="empty">Aucun appel enregistré.</p>
+      } @else {
+        <ul class="journal-list">
+          @for (entry of journal(); track entry.id) {
+            <li class="journal-row">
+              <span class="journal-when">{{ entry.createdAt | date: 'dd/MM HH:mm:ss' }}</span>
+              <span class="journal-tool">{{ entry.tool ?? '—' }}</span>
+              <span class="journal-client">{{ entry.client }} · {{ entry.authKind }}</span>
+              <span class="badge" [class.badge-on]="entry.result === 'OK'" [class.badge-off]="entry.result !== 'OK'">
+                {{ entry.result }}
+              </span>
+              @if (entry.durationMs !== null) {
+                <span class="journal-duration">{{ entry.durationMs }} ms</span>
+              }
+            </li>
+          }
+        </ul>
+      }
+    </mat-card-content>
+  </mat-card>
+</div>

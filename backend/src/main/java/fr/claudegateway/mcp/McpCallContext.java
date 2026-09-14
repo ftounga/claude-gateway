@@ -1,6 +1,8 @@
 package fr.claudegateway.mcp;
 
 import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 
 import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.server.McpSyncServerExchange;
@@ -8,15 +10,28 @@ import io.modelcontextprotocol.server.McpSyncServerExchange;
 import fr.claudegateway.auth.AuthenticatedUser;
 
 /**
- * Contexte d'un appel d'outil MCP : l'identité authentifiée du jeton présenté, capturée sur le
- * thread servlet au moment de la requête HTTP (avant que le SDK ne bascule éventuellement de thread).
+ * Contexte d'un appel d'outil MCP : l'identité authentifiée du porteur présenté et ce qu'il ouvre
+ * (origine de l'authentification, jeton personnel éventuel, périmètres, postes accessibles), capturé
+ * sur le thread servlet au moment de la requête HTTP.
  *
- * <p>C'est le <b>point d'entrée unique</b> de l'isolation multi-tenant côté MCP : un outil ne lit
- * jamais le {@code user_id} d'un paramètre d'entrée, il le prend ici, résolu depuis
- * l'authentification (cadrage F-112 §6.2). En SF-112-01 le contexte ne porte que l'identité ;
- * SF-112-02/03 l'enrichissent (périmètres, postes accessibles, jeton) sans changer ce point d'accès.</p>
+ * <p>C'est le <b>point d'entrée unique</b> de l'isolation multi-tenant côté MCP (cadrage F-112 §6.2) :
+ * un outil ne lit jamais le {@code user_id}, les périmètres ou les postes d'un paramètre d'entrée, il
+ * les prend ici, résolus depuis l'authentification. Le journal MCP (SF-112-03) s'en sert aussi.</p>
+ *
+ * @param user        identité authentifiée
+ * @param authKind    origine (OAuth ou jeton personnel)
+ * @param tokenId     jeton personnel utilisé (null pour OAuth)
+ * @param clientLabel libellé lisible du client, pour le journal
+ * @param scopes      périmètres accordés
+ * @param hostIds     postes accessibles (jeton personnel ; vide pour OAuth en fondation)
  */
-public record McpCallContext(AuthenticatedUser user) {
+public record McpCallContext(
+        AuthenticatedUser user,
+        McpAuthKind authKind,
+        UUID tokenId,
+        String clientLabel,
+        Set<String> scopes,
+        Set<UUID> hostIds) {
 
     /** Clé sous laquelle le contexte est déposé dans le {@link McpTransportContext}. */
     public static final String KEY = "fr.claudegateway.mcp.callContext";
@@ -39,5 +54,15 @@ public record McpCallContext(AuthenticatedUser user) {
         }
         Object value = exchange.transportContext().get(KEY);
         return value instanceof McpCallContext context ? Optional.of(context) : Optional.empty();
+    }
+
+    /** Vrai si le périmètre demandé a été accordé au porteur. */
+    public boolean hasScope(String scope) {
+        return scopes != null && scopes.contains(scope);
+    }
+
+    /** Vrai si le poste est accessible par ce porteur (accès poste par poste, cadrage §4). */
+    public boolean canAccessHost(UUID hostId) {
+        return hostIds != null && hostIds.contains(hostId);
     }
 }

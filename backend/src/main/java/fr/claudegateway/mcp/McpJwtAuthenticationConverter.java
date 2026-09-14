@@ -2,7 +2,9 @@ package fr.claudegateway.mcp;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.core.convert.converter.Converter;
@@ -44,24 +46,35 @@ public class McpJwtAuthenticationConverter implements Converter<Jwt, AbstractAut
                 .map(user -> {
                     AuthenticatedUser principal =
                             new AuthenticatedUser(user.getId(), user.getEmail(), user.getRole());
+                    Set<String> scopes = scopes(jwt);
                     UsernamePasswordAuthenticationToken authentication =
-                            new UsernamePasswordAuthenticationToken(principal, jwt, authorities(jwt));
+                            new UsernamePasswordAuthenticationToken(principal, jwt, authorities(scopes));
+                    authentication.setDetails(new McpAuthDetails(
+                            McpAuthKind.OAUTH, null, "Client OAuth", scopes, Set.of()));
                     return (AbstractAuthenticationToken) authentication;
                 })
                 .orElseThrow(() -> new McpUnknownSubjectException(
                         "Jeton MCP dont le sujet ne correspond à aucun utilisateur"));
     }
 
-    private Collection<GrantedAuthority> authorities(Jwt jwt) {
-        List<GrantedAuthority> authorities = new ArrayList<>();
+    private Set<String> scopes(Jwt jwt) {
+        Set<String> scopes = new LinkedHashSet<>();
         Object scope = jwt.getClaims().get("scope");
-        if (scope instanceof Collection<?> scopes) {
-            scopes.forEach(s -> authorities.add(new SimpleGrantedAuthority("SCOPE_" + s)));
+        if (scope instanceof Collection<?> values) {
+            values.forEach(s -> scopes.add(String.valueOf(s)));
         } else if (scope instanceof String scopeString && !scopeString.isBlank()) {
             for (String s : scopeString.split(" ")) {
-                authorities.add(new SimpleGrantedAuthority("SCOPE_" + s));
+                if (!s.isBlank()) {
+                    scopes.add(s);
+                }
             }
         }
+        return scopes;
+    }
+
+    private Collection<GrantedAuthority> authorities(Set<String> scopes) {
+        List<GrantedAuthority> authorities = new ArrayList<>();
+        scopes.forEach(s -> authorities.add(new SimpleGrantedAuthority("SCOPE_" + s)));
         return authorities;
     }
 

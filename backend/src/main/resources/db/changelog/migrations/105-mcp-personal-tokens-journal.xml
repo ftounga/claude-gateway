@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-112 / SF-112-03 — Jetons personnels MCP, accès poste par poste, et journal MCP.
+
+      Trois tables, toutes cloisonnées par `user_id` :
+      - `mcp_personal_tokens` : les jetons personnels de l'utilisateur, stockés HACHÉS (jamais le
+        clair). Expiration OBLIGATOIRE (≤ 90 j, imposé par le service). Le préfixe affichable aide à
+        reconnaître un jeton dans la liste. `revoked_at` non nul = révoqué.
+      - `mcp_token_hosts` : les postes accessibles PAR jeton (accès poste par poste, cadrage §4). Un
+        poste non listé n'est pas accessible. Cascade sur le jeton et sur le poste.
+      - `mcp_journal` : une ligne par appel d'outil MCP, SANS contenu (paramètres résumés par leurs
+        clés). Consultable par l'utilisateur.
+    -->
+    <changeSet id="105-mcp-personal-tokens" author="claude-gateway">
+        <createTable tableName="mcp_personal_tokens">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="name" type="varchar(120)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="token_hash" type="varchar(64)">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uq_mcp_personal_tokens_hash"/>
+            </column>
+            <column name="token_prefix" type="varchar(24)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="scopes" type="varchar(500)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+            <column name="expires_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+            <column name="last_used_at" type="timestamp with time zone"/>
+            <column name="revoked_at" type="timestamp with time zone"/>
+        </createTable>
+        <createIndex tableName="mcp_personal_tokens" indexName="idx_mcp_personal_tokens_user">
+            <column name="user_id"/>
+            <column name="created_at"/>
+        </createIndex>
+
+        <createTable tableName="mcp_token_hosts">
+            <column name="token_id" type="uuid">
+                <constraints nullable="false"
+                             foreignKeyName="fk_mcp_token_hosts_token"
+                             references="mcp_personal_tokens(id)"
+                             deleteCascade="true"/>
+            </column>
+            <column name="host_id" type="uuid">
+                <constraints nullable="false"
+                             foreignKeyName="fk_mcp_token_hosts_host"
+                             references="runner_hosts(id)"
+                             deleteCascade="true"/>
+            </column>
+        </createTable>
+        <addPrimaryKey tableName="mcp_token_hosts" columnNames="token_id, host_id"
+                       constraintName="pk_mcp_token_hosts"/>
+
+        <createTable tableName="mcp_journal">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="client" type="varchar(200)"/>
+            <column name="token_id" type="uuid"/>
+            <column name="auth_kind" type="varchar(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="tool" type="varchar(120)"/>
+            <column name="host_id" type="uuid"/>
+            <column name="params_summary" type="varchar(500)"/>
+            <column name="result" type="varchar(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="duration_ms" type="bigint"/>
+            <column name="created_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="mcp_journal" indexName="idx_mcp_journal_user_created">
+            <column name="user_id"/>
+            <column name="created_at"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable tableName="mcp_journal"/>
+            <dropTable tableName="mcp_token_hosts"/>
+            <dropTable tableName="mcp_personal_tokens"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

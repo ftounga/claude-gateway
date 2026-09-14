@@ -16,8 +16,11 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.web.access.BearerTokenAccessDeniedHandler;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
+
+import fr.claudegateway.mcp.token.McpPersonalTokenAuthenticationFilter;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import com.nimbusds.jose.JWSAlgorithm;
@@ -48,7 +51,8 @@ public class McpResourceServerConfig {
             HttpSecurity http,
             JWKSource<SecurityContext> jwkSource,
             McpResourceProperties resourceProperties,
-            McpJwtAuthenticationConverter jwtAuthenticationConverter) throws Exception {
+            McpJwtAuthenticationConverter jwtAuthenticationConverter,
+            McpPersonalTokenAuthenticationFilter personalTokenFilter) throws Exception {
 
         NimbusJwtDecoder jwtDecoder = mcpJwtDecoder(jwkSource, resourceProperties);
         AuthenticationEntryPoint entryPoint = resourceMetadataEntryPoint();
@@ -64,12 +68,33 @@ public class McpResourceServerConfig {
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .authenticationEntryPoint(entryPoint)
                         .accessDeniedHandler(new BearerTokenAccessDeniedHandler())
+                        // Le serveur de ressources OAuth ignore les jetons personnels (cgmcp_…) :
+                        // ils sont authentifiés en amont par McpPersonalTokenAuthenticationFilter.
+                        // Sans cela, ce filtre tenterait de valider un cgmcp_ comme un JWT et
+                        // renverrait 401, écrasant l'authentification déjà posée.
+                        .bearerTokenResolver(ignorePersonalTokens())
                         .jwt(jwt -> jwt
                                 .decoder(jwtDecoder)
                                 .jwtAuthenticationConverter(jwtAuthenticationConverter)))
-                .exceptionHandling(ex -> ex.authenticationEntryPoint(entryPoint));
+                .exceptionHandling(ex -> ex.authenticationEntryPoint(entryPoint))
+                // Jetons personnels (cgmcp_…) authentifiés AVANT le serveur de ressources OAuth :
+                // le filtre ne traite que ce préfixe et laisse les jetons d'accès OAuth au filtre aval.
+                .addFilterBefore(personalTokenFilter, BearerTokenAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    /**
+     * Résolveur de porteur qui laisse passer les jetons OAuth mais <b>ignore</b> les jetons
+     * personnels (préfixe {@code cgmcp_}), déjà traités par le filtre dédié.
+     */
+    private org.springframework.security.oauth2.server.resource.web.BearerTokenResolver ignorePersonalTokens() {
+        var delegate = new org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver();
+        return request -> {
+            String token = delegate.resolve(request);
+            return fr.claudegateway.mcp.token.McpPersonalTokenService.looksLikePersonalToken(token)
+                    ? null : token;
+        };
     }
 
     /**
