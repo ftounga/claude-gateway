@@ -116,7 +116,14 @@ export type VigieError = 'none' | 'network' | 'forbidden' | 'not-entitled';
     MatTooltipModule,
   ],
   templateUrl: './vigie.component.html',
-  styleUrl: './vigie.component.scss',
+  // Découpé pour tenir le budget de style par feuille (SF-30-16) : l'ossature et le poste ouvert
+  // partagés d'abord (même cascade qu'avant, quand `_forge-layout` était `@use` en tête), puis les
+  // contenus propres à la Vigie.
+  styleUrls: [
+    './vigie-forge-shell.scss',
+    './vigie-forge-detail.scss',
+    './vigie.component.scss',
+  ],
 })
 export class VigieComponent implements OnInit {
   private readonly atelier = inject(AtelierService);

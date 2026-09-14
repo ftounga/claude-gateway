@@ -1,8 +1,8 @@
 /* La Vigie (F-106 / SF-106-02) — la forme maître–détail de la Forge refondue (DESIGN_SYSTEM.md §16),
-   employée telle quelle : `_forge-layout.scss`. Cet écran n'ajoute que ses propres contenus, et aucune
-   couleur hors charte : §2, §5, §12. */
-@use '../postes/forge-layout';
-
+   employée telle quelle. Découpé pour le budget de style (SF-30-16) : l'ossature et le poste ouvert
+   partagés arrivent par deux feuilles voisines (`vigie-forge-shell.scss`, `vigie-forge-detail.scss`,
+   listées avant celle-ci dans `styleUrls` pour préserver la cascade). Cette feuille ne porte que les
+   contenus propres à l'écran, et aucune couleur hors charte : §2, §5, §12. */
 .vigie {
   /* La synchro en mots : un fait du bandeau, sans couleur d'état. */
   &__sync {
