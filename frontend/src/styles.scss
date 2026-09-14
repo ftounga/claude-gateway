@@ -41,16 +41,23 @@ html {
   --cg-text-secondary: #6B7A8D; // ardoise legalcase
   --cg-divider: #E0E4EA;        // filet legalcase
 
-  // Surface du TERMINAL TEAMS, « Prune » (F-89 / SF-89-07, DESIGN_SYSTEM.md §15) — ajout de palette
-  // demandé par le PO, BORNÉ au terminal Teams et à ses tuiles de mosaïque. Nulle part ailleurs.
-  --cg-terminal-teams-bg: #231A36;    // fond du flux
-  --cg-terminal-teams-bar: #1B1429;   // barre, en-tête de tuile, code
-  --cg-terminal-teams-card: #2E2345;  // carte de réunion
-  --cg-terminal-teams-rule: #43335F;  // filets
-  --cg-terminal-teams-text: #D9CFEA;  // texte du flux
-  --cg-terminal-teams-title: #FFFFFF; // titres, demande, commande
-  --cg-terminal-teams-muted: #B5A6CF; // texte secondaire (≥ 4,5:1 sur fond, barre et carte)
-  --cg-terminal-teams-error: #F28B82; // échec lisible sur fond sombre (--cg-error y tombe à 3,3:1)
+  // Surface du TERMINAL TEAMS, « Papier » (F-89 / SF-89-09, DESIGN_SYSTEM.md §15) — REMPLACE la peau
+  // sombre « Prune » de SF-89-07 (jugée trop proche de la Forge par le PO en production). Ajout de
+  // palette demandé par le PO, BORNÉ au terminal Teams et à ses tuiles de mosaïque. Nulle part ailleurs.
+  // Opposé à la Forge par la SEULE couleur : sombre contre clair. Police, taille, disposition inchangées.
+  --cg-terminal-teams-bg: #FAF8F3;       // fond clair, papier chaud
+  --cg-terminal-teams-bar: #EFEAF9;      // bandeau lavande pâle, en-tête de tuile
+  --cg-terminal-teams-bar-ink: #2B2250;  // texte du bandeau (indigo, ≥ 12:1 sur le bandeau)
+  --cg-terminal-teams-bar-rule: #DCD3F0; // filet sous le bandeau
+  --cg-terminal-teams-card: #FFFFFF;     // carte de réunion, bloc, code
+  --cg-terminal-teams-rule: #E6E0D2;     // filets (carte, sections, blocs)
+  --cg-terminal-teams-text: #2A2F3A;     // texte du flux
+  --cg-terminal-teams-title: #1F2430;    // titres de bloc et de section
+  --cg-terminal-teams-muted: #5E6472;    // texte secondaire (≥ 5:1 sur fond, bandeau et carte)
+  --cg-terminal-teams-message: #9A4A12;  // accent CHAUD : la demande, les gestes attendus (interrompre, plafond, chrono)
+  --cg-terminal-teams-step: #4B3F8F;     // accent FROID : commandes, étapes, liens, structure de diff
+  --cg-terminal-teams-error: #C62828;    // échec (rouge charte approfondi ; --cg-error tombe à 4,2:1 sur le bandeau)
+  --cg-terminal-teams-add: #166F38;      // ajout de diff (vert charte approfondi ; --cg-success tombe à ~2,9:1 sur fond clair)
 
   --cg-font-heading: 'Space Grotesk', 'Inter', sans-serif;
   --cg-font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;

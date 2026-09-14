@@ -28,7 +28,7 @@ describe('AtelierTerminalComponent — boutons lisibles hors Teams (F-30 / SF-30
   // Les fonds sombres d'un terminal, par leurs valeurs calculées.
   const PRIMARY = 'rgb(26, 58, 92)'; // --cg-primary #1A3A5C — terminal de projet / poste
   const NAVY_2 = 'rgb(20, 29, 51)'; // --cg-navy-2 #141D33 — tuile de mosaïque, blocs internes
-  const TEAMS_BG = 'rgb(35, 26, 54)'; // --cg-terminal-teams-bg #231A36 — contrôle « ne change pas »
+  const TEAMS_BG = 'rgb(250, 248, 243)'; // --cg-terminal-teams-bg #FAF8F3 — contrôle « ne change pas »
 
   // Les contrôles que cette subfeature répare : boutons SANS encre propre (texte, cerclé, icône),
   // le sélecteur de cible, et le bloc courriel. Les boutons PLEINS de marque (or + blanc, `styles.scss`)
@@ -312,7 +312,7 @@ describe('AtelierTerminalComponent — boutons lisibles hors Teams (F-30 / SF-30
 
   // ------------------------------------------------------------------ ce qui ne change pas
 
-  it('AUCUN autre écran ne change : un terminal Teams garde sa surface `#231A36`', () => {
+  it('AUCUN autre écran ne change : un terminal Teams garde sa surface `#FAF8F3`', () => {
     component.messages = thread;
     component.teamsTerminal = true;
     fixture.detectChanges();

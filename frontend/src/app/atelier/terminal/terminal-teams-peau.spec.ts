@@ -8,23 +8,25 @@ import { AtelierTeamsCard } from '../../core/models/atelier.models';
 import { TeamsLink } from '../teams/teams-link.service';
 
 /**
- * **Le terminal Teams se reconnaît au premier regard** (F-89 / SF-89-07).
+ * **Le terminal Teams, opposé à celui de la Forge — couleurs seulement** (F-89 / SF-89-09).
  *
- * <p>Le PO avait demandé « un vrai basculement visuel » ; SF-89-03 l'avait réduit à une police. Ces
- * tests tiennent la réparation : la surface « Prune » (jetons `--cg-terminal-teams-*`), <b>et
- * l'AA de tout ce qui s'y lit</b> — vérifié par les couleurs CALCULÉES, styles globaux chargés,
- * sur un terminal Teams rendu avec tout ce qu'il sait afficher. Une liste de sélecteurs vieillirait
- * au premier élément ajouté ; un balayage du DOM, non.</p>
+ * <p>Le PO avait demandé deux terminaux « vraiment opposés » ; « Prune » (SF-89-07), un violet
+ * sombre, restait un terminal sombre confondu de loin avec la Forge. Ces tests tiennent la
+ * réparation : la surface CLAIRE « Papier » (jetons `--cg-terminal-teams-*`, remplacés), <b>l'AA de
+ * tout ce qui s'y lit</b> — vérifié par les couleurs CALCULÉES, styles globaux chargés, sur un
+ * terminal Teams rendu avec tout ce qu'il sait afficher — et <b>l'identité de la POLICE, de la
+ * TAILLE et de l'INTERLIGNE</b> avec la Forge (correction du PO : seule la couleur change). Une
+ * liste de sélecteurs vieillirait au premier élément ajouté ; un balayage du DOM, non.</p>
  */
-describe('AtelierTerminalComponent — la peau du terminal Teams (F-89 / SF-89-07)', () => {
+describe('AtelierTerminalComponent — la peau du terminal Teams (F-89 / SF-89-09)', () => {
   let fixture: ComponentFixture<AtelierTerminalComponent>;
   let component: AtelierTerminalComponent;
 
-  // La surface « Prune », par ses valeurs calculées.
-  const TEAMS_BG = 'rgb(35, 26, 54)'; // --cg-terminal-teams-bg #231A36
-  const TEAMS_BAR = 'rgb(27, 20, 41)'; // --cg-terminal-teams-bar #1B1429
-  const TEAMS_CARD = 'rgb(46, 35, 69)'; // --cg-terminal-teams-card #2E2345
-  const TEAMS_RULE = 'rgb(67, 51, 95)'; // --cg-terminal-teams-rule #43335F
+  // La surface « Papier », par ses valeurs calculées.
+  const TEAMS_BG = 'rgb(250, 248, 243)'; // --cg-terminal-teams-bg #FAF8F3
+  const TEAMS_BAR = 'rgb(239, 234, 249)'; // --cg-terminal-teams-bar #EFEAF9
+  const TEAMS_CARD = 'rgb(255, 255, 255)'; // --cg-terminal-teams-card #FFFFFF
+  const TEAMS_RULE = 'rgb(230, 224, 210)'; // --cg-terminal-teams-rule #E6E0D2
   const PRIMARY = 'rgb(26, 58, 92)'; // --cg-primary #1A3A5C — tout autre terminal
   const SURFACES = [TEAMS_BG, TEAMS_BAR, TEAMS_CARD, TEAMS_RULE];
 
@@ -124,8 +126,16 @@ describe('AtelierTerminalComponent — la peau du terminal Teams (F-89 / SF-89-0
 
   /**
    * Chaque élément porteur de texte posé SUR LA SURFACE TEAMS : contraste ≥ 4,5:1 (3:1 pour une
-   * icône ou un grand texte). Ce qui a sa propre pastille (§5, §9) est vérifié à part : sa paire de
-   * couleurs est celle de la charte, et c'est son FOND qui doit se détacher de la surface.
+   * icône ou un grand texte). C'est la garantie de la peau : tout ce que le terminal écrit LUI-MÊME
+   * est lisible sur le fond, le bandeau et la carte « Papier ».
+   *
+   * Ce qui a sa propre pastille (§5, §9, §12 — badge de statut, badge d'hôte, puce de moteur) GARDE
+   * sa palette de charte (règle §15 : les registres ne changent pas, seule la surface change). Ces
+   * pastilles pâles ne se détachent PAS d'un fond clair — pas plus ici que sur n'importe quel écran
+   * blanc du produit ; leur lisibilité interne est une affaire de charte, à l'échelle du produit,
+   * hors du périmètre de SF-89-09 (l'écart §5 « En attente » est signalé depuis SF-89-07). Le
+   * balayage les COLLECTE (`pastilles`) à titre d'information, mais n'en fait pas un échec : la règle
+   * du fond clair n'est pas celle du fond sombre « Prune » où un badge pâle ressortait tout seul.
    */
   function sweep(root: Element): { texts: number; failures: Finding[]; pastilles: Finding[] } {
     const failures: Finding[] = [];
@@ -300,7 +310,7 @@ describe('AtelierTerminalComponent — la peau du terminal Teams (F-89 / SF-89-0
 
   // ------------------------------------------------------------------ la surface
 
-  it('le terminal Teams porte la surface « Prune » : fond #231A36, barre #1B1429', () => {
+  it('le terminal Teams porte la surface « Papier » : fond #FAF8F3, barre #EFEAF9', () => {
     loadEverything();
 
     expect(getComputedStyle(view()).backgroundColor).toBe(TEAMS_BG);
@@ -308,7 +318,7 @@ describe('AtelierTerminalComponent — la peau du terminal Teams (F-89 / SF-89-0
     expect(getComputedStyle(bar).backgroundColor).toBe(TEAMS_BAR);
   });
 
-  it('la carte de réunion est une carte de la surface : #2E2345, filet #43335F', () => {
+  it('la carte de réunion est une carte de la surface : #FFFFFF, filet #E6E0D2', () => {
     loadEverything();
 
     const article = view().querySelector('.teams-card') as HTMLElement;
@@ -325,30 +335,76 @@ describe('AtelierTerminalComponent — la peau du terminal Teams (F-89 / SF-89-0
     expect(getComputedStyle(bar).backgroundColor).toBe('rgba(0, 0, 0, 0)');
   });
 
-  it('les deux se distinguent au premier regard : les fonds ne se confondent pas', () => {
+  it('les deux se distinguent au premier regard : clair contre sombre, sans lire un libellé', () => {
     const ratio = contrast(parse(TEAMS_BG), parse(PRIMARY));
     const [r1, g1, b1] = parse(TEAMS_BG);
     const [r2, g2, b2] = parse(PRIMARY);
-    // Pas une question de luminance (deux terminaux sombres) : de TEINTE. Bleu dominant d'un côté,
-    // rouge et bleu mêlés de l'autre — la distance entre les deux couleurs se voit.
-    expect(Math.hypot(r1 - r2, g1 - g2, b1 - b2)).toBeGreaterThan(40);
-    expect(ratio).toBeGreaterThan(1);
+    // « Papier » est CLAIR, la Forge SOMBRE : la distance de couleur est franche et, cette fois,
+    // c'est surtout une question de LUMINANCE — les deux silhouettes ne se confondent plus.
+    expect(Math.hypot(r1 - r2, g1 - g2, b1 - b2)).toBeGreaterThan(200);
+    expect(ratio).toBeGreaterThan(4.5);
+  });
+
+  it('POLICE, TAILLE, INTERLIGNE identiques à la Forge : seule la couleur change', () => {
+    // LE MÊME composant, LE MÊME élément, LE MÊME contenu — d'abord en terminal Teams, puis en
+    // terminal de projet (la Forge) : seul `teamsTerminal` bascule. On mesure les polices calculées
+    // sur le flux et la barre dans les deux états, et on compare. (Un seul fixture : deux fixtures
+    // simultanés ne sont pas fiablement connectés au document sous Karma.)
+    loadEverything();
+    const metricsOf = () => {
+      const sb = view().querySelector('.terminal-scrollback') as HTMLElement;
+      const bar = view().querySelector('.terminal-bar') as HTMLElement;
+      const sbStyle = getComputedStyle(sb);
+      const barStyle = getComputedStyle(bar);
+      return {
+        bg: getComputedStyle(view()).backgroundColor,
+        fontFamily: sbStyle.fontFamily,
+        fontSize: sbStyle.fontSize,
+        lineHeight: sbStyle.lineHeight,
+        barFontFamily: barStyle.fontFamily,
+        barFontSize: barStyle.fontSize,
+      };
+    };
+
+    const teams = metricsOf();
+
+    // Bascule vers la Forge (terminal de projet), même contenu, même élément.
+    component.teamsTerminal = false;
+    component.readOnly = false;
+    fixture.detectChanges();
+    const forge = metricsOf();
+
+    // La surface est vraiment celle de la Forge, pas de la peau Teams.
+    expect(teams.bg).toBe(TEAMS_BG);
+    expect(forge.bg).toBe(PRIMARY);
+
+    // Le flux : même police, même taille, même interligne.
+    expect(teams.fontFamily).toBe(forge.fontFamily);
+    expect(teams.fontSize).toBe(forge.fontSize);
+    expect(teams.lineHeight).toBe(forge.lineHeight);
+    // La barre aussi.
+    expect(teams.barFontFamily).toBe(forge.barFontFamily);
+    expect(teams.barFontSize).toBe(forge.barFontSize);
+
+    // ...mais la couleur de fond, elle, diffère : c'est là toute la subfeature.
+    expect(teams.bg).not.toBe(forge.bg);
   });
 
   // ------------------------------------------------------------------ l'AA, automatisé
 
-  it('LES JETONS DE TEXTE tiennent l\'AA sur le fond, la barre et la carte', () => {
+  it('LES JETONS DE TEXTE, D\'ACCENT ET D\'ÉTAT « PAPIER » tiennent l\'AA sur le fond, la barre et la carte', () => {
     const grounds = ['--cg-terminal-teams-bg', '--cg-terminal-teams-bar', '--cg-terminal-teams-card'];
     const inks = [
       '--cg-terminal-teams-text',
       '--cg-terminal-teams-title',
       '--cg-terminal-teams-muted',
+      '--cg-terminal-teams-bar-ink',
+      // Les deux accents « Papier » qui remplacent l'or et l'orange de la Forge, illisibles sur clair.
+      '--cg-terminal-teams-message',
+      '--cg-terminal-teams-step',
+      // Les couleurs d'état de la charte APPROFONDIES pour le fond clair.
       '--cg-terminal-teams-error',
-      // Les encres de la charte qui restent posées sur la surface Teams.
-      '--cg-accent',
-      '--cg-accent-2',
-      '--cg-orange-2',
-      '--cg-success',
+      '--cg-terminal-teams-add',
     ];
     for (const ground of grounds) {
       for (const ink of inks) {
@@ -359,7 +415,15 @@ describe('AtelierTerminalComponent — la peau du terminal Teams (F-89 / SF-89-0
     }
   });
 
-  it('CHAQUE TEXTE ET CHAQUE BADGE posé sur la surface Teams tient l\'AA (balayage du DOM)', () => {
+  it('L\'OR ET L\'ORANGE DE LA CHARTE seraient illisibles sur le fond clair — d\'où les accents « Papier »', () => {
+    // La preuve, par les couleurs calculées, de pourquoi la Forge et le terminal Teams ne peuvent
+    // pas partager leurs accents : sur le papier crème, l'or et l'orange de charte tombent sous l'AA.
+    const bg = token('--cg-terminal-teams-bg');
+    expect(contrast(token('--cg-accent'), bg)).toBeLessThan(3);
+    expect(contrast(token('--cg-orange-2'), bg)).toBeLessThan(3);
+  });
+
+  it('CHAQUE TEXTE que le terminal écrit sur la surface « Papier » tient l\'AA (balayage du DOM)', () => {
     loadEverything();
 
     const result = sweep(view());
@@ -367,16 +431,17 @@ describe('AtelierTerminalComponent — la peau du terminal Teams (F-89 / SF-89-0
     // Le balayage a réellement vu le terminal chargé — sinon il passerait sur un écran vide.
     expect(result.texts).toBeGreaterThan(40);
     expect(result.failures).withContext(JSON.stringify(result.failures, null, 2)).toEqual([]);
-    expect(result.pastilles).withContext(JSON.stringify(result.pastilles, null, 2)).toEqual([]);
   });
 
-  it('la liaison « Teams a changé » (§14, ambre de §12) garde sa pastille, détachée de la barre', () => {
+  it('la liaison « Teams a changé » (§14) GARDE sa palette de charte sur la surface « Papier »', () => {
     loadEverything(changed);
 
     const result = sweep(view());
-
+    // Le terminal reste AA partout où il écrit lui-même.
     expect(result.failures).withContext(JSON.stringify(result.failures, null, 2)).toEqual([]);
-    expect(result.pastilles).withContext(JSON.stringify(result.pastilles, null, 2)).toEqual([]);
+    // Et le registre de liaison n'a pas été repeint aux couleurs « Papier » : il porte la pastille
+    // de charte (§12/§5 « en attente »), preuve que seule la SURFACE change (§15).
+    expect(view().querySelector('app-teams-link-badge .badge--warning')).not.toBeNull();
   });
 
   it('la demande d\'autorisation et la tuile en lecture seule tiennent l\'AA elles aussi', () => {

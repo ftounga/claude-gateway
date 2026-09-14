@@ -116,10 +116,11 @@
   }
 }
 
-/* F-89 / SF-89-07 — LE MÊME MARKDOWN SUR LA SURFACE « PRUNE » DU TERMINAL TEAMS (charte §15).
+/* F-89 / SF-89-09 — LE MÊME MARKDOWN SUR LA SURFACE CLAIRE « PAPIER » DU TERMINAL TEAMS (charte §15).
    Titres et gras dans l'encre de titre de la surface, code et filets dans ses jetons : un pavé
-   navy posé sur la prune dirait « un autre terminal ». Le lien garde l'orange de la charte
-   (≥ 7:1 sur la surface). Aucun autre terminal n'est concerné. */
+   navy posé sur le papier dirait « un autre terminal ». Le lien suit l'accent étapes/liens
+   « Papier » (#4B3F8F, ≥ 8:1 sur la surface) — l'orange de charte y est illisible (~2,2:1). Aucun
+   autre terminal n'est concerné. */
 .terminal-view--teams .terminal-agent ::ng-deep {
   h1,
   h2,
@@ -129,6 +130,10 @@
   h6,
   strong {
     color: var(--cg-terminal-teams-title);
+  }
+
+  a {
+    color: var(--cg-terminal-teams-step);
   }
 
   code,

@@ -42,7 +42,7 @@ Toute divergence doit être explicitement signalée et validée.
 
 > Thème Angular Material : palette `primary = orange` (boutons d'action de marque), `tertiary = azure`. Le navy structurel est piloté par les jetons CSS `--cg-*` (custom), pas par la palette Material.
 
-> **Surface du terminal Teams** (ajout F-89 / SF-89-07, 2026-09-13) : jetons `--cg-terminal-teams-*`, **bornés au terminal Teams et à ses tuiles de mosaïque** — voir §15.
+> **Surface du terminal Teams** (F-89 / SF-89-07, refaite par **SF-89-09**, 2026-09-14 : peau claire « Papier ») : jetons `--cg-terminal-teams-*`, **bornés au terminal Teams et à ses tuiles de mosaïque** — voir §15.
 
 ---
 
@@ -451,63 +451,81 @@ palette**.
 
 ---
 
-## 15 — Le compte rendu dans le fil (ajout F-89 / SF-89-03, 2026-09-12 ; amendé SF-89-07, 2026-09-13)
+## 15 — Le compte rendu dans le fil (ajout F-89 / SF-89-03, 2026-09-12 ; peau refaite SF-89-07 puis **SF-89-09**, 2026-09-14)
 
 > **Aucun cinquième registre.** Cette section dit comment un **compte rendu** se lit dans un
-> terminal — et pourquoi le basculement vers Teams est **chromatique et typographique**.
+> terminal — et pourquoi le basculement vers Teams est **chromatique, et rien d'autre**.
 >
-> **Amendement SF-89-07 (2026-09-13), demandé par le PO** : SF-89-03 avait écrit « le basculement est
-> typographique, pas chromatique ». C'était une **réduction du besoin**, pas un arbitrage : le PO
-> avait demandé « un vrai basculement visuel » et « sa propre peau », et le terminal Teams se
-> confondait avec le terminal de poste. Il porte désormais **sa propre surface, « Prune »**
-> (tranché le 2026-09-13 — maquette `docs/features/F-89/maquette-peau-terminal-teams.html`). **Ajout
-> de palette explicitement demandé par le PO, borné au terminal Teams et à ses tuiles.**
+> **Le terminal Teams est un DOCUMENT CLAIR, opposé au terminal SOMBRE de la Forge.** SF-89-03 avait
+> réduit le basculement à une police ; SF-89-07 avait ajouté une surface sombre, « Prune », qui
+> restait confondue de loin avec la Forge. **SF-89-09 (2026-09-14) la remplace par « Papier »**, une
+> surface **claire** (fond `#FAF8F3`) : les deux terminaux sont désormais opposés par la **seule
+> couleur** — clair contre sombre. (Maquette `docs/features/F-89/maquette-peau-terminal-teams.html`.)
+>
+> **Correction du PO (2026-09-14)** : « quand j'ai demandé une différence entre les deux terminaux,
+> je parle juste de la couleur. La police, la taille me vont. » **Police, taille et disposition sont
+> donc IDENTIQUES à la Forge** — le passage en prose (police body) de SF-89-03 est **retiré** ; un
+> test vérifie l'égalité des `font-family`/`font-size`/`line-height` des deux terminaux.
 
-Le terminal Teams est un terminal comme les autres : même mécanique, même barre, mêmes gestes. Ce
-qui change est **sa surface**, **ce qu'il affiche** — des blocs riches (carte de réunion, moments,
-liste) — et **la façon de les lire**.
+Le terminal Teams est un terminal comme les autres : même mécanique, même barre, mêmes gestes, **même
+police et même taille que la Forge**. Ce qui change est **sa couleur de surface** et **ce qu'il
+affiche** — des blocs riches (carte de réunion, moments, liste), qui gardent leur propre typographie.
 
-### Le basculement est chromatique et typographique
+### Le basculement est chromatique — et seulement chromatique
 
-| | Terminal de projet / de poste | Terminal Teams |
+| | Terminal de projet / de poste (la Forge) | Terminal Teams (« Papier ») |
 |---|---|---|
-| Surface du flux | `--cg-primary` (tuile : `--cg-navy-2`) | `--cg-terminal-teams-bg` `#231A36` — **la sienne**, en tuile aussi |
-| Barre, en-tête de tuile, code | fond de la surface / `--cg-navy-2` | `--cg-terminal-teams-bar` `#1B1429` |
-| Filets | `--cg-navy-2` | `--cg-terminal-teams-rule` `#43335F` |
-| Texte du flux | `--cg-divider` | `--cg-terminal-teams-text` `#D9CFEA` |
-| Titres, demande, commande | `--cg-surface` | `--cg-terminal-teams-title` `#FFFFFF` |
-| Texte secondaire | `--cg-text-secondary` | `--cg-terminal-teams-muted` `#B5A6CF` |
-| Échec (diff retiré, publication échouée) | `--cg-error` | `--cg-terminal-teams-error` `#F28B82` |
+| Surface du flux | `--cg-primary` **sombre** (tuile : `--cg-navy-2`) | `--cg-terminal-teams-bg` `#FAF8F3` — **claire**, en tuile aussi |
+| Bandeau, en-tête de tuile, code | fond de la surface / `--cg-navy-2` | `--cg-terminal-teams-bar` `#EFEAF9` (lavande), encre `--cg-terminal-teams-bar-ink` `#2B2250`, filet `--cg-terminal-teams-bar-rule` `#DCD3F0` |
+| Filets (carte, sections, blocs) | `--cg-navy-2` | `--cg-terminal-teams-rule` `#E6E0D2` |
+| Texte du flux | `--cg-divider` | `--cg-terminal-teams-text` `#2A2F3A` |
+| Titres | `--cg-surface` | `--cg-terminal-teams-title` `#1F2430` |
+| Texte secondaire | `--cg-text-secondary` | `--cg-terminal-teams-muted` `#5E6472` |
+| Accent CHAUD : la demande, les gestes attendus | or/orange de charte | `--cg-terminal-teams-message` `#9A4A12` |
+| Accent FROID : commandes, étapes, liens, diffs | or/orange de charte | `--cg-terminal-teams-step` `#4B3F8F` |
+| Cartes et blocs | — | `--cg-terminal-teams-card` `#FFFFFF`, filet `#E6E0D2` |
+| Échec (diff retiré, publication échouée) | `--cg-error` | `--cg-terminal-teams-error` `#C62828` |
+| Ajout (diff ajouté) | `--cg-success` | `--cg-terminal-teams-add` `#166F38` |
 | Barre : libellé à côté du client | nom du projet | **« Conversations Teams »** |
-| Flux | `--cg-font-mono` | `--cg-font-body` |
+| Police et taille du flux | `--cg-font-mono`, 13 px / 1,6 | **identiques** (SF-89-09) |
 | Blocs | texte uniquement | texte **+** carte, moments, liste |
 
 **Pourquoi une surface, et pas un registre.** La charte porte quatre registres — identité (§9),
 mission (§10), vie (§11), décision attendue (§12) — et §14 a posé la règle : *un cinquième rendrait
-les quatre autres illisibles*. La surface Prune **n'en est pas un** : elle ne signale aucun état, elle
-dit **dans quel outil on est**, comme le fond navy dit « terminal ». Les registres s'y posent **avec
-leurs palettes inchangées** : la couleur d'identité du client, les pastilles de mission, le signe de
-vie, l'ambre de l'attente, l'indicateur de liaison.
+les quatre autres illisibles*. La surface « Papier » **n'en est pas un** : elle ne signale aucun
+état, elle dit **dans quel outil on est**, comme le fond navy dit « terminal ». Les registres s'y
+posent **avec leurs palettes inchangées** : la couleur d'identité du client, les pastilles de
+mission, le signe de vie, l'ambre de l'attente, l'indicateur de liaison.
 
-**Pourquoi sombre.** On doit **reconnaître un terminal** (§13), pas découvrir un écran : « Papier »
-(clair) a été écarté pour cela, « Pétrole » parce qu'il restait trop proche du bleu du poste. Prune
-se distingue au premier regard **sans rappeler la marque Microsoft**.
+**Pourquoi clair.** Un violet sombre restait un terminal sombre, de même silhouette que la Forge à
+distance ; c'est le constat du PO en production. Le **clair** oppose les deux terminaux au premier
+regard, par la **luminance** — et « Papier » (crème chaud + lavande) le fait **sans rappeler la
+marque Microsoft**.
 
-**Pourquoi la prose.** **Un compte rendu est de la prose, pas une sortie de shell**, et le monospace y
-affirmerait « ceci est exactement ce que la machine a répondu » — ce qui serait faux.
+**Pourquoi les accents changent.** Sur la Forge, l'or et l'orange de charte signent la demande, les
+gestes et la structure des diffs ; sur le fond clair ils tombent sous l'AA (~2,2:1). Ils sont donc
+repris par les **deux accents « Papier »** — chaud `--cg-terminal-teams-message` et froid
+`--cg-terminal-teams-step` —, et le rouge/vert d'état par les couleurs de charte **approfondies**
+pour le clair. **Les registres, eux, ne changent pas : seule la surface, et ce qui s'y pose, change.**
 
 ### Règles d'emploi de la surface — non négociables
 
 - **Bornée.** Les jetons `--cg-terminal-teams-*` ne s'emploient **que** sous `.terminal-view--teams`,
   dans la carte de réunion (qui n'existe que là) et sur une tuile Teams de la mosaïque
   (`.mosaique__tile--teams`). **Aucun autre terminal ne change**, et des tests le vérifient.
-- **L'AA sur tout ce qui s'y lit.** Chaque texte posé sur la surface (fond, barre, carte) tient
-  **≥ 4,5:1** ; une pastille qui porte son propre fond (§5, §9) garde sa paire de couleurs et **son
-  fond se détache de la surface** (≥ 3:1). **Automatisé** : `terminal-teams-peau.spec.ts` balaie le
-  DOM d'un terminal Teams chargé et calcule chaque contraste sur les couleurs calculées.
+- **Même police que la Forge.** Le flux et la barre gardent les `font-family`, `font-size` et
+  `line-height` de la Forge (correction du PO du 2026-09-14) ; seuls les blocs riches ont leur propre
+  typographie, sans équivalent dans la Forge. Un test compare les deux terminaux.
+- **L'AA sur tout ce que le terminal écrit.** Chaque texte que le terminal pose sur la surface (fond,
+  bandeau, carte) tient **≥ 4,5:1** (3:1 pour un grand titre ou une icône). **Automatisé** :
+  `terminal-teams-peau.spec.ts` balaie le DOM d'un terminal Teams chargé et calcule chaque contraste
+  sur les couleurs calculées. Une **pastille de statut/identité de charte** (§5, §9, §12) garde sa
+  palette : sur un fond clair elle ne s'en détache pas plus que sur n'importe quel écran blanc du
+  produit, et sa lisibilité interne est une affaire de charte, à l'échelle du produit (l'écart §5
+  « En attente » reste signalé). La règle du fond clair n'est **pas** celle du fond sombre « Prune »,
+  où un badge pâle ressortait tout seul.
 - **Les boutons Material sans encre propre** reçoivent leurs jetons de la surface
-  (`--mdc-text-button-label-text-color`, `--mdc-outlined-button-*`, `--mat-standard-button-toggle-*`) ;
-  ceux qui portent l'orange de la charte le gardent.
+  (`--mdc-text-button-label-text-color`, `--mdc-outlined-button-*`, `--mat-standard-button-toggle-*`).
 - **Une tuile Teams est le terminal Teams** : le même composant reçoit `[teamsTerminal]`, et la
   mosaïque le sait par `teamsTerminal` du registre (`GET /api/terminals/live`).
 
@@ -515,11 +533,11 @@ affirmerait « ceci est exactement ce que la machine a répondu » — ce qui se
 
 | Élément | Registre | Palette |
 |---|---|---|
-| Le bloc | **carte de la surface Teams** | `--cg-terminal-teams-card` `#2E2345`, filet `--cg-terminal-teams-rule` |
+| Le bloc | **carte de la surface Teams** | `--cg-terminal-teams-card` `#FFFFFF`, filet `--cg-terminal-teams-rule` `#E6E0D2` |
 | Titre du bloc | Space Grotesk 600, 18 px | encre `--cg-terminal-teams-title` |
 | Titre de section | Inter 600, 14 px, filet sous le titre | encre `--cg-terminal-teams-title`, filet `--cg-terminal-teams-rule` |
 | Ligne | Inter 400, 14 px | encre `--cg-terminal-teams-text` |
-| Source d'une ligne (auteur, heure, certitude, lien) | 12 px | `--cg-terminal-teams-muted`, lien `--cg-accent` |
+| Source d'une ligne (auteur, heure, certitude, lien) | 12 px | `--cg-terminal-teams-muted`, lien `--cg-terminal-teams-step` |
 | Heures et identifiants | `--cg-font-mono` | — |
 
 ### Règles d'emploi — non négociables
