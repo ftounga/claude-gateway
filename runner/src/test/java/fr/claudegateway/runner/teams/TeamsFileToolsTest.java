@@ -248,4 +248,67 @@ class TeamsFileToolsTest {
         assertFalse(json.path("diagnostic").toString().contains("contoso"));
         assertFalse(json.path("diagnostic").toString().contains("ProjetIAM"));
     }
+
+    // ------------------------------------------------------------------ teams_read_docx (SF-108-06)
+
+    private Path docx(String name, String documentXml) throws Exception {
+        Path file = home.resolve(name);
+        try (java.util.zip.ZipOutputStream zip =
+                new java.util.zip.ZipOutputStream(Files.newOutputStream(file))) {
+            zip.putNextEntry(new java.util.zip.ZipEntry("word/document.xml"));
+            zip.write(documentXml.getBytes(StandardCharsets.UTF_8));
+            zip.closeEntry();
+        }
+        return file;
+    }
+
+    @Test
+    @DisplayName("Lire un .docx local : texte relayé, paragraphes, aucun geste, aucune confirmation")
+    void reads_a_local_docx() throws Exception {
+        PaperTeams teams = new PaperTeams();
+        Path file = docx("transcription.docx", "<w:document xmlns:w=\"x\"><w:body>"
+                + "<w:p><w:r><w:t>Point un</w:t></w:r></w:p>"
+                + "<w:p><w:r><w:t>Point deux</w:t></w:r></w:p></w:body></w:document>");
+
+        JsonNode json = call(teams.toolsWithFiles(root, nothingSynced()), TeamsTools.READ_DOCX,
+                mapper.createObjectNode().put("file", file.toString()));
+
+        assertTrue(json.path("read").asBoolean(), json.toString());
+        assertEquals("Point un\nPoint deux", json.path("documentText").asText());
+        assertTrue(json.path("text").asText().contains("Point un"), json.path("text").asText());
+        assertEquals(2, json.path("paragraphs").asInt());
+        assertFalse(json.path("truncated").asBoolean());
+        // Une lecture LOCALE : aucun geste dans le navigateur.
+        assertTrue(teams.browser.navigations().isEmpty());
+        assertTrue(teams.browser.scripts().isEmpty());
+    }
+
+    @Test
+    @DisplayName("Un fichier qui n'est pas un .docx : BODY_UNAVAILABLE, rien d'inventé")
+    void a_non_docx_is_named() throws Exception {
+        PaperTeams teams = new PaperTeams();
+        Path file = home.resolve("pasun.docx");
+        Files.writeString(file, "ceci n'est pas un docx");
+
+        JsonNode json = call(teams.toolsWithFiles(root, nothingSynced()), TeamsTools.READ_DOCX,
+                mapper.createObjectNode().put("file", file.toString()));
+
+        assertFalse(json.path("read").asBoolean());
+        assertEquals("BODY_UNAVAILABLE", json.path("gaps").get(0).path("kind").asText());
+    }
+
+    @Test
+    @DisplayName("Chemin relatif ou fichier absent : refus nommé, rien n'est lu")
+    void a_relative_or_missing_path_is_refused() throws Exception {
+        PaperTeams teams = new PaperTeams();
+
+        JsonNode relative = call(teams.toolsWithFiles(root, nothingSynced()), TeamsTools.READ_DOCX,
+                mapper.createObjectNode().put("file", "transcription.docx"));
+        JsonNode absent = call(teams.toolsWithFiles(root, nothingSynced()), TeamsTools.READ_DOCX,
+                mapper.createObjectNode().put("file", home.resolve("absent.docx").toString()));
+
+        assertFalse(relative.path("read").asBoolean());
+        assertTrue(relative.path("gaps").get(0).path("detail").asText().contains("ABSOLU"));
+        assertEquals("NOT_FOUND", absent.path("gaps").get(0).path("kind").asText());
+    }
 }

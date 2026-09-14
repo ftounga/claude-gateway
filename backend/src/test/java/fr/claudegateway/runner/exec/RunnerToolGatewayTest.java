@@ -221,6 +221,11 @@ class RunnerToolGatewayTest {
                 .isEqualTo(RunnerToolGateway.TEAMS_UPLOAD_TIMEOUT_MS);
         assertThat(RunnerToolGateway.teamsTimeoutFor("teams_replace_version"))
                 .isEqualTo(RunnerToolGateway.TEAMS_UPLOAD_TIMEOUT_MS);
+        // F-108 / SF-108-06 : une copie prend le long délai d'envoi ; lire un .docx local, le délai fichiers.
+        assertThat(RunnerToolGateway.teamsTimeoutFor("teams_copy"))
+                .isEqualTo(RunnerToolGateway.TEAMS_UPLOAD_TIMEOUT_MS);
+        assertThat(RunnerToolGateway.teamsTimeoutFor("teams_read_docx"))
+                .isEqualTo(RunnerToolGateway.TEAMS_FILES_TIMEOUT_MS);
         assertThat(RunnerToolGateway.teamsTimeoutFor("teams_delete"))
                 .isEqualTo(RunnerToolGateway.TEAMS_FILES_TIMEOUT_MS);
         assertThat(RunnerToolGateway.teamsTimeoutFor("teams_status"))

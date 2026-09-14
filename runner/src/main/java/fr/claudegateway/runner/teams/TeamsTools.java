@@ -79,13 +79,20 @@ public final class TeamsTools implements ToolExecutor {
      */
     public static final String READ_FILE = "teams_read_file";
     /**
-     * <b>Les six écritures</b> dans Microsoft 365 (F-108 / SF-108-04). Le runner ne les reçoit
-     * qu'après l'autorisation de l'utilisateur, donnée pour CHACUNE côté gateway (SF-108-02).
+     * <b>Lit le texte d'un {@code .docx} déjà sur la machine</b> — la transcription Word
+     * (F-108 / SF-108-06). Une lecture : aucune confirmation.
+     */
+    public static final String READ_DOCX = "teams_read_docx";
+    /**
+     * <b>Les sept écritures</b> dans Microsoft 365 (F-108 / SF-108-04, SF-108-06). Le runner ne les
+     * reçoit qu'après l'autorisation de l'utilisateur, donnée pour CHACUNE côté gateway (SF-108-02).
      */
     public static final String CREATE_FOLDER = "teams_create_folder";
     public static final String UPLOAD_FILE = "teams_upload_file";
     public static final String RENAME = "teams_rename";
     public static final String MOVE = "teams_move";
+    /** Copier vers un autre dossier, du même site ou d'un autre site (F-108 / SF-108-06). */
+    public static final String COPY = "teams_copy";
     public static final String DELETE = "teams_delete";
     public static final String REPLACE_VERSION = "teams_replace_version";
     public static final String CAPABILITY = "teams";
@@ -94,8 +101,8 @@ public final class TeamsTools implements ToolExecutor {
     public static final List<String> CATALOG = List.of(STATUS, FIND_CONVERSATIONS,
             READ_CONVERSATION, MENTIONS, SEARCH, FIND_MEETINGS, MEETING_TRANSCRIPT,
             MEETING_RECORDING, MEETING_MOMENTS, MOMENTS_STATUS, CAPTURE_START, CAPTURE_STOP,
-            CAPTURE_STATUS, LIST_FILES, READ_FILE, CREATE_FOLDER, UPLOAD_FILE, RENAME, MOVE, DELETE,
-            REPLACE_VERSION);
+            CAPTURE_STATUS, LIST_FILES, READ_FILE, READ_DOCX, CREATE_FOLDER, UPLOAD_FILE, RENAME, MOVE,
+            COPY, DELETE, REPLACE_VERSION);
 
     private final ObjectMapper mapper = new ObjectMapper();
     private final TeamsSession session;
@@ -367,11 +374,13 @@ public final class TeamsTools implements ToolExecutor {
             case CAPTURE_STATUS -> captureStatus(input);
             case LIST_FILES -> files == null ? filesUnavailable(LIST_FILES) : files.listFiles(input);
             case READ_FILE -> files == null ? filesUnavailable(READ_FILE) : files.readFile(input);
+            case READ_DOCX -> files == null ? filesUnavailable(READ_DOCX) : files.readDocx(input);
             case CREATE_FOLDER -> files == null ? filesUnavailable(CREATE_FOLDER)
                     : writes().createFolder(input);
             case UPLOAD_FILE -> files == null ? filesUnavailable(UPLOAD_FILE) : writes().upload(input);
             case RENAME -> files == null ? filesUnavailable(RENAME) : writes().rename(input);
             case MOVE -> files == null ? filesUnavailable(MOVE) : writes().move(input);
+            case COPY -> files == null ? filesUnavailable(COPY) : writes().copy(input);
             case DELETE -> files == null ? filesUnavailable(DELETE) : writes().delete(input);
             case REPLACE_VERSION -> files == null ? filesUnavailable(REPLACE_VERSION)
                     : writes().replaceVersion(input);

@@ -198,8 +198,9 @@ final class TeamsWriteTools {
         if (!destination.origin().equals(source.origin())
                 || !destination.sitePath().equalsIgnoreCase(source.sitePath())) {
             ctx.gaps.add(TeamsGap.of(TeamsGapKind.WRITE_FAILED, destination.label(),
-                    "déplacement entre sites non pris en charge : lis le fichier puis dépose-le à "
-                            + "destination"));
+                    "déplacement entre sites : utilise " + TeamsTools.COPY + " (copier vers l'autre "
+                            + "site), vérifie à destination, puis " + TeamsTools.DELETE
+                            + " (corbeille du site) — deux autorisations"));
             return ctx.refused("Je n'ai rien déplacé.");
         }
         return relocate(ctx, source, destination.child(source.name()), "déplacé");
@@ -295,9 +296,90 @@ final class TeamsWriteTools {
         });
     }
 
+    // ------------------------------------------------------------------ teams_copy
+
+    /**
+     * <b>Copier vers un autre dossier — du même site ou d'un autre site</b> (F-108 / SF-108-06).
+     *
+     * <p>Sur le <b>même site</b>, la copie est <b>revérifiée</b> comme un déplacement l'est. Sur un
+     * <b>autre site</b>, elle ne peut pas l'être depuis l'onglet de la source : le résultat le dit
+     * ({@code verifyAtDestination}), {@code done} reste faux, et l'original n'est jamais supprimé ici.
+     * Le déplacement inter-site reste donc <b>copie puis corbeille, deux autorisations</b> — l'original
+     * ne part à la corbeille (restaurable) que sur une autorisation séparée de {@code teams_delete}.</p>
+     */
+    ToolOutcome copy(JsonNode input) {
+        Context ctx = new Context(TeamsTools.COPY);
+        SharePointLocation source = location(ctx, TeamsAsk.text(input, "target", "url", "source"),
+                "target");
+        SharePointLocation destFolder = location(ctx, TeamsAsk.text(input, "destination", "location"),
+                "destination");
+        String name = TeamsAsk.text(input, "name");
+        if (source == null || destFolder == null || (!name.isBlank() && !validName(ctx, name))) {
+            return ctx.refused("Je n'ai rien copié.");
+        }
+        SharePointLocation target = destFolder.child(name.isBlank() ? source.name() : name.strip());
+        ctx.item(target, "");
+        ctx.result.put("source").put("label", source.label());
+        // Vérifiable = même hôte que la source : l'onglet posé sur la source peut relire la
+        // destination. Un autre hôte (OneDrive -my, autre tenant) ne l'est pas depuis cet onglet.
+        boolean verifiable = target.origin().equals(source.origin());
+        if (verifiable && target.serverPath().equals(source.serverPath())) {
+            return ctx.refused("Rien à faire : la copie viserait l'élément lui-même.");
+        }
+        return ctx.inVisit(source, visit -> {
+            SharePointWrites.Existing what = SharePointWrites.probe(visit, source);
+            if (what.gap() != null) {
+                ctx.gaps.add(what.gap());
+                return "Je n'ai rien copié : je n'ai pas pu lire la source.";
+            }
+            if (what.nothing()) {
+                ctx.gaps.add(TeamsGap.of(TeamsGapKind.NOT_FOUND, source.label(),
+                        "aucun fichier ni dossier à cet emplacement"));
+                return "Je n'ai rien copié.";
+            }
+            ctx.result.with("kind", what.folder() ? "folder" : "file");
+            if (verifiable) {
+                SharePointWrites.Existing clash = SharePointWrites.probe(visit, target);
+                if (clash.gap() != null) {
+                    ctx.gaps.add(clash.gap());
+                    return "Rien n'a été copié : je n'ai pas pu vérifier la destination.";
+                }
+                if (!clash.nothing()) {
+                    ctx.gaps.add(TeamsGap.of(TeamsGapKind.ALREADY_EXISTS, target.label(),
+                            "un élément porte déjà ce nom à destination : rien n'est écrasé"));
+                    return "Rien n'a été copié.";
+                }
+            }
+            SharePointPage.Answer answer = SharePointWrites.copyTo(visit, source, target, what.folder());
+            if (!answer.ok()) {
+                ctx.gaps.add(SharePointWrites.gapOfWrite(answer, target.label()));
+                return "Rien n'a été copié.";
+            }
+            if (verifiable) {
+                SharePointWrites.Existing after = SharePointWrites.probe(visit, target);
+                if (after.nothing() || after.gap() != null) {
+                    return ctx.unsure(target, "la copie");
+                }
+                ctx.done(null);
+                return "C'est fait : « " + source.name() + " » a été copié — la copie est « "
+                        + target.label() + " ».";
+            }
+            // Autre site : non vérifiable depuis cet onglet. On ne dit JAMAIS « c'est fait ».
+            ctx.result.json().put("verifyAtDestination", true);
+            return "« " + source.name() + " » a été copié selon Microsoft 365 (réponse OK) vers « "
+                    + target.label() + " », sur un AUTRE site : je ne peux pas le vérifier depuis cet "
+                    + "onglet. VÉRIFIE à destination AVANT toute suppression de l'original — la "
+                    + "suppression (" + TeamsTools.DELETE + ") va à la corbeille du site, restaurable.";
+        });
+    }
+
     // ------------------------------------------------------------------ plomberie
 
-    /** Crée le champ de dépôt, y pose le fichier local, puis envoie le dépôt. */
+    /**
+     * Crée le champ de dépôt, y pose le fichier local, puis envoie le dépôt — <b>simple</b> jusqu'à
+     * {@link SharePointWrites#SIMPLE_UPLOAD_LIMIT_BYTES}, <b>découpé</b> au-delà (F-108 / SF-108-06).
+     * Dans les deux cas, Chrome lit le disque ; les octets ne passent jamais par la liaison.
+     */
     private SharePointPage.Answer dropAndUpload(SharePointPage.Visit visit, SharePointLocation folder,
             String name, Path local, boolean overwrite) {
         String inputId = "cg-drop-" + UUID.randomUUID().toString().replace("-", "");
@@ -309,7 +391,9 @@ final class TeamsWriteTools {
         if (!visit.actions().setFileInputFiles("#" + inputId, List.of(local.toString()))) {
             return SharePointPage.Answer.failed(0, "le fichier n'a pas pu être posé dans la page");
         }
-        return SharePointWrites.upload(visit, folder, name, inputId, overwrite);
+        return sizeOf(local) > SharePointWrites.SIMPLE_UPLOAD_LIMIT_BYTES
+                ? SharePointWrites.uploadChunked(visit, folder, name, inputId, overwrite)
+                : SharePointWrites.upload(visit, folder, name, inputId, overwrite);
     }
 
     private SharePointLocation location(Context ctx, String raw, String field) {
@@ -359,7 +443,7 @@ final class TeamsWriteTools {
         }
         if (sizeOf(normalized) > SharePointWrites.MAX_UPLOAD_BYTES) {
             ctx.gaps.add(TeamsGap.of(TeamsGapKind.WRITE_FAILED, normalized.toString(),
-                    "fichier de plus de 250 Mo : le dépôt fragmenté n'est pas pris en charge"));
+                    "fichier de plus de 15 Gio : trop gros pour un dépôt, même découpé"));
             return null;
         }
         return normalized;

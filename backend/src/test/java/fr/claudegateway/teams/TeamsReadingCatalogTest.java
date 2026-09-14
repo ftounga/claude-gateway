@@ -49,11 +49,13 @@ class TeamsReadingCatalogTest {
             // parce que le RUNNER les exécute, comme les autres ; ce qui les distingue n'est pas où
             // ils tournent, c'est qu'ils CRÉENT au lieu de relire (voir TeamsToolCatalog.CAPTURE).
             "teams_capture_start", "teams_capture_stop", "teams_capture_status",
-            // F-108 / SF-108-03 — les deux outils de LECTURE des fichiers Microsoft 365.
-            "teams_list_files", "teams_read_file",
-            // F-108 / SF-108-04 — les six ÉCRITURES : le runner les exécute, après autorisation.
-            "teams_create_folder", "teams_upload_file", "teams_rename", "teams_move", "teams_delete",
-            "teams_replace_version");
+            // F-108 / SF-108-03 — les deux outils de LECTURE des fichiers Microsoft 365 ;
+            // F-108 / SF-108-06 — la lecture du texte d'un .docx local (transcription Word).
+            "teams_list_files", "teams_read_file", "teams_read_docx",
+            // F-108 / SF-108-04 — les six ÉCRITURES ; SF-108-06 — la copie (même site ou autre site) :
+            // le runner les exécute, après autorisation.
+            "teams_create_folder", "teams_upload_file", "teams_rename", "teams_move", "teams_copy",
+            "teams_delete", "teams_replace_version");
 
     @Mock private TeamsAccessService teamsAccess;
     @Mock private HostSpaceService spaces;

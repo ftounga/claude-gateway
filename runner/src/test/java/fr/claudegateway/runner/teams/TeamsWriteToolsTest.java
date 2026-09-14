@@ -28,6 +28,10 @@ class TeamsWriteToolsTest {
 
     static final String GENERAL = TeamsFileToolsTest.GENERAL;
     static final String PLAN = TeamsFileToolsTest.PLAN;
+    /** Un autre site du MÊME hôte (contoso.sharepoint.com) : la copie y est vérifiable. */
+    static final String FINANCE = "https://contoso.sharepoint.com/sites/Finance/Shared%20Documents";
+    /** Un AUTRE hôte (OneDrive professionnel) : la copie ne s'y vérifie pas depuis cet onglet. */
+    static final String ONEDRIVE = "https://contoso-my.sharepoint.com/personal/u_contoso_com/Documents";
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -288,6 +292,152 @@ class TeamsWriteToolsTest {
         assertEquals("00000000-0000-0000-0000-0000000000b1", json.path("recycleBinItemId").asText());
         assertTrue(json.path("text").asText().contains("CORBEILLE"));
         assertTrue(teams.browser.scripts().stream().anyMatch(script -> script.contains("/recycle()")));
+    }
+
+    // ------------------------------------------------------------------ copier (SF-108-06)
+
+    @Test
+    @DisplayName("Copier vers un autre site du même hôte : CopyFileByPath, destination revérifiée, done")
+    void copy_within_the_same_host_is_verified() throws Exception {
+        PaperTeams teams = new PaperTeams();
+        teams.browser
+                .sharePoint("verifier-le-fichier", 200, TeamsSamples.read("sharepoint-file.json"))
+                .sharePoint("verifier-le-fichier", 404, TeamsSamples.read("sharepoint-error-404.json"))
+                .sharePoint("verifier-le-dossier", 404, TeamsSamples.read("sharepoint-error-404.json"))
+                .sharePoint("copier", 200, TeamsSamples.read("sharepoint-copy.json"))
+                .sharePoint("verifier-le-fichier", 200, TeamsSamples.read("sharepoint-file.json"));
+
+        JsonNode json = call(tools(teams), TeamsTools.COPY,
+                ask().put("target", PLAN).put("destination", FINANCE));
+
+        assertTrue(json.path("done").asBoolean(), json.toString());
+        assertTrue(json.path("text").asText().startsWith("C'est fait"), json.path("text").asText());
+        assertFalse(json.path("verifyAtDestination").asBoolean());
+        assertEquals("Finance › Shared Documents › plan-migration.docx",
+                json.path("item").path("label").asText());
+        assertTrue(teams.browser.scripts().stream().anyMatch(script ->
+                script.contains("SP.MoveCopyUtil.CopyFileByPath") && script.contains("overwrite: false")));
+        assertTrue(json.path("viewport").asText().contains("remis"));
+    }
+
+    @Test
+    @DisplayName("Copier vers un AUTRE hôte : réponse OK mais non vérifiable, jamais « c'est fait »")
+    void copy_across_hosts_is_never_called_done() throws Exception {
+        PaperTeams teams = new PaperTeams();
+        teams.browser
+                .sharePoint("verifier-le-fichier", 200, TeamsSamples.read("sharepoint-file.json"))
+                .sharePoint("copier", 200, TeamsSamples.read("sharepoint-copy.json"));
+
+        JsonNode json = call(tools(teams), TeamsTools.COPY,
+                ask().put("target", PLAN).put("destination", ONEDRIVE));
+
+        assertFalse(json.path("done").asBoolean(), json.toString());
+        assertTrue(json.path("verifyAtDestination").asBoolean());
+        assertTrue(json.path("text").asText().contains("VÉRIFIE"), json.path("text").asText());
+        assertFalse(json.path("text").asText().contains("C'est fait"));
+        // La destination est bien portée dans l'appel de copie, sur l'autre hôte.
+        assertTrue(teams.browser.scripts().stream().anyMatch(script ->
+                script.contains("SP.MoveCopyUtil.CopyFileByPath")
+                        && script.contains("contoso-my.sharepoint.com")));
+    }
+
+    @Test
+    @DisplayName("Copier une source absente : NOT_FOUND, rien n'est copié")
+    void copy_requires_an_existing_source() throws Exception {
+        PaperTeams teams = new PaperTeams();
+        teams.browser
+                .sharePoint("verifier-le-fichier", 404, TeamsSamples.read("sharepoint-error-404.json"))
+                .sharePoint("verifier-le-dossier", 404, TeamsSamples.read("sharepoint-error-404.json"));
+
+        JsonNode json = call(tools(teams), TeamsTools.COPY,
+                ask().put("target", PLAN).put("destination", FINANCE));
+
+        assertFalse(json.path("done").asBoolean());
+        assertEquals("NOT_FOUND", json.path("gaps").get(0).path("kind").asText());
+        assertFalse(ran(teams, "copier"));
+    }
+
+    @Test
+    @DisplayName("Copier là où un élément existe déjà (même hôte) : ALREADY_EXISTS, rien n'est écrasé")
+    void copy_never_overwrites() throws Exception {
+        PaperTeams teams = new PaperTeams();
+        teams.browser
+                .sharePoint("verifier-le-fichier", 200, TeamsSamples.read("sharepoint-file.json"))
+                .sharePoint("verifier-le-fichier", 200, TeamsSamples.read("sharepoint-file.json"));
+
+        JsonNode json = call(tools(teams), TeamsTools.COPY,
+                ask().put("target", PLAN).put("destination", FINANCE));
+
+        assertFalse(json.path("done").asBoolean());
+        assertEquals("ALREADY_EXISTS", json.path("gaps").get(0).path("kind").asText());
+        assertFalse(ran(teams, "copier"));
+    }
+
+    // ------------------------------------------------------------------ gros fichiers (SF-108-06)
+
+    @Test
+    @DisplayName("Déposer au-delà de 250 Mo : session d'envoi découpée, aucun octet dans la liaison")
+    void a_large_file_goes_through_a_chunked_upload() throws Exception {
+        PaperTeams teams = new PaperTeams();
+        Path big = sparseFile("gros.bin", 300L * 1024 * 1024);
+        teams.browser
+                .sharePoint("verifier-le-fichier", 404, TeamsSamples.read("sharepoint-error-404.json"))
+                .sharePoint("verifier-le-dossier", 404, TeamsSamples.read("sharepoint-error-404.json"))
+                .sharePoint("deposer-par-fragments", 200,
+                        TeamsSamples.read("sharepoint-file-uploaded-large.json"));
+
+        JsonNode json = call(tools(teams), TeamsTools.UPLOAD_FILE,
+                ask().put("file", big.toString()).put("location", GENERAL));
+
+        assertTrue(json.path("done").asBoolean(), json.toString());
+        assertEquals(big.toString(), teams.browser.droppedFiles().get(0));
+        assertTrue(teams.browser.sentCommands().contains(CdpCommands.SET_FILE_INPUT_FILES));
+        assertTrue(teams.browser.scripts().stream().anyMatch(script ->
+                script.contains("AddUsingPath") && script.contains("StartUpload")
+                        && script.contains("ContinueUpload") && script.contains("FinishUpload")));
+        // Le fichier découpé n'a jamais servi le chemin simple d'un bloc.
+        assertFalse(ran(teams, "deposer-le-fichier"));
+        assertEquals(314572800L, json.path("item").path("size").asLong());
+    }
+
+    @Test
+    @DisplayName("Fichier au-delà du plafond dur (15 Gio) : refus AVANT tout geste")
+    void a_file_over_the_hard_cap_moves_nothing() throws Exception {
+        PaperTeams teams = new PaperTeams();
+        Path enormous = sparseFile("enorme.bin", 15L * 1024 * 1024 * 1024 + 1);
+
+        JsonNode json = call(tools(teams), TeamsTools.UPLOAD_FILE,
+                ask().put("file", enormous.toString()).put("location", GENERAL));
+
+        assertFalse(json.path("done").asBoolean());
+        assertEquals("WRITE_FAILED", json.path("gaps").get(0).path("kind").asText());
+        assertTrue(json.path("gaps").get(0).path("detail").asText().contains("15 Gio"));
+        assertTrue(teams.browser.navigations().isEmpty());
+        assertTrue(teams.browser.scripts().isEmpty());
+    }
+
+    @Test
+    @DisplayName("Page qui renverrait tout : aucun secret ne sort d'une copie")
+    void nothing_secret_leaves_a_copy() throws Exception {
+        PaperTeams teams = new PaperTeams();
+        teams.browser
+                .sharePoint("verifier-le-fichier", 200, TeamsSamples.read("sharepoint-file.json"))
+                .sharePointUnfiltered("copier", TeamsSamples.read("sharepoint-files-secrets.json"));
+
+        ToolOutcome outcome = tools(teams).execute(TeamsTools.COPY,
+                ask().put("target", PLAN).put("destination", ONEDRIVE));
+
+        assertFalse(outcome.content().contains("SECRET"), outcome.content());
+        assertFalse(outcome.content().contains("tempauth"), outcome.content());
+    }
+
+    /** Un fichier creux : la taille logique demandée, sans écrire les octets sur le disque. */
+    private Path sparseFile(String name, long size) throws Exception {
+        Path file = home.resolve(name);
+        try (java.io.RandomAccessFile raf = new java.io.RandomAccessFile(file.toFile(), "rw")) {
+            raf.setLength(size);
+        }
+        return file;
     }
 
     // ------------------------------------------------------------------ gardes

@@ -107,6 +107,11 @@ public class TeamsToolCatalog {
      * (F-108 / SF-108-03). Une <b>lecture</b> : aucune confirmation.
      */
     public static final String READ_FILE = "teams_read_file";
+    /**
+     * <b>Lit le texte d'un {@code .docx} déjà sur la machine</b> — la transcription Word
+     * (F-108 / SF-108-06). Une <b>lecture</b> : aucune confirmation.
+     */
+    public static final String READ_DOCX = "teams_read_docx";
 
     /**
      * <b>Les outils de LECTURE, dans l'ordre où ils sont donnés à l'agent</b> — et la seule liste
@@ -122,8 +127,9 @@ public class TeamsToolCatalog {
     public static final List<String> CATALOG = List.of(STATUS, FIND_CONVERSATIONS,
             READ_CONVERSATION, MENTIONS, SEARCH, FIND_MEETINGS, MEETING_TRANSCRIPT,
             MEETING_RECORDING, MEETING_MOMENTS, MOMENTS_STATUS, CAPTURE_START, CAPTURE_STOP,
-            CAPTURE_STATUS, LIST_FILES, READ_FILE, "teams_create_folder", "teams_upload_file",
-            "teams_rename", "teams_move", "teams_delete", "teams_replace_version");
+            CAPTURE_STATUS, LIST_FILES, READ_FILE, READ_DOCX, "teams_create_folder",
+            "teams_upload_file", "teams_rename", "teams_move", "teams_copy", "teams_delete",
+            "teams_replace_version");
 
     /**
      * <b>Les outils qui CRÉENT</b> (F-91), par opposition à tous les autres, qui <b>relisent</b>.
@@ -168,8 +174,10 @@ public class TeamsToolCatalog {
     public static final String UPLOAD_FILE = "teams_upload_file";
     /** Renommer un fichier ou un dossier (F-108 / SF-108-04). */
     public static final String RENAME = "teams_rename";
-    /** Déplacer un fichier ou un dossier (F-108 / SF-108-04). */
+    /** Déplacer un fichier ou un dossier, même site (F-108 / SF-108-04). */
     public static final String MOVE = "teams_move";
+    /** Copier un fichier ou un dossier, même site ou autre site (F-108 / SF-108-06). */
+    public static final String COPY = "teams_copy";
     /** Supprimer un fichier ou un dossier (F-108 / SF-108-04). */
     public static final String DELETE = "teams_delete";
     /** Remplacer un document par une nouvelle version — télécharger → modifier → redéposer (F-108). */
@@ -181,9 +189,11 @@ public class TeamsToolCatalog {
      * emplacement nommés en clair ; aucun n'est couvert par « Tout autoriser pour ce message » :
      * <b>chaque écriture</b> est confirmée. La lecture et le téléchargement, eux, ne demandent rien.
      *
-     * <p>Poster un message, répondre, réagir <b>ne sont pas ici</b> : ils restent hors périmètre.</p>
+     * <p>Poster un message, répondre, réagir <b>ne sont pas ici</b> : ils restent hors périmètre.
+     * {@code teams_copy} (F-108 / SF-108-06) en fait partie : un déplacement inter-site est une copie
+     * puis une suppression, donc <b>deux</b> écritures, donc <b>deux</b> autorisations.</p>
      */
-    public static final List<String> WRITE = List.of(CREATE_FOLDER, UPLOAD_FILE, RENAME, MOVE,
+    public static final List<String> WRITE = List.of(CREATE_FOLDER, UPLOAD_FILE, RENAME, MOVE, COPY,
             DELETE, REPLACE_VERSION);
 
     /** Vrai si ce nom d'outil <b>écrit</b> dans Microsoft 365, et exige donc une confirmation. */
@@ -208,6 +218,8 @@ public class TeamsToolCatalog {
             case UPLOAD_FILE -> "Déposer le fichier « " + name + " »" + where;
             case RENAME -> "Renommer « " + name + " »" + where;
             case MOVE -> "Déplacer « " + name + " »"
+                    + (location == null || location.isBlank() ? "" : " vers " + location.strip());
+            case COPY -> "Copier « " + name + " »"
                     + (location == null || location.isBlank() ? "" : " vers " + location.strip());
             case DELETE -> "Supprimer « " + name + " »" + where;
             case REPLACE_VERSION -> "Remplacer la version de « " + name + " »" + where;
@@ -246,6 +258,7 @@ public class TeamsToolCatalog {
                     : "Renommer « " + item + " » en « " + (name.isEmpty() ? "(sans nom)" : name) + " »"
                             + (targetPlace.isEmpty() ? "" : " dans " + targetPlace);
             case MOVE -> describeWrite(MOVE, item, readableLocation(first(destination, location)));
+            case COPY -> describeWrite(COPY, item, readableLocation(first(destination, location)));
             case DELETE -> describeWrite(DELETE, item, targetPlace) + " (corbeille du site)";
             case REPLACE_VERSION -> describeWrite(REPLACE_VERSION, item, targetPlace)
                     + (file.isEmpty() ? "" : " par le fichier local « " + file + " »");
@@ -790,11 +803,25 @@ public class TeamsToolCatalog {
                 Map.of("type", "object",
                         "properties", Map.of("file", text),
                         "required", List.of("file"))));
+        tools.add(new AgentTool(READ_DOCX,
+                "Lit le TEXTE d'un fichier Word (.docx) DÉJÀ SUR LA MACHINE et le rend "
+                        + "(« documentText ») : "
+                        + "sers-t'en pour une TRANSCRIPTION Word rapatriée par " + READ_FILE + " ou "
+                        + MEETING_RECORDING + ". Donne « file », le chemin ABSOLU du .docx sur la "
+                        + "machine. C'est une lecture LOCALE : aucun réseau, aucun geste, aucune "
+                        + "confirmation. Elle relaie le texte brut (paragraphes), elle n'analyse "
+                        + "rien — l'analyse, c'est toi. Si « read » est faux, dis pourquoi (ce n'est "
+                        + "pas un .docx lisible, fichier absent) et n'invente jamais le contenu ; si "
+                        + "« truncated » est vrai, le texte a été coupé au plafond.",
+                Map.of("type", "object",
+                        "properties", Map.of("file", text),
+                        "required", List.of("file"))));
         return tools;
     }
 
     /**
-     * <b>Les six écritures</b> (F-108 / SF-108-04). Chacune est soumise à l'autorisation du terminal
+     * <b>Les sept écritures</b> (F-108 / SF-108-04, SF-108-06). Chacune est soumise à l'autorisation
+     * du terminal
      * AVANT d'être émise (SF-108-02) ; leurs descriptions le disent au modèle, pour qu'il n'annonce
      * jamais une écriture comme faite avant le résultat, et pour qu'il enchaîne la modification d'un
      * document par lecture → modification locale → remplacement de version.
@@ -829,8 +856,24 @@ public class TeamsToolCatalog {
                         "required", List.of("target", "name"))));
         tools.add(new AgentTool(MOVE,
                 "Déplace un fichier ou un dossier vers un autre dossier DU MÊME SITE, sans jamais "
-                        + "écraser." + common,
+                        + "écraser. Pour déplacer vers un AUTRE site, ce n'est pas cet outil : copie "
+                        + "avec " + COPY + ", vérifie à destination, puis supprime l'original avec "
+                        + DELETE + " (deux autorisations)." + common,
                 Map.of("type", "object", "properties", Map.of("target", address, "destination", address),
+                        "required", List.of("target", "destination"))));
+        tools.add(new AgentTool(COPY,
+                "Copie un fichier ou un dossier vers un autre dossier — DU MÊME SITE ou d'un AUTRE "
+                        + "SITE — sans jamais écraser. Sur le même site, la copie est vérifiée à "
+                        + "destination. Sur un AUTRE site, elle ne peut pas l'être depuis cet onglet : "
+                        + "le résultat porte « verifyAtDestination » et « done » reste faux — VÉRIFIE "
+                        + "à destination AVANT de supprimer l'original. C'est ainsi qu'on DÉPLACE "
+                        + "entre sites : " + COPY + " puis " + DELETE + " (corbeille, restaurable), "
+                        + "deux autorisations." + common,
+                Map.of("type", "object", "properties", Map.of("target", address,
+                                "destination", address,
+                                "name", Map.of("type", "string",
+                                        "description", "Nom à donner à la copie (défaut : celui de "
+                                                + "la source).")),
                         "required", List.of("target", "destination"))));
         tools.add(new AgentTool(DELETE,
                 "Supprime un fichier ou un dossier : il va dans la CORBEILLE du site, d'où il reste "

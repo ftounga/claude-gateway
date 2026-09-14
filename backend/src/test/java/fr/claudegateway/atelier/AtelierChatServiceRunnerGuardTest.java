@@ -492,6 +492,42 @@ class AtelierChatServiceRunnerGuardTest {
     }
 
     @Test
+    void aTeamsCopyAsksWithAClearActionAndDestination() {
+        // F-108 / SF-108-06 : la copie est une écriture, donc confirmée, action et destination en clair.
+        stubWorkspace(WorkspaceExecutionTarget.RUNNER);
+        listener.answer(true, null);
+        when(runnerToolGateway.teamsRead(eq(runnerTarget), anyString(), eq("teams_copy"), any()))
+                .thenReturn(ok("{}"));
+        agentProvider.enqueueToolCall("teams_copy",
+                "target", "https://contoso.sharepoint.com/sites/ProjetIAM/Shared%20Documents/General/plan.docx",
+                "destination", "https://contoso.sharepoint.com/sites/Finance/Shared%20Documents");
+        agentProvider.enqueueFinal("Copié.");
+
+        service.chatStreaming(userId, workspaceId, "copie vers Finance", listener);
+
+        assertThat(listener.requests).extracting(AtelierConfirmRequest::tool)
+                .containsExactly("teams_copy");
+        assertThat(listener.requests.get(0).detail())
+                .isEqualTo("Copier « plan.docx » vers Finance › Shared Documents");
+        verify(runnerToolGateway).teamsRead(eq(runnerTarget), anyString(), eq("teams_copy"), any());
+    }
+
+    @Test
+    void aTeamsDocxReadIsNotHeldBehindAPrompt() {
+        // F-108 / SF-108-06 : lire un .docx local est une lecture — aucune confirmation.
+        stubWorkspace(WorkspaceExecutionTarget.RUNNER);
+        when(runnerToolGateway.teamsRead(eq(runnerTarget), anyString(), eq("teams_read_docx"), any()))
+                .thenReturn(ok("{}"));
+        agentProvider.enqueueToolCall("teams_read_docx", "file", "/home/u/transcription.docx");
+        agentProvider.enqueueFinal("Lu.");
+
+        service.chatStreaming(userId, workspaceId, "lis la transcription", listener);
+
+        assertThat(listener.requests).isEmpty();
+        verify(runnerToolGateway).teamsRead(eq(runnerTarget), anyString(), eq("teams_read_docx"), any());
+    }
+
+    @Test
     void everyTeamsWriteIsConfirmedEvenUnderBlanketApproval() {
         stubWorkspace(WorkspaceExecutionTarget.RUNNER);
         // La première commande (bash) est autorisée par « tout autoriser pour ce message » : le

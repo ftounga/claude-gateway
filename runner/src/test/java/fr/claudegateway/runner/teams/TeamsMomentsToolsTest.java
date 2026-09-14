@@ -129,8 +129,9 @@ class TeamsMomentsToolsTest {
         assertTrue(TeamsTools.CATALOG.contains(TeamsTools.MOMENTS_STATUS));
         // Treize depuis F-91 / SF-91-02, qui a ajouté les trois outils d'enregistrement local ;
         // quinze depuis F-108 / SF-108-03, qui ajoute la liste et la lecture des fichiers ;
-        // vingt et un depuis F-108 / SF-108-04 et ses six écritures.
-        assertEquals(21, TeamsTools.CATALOG.size());
+        // vingt et un depuis F-108 / SF-108-04 et ses six écritures ; vingt-trois depuis
+        // F-108 / SF-108-06 (teams_read_docx et teams_copy).
+        assertEquals(23, TeamsTools.CATALOG.size());
         assertEquals(TeamsTools.CATALOG.size(), TeamsTools.CATALOG.stream().distinct().count());
     }
 

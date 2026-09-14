@@ -1,0 +1,13 @@
+{
+  "odata.type": "SP.File",
+  "CheckInComment": "",
+  "CheckOutType": 2,
+  "Exists": true,
+  "Length": "314572800",
+  "Name": "gros.bin",
+  "ServerRelativeUrl": "/sites/ProjetIAM/Shared Documents/General/gros.bin",
+  "TimeCreated": "2026-09-14T10:01:00Z",
+  "TimeLastModified": "2026-09-14T10:01:00Z",
+  "UIVersionLabel": "1.0",
+  "UniqueId": "00000000-0000-0000-0000-00000000a006"
+}

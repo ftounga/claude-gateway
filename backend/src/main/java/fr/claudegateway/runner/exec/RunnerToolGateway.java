@@ -69,10 +69,12 @@ public class RunnerToolGateway {
      */
     public static final long TEAMS_FILES_TIMEOUT_MS = 180_000L;
     /**
-     * Délai d'un <b>dépôt</b> ou d'un <b>remplacement de version</b> (F-108 / SF-108-04) : le runner
-     * attend jusqu'à cinq minutes que la page ait envoyé le fichier.
+     * Délai d'un <b>dépôt</b>, d'un <b>remplacement de version</b> ou d'une <b>copie</b>
+     * (F-108 / SF-108-04, SF-108-06) : le runner attend jusqu'à quinze minutes que la page ait envoyé
+     * le fichier — un dépôt au-delà de 250 Mo passe par une <b>session d'envoi découpée</b> (SF-108-06),
+     * plus longue qu'un dépôt d'un bloc.
      */
-    public static final long TEAMS_UPLOAD_TIMEOUT_MS = 360_000L;
+    public static final long TEAMS_UPLOAD_TIMEOUT_MS = 900_000L;
     /** Plancher : un délai ridicule ferait échouer la commande avant même son démarrage. */
     public static final long MIN_BASH_TIMEOUT_MS = 1_000L;
     /** Longueur maximale d'une ligne de commande acceptée (le runner applique la même borne). */
@@ -231,7 +233,9 @@ public class RunnerToolGateway {
             return TEAMS_CAPTURE_START_TIMEOUT_MS;
         }
         if (fr.claudegateway.teams.TeamsToolCatalog.UPLOAD_FILE.equals(tool)
-                || fr.claudegateway.teams.TeamsToolCatalog.REPLACE_VERSION.equals(tool)) {
+                || fr.claudegateway.teams.TeamsToolCatalog.REPLACE_VERSION.equals(tool)
+                // F-108 / SF-108-06 : une copie (surtout inter-site) peut être longue côté serveur.
+                || fr.claudegateway.teams.TeamsToolCatalog.COPY.equals(tool)) {
             return TEAMS_UPLOAD_TIMEOUT_MS;
         }
         if (fr.claudegateway.teams.TeamsToolCatalog.isWrite(tool)) {
@@ -239,6 +243,8 @@ public class RunnerToolGateway {
         }
         if (fr.claudegateway.teams.TeamsToolCatalog.LIST_FILES.equals(tool)
                 || fr.claudegateway.teams.TeamsToolCatalog.READ_FILE.equals(tool)
+                // F-108 / SF-108-06 : lire un .docx local est rapide, mais reste un outil fichiers.
+                || fr.claudegateway.teams.TeamsToolCatalog.READ_DOCX.equals(tool)
                 // F-108 / SF-108-05 : localiser, lire le .vtt voisin, constater le démarrage.
                 || fr.claudegateway.teams.TeamsToolCatalog.MEETING_RECORDING.equals(tool)) {
             return TEAMS_FILES_TIMEOUT_MS;
