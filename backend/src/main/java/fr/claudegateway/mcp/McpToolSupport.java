@@ -5,9 +5,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import java.util.function.Supplier;
+
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import fr.claudegateway.auth.AuthenticatedUser;
 
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import io.modelcontextprotocol.spec.McpSchema.JsonSchema;
@@ -52,6 +60,26 @@ public class McpToolSupport {
         }
         structured.put("data", untrusted(toJsonTree(tiersContent)));
         return ok(text, structured);
+    }
+
+    /**
+     * Exécute une action avec le {@code SecurityContext} peuplé depuis l'identité du jeton MCP, le
+     * temps de l'action, puis le restaure. Certains services relayés (p. ex. l'administration)
+     * revérifient le rôle via le {@code SecurityContext}, qui n'est <b>pas</b> propagé sur le thread
+     * d'exécution d'un outil MCP (capturé sur le thread servlet, cf. {@code McpTransportContextFactory}).
+     * L'identité reste celle du jeton, déjà vérifiée par la chaîne de sécurité et par la garde de l'outil.
+     */
+    public <T> T withPrincipal(AuthenticatedUser user, Supplier<T> action) {
+        SecurityContext previous = SecurityContextHolder.getContext();
+        try {
+            SecurityContext context = SecurityContextHolder.createEmptyContext();
+            var authorities = List.of(new SimpleGrantedAuthority("ROLE_" + user.role().name()));
+            context.setAuthentication(new UsernamePasswordAuthenticationToken(user, null, authorities));
+            SecurityContextHolder.setContext(context);
+            return action.get();
+        } finally {
+            SecurityContextHolder.setContext(previous);
+        }
     }
 
     // ------------------------------------------------------------------ résultats
