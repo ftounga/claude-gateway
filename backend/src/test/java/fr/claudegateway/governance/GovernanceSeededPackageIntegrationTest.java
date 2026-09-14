@@ -104,4 +104,44 @@ class GovernanceSeededPackageIntegrationTest {
         assertThat(seeder.seed()).isFalse();
         assertThat(packages.findBySlug("savoir-durable").orElseThrow().getVersion()).isEqualTo(1);
     }
+
+    /**
+     * F-92 / SF-92-04 — le semeur sème <b>au démarrage</b>, chemin de mise à jour compris.
+     *
+     * <p>Reproduit le bug de production : un paquet <b>déjà déployé</b> sans fichier de carte
+     * (l'état figé en prod : version 6, 5 fichiers, aucun {@code MAP}) doit, au prochain démarrage,
+     * recevoir ses 6 fichiers {@code MAP}. Avant le correctif, {@link GovernancePackageSeeder#seedOnStartup()}
+     * appelait {@code seed()} par auto-invocation → {@code @Transactional} non appliqué →
+     * {@code deleteByPackageId} du chemin de mise à jour levait {@code InvalidDataAccessApiUsageException},
+     * avalée par le {@code try/catch} → le paquet restait sans carte. Ce test <b>échoue avant</b> le
+     * correctif (aucun {@code MAP}), passe après.</p>
+     */
+    @Test
+    @DisplayName("SF-92-04 : au démarrage, un paquet déployé sans carte reçoit ses 6 fichiers MAP")
+    void startupSeedsTheMapFilesEvenOnTheUpdatePath() {
+        // L'état de prod : le paquet existe, publié, mais sans aucun fichier de carte — et avec des
+        // règles différentes, pour que le semis emprunte le chemin de MISE À JOUR (deleteByPackageId
+        // + réécriture), celui qui exige la transaction.
+        GovernancePackage deployed = packages.saveAndFlush(GovernancePackage.builder()
+                .slug("savoir-durable").name("Le savoir durable")
+                .summary("un résumé antérieur").rules("une rédaction antérieure, à remplacer")
+                .version(6).published(true).build());
+        files.saveAndFlush(GovernancePackageFile.builder().packageId(deployed.getId()).position(0)
+                .path("GOUVERNANCE.md").kind(GovernanceFileKind.TEMPLATE)
+                .content("# un gabarit d'avant\n").generated(true).build());
+
+        // Le geste du démarrage, tel quel — c'est LUI qui court-circuitait le proxy.
+        seeder.seedOnStartup();
+
+        GovernancePackage after = packages.findBySlug("savoir-durable").orElseThrow();
+        List<GovernancePackageFile> stored = files.findByPackageIdOrderByPositionAsc(after.getId());
+        assertThat(stored).extracting(GovernancePackageFile::getKind)
+                .filteredOn(GovernanceFileKind.MAP::equals).hasSize(6);
+        assertThat(stored).filteredOn(file -> file.getKind() == GovernanceFileKind.MAP)
+                .extracting(GovernancePackageFile::getPath)
+                .containsExactly("README.md", "acces.md", "reseau.md", "plateformes.md",
+                        "donnees.md", "exploitation.md");
+        // La version a bien été bumpée : la mise à jour a abouti, atomiquement.
+        assertThat(after.getVersion()).isEqualTo(7);
+    }
 }

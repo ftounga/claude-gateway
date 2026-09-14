@@ -135,6 +135,22 @@ public class GovernancePackageSeeder {
     private final GovernanceControlRegistry registry;
     private final boolean enabled;
 
+    /**
+     * Le bean lui-même, pour appeler {@link #seed()} <b>à travers le proxy</b> (F-92 / SF-92-04).
+     *
+     * <p>{@link #seedOnStartup()} n'est pas transactionnel — il ne peut pas l'être, il attrape tout
+     * pour ne jamais empêcher le démarrage. S'il appelait {@code seed()} directement
+     * ({@code this.seed()}), l'auto-invocation <b>court-circuiterait le proxy Spring</b> et
+     * {@code @Transactional} ne s'appliquerait pas : la requête modifiante {@code deleteByPackageId}
+     * du chemin de mise à jour lèverait alors {@code InvalidDataAccessApiUsageException} à <b>chaque
+     * démarrage</b>, et le paquet resterait figé sans ses fichiers de carte. Passer par le bean
+     * injecté rétablit la transaction. {@link ObjectProvider} évite le cycle d'initialisation d'une
+     * auto-référence directe ; en test unitaire (construction manuelle) il est {@code null} et l'on
+     * retombe sur {@code this}.</p>
+     */
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<GovernancePackageSeeder> self;
+
     public GovernancePackageSeeder(GovernancePackageRepository packages,
             GovernancePackageFileRepository files, GovernanceControlRegistry registry,
             @Value("${app.governance.seed-first-package:true}") boolean enabled) {
@@ -148,11 +164,19 @@ public class GovernancePackageSeeder {
     @EventListener(ApplicationReadyEvent.class)
     public void seedOnStartup() {
         try {
-            seed();
+            // À TRAVERS LE PROXY : sans cela, l'auto-invocation priverait seed() de sa transaction.
+            transactionalSelf().seed();
         } catch (RuntimeException ex) {
-            // Un catalogue vide ne casse rien (F-51) ; un démarrage raté, si.
-            log.warn("Paquet « {} » non semé : {}", SLUG, ex.getClass().getSimpleName());
+            // Un catalogue vide ne casse rien (F-51) ; un démarrage raté, si. La STACK COMPLÈTE est
+            // journalisée : sans elle, un échec en production (par ex. le défaut de transaction que
+            // SF-92-04 corrige) ne se lit que par sa classe, et la cause reste invisible.
+            log.warn("Paquet « {} » non semé.", SLUG, ex);
         }
+    }
+
+    /** Le bean proxifié quand Spring l'a injecté ; {@code this} en test unitaire (proxy absent). */
+    private GovernancePackageSeeder transactionalSelf() {
+        return self != null ? self.getObject() : this;
     }
 
     /**

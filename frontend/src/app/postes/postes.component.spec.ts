@@ -2264,6 +2264,29 @@ describe('PostesComponent', () => {
       expect(text()).toContain('Ouvrir la gouvernance');
     });
 
+    it("SF-92-04 : un paquet actif SANS carte ne dit pas « activez », ni « Ouvrir la gouvernance »", () => {
+      // governed=true (un paquet EST actif) mais readable=false (aucune carte disponible) : le
+      // message du serveur explique, et surtout n'envoie pas activer un paquet déjà actif.
+      governanceReturns({
+        ...carte,
+        governed: true,
+        readable: false,
+        files: [],
+        filesExpected: 0,
+        filesPresent: 0,
+        facts: 0,
+        message:
+          'Un paquet de gouvernance est actif sur ce poste, mais aucune carte n’est disponible : '
+          + 'reprenez « Appliquer » sur ce poste.',
+      });
+
+      expect(text()).toContain('actif sur ce poste');
+      expect(text()).toContain('Appliquer');
+      // Le libellé trompeur ne doit PAS apparaître, ni le lien qui renvoie activer l'actif.
+      expect(text()).not.toContain('Aucune gouvernance active');
+      expect(text()).not.toContain('Ouvrir la gouvernance');
+    });
+
     it('un échec de lecture fait disparaître la section, SANS rouge', () => {
       service = spyService();
       service.runnerHostsOverview.and.returnValue(of([poste]));

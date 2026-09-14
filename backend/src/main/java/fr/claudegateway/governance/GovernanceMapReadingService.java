@@ -60,6 +60,17 @@ public class GovernanceMapReadingService {
             "Aucune gouvernance active sur ce poste : activez « Le savoir durable » depuis l'écran "
                     + "Gouvernance pour que sa carte existe.";
 
+    /**
+     * Message quand un paquet <b>est</b> actif mais n'apporte <b>aucune carte lisible</b> (F-92 /
+     * SF-92-04) : un semis en échec, ou un paquet sans fichier de carte. Surtout pas
+     * {@link #NOT_GOVERNED} — envoyer l'utilisateur « activer » un paquet <b>déjà actif</b> est un
+     * mensonge qui ne se corrige pas.
+     */
+    static final String ACTIVE_BUT_NO_MAP =
+            "Un paquet de gouvernance est actif sur ce poste, mais aucune carte n'est disponible : "
+                    + "reprenez « Appliquer » sur ce poste, ou contactez l'administrateur si le "
+                    + "problème persiste.";
+
     /** Message et geste quand la machine n'a pas répondu. */
     static final String UNREACHABLE =
             "La racine de ce poste n'a pas pu être lue : lancez le runner sur la machine, "
@@ -96,6 +107,12 @@ public class GovernanceMapReadingService {
         }
         Map<String, GovernancePackageFile> expected = expectedFiles(userId, host);
         if (expected.isEmpty()) {
+            // Aucune carte attendue : deux causes très différentes, deux gestes différents. Un paquet
+            // ACTIF sans carte (semis en échec, ou paquet sans MAP) est « gouverné » — on ne renvoie
+            // pas l'utilisateur activer ce qui l'est déjà.
+            if (destinations.hasActivePackage(userId, host)) {
+                return empty(host, hostName, true, true, ACTIVE_BUT_NO_MAP);
+            }
             return empty(host, hostName, true, false, NOT_GOVERNED);
         }
 
