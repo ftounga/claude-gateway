@@ -34,8 +34,13 @@ class McpSecurityNonRegressionIntegrationTest {
     private UserRepository userRepository;
     @Autowired
     private JwtService jwtService;
+    @Autowired
+    private com.nimbusds.jose.jwk.source.JWKSource<com.nimbusds.jose.proc.SecurityContext> jwkSource;
+    @Autowired
+    private McpResourceProperties resourceProperties;
 
     private String token;
+    private String mcpAccessToken;
 
     @BeforeEach
     void setUp() {
@@ -44,6 +49,9 @@ class McpSecurityNonRegressionIntegrationTest {
                 .email("carol@example.com").emailVerified(true)
                 .provider(AuthProvider.LOCAL).role(UserRole.USER).build());
         token = jwtService.generateToken(user);
+        mcpAccessToken = new McpAccessTokens(jwkSource)
+                .forUser(user.getId(), resourceProperties.resource(),
+                        java.util.List.of("compte:lire"));
     }
 
     @Test
@@ -66,5 +74,24 @@ class McpSecurityNonRegressionIntegrationTest {
         mockMvc.perform(get("/api/me").contextPath("/api")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void mcpAccessTokenOpensNoRouteOutsideMcp() throws Exception {
+        // Un jeton MCP (OAuth) présenté sur une route applicative : refusé — il n'ouvre que /api/mcp.
+        mockMvc.perform(get("/api/me").contextPath("/api")
+                        .header("Authorization", "Bearer " + mcpAccessToken))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void platformJwtDoesNotOpenMcp() throws Exception {
+        // Réciproquement : un JWT plateforme ne vaut pas jeton d'accès MCP (audience/émetteur distincts).
+        mockMvc.perform(post("/api/mcp").contextPath("/api")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept("application/json", "text/event-stream")
+                        .content("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}"))
+                .andExpect(status().isUnauthorized());
     }
 }

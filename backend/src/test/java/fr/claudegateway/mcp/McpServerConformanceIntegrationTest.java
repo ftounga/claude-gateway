@@ -23,7 +23,6 @@ import io.modelcontextprotocol.spec.McpSchema.InitializeResult;
 import io.modelcontextprotocol.spec.McpSchema.ListToolsResult;
 import io.modelcontextprotocol.spec.McpSchema.Tool;
 
-import fr.claudegateway.auth.JwtService;
 import fr.claudegateway.user.AuthProvider;
 import fr.claudegateway.user.User;
 import fr.claudegateway.user.UserRepository;
@@ -46,8 +45,11 @@ class McpServerConformanceIntegrationTest {
     @Autowired
     private UserRepository userRepository;
     @Autowired
-    private JwtService jwtService;
+    private com.nimbusds.jose.jwk.source.JWKSource<com.nimbusds.jose.proc.SecurityContext> jwkSource;
+    @Autowired
+    private McpResourceProperties resourceProperties;
 
+    private McpAccessTokens accessTokens;
     private String tokenA;
     private User userA;
     private String tokenB;
@@ -55,15 +57,18 @@ class McpServerConformanceIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        accessTokens = new McpAccessTokens(jwkSource);
         userRepository.deleteAll();
         userA = userRepository.save(User.builder()
                 .email("alice@example.com").emailVerified(true)
                 .provider(AuthProvider.LOCAL).role(UserRole.USER).build());
-        tokenA = jwtService.generateToken(userA);
+        tokenA = accessTokens.forUser(userA.getId(), resourceProperties.resource(),
+                List.of("compte:lire"));
         userB = userRepository.save(User.builder()
                 .email("bob@example.com").emailVerified(true)
                 .provider(AuthProvider.LOCAL).role(UserRole.USER).build());
-        tokenB = jwtService.generateToken(userB);
+        tokenB = accessTokens.forUser(userB.getId(), resourceProperties.resource(),
+                List.of("compte:lire"));
     }
 
     private McpSyncClient clientWithToken(String token) {
@@ -132,6 +137,15 @@ class McpServerConformanceIntegrationTest {
     @Test
     void missingTokenIsRejected() {
         try (McpSyncClient client = clientWithToken(null)) {
+            assertThatThrownBy(client::initialize).isInstanceOf(Exception.class);
+        }
+    }
+
+    @Test
+    void tokenForAnotherResourceIsRejected() {
+        String wrongAudience = accessTokens.forUser(userA.getId(),
+                "https://autre-ressource.example.com/api", List.of("compte:lire"));
+        try (McpSyncClient client = clientWithToken(wrongAudience)) {
             assertThatThrownBy(client::initialize).isInstanceOf(Exception.class);
         }
     }
