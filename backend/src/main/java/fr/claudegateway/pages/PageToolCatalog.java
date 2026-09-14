@@ -18,11 +18,12 @@ import fr.claudegateway.billing.SpaceEntitlementService;
  *
  * <h2>La garde</h2>
  *
- * <p>Même doctrine que les catalogues Teams et Radar : la garde est au niveau de l'outil. Il n'est donné
- * que dans un terminal qui s'exécute <b>sur un poste</b> (la boucle maison), à un utilisateur qui a le
- * <b>droit de l'espace du terminal</b> — la Vigie pour un terminal Teams, la Forge pour tout autre.
- * {@link SpaceEntitlementService} ouvre ce droit d'office au rôle {@code ADMIN}. Sans l'une de ces
- * conditions : aucun outil, aucun guide — l'agent n'a pas la capacité.</p>
+ * <p>Même doctrine que les catalogues Teams et Radar : la garde est au niveau de l'outil. Il est donné à
+ * un utilisateur qui a le <b>droit de l'espace du terminal</b> — la Vigie pour un terminal Teams, la Forge
+ * pour tout autre — <b>quelle que soit la cible d'exécution</b> : un poste (la boucle maison) comme un
+ * projet hébergé (bac à sable Managed Agents, F-109 / SF-109-06). {@link SpaceEntitlementService} ouvre ce
+ * droit d'office au rôle {@code ADMIN}. Sans le droit : aucun outil, aucun guide — l'agent n'a pas la
+ * capacité. L'exécuteur lit ensuite ce qu'il faut <b>là où vit le projet</b> (poste ou stockage).</p>
  *
  * <h2>Le guide de conception</h2>
  *
@@ -66,7 +67,9 @@ public class PageToolCatalog {
             + "- Structure : un document autonome (<!doctype html>, <meta charset=\"utf-8\">, <meta "
             + "name=\"viewport\">, <title>), CSS et JS dans la page.\n"
             + "CE QU'UNE PAGE PEUT FAIRE : scripts depuis https://cdnjs.cloudflare.com et https://cdn.jsdelivr.net "
-            + "seulement (versions exactes), polices depuis Google Fonts, images en data: ou en pièce jointe. "
+            + "seulement (versions exactes), polices depuis Google Fonts, images en data: ou en pièce jointe — une "
+            + "capture ou un logo de la machine se joint (png, jpg, jpeg, gif, webp) et se référence par son nom "
+            + "(<img src=\"capture.png\">). "
             + "AUCUN appel réseau (fetch, XHR, WebSocket), aucun formulaire envoyé, aucun cookie ni stockage, "
             + "aucune autre origine : tout cela est BLOQUÉ. Embarque les données dans la page. 8 Mo au plus.\n"
             + "Jamais de transcription brute de réunion dans une page : des extraits courts, sourcés.\n"
@@ -102,7 +105,7 @@ public class PageToolCatalog {
      * @param workspace terminal du tour, déjà vérifié comme possédé
      */
     public boolean isOpenFor(UUID userId, Workspace workspace) {
-        if (entitlements == null || userId == null || workspace == null || !workspace.isRunnerTarget()) {
+        if (entitlements == null || userId == null || workspace == null) {
             return false;
         }
         EntitlementSpace space = spaceOf(workspace) == PageSpace.VIGIE ? EntitlementSpace.VIGIE : EntitlementSpace.FORGE;
@@ -125,9 +128,11 @@ public class PageToolCatalog {
         return new AgentTool(PUBLISH,
                 "Publie une PAGE HTML que l'utilisateur voit dans l'application (privée, à lui seul). Donne "
                         + "EXACTEMENT UN de html (le document complet) ou path (un fichier .html de la machine). "
-                        + "page_id republie une page existante en nouvelle version. attachments : fichiers texte "
-                        + "de la machine servis avec la page (css, js, json, svg, csv, txt, md), référencés par "
-                        + "leur nom relatif ; les images vont en data:. L'utilisateur confirme d'un clic.",
+                        + "page_id republie une page existante en nouvelle version. attachments : fichiers de la "
+                        + "machine servis avec la page, référencés par leur nom relatif — texte (css, js, mjs, json, "
+                        + "svg, csv, txt, md) ET images (png, jpg, jpeg, gif, webp, ex. une capture : "
+                        + "<img src=\"capture.png\">) ; ou embarque les images en data:. L'utilisateur confirme "
+                        + "d'un clic.",
                 Map.of("type", "object",
                         "properties", Map.of(
                                 "title", Map.of("type", "string",

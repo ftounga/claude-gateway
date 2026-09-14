@@ -35,26 +35,32 @@ class PageToolCatalogTest {
     }
 
     @Test
-    @DisplayName("la garde lit le droit de l'espace du terminal, et seulement sur un poste")
+    @DisplayName("CA1/CA2 — la garde lit le droit de l'espace du terminal, sur un poste comme sur un projet hébergé")
     void guard() {
         SpaceEntitlementService entitlements = mock(SpaceEntitlementService.class);
         when(entitlements.isEntitled(userId, EntitlementSpace.FORGE)).thenReturn(true);
         when(entitlements.isEntitled(userId, EntitlementSpace.VIGIE)).thenReturn(false);
         PageToolCatalog catalog = new PageToolCatalog(entitlements);
 
+        // SF-109-06 : le projet hébergé (SANDBOX) est désormais ouvert, au droit de l'espace près.
         assertThat(catalog.isOpenFor(userId, terminal(WorkspaceExecutionTarget.RUNNER, false))).isTrue();
+        assertThat(catalog.isOpenFor(userId, terminal(WorkspaceExecutionTarget.SANDBOX, false))).isTrue();
+        // Un terminal Teams lit le droit Vigie (fermé ici), pas Forge — quelle que soit la cible.
         assertThat(catalog.isOpenFor(userId, terminal(WorkspaceExecutionTarget.RUNNER, true))).isFalse();
-        assertThat(catalog.isOpenFor(userId, terminal(WorkspaceExecutionTarget.SANDBOX, false))).isFalse();
+        assertThat(catalog.isOpenFor(userId, terminal(WorkspaceExecutionTarget.SANDBOX, true))).isFalse();
         assertThat(catalog.isOpenFor(null, terminal(WorkspaceExecutionTarget.RUNNER, false))).isFalse();
         assertThat(PageToolCatalog.none().toolsFor(userId, terminal(WorkspaceExecutionTarget.RUNNER, false))).isEmpty();
     }
 
     @Test
-    @DisplayName("sur un projet hébergé, le droit n'est même pas lu")
-    void sandboxDoesNotReadTheRight() {
+    @DisplayName("CA2 — sans le droit de l'espace, le projet hébergé reste fermé")
+    void sandboxClosedWithoutTheRight() {
         SpaceEntitlementService entitlements = mock(SpaceEntitlementService.class);
-        new PageToolCatalog(entitlements).isOpenFor(userId, terminal(WorkspaceExecutionTarget.SANDBOX, false));
-        verify(entitlements, never()).isEntitled(userId, EntitlementSpace.FORGE);
+        when(entitlements.isEntitled(userId, EntitlementSpace.FORGE)).thenReturn(false);
+        PageToolCatalog catalog = new PageToolCatalog(entitlements);
+
+        assertThat(catalog.isOpenFor(userId, terminal(WorkspaceExecutionTarget.SANDBOX, false))).isFalse();
+        verify(entitlements, never()).isEntitled(userId, EntitlementSpace.VIGIE);
     }
 
     @Test
@@ -69,6 +75,9 @@ class PageToolCatalogTest {
         assertThat(catalog.toolsFor(userId, terminal(WorkspaceExecutionTarget.RUNNER, false)))
                 .extracting(AgentTool::name).containsExactly(PageToolCatalog.PUBLISH);
         assertThat(catalog.toolsFor(userId, terminal(WorkspaceExecutionTarget.RUNNER, true)))
+                .extracting(AgentTool::name).containsExactly(PageToolCatalog.PUBLISH);
+        // SF-109-06 : d'office aussi sur un projet hébergé.
+        assertThat(catalog.toolsFor(userId, terminal(WorkspaceExecutionTarget.SANDBOX, false)))
                 .extracting(AgentTool::name).containsExactly(PageToolCatalog.PUBLISH);
     }
 
@@ -105,6 +114,8 @@ class PageToolCatalogTest {
                 .contains("https://cdnjs.cloudflare.com").contains("https://cdn.jsdelivr.net").contains("Google Fonts")
                 .contains("AUCUN appel réseau")
                 .contains("transcription brute")
-                .contains("page_id");
+                .contains("page_id")
+                // SF-109-06 : une image de la machine peut être jointe.
+                .contains("pièce jointe").contains("png");
     }
 }
