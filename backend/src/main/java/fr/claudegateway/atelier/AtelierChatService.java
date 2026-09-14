@@ -239,6 +239,12 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     private fr.claudegateway.mail.ClientMailTool clientMailTool;
     /**
+     * Compaction automatique du fil (F-117 / SF-117-01). Injecté par mutateur pour ne toucher à aucun
+     * des constructeurs conservés : {@code null} (formes historiques, tests antérieurs à F-117) = la
+     * compaction est inerte, et le fil est rejoué exactement comme avant.
+     */
+    private AtelierCompactionService compactionService;
+    /**
      * L'outil {@code page_publish} <b>et sa garde</b> (F-109 / SF-109-02) : vide hors d'un terminal sur poste,
      * ou sans le droit de l'espace du terminal.
      */
@@ -470,6 +476,12 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.clientMailTool = clientMailTool;
     }
 
+    /** Branche la compaction automatique du fil (F-117 / SF-117-01). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setCompactionService(AtelierCompactionService compactionService) {
+        this.compactionService = compactionService;
+    }
+
     /**
      * Traite un message d'atelier : boucle tool-use jusqu'à la réponse finale, persiste l'échange,
      * comptabilise l'usage. Le workspace est vérifié possédé par l'utilisateur (404 sinon) et le quota
@@ -547,16 +559,22 @@ public class AtelierChatService implements RelayInterruptTarget {
         long deadline = startedAt + TURN_BUDGET_MS;
         String userText = rawMessage.trim();
 
+        // Compaction automatique du fil (F-117 / SF-117-01), AVANT de bâtir la requête : si le texte
+        // rejoué dépasse le seuil de sécurité sous la fenêtre du modèle, les tours anciens sont
+        // résumés et la frontière `chatThreadStartedAt` avancée — l'historique rejoué ci-dessous part
+        // alors du résumé + des tours récents. Inerte tant que le service n'est pas branché ou que le
+        // seuil n'est pas franchi (comportement d'avant F-117). Best-effort : un échec ne casse rien.
+        AtelierCompactionService.CompactionOutcome compaction =
+                AtelierCompactionService.CompactionOutcome.NONE;
+        if (compactionService != null) {
+            compaction = compactionService.compactIfOversized(userId, workspace, apiKey);
+        }
+
         // Historique de l'atelier (texte) + nouveau message utilisateur.
         // L'historique rejoué démarre à la frontière du fil (SF-39-04) : après un « nouveau
         // départ », les tours d'avant restent lisibles à l'écran mais ne repartent plus chez le
         // fournisseur.
-        List<AgentMessage> messages = new ArrayList<>(replayableHistory(
-                workspace.getChatThreadStartedAt() == null
-                        ? messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspaceId, userId)
-                        : messageRepository
-                                .findByWorkspaceIdAndUserIdAndCreatedAtGreaterThanEqualOrderByCreatedAtAsc(
-                                        workspaceId, userId, workspace.getChatThreadStartedAt())));
+        List<AgentMessage> messages = buildReplayMessages(userId, workspace);
         messages.add(AgentMessage.userText(userText));
 
         AtelierMessage savedUserMessage = messageRepository.save(AtelierMessage.builder()
@@ -591,16 +609,19 @@ public class AtelierChatService implements RelayInterruptTarget {
         java.util.Map<String, fr.claudegateway.mail.ClientMailReceipt> emailsOfTurn = new java.util.HashMap<>();
         /** Pages publiées pendant ce tour (F-109 / SF-109-03), par appel, local au tour. */
         java.util.Map<String, fr.claudegateway.pages.PageBlock> pagesOfTurn = new java.util.HashMap<>();
-        int inputTokens = 0;
-        int outputTokens = 0;
+        // La compaction (F-117 / SF-117-01) est un appel modèle : sa consommation entre dans les
+        // compteurs du tour dès le départ, pour passer par le décompte d'usage existant
+        // (`recordUsage`) sans chemin de quota séparé ni double comptage.
+        int inputTokens = compaction.inputTokens();
+        int outputTokens = compaction.outputTokens();
         /**
          * Ventilation du cache du tour (F-63 / SF-63-02). Ces tokens sont <b>déjà compris</b> dans
          * {@code inputTokens} — le plafond de message et le relevé affiché comptent, comme avant, ce
          * qui a été <b>traité</b>. Ils voyagent à part pour le seul décompte du quota, qui les
          * facture à leur prix : un dixième du tarif d'entrée en lecture, 1,25× en écriture.
          */
-        int cacheReadTokens = 0;
-        int cacheWriteTokens = 0;
+        int cacheReadTokens = compaction.cacheReadTokens();
+        int cacheWriteTokens = compaction.cacheWriteTokens();
         /** Plus grosse itération observée dans ce tour : majorant de la suivante (D-L8-2). */
         long largestIterationTokens = 0L;
         boolean interrupted = false;
@@ -919,6 +940,27 @@ public class AtelierChatService implements RelayInterruptTarget {
      * <p>Deux messages {@code user} consécutifs, eux, sont acceptés par le fournisseur (vérifié) :
      * retirer un assistant au milieu ne casse donc pas l'échange.</p>
      */
+    /**
+     * Historique rejoué d'un fil (F-117 / SF-117-01) : le message de résumé de compaction s'il y en a
+     * un, en tête, puis les messages depuis la frontière {@code chatThreadStartedAt}. Sans résumé, le
+     * résultat est celui d'avant F-117 — seule la frontière filtre le rejeu (SF-39-04).
+     */
+    private List<AgentMessage> buildReplayMessages(UUID userId, Workspace workspace) {
+        List<AgentMessage> messages = new ArrayList<>();
+        AgentMessage summary = AtelierCompactionService.summaryPrefix(workspace);
+        if (summary != null) {
+            messages.add(summary);
+        }
+        messages.addAll(replayableHistory(
+                workspace.getChatThreadStartedAt() == null
+                        ? messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(
+                                workspace.getId(), userId)
+                        : messageRepository
+                                .findByWorkspaceIdAndUserIdAndCreatedAtGreaterThanEqualOrderByCreatedAtAsc(
+                                        workspace.getId(), userId, workspace.getChatThreadStartedAt())));
+        return messages;
+    }
+
     private static List<AgentMessage> replayableHistory(List<AtelierMessage> past) {
         int traceFrom = firstTracedIndex(past);
         List<AgentMessage> messages = new ArrayList<>(past.size());

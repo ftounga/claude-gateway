@@ -67,6 +67,9 @@ public class AtelierThreadService {
     public AtelierResumeResponse restart(UUID userId, UUID workspaceId) {
         Workspace workspace = workspaceService.requireOwned(userId, workspaceId);
         workspace.setChatThreadStartedAt(OffsetDateTime.now());
+        // Repartir propre, c'est aussi oublier le résumé de compaction (F-117 / SF-117-01) : sans
+        // cela, un « nouveau départ » rejouerait encore le résumé des tours désormais mis de côté.
+        workspace.setChatThreadSummary(null);
         workspaceRepository.save(workspace);
         return new AtelierResumeResponse(0, null, workspace.getChatThreadStartedAt(), "NONE");
     }
