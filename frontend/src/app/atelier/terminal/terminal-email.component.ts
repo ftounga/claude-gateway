@@ -38,6 +38,10 @@ export const EMAIL_POLL_MAX = 40;
       padding: var(--cg-space-2) var(--cg-space-3);
       border-left: 4px solid var(--cg-divider);
       font-size: 13px;
+      /* Le bloc est TRANSPARENT et vit toujours dans un terminal (fond sombre) : sans encre propre
+         il hérite du corps de page (cg-text-primary, foncé) et devient illisible sur le navy
+         (~1,3:1). Encre claire de la charte (F-30 / SF-30-15). */
+      color: var(--cg-divider);
     }
 
     .terminal-email[data-status='SENT'] {
@@ -67,8 +71,12 @@ export const EMAIL_POLL_MAX = 40;
       font-weight: 500;
     }
 
+    /* L'échec se lit par le FILET GAUCHE rouge, l'icône error_outline et le libellé « — non
+       remis : … » — jamais par la couleur du texte seule (DESIGN_SYSTEM §8). Le rouge cg-error posé
+       sur le fond sombre du terminal tomberait à ~2,3:1 : le texte garde donc l'encre claire du
+       bloc (F-30 / SF-30-15). */
     .terminal-email[data-status='FAILED'] .terminal-email__state {
-      color: var(--cg-error);
+      font-weight: 600;
     }
 
     .terminal-email__note {

@@ -390,6 +390,15 @@ avec le contenu réel de son flux. La règle est donc celle d'un terminal, pas c
 - **On regarde, on n'écrit pas.** Un terminal en lecture seule ne porte ni champ de saisie, ni
   bouton d'envoi, ni bouton de décision. Ce qui attend une autorisation garde son **libellé écrit**
   (§12) et perd ses boutons : décider est un geste du terminal entier, à un clic.
+- **Les composants Material portent l'encre CLAIRE de la charte sur le fond sombre** (ajout F-30 /
+  SF-30-15). Sans jeton propre, un bouton Material prend les inks des écrans clairs et devient
+  illisible sur le navy (libellé ~2,6:1, sélecteur `mat-button-toggle` ~1,0:1). Les jetons Material
+  (`--mdc-*-button-*`, `--mat-standard-button-toggle-*`) sont donc redéfinis sous
+  `.terminal-view:not(.terminal-view--teams)` sur des jetons **déjà définis** (§2) : encre `--cg-divider`
+  ou `--cg-surface`, geste d'arrêt en `--cg-orange-2` — **aucune couleur nouvelle**. Le terminal Teams
+  garde sa propre peau (§15). Un **îlot blanc** posé dans le terminal (page publiée §18, panneau de
+  page) **réinitialise** ces jetons sur son encre foncée. Vérifié par test de contraste AA
+  (`boutons-terminaux-lisibles.spec.ts`).
 
 ---
 
