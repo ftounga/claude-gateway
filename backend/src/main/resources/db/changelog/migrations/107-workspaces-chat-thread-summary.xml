@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-117 / SF-117-01 — LE RESUME DE COMPACTION DU FIL D'ATELIER.
+
+      Quand le texte rejoue d'un fil depasse le seuil de securite sous la fenetre du modele, les tours
+      anciens sont resumes en un bloc compact et ce resume est INJECTE dans ce qui repart au
+      fournisseur (l'affichage, lui, garde tout). Cette colonne porte le resume courant du fil ; la
+      frontiere `chat_thread_started_at` (migration 051) marque le premier tour recent garde entier.
+
+      Colonne nullable : `null` = aucun resume, rejeu complet — exactement le comportement d'avant
+      F-117 pour tous les projets existants. Reversible (`dropColumn`).
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="107-workspaces-chat-thread-summary-postgresql" author="claude-gateway" dbms="postgresql">
+        <addColumn tableName="workspaces">
+            <column name="chat_thread_summary" type="text"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="workspaces" columnName="chat_thread_summary"/>
+        </rollback>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <!-- H2 mappe `text` sur CLOB, que la validation de schema refuse face au `text` de l'entite :
+         on reprend `varchar(1000000)`, comme `content` (037), `terminal_json` (041), `tool_trace` (050). -->
+    <changeSet id="107-workspaces-chat-thread-summary-h2" author="claude-gateway" dbms="h2">
+        <addColumn tableName="workspaces">
+            <column name="chat_thread_summary" type="varchar(1000000)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="workspaces" columnName="chat_thread_summary"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

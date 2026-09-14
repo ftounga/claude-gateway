@@ -215,6 +215,19 @@ public class Workspace {
     private OffsetDateTime chatThreadStartedAt;
 
     /**
+     * Résumé de compaction du fil d'Atelier (F-117 / SF-117-01) : quand le texte rejoué dépasse le
+     * seuil de sécurité sous la fenêtre du modèle, les tours antérieurs à {@link #chatThreadStartedAt}
+     * sont résumés en un bloc compact, et ce résumé est <b>injecté en tête</b> de ce qui repart au
+     * fournisseur — l'affichage, lui, garde tout (aucun message supprimé).
+     *
+     * <p>{@code null} — le cas de tous les projets existants — signifie qu'aucune compaction n'a eu
+     * lieu et que le fil est rejoué exactement comme avant F-117. Un « nouveau départ » (SF-39-04)
+     * l'efface : repartir propre, c'est aussi oublier le résumé.</p>
+     */
+    @Column(name = "chat_thread_summary", columnDefinition = "text")
+    private String chatThreadSummary;
+
+    /**
      * Session sandbox en cours pour ce workspace (F-30 SF-30-04, ADR-014), ou {@code null} si aucune.
      * La sandbox et son système de fichiers survivent d'un message à l'autre : c'est cet identifiant
      * qui les relie.
