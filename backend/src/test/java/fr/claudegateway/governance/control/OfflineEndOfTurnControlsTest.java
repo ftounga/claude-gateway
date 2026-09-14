@@ -41,6 +41,7 @@ class OfflineEndOfTurnControlsTest {
     private final UUID alice = UUID.randomUUID();
     private final UUID bob = UUID.randomUUID();
     private final UUID projet = UUID.randomUUID();
+    private final UUID host = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
@@ -49,7 +50,7 @@ class OfflineEndOfTurnControlsTest {
     }
 
     private AtelierCheckpointContext tour(UUID user, String text, AtelierMachineReach machine) {
-        return AtelierCheckpointContext.endOfTurn(user, projet, text, List.of(), machine);
+        return AtelierCheckpointContext.endOfTurn(user, host, projet, text, List.of(), machine);
     }
 
     private static String marqueur(String corps) {
@@ -64,7 +65,7 @@ class OfflineEndOfTurnControlsTest {
 
         assertThat(verdict.blocked()).isFalse();
         assertThat(verdict.notice()).isEqualTo(PromotionReportee.NOTICE);
-        assertThat(reportees.estDue(alice, projet)).isTrue();
+        assertThat(reportees.estDue(alice, host, projet)).isTrue();
     }
 
     @Test
@@ -80,7 +81,7 @@ class OfflineEndOfTurnControlsTest {
         assertThat(muet.blocked()).isFalse();
         assertThat(muet.hasNotice()).isTrue();
 
-        PromotionReportee.Report report = reportees.reclamer(alice, projet).orElseThrow();
+        PromotionReportee.Report report = reportees.reclamer(alice, host, projet).orElseThrow();
         assertThat(report.elements()).containsExactly("vpn nord");
         assertThat(report.dette()).isEqualTo(3);
     }
@@ -92,7 +93,7 @@ class OfflineEndOfTurnControlsTest {
 
         assertThat(juge.evaluate(tour(alice, propre, AtelierMachineReach.OFFLINE)).hasNotice()).isFalse();
         assertThat(dette.evaluate(tour(alice, propre, AtelierMachineReach.OFFLINE)).hasNotice()).isFalse();
-        assertThat(reportees.estDue(alice, projet)).isFalse();
+        assertThat(reportees.estDue(alice, host, projet)).isFalse();
     }
 
     @Test
@@ -127,7 +128,7 @@ class OfflineEndOfTurnControlsTest {
         String soldé = marqueur("promotion=aucune; dette=0");
 
         assertThat(juge.evaluate(tour(alice, soldé, AtelierMachineReach.UNKNOWN)).blocked()).isFalse();
-        assertThat(reportees.estDue(alice, projet)).isTrue();
+        assertThat(reportees.estDue(alice, host, projet)).isTrue();
     }
 
     @Test
@@ -137,7 +138,7 @@ class OfflineEndOfTurnControlsTest {
 
         assertThat(juge.evaluate(tour(bob, marqueur("promotion=aucune; dette=0"),
                 AtelierMachineReach.REACHED)).blocked()).isFalse();
-        assertThat(reportees.estDue(alice, projet)).isTrue();
+        assertThat(reportees.estDue(alice, host, projet)).isTrue();
     }
 
     @Test
@@ -150,7 +151,7 @@ class OfflineEndOfTurnControlsTest {
         assertThat(verdict.hasNotice()).isFalse();
         assertThat(dette.evaluate(tour(alice, marqueur("promotion=aucune; dette=2"),
                 AtelierMachineReach.REACHED)).blocked()).isTrue();
-        assertThat(reportees.estDue(alice, projet)).isFalse();
+        assertThat(reportees.estDue(alice, host, projet)).isFalse();
     }
 
     @Test

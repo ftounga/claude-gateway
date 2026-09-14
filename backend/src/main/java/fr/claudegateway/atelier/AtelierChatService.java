@@ -685,9 +685,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                         && checkpointRunner.hasCheckpoints(AtelierCheckpointKind.END_OF_TURN)) {
                     AtelierCheckpointVerdict verdict = checkpointRunner.run(
                             AtelierCheckpointKind.END_OF_TURN,
-                            AtelierCheckpointContext.endOfTurn(userId, workspaceId, finalText,
-                                    List.copyOf(writtenPaths), machineOfTurn.getOrDefault(
-                                            turnKey(userId, workspaceId),
+                            AtelierCheckpointContext.endOfTurn(userId, workspace.getHostId(),
+                                    workspaceId, finalText, List.copyOf(writtenPaths),
+                                    machineOfTurn.getOrDefault(turnKey(userId, workspaceId),
                                             fr.claudegateway.atelier.checkpoint.AtelierMachineReach.UNKNOWN)));
                     if (verdict.hasNotice()) {
                         // F-93 / SF-93-04 : un report ne bloque pas. La mention est dite UNE fois, à

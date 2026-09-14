@@ -27,6 +27,8 @@ import java.util.UUID;
  * @param kind         le point d'accroche qui a déclenché l'appel
  * @param userId       propriétaire du projet (isolation, déjà vérifiée)
  * @param workspaceId  projet concerné
+ * @param hostId       poste du projet (F-93 / SF-93-05) : la clé d'un report reporté faute de poste ;
+ *                     {@code null} hors fin de tour, ou pour un projet sans poste
  * @param toolName     outil à l'origine de l'appel ({@code write_file} / {@code edit_file} sur une
  *                     écriture, {@code bash} avant une commande) ; {@code null} en fin de tour
  * @param path         chemin <b>relatif au projet</b> tel que le modèle l'a donné ; {@code null} si
@@ -45,15 +47,15 @@ import java.util.UUID;
  *                     {@code null}, {@link AtelierMachineReach#UNKNOWN} par défaut
  */
 public record AtelierCheckpointContext(AtelierCheckpointKind kind, UUID userId, UUID workspaceId,
-        String toolName, String path, String content, String replyText, List<String> writtenPaths,
-        String command, String cwd, AtelierMachineReach machine) {
+        UUID hostId, String toolName, String path, String content, String replyText,
+        List<String> writtenPaths, String command, String cwd, AtelierMachineReach machine) {
 
-    /** Forme d'avant F-93 / SF-93-04 : la machine n'est pas renseignée. */
+    /** Forme d'avant F-93 / SF-93-04 : la machine n'est pas renseignée, ni le poste. */
     public AtelierCheckpointContext(AtelierCheckpointKind kind, UUID userId, UUID workspaceId,
             String toolName, String path, String content, String replyText,
             List<String> writtenPaths, String command, String cwd) {
-        this(kind, userId, workspaceId, toolName, path, content, replyText, writtenPaths, command,
-                cwd, AtelierMachineReach.UNKNOWN);
+        this(kind, userId, workspaceId, null, toolName, path, content, replyText, writtenPaths,
+                command, cwd, AtelierMachineReach.UNKNOWN);
     }
 
     /**
@@ -107,17 +109,28 @@ public record AtelierCheckpointContext(AtelierCheckpointKind kind, UUID userId, 
      */
     public static AtelierCheckpointContext endOfTurn(UUID userId, UUID workspaceId, String replyText,
             List<String> writtenPaths) {
-        return endOfTurn(userId, workspaceId, replyText, writtenPaths, AtelierMachineReach.UNKNOWN);
+        return endOfTurn(userId, null, workspaceId, replyText, writtenPaths,
+                AtelierMachineReach.UNKNOWN);
     }
 
     /**
      * Contexte d'une fin de tour, avec ce que le tour a constaté de la machine (F-93 / SF-93-04) :
-     * c'est ce qui permet à un contrôle de ne pas réclamer une écriture impossible.
+     * c'est ce qui permet à un contrôle de ne pas réclamer une écriture impossible. Le poste n'est
+     * pas renseigné (forme d'avant SF-93-05).
      */
     public static AtelierCheckpointContext endOfTurn(UUID userId, UUID workspaceId, String replyText,
             List<String> writtenPaths, AtelierMachineReach machine) {
+        return endOfTurn(userId, null, workspaceId, replyText, writtenPaths, machine);
+    }
+
+    /**
+     * Contexte d'une fin de tour, avec le <b>poste</b> du projet (F-93 / SF-93-05) : c'est la clé
+     * sous laquelle une promotion reportée faute de poste est retenue puis réclamée.
+     */
+    public static AtelierCheckpointContext endOfTurn(UUID userId, UUID hostId, UUID workspaceId,
+            String replyText, List<String> writtenPaths, AtelierMachineReach machine) {
         return new AtelierCheckpointContext(AtelierCheckpointKind.END_OF_TURN, userId, workspaceId,
-                null, null, null, replyText, writtenPaths, null, null, machine);
+                hostId, null, null, null, replyText, writtenPaths, null, null, machine);
     }
 
     /** Borne la commande sans jamais la refuser : un contrôle juge ce qu'il voit, pas une exception. */

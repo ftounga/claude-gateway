@@ -1,22 +1,20 @@
 package fr.claudegateway.governance.control;
 
-import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
- * <b>Les promotions reportées faute de poste</b> (F-93 / SF-93-04).
+ * <b>Les promotions reportées faute de poste</b> (F-93 / SF-93-04, persistées en SF-93-05).
  *
  * <p>Quand la machine ne répond pas, un contrôle de fin de tour qui exige d'écrire dans la carte du
  * poste ne peut rien obtenir : refuser la clôture ferait redemander trois fois une écriture
@@ -24,14 +22,16 @@ import org.springframework.stereotype.Component;
  * la dette soit <b>réclamée</b> au premier tour où le poste répond de nouveau. Un report qu'on ne
  * réclame jamais serait un effacement.</p>
  *
- * <p><b>Ce n'est pas une garantie, et c'est assumé</b> — même choix que {@code IntegriteMemo} et
- * {@code JugeMemo} : le registre vit en mémoire du processus. Un redémarrage ou un autre pod
- * l'oublie. Le prix est borné : la dette physique (les cases {@code - [ ]} de {@code STATE.md}) reste
- * sur la machine et sera recomptée par le marqueur ; seul le rappel nominatif est perdu. En faire une
- * table ajouterait une migration et une écriture à chaque tour hors ligne.</p>
+ * <p><b>Il survit désormais au redémarrage</b> (SF-93-05). En SF-93-04 le registre vivait en mémoire
+ * du processus, comme {@code IntegriteMemo} ou {@code JugeMemo} : un redémarrage ou un autre pod
+ * l'oubliait. Cette classe n'est plus qu'une <b>façade</b> — elle porte les constantes, la mesure du
+ * temps et la mise en forme de la réclamation — et délègue à un {@link PromotionReporteeStore} : en
+ * production le store persiste en base ({@link JpaPromotionReporteeStore}), en test il tient en
+ * mémoire ({@link InMemoryPromotionReporteeStore}).</p>
  *
- * <p><b>Isolation.</b> La clé est le couple {@code (userId, workspaceId)} du contexte de F-50, déjà
- * vérifié possédé : un report n'est jamais réclamé chez quelqu'un d'autre, ni sur un autre projet.</p>
+ * <p><b>Isolation.</b> La clé est le triple {@code (userId, hostId, workspaceId)} : l'utilisateur
+ * propriétaire (déjà vérifié possédé par F-50), le <b>poste</b> hors ligne, et le projet. Un report
+ * n'est jamais réclamé ailleurs.</p>
  */
 @Component
 public class PromotionReportee {
@@ -53,14 +53,11 @@ public class PromotionReportee {
     /** Durée de vie d'un report : au-delà, le rappel nominatif n'a plus de sens. */
     public static final Duration TTL = Duration.ofDays(7);
 
-    private record Key(UUID userId, UUID workspaceId) {
-    }
-
     /**
      * Ce qui a été reporté.
      *
-     * @param elements  les éléments durables non rangés, sans doublon, bornés
-     * @param dette     la dette déclarée la plus haute des tours reportés
+     * @param elements   les éléments durables non rangés, sans doublon, bornés
+     * @param dette      la dette déclarée la plus haute des tours reportés
      * @param reportedAt le premier report encore dû
      */
     public record Report(List<String> elements, int dette, Instant reportedAt) {
@@ -70,66 +67,51 @@ public class PromotionReportee {
         }
     }
 
-    private final Map<Key, Report> entries = new LinkedHashMap<>();
-    private final Clock clock;
+    private final PromotionReporteeStore store;
 
+    /** Forme d'avant SF-93-05 : un registre en mémoire du processus (tests, repli). */
     public PromotionReportee() {
-        this(Clock.systemUTC());
+        this(new InMemoryPromotionReporteeStore());
     }
 
-    PromotionReportee(Clock clock) {
-        this.clock = clock;
+    /** Registre en mémoire avec une horloge maîtrisée (tests de durée de vie). */
+    PromotionReportee(java.time.Clock clock) {
+        this(new InMemoryPromotionReporteeStore(clock));
+    }
+
+    @Autowired
+    public PromotionReportee(PromotionReporteeStore store) {
+        this.store = store;
     }
 
     /**
-     * Retient un report. Les reports successifs du même projet se <b>cumulent</b> : éléments sans
+     * Retient un report. Les reports successifs du même triple se <b>cumulent</b> : éléments sans
      * doublon, dette la plus haute, date du premier report.
      */
-    public synchronized void reporter(UUID userId, UUID workspaceId, Collection<String> elements,
+    public void reporter(UUID userId, UUID hostId, UUID workspaceId, Collection<String> elements,
             int dette) {
-        if (userId == null || workspaceId == null) {
+        if (userId == null || hostId == null || workspaceId == null) {
             return;
         }
-        Instant now = clock.instant();
-        purge(now);
-        Key key = new Key(userId, workspaceId);
-        Report previous = entries.remove(key);
-        Set<String> merged = new LinkedHashSet<>(previous == null ? List.of() : previous.elements());
-        if (elements != null) {
-            for (String element : elements) {
-                String item = element == null ? "" : element.strip();
-                if (!item.isEmpty() && merged.size() < MAX_ELEMENTS) {
-                    merged.add(item);
-                }
-            }
-        }
-        int kept = Math.max(Math.max(0, dette), previous == null ? 0 : previous.dette());
-        entries.put(key, new Report(new ArrayList<>(merged), kept,
-                previous == null ? now : previous.reportedAt()));
-        while (entries.size() > MAX_ENTRIES) {
-            entries.remove(entries.keySet().iterator().next());
-        }
+        store.reporter(userId, hostId, workspaceId, elements, dette);
     }
 
     /**
-     * <b>Réclame</b> le report de ce projet : le rend, et le retire. Réclamé une seule fois — le
-     * réclamer à chaque tour recréerait la boucle, à l'échelle des tours (D3).
+     * <b>Réclame</b> le report d'un triple : le rend, et le retire. Réclamé une seule fois (D3).
      */
-    public synchronized Optional<Report> reclamer(UUID userId, UUID workspaceId) {
-        if (userId == null || workspaceId == null) {
+    public Optional<Report> reclamer(UUID userId, UUID hostId, UUID workspaceId) {
+        if (userId == null || hostId == null || workspaceId == null) {
             return Optional.empty();
         }
-        purge(clock.instant());
-        return Optional.ofNullable(entries.remove(new Key(userId, workspaceId)));
+        return store.reclamer(userId, hostId, workspaceId);
     }
 
-    /** Vrai si un report est dû pour ce projet (sans le réclamer). */
-    public synchronized boolean estDue(UUID userId, UUID workspaceId) {
-        if (userId == null || workspaceId == null) {
+    /** Vrai si un report est dû pour ce triple (sans le réclamer). */
+    public boolean estDue(UUID userId, UUID hostId, UUID workspaceId) {
+        if (userId == null || hostId == null || workspaceId == null) {
             return false;
         }
-        purge(clock.instant());
-        return entries.containsKey(new Key(userId, workspaceId));
+        return store.estDue(userId, hostId, workspaceId);
     }
 
     /**
@@ -157,7 +139,66 @@ public class PromotionReportee {
                 + "puis reprends ta réponse avec le marqueur de fin de tour.").toString();
     }
 
-    private void purge(Instant now) {
-        entries.values().removeIf(report -> report.reportedAt().plus(TTL).isBefore(now));
+    // ---------------------------------------------------------------------------------------------
+    // Aides partagées par les deux stores : une seule sémantique de fusion et de forme stockée.
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * Fusionne les éléments d'un report existant et ceux d'un nouveau report : sans doublon, dans
+     * l'ordre, bornés à {@link #MAX_ELEMENTS}, chacun {@code strip()}é.
+     */
+    static List<String> mergeElements(List<String> previous, Collection<String> incoming) {
+        Set<String> merged = new LinkedHashSet<>(previous == null ? List.of() : previous);
+        if (incoming != null) {
+            for (String element : incoming) {
+                String item = element == null ? "" : element.strip();
+                if (!item.isEmpty() && merged.size() < MAX_ELEMENTS) {
+                    merged.add(item);
+                }
+            }
+        }
+        return new ArrayList<>(merged);
+    }
+
+    /** La dette retenue au cumul : la plus haute, jamais négative. */
+    static int mergedDette(int previous, int incoming) {
+        return Math.max(Math.max(0, incoming), Math.max(0, previous));
+    }
+
+    /**
+     * Forme stockée à plat des éléments : un par ligne, les sauts internes remplacés par une espace,
+     * les blancs écartés. {@code null} si rien à stocker.
+     */
+    static String joinElements(List<String> elements) {
+        if (elements == null || elements.isEmpty()) {
+            return null;
+        }
+        StringBuilder joined = new StringBuilder();
+        for (String element : elements) {
+            String item = element == null ? "" : element.strip().replaceAll("\\s*[\\r\\n]+\\s*", " ");
+            if (item.isEmpty()) {
+                continue;
+            }
+            if (joined.length() > 0) {
+                joined.append('\n');
+            }
+            joined.append(item);
+        }
+        return joined.length() == 0 ? null : joined.toString();
+    }
+
+    /** Éclate la forme stockée : jamais {@code null}, sans blancs, sans doublon, borné. */
+    static List<String> splitElements(String stored) {
+        if (stored == null || stored.isBlank()) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        for (String part : stored.split("\n")) {
+            String item = part.strip();
+            if (!item.isEmpty() && !out.contains(item) && out.size() < MAX_ELEMENTS) {
+                out.add(item);
+            }
+        }
+        return List.copyOf(out);
     }
 }
