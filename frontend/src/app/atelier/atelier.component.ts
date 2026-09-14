@@ -67,7 +67,7 @@ import {
   PickedLibraryDocument,
 } from '../chat/library-picker/library-picker-dialog.component';
 import { ApiKeyService } from '../core/services/api-key.service';
-import { AtelierService } from '../core/services/atelier.service';
+import { AtelierService, TURN_STREAM_PROBE_MS } from '../core/services/atelier.service';
 import { AtelierGuideService } from '../core/services/atelier-guide.service';
 import { HostPresenceService } from '../core/services/host-presence.service';
 import { LiveTerminalService } from '../core/services/live-terminal.service';
@@ -145,16 +145,6 @@ export { WORKSPACE_TEXT_EXTENSIONS, WORKSPACE_TEXT_ACCEPT } from './atelier.type
  * ouvrir un canal poussé pour cette seule information coûterait plus qu'il ne rapporte.</p>
  */
 export const RUNNER_STATUS_POLL_MS = 15_000;
-
-/**
- * Délai de la **sonde de flux retenu** (F-84 / SF-84-04), en millisecondes.
- *
- * <p>La prise en main (`started`, ou l'aparté `attached` d'un rebranchement) part en quelques
- * millisecondes sur un réseau direct. Ne rien en avoir reçu au bout de 4 s veut dire qu'un proxy
- * retient le flux jusqu'à sa fin — constaté en production derrière Netskope, où un tour de huit
- * minutes n'a rien affiché. L'écran suit alors le tour par fenêtres.</p>
- */
-export const TURN_STREAM_PROBE_MS = 4_000;
 
 /**
  * Période de relevé de la **liaison Teams** (F-87 / SF-87-03), en millisecondes.

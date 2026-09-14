@@ -77,6 +77,17 @@ export function proxyRelayDownloadPath(platform: ProxyRelayPlatform): string {
   return `/api/runner/relay/${platform}`;
 }
 
+/**
+ * Délai de la **sonde de flux retenu** (F-84 / SF-84-04), en millisecondes.
+ *
+ * <p>La prise en main (`started`, ou l'aparté `attached` d'un rebranchement) part en quelques
+ * millisecondes sur un réseau direct. Ne rien en avoir reçu au bout de 4 s veut dire qu'un proxy
+ * retient le flux jusqu'à sa fin — constaté en production derrière Netskope, où un tour de huit
+ * minutes n'a rien affiché. La vue suit alors le tour par fenêtres. Partagé par l'écran émetteur
+ * (`AtelierComponent`) et par la place lectrice de la mosaïque (`LiveTurnView`, F-84 / SF-84-07).</p>
+ */
+export const TURN_STREAM_PROBE_MS = 4_000;
+
 /** Échéance d'une fenêtre de suivi (F-84 / SF-84-04), sous les délais d'inactivité des proxys. */
 export const TURN_WINDOW_WAIT_MS = 20_000;
 

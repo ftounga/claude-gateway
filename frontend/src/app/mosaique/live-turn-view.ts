@@ -1,7 +1,11 @@
 import { NgZone, signal } from '@angular/core';
 
-import { AtelierService } from '../core/services/atelier.service';
-import { AtelierStreamAction, AtelierStreamHandlers } from '../core/models/atelier.models';
+import { AtelierService, TURN_STREAM_PROBE_MS } from '../core/services/atelier.service';
+import {
+  AtelierStreamAction,
+  AtelierStreamHandlers,
+  AtelierTurnFollower,
+} from '../core/models/atelier.models';
 import { AtelierExecStreamingItem, AtelierPendingConfirmation } from '../atelier/atelier.types';
 import { chatStepsToBlocks } from '../atelier/terminal/chat-steps';
 import { formatElapsed } from '../atelier/terminal/terminal-block';
@@ -23,22 +27,44 @@ export const REATTACH_DELAY_MS = 5_000;
  * émetteurs (`turnAttachExecutor`, SF-84-02). La distinction entre place lectrice et place
  * émettrice existe donc déjà : elle n'est pas à inventer, elle est à ne pas casser.</p>
  *
+ * <p><b>Elle traverse les proxys (F-84 / SF-84-07).</b> Derrière un proxy d'entreprise qui inspecte
+ * le TLS (Netskope, constaté le 2026-09-13), le corps d'une réponse <code>text/event-stream</code>
+ * est retenu jusqu'à sa fin : une tuile qui regarde un tour de huit minutes n'afficherait rien avant
+ * la dernière seconde. Comme le terminal depuis SF-84-04, la tuile <b>sonde</b> le flux et, si rien
+ * n'en vient au bout de {@link TURN_STREAM_PROBE_MS}, le suit <b>par fenêtres</b> — chacune close,
+ * donc relâchée par le proxy.</p>
+ *
  * <p><b>Rien ne tourne n'est pas une panne.</b> `idle`, une fin de tour ou un réseau coupé laissent
  * la tuile en place, au repos, et la lecture se rebranche quelques secondes plus tard — le prochain
- * tour du même projet sera vu sans qu'on ait à rouvrir l'écran.</p>
+ * tour du même projet sera vu sans qu'on ait à rouvrir l'écran. Un <b>tour de suite</b> (SF-84-06),
+ * lui, n'est pas une fin : son premier `done` porte `followUp` et la tuile reste vivante.</p>
  */
 export class LiveTurnView {
 
   /** Étapes reçues, dans l'ordre. Les blocs en sont dérivés — jamais l'inverse. */
   private steps: AtelierStreamAction[] = [];
 
-  /** Dernier numéro d'événement reçu : le curseur d'un rebranchement ultérieur (SF-84-02). */
+  /** Dernier numéro d'événement reçu : le curseur d'un rebranchement ou d'une fenêtre (SF-84-02). */
   private cursor = 0;
 
+  /** Le rebranchement normal en cours, s'il y en a un (avant la bascule vers les fenêtres). */
   private attachment: AbortController | null = null;
+
+  /** Le suivi par fenêtres en cours, s'il y en a un (F-84 / SF-84-07). */
+  private follower: AtelierTurnFollower | null = null;
+
+  /** La sonde de flux retenu en attente, s'il y en a une. */
+  private probe: ReturnType<typeof setTimeout> | null = null;
+
   private retry: ReturnType<typeof setTimeout> | null = null;
   private startedAt = 0;
   private closed = false;
+
+  /** Vrai dès que le flux a prouvé qu'il passe (`attached`, `idle` ou prise en main). */
+  private heard = false;
+
+  /** Génération de la lecture courante : un événement d'une lecture précédente n'est jamais appliqué. */
+  private generation = 0;
 
   /** Le tour en cours tel que le terminal l'affiche, ou `null` quand rien ne tourne. */
   readonly stream = signal<AtelierExecStreamingItem | null>(null);
@@ -60,10 +86,13 @@ export class LiveTurnView {
 
   /** Ouvre la lecture. Rejouer l'appel sur une vue déjà ouverte ne fait rien. */
   open(): void {
-    if (this.closed || this.attachment) {
+    if (this.closed || this.attachment || this.follower) {
       return;
     }
-    this.attachment = this.atelier.attachTurn(this.workspaceId, this.cursor, this.handlers());
+    const generation = this.openGate();
+    const handlers = this.handlers(generation);
+    this.attachment = this.atelier.attachTurn(this.workspaceId, this.cursor, handlers);
+    this.armProbe(generation, handlers);
   }
 
   /**
@@ -73,6 +102,9 @@ export class LiveTurnView {
   close(): void {
     this.closed = true;
     this.stopRetry();
+    this.clearProbe();
+    this.follower?.stop();
+    this.follower = null;
     this.attachment?.abort();
     this.attachment = null;
   }
@@ -89,14 +121,57 @@ export class LiveTurnView {
 
   // ------------------------------------------------------------------ interne
 
+  /** Ouvre la numérotation d'une nouvelle lecture, et rend sa génération. */
+  private openGate(): number {
+    this.generation += 1;
+    // Une tuile (ré)ouverte n'a rien gardé : elle rejoue tout, comme le rebranchement du terminal
+    // (`attachTurn(id, 0, …)`). Repartir du curseur d'un tour fini ferait sauter le début du suivant.
+    this.cursor = 0;
+    this.heard = false;
+    return this.generation;
+  }
+
+  /**
+   * Arme la sonde : sans nouvelles du flux sous {@link TURN_STREAM_PROBE_MS}, la tuile suit le tour
+   * par fenêtres (F-84 / SF-84-07). Un rebranchement retenu ne livrera rien avant la fin du tour :
+   * on l'abandonne, sans quoi il rejouerait tout d'un bloc — `attached` compris, qui remettrait la
+   * tuile à zéro.
+   */
+  private armProbe(generation: number, handlers: AtelierStreamHandlers): void {
+    this.clearProbe();
+    this.probe = setTimeout(() => {
+      this.probe = null;
+      if (this.closed || this.heard || generation !== this.generation) {
+        return;
+      }
+      this.attachment?.abort();
+      this.attachment = null;
+      this.follower?.stop();
+      this.follower = this.atelier.followTurnInWindows(this.workspaceId, () => this.cursor, handlers);
+    }, TURN_STREAM_PROBE_MS);
+  }
+
+  private clearProbe(): void {
+    if (this.probe !== null) {
+      clearTimeout(this.probe);
+      this.probe = null;
+    }
+  }
+
   /** Ce que la lectrice fait de ce qu'elle reçoit. Aucun de ces gestes n'écrit quoi que ce soit. */
-  private handlers(): AtelierStreamHandlers {
+  private handlers(generation: number): AtelierStreamHandlers {
     return {
+      // Un événement de tour ne s'applique qu'une fois, quelle que soit la source qui le livre — le
+      // rebranchement normal ou une fenêtre — et jamais s'il appartient à une lecture précédente.
+      acceptSeq: (seq) => generation === this.generation && seq > this.cursor,
       onSeq: (seq) => {
         this.cursor = seq;
       },
+      // La prise en main prouve que le flux passe : la sonde se tait.
+      onStarted: () => this.zone.run(() => this.markHeard()),
       onAttached: (state) =>
         this.zone.run(() => {
+          this.markHeard();
           this.steps = [];
           this.truncated.set(false);
           this.startedAt = state.startedAt > 0 ? state.startedAt : Date.now();
@@ -105,7 +180,11 @@ export class LiveTurnView {
         }),
       // Rien ne tourne ici : ce n'est pas une anomalie, c'est l'état d'avant F-84. La tuile reste,
       // au repos, et l'on réessaiera — le prochain tour n'exigera pas de rouvrir l'écran.
-      onIdle: () => this.zone.run(() => this.rest()),
+      onIdle: () =>
+        this.zone.run(() => {
+          this.markHeard();
+          this.rest();
+        }),
       onTruncated: () => this.zone.run(() => this.truncated.set(true)),
       onAction: (action) =>
         this.zone.run(() => {
@@ -157,12 +236,27 @@ export class LiveTurnView {
           }),
         ),
       onConfirmResolved: () => this.zone.run(() => this.pending.set(null)),
-      onDone: () => this.zone.run(() => this.rest()),
+      // Un tour de suite (F-84 / SF-84-06) n'est pas la fin du tour vivant : son `done` porte
+      // `followUp`, et la tuile reste vivante — le tour de suite s'y affiche. Seul un `done` final
+      // met la tuile au repos.
+      onDone: (done) =>
+        this.zone.run(() => {
+          if (done.followUp === true) {
+            return;
+          }
+          this.rest();
+        }),
       // Une lecture qui échoue n'est pas une panne à annoncer : c'est une tuile sans direct. Elle
       // réessaiera. Afficher une erreur sur quatre tuiles au moindre hoquet serait le contresens
       // même de cet écran.
       onError: () => this.zone.run(() => this.rest()),
     };
+  }
+
+  /** Le flux passe : la sonde n'a plus de raison de basculer sur les fenêtres. */
+  private markHeard(): void {
+    this.heard = true;
+    this.clearProbe();
   }
 
   /** Les blocs sont **dérivés** des étapes par la fonction du terminal — jamais recomposés ici. */
@@ -178,6 +272,9 @@ export class LiveTurnView {
     this.pending.set(null);
     this.elapsedLabel.set('');
     this.startedAt = 0;
+    this.clearProbe();
+    this.follower?.stop();
+    this.follower = null;
     this.attachment = null;
     this.scheduleRetry();
   }
