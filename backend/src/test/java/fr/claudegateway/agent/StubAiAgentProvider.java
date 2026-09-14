@@ -36,6 +36,13 @@ public class StubAiAgentProvider implements AiAgentProvider {
      */
     public final List<List<String>> toolBelts =
             java.util.Collections.synchronizedList(new ArrayList<>());
+    /**
+     * Réglage de raisonnement de <b>chaque</b> appel, dans l'ordre (F-118 / SF-118-01). {@link
+     * #lastRequest} ne porte que le dernier ; l'effort adaptatif se prouve en comparant le premier
+     * tour (effort normal) aux étapes de continuation (effort réduit).
+     */
+    public final List<AgentReasoning> reasoningSnapshots =
+            java.util.Collections.synchronizedList(new ArrayList<>());
 
     /**
      * F-116 / SF-116-01 : quand il est vrai, la variante streamée découpe le texte de chaque tour en
@@ -64,6 +71,7 @@ public class StubAiAgentProvider implements AiAgentProvider {
         duringTurn = null;
         toolNamesSeen.clear();
         toolBelts.clear();
+        reasoningSnapshots.clear();
         emitTextDeltas = false;
         throwPromptTooLongTimes = 0;
         idSeq = 0;
@@ -199,6 +207,7 @@ public class StubAiAgentProvider implements AiAgentProvider {
     public AgentTurn nextTurn(AgentTurnRequest request) {
         this.lastRequest = request;
         messageSnapshots.add(String.valueOf(request.messages()));
+        reasoningSnapshots.add(request.reasoning());
         if (throwPromptTooLongTimes > 0) {
             throwPromptTooLongTimes--;
             throw new AgentPromptTooLongException("prompt too long (simulé)");

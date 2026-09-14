@@ -48,6 +48,19 @@ import org.springframework.boot.context.properties.bind.ConstructorBinding;
  *                      complet (texte affiché en fin de tour) par variable d'environnement, sans
  *                      livraison. Un refus ou une coupure du flux replie de toute façon sur l'appel
  *                      complet, tour par tour.
+ * @param stepEffort    effort de raisonnement des <b>étapes de continuation</b> de la boucle maison
+ *                      (F-118 / SF-118-01) : {@code low} à {@code max}, défaut {@code low}. Le
+ *                      <b>premier</b> tour d'une demande garde l'effort normal ({@link #effort()}) — la
+ *                      réflexion y sert à cadrer le travail ; les tours suivants (enchaîner un outil,
+ *                      relire un fichier) exécutent une trajectoire déjà tracée et n'ont pas besoin de
+ *                      « réfléchir fort ». Même vocabulaire et même repli que {@code effort} : une
+ *                      valeur inconnue retombe sur le défaut, elle n'arrête pas les tours. Sans effet
+ *                      quand {@code adaptiveEffort} est faux
+ * @param adaptiveEffort <b>drapeau de repli</b> de l'effort adaptatif (F-118 / SF-118-01), défaut
+ *                      {@code true}. Actif, l'effort suit l'étape (normal au premier tour, réduit
+ *                      ensuite). <b>Coupe-circuit</b> : le passer à {@code false} rétablit l'effort
+ *                      normal à <i>chaque</i> étape (comportement d'avant F-118) par variable
+ *                      d'environnement, sans livraison
  * @param maxTurnTokens plafond de consommation d'un <b>message</b> de la boucle maison
  *                      (F-39 / SF-39-15), en tokens traités — cache compris, comme le compteur de
  *                      quota (SF-39-01). Défaut {@code 1 500 000}, calibré sur l'usage réel du
@@ -72,12 +85,20 @@ public record AtelierProperties(
         Long maxTurnTokens,
         Integer maxDelegations,
         Boolean storageExecution,
-        Boolean streaming) {
+        Boolean streaming,
+        String stepEffort,
+        Boolean adaptiveEffort) {
 
     /** Modèle de la boucle maison à défaut de configuration (F-39 / SF-39-10). */
     public static final String DEFAULT_MODEL = "claude-opus-5";
     /** Effort par défaut : celui du fournisseur, écrit pour être réglable (F-39 / SF-39-10). */
     public static final String DEFAULT_EFFORT = "high";
+    /**
+     * Effort par défaut des étapes de continuation (F-118 / SF-118-01) : le plancher du vocabulaire.
+     * Enchaîner un {@code read_file} ou un {@code ls} n'a pas besoin de « réfléchir fort ». Réglable
+     * via {@code APP_ATELIER_STEP_EFFORT} sans livraison si {@code medium} s'avère plus sûr.
+     */
+    public static final String DEFAULT_STEP_EFFORT = "low";
     /** Niveaux d'effort acceptés — même vocabulaire que le chemin Managed Agents (SF-28-17). */
     private static final java.util.Set<String> ALLOWED_EFFORTS =
             java.util.Set.of("low", "medium", "high", "xhigh", "max");
@@ -160,6 +181,29 @@ public record AtelierProperties(
         if (streaming == null) {
             streaming = Boolean.TRUE;
         }
+        // Effort des étapes de continuation (F-118 / SF-118-01) : même repli que `effort`, une faute
+        // de frappe retombe sur le défaut au lieu d'arrêter le démarrage ou de rendre les tours muets.
+        if (stepEffort == null || stepEffort.isBlank() || !ALLOWED_EFFORTS.contains(stepEffort)) {
+            stepEffort = DEFAULT_STEP_EFFORT;
+        }
+        // Absent => effort adaptatif actif : un réglage manquant ne change pas le comportement livré.
+        if (adaptiveEffort == null) {
+            adaptiveEffort = Boolean.TRUE;
+        }
+    }
+
+    /**
+     * Constructeur de compatibilité, sans l'effort adaptatif (F-118) : effort réduit et drapeau
+     * retombent sur leurs défauts ({@code low} / actif). Évite de réécrire les appelants antérieurs à
+     * F-118 (et leurs tests) pour des réglages qu'ils n'expriment pas.
+     */
+    public AtelierProperties(String storage, String bucket, String prefix, Long maxTotalBytes,
+            Integer maxEntries, Long maxFileBytes, Integer maxIterations, String model, String effort,
+            Boolean contextPruning, Long maxTurnTokens, Integer maxDelegations,
+            Boolean storageExecution, Boolean streaming) {
+        this(storage, bucket, prefix, maxTotalBytes, maxEntries, maxFileBytes, maxIterations, model,
+                effort, contextPruning, maxTurnTokens, maxDelegations, storageExecution, streaming,
+                null, null);
     }
 
     /**
