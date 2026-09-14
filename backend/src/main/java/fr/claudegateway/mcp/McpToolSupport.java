@@ -7,6 +7,8 @@ import java.util.UUID;
 
 import org.springframework.stereotype.Component;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import io.modelcontextprotocol.spec.McpSchema.JsonSchema;
 
@@ -23,9 +25,33 @@ import io.modelcontextprotocol.spec.McpSchema.JsonSchema;
 public class McpToolSupport {
 
     private final McpSecretFilter secretFilter;
+    private final ObjectMapper objectMapper;
 
-    public McpToolSupport(McpSecretFilter secretFilter) {
+    public McpToolSupport(McpSecretFilter secretFilter, ObjectMapper objectMapper) {
         this.secretFilter = secretFilter;
+        this.objectMapper = objectMapper;
+    }
+
+    /**
+     * Convertit un DTO (record, liste, map) en arbre JSON générique (Map/List/String/…), pour le
+     * rendre comme contenu structuré <b>et</b> le faire passer au filtre de secrets par {@link #ok}
+     * — un record ne serait pas parcouru par le masquage, un arbre JSON l'est.
+     */
+    public Object toJsonTree(Object dto) {
+        return dto == null ? null : objectMapper.convertValue(dto, Object.class);
+    }
+
+    /**
+     * Résultat portant un <b>contenu tiers</b> (Radar, Teams, page) : converti en arbre JSON, marqué
+     * <b>non fiable</b> (§6.3) et masqué (§6.4). Champs additionnels éventuels fusionnés à la racine.
+     */
+    public CallToolResult okUntrusted(String text, Object tiersContent, Map<String, Object> extra) {
+        Map<String, Object> structured = new LinkedHashMap<>();
+        if (extra != null) {
+            structured.putAll(extra);
+        }
+        structured.put("data", untrusted(toJsonTree(tiersContent)));
+        return ok(text, structured);
     }
 
     // ------------------------------------------------------------------ résultats
