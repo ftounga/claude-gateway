@@ -465,3 +465,78 @@ promesse de confinement — dans le code, la console, la documentation ou l'écr
 Un test du module runner (`NoConfinementPromiseTest`) empêche la phrase de revenir. La
 conteneurisation du runner reste **hors périmètre** ; le jour où elle serait décidée, elle rouvrirait
 cet ADR, pas une option technique.
+
+## ADR-020 — L'application devient serveur MCP et serveur d'autorisation OAuth 2.1 pour ses clients IA (F-112)
+
+**Date** : 2026-09-14
+**Statut** : Acceptée
+**Décideur** : product owner
+
+**Contexte.** Le besoin (F-112, cadrage du 2026-09-13) est qu'une IA compatible parle à toute
+l'application et agisse dessus — pour le product owner (tester sans copier-coller entre deux PC) et
+pour les clients (piloter leur Forge, leur Vigie et leur Radar depuis l'IA qu'ils utilisent déjà). La
+réponse standard est **MCP** (Model Context Protocol) : l'application expose un **serveur MCP** ; le
+client IA s'y connecte avec le compte de l'utilisateur et utilise ses **outils**. Le standard MCP
+impose **OAuth 2.1** pour l'authentification : aucun jeton ne transite par une conversation,
+l'utilisateur consent dans son navigateur.
+
+**Décision.**
+
+1. **Serveur MCP en transport Streamable HTTP** sur `/api/mcp`, appuyé sur le **SDK Java officiel
+   MCP** (`io.modelcontextprotocol.sdk`) et son intégration Spring MVC
+   (`WebMvcStreamableServerTransportProvider`). Le serveur **n'ajoute aucune intelligence** : il
+   expose les capacités existantes de la gateway, avec les mêmes droits, le même cloisonnement, les
+   mêmes gardes (Gateway-First respecté).
+2. **Révision de protocole — mesurée, non figée d'avance.** La ligne `0.x` du SDK retenue (0.18.4)
+   négocie jusqu'à **`2025-11-25`**, avec repli automatique vers `2025-06-18` / `2025-03-26` /
+   `2024-11-05` selon le client (négociation `initialize`). La révision `2026-07-28` visée par le
+   cadrage (cœur sans état, extension Tasks) exige la **ligne `2.x`** du SDK, non retenue pour la
+   fondation : elle est postérieure et sa surface d'API n'est pas encore éprouvée ici. La montée vers
+   `2026-07-28` est un suivi, **conditionné à la matrice de compatibilité réelle** mesurée avec
+   Claude Code, Claude Desktop, claude.ai et Codex (SF-112-01 documente la matrice, SF-112-08 la
+   mesure de bout en bout). Le cadrage prévoit explicitement que rien n'est figé avant cette mesure.
+
+   | Client MCP | Révision attendue | État |
+   |---|---|---|
+   | Claude Code | `2025-06-18` / `2025-11-25` | pris en charge (négocié) |
+   | Claude Desktop | `2025-06-18` | pris en charge (négocié) |
+   | claude.ai (connecteur perso) | `2025-06-18` | pris en charge (négocié) |
+   | Codex | `2025-06-18` | pris en charge (négocié) |
+   | Cible `2026-07-28` (sans état, Tasks) | — | suivi, exige SDK `2.x` |
+
+3. **L'application devient serveur d'autorisation OAuth 2.1** (Spring Authorization Server, embarqué
+   dans le backend) **en plus** de son authentification actuelle (JWT + Google, décision C2 de
+   `CLAUDE.md`). L'API MCP est un **serveur de ressources** OAuth 2.1 (RFC 9728, 8707, audience). Le
+   serveur d'autorisation offre : métadonnées (RFC 8414), code d'autorisation **avec PKCE
+   obligatoire**, `iss` dans la réponse (RFC 9207), **Client ID Metadata Documents** et
+   **enregistrement dynamique**, jetons d'accès courts, jetons de rafraîchissement **rotatifs** et
+   révocables, clés de signature en rotation. **Ce que cet ADR ne change pas** : la connexion à
+   l'application reste celle d'aujourd'hui (courriel/mot de passe ou Google) ; OAuth ne sert **qu'aux
+   clients MCP**. La connexion Google (client OAuth entrant, `OAuth2ClientConfig`) est inchangée.
+4. **Chaînes de sécurité séparées.** `/api/mcp` (serveur de ressources), `/oauth2/*` (serveur
+   d'autorisation) et `/.well-known/*` (métadonnées) ont chacune leur `SecurityFilterChain` ordonnée,
+   **sans rien ouvrir ailleurs** : un jeton MCP n'ouvre **aucune** route hors `/api/mcp`, et toutes
+   les routes existantes gardent leur authentification. Un test de non-régression le garantit.
+5. **Jetons personnels** (SF-112-03) pour ce qui n'a pas de navigateur : créés dans les réglages,
+   affichés une seule fois, stockés **hachés**, à **expiration obligatoire** (90 jours au plus),
+   périmètres et postes, révocables.
+6. **Gardes (cadrage §6), non négociables.** Une IA ne s'autorise jamais elle-même (les autorisations
+   de commande et d'écriture restent à valider par un humain) ; mêmes droits et cloisonnement
+   (`user_id`, `host_id`) ; les données renvoyées sont marquées non fiables ; pas de secret en sortie ;
+   limites par jeton ; journal MCP ; révocation immédiate.
+
+**Métadonnées et infrastructure — écrit.** Le serveur est servi sous le context-path `/api`.
+Les métadonnées RFC 9728/8414 sont exposées sous ce préfixe et l'URL de découverte annoncée dans le
+`WWW-Authenticate` (401) est absolue et cohérente avec ce préfixe. Si une découverte à la racine du
+domaine (`https://host/.well-known/…`) devenait nécessaire pour un client donné, elle relève d'un
+routage d'ingress (infra), documenté comme suivi et **hors du code livré ici**.
+
+**Risque assumé, et écrit.** Ce qu'un outil renvoie **part chez le fournisseur de l'IA connectée**
+(Anthropic, OpenAI…), qui n'est pas forcément celui que le client final a accepté. C'est pourquoi
+l'accès MCP se donne **poste par poste** au consentement (SF-112-03) et l'écran l'avertit. Le produit
+ne peut pas garantir ce que l'IA connectée fait des données : c'est dit.
+
+**Conséquences.** F-112 introduit un serveur d'autorisation (composant éprouvé Spring Authorization
+Server, aucune cryptographie maison). Le périmètre reste borné : pas de client MCP intégré à
+l'application, pas d'annuaire public, et une IA ne peut jamais accorder une autorisation (cadrage
+§12). Toute subfeature qui ouvrirait une route hors `/api/mcp` à un jeton MCP contredit cet ADR.
