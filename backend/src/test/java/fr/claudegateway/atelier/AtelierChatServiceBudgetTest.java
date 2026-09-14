@@ -7,6 +7,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -111,6 +112,19 @@ class AtelierChatServiceBudgetTest {
                         maxTurnTokens, null, true));
     }
 
+    /** Construit le service avec un budget de TEMPS donné (F-118 / SF-118-03). */
+    private void serviceWithTimeBudget(Duration turnBudget) {
+        service = new AtelierChatService(workspaceService, messageRepository, (AiAgentProvider) agentProvider,
+                byokKeyService, quotaService,
+                new fr.claudegateway.atelier.git.GitWorkspaceService(workspaceService, gitTokenService,
+                        gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
+                runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
+                fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
+                runnerHostService,
+                new AtelierProperties(null, null, null, null, null, null, null, null, null, null,
+                        null, null, true, null, null, null, turnBudget));
+    }
+
     private void hostedWithRemainingQuota(long remainingTokens) {
         when(byokKeyService.resolveActiveApiKey(userId)).thenReturn(Optional.empty());
         lenient().when(quotaService.currentUsage(userId))
@@ -160,6 +174,37 @@ class AtelierChatServiceBudgetTest {
         assertThat(result.reply()).isEqualTo("Voilà.");
         assertThat(result.budgetReached()).isFalse();
         assertThat(agentProvider.remaining()).isZero();
+    }
+
+    // ------------------------------------------------------------ le budget de TEMPS vient de la config
+
+    @Test
+    void theTimeBudgetComesFromTheConfiguredProperty() {
+        // F-118 / SF-118-03 : la deadline du tour se déduit de `app.atelier.turn-budget`, non plus
+        // d'une constante. Un budget très court fait sortir la boucle sur le budget de TEMPS —
+        // distinct du plafond de consommation (D-L8-5) : `reply` le dit, `budgetReached` reste faux.
+        hostedWithRemainingQuota(12_000_000L);
+        serviceWithTimeBudget(Duration.ofMillis(50));
+        // Le premier appel fournisseur dort au-delà du budget ; la deuxième itération trouve alors la
+        // deadline dépassée avant même de rappeler le fournisseur.
+        agentProvider.onTurn(() -> {
+            try {
+                Thread.sleep(250L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        agentProvider.enqueueToolCallCosting("read_file", 5, 5);
+        agentProvider.enqueueToolCallCosting("read_file", 5, 5);
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "lis tout");
+
+        assertThat(result.reply()).isEqualTo(AtelierChatService.BUDGET_REACHED_REPLY);
+        // Le budget de TEMPS n'est pas le plafond de consommation : `budgetReached` reste faux.
+        assertThat(result.budgetReached()).isFalse();
+        // Le premier tour est bien parti (budget non dépassé au tout début) ; le second n'a pas été
+        // demandé — la montre a arrêté la boucle, elle n'a pas simplement constaté après coup.
+        assertThat(agentProvider.remaining()).isEqualTo(1);
     }
 
     // ------------------------------------------------------------ le quota borne le plafond
