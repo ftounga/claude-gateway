@@ -351,6 +351,43 @@ describe('GovernanceComponent', () => {
     expect(said).toContain('vos modifications');
   });
 
+  it('SF-96-04 : quand ça reste en attente, le compte rendu NOMME le dossier bloquant', () => {
+    governance.getHost.and.returnValue(of(outdatedHost));
+    governance.apply.and.returnValue(
+      of({
+        ...plan,
+        root: { supported: true, readable: true, message: null, entries: [] },
+        projects: [
+          {
+            workspaceId: 'w1',
+            name: 'web',
+            path: 'web',
+            readable: true,
+            entries: [{ path: 'STATE.md', kind: 'TEMPLATE', action: 'CREATE' }],
+          },
+          {
+            workspaceId: 'w2',
+            name: 'data-platform',
+            path: 'data-platform',
+            readable: false,
+            entries: [],
+          },
+        ],
+      } as GovernanceDepositPlan),
+    );
+    component.ngOnInit();
+    fixture.detectChanges();
+
+    component.applyAgain(outdatedHost.active[0]);
+
+    const opened = TestBed.inject(MatSnackBar).open as jasmine.Spy;
+    const said = opened.calls.mostRecent().args[0] as string;
+    // Le dossier bloquant est NOMMÉ, et le lien avec le bandeau qui persiste est explicite.
+    expect(said).toContain('data-platform');
+    expect(said).toContain('En attente de');
+    expect(said).toContain('la mise à jour reste signalée');
+  });
+
   it('un 403 affiche le bandeau Forge et arrête là', () => {
     governance.getCatalog.and.returnValue(throwError(() => new HttpErrorResponse({ status: 403 })));
 

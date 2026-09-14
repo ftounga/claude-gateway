@@ -166,6 +166,16 @@ public class GovernanceDepositService {
     public void depositOnNewProjectQuietly(UUID userId, UUID workspaceId) {
         try {
             Workspace workspace = hostScope.projectOf(userId, workspaceId);
+            if (isTerminal(workspace)) {
+                // Un TERMINAL n'est pas un projet (F-74 / F-89) : il n'a pas de dossier de projet
+                // réel, il s'ouvre à la RACINE du poste (F-92 / SF-96-04). Y déposer les gabarits et
+                // les skills poserait du contenu de projet à côté de la carte — exactement la
+                // confusion « un fichier de la racine pris pour un projet » que F-92 écarte — et
+                // pire : le terminal ne recevant jamais un dépôt complet, il retiendrait l'activation
+                // « en attente » à sa création, et le geste « Appliquer » ne pourrait plus l'éteindre.
+                // Le dépôt de la carte (racine) et des vrais projets reste, lui, concerné.
+                return;
+            }
             GovernanceHostRef host = hostScope.hostOf(workspace);
             for (GovernanceActivation activation : activations
                     .findByUserIdAndHostIdOrderByCreatedAtAsc(userId, host.hostId())) {
@@ -226,6 +236,13 @@ public class GovernanceDepositService {
         List<GovernanceProjectDepositPlan> projects = new ArrayList<>();
         boolean everythingInPlace = root.complete();
         for (Workspace workspace : hostScope.projectsOf(run.userId, run.host)) {
+            if (isTerminal(workspace)) {
+                // Défense en profondeur (F-96 / SF-96-04) : un terminal n'est pas un projet et ne
+                // reçoit pas de dépôt de projet. Un terminal glissé dans le périmètre retiendrait
+                // l'activation « en attente » pour toujours — le geste « Appliquer » n'éteindrait
+                // jamais le bandeau « une version plus récente existe ».
+                continue;
+            }
             ProjectDeposit done = depositOn(run, workspace, projectFilesOfPackage);
             everythingInPlace &= done.complete();
             projects.add(new GovernanceProjectDepositPlan(workspace.getId(), workspace.getName(),
@@ -454,6 +471,18 @@ public class GovernanceDepositService {
         // le touche pas, et on le DIT — un fichier conservé parce qu'il a été modifié n'est pas la
         // même chose qu'un fichier conservé parce qu'il était déjà bon.
         return GovernanceDepositAction.KEEP_LOCAL;
+    }
+
+    /**
+     * Vrai si ce workspace est un <b>terminal</b> (du poste F-74, ou Teams F-89) et non un projet.
+     *
+     * <p>Reconnu par sa <b>nature</b> (les drapeaux du modèle {@link Workspace}), jamais par son nom :
+     * un projet réellement nommé « Terminal » resterait un projet, et un terminal renommé resterait
+     * un terminal. Un terminal n'a pas de dossier de projet réel — il vit à la racine de la machine —
+     * et n'entre donc pas dans le périmètre de dépôt de la gouvernance de projet.</p>
+     */
+    private static boolean isTerminal(Workspace workspace) {
+        return workspace.isHostTerminal() || workspace.isTeamsTerminal();
     }
 
     /** Les fichiers du paquet d'un genre donné, dans l'ordre du paquet. */

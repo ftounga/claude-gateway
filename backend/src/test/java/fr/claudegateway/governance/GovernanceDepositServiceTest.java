@@ -243,6 +243,47 @@ class GovernanceDepositServiceTest {
     }
 
     @Test
+    @DisplayName("SF-96-04 : un terminal ne retient PAS l'activation — « Appliquer » bumpe la version")
+    void aTerminalNeverKeepsTheHostPending() {
+        // Le poste porte un vrai projet ET un terminal Teams. Le terminal n'a jamais de dépôt de
+        // projet : il ne doit PAS empêcher « Appliquer » d'éteindre le bandeau « version plus
+        // récente ». Avant SF-96-04, le terminal glissé dans le périmètre laissait l'activation en
+        // attente pour toujours (son listPaths vide → dépôt incomplet).
+        Workspace teamsTerminal = Workspace.builder().id(UUID.randomUUID()).userId(alice)
+                .name("Terminal Teams").hostId(hostId).projectPath("").teamsTerminal(true).build();
+        when(hostScope.projectsOf(alice, host)).thenReturn(List.of(workspace, teamsTerminal));
+        when(projectFiles.listPaths(alice, workspace)).thenReturn(Optional.of(Set.of()));
+
+        service.deposit(alice, host, pkg.getId());
+
+        assertThat(activation.getStatus()).isEqualTo(GovernanceActivationStatus.APPLIED);
+        assertThat(activation.getAppliedVersion()).isEqualTo(4);
+        // Le terminal n'est ni lu ni écrit : ce n'est pas un projet.
+        verify(projectFiles, never()).listPaths(alice, teamsTerminal);
+        verify(projectFiles, never()).write(eq(alice), eq(teamsTerminal), any(), any());
+    }
+
+    @Test
+    @DisplayName("SF-96-04 : créer un terminal ne dépose RIEN dessus et ne remet pas l'activation en attente")
+    void depositOnNewTerminalDepositsNothing() {
+        activation.setStatus(GovernanceActivationStatus.APPLIED);
+        UUID terminalId = UUID.randomUUID();
+        Workspace hostTerminal = Workspace.builder().id(terminalId).userId(alice)
+                .name("Terminal du poste").hostId(hostId).projectPath("").hostTerminal(true).build();
+        when(hostScope.projectOf(alice, terminalId)).thenReturn(hostTerminal);
+        when(hostScope.hostOf(hostTerminal)).thenReturn(host);
+
+        service.depositOnNewProjectQuietly(alice, terminalId);
+
+        // Aucun dépôt sur le terminal (il vit à la racine, à côté de la carte), et surtout aucune
+        // remise « en attente » de l'activation à sa création.
+        verify(projectFiles, never()).listPaths(eq(alice), eq(hostTerminal));
+        verify(projectFiles, never()).write(eq(alice), eq(hostTerminal), any(), any());
+        verify(activations, never()).save(any());
+        assertThat(activation.getStatus()).isEqualTo(GovernanceActivationStatus.APPLIED);
+    }
+
+    @Test
     @DisplayName("le dépôt rejoué n'écrit plus rien — et ne relit même pas la machine")
     void secondDepositWritesNothing() {
         when(projectFiles.listPaths(alice, workspace))
