@@ -1,136 +1,115 @@
-# F-113 — Le banc d'essai Teams et Vigie : tout tester, sans dépendre d'un client
+# F-113 — Le banc d'essai Teams et Vigie, sur le poste CAGIP
 
-> Cadrage du 2026-09-13, à la demande du PO. **Cadrage seul : la livraison attend le go du PO.**
-> S'appuie sur **F-112** (le serveur MCP), qui en est le moyen d'exécution.
+> Cadrage du 2026-09-13, **révisé le 2026-09-14** sur correction du PO. **Cadrage seul : la livraison
+> attend le go du PO.** S'appuie sur **F-112** (le serveur MCP), qui en est le moyen d'exécution.
 
-## 1. Le besoin
+## 1. Le besoin, et la correction du PO
 
 > « On doit véritablement tester franchement toute la partie Teams et Vigie. Donc tu devras mettre le
 > banc d'essai pour qu'il permette de littéralement tout tester dessus. »
 
-Aujourd'hui, tout test Teams passe **par le poste d'un client** (CAGIP) : ses réglages Microsoft
-(téléchargement de transcription bloqué), son proxy, sa disponibilité, ses données réelles. On ne peut
-ni tout tester (pas de réunion enregistrée à la demande, pas de fichier à modifier sans risque), ni
-tester souvent, ni tester sans le PO au clavier.
+> **Correction** : « Quand je disais tester Teams, Vigie, je parlais toujours de CAGIP bien sûr.
+> L'atelier doit toujours être sur lui. »
 
-**Le banc d'essai répond à trois questions :**
-1. **Où** tester tout, sans risque pour un client → un **environnement Microsoft 365 à nous**, avec des
-   données de test connues.
-2. **Avec quoi** → une **machine de test** qui porte le runner et Teams web, disponible à toute heure.
-3. **Comment** → un **catalogue de scénarios** que l'IA déroule par le serveur MCP (F-112), avec les
-   résultats attendus, et un **rapport**.
+La première version de ce cadrage proposait un tenant Microsoft 365 et une machine de test à nous.
+**Elle est abandonnée** : le banc d'essai se déroule **sur le vrai poste CAGIP**, avec son vrai Teams,
+son vrai proxy, sa vraie politique Microsoft (transcription au téléchargement bloqué, Netskope). C'est
+là que les défauts sont apparus, et c'est là qu'on sait qu'une chose marche.
 
-Le banc **ne remplace pas** le test sur poste client : il le rend court. Ce qui passe sur le banc n'a
-plus qu'à être confirmé chez le client (proxy, politique du tenant, Netskope).
+**Ce que le banc apporte par rapport à l'atelier de test manuel du 2026-09-13** : le PO n'a plus à
+recopier les consignes d'un PC à l'autre. **L'IA déroule les scénarios elle-même par le serveur MCP**
+(F-112) sur le poste CAGIP, et ne sollicite le PO que pour ce qui exige ses mains.
 
-## 2. L'environnement Microsoft 365 de test
+## 2. Ce que le PO fait, et seulement ça
 
-- **Un tenant Microsoft 365 dédié**, séparé de tout client, sous un domaine à nous
-  (`test.ng-itconsulting.com` ou le domaine `onmicrosoft.com` du tenant).
-- **Licences** : Teams avec **enregistrement et transcription des réunions** (Microsoft 365 Business
-  Standard ou équivalent), pour **3 comptes** : le consultant testé, un collègue, un manager.
-- **Double authentification** : active pour le compte humain d'administration, **désactivée par
-  stratégie d'accès conditionnel** pour les trois comptes de test limités à la machine de test, afin
-  que le banc tourne sans intervention. Aucune donnée réelle dans ce tenant.
-- **Données de test semées et connues** (un jeu de référence versionné dans le dépôt, décrit en
-  clair) :
-  - équipes et canaux, conversations privées et de groupe, mentions, promesses écrites (« je te
-    l'envoie jeudi »), un fil qui clôt un sujet (« on peut fermer ») ;
-  - **réunions enregistrées avec transcription**, dont une au **téléchargement bloqué** par
-    l'organisateur et une **sans transcription** ;
-  - fichiers dans une équipe, un canal et un OneDrive, dont un document à modifier ;
-  - un calendrier sur quatre semaines.
-- **Réinitialisation** : un script remet le tenant dans l'état de référence avant chaque passage
-  (sauf les réunions enregistrées, créées une fois et conservées).
-- **Coût** : licences Microsoft 365 pour 3 comptes — **montant À CONFIRMER PAR LE PO** (ordre de
-  grandeur public : une douzaine d'euros par compte et par mois pour une offre avec enregistrement et
-  transcription).
+1. Sur le Mac CAGIP : runner lancé, fenêtre Chrome de Teams ouverte et connectée (la double
+   authentification Microsoft ne se délègue pas).
+2. Dans Claude Code (ou toute IA connectée par F-112) : « lance le banc d'essai CAGIP » — tout, ou un
+   domaine.
+3. **Accorder dans l'application** les autorisations que l'IA a déclenchées (écritures Microsoft 365,
+   commandes) : **une IA n'accorde jamais une autorisation, y compris sur le banc** (règle F-112 §6.1
+   inchangée). Le banc les regroupe et les annonce ; il continue les scénarios de lecture en attendant.
+4. Lire le rapport.
 
-## 3. La machine de test
+## 3. Les règles d'un banc sur un poste client
 
-- **Une machine virtuelle dans le compte AWS existant** (hors du cluster de production), Linux avec
-  bureau virtuel, **Chrome** lancé avec le port de débogage et **Teams web connecté** au compte de test,
-  et le **runner** appairé à un poste « BANC » d'un compte de test de l'application.
-- **Allumée à la demande** (démarrage et arrêt par l'IA via F-112 ou par une commande), éteinte le reste
-  du temps : on ne paie que les heures d'essai.
-- **Deuxième poste simulé** pour la Vigie à plusieurs clients : un second profil Chrome et un second
-  runner sur la même machine, poste « BANC-2 ».
-- **Réunions jouées** : pour générer une réunion enregistrée neuve (synchro du soir, rattachement des
-  sujets), deux comptes de test rejoignent une réunion depuis deux profils Chrome, un fichier audio
-  joue le dialogue du jeu de référence par un micro virtuel ; Teams enregistre et transcrit.
-- **Coût** : machine virtuelle à la demande — **À CONFIRMER PAR LE PO** (quelques euros par jour d'essai).
-- **Sécurité** : la machine n'a accès qu'au tenant de test et à la gateway ; ses secrets (mots de passe
-  des comptes de test, jeton du runner) vivent dans AWS Secrets Manager.
+- **Lecture d'abord** : tous les scénarios de lecture tournent sans rien modifier chez le client.
+- **Écritures confinées** : les scénarios d'écriture Microsoft 365 n'agissent **que** dans un dossier
+  dédié du **OneDrive du PO** (`claude-gateway-banc/`), créé par le banc, jamais dans une équipe, un canal
+  ou un fichier du client ; chacune passe par l'autorisation du PO ; le banc nettoie derrière lui.
+- **Pas de commande qui modifie la machine** hors du dossier du banc sur le poste (`~/dev/.banc/`).
+- **Le Radar de CAGIP n'est pas pollué** : les nouvelles, clôtures et liens créés par le banc sont
+  marqués « banc » et **annulés en fin de passage** (corrections annulables de F-99) ; aucun courriel
+  n'est envoyé ailleurs qu'à l'adresse vérifiée du PO.
+- **Consommation** : chaque passage affiche son coût en jetons avant de démarrer (estimé) et après
+  (réel) ; un passage complet est plafonné (valeur par défaut à confirmer par le PO au premier passage).
+- **Données du client** : le rapport ne contient que des constats (OK / KO, écart, source, durée), des
+  identifiants et des extraits de 280 caractères au plus ; **jamais une transcription**, jamais un
+  contenu de fichier.
 
-## 4. Le catalogue de scénarios
+## 4. La fiche de référence CAGIP
 
-Chaque scénario : **préconditions**, **étapes** (appels MCP), **résultat attendu** vérifiable
-(valeurs du jeu de référence), **nettoyage**. Le catalogue couvre **toutes** les capacités livrées :
+Les résultats attendus d'un vrai poste ne sont pas des valeurs inventées : ils reposent sur une **fiche
+de référence**, remplie **une fois** avec le PO puis tenue à jour, dans l'application (pas dans le
+dépôt, car ce sont des données du client) :
+- une réunion enregistrée connue (« Présentation projet Data Platform – Chaîne d'ingestion », 12 sept.,
+  41 min, transcription au téléchargement bloqué) ;
+- une conversation connue et une mention connue ;
+- un projet de la Forge et un sujet attendu du Radar (LZI, Data Platform) ;
+- le dossier OneDrive du banc.
 
-| Domaine | Scénarios (extrait) |
+Les autres attendus sont des **propriétés** vérifiables sans connaître le contenu : « la source est
+dite », « aucune transcription recopiée », « l'autorisation est demandée avec l'emplacement en clair »,
+« le statut passe hors ligne en moins de 2 minutes ».
+
+## 5. Le catalogue de scénarios
+
+Chaque scénario : préconditions, étapes (appels MCP), attendu, nettoyage, et **ce qui exige le PO**.
+
+| Domaine | Scénarios |
 |---|---|
-| Liaison Teams (F-87, SF-89-05, SF-89-08) | liaison établie ; navigateur absent ; session Microsoft expirée ; « rien servi » contre « reçu mais pas reconnu » ; diagnostic chiffré |
-| Lecture (F-88, SF-89-06) | trouver une réunion ; lire un fil sur une fenêtre ; mentions ; recherche ; transcription par le réseau, puis par l'écran ; **téléchargement bloqué signalé et transcription jamais recopiée** |
-| Terminal Teams (F-89, SF-84-06) | compte rendu avec cartes ; précision pendant un tour ; retour sur l'écran pendant un tour ; bandeau « option non active » sur un compte sans droit |
-| Captures et enregistrements (F-90, F-91, SF-108-05) | enregistrement Teams téléchargé puis moments et captures ; capture locale avec trace et transcription locale |
-| Microsoft 365 (F-108) | lister, lire, créer un dossier, déposer, renommer, déplacer, supprimer, remplacer une version ; **chaque écriture reste en attente d'autorisation** et n'aboutit qu'une fois accordée par l'utilisateur de test |
-| Vigie (F-106, F-107) | activer un client ; vérification guidée (toutes cases, puis chaque case vide avec son remède) ; compte Vigie sans Forge ; supplément par espace |
-| Synchro du soir (F-100) | première synchro 30 jours ; incrémentale ; rattrapage après poste éteint ; annulation ; réserve épuisée ; couverture |
-| Lecture des échanges (F-101) | sujets attendus du jeu de référence ; engagements dans les deux sens ; relance due ; mise en relation ; signal de clôture ; **taux de rattachement mesuré** |
-| Radar à l'écran (F-102, F-103, F-104) | résumé du matin ; page sujet avec preuves ; réponse au manager ; donner une nouvelle ; courriel collé daté ; séparer, fusionner, alias ; clore ; lien sujet ↔ projet ; relance préparée |
-| Pages et courriel (F-109, F-110) | publier une page du compte rendu ; lien partagé révoqué ; courriel à l'adresse vérifiée ; résumé du matin par courriel |
-| Runner (F-111) | mise à jour d'un clic ; attente du calme ; retour automatique après une version piégée |
+| Poste et Forge (F-97, F-98, F-111) | statut daté ; passage hors ligne quand le PO coupe le runner (seul scénario qui lui demande un geste) ; version du runner et mise à jour disponible |
+| Liaison Teams (F-87, SF-89-05, SF-89-08) | liaison établie ; diagnostic chiffré ; « rien servi » contre « reçu mais pas reconnu » ; inventaire des chemins inconnus **versé au rapport** (sert SF-89-10) |
+| Lecture (F-88, SF-89-06) | trouver la réunion de référence ; lire la conversation de référence ; mentions ; recherche ; transcription **par le réseau puis par l'écran** ; téléchargement bloqué signalé ; transcription jamais recopiée |
+| Terminal Teams (F-89, SF-84-04, SF-84-06) | compte rendu de la réunion de référence ; précision pendant un tour ; tour suivi après un retour sur l'écran ; tour vivant malgré le proxy |
+| Enregistrements (F-90, SF-108-05) | enregistrement de la réunion de référence : téléchargé et moments, **ou** blocage nommé |
+| Microsoft 365 (F-108) | lister le dossier du banc ; créer, déposer, renommer, remplacer une version, supprimer — **chacun en attente d'autorisation du PO** ; nettoyage |
+| Vigie (F-106, F-107) | CAGIP activé ; vérification guidée et source de chaque case ; réglage de la synchro lu (sans le modifier) |
+| Radar (F-99 à F-104, SF-106-06) | synchroniser maintenant ; couverture ; résumé ; sujet de référence présent ; page sujet et preuves ; réponse au manager ; donner une nouvelle marquée « banc » puis annulée ; courriel collé daté ; lien sujet ↔ projet puis retiré ; relance préparée non envoyée |
+| Pages et courriel (F-109, F-110) | page du compte rendu publiée, lue, partagée puis révoquée et supprimée ; courriel à l'adresse vérifiée du PO, avec une page jointe |
 
-Le catalogue vit dans le dépôt (`docs/features/F-113/scenarios/`), en fichiers lisibles, **un par
-scénario**, et chaque feature future qui touche Teams ou la Vigie **ajoute ses scénarios** dans sa
-définition de terminé.
+## 6. L'exécution et le rapport
 
-## 5. L'exécution et le rapport
+- **Un prompt MCP « Banc d'essai CAGIP »** (tout, ou un domaine) : contrôle des préconditions (runner,
+  liaison Teams, fiche de référence), estimation du coût, déroulé, regroupement des autorisations à
+  accorder, nettoyage, rapport.
+- **Rapport** publié en page (F-109), privée : par scénario OK / KO / partiel / en attente du PO, écart,
+  source (réseau ou écran), durée, coût ; **comparaison avec le passage précédent** ; liste des défauts
+  à cadrer.
+- **Quand** : à la demande, et **après chaque déploiement touchant Teams ou la Vigie**, dès que le
+  runner et Teams sont ouverts sur CAGIP (l'IA propose le passage).
 
-- **Par l'IA, via F-112** : un prompt MCP « Banc d'essai Teams et Vigie » (tout, ou un domaine) démarre
-  la machine, réinitialise le tenant, déroule les scénarios, et **accorde les autorisations en tant
-  qu'utilisateur de test dans l'application du banc** — **seul cas** où une autorisation est donnée
-  automatiquement, **limité au compte de test du banc** et refusé par la gateway sur tout autre compte.
-- **Rapport** publié comme page (F-109) : par scénario, OK / KO / partiel, écart constaté, journal du
-  tour, captures de l'écran Teams de la machine au moment de l'écart ; tendance d'un passage à l'autre
-  (dont le taux de rattachement du Radar).
-- **Trois rythmes** : à la demande ; **avant chaque déploiement** touchant Teams ou la Vigie (le
-  déploiement attend un banc vert, ou une décision explicite du PO) ; **chaque semaine**, pour voir
-  quand Microsoft change Teams avant qu'un client ne le voie.
-
-## 6. Découpage
+## 7. Découpage
 
 | SF | Titre | Contenu |
 |---|---|---|
-| SF-113-01 | Le tenant de test et son jeu de référence | Création du tenant, comptes, accès conditionnel, jeu de référence versionné, script de réinitialisation, réunions enregistrées de référence |
-| SF-113-02 | La machine de test | Machine virtuelle à la demande, Chrome et Teams web, deux runners et deux postes, secrets, démarrage et arrêt pilotés |
-| SF-113-03 | Les réunions jouées | Deux profils, micro virtuel, dialogue du jeu de référence, enregistrement et transcription générés |
-| SF-113-04 | Le catalogue de scénarios | Format, scénarios de tous les domaines du §4, résultats attendus liés au jeu de référence |
-| SF-113-05 | L'exécution par l'IA et le rapport | Prompt MCP, autorisation automatique limitée au compte du banc, rapport en page, tendance, déclenchement avant déploiement et chaque semaine |
+| SF-113-01 | La fiche de référence | Écran dans la Vigie du client pour la remplir et la tenir à jour ; stockage isolé `user_id` + `host_id` ; lue par les outils MCP |
+| SF-113-02 | Les marqueurs et le nettoyage du banc | Marque « banc » sur les écritures du Radar, des pages et du dossier OneDrive ; annulation et nettoyage de fin de passage ; plafond de coût |
+| SF-113-03 | Le catalogue de scénarios | Scénarios du §5 en fichiers lisibles dans le dépôt (sans donnée client), attendus par propriétés et par fiche de référence |
+| SF-113-04 | L'exécution par l'IA et le rapport | Prompt MCP, préconditions, regroupement des autorisations, rapport en page, comparaison entre passages |
 
-**Ordre** : F-112 d'abord (SF-112-01 à 05 au minimum) ; puis 01 → 02 → (03 ∥ 04) → 05.
+**Ordre** : F-112 (au moins SF-112-01 à 06) → 01 → (02 ∥ 03) → 04.
 
-## 7. Préoccupations transversales
+## 8. Préoccupations transversales
 
-- **Sécurité : oui.** L'autorisation automatique n'existe **que** pour le compte de test du banc,
-  vérifiée côté gateway (liste fermée de comptes, drapeau posé par l'administrateur), avec test de refus
-  sur tout autre compte. Secrets du banc dans AWS Secrets Manager. Tenant sans donnée réelle.
-- **Plans / limites : oui** — compte de test du banc avec un quota dédié, suivi à part.
-- **Infrastructure : oui** — machine virtuelle hors cluster de production ; aucune modification du
-  cluster.
-- **Auth / tenant** : compte de test isolé comme tout utilisateur.
-
-## 8. Décisions qui reviennent au PO
-
-| Décision | Recommandation |
-|---|---|
-| Souscrire un tenant Microsoft 365 de test (3 comptes, enregistrement et transcription) | Oui — sans lui, les réunions, transcriptions et fichiers ne se testent que chez un client |
-| Montant des licences et de la machine virtuelle | À confirmer par le PO |
-| Autoriser l'autorisation automatique limitée au compte du banc | Oui — sans elle, les écritures Microsoft 365 et les commandes ne se testent pas sans quelqu'un au clavier |
-| Déploiement conditionné à un banc vert pour Teams et la Vigie | Oui, avec dérogation explicite possible |
+- **Sécurité : oui.** Aucune autorisation accordée par l'IA ; écritures confinées au dossier du banc
+  et marquées ; rapport sans contenu client.
+- **Contexte tenant : oui** — fiche de référence isolée par `user_id` + `host_id`.
+- **Plans / limites : oui** — plafond de coût par passage, consommation sur le quota du PO.
 
 ## 9. Hors périmètre
 
-- Reproduire le proxy ou Netskope d'un client (restent vérifiés sur poste client).
-- Tester Outlook (retiré, F-105).
-- Un tenant par client.
+- Un environnement Microsoft 365 ou une machine de test à nous (première version abandonnée).
+- Accorder automatiquement une autorisation.
+- Tester un autre poste que celui choisi par le PO (le banc est générique, mais CAGIP est le poste du
+  banc tant que le PO n'en décide pas autrement).

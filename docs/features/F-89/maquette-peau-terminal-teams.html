@@ -28,21 +28,11 @@
   .forge .tag{background:#1C2742;color:#A2ADC3}
   .forge .you{color:#E6A96B}.forge .cmd{color:#8FB3DB}.forge .out{color:#9AA5B8}.forge .h{color:#FFFFFF;font-weight:700}
 
-  /* Teams : document clair, conversation */
-  .teams{background:#FAF8F3;color:#1F2430;border:1px solid #E6E0D2;font:14px/1.6 Inter,sans-serif}
-  .teams .bar{background:#EFEAF9;color:#2B2250;border-bottom:1px solid #DCD3F0}
+  /* Teams : memes polices et tailles que la Forge, couleurs opposees */
+  .teams{background:#FAF8F3;color:#2A2F3A;border:1px solid #E6E0D2;font:12.5px/1.6 "JetBrains Mono",monospace}
+  .teams .bar{background:#EFEAF9;color:#2B2250;border-bottom:1px solid #DCD3F0;font-family:Inter}
   .teams .tag{background:#FFFFFF;color:#4B3F8F;border:1px solid #DCD3F0}
-  .teams .you{align-self:flex-end;max-width:85%;background:#4B3F8F;color:#FFFFFF;border-radius:14px 14px 4px 14px;padding:8px 12px;font-size:13.5px}
-  .teams .step{font:500 11.5px Inter;color:#5E6472;display:flex;gap:6px;align-items:center}
-  .teams .step::before{content:"";width:6px;height:6px;border-radius:50%;background:#4B3F8F}
-  .teams .card{background:#FFFFFF;border:1px solid #E6E0D2;border-radius:10px;padding:12px 13px;display:flex;flex-direction:column;gap:4px}
-  .teams .card .t{font:600 15px "Source Serif 4",Georgia,serif;color:#1F2430}
-  .teams .card .l{font-size:13px;color:#3D4350}
-  .teams .card .m{font:500 11.5px "JetBrains Mono",monospace;color:#5E6472}
-  .teams .h{font:600 15px "Source Serif 4",Georgia,serif;color:#2B2250}
-  .teams .p{color:#3D4350;font-size:13.5px}
-  .teams .badge{align-self:flex-start;font:600 11px Inter;background:#FFF8E1;color:#8A5A00;border-radius:99px;padding:2px 9px}
-
+  .teams .you{color:#9A4A12}.teams .cmd{color:#4B3F8F}.teams .out{color:#5E6472}.teams .h{color:#1F2430;font-weight:700}
   table.cmp{border-collapse:collapse;width:100%;min-width:640px;font-size:.9rem;background:var(--pg-surface)}
   .tw{overflow-x:auto;border:1px solid var(--pg-rule);border-radius:12px}
   .cmp th,.cmp td{padding:10px 14px;border-bottom:1px solid var(--pg-rule);text-align:left}
@@ -59,7 +49,7 @@
     <p class="eyebrow">claude-gateway · SF-89-09 · cadrage</p>
     <h1>Terminal Teams, trois peaux</h1>
   </div>
-  <p>Vous l'avez vu en production : même en violet, un terminal sombre reste un terminal sombre. Les deux écrans sont maintenant <strong>opposés en tout</strong> : sombre contre clair, machine contre conversation, police de code contre prose. On sait où l'on est avant d'avoir lu un mot. Contenu d'exemple.</p>
+  <p>Même en violet, un terminal sombre reste un terminal sombre. Correction du PO : <strong>seules les couleurs changent</strong>, la police et la taille restent celles d'aujourd'hui. Les deux terminaux sont donc opposés par la couleur : sombre contre clair. Contenu d'exemple.</p>
 
   <div class="duo">
     <div class="opt">
@@ -79,16 +69,17 @@
     </div>
 
     <div class="opt">
-      <div class="lbl"><h2>Vigie — la conversation Teams</h2><span>« Papier »</span></div>
+      <div class="lbl"><h2>Vigie — le terminal Teams</h2><span>« Papier »</span></div>
       <div class="term teams">
         <div class="bar"><span class="ini">CA</span>CAGIP · Conversations Teams<span class="tag">Teams relié</span></div>
         <div class="body">
-          <span class="you">Résume la réunion Data Platform</span>
-          <span class="step">transcription lue à l'écran · 41 min</span>
-          <div class="card"><span class="t">Présentation projet Data Platform</span><span class="l">Offre AWS internationale portée par CAPFM ; accès Jira via Rémi.</span><span class="m">12 sept. · 41 min · 4 intervenants</span></div>
-          <span class="badge">téléchargement bloqué par l'organisateur</span>
+          <span class="you">› résume la réunion Data Platform</span>
+          <span class="cmd">transcription lue à l'écran · 41 min</span>
+          <span class="out">Présentation projet Data Platform · 12 sept. · 4 intervenants</span>
           <span class="h">Ce qu'on attend de vous</span>
-          <span class="p">Demander l'ouverture des flux avant la remise des accès.</span>
+          <span>Demander l'ouverture des flux avant la remise des accès.</span>
+          <span class="cmd">téléchargement bloqué par l'organisateur</span>
+          <span class="out">Offre AWS internationale portée par CAPFM.</span>
         </div>
       </div>
     </div>
@@ -99,14 +90,13 @@
       <thead><tr><th></th><th>Forge (terminal du poste, de projet)</th><th>Vigie (terminal Teams)</th></tr></thead>
       <tbody>
         <tr><td>Fond</td><td><span class="sw" style="background:#141D33"></span>sombre, bleu nuit</td><td><span class="sw" style="background:#FAF8F3"></span>clair, papier chaud</td></tr>
-        <tr><td>Bandeau</td><td><span class="sw" style="background:#0E1628"></span>nuit</td><td><span class="sw" style="background:#EFEAF9"></span>lavande pâle, encre violette <span class="sw" style="background:#4B3F8F"></span></td></tr>
-        <tr><td>Écriture</td><td>police de code partout</td><td>prose (Inter), titres en serif ; code seulement pour heures et identifiants</td></tr>
-        <tr><td>Votre message</td><td>ligne « › » comme une invite de commande</td><td>bulle à droite, comme une messagerie</td></tr>
-        <tr><td>Ce qu'on y fait</td><td>commandes, fichiers, sorties brutes</td><td>comptes rendus, mentions, sujets</td></tr>
-        <tr><td>Couleurs d'état</td><td>adaptées au fond sombre</td><td>celles de la charte, pensées pour un fond clair : plus lisibles</td></tr>
+        <tr><td>Bandeau</td><td><span class="sw" style="background:#0E1628"></span>nuit</td><td><span class="sw" style="background:#EFEAF9"></span>lavande pâle</td></tr>
+        <tr><td>Texte</td><td><span class="sw" style="background:#C9D2E3"></span>clair sur sombre</td><td><span class="sw" style="background:#2A2F3A"></span>foncé sur clair</td></tr>
+        <tr><td>Accents</td><td><span class="sw" style="background:#E6A96B"></span>votre message · <span class="sw" style="background:#8FB3DB"></span>étapes</td><td><span class="sw" style="background:#9A4A12"></span>votre message · <span class="sw" style="background:#4B3F8F"></span>étapes</td></tr>
+        <tr><td>Police et taille</td><td colspan="2" style="text-align:center">identiques dans les deux terminaux</td></tr>
       </tbody>
     </table>
   </div>
 
-  <p class="hist"><strong>Historique</strong> : F-89 avait livré un changement de police sur le même fond (réduction du besoin) ; SF-89-07 a livré « Prune », un violet sombre, jugé encore trop proche du terminal de la Forge par le PO en production. SF-89-09 remplace Prune par « Papier ».</p>
+  <p class="hist"><strong>Historique</strong> : F-89 avait livré un changement de police sur le même fond (réduction du besoin) ; SF-89-07 a livré « Prune », un violet sombre, jugé encore trop proche du terminal de la Forge par le PO en production. SF-89-09 remplace Prune par « Papier », couleurs seulement.</p>
 </div>
