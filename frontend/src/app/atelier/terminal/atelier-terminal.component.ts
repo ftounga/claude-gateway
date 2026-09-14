@@ -96,6 +96,14 @@ export const RUNNER_RESUME_COMMAND = 'java -jar claude-runner.jar';
 export const TEAMS_TERMINAL_BAR_LABEL = 'Conversations Teams';
 
 /**
+ * Seuil de taille de fil au-delà duquel le terminal **suggère** un nouveau départ (F-117 / SF-117-03).
+ * Exprimé en tours rejouables. Non bloquant : la compaction (SF-117-01) borne déjà le contexte ; la
+ * suggestion s'adresse au confort et au coût d'un fil devenu long, pour le geste que 0/18 terminaux
+ * en prod n'ont jamais fait faute de le voir.
+ */
+export const LONG_THREAD_TURNS = 40;
+
+/**
  * Vue **terminal immersive** du mode Terminal de l'Atelier (F-30 SF-30-07).
  *
  * <p>Occupe tout l'écran de l'Atelier : ni liste de projets, ni bulles de conversation — un flux
@@ -128,6 +136,9 @@ export const TEAMS_TERMINAL_BAR_LABEL = 'Conversations Teams';
     // QUATRE FEUILLES (F-30 / SF-30-14) : le Markdown rendu du commentaire de l'agent, sous
     // `::ng-deep` borné — le seul moyen d'atteindre le HTML inséré par `[innerHTML]`.
     './atelier-terminal-markdown.component.scss',
+    // CINQ FEUILLES (F-117 / SF-117-03) : la suggestion de nouveau départ vit à part, la feuille
+    // principale ayant atteint le budget de build de 12 ko (angular.json).
+    './atelier-terminal-compaction.component.scss',
   ],
 })
 export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
@@ -321,6 +332,18 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   /** Tour en cours, ou `null` hors exécution. */
   @Input() streaming: AtelierExecStreamingItem | null = null;
 
+  /**
+   * Taille du fil rejouable (F-117 / SF-117-03) : le nombre de tours que le prochain message
+   * rejouera au fournisseur, tel que l'état de reprise (`GET .../resume`) le renvoie. Au-delà de
+   * {@link LONG_THREAD_TURNS}, le terminal **suggère** (sans bloquer) un nouveau départ — la
+   * compaction automatique (SF-117-01), elle, ne demande rien.
+   */
+  @Input()
+  set threadTurns(value: number) {
+    this.threadTurnsValue.set(value ?? 0);
+  }
+  private readonly threadTurnsValue = signal(0);
+
   /** Durée écoulée du run en cours, déjà formatée. */
   @Input() elapsedLabel = '';
 
@@ -482,6 +505,8 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   @Output() draftChange = new EventEmitter<string>();
   @Output() send = new EventEmitter<void>();
   @Output() quit = new EventEmitter<void>();
+  /** Nouveau départ (F-117 / SF-117-03) : Claude repart sans le contexte des tours précédents. */
+  @Output() restart = new EventEmitter<void>();
   @Output() resetSandbox = new EventEmitter<void>();
   @Output() openFiles = new EventEmitter<void>();
   @Output() publish = new EventEmitter<void>();
@@ -621,6 +646,25 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
       && this.runnerStatus !== null
       && this.runnerStatus.connected === false
       && this.runnerStatus.paired === true;
+  }
+
+  /**
+   * Suggestion de nouveau départ (F-117 / SF-117-03) : quand le fil dépasse {@link LONG_THREAD_TURNS}
+   * tours et que l'utilisateur ne l'a pas écartée pour ce fil. Non bloquante — elle n'empêche ni
+   * l'envoi ni la lecture. Absente en lecture seule (c'est un geste).
+   */
+  readonly suggestRestart = computed(
+    () => !this.readOnly
+      && !this.restartSuggestionDismissed()
+      && this.threadTurnsValue() >= LONG_THREAD_TURNS,
+  );
+
+  /** L'utilisateur a écarté la suggestion (« Plus tard ») pour ce fil. */
+  private readonly restartSuggestionDismissed = signal(false);
+
+  /** Ferme la suggestion sans rien changer au fil (« Plus tard »). */
+  dismissRestartSuggestion(): void {
+    this.restartSuggestionDismissed.set(true);
   }
 
   /**

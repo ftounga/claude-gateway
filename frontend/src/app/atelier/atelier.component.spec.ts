@@ -647,6 +647,22 @@ describe('AtelierComponent', () => {
     expect(component.activeHostName()).toBeNull();
   });
 
+  // ------------------------------------------------ nouveau départ visible (F-117 / SF-117-03)
+
+  it('« Nouveau départ » appelle le service et remet la taille du fil à zéro', () => {
+    setup();
+    service.restartThread.and.returnValue(
+      of({ turns: 0, lastMessageAt: null, threadStartedAt: '2026-09-14T00:00:00Z', prompt: 'NONE' as const }),
+    );
+    component.activeWorkspaceId.set('w1');
+    component.resumeTurns.set(60);
+
+    component.restartThread();
+
+    expect(service.restartThread).toHaveBeenCalledWith('w1');
+    expect(component.resumeTurns()).toBe(0);
+  });
+
   // ------------------------------------------------ état de mission (F-60 / SF-60-02)
 
   it('écrit l’état de mission d’un projet dont la mission n’avance pas', () => {

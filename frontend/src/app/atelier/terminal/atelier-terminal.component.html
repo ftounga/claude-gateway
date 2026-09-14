@@ -143,6 +143,19 @@
             Réinitialiser
           </button>
         }
+        <!-- Nouveau départ (F-117 / SF-117-03) : le geste cesse d'être invisible (0/18 terminaux
+             l'avaient fait). Claude repart sans le contexte des tours précédents ; RIEN n'est
+             supprimé — la conversation reste affichée, comme depuis F-39 / SF-39-04. -->
+        <button
+          mat-button
+          type="button"
+          class="terminal-restart"
+          matTooltip="Claude repart sans le contexte des tours précédents. La conversation reste affichée."
+          (click)="restart.emit()"
+        >
+          <mat-icon>history_toggle_off</mat-icon>
+          Nouveau départ
+        </button>
         <button mat-button type="button" (click)="quit.emit()">
           <mat-icon>close</mat-icon>
           Quitter
@@ -213,6 +226,29 @@
         <mat-icon>refresh</mat-icon>
         Réessayer
       </button>
+    </div>
+  }
+
+  <!-- SUGGESTION DE NOUVEAU DÉPART (F-117 / SF-117-03). Non bloquante : la compaction (SF-117-01)
+       borne déjà le contexte ; ce bandeau s'adresse au confort et au coût d'un fil devenu long, et
+       propose le geste — sans jamais couper l'envoi ni la lecture. Fermable (« Plus tard »). Registre
+       du filet dit (§11, filet `--cg-accent`) : aucune couleur nouvelle. Absent en lecture seule. -->
+  @if (suggestRestart()) {
+    <div class="terminal-compaction-hint" role="status">
+      <mat-icon class="terminal-compaction-hint-icon" aria-hidden="true">history_toggle_off</mat-icon>
+      <div class="terminal-compaction-hint-text">
+        <p class="terminal-compaction-hint-title">Cette conversation est longue — repartir propre ?</p>
+        <p class="terminal-compaction-hint-note">
+          Claude résume déjà l'historique automatiquement ; un nouveau départ repart sans le contexte
+          des tours précédents. La conversation reste affichée.
+        </p>
+      </div>
+      <span class="terminal-compaction-hint-actions">
+        <button mat-stroked-button type="button" class="terminal-compaction-hint-restart" (click)="restart.emit()">
+          Nouveau départ
+        </button>
+        <button mat-button type="button" (click)="dismissRestartSuggestion()">Plus tard</button>
+      </span>
     </div>
   }
 
