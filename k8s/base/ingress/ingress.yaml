@@ -15,6 +15,7 @@ metadata:
     #   budget de tour (600 s) < flux SSE (900 s) <= ingress (900 s)
     # C'est la boucle qui doit rendre la main la première, en disant pourquoi. Ces deux valeurs
     # suivent STREAM_TIMEOUT_MS d'AtelierChatController : les changer ensemble, ou pas du tout.
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "900"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "900"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"

@@ -7,7 +7,9 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: claude-gateway-backend
-  minReplicas: 1
+  # F-118 / SF-118-02 (2026-09-14) : min 2 — la charge est I/O (attente reseau modele),
+  # un pod peut saturer ses 32 flux SSE sans monter en CPU ; le seuil CPU seul ne suffit pas a scaler.
+  minReplicas: 2
   maxReplicas: 4
   metrics:
     - type: Resource

@@ -80,6 +80,12 @@ data:
   # demande du PO : les longues tâches (config complète) touchaient le plafond et exigeaient
   # « continue » à chaque tour. Plafond dur du code = 10 M. Ne change pas le quota mensuel.
   APP_ATELIER_MAX_TURN_TOKENS: "8000000"
+  # F-118 / SF-118-02 (2026-09-14) : reglages de tenue en charge.
+  # Pool de connexions base : defaut Hikari = 10, insuffisant face a Tomcat 200 + ~11 workers @Scheduled.
+  SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "30"
+  SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: "5"
+  # Heap JVM : sans cela ~512 Mo sur une limite de 2 Gi. 75 % => ~1,5 Gi utilisables.
+  JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75.0"
   # URLs de retour Stripe Checkout (F-09/F-21) : après paiement/annulation, retour sur la prod
   # (et non localhost). Non secret.
   STRIPE_SUCCESS_URL: "https://portal.ng-itconsulting.com/billing?checkout=success"
