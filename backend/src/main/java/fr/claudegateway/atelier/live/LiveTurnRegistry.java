@@ -107,6 +107,21 @@ public class LiveTurnRegistry {
     }
 
     /**
+     * Les tours vivants <b>de cet utilisateur</b> sur ce pod (F-112 / SF-112-05). Sert à lister les
+     * autorisations en attente côté MCP ; l'isolation {@code user_id} filtre à la source. La liste
+     * ne couvre que ce pod — un tour vivant ailleurs n'y figure pas (dégradation assumée, comme le
+     * rejeu multi-pod).
+     */
+    public java.util.List<LiveTurn> liveTurnsOf(UUID userId) {
+        if (userId == null) {
+            return java.util.List.of();
+        }
+        return turns.values().stream()
+                .filter(turn -> userId.equals(turn.userId()) && turn.live())
+                .toList();
+    }
+
+    /**
      * Ferme ce tour et le retire du registre. Idempotent, et sans effet si un tour <b>plus récent</b>
      * a déjà pris sa place — on ne ferme jamais le tour d'un autre message.
      */
