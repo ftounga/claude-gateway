@@ -698,6 +698,80 @@ class AtelierSessionServiceTest {
         verifyNoInteractions(provider);
         verifyNoInteractions(workspaceRepository);
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // Reaper des sessions âgées et bornage du registre de sorties (F-117 / SF-117-04).
+    // ---------------------------------------------------------------------------------------------
+
+    @Test
+    void reaperExpiresAnAgedSessionAndTerminatesItAtTheProvider() {
+        Workspace aged = ws("sess_aged");
+        aged.setAgentSessionStartedAt(java.time.OffsetDateTime.now().minusDays(3));
+        java.time.OffsetDateTime threshold = java.time.OffsetDateTime.now().minusDays(1);
+        when(workspaceRepository.findByAgentSessionIdIsNotNullAndAgentSessionStartedAtBefore(threshold))
+                .thenReturn(java.util.List.of(aged));
+
+        int reaped = service(enabled()).reapExpiredSessions(threshold);
+
+        assertThat(reaped).isEqualTo(1);
+        // La session fournisseur est terminée (plus de conteneur orphelin) et l'identifiant effacé.
+        verify(provider).terminateSession("sess_aged");
+        assertThat(aged.getAgentSessionId()).isNull();
+        assertThat(aged.getAgentSessionStartedAt()).isNull();
+        verify(workspaceRepository).save(aged);
+    }
+
+    @Test
+    void reaperExpiresNothingWhenNoSessionIsOldEnough() {
+        java.time.OffsetDateTime threshold = java.time.OffsetDateTime.now().minusDays(1);
+        when(workspaceRepository.findByAgentSessionIdIsNotNullAndAgentSessionStartedAtBefore(threshold))
+                .thenReturn(java.util.List.of());
+
+        int reaped = service(enabled()).reapExpiredSessions(threshold);
+
+        assertThat(reaped).isZero();
+        verify(provider, never()).terminateSession(any());
+    }
+
+    @Test
+    void reaperForgetsTheSessionEvenWhenProviderTerminationFails() {
+        Workspace aged = ws("sess_dead");
+        aged.setAgentSessionStartedAt(java.time.OffsetDateTime.now().minusDays(5));
+        java.time.OffsetDateTime threshold = java.time.OffsetDateTime.now().minusDays(1);
+        when(workspaceRepository.findByAgentSessionIdIsNotNullAndAgentSessionStartedAtBefore(threshold))
+                .thenReturn(java.util.List.of(aged));
+        doThrow(new AgentProviderException("session déjà morte"))
+                .when(provider).terminateSession("sess_dead");
+
+        int reaped = service(enabled()).reapExpiredSessions(threshold);
+
+        assertThat(reaped).isEqualTo(1);
+        assertThat(aged.getAgentSessionId()).isNull();
+        verify(workspaceRepository).save(aged);
+    }
+
+    @Test
+    void boundedSyncedAddPurgesTheInnerSetOnceTheCapIsReached() {
+        java.util.Set<String> synced = java.util.concurrent.ConcurrentHashMap.newKeySet();
+        for (int i = 0; i < AtelierSessionService.MAX_SYNCED_OUTPUTS; i++) {
+            synced.add("f" + i);
+        }
+        assertThat(synced).hasSize(AtelierSessionService.MAX_SYNCED_OUTPUTS);
+
+        // Au plafond, l'ajout purge d'abord le Set : la mémoire est bornée.
+        boolean added = AtelierSessionService.boundedSyncedAdd(synced, "nouveau");
+
+        assertThat(added).isTrue();
+        assertThat(synced).containsExactly("nouveau");
+    }
+
+    @Test
+    void boundedSyncedAddSkipsAnAlreadyKnownOutput() {
+        java.util.Set<String> synced = java.util.concurrent.ConcurrentHashMap.newKeySet();
+        assertThat(AtelierSessionService.boundedSyncedAdd(synced, "f1")).isTrue();
+        assertThat(AtelierSessionService.boundedSyncedAdd(synced, "f1")).isFalse();
+    }
+
     // ---------------------------------------------------------------------------------------------
     // Consommation du tour exposée au résultat (F-30 SF-30-05).
     // ---------------------------------------------------------------------------------------------
