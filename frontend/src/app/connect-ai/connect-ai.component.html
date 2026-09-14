@@ -1,0 +1,95 @@
+<section class="connect-ai">
+  <header class="connect-ai__intro">
+    <h1>Connecter une IA</h1>
+    <p>
+      Reliez une IA (Claude Code, Claude Desktop, claude.ai, Codex) à votre application. Elle se
+      connecte avec <strong>votre compte</strong> et agit avec <strong>vos droits</strong>, votre
+      cloisonnement et les mêmes gardes. Une IA n'accorde <strong>jamais</strong> une autorisation :
+      les commandes sur votre machine et les écritures Microsoft 365 restent à valider par vous.
+    </p>
+  </header>
+
+  <mat-card appearance="outlined" class="connect-ai__server">
+    <mat-card-header>
+      <mat-card-title>Adresse du serveur</mat-card-title>
+    </mat-card-header>
+    <mat-card-content>
+      <code class="connect-ai__code">{{ serverUrl() }}</code>
+      <button mat-stroked-button type="button" (click)="copy(serverUrl())">
+        <mat-icon>content_copy</mat-icon>
+        Copier l'adresse
+      </button>
+    </mat-card-content>
+  </mat-card>
+
+  <mat-card appearance="outlined">
+    <mat-card-header>
+      <mat-card-title>Claude Code</mat-card-title>
+    </mat-card-header>
+    <mat-card-content>
+      <p>Dans un terminal, ajoutez le serveur :</p>
+      <code class="connect-ai__code">{{ claudeCodeCommand() }}</code>
+      <button mat-stroked-button type="button" (click)="copy(claudeCodeCommand())">
+        <mat-icon>content_copy</mat-icon>
+        Copier la commande
+      </button>
+      <p class="connect-ai__hint">
+        Au premier appel, Claude Code ouvre votre navigateur pour vous connecter et consentir.
+      </p>
+    </mat-card-content>
+  </mat-card>
+
+  <mat-card appearance="outlined">
+    <mat-card-header>
+      <mat-card-title>Claude Desktop et claude.ai</mat-card-title>
+    </mat-card-header>
+    <mat-card-content>
+      <ol class="connect-ai__steps">
+        <li>Ouvrez Réglages, puis « Connecteurs ».</li>
+        <li>Choisissez « Ajouter un connecteur personnalisé ».</li>
+        <li>Collez l'adresse du serveur ci-dessus.</li>
+        <li>Connectez-vous et accordez les périmètres et les postes dans le navigateur.</li>
+      </ol>
+    </mat-card-content>
+  </mat-card>
+
+  <mat-card appearance="outlined">
+    <mat-card-header>
+      <mat-card-title>Codex</mat-card-title>
+    </mat-card-header>
+    <mat-card-content>
+      <p>
+        Dans votre configuration, déclarez un serveur MCP en transport HTTP pointant sur l'adresse du
+        serveur ci-dessus, puis connectez-vous à l'invite.
+      </p>
+    </mat-card-content>
+  </mat-card>
+
+  <mat-card appearance="outlined" class="connect-ai__verify">
+    <mat-card-header>
+      <mat-card-title>Vérifier la connexion</mat-card-title>
+    </mat-card-header>
+    <mat-card-content>
+      <button mat-flat-button color="primary" type="button" (click)="verify()">
+        <mat-icon>sync</mat-icon>
+        Vérifier maintenant
+      </button>
+      @if (verifyState() === 'checking') {
+        <p class="connect-ai__hint">Vérification…</p>
+      } @else if (verifyState() === 'active') {
+        <p class="connect-ai__status connect-ai__status--ok">
+          <mat-icon>check_circle</mat-icon>
+          Une IA a appelé le serveur récemment. La connexion fonctionne.
+        </p>
+      } @else if (verifyState() === 'none') {
+        <p class="connect-ai__status connect-ai__status--muted">
+          Aucune activité récente. Suivez les étapes ci-dessus, puis revérifiez.
+        </p>
+      }
+      <p class="connect-ai__hint">
+        Gérez les connexions actives, les jetons personnels et le journal dans
+        <a routerLink="/ia-connectees">IA connectées</a>.
+      </p>
+    </mat-card-content>
+  </mat-card>
+</section>

@@ -1,0 +1,61 @@
+.connect-ai {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cg-space-5);
+  padding: var(--cg-space-5);
+  max-width: 760px;
+
+  &__intro {
+    h1 {
+      font-family: var(--cg-font-heading);
+      color: var(--cg-text-primary);
+      margin: 0 0 var(--cg-space-2);
+    }
+
+    p {
+      color: var(--cg-text-secondary);
+      margin: 0;
+      line-height: 1.6;
+    }
+  }
+
+  &__code {
+    display: block;
+    font-family: var(--cg-font-mono);
+    background: var(--cg-surface-2);
+    color: var(--cg-text-primary);
+    padding: var(--cg-space-3);
+    border-radius: var(--cg-radius-sm);
+    margin-bottom: var(--cg-space-3);
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  &__hint {
+    color: var(--cg-text-secondary);
+    margin: var(--cg-space-3) 0 0;
+  }
+
+  &__steps {
+    color: var(--cg-text-secondary);
+    margin: 0;
+    padding-left: var(--cg-space-5);
+    line-height: 1.8;
+  }
+
+  &__status {
+    display: flex;
+    align-items: center;
+    gap: var(--cg-space-2);
+    margin: var(--cg-space-3) 0 0;
+
+    &--ok {
+      color: var(--cg-success);
+    }
+
+    &--muted {
+      color: var(--cg-text-secondary);
+    }
+  }
+}

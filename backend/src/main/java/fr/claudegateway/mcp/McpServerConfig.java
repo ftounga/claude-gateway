@@ -10,6 +10,8 @@ import org.springframework.web.servlet.function.ServerResponse;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.server.McpServer;
+import io.modelcontextprotocol.server.McpServerFeatures.SyncPromptSpecification;
+import io.modelcontextprotocol.server.McpServerFeatures.SyncResourceSpecification;
 import io.modelcontextprotocol.server.McpServerFeatures.SyncToolSpecification;
 import io.modelcontextprotocol.server.McpSyncServer;
 import io.modelcontextprotocol.server.McpSyncServerExchange;
@@ -72,17 +74,31 @@ public class McpServerConfig {
     public McpSyncServer mcpSyncServer(
             WebMvcStreamableServerTransportProvider transportProvider,
             List<McpToolProvider> toolProviders,
+            List<McpResourceProvider> resourceProviders,
+            List<McpPromptProvider> promptProviders,
             McpJournalService journalService) {
         List<SyncToolSpecification> tools = toolProviders.stream()
                 .map(McpToolProvider::specification)
                 .map(spec -> journal(spec, journalService))
                 .toList();
+        List<SyncResourceSpecification> resources = resourceProviders.stream()
+                .map(McpResourceProvider::specification)
+                .toList();
+        List<SyncPromptSpecification> prompts = promptProviders.stream()
+                .map(McpPromptProvider::specification)
+                .toList();
 
         return McpServer.sync(transportProvider)
                 .serverInfo(SERVER_NAME, SERVER_VERSION)
                 .instructions(INSTRUCTIONS)
-                .capabilities(ServerCapabilities.builder().tools(true).build())
+                .capabilities(ServerCapabilities.builder()
+                        .tools(true)
+                        .resources(false, true)
+                        .prompts(true)
+                        .build())
                 .tools(tools)
+                .resources(resources)
+                .prompts(prompts)
                 .build();
     }
 
