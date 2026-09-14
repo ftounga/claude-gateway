@@ -150,6 +150,47 @@ public class ClientMailOutbox {
     }
 
     /**
+     * <b>Balayage des pièces orphelines</b> (F-110 / SF-110-05). Croise le stockage objet et la table
+     * {@code client_emails} : efface les pièces d'un {@code emailId} <b>sans ligne</b> (transaction de mise en file
+     * annulée par un plantage entre l'écriture des pièces et le commit) et celles d'un courriel <b>à l'état final</b>
+     * ({@code SENT}/{@code FAILED}) dont {@link #finish} n'a pas su effacer les pièces. Les pièces d'un courriel
+     * <b>en cours</b> ({@code PENDING}/{@code SENDING}) sont conservées : l'envoi peut encore les lire.
+     *
+     * <p>La ligne est la vérité : une transaction qui commit laisse toujours sa ligne, donc une ligne absente signe
+     * une transaction annulée. La seule fenêtre où une ligne manque pendant que ses pièces existent est celle d'une
+     * transaction en cours (millisecondes) ; la cadence quotidienne rend une collision négligeable, et rien de
+     * définitif n'est perdu (un courriel privé de ses pièces devient proprement {@code FAILED}).</p>
+     *
+     * <p>L'effacement est <b>borné à la clé exacte</b> {@code client-emails/{userId}/{emailId}/} reconstruite
+     * depuis la clé trouvée : le balayage ne touche jamais une pièce d'un autre compte ni d'un autre courriel. Il
+     * ne s'arrête pas sur l'échec d'un effacement (journalisé, repris au passage suivant), et ne journalise ni nom
+     * de pièce ni adresse.</p>
+     *
+     * @return le nombre de lots de pièces orphelines effacés
+     */
+    public int sweepOrphans() {
+        int removed = 0;
+        for (ClientMailAttachmentStore.StoredRef ref : attachmentStore.listStored()) {
+            ClientEmail email = repository.findById(ref.emailId()).orElse(null);
+            boolean orphan = email == null || email.getStatus().isFinal();
+            if (!orphan) {
+                continue;
+            }
+            try {
+                attachmentStore.delete(ref.userId(), ref.emailId());
+                removed++;
+            } catch (RuntimeException ex) {
+                log.warn("Pièces orphelines d'un courriel non effacées (id={}, {})", ref.emailId(),
+                        ex.getClass().getSimpleName());
+            }
+        }
+        if (removed > 0) {
+            log.info("Courriels du client : {} lot(s) de pièces orphelines effacé(s)", removed);
+        }
+        return removed;
+    }
+
+    /**
      * Un passage : prend et envoie les courriels dus.
      *
      * @return le nombre de courriels traités (envoyés, reportés ou refusés)

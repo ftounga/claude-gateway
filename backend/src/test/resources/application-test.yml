@@ -19,6 +19,10 @@ app:
   client-mail:
     worker:
       enabled: false
+    # F-110 / SF-110-05 : balayage des pièces orphelines désactivé en tests ; ClientMailOutbox.sweepOrphans() est
+    # appelé directement.
+    sweeper:
+      enabled: false
   # Worker de polling OCR désactivé en tests : la logique est testée en appelant
   # DocumentService.pollPendingJobs() directement (déterminisme total, pas de scheduler concurrent).
   ocr:

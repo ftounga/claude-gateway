@@ -57,8 +57,10 @@ import fr.claudegateway.runner.exec.RunnerToolGateway;
  *
  * <p>Un fichier <b>nommé comme un conteneur de secrets</b> ({@code .env}, clé privée, magasin de certificats…),
  * une pièce <b>texte</b> où {@link ClientMailSecrets} trouve un secret manifeste, et un total au-delà de
- * {@link #MAX_TOTAL_BYTES} — auquel cas l'agent doit proposer un lien. Un binaire (PDF, docx) n'est pas inspecté
- * au-delà de son nom. Aucun refus ne laisse rien derrière lui : l'outil ne met rien en file.</p>
+ * {@link #MAX_TOTAL_BYTES} — auquel cas l'agent doit proposer un lien. Un <b>document</b> (PDF, {@code .docx},
+ * {@code .xlsx}) voit son texte extrait et inspecté ({@link DocumentSecretScanner}, SF-110-05) ; un binaire opaque
+ * (image…) n'est pas inspecté au-delà de son nom. Aucun refus ne laisse rien derrière lui : l'outil ne met rien en
+ * file.</p>
  */
 @Component
 public class ClientMailAttachments {
@@ -114,16 +116,18 @@ public class ClientMailAttachments {
     private final RunnerAuditService audit;
     private final PageService pages;
     private final RadarExportService radarExport;
+    private final DocumentSecretScanner documentSecrets;
     private final Clock clock;
     private final String frontendUrl;
 
     public ClientMailAttachments(RunnerToolGateway runner, RunnerAuditService audit, PageService pages,
-            RadarExportService radarExport, Clock clock,
+            RadarExportService radarExport, DocumentSecretScanner documentSecrets, Clock clock,
             @Value("${app.frontend-url:http://localhost:4200}") String frontendUrl) {
         this.runner = runner;
         this.audit = audit;
         this.pages = pages;
         this.radarExport = radarExport;
+        this.documentSecrets = documentSecrets;
         this.clock = clock;
         this.frontendUrl = frontendUrl == null ? "" : frontendUrl.replaceAll("/+$", "");
     }
@@ -260,7 +264,12 @@ public class ClientMailAttachments {
                 return Collected.refused("Deux pièces jointes portent le nom « " + attachment.name() + " » : donne "
                         + "« name ». Aucun courriel n'a été envoyé.");
             }
+            // D'abord la pièce lue comme du texte (SF-110-03) ; sinon, si c'est un document (docx/xlsx/pdf), son
+            // texte extrait (SF-110-05). Un binaire opaque (image…) n'est toujours pas inspecté.
             Optional<String> secret = asText(attachment.content()).flatMap(ClientMailSecrets::find);
+            if (secret.isEmpty()) {
+                secret = documentSecrets.secretIn(attachment.content());
+            }
             if (secret.isPresent()) {
                 return Collected.refused("Courriel refusé : la pièce jointe « " + attachment.name() + " » contient "
                         + "manifestement " + secret.get() + ". Un secret ne voyage jamais par courriel ; ne la joins "

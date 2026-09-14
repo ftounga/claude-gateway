@@ -54,4 +54,21 @@ class ClientMailAttachmentStoreTest {
         assertThat(store.load(vera, second)).isEmpty();
         assertThat(store.load(bob, first)).hasSize(1);
     }
+
+    @Test
+    void listStoredGivesDistinctAccountAndMailPairsAndIgnoresMalformedKeys() {
+        UUID vera = UUID.randomUUID();
+        UUID bob = UUID.randomUUID();
+        UUID mailA = UUID.randomUUID();
+        UUID mailB = UUID.randomUUID();
+        Attachment two = new Attachment("cr.pdf", "application/pdf", new byte[] {1, 2});
+        store.put(vera, mailA, List.of(two, new Attachment("b.md", "text/markdown", new byte[] {3})));
+        store.put(bob, mailB, List.of(two));
+        // Une clé malformée (segments non-UUID) : jamais écrite par put(), doit être ignorée.
+        storage.putFile(ClientMailAttachmentStore.PREFIX + "not-a-uuid/also-not/00/x", new byte[] {9}, "text/plain");
+
+        assertThat(store.listStored()).containsExactlyInAnyOrder(
+                new ClientMailAttachmentStore.StoredRef(vera, mailA),
+                new ClientMailAttachmentStore.StoredRef(bob, mailB));
+    }
 }

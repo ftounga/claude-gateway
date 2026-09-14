@@ -213,4 +213,23 @@ class ClientEmailApiIntegrationTest {
         assertThat(refused.content()).contains("Limite de 50");
         assertThat(emailRepository.count()).isEqualTo(ClientMailTool.DAILY_LIMIT);
     }
+
+    @Test
+    void orphanAttachmentsWithoutALineAreSweptWhilePendingOnesRemain() {
+        UUID orphan = UUID.randomUUID(); // aucune ligne client_emails : transaction annulée par un plantage
+        String orphanKey = ClientMailAttachmentStore.PREFIX + vera.getId() + "/" + orphan + "/00/cr.pdf";
+        storage.putFile(orphanKey, new byte[] {1, 2, 3}, "application/pdf");
+
+        ClientEmail pending = emailRepository.save(ClientEmail.builder().userId(vera.getId())
+                .hostId(veraTerminal.getHostId()).workspaceId(veraTerminal.getId()).kind(ClientEmail.Kind.AGENT)
+                .clientName("CAGIP").recipient("franck@cagip.fr").subject("CR").status(ClientEmailStatus.PENDING)
+                .attempts(0).attachmentCount(1).build());
+        String pendingKey = ClientMailAttachmentStore.PREFIX + vera.getId() + "/" + pending.getId() + "/00/cr.pdf";
+        storage.putFile(pendingKey, new byte[] {4, 5, 6}, "application/pdf");
+
+        assertThat(outbox.sweepOrphans()).isEqualTo(1);
+
+        assertThat(storage.listKeys(ClientMailAttachmentStore.PREFIX + vera.getId() + "/" + orphan + "/")).isEmpty();
+        assertThat(storage.getFile(pendingKey)).as("un courriel en attente garde ses pièces").isPresent();
+    }
 }

@@ -4,7 +4,9 @@ import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.stereotype.Component;
@@ -68,6 +70,32 @@ public class ClientMailAttachmentStore {
     /** Efface les pièces en attente d'un compte supprimé. */
     public void deleteAccount(UUID userId) {
         storage.deletePrefix(PREFIX + userId + "/");
+    }
+
+    /** Le couple {compte, courriel} d'un lot de pièces rangé dans le stockage (F-110 / SF-110-05). */
+    public record StoredRef(UUID userId, UUID emailId) {
+    }
+
+    /**
+     * Les couples {@link StoredRef} présents dans le stockage, distincts, pour le balayage des orphelines
+     * (SF-110-05). Une clé dont les deux premiers segments ne sont pas des UUID est ignorée : on n'efface que ce
+     * qu'on sait rattacher à un courriel.
+     */
+    public List<StoredRef> listStored() {
+        Set<StoredRef> refs = new LinkedHashSet<>();
+        for (String key : storage.listKeys(PREFIX)) {
+            String rest = key.substring(PREFIX.length());
+            String[] segments = rest.split("/", 3);
+            if (segments.length < 3) {
+                continue;
+            }
+            try {
+                refs.add(new StoredRef(UUID.fromString(segments[0]), UUID.fromString(segments[1])));
+            } catch (IllegalArgumentException ex) {
+                // Clé malformée : jamais écrite par put(), on ne la touche pas.
+            }
+        }
+        return List.copyOf(refs);
     }
 
     /** La barre finale compte : un identifiant n'en englobe jamais un autre. */
