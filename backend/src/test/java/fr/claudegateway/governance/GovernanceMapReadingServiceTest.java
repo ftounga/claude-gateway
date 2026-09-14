@@ -188,6 +188,27 @@ class GovernanceMapReadingServiceTest {
     }
 
     @Test
+    @DisplayName("SF-92-04 : un paquet ACTIF sans carte ne dit PAS « activez le paquet »")
+    void anActivePackageWithoutAMapIsNotCalledUngoverned() {
+        // Le paquet est bien actif — mais n'apporte, ici, aucun fichier de genre MAP (le cas d'un
+        // semis en échec en production, ou d'un paquet sans carte). L'écran ne doit pas renvoyer
+        // l'utilisateur « activer » ce qui l'est déjà.
+        when(packageFiles.findByPackageIdOrderByPositionAsc(pkg.getId()))
+                .thenReturn(List.of(file("STATE.md", GovernanceFileKind.TEMPLATE)));
+
+        GovernanceMapView view = service.describe(alice, host);
+
+        assertThat(view.supported()).isTrue();
+        // Un paquet EST actif : le poste est « gouverné », même si sa carte n'est pas disponible.
+        assertThat(view.governed()).isTrue();
+        assertThat(view.readable()).isFalse();
+        assertThat(view.message()).doesNotContain("activez").contains("actif")
+                .contains("Appliquer");
+        // On ne lit pas la machine : il n'y a aucun fichier de carte à lire.
+        verify(hostFiles, never()).read(any(), any(), any());
+    }
+
+    @Test
     @DisplayName("machine muette : constatée UNE fois, pas six — et le geste est « lancez le runner »")
     void asilentMachineIsProbedOnlyOnce() {
         reads("README.md", Presence.UNREACHABLE, null);

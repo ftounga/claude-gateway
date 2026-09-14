@@ -109,6 +109,28 @@ public class GovernanceMapDestinations {
     }
 
     /**
+     * Vrai si <b>au moins un paquet est réellement actif</b> (et encore publié) sur ce poste —
+     * qu'il apporte une carte ou non (F-92 / SF-92-04).
+     *
+     * <p>Sert à ne pas mentir : quand aucun fichier {@code MAP} n'est attendu, l'écran doit pouvoir
+     * distinguer « <b>rien n'est activé</b> » de « un paquet est actif mais <b>n'a pas de carte
+     * lisible</b> » (semis en échec, ou paquet sans carte). Ne lève jamais, comme le reste de ce
+     * service.</p>
+     */
+    @Transactional(readOnly = true)
+    public boolean hasActivePackage(UUID userId, GovernanceHostRef host) {
+        if (userId == null || host == null) {
+            return false;
+        }
+        for (GovernanceActivation activation : activationsOf(userId, host)) {
+            if (published(activation.getPackageId()).isPresent()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Les chemins de carte où le projet {@code workspaceId} peut promouvoir — ceux de <b>son
      * poste</b>.
      *
