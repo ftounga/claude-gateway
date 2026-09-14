@@ -50,9 +50,11 @@ class AtelierChatServiceTeamsToolsTest {
     @Mock private fr.claudegateway.git.GitTokenService gitTokenService;
     @Mock private fr.claudegateway.git.GitHubClient gitHubClient;
     @Mock private TeamsAccessService teamsAccess;
+    @Mock private fr.claudegateway.runner.host.HostSpaceService spaces;
 
     private AtelierChatService service;
     private final UUID userId = UUID.randomUUID();
+    private final UUID hostId = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
@@ -66,13 +68,19 @@ class AtelierChatServiceTeamsToolsTest {
                 new AtelierProperties(null, null, null, null, null, null, null, null, null, null,
                         null, null, true),
                 AtelierCheckpointRunner.none(), ProjectRulesSource.NONE,
-                new TeamsToolCatalog(teamsAccess), null);
+                new TeamsToolCatalog(teamsAccess, spaces), null);
+        // F-106 / SF-106-07 : par défaut le client est dans la Vigie ; les tests du retrait le nient.
+        when(spaces.isActive(userId, hostId, fr.claudegateway.runner.host.ClientSpace.VIGIE))
+                .thenReturn(true);
     }
 
-    private static Workspace terminal(boolean teams) {
+    private Workspace terminal(boolean teams) {
         Workspace workspace = new Workspace();
         workspace.setExecutionTarget(WorkspaceExecutionTarget.RUNNER);
         workspace.setTeamsTerminal(teams);
+        if (teams) {
+            workspace.setHostId(hostId);
+        }
         return workspace;
     }
 
@@ -135,6 +143,41 @@ class AtelierChatServiceTeamsToolsTest {
 
         assertThat(service.buildSystemPrompt(userId, terminal(false)))
                 .doesNotContain("Volet Teams non actif");
+    }
+
+    // ------------------------------------------- F-106 / SF-106-07 : le client quitte la Vigie
+
+    @Test
+    @DisplayName("SF-106-07 — client retiré de la Vigie : la panoplie est celle d'avant F-89")
+    void whenTheClientLeftTheVigieTheBeltIsUnchanged() {
+        when(teamsAccess.hasAccess(userId)).thenReturn(true);
+        when(spaces.isActive(userId, hostId, fr.claudegateway.runner.host.ClientSpace.VIGIE))
+                .thenReturn(false);
+
+        assertThat(toolNames(terminal(true)))
+                .containsExactly("read_file", "write_file", "edit_file", "bash", "explore", "set_plan");
+    }
+
+    @Test
+    @DisplayName("SF-106-07 — client retiré de la Vigie : la consigne le dit, pas « volet non actif »")
+    void whenTheClientLeftTheVigieTheSystemPromptSaysSo() {
+        when(teamsAccess.hasAccess(userId)).thenReturn(true);
+        when(spaces.isActive(userId, hostId, fr.claudegateway.runner.host.ClientSpace.VIGIE))
+                .thenReturn(false);
+
+        String prompt = service.buildSystemPrompt(userId, terminal(true));
+        assertThat(prompt).contains(TeamsToolCatalog.REMOVED_FROM_VIGIE_NOTICE);
+        assertThat(prompt).doesNotContain(TeamsToolCatalog.CLOSED_NOTICE);
+    }
+
+    @Test
+    @DisplayName("SF-106-07 — client dans la Vigie : ni « retiré », ni « volet non actif »")
+    void withTheClientInTheVigieNoNotice() {
+        when(teamsAccess.hasAccess(userId)).thenReturn(true);
+
+        String prompt = service.buildSystemPrompt(userId, terminal(true));
+        assertThat(prompt).doesNotContain("retiré de la Vigie");
+        assertThat(prompt).doesNotContain("Volet Teams non actif");
     }
 
     // ------------------------------------------------------------------ F-91 : le journal d'audit

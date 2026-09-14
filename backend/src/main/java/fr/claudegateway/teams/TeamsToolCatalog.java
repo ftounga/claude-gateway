@@ -9,6 +9,8 @@ import org.springframework.stereotype.Component;
 
 import fr.claudegateway.agent.AgentTool;
 import fr.claudegateway.atelier.Workspace;
+import fr.claudegateway.runner.host.ClientSpace;
+import fr.claudegateway.runner.host.HostSpaceService;
 
 /**
  * <b>Le catalogue d'outils Teams donné à l'agent — et la garde qui décide s'il l'est</b>
@@ -361,9 +363,11 @@ public class TeamsToolCatalog {
     public static final String PREFIX = "teams_";
 
     private final TeamsAccessService teamsAccess;
+    private final HostSpaceService spaces;
 
-    public TeamsToolCatalog(TeamsAccessService teamsAccess) {
+    public TeamsToolCatalog(TeamsAccessService teamsAccess, HostSpaceService spaces) {
         this.teamsAccess = teamsAccess;
+        this.spaces = spaces;
     }
 
     /**
@@ -373,7 +377,7 @@ public class TeamsToolCatalog {
      * comportement est alors celui d'avant F-89, à l'identique.
      */
     public static TeamsToolCatalog none() {
-        return new TeamsToolCatalog(null);
+        return new TeamsToolCatalog(null, null);
     }
 
     /**
@@ -393,6 +397,26 @@ public class TeamsToolCatalog {
             + "« Vous avez un code d'accès ? ») ou l'option Teams (écran Facturation).";
 
     /**
+     * <b>Ce que l'agent d'un terminal Teams dont le client a quitté la Vigie doit savoir</b>
+     * (F-106 / SF-106-07).
+     *
+     * <p>Risque résiduel relevé à la livraison de F-106 : un terminal Teams déjà ouvert gardait ses
+     * outils {@code teams_*} si son client était <b>retiré de la Vigie</b> ; seule l'ouverture était
+     * gardée (SF-106-03). Désormais {@link #toolsFor} exige, à chaque tour, que le poste soit activé
+     * dans la Vigie. Comme pour SF-89-04, ce qui manquait alors est la <b>parole</b> : sans droit le
+     * catalogue est vide en silence, et l'agent fouille la machine ; la consigne le dit et dit quoi
+     * répondre. Distincte de {@link #CLOSED_NOTICE} : ici le volet Teams est bien actif sur le compte,
+     * mais ce <b>client</b> n'est plus suivi par la Vigie.</p>
+     */
+    public static final String REMOVED_FROM_VIGIE_NOTICE = "--- Client retiré de la Vigie ---\n"
+            + "Ce terminal est un terminal Teams, mais son client n'est plus activé dans la Vigie : "
+            + "aucun outil Teams ne t'est donné, tu ne peux lire ni messages, ni réunions, ni fichiers "
+            + "Teams de ce client. Ne cherche pas la réponse sur la machine à la place (pas de bash, "
+            + "find, grep ni lecture de fichiers pour retrouver un contenu Teams). Dis-le à "
+            + "l'utilisateur en une phrase, et indique-lui comment le rétablir : réactiver ce client "
+            + "dans la Vigie (écran Vigie, « Ajouter un client » puis activer ce client).";
+
+    /**
      * Vrai si le workspace est un <b>terminal Teams</b> et que le droit du compte est <b>fermé</b>
      * (F-89 / SF-89-04) : c'est le cas où la consigne système doit porter {@link #CLOSED_NOTICE}.
      *
@@ -409,16 +433,50 @@ public class TeamsToolCatalog {
     }
 
     /**
+     * Vrai si le workspace est un <b>terminal Teams</b>, que le droit du compte est <b>ouvert</b>,
+     * mais que le poste <b>n'est plus activé dans la Vigie</b> (F-106 / SF-106-07) : c'est le cas où
+     * la consigne système doit porter {@link #REMOVED_FROM_VIGIE_NOTICE}.
+     *
+     * <p>Mutuellement exclusif avec {@link #isClosedFor} : celui-ci exige le droit, celui-là son
+     * absence. Un terminal de projet et le catalogue {@link #none()} ne le sont jamais.</p>
+     *
+     * @param userId    propriétaire du terminal (celui du tour, jamais un paramètre client)
+     * @param workspace terminal du tour
+     * @return {@code true} si l'agent doit dire que le client a été retiré de la Vigie
+     */
+    public boolean isRemovedFromVigie(UUID userId, Workspace workspace) {
+        return teamsAccess != null && spaces != null && workspace != null
+                && workspace.isTeamsTerminal() && teamsAccess.hasAccess(userId)
+                && !isActiveInVigie(userId, workspace);
+    }
+
+    /**
+     * Vrai si le poste de ce terminal est <b>activé dans la Vigie</b> pour l'utilisateur du tour
+     * (F-106 / SF-106-07). Même garde que {@code RadarToolCatalog} : sans {@code hostId}, ou si le
+     * poste est introuvable ou d'autrui ({@code isActive} lève), c'est <b>fermé</b>, sans bruit.
+     */
+    private boolean isActiveInVigie(UUID userId, Workspace workspace) {
+        if (spaces == null || userId == null || workspace.getHostId() == null) {
+            return false;
+        }
+        try {
+            return spaces.isActive(userId, workspace.getHostId(), ClientSpace.VIGIE);
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /**
      * Les outils Teams à donner à l'agent pour ce tour, ou <b>la liste vide</b>.
      *
      * @param userId    propriétaire du terminal (isolation : celui du tour, jamais un paramètre client)
      * @param workspace terminal du tour
-     * @return le catalogue si le workspace est un terminal Teams <b>et</b> que le droit est ouvert ;
-     *         la liste vide dans tous les autres cas
+     * @return le catalogue si le workspace est un terminal Teams, que le droit est ouvert <b>et</b>
+     *         que le poste est activé dans la Vigie (F-106 / SF-106-07) ; la liste vide sinon
      */
     public List<AgentTool> toolsFor(UUID userId, Workspace workspace) {
         if (teamsAccess == null || workspace == null || !workspace.isTeamsTerminal()
-                || !teamsAccess.hasAccess(userId)) {
+                || !teamsAccess.hasAccess(userId) || !isActiveInVigie(userId, workspace)) {
             return List.of();
         }
         List<AgentTool> tools = new ArrayList<>();
