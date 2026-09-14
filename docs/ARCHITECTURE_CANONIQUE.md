@@ -471,6 +471,18 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   pour tous les projets existants. Deux routes s'y adossent, toutes deux passant par `requireOwned` :
   `GET .../chat/resume` (état de reprise, `prompt = NONE|IDLE`, seuil d'inactivité **14 jours**,
   constante) et `POST .../chat/restart`.
+- **workspaces — résumé de compaction du fil** (F-117 / SF-117-01, migration `107`). Colonne
+  `chat_thread_summary` (texte, **nullable**) : quand le **texte rejoué** dépasse un seuil de sécurité
+  **sous** la fenêtre du modèle (`app.atelier.compaction.trigger-tokens`, défaut 120 000, heuristique
+  caractères/token), `AtelierCompactionService` **résume les tours anciens** (un appel modèle dédié,
+  borné, sans outils, via `AiAgentProvider`, isolé `user_id`+`host_id`), garde les tours récents
+  entiers, et **injecte ce résumé en tête** de ce qui repart au fournisseur — préfixe stable, donc
+  cache de prompt préservé. La compaction **réutilise la frontière `chat_thread_started_at`** (posée
+  automatiquement au premier tour récent gardé) : l'affichage garde tout, seul le rejeu est réduit.
+  `null` = aucun résumé (comportement d'avant F-117) ; un « nouveau départ » l'efface. Le repli
+  réactif (F-117 / SF-117-02) force une compaction et relance une fois quand le fournisseur refuse
+  le contexte (400 « prompt too long », traduit en `AgentPromptTooLongException`), au lieu de tuer le
+  tour. Consommation agrégée aux compteurs du tour (décompte d'usage existant).
 - **Outillage de la boucle maison — aucune persistance** (F-39 / SF-39-05 et SF-39-06). La panoplie
   déclarée au modèle suit la **capacité de la cible** : en `RUNNER`, `read_file` / `write_file` /
   `edit_file` / `bash` (`list_files` et `search_files` retirés — `ls`, `find` et `grep -n` font
