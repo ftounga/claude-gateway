@@ -135,9 +135,96 @@ final class TeamsUrls {
     }
 
     /**
+     * <b>Une famille reconnue et sans intérêt</b> (F-89 / SF-89-10). Reconnue soit par l'<b>hôte</b>
+     * (une plateforme entière de bruit : télémétrie, éditeur assisté, config), soit par le
+     * <b>chemin</b> (un point de terminaison de bruit — auth, présence, abonnement, réglage — sur un
+     * hôte par ailleurs utile). Jamais le corps, jamais la requête.
+     *
+     * @param contains  fragments tous requis dans l'URL entière (hôte + chemin, minuscules)
+     * @param pathEnds  fin de chemin requise, ou {@code ""} : aucune
+     * @param excludes  fragment qui, s'il est présent dans l'URL, <b>empêche</b> la correspondance
+     *                  (garde-fou : « …/updates » est du bruit, mais pas « …/conversations/updates »)
+     */
+    record IgnoreRule(List<String> contains, String pathEnds, String excludes) {
+
+        static IgnoreRule url(String... fragments) {
+            return new IgnoreRule(List.of(fragments), "", "");
+        }
+
+        static IgnoreRule pathEnding(String end) {
+            return new IgnoreRule(List.of(), end, "");
+        }
+
+        static IgnoreRule urlExcept(String fragment, String pathEnd, String excludes) {
+            return new IgnoreRule(List.of(fragment), pathEnd, excludes);
+        }
+
+        boolean matches(String url, String path) {
+            return (excludes.isEmpty() || !url.contains(excludes))
+                    && contains.stream().allMatch(url::contains)
+                    && (pathEnds.isEmpty() || path.endsWith(pathEnds));
+        }
+    }
+
+    /**
+     * <b>Les familles de bruit, calées sur le relevé réel</b> (F-89 / SF-89-10, relevé
+     * {@code docs/features/F-100/releves/releve-teams-2026-09-15-…}). Ajouter une famille, c'est
+     * <b>une ligne ici</b> et <b>une ligne</b> dans {@code TeamsUrlsTest} (un exemple du relevé).
+     *
+     * <p><b>Prudence</b> : on n'ignore que ce qui est manifestement config, télémétrie, présence,
+     * auth, abonnement ou coquille d'app. En cas de doute, on laisse {@code UNKNOWN} — un
+     * {@code IGNORED} de trop masquerait une future capacité. C'est pourquoi {@code /users/{id}} nu et
+     * {@code /cookiev2} ne sont pas ici, et pourquoi l'ignore des « …/updates » exclut
+     * « …/conversations/updates ».</p>
+     */
+    static final List<IgnoreRule> IGNORE_RULES = List.of(
+            // Télémétrie et journalisation.
+            IgnoreRule.url("browser.pipe.aria.microsoft.com"),
+            IgnoreRule.url("events.data.microsoft.com"),
+            IgnoreRule.url("/telemetry"),
+            IgnoreRule.url("/beacon"),
+            IgnoreRule.url("/loggingservice"),
+            IgnoreRule.url("/poll"),
+            // Présence, abonnements, enregistrement, endpoints.
+            IgnoreRule.url("/presence"),
+            IgnoreRule.url("/pubsub/"),
+            IgnoreRule.pathEnding("/me/endpoints"),
+            IgnoreRule.url("/registrar/"),
+            IgnoreRule.url("trouter.teams.microsoft.com"),
+            // Auth (jetons, tokens) — la requête porte les jetons, on ne la lit pas ; on nomme l'hôte.
+            IgnoreRule.url("/skypetokenauth"),
+            IgnoreRule.url("/aadtokenauth"),
+            IgnoreRule.url("/api/authsvc/"),
+            IgnoreRule.url("/trap/tokens"),
+            // Config, éditeur assisté, coquille de l'application.
+            IgnoreRule.url("config.teams.microsoft.com"),
+            IgnoreRule.url("augloop.office.com"),
+            IgnoreRule.url("editor.svc.cloud.microsoft"),
+            IgnoreRule.pathEnding("/manifest.json"),
+            IgnoreRule.pathEnding("/v2"),
+            // Surfaces de la suite Office, base de connaissances, admin.
+            IgnoreRule.url("webshell.suite.office.com"),
+            IgnoreRule.url("loki.delve.office.com"),
+            IgnoreRule.url("/userknowledgebase/"),
+            IgnoreRule.url("admin.microsoft.com"),
+            // Réglages et listes de découverte — pas du contenu de conversation ni de réunion.
+            IgnoreRule.url("/batcheddefinitions"),
+            IgnoreRule.url("/usersettings"),
+            IgnoreRule.url("/settings/meetingconfiguration"),
+            IgnoreRule.url("/engagementsurfaces"),
+            IgnoreRule.pathEnding("/usage"),
+            IgnoreRule.url("/discover"),
+            IgnoreRule.url("/pinnedchannels"),
+            IgnoreRule.urlExcept("/teams/users/", "/updates", "/conversations"),
+            // Infra du lecteur SharePoint (relevé étape « transcription ») — jamais le contenu.
+            IgnoreRule.url("spcomponentregistry.ashx"),
+            IgnoreRule.url("spwebworkerproxy.ashx"));
+
+    /**
      * Reconnue et sans intérêt. Les distinguer d'{@code UNKNOWN} est ce qui empêche la sonde de
      * santé de crier au loup : une page web charge des centaines de ressources qui ne sont pas des
-     * réponses de service.
+     * réponses de service. Les ressources statiques sont reconnues par leur extension ; le reste par
+     * la table {@link #IGNORE_RULES}, calée sur le relevé réel.
      */
     private static boolean isIgnorable(String url, String path) {
         if (path.endsWith(".js") || path.endsWith(".css") || path.endsWith(".png")
@@ -146,9 +233,7 @@ final class TeamsUrls {
                 || path.endsWith(".ico") || path.endsWith(".gif")) {
             return true;
         }
-        return url.contains("/telemetry") || url.contains("browser.pipe.aria.microsoft.com")
-                || url.contains("/presence") || url.contains("/beacon")
-                || url.contains("/loggingservice") || url.contains("/poll");
+        return IGNORE_RULES.stream().anyMatch(rule -> rule.matches(url, path));
     }
 
     private static String pathOf(String url) {
