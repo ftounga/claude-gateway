@@ -338,8 +338,8 @@ class TeamsGisementsTest {
 
         // F-90 / SF-90-03 a ajouté les deux outils de captures ; F-91 / SF-91-02 les trois de
         // l'enregistrement local ; F-108 / SF-108-03 les deux outils fichiers ; SF-108-04 les six
-        // écritures : vingt et un.
-        assertEquals(21, TeamsTools.CATALOG.size());
+        // écritures ; SF-108-06 la lecture d'un .docx et la copie : vingt-trois.
+        assertEquals(23, TeamsTools.CATALOG.size());
         TeamsTools.CATALOG.forEach(tool -> assertTrue(tools.execute(tool, ask()).ok(),
                 tool + " est annoncé au catalogue : il doit répondre"));
         assertFalse(tools.execute("teams_invente", ask()).ok());

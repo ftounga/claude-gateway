@@ -41,6 +41,9 @@ final class TeamsFileTools {
 
     static final long DOCUMENT_WAIT_MS = 60_000L;
 
+    /** Au-delà, un {@code .docx} n'est pas lu en mémoire (F-108 / SF-108-06) : refus nommé. */
+    static final long MAX_DOCX_BYTES = 50L * 1024 * 1024;
+
     /** Ce que ces outils empruntent aux outils Teams : la liaison, le registre, la version. */
     interface Host {
         BrowserLink link();
@@ -406,6 +409,77 @@ final class TeamsFileTools {
             text.append("« ").append(file.name()).append(" » n'a PAS été rapatrié.");
         }
         return finish(result, gaps, journal, visit == null ? "" : visit.viewport(), text);
+    }
+
+    // ------------------------------------------------------------------ teams_read_docx
+
+    /**
+     * <b>Lit le texte d'un {@code .docx} déjà sur la machine</b> (F-108 / SF-108-06) — la transcription
+     * Word rapatriée par {@code teams_read_file} ou {@code teams_meeting_recording}.
+     *
+     * <p>Une <b>lecture locale</b> : aucun réseau, aucun geste, aucune confirmation. Elle <b>relaie le
+     * texte</b>, elle n'analyse rien (Provider-First). Un fichier qui n'est pas un {@code .docx}
+     * lisible produit un <b>manque nommé</b>, jamais un contenu inventé.</p>
+     */
+    ToolOutcome readDocx(JsonNode input) {
+        TeamsToolResult result = result(TeamsTools.READ_DOCX);
+        List<TeamsGap> gaps = new ArrayList<>();
+        String raw = TeamsAsk.text(input, "file", "path", "local_path");
+        result.json().put("read", false);
+        if (raw.isEmpty()) {
+            gaps.add(TeamsGap.of(TeamsGapKind.MISSING_FIELD, "lecture d'un .docx", "file"));
+            return finish(result, gaps, List.of(), "", new StringBuilder("Donnez le chemin ABSOLU du "
+                    + ".docx sur la machine (« file »). Rien n'a été lu."));
+        }
+        Path path;
+        try {
+            path = Path.of(raw.strip());
+        } catch (RuntimeException e) {
+            gaps.add(TeamsGap.of(TeamsGapKind.NOT_FOUND, shorten(raw), "chemin local illisible"));
+            return finish(result, gaps, List.of(), "", new StringBuilder("Chemin illisible : rien n'a "
+                    + "été lu."));
+        }
+        if (!path.isAbsolute()) {
+            gaps.add(TeamsGap.of(TeamsGapKind.NOT_FOUND, raw,
+                    "donne le chemin ABSOLU du fichier sur la machine"));
+            return finish(result, gaps, List.of(), "", new StringBuilder("Donnez un chemin ABSOLU : "
+                    + "rien n'a été lu."));
+        }
+        Path normalized = path.normalize();
+        if (!Files.isRegularFile(normalized) || !Files.isReadable(normalized)) {
+            gaps.add(TeamsGap.of(TeamsGapKind.NOT_FOUND, normalized.toString(),
+                    "aucun fichier lisible à ce chemin sur la machine"));
+            return finish(result, gaps, List.of(), "", new StringBuilder("Aucun fichier lisible à ce "
+                    + "chemin : rien n'a été lu."));
+        }
+        long size = sizeOf(normalized);
+        result.with("localPath", normalized.toString());
+        result.json().put("bytes", size);
+        if (size > MAX_DOCX_BYTES) {
+            gaps.add(TeamsGap.of(TeamsGapKind.BODY_UNAVAILABLE, normalized.toString(),
+                    "fichier de plus de 50 Mo : trop gros pour être lu comme un .docx"));
+            return finish(result, gaps, List.of(), "", new StringBuilder("« ")
+                    .append(normalized.getFileName()).append(" » est trop gros pour être lu ici."));
+        }
+        try {
+            DocxText.Extracted extracted = DocxText.read(normalized);
+            result.json().put("read", true);
+            result.json().put("paragraphs", extracted.paragraphs());
+            result.json().put("truncated", extracted.truncated());
+            result.with("documentText", extracted.text());
+            StringBuilder text = new StringBuilder("Texte de « ").append(normalized.getFileName())
+                    .append(" » (").append(extracted.paragraphs()).append(" paragraphe")
+                    .append(extracted.paragraphs() > 1 ? "s" : "");
+            if (extracted.truncated()) {
+                text.append(", tronqué à ").append(DocxText.MAX_TEXT_CHARS).append(" caractères");
+            }
+            text.append(") :").append(System.lineSeparator()).append(extracted.text());
+            return finish(result, gaps, List.of(), "", text);
+        } catch (DocxText.NotADocx e) {
+            gaps.add(TeamsGap.of(TeamsGapKind.BODY_UNAVAILABLE, normalized.toString(), e.getMessage()));
+            return finish(result, gaps, List.of(), "", new StringBuilder("« ")
+                    .append(normalized.getFileName()).append(" » n'a pas pu être lu comme un .docx."));
+        }
     }
 
     // ------------------------------------------------------------------ emplacements connus

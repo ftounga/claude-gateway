@@ -327,12 +327,15 @@ class TeamsToolCatalogTest {
     }
 
     @Test
-    @DisplayName("F-108 : isWrite ne reconnaît QUE les six outils qui écrivent dans Microsoft 365")
+    @DisplayName("F-108 : isWrite ne reconnaît QUE les sept outils qui écrivent dans Microsoft 365")
     void onlyTheWriteToolsAreWrite() {
         assertThat(TeamsToolCatalog.WRITE).containsExactly(
                 TeamsToolCatalog.CREATE_FOLDER, TeamsToolCatalog.UPLOAD_FILE,
-                TeamsToolCatalog.RENAME, TeamsToolCatalog.MOVE, TeamsToolCatalog.DELETE,
-                TeamsToolCatalog.REPLACE_VERSION);
+                TeamsToolCatalog.RENAME, TeamsToolCatalog.MOVE, TeamsToolCatalog.COPY,
+                TeamsToolCatalog.DELETE, TeamsToolCatalog.REPLACE_VERSION);
+        // SF-108-06 : la copie est une écriture ; la lecture d'un .docx n'en est pas une.
+        assertThat(TeamsToolCatalog.isWrite(TeamsToolCatalog.COPY)).isTrue();
+        assertThat(TeamsToolCatalog.isWrite(TeamsToolCatalog.READ_DOCX)).isFalse();
         TeamsToolCatalog.WRITE.forEach(tool -> assertThat(TeamsToolCatalog.isWrite(tool)).isTrue());
         // Ni lecture, ni capture, ni présentation, ni bash, ni null ne sont des écritures.
         assertThat(TeamsToolCatalog.isWrite(TeamsToolCatalog.READ_CONVERSATION)).isFalse();
@@ -409,6 +412,11 @@ class TeamsToolCatalogTest {
         assertThat(TeamsToolCatalog.describeWriteCall(TeamsToolCatalog.MOVE,
                 args.apply(java.util.Map.of("target", plan, "destination", general + "/Archives"))))
                 .isEqualTo("Déplacer « plan.docx » vers ProjetIAM › Shared Documents › General › Archives");
+        // SF-108-06 : la copie nomme l'élément et la destination en clair.
+        assertThat(TeamsToolCatalog.describeWriteCall(TeamsToolCatalog.COPY,
+                args.apply(java.util.Map.of("target", plan,
+                        "destination", "https://contoso.sharepoint.com/sites/Finance/Shared%20Documents"))))
+                .isEqualTo("Copier « plan.docx » vers Finance › Shared Documents");
         assertThat(TeamsToolCatalog.describeWriteCall(TeamsToolCatalog.DELETE,
                 args.apply(java.util.Map.of("target", plan))))
                 .isEqualTo("Supprimer « plan.docx » dans ProjetIAM › Shared Documents › General (corbeille du site)");
