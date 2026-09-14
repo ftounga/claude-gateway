@@ -2,6 +2,8 @@
 
 > Cadrage du 2026-09-13, **révisé le 2026-09-14** sur correction du PO. **Cadrage seul : la livraison
 > attend le go du PO.** S'appuie sur **F-112** (le serveur MCP), qui en est le moyen d'exécution.
+> **Calendrier (PO, 2026-09-14)** : « le test du serveur MCP doit se faire plus tard » — le banc s'exécutera
+> par MCP une fois F-112 livrée et éprouvée ; d'ici là, les essais sur CAGIP restent manuels (atelier de test).
 
 ## 1. Le besoin, et la correction du PO
 
