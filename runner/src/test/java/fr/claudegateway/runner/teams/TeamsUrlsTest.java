@@ -120,4 +120,101 @@ class TeamsUrlsTest {
                 "https://teams.microsoft.com/api/chatsvc/emea/v1/users/ME/conversations/19:x/messages"
                         + "?skypetoken=peu-importe&pageSize=50"));
     }
+
+    /**
+     * <b>Une ligne par famille de bruit</b> (F-89 / SF-89-10), dans l'ordre de {@code TeamsUrls.IGNORE_RULES} :
+     * pour les familles ajoutées par SF-89-10, l'adresse réelle du relevé du 2026-09-15 qui l'a fait naître ;
+     * pour les gardes génériques héritées (aria, /telemetry, /beacon, /loggingservice, /poll), un exemple
+     * représentatif. Ajouter une famille ignorée = une ligne là-bas, une ligne ici. Les identifiants sont
+     * remplacés par un gabarit, comme dans le relevé.
+     */
+    static final List<String> IGNORE_EXAMPLES = List.of(
+            "https://browser.pipe.aria.microsoft.com/Collector/3.0/",
+            "https://eu-teams.events.data.microsoft.com/OneCollector/1.0",
+            "https://teams.microsoft.com/api/mt/emea/beta/telemetry",
+            "https://teams.microsoft.com/api/beacon",
+            "https://teams.microsoft.com/loggingservice/v1/events",
+            "https://teams.microsoft.com/poll",
+            "https://teams.microsoft.com/ups/emea/v1/presence/getpresence",
+            "https://teams.microsoft.com/ups/emea/v1/pubsub/subscriptions/8:orgid:0000",
+            "https://teams.microsoft.com/ups/emea/v1/me/endpoints",
+            "https://teams.microsoft.com/registrar/prod/V2/registrations",
+            "https://go-eu.trouter.teams.microsoft.com/",
+            "https://fr-prod.asyncgw.teams.microsoft.com/v1/skypetokenauth",
+            "https://fr-prod.asyncgw.teams.microsoft.com/v1/8:orgid:0000/aadtokenauth",
+            "https://teams.microsoft.com/api/authsvc/v1.0/lfts/TeamsPremium/policies/selfserve",
+            "https://teams.microsoft.com/trap/tokens",
+            "https://config.teams.microsoft.com/config/v1/MicrosoftTeams/8:orgid:0000",
+            "https://francecentral-pa02.augloop.office.com/v2/session/8:orgid:0000",
+            "https://editor.svc.cloud.microsoft/NLEditor/api/V1/LanguageInfo",
+            "https://teams.microsoft.com/v2/manifest.json",
+            "https://teams.microsoft.com/v2",
+            "https://webshell.suite.office.com/api/shell/navbardata",
+            "https://loki.delve.office.com/api/v1/livepersonacard/configuration",
+            "https://substrate.office.com/userknowledgebase/v1.0/8:orgid:0000/teams/19:thread",
+            "https://admin.microsoft.com/admin/api/uxversion",
+            "https://teams.microsoft.com/api/mt/emea/beta/users/8:orgid:0000/batchedDefinitions",
+            "https://teams.microsoft.com/api/mt/emea/beta/userSettings/breakthroughlist",
+            "https://teams.microsoft.com/api/mt/emea/beta/me/settings/meetingConfiguration",
+            "https://teams.microsoft.com/api/mt/emea/beta/me/engagementSurfaces",
+            "https://teams.microsoft.com/api/mt/emea/beta/users/8:orgid:0000/usage",
+            "https://teams.microsoft.com/api/csa/emea/api/v1/teams/users/8:orgid:0000/discover",
+            "https://teams.microsoft.com/api/csa/emea/api/v1/teams/users/8:orgid:0000/pinnedChannels",
+            "https://teams.microsoft.com/api/csa/emea/api/v3/teams/users/8:orgid:0000/updates",
+            "https://tenant-my.sharepoint.com/_layouts/15/SPComponentRegistry.ashx",
+            "https://tenant-my.sharepoint.com/_layouts/15/spwebworkerproxy.ashx");
+
+    static java.util.stream.Stream<org.junit.jupiter.params.provider.Arguments> ignoreExamples() {
+        return java.util.stream.IntStream.range(0, IGNORE_EXAMPLES.size())
+                .mapToObj(index -> org.junit.jupiter.params.provider.Arguments.of(index, IGNORE_EXAMPLES.get(index)));
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest(name = "ignore {0}")
+    @org.junit.jupiter.params.provider.MethodSource("ignoreExamples")
+    @DisplayName("Chaque famille de bruit du relevé est IGNORED, et c'est BIEN sa propre règle qui la reconnaît")
+    void each_ignore_rule_has_its_line(int index, String url) {
+        assertEquals(TeamsPayloadKind.IGNORED, TeamsUrls.classify(url), url);
+        String lower = url.toLowerCase(java.util.Locale.ROOT);
+        String path = lower.replaceFirst("^https://[^/]+", "").replaceFirst("[?#].*$", "");
+        assertTrue(TeamsUrls.IGNORE_RULES.get(index).matches(lower, path),
+                "l'exemple doit être reconnu par sa propre règle d'ignore");
+    }
+
+    @Test
+    @DisplayName("Chaque règle d'ignore a son exemple : pas de règle sans ligne de test")
+    void no_ignore_rule_without_its_line() {
+        assertEquals(TeamsUrls.IGNORE_RULES.size(), IGNORE_EXAMPLES.size());
+    }
+
+    @Test
+    @DisplayName("Non-régression : le contenu déjà classé du relevé le reste, jamais ignoré")
+    void classified_families_from_the_survey_are_untouched() {
+        assertEquals(TeamsPayloadKind.CONVERSATION_MESSAGES, TeamsUrls.classify(
+                "https://teams.microsoft.com/api/chatsvc/fr/v1/users/8:orgid:0000/"
+                        + "conversations/19:x@thread.v2/messages"));
+        assertEquals(TeamsPayloadKind.CONVERSATION_LIST, TeamsUrls.classify(
+                "https://teams.microsoft.com/api/chatsvc/fr/v1/users/ME/conversations"));
+        assertEquals(TeamsPayloadKind.CALENDAR_EVENT, TeamsUrls.classify(
+                "https://teams.microsoft.com/api/mt/emea/v2.0/me/calendars/events/iCalUId/0400000082"));
+        assertEquals(TeamsPayloadKind.MEETING_DETAILS, TeamsUrls.classify(
+                "https://teams.microsoft.com/api/mt/emea/v1/schedulingService/meetings"));
+        assertEquals(TeamsPayloadKind.MEETING_COLLAB_OBJECT, TeamsUrls.classify(
+                "https://teams.microsoft.com/api/mcps/eu/collab/readcollabobject/V2/a/b/c"));
+    }
+
+    @Test
+    @DisplayName("Le garde-fou : « …/conversations/updates » (csa) reste une liste, pas du bruit ignoré")
+    void csa_conversations_updates_is_not_swallowed_by_the_updates_ignore() {
+        assertEquals(TeamsPayloadKind.CONVERSATION_LIST, TeamsUrls.classify(
+                "https://teams.microsoft.com/api/csa/emea/api/v2/teams/users/me/conversations/updates"));
+    }
+
+    @Test
+    @DisplayName("Les points d'accès fichiers F-108 restent UNKNOWN (règles fichiers), jamais ignorés")
+    void file_endpoints_stay_unknown() {
+        assertEquals(TeamsPayloadKind.UNKNOWN, TeamsUrls.classify(
+                "https://tenant-my.sharepoint.com/_api/v2.1/drives/b!id/items/01ABC"));
+        assertEquals(TeamsPayloadKind.UNKNOWN, TeamsUrls.classify(
+                "https://tenant-my.sharepoint.com/_api/v2.1/drives/b!id/items/01ABC/content"));
+    }
 }

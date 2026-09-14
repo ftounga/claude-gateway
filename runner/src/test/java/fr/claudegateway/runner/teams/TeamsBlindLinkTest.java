@@ -139,8 +139,10 @@ class TeamsBlindLinkTest {
     void unrecognized_traffic_is_said_and_the_survey_is_proposed() throws Exception {
         PaperTeams teams = new PaperTeams();
         TeamsTools tools = teams.tools();
+        // Deux réponses Microsoft NON classées et NON bruitées (le pubsub d'abord utilisé ici est
+        // désormais reconnu comme bruit — SF-89-10 — et ne compte plus comme trafic à apprendre).
         teams.browser.emitResponse("h1", "https://teams.microsoft.com/api/mcps/eu/contents", "{}");
-        teams.browser.emitResponse("h2", "https://teams.microsoft.com/ups/emea/v1/pubsub/subscriptions/abc123def456abc123", "{}");
+        teams.browser.emitResponse("h2", "https://teams.microsoft.com/api/chatsvc/fr/v1/threads/19:x@thread.v2/consumptionhorizons", "{}");
 
         String rendered = tools.execute(TeamsTools.FIND_CONVERSATIONS, ask()).content();
         JsonNode json = mapper.readTree(rendered);
