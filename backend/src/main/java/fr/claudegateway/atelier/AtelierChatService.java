@@ -85,10 +85,22 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     private final boolean streaming;
     /**
+     * Budget de temps effectif d'un message, en millisecondes (F-118 / SF-118-03), lu de
+     * {@code app.atelier.turn-budget} (défaut {@code PT10M}, identique à {@link #TURN_BUDGET_MS}). La
+     * deadline du tour s'en déduit ; le réglage se relève sans livraison (60 min en production via
+     * {@code APP_ATELIER_TURN_BUDGET=PT60M}).
+     */
+    private final long turnBudgetMs;
+    /**
      * Budget de temps d'un tour (F-38 / SF-38-07). Sans lui, 12 itérations × 120 s de {@code bash}
      * dépassent largement la durée de vie du flux SSE : l'émetteur se clôt, l'écran se fige, et la
      * boucle continue d'exécuter des commandes sur la machine de l'utilisateur. Le budget garantit
      * l'inverse : la boucle rend la main <b>avant</b> que le flux expire.
+     *
+     * <p>Valeur de <b>repli documentaire</b> depuis F-118 / SF-118-03 : le budget effectif est lu de
+     * la configuration ({@code app.atelier.turn-budget}, défaut identique {@code PT10M}) dans {@link
+     * #turnBudgetMs}. La production le porte à 60 min par {@code APP_ATELIER_TURN_BUDGET=PT60M} sans
+     * livraison.</p>
      */
     static final long TURN_BUDGET_MS = 600_000L;
     /** Longueur de la commande relayée à l'écran comme étape de progression (contrat §3). */
@@ -484,6 +496,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.runnerHostService = runnerHostService;
         this.maxIterations = atelierProperties.maxIterations();
         this.maxTurnTokens = atelierProperties.maxTurnTokens();
+        this.turnBudgetMs = atelierProperties.turnBudget().toMillis();
         this.maxDelegations = atelierProperties.maxDelegations();
         this.storageExecution = atelierProperties.storageExecution();
         this.streaming = !Boolean.FALSE.equals(atelierProperties.streaming());
@@ -603,7 +616,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         // Ni la machine d'hier ni celle d'un tour abandonné ne jugent ce tour-ci (F-93 / SF-93-04).
         machineOfTurn.remove(turnKey(userId, workspaceId));
         long startedAt = System.currentTimeMillis();
-        long deadline = startedAt + TURN_BUDGET_MS;
+        long deadline = startedAt + turnBudgetMs;
         String userText = rawMessage.trim();
 
         // Compaction automatique du fil (F-117 / SF-117-01), AVANT de bâtir la requête : si le texte

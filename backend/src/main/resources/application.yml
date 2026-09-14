@@ -189,6 +189,13 @@ app:
     # Le compteur additionne les tokens TRAITÉS, cache compris : sur un tour long, l'essentiel est
     # relu au dixième du tarif, et relever le plafond ne multiplie pas la facture d'autant.
     max-turn-tokens: ${APP_ATELIER_MAX_TURN_TOKENS:4000000}
+    # Budget de TEMPS d'un message de la boucle maison (F-118 / SF-118-03), format ISO-8601 (ex.
+    # PT10M, PT60M). Le plafond d'itérations borne le NOMBRE d'allers-retours, ce budget borne la
+    # DUREE : la boucle rend la main AVANT que le flux SSE n'expire (émetteur clos = écran figé,
+    # commandes qui tournent encore). Défaut PT10M = comportement livré, posé ici pour être réglable
+    # sans livraison. Même repli que les autres réglages : une valeur absente, nulle ou négative
+    # retombe sur le défaut, une valeur au-delà du plafond dur (PT2H) y est ramenée.
+    turn-budget: ${APP_ATELIER_TURN_BUDGET:PT10M}
     # Appel modèle en FLUX de la boucle maison (F-116 / SF-116-01). Actif par défaut : chaque tour
     # consomme le flux SSE du fournisseur et fait défiler le texte mot à mot, comme Claude Code. Le
     # corps de requête, le cache de prompt, le retry 429/529 et le décompte d'usage sont INCHANGÉS —

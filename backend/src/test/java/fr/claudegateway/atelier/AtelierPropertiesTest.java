@@ -2,6 +2,8 @@ package fr.claudegateway.atelier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Duration;
+
 import org.junit.jupiter.api.Test;
 
 /**
@@ -208,5 +210,46 @@ class AtelierPropertiesTest {
     void adaptiveEffortCanBeDisabledWithoutADeployment() {
         // Coupe-circuit : `false` rétablit l'effort normal à chaque étape (comportement d'avant F-118).
         assertThat(withAdaptiveEffort(null, false).adaptiveEffort()).isFalse();
+    }
+
+    // ------------------------------------------- F-118 / SF-118-03 : budget de temps configurable
+
+    /** Budget de temps du message (F-118 / SF-118-03) — le 17e et dernier composant. */
+    private static AtelierProperties withTurnBudget(Duration value) {
+        return new AtelierProperties(null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, value);
+    }
+
+    @Test
+    void turnBudgetDefaultsToTenMinutes() {
+        // Absent => 10 min, le comportement livré : le poser en config ne change rien sans réglage.
+        assertThat(withTurnBudget(null).turnBudget()).isEqualTo(Duration.ofMinutes(10));
+        assertThat(withTurnBudget(null).turnBudget()).isEqualTo(AtelierProperties.DEFAULT_TURN_BUDGET);
+        // Le constructeur de compatibilité (sans ce réglage) applique le même défaut.
+        AtelierProperties legacy = new AtelierProperties(null, null, null, null, null, null, null,
+                null, null, null, null, null, true, null, null, null);
+        assertThat(legacy.turnBudget()).isEqualTo(Duration.ofMinutes(10));
+    }
+
+    @Test
+    void turnBudgetHonoursAConfiguredValue() {
+        // La production porte le budget à 60 min par APP_ATELIER_TURN_BUDGET=PT60M.
+        assertThat(withTurnBudget(Duration.ofMinutes(60)).turnBudget()).isEqualTo(Duration.ofMinutes(60));
+    }
+
+    @Test
+    void turnBudgetFallsBackToTheDefaultWhenZeroOrNegative() {
+        // Une faute de config ne doit ni couper les tours à zéro, ni les rendre infinis.
+        assertThat(withTurnBudget(Duration.ZERO).turnBudget()).isEqualTo(Duration.ofMinutes(10));
+        assertThat(withTurnBudget(Duration.ofMinutes(-5)).turnBudget()).isEqualTo(Duration.ofMinutes(10));
+    }
+
+    @Test
+    void turnBudgetIsCappedAtTheHardCeiling() {
+        // Au-delà, le plafond d'itérations et la durée de vie du flux SSE auraient tranché de toute
+        // façon : mieux vaut une borne lisible qu'un plafond sans effet.
+        assertThat(withTurnBudget(Duration.ofHours(10)).turnBudget()).isEqualTo(Duration.ofHours(2));
+        assertThat(withTurnBudget(Duration.ofHours(10)).turnBudget())
+                .isEqualTo(AtelierProperties.TURN_BUDGET_CEILING);
     }
 }

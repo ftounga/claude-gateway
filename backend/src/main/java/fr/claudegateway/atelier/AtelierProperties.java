@@ -1,5 +1,7 @@
 package fr.claudegateway.atelier;
 
+import java.time.Duration;
+
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
@@ -69,6 +71,15 @@ import org.springframework.boot.context.properties.bind.ConstructorBinding;
  *                      tour parti en vrille s'y arrête. Exprimé en tokens et non en dollars
  *                      (décision D-L8-1) : le compteur additionne les tokens servis par le cache,
  *                      qu'un taux mélangé sur-facturerait d'un ordre de grandeur
+ * @param turnBudget    budget de <b>temps</b> d'un message de la boucle maison (F-118 / SF-118-03),
+ *                      défaut {@code PT10M} (10 min) — le comportement livré, posé ici pour être
+ *                      réglable sans livraison. Le plafond d'itérations borne le <b>nombre</b>
+ *                      d'allers-retours, ce budget borne la <b>durée</b> : la boucle rend la main
+ *                      avant que le flux SSE n'expire. Même stratégie de repli que {@link
+ *                      #maxTurnTokens()} : une valeur absente, nulle, de durée nulle ou négative
+ *                      retombe sur le défaut, et une valeur au-delà du plafond dur ({@code PT2H}) y
+ *                      est ramenée. La production le porte à 60 min par {@code APP_ATELIER_TURN_BUDGET}
+ *                      ({@code PT60M}), sans changer la valeur du code
  */
 @ConfigurationProperties(prefix = "app.atelier")
 public record AtelierProperties(
@@ -87,7 +98,8 @@ public record AtelierProperties(
         Boolean storageExecution,
         Boolean streaming,
         String stepEffort,
-        Boolean adaptiveEffort) {
+        Boolean adaptiveEffort,
+        Duration turnBudget) {
 
     /** Modèle de la boucle maison à défaut de configuration (F-39 / SF-39-10). */
     public static final String DEFAULT_MODEL = "claude-opus-5";
@@ -123,6 +135,17 @@ public record AtelierProperties(
      * l'occasion de s'appliquer — même règle que {@code maxIterations}.
      */
     public static final long MAX_TURN_TOKENS_CEILING = 10_000_000L;
+    /**
+     * Budget de temps d'un message à défaut de configuration (F-118 / SF-118-03) : 10 min, la valeur
+     * livrée. L'écrire ici ne change rien au comportement, il rend le levier réglable sans livraison.
+     */
+    public static final Duration DEFAULT_TURN_BUDGET = Duration.ofMinutes(10);
+    /**
+     * Plafond dur du budget de temps : au-delà, le plafond d'itérations ({@code maxIterations}) et la
+     * durée de vie du flux SSE auraient tranché de toute façon. Même règle que {@link
+     * #MAX_TURN_TOKENS_CEILING} : mieux vaut une borne lisible qu'un plafond sans effet.
+     */
+    public static final Duration TURN_BUDGET_CEILING = Duration.ofHours(2);
 
     // Le record porte un second constructeur (compatibilité pré-F-116) : la liaison de configuration
     // doit désigner explicitement le constructeur canonique, sans quoi elle serait ambiguë.
@@ -190,6 +213,31 @@ public record AtelierProperties(
         if (adaptiveEffort == null) {
             adaptiveEffort = Boolean.TRUE;
         }
+        // Budget de temps du message (F-118 / SF-118-03) : même repli que `maxTurnTokens`. Une valeur
+        // absente, nulle, de durée nulle ou négative retombe sur le défaut (10 min, le comportement
+        // livré) — une faute de configuration ne doit ni couper les tours à zéro, ni les rendre infinis.
+        if (turnBudget == null || turnBudget.isZero() || turnBudget.isNegative()) {
+            turnBudget = DEFAULT_TURN_BUDGET;
+        }
+        // Au-delà du plafond dur, `maxIterations` et la durée de vie du flux SSE auraient tranché de
+        // toute façon : on ramène à une borne lisible plutôt qu'à un plafond sans effet.
+        if (turnBudget.compareTo(TURN_BUDGET_CEILING) > 0) {
+            turnBudget = TURN_BUDGET_CEILING;
+        }
+    }
+
+    /**
+     * Constructeur de compatibilité, sans le budget de temps (F-118 / SF-118-03) : {@code turnBudget}
+     * retombe sur son défaut ({@code PT10M}). Évite de réécrire les appelants antérieurs à SF-118-03
+     * (et leurs tests) pour un réglage qu'ils n'expriment pas.
+     */
+    public AtelierProperties(String storage, String bucket, String prefix, Long maxTotalBytes,
+            Integer maxEntries, Long maxFileBytes, Integer maxIterations, String model, String effort,
+            Boolean contextPruning, Long maxTurnTokens, Integer maxDelegations,
+            Boolean storageExecution, Boolean streaming, String stepEffort, Boolean adaptiveEffort) {
+        this(storage, bucket, prefix, maxTotalBytes, maxEntries, maxFileBytes, maxIterations, model,
+                effort, contextPruning, maxTurnTokens, maxDelegations, storageExecution, streaming,
+                stepEffort, adaptiveEffort, null);
     }
 
     /**
