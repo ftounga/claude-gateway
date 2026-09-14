@@ -63,6 +63,18 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-oauth2-client</artifactId>
 		</dependency>
+		<!-- OAuth 2.1 pour les clients MCP (F-112 / SF-112-02, ADR-020). L'application devient
+		     serveur de ressources (validation des jetons d'accès sur /api/mcp) ET serveur
+		     d'autorisation (Spring Authorization Server : /oauth2/*, /.well-known/*). Confiné au
+		     package fr.claudegateway.mcp ; la chaîne principale et le login Google sont inchangés. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-oauth2-authorization-server</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-data-jpa</artifactId>
