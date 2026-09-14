@@ -331,9 +331,23 @@ export class GovernanceComponent implements OnInit {
       message += ` Dont ${counts.KEEP_LOCAL} modifié(s) localement, conservé(s) :`
         + ' vos modifications n’ont pas été touchées.';
     }
-    const unreadable = plan.projects.filter((project) => !project.readable).length;
-    if (unreadable > 0) {
-      message += ` ${unreadable} dossier(s) n'ont pas pu être lus : le dépôt reste en attente.`;
+    // Ce qui BLOQUE la mise à jour, NOMMÉ (F-96 / SF-96-04) : dire « le dépôt reste en attente »
+    // sans dire QUEL dossier, ni POURQUOI le bandeau « version plus récente » persiste, laisse le
+    // PO cliquer « Appliquer » sans comprendre. On nomme les vrais dossiers illisibles et la carte
+    // si sa racine n'a pas répondu — les terminaux, eux, ne sont plus du périmètre.
+    const blockers: string[] = [];
+    if (plan.root && plan.root.supported && !plan.root.readable) {
+      blockers.push('la carte (racine du poste)');
+    }
+    for (const project of plan.projects) {
+      if (!project.readable) {
+        blockers.push(project.name);
+      }
+    }
+    if (blockers.length > 0) {
+      message += ` En attente de : ${blockers.join(', ')} — ces dossiers n'ont pas pu être lus`
+        + ' (machine éteinte ou dossier absent). C’est pourquoi la mise à jour reste signalée :'
+        + ' relancez le runner sur la machine, puis reprenez « Appliquer ».';
     }
     return message;
   }
