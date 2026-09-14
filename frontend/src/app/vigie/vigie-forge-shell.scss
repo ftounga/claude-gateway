@@ -1,0 +1,5 @@
+/* La Vigie (F-106 / SF-106-02) emploie la forme maître–détail de la Forge (DESIGN_SYSTEM.md §16).
+   Découpé pour le budget de style (SF-30-16) : cette feuille ne porte que l'OSSATURE partagée
+   (`_forge-layout-shell.scss`), séparée du poste ouvert et des contenus propres à la Vigie. Aucun
+   ajout, aucune couleur hors charte : simple ré-emploi du partiel. */
+@use '../postes/forge-layout-shell';
