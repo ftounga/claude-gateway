@@ -63,8 +63,10 @@ class ClientMailAttachmentsTest {
     void setUp() {
         workspace = Workspace.builder().id(UUID.randomUUID()).userId(userId).hostId(hostId).name("CAGIP")
                 .projectPath("").executionTarget(WorkspaceExecutionTarget.RUNNER).build();
-        attachments = new ClientMailAttachments(runner, audit, pages, radarExport, Clock.fixed(NOW, ZoneOffset.UTC),
-                "https://portal.example/");
+        DocumentSecretScanner documentSecrets = new DocumentSecretScanner(
+                new fr.claudegateway.docx.DocxTextExtractor(new fr.claudegateway.docx.DocxProperties(null, null, null)));
+        attachments = new ClientMailAttachments(runner, audit, pages, radarExport, documentSecrets,
+                Clock.fixed(NOW, ZoneOffset.UTC), "https://portal.example/");
     }
 
     private ClientMailAttachments.Collected collect(String json) throws Exception {
@@ -205,6 +207,34 @@ class ClientMailAttachmentsTest {
         assertThat(ClientMailAttachments.asText(binary)).isEmpty();
         assertThat(ClientMailAttachments.asText(new byte[] {(byte) 0xC3, (byte) 0x28})).isEmpty();
         assertThat(ClientMailAttachments.asText("é".getBytes(StandardCharsets.UTF_8))).contains("é");
+    }
+
+    @Test
+    void aSecretInsideADocxAttachmentIsRefusedAndNamedWithoutTheValue() throws Exception {
+        byte[] docx = fr.claudegateway.docx.DocxFixtures.docx(
+                fr.claudegateway.docx.DocxFixtures.paragraph("Accès prod — mot de passe : Hunter2024!"));
+        // Un .docx est un zip : jamais lu comme du texte, c'est bien son contenu documentaire qui est inspecté.
+        assertThat(ClientMailAttachments.asText(docx)).isEmpty();
+        when(runner.readFileBytes(any(), anyString(), eq("acces.docx"), anyLong(), anyInt()))
+                .thenReturn(chunk(docx, docx.length, false));
+
+        ClientMailAttachments.Collected collected = collect("[{\"path\":\"acces.docx\"}]");
+
+        assertThat(collected.refusal()).contains("« acces.docx »", "un mot de passe").doesNotContain("Hunter2024");
+    }
+
+    @Test
+    void aDocxWithoutSecretIsAttachedIntact() throws Exception {
+        byte[] docx = fr.claudegateway.docx.DocxFixtures.docx(
+                fr.claudegateway.docx.DocxFixtures.paragraph("Compte rendu de la réunion du 14 septembre."));
+        when(runner.readFileBytes(any(), anyString(), eq("cr.docx"), anyLong(), anyInt()))
+                .thenReturn(chunk(docx, docx.length, false));
+
+        ClientMailAttachments.Collected collected = collect("[{\"path\":\"cr.docx\"}]");
+
+        assertThat(collected.isRefused()).isFalse();
+        assertThat(collected.attachments()).singleElement()
+                .satisfies(a -> assertThat(a.content()).isEqualTo(docx));
     }
 
     // ---------------------------------------------------------------- pages

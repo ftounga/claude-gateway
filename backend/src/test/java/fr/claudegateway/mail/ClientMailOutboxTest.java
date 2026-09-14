@@ -241,4 +241,67 @@ class ClientMailOutboxTest {
         assertThat(outbox.runOnce()).isZero();
         verify(emailService, never()).sendClientMail(any());
     }
+
+    // ---------------------------------------------------------------- balayage des orphelines (SF-110-05)
+
+    @Test
+    void sweepErasesPiecesWithoutALineAndKeepsPendingAndSendingOnes() {
+        UUID vera = UUID.randomUUID();
+        UUID orphan = UUID.randomUUID();   // aucune ligne : transaction annulée
+        UUID pending = UUID.randomUUID();  // en attente : les pièces servent encore
+        UUID sending = UUID.randomUUID();  // sous bail : idem
+        when(attachmentStore.listStored()).thenReturn(List.of(
+                new ClientMailAttachmentStore.StoredRef(vera, orphan),
+                new ClientMailAttachmentStore.StoredRef(vera, pending),
+                new ClientMailAttachmentStore.StoredRef(vera, sending)));
+        when(repository.findById(orphan)).thenReturn(Optional.empty());
+        when(repository.findById(pending)).thenReturn(Optional.of(line(vera, ClientEmailStatus.PENDING)));
+        when(repository.findById(sending)).thenReturn(Optional.of(line(vera, ClientEmailStatus.SENDING)));
+
+        assertThat(outbox.sweepOrphans()).isEqualTo(1);
+
+        verify(attachmentStore).delete(vera, orphan);
+        verify(attachmentStore, never()).delete(vera, pending);
+        verify(attachmentStore, never()).delete(vera, sending);
+    }
+
+    @Test
+    void sweepErasesPiecesLeftOverFromAFinalMail() {
+        UUID vera = UUID.randomUUID();
+        UUID sent = UUID.randomUUID();
+        UUID failed = UUID.randomUUID();
+        when(attachmentStore.listStored()).thenReturn(List.of(
+                new ClientMailAttachmentStore.StoredRef(vera, sent),
+                new ClientMailAttachmentStore.StoredRef(vera, failed)));
+        when(repository.findById(sent)).thenReturn(Optional.of(line(vera, ClientEmailStatus.SENT)));
+        when(repository.findById(failed)).thenReturn(Optional.of(line(vera, ClientEmailStatus.FAILED)));
+
+        assertThat(outbox.sweepOrphans()).isEqualTo(2);
+
+        verify(attachmentStore).delete(vera, sent);
+        verify(attachmentStore).delete(vera, failed);
+    }
+
+    @Test
+    void sweepDoesNotStopOnAFailedErase() {
+        UUID vera = UUID.randomUUID();
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        when(attachmentStore.listStored()).thenReturn(List.of(
+                new ClientMailAttachmentStore.StoredRef(vera, first),
+                new ClientMailAttachmentStore.StoredRef(vera, second)));
+        when(repository.findById(first)).thenReturn(Optional.empty());
+        when(repository.findById(second)).thenReturn(Optional.empty());
+        doThrow(new RuntimeException("stockage indisponible")).when(attachmentStore).delete(vera, first);
+
+        assertThat(outbox.sweepOrphans()).isEqualTo(1);
+
+        verify(attachmentStore).delete(vera, second);
+    }
+
+    private static ClientEmail line(UUID userId, ClientEmailStatus status) {
+        return ClientEmail.builder().id(UUID.randomUUID()).userId(userId).hostId(UUID.randomUUID())
+                .kind(ClientEmail.Kind.AGENT).clientName("CAGIP").recipient("franck@cagip.fr")
+                .subject("CR").status(status).attachmentCount(1).build();
+    }
 }
