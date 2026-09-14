@@ -80,6 +80,9 @@ data:
   # demande du PO : les longues tâches (config complète) touchaient le plafond et exigeaient
   # « continue » à chaque tour. Plafond dur du code = 10 M. Ne change pas le quota mensuel.
   APP_ATELIER_MAX_TURN_TOKENS: "8000000"
+  # Budget de TEMPS d'un tour (SF-118-03). Defaut code 10 min ; porte a 60 min le 2026-09-14 a la
+  # demande du PO (grosses taches : page complete, config). Plafond dur 2 h. ISO-8601.
+  APP_ATELIER_TURN_BUDGET: "PT60M"
   # F-118 / SF-118-02 (2026-09-14) : reglages de tenue en charge.
   # Pool de connexions base : defaut Hikari = 10, insuffisant face a Tomcat 200 + ~11 workers @Scheduled.
   SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "30"
