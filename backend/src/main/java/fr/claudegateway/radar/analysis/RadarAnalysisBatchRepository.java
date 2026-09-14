@@ -94,6 +94,25 @@ public interface RadarAnalysisBatchRepository extends JpaRepository<RadarAnalysi
     List<Object[]> countDeferredBySync(@Param("userId") UUID userId, @Param("hostId") UUID hostId,
             @Param("syncIds") Collection<UUID> syncIds, @Param("code") String code);
 
+    /**
+     * <b>Écarte les lots pas encore analysés d'une synchro annulée</b> (F-100 / SF-100-08) : statut terminal
+     * {@code DISCARDED}, texte brut effacé, plus jamais repris. Les lots déjà {@code DONE} (analyse complète)
+     * ne sont pas touchés. Filtré sur le poste : n'écarte que les lots de ce couple {@code user_id} +
+     * {@code host_id}.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update RadarAnalysisBatch b"
+            + " set b.status = fr.claudegateway.radar.analysis.RadarAnalysisBatchStatus.DISCARDED,"
+            + " b.payload = null, b.rawDeletedAt = coalesce(b.rawDeletedAt, :now), b.nextAttemptAt = null,"
+            + " b.failureCode = null, b.updatedAt = :now"
+            + " where b.userId = :userId and b.hostId = :hostId and b.syncId = :syncId"
+            + " and b.status in (fr.claudegateway.radar.analysis.RadarAnalysisBatchStatus.PENDING,"
+            + " fr.claudegateway.radar.analysis.RadarAnalysisBatchStatus.DEFERRED,"
+            + " fr.claudegateway.radar.analysis.RadarAnalysisBatchStatus.PROCESSING,"
+            + " fr.claudegateway.radar.analysis.RadarAnalysisBatchStatus.FAILED)")
+    int discardUnfinishedForSync(@Param("userId") UUID userId, @Param("hostId") UUID hostId,
+            @Param("syncId") UUID syncId, @Param("now") OffsetDateTime now);
+
     @Modifying
     @Query("delete from RadarAnalysisBatch b where b.userId = :userId and b.hostId = :hostId")
     int purgeScope(@Param("userId") UUID userId, @Param("hostId") UUID hostId);

@@ -1,5 +1,7 @@
 package fr.claudegateway.radar.sync;
 
+import java.time.Clock;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -22,6 +24,7 @@ import fr.claudegateway.radar.RadarStateConflictException;
 import fr.claudegateway.radar.RadarSync;
 import fr.claudegateway.radar.RadarSyncRepository;
 import fr.claudegateway.radar.RadarSyncStatus;
+import fr.claudegateway.radar.analysis.RadarAnalysisBatchRepository;
 
 /**
  * <b>Piloter la synchro depuis la couverture</b> (F-100 / SF-100-04) : l'annuler, et dire d'un fil
@@ -39,20 +42,24 @@ public class RadarSyncControlService {
     private final RadarRegistry registry;
     private final RadarHostSettingsRepository settings;
     private final RadarThreadRuleRepository rules;
+    private final RadarAnalysisBatchRepository batches;
     private final RadarRunnerCalls calls;
     private final ObjectMapper objectMapper;
     private final TransactionTemplate transactions;
+    private final Clock clock;
 
     public RadarSyncControlService(RadarSyncRepository syncs, RadarRegistry registry, RadarHostSettingsRepository settings,
-            RadarThreadRuleRepository rules, RadarRunnerCalls calls, ObjectMapper objectMapper,
-            PlatformTransactionManager transactionManager) {
+            RadarThreadRuleRepository rules, RadarAnalysisBatchRepository batches, RadarRunnerCalls calls,
+            ObjectMapper objectMapper, PlatformTransactionManager transactionManager, Clock clock) {
         this.syncs = syncs;
         this.registry = registry;
         this.settings = settings;
         this.rules = rules;
+        this.batches = batches;
         this.calls = calls;
         this.objectMapper = objectMapper;
         this.transactions = new TransactionTemplate(transactionManager);
+        this.clock = clock;
     }
 
     /** Ce que l'écran demande pour un fil. */
@@ -90,6 +97,9 @@ public class RadarSyncControlService {
             coverage.put("cancelled", true);
             RadarSync closed = registry.finishSync(scope, found.getId(), RadarSyncStatus.CANCELLED, coverage.toString(), 0);
             settings.release(scope.userId(), scope.hostId(), found.getId());
+            // SF-100-08 : les lots pas encore analysés de cette synchro sont écartés — jamais analysés, brut effacé,
+            // aucune réserve dépensée pour une synchro abandonnée. Les lots déjà DONE sont conservés.
+            batches.discardUnfinishedForSync(scope.userId(), scope.hostId(), found.getId(), OffsetDateTime.now(clock));
             return closed;
         });
         try {
