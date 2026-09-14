@@ -38,6 +38,36 @@ describe('LiveTurnView (F-83 / SF-83-02)', () => {
   }
 
   /**
+   * **Un proxy qui retient le flux** (F-84 / SF-84-07). Le premier `fetch` — le rebranchement
+   * normal — ne rend jamais un octet (le corps est retenu jusqu'à la fin du tour). Les `fetch`
+   * suivants, ceux des **fenêtres** (`waitMs`), livrent leurs événements puis se closent : une
+   * réponse close est relâchée par le proxy.
+   */
+  function heldThenWindows(windowEvents: string[]): jasmine.Spy {
+    return spyOn(window, 'fetch').and.callFake((input: RequestInfo | URL) => {
+      const isWindow = String(input).includes('waitMs');
+      if (!isWindow) {
+        // Retenu : la lecture reste en attente, aucun événement ne remonte.
+        const held = { getReader: () => ({ read: () => new Promise(() => undefined) }) };
+        return Promise.resolve({ ok: true, body: held } as unknown as Response);
+      }
+      const chunk = new TextEncoder().encode(windowEvents.map((e) => `${e}\n\n`).join(''));
+      let sent = false;
+      return Promise.resolve({
+        ok: true,
+        body: {
+          getReader: () => ({
+            read: () =>
+              Promise.resolve(
+                sent ? { value: undefined, done: true } : ((sent = true), { value: chunk, done: false }),
+              ),
+          }),
+        },
+      } as unknown as Response);
+    });
+  }
+
+  /**
    * Laisse le flux se dérouler. La lecture vit dans des **micro-tâches** — pas dans une minuterie :
    * on les vide, ce qui laisse l'horloge de Jasmine libre pour les rebranchements différés.
    */
@@ -189,5 +219,126 @@ describe('LiveTurnView (F-83 / SF-83-02)', () => {
     jasmine.clock().tick(30_000);
 
     expect(fetchSpy.calls.count()).toBe(calls);
+  });
+
+  // -------------------------------------------- F-84 / SF-84-07 : traverser les proxys
+
+  it('branche d\'abord le rebranchement NORMAL, sans fenêtre (réseau direct)', async () => {
+    const fetchSpy = fakeSse(['event:idle\ndata:{"live":false}']);
+    const view = new LiveTurnView('w-1', atelier, zone);
+
+    view.open();
+    await settle();
+
+    // La première place lectrice est l'attache normale : c'est l'assertion de SF-83-02 préservée.
+    expect(String(fetchSpy.calls.mostRecent().args[0])).toBe('/api/workspaces/w-1/chat/attach?cursor=0');
+    expect(fetchSpy.calls.allArgs().some(([u]) => String(u).includes('waitMs'))).toBeFalse();
+    view.close();
+  });
+
+  it('flux retenu par un proxy : après la sonde, la tuile suit par fenêtres et avance', async () => {
+    const fetchSpy = heldThenWindows([
+      'event:attached\ndata:{"turnId":"t1","cursor":0,"startedAt":0}',
+      'id:1\nevent:action\ndata:{"type":"bash","path":"npm test"}',
+    ]);
+    const view = new LiveTurnView('w-1', atelier, zone);
+
+    view.open();
+    await settle();
+    // Rien n'a bougé : le rebranchement normal est retenu.
+    expect(view.stream()).toBeNull();
+    expect(fetchSpy.calls.allArgs().some(([u]) => String(u).includes('waitMs'))).toBeFalse();
+
+    // La sonde arme le suivi par fenêtres.
+    jasmine.clock().tick(4_000);
+    await settle();
+
+    expect(fetchSpy.calls.allArgs().some(([u]) => String(u).includes('waitMs'))).toBeTrue();
+    const stream = view.stream();
+    expect(stream).not.toBeNull();
+    expect(stream!.blocks.length).toBe(1);
+    expect(stream!.blocks[0].command).toBe('npm test');
+    view.close();
+  });
+
+  it('flux direct qui répond vite : aucune fenêtre n\'est ouverte (sonde désarmée)', async () => {
+    const fetchSpy = fakeSse([
+      'event:attached\ndata:{"turnId":"t1","cursor":0,"startedAt":0}',
+      'id:1\nevent:action\ndata:{"type":"bash","path":"npm test"}',
+    ]);
+    const view = new LiveTurnView('w-1', atelier, zone);
+
+    view.open();
+    await settle();
+    jasmine.clock().tick(4_000);
+    await settle();
+
+    expect(fetchSpy.calls.allArgs().some(([u]) => String(u).includes('waitMs'))).toBeFalse();
+    view.close();
+  });
+
+  it('un événement déjà vu n\'est appliqué qu\'une fois', async () => {
+    fakeSse([
+      'event:attached\ndata:{"turnId":"t1","cursor":0,"startedAt":0}',
+      'id:1\nevent:action\ndata:{"type":"bash","path":"npm test"}',
+      'id:1\nevent:action\ndata:{"type":"bash","path":"npm test"}',
+    ]);
+    const view = new LiveTurnView('w-1', atelier, zone);
+
+    view.open();
+    await settle();
+
+    expect(view.stream()?.blocks.length).toBe(1);
+    view.close();
+  });
+
+  it('un tour de suite reste VIVANT dans la tuile : le premier done ne la met pas au repos', async () => {
+    fakeSse([
+      'event:attached\ndata:{"turnId":"t1","cursor":0,"startedAt":0}',
+      'id:1\nevent:action\ndata:{"type":"bash","path":"npm test"}',
+      // La réponse finale porte followUp : un tour de suite part dans le même tour vivant (SF-84-06).
+      'id:2\nevent:done\ndata:{"reply":"Fait.","actions":[],"messageId":"m1","followUp":true}',
+    ]);
+    const view = new LiveTurnView('w-1', atelier, zone);
+
+    view.open();
+    await settle();
+
+    expect(view.stream()).not.toBeNull();
+    expect(view.stream()?.blocks.length).toBe(1);
+    view.close();
+  });
+
+  it('un done FINAL, lui, met la tuile au repos puis la rebranche', async () => {
+    const fetchSpy = fakeSse([
+      'event:attached\ndata:{"turnId":"t1","cursor":0,"startedAt":0}',
+      'id:1\nevent:done\ndata:{"reply":"Fait.","actions":[],"messageId":"m1"}',
+    ]);
+    const view = new LiveTurnView('w-1', atelier, zone);
+
+    view.open();
+    await settle();
+    expect(view.stream()).toBeNull();
+    const first = fetchSpy.calls.count();
+
+    jasmine.clock().tick(5_000);
+    expect(fetchSpy.calls.count()).toBe(first + 1);
+    view.close();
+  });
+
+  it('fermer arrête AUSSI la sonde : aucune fenêtre n\'est ouverte ensuite', async () => {
+    const fetchSpy = heldThenWindows([
+      'event:attached\ndata:{"turnId":"t1","cursor":0,"startedAt":0}',
+    ]);
+    const view = new LiveTurnView('w-1', atelier, zone);
+
+    view.open();
+    await settle();
+    view.close();
+
+    jasmine.clock().tick(10_000);
+    await settle();
+
+    expect(fetchSpy.calls.allArgs().some(([u]) => String(u).includes('waitMs'))).toBeFalse();
   });
 });
