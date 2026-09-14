@@ -45,6 +45,18 @@ public class StubAiAgentProvider implements AiAgentProvider {
      */
     public volatile boolean emitTextDeltas = false;
 
+    /**
+     * F-117 / SF-117-02 : nombre d'appels au fournisseur qui doivent lever
+     * {@link AgentPromptTooLongException} avant de servir le script — pour simuler un contexte qui
+     * déborde la fenêtre du modèle, et vérifier que la boucle compacte puis relance au lieu d'échouer.
+     */
+    private volatile int throwPromptTooLongTimes = 0;
+
+    /** Fait lever {@link AgentPromptTooLongException} sur les {@code times} prochains appels. */
+    public void enqueuePromptTooLong(int times) {
+        this.throwPromptTooLongTimes = times;
+    }
+
     public void reset() {
         script.clear();
         lastRequest = null;
@@ -53,6 +65,7 @@ public class StubAiAgentProvider implements AiAgentProvider {
         toolNamesSeen.clear();
         toolBelts.clear();
         emitTextDeltas = false;
+        throwPromptTooLongTimes = 0;
         idSeq = 0;
     }
 
@@ -186,6 +199,10 @@ public class StubAiAgentProvider implements AiAgentProvider {
     public AgentTurn nextTurn(AgentTurnRequest request) {
         this.lastRequest = request;
         messageSnapshots.add(String.valueOf(request.messages()));
+        if (throwPromptTooLongTimes > 0) {
+            throwPromptTooLongTimes--;
+            throw new AgentPromptTooLongException("prompt too long (simulé)");
+        }
         Runnable action = duringTurn;
         if (action != null) {
             duringTurn = null;
