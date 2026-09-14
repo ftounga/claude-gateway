@@ -76,6 +76,10 @@ data:
   APP_ATELIER_MAX_TOTAL_BYTES: "419430400"   # 400 Mo décompressé
   APP_ATELIER_MAX_FILE_BYTES: "20971520"     # 20 Mo par fichier
   APP_ATELIER_MAX_ENTRIES: "8000"
+  # Plafond de consommation d'un tour (jetons). Relevé de 4 M (défaut) à 8 M le 2026-09-14 à la
+  # demande du PO : les longues tâches (config complète) touchaient le plafond et exigeaient
+  # « continue » à chaque tour. Plafond dur du code = 10 M. Ne change pas le quota mensuel.
+  APP_ATELIER_MAX_TURN_TOKENS: "8000000"
   # URLs de retour Stripe Checkout (F-09/F-21) : après paiement/annulation, retour sur la prod
   # (et non localhost). Non secret.
   STRIPE_SUCCESS_URL: "https://portal.ng-itconsulting.com/billing?checkout=success"
