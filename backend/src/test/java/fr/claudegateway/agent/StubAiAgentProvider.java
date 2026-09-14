@@ -37,6 +37,14 @@ public class StubAiAgentProvider implements AiAgentProvider {
     public final List<List<String>> toolBelts =
             java.util.Collections.synchronizedList(new ArrayList<>());
 
+    /**
+     * F-116 / SF-116-01 : quand il est vrai, la variante streamée découpe le texte de chaque tour en
+     * <b>deltas</b> (mot à mot), comme le ferait le flux SSE du fournisseur. Faux par défaut : les
+     * tests existants passent alors par la variante par défaut de l'interface (aucun delta), et le
+     * comportement historique est préservé.
+     */
+    public volatile boolean emitTextDeltas = false;
+
     public void reset() {
         script.clear();
         lastRequest = null;
@@ -44,6 +52,7 @@ public class StubAiAgentProvider implements AiAgentProvider {
         duringTurn = null;
         toolNamesSeen.clear();
         toolBelts.clear();
+        emitTextDeltas = false;
         idSeq = 0;
     }
 
@@ -196,5 +205,25 @@ public class StubAiAgentProvider implements AiAgentProvider {
         }
         // Script épuisé : renvoyer un tour final par défaut (évite une boucle infinie en test).
         return new AgentTurn("(fin)", List.of(), true, 1, 1);
+    }
+
+    /**
+     * Variante streamée (F-116 / SF-116-01) : quand {@link #emitTextDeltas} est actif, découpe le
+     * texte du tour en deltas (mot à mot) poussés dans {@code textListener}, puis renvoie <b>le même</b>
+     * {@link AgentTurn}. Sinon, comportement par défaut de l'interface (aucun delta).
+     */
+    @Override
+    public AgentTurn nextTurn(AgentTurnRequest request, AgentTextListener textListener) {
+        AgentTurn turn = nextTurn(request);
+        if (emitTextDeltas && textListener != null) {
+            String text = turn.text();
+            if (text != null && !text.isEmpty()) {
+                // Découpe qui conserve les espaces : « je regarde » -> [« je », « regarde »].
+                for (String piece : text.split("(?<= )")) {
+                    textListener.onTextDelta(piece);
+                }
+            }
+        }
+        return turn;
     }
 }

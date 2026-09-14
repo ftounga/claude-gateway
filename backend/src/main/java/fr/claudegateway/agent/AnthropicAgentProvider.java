@@ -1,5 +1,10 @@
 package fr.claudegateway.agent;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -9,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -19,7 +25,10 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.MissingNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import fr.claudegateway.ai.AIProviderException;
 import fr.claudegateway.ai.AIProviderUnavailableException;
@@ -75,6 +84,8 @@ public class AnthropicAgentProvider implements AiAgentProvider {
     private static final String CLEAR_TOOL_USES_EDIT = "clear_tool_uses_20250919";
     /** En-tête beta exigé par l'édition de contexte (F-39 / SF-39-12). */
     private static final String CONTEXT_MANAGEMENT_BETA = "context-management-2025-06-27";
+    /** Lecture des événements SSE et reconstruction de la réponse (F-116 / SF-116-01). */
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /**
      * Attente d'un réessai. Séparée pour que les tests vérifient la <b>règle</b> sans dormir
@@ -131,6 +142,52 @@ public class AnthropicAgentProvider implements AiAgentProvider {
 
     @Override
     public AgentTurn nextTurn(AgentTurnRequest request) {
+        Prepared prepared = prepare(request);
+        return callWithRetry(request.model(), prepared.contextEditing(),
+                () -> toTurn(sendNonStreamed(prepared)));
+    }
+
+    /**
+     * Variante <b>streamée</b> (F-116 / SF-116-01) : consomme le flux SSE d'Anthropic
+     * ({@code stream:true}), pousse les deltas de <b>texte</b> dans {@code textListener} au fil de
+     * l'eau, puis reconstitue <b>le même</b> {@link AgentTurn} qu'un appel non streamé — via le même
+     * {@link #toTurn(JsonNode)}, donc avec un comptage cache/usage et un raisonnement signé identiques.
+     *
+     * <p>Le corps est <b>celui du chemin non streamé</b> augmenté du seul {@code stream:true} : les
+     * marqueurs {@code cache_control}, le raisonnement et le retry {@code 429/529} ne bougent pas. Un
+     * refus du flux ou une coupure fait <b>replier</b> sur l'appel complet (décision D5) : le tour ne
+     * meurt pas parce que le fournisseur n'a pas su streamer.</p>
+     */
+    @Override
+    public AgentTurn nextTurn(AgentTurnRequest request, AgentTextListener textListener) {
+        Prepared prepared = prepare(request);
+        AgentTextListener sink = textListener == null ? AgentTextListener.NONE : textListener;
+        // Corps identique + `stream:true` : le préfixe caché et le retry restent ceux du non streamé.
+        Map<String, Object> streamBody = new HashMap<>(prepared.body());
+        streamBody.put("stream", true);
+        try {
+            return callWithRetry(request.model(), prepared.contextEditing(),
+                    () -> streamTurn(prepared.apiKey(), streamBody, prepared.contextEditing(), sink));
+        } catch (StreamingFallbackException ex) {
+            // Le fournisseur a refusé le flux, l'a coupé, ou l'a rendu illisible : on retombe
+            // proprement sur l'appel complet. Un refus temporaire (429/529) épuisé, lui, n'atterrit
+            // pas ici — il échoue comme un non streamé l'aurait fait, sans second appel inutile.
+            log.warn("Streaming indisponible pour le tour (modèle={}, {}) : repli non streamé.",
+                    request.model(), ex.getMessage());
+            return callWithRetry(request.model(), prepared.contextEditing(),
+                    () -> toTurn(sendNonStreamed(prepared)));
+        }
+    }
+
+    /** Corps de requête prêt à partir, calculé <b>une fois</b> et partagé streamé/non streamé. */
+    private record Prepared(String apiKey, Map<String, Object> body, boolean contextEditing) {
+    }
+
+    /**
+     * Construit le corps de requête (décision D-L6-6) : identique quel que soit le mode d'appel, pour
+     * que le streaming n'altère ni le cache, ni le raisonnement signé, ni le retry.
+     */
+    private Prepared prepare(AgentTurnRequest request) {
         String apiKey = resolveApiKey(request.apiKey());
         if (apiKey == null || apiKey.isBlank()) {
             throw new AIProviderUnavailableException("Le fournisseur IA n'est pas configuré.");
@@ -151,8 +208,7 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         }
         applyReasoning(body, request.reasoning());
         boolean contextEditing = applyContextPolicy(body, request.contextPolicy());
-
-        return callWithRetry(request.model(), apiKey, body, contextEditing);
+        return new Prepared(apiKey, body, contextEditing);
     }
 
     /**
@@ -194,24 +250,11 @@ public class AnthropicAgentProvider implements AiAgentProvider {
      * une part du budget de tour, et le rejouer échangerait un échec lisible contre un tour qui
      * meurt au budget — ce que l'utilisateur lit comme une panne.</p>
      */
-    private AgentTurn callWithRetry(String model, String apiKey, Map<String, Object> body,
-            boolean contextEditing) {
+    private AgentTurn callWithRetry(String model, boolean contextEditing, ApiCall apiCall) {
         long waited = 0L;
         for (int attempt = 1; ; attempt++) {
             try {
-                RestClient.RequestBodySpec spec = restClient.post()
-                        .uri("/v1/messages")
-                        .header("x-api-key", apiKey)
-                        .header("anthropic-version", properties.version())
-                        .contentType(MediaType.APPLICATION_JSON);
-                if (contextEditing) {
-                    spec = spec.header("anthropic-beta", CONTEXT_MANAGEMENT_BETA);
-                }
-                JsonNode response = spec
-                        .body(body)
-                        .retrieve()
-                        .body(JsonNode.class);
-                return toTurn(response);
+                return apiCall.execute();
             } catch (RestClientResponseException ex) {
                 int status = ex.getStatusCode().value();
                 long delay = AgentRetryPolicy.retryableStatus(status) && retryPolicy.hasAttemptLeft(attempt)
@@ -228,6 +271,314 @@ public class AnthropicAgentProvider implements AiAgentProvider {
             } catch (RestClientException ex) {
                 throw providerFailure(model, ex);
             }
+        }
+    }
+
+    /**
+     * Une tentative d'appel. Le corps est calculé une fois par l'appelant ; un réessai rejoue cette
+     * fonction, il ne la reconstruit pas (décision D-L6-6). Un {@link StreamingFallbackException} qui
+     * en sort n'est <b>pas</b> un refus temporaire : il traverse la boucle de retry et déclenche le
+     * repli non streamé (SF-116-01).
+     */
+    @FunctionalInterface
+    private interface ApiCall {
+        AgentTurn execute() throws RestClientException;
+    }
+
+    /**
+     * Le fournisseur n'a pas su streamer (refus du flux, coupure, SSE illisible). Distinct d'un refus
+     * temporaire {@code 429/529} : il n'est ni rejoué par la boucle de retry, ni transformé en échec
+     * du tour — il fait <b>replier</b> sur l'appel complet (F-116 / SF-116-01).
+     */
+    private static final class StreamingFallbackException extends RuntimeException {
+        StreamingFallbackException(String message) {
+            super(message);
+        }
+    }
+
+    /** En-tête commun aux deux modes d'appel — même URL, même version, même beta d'édition. */
+    private RestClient.RequestBodySpec requestSpec(String apiKey, boolean contextEditing) {
+        RestClient.RequestBodySpec spec = restClient.post()
+                .uri("/v1/messages")
+                .header("x-api-key", apiKey)
+                .header("anthropic-version", properties.version())
+                .contentType(MediaType.APPLICATION_JSON);
+        if (contextEditing) {
+            spec = spec.header("anthropic-beta", CONTEXT_MANAGEMENT_BETA);
+        }
+        return spec;
+    }
+
+    /** Appel complet (non streamé) : la réponse entière du fournisseur en une fois. */
+    private JsonNode sendNonStreamed(Prepared prepared) {
+        return requestSpec(prepared.apiKey(), prepared.contextEditing())
+                .body(prepared.body())
+                .retrieve()
+                .body(JsonNode.class);
+    }
+
+    /**
+     * Appel <b>streamé</b> : consomme le flux SSE et reconstitue l'objet réponse à l'identique.
+     *
+     * <p>Un refus temporaire {@code 429/529} remonte en {@link RestClientResponseException} pour être
+     * rejoué par {@link #callWithRetry} exactement comme le non streamé. Tout autre échec du flux
+     * (statut d'erreur, coupure, SSE illisible) remonte en {@link StreamingFallbackException} pour
+     * déclencher le repli.</p>
+     */
+    private AgentTurn streamTurn(String apiKey, Map<String, Object> streamBody, boolean contextEditing,
+            AgentTextListener textListener) {
+        return requestSpec(apiKey, contextEditing)
+                .accept(MediaType.TEXT_EVENT_STREAM)
+                .body(streamBody)
+                .exchange((request, response) -> {
+                    HttpStatusCode status = response.getStatusCode();
+                    if (status.isError()) {
+                        // 429/529 : rejoués par la boucle de retry, avec l'en-tête Retry-After.
+                        if (AgentRetryPolicy.retryableStatus(status.value())) {
+                            throw new RestClientResponseException("Refus temporaire du flux",
+                                    status, status.toString(), response.getHeaders(),
+                                    readErrorBody(response.getBody()), StandardCharsets.UTF_8);
+                        }
+                        // Refus permanent du flux : on replie plutôt que de tuer le tour.
+                        throw new StreamingFallbackException("statut " + status.value());
+                    }
+                    return toTurn(parseSse(response.getBody(), textListener));
+                });
+    }
+
+    /** Lit au mieux le corps d'erreur pour l'en-tête de retry ; jamais bloquant. */
+    private static byte[] readErrorBody(InputStream body) {
+        try (InputStream in = body) {
+            return in == null ? new byte[0] : in.readAllBytes();
+        } catch (IOException ex) {
+            return new byte[0];
+        }
+    }
+
+    /**
+     * Reconstitue l'objet réponse d'Anthropic à partir de son flux SSE (F-116 / SF-116-01) et pousse
+     * les deltas de <b>texte</b> dans {@code textListener} au fil de l'eau.
+     *
+     * <p>Les blocs sont assemblés dans l'ordre d'index : {@code text} concatène ses
+     * {@code text_delta} ; {@code tool_use} concatène ses {@code input_json_delta} puis parse le JSON
+     * accumulé ; {@code thinking} concatène ses {@code thinking_delta} et pose sa {@code signature}.
+     * L'{@code usage} vient de {@code message_start} (entrée + cache) et de {@code message_delta}
+     * (sortie finale) ; le {@code stop_reason} de {@code message_delta}. Le résultat a exactement la
+     * forme qu'attend {@link #toTurn(JsonNode)} : l'équivalence avec le non streamé est mécanique.</p>
+     *
+     * <p>Le raisonnement <b>n'est jamais</b> poussé dans le sink : il n'est pas la réponse
+     * (SF-39-10).</p>
+     */
+    private JsonNode parseSse(InputStream body, AgentTextListener textListener) {
+        if (body == null) {
+            throw new StreamingFallbackException("flux vide");
+        }
+        ParseState state = new ParseState(textListener);
+        try (BufferedReader reader =
+                new BufferedReader(new InputStreamReader(body, StandardCharsets.UTF_8))) {
+            StringBuilder data = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.isEmpty()) {
+                    // Ligne vide = fin d'un événement : on traite la donnée accumulée.
+                    if (handleEvent(data, state)) {
+                        break;
+                    }
+                } else if (line.startsWith("data:")) {
+                    // Une donnée peut être répartie sur plusieurs lignes `data:` (concaténées).
+                    data.append(line.substring(5).stripLeading());
+                }
+                // Les lignes `event:`/`id:`/`:comment` sont ignorées : le type vit dans la donnée.
+            }
+            // Flux clos sans ligne vide finale : la dernière donnée reste à traiter (robustesse).
+            if (!state.completed) {
+                handleEvent(data, state);
+            }
+        } catch (IOException ex) {
+            throw new StreamingFallbackException("flux coupé");
+        }
+        if (!state.completed) {
+            // Flux clos avant `message_stop` : réponse incomplète, on replie.
+            throw new StreamingFallbackException("flux clos avant la fin");
+        }
+        return state.toMessage();
+    }
+
+    /**
+     * Traite la donnée accumulée d'un événement SSE ; vide {@code data}. Retourne {@code true} sur
+     * {@code message_stop} (fin du flux).
+     */
+    private boolean handleEvent(StringBuilder data, ParseState state) {
+        if (data.length() == 0) {
+            return false;
+        }
+        JsonNode event = readEvent(data.toString());
+        data.setLength(0);
+        if (event == null) {
+            return false;
+        }
+        String type = event.path("type").asText("");
+        if ("error".equals(type)) {
+            throw new StreamingFallbackException("événement error");
+        }
+        if ("message_stop".equals(type)) {
+            state.completed = true;
+            return true;
+        }
+        state.apply(event, type);
+        return false;
+    }
+
+    /**
+     * État de reconstruction d'un flux SSE (F-116 / SF-116-01) : blocs assemblés par index, JSON
+     * d'entrée d'outils accumulé, {@code usage}, {@code stop_reason} et éditions de contexte. Assemble
+     * un objet réponse ayant exactement la forme qu'attend {@link #toTurn(JsonNode)}.
+     */
+    private static final class ParseState {
+
+        private final List<ObjectNode> blocks = new ArrayList<>();
+        private final List<StringBuilder> toolInputJson = new ArrayList<>();
+        private final ObjectNode usage = MAPPER.createObjectNode();
+        private final AgentTextListener textListener;
+        private ObjectNode contextManagement;
+        private String stopReason;
+        private boolean completed;
+
+        ParseState(AgentTextListener textListener) {
+            this.textListener = textListener;
+        }
+
+        void apply(JsonNode event, String type) {
+            switch (type) {
+                case "message_start" -> {
+                    copyUsage(event.path("message").path("usage"), usage, true);
+                    JsonNode ctx = event.path("message").path("context_management");
+                    if (ctx.isObject()) {
+                        contextManagement = ctx.deepCopy();
+                    }
+                }
+                case "content_block_start" -> {
+                    JsonNode block = event.path("content_block");
+                    blocks.add(block.isObject() ? block.deepCopy() : MAPPER.createObjectNode());
+                    toolInputJson.add(new StringBuilder());
+                }
+                case "content_block_delta" -> applyDelta(event);
+                case "message_delta" -> {
+                    String sr = event.path("delta").path("stop_reason").asText(null);
+                    if (sr != null && !sr.isEmpty()) {
+                        stopReason = sr;
+                    }
+                    // La sortie finale (cumulée) vit ici ; l'entrée et le cache restent ceux du start.
+                    copyUsage(event.path("usage"), usage, false);
+                    JsonNode ctx = event.path("context_management");
+                    if (ctx.isObject()) {
+                        contextManagement = ctx.deepCopy();
+                    }
+                }
+                default -> {
+                    // `content_block_stop`, `ping`, types inconnus : rien à reconstituer.
+                }
+            }
+        }
+
+        /** Applique un {@code content_block_delta} au bloc concerné, en poussant le texte au fil de l'eau. */
+        private void applyDelta(JsonNode event) {
+            int index = event.path("index").asInt(-1);
+            if (index < 0 || index >= blocks.size()) {
+                return;
+            }
+            ObjectNode block = blocks.get(index);
+            JsonNode delta = event.path("delta");
+            switch (delta.path("type").asText("")) {
+                case "text_delta" -> {
+                    String piece = delta.path("text").asText("");
+                    block.put("text", block.path("text").asText("") + piece);
+                    // Le SEUL point où le texte part vers l'écran au fil de l'eau (F-116).
+                    if (!piece.isEmpty()) {
+                        textListener.onTextDelta(piece);
+                    }
+                }
+                case "input_json_delta" ->
+                        toolInputJson.get(index).append(delta.path("partial_json").asText(""));
+                case "thinking_delta" ->
+                        // Le raisonnement se reconstitue, mais ne rejoint JAMAIS le texte de la réponse.
+                        block.put("thinking",
+                                block.path("thinking").asText("") + delta.path("thinking").asText(""));
+                case "signature_delta" ->
+                        block.put("signature",
+                                block.path("signature").asText("") + delta.path("signature").asText(""));
+                default -> {
+                    // Type de delta inconnu : ignoré, la reconstitution reste valide.
+                }
+            }
+        }
+
+        /** Assemble l'objet réponse équivalent à un appel non streamé. */
+        JsonNode toMessage() {
+            // Chaque bloc `tool_use` reçoit son `input` reconstitué depuis le JSON accumulé.
+            for (int i = 0; i < blocks.size(); i++) {
+                ObjectNode block = blocks.get(i);
+                if ("tool_use".equals(block.path("type").asText(""))) {
+                    block.set("input", parseToolInput(toolInputJson.get(i)));
+                }
+            }
+            ObjectNode message = MAPPER.createObjectNode();
+            ArrayNode content = message.putArray("content");
+            blocks.forEach(content::add);
+            message.put("stop_reason", stopReason == null ? "" : stopReason);
+            message.set("usage", usage);
+            if (contextManagement != null) {
+                message.set("context_management", contextManagement);
+            }
+            return message;
+        }
+    }
+
+    /**
+     * Reporte l'{@code usage} du flux dans l'accumulateur. Depuis {@code message_start} on prend
+     * l'entrée et le cache ; depuis {@code message_delta} la sortie finale. Ne jamais écraser une
+     * valeur d'entrée déjà posée par une valeur absente : le compteur de quota doit rester identique
+     * au non streamé (SF-39-01).
+     */
+    private static void copyUsage(JsonNode source, ObjectNode target, boolean input) {
+        if (source == null || !source.isObject()) {
+            return;
+        }
+        if (input) {
+            copyIntField(source, target, "input_tokens");
+            copyIntField(source, target, "cache_creation_input_tokens");
+            copyIntField(source, target, "cache_read_input_tokens");
+        }
+        // La sortie est portée par les deux événements ; celle de `message_delta` (cumulée) prime.
+        copyIntField(source, target, "output_tokens");
+    }
+
+    private static void copyIntField(JsonNode source, ObjectNode target, String field) {
+        if (source.hasNonNull(field)) {
+            target.put(field, source.path(field).asInt(0));
+        }
+    }
+
+    /** Lit un événement SSE (une donnée JSON) ; une donnée illisible est ignorée, pas fatale. */
+    private static JsonNode readEvent(String data) {
+        try {
+            return MAPPER.readTree(data);
+        } catch (IOException ex) {
+            return null;
+        }
+    }
+
+    /** Parse le JSON d'entrée d'un {@code tool_use} accumulé ; vide ou illisible ⇒ objet vide. */
+    private static JsonNode parseToolInput(StringBuilder json) {
+        if (json == null || json.length() == 0) {
+            return MAPPER.createObjectNode();
+        }
+        try {
+            JsonNode parsed = MAPPER.readTree(json.toString());
+            return parsed == null || parsed.isMissingNode() ? MAPPER.createObjectNode() : parsed;
+        } catch (IOException ex) {
+            // Un `input` illisible rend le tour inexploitable : on replie sur l'appel complet.
+            throw new StreamingFallbackException("input d'outil illisible");
         }
     }
 

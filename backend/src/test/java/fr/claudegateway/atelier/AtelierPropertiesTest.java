@@ -150,4 +150,23 @@ class AtelierPropertiesTest {
         assertThat(new AtelierProperties(null, null, null, null, null, null, null, null, null, null,
                 null, null, true).storageExecution()).isTrue();
     }
+
+    // ------------------------------------------- F-116 / SF-116-01 : appel modèle en flux
+
+    @Test
+    void streamsByDefault() {
+        // Absent => flux actif : le texte défile mot à mot, comme Claude Code (F-116).
+        assertThat(withMaxIterations(null).streaming()).isTrue();
+        assertThat(new AtelierProperties(null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null).streaming()).isTrue();
+    }
+
+    @Test
+    void streamingCanBeDisabledWithoutADeployment() {
+        // Coupe-circuit : `false` rétablit l'appel complet (texte en fin de tour) par variable
+        // d'environnement, sans livraison.
+        AtelierProperties off = new AtelierProperties(null, null, null, null, null, null, null, null,
+                null, null, null, null, null, false);
+        assertThat(off.streaming()).isFalse();
+    }
 }
