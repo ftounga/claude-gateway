@@ -271,6 +271,12 @@ export const routes: Routes = [
           ),
       },
       {
+        // F-112 / SF-112-08 — l'écran « Connecter une IA » : adresse du serveur et pas-à-pas.
+        path: 'connecter-une-ia',
+        loadComponent: () =>
+          import('./connect-ai/connect-ai.component').then((m) => m.ConnectAiComponent),
+      },
+      {
         path: 'profile',
         loadComponent: () =>
           import('./auth/profile/profile.component').then((m) => m.ProfileComponent),
