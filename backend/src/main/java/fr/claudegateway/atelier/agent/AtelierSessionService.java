@@ -119,6 +119,15 @@ public class AtelierSessionService implements RelaySessionInterruptTarget {
     private final Map<String, Set<String>> syncedOutputs = new ConcurrentHashMap<>();
 
     /**
+     * Plafond du registre de sorties déjà rapatriées <b>par session</b> (F-117 / SF-117-04). Une
+     * session persistante de longue vie expose de plus en plus de sorties : sans borne, le {@code Set}
+     * interne grossirait indéfiniment. Au-delà de ce plafond il est <b>purgé</b> — le resync reste
+     * idempotent (un contenu identique n'est pas réécrit, F-37 D5), donc au pire une sortie déjà
+     * rapatriée est réexaminée une fois, sans effet visible.
+     */
+    static final int MAX_SYNCED_OUTPUTS = 10_000;
+
+    /**
      * Sessions pour lesquelles une interruption a été demandée (F-32 SF-32-01). Marque
      * d'<b>affichage</b>, jamais un mécanisme d'arrêt : l'arrêt est fait par le fournisseur, qui
      * ramène la session à une frontière sûre. Elle sert seulement à dire au tour en vol, quand il
@@ -364,7 +373,7 @@ public class AtelierSessionService implements RelaySessionInterruptTarget {
         Map<String, String> byBasename = basenameIndex(tree);
         Set<String> knownPaths = new HashSet<>(tree);
         for (OutputFile output : provider.listOutputs(sessionId)) {
-            if (!alreadySynced.add(output.fileId())) {
+            if (!boundedSyncedAdd(alreadySynced, output.fileId())) {
                 continue;
             }
             byte[] bytes = provider.downloadFile(output.fileId());
@@ -663,11 +672,59 @@ public class AtelierSessionService implements RelaySessionInterruptTarget {
         workspaceRepository.save(workspace);
     }
 
-    /** Oublie la session courante du workspace, sans rien terminer chez le fournisseur. */
+    /**
+     * Oublie la session courante du workspace, en <b>terminant</b> la session fournisseur best-effort
+     * (F-117 / SF-117-04) : c'est ce qui évite les conteneurs orphelins quand le reaper expire une
+     * session âgée, ou quand une publication tombe sur une session déjà morte. Best-effort — une
+     * session déjà morte ou indisponible est effacée quand même, sinon le workspace resterait collé à
+     * une session injouable. Les états en mémoire de cette session sont purgés.
+     */
     private void forgetSession(Workspace workspace) {
+        String sessionId = workspace.getAgentSessionId();
+        if (sessionId != null && !sessionId.isBlank()) {
+            try {
+                provider.terminateSession(sessionId);
+            } catch (RuntimeException ex) {
+                log.debug("Terminaison de session ignorée (best-effort) : identifiant effacé malgré tout.");
+            }
+            syncedOutputs.remove(sessionId);
+            interruptedSessions.remove(sessionId);
+        }
         workspace.setAgentSessionId(null);
         workspace.setAgentSessionStartedAt(null);
         workspaceRepository.save(workspace);
+    }
+
+    /**
+     * Reaper des sessions Managed Agents (F-117 / SF-117-04) : expire par âge les sessions ouvertes
+     * dont l'ouverture ({@code agentSessionStartedAt}, déjà stocké mais jamais lu jusqu'ici) est
+     * antérieure à {@code olderThan}, et termine leur session fournisseur (best-effort via
+     * {@link #forgetSession}) — pour éviter les conteneurs orphelins des terminaux laissés ouverts.
+     *
+     * <p>Traitement <b>système</b> (tous tenants), donc hors du fil HTTP et sans contexte de sécurité :
+     * chaque session reste rattachée à son workspace, donc à son propriétaire — aucune donnée n'est
+     * croisée entre utilisateurs. Une expiration en échec n'arrête pas le balayage.</p>
+     *
+     * @param olderThan seuil : les sessions ouvertes avant cet instant sont expirées
+     * @return le nombre de sessions expirées
+     */
+    public int reapExpiredSessions(OffsetDateTime olderThan) {
+        List<Workspace> stale =
+                workspaceRepository.findByAgentSessionIdIsNotNullAndAgentSessionStartedAtBefore(olderThan);
+        int reaped = 0;
+        for (Workspace workspace : stale) {
+            try {
+                forgetSession(workspace);
+                reaped++;
+            } catch (RuntimeException ex) {
+                // Un workspace récalcitrant ne doit pas arrêter le balayage des autres.
+                log.debug("Expiration d'une session ignorée (best-effort) : le balayage continue.");
+            }
+        }
+        if (reaped > 0) {
+            log.info("Reaper Managed Agents : {} session(s) expirée(s) par âge.", reaped);
+        }
+        return reaped;
     }
 
     /** Envoie le message dans la session donnée et attend la complétion du tour. */
@@ -1069,6 +1126,19 @@ public class AtelierSessionService implements RelaySessionInterruptTarget {
     static String uploadFilename(String path) {
         String flat = path.replaceAll("[^A-Za-z0-9._-]", "_");
         return flat.isBlank() ? "file" : flat;
+    }
+
+    /**
+     * Ajoute une sortie au registre incrémental d'une session en le <b>bornant</b> (F-117 /
+     * SF-117-04) : au-delà de {@link #MAX_SYNCED_OUTPUTS}, le {@code Set} est purgé avant l'ajout, ce
+     * qui borne sa mémoire. Renvoie {@code true} si l'identifiant n'y figurait pas (sortie à
+     * rapatrier), {@code false} s'il y était déjà.
+     */
+    static boolean boundedSyncedAdd(Set<String> synced, String fileId) {
+        if (synced.size() >= MAX_SYNCED_OUTPUTS) {
+            synced.clear();
+        }
+        return synced.add(fileId);
     }
 
     /** Nom de base d'un chemin (segment après le dernier {@code /}). */

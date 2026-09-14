@@ -52,4 +52,13 @@ public interface WorkspaceRepository extends JpaRepository<Workspace, UUID> {
 
     /** Purge à la suppression du compte (SF-11-03), après effacement des fichiers du stockage. */
     void deleteByUserId(UUID userId);
+
+    /**
+     * Sessions Managed Agents <b>ouvertes et âgées</b> (F-117 / SF-117-04) : celles portant un
+     * {@code agent_session_id} dont l'ouverture ({@code agent_session_started_at}, jusqu'ici stocké
+     * mais jamais lu) est antérieure au seuil. Requête <b>système</b> du reaper — tous tenants
+     * confondus, chaque session restant rattachée à son workspace, donc à son propriétaire.
+     */
+    List<Workspace> findByAgentSessionIdIsNotNullAndAgentSessionStartedAtBefore(
+            java.time.OffsetDateTime threshold);
 }
