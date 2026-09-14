@@ -579,6 +579,32 @@ pour le clair. **Les registres, eux, ne changent pas : seule la surface, et ce q
   n'y a pas de bouton** — ni grisé, ni menant à un refus : un bouton qui mène à un 403 n'est pas une
   porte, c'est un piège.
 
+### Quand Teams échoue, ça se voit, et le repli est un choix (ajout F-89 / SF-89-11, 2026-09-15)
+
+> **La couleur porte l'information, pas seulement le texte.** Quand une lecture Teams ne rend rien
+> d'exploitable **après réseau ET écran** (SF-89-06), un **bloc d'échec coloré** est posé dans le fil,
+> et le repli sur le projet devient un **choix explicite** de l'utilisateur — jamais un réflexe
+> silencieux de l'agent.
+
+- **Le bloc « Teams n'a pas pu être lu » (`.teams-read-failed`).** Un bloc de la surface (fond
+  `--cg-terminal-teams-card`, filet gauche épais), display-only. Sa **couleur** dit la gravité, et
+  c'est délibérément la seule chose qui la dise :
+  - **Attention (ambre §12)** — jeton **`--cg-terminal-teams-warn` `#8A5200`** (l'ambre de charte
+    `#F9A825` **approfondi** pour tenir l'AA sur le papier, où il tombe à ~1,8:1) : *rien servi*,
+    *contenu non reconnu*, *écran changé* — la lecture peut repartir d'un geste.
+  - **Liaison rompue (rouge §5)** — jeton existant **`--cg-terminal-teams-error` `#C62828`**, via le
+    modificateur `.teams-read-failed--broken` : *session Microsoft expirée*, *liaison non établie*.
+  - Le **motif exact** est écrit, avec le geste qui débloque, et **deux actions** seulement :
+    **Réessayer** (relance la lecture Teams) et **Chercher dans le projet à la place** (autorise le
+    repli). Tant que l'utilisateur n'a pas choisi, l'agent ne répond pas depuis le projet (tenu côté
+    gateway).
+- **Le bandeau « réponse basée sur le projet, pas sur Teams » (`.teams-fallback-banner`).** Posé en
+  tête d'un tour de repli autorisé, dans l'**ambre** de l'attention : une réponse de Teams et une
+  réponse de repli ne se ressemblent jamais, **à la couleur** autant qu'au texte.
+- **Aucune couleur hors charte, et l'AA automatisé.** Le seul ajout est `--cg-terminal-teams-warn`,
+  l'ambre §12 approfondi ; le balayage de contraste de `terminal-teams-peau.spec.ts` couvre le jeton
+  **et** les blocs rendus (ambre et rouge). Aucun pictogramme d'alerte : la couleur suffit.
+
 ---
 
 ## 16 — La Forge : colonne et détail (ajout F-98, 2026-09-13)

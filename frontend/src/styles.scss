@@ -57,6 +57,7 @@ html {
   --cg-terminal-teams-message: #9A4A12;  // accent CHAUD : la demande, les gestes attendus (interrompre, plafond, chrono)
   --cg-terminal-teams-step: #4B3F8F;     // accent FROID : commandes, étapes, liens, structure de diff
   --cg-terminal-teams-error: #C62828;    // échec (rouge charte approfondi ; --cg-error tombe à 4,2:1 sur le bandeau)
+  --cg-terminal-teams-warn: #8A5200;     // attention (ambre §12 approfondi pour l'AA sur le papier ; #F9A825 tombe à ~1,8:1) — F-89 / SF-89-11
   --cg-terminal-teams-add: #166F38;      // ajout de diff (vert charte approfondi ; --cg-success tombe à ~2,9:1 sur fond clair)
 
   --cg-font-heading: 'Space Grotesk', 'Inter', sans-serif;

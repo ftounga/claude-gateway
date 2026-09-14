@@ -86,7 +86,50 @@ export function cardOf(
   if (!teamsTerminal || !hasContent(block.card)) {
     return null;
   }
+  // Un compte rendu, jamais un bloc d'état : l'échec et le repli ont leur propre gabarit coloré.
+  if (block.card && (block.card.kind === 'READ_FAILED' || block.card.kind === 'PROJECT_FALLBACK')) {
+    return null;
+  }
   return block.card ?? null;
+}
+
+/**
+ * **Le bloc d'échec de lecture Teams à afficher, ou `null`** (F-89 / SF-89-11). Display-only : pas de
+ * ligne, pas de moment — {@link hasContent} le dirait « vide », mais ce n'en est pas un. Il n'existe
+ * que dans un terminal Teams, comme les cartes.
+ */
+export function failureCardOf(
+  block: AtelierTerminalBlock,
+  teamsTerminal: boolean,
+): AtelierTeamsCard | null {
+  if (!teamsTerminal || block.card?.kind !== 'READ_FAILED') {
+    return null;
+  }
+  return block.card;
+}
+
+/**
+ * **Le bandeau « réponse basée sur le projet, pas sur Teams » à afficher, ou `null`** (F-89 /
+ * SF-89-11) : posé quand l'utilisateur a autorisé le repli sur le poste.
+ */
+export function fallbackBannerOf(
+  block: AtelierTerminalBlock,
+  teamsTerminal: boolean,
+): AtelierTeamsCard | null {
+  if (!teamsTerminal || block.card?.kind !== 'PROJECT_FALLBACK') {
+    return null;
+  }
+  return block.card;
+}
+
+/**
+ * **La gravité d'un échec de lecture, qui porte la COULEUR** (F-89 / SF-89-11) — jamais le texte
+ * seul. Une liaison rompue ou une session expirée sont `broken` (rouge, §5) ; tout le reste — rien
+ * servi, non reconnu, écran changé — est `attention` (ambre, §12). Le défaut penche vers l'ambre :
+ * une couleur d'alarme non méritée crie « danger » là où la situation dit « à toi de choisir ».
+ */
+export function failureSeverity(card: AtelierTeamsCard): 'broken' | 'attention' {
+  return card.reason === 'NOT_LINKED' || card.reason === 'SESSION_EXPIRED' ? 'broken' : 'attention';
 }
 
 /**

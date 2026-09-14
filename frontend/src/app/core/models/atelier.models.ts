@@ -951,8 +951,17 @@ export interface AtelierTerminalBlock {
  */
 export type AtelierTeamsCertainty = 'EXPLICITE' | 'A_CONFIRMER';
 
-/** Les trois genres de bloc riche. Liste close : l'écran en connaît exactement trois. */
-export type AtelierTeamsCardKind = 'MEETING_CARD' | 'LIST' | 'MOMENTS';
+/**
+ * Les genres de bloc riche. Liste close. Les trois premiers sont des **comptes rendus** (F-89 /
+ * SF-89-02) ; les deux derniers (F-89 / SF-89-11) sont **display-only** et disent l'**état** d'une
+ * lecture Teams, pas son contenu : l'échec de lecture, et le repli sur le projet.
+ */
+export type AtelierTeamsCardKind =
+  | 'MEETING_CARD'
+  | 'LIST'
+  | 'MOMENTS'
+  | 'READ_FAILED'
+  | 'PROJECT_FALLBACK';
 
 /**
  * **Une ligne vérifiable** d'un bloc riche (F-89 / SF-89-02) : ce qui est dit, par qui, quand, et
@@ -1012,6 +1021,13 @@ export interface AtelierTeamsCard {
    * une note de bas de page.</p>
    */
   recordingNotice?: string;
+  /**
+   * **Le motif machine d'un bloc d'échec de lecture Teams** (F-89 / SF-89-11), ou vide pour tout
+   * autre genre. C'est lui qui porte la **couleur** : `NOT_LINKED` / `SESSION_EXPIRED` sont ROUGES
+   * (liaison rompue, §5), les autres AMBRES (attention, §12). La couleur ne se lit jamais du texte
+   * seul.
+   */
+  reason?: string;
 }
 
 /** Charge utile de l'événement SSE `card` (F-89 / SF-89-02). */

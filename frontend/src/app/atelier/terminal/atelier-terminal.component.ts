@@ -65,6 +65,9 @@ import {
   cardAsText,
   cardOf,
   certaintyLabel,
+  failureCardOf,
+  failureSeverity,
+  fallbackBannerOf,
   gapsLabel,
   isUncertain,
   momentSpeaker,
@@ -516,6 +519,15 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   @Output() retryLive = new EventEmitter<void>();
   /** Ouverture du fichier d'instructions du projet (F-34 / SF-34-02). */
   @Output() openInstructions = new EventEmitter<void>();
+
+  /**
+   * F-89 / SF-89-11 : dans le bloc d'échec de lecture Teams, l'utilisateur choisit **Réessayer**
+   * (relance la lecture Teams) ou **Chercher dans le projet à la place** (autorise le repli). Chaque
+   * clic dépose une précision (SF-84-06) ; l'agent la lira au tour vivant, ou elle partira comme un
+   * message s'il n'y en a plus.
+   */
+  @Output() teamsRetryRead = new EventEmitter<void>();
+  @Output() teamsSearchProject = new EventEmitter<void>();
   /** Décision sur la demande en attente (F-33 / SF-33-03) : `true` autorise, `false` refuse. */
   @Output() confirmDecision = new EventEmitter<boolean>();
 
@@ -942,6 +954,17 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   gapsLabel = gapsLabel;
   momentSpeaker = momentSpeaker;
   cardAsText = cardAsText;
+  failureSeverity = failureSeverity;
+
+  /** Le bloc d'échec de lecture Teams à afficher pour ce bloc, ou `null` (F-89 / SF-89-11). */
+  failureCardOf(block: AtelierTerminalBlock): AtelierTeamsCard | null {
+    return failureCardOf(block, this.teamsTerminal);
+  }
+
+  /** Le bandeau « réponse basée sur le projet » à afficher pour ce bloc, ou `null` (F-89 / SF-89-11). */
+  fallbackBannerOf(block: AtelierTerminalBlock): AtelierTeamsCard | null {
+    return fallbackBannerOf(block, this.teamsTerminal);
+  }
 
   /**
    * L'image de moment **agrandie**, ou `null`. Un état d'<b>écran</b>, jamais une adresse : le

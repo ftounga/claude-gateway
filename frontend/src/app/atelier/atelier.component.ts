@@ -164,6 +164,15 @@ export const TEAMS_LINK_POLL_MS = 60_000;
  * <p>Consomme l'API F-28 via {@link AtelierService} ; ne communique jamais directement avec un
  * fournisseur IA. Isolation `user_id` garantie côté backend.</p>
  */
+/**
+ * F-89 / SF-89-11 — les deux précisions posées par les boutons du bloc d'échec de lecture Teams.
+ * Elles doivent correspondre MOT POUR MOT aux constantes de la gateway
+ * ({@code TeamsReadFailure.RETRY_PRECISION} / {@code FALLBACK_PRECISION}) : c'est le repli qui est
+ * reconnu côté serveur pour lever la garde et marquer la réponse.
+ */
+const RETRY_TEAMS_READ_PRECISION = 'Réessaie la lecture Teams.';
+const SEARCH_PROJECT_INSTEAD_PRECISION = 'Autorisé à répondre via le projet à la place.';
+
 @Component({
   selector: 'app-atelier',
   imports: [
@@ -2968,6 +2977,30 @@ export class AtelierComponent implements OnInit, OnDestroy {
     // Même panneau que l'explorateur (F-39 / SF-39-18) : ouvrir le fichier d'instructions ne doit
     // pas non plus détruire le terminal.
     this.openFileExplorer(path);
+  }
+
+  /**
+   * F-89 / SF-89-11 — bouton **Réessayer** du bloc d'échec de lecture Teams : dépose une précision
+   * qui relance la lecture Teams. C'est une précision (SF-84-06), jamais un repli : la question de
+   * fond n'est pas répondue depuis le projet.
+   */
+  retryTeamsRead(): void {
+    const id = this.activeWorkspaceId();
+    if (id) {
+      this.steer(id, RETRY_TEAMS_READ_PRECISION);
+    }
+  }
+
+  /**
+   * F-89 / SF-89-11 — bouton **Chercher dans le projet à la place** : dépose la précision qui
+   * **autorise** le repli sur le poste. La gateway ne répond depuis le projet qu'après ce geste, et
+   * marque alors la réponse d'un bandeau « basée sur le projet, pas sur Teams ».
+   */
+  searchProjectInstead(): void {
+    const id = this.activeWorkspaceId();
+    if (id) {
+      this.steer(id, SEARCH_PROJECT_INSTEAD_PRECISION);
+    }
   }
 
   /**

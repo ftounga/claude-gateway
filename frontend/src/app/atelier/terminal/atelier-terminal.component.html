@@ -509,9 +509,17 @@
                   </button>
                 }
               }
-              @if (cardOf(block); as card) {
+              @if (failureCardOf(block)) {
                 <ng-container
-                  *ngTemplateOutlet="teamsCardTemplate; context: { $implicit: card }"
+                  *ngTemplateOutlet="teamsFailureTemplate; context: { $implicit: block.card }"
+                ></ng-container>
+              } @else if (fallbackBannerOf(block)) {
+                <ng-container
+                  *ngTemplateOutlet="teamsFallbackTemplate; context: { $implicit: block.card }"
+                ></ng-container>
+              } @else if (cardOf(block)) {
+                <ng-container
+                  *ngTemplateOutlet="teamsCardTemplate; context: { $implicit: block.card }"
                 ></ng-container>
               } @else if (block.card) {
                 <!-- UN TERMINAL DE PROJET RESTE TEXTUEL POUR TOUJOURS (F-89). Le bloc n'est pas
@@ -650,9 +658,17 @@
               </button>
             }
           }
-              @if (cardOf(block); as card) {
+              @if (failureCardOf(block)) {
+                <ng-container
+                  *ngTemplateOutlet="teamsFailureTemplate; context: { $implicit: block.card }"
+                ></ng-container>
+              } @else if (fallbackBannerOf(block)) {
+                <ng-container
+                  *ngTemplateOutlet="teamsFallbackTemplate; context: { $implicit: block.card }"
+                ></ng-container>
+              } @else if (cardOf(block)) {
             <ng-container
-              *ngTemplateOutlet="teamsCardTemplate; context: { $implicit: card }"
+              *ngTemplateOutlet="teamsCardTemplate; context: { $implicit: block.card }"
             ></ng-container>
           } @else if (block.card) {
             <!-- UN TERMINAL DE PROJET RESTE TEXTUEL POUR TOUJOURS (F-89). Le bloc n'est pas
@@ -998,4 +1014,57 @@
       <p class="teams-card__gaps">{{ gapsLabel(card) }}</p>
     </footer>
   </article>
+</ng-template>
+
+<!-- ====================================================================== F-89 / SF-89-11
+     TEAMS N'A PAS PU ÊTRE LU — le zéro d'une lecture Teams devient un ÉCHEC VISIBLE et un CHOIX.
+
+     LA COULEUR PORTE L'INFORMATION, pas seulement le texte (charte §12 ambre « attention », §5 rouge
+     « liaison rompue ») : `--broken` bascule sur le rouge. Le motif exact est écrit, avec le geste
+     qui débloque. DEUX ACTIONS, et elles seules : Réessayer (relance la lecture Teams) et Chercher
+     dans le projet à la place (autorise le repli). Tant que l'utilisateur n'a pas choisi, l'agent ne
+     répond PAS depuis le projet — c'est tenu côté gateway. -->
+<ng-template #teamsFailureTemplate let-card>
+  <article
+    class="teams-read-failed"
+    [class.teams-read-failed--broken]="failureSeverity(card) === 'broken'"
+    role="alert"
+    [attr.aria-label]="card.title"
+  >
+    <header class="teams-read-failed__head">
+      <h3 class="teams-read-failed__title">{{ card.title }}</h3>
+      <p class="teams-read-failed__motive">{{ card.subtitle }}</p>
+    </header>
+    <div class="teams-read-failed__actions">
+      <button
+        mat-stroked-button
+        type="button"
+        class="teams-read-failed__retry"
+        (click)="teamsRetryRead.emit()"
+      >
+        Réessayer
+      </button>
+      <button
+        mat-button
+        type="button"
+        class="teams-read-failed__fallback"
+        (click)="teamsSearchProject.emit()"
+      >
+        Chercher dans le projet à la place
+      </button>
+    </div>
+  </article>
+</ng-template>
+
+<!-- ====================================================================== F-89 / SF-89-11
+     RÉPONSE BASÉE SUR LE PROJET, PAS SUR TEAMS — le bandeau qui marque un repli AUTORISÉ. La source
+     de la réponse qui suit se lit à la COULEUR (ambre §12) autant qu'au texte : une réponse de Teams
+     et une réponse de repli ne se ressemblent jamais. -->
+<ng-template #teamsFallbackTemplate let-card>
+  <aside class="teams-fallback-banner" role="note" [attr.aria-label]="card.title">
+    <p class="teams-fallback-banner__title">{{ card.title }}</p>
+    @if (card.subtitle) {
+      <p class="teams-fallback-banner__subtitle">{{ card.subtitle }}</p>
+    }
+  </aside>
 </ng-template>

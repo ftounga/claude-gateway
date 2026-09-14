@@ -4,6 +4,9 @@ import {
   cardBlock,
   cardOf,
   certaintyLabel,
+  failureCardOf,
+  failureSeverity,
+  fallbackBannerOf,
   gapsLabel,
   hasContent,
   isUncertain,
@@ -193,6 +196,47 @@ describe('teams-block (F-89 / SF-89-03)', () => {
       expect(posted.output).toBe('');
       expect(posted.command).toBeUndefined();
       expect(posted.toolUseId).toBe('tu_c');
+    });
+  });
+
+  // -------------------------------------- F-89 / SF-89-11 : l'échec de lecture et le repli
+
+  describe('l\'échec de lecture Teams et le repli (F-89 / SF-89-11)', () => {
+    const failed = (reason: string): AtelierTeamsCard => ({
+      kind: 'READ_FAILED',
+      title: 'Teams n\'a pas pu être lu',
+      subtitle: 'motif',
+      window: '',
+      sections: [],
+      moments: [],
+      gaps: [],
+      reason,
+    });
+    const fallback: AtelierTeamsCard = { ...failed(''), kind: 'PROJECT_FALLBACK', reason: '' };
+
+    it('failureCardOf ne rend le bloc d\'échec QUE dans un terminal Teams', () => {
+      expect(failureCardOf(block({ card: failed('NOTHING_SERVED') }), true)).not.toBeNull();
+      expect(failureCardOf(block({ card: failed('NOTHING_SERVED') }), false)).toBeNull();
+      // Un compte rendu ordinaire n'est pas un échec.
+      expect(failureCardOf(block({ card: card() }), true)).toBeNull();
+    });
+
+    it('fallbackBannerOf ne rend le bandeau QUE dans un terminal Teams', () => {
+      expect(fallbackBannerOf(block({ card: fallback }), true)).not.toBeNull();
+      expect(fallbackBannerOf(block({ card: fallback }), false)).toBeNull();
+    });
+
+    it('cardOf n\'affiche JAMAIS un échec ni un repli comme carte de compte rendu', () => {
+      expect(cardOf(block({ card: failed('NOTHING_SERVED') }), true)).toBeNull();
+      expect(cardOf(block({ card: fallback }), true)).toBeNull();
+    });
+
+    it('la gravité porte la couleur : liaison rompue = rouge, le reste = ambre', () => {
+      expect(failureSeverity(failed('NOT_LINKED'))).toBe('broken');
+      expect(failureSeverity(failed('SESSION_EXPIRED'))).toBe('broken');
+      expect(failureSeverity(failed('NOTHING_SERVED'))).toBe('attention');
+      expect(failureSeverity(failed('NOTHING_CLASSIFIED'))).toBe('attention');
+      expect(failureSeverity(failed('SCREEN_CHANGED'))).toBe('attention');
     });
   });
 });

@@ -159,6 +159,8 @@
     [teamsLink]="teamsLink()"
     [teamsOptionInactive]="teamsOptionInactive()"
     (openAccessCode)="goToAccessCode()"
+    (teamsRetryRead)="retryTeamsRead()"
+    (teamsSearchProject)="searchProjectInstead()"
   ></app-atelier-terminal>
 } @else {
 <div class="atelier-layout">
