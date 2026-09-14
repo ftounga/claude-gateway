@@ -169,4 +169,44 @@ class AtelierPropertiesTest {
                 null, null, null, null, null, false);
         assertThat(off.streaming()).isFalse();
     }
+
+    // ------------------------------------------- F-118 / SF-118-01 : effort adaptatif à l'étape
+
+    /** Réglages d'effort adaptatif (step-effort, adaptive-effort) — les deux derniers composants. */
+    private static AtelierProperties withAdaptiveEffort(String stepEffort, Boolean adaptiveEffort) {
+        return new AtelierProperties(null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, stepEffort, adaptiveEffort);
+    }
+
+    @Test
+    void continuationEffortDefaultsToLowAndAdaptiveIsOn() {
+        // Absent => enchaîner un outil part en effort réduit `low`, et l'effort suit l'étape.
+        AtelierProperties properties = withAdaptiveEffort(null, null);
+        assertThat(properties.stepEffort()).isEqualTo("low");
+        assertThat(properties.adaptiveEffort()).isTrue();
+        // Le constructeur de compatibilité (sans ces deux réglages) applique les mêmes défauts.
+        AtelierProperties legacy = new AtelierProperties(null, null, null, null, null, null, null,
+                null, null, null, null, null, true);
+        assertThat(legacy.stepEffort()).isEqualTo("low");
+        assertThat(legacy.adaptiveEffort()).isTrue();
+    }
+
+    @Test
+    void continuationEffortFallsBackToLowWhenUnknownOrBlank() {
+        // Même repli que `effort` : une faute de config ne casse pas les tours (F-118, D-118-1).
+        assertThat(withAdaptiveEffort("turbo", null).stepEffort()).isEqualTo("low");
+        assertThat(withAdaptiveEffort("  ", null).stepEffort()).isEqualTo("low");
+    }
+
+    @Test
+    void continuationEffortHonoursAConfiguredValue() {
+        assertThat(withAdaptiveEffort("medium", null).stepEffort()).isEqualTo("medium");
+        assertThat(withAdaptiveEffort("high", null).stepEffort()).isEqualTo("high");
+    }
+
+    @Test
+    void adaptiveEffortCanBeDisabledWithoutADeployment() {
+        // Coupe-circuit : `false` rétablit l'effort normal à chaque étape (comportement d'avant F-118).
+        assertThat(withAdaptiveEffort(null, false).adaptiveEffort()).isFalse();
+    }
 }

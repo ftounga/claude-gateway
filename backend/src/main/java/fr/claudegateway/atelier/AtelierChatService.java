@@ -194,8 +194,23 @@ public class AtelierChatService implements RelayInterruptTarget {
      * réglage par hasard.
      */
     private final String model;
-    /** Raisonnement demandé à chaque itération d'un tour (F-39 / SF-39-10). */
+    /**
+     * Raisonnement du <b>premier</b> tour d'une demande (F-39 / SF-39-10, effort adaptatif
+     * F-118 / SF-118-01) : effort normal ({@code app.atelier.effort}). C'est le tour où la réflexion
+     * sert à cadrer le travail.
+     */
     private final AgentReasoning reasoning;
+    /**
+     * Raisonnement des <b>étapes de continuation</b> (F-118 / SF-118-01) : effort réduit
+     * ({@code app.atelier.step-effort}). Enchaîner un outil ou relire un fichier exécute une
+     * trajectoire déjà tracée et n'a pas besoin de « réfléchir fort ».
+     */
+    private final AgentReasoning stepReasoning;
+    /**
+     * Drapeau de repli de l'effort adaptatif (F-118 / SF-118-01). Faux : l'effort normal est appliqué
+     * à chaque étape (comportement d'avant F-118), réglable par variable d'environnement.
+     */
+    private final boolean adaptiveEffort;
     /**
      * Politique de contexte appliquée à chaque itération d'un tour (F-39 / SF-39-12). Elle dit une
      * intention — écarter les résultats d'outils périmés — que le fournisseur traduit ; le mécanisme
@@ -474,6 +489,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.streaming = !Boolean.FALSE.equals(atelierProperties.streaming());
         this.model = atelierProperties.model();
         this.reasoning = new AgentReasoning(true, atelierProperties.effort());
+        this.stepReasoning = new AgentReasoning(true, atelierProperties.stepEffort());
+        this.adaptiveEffort = !Boolean.FALSE.equals(atelierProperties.adaptiveEffort());
         this.contextPolicy = Boolean.TRUE.equals(atelierProperties.contextPruning())
                 ? new AgentContextPolicy(true, CONTEXT_TRIGGER_INPUT_TOKENS,
                         CONTEXT_KEEP_TOOL_RESULTS, CONTEXT_CLEAR_AT_LEAST_INPUT_TOKENS)
@@ -515,6 +532,26 @@ public class AtelierChatService implements RelayInterruptTarget {
     public AtelierChatResult chatStreaming(UUID userId, UUID workspaceId, String rawMessage,
             AtelierProgressListener listener) {
         return runLoop(userId, workspaceId, rawMessage, listener);
+    }
+
+    /**
+     * Effort de raisonnement de l'itération, selon l'étape (F-118 / SF-118-01).
+     *
+     * <p><b>Premier tour d'une demande</b> ({@code iteration == 0}) : effort <b>normal</b> — la
+     * réflexion sert à cadrer le travail et à choisir la trajectoire. <b>Étapes de continuation</b>
+     * ({@code iteration > 0}, enchaîner un outil, relire un fichier) : effort <b>réduit</b>, la
+     * trajectoire étant déjà tracée. Le raisonnement adaptatif reste actif dans les deux cas ; seul le
+     * niveau d'effort change.</p>
+     *
+     * <p>Garder l'effort normal au tour qui <i>planifie</i> est ce qui garantit qu'une vraie tâche de
+     * raisonnement n'est jamais dégradée. Le repli {@code adaptiveEffort == false} rétablit l'effort
+     * normal à chaque étape, sans livraison.</p>
+     */
+    AgentReasoning reasoningForIteration(int iteration) {
+        if (adaptiveEffort && iteration > 0) {
+            return stepReasoning;
+        }
+        return reasoning;
     }
 
     private AtelierChatResult runLoop(UUID userId, UUID workspaceId, String rawMessage,
@@ -716,7 +753,8 @@ public class AtelierChatService implements RelayInterruptTarget {
             while (turn == null) {
                 boolean[] streamed = {false};
                 AgentTurnRequest turnRequest =
-                        new AgentTurnRequest(model, system, messages, tools, apiKey, reasoning, contextPolicy);
+                        new AgentTurnRequest(model, system, messages, tools, apiKey,
+                                reasoningForIteration(iteration), contextPolicy);
                 try {
                     if (streaming) {
                         turn = agentProvider.nextTurn(turnRequest, delta -> {

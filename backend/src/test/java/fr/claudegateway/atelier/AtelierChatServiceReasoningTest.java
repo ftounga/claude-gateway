@@ -149,6 +149,51 @@ class AtelierChatServiceReasoningTest {
         assertThat(trace).doesNotContain("sig-1").doesNotContain("thinking");
     }
 
+    // ------------------------------------------- F-118 / SF-118-01 : effort adaptatif à l'étape
+
+    @Test
+    void aSingleStepDemandKeepsTheNormalEffort() {
+        // Une demande neuve résolue en un seul tour part avec l'effort normal (`high`) : c'est le
+        // tour où la réflexion sert.
+        agentProvider.enqueueFinal("Bonjour.");
+
+        service.chat(userId, workspaceId, "bonjour");
+
+        assertThat(agentProvider.reasoningSnapshots).containsExactly(new AgentReasoning(true, "high"));
+    }
+
+    @Test
+    void continuationStepsStartWithTheReducedEffort() {
+        // Premier tour (cadrage) : effort normal `high`. Étape de continuation (relire le fichier
+        // après l'appel d'outil) : effort réduit `low` — enchaîner un outil n'a pas besoin de
+        // « réfléchir fort ». Le raisonnement adaptatif reste actif sur les deux tours.
+        agentProvider.enqueueToolCall("read_file", "path", "notes.txt");
+        agentProvider.enqueueFinal("J'ai lu notes.txt.");
+
+        service.chat(userId, workspaceId, "lis notes.txt");
+
+        assertThat(agentProvider.reasoningSnapshots).containsExactly(
+                new AgentReasoning(true, "high"),
+                new AgentReasoning(true, "low"));
+    }
+
+    @Test
+    void theFallbackFlagRestoresTheFlatEffort() {
+        // Coupe-circuit `adaptive-effort=false` : l'effort normal est appliqué à CHAQUE étape,
+        // comportement d'avant F-118, sans livraison. `storageExecution=true` (13e arg) pour que la
+        // boucle parte, comme la config par défaut de ce test.
+        buildService(new AtelierProperties(null, null, null, null, null, null, null, null, null, null,
+                null, null, true, null, null, false));
+        agentProvider.enqueueToolCall("read_file", "path", "notes.txt");
+        agentProvider.enqueueFinal("J'ai lu notes.txt.");
+
+        service.chat(userId, workspaceId, "lis notes.txt");
+
+        assertThat(agentProvider.reasoningSnapshots).containsExactly(
+                new AgentReasoning(true, "high"),
+                new AgentReasoning(true, "high"));
+    }
+
     @Test
     void aReplayedHistoryCarriesNoReasoningBlock() {
         history.add(AtelierMessage.builder().id(UUID.randomUUID()).workspaceId(workspaceId).userId(userId)
