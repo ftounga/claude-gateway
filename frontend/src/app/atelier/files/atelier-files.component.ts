@@ -88,7 +88,12 @@ const DEFAULT_COMMIT_MESSAGE = 'Modifications depuis la Forge';
     MatTooltipModule,
   ],
   templateUrl: './atelier-files.component.html',
-  styleUrl: './atelier-files.component.scss',
+  // Découpé pour tenir le budget de style par feuille (SF-30-16) : l'ossature (barre haute, barre
+  // d'outils, arbre) puis l'aperçu / l'édition et les éléments Git — même cascade qu'avant.
+  styleUrls: [
+    './atelier-files.component.scss',
+    './atelier-files-viewer.component.scss',
+  ],
 })
 export class AtelierFilesComponent implements OnInit {
 

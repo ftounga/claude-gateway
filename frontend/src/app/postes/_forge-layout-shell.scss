@@ -1,0 +1,171 @@
+/* LA FORME MAÎTRE–DÉTAIL (F-98) — OSSATURE, partagée par la Forge et la Vigie (F-106 / SF-106-02) —
+   DESIGN_SYSTEM.md §16. Découpé de `_forge-layout.scss` (SF-30-16, budgets de style) : ce partiel
+   porte l'ossature — le contexte de page, le bandeau de flotte, la colonne et le détail. Le poste
+   ouvert et ses onglets vivent dans `_forge-layout-detail.scss`. Le baril `_forge-layout.scss`
+   réunit les deux : aucun consommateur ne recopie ces règles. */
+.postes {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+
+  &__live-cost {
+    font-weight: 400;
+    color: var(--cg-text-secondary);
+  }
+
+  &__loading {
+    display: flex;
+    justify-content: center;
+    padding: var(--cg-space-5);
+  }
+
+  &__notice {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--cg-space-3);
+    padding: var(--cg-space-4);
+    margin: var(--cg-space-4);
+
+    .forge-split__detail & {
+      margin: 0;
+    }
+
+    > mat-icon {
+      color: var(--cg-accent);
+      flex: none;
+    }
+
+    h2 {
+      margin: 0 0 var(--cg-space-2);
+      font-size: 18px;
+    }
+
+    p {
+      margin: 0 0 var(--cg-space-3);
+      color: var(--cg-text-secondary);
+      max-width: 60ch;
+    }
+  }
+
+  /* Les deux sorties d'un refus d'accès, côte à côte (F-85 / SF-85-04). */
+  &__notice-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cg-space-2);
+  }
+}
+
+/* — Le bandeau de la flotte (F-98 / SF-98-01) : une ligne, surface blanche, filet bas (§2). */
+.forge-fleet {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cg-space-2) var(--cg-space-3);
+  padding: var(--cg-space-2) var(--cg-space-4);
+  background: var(--cg-surface);
+  border-bottom: 1px solid var(--cg-divider);
+
+  &__title {
+    margin: 0 var(--cg-space-2) 0 0;
+    font-family: var(--cg-font-heading);
+    font-size: 18px;
+    font-weight: 600;
+  }
+
+  &__kpi {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cg-space-1);
+    font-size: 13px;
+    color: var(--cg-text-secondary);
+
+    b {
+      color: var(--cg-text-primary);
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* §12 : l'ambre « En attente » écrit le nombre, jamais un aplat. */
+    &--awaiting b {
+      color: #F9A825;
+    }
+  }
+
+  &__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: none;
+
+    &--online {
+      background: var(--cg-success);
+    }
+
+    &--awaiting {
+      background: #F9A825;
+    }
+  }
+
+  &__spacer {
+    flex: 1;
+  }
+}
+
+/* — Maître–détail (D1) : colonne de 288 px, détail qui prend le reste. */
+.forge-split {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 288px minmax(0, 1fr);
+  min-height: 0;
+
+  &__detail {
+    min-width: 0;
+    padding: var(--cg-space-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--cg-space-3);
+  }
+
+  @media (max-width: 819px) {
+    grid-template-columns: minmax(0, 1fr);
+
+    &__rail ::ng-deep .forge-rail {
+      border-right: 0;
+      border-bottom: 1px solid var(--cg-divider);
+    }
+
+    &__detail {
+      padding: var(--cg-space-3);
+    }
+
+    /* `/forge` : la liste plein écran. `/forge/<id>` : le détail plein écran, avec son retour. */
+    &:not(&--detail-open) &__detail {
+      display: none;
+    }
+
+    &--detail-open &__rail {
+      display: none;
+    }
+
+    &__back {
+      display: inline-flex;
+    }
+  }
+
+  /* Le retour vers la liste n'existe que sur téléphone : au-dessus, la colonne est à côté. */
+  &__back {
+    display: none;
+    align-items: center;
+    gap: var(--cg-space-1);
+    align-self: flex-start;
+    color: var(--cg-text-secondary);
+    font-size: 13px;
+    text-decoration: none;
+
+    mat-icon {
+      width: 16px;
+      height: 16px;
+      font-size: 16px;
+    }
+  }
+}
