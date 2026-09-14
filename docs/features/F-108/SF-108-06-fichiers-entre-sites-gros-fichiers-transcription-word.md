@@ -20,7 +20,7 @@
 
 ## Statut
 
-`in-progress`
+`done` — PR #604
 
 ## Date de création
 
