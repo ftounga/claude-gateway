@@ -262,6 +262,15 @@ export const routes: Routes = [
           import('./settings/settings.component').then((m) => m.SettingsComponent),
       },
       {
+        // F-112 / SF-112-03 — l'écran « IA connectées » : jetons personnels MCP et journal.
+        // Un segment disjoint de toutes les routes existantes.
+        path: 'ia-connectees',
+        loadComponent: () =>
+          import('./mcp-connections/mcp-connections.component').then(
+            (m) => m.McpConnectionsComponent,
+          ),
+      },
+      {
         path: 'profile',
         loadComponent: () =>
           import('./auth/profile/profile.component').then((m) => m.ProfileComponent),

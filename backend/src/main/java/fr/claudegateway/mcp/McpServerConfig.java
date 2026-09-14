@@ -12,8 +12,12 @@ import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.McpServerFeatures.SyncToolSpecification;
 import io.modelcontextprotocol.server.McpSyncServer;
+import io.modelcontextprotocol.server.McpSyncServerExchange;
 import io.modelcontextprotocol.server.transport.WebMvcStreamableServerTransportProvider;
+import io.modelcontextprotocol.spec.McpSchema;
 import io.modelcontextprotocol.spec.McpSchema.ServerCapabilities;
+
+import fr.claudegateway.mcp.token.McpJournalService;
 
 /**
  * Configuration du serveur MCP (F-112 / SF-112-01).
@@ -67,9 +71,11 @@ public class McpServerConfig {
     @Bean
     public McpSyncServer mcpSyncServer(
             WebMvcStreamableServerTransportProvider transportProvider,
-            List<McpToolProvider> toolProviders) {
+            List<McpToolProvider> toolProviders,
+            McpJournalService journalService) {
         List<SyncToolSpecification> tools = toolProviders.stream()
                 .map(McpToolProvider::specification)
+                .map(spec -> journal(spec, journalService))
                 .toList();
 
         return McpServer.sync(transportProvider)
@@ -78,5 +84,57 @@ public class McpServerConfig {
                 .capabilities(ServerCapabilities.builder().tools(true).build())
                 .tools(tools)
                 .build();
+    }
+
+    /**
+     * Enveloppe un outil pour écrire au <b>journal MCP</b> (F-112 / SF-112-03) à chaque appel :
+     * client, jeton, outil, résultat, durée et <b>résumé des paramètres par leurs clés</b> — jamais
+     * leurs valeurs (cadrage §6.6). La journalisation est best-effort et ne modifie pas le résultat.
+     */
+    private SyncToolSpecification journal(SyncToolSpecification spec, McpJournalService journalService) {
+        var handler = spec.callHandler();
+        String toolName = spec.tool().name();
+        return SyncToolSpecification.builder()
+                .tool(spec.tool())
+                .callHandler((exchange, request) -> {
+                    long start = System.currentTimeMillis();
+                    String result = "OK";
+                    try {
+                        var callResult = handler.apply(exchange, request);
+                        if (Boolean.TRUE.equals(callResult.isError())) {
+                            result = "ERROR";
+                        }
+                        return callResult;
+                    } catch (RuntimeException ex) {
+                        result = "ERROR";
+                        throw ex;
+                    } finally {
+                        recordJournal(journalService, exchange, toolName, request, result,
+                                System.currentTimeMillis() - start);
+                    }
+                })
+                .build();
+    }
+
+    private void recordJournal(McpJournalService journalService, McpSyncServerExchange exchange,
+            String toolName, McpSchema.CallToolRequest request, String result, long durationMs) {
+        McpCallContext.from(exchange).ifPresent(ctx -> journalService.record(
+                ctx.user().id(),
+                ctx.clientLabel(),
+                ctx.tokenId(),
+                ctx.authKind().name(),
+                toolName,
+                null,
+                paramKeys(request),
+                result,
+                durationMs));
+    }
+
+    /** Résumé des paramètres par leurs clés seulement (jamais les valeurs). */
+    private static String paramKeys(McpSchema.CallToolRequest request) {
+        if (request == null || request.arguments() == null || request.arguments().isEmpty()) {
+            return "";
+        }
+        return String.join(",", request.arguments().keySet());
     }
 }

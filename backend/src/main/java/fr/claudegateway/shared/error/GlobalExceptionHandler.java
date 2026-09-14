@@ -20,6 +20,8 @@ import fr.claudegateway.access.AccessCodeInvalidException;
 import fr.claudegateway.access.AccessCodeNotForAccountException;
 import fr.claudegateway.admin.AdminForbiddenException;
 import fr.claudegateway.governance.GovernancePackageConflictException;
+import fr.claudegateway.mcp.token.McpTokenNotFoundException;
+import fr.claudegateway.mcp.token.McpTokenValidationException;
 import fr.claudegateway.governance.GovernancePackageNotFoundException;
 import fr.claudegateway.governance.InvalidGovernancePackageException;
 import fr.claudegateway.ai.AIProviderException;
@@ -111,6 +113,20 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleGovernancePackageNotFound(
             GovernancePackageNotFoundException ex) {
         log.debug("Paquet de gouvernance introuvable ou non publié");
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ErrorResponse("not_found", ex.getMessage()));
+    }
+
+    @ExceptionHandler(McpTokenValidationException.class)
+    public ResponseEntity<ErrorResponse> handleMcpTokenValidation(McpTokenValidationException ex) {
+        log.debug("Jeton personnel MCP refusé : {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("invalid_mcp_token_request", ex.getMessage()));
+    }
+
+    @ExceptionHandler(McpTokenNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleMcpTokenNotFound(McpTokenNotFoundException ex) {
+        log.debug("Jeton personnel MCP introuvable");
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(new ErrorResponse("not_found", ex.getMessage()));
     }
