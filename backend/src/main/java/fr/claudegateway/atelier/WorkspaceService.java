@@ -423,6 +423,17 @@ public class WorkspaceService {
         return new String(content, StandardCharsets.UTF_8);
     }
 
+    /**
+     * Octets bruts d'un fichier du workspace (F-109 / SF-109-06) : pour une pièce jointe binaire — une image
+     * d'une page publiée depuis un projet hébergé. Sous la même isolation {@code user_id} que {@link #readFile}.
+     */
+    public byte[] readFileBytes(UUID userId, UUID id, String path) {
+        requireOwned(userId, id);
+        String rel = normalizeRelPath(path);
+        return storage.getFile(prefixOf(userId, id) + rel)
+                .orElseThrow(() -> new WorkspaceNotFoundException("Fichier introuvable : " + rel));
+    }
+
     /** Écrit (ou remplace) le contenu texte d'un fichier du workspace. */
     @Transactional
     public void writeFile(UUID userId, UUID id, String path, String content) {

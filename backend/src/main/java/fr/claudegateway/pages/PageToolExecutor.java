@@ -1,7 +1,10 @@
 package fr.claudegateway.pages;
 
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -11,38 +14,62 @@ import org.springframework.stereotype.Component;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import fr.claudegateway.atelier.Workspace;
+import fr.claudegateway.atelier.WorkspaceService;
 import fr.claudegateway.runner.audit.RunnerAuditService;
 import fr.claudegateway.runner.channel.RunnerCallResult;
+import fr.claudegateway.runner.channel.RunnerErrorCodes;
 import fr.claudegateway.runner.channel.RunnerTarget;
 import fr.claudegateway.runner.exec.RunnerTargets;
 import fr.claudegateway.runner.exec.RunnerToolGateway;
 
 /**
- * <b>Exécute {@code page_publish}</b> (F-109 / SF-109-02) : lit ce qu'il faut sur le poste, range la page
- * au lieu du terminal, et rend à l'agent ce qui a été rangé.
+ * <b>Exécute {@code page_publish}</b> (F-109 / SF-109-02, étendu par SF-109-06) : lit ce qu'il faut
+ * <b>là où vit le projet</b>, range la page au lieu du terminal, et rend à l'agent ce qui a été rangé.
  *
  * <p>La garde et l'accord de l'utilisateur sont posés <b>avant</b>, par la boucle : cet exécuteur ne
  * décide de rien, il fait. Toute erreur est un <b>résultat d'outil en erreur</b> — le tour continue, et
  * l'agent reçoit une phrase qui dit quoi corriger.</p>
  *
- * <p>Les lectures du poste passent par le runner et sont <b>tracées</b> dans son journal : une page
- * publiée depuis un fichier de la machine est une lecture de la machine, et le journal doit la dire.</p>
+ * <h2>Deux sources, une seule décision : la cible du terminal (SF-109-06)</h2>
+ *
+ * <p>Un projet <b>sur un poste</b> (cible {@code RUNNER}) : les fichiers sont lus par le runner et
+ * <b>tracés</b> dans son journal — le texte par {@code read_file}, les images en binaire par
+ * {@code read_file_bytes} (par tranches). Un projet <b>hébergé</b> (cible {@code SANDBOX}, bac à sable
+ * Managed Agents) : les mêmes lectures passent par le <b>stockage objet</b> du projet
+ * ({@link WorkspaceService}), sous l'isolation {@code user_id}. L'agent ne donne qu'un {@code path} ;
+ * c'est la gateway qui sait où il vit.</p>
+ *
+ * <h2>Images de la machine (SF-109-06)</h2>
+ *
+ * <p>Une pièce jointe {@code png/jpg/jpeg/gif/webp} est lue <b>en binaire</b> et rangée telle quelle ;
+ * elle est servie avec la <b>même politique de sécurité</b> qu'une page (origine opaque, {@code nosniff},
+ * CSP {@code sandbox}) par les routes de lecture existantes. Le {@code svg} reste lu comme du texte (D1).</p>
  */
 @Component
 public class PageToolExecutor {
 
-    /** Ce que le runner sait relire sans le corrompre : du texte (D3). */
+    /** Ce que le runner sait relire comme du texte sans le corrompre (D3, SF-109-02). Le {@code svg} en est (D1). */
     private static final Set<String> TEXT_ATTACHMENTS = Set.of("css", "js", "mjs", "json", "svg", "csv", "txt", "md");
+
+    /** Les images de la machine, lues en binaire (SF-109-06). Le type servi est déduit de l'extension. */
+    private static final Set<String> IMAGE_ATTACHMENTS = Set.of("png", "jpg", "jpeg", "gif", "webp");
+
+    /** Tranche binaire lue par appel : ≈ 480 Kio une fois en Base64, sous la borne de 512 Kio du contrat. */
+    static final int CHUNK_BYTES = 360 * 1024;
 
     private final PageService pageService;
     private final RunnerToolGateway runnerToolGateway;
     private final RunnerAuditService runnerAuditService;
+    private final WorkspaceService workspaceService;
+    private final PageLimits pageLimits;
 
     public PageToolExecutor(PageService pageService, RunnerToolGateway runnerToolGateway,
-            RunnerAuditService runnerAuditService) {
+            RunnerAuditService runnerAuditService, WorkspaceService workspaceService, PageLimits pageLimits) {
         this.pageService = pageService;
         this.runnerToolGateway = runnerToolGateway;
         this.runnerAuditService = runnerAuditService;
+        this.workspaceService = workspaceService;
+        this.pageLimits = pageLimits;
     }
 
     /**
@@ -74,13 +101,13 @@ public class PageToolExecutor {
             }
         }
 
-        RunnerTarget target = RunnerTargets.of(workspace);
+        long cap = pageLimits.maxPageBytes();
         if (hasPath) {
-            Read read = readFromMachine(userId, target, callId, path);
+            Read read = readText(userId, workspace, callId, path);
             if (read.error() != null) {
                 return Outcome.error(read.error());
             }
-            html = read.content();
+            html = new String(read.content(), StandardCharsets.UTF_8);
         }
 
         Map<String, byte[]> attachments = new LinkedHashMap<>();
@@ -91,10 +118,13 @@ public class PageToolExecutor {
                 index++;
                 String name = text(attachment, "name");
                 String attachmentPath = text(attachment, "path");
-                if (!PageAttachments.isValidName(name) || !TEXT_ATTACHMENTS.contains(extension(name))) {
-                    return Outcome.error("Pièce jointe refusée : « " + name + " ». Depuis la machine, seuls des "
-                            + "fichiers texte au nom plat (css, js, mjs, json, svg, csv, txt, md) ; les images vont "
-                            + "en data: dans la page.");
+                String ext = extension(name);
+                boolean isText = TEXT_ATTACHMENTS.contains(ext);
+                boolean isImage = IMAGE_ATTACHMENTS.contains(ext);
+                if (!PageAttachments.isValidName(name) || (!isText && !isImage)) {
+                    return Outcome.error("Pièce jointe refusée : « " + name + " ». Depuis la machine, un nom plat "
+                            + "et une extension parmi les fichiers texte (css, js, mjs, json, svg, csv, txt, md) ou "
+                            + "les images (png, jpg, jpeg, gif, webp).");
                 }
                 if (attachments.containsKey(name)) {
                     return Outcome.error("Deux pièces jointes portent le nom « " + name + " ».");
@@ -102,11 +132,14 @@ public class PageToolExecutor {
                 if (attachmentPath.isEmpty()) {
                     return Outcome.error("La pièce jointe « " + name + " » n'a pas de path.");
                 }
-                Read read = readFromMachine(userId, target, callId + "#" + index, attachmentPath);
+                String readId = callId + "#" + index;
+                Read read = isImage
+                        ? readBytes(userId, workspace, readId, name, attachmentPath, cap)
+                        : readText(userId, workspace, readId, attachmentPath);
                 if (read.error() != null) {
                     return Outcome.error(read.error());
                 }
-                attachments.put(name, read.content().getBytes(StandardCharsets.UTF_8));
+                attachments.put(name, read.content());
             }
         }
 
@@ -132,19 +165,128 @@ public class PageToolExecutor {
         return title.isEmpty() ? null : title;
     }
 
-    private Read readFromMachine(UUID userId, RunnerTarget target, String callId, String path) {
-        RunnerCallResult result = runnerToolGateway.readFile(target, callId, path);
-        runnerAuditService.recordCall(userId, target, callId, PageToolCatalog.PUBLISH, path, result);
-        if (!result.ok()) {
-            String reason = result.errorMessage() == null || result.errorMessage().isBlank()
-                    ? "lecture impossible" : result.errorMessage();
-            return new Read(null, "Fichier illisible sur la machine (" + path + ") : " + reason);
+    // ------------------------------------------------------------------ lecture texte (html + pièces texte)
+
+    /** Le contenu texte d'un fichier, lu sur le poste (RUNNER) ou dans le stockage (SANDBOX). */
+    private Read readText(UUID userId, Workspace workspace, String callId, String path) {
+        if (workspace.isRunnerTarget()) {
+            RunnerTarget target = RunnerTargets.of(workspace);
+            RunnerCallResult result = runnerToolGateway.readFile(target, callId, path);
+            runnerAuditService.recordCall(userId, target, callId, PageToolCatalog.PUBLISH, path, result);
+            if (!result.ok()) {
+                return Read.error(unreadable(path, result));
+            }
+            if (result.truncated()) {
+                return Read.error("Fichier trop volumineux pour être lu depuis la machine (" + path
+                        + ", 512 Kio au plus) : passe le document en html, allège-le, ou joins-le en data:.");
+            }
+            return Read.ok((result.content() == null ? "" : result.content()).getBytes(StandardCharsets.UTF_8));
         }
-        if (result.truncated()) {
-            return new Read(null, "Fichier trop volumineux pour être lu depuis la machine (" + path
-                    + ", 512 Kio au plus) : passe le document en html, ou allège-le.");
+        try {
+            String content = workspaceService.readFile(userId, workspace.getId(), path);
+            return Read.ok((content == null ? "" : content).getBytes(StandardCharsets.UTF_8));
+        } catch (RuntimeException e) {
+            return Read.error("Fichier illisible dans le projet hébergé (" + path + ") : " + reason(e));
         }
-        return new Read(result.content() == null ? "" : result.content(), null);
+    }
+
+    // ------------------------------------------------------------------ lecture binaire (images)
+
+    /** Les octets d'une image, lus sur le poste (RUNNER, par tranches) ou dans le stockage (SANDBOX). */
+    private Read readBytes(UUID userId, Workspace workspace, String callId, String name, String path, long cap) {
+        if (workspace.isRunnerTarget()) {
+            return readBytesFromRunner(userId, RunnerTargets.of(workspace), callId, name, path, cap);
+        }
+        try {
+            byte[] content = workspaceService.readFileBytes(userId, workspace.getId(), path);
+            if (content.length > cap) {
+                return Read.error(tooLargeImage(name, cap));
+            }
+            return Read.ok(content);
+        } catch (RuntimeException e) {
+            return Read.error("Image illisible dans le projet hébergé (" + path + ") : " + reason(e));
+        }
+    }
+
+    /**
+     * Lit une image du poste par tranches ({@code read_file_bytes}) : {@code content} porte les octets en
+     * Base64, {@code bytes} la taille totale, {@code truncated} vaut vrai s'il en reste. Même patron que
+     * F-110 / SF-110-03. La lecture est tracée une fois, sur le {@code callId} de la pièce.
+     */
+    private Read readBytesFromRunner(UUID userId, RunnerTarget target, String callId, String name, String path,
+            long cap) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        Long size = null;
+        RunnerCallResult last = null;
+        int chunk = 0;
+        while (true) {
+            RunnerCallResult result = runnerToolGateway.readFileBytes(target, callId + "." + chunk, path,
+                    out.size(), CHUNK_BYTES);
+            last = result;
+            if (!result.ok()) {
+                runnerAuditService.recordCall(userId, target, callId, PageToolCatalog.PUBLISH, path, result);
+                if (chunk == 0 && RunnerErrorCodes.UNSUPPORTED_TOOL.equals(result.errorCode())) {
+                    return Read.error("Le runner de ce poste est trop ancien pour joindre l'image « " + name
+                            + " » : mets-le à jour depuis la Forge, ou embarque l'image en data: dans la page.");
+                }
+                return Read.error(unreadable(path, result));
+            }
+            byte[] part;
+            try {
+                part = Base64.getDecoder().decode(result.content() == null ? "" : result.content());
+            } catch (IllegalArgumentException e) {
+                runnerAuditService.recordCall(userId, target, callId, PageToolCatalog.PUBLISH, path, result);
+                return Read.error("Image illisible sur la machine (" + path + ") : réponse du runner invalide.");
+            }
+            if (result.bytes() == null || result.bytes() < 0) {
+                runnerAuditService.recordCall(userId, target, callId, PageToolCatalog.PUBLISH, path, result);
+                return Read.error("Image illisible sur la machine (" + path + ") : réponse du runner invalide.");
+            }
+            long announced = result.bytes();
+            if (size == null) {
+                size = announced;
+                if (size > cap) {
+                    runnerAuditService.recordCall(userId, target, callId, PageToolCatalog.PUBLISH, path, result);
+                    return Read.error(tooLargeImage(name, cap));
+                }
+            } else if (announced != size) {
+                runnerAuditService.recordCall(userId, target, callId, PageToolCatalog.PUBLISH, path, result);
+                return Read.error("L'image « " + name + " » a changé pendant la lecture : réessaie quand elle ne "
+                        + "bouge plus.");
+            }
+            out.write(part, 0, part.length);
+            if (out.size() > cap) {
+                runnerAuditService.recordCall(userId, target, callId, PageToolCatalog.PUBLISH, path, result);
+                return Read.error(tooLargeImage(name, cap));
+            }
+            if (!result.truncated() || part.length == 0 || out.size() >= size) {
+                break;
+            }
+            chunk++;
+        }
+        runnerAuditService.recordCall(userId, target, callId, PageToolCatalog.PUBLISH, path, last);
+        if (size != null && out.size() != size) {
+            return Read.error("L'image « " + name + " » a changé pendant la lecture : réessaie quand elle ne "
+                    + "bouge plus.");
+        }
+        return Read.ok(out.toByteArray());
+    }
+
+    // ------------------------------------------------------------------ messages
+
+    private String tooLargeImage(String name, long cap) {
+        return "Image trop volumineuse : « " + name + " » dépasse " + (cap / (1024 * 1024)) + " Mo. Allège-la, ou "
+                + "retire-la.";
+    }
+
+    private static String unreadable(String path, RunnerCallResult result) {
+        String reason = result.errorMessage() == null || result.errorMessage().isBlank()
+                ? "lecture impossible" : result.errorMessage();
+        return "Fichier illisible sur la machine (" + path + ") : " + reason;
+    }
+
+    private static String reason(RuntimeException e) {
+        return e.getMessage() == null || e.getMessage().isBlank() ? "lecture impossible" : e.getMessage();
     }
 
     private static String unknownPage() {
@@ -154,7 +296,7 @@ public class PageToolExecutor {
 
     private static String extension(String name) {
         int dot = name.lastIndexOf('.');
-        return dot < 0 ? "" : name.substring(dot + 1).toLowerCase(java.util.Locale.ROOT);
+        return dot < 0 ? "" : name.substring(dot + 1).toLowerCase(Locale.ROOT);
     }
 
     private static String text(JsonNode input, String field) {
@@ -164,7 +306,16 @@ public class PageToolExecutor {
         return input.get(field).asText("").strip();
     }
 
-    private record Read(String content, String error) {
+    /** Le résultat d'une lecture : des octets, ou un motif d'erreur. */
+    private record Read(byte[] content, String error) {
+
+        static Read ok(byte[] content) {
+            return new Read(content, null);
+        }
+
+        static Read error(String message) {
+            return new Read(null, message);
+        }
     }
 
     /**

@@ -123,23 +123,24 @@ class AtelierChatServicePageToolTest {
     }
 
     @Test
-    @DisplayName("CA1 — terminal sur poste + droit de l'espace : page_publish est donné (projet et Teams)")
-    void givenOnAMachineWithTheRight() {
+    @DisplayName("CA1 — droit de l'espace : page_publish est donné sur un poste comme sur un projet hébergé")
+    void givenWithTheRight() {
         assertThat(toolNames(terminal(WorkspaceExecutionTarget.RUNNER, false))).contains(PageToolCatalog.PUBLISH);
         assertThat(toolNames(terminal(WorkspaceExecutionTarget.RUNNER, true))).contains(PageToolCatalog.PUBLISH);
+        // SF-109-06 : le projet hébergé (SANDBOX) est désormais ouvert lui aussi, avec le guide dans la consigne.
+        assertThat(toolNames(terminal(WorkspaceExecutionTarget.SANDBOX, false))).contains(PageToolCatalog.PUBLISH);
+        assertThat(service.buildSystemPrompt(userId, terminal(WorkspaceExecutionTarget.SANDBOX, false)))
+                .contains("--- Pages");
     }
 
     @Test
-    @DisplayName("CA2 — sans le droit de l'espace, ou projet hébergé : ni outil, ni guide")
-    void closedWithoutRightOrOnSandbox() {
-        assertThat(toolNames(terminal(WorkspaceExecutionTarget.SANDBOX, false))).doesNotContain(PageToolCatalog.PUBLISH);
-        assertThat(service.buildSystemPrompt(userId, terminal(WorkspaceExecutionTarget.SANDBOX, false)))
-                .doesNotContain("--- Pages");
-
+    @DisplayName("CA2 — sans le droit de l'espace : ni outil, ni guide, quelle que soit la cible")
+    void closedWithoutRight() {
         when(entitlements.isEntitled(userId, EntitlementSpace.FORGE)).thenReturn(false);
         assertThat(toolNames(terminal(WorkspaceExecutionTarget.RUNNER, false))).doesNotContain(PageToolCatalog.PUBLISH);
         assertThat(service.buildSystemPrompt(userId, terminal(WorkspaceExecutionTarget.RUNNER, false)))
                 .doesNotContain("--- Pages");
+        assertThat(toolNames(terminal(WorkspaceExecutionTarget.SANDBOX, false))).doesNotContain(PageToolCatalog.PUBLISH);
         // Le terminal Teams lit le droit Vigie, pas Forge.
         assertThat(toolNames(terminal(WorkspaceExecutionTarget.RUNNER, true))).contains(PageToolCatalog.PUBLISH);
         when(entitlements.isEntitled(userId, EntitlementSpace.VIGIE)).thenReturn(false);
