@@ -18,6 +18,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import fr.claudegateway.radar.RadarScope;
 import fr.claudegateway.radar.RadarSyncRepository;
+import fr.claudegateway.radar.RadarSyncStatus;
 
 /**
  * <b>La file d'analyse</b> du Radar (F-101 / SF-101-01).
@@ -147,6 +148,18 @@ public class RadarAnalysisQueue {
         if (loaded == null) {
             return;
         }
+        // SF-100-08 : filet pour la course « un lot déposé juste après l'annulation ». Une synchro annulée ne
+        // voit aucun de ses lots analysé : le lot est écarté, sans appel au modèle, sans réserve ni jeton.
+        if (cancelled(scope, loaded.getSyncId())) {
+            transactions.executeWithoutResult(status -> update(scope, batchId, b -> {
+                b.setStatus(RadarAnalysisBatchStatus.DISCARDED);
+                b.setFailureCode(null);
+                b.setNextAttemptAt(null);
+                b.deleteRaw(OffsetDateTime.now(clock));
+            }, RadarAnalysisTokens.NONE));
+            log.debug("Radar : lot {} écarté, sa synchro a été annulée", batchId);
+            return;
+        }
         RadarExchangeBatch batch = read(loaded.getPayload());
         if (batch == null) {
             transactions.executeWithoutResult(status -> update(scope, batchId, b -> {
@@ -242,6 +255,17 @@ public class RadarAnalysisQueue {
         if (tokens != null && tokens.total() > 0) {
             syncs.addConsumedTokens(batch.getSyncId(), scope.userId(), scope.hostId(), tokens.total());
         }
+    }
+
+    /** Vrai si la synchro du lot a été annulée (SF-100-08). */
+    private boolean cancelled(RadarScope scope, UUID syncId) {
+        if (syncId == null) {
+            return false;
+        }
+        return Boolean.TRUE.equals(transactions.execute(status ->
+                syncs.findByIdAndUserIdAndHostId(syncId, scope.userId(), scope.hostId())
+                        .map(sync -> sync.getStatus() == RadarSyncStatus.CANCELLED)
+                        .orElse(false)));
     }
 
     private RadarExchangeBatch read(String payload) {

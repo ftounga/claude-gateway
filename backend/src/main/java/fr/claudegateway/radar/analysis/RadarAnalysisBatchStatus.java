@@ -19,5 +19,12 @@ public enum RadarAnalysisBatchStatus {
     FAILED,
 
     /** Jamais analysé, et son texte a été effacé au terme de la rétention. */
-    EXPIRED
+    EXPIRED,
+
+    /**
+     * <b>Écarté</b> (F-100 / SF-100-08) : sa synchro a été annulée avant que son analyse soit complète. Terminal,
+     * jamais repris, son texte brut est effacé — aucune réserve ni aucun jeton n'est dépensé pour une synchro
+     * que l'utilisateur a abandonnée. Un lot déjà {@code DONE} au moment de l'annulation est conservé, lui.
+     */
+    DISCARDED
 }

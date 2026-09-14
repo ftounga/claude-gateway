@@ -293,6 +293,36 @@ class RadarAnalysisQueueIntegrationTest extends RadarIntegrationTestBase {
     }
 
     @Test
+    @DisplayName("SF-100-08 : un lot d'une synchro annulée est écarté par le worker — jamais analysé, sans jeton ; "
+            + "un lot déjà DONE est conservé")
+    void cancelledSyncBatchesAreDiscardedByWorker() {
+        RadarSync sync = registry.startSync(aliceA);
+        UUID pending = intake.submit(aliceA, sync.getId(), batch("lot-1", "Je m'en charge.")).batchId();
+        UUID alreadyDone = intake.submit(aliceA, sync.getId(), batch("lot-2", "Autre.")).batchId();
+        RadarAnalysisBatch done = reload(alreadyDone);
+        done.setStatus(RadarAnalysisBatchStatus.DONE);
+        done.deleteRaw(OffsetDateTime.now());
+        analysisBatches.save(done);
+        // La synchro est annulée (registry seul : on éprouve le filet du worker, pas le balayage de cancel()).
+        registry.finishSync(aliceA, sync.getId(), RadarSyncStatus.CANCELLED, null, 0);
+
+        AtomicInteger calls = new AtomicInteger();
+        queue((scope, syncId, batchId, b) -> {
+            calls.incrementAndGet();
+            return RadarAnalysisOutcome.done(new RadarAnalysisTokens(1, 1, 1, 1, 1, 1), 1, 0, 1, null);
+        }).runOnce();
+
+        assertThat(calls.get()).isZero(); // l'analyseur n'est jamais appelé pour une synchro annulée
+        RadarAnalysisBatch discarded = reload(pending);
+        assertThat(discarded.getStatus()).isEqualTo(RadarAnalysisBatchStatus.DISCARDED);
+        assertThat(discarded.getPayload()).isNull();
+        assertThat(discarded.getRawDeletedAt()).isNotNull();
+        assertThat(discarded.tokens().total()).isZero();
+        assertThat(reload(alreadyDone).getStatus()).isEqualTo(RadarAnalysisBatchStatus.DONE); // conservé
+        assertThat(syncRepository.findById(sync.getId()).orElseThrow().getConsumedTokens()).isZero();
+    }
+
+    @Test
     @DisplayName("Isolation : la purge d'un poste n'efface que ses lots ; GET /syncs ne compte que les siens")
     void isolation() throws Exception {
         RadarSync syncA = registry.startSync(aliceA);
