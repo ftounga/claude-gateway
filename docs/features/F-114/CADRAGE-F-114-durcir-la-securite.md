@@ -4,6 +4,10 @@
 > **Réduit au volet B, sur décision du PO du 2026-09-14** : le durcissement applicatif (ancien volet A)
 > et la fiche DSI enrichie (ancienne SF-114-09) sont retirés. Reste : **supprimer les faux positifs des
 > outils de sécurité du client — par la reconnaissance, pas par la dissimulation.**
+>
+> **Priorité — décision du PO du 2026-09-14 : reportée.** Le PO essaie d'abord **sans** signature ni
+> réputation, et verra à l'usage si un poste client bloque réellement avant d'acheter un certificat.
+> À ne lancer que sur go explicite ; aucune vague ne la prend d'office.
 
 ## 0. La ligne que ce cadrage ne franchit pas
 
