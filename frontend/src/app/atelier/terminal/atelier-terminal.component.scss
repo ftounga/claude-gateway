@@ -11,6 +11,50 @@
   background: var(--cg-primary);
 }
 
+/* ------------------------------------------------------------------ F-30 / SF-30-15
+   LES BOUTONS DES TERMINAUX SONT LISIBLES. Sur le fond sombre d'un terminal (projet `--cg-primary`,
+   tuile de mosaïque en lecture seule `--cg-navy-2`), les composants Angular Material sans encre
+   propre héritent des inks des ÉCRANS CLAIRS : le libellé d'un bouton texte prend la couleur
+   primaire du thème (~2,6:1 sur le navy), le sélecteur `mat-button-toggle` l'encre foncée (~1,0:1),
+   les boutons cerclés et les boutons-icônes de même. SF-89-07 ne l'avait corrigé que sous la peau
+   Teams (constat D5) ; on le corrige ICI pour tout terminal NON-Teams, avec les jetons de la charte
+   DÉJÀ DÉFINIS (§2) — aucune couleur nouvelle.
+
+   BORNÉ par `:not(.terminal-view--teams)` : la peau Teams (SF-89-07, refaite par SF-89-09) garde ses
+   jetons `--cg-terminal-teams-*` sans chevauchement. Les mêmes jetons Material que sous Teams, mais
+   pointés sur l'encre claire de la charte. */
+.terminal-view:not(.terminal-view--teams) {
+  /* Boutons texte : encre claire lisible ; les gestes orange la reprennent plus bas. */
+  --mdc-text-button-label-text-color: var(--cg-divider);
+  /* Boutons cerclés : libellé blanc, filet clair de la charte. */
+  --mdc-outlined-button-label-text-color: var(--cg-surface);
+  --mdc-outlined-button-outline-color: var(--cg-divider);
+  /* Boutons-icônes (actualiser / journal runner, copier la commande). */
+  --mdc-icon-button-icon-color: var(--cg-divider);
+  /* Sélecteur « Où s'exécutent les outils » : le défaut tombait à ~1,0:1. */
+  --mat-standard-button-toggle-text-color: var(--cg-divider);
+  --mat-standard-button-toggle-selected-state-text-color: var(--cg-surface);
+  --mat-standard-button-toggle-selected-state-background-color: var(--cg-navy-2);
+  --mat-standard-button-toggle-divider-color: var(--cg-divider);
+
+  /* LES BOUTONS « GESTES » gardent l'accent orange de la charte (§2) — enfin visible : le jeton
+     Material écrasait le `color:` de classe. Interrompre, Afficher tout, Racheter des tokens,
+     Préciser / Envoyer. */
+  .terminal-interrupt,
+  .terminal-toggle,
+  .terminal-budget-action,
+  .terminal-input button {
+    --mdc-text-button-label-text-color: var(--cg-orange-2);
+  }
+
+  /* Le coupe-circuit runner est un geste d'ARRÊT : le rouge de `color="warn"` tombe à ~2,3:1 sur le
+     navy et la charte n'a pas de rouge clair (on s'interdit d'en créer) ; il prend l'orange que le
+     terminal emploie déjà pour l'autre geste d'arrêt, « Interrompre ». */
+  .terminal-runner-kill {
+    --mdc-icon-button-icon-color: var(--cg-orange-2);
+  }
+}
+
 .terminal-bar {
   display: flex;
   align-items: center;

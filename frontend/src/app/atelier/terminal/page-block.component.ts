@@ -63,6 +63,13 @@ import { pageHeadline, pageViewerPath } from './page-block';
       background: var(--cg-surface);
       color: var(--cg-text-primary);
       font-family: var(--cg-font-body);
+      /* ÎLOT BLANC dans un terminal sombre : le terminal redéfinit les inks Material sur une encre
+         claire (F-30 / SF-30-15), qui se propage ici par héritage de variables CSS et rendrait
+         « Plein écran » blanc-sur-blanc. On rétablit l'encre foncée sur notre propre surface. */
+      --mdc-outlined-button-label-text-color: var(--cg-primary);
+      --mdc-outlined-button-outline-color: var(--cg-divider);
+      --mdc-text-button-label-text-color: var(--cg-primary);
+      --mdc-icon-button-icon-color: var(--cg-text-secondary);
     }
 
     .page-block__thumb {
