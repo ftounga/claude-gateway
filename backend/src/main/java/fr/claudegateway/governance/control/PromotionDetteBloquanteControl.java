@@ -116,7 +116,8 @@ public class PromotionDetteBloquanteControl implements GovernanceControl {
             }
             List<String> elements = new java.util.ArrayList<>(marker.promotions());
             unplaced.forEach(promotion -> elements.add(promotion.element()));
-            reportees.reporter(context.userId(), context.workspaceId(), elements, marker.dette());
+            reportees.reporter(context.userId(), context.hostId(), context.workspaceId(), elements,
+                    marker.dette());
             return AtelierCheckpointVerdict.deferred(PromotionReportee.NOTICE);
         }
 

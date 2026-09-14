@@ -102,8 +102,8 @@ public class JugeFinDeTourControl implements GovernanceControl {
         if (!parsed.nothingToPromote() && context.machineOffline()) {
             // F-93 / SF-93-04 : la carte vit sur la machine, et la machine ne répond pas. Réclamer
             // une écriture impossible ferait tourner le modèle jusqu'à la borne de F-50 : on reporte.
-            reportees.reporter(context.userId(), context.workspaceId(), parsed.promotions(),
-                    parsed.dette());
+            reportees.reporter(context.userId(), context.hostId(), context.workspaceId(),
+                    parsed.promotions(), parsed.dette());
             return AtelierCheckpointVerdict.deferred(PromotionReportee.NOTICE);
         }
         if (!parsed.nothingToPromote()) {
@@ -128,10 +128,10 @@ public class JugeFinDeTourControl implements GovernanceControl {
     static AtelierCheckpointVerdict claimIfDue(AtelierCheckpointContext context,
             GovernanceMapDestinations destinations, PromotionReportee reportees) {
         if (context == null || context.machine() != fr.claudegateway.atelier.checkpoint.AtelierMachineReach.REACHED
-                || !reportees.estDue(context.userId(), context.workspaceId())) {
+                || !reportees.estDue(context.userId(), context.hostId(), context.workspaceId())) {
             return null;
         }
-        return reportees.reclamer(context.userId(), context.workspaceId())
+        return reportees.reclamer(context.userId(), context.hostId(), context.workspaceId())
                 .map(report -> AtelierCheckpointVerdict.block(PromotionReportee.reclamation(report,
                         GovernanceMapDestinations.cite(
                                 destinations.pathsForProject(context.userId(), context.workspaceId())))))

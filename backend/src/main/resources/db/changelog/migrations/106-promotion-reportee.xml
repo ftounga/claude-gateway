@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-93 / SF-93-05 — Le report de promotion survit à un redémarrage.
+
+      SF-93-04 gardait en MÉMOIRE du processus la dette de promotion reportée quand le poste était hors
+      ligne ; un redémarrage ou un autre pod l'oubliait. Cette table la persiste : une ligne par triple
+      (user_id, host_id, workspace_id), réclamée UNE fois au premier tour où le runner répond, quel que
+      soit le pod.
+
+      `user_id` est TOUJOURS le propriétaire du projet (isolation) ; la clé unique porte les trois
+      composants. La ligne disparaît avec le projet (cascade sur workspaces).
+
+      La colonne `elements` (les éléments non rangés, à plat) est un texte long. Comme `rules` (065),
+      `content` (037) ou `tool_trace` (050) : PostgreSQL prend `text`, H2 `varchar(1000000)` — sinon la
+      validation de schéma Hibernate rejette le CLOB que H2 crée pour `text` face au `columnDefinition`
+      attendu. D'où deux changeSets, un par SGBD.
+    -->
+    <changeSet id="106-promotion-reportee-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="promotion_reportee">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="host_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="workspace_id" type="uuid">
+                <constraints nullable="false"
+                             foreignKeyName="fk_promotion_reportee_workspace"
+                             references="workspaces(id)"
+                             deleteCascade="true"/>
+            </column>
+            <column name="elements" type="text"/>
+            <column name="dette" type="int" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="reported_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addUniqueConstraint tableName="promotion_reportee"
+                             columnNames="user_id, host_id, workspace_id"
+                             constraintName="uq_promotion_reportee_triple"/>
+        <createIndex tableName="promotion_reportee" indexName="idx_promotion_reportee_reported_at">
+            <column name="reported_at"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="promotion_reportee"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="106-promotion-reportee-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="promotion_reportee">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="host_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="workspace_id" type="uuid">
+                <constraints nullable="false"
+                             foreignKeyName="fk_promotion_reportee_workspace"
+                             references="workspaces(id)"
+                             deleteCascade="true"/>
+            </column>
+            <column name="elements" type="varchar(1000000)"/>
+            <column name="dette" type="int" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="reported_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addUniqueConstraint tableName="promotion_reportee"
+                             columnNames="user_id, host_id, workspace_id"
+                             constraintName="uq_promotion_reportee_triple"/>
+        <createIndex tableName="promotion_reportee" indexName="idx_promotion_reportee_reported_at">
+            <column name="reported_at"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="promotion_reportee"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
