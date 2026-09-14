@@ -1,17 +1,27 @@
-/* ------------------------------------------------------------------ F-89 / SF-89-03, SF-89-07
+/* ------------------------------------------------------------------ F-89 / SF-89-03, SF-89-07, SF-89-09
    LA PEAU DU TERMINAL TEAMS, ET LE COMPTE RENDU DANS LE FIL (charte §15).
 
-   LE BASCULEMENT EST CHROMATIQUE ET TYPOGRAPHIQUE (SF-89-07, amende SF-89-03). Le PO avait demandé
-   « un vrai basculement visuel » ; réduit à une police, le terminal Teams se confondait avec le
-   terminal de poste. Il porte donc SA SURFACE, « Prune », sous les jetons `--cg-terminal-teams-*`
-   (`styles.scss`) : fond #231A36, barre #1B1429, cartes #2E2345, filets #43335F, texte #D9CFEA,
-   titres #FFFFFF. Sombre, pour qu'on reconnaisse encore un terminal (§13) ; franchement distinct
-   du bleu marine, pour qu'on sache au premier regard qu'on parle à Teams.
+   LE BASCULEMENT EST CHROMATIQUE (SF-89-09 remplace SF-89-07). Le PO avait demandé « un vrai
+   basculement visuel » et deux terminaux « vraiment opposés » ; « Prune », un violet sombre, restait
+   un terminal sombre confondu de loin avec la Forge. Le terminal Teams porte donc SA SURFACE claire,
+   « Papier », sous les jetons `--cg-terminal-teams-*` (`styles.scss`) : fond #FAF8F3, bandeau
+   lavande #EFEAF9, cartes #FFFFFF, filets #E6E0D2, texte #2A2F3A, titres #1F2430. CLAIR contre le
+   navy SOMBRE de la Forge : opposés par la SEULE couleur, on sait au premier regard qu'on parle à Teams.
+
+   POLICE, TAILLE, DISPOSITION INCHANGÉES (correction du PO, 2026-09-14 : « seule la couleur change »).
+   Le terminal Teams a les MÊMES font-family, font-size et line-height que la Forge — vérifié par test.
 
    CE N'EST PAS UN CINQUIÈME REGISTRE. Les quatre registres (identité §9, mission §10, vie §11,
    décision attendue §12) et la liaison (§14) gardent leurs palettes ; ce qui change est la SURFACE
    sur laquelle ils se posent. Tout texte posé sur elle tient l'AA (≥ 4,5:1), et c'est un test qui
    le vérifie par les couleurs calculées : `terminal-teams-peau.spec.ts`.
+
+   LES ACCENTS ET LES ÉTATS DE LA FORGE, REPENSÉS POUR LE FOND CLAIR. Sur la Forge, l'or et l'orange
+   de charte signent la demande, les gestes, la structure des diffs ; illisibles sur fond clair, ils
+   sont repris par les deux accents « Papier » — CHAUD `--cg-terminal-teams-message` (#9A4A12, la
+   demande et les gestes attendus) et FROID `--cg-terminal-teams-step` (#4B3F8F, commandes, étapes,
+   liens, diffs). Le rouge d'échec et le vert d'ajout sont les couleurs d'état de la charte
+   approfondies pour tenir l'AA sur le clair (`--cg-terminal-teams-error`, `--cg-terminal-teams-add`).
 
    BORNÉ : tout ce qui suit est sous `.terminal-view--teams` (ou dans la carte, qui n'existe que là).
    Aucun autre terminal ne change.
@@ -31,13 +41,14 @@
 
   .terminal-bar {
     background: var(--cg-terminal-teams-bar);
-    border-bottom-color: var(--cg-terminal-teams-rule);
-    color: var(--cg-terminal-teams-title);
+    border-bottom-color: var(--cg-terminal-teams-bar-rule);
+    color: var(--cg-terminal-teams-bar-ink);
   }
 
   .terminal-crumbs {
-    --forge-crumb-color: var(--cg-terminal-teams-text);
-    --forge-crumb-current-color: var(--cg-terminal-teams-title);
+    --forge-crumb-color: var(--cg-terminal-teams-bar-ink);
+    --forge-crumb-current-color: var(--cg-terminal-teams-bar-ink);
+    --forge-crumb-hover-color: var(--cg-terminal-teams-step);
   }
 
   .terminal-bar-actions button,
@@ -67,12 +78,30 @@
     }
   }
 
-  .terminal-prompt-line,
-  .terminal-command,
+  /* Titres et blocs à lire (carte, invite d'autorisation) : l'encre de titre. */
   .terminal-diff-head,
   .terminal-ask,
   .terminal-ask-scope {
     color: var(--cg-terminal-teams-title);
+  }
+
+  /* LA DEMANDE DE L'UTILISATEUR — l'accent CHAUD « Papier » (maquette `.you`), à l'opposé de l'or de
+     la Forge. Le chevron `>` la reprend. */
+  .terminal-prompt-line {
+    color: var(--cg-terminal-teams-message);
+  }
+
+  .terminal-caret {
+    color: var(--cg-terminal-teams-message);
+  }
+
+  /* LA COMMANDE ET SES ÉTAPES — l'accent FROID « Papier » (maquette `.cmd`). Le `$` le reprend. */
+  .terminal-command {
+    color: var(--cg-terminal-teams-step);
+  }
+
+  .terminal-dollar {
+    color: var(--cg-terminal-teams-step);
   }
 
   .terminal-agent,
@@ -83,7 +112,8 @@
     color: var(--cg-terminal-teams-text);
   }
 
-  /* LE TEXTE SECONDAIRE. `--cg-text-secondary` tombe à 3,8:1 sur la surface : il ne tient pas l'AA. */
+  /* LE TEXTE SECONDAIRE. `--cg-text-secondary` tombe à ~3,8:1 sur la surface claire : il ne tient pas
+     l'AA. Le jeton secondaire « Papier » (#5E6472) tient ≥ 5:1 sur le fond, le bandeau et la carte. */
   .terminal-hint,
   .terminal-live,
   .terminal-budget-hint,
@@ -95,10 +125,68 @@
     color: var(--cg-terminal-teams-muted);
   }
 
-  /* L'échec reste rouge, éclairci pour la surface sombre (`--cg-error` y tombe à 3,3:1). */
+  /* LES GESTES ATTENDUS — l'accent CHAUD (chrono, interruption, plafond de dépense, garde, invite,
+     compte à rebours, signe de vie animé). Sur la Forge ils portent l'orange de charte, illisible
+     sur fond clair (~2,2:1) ; ils reprennent l'accent message « Papier » (≥ 5:1). */
+  .terminal-elapsed,
+  .terminal-interrupt,
+  .terminal-interrupted,
+  .terminal-toggle,
+  .terminal-guard.active,
+  .terminal-budget-line,
+  .terminal-budget-action,
+  .terminal-ask-title,
+  .terminal-ask-countdown,
+  .terminal-live-spinner,
+  .terminal-live-elapsed {
+    color: var(--cg-terminal-teams-message);
+  }
+
+  .terminal-budget {
+    border-left-color: var(--cg-terminal-teams-message);
+  }
+
+  .terminal-ask {
+    background: var(--cg-terminal-teams-bar);
+    border-color: var(--cg-terminal-teams-message);
+  }
+
+  /* LA STRUCTURE DES MODIFICATIONS — l'accent FROID (titre, chevron, badge « nouveau », en-tête de
+     hunk). Orange de charte sur la Forge, illisible sur fond clair : reprend l'accent étapes/liens. */
+  .terminal-diffs-title,
+  .terminal-diffs-icon,
+  .terminal-diff-chevron,
+  .terminal-diff-new,
+  .terminal-diff-line.is-hunk {
+    color: var(--cg-terminal-teams-step);
+  }
+
+  /* ÉCHEC ET AJOUT — les couleurs d'état de la charte approfondies pour le fond clair (--cg-error
+     tombe à 4,2:1 sur le bandeau, --cg-success à ~2,9:1 sur le fond). */
   .terminal-diff-line.is-remove,
   .terminal-push.failed {
     color: var(--cg-terminal-teams-error);
+  }
+
+  .terminal-diff-line.is-add {
+    color: var(--cg-terminal-teams-add);
+  }
+
+  /* LES BANDEAUX D'ACCENT DE LA FORGE (proposition de runner, plafond de vies) portent l'or de
+     charte, invisible sur fond clair : filet et icône reprennent l'accent étapes/liens. */
+  .terminal-hint-runner,
+  .terminal-live-limit {
+    border-left-color: var(--cg-terminal-teams-step);
+  }
+
+  .terminal-hint-runner-icon,
+  .terminal-live-limit-icon {
+    color: var(--cg-terminal-teams-step);
+  }
+
+  /* Le lien d'un bandeau de publication (F-31) : l'or de charte → l'accent étapes/liens. */
+  .terminal-push a {
+    color: var(--cg-terminal-teams-step);
   }
 
   .terminal-subtask,
@@ -109,10 +197,6 @@
 
   .terminal-diffs {
     border-left-color: var(--cg-terminal-teams-rule);
-  }
-
-  .terminal-ask {
-    background: var(--cg-terminal-teams-bar);
   }
 
   .terminal-ask-command,
@@ -137,21 +221,17 @@
   --mat-standard-button-toggle-selected-state-background-color: var(--cg-terminal-teams-rule);
   --mat-standard-button-toggle-divider-color: var(--cg-terminal-teams-rule);
 
-  /* Une étape faite s'efface — sans passer sous l'AA (0,55 × 0,85 y tombait à 3,5:1). */
+  /* Une étape faite s'efface — sans passer sous l'AA. Sur le fond clair « Papier », 0,75 × 0,85
+     (l'opacité du plan) retombait à 4,18:1 ; 0,85 × 0,85 tient à 5,4:1. */
   .terminal-plan-step[data-status='done'] {
-    opacity: 0.75;
+    opacity: 0.85;
   }
 
-  /* Le flux en prose. Les heures et les identifiants restent en monospace là où ils sont écrits :
-     ce sont des données, et elles se comparent à l'œil. */
-  .terminal-scrollback {
-    font-family: var(--cg-font-body);
-  }
-
-  /* La demande de l'utilisateur garde son invite `>` : on tape toujours dans un terminal. */
-  .terminal-request {
-    font-family: var(--cg-font-body);
-  }
+  /* POLICE, TAILLE, INTERLIGNE INCHANGÉS (SF-89-09, correction du PO du 2026-09-14 : « seule la
+     couleur change »). Le flux garde la MÊME police que la Forge — le passage en prose (body) de
+     SF-89-03 est RETIRÉ : la seule opposition entre les deux terminaux est désormais la couleur.
+     Les blocs riches (carte, moments, liste) gardent leur propre typographie, qui n'a pas
+     d'équivalent dans la Forge. Un test vérifie l'égalité des font-family/font-size/line-height. */
 }
 
 /* ---------------------------------------------------------------- le bloc lui-même */
@@ -159,7 +239,7 @@
 .teams-card {
   margin: var(--cg-space-3) 0;
   padding: var(--cg-space-3);
-  /* LA CARTE DE LA SURFACE PRUNE (SF-89-07) — un cran plus claire que le fond, cernée d'un filet :
+  /* LA CARTE DE LA SURFACE « PAPIER » (SF-89-09) — blanche sur le fond crème, cernée d'un filet :
      le seul endroit du terminal où l'on LIT un document plutôt qu'on ne regarde défiler une sortie.
      Elle n'existe que dans le terminal Teams (`cardOf`) : la peau lui appartient en propre. */
   background: var(--cg-terminal-teams-card);
@@ -271,7 +351,9 @@
 }
 
 .teams-card__link {
-  color: var(--cg-accent);
+  /* Le lien suit l'accent étapes/liens « Papier » (#4B3F8F, ≥ 8:1 sur la carte) : l'or de charte y
+     tombe à ~2,6:1. */
+  color: var(--cg-terminal-teams-step);
   text-decoration: none;
 
   &:hover,
@@ -356,7 +438,7 @@
 .teams-moment__time {
   font-family: var(--cg-font-mono);
   font-size: 12px;
-  color: var(--cg-accent);
+  color: var(--cg-terminal-teams-step);
   text-decoration: none;
 }
 
@@ -393,7 +475,8 @@
 }
 
 /* UN TERMINAL TEAMS SANS DROIT LE DIT (F-89 / SF-89-04) — même registre que le refus du cinquième
-   terminal (F-70) : filet d'accent, encre de la surface Teams (SF-89-07). */
+   terminal (F-70) : filet d'accent, encre de la surface Teams. Sur la peau claire « Papier »
+   (SF-89-09), l'accent est celui des étapes/liens (#4B3F8F) : l'or de charte y est illisible. */
 .terminal-teams-inactive {
   display: flex;
   flex-wrap: wrap;
@@ -401,13 +484,13 @@
   gap: var(--cg-space-2);
   padding: var(--cg-space-2) var(--cg-space-3);
   border-bottom: 1px solid var(--cg-terminal-teams-rule);
-  border-left: 3px solid var(--cg-accent);
+  border-left: 3px solid var(--cg-terminal-teams-step);
   color: var(--cg-terminal-teams-text);
   font-size: 13px;
 }
 
 .terminal-teams-inactive-icon {
-  color: var(--cg-accent);
+  color: var(--cg-terminal-teams-step);
   flex-shrink: 0;
 }
 

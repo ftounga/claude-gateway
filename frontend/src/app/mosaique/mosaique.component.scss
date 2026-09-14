@@ -210,10 +210,10 @@
   }
 }
 
-/* UNE TUILE TEAMS PORTE LA PEAU DU TERMINAL TEAMS (F-89 / SF-89-07, charte §15) : la surface
-   « Prune », jusque dans son en-tête. Le filet gauche garde la couleur du client (§9) et l'anneau
-   d'attente reste ambre (§12) : seule la surface change. Le flux, lui, reçoit la même peau par le
-   terminal lui-même (`[teamsTerminal]`) — un seul rendu dans le produit. */
+/* UNE TUILE TEAMS PORTE LA PEAU DU TERMINAL TEAMS (F-89 / SF-89-09, charte §15) : la surface claire
+   « Papier », jusque dans son en-tête lavande. Le filet gauche garde la couleur du client (§9) et
+   l'anneau d'attente reste ambre (§12) : seule la surface change. Le flux, lui, reçoit la même peau
+   par le terminal lui-même (`[teamsTerminal]`) — un seul rendu dans le produit. */
 .mosaique__tile--teams {
   background: var(--cg-terminal-teams-bg);
 

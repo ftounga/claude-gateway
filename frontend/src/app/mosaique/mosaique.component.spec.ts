@@ -257,7 +257,7 @@ describe('MosaiqueComponent (F-83 / SF-83-02)', () => {
     expect(getComputedStyle(view).backgroundColor).toBe('rgb(20, 29, 51)');
   });
 
-  it('UNE TUILE TEAMS PORTE LA PEAU DU TERMINAL TEAMS — fond #231A36, en-tête #1B1429 (F-89 / SF-89-07)', async () => {
+  it('UNE TUILE TEAMS PORTE LA PEAU DU TERMINAL TEAMS — fond #FAF8F3, en-tête #EFEAF9 (F-89 / SF-89-09)', async () => {
     await setup([
       terminal({ workspaceId: 'w-1', workspaceName: 'web' }),
       terminal({ workspaceId: 'w-2', workspaceName: 'Terminal Teams', teamsTerminal: true }),
@@ -268,9 +268,9 @@ describe('MosaiqueComponent (F-83 / SF-83-02)', () => {
 
     expect(teams).withContext('tuile Teams').toBeDefined();
     expect(getComputedStyle(teams.querySelector('.terminal-view') as HTMLElement).backgroundColor)
-      .toBe('rgb(35, 26, 54)');
+      .toBe('rgb(250, 248, 243)');
     expect(getComputedStyle(teams.querySelector('.mosaique__tile-head') as HTMLElement).backgroundColor)
-      .toBe('rgb(27, 20, 41)');
+      .toBe('rgb(239, 234, 249)');
     // L'identité du client ne change pas : le filet garde sa couleur (§9).
     expect(teams.style.borderLeftColor).not.toBe('');
 
