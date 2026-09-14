@@ -237,6 +237,53 @@ describe('AtelierService', () => {
     return spyOn(window, 'fetch').and.returnValue(Promise.resolve(response as unknown as Response));
   }
 
+  /**
+   * Flux SSE factice livré en **plusieurs chunks réseau** (F-116 / SF-116-02) : chaque tableau
+   * d'événements devient un chunk distinct rendu à une lecture successive. Prouve que le dispatch se
+   * fait dès qu'un chunk arrive, sans attendre la fin du flux.
+   */
+  function fakeSseFetchChunks(chunkEvents: string[][]): jasmine.Spy {
+    const chunks = chunkEvents.map((events) =>
+      new TextEncoder().encode(events.map((e) => `${e}\n\n`).join('')));
+    let i = 0;
+    const response = {
+      ok: true,
+      body: {
+        getReader: () => ({
+          read: () =>
+            Promise.resolve(
+              i < chunks.length
+                ? { value: chunks[i++], done: false }
+                : { value: undefined, done: true },
+            ),
+        }),
+      },
+    };
+    return spyOn(window, 'fetch').and.returnValue(Promise.resolve(response as unknown as Response));
+  }
+
+  // ---- F-116 / SF-116-02 : le texte de l'agent s'affiche mot à mot, dès le premier delta ----
+
+  it("relaie chaque delta de texte à onText dès son chunk, dans l'ordre et avant done", async () => {
+    // Les deltas arrivent dans des chunks réseau distincts : aucun tampon n'attend la fin du tour,
+    // chaque `text` est relayé à mesure — c'est ce qui fait défiler la réponse mot à mot.
+    fakeSseFetchChunks([
+      ['event:text\ndata:{"text":"Bon"}'],
+      ['event:text\ndata:{"text":"jour"}'],
+      ['event:done\ndata:{"reply":"Bonjour","actions":[],"messageId":"m1"}'],
+    ]);
+    const seen: string[] = [];
+
+    await service.streamChat('w1', 'salut', {
+      onAction: () => undefined,
+      onText: (t) => seen.push(`text:${t}`),
+      onDone: (d) => seen.push(`done:${d.reply}`),
+      onError: () => undefined,
+    });
+
+    expect(seen).toEqual(['text:Bon', 'text:jour', 'done:Bonjour']);
+  });
+
   it("route event:output du flux d'atelier vers onOutput (F-38 / SF-38-07)", async () => {
     fakeSseFetch([
       'event:action\ndata:{"type":"bash","path":"npm test"}',
