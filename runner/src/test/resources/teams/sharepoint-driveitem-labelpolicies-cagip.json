@@ -1,0 +1,10 @@
+{
+  "@odata.context": "https://cagip-my.sharepoint.com/_api/v2.1/$metadata#drives('b!DRIVE-CAGIP')/items('01ITEMCAGIP')/labelPolicies",
+  "@odata.type": "#oneDrive.itemLabelPolicies",
+  "irmCapabilities": {
+    "canPrint": true,
+    "canExtract": true,
+    "canRead": true,
+    "canWrite": false
+  }
+}

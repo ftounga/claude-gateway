@@ -1,0 +1,16 @@
+{
+  "@odata.context": "https://cagip-my.sharepoint.com/_api/v2.1/$metadata#drives/items/$entity",
+  "@odata.etag": "\"{ETAG-CAGIP-0001},1\"",
+  "@content.downloadUrl": "https://cagip-my.sharepoint.com/personal/x/_layouts/download.aspx?tempauth=SECRET-SIGNED-TOKEN",
+  "webUrl": "https://cagip-my.sharepoint.com/personal/paul_cagip_invalid/Documents/Recordings/Comite-IAM.mp4",
+  "sharepointIds": { "siteUrl": "https://cagip-my.sharepoint.com/personal/paul_cagip_invalid" },
+  "expiration": { "expirationDateTime": "2026-12-15T00:00:00Z", "isExpirationModifiable": true },
+  "accessViewpoint": {
+    "canRead": true,
+    "canEdit": true,
+    "canDelete": false,
+    "canComment": true,
+    "canDownload": true,
+    "canManagePermissions": false
+  }
+}

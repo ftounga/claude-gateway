@@ -78,6 +78,78 @@ public final class SharePointFiles {
             String id, String version, int itemCount) {
     }
 
+    // ------------------------------------------------------- F-108 / SF-108-07 : droits (v2.1)
+
+    /**
+     * <b>Les droits d'un élément de drive, AVANT de tenter le téléchargement</b> (F-108 / SF-108-07).
+     *
+     * <p>Le relevé réel du 2026-09-16 (CAGIP) montre que les droits d'un fichier vivent dans l'API
+     * {@code v2.1} : {@code /_api/v2.1/drives/{id}/items/{id}} ({@code accessViewpoint.canDownload}) et
+     * {@code …/labelPolicies} ({@code irmCapabilities.canExtract}). Plutôt que de lancer un
+     * téléchargement voué à échouer, on demande d'abord si le fichier est téléchargeable.</p>
+     *
+     * <p><b>La décision est prise DANS la page</b> — elle seule voit {@code accessViewpoint} : la
+     * projection sur liste blanche ({@link SharePointProjection}) écarte volontairement toute clé
+     * contenant « download » (garde contre {@code @content.downloadUrl}). Le script lit donc les
+     * booléens sur le corps <b>brut, dans la page</b>, et n'en rend qu'un <b>code machine</b>
+     * ({@link SharePointItemAccess#CODE_DOWNLOAD} / {@link SharePointItemAccess#CODE_EXTRACT}) —
+     * jamais {@code accessViewpoint}, jamais une adresse signée. Le libellé français, lui, vit dans
+     * {@link SharePointItemAccess} (source unique).</p>
+     *
+     * @return le manque nommé qui <b>empêche</b> le téléchargement, ou {@code empty} si rien ne
+     *         l'empêche — droits absents, illisibles ou fetch impossible <b>ne bloquent pas</b> (la
+     *         tentative de téléchargement dira le reste ; SF-108-07 : « ce qui n'est pas
+     *         re-vérifiable → on ne l'invente pas »)
+     */
+    static java.util.Optional<TeamsGap> driveItemAccess(SharePointPage.Visit visit, String driveId,
+            String driveItemId, String where) {
+        if (visit == null || driveId == null || driveId.isBlank()
+                || driveItemId == null || driveItemId.isBlank()) {
+            return java.util.Optional.empty();
+        }
+        // L'API v2.1 des drives est à la RACINE de l'hôte, pas sous le site : on cible l'origine nue.
+        SharePointLocation origin = new SharePointLocation(visit.location().origin(), "", "");
+        SharePointPage.Answer answer = visit.run("droits du fichier", origin,
+                driveItemAccessScript(driveId, driveItemId), READ_TIMEOUT_MS);
+        if (answer.ok()) {
+            return java.util.Optional.empty(); // téléchargeable, ou droits inconnus
+        }
+        if (answer.status() == 403 && SharePointItemAccess.CODE_DOWNLOAD.equals(answer.error())) {
+            return java.util.Optional.of(TeamsGap.of(TeamsGapKind.DOWNLOAD_BLOCKED, where,
+                    SharePointItemAccess.DOWNLOAD_DENIED));
+        }
+        if (answer.status() == 403 && SharePointItemAccess.CODE_EXTRACT.equals(answer.error())) {
+            return java.util.Optional.of(TeamsGap.of(TeamsGapKind.DOWNLOAD_BLOCKED, where,
+                    SharePointItemAccess.EXTRACT_DENIED));
+        }
+        // Droits illisibles / fetch impossible : on NE bloque PAS.
+        return java.util.Optional.empty();
+    }
+
+    /**
+     * Le script de page qui décide de la téléchargeabilité (F-108 / SF-108-07). Il lit le corps
+     * <b>brut</b> (pas de {@code call}, qui projette) et ne rend qu'un code machine — jamais
+     * {@code accessViewpoint}, jamais {@code irmCapabilities}, jamais une adresse signée.
+     */
+    static String driveItemAccessScript(String driveId, String driveItemId) {
+        String itemPath = "/_api/v2.1/drives/" + driveId + "/items/" + driveItemId;
+        return "const H = { 'Accept': 'application/json;odata=nometadata' };"
+                + " const ri = await fetch(site + " + SharePointPage.literal(itemPath)
+                + ", { method: 'GET', credentials: 'same-origin', headers: H });"
+                + " if (!ri.ok) { return { ok: false, status: ri.status, error: 'item ' + ri.status }; }"
+                + " const item = await ri.json();"
+                + " const av = item && item.accessViewpoint;"
+                + " if (av && av.canDownload === false) { return { ok: false, status: 403, error: "
+                + SharePointPage.literal(SharePointItemAccess.CODE_DOWNLOAD) + " }; }"
+                + " const rp = await fetch(site + " + SharePointPage.literal(itemPath + "/labelPolicies")
+                + ", { method: 'GET', credentials: 'same-origin', headers: H });"
+                + " if (rp.ok) { const pol = await rp.json();"
+                + "  const irm = pol && pol.irmCapabilities;"
+                + "  if (irm && irm.canExtract === false) { return { ok: false, status: 403, error: "
+                + SharePointPage.literal(SharePointItemAccess.CODE_EXTRACT) + " }; } }"
+                + " return { ok: true, status: 200 };";
+    }
+
     /** Une liste, et ce qui n'a pas pu être lu à côté. {@code entries} est vide dès qu'un manque bloque. */
     public record Listing(List<Entry> entries, List<TeamsGap> gaps) {
 
