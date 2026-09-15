@@ -5,6 +5,7 @@ import java.util.List;
 
 import fr.claudegateway.agent.AgentContentBlock;
 import fr.claudegateway.agent.AgentMessage;
+import fr.claudegateway.agent.AgentReasoning;
 import fr.claudegateway.agent.AgentTool;
 import fr.claudegateway.agent.AgentToolCall;
 import fr.claudegateway.agent.AgentTurn;
@@ -62,10 +63,13 @@ class AtelierExploration {
      * @param executor    exécution d'un outil de lecture, routée par l'appelant vers la bonne cible
      * @param stop        vrai quand le tour s'arrête (interruption, budget de temps) — consulté à
      *                    chaque itération, comme la boucle principale à ses frontières sûres
+     * @param reasoning   raisonnement demandé à chaque tour de la sous-boucle (F-119 / SF-119-01) :
+     *                    l'exploration lit et interprète, elle ne doit pas investiguer à raisonnement
+     *                    zéro. {@code null} ⇒ {@link AgentReasoning#none()} (comportement d'avant)
      */
     static Result run(AiAgentProvider provider, String model, String apiKey, String question,
             String scope, List<AgentTool> readTools, ToolExecutor executor,
-            java.util.function.BooleanSupplier stop) {
+            java.util.function.BooleanSupplier stop, AgentReasoning reasoning) {
         List<AgentMessage> messages = new ArrayList<>();
         messages.add(AgentMessage.userText(scope == null || scope.isBlank()
                 ? question
@@ -84,7 +88,8 @@ class AtelierExploration {
                 break;
             }
             AgentTurn turn = provider.nextTurn(
-                    new AgentTurnRequest(model, SYSTEM, messages, readTools, apiKey));
+                    new AgentTurnRequest(model, SYSTEM, messages, readTools, apiKey,
+                            reasoning == null ? AgentReasoning.none() : reasoning));
             inputTokens += turn.inputTokens();
             outputTokens += turn.outputTokens();
             cacheReadTokens += turn.cacheReadTokens();
