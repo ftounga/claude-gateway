@@ -22,6 +22,9 @@ final class SurveyFakeBrowser implements CdpConnection {
     private final Map<String, List<BiConsumer<String, JsonNode>>> listeners = new HashMap<>();
     /** « session|méthode » ; session vide pour l'onglet. */
     private final List<String> sent = new ArrayList<>();
+    /** Corps de réponse par identifiant de requête (F-89 / SF-89-12), servis à getResponseBody. */
+    private final Map<String, String> bodies = new HashMap<>();
+    private int bodyCounter;
     private boolean open = true;
 
     @Override
@@ -33,6 +36,13 @@ final class SurveyFakeBrowser implements CdpConnection {
     public JsonNode send(String sessionId, String method, ObjectNode params) {
         CdpCommands.assertAllowed(method);
         sent.add((sessionId == null ? "" : sessionId) + "|" + method);
+        if (CdpCommands.GET_RESPONSE_BODY.equals(method)) {
+            ObjectNode result = mapper.createObjectNode();
+            String requestId = params == null ? "" : params.path("requestId").asText("");
+            result.put("body", bodies.getOrDefault(requestId, ""));
+            result.put("base64Encoded", false);
+            return result;
+        }
         return mapper.createObjectNode();
     }
 
@@ -65,6 +75,26 @@ final class SurveyFakeBrowser implements CdpConnection {
         ObjectNode params = mapper.createObjectNode();
         params.put("requestId", "r" + sent.size());
         params.put("type", type);
+        ObjectNode response = params.putObject("response");
+        response.put("url", url);
+        response.put("status", status);
+        response.put("mimeType", mime);
+        ObjectNode headers = response.putObject("headers");
+        headers.put("Set-Cookie", "authtoken=SECRET-COOKIE-DE-SESSION; HttpOnly");
+        headers.put("Authorization", "Bearer SECRET-JETON-DE-SESSION");
+        emit(sessionId, "Network.responseReceived", params);
+    }
+
+    /**
+     * Une réponse dont le corps pourra être lu par getResponseBody (F-89 / SF-89-12) : en-têtes secrets
+     * et corps compris. Le corps <b>ne doit jamais</b> ressortir tel quel du relevé — seul son squelette.
+     */
+    void respondWithBody(String sessionId, String url, String mime, int status, String bodyJson) {
+        String requestId = "rb" + bodyCounter++;
+        bodies.put(requestId, bodyJson);
+        ObjectNode params = mapper.createObjectNode();
+        params.put("requestId", requestId);
+        params.put("type", "Fetch");
         ObjectNode response = params.putObject("response");
         response.put("url", url);
         response.put("status", status);
