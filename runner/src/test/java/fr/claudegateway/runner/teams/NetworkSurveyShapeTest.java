@@ -122,9 +122,14 @@ class NetworkSurveyShapeTest {
 
     // ------------------------------------------------------------- SF-89-14 : chemins UNKNOWN
 
-    /** La liste du calendrier — UNKNOWN aujourd'hui (le débogage du 2026-09-15) — porte des valeurs sensibles. */
-    private static final String CALENDAR_VIEW_URL =
-            "https://teams.microsoft.com/api/mt/emea/v2.0/me/calendars/default/calendarView";
+    /**
+     * Un chemin Microsoft encore UNKNOWN, porteur de valeurs sensibles. SF-89-15 a recalé
+     * {@code calendarView} en {@code CALENDAR_EVENT} ; ce test prend donc un chemin resté UNKNOWN
+     * dans le relevé catalogue du 2026-09-16 ({@code /api/mcps/eu/contents}) pour éprouver la capture
+     * de squelette et la non-fuite, indépendamment de tout chemin recalé par la suite.
+     */
+    private static final String UNKNOWN_JSON_URL =
+            "https://teams.microsoft.com/api/mcps/eu/contents";
     private static final String CALENDAR_VIEW_BODY = "{\"value\":[{"
             + "\"id\":\"AAMkSECRET-EVENT-ID\","
             + "\"subject\":\"Reunion-Confidentielle-CAGIP\","
@@ -147,13 +152,13 @@ class NetworkSurveyShapeTest {
         SurveyFakeBrowser tab = new SurveyFakeBrowser();
         NetworkSurvey survey = new NetworkSurvey(Runnable::run, true);
         survey.watchTeamsTab(tab);
-        tab.respondWithBody("", CALENDAR_VIEW_URL, "application/json; charset=utf-8", 200, CALENDAR_VIEW_BODY);
+        tab.respondWithBody("", UNKNOWN_JSON_URL, "application/json; charset=utf-8", 200, CALENDAR_VIEW_BODY);
         survey.captureReadyShapes();
 
         NetworkSurvey.Snapshot snap = survey.snapshot();
         assertEquals(1, snap.unknownShapes().size(), "un chemin UNKNOWN capté");
         assertEquals(1, snap.unknownShapesRead());
-        NetworkSurvey.Shape view = unknown(snap, "calendarView");
+        NetworkSurvey.Shape view = unknown(snap, "contents");
         // Noms + types seulement.
         assertTrue(view.skeleton().contains("value: array<object>"), view.skeleton());
         assertTrue(view.skeleton().contains("subject: string"), view.skeleton());
@@ -164,7 +169,7 @@ class NetworkSurveyShapeTest {
         assertTrue(view.skeleton().contains("emailAddress: object"), view.skeleton());
         // Chemin assaini : sans requête, sans ancre — le chemin gabarisé, rien d'autre.
         assertFalse(view.path().contains("?"), view.path());
-        assertTrue(view.path().endsWith("/calendarView"), view.path());
+        assertTrue(view.path().endsWith("/contents"), view.path());
 
         // VIE PRIVÉE (non négociable) : ni markdown ni JSON ne portent une valeur du corps.
         SurveyReport report = new SurveyReport(snap, Instant.EPOCH, Instant.EPOCH.plusSeconds(60), false,
@@ -176,7 +181,7 @@ class NetworkSurveyShapeTest {
         }
         String md = report.markdown();
         assertTrue(md.contains("## Squelette des chemins Microsoft non reconnus"), md);
-        assertTrue(md.contains("calendarView"), md);
+        assertTrue(md.contains("contents"), md);
         assertTrue(md.contains("Corps de chemins Microsoft non reconnus (UNKNOWN JSON) lus"), md);
     }
 
@@ -206,7 +211,7 @@ class NetworkSurveyShapeTest {
         SurveyFakeBrowser tab = new SurveyFakeBrowser();
         NetworkSurvey survey = new NetworkSurvey(Runnable::run); // mode normal
         survey.watchTeamsTab(tab);
-        tab.respondWithBody("", CALENDAR_VIEW_URL, "application/json", 200, CALENDAR_VIEW_BODY);
+        tab.respondWithBody("", UNKNOWN_JSON_URL, "application/json", 200, CALENDAR_VIEW_BODY);
         survey.captureReadyShapes();
 
         assertFalse(tab.sent().stream().anyMatch(c -> c.endsWith(CdpCommands.GET_RESPONSE_BODY)),
@@ -235,7 +240,7 @@ class NetworkSurveyShapeTest {
         SurveyFakeBrowser tab = new SurveyFakeBrowser();
         NetworkSurvey survey = new NetworkSurvey(Runnable::run, true);
         survey.watchTeamsTab(tab);
-        tab.respondWithBody("", CALENDAR_VIEW_URL, "text/html", 200, "<html>SECRET</html>");
+        tab.respondWithBody("", UNKNOWN_JSON_URL, "text/html", 200, "<html>SECRET</html>");
         survey.captureReadyShapes();
 
         assertFalse(tab.sent().stream().anyMatch(c -> c.endsWith(CdpCommands.GET_RESPONSE_BODY)),

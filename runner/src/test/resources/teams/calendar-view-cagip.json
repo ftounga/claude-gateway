@@ -1,0 +1,53 @@
+{
+  "type": "#microsoft.graph.event",
+  "value": [
+    {
+      "objectId": "AAMkOBJECTID-CAGIP-0001",
+      "seriesMasterId": "",
+      "joinOnlineMeetingUrl": "https://teams.microsoft.com/l/meetup-join/19%3ameeting_cagip_revue%40thread.v2/0",
+      "startTime": "2026-09-15T13:00:00.000Z",
+      "endTime": "2026-09-15T14:00:00.000Z",
+      "lastModifiedTime": "2026-09-14T08:00:00.000Z",
+      "eventTimeZone": "UTC",
+      "utcOffset": 0,
+      "eventType": "SingleInstance",
+      "subject": "Comité IAM — septembre",
+      "location": "Salle B12",
+      "isOnlineMeeting": true,
+      "myResponseType": "accepted",
+      "organizerName": "Paul Durand",
+      "categories": [],
+      "isResponseRequested": true,
+      "showAs": "busy",
+      "bodyPreview": "Ordre du jour : bascule MFA.",
+      "conflictingMeetings": [],
+      "skypeTeamsMeetingUrl": "https://teams.microsoft.com/l/meetup-join/19%3ameeting_cagip_revue%40thread.v2/0",
+      "iCalUID": "ICALUID-CAGIP-REVUE-0001",
+      "cleanGlobalObjectId": "CLEANGLOBAL-CAGIP-0001"
+    },
+    {
+      "objectId": "AAMkOBJECTID-CAGIP-0002",
+      "seriesMasterId": "",
+      "joinOnlineMeetingUrl": "https://teams.microsoft.com/l/meetup-join/19%3ameeting_cagip_copil%40thread.v2/0",
+      "startTime": "2026-09-16T09:30:00.000Z",
+      "endTime": "2026-09-16T10:30:00.000Z",
+      "lastModifiedTime": "2026-09-15T18:00:00.000Z",
+      "eventTimeZone": "UTC",
+      "utcOffset": 0,
+      "eventType": "SingleInstance",
+      "subject": "COPIL migration — point hebdo",
+      "location": "Teams",
+      "isOnlineMeeting": true,
+      "myResponseType": "organizer",
+      "organizerName": "Claire Martin",
+      "categories": [],
+      "isResponseRequested": true,
+      "showAs": "busy",
+      "bodyPreview": "Suivi des jalons.",
+      "conflictingMeetings": [],
+      "skypeTeamsMeetingUrl": "https://teams.microsoft.com/l/meetup-join/19%3ameeting_cagip_copil%40thread.v2/0",
+      "iCalUID": "ICALUID-CAGIP-COPIL-0002",
+      "cleanGlobalObjectId": "CLEANGLOBAL-CAGIP-0002"
+    }
+  ]
+}

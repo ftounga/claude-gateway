@@ -446,7 +446,9 @@ final class TeamsAdapterV1 implements TeamsAdapter {
         JsonNode fields = data != null && data.isObject() ? data : entry;
 
         String id = firstNonEmpty(
-                TeamsJson.text(fields, "iCalUid", "iCalUID"),
+                // F-89 / SF-89-15 : « iCalUId » (casse Graph) ajouté aux clés stables, pour que la
+                // liste Graph (/v1.0/me/events) déduplique avec les formes Teams (iCalUid/iCalUID).
+                TeamsJson.text(fields, "iCalUid", "iCalUID", "iCalUId"),
                 TeamsJson.text(fields, "objectId", "cleanGlobalObjectId"),
                 TeamsJson.text(entry, "id", "meetingId"),
                 TeamsJson.text(fields, "numericMeetingId", "globalNumericMeetingId"));

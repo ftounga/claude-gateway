@@ -1,0 +1,39 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#users('me')/events",
+  "value": [
+    {
+      "@odata.etag": "W/\"etag-cagip-0001\"",
+      "id": "AQMkGRAPHEVENTID-CAGIP-0001",
+      "createdDateTime": "2026-09-10T08:00:00.000Z",
+      "lastModifiedDateTime": "2026-09-14T08:00:00.000Z",
+      "changeKey": "CK-CAGIP-0001",
+      "categories": [],
+      "originalStartTimeZone": "UTC",
+      "originalEndTimeZone": "UTC",
+      "iCalUId": "ICALUID-CAGIP-REVUE-0001",
+      "uid": "UID-CAGIP-0001",
+      "reminderMinutesBeforeStart": 15,
+      "isReminderOn": true,
+      "hasAttachments": false,
+      "subject": "Comité IAM — septembre",
+      "bodyPreview": "Ordre du jour : bascule MFA.",
+      "importance": "normal",
+      "sensitivity": "normal",
+      "isAllDay": false,
+      "isCancelled": false,
+      "isOrganizer": false,
+      "responseRequested": true,
+      "seriesMasterId": null,
+      "showAs": "busy",
+      "type": "singleInstance",
+      "webLink": "https://outlook.office365.com/owa/?itemid=cagip0001",
+      "onlineMeetingUrl": "https://teams.microsoft.com/l/meetup-join/19%3ameeting_cagip_revue%40thread.v2/0",
+      "isOnlineMeeting": true,
+      "onlineMeetingProvider": "teamsForBusiness",
+      "start": { "dateTime": "2026-09-15T13:00:00.0000000", "timeZone": "UTC" },
+      "end": { "dateTime": "2026-09-15T14:00:00.0000000", "timeZone": "UTC" },
+      "location": { "displayName": "Salle B12", "locationType": "default" },
+      "onlineMeeting": { "joinUrl": "https://teams.microsoft.com/l/meetup-join/19%3ameeting_cagip_revue%40thread.v2/0" }
+    }
+  ]
+}
