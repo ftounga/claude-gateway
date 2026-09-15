@@ -323,4 +323,27 @@ class AtelierPropertiesTest {
         assertThat(withReplayedTraceTurns(200).replayedTraceTurns())
                 .isEqualTo(AtelierProperties.MAX_REPLAYED_TRACE_TURNS);
     }
+
+    // ------------------------------------------- F-119 / SF-119-05 : aide-mémoire d'état de fichier
+
+    /** Aide-mémoire d'état de fichier (21e et dernier composant). */
+    private static AtelierProperties withFileStateHints(Boolean value) {
+        return new AtelierProperties(null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, value);
+    }
+
+    @Test
+    void fileStateHintsDefaultToOn() {
+        assertThat(withFileStateHints(null).fileStateHints()).isTrue();
+        // Le constructeur de compatibilité (sans ce réglage) applique le même défaut.
+        AtelierProperties legacy = new AtelierProperties(null, null, null, null, null, null, null,
+                null, null, null, null, null, true, null, null, null, null, null, null, null);
+        assertThat(legacy.fileStateHints()).isTrue();
+    }
+
+    @Test
+    void fileStateHintsCanBeDisabledWithoutADeployment() {
+        assertThat(withFileStateHints(false).fileStateHints()).isFalse();
+        assertThat(withFileStateHints(true).fileStateHints()).isTrue();
+    }
 }

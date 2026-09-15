@@ -244,6 +244,66 @@ class AtelierChatServiceTest {
 
         verify(workspaceService).writeFile(userId, workspaceId, "notes.txt", "bonjour atelier");
         assertThat(result.actions()).extracting(a -> a.type() + ":" + a.path()).contains("write:notes.txt");
+        // SF-119-05 : l'édition d'un fichier non lu dans ce fil est suivie d'un rappel léger de
+        // lecture-avant-édition — le message d'édition lui-même reste en tête, inchangé.
+        assertThat(lastToolResultText()).startsWith("Fichier modifié : notes.txt (1 remplacement)");
+    }
+
+    // ------------------------------------------- F-119 / SF-119-05 : suivi d'état de fichier
+
+    @Test
+    void aBlindEditGetsAReadBeforeEditReminder() {
+        // Éditer un fichier jamais lu dans ce fil (« à l'aveugle ») déclenche un rappel léger de
+        // lecture-avant-édition — sans refuser l'opération (le disque évite déjà la corruption).
+        stubHappyPath();
+        when(workspaceService.readFile(userId, workspaceId, "notes.txt")).thenReturn("bonjour monde");
+        agentProvider.enqueueToolCall("edit_file", "path", "notes.txt",
+                "old_string", "monde", "new_string", "atelier");
+        agentProvider.enqueueFinal("Modifié.");
+
+        service.chat(userId, workspaceId, "remplace monde");
+
+        assertThat(lastToolResultText())
+                .startsWith("Fichier modifié : notes.txt (1 remplacement)")
+                .contains("sans l'avoir lu dans ce fil");
+    }
+
+    @Test
+    void aReadThenEditGetsNoReminder() {
+        // Non-régression : lire puis éditer le même fichier ne déclenche AUCUN rappel — c'est
+        // exactement le comportement qu'on veut encourager.
+        stubHappyPath();
+        when(workspaceService.readFile(userId, workspaceId, "notes.txt")).thenReturn("bonjour monde");
+        agentProvider.enqueueToolCall("read_file", "path", "notes.txt");
+        agentProvider.enqueueToolCall("edit_file", "path", "notes.txt",
+                "old_string", "monde", "new_string", "atelier");
+        agentProvider.enqueueFinal("Modifié.");
+
+        service.chat(userId, workspaceId, "lis puis remplace");
+
+        assertThat(lastToolResultText()).isEqualTo("Fichier modifié : notes.txt (1 remplacement)");
+    }
+
+    @Test
+    void theFileStateHintCircuitBreakerSilencesTheReminder() {
+        // Coupe-circuit app.atelier.file-state-hints=false (21e arg) : aucune aide-mémoire, même sur
+        // une édition à l'aveugle.
+        service = new AtelierChatService(workspaceService, messageRepository, (AiAgentProvider) agentProvider,
+                byokKeyService, quotaService,
+                new fr.claudegateway.atelier.git.GitWorkspaceService(workspaceService, gitTokenService,
+                        gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
+                runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
+                fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(), runnerHostService,
+                new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null,
+                        null, true, null, null, null, null, null, null, null, false));
+        stubHappyPath();
+        when(workspaceService.readFile(userId, workspaceId, "notes.txt")).thenReturn("bonjour monde");
+        agentProvider.enqueueToolCall("edit_file", "path", "notes.txt",
+                "old_string", "monde", "new_string", "atelier");
+        agentProvider.enqueueFinal("Modifié.");
+
+        service.chat(userId, workspaceId, "remplace monde");
+
         assertThat(lastToolResultText()).isEqualTo("Fichier modifié : notes.txt (1 remplacement)");
     }
 

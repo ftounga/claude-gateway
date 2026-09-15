@@ -268,6 +268,12 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     private final int replayedTraceTurns;
     /**
+     * Aide-mémoire d'état de fichier (F-119 / SF-119-05) : quand vrai, une édition d'un fichier que le
+     * modèle n'a ni lu ni écrit dans ce fil reçoit un rappel léger de lecture-avant-édition. Jamais un
+     * refus dur — le disque évite déjà la corruption. Coupe-circuit à {@code false}.
+     */
+    private final boolean fileStateHints;
+    /**
      * Politique de contexte appliquée à chaque itération d'un tour (F-39 / SF-39-12). Elle dit une
      * intention — écarter les résultats d'outils périmés — que le fournisseur traduit ; le mécanisme
      * lui-même n'existe que dans {@code AnthropicAgentProvider}.
@@ -551,6 +557,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.exploreReasoning = new AgentReasoning(true, atelierProperties.exploreEffort());
         this.escalateOnSignal = !Boolean.FALSE.equals(atelierProperties.escalateOnSignal());
         this.replayedTraceTurns = atelierProperties.replayedTraceTurns();
+        this.fileStateHints = !Boolean.FALSE.equals(atelierProperties.fileStateHints());
         this.contextPolicy = Boolean.TRUE.equals(atelierProperties.contextPruning())
                 ? new AgentContextPolicy(true, CONTEXT_TRIGGER_INPUT_TOKENS,
                         CONTEXT_KEEP_TOOL_RESULTS, CONTEXT_CLEAR_AT_LEAST_INPUT_TOKENS)
@@ -861,6 +868,10 @@ public class AtelierChatService implements RelayInterruptTarget {
         // rencontré une difficulté. Consulté à l'ouverture du tour suivant pour choisir l'effort, puis
         // recalculé après l'exécution des outils de ce tour.
         boolean escalateNextTurn = false;
+        // Aide-mémoire d'état de fichier (F-119 / SF-119-05) : les chemins que le modèle a lus ou
+        // écrits dans CE fil. Une édition d'un chemin absent de cet ensemble est « à l'aveugle » et
+        // reçoit un rappel léger de lecture-avant-édition.
+        java.util.Set<String> knownFiles = new java.util.HashSet<>();
 
         for (int iteration = 0; iteration < maxIterations; iteration++) {
             iterationsUsed = iteration + 1;
@@ -1118,6 +1129,12 @@ public class AtelierChatService implements RelayInterruptTarget {
                 // un bloc riche d'échec est posé dans le fil (couleur portée par le motif), et le
                 // modèle reçoit la règle non négociable de s'arrêter. Pas de repli silencieux.
                 String modelContent = outcome.content();
+                // Aide-mémoire d'état de fichier (F-119 / SF-119-05) : un rappel léger, jamais un
+                // refus. Une édition d'un fichier jamais lu ni écrit dans ce fil est « à l'aveugle » ;
+                // une lecture ou une écriture, elle, rend le fichier « connu » pour la suite.
+                if (fileStateHints && !outcome.isError()) {
+                    modelContent = withFileStateHint(call, modelContent, knownFiles);
+                }
                 if (workspace.isTeamsTerminal()
                         && fr.claudegateway.teams.block.TeamsReadFailure.isReadingTool(call.name())) {
                     java.util.Optional<fr.claudegateway.teams.block.TeamsReadFailure.Reason> readFailure =
@@ -1881,6 +1898,38 @@ public class AtelierChatService implements RelayInterruptTarget {
     /** Les deux outils qui modifient un fichier du projet, et eux seuls (F-50 / SF-50-01). */
     private static boolean isFileWrite(String tool) {
         return "write_file".equals(tool) || "edit_file".equals(tool);
+    }
+
+    /**
+     * Aide-mémoire d'état de fichier (F-119 / SF-119-05) : suit les fichiers lus/écrits du fil et, sur
+     * une <b>édition à l'aveugle</b> (un {@code edit_file} d'un chemin ni lu ni écrit auparavant dans
+     * ce fil), ajoute au résultat un rappel léger de lecture-avant-édition. Jamais un refus — le disque
+     * évite déjà la corruption ; c'est le <b>raisonnement</b> sur un contenu supposé qu'on prévient.
+     * {@code read_file}, {@code write_file} et {@code edit_file} rendent le chemin « connu » pour la
+     * suite du fil.
+     */
+    private String withFileStateHint(AgentToolCall call, String content,
+            java.util.Set<String> knownFiles) {
+        String tool = call.name();
+        if (!"read_file".equals(tool) && !isFileWrite(tool)) {
+            return content;
+        }
+        String path = arg(call.input(), "path");
+        if (path == null || path.isBlank()) {
+            return content;
+        }
+        String hint = null;
+        if ("edit_file".equals(tool) && !knownFiles.contains(path)) {
+            hint = "Rappel : tu as modifié " + path + " sans l'avoir lu dans ce fil. Relis-le avant de "
+                    + "l'éditer si tu n'es pas sûr de son contenu.";
+        }
+        // Lu ou écrit : désormais connu du fil (une écriture rend le contenu connu du modèle).
+        knownFiles.add(path);
+        if (hint == null) {
+            return content;
+        }
+        String base = content == null ? "" : content;
+        return base.isBlank() ? hint : base + "\n\n" + hint;
     }
 
     private ToolOutcome executeTool(UUID userId, Workspace workspace, String callId, AgentToolCall call,

@@ -186,6 +186,11 @@ app:
     # contradictions. La compaction (F-117) borne deja le volume total. Meme repli que les autres
     # bornes : absent/nul/negatif -> defaut (12), au-dela du plafond lisible (40) -> ramene.
     replayed-trace-turns: ${APP_ATELIER_REPLAYED_TRACE_TURNS:12}
+    # Aide-memoire d'etat de fichier (F-119 / SF-119-05). `true` : une edition (edit_file) d'un fichier
+    # que le modele n'a ni lu ni ecrit dans ce fil recoit un rappel LEGER « relis-le avant si tu n'es
+    # pas sur de son contenu » — incitation a la lecture-avant-edition, JAMAIS un refus (le disque
+    # evite deja la corruption). COUPE-CIRCUIT : `false`.
+    file-state-hints: ${APP_ATELIER_FILE_STATE_HINTS:true}
     # Ecartement des resultats d'outils perimes d'un tour long (F-39 / SF-39-12). Ce qui deborde
     # n'est pas la conversation — deja bornee depuis SF-39-03 — mais l'accumulation des sorties
     # d'outils DANS UN MEME TOUR : une sortie de commande pese jusqu'a 128 Ko, et un tour en compte

@@ -412,7 +412,8 @@ class AtelierChatServiceRunnerTargetTest {
         AtelierChatResult result = service.chat(userId, workspaceId, "passe a à 2");
 
         verify(runnerToolGateway).writeFile(eq(runnerTarget), anyString(), eq("a.ts"), eq("const a = 2;"));
-        assertThat(toolResultText()).isEqualTo("Fichier modifié : a.ts (1 remplacement)");
+        // SF-119-05 : édition d'un fichier non lu dans ce fil → message d'édition + rappel léger.
+        assertThat(toolResultText()).startsWith("Fichier modifié : a.ts (1 remplacement)");
         // L'écran voit une écriture : c'est ce qui rafraîchit le fichier ouvert (D4).
         assertThat(result.actions()).extracting(a -> a.type() + ":" + a.path()).contains("write:a.ts");
     }
