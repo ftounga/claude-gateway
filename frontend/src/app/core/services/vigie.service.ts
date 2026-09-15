@@ -12,6 +12,7 @@ import {
   VigieRadarCounts,
   VigieSyncSummary,
 } from '../models/vigie.models';
+import { VigieReadiness } from '../models/vigie-readiness.models';
 
 /**
  * **La Vigie et les espaces d'un client** (F-106 / SF-106-02).
@@ -86,6 +87,16 @@ export class VigieService {
     return this.http.get<RadarBrief>(`/api/radar/hosts/${hostId}/brief`).pipe(
       map((brief) => countsOfBrief(brief)),
       catchError(() => of({ followUpsDue: 0, blockedSubjects: 0, toHandle: 0, lastSync: null })),
+    );
+  }
+
+  /**
+   * **La check-list de mise en service de la Vigie** (F-122 / SF-122-02) : les quatre vérifications
+   * vert/rouge/en attente, à passer avant de démarrer.
+   */
+  readiness(hostId: string): Observable<VigieReadiness> {
+    return this.http.get<VigieReadiness>(
+      `/api/runner-hosts/${encodeURIComponent(hostId)}/vigie/readiness`,
     );
   }
 }

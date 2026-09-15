@@ -55,6 +55,7 @@ import {
 import { RadarExporter } from './radar-export/radar-export';
 import { RadarScheduleComponent } from './radar-schedule/radar-schedule.component';
 import { HostMailAddressComponent } from '../shared/host-mail-address/host-mail-address.component';
+import { VigieReadinessComponent } from './vigie-readiness/vigie-readiness.component';
 import { RunnerUpdateNoticeComponent } from '../shared/runner-update/runner-update-notice.component';
 import { updatingPresence } from '../shared/runner-update/runner-update';
 import {
@@ -105,6 +106,7 @@ export type VigieError = 'none' | 'network' | 'forbidden' | 'not-entitled';
     RadarDirectoryComponent,
     RadarScheduleComponent,
     HostMailAddressComponent,
+    VigieReadinessComponent,
     RunnerUpdateNoticeComponent,
     SpacePitchComponent,
     TeamsLinkBadgeComponent,
