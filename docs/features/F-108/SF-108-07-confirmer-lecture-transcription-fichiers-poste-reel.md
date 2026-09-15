@@ -45,9 +45,15 @@ fait pour les réunions.
 - Poste réel (manuel) : relevé « forme » des réponses SharePoint sur CAGIP, puis lecture transcription
   bout-en-bout dans le terminal Teams.
 
+## Groupement avec SF-89-15 (décision PO 2026-09-16)
+Livrée **conjointement avec SF-89-15**, à partir du **même** relevé « forme » complet du catalogue
+(SF-89-14) : une seule capture sur CAGIP exerce à la fois les surfaces Teams (calendrier liste, réunion,
+récap, conversations/messages) **et** l'étape transcription/fichiers SharePoint. On recale donc en un
+bloc : SF-89-15 = les 6 familles Teams ; SF-108-07 = fichiers + transcription SharePoint.
+
 ## Prérequis
-Un relevé « forme » (SF-89-12) exerçant l'étape **transcription/fichiers** sur CAGIP (drives/items,
-téléchargement `.vtt`/`.docx`).
+Un relevé « forme » (SF-89-12/14) exerçant l'étape **transcription/fichiers** sur CAGIP (drives/items,
+téléchargement `.vtt`/`.docx`) — **le même** que celui qui alimente SF-89-15.
 
 ## Hors périmètre
 - Lire une transcription affichée par l'écran (SF-89-06, repli fragile, conservé).
