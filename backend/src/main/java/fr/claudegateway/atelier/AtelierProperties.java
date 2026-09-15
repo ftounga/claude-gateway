@@ -96,6 +96,13 @@ import org.springframework.boot.context.properties.bind.ConstructorBinding;
  *                      <b>Coupe-circuit</b> : {@code false} rétablit le comportement F-118 strict
  *                      (réduit sur toutes les continuations), sans livraison. Sans effet quand
  *                      {@code adaptiveEffort} est faux
+ * @param replayedTraceTurns nombre de tours rejoués <b>avec</b> leur trajectoire d'outils (F-119 /
+ *                      SF-119-03), défaut {@code 12} (relevé de 5). Au-delà, les tours plus anciens
+ *                      sont rejoués en texte seul. Élargir la fenêtre garde le <b>couplage
+ *                      affirmation↔preuve</b> plus longtemps : l'agent perdait ses résultats d'outils
+ *                      avant ses affirmations, d'où des contradictions. Repli comme les autres
+ *                      bornes : une valeur absente, nulle ou négative retombe sur le défaut ; bornée à
+ *                      un plafond lisible ({@code 40})
  */
 @ConfigurationProperties(prefix = "app.atelier")
 public record AtelierProperties(
@@ -117,7 +124,8 @@ public record AtelierProperties(
         Boolean adaptiveEffort,
         Duration turnBudget,
         String exploreEffort,
-        Boolean escalateOnSignal) {
+        Boolean escalateOnSignal,
+        Integer replayedTraceTurns) {
 
     /** Modèle de la boucle maison à défaut de configuration (F-39 / SF-39-10). */
     public static final String DEFAULT_MODEL = "claude-opus-5";
@@ -135,6 +143,13 @@ public record AtelierProperties(
      * fort » à chaque fichier. Réglable via {@code APP_ATELIER_EXPLORE_EFFORT} sans livraison.
      */
     public static final String DEFAULT_EXPLORE_EFFORT = "low";
+    /**
+     * Fenêtre de rejeu des trajectoires d'outils à défaut de configuration (F-119 / SF-119-03) :
+     * 12 tours (relevé de 5). C'est là que vit le couplage affirmation↔preuve.
+     */
+    public static final int DEFAULT_REPLAYED_TRACE_TURNS = 12;
+    /** Plafond lisible de la fenêtre de rejeu : au-delà, la compaction aurait tranché de toute façon. */
+    public static final int MAX_REPLAYED_TRACE_TURNS = 40;
     /** Niveaux d'effort acceptés — même vocabulaire que le chemin Managed Agents (SF-28-17). */
     private static final java.util.Set<String> ALLOWED_EFFORTS =
             java.util.Set.of("low", "medium", "high", "xhigh", "max");
@@ -258,12 +273,22 @@ public record AtelierProperties(
         if (escalateOnSignal == null) {
             escalateOnSignal = Boolean.TRUE;
         }
+        // Fenêtre de rejeu des trajectoires (F-119 / SF-119-03) : même repli que les autres bornes,
+        // une valeur absente/nulle/négative retombe sur le défaut, et une valeur déraisonnable est
+        // ramenée à un plafond lisible.
+        if (replayedTraceTurns == null || replayedTraceTurns <= 0) {
+            replayedTraceTurns = DEFAULT_REPLAYED_TRACE_TURNS;
+        }
+        if (replayedTraceTurns > MAX_REPLAYED_TRACE_TURNS) {
+            replayedTraceTurns = MAX_REPLAYED_TRACE_TURNS;
+        }
     }
 
     /**
-     * Constructeur de compatibilité, sans les réglages F-119 (SF-119-01) : {@code exploreEffort} et
-     * {@code escalateOnSignal} retombent sur leurs défauts ({@code low} / actif). Évite de réécrire
-     * les appelants antérieurs à F-119 (et leurs tests) pour des réglages qu'ils n'expriment pas.
+     * Constructeur de compatibilité, sans les réglages F-119 (SF-119-01) : {@code exploreEffort},
+     * {@code escalateOnSignal} et {@code replayedTraceTurns} retombent sur leurs défauts
+     * ({@code low} / actif / 12). Évite de réécrire les appelants antérieurs à F-119 (et leurs tests)
+     * pour des réglages qu'ils n'expriment pas.
      */
     public AtelierProperties(String storage, String bucket, String prefix, Long maxTotalBytes,
             Integer maxEntries, Long maxFileBytes, Integer maxIterations, String model, String effort,
@@ -272,7 +297,22 @@ public record AtelierProperties(
             Duration turnBudget) {
         this(storage, bucket, prefix, maxTotalBytes, maxEntries, maxFileBytes, maxIterations, model,
                 effort, contextPruning, maxTurnTokens, maxDelegations, storageExecution, streaming,
-                stepEffort, adaptiveEffort, turnBudget, null, null);
+                stepEffort, adaptiveEffort, turnBudget, null, null, null);
+    }
+
+    /**
+     * Constructeur de compatibilité, sans {@code replayedTraceTurns} (F-119 / SF-119-03) : la fenêtre
+     * de rejeu retombe sur son défaut (12). Conserve la forme de SF-119-01 (jusqu'à
+     * {@code escalateOnSignal}) pour les appelants qui l'expriment déjà.
+     */
+    public AtelierProperties(String storage, String bucket, String prefix, Long maxTotalBytes,
+            Integer maxEntries, Long maxFileBytes, Integer maxIterations, String model, String effort,
+            Boolean contextPruning, Long maxTurnTokens, Integer maxDelegations,
+            Boolean storageExecution, Boolean streaming, String stepEffort, Boolean adaptiveEffort,
+            Duration turnBudget, String exploreEffort, Boolean escalateOnSignal) {
+        this(storage, bucket, prefix, maxTotalBytes, maxEntries, maxFileBytes, maxIterations, model,
+                effort, contextPruning, maxTurnTokens, maxDelegations, storageExecution, streaming,
+                stepEffort, adaptiveEffort, turnBudget, exploreEffort, escalateOnSignal, null);
     }
 
     /**

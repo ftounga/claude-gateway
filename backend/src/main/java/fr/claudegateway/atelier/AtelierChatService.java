@@ -176,9 +176,10 @@ public class AtelierChatService implements RelayInterruptTarget {
     /** Longueur d'une description de skill dans le catalogue (F-39 / SF-39-02). */
     private static final int SKILL_DESCRIPTION_CHARS = 200;
     /**
-     * Tours rejoués <b>avec</b> leur trajectoire d'outils (F-39 / SF-39-03, décision D3). Au-delà,
-     * les tours plus anciens sont rejoués en texte seul : la valeur d'une trajectoire décroît vite
-     * avec l'ancienneté, son coût en tokens non.
+     * Fenêtre de rejeu des trajectoires d'outils <b>par défaut</b> avant F-119 (F-39 / SF-39-03,
+     * décision D3). Conservée comme repli documentaire ; la valeur effective vit désormais dans
+     * {@code app.atelier.replayed-trace-turns} ({@link #replayedTraceTurns}, défaut 12 depuis
+     * SF-119-03). Au-delà de la fenêtre, les tours plus anciens sont rejoués en texte seul.
      */
     private static final int REPLAYED_TRACE_TURNS = 5;
     /**
@@ -259,6 +260,13 @@ public class AtelierChatService implements RelayInterruptTarget {
      * F-118 strict.
      */
     private final boolean escalateOnSignal;
+    /**
+     * Fenêtre de rejeu des trajectoires d'outils (F-119 / SF-119-03) : les {@code replayedTraceTurns}
+     * derniers tours sont rejoués <b>avec</b> leurs résultats d'outils, au-delà en texte seul. Relevée
+     * de 5 (constante {@link #REPLAYED_TRACE_TURNS}) à sa valeur par défaut (12) pour garder le
+     * couplage affirmation↔preuve plus longtemps. Réglable par {@code app.atelier.replayed-trace-turns}.
+     */
+    private final int replayedTraceTurns;
     /**
      * Politique de contexte appliquée à chaque itération d'un tour (F-39 / SF-39-12). Elle dit une
      * intention — écarter les résultats d'outils périmés — que le fournisseur traduit ; le mécanisme
@@ -542,6 +550,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.adaptiveEffort = !Boolean.FALSE.equals(atelierProperties.adaptiveEffort());
         this.exploreReasoning = new AgentReasoning(true, atelierProperties.exploreEffort());
         this.escalateOnSignal = !Boolean.FALSE.equals(atelierProperties.escalateOnSignal());
+        this.replayedTraceTurns = atelierProperties.replayedTraceTurns();
         this.contextPolicy = Boolean.TRUE.equals(atelierProperties.contextPruning())
                 ? new AgentContextPolicy(true, CONTEXT_TRIGGER_INPUT_TOKENS,
                         CONTEXT_KEEP_TOOL_RESULTS, CONTEXT_CLEAR_AT_LEAST_INPUT_TOKENS)
@@ -1246,12 +1255,13 @@ public class AtelierChatService implements RelayInterruptTarget {
                                 workspace.getId(), userId)
                         : messageRepository
                                 .findByWorkspaceIdAndUserIdAndCreatedAtGreaterThanEqualOrderByCreatedAtAsc(
-                                        workspace.getId(), userId, workspace.getChatThreadStartedAt())));
+                                        workspace.getId(), userId, workspace.getChatThreadStartedAt()),
+                replayedTraceTurns));
         return messages;
     }
 
-    private static List<AgentMessage> replayableHistory(List<AtelierMessage> past) {
-        int traceFrom = firstTracedIndex(past);
+    private static List<AgentMessage> replayableHistory(List<AtelierMessage> past, int traceTurns) {
+        int traceFrom = firstTracedIndex(past, traceTurns);
         List<AgentMessage> messages = new ArrayList<>(past.size());
         for (int index = 0; index < past.size(); index++) {
             AtelierMessage message = past.get(index);
@@ -1277,14 +1287,15 @@ public class AtelierChatService implements RelayInterruptTarget {
 
     /**
      * Index à partir duquel un message assistant est rejoué <b>avec</b> sa trajectoire d'outils
-     * (SF-39-03) : les {@value #REPLAYED_TRACE_TURNS} derniers tours, pas davantage.
+     * (SF-39-03) : les {@code traceTurns} derniers tours, pas davantage (F-119 / SF-119-03 rend la
+     * fenêtre configurable, défaut 12).
      */
-    private static int firstTracedIndex(List<AtelierMessage> past) {
+    private static int firstTracedIndex(List<AtelierMessage> past, int traceTurns) {
         int seen = 0;
         for (int index = past.size() - 1; index >= 0; index--) {
             if ("ASSISTANT".equalsIgnoreCase(past.get(index).getRole())) {
                 seen++;
-                if (seen == REPLAYED_TRACE_TURNS) {
+                if (seen == traceTurns) {
                     return index;
                 }
             }
