@@ -166,6 +166,40 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "- Quand un outil échoue ou ne rend rien d'exploitable, dis « non concluant » et "
                     + "réessaie ou change d'approche — n'invente pas un résultat, et ne prends pas un "
                     + "échec pour une réponse négative.\n\n";
+    /**
+     * Doctrine de retenue (F-120 / SF-120-01, cadrage Cause 1/5) : ajoutée au rôle sur les <b>deux</b>
+     * cibles, aux côtés de la discipline d'investigation (SF-119-02). Le rôle ne connaissait que
+     * l'<i>action</i> (« tu travailles sur le projet, utilise write_file… ») : 53 % des questions du
+     * PO déclenchaient une écriture non demandée. La bonne retenue existait déjà, mais cloisonnée à
+     * Radar/Pages — on l'élève ici au rang de règle générale. Elle dit <i>quand</i> agir ; la
+     * discipline d'investigation dit <i>comment</i> vérifier quand on agit. Placée en tête, elle
+     * survit à la coupe {@link #SYSTEM_MAX_CHARS} ; quelques centaines de caractères de plus dans le
+     * préfixe stable, donc cachés (cache de prompt préservé).
+     */
+    private static final String RESTRAINT_DOCTRINE =
+            "Répondre d'abord, agir sur demande — non négociable :\n"
+                    + "- Une question n'est pas un ordre : quand l'utilisateur pose une question "
+                    + "(« qu'as-tu compris ? », « le plan est-il prêt ? », « as-tu pu lire… ? »), "
+                    + "réponds-y en texte. N'écris, ne modifie et n'exécute aucune mutation qu'il n'a "
+                    + "pas demandée.\n"
+                    + "- Lire pour répondre est permis (lire un fichier, lister, chercher, explorer) ; "
+                    + "c'est la MUTATION non demandée — écrire ou éditer un fichier, lancer une commande "
+                    + "qui change l'état — qui est proscrite.\n"
+                    + "- Sur une demande ambiguë, ne devine pas : propose en une phrase ce que tu ferais "
+                    + "et attends (« Veux-tu que je le fasse ? »). Agis parce que l'utilisateur te le "
+                    + "demande, pas parce qu'un mot (« plan », « feature ») est apparu.\n\n";
+    /**
+     * Préambule cadrant le {@code CLAUDE.md} du projet injecté verbatim (F-120 / SF-120-01, cadrage
+     * Cause 3). Le {@code CLAUDE.md} est souvent un manuel impératif (« avant d'écrire la moindre
+     * ligne, produis la mini-spec… », « REFUS si… ») : injecté tel quel, toute évocation de
+     * « plan/feature » dans une simple question amorçait la procédure. Le préambule rappelle que ces
+     * conventions encadrent le travail <i>quand on implémente à la demande</i>, pas la réponse à une
+     * question.
+     */
+    private static final String GOVERNANCE_PREAMBLE =
+            "Les conventions ci-dessous encadrent le travail quand tu IMPLÉMENTES à la demande de "
+                    + "l'utilisateur. Elles ne transforment pas une question en ordre : si l'utilisateur "
+                    + "pose une simple question, réponds-y sans dérouler de procédure ni rien modifier.\n\n";
     private static final List<String> SKILL_PREFIXES = List.of(".claude/skills/", "skills/");
     /**
      * Nombre de skills annoncés dans la consigne (F-39 / SF-39-02, décision D3). Une borne explicite
@@ -2513,10 +2547,13 @@ public class AtelierChatService implements RelayInterruptTarget {
         // Le plan est déclaré sur les DEUX cibles : c'est un outil d'organisation, pas d'exécution
         // (F-39 / SF-39-13). Rien de ce qu'il fait ne dépend de l'endroit où le code tourne.
         tools.add(new AgentTool("set_plan",
-                "Pose ou met à jour ton plan de travail pour ce message. Envoie la liste COMPLÈTE des "
-                        + "étapes à chaque appel : elle remplace la précédente. Marque une seule étape "
-                        + "active à la fois, et mets-la à jour dès qu'une étape est terminée. "
-                        + "Utile dès que le travail dépasse deux ou trois étapes ; inutile sinon.",
+                "Pose ou met à jour ton plan de travail pour ce message. N'établis ou ne mets à jour "
+                        + "un plan que si l'utilisateur te demande de planifier ou d'exécuter, ou si tu "
+                        + "vas effectivement agir — pas parce que le mot « plan » apparaît dans le "
+                        + "message. Envoie la liste COMPLÈTE des étapes à chaque appel : elle remplace "
+                        + "la précédente. Marque une seule étape active à la fois, et mets-la à jour dès "
+                        + "qu'une étape est terminée. Utile dès que le travail dépasse deux ou trois "
+                        + "étapes ; inutile sinon.",
                 Map.of("type", "object",
                         "properties", Map.of("steps", Map.of(
                                 "type", "array",
@@ -2654,6 +2691,12 @@ public class AtelierChatService implements RelayInterruptTarget {
         // et de se rattraper au tour suivant. Placée en tête, elle survit à la coupe SYSTEM_MAX_CHARS.
         system.append(INVESTIGATION_DISCIPLINE);
 
+        // Doctrine de retenue (F-120 / SF-120-01) : « réponds d'abord, agis sur demande », sur les DEUX
+        // cibles, juste après la discipline d'investigation — les deux vivent en tête du préfixe stable.
+        // La discipline dit COMMENT vérifier quand on agit ; la doctrine dit QUAND agir : une question
+        // reçoit une réponse, pas une mutation non demandée.
+        system.append(RESTRAINT_DOCTRINE);
+
         // F-89 / SF-89-04 : un terminal Teams sans droit le DIT. Sans ce paragraphe, l'agent — privé
         // de ses outils teams_* en silence (SF-89-01) — fouillait la machine comme un terminal de
         // projet. Placé juste après le rôle : c'est ce qui change le sens de tout le reste.
@@ -2691,7 +2734,10 @@ public class AtelierChatService implements RelayInterruptTarget {
         if (instructions.isPresent()) {
             reads++;
             chars += instructions.get().length();
-            system.append("--- Conventions du projet (CLAUDE.md) ---\n")
+            // F-120 / SF-120-01 : le préambule cadre le CLAUDE.md injecté verbatim — ces conventions
+            // valent quand on IMPLÉMENTE, pas quand l'utilisateur pose une simple question.
+            system.append(GOVERNANCE_PREAMBLE)
+                    .append("--- Conventions du projet (CLAUDE.md) ---\n")
                     .append(instructions.get()).append("\n\n");
         }
 
