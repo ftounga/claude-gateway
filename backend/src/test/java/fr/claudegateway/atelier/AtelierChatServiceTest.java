@@ -24,6 +24,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import fr.claudegateway.agent.AgentContentBlock;
 import fr.claudegateway.agent.AgentMessage;
+import fr.claudegateway.agent.AgentReasoning;
 import fr.claudegateway.agent.AiAgentProvider;
 import fr.claudegateway.agent.StubAiAgentProvider;
 import fr.claudegateway.atelier.AtelierChatService.AtelierChatResult;
@@ -710,6 +711,24 @@ class AtelierChatServiceTest {
         // outil en cible RUNNER sans qu'aucun test bronche. La panoplie est la même ici (D2).
         assertThat(agentProvider.toolBelts.get(1))
                 .containsExactly("list_files", "read_file", "search_files");
+    }
+
+    @Test
+    void theExplorationInvestigatesWithNonZeroReasoning() {
+        // F-119 / SF-119-01 : la sous-boucle d'exploration ne part plus avec AgentReasoning.none()
+        // (raisonnement zéro), mais avec un raisonnement adaptatif à effort configurable non nul
+        // (défaut `low`) — elle lit ET interprète.
+        stubHappyPath();
+        agentProvider.enqueueToolCall("explore", "question", "cherche");
+        agentProvider.enqueueFinal("Trouvé.");
+        agentProvider.enqueueFinal("Voilà.");
+
+        service.chat(userId, workspaceId, "cherche");
+
+        // L'appel d'index 1 est le premier de la sous-boucle (l'index 0 est la boucle principale) :
+        // son raisonnement est adaptatif et non nul.
+        assertThat(agentProvider.reasoningSnapshots.get(1))
+                .isEqualTo(new AgentReasoning(true, "low"));
     }
 
     // ------------------------------------------------- SF-39-16 : fermeture de la cible SANDBOX

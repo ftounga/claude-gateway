@@ -89,6 +89,21 @@ public class StubAiAgentProvider implements AiAgentProvider {
     }
 
     /**
+     * Empile un tour « appel d'outil » portant en plus un <b>texte d'assistant</b> (F-119 /
+     * SF-119-01) : c'est la forme utile pour tester une auto-contradiction dans le texte d'un tour
+     * qui enchaîne pourtant un outil (une continuation, pas une réponse finale).
+     */
+    public void enqueueToolCallWithText(String text, String toolName, String... kv) {
+        ObjectNode input = mapper.createObjectNode();
+        for (int i = 0; i + 1 < kv.length; i += 2) {
+            input.put(kv[i], kv[i + 1]);
+        }
+        List<AgentToolCall> calls = new ArrayList<>();
+        calls.add(new AgentToolCall("tool_" + (idSeq++), toolName, input));
+        script.add(new AgentTurn(text, calls, false, 5, 5));
+    }
+
+    /**
      * Empile un tour « appel d'outil » précédé de <b>blocs de raisonnement signés</b> (F-39 /
      * SF-39-10) : c'est la forme que rend le fournisseur quand le raisonnement est actif, et celle
      * que la boucle doit remettre en tête du message assistant rejoué.

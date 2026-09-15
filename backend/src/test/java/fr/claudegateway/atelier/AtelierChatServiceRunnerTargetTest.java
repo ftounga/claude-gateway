@@ -25,6 +25,7 @@ import org.mockito.quality.Strictness;
 
 import fr.claudegateway.agent.AgentContentBlock;
 import fr.claudegateway.agent.AgentMessage;
+import fr.claudegateway.agent.AgentReasoning;
 import fr.claudegateway.agent.AiAgentProvider;
 import fr.claudegateway.agent.StubAiAgentProvider;
 import fr.claudegateway.atelier.AtelierChatService.AtelierChatResult;
@@ -147,6 +148,40 @@ class AtelierChatServiceRunnerTargetTest {
         // SF-39-06 : la lecture est numérotée — sans numéros, l'agent ne peut ni dire où il a vu
         // quelque chose, ni demander la suite d'un fichier.
         assertThat(toolResultText()).isEqualTo("     1→const x = 1;\n");
+    }
+
+    @Test
+    void aBashWithNonZeroExitCodeMakesTheNextStepRegainNormalEffort() {
+        // F-119 / SF-119-01 : un `bash` à code de sortie ≠ 0 est un SUCCÈS d'appel (isError faux),
+        // mais un signal de difficulté : le tour de continuation remonte à l'effort NORMAL (`high`).
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        when(runnerToolGateway.bash(eq(runnerTarget), anyString(), eq("faux"), any(), anyLong(), any()))
+                .thenReturn(new RunnerCallResult(true, "", false, 1, 5L, null, null, null, "boom", false));
+        agentProvider.enqueueToolCall("bash", "command", "faux");
+        agentProvider.enqueueFinal("Je corrige.");
+
+        service.chat(userId, workspaceId, "lance faux");
+
+        assertThat(agentProvider.reasoningSnapshots).containsExactly(
+                new AgentReasoning(true, "high"),
+                new AgentReasoning(true, "high"));
+    }
+
+    @Test
+    void aBashWithZeroExitCodeKeepsTheReducedEffort() {
+        // Contrôle : un `bash` qui réussit (code 0) n'est pas un signal — la continuation garde
+        // l'effort réduit (`low`), le gain F-118 est préservé.
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        when(runnerToolGateway.bash(eq(runnerTarget), anyString(), eq("vrai"), any(), anyLong(), any()))
+                .thenReturn(new RunnerCallResult(true, "", false, 0, 5L, null, null, null, "ok", false));
+        agentProvider.enqueueToolCall("bash", "command", "vrai");
+        agentProvider.enqueueFinal("Fait.");
+
+        service.chat(userId, workspaceId, "lance vrai");
+
+        assertThat(agentProvider.reasoningSnapshots).containsExactly(
+                new AgentReasoning(true, "high"),
+                new AgentReasoning(true, "low"));
     }
 
     @Test

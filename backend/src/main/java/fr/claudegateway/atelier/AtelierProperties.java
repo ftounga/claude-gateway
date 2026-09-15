@@ -80,6 +80,22 @@ import org.springframework.boot.context.properties.bind.ConstructorBinding;
  *                      retombe sur le défaut, et une valeur au-delà du plafond dur ({@code PT2H}) y
  *                      est ramenée. La production le porte à 60 min par {@code APP_ATELIER_TURN_BUDGET}
  *                      ({@code PT60M}), sans changer la valeur du code
+ * @param exploreEffort effort de raisonnement de la <b>sous-boucle d'exploration</b> (F-119 /
+ *                      SF-119-01) : {@code low} à {@code max}, défaut {@code low}. Corrige le
+ *                      {@code AgentReasoning.none()} d'origine (zéro raisonnement en investigation) :
+ *                      la sous-boucle lit et interprète, elle mérite un raisonnement adaptatif à
+ *                      effort non nul, mais sobre pour ne pas alourdir chaque lecture déléguée. Même
+ *                      repli que {@code effort} : une valeur inconnue retombe sur le défaut
+ * @param escalateOnSignal <b>ré-escalade de l'effort sur signal de difficulté</b> (F-119 /
+ *                      SF-119-01), défaut {@code true}. Actif, un tour de continuation dont le tour
+ *                      précédent a produit un signal (résultat d'outil en erreur, {@code bash} en code
+ *                      de sortie ≠ 0, {@code edit_file} raté, timeout/indispo runner,
+ *                      auto-contradiction du modèle) repasse à l'effort <b>normal</b> ({@link
+ *                      #effort()}) au lieu de {@link #stepEffort()} ; une trajectoire qui roule sans
+ *                      incident garde l'effort réduit (gain de vitesse F-118 préservé).
+ *                      <b>Coupe-circuit</b> : {@code false} rétablit le comportement F-118 strict
+ *                      (réduit sur toutes les continuations), sans livraison. Sans effet quand
+ *                      {@code adaptiveEffort} est faux
  */
 @ConfigurationProperties(prefix = "app.atelier")
 public record AtelierProperties(
@@ -99,7 +115,9 @@ public record AtelierProperties(
         Boolean streaming,
         String stepEffort,
         Boolean adaptiveEffort,
-        Duration turnBudget) {
+        Duration turnBudget,
+        String exploreEffort,
+        Boolean escalateOnSignal) {
 
     /** Modèle de la boucle maison à défaut de configuration (F-39 / SF-39-10). */
     public static final String DEFAULT_MODEL = "claude-opus-5";
@@ -111,6 +129,12 @@ public record AtelierProperties(
      * via {@code APP_ATELIER_STEP_EFFORT} sans livraison si {@code medium} s'avère plus sûr.
      */
     public static final String DEFAULT_STEP_EFFORT = "low";
+    /**
+     * Effort par défaut de la sous-boucle d'exploration (F-119 / SF-119-01) : {@code low}. Non nul
+     * (correctif du {@code none()}), mais sobre — une exploration lit, elle n'a pas à « réfléchir
+     * fort » à chaque fichier. Réglable via {@code APP_ATELIER_EXPLORE_EFFORT} sans livraison.
+     */
+    public static final String DEFAULT_EXPLORE_EFFORT = "low";
     /** Niveaux d'effort acceptés — même vocabulaire que le chemin Managed Agents (SF-28-17). */
     private static final java.util.Set<String> ALLOWED_EFFORTS =
             java.util.Set.of("low", "medium", "high", "xhigh", "max");
@@ -224,6 +248,31 @@ public record AtelierProperties(
         if (turnBudget.compareTo(TURN_BUDGET_CEILING) > 0) {
             turnBudget = TURN_BUDGET_CEILING;
         }
+        // Effort de la sous-boucle d'exploration (F-119 / SF-119-01) : même repli que `effort`, une
+        // faute de frappe retombe sur le défaut (`low`) au lieu d'arrêter le démarrage.
+        if (exploreEffort == null || exploreEffort.isBlank() || !ALLOWED_EFFORTS.contains(exploreEffort)) {
+            exploreEffort = DEFAULT_EXPLORE_EFFORT;
+        }
+        // Absent => ré-escalade sur signal active : un réglage manquant ne change pas le comportement
+        // livré par F-119 (plein seulement quand un signal de difficulté apparaît).
+        if (escalateOnSignal == null) {
+            escalateOnSignal = Boolean.TRUE;
+        }
+    }
+
+    /**
+     * Constructeur de compatibilité, sans les réglages F-119 (SF-119-01) : {@code exploreEffort} et
+     * {@code escalateOnSignal} retombent sur leurs défauts ({@code low} / actif). Évite de réécrire
+     * les appelants antérieurs à F-119 (et leurs tests) pour des réglages qu'ils n'expriment pas.
+     */
+    public AtelierProperties(String storage, String bucket, String prefix, Long maxTotalBytes,
+            Integer maxEntries, Long maxFileBytes, Integer maxIterations, String model, String effort,
+            Boolean contextPruning, Long maxTurnTokens, Integer maxDelegations,
+            Boolean storageExecution, Boolean streaming, String stepEffort, Boolean adaptiveEffort,
+            Duration turnBudget) {
+        this(storage, bucket, prefix, maxTotalBytes, maxEntries, maxFileBytes, maxIterations, model,
+                effort, contextPruning, maxTurnTokens, maxDelegations, storageExecution, streaming,
+                stepEffort, adaptiveEffort, turnBudget, null, null);
     }
 
     /**

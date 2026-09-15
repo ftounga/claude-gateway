@@ -224,6 +224,21 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     private final boolean adaptiveEffort;
     /**
+     * Raisonnement de la <b>sous-boucle d'exploration</b> (F-119 / SF-119-01) : effort configurable
+     * non nul ({@code app.atelier.explore-effort}, défaut {@code low}), au lieu du
+     * {@code AgentReasoning.none()} d'origine — une exploration lit et interprète, elle ne doit pas
+     * investiguer à raisonnement zéro.
+     */
+    private final AgentReasoning exploreReasoning;
+    /**
+     * Ré-escalade de l'effort sur signal de difficulté (F-119 / SF-119-01). Vrai : un tour de
+     * continuation dont le tour précédent a produit un signal (résultat d'outil en erreur,
+     * {@code bash} en code de sortie ≠ 0, {@code edit_file} raté, timeout/indispo runner,
+     * auto-contradiction) repasse à l'effort normal. Coupe-circuit à {@code false} : comportement
+     * F-118 strict.
+     */
+    private final boolean escalateOnSignal;
+    /**
      * Politique de contexte appliquée à chaque itération d'un tour (F-39 / SF-39-12). Elle dit une
      * intention — écarter les résultats d'outils périmés — que le fournisseur traduit ; le mécanisme
      * lui-même n'existe que dans {@code AnthropicAgentProvider}.
@@ -504,6 +519,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.reasoning = new AgentReasoning(true, atelierProperties.effort());
         this.stepReasoning = new AgentReasoning(true, atelierProperties.stepEffort());
         this.adaptiveEffort = !Boolean.FALSE.equals(atelierProperties.adaptiveEffort());
+        this.exploreReasoning = new AgentReasoning(true, atelierProperties.exploreEffort());
+        this.escalateOnSignal = !Boolean.FALSE.equals(atelierProperties.escalateOnSignal());
         this.contextPolicy = Boolean.TRUE.equals(atelierProperties.contextPruning())
                 ? new AgentContextPolicy(true, CONTEXT_TRIGGER_INPUT_TOKENS,
                         CONTEXT_KEEP_TOOL_RESULTS, CONTEXT_CLEAR_AT_LEAST_INPUT_TOKENS)
@@ -559,12 +576,88 @@ public class AtelierChatService implements RelayInterruptTarget {
      * <p>Garder l'effort normal au tour qui <i>planifie</i> est ce qui garantit qu'une vraie tâche de
      * raisonnement n'est jamais dégradée. Le repli {@code adaptiveEffort == false} rétablit l'effort
      * normal à chaque étape, sans livraison.</p>
+     *
+     * <p><b>Ré-escalade sur signal</b> (F-119 / SF-119-01) : {@code escalate} vrai signale que le tour
+     * <i>précédent</i> a rencontré une difficulté (résultat d'outil en erreur, {@code bash} en code de
+     * sortie ≠ 0, {@code edit_file} raté, timeout/indispo runner, auto-contradiction du modèle). Ce
+     * sont justement les tours d'investigation/correction : l'effort y remonte au normal au lieu de
+     * rester à {@code stepEffort}. Une trajectoire qui roule sans incident garde l'effort réduit — le
+     * gain de vitesse/coût de F-118 est préservé. Sous coupe-circuit {@code escalateOnSignal == false},
+     * le signal est ignoré (comportement F-118 strict).</p>
      */
-    AgentReasoning reasoningForIteration(int iteration) {
-        if (adaptiveEffort && iteration > 0) {
+    AgentReasoning reasoningForIteration(int iteration, boolean escalate) {
+        if (adaptiveEffort && iteration > 0 && !(escalate && escalateOnSignal)) {
             return stepReasoning;
         }
         return reasoning;
+    }
+
+    /** Forme historique : aucune ré-escalade. Conservée pour les appelants qui l'attendent. */
+    AgentReasoning reasoningForIteration(int iteration) {
+        return reasoningForIteration(iteration, false);
+    }
+
+    /**
+     * Vrai si un appel d'outil et son résultat constituent un <b>signal de difficulté</b> qui doit
+     * faire remonter l'effort au tour suivant (F-119 / SF-119-01) : un résultat en erreur (échec
+     * d'{@code edit_file}, timeout/indispo runner, argument manquant, refus…), ou un {@code bash} dont
+     * le code de sortie est non nul — l'appel a réussi mais la commande a échoué, ce que
+     * {@code isError} ne capte pas.
+     */
+    private static boolean isDifficultySignal(AgentToolCall call, ToolOutcome outcome) {
+        if (outcome.isError()) {
+            return true;
+        }
+        return "bash".equals(call.name()) && bashExitNonZero(outcome.content());
+    }
+
+    /** Motif du code de sortie ajouté par {@link #bashOutcome} : {@code [code de sortie: N]}. */
+    private static final java.util.regex.Pattern BASH_EXIT_CODE =
+            java.util.regex.Pattern.compile("\\[code de sortie: (\\d+)\\]");
+
+    /**
+     * Vrai si le résultat d'un {@code bash} porte un code de sortie <b>non nul</b> (F-119 / SF-119-01).
+     * On lit la <b>dernière</b> occurrence du marqueur : c'est celle que la gateway appose en fin de
+     * sortie (contrat SF-38-07). Un code « inconnu » ou absent n'est pas un signal — on n'invente pas
+     * un échec.
+     */
+    private static boolean bashExitNonZero(String content) {
+        if (content == null || content.isEmpty()) {
+            return false;
+        }
+        java.util.regex.Matcher matcher = BASH_EXIT_CODE.matcher(content);
+        int code = 0;
+        boolean found = false;
+        while (matcher.find()) {
+            found = true;
+            code = Integer.parseInt(matcher.group(1));
+        }
+        return found && code != 0;
+    }
+
+    /**
+     * Marqueurs sobres d'<b>auto-contradiction</b> (F-119 / SF-119-01) : le symptôme décrit par le PO
+     * (« il dit "je me suis trompé" et corrige »). Liste fermée, conservatrice — mieux vaut un faux
+     * négatif qu'une ré-escalade injustifiée. Comparaison insensible à la casse.
+     */
+    private static final List<String> SELF_CORRECTION_MARKERS = List.of(
+            "je me suis trompé", "je me suis trompée", "je m'étais trompé", "je m'étais trompée",
+            "erreur de ma part", "au temps pour moi", "autant pour moi", "c'était faux",
+            "je me corrige", "je reviens sur", "je me suis fourvoyé", "je me suis induit en erreur",
+            "en fait, non", "mea culpa");
+
+    /** Vrai si le texte du tour porte un marqueur d'auto-contradiction (F-119 / SF-119-01). */
+    private static boolean looksLikeSelfCorrection(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        String lower = text.toLowerCase(java.util.Locale.ROOT);
+        for (String marker : SELF_CORRECTION_MARKERS) {
+            if (lower.contains(marker)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private AtelierChatResult runLoop(UUID userId, UUID workspaceId, String rawMessage,
@@ -734,6 +827,10 @@ public class AtelierChatService implements RelayInterruptTarget {
         log.info("Tour d'atelier ouvert (workspace={}, cible={}, plafond={} étapes)",
                 workspaceId, workspace.executionTargetOrDefault(), maxIterations);
         int iterationsUsed = 0;
+        // Ré-escalade de l'effort sur signal (F-119 / SF-119-01) : vrai quand le tour PRÉCÉDENT a
+        // rencontré une difficulté. Consulté à l'ouverture du tour suivant pour choisir l'effort, puis
+        // recalculé après l'exécution des outils de ce tour.
+        boolean escalateNextTurn = false;
 
         for (int iteration = 0; iteration < maxIterations; iteration++) {
             iterationsUsed = iteration + 1;
@@ -790,7 +887,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                 boolean[] streamed = {false};
                 AgentTurnRequest turnRequest =
                         new AgentTurnRequest(model, system, messages, tools, apiKey,
-                                reasoningForIteration(iteration), contextPolicy);
+                                reasoningForIteration(iteration, escalateNextTurn), contextPolicy);
                 try {
                     if (streaming) {
                         turn = agentProvider.nextTurn(turnRequest, delta -> {
@@ -917,6 +1014,10 @@ public class AtelierChatService implements RelayInterruptTarget {
             }
             List<AgentContentBlock> toolResults = new ArrayList<>();
             List<AtelierToolTrace.Call> tracedCalls = new ArrayList<>();
+            // Signal de difficulté de CE tour (F-119 / SF-119-01) : amorcé par l'auto-contradiction
+            // éventuelle du texte, complété par chaque résultat d'outil ci-dessous. S'il est vrai, le
+            // tour suivant remonte à l'effort normal.
+            boolean signalThisTurn = looksLikeSelfCorrection(turn.text());
             for (AgentToolCall call : turn.toolCalls()) {
                 // Identifiant de corrélation unique de l'appel (contrat de messages runner §1) : celui
                 // du fournisseur, ou un UUID généré s'il manque — et le MÊME partout (bloc tool_use,
@@ -1007,6 +1108,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                     }
                 }
                 toolResults.add(new AgentContentBlock.ToolResult(callId, modelContent, outcome.isError()));
+                // Signal de difficulté (F-119 / SF-119-01) : un résultat en erreur ou un bash en code
+                // de sortie ≠ 0 fera remonter l'effort au tour suivant.
+                signalThisTurn |= isDifficultySignal(call, outcome);
                 // Mémoire du tour (SF-39-03) : l'appel ET son résultat, appariés — le fournisseur
                 // refuse un tool_use orphelin au rejeu.
                 tracedCalls.add(new AtelierToolTrace.Call(callId, call.name(), call.input(),
@@ -1030,6 +1134,9 @@ public class AtelierChatService implements RelayInterruptTarget {
             messages.add(AgentMessage.assistant(assistantBlocks));
             messages.add(AgentMessage.toolResults(toolResults));
             trace.add(new AtelierToolTrace.Step(turn.text(), List.copyOf(tracedCalls)));
+            // Le tour suivant remonte à l'effort normal si ce tour a rencontré une difficulté
+            // (F-119 / SF-119-01) : c'est là — après un résultat d'outil — qu'il faut réfléchir le plus.
+            escalateNextTurn = signalThisTurn;
 
             if (interruptedTurns.remove(turnKey(userId, workspaceId))) {
                 // Interruption arrivée pendant les outils de ce tour : on s'arrête sans rappeler le
@@ -1523,7 +1630,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                         return new AtelierExploration.ExecutedTool(outcome.content(), outcome.isError());
                     },
                     () -> interruptedTurns.contains(turnKey(userId, workspace.getId()))
-                            || System.currentTimeMillis() >= deadline);
+                            || System.currentTimeMillis() >= deadline,
+                    // F-119 / SF-119-01 : la sous-boucle investigue avec un raisonnement adaptatif
+                    // (effort configurable non nul), plus jamais AgentReasoning.none().
+                    exploreReasoning);
             return new ExplorationOutcome(ToolOutcome.info(result.answer()),
                     result.inputTokens(), result.outputTokens(),
                     result.cacheReadTokens(), result.cacheWriteTokens());

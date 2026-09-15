@@ -194,6 +194,69 @@ class AtelierChatServiceReasoningTest {
                 new AgentReasoning(true, "high"));
     }
 
+    // ------------------------------------------- F-119 / SF-119-01 : ré-escalade de l'effort sur signal
+
+    @Test
+    void aToolErrorMakesTheNextStepRegainNormalEffort() {
+        // Un résultat d'outil EN ERREUR (ici un outil inconnu) au premier tour fait remonter l'effort
+        // au NORMAL (`high`) au tour de continuation, au lieu de rester à `low`. C'est le cœur de
+        // F-119 : c'est APRÈS un incident qu'il faut réfléchir le plus.
+        agentProvider.enqueueToolCall("frobnicate");
+        agentProvider.enqueueFinal("Corrigé.");
+
+        service.chat(userId, workspaceId, "fais un truc");
+
+        assertThat(agentProvider.reasoningSnapshots).containsExactly(
+                new AgentReasoning(true, "high"),
+                new AgentReasoning(true, "high"));
+    }
+
+    @Test
+    void aSelfContradictionInTheTurnTextRegainsNormalEffort() {
+        // Le modèle se dédit dans son texte ("je me suis trompé") tout en enchaînant un outil : le
+        // tour suivant remonte au NORMAL, même si l'outil lui-même a réussi.
+        agentProvider.enqueueToolCallWithText("Je me suis trompé, je relis.", "read_file",
+                "path", "notes.txt");
+        agentProvider.enqueueFinal("Voilà la bonne réponse.");
+
+        service.chat(userId, workspaceId, "lis notes.txt");
+
+        assertThat(agentProvider.reasoningSnapshots).containsExactly(
+                new AgentReasoning(true, "high"),
+                new AgentReasoning(true, "high"));
+    }
+
+    @Test
+    void aCleanContinuationKeepsTheReducedEffortDespiteTheSignalPath() {
+        // Non-régression du gain F-118 : un enchaînement SANS incident (outil qui réussit, aucun
+        // marqueur d'auto-contradiction) garde l'effort réduit `low` au tour de continuation.
+        agentProvider.enqueueToolCall("read_file", "path", "notes.txt");
+        agentProvider.enqueueFinal("J'ai lu notes.txt.");
+
+        service.chat(userId, workspaceId, "lis notes.txt");
+
+        assertThat(agentProvider.reasoningSnapshots).containsExactly(
+                new AgentReasoning(true, "high"),
+                new AgentReasoning(true, "low"));
+    }
+
+    @Test
+    void theEscalateOnSignalFlagCanBeTurnedOff() {
+        // Coupe-circuit `escalate-on-signal=false` (19e arg) : comportement F-118 strict — l'effort
+        // reste réduit sur la continuation MALGRÉ l'erreur d'outil. `storageExecution=true` (13e arg)
+        // pour que la boucle parte.
+        buildService(new AtelierProperties(null, null, null, null, null, null, null, null, null, null,
+                null, null, true, null, null, null, null, null, false));
+        agentProvider.enqueueToolCall("frobnicate");
+        agentProvider.enqueueFinal("Tant pis.");
+
+        service.chat(userId, workspaceId, "fais un truc");
+
+        assertThat(agentProvider.reasoningSnapshots).containsExactly(
+                new AgentReasoning(true, "high"),
+                new AgentReasoning(true, "low"));
+    }
+
     @Test
     void aReplayedHistoryCarriesNoReasoningBlock() {
         history.add(AtelierMessage.builder().id(UUID.randomUUID()).workspaceId(workspaceId).userId(userId)

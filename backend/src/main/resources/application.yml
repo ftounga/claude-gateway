@@ -154,8 +154,9 @@ app:
     model: ${APP_ATELIER_MODEL:claude-opus-5}
     # Effort de raisonnement : low | medium | high | xhigh | max. `high` est le defaut du
     # fournisseur — le poser ici ne change rien au comportement, et rend le levier reglable sans
-    # livraison. `xhigh` attend le lot 6 : la boucle appelle en NON-streame, et monter l'effort avant
-    # d'avoir cable timeout et retry echangerait de la profondeur contre des tours coupes au budget.
+    # livraison. `xhigh`/`max` sont desormais alignables ici (F-119 / SF-119-01) : le bridage « attend
+    # le lot 6 » etait lie a l'appel NON-streame ; le streaming (F-116, avec timeout et retry) est
+    # livre. Monter le defaut reste un choix d'exploitation (profondeur contre latence/cout).
     effort: ${APP_ATELIER_EFFORT:high}
     # Effort adaptatif a l'etape (F-118 / SF-118-01) : low | medium | high | xhigh | max. Le PREMIER
     # tour d'une demande garde l'effort normal ci-dessus (la reflexion sert a cadrer le travail) ; les
@@ -167,6 +168,18 @@ app:
     # COUPE-CIRCUIT : `false` retablit l'effort normal a CHAQUE etape (comportement d'avant F-118),
     # sans livraison — si l'effort reduit degradait la qualite observee.
     adaptive-effort: ${APP_ATELIER_ADAPTIVE_EFFORT:true}
+    # Re-escalade de l'effort SUR SIGNAL de difficulte (F-119 / SF-119-01). `true` : un tour de
+    # continuation dont le tour PRECEDENT a produit un signal (resultat d'outil en erreur, bash en
+    # code de sortie != 0, edit_file rate, timeout/indispo runner, auto-contradiction du modele)
+    # repasse a l'effort NORMAL (`effort`) au lieu de `step-effort` — ce sont les tours
+    # d'investigation/correction, ou il faut reflechir le plus. Une trajectoire qui roule sans
+    # incident garde l'effort reduit : le gain de vitesse de F-118 est preserve. COUPE-CIRCUIT :
+    # `false` retablit le comportement F-118 strict (reduit sur toutes les continuations).
+    escalate-on-signal: ${APP_ATELIER_ESCALATE_ON_SIGNAL:true}
+    # Effort de la SOUS-BOUCLE d'exploration (F-119 / SF-119-01) : low | medium | high | xhigh | max,
+    # defaut `low`. Corrige le raisonnement ZERO d'origine (l'exploration lit et interprete). Sobre
+    # par defaut pour ne pas alourdir chaque lecture deleguee. Meme repli que `effort`.
+    explore-effort: ${APP_ATELIER_EXPLORE_EFFORT:low}
     # Ecartement des resultats d'outils perimes d'un tour long (F-39 / SF-39-12). Ce qui deborde
     # n'est pas la conversation — deja bornee depuis SF-39-03 — mais l'accumulation des sorties
     # d'outils DANS UN MEME TOUR : une sortie de commande pese jusqu'a 128 Ko, et un tour en compte

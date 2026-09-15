@@ -252,4 +252,43 @@ class AtelierPropertiesTest {
         assertThat(withTurnBudget(Duration.ofHours(10)).turnBudget())
                 .isEqualTo(AtelierProperties.TURN_BUDGET_CEILING);
     }
+
+    // ------------------------------------------- F-119 / SF-119-01 : explore-effort & escalate-on-signal
+
+    /** Réglages F-119 (18e et 19e composants) : effort d'exploration et ré-escalade sur signal. */
+    private static AtelierProperties withF119(String exploreEffort, Boolean escalateOnSignal) {
+        return new AtelierProperties(null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, exploreEffort, escalateOnSignal);
+    }
+
+    @Test
+    void exploreEffortDefaultsToLowAndEscalationIsOn() {
+        AtelierProperties properties = withF119(null, null);
+        assertThat(properties.exploreEffort()).isEqualTo("low");
+        assertThat(properties.exploreEffort()).isEqualTo(AtelierProperties.DEFAULT_EXPLORE_EFFORT);
+        assertThat(properties.escalateOnSignal()).isTrue();
+        // Le constructeur de compatibilité (sans ces réglages) applique les mêmes défauts.
+        AtelierProperties legacy = new AtelierProperties(null, null, null, null, null, null, null,
+                null, null, null, null, null, true, null, null, null, null);
+        assertThat(legacy.exploreEffort()).isEqualTo("low");
+        assertThat(legacy.escalateOnSignal()).isTrue();
+    }
+
+    @Test
+    void exploreEffortFallsBackToLowWhenUnknownOrBlank() {
+        assertThat(withF119("turbo", null).exploreEffort()).isEqualTo("low");
+        assertThat(withF119("  ", null).exploreEffort()).isEqualTo("low");
+    }
+
+    @Test
+    void exploreEffortHonoursAConfiguredValue() {
+        assertThat(withF119("medium", null).exploreEffort()).isEqualTo("medium");
+        assertThat(withF119("xhigh", null).exploreEffort()).isEqualTo("xhigh");
+    }
+
+    @Test
+    void escalationCanBeDisabledWithoutADeployment() {
+        assertThat(withF119(null, false).escalateOnSignal()).isFalse();
+        assertThat(withF119(null, true).escalateOnSignal()).isTrue();
+    }
 }
