@@ -143,6 +143,31 @@ class TeamsRecordingToolsTest {
         assertTrue(json.path("text").asText().contains("organisateur"), json.path("text").asText());
     }
 
+    static final String COLLAB_FABRIQUE_URL =
+            "https://teams.microsoft.com/api/mcps/eu/collab/readcollabobject/V2/aa/bb/cc";
+
+    @Test
+    @DisplayName("SF-108-07 : droits refusés (canDownload=false) → échec NOMMÉ avant toute tentative")
+    void a_file_without_download_right_is_named_before_any_attempt() throws Exception {
+        // Le récapitulatif localise l'enregistrement (driveId/driveItemId) ; l'API v2.1 dit que le
+        // téléchargement n'est pas autorisé → on le NOMME, sans jamais tenter de télécharger.
+        PaperTeams teams = teamsWithRecording()
+                .already("collab1", COLLAB_FABRIQUE_URL, "readcollabobject-fabrique.json");
+        ObjectNode denied = mapper.createObjectNode();
+        denied.putObject("odata.error").putObject("message")
+                .put("value", SharePointItemAccess.CODE_DOWNLOAD);
+        teams.browser.sharePoint("droits-du-fichier", 403, denied);
+
+        JsonNode json = call(tools(teams), TeamsTools.MEETING_RECORDING, meeting());
+
+        assertFalse(json.path("downloaded").asBoolean(), json.toString());
+        assertTrue(json.path("gaps").toString().contains("DOWNLOAD_BLOCKED"), json.toString());
+        assertTrue(json.path("gaps").toString().contains("canDownload"), json.toString());
+        // Aucune tentative de téléchargement : Chrome n'a jamais été envoyé sur download.aspx.
+        assertTrue(teams.browser.navigations().stream()
+                .noneMatch(url -> url.contains("/_layouts/15/download.aspx")), teams.browser.navigations().toString());
+    }
+
     @Test
     @DisplayName("Adresse non observée : manque nommé, remède, et AUCUN geste")
     void an_unknown_location_moves_nothing() throws Exception {

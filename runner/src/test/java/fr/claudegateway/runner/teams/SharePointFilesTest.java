@@ -88,4 +88,27 @@ class SharePointFilesTest {
         assertTrue(denied.detail().contains("Access denied."));
         assertEquals(TeamsGapKind.NOT_FOUND, missing.kind());
     }
+
+    // ------------------------------------------------------- F-108 / SF-108-07 : droits (v2.1)
+
+    @Test
+    @DisplayName("Le script des droits lit le corps BRUT dans la page, ne rend qu'un code, ne projette rien")
+    void the_drive_item_access_script_decides_in_page_and_leaks_nothing() {
+        String script = SharePointFiles.driveItemAccessScript("b!DRIVE-CAGIP", "01ITEMCAGIP");
+
+        // Il vise la forme RÉELLE v2.1 et lit les booléens par leur nom, sur le corps brut.
+        assertTrue(script.contains("/_api/v2.1/drives/b!DRIVE-CAGIP/items/01ITEMCAGIP"), script);
+        assertTrue(script.contains("/labelPolicies"), script);
+        assertTrue(script.contains("accessViewpoint"), script);
+        assertTrue(script.contains("canDownload"), script);
+        assertTrue(script.contains("irmCapabilities"), script);
+        assertTrue(script.contains("canExtract"), script);
+        // Il ne rend qu'un CODE machine — jamais accessViewpoint, jamais une adresse signée.
+        assertTrue(script.contains(SharePointItemAccess.CODE_DOWNLOAD), script);
+        assertTrue(script.contains(SharePointItemAccess.CODE_EXTRACT), script);
+        // Il NE passe PAS par la projection (pick projette et écarte les clés « download ») : il lit le
+        // brut dans la page et n'en fait sortir qu'un verdict.
+        assertFalse(script.contains("pick("), script);
+        assertFalse(script.contains("body:"), "le script ne rend jamais un corps, seulement un verdict : " + script);
+    }
 }

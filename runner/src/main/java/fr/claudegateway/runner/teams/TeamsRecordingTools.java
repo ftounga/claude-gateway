@@ -219,6 +219,21 @@ final class TeamsRecordingTools {
         Sidecar sidecar = null;
         try {
             visit = new SharePointPage(actions, sleeper).open(file);
+            // F-108 / SF-108-07 : si le récapitulatif localise le fichier (driveId/driveItemId), on
+            // demande d'abord — par l'API v2.1 réelle — si le téléchargement est autorisé. Un refus
+            // (droits ou politique IRM du tenant) est NOMMÉ ici, avant toute tentative ; aucun
+            // contournement. Droits absents/illisibles → on n'empêche rien (la tentative dira le reste).
+            TeamsRecap recap = meeting == null ? null
+                    : host.ledger().recap(meeting.conversationId());
+            if (recap != null && !recap.driveId().isEmpty() && !recap.driveItemId().isEmpty()) {
+                java.util.Optional<TeamsGap> denied = SharePointFiles.driveItemAccess(visit,
+                        recap.driveId(), recap.driveItemId(), file.label());
+                if (denied.isPresent()) {
+                    gaps.add(denied.get());
+                    return new Download(new ChromeDownloads.Outcome(ChromeDownloads.State.BLOCKED,
+                            null, 0L, null), null, visit.viewport());
+                }
+            }
             SharePointFiles.Item item = SharePointFiles.file(visit, file);
             gaps.addAll(item.gaps());
             if (item.ok()) {
