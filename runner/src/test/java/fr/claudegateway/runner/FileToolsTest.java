@@ -321,6 +321,115 @@ class FileToolsTest {
         return node;
     }
 
+    // ------------------------------------------------------------- grep (F-121 / SF-121-01)
+
+    @Test
+    void grepRegexAuFormatCheminLigneTexte() throws IOException {
+        Files.writeString(root.resolve("a.txt"), "alpha\nBeta TODO-42\ngamma");
+
+        ToolOutcome outcome = tools.execute("grep", input("pattern", "TODO-\\d+"));
+
+        assertTrue(outcome.ok(), outcome.errorCode());
+        assertEquals("a.txt:2: Beta TODO-42\n", outcome.content());
+    }
+
+    @Test
+    void grepFiltreParInclude() throws IOException {
+        Files.writeString(root.resolve("a.java"), "int x; // match");
+        Files.writeString(root.resolve("b.txt"), "aussi match");
+
+        ToolOutcome outcome = tools.execute("grep", grepInput("pattern", "match", "include", "*.java"));
+
+        assertTrue(outcome.ok(), outcome.errorCode());
+        assertEquals("a.java:1: int x; // match\n", outcome.content());
+    }
+
+    @Test
+    void grepRendLesLignesDeContexte() throws IOException {
+        Files.writeString(root.resolve("a.txt"), "l1\nl2 HIT\nl3\nl4");
+        ObjectNode input = MAPPER.createObjectNode();
+        input.put("pattern", "HIT");
+        input.put("context", 1);
+
+        ToolOutcome outcome = tools.execute("grep", input);
+
+        assertTrue(outcome.ok(), outcome.errorCode());
+        assertEquals("a.txt-1- l1\na.txt:2: l2 HIT\na.txt-3- l3\n", outcome.content());
+    }
+
+    @Test
+    void grepModesCountEtFilesWithMatches() throws IOException {
+        Files.writeString(root.resolve("a.txt"), "x\nx\ny");
+
+        ToolOutcome count = tools.execute("grep", grepInput("pattern", "x", "output_mode", "count"));
+        assertEquals("a.txt:2\n", count.content());
+
+        ToolOutcome files = tools.execute("grep",
+                grepInput("pattern", "x", "output_mode", "files_with_matches"));
+        assertEquals("a.txt\n", files.content());
+    }
+
+    @Test
+    void grepIgnoreCase() throws IOException {
+        Files.writeString(root.resolve("a.txt"), "Une LIGNE");
+        ObjectNode input = MAPPER.createObjectNode();
+        input.put("pattern", "ligne");
+        input.put("ignore_case", true);
+
+        ToolOutcome outcome = tools.execute("grep", input);
+
+        assertEquals("a.txt:1: Une LIGNE\n", outcome.content());
+    }
+
+    @Test
+    void grepSansResultat() throws IOException {
+        Files.writeString(root.resolve("a.txt"), "rien");
+        assertEquals("Aucun résultat.", tools.execute("grep", input("pattern", "zzz")).content());
+    }
+
+    @Test
+    void grepRefuseUneRegexInvalide() throws IOException {
+        Files.writeString(root.resolve("a.txt"), "x");
+        ToolOutcome outcome = tools.execute("grep", input("pattern", "[unclosed"));
+        assertEquals("invalid_input", outcome.errorCode());
+    }
+
+    // ------------------------------------------------------------- glob (F-121 / SF-121-01)
+
+    @Test
+    void globRendLesCheminsTriesParDateDecroissante() throws IOException {
+        Files.writeString(root.resolve("vieux.java"), "a");
+        Files.writeString(root.resolve("neuf.java"), "b");
+        Files.writeString(root.resolve("autre.txt"), "c");
+        Files.setLastModifiedTime(root.resolve("vieux.java"),
+                java.nio.file.attribute.FileTime.fromMillis(1_000_000L));
+        Files.setLastModifiedTime(root.resolve("neuf.java"),
+                java.nio.file.attribute.FileTime.fromMillis(2_000_000L));
+
+        ToolOutcome outcome = tools.execute("glob", input("pattern", "*.java"));
+
+        assertTrue(outcome.ok(), outcome.errorCode());
+        assertEquals("neuf.java\nvieux.java", outcome.content());
+    }
+
+    @Test
+    void globCroiseLesDossiers() throws IOException {
+        Files.createDirectories(root.resolve("src/main"));
+        Files.writeString(root.resolve("src/main/App.java"), "x");
+        Files.writeString(root.resolve("README.md"), "y");
+
+        ToolOutcome outcome = tools.execute("glob", input("pattern", "**/*.java"));
+
+        assertEquals("src/main/App.java", outcome.content());
+    }
+
+    private static ObjectNode grepInput(String k1, String v1, String k2, String v2) {
+        ObjectNode node = MAPPER.createObjectNode();
+        node.put(k1, v1);
+        node.put(k2, v2);
+        return node;
+    }
+
     // ------------------------------------------------------------------- divers
 
     @Test

@@ -377,9 +377,42 @@ class AtelierChatServiceRunnerTargetTest {
                 // `explore` et `set_plan` sont déclarés sur les DEUX cibles (F-39 / SF-39-13 et 14) :
                 // ce sont des outils d'organisation et de lecture, pas d'exécution.
                 .containsExactly("list_files", "read_file", "write_file", "edit_file", "search_files",
-                        "explore", "set_plan");
+                        "grep", "glob", "explore", "set_plan");
         assertThat(service.buildTools(java.util.UUID.randomUUID(), runner)).extracting(fr.claudegateway.agent.AgentTool::name)
-                .containsExactly("read_file", "write_file", "edit_file", "bash", "explore", "set_plan");
+                .containsExactly("read_file", "write_file", "edit_file", "grep", "glob", "bash",
+                        "explore", "set_plan");
+    }
+
+    @Test
+    void grepAndGlobAreRoutedToTheRunnerOnTheMachine() {
+        // F-121 / SF-121-01 : la boucle relaie grep/glob au runner (via RunnerToolGateway) et rend
+        // leur contenu verbatim au modèle.
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        when(runnerToolGateway.grep(eq(runnerTarget), anyString(), any()))
+                .thenReturn(ok("a.ts:2: const a = 1;"));
+        agentProvider.enqueueToolCall("grep", "pattern", "const");
+        agentProvider.enqueueFinal("Trouvé.");
+
+        service.chat(userId, workspaceId, "cherche const");
+
+        verify(runnerToolGateway).grep(eq(runnerTarget), anyString(), any());
+        assertThat(toolResultText()).isEqualTo("a.ts:2: const a = 1;");
+        assertThat(lastToolResult().isError()).isFalse();
+    }
+
+    @Test
+    void aTransientGrepFailureIsInconclusiveRatherThanNegative() {
+        // F-121 / SF-121-01 + SF-119-04 : un échec de transport n'est pas une preuve d'absence.
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        when(runnerToolGateway.glob(eq(runnerTarget), anyString(), any()))
+                .thenReturn(RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_TIMEOUT));
+        agentProvider.enqueueToolCall("glob", "pattern", "**/*.java");
+        agentProvider.enqueueFinal("Non concluant.");
+
+        service.chat(userId, workspaceId, "trouve les java");
+
+        assertThat(lastToolResult().isError()).isTrue();
+        assertThat(toolResultText()).contains("non concluant");
     }
 
     @Test
@@ -448,7 +481,8 @@ class AtelierChatServiceRunnerTargetTest {
         service.chat(userId, workspaceId, "remplace x par y");
 
         assertThat(service.buildTools(java.util.UUID.randomUUID(), runner)).extracting(fr.claudegateway.agent.AgentTool::name)
-                .containsExactly("read_file", "write_file", "edit_file", "bash", "explore", "set_plan");
+                .containsExactly("read_file", "write_file", "edit_file", "grep", "glob", "bash",
+                        "explore", "set_plan");
         verify(runnerAuditService).recordCall(eq(userId), eq(runnerTarget), anyString(), eq("edit_file"),
                 eq("a.ts"), any());
     }
@@ -675,10 +709,11 @@ class AtelierChatServiceRunnerTargetTest {
         // absence qui a laissé passer le défaut : « ne contient pas bash » reste vrai sur un
         // ensemble vide.
         assertThat(agentProvider.toolBelts.get(1))
-                .containsExactly("list_files", "read_file", "search_files");
+                .containsExactly("list_files", "read_file", "search_files", "grep", "glob");
         // Et le travail principal garde exactement la sienne : D4 n'est pas défaite (non-régression).
         assertThat(agentProvider.toolBelts.get(0))
-                .containsExactly("read_file", "write_file", "edit_file", "bash", "explore", "set_plan");
+                .containsExactly("read_file", "write_file", "edit_file", "grep", "glob", "bash",
+                        "explore", "set_plan");
     }
 
     @Test

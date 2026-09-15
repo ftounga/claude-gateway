@@ -231,4 +231,58 @@ class RunnerToolGatewayTest {
         assertThat(RunnerToolGateway.teamsTimeoutFor("teams_status"))
                 .isEqualTo(RunnerToolGateway.TEAMS_TOOL_TIMEOUT_MS);
     }
+
+    // ------------------------------------------------------------- grep / glob (F-121 / SF-121-01)
+
+    @Test
+    void grepRelaysBoundedParamsAndNormalisesTheScope() {
+        com.fasterxml.jackson.databind.node.ObjectNode input = objectMapper.createObjectNode();
+        input.put("pattern", "const\\s+\\w+");
+        input.put("path", "./src//");
+        input.put("include", "*.ts");
+        input.put("ignore_case", true);
+        input.put("output_mode", "count");
+        input.put("context", 2);
+
+        gateway().grep(target, "toolu_1", input);
+
+        JsonNode sent = capturedInput("grep");
+        assertThat(sent.path("pattern").asText()).isEqualTo("const\\s+\\w+");
+        assertThat(sent.path("path").asText()).isEqualTo("src"); // normalisé en relatif (D6)
+        assertThat(sent.path("include").asText()).isEqualTo("*.ts");
+        assertThat(sent.path("ignore_case").asBoolean()).isTrue();
+        assertThat(sent.path("output_mode").asText()).isEqualTo("count");
+        assertThat(sent.path("context").asInt()).isEqualTo(2);
+    }
+
+    @Test
+    void grepRefusesAnEmptyPatternBeforeEmission() {
+        RunnerCallResult result = new RunnerToolGateway(router, objectMapper)
+                .grep(target, "toolu_1", objectMapper.createObjectNode());
+
+        assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.INVALID_INPUT);
+        verify(router, never()).call(any(), anyString(), anyString(), any(), anyLong());
+    }
+
+    @Test
+    void grepRefusesAnEscapingScopeBeforeEmission() {
+        com.fasterxml.jackson.databind.node.ObjectNode input = objectMapper.createObjectNode();
+        input.put("pattern", "x");
+        input.put("path", "../autre");
+
+        RunnerCallResult result = new RunnerToolGateway(router, objectMapper).grep(target, "toolu_1", input);
+
+        assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.INVALID_INPUT);
+        verify(router, never()).call(any(), anyString(), anyString(), any(), anyLong());
+    }
+
+    @Test
+    void globRelaysThePatternWithTheContractTimeout() {
+        com.fasterxml.jackson.databind.node.ObjectNode input = objectMapper.createObjectNode();
+        input.put("pattern", "**/*.java");
+
+        gateway().glob(target, "toolu_1", input);
+
+        assertThat(capturedInput("glob").path("pattern").asText()).isEqualTo("**/*.java");
+    }
 }
