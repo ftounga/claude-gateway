@@ -2195,7 +2195,26 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     private ToolOutcome bashOutcome(String command, RunnerCallResult result) {
         if (!result.ok()) {
-            return ToolOutcome.error(result.errorMessage());
+            // F-119 / SF-119-04 : un bash en erreur/timeout ne jette plus la sortie PARTIELLE déjà
+            // captée (le modèle concluait sur « le runner n'a pas répondu » alors qu'il y avait des
+            // diagnostics), et un échec de transport (timeout/indispo) est formulé « non concluant »,
+            // pas comme un résultat négatif — pour couper les conclusions hâtives.
+            String note = inconclusiveNote(result);
+            String partial = result.streamed();
+            if (partial != null && !partial.isBlank()) {
+                boolean partialTruncated = result.streamTruncated();
+                String bounded = boundBashBytes(partial);
+                if (bounded.length() < partial.length()) {
+                    partialTruncated = true;
+                }
+                StringBuilder text = new StringBuilder("$ ").append(command).append('\n').append(bounded);
+                if (partialTruncated) {
+                    text.append("\n… (sortie tronquée)");
+                }
+                text.append("\n\n").append(note);
+                return ToolOutcome.error(text.toString());
+            }
+            return ToolOutcome.error(note);
         }
         boolean truncated = result.streamTruncated() || result.truncated();
         String output = result.streamed() == null ? "" : result.streamed();
@@ -2217,6 +2236,42 @@ public class AtelierChatService implements RelayInterruptTarget {
         return new ToolOutcome(text.toString(), false, null);
     }
 
+    /** Sortie de commande ramenée à {@link #MAX_BASH_OUTPUT_BYTES}, la tête conservée (F-38 / SF-38-07). */
+    private static String boundBashBytes(String output) {
+        byte[] bytes = output.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        if (bytes.length <= MAX_BASH_OUTPUT_BYTES) {
+            return output;
+        }
+        return new String(bytes, 0, MAX_BASH_OUTPUT_BYTES, java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Message d'un échec d'appel runner rendu au modèle (F-119 / SF-119-04). Un échec de <b>transport</b>
+     * — le runner n'a pas répondu (timeout), n'est pas là (indispo), a répondu de travers — n'est <b>pas
+     * un résultat négatif</b> : c'est un « non concluant ». Le dire explicitement coupe les conclusions
+     * hâtives (« la commande a échoué » alors que rien n'a été prouvé), et invite à réessayer ou à le
+     * signaler. Les autres échecs (fichier introuvable, argument refusé) gardent leur message tel quel.
+     */
+    private static String inconclusiveNote(RunnerCallResult result) {
+        String base = result.errorMessage() == null || result.errorMessage().isBlank()
+                ? RunnerErrorCodes.messageFor(result.errorCode())
+                : result.errorMessage();
+        if (isInconclusiveFailure(result.errorCode())) {
+            return "Résultat non concluant : " + base
+                    + " Ce n'est pas un résultat négatif — réessaie, ou dis que tu n'as pas pu conclure ; "
+                    + "n'en tire aucune conclusion.";
+        }
+        return base;
+    }
+
+    /** Échec de transport où <b>rien n'est prouvé</b> : « non concluant » plutôt que négatif (SF-119-04). */
+    private static boolean isInconclusiveFailure(String code) {
+        return RunnerErrorCodes.RUNNER_TIMEOUT.equals(code)
+                || RunnerErrorCodes.RUNNER_UNAVAILABLE.equals(code)
+                || RunnerErrorCodes.RUNNER_NOT_ON_THIS_NODE.equals(code)
+                || RunnerErrorCodes.RUNNER_PROTOCOL_ERROR.equals(code);
+    }
+
     /**
      * Lecture d'un fichier de la machine, rendue en lignes numérotées et paginées (SF-39-06). Le
      * marqueur de troncature du runner est conservé : une lecture partielle doit rester visible,
@@ -2224,7 +2279,9 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     private ToolOutcome readOutcome(RunnerCallResult result, JsonNode input) {
         if (!result.ok()) {
-            return ToolOutcome.error(result.errorMessage());
+            // F-119 / SF-119-04 : une lecture qui échoue par timeout/indispo runner est « non
+            // concluante », pas une preuve que le fichier n'existe pas — le dire coupe la conclusion hâtive.
+            return ToolOutcome.error(inconclusiveNote(result));
         }
         String page;
         try {
