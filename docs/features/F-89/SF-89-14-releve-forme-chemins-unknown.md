@@ -56,3 +56,52 @@ casse le cycle, une fois pour toutes, pour **tout** futur endpoint.
 Après livraison : **un** relevé `--forme` sur CAGIP ouvrant (a) la **liste du calendrier** et (b) un
 **fil de discussion avec messages** → capture `calendarView` + conversations/messages en une passe →
 **SF-89-15** recale `teams_find_meetings` (calendarView) **et** conversations/messages ensemble.
+
+---
+
+## Mini-spec finale (complétée le 2026-09-16 — livraison autonome)
+
+### Bornes retenues (arbitrage)
+- **Chemins UNKNOWN distincts capturés : top 40** (`NetworkSurvey.MAX_UNKNOWN_SHAPES = 40`). Le cadrage
+  citait « ex. top 20 » à titre d'exemple ; le PO vise **40** pour couvrir tout le catalogue non reconnu
+  en une passe. Au-delà : chemins distincts comptés, jamais lus, et **dits** (« N autres chemins non
+  capturés »).
+- Profondeur bornée à **4** (`SHAPE_DEPTH`, réutilisée de SF-89-12), clés bornées par niveau
+  (`PayloadShape.MAX_KEYS_PER_LEVEL`), **premier élément de tableau seul**, taille de corps bornée
+  (`MAX_BODY_BYTES`), file d'attente bornée (`MAX_PENDING_SHAPES`) — tous réutilisés de SF-89-12.
+
+### Gate d'éligibilité d'un corps UNKNOWN (en mode `--forme` seulement)
+Un corps est lu comme squelette UNKNOWN si, et seulement si, **toutes** ces conditions sont vraies :
+1. mode `--forme` actif ;
+2. `TeamsUrls.classify(url) == UNKNOWN` (pas un des 5 genres déjà lus, pas IGNORED) ;
+3. `MicrosoftDomains.isMicrosoftFamily(url)` vrai ;
+4. MIME de base `== application/json` ;
+5. statut ≠ 401/403 ;
+6. identifiant de requête présent.
+Le squelette est rangé **par chemin assaini** (`SurveyPaths.template`, ids → `{id}`, sans requête).
+
+### Composants impactés
+- `runner/.../teams/NetworkSurvey.java` — file d'attente et capture des squelettes UNKNOWN ; nouveau
+  plafond `MAX_UNKNOWN_SHAPES` ; champs `Snapshot` (`unknownShapes`, `unknownShapesRead`,
+  `unknownShapesDropped`).
+- `runner/.../teams/SurveyReport.java` — nouvelle section markdown « Squelette des chemins Microsoft non
+  reconnus » + ligne de traçabilité + export JSON.
+- Tests : `NetworkSurveyShapeTest` (non-fuite, bornes, non-`--forme`, non-Microsoft, non-JSON).
+- **Inchangés** : `PayloadShape` (réutilisé tel quel), `TeamsUrls.classify`, `MicrosoftDomains`,
+  `SurveyPaths`, `TeamsSurveyCommand` (l'annonce « MODE FORME ACTIF » existe déjà et couvre le
+  consentement).
+
+### Préoccupations transversales
+- **Auth / Principal** : aucune — outil de diagnostic local `--releve-teams`, aucun endpoint, aucun JWT.
+- **Contexte tenant / `user_id`** : aucun accès données serveur ; le relevé est **local au poste**, rien
+  ne quitte la machine ; les noms de tenant sont déjà remplacés par `{id}` (`SurveyPaths`).
+- **Plans / limites** : aucun.
+- **Navigation / routing** : aucun (pas de frontend).
+
+### Garantie vie privée (non négociable)
+Le squelette passe **exclusivement** par `PayloadShape` : aucune feuille (`asText`/`asLong`…) n'est
+jamais lue ni écrite — seulement noms de champs + type JSON. Jamais d'en-tête, jamais de query. Un test
+de non-fuite sur un corps UNKNOWN portant token/nom/adresse/titre de réunion le prouve.
+
+### Hors périmètre (rappel)
+Recaler les adaptateurs (SF-89-15) ; corps non-JSON ; hôtes non-Microsoft ; toute UI.

@@ -78,6 +78,18 @@ public final class NetworkSurvey {
     /** Squelettes distincts (genre + chemin) retenus au plus : au-delà, on compte. */
     static final int MAX_SHAPES = 200;
 
+    /**
+     * <b>Chemins Microsoft UNKNOWN distincts</b> dont le mode « forme » relève le squelette (F-89 /
+     * SF-89-14) : assez pour couvrir tout le catalogue non encore reconnu en une passe (calendrier
+     * liste, conversations, messages, fichiers…). Au-delà, les chemins nouveaux sont comptés, jamais
+     * lus. Un chemin UNKNOWN n'est capté que sur un hôte de la famille Microsoft, en MIME
+     * {@code application/json} — jamais une valeur, jamais un en-tête, jamais une requête.
+     */
+    static final int MAX_UNKNOWN_SHAPES = 40;
+
+    /** Le MIME (base, sans paramètre) des corps UNKNOWN dont on relève la forme. */
+    static final String JSON_MIME = "application/json";
+
     /** Réponses en attente de lecture de forme retenues au plus : au-delà, on compte. */
     static final int MAX_PENDING_SHAPES = 2_000;
 
@@ -112,6 +124,10 @@ public final class NetworkSurvey {
     private final Map<String, PendingShape> pendingShapes = new LinkedHashMap<>();
     /** Squelettes relevés, par « genre + chemin ». */
     private final Map<String, Shape> shapes = new LinkedHashMap<>();
+    /** Squelettes des chemins Microsoft UNKNOWN JSON, par chemin assaini (F-89 / SF-89-14). */
+    private final Map<String, Shape> unknownShapes = new LinkedHashMap<>();
+    /** Chemins UNKNOWN distincts non capturés faute de place (comptés, jamais lus). */
+    private final Set<String> unknownDropped = new LinkedHashSet<>();
 
     private volatile int step;
     private int outsideMicrosoft;
@@ -121,6 +137,7 @@ public final class NetworkSurvey {
     private int shapesRead;
     private int shapesUnavailable;
     private int shapesDropped;
+    private int unknownShapesRead;
 
     public NetworkSurvey(Executor executor) {
         this(executor, false);
@@ -301,27 +318,37 @@ public final class NetworkSurvey {
         // dans le même objet, et on n'y touche pas.
         String url = ObservedResponse.withoutQuery(response.path("url").asText(""));
         String resourceType = params.path("type").asText("");
+        String mime = response.path("mimeType").asText("");
         int status = response.path("status").asInt(0);
-        record(origin, url, resourceType, response.path("mimeType").asText(""), status);
+        record(origin, url, resourceType, mime, status);
         // F-89 / SF-89-12 : en mode forme SEULEMENT, on note la réponse pour en lire la FORME plus tard
         // (jamais ici, sur le fil de la socket). Sans mode forme, aucun corps n'est jamais demandé.
         if (shapeMode) {
-            queueShape(connection, session, origin, url, status, params.path("requestId").asText(""));
+            queueShape(connection, session, origin, url, mime, status, params.path("requestId").asText(""));
         }
     }
 
     /**
-     * Met une réponse classée en attente de lecture de forme — <b>uniquement</b> si son URL est
-     * classée {@link #SHAPE_KINDS}, qu'elle n'a pas été refusée (401/403 : le corps serait un message
-     * d'erreur) et qu'elle porte un identifiant de requête. Aucun corps n'est demandé ici.
+     * Met une réponse en attente de lecture de forme — <b>uniquement</b> si elle est éligible, qu'elle
+     * n'a pas été refusée (401/403 : le corps serait un message d'erreur) et qu'elle porte un identifiant
+     * de requête. Aucun corps n'est demandé ici.
+     *
+     * <p>Deux éligibilités, jamais aucune autre : (1) une URL classée {@link #SHAPE_KINDS} — les cinq
+     * genres déjà reconnus (SF-89-12) ; (2) une URL <b>UNKNOWN</b> d'un <b>hôte de la famille
+     * Microsoft</b> en <b>MIME {@code application/json}</b> (F-89 / SF-89-14) — pour découvrir la forme
+     * des chemins pas encore reconnus. Dans les deux cas, seul le <b>squelette</b> (noms + types) sera
+     * retenu, jamais une valeur.</p>
      */
     private synchronized void queueShape(CdpConnection connection, String session, Origin origin,
-            String url, int status, String requestId) {
+            String url, String mime, int status, String requestId) {
         if (requestId.isEmpty() || status == 401 || status == 403) {
             return;
         }
         TeamsPayloadKind kind = TeamsUrls.classify(url);
-        if (!SHAPE_KINDS.contains(kind)) {
+        boolean classified = SHAPE_KINDS.contains(kind);
+        boolean unknownJson = kind == TeamsPayloadKind.UNKNOWN
+                && JSON_MIME.equals(baseMime(mime)) && MicrosoftDomains.isMicrosoftFamily(url);
+        if (!classified && !unknownJson) {
             return;
         }
         if (pendingShapes.size() >= MAX_PENDING_SHAPES) {
@@ -380,10 +407,14 @@ public final class NetworkSurvey {
         }
     }
 
-    /** Range le squelette d'un corps lu, sous « genre + chemin ». Aucune valeur n'entre. */
+    /** Range le squelette d'un corps lu. Aucune valeur n'entre. */
     private synchronized void recordShape(PendingShape pending, JsonNode body) {
         if (body == null) {
             shapesUnavailable++;
+            return;
+        }
+        if (pending.kind() == TeamsPayloadKind.UNKNOWN) {
+            recordUnknownShape(pending, body);
             return;
         }
         String key = pending.kind().name() + ' ' + pending.path();
@@ -401,6 +432,31 @@ public final class NetworkSurvey {
         shape.origins.add(pending.origin());
         shape.apiVersions.addAll(pending.apiVersions());
         shapesRead++;
+    }
+
+    /**
+     * Range le squelette d'un corps Microsoft UNKNOWN JSON, <b>par chemin assaini</b> (F-89 / SF-89-14),
+     * borné à {@link #MAX_UNKNOWN_SHAPES} chemins distincts — au-delà, le chemin nouveau est compté et
+     * dit, jamais lu. Aucune valeur n'entre : seul le squelette ({@link PayloadShape}).
+     */
+    private void recordUnknownShape(PendingShape pending, JsonNode body) {
+        String key = pending.path();
+        Shape shape = unknownShapes.get(key);
+        if (shape == null) {
+            if (unknownShapes.size() >= MAX_UNKNOWN_SHAPES) {
+                if (unknownDropped.size() < MAX_ENTRIES) {
+                    unknownDropped.add(key); // chemins distincts au-delà du plafond, comptés, jamais lus
+                }
+                return;
+            }
+            shape = new Shape(TeamsPayloadKind.UNKNOWN, pending.host(), pending.path(),
+                    PayloadShape.of(body, SHAPE_DEPTH), pending.firstStep());
+            unknownShapes.put(key, shape);
+        }
+        shape.count++;
+        shape.origins.add(pending.origin());
+        shape.apiVersions.addAll(pending.apiVersions());
+        unknownShapesRead++;
     }
 
     /** Une réponse classée en attente de lecture de forme. */
@@ -473,8 +529,11 @@ public final class NetworkSurvey {
         sockets.values().forEach(socket -> socketCopy.add(socket.copy()));
         List<Shape> shapeCopy = new ArrayList<>();
         shapes.values().forEach(shape -> shapeCopy.add(shape.copy()));
+        List<Shape> unknownCopy = new ArrayList<>();
+        unknownShapes.values().forEach(shape -> unknownCopy.add(shape.copy()));
         return new Snapshot(copy, outsideMicrosoft, staticResources, dropped, refusedTargets, socketCopy,
-                shapeMode, shapeCopy, shapesRead, shapesUnavailable, shapesDropped);
+                shapeMode, shapeCopy, shapesRead, shapesUnavailable, shapesDropped, unknownCopy,
+                unknownShapesRead, unknownDropped.size());
     }
 
     /** Une socket relevée : hôte, chemin gabarisé, origines, ouvertures et trames — jamais une trame lue. */
@@ -668,14 +727,19 @@ public final class NetworkSurvey {
      * @param shapesRead        corps lus pour leur forme
      * @param shapesUnavailable corps classés mais indisponibles (purgés, non-JSON, trop volumineux)
      * @param shapesDropped     réponses classées non relevées au-delà des plafonds
+     * @param unknownShapes     squelettes des chemins Microsoft UNKNOWN JSON (F-89 / SF-89-14), par chemin
+     * @param unknownShapesRead corps UNKNOWN lus pour leur forme
+     * @param unknownShapesDropped chemins UNKNOWN distincts non capturés au-delà du plafond
      */
     public record Snapshot(List<Entry> entries, int outsideMicrosoft, int staticResources, int dropped,
             int refusedTargets, List<Socket> sockets, boolean shapeMode, List<Shape> shapes,
-            int shapesRead, int shapesUnavailable, int shapesDropped) {
+            int shapesRead, int shapesUnavailable, int shapesDropped, List<Shape> unknownShapes,
+            int unknownShapesRead, int unknownShapesDropped) {
 
         public Snapshot {
             sockets = sockets == null ? List.of() : List.copyOf(sockets);
             shapes = shapes == null ? List.of() : List.copyOf(shapes);
+            unknownShapes = unknownShapes == null ? List.of() : List.copyOf(unknownShapes);
         }
 
         /** Forme d'avant F-89 / SF-89-05 : aucune socket relevée. */
@@ -689,6 +753,14 @@ public final class NetworkSurvey {
                 int refusedTargets, List<Socket> sockets) {
             this(entries, outsideMicrosoft, staticResources, dropped, refusedTargets, sockets, false,
                     List.of(), 0, 0, 0);
+        }
+
+        /** Forme d'avant F-89 / SF-89-14 : aucun squelette de chemin UNKNOWN. */
+        public Snapshot(List<Entry> entries, int outsideMicrosoft, int staticResources, int dropped,
+                int refusedTargets, List<Socket> sockets, boolean shapeMode, List<Shape> shapes,
+                int shapesRead, int shapesUnavailable, int shapesDropped) {
+            this(entries, outsideMicrosoft, staticResources, dropped, refusedTargets, sockets, shapeMode,
+                    shapes, shapesRead, shapesUnavailable, shapesDropped, List.of(), 0, 0);
         }
     }
 }

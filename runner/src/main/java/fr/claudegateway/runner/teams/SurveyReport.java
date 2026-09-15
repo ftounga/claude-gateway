@@ -88,17 +88,23 @@ final class SurveyReport {
                     + "NOMS de champs et leur TYPE JSON sont écrits, **jamais une valeur**. Corps lus : ")
                     .append(snapshot.shapesRead()).append(" ; indisponibles : ")
                     .append(snapshot.shapesUnavailable()).append('\n');
+            md.append("- **Corps de chemins Microsoft non reconnus (UNKNOWN JSON) lus** (F-89 / SF-89-14) : ")
+                    .append(snapshot.unknownShapesRead()).append(" — leur squelette (noms + types) est écrit "
+                    + "plus bas, **jamais une valeur**\n");
         }
         if (snapshot.shapeMode()) {
             md.append("\n> Ce rapport a lu des corps en **mode forme** : il en écrit le **squelette** (noms "
                     + "de champs et types), **jamais une valeur**, jamais un en-tête, jamais une chaîne de "
-                    + "requête ; les identifiants et noms propres au client sont remplacés par `{id}`.\n\n");
+                    + "requête ; les identifiants et noms propres au client sont remplacés par `{id}`. En "
+                    + "mode forme, la lecture porte aussi sur les chemins **Microsoft UNKNOWN** en "
+                    + "`application/json`, pour en découvrir la forme.\n\n");
         } else {
             md.append("\n> Ce rapport ne contient ni corps de réponse, ni chaîne de requête, ni en-tête, ni nom "
                     + "de tenant : les identifiants et les noms propres au client sont remplacés par `{id}`.\n\n");
         }
 
-        if (snapshot.entries().isEmpty() && snapshot.sockets().isEmpty() && snapshot.shapes().isEmpty()) {
+        if (snapshot.entries().isEmpty() && snapshot.sockets().isEmpty() && snapshot.shapes().isEmpty()
+                && snapshot.unknownShapes().isEmpty()) {
             md.append("**Rien observé.** Teams était-il actif pendant le relevé ? Relancez et suivez les "
                     + "étapes : ouvrir un fil, une réunion passée, son récapitulatif, sa transcription.\n");
             return md.toString();
@@ -182,6 +188,34 @@ final class SurveyReport {
                     md.append('\n');
                 });
             }
+
+            md.append("## Squelette des chemins Microsoft non reconnus\n\n");
+            if (snapshot.unknownShapes().isEmpty()) {
+                md.append("Aucun chemin Microsoft classé `UNKNOWN` n'a livré un corps `application/json` "
+                        + "lisible pendant ce relevé.\n\n");
+            } else {
+                md.append("Pour découvrir la forme des endpoints **pas encore reconnus** (liste du "
+                        + "calendrier, conversations, messages, fichiers…) : les **noms de champs** et leur "
+                        + "**type JSON**, **jamais une valeur**. Groupé par chemin assaini (identifiants → "
+                        + "`{id}`, sans requête) ; le premier élément d'un tableau seul est déplié, à "
+                        + "profondeur bornée. Au plus ").append(NetworkSurvey.MAX_UNKNOWN_SHAPES)
+                        .append(" chemins distincts.\n\n");
+                for (NetworkSurvey.Shape shape : snapshot.unknownShapes()) {
+                    md.append("- `").append(cell(shape.host())).append(cell(shape.path())).append("` — ")
+                            .append("origines : ").append(String.join(", ", shape.origins()));
+                    if (!shape.apiVersions().isEmpty()) {
+                        md.append(" · API : ").append(String.join(", ", shape.apiVersions()));
+                    }
+                    md.append(" · vu ").append(shape.count()).append(" fois\n");
+                    md.append("  ```\n  ").append(cell(shape.skeleton())).append("\n  ```\n");
+                }
+                if (snapshot.unknownShapesDropped() > 0) {
+                    md.append("\n> ").append(snapshot.unknownShapesDropped()).append(" autre(s) chemin(s) "
+                            + "non capturé(s) : le plafond de ").append(NetworkSurvey.MAX_UNKNOWN_SHAPES)
+                            .append(" chemins UNKNOWN distincts est atteint.\n");
+                }
+                md.append('\n');
+            }
         }
 
         md.append("## Table des chemins, par hôte\n\n");
@@ -232,10 +266,24 @@ final class SurveyReport {
         root.put("shapesRead", snapshot.shapesRead());
         root.put("shapesUnavailable", snapshot.shapesUnavailable());
         root.put("shapesDropped", snapshot.shapesDropped());
+        root.put("unknownShapesRead", snapshot.unknownShapesRead());
+        root.put("unknownShapesDropped", snapshot.unknownShapesDropped());
         ArrayNode shapesNode = root.putArray("shapes");
         for (NetworkSurvey.Shape shape : snapshot.shapes()) {
             ObjectNode node = shapesNode.addObject();
             node.put("kind", shape.kind().name());
+            node.put("host", shape.host());
+            node.put("path", shape.path());
+            node.put("skeleton", shape.skeleton());
+            node.put("count", shape.count());
+            ArrayNode origins = node.putArray("origins");
+            shape.origins().forEach(origins::add);
+            ArrayNode apiVersions = node.putArray("apiVersions");
+            shape.apiVersions().forEach(apiVersions::add);
+        }
+        ArrayNode unknownNode = root.putArray("unknownShapes");
+        for (NetworkSurvey.Shape shape : snapshot.unknownShapes()) {
+            ObjectNode node = unknownNode.addObject();
             node.put("host", shape.host());
             node.put("path", shape.path());
             node.put("skeleton", shape.skeleton());
