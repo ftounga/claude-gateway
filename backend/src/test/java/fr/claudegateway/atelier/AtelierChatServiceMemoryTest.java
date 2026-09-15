@@ -159,8 +159,11 @@ class AtelierChatServiceMemoryTest {
     }
 
     @Test
-    void onlyTheFiveMostRecentTurnsAreReplayedWithTheirTrajectory() {
-        for (int turn = 0; turn < 7; turn++) {
+    void onlyTheMostRecentTurnsAreReplayedWithTheirTrajectory() {
+        // F-119 / SF-119-03 : la fenêtre de rejeu des trajectoires est passée de 5 à 12 tours par
+        // défaut — l'agent perdait ses preuves plus vite que ses affirmations. Sur 15 tours, les 12
+        // derniers repartent AVEC leurs résultats d'outils ; au-delà, texte seul.
+        for (int turn = 0; turn < 15; turn++) {
             history.add(userMessage("demande " + turn));
             history.add(assistantMessage("réponse " + turn, traceJson("call_" + turn)));
         }
@@ -176,7 +179,9 @@ class AtelierChatServiceMemoryTest {
                 }
             }
         }
-        assertThat(replayedIds).containsExactly("call_2", "call_3", "call_4", "call_5", "call_6");
+        // Les 12 derniers tours (call_3 → call_14) ; call_0..call_2 retombent en texte seul.
+        assertThat(replayedIds).containsExactly("call_3", "call_4", "call_5", "call_6", "call_7",
+                "call_8", "call_9", "call_10", "call_11", "call_12", "call_13", "call_14");
     }
 
     @Test

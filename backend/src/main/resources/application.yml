@@ -180,6 +180,12 @@ app:
     # defaut `low`. Corrige le raisonnement ZERO d'origine (l'exploration lit et interprete). Sobre
     # par defaut pour ne pas alourdir chaque lecture deleguee. Meme repli que `effort`.
     explore-effort: ${APP_ATELIER_EXPLORE_EFFORT:low}
+    # Fenetre de rejeu des TRAJECTOIRES d'outils (F-119 / SF-119-03) : les N derniers tours sont
+    # rejoues AVEC leurs resultats d'outils, au-dela en texte seul. Relevee de 5 a 12 : l'agent
+    # perdait ses preuves (resultats d'outils) plus vite que ses affirmations (texte garde), d'ou des
+    # contradictions. La compaction (F-117) borne deja le volume total. Meme repli que les autres
+    # bornes : absent/nul/negatif -> defaut (12), au-dela du plafond lisible (40) -> ramene.
+    replayed-trace-turns: ${APP_ATELIER_REPLAYED_TRACE_TURNS:12}
     # Ecartement des resultats d'outils perimes d'un tour long (F-39 / SF-39-12). Ce qui deborde
     # n'est pas la conversation — deja bornee depuis SF-39-03 — mais l'accumulation des sorties
     # d'outils DANS UN MEME TOUR : une sortie de commande pese jusqu'a 128 Ko, et un tour en compte

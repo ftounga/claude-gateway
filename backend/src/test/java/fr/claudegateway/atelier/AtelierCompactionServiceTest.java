@@ -196,4 +196,64 @@ class AtelierCompactionServiceTest {
         assertThat(prefix).isNotNull();
         assertThat(prefix.content().get(0).toString()).contains(AtelierCompactionService.SUMMARY_MARKER);
     }
+
+    // ------------------------------------------- F-119 / SF-119-03 : digest structuré des outils
+
+    @Test
+    void theSummaryIncludesAStructuredToolDigestNotJustText() {
+        // La compaction résumait le texte seul et jetait les sorties d'outils → l'agent raisonnait
+        // sur un digest sans preuves. Désormais, un digest structuré (fichiers lus, commandes et leur
+        // issue) accompagne le texte de chaque tour de l'agent.
+        String trace = new AtelierToolTrace(List.of(
+                new AtelierToolTrace.Step("je regarde", List.of(
+                        new AtelierToolTrace.Call("c1", "read_file",
+                                input("path", "src/App.java"), "     1→package app;", false),
+                        new AtelierToolTrace.Call("c2", "bash",
+                                input("command", "mvn -q test"),
+                                "$ mvn -q test\nBUILD FAILURE\n[code de sortie: 1]", false)))))
+                .toJson();
+        AtelierMessage assistant = AtelierMessage.builder().id(UUID.randomUUID())
+                .workspaceId(workspaceId).userId(userId).role("ASSISTANT")
+                .content("J'ai lancé les tests.").toolTrace(trace).build();
+
+        String rendered = AtelierCompactionService.renderForSummary(null, List.of(assistant));
+
+        assertThat(rendered).contains("ASSISTANT : J'ai lancé les tests.");
+        assertThat(rendered).contains("· read_file src/App.java");
+        assertThat(rendered).contains("· bash « mvn -q test »");
+        // L'issue de la commande survit (code de sortie), pas seulement le texte.
+        assertThat(rendered).contains("[code de sortie: 1]");
+    }
+
+    @Test
+    void anAssistantTurnWithOnlyToolsStillCarriesItsDigest() {
+        // Un tour d'agent sans texte mais avec des outils n'est plus écarté : sa trajectoire est
+        // justement ce qui doit survivre au résumé.
+        String trace = new AtelierToolTrace(List.of(
+                new AtelierToolTrace.Step("", List.of(
+                        new AtelierToolTrace.Call("c1", "edit_file",
+                                input("path", "notes.txt"), "Fichier modifié : notes.txt (1 remplacement)",
+                                false)))))
+                .toJson();
+        AtelierMessage assistant = AtelierMessage.builder().id(UUID.randomUUID())
+                .workspaceId(workspaceId).userId(userId).role("ASSISTANT")
+                .content("").toolTrace(trace).build();
+
+        String rendered = AtelierCompactionService.renderForSummary(null, List.of(assistant));
+
+        assertThat(rendered).contains("· edit_file notes.txt");
+    }
+
+    @Test
+    void toolDigestIsEmptyForNoTrace() {
+        assertThat(AtelierCompactionService.toolDigest(null)).isEmpty();
+        assertThat(AtelierCompactionService.toolDigest("{tronqué")).isEmpty();
+    }
+
+    private static com.fasterxml.jackson.databind.node.ObjectNode input(String key, String value) {
+        com.fasterxml.jackson.databind.node.ObjectNode node =
+                new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
+        node.put(key, value);
+        return node;
+    }
 }

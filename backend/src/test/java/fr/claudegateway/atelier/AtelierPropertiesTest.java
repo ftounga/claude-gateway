@@ -291,4 +291,36 @@ class AtelierPropertiesTest {
         assertThat(withF119(null, false).escalateOnSignal()).isFalse();
         assertThat(withF119(null, true).escalateOnSignal()).isTrue();
     }
+
+    // ------------------------------------------- F-119 / SF-119-03 : fenêtre de rejeu des trajectoires
+
+    /** Fenêtre de rejeu (20e composant) : la profondeur d'historique rejoué avec ses outils. */
+    private static AtelierProperties withReplayedTraceTurns(Integer value) {
+        return new AtelierProperties(null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, value);
+    }
+
+    @Test
+    void replayedTraceTurnsDefaultsToTwelve() {
+        assertThat(withReplayedTraceTurns(null).replayedTraceTurns()).isEqualTo(12);
+        assertThat(withReplayedTraceTurns(null).replayedTraceTurns())
+                .isEqualTo(AtelierProperties.DEFAULT_REPLAYED_TRACE_TURNS);
+        // Le constructeur de compatibilité (sans ce réglage) applique le même défaut.
+        AtelierProperties legacy = new AtelierProperties(null, null, null, null, null, null, null,
+                null, null, null, null, null, true, null, null, null, null, null, null);
+        assertThat(legacy.replayedTraceTurns()).isEqualTo(12);
+    }
+
+    @Test
+    void replayedTraceTurnsFallsBackToTheDefaultWhenNonPositive() {
+        assertThat(withReplayedTraceTurns(0).replayedTraceTurns()).isEqualTo(12);
+        assertThat(withReplayedTraceTurns(-3).replayedTraceTurns()).isEqualTo(12);
+    }
+
+    @Test
+    void replayedTraceTurnsHonoursAConfiguredValueAndIsCapped() {
+        assertThat(withReplayedTraceTurns(15).replayedTraceTurns()).isEqualTo(15);
+        assertThat(withReplayedTraceTurns(200).replayedTraceTurns())
+                .isEqualTo(AtelierProperties.MAX_REPLAYED_TRACE_TURNS);
+    }
 }

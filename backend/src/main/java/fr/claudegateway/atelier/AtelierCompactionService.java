@@ -58,9 +58,14 @@ public class AtelierCompactionService {
             "Tu résumes la partie ancienne d'une conversation entre un utilisateur et un agent de "
                     + "développement, pour qu'elle puisse être reprise sans relire tout l'historique. "
                     + "Produis un résumé FACTUEL et COMPACT (pas de préambule, pas de conclusion) qui "
-                    + "conserve : l'objectif poursuivi, les décisions prises, les fichiers et "
-                    + "commandes importants, et l'état courant de la tâche (ce qui reste à faire). "
-                    + "N'invente rien ; si une information manque, ne la mentionne pas.";
+                    + "conserve : l'objectif poursuivi, les décisions prises, les fichiers lus ou "
+                    + "modifiés, les commandes importantes ET LEUR ISSUE (réussie/échouée, code de "
+                    + "sortie, valeurs de sortie notables), et l'état courant de la tâche (ce qui reste "
+                    + "à faire). Des lignes « outils utilisés » (préfixées « · ») accompagnent chaque "
+                    + "tour de l'agent : appuie-toi dessus pour les faits établis. "
+                    + "N'INVENTE RIEN — ne cite aucune valeur, aucun code de sortie, aucun contenu de "
+                    + "fichier qui ne figure pas dans ce qui t'est donné ; si une information manque, "
+                    + "ne la mentionne pas.";
 
     /** Libellé du bloc de résumé injecté au rejeu (visible du modèle, marqueur du cadrage §2). */
     static final String SUMMARY_MARKER =
@@ -205,13 +210,133 @@ public class AtelierCompactionService {
         sb.append("Conversation à résumer :\n");
         for (AtelierMessage message : old) {
             String content = message.getContent();
-            if (content == null || content.isBlank()) {
+            boolean assistant = "ASSISTANT".equalsIgnoreCase(message.getRole());
+            String digest = assistant ? toolDigest(message.getToolTrace()) : "";
+            // Un message assistant sans texte mais avec une trajectoire d'outils a quand même quelque
+            // chose à résumer (F-119 / SF-119-03) : ne pas l'écarter sur le seul contenu blanc.
+            if ((content == null || content.isBlank()) && digest.isEmpty()) {
                 continue;
             }
-            boolean assistant = "ASSISTANT".equalsIgnoreCase(message.getRole());
-            sb.append(assistant ? "ASSISTANT : " : "UTILISATEUR : ").append(content.strip()).append('\n');
+            sb.append(assistant ? "ASSISTANT : " : "UTILISATEUR : ")
+                    .append(content == null ? "" : content.strip()).append('\n');
+            if (!digest.isEmpty()) {
+                sb.append(digest);
+            }
         }
         return sb.toString();
+    }
+
+    /** Longueur max d'un digest d'outils par tour (F-119 / SF-119-03) : structuré, pas exhaustif. */
+    static final int MAX_DIGEST_CHARS_PER_TURN = 1_500;
+    /** Longueur max d'un extrait de sortie cité dans le digest — une valeur, pas un fichier entier. */
+    static final int MAX_DIGEST_OUTCOME_CHARS = 160;
+
+    /**
+     * Digest <b>structuré</b> des résultats d'outils d'un tour (F-119 / SF-119-03, cadrage Cause 3) :
+     * une ligne par appel — l'outil, sa cible (fichier/commande/requête) et son <b>issue</b> (réussite,
+     * code de sortie, extrait de sortie). La compaction résumait le texte seul et jetait par conception
+     * les sorties d'outils, si bien que l'agent raisonnait ensuite sur un digest sans preuves et
+     * réinventait des valeurs. Borné par tour ({@link #MAX_DIGEST_CHARS_PER_TURN}) — c'est un
+     * aide-mémoire, pas la trace complète. Une trajectoire illisible rend une chaîne vide.
+     */
+    static String toolDigest(String toolTraceJson) {
+        AtelierToolTrace trace = AtelierToolTrace.fromJson(toolTraceJson);
+        if (trace.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (AtelierToolTrace.Step step : trace.steps()) {
+            if (step == null || step.calls() == null) {
+                continue;
+            }
+            for (AtelierToolTrace.Call call : step.calls()) {
+                if (call == null || call.name() == null || call.name().isBlank()) {
+                    continue;
+                }
+                if (sb.length() >= MAX_DIGEST_CHARS_PER_TURN) {
+                    sb.append("  · … (autres appels d'outils non listés)\n");
+                    return sb.toString();
+                }
+                sb.append("  · ").append(call.name());
+                String arg = digestArg(call);
+                if (!arg.isEmpty()) {
+                    sb.append(' ').append(arg);
+                }
+                sb.append(" → ").append(digestOutcome(call)).append('\n');
+            }
+        }
+        return sb.toString();
+    }
+
+    /** Cible lisible d'un appel pour le digest : le chemin, la commande ou la requête. */
+    private static String digestArg(AtelierToolTrace.Call call) {
+        com.fasterxml.jackson.databind.JsonNode input = call.input();
+        if (input == null) {
+            return "";
+        }
+        String path = input.path("path").asText("");
+        if (!path.isBlank()) {
+            return path;
+        }
+        String command = input.path("command").asText("");
+        if (!command.isBlank()) {
+            return "« " + oneLine(command, 120) + " »";
+        }
+        String query = input.path("query").asText("");
+        if (!query.isBlank()) {
+            return "« " + oneLine(query, 120) + " »";
+        }
+        String question = input.path("question").asText("");
+        if (!question.isBlank()) {
+            return "« " + oneLine(question, 120) + " »";
+        }
+        return "";
+    }
+
+    /** Marqueur de code de sortie apposé par {@code bashOutcome} : {@code [code de sortie: N]}. */
+    private static final java.util.regex.Pattern EXIT_CODE_MARKER =
+            java.util.regex.Pattern.compile("\\[code de sortie: [^\\]]+\\]");
+
+    /**
+     * Issue lisible d'un appel : pour une commande, le <b>code de sortie</b> (l'issue qui compte) ;
+     * sinon un extrait borné de la sortie ; « échec » si l'appel est en erreur.
+     */
+    private static String digestOutcome(AtelierToolTrace.Call call) {
+        String exit = exitMarker(call.result());
+        if (!exit.isEmpty()) {
+            return call.error() ? "échec " + exit : exit;
+        }
+        String snippet = oneLine(call.result(), MAX_DIGEST_OUTCOME_CHARS);
+        if (call.error()) {
+            return snippet.isEmpty() ? "échec" : "échec : " + snippet;
+        }
+        return snippet.isEmpty() ? "ok" : snippet;
+    }
+
+    /** Le dernier {@code [code de sortie: N]} d'un résultat (celui apposé en fin), ou {@code ""}. */
+    private static String exitMarker(String result) {
+        if (result == null || result.isEmpty()) {
+            return "";
+        }
+        java.util.regex.Matcher matcher = EXIT_CODE_MARKER.matcher(result);
+        String marker = "";
+        while (matcher.find()) {
+            marker = matcher.group();
+        }
+        return marker;
+    }
+
+    /** Première ligne non vide d'un texte, bornée — pour ne citer qu'une valeur, jamais un fichier. */
+    private static String oneLine(String text, int max) {
+        if (text == null) {
+            return "";
+        }
+        String line = text.strip();
+        int newline = line.indexOf('\n');
+        if (newline >= 0) {
+            line = line.substring(0, newline).strip();
+        }
+        return line.length() > max ? line.substring(0, max) + "…" : line;
     }
 
     /**

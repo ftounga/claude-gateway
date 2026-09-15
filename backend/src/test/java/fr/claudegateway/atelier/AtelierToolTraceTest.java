@@ -54,14 +54,17 @@ class AtelierToolTraceTest {
     }
 
     @Test
-    void anOversizedResultKeepsItsEndWhereTheVerdictIs() {
-        String output = "bruit".repeat(2_000) + "[code de sortie: 1]";
+    void anOversizedResultKeepsItsHeadToMatchTheLiveView() {
+        // F-119 / SF-119-03 : le rejeu garde désormais la TÊTE — le même extrait que l'affichage en
+        // direct (bashOutcome/readOutcome gardent le début) — pour que la mémoire d'un même résultat
+        // ne bascule pas d'un tour à l'autre. La coupe est marquée en fin.
+        String output = "DÉBUT DE LA SORTIE\n" + "bruit".repeat(4_000);
 
         String bounded = AtelierToolTrace.boundResult(output);
 
-        assertThat(bounded).startsWith(AtelierToolTrace.TRUNCATION_MARK);
-        assertThat(bounded).endsWith("[code de sortie: 1]");
-        assertThat(bounded).hasSize(AtelierToolTrace.TRUNCATION_MARK.length() + AtelierToolTrace.MAX_RESULT_CHARS);
+        assertThat(bounded).startsWith("DÉBUT DE LA SORTIE");
+        assertThat(bounded).endsWith(AtelierToolTrace.TRUNCATION_MARK);
+        assertThat(bounded).hasSize(AtelierToolTrace.MAX_RESULT_CHARS + AtelierToolTrace.TRUNCATION_MARK.length());
     }
 
     @Test

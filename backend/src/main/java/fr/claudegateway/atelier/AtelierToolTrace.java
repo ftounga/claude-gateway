@@ -25,12 +25,23 @@ import fr.claudegateway.agent.AgentMessage;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record AtelierToolTrace(List<Step> steps) {
 
-    /** Résultat d'outil conservé pour la mémoire — le tour en cours, lui, l'a eu en entier. */
-    static final int MAX_RESULT_CHARS = 4_000;
-    /** Trajectoire d'un tour : au-delà, les étapes les plus anciennes du tour sont abandonnées. */
-    static final int MAX_TRACE_CHARS = 40_000;
-    /** Marqueur de coupe : un résultat tronqué le dit, jamais en silence. */
-    static final String TRUNCATION_MARK = "… (début tronqué)\n";
+    /**
+     * Résultat d'outil conservé pour la mémoire — le tour en cours, lui, l'a eu en entier. Relevé de
+     * 4 000 à 8 000 (F-119 / SF-119-03) : l'agent perdait ses preuves plus vite que ses affirmations ;
+     * une borne plus large garde davantage de sortie citable, la compaction bornant déjà le volume total.
+     */
+    static final int MAX_RESULT_CHARS = 8_000;
+    /**
+     * Trajectoire d'un tour : au-delà, les étapes les plus anciennes du tour sont abandonnées. Relevé
+     * de 40 000 à 60 000 (F-119 / SF-119-03), de pair avec la fenêtre de rejeu élargie.
+     */
+    static final int MAX_TRACE_CHARS = 60_000;
+    /**
+     * Marqueur de coupe : un résultat tronqué le dit, jamais en silence. <b>Suffixe</b> depuis F-119 /
+     * SF-119-03 : on garde désormais la <b>tête</b> du résultat (comme l'affichage en direct), la coupe
+     * est donc à la fin.
+     */
+    static final String TRUNCATION_MARK = "\n… (fin tronquée)";
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -53,9 +64,12 @@ public record AtelierToolTrace(List<Step> steps) {
     }
 
     /**
-     * Résultat d'outil ramené à la taille de la mémoire. La <b>fin</b> est conservée : c'est là que
-     * se trouvent le code de sortie et le message d'erreur. Garder le début reviendrait à mémoriser
-     * la question sans la réponse.
+     * Résultat d'outil ramené à la taille de la mémoire. La <b>tête</b> est conservée (F-119 /
+     * SF-119-03), <b>le même extrait que l'affichage en direct</b> (bashOutcome et readOutcome gardent
+     * le début) : sans quoi la mémoire de l'agent d'un même résultat bascule d'un tour à l'autre —
+     * début en direct, fin au rejeu — et il se contredit. Le compromis assumé : sur une sortie
+     * très longue, le code de sortie (en queue) peut sortir de la mémoire ; le signal d'échec, lui,
+     * a été capté en direct (SF-119-01) sur le résultat complet.
      */
     static String boundResult(String content) {
         if (content == null) {
@@ -63,7 +77,7 @@ public record AtelierToolTrace(List<Step> steps) {
         }
         return content.length() <= MAX_RESULT_CHARS
                 ? content
-                : TRUNCATION_MARK + content.substring(content.length() - MAX_RESULT_CHARS);
+                : content.substring(0, MAX_RESULT_CHARS) + TRUNCATION_MARK;
     }
 
     /**
