@@ -83,6 +83,7 @@ class TeamsUrlsTest {
             new String[] {"https://teams.microsoft.com/api/mcps/eu/collab/readcollabobject/V2/a/b/c?x=1", "MEETING_COLLAB_OBJECT"},
             new String[] {"https://teams.microsoft.com/api/mt/emea/v2.0/me/calendars/events/iCalUId/0400000082?$select=subject", "CALENDAR_EVENT"},
             new String[] {"https://teams.microsoft.com/api/mt/emea/v1.0/me/events?startDateTime=2026-09-01", "CALENDAR_EVENT"},
+            new String[] {"https://teams.microsoft.com/api/mt/emea/v2.0/me/calendars/default/calendarView?startDate=2026-09-15", "CALENDAR_EVENT"},
             new String[] {"https://teams.microsoft.com/api/mt/emea/beta/meetings/MTG-1", "MEETING_DETAILS"},
             new String[] {"https://teams.microsoft.com/api/mt/emea/v1/schedulingService/meetings?startDate=2026-09-01", "MEETING_DETAILS"},
             new String[] {"https://teams.microsoft.com/api/mt/emea/v1/calling/meetingsinfo", "MEETING_DETAILS"},
@@ -207,6 +208,27 @@ class TeamsUrlsTest {
     void csa_conversations_updates_is_not_swallowed_by_the_updates_ignore() {
         assertEquals(TeamsPayloadKind.CONVERSATION_LIST, TeamsUrls.classify(
                 "https://teams.microsoft.com/api/csa/emea/api/v2/teams/users/me/conversations/updates"));
+    }
+
+    @Test
+    @DisplayName("F-89 / SF-89-15 : la liste du calendrier (calendarView) est un CALENDAR_EVENT")
+    void the_calendar_list_view_is_a_calendar_event() {
+        assertEquals(TeamsPayloadKind.CALENDAR_EVENT, TeamsUrls.classify(
+                "https://teams.microsoft.com/api/mt/emea/v2.0/me/calendars/default/calendarView"
+                        + "?startDate=2026-09-15&endDate=2026-09-22"));
+    }
+
+    @Test
+    @DisplayName("F-89 / SF-89-15 : la liste Graph /me/events est un CALENDAR_EVENT, ses « instances » restent UNKNOWN")
+    void the_graph_events_list_is_a_calendar_event_but_not_its_instances() {
+        assertEquals(TeamsPayloadKind.CALENDAR_EVENT, TeamsUrls.classify(
+                "https://graph.microsoft.com/v1.0/me/events?$top=50"));
+        // « …/me/events/{id}/instances » n'est pas une liste de réunions lisibles : on ne la classe pas.
+        assertEquals(TeamsPayloadKind.UNKNOWN, TeamsUrls.classify(
+                "https://graph.microsoft.com/v1.0/me/events/AAMkID0001/instances?startDateTime=2026-09-01"));
+        // Un autre chemin Graph (aperçu d'un fichier) reste UNKNOWN : seul /me/events est reconnu.
+        assertEquals(TeamsPayloadKind.UNKNOWN, TeamsUrls.classify(
+                "https://graph.microsoft.com/v1.0/drives/b!id/items/01ABC/preview"));
     }
 
     @Test

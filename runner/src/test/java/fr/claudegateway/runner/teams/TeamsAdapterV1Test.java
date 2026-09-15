@@ -308,6 +308,66 @@ class TeamsAdapterV1Test {
         assertEquals("01ITEMCAGIP12345", recap.driveItemId());
     }
 
+    // ------------------------------------------------------------------ F-89 / SF-89-15 : la LISTE
+
+    private static final String CALENDAR_VIEW_URL = "https://teams.microsoft.com/api/mt/emea/v2.0/me/"
+            + "calendars/default/calendarView?startDate=2026-09-15&endDate=2026-09-22";
+    private static final String GRAPH_EVENTS_URL = "https://graph.microsoft.com/v1.0/me/events?$top=50";
+
+    @Test
+    @DisplayName("Forme réelle calendarView : enveloppe value[] → N réunions lisibles")
+    void reads_calendar_view_list_real_shape() {
+        TeamsReading<TeamsMeeting> reading = adapter.meetings(CALENDAR_VIEW_URL,
+                TeamsSamples.read("calendar-view-cagip.json"));
+
+        assertEquals(2, reading.items().size(), reading.gaps().toString());
+        TeamsMeeting first = reading.items().get(0);
+        assertEquals("ICALUID-CAGIP-REVUE-0001", first.id(), "id = iCalUID de l'item de liste");
+        assertEquals("Comité IAM — septembre", first.subject());
+        assertEquals(Instant.parse("2026-09-15T13:00:00Z"), first.startedAt());
+        assertEquals(Instant.parse("2026-09-15T14:00:00Z"), first.endedAt());
+        TeamsMeeting second = reading.items().get(1);
+        assertEquals("ICALUID-CAGIP-COPIL-0002", second.id());
+        assertEquals("COPIL migration — point hebdo", second.subject());
+    }
+
+    @Test
+    @DisplayName("Forme réelle Graph /me/events : enveloppe value[], horodatage objet start → réunion lisible")
+    void reads_graph_events_list_real_shape() {
+        TeamsReading<TeamsMeeting> reading = adapter.meetings(GRAPH_EVENTS_URL,
+                TeamsSamples.read("graph-events-cagip.json"));
+
+        assertEquals(1, reading.items().size(), reading.gaps().toString());
+        TeamsMeeting meeting = reading.items().get(0);
+        assertEquals("ICALUID-CAGIP-REVUE-0001", meeting.id(), "id = iCalUId (casse Graph), clé de dédup");
+        assertEquals("Comité IAM — septembre", meeting.subject());
+        assertEquals(Instant.parse("2026-09-15T13:00:00Z"), meeting.startedAt(),
+                "l'horaire vient de l'objet start{dateTime,timeZone}");
+    }
+
+    @Test
+    @DisplayName("Dédup : la liste calendarView et une réunion ouverte de même iCalUID ne comptent qu'une fois")
+    void calendar_view_dedups_with_the_open_calendar_event() {
+        TeamsLedger ledger = new TeamsLedger(TeamsAdapters.current().forUser(TeamsSamples.SELF));
+        ledger.absorb(List.of(
+                new ObservedResponse(CALENDAR_VIEW_URL, TeamsPayloadKind.CALENDAR_EVENT,
+                        TeamsSamples.read("calendar-view-cagip.json")),
+                new ObservedResponse(CALENDAR_EVENT_URL, TeamsPayloadKind.CALENDAR_EVENT,
+                        TeamsSamples.read("calendar-event-cagip.json"))),
+                TeamsSamples.wideWindow());
+
+        // calendarView porte REVUE-0001 et COPIL-0002 ; l'événement ouvert est REVUE-0001 → union = 2.
+        assertEquals(2, ledger.meetings().size(), "REVUE dédupliquée, COPIL distincte");
+        assertTrue(ledger.meetings().stream().anyMatch(m -> "ICALUID-CAGIP-COPIL-0002".equals(m.id())));
+    }
+
+    @Test
+    @DisplayName("Sonde de santé : FULL sur la vraie forme calendarView (et non PARTIAL)")
+    void health_is_full_on_the_calendar_view() {
+        assertEquals(TeamsHealthVerdict.FULL, adapter.inspect(CALENDAR_VIEW_URL,
+                TeamsSamples.read("calendar-view-cagip.json")).verdict(), "calendarView réel");
+    }
+
     @Test
     @DisplayName("Non-régression : l'ancienne forme value est lue, une forme inconnue ne plante pas")
     void old_shape_still_read_unknown_shape_never_throws() {

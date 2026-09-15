@@ -40,6 +40,14 @@ final class TeamsUrls {
             // rien à demander. Seules les transcriptions sont lues ici — la vidéo n'est pas nécessaire.
             return path.contains("/transcripts") ? TeamsPayloadKind.MEETING_TRANSCRIPT : TeamsPayloadKind.UNKNOWN;
         }
+        // F-89 / SF-89-15 — la LISTE du calendrier servie par Microsoft Graph (résilience, relevé
+        // catalogue CAGIP 2026-09-16). Reconnue par son hôte ET sa fin de chemin EXACTE :
+        // « /v1.0/me/events » est une liste de réunions (enveloppe value[]), mais
+        // « /v1.0/me/events/{id}/instances » ne l'est pas (id/iCalUId/start/end sans sujet) et reste
+        // UNKNOWN. graph.microsoft.com n'est pas un hôte de conversation : ce cas est traité à part.
+        if ("graph.microsoft.com".equals(MicrosoftDomains.hostOf(url)) && path.endsWith("/me/events")) {
+            return TeamsPayloadKind.CALENDAR_EVENT;
+        }
         if (!isChatHost(url)) {
             return TeamsPayloadKind.UNKNOWN;
         }
@@ -99,6 +107,9 @@ final class TeamsUrls {
             Rule.containing(TeamsPayloadKind.MEETING_COLLAB_OBJECT, "/collab/readcollabobject"),
             Rule.containing(TeamsPayloadKind.CALENDAR_EVENT, "/calendars/events"),
             Rule.containing(TeamsPayloadKind.CALENDAR_EVENT, "/me/events"),
+            // F-89 / SF-89-15 — la LISTE du calendrier (relevé catalogue CAGIP 2026-09-16) :
+            // « …/me/calendars/default/calendarView », enveloppe value[] d'items CALENDAR_EVENT.
+            Rule.ending(TeamsPayloadKind.CALENDAR_EVENT, "/calendarview"),
             Rule.containing(TeamsPayloadKind.MEETING_DETAILS, "/meetings/"),
             Rule.ending(TeamsPayloadKind.MEETING_DETAILS, "/meetings"),
             Rule.containing(TeamsPayloadKind.MEETING_DETAILS, "/calling/meetings"),
