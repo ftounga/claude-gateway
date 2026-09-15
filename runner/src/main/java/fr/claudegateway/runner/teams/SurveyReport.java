@@ -83,10 +83,22 @@ final class SurveyReport {
             md.append("- Réponses de chemins non détaillés (plafond de ").append(NetworkSurvey.MAX_ENTRIES)
                     .append(" chemins) : ").append(snapshot.dropped()).append('\n');
         }
-        md.append("\n> Ce rapport ne contient ni corps de réponse, ni chaîne de requête, ni en-tête, ni nom de "
-                + "tenant : les identifiants et les noms propres au client sont remplacés par `{id}`.\n\n");
+        if (snapshot.shapeMode()) {
+            md.append("- **Mode forme : ACTIF** — des corps de réponse classés ont été **lus** ; seuls les "
+                    + "NOMS de champs et leur TYPE JSON sont écrits, **jamais une valeur**. Corps lus : ")
+                    .append(snapshot.shapesRead()).append(" ; indisponibles : ")
+                    .append(snapshot.shapesUnavailable()).append('\n');
+        }
+        if (snapshot.shapeMode()) {
+            md.append("\n> Ce rapport a lu des corps en **mode forme** : il en écrit le **squelette** (noms "
+                    + "de champs et types), **jamais une valeur**, jamais un en-tête, jamais une chaîne de "
+                    + "requête ; les identifiants et noms propres au client sont remplacés par `{id}`.\n\n");
+        } else {
+            md.append("\n> Ce rapport ne contient ni corps de réponse, ni chaîne de requête, ni en-tête, ni nom "
+                    + "de tenant : les identifiants et les noms propres au client sont remplacés par `{id}`.\n\n");
+        }
 
-        if (snapshot.entries().isEmpty() && snapshot.sockets().isEmpty()) {
+        if (snapshot.entries().isEmpty() && snapshot.sockets().isEmpty() && snapshot.shapes().isEmpty()) {
             md.append("**Rien observé.** Teams était-il actif pendant le relevé ? Relancez et suivez les "
                     + "étapes : ouvrir un fil, une réunion passée, son récapitulatif, sa transcription.\n");
             return md.toString();
@@ -142,6 +154,36 @@ final class SurveyReport {
             md.append('\n');
         }
 
+        if (snapshot.shapeMode()) {
+            md.append("## Squelette des réponses classées\n\n");
+            if (snapshot.shapes().isEmpty()) {
+                md.append("Aucune réponse classée (`MEETING_DETAILS`, `CALENDAR_EVENT`, `CONVERSATION_LIST`, "
+                        + "`CONVERSATION_MESSAGES`, `MEETING_COLLAB_OBJECT`) n'a livré un corps lisible "
+                        + "pendant ce relevé.\n\n");
+            } else {
+                md.append("Pour recaler l'adaptateur : les **noms de champs** et leur **type JSON**, "
+                        + "**jamais une valeur**. Groupé par genre ; le premier élément d'un tableau seul est "
+                        + "déplié, à profondeur bornée.\n\n");
+                Map<TeamsPayloadKind, List<NetworkSurvey.Shape>> byKind =
+                        new java.util.EnumMap<>(TeamsPayloadKind.class);
+                snapshot.shapes().forEach(shape -> byKind
+                        .computeIfAbsent(shape.kind(), key -> new ArrayList<>()).add(shape));
+                byKind.forEach((kind, kindShapes) -> {
+                    md.append("### ").append(kind.name()).append("\n\n");
+                    for (NetworkSurvey.Shape shape : kindShapes) {
+                        md.append("- `").append(cell(shape.host())).append(cell(shape.path())).append("` — ")
+                                .append("origines : ").append(String.join(", ", shape.origins()));
+                        if (!shape.apiVersions().isEmpty()) {
+                            md.append(" · API : ").append(String.join(", ", shape.apiVersions()));
+                        }
+                        md.append(" · vu ").append(shape.count()).append(" fois\n");
+                        md.append("  ```\n  ").append(cell(shape.skeleton())).append("\n  ```\n");
+                    }
+                    md.append('\n');
+                });
+            }
+        }
+
         md.append("## Table des chemins, par hôte\n\n");
         Map<String, List<NetworkSurvey.Entry>> byHost = new LinkedHashMap<>();
         snapshot.entries().forEach(entry -> byHost.computeIfAbsent(entry.host(), key -> new ArrayList<>())
@@ -186,6 +228,23 @@ final class SurveyReport {
         root.put("staticResources", snapshot.staticResources());
         root.put("refusedTargets", snapshot.refusedTargets());
         root.put("dropped", snapshot.dropped());
+        root.put("shapeMode", snapshot.shapeMode());
+        root.put("shapesRead", snapshot.shapesRead());
+        root.put("shapesUnavailable", snapshot.shapesUnavailable());
+        root.put("shapesDropped", snapshot.shapesDropped());
+        ArrayNode shapesNode = root.putArray("shapes");
+        for (NetworkSurvey.Shape shape : snapshot.shapes()) {
+            ObjectNode node = shapesNode.addObject();
+            node.put("kind", shape.kind().name());
+            node.put("host", shape.host());
+            node.put("path", shape.path());
+            node.put("skeleton", shape.skeleton());
+            node.put("count", shape.count());
+            ArrayNode origins = node.putArray("origins");
+            shape.origins().forEach(origins::add);
+            ArrayNode apiVersions = node.putArray("apiVersions");
+            shape.apiVersions().forEach(apiVersions::add);
+        }
         ArrayNode socketsNode = root.putArray("sockets");
         for (NetworkSurvey.Socket socket : snapshot.sockets()) {
             ObjectNode node = socketsNode.addObject();

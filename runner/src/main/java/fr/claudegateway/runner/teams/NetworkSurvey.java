@@ -1,6 +1,9 @@
 package fr.claudegateway.runner.teams;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -28,12 +31,22 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  *       l'angle mort « vu seulement depuis un autre onglet ».</li>
  * </ul>
  *
- * <h2>Ce qui n'est jamais fait</h2>
+ * <h2>Ce qui n'est jamais fait — en mode normal</h2>
  *
  * <p>Aucun corps n'est demandé ({@code Network.getResponseBody} n'est pas émis), aucun en-tête n'est
  * lu, aucune chaîne de requête n'entre ({@link SurveyPaths}). Les seules commandes émises sont
  * {@code Network.enable} et {@code Target.setAutoAttach}, déjà dans la liste blanche : ce mode
  * n'ajoute rien à ce que le runner s'autorise.</p>
+ *
+ * <h2>Le mode « forme » (F-89 / SF-89-12) — opt-in, jamais par défaut</h2>
+ *
+ * <p>Quand il est <b>explicitement</b> demandé (drapeau {@code --forme}), le relevé récupère le corps
+ * des seules réponses classées {@link #SHAPE_KINDS} et n'en écrit que le <b>squelette</b> — les NOMS de
+ * champs et leur TYPE JSON, <b>jamais une valeur</b> ({@link PayloadShape}). C'est ce qui révèle la
+ * forme réelle des réponses Teams pour recaler {@link TeamsAdapterV1}. Les corps sont lus <b>hors du
+ * fil de la socket</b>, par {@link #captureReadyShapes()} appelé depuis la boucle de commande — jamais
+ * dans le fil de l'événement, seul à pouvoir délivrer la réponse. Sans ce drapeau, rien de tout cela
+ * n'a lieu : {@code Network.getResponseBody} n'est pas émis.</p>
  *
  * <p><b>Pourquoi un exécuteur.</b> Un événement arrive sur le fil de la socket ; y attendre la réponse
  * d'une commande bloquerait ce même fil, qui est le seul à pouvoir la délivrer. L'activation du réseau
@@ -48,6 +61,28 @@ public final class NetworkSurvey {
 
     /** Chemins distincts retenus au plus : au-delà, on compte. */
     static final int MAX_ENTRIES = 2_000;
+
+    /**
+     * Les genres dont le mode « forme » relève le squelette (F-89 / SF-89-12), et <b>rien d'autre</b> —
+     * y compris {@code MEETING_COLLAB_OBJECT}, « nommé, jamais lu » côté outils mais dont c'est
+     * justement ici qu'on découvre la forme. Le squelette ne porte aucune valeur.
+     */
+    static final Set<TeamsPayloadKind> SHAPE_KINDS = EnumSet.of(
+            TeamsPayloadKind.MEETING_DETAILS, TeamsPayloadKind.CALENDAR_EVENT,
+            TeamsPayloadKind.CONVERSATION_LIST, TeamsPayloadKind.CONVERSATION_MESSAGES,
+            TeamsPayloadKind.MEETING_COLLAB_OBJECT);
+
+    /** Profondeur de récursion du squelette. */
+    static final int SHAPE_DEPTH = PayloadShape.DEFAULT_DEPTH;
+
+    /** Squelettes distincts (genre + chemin) retenus au plus : au-delà, on compte. */
+    static final int MAX_SHAPES = 200;
+
+    /** Réponses en attente de lecture de forme retenues au plus : au-delà, on compte. */
+    static final int MAX_PENDING_SHAPES = 2_000;
+
+    /** Corps au-delà duquel on renonce à lire une forme (garde-fou, aligné sur l'observateur). */
+    static final int MAX_BODY_BYTES = 4 * 1024 * 1024;
 
     private static final String RESPONSE_RECEIVED = "Network.responseReceived";
     private static final String ATTACHED_TO_TARGET = "Target.attachedToTarget";
@@ -71,20 +106,44 @@ public final class NetworkSurvey {
     /** « session|requestId » d'une socket ouverte → clé de sa ligne. */
     private final Map<String, String> openSockets = new java.util.HashMap<>();
 
+    /** Mode « forme » (F-89 / SF-89-12) : opt-in. Faux → aucun corps n'est jamais demandé. */
+    private final boolean shapeMode;
+    /** « session|requestId » d'une réponse classée dont la forme reste à lire. */
+    private final Map<String, PendingShape> pendingShapes = new LinkedHashMap<>();
+    /** Squelettes relevés, par « genre + chemin ». */
+    private final Map<String, Shape> shapes = new LinkedHashMap<>();
+
     private volatile int step;
     private int outsideMicrosoft;
     private int staticResources;
     private int dropped;
     private int refusedTargets;
+    private int shapesRead;
+    private int shapesUnavailable;
+    private int shapesDropped;
 
     public NetworkSurvey(Executor executor) {
+        this(executor, false);
+    }
+
+    /**
+     * @param shapeMode vrai pour relever le <b>squelette</b> des réponses classées {@link #SHAPE_KINDS}
+     *                  (noms + types, jamais une valeur) ; faux : aucun corps n'est jamais demandé
+     */
+    public NetworkSurvey(Executor executor, boolean shapeMode) {
         this.executor = executor == null ? Runnable::run : executor;
+        this.shapeMode = shapeMode;
+    }
+
+    /** Vrai si le mode « forme » est actif (F-89 / SF-89-12). */
+    public boolean shapeMode() {
+        return shapeMode;
     }
 
     /** Écoute l'onglet Teams et les cadres et workers qu'il attache. */
     public void watchTeamsTab(CdpConnection connection) {
         connection.onSessionEvent(RESPONSE_RECEIVED,
-                (sessionId, params) -> onResponse(sessionId, Origin.TEAMS_TAB, params));
+                (sessionId, params) -> onResponse(connection, sessionId, Origin.TEAMS_TAB, params));
         watchSockets(connection, Origin.TEAMS_TAB);
         connection.onSessionEvent(ATTACHED_TO_TARGET,
                 (parent, params) -> onAttached(connection, params));
@@ -103,7 +162,7 @@ public final class NetworkSurvey {
             return false;
         }
         connection.onSessionEvent(RESPONSE_RECEIVED,
-                (sessionId, params) -> onResponse(sessionId, Origin.OTHER_TAB, params));
+                (sessionId, params) -> onResponse(connection, sessionId, Origin.OTHER_TAB, params));
         watchSockets(connection, Origin.OTHER_TAB);
         connection.send(CdpCommands.NETWORK_ENABLE, mapper.createObjectNode());
         return true;
@@ -224,13 +283,15 @@ public final class NetworkSurvey {
         };
     }
 
-    private void onResponse(String sessionId, Origin tabOrigin, JsonNode params) {
+    private void onResponse(CdpConnection connection, String sessionId, Origin tabOrigin,
+            JsonNode params) {
         if (params == null) {
             return;
         }
         Origin origin = tabOrigin;
-        if (sessionId != null && !sessionId.isBlank()) {
-            origin = sessions.get(sessionId);
+        String session = sessionId == null ? "" : sessionId;
+        if (!session.isBlank()) {
+            origin = sessions.get(session);
             if (origin == null) {
                 return; // une session que nous n'avons pas retenue : jamais écoutée, jamais notée
             }
@@ -240,8 +301,112 @@ public final class NetworkSurvey {
         // dans le même objet, et on n'y touche pas.
         String url = ObservedResponse.withoutQuery(response.path("url").asText(""));
         String resourceType = params.path("type").asText("");
-        record(origin, url, resourceType, response.path("mimeType").asText(""),
-                response.path("status").asInt(0));
+        int status = response.path("status").asInt(0);
+        record(origin, url, resourceType, response.path("mimeType").asText(""), status);
+        // F-89 / SF-89-12 : en mode forme SEULEMENT, on note la réponse pour en lire la FORME plus tard
+        // (jamais ici, sur le fil de la socket). Sans mode forme, aucun corps n'est jamais demandé.
+        if (shapeMode) {
+            queueShape(connection, session, origin, url, status, params.path("requestId").asText(""));
+        }
+    }
+
+    /**
+     * Met une réponse classée en attente de lecture de forme — <b>uniquement</b> si son URL est
+     * classée {@link #SHAPE_KINDS}, qu'elle n'a pas été refusée (401/403 : le corps serait un message
+     * d'erreur) et qu'elle porte un identifiant de requête. Aucun corps n'est demandé ici.
+     */
+    private synchronized void queueShape(CdpConnection connection, String session, Origin origin,
+            String url, int status, String requestId) {
+        if (requestId.isEmpty() || status == 401 || status == 403) {
+            return;
+        }
+        TeamsPayloadKind kind = TeamsUrls.classify(url);
+        if (!SHAPE_KINDS.contains(kind)) {
+            return;
+        }
+        if (pendingShapes.size() >= MAX_PENDING_SHAPES) {
+            shapesDropped++;
+            return;
+        }
+        pendingShapes.put(session + '|' + requestId, new PendingShape(connection, session, requestId,
+                kind, SurveyPaths.hostMotif(url), SurveyPaths.template(url), origin.name(),
+                TeamsUrls.apiVersions(url), step));
+    }
+
+    /**
+     * <b>Lit la forme des réponses classées en attente</b> (F-89 / SF-89-12), puis vide la file. À
+     * appeler <b>hors du fil de la socket</b> — depuis la boucle de commande —, jamais dans le fil de
+     * l'événement : le protocole ne remet le corps qu'une fois la réponse complète, et bloquer
+     * l'événement ralentirait la page. Seul le <b>squelette</b> (noms + types) est retenu ; aucune
+     * valeur n'entre. Ne fait rien hors mode forme.
+     */
+    public void captureReadyShapes() {
+        if (!shapeMode) {
+            return;
+        }
+        List<PendingShape> ready;
+        synchronized (this) {
+            ready = new ArrayList<>(pendingShapes.values());
+            pendingShapes.clear();
+        }
+        for (PendingShape pending : ready) {
+            recordShape(pending, fetchBody(pending));
+        }
+    }
+
+    /** Le corps d'une réponse, en JSON, ou {@code null} si indisponible. Jamais un en-tête. */
+    private JsonNode fetchBody(PendingShape pending) {
+        ObjectNode params = mapper.createObjectNode();
+        params.put("requestId", pending.requestId());
+        try {
+            JsonNode result = pending.connection().send(pending.session(),
+                    CdpCommands.GET_RESPONSE_BODY, params);
+            String raw = result == null ? "" : result.path("body").asText("");
+            if (raw.isEmpty()) {
+                return null;
+            }
+            if (result.path("base64Encoded").asBoolean(false)) {
+                byte[] decoded = Base64.getDecoder().decode(raw);
+                if (decoded.length > MAX_BODY_BYTES) {
+                    return null;
+                }
+                raw = new String(decoded, StandardCharsets.UTF_8);
+            } else if (raw.length() > MAX_BODY_BYTES) {
+                return null;
+            }
+            return mapper.readTree(raw);
+        } catch (RuntimeException | java.io.IOException e) {
+            return null; // corps déjà purgé, non-JSON, ou liaison partie : la forme est simplement absente
+        }
+    }
+
+    /** Range le squelette d'un corps lu, sous « genre + chemin ». Aucune valeur n'entre. */
+    private synchronized void recordShape(PendingShape pending, JsonNode body) {
+        if (body == null) {
+            shapesUnavailable++;
+            return;
+        }
+        String key = pending.kind().name() + ' ' + pending.path();
+        Shape shape = shapes.get(key);
+        if (shape == null) {
+            if (shapes.size() >= MAX_SHAPES) {
+                shapesDropped++;
+                return;
+            }
+            shape = new Shape(pending.kind(), pending.host(), pending.path(),
+                    PayloadShape.of(body, SHAPE_DEPTH), pending.firstStep());
+            shapes.put(key, shape);
+        }
+        shape.count++;
+        shape.origins.add(pending.origin());
+        shape.apiVersions.addAll(pending.apiVersions());
+        shapesRead++;
+    }
+
+    /** Une réponse classée en attente de lecture de forme. */
+    private record PendingShape(CdpConnection connection, String session, String requestId,
+            TeamsPayloadKind kind, String host, String path, String origin, List<String> apiVersions,
+            int firstStep) {
     }
 
     private synchronized void record(Origin origin, String url, String resourceType, String mime,
@@ -306,7 +471,10 @@ public final class NetworkSurvey {
         entries.values().forEach(entry -> copy.add(entry.copy()));
         List<Socket> socketCopy = new ArrayList<>();
         sockets.values().forEach(socket -> socketCopy.add(socket.copy()));
-        return new Snapshot(copy, outsideMicrosoft, staticResources, dropped, refusedTargets, socketCopy);
+        List<Shape> shapeCopy = new ArrayList<>();
+        shapes.values().forEach(shape -> shapeCopy.add(shape.copy()));
+        return new Snapshot(copy, outsideMicrosoft, staticResources, dropped, refusedTargets, socketCopy,
+                shapeMode, shapeCopy, shapesRead, shapesUnavailable, shapesDropped);
     }
 
     /** Une socket relevée : hôte, chemin gabarisé, origines, ouvertures et trames — jamais une trame lue. */
@@ -355,6 +523,72 @@ public final class NetworkSurvey {
 
         public int firstStep() {
             return firstStep;
+        }
+    }
+
+    /**
+     * Le squelette relevé d'un genre de réponse (F-89 / SF-89-12) : le genre, l'hôte motif, le chemin
+     * gabarisé, les origines, les versions d'API observées, et la <b>forme</b> (noms + types) — jamais
+     * une valeur.
+     */
+    public static final class Shape {
+
+        final TeamsPayloadKind kind;
+        final String host;
+        final String path;
+        final String skeleton;
+        final int firstStep;
+        final Set<String> origins = new LinkedHashSet<>();
+        final Set<String> apiVersions = new LinkedHashSet<>();
+        int count;
+
+        Shape(TeamsPayloadKind kind, String host, String path, String skeleton, int firstStep) {
+            this.kind = kind;
+            this.host = host;
+            this.path = path;
+            this.skeleton = skeleton;
+            this.firstStep = firstStep;
+        }
+
+        Shape copy() {
+            Shape copy = new Shape(kind, host, path, skeleton, firstStep);
+            copy.origins.addAll(origins);
+            copy.apiVersions.addAll(apiVersions);
+            copy.count = count;
+            return copy;
+        }
+
+        public TeamsPayloadKind kind() {
+            return kind;
+        }
+
+        public String host() {
+            return host;
+        }
+
+        public String path() {
+            return path;
+        }
+
+        /** La forme : les NOMS de champs et leur TYPE JSON, jamais une valeur. */
+        public String skeleton() {
+            return skeleton;
+        }
+
+        public int firstStep() {
+            return firstStep;
+        }
+
+        public Set<String> origins() {
+            return Set.copyOf(origins);
+        }
+
+        public Set<String> apiVersions() {
+            return Set.copyOf(apiVersions);
+        }
+
+        public int count() {
+            return count;
         }
     }
 
@@ -427,20 +661,34 @@ public final class NetworkSurvey {
      * @param outsideMicrosoft réponses hors domaines Microsoft, comptées et non détaillées
      * @param staticResources  scripts, styles, images, polices écartés
      * @param dropped          réponses de chemins nouveaux au-delà de {@link #MAX_ENTRIES}
-     * @param refusedTargets   cibles attachées hors domaines Microsoft, jamais écoutées
-     * @param sockets          sockets WebSocket de la famille Microsoft, par hôte et chemin (F-89 / SF-89-05)
+     * @param refusedTargets    cibles attachées hors domaines Microsoft, jamais écoutées
+     * @param sockets           sockets WebSocket de la famille Microsoft, par hôte et chemin (F-89 / SF-89-05)
+     * @param shapeMode         vrai si le mode « forme » était actif (F-89 / SF-89-12)
+     * @param shapes            squelettes relevés des réponses classées (noms + types, jamais une valeur)
+     * @param shapesRead        corps lus pour leur forme
+     * @param shapesUnavailable corps classés mais indisponibles (purgés, non-JSON, trop volumineux)
+     * @param shapesDropped     réponses classées non relevées au-delà des plafonds
      */
     public record Snapshot(List<Entry> entries, int outsideMicrosoft, int staticResources, int dropped,
-            int refusedTargets, List<Socket> sockets) {
+            int refusedTargets, List<Socket> sockets, boolean shapeMode, List<Shape> shapes,
+            int shapesRead, int shapesUnavailable, int shapesDropped) {
 
         public Snapshot {
             sockets = sockets == null ? List.of() : List.copyOf(sockets);
+            shapes = shapes == null ? List.of() : List.copyOf(shapes);
         }
 
         /** Forme d'avant F-89 / SF-89-05 : aucune socket relevée. */
         public Snapshot(List<Entry> entries, int outsideMicrosoft, int staticResources, int dropped,
                 int refusedTargets) {
             this(entries, outsideMicrosoft, staticResources, dropped, refusedTargets, List.of());
+        }
+
+        /** Forme d'avant F-89 / SF-89-12 : aucun mode forme, aucun squelette. */
+        public Snapshot(List<Entry> entries, int outsideMicrosoft, int staticResources, int dropped,
+                int refusedTargets, List<Socket> sockets) {
+            this(entries, outsideMicrosoft, staticResources, dropped, refusedTargets, sockets, false,
+                    List.of(), 0, 0, 0);
         }
     }
 }
