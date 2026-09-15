@@ -120,6 +120,129 @@ class NetworkSurveyShapeTest {
         assertFalse(md.contains("users/me"), "le chemin est assaini (me → {id}) : " + md);
     }
 
+    // ------------------------------------------------------------- SF-89-14 : chemins UNKNOWN
+
+    /** La liste du calendrier — UNKNOWN aujourd'hui (le débogage du 2026-09-15) — porte des valeurs sensibles. */
+    private static final String CALENDAR_VIEW_URL =
+            "https://teams.microsoft.com/api/mt/emea/v2.0/me/calendars/default/calendarView";
+    private static final String CALENDAR_VIEW_BODY = "{\"value\":[{"
+            + "\"id\":\"AAMkSECRET-EVENT-ID\","
+            + "\"subject\":\"Reunion-Confidentielle-CAGIP\","
+            + "\"organizer\":{\"emailAddress\":{\"name\":\"Jean Dupont\",\"address\":\"jean.dupont@cagip.fr\"}},"
+            + "\"onlineMeeting\":{\"joinUrl\":\"https://teams.microsoft.com/l/SECRET-JOIN-URL\"}},"
+            + "{\"secondOnlyKey\":\"AUTRE-ELEMENT-A-IGNORER\"}],"
+            + "\"@odata.nextLink\":\"https://teams.microsoft.com/next/SECRET-NEXT-TOKEN\"}";
+    private static final List<String> CALENDAR_FORBIDDEN = List.of("AAMkSECRET", "EVENT-ID",
+            "Reunion-Confidentielle", "SECRET-JOIN", "SECRET-NEXT", "AUTRE-ELEMENT", "Jean", "Dupont",
+            "jean.dupont", "@cagip");
+
+    private static NetworkSurvey.Shape unknown(NetworkSurvey.Snapshot snap, String pathContains) {
+        return snap.unknownShapes().stream().filter(s -> s.path().contains(pathContains)).findFirst()
+                .orElse(null);
+    }
+
+    @Test
+    @DisplayName("Avec --forme : un chemin Microsoft UNKNOWN JSON livre son squelette — aucune valeur ne fuit")
+    void unknownMicrosoftJsonBodyYieldsSkeletonAndLeaksNoValue() {
+        SurveyFakeBrowser tab = new SurveyFakeBrowser();
+        NetworkSurvey survey = new NetworkSurvey(Runnable::run, true);
+        survey.watchTeamsTab(tab);
+        tab.respondWithBody("", CALENDAR_VIEW_URL, "application/json; charset=utf-8", 200, CALENDAR_VIEW_BODY);
+        survey.captureReadyShapes();
+
+        NetworkSurvey.Snapshot snap = survey.snapshot();
+        assertEquals(1, snap.unknownShapes().size(), "un chemin UNKNOWN capté");
+        assertEquals(1, snap.unknownShapesRead());
+        NetworkSurvey.Shape view = unknown(snap, "calendarView");
+        // Noms + types seulement.
+        assertTrue(view.skeleton().contains("value: array<object>"), view.skeleton());
+        assertTrue(view.skeleton().contains("subject: string"), view.skeleton());
+        assertTrue(view.skeleton().contains("@odata.nextLink: string"), view.skeleton());
+        // Premier élément de tableau SEUL : le 2e (secondOnlyKey) n'est jamais déplié.
+        assertFalse(view.skeleton().contains("secondOnlyKey"), view.skeleton());
+        // Profondeur bornée : emailAddress est au fond → « object », ses feuilles ne sont pas dépliées.
+        assertTrue(view.skeleton().contains("emailAddress: object"), view.skeleton());
+        // Chemin assaini : sans requête, sans ancre — le chemin gabarisé, rien d'autre.
+        assertFalse(view.path().contains("?"), view.path());
+        assertTrue(view.path().endsWith("/calendarView"), view.path());
+
+        // VIE PRIVÉE (non négociable) : ni markdown ni JSON ne portent une valeur du corps.
+        SurveyReport report = new SurveyReport(snap, Instant.EPOCH, Instant.EPOCH.plusSeconds(60), false,
+                "Chrome/151", "v1");
+        for (String rendered : List.of(report.markdown(), report.json())) {
+            for (String secret : CALENDAR_FORBIDDEN) {
+                assertFalse(rendered.contains(secret), "fuite « " + secret + " » dans :\n" + rendered);
+            }
+        }
+        String md = report.markdown();
+        assertTrue(md.contains("## Squelette des chemins Microsoft non reconnus"), md);
+        assertTrue(md.contains("calendarView"), md);
+        assertTrue(md.contains("Corps de chemins Microsoft non reconnus (UNKNOWN JSON) lus"), md);
+    }
+
+    @Test
+    @DisplayName("Le top 40 des chemins UNKNOWN est respecté ; le dépassement est compté et dit")
+    void unknownShapesRespectTop40() {
+        SurveyFakeBrowser tab = new SurveyFakeBrowser();
+        NetworkSurvey survey = new NetworkSurvey(Runnable::run, true);
+        survey.watchTeamsTab(tab);
+        for (int index = 0; index < NetworkSurvey.MAX_UNKNOWN_SHAPES + 2; index++) {
+            tab.respondWithBody("", "https://teams.microsoft.com/api/mt/emea/v2.0/probe/step" + index,
+                    "application/json", 200, "{\"field\":\"SECRET-VALUE-" + index + "\"}");
+        }
+        survey.captureReadyShapes();
+
+        NetworkSurvey.Snapshot snap = survey.snapshot();
+        assertEquals(NetworkSurvey.MAX_UNKNOWN_SHAPES, snap.unknownShapes().size(), "plafonné au top 40");
+        assertEquals(2, snap.unknownShapesDropped(), "les 2 chemins en trop sont comptés");
+        String md = new SurveyReport(snap, Instant.EPOCH, Instant.EPOCH.plusSeconds(1), false, "C", "v1")
+                .markdown();
+        assertTrue(md.contains("2 autre(s) chemin(s) non capturé(s)"), md);
+    }
+
+    @Test
+    @DisplayName("Sans --forme : aucun corps de chemin UNKNOWN n'est demandé")
+    void withoutShapeModeNoUnknownBodyIsFetched() {
+        SurveyFakeBrowser tab = new SurveyFakeBrowser();
+        NetworkSurvey survey = new NetworkSurvey(Runnable::run); // mode normal
+        survey.watchTeamsTab(tab);
+        tab.respondWithBody("", CALENDAR_VIEW_URL, "application/json", 200, CALENDAR_VIEW_BODY);
+        survey.captureReadyShapes();
+
+        assertFalse(tab.sent().stream().anyMatch(c -> c.endsWith(CdpCommands.GET_RESPONSE_BODY)),
+                "aucun getResponseBody hors mode forme : " + tab.sent());
+        assertTrue(survey.snapshot().unknownShapes().isEmpty());
+    }
+
+    @Test
+    @DisplayName("Un chemin UNKNOWN hors famille Microsoft n'est jamais capté, même en mode forme")
+    void nonMicrosoftUnknownIsNotCaptured() {
+        SurveyFakeBrowser tab = new SurveyFakeBrowser();
+        NetworkSurvey survey = new NetworkSurvey(Runnable::run, true);
+        survey.watchTeamsTab(tab);
+        tab.respondWithBody("", "https://example.com/api/data", "application/json", 200,
+                "{\"field\":\"SECRET\"}");
+        survey.captureReadyShapes();
+
+        assertFalse(tab.sent().stream().anyMatch(c -> c.endsWith(CdpCommands.GET_RESPONSE_BODY)),
+                "hôte hors famille Microsoft : jamais lu — " + tab.sent());
+        assertTrue(survey.snapshot().unknownShapes().isEmpty());
+    }
+
+    @Test
+    @DisplayName("Un chemin UNKNOWN Microsoft non-JSON n'est jamais capté, même en mode forme")
+    void nonJsonUnknownIsNotCaptured() {
+        SurveyFakeBrowser tab = new SurveyFakeBrowser();
+        NetworkSurvey survey = new NetworkSurvey(Runnable::run, true);
+        survey.watchTeamsTab(tab);
+        tab.respondWithBody("", CALENDAR_VIEW_URL, "text/html", 200, "<html>SECRET</html>");
+        survey.captureReadyShapes();
+
+        assertFalse(tab.sent().stream().anyMatch(c -> c.endsWith(CdpCommands.GET_RESPONSE_BODY)),
+                "MIME non-JSON : jamais lu — " + tab.sent());
+        assertTrue(survey.snapshot().unknownShapes().isEmpty());
+    }
+
     @Test
     @DisplayName("Une réponse refusée (401/403) n'est jamais lue, même en mode forme")
     void deniedResponsesAreNeverRead() {
