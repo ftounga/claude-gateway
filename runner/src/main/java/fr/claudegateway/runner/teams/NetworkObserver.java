@@ -213,9 +213,9 @@ public final class NetworkObserver {
         if (kind == TeamsPayloadKind.IGNORED || kind == TeamsPayloadKind.UNKNOWN) {
             return;
         }
-        if (kind == TeamsPayloadKind.MEETING_COLLAB_OBJECT) {
-            return; // nommé, jamais lu : aucune forme modèle n'en est connue (F-89 / SF-89-05)
-        }
+        // F-89 / SF-89-13 : l'objet de collaboration EST désormais lu — sa forme est connue depuis le
+        // relevé réel (SF-89-12), et l'adaptateur en tire l'emplacement de l'enregistrement en lisant
+        // ses champs par leur nom (aucun autre champ ne franchit la couche).
         int status = response.path("status").asInt(0);
         if (status == 401 || status == 403) {
             // F-100 / SF-100-01 : une réponse REFUSÉE dit quelque chose des droits (une transcription

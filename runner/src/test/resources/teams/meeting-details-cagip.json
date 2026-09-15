@@ -1,0 +1,24 @@
+{
+  "items": [
+    {
+      "id": "MTG-ITEM-CAGIP-0001",
+      "data": {
+        "globalNumericMeetingId": "1122334455667",
+        "meetingType": "Scheduled",
+        "subject": "Comité IAM — septembre",
+        "location": "Salle B12",
+        "startTime": "2026-09-15T13:00:00.000Z",
+        "endTime": "2026-09-15T14:00:00.000Z",
+        "expiryTime": "2026-12-15T00:00:00.000Z",
+        "iCalUid": "ICALUID-CAGIP-REVUE-0001",
+        "participants": { "organizer": { "id": "8:orgid:00000000-0000-0000-0000-000000000001" } },
+        "isCancelled": false,
+        "eventType": "SingleInstance",
+        "numericMeetingId": "123456789",
+        "isRecorded": true,
+        "isTranscriptAvailable": true,
+        "threadId": "19:meeting_cagip_revue@thread.v2"
+      }
+    }
+  ]
+}

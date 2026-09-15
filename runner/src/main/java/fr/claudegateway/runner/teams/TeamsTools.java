@@ -981,10 +981,16 @@ public final class TeamsTools implements ToolExecutor {
             gaps.add(TeamsGap.of(TeamsGapKind.NOTHING_OBSERVED, meetingId,
                     "cette réunion n'a pas été servie par Teams depuis le rattachement"));
         }
+        TeamsRecap recap = meeting == null ? null : book.recap(meeting.conversationId());
         if (meeting != null) {
             TeamsViews.meeting(result.put("meeting"), meeting);
             result.json().put("available", meeting.recorded());
             result.with("webUrl", meeting.webUrl());
+            // F-89 / SF-89-13 : si un récapitulatif du fil a été observé, il LOCALISE l'enregistrement
+            // (drive SharePoint, fil, appel) — de quoi le retrouver même sans message d'enregistrement.
+            if (recap != null) {
+                TeamsViews.recap(result.put("recording"), recap);
+            }
         } else {
             result.json().putNull("available");
         }
@@ -996,6 +1002,11 @@ public final class TeamsTools implements ToolExecutor {
         } else if (meeting.recorded()) {
             text.append("« ").append(meeting.subject())
                     .append(" » annonce un enregistrement. Je ne l'ai PAS téléchargé.");
+            if (recap != null) {
+                text.append(" Son emplacement a été relevé (drive SharePoint ")
+                        .append(recap.driveId()).append(" / ").append(recap.driveItemId())
+                        .append(").");
+            }
         } else {
             text.append("« ").append(meeting.subject())
                     .append(" » n'annonce aucun enregistrement.");

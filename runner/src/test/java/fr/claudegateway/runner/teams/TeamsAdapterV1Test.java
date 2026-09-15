@@ -220,6 +220,117 @@ class TeamsAdapterV1Test {
         assertTrue(meeting.participants().get(1).self());
     }
 
+    // ------------------------------------------------------------------ F-89 / SF-89-13 : forme réelle
+
+    private static final String MEETING_DETAILS_URL =
+            "https://teams.microsoft.com/api/mt/emea/v1/schedulingService/meetings?from=2026-09-01";
+    private static final String CALENDAR_EVENT_URL = "https://teams.microsoft.com/api/mt/emea/v2.0/me/"
+            + "calendars/events/iCalUId/ICALUID-CAGIP-REVUE-0001";
+    private static final String COLLAB_URL =
+            "https://teams.microsoft.com/api/mcps/eu/collab/readcollabobject/V2/aa/bb/cc";
+
+    @Test
+    @DisplayName("Forme réelle MEETING_DETAILS : items[].data → une réunion lisible")
+    void reads_meeting_details_real_shape() {
+        TeamsReading<TeamsMeeting> reading = adapter.meetings(MEETING_DETAILS_URL,
+                TeamsSamples.read("meeting-details-cagip.json"));
+
+        assertEquals(1, reading.items().size(), reading.gaps().toString());
+        TeamsMeeting meeting = reading.items().get(0);
+        assertEquals("ICALUID-CAGIP-REVUE-0001", meeting.id(), "id = data.iCalUid (clé de dédup)");
+        assertEquals("Comité IAM — septembre", meeting.subject());
+        assertEquals(Instant.parse("2026-09-15T13:00:00Z"), meeting.startedAt());
+        assertEquals(Instant.parse("2026-09-15T14:00:00Z"), meeting.endedAt());
+    }
+
+    @Test
+    @DisplayName("Forme réelle CALENDAR_EVENT : objet objectId → une réunion lisible")
+    void reads_calendar_event_real_shape() {
+        TeamsReading<TeamsMeeting> reading = adapter.meetings(CALENDAR_EVENT_URL,
+                TeamsSamples.read("calendar-event-cagip.json"));
+
+        assertEquals(1, reading.items().size(), reading.gaps().toString());
+        TeamsMeeting meeting = reading.items().get(0);
+        assertEquals("ICALUID-CAGIP-REVUE-0001", meeting.id(), "id = iCalUID (à défaut objectId)");
+        assertEquals("Comité IAM — septembre", meeting.subject());
+        assertEquals(Instant.parse("2026-09-15T13:00:00Z"), meeting.startedAt());
+        assertEquals("19:meeting_cagip_revue@thread.v2", meeting.conversationId(),
+                "le fil est déduit du lien de participation");
+        assertEquals(2, meeting.participants().size(), "attendees address/name au niveau de l'attendee");
+        assertEquals("Paul Durand", meeting.participants().get(0).label());
+    }
+
+    @Test
+    @DisplayName("Dédup : la même réunion vue en détail ET en calendrier ne compte qu'une fois")
+    void meeting_details_and_calendar_event_dedup_by_ical_uid() {
+        TeamsLedger ledger = new TeamsLedger(TeamsAdapters.current().forUser(TeamsSamples.SELF));
+        ledger.absorb(List.of(
+                new ObservedResponse(MEETING_DETAILS_URL, TeamsPayloadKind.MEETING_DETAILS,
+                        TeamsSamples.read("meeting-details-cagip.json")),
+                new ObservedResponse(CALENDAR_EVENT_URL, TeamsPayloadKind.CALENDAR_EVENT,
+                        TeamsSamples.read("calendar-event-cagip.json"))),
+                TeamsSamples.wideWindow());
+
+        assertEquals(1, ledger.meetings().size(), "même iCalUid → une seule réunion");
+        assertEquals("ICALUID-CAGIP-REVUE-0001", ledger.meetings().get(0).id());
+    }
+
+    @Test
+    @DisplayName("Forme réelle MEETING_COLLAB_OBJECT : resources[].metadata → l'emplacement lisible")
+    void reads_recap_from_collab_object() {
+        TeamsReading<TeamsRecap> reading = adapter.recap(COLLAB_URL,
+                TeamsSamples.read("readcollabobject-cagip.json"));
+
+        assertEquals(1, reading.items().size(), reading.gaps().toString());
+        TeamsRecap recap = reading.items().get(0);
+        assertEquals("19:meeting_cagip_revue@thread.v2", recap.conversationId());
+        assertEquals("b!DRIVE-CAGIP-abcdef", recap.driveId());
+        assertEquals("01ITEMCAGIP12345", recap.driveItemId());
+        assertEquals("call-cagip-789", recap.callId());
+        assertEquals(Instant.parse("2026-09-15T13:00:05Z"), recap.startedAt());
+        assertTrue(recap.joinUrl().contains("meetup-join"));
+    }
+
+    @Test
+    @DisplayName("Le récapitulatif observé localise l'enregistrement de la réunion, par le fil")
+    void a_recap_locates_the_recording_through_the_thread() {
+        TeamsLedger ledger = new TeamsLedger(TeamsAdapters.current().forUser(TeamsSamples.SELF));
+        ledger.absorb(List.of(
+                new ObservedResponse(CALENDAR_EVENT_URL, TeamsPayloadKind.CALENDAR_EVENT,
+                        TeamsSamples.read("calendar-event-cagip.json")),
+                new ObservedResponse(COLLAB_URL, TeamsPayloadKind.MEETING_COLLAB_OBJECT,
+                        TeamsSamples.read("readcollabobject-cagip.json"))),
+                TeamsSamples.wideWindow());
+
+        TeamsMeeting meeting = ledger.meetings().get(0);
+        TeamsRecap recap = ledger.recap(meeting.conversationId());
+        assertNotNull(recap, "le récapitulatif est rattaché à la réunion par son fil");
+        assertEquals("01ITEMCAGIP12345", recap.driveItemId());
+    }
+
+    @Test
+    @DisplayName("Non-régression : l'ancienne forme value est lue, une forme inconnue ne plante pas")
+    void old_shape_still_read_unknown_shape_never_throws() {
+        // Ancienne forme « value » : toujours lue (best-effort).
+        TeamsReading<TeamsMeeting> legacy = adapter.meetings(MEETING_DETAILS_URL,
+                TeamsSamples.read("meetings.json"));
+        assertEquals(1, legacy.items().size());
+
+        // Forme de réunion non reconnue : vide porteuse d'un manque, jamais d'exception.
+        ObjectMapper mapper = new ObjectMapper();
+        ObjectNode stranger = mapper.createObjectNode();
+        stranger.putArray("meetingsMaybe").addObject().put("weird", true);
+        TeamsReading<TeamsMeeting> refused = adapter.meetings(MEETING_DETAILS_URL, stranger);
+        assertTrue(refused.items().isEmpty());
+        assertFalse(refused.health().verdict().canWork());
+
+        // Objet de collaboration sans resources : récapitulatif vide, aucun champ inconnu ne fuit.
+        ObjectNode collab = mapper.createObjectNode();
+        collab.put("recap", "SECRET-RECAP");
+        TeamsReading<TeamsRecap> noRecap = adapter.recap(COLLAB_URL, collab);
+        assertTrue(noRecap.items().isEmpty());
+    }
+
     @Test
     @DisplayName("Une transcription est horodatée à la seconde — c'est ce qui rendra F-90 possible")
     void reads_transcript_cues() {
@@ -281,5 +392,16 @@ class TeamsAdapterV1Test {
         assertTrue(health.verdict().canWork(), "on travaille — et on le dit");
         assertTrue(health.describe().contains("Teams a changé"));
         assertTrue(health.missingFields().contains("originalarrivaltime"));
+    }
+
+    @Test
+    @DisplayName("Sonde de santé : OK (et non PARTIAL) sur les vraies formes réunion/calendrier/récap")
+    void health_is_ok_on_the_real_shapes() {
+        assertEquals(TeamsHealthVerdict.FULL, adapter.inspect(MEETING_DETAILS_URL,
+                TeamsSamples.read("meeting-details-cagip.json")).verdict(), "MEETING_DETAILS réel");
+        assertEquals(TeamsHealthVerdict.FULL, adapter.inspect(CALENDAR_EVENT_URL,
+                TeamsSamples.read("calendar-event-cagip.json")).verdict(), "CALENDAR_EVENT réel");
+        assertEquals(TeamsHealthVerdict.FULL, adapter.inspect(COLLAB_URL,
+                TeamsSamples.read("readcollabobject-cagip.json")).verdict(), "MEETING_COLLAB_OBJECT réel");
     }
 }

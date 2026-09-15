@@ -121,6 +121,24 @@ final class TeamsViews {
         });
     }
 
+    /**
+     * L'emplacement d'un enregistrement, lu dans le récapitulatif (F-89 / SF-89-13). Rendu lisible
+     * pour que le modèle puisse le localiser : {@code driveId}/{@code driveItemId} (SharePoint),
+     * {@code threadId}/{@code callId}, et le lien de participation.
+     */
+    static void recap(ObjectNode node, TeamsRecap recap) {
+        if (recap == null) {
+            return;
+        }
+        node.put("conversationId", recap.conversationId());
+        node.put("driveId", recap.driveId());
+        node.put("driveItemId", recap.driveItemId());
+        node.put("callId", recap.callId());
+        node.put("joinUrl", recap.joinUrl());
+        TeamsToolResult.instant(node, "startedAt", recap.startedAt());
+        TeamsToolResult.instant(node, "endedAt", recap.endedAt());
+    }
+
     static void cue(ArrayNode target, TeamsTranscriptCue cue) {
         ObjectNode node = target.addObject();
         TeamsToolResult.instant(node, "at", cue.at());

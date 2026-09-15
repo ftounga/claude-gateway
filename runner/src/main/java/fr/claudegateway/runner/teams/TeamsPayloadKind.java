@@ -38,10 +38,11 @@ public enum TeamsPayloadKind {
     CALENDAR_EVENT,
 
     /**
-     * L'objet de collaboration d'une réunion — son récapitulatif (F-89 / SF-89-05) :
-     * {@code /api/mcps/{région}/collab/readcollabobject/V2/…}. <b>Nommé, jamais lu</b> : aucune forme
-     * modèle n'en est connue, et deviner une forme rendrait un résultat à moitié faux. Il est compté
-     * sous son nom dans le diagnostic ; son corps n'est pas demandé.
+     * L'objet de collaboration d'une réunion — son récapitulatif (F-89 / SF-89-05, <b>recalé
+     * SF-89-13</b>) : {@code /api/mcps/{région}/collab/readcollabobject/V2/…}. <b>Désormais lu</b> :
+     * le relevé réel (SF-89-12) en a donné la forme, et l'adaptateur en tire l'emplacement de
+     * l'enregistrement ({@code resources[].metadata} → {@code driveId}/{@code driveItemId}/
+     * {@code threadId}) en lisant ses champs par leur nom — aucun autre champ ne franchit la couche.
      */
     MEETING_COLLAB_OBJECT,
 

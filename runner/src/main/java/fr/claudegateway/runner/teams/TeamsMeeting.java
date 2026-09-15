@@ -39,6 +39,9 @@ public record TeamsMeeting(String id, String subject, Instant startedAt, Instant
     }
 
     public boolean isReadable() {
-        return !id.isEmpty() && startedAt != null;
+        // F-89 / SF-89-13 : un sujet est exigé en plus de l'identifiant et du début. La forme réelle
+        // (relevé CAGIP) porte toujours un sujet ; une réunion sans sujet est presque toujours une
+        // lecture partielle d'une forme mal reconnue — la rendre produirait une carte muette.
+        return !id.isEmpty() && startedAt != null && !subject.isEmpty();
     }
 }

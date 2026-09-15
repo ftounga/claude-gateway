@@ -1,0 +1,34 @@
+{
+  "changeKey": "CQAAABYAAAB-CAGIP",
+  "id": "COLLAB-CAGIP-0001",
+  "participants": [],
+  "resources": [
+    {
+      "id": "RES-CAGIP-0001",
+      "type": "MeetingRecording",
+      "location": "SharePoint",
+      "metadata": {
+        "startTime": "2026-09-15T13:00:05.000Z",
+        "endTime": "2026-09-15T13:58:00.000Z",
+        "correlationId": "corr-cagip-abc",
+        "callId": "call-cagip-789",
+        "threadId": "19:meeting_cagip_revue@thread.v2",
+        "messageId": "1600000000000",
+        "driveId": "b!DRIVE-CAGIP-abcdef",
+        "driveItemId": "01ITEMCAGIP12345",
+        "thumbnailUrl": "https://cagip-my.sharepoint.com/thumb",
+        "isWatermarkEnabled": "false",
+        "meetingJoinUrl": "https://teams.microsoft.com/l/meetup-join/19%3ameeting_cagip_revue%40thread.v2/0",
+        "isMultilingual": "false",
+        "sharePointOnlineId": "sp-online-cagip-1"
+      },
+      "subType": "recording",
+      "addedBy": "8:orgid:00000000-0000-0000-0000-000000000001",
+      "addedByAppId": "app-cagip-1",
+      "additionDateTime": "2026-09-15T14:00:00.000Z"
+    }
+  ],
+  "invalidResources": [],
+  "deletedResources": [],
+  "countOfFilteredContentsByChatHistory": 0
+}
