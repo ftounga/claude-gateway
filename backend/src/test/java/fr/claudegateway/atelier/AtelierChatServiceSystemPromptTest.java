@@ -122,6 +122,57 @@ class AtelierChatServiceSystemPromptTest {
         assertThat(system).contains("read_file");
     }
 
+    // ------------------------------------------- F-119 / SF-119-02 : discipline d'investigation
+
+    @Test
+    void theInvestigationDisciplineIsPresentOnASandboxProject() {
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+
+        String system = systemPrompt();
+
+        assertThat(system).contains("Vérifie avant d'affirmer");
+        assertThat(system).contains("Ne généralise jamais à partir d'un seul exemple");
+        assertThat(system).contains("Relis la source avant d'affirmer");
+        assertThat(system).contains("Corrige tôt");
+        assertThat(system).contains("non concluant");
+        // Non-régression : le rôle et l'outillage hébergés restent annoncés.
+        assertThat(system).contains("list_files, read_file, write_file, search_files");
+    }
+
+    @Test
+    void theInvestigationDisciplineIsPresentOnARunnerProject() {
+        String system = systemPromptOfRunnerProjectDeclaring(null);
+
+        assertThat(system).contains("Vérifie avant d'affirmer");
+        assertThat(system).contains("Ne généralise jamais à partir d'un seul exemple");
+        assertThat(system).contains("non concluant");
+        // Non-régression : le rôle RUNNER (exploration par bash) reste annoncé.
+        assertThat(system).contains("bash (ls, find, grep -n)");
+    }
+
+    @Test
+    void theEditAndWriteToolContractsCarryTheDiscipline() {
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+        agentProvider.enqueueFinal("fini");
+
+        service.chat(userId, workspaceId, "bonjour");
+
+        String editDesc = agentProvider.lastRequest.tools().stream()
+                .filter(t -> "edit_file".equals(t.name())).findFirst().orElseThrow().description();
+        assertThat(editDesc).contains("EXACTEMENT");
+        assertThat(editDesc).contains("lis le fichier avant");
+        assertThat(editDesc).contains("relis le fichier avant de réessayer");
+
+        String writeDesc = agentProvider.lastRequest.tools().stream()
+                .filter(t -> "write_file".equals(t.name())).findFirst().orElseThrow().description();
+        assertThat(writeDesc).contains("ÉCRASANT");
+        assertThat(writeDesc).contains("préfère edit_file");
+    }
+
     @Test
     void onAMachineBackedProjectTheRoleSendsExplorationToBash() {
         // SF-39-05 : annoncer list_files/search_files là où ils ne sont plus déclarés ne produirait

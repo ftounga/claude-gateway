@@ -145,6 +145,27 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "repartir propre — la conversation reste affichée.";
     /** Garde-fou : longueur max de la consigne système (CLAUDE.md + skills). */
     private static final int SYSTEM_MAX_CHARS = 40_000;
+    /**
+     * Discipline d'investigation (F-119 / SF-119-02, cadrage Cause 2) : des consignes <b>non
+     * négociables</b> ajoutées au rôle, sur les deux cibles. Le prompt d'origine était descriptif
+     * (« ne suppose rien sur un fichier sans l'avoir lu ») ; rien ne poussait l'agent à se vérifier
+     * avant d'affirmer — d'où 39 % d'erreurs « affirmé/généralisé sans vérifier » en prod. Placée en
+     * tête (après le rôle), elle survit à la coupe {@link #SYSTEM_MAX_CHARS}. Texte sobre : quelques
+     * centaines de caractères de plus dans le préfixe stable, donc cachés (cache de prompt préservé).
+     */
+    private static final String INVESTIGATION_DISCIPLINE =
+            "Discipline de travail, non négociable :\n"
+                    + "- Vérifie avant d'affirmer : teste, relis, ou exécute — ne conclus jamais "
+                    + "qu'une tâche est faite sans l'avoir prouvé.\n"
+                    + "- Ne généralise jamais à partir d'un seul exemple : un cas qui marche ne "
+                    + "prouve pas la règle ; confronte-le à d'autres avant d'en tirer une conclusion.\n"
+                    + "- Relis la source avant d'affirmer son contenu ; ne cite pas de mémoire ce que "
+                    + "tu peux rouvrir.\n"
+                    + "- Corrige tôt : si tu doutes, vérifie tout de suite plutôt que d'affirmer puis "
+                    + "de te dédire au tour suivant.\n"
+                    + "- Quand un outil échoue ou ne rend rien d'exploitable, dis « non concluant » et "
+                    + "réessaie ou change d'approche — n'invente pas un résultat, et ne prends pas un "
+                    + "échec pour une réponse négative.\n\n";
     private static final List<String> SKILL_PREFIXES = List.of(".claude/skills/", "skills/");
     /**
      * Nombre de skills annoncés dans la consigne (F-39 / SF-39-02, décision D3). Une borne explicite
@@ -2432,13 +2453,19 @@ public class AtelierChatService implements RelayInterruptTarget {
                 Map.of("type", "object",
                         "properties", Map.of("path", stringProp, "offset", intProp, "limit", intProp),
                         "required", List.of("path"))));
-        tools.add(new AgentTool("write_file", "Écrit (ou remplace) le contenu texte d'un fichier du projet.",
+        tools.add(new AgentTool("write_file",
+                "Écrit un fichier du projet en ÉCRASANT tout son contenu. Pour modifier un fichier "
+                        + "existant, préfère edit_file : write_file remplace le fichier entier et perd "
+                        + "ce que tu n'as pas réécrit.",
                 Map.of("type", "object",
                         "properties", Map.of("path", stringProp, "content", stringProp),
                         "required", List.of("path", "content"))));
         tools.add(new AgentTool("edit_file",
-                "Remplace un passage exact dans un fichier du projet. old_string doit être unique, "
-                        + "sinon passe replace_all à true. À préférer à write_file pour modifier un fichier.",
+                "Remplace un passage exact dans un fichier du projet. Copie old_string EXACTEMENT tel "
+                        + "qu'il apparaît, indentation et espaces compris ; lis le fichier avant de "
+                        + "l'éditer. old_string doit être unique, sinon passe replace_all à true. En "
+                        + "cas d'échec, relis le fichier avant de réessayer. À préférer à write_file "
+                        + "pour modifier un fichier.",
                 Map.of("type", "object",
                         "properties", Map.of("path", stringProp, "old_string", stringProp,
                                 "new_string", stringProp, "replace_all", Map.of("type", "boolean")),
@@ -2504,6 +2531,11 @@ public class AtelierChatService implements RelayInterruptTarget {
                     .append("Ne fais aucune supposition sur un fichier sans l'avoir lu. Après une modification, ")
                     .append("résume clairement ce que tu as changé.\n\n");
         }
+
+        // Discipline d'investigation (F-119 / SF-119-02) : ajoutée sur les DEUX cibles, juste après le
+        // rôle — c'est ce qui pousse l'agent à se vérifier avant d'affirmer, plutôt que d'improviser
+        // et de se rattraper au tour suivant. Placée en tête, elle survit à la coupe SYSTEM_MAX_CHARS.
+        system.append(INVESTIGATION_DISCIPLINE);
 
         // F-89 / SF-89-04 : un terminal Teams sans droit le DIT. Sans ce paragraphe, l'agent — privé
         // de ses outils teams_* en silence (SF-89-01) — fouillait la machine comme un terminal de
