@@ -76,6 +76,12 @@ public class AtelierCompactionService {
     private final AiAgentProvider agentProvider;
     private final AtelierCompactionProperties properties;
     private final String model;
+    /**
+     * Fenêtre de rejeu des trajectoires d'outils (F-119 / SF-119-03) : les traces des
+     * {@code replayedTraceTurns} derniers tours repartent AUSSI au fournisseur — l'estimateur de
+     * seuil doit donc les compter (parité), sinon le déclenchement se fait après le débordement réel.
+     */
+    private final int replayedTraceTurns;
 
     public AtelierCompactionService(AtelierMessageRepository messageRepository,
             WorkspaceRepository workspaceRepository, AiAgentProvider agentProvider,
@@ -85,6 +91,7 @@ public class AtelierCompactionService {
         this.agentProvider = agentProvider;
         this.properties = properties;
         this.model = atelierProperties.model();
+        this.replayedTraceTurns = atelierProperties.replayedTraceTurns();
     }
 
     /**
@@ -129,7 +136,8 @@ public class AtelierCompactionService {
             return CompactionOutcome.NONE;
         }
         List<AtelierMessage> replayable = replayable(userId, workspace);
-        long estimated = estimateReplayTokens(workspace.getChatThreadSummary(), replayable);
+        long estimated =
+                estimateReplayTokens(workspace.getChatThreadSummary(), replayable, replayedTraceTurns);
         if (estimated <= properties.triggerTokens()) {
             return CompactionOutcome.NONE;
         }
@@ -149,7 +157,7 @@ public class AtelierCompactionService {
         }
         List<AtelierMessage> replayable = replayable(userId, workspace);
         return doCompact(workspace, apiKey, replayable,
-                estimateReplayTokens(workspace.getChatThreadSummary(), replayable));
+                estimateReplayTokens(workspace.getChatThreadSummary(), replayable, replayedTraceTurns));
     }
 
     private CompactionOutcome doCompact(Workspace workspace, String apiKey,
@@ -340,17 +348,47 @@ public class AtelierCompactionService {
     }
 
     /**
-     * Estimation du <b>texte rejoué</b> en tokens : résumé courant + contenu des messages depuis la
-     * frontière, par l'heuristique {@link #CHARS_PER_TOKEN}. Les trajectoires d'outils ne sont pas
-     * comptées ici — elles sont déjà bornées (5 derniers tours, SF-39-03) et c'est le texte qui croît
-     * sans borne (constat de l'audit).
+     * Estimation du texte rejoué seul (forme historique, sans les trajectoires d'outils). Conservée
+     * pour les appelants qui ne connaissent pas la fenêtre de rejeu.
      */
     static long estimateReplayTokens(String summary, List<AtelierMessage> messages) {
+        return estimateReplayTokens(summary, messages, 0);
+    }
+
+    /**
+     * Estimation du <b>contexte rejoué</b> en tokens : résumé courant + contenu des messages depuis la
+     * frontière, <b>plus</b> les trajectoires d'outils des {@code traceTurns} derniers tours assistant,
+     * par l'heuristique {@link #CHARS_PER_TOKEN}.
+     *
+     * <p><b>Parité avec le rejeu réel</b> (F-119 / SF-119-03) : la boucle rejoue les résultats d'outils
+     * des {@code traceTurns} derniers tours ({@code firstTracedIndex}). Avant que la fenêtre ne soit
+     * élargie de 5 à 12, ne pas les compter sous-estimait modérément ; élargie, l'écart devient de
+     * plusieurs dizaines de milliers de tokens — le seuil de compaction serait franchi <b>sans se
+     * déclencher</b>, et seul le filet réactif « prompt too long » (400) rattraperait après coup. On
+     * compte donc les caractères des traces (déjà bornées à la sérialisation) des derniers tours.</p>
+     */
+    static long estimateReplayTokens(String summary, List<AtelierMessage> messages, int traceTurns) {
         long chars = summary == null ? 0L : summary.length();
         for (AtelierMessage message : messages) {
             String content = message.getContent();
             if (content != null) {
                 chars += content.length();
+            }
+        }
+        // Les trajectoires d'outils des `traceTurns` derniers tours assistant repartent AUSSI : mêmes
+        // tours que firstTracedIndex côté boucle, comptés depuis la fin.
+        if (traceTurns > 0) {
+            int seen = 0;
+            for (int index = messages.size() - 1; index >= 0 && seen < traceTurns; index--) {
+                AtelierMessage message = messages.get(index);
+                if (!"ASSISTANT".equalsIgnoreCase(message.getRole())) {
+                    continue;
+                }
+                seen++;
+                String trace = message.getToolTrace();
+                if (trace != null) {
+                    chars += trace.length();
+                }
             }
         }
         return chars / CHARS_PER_TOKEN;
