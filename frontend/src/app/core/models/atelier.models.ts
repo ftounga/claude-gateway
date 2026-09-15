@@ -508,9 +508,17 @@ export interface AtelierAction {
   path: string;
 }
 
-/** Corps de `POST /api/workspaces/{id}/chat`. */
+/**
+ * Mode d'un tour d'agent (F-120 / SF-120-02), à l'image du *plan mode* de Claude Code.
+ * - `ANSWER_PLAN` : l'agent répond / propose un plan sans exécuter de mutation.
+ * - `ACT` : panoplie complète, comportement historique. **Défaut** du sélecteur.
+ */
+export type AtelierTurnMode = 'ANSWER_PLAN' | 'ACT';
+
+/** Corps de `POST /api/workspaces/{id}/chat`. `mode` absent ⇒ `ACT` côté serveur. */
 export interface AtelierChatRequest {
   message: string;
+  mode?: AtelierTurnMode;
 }
 
 /** Réponse de `POST /api/workspaces/{id}/chat`. */

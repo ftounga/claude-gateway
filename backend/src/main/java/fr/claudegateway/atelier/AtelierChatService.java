@@ -16,6 +16,7 @@ import fr.claudegateway.agent.AgentReasoning;
 import fr.claudegateway.agent.AgentTool;
 import fr.claudegateway.agent.AgentToolCall;
 import fr.claudegateway.agent.AgentTurn;
+import fr.claudegateway.agent.AgentTurnMode;
 import fr.claudegateway.agent.AgentTurnRequest;
 import fr.claudegateway.agent.AiAgentProvider;
 import fr.claudegateway.atelier.checkpoint.AtelierCheckpointContext;
@@ -231,6 +232,37 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     private static final java.util.Set<String> READ_ONLY_TOOLS =
             java.util.Set.of("read_file", "list_files", "search_files");
+
+    /**
+     * Panoplie autorisée en mode {@link AgentTurnMode#ANSWER_PLAN} (F-120 / SF-120-02) : lecture,
+     * exploration, et l'outil d'organisation {@code set_plan} — <b>rien qui mute l'état</b>.
+     *
+     * <p>Liste <b>blanche</b> appliquée à la panoplie construite par {@link #buildTools} : tout ce qui
+     * n'y figure pas est retiré. On retire ainsi {@code write_file}, {@code edit_file}, {@code bash},
+     * mais aussi les outils de volet (Teams, Radar, courriel, pages), qui peuvent muter un état
+     * externe et sortent du cœur lecture/plan. Le choix d'une liste blanche plutôt que d'une liste
+     * noire est délibéré : le mode est <b>opt-in</b> (défaut {@link AgentTurnMode#ACT}), donc une
+     * sur-restriction échoue du bon côté — ne pas agir — et un outil mutant ajouté demain reste exclu
+     * par défaut sans qu'on ait à y penser. {@code set_plan} reste déclaré : c'est un outil
+     * d'organisation, pas d'exécution — le cœur d'un « plan mode ».</p>
+     */
+    private static final java.util.Set<String> ANSWER_PLAN_TOOLS =
+            java.util.Set.of("read_file", "list_files", "search_files", "explore", "set_plan");
+    /**
+     * Consigne de mode ajoutée à la consigne système en {@link AgentTurnMode#ANSWER_PLAN}
+     * (F-120 / SF-120-02). Cohérente avec la doctrine de retenue SF-120-01, mais plus forte : ici la
+     * retenue n'est pas seulement une règle de conduite, c'est l'état du tour — les outils mutants ne
+     * sont même pas déclarés. Placée juste après la doctrine, en tête du préfixe (donc à l'abri de la
+     * coupe {@link #SYSTEM_MAX_CHARS}).
+     */
+    private static final String ANSWER_PLAN_DIRECTIVE =
+            "Mode Réponse/Plan (l'utilisateur l'a explicitement choisi) :\n"
+                    + "- Tu RÉPONDS à la question, ou tu PROPOSES un plan — tu n'exécutes rien.\n"
+                    + "- Aucune mutation : tu ne peux ni écrire, ni éditer un fichier, ni lancer de "
+                    + "commande (ces outils ne te sont pas donnés dans ce mode). Tu peux lire, "
+                    + "explorer, et poser un plan avec set_plan.\n"
+                    + "- Présente ce que tu ferais, puis attends : l'utilisateur passera en mode "
+                    + "« Agir » (bouton « Passer à l'exécution ») quand il voudra que tu exécutes.\n\n";
 
     /** Cible d'audit d'une commande (F-38 / SF-38-08) : la ligne du journal, pas un contenu. */
     private static final int AUDIT_TARGET_CHARS = 1_000;
@@ -621,7 +653,16 @@ public class AtelierChatService implements RelayInterruptTarget {
      * atomiques par appel de repository.</p>
      */
     public AtelierChatResult chat(UUID userId, UUID workspaceId, String rawMessage) {
-        return runLoop(userId, workspaceId, rawMessage, AtelierProgressListener.NOOP);
+        return runLoop(userId, workspaceId, rawMessage, AgentTurnMode.ACT, AtelierProgressListener.NOOP);
+    }
+
+    /**
+     * Variante portant le <b>mode</b> du tour (F-120 / SF-120-02). En {@link AgentTurnMode#ANSWER_PLAN},
+     * la boucle ne déclare que les outils de lecture/exploration/plan et ajoute la consigne de mode ;
+     * en {@link AgentTurnMode#ACT} (ou {@code null}), comportement historique.
+     */
+    public AtelierChatResult chat(UUID userId, UUID workspaceId, String rawMessage, AgentTurnMode mode) {
+        return runLoop(userId, workspaceId, rawMessage, mode, AtelierProgressListener.NOOP);
     }
 
     /**
@@ -632,7 +673,17 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     public AtelierChatResult chatStreaming(UUID userId, UUID workspaceId, String rawMessage,
             AtelierProgressListener listener) {
-        return runLoop(userId, workspaceId, rawMessage, listener);
+        return runLoop(userId, workspaceId, rawMessage, AgentTurnMode.ACT, listener);
+    }
+
+    /**
+     * Variante <b>streaming</b> portant le {@code mode} du tour (F-120 / SF-120-02). Identique à
+     * {@link #chatStreaming(UUID, UUID, String, AtelierProgressListener)}, mais la panoplie et la
+     * consigne système suivent le mode. {@code null} ⇒ {@link AgentTurnMode#ACT}.
+     */
+    public AtelierChatResult chatStreaming(UUID userId, UUID workspaceId, String rawMessage,
+            AgentTurnMode mode, AtelierProgressListener listener) {
+        return runLoop(userId, workspaceId, rawMessage, mode, listener);
     }
 
     /**
@@ -732,7 +783,10 @@ public class AtelierChatService implements RelayInterruptTarget {
     }
 
     private AtelierChatResult runLoop(UUID userId, UUID workspaceId, String rawMessage,
-            AtelierProgressListener listener) {
+            AgentTurnMode mode, AtelierProgressListener listener) {
+        // Le mode (F-120 / SF-120-02) est normalisé ici : un mode absent vaut ACT (comportement
+        // d'avant). Il ne change que la panoplie déclarée et la consigne système — jamais l'isolation.
+        AgentTurnMode turnMode = mode == null ? AgentTurnMode.ACT : mode;
         Workspace workspace = workspaceService.requireOwned(userId, workspaceId); // 404 si non possédé (isolation) — TOUJOURS en premier
         // Mode « Assistant » sur un projet Git (F-31 / SF-31-03) : cette boucle lit et édite le
         // stockage objet, vide sur ce type de projet. Répondre quand même reviendrait à commenter un
@@ -810,8 +864,8 @@ public class AtelierChatService implements RelayInterruptTarget {
                         ? savedUserMessage.getId() : UUID.randomUUID(),
                 userText, java.time.OffsetDateTime.now());
 
-        String system = buildSystemPrompt(userId, workspace);
-        List<AgentTool> tools = buildTools(userId, workspace);
+        String system = buildSystemPrompt(userId, workspace, turnMode);
+        List<AgentTool> tools = buildTools(userId, workspace, turnMode);
 
         // Plan du tour (F-39 / SF-39-13) : local, donc jamais partagé entre utilisateurs.
         java.util.concurrent.atomic.AtomicReference<AtelierPlan> planOfTurn =
@@ -962,7 +1016,8 @@ public class AtelierChatService implements RelayInterruptTarget {
                 boolean[] streamed = {false};
                 AgentTurnRequest turnRequest =
                         new AgentTurnRequest(model, system, messages, tools, apiKey,
-                                reasoningForIteration(iteration, escalateNextTurn), contextPolicy);
+                                reasoningForIteration(iteration, escalateNextTurn), contextPolicy,
+                                turnMode);
                 try {
                     if (streaming) {
                         turn = agentProvider.nextTurn(turnRequest, delta -> {
@@ -2520,7 +2575,28 @@ public class AtelierChatService implements RelayInterruptTarget {
      * refuse pas, il n'a pas la capacité. La règle vit dans {@code TeamsToolCatalog}, à un seul
      * endroit, pour qu'aucun outil ajouté plus tard n'échappe à la garde.</p>
      */
+    /** Panoplie du tour en mode {@link AgentTurnMode#ACT} — forme historique conservée. */
     List<AgentTool> buildTools(java.util.UUID userId, Workspace workspace) {
+        return buildTools(userId, workspace, AgentTurnMode.ACT);
+    }
+
+    /**
+     * Panoplie du tour selon le <b>mode</b> (F-120 / SF-120-02). En {@link AgentTurnMode#ANSWER_PLAN},
+     * la panoplie complète est construite comme d'habitude puis <b>filtrée</b> par la liste blanche
+     * {@link #ANSWER_PLAN_TOOLS} : ne subsistent que lecture, exploration et {@code set_plan} ; les
+     * outils mutants ({@code write_file}, {@code edit_file}, {@code bash}) et de volet sont retirés.
+     * En {@link AgentTurnMode#ACT} (ou {@code null}), la panoplie est rendue telle quelle
+     * (comportement d'avant SF-120-02).
+     */
+    List<AgentTool> buildTools(java.util.UUID userId, Workspace workspace, AgentTurnMode mode) {
+        List<AgentTool> full = buildToolsFull(userId, workspace);
+        if (mode == AgentTurnMode.ANSWER_PLAN) {
+            return full.stream().filter(tool -> ANSWER_PLAN_TOOLS.contains(tool.name())).toList();
+        }
+        return full;
+    }
+
+    private List<AgentTool> buildToolsFull(java.util.UUID userId, Workspace workspace) {
         Map<String, Object> stringProp = Map.of("type", "string");
         List<AgentTool> tools = new ArrayList<>(fileTools(stringProp, workspace.isRunnerTarget()));
         if (workspace.isRunnerTarget()) {
@@ -2662,7 +2738,12 @@ public class AtelierChatService implements RelayInterruptTarget {
      * conventions du projet, <b>en silence</b> (les lectures optionnelles avalent l'erreur). C'est
      * exactement la panne qu'on ne verrait pas.</p>
      */
+    /** Consigne système du tour en mode {@link AgentTurnMode#ACT} — forme historique conservée. */
     String buildSystemPrompt(UUID userId, Workspace workspace) {
+        return buildSystemPrompt(userId, workspace, AgentTurnMode.ACT);
+    }
+
+    String buildSystemPrompt(UUID userId, Workspace workspace, AgentTurnMode mode) {
         StringBuilder system = new StringBuilder();
         // L'énoncé du rôle suit l'outillage réellement déclaré (SF-39-05) : annoncer des outils qui
         // n'existent pas dans ce projet ne produirait que des appels perdus.
@@ -2696,6 +2777,13 @@ public class AtelierChatService implements RelayInterruptTarget {
         // La discipline dit COMMENT vérifier quand on agit ; la doctrine dit QUAND agir : une question
         // reçoit une réponse, pas une mutation non demandée.
         system.append(RESTRAINT_DOCTRINE);
+
+        // Mode explicite « Réponse/Plan » (F-120 / SF-120-02) : quand l'utilisateur l'a choisi, on
+        // renforce la doctrine par une consigne de mode, en écho au retrait des outils mutants dans
+        // buildTools. Placée juste après la doctrine, en tête du préfixe (à l'abri de SYSTEM_MAX_CHARS).
+        if (mode == AgentTurnMode.ANSWER_PLAN) {
+            system.append(ANSWER_PLAN_DIRECTIVE);
+        }
 
         // F-89 / SF-89-04 : un terminal Teams sans droit le DIT. Sans ce paragraphe, l'agent — privé
         // de ses outils teams_* en silence (SF-89-01) — fouillait la machine comme un terminal de

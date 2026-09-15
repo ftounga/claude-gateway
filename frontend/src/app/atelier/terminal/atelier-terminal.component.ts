@@ -43,6 +43,7 @@ import {
   GitPushResult,
   LiveTerminalEntry,
   RunnerStatus,
+  AtelierTurnMode,
   WorkspaceExecutionTarget,
 } from '../../core/models/atelier.models';
 import { HostPresenceService, presenceLabel } from '../../core/services/host-presence.service';
@@ -297,6 +298,14 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    * (décision D-L4-4).
    */
   @Input() executionTarget: WorkspaceExecutionTarget = 'SANDBOX';
+
+  /**
+   * Mode du tour (F-120 / SF-120-02), à l'image du *plan mode* de Claude Code. Contrairement à
+   * {@link executionTarget}, c'est bien **un mode** : l'utilisateur le choisit et il est renvoyé à
+   * chaque tour (per-tour, pas persisté). `ANSWER_PLAN` : l'agent répond / propose un plan sans
+   * exécuter ; `ACT` : panoplie complète. **Défaut `ACT`** pour ne pas surprendre l'usage actuel.
+   */
+  @Input() mode: AtelierTurnMode = 'ACT';
 
   /** Bascule de cible en vol : le sélecteur reste inerte le temps de l'aller-retour. */
   @Input() switchingTarget = false;
@@ -554,6 +563,10 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
   /** Bascule de la cible d'exécution du projet (F-38 / SF-38-05, D-L4-4). */
   @Output() executionTargetChange = new EventEmitter<WorkspaceExecutionTarget>();
+  /** Changement du mode du tour « Réponse/Plan » ↔ « Agir » (F-120 / SF-120-02). */
+  @Output() modeChange = new EventEmitter<AtelierTurnMode>();
+  /** « Passer à l'exécution » : demande de bascule du mode vers `ACT` (F-120 / SF-120-02). */
+  @Output() switchToAct = new EventEmitter<void>();
   /** Relevé manuel de l'état runner (F-38 / SF-38-06). */
   @Output() refreshRunner = new EventEmitter<void>();
   /** Ouverture du journal d'activité de la machine (F-38 / SF-38-08). */

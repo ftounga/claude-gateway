@@ -99,7 +99,8 @@ public class AtelierChatController {
     @PostMapping
     public AtelierChatResponse chat(@PathVariable UUID id, @Valid @RequestBody AtelierChatRequest request) {
         atelierAccess.requireTerminalAccess(id);
-        AtelierChatResult result = atelierChatService.chat(currentUser.requireId(), id, request.message());
+        AtelierChatResult result = atelierChatService.chat(currentUser.requireId(), id,
+                request.message(), request.modeOrDefault());
         return new AtelierChatResponse(result.reply(), result.actions(), result.messageId(),
                 result.inputTokens(), result.outputTokens(), result.activeSeconds(),
                 result.budgetReached());
@@ -119,9 +120,12 @@ public class AtelierChatController {
         // booléen (jamais d'exception synchrone => pas de 406 sur cet endpoint SSE) et l'erreur d'accès
         // est émise DANS le flux ({@code error: forbidden}), comme les autres erreurs de pré-vol.
         boolean hasAccess = atelierAccess.hasTerminalAccess(id);
+        // Le mode du tour (F-120 / SF-120-02) est résolu ICI, sur le thread de requête, comme le
+        // gating : le relais tourne sur le pool SSE. Absent ⇒ ACT (comportement historique).
+        fr.claudegateway.agent.AgentTurnMode mode = request.modeOrDefault();
         SseEmitter emitter = newEmitter();
         fr.claudegateway.chat.SseStreamDispatch.submit(chatStreamExecutor, emitter,
-                () -> relay(emitter, userId, id, request.message(), hasAccess));
+                () -> relay(emitter, userId, id, request.message(), mode, hasAccess));
         return emitter;
     }
 
@@ -377,7 +381,8 @@ public class AtelierChatController {
      * l'utilisateur l'a <b>interrompu</b> explicitement (F-32 / SF-38-07) — jamais parce qu'un
      * navigateur est parti.</p>
      */
-    private void relay(SseEmitter emitter, UUID userId, UUID workspaceId, String message, boolean hasAccess) {
+    private void relay(SseEmitter emitter, UUID userId, UUID workspaceId, String message,
+            fr.claudegateway.agent.AgentTurnMode mode, boolean hasAccess) {
         LiveTurn turn;
         if (hasAccess) {
             // UN ENVOI PENDANT UN TOUR EST UNE PRÉCISION (F-84 / SF-84-06, décision du PO du
@@ -515,7 +520,7 @@ public class AtelierChatController {
             String demand = message;
             for (;;) {
                 AtelierChatResult result =
-                        atelierChatService.chatStreaming(userId, workspaceId, demand, listener);
+                        atelierChatService.chatStreaming(userId, workspaceId, demand, mode, listener);
                 if (result.interrupted()) {
                     // L'interruption est le geste qui arrête VRAIMENT (cadrage F-84 §5) : aucune
                     // précision restée en file ne relance un tour derrière elle — mais aucune ne
