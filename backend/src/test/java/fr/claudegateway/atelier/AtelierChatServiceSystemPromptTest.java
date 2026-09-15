@@ -152,6 +152,66 @@ class AtelierChatServiceSystemPromptTest {
         assertThat(system).contains("bash (ls, find, grep -n)");
     }
 
+    // ------------------------------------------- F-120 / SF-120-01 : doctrine « réponds d'abord »
+
+    @Test
+    void theRestraintDoctrineIsPresentOnASandboxProject() {
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+
+        String system = systemPrompt();
+
+        assertThat(system).contains("Répondre d'abord, agir sur demande");
+        assertThat(system).contains("Une question n'est pas un ordre");
+        assertThat(system).contains("Veux-tu que je le fasse");
+        // La doctrine dit que lire pour répondre reste permis, la mutation non demandée est proscrite.
+        assertThat(system).contains("MUTATION non demandée");
+        // Non-régression : la discipline d'investigation SF-119-02 cohabite toujours.
+        assertThat(system).contains("Vérifie avant d'affirmer");
+    }
+
+    @Test
+    void theRestraintDoctrineIsPresentOnARunnerProject() {
+        String system = systemPromptOfRunnerProjectDeclaring(null);
+
+        assertThat(system).contains("Répondre d'abord, agir sur demande");
+        assertThat(system).contains("Une question n'est pas un ordre");
+        assertThat(system).contains("Veux-tu que je le fasse");
+        // Non-régression : le rôle RUNNER et la discipline d'investigation restent annoncés.
+        assertThat(system).contains("bash (ls, find, grep -n)");
+        assertThat(system).contains("Ne généralise jamais à partir d'un seul exemple");
+    }
+
+    @Test
+    void theSetPlanDescriptionOnlyPlansWhenAskedOrActing() {
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+        agentProvider.enqueueFinal("fini");
+
+        service.chat(userId, workspaceId, "bonjour");
+
+        String setPlanDesc = agentProvider.lastRequest.tools().stream()
+                .filter(t -> "set_plan".equals(t.name())).findFirst().orElseThrow().description();
+        assertThat(setPlanDesc).contains("que si l'utilisateur te demande");
+        assertThat(setPlanDesc).contains("pas parce que le mot");
+    }
+
+    @Test
+    void theGovernancePreambleFramesTheInjectedClaudeMd() {
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenReturn("Avant d'écrire la moindre ligne, produis la mini-spec. REFUS sinon.");
+
+        String system = systemPrompt();
+
+        assertThat(system).contains("Elles ne transforment pas une question en ordre");
+        // Le préambule précède le contenu injecté du CLAUDE.md.
+        assertThat(system.indexOf("Elles ne transforment pas une question en ordre"))
+                .isLessThan(system.indexOf("Conventions du projet (CLAUDE.md)"));
+    }
+
     @Test
     void theEditAndWriteToolContractsCarryTheDiscipline() {
         when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
