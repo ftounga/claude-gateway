@@ -231,7 +231,7 @@ public class AtelierChatService implements RelayInterruptTarget {
      * trouver.</p>
      */
     private static final java.util.Set<String> READ_ONLY_TOOLS =
-            java.util.Set.of("read_file", "list_files", "search_files");
+            java.util.Set.of("read_file", "list_files", "search_files", "grep", "glob");
 
     /**
      * Panoplie autorisée en mode {@link AgentTurnMode#ANSWER_PLAN} (F-120 / SF-120-02) : lecture,
@@ -247,7 +247,8 @@ public class AtelierChatService implements RelayInterruptTarget {
      * d'organisation, pas d'exécution — le cœur d'un « plan mode ».</p>
      */
     private static final java.util.Set<String> ANSWER_PLAN_TOOLS =
-            java.util.Set.of("read_file", "list_files", "search_files", "explore", "set_plan");
+            java.util.Set.of("read_file", "list_files", "search_files", "grep", "glob", "explore",
+                    "set_plan");
     /**
      * Consigne de mode ajoutée à la consigne système en {@link AgentTurnMode#ANSWER_PLAN}
      * (F-120 / SF-120-02). Cohérente avec la doctrine de retenue SF-120-01, mais plus forte : ici la
@@ -1832,6 +1833,8 @@ public class AtelierChatService implements RelayInterruptTarget {
             case "edit_file" -> new AtelierProgressListener.AtelierStepEvent("write", arg(input, "path"));
             case "list_files" -> new AtelierProgressListener.AtelierStepEvent("list", null);
             case "search_files" -> new AtelierProgressListener.AtelierStepEvent("search", arg(input, "query"));
+            // F-121 / SF-121-01 : grep/glob se montrent à l'écran comme une recherche, avec le motif.
+            case "grep", "glob" -> new AtelierProgressListener.AtelierStepEvent("search", arg(input, "pattern"));
             // F-38 / SF-38-07 : la commande elle-même est l'information utile à l'écran, tronquée
             // pour qu'un one-liner de 3 000 caractères ne noie pas la liste des étapes (contrat §3).
             case "bash" -> new AtelierProgressListener.AtelierStepEvent("bash",
@@ -2194,6 +2197,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                     requiredArg(input, "path"), input.path("content").asText(""));
             case "search_files" -> runnerToolGateway.searchFiles(target, callId,
                     requiredArg(input, "query"));
+            // Grep/Glob (F-121 / SF-121-01) : le runner parcourt lui-même l'arbre et applique la
+            // regex/le motif — la gateway relaie les paramètres bornés, jamais le shell.
+            case "grep" -> runnerToolGateway.grep(target, callId, input);
+            case "glob" -> runnerToolGateway.glob(target, callId, input);
             // Le délai est ramené au budget de tour restant : une commande ne doit jamais pouvoir
             // survivre au tour qui l'a lancée.
             case "bash" -> runnerToolGateway.bash(target, callId, requiredArg(input, "command"),
@@ -2226,6 +2233,11 @@ public class AtelierChatService implements RelayInterruptTarget {
                             new AtelierAction("write", arg(input, "path")))
                     : ToolOutcome.error(result.errorMessage());
             case "bash" -> bashOutcome(arg(input, "command"), result);
+            // Grep/Glob (F-121 / SF-121-01) : contenu verbatim en cas de succès ; un échec de
+            // transport est « non concluant » (cohérent SF-119-04), pas une preuve d'absence.
+            case "grep", "glob" -> result.ok()
+                    ? textOutcome(result, null)
+                    : ToolOutcome.error(inconclusiveNote(result));
             default -> textOutcome(result, null);
         };
     }
@@ -2239,6 +2251,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         return switch (call.name()) {
             case "read_file", "write_file", "edit_file" -> arg(input, "path");
             case "search_files" -> arg(input, "query");
+            // F-121 / SF-121-01 : on trace le MOTIF cherché, jamais le contenu trouvé.
+            case "grep", "glob" -> shorten(arg(input, "pattern"), AUDIT_TARGET_CHARS);
             case "bash" -> shorten(arg(input, "command"), AUDIT_TARGET_CHARS);
             // Teams (F-88 / SF-88-03) : ce qui est tracé est CE QU'ON A DEMANDÉ — un fil, une
             // requête, une réunion —, jamais ce qui est revenu. Un journal d'audit qui porterait
@@ -2519,6 +2533,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                     yield new ToolOutcome("Fichier écrit : " + path, false, new AtelierAction("write", path));
                 }
                 case "search_files" -> ToolOutcome.info(search(userId, workspaceId, requiredArg(input, "query")));
+                // Grep/Glob sur l'arbre hébergé (F-121 / SF-121-01) : mêmes formats de sortie que le
+                // runner, pour que le prompt du modèle ne dérive pas selon la cible d'exécution.
+                case "grep" -> ToolOutcome.info(grepStorage(userId, workspaceId, input));
+                case "glob" -> ToolOutcome.info(globStorage(userId, workspaceId, input));
                 default -> ToolOutcome.error("Outil inconnu : " + call.name());
             };
         } catch (RuntimeException ex) {
@@ -2559,6 +2577,141 @@ public class AtelierChatService implements RelayInterruptTarget {
             }
         }
         return result.length() == 0 ? "Aucun résultat." : result.toString();
+    }
+
+    /** Borne du résultat de {@code grep}/{@code search} sur l'arbre hébergé, comme le runner. */
+    private static final int STORAGE_SEARCH_MAX_CHARS = 8_000;
+
+    /**
+     * <b>Grep</b> par expression régulière sur l'arbre hébergé (F-121 / SF-121-01), au même format que
+     * le runner ({@code chemin:ligne: texte}, contexte {@code chemin-ligne- texte}). Une regex
+     * invalide lève une {@link RuntimeException} traitée en résultat d'erreur par l'appelant.
+     */
+    private String grepStorage(UUID userId, UUID workspaceId, JsonNode input) {
+        String rawPattern = requiredArg(input, "pattern");
+        int flags = input.path("ignore_case").asBoolean(false)
+                ? java.util.regex.Pattern.CASE_INSENSITIVE | java.util.regex.Pattern.UNICODE_CASE : 0;
+        java.util.regex.Pattern pattern;
+        try {
+            pattern = java.util.regex.Pattern.compile(rawPattern, flags);
+        } catch (java.util.regex.PatternSyntaxException ex) {
+            throw new IllegalArgumentException("Expression régulière invalide.");
+        }
+        String scope = input.path("path").asText(null);
+        String include = input.path("include").asText(null);
+        String mode = grepModeStorage(input);
+        int context = boundedInt(input, "context");
+        int before = Math.max(boundedInt(input, "before"), context);
+        int after = Math.max(boundedInt(input, "after"), context);
+
+        StringBuilder result = new StringBuilder();
+        for (String path : workspaceService.tree(userId, workspaceId)) {
+            if (scope != null && !scope.isBlank() && !(path.equals(scope) || path.startsWith(scope + "/"))) {
+                continue;
+            }
+            if (include != null && !include.isBlank() && !includeMatchesStorage(path, include)) {
+                continue;
+            }
+            String content;
+            try {
+                content = workspaceService.readFile(userId, workspaceId, path);
+            } catch (RuntimeException ignored) {
+                continue;
+            }
+            String[] lines = content.split("\n", -1);
+            java.util.List<Integer> matches = new ArrayList<>();
+            for (int i = 0; i < lines.length; i++) {
+                if (pattern.matcher(lines[i]).find()) {
+                    matches.add(i);
+                }
+            }
+            if (matches.isEmpty()) {
+                continue;
+            }
+            switch (mode) {
+                case "files_with_matches" -> result.append(path).append('\n');
+                case "count" -> result.append(path).append(':').append(matches.size()).append('\n');
+                default -> appendGrepContent(result, path, lines, matches, before, after);
+            }
+            if (result.length() > STORAGE_SEARCH_MAX_CHARS) {
+                return result.append("… (résultats tronqués)").toString();
+            }
+        }
+        return result.length() == 0 ? "Aucun résultat." : result.toString();
+    }
+
+    /** Écrit les correspondances et leur contexte (F-121 / SF-121-01), format identique au runner. */
+    private static void appendGrepContent(StringBuilder result, String path, String[] lines,
+            java.util.List<Integer> matches, int before, int after) {
+        java.util.SortedSet<Integer> matchSet = new java.util.TreeSet<>(matches);
+        java.util.SortedSet<Integer> emit = new java.util.TreeSet<>();
+        for (int m : matches) {
+            for (int i = Math.max(0, m - before); i <= Math.min(lines.length - 1, m + after); i++) {
+                emit.add(i);
+            }
+        }
+        int previous = -2;
+        for (int i : emit) {
+            if ((before > 0 || after > 0) && previous >= 0 && i > previous + 1) {
+                result.append("--\n");
+            }
+            char sep = matchSet.contains(i) ? ':' : '-';
+            result.append(path).append(sep).append(i + 1).append(sep == ':' ? ": " : "- ")
+                    .append(lines[i].strip()).append('\n');
+            previous = i;
+        }
+    }
+
+    /**
+     * <b>Glob</b> sur l'arbre hébergé (F-121 / SF-121-01) : les chemins correspondant au motif, un par
+     * ligne. Le stockage objet n'expose pas de date de modification fiable — le tri est ici par chemin
+     * (déterministe) ; le tri par date reste propre à la cible RUNNER, qui l'a.
+     */
+    private String globStorage(UUID userId, UUID workspaceId, JsonNode input) {
+        String rawPattern = requiredArg(input, "pattern");
+        java.nio.file.PathMatcher matcher;
+        try {
+            matcher = java.nio.file.FileSystems.getDefault().getPathMatcher("glob:" + rawPattern);
+        } catch (RuntimeException ex) {
+            throw new IllegalArgumentException("Motif glob invalide.");
+        }
+        String scope = input.path("path").asText(null);
+        java.util.List<String> matched = new ArrayList<>();
+        for (String path : workspaceService.tree(userId, workspaceId)) {
+            if (scope != null && !scope.isBlank() && !(path.equals(scope) || path.startsWith(scope + "/"))) {
+                continue;
+            }
+            if (matcher.matches(java.nio.file.Paths.get(path))) {
+                matched.add(path);
+            }
+        }
+        java.util.Collections.sort(matched);
+        return matched.isEmpty() ? "Aucun résultat." : String.join("\n", matched);
+    }
+
+    private static String grepModeStorage(JsonNode input) {
+        String mode = input.path("output_mode").asText(null);
+        return ("files_with_matches".equals(mode) || "count".equals(mode)) ? mode : "content";
+    }
+
+    private static int boundedInt(JsonNode input, String field) {
+        JsonNode value = input.get(field);
+        if (value == null || !value.isIntegralNumber()) {
+            return 0;
+        }
+        int n = value.asInt();
+        return n < 0 ? 0 : Math.min(n, 100);
+    }
+
+    /** Un motif {@code include} sans {@code /} porte sur le nom de fichier, sinon sur le chemin complet. */
+    private static boolean includeMatchesStorage(String path, String include) {
+        String candidate = include.indexOf('/') >= 0 ? path : path.substring(path.lastIndexOf('/') + 1);
+        try {
+            return java.nio.file.FileSystems.getDefault().getPathMatcher("glob:" + include)
+                    .matches(java.nio.file.Paths.get(candidate));
+        } catch (RuntimeException ex) {
+            return false;
+        }
     }
 
     /**
@@ -2705,6 +2858,33 @@ public class AtelierChatService implements RelayInterruptTarget {
                     Map.of("type", "object", "properties", Map.of("query", stringProp),
                             "required", List.of("query"))));
         }
+        // Grep et Glob (F-121 / SF-121-01) : déclarés sur les DEUX cibles, indépendamment de bash. Ce
+        // sont les outils d'investigation de première classe — un vrai grep par regex (au lieu de la
+        // sous-chaîne de search_files, et sans dépendre du shell du poste) et un glob trié par date.
+        Map<String, Object> boolProp = Map.of("type", "boolean");
+        tools.add(new AgentTool("grep",
+                "Cherche une EXPRESSION RÉGULIÈRE dans les fichiers du projet, en un appel. "
+                        + "pattern (requis) est une regex. Options : path (limite la recherche à un "
+                        + "sous-dossier), include (motif de nom de fichier, ex. \"*.java\" ou "
+                        + "\"src/**/*.ts\"), ignore_case, output_mode (\"content\" par défaut = lignes "
+                        + "au format chemin:ligne: texte ; \"files_with_matches\" = chemins seuls ; "
+                        + "\"count\" = nombre par fichier), et before/after/context pour les lignes "
+                        + "voisines (-B/-A/-C). Préfère grep à bash pour chercher : c'est plus rapide "
+                        + "et indépendant du shell.",
+                Map.of("type", "object",
+                        "properties", new java.util.LinkedHashMap<>(Map.of(
+                                "pattern", stringProp, "path", stringProp, "include", stringProp,
+                                "ignore_case", boolProp, "output_mode", stringProp,
+                                "before", intProp, "after", intProp, "context", intProp)),
+                        "required", List.of("pattern"))));
+        tools.add(new AgentTool("glob",
+                "Liste les fichiers du projet dont le chemin correspond à un motif glob (ex. "
+                        + "\"**/*.java\", \"src/**/*.ts\"), triés du plus récemment modifié au plus "
+                        + "ancien. Option path pour limiter à un sous-dossier. Utile pour trouver des "
+                        + "fichiers par nom ou extension sans lister tout le projet.",
+                Map.of("type", "object",
+                        "properties", Map.of("pattern", stringProp, "path", stringProp),
+                        "required", List.of("pattern"))));
         return List.copyOf(tools);
     }
 

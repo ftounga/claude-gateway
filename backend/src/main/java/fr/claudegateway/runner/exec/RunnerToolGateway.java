@@ -158,6 +158,97 @@ public class RunnerToolGateway {
     }
 
     /**
+     * <b>Grep</b> par expression régulière sur l'arbre du projet, en un seul appel (F-121 / SF-121-01) :
+     * le runner parcourt lui-même l'arborescence et applique la regex — jamais le shell. La gateway
+     * <b>relaie</b> les paramètres reconnus après les avoir bornés ; elle ne réinterprète ni la regex,
+     * ni le mode, ni les lignes de contexte (le runner fait foi, comme pour {@code search_files}).
+     *
+     * @param input paramètres de l'appel : {@code pattern} (requis), {@code path}, {@code include},
+     *              {@code ignore_case}, {@code output_mode}, {@code before}/{@code after}/{@code context}
+     */
+    public RunnerCallResult grep(RunnerTarget target, String callId, com.fasterxml.jackson.databind.JsonNode input) {
+        String pattern = input == null ? "" : input.path("pattern").asText("").strip();
+        if (pattern.isEmpty() || pattern.length() > MAX_QUERY_CHARS) {
+            return invalid("Motif de recherche invalide.");
+        }
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("pattern", pattern);
+        RunnerCallResult scoped = copyScope(input, payload);
+        if (scoped != null) {
+            return scoped;
+        }
+        copyText(input, payload, "include", MAX_QUERY_CHARS);
+        copyText(input, payload, "output_mode", 32);
+        copyBool(input, payload, "ignore_case");
+        copyInt(input, payload, "before");
+        copyInt(input, payload, "after");
+        copyInt(input, payload, "context");
+        return router.call(target, callId, "grep", payload, FILE_TOOL_TIMEOUT_MS);
+    }
+
+    /**
+     * <b>Glob</b> : les fichiers dont le chemin relatif correspond au motif, triés par date de
+     * modification décroissante (F-121 / SF-121-01). Un seul appel, calculé sur la machine.
+     *
+     * @param input paramètres : {@code pattern} (requis, motif glob), {@code path} (base optionnelle)
+     */
+    public RunnerCallResult glob(RunnerTarget target, String callId, com.fasterxml.jackson.databind.JsonNode input) {
+        String pattern = input == null ? "" : input.path("pattern").asText("").strip();
+        if (pattern.isEmpty() || pattern.length() > MAX_QUERY_CHARS) {
+            return invalid("Motif glob invalide.");
+        }
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("pattern", pattern);
+        RunnerCallResult scoped = copyScope(input, payload);
+        if (scoped != null) {
+            return scoped;
+        }
+        return router.call(target, callId, "glob", payload, FILE_TOOL_TIMEOUT_MS);
+    }
+
+    /**
+     * Recopie le sous-arbre {@code path} normalisé en relatif (le runner revérifie, D6), ou rend une
+     * issue {@code invalid_input} si le chemin fourni est inexploitable. {@code null} = rien à recopier
+     * (pas de portée), l'appel peut continuer sur la racine du projet.
+     */
+    private RunnerCallResult copyScope(com.fasterxml.jackson.databind.JsonNode input, ObjectNode payload) {
+        String scope = input == null ? null : input.path("path").asText(null);
+        if (scope == null || scope.isBlank()) {
+            return null;
+        }
+        String rel = normalizePath(scope);
+        if (rel == null) {
+            return invalid("Répertoire de recherche invalide.");
+        }
+        payload.put("path", rel);
+        return null;
+    }
+
+    private static void copyText(com.fasterxml.jackson.databind.JsonNode input, ObjectNode payload,
+            String field, int maxChars) {
+        String value = input == null ? null : input.path(field).asText(null);
+        if (value != null && !value.isBlank()) {
+            payload.put(field, value.length() > maxChars ? value.substring(0, maxChars) : value);
+        }
+    }
+
+    private static void copyBool(com.fasterxml.jackson.databind.JsonNode input, ObjectNode payload,
+            String field) {
+        com.fasterxml.jackson.databind.JsonNode value = input == null ? null : input.get(field);
+        if (value != null && (value.isBoolean() || value.isTextual())) {
+            payload.put(field, value.asBoolean(false));
+        }
+    }
+
+    private static void copyInt(com.fasterxml.jackson.databind.JsonNode input, ObjectNode payload,
+            String field) {
+        com.fasterxml.jackson.databind.JsonNode value = input == null ? null : input.get(field);
+        if (value != null && value.isIntegralNumber()) {
+            payload.put(field, value.asInt());
+        }
+    }
+
+    /**
      * Demande à la machine l'<b>état de sa liaison Teams</b> (F-87 / SF-87-03).
      *
      * <p>Aucun paramètre : la question est « où en est la liaison sur ce poste ». Le runner rend un

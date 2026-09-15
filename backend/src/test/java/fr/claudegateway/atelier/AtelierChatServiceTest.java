@@ -321,6 +321,48 @@ class AtelierChatServiceTest {
         assertThat(lastToolResultText()).contains("trouvé 2 fois");
     }
 
+    // ------------------------------------------- F-121 / SF-121-01 : grep / glob (cible SANDBOX)
+
+    @Test
+    void grepMatchesARegexOnTheHostedStorage() {
+        stubHappyPath();
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of("a.txt"));
+        when(workspaceService.readFile(userId, workspaceId, "a.txt"))
+                .thenReturn("alpha\nBeta TODO-42\ngamma");
+        agentProvider.enqueueToolCall("grep", "pattern", "TODO-\\d+");
+        agentProvider.enqueueFinal("Trouvé.");
+
+        service.chat(userId, workspaceId, "cherche les TODO");
+
+        assertThat(lastToolResultText()).isEqualTo("a.txt:2: Beta TODO-42\n");
+    }
+
+    @Test
+    void grepInvalidRegexIsReturnedAsAnErrorNotAStacktrace() {
+        stubHappyPath();
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of("a.txt"));
+        agentProvider.enqueueToolCall("grep", "pattern", "[unclosed");
+        agentProvider.enqueueFinal("Corrigé.");
+
+        service.chat(userId, workspaceId, "grep");
+
+        assertThat(lastToolResultText()).isEqualTo("Expression régulière invalide.");
+    }
+
+    @Test
+    void globListsMatchingPathsOnTheHostedStorage() {
+        stubHappyPath();
+        when(workspaceService.tree(userId, workspaceId))
+                .thenReturn(List.of("src/main/App.java", "README.md", "src/Util.java"));
+        agentProvider.enqueueToolCall("glob", "pattern", "**/*.java");
+        agentProvider.enqueueFinal("Listé.");
+
+        service.chat(userId, workspaceId, "trouve les java");
+
+        // Tri par chemin sur la cible hébergée (pas de mtime fiable), formats identiques au runner.
+        assertThat(lastToolResultText()).isEqualTo("src/Util.java\nsrc/main/App.java");
+    }
+
     @Test
     void chatStreamingReturnsSameResultAsSynchronousChat() {
         stubHappyPath();
@@ -770,7 +812,7 @@ class AtelierChatServiceTest {
         // sur une panoplie vide — c'est ainsi que l'exploration a pu se retrouver avec un seul
         // outil en cible RUNNER sans qu'aucun test bronche. La panoplie est la même ici (D2).
         assertThat(agentProvider.toolBelts.get(1))
-                .containsExactly("list_files", "read_file", "search_files");
+                .containsExactly("list_files", "read_file", "search_files", "grep", "glob");
     }
 
     @Test

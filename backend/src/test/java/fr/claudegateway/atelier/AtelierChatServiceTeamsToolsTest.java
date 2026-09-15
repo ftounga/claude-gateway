@@ -103,7 +103,7 @@ class AtelierChatServiceTeamsToolsTest {
         when(teamsAccess.hasAccess(userId)).thenReturn(false);
 
         assertThat(toolNames(terminal(true)))
-                .containsExactly("read_file", "write_file", "edit_file", "bash", "explore", "set_plan");
+                .containsExactly("read_file", "write_file", "edit_file", "grep", "glob", "bash", "explore", "set_plan");
     }
 
     @Test
@@ -113,7 +113,7 @@ class AtelierChatServiceTeamsToolsTest {
 
         assertThat(toolNames(terminal(false)))
                 .noneMatch(name -> name.startsWith(TeamsToolCatalog.PREFIX))
-                .containsExactly("read_file", "write_file", "edit_file", "bash", "explore", "set_plan");
+                .containsExactly("read_file", "write_file", "edit_file", "grep", "glob", "bash", "explore", "set_plan");
     }
 
     // ------------------------------------------------- F-89 / SF-89-04 : un terminal sans droit le dit
@@ -155,7 +155,7 @@ class AtelierChatServiceTeamsToolsTest {
                 .thenReturn(false);
 
         assertThat(toolNames(terminal(true)))
-                .containsExactly("read_file", "write_file", "edit_file", "bash", "explore", "set_plan");
+                .containsExactly("read_file", "write_file", "edit_file", "grep", "glob", "bash", "explore", "set_plan");
     }
 
     @Test
