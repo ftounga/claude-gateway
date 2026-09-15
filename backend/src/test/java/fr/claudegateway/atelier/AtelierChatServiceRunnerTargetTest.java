@@ -526,6 +526,63 @@ class AtelierChatServiceRunnerTargetTest {
         assertThat(listener.steps.get(0).path()).hasSize(200).isEqualTo(longCommand.substring(0, 200));
     }
 
+    // ------------------------------------------- F-119 / SF-119-04 : encaisser le bruit
+
+    @Test
+    void aBashTimeoutSurfacesItsPartialOutputAndSaysInconclusive() {
+        // Un bash qui échoue par timeout ne jette plus la sortie PARTIELLE déjà streamée, et l'échec
+        // de transport est dit « non concluant », pas comme un résultat négatif.
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        when(runnerToolGateway.bash(eq(runnerTarget), anyString(), eq("build"), any(), anyLong(), any()))
+                .thenReturn(new RunnerCallResult(false, "", false, null, 12L, null,
+                        RunnerErrorCodes.RUNNER_TIMEOUT,
+                        "Le runner n'a pas répondu dans le délai imparti.",
+                        "Compiling module A\nCompiling module B", true));
+        agentProvider.enqueueToolCall("bash", "command", "build");
+        agentProvider.enqueueFinal("Je réessaie.");
+
+        service.chat(userId, workspaceId, "compile");
+
+        assertThat(lastToolResult().isError()).isTrue();
+        String text = toolResultText();
+        assertThat(text).contains("Compiling module A").contains("Compiling module B");
+        assertThat(text).contains("… (sortie tronquée)");
+        assertThat(text).contains("Résultat non concluant");
+    }
+
+    @Test
+    void aRunnerTimeoutWithoutOutputIsFramedAsInconclusive() {
+        // Sans sortie partielle, l'échec de transport reste « non concluant » — pas un négatif.
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        when(runnerToolGateway.bash(eq(runnerTarget), anyString(), eq("ping"), any(), anyLong(), any()))
+                .thenReturn(RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_TIMEOUT));
+        agentProvider.enqueueToolCall("bash", "command", "ping");
+        agentProvider.enqueueFinal("Non concluant, je le dis.");
+
+        service.chat(userId, workspaceId, "ping");
+
+        assertThat(lastToolResult().isError()).isTrue();
+        assertThat(toolResultText())
+                .contains("Résultat non concluant")
+                .contains("réessaie, ou dis que tu n'as pas pu conclure");
+    }
+
+    @Test
+    void aReadTimeoutIsAlsoFramedAsInconclusive() {
+        // Une lecture qui échoue par timeout runner est « non concluante », pas la preuve que le
+        // fichier n'existe pas.
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        when(runnerToolGateway.readFile(eq(runnerTarget), anyString(), eq("lent.txt")))
+                .thenReturn(RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_TIMEOUT));
+        agentProvider.enqueueToolCall("read_file", "path", "lent.txt");
+        agentProvider.enqueueFinal("Je réessaie.");
+
+        service.chat(userId, workspaceId, "lis lent.txt");
+
+        assertThat(lastToolResult().isError()).isTrue();
+        assertThat(toolResultText()).contains("Résultat non concluant");
+    }
+
     @Test
     void commandOutputIsRelayedToTheSessionWhileItRuns() {
         stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
