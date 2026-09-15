@@ -64,8 +64,8 @@ public final class NetworkSurvey {
 
     /**
      * Les genres dont le mode « forme » relève le squelette (F-89 / SF-89-12), et <b>rien d'autre</b> —
-     * y compris {@code MEETING_COLLAB_OBJECT}, « nommé, jamais lu » côté outils mais dont c'est
-     * justement ici qu'on découvre la forme. Le squelette ne porte aucune valeur.
+     * y compris {@code MEETING_COLLAB_OBJECT}, dont c'est ici qu'on a découvert la forme (désormais
+     * lu par l'adaptateur, SF-89-13). Le squelette ne porte aucune valeur.
      */
     static final Set<TeamsPayloadKind> SHAPE_KINDS = EnumSet.of(
             TeamsPayloadKind.MEETING_DETAILS, TeamsPayloadKind.CALENDAR_EVENT,

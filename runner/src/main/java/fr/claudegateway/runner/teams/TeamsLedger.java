@@ -36,6 +36,7 @@ final class TeamsLedger {
     static final int MAX_CONVERSATIONS = 500;
     static final int MAX_MENTIONS = 1_000;
     static final int MAX_MEETINGS = 200;
+    static final int MAX_RECAPS = 200;
     static final int MAX_CUES = 20_000;
     /** Les résultats de recherche sont volatils : ils décrivent une question, pas un état. */
     static final int MAX_SEARCH_HITS = 500;
@@ -52,6 +53,8 @@ final class TeamsLedger {
     private final Map<String, TeamsConversation> conversations = new LinkedHashMap<>();
     private final Map<String, TeamsMentionEvent> mentions = new LinkedHashMap<>();
     private final Map<String, TeamsMeeting> meetings = new LinkedHashMap<>();
+    /** Récapitulatifs par fil ({@code threadId}) — l'emplacement de l'enregistrement (SF-89-13). */
+    private final Map<String, TeamsRecap> recaps = new LinkedHashMap<>();
     private final Map<String, TeamsMessage> searchHits = new LinkedHashMap<>();
     private final Map<String, TeamsTranscriptCue> cues = new LinkedHashMap<>();
     private final Map<String, String> cueMeetings = new LinkedHashMap<>();
@@ -147,6 +150,13 @@ final class TeamsLedger {
             case MEETING_DETAILS, CALENDAR_EVENT -> {
                 TeamsReading<TeamsMeeting> reading = adapter.meetings(url, response.body());
                 reading.items().forEach(meeting -> put(meetings, meeting.id(), meeting, MAX_MEETINGS));
+                account(reading);
+            }
+            case MEETING_COLLAB_OBJECT -> {
+                // F-89 / SF-89-13 : le récapitulatif localise l'enregistrement. Rattaché par le fil,
+                // il est retrouvé par la réunion qui porte le même conversationId.
+                TeamsReading<TeamsRecap> reading = adapter.recap(url, response.body());
+                reading.items().forEach(recap -> put(recaps, recap.conversationId(), recap, MAX_RECAPS));
                 account(reading);
             }
             case MEETING_TRANSCRIPT -> {
@@ -335,6 +345,14 @@ final class TeamsLedger {
         return id == null ? null : meetings.get(id.strip());
     }
 
+    /**
+     * Le récapitulatif observé pour un fil ({@code conversationId} de la réunion), ou {@code null}.
+     * C'est ce qui localise l'enregistrement d'une réunion passée (SF-89-13).
+     */
+    TeamsRecap recap(String conversationId) {
+        return conversationId == null ? null : recaps.get(conversationId.strip());
+    }
+
     List<TeamsTranscriptCue> transcriptOf(String meetingId) {
         String wanted = meetingId == null ? "" : meetingId.strip();
         List<TeamsTranscriptCue> found = new ArrayList<>();
@@ -394,7 +412,7 @@ final class TeamsLedger {
 
     int size() {
         return messages.size() + conversations.size() + mentions.size() + meetings.size()
-                + cues.size();
+                + recaps.size() + cues.size();
     }
 
     // ------------------------------------------------------------------ utilitaires

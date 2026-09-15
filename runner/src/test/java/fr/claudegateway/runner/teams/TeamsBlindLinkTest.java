@@ -272,8 +272,8 @@ class TeamsBlindLinkTest {
     // ------------------------------------------------------------------ l'adaptateur et le relevé
 
     @Test
-    @DisplayName("Relevé réel : l'événement de calendrier est lu comme une réunion ; l'objet de collaboration est nommé, jamais lu")
-    void calendar_event_is_read_and_collab_object_is_named_only() throws Exception {
+    @DisplayName("Relevé réel : l'événement de calendrier est lu comme une réunion ; l'objet de collaboration est lu SANS qu'un champ inconnu ne fuie (SF-89-13)")
+    void calendar_event_and_collab_object_are_both_read() throws Exception {
         assertEquals(TeamsPayloadKind.CALENDAR_EVENT, TeamsUrls.classify(CALENDAR_EVENT_URL));
         assertEquals(TeamsPayloadKind.MEETING_COLLAB_OBJECT, TeamsUrls.classify(COLLAB_URL));
         assertEquals(TeamsPayloadKind.MEETING_DETAILS, TeamsUrls.classify(SCHEDULING_URL));
@@ -283,6 +283,9 @@ class TeamsBlindLinkTest {
         call(tools, TeamsTools.STATUS, ask());
         teams.browser.emitResponse("e1", CALENDAR_EVENT_URL, TeamsSamples.read("calendar-event.json").toString());
         int bodiesBefore = (int) teams.browser.sentCommands().stream().filter(CdpCommands.GET_RESPONSE_BODY::equals).count();
+        // F-89 / SF-89-13 : l'objet de collaboration est désormais lu. Son corps porte un champ inconnu
+        // « recap » ; comme l'adaptateur ne lit que des champs NOMMÉS (resources[].metadata.*), ce champ
+        // ne franchit jamais la couche — la garantie « rien recopié en aveugle » tient.
         teams.browser.emitResponse("k1", COLLAB_URL, "{\"recap\":\"SECRET-RECAP\"}");
         JsonNode json = call(tools, TeamsTools.FIND_MEETINGS, wideWindow());
 
@@ -293,8 +296,8 @@ class TeamsBlindLinkTest {
         assertEquals("19:meeting_revue-iam@thread.v2", meeting.path("conversationId").asText());
         assertEquals(2, meeting.path("participants").size());
         long bodies = teams.browser.sentCommands().stream().filter(CdpCommands.GET_RESPONSE_BODY::equals).count();
-        assertEquals(bodiesBefore + 1, bodies, "seul le corps de l'événement est demandé, jamais celui de l'objet de collaboration");
-        assertFalse(json.toString().contains("SECRET-RECAP"));
+        assertEquals(bodiesBefore + 2, bodies, "les DEUX corps sont demandés : l'événement ET l'objet de collaboration");
+        assertFalse(json.toString().contains("SECRET-RECAP"), "aucun champ inconnu ne fuit");
     }
 
     @Test

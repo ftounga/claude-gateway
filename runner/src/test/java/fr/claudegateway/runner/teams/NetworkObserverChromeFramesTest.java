@@ -85,14 +85,11 @@ class NetworkObserverChromeFramesTest {
         assertEquals(Map.of(kind.name(), 1), seen.classifiedByKind(), "classé sous son nom : " + url);
         assertEquals(0, seen.unknownMicrosoft(), seen.topUnknownPaths().toString());
         List<ObservedResponse> kept = observer.collect();
-        if (kind == TeamsPayloadKind.MEETING_COLLAB_OBJECT) {
-            assertTrue(kept.isEmpty(), "nommé, jamais lu");
-        } else {
-            assertEquals(1, kept.size());
-            assertEquals(kind, kept.get(0).kind());
-            assertFalse(kept.get(0).url().contains("?"), "la requête n'entre jamais");
-            assertTrue(kept.get(0).hasBody(), "corps demandé sur la session de la cible");
-        }
+        // F-89 / SF-89-13 : l'objet de collaboration EST désormais lu comme les autres genres reconnus.
+        assertEquals(1, kept.size());
+        assertEquals(kind, kept.get(0).kind());
+        assertFalse(kept.get(0).url().contains("?"), "la requête n'entre jamais");
+        assertTrue(kept.get(0).hasBody(), "corps demandé sur la session de la cible");
     }
 
     @Test

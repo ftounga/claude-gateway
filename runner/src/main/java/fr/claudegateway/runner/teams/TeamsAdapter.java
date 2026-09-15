@@ -57,6 +57,15 @@ public interface TeamsAdapter {
     TeamsReading<TeamsTranscriptCue> transcript(String url, JsonNode body);
 
     /**
+     * Le récapitulatif d'une réunion — l'emplacement de son enregistrement (F-89 / SF-89-13).
+     *
+     * <p>Lu dans l'objet de collaboration Teams ({@code readcollabobject}), dont le relevé réel
+     * (SF-89-12) a donné la forme. Rend un {@link TeamsRecap} par ressource localisable
+     * ({@code resources[].metadata}), rattaché à sa réunion par le fil ({@code threadId}).</p>
+     */
+    TeamsReading<TeamsRecap> recap(String url, JsonNode body);
+
+    /**
      * <b>Qui est l'utilisateur relié</b>, quand une réponse observée le dit (F-88 / SF-88-01).
      *
      * <p>Ajout <b>additif</b> à l'interface de SF-87-01, annoncé à F-89 : sans identité, « on m'a

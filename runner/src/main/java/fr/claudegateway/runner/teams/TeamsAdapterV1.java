@@ -50,12 +50,29 @@ final class TeamsAdapterV1 implements TeamsAdapter {
             List.of("activities", "activityType", "activityTimestamp", "sourceUserImDisplayName",
                     "sourceThreadId");
 
+    /**
+     * Forme RÉELLE du détail des réunions (F-89 / SF-89-13, relevé CAGIP 2026-09-15) :
+     * {@code /schedulingService/meetings} enveloppe {@code items[]}, champs de la réunion imbriqués
+     * sous {@code data} ({@code subject}, {@code startTime}, {@code iCalUid}). Le décompte de la sonde
+     * de santé lit les noms sur quelques niveaux ({@code collectFieldNames}), {@code data} compris.
+     */
     private static final List<String> EXPECTED_MEETING_FIELDS =
-            List.of("value", "id", "subject", "startTime");
+            List.of("items", "subject", "startTime", "iCalUid");
 
-    /** Forme documentée d'un événement de calendrier Microsoft 365 (F-89 / SF-89-05). */
+    /**
+     * Forme RÉELLE d'un événement de calendrier (F-89 / SF-89-13, relevé CAGIP) : objet unique
+     * {@code objectId}, horodatages {@code startTime}/{@code endTime} en chaînes (et non des objets
+     * {@code start}/{@code end}).
+     */
     private static final List<String> EXPECTED_CALENDAR_EVENT_FIELDS =
-            List.of("id", "subject", "start", "end");
+            List.of("objectId", "subject", "startTime", "endTime");
+
+    /**
+     * Forme RÉELLE de l'objet de collaboration — le récapitulatif (F-89 / SF-89-13, relevé CAGIP) :
+     * {@code resources[].metadata} porte l'emplacement de l'enregistrement.
+     */
+    private static final List<String> EXPECTED_COLLAB_FIELDS =
+            List.of("resources", "metadata", "driveId", "driveItemId", "threadId");
 
     private static final List<String> EXPECTED_TRANSCRIPT_FIELDS =
             List.of("entries", "text", "speakerDisplayName", "startDateTime");
@@ -375,54 +392,141 @@ final class TeamsAdapterV1 implements TeamsAdapter {
     @Override
     public TeamsReading<TeamsMeeting> meetings(String url, JsonNode body) {
         TeamsReadWindow window = TeamsReadWindow.standard(Instant.now());
-        JsonNode array = arrayAt(body, "value", "meetings");
-        if (array == null && body != null && body.isObject() && body.has("id")) {
-            array = mapper.createArrayNode().add(body); // détail d'une réunion unique
+        // F-89 / SF-89-13 — trois formes réelles/héritées, reconnues par leur enveloppe :
+        //  - « items[] » (relevé CAGIP) : le détail des réunions, champs imbriqués sous « data » ;
+        //  - « value »/« meetings » (forme héritée supposée) : conservée en non-régression ;
+        //  - objet unique « objectId » (événement de calendrier) ou « id » (détail hérité).
+        List<JsonNode> entries = new ArrayList<>();
+        if (body != null && body.isObject()) {
+            JsonNode items = body.get("items");
+            JsonNode array = arrayAt(body, "value", "meetings");
+            if (items != null && items.isArray()) {
+                items.forEach(entries::add);
+            } else if (array != null) {
+                array.forEach(entries::add);
+            } else if (body.has("objectId") || body.has("id")) {
+                entries.add(body); // événement de calendrier, ou détail d'une réunion unique
+            }
         }
-        if (array == null) {
+        if (entries.isEmpty()) {
             return unreadable(url, body, window, "réunion");
         }
         List<TeamsMeeting> meetings = new ArrayList<>();
         List<TeamsGap> gaps = new ArrayList<>();
-        for (JsonNode entry : array) {
-            // F-89 / SF-89-05 : un événement de calendrier (relevé réel, étape « récapitulatif ») porte
-            // la forme documentée des événements Microsoft 365 — start/end objets, attendees, onlineMeeting.
-            // Lue défensivement : un horodatage dont le fuseau n'est pas sûr n'est PAS deviné.
-            Instant start = TeamsJson.instant(entry, "startTime", "startDateTime");
-            if (start == null) {
-                start = eventInstant(entry.get("start"));
-            }
-            Instant end = TeamsJson.instant(entry, "endTime", "endDateTime");
-            if (end == null) {
-                end = eventInstant(entry.get("end"));
-            }
-            String joinUrl = TeamsJson.text(entry, "joinWebUrl", "webUrl");
-            if (joinUrl.isEmpty()) {
-                joinUrl = TeamsJson.text(entry.get("onlineMeeting"), "joinUrl");
-            }
-            String thread = TeamsJson.text(entry, "threadId", "conversationId");
-            if (thread.isEmpty() && !joinUrl.isEmpty()) {
-                thread = TeamsRoutes.conversationIdOf(decoded(joinUrl));
-            }
-            TeamsMeeting meeting = new TeamsMeeting(
-                    TeamsJson.text(entry, "id", "meetingId", "iCalUid", "iCalUId"),
-                    TeamsJson.text(entry, "subject", "title"),
-                    start,
-                    end,
-                    mriOf(TeamsJson.text(entry, "organizerId", "organizer")),
-                    readParticipants(entry),
-                    thread,
-                    TeamsJson.flag(entry, "isRecorded", "recorded"),
-                    TeamsJson.flag(entry, "isTranscriptAvailable", "transcriptAvailable"),
-                    joinUrl);
+        for (JsonNode entry : entries) {
+            TeamsMeeting meeting = readMeeting(entry);
             if (!meeting.isReadable()) {
                 add(gaps, TeamsGap.of(TeamsGapKind.MISSING_FIELD, "réunion",
-                        meeting.id().isEmpty() ? "id" : "startTime"));
+                        meeting.id().isEmpty() ? "id"
+                                : meeting.startedAt() == null ? "startTime" : "subject"));
                 continue;
             }
             meetings.add(meeting);
         }
         return new TeamsReading<>(meetings, gaps, window, healthOf(url, body));
+    }
+
+    /**
+     * Une réunion lue défensivement, à partir d'une entrée qui peut être :
+     * <ul>
+     *   <li>un détail « items[] » — les champs sont sous {@code data} ({@code data.subject},
+     *       {@code data.startTime}, {@code data.iCalUid}) ;</li>
+     *   <li>un événement de calendrier — objet unique ({@code objectId}, {@code startTime} chaîne,
+     *       {@code skypeTeamsMeetingUrl}, {@code attendees[]}) ;</li>
+     *   <li>une forme héritée — champs au niveau de l'entrée ({@code id}, {@code startTime} ou
+     *       {@code start} objet).</li>
+     * </ul>
+     *
+     * <p>La <b>clé stable</b> est l'{@code iCalUid}/{@code iCalUID}, commun au détail et à l'événement :
+     * une même réunion vue des deux côtés est dédupliquée. Un horodatage dont le fuseau n'est pas sûr
+     * n'est <b>pas</b> deviné (SF-89-05 conservé).</p>
+     */
+    private TeamsMeeting readMeeting(JsonNode entry) {
+        JsonNode data = entry.get("data");
+        JsonNode fields = data != null && data.isObject() ? data : entry;
+
+        String id = firstNonEmpty(
+                TeamsJson.text(fields, "iCalUid", "iCalUID"),
+                TeamsJson.text(fields, "objectId", "cleanGlobalObjectId"),
+                TeamsJson.text(entry, "id", "meetingId"),
+                TeamsJson.text(fields, "numericMeetingId", "globalNumericMeetingId"));
+
+        Instant start = TeamsJson.instant(fields, "startTime", "startDateTime");
+        if (start == null) {
+            start = eventInstant(fields.get("start"));
+        }
+        Instant end = TeamsJson.instant(fields, "endTime", "endDateTime");
+        if (end == null) {
+            end = eventInstant(fields.get("end"));
+        }
+
+        String joinUrl = firstNonEmpty(
+                TeamsJson.text(fields, "skypeTeamsMeetingUrl", "joinWebUrl", "webUrl"),
+                TeamsJson.text(fields.get("onlineMeeting"), "joinUrl"));
+
+        String thread = TeamsJson.text(fields, "threadId", "conversationId");
+        if (thread.isEmpty() && !joinUrl.isEmpty()) {
+            thread = TeamsRoutes.conversationIdOf(decoded(joinUrl));
+        }
+
+        String organizer = firstNonEmpty(
+                TeamsJson.text(fields, "organizerId", "organizer"),
+                TeamsJson.text(fields, "organizerName", "organizerAddress"));
+
+        return new TeamsMeeting(id,
+                TeamsJson.text(fields, "subject", "title"),
+                start,
+                end,
+                mriOf(organizer),
+                readParticipants(fields),
+                thread,
+                TeamsJson.flag(fields, "isRecorded", "recorded"),
+                TeamsJson.flag(fields, "isTranscriptAvailable", "transcriptAvailable"),
+                joinUrl);
+    }
+
+    /** Le premier des candidats qui n'est pas vide, ou {@code ""}. */
+    private static String firstNonEmpty(String... candidates) {
+        for (String candidate : candidates) {
+            if (candidate != null && !candidate.isEmpty()) {
+                return candidate;
+            }
+        }
+        return "";
+    }
+
+    // ------------------------------------------------------------------ récapitulatif
+
+    @Override
+    public TeamsReading<TeamsRecap> recap(String url, JsonNode body) {
+        TeamsReadWindow window = TeamsReadWindow.standard(Instant.now());
+        JsonNode resources = body == null ? null : body.get("resources");
+        if (resources == null || !resources.isArray()) {
+            return unreadable(url, body, window, "récapitulatif de réunion");
+        }
+        List<TeamsRecap> recaps = new ArrayList<>();
+        List<TeamsGap> gaps = new ArrayList<>();
+        for (JsonNode resource : resources) {
+            JsonNode metadata = resource.get("metadata");
+            if (metadata == null || !metadata.isObject()) {
+                continue; // une ressource sans emplacement n'est pas un manque : toutes n'en portent pas
+            }
+            TeamsRecap recap = new TeamsRecap(
+                    TeamsJson.text(metadata, "threadId", "conversationId"),
+                    TeamsJson.instant(metadata, "startTime", "startDateTime"),
+                    TeamsJson.instant(metadata, "endTime", "endDateTime"),
+                    TeamsJson.text(metadata, "callId"),
+                    TeamsJson.text(metadata, "driveId"),
+                    TeamsJson.text(metadata, "driveItemId"),
+                    TeamsJson.text(metadata, "meetingJoinUrl", "joinUrl"));
+            if (!recap.isReadable()) {
+                add(gaps, TeamsGap.of(TeamsGapKind.MISSING_FIELD, "récapitulatif de réunion",
+                        recap.conversationId().isEmpty() ? "threadId" : "driveItemId"));
+                continue;
+            }
+            recaps.add(recap);
+        }
+        return new TeamsReading<>(recaps, gaps, window, healthOf(url, body));
     }
 
     /**
@@ -465,10 +569,15 @@ final class TeamsAdapterV1 implements TeamsAdapter {
         if (attendees != null && attendees.isArray() && entry.get("participants") == null) {
             List<TeamsParticipant> fromEvent = new ArrayList<>();
             attendees.forEach(node -> {
-                JsonNode address = node.get("emailAddress");
-                String email = TeamsJson.text(address, "address");
-                fromEvent.add(new TeamsParticipant(email, TeamsJson.text(address, "name"), email,
-                        false));
+                // F-89 / SF-89-13 : la forme réelle porte « address » et « name » au niveau de
+                // l'attendee ({ status:{response}, type, role, address, name }) ; la forme héritée les
+                // imbriquait sous « emailAddress ». On lit les deux.
+                JsonNode nested = node.get("emailAddress");
+                String email = firstNonEmpty(TeamsJson.text(node, "address"),
+                        TeamsJson.text(nested, "address"));
+                String name = firstNonEmpty(TeamsJson.text(node, "name"),
+                        TeamsJson.text(nested, "name"));
+                fromEvent.add(new TeamsParticipant(email, name, email, isSelf(email)));
             });
             return fromEvent;
         }
@@ -640,6 +749,7 @@ final class TeamsAdapterV1 implements TeamsAdapter {
             case ACTIVITY_FEED -> EXPECTED_ACTIVITY_FIELDS;
             case MEETING_DETAILS -> EXPECTED_MEETING_FIELDS;
             case CALENDAR_EVENT -> EXPECTED_CALENDAR_EVENT_FIELDS;
+            case MEETING_COLLAB_OBJECT -> EXPECTED_COLLAB_FIELDS;
             case MEETING_TRANSCRIPT -> EXPECTED_TRANSCRIPT_FIELDS;
             default -> List.of();
         };
