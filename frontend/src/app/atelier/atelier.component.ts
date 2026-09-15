@@ -91,6 +91,7 @@ import {
   AtelierStreamHandlers,
   AtelierSteerQueued,
   AtelierTurnFollower,
+  AtelierTurnMode,
   GitPullRequestResult,
   GitPushResult,
   HostProjectSummary,
@@ -378,6 +379,13 @@ export class AtelierComponent implements OnInit, OnDestroy {
 
   /** Saisie du composer (liaison bidirectionnelle simple, façon Claude Code). */
   readonly draft = signal('');
+
+  /**
+   * Mode du tour « Réponse/Plan » vs « Agir » (F-120 / SF-120-02), à l'image du plan mode de Claude
+   * Code. Choisi dans le composer, renvoyé à chaque tour (per-tour, pas persisté côté serveur).
+   * **Défaut `ACT`** : l'usage actuel n'est pas surpris.
+   */
+  readonly mode = signal<AtelierTurnMode>('ACT');
 
   readonly creating = signal(false);
   readonly submitting = signal(false);
@@ -1560,7 +1568,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
           this.flushDeferredPrecisions(id);
         }),
     };
-    void this.atelier.streamChat(id, content, handlers);
+    void this.atelier.streamChat(id, content, handlers, this.mode());
     // Si la prise en main n'arrive pas, un proxy retient le flux : on suit le tour par fenêtres, EN
     // PLUS du flux d'origine — qui garde la fin du tour s'il est relâché le premier.
     this.armStreamProbe(id, handlers);

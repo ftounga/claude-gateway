@@ -954,7 +954,8 @@ describe('AtelierComponent', () => {
     component.draft.set('Modifie main.ts');
     component.send();
 
-    expect(service.streamChat).toHaveBeenCalledWith('w1', 'Modifie main.ts', jasmine.anything());
+    // F-120 / SF-120-02 : le mode du tour est passé en 4e argument (défaut ACT).
+    expect(service.streamChat).toHaveBeenCalledWith('w1', 'Modifie main.ts', jasmine.anything(), 'ACT');
     const messages = component.messages();
     expect(messages.length).toBe(2);
     expect(messages[0].role).toBe('USER');

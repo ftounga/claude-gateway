@@ -224,6 +224,7 @@ class AtelierChatControllerAttachTest {
         RecordingEmitter ecran = new RecordingEmitter();
         when(chatService.chatStreaming(org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any())).thenAnswer(invocation -> {
                     vusAvantLaBoucle.addAll(ecran.names());
                     return new AtelierChatService.AtelierChatResult("fait", List.of(),

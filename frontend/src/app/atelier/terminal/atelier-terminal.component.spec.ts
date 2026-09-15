@@ -1657,4 +1657,46 @@ describe('AtelierTerminalComponent', () => {
       expect(emitted.length).toBe(1);
     });
   });
+
+  // ------------------------------------------ mode « Réponse/Plan » vs « Agir » (F-120 / SF-120-02)
+
+  describe('mode du tour', () => {
+    it('affiche le sélecteur de mode dans le composer, défaut « Agir »', () => {
+      fixture.detectChanges();
+      const group = fixture.nativeElement.querySelector('.terminal-mode-toggle');
+      expect(group).not.toBeNull();
+      const toggles = fixture.nativeElement.querySelectorAll('.terminal-mode-toggle mat-button-toggle');
+      expect(toggles.length).toBe(2);
+      // Défaut ACT : le bouton « Passer à l'exécution » n'apparaît qu'en Réponse/Plan.
+      expect(component.mode).toBe('ACT');
+      expect(fixture.nativeElement.querySelector('.terminal-mode-exec')).toBeNull();
+    });
+
+    it('n\'affiche PAS le sélecteur en lecture seule (mosaïque)', () => {
+      component.readOnly = true;
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.terminal-mode-toggle')).toBeNull();
+    });
+
+    it('émet modeChange quand l\'utilisateur choisit un mode', () => {
+      const seen: string[] = [];
+      component.modeChange.subscribe((m) => seen.push(m));
+      fixture.detectChanges();
+      // Émulation du (change) du groupe de toggles.
+      component.modeChange.emit('ANSWER_PLAN');
+      expect(seen).toEqual(['ANSWER_PLAN']);
+    });
+
+    it('n\'affiche « Passer à l\'exécution » qu\'en Réponse/Plan et son clic émet switchToAct', () => {
+      const seen: number[] = [];
+      component.switchToAct.subscribe(() => seen.push(1));
+      component.mode = 'ANSWER_PLAN';
+      fixture.detectChanges();
+
+      const exec = fixture.nativeElement.querySelector('.terminal-mode-exec') as HTMLButtonElement;
+      expect(exec).not.toBeNull();
+      exec.click();
+      expect(seen.length).toBe(1);
+    });
+  });
 });

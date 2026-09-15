@@ -170,7 +170,8 @@ describe('AtelierService', () => {
 
     const req = httpMock.expectOne('/api/workspaces/w1/chat');
     expect(req.request.method).toBe('POST');
-    expect(req.request.body).toEqual({ message: 'Modifie le fichier' });
+    // F-120 / SF-120-02 : le corps porte désormais le mode ; défaut ACT quand non précisé.
+    expect(req.request.body).toEqual({ message: 'Modifie le fichier', mode: 'ACT' });
     req.flush(response);
 
     expect(received).toEqual(response);
@@ -302,6 +303,45 @@ describe('AtelierService', () => {
     });
 
     expect(seen).toEqual(['action:bash:npm test', 'output:ok 1\n', 'output:ok 2\n', 'done:Terminé.']);
+  });
+
+  it('chat porte le mode du tour dans le corps (F-120 / SF-120-02)', () => {
+    service.chat('w1', 'que ferais-tu ?', 'ANSWER_PLAN').subscribe();
+    const req = httpMock.expectOne('/api/workspaces/w1/chat');
+    expect(req.request.body).toEqual({ message: 'que ferais-tu ?', mode: 'ANSWER_PLAN' });
+    req.flush({ reply: 'Voici mon plan.', actions: [], messageId: 'm1' });
+  });
+
+  it('streamChat envoie le mode ANSWER_PLAN dans le corps de la requête (F-120 / SF-120-02)', async () => {
+    const spy = fakeSseFetch([
+      'event:done\ndata:{"reply":"Voici mon plan.","actions":[],"messageId":"m1"}',
+    ]);
+
+    await service.streamChat('w1', 'que ferais-tu ?', {
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: () => undefined,
+      onError: () => undefined,
+    }, 'ANSWER_PLAN');
+
+    const body = spy.calls.mostRecent().args[1]?.body as string;
+    expect(JSON.parse(body)).toEqual({ message: 'que ferais-tu ?', mode: 'ANSWER_PLAN' });
+  });
+
+  it('streamChat envoie ACT par défaut quand aucun mode n\'est fourni (F-120 / SF-120-02)', async () => {
+    const spy = fakeSseFetch([
+      'event:done\ndata:{"reply":"Fait.","actions":[],"messageId":"m1"}',
+    ]);
+
+    await service.streamChat('w1', 'corrige', {
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: () => undefined,
+      onError: () => undefined,
+    });
+
+    const body = spy.calls.mostRecent().args[1]?.body as string;
+    expect(JSON.parse(body).mode).toBe('ACT');
   });
 
   // ------------------------------------------ F-97 / SF-97-02 : un refus met le poste à jour partout

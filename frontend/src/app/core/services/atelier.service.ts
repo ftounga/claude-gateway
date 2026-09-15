@@ -9,6 +9,7 @@ import {
   AtelierFileDiff,
   AtelierAgentStreamHandlers,
   AtelierChatRequest,
+  AtelierTurnMode,
   AtelierConfirmDecision,
   AtelierConfirmationState,
   AtelierChatResponse,
@@ -242,9 +243,12 @@ export class AtelierService {
     return this.http.post<WorkspaceDetail>(`/api/workspaces/${id}/import-library`, { documentIds });
   }
 
-  /** Envoie un message ; Claude lit/édite les fichiers via une boucle tool-use côté backend. */
-  chat(id: string, message: string): Observable<AtelierChatResponse> {
-    const body: AtelierChatRequest = { message };
+  /**
+   * Envoie un message ; Claude lit/édite les fichiers via une boucle tool-use côté backend.
+   * `mode` (F-120 / SF-120-02) porte le mode du tour ; défaut `ACT` (comportement historique).
+   */
+  chat(id: string, message: string, mode: AtelierTurnMode = 'ACT'): Observable<AtelierChatResponse> {
+    const body: AtelierChatRequest = { message, mode };
     return this.http.post<AtelierChatResponse>(`/api/workspaces/${id}/chat`, body);
   }
 
@@ -255,7 +259,8 @@ export class AtelierService {
    * (réponse finale + actions) ; toute erreur (HTTP ou `event:error`) appelle `onError`. Ne lève
    * jamais : les échecs passent par `onError`.
    */
-  async streamChat(id: string, message: string, handlers: AtelierStreamHandlers): Promise<void> {
+  async streamChat(id: string, message: string, handlers: AtelierStreamHandlers,
+      mode: AtelierTurnMode = 'ACT'): Promise<void> {
     try {
       const token = this.auth.token();
       const response = await fetch(`/api/workspaces/${id}/chat/stream`, {
@@ -265,7 +270,8 @@ export class AtelierService {
           Accept: 'text/event-stream',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ message }),
+        // F-120 / SF-120-02 : le mode du tour voyage avec chaque requête ; défaut ACT.
+        body: JSON.stringify({ message, mode }),
       });
       if (!response.ok || !response.body) {
         handlers.onError('request_failed');

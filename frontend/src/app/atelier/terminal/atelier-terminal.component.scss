@@ -43,7 +43,8 @@
   .terminal-interrupt,
   .terminal-toggle,
   .terminal-budget-action,
-  .terminal-input button {
+  .terminal-input button,
+  .terminal-mode-exec {
     --mdc-text-button-label-text-color: var(--cg-orange-2);
   }
 
@@ -239,6 +240,34 @@
 }
 
 .terminal-target-toggle {
+  font-size: 12px;
+}
+
+// Mode du tour « Réponse/Plan » vs « Agir » (F-120 / SF-120-02). Même gabarit que la cible
+// d'exécution, mêmes jetons de charte — AUCUNE couleur nouvelle, police/taille inchangées. Le toggle
+// hérite des jetons `--mat-standard-button-toggle-*` redéfinis plus haut pour le terminal navy.
+.terminal-mode {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-2) var(--cg-space-3);
+  border-top: 1px solid var(--cg-navy-2);
+  color: var(--cg-divider);
+  font-size: 12px;
+
+  button {
+    color: var(--cg-orange-2);
+  }
+}
+
+.terminal-mode-label {
+  font-family: var(--cg-font-mono);
+  font-size: 11px;
+  text-transform: lowercase;
+}
+
+.terminal-mode-toggle {
   font-size: 12px;
 }
 

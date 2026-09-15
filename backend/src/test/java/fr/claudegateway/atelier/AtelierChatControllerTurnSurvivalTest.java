@@ -60,8 +60,8 @@ class AtelierChatControllerTurnSurvivalTest {
     void leTourVaJusquAuBoutQuandLeFluxEstFermeBrutalement() {
         AtomicInteger steps = new AtomicInteger();
         AtomicBoolean finished = new AtomicBoolean(false);
-        when(chatService.chatStreaming(any(), any(), any(), any())).thenAnswer(invocation -> {
-            AtelierProgressListener listener = invocation.getArgument(3);
+        when(chatService.chatStreaming(any(), any(), any(), any(), any())).thenAnswer(invocation -> {
+            AtelierProgressListener listener = invocation.getArgument(4);
             listener.onText("je commence");
             steps.incrementAndGet();
             listener.onAction(new AtelierStepEvent("read", "pom.xml"));

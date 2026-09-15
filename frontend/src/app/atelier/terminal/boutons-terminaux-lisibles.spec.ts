@@ -285,7 +285,18 @@ describe('AtelierTerminalComponent — boutons lisibles hors Teams (F-30 / SF-30
   it('le sélecteur « Où s\'exécutent les outils » est lisible, sélectionné comme non sélectionné', () => {
     loadProjectTerminal();
 
-    const toggles = Array.from(view().querySelectorAll<HTMLElement>('mat-button-toggle .mat-button-toggle-label-content'));
+    const toggles = Array.from(view().querySelectorAll<HTMLElement>('.terminal-target-toggle mat-button-toggle .mat-button-toggle-label-content'));
+    expect(toggles.length).toBe(2);
+    for (const label of toggles) {
+      const ratio = contrast(over(parse(getComputedStyle(label).color), groundOf(label, view())), groundOf(label, view()));
+      expect(ratio).withContext(label.textContent?.trim() ?? '').toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('le sélecteur de mode « Réponse/Plan » vs « Agir » est lisible (F-120 / SF-120-02)', () => {
+    loadProjectTerminal();
+
+    const toggles = Array.from(view().querySelectorAll<HTMLElement>('.terminal-mode-toggle mat-button-toggle .mat-button-toggle-label-content'));
     expect(toggles.length).toBe(2);
     for (const label of toggles) {
       const ratio = contrast(over(parse(getComputedStyle(label).color), groundOf(label, view())), groundOf(label, view()));

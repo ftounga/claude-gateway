@@ -844,6 +844,41 @@
     }
   </div>
 
+  <!-- Mode du tour (F-120 / SF-120-02) : « Réponse/Plan » vs « Agir », à l'image du plan mode de
+       Claude Code. C'est bien UN MODE (distinct de la cible d'exécution ci-dessus), choisi par
+       l'utilisateur et renvoyé à chaque tour. Défaut : Agir. Comme l'invite, il n'existe pas en
+       lecture seule (donc absent de la mosaïque, qui n'initie aucun tour). -->
+  @if (!readOnly) {
+    <div class="terminal-mode">
+      <span class="terminal-mode-label">Mode</span>
+      <mat-button-toggle-group
+        class="terminal-mode-toggle"
+        aria-label="Mode du tour : répondre ou proposer un plan, ou agir"
+        [value]="mode"
+        (change)="modeChange.emit($event.value)"
+      >
+        <mat-button-toggle value="ANSWER_PLAN">
+          <mat-icon>forum</mat-icon>
+          Réponse/Plan
+        </mat-button-toggle>
+        <mat-button-toggle value="ACT">
+          <mat-icon>bolt</mat-icon>
+          Agir
+        </mat-button-toggle>
+      </mat-button-toggle-group>
+      @if (mode === 'ANSWER_PLAN') {
+        <button
+          mat-button
+          type="button"
+          class="terminal-mode-exec"
+          (click)="switchToAct.emit()"
+        >
+          Passer à l'exécution
+        </button>
+      }
+    </div>
+  }
+
   <!-- Invite. Ce qu'on saisit est une DEMANDE, pas une commande shell (ADR-014). -->
   <!-- L'INVITE N'EXISTE PAS EN LECTURE SEULE (F-83 / SF-83-01). Écrire reste un geste pris
        dans le terminal entier, devant son flux : un clic pour y entrer. -->
