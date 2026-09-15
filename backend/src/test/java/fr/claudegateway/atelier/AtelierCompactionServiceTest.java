@@ -250,6 +250,53 @@ class AtelierCompactionServiceTest {
         assertThat(AtelierCompactionService.toolDigest("{tronqué")).isEmpty();
     }
 
+    // ------------------------------------------- F-119 / SF-119-03 : parité de l'estimateur de seuil
+
+    @Test
+    void estimateCountsReplayedToolTracesNotJustText() {
+        // Les traces d'outils des derniers tours repartent AUSSI au fournisseur : l'estimateur doit
+        // les compter, sinon un fil au texte court mais aux sorties d'outils volumineuses franchit le
+        // seuil réel sans jamais déclencher la compaction (régression de débordement).
+        String bigTrace = "x".repeat(8_000);
+        List<AtelierMessage> history = List.of(
+                message("USER", "demande", OffsetDateTime.now()),
+                assistantWithTrace("réponse", bigTrace, OffsetDateTime.now().plusMinutes(1)));
+
+        long textOnly = AtelierCompactionService.estimateReplayTokens(null, history);
+        long withTraces = AtelierCompactionService.estimateReplayTokens(null, history, 12);
+
+        assertThat(withTraces).isGreaterThan(textOnly);
+        // Le texte seul reste sous le seuil du test (100 tokens) ; les traces le franchissent.
+        assertThat(textOnly).isLessThan(100);
+        assertThat(withTraces).isGreaterThan(100);
+    }
+
+    @Test
+    void voluminousToolTracesTriggerCompactionEvenWhenTextIsShort() {
+        // Bout en bout : un fil au texte court mais aux traces volumineuses DÉCLENCHE la compaction —
+        // c'est exactement le cas que l'estimateur text-only ratait.
+        StubAiAgentProvider provider = new StubAiAgentProvider();
+        provider.enqueueFinal("Résumé compact.");
+        OffsetDateTime t0 = OffsetDateTime.now().minusHours(1);
+        String bigTrace = "x".repeat(8_000);
+        List<AtelierMessage> history = new ArrayList<>(List.of(
+                message("USER", "d1", t0),
+                assistantWithTrace("r1", bigTrace, t0.plusMinutes(1)),
+                message("USER", "d2", t0.plusMinutes(2)),
+                assistantWithTrace("r2", bigTrace, t0.plusMinutes(3))));
+        stubHistory(history);
+
+        AtelierCompactionService.CompactionOutcome outcome =
+                service(provider).compactIfOversized(userId, workspace, null);
+
+        assertThat(outcome.compacted()).isTrue();
+    }
+
+    private AtelierMessage assistantWithTrace(String content, String toolTrace, OffsetDateTime at) {
+        return AtelierMessage.builder().id(UUID.randomUUID()).workspaceId(workspaceId).userId(userId)
+                .role("ASSISTANT").content(content).toolTrace(toolTrace).createdAt(at).build();
+    }
+
     private static com.fasterxml.jackson.databind.node.ObjectNode input(String key, String value) {
         com.fasterxml.jackson.databind.node.ObjectNode node =
                 new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
