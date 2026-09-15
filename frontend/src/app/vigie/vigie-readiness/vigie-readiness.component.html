@@ -1,0 +1,65 @@
+<section class="readiness" aria-label="Mise en service de la Vigie">
+  <header class="readiness__head">
+    <h3 class="readiness__title">Mise en service de la Vigie</h3>
+    <button
+      mat-icon-button
+      type="button"
+      class="readiness__refresh"
+      (click)="refresh()"
+      [disabled]="loading()"
+      aria-label="Revérifier"
+    >
+      <mat-icon>refresh</mat-icon>
+    </button>
+  </header>
+
+  @if (loading()) {
+    <div class="readiness__loading" role="status">
+      <mat-progress-spinner mode="indeterminate" diameter="24"></mat-progress-spinner>
+      <span>Vérification en cours…</span>
+    </div>
+  } @else if (failed()) {
+    <p class="readiness__error" role="alert">
+      La check-list n'a pas pu être lue. Réessayez.
+    </p>
+  } @else {
+    @if (readiness(); as ready) {
+      <ul class="readiness__list">
+        @for (item of ready.checks; track item.check) {
+          <li class="readiness__row" [class]="statusClass(item.status)">
+            <mat-icon class="readiness__icon" aria-hidden="true">{{ icon(item.status) }}</mat-icon>
+            <div class="readiness__text">
+              <span class="readiness__label">{{ label(item.check) }}</span>
+              <span class="readiness__detail">{{ item.detail }}</span>
+            </div>
+          </li>
+        }
+      </ul>
+
+      <div class="readiness__actions">
+        @if (signInRequired()) {
+          <button mat-stroked-button type="button" (click)="onTeamsLogin()">
+            <mat-icon>login</mat-icon>
+            Se connecter à Teams
+          </button>
+        }
+        <button
+          mat-flat-button
+          color="primary"
+          type="button"
+          class="readiness__start"
+          [disabled]="!canStart()"
+          (click)="onStart()"
+        >
+          Démarrer la Vigie
+        </button>
+      </div>
+
+      @if (!canStart()) {
+        <p class="readiness__hint">
+          Le démarrage s'active quand les quatre vérifications sont au vert.
+        </p>
+      }
+    }
+  }
+</section>

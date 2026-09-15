@@ -1,0 +1,116 @@
+// Assistant de mise en service de la Vigie (F-122 / SF-122-02).
+// Aucune couleur nouvelle : vert `--cg-success`, rouge `--cg-error`, « en attente » en texte
+// secondaire. Espacements multiples de 4px.
+
+.readiness {
+  display: block;
+  padding: 12px 16px;
+  border: 1px solid var(--cg-divider, #e2e8f0);
+  border-radius: 8px;
+  background: var(--cg-surface, #ffffff);
+}
+
+.readiness__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.readiness__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--cg-text-primary, #0f172a);
+}
+
+.readiness__loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  color: var(--cg-text-secondary, #64748b);
+}
+
+.readiness__error {
+  margin: 8px 0 0;
+  color: var(--cg-error, #dc2626);
+}
+
+.readiness__list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.readiness__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 6px;
+}
+
+.readiness__icon {
+  flex: 0 0 auto;
+}
+
+.readiness__text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.readiness__label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--cg-text-primary, #0f172a);
+}
+
+.readiness__detail {
+  font-size: 12px;
+  color: var(--cg-text-secondary, #64748b);
+}
+
+// Vert : validation.
+.readiness__row--ok {
+  background: #e8f5e9;
+
+  .readiness__icon {
+    color: var(--cg-success, #16a34a);
+  }
+}
+
+// Rouge : échec.
+.readiness__row--ko {
+  background: #ffebee;
+
+  .readiness__icon {
+    color: var(--cg-error, #dc2626);
+  }
+}
+
+// En attente : neutre, jamais faussement au vert.
+.readiness__row--pending {
+  background: #f5f6fa;
+
+  .readiness__icon {
+    color: var(--cg-text-secondary, #64748b);
+  }
+}
+
+.readiness__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.readiness__hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--cg-text-secondary, #64748b);
+}

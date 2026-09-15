@@ -166,6 +166,8 @@
                   <app-radar-schedule class="vigie__schedule" [hostId]="hostId" [hostName]="host.name"></app-radar-schedule>
                   <!-- LES COURRIELS DU CLIENT (F-110 / SF-110-01) : l'adresse de réception vérifiée, ou le repli dit. -->
                   <app-host-mail-address class="vigie__mail" [hostId]="hostId" [hostName]="host.name"></app-host-mail-address>
+                  <!-- LA MISE EN SERVICE GUIDÉE (F-122 / SF-122-02) : la check-list vert/rouge avant de démarrer. -->
+                  <app-vigie-readiness class="vigie__readiness" [hostId]="hostId"></app-vigie-readiness>
                 }
               </div>
 

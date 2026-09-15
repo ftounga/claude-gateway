@@ -98,6 +98,11 @@ public class RunnerSecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/runner/radar/syncs/*/finish").permitAll()
                         // Les lots de la collecte (SF-100-03) : même garde, même déclaration.
                         .requestMatchers(HttpMethod.POST, "/runner/radar/syncs/*/batches").permitAll()
+                        // Instantané de mise en service de la Vigie (F-122 / SF-122-02) : même nature
+                        // que les entrées ci-dessus — jeton X-Runner-Token vérifié PAR LE CONTRÔLEUR
+                        // (RunnerVigieReadinessController), rien dans le SecurityContext (D9).
+                        // Déclarée explicitement, jamais par joker sur `/runner/vigie/**`.
+                        .requestMatchers(HttpMethod.POST, "/runner/vigie/readiness").permitAll()
                         .anyRequest().denyAll());
         return http.build();
     }
