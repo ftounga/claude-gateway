@@ -103,6 +103,12 @@ import org.springframework.boot.context.properties.bind.ConstructorBinding;
  *                      avant ses affirmations, d'où des contradictions. Repli comme les autres
  *                      bornes : une valeur absente, nulle ou négative retombe sur le défaut ; bornée à
  *                      un plafond lisible ({@code 40})
+ * @param fileStateHints <b>aide-mémoire d'état de fichier</b> (F-119 / SF-119-05), défaut
+ *                      {@code true}. Actif, une édition (`edit_file`) d'un fichier que le modèle n'a
+ *                      ni lu ni écrit dans ce fil reçoit un rappel léger « relis-le avant si tu n'es
+ *                      pas sûr de son contenu » (incitation à la lecture-avant-édition), sans jamais
+ *                      refuser l'opération (le disque évite déjà la corruption). Coupe-circuit à
+ *                      {@code false}
  */
 @ConfigurationProperties(prefix = "app.atelier")
 public record AtelierProperties(
@@ -125,7 +131,8 @@ public record AtelierProperties(
         Duration turnBudget,
         String exploreEffort,
         Boolean escalateOnSignal,
-        Integer replayedTraceTurns) {
+        Integer replayedTraceTurns,
+        Boolean fileStateHints) {
 
     /** Modèle de la boucle maison à défaut de configuration (F-39 / SF-39-10). */
     public static final String DEFAULT_MODEL = "claude-opus-5";
@@ -282,13 +289,18 @@ public record AtelierProperties(
         if (replayedTraceTurns > MAX_REPLAYED_TRACE_TURNS) {
             replayedTraceTurns = MAX_REPLAYED_TRACE_TURNS;
         }
+        // Absent => aide-mémoire d'état de fichier actif : un réglage manquant ne change pas le
+        // comportement livré par F-119 / SF-119-05.
+        if (fileStateHints == null) {
+            fileStateHints = Boolean.TRUE;
+        }
     }
 
     /**
      * Constructeur de compatibilité, sans les réglages F-119 (SF-119-01) : {@code exploreEffort},
-     * {@code escalateOnSignal} et {@code replayedTraceTurns} retombent sur leurs défauts
-     * ({@code low} / actif / 12). Évite de réécrire les appelants antérieurs à F-119 (et leurs tests)
-     * pour des réglages qu'ils n'expriment pas.
+     * {@code escalateOnSignal}, {@code replayedTraceTurns} et {@code fileStateHints} retombent sur
+     * leurs défauts ({@code low} / actif / 12 / actif). Évite de réécrire les appelants antérieurs à
+     * F-119 (et leurs tests) pour des réglages qu'ils n'expriment pas.
      */
     public AtelierProperties(String storage, String bucket, String prefix, Long maxTotalBytes,
             Integer maxEntries, Long maxFileBytes, Integer maxIterations, String model, String effort,
@@ -297,13 +309,13 @@ public record AtelierProperties(
             Duration turnBudget) {
         this(storage, bucket, prefix, maxTotalBytes, maxEntries, maxFileBytes, maxIterations, model,
                 effort, contextPruning, maxTurnTokens, maxDelegations, storageExecution, streaming,
-                stepEffort, adaptiveEffort, turnBudget, null, null, null);
+                stepEffort, adaptiveEffort, turnBudget, null, null, null, null);
     }
 
     /**
-     * Constructeur de compatibilité, sans {@code replayedTraceTurns} (F-119 / SF-119-03) : la fenêtre
-     * de rejeu retombe sur son défaut (12). Conserve la forme de SF-119-01 (jusqu'à
-     * {@code escalateOnSignal}) pour les appelants qui l'expriment déjà.
+     * Constructeur de compatibilité, sans {@code replayedTraceTurns} ni {@code fileStateHints}
+     * (F-119 / SF-119-03, SF-119-05) : ils retombent sur leurs défauts (12 / actif). Conserve la forme
+     * de SF-119-01 (jusqu'à {@code escalateOnSignal}) pour les appelants qui l'expriment déjà.
      */
     public AtelierProperties(String storage, String bucket, String prefix, Long maxTotalBytes,
             Integer maxEntries, Long maxFileBytes, Integer maxIterations, String model, String effort,
@@ -312,7 +324,23 @@ public record AtelierProperties(
             Duration turnBudget, String exploreEffort, Boolean escalateOnSignal) {
         this(storage, bucket, prefix, maxTotalBytes, maxEntries, maxFileBytes, maxIterations, model,
                 effort, contextPruning, maxTurnTokens, maxDelegations, storageExecution, streaming,
-                stepEffort, adaptiveEffort, turnBudget, exploreEffort, escalateOnSignal, null);
+                stepEffort, adaptiveEffort, turnBudget, exploreEffort, escalateOnSignal, null, null);
+    }
+
+    /**
+     * Constructeur de compatibilité, sans {@code fileStateHints} (F-119 / SF-119-05) : l'aide-mémoire
+     * retombe sur son défaut (actif). Conserve la forme de SF-119-03 (jusqu'à {@code replayedTraceTurns}).
+     */
+    public AtelierProperties(String storage, String bucket, String prefix, Long maxTotalBytes,
+            Integer maxEntries, Long maxFileBytes, Integer maxIterations, String model, String effort,
+            Boolean contextPruning, Long maxTurnTokens, Integer maxDelegations,
+            Boolean storageExecution, Boolean streaming, String stepEffort, Boolean adaptiveEffort,
+            Duration turnBudget, String exploreEffort, Boolean escalateOnSignal,
+            Integer replayedTraceTurns) {
+        this(storage, bucket, prefix, maxTotalBytes, maxEntries, maxFileBytes, maxIterations, model,
+                effort, contextPruning, maxTurnTokens, maxDelegations, storageExecution, streaming,
+                stepEffort, adaptiveEffort, turnBudget, exploreEffort, escalateOnSignal,
+                replayedTraceTurns, null);
     }
 
     /**
