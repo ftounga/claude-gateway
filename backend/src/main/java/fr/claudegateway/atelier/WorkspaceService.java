@@ -89,6 +89,19 @@ public class WorkspaceService {
     }
 
     /**
+     * Fichiers déposés d'un projet (F-115 / SF-115-01), purgés à sa suppression. Injecté par
+     * mutateur (null pour les tests historiques) pour ne pas toucher au constructeur.
+     */
+    private fr.claudegateway.atelier.deposit.AtelierDepositedFileRepository depositedFileRepository;
+
+    /** Branche la purge des dépôts de fichiers à la suppression d'un projet (F-115 / SF-115-01). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setDepositedFileRepository(
+            fr.claudegateway.atelier.deposit.AtelierDepositedFileRepository repository) {
+        this.depositedFileRepository = repository;
+    }
+
+    /**
      * Annonce la création d'un projet (F-51 / SF-51-03).
      *
      * <p>Un seul endroit pour les trois portes d'entrée — archive, dépôt distant, projet local :
@@ -469,6 +482,33 @@ public class WorkspaceService {
     }
 
     /**
+     * Dépose un fichier <b>binaire</b> dans le workspace hébergé, sous {@code entrees/} (F-115 /
+     * SF-115-01). Contrairement à {@link #writeFile}, le contenu n'est pas du texte : les octets bruts
+     * (png, zip, mp4…) sont écrits tels quels, avec leur type de média. Le nom est déjà assaini par
+     * l'appelant (basename seul, sans séparateur) ; le chemin cible est <b>toujours</b> {@code entrees/
+     * &lt;nom&gt;}, jamais ailleurs. Aucun filtre de type (F-85 vise l'upload documentaire, pas le dépôt).
+     *
+     * @return le chemin relatif déposé ({@code entrees/<nom>}), tel que l'agent le lira
+     */
+    @Transactional
+    public String depositHostedFile(UUID userId, UUID id, String sanitizedName, byte[] bytes,
+            String contentType) {
+        Workspace workspace = requireOwned(userId, id);
+        // Un projet exécuté sur la machine dépose par le runner, pas dans le stockage objet
+        // (qui est vide par construction pour une cible RUNNER). L'aiguillage est fait par l'appelant ;
+        // ce garde-fou empêche une écriture hébergée pour un projet-machine.
+        if (workspace.isRunnerTarget()) {
+            throw new LocalWorkspaceException(
+                    "Ce projet s'exécute sur votre machine : le dépôt passe par le runner.");
+        }
+        String rel = "entrees/" + sanitizedName;
+        storage.putFile(prefixOf(userId, id) + rel, bytes,
+                contentType == null || contentType.isBlank() ? "application/octet-stream" : contentType);
+        workspaceRepository.save(workspace); // rafraîchit updated_at
+        return rel;
+    }
+
+    /**
      * Renomme le projet (F-28 / SF-28-16). Isolation d'abord, comme tout accès à un workspace.
      *
      * <p>Le renommage ne touche <b>que</b> l'étiquette : ni les fichiers (rangés sous l'identifiant du
@@ -578,6 +618,10 @@ public class WorkspaceService {
         // Injecté par mutateur (null pour les tests historiques) pour ne pas toucher au constructeur.
         if (permissionRuleRepository != null) {
             permissionRuleRepository.deleteByUserIdAndWorkspaceId(userId, id);
+        }
+        // F-115 / SF-115-01 : les fichiers déposés dans ce terminal s'en vont avec lui.
+        if (depositedFileRepository != null) {
+            depositedFileRepository.deleteByWorkspaceId(id);
         }
         workspaceRepository.delete(workspace);
     }

@@ -77,6 +77,13 @@ public final class FileTools implements ToolExecutor {
      */
     static final int MAX_BYTES_CHUNK = 393_216;
 
+    /**
+     * Plafond d'un fichier <b>déposé</b> par {@code write_file_bytes} (F-115 / SF-115-01) : 100 Mio.
+     * Contrôlé à chaque tranche par {@code offset + longueur}, pour refuser un dépôt qui déborde sans
+     * attendre la fin du transfert découpé.
+     */
+    static final long MAX_DEPOSIT_BYTES = 100L * 1024 * 1024;
+
     private final PathResolver paths;
 
     public FileTools(PathResolver paths) {
@@ -103,6 +110,7 @@ public final class FileTools implements ToolExecutor {
                 case "grep" -> grep(input);
                 case "glob" -> glob(input);
                 case "read_file_bytes" -> readFileBytes(requiredText(input, "path"), input);
+                case "write_file_bytes" -> writeFileBytes(requiredText(input, "path"), input);
                 default -> ToolOutcome.error("unsupported_tool",
                         "Outil non supporté par ce runner : " + tool);
             };
@@ -180,6 +188,67 @@ public final class FileTools implements ToolExecutor {
         byte[] chunk = java.util.Arrays.copyOf(buffer.array(), buffer.position());
         boolean remaining = offset + chunk.length < size;
         return ToolOutcome.ok(java.util.Base64.getEncoder().encodeToString(chunk), remaining, size);
+    }
+
+    /**
+     * Écrit une <b>tranche binaire</b> d'un fichier déposé (F-115 / SF-115-01), symétrique de
+     * {@link #readFileBytes}. {@code content} porte la tranche en Base64, {@code offset} (défaut 0) sa
+     * position dans le fichier : la tranche à {@code offset == 0} <b>tronque et crée</b> le fichier,
+     * les suivantes sont écrites à leur position. Sert au transfert découpé d'un gros fichier vers
+     * {@code .atelier/entrees/} sans jamais faire passer le fichier entier en une trame.
+     *
+     * <p>Le chemin est re-validé par {@link PathResolver} (sous la racine, jamais {@code ..}) — la
+     * gateway a beau assainir le nom, le runner reste l'autorité (contrat F-38, D6). La taille
+     * cumulée ({@code offset + tranche}) est bornée à {@link #MAX_DEPOSIT_BYTES}.</p>
+     */
+    ToolOutcome writeFileBytes(String rawPath, JsonNode input) throws IOException {
+        long offset = optionalLong(input, "offset", 0L);
+        if (offset < 0) {
+            throw new ToolException("invalid_input", "offset doit être positif ou nul.");
+        }
+        byte[] chunk;
+        try {
+            chunk = java.util.Base64.getDecoder().decode(requiredContent(input));
+        } catch (IllegalArgumentException e) {
+            throw new ToolException("invalid_input", "Contenu Base64 invalide.");
+        }
+        if (chunk.length > MAX_BYTES_CHUNK) {
+            throw new ToolException("invalid_input",
+                    "Tranche trop grande (" + MAX_BYTES_CHUNK + " octets au plus).");
+        }
+        if (offset + (long) chunk.length > MAX_DEPOSIT_BYTES) {
+            throw new ToolException("too_large", "Fichier trop volumineux pour un dépôt (100 Mo au plus).");
+        }
+        PathResolver.Resolved resolved = paths.resolve(rawPath);
+        Path path = resolved.path();
+        if (Files.isDirectory(path)) {
+            throw new ToolException("is_directory", "Le chemin est un dossier : " + resolved.display());
+        }
+        if (Files.exists(path, LinkOption.NOFOLLOW_LINKS) && !Files.isRegularFile(path)) {
+            throw new ToolException("not_a_file", "Le chemin n'est pas un fichier : " + resolved.display());
+        }
+        Path parent = path.getParent();
+        boolean truncate = offset == 0;
+        try {
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+            StandardOpenOption[] options = truncate
+                    ? new StandardOpenOption[] {StandardOpenOption.CREATE, StandardOpenOption.WRITE,
+                            StandardOpenOption.TRUNCATE_EXISTING}
+                    : new StandardOpenOption[] {StandardOpenOption.CREATE, StandardOpenOption.WRITE};
+            try (java.nio.channels.SeekableByteChannel channel = Files.newByteChannel(path, options)) {
+                channel.position(offset);
+                ByteBuffer buffer = ByteBuffer.wrap(chunk);
+                while (buffer.hasRemaining()) {
+                    channel.write(buffer);
+                }
+            }
+        } catch (IOException e) {
+            throw new ToolException("io_error", "Écriture impossible : " + resolved.display());
+        }
+        long total = Files.size(path);
+        return ToolOutcome.ok("Tranche écrite : " + resolved.display(), false, total);
     }
 
     /** Écrit (ou remplace) un fichier, en créant les dossiers parents manquants (F-73). */

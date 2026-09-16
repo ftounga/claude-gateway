@@ -1,5 +1,6 @@
 package fr.claudegateway.runner;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -176,6 +177,85 @@ class FileToolsTest {
 
         assertEquals("invalid_input", outcome.errorCode());
         assertTrue(outcome.errorMessage().contains("content"));
+    }
+
+    // ---------------------------------------------------------- write_file_bytes
+
+    @Test
+    void deposeUnFichierBinaireParTranches() throws IOException {
+        byte[] premiere = new byte[] {0, 1, 2, 3, (byte) 200};
+        byte[] seconde = new byte[] {(byte) 250, (byte) 255, 42};
+
+        ObjectNode t1 = MAPPER.createObjectNode();
+        t1.put("path", ".atelier/entrees/capture.png");
+        t1.put("content", java.util.Base64.getEncoder().encodeToString(premiere));
+        t1.put("offset", 0);
+        assertTrue(tools.execute("write_file_bytes", t1).ok());
+
+        ObjectNode t2 = MAPPER.createObjectNode();
+        t2.put("path", ".atelier/entrees/capture.png");
+        t2.put("content", java.util.Base64.getEncoder().encodeToString(seconde));
+        t2.put("offset", premiere.length);
+        ToolOutcome outcome = tools.execute("write_file_bytes", t2);
+
+        assertTrue(outcome.ok());
+        byte[] written = Files.readAllBytes(root.resolve(".atelier/entrees/capture.png"));
+        byte[] expected = new byte[] {0, 1, 2, 3, (byte) 200, (byte) 250, (byte) 255, 42};
+        assertArrayEquals(expected, written);
+        assertEquals(8, outcome.bytes());
+    }
+
+    @Test
+    void deposeTronqueLeFichierExistantALaPremiereTranche() throws IOException {
+        Files.createDirectories(root.resolve(".atelier/entrees"));
+        Files.write(root.resolve(".atelier/entrees/x.bin"), new byte[] {9, 9, 9, 9, 9, 9});
+
+        ObjectNode t1 = MAPPER.createObjectNode();
+        t1.put("path", ".atelier/entrees/x.bin");
+        t1.put("content", java.util.Base64.getEncoder().encodeToString(new byte[] {1, 2}));
+        t1.put("offset", 0);
+        tools.execute("write_file_bytes", t1);
+
+        assertArrayEquals(new byte[] {1, 2}, Files.readAllBytes(root.resolve(".atelier/entrees/x.bin")));
+    }
+
+    @Test
+    void refuseUneTrancheBase64Invalide() {
+        ObjectNode input = MAPPER.createObjectNode();
+        input.put("path", ".atelier/entrees/x.bin");
+        input.put("content", "pas du base64 valide !!!");
+        input.put("offset", 0);
+
+        ToolOutcome outcome = tools.execute("write_file_bytes", input);
+
+        assertEquals("invalid_input", outcome.errorCode());
+        assertFalse(Files.exists(root.resolve(".atelier/entrees/x.bin")));
+    }
+
+    @Test
+    void refuseUnDepotQuiDepasseLePlafond() {
+        ObjectNode input = MAPPER.createObjectNode();
+        input.put("path", ".atelier/entrees/gros.bin");
+        input.put("content", java.util.Base64.getEncoder().encodeToString(new byte[] {1}));
+        input.put("offset", FileTools.MAX_DEPOSIT_BYTES); // offset + 1 octet > plafond
+
+        ToolOutcome outcome = tools.execute("write_file_bytes", input);
+
+        assertEquals("too_large", outcome.errorCode());
+        assertFalse(Files.exists(root.resolve(".atelier/entrees/gros.bin")));
+    }
+
+    @Test
+    void refuseUneTrancheAuDelaDeLaBorneDeTrame() {
+        byte[] tropGros = new byte[FileTools.MAX_BYTES_CHUNK + 1];
+        ObjectNode input = MAPPER.createObjectNode();
+        input.put("path", ".atelier/entrees/x.bin");
+        input.put("content", java.util.Base64.getEncoder().encodeToString(tropGros));
+        input.put("offset", 0);
+
+        ToolOutcome outcome = tools.execute("write_file_bytes", input);
+
+        assertEquals("invalid_input", outcome.errorCode());
     }
 
     // --------------------------------------------------------------- list_files
