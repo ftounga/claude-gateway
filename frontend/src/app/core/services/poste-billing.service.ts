@@ -13,6 +13,25 @@ export interface ActivitySettings {
   startMonth: string;
 }
 
+/** Le cumul de revenu d'un poste (F-124 / SF-124-02), montants en centimes d'euro HT. */
+export interface PosteRevenue {
+  hostId: string;
+  tjmCents: number;
+  cumulCents: number;
+  declaredCents: number;
+  supposedCents: number;
+}
+
+/** Le cumul de revenu de l'utilisateur (F-124 / SF-124-02) : par poste, et le total tous clients. */
+export interface RevenueSummary {
+  startMonth: string;
+  currentMonth: string;
+  totalCents: number;
+  totalDeclaredCents: number;
+  totalSupposedCents: number;
+  postes: PosteRevenue[];
+}
+
 /**
  * Configuration du suivi d'activité et de revenu (F-124) : le TJM par poste et le mois de départ du
  * cumul. Comme partout, l'identité de l'utilisateur voyage dans le jeton (intercepteur), jamais dans
@@ -45,5 +64,10 @@ export class PosteBillingService {
   /** Retire le TJM d'un poste possédé. */
   clearRate(hostId: string): Observable<void> {
     return this.http.delete<void>(`/api/activity/rates/${hostId}`);
+  }
+
+  /** Le cumul de revenu (F-124 / SF-124-02) : par poste, et le total tous clients. */
+  revenue(): Observable<RevenueSummary> {
+    return this.http.get<RevenueSummary>('/api/activity/revenue');
   }
 }

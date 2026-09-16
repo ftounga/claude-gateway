@@ -223,9 +223,11 @@ describe('PostesComponent', () => {
     governance.getHosts.and.returnValue(of([]));
     // F-124 / SF-124-01 : le TJM par poste et le mois de départ. Vides par défaut dans les tests.
     billing = jasmine.createSpyObj<PosteBillingService>('PosteBillingService',
-      ['rates', 'settings', 'setRate', 'setStartMonth', 'clearRate']);
+      ['rates', 'settings', 'setRate', 'setStartMonth', 'clearRate', 'revenue']);
     billing.rates.and.returnValue(of([]));
     billing.settings.and.returnValue(of({ startMonth: '2025-09' }));
+    billing.revenue.and.returnValue(of({ startMonth: '2025-09', currentMonth: '2026-09',
+      totalCents: 0, totalDeclaredCents: 0, totalSupposedCents: 0, postes: [] }));
     dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
     dialog.open.and.returnValue({ afterClosed: () => of(dialogAnswer) } as never);
     TestBed.configureTestingModule({
@@ -2423,9 +2425,11 @@ describe('PostesComponent', () => {
       governance.getIntegrite.and.returnValue(of(integriteSaine));
       governance.getHosts.and.returnValue(of([]));
       billing = jasmine.createSpyObj<PosteBillingService>('PosteBillingService',
-        ['rates', 'settings', 'setRate', 'setStartMonth', 'clearRate']);
+        ['rates', 'settings', 'setRate', 'setStartMonth', 'clearRate', 'revenue']);
       billing.rates.and.returnValue(of([]));
       billing.settings.and.returnValue(of({ startMonth: '2025-09' }));
+      billing.revenue.and.returnValue(of({ startMonth: '2025-09', currentMonth: '2026-09',
+        totalCents: 0, totalDeclaredCents: 0, totalSupposedCents: 0, postes: [] }));
       dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
       dialog.open.and.returnValue({ afterClosed: () => of(dialogAnswer) } as never);
       TestBed.resetTestingModule();
@@ -2602,6 +2606,47 @@ describe('PostesComponent', () => {
       setup();
       component.saveStartMonth('2026-13');
       expect(billing.setStartMonth).not.toHaveBeenCalled();
+    });
+  });
+
+  // ------------------------------------------------------------------ cumul & total (F-124 / SF-124-02)
+
+  describe('cumul & total (F-124 / SF-124-02)', () => {
+    it('lit le cumul à l\'ouverture et écrit le total en haut de la Forge', () => {
+      setup();
+      expect(billing.revenue).toHaveBeenCalled();
+      // `build()` a recréé le spy avec un total nul ; on redonne une réponse et on relit.
+      billing.revenue.and.returnValue(of({ startMonth: '2025-09', currentMonth: '2026-09',
+        totalCents: 4250000, totalDeclaredCents: 3000000, totalSupposedCents: 1250000,
+        postes: [{ hostId: 'h1', tjmCents: 55000, cumulCents: 4250000, declaredCents: 3000000,
+          supposedCents: 1250000 }] }));
+      component.refresh();
+      fixture.detectChanges();
+      const banner = (fixture.nativeElement as HTMLElement).querySelector('.forge-fleet__kpi--revenue');
+      expect(banner?.textContent).toContain('Revenu total');
+      expect(banner?.textContent).toContain('42');       // 42 500 €
+      expect(banner?.textContent).toContain('supposés');  // dont 12 500 € supposés
+    });
+
+    it('alimente la colonne avec le cumul par poste', () => {
+      setup();
+      billing.revenue.and.returnValue(of({ startMonth: '2025-09', currentMonth: '2026-09',
+        totalCents: 2475000, totalDeclaredCents: 0, totalSupposedCents: 2475000,
+        postes: [{ hostId: 'h1', tjmCents: 55000, cumulCents: 2475000, declaredCents: 0,
+          supposedCents: 2475000 }] }));
+      component.refresh();
+      fixture.detectChanges();
+      expect(component.revenueByHost()['h1']).toEqual({ cumulCents: 2475000, supposedCents: 2475000 });
+      const cumul = (fixture.nativeElement as HTMLElement).querySelector('.forge-rail__cumul');
+      expect(cumul).not.toBeNull();
+    });
+
+    it('recharge le cumul après enregistrement d\'un TJM', () => {
+      setup();
+      billing.setRate.and.returnValue(of({ hostId: 'h1', dailyRateCents: 60000 }));
+      const before = billing.revenue.calls.count();
+      component.saveTjm(poste, '600');
+      expect(billing.revenue.calls.count()).toBe(before + 1);
     });
   });
 });

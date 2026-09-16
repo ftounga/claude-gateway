@@ -198,6 +198,25 @@ describe('ForgeRailComponent', () => {
     expect(root.querySelector('.forge-rail__tjm')).toBeNull();
   });
 
+  // ---- F-124 / SF-124-02 : le cumul et la part supposée ----
+
+  it('écrit le cumul de revenu et « dont X € supposés » quand une part est estimée', () => {
+    const root = render(groupHosts([host('h1', 'FREE')], (h) => h.connected, ''));
+    fixture.componentRef.setInput('revenue', { h1: { cumulCents: 2475000, supposedCents: 1375000 } });
+    fixture.detectChanges();
+    const cumul = rows(root)[0].querySelector('.forge-rail__cumul');
+    expect(cumul?.textContent).toContain('24');   // 24 750 €
+    expect(cumul?.querySelector('.forge-rail__supposed')?.textContent).toContain('supposés');
+  });
+
+  it('n\'écrit pas de part supposée quand tout est déclaré', () => {
+    const root = render(groupHosts([host('h1', 'FREE')], (h) => h.connected, ''));
+    fixture.componentRef.setInput('revenue', { h1: { cumulCents: 1100000, supposedCents: 0 } });
+    fixture.detectChanges();
+    expect(rows(root)[0].querySelector('.forge-rail__cumul')).not.toBeNull();
+    expect(rows(root)[0].querySelector('.forge-rail__supposed')).toBeNull();
+  });
+
   // ---- F-106 / SF-106-02 : la même colonne, avec les mots de la Vigie ----
 
   it('prend les mots de la Vigie sans rien changer à la forme', () => {

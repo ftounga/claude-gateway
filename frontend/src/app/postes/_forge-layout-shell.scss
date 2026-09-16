@@ -89,6 +89,25 @@
     &--awaiting b {
       color: #F9A825;
     }
+
+    /* F-124 / SF-124-02 : le revenu total, bien en avant — plus grand, encre principale, sans
+       couleur nouvelle. La part supposée est une pastille neutre §5. */
+    &--revenue {
+      font-size: 14px;
+    }
+  }
+
+  &__revenue {
+    font-family: var(--cg-font-mono);
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--cg-text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  &__revenue-supposed {
+    font-size: 11px;
+    white-space: nowrap;
   }
 
   &__dot {

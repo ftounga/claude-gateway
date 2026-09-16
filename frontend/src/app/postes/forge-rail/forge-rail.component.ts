@@ -6,9 +6,15 @@ import { RunnerHostOverview } from '../../core/models/atelier.models';
 import { HostPresenceService } from '../../core/services/host-presence.service';
 import { HostBadgeComponent } from '../../shared/host-badge/host-badge.component';
 import { hostTone } from '../../shared/host-identity';
-import { tjmLabel } from '../../shared/money';
+import { eurosLabel, tjmLabel } from '../../shared/money';
 import { updateNotice, updatingPresence } from '../../shared/runner-update/runner-update';
 import { ForgeGroup, ForgeRow } from '../forge-fleet';
+
+/** Le cumul de revenu d'un poste, tel que la colonne le reçoit (F-124 / SF-124-02). */
+export interface RailRevenue {
+  cumulCents: number;
+  supposedCents: number;
+}
 
 /**
  * **La colonne des postes** (F-98 / SF-98-01) — une ligne par poste, rangée par ce qu'elle demande.
@@ -41,6 +47,12 @@ export class ForgeRailComponent {
    * Présentationnel : la Forge le fournit, la Vigie ne le fournit pas — rien n'y change alors.
    */
   readonly billing = input<Record<string, number>>({});
+
+  /**
+   * **Le cumul de revenu par poste** (F-124 / SF-124-02), indexé par identifiant de poste. Optionnel
+   * comme {@link billing} : la Vigie ne le fournit pas.
+   */
+  readonly revenue = input<Record<string, RailRevenue>>({});
 
   // ------------------------------------------------ les mots de l'espace (F-106 / SF-106-02)
   // La Vigie emploie la même colonne : seuls ses mots changent. Les défauts sont ceux de la Forge.
@@ -107,6 +119,29 @@ export class ForgeRailComponent {
     }
     const cents = this.billing()[id];
     return cents == null ? null : tjmLabel(cents);
+  }
+
+  /** Le cumul de revenu du poste, « 12 500 € », ou `null` — jamais pour « Hébergé » (F-124 / SF-124-02). */
+  cumulLabel(row: ForgeRow): string | null {
+    const revenue = this.revenueOf(row);
+    return revenue == null ? null : eurosLabel(revenue.cumulCents);
+  }
+
+  /** « dont 5 000 € supposés » quand une part du cumul est estimée, sinon `null`. */
+  supposedLabel(row: ForgeRow): string | null {
+    const revenue = this.revenueOf(row);
+    if (revenue == null || revenue.supposedCents <= 0) {
+      return null;
+    }
+    return `dont ${eurosLabel(revenue.supposedCents)} supposés`;
+  }
+
+  private revenueOf(row: ForgeRow): RailRevenue | null {
+    const id = row.host.id;
+    if (!id || this.isHosted(row.host)) {
+      return null;
+    }
+    return this.revenue()[id] ?? null;
   }
 
   /** Ce que la ligne dit à droite quand rien n'attend. */

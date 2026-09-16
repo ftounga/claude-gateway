@@ -1062,6 +1062,23 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   - `activity_settings` : `id (uuid)`, `user_id (uuid, FK users ON DELETE CASCADE)`,
     `start_month (varchar 7, 'YYYY-MM')`, `created_at`, `updated_at`. Index **unique** `(user_id)`.
 
+- **cra_entries** — le **CRA déclaré** (F-124 / SF-124-02, migration `110`). Table neuve, **au plus une
+  ligne par `(user_id, host_id, year_month)`** : les jours travaillés déclarés sur un poste pour un
+  mois. **Seuls les CRA déclarés sont stockés** ; le « supposé » (mois complet automatique) est calculé
+  à la volée par `RevenueService` (aucune ligne — l'absence est signifiante). La table est **l'entrée du
+  calcul du cumul** : créée et **lue** en SF-124-02 ; son chemin d'**écriture** (extraction IA du message
+  NL) arrive en SF-124-03. Renvoyer un CRA pour un mois **écrase** l'ancien (unicité sur la clé).
+  - `cra_entries` : `id (uuid)`, `user_id (uuid, FK users ON DELETE CASCADE)`, `host_id (uuid, FK
+    runner_hosts ON DELETE CASCADE)`, `year_month (varchar 7, 'YYYY-MM')`, `days (numeric(4,1)` —
+    demi-journées admises), `created_at`, `updated_at`. Index **unique** `(user_id, host_id, year_month)`
+    et index `(user_id, host_id)`.
+  - **Le calcul du cumul** (`RevenueService`, SF-124-02), par (poste avec TJM, mois) du mois de départ
+    au mois courant : CRA déclaré → jours déclarés (**déclaré**) ; sinon mois passé → jours ouvrés du
+    mois (lun–ven hors fériés France, calculés — `WorkdayCalendar`/`FrenchHolidays`, **supposé**) ; sinon
+    mois courant non déclaré → **0** (un mois inachevé ne gonfle pas le total). Montants en centimes.
+    `GET /activity/revenue` rend par poste `{tjmCents, cumulCents, declaredCents, supposedCents}` et les
+    totaux tous clients. Aucun appel fournisseur, aucun quota consommé.
+
 - **Repli de transport du runner — aucune table** (F-38 / SF-38-09). Le canal runner peut être porté
   par le WebSocket de SF-38-02 **ou** par un long-polling HTTP quand un proxy refuse (ou coupe)
   l'`Upgrade`. **Aucune migration, aucune colonne, aucun type de message nouveau** : les deux
@@ -1247,7 +1264,7 @@ Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 rée
 
 Règle d'isolation des données :
 Tout accès aux données filtre obligatoirement sur **`user_id`**
-(documents/messages/subscriptions/uploaded_files/usage_counters/usage_turns/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/host_seat_months/live_terminals/runner_tokens/runner_pairing_codes/runner_audit/atelier_permission_rules/atelier_deposited_files/poste_billing/activity_settings/governance_selections/governance_activations/governance_host_activations/governance_map_growth/governance_deposited_files/pages/page_versions/page_shares/page_events via `user_id` ; tables `radar_*` via `user_id` **et** `host_id` ; `promotion_reportee` via `user_id` + `host_id` + `workspace_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
+(documents/messages/subscriptions/uploaded_files/usage_counters/usage_turns/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/host_seat_months/live_terminals/runner_tokens/runner_pairing_codes/runner_audit/atelier_permission_rules/atelier_deposited_files/poste_billing/activity_settings/cra_entries/governance_selections/governance_activations/governance_host_activations/governance_map_growth/governance_deposited_files/pages/page_versions/page_shares/page_events via `user_id` ; tables `radar_*` via `user_id` **et** `host_id` ; `promotion_reportee` via `user_id` + `host_id` + `workspace_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
 
 ---
 

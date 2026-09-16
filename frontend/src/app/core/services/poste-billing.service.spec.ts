@@ -60,4 +60,16 @@ describe('PosteBillingService', () => {
     expect(req.request.method).toBe('DELETE');
     req.flush(null);
   });
+
+  it('reads the revenue summary', () => {
+    let total: number | undefined;
+    service.revenue().subscribe((r) => (total = r.totalCents));
+    const req = http.expectOne('/api/activity/revenue');
+    expect(req.request.method).toBe('GET');
+    req.flush({ startMonth: '2025-09', currentMonth: '2026-09', totalCents: 2475000,
+      totalDeclaredCents: 1100000, totalSupposedCents: 1375000,
+      postes: [{ hostId: 'h1', tjmCents: 55000, cumulCents: 2475000, declaredCents: 1100000,
+        supposedCents: 1375000 }] });
+    expect(total).toBe(2475000);
+  });
 });
