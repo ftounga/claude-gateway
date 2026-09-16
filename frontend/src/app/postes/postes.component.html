@@ -92,6 +92,7 @@
         [selectedRef]="selectedRef()"
         [filter]="filter()"
         [closedOpen]="closedOpen()"
+        [billing]="rates()"
         (selectHost)="selectHost($event)"
         (filterChange)="filter.set($event)"
         (toggleClosed)="toggleClosed()"
@@ -660,6 +661,55 @@
 
       @case ('activite') {
         <section class="poste__panel poste__activite" role="tabpanel">
+          <!-- F-124 / SF-124-01 : le TJM de ce poste, et le mois de départ du cumul (réglage global). -->
+          <div class="poste__billing">
+            <mat-form-field appearance="outline" class="poste__billing-field">
+              <mat-label>TJM (€ HT / jour)</mat-label>
+              <input
+                matInput
+                type="number"
+                min="0"
+                step="1"
+                inputmode="decimal"
+                #tjmField
+                [value]="tjmEurosOf(host)"
+                aria-label="Taux journalier moyen de ce poste, en euros hors taxes par jour"
+              />
+              <span matTextSuffix>€/j</span>
+            </mat-form-field>
+            <button
+              mat-flat-button
+              color="primary"
+              class="poste__billing-save"
+              [disabled]="savingTjmHostId() === host.id"
+              (click)="saveTjm(host, tjmField.value)"
+            >
+              Enregistrer le TJM
+            </button>
+          </div>
+
+          <div class="poste__billing">
+            <mat-form-field appearance="outline" class="poste__billing-field">
+              <mat-label>Mois de départ du cumul</mat-label>
+              <input
+                matInput
+                type="month"
+                #startMonthField
+                [value]="startMonth()"
+                aria-label="Mois de départ du cumul de revenu (réglage global)"
+              />
+              <mat-hint>Réglage global, tous postes confondus</mat-hint>
+            </mat-form-field>
+            <button
+              mat-stroked-button
+              class="poste__billing-save"
+              [disabled]="savingStartMonth()"
+              (click)="saveStartMonth(startMonthField.value)"
+            >
+              Enregistrer le mois
+            </button>
+          </div>
+
           @if (activityLabel(host); as activity) {
             <p class="poste__activity" [class.poste__activity--live]="host.activeProjects > 0">
               {{ activity }}

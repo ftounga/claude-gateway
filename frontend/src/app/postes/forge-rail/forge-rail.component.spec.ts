@@ -175,6 +175,29 @@ describe('ForgeRailComponent', () => {
     expect(root.textContent).toContain('Aucun poste ni projet ne correspond.');
   });
 
+  // ---- F-124 / SF-124-01 : le TJM à gauche de chaque poste ----
+
+  it('écrit le TJM à gauche du poste quand il en a un, et rien sinon', () => {
+    const root = render(groupHosts([host('h1', 'FREE'), host('h2', 'CAGIP')], (h) => h.connected, ''));
+    // Sans billing : aucun TJM.
+    expect(root.querySelector('.forge-rail__tjm')).toBeNull();
+
+    fixture.componentRef.setInput('billing', { h1: 55000 });
+    fixture.detectChanges();
+    const [free, cagip] = rows(root);
+    expect(free.querySelector('.forge-rail__tjm')?.textContent).toContain('550');
+    expect(free.querySelector('.forge-rail__tjm')?.textContent).toContain('€/j');
+    // CAGIP n'a pas de TJM : rien.
+    expect(cagip.querySelector('.forge-rail__tjm')).toBeNull();
+  });
+
+  it('ne met jamais de TJM sur le poste « Hébergé »', () => {
+    const root = render(groupHosts([hosted], () => false, ''));
+    fixture.componentRef.setInput('billing', { heberge: 99000 });
+    fixture.detectChanges();
+    expect(root.querySelector('.forge-rail__tjm')).toBeNull();
+  });
+
   // ---- F-106 / SF-106-02 : la même colonne, avec les mots de la Vigie ----
 
   it('prend les mots de la Vigie sans rien changer à la forme', () => {

@@ -76,6 +76,10 @@
                   @if (updateShort(row.host); as update) {
                     <span class="forge-rail__update">{{ update }}</span>
                   }
+                  <!-- F-124 / SF-124-01 : le TJM du poste, à gauche, en JetBrains Mono (charte, aucune couleur nouvelle). -->
+                  @if (tjmLabel(row); as tjm) {
+                    <span class="forge-rail__tjm">{{ tjm }}</span>
+                  }
                 }
               </span>
               @if (row.awaiting > 0) {
