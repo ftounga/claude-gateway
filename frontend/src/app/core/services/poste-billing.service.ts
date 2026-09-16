@@ -42,6 +42,8 @@ export interface CraLine {
   hostName: string | null;
   days: number | null;
   month: string | null;
+  /** La plage comprise, si la ligne venait d'une période (« du 10 a la fin du mois ») — SF-124-04. */
+  period: string | null;
   status: CraLineStatus;
   message: string | null;
 }

@@ -61,4 +61,57 @@ class CraExtractionParserTest {
         List<CraExtraction> lines = parser.parse("[{\"client\":\"Free\",\"days\":5,\"month\":\"sept\"}]");
         assertThat(lines.get(0).month()).isNull();
     }
+
+    // ------------------------------------------------------------------ plages (SF-124-04)
+
+    @Test
+    void parsesAPresetRange() {
+        List<CraExtraction> lines = parser.parse(
+                "[{\"client\":\"Free\",\"range\":{\"preset\":\"FULL_MONTH\"},\"month\":\"2025-08\"}]");
+        assertThat(lines).hasSize(1);
+        assertThat(lines.get(0).days()).isNull();
+        assertThat(lines.get(0).range()).isNotNull();
+        assertThat(lines.get(0).range().preset()).isEqualTo("FULL_MONTH");
+    }
+
+    @Test
+    void parsesFromDayToEndOfMonth() {
+        List<CraExtraction> lines = parser.parse(
+                "[{\"client\":\"KG\",\"range\":{\"fromDay\":10},\"month\":\"2025-08\"}]");
+        assertThat(lines.get(0).range().fromDay()).isEqualTo(10);
+        assertThat(lines.get(0).range().toDay()).isNull();
+        assertThat(lines.get(0).range().preset()).isNull();
+    }
+
+    @Test
+    void parsesADayToDayRange() {
+        List<CraExtraction> lines = parser.parse(
+                "[{\"client\":\"KG\",\"range\":{\"fromDay\":10,\"toDay\":20}}]");
+        assertThat(lines.get(0).range().fromDay()).isEqualTo(10);
+        assertThat(lines.get(0).range().toDay()).isEqualTo(20);
+    }
+
+    @Test
+    void parsesIsoDatesInRange() {
+        List<CraExtraction> lines = parser.parse(
+                "[{\"client\":\"Free\",\"range\":{\"from\":\"2025-08-10\",\"to\":\"2025-08-31\"}}]");
+        assertThat(lines.get(0).range().from()).isEqualTo(java.time.LocalDate.of(2025, 8, 10));
+        assertThat(lines.get(0).range().to()).isEqualTo(java.time.LocalDate.of(2025, 8, 31));
+    }
+
+    @Test
+    void normalisesPresetSynonymsAndIgnoresUnknownOnes() {
+        assertThat(parser.parse("[{\"client\":\"Free\",\"range\":{\"preset\":\"whole month\"}}]")
+                .get(0).range().preset()).isEqualTo("FULL_MONTH");
+        // Un preset inconnu, seul, ne fait pas une plage exploitable → range null.
+        assertThat(parser.parse("[{\"client\":\"Free\",\"range\":{\"preset\":\"someday\"}}]")
+                .get(0).range()).isNull();
+    }
+
+    @Test
+    void daysWinOverRange_backwardCompatible() {
+        List<CraExtraction> lines = parser.parse("[{\"client\":\"Free\",\"days\":20}]");
+        assertThat(lines.get(0).days()).isEqualByComparingTo(new BigDecimal("20"));
+        assertThat(lines.get(0).range()).isNull();
+    }
 }

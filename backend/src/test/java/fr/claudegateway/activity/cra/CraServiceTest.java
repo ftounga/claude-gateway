@@ -158,4 +158,80 @@ class CraServiceTest {
         assertThat(outcome.lines()).isEmpty();
         verify(craRepository, never()).save(any());
     }
+
+    // ------------------------------------------------------------------ plages (SF-124-04)
+
+    private final YearMonth august = YearMonth.of(2025, 8); // 20 jours ouvrés (15/08 férié)
+
+    @Test
+    void resolvesFromDayToEndOfMonth_serverSide() {
+        // « du 10 à la fin du mois » : le serveur compte les jours ouvrés (14), le modèle ne compte pas.
+        modelReturns("[{\"client\":\"Free\",\"range\":{\"fromDay\":10}}]");
+
+        CraOutcome outcome = service.submit(userId, "du 10 à la fin du mois chez Free", august);
+
+        assertThat(outcome.lines().get(0).status()).isEqualTo(CraLineStatus.WRITTEN);
+        assertThat(outcome.lines().get(0).days()).isEqualByComparingTo(new BigDecimal("14"));
+        assertThat(outcome.lines().get(0).month()).isEqualTo("2025-08");
+        assertThat(outcome.lines().get(0).period()).isEqualTo("du 10 a la fin du mois");
+    }
+
+    @Test
+    void resolvesFullMonth() {
+        modelReturns("[{\"client\":\"Free\",\"range\":{\"preset\":\"FULL_MONTH\"}}]");
+
+        CraOutcome outcome = service.submit(userId, "tout le mois chez Free", august);
+
+        assertThat(outcome.lines().get(0).days()).isEqualByComparingTo(new BigDecimal("20"));
+        assertThat(outcome.lines().get(0).period()).isEqualTo("tout le mois");
+    }
+
+    @Test
+    void resolvesADayToDayRange() {
+        modelReturns("[{\"client\":\"KG\",\"range\":{\"fromDay\":10,\"toDay\":20}}]");
+
+        CraOutcome outcome = service.submit(userId, "du 10 au 20 chez KG", august);
+
+        assertThat(outcome.lines().get(0).status()).isEqualTo(CraLineStatus.WRITTEN);
+        assertThat(outcome.lines().get(0).days()).isEqualByComparingTo(new BigDecimal("7"));
+        assertThat(outcome.lines().get(0).period()).isEqualTo("du 10 au 20");
+    }
+
+    @Test
+    void expandsAllClients_oneLinePerOwnedHost() {
+        // « chez tous mes clients » : le modèle (nourri de la liste) rend une ligne par poste.
+        modelReturns("[{\"client\":\"Free\",\"range\":{\"fromDay\":10}},"
+                + "{\"client\":\"KG\",\"range\":{\"fromDay\":10}}]");
+
+        CraOutcome outcome = service.submit(userId, "du 10 à la fin du mois chez tous mes clients", august);
+
+        assertThat(outcome.lines()).hasSize(2);
+        assertThat(outcome.lines()).allMatch(l -> l.status() == CraLineStatus.WRITTEN);
+        assertThat(outcome.lines()).allMatch(l -> l.days().compareTo(new BigDecimal("14")) == 0);
+        verify(craRepository, org.mockito.Mockito.times(2)).save(any(CraEntry.class));
+    }
+
+    @Test
+    void ownedHostNames_areGivenToTheModel_forIsolationAndMatching() {
+        modelReturns("[]");
+
+        service.submit(userId, "chez tous mes clients", august);
+
+        org.mockito.ArgumentCaptor<ChatCompletionRequest> captor =
+                org.mockito.ArgumentCaptor.forClass(ChatCompletionRequest.class);
+        verify(aiProvider).complete(captor.capture());
+        String system = captor.getValue().system();
+        assertThat(system).contains("Free").contains("KG");
+    }
+
+    @Test
+    void aRangeWithNoBusinessDayIsRejected_notWritten() {
+        // Du 16 au 17 août 2025 (samedi/dimanche) → 0 jour ouvré → refusé, rien écrit.
+        modelReturns("[{\"client\":\"Free\",\"range\":{\"fromDay\":16,\"toDay\":17}}]");
+
+        CraOutcome outcome = service.submit(userId, "le week-end du 16 chez Free", august);
+
+        assertThat(outcome.lines().get(0).status()).isEqualTo(CraLineStatus.REJECTED);
+        verify(craRepository, never()).save(any());
+    }
 }
