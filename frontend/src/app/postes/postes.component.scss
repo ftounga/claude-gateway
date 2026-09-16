@@ -273,6 +273,25 @@
   margin-top: var(--cg-space-2);
 }
 
+// F-124 / SF-124-01 : la configuration du TJM et du mois de départ, dans l'onglet Activité.
+.poste__billing {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: var(--cg-space-2);
+  margin-bottom: var(--cg-space-2);
+}
+
+.poste__billing-field {
+  width: 220px;
+  max-width: 100%;
+}
+
+.poste__billing-save {
+  // Aligne le bouton sur le champ Material (hauteur de la zone de saisie, avant l'espace des hints).
+  margin-top: var(--cg-space-1);
+}
+
 .poste__activity-name {
   font-weight: 500;
 }

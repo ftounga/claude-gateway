@@ -1044,6 +1044,24 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     coupe-circuit `RunnerLiveness` (poste hors ligne → refus nommé). Isolation `(user_id, workspace_id)`
     sur toute lecture ; purge à la suppression du **projet** (`WorkspaceService`).
 
+- **poste_billing** — le **TJM par poste** (F-124 / SF-124-01, migration `109`). Table neuve, **au plus
+  une ligne par poste** `(user_id, host_id)` : le taux journalier (€ HT/jour) que l'utilisateur facture
+  au client installé sur cette machine. C'est la brique de configuration du suivi de revenu ; le
+  **cumul** (jours × TJM) est calculé à la volée (SF-124-02), il n'est pas stocké.
+  - `poste_billing` : `id (uuid)`, `user_id (uuid, FK users ON DELETE CASCADE)`, `host_id (uuid, FK
+    runner_hosts ON DELETE CASCADE)`, `daily_rate_cents (bigint)`, `created_at`, `updated_at`. Index
+    **unique** `(host_id)` et index `(user_id, host_id)`.
+  - Le montant est tenu en **centimes** — jamais un flottant en base ; borné à 1 000 000 € HT/jour
+    (`PosteBilling.MAX_DAILY_RATE_CENTS`), jamais négatif. Isolation par `requireOwned` avant toute
+    écriture ; purge garantie par les FK `ON DELETE CASCADE` (ni le poste ni le compte ne laissent de
+    TJM orphelin), comme `host_mail_addresses`.
+
+- **activity_settings** — le **réglage de suivi d'activité** d'un utilisateur (F-124 / SF-124-01,
+  migration `109`). Table neuve, **au plus une ligne par `user_id`**. Aujourd'hui un seul champ : le
+  **mois de départ** du cumul. Absente, le défaut applicatif vaut `2025-09` — le cumul se lit toujours.
+  - `activity_settings` : `id (uuid)`, `user_id (uuid, FK users ON DELETE CASCADE)`,
+    `start_month (varchar 7, 'YYYY-MM')`, `created_at`, `updated_at`. Index **unique** `(user_id)`.
+
 - **Repli de transport du runner — aucune table** (F-38 / SF-38-09). Le canal runner peut être porté
   par le WebSocket de SF-38-02 **ou** par un long-polling HTTP quand un proxy refuse (ou coupe)
   l'`Upgrade`. **Aucune migration, aucune colonne, aucun type de message nouveau** : les deux
@@ -1229,7 +1247,7 @@ Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 rée
 
 Règle d'isolation des données :
 Tout accès aux données filtre obligatoirement sur **`user_id`**
-(documents/messages/subscriptions/uploaded_files/usage_counters/usage_turns/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/host_seat_months/live_terminals/runner_tokens/runner_pairing_codes/runner_audit/atelier_permission_rules/atelier_deposited_files/governance_selections/governance_activations/governance_host_activations/governance_map_growth/governance_deposited_files/pages/page_versions/page_shares/page_events via `user_id` ; tables `radar_*` via `user_id` **et** `host_id` ; `promotion_reportee` via `user_id` + `host_id` + `workspace_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
+(documents/messages/subscriptions/uploaded_files/usage_counters/usage_turns/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/host_seat_months/live_terminals/runner_tokens/runner_pairing_codes/runner_audit/atelier_permission_rules/atelier_deposited_files/poste_billing/activity_settings/governance_selections/governance_activations/governance_host_activations/governance_map_growth/governance_deposited_files/pages/page_versions/page_shares/page_events via `user_id` ; tables `radar_*` via `user_id` **et** `host_id` ; `promotion_reportee` via `user_id` + `host_id` + `workspace_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
 
 ---
 

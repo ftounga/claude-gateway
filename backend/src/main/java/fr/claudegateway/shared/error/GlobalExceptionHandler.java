@@ -934,6 +934,16 @@ public class GlobalExceptionHandler {
                         "Requête invalide : le paramètre '" + ex.getName() + "' est mal formé."));
     }
 
+    @ExceptionHandler(fr.claudegateway.activity.InvalidActivityConfigException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidActivityConfig(
+            fr.claudegateway.activity.InvalidActivityConfigException ex) {
+        // F-124 / SF-124-01 : TJM négatif/hors bornes, ou mois de départ mal formé. Faute de saisie,
+        // pas une panne — le message est déjà lisible par l'utilisateur.
+        log.debug("Réglage de suivi d'activité refusé : {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("invalid_activity_config", ex.getMessage()));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpected(Exception ex) {
         log.error("Erreur inattendue traitée par le handler global", ex);

@@ -6,6 +6,7 @@ import { RunnerHostOverview } from '../../core/models/atelier.models';
 import { HostPresenceService } from '../../core/services/host-presence.service';
 import { HostBadgeComponent } from '../../shared/host-badge/host-badge.component';
 import { hostTone } from '../../shared/host-identity';
+import { tjmLabel } from '../../shared/money';
 import { updateNotice, updatingPresence } from '../../shared/runner-update/runner-update';
 import { ForgeGroup, ForgeRow } from '../forge-fleet';
 
@@ -34,6 +35,12 @@ export class ForgeRailComponent {
   readonly selectedRef = input<string | null>(null);
   readonly filter = input('');
   readonly closedOpen = input(false);
+
+  /**
+   * **Le TJM par poste** (F-124 / SF-124-01), en centimes d'euro HT, indexé par identifiant de poste.
+   * Présentationnel : la Forge le fournit, la Vigie ne le fournit pas — rien n'y change alors.
+   */
+  readonly billing = input<Record<string, number>>({});
 
   // ------------------------------------------------ les mots de l'espace (F-106 / SF-106-02)
   // La Vigie emploie la même colonne : seuls ses mots changent. Les défauts sont ceux de la Forge.
@@ -90,6 +97,16 @@ export class ForgeRailComponent {
   /** Couleur du filet de sélection : celle du poste (§9), aucune pour « Hébergé ». */
   toneOf(row: ForgeRow): string | null {
     return this.isHosted(row.host) ? null : hostTone(row.host.name).solid;
+  }
+
+  /** Le TJM du poste, « 550 €/j », ou `null` s'il n'en a pas — jamais pour « Hébergé » (F-124). */
+  tjmLabel(row: ForgeRow): string | null {
+    const id = row.host.id;
+    if (!id || this.isHosted(row.host)) {
+      return null;
+    }
+    const cents = this.billing()[id];
+    return cents == null ? null : tjmLabel(cents);
   }
 
   /** Ce que la ligne dit à droite quand rien n'attend. */

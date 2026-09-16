@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-124 / SF-124-01 — SUIVI D'ACTIVITE ET DE REVENU : LE TJM PAR POSTE ET LE MOIS DE DEPART.
+
+      Deux tables neuves, la configuration du suivi de revenu :
+
+      * poste_billing : au plus une ligne par poste (user_id, host_id) — le TJM (taux journalier,
+        EUR HT/jour) en CENTIMES (daily_rate_cents, bigint), jamais un flottant en base. Le cumul
+        (SF-124-02) arrondit jours x TJM au centime.
+
+      * activity_settings : au plus une ligne par user_id — le mois de depart du cumul (start_month,
+        'YYYY-MM'). Absente, le defaut applicatif vaut 2025-09.
+
+      Cles etrangeres EN CASCADE vers users et runner_hosts : ni le TJM ni le reglage ne survivent au
+      poste ni au compte, sans purge a ecrire ailleurs (meme choix que host_mail_addresses, mig. 100).
+      Types portables : un seul changeSet pour PostgreSQL et H2. Reversible : dropTable.
+    -->
+    <changeSet id="109-poste-billing" author="claude-gateway">
+        <createTable tableName="poste_billing">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"
+                             foreignKeyName="fk_poste_billing_user"
+                             references="users(id)" deleteCascade="true"/>
+            </column>
+            <column name="host_id" type="uuid">
+                <constraints nullable="false"
+                             foreignKeyName="fk_poste_billing_host"
+                             references="runner_hosts(id)" deleteCascade="true"/>
+            </column>
+            <column name="daily_rate_cents" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="poste_billing" indexName="idx_poste_billing_host" unique="true">
+            <column name="host_id"/>
+        </createIndex>
+        <createIndex tableName="poste_billing" indexName="idx_poste_billing_user_host">
+            <column name="user_id"/>
+            <column name="host_id"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="poste_billing"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="109-activity-settings" author="claude-gateway">
+        <createTable tableName="activity_settings">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"
+                             foreignKeyName="fk_activity_settings_user"
+                             references="users(id)" deleteCascade="true"/>
+            </column>
+            <column name="start_month" type="varchar(7)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="activity_settings" indexName="idx_activity_settings_user" unique="true">
+            <column name="user_id"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="activity_settings"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

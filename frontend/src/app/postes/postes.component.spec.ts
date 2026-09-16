@@ -10,6 +10,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { POSTES_REFRESH_MS, PostesComponent } from './postes.component';
 import { AtelierService } from '../core/services/atelier.service';
 import { GovernanceService } from '../core/services/governance.service';
+import { PosteBillingService } from '../core/services/poste-billing.service';
 import { HostPresenceService } from '../core/services/host-presence.service';
 import { VigieService } from '../core/services/vigie.service';
 import { MailService } from '../core/services/mail.service';
@@ -210,6 +211,7 @@ describe('PostesComponent', () => {
 
   /** Les pages du poste (F-109 / SF-109-04). */
   let pagesSpy: jasmine.SpyObj<PagesService>;
+  let billing: jasmine.SpyObj<PosteBillingService>;
 
   function build(fragment: string | null = null): void {
     pagesSpy = jasmine.createSpyObj<PagesService>('PagesService', ['list']);
@@ -219,6 +221,11 @@ describe('PostesComponent', () => {
     governance.getMap.and.returnValue(of(carte));
     governance.getIntegrite.and.returnValue(of(integriteSaine));
     governance.getHosts.and.returnValue(of([]));
+    // F-124 / SF-124-01 : le TJM par poste et le mois de départ. Vides par défaut dans les tests.
+    billing = jasmine.createSpyObj<PosteBillingService>('PosteBillingService',
+      ['rates', 'settings', 'setRate', 'setStartMonth', 'clearRate']);
+    billing.rates.and.returnValue(of([]));
+    billing.settings.and.returnValue(of({ startMonth: '2025-09' }));
     dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
     dialog.open.and.returnValue({ afterClosed: () => of(dialogAnswer) } as never);
     TestBed.configureTestingModule({
@@ -227,6 +234,7 @@ describe('PostesComponent', () => {
         { provide: AtelierService, useValue: service },
         { provide: VigieService, useValue: vigieSpy },
         { provide: GovernanceService, useValue: governance },
+        { provide: PosteBillingService, useValue: billing },
         { provide: MailService, useValue: jasmine.createSpyObj<MailService>('MailService', { address: EMPTY }) },
         // F-109 / SF-109-04 : l'onglet Pages lit les pages du poste.
         { provide: PagesService, useValue: pagesSpy },
@@ -2414,6 +2422,10 @@ describe('PostesComponent', () => {
       governance.getMap.and.returnValue(answer);
       governance.getIntegrite.and.returnValue(of(integriteSaine));
       governance.getHosts.and.returnValue(of([]));
+      billing = jasmine.createSpyObj<PosteBillingService>('PosteBillingService',
+        ['rates', 'settings', 'setRate', 'setStartMonth', 'clearRate']);
+      billing.rates.and.returnValue(of([]));
+      billing.settings.and.returnValue(of({ startMonth: '2025-09' }));
       dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
       dialog.open.and.returnValue({ afterClosed: () => of(dialogAnswer) } as never);
       TestBed.resetTestingModule();
@@ -2422,8 +2434,8 @@ describe('PostesComponent', () => {
         providers: [
           { provide: AtelierService, useValue: service },
           { provide: VigieService, useValue: vigieSpy },
-        { provide: VigieService, useValue: vigieSpy },
           { provide: GovernanceService, useValue: governance },
+          { provide: PosteBillingService, useValue: billing },
           { provide: MailService, useValue: jasmine.createSpyObj<MailService>('MailService', { address: EMPTY }) },
           { provide: MatDialog, useValue: dialog },
           provideRouter([]),
@@ -2534,6 +2546,62 @@ describe('PostesComponent', () => {
 
       expect(vigieSpy.projectSubjects).not.toHaveBeenCalled();
       expect(fixture.nativeElement.querySelector('.projet__vigie')).toBeNull();
+    });
+  });
+
+  // ------------------------------------------------------------------ suivi de revenu (F-124 / SF-124-01)
+
+  describe('TJM par poste (F-124 / SF-124-01)', () => {
+    it('lit le TJM et le mois de départ à l\'ouverture', () => {
+      setup();
+      expect(billing.rates).toHaveBeenCalled();
+      expect(billing.settings).toHaveBeenCalled();
+      expect(component.startMonth()).toBe('2025-09');
+    });
+
+    it('affiche le TJM à gauche de chaque poste dans la colonne', () => {
+      setup();
+      component.rates.set({ h1: 55000 });
+      fixture.detectChanges();
+      const tjm = (fixture.nativeElement as HTMLElement).querySelector('.forge-rail__tjm');
+      expect(tjm).not.toBeNull();
+      expect(tjm?.textContent).toContain('550');
+      expect(tjm?.textContent).toContain('€/j');
+    });
+
+    it('préremplit le champ TJM avec le montant en euros', () => {
+      setup();
+      component.rates.set({ h1: 55000 });
+      expect(component.tjmEurosOf(poste)).toBe('550');
+      expect(component.tjmEurosOf({ ...poste, id: 'other' } as RunnerHostOverview)).toBe('');
+    });
+
+    it('enregistre le TJM saisi en euros, converti en centimes', () => {
+      setup();
+      billing.setRate.and.returnValue(of({ hostId: 'h1', dailyRateCents: 60000 }));
+      component.saveTjm(poste, '600');
+      expect(billing.setRate).toHaveBeenCalledWith('h1', 60000);
+      expect(component.rates()['h1']).toBe(60000);
+    });
+
+    it('refuse un TJM négatif sans appeler le service', () => {
+      setup();
+      component.saveTjm(poste, '-5');
+      expect(billing.setRate).not.toHaveBeenCalled();
+    });
+
+    it('enregistre le mois de départ au bon format', () => {
+      setup();
+      billing.setStartMonth.and.returnValue(of({ startMonth: '2026-01' }));
+      component.saveStartMonth('2026-01');
+      expect(billing.setStartMonth).toHaveBeenCalledWith('2026-01');
+      expect(component.startMonth()).toBe('2026-01');
+    });
+
+    it('refuse un mois mal formé sans appeler le service', () => {
+      setup();
+      component.saveStartMonth('2026-13');
+      expect(billing.setStartMonth).not.toHaveBeenCalled();
     });
   });
 });

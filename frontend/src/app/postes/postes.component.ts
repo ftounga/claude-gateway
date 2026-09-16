@@ -6,7 +6,9 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
+import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
@@ -17,6 +19,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { AtelierService } from '../core/services/atelier.service';
 import { GovernanceService } from '../core/services/governance.service';
+import { PosteBillingService } from '../core/services/poste-billing.service';
 import { HostPresenceService } from '../core/services/host-presence.service';
 import { VigieService } from '../core/services/vigie.service';
 import { RadarSubjectRef } from '../core/models/radar-subject.models';
@@ -204,7 +207,9 @@ const EMPTY_HOSTED: RunnerHostOverview = {
     MatButtonModule,
     MatCardModule,
     MatDividerModule,
+    MatFormFieldModule,
     MatIconModule,
+    MatInputModule,
     MatMenuModule,
     MatProgressSpinnerModule,
     MatTooltipModule,
@@ -215,6 +220,7 @@ const EMPTY_HOSTED: RunnerHostOverview = {
 export class PostesComponent implements OnInit {
   private readonly atelier = inject(AtelierService);
   private readonly governance = inject(GovernanceService);
+  private readonly billing = inject(PosteBillingService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly destroyRef = inject(DestroyRef);
@@ -485,6 +491,20 @@ export class PostesComponent implements OnInit {
    */
   private readonly outdatedByHost = signal<Record<string, number>>({});
 
+  // ---------------------------------------------- suivi de revenu (F-124 / SF-124-01)
+
+  /** Le **TJM par poste** (F-124 / SF-124-01), en centimes d'euro HT, indexé par identifiant de poste. */
+  readonly rates = signal<Record<string, number>>({});
+
+  /** Le **mois de départ** du cumul (F-124 / SF-124-01), format {@code YYYY-MM} ; défaut serveur `2025-09`. */
+  readonly startMonth = signal<string>('2025-09');
+
+  /** Le poste dont le TJM est en cours d'enregistrement (désactive son bouton). */
+  readonly savingTjmHostId = signal<string | null>(null);
+
+  /** Vrai pendant l'enregistrement du mois de départ. */
+  readonly savingStartMonth = signal(false);
+
   /** L'activité du poste ouvert : ses projets, du plus récent au plus ancien, ceux sans trace à la fin. */
   readonly selectedActivity = computed<HostProjectSummary[]>(() =>
     [...this.selectedHost().projects]
@@ -496,6 +516,7 @@ export class PostesComponent implements OnInit {
     this.load(true);
     this.loadTeamsAccess();
     this.loadGovernanceHosts();
+    this.loadBilling();
     this.startPolling();
     document.addEventListener('visibilitychange', this.onVisibilityChange);
     // Les libellés datés avancent à la seconde, sans appel (F-97 / SF-97-02).
@@ -558,6 +579,7 @@ export class PostesComponent implements OnInit {
     this.projectSubjectsRead.clear();
     this.integritesRead.clear();
     this.loadGovernanceHosts();
+    this.loadBilling();
     this.load(this.hosts().length === 0);
   }
 
@@ -625,6 +647,86 @@ export class PostesComponent implements OnInit {
         this.outdatedByHost.set(byHost);
       },
       error: () => this.outdatedByHost.set({}),
+    });
+  }
+
+  /**
+   * **Le TJM par poste et le mois de départ** (F-124 / SF-124-01). Un enrichissement : un échec de
+   * lecture n'efface pas la vue ni ne bloque la Forge — le TJM ne s'affiche simplement pas.
+   */
+  private loadBilling(): void {
+    this.billing.rates().subscribe({
+      next: (rates) => {
+        const byHost: Record<string, number> = {};
+        for (const rate of rates ?? []) {
+          byHost[rate.hostId] = rate.dailyRateCents;
+        }
+        this.rates.set(byHost);
+      },
+      error: () => { /* le TJM est un enrichissement : son absence ne casse pas la Forge */ },
+    });
+    this.billing.settings().subscribe({
+      next: (settings) => this.startMonth.set(settings.startMonth),
+      error: () => { /* défaut applicatif conservé */ },
+    });
+  }
+
+  /** Le TJM du poste ouvert en euros, pour préremplir le champ (vide s'il n'y en a pas). */
+  tjmEurosOf(host: RunnerHostOverview): string {
+    const id = host.id;
+    if (!id) {
+      return '';
+    }
+    const cents = this.rates()[id];
+    return cents == null ? '' : String(cents / 100);
+  }
+
+  /** Enregistre le TJM (€ HT/jour) du poste ouvert. Le montant saisi est en euros, converti en centimes. */
+  saveTjm(host: RunnerHostOverview, raw: string): void {
+    const id = host.id;
+    if (!id) {
+      return;
+    }
+    const euros = Number((raw ?? '').replace(',', '.').trim());
+    if (!Number.isFinite(euros) || euros < 0) {
+      this.snackBar.open('Le TJM doit être un montant positif.', 'Fermer', { duration: 4000 });
+      return;
+    }
+    const cents = Math.round(euros * 100);
+    this.savingTjmHostId.set(id);
+    this.billing.setRate(id, cents).subscribe({
+      next: (rate) => {
+        this.rates.update((map) => ({ ...map, [id]: rate.dailyRateCents }));
+        this.savingTjmHostId.set(null);
+        this.snackBar.open('TJM enregistré.', 'Fermer', { duration: 4000 });
+      },
+      error: (err: unknown) => {
+        this.savingTjmHostId.set(null);
+        this.snackBar.open(httpErrorMessage(err, 'Enregistrement du TJM impossible.'),
+          'Fermer', { duration: 4000 });
+      },
+    });
+  }
+
+  /** Enregistre le mois de départ du cumul (réglage global de l'utilisateur). */
+  saveStartMonth(raw: string): void {
+    const month = (raw ?? '').trim();
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+      this.snackBar.open('Le mois de départ doit être au format AAAA-MM.', 'Fermer', { duration: 4000 });
+      return;
+    }
+    this.savingStartMonth.set(true);
+    this.billing.setStartMonth(month).subscribe({
+      next: (settings) => {
+        this.startMonth.set(settings.startMonth);
+        this.savingStartMonth.set(false);
+        this.snackBar.open('Mois de départ enregistré.', 'Fermer', { duration: 4000 });
+      },
+      error: (err: unknown) => {
+        this.savingStartMonth.set(false);
+        this.snackBar.open(httpErrorMessage(err, 'Enregistrement du mois de départ impossible.'),
+          'Fermer', { duration: 4000 });
+      },
     });
   }
 
