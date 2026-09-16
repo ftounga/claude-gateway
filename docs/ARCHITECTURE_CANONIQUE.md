@@ -1067,7 +1067,10 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   mois. **Seuls les CRA déclarés sont stockés** ; le « supposé » (mois complet automatique) est calculé
   à la volée par `RevenueService` (aucune ligne — l'absence est signifiante). La table est **l'entrée du
   calcul du cumul** : créée et **lue** en SF-124-02 ; son chemin d'**écriture** (extraction IA du message
-  NL) arrive en SF-124-03. Renvoyer un CRA pour un mois **écrase** l'ancien (unicité sur la clé).
+  NL par `CraService`/`CraController`, `POST /activity/cra`) est livré en **SF-124-03** — le modèle
+  extrait via l'interface `AIProvider` (Provider-First), la Gateway rapproche le nom à un poste possédé
+  (inconnu → demandé, jamais deviné), valide (jours ≤ jours ouvrés, 0,5, mois courant par défaut) et
+  persiste. Renvoyer un CRA pour un mois **écrase** l'ancien (unicité sur la clé).
   - `cra_entries` : `id (uuid)`, `user_id (uuid, FK users ON DELETE CASCADE)`, `host_id (uuid, FK
     runner_hosts ON DELETE CASCADE)`, `year_month (varchar 7, 'YYYY-MM')`, `days (numeric(4,1)` —
     demi-journées admises), `created_at`, `updated_at`. Index **unique** `(user_id, host_id, year_month)`
