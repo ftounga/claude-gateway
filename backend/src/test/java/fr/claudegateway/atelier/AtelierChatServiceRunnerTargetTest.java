@@ -544,6 +544,79 @@ class AtelierChatServiceRunnerTargetTest {
         assertThat(toolResultText()).contains("pas activée sur ce runner");
     }
 
+    // ------------------------------------------- F-121 / SF-121-04 : retry d'un appel transitoire
+
+    @Test
+    void aTransientCallThatSucceedsOnRetryReturnsNoError() {
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        service.setRunnerRetry(2, 0); // 2 réessais, sans attente en test
+        when(runnerToolGateway.bash(eq(runnerTarget), anyString(), eq("npm test"), any(), anyLong(), any()))
+                .thenReturn(RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_TIMEOUT))
+                .thenReturn(bashOk("ok\n", 0, false));
+        agentProvider.enqueueToolCall("bash", "command", "npm test");
+        agentProvider.enqueueFinal("Fait.");
+
+        service.chat(userId, workspaceId, "lance les tests");
+
+        // Un timeout qui réussit au 2e essai ne remonte AUCUNE erreur au modèle.
+        assertThat(lastToolResult().isError()).isFalse();
+        assertThat(toolResultText()).contains("ok").endsWith("[code de sortie: 0]");
+        verify(runnerToolGateway, times(2)).bash(eq(runnerTarget), anyString(), eq("npm test"), any(), anyLong(), any());
+    }
+
+    @Test
+    void aPersistentTransientFailureStaysInconclusiveAndTagged() {
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        service.setRunnerRetry(2, 0);
+        when(runnerToolGateway.bash(eq(runnerTarget), anyString(), eq("npm test"), any(), anyLong(), any()))
+                .thenReturn(RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_TIMEOUT));
+        agentProvider.enqueueToolCall("bash", "command", "npm test");
+        agentProvider.enqueueFinal("Non concluant.");
+
+        service.chat(userId, workspaceId, "lance les tests");
+
+        // 1 appel + 2 réessais, puis « non concluant (réessayé) » — jamais un négatif.
+        verify(runnerToolGateway, times(3)).bash(eq(runnerTarget), anyString(), eq("npm test"), any(), anyLong(), any());
+        assertThat(lastToolResult().isError()).isTrue();
+        assertThat(toolResultText()).contains("non concluant");
+        assertThat(toolResultText()).contains("réessayé");
+    }
+
+    @Test
+    void aHardRefusalIsNeverRetried() {
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        service.setRunnerRetry(2, 0);
+        when(runnerToolGateway.bash(eq(runnerTarget), anyString(), eq("rm -rf /"), any(), anyLong(), any()))
+                .thenReturn(RunnerCallResult.backendError(RunnerErrorCodes.UNSUPPORTED_TOOL,
+                        "L'exécution de commandes n'est pas activée sur ce runner."));
+        agentProvider.enqueueToolCall("bash", "command", "rm -rf /");
+        agentProvider.enqueueFinal("Refusé.");
+
+        service.chat(userId, workspaceId, "lance");
+
+        // Un vrai refus n'est jamais rejoué, et n'est pas tagué « réessayé ».
+        verify(runnerToolGateway, times(1)).bash(eq(runnerTarget), anyString(), eq("rm -rf /"), any(), anyLong(), any());
+        assertThat(toolResultText()).doesNotContain("réessayé");
+        assertThat(toolResultText()).contains("pas activée sur ce runner");
+    }
+
+    @Test
+    void retryIsDisabledWhenConfiguredToZero() {
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        service.setRunnerRetry(0, 0); // coupe-circuit
+        when(runnerToolGateway.bash(eq(runnerTarget), anyString(), eq("npm test"), any(), anyLong(), any()))
+                .thenReturn(RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_TIMEOUT));
+        agentProvider.enqueueToolCall("bash", "command", "npm test");
+        agentProvider.enqueueFinal("Bon.");
+
+        service.chat(userId, workspaceId, "lance");
+
+        verify(runnerToolGateway, times(1)).bash(eq(runnerTarget), anyString(), eq("npm test"), any(), anyLong(), any());
+        // Non concluant (SF-119-04) mais PAS « réessayé » — aucun réessai n'a eu lieu.
+        assertThat(toolResultText()).contains("non concluant");
+        assertThat(toolResultText()).doesNotContain("réessayé");
+    }
+
     @Test
     void theBashStepCarriesTheCommandTruncatedForTheScreen() {
         stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);

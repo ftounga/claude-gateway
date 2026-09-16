@@ -2181,15 +2181,11 @@ public class AtelierChatService implements RelayInterruptTarget {
                 }
             }
         }
-        RunnerCallResult result;
-        try {
-            result = callRunner(runnerTarget, callId, call, listener, deadline);
-        } catch (RuntimeException ex) {
-            // Argument manquant ou malformé : rien n'est parti, mais la tentative est tracée — le
-            // journal doit dire ce que le modèle a essayé, pas seulement ce qui a abouti.
-            result = RunnerCallResult.backendError(RunnerErrorCodes.INVALID_INPUT,
-                    ex.getMessage() != null ? ex.getMessage() : "Opération refusée.");
-        }
+        // F-121 / SF-121-04 : un échec de TRANSPORT (runner_timeout/unavailable/not_on_this_node/
+        // protocol_error) est réessayé, borné, AVANT de rendre la main au modèle — ~17 % des appels
+        // échouent derrière le proxy en prod, et un négatif rendu au modèle le fait conclure faux.
+        RunnerCallResult result =
+                callRunnerWithRetry(userId, workspaceId, runnerTarget, callId, call, listener, deadline);
         if (result == null) {
             return ToolOutcome.error("Outil inconnu : " + tool);
         }
@@ -2318,6 +2314,99 @@ public class AtelierChatService implements RelayInterruptTarget {
         return outcome.reason() == null || outcome.reason().isBlank()
                 ? "Commande refusée par l'utilisateur."
                 : "Commande refusée par l'utilisateur. Motif : " + outcome.reason();
+    }
+
+    /**
+     * Nombre de <b>réessais</b> d'un appel runner transitoire (F-121 / SF-121-04), réglable par
+     * {@code app.atelier.runner-retries} (défaut 2 ; {@code 0} désactive le réessai — coupe-circuit).
+     * Un timeout/indispo/mauvais nœud/erreur de protocole est réessayé jusqu'à ce nombre de fois,
+     * <b>dans le budget de tour restant</b>, avant d'être rendu au modèle.
+     */
+    @org.springframework.beans.factory.annotation.Value("${app.atelier.runner-retries:2}")
+    private int runnerRetries;
+
+    /**
+     * Attente entre deux tentatives d'un appel runner transitoire, en millisecondes (F-121 / SF-121-04),
+     * réglable par {@code app.atelier.runner-retry-backoff-ms} (défaut 250). Courte par construction :
+     * elle doit tenir dans le budget de tour, jamais le consumer.
+     */
+    @org.springframework.beans.factory.annotation.Value("${app.atelier.runner-retry-backoff-ms:250}")
+    private long runnerRetryBackoffMs;
+
+    /** Réglage du réessai — exposé pour les tests (F-121 / SF-121-04). */
+    void setRunnerRetry(int retries, long backoffMs) {
+        this.runnerRetries = retries;
+        this.runnerRetryBackoffMs = backoffMs;
+    }
+
+    /**
+     * Émet l'appel runner et le <b>réessaie</b> tant qu'il échoue en <b>transport</b> (F-121 / SF-121-04) :
+     * borné par {@link #runnerRetries}, un court {@link #runnerRetryBackoffMs} entre deux, et jamais
+     * au-delà du budget de tour restant ni d'une interruption. Ne réessaie <b>pas</b> un vrai refus
+     * ({@code unsupported_tool}, {@code invalid_input}, argument manquant) : rien n'y changerait. Si le
+     * dernier essai échoue encore en transport, le résultat est <b>tagué « (réessayé) »</b>, ce que le
+     * message « non concluant » (SF-119-04) reprend au modèle.
+     */
+    private RunnerCallResult callRunnerWithRetry(UUID userId, UUID workspaceId, RunnerTarget target,
+            String callId, AgentToolCall call, AtelierProgressListener listener, long deadline) {
+        RunnerCallResult result = callRunnerOnce(target, callId, call, listener, deadline);
+        if (result == null) {
+            return null; // outil inconnu : rien à réessayer
+        }
+        int attempts = 0;
+        while (runnerRetries > 0 && attempts < runnerRetries
+                && isInconclusiveFailure(result.errorCode())) {
+            // Le réessai reste DANS le budget du tour, et cède à une interruption : on ne fait pas
+            // patienter un tour déjà arrêté.
+            if (deadline - System.currentTimeMillis() <= runnerRetryBackoffMs
+                    || interruptedTurns.contains(turnKey(userId, workspaceId))) {
+                break;
+            }
+            try {
+                Thread.sleep(runnerRetryBackoffMs);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+            attempts++;
+            RunnerCallResult retried = callRunnerOnce(target, callId, call, listener, deadline);
+            if (retried == null) {
+                return null;
+            }
+            result = retried;
+        }
+        if (attempts > 0 && isInconclusiveFailure(result.errorCode())) {
+            log.info("Appel runner transitoire réessayé {} fois sans succès (workspace={}, outil={})",
+                    attempts, workspaceId, call.name());
+            return retriedTag(result);
+        }
+        return result;
+    }
+
+    /** Un appel runner, argument manquant compris (tracé comme une tentative, jamais lancé sans être vu). */
+    private RunnerCallResult callRunnerOnce(RunnerTarget target, String callId, AgentToolCall call,
+            AtelierProgressListener listener, long deadline) {
+        try {
+            return callRunner(target, callId, call, listener, deadline);
+        } catch (RuntimeException ex) {
+            // Argument manquant ou malformé : rien n'est parti, mais la tentative est tracée — le
+            // journal doit dire ce que le modèle a essayé, pas seulement ce qui a abouti.
+            return RunnerCallResult.backendError(RunnerErrorCodes.INVALID_INPUT,
+                    ex.getMessage() != null ? ex.getMessage() : "Opération refusée.");
+        }
+    }
+
+    /**
+     * Tague un échec de transport comme « (réessayé) » (F-121 / SF-121-04), en préservant tous les
+     * autres champs — dont la sortie partielle {@code streamed} d'un {@code bash} (SF-119-04).
+     */
+    private static RunnerCallResult retriedTag(RunnerCallResult result) {
+        String base = result.errorMessage() == null || result.errorMessage().isBlank()
+                ? RunnerErrorCodes.messageFor(result.errorCode())
+                : result.errorMessage();
+        return new RunnerCallResult(false, result.content(), result.truncated(), result.exitCode(),
+                result.durationMs(), result.bytes(), result.errorCode(), base + " (réessayé)",
+                result.streamed(), result.streamTruncated());
     }
 
     /** Émet l'appel vers le runner ; {@code null} si l'outil demandé n'existe pas. */
@@ -2633,7 +2722,9 @@ public class AtelierChatService implements RelayInterruptTarget {
     /** Traduit une issue d'appel runner en résultat d'outil dont le contenu est rendu verbatim. */
     private ToolOutcome textOutcome(RunnerCallResult result, AtelierAction action) {
         if (!result.ok()) {
-            return ToolOutcome.error(result.errorMessage());
+            // F-121 / SF-121-04 : un échec de transport (y compris après réessai) est « non concluant »
+            // pour tout outil, pas seulement bash/read (SF-119-04) ; les autres refus gardent leur message.
+            return ToolOutcome.error(inconclusiveNote(result));
         }
         String content = result.truncated()
                 ? result.content() + "\n… (contenu tronqué)"
