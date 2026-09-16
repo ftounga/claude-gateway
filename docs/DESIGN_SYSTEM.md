@@ -818,6 +818,43 @@ poste ouvert.
 
 ---
 
+## 19 — La Vitrine des clients (ajout F-124 / SF-124-05, 2026-09-17)
+
+> **Deux ajouts charte CONTRÔLÉS et BORNÉS**, décidés au cadrage de la maquette A « Vitrine » validée
+> par le PO (`docs/features/F-124/design/maquette-A-vitrine.html`) : une **police display** pour les
+> gros chiffres monétaires, et un **or-encre** qui tient l'AA sur blanc. Rien d'autre n'est ajouté ;
+> tout le reste vient de §2. Écran : `/forge/clients` (`MesClientsComponent`).
+
+L'écran **met en valeur** le revenu par client déjà produit par F-124 (SF-124-02) — un **bandeau
+« fierté »** (total tous clients, sur navy) et de **grandes cartes clients**. Il ne calcule rien de
+neuf : les jours travaillés sont l'**inverse d'affichage** de `cumul = jours × TJM`, jamais recomptés.
+
+### Les deux ajouts, et leur borne
+
+| Ajout | Jeton | Emploi **exclusif** | Pourquoi |
+|---|---|---|---|
+| Police display | `--cg-font-display: 'Fraunces', Georgia, serif` | **Uniquement** les gros chiffres monétaires de la Vitrine (total du bandeau, revenu par carte). | Le §8 borne les polices à trois ; l'identité « premium » de la maquette repose sur une serif de titraille. Fallback serif : rien ne casse sans Fraunces. Chargée avec les autres Google Fonts (`index.html`). |
+| Or-encre | `--cg-gold-ink: #8A5200` | **Doré COMME TEXTE sur surface claire** (ex. symbole monétaire des cartes). | L'or de marque `--cg-accent` (`#C9973A`) tombe à ~2,6:1 sur blanc et **échoue l'AA**. `#8A5200` est ce même or **approfondi** (≥ 4,5:1 sur blanc), à la manière de `--cg-terminal-teams-warn`. L'or clair (`--cg-accent` / `--cg-accent-2`) reste pour le **doré sur navy** et les emplois **décoratifs** (liseré, dégradés). |
+
+### Règles d'emploi — non négociables
+
+- **Aucune couleur nouvelle en dehors de l'or-encre.** Navy `--cg-primary`, or `--cg-accent`/`--cg-accent-2`,
+  fond `--cg-bg`, surface `--cg-surface`, filet `--cg-divider`, succès `--cg-success`, encres `--cg-text-*` :
+  tout est de §2. Le bandeau est un **dégradé navy** (`--cg-primary` → `--cg-navy-2`), pas un aplat neuf.
+- **L'AA est tenu et prouvé.** Or (`--cg-accent-2`) sur navy en **grand texte** (total display) ≥ 3:1 ; or-encre
+  (`--cg-gold-ink`) sur blanc ≥ 4,5:1. Vérifié par `frontend/src/app/forge-clients/client-showcase.spec.ts`.
+- **La pastille d'identité passe par `app-host-badge` (§9)**, jamais recomposée — l'avatar à dégradé navy de
+  la maquette est **remplacé** par la pastille de charte, dont le contraste est déjà prouvé pour chaque ton.
+- **Le statut DATE, il n'affirme pas (§16, F-97)** : « En ligne · vu il y a … » / « Hors ligne · vu il y a … » /
+  « Jamais connecté » — jamais « Connecté » nu, contrairement à la maquette.
+- **Le liseré or à gauche des cartes est DÉCORATIF** : la couleur ne porte aucune information (le §8 interdit le
+  fond coloré sur les cartes ; ce filet n'est pas un fond, et n'est pas non plus le filet d'identité §9).
+- **Le badge Déclaré / Partiellement estimé emprunte §5** : succès (`badge--success`) et attente (`badge--warning`),
+  libellé toujours écrit. Aucun registre de plus.
+- **Bornée à cet écran** : `--cg-font-display` et `--cg-gold-ink` n'ont **aucun autre emploi** dans le produit.
+
+---
+
 ## Logo & marque (ajout 2026-07-03)
 
 - **Logo de l'application** : `frontend/public/claude-portal-logo.png` (« Claude Portal » — bouclier hexagonal, tête + étincelle, bulle de chat, orbite). Utilisé comme **favicon** (`index.html`) et sur la **landing** (nav, hero, footer). Nom de marque affiché : **« Claude Portal »** (renommé en F-29 SF-29-01 : le terme « Proxy » faisait classer le domaine en catégorie « anonymizer » par les filtres d'entreprise).

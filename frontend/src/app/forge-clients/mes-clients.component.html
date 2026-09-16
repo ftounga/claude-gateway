@@ -1,0 +1,119 @@
+<section class="vitrine">
+  <a class="vitrine__back" routerLink="/forge" aria-label="Retour à la Forge">
+    <mat-icon aria-hidden="true">arrow_back</mat-icon>
+    Forge
+  </a>
+
+  @if (loading()) {
+    <div class="vitrine__loading">
+      <mat-spinner diameter="40"></mat-spinner>
+    </div>
+  } @else if (error() === 'network') {
+    <div class="vitrine__notice">
+      <mat-icon aria-hidden="true">cloud_off</mat-icon>
+      <div>
+        <h2>Le revenu n'a pas pu être lu</h2>
+        <p>La gateway n'a pas répondu. Rien n'est perdu.</p>
+        <button mat-flat-button color="primary" type="button" (click)="load()">Réessayer</button>
+      </div>
+    </div>
+  } @else if (showcase()) {
+    @let sc = showcase()!;
+    <!-- BANDEAU « FIERTÉ » (maquette A) : le total tous clients en très gros, en or sur navy. -->
+    <div class="vitrine__hero">
+      <p class="vitrine__eyebrow">Revenu cumulé · depuis {{ sc.startMonthLabel }} · HT</p>
+      <p class="vitrine__total num">{{ totalAmount() }}<span class="vitrine__cur">€</span></p>
+      <p class="vitrine__sub">
+        Tous clients confondus, HT — {{ totalDaysLabel() }}
+        sur {{ sc.clientCount }} {{ sc.clientCount > 1 ? 'clients' : 'client' }}.
+      </p>
+      <div class="vitrine__chips">
+        <span class="vitrine__chip num">
+          <b>{{ sc.clientCount }}</b> {{ sc.clientCount > 1 ? 'clients' : 'client' }}
+        </span>
+        <span class="vitrine__chip num"><b>{{ totalDaysLabel() }}</b></span>
+        @if (estimatedLabel(); as estimated) {
+          <span class="vitrine__chip vitrine__chip--est num">{{ estimated }}</span>
+        }
+      </div>
+    </div>
+
+    @if (isEmpty()) {
+      <!-- Lecture réussie, mais aucun poste n'a de TJM : on le DIT, plutôt qu'une grille vide. -->
+      <div class="vitrine__empty">
+        <mat-icon aria-hidden="true">payments</mat-icon>
+        <div>
+          <h2>Aucun revenu à afficher</h2>
+          <p>Réglez un TJM sur un poste depuis la Forge (onglet Activité) pour voir son revenu cumulé ici.</p>
+          <a mat-stroked-button routerLink="/forge">Aller à la Forge</a>
+        </div>
+      </div>
+    } @else {
+      <div class="vitrine__sec">
+        <h2>Mes clients</h2>
+        <span class="vitrine__count num">
+          {{ sc.clientCount }} {{ sc.clientCount > 1 ? 'clients' : 'client' }}
+        </span>
+      </div>
+
+      <!-- GRANDES CARTES CLIENTS (maquette A) : liseré or, ombre douce, survol léger. Grille responsive. -->
+      <div class="vitrine__grid">
+        @for (card of sc.cards; track card.hostId) {
+          <button type="button" class="vitrine-card" (click)="openHost(card)">
+            <div class="vitrine-card__top">
+              <!-- §9 : la pastille d'identité passe TOUJOURS par app-host-badge, jamais recomposée. -->
+              <app-host-badge [name]="card.name" size="lg" [showName]="false"></app-host-badge>
+              <div class="vitrine-card__head">
+                <h3 class="vitrine-card__name">{{ card.name }}</h3>
+                <!-- F-97 : le statut DATE, il n'affirme pas — jamais « Connecté » seul. -->
+                <span class="vitrine-card__status">
+                  <span
+                    class="vitrine-card__dot"
+                    [class.vitrine-card__dot--online]="online(card)"
+                    aria-hidden="true"
+                  ></span>
+                  {{ stateLabel(card) }}
+                </span>
+              </div>
+            </div>
+
+            <div class="vitrine-card__revenue">
+              <p class="vitrine-card__label">Revenu depuis {{ sc.startMonthLabel }}</p>
+              <div class="vitrine-card__val num">{{ cumulAmount(card) }}<span class="vitrine-card__cur">€</span></div>
+              <p class="vitrine-card__days num">{{ daysLabel(card) }}</p>
+            </div>
+
+            <div class="vitrine-card__foot">
+              <span class="vitrine-card__tjm">
+                <span>TJM</span>
+                <b class="num">{{ tjmLabel(card) }}</b>
+              </span>
+              @if (card.estimated) {
+                <span class="badge badge--warning">Partiellement estimé</span>
+              } @else {
+                <span class="badge badge--success">Déclaré</span>
+              }
+            </div>
+          </button>
+        }
+      </div>
+    }
+
+    <!-- Le geste de déclaration (SF-124-03) reste, bien placé — comme dans la maquette. -->
+    <button
+      mat-flat-button
+      color="primary"
+      type="button"
+      class="vitrine__cra"
+      (click)="declareCra()"
+      matTooltip="Déclarer ses jours travaillés en une phrase — « Free 20j, KG 13j »"
+    >
+      <mat-icon>event_note</mat-icon>
+      Déclarer mon CRA
+    </button>
+    <p class="vitrine__note">
+      « Estimé » = mois non déclaré, compté au mois complet (jours ouvrés). Déclarez votre CRA pour le
+      remplacer par le réel.
+    </p>
+  }
+</section>

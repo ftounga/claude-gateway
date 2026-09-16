@@ -41,6 +41,13 @@ html {
   --cg-text-secondary: #6B7A8D; // ardoise legalcase
   --cg-divider: #E0E4EA;        // filet legalcase
 
+  // Or-encre : or de marque APPROFONDI pour tenir l'AA (≥ 4,5:1) sur BLANC, où --cg-accent (#C9973A)
+  // tombe à ~2,6:1 (F-124 / SF-124-05, DESIGN_SYSTEM.md §19). Même démarche que --cg-terminal-teams-warn.
+  // Réservé au DORÉ COMME TEXTE sur surface claire (ex. symbole monétaire de la Vitrine). Contraste
+  // vérifié par client-showcase.spec.ts. L'or clair (--cg-accent / --cg-accent-2) reste pour le doré
+  // sur navy et les emplois décoratifs (liseré, dégradés).
+  --cg-gold-ink: #8A5200;
+
   // Surface du TERMINAL TEAMS, « Papier » (F-89 / SF-89-09, DESIGN_SYSTEM.md §15) — REMPLACE la peau
   // sombre « Prune » de SF-89-07 (jugée trop proche de la Forge par le PO en production). Ajout de
   // palette demandé par le PO, BORNÉ au terminal Teams et à ses tuiles de mosaïque. Nulle part ailleurs.
@@ -63,6 +70,10 @@ html {
   --cg-font-heading: 'Space Grotesk', 'Inter', sans-serif;
   --cg-font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --cg-font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  // Police DISPLAY (F-124 / SF-124-05, DESIGN_SYSTEM.md §19) — ajout charte contrôlé, BORNÉ aux
+  // GROS CHIFFRES MONÉTAIRES (total et revenu par carte de la Vitrine). Fallback serif : rien ne
+  // casse si Fraunces ne charge pas.
+  --cg-font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
 
   // Espacements (multiples de 4)
   --cg-space-1: 4px;

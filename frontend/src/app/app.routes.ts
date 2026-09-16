@@ -15,7 +15,7 @@ export function forgeDensityRedirect(densite: 'apercus' | 'flux'): RedirectFunct
  * Segments réservés sous `/forge` : ce ne sont pas des postes. Un poste n'a pour référence qu'un
  * identifiant (UUID) ou `heberge` ; ces écrans-là ont leur propre route.
  */
-export const FORGE_RESERVED_SEGMENTS: readonly string[] = ['supervision', 'mosaique', 'voir'];
+export const FORGE_RESERVED_SEGMENTS: readonly string[] = ['supervision', 'mosaique', 'voir', 'clients'];
 
 /**
  * **`/forge` et `/forge/:hostRef`** (F-98 / SF-98-01) — une seule configuration de route.
@@ -183,6 +183,15 @@ export const routes: Routes = [
         path: 'forge/voir',
         loadComponent: () =>
           import('./forge-voir/voir-travailler.component').then((m) => m.VoirTravaillerComponent),
+      },
+      {
+        // F-124 / SF-124-05 — **Mes clients, la Vitrine** : le revenu par client (SF-124-02) mis en
+        // valeur (bandeau « fierté » + grandes cartes). Écran autonome, sur le patron de « Voir
+        // travailler ». Segment `clients` réservé par le matcher de la Forge (aucune référence de
+        // poste ne vaut `clients` : UUID ou `heberge`).
+        path: 'forge/clients',
+        loadComponent: () =>
+          import('./forge-clients/mes-clients.component').then((m) => m.MesClientsComponent),
       },
       {
         // F-68 / SF-68-01 — **l'accueil de la Forge**, et depuis F-98 / SF-98-01 **le poste ouvert** :
