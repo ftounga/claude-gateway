@@ -10,7 +10,10 @@ spec:
   # F-118 / SF-118-02 (2026-09-14) : min 2 — la charge est I/O (attente reseau modele),
   # un pod peut saturer ses 32 flux SSE sans monter en CPU ; le seuil CPU seul ne suffit pas a scaler.
   minReplicas: 2
-  maxReplicas: 4
+  # Plafond ABAISSE de 4 a 3 apres l'incident du 2026-09-16 : la RDS est PARTAGEE avec legalcase.
+  # A 4 pods x pool 30 (~120 connexions) la base saturait et faisait tomber legalcase aussi. Avec le
+  # pool ramene a 10 (configmap) et un plafond de 3, on est a 30 connexions max cote claude-gateway.
+  maxReplicas: 3
   metrics:
     - type: Resource
       resource:

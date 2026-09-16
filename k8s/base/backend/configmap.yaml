@@ -84,9 +84,13 @@ data:
   # demande du PO (grosses taches : page complete, config). Plafond dur 2 h. ISO-8601.
   APP_ATELIER_TURN_BUDGET: "PT60M"
   # F-118 / SF-118-02 (2026-09-14) : reglages de tenue en charge.
-  # Pool de connexions base : defaut Hikari = 10, insuffisant face a Tomcat 200 + ~11 workers @Scheduled.
-  SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "30"
-  SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: "5"
+  # Pool de connexions base : RAMENE de 30 a 10 apres l'INCIDENT du 2026-09-16. La RDS est PARTAGEE
+  # avec legalcase ; a 30 x jusqu'a 4 pods (~120 connexions) la base epuisait ses slots
+  # (« remaining connection slots are reserved »), empechait les pods de demarrer (crash-loop Liquibase)
+  # ET faisait tomber legalcase (alarmes error-rate + downtime Sentry). Budget cible cote claude-gateway :
+  # <= 30 connexions (10 x plafond HPA 3). NE PAS remonter sans coordonner avec la capacite RDS partagee.
+  SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "10"
+  SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: "2"
   # Heap JVM : sans cela ~512 Mo sur une limite de 2 Gi. 75 % => ~1,5 Gi utilisables.
   JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75.0"
   # URLs de retour Stripe Checkout (F-09/F-21) : après paiement/annulation, retour sur la prod
