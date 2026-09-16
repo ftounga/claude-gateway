@@ -75,6 +75,20 @@ public class WorkspaceService {
     }
 
     /**
+     * Règles de permission d'outil (F-121 / SF-121-02), injectées par mutateur pour ne toucher à aucune
+     * forme de constructeur ni aux tests qui en construisent une instance : {@code null} (tests
+     * historiques) = rien à purger à la suppression d'un projet.
+     */
+    private fr.claudegateway.atelier.permission.AtelierPermissionRuleRepository permissionRuleRepository;
+
+    /** Branche la purge des règles de permission à la suppression d'un projet (F-121 / SF-121-02). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setPermissionRuleRepository(
+            fr.claudegateway.atelier.permission.AtelierPermissionRuleRepository repository) {
+        this.permissionRuleRepository = repository;
+    }
+
+    /**
      * Annonce la création d'un projet (F-51 / SF-51-03).
      *
      * <p>Un seul endroit pour les trois portes d'entrée — archive, dépôt distant, projet local :
@@ -560,6 +574,11 @@ public class WorkspaceService {
         // Plus aucune activation de gouvernance à purger ici : depuis F-75, elles vivent sur le
         // POSTE, et supprimer un dossier ne doit surtout pas éteindre la gouvernance de la machine.
         runnerAudit.deleteByUserIdAndWorkspaceId(userId, id);
+        // F-121 / SF-121-02 : les règles de permission d'outil de ce projet s'en vont avec lui.
+        // Injecté par mutateur (null pour les tests historiques) pour ne pas toucher au constructeur.
+        if (permissionRuleRepository != null) {
+            permissionRuleRepository.deleteByUserIdAndWorkspaceId(userId, id);
+        }
         workspaceRepository.delete(workspace);
     }
 

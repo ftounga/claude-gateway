@@ -24,6 +24,8 @@ import fr.claudegateway.atelier.checkpoint.AtelierCheckpointKind;
 import fr.claudegateway.atelier.checkpoint.AtelierCheckpointRunner;
 import fr.claudegateway.atelier.checkpoint.AtelierCheckpointVerdict;
 import fr.claudegateway.atelier.dto.AtelierChatResponse.AtelierAction;
+import fr.claudegateway.atelier.permission.AtelierPermissionService;
+import fr.claudegateway.atelier.permission.PermissionEffect;
 import fr.claudegateway.byok.ByokKeyService;
 import fr.claudegateway.quota.QuotaService;
 import fr.claudegateway.quota.TurnTokens;
@@ -641,6 +643,34 @@ public class AtelierChatService implements RelayInterruptTarget {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setCompactionService(AtelierCompactionService compactionService) {
         this.compactionService = compactionService;
+    }
+
+    /**
+     * Politique de permission allow/ask/deny persistée par workspace/user (F-121 / SF-121-02). Injectée
+     * par mutateur pour ne toucher à aucun des constructeurs conservés : {@code null} (formes
+     * historiques, tests antérieurs à F-121) ⇒ la porte retombe sur son comportement binaire d'avant
+     * (bash confirmé selon {@code agent_ask_before_bash}, éditions jamais confirmées).
+     */
+    private AtelierPermissionService permissionService;
+
+    /**
+     * Défaut « demander avant une édition » (F-121 / SF-121-02, équivalent <i>acceptEdits</i>) :
+     * quand aucune règle ne couvre {@code edit_file}/{@code write_file}, faut-il demander ? Réglable
+     * par {@code app.atelier.ask-before-edit} (défaut {@code false} : les éditions ne sont pas
+     * confirmées, comportement d'avant F-121). Une règle persistée l'emporte toujours sur ce défaut.
+     */
+    @org.springframework.beans.factory.annotation.Value("${app.atelier.ask-before-edit:false}")
+    private boolean askBeforeEdit;
+
+    /** Branche la politique de permission persistée (F-121 / SF-121-02). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setPermissionService(AtelierPermissionService permissionService) {
+        this.permissionService = permissionService;
+    }
+
+    /** Réglage du défaut « demander avant une édition » — exposé pour les tests (F-121 / SF-121-02). */
+    void setAskBeforeEdit(boolean askBeforeEdit) {
+        this.askBeforeEdit = askBeforeEdit;
     }
 
     /**
@@ -1575,6 +1605,18 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     public void confirmToolUse(UUID userId, UUID workspaceId, String toolUseId, boolean allow,
             String reason, boolean allowAll) {
+        confirmToolUse(userId, workspaceId, toolUseId, allow, reason, allowAll, false);
+    }
+
+    /**
+     * Variante qui porte aussi « <b>toujours autoriser cette commande</b> » (F-121 / SF-121-02) :
+     * quand {@code alwaysAllowCommand} est vrai et que la décision autorise, la porte remonte à la
+     * boucle en attente l'ordre d'écrire une <b>règle persistante</b> (la boucle a l'outil et la
+     * commande ; la porte, non). Cette persistance est indépendante de « tout autoriser pour ce
+     * message » ({@code allowAll}), qui reste borné au tour.
+     */
+    public void confirmToolUse(UUID userId, UUID workspaceId, String toolUseId, boolean allow,
+            String reason, boolean allowAll, boolean alwaysAllowCommand) {
         workspaceService.requireOwned(userId, workspaceId);
         if (allowAll && allow) {
             blanketAllowedTurns.add(turnKey(userId, workspaceId));
@@ -1582,7 +1624,8 @@ public class AtelierChatService implements RelayInterruptTarget {
             // La marque est l'essentiel : « tout autoriser » reste valable même si la demande qui
             // l'a déclenchée vient d'expirer, ou si la boucle n'en attendait plus aucune.
             try {
-                confirmationGate.resolve(userId, workspaceId, callIdOf(toolUseId), true, reason);
+                confirmationGate.resolve(userId, workspaceId, callIdOf(toolUseId), true, reason,
+                        alwaysAllowCommand);
             } catch (fr.claudegateway.runner.exec.NoPendingConfirmationException ignored) {
                 // Rien n'attendait : la marque vaut pour les commandes à venir.
             }
@@ -1590,7 +1633,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
         String callId = toolUseId == null ? "" : toolUseId.trim();
         try {
-            confirmationGate.resolve(userId, workspaceId, callId, allow, reason);
+            confirmationGate.resolve(userId, workspaceId, callId, allow, reason, alwaysAllowCommand);
         } catch (fr.claudegateway.runner.exec.NoPendingConfirmationException ex) {
             if (!relayBroadcaster.broadcastConfirm(userId, workspaceId, callId, allow, reason)) {
                 throw ex;
@@ -2084,18 +2127,40 @@ public class AtelierChatService implements RelayInterruptTarget {
         // pas une commodité réglable. Le libellé présenté nomme l'action et l'emplacement en clair.
         boolean teamsWrite = fr.claudegateway.teams.TeamsToolCatalog.isWrite(tool);
         boolean blanket = blanketAllowedTurns.contains(turnKey(userId, workspace.getId()));
-        if (teamsWrite || (requiresConfirmation(tool, workspace) && !blanket)) {
-            String detail = teamsWrite ? teamsWriteDetail(call) : target;
+        if (teamsWrite) {
+            // F-108 / SF-108-02 : une écriture Microsoft 365 est confirmée à CHAQUE fois — hors
+            // politique de permission et hors « tout autoriser » (garde du cadrage, pas une commodité).
             RunnerConfirmationGate.Outcome decision =
-                    askPermission(userId, workspaceId, callId, tool, detail, listener);
+                    askPermission(userId, workspaceId, callId, tool, teamsWriteDetail(call), listener);
             if (!decision.decision().allows()) {
-                // Refus AVANT émission (contrat §6) : rien n'est parti sur la machine, et le modèle
-                // reçoit le motif pour proposer autre chose plutôt que de rester bloqué.
                 runnerAuditService.recordDenied(userId, runnerTarget, callId, tool, target,
                         decision.decision() == RunnerConfirmationGate.Decision.TIMEOUT
                                 ? RunnerAuditOutcome.TIMEOUT
                                 : RunnerAuditOutcome.DENIED);
                 return ToolOutcome.error(deniedMessage(decision));
+            }
+        } else {
+            // F-121 / SF-121-02 : la politique de permission allow/ask/deny persistée tranche.
+            // DENY refuse d'emblée (rien n'est demandé, rien n'est émis) ; ASK demande une
+            // autorisation (sauf « tout autoriser pour ce message ») ; ALLOW exécute sans demander.
+            PermissionEffect effect = resolveEffect(userId, workspace, tool, call);
+            if (effect == PermissionEffect.DENY) {
+                runnerAuditService.recordDenied(userId, runnerTarget, callId, tool, target,
+                        RunnerAuditOutcome.DENIED);
+                return ToolOutcome.error(denyRuleMessage(tool));
+            }
+            if (effect == PermissionEffect.ASK && !blanket) {
+                RunnerConfirmationGate.Outcome decision =
+                        askPermission(userId, workspaceId, callId, tool, target, listener);
+                if (!decision.decision().allows()) {
+                    // Refus AVANT émission (contrat §6) : rien n'est parti sur la machine, et le
+                    // modèle reçoit le motif pour proposer autre chose plutôt que de rester bloqué.
+                    runnerAuditService.recordDenied(userId, runnerTarget, callId, tool, target,
+                            decision.decision() == RunnerConfirmationGate.Decision.TIMEOUT
+                                    ? RunnerAuditOutcome.TIMEOUT
+                                    : RunnerAuditOutcome.DENIED);
+                    return ToolOutcome.error(deniedMessage(decision));
+                }
             }
         }
         RunnerCallResult result;
@@ -2141,6 +2206,45 @@ public class AtelierChatService implements RelayInterruptTarget {
     }
 
     /**
+     * L'effet allow/ask/deny à appliquer à cet appel (F-121 / SF-121-02) : une <b>règle persistée</b>
+     * la plus spécifique l'emporte ; à défaut (ou quand la politique n'est pas branchée — formes
+     * historiques), le <b>défaut</b> {@link #defaultEffect} s'applique, qui reproduit exactement la
+     * porte binaire d'avant SF-121-02.
+     */
+    private PermissionEffect resolveEffect(UUID userId, Workspace workspace, String tool, AgentToolCall call) {
+        String command = "bash".equals(tool) ? arg(call.input(), "command") : null;
+        if (permissionService != null) {
+            java.util.Optional<PermissionEffect> rule =
+                    permissionService.ruleFor(userId, workspace.getId(), tool, command);
+            if (rule.isPresent()) {
+                return rule.get();
+            }
+        }
+        return defaultEffect(tool, workspace);
+    }
+
+    /**
+     * Le défaut quand aucune règle ne couvre l'appel (F-121 / SF-121-02). Il reproduit le comportement
+     * d'avant : {@code bash} demande selon {@code agent_ask_before_bash} ; une édition demande selon le
+     * réglage {@code app.atelier.ask-before-edit} (défaut : non) ; tout le reste s'exécute sans demander.
+     */
+    private PermissionEffect defaultEffect(String tool, Workspace workspace) {
+        if (requiresConfirmation(tool, workspace)) {
+            return PermissionEffect.ASK;
+        }
+        if (askBeforeEdit && isFileWrite(tool)) {
+            return PermissionEffect.ASK;
+        }
+        return PermissionEffect.ALLOW;
+    }
+
+    /** Message rendu au modèle quand une règle {@code DENY} refuse l'outil (F-121 / SF-121-02). */
+    private static String denyRuleMessage(String tool) {
+        return "L'outil « " + tool + " » est refusé par une règle de permission de ce projet. "
+                + "Propose une autre approche.";
+    }
+
+    /**
      * <b>Le libellé clair d'une écriture Teams</b> (F-108 / SF-108-02, cadrage §4.4) : ce que
      * l'utilisateur lit avant d'autoriser. L'item et l'emplacement sont extraits des paramètres
      * d'appel ; le phrasé, lui, vit dans {@code TeamsToolCatalog.describeWrite} — une seule source.
@@ -2168,10 +2272,24 @@ public class AtelierChatService implements RelayInterruptTarget {
             String tool, String detail, AtelierProgressListener listener) {
         RunnerConfirmationGate.Outcome outcome = confirmationGate.await(userId, workspaceId, callId,
                 () -> listener.onConfirmRequest(new AtelierProgressListener.AtelierConfirmRequest(
-                        callId, tool, detail, confirmationGate.timeoutMs())));
+                        callId, tool, detail, confirmationGate.timeoutMs(), offersAlwaysAllow(tool))));
+        // F-121 / SF-121-02 : « toujours autoriser cette commande » a été coché — on écrit une règle
+        // persistante (pour bash, sur le premier mot de la commande ; sinon sur l'outil entier). Le
+        // detail porte la commande pour bash (c'est la cible d'audit), il sert de source au préfixe.
+        if (outcome.decision().allows() && outcome.persistRule() && permissionService != null) {
+            permissionService.alwaysAllowCommand(userId, workspaceId, tool, detail);
+        }
         listener.onConfirmResolved(new AtelierProgressListener.AtelierConfirmResolved(
                 callId, outcome.decision().label()));
         return outcome;
+    }
+
+    /**
+     * L'invite doit-elle proposer « <b>toujours autoriser cette commande</b> » (F-121 / SF-121-02) ?
+     * Seulement quand la politique persistée est branchée — sans elle, la case n'écrirait rien.
+     */
+    private boolean offersAlwaysAllow(String tool) {
+        return permissionService != null && !fr.claudegateway.teams.TeamsToolCatalog.isWrite(tool);
     }
 
     /** Message rendu au modèle quand l'action n'a pas été autorisée (jamais un détail technique). */

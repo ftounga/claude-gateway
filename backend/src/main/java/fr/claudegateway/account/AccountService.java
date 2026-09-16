@@ -149,6 +149,20 @@ public class AccountService {
     }
 
     /**
+     * Les règles de permission d'outil (F-121 / SF-121-02), même doctrine que les pages : injectées par
+     * mutateur pour ne toucher à aucune forme de constructeur ; {@code null} (tests unitaires
+     * historiques) = rien à effacer.
+     */
+    private fr.claudegateway.atelier.permission.AtelierPermissionRuleRepository atelierPermissionRuleRepository;
+
+    /** Branche la purge des règles de permission à la suppression du compte (F-121 / SF-121-02). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setAtelierPermissionRuleRepository(
+            fr.claudegateway.atelier.permission.AtelierPermissionRuleRepository repository) {
+        this.atelierPermissionRuleRepository = repository;
+    }
+
+    /**
      * Agrège l'ensemble des données de l'utilisateur pour l'export RGPD. Lecture seule, filtrée
      * sur {@code userId} pour chaque source.
      */
@@ -255,6 +269,11 @@ public class AccountService {
         chunkRepository.deleteByUserId(userId);
         documentRepository.deleteByUserId(userId);
         atelierMessageRepository.deleteByUserId(userId);
+        // F-121 / SF-121-02 : les règles de permission d'outil s'en vont avec le compte (elles portent
+        // des préfixes de commande de l'utilisateur). Best-effort si la politique n'est pas branchée.
+        if (atelierPermissionRuleRepository != null) {
+            atelierPermissionRuleRepository.deleteByUserId(userId);
+        }
         // On passe par WorkspaceService.delete plutôt que de supprimer les lignes directement : lui
         // seul connaît le préfixe de stockage (il porte le préfixe applicatif configuré, pas
         // seulement userId/workspaceId), et il efface fichiers, messages et ligne d'un seul geste.

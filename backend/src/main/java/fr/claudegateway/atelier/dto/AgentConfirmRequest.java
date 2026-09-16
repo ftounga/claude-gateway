@@ -19,7 +19,17 @@ public record AgentConfirmRequest(
         @NotBlank String toolUseId,
         @NotBlank @Pattern(regexp = "(?i)allow|deny") String decision,
         @Size(max = 500) String reason,
-        Boolean allowAll) {
+        Boolean allowAll,
+        Boolean alwaysAllowCommand) {
+
+    /**
+     * Vrai si l'utilisateur a coché « <b>toujours autoriser cette commande</b> » (F-121 / SF-121-02) :
+     * une règle de permission persistante est alors écrite (pour {@code bash}, sur le premier mot de
+     * la commande ; sinon sur l'outil entier). N'a d'effet que si la décision autorise.
+     */
+    public boolean alwaysAllowsCommand() {
+        return Boolean.TRUE.equals(alwaysAllowCommand) && allows();
+    }
 
     /**
      * Vrai si l'utilisateur autorise <b>toutes</b> les commandes de ce message (F-38 / SF-38-20).
