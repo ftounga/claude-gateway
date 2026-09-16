@@ -664,6 +664,20 @@ public class AtelierChatService implements RelayInterruptTarget {
     }
 
     /**
+     * Porte les fichiers déposés dans la consigne du tour (F-115 / SF-115-03). Injecté par mutateur
+     * ({@code null} pour les formes historiques / tests antérieurs à F-115) : sans lui, la consigne est
+     * inchangée — comportement d'avant F-115.
+     */
+    private fr.claudegateway.atelier.deposit.DepositConsumptionService depositConsumptionService;
+
+    /** Branche l'ajout des fichiers déposés à la consigne du tour (F-115 / SF-115-03). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setDepositConsumptionService(
+            fr.claudegateway.atelier.deposit.DepositConsumptionService depositConsumptionService) {
+        this.depositConsumptionService = depositConsumptionService;
+    }
+
+    /**
      * Politique de permission allow/ask/deny persistée par workspace/user (F-121 / SF-121-02). Injectée
      * par mutateur pour ne toucher à aucun des constructeurs conservés : {@code null} (formes
      * historiques, tests antérieurs à F-121) ⇒ la porte retombe sur son comportement binaire d'avant
@@ -901,8 +915,25 @@ public class AtelierChatService implements RelayInterruptTarget {
         // L'historique rejoué démarre à la frontière du fil (SF-39-04) : après un « nouveau
         // départ », les tours d'avant restent lisibles à l'écran mais ne repartent plus chez le
         // fournisseur.
+        // F-115 / SF-115-03 : les fichiers déposés depuis le dernier tour entrent dans la CONSIGNE du
+        // tour — chemins seulement, jamais le binaire (comme Claude Code) —, et sont marqués consommés.
+        // La note augmente le message ENVOYÉ au modèle ; le message PERSISTÉ reste la parole de
+        // l'utilisateur (le fil montre déjà le bloc « fichier déposé », SF-115-02). Inerte si le service
+        // n'est pas branché (comportement d'avant F-115). Best-effort : un échec ne casse pas le tour.
+        String consigne = userText;
+        if (depositConsumptionService != null) {
+            try {
+                String depositNote = depositConsumptionService.consumeForTurn(userId, workspaceId);
+                if (depositNote != null && !depositNote.isBlank()) {
+                    consigne = depositNote + "\n\n" + userText;
+                }
+            } catch (RuntimeException ex) {
+                log.debug("Consigne des fichiers déposés ignorée (best-effort) : {}", ex.getMessage());
+            }
+        }
+
         List<AgentMessage> messages = buildReplayMessages(userId, workspace);
-        messages.add(AgentMessage.userText(userText));
+        messages.add(AgentMessage.userText(consigne));
 
         AtelierMessage savedUserMessage = messageRepository.save(AtelierMessage.builder()
                 .workspaceId(workspaceId).userId(userId).role("USER").content(userText).build());
