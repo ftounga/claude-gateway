@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpEventType } from '@angular/common/http';
 import {
   Component,
   DestroyRef,
@@ -13,6 +13,7 @@ import {
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { RouterLink } from '@angular/router';
 
 import { AtelierTerminalComponent } from '../atelier/terminal/atelier-terminal.component';
@@ -20,6 +21,7 @@ import { AtelierService } from '../core/services/atelier.service';
 import { LiveTerminalEntry, LiveTerminals } from '../core/models/atelier.models';
 import { HostBadgeComponent } from '../shared/host-badge/host-badge.component';
 import { HostTone, hostTone } from '../shared/host-identity';
+import { httpErrorMessage, humanFileSize } from '../shared/http-error.util';
 import { LiveTurnView } from './live-turn-view';
 
 /** Cadence de relecture du registre. Celle de la vue de supervision : une attente s'y voit vite. */
@@ -82,6 +84,7 @@ export class MosaiqueComponent implements OnInit, OnDestroy {
 
   private readonly http = inject(HttpClient);
   private readonly atelier = inject(AtelierService);
+  private readonly snackBar = inject(MatSnackBar);
   private readonly zone = inject(NgZone);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -202,6 +205,30 @@ export class MosaiqueComponent implements OnInit, OnDestroy {
   /** Ce que la tuile écrit sous le nom du projet : chez qui l'on est. */
   hostLabel(tile: MosaiqueTile): string {
     return tile.hostName ?? 'Hébergé';
+  }
+
+  /**
+   * Dépôt d'un fichier glissé / collé sur une tuile (F-115 / SF-115-02) : il va au workspace de la
+   * tuile. Une tuile est une vue compacte en lecture seule — le retour se fait par une notification,
+   * pas par une barre de progression dans la tuile.
+   */
+  onTileFiles(tile: MosaiqueTile, files: File[]): void {
+    if (files.length === 0) {
+      return;
+    }
+    this.atelier.deposit(tile.workspaceId, files).subscribe({
+      next: (event) => {
+        if (event.type === HttpEventType.Response && event.body) {
+          const paths = event.body.files
+            .map((file) => `${file.path} (${humanFileSize(file.size)})`)
+            .join(', ');
+          this.snackBar.open(`Fichier déposé : ${paths}`, 'Fermer', { duration: 4000 });
+        }
+      },
+      error: (err: unknown) => {
+        this.snackBar.open(httpErrorMessage(err, 'Le dépôt a échoué.'), 'Fermer', { duration: 5000 });
+      },
+    });
   }
 
   // ------------------------------------------------------------------ interne

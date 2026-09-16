@@ -1,4 +1,4 @@
-import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
+import { HttpErrorResponse, HttpEvent, HttpEventType, provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ApplicationRef } from '@angular/core';
 import { ComponentFixture, TestBed, discardPeriodicTasks, fakeAsync, flush, tick } from '@angular/core/testing';
@@ -24,6 +24,7 @@ import { ApiKeyStatus } from '../core/models/api-key.models';
 import {
   AtelierMessage,
   AtelierStreamHandlers,
+  DepositResponse,
   FileContent,
   RunnerHostOverview,
   WorkspaceDetail,
@@ -126,6 +127,7 @@ describe('AtelierComponent', () => {
       'getResume',
       'restartThread',
       'setExecutionTarget',
+      'deposit',
       'getRunnerStatus',
       'getEngine',
       'createHostPairingCode',
@@ -178,6 +180,42 @@ describe('AtelierComponent', () => {
     component = fixture.componentInstance;
     fixture.detectChanges();
   }
+
+  // F-115 / SF-115-02 — dépôt de fichiers depuis le terminal (le conteneur fait l'appel).
+  describe('dépôt de fichiers (F-115 / SF-115-02)', () => {
+    it('dépose les fichiers choisis et pousse un bloc « fichier déposé » dans le fil', () => {
+      setup();
+      component.activeWorkspaceId.set('w1');
+      service.deposit.and.returnValue(of({
+        type: HttpEventType.Response,
+        body: { files: [{ path: 'entrees/notes.txt', size: 2_411_000, target: 'HOSTED' }] },
+      } as HttpEvent<DepositResponse>));
+
+      component.onFilesSelected([new File(['x'], 'notes.txt')]);
+
+      expect(service.deposit).toHaveBeenCalledWith('w1', jasmine.any(Array));
+      expect(component.depositing()).toBeFalse();
+      const notices = component.depositNotices();
+      expect(notices.length).toBe(1);
+      expect(notices[0].path).toBe('entrees/notes.txt');
+      expect(notices[0].sizeLabel).toContain('Mo');
+    });
+
+    it('affiche un bloc d\'échec nommé si le dépôt échoue', () => {
+      setup();
+      component.activeWorkspaceId.set('w1');
+      service.deposit.and.returnValue(throwError(() => new HttpErrorResponse({
+        status: 409, error: { error: 'runner_offline', message: 'Le poste est hors ligne.' },
+      })));
+
+      component.onFilesSelected([new File(['x'], 'x.bin')]);
+
+      const notices = component.depositNotices();
+      expect(notices.length).toBe(1);
+      expect(notices[0].error).toContain('hors ligne');
+      expect(component.depositing()).toBeFalse();
+    });
+  });
 
   /**
    * **Le direct traverse les proxys qui retiennent le flux** (F-84 / SF-84-04).

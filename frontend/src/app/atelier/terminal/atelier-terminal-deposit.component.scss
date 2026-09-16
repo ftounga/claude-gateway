@@ -1,0 +1,110 @@
+// F-115 / SF-115-02 — Glisser / coller / trombone dans le terminal.
+// Aucune couleur nouvelle : uniquement des jetons --cg-* de DESIGN_SYSTEM.md (voile en tirets
+// --cg-accent sur un fond translucide de la charte). Feuille à part pour tenir le budget de style
+// par composant (12 ko compilés, angular.json), comme les autres peaux du terminal.
+
+.terminal-view {
+  // Le voile se positionne par rapport à la vue entière.
+  position: relative;
+}
+
+.terminal-drop-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  // Fond translucide dérivé du navy structurel (aucune teinte nouvelle).
+  background: color-mix(in srgb, var(--cg-navy) 66%, transparent);
+  pointer-events: none;
+}
+
+.terminal-drop-veil__box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--cg-space-2, 8px);
+  padding: var(--cg-space-6, 24px) var(--cg-space-8, 32px);
+  border: 2px dashed var(--cg-accent);
+  border-radius: var(--cg-radius, 8px);
+  color: var(--cg-surface);
+  font-family: var(--cg-font-heading, 'Space Grotesk', sans-serif);
+  font-size: 1.05rem;
+
+  mat-icon {
+    width: 32px;
+    height: 32px;
+    font-size: 32px;
+    color: var(--cg-accent);
+  }
+}
+
+// Le trombone du composer : discret, aligné avec le champ.
+.terminal-attach {
+  flex: 0 0 auto;
+  color: var(--cg-text-secondary);
+}
+
+// Blocs discrets « fichier déposé » / échec / annulation dans le fil.
+.terminal-deposit-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2, 8px);
+  margin: var(--cg-space-1, 4px) 0;
+  padding: var(--cg-space-2, 8px) var(--cg-space-3, 12px);
+  border-left: 3px solid var(--cg-accent);
+  background: color-mix(in srgb, var(--cg-accent) 12%, transparent);
+  border-radius: var(--cg-radius-sm, 4px);
+  color: var(--cg-text-secondary);
+  font-size: 0.85rem;
+
+  code {
+    font-family: var(--cg-font-mono, 'JetBrains Mono', monospace);
+    color: var(--cg-text-primary);
+  }
+
+  mat-icon {
+    flex: 0 0 auto;
+    width: 18px;
+    height: 18px;
+    font-size: 18px;
+    color: var(--cg-accent);
+  }
+
+  &--error {
+    border-left-color: var(--cg-error);
+    background: color-mix(in srgb, var(--cg-error) 12%, transparent);
+
+    mat-icon {
+      color: var(--cg-error);
+    }
+  }
+
+  &--cancelled {
+    border-left-color: var(--cg-text-secondary);
+    background: color-mix(in srgb, var(--cg-text-secondary) 12%, transparent);
+
+    mat-icon {
+      color: var(--cg-text-secondary);
+    }
+  }
+}
+
+.terminal-deposit-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-3, 12px);
+  margin: var(--cg-space-1, 4px) 0;
+  padding: var(--cg-space-2, 8px) var(--cg-space-3, 12px);
+
+  mat-progress-bar {
+    flex: 1 1 auto;
+  }
+
+  &__label {
+    flex: 0 0 auto;
+    color: var(--cg-text-secondary);
+    font-size: 0.85rem;
+  }
+}

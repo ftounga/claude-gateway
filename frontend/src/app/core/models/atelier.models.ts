@@ -1412,3 +1412,31 @@ export interface LiveTerminals {
   live: number;
   terminals: LiveTerminalEntry[];
 }
+
+/**
+ * Un fichier déposé dans un terminal (F-115 / SF-115-01) : le chemin où l'agent le lira, sa taille,
+ * et la cible atteinte (`HOSTED` workspace S3, `RUNNER` poste). Le binaire ne remonte jamais.
+ */
+export interface DepositedFile {
+  path: string;
+  size: number;
+  target: string;
+}
+
+/** Réponse du dépôt (F-115 / SF-115-01) : un chemin par fichier reçu. */
+export interface DepositResponse {
+  files: DepositedFile[];
+}
+
+/**
+ * Bloc discret « fichier déposé » (ou son échec) affiché dans le fil du terminal (F-115 / SF-115-02).
+ * `path` + `sizeLabel` au succès ; `error` porte le message nommé de l'endpoint ; `cancelled` pour un
+ * dépôt annulé par l'utilisateur.
+ */
+export interface TerminalDepositNotice {
+  id: string;
+  path?: string;
+  sizeLabel?: string;
+  error?: string;
+  cancelled?: boolean;
+}

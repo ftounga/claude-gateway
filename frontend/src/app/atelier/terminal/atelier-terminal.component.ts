@@ -18,6 +18,7 @@ import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatIconModule } from '@angular/material/icon';
+import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -44,6 +45,7 @@ import {
   LiveTerminalEntry,
   RunnerStatus,
   AtelierTurnMode,
+  TerminalDepositNotice,
   WorkspaceExecutionTarget,
 } from '../../core/models/atelier.models';
 import { HostPresenceService, presenceLabel } from '../../core/services/host-presence.service';
@@ -123,7 +125,8 @@ export const LONG_THREAD_TURNS = 40;
   imports: [
     FormsModule, ForgeBreadcrumbComponent, LiveBadgeComponent, MarkdownPipe, MatButtonModule,
     TeamsLinkBadgeComponent, NgTemplateOutlet, TerminalEmailComponent, PageBlockComponent, PagePanelComponent,
-    MatButtonToggleModule, MatIconModule, MatProgressSpinnerModule, MatTooltipModule, RouterLink,
+    MatButtonToggleModule, MatIconModule, MatProgressBarModule, MatProgressSpinnerModule,
+    MatTooltipModule, RouterLink,
   ],
   templateUrl: './atelier-terminal.component.html',
   // DEUX FEUILLES, ET C'EST DÉLIBÉRÉ (F-83 / SF-83-02) : la peau « lecture seule » vit à part.
@@ -143,6 +146,9 @@ export const LONG_THREAD_TURNS = 40;
     // CINQ FEUILLES (F-117 / SF-117-03) : la suggestion de nouveau départ vit à part, la feuille
     // principale ayant atteint le budget de build de 12 ko (angular.json).
     './atelier-terminal-compaction.component.scss',
+    // SIX FEUILLES (F-115 / SF-115-02) : le dépôt de fichiers (voile, trombone, progression, blocs)
+    // vit à part, la feuille principale étant au budget de build de 12 ko (angular.json).
+    './atelier-terminal-deposit.component.scss',
   ],
 })
 export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
@@ -575,6 +581,110 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   @Output() killRunner = new EventEmitter<void>();
   /** « Plus tard » sur la proposition de runner (F-39 / SF-39-09). */
   @Output() dismissRunnerHint = new EventEmitter<void>();
+
+  // -------------------------------------------------- F-115 / SF-115-02 : dépôt de fichiers
+
+  /** Un dépôt est en cours (barre de progression + bouton annuler). */
+  @Input() depositing = false;
+  /** Progression du dépôt en cours, 0–100, ou `null` si indéterminée. */
+  @Input() depositProgress: number | null = null;
+  /** Blocs discrets « fichier déposé » / échec / annulation affichés dans le fil. */
+  @Input() depositNotices: TerminalDepositNotice[] = [];
+
+  /** Fichiers choisis par glisser, coller ou trombone : le parent les dépose (D1, présentation seule). */
+  @Output() filesSelected = new EventEmitter<File[]>();
+  /** Annulation du dépôt en cours. */
+  @Output() depositCancel = new EventEmitter<void>();
+
+  /** Champ de fichier caché ouvert par le trombone. */
+  @ViewChild('depositInput') private depositInput?: ElementRef<HTMLInputElement>;
+
+  /** Vrai pendant qu'un fichier survole le terminal — pilote le voile « Déposer ici ». */
+  readonly dragging = signal(false);
+
+  /** Un glisser porte-t-il des fichiers ? (on ignore un glisser de texte / de sélection). */
+  private dragHasFiles(event: DragEvent): boolean {
+    const types = event.dataTransfer?.types;
+    return types ? Array.from(types).includes('Files') : false;
+  }
+
+  onDragOver(event: DragEvent): void {
+    if (!this.dragHasFiles(event)) {
+      return;
+    }
+    // Sans preventDefault, le navigateur ouvrirait le fichier au lâcher, hors de l'application.
+    event.preventDefault();
+    this.dragging.set(true);
+  }
+
+  onDragLeave(event: DragEvent): void {
+    // Ne retirer le voile qu'en quittant vraiment le terminal, pas en survolant un enfant.
+    const related = event.relatedTarget as Node | null;
+    const host = event.currentTarget as Node | null;
+    if (related && host && host.contains(related)) {
+      return;
+    }
+    this.dragging.set(false);
+  }
+
+  onDrop(event: DragEvent): void {
+    event.preventDefault();
+    this.dragging.set(false);
+    const files = this.extractFiles(event.dataTransfer);
+    if (files.length > 0) {
+      this.filesSelected.emit(files);
+    }
+  }
+
+  /**
+   * Collage (Cmd/Ctrl+V) d'une image ou d'un fichier dans le terminal (comme Claude Code). Un collage
+   * de texte seul est ignoré — c'est le champ de saisie qui s'en charge.
+   */
+  @HostListener('paste', ['$event'])
+  onPaste(event: ClipboardEvent): void {
+    const files = this.extractFiles(event.clipboardData);
+    if (files.length > 0) {
+      event.preventDefault();
+      this.filesSelected.emit(files);
+    }
+  }
+
+  /** Ouvre le sélecteur de fichiers du trombone. */
+  openFilePicker(): void {
+    this.depositInput?.nativeElement.click();
+  }
+
+  onFilePicked(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const files = input.files ? Array.from(input.files) : [];
+    if (files.length > 0) {
+      this.filesSelected.emit(files);
+    }
+    // Réinitialise pour qu'un même fichier redéposé redéclenche l'événement.
+    input.value = '';
+  }
+
+  /** Fichiers d'un `DataTransfer` : `files` d'abord, puis les `items` de type fichier (images collées). */
+  private extractFiles(data: DataTransfer | null): File[] {
+    if (!data) {
+      return [];
+    }
+    if (data.files && data.files.length > 0) {
+      return Array.from(data.files);
+    }
+    const collected: File[] = [];
+    if (data.items) {
+      for (const item of Array.from(data.items)) {
+        if (item.kind === 'file') {
+          const file = item.getAsFile();
+          if (file) {
+            collected.push(file);
+          }
+        }
+      }
+    }
+    return collected;
+  }
 
   /**
    * Ce que l'utilisateur gagne à connecter sa machine, dit **au moment où il en a besoin**

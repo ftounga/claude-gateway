@@ -6,8 +6,22 @@
   class="terminal-view"
   [class.terminal-view--readonly]="readOnly"
   [class.terminal-view--teams]="teamsTerminal"
+  [class.terminal-view--dragging]="dragging()"
   [attr.aria-label]="teamsTerminal ? 'Terminal Teams' : (readOnly ? 'Terminal du projet, en lecture seule' : 'Terminal du projet')"
+  (dragover)="onDragOver($event)"
+  (dragleave)="onDragLeave($event)"
+  (drop)="onDrop($event)"
 >
+  <!-- VOILE « DÉPOSER ICI » (F-115 / SF-115-02) : sur toute la zone, au survol d'un fichier.
+       Aucune couleur nouvelle — tirets `--cg-accent` sur fond translucide de la charte. -->
+  @if (dragging()) {
+    <div class="terminal-drop-veil" aria-hidden="true">
+      <div class="terminal-drop-veil__box">
+        <mat-icon>upload_file</mat-icon>
+        <span>Déposer ici</span>
+      </div>
+    </div>
+  }
   <!-- EN-TÊTE — TOUT LE CHROME DU TERMINAL (F-83 / SF-83-01).
        Une tuile de mosaïque montre LE FLUX, et rien d'autre : le PO a demandé que les terminaux
        prennent une très grosse partie de l'écran. Le fil d'Ariane, le moteur, la garde, git, les
@@ -879,12 +893,64 @@
     </div>
   }
 
+  <!-- DÉPÔT DE FICHIERS (F-115 / SF-115-02) : progression annulable, puis blocs discrets dans le fil.
+       Rendu même en lecture seule (tuile de mosaïque) : on peut y glisser/coller un fichier. -->
+  @for (notice of depositNotices; track notice.id) {
+    <div
+      class="terminal-deposit-notice"
+      [class.terminal-deposit-notice--error]="notice.error"
+      [class.terminal-deposit-notice--cancelled]="notice.cancelled"
+    >
+      <mat-icon aria-hidden="true">{{ notice.error ? 'error_outline' : (notice.cancelled ? 'block' : 'attachment') }}</mat-icon>
+      @if (notice.error) {
+        <span>Dépôt refusé : {{ notice.error }}</span>
+      } @else if (notice.cancelled) {
+        <span>Dépôt annulé.</span>
+      } @else {
+        <span>fichier déposé : <code>{{ notice.path }}</code> — {{ notice.sizeLabel }}</span>
+      }
+    </div>
+  }
+  @if (depositing) {
+    <div class="terminal-deposit-progress" role="status">
+      <mat-progress-bar
+        [mode]="depositProgress === null ? 'indeterminate' : 'determinate'"
+        [value]="depositProgress ?? 0"
+      ></mat-progress-bar>
+      <span class="terminal-deposit-progress__label">
+        Dépôt en cours@if (depositProgress !== null) {&nbsp;— {{ depositProgress }}&nbsp;%}…
+      </span>
+      <button mat-button type="button" (click)="depositCancel.emit()">Annuler</button>
+    </div>
+  }
+
   <!-- Invite. Ce qu'on saisit est une DEMANDE, pas une commande shell (ADR-014). -->
   <!-- L'INVITE N'EXISTE PAS EN LECTURE SEULE (F-83 / SF-83-01). Écrire reste un geste pris
        dans le terminal entier, devant son flux : un clic pour y entrer. -->
   @if (!readOnly) {
     <form class="terminal-input" (ngSubmit)="submit()">
       <span class="terminal-dollar" aria-hidden="true">$</span>
+      <!-- TROMBONE (F-115 / SF-115-02, parité SF-28-13 étendue aux terminaux runner). -->
+      <input
+        #depositInput
+        type="file"
+        multiple
+        class="terminal-attach-input"
+        aria-hidden="true"
+        (change)="onFilePicked($event)"
+        hidden
+      />
+      <button
+        mat-icon-button
+        type="button"
+        class="terminal-attach"
+        (click)="openFilePicker()"
+        [disabled]="depositing"
+        aria-label="Joindre un fichier"
+        matTooltip="Joindre un fichier"
+      >
+        <mat-icon>attach_file</mat-icon>
+      </button>
       <input
         type="text"
         class="terminal-field"
