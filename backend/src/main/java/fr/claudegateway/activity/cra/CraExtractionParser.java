@@ -1,6 +1,8 @@
 package fr.claudegateway.activity.cra;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -44,9 +46,73 @@ public class CraExtractionParser {
             if (client == null || client.isBlank()) {
                 continue; // une ligne sans nom n'est pas exploitable
             }
-            lines.add(new CraExtraction(client.trim(), days(node), month(node)));
+            lines.add(new CraExtraction(client.trim(), days(node), month(node), range(node)));
         }
         return lines;
+    }
+
+    /**
+     * La plage décrite par le modèle, ou {@code null} si la ligne n'en porte pas. Tolérant : la
+     * plage peut être un sous-objet {@code "range"} ou portée à plat sur la ligne. Le serveur
+     * convertit ensuite la plage en jours ouvrés (le modèle ne compte jamais).
+     */
+    private static CraRange range(JsonNode line) {
+        JsonNode node = line.get("range");
+        if (node == null || !node.isObject()) {
+            node = line; // tolérance : preset/fromDay/toDay/from/to portés à plat
+        }
+        String preset = preset(text(node, "preset", "kind"));
+        Integer fromDay = intValue(node, "fromDay", "from_day", "startDay");
+        Integer toDay = intValue(node, "toDay", "to_day", "endDay");
+        LocalDate from = date(text(node, "from", "start"));
+        LocalDate to = date(text(node, "to", "end"));
+        CraRange range = new CraRange(preset, fromDay, toDay, from, to);
+        return range.isEmpty() ? null : range;
+    }
+
+    /** Normalise un preset en {@code FULL_MONTH}/{@code FIRST_HALF}/{@code SECOND_HALF}, ou {@code null}. */
+    private static String preset(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String key = raw.trim().toUpperCase().replace(' ', '_').replace('-', '_');
+        return switch (key) {
+            case "FULL_MONTH", "WHOLE_MONTH", "ALL_MONTH", "MONTH" -> CraRange.FULL_MONTH;
+            case "FIRST_HALF", "FIRST_FORTNIGHT" -> CraRange.FIRST_HALF;
+            case "SECOND_HALF", "SECOND_FORTNIGHT" -> CraRange.SECOND_HALF;
+            default -> null;
+        };
+    }
+
+    private static Integer intValue(JsonNode node, String... fields) {
+        for (String field : fields) {
+            JsonNode value = node.get(field);
+            if (value == null || value.isNull()) {
+                continue;
+            }
+            if (value.isInt() || value.isLong()) {
+                return value.asInt();
+            }
+            if (value.isTextual()) {
+                try {
+                    return Integer.valueOf(value.asText().trim());
+                } catch (NumberFormatException ignored) {
+                    // non numérique : on ignore ce champ
+                }
+            }
+        }
+        return null;
+    }
+
+    private static LocalDate date(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(raw.trim());
+        } catch (DateTimeParseException ignored) {
+            return null; // date non ISO : ignorée, la Gateway se rabat sur les autres formes
+        }
     }
 
     /** Le premier tableau JSON du texte (du premier {@code [} au {@code ]} équilibré), ou {@code null}. */

@@ -33,6 +33,37 @@ public final class WorkdayCalendar {
         return count;
     }
 
+    /**
+     * Nombre de jours ouvrés (lun–ven hors fériés France) dans l'intervalle {@code [from, to]},
+     * <b>bornes incluses</b> (F-124 / SF-124-04). Rend {@code 0} si l'intervalle est vide
+     * ({@code from} après {@code to}) — c'est le compte, jamais une exception, que la validation
+     * traduira ensuite en refus « 0 jour ».
+     *
+     * <p>Sert à convertir une <b>plage de dates</b> décrite en langage naturel (« du 10 à la fin du
+     * mois ») en jours ouvrés, <b>côté serveur</b> et de façon déterministe : le modèle décrit la
+     * période, la Gateway compte.</p>
+     */
+    public static int businessDaysBetween(LocalDate from, LocalDate to) {
+        if (from == null || to == null || from.isAfter(to)) {
+            return 0;
+        }
+        Set<LocalDate> holidays = FrenchHolidays.of(from.getYear());
+        int year = from.getYear();
+        int count = 0;
+        LocalDate day = from;
+        while (!day.isAfter(to)) {
+            if (day.getYear() != year) {         // l'intervalle change d'année : recharge les fériés
+                year = day.getYear();
+                holidays = FrenchHolidays.of(year);
+            }
+            if (isBusinessDay(day, holidays)) {
+                count++;
+            }
+            day = day.plusDays(1);
+        }
+        return count;
+    }
+
     private static boolean isBusinessDay(LocalDate day, Set<LocalDate> holidays) {
         DayOfWeek weekday = day.getDayOfWeek();
         if (weekday == DayOfWeek.SATURDAY || weekday == DayOfWeek.SUNDAY) {

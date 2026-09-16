@@ -5,7 +5,7 @@ import { of, throwError } from 'rxjs';
 import { HttpErrorResponse } from '@angular/common/http';
 
 import { CraDialogComponent } from './cra-dialog.component';
-import { CraRecap, PosteBillingService } from '../../core/services/poste-billing.service';
+import { CraLine, CraRecap, PosteBillingService } from '../../core/services/poste-billing.service';
 
 describe('CraDialogComponent', () => {
   let fixture: ComponentFixture<CraDialogComponent>;
@@ -19,13 +19,17 @@ describe('CraDialogComponent', () => {
     unknown: 1,
     lines: [
       { cited: 'Free', hostId: 'h1', hostName: 'Free', days: 20, month: '2025-09',
-        status: 'WRITTEN', message: null },
-      { cited: 'KG', hostId: 'h2', hostName: 'KG', days: null, month: null, status: 'REJECTED',
-        message: 'Plus de jours que de jours ouvrés.' },
-      { cited: 'Acme', hostId: null, hostName: null, days: null, month: null,
+        period: null, status: 'WRITTEN', message: null },
+      { cited: 'KG', hostId: 'h2', hostName: 'KG', days: null, month: null, period: null,
+        status: 'REJECTED', message: 'Plus de jours que de jours ouvrés.' },
+      { cited: 'Acme', hostId: null, hostName: null, days: null, month: null, period: null,
         status: 'UNKNOWN_HOST', message: 'Client non reconnu : précisez le poste.' },
     ],
   };
+
+  // Une ligne venue d'une plage porte le libellé compris (SF-124-04).
+  const rangeLine: CraLine = { cited: 'Free', hostId: 'h1', hostName: 'Free', days: 14,
+    month: '2025-08', period: 'du 10 a la fin du mois', status: 'WRITTEN', message: null };
 
   beforeEach(() => {
     billing = jasmine.createSpyObj<PosteBillingService>('PosteBillingService', ['submitCra']);
@@ -76,6 +80,13 @@ describe('CraDialogComponent', () => {
     expect(component.lineLabel(recap.lines[0])).toContain('Free');
     expect(component.lineLabel(recap.lines[0])).toContain('20 j');
     expect(component.lineLabel(recap.lines[2])).toBe('Acme');
+  });
+
+  it('affiche la plage comprise et les jours ouvrés déduits pour une ligne de période', () => {
+    const label = component.lineLabel(rangeLine);
+    expect(label).toContain('14 j');
+    expect(label).toContain('du 10 a la fin du mois');
+    expect(label).toContain('2025-08');
   });
 
   it('signale un changement à la fermeture seulement si un CRA a été écrit', () => {

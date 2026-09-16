@@ -94,7 +94,10 @@ export class CraDialogComponent {
     }
   }
 
-  /** La ligne, en clair : « Free — 20 j en 2025-09 », ou le nom cité pour un inconnu. */
+  /**
+   * La ligne, en clair : « Free — 20 j en 2025-09 », ou avec la plage comprise pour transparence
+   * (« Free — 14 j (du 10 a la fin du mois) en 2025-08 » — SF-124-04), ou le nom cité pour un inconnu.
+   */
   lineLabel(line: CraLine): string {
     if (line.status === 'UNKNOWN_HOST') {
       return line.cited;
@@ -102,7 +105,8 @@ export class CraDialogComponent {
     const name = line.hostName ?? line.cited;
     if (line.status === 'WRITTEN' && line.days != null && line.month) {
       const days = line.days === 1 ? '1 j' : `${line.days} j`;
-      return `${name} — ${days} en ${line.month}`;
+      const period = line.period ? ` (${line.period})` : '';
+      return `${name} — ${days}${period} en ${line.month}`;
     }
     return name;
   }

@@ -71,8 +71,10 @@ class CraApiIntegrationTest {
         aliceKg = seedHost(alice.getId(), "KG");
 
         // Bob possède AUSSI un poste « Free » : le message d'Alice ne doit jamais l'atteindre.
+        // Il a en plus un poste au nom unique, qui ne doit JAMAIS apparaître dans la consigne d'Alice.
         User bob = seedUser("bob-cra@example.com", UserRole.ADMIN);
         seedHost(bob.getId(), "Free");
+        seedHost(bob.getId(), "BobSecretPoste");
 
         User nora = seedUser("nora-cra@example.com", UserRole.USER);
         noraToken = jwtService.generateToken(nora);
@@ -161,6 +163,40 @@ class CraApiIntegrationTest {
         assertThat(craRepository.findAll()).hasSize(1);
         assertThat(craRepository.findAll().get(0).getUserId()).isEqualTo(alice.getId());
         assertThat(craRepository.findAll().get(0).getHostId()).isEqualTo(aliceFree.getId());
+    }
+
+    @Test
+    void aRangeIsConvertedToBusinessDays_serverSide() throws Exception {
+        // « du 10 à la fin du mois » chez Free en août 2025 → 14 jours ouvrés (15/08 férié), persistés.
+        modelReturns("[{\"client\":\"Free\",\"range\":{\"fromDay\":10},\"month\":\"2025-08\"}]");
+
+        mockMvc.perform(as(post("/api/activity/cra"), aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"du 10 à la fin du mois chez Free\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.written").value(1))
+                .andExpect(jsonPath("$.lines[0].period").value("du 10 a la fin du mois"))
+                .andExpect(jsonPath("$.lines[0].days").value(14));
+
+        assertThat(craRepository.findByUserIdAndHostIdAndYearMonth(alice.getId(), aliceFree.getId(), "2025-08")
+                .orElseThrow().getDays()).isEqualByComparingTo(new BigDecimal("14"));
+    }
+
+    @Test
+    void ownHostsAreGivenToTheModel_neverAnotherUsersHost() throws Exception {
+        org.mockito.ArgumentCaptor<ChatCompletionRequest> captor =
+                org.mockito.ArgumentCaptor.forClass(ChatCompletionRequest.class);
+        modelReturns("[]");
+
+        mockMvc.perform(as(post("/api/activity/cra"), aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"chez tous mes clients tout le mois\"}"))
+                .andExpect(status().isOk());
+
+        org.mockito.Mockito.verify(aiProvider).complete(captor.capture());
+        String system = captor.getValue().system();
+        assertThat(system).contains("Free").contains("KG");
+        assertThat(system).doesNotContain("BobSecretPoste"); // isolation : jamais le poste d'un autre
     }
 
     @Test

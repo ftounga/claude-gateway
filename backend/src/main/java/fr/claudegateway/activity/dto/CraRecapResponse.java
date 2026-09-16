@@ -28,11 +28,11 @@ public record CraRecapResponse(List<CraLineResponse> lines, int written, int rej
 
     /** Une ligne du récap : le nom cité, le poste rapproché (si connu), les jours/mois, le statut. */
     public record CraLineResponse(String cited, UUID hostId, String hostName, BigDecimal days,
-            String month, String status, String message) {
+            String month, String period, String status, String message) {
 
         static CraLineResponse from(CraLine line) {
             return new CraLineResponse(line.cited(), line.hostId(), line.hostName(), line.days(),
-                    line.month(), line.status().name(), line.message());
+                    line.month(), line.period(), line.status().name(), line.message());
         }
     }
 }
