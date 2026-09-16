@@ -32,6 +32,28 @@ export interface RevenueSummary {
   postes: PosteRevenue[];
 }
 
+/** Le statut d'une ligne de CRA après rapprochement/validation (F-124 / SF-124-03). */
+export type CraLineStatus = 'WRITTEN' | 'REJECTED' | 'UNKNOWN_HOST';
+
+/** Une ligne du récapitulatif d'un message de CRA (F-124 / SF-124-03). */
+export interface CraLine {
+  cited: string;
+  hostId: string | null;
+  hostName: string | null;
+  days: number | null;
+  month: string | null;
+  status: CraLineStatus;
+  message: string | null;
+}
+
+/** Le récapitulatif d'un message de CRA : ce qui a été compris et écrit (F-124 / SF-124-03). */
+export interface CraRecap {
+  lines: CraLine[];
+  written: number;
+  rejected: number;
+  unknown: number;
+}
+
 /**
  * Configuration du suivi d'activité et de revenu (F-124) : le TJM par poste et le mois de départ du
  * cumul. Comme partout, l'identité de l'utilisateur voyage dans le jeton (intercepteur), jamais dans
@@ -69,5 +91,10 @@ export class PosteBillingService {
   /** Le cumul de revenu (F-124 / SF-124-02) : par poste, et le total tous clients. */
   revenue(): Observable<RevenueSummary> {
     return this.http.get<RevenueSummary>('/api/activity/revenue');
+  }
+
+  /** Interprète un message de CRA en langage naturel (F-124 / SF-124-03) et rend le récapitulatif. */
+  submitCra(message: string): Observable<CraRecap> {
+    return this.http.post<CraRecap>('/api/activity/cra', { message });
   }
 }

@@ -2648,6 +2648,15 @@ describe('PostesComponent', () => {
       component.saveTjm(poste, '600');
       expect(billing.revenue.calls.count()).toBe(before + 1);
     });
+
+    it('ouvre le dialogue CRA et relit le cumul quand un CRA a été écrit', () => {
+      dialogAnswer = true; // le dialogue s'est fermé avec « un CRA a été écrit »
+      setup();
+      const before = billing.revenue.calls.count();
+      component.openCra();
+      expect(dialog.open).toHaveBeenCalled();
+      expect(billing.revenue.calls.count()).toBe(before + 1);
+    });
   });
 });
 

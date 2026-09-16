@@ -85,6 +85,7 @@ import {
   MapFileDialogData,
 } from './map-file-dialog/map-file-dialog.component';
 import { ForgeRailComponent, RailRevenue } from './forge-rail/forge-rail.component';
+import { CraDialogComponent } from './cra-dialog/cra-dialog.component';
 import { eurosLabel } from '../shared/money';
 import { ForgeProjectTileComponent } from './forge-project-tile/forge-project-tile.component';
 import {
@@ -702,6 +703,20 @@ export class PostesComponent implements OnInit {
   /** Le revenu total tous clients, « 42 500 € », pour le bandeau de la Forge (F-124 / SF-124-02). */
   revenueTotalLabel(): string {
     return eurosLabel(this.revenueTotalCents());
+  }
+
+  /**
+   * Ouvre le dialogue **CRA** (F-124 / SF-124-03) : l'utilisateur déclare ses jours en langage
+   * naturel. À la fermeture, si un CRA a été écrit, on relit le cumul.
+   */
+  openCra(): void {
+    this.dialog.open(CraDialogComponent, { width: CraDialogComponent.DIALOG_WIDTH })
+      .afterClosed()
+      .subscribe((changed) => {
+        if (changed) {
+          this.loadRevenue();
+        }
+      });
   }
 
   /** « dont 12 000 € supposés », ou `null` quand rien n'est estimé. */
