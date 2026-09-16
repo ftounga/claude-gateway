@@ -84,7 +84,8 @@ import {
   MapFileDialogComponent,
   MapFileDialogData,
 } from './map-file-dialog/map-file-dialog.component';
-import { ForgeRailComponent } from './forge-rail/forge-rail.component';
+import { ForgeRailComponent, RailRevenue } from './forge-rail/forge-rail.component';
+import { eurosLabel } from '../shared/money';
 import { ForgeProjectTileComponent } from './forge-project-tile/forge-project-tile.component';
 import {
   ForgeRow,
@@ -505,6 +506,13 @@ export class PostesComponent implements OnInit {
   /** Vrai pendant l'enregistrement du mois de départ. */
   readonly savingStartMonth = signal(false);
 
+  /** **Le cumul de revenu par poste** (F-124 / SF-124-02), indexé par identifiant de poste. */
+  readonly revenueByHost = signal<Record<string, RailRevenue>>({});
+
+  /** **Le revenu total tous clients** (F-124 / SF-124-02), en centimes, et sa part supposée. */
+  readonly revenueTotalCents = signal(0);
+  readonly revenueSupposedCents = signal(0);
+
   /** L'activité du poste ouvert : ses projets, du plus récent au plus ancien, ceux sans trace à la fin. */
   readonly selectedActivity = computed<HostProjectSummary[]>(() =>
     [...this.selectedHost().projects]
@@ -669,6 +677,37 @@ export class PostesComponent implements OnInit {
       next: (settings) => this.startMonth.set(settings.startMonth),
       error: () => { /* défaut applicatif conservé */ },
     });
+    this.loadRevenue();
+  }
+
+  /** **Le cumul par poste et le total** (F-124 / SF-124-02). Enrichissement : un échec n'efface rien. */
+  private loadRevenue(): void {
+    this.billing.revenue().subscribe({
+      next: (summary) => {
+        const byHost: Record<string, RailRevenue> = {};
+        for (const poste of summary.postes ?? []) {
+          byHost[poste.hostId] = {
+            cumulCents: poste.cumulCents,
+            supposedCents: poste.supposedCents,
+          };
+        }
+        this.revenueByHost.set(byHost);
+        this.revenueTotalCents.set(summary.totalCents);
+        this.revenueSupposedCents.set(summary.totalSupposedCents);
+      },
+      error: () => { /* le cumul est un enrichissement : son absence ne casse pas la Forge */ },
+    });
+  }
+
+  /** Le revenu total tous clients, « 42 500 € », pour le bandeau de la Forge (F-124 / SF-124-02). */
+  revenueTotalLabel(): string {
+    return eurosLabel(this.revenueTotalCents());
+  }
+
+  /** « dont 12 000 € supposés », ou `null` quand rien n'est estimé. */
+  revenueSupposedLabel(): string | null {
+    const supposed = this.revenueSupposedCents();
+    return supposed > 0 ? `dont ${eurosLabel(supposed)} supposés` : null;
   }
 
   /** Le TJM du poste ouvert en euros, pour préremplir le champ (vide s'il n'y en a pas). */
@@ -699,6 +738,7 @@ export class PostesComponent implements OnInit {
         this.rates.update((map) => ({ ...map, [id]: rate.dailyRateCents }));
         this.savingTjmHostId.set(null);
         this.snackBar.open('TJM enregistré.', 'Fermer', { duration: 4000 });
+        this.loadRevenue(); // le cumul dépend du TJM (F-124 / SF-124-02)
       },
       error: (err: unknown) => {
         this.savingTjmHostId.set(null);
@@ -721,6 +761,7 @@ export class PostesComponent implements OnInit {
         this.startMonth.set(settings.startMonth);
         this.savingStartMonth.set(false);
         this.snackBar.open('Mois de départ enregistré.', 'Fermer', { duration: 4000 });
+        this.loadRevenue(); // le cumul dépend du mois de départ (F-124 / SF-124-02)
       },
       error: (err: unknown) => {
         this.savingStartMonth.set(false);

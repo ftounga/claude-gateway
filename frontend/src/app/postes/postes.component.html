@@ -6,6 +6,13 @@
   <header class="forge-fleet">
     <h1 class="forge-fleet__title">Forge</h1>
     @if (!loading() && error() === 'none') {
+      <!-- F-124 / SF-124-02 : le REVENU TOTAL tous clients, bien en avant en haut de la Forge. -->
+      <span class="forge-fleet__kpi forge-fleet__kpi--revenue" role="status">
+        Revenu total&nbsp;<b class="forge-fleet__revenue">{{ revenueTotalLabel() }}</b>
+        @if (revenueSupposedLabel(); as supposed) {
+          <span class="forge-fleet__revenue-supposed badge badge--neutral">{{ supposed }}</span>
+        }
+      </span>
       <span class="forge-fleet__kpi">
         <span class="forge-fleet__dot forge-fleet__dot--online" aria-hidden="true"></span>
         <b>{{ onlineHostCount() }}</b>&nbsp;{{ onlineHostCount() > 1 ? 'postes' : 'poste' }} en ligne
@@ -93,6 +100,7 @@
         [filter]="filter()"
         [closedOpen]="closedOpen()"
         [billing]="rates()"
+        [revenue]="revenueByHost()"
         (selectHost)="selectHost($event)"
         (filterChange)="filter.set($event)"
         (toggleClosed)="toggleClosed()"

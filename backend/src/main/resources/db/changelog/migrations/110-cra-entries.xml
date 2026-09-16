@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-124 / SF-124-02 — LE CRA DECLARE (jours travailles par poste et par mois).
+
+      cra_entries : au plus une ligne par (user_id, host_id, year_month). SEULS LES CRA DECLARES sont
+      stockes ; le « suppose » (mois complet automatique) est calcule a la volee, aucune ligne. Un CRA
+      renvoye pour un mois ECRASE l'ancien (SF-124-03) — d'ou l'unicite sur (user_id, host_id,
+      year_month). days en numeric(4,1) : demi-journees admises (0,5).
+
+      La table est CREEE ici (SF-124-02) parce qu'elle est l'ENTREE du calcul du cumul : SF-124-02 la
+      LIT (part declaree vs supposee) ; SF-124-03 ajoutera le chemin d'ECRITURE (extraction IA).
+
+      Cles etrangeres EN CASCADE vers users et runner_hosts : aucun CRA ne survit au poste ni au
+      compte. Types portables : un seul changeSet PostgreSQL + H2. Reversible : dropTable.
+    -->
+    <changeSet id="110-cra-entries" author="claude-gateway">
+        <createTable tableName="cra_entries">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"
+                             foreignKeyName="fk_cra_entries_user"
+                             references="users(id)" deleteCascade="true"/>
+            </column>
+            <column name="host_id" type="uuid">
+                <constraints nullable="false"
+                             foreignKeyName="fk_cra_entries_host"
+                             references="runner_hosts(id)" deleteCascade="true"/>
+            </column>
+            <column name="year_month" type="varchar(7)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="days" type="numeric(4,1)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="cra_entries" indexName="idx_cra_entries_user_host_month" unique="true">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="year_month"/>
+        </createIndex>
+        <createIndex tableName="cra_entries" indexName="idx_cra_entries_user_host">
+            <column name="user_id"/>
+            <column name="host_id"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="cra_entries"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

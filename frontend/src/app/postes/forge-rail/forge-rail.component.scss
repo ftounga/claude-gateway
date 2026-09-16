@@ -205,6 +205,24 @@
     white-space: nowrap;
   }
 
+  // F-124 / SF-124-02 : le cumul de revenu, en JetBrains Mono, encre principale ; la part supposée
+  // en pastille neutre §5 (aucune couleur nouvelle).
+  &__cumul {
+    display: flex;
+    align-items: center;
+    gap: var(--cg-space-1);
+    flex-wrap: wrap;
+    font-family: var(--cg-font-mono);
+    font-size: 12px;
+    color: var(--cg-text-primary);
+  }
+
+  &__supposed {
+    font-family: var(--cg-font-sans, inherit);
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
   &__dot {
     flex: none;
     width: 8px;

@@ -80,6 +80,15 @@
                   @if (tjmLabel(row); as tjm) {
                     <span class="forge-rail__tjm">{{ tjm }}</span>
                   }
+                  <!-- F-124 / SF-124-02 : le cumul de revenu, et la part supposée (« dont X € supposés »). -->
+                  @if (cumulLabel(row); as cumul) {
+                    <span class="forge-rail__cumul">
+                      {{ cumul }}
+                      @if (supposedLabel(row); as supposed) {
+                        <span class="forge-rail__supposed badge badge--neutral">{{ supposed }}</span>
+                      }
+                    </span>
+                  }
                 }
               </span>
               @if (row.awaiting > 0) {
