@@ -1,0 +1,59 @@
+<h2 mat-dialog-title>Déclarer mon CRA</h2>
+
+<mat-dialog-content class="cra">
+  <p class="cra__hint">
+    Écrivez vos jours en une phrase — par exemple « Free 20j, KG 13j, Eden Red 20j ».
+    Sans mois précisé, le mois en cours est retenu.
+  </p>
+
+  <mat-form-field appearance="outline" class="cra__field">
+    <mat-label>Votre CRA</mat-label>
+    <textarea
+      matInput
+      rows="3"
+      [ngModel]="message()"
+      (ngModelChange)="message.set($event)"
+      [disabled]="submitting()"
+      aria-label="Votre compte rendu d'activité en langage naturel"
+    ></textarea>
+  </mat-form-field>
+
+  @if (error(); as err) {
+    <p class="cra__error" role="alert">{{ err }}</p>
+  }
+
+  @if (recap(); as r) {
+    @if (r.lines.length === 0) {
+      <p class="cra__hint">Rien compris dans ce message. Reformulez, par exemple « Free 20j ».</p>
+    } @else {
+      <ul class="cra__lines">
+        @for (line of r.lines; track $index) {
+          <li class="cra__line">
+            <span [class]="badgeClass(line)">{{ statusLabel(line) }}</span>
+            <span class="cra__line-text">{{ lineLabel(line) }}</span>
+            @if (line.message && line.status !== 'WRITTEN') {
+              <span class="cra__line-detail">{{ line.message }}</span>
+            }
+          </li>
+        }
+      </ul>
+    }
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-stroked-button type="button" (click)="close()">Fermer</button>
+  <button
+    mat-flat-button
+    color="primary"
+    type="button"
+    [disabled]="submitting() || message().trim().length === 0"
+    (click)="submit()"
+  >
+    @if (submitting()) {
+      <mat-spinner diameter="18"></mat-spinner>
+    } @else {
+      <ng-container>Interpréter et enregistrer</ng-container>
+    }
+  </button>
+</mat-dialog-actions>

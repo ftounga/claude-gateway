@@ -36,6 +36,17 @@
     <!-- UNE SEULE PORTE (F-98 / SF-98-04) : la supervision (F-76) et la mosaïque (F-83) étaient deux
          boutons pour un seul besoin. « Voir travailler » ouvre la densité retenue ; le choix
          Aperçus / Flux entiers se fait là-bas, sans changer de page. -->
+    <!-- F-124 / SF-124-03 : déclarer son CRA en langage naturel (un message cite plusieurs clients). -->
+    <button
+      mat-stroked-button
+      type="button"
+      class="forge-fleet__cra"
+      (click)="openCra()"
+      matTooltip="Déclarer ses jours travaillés en une phrase — « Free 20j, KG 13j »"
+    >
+      <mat-icon>event_note</mat-icon>
+      CRA
+    </button>
     <a
       mat-stroked-button
       class="forge-fleet__watch"

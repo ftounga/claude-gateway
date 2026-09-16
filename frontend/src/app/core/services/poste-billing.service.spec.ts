@@ -61,6 +61,17 @@ describe('PosteBillingService', () => {
     req.flush(null);
   });
 
+  it('submits a CRA message with only the message field', () => {
+    let written: number | undefined;
+    service.submitCra('Free 20j, KG 13j').subscribe((r) => (written = r.written));
+    const req = http.expectOne('/api/activity/cra');
+    expect(req.request.method).toBe('POST');
+    expect(Object.keys(req.request.body)).toEqual(['message']);
+    expect(req.request.body.message).toBe('Free 20j, KG 13j');
+    req.flush({ lines: [], written: 2, rejected: 0, unknown: 0 });
+    expect(written).toBe(2);
+  });
+
   it('reads the revenue summary', () => {
     let total: number | undefined;
     service.revenue().subscribe((r) => (total = r.totalCents));
