@@ -659,6 +659,88 @@ class AtelierApiIntegrationTest {
      * Isolation : l'état de mission voyage avec le nom, donc sous la même règle. Un projet pointant
      * vers le poste de quelqu'un d'autre n'en révèle ni le nom, ni l'avancement.
      */
+    // -------------------------------------------------- F-115 / SF-115-01 : dépôt
+
+    @Test
+    void depositsAFileIntoTheHostedEntreesFolder() throws Exception {
+        String id = createWorkspace(aliceToken, Map.of("README.md", "hello"));
+        MockMultipartFile file = new MockMultipartFile("files", "notes.txt", "text/plain",
+                "bonjour".getBytes(StandardCharsets.UTF_8));
+
+        mockMvc.perform(multipart("/api/workspaces/" + id + "/deposit").file(file).contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.files[0].path", is("entrees/notes.txt")))
+                .andExpect(jsonPath("$.files[0].target", is("HOSTED")))
+                .andExpect(jsonPath("$.files[0].size", is(7)));
+
+        // L'agent le retrouve par son chemin, sous entrees/.
+        mockMvc.perform(get("/api/workspaces/" + id + "/file").param("path", "entrees/notes.txt")
+                        .contextPath("/api").header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content", is("bonjour")));
+    }
+
+    @Test
+    void depositWithoutAFileIsRejected() throws Exception {
+        String id = createWorkspace(aliceToken, Map.of("a.txt", "x"));
+        mockMvc.perform(multipart("/api/workspaces/" + id + "/deposit").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", is("no_file")));
+    }
+
+    @Test
+    void depositWithATraversalNameIsRejected() throws Exception {
+        String id = createWorkspace(aliceToken, Map.of("a.txt", "x"));
+        MockMultipartFile file = new MockMultipartFile("files", "..", "application/octet-stream",
+                new byte[] {1, 2});
+        mockMvc.perform(multipart("/api/workspaces/" + id + "/deposit").file(file).contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", is("invalid_name")));
+    }
+
+    @Test
+    void depositOfATooLargeFileIsRejected() throws Exception {
+        String id = createWorkspace(aliceToken, Map.of("a.txt", "x"));
+        MockMultipartFile file = new MockMultipartFile("files", "gros.bin", "application/octet-stream",
+                new byte[8 * 1024 * 1024 + 1]);
+        mockMvc.perform(multipart("/api/workspaces/" + id + "/deposit").file(file).contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(jsonPath("$.error", is("file_too_large")));
+    }
+
+    @Test
+    void depositIntoAnotherUsersWorkspaceIsNotFound() throws Exception {
+        String bobWs = createWorkspace(bobToken, Map.of("a.txt", "de Bob"));
+        MockMultipartFile file = new MockMultipartFile("files", "x.txt", "text/plain",
+                "intrus".getBytes(StandardCharsets.UTF_8));
+        mockMvc.perform(multipart("/api/workspaces/" + bobWs + "/deposit").file(file).contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void depositToAnOfflineRunnerIsRefused() throws Exception {
+        RunnerHost host = runnerHostRepository.save(RunnerHost.builder()
+                .userId(alice.getId()).name("Poste d'Alice").build());
+        String id = createWorkspace(aliceToken, Map.of("a.txt", "x"));
+        Workspace workspace = workspaceRepository.findById(UUID.fromString(id)).orElseThrow();
+        workspace.setHostId(host.getId());
+        workspace.setProjectPath("projet");
+        workspace.setExecutionTarget(WorkspaceExecutionTarget.RUNNER);
+        workspaceRepository.save(workspace);
+
+        MockMultipartFile file = new MockMultipartFile("files", "x.bin", "application/octet-stream",
+                new byte[] {1, 2, 3});
+        mockMvc.perform(multipart("/api/workspaces/" + id + "/deposit").file(file).contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error", is("runner_offline")));
+    }
+
     @Test
     void workspaceListNeverRevealsAnotherUsersMissionStatus() throws Exception {
         User bob = userRepository.findByEmail("bob@ex.com").orElseThrow();

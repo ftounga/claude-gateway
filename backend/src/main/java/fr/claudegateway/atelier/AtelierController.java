@@ -63,6 +63,8 @@ public class AtelierController {
     private final fr.claudegateway.runner.host.RunnerHostService runnerHostService;
     /** Droit Vigie (F-107 / SF-107-07) : la liste des terminaux Teams d'un compte sans la Forge. */
     private final fr.claudegateway.teams.TeamsAccessService teamsAccess;
+    /** Dépôt d'un fichier dans un terminal (F-115 / SF-115-01). */
+    private final fr.claudegateway.atelier.deposit.WorkspaceDepositService depositService;
 
     public AtelierController(WorkspaceService workspaceService, CurrentUser currentUser,
             AtelierAccessService atelierAccess, WorkspaceLibraryImportService libraryImportService,
@@ -70,7 +72,8 @@ public class AtelierController {
             AtelierEngineService engineService,
             fr.claudegateway.runner.browse.RunnerWorkspaceBrowser runnerBrowser,
             fr.claudegateway.runner.host.RunnerHostService runnerHostService,
-            fr.claudegateway.teams.TeamsAccessService teamsAccess) {
+            fr.claudegateway.teams.TeamsAccessService teamsAccess,
+            fr.claudegateway.atelier.deposit.WorkspaceDepositService depositService) {
         this.workspaceService = workspaceService;
         this.currentUser = currentUser;
         this.atelierAccess = atelierAccess;
@@ -81,6 +84,7 @@ public class AtelierController {
         this.runnerBrowser = runnerBrowser;
         this.runnerHostService = runnerHostService;
         this.teamsAccess = teamsAccess;
+        this.depositService = depositService;
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -205,6 +209,44 @@ public class AtelierController {
         workspaceService.requireOwned(userId, id);
         workspaceService.writeFile(userId, id, path, request == null ? "" : request.content());
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * <b>Dépose</b> un ou plusieurs fichiers dans le terminal (F-115 / SF-115-01) : glisser, coller ou
+     * trombone côté écran (SF-115-02). Le fichier va <b>là où l'agent l'atteint</b> — {@code entrees/}
+     * du workspace hébergé, ou {@code .atelier/entrees/} du poste par le runner en transfert découpé —
+     * et le chemin déposé est rendu (jamais le binaire). Aucun filtre de type : déposer un zip, un log
+     * ou un mp4 sur sa propre machine ne regarde que l'utilisateur (F-85 vise l'upload documentaire).
+     */
+    @PostMapping(value = "/{id}/deposit", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public fr.claudegateway.atelier.deposit.DepositResponse deposit(
+            @PathVariable UUID id,
+            @RequestParam(value = "files", required = false) List<MultipartFile> files) {
+        atelierAccess.requireAccess();
+        UUID userId = currentUser.requireId();
+        List<fr.claudegateway.atelier.deposit.WorkspaceDepositService.IncomingFile> incoming =
+                files == null ? List.of() : files.stream()
+                        .map(file -> new fr.claudegateway.atelier.deposit.WorkspaceDepositService.IncomingFile(
+                                file.getOriginalFilename(), file.getContentType(), depositBytes(file)))
+                        .toList();
+        return depositService.deposit(userId, id, incoming);
+    }
+
+    /**
+     * Lit les octets d'un fichier déposé. Contrairement à {@link #readBytes} (import d'archive), un
+     * fichier <b>vide</b> est autorisé — déposer un fichier vide reste un dépôt légitime.
+     */
+    private byte[] depositBytes(MultipartFile file) {
+        if (file == null) {
+            throw new fr.claudegateway.atelier.deposit.WorkspaceDepositException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "no_file", "Fichier illisible.");
+        }
+        try {
+            return file.getBytes();
+        } catch (IOException ex) {
+            throw new fr.claudegateway.atelier.deposit.WorkspaceDepositException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "no_file", "Fichier illisible.");
+        }
     }
 
     /**

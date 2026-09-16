@@ -383,6 +383,19 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse("invalid_archive", ex.getMessage()));
     }
 
+    /**
+     * Échec nommé d'un dépôt de fichier dans un terminal (F-115 / SF-115-01). L'exception porte
+     * elle-même le statut HTTP (400 nom/borne, 409 poste hors ligne, 413 trop gros, 502 dossier non
+     * inscriptible) et un code de la liste close ; le message est déjà lisible par l'utilisateur.
+     */
+    @ExceptionHandler(fr.claudegateway.atelier.deposit.WorkspaceDepositException.class)
+    public ResponseEntity<ErrorResponse> handleWorkspaceDeposit(
+            fr.claudegateway.atelier.deposit.WorkspaceDepositException ex) {
+        log.debug("Dépôt de fichier refusé : {} ({})", ex.getMessage(), ex.code());
+        return ResponseEntity.status(ex.status())
+                .body(new ErrorResponse(ex.code(), ex.getMessage()));
+    }
+
     @ExceptionHandler(InvalidFilePathException.class)
     public ResponseEntity<ErrorResponse> handleInvalidFilePath(InvalidFilePathException ex) {
         log.debug("Chemin de fichier Atelier invalide");

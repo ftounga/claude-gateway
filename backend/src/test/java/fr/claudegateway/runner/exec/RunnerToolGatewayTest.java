@@ -108,6 +108,28 @@ class RunnerToolGatewayTest {
     }
 
     @Test
+    void writeFileBytesSendsPathContentAndOffsetWithTheDepositTimeout() {
+        gateway().writeFileBytes(target, "toolu_1", "./.atelier//entrees/x.bin", "QUJD", 512L);
+
+        ArgumentCaptor<JsonNode> input = ArgumentCaptor.forClass(JsonNode.class);
+        ArgumentCaptor<Long> timeout = ArgumentCaptor.forClass(Long.class);
+        verify(router).call(org.mockito.ArgumentMatchers.eq(target), anyString(),
+                org.mockito.ArgumentMatchers.eq("write_file_bytes"), input.capture(), timeout.capture());
+        assertThat(timeout.getValue()).isEqualTo(RunnerToolGateway.DEPOSIT_TIMEOUT_MS);
+        assertThat(input.getValue().path("path").asText()).isEqualTo(".atelier/entrees/x.bin");
+        assertThat(input.getValue().path("content").asText()).isEqualTo("QUJD");
+        assertThat(input.getValue().path("offset").asLong()).isEqualTo(512L);
+    }
+
+    @Test
+    void writeFileBytesRefusesAPathThatLeavesTheRoot() {
+        RunnerCallResult result = gateway().writeFileBytes(target, "toolu_1", "../etc/passwd", "QUJD", 0L);
+
+        assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.INVALID_INPUT);
+        verify(router, never()).call(any(), anyString(), anyString(), any(), anyLong());
+    }
+
+    @Test
     void searchFilesSendsASingleQuery() {
         gateway().searchFiles(target, "toolu_1", "  TODO  ");
 

@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-115 / SF-115-01 — Fichiers deposes dans un terminal, en attente d'un tour. Une table neuve :
+
+      * atelier_deposited_files : une ligne par fichier depose (glisser / coller / trombone). path =
+        chemin relatif ou l'agent lira le fichier (entrees/<nom> hebergé, .atelier/entrees/<nom>
+        poste) ; size_bytes = taille ecrite ; consumed_at = NULL tant qu'aucun tour ne l'a lu, puis
+        horodate quand la consigne du tour a porte le chemin (SF-115-03). Filtre d'isolation
+        (user_id, workspace_id) sur toute lecture.
+
+      Aucune donnee existante n'est touchee (table neuve). Reversible : dropTable. L'index couvre la
+      lecture « depots non consommes d'un projet possede », faite une fois par tour.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="108-atelier-deposited-files-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="atelier_deposited_files">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="path" type="varchar(1024)"><constraints nullable="false"/></column>
+            <column name="size_bytes" type="bigint"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="consumed_at" type="timestamptz"/>
+        </createTable>
+        <createIndex tableName="atelier_deposited_files" indexName="idx_atelier_deposit_user_workspace">
+            <column name="user_id"/>
+            <column name="workspace_id"/>
+        </createIndex>
+        <rollback><dropTable tableName="atelier_deposited_files"/></rollback>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="108-atelier-deposited-files-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="atelier_deposited_files">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="path" type="varchar(1024)"><constraints nullable="false"/></column>
+            <column name="size_bytes" type="bigint"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="consumed_at" type="timestamp with time zone"/>
+        </createTable>
+        <createIndex tableName="atelier_deposited_files" indexName="idx_atelier_deposit_user_workspace">
+            <column name="user_id"/>
+            <column name="workspace_id"/>
+        </createIndex>
+        <rollback><dropTable tableName="atelier_deposited_files"/></rollback>
+    </changeSet>
+
+</databaseChangeLog>

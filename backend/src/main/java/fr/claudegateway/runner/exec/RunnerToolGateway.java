@@ -81,6 +81,13 @@ public class RunnerToolGateway {
     public static final int MAX_COMMAND_CHARS = 8_192;
     /** Borne du contenu d'un {@code write_file} (contrat §5) : au-delà on refuse, on ne fragmente pas. */
     public static final int MAX_WRITE_BYTES = 524_288;
+
+    /**
+     * Délai d'une tranche de dépôt {@code write_file_bytes} (F-115 / SF-115-01). Plus long qu'un
+     * appel de fichier ordinaire : une tranche traverse le réseau vers la machine et y est écrite,
+     * et un gros dépôt en enchaîne beaucoup.
+     */
+    public static final long DEPOSIT_TIMEOUT_MS = 60_000L;
     private static final int MAX_PATH_CHARS = 4_096;
     private static final int MAX_QUERY_CHARS = 1_024;
 
@@ -124,6 +131,26 @@ public class RunnerToolGateway {
         input.put("offset", Math.max(0L, offset));
         input.put("length", length);
         return router.call(target, callId, "read_file_bytes", input, FILE_TOOL_TIMEOUT_MS);
+    }
+
+    /**
+     * Écrit une <b>tranche binaire</b> d'un fichier déposé sur la machine (F-115 / SF-115-01) :
+     * {@code content} porte la tranche en Base64, {@code offset} sa position. La tranche à
+     * {@code offset == 0} tronque/crée le fichier ; c'est le primitif du transfert découpé d'un gros
+     * dépôt vers {@code .atelier/entrees/}, symétrique de {@link #readFileBytes}. Un runner antérieur
+     * répond {@code unsupported_tool}.
+     */
+    public RunnerCallResult writeFileBytes(RunnerTarget target, String callId, String path,
+            String base64Chunk, long offset) {
+        String rel = normalizePath(path);
+        if (rel == null) {
+            return invalid("Chemin de fichier invalide.");
+        }
+        ObjectNode input = objectMapper.createObjectNode();
+        input.put("path", rel);
+        input.put("content", base64Chunk == null ? "" : base64Chunk);
+        input.put("offset", Math.max(0L, offset));
+        return router.call(target, callId, "write_file_bytes", input, DEPOSIT_TIMEOUT_MS);
     }
 
     /** Écrit un fichier du projet sur la machine. */
