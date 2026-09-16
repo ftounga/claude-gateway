@@ -1,4 +1,5 @@
-import { HttpErrorResponse } from '@angular/common/http';
+import { HttpErrorResponse, HttpEventType } from '@angular/common/http';
+import { Subscription } from 'rxjs';
 import {
   ApplicationRef,
   Component,
@@ -31,7 +32,7 @@ import {
   isForgeAccessDenied,
   openForgeAccessSnackBar,
 } from '../shared/forge-access';
-import { httpErrorMessage, MAX_UPLOAD_BYTES, oversizeMessage } from '../shared/http-error.util';
+import { httpErrorMessage, humanFileSize, MAX_UPLOAD_BYTES, oversizeMessage } from '../shared/http-error.util';
 import { HostBadgeComponent } from '../shared/host-badge/host-badge.component';
 import { MissionBadgeComponent } from '../shared/mission-badge/mission-badge.component';
 import { HostMissionStatus, normalizeMissionStatus } from '../shared/mission-status';
@@ -96,6 +97,7 @@ import {
   GitPushResult,
   HostProjectSummary,
   RunnerStatus,
+  TerminalDepositNotice,
   WorkspaceDetail,
   WorkspaceExecutionTarget,
   WorkspaceSummary,
@@ -327,6 +329,12 @@ export class AtelierComponent implements OnInit, OnDestroy {
   readonly activeWorkspaceId = signal<string | null>(null);
   readonly tree = signal<string[]>([]);
   readonly messages = signal<AtelierThreadItem[]>([]);
+
+  // -------------------------------------------------- F-115 / SF-115-02 : dépôt de fichiers
+  readonly depositing = signal(false);
+  readonly depositProgress = signal<number | null>(null);
+  readonly depositNotices = signal<TerminalDepositNotice[]>([]);
+  private depositSub: Subscription | null = null;
 
   /**
    * Reprise du fil (F-39 / SF-39-04, décision D5). Le fil reprend **sans rien demander** : ce signal
@@ -2177,6 +2185,68 @@ export class AtelierComponent implements OnInit, OnDestroy {
             : "La cible d'exécution n'a pas pu être changée. Veuillez réessayer.");
       },
     });
+  }
+
+  /**
+   * Dépose les fichiers glissés / collés / choisis dans le terminal (F-115 / SF-115-02). Le terminal
+   * est présentation seule : c'est ici que l'appel HTTP part, la progression est suivie, et les blocs
+   * « fichier déposé » (ou l'échec nommé) sont poussés dans le fil.
+   */
+  onFilesSelected(files: File[]): void {
+    const id = this.activeWorkspaceId();
+    if (!id || files.length === 0 || this.depositing()) {
+      return;
+    }
+    this.depositing.set(true);
+    this.depositProgress.set(null);
+    this.depositSub = this.atelier.deposit(id, files).subscribe({
+      next: (event) => {
+        if (event.type === HttpEventType.UploadProgress && event.total) {
+          this.depositProgress.set(Math.round((event.loaded / event.total) * 100));
+        } else if (event.type === HttpEventType.Response && event.body) {
+          for (const file of event.body.files) {
+            this.pushDepositNotice({
+              id: this.depositNoticeId(),
+              path: file.path,
+              sizeLabel: humanFileSize(file.size),
+            });
+          }
+          this.finishDeposit();
+        }
+      },
+      error: (err: unknown) => {
+        this.pushDepositNotice({
+          id: this.depositNoticeId(),
+          error: httpErrorMessage(err, 'Le dépôt a échoué. Veuillez réessayer.'),
+        });
+        this.finishDeposit();
+      },
+    });
+  }
+
+  /** Annule le dépôt en cours : la requête est interrompue et un bloc « annulé » est posé. */
+  cancelDeposit(): void {
+    if (!this.depositing()) {
+      return;
+    }
+    this.depositSub?.unsubscribe();
+    this.depositSub = null;
+    this.pushDepositNotice({ id: this.depositNoticeId(), cancelled: true });
+    this.finishDeposit();
+  }
+
+  private finishDeposit(): void {
+    this.depositing.set(false);
+    this.depositProgress.set(null);
+    this.depositSub = null;
+  }
+
+  private pushDepositNotice(notice: TerminalDepositNotice): void {
+    this.depositNotices.update((list) => [...list, notice]);
+  }
+
+  private depositNoticeId(): string {
+    return `deposit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   }
 
   /**

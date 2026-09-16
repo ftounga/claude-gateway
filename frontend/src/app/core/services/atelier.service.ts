@@ -1,4 +1,4 @@
-import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpEvent, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable, tap } from 'rxjs';
 
@@ -22,6 +22,7 @@ import {
   AtelierTurnFollower,
   AtelierTurnState,
   CreateGitWorkspaceRequest,
+  DepositResponse,
   ExecutionTargetRequest,
   FileContent,
   GitBranches,
@@ -214,6 +215,23 @@ export class AtelierService {
   writeFile(id: string, path: string, content: string): Observable<void> {
     const body: WriteFileRequest = { content };
     return this.http.put<void>(`/api/workspaces/${id}/file`, body, { params: { path } });
+  }
+
+  /**
+   * Dépose un ou plusieurs fichiers dans un terminal (F-115 / SF-115-01, `POST .../deposit`,
+   * multipart, champ `files`). Rend le flux d'événements HTTP (avec `reportProgress`) : le conteneur
+   * y lit la progression, et **annule** en se désabonnant. Aucun filtre de type côté client — le
+   * dépôt sur une machine ou un workspace n'est pas l'upload documentaire (F-85).
+   */
+  deposit(id: string, files: File[]): Observable<HttpEvent<DepositResponse>> {
+    const form = new FormData();
+    for (const file of files) {
+      form.append('files', file, file.name || 'fichier');
+    }
+    return this.http.post<DepositResponse>(`/api/workspaces/${id}/deposit`, form, {
+      observe: 'events',
+      reportProgress: true,
+    });
   }
 
   /** Supprime un fichier du workspace (RGPD/gestion, SF-28-14). Renvoie 204 (pas de corps). */

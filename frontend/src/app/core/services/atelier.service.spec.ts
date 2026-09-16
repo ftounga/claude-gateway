@@ -1473,4 +1473,32 @@ describe('AtelierService', () => {
     expect(signal?.aborted).toBeTrue();
     expect(fetchSpy.calls.count()).toBe(1);
   });
+
+  // F-115 / SF-115-02 — dépôt d'un fichier dans un terminal.
+  it('deposit envoie un multipart (champ files) vers .../deposit et rend la réponse', () => {
+    const file = new File(['contenu'], 'notes.txt', { type: 'text/plain' });
+    let response: unknown;
+    service.deposit('w1', [file]).subscribe((event) => {
+      if ((event as { type?: unknown }).type === 4 /* HttpEventType.Response */) {
+        response = (event as { body?: unknown }).body;
+      }
+    });
+
+    const req = httpMock.expectOne('/api/workspaces/w1/deposit');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body instanceof FormData).toBeTrue();
+    expect((req.request.body as FormData).getAll('files').length).toBe(1);
+    expect(req.request.reportProgress).toBeTrue();
+
+    req.flush({ files: [{ path: 'entrees/notes.txt', size: 7, target: 'HOSTED' }] });
+    expect(response).toEqual({ files: [{ path: 'entrees/notes.txt', size: 7, target: 'HOSTED' }] });
+  });
+
+  it('deposit peut être annulé par désabonnement (la requête est abandonnée)', () => {
+    const file = new File(['x'], 'x.bin');
+    const sub = service.deposit('w1', [file]).subscribe();
+    const req = httpMock.expectOne('/api/workspaces/w1/deposit');
+    sub.unsubscribe();
+    expect(req.cancelled).toBeTrue();
+  });
 });

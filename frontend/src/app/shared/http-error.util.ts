@@ -47,6 +47,25 @@ export function httpErrorMessage(error: unknown, fallback: string = GENERIC_ERRO
   return fallback;
 }
 
+/**
+ * Taille de fichier dite comme on la lit (F-115 / SF-115-02) : « 820 o », « 2,3 Ko », « 5,4 Mo »,
+ * « 1,2 Go ». Sépare la partie décimale par une virgule (locale FR). Sert au bloc « fichier déposé ».
+ */
+export function humanFileSize(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes} o`;
+  }
+  const units = ['Ko', 'Mo', 'Go', 'To'];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  const rounded = Math.round(value * 10) / 10;
+  return `${rounded.toString().replace('.', ',')} ${units[unit]}`;
+}
+
 /** Extrait le champ `message` d'un corps d'erreur, qu'il soit déjà désérialisé ou encore en texte. */
 function extractMessage(body: unknown): string | null {
   if (body && typeof body === 'object') {

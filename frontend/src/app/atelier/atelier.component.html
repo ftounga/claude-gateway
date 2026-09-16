@@ -164,6 +164,11 @@
     (openAccessCode)="goToAccessCode()"
     (teamsRetryRead)="retryTeamsRead()"
     (teamsSearchProject)="searchProjectInstead()"
+    [depositing]="depositing()"
+    [depositProgress]="depositProgress()"
+    [depositNotices]="depositNotices()"
+    (filesSelected)="onFilesSelected($event)"
+    (depositCancel)="cancelDeposit()"
   ></app-atelier-terminal>
 } @else {
 <div class="atelier-layout">

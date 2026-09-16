@@ -1699,4 +1699,102 @@ describe('AtelierTerminalComponent', () => {
       expect(seen.length).toBe(1);
     });
   });
+
+  // ------------------------------------------------ dépôt de fichiers (F-115 / SF-115-02)
+
+  describe('dépôt de fichiers', () => {
+    function fileTransfer(...files: File[]): DataTransfer {
+      const transfer = new DataTransfer();
+      for (const file of files) {
+        transfer.items.add(file);
+      }
+      return transfer;
+    }
+
+    function section(): HTMLElement {
+      return fixture.nativeElement.querySelector('.terminal-view') as HTMLElement;
+    }
+
+    it('affiche le voile « Déposer ici » au survol d\'un fichier et le retire au drop', () => {
+      fixture.detectChanges();
+      const transfer = fileTransfer(new File(['x'], 'a.txt'));
+
+      section().dispatchEvent(new DragEvent('dragover', { dataTransfer: transfer, bubbles: true }));
+      fixture.detectChanges();
+      expect(component.dragging()).toBeTrue();
+      expect(fixture.nativeElement.querySelector('.terminal-drop-veil')).not.toBeNull();
+      expect(text()).toContain('Déposer ici');
+
+      section().dispatchEvent(new DragEvent('drop', { dataTransfer: transfer, bubbles: true }));
+      fixture.detectChanges();
+      expect(component.dragging()).toBeFalse();
+      expect(fixture.nativeElement.querySelector('.terminal-drop-veil')).toBeNull();
+    });
+
+    it('émet les fichiers lâchés (glisser-déposer)', () => {
+      fixture.detectChanges();
+      const seen: File[][] = [];
+      component.filesSelected.subscribe((files) => seen.push(files));
+      const file = new File(['contenu'], 'capture.png', { type: 'image/png' });
+
+      section().dispatchEvent(new DragEvent('drop', { dataTransfer: fileTransfer(file), bubbles: true }));
+
+      expect(seen.length).toBe(1);
+      expect(seen[0][0].name).toBe('capture.png');
+    });
+
+    it('émet les fichiers collés depuis le presse-papiers, et ignore un collage de texte', () => {
+      fixture.detectChanges();
+      const seen: File[][] = [];
+      component.filesSelected.subscribe((files) => seen.push(files));
+
+      const withFile = new ClipboardEvent('paste', {
+        clipboardData: fileTransfer(new File(['img'], 'collage.png', { type: 'image/png' })),
+      });
+      component.onPaste(withFile);
+      expect(seen.length).toBe(1);
+
+      const textOnly = new ClipboardEvent('paste', { clipboardData: new DataTransfer() });
+      component.onPaste(textOnly);
+      expect(seen.length).toBe(1); // inchangé
+    });
+
+    it('montre le trombone quand le composer existe, et pas en lecture seule', () => {
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.terminal-attach')).not.toBeNull();
+
+      component.readOnly = true;
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.terminal-attach')).toBeNull();
+    });
+
+    it('rend une barre de progression annulable pendant un dépôt', () => {
+      component.depositing = true;
+      component.depositProgress = 40;
+      fixture.detectChanges();
+      const seen: void[] = [];
+      component.depositCancel.subscribe(() => seen.push(undefined));
+
+      expect(fixture.nativeElement.querySelector('.terminal-deposit-progress')).not.toBeNull();
+      const cancel = fixture.nativeElement.querySelector(
+        '.terminal-deposit-progress button') as HTMLButtonElement;
+      cancel.click();
+      expect(seen.length).toBe(1);
+    });
+
+    it('rend un bloc « fichier déposé » et un bloc d\'échec nommé', () => {
+      component.depositNotices = [
+        { id: '1', path: 'entrees/capture.png', sizeLabel: '2,3 Mo' },
+        { id: '2', error: 'Le poste est hors ligne.' },
+      ];
+      fixture.detectChanges();
+
+      const blocks = fixture.nativeElement.querySelectorAll('.terminal-deposit-notice');
+      expect(blocks.length).toBe(2);
+      expect(text()).toContain('entrees/capture.png');
+      expect(text()).toContain('2,3 Mo');
+      expect(text()).toContain('Le poste est hors ligne.');
+      expect(fixture.nativeElement.querySelector('.terminal-deposit-notice--error')).not.toBeNull();
+    });
+  });
 });
