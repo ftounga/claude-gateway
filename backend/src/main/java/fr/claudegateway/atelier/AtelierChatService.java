@@ -203,6 +203,24 @@ public class AtelierChatService implements RelayInterruptTarget {
             "Les conventions ci-dessous encadrent le travail quand tu IMPLÉMENTES à la demande de "
                     + "l'utilisateur. Elles ne transforment pas une question en ordre : si l'utilisateur "
                     + "pose une simple question, réponds-y sans dérouler de procédure ni rien modifier.\n\n";
+    /**
+     * Style de réponse (F-121 / SF-121-03) : ajouté au rôle sur les <b>deux</b> cibles, aux côtés de la
+     * discipline d'investigation (SF-119-02) et de la doctrine de retenue (SF-120-01). Le prompt
+     * principal était muet sur le style — la bonne consigne n'existait que dans la sous-boucle
+     * {@code explore} ({@code AtelierExploration.SYSTEM}) : réponse concise orientée terminal, pas de
+     * préambule ni de politesse, markdown léger, sources citées en {@code chemin:ligne}, pas d'émoji.
+     * On l'élève ici au rang de règle générale du travail principal, sans écraser les deux autres.
+     * Placé en tête du préfixe stable, il survit à la coupe {@link #SYSTEM_MAX_CHARS} et reste caché
+     * (cache de prompt préservé).
+     */
+    private static final String RESPONSE_STYLE =
+            "Style de réponse (terminal) :\n"
+                    + "- Réponds court et droit au but, comme dans un terminal : pas de préambule ni de "
+                    + "formule de politesse, pas de conclusion générale qui répète ce qui précède.\n"
+                    + "- Markdown léger seulement quand il aide (listes courtes, `code` en ligne) ; "
+                    + "évite titres et tableaux pour une réponse brève.\n"
+                    + "- Cite tes sources par `chemin:ligne` quand tu renvoies à du code.\n"
+                    + "- Pas d'émoji, sauf si l'utilisateur en emploie ou en demande.\n\n";
     private static final List<String> SKILL_PREFIXES = List.of(".claude/skills/", "skills/");
     /**
      * Nombre de skills annoncés dans la consigne (F-39 / SF-39-02, décision D3). Une borne explicite
@@ -3075,6 +3093,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         // La discipline dit COMMENT vérifier quand on agit ; la doctrine dit QUAND agir : une question
         // reçoit une réponse, pas une mutation non demandée.
         system.append(RESTRAINT_DOCTRINE);
+
+        // Style de réponse (F-121 / SF-121-03) : sur les DEUX cibles, en tête du préfixe stable, aux
+        // côtés de la discipline (SF-119-02) et de la doctrine (SF-120-01) — la concision orientée
+        // terminal existait dans la sous-boucle explore, elle devient une règle du travail principal.
+        system.append(RESPONSE_STYLE);
 
         // Mode explicite « Réponse/Plan » (F-120 / SF-120-02) : quand l'utilisateur l'a choisi, on
         // renforce la doctrine par une consigne de mode, en écho au retrait des outils mutants dans

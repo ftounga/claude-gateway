@@ -183,6 +183,37 @@ class AtelierChatServiceSystemPromptTest {
         assertThat(system).contains("Ne généralise jamais à partir d'un seul exemple");
     }
 
+    // ------------------------------------------- F-121 / SF-121-03 : style de réponse
+
+    @Test
+    void theResponseStyleBlockIsPresentOnASandboxProject() {
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+
+        String system = systemPrompt();
+
+        assertThat(system).contains("Style de réponse (terminal)");
+        assertThat(system).contains("pas de préambule");
+        assertThat(system).contains("`chemin:ligne`");
+        assertThat(system).contains("Pas d'émoji");
+        // Coexistence : la discipline SF-119-02 et la doctrine SF-120-01 ne sont pas écrasées.
+        assertThat(system).contains("Vérifie avant d'affirmer");
+        assertThat(system).contains("Répondre d'abord, agir sur demande");
+    }
+
+    @Test
+    void theResponseStyleBlockIsPresentOnARunnerProject() {
+        String system = systemPromptOfRunnerProjectDeclaring(null);
+
+        assertThat(system).contains("Style de réponse (terminal)");
+        assertThat(system).contains("Cite tes sources par `chemin:ligne`");
+        assertThat(system).contains("Pas d'émoji");
+        // Coexistence + non-régression du rôle RUNNER.
+        assertThat(system).contains("Répondre d'abord, agir sur demande");
+        assertThat(system).contains("bash (ls, find, grep -n)");
+    }
+
     @Test
     void theSetPlanDescriptionOnlyPlansWhenAskedOrActing() {
         when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
