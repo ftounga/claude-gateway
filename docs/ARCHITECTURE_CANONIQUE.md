@@ -1027,6 +1027,23 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     (défaut `false`), le reste exécuté. Isolation `(user_id, workspace_id)` sur toute lecture/écriture.
   - Purge : à la suppression du **compte** (`AccountService`) et du **projet** (`WorkspaceService`).
 
+- **atelier_deposited_files** — fichiers déposés dans un terminal (F-115 / SF-115-01, migration `108`).
+  Table neuve, **une ligne par fichier déposé** (glisser / coller / trombone), en attente d'un tour :
+  c'est ce qui donne au dépôt une mémoire entre le geste de l'utilisateur et le tour suivant, dont la
+  consigne portera le **chemin** (SF-115-03) — jamais le binaire.
+  - `atelier_deposited_files` : `id (uuid)`, `user_id (uuid)`, `workspace_id (uuid)`,
+    `path (varchar 1024)`, `size_bytes (bigint)`, `created_at`, `consumed_at (nullable)`. Index
+    `(user_id, workspace_id)`.
+  - `path` est le chemin **relatif** où l'agent lira le fichier : `entrees/<nom>` (workspace hébergé,
+    octets bruts en S3) ou `.atelier/entrees/<nom>` (poste, écrit par le runner en transfert découpé
+    via le nouvel outil `write_file_bytes`). Le « jamais hors de `entrees/` » est garanti **côté
+    gateway** (nom assaini + préfixe fixe + `normalizePath` refusant `..`) ; `PathResolver` du runner
+    ne confine pas (décision PO 2026-09-12). `consumed_at` vaut `null` tant qu'aucun tour n'a porté le
+    chemin dans sa consigne.
+  - Bornes du dépôt (réglables `app.atelier.deposit.*`) : 8 Mio hébergé, 100 Mio poste, 20 fichiers ;
+    coupe-circuit `RunnerLiveness` (poste hors ligne → refus nommé). Isolation `(user_id, workspace_id)`
+    sur toute lecture ; purge à la suppression du **projet** (`WorkspaceService`).
+
 - **Repli de transport du runner — aucune table** (F-38 / SF-38-09). Le canal runner peut être porté
   par le WebSocket de SF-38-02 **ou** par un long-polling HTTP quand un proxy refuse (ou coupe)
   l'`Upgrade`. **Aucune migration, aucune colonne, aucun type de message nouveau** : les deux
@@ -1212,7 +1229,7 @@ Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 rée
 
 Règle d'isolation des données :
 Tout accès aux données filtre obligatoirement sur **`user_id`**
-(documents/messages/subscriptions/uploaded_files/usage_counters/usage_turns/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/host_seat_months/live_terminals/runner_tokens/runner_pairing_codes/runner_audit/atelier_permission_rules/governance_selections/governance_activations/governance_host_activations/governance_map_growth/governance_deposited_files/pages/page_versions/page_shares/page_events via `user_id` ; tables `radar_*` via `user_id` **et** `host_id` ; `promotion_reportee` via `user_id` + `host_id` + `workspace_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
+(documents/messages/subscriptions/uploaded_files/usage_counters/usage_turns/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/host_seat_months/live_terminals/runner_tokens/runner_pairing_codes/runner_audit/atelier_permission_rules/atelier_deposited_files/governance_selections/governance_activations/governance_host_activations/governance_map_growth/governance_deposited_files/pages/page_versions/page_shares/page_events via `user_id` ; tables `radar_*` via `user_id` **et** `host_id` ; `promotion_reportee` via `user_id` + `host_id` + `workspace_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
 
 ---
 
