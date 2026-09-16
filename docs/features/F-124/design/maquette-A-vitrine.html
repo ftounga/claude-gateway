@@ -1,0 +1,182 @@
+<title>Mes clients — Forge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap">
+<style>
+  :root{
+    --navy:#1A3A5C; --navy-2:#12293f; --gold:#C9973A; --gold-2:#E0B25A;
+    --bg:#F5F6FA; --surface:#FFFFFF; --ink:#1C2B3A; --muted:#6B7A8D;
+    --divider:#E2E8F0; --success:#27AE60;
+    --shadow:0 1px 2px rgba(16,32,52,.06), 0 6px 20px rgba(16,32,52,.06);
+    --shadow-hero:0 12px 40px rgba(16,32,52,.28);
+    --sans:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    --serif:'Fraunces',Georgia,serif;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.45;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding-block:28px;padding-inline:20px}
+  .num{font-variant-numeric:tabular-nums}
+
+  /* ---- Bandeau "fierté" : total tous clients ---- */
+  .hero{
+    position:relative;overflow:hidden;border-radius:20px;color:#fff;
+    background:linear-gradient(135deg,var(--navy) 0%,var(--navy-2) 62%);
+    box-shadow:var(--shadow-hero);padding:30px 34px;margin-bottom:26px;
+  }
+  .hero::after{content:"";position:absolute;right:-60px;top:-60px;width:280px;height:280px;border-radius:50%;
+    background:radial-gradient(circle,rgba(201,151,58,.28),transparent 70%);pointer-events:none}
+  .hero__eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#9FB6CC;font-weight:600;margin:0 0 6px}
+  .hero__total{font-family:var(--serif);font-weight:600;font-size:clamp(44px,8vw,76px);line-height:1;letter-spacing:-.02em;margin:0;
+    color:#fff;text-shadow:0 1px 0 rgba(0,0,0,.15)}
+  .hero__total .cur{color:var(--gold-2);font-size:.62em;vertical-align:.06em;margin-left:.06em}
+  .hero__sub{margin:12px 0 0;color:#C7D6E6;font-size:14.5px}
+  .hero__chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
+  .chip{display:inline-flex;align-items:baseline;gap:7px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);
+    padding:8px 13px;border-radius:999px;font-size:13px;color:#E7EFF7}
+  .chip b{font-weight:700;color:#fff}
+  .chip.est{background:rgba(201,151,58,.16);border-color:rgba(201,151,58,.4);color:#F1DCB4}
+
+  /* ---- En-tête section ---- */
+  .sec{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:4px 2px 14px}
+  .sec h2{font-size:20px;font-weight:700;margin:0;letter-spacing:-.01em}
+  .sec .count{color:var(--muted);font-size:14px;font-weight:500}
+
+  /* ---- Grille de clients ---- */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+  .card{background:var(--surface);border:1px solid var(--divider);border-radius:16px;padding:20px 20px 18px;
+    box-shadow:var(--shadow);position:relative;transition:transform .12s ease,box-shadow .12s ease;overflow:hidden}
+  .card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--gold);opacity:.9}
+  .card:hover{transform:translateY(-2px);box-shadow:0 2px 4px rgba(16,32,52,.08),0 14px 34px rgba(16,32,52,.12)}
+  .card__top{display:flex;align-items:center;gap:10px;margin-bottom:2px}
+  .avatar{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;font-weight:700;font-size:15px;color:#fff;
+    background:linear-gradient(135deg,var(--navy),#274a6e);flex:none}
+  .card__name{font-size:17px;font-weight:700;letter-spacing:-.01em;margin:0;line-height:1.15}
+  .status{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-top:2px}
+  .dot{width:7px;height:7px;border-radius:50%}
+  .dot.on{background:var(--success);box-shadow:0 0 0 3px rgba(39,174,96,.16)}
+  .dot.off{background:#B7C2CE;box-shadow:0 0 0 3px rgba(183,194,206,.18)}
+
+  .revenue{margin:16px 0 4px}
+  .revenue__label{font-size:11.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:0 0 3px}
+  .revenue__val{font-family:var(--serif);font-weight:600;font-size:34px;line-height:1;letter-spacing:-.02em;color:var(--navy)}
+  .revenue__val .cur{color:var(--gold);font-size:.6em;margin-left:.05em;vertical-align:.05em}
+  .revenue__days{color:var(--muted);font-size:13px;margin-top:6px}
+
+  .card__foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;padding-top:13px;border-top:1px solid var(--divider)}
+  .tjm{display:flex;flex-direction:column}
+  .tjm span{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  .tjm b{font-size:16px;font-weight:700;color:var(--ink)}
+  .badge{font-size:11.5px;font-weight:600;padding:5px 10px;border-radius:999px;white-space:nowrap}
+  .badge.ok{background:rgba(39,174,96,.10);color:#1C7A45;border:1px solid rgba(39,174,96,.25)}
+  .badge.est{background:rgba(201,151,58,.12);color:#8A5200;border:1px solid rgba(201,151,58,.30)}
+
+  .cta{display:inline-flex;align-items:center;gap:8px;margin-top:22px;background:var(--gold);color:#2a1c04;font-weight:700;
+    border:none;border-radius:11px;padding:12px 18px;font-size:14.5px;cursor:pointer;box-shadow:0 2px 10px rgba(201,151,58,.35)}
+  .note{color:var(--muted);font-size:12.5px;margin-top:14px}
+  @media(max-width:520px){.hero{padding:24px 20px}.card__foot{flex-wrap:wrap}}
+</style>
+
+<div class="wrap">
+
+  <!-- Total "fierté" -->
+  <div class="hero">
+    <p class="hero__eyebrow">Revenu cumulé · depuis septembre 2025</p>
+    <p class="hero__total num">49 900<span class="cur">€</span></p>
+    <p class="hero__sub">Tous clients confondus, HT — 73 jours travaillés sur 4 clients.</p>
+    <div class="hero__chips">
+      <span class="chip num">4 <b>clients actifs</b></span>
+      <span class="chip num"><b>73 j</b> cumulés</span>
+      <span class="chip est num">dont <b>4 760 €</b> estimés</span>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>Mes clients</h2>
+    <span class="count num">4 clients · septembre → janvier</span>
+  </div>
+
+  <div class="grid">
+
+    <!-- Client -->
+    <article class="card">
+      <div class="card__top">
+        <div class="avatar">F</div>
+        <div>
+          <h3 class="card__name">Free</h3>
+          <span class="status"><span class="dot on"></span> Connecté</span>
+        </div>
+      </div>
+      <div class="revenue">
+        <p class="revenue__label">Revenu depuis sept.</p>
+        <div class="revenue__val num">14 300<span class="cur">€</span></div>
+        <p class="revenue__days num">22 jours travaillés</p>
+      </div>
+      <div class="card__foot">
+        <div class="tjm"><span>TJM</span><b class="num">650 €/j</b></div>
+        <span class="badge ok">Déclaré</span>
+      </div>
+    </article>
+
+    <article class="card">
+      <div class="card__top">
+        <div class="avatar">K</div>
+        <div>
+          <h3 class="card__name">KG</h3>
+          <span class="status"><span class="dot on"></span> Connecté</span>
+        </div>
+      </div>
+      <div class="revenue">
+        <p class="revenue__label">Revenu depuis sept.</p>
+        <div class="revenue__val num">9 360<span class="cur">€</span></div>
+        <p class="revenue__days num">13 jours travaillés</p>
+      </div>
+      <div class="card__foot">
+        <div class="tjm"><span>TJM</span><b class="num">720 €/j</b></div>
+        <span class="badge ok">Déclaré</span>
+      </div>
+    </article>
+
+    <article class="card">
+      <div class="card__top">
+        <div class="avatar">E</div>
+        <div>
+          <h3 class="card__name">Eden Red</h3>
+          <span class="status"><span class="dot off"></span> Hors ligne</span>
+        </div>
+      </div>
+      <div class="revenue">
+        <p class="revenue__label">Revenu depuis sept.</p>
+        <div class="revenue__val num">14 000<span class="cur">€</span></div>
+        <p class="revenue__days num">20 jours travaillés</p>
+      </div>
+      <div class="card__foot">
+        <div class="tjm"><span>TJM</span><b class="num">700 €/j</b></div>
+        <span class="badge ok">Déclaré</span>
+      </div>
+    </article>
+
+    <article class="card">
+      <div class="card__top">
+        <div class="avatar">C</div>
+        <div>
+          <h3 class="card__name">CAGIP</h3>
+          <span class="status"><span class="dot on"></span> Connecté</span>
+        </div>
+      </div>
+      <div class="revenue">
+        <p class="revenue__label">Revenu depuis sept.</p>
+        <div class="revenue__val num">12 240<span class="cur">€</span></div>
+        <p class="revenue__days num">18 jours · dont 7 estimés</p>
+      </div>
+      <div class="card__foot">
+        <div class="tjm"><span>TJM</span><b class="num">680 €/j</b></div>
+        <span class="badge est">Partiellement estimé</span>
+      </div>
+    </article>
+
+  </div>
+
+  <button class="cta">＋ Déclarer mon CRA</button>
+  <p class="note">« Estimé » = mois non déclaré, compté au mois complet (jours ouvrés). Déclarez votre CRA pour le remplacer par le réel.</p>
+
+</div>
