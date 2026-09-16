@@ -1011,6 +1011,22 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     une demande d'autorisation de la boucle Assistant) — JWT, gardés par l'accès Atelier.
     L'écriture d'audit est **hors transaction et non bloquante** pour la boucle tool-use.
 
+- **atelier_permission_rules** — politique de permission des outils de la boucle maison (F-121 /
+  SF-121-02, migration `075`). Table neuve, **une ligne par règle** allow/ask/deny persistée par
+  workspace/utilisateur — c'est ce qui donne au modèle de permission une mémoire qui survit au tour et
+  au redémarrage, là où la porte de confirmation d'avant SF-121-02 repartait de zéro à chaque message.
+  - `atelier_permission_rules` : `id (uuid)`, `user_id (uuid)`, `workspace_id (uuid)`,
+    `tool (varchar 32)`, `command_prefix (varchar 512, nullable)`, `effect (varchar 8 : ALLOW|ASK|DENY)`,
+    `created_at`. Index `(user_id, workspace_id)`.
+  - `command_prefix` n'a de sens que pour `bash` : c'est le préfixe de commande couvert par la règle
+    (« toujours autoriser cette commande » écrit le **premier mot** de la commande). `null` = règle qui
+    porte sur **tout l'outil** (par exemple « toujours autoriser edit_file »). Pour `bash`, une règle de
+    préfixe l'emporte sur une règle d'outil, et le préfixe le plus long gagne.
+  - **Résolution** : au défaut d'une règle, la boucle retombe sur son comportement d'avant — `bash`
+    demandé selon `agent_ask_before_bash`, une **édition** selon `app.atelier.ask-before-edit`
+    (défaut `false`), le reste exécuté. Isolation `(user_id, workspace_id)` sur toute lecture/écriture.
+  - Purge : à la suppression du **compte** (`AccountService`) et du **projet** (`WorkspaceService`).
+
 - **Repli de transport du runner — aucune table** (F-38 / SF-38-09). Le canal runner peut être porté
   par le WebSocket de SF-38-02 **ou** par un long-polling HTTP quand un proxy refuse (ou coupe)
   l'`Upgrade`. **Aucune migration, aucune colonne, aucun type de message nouveau** : les deux
@@ -1196,7 +1212,7 @@ Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 rée
 
 Règle d'isolation des données :
 Tout accès aux données filtre obligatoirement sur **`user_id`**
-(documents/messages/subscriptions/uploaded_files/usage_counters/usage_turns/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/host_seat_months/live_terminals/runner_tokens/runner_pairing_codes/runner_audit/governance_selections/governance_activations/governance_host_activations/governance_map_growth/governance_deposited_files/pages/page_versions/page_shares/page_events via `user_id` ; tables `radar_*` via `user_id` **et** `host_id` ; `promotion_reportee` via `user_id` + `host_id` + `workspace_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
+(documents/messages/subscriptions/uploaded_files/usage_counters/usage_turns/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/host_seat_months/live_terminals/runner_tokens/runner_pairing_codes/runner_audit/atelier_permission_rules/governance_selections/governance_activations/governance_host_activations/governance_map_growth/governance_deposited_files/pages/page_versions/page_shares/page_events via `user_id` ; tables `radar_*` via `user_id` **et** `host_id` ; `promotion_reportee` via `user_id` + `host_id` + `workspace_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
 
 ---
 
