@@ -53,8 +53,18 @@ public interface AtelierProgressListener {
      *                  puisse afficher le temps restant plutôt que de laisser deux minutes
      *                  s'écouler en silence. {@code 0} quand le délai n'est pas connu — l'écran
      *                  n'affiche alors aucun compte à rebours
+     * @param allowAlwaysOffered vrai si l'écran peut proposer « toujours autoriser cette commande »
+     *                  (F-121 / SF-121-02) — la case qui écrit une règle persistante. Faux quand la
+     *                  politique de permission n'est pas branchée (la case n'écrirait rien) ou pour
+     *                  une écriture Teams (confirmée à chaque fois par le cadrage)
      */
-    record AtelierConfirmRequest(String toolUseId, String tool, String detail, long timeoutMs) {
+    record AtelierConfirmRequest(String toolUseId, String tool, String detail, long timeoutMs,
+            boolean allowAlwaysOffered) {
+
+        /** Forme historique (sans l'option « toujours autoriser »), conservée pour les appelants. */
+        public AtelierConfirmRequest(String toolUseId, String tool, String detail, long timeoutMs) {
+            this(toolUseId, tool, detail, timeoutMs, false);
+        }
     }
 
     /**

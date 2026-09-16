@@ -108,11 +108,23 @@ public class RunnerConfirmationGate {
      * @throws NoPendingConfirmationException si rien n'attend cette réponse
      */
     public void resolve(UUID userId, UUID workspaceId, String callId, boolean allow, String reason) {
+        resolve(userId, workspaceId, callId, allow, reason, false);
+    }
+
+    /**
+     * Variante qui porte l'intention « <b>toujours autoriser cette commande</b> » (F-121 / SF-121-02) :
+     * {@code persistRule} remonte à la boucle en attente, qui écrit alors une règle persistante. La
+     * porte ne persiste rien elle-même — elle ne connaît ni l'outil ni la commande —, elle relaie
+     * seulement la décision à celui qui les a.
+     */
+    public void resolve(UUID userId, UUID workspaceId, String callId, boolean allow, String reason,
+            boolean persistRule) {
         Pending entry = pending.get(callId);
         if (entry == null || !entry.userId().equals(userId) || !entry.workspaceId().equals(workspaceId)) {
             throw new NoPendingConfirmationException("Aucune autorisation n'est en attente pour cette action.");
         }
-        entry.future().complete(new Outcome(allow ? Decision.ALLOW : Decision.DENY, shorten(reason)));
+        entry.future().complete(new Outcome(allow ? Decision.ALLOW : Decision.DENY, shorten(reason),
+                allow && persistRule));
     }
 
     /**
@@ -169,8 +181,16 @@ public class RunnerConfirmationGate {
         }
     }
 
-    /** Issue d'une demande : la décision et, le cas échéant, le motif à relayer au modèle. */
-    public record Outcome(Decision decision, String reason) {
+    /**
+     * Issue d'une demande : la décision, le motif éventuel à relayer au modèle, et si l'utilisateur a
+     * demandé de <b>persister</b> une règle « toujours autoriser cette commande » (F-121 / SF-121-02).
+     */
+    public record Outcome(Decision decision, String reason, boolean persistRule) {
+
+        /** Forme historique (sans persistance), conservée pour les appelants qui l'attendent. */
+        public Outcome(Decision decision, String reason) {
+            this(decision, reason, false);
+        }
     }
 
     /** Demande en attente : qui l'a posée (isolation) et la promesse de décision. */

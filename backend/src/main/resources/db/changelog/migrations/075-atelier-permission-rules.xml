@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      SF-121-02 — Modèle de permission allow/ask/deny par outil, persisté par workspace/user. Une
+      table neuve :
+
+      * atelier_permission_rules : une ligne par règle. tool = l'outil visé (bash, edit_file, …) ;
+        command_prefix = préfixe de commande couvert (bash uniquement), NULL pour une règle d'outil ;
+        effect = ALLOW | ASK | DENY. Filtre d'isolation (user_id, workspace_id) sur toute lecture.
+
+      Aucune donnée existante n'est touchée (table neuve). Réversible : dropTable. L'index couvre la
+      lecture « toutes les règles d'un projet possédé », faite une fois par tour.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="075-atelier-permission-rules-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="atelier_permission_rules">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="tool" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="command_prefix" type="varchar(512)"/>
+            <column name="effect" type="varchar(8)"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="atelier_permission_rules" indexName="idx_atelier_perm_user_workspace">
+            <column name="user_id"/>
+            <column name="workspace_id"/>
+        </createIndex>
+        <rollback><dropTable tableName="atelier_permission_rules"/></rollback>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="075-atelier-permission-rules-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="atelier_permission_rules">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="tool" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="command_prefix" type="varchar(512)"/>
+            <column name="effect" type="varchar(8)"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="atelier_permission_rules" indexName="idx_atelier_perm_user_workspace">
+            <column name="user_id"/>
+            <column name="workspace_id"/>
+        </createIndex>
+        <rollback><dropTable tableName="atelier_permission_rules"/></rollback>
+    </changeSet>
+
+</databaseChangeLog>

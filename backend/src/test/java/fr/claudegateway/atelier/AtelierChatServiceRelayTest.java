@@ -114,14 +114,16 @@ class AtelierChatServiceRelayTest {
     void aDecisionResolvedLocallyIsNeverBroadcast() {
         service.confirmToolUse(userId, workspaceId, " toolu_1 ", true, "vas-y");
 
-        verify(confirmationGate).resolve(userId, workspaceId, "toolu_1", true, "vas-y");
+        // F-121 / SF-121-02 : la résolution passe par la variante qui porte « toujours autoriser »
+        // (ici false — décision simple), fonctionnellement identique à la forme d'avant.
+        verify(confirmationGate).resolve(userId, workspaceId, "toolu_1", true, "vas-y", false);
         verifyNoInteractions(relayBroadcaster);
     }
 
     @Test
     void aDecisionNoOneHoldsLocallyIsBroadcastAndAcceptedWhenAPeerResolves() {
         Mockito.doThrow(new NoPendingConfirmationException("rien en attente")).when(confirmationGate)
-                .resolve(any(), any(), anyString(), anyBoolean(), any());
+                .resolve(any(), any(), anyString(), anyBoolean(), any(), anyBoolean());
         when(relayBroadcaster.broadcastConfirm(userId, workspaceId, "toolu_1", true, null))
                 .thenReturn(true);
 
@@ -135,7 +137,7 @@ class AtelierChatServiceRelayTest {
         // Personne n'a tranché : l'erreur d'origine remonte, et la porte qui attendrait sans être
         // atteinte expirera en refus. Le silence ne vaut jamais autorisation.
         Mockito.doThrow(new NoPendingConfirmationException("rien en attente")).when(confirmationGate)
-                .resolve(any(), any(), anyString(), anyBoolean(), any());
+                .resolve(any(), any(), anyString(), anyBoolean(), any(), anyBoolean());
         when(relayBroadcaster.broadcastConfirm(any(), any(), anyString(), anyBoolean(), any()))
                 .thenReturn(false);
 
@@ -155,6 +157,6 @@ class AtelierChatServiceRelayTest {
                 .isInstanceOf(WorkspaceNotFoundException.class);
 
         verifyNoInteractions(relayBroadcaster);
-        verify(confirmationGate, never()).resolve(any(), any(), anyString(), anyBoolean(), any());
+        verify(confirmationGate, never()).resolve(any(), any(), anyString(), anyBoolean(), any(), anyBoolean());
     }
 }
