@@ -104,6 +104,12 @@ public class PromotionDetteBloquanteControl implements GovernanceControl {
         List<String> carte = destinations.pathsForProject(context.userId(), context.workspaceId());
         String cited = GovernanceMapDestinations.cite(carte);
 
+        // F-125 / SF-125-02 : le suivi s'appuie sur les écritures RÉELLES du tour, pas sur un libellé
+        // que le modèle doit formater parfaitement. Si le tour a écrit dans un fichier de la carte du
+        // poste, la promotion est placée — un libellé tronqué ou une flèche perdue ne fait plus échouer
+        // le suivi. L'écriture réelle vaut destination.
+        boolean wroteToMap = wroteToMap(context, carte);
+
         if (context.machineOffline()) {
             // F-93 / SF-93-04 : les trois refus ci-dessous demandent tous d'écrire sur la machine (la
             // carte, STATE.md). Poste hors ligne : on reporte ce qui serait réclamé, on ne bloque pas.
@@ -122,16 +128,17 @@ public class PromotionDetteBloquanteControl implements GovernanceControl {
         }
 
         List<Promotion> mute = marker.withoutDestination();
-        if (!mute.isEmpty()) {
+        if (!mute.isEmpty() && !wroteToMap) {
             return AtelierCheckpointVerdict.block("tu déclares avoir promu « "
                     + marker.citedPromus(mute) + " » sans dire où. Reprends le marqueur sous la "
-                    + "forme « promu=" + mute.get(0).element() + " -> <fichier> », le fichier étant "
-                    + "l'un de ceux de la carte du poste : " + cited + " — et trace-le coché dans "
-                    + "STATE.md : « - [x] " + mute.get(0).element() + " -> promu dans <fichier> ».");
+                    + "forme « promu=" + mute.get(0).element() + " -> <fichier> » (libellé court, sans "
+                    + "ponctuation interne), le fichier étant l'un de ceux de la carte du poste : "
+                    + cited + " — et trace-le coché dans STATE.md : « - [x] " + mute.get(0).element()
+                    + " -> promu dans <fichier> ».");
         }
 
         List<String> foreign = foreignDestinations(marker, carte);
-        if (!foreign.isEmpty()) {
+        if (!foreign.isEmpty() && !wroteToMap) {
             return AtelierCheckpointVerdict.block("« " + String.join(", ", foreign) + " » "
                     + (foreign.size() > 1 ? "ne sont pas des fichiers" : "n'est pas un fichier")
                     + " de la carte de ce poste. Range l'élément dans l'un de ceux-ci : " + cited
@@ -167,6 +174,26 @@ public class PromotionDetteBloquanteControl implements GovernanceControl {
                 .filter(destination -> carte.stream()
                         .noneMatch(path -> fileName(path).equalsIgnoreCase(fileName(destination))))
                 .toList();
+    }
+
+    /**
+     * Vrai si le tour a écrit dans un fichier de la carte du poste (F-125 / SF-125-02).
+     *
+     * <p>La comparaison porte sur le <b>nom du fichier</b>, comme {@link #foreignDestinations} :
+     * « plateformes.md » et « ../plateformes.md » désignent le même fichier de carte. Quand la carte
+     * n'a pas pu être listée, aucune écriture ne peut la recouper : la tolérance ne se déclenche pas,
+     * et le comportement générique est conservé.</p>
+     */
+    private static boolean wroteToMap(AtelierCheckpointContext context, List<String> carte) {
+        if (carte.isEmpty()) {
+            return false;
+        }
+        List<String> ecrits = context.writtenPaths();
+        if (ecrits.isEmpty()) {
+            return false;
+        }
+        return ecrits.stream().anyMatch(ecrit -> carte.stream()
+                .anyMatch(path -> fileName(path).equalsIgnoreCase(fileName(ecrit))));
     }
 
     /** Le dernier segment d'un chemin — ce qui identifie un fichier de carte. */

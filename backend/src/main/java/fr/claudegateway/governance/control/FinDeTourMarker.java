@@ -181,32 +181,56 @@ public record FinDeTourMarker(List<String> promotions, List<Promotion> promus, i
     }
 
     /**
-     * Lit {@code promu=élément -> fichier, élément -> fichier} (F-93 / SF-93-01).
+     * Lit {@code promu=élément -> fichier, élément -> fichier} (F-93 / SF-93-01), <b>tolérant à la
+     * virgule dans le libellé</b> (F-125 / SF-125-02).
      *
      * <p>Un élément <b>sans</b> flèche est conservé avec une destination vide, et c'est délibéré :
      * c'est ce qui permet au contrôle de répondre « dis où », au lieu de perdre silencieusement une
      * déclaration mal formée — un silence qu'on prendrait pour « rien promu ».</p>
+     *
+     * <p><b>La virgule ne coupe plus un libellé.</b> Le cas réel : « le compte, avec sa virgule ->
+     * plateformes.md » se coupait en deux — « le compte » sans destination, « avec sa virgule ->
+     * plateformes.md » —, et le premier fragment, isolé devant la destination, faisait échouer le
+     * suivi. Une virgule ne <b>ferme</b> désormais une promotion que si le segment qu'elle sépare
+     * porte une flèche : un fragment sans flèche est <b>raccroché</b> au libellé en cours. Ce qui
+     * reste sans flèche à la fin forme une promotion muette (une seule), que le contrôle refusera en
+     * demandant où — le comportement attendu d'une déclaration incomplète.</p>
      */
     private static List<Promotion> readPromus(String value) {
         if (value.isEmpty() || NOTHING.contains(value.toLowerCase(Locale.ROOT))) {
             return List.of();
         }
         List<Promotion> items = new ArrayList<>();
+        List<String> pending = new ArrayList<>();
         for (String part : value.split(",")) {
             String item = part.trim();
             if (item.isEmpty()) {
                 continue;
             }
+            pending.add(item);
             Matcher arrow = ARROW.matcher(item);
-            Promotion promotion = arrow.find()
-                    ? new Promotion(item.substring(0, arrow.start()).strip(),
-                            item.substring(arrow.end()).strip())
-                    : new Promotion(item, "");
-            if (!promotion.element().isEmpty() && !items.contains(promotion)) {
-                items.add(promotion);
+            if (!arrow.find()) {
+                continue; // Fragment sans flèche : il appartient au libellé qui la porte, plus loin.
             }
+            String joined = String.join(", ", pending);
+            Matcher firstArrow = ARROW.matcher(joined);
+            firstArrow.find();
+            addPromotion(items, new Promotion(joined.substring(0, firstArrow.start()).strip(),
+                    joined.substring(firstArrow.end()).strip()));
+            pending.clear();
+        }
+        if (!pending.isEmpty()) {
+            // Rien de tout ça n'avait de flèche : une déclaration muette, en un seul libellé.
+            addPromotion(items, new Promotion(String.join(", ", pending), ""));
         }
         return items;
+    }
+
+    /** Ajoute une promotion non vide, sans doublon. */
+    private static void addPromotion(List<Promotion> items, Promotion promotion) {
+        if (!promotion.element().isEmpty() && !items.contains(promotion)) {
+            items.add(promotion);
+        }
     }
 
     /** Un entier positif ou nul, ou {@code null} : une dette négative ne veut rien dire. */
