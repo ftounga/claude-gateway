@@ -70,6 +70,26 @@
     border-top-color: var(--cg-terminal-teams-rule);
   }
 
+  /* F-120 / SF-120-02 — LE SÉLECTEUR DE MODE (« Mode : Réponse/Plan · Agir »). Le label héritait de
+     `--cg-divider` (le clair de la Forge), qui tombe à ~1,2:1 sur le papier : corrigé ici en même
+     temps que le reste de la peau (aucune couleur nouvelle, jeton secondaire « Papier », ≥ 5:1). Le
+     filet du bloc suit la surface. Repéré par le balayage AA de F-126. */
+  .terminal-mode {
+    border-top-color: var(--cg-terminal-teams-rule);
+    color: var(--cg-terminal-teams-muted);
+  }
+
+  .terminal-mode-label {
+    color: var(--cg-terminal-teams-muted);
+  }
+
+  /* F-115 / SF-115-02 — LE TROMBONE DU COMPOSER (« Joindre un fichier »). Son icône héritait de
+     `--cg-text-secondary`, qui tombe à ~2,2:1 sur le papier ; l'encre secondaire « Papier » (≥ 5:1)
+     tient l'AA. Repéré par le balayage AA de F-126 ; aucune couleur nouvelle. */
+  .terminal-attach {
+    color: var(--cg-terminal-teams-muted);
+  }
+
   .terminal-field {
     color: var(--cg-terminal-teams-title);
 
@@ -110,6 +130,29 @@
   .terminal-steer-state,
   .terminal-live-action {
     color: var(--cg-terminal-teams-text);
+  }
+
+  /* F-126 / SF-126-01 — LA RÉPONSE ESSENTIELLE, REPRISE SUR LE PAPIER. Sur la Forge, le bloc porte
+     l'accent orange et une encre blanche, illisibles sur le clair. Il reprend ici l'AMBRE approfondi
+     `--cg-terminal-teams-warn` (#8A5200, l'or de §12 tenant l'AA sur le papier — le même que le bloc
+     d'échec Teams), voilé pour le fond, et son corps prend l'encre de titre de la surface. Cette règle
+     suit la reprise `.terminal-agent` ci-dessus pour l'emporter sur l'encre blanche du corps. Aucune
+     couleur nouvelle. */
+  .terminal-essential {
+    border-left-color: var(--cg-terminal-teams-warn);
+    background: color-mix(in srgb, var(--cg-terminal-teams-warn) 10%, transparent);
+  }
+
+  .terminal-essential-label {
+    color: var(--cg-terminal-teams-warn);
+  }
+
+  .terminal-essential-body {
+    color: var(--cg-terminal-teams-title);
+  }
+
+  .terminal-detail-label {
+    color: var(--cg-terminal-teams-muted);
   }
 
   /* LE TEXTE SECONDAIRE. `--cg-text-secondary` tombe à ~3,8:1 sur la surface claire : il ne tient pas

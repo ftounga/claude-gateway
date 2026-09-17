@@ -1,0 +1,53 @@
+/* ------------------------------------------------------------------ F-126 / SF-126-01
+   LA RÉPONSE ESSENTIELLE MISE EN AVANT (maquette `docs/features/F-126/design/maquette-terminal-essentiel.html`).
+
+   UNE FEUILLE À PART, pour la raison qui en a déjà imposé six (F-30 / F-89 / F-115 / F-117) : le
+   budget de style de `atelier-terminal.component.scss` est au plafond de BUILD (12 ko, `angular.json`).
+
+   La maquette est une référence de STRUCTURE et de HIÉRARCHIE, dessinée sur surface claire ; ici la
+   Forge est SOMBRE (§13). On reprend donc la hiérarchie — bloc encadré à filet, label, texte un peu
+   plus gros — dans les jetons de charte du terminal sombre : AUCUNE couleur nouvelle. Le fond doré
+   léger est un voile de l'accent de charte (`color-mix`, même geste que `atelier-terminal-deposit`),
+   pas une teinte inédite. Le terminal Teams (surface claire « Papier ») a sa propre reprise (§15),
+   dans `atelier-terminal-teams.component.scss`. */
+.terminal-essential {
+  margin: var(--cg-space-2) 0 var(--cg-space-3);
+  padding: var(--cg-space-2) var(--cg-space-3);
+  border-left: 3px solid var(--cg-accent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--cg-accent) 12%, transparent);
+}
+
+.terminal-essential-label {
+  display: block;
+  margin-bottom: var(--cg-space-1);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cg-orange-2);
+}
+
+/* Le corps porte déjà `.terminal-agent` (donc le Markdown rendu) ; on l'accentue : encre plus claire
+   (`--cg-surface`, blanc) et taille un peu plus grande, sans changer la graisse du Markdown lui-même. */
+.terminal-essential-body {
+  color: var(--cg-surface);
+  font-size: 1.05em;
+}
+
+.terminal-detail {
+  margin: var(--cg-space-2) 0;
+}
+
+/* « Le détail » : label discret par la taille et la graisse, jamais par une encre faible —
+   `--cg-text-secondary` tombe à ~2,7:1 sur `--cg-primary` (cf. `atelier-terminal-markdown`). On garde
+   l'encre du bloc (`--cg-divider`), qui tient l'AA ; casse et taille le mettent en retrait. */
+.terminal-detail-label {
+  display: block;
+  margin-bottom: var(--cg-space-1);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cg-divider);
+}

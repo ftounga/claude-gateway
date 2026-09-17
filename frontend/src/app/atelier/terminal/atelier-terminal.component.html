@@ -558,8 +558,25 @@
             Commentaire de l'agent rendu en Markdown (SF-30-12) : le modèle répond en Markdown, et
             l'interpolation brute affichait les ** et les ## à l'écran. Le pipe assainit par DOMPurify
             avant tout innerHTML — le contenu vient d'un LLM.
+            F-126 / SF-126-01 : si l'agent a balisé sa réponse essentielle (<<essentiel>>…<</essentiel>>),
+            on la met en avant dans un bloc distinct, puis le détail dessous. Sans marqueur (anciens
+            messages, ou l'agent n'en met pas), `essential` est null → rendu normal, aucune régression.
           -->
-          <p class="terminal-agent" [innerHTML]="message.content | markdown"></p>
+          @let parts = splitEssential(message.content);
+          @if (parts.essential) {
+            <div class="terminal-essential">
+              <span class="terminal-essential-label">L'essentiel</span>
+              <div class="terminal-agent terminal-essential-body" [innerHTML]="parts.essential | markdown"></div>
+            </div>
+            @if (parts.detail) {
+              <div class="terminal-detail">
+                <span class="terminal-detail-label">Le détail</span>
+                <div class="terminal-agent" [innerHTML]="parts.detail | markdown"></div>
+              </div>
+            }
+          } @else {
+            <p class="terminal-agent" [innerHTML]="parts.detail | markdown"></p>
+          }
         }
         @if (message.interrupted) {
           <!-- Le tour est conservé : il a réellement eu lieu et il est facturé (F-32). -->
@@ -700,8 +717,25 @@
       }
       @if (live.text.length > 0) {
         <!-- Même rendu au fil de l'eau : un Markdown encore incomplet se stabilise à mesure
-             que le texte arrive, marked fermant implicitement ce qui ne l'est pas. -->
-        <p class="terminal-agent" [innerHTML]="live.text | markdown"></p>
+             que le texte arrive, marked fermant implicitement ce qui ne l'est pas.
+             F-126 / SF-126-01 : même mise en avant de l'essentiel. Tant que la fermeture
+             <</essentiel>> n'est pas arrivée, `splitEssential` prend tout le reste comme essentiel
+             (le marqueur brut n'est jamais affiché) ; le détail apparaît à la fermeture. -->
+        @let liveParts = splitEssential(live.text);
+        @if (liveParts.essential) {
+          <div class="terminal-essential">
+            <span class="terminal-essential-label">L'essentiel</span>
+            <div class="terminal-agent terminal-essential-body" [innerHTML]="liveParts.essential | markdown"></div>
+          </div>
+          @if (liveParts.detail) {
+            <div class="terminal-detail">
+              <span class="terminal-detail-label">Le détail</span>
+              <div class="terminal-agent" [innerHTML]="liveParts.detail | markdown"></div>
+            </div>
+          }
+        } @else {
+          <p class="terminal-agent" [innerHTML]="liveParts.detail | markdown"></p>
+        }
       }
 
       <!--

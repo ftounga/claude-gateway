@@ -64,6 +64,7 @@ import {
   subtaskLabel,
   visibleOutput,
 } from './terminal-block';
+import { splitEssential } from './essential';
 import {
   cardAsText,
   cardOf,
@@ -149,6 +150,9 @@ export const LONG_THREAD_TURNS = 40;
     // SIX FEUILLES (F-115 / SF-115-02) : le dépôt de fichiers (voile, trombone, progression, blocs)
     // vit à part, la feuille principale étant au budget de build de 12 ko (angular.json).
     './atelier-terminal-deposit.component.scss',
+    // SEPT FEUILLES (F-126 / SF-126-01) : la mise en avant de la réponse essentielle vit à part,
+    // la feuille principale étant au plafond de build de 12 ko (angular.json).
+    './atelier-terminal-essential.component.scss',
   ],
 })
 export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
@@ -1037,6 +1041,12 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   blockLabel = blockLabel;
   visibleOutput = visibleOutput;
   hiddenLineCount = hiddenLineCount;
+  /**
+   * Découpe « L'essentiel » / « Le détail » d'une réponse d'agent (F-126 / SF-126-01). Le gabarit
+   * l'interroge pour chaque message : sans marqueur, `essential` est `null` et le rendu reste celui
+   * d'avant F-126 (repli gracieux).
+   */
+  splitEssential = splitEssential;
 
   /**
    * Numérotation des fils, mémorisée **par tableau de blocs** (F-35 SF-35-03). Le gabarit interroge

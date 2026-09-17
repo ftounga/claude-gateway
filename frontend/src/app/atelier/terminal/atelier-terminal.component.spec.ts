@@ -225,6 +225,62 @@ describe('AtelierTerminalComponent', () => {
     expect(fixture.nativeElement.querySelector('.terminal-cost')).toBeNull();
   });
 
+  // ------------------------------------------------ réponse essentielle mise en avant (F-126 / SF-126-01)
+
+  it('met en avant l\'essentiel balisé et rend le détail dessous', () => {
+    component.messages = [
+      {
+        id: 'a1',
+        role: 'ASSISTANT',
+        content: '<<essentiel>>\nNon — la sandbox ne valide pas.\n<</essentiel>>\nLes quatre divergences mesurées : sqs-trigger absent, etc.',
+        actions: [],
+      },
+    ];
+    fixture.detectChanges();
+
+    const essential = fixture.nativeElement.querySelector('.terminal-essential') as HTMLElement;
+    const detail = fixture.nativeElement.querySelector('.terminal-detail') as HTMLElement;
+    expect(essential).not.toBeNull();
+    expect(detail).not.toBeNull();
+    expect(essential.querySelector('.terminal-essential-label')?.textContent?.trim()).toBe("L'essentiel");
+    expect(essential.textContent).toContain('Non — la sandbox ne valide pas.');
+    expect(detail.textContent).toContain('Les quatre divergences');
+    // Le marqueur brut n'apparaît jamais dans le DOM rendu.
+    expect(text()).not.toContain('<<essentiel>>');
+    expect(text()).not.toContain('<</essentiel>>');
+  });
+
+  it('rend normalement un message SANS marqueur (repli gracieux, aucune régression)', () => {
+    component.messages = [
+      { id: 'a1', role: 'ASSISTANT', content: 'Une réponse tout à fait normale.', actions: [] },
+    ];
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.terminal-essential')).toBeNull();
+    const agent = fixture.nativeElement.querySelector('.terminal-agent') as HTMLElement;
+    expect(agent).not.toBeNull();
+    expect(agent.textContent).toContain('Une réponse tout à fait normale.');
+  });
+
+  it('n\'affecte pas le strip du marqueur fin-de-tour (F-125) et le combine avec l\'essentiel', () => {
+    component.messages = [
+      {
+        id: 'a1',
+        role: 'ASSISTANT',
+        content: '<<essentiel>>\nOui.\n<</essentiel>>\nDétail.\n\n<!-- fin-de-tour: promotion=aucune; dette=0 -->',
+        actions: [],
+      },
+    ];
+    fixture.detectChanges();
+
+    // L'essentiel est mis en avant, le marqueur fin-de-tour est strippé, aucun marqueur brut visible.
+    expect(fixture.nativeElement.querySelector('.terminal-essential')).not.toBeNull();
+    expect(text()).toContain('Oui.');
+    expect(text()).toContain('Détail.');
+    expect(text()).not.toContain('fin-de-tour');
+    expect(text()).not.toContain('<<essentiel>>');
+  });
+
   it('rend le tour en cours au fil de l\'eau', () => {
     component.streaming = {
       tokens: null,
