@@ -268,6 +268,37 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "- N'emploie ces marqueurs QUE pour encadrer l'essentiel, une seule fois par "
                     + "réponse, et n'en parle jamais dans le texte : ils sont mis en forme pour le "
                     + "lecteur, pas expliqués.\n\n";
+    /**
+     * Conseil / décision : tranche, ne range pas (F-125 / SF-125-01, prolongé par SF-125-05,
+     * cadrage §3). Cas réel : à une question de conseil (« configurer ce qu'il y a dans cette doc,
+     * ou ce qu'on a suffit ? »), l'agent répondait par un <b>statut de rangement</b> de la carte
+     * (« aucun fait nouveau, rien à ranger… déjà rangés dans acces.md et reseau.md ») — une
+     * non-réponse, sans marqueur essentiel. Les doctrines F-125-01 (carte silencieuse) et F-126-01
+     * (balisage de l'essentiel) tiennent la plupart du temps mais <i>glissent sur un tour court</i> :
+     * le vieux réflexe « carte » reprend. Cette consigne durcit les deux sans les écraser : sur une
+     * question de conseil/décision, l'agent prend position, balise l'essentiel <b>même court</b>, et
+     * n'emploie <b>jamais</b> une formule de rangement comme réponse.
+     *
+     * <p>Additif, prompt-only, aucun classifieur d'intention (F-120 gère déjà question vs action).
+     * Placé en tête du préfixe stable, il survit à la coupe {@link #SYSTEM_MAX_CHARS} et reste caché
+     * (cache de prompt préservé).</p>
+     */
+    private static final String ADVICE_DECISION_DOCTRINE =
+            "Sur une question de conseil ou de décision, tranche — non négociable :\n"
+                    + "- Quand l'utilisateur demande un conseil ou une décision (« dois-je… ? », "
+                    + "« est-ce que X suffit ? », « tu conseilles quoi ? », « A ou B ? »), PRENDS "
+                    + "POSITION : une recommandation nette, une justification courte, et la réserve "
+                    + "éventuelle. Jamais de « ça dépend » sans trancher.\n"
+                    + "- Si la question est ambiguë ou qu'il te manque de quoi décider, donne D'ABORD "
+                    + "ta meilleure recommandation par défaut, puis demande la précision ou dis ce qui "
+                    + "manque — ne te défile pas.\n"
+                    + "- Balise l'essentiel MÊME sur un tour court : une phrase de conseil est "
+                    + "justement le cas où l'essentiel doit ressortir, entre <<essentiel>> et "
+                    + "<</essentiel>>.\n"
+                    + "- Ne réponds JAMAIS par un statut de rangement de la carte : « rien à ranger », "
+                    + "« aucun fait nouveau », « déjà rangé dans X.md », « ce tour n'était qu'un "
+                    + "conseil » ne sont PAS des réponses. Si rien n'est à ranger, n'en parle pas — "
+                    + "réponds à la question.\n\n";
     private static final List<String> SKILL_PREFIXES = List.of(".claude/skills/", "skills/");
     /**
      * Nombre de skills annoncés dans la consigne (F-39 / SF-39-02, décision D3). Une borne explicite
@@ -3313,6 +3344,12 @@ public class AtelierChatService implements RelayInterruptTarget {
         // et le style (SF-121-03) : l'essentiel est la réponse directe et courte, balisée pour que le
         // frontend la mette en avant ; le marqueur ne collisionne pas avec le strip fin-de-tour (F-125).
         system.append(ESSENTIAL_ANSWER_DOCTRINE);
+
+        // Conseil / décision : tranche, ne range pas (F-125 / SF-125-05) : sur les DEUX cibles, à la
+        // suite des consignes ci-dessus. Prolonge la carte silencieuse (SF-125-01) et le balisage de
+        // l'essentiel (SF-126-01) sans les écraser : sur une question de conseil, l'agent prend
+        // position et balise l'essentiel même court, et ne répond jamais par un statut de rangement.
+        system.append(ADVICE_DECISION_DOCTRINE);
 
         // Mode explicite « Réponse/Plan » (F-120 / SF-120-02) : quand l'utilisateur l'a choisi, on
         // renforce la doctrine par une consigne de mode, en écho au retrait des outils mutants dans
