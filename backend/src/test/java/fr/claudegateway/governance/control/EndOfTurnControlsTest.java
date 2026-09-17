@@ -51,6 +51,11 @@ class EndOfTurnControlsTest {
         return AtelierCheckpointContext.endOfTurn(userId, workspaceId, text, List.of());
     }
 
+    /** Fin de tour portant les chemins réellement écrits pendant le tour (F-125 / SF-125-02). */
+    private AtelierCheckpointContext replyHavingWritten(String text, String... writtenPaths) {
+        return AtelierCheckpointContext.endOfTurn(userId, workspaceId, text, List.of(writtenPaths));
+    }
+
     // -------------------------------------------------------------------- identité
 
     @Test
@@ -196,6 +201,42 @@ class EndOfTurnControlsTest {
                 reply("<!-- fin-de-tour: promotion=aucune; promu=cluster atlas; dette=4 -->"));
 
         assertThat(verdict.correction()).contains("sans dire où").doesNotContain("4");
+    }
+
+    // ------------------------------------ F-125 / SF-125-02 : le suivi s'appuie sur les écritures
+
+    @Test
+    @DisplayName("promotion sans destination MAIS écriture réelle dans la carte : ne bloque plus")
+    void aMutePromotionBackedByARealWriteIsTolerated() {
+        AtelierCheckpointVerdict verdict = dette.evaluate(replyHavingWritten(
+                "<!-- fin-de-tour: promotion=aucune; promu=libellé tronqué; dette=0 -->",
+                "plateformes.md"));
+
+        assertThat(verdict.blocked()).isFalse();
+    }
+
+    @Test
+    @DisplayName("écriture réelle par un chemin relatif : le nom du fichier suffit à recouper la carte")
+    void aRealWriteByRelativePathStillMatchesTheMap() {
+        assertThat(dette.evaluate(replyHavingWritten(
+                "<!-- fin-de-tour: promotion=aucune; promu=cluster atlas -> notes.md; dette=0 -->",
+                "./Plateformes.MD")).blocked()).isFalse();
+    }
+
+    @Test
+    @DisplayName("promotion sans destination SANS écriture réelle : le refus « dis où » est préservé")
+    void aMutePromotionWithoutAnyWriteStillBlocks() {
+        assertThat(dette.evaluate(reply(
+                "<!-- fin-de-tour: promotion=aucune; promu=cluster atlas; dette=0 -->"))
+                .blocked()).isTrue();
+    }
+
+    @Test
+    @DisplayName("écriture réelle hors de la carte : la tolérance ne se déclenche pas")
+    void aWriteOutsideTheMapDoesNotTrigger() {
+        assertThat(dette.evaluate(replyHavingWritten(
+                "<!-- fin-de-tour: promotion=aucune; promu=cluster atlas; dette=0 -->",
+                "src/Main.java")).blocked()).isTrue();
     }
 
     // ----------------------------------------------------------------------- dette

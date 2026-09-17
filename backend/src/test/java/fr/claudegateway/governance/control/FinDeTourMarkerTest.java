@@ -197,6 +197,56 @@ class FinDeTourMarkerTest {
                 .orElseThrow().promus()).isEmpty();
     }
 
+    // ------------------------------------- F-125 / SF-125-02 : la virgule ne casse plus le libellé
+
+    @Test
+    @DisplayName("une virgule dans le libellé ne coupe plus la promotion en deux")
+    void aCommaInsideALabelNoLongerSplitsThePromotion() {
+        FinDeTourMarker marker = FinDeTourMarker.parse(
+                "<!-- fin-de-tour: promotion=aucune; promu=le compte, avec sa virgule -> plateformes.md; "
+                        + "dette=0 -->").orElseThrow();
+
+        assertThat(marker.promus()).hasSize(1);
+        assertThat(marker.promus().get(0).element()).isEqualTo("le compte, avec sa virgule");
+        assertThat(marker.promus().get(0).destination()).isEqualTo("plateformes.md");
+        assertThat(marker.withoutDestination()).isEmpty();
+        assertThat(marker.destinations()).containsExactly("plateformes.md");
+    }
+
+    @Test
+    @DisplayName("plusieurs vraies promotions séparées par virgule restent distinctes")
+    void severalRealPromotionsStaySeparate() {
+        FinDeTourMarker marker = FinDeTourMarker.parse("<!-- fin-de-tour: promotion=aucune; "
+                + "promu=a -> x.md, b -> y.md; dette=0 -->").orElseThrow();
+
+        assertThat(marker.promus()).hasSize(2);
+        assertThat(marker.destinations()).containsExactly("x.md", "y.md");
+        assertThat(marker.withoutDestination()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("un libellé à virgule sans aucune flèche reste UNE promotion muette")
+    void aLabelWithCommasButNoArrowStaysOneMutePromotion() {
+        FinDeTourMarker marker = FinDeTourMarker.parse(
+                "<!-- fin-de-tour: promu=le compte, avec sa virgule; dette=0 -->").orElseThrow();
+
+        assertThat(marker.promus()).hasSize(1);
+        assertThat(marker.withoutDestination()).hasSize(1);
+        assertThat(marker.promus().get(0).element()).isEqualTo("le compte, avec sa virgule");
+    }
+
+    @Test
+    @DisplayName("une vraie promotion suivie d'un fragment sans flèche : l'une placée, l'autre muette")
+    void aRealPromotionThenATrailingFragment() {
+        FinDeTourMarker marker = FinDeTourMarker.parse(
+                "<!-- fin-de-tour: promu=a -> x.md, b; dette=0 -->").orElseThrow();
+
+        assertThat(marker.promus()).hasSize(2);
+        assertThat(marker.destinations()).containsExactly("x.md");
+        assertThat(marker.withoutDestination()).hasSize(1);
+        assertThat(marker.withoutDestination().get(0).element()).isEqualTo("b");
+    }
+
     @Test
     @DisplayName("la forme annoncée au modèle porte les trois champs")
     void theAnnouncedFormCarriesTheThreeFields() {
