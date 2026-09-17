@@ -28,9 +28,9 @@ import fr.claudegateway.governance.juge.JugeVerdict;
  * SF-93-01).
  *
  * <p>Ce que ces tests protègent : que le juge <b>alerte</b> au lieu de laisser passer quand il ne
- * comprend pas, qu'il nomme ce qu'il faut promouvoir <b>et où</b>, que la dette bloque la clôture
- * sans jamais réclamer elle-même la forme du marqueur, et qu'une promotion <b>muette sur sa
- * destination</b> soit refusée — c'est tout l'objet de F-93.</p>
+ * comprend pas, qu'il nomme ce qu'il faut promouvoir <b>et où</b>, qu'une promotion <b>muette sur sa
+ * destination</b> soit refusée (F-93) — et que la <b>dette ne bloque plus</b> la clôture (F-125 /
+ * SF-125-04 : la carte se tient en silence).</p>
  */
 class EndOfTurnControlsTest {
 
@@ -242,21 +242,12 @@ class EndOfTurnControlsTest {
     // ----------------------------------------------------------------------- dette
 
     @Test
-    @DisplayName("une case non cochée empêche de clore, et le refus dit combien ET OÙ PROMOUVOIR")
-    void anUncheckedBoxBlocks() {
-        AtelierCheckpointVerdict verdict =
-                dette.evaluate(reply("<!-- fin-de-tour: promotion=aucune; dette=2 -->"));
-
-        assertThat(verdict.blocked()).isTrue();
-        assertThat(verdict.correction()).contains("2").contains("dette=0")
-                .contains("acces.md").contains("- [x]");
-    }
-
-    @Test
-    @DisplayName("une seule case se dit au singulier")
-    void oneBoxIsSingular() {
+    @DisplayName("F-125 / SF-125-04 : une dette non nulle ne renvoie plus l'agent au travail")
+    void aDebtNoLongerBlocks() {
+        assertThat(dette.evaluate(reply("<!-- fin-de-tour: promotion=aucune; dette=2 -->"))
+                .blocked()).isFalse();
         assertThat(dette.evaluate(reply("<!-- fin-de-tour: promotion=aucune; dette=1 -->"))
-                .correction()).contains("case « - [ ] » non cochée");
+                .blocked()).isFalse();
     }
 
     @Test
@@ -294,12 +285,16 @@ class EndOfTurnControlsTest {
     }
 
     @Test
-    @DisplayName("un couple absent ne fait jamais lever : la carte est simplement vide")
+    @DisplayName("un couple absent ne fait jamais lever : promotion muette refusée, dette silencieuse")
     void anAbsentIdentityNeverThrows() {
-        String marked = "<!-- fin-de-tour: promotion=aucune; dette=4 -->";
-
-        assertThat(dette.evaluate(AtelierCheckpointContext.endOfTurn(null, null, marked, List.of()))
+        // Une promotion muette (sans destination) est toujours refusée, même identité absente…
+        assertThat(dette.evaluate(AtelierCheckpointContext.endOfTurn(null, null,
+                "<!-- fin-de-tour: promotion=aucune; promu=un serveur; dette=0 -->", List.of()))
                 .blocked()).isTrue();
+        // … tandis qu'une dette seule ne bloque plus (F-125 / SF-125-04) et ne lève jamais.
+        String marked = "<!-- fin-de-tour: promotion=aucune; dette=4 -->";
+        assertThat(dette.evaluate(AtelierCheckpointContext.endOfTurn(null, null, marked, List.of()))
+                .blocked()).isFalse();
         assertThat(juge.evaluate(AtelierCheckpointContext.endOfTurn(null, null, marked, List.of()))
                 .blocked()).isFalse();
     }
