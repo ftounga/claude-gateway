@@ -281,6 +281,94 @@ describe('AtelierTerminalComponent', () => {
     expect(text()).not.toContain('<<essentiel>>');
   });
 
+  // ------------------------------------------------ questions repérables + navigateur (F-126 / SF-126-02)
+
+  it('rend une question de l\'utilisateur repérable : badge Q1, libellé et ancre', () => {
+    component.messages = [
+      { id: 'u1', role: 'USER', content: 'La sandbox valide-t-elle ?', actions: [] },
+    ];
+    fixture.detectChanges();
+
+    const q = fixture.nativeElement.querySelector('.terminal-question') as HTMLElement;
+    expect(q).not.toBeNull();
+    expect(q.getAttribute('id')).toBe('terminal-q-1');
+    expect(q.querySelector('.terminal-qbadge')?.textContent?.trim()).toBe('Q1');
+    expect(q.querySelector('.terminal-qmeta')?.textContent?.trim()).toBe('Votre question');
+    expect(q.textContent).toContain('La sandbox valide-t-elle ?');
+  });
+
+  it('numérote les questions successives et pose leurs ancres', () => {
+    component.messages = [
+      { id: 'u1', role: 'USER', content: 'Première ?', actions: [] },
+      { id: 'a1', role: 'ASSISTANT', content: 'Oui.', actions: [] },
+      { id: 'u2', role: 'USER', content: 'Deuxième ?', actions: [] },
+    ];
+    fixture.detectChanges();
+
+    const questions = fixture.nativeElement.querySelectorAll('.terminal-question');
+    expect(questions.length).toBe(2);
+    expect(questions[0].getAttribute('id')).toBe('terminal-q-1');
+    expect(questions[1].getAttribute('id')).toBe('terminal-q-2');
+    expect(questions[1].querySelector('.terminal-qbadge')?.textContent?.trim()).toBe('Q2');
+  });
+
+  it('affiche un rail « Vos questions » listant chaque question, en terminal interactif', () => {
+    component.readOnly = false;
+    component.messages = [
+      { id: 'u1', role: 'USER', content: 'Première ?', actions: [] },
+      { id: 'u2', role: 'USER', content: 'Deuxième ?', actions: [] },
+    ];
+    fixture.detectChanges();
+
+    const rail = fixture.nativeElement.querySelector('.terminal-qrail') as HTMLElement;
+    expect(rail).not.toBeNull();
+    const items = rail.querySelectorAll('.terminal-qrail__item');
+    expect(items.length).toBe(2);
+    expect(items[0].textContent).toContain('Première ?');
+    expect((items[0].querySelector('.terminal-qrail__n') as HTMLElement).textContent?.trim()).toBe('1');
+    expect(fixture.nativeElement.querySelector('.terminal-scrollback--railed')).not.toBeNull();
+  });
+
+  it('ne montre aucun rail en lecture seule (une tuile montre le flux, rien d\'autre)', () => {
+    component.readOnly = true;
+    component.messages = [
+      { id: 'u1', role: 'USER', content: 'Première ?', actions: [] },
+    ];
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.terminal-qrail')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.terminal-scrollback--railed')).toBeNull();
+    // La question reste stylée même en lecture seule.
+    expect(fixture.nativeElement.querySelector('.terminal-question')).not.toBeNull();
+  });
+
+  it('ne montre aucun rail quand aucune question n\'a été posée', () => {
+    component.readOnly = false;
+    component.messages = [
+      { id: 'a1', role: 'ASSISTANT', content: 'Bonjour.', actions: [] },
+    ];
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.terminal-qrail')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.terminal-scrollback--railed')).toBeNull();
+  });
+
+  it('saute à la question quand on clique dans le rail (ancre + scroll)', () => {
+    component.readOnly = false;
+    component.messages = [
+      { id: 'u1', role: 'USER', content: 'Première ?', actions: [] },
+      { id: 'u2', role: 'USER', content: 'Deuxième ?', actions: [] },
+    ];
+    fixture.detectChanges();
+
+    const target = fixture.nativeElement.querySelector('#terminal-q-2') as HTMLElement;
+    const spy = spyOn(target, 'scrollIntoView');
+    const secondItem = fixture.nativeElement.querySelectorAll('.terminal-qrail__item')[1] as HTMLButtonElement;
+    secondItem.click();
+
+    expect(spy).toHaveBeenCalled();
+  });
+
   it('rend le tour en cours au fil de l\'eau', () => {
     component.streaming = {
       tokens: null,

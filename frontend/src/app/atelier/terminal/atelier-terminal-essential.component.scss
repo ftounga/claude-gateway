@@ -51,3 +51,27 @@
   text-transform: uppercase;
   color: var(--cg-divider);
 }
+
+/* LA RÉPONSE ESSENTIELLE, REPRISE SUR LE PAPIER DU TERMINAL TEAMS (§15). Sur la Forge, l'accent
+   orange et l'encre blanche sont illisibles sur le clair ; ici, l'AMBRE approfondi
+   `--cg-terminal-teams-warn` (#8A5200, l'or de §12 qui tient l'AA sur le papier — celui du bloc
+   d'échec Teams), voilé pour le fond, et le corps sur l'encre de titre. Ces règles suivent la reprise
+   `.terminal-agent` de la peau Teams pour l'emporter sur l'encre blanche du corps. Aucune couleur
+   nouvelle. */
+.terminal-view--teams {
+  .terminal-essential {
+    border-left-color: var(--cg-terminal-teams-warn);
+    background: color-mix(in srgb, var(--cg-terminal-teams-warn) 10%, transparent);
+  }
+
+  .terminal-essential-label {
+    color: var(--cg-terminal-teams-warn);
+  }
+
+  /* Le corps porte `.terminal-agent` : la peau Teams le pose déjà sur son encre foncée (lisible sur
+     le voile clair) avec une spécificité plus haute — inutile de le redire ici. */
+
+  .terminal-detail-label {
+    color: var(--cg-terminal-teams-muted);
+  }
+}

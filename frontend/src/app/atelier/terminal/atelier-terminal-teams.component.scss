@@ -132,29 +132,6 @@
     color: var(--cg-terminal-teams-text);
   }
 
-  /* F-126 / SF-126-01 — LA RÉPONSE ESSENTIELLE, REPRISE SUR LE PAPIER. Sur la Forge, le bloc porte
-     l'accent orange et une encre blanche, illisibles sur le clair. Il reprend ici l'AMBRE approfondi
-     `--cg-terminal-teams-warn` (#8A5200, l'or de §12 tenant l'AA sur le papier — le même que le bloc
-     d'échec Teams), voilé pour le fond, et son corps prend l'encre de titre de la surface. Cette règle
-     suit la reprise `.terminal-agent` ci-dessus pour l'emporter sur l'encre blanche du corps. Aucune
-     couleur nouvelle. */
-  .terminal-essential {
-    border-left-color: var(--cg-terminal-teams-warn);
-    background: color-mix(in srgb, var(--cg-terminal-teams-warn) 10%, transparent);
-  }
-
-  .terminal-essential-label {
-    color: var(--cg-terminal-teams-warn);
-  }
-
-  .terminal-essential-body {
-    color: var(--cg-terminal-teams-title);
-  }
-
-  .terminal-detail-label {
-    color: var(--cg-terminal-teams-muted);
-  }
-
   /* LE TEXTE SECONDAIRE. `--cg-text-secondary` tombe à ~3,8:1 sur la surface claire : il ne tient pas
      l'AA. Le jeton secondaire « Papier » (#5E6472) tient ≥ 5:1 sur le fond, le bandeau et la carte. */
   .terminal-hint,
