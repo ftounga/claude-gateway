@@ -110,6 +110,15 @@ class IntegritePosteControlTest {
     }
 
     @Test
+    @DisplayName("un fichier de carte non déclaré (F-125) est un avertissement, il ne bloque pas")
+    void anUndeclaredMapFileNeverBlocks() {
+        when(inspection.deProjet(alice, projet)).thenReturn(IntegriteRapport.de(List.of(
+                IntegriteConstat.carteNonDeclaree("enjeux.md"))));
+
+        assertThat(control.evaluate(finDeTour(List.of("enjeux.md"))).blocked()).isFalse();
+    }
+
+    @Test
     @DisplayName("une erreur refuse la fin du tour, et le message porte les deux niveaux séparés")
     void anErrorBlocksAndCarriesBothLevels() {
         when(inspection.deProjet(alice, projet)).thenReturn(IntegriteRapport.de(List.of(

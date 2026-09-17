@@ -167,4 +167,45 @@ class GovernanceHostFilesTest {
 
         assertThat(files.write(alice, host, "donnees.md", "# Données")).isFalse();
     }
+
+    // ----------------------------------------------- F-125 / SF-125-03 : listage de la racine
+
+    @Test
+    @DisplayName("listRoot ne rend que les entrées de premier niveau, ./ et \\ normalisés")
+    void listRootReturnsRootLevelEntriesOnly() {
+        when(gateway.listFiles(any(), anyString()))
+                .thenReturn(ok("README.md\nenjeux.md\n./acces.md\nrepos/portail/STATE.md\n"
+                        + "migration-dns\\notes.md\nmigration-dns\n"));
+
+        assertThat(files.listRoot(alice, host))
+                .containsExactly("README.md", "enjeux.md", "acces.md", "migration-dns");
+        verify(auditService).recordCall(eq(alice), any(), anyString(),
+                eq(GovernanceHostFiles.TOOL_MAP_LIST), eq(""), any());
+    }
+
+    @Test
+    @DisplayName("listRoot rend vide quand la machine ne répond pas")
+    void listRootIsEmptyWhenUnreachable() {
+        when(gateway.listFiles(any(), anyString()))
+                .thenReturn(RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_UNAVAILABLE));
+
+        assertThat(files.listRoot(alice, host)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("listRoot rend vide sur un listage tronqué : on ne conclut aucune absence")
+    void listRootIsEmptyWhenTruncated() {
+        when(gateway.listFiles(any(), anyString()))
+                .thenReturn(new RunnerCallResult(true, "enjeux.md\n", true, null, 1L, null, null,
+                        null, "", false));
+
+        assertThat(files.listRoot(alice, host)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("listRoot d'un poste hébergé ne joint aucune machine")
+    void listRootOfAHostedHostProbesNothing() {
+        assertThat(files.listRoot(alice, GovernanceHostRef.HOSTED)).isEmpty();
+        verifyNoInteractions(gateway);
+    }
 }
