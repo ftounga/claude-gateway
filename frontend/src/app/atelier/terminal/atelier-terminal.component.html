@@ -471,8 +471,15 @@
     }
   }
 
-  <!-- Flux continu : demandes, commentaires, commandes et sorties, dans l'ordre chronologique. -->
-  <div class="terminal-scrollback" #scrollback>
+  <!-- Flux continu : demandes, commentaires, commandes et sorties, dans l'ordre chronologique.
+       F-126 / SF-126-02 : deux colonnes sur large — le fil, et un rail « Vos questions » qui aide à
+       repérer et à sauter aux questions posées. Sous 820 px, une seule colonne, le rail en tête. -->
+  <div
+    class="terminal-scrollback"
+    [class.terminal-scrollback--railed]="!readOnly && userQuestions.length > 0"
+    #scrollback
+  >
+    <div class="terminal-thread">
     @if (messages.length === 0 && !streaming) {
       @if (readOnly) {
         <!-- LA LECTURE SEULE NE PEUT RIEN INVITER À FAIRE (F-83 / SF-83-01) : il n'y a pas d'invite
@@ -489,14 +496,20 @@
 
     @for (message of messages; track message.id) {
       @if (message.role === 'USER') {
-        <div class="terminal-prompt-line">
-          <span class="terminal-caret" aria-hidden="true">&gt;</span>
-          <span class="terminal-request">{{ message.content }}</span>
-          <!-- UNE PRÉCISION DIT OÙ ELLE EN EST (F-84 / SF-84-06), en toutes lettres et par la
-               typographie : aucune couleur nouvelle. -->
-          @if (message.steer; as steer) {
-            <span class="terminal-steer-state" [attr.data-status]="steer.status">{{ steerStateLabel(steer) }}</span>
-          }
+        <!-- LA QUESTION DE L'UTILISATEUR, REPÉRABLE (F-126 / SF-126-02) : bloc distinct, badge « Q<n> »
+             et libellé « Votre question ». L'`id` est l'ancre vers laquelle le rail fait sauter. On
+             garde `terminal-prompt-line` pour l'héritage de couleur (dont la peau Teams, §15). -->
+        <div class="terminal-prompt-line terminal-question" [id]="questionAnchorId(message)">
+          <span class="terminal-qbadge" aria-hidden="true">Q{{ questionNumber(message) }}</span>
+          <span class="terminal-qbody">
+            <span class="terminal-qmeta">Votre question</span>
+            <span class="terminal-request">{{ message.content }}</span>
+            <!-- UNE PRÉCISION DIT OÙ ELLE EN EST (F-84 / SF-84-06), en toutes lettres et par la
+                 typographie : aucune couleur nouvelle. -->
+            @if (message.steer; as steer) {
+              <span class="terminal-steer-state" [attr.data-status]="steer.status">{{ steerStateLabel(steer) }}</span>
+            }
+          </span>
         </div>
       } @else {
         @if (message.terminal && message.terminal.length > 0) {
@@ -889,6 +902,29 @@
         </div>
       </div>
       }
+    }
+    </div>
+
+    <!-- RAIL « VOS QUESTIONS » (F-126 / SF-126-02) : repère les questions posées et permet d'y sauter
+         d'un clic. N'existe qu'en terminal interactif (jamais en lecture seule : une tuile de mosaïque
+         montre le flux et rien d'autre, §13) et seulement quand au moins une question a été posée. Sur
+         mobile (< 820 px), il passe en tête de colonne (CSS). -->
+    @if (!readOnly && userQuestions.length > 0) {
+      <aside class="terminal-qrail" aria-label="Vos questions">
+        <p class="terminal-qrail__title">Vos questions</p>
+        <nav>
+          @for (question of userQuestions; track question.anchorId) {
+            <button
+              type="button"
+              class="terminal-qrail__item"
+              (click)="scrollToQuestion(question.anchorId)"
+            >
+              <span class="terminal-qrail__n" aria-hidden="true">{{ question.number }}</span>
+              <span class="terminal-qrail__label">{{ question.content }}</span>
+            </button>
+          }
+        </nav>
+      </aside>
     }
   </div>
 

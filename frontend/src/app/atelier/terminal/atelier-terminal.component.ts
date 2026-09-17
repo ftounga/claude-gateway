@@ -153,6 +153,9 @@ export const LONG_THREAD_TURNS = 40;
     // SEPT FEUILLES (F-126 / SF-126-01) : la mise en avant de la réponse essentielle vit à part,
     // la feuille principale étant au plafond de build de 12 ko (angular.json).
     './atelier-terminal-essential.component.scss',
+    // HUIT FEUILLES (F-126 / SF-126-02) : les questions repérables et leur rail « Vos questions »
+    // vivent à part, pour la même raison de budget de build.
+    './atelier-terminal-questions.component.scss',
   ],
 })
 export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
@@ -1067,6 +1070,68 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
       this.subtaskCache.set(blocks, indexes);
     }
     return subtaskLabel(block, indexes);
+  }
+
+  // ------------------------------------------------ questions repérables + navigateur (F-126 / SF-126-02)
+
+  /**
+   * Numérotation des questions de l'utilisateur, mémorisée **par tableau de messages** (même geste que
+   * `subtaskCache`). Chaque message `USER` reçoit son rang d'apparition (1, 2, 3…) ; le gabarit
+   * l'interroge pour le badge « Q<n> » et pour l'ancre `terminal-q-<n>`, et le rail lit la même table.
+   */
+  private readonly questionNumberCache = new WeakMap<AtelierThreadItem[], Map<string, number>>();
+
+  private questionNumbers(): Map<string, number> {
+    let map = this.questionNumberCache.get(this.messages);
+    if (!map) {
+      map = new Map<string, number>();
+      let n = 0;
+      for (const message of this.messages) {
+        if (message.role === 'USER') {
+          n += 1;
+          map.set(message.id, n);
+        }
+      }
+      this.questionNumberCache.set(this.messages, map);
+    }
+    return map;
+  }
+
+  /** Rang d'une question de l'utilisateur (1, 2, 3…), ou `null` si le message n'est pas une question. */
+  questionNumber(message: AtelierThreadItem): number | null {
+    return this.questionNumbers().get(message.id) ?? null;
+  }
+
+  /** Ancre stable d'une question, pour le saut depuis le rail (`id` du bloc dans le fil). */
+  questionAnchorId(message: AtelierThreadItem): string {
+    const number = this.questionNumber(message);
+    return number === null ? '' : `terminal-q-${number}`;
+  }
+
+  /**
+   * Les questions de l'utilisateur, numérotées, pour le rail « Vos questions ». Vide → le rail ne
+   * s'affiche pas. Le contenu sert de libellé cliquable ; l'ancre pointe vers le bloc du fil.
+   */
+  get userQuestions(): { number: number; content: string; anchorId: string }[] {
+    const out: { number: number; content: string; anchorId: string }[] = [];
+    for (const message of this.messages) {
+      if (message.role === 'USER') {
+        const number = this.questionNumbers().get(message.id) ?? out.length + 1;
+        out.push({ number, content: message.content, anchorId: `terminal-q-${number}` });
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Saute à une question depuis le rail. On cherche l'ancre **dans le fil de CE terminal** (jamais
+   * dans le document entier : plusieurs terminaux peuvent coexister), puis on l'amène en tête du
+   * conteneur de défilement.
+   */
+  scrollToQuestion(anchorId: string): void {
+    const container = this.scrollback?.nativeElement;
+    const target = container?.querySelector<HTMLElement>(`[id="${anchorId}"]`);
+    target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   /** Coût d'un tour : « m:ss · N tokens ». */
