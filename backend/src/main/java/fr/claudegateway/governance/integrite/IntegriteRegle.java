@@ -36,6 +36,16 @@ public enum IntegriteRegle {
     CARTE_INDEX_SURCHARGE("carte/index-surcharge", IntegriteNiveau.AVERTISSEMENT),
 
     /**
+     * Un fichier de carte est présent à la racine mais <b>non déclaré</b> (F-125 / SF-125-03).
+     *
+     * <p>C'est un <b>avertissement</b>, et c'est tout l'objet de la feature : un fichier créé mais
+     * pas encore inscrit dans l'index ne met plus l'agent « hors gouvernance » ni en boucle. Le
+     * corriger — le déclarer dans {@code README.md}, ou le laisser — demande un <b>jugement</b> ; le
+     * bloquer dessus reviendrait à décider à la place de l'utilisateur, dans la carte d'un client.</p>
+     */
+    CARTE_NON_DECLAREE("carte/non-declaree", IntegriteNiveau.AVERTISSEMENT),
+
+    /**
      * La carte cite un chemin qui n'existe plus.
      *
      * <p><b>C'est la façon dont une carte pourrit sans qu'on s'en aperçoive</b>, et c'est pourtant

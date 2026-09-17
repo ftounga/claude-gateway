@@ -1,5 +1,6 @@
 package fr.claudegateway.governance;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -144,6 +145,59 @@ public class GovernanceHostFiles {
         return RunnerErrorCodes.RUNNER_UNAVAILABLE.equals(errorCode)
                 || RunnerErrorCodes.RUNNER_TIMEOUT.equals(errorCode)
                 || RunnerErrorCodes.RUNNER_NOT_ON_THIS_NODE.equals(errorCode);
+    }
+
+    /** Nom d'outil du journal pour un listage de racine : une raison de lire, une ligne. */
+    static final String TOOL_MAP_LIST = "governance_map_list";
+
+    /**
+     * Au-delà de ce nombre d'entrées, le listage est probablement <b>tronqué</b> : on ne conclut
+     * rien de ce qu'on n'a pas lu en entier (même prudence que {@code IntegriteInspection}).
+     */
+    static final int LISTING_INCOMPLET = 5_000;
+
+    /**
+     * Les fichiers <b>à la racine</b> du poste (F-125 / SF-125-03) — ce que la machine porte vraiment,
+     * par opposition à ce qu'un paquet a déclaré.
+     *
+     * <p>Sert à repérer un fichier de carte présent mais non déclaré. Ne rend que les entrées de
+     * <b>premier niveau</b> (sans {@code /}) : les fichiers d'un projet vivent sous un sous-dossier et
+     * ne sont pas de la carte. Rend une liste <b>vide</b> — jamais {@code null}, jamais d'exception —
+     * quand la machine ne répond pas, refuse, ou quand le listage est probablement tronqué : conclure
+     * « non déclaré » d'une liste incomplète fabriquerait une fausse alerte.</p>
+     */
+    public List<String> listRoot(UUID userId, GovernanceHostRef host) {
+        if (!supports(host)) {
+            return List.of();
+        }
+        String callId = UUID.randomUUID().toString();
+        RunnerTarget target = rootTarget(host);
+        RunnerCallResult result;
+        try {
+            result = gateway.listFiles(target, callId);
+        } catch (RuntimeException ex) {
+            log.debug("Racine du poste non listée ({})", ex.getClass().getSimpleName());
+            return List.of();
+        }
+        auditService.recordCall(userId, target, callId, TOOL_MAP_LIST, "", result);
+        if (!result.ok() || result.content() == null || result.truncated()) {
+            return List.of();
+        }
+        String[] lignes = result.content().split("\n");
+        if (lignes.length >= LISTING_INCOMPLET) {
+            return List.of(); // Arborescence probablement tronquée : on ne conclut aucune absence.
+        }
+        java.util.List<String> racine = new java.util.ArrayList<>();
+        for (String brute : lignes) {
+            String rel = brute == null ? "" : brute.strip().replace('\\', '/');
+            while (rel.startsWith("./")) {
+                rel = rel.substring(2);
+            }
+            if (!rel.isEmpty() && !rel.contains("/") && !racine.contains(rel)) {
+                racine.add(rel); // Premier niveau seulement : la carte vit à la racine.
+            }
+        }
+        return List.copyOf(racine);
     }
 
     /**

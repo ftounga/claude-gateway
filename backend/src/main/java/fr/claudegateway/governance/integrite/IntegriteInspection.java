@@ -98,6 +98,9 @@ public class IntegriteInspection {
     /** Notes non versionnées citées par dépôt : au-delà, c'est le dépôt entier qu'il faut revoir. */
     static final int MAX_NOTES_CITEES = 5;
 
+    /** Fichiers non déclarés cités (F-125 / SF-125-03) : un avertissement n'est pas un inventaire. */
+    static final int MAX_NON_DECLAREES = 3;
+
     /**
      * Taille de listage au-delà de laquelle on ne conclut <b>pas</b> l'absence d'un fichier.
      *
@@ -190,6 +193,7 @@ public class IntegriteInspection {
         }
         passeProjets(userId, host, budget, constats);
         passeLiensMorts(userId, host, carte, attendus.keySet(), budget, constats);
+        passeCarteNonDeclaree(userId, host, carte, attendus.keySet(), budget, constats);
         return IntegriteRapport.de(constats);
     }
 
@@ -380,6 +384,63 @@ public class IntegriteInspection {
                 }
             }
         }
+    }
+
+    /**
+     * Les fichiers de carte <b>présents mais non déclarés</b> (F-125 / SF-125-03) — le cas
+     * {@code enjeux.md} : créé à la racine, jamais inscrit dans l'index.
+     *
+     * <p><b>Réparateur, jamais bloquant.</b> Chaque fichier non déclaré est un <b>avertissement</b> :
+     * il informe (« déclare-le, ou laisse-le, il est toléré ») et ne renvoie pas l'agent au travail.
+     * C'est ce qui l'empêche de tourner en rond autour d'un fichier « hors gouvernance ».</p>
+     *
+     * <p><b>On ne conclut rien de ce qu'on n'a pas lu.</b> Une racine non listable, un listage tronqué
+     * (bornes de {@link GovernanceHostFiles#listRoot}) rendent une liste vide, et donc aucun constat.
+     * Un fichier <b>déclaré</b> — apporté par un paquet ({@code attendus}) ou référencé par l'index —
+     * n'est jamais signalé.</p>
+     */
+    private void passeCarteNonDeclaree(UUID userId, GovernanceHostRef host, Map<String, String> carte,
+            Set<String> attendus, Budget budget, List<IntegriteConstat> constats) {
+        if (budget.epuise()) {
+            return;
+        }
+        budget.consomme();
+        List<String> racine = hostFiles.listRoot(userId, host);
+        if (racine.isEmpty()) {
+            return; // Rien lu : on n'invente aucune absence de déclaration.
+        }
+        Set<String> declares = new java.util.LinkedHashSet<>();
+        for (String path : attendus) {
+            declares.add(nomFichier(path));
+        }
+        // Les fichiers que l'index (et les autres cartes) référencent sont déclarés « en douceur ».
+        // MapReferences écarte déjà les fichiers de carte eux-mêmes : ce qu'il rend en plus, c'est
+        // exactement ce qu'un README a inscrit à la main — enjeux.md compris s'il y figure.
+        for (String contenu : carte.values()) {
+            for (String reference : MapReferences.of(contenu, attendus)) {
+                declares.add(nomFichier(reference));
+            }
+        }
+        int cites = 0;
+        for (String entree : racine) {
+            if (cites >= MAX_NON_DECLAREES) {
+                break;
+            }
+            String nom = entree.strip();
+            if (!nom.toLowerCase(Locale.ROOT).endsWith(".md")
+                    || declares.contains(nomFichier(nom))) {
+                continue;
+            }
+            constats.add(IntegriteConstat.carteNonDeclaree(nom));
+            cites++;
+        }
+    }
+
+    /** Le dernier segment d'un chemin, en minuscules — ce qui identifie un fichier de carte. */
+    private static String nomFichier(String chemin) {
+        String valeur = chemin == null ? "" : chemin.strip().replace('\\', '/');
+        int slash = valeur.lastIndexOf('/');
+        return (slash < 0 ? valeur : valeur.substring(slash + 1)).toLowerCase(Locale.ROOT);
     }
 
     /** Les projets du poste, ou aucun : lister ne fait jamais échouer un tour. */

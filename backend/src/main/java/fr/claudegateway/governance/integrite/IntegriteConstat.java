@@ -88,6 +88,18 @@ public record IntegriteConstat(IntegriteRegle regle, String cible, String messag
                         + "garde ici que ce qui dit où chercher quoi.");
     }
 
+    /**
+     * Un fichier de carte présent à la racine mais non déclaré (F-125 / SF-125-03) : on le signale,
+     * on le tolère, on ne bloque pas.
+     */
+    public static IntegriteConstat carteNonDeclaree(String fichier) {
+        return new IntegriteConstat(IntegriteRegle.CARTE_NON_DECLAREE, fichier,
+                "le fichier « " + fichier + " » est à la racine du poste mais n'est pas déclaré dans "
+                        + "la carte : ajoute-le à l'index « README.md » (une ligne « - [" + fichier
+                        + "](" + fichier + "] : … » suffit) si c'est bien un fichier de carte — ou "
+                        + "laisse-le tel quel, il est toléré et ne te met pas hors gouvernance.");
+    }
+
     /** La carte cite un chemin qui n'existe plus : le savoir pointe dans le vide. */
     public static IntegriteConstat lienMort(String fichier, String reference) {
         return new IntegriteConstat(IntegriteRegle.CARTE_LIEN_MORT, fichier,

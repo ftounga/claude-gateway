@@ -330,6 +330,59 @@ class IntegriteInspectionTest {
         assertThat(rapport.avertissements().get(0).message()).contains("vieux-sujet/STATE.md");
     }
 
+    // ----------------------------------- F-125 / SF-125-03 : carte non déclarée, tolérée
+
+    @Test
+    @DisplayName("un .md non déclaré à la racine est un avertissement toléré, jamais un blocage")
+    void anUndeclaredRootMapFileIsAToleratedWarning() {
+        when(hostFiles.listRoot(alice, host))
+                .thenReturn(List.of("acces.md", "enjeux.md", "migration-dns"));
+
+        IntegriteRapport rapport = inspection.dePoste(alice, host);
+
+        assertThat(rapport.bloque()).isFalse();
+        assertThat(rapport.avertissements()).extracting(IntegriteConstat::regle)
+                .containsExactly(IntegriteRegle.CARTE_NON_DECLAREE);
+        assertThat(rapport.avertissements().get(0).cible()).isEqualTo("enjeux.md");
+        assertThat(rapport.avertissements().get(0).message()).contains("toléré");
+    }
+
+    @Test
+    @DisplayName("un fichier référencé par l'index README n'est pas « non déclaré »")
+    void aFileReferencedByTheIndexIsNotUndeclared() {
+        when(destinations.filesOf(alice, host)).thenReturn(carte("README.md"));
+        when(hostFiles.read(alice, host, "README.md")).thenReturn(presente(
+                "# La carte\n\n## Domaines\n\n- [enjeux](enjeux.md) : les enjeux du poste\n"));
+        when(hostFiles.listRoot(alice, host)).thenReturn(List.of("README.md", "enjeux.md"));
+
+        assertThat(inspection.dePoste(alice, host).constats()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("un fichier de carte attendu (paquet actif) n'est jamais « non déclaré »")
+    void anExpectedMapFileIsNeverUndeclared() {
+        when(hostFiles.listRoot(alice, host)).thenReturn(List.of("acces.md"));
+
+        assertThat(inspection.dePoste(alice, host).constats()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("un .md sous un sous-dossier de projet est ignoré : la règle porte sur la racine")
+    void aMarkdownUnderAProjectIsIgnored() {
+        // listRoot ne rend que le premier niveau ; un chemin avec « / » n'en fait pas partie.
+        when(hostFiles.listRoot(alice, host)).thenReturn(List.of("acces.md"));
+
+        assertThat(inspection.dePoste(alice, host).constats()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("une racine non listable ne fait conclure aucun fichier non déclaré")
+    void anUnlistableRootConcludesNothing() {
+        when(hostFiles.listRoot(alice, host)).thenReturn(List.of());
+
+        assertThat(inspection.dePoste(alice, host).constats()).isEmpty();
+    }
+
     // ---------------------------------------------------------------- le budget
 
     @Test

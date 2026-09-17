@@ -56,6 +56,7 @@ class IntegriteConstatTest {
         List<IntegriteRegle> couvertes = List.of(
                 IntegriteConstat.carteAbsente("a.md").regle(),
                 IntegriteConstat.carteSansStructure("a.md").regle(),
+                IntegriteConstat.carteNonDeclaree("enjeux.md").regle(),
                 IntegriteConstat.indexSurcharge("a.md", 61).regle(),
                 IntegriteConstat.lienMort("a.md", "b/c").regle(),
                 IntegriteConstat.stateAbsent("p").regle(),
