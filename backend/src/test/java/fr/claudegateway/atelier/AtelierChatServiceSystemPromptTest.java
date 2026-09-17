@@ -296,6 +296,49 @@ class AtelierChatServiceSystemPromptTest {
                 .isEqualTo("<<essentiel>>\nNon.\n<</essentiel>>\nLe détail suit.");
     }
 
+    // ------------------------------------------- F-125 / SF-125-05 : conseil → tranche, jamais un statut de rangement
+
+    @Test
+    void theAdviceDecisionDoctrineIsPresentOnASandboxProject() {
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+
+        String system = systemPrompt();
+
+        // Conseil/décision → prendre position et trancher.
+        assertThat(system).contains("Sur une question de conseil ou de décision, tranche");
+        assertThat(system).contains("PRENDS POSITION");
+        assertThat(system).contains("ta meilleure recommandation par défaut");
+        // Baliser l'essentiel même sur un tour court.
+        assertThat(system).contains("Balise l'essentiel MÊME sur un tour court");
+        // Interdiction explicite des formules de statut de rangement.
+        assertThat(system).contains("statut de rangement de la carte");
+        assertThat(system).contains("rien à ranger");
+        assertThat(system).contains("ce tour n'était qu'un");
+        // Coexistence : les cinq consignes précédentes ne sont pas écrasées.
+        assertThat(system).contains("Vérifie avant d'affirmer");
+        assertThat(system).contains("Répondre d'abord, agir sur demande");
+        assertThat(system).contains("Style de réponse (terminal)");
+        assertThat(system).contains("Tenue de la carte, en silence");
+        assertThat(system).contains("Mets en avant l'essentiel");
+        assertThat(system).contains("<<essentiel>>");
+    }
+
+    @Test
+    void theAdviceDecisionDoctrineIsPresentOnARunnerProject() {
+        String system = systemPromptOfRunnerProjectDeclaring(null);
+
+        assertThat(system).contains("Sur une question de conseil ou de décision, tranche");
+        assertThat(system).contains("Balise l'essentiel MÊME sur un tour court");
+        assertThat(system).contains("statut de rangement de la carte");
+        assertThat(system).contains("ce tour n'était qu'un");
+        // Coexistence + non-régression du rôle RUNNER.
+        assertThat(system).contains("Tenue de la carte, en silence");
+        assertThat(system).contains("Mets en avant l'essentiel");
+        assertThat(system).contains("bash (ls, find, grep -n)");
+    }
+
     @Test
     void theSetPlanDescriptionOnlyPlansWhenAskedOrActing() {
         when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());

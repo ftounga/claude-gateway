@@ -48,7 +48,27 @@ même sur un tour court**, et **ne répond jamais par un statut de rangement** d
   `fin-de-tour` restent intacts ; les tests de prompt existants passent (substrings verrouillés
   préservés).
 
-## 7. Hors périmètre
+## 7. Composants impactés
+- `backend/.../atelier/AtelierChatService.java` — nouvelle constante de doctrine
+  `ADVICE_DECISION_DOCTRINE`, appendée dans `buildSystemPrompt(...)` **après**
+  `ESSENTIAL_ANSWER_DOCTRINE`, sur les **deux** cibles (RUNNER + SANDBOX).
+- `backend/.../atelier/AtelierChatServiceSystemPromptTest.java` — tests de présence (2 cibles)
+  + non-régression des doctrines antérieures.
+- Aucune table, aucun endpoint, aucun composant frontend. Pas de migration.
+- Préoccupation transversale « Auth / Principal / tenant / plans / routing » : **non touchée**
+  (prompt-only, additif, aucune résolution d'auth/tenant/quota/route modifiée).
+
+## 8. Plan de test minimal
+- **Unitaire (SANDBOX)** : le prompt contient la règle « conseil → trancher », « PRENDS
+  POSITION », la reco par défaut, le balisage de l'essentiel même court, et l'interdiction des
+  formules de statut de rangement (« rien à ranger », « ce tour n'était qu'un conseil »).
+- **Unitaire (RUNNER)** : mêmes substrings sur la cible runner + non-régression du rôle runner
+  (`bash (ls, find, grep -n)`).
+- **Non-régression** : coexistence des doctrines F-119-02, F-120-01, F-121-03, F-125-01,
+  F-126-01 (substrings verrouillés préservés) ; strip `fin-de-tour` intact.
+- **Isolation workspace** : sans objet (prompt-only, aucun accès données ajouté).
+
+## 9. Hors périmètre
 - Un détecteur d'intention automatique (F-120 suffit ; on ne re-devine pas).
 - Toute UI (F-126 rend déjà l'essentiel ; ici on garantit qu'il est **présent** et **pertinent**).
 - Le raisonnement de fond (F-119) : non concerné.
