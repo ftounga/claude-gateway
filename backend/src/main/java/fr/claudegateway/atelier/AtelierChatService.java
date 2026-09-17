@@ -241,6 +241,33 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "« fin-de-tour », « hors gouvernance », « libellé », une fiche de carte comme "
                     + "« destination ». Si un rangement a échoué ou reste à faire, garde-le pour toi : "
                     + "ne t'en explique pas à l'utilisateur, qui n'en a que faire.\n\n";
+    /**
+     * Balisage de la réponse essentielle (F-126 / SF-126-01) : ajouté au rôle sur les <b>deux</b>
+     * cibles, aux côtés de la discipline (SF-119-02), de la doctrine (SF-120-01), du style (SF-121-03)
+     * et du silence de la carte (SF-125-01). Prolonge « réponds d'abord » : l'essentiel est la réponse
+     * <i>directe et courte</i> à la question, le reste est le détail. Le frontend met l'essentiel en
+     * avant s'il est balisé, et se replie gracieusement sinon — la consigne rend le balisage habituel.
+     *
+     * <p>Le marqueur {@code <<essentiel>> … <</essentiel>>} est du <b>contenu à afficher</b>, jamais une
+     * métadonnée : il ne collisionne pas avec le retrait du marqueur {@code fin-de-tour} (F-125), qui
+     * ne vise que le commentaire HTML {@code <!-- fin-de-tour: … -->}. Placé en tête du préfixe stable,
+     * il survit à la coupe {@link #SYSTEM_MAX_CHARS} et reste caché (cache de prompt préservé).</p>
+     */
+    private static final String ESSENTIAL_ANSWER_DOCTRINE =
+            "Mets en avant l'essentiel — non négociable :\n"
+                    + "- Commence TOUJOURS ta réponse par l'essentiel : la réponse directe et courte à "
+                    + "la question posée, comme si on t'avait demandé d'être très concis (une phrase, "
+                    + "deux au plus).\n"
+                    + "- Encadre cet essentiel par le marqueur dédié, sur ses propres lignes :\n"
+                    + "  <<essentiel>>\n"
+                    + "  … la réponse directe et courte …\n"
+                    + "  <</essentiel>>\n"
+                    + "- Écris ENSUITE le détail (le raisonnement, les preuves, les nuances) sous le "
+                    + "marqueur de fermeture, en style normal. Le détail n'est pas répété dans "
+                    + "l'essentiel.\n"
+                    + "- N'emploie ces marqueurs QUE pour encadrer l'essentiel, une seule fois par "
+                    + "réponse, et n'en parle jamais dans le texte : ils sont mis en forme pour le "
+                    + "lecteur, pas expliqués.\n\n";
     private static final List<String> SKILL_PREFIXES = List.of(".claude/skills/", "skills/");
     /**
      * Nombre de skills annoncés dans la consigne (F-39 / SF-39-02, décision D3). Une borne explicite
@@ -3280,6 +3307,12 @@ public class AtelierChatService implements RelayInterruptTarget {
         // stable, aux côtés des trois consignes ci-dessus. La carte se tient en coulisse ; elle ne se
         // raconte jamais dans la réponse, et aucun terme de plomberie n'y apparaît.
         system.append(CARD_SILENCE_DOCTRINE);
+
+        // Balisage de la réponse essentielle (F-126 / SF-126-01) : sur les DEUX cibles, en tête du
+        // préfixe stable, à la suite des consignes ci-dessus. Prolonge « réponds d'abord » (SF-120-01)
+        // et le style (SF-121-03) : l'essentiel est la réponse directe et courte, balisée pour que le
+        // frontend la mette en avant ; le marqueur ne collisionne pas avec le strip fin-de-tour (F-125).
+        system.append(ESSENTIAL_ANSWER_DOCTRINE);
 
         // Mode explicite « Réponse/Plan » (F-120 / SF-120-02) : quand l'utilisateur l'a choisi, on
         // renforce la doctrine par une consigne de mode, en écho au retrait des outils mutants dans

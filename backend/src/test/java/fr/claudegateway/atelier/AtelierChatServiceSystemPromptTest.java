@@ -247,6 +247,55 @@ class AtelierChatServiceSystemPromptTest {
         assertThat(system).contains("bash (ls, find, grep -n)");
     }
 
+    // ------------------------------------------- F-126 / SF-126-01 : balisage de la réponse essentielle
+
+    @Test
+    void theEssentialAnswerDoctrineIsPresentOnASandboxProject() {
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+
+        String system = systemPrompt();
+
+        assertThat(system).contains("Mets en avant l'essentiel");
+        assertThat(system).contains("<<essentiel>>");
+        assertThat(system).contains("<</essentiel>>");
+        assertThat(system).contains("la réponse directe et courte");
+        // Coexistence : les quatre consignes précédentes ne sont pas écrasées.
+        assertThat(system).contains("Vérifie avant d'affirmer");
+        assertThat(system).contains("Répondre d'abord, agir sur demande");
+        assertThat(system).contains("Style de réponse (terminal)");
+        assertThat(system).contains("Tenue de la carte, en silence");
+    }
+
+    @Test
+    void theEssentialAnswerDoctrineIsPresentOnARunnerProject() {
+        String system = systemPromptOfRunnerProjectDeclaring(null);
+
+        assertThat(system).contains("Mets en avant l'essentiel");
+        assertThat(system).contains("<<essentiel>>");
+        assertThat(system).contains("<</essentiel>>");
+        // Coexistence + non-régression du rôle RUNNER.
+        assertThat(system).contains("Tenue de la carte, en silence");
+        assertThat(system).contains("bash (ls, find, grep -n)");
+    }
+
+    @Test
+    void theEssentialMarkerDoesNotCollideWithTheFinDeTourMarker() {
+        // Le marqueur essentiel n'est PAS un commentaire HTML : il ne peut pas être pris pour le
+        // marqueur `fin-de-tour` (F-125), qui ne vise que `<!-- fin-de-tour: … -->`.
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+
+        String system = systemPrompt();
+
+        assertThat(system).doesNotContain("<!-- fin-de-tour");
+        assertThat(AtelierChatService.stripTurnMetadata(
+                "<<essentiel>>\nNon.\n<</essentiel>>\nLe détail suit."))
+                .isEqualTo("<<essentiel>>\nNon.\n<</essentiel>>\nLe détail suit.");
+    }
+
     @Test
     void theSetPlanDescriptionOnlyPlansWhenAskedOrActing() {
         when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
