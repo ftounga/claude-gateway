@@ -2,7 +2,7 @@ import { SecurityContext } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { DomSanitizer } from '@angular/platform-browser';
 
-import { MarkdownPipe, renderMarkdown } from './markdown.pipe';
+import { MarkdownPipe, renderMarkdown, stripTurnMetadata } from './markdown.pipe';
 
 describe('renderMarkdown', () => {
   it('rend titres, gras, listes et code', () => {
@@ -27,6 +27,20 @@ describe('renderMarkdown', () => {
     expect(renderMarkdown('')).toBe('');
     expect(renderMarkdown(undefined)).toBe('');
     expect(renderMarkdown(null)).toBe('');
+  });
+
+  it('retire le marqueur de fin de tour (F-125 / SF-125-01), sans montrer la plomberie', () => {
+    const out = renderMarkdown(
+      "Oui, ça s'est bien passé.\n\n<!-- fin-de-tour: promotion=aucune; promu=aucune; dette=0 -->",
+    );
+    expect(out).not.toContain('fin-de-tour');
+    expect(out).not.toContain('promotion');
+    expect(out).toContain("Oui, ça s'est bien passé.");
+  });
+
+  it('ne touche pas un autre commentaire HTML que le marqueur', () => {
+    expect(stripTurnMetadata('Texte <!-- todo -->')).toBe('Texte <!-- todo -->');
+    expect(stripTurnMetadata('A<!--FIN-DE-TOUR: dette=0 -->B')).toBe('AB');
   });
 });
 

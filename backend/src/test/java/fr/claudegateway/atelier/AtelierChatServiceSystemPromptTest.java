@@ -214,6 +214,39 @@ class AtelierChatServiceSystemPromptTest {
         assertThat(system).contains("bash (ls, find, grep -n)");
     }
 
+    // ------------------------------------------- F-125 / SF-125-01 : silence de la tenue de carte
+
+    @Test
+    void theCardSilenceDoctrineIsPresentOnASandboxProject() {
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+
+        String system = systemPrompt();
+
+        assertThat(system).contains("Tenue de la carte, en silence");
+        assertThat(system).contains("Réponds D'ABORD à la question");
+        assertThat(system).contains("travail de COULISSE");
+        // Les termes de plomberie sont nommés comme interdits dans la réponse.
+        assertThat(system).contains("termes de plomberie");
+        // Coexistence : les trois consignes précédentes ne sont pas écrasées.
+        assertThat(system).contains("Vérifie avant d'affirmer");
+        assertThat(system).contains("Répondre d'abord, agir sur demande");
+        assertThat(system).contains("Style de réponse (terminal)");
+    }
+
+    @Test
+    void theCardSilenceDoctrineIsPresentOnARunnerProject() {
+        String system = systemPromptOfRunnerProjectDeclaring(null);
+
+        assertThat(system).contains("Tenue de la carte, en silence");
+        assertThat(system).contains("travail de COULISSE");
+        assertThat(system).contains("termes de plomberie");
+        // Coexistence + non-régression du rôle RUNNER.
+        assertThat(system).contains("Style de réponse (terminal)");
+        assertThat(system).contains("bash (ls, find, grep -n)");
+    }
+
     @Test
     void theSetPlanDescriptionOnlyPlansWhenAskedOrActing() {
         when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());

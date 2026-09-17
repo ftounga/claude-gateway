@@ -21,11 +21,29 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
  * dans {@code DOMPurify} avant affichage (neutralise {@code <script>}, {@code onerror}, {@code javascript:}…).
  * Fonction pure exposée séparément du pipe pour être testable sans TestBed.</p>
  */
+/**
+ * Marqueur de métadonnées de fin de tour (F-52), lu par le produit et jamais par le lecteur
+ * (F-125 / SF-125-01). Casse et espaces libres, corps quelconque jusqu'au `-->`, plusieurs
+ * occurrences. On ne vise QUE ce marqueur précis : tout autre commentaire HTML est laissé tel quel.
+ */
+const TURN_METADATA_MARKER = /<!--\s*fin-de-tour\s*:[\s\S]*?-->/gi;
+
+/**
+ * Retire le marqueur de fin de tour du contenu assistant avant tout rendu (F-125 / SF-125-01).
+ *
+ * <p>Défense en profondeur : le backend le retire déjà des nouvelles réponses, mais les messages
+ * historiques déjà persistés le portent encore. La tenue de la carte se fait en coulisse ; le
+ * marqueur ne doit jamais être visible ni « expliqué » dans le fil.</p>
+ */
+export function stripTurnMetadata(value: string): string {
+  return value.replace(TURN_METADATA_MARKER, '').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 export function renderMarkdown(value: string | null | undefined): string {
   if (!value) {
     return '';
   }
-  const rawHtml = marked.parse(value, { async: false }) as string;
+  const rawHtml = marked.parse(stripTurnMetadata(value), { async: false }) as string;
   return DOMPurify.sanitize(rawHtml, { ADD_ATTR: ['target'] });
 }
 

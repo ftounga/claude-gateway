@@ -81,6 +81,8 @@ class AtelierChatServiceOfflinePromotionTest {
             + "n'est pas connecté.\n\n<!-- fin-de-tour: promotion=cluster atlas; dette=0 -->";
     private static final String SOLDE = "C'est rangé.\n\n<!-- fin-de-tour: promotion=aucune; "
             + "promu=cluster atlas -> plateformes.md; dette=0 -->";
+    /** Ce que l'utilisateur voit : le marqueur de fin de tour est retiré (F-125 / SF-125-01). */
+    private static final String SOLDE_RENDU = "C'est rangé.";
 
     @BeforeEach
     void setUp() {
@@ -209,8 +211,9 @@ class AtelierChatServiceOfflinePromotionTest {
         assertThat(userTexts()).anySatisfy(text -> assertThat(text)
                 .startsWith("Fin de tour contrôlée : le poste était hors ligne")
                 .contains("cluster atlas"));
-        assertThat(result.reply()).isEqualTo(SOLDE);
+        assertThat(result.reply()).isEqualTo(SOLDE_RENDU);
         assertThat(result.reply()).doesNotContain(PromotionReportee.NOTICE);
+        assertThat(result.reply()).doesNotContain("fin-de-tour");
     }
 
     @Test
@@ -229,7 +232,7 @@ class AtelierChatServiceOfflinePromotionTest {
         assertThat(seen.get(0).machine()).isEqualTo(AtelierMachineReach.REACHED);
         assertThat(userTexts()).anySatisfy(text -> assertThat(text)
                 .startsWith("Fin de tour contrôlée : range d'abord"));
-        assertThat(result.reply()).isEqualTo(SOLDE);
+        assertThat(result.reply()).isEqualTo(SOLDE_RENDU);
     }
 
     @Test
@@ -242,5 +245,31 @@ class AtelierChatServiceOfflinePromotionTest {
         assertThat(AtelierChatService.appendNotice("", PromotionReportee.NOTICE))
                 .isEqualTo(PromotionReportee.NOTICE_SENTENCE);
         assertThat(AtelierChatService.appendNotice("Réponse.", null)).isEqualTo("Réponse.");
+    }
+
+    // ---------------------------------------------- F-125 / SF-125-01 : le marqueur ne fuite pas
+
+    @Test
+    @DisplayName("le marqueur de fin de tour est retiré de la réponse rendue")
+    void theTurnMarkerIsStrippedFromTheReply() {
+        assertThat(AtelierChatService.stripTurnMetadata(
+                "Oui, ça s'est bien passé.\n\n<!-- fin-de-tour: promotion=aucune; promu=aucune; dette=0 -->"))
+                .isEqualTo("Oui, ça s'est bien passé.");
+        // Casse et espaces libres, plusieurs occurrences.
+        assertThat(AtelierChatService.stripTurnMetadata(
+                "<!--FIN-DE-TOUR: dette=2 -->A<!-- fin-de-tour: dette=0 -->B")).isEqualTo("AB");
+        // Un autre commentaire HTML n'est pas touché.
+        assertThat(AtelierChatService.stripTurnMetadata("Texte <!-- todo -->"))
+                .isEqualTo("Texte <!-- todo -->");
+        // Sans marqueur, la réponse est rendue à l'identique (pas de recompactage intempestif).
+        assertThat(AtelierChatService.stripTurnMetadata("Réponse.\n")).isEqualTo("Réponse.\n");
+        assertThat(AtelierChatService.stripTurnMetadata(null)).isNull();
+    }
+
+    @Test
+    @DisplayName("une réponse réduite au seul marqueur devient vide (repli côté appelant)")
+    void aReplyReducedToTheMarkerBecomesBlank() {
+        assertThat(AtelierChatService.stripTurnMetadata(
+                "<!-- fin-de-tour: promotion=aucune; dette=0 -->")).isBlank();
     }
 }
