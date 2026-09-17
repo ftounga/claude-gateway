@@ -149,8 +149,9 @@ class OfflineEndOfTurnControlsTest {
 
         assertThat(verdict.blocked()).isTrue();
         assertThat(verdict.hasNotice()).isFalse();
+        // F-125 / SF-125-04 : une dette seule ne bloque plus (la carte se tient en silence).
         assertThat(dette.evaluate(tour(alice, marqueur("promotion=aucune; dette=2"),
-                AtelierMachineReach.REACHED)).blocked()).isTrue();
+                AtelierMachineReach.REACHED)).blocked()).isFalse();
         assertThat(reportees.estDue(alice, host, projet)).isFalse();
     }
 

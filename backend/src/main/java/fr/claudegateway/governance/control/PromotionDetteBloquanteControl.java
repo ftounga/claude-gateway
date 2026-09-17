@@ -17,8 +17,16 @@ import fr.claudegateway.governance.control.FinDeTourMarker.Promotion;
  * par F-93 / SF-93-01).
  *
  * <p>La promotion sans dette bloquante ne tient pas : « je le noterai » se dit à chaque tour, et rien
- * n'oblige jamais à y revenir. Une case {@code - [ ]} laissée dans le projet est une <b>dette</b>, et
- * tant qu'elle y est, le tour ne se clôt pas.</p>
+ * n'oblige jamais à y revenir. Une case {@code - [ ]} laissée dans le projet est une <b>dette</b>.</p>
+ *
+ * <p><b>La dette ne relance plus l'agent</b> (F-125 / SF-125-04). Le crochet {@code END_OF_TURN} peut
+ * relancer jusqu'à 3× ; répondre par de la paperasse de dette à une question de fond était le défaut
+ * du cas réel CAGIP. La branche « dette non nulle » rend désormais {@code proceed()} — la dette reste
+ * <b>comptée et visible</b> ailleurs, sans relancer : {@code IntegritePosteControl} la signale en
+ * avertissement ({@code DETTE_EN_COURS}), et une clôture avec cases ouvertes reste une erreur
+ * ({@code DETTE_A_LA_CLOTURE}). Ce contrôle ne rappelle plus qu'une <b>promotion explicitement
+ * déclarée sans dire où</b>, et seulement si le tour n'a pas réellement écrit dans la carte
+ * (SF-125-02).</p>
  *
  * <p><b>Ce qui manquait : la destination.</b> Ce contrôle savait compter ; il ne savait pas dire
  * <i>où</i> promouvoir, et son message envoyait vers la carte du <b>projet</b>. Or un cluster, un
@@ -28,13 +36,15 @@ import fr.claudegateway.governance.control.FinDeTourMarker.Promotion;
  * qui ne la dit pas</b>. C'est le même contrôle, complété : un second contrôle qui réclamerait la
  * même chose ne rendrait qu'une correction — la première — et l'autre serait muette.</p>
  *
- * <p><b>Trois refus, dans cet ordre, et l'ordre est le message :</b></p>
+ * <p><b>Deux rappels, dans cet ordre, et l'ordre est le message</b> (la dette, elle, ne bloque plus —
+ * F-125 / SF-125-04) :</p>
  *
  * <ol>
  *   <li>une promotion déclarée <b>sans destination</b> — on demande où, avec la forme exacte ;</li>
- *   <li>une destination <b>étrangère à la carte</b> — on nomme les fichiers réels du poste ;</li>
- *   <li>une <b>dette</b> non nulle — on dit quoi en faire, et vers quoi promouvoir.</li>
+ *   <li>une destination <b>étrangère à la carte</b> — on nomme les fichiers réels du poste.</li>
  * </ol>
+ *
+ * <p>Les deux ne se déclenchent que si le tour n'a pas réellement écrit dans la carte (SF-125-02).</p>
  *
  * <p><b>Il compte, il ne police pas la forme.</b> Sans marqueur, ce contrôle <b>passe</b> : demander
  * le marqueur est le travail de {@link JugeFinDeTourControl}, et deux contrôles qui réclament la même
@@ -82,9 +92,9 @@ public class PromotionDetteBloquanteControl implements GovernanceControl {
 
     @Override
     public String description() {
-        return "Refuse de clore un tour tant qu'une promotion ne dit pas dans quel fichier de la "
-                + "carte du poste elle a été rangée, ou tant qu'une case « - [ ] » reste non cochée "
-                + "dans le projet.";
+        return "Rappelle une promotion qui ne dit pas dans quel fichier de la carte du poste elle a "
+                + "été rangée, sauf si le tour a réellement écrit dans la carte. La dette de "
+                + "promotion (cases « - [ ] ») ne bloque plus la clôture (F-125 / SF-125-04).";
     }
 
     @Override
@@ -145,15 +155,14 @@ public class PromotionDetteBloquanteControl implements GovernanceControl {
                     + ", puis reprends le marqueur avec cette destination.");
         }
 
-        if (marker.dette() == 0) {
-            return AtelierCheckpointVerdict.proceed();
-        }
-        int dette = marker.dette();
-        return AtelierCheckpointVerdict.block("le projet garde " + dette
-                + (dette > 1 ? " cases « - [ ] » non cochées" : " case « - [ ] » non cochée")
-                + " : pour chacune, promeus l'élément durable dans la carte du poste (" + cited
-                + "), coche-la en disant où — « - [x] <élément> -> promu dans <fichier> » —, ou "
-                + "retire la ligne devenue sans objet. Conclus ensuite avec « dette=0 ».");
+        // F-125 / SF-125-04 : la DETTE ne renvoie plus l'agent au travail. Le crochet END_OF_TURN
+        // peut relancer jusqu'à 3× (audit F-119) ; répondre par de la paperasse de dette à une
+        // question de fond est exactement le défaut que F-125 corrige. La dette reste comptée et
+        // VISIBLE ailleurs, sans relancer : IntegritePosteControl la signale en avertissement
+        // (DETTE_EN_COURS, non bloquant), et une clôture avec cases ouvertes reste une erreur
+        // (DETTE_A_LA_CLOTURE) — une perte de savoir au moment de clore, pas de la routine. Ici, on
+        // se tait : la carte se tient en silence.
+        return AtelierCheckpointVerdict.proceed();
     }
 
     /**
