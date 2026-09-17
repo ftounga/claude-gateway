@@ -221,6 +221,26 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "évite titres et tableaux pour une réponse brève.\n"
                     + "- Cite tes sources par `chemin:ligne` quand tu renvoies à du code.\n"
                     + "- Pas d'émoji, sauf si l'utilisateur en emploie ou en demande.\n\n";
+    /**
+     * Silence de la tenue de carte (F-125 / SF-125-01, cadrage §2) : ajouté au rôle sur les
+     * <b>deux</b> cibles, aux côtés de la discipline (SF-119-02), de la doctrine (SF-120-01) et du
+     * style (SF-121-03). Le cas réel : à une question de fond, l'agent répondait par de la plomberie
+     * interne (promotion, destinations, « hors gouvernance », marqueur de fin de tour). La tenue de la
+     * carte est un <b>service</b>, pas un sujet de conversation : elle se fait en coulisse et ne
+     * s'affiche jamais. Placé en tête du préfixe stable, il survit à la coupe {@link #SYSTEM_MAX_CHARS}
+     * et reste caché (cache de prompt préservé).
+     */
+    private static final String CARD_SILENCE_DOCTRINE =
+            "Tenue de la carte, en silence — non négociable :\n"
+                    + "- Réponds D'ABORD à la question de l'utilisateur, en clair et sur le fond. "
+                    + "C'est la seule chose qu'il attend de ta réponse.\n"
+                    + "- La tenue de la carte du poste (ranger un fait durable, choisir où, l'état de "
+                    + "la gouvernance) est un travail de COULISSE : tu le fais sans jamais le raconter "
+                    + "dans ta réponse.\n"
+                    + "- N'emploie pas dans ta réponse les termes de plomberie interne — « promotion », "
+                    + "« fin-de-tour », « hors gouvernance », « libellé », une fiche de carte comme "
+                    + "« destination ». Si un rangement a échoué ou reste à faire, garde-le pour toi : "
+                    + "ne t'en explique pas à l'utilisateur, qui n'en a que faire.\n\n";
     private static final List<String> SKILL_PREFIXES = List.of(".claude/skills/", "skills/");
     /**
      * Nombre de skills annoncés dans la consigne (F-39 / SF-39-02, décision D3). Une borne explicite
@@ -1388,7 +1408,12 @@ public class AtelierChatService implements RelayInterruptTarget {
         log.info("Tour d'atelier terminé : {} étape(s), {} s, {} tokens — arrêt : {}",
                 iterationsUsed, Math.max(0L, (System.currentTimeMillis() - startedAt) / 1000L),
                 inputTokens + outputTokens, stopCause(interrupted, spendCapReached, finalText));
-        String reply = nonEmptyReply(finalText);
+        // F-125 / SF-125-01 : le marqueur de fin de tour parle au produit, pas au lecteur. Les
+        // contrôles de fin de tour l'ont déjà lu sur `finalText` (plus haut, et en rejeu sur un
+        // blocage) ; on le retire ici, AVANT persistance et renvoi, pour qu'il ne se retrouve jamais
+        // dans le fil. Le strip d'abord, le repli ensuite : une réponse réduite au seul marqueur ne
+        // doit pas persister vide (contrat SF-28-18).
+        String reply = nonEmptyReply(stripTurnMetadata(finalText));
         long activeSeconds = Math.max(0L, (System.currentTimeMillis() - startedAt) / 1000L);
         // Relevé du tour rangé dans la colonne d'affichage existante (F-39 / SF-39-15, D-L8-6) :
         // sans lui, le coût du tour et le motif de son arrêt disparaîtraient au rechargement — et
@@ -1515,6 +1540,36 @@ public class AtelierChatService implements RelayInterruptTarget {
     /** Réponse à persister : celle du tour, ou un texte explicite si le tour n'a rien produit. */
     private static String nonEmptyReply(String finalText) {
         return finalText == null || finalText.isBlank() ? EMPTY_REPLY_FALLBACK : finalText;
+    }
+
+    /**
+     * Le commentaire-marqueur de fin de tour (F-52), lu par le produit et jamais par le lecteur.
+     *
+     * <p>Casse et espaces libres, corps quelconque jusqu'au {@code -->} fermant, plusieurs
+     * occurrences retirées. On ne vise <b>que</b> ce marqueur précis (« fin-de-tour ») : tout autre
+     * commentaire HTML du modèle est laissé au rendu Markdown, qui l'ignore déjà.</p>
+     */
+    private static final java.util.regex.Pattern TURN_METADATA_MARKER =
+            java.util.regex.Pattern.compile("<!--\\s*fin-de-tour\\s*:.*?-->",
+                    java.util.regex.Pattern.CASE_INSENSITIVE | java.util.regex.Pattern.DOTALL);
+
+    /**
+     * Retire le marqueur de fin de tour de la réponse rendue à l'utilisateur (F-125 / SF-125-01).
+     *
+     * <p>La tenue de la carte ne se raconte pas : le marqueur parle au produit, il n'a rien à faire
+     * dans le fil. Les blancs laissés par le retrait sont recompactés, sans jamais transformer un
+     * texte non vide en texte vide sur autre chose que le marqueur lui-même.</p>
+     */
+    static String stripTurnMetadata(String reply) {
+        if (reply == null || reply.isEmpty()) {
+            return reply;
+        }
+        String stripped = TURN_METADATA_MARKER.matcher(reply).replaceAll("");
+        if (stripped.equals(reply)) {
+            return reply; // Rien retiré : on ne recompacte pas une réponse qui ne portait pas de marqueur.
+        }
+        // Le retrait peut laisser des lignes vides en fin de réponse ou une triple coupure au milieu.
+        return stripped.replaceAll("\\n{3,}", "\n\n").strip();
     }
 
     /**
@@ -3220,6 +3275,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         // côtés de la discipline (SF-119-02) et de la doctrine (SF-120-01) — la concision orientée
         // terminal existait dans la sous-boucle explore, elle devient une règle du travail principal.
         system.append(RESPONSE_STYLE);
+
+        // Silence de la tenue de carte (F-125 / SF-125-01) : sur les DEUX cibles, en tête du préfixe
+        // stable, aux côtés des trois consignes ci-dessus. La carte se tient en coulisse ; elle ne se
+        // raconte jamais dans la réponse, et aucun terme de plomberie n'y apparaît.
+        system.append(CARD_SILENCE_DOCTRINE);
 
         // Mode explicite « Réponse/Plan » (F-120 / SF-120-02) : quand l'utilisateur l'a choisi, on
         // renforce la doctrine par une consigne de mode, en écho au retrait des outils mutants dans

@@ -218,7 +218,10 @@ class AtelierChatServiceEndOfTurnCheckpointTest {
 
         AtelierChatResult result = service.chat(userId, workspaceId, "range le projet");
 
-        assertThat(result.reply()).contains("fin-de-tour");
+        // F-125 / SF-125-01 : le contrôle a bien LU le marqueur (le tour marqué s'arrête), mais la
+        // réponse rendue à l'utilisateur ne le montre plus — la tenue de carte reste en coulisse.
+        assertThat(result.reply()).doesNotContain("fin-de-tour");
+        assertThat(result.reply()).startsWith("C'est fait.");
         assertThat(userTexts()).anySatisfy(text -> assertThat(text)
                 .startsWith("Fin de tour contrôlée : ")
                 .contains(fr.claudegateway.governance.control.FinDeTourMarker.FORME));
