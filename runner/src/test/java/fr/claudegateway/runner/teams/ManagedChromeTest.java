@@ -39,6 +39,25 @@ class ManagedChromeTest {
         assertFalse(cmd.stream().anyMatch(arg -> arg.contains("headless")), cmd.toString());
     }
 
+    @Test
+    @DisplayName("La ligne de commande auto-accepte la capture d'onglet, de façon ciblée (SF-122-05)")
+    void command_line_auto_accepts_tab_capture() {
+        ManagedChrome chrome = new ManagedChrome(Optional.of(Path.of("/opt/chrome")),
+                Path.of("/tmp/profil"), 9333, new FakeSession(), FakeProbe.always(false),
+                new FakeSleeper(), null);
+
+        List<String> cmd = chrome.commandLine();
+
+        assertTrue(cmd.contains(ManagedChrome.AUTO_ACCEPT_TAB_CAPTURE), cmd.toString());
+        assertTrue(cmd.contains(ManagedChrome.AUTO_SELECT_TAB_BY_TITLE), cmd.toString());
+        // Toujours l'URL Teams en dernier, jamais un auto-accept média large (décision PO).
+        assertEquals("https://teams.microsoft.com", cmd.get(cmd.size() - 1));
+        assertFalse(cmd.stream().anyMatch(arg -> arg.contains("use-fake-ui-for-media-stream")),
+                cmd.toString());
+        assertFalse(cmd.stream().anyMatch(arg -> arg.contains("auto-accept-camera-and-microphone")),
+                cmd.toString());
+    }
+
     // --- Cycle de vie ------------------------------------------------------------------------
 
     @Test
