@@ -60,6 +60,19 @@ public final class ManagedChrome {
     /** Fenêtre poussée hors champ : présente (pas headless), mais invisible au quotidien. */
     static final String OFFSCREEN = "--window-position=-32000,-32000";
 
+    /**
+     * Auto-accepte {@code getDisplayMedia({preferCurrentTab:true})} — exactement l'appel de capture de
+     * SF-128-02 — <b>sans dialogue</b>. Ciblé : ne concerne que la capture de l'<b>onglet courant</b>,
+     * jamais l'écran ni une autre fenêtre. Nécessaire car le Chrome managé est hors champ (SF-122-05).
+     */
+    static final String AUTO_ACCEPT_TAB_CAPTURE = "--auto-accept-this-tab-capture";
+
+    /**
+     * Repli : dans le sélecteur d'onglet, auto-sélectionne l'onglet dont le titre correspond, ici Teams.
+     * N'ouvre aucune capacité de capture large — se borne à choisir un onglet quand un choix est présenté.
+     */
+    static final String AUTO_SELECT_TAB_BY_TITLE = "--auto-select-tab-capture-source-by-title=Microsoft Teams";
+
     /** La question « le port de débogage répond-il ? », injectée pour s'éprouver sans navigateur. */
     @FunctionalInterface
     public interface Probe {
@@ -123,6 +136,8 @@ public final class ManagedChrome {
                 "--remote-debugging-address=" + BrowserPort.LOOPBACK,
                 "--user-data-dir=" + profileDir,
                 OFFSCREEN,
+                AUTO_ACCEPT_TAB_CAPTURE,
+                AUTO_SELECT_TAB_BY_TITLE,
                 "--no-first-run",
                 "--no-default-browser-check",
                 BrowserLaunchAdvice.TEAMS_URL);
@@ -183,6 +198,9 @@ public final class ManagedChrome {
     private State launchAndWait() {
         try {
             Files.createDirectories(profileDir);
+            // Amorçage ciblé du profil (SF-122-05) : micro pré-autorisé pour la seule origine Teams.
+            // Gardé pour ne jamais casser le lancement — au pire l'invite micro réapparaît.
+            ChromeProfileSeed.seed(profileDir, say);
             handle = session.start(commandLine(), null);
         } catch (IOException e) {
             // Le lancement n'a pas pu se faire du tout : le message nommé est du ressort de SF-122-04.
