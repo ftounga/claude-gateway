@@ -95,6 +95,13 @@ public final class TeamsTools implements ToolExecutor {
     public static final String COPY = "teams_copy";
     public static final String DELETE = "teams_delete";
     public static final String REPLACE_VERSION = "teams_replace_version";
+    /**
+     * <b>Rejoindre une réunion dans le Chrome managé</b> (F-128 / SF-128-01b, cadrage §2bis) : navigue
+     * l'onglet Teams du Chrome managé vers l'URL de la réunion (<code>Page.navigate</code>). Appelé
+     * <b>directement par le backend</b> (service Réunions), hors boucle agent : il n'entre donc PAS dans
+     * {@link #CATALOG} — c'est une commande d'orchestration de la Vigie, pas un outil de l'agent.
+     */
+    public static final String MEETING_JOIN = "teams_meeting_join";
     public static final String CAPABILITY = "teams";
 
     /** Le catalogue, dans l'ordre où il est donné à l'agent. */
@@ -372,6 +379,7 @@ public final class TeamsTools implements ToolExecutor {
             case CAPTURE_START -> captureStart(input);
             case CAPTURE_STOP -> captureStop(input, context);
             case CAPTURE_STATUS -> captureStatus(input);
+            case MEETING_JOIN -> meetingJoin(input);
             case LIST_FILES -> files == null ? filesUnavailable(LIST_FILES) : files.listFiles(input);
             case READ_FILE -> files == null ? filesUnavailable(READ_FILE) : files.readFile(input);
             case READ_DOCX -> files == null ? filesUnavailable(READ_DOCX) : files.readDocx(input);
@@ -393,6 +401,37 @@ public final class TeamsTools implements ToolExecutor {
     }
 
     // ------------------------------------------------------------------ teams_status
+
+    /**
+     * <b>Rejoindre une réunion dans le Chrome managé</b> (F-128 / SF-128-01b). Navigue l'onglet Teams
+     * vers l'URL de la réunion via l'attache CDP existante (F-122). Contrairement aux outils de lecture
+     * (dont un refus reste un succès narré à l'agent), c'est une <b>commande d'orchestration</b> : un
+     * échec est rendu en {@link ToolOutcome#error} pour que le backend le voie comme non-abouti et
+     * guide l'utilisateur (« Rejoindre & capturer » depuis la Vigie).
+     */
+    private ToolOutcome meetingJoin(JsonNode input) {
+        if (!enabled) {
+            return ToolOutcome.error("browser_unreachable", disabledReason);
+        }
+        String url = TeamsAsk.text(input, "url", "meeting_url", "meetingUrl");
+        if (url.isBlank()) {
+            return ToolOutcome.error("invalid_input", "URL de réunion absente.");
+        }
+        try {
+            BrowserLink link = link();
+            PageActions actions = new PageActions(link, sleeper, gesture -> { });
+            String reached = actions.navigate(url);
+            ObjectNode json = mapper.createObjectNode();
+            json.put("joined", true);
+            json.put("tabUrl", reached == null ? url : reached);
+            return ToolOutcome.ok(json.toString());
+        } catch (BrowserLinkException e) {
+            return ToolOutcome.error("browser_unreachable",
+                    "Impossible de joindre le Chrome managé ou d'ouvrir la réunion sur cet onglet.");
+        } catch (RuntimeException e) {
+            return ToolOutcome.error("navigate_failed", "L'ouverture de la réunion a échoué.");
+        }
+    }
 
     private ToolOutcome status() {
         if (!enabled) {
