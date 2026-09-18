@@ -614,6 +614,14 @@ export interface AtelierStreamHandlers {
   onDone: (done: AtelierStreamDone) => void;
   onError: (code: string) => void;
   /**
+   * Le flux d'émission s'est **refermé sans événement final** (F-131 / SF-131-01) : ni `done`
+   * (non-suite), ni `error`. Le transport est tombé (SSE coupé, proxy, réseau) alors que le serveur a
+   * peut-être fini — c'est le cas du spinner qui tournait sans fin. **Optionnel** : un appelant qui ne
+   * s'y abonne pas se comporte exactement comme avant. Jamais appelé après un `done` non-suite ou un
+   * `error` déjà émis.
+   */
+  onClosed?: () => void;
+  /**
    * Fragment de sortie de commande (F-38 / SF-38-07). **Optionnel** : un appelant qui ne s'y abonne
    * pas ne voit aucune différence, et un backend antérieur n'émet jamais cet événement.
    */

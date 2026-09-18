@@ -436,6 +436,16 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   @Input() submitting = false;
 
   /**
+   * **Réponse non reçue** (F-131 / SF-131-01) : le dernier tour a été lancé mais le transport est
+   * tombé sans réponse rendue. À `true`, une bannière honnête « Réponse non reçue — Rejouer ? »
+   * remplace le spinner et propose de rejouer la dernière requête.
+   */
+  @Input() unanswered = false;
+
+  /** Vrai pendant la vérification serveur « tour actif ? » qui précède un rejeu (F-131). */
+  @Input() replaying = false;
+
+  /**
    * Un message envoyé pendant un tour devient une **précision** (F-84 / SF-84-06) : le champ reste
    * actif et le bouton dit « Préciser ». Vrai pour la boucle maison (terminal de projet, de poste,
    * Teams) ; faux pour le bac à sable hébergé, qui n'a pas de précision.
@@ -529,6 +539,8 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
   @Output() draftChange = new EventEmitter<string>();
   @Output() send = new EventEmitter<void>();
+  /** Rejoue la dernière requête utilisateur comme nouveau tour (F-131 / SF-131-01). */
+  @Output() replay = new EventEmitter<void>();
   @Output() quit = new EventEmitter<void>();
   /** Nouveau départ (F-117 / SF-117-03) : Claude repart sans le contexte des tours précédents. */
   @Output() restart = new EventEmitter<void>();
@@ -1100,6 +1112,19 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   /** Rang d'une question de l'utilisateur (1, 2, 3…), ou `null` si le message n'est pas une question. */
   questionNumber(message: AtelierThreadItem): number | null {
     return this.questionNumbers().get(message.id) ?? null;
+  }
+
+  /**
+   * Vrai si ce message est le **dernier message utilisateur** du fil (F-131 / SF-131-01) : c'est le
+   * seul à porter le bouton « Rejouer » manuel — celui qu'un clic re-soumettra.
+   */
+  isLastUserMessage(message: AtelierThreadItem): boolean {
+    for (let i = this.messages.length - 1; i >= 0; i -= 1) {
+      if (this.messages[i].role === 'USER') {
+        return this.messages[i].id === message.id;
+      }
+    }
+    return false;
   }
 
   /** Ancre stable d'une question, pour le saut depuis le rail (`id` du bloc dans le fil). */

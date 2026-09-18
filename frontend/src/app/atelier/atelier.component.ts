@@ -398,6 +398,23 @@ export class AtelierComponent implements OnInit, OnDestroy {
   readonly creating = signal(false);
   readonly submitting = signal(false);
 
+  /**
+   * **Réponse non reçue** (F-131 / SF-131-01) : le tour a été lancé mais le transport est tombé sans
+   * réponse rendue — flux d'émission refermé sans final, ou suivi qui abandonne. À `true`, le spinner
+   * cède la place à l'état honnête « Réponse non reçue — Rejouer ? » plutôt que de tourner sans fin.
+   */
+  readonly unanswered = signal(false);
+
+  /** Une vérification serveur « tour actif ? » est en cours avant un rejeu (anti-doublon, F-131). */
+  readonly replaying = signal(false);
+
+  /**
+   * Dernière requête utilisateur soumise dans ce terminal (F-131 / SF-131-01) : c'est ELLE que
+   * « Rejouer » re-soumet comme nouveau tour. Mémorisée à chaque `startTurn`, remise à `null` en
+   * changeant de projet — une requête d'un autre projet n'a rien à faire ici.
+   */
+  private lastRequest: string | null = null;
+
   /** Panneau « Fichiers » repliable + aperçu/édition du fichier sélectionné. */
   readonly filesPanelOpen = signal(false);
   readonly selectedFilePath = signal<string | null>(null);
@@ -1251,6 +1268,10 @@ export class AtelierComponent implements OnInit, OnDestroy {
     }
     this.activeWorkspaceId.set(workspace.id);
     this.messages.set([]);
+    // F-131 / SF-131-01 : le filet « réponse non reçue » et la dernière requête appartiennent au
+    // projet quitté — les garder proposerait de rejouer une demande d'un autre client.
+    this.unanswered.set(false);
+    this.lastRequest = null;
     this.tree.set([]);
     this.activeDetail.set(null);
     this.pushResult.set(null);
@@ -1377,6 +1398,10 @@ export class AtelierComponent implements OnInit, OnDestroy {
     };
     this.messages.update((current) => [...current, userItem]);
     this.submitting.set(true);
+    // F-131 / SF-131-01 : on retient la requête pour un éventuel rejeu, et on efface tout état
+    // « réponse non reçue » d'un tour précédent — un nouveau tour repart d'un écran propre.
+    this.lastRequest = content;
+    this.unanswered.set(false);
 
     // Le moteur décide du chemin d'envoi (F-39 / SF-39-08) — jamais l'utilisateur, qui a saisi la
     // même demande dans le même terminal quel que soit l'endroit où elle s'exécutera.
@@ -1575,6 +1600,14 @@ export class AtelierComponent implements OnInit, OnDestroy {
           this.notifyError(this.streamErrorMessage(code));
           this.flushDeferredPrecisions(id);
         }),
+      // Le flux d'émission s'est refermé SANS réponse finale (F-131 / SF-131-01) : le serveur a
+      // peut-être fini alors que le transport est tombé. On tente un rattrapage, puis, à défaut,
+      // l'état honnête « réponse non reçue » — jamais le spinner sans fin.
+      onClosed: () => this.zone.run(() => this.onTurnStreamClosed(id, generation)),
+      // Le suivi par fenêtres a ABANDONNÉ (F-84 / SF-84-04) : rien ne tourne côté serveur et le
+      // flux retenu n'a rien livré. Sans ce filet (F-131), l'écran restait en spinner ; désormais
+      // il bascule sur « réponse non reçue — Rejouer ? ».
+      onIdle: () => this.zone.run(() => this.showUnanswered(generation)),
     };
     void this.atelier.streamChat(id, content, handlers, this.mode());
     // Si la prise en main n'arrive pas, un proxy retient le flux : on suit le tour par fenêtres, EN
@@ -2818,6 +2851,116 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.clearStreamProbe();
     this.turnWindows?.stop();
     this.turnWindows = null;
+  }
+
+  // -------------------------------------- F-131 / SF-131-01 : le filet « réponse non reçue / rejouer »
+
+  /**
+   * Le flux d'émission d'un tour s'est **refermé sans réponse finale** (F-131 / SF-131-01).
+   *
+   * <p>C'est le cas du spinner qui tournait sans fin : le transport est tombé (SSE coupé, proxy,
+   * onglet réveillé) alors que le serveur avait peut-être terminé. On ne peut pas repousser dans un
+   * flux mort — mais le serveur, lui, sait. On tente donc un <b>rattrapage par fenêtres</b> (F-84,
+   * même endpoint, même numérotage) pour récupérer la vraie fin ; si le serveur a fini, le fil se
+   * recharge normalement. S'il n'a rien de vivant (`idle`) ou si le rattrapage échoue, l'écran
+   * bascule sur l'état honnête « réponse non reçue — Rejouer ? » plutôt que de rester en spinner.</p>
+   */
+  private onTurnStreamClosed(id: string, generation: number): void {
+    // Ce n'est plus le tour courant, ou il s'est déjà conclu : rien à rattraper.
+    if (generation !== this.turnGeneration || !this.submitting()) {
+      return;
+    }
+    // Un suivi par fenêtres tourne déjà (proxy qui retient le flux, F-84 / SF-84-04) : c'est LUI qui
+    // porte la fin du tour — le laisser faire évite deux rattrapages en parallèle.
+    if (this.turnWindows) {
+      return;
+    }
+    // On réutilise les handlers d'un tour rejoint (rechargement du fil sur `done`), en redirigeant
+    // seulement l'abandon (`idle`) et l'erreur vers l'état honnête « réponse non reçue ».
+    const recovery: AtelierStreamHandlers = {
+      ...this.attachHandlers(id, generation),
+      onIdle: () => this.zone.run(() => this.showUnanswered(generation)),
+      onError: () => this.zone.run(() => this.showUnanswered(generation)),
+    };
+    this.turnWindows = this.atelier.followTurnInWindows(id, () => this.turnCursor, recovery);
+  }
+
+  /**
+   * Bascule l'écran sur l'état honnête **« réponse non reçue — Rejouer ? »** (F-131 / SF-131-01) :
+   * on coupe le spinner et le vivant, et le message utilisateur optimiste RESTE — c'est lui qu'un
+   * clic « Rejouer » re-soumettra. Garde la génération : un rattrapage tardif d'un tour déjà remplacé
+   * ne bascule jamais l'écran d'un nouveau tour.
+   */
+  private showUnanswered(generation: number): void {
+    if (generation !== this.turnGeneration) {
+      return;
+    }
+    this.stopTurnWindows();
+    this.submitting.set(false);
+    this.interrupting.set(false);
+    this.endTurnDisplay();
+    this.unanswered.set(true);
+  }
+
+  /**
+   * **Rejoue la dernière requête utilisateur** comme un nouveau tour (F-131 / SF-131-01).
+   *
+   * <p>Anti-doublon : si un tour est visiblement en cours ici (`submitting`), on refuse — jamais deux
+   * tours en parallèle. Sinon, on interroge le serveur (`GET /chat/turn`, F-84) : le transport a pu
+   * tomber alors que le tour tourne encore ; dans ce cas on se <b>rebranche</b> plutôt que d'en lancer
+   * un second. Si `/turn` est injoignable, le filet rejoue quand même — mieux vaut un tour de trop
+   * qu'un utilisateur coincé. Le rejeu <b>produit une nouvelle réponse</b> : il ne restaure pas le
+   * tour perdu à l'identique, et l'écran le dit.</p>
+   */
+  replayLastRequest(): void {
+    const id = this.activeWorkspaceId();
+    const request = this.lastRequest;
+    if (!id || !request || request.trim().length === 0) {
+      return;
+    }
+    // Un tour tourne visiblement dans cet écran : on n'en lance jamais un second par-dessus.
+    if (this.submitting()) {
+      this.notifyError('Un tour est encore en cours ici. Laissez-le finir avant de rejouer.');
+      return;
+    }
+    if (this.replaying()) {
+      return;
+    }
+    this.replaying.set(true);
+    // Vérité serveur (F-84) : le tour tourne peut-être encore alors que l'écran croit l'avoir perdu.
+    this.atelier.getTurnState(id).subscribe({
+      next: (state) => {
+        this.replaying.set(false);
+        if (state.live) {
+          // On ne relance pas un second tour : on se rebranche sur celui qui tourne toujours.
+          this.unanswered.set(false);
+          this.snackBar.open(
+            'Un tour est encore actif sur ce projet : on s’y rebranche au lieu d’en lancer un second.',
+            'Fermer',
+            { duration: 6000 },
+          );
+          this.reattachTurn(id);
+          return;
+        }
+        this.launchReplay(id, request);
+      },
+      error: () => {
+        // `/turn` injoignable : le filet doit fonctionner quand même — on rejoue.
+        this.replaying.set(false);
+        this.launchReplay(id, request);
+      },
+    });
+  }
+
+  /** Lance effectivement le rejeu : nouveau tour, message clair, état « réponse non reçue » effacé. */
+  private launchReplay(id: string, request: string): void {
+    this.unanswered.set(false);
+    this.snackBar.open(
+      'Nouvel envoi de votre dernière demande — cela produit une nouvelle réponse.',
+      'Fermer',
+      { duration: 6000 },
+    );
+    this.startTurn(id, request);
   }
 
   /**
