@@ -22,8 +22,8 @@ imposés, pièges rencontrés. Chaque ligne ici est une heure que quelqu'un ne r
 
 ## À faire
 
-_Une case à cocher Markdown par ligne, non cochée tant qu'elle reste à faire. Tant qu'il en reste
-une, le sujet en cours ne se clôt pas : traite-la, ou retire la ligne devenue sans objet._
+_Une case à cocher Markdown par ligne, non cochée tant qu'elle reste à faire. Traite-la, ou retire la
+ligne devenue sans objet — une case qui traîne sans objet est du bruit, pas de la mémoire._
 
 _(aucune pour l'instant)_
 

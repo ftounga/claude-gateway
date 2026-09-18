@@ -51,42 +51,33 @@ Un contrôle **refuse mécaniquement** un `git commit` portant l'un de ces marqu
 ton, les tournures, les listes à trois éléments partout — n'est pas vérifiable par une machine : il
 est de ta responsabilité.
 
-### La promotion, et sa destination
+### La promotion : ranger le durable, tout de suite
 
 Quand un tour fait apparaître un **élément durable**, range-le **dans le même tour**. Ce qu'on note
-« plus tard » ne se note jamais.
+« plus tard » ne se note jamais. Le geste est simple : **ajoute-le au bon fichier de carte**, selon
+ce que c'est.
 
-**Deux gestes, jamais un seul :**
+| Ce que le tour a fait apparaître | Où ça va |
+|---|---|
+| cluster, serveur, hébergement, stockage | `plateformes.md` |
+| plage, DNS, domaine, flux, certificat, endpoint | `reseau.md` |
+| VPN, bastion, forge, compte, droit, **piège** | `acces.md` |
+| base, schéma, sauvegarde, restauration | `donnees.md` |
+| supervision, alerte, astreinte, procédure | `exploitation.md` |
+| contact, convention du client, annuaire des projets | `README.md` |
+| une **décision propre à ce projet** | `PLAN-ACTION.md`, dans le projet |
 
-1. **Ajoute-le à la carte** — le bon fichier, selon ce que c'est :
+Le critère tient en une phrase : **ce qui survivra au projet va dans la carte du poste ; ce qui
+meurt avec lui reste dans le projet.**
 
-   | Ce que le tour a fait apparaître | Où ça va |
-   |---|---|
-   | cluster, serveur, hébergement, stockage | `plateformes.md` |
-   | plage, DNS, domaine, flux, certificat, endpoint | `reseau.md` |
-   | VPN, bastion, forge, compte, droit, **piège** | `acces.md` |
-   | base, schéma, sauvegarde, restauration | `donnees.md` |
-   | supervision, alerte, astreinte, procédure | `exploitation.md` |
-   | contact, convention du client, annuaire des projets | `README.md` |
-   | une **décision propre à ce projet** | `PLAN-ACTION.md`, dans le projet |
+**Tu n'as rien à déclarer sur ce rangement.** Pas de marqueur à poser en fin de tour, pas de compte
+de promotion ni de dette à tenir dans ta réponse. Le suivi se fait **côté serveur**, à partir des
+fichiers que tu écris réellement — un fait écrit dans une fiche est un fait rangé, sans que tu aies à
+l'annoncer. Ton rôle tient en deux mots : **réponds** à la question, et **écris** le durable dans la
+carte quand il apparaît — en silence.
 
-   Le critère tient en une phrase : **ce qui survivra au projet va dans la carte du poste ; ce qui
-   meurt avec lui reste dans le projet.**
-
-2. **Trace-le coché dans `STATE.md`, en disant où** — c'est ce qui rend la promotion vérifiable :
-
-   ```
-   - [ ] cluster « atlas » (10.0.4.0/24)
-   - [x] cluster « atlas » (10.0.4.0/24) -> promu dans plateformes.md
-   ```
-
-Une case `- [ ]` qui reste est une **dette** : tant qu'il en reste une, le sujet n'est pas clos.
-Traite-la, ou retire la ligne devenue sans objet. Un contrôle refuse de clore un tour tant que tu
-déclares une dette non nulle, **et tant qu'une promotion ne dit pas où elle a été rangée.**
-
-Ce qui compte dans la dette : les cases des **fichiers du projet** — `STATE.md` et `PLAN-ACTION.md`.
-Les cases « ce qui reste à cartographier » de la carte du poste **n'en font pas partie** : elles
-disent ce qu'on ne sait pas encore, et c'est déjà un savoir.
+`STATE.md` reste ton brouillon : notes-y librement où tu en es et ce que tu viens d'apprendre. Ce qui
+doit survivre au sujet part dans la carte ; le reste meurt avec `STATE.md`, et c'est très bien.
 
 ### Où se rangent les dépôts, et où ils ne se rangent pas
 
@@ -102,32 +93,14 @@ est celui que citent les contrôles qui les vérifient.
 La troisième est celle qui protège le plus : elle évite de livrer ses propres notes dans un dépôt
 qu'on ne possède pas.
 
-### Le marqueur de fin de tour
-
-Termine **chaque** réponse finale par cette ligne, exactement sous cette forme :
-
-```
-<!-- fin-de-tour: promotion=aucune; promu=aucune; dette=0 -->
-```
-
-- `promotion` — ce que ce tour a fait apparaître de durable et qui **ne figure encore dans aucune
-  carte**, séparé par des virgules. Écris `aucune` s'il n'y a rien. Sois honnête : c'est toi qui
-  juges, et c'est le seul endroit où ce jugement est demandé.
-- `promu` — ce que tu as rangé **et où** : `promu=cluster atlas -> plateformes.md, VPN client ->
-  acces.md`. Une promotion sans destination est refusée : « je l'ai noté » ne se constate pas.
-- `dette` — le nombre de cases non cochées restant dans `STATE.md` et `PLAN-ACTION.md`.
-
-C'est un commentaire HTML : il ne s'affiche pas dans la réponse. Sans lui, la fin du tour est refusée
-— non pas pour te punir, mais parce qu'un contrôle qui se tait quand il ne comprend pas ne protège de
-rien.
-
 ### Le second regard
 
 Quand un tour a **écrit**, un second regard compare la carte aux notes et liste ce qui est cité là
 et absent d'ici. **Filet best-effort, pas une autorité** : vérifie chaque élément dans le fichier
-cité ; s'il est durable et réellement absent, promeus-le et coche-le ; sinon **ignore-le**. S'il ne
-rend rien de lisible, on te le dit — un filet qui se tait quand il ne comprend pas ne protège de
-rien.
+cité ; s'il est durable et réellement absent, ajoute-le à la bonne carte ; sinon **ignore-le**. Ce
+filet lit **les fichiers**, jamais une déclaration que tu poserais — c'est lui qui rattrape ce qu'un
+tour aurait oublié de ranger. S'il ne rend rien de lisible, on te le dit — un filet qui se tait
+quand il ne comprend pas ne protège de rien.
 
 ### Comment écrire un message d'erreur
 

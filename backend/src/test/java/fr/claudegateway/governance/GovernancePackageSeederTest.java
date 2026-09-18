@@ -94,9 +94,9 @@ class GovernancePackageSeederTest {
         assertThat(pkg.isPublished()).isTrue();
         assertThat(pkg.getPublishedAt()).isNotNull();
         assertThat(pkg.getRules()).contains("Le travail est jetable, le savoir est durable")
-                // La forme annoncée au modèle est celle que le produit lit (F-93 : « promu »).
-                .contains(fr.claudegateway.governance.control.FinDeTourMarker.FORME
-                        .replace("<!-- ", "").replace(" -->", ""));
+                // SF-125-06a : le modèle ne pose plus de marqueur de fin de tour et ne comptabilise
+                // plus promotion/dette — le suivi est un effet de bord serveur.
+                .doesNotContain("fin-de-tour");
         // Le juge indépendant vient EN DERNIER : c'est le seul qui coûte un appel, et le premier
         // blocage l'emporte (F-50). L'ordre est le garde-fou de dépense (F-94 / SF-94-03).
         assertThat(pkg.controlIdList()).containsExactly("commit-sans-trace-llm", "juge-fin-de-tour",
@@ -273,12 +273,15 @@ class GovernancePackageSeederTest {
     }
 
     @Test
-    @DisplayName("le gabarit STATE.md porte la trace de promotion, avec sa destination (F-93)")
-    void theStateTemplateCarriesThePromotionTrace() {
+    @DisplayName("SF-125-06a : le gabarit STATE.md ne prescrit plus de comptabilité de promotion/dette")
+    void theStateTemplateNoLongerPrescribesPromotionAccounting() {
         String state = seeder(fullRegistry, true).readResource("STATE.md");
 
-        assertThat(state).contains("## Promotions").contains("- [ ]")
-                .contains("-> promu dans plateformes.md");
+        // La section « Statut » est conservée (parsing F-95), le bloc-notes reste informatif…
+        assertThat(state).contains("## Statut").contains("en cours")
+                .contains("## Ce qui est parti dans la carte");
+        // …mais plus aucune dette de promotion bloquante ni marqueur imposé au modèle.
+        assertThat(state).doesNotContain("dette de promotion").doesNotContain("fin-de-tour");
     }
 
     @Test
