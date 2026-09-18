@@ -120,12 +120,36 @@ public class AtelierChatService implements RelayInterruptTarget {
             "Ma réponse a dépassé la taille maximale autorisée et a été coupée : rien n'a été exécuté. "
                     + "Demande-moi une modification plus courte, ou de travailler fichier par fichier.";
     /**
-     * Réponse de repli quand le tour ne produit aucun texte (SF-28-18). Elle n'est pas cosmétique :
-     * l'API refuse un bloc de texte vide, donc un message vide persisté ici rendrait <b>tous</b> les
-     * tours suivants de ce projet impossibles — vérifié, {@code 400 "text content blocks must be
-     * non-empty"}. L'historique ne doit jamais pouvoir contenir un tel message.
+     * Réponse de <b>dernier recours</b> (F-125 / SF-125-07), honnête et actionnable, quand un tour se
+     * clôt normalement sans qu'aucun texte utilisateur n'ait été produit <b>et</b> que la passe de
+     * synthèse forcée n'a rien rendu non plus (erreur API, budget épuisé). Elle remplace l'ancien
+     * placeholder muet « Je n'ai pas produit de réponse… » qui, en production, écrasait à l'affichage
+     * comme en base une réponse que l'utilisateur avait déjà vue défiler — le pire résultat possible.
+     *
+     * <p>Non cosmétique : l'API refuse un bloc de texte vide, donc un message vide persisté ici
+     * rendrait <b>tous</b> les tours suivants de ce projet impossibles — vérifié, {@code 400 "text
+     * content blocks must be non-empty"}. L'historique ne doit jamais pouvoir contenir un tel
+     * message.</p>
      */
-    static final String EMPTY_REPLY_FALLBACK = "Je n'ai pas produit de réponse pour ce message.";
+    static final String LAST_RESORT_REPLY =
+            "Je me suis arrêté après plusieurs actions sans conclure. Redemande-moi la synthèse.";
+    /**
+     * Garde <b>interne</b> (F-125 / SF-125-07) : texte non vide donné au <b>modèle</b> lorsqu'un
+     * crochet de fin de tour est rejoué sur un tour au texte vide (l'API refuse un bloc de texte
+     * vide). Ce marqueur ne vit que dans la conversation renvoyée au modèle : il n'est <b>jamais</b>
+     * persisté ni affiché à l'utilisateur. Volontairement neutre — surtout pas un placeholder de
+     * non-réponse.
+     */
+    private static final String EMPTY_TEXT_MODEL_GUARD = "(pas de texte)";
+    /**
+     * Consigne de la <b>passe de synthèse forcée</b> (F-125 / SF-125-07), jouée UNE fois quand le
+     * tour se clôt sans aucun texte utilisateur. Le modèle est relancé sans outils (« pas de
+     * plomberie ») et hors de tout crochet de fin de tour.
+     */
+    static final String SYNTHESIS_PROMPT =
+            "Le tour s'achève. Réponds maintenant, directement, à la dernière demande de "
+                    + "l'utilisateur, en t'appuyant sur ce que tu viens de faire/observer. Pas de "
+                    + "plomberie.";
     static final String BUDGET_REACHED_REPLY =
             "Le temps imparti à ce message est écoulé ; relance-moi pour continuer.";
     /**
@@ -1106,6 +1130,11 @@ public class AtelierChatService implements RelayInterruptTarget {
                     "", false, false, false, banner));
         }
         String finalText = "";
+        // F-125 / SF-125-07 — ceinture « jamais un tour vide » : le dernier texte destiné à
+        // l'utilisateur (non vide APRÈS strip du marqueur fin-de-tour) émis au fil des itérations. Il
+        // survit aux itérations de plomberie postérieures (édition de la carte, END_OF_TURN) : à la
+        // clôture, une réponse déjà streamée n'est jamais remplacée par un message vide.
+        String lastUserText = "";
 
         log.info("Tour d'atelier ouvert (workspace={}, cible={}, plafond={} étapes)",
                 workspaceId, workspace.executionTargetOrDefault(), maxIterations);
@@ -1237,6 +1266,14 @@ public class AtelierChatService implements RelayInterruptTarget {
                 finalText = TRUNCATED_REPLY;
                 break;
             }
+            // F-125 / SF-125-07 : mémorise le dernier texte destiné à l'utilisateur (non vide après
+            // strip). Vaut pour un texte accompagnant des outils comme pour un texte final ; c'est ce
+            // qui permet, à la clôture, de conserver une réponse déjà produite plutôt que de la
+            // remplacer par le vide d'une itération de plomberie ultérieure.
+            String strippedTurnText = stripTurnMetadata(turn.text());
+            if (strippedTurnText != null && !strippedTurnText.isBlank()) {
+                lastUserText = turn.text();
+            }
             if (turn.finished() || turn.toolCalls().isEmpty()) {
                 finalText = turn.text();
                 // Second point d'accroche (F-50 / SF-50-02) : le modèle croit avoir fini, un
@@ -1260,7 +1297,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                         // appel d'outil auquel la rattacher, et un tool_result orphelin serait
                         // refusé par le fournisseur (décision D1).
                         List<AgentContentBlock> blockedBlocks = new ArrayList<>(turn.reasoning());
-                        blockedBlocks.add(new AgentContentBlock.Text(nonEmptyReply(finalText)));
+                        blockedBlocks.add(new AgentContentBlock.Text(modelGuardText(finalText)));
                         messages.add(AgentMessage.assistant(blockedBlocks));
                         messages.add(AgentMessage.userText(correction));
                         // Visible au rechargement, en erreur : sans cela, l'utilisateur verrait un
@@ -1276,6 +1313,38 @@ public class AtelierChatService implements RelayInterruptTarget {
                     log.info("Fin de tour rendue au modèle après {} blocage(s) (workspace={})",
                             endOfTurnBlocks, workspaceId);
                 }
+                // F-125 / SF-125-07 — CEINTURE « jamais un tour vide », à la clôture NORMALE du tour
+                // (ce point est le seul où le modèle a rendu la main de lui-même ; les autres sorties
+                // sont des arrêts subis, avec leur propre message). Trois cas, dans l'ordre :
+                String strippedFinal = stripTurnMetadata(finalText);
+                if (strippedFinal != null && !strippedFinal.isBlank()) {
+                    // 1) Ce dernier tour a bien un texte : c'est la réponse (comportement d'avant).
+                    break;
+                }
+                if (!lastUserText.isBlank()) {
+                    // 2) Un texte a été produit et VU plus tôt dans le tour : on le CONSERVE. Une
+                    // itération de plomberie postérieure (carte, END_OF_TURN) ne l'écrase pas par du
+                    // vide. Il a déjà défilé côté SSE ; le persister ici fait converger l'affichage et
+                    // la base sur la même valeur — c'était précisément la divergence à l'origine du bug.
+                    finalText = lastUserText;
+                    break;
+                }
+                // 3) Vraiment aucun texte de tout le tour : une passe de synthèse forcée, UNIQUE,
+                // sans outils et hors de tout crochet — elle ne peut ni agir ni relancer un blocage.
+                AgentTurn synthesis = forceSynthesis(system, messages, apiKey, turnMode);
+                inputTokens += synthesis.inputTokens();
+                outputTokens += synthesis.outputTokens();
+                cacheReadTokens += synthesis.cacheReadTokens();
+                cacheWriteTokens += synthesis.cacheWriteTokens();
+                largestIterationTokens = Math.max(largestIterationTokens,
+                        (long) synthesis.inputTokens() + synthesis.outputTokens());
+                String synthText = stripTurnMetadata(synthesis.text());
+                finalText = (synthText != null && !synthText.isBlank())
+                        ? synthesis.text() : LAST_RESORT_REPLY;
+                // La synthèse (ou le dernier recours) n'a pas encore défilé : on la relaie une fois,
+                // pour que SSE et persistance convergent. Jamais du vide, jamais l'ancien placeholder.
+                listener.onProgress((long) inputTokens + outputTokens);
+                listener.onText(finalText);
                 break;
             }
 
@@ -1590,9 +1659,43 @@ public class AtelierChatService implements RelayInterruptTarget {
         return "réponse rendue";
     }
 
-    /** Réponse à persister : celle du tour, ou un texte explicite si le tour n'a rien produit. */
+    /**
+     * Réponse à persister : celle du tour, ou le message de dernier recours. Dernier filet après la
+     * résolution SF-125-07 (qui a déjà conservé le texte produit ou joué la synthèse) : un message
+     * vide en base condamnerait tout le projet (SF-28-18), il ne doit jamais en rester.
+     */
     private static String nonEmptyReply(String finalText) {
-        return finalText == null || finalText.isBlank() ? EMPTY_REPLY_FALLBACK : finalText;
+        return finalText == null || finalText.isBlank() ? LAST_RESORT_REPLY : finalText;
+    }
+
+    /**
+     * Texte non vide donné au MODÈLE quand un crochet de fin de tour est rejoué sur un tour au texte
+     * vide (F-125 / SF-125-07). Jamais persisté ni affiché — voir {@link #EMPTY_TEXT_MODEL_GUARD}.
+     */
+    private static String modelGuardText(String finalText) {
+        return finalText == null || finalText.isBlank() ? EMPTY_TEXT_MODEL_GUARD : finalText;
+    }
+
+    /**
+     * Passe de <b>synthèse forcée</b> (F-125 / SF-125-07), jouée UNE seule fois à la clôture d'un
+     * tour qui n'a produit <b>aucun</b> texte pour l'utilisateur. Un seul aller-retour, SANS outils
+     * (« pas de plomberie ») et HORS de tout crochet de fin de tour : elle ne peut ni exécuter
+     * d'action ni relancer un blocage, et sa consommation entre dans les compteurs du tour. Sur échec
+     * (API, budget), elle rend le message de dernier recours plutôt que de laisser le tour vide.
+     */
+    private AgentTurn forceSynthesis(String system, List<AgentMessage> messages, String apiKey,
+            AgentTurnMode turnMode) {
+        List<AgentMessage> synthMessages = new ArrayList<>(messages);
+        synthMessages.add(AgentMessage.userText(SYNTHESIS_PROMPT));
+        AgentTurnRequest request = new AgentTurnRequest(model, system, synthMessages,
+                List.of(), apiKey, AgentReasoning.none(), contextPolicy, turnMode);
+        try {
+            return agentProvider.nextTurn(request);
+        } catch (RuntimeException ex) {
+            log.info("Passe de synthèse de fin de tour en échec ({}) : dernier recours rendu.",
+                    ex.getMessage());
+            return new AgentTurn(LAST_RESORT_REPLY, List.of(), true, 0, 0);
+        }
     }
 
     /**

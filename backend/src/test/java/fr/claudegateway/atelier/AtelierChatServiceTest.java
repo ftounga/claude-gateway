@@ -517,17 +517,102 @@ class AtelierChatServiceTest {
         assertThat(saved.getAllValues()).allSatisfy(m -> assertThat(m.getContent()).isNotBlank());
     }
 
+    // ------------------------------------------------------------------------------------------
+    // F-125 / SF-125-07 — Ceinture « jamais un tour vide » : conserver la réponse déjà produite.
+    // ------------------------------------------------------------------------------------------
+
     @Test
-    void emptyFinalTurnIsPersistedWithAnExplicitFallback() {
+    void emptyFinalTurnTriggersASynthesisPassInsteadOfAPlaceholder() {
+        // SF-125-07 : un tour sans aucun texte ne rend plus un placeholder muet — le serveur
+        // provoque UNE passe de synthèse forcée, dont la réponse devient celle du tour.
         stubHappyPath();
-        agentProvider.enqueueEmptyFinal();
+        agentProvider.enqueueEmptyFinal();                        // le tour ne produit aucun texte
+        agentProvider.enqueueFinal("Voici la synthèse du tour."); // la passe de synthèse répond
 
         AtelierChatResult result = service.chat(userId, workspaceId, "bonjour");
 
-        assertThat(result.reply()).isEqualTo(AtelierChatService.EMPTY_REPLY_FALLBACK);
+        assertThat(result.reply()).isEqualTo("Voici la synthèse du tour.");
         ArgumentCaptor<AtelierMessage> saved = ArgumentCaptor.forClass(AtelierMessage.class);
         verify(messageRepository, atLeastOnce()).save(saved.capture());
         assertThat(saved.getAllValues()).allSatisfy(m -> assertThat(m.getContent()).isNotBlank());
+        assertThat(saved.getAllValues())
+                .noneSatisfy(m -> assertThat(m.getContent()).contains("Je n'ai pas produit de réponse"));
+    }
+
+    @Test
+    void aResponseAlreadyProducedIsNeverReplacedByAnEmptyPlumbingIteration() {
+        // Cas réel CAGIP : l'agent PRODUIT la bonne réponse (texte + outil), PUIS enchaîne de la
+        // plomberie sans texte, PUIS un tour final vide. La réponse du tour doit rester le texte
+        // déjà vu par l'utilisateur — jamais le vide.
+        stubHappyPath();
+        String bonneReponse = "<<essentiel>>L'URL est dupliquée.<</essentiel>>\nVoici le détail du diagnostic.";
+        agentProvider.enqueueToolCallWithText(bonneReponse, "read_file", "path", "list_roles.go");
+        agentProvider.enqueueToolCall("edit_file", "path", "acces.md",
+                "old_string", "contenu du fichier", "new_string", "rangé");
+        agentProvider.enqueueEmptyFinal();
+
+        RecordingListener listener = new RecordingListener();
+        AtelierChatResult result =
+                service.chatStreaming(userId, workspaceId, "ça s'est bien passé ?", listener);
+
+        // La réponse finale conservée = le texte déjà produit, pas le vide.
+        assertThat(result.reply()).isEqualTo(bonneReponse);
+        // SSE et persistance convergent : ce qui a défilé contient la réponse, et la base la porte.
+        assertThat(listener.texts).anySatisfy(t -> assertThat(t).contains("L'URL est dupliquée."));
+        ArgumentCaptor<AtelierMessage> saved = ArgumentCaptor.forClass(AtelierMessage.class);
+        verify(messageRepository, atLeastOnce()).save(saved.capture());
+        AtelierMessage assistant = saved.getAllValues().stream()
+                .filter(m -> "ASSISTANT".equals(m.getRole())).reduce((a, b) -> b).orElseThrow();
+        assertThat(assistant.getContent()).isEqualTo(bonneReponse);
+        assertThat(saved.getAllValues())
+                .noneSatisfy(m -> assertThat(m.getContent()).contains("Je n'ai pas produit de réponse"));
+    }
+
+    @Test
+    void aTurnWhoseOnlyTextIsAMarkerStrippedToBlankTriggersTheSynthesis() {
+        // SF-125-07 : « vide après strip » — un tour dont le seul texte est le marqueur fin-de-tour
+        // (retiré par stripTurnMetadata, SF-125-01) est traité comme sans texte → synthèse forcée.
+        stubHappyPath();
+        agentProvider.enqueueFinal("<!-- fin-de-tour: promu=x -> y.md -->");
+        agentProvider.enqueueFinal("Réponse de synthèse.");
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "réponds");
+
+        assertThat(result.reply()).isEqualTo("Réponse de synthèse.");
+    }
+
+    @Test
+    void theSynthesisPassOffersNoToolsAndRunsOnlyOnce() {
+        // SF-125-07 : borne anti-boucle. La synthèse est UNIQUE et SANS outils (« pas de plomberie ») :
+        // le dernier appel fournisseur (la synthèse) ne se voit offrir aucun outil.
+        stubHappyPath();
+        agentProvider.enqueueToolCall("read_file", "path", "notes.txt"); // 1er appel : plomberie
+        agentProvider.enqueueEmptyFinal();                               // 2e appel : rien
+        agentProvider.enqueueFinal("Synthèse.");                         // 3e appel : la synthèse
+
+        service.chat(userId, workspaceId, "fais quelque chose");
+
+        // Exactement 3 appels fournisseur (2 boucle + 1 synthèse), script épuisé : aucune récursion.
+        assertThat(agentProvider.remaining()).isZero();
+        assertThat(agentProvider.toolBelts).hasSize(3);
+        // Les deux tours de boucle voient la panoplie ; la synthèse (dernier appel) n'a aucun outil.
+        assertThat(agentProvider.toolBelts.get(0)).isNotEmpty();
+        assertThat(agentProvider.toolBelts.get(2)).isEmpty();
+    }
+
+    @Test
+    void whenTheSynthesisAlsoProducesNothingAnHonestLastResortIsPersisted() {
+        // SF-125-07 : si la synthèse ne rend toujours rien, un message de dernier recours honnête et
+        // actionnable — jamais l'ancien placeholder muet.
+        stubHappyPath();
+        agentProvider.enqueueToolCall("read_file", "path", "notes.txt");
+        agentProvider.enqueueEmptyFinal(); // tour vide
+        agentProvider.enqueueEmptyFinal(); // la synthèse ne rend rien non plus
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "conclus");
+
+        assertThat(result.reply()).isEqualTo(AtelierChatService.LAST_RESORT_REPLY);
+        assertThat(result.reply()).doesNotContain("Je n'ai pas produit de réponse");
     }
 
     @Test
