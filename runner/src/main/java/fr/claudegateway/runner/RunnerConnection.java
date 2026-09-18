@@ -46,6 +46,11 @@ public final class RunnerConnection {
     private final TransportJournal journal;
     /** La mise à jour du runner (F-111 / SF-111-04) ; nulle hors de RunnerMain (tests). */
     private volatile fr.claudegateway.runner.update.RunnerUpdater updater;
+    /**
+     * La boucle de mise en service de la Vigie (F-122 / SF-122-06) : lance et maintient le Chrome
+     * managé et remonte l'état de readiness. Nulle si le volet Teams est désactivé (--no-teams).
+     */
+    private volatile fr.claudegateway.runner.teams.VigieLoop vigieLoop;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private volatile boolean fellBackToPolling;
     private volatile WebSocket webSocket;
@@ -109,6 +114,10 @@ public final class RunnerConnection {
         // jamais dependre du transport (SF-38-09).
         dispatcher = ToolStack.create(config, console, sender).dispatcher();
         router = new FrameRouter(dispatcher, console, this::onUpdate);
+        // F-122 / SF-122-06 : la boucle Vigie vit avec le runner. Elle est indépendante du transport
+        // (elle remonte l'état par son propre POST /runner/vigie/readiness) et démarrée une seule
+        // fois ici, sur l'exécuteur du heartbeat, avant la boucle de (re)connexion.
+        startVigie(token);
         URI uri = config.webSocketUri(token);
         String target = safeUri(uri);
         console.info("Cible WebSocket : " + target);
@@ -159,6 +168,7 @@ public final class RunnerConnection {
                 }
             }
         } finally {
+            stopVigie();
             shutdownHeartbeat();
             closeChannel();
         }
@@ -183,7 +193,65 @@ public final class RunnerConnection {
         if (latch != null) {
             latch.countDown();
         }
+        stopVigie();
         shutdownHeartbeat();
+    }
+
+    /**
+     * Démarre la boucle Vigie (F-122 / SF-122-06) : Chrome managé dédié + remontée périodique de
+     * l'état de mise en service, sur l'exécuteur du heartbeat. <b>Best-effort strict</b> : un échec de
+     * démarrage n'empêche jamais le runner ni ses autres outils de fonctionner. Sans effet si le volet
+     * Teams est désactivé (--no-teams).
+     */
+    private void startVigie(String token) {
+        if (!config.allowTeams()) {
+            return;
+        }
+        try {
+            int port = config.teamsPort();
+            fr.claudegateway.runner.teams.ManagedChromeSettings settings =
+                    fr.claudegateway.runner.teams.ManagedChromeSettings.resolve(
+                            Integer.toString(port),
+                            System.getenv(fr.claudegateway.runner.teams.ChromePaths.PROFILE_ENV),
+                            System::getenv);
+            fr.claudegateway.runner.teams.ManagedChrome chrome =
+                    fr.claudegateway.runner.teams.ManagedChrome.real(settings, console::info);
+            // Coutures SF-122-03 : à l'expiration, la fenêtre managée surgit pour le login ; une fois
+            // reconnecté, elle se remasque. Le runner ne se connecte jamais à la place de l'utilisateur.
+            fr.claudegateway.runner.teams.VigieSonde sonde =
+                    fr.claudegateway.runner.teams.VigieSonde.real(port, console::info,
+                            chrome::reveal, chrome::remask);
+            fr.claudegateway.runner.teams.VigieReadinessUploader uploader =
+                    (token == null || token.isBlank())
+                            ? fr.claudegateway.runner.teams.VigieReadinessUploader.unavailable(
+                                    "ce poste n'a pas de jeton runner : l'état ne peut pas remonter")
+                            : fr.claudegateway.runner.teams.VigieReadinessUploader.over(
+                                    httpClient, config.gatewayBaseUrl(), token);
+            fr.claudegateway.runner.teams.VigieLoop loop =
+                    new fr.claudegateway.runner.teams.VigieLoop(chrome, sonde, uploader,
+                            fr.claudegateway.runner.teams.ManagedChrome.currentSystem(),
+                            console::info);
+            loop.start(heartbeatExecutor);
+            this.vigieLoop = loop;
+            console.info("Vigie : boucle de mise en service démarrée (Chrome managé dédié + remontée "
+                    + "de l'état). La check-list de mise en service reflétera l'état réel du poste.");
+        } catch (RuntimeException e) {
+            console.warn("Vigie : démarrage impossible (" + Failures.describe(e)
+                    + ") — le reste du runner continue normalement.");
+        }
+    }
+
+    /** Arrête la boucle Vigie et le Chrome managé (pas d'orphelin, F-122 / SF-122-06). Idempotent. */
+    private void stopVigie() {
+        fr.claudegateway.runner.teams.VigieLoop loop = this.vigieLoop;
+        if (loop != null) {
+            try {
+                loop.stop();
+            } catch (RuntimeException e) {
+                console.warn("Vigie : arrêt imparfait (" + Failures.describe(e) + ").");
+            }
+            this.vigieLoop = null;
+        }
     }
 
     private void connectOnce(URI uri, CountDownLatch latch) {

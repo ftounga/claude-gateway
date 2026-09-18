@@ -124,23 +124,38 @@ public final class ManagedChrome {
     }
 
     /**
-     * La ligne de commande exacte du Chrome managé. Chaque argument est un élément — jamais une ligne
-     * shell à découper (un chemin de profil avec un espace ne peut pas devenir une commande).
+     * La ligne de commande exacte du Chrome managé — <b>hors champ</b> (le mode quotidien de la Vigie).
      *
      * @throws java.util.NoSuchElementException si aucun exécutable n'a été résolu
      */
     List<String> commandLine() {
-        return List.of(
-                executable.orElseThrow().toString(),
-                "--remote-debugging-port=" + port,
-                "--remote-debugging-address=" + BrowserPort.LOOPBACK,
-                "--user-data-dir=" + profileDir,
-                OFFSCREEN,
-                AUTO_ACCEPT_TAB_CAPTURE,
-                AUTO_SELECT_TAB_BY_TITLE,
-                "--no-first-run",
-                "--no-default-browser-check",
-                BrowserLaunchAdvice.TEAMS_URL);
+        return commandLine(true);
+    }
+
+    /**
+     * La ligne de commande exacte du Chrome managé. Chaque argument est un élément — jamais une ligne
+     * shell à découper (un chemin de profil avec un espace ne peut pas devenir une commande).
+     *
+     * @param offscreen {@code true} pour la fenêtre discrète poussée hors champ (le quotidien) ;
+     *                  {@code false} pour la faire <b>surgir</b> à l'écran, le temps d'un login
+     *                  interactif Teams (SSO/MFA) — SF-122-06/03.
+     * @throws java.util.NoSuchElementException si aucun exécutable n'a été résolu
+     */
+    List<String> commandLine(boolean offscreen) {
+        List<String> line = new java.util.ArrayList<>();
+        line.add(executable.orElseThrow().toString());
+        line.add("--remote-debugging-port=" + port);
+        line.add("--remote-debugging-address=" + BrowserPort.LOOPBACK);
+        line.add("--user-data-dir=" + profileDir);
+        if (offscreen) {
+            line.add(OFFSCREEN);
+        }
+        line.add(AUTO_ACCEPT_TAB_CAPTURE);
+        line.add(AUTO_SELECT_TAB_BY_TITLE);
+        line.add("--no-first-run");
+        line.add("--no-default-browser-check");
+        line.add(BrowserLaunchAdvice.TEAMS_URL);
+        return List.copyOf(line);
     }
 
     /** Vrai si le port de débogage répond en ce moment. */
@@ -195,13 +210,50 @@ public final class ManagedChrome {
         }
     }
 
+    /**
+     * <b>Fait surgir</b> le Chrome managé à l'écran, le temps d'un login interactif Teams (SF-122-06 /
+     * SF-122-03). La connexion Teams (SSO + MFA) exige une vraie fenêtre visible : le Chrome discret,
+     * poussé hors champ le reste du temps, est relancé <b>à l'écran</b> sur le <b>même profil</b> — la
+     * session déjà ouverte persiste. Sans effet utile si aucun exécutable n'a été résolu.
+     *
+     * @return l'état atteint ({@link State})
+     */
+    public synchronized State reveal() {
+        return relaunch(false);
+    }
+
+    /**
+     * <b>Remasque</b> le Chrome managé une fois la reconnexion faite (SF-122-06 / SF-122-03) : il est
+     * relancé hors champ sur le même profil, la session persiste, et la Vigie repasse en arrière-plan.
+     *
+     * @return l'état atteint ({@link State})
+     */
+    public synchronized State remask() {
+        return relaunch(true);
+    }
+
+    private State relaunch(boolean offscreen) {
+        if (executable.isEmpty()) {
+            return State.NO_BROWSER;
+        }
+        // On ne peut déplacer une fenêtre déjà ouverte sans piloter le DOM (liste blanche CDP) : on
+        // relance donc sur le même profil, ce qui rouvre la fenêtre avec la bonne visibilité tout en
+        // conservant la session Teams (elle vit dans --user-data-dir, pas dans le processus).
+        stop();
+        return launchAndWait(offscreen);
+    }
+
     private State launchAndWait() {
+        return launchAndWait(true);
+    }
+
+    private State launchAndWait(boolean offscreen) {
         try {
             Files.createDirectories(profileDir);
             // Amorçage ciblé du profil (SF-122-05) : micro pré-autorisé pour la seule origine Teams.
             // Gardé pour ne jamais casser le lancement — au pire l'invite micro réapparaît.
             ChromeProfileSeed.seed(profileDir, say);
-            handle = session.start(commandLine(), null);
+            handle = session.start(commandLine(offscreen), null);
         } catch (IOException e) {
             // Le lancement n'a pas pu se faire du tout : le message nommé est du ressort de SF-122-04.
             return State.UNREACHABLE;
