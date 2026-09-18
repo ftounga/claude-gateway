@@ -1095,9 +1095,22 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     FK, même choix que le registre du Radar)`, `title (varchar 300, nullable)`, `meeting_url (varchar
     2048)`, `state (varchar 20 — RECORDING/PAUSED/STOPPED/FAILED)`, `consent_acknowledged (boolean)`,
     `retention_days (int, défaut 30, borne applicative [1;365])`, `capture_ref (varchar 200, nullable)`,
+    `audio_key (varchar 300, nullable — SF-128-02, migration 112)`, `audio_bytes (bigint, nullable)`,
+    `image_count (int, nullable — SF-128-03, migration 113)`,
     `started_at`, `ended_at (nullable)`, `created_at`, `updated_at`. Index `(user_id, host_id,
     started_at)`. Endpoints `/api/vigie/hosts/{hostId}/meetings` (create/stop/pause/resume/list/get),
     gardés par le droit Teams + possession du poste + activation Vigie.
+  - **Capture par onglet (Option A, §2bis)** : « Rejoindre & capturer » ordonne au runner
+    `teams_meeting_join` (navigue l'onglet Teams du Chrome managé vers l'URL), puis
+    `teams_meeting_capture_start` (SF-128-02 : audio onglet + micro mixés, script injecté piloté CDP) ;
+    l'arrêt ordonne `teams_meeting_capture_stop` qui remonte l'**audio** (`POST /runner/teams/meetings/{id}/audio`)
+    puis les **images clés** du partage (`POST /runner/teams/meetings/{id}/images`) — jeton runner
+    (`X-Runner-Token`), isolation re-vérifiée par le contrôleur (`user_id` du jeton + `host_id` du
+    terminal Teams possédé + réunion résolue par le triplet). Le média est stocké en objet
+    (`teams-meetings/{userId}/{hostId}/{meetingId}/…`), jamais la vidéo pleine. Ces tools runner sont
+    **hors du catalogue agent** (commandes d'orchestration de la Vigie, pas des outils du modèle).
+    **DRAPEAU** : la capture navigateur est validée sur call réel ; STT (SF-128-04) et exploitation
+    (SF-128-05) restent à venir.
 
 - **Repli de transport du runner — aucune table** (F-38 / SF-38-09). Le canal runner peut être porté
   par le WebSocket de SF-38-02 **ou** par un long-polling HTTP quand un proxy refuse (ou coupe)
