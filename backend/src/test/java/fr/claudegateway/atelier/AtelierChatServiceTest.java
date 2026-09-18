@@ -615,6 +615,121 @@ class AtelierChatServiceTest {
         assertThat(result.reply()).doesNotContain("Je n'ai pas produit de réponse");
     }
 
+    // ------------------------------------------------------------------------------------------
+    // F-125 / SF-125-08 — Conserver la réponse de fond, jamais la plomberie de carte.
+    // ------------------------------------------------------------------------------------------
+
+    /** La note de plomberie de carte du cas réel CAGIP (« déjà dans la carte », ~140 car). */
+    private static final String PLUMBING_NOTE =
+            "Vérifié : la clé privée versionnée est déjà dans la carte, en `acces.md:465` ; "
+                    + "rien à promouvoir, le rangement est à jour côté gouvernance.";
+
+    @Test
+    void theEssentialAnswerIsKeptEvenWhenAPlumbingNoteIsEmittedLater() {
+        // Cas réel CAGIP : l'agent produit l'essentiel+détail TÔT (avec un outil), puis FINIT le tour
+        // sur une note de plomberie de carte. SF-125-07 gardait « le dernier texte non vide » → la
+        // plomberie. SF-125-08 garde le TEXTE DE FOND → l'essentiel doit survivre à la plomberie.
+        stubHappyPath();
+        String fond = "<<essentiel>>Les mails sont tracés dans `logs/mail.go:12`.<</essentiel>>\n"
+                + "Voici le détail : le traceur écrit une ligne par envoi.";
+        agentProvider.enqueueToolCallWithText(fond, "read_file", "path", "logs/mail.go");
+        agentProvider.enqueueFinal(PLUMBING_NOTE); // dernier texte NON vide = plomberie de carte
+
+        RecordingListener listener = new RecordingListener();
+        AtelierChatResult result =
+                service.chatStreaming(userId, workspaceId, "trace les mails là", listener);
+
+        // La réponse conservée = l'essentiel+détail, jamais la plomberie.
+        assertThat(result.reply()).isEqualTo(fond);
+        assertThat(result.reply()).doesNotContain("déjà dans la carte");
+        assertThat(result.reply()).doesNotContain("acces.md:465");
+        // SSE (done) et persistance convergent sur la même valeur : le message assistant persisté = le fond.
+        ArgumentCaptor<AtelierMessage> saved = ArgumentCaptor.forClass(AtelierMessage.class);
+        verify(messageRepository, atLeastOnce()).save(saved.capture());
+        AtelierMessage assistant = saved.getAllValues().stream()
+                .filter(m -> "ASSISTANT".equals(m.getRole())).reduce((a, b) -> b).orElseThrow();
+        assertThat(assistant.getContent()).isEqualTo(fond);
+        assertThat(assistant.getContent()).doesNotContain("acces.md:465");
+    }
+
+    @Test
+    void aPlumbingNoteAloneNeverBecomesTheReplyAndFallsBackToSynthesis() {
+        // F-125-05 côté serveur : un tour dont le seul texte est une note de plomberie de carte ne
+        // promeut JAMAIS cette plomberie en réponse — il joue la synthèse forcée (SF-125-07) à la place.
+        stubHappyPath();
+        agentProvider.enqueueToolCall("read_file", "path", "acces.md"); // plomberie sans texte
+        agentProvider.enqueueFinal(PLUMBING_NOTE);                      // dernier tour : plomberie seule
+        agentProvider.enqueueFinal("Les mails sont tracés dans logs/mail.go."); // la synthèse répond
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "trace les mails là");
+
+        assertThat(result.reply()).isEqualTo("Les mails sont tracés dans logs/mail.go.");
+        assertThat(result.reply()).doesNotContain("déjà dans la carte");
+    }
+
+    @Test
+    void whenSeveralEssentialsAreEmittedTheLastOneIsKept() {
+        // Plusieurs essentiels dans le tour → le DERNIER est gardé (c'est une réponse de fond affinée,
+        // pas de la plomberie) ; une note de plomberie postérieure ne l'évince pas davantage.
+        stubHappyPath();
+        String premier = "<<essentiel>>Réponse provisoire.<</essentiel>>\nDétail initial.";
+        String dernier = "<<essentiel>>Réponse corrigée : c'est bien logs/mail.go:12.<</essentiel>>\nDétail final.";
+        agentProvider.enqueueToolCallWithText(premier, "read_file", "path", "a.go");
+        agentProvider.enqueueToolCallWithText(dernier, "read_file", "path", "b.go");
+        agentProvider.enqueueFinal(PLUMBING_NOTE);
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "où sont tracés les mails ?");
+
+        assertThat(result.reply()).isEqualTo(dernier);
+        assertThat(result.reply()).doesNotContain("provisoire");
+    }
+
+    @Test
+    void aSubstantialAnswerWithoutEssentialIsNotEvictedByALaterPlumbingNote() {
+        // Sans marqueur essentiel : on garde le dernier texte SUBSTANTIEL ; une note de plomberie de
+        // carte émise ensuite ne le remplace pas (rétention par substance, pas par ordre).
+        stubHappyPath();
+        String fond = "Le rôle admin ouvre tout par défaut, c'est porté par le service de droits.";
+        agentProvider.enqueueToolCallWithText(fond, "read_file", "path", "roles.go");
+        agentProvider.enqueueFinal(PLUMBING_NOTE);
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "l'admin a-t-il tous les droits ?");
+
+        assertThat(result.reply()).isEqualTo(fond);
+        assertThat(result.reply()).doesNotContain("déjà dans la carte");
+    }
+
+    @Test
+    void hasEssentialDetectsTheMarkerAndItsAbsence() {
+        // Miroir serveur de splitEssential (F-126) : détection tolérante à la casse et aux espaces.
+        assertThat(AtelierChatService.hasEssential("<<essentiel>>La réponse.<</essentiel>>")).isTrue();
+        assertThat(AtelierChatService.hasEssential("<< Essentiel >>La réponse.")).isTrue(); // sans fermeture
+        assertThat(AtelierChatService.hasEssential("Une réponse sans marqueur.")).isFalse();
+        assertThat(AtelierChatService.hasEssential("<<essentiel>>  <</essentiel>>")).isFalse(); // vide
+        assertThat(AtelierChatService.hasEssential(null)).isFalse();
+    }
+
+    @Test
+    void isCardPlumbingIsConservativeAndNeverHidesARealAnswer() {
+        // Drapeau « plomberie » : petit + formule connue + absence d'essentiel. Au moindre doute, faux.
+        // Vrais positifs (formules de plomberie de carte connues) :
+        assertThat(AtelierChatService.isCardPlumbing(PLUMBING_NOTE)).isTrue();          // « déjà dans la carte »
+        assertThat(AtelierChatService.isCardPlumbing("acces.md:465")).isTrue();         // simple référence
+        assertThat(AtelierChatService.isCardPlumbing("Le fait est déjà rangé dans `acces.md`.")).isTrue();
+        assertThat(AtelierChatService.isCardPlumbing("Déjà dans `acces.md`, rien à faire.")).isTrue();
+        // Faux (on garde le texte) — contrainte PO : ne jamais masquer une vraie réponse :
+        assertThat(AtelierChatService.isCardPlumbing("La réponse est 42.")).isFalse();
+        assertThat(AtelierChatService.isCardPlumbing("<<essentiel>>Déjà dans acces.md.<</essentiel>>")).isFalse();
+        // « déjà rangé » sans indice de carte : une vraie réponse, gardée.
+        assertThat(AtelierChatService.isCardPlumbing("Les mails sont déjà rangés par date dans la boîte."))
+                .isFalse();
+        // Texte long mentionnant .md et « déjà dans » : trop long pour un statut, c'est une réponse.
+        assertThat(AtelierChatService.isCardPlumbing(
+                "La procédure est déjà dans notes.md, et voici pourquoi : " + "détail. ".repeat(60)))
+                .isFalse();
+        assertThat(AtelierChatService.isCardPlumbing(null)).isFalse();
+    }
+
     @Test
     void blankHistoryMessagesAreNeverSentToTheProvider() {
         stubHappyPath();
