@@ -32,6 +32,12 @@ public class MeetingMediaService {
             "audio/wav", "wav",
             "audio/x-wav", "wav");
 
+    /** Types image acceptés → extension (F-128 / SF-128-03). Liste close ; défaut jpg. */
+    private static final Map<String, String> IMAGE_EXTENSIONS = Map.of(
+            "image/jpeg", "jpg",
+            "image/png", "png",
+            "image/webp", "webp");
+
     private final MeetingRepository meetings;
     private final WorkspaceStorage storage;
 
@@ -61,8 +67,32 @@ public class MeetingMediaService {
         return meetings.save(meeting);
     }
 
+    /**
+     * Dépose une image clé du partage d'écran (F-128 / SF-128-03) sous {@code …/{meetingId}/frames/} et
+     * met à jour {@code image_count} = nombre d'images retenues. Isolation identique à l'audio.
+     */
+    public Meeting storeImage(UUID userId, UUID hostId, UUID meetingId, String contentType, byte[] content) {
+        Meeting meeting = meetings.findByIdAndUserIdAndHostId(meetingId, userId, hostId)
+                .orElseThrow(() -> new MeetingNotFoundException("Réunion introuvable : " + meetingId));
+        String extension = IMAGE_EXTENSIONS.getOrDefault(baseType(contentType), "jpg");
+        String imageId = UUID.randomUUID().toString().replace("-", "");
+        storage.putFile(framesPrefixOf(userId, hostId, meetingId) + imageId + "." + extension,
+                content, baseType(contentType).isEmpty() ? "image/jpeg" : baseType(contentType));
+        meeting.setImageCount(countImages(userId, hostId, meetingId));
+        return meetings.save(meeting);
+    }
+
+    /** Le nombre d'images clés déjà remontées pour cette réunion (sert au plafond et au compteur). */
+    public int countImages(UUID userId, UUID hostId, UUID meetingId) {
+        return storage.listKeys(framesPrefixOf(userId, hostId, meetingId)).size();
+    }
+
     static String prefixOf(UUID userId, UUID hostId, UUID meetingId) {
         return PREFIX + userId + "/" + hostId + "/" + meetingId + "/";
+    }
+
+    static String framesPrefixOf(UUID userId, UUID hostId, UUID meetingId) {
+        return prefixOf(userId, hostId, meetingId) + "frames/";
     }
 
     private static String baseType(String contentType) {

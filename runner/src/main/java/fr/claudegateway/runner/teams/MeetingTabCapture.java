@@ -59,8 +59,35 @@ final class MeetingTabCapture {
                 recorder.start(1000);
                 window.__cgMeetingCapture = {
                   recorder, chunks, ctx, display, mic,
-                  micDenied: !mic, result: null
+                  micDenied: !mic, result: null, frames: [], sampler: null
                 };
+                // SF-128-03 : échantillonnage des images clés du partage d'écran (ne retient que
+                // sur changement, borné). La vidéo pleine ne quitte jamais la machine.
+                try {
+                  const video = document.createElement('video');
+                  video.muted = true; video.srcObject = display;
+                  await video.play().catch(() => {});
+                  let lastSig = '';
+                  window.__cgMeetingCapture.sampler = setInterval(() => {
+                    try {
+                      const c2 = window.__cgMeetingCapture; if (!c2) return;
+                      const vw = video.videoWidth, vh = video.videoHeight;
+                      if (!vw || !vh || c2.frames.length >= 60) return;
+                      const small = document.createElement('canvas'); small.width = 8; small.height = 8;
+                      const sctx = small.getContext('2d');
+                      sctx.drawImage(video, 0, 0, 8, 8);
+                      const d = sctx.getImageData(0, 0, 8, 8).data;
+                      let sig = ''; for (let i = 0; i < d.length; i += 4) { sig += (d[i] >> 5); }
+                      if (sig === lastSig) return;
+                      lastSig = sig;
+                      const w = vw > 1280 ? 1280 : vw;
+                      const full = document.createElement('canvas');
+                      full.width = w; full.height = Math.round(w * vh / vw);
+                      full.getContext('2d').drawImage(video, 0, 0, full.width, full.height);
+                      c2.frames.push({ t: Date.now(), data: full.toDataURL('image/jpeg', 0.6) });
+                    } catch (e) {}
+                  }, 4000);
+                } catch (e) {}
                 return { started: true, micDenied: !mic };
               } catch (e) {
                 return { started: false, error: (e && e.name) ? e.name : String(e) };
@@ -82,6 +109,7 @@ final class MeetingTabCapture {
                   c.recorder.onstop = () => resolve(new Blob(c.chunks, { type: 'audio/webm' }));
                   if (c.recorder.state !== 'inactive') { c.recorder.stop(); } else { resolve(new Blob(c.chunks)); }
                 });
+                try { if (c.sampler) clearInterval(c.sampler); } catch (e) {}
                 try { (c.display ? c.display.getTracks() : []).forEach(t => t.stop()); } catch (e) {}
                 try { (c.mic ? c.mic.getTracks() : []).forEach(t => t.stop()); } catch (e) {}
                 try { if (c.ctx) c.ctx.close(); } catch (e) {}
@@ -96,6 +124,30 @@ final class MeetingTabCapture {
               }
             })()
             """;
+
+    /** Nombre maximum d'images clés retenues par réunion. */
+    static final int MAX_FRAMES = 60;
+
+    /** Le script qui rend le nombre d'images clés retenues. */
+    static String framesCountScript() {
+        return "(function(){var c=window.__cgMeetingCapture;return {count:(c&&c.frames)?c.frames.length:0};})()";
+    }
+
+    /** Le script qui lit une tranche d'une image clé (par index), à partir d'un décalage. */
+    static String framePullScript(int index, long offset, int length) {
+        return "(function(i,o,l){var c=window.__cgMeetingCapture;var f=(c&&c.frames&&c.frames[i])||null;"
+                + "if(!f)return{total:0,chunk:'',t:0};var d=f.data||'';"
+                + "return {total:d.length, chunk:d.substr(o,l), t:f.t};})(" + index + "," + offset + "," + length + ")";
+    }
+
+    /** Retire le préfixe {@code data:...;base64,} d'une image encodée en data URL. */
+    static String stripDataUrl(String dataUrl) {
+        if (dataUrl == null) {
+            return "";
+        }
+        int marker = dataUrl.indexOf("base64,");
+        return marker < 0 ? dataUrl : dataUrl.substring(marker + "base64,".length());
+    }
 
     /** Le script qui lit une tranche du média encodé, à partir d'un décalage. */
     static String pullScript(long offset, int length) {

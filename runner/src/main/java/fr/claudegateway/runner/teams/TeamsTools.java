@@ -144,6 +144,8 @@ public final class TeamsTools implements ToolExecutor {
     private LocalCapture capture;
     /** Uploader de l'audio de réunion (F-128 / SF-128-02) ; {@code null} = remontée indisponible. */
     private MeetingAudioUploader meetingAudio;
+    /** Uploader des images clés de réunion (F-128 / SF-128-03) ; {@code null} = images non remontées. */
+    private MeetingImageUploader meetingImages;
 
     /**
      * La transcription locale (F-91 / SF-91-03). {@code null} quand ce runner n'en a pas — une
@@ -206,6 +208,12 @@ public final class TeamsTools implements ToolExecutor {
     /** Branche l'uploader de l'audio de réunion (F-128 / SF-128-02). */
     public TeamsTools withMeetingAudio(MeetingAudioUploader value) {
         this.meetingAudio = value;
+        return this;
+    }
+
+    /** Branche l'uploader des images clés de réunion (F-128 / SF-128-03). */
+    public TeamsTools withMeetingImages(MeetingImageUploader value) {
+        this.meetingImages = value;
         return this;
     }
 
@@ -533,9 +541,13 @@ public final class TeamsTools implements ToolExecutor {
                 return ToolOutcome.error("empty_audio", "La capture n'a produit aucun audio.");
             }
             long uploaded = meetingAudio.upload(workspaceId, meetingId, audio);
+            // SF-128-03 : les images clés du partage d'écran, après l'audio. Best-effort : un échec
+            // d'images ne défait pas l'audio déjà remonté.
+            int images = uploadFrames(workspaceId, meetingId);
             ObjectNode json = mapper.createObjectNode();
             json.put("uploaded", true);
             json.put("bytes", uploaded);
+            json.put("images", images);
             return ToolOutcome.ok(json.toString());
         } catch (BrowserLinkException e) {
             return ToolOutcome.error("browser_unreachable",
@@ -559,6 +571,60 @@ public final class TeamsTools implements ToolExecutor {
         }
         JsonNode result = link.connection().send(CdpCommands.EVALUATE, params);
         return result == null ? null : result.path("result").get("value");
+    }
+
+    /** Récupère et téléverse les images clés retenues (F-128 / SF-128-03). Best-effort : rend le compte. */
+    private int uploadFrames(String workspaceId, String meetingId) {
+        if (meetingImages == null) {
+            return 0;
+        }
+        try {
+            JsonNode countNode = evalInPage(MeetingTabCapture.framesCountScript(), false);
+            int count = countNode == null ? 0 : countNode.path("count").asInt(0);
+            int uploaded = 0;
+            for (int i = 0; i < count; i++) {
+                byte[] image = MeetingTabCapture.decode(MeetingTabCapture.stripDataUrl(pullFrame(i)));
+                if (image.length == 0) {
+                    continue;
+                }
+                try {
+                    meetingImages.upload(workspaceId, meetingId, image);
+                    uploaded++;
+                } catch (java.io.IOException e) {
+                    // best-effort : une image refusée n'arrête pas les autres.
+                }
+            }
+            return uploaded;
+        } catch (RuntimeException e) {
+            return 0;
+        }
+    }
+
+    /** Réassemble une image clé (par index) depuis la page, par tranches bornées. */
+    private String pullFrame(int index) {
+        List<String> chunks = new ArrayList<>();
+        long offset = 0;
+        long total = -1;
+        while (true) {
+            JsonNode page = evalInPage(MeetingTabCapture.framePullScript(index, offset,
+                    MeetingTabCapture.PULL_CHUNK_CHARS), false);
+            if (page == null) {
+                break;
+            }
+            if (total < 0) {
+                total = page.path("total").asLong(0);
+            }
+            String chunk = page.path("chunk").asText("");
+            if (chunk.isEmpty()) {
+                break;
+            }
+            chunks.add(chunk);
+            offset += chunk.length();
+            if (offset >= total) {
+                break;
+            }
+        }
+        return MeetingTabCapture.reassemble(chunks);
     }
 
     private ToolOutcome status() {

@@ -90,6 +90,10 @@ public class Meeting {
     @Column(name = "audio_bytes")
     private Long audioBytes;
 
+    /** Nombre d'images clés retenues du partage d'écran (F-128 / SF-128-03), ou {@code null}. */
+    @Column(name = "image_count")
+    private Integer imageCount;
+
     @Column(name = "started_at", nullable = false)
     private OffsetDateTime startedAt;
 

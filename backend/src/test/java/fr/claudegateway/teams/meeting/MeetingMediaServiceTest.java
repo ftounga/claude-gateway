@@ -3,12 +3,14 @@ package fr.claudegateway.teams.meeting;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -66,6 +68,34 @@ class MeetingMediaServiceTest {
         assertThatThrownBy(() -> service.storeAudio(userId, hostId, meetingId, "audio/webm", new byte[] {1}))
                 .isInstanceOf(MeetingNotFoundException.class);
         verify(storage, never()).putFile(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("stocke une image clé sous frames/ et met à jour image_count")
+    void storesImageAndUpdatesCount() {
+        Meeting meeting = Meeting.builder().userId(userId).hostId(hostId).state(MeetingState.STOPPED)
+                .meetingUrl("https://x").consentAcknowledged(true).retentionDays(30).build();
+        when(repository.findByIdAndUserIdAndHostId(meetingId, userId, hostId)).thenReturn(Optional.of(meeting));
+        when(repository.save(any(Meeting.class))).thenAnswer(inv -> inv.getArgument(0));
+        String framesPrefix = "teams-meetings/" + userId + "/" + hostId + "/" + meetingId + "/frames/";
+        when(storage.listKeys(framesPrefix)).thenReturn(List.of(framesPrefix + "a.jpg", framesPrefix + "b.jpg"));
+
+        Meeting updated = service.storeImage(userId, hostId, meetingId, "image/jpeg", new byte[] {1, 2, 3});
+
+        ArgumentCaptor<String> key = ArgumentCaptor.forClass(String.class);
+        verify(storage).putFile(key.capture(), any(), eq("image/jpeg"));
+        assertThat(key.getValue()).startsWith(framesPrefix);
+        assertThat(key.getValue()).endsWith(".jpg");
+        assertThat(updated.getImageCount()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("image : réunion hors périmètre → introuvable, rien de stocké")
+    void unknownMeetingForImageRejected() {
+        when(repository.findByIdAndUserIdAndHostId(meetingId, userId, hostId)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.storeImage(userId, hostId, meetingId, "image/jpeg", new byte[] {1}))
+                .isInstanceOf(MeetingNotFoundException.class);
+        verify(storage, never()).putFile(anyString(), any(), any());
     }
 
     @Test
