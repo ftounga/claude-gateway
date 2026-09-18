@@ -3,8 +3,10 @@ package fr.claudegateway.shared.error;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -83,6 +85,7 @@ import fr.claudegateway.upload.EmptyFileException;
 import fr.claudegateway.upload.FileTooLargeException;
 import fr.claudegateway.upload.UnsupportedFileTypeException;
 import fr.claudegateway.user.UserNotFoundException;
+import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * Traduit les exceptions applicatives en réponses JSON homogènes {@link ErrorResponse}.
@@ -980,6 +983,39 @@ public class GlobalExceptionHandler {
         log.debug("Capture de réunion refusée : {} ({})", ex.getMessage(), ex.code());
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new ErrorResponse(ex.code(), ex.getMessage()));
+    }
+
+    /**
+     * Délai async HTTP dépassé (F-38 / SF-38-28). Sur un endpoint de <b>flux</b> ndjson (relais
+     * {@code /internal/runner/call}, {@code turn-stream}), la réponse porte déjà
+     * {@code application/x-ndjson} — souvent déjà engagée. Tenter d'y sérialiser un
+     * {@link ErrorResponse} objet levait une {@code HttpMessageNotWritableException} (« No converter
+     * for [ErrorResponse] with preset Content-Type 'application/x-ndjson' », défaut tracé le
+     * 2026-09-18) : le filet {@link #handleUnexpected} l'attrapait et l'utilisateur voyait une
+     * erreur brute. On clôt donc <b>net</b> ces flux (retour {@code null} : rien n'est réécrit).
+     *
+     * <p>Sur un endpoint JSON classique dont la réponse n'est pas encore engagée, on rend une
+     * erreur normale {@code 503}. Ce chemin reste un filet de sécurité : côté relais, le délai
+     * async est désormais fixé au-delà du délai d'outil (SF-38-28), donc il ne se déclenche plus
+     * avant l'issue de l'appel.</p>
+     */
+    @ExceptionHandler(AsyncRequestTimeoutException.class)
+    public ResponseEntity<ErrorResponse> handleAsyncTimeout(AsyncRequestTimeoutException ex,
+            HttpServletResponse response) {
+        String contentType = response.getContentType();
+        boolean ndjsonStream = response.isCommitted()
+                || (contentType != null
+                        && contentType.startsWith(MediaType.APPLICATION_NDJSON_VALUE));
+        if (ndjsonStream) {
+            // Flux déjà engagé (ou de type ndjson) : aucune réécriture possible sans casser le
+            // cadrage. On se tait — jamais d'ErrorResponse objet sur un flux x-ndjson.
+            log.warn("Délai async dépassé sur un flux ndjson : clôture nette, sans ErrorResponse");
+            return null;
+        }
+        log.warn("Délai async dépassé avant l'ouverture du flux");
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(new ErrorResponse("request_timeout",
+                        "Le traitement a dépassé le délai imparti. Veuillez réessayer."));
     }
 
     @ExceptionHandler(Exception.class)
