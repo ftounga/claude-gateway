@@ -19,6 +19,8 @@ public record MeetingResponse(
         boolean consentAcknowledged,
         int retentionDays,
         String captureRef,
+        boolean hasAudio,
+        Long audioBytes,
         OffsetDateTime startedAt,
         OffsetDateTime endedAt,
         OffsetDateTime createdAt) {
@@ -26,6 +28,7 @@ public record MeetingResponse(
     public static MeetingResponse of(Meeting m) {
         return new MeetingResponse(m.getId(), m.getHostId(), m.getSubjectId(), m.getTitle(),
                 m.getMeetingUrl(), m.getState().name(), m.isConsentAcknowledged(), m.getRetentionDays(),
-                m.getCaptureRef(), m.getStartedAt(), m.getEndedAt(), m.getCreatedAt());
+                m.getCaptureRef(), m.getAudioKey() != null, m.getAudioBytes(),
+                m.getStartedAt(), m.getEndedAt(), m.getCreatedAt());
     }
 }

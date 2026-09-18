@@ -118,6 +118,17 @@ public class TeamsToolCatalog {
      */
     public static final String MEETING_JOIN = "teams_meeting_join";
     /**
+     * <b>Démarre la capture d'onglet</b> (F-128 / SF-128-02) : audio de l'onglet Teams + micro, mixés,
+     * enregistrés dans l'onglet du Chrome managé (script injecté par CDP). Appelé directement par le
+     * backend après le join ; hors {@link #CATALOG} agent.
+     */
+    public static final String MEETING_CAPTURE_START = "teams_meeting_capture_start";
+    /**
+     * <b>Arrête la capture d'onglet et remonte l'audio</b> (F-128 / SF-128-02). Le runner stoppe
+     * l'enregistrement, récupère les octets et les téléverse à la gateway. Hors {@link #CATALOG} agent.
+     */
+    public static final String MEETING_CAPTURE_STOP = "teams_meeting_capture_stop";
+    /**
      * <b>Liste les fichiers</b> d'une bibliothèque Teams / SharePoint / OneDrive (F-108 / SF-108-03).
      * Une <b>lecture</b> : aucune confirmation.
      */

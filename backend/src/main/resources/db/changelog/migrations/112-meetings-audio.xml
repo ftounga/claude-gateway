@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-128 / SF-128-02 — L'AUDIO DE LA REUNION.
+
+      On rattache à l'artefact réunion l'audio capturé (onglet Teams + micro, mixé), remonté par le
+      runner et stocké en objet (WorkspaceStorage). Deux colonnes NULLABLES ajoutées à meetings :
+      audio_key (la clé de stockage) et audio_bytes (la taille). Nullable et additif : les réunions
+      existantes restent valides (aucune n'a encore d'audio). Réversible : dropColumn.
+    -->
+    <changeSet id="112-meetings-audio" author="claude-gateway">
+        <addColumn tableName="meetings">
+            <column name="audio_key" type="varchar(300)"/>
+            <column name="audio_bytes" type="bigint"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="meetings" columnName="audio_key"/>
+            <dropColumn tableName="meetings" columnName="audio_bytes"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

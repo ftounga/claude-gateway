@@ -4,6 +4,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -35,6 +37,8 @@ import fr.claudegateway.teams.meeting.dto.MeetingResponse;
  */
 @Service
 public class TeamsMeetingService {
+
+    private static final Logger log = LoggerFactory.getLogger(TeamsMeetingService.class);
 
     private final MeetingRepository repository;
     private final WorkspaceService workspaceService;
@@ -85,7 +89,26 @@ public class TeamsMeetingService {
                 .captureRef(readCaptureRef(result))
                 .startedAt(OffsetDateTimeProvider.now())
                 .build();
-        return MeetingResponse.of(repository.save(meeting));
+        Meeting saved = repository.save(meeting);
+        // SF-128-02 : démarre la capture d'onglet (audio réunion + micro). Best-effort : un micro
+        // refusé ne défait pas la réunion rejointe — l'utilisateur est dans le call, il verra
+        // simplement l'artefact sans audio. Le join (ci-dessus) reste la seule garde de création.
+        startCapture(target, saved.getId());
+        return MeetingResponse.of(saved);
+    }
+
+    private void startCapture(RunnerTarget target, UUID meetingId) {
+        ObjectNode input = objectMapper.createObjectNode();
+        input.put("meeting_id", meetingId.toString());
+        try {
+            RunnerCallResult result = runnerToolGateway.teamsRead(target, UUID.randomUUID().toString(),
+                    TeamsToolCatalog.MEETING_CAPTURE_START, input);
+            if (!result.ok()) {
+                log.info("Capture non démarrée pour la réunion {} : {}", meetingId, result.errorCode());
+            }
+        } catch (RuntimeException e) {
+            log.info("Capture non démarrée pour la réunion {} (runner)", meetingId);
+        }
     }
 
     /** Arrête la capture : passe STOPPED et horodate la fin. (Ordre runner d'arrêt = SF-128-02.) */
@@ -96,7 +119,29 @@ public class TeamsMeetingService {
         }
         meeting.setState(MeetingState.STOPPED);
         meeting.setEndedAt(OffsetDateTimeProvider.now());
-        return MeetingResponse.of(repository.save(meeting));
+        Meeting saved = repository.save(meeting);
+        // SF-128-02 : arrête la capture et déclenche la remontée de l'audio. Le runner téléverse
+        // PENDANT cet appel (dépôt qui renseigne audio_key sur la ligne déjà STOPPED) ; on recharge
+        // ensuite pour rendre l'artefact avec son audio. Best-effort : un échec n'empêche pas l'arrêt.
+        stopCapture(scope, saved.getId());
+        return MeetingResponse.of(require(scope, saved.getId()));
+    }
+
+    private void stopCapture(RadarScope scope, UUID meetingId) {
+        ObjectNode input = objectMapper.createObjectNode();
+        input.put("meeting_id", meetingId.toString());
+        try {
+            Workspace teamsTerminal = workspaceService.openTeamsTerminal(scope.userId(), scope.hostId());
+            RunnerTarget target = RunnerTargets.of(teamsTerminal);
+            RunnerCallResult result = runnerToolGateway.teamsRead(target, UUID.randomUUID().toString(),
+                    TeamsToolCatalog.MEETING_CAPTURE_STOP, input);
+            if (!result.ok()) {
+                log.info("Arrêt de capture sans remontée pour la réunion {} : {}", meetingId,
+                        result.errorCode());
+            }
+        } catch (RuntimeException e) {
+            log.info("Arrêt de capture sans remontée pour la réunion {} (runner)", meetingId);
+        }
     }
 
     /** Met la capture en pause (RECORDING → PAUSED). */
