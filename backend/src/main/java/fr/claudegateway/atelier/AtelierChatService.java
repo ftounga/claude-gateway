@@ -1130,11 +1130,17 @@ public class AtelierChatService implements RelayInterruptTarget {
                     "", false, false, false, banner));
         }
         String finalText = "";
-        // F-125 / SF-125-07 — ceinture « jamais un tour vide » : le dernier texte destiné à
-        // l'utilisateur (non vide APRÈS strip du marqueur fin-de-tour) émis au fil des itérations. Il
-        // survit aux itérations de plomberie postérieures (édition de la carte, END_OF_TURN) : à la
-        // clôture, une réponse déjà streamée n'est jamais remplacée par un message vide.
-        String lastUserText = "";
+        // F-125 / SF-125-07 + SF-125-08 — la réponse conservée est le TEXTE DE FOND du tour, pas le
+        // dernier texte. Un bloc <<essentiel>> (F-126) émis tôt ne peut plus être évincé par une note
+        // de plomberie de carte émise tard (cas réel CAGIP : essentiel+détail streamés, puis une note
+        // « déjà dans acces.md:465 » persistée à leur place). `backgroundText` retient ce texte de fond
+        // — l'essentiel en priorité, sinon le dernier texte substantiel qui n'est PAS de la plomberie
+        // de carte. Il survit aux itérations postérieures et fait, à la clôture, converger l'affichage
+        // (événement `done`) et la base sur la même valeur (SF-125-07).
+        String backgroundText = "";
+        // Vrai dès qu'un bloc <<essentiel>> a été retenu : un texte postérieur SANS essentiel ne peut
+        // plus l'évincer (SF-125-08 §1) ; seul un essentiel plus tardif le remplace (dernier essentiel).
+        boolean retainedHasEssential = false;
 
         log.info("Tour d'atelier ouvert (workspace={}, cible={}, plafond={} étapes)",
                 workspaceId, workspace.executionTargetOrDefault(), maxIterations);
@@ -1266,13 +1272,24 @@ public class AtelierChatService implements RelayInterruptTarget {
                 finalText = TRUNCATED_REPLY;
                 break;
             }
-            // F-125 / SF-125-07 : mémorise le dernier texte destiné à l'utilisateur (non vide après
-            // strip). Vaut pour un texte accompagnant des outils comme pour un texte final ; c'est ce
-            // qui permet, à la clôture, de conserver une réponse déjà produite plutôt que de la
-            // remplacer par le vide d'une itération de plomberie ultérieure.
+            // F-125 / SF-125-07 + SF-125-08 : rétention par SUBSTANCE, pas par ordre. On mémorise le
+            // TEXTE DE FOND du tour (non vide après strip), pas simplement le dernier texte. Vaut pour
+            // un texte accompagnant des outils comme pour un texte final. Trois cas :
+            //  - un bloc <<essentiel>> (F-126) est un signal fort de réponse de fond : on le retient, et
+            //    le DERNIER essentiel gagne (plusieurs essentiels dans le tour) ;
+            //  - à défaut d'essentiel déjà retenu, on garde le dernier texte SUBSTANTIEL qui n'est pas
+            //    une note de plomberie de carte (F-125-05 côté serveur : un statut de rangement n'est
+            //    jamais promu en réponse) ;
+            //  - sinon (essentiel déjà retenu, ou texte de plomberie) : on ne remplace pas — un texte
+            //    postérieur sans essentiel ne peut pas évincer l'essentiel déjà produit.
             String strippedTurnText = stripTurnMetadata(turn.text());
             if (strippedTurnText != null && !strippedTurnText.isBlank()) {
-                lastUserText = turn.text();
+                if (hasEssential(turn.text())) {
+                    backgroundText = turn.text();
+                    retainedHasEssential = true;
+                } else if (!retainedHasEssential && !isCardPlumbing(turn.text())) {
+                    backgroundText = turn.text();
+                }
             }
             if (turn.finished() || turn.toolCalls().isEmpty()) {
                 finalText = turn.text();
@@ -1313,24 +1330,25 @@ public class AtelierChatService implements RelayInterruptTarget {
                     log.info("Fin de tour rendue au modèle après {} blocage(s) (workspace={})",
                             endOfTurnBlocks, workspaceId);
                 }
-                // F-125 / SF-125-07 — CEINTURE « jamais un tour vide », à la clôture NORMALE du tour
-                // (ce point est le seul où le modèle a rendu la main de lui-même ; les autres sorties
-                // sont des arrêts subis, avec leur propre message). Trois cas, dans l'ordre :
-                String strippedFinal = stripTurnMetadata(finalText);
-                if (strippedFinal != null && !strippedFinal.isBlank()) {
-                    // 1) Ce dernier tour a bien un texte : c'est la réponse (comportement d'avant).
+                // F-125 / SF-125-07 + SF-125-08 — CEINTURE « jamais un tour vide » ET « jamais la
+                // plomberie de carte », à la clôture NORMALE du tour (seul point où le modèle rend la
+                // main de lui-même ; les autres sorties sont des arrêts subis, avec leur propre
+                // message). La rétention par substance (plus haut) a déjà intégré le texte de CE tour
+                // final dans `backgroundText`. Deux cas :
+                String strippedBackground = stripTurnMetadata(backgroundText);
+                if (strippedBackground != null && !strippedBackground.isBlank()) {
+                    // 1) Un TEXTE DE FOND existe (essentiel prioritaire, sinon dernier texte substantiel
+                    // non-plomberie) : c'est la réponse. Même si ce dernier tour a fini sur une note de
+                    // plomberie de carte (cas réel CAGIP), elle ne peut pas l'évincer. Déjà défilé côté
+                    // SSE ; le persister ici fait converger l'affichage (`done`) et la base.
+                    finalText = backgroundText;
                     break;
                 }
-                if (!lastUserText.isBlank()) {
-                    // 2) Un texte a été produit et VU plus tôt dans le tour : on le CONSERVE. Une
-                    // itération de plomberie postérieure (carte, END_OF_TURN) ne l'écrase pas par du
-                    // vide. Il a déjà défilé côté SSE ; le persister ici fait converger l'affichage et
-                    // la base sur la même valeur — c'était précisément la divergence à l'origine du bug.
-                    finalText = lastUserText;
-                    break;
-                }
-                // 3) Vraiment aucun texte de tout le tour : une passe de synthèse forcée, UNIQUE,
-                // sans outils et hors de tout crochet — elle ne peut ni agir ni relancer un blocage.
+                // 2) Aucun texte de fond de tout le tour (rien, ou seulement de la plomberie de carte) :
+                // on ne promeut JAMAIS une note de plomberie en réponse (F-125-05 côté serveur). On
+                // provoque une passe de synthèse forcée plutôt que d'afficher la plomberie.
+                // Passe de synthèse forcée, UNIQUE, sans outils et hors de tout crochet — elle ne peut
+                // ni agir ni relancer un blocage.
                 AgentTurn synthesis = forceSynthesis(system, messages, apiKey, turnMode);
                 inputTokens += synthesis.inputTokens();
                 outputTokens += synthesis.outputTokens();
@@ -1726,6 +1744,105 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
         // Le retrait peut laisser des lignes vides en fin de réponse ou une triple coupure au milieu.
         return stripped.replaceAll("\\n{3,}", "\n\n").strip();
+    }
+
+    // ----------------------------------------------------------------------------------------------
+    // F-125 / SF-125-08 — rétention du TEXTE DE FOND : détection de l'essentiel et de la plomberie.
+    // ----------------------------------------------------------------------------------------------
+
+    /** Ouverture du marqueur essentiel (F-126), tolérante à la casse et aux espaces : {@code <<essentiel>>}. */
+    private static final java.util.regex.Pattern ESSENTIAL_OPEN =
+            java.util.regex.Pattern.compile("<<\\s*essentiel\\s*>>", java.util.regex.Pattern.CASE_INSENSITIVE);
+    /** Fermeture du marqueur essentiel (F-126) : {@code <</essentiel>>}. */
+    private static final java.util.regex.Pattern ESSENTIAL_CLOSE =
+            java.util.regex.Pattern.compile("<<\\s*/\\s*essentiel\\s*>>", java.util.regex.Pattern.CASE_INSENSITIVE);
+
+    /**
+     * Un bloc {@code <<essentiel>>} (F-126) exploitable est-il présent dans ce texte ?
+     *
+     * <p>Miroir <b>serveur</b> de {@code splitEssential} (frontend {@code essential.ts}) : la logique
+     * F-126 vit côté client (rendu), inatteignable depuis Java ; on en reprend ici la seule décision
+     * dont la rétention a besoin — « y a-t-il un essentiel non vide ? ». Même tolérance (casse, espaces
+     * internes) et même repli que le front : ouverture sans fermeture (streaming/troncature) → tout ce
+     * qui suit l'ouverture compte comme essentiel ; essentiel vide après trim → pas d'essentiel.</p>
+     */
+    static boolean hasEssential(String raw) {
+        if (raw == null || raw.isEmpty()) {
+            return false;
+        }
+        java.util.regex.Matcher open = ESSENTIAL_OPEN.matcher(raw);
+        if (!open.find()) {
+            return false;
+        }
+        String afterOpen = raw.substring(open.end());
+        java.util.regex.Matcher close = ESSENTIAL_CLOSE.matcher(afterOpen);
+        String essential = close.find() ? afterOpen.substring(0, close.start()) : afterOpen;
+        return !essential.strip().isEmpty();
+    }
+
+    /**
+     * Longueur maximale d'un texte encore susceptible d'être une simple <b>note de plomberie de
+     * carte</b>. Au-delà, on refuse de le classer plomberie et on le garde : un texte long est une
+     * réponse, jamais un statut de rangement. Le cas réel faisait 212 caractères ; la borne est large.
+     */
+    private static final int PLUMBING_MAX_CHARS = 400;
+    /** Une réponse réduite à une simple référence {@code fichier.md:ligne} — de la plomberie, pas une réponse. */
+    private static final java.util.regex.Pattern BARE_MD_REF =
+            java.util.regex.Pattern.compile("^[\\w./\\\\-]+\\.md:\\d+$");
+
+    /**
+     * Ce texte est-il reconnaissable comme une <b>note de plomberie de carte</b> (F-125-05, cadrage
+     * SF-125-08 §2) plutôt que comme une réponse de fond à l'utilisateur ?
+     *
+     * <p><b>Détection volontairement conservatrice</b> — contrainte PO absolue : ne jamais masquer une
+     * vraie réponse. Un faux négatif (on garde un texte de plomberie) est toléré ; un faux positif (on
+     * masque une vraie réponse) est interdit. On ne classe donc plomberie qu'un texte qui réunit
+     * <b>toutes</b> les conditions suivantes :</p>
+     * <ul>
+     *   <li>il ne contient <b>aucun</b> bloc essentiel (un essentiel est, par nature, une réponse) ;</li>
+     *   <li>il est <b>court</b> (≤ {@link #PLUMBING_MAX_CHARS}) — un texte long est une réponse ;</li>
+     *   <li>il correspond à une <b>formule de plomberie connue</b> : une simple référence
+     *       {@code fichier.md:ligne} ; « déjà dans la carte » ; « déjà rangé » (accompagné d'un indice
+     *       de carte : un {@code .md}, « carte » ou « gouvernance ») ; « vérifié : … déjà … » avec un
+     *       {@code .md} ; ou « déjà dans … {@code .md} » (le cas réel CAGIP).</li>
+     * </ul>
+     */
+    static boolean isCardPlumbing(String raw) {
+        if (raw == null || raw.isEmpty()) {
+            return false;
+        }
+        String stripped = stripTurnMetadata(raw);
+        if (stripped == null) {
+            return false;
+        }
+        String text = stripped.strip();
+        if (text.isEmpty() || hasEssential(text) || text.length() > PLUMBING_MAX_CHARS) {
+            return false;
+        }
+        if (BARE_MD_REF.matcher(text).matches()) {
+            return true;
+        }
+        String low = text.toLowerCase(java.util.Locale.ROOT);
+        boolean mentionsMd = low.contains(".md");
+        boolean mentionsCarte = low.contains("carte");
+        boolean mentionsGouvernance = low.contains("gouvernance");
+        // « déjà dans la carte » : statut de rangement explicite.
+        if (low.matches("(?s).*d[ée]j[àa]\\s+dans\\s+la\\s+carte.*")) {
+            return true;
+        }
+        // « déjà rangé » accompagné d'un indice de carte (fichier .md, « carte » ou « gouvernance »).
+        if (low.matches("(?s).*d[ée]j[àa]\\s+rang[ée]e?.*") && (mentionsMd || mentionsCarte || mentionsGouvernance)) {
+            return true;
+        }
+        // « vérifié : … déjà … » renvoyant à un fichier de carte (.md) — la forme exacte du cas réel.
+        if (mentionsMd && low.matches("(?s).*v[ée]rifi[ée]e?\\s*:.*d[ée]j[àa].*")) {
+            return true;
+        }
+        // « déjà dans `X.md` » sans passer par « la carte ».
+        if (mentionsMd && low.matches("(?s).*d[ée]j[àa]\\s+dans\\b.*")) {
+            return true;
+        }
+        return false;
     }
 
     /**
