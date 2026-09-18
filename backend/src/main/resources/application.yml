@@ -301,8 +301,14 @@ app:
         # En configuration parce qu'ils changent quand le fournisseur change ses tarifs.
         input-cost-per-million-tokens: ${APP_ATELIER_AGENT_INPUT_COST_PER_M:5.00}
         output-cost-per-million-tokens: ${APP_ATELIER_AGENT_OUTPUT_COST_PER_M:25.00}
-        # Cache : 0,1x l'entree en lecture, 1,25x en ecriture (TTL 5 min, celui que pose la boucle
-        # d'agent). Ratios publies par le fournisseur, ici au tarif Opus 5.
+        # Cache : 0,1x l'entree en lecture, 1,25x en ecriture (TTL 5 min) / 2x (TTL 1 h). Ratios
+        # publies par le fournisseur, ici au tarif Opus 5. Depuis F-130 / SF-130-01 la boucle maison
+        # pose un cache TTL 1 h (cout d'ecriture reel 2x), mais ce tarif est PARTAGE avec le decompte
+        # des Managed Agents (meme prefixe app.atelier.agent.cost, hors perimetre SF-130-01) : on le
+        # laisse a 6,25 volontairement. Le TTL 1 h rend les CREATIONS de cache rares (l'entree est
+        # relue d'un tour a l'autre au tarif lecture), donc le residu sous-compte est negligeable et
+        # au benefice du client (jamais de sur-facturation) — la marge reste protegee. Le decompte de
+        # VOLUME (cache_creation/cache_read) est, lui, inchange et correct.
         cache-read-cost-per-million-tokens: ${APP_ATELIER_AGENT_CACHE_READ_COST_PER_M:0.50}
         cache-write-cost-per-million-tokens: ${APP_ATELIER_AGENT_CACHE_WRITE_COST_PER_M:6.25}
         # Ce que VAUT un token de quota, en dollars par million. Remplace `cost-per-million-tokens`

@@ -177,6 +177,8 @@ class AnthropicAgentProviderTest {
         assertThat(system.isArray()).isTrue();
         assertThat(system.get(0).get("text").asText()).isEqualTo("consigne de projet");
         assertThat(system.get(0).path("cache_control").path("type").asText()).isEqualTo("ephemeral");
+        // TTL 1 h (F-130 / SF-130-01) : un usage étalé relit le préfixe au lieu de le ré-écrire.
+        assertThat(system.get(0).path("cache_control").path("ttl").asText()).isEqualTo("1h");
     }
 
     @Test
@@ -187,6 +189,8 @@ class AnthropicAgentProviderTest {
         JsonNode messages = body.get("messages");
         JsonNode lastBlock = messages.get(messages.size() - 1).get("content").get(0);
         assertThat(lastBlock.path("cache_control").path("type").asText()).isEqualTo("ephemeral");
+        // TTL 1 h (F-130 / SF-130-01) : les deux marqueurs portent le même TTL (aucun TTL mixte).
+        assertThat(lastBlock.path("cache_control").path("ttl").asText()).isEqualTo("1h");
     }
 
     @Test
@@ -871,9 +875,15 @@ class AnthropicAgentProviderTest {
             // dernier message marqué. Le corps est celui du non streamé + `stream:true`.
             assertThat(body.path("system").get(0).path("cache_control").path("type").asText())
                     .isEqualTo("ephemeral");
+            // TTL 1 h porté aussi sur le chemin streamé (F-130 / SF-130-01) : le corps est celui du
+            // non streamé + `stream:true`, le marqueur ne bouge pas.
+            assertThat(body.path("system").get(0).path("cache_control").path("ttl").asText())
+                    .isEqualTo("1h");
             JsonNode messages = body.get("messages");
             assertThat(messages.get(messages.size() - 1).get("content").get(0)
                     .path("cache_control").path("type").asText()).isEqualTo("ephemeral");
+            assertThat(messages.get(messages.size() - 1).get("content").get(0)
+                    .path("cache_control").path("ttl").asText()).isEqualTo("1h");
             // Deux marqueurs, comme le non streamé (SF-39-01) : le flux n'en ajoute aucun.
             assertThat(captured.get().split("cache_control", -1).length - 1).isEqualTo(2);
         } catch (Exception ex) {
