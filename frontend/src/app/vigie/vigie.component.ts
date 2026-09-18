@@ -64,6 +64,7 @@ import {
 } from './radar-verification/radar-verification-dialog.component';
 import { RadarBoardComponent } from './radar/radar-board.component';
 import { RadarDirectoryComponent } from './radar-directory/radar-directory.component';
+import { MeetingCapturePanelComponent } from './meeting-capture/meeting-capture-panel.component';
 import {
   VIGIE_TABS,
   VIGIE_TAB_LABELS,
@@ -104,6 +105,7 @@ export type VigieError = 'none' | 'network' | 'forbidden' | 'not-entitled';
     MissionBadgeComponent,
     RadarBoardComponent,
     RadarDirectoryComponent,
+    MeetingCapturePanelComponent,
     RadarScheduleComponent,
     HostMailAddressComponent,
     VigieReadinessComponent,

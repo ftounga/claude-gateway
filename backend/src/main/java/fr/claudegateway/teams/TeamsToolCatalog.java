@@ -111,6 +111,13 @@ public class TeamsToolCatalog {
     /** Où en est l'enregistrement local, et ceux d'avant (F-91 / SF-91-02). */
     public static final String CAPTURE_STATUS = "teams_capture_status";
     /**
+     * <b>Rejoindre une réunion dans le Chrome managé</b> (F-128 / SF-128-01, cadrage §2bis) : ouvre et
+     * navigue l'onglet Teams du Chrome managé vers l'URL de la réunion. Appelé <b>directement par le
+     * backend</b> (service Réunions), hors boucle agent : il n'entre donc PAS dans {@link #CATALOG} (la
+     * liste donnée au modèle) — c'est une commande d'orchestration de la Vigie, pas un outil de l'agent.
+     */
+    public static final String MEETING_JOIN = "teams_meeting_join";
+    /**
      * <b>Liste les fichiers</b> d'une bibliothèque Teams / SharePoint / OneDrive (F-108 / SF-108-03).
      * Une <b>lecture</b> : aucune confirmation.
      */
