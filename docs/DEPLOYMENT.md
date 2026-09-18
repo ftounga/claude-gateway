@@ -77,8 +77,14 @@ aws ecr get-login-password --profile legalcase-terraform --region $REGION \
   | docker login --username AWS --password-stdin $REG
 TAG=staging-$(git rev-parse --short HEAD)
 
-# ⚠️ Contexte de build = RACINE du dépôt (le Dockerfile copie backend/ ET runner/), via -f :
-docker build -f backend/Dockerfile -t $REG/claude-gateway-backend:$TAG -t $REG/claude-gateway-backend:staging-latest .
+# ⚠️ Contexte de build = RACINE du dépôt (le Dockerfile copie backend/ ET runner/), via -f.
+# ⚠️ Clé de signature du runner OBLIGATOIRE (mises à jour du runner « en un clic »), via BuildKit --secret.
+#    (repli sans signature : --build-arg REQUIRE_RUNNER_SIGNATURE=false)
+KEY_FILE=$(mktemp); trap 'rm -f "$KEY_FILE"' EXIT
+aws secretsmanager get-secret-value --profile legalcase-terraform --region eu-west-3 \
+  --secret-id claude-gateway/runner-update-signing-key --query SecretString --output text > "$KEY_FILE"
+DOCKER_BUILDKIT=1 docker build -f backend/Dockerfile --secret id=runner_signing_key,src="$KEY_FILE" \
+  -t $REG/claude-gateway-backend:$TAG -t $REG/claude-gateway-backend:staging-latest .
 docker push $REG/claude-gateway-backend:$TAG && docker push $REG/claude-gateway-backend:staging-latest
 
 docker build --build-arg BUILD_CONFIGURATION=production \
