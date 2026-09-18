@@ -11,6 +11,7 @@ import { VigieRadarCounts } from '../core/models/vigie.models';
 import { RadarBrief } from '../core/models/radar.models';
 import { AtelierService } from '../core/services/atelier.service';
 import { RadarService } from '../core/services/radar.service';
+import { TeamsMeetingService } from '../core/services/teams-meeting.service';
 import { MailService } from '../core/services/mail.service';
 import { EMPTY } from 'rxjs';
 import { VigieService } from '../core/services/vigie.service';
@@ -126,6 +127,9 @@ describe('VigieComponent', () => {
         { provide: MatDialog, useValue: dialog },
         { provide: MatSnackBar, useValue: snackBar },
         { provide: RadarService, useValue: radar },
+        // F-128 / SF-128-01 : l'onglet Réunions rend le panneau de capture (composant enfant).
+        { provide: TeamsMeetingService,
+          useValue: jasmine.createSpyObj<TeamsMeetingService>('TeamsMeetingService', { list: of([]) }) },
         // F-110 / SF-110-01 : la ligne des courriels du client se tait ici (lecture sans réponse).
         { provide: MailService, useValue: jasmine.createSpyObj<MailService>('MailService', { address: EMPTY }) },
         { provide: RadarExporter, useValue: exporter },
@@ -440,12 +444,10 @@ describe('VigieComponent', () => {
     expect(component.openingConversationHostId()).toBeNull();
   });
 
-  it("l'onglet Réunions ouvre la même conversation", () => {
+  it("l'onglet Réunions affiche le panneau de capture (F-128 / SF-128-01)", () => {
     const root = build({ tab: 'reunions' });
 
-    root.querySelector<HTMLButtonElement>('.vigie__open-meetings')?.click();
-
-    expect(atelier.openTeamsTerminal).toHaveBeenCalledOnceWith('h1');
+    expect(root.querySelector('app-meeting-capture-panel')).not.toBeNull();
   });
 
   it("une ouverture refusée le dit, et ne navigue pas", () => {

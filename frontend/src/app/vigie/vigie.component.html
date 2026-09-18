@@ -297,27 +297,15 @@
                   </div>
                 }
                 @case ('reunions') {
-                  <div class="vigie__placeholder vigie__reunions">
-                    <mat-icon aria-hidden="true">event</mat-icon>
-                    <div>
-                      <h3>Les réunions de {{ host.name }}</h3>
-                      <p>
-                        Comptes rendus, captures d'écran des moments clés et enregistrements se demandent
-                        dans la conversation : « résume la réunion d'hier », « montre-moi le schéma
-                        présenté à 14 h ».
-                      </p>
-                      <button
-                        mat-stroked-button
-                        type="button"
-                        class="vigie__open-meetings"
-                        [disabled]="openingConversationHostId() !== null"
-                        (click)="openConversation(host)"
-                      >
-                        <mat-icon>forum</mat-icon>
-                        Ouvrir la conversation
-                      </button>
-                    </div>
-                  </div>
+                  <!-- F-128 / SF-128-01 : rejoindre & capturer une réunion Teams, l'indicateur de
+                       capture, l'arrêt/pause, et les réunions passées. -->
+                  @if (host.id; as hostId) {
+                    <app-meeting-capture-panel
+                      class="vigie__meetings"
+                      [hostId]="hostId"
+                      [hostName]="host.name"
+                    ></app-meeting-capture-panel>
+                  }
                 }
                 @case ('personnes') {
                   @if (peopleOf(host); as people) {

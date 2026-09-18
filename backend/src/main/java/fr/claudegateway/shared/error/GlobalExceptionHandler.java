@@ -944,6 +944,44 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse("invalid_activity_config", ex.getMessage()));
     }
 
+    // --------------------------------------------- F-128 : artefact réunion (Vigie)
+
+    @ExceptionHandler(fr.claudegateway.teams.meeting.MeetingNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleMeetingNotFound(
+            fr.claudegateway.teams.meeting.MeetingNotFoundException ex) {
+        // Réunion inconnue OU d'un autre couple (user_id, host_id) : indiscernables (F-128 / SF-128-01).
+        log.debug("Réunion introuvable ou hors périmètre");
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ErrorResponse("not_found", ex.getMessage()));
+    }
+
+    @ExceptionHandler(fr.claudegateway.teams.meeting.MeetingValidationException.class)
+    public ResponseEntity<ErrorResponse> handleMeetingValidation(
+            fr.claudegateway.teams.meeting.MeetingValidationException ex) {
+        log.debug("Requête de réunion refusée : {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("invalid_meeting", ex.getMessage()));
+    }
+
+    @ExceptionHandler(fr.claudegateway.teams.meeting.MeetingStateException.class)
+    public ResponseEntity<ErrorResponse> handleMeetingState(
+            fr.claudegateway.teams.meeting.MeetingStateException ex) {
+        // Transition interdite (ex. arrêter une réunion déjà terminée) : un conflit d'état, pas une panne.
+        log.debug("Transition de réunion refusée : {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("invalid_state", ex.getMessage()));
+    }
+
+    @ExceptionHandler(fr.claudegateway.teams.meeting.MeetingCaptureException.class)
+    public ResponseEntity<ErrorResponse> handleMeetingCapture(
+            fr.claudegateway.teams.meeting.MeetingCaptureException ex) {
+        // L'ordre de capture (rejoindre l'onglet dans le Chrome managé) n'a pas abouti : le code
+        // distingue poste injoignable et Chrome managé injoignable, pour guider l'écran (F-128 / §2bis).
+        log.debug("Capture de réunion refusée : {} ({})", ex.getMessage(), ex.code());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse(ex.code(), ex.getMessage()));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpected(Exception ex) {
         log.error("Erreur inattendue traitée par le handler global", ex);

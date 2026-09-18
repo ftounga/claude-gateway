@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-128 / SF-128-01 — L'ARTEFACT « REUNION » (Rejoindre & capturer depuis la Vigie).
+
+      meetings : une reunion Teams capturee depuis un poste. Chaque ligne porte user_id ET host_id ;
+      la reunion d'un poste ne se lit jamais depuis un autre poste, ni depuis un autre compte
+      (isolation, cadrage F-128 §6). subject_id est un POINTEUR nullable vers radar_subjects (le sujet
+      que la reunion enrichit) : pas de cle etrangere, comme le registre du Radar (081) — le cycle de
+      vie d'un sujet ne doit pas bloquer une reunion, ni l'inverse ; la resolution du lien se fait a la
+      lecture, sous la meme portee user_id+host_id.
+
+      state : RECORDING (session ouverte, onglet rejoint) / PAUSED / STOPPED / FAILED. En SF-128-01, les
+      octets media ne sont pas encore captures (SF-128-02) : RECORDING signifie « capture demandee /
+      onglet rejoint ». retention_days : duree de conservation (defaut 30, borne applicative [1;365]) ;
+      la purge active est SF-128-07.
+
+      Cles etrangeres EN CASCADE vers users et runner_hosts : aucune reunion ne survit au poste ni au
+      compte. Types portables (un seul changeSet PostgreSQL + H2). Reversible : dropTable.
+    -->
+    <changeSet id="111-meetings" author="claude-gateway">
+        <createTable tableName="meetings">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"
+                             foreignKeyName="fk_meetings_user"
+                             references="users(id)" deleteCascade="true"/>
+            </column>
+            <column name="host_id" type="uuid">
+                <constraints nullable="false"
+                             foreignKeyName="fk_meetings_host"
+                             references="runner_hosts(id)" deleteCascade="true"/>
+            </column>
+            <column name="subject_id" type="uuid"/>
+            <column name="title" type="varchar(300)"/>
+            <column name="meeting_url" type="varchar(2048)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="state" type="varchar(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="consent_acknowledged" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+            <column name="retention_days" type="int" defaultValueNumeric="30">
+                <constraints nullable="false"/>
+            </column>
+            <column name="capture_ref" type="varchar(200)"/>
+            <column name="started_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+            <column name="ended_at" type="timestamp with time zone"/>
+            <column name="created_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="meetings" indexName="idx_meetings_user_host_started">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="started_at"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="meetings"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
