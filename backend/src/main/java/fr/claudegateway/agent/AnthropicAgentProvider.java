@@ -78,8 +78,23 @@ public class AnthropicAgentProvider implements AiAgentProvider {
             Map.of("type", "web_search_20260209", "name", "web_search"),
             Map.of("type", "web_fetch_20260209", "name", "web_fetch"));
 
-    /** Marqueur de cache posé sur le dernier bloc d'un segment stable (F-39 / SF-39-01). */
-    private static final Map<String, Object> CACHE_CONTROL = Map.of("type", "ephemeral");
+    /**
+     * Marqueur de cache posé sur le dernier bloc d'un segment stable (F-39 / SF-39-01), porté en
+     * <b>TTL 1 heure</b> (F-130 / SF-130-01) au lieu des 5 minutes par défaut.
+     *
+     * <p>Les tours du poste sont <b>espacés dans la journée</b> : un cache 5 minutes expire entre
+     * deux tours, si bien qu'on re-paie la <b>création</b> du cache (2× le tarif d'entrée en 1 h,
+     * 1,25× en 5 min) au lieu de la <b>lecture</b> (0,1× le tarif d'entrée) — l'écart le plus lourd
+     * sur le poste de dépense principal (le contexte renvoyé à chaque tour). Le TTL 1 h garde
+     * l'entrée vivante à travers les pauses.</p>
+     *
+     * <p><b>Impact qualité strictement nul</b> : mêmes octets, même préfixe, même contexte vu par le
+     * modèle — seule la facturation change (cache-read au lieu de cache-creation). Le champ
+     * {@code ttl} est <b>GA</b> : aucun en-tête beta n'est requis (l'ancien
+     * {@code extended-cache-ttl-2025-04-11} n'a plus cours). Les deux marqueurs portant le même TTL,
+     * la règle « TTL long avant TTL court » est trivialement respectée.</p>
+     */
+    private static final Map<String, Object> CACHE_CONTROL = Map.of("type", "ephemeral", "ttl", "1h");
     /** Stratégie d'édition de contexte du fournisseur (F-39 / SF-39-12). */
     private static final String CLEAR_TOOL_USES_EDIT = "clear_tool_uses_20250919";
     /** En-tête beta exigé par l'édition de contexte (F-39 / SF-39-12). */
