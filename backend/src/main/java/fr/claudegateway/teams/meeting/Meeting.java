@@ -82,6 +82,14 @@ public class Meeting {
     @Column(name = "capture_ref", length = MAX_CAPTURE_REF_LENGTH)
     private String captureRef;
 
+    /** Clé de stockage objet de l'audio capturé (F-128 / SF-128-02), ou {@code null} tant qu'aucun audio. */
+    @Column(name = "audio_key", length = 300)
+    private String audioKey;
+
+    /** Taille de l'audio capturé, en octets (F-128 / SF-128-02), ou {@code null}. */
+    @Column(name = "audio_bytes")
+    private Long audioBytes;
+
     @Column(name = "started_at", nullable = false)
     private OffsetDateTime startedAt;
 

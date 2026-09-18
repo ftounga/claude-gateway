@@ -334,7 +334,10 @@ public class RunnerToolGateway {
         // l'isolation `user_id` tient sans dépendre de ce que le runner affirme. L'exception est
         // donc nommée ici, restreinte à ces deux outils, plutôt que d'ouvrir le champ à tous.
         if (fr.claudegateway.teams.TeamsToolCatalog.MEETING_MOMENTS.equals(tool)
-                || fr.claudegateway.teams.TeamsToolCatalog.MOMENTS_STATUS.equals(tool)) {
+                || fr.claudegateway.teams.TeamsToolCatalog.MOMENTS_STATUS.equals(tool)
+                // F-128 / SF-128-02 : l'arrêt de capture REMONTE l'audio ; la machine doit savoir dans
+                // quel terminal Teams déposer (revérifié possédé côté route de dépôt — l'isolation tient).
+                || fr.claudegateway.teams.TeamsToolCatalog.MEETING_CAPTURE_STOP.equals(tool)) {
             payload.put("workspace_id", String.valueOf(target.workspaceId()));
         }
         return router.call(target, callId, tool, payload, teamsTimeoutFor(tool));
@@ -352,8 +355,13 @@ public class RunnerToolGateway {
         }
         // F-128 / SF-128-01 : rejoindre une réunion charge la page Teams et son écran de pré-jonction —
         // plus long qu'une simple observation, aligné sur le délai des outils fichiers (jusqu'à 3 min).
-        if (fr.claudegateway.teams.TeamsToolCatalog.MEETING_JOIN.equals(tool)) {
+        if (fr.claudegateway.teams.TeamsToolCatalog.MEETING_JOIN.equals(tool)
+                || fr.claudegateway.teams.TeamsToolCatalog.MEETING_CAPTURE_START.equals(tool)) {
             return TEAMS_FILES_TIMEOUT_MS;
+        }
+        // F-128 / SF-128-02 : l'arrêt récupère les octets audio et les téléverse — long, comme un dépôt.
+        if (fr.claudegateway.teams.TeamsToolCatalog.MEETING_CAPTURE_STOP.equals(tool)) {
+            return TEAMS_UPLOAD_TIMEOUT_MS;
         }
         if (fr.claudegateway.teams.TeamsToolCatalog.UPLOAD_FILE.equals(tool)
                 || fr.claudegateway.teams.TeamsToolCatalog.REPLACE_VERSION.equals(tool)

@@ -102,6 +102,15 @@ public final class TeamsTools implements ToolExecutor {
      * {@link #CATALOG} — c'est une commande d'orchestration de la Vigie, pas un outil de l'agent.
      */
     public static final String MEETING_JOIN = "teams_meeting_join";
+    /**
+     * <b>Démarre la capture d'onglet</b> (F-128 / SF-128-02) : audio de l'onglet Teams + micro, mixés,
+     * enregistrés dans l'onglet du Chrome managé (script injecté). Hors {@link #CATALOG} agent.
+     */
+    public static final String MEETING_CAPTURE_START = "teams_meeting_capture_start";
+    /**
+     * <b>Arrête la capture d'onglet et remonte l'audio</b> (F-128 / SF-128-02). Hors {@link #CATALOG} agent.
+     */
+    public static final String MEETING_CAPTURE_STOP = "teams_meeting_capture_stop";
     public static final String CAPABILITY = "teams";
 
     /** Le catalogue, dans l'ordre où il est donné à l'agent. */
@@ -133,6 +142,8 @@ public final class TeamsTools implements ToolExecutor {
      * alors, il ne fait pas semblant.
      */
     private LocalCapture capture;
+    /** Uploader de l'audio de réunion (F-128 / SF-128-02) ; {@code null} = remontée indisponible. */
+    private MeetingAudioUploader meetingAudio;
 
     /**
      * La transcription locale (F-91 / SF-91-03). {@code null} quand ce runner n'en a pas — une
@@ -189,6 +200,12 @@ public final class TeamsTools implements ToolExecutor {
      */
     public TeamsTools withCapture(LocalCapture value) {
         this.capture = value;
+        return this;
+    }
+
+    /** Branche l'uploader de l'audio de réunion (F-128 / SF-128-02). */
+    public TeamsTools withMeetingAudio(MeetingAudioUploader value) {
+        this.meetingAudio = value;
         return this;
     }
 
@@ -380,6 +397,8 @@ public final class TeamsTools implements ToolExecutor {
             case CAPTURE_STOP -> captureStop(input, context);
             case CAPTURE_STATUS -> captureStatus(input);
             case MEETING_JOIN -> meetingJoin(input);
+            case MEETING_CAPTURE_START -> meetingCaptureStart(input);
+            case MEETING_CAPTURE_STOP -> meetingCaptureStop(input);
             case LIST_FILES -> files == null ? filesUnavailable(LIST_FILES) : files.listFiles(input);
             case READ_FILE -> files == null ? filesUnavailable(READ_FILE) : files.readFile(input);
             case READ_DOCX -> files == null ? filesUnavailable(READ_DOCX) : files.readDocx(input);
@@ -431,6 +450,115 @@ public final class TeamsTools implements ToolExecutor {
         } catch (RuntimeException e) {
             return ToolOutcome.error("navigate_failed", "L'ouverture de la réunion a échoué.");
         }
+    }
+
+    /**
+     * <b>Démarre la capture d'onglet</b> (F-128 / SF-128-02) : injecte le script de capture avec un
+     * geste utilisateur simulé (sans lui, {@code getDisplayMedia} refuse). L'invite de partage d'onglet
+     * et l'invite micro s'affichent alors à l'utilisateur — c'est voulu (consentement, jamais en silence).
+     */
+    private ToolOutcome meetingCaptureStart(JsonNode input) {
+        if (!enabled) {
+            return ToolOutcome.error("browser_unreachable", disabledReason);
+        }
+        try {
+            JsonNode value = evalInPage(MeetingTabCapture.START_SCRIPT, true);
+            if (value != null && value.path("started").asBoolean(false)) {
+                ObjectNode json = mapper.createObjectNode();
+                json.put("started", true);
+                json.put("micDenied", value.path("micDenied").asBoolean(false));
+                return ToolOutcome.ok(json.toString());
+            }
+            String error = value == null ? "capture_start_failed"
+                    : value.path("error").asText("capture_start_failed");
+            String code = "NotAllowedError".equals(error) ? "permission_denied" : "capture_start_failed";
+            return ToolOutcome.error(code, "La capture d'onglet n'a pas démarré : " + error);
+        } catch (BrowserLinkException e) {
+            return ToolOutcome.error("browser_unreachable",
+                    "Chrome managé injoignable pour démarrer la capture.");
+        } catch (RuntimeException e) {
+            return ToolOutcome.error("capture_start_failed", "La capture d'onglet n'a pas pu démarrer.");
+        }
+    }
+
+    /**
+     * <b>Arrête la capture d'onglet et remonte l'audio</b> (F-128 / SF-128-02) : stoppe l'enregistrement,
+     * récupère les octets par tranches (bornées, pour ne pas faire exploser un retour CDP), puis
+     * <b>téléverse</b> — le jeton runner reste dans le runner, jamais exposé à la page.
+     */
+    private ToolOutcome meetingCaptureStop(JsonNode input) {
+        if (!enabled) {
+            return ToolOutcome.error("browser_unreachable", disabledReason);
+        }
+        if (meetingAudio == null) {
+            return ToolOutcome.error("upload_unavailable",
+                    "Ce poste ne peut pas faire remonter l'audio (aucun uploader).");
+        }
+        String meetingId = TeamsAsk.text(input, "meeting_id", "meetingId");
+        String workspaceId = TeamsAsk.text(input, "workspace_id", "workspaceId");
+        if (meetingId.isBlank() || workspaceId.isBlank()) {
+            return ToolOutcome.error("invalid_input", "Identifiants de réunion/terminal manquants.");
+        }
+        try {
+            JsonNode stop = evalInPage(MeetingTabCapture.STOP_SCRIPT, false);
+            if (stop == null || !stop.path("stopped").asBoolean(false)) {
+                String error = stop == null ? "no_active_capture" : stop.path("error").asText("no_active_capture");
+                String code = "no_active_capture".equals(error) ? "no_active_capture" : "capture_stop_failed";
+                return ToolOutcome.error(code, "Aucun audio à remonter : " + error);
+            }
+            List<String> chunks = new ArrayList<>();
+            long offset = 0;
+            long total = -1;
+            while (true) {
+                JsonNode page = evalInPage(MeetingTabCapture.pullScript(offset, MeetingTabCapture.PULL_CHUNK_CHARS),
+                        false);
+                if (page == null) {
+                    break;
+                }
+                if (total < 0) {
+                    total = page.path("total").asLong(0);
+                }
+                String chunk = page.path("chunk").asText("");
+                if (chunk.isEmpty()) {
+                    break;
+                }
+                chunks.add(chunk);
+                offset += chunk.length();
+                if (offset >= total) {
+                    break;
+                }
+            }
+            byte[] audio = MeetingTabCapture.decode(MeetingTabCapture.reassemble(chunks));
+            if (audio.length == 0) {
+                return ToolOutcome.error("empty_audio", "La capture n'a produit aucun audio.");
+            }
+            long uploaded = meetingAudio.upload(workspaceId, meetingId, audio);
+            ObjectNode json = mapper.createObjectNode();
+            json.put("uploaded", true);
+            json.put("bytes", uploaded);
+            return ToolOutcome.ok(json.toString());
+        } catch (BrowserLinkException e) {
+            return ToolOutcome.error("browser_unreachable",
+                    "Chrome managé injoignable pour arrêter la capture.");
+        } catch (java.io.IOException e) {
+            return ToolOutcome.error("upload_failed", "La remontée de l'audio a échoué.");
+        } catch (RuntimeException e) {
+            return ToolOutcome.error("capture_stop_failed", "L'arrêt de la capture a échoué.");
+        }
+    }
+
+    /** Évalue un script DANS la page, avec attente de promesse (et geste simulé si demandé). */
+    private JsonNode evalInPage(String expression, boolean userGesture) {
+        BrowserLink link = link();
+        ObjectNode params = mapper.createObjectNode();
+        params.put("expression", expression);
+        params.put("returnByValue", true);
+        params.put("awaitPromise", true);
+        if (userGesture) {
+            params.put("userGesture", true);
+        }
+        JsonNode result = link.connection().send(CdpCommands.EVALUATE, params);
+        return result == null ? null : result.path("result").get("value");
     }
 
     private ToolOutcome status() {

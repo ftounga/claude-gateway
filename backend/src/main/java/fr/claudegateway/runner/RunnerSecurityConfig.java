@@ -90,6 +90,11 @@ public class RunnerSecurityConfig {
                         // joker : une autorisation `/runner/teams/**` couvrirait d'avance toute
                         // route future de ce préfixe, y compris celle qui ne devrait pas l'être.
                         .requestMatchers(HttpMethod.POST, "/runner/teams/moments").permitAll()
+                        // Remontée de l'audio d'une réunion (F-128 / SF-128-02) : même nature que les
+                        // moments — jeton X-Runner-Token vérifié PAR LE CONTRÔLEUR
+                        // (RunnerMeetingAudioController), rien dans le SecurityContext (D9). Le seul
+                        // joker est l'identifiant de la réunion.
+                        .requestMatchers(HttpMethod.POST, "/runner/teams/meetings/*/audio").permitAll()
                         // Synchro du soir du Radar (F-100 / SF-100-02) : battement et fin, même nature
                         // que les captures — jeton X-Runner-Token vérifié PAR LE CONTRÔLEUR
                         // (RunnerRadarSyncController), rien dans le SecurityContext (D9). Déclarées une

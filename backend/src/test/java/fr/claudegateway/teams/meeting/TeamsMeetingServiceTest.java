@@ -72,7 +72,15 @@ class TeamsMeetingServiceTest {
         stubTeamsTerminal();
         when(runnerToolGateway.teamsRead(any(RunnerTarget.class), anyString(), eq(TeamsToolCatalog.MEETING_JOIN),
                 any(JsonNode.class))).thenReturn(ok("cap-42"));
-        when(repository.save(any(Meeting.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(runnerToolGateway.teamsRead(any(RunnerTarget.class), anyString(),
+                eq(TeamsToolCatalog.MEETING_CAPTURE_START), any(JsonNode.class))).thenReturn(ok("started"));
+        when(repository.save(any(Meeting.class))).thenAnswer(inv -> {
+            Meeting mm = inv.getArgument(0);
+            if (mm.getId() == null) {
+                mm.setId(UUID.randomUUID());
+            }
+            return mm;
+        });
 
         MeetingResponse response = service.create(scope, new CreateMeetingRequest(
                 "https://teams.microsoft.com/l/meetup-join/xyz", "Comité", null, true, null));
@@ -81,6 +89,9 @@ class TeamsMeetingServiceTest {
         assertThat(response.retentionDays()).isEqualTo(Meeting.DEFAULT_RETENTION_DAYS);
         assertThat(response.consentAcknowledged()).isTrue();
         assertThat(response.captureRef()).isEqualTo("cap-42");
+        // SF-128-02 : la capture d'onglet est démarrée après le join.
+        verify(runnerToolGateway).teamsRead(any(RunnerTarget.class), anyString(),
+                eq(TeamsToolCatalog.MEETING_CAPTURE_START), any(JsonNode.class));
 
         ArgumentCaptor<JsonNode> input = ArgumentCaptor.forClass(JsonNode.class);
         verify(runnerToolGateway).teamsRead(any(RunnerTarget.class), anyString(),
@@ -139,9 +150,9 @@ class TeamsMeetingServiceTest {
     @Test
     @DisplayName("Arrêt : RECORDING -> STOPPED avec endedAt ; second arrêt refusé (409)")
     void stop_transitions() {
-        Meeting m = Meeting.builder().userId(userId).hostId(hostId).state(MeetingState.RECORDING)
-                .meetingUrl("https://x").consentAcknowledged(true).retentionDays(30).build();
         UUID id = UUID.randomUUID();
+        Meeting m = Meeting.builder().id(id).userId(userId).hostId(hostId).state(MeetingState.RECORDING)
+                .meetingUrl("https://x").consentAcknowledged(true).retentionDays(30).build();
         when(repository.findByIdAndUserIdAndHostId(id, userId, hostId)).thenReturn(Optional.of(m));
         when(repository.save(any(Meeting.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -163,6 +174,24 @@ class TeamsMeetingServiceTest {
 
         assertThat(service.pause(scope, id).state()).isEqualTo("PAUSED");
         assertThat(service.resume(scope, id).state()).isEqualTo("RECORDING");
+    }
+
+    @Test
+    @DisplayName("Arrêt : ordonne la remontée d'audio (teams_meeting_capture_stop)")
+    void stop_triggersCaptureStop() {
+        stubTeamsTerminal();
+        UUID id = UUID.randomUUID();
+        Meeting m = Meeting.builder().id(id).userId(userId).hostId(hostId).state(MeetingState.RECORDING)
+                .meetingUrl("https://x").consentAcknowledged(true).retentionDays(30).build();
+        when(repository.findByIdAndUserIdAndHostId(id, userId, hostId)).thenReturn(Optional.of(m));
+        when(repository.save(any(Meeting.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(runnerToolGateway.teamsRead(any(RunnerTarget.class), anyString(),
+                eq(TeamsToolCatalog.MEETING_CAPTURE_STOP), any(JsonNode.class))).thenReturn(ok("uploaded"));
+
+        service.stop(scope, id);
+
+        verify(runnerToolGateway).teamsRead(any(RunnerTarget.class), anyString(),
+                eq(TeamsToolCatalog.MEETING_CAPTURE_STOP), any(JsonNode.class));
     }
 
     @Test

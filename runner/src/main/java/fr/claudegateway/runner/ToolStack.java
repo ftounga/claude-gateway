@@ -45,6 +45,7 @@ public final class ToolStack {
                         fr.claudegateway.runner.teams.BrowserLink.realSleeper())
                         .withMoments(moments(config, console))
                         .withCapture(capture(config, console))
+                        .withMeetingAudio(meetingAudio(config))
                         .withTranscription(transcription(config, console))
                         // F-100 / SF-100-02 — la synchro du soir : remontée par le jeton du poste.
                         .withRadarUplink(radarUplink(config), console::info)
@@ -111,6 +112,21 @@ public final class ToolStack {
         return new fr.claudegateway.runner.teams.MomentsWorker(
                 new fr.claudegateway.runner.teams.MomentsJobStore(folder),
                 new fr.claudegateway.runner.teams.SceneFrames(toolchain, processes), uploader);
+    }
+
+    /**
+     * <b>La remontée de l'audio d'une réunion</b> (F-128 / SF-128-02) : par le jeton du poste. Sans
+     * jeton, elle le <b>dit</b> au lieu de faire semblant.
+     */
+    private static fr.claudegateway.runner.teams.MeetingAudioUploader meetingAudio(RunnerConfig config) {
+        String token = new TokenStore(config.hostRoot(),
+                java.nio.file.Path.of(System.getProperty("user.home", "."))).load()
+                .map(StoredToken::token).orElse("");
+        return token.isBlank()
+                ? fr.claudegateway.runner.teams.MeetingAudioUploader.unavailable(
+                        "ce poste n'a pas de jeton runner : l'audio ne peut pas remonter")
+                : fr.claudegateway.runner.teams.MeetingAudioUploader.over(
+                        java.net.http.HttpClient.newHttpClient(), config.gatewayBaseUrl(), token);
     }
 
     /**
