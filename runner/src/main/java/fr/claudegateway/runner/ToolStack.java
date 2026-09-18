@@ -46,6 +46,7 @@ public final class ToolStack {
                         .withMoments(moments(config, console))
                         .withCapture(capture(config, console))
                         .withMeetingAudio(meetingAudio(config))
+                        .withMeetingImages(meetingImages(config))
                         .withTranscription(transcription(config, console))
                         // F-100 / SF-100-02 — la synchro du soir : remontée par le jeton du poste.
                         .withRadarUplink(radarUplink(config), console::info)
@@ -126,6 +127,18 @@ public final class ToolStack {
                 ? fr.claudegateway.runner.teams.MeetingAudioUploader.unavailable(
                         "ce poste n'a pas de jeton runner : l'audio ne peut pas remonter")
                 : fr.claudegateway.runner.teams.MeetingAudioUploader.over(
+                        java.net.http.HttpClient.newHttpClient(), config.gatewayBaseUrl(), token);
+    }
+
+    /** <b>La remontée des images clés d'une réunion</b> (F-128 / SF-128-03), par le jeton du poste. */
+    private static fr.claudegateway.runner.teams.MeetingImageUploader meetingImages(RunnerConfig config) {
+        String token = new TokenStore(config.hostRoot(),
+                java.nio.file.Path.of(System.getProperty("user.home", "."))).load()
+                .map(StoredToken::token).orElse("");
+        return token.isBlank()
+                ? fr.claudegateway.runner.teams.MeetingImageUploader.unavailable(
+                        "ce poste n'a pas de jeton runner : les images ne peuvent pas remonter")
+                : fr.claudegateway.runner.teams.MeetingImageUploader.over(
                         java.net.http.HttpClient.newHttpClient(), config.gatewayBaseUrl(), token);
     }
 

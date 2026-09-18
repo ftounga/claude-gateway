@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-128 / SF-128-03 — LES IMAGES CLES DU PARTAGE D'ECRAN.
+
+      On rattache à l'artefact réunion le nombre d'images clés retenues (deck reconstitué). Les images
+      elles-mêmes vivent en stockage objet (WorkspaceStorage, préfixe frames/) ; ici on ne garde que le
+      COMPTE, pour que l'artefact sache qu'il porte un deck. Colonne NULLABLE et additive (les réunions
+      existantes restent valides). Réversible : dropColumn.
+    -->
+    <changeSet id="113-meetings-images" author="claude-gateway">
+        <addColumn tableName="meetings">
+            <column name="image_count" type="int"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="meetings" columnName="image_count"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -55,4 +55,31 @@ class MeetingTabCaptureTest {
         assertTrue(MeetingTabCapture.STOP_SCRIPT.contains("btoa"));
         assertTrue(MeetingTabCapture.STOP_SCRIPT.contains("stopped"));
     }
+
+    @Test
+    @DisplayName("SF-128-03 : le script échantillonne les images clés (canvas/vidéo)")
+    void startScriptSamplesFrames() {
+        assertTrue(MeetingTabCapture.START_SCRIPT.contains("drawImage"));
+        assertTrue(MeetingTabCapture.START_SCRIPT.contains("toDataURL"));
+        assertTrue(MeetingTabCapture.START_SCRIPT.contains("setInterval"));
+        assertTrue(MeetingTabCapture.START_SCRIPT.contains("frames"));
+    }
+
+    @Test
+    @DisplayName("SF-128-03 : scripts de lecture des images clés (compte + tranche)")
+    void frameScriptsCarryIndexAndOffset() {
+        assertTrue(MeetingTabCapture.framesCountScript().contains("frames"));
+        String pull = MeetingTabCapture.framePullScript(2, 100, 50);
+        assertTrue(pull.contains("2"));
+        assertTrue(pull.contains("100"));
+        assertTrue(pull.contains("50"));
+    }
+
+    @Test
+    @DisplayName("SF-128-03 : retrait du préfixe data URL")
+    void stripDataUrlRemovesPrefix() {
+        assertEquals("AAAB", MeetingTabCapture.stripDataUrl("data:image/jpeg;base64,AAAB"));
+        assertEquals("AAAB", MeetingTabCapture.stripDataUrl("AAAB"));
+        assertEquals("", MeetingTabCapture.stripDataUrl(null));
+    }
 }

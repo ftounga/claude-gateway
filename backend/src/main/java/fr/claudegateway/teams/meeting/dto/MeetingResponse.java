@@ -21,6 +21,7 @@ public record MeetingResponse(
         String captureRef,
         boolean hasAudio,
         Long audioBytes,
+        int imageCount,
         OffsetDateTime startedAt,
         OffsetDateTime endedAt,
         OffsetDateTime createdAt) {
@@ -29,6 +30,7 @@ public record MeetingResponse(
         return new MeetingResponse(m.getId(), m.getHostId(), m.getSubjectId(), m.getTitle(),
                 m.getMeetingUrl(), m.getState().name(), m.isConsentAcknowledged(), m.getRetentionDays(),
                 m.getCaptureRef(), m.getAudioKey() != null, m.getAudioBytes(),
+                m.getImageCount() == null ? 0 : m.getImageCount(),
                 m.getStartedAt(), m.getEndedAt(), m.getCreatedAt());
     }
 }

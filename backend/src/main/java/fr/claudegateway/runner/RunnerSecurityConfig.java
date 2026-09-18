@@ -95,6 +95,9 @@ public class RunnerSecurityConfig {
                         // (RunnerMeetingAudioController), rien dans le SecurityContext (D9). Le seul
                         // joker est l'identifiant de la réunion.
                         .requestMatchers(HttpMethod.POST, "/runner/teams/meetings/*/audio").permitAll()
+                        // Remontée des images clés d'une réunion (F-128 / SF-128-03) : même nature —
+                        // jeton X-Runner-Token vérifié PAR LE CONTRÔLEUR (RunnerMeetingImageController).
+                        .requestMatchers(HttpMethod.POST, "/runner/teams/meetings/*/images").permitAll()
                         // Synchro du soir du Radar (F-100 / SF-100-02) : battement et fin, même nature
                         // que les captures — jeton X-Runner-Token vérifié PAR LE CONTRÔLEUR
                         // (RunnerRadarSyncController), rien dans le SecurityContext (D9). Déclarées une
