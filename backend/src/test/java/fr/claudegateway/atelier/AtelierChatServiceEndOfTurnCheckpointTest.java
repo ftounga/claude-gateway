@@ -192,13 +192,11 @@ class AtelierChatServiceEndOfTurnCheckpointTest {
     }
 
     @Test
-    void theRealJudgeSendsATurnWithoutItsMarkerBackToWork() {
-        // Bout en bout avec le contrôle réel du premier paquet (F-52 / SF-52-02) : une réponse sans
-        // marqueur repart, la même réponse marquée s'arrête.
+    void theRealJudgeNoLongerSendsATurnWithoutAMarkerBackToWork() {
+        // F-125 / SF-125-06b : le contrôle réel ne sanctionne plus l'absence de marqueur — une
+        // réponse de fond, sans marqueur, clôt le tour en une fois (plus de renvoi au travail).
         fr.claudegateway.governance.control.JugeFinDeTourControl juge =
-                new fr.claudegateway.governance.control.JugeFinDeTourControl(
-                        org.mockito.Mockito.mock(
-                                fr.claudegateway.governance.GovernanceMapDestinations.class));
+                new fr.claudegateway.governance.control.JugeFinDeTourControl();
         // Un contrôle de gouvernance n'est pas un crochet : il y arrive par la délégation de
         // SF-51-04. On l'adapte ici pour l'observer dans la boucle, sans monter tout le catalogue.
         AtelierChatService service = serviceWith(new AtelierCheckpoint() {
@@ -213,18 +211,15 @@ class AtelierChatServiceEndOfTurnCheckpointTest {
             }
         });
         agentProvider.enqueueFinal("C'est fait.");
-        agentProvider.enqueueFinal("C'est fait.\n\n"
-                + fr.claudegateway.governance.control.FinDeTourMarker.FORME);
+        agentProvider.enqueueFinal("ne devrait jamais être demandé");
 
         AtelierChatResult result = service.chat(userId, workspaceId, "range le projet");
 
-        // F-125 / SF-125-01 : le contrôle a bien LU le marqueur (le tour marqué s'arrête), mais la
-        // réponse rendue à l'utilisateur ne le montre plus — la tenue de carte reste en coulisse.
-        assertThat(result.reply()).doesNotContain("fin-de-tour");
-        assertThat(result.reply()).startsWith("C'est fait.");
-        assertThat(userTexts()).anySatisfy(text -> assertThat(text)
-                .startsWith("Fin de tour contrôlée : ")
-                .contains(fr.claudegateway.governance.control.FinDeTourMarker.FORME));
+        // Un seul tour : le fournisseur n'est pas rappelé, la réponse de fond est rendue telle quelle.
+        assertThat(result.reply()).isEqualTo("C'est fait.");
+        assertThat(agentProvider.remaining()).isEqualTo(1);
+        assertThat(userTexts()).noneSatisfy(text ->
+                assertThat(text).startsWith("Fin de tour contrôlée : "));
     }
 
     @Test
