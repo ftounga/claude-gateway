@@ -77,7 +77,8 @@ aws ecr get-login-password --profile legalcase-terraform --region $REGION \
   | docker login --username AWS --password-stdin $REG
 TAG=staging-$(git rev-parse --short HEAD)
 
-docker build -t $REG/claude-gateway-backend:$TAG -t $REG/claude-gateway-backend:staging-latest ./backend
+# ⚠️ Contexte de build = RACINE du dépôt (le Dockerfile copie backend/ ET runner/), via -f :
+docker build -f backend/Dockerfile -t $REG/claude-gateway-backend:$TAG -t $REG/claude-gateway-backend:staging-latest .
 docker push $REG/claude-gateway-backend:$TAG && docker push $REG/claude-gateway-backend:staging-latest
 
 docker build --build-arg BUILD_CONFIGURATION=production \
