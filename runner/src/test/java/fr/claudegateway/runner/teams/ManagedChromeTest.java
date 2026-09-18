@@ -130,6 +130,62 @@ class ManagedChromeTest {
     }
 
     @Test
+    @DisplayName("reveal fait surgir le Chrome managé à l'écran (sans le flag hors champ) — SF-122-06")
+    void reveal_launches_on_screen(@TempDir Path profile) {
+        FakeSession session = new FakeSession();
+        ManagedChrome chrome = new ManagedChrome(Optional.of(Path.of("/opt/chrome")), profile, 9222,
+                session, FakeProbe.of(false, true), new FakeSleeper(), null);
+
+        assertEquals(ManagedChrome.State.LAUNCHED, chrome.reveal());
+        assertEquals(1, session.calls.size());
+        assertFalse(session.calls.get(0).contains(ManagedChrome.OFFSCREEN),
+                session.calls.get(0).toString());
+        assertEquals("https://teams.microsoft.com",
+                session.calls.get(0).get(session.calls.get(0).size() - 1));
+    }
+
+    @Test
+    @DisplayName("remask relance le Chrome managé hors champ — SF-122-06")
+    void remask_launches_offscreen(@TempDir Path profile) {
+        FakeSession session = new FakeSession();
+        ManagedChrome chrome = new ManagedChrome(Optional.of(Path.of("/opt/chrome")), profile, 9222,
+                session, FakeProbe.of(false, true), new FakeSleeper(), null);
+
+        assertEquals(ManagedChrome.State.LAUNCHED, chrome.remask());
+        assertEquals(1, session.calls.size());
+        assertTrue(session.calls.get(0).contains(ManagedChrome.OFFSCREEN),
+                session.calls.get(0).toString());
+    }
+
+    @Test
+    @DisplayName("reveal relance : la fenêtre déjà ouverte est arrêtée avant d'être rouverte visible")
+    void reveal_relaunches_over_existing(@TempDir Path profile) {
+        FakeSession session = new FakeSession();
+        ManagedChrome chrome = new ManagedChrome(Optional.of(Path.of("/opt/chrome")), profile, 9222,
+                session, FakeProbe.of(false, true), new FakeSleeper(), null);
+        chrome.ensureRunning();
+        FakeHandle offscreen = session.last;
+
+        chrome.reveal();
+
+        assertTrue(offscreen.destroyed, "la fenêtre hors champ doit être arrêtée avant de surgir");
+        assertEquals(2, session.calls.size());
+        assertFalse(session.calls.get(1).contains(ManagedChrome.OFFSCREEN),
+                session.calls.get(1).toString());
+    }
+
+    @Test
+    @DisplayName("reveal sans navigateur : NO_BROWSER, aucun lancement — SF-122-06")
+    void reveal_no_browser() {
+        FakeSession session = new FakeSession();
+        ManagedChrome chrome = new ManagedChrome(Optional.empty(), Path.of("/tmp/p"), 9222, session,
+                FakeProbe.always(false), new FakeSleeper(), null);
+
+        assertEquals(ManagedChrome.State.NO_BROWSER, chrome.reveal());
+        assertTrue(session.calls.isEmpty());
+    }
+
+    @Test
     @DisplayName("stop arrête le processus lancé")
     void stop_destroys_process(@TempDir Path profile) {
         FakeSession session = new FakeSession();
