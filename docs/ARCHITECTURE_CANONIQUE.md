@@ -1082,6 +1082,23 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     `GET /activity/revenue` rend par poste `{tjmCents, cumulCents, declaredCents, supposedCents}` et les
     totaux tous clients. Aucun appel fournisseur, aucun quota consommé.
 
+- **meetings** — l'**artefact « réunion »** (F-128 / SF-128-01, migration `111`). Table neuve : une
+  réunion Teams rejointe et capturée depuis un poste, isolée `(user_id, host_id)`. Le bouton
+  **« Rejoindre & capturer »** de la Vigie crée la ligne et ordonne au runner d'ouvrir l'URL **dans le
+  Chrome managé** (F-122, tool `teams_meeting_join` — hors catalogue agent, appelé directement par
+  `TeamsMeetingService` via `RunnerToolGateway.teamsRead`). **Gateway-First** : le backend orchestre, il
+  ne capture ni ne transcrit. **DRAPEAU SF-128-01** : les octets média (audio onglet + micro) sont
+  capturés en SF-128-02 ; ici `state=RECORDING` signifie « session ouverte / onglet rejoint ». La purge
+  active de la rétention est SF-128-07 (ici la durée est seulement **stockée**).
+  - `meetings` : `id (uuid)`, `user_id (uuid, FK users ON DELETE CASCADE)`, `host_id (uuid, FK
+    runner_hosts ON DELETE CASCADE)`, `subject_id (uuid, nullable — pointeur vers radar_subjects, sans
+    FK, même choix que le registre du Radar)`, `title (varchar 300, nullable)`, `meeting_url (varchar
+    2048)`, `state (varchar 20 — RECORDING/PAUSED/STOPPED/FAILED)`, `consent_acknowledged (boolean)`,
+    `retention_days (int, défaut 30, borne applicative [1;365])`, `capture_ref (varchar 200, nullable)`,
+    `started_at`, `ended_at (nullable)`, `created_at`, `updated_at`. Index `(user_id, host_id,
+    started_at)`. Endpoints `/api/vigie/hosts/{hostId}/meetings` (create/stop/pause/resume/list/get),
+    gardés par le droit Teams + possession du poste + activation Vigie.
+
 - **Repli de transport du runner — aucune table** (F-38 / SF-38-09). Le canal runner peut être porté
   par le WebSocket de SF-38-02 **ou** par un long-polling HTTP quand un proxy refuse (ou coupe)
   l'`Upgrade`. **Aucune migration, aucune colonne, aucun type de message nouveau** : les deux
@@ -1267,7 +1284,7 @@ Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 rée
 
 Règle d'isolation des données :
 Tout accès aux données filtre obligatoirement sur **`user_id`**
-(documents/messages/subscriptions/uploaded_files/usage_counters/usage_turns/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/host_seat_months/live_terminals/runner_tokens/runner_pairing_codes/runner_audit/atelier_permission_rules/atelier_deposited_files/poste_billing/activity_settings/cra_entries/governance_selections/governance_activations/governance_host_activations/governance_map_growth/governance_deposited_files/pages/page_versions/page_shares/page_events via `user_id` ; tables `radar_*` via `user_id` **et** `host_id` ; `promotion_reportee` via `user_id` + `host_id` + `workspace_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
+(documents/messages/subscriptions/uploaded_files/usage_counters/usage_turns/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/host_seat_months/live_terminals/runner_tokens/runner_pairing_codes/runner_audit/atelier_permission_rules/atelier_deposited_files/poste_billing/activity_settings/cra_entries/governance_selections/governance_activations/governance_host_activations/governance_map_growth/governance_deposited_files/pages/page_versions/page_shares/page_events via `user_id` ; tables `radar_*` via `user_id` **et** `host_id` ; `meetings` via `user_id` **et** `host_id` ; `promotion_reportee` via `user_id` + `host_id` + `workspace_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
 
 ---
 
