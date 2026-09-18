@@ -17,14 +17,20 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.context.request.async.AsyncWebRequest;
+import org.springframework.web.context.request.async.WebAsyncManager;
+import org.springframework.web.context.request.async.WebAsyncUtils;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import fr.claudegateway.runner.channel.RunnerCallDispatcher;
 import fr.claudegateway.runner.channel.RunnerCallResult;
+import fr.claudegateway.runner.channel.RunnerErrorCodes;
 import fr.claudegateway.runner.exec.NoPendingConfirmationException;
 import fr.claudegateway.runner.exec.RunnerConfirmationGate;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * Point d'entrée du relais interne, côté <b>pod propriétaire de la socket</b>
@@ -45,6 +51,16 @@ import fr.claudegateway.runner.exec.RunnerConfirmationGate;
 public class RunnerRelayController {
 
     private static final Logger log = LoggerFactory.getLogger(RunnerRelayController.class);
+
+    /**
+     * Marge ajoutée au {@code timeoutMs} de l'appel pour obtenir le délai async HTTP de cet
+     * endpoint (SF-38-28) : grâce dispatcher (5 s, {@link RunnerCallDispatcher#DEFAULT_GRACE_MS})
+     * + 10 s de sécurité. Le dispatcher rend son {@code runner_timeout} à {@code timeoutMs + grâce} ;
+     * la coupe async, à {@code timeoutMs + 15 s}, arrive donc toujours <b>après</b> l'issue de
+     * l'appel — jamais avant. Même raisonnement que {@code RunnerRelayProperties.readTimeoutMs}
+     * (côté appelant), transposé par requête au côté récepteur.
+     */
+    private static final long ASYNC_TIMEOUT_MARGIN_MS = 15_000L;
 
     private final RunnerCallDispatcher dispatcher;
     private final RunnerConfirmationGate confirmationGate;
@@ -69,7 +85,8 @@ public class RunnerRelayController {
      */
     @PostMapping(value = "/call", produces = MediaType.APPLICATION_NDJSON_VALUE)
     public ResponseEntity<StreamingResponseBody> call(@RequestBody RelayCallRequest request,
-            @RequestHeader(value = RunnerRelayAuthFilter.ORIGIN_HEADER, required = false) String origin) {
+            @RequestHeader(value = RunnerRelayAuthFilter.ORIGIN_HEADER, required = false) String origin,
+            HttpServletRequest httpRequest, HttpServletResponse httpResponse) {
 
         if (request == null || !request.isValid()) {
             return ResponseEntity.badRequest().build();
@@ -77,18 +94,59 @@ public class RunnerRelayController {
         log.debug("Relais entrant (origine={}, poste={}, appel={}, outil={})", origin,
                 request.hostId(), request.callId(), request.tool());
 
+        // Aligne le délai async HTTP de CETTE requête sur le délai propre de l'appel d'outil
+        // (SF-38-28) : sans cela, le StreamingResponseBody retombait sur le défaut court du
+        // conteneur et un gros tour était tué par une AsyncRequestTimeoutException avant que le
+        // dispatcher ait pu rendre son issue.
+        applyAsyncTimeout(httpRequest, httpResponse, request.timeoutMs());
+
         StreamingResponseBody body = output -> {
             NdjsonSink sink = new NdjsonSink(output);
-            RunnerCallResult result = dispatcher.call(request.target(), request.callId(),
-                    request.tool(), request.input(), request.timeoutMs(), sink::writeChunk);
-            sink.writeResult(result);
-            log.debug("Relais servi (poste={}, appel={}, ok={}, code={})", request.hostId(),
-                    request.callId(), result.ok(), result.errorCode());
+            try {
+                RunnerCallResult result = dispatcher.call(request.target(), request.callId(),
+                        request.tool(), request.input(), request.timeoutMs(), sink::writeChunk);
+                sink.writeResult(result);
+                log.debug("Relais servi (poste={}, appel={}, ok={}, code={})", request.hostId(),
+                        request.callId(), result.ok(), result.errorCode());
+            } catch (IOException | RuntimeException ex) {
+                // Le flux porte déjà application/x-ndjson : laisser l'exception remonter à
+                // l'@ExceptionHandler ferait écrire un ErrorResponse OBJET dessus
+                // (HttpMessageNotWritableException, défaut tracé le 2026-09-18). On rend plutôt une
+                // ligne `result` terminale d'erreur, best-effort, et l'on se tait si même cela
+                // échoue (client déjà parti). Le dispatcher, lui, ne lève pas : il rend
+                // `runner_timeout`/`runner_unavailable` en ligne `result` — ce filet ne se
+                // déclenche que sur l'imprévu (écriture finale sur un client parti, sérialisation).
+                log.warn("Appel relayé interrompu (poste={}, appel={}) : {}", request.hostId(),
+                        request.callId(), ex.toString());
+                sink.writeResultQuietly(RunnerCallResult.backendError(
+                        RunnerErrorCodes.RUNNER_PROTOCOL_ERROR,
+                        "L'appel relayé n'a pas pu être finalisé."));
+            }
         };
         return ResponseEntity.ok()
                 .header(HttpHeaders.CACHE_CONTROL, "no-store")
                 .contentType(MediaType.APPLICATION_NDJSON)
                 .body(body);
+    }
+
+    /**
+     * Fixe le délai async de cette requête à {@code timeoutMs + marge} (SF-38-28), par
+     * remplacement de l'{@link AsyncWebRequest} du {@link WebAsyncManager} avant que le traitement
+     * concurrent ne démarre. Voie <b>per-endpoint</b> : contrairement à
+     * {@code spring.mvc.async.request-timeout} (global), elle ne relève pas le plafond des autres
+     * endpoints async, et le chat SSE — qui porte son propre délai via {@code SseEmitter} — n'est
+     * pas concerné.
+     */
+    private static void applyAsyncTimeout(HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse, long toolTimeoutMs) {
+        WebAsyncManager asyncManager = WebAsyncUtils.getAsyncManager(httpRequest);
+        if (asyncManager.isConcurrentHandlingStarted()) {
+            return; // Traitement async déjà en cours : on ne reconfigure rien.
+        }
+        AsyncWebRequest asyncWebRequest =
+                WebAsyncUtils.createAsyncWebRequest(httpRequest, httpResponse);
+        asyncWebRequest.setTimeout(toolTimeoutMs + ASYNC_TIMEOUT_MARGIN_MS);
+        asyncManager.setAsyncWebRequest(asyncWebRequest);
     }
 
     /**
@@ -180,6 +238,20 @@ public class RunnerRelayController {
                 write(RelayNdjson.resultLine(objectMapper, result));
             } catch (UncheckedIOException ex) {
                 throw ex.getCause();
+            }
+        }
+
+        /**
+         * Écrit une ligne {@code result} terminale sans jamais lever : le dernier recours du chemin
+         * d'erreur (SF-38-28). Si l'écriture échoue à son tour (client déjà parti), il n'y a plus
+         * rien à faire — l'appel est terminé côté modèle — et surtout rien ne doit remonter vers
+         * l'@ExceptionHandler, qui tenterait un ErrorResponse objet sur ce flux ndjson.
+         */
+        private void writeResultQuietly(RunnerCallResult result) {
+            try {
+                write(RelayNdjson.resultLine(objectMapper, result));
+            } catch (UncheckedIOException ex) {
+                log.debug("Ligne d'erreur terminale non écrite (flux déjà clos)");
             }
         }
 
