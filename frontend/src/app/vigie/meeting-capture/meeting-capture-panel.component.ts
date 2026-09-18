@@ -9,10 +9,10 @@ import {
   signal,
 } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
-import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { CreateMeetingRequest, TeamsMeeting } from '../../core/models/teams-meeting.models';
 import { TeamsMeetingService } from '../../core/services/teams-meeting.service';
@@ -35,8 +35,6 @@ import {
     DatePipe,
     MatButtonModule,
     MatIconModule,
-    MatDialogModule,
-    MatSnackBarModule,
     MatProgressSpinnerModule,
   ],
   template: `

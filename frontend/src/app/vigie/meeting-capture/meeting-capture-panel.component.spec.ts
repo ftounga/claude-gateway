@@ -59,10 +59,10 @@ describe('MeetingCapturePanelComponent', () => {
   });
 
   it('« Rejoindre & capturer » ouvre le dialogue puis crée la réunion sur retour', () => {
+    const root = setup();
     dialog.open.and.returnValue({
       afterClosed: () => of({ meetingUrl: 'https://teams.microsoft.com/y', consentAcknowledged: true }),
     } as never);
-    const root = setup();
 
     root.querySelector<HTMLButtonElement>('.meetings__join')?.click();
 
@@ -73,8 +73,8 @@ describe('MeetingCapturePanelComponent', () => {
   });
 
   it('un retour de dialogue annulé (null) ne crée rien', () => {
-    dialog.open.and.returnValue({ afterClosed: () => of(null) } as never);
     setup();
+    dialog.open.and.returnValue({ afterClosed: () => of(null) } as never);
     fixture.componentInstance.openJoin();
     expect(service.create).not.toHaveBeenCalled();
   });
