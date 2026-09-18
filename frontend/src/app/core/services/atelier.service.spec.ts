@@ -285,6 +285,78 @@ describe('AtelierService', () => {
     expect(seen).toEqual(['text:Bon', 'text:jour', 'done:Bonjour']);
   });
 
+  // ---- F-131 / SF-131-01 : le flux fermé sans réponse finale doit se signaler (spinner honnête) ----
+
+  it('streamChat appelle onClosed quand le flux se ferme sans done ni error (F-131 / SF-131-01)', async () => {
+    // Le transport livre un texte partiel puis se ferme — le serveur a peut-être fini, mais aucun
+    // `done` n'est arrivé : c'est exactement le cas du spinner sans fin.
+    fakeSseFetch(['event:text\ndata:{"text":"partiel"}']);
+    let closed = 0;
+    let done = 0;
+    let error = 0;
+
+    await service.streamChat('w1', 'go', {
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: () => (done += 1),
+      onError: () => (error += 1),
+      onClosed: () => (closed += 1),
+    });
+
+    expect(closed).toBe(1);
+    expect(done).toBe(0);
+    expect(error).toBe(0);
+  });
+
+  it("streamChat n'appelle PAS onClosed après un done non-suite (F-131 / SF-131-01)", async () => {
+    fakeSseFetch(['event:done\ndata:{"reply":"ok","actions":[],"messageId":"m1"}']);
+    let closed = 0;
+
+    await service.streamChat('w1', 'go', {
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: () => undefined,
+      onError: () => undefined,
+      onClosed: () => (closed += 1),
+    });
+
+    expect(closed).toBe(0);
+  });
+
+  it("streamChat n'appelle PAS onClosed après un event:error (F-131 / SF-131-01)", async () => {
+    fakeSseFetch(['event:error\ndata:{"error":"provider_error"}']);
+    let closed = 0;
+    let error = 0;
+
+    await service.streamChat('w1', 'go', {
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: () => undefined,
+      onError: () => (error += 1),
+      onClosed: () => (closed += 1),
+    });
+
+    expect(error).toBe(1);
+    expect(closed).toBe(0);
+  });
+
+  it('streamChat appelle onClosed après un done de SUITE puis fermeture (F-131 / SF-131-01)', async () => {
+    // Un `done` de tour de suite n'est pas la fin du tour : si le flux se ferme derrière, le filet
+    // doit tout de même se déclencher.
+    fakeSseFetch(['event:done\ndata:{"reply":"étape","actions":[],"messageId":"m1","followUp":true}']);
+    let closed = 0;
+
+    await service.streamChat('w1', 'go', {
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: () => undefined,
+      onError: () => undefined,
+      onClosed: () => (closed += 1),
+    });
+
+    expect(closed).toBe(1);
+  });
+
   it("route event:output du flux d'atelier vers onOutput (F-38 / SF-38-07)", async () => {
     fakeSseFetch([
       'event:action\ndata:{"type":"bash","path":"npm test"}',

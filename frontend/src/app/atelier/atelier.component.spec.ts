@@ -390,6 +390,167 @@ describe('AtelierComponent', () => {
     }));
   });
 
+  /**
+   * **Rejouer la dernière requête** (F-131 / SF-131-01).
+   *
+   * Le vécu du PO : un spinner tourne 40 min alors que le serveur a fini — le flux SSE s'est
+   * détaché. Ces tests couvrent le filet côté client : détecter la non-réponse, ne plus laisser le
+   * spinner sans fin, et rejouer la dernière requête sans en lancer deux en parallèle.
+   */
+  describe('rejouer la dernière requête (F-131 / SF-131-01)', () => {
+    function captureWindows(): { handlers: () => AtelierStreamHandlers; stop: jasmine.Spy } {
+      let given: AtelierStreamHandlers | undefined;
+      const stop = jasmine.createSpy('stop');
+      service.followTurnInWindows.and.callFake((_id, _cursor, handlers) => {
+        given = handlers;
+        return { stop };
+      });
+      return { handlers: () => given!, stop };
+    }
+
+    function sendLocal(text = 'Analyse le dépôt'): AtelierStreamHandlers {
+      let captured: AtelierStreamHandlers | undefined;
+      service.streamChat.and.callFake((_id, _message, handlers) => {
+        captured = handlers;
+        // Flux ouvert : ni done ni error tant que le test ne les provoque pas.
+        return new Promise<void>(() => undefined);
+      });
+      component.activeWorkspaceId.set('w1');
+      component.engine.set('LOCAL_MACHINE');
+      component.draft.set(text);
+      component.send();
+      fixture.detectChanges();
+      return captured!;
+    }
+
+    it('flux fermé sans final, sans tour serveur vivant → « réponse non reçue » (spinner honnête)',
+      fakeAsync(() => {
+        setup();
+        const windows = captureWindows();
+        const handlers = sendLocal();
+        // La demande est prise en main, puis le transport tombe SANS événement final.
+        handlers.onStarted?.({ turnId: 't1', startedAt: Date.now() });
+        handlers.onClosed?.();
+
+        // Un rattrapage par fenêtres est tenté (le serveur a peut-être fini).
+        expect(service.followTurnInWindows).toHaveBeenCalled();
+        // Le serveur n'a rien de vivant : les fenêtres abandonnent → état honnête.
+        windows.handlers().onIdle?.();
+        fixture.detectChanges();
+
+        expect(component.unanswered()).toBeTrue();
+        expect(component.submitting()).toBeFalse();
+        fixture.destroy();
+        discardPeriodicTasks();
+      }));
+
+    it('flux fermé mais le serveur a réellement fini → le rattrapage recharge le fil (pas d’erreur)',
+      fakeAsync(() => {
+        setup();
+        const windows = captureWindows();
+        const handlers = sendLocal();
+        handlers.onStarted?.({ turnId: 't1', startedAt: Date.now() });
+        handlers.onClosed?.();
+
+        service.getHistory.calls.reset();
+        windows.handlers().onDone({ reply: 'Fait.', actions: [], messageId: 'm1' });
+        fixture.detectChanges();
+
+        expect(component.unanswered()).toBeFalse();
+        expect(component.submitting()).toBeFalse();
+        // La fin d'un tour rejoint RECHARGE le fil depuis le serveur (F-84).
+        expect(service.getHistory).toHaveBeenCalledWith('w1');
+        fixture.destroy();
+        discardPeriodicTasks();
+      }));
+
+    it('tour sans rendu dont les fenêtres de suivi abandonnent → « réponse non reçue »',
+      fakeAsync(() => {
+        setup();
+        // Flux retenu (proxy) : rien n'est jamais entendu.
+        service.streamChat.and.returnValue(new Promise<void>(() => undefined));
+        const windows = captureWindows();
+        component.activeWorkspaceId.set('w1');
+        component.engine.set('LOCAL_MACHINE');
+        component.draft.set('Une longue demande');
+        component.send();
+        fixture.detectChanges();
+
+        tick(4_000); // la sonde bascule sur le suivi par fenêtres
+        expect(service.followTurnInWindows).toHaveBeenCalled();
+        windows.handlers().onIdle?.(); // les fenêtres abandonnent
+
+        fixture.detectChanges();
+        expect(component.unanswered()).toBeTrue();
+        expect(component.submitting()).toBeFalse();
+        fixture.destroy();
+        discardPeriodicTasks();
+      }));
+
+    it('rejouer est refusé si un tour est visiblement en cours (anti-doublon local)', () => {
+      setup();
+      component.activeWorkspaceId.set('w1');
+      component.submitting.set(true);
+      (component as unknown as { lastRequest: string }).lastRequest = 'refais';
+
+      component.replayLastRequest();
+
+      expect(service.streamChat).not.toHaveBeenCalled();
+      expect(snackBar.open).toHaveBeenCalled();
+    });
+
+    it('rejouer avec un tour serveur encore vivant → rebranchement, pas de second tour',
+      fakeAsync(() => {
+        setup();
+        component.activeWorkspaceId.set('w1');
+        component.unanswered.set(true);
+        (component as unknown as { lastRequest: string }).lastRequest = 'refais';
+        service.getTurnState.and.returnValue(
+          of({ live: true, turnId: 't1', cursor: 2, startedAt: Date.now(), pending: null }),
+        );
+
+        component.replayLastRequest();
+
+        expect(service.attachTurn).toHaveBeenCalled();
+        expect(service.streamChat).not.toHaveBeenCalled();
+        expect(component.unanswered()).toBeFalse();
+        fixture.destroy();
+        discardPeriodicTasks();
+      }));
+
+    it('rejouer re-soumet la dernière requête comme nouveau tour', fakeAsync(() => {
+      setup();
+      service.streamChat.and.returnValue(new Promise<void>(() => undefined));
+      component.activeWorkspaceId.set('w1');
+      component.engine.set('LOCAL_MACHINE');
+      component.unanswered.set(true);
+      (component as unknown as { lastRequest: string }).lastRequest = 'Analyse le dépôt';
+      // `/turn` non vivant par défaut → rejeu direct.
+
+      component.replayLastRequest();
+
+      expect(service.streamChat).toHaveBeenCalledWith(
+        'w1', 'Analyse le dépôt', jasmine.anything(), jasmine.anything(),
+      );
+      expect(component.unanswered()).toBeFalse();
+      expect(component.submitting()).toBeTrue();
+      fixture.destroy();
+      discardPeriodicTasks();
+    }));
+
+    it('un nouvel envoi efface l’état « réponse non reçue » et mémorise la requête', fakeAsync(() => {
+      setup();
+      component.unanswered.set(true);
+      sendLocal('Corrige le bug');
+
+      expect(component.unanswered()).toBeFalse();
+      // La requête est mémorisée pour un futur rejeu.
+      expect((component as unknown as { lastRequest: string }).lastRequest).toBe('Corrige le bug');
+      fixture.destroy();
+      discardPeriodicTasks();
+    }));
+  });
+
   // ------------------------------ « Nouveau projet » a disparu (F-72 / SF-72-04)
 
 

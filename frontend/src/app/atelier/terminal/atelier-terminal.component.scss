@@ -479,6 +479,10 @@
   color: var(--cg-text-secondary);
 }
 
+/* Réponse non reçue / rejouer (F-131) : réutilise le registre orange du plafond
+   (.terminal-budget / .terminal-budget-action) ; les classes -action / -inline restent comme
+   ancres de test/JS, sans style propre — aucun octet de CSS ajouté (budget du composant). */
+
 .terminal-input {
   display: flex;
   align-items: center;

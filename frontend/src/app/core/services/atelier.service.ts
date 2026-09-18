@@ -279,6 +279,24 @@ export class AtelierService {
    */
   async streamChat(id: string, message: string, handlers: AtelierStreamHandlers,
       mode: AtelierTurnMode = 'ACT'): Promise<void> {
+    // F-131 / SF-131-01 : on retient si le tour s'est réellement CONCLU dans ce flux — un `done`
+    // non-suite ou une erreur. Sinon, la fermeture du flux est un DÉTACHEMENT (le serveur a peut-être
+    // fini, mais l'écran n'a rien reçu) : c'est ce cas qui laissait le spinner tourner sans fin.
+    let settled = false;
+    const watched: AtelierStreamHandlers = {
+      ...handlers,
+      onDone: (done) => {
+        // Le `done` d'un tour de suite n'est pas la fin du tour : le flux reste vivant.
+        if (done.followUp !== true) {
+          settled = true;
+        }
+        handlers.onDone(done);
+      },
+      onError: (code) => {
+        settled = true;
+        handlers.onError(code);
+      },
+    };
     try {
       const token = this.auth.token();
       const response = await fetch(`/api/workspaces/${id}/chat/stream`, {
@@ -306,12 +324,20 @@ export class AtelierService {
         buffer += decoder.decode(value, { stream: true });
         let sep: number;
         while ((sep = buffer.indexOf('\n\n')) >= 0) {
-          this.dispatchSseEvent(buffer.slice(0, sep), handlers);
+          this.dispatchSseEvent(buffer.slice(0, sep), watched);
           buffer = buffer.slice(sep + 2);
         }
       }
+      // Le flux s'est refermé sans que le tour se conclue ici (F-131 / SF-131-01) : le filet côté
+      // écran prend le relais — rattrapage puis, à défaut, « réponse non reçue — Rejouer ? ».
+      if (!settled) {
+        handlers.onClosed?.();
+      }
     } catch {
-      handlers.onError('request_failed');
+      // Une erreur de lecture APRÈS une conclusion déjà émise ne doit pas rejouer un échec.
+      if (!settled) {
+        handlers.onError('request_failed');
+      }
     }
   }
 

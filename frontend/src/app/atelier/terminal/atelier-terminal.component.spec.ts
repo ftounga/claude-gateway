@@ -1941,4 +1941,70 @@ describe('AtelierTerminalComponent', () => {
       expect(fixture.nativeElement.querySelector('.terminal-deposit-notice--error')).not.toBeNull();
     });
   });
+
+  // ------------------------------------------------ rejouer la dernière requête (F-131 / SF-131-01)
+
+  describe('réponse non reçue / rejouer (F-131 / SF-131-01)', () => {
+    it('affiche la bannière « Réponse non reçue » + bouton Rejouer quand unanswered', () => {
+      component.unanswered = true;
+      component.submitting = false;
+      fixture.detectChanges();
+
+      const banner = fixture.nativeElement.querySelector('.terminal-unanswered') as HTMLElement;
+      expect(banner).not.toBeNull();
+      expect(text()).toContain('Réponse non reçue');
+      // Le message dit clairement qu'un rejeu PRODUIT UNE NOUVELLE RÉPONSE.
+      expect(text()).toContain('nouvelle réponse');
+      expect(banner.querySelector('.terminal-unanswered-action')).not.toBeNull();
+    });
+
+    it('la bannière n’apparaît pas tant qu’un tour est en cours', () => {
+      component.unanswered = true;
+      component.submitting = true;
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('.terminal-unanswered')).toBeNull();
+    });
+
+    it('le clic sur Rejouer (bannière) émet replay', () => {
+      component.unanswered = true;
+      component.submitting = false;
+      let emitted = 0;
+      component.replay.subscribe(() => (emitted += 1));
+      fixture.detectChanges();
+
+      (fixture.nativeElement.querySelector('.terminal-unanswered-action') as HTMLButtonElement).click();
+      expect(emitted).toBe(1);
+    });
+
+    it('pose un bouton Rejouer sur le DERNIER message utilisateur quand aucun tour ne tourne', () => {
+      const messages: AtelierThreadItem[] = [
+        { id: 'u1', role: 'USER', content: 'première', actions: [] },
+        { id: 'a1', role: 'ASSISTANT', content: 'réponse', actions: [] },
+        { id: 'u2', role: 'USER', content: 'dernière', actions: [] },
+      ];
+      component.messages = messages;
+      component.submitting = false;
+      fixture.detectChanges();
+
+      const buttons = fixture.nativeElement.querySelectorAll('.terminal-replay-inline');
+      // Un seul : sur le dernier message utilisateur.
+      expect(buttons.length).toBe(1);
+      expect(component.isLastUserMessage(messages[2])).toBeTrue();
+      expect(component.isLastUserMessage(messages[0])).toBeFalse();
+
+      let emitted = 0;
+      component.replay.subscribe(() => (emitted += 1));
+      (buttons[0] as HTMLButtonElement).click();
+      expect(emitted).toBe(1);
+    });
+
+    it('cache le bouton Rejouer en ligne pendant qu’un tour tourne (anti-doublon)', () => {
+      component.messages = [{ id: 'u1', role: 'USER', content: 'x', actions: [] }];
+      component.submitting = true;
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('.terminal-replay-inline')).toBeNull();
+    });
+  });
 });

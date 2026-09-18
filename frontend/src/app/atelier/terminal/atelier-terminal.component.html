@@ -509,6 +509,21 @@
             @if (message.steer; as steer) {
               <span class="terminal-steer-state" [attr.data-status]="steer.status">{{ steerStateLabel(steer) }}</span>
             }
+            <!-- REJOUER, TOUJOURS À PORTÉE (F-131 / SF-131-01) : sur le DERNIER message utilisateur,
+                 quand aucun tour ne tourne, l'utilisateur peut re-soumettre sa demande sans la
+                 réécrire — même sans détection automatique de non-réponse. -->
+            @if (!readOnly && isLastUserMessage(message) && !submitting) {
+              <button
+                mat-button
+                type="button"
+                class="terminal-toggle terminal-replay-inline"
+                [disabled]="replaying"
+                (click)="replay.emit()"
+              >
+                <mat-icon>replay</mat-icon>
+                Rejouer
+              </button>
+            }
           </span>
         </div>
       } @else {
@@ -783,6 +798,36 @@
         }
         <span class="terminal-live-elapsed">{{ elapsedLabel }}</span>
       </p>
+    }
+
+    <!-- SPINNER HONNÊTE (F-131 / SF-131-01) : quand le transport est tombé sans réponse rendue, on
+         ne laisse plus tourner un spinner sans fin — on le dit, et on propose de rejouer. Rejouer
+         PRODUIT UNE NOUVELLE RÉPONSE : le tour détaché est perdu, on n'en restaure pas la sortie.
+         Registre orange de charte, comme l'interruption et le plafond : une gêne attendue, pas une
+         panne. -->
+    @if (unanswered && !submitting) {
+      <!-- Réutilise le registre orange du plafond (.terminal-budget) ; `.terminal-unanswered` reste
+           comme ancre de test/JS, sans style propre. -->
+      <div class="terminal-budget terminal-unanswered" role="status">
+        <p class="terminal-budget-line">
+          <mat-icon class="terminal-budget-icon" aria-hidden="true">sync_problem</mat-icon>
+          Réponse non reçue
+        </p>
+        <p class="terminal-budget-hint">
+          Le tour a bien pu s'exécuter, mais la connexion s'est interrompue avant l'affichage.
+          Rejouer relance votre dernière demande et <strong>produit une nouvelle réponse</strong>.
+        </p>
+        <button
+          mat-button
+          type="button"
+          class="terminal-budget-action terminal-unanswered-action"
+          [disabled]="replaying"
+          (click)="replay.emit()"
+        >
+          <mat-icon>replay</mat-icon>
+          Rejouer la dernière requête
+        </button>
+      </div>
     }
 
     @if (pendingConfirmation; as ask) {
