@@ -50,8 +50,8 @@ class GovernancePackageSeederTest {
     @BeforeEach
     void setUp() {
         fullRegistry = new GovernanceControlRegistry(List.of(new CommitSansTraceLlmControl(),
-                new JugeFinDeTourControl(destinations),
-                new PromotionDetteBloquanteControl(destinations),
+                new JugeFinDeTourControl(),
+                new PromotionDetteBloquanteControl(),
                 new JugeIndependantControl(null, null, destinations)));
         when(packages.save(any(GovernancePackage.class))).thenAnswer(invocation -> {
             GovernancePackage saved = invocation.getArgument(0);
@@ -207,7 +207,7 @@ class GovernancePackageSeederTest {
     void anAbsentControlIsIgnored() {
         when(packages.findBySlug(GovernancePackageSeeder.SLUG)).thenReturn(Optional.empty());
         GovernanceControlRegistry partial =
-                new GovernanceControlRegistry(List.of(new JugeFinDeTourControl(destinations)));
+                new GovernanceControlRegistry(List.of(new JugeFinDeTourControl()));
 
         seeder(partial, true).seed();
 

@@ -1,84 +1,37 @@
 package fr.claudegateway.governance.control;
 
-import java.util.List;
-import java.util.Optional;
-
 import org.springframework.stereotype.Component;
 
 import fr.claudegateway.atelier.checkpoint.AtelierCheckpointContext;
 import fr.claudegateway.atelier.checkpoint.AtelierCheckpointKind;
 import fr.claudegateway.atelier.checkpoint.AtelierCheckpointVerdict;
 import fr.claudegateway.governance.GovernanceControl;
-import fr.claudegateway.governance.GovernanceMapDestinations;
-import fr.claudegateway.governance.control.FinDeTourMarker.Promotion;
 
 /**
- * <b>Une promotion dit où, et une case non cochée empêche de clore</b> (F-52 / SF-52-02, complété
- * par F-93 / SF-93-01).
+ * <b>Contrôle retiré : la promotion ne se déclare plus, elle se constate</b> (F-125 / SF-125-06b).
  *
- * <p>La promotion sans dette bloquante ne tient pas : « je le noterai » se dit à chaque tour, et rien
- * n'oblige jamais à y revenir. Une case {@code - [ ]} laissée dans le projet est une <b>dette</b>.</p>
+ * <p>Ce contrôle lisait le <b>marqueur de fin de tour</b> pour refuser une promotion « sans dire
+ * où » (SF-125-04 avait déjà cessé de bloquer sur la seule dette). SF-125-06b supprime toute
+ * dépendance à ce marqueur : le suivi de la promotion et de la dette est un <b>effet de bord
+ * serveur</b>, à partir des écritures de fichiers réelles.</p>
  *
- * <p><b>La dette ne relance plus l'agent</b> (F-125 / SF-125-04). Le crochet {@code END_OF_TURN} peut
- * relancer jusqu'à 3× ; répondre par de la paperasse de dette à une question de fond était le défaut
- * du cas réel CAGIP. La branche « dette non nulle » rend désormais {@code proceed()} — la dette reste
- * <b>comptée et visible</b> ailleurs, sans relancer : {@code IntegritePosteControl} la signale en
- * avertissement ({@code DETTE_EN_COURS}), et une clôture avec cases ouvertes reste une erreur
- * ({@code DETTE_A_LA_CLOTURE}). Ce contrôle ne rappelle plus qu'une <b>promotion explicitement
- * déclarée sans dire où</b>, et seulement si le tour n'a pas réellement écrit dans la carte
- * (SF-125-02).</p>
+ * <ul>
+ *   <li>La <b>promotion</b> est constatée par {@code GovernanceMapGrowth} (delta de faits d'une carte
+ *       à la lecture) et rattrapée par {@code JugeIndependantControl} (audit des fichiers écrits) —
+ *       jamais par une déclaration du modèle.</li>
+ *   <li>La <b>dette</b> (cases {@code - [ ]} des fichiers du projet) est comptée et signalée par
+ *       {@code IntegritePosteControl} : {@code DETTE_EN_COURS} (avertissement, non bloquant) et
+ *       {@code DETTE_A_LA_CLOTURE} (erreur à la clôture) — hors de la réponse à l'utilisateur.</li>
+ * </ul>
  *
- * <p><b>Ce qui manquait : la destination.</b> Ce contrôle savait compter ; il ne savait pas dire
- * <i>où</i> promouvoir, et son message envoyait vers la carte du <b>projet</b>. Or un cluster, un
- * VPN, un bastion n'appartiennent pas au projet — ils appartiennent au <b>poste</b>, et doivent lui
- * survivre. F-92 a créé la destination ; ce contrôle la <b>nomme</b>, à partir des fichiers de carte
- * réellement déposés sur ce poste ({@link GovernanceMapDestinations}), et il <b>refuse une promotion
- * qui ne la dit pas</b>. C'est le même contrôle, complété : un second contrôle qui réclamerait la
- * même chose ne rendrait qu'une correction — la première — et l'autre serait muette.</p>
- *
- * <p><b>Deux rappels, dans cet ordre, et l'ordre est le message</b> (la dette, elle, ne bloque plus —
- * F-125 / SF-125-04) :</p>
- *
- * <ol>
- *   <li>une promotion déclarée <b>sans destination</b> — on demande où, avec la forme exacte ;</li>
- *   <li>une destination <b>étrangère à la carte</b> — on nomme les fichiers réels du poste.</li>
- * </ol>
- *
- * <p>Les deux ne se déclenchent que si le tour n'a pas réellement écrit dans la carte (SF-125-02).</p>
- *
- * <p><b>Il compte, il ne police pas la forme.</b> Sans marqueur, ce contrôle <b>passe</b> : demander
- * le marqueur est le travail de {@link JugeFinDeTourControl}, et deux contrôles qui réclament la même
- * chose ne rendraient qu'une correction. Un paquet qui n'active que celui-ci accepte de ne rien
- * compter faute de déclaration ; c'est une composition légitime, pas un oubli.</p>
- *
- * <p><b>Il ne tombe jamais pour une carte qu'il n'a pas su lister.</b> Poste sans machine, rien
- * d'activé, projet effacé entre-temps : la liste des destinations est vide, le message reste vrai
- * sous sa forme générique, et la dette continue d'être comptée. Un contrôle qui prendrait le message
- * d'un utilisateur en otage pour une raison qui ne le regarde pas serait pire que pas de contrôle.</p>
- *
- * <p>Comme tout blocage de fin de tour, celui-ci est <b>borné</b> par F-50 : après un nombre fixe de
- * refus, la main revient au modèle.</p>
+ * <p>Il reste <b>déclaré</b> dans le paquet (identité stable, aucune rupture pour un poste activé)
+ * mais rend désormais {@link AtelierCheckpointVerdict#proceed()} : la carte se tient en silence.</p>
  */
 @Component
 public class PromotionDetteBloquanteControl implements GovernanceControl {
 
     /** Identifiant cité par les paquets. Immuable : un paquet publié le référence. */
     public static final String ID = "promotion-dette-bloquante";
-
-    private final GovernanceMapDestinations destinations;
-    private final PromotionReportee reportees;
-
-    /** Forme d'avant F-93 / SF-93-04 : un registre de reports propre à ce contrôle. */
-    public PromotionDetteBloquanteControl(GovernanceMapDestinations destinations) {
-        this(destinations, new PromotionReportee());
-    }
-
-    @org.springframework.beans.factory.annotation.Autowired
-    public PromotionDetteBloquanteControl(GovernanceMapDestinations destinations,
-            PromotionReportee reportees) {
-        this.destinations = destinations;
-        this.reportees = reportees;
-    }
 
     @Override
     public String id() {
@@ -92,122 +45,15 @@ public class PromotionDetteBloquanteControl implements GovernanceControl {
 
     @Override
     public String description() {
-        return "Rappelle une promotion qui ne dit pas dans quel fichier de la carte du poste elle a "
-                + "été rangée, sauf si le tour a réellement écrit dans la carte. La dette de "
-                + "promotion (cases « - [ ] ») ne bloque plus la clôture (F-125 / SF-125-04).";
+        return "Retiré (F-125 / SF-125-06b) : ne s'appuie plus sur un marqueur émis par le modèle. "
+                + "Le suivi promotion/dette se fait côté serveur (écritures de fichiers), porté par le "
+                + "juge indépendant, la croissance de carte et l'intégrité du poste.";
     }
 
     @Override
     public AtelierCheckpointVerdict evaluate(AtelierCheckpointContext context) {
-        AtelierCheckpointVerdict claimed =
-                JugeFinDeTourControl.claimIfDue(context, destinations, reportees);
-        if (claimed != null) {
-            return claimed;
-        }
-        String reply = context == null ? null : context.replyText();
-        Optional<FinDeTourMarker> parsed = FinDeTourMarker.parse(reply);
-        if (parsed.isEmpty()) {
-            return AtelierCheckpointVerdict.proceed();
-        }
-        FinDeTourMarker marker = parsed.get();
-
-        List<String> carte = destinations.pathsForProject(context.userId(), context.workspaceId());
-        String cited = GovernanceMapDestinations.cite(carte);
-
-        // F-125 / SF-125-02 : le suivi s'appuie sur les écritures RÉELLES du tour, pas sur un libellé
-        // que le modèle doit formater parfaitement. Si le tour a écrit dans un fichier de la carte du
-        // poste, la promotion est placée — un libellé tronqué ou une flèche perdue ne fait plus échouer
-        // le suivi. L'écriture réelle vaut destination.
-        boolean wroteToMap = wroteToMap(context, carte);
-
-        if (context.machineOffline()) {
-            // F-93 / SF-93-04 : les trois refus ci-dessous demandent tous d'écrire sur la machine (la
-            // carte, STATE.md). Poste hors ligne : on reporte ce qui serait réclamé, on ne bloque pas.
-            List<Promotion> unplaced = new java.util.ArrayList<>(marker.withoutDestination());
-            List<String> foreign = foreignDestinations(marker, carte);
-            marker.promus().stream().filter(promotion -> foreign.contains(promotion.destination()))
-                    .forEach(unplaced::add);
-            if (unplaced.isEmpty() && marker.dette() == 0) {
-                return AtelierCheckpointVerdict.proceed();
-            }
-            List<String> elements = new java.util.ArrayList<>(marker.promotions());
-            unplaced.forEach(promotion -> elements.add(promotion.element()));
-            reportees.reporter(context.userId(), context.hostId(), context.workspaceId(), elements,
-                    marker.dette());
-            return AtelierCheckpointVerdict.deferred(PromotionReportee.NOTICE);
-        }
-
-        List<Promotion> mute = marker.withoutDestination();
-        if (!mute.isEmpty() && !wroteToMap) {
-            return AtelierCheckpointVerdict.block("tu déclares avoir promu « "
-                    + marker.citedPromus(mute) + " » sans dire où. Reprends le marqueur sous la "
-                    + "forme « promu=" + mute.get(0).element() + " -> <fichier> » (libellé court, sans "
-                    + "ponctuation interne), le fichier étant l'un de ceux de la carte du poste : "
-                    + cited + " — et trace-le coché dans STATE.md : « - [x] " + mute.get(0).element()
-                    + " -> promu dans <fichier> ».");
-        }
-
-        List<String> foreign = foreignDestinations(marker, carte);
-        if (!foreign.isEmpty() && !wroteToMap) {
-            return AtelierCheckpointVerdict.block("« " + String.join(", ", foreign) + " » "
-                    + (foreign.size() > 1 ? "ne sont pas des fichiers" : "n'est pas un fichier")
-                    + " de la carte de ce poste. Range l'élément dans l'un de ceux-ci : " + cited
-                    + ", puis reprends le marqueur avec cette destination.");
-        }
-
-        // F-125 / SF-125-04 : la DETTE ne renvoie plus l'agent au travail. Le crochet END_OF_TURN
-        // peut relancer jusqu'à 3× (audit F-119) ; répondre par de la paperasse de dette à une
-        // question de fond est exactement le défaut que F-125 corrige. La dette reste comptée et
-        // VISIBLE ailleurs, sans relancer : IntegritePosteControl la signale en avertissement
-        // (DETTE_EN_COURS, non bloquant), et une clôture avec cases ouvertes reste une erreur
-        // (DETTE_A_LA_CLOTURE) — une perte de savoir au moment de clore, pas de la routine. Ici, on
-        // se tait : la carte se tient en silence.
+        // Plus aucune dépendance à un marqueur émis par le modèle (F-125 / SF-125-06b) : le suivi de
+        // la promotion et de la dette est un effet de bord serveur.
         return AtelierCheckpointVerdict.proceed();
-    }
-
-    /**
-     * Les destinations citées qui n'appartiennent pas à la carte de ce poste.
-     *
-     * <p>Quand la carte n'a pas pu être listée, <b>aucune</b> destination n'est étrangère : on ne
-     * refuse pas un fichier au nom d'une liste qu'on n'a pas.</p>
-     *
-     * <p>La comparaison porte sur le <b>nom du fichier</b>, pas sur le chemin écrit : « acces.md »
-     * et « ./acces.md » désignent le même fichier, et un refus pour un « ./ » ferait perdre un tour
-     * sans rien protéger.</p>
-     */
-    private static List<String> foreignDestinations(FinDeTourMarker marker, List<String> carte) {
-        if (carte.isEmpty()) {
-            return List.of();
-        }
-        return marker.destinations().stream()
-                .filter(destination -> carte.stream()
-                        .noneMatch(path -> fileName(path).equalsIgnoreCase(fileName(destination))))
-                .toList();
-    }
-
-    /**
-     * Vrai si le tour a écrit dans un fichier de la carte du poste (F-125 / SF-125-02).
-     *
-     * <p>La comparaison porte sur le <b>nom du fichier</b>, comme {@link #foreignDestinations} :
-     * « plateformes.md » et « ../plateformes.md » désignent le même fichier de carte. Quand la carte
-     * n'a pas pu être listée, aucune écriture ne peut la recouper : la tolérance ne se déclenche pas,
-     * et le comportement générique est conservé.</p>
-     */
-    private static boolean wroteToMap(AtelierCheckpointContext context, List<String> carte) {
-        if (carte.isEmpty()) {
-            return false;
-        }
-        List<String> ecrits = context.writtenPaths();
-        if (ecrits.isEmpty()) {
-            return false;
-        }
-        return ecrits.stream().anyMatch(ecrit -> carte.stream()
-                .anyMatch(path -> fileName(path).equalsIgnoreCase(fileName(ecrit))));
-    }
-
-    /** Le dernier segment d'un chemin — ce qui identifie un fichier de carte. */
-    private static String fileName(String path) {
-        int slash = path.lastIndexOf('/');
-        return slash < 0 ? path.strip() : path.substring(slash + 1).strip();
     }
 }

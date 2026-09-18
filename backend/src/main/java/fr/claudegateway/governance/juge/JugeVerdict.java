@@ -29,7 +29,7 @@ import java.util.Locale;
  *
  * <p><b>Tolérance de forme, jamais de fond.</b> Trois séparateurs (le tiret cadratin, {@code --},
  * {@code -}), deux puces ({@code -}, {@code *}), {@code AUCUN} sans accent ni casse : on corrige un
- * modèle sur ce qu'il dit, pas sur sa typographie. Même arbitrage que {@code FinDeTourMarker}.</p>
+ * modèle sur ce qu'il dit, pas sur sa typographie.</p>
  *
  * @param lisible  vrai si le bloc de verdict a été trouvé <b>et</b> compris
  * @param elements ce qui est cité dans les notes et absent de la carte ; vide quand le juge conclut
@@ -108,8 +108,7 @@ public record JugeVerdict(boolean lisible, List<Element> elements) {
      * Lit le bloc de verdict d'une réponse de juge.
      *
      * <p><b>Le dernier marqueur fait foi</b> : une réponse peut citer la forme attendue en
-     * expliquant la consigne avant de la poser réellement. Celui qui clôt la réponse est le vrai —
-     * même arbitrage que {@code FinDeTourMarker}, pour la même raison.</p>
+     * expliquant la consigne avant de la poser réellement. Celui qui clôt la réponse est le vrai.</p>
      *
      * @return le verdict, ou {@link #illisible()} si le marqueur manque ou si ce qui le suit ne veut
      *         rien dire

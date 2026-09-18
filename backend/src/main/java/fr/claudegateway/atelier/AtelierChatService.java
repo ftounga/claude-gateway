@@ -1252,11 +1252,6 @@ public class AtelierChatService implements RelayInterruptTarget {
                                     workspaceId, finalText, List.copyOf(writtenPaths),
                                     machineOfTurn.getOrDefault(turnKey(userId, workspaceId),
                                             fr.claudegateway.atelier.checkpoint.AtelierMachineReach.UNKNOWN)));
-                    if (verdict.hasNotice()) {
-                        // F-93 / SF-93-04 : un report ne bloque pas. La mention est dite UNE fois, à
-                        // la clôture — ce tour s'arrête ici, il n'y a donc pas de seconde occasion.
-                        finalText = appendNotice(finalText, verdict.notice());
-                    }
                     if (verdict.blocked()) {
                         endOfTurnBlocks++;
                         String correction = AtelierCheckpointRunner.endOfTurnBlockedMessage(verdict);
@@ -1628,23 +1623,6 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
         // Le retrait peut laisser des lignes vides en fin de réponse ou une triple coupure au milieu.
         return stripped.replaceAll("\\n{3,}", "\n\n").strip();
-    }
-
-    /**
-     * Ajoute la mention d'un report à la réponse finale (F-93 / SF-93-04) — une seule fois : une
-     * réponse qui la porte déjà n'est pas rallongée.
-     */
-    static String appendNotice(String finalText, String notice) {
-        if (notice == null || notice.isBlank()) {
-            return finalText;
-        }
-        String sentence = fr.claudegateway.governance.control.PromotionReportee.NOTICE.equals(notice)
-                ? fr.claudegateway.governance.control.PromotionReportee.NOTICE_SENTENCE : notice;
-        String reply = finalText == null ? "" : finalText;
-        if (reply.contains(sentence)) {
-            return reply;
-        }
-        return reply.isBlank() ? sentence : reply.stripTrailing() + "\n\n" + sentence;
     }
 
     /**
