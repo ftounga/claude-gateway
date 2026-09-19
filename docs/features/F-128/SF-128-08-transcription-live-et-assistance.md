@@ -1,7 +1,12 @@
 # SF-128-08 — Transcription en direct & assistance pendant la réunion
 
-> Cadrage du 2026-09-19 (PO). **Cadrage seul : livraison sur go.** Le PO **rouvre** l'option « live »
-> (décision D4 initiale = « après-coup » ; désormais on veut aussi le temps réel).
+> **⛔ NON RETENU — décision PO du 2026-09-19.** Le PO préfère **activer la transcription MANUELLEMENT**
+> (le STT est un service **payant**), au cas par cas — typiquement chez un client / dans une réunion **sans
+> transcription native** — via le bouton « Transcrire » (SF-128-04) + la config STT (SF-128-18), **pas** en
+> continu/live. Cadrage conservé pour trace ; **ne pas implémenter** sans réouverture explicite du PO.
+>
+> *(Cadrage initial ci-dessous.)* Le PO avait rouvert l'option « live » (D4 initial = « après-coup »), puis
+> l'a **écartée** au vu du coût du service STT et de sa préférence pour une activation manuelle.
 
 ## 1. Le besoin
 Pendant une réunion capturée (le 2-temps SF-128-16 fonctionne : Rejoindre → « En réunion ✅ » →
