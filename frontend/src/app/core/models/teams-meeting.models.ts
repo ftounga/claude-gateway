@@ -22,9 +22,34 @@ export interface TeamsMeeting {
   audioBytes: number | null;
   /** Nombre d'images clés (deck reconstitué, SF-128-03). */
   imageCount: number;
+  /** État de la transcription (SF-128-04). */
+  transcriptStatus: TranscriptStatus;
+  /** Langue détectée du transcript, ou `null`. */
+  transcriptLang: string | null;
+  /** Vrai dès qu'un transcript est rattaché (SF-128-04). */
+  hasTranscript: boolean;
   startedAt: string;
   endedAt: string | null;
   createdAt: string;
+}
+
+/** État de la transcription d'une réunion (SF-128-04). */
+export type TranscriptStatus = 'NONE' | 'PENDING' | 'TRANSCRIBING' | 'TRANSCRIBED' | 'FAILED';
+
+/** L'exploitation d'une réunion par l'agent (SF-128-05). */
+export interface MeetingInsights {
+  summary: string;
+  keyPoints: string[];
+  decisions: string[];
+  actions: string[];
+  hasTranscript: boolean;
+  imagesUsed: number;
+  missing: string | null;
+}
+
+/** La réponse de l'agent à une question libre sur une réunion (SF-128-05). */
+export interface MeetingAnswer {
+  answer: string;
 }
 
 /** Demande « Rejoindre & capturer ». */

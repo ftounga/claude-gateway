@@ -985,6 +985,16 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse("stt_not_configured", ex.getMessage()));
     }
 
+    @ExceptionHandler(fr.claudegateway.teams.meeting.MeetingExploitationUnreadableException.class)
+    public ResponseEntity<ErrorResponse> handleMeetingExploitationUnreadable(
+            fr.claudegateway.teams.meeting.MeetingExploitationUnreadableException ex) {
+        // La sortie du modèle n'a pas de forme lisible (F-128 / SF-128-05) : la consommation est
+        // décomptée, mais on ne rend pas une exploitation inventée.
+        log.debug("Exploitation de réunion illisible");
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(new ErrorResponse("meeting_exploitation_unreadable", ex.getMessage()));
+    }
+
     @ExceptionHandler(fr.claudegateway.teams.meeting.MeetingCaptureException.class)
     public ResponseEntity<ErrorResponse> handleMeetingCapture(
             fr.claudegateway.teams.meeting.MeetingCaptureException ex) {

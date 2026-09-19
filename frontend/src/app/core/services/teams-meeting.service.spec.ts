@@ -66,4 +66,24 @@ describe('TeamsMeetingService', () => {
     expect(req.request.method).toBe('GET');
     expect(req.request.responseType).toBe('blob');
   });
+
+  it('déclenche la transcription et lit le transcript (SF-128-04)', () => {
+    service.transcribe('h1', 'm1').subscribe();
+    expect(httpMock.expectOne('/api/vigie/hosts/h1/meetings/m1/transcribe').request.method).toBe('POST');
+
+    service.transcript('h1', 'm1').subscribe();
+    const req = httpMock.expectOne('/api/vigie/hosts/h1/meetings/m1/transcript');
+    expect(req.request.method).toBe('GET');
+    expect(req.request.responseType).toBe('text');
+  });
+
+  it('analyse et interroge l\'agent (SF-128-05)', () => {
+    service.insights('h1', 'm1').subscribe();
+    expect(httpMock.expectOne('/api/vigie/hosts/h1/meetings/m1/insights').request.method).toBe('POST');
+
+    service.ask('h1', 'm1', 'Qui décide ?').subscribe();
+    const req = httpMock.expectOne('/api/vigie/hosts/h1/meetings/m1/ask');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ question: 'Qui décide ?' });
+  });
 });
