@@ -17,4 +17,7 @@ public interface MeetingRepository extends JpaRepository<Meeting, UUID> {
     List<Meeting> findByUserIdAndHostIdOrderByStartedAtDesc(UUID userId, UUID hostId);
 
     Optional<Meeting> findByIdAndUserIdAndHostId(UUID id, UUID userId, UUID hostId);
+
+    /** Les réunions dans un état de transcription donné — sert au worker STT (F-128 / SF-128-04). */
+    List<Meeting> findByTranscriptStatus(TranscriptStatus transcriptStatus);
 }

@@ -94,6 +94,24 @@ public class Meeting {
     @Column(name = "image_count")
     private Integer imageCount;
 
+    /** Le transcript horodaté (F-128 / SF-128-04), ou {@code null} tant qu'aucune transcription. */
+    @Column(name = "transcript", columnDefinition = "text")
+    private String transcript;
+
+    /** État de la transcription (F-128 / SF-128-04). Jamais {@code null} (défaut {@code NONE}). */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "transcript_status", nullable = false, length = 20)
+    @Builder.Default
+    private TranscriptStatus transcriptStatus = TranscriptStatus.NONE;
+
+    /** Langue détectée du transcript (verbose_json), ou {@code null}. */
+    @Column(name = "transcript_lang", length = 20)
+    private String transcriptLang;
+
+    /** Message nommé du dernier échec de transcription (F-128 / SF-128-04), ou {@code null}. */
+    @Column(name = "transcript_error", length = 500)
+    private String transcriptError;
+
     @Column(name = "started_at", nullable = false)
     private OffsetDateTime startedAt;
 

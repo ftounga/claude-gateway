@@ -22,6 +22,9 @@ public record MeetingResponse(
         boolean hasAudio,
         Long audioBytes,
         int imageCount,
+        String transcriptStatus,
+        String transcriptLang,
+        boolean hasTranscript,
         OffsetDateTime startedAt,
         OffsetDateTime endedAt,
         OffsetDateTime createdAt) {
@@ -31,6 +34,9 @@ public record MeetingResponse(
                 m.getMeetingUrl(), m.getState().name(), m.isConsentAcknowledged(), m.getRetentionDays(),
                 m.getCaptureRef(), m.getAudioKey() != null, m.getAudioBytes(),
                 m.getImageCount() == null ? 0 : m.getImageCount(),
+                m.getTranscriptStatus() == null ? "NONE" : m.getTranscriptStatus().name(),
+                m.getTranscriptLang(),
+                m.getTranscript() != null && !m.getTranscript().isBlank(),
                 m.getStartedAt(), m.getEndedAt(), m.getCreatedAt());
     }
 }

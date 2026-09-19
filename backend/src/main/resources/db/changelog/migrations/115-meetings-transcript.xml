@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-128 / SF-128-04 — LA TRANSCRIPTION DE LA REUNION (STT).
+
+      On rattache à l'artefact réunion le transcript produit par un service STT relayé (async/worker),
+      ETEINT PAR DEFAUT. Colonnes ajoutées à meetings :
+        - transcript        : le texte horodaté, NULL tant qu'aucune transcription.
+        - transcript_status : NONE (défaut) / PENDING / TRANSCRIBING / TRANSCRIBED / FAILED.
+        - transcript_lang   : langue détectée (verbose_json), NULL sinon.
+        - transcript_error  : message nommé si FAILED, NULL sinon.
+      Additif et compatible : les réunions existantes prennent transcript_status = NONE. Réversible.
+
+      La colonne `transcript` suit le patron des grands textes du projet (cf. 010-documents,
+      006-messages) : entité `columnDefinition="text"` (JDBC VARCHAR) => Postgres `text`, H2
+      `varchar(1000000)`, pour concorder avec la validation de schéma Hibernate sur les deux bases.
+    -->
+    <changeSet id="115-meetings-transcript-meta" author="claude-gateway">
+        <addColumn tableName="meetings">
+            <column name="transcript_status" type="varchar(20)" defaultValue="NONE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="transcript_lang" type="varchar(20)"/>
+            <column name="transcript_error" type="varchar(500)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="meetings" columnName="transcript_status"/>
+            <dropColumn tableName="meetings" columnName="transcript_lang"/>
+            <dropColumn tableName="meetings" columnName="transcript_error"/>
+        </rollback>
+    </changeSet>
+
+    <!-- Postgres : `text` (JDBC VARCHAR), concorde avec l'entité columnDefinition="text". -->
+    <changeSet id="115-meetings-transcript-text-postgresql" author="claude-gateway" dbms="postgresql">
+        <addColumn tableName="meetings">
+            <column name="transcript" type="text"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="meetings" columnName="transcript"/>
+        </rollback>
+    </changeSet>
+
+    <!-- H2 : VARCHAR large (JDBC VARCHAR), même type effectif que le `text` de Postgres. -->
+    <changeSet id="115-meetings-transcript-text-h2" author="claude-gateway" dbms="h2">
+        <addColumn tableName="meetings">
+            <column name="transcript" type="varchar(1000000)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="meetings" columnName="transcript"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
