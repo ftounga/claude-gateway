@@ -86,6 +86,82 @@ describe('MeetingDetailPageComponent', () => {
     expect(root.querySelector('.detail__actions button')).not.toBeNull();
   });
 
+  it('alimente le <audio> avec un object URL non vide (source valide, SF-128-17)', () => {
+    const createSpy = spyOn(URL, 'createObjectURL').and.callThrough();
+    const root = setup();
+    expect(createSpy).toHaveBeenCalled();
+    const src = root.querySelector('audio.detail__player')?.getAttribute('src') ?? '';
+    expect(src.length).toBeGreaterThan(0);
+    // La source est un object URL (blob:) — dans le harnais de test, le SafeUrl l'enrobe.
+    expect(src).toContain('blob:');
+  });
+
+  it('force un type audio décodable quand le Blob reçu n\'a pas de type (SF-128-17)', () => {
+    const captured: Blob[] = [];
+    spyOn(URL, 'createObjectURL').and.callFake((obj: Blob | MediaSource) => {
+      captured.push(obj as Blob);
+      return 'blob:typed';
+    });
+    service = jasmine.createSpyObj<TeamsMeetingService>('TeamsMeetingService',
+      ['get', 'audioBlob', 'imageIds', 'imageBlob', 'transcript', 'transcribe', 'insights', 'ask',
+        'promoteToCard', 'pushActionsToRadar']);
+    service.get.and.returnValue(of(meeting));
+    // Le service rend un Blob SANS type (cas webm MediaRecorder sans type exploitable).
+    service.audioBlob.and.returnValue(of(new Blob(['audio'])));
+    service.imageIds.and.returnValue(of([]));
+    service.transcript.and.returnValue(of('[00:00] Bonjour'));
+    TestBed.configureTestingModule({
+      imports: [MeetingDetailPageComponent],
+      providers: [
+        provideNoopAnimations(),
+        provideRouter([]),
+        { provide: TeamsMeetingService, useValue: service },
+        { provide: RadarService, useValue: radarSpy() },
+        {
+          provide: ActivatedRoute,
+          useValue: { paramMap: of(convertToParamMap({ hostRef: 'h1', meetingId: 'm1' })) },
+        },
+      ],
+    });
+    fixture = TestBed.createComponent(MeetingDetailPageComponent);
+    fixture.detectChanges();
+
+    const audioBlobArg = captured.find((b) => b.type.startsWith('audio/'));
+    expect(audioBlobArg).withContext('un Blob typé audio doit être créé').toBeDefined();
+    expect(audioBlobArg!.type).toBe('audio/webm');
+  });
+
+  it('répare la durée d\'un webm sans Duration : seek en fin puis retour à 0 (SF-128-17)', () => {
+    setup();
+    const listeners: Record<string, Array<() => void>> = {};
+    const el = {
+      duration: Infinity,
+      currentTime: 0,
+      addEventListener(evt: string, cb: () => void): void {
+        (listeners[evt] ??= []).push(cb);
+      },
+      removeEventListener(evt: string, cb: () => void): void {
+        listeners[evt] = (listeners[evt] ?? []).filter((fn) => fn !== cb);
+      },
+    } as unknown as HTMLAudioElement;
+
+    fixture.componentInstance.onAudioMetadata(el);
+    expect(el.currentTime).toBe(1e101);
+    expect(listeners['timeupdate']?.length).toBe(1);
+
+    // Le navigateur émet timeupdate une fois la vraie durée calculée : on revient à 0.
+    listeners['timeupdate'][0]();
+    expect(el.currentTime).toBe(0);
+    expect(listeners['timeupdate'].length).toBe(0);
+  });
+
+  it('ne touche pas à currentTime si la durée est déjà connue (SF-128-17)', () => {
+    setup();
+    const el = { duration: 42, currentTime: 5, addEventListener: () => {}, removeEventListener: () => {} } as unknown as HTMLAudioElement;
+    fixture.componentInstance.onAudioMetadata(el);
+    expect(el.currentTime).toBe(5);
+  });
+
   it('charge et affiche le deck', () => {
     const root = setup();
     expect(service.imageIds).toHaveBeenCalledOnceWith('h1', 'm1');
