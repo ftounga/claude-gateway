@@ -1120,9 +1120,18 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     `retention_days (int, défaut 30, borne applicative [1;365])`, `capture_ref (varchar 200, nullable)`,
     `audio_key (varchar 300, nullable — SF-128-02, migration 112)`, `audio_bytes (bigint, nullable)`,
     `image_count (int, nullable — SF-128-03, migration 113)`,
+    `transcript (text — SF-128-04, migration 115, texte horodaté)`, `transcript_status (varchar 20 NOT
+    NULL défaut NONE — NONE/PENDING/TRANSCRIBING/TRANSCRIBED/FAILED)`, `transcript_lang (varchar 20,
+    nullable)`, `transcript_error (varchar 500, nullable)`,
     `started_at`, `ended_at (nullable)`, `created_at`, `updated_at`. Index `(user_id, host_id,
     started_at)`. Endpoints `/api/vigie/hosts/{hostId}/meetings` (create/stop/pause/resume/list/get),
-    gardés par le droit Teams + possession du poste + activation Vigie.
+    lecture des médias `…/{meetingId}/audio` (Range/téléchargement) et `…/{meetingId}/images[/{imageId}]`
+    (SF-128-10), transcription `…/{meetingId}/transcribe` (POST, opt-in) + `…/{meetingId}/transcript`
+    (GET) (SF-128-04) ; gardés par le droit Teams + possession du poste + activation Vigie.
+  - **Transcription (SF-128-04)** : relais Provider-First `TranscriptionProvider` (impl HTTP compatible
+    Whisper, `app.stt.*` **configurable**), **asynchrone** (`TranscriptionWorker` `@Scheduled`),
+    **éteinte par défaut** (sans base-url/clé : 503 `stt_not_configured`, aucun octet ne sort). DRAPEAU
+    FORT : une fois configuré, l'audio de réunion quitte le poste vers le service STT (sensible en banque).
   - **Capture par onglet (Option A, §2bis)** : « Rejoindre & capturer » ordonne au runner
     `teams_meeting_join` (navigue l'onglet Teams du Chrome managé vers l'URL), puis
     `teams_meeting_capture_start` (SF-128-02 : audio onglet + micro mixés, script injecté piloté CDP) ;
