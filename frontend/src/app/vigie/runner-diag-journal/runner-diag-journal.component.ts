@@ -78,6 +78,16 @@ export class RunnerDiagJournalComponent implements OnChanges {
     { value: 'DEBUG', label: 'DEBUG et au-dessus' },
   ];
 
+  /**
+   * Le pire niveau présent dans la page chargée — pour l'indice de l'en-tête **replié**
+   * (SF-132-06). `null` s'il n'y a aucun événement. L'ordre de gravité : ERROR > WARN > INFO > DEBUG.
+   */
+  readonly worstLevel = computed<RunnerDiagLevel | null>(() => {
+    const order: RunnerDiagLevel[] = ['ERROR', 'WARN', 'INFO', 'DEBUG'];
+    const present = new Set(this.entries().map((e) => e.level));
+    return order.find((level) => present.has(level)) ?? null;
+  });
+
   /** La liste affichée : la page chargée, filtrée par la recherche (client). */
   readonly visible = computed(() => {
     const needle = this.search().trim().toLowerCase();

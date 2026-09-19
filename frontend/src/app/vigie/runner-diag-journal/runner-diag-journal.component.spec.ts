@@ -135,4 +135,51 @@ describe('RunnerDiagJournalComponent', () => {
     expect(fixture.nativeElement.querySelector('.diag__error')).toBeTruthy();
     expect(fixture.nativeElement.querySelectorAll('.diag__row').length).toBe(0);
   });
+
+  // --- SF-132-06 : accordéon repliable, replié par défaut ---
+
+  it('SF-132-06 : le panneau est un accordéon replié par défaut', () => {
+    load([entry('INFO', 'chrome', 'chrome_state')]);
+    const details = fixture.nativeElement.querySelector('details.diag') as HTMLDetailsElement;
+    expect(details).toBeTruthy();
+    expect(details.open).toBeFalse();
+  });
+
+  it('SF-132-06 : l\'en-tête est un <summary> (clavier natif) portant le titre', () => {
+    load([]);
+    const summary = fixture.nativeElement.querySelector('details.diag > summary.diag__summary');
+    expect(summary).toBeTruthy();
+    expect(summary.textContent).toContain('Journal du runner');
+  });
+
+  it('SF-132-06 : l\'indice replié montre le compteur et un badge du pire niveau', () => {
+    load([
+      entry('INFO', 'chrome', 'chrome_state'),
+      entry('ERROR', 'capture', 'stop'),
+    ]);
+    const hint = fixture.nativeElement.querySelector('.diag__hint');
+    expect(hint.textContent).toContain('2 événements');
+    const badge = hint.querySelector('.diag__hint-badge');
+    expect(badge.textContent).toContain('ERROR');
+    expect(badge.classList).toContain('badge--error');
+    expect(component.worstLevel()).toBe('ERROR');
+  });
+
+  it('SF-132-06 : l\'indice replié dit « Aucun événement » quand la liste est vide', () => {
+    load([]);
+    expect(fixture.nativeElement.querySelector('.diag__hint').textContent).toContain('Aucun événement');
+    expect(component.worstLevel()).toBeNull();
+  });
+
+  it('SF-132-06 : déplié, le contenu et la liste restent intacts', () => {
+    load([entry('WARN', 'teams', 'session_state', 'reconnexion requise')]);
+    const details = fixture.nativeElement.querySelector('details.diag') as HTMLDetailsElement;
+    details.open = true;
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.diag__content')).toBeTruthy();
+    const rows = fixture.nativeElement.querySelectorAll('.diag__row');
+    expect(rows.length).toBe(1);
+    expect(rows[0].textContent).toContain('teams · session_state');
+  });
 });
