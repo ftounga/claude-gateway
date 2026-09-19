@@ -138,6 +138,32 @@ final class MeetingTabCapture {
             + "try{(c.mic?c.mic.getTracks():[]).forEach(function(t){t.stop();});}catch(e){}}"
             + "window.__cgMeetingCapture=null;return {cleared:true};}catch(e){return {cleared:false};}})()";
 
+    /**
+     * <b>Sonde l'état de l'enregistrement</b> (F-128 / SF-128-12) : rend {@code {active:true}} tant
+     * qu'un {@code MediaRecorder} tourne dans le contexte JS courant, {@code {active:false}} si le
+     * global a été effacé par une navigation/rechargement de la page Teams (SPA). C'est cette perte du
+     * global — {@code window.__cgMeetingCapture} vit dans le contexte de la page, détruit à chaque
+     * rechargement de document — qui faisait échouer l'arrêt en {@code no_active_capture}. Synchrone,
+     * ne lève jamais, sûre à ré-évaluer à chaque événement de chargement.
+     */
+    static final String ACTIVE_PROBE_SCRIPT = "(function(){try{var c=window.__cgMeetingCapture;"
+            + "return {active: !!(c && c.recorder && c.recorder.state === 'recording')};}"
+            + "catch(e){return {active:false};}})()";
+
+    /**
+     * <b>Le garde de ré-injection</b> (F-128 / SF-128-12), pur et éprouvable : on ne ré-injecte le
+     * capteur que si le ré-armement est armé <b>et</b> qu'aucun enregistrement n'est actif. Un
+     * enregistrement encore vivant (même contexte, pas de navigation) ne doit jamais être doublé —
+     * c'est la protection contre un second {@code getDisplayMedia} inutile.
+     *
+     * @param armed          le ré-armement est en place (capture démarrée, pas encore arrêtée)
+     * @param captureActive  un {@code MediaRecorder} tourne encore dans la page (voir {@link #ACTIVE_PROBE_SCRIPT})
+     * @return vrai s'il faut ré-injecter {@link #START_SCRIPT}
+     */
+    static boolean shouldReinject(boolean armed, boolean captureActive) {
+        return armed && !captureActive;
+    }
+
     /** Nombre maximum d'images clés retenues par réunion. */
     static final int MAX_FRAMES = 60;
 
