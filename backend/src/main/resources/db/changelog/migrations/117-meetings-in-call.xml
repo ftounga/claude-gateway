@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-128 / SF-128-16 — ENTRER REELLEMENT EN REUNION AVANT D'ENREGISTRER (flux en deux temps).
+
+      Le join « entre en réunion » (clic « Rejoindre maintenant » + détection du VRAI in-call) et
+      persiste la réunion en JOINED ; l'enregistrement démarre dans un second temps, une fois in-call
+      confirmé. On mémorise l'état in-call constaté au join :
+        - in_call : vrai si l'utilisateur est réellement en réunion au join (best-effort côté runner) ;
+                    faux si le join s'est arrêté au pré-join (plafond atteint). L'UI n'active « Démarrer
+                    l'enregistrement » que si vrai.
+      Additif et compatible : les réunions existantes prennent in_call = false. Réversible.
+    -->
+    <changeSet id="117-meetings-in-call" author="claude-gateway">
+        <addColumn tableName="meetings">
+            <column name="in_call" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="meetings" columnName="in_call"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

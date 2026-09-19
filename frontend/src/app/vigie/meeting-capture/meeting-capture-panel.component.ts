@@ -45,8 +45,8 @@ import {
         <div>
           <h3 class="meetings__title">Les réunions de {{ hostName }}</h3>
           <p class="meetings__lede">
-            Rejoignez la réunion dans le Chrome managé et capturez-la : elle devient un compte rendu
-            exploitable (résumé, décisions, actions — à venir).
+            Rejoignez la réunion dans le Chrome managé ; une fois « en réunion », démarrez
+            l'enregistrement — elle devient un compte rendu exploitable (résumé, décisions, actions).
           </p>
         </div>
         <button
@@ -58,7 +58,7 @@ import {
           (click)="openJoin()"
         >
           <mat-icon>videocam</mat-icon>
-          Rejoindre &amp; capturer
+          Rejoindre
         </button>
       </header>
 
@@ -67,6 +67,52 @@ import {
       } @else if (error()) {
         <p class="meetings__error">{{ error() }}</p>
       } @else {
+        @if (joined().length > 0) {
+          <section class="meetings__joined" aria-label="Réunions rejointes">
+            @for (m of joined(); track m.id) {
+              <article class="capture capture--joined">
+                <div class="capture__bar capture__bar--joined">
+                  <span class="capture__rec">
+                    <mat-icon aria-hidden="true" class="capture__state-icon">{{
+                      m.inCall ? 'check_circle' : 'hourglass_top'
+                    }}</mat-icon>
+                    {{ m.inCall ? 'En réunion' : 'Réunion à confirmer' }}
+                  </span>
+                  <span class="capture__since">Rejointe à {{ m.startedAt | date: 'HH:mm' }}</span>
+                </div>
+                <div class="capture__body">
+                  <p class="capture__name">{{ m.title || 'Réunion sans titre' }}</p>
+                  @if (!m.inCall) {
+                    <p class="capture__hint">
+                      La réunion n'est pas encore confirmée « en cours » sur ce poste. Ouvrez la Vigie
+                      pour vérifier, ou abandonnez puis relancez « Rejoindre ».
+                    </p>
+                  }
+                  <p class="capture__consent">
+                    <mat-icon aria-hidden="true">lock</mat-icon>
+                    L'enregistrement démarrera à votre commande. Conservation : {{ m.retentionDays }} jours.
+                  </p>
+                  <div class="capture__actions">
+                    <button
+                      mat-flat-button
+                      color="primary"
+                      type="button"
+                      [disabled]="busy() || !m.inCall"
+                      (click)="startCapture(m)"
+                    >
+                      <mat-icon>fiber_manual_record</mat-icon>
+                      Démarrer l'enregistrement
+                    </button>
+                    <button mat-stroked-button type="button" [disabled]="busy()" (click)="stop(m)">
+                      Abandonner
+                    </button>
+                  </div>
+                </div>
+              </article>
+            }
+          </section>
+        }
+
         @if (live().length > 0) {
           <section class="meetings__live" aria-label="Captures en cours">
             @for (m of live(); track m.id) {
@@ -128,9 +174,9 @@ import {
           </section>
         }
 
-        @if (live().length === 0 && past().length === 0) {
+        @if (joined().length === 0 && live().length === 0 && past().length === 0) {
           <p class="meetings__empty">
-            Aucune réunion capturée pour l'instant. Lancez « Rejoindre &amp; capturer » depuis une réunion Teams.
+            Aucune réunion capturée pour l'instant. Lancez « Rejoindre » depuis une réunion Teams.
           </p>
         }
       }
@@ -199,6 +245,20 @@ import {
       .capture__dot--paused {
         background: var(--cg-accent, #c9973a);
         animation: none;
+      }
+      /* SF-128-16 : réunion rejointe, en attente de « Démarrer l'enregistrement ». */
+      .capture__bar--joined {
+        background: var(--cg-accent, #c9973a);
+      }
+      .capture__state-icon {
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+      }
+      .capture__hint {
+        margin: 0;
+        font-size: 12px;
+        color: var(--cg-gold-ink, #8a5200);
       }
       @keyframes capture-pulse {
         0% {
@@ -322,6 +382,8 @@ export class MeetingCapturePanelComponent implements OnInit, OnDestroy {
   readonly error = signal<string | null>(null);
   readonly busy = signal(false);
 
+  /** SF-128-16 : réunions rejointes, en attente de « Démarrer l'enregistrement ». */
+  readonly joined = computed(() => this.meetings().filter((m) => m.state === 'JOINED'));
   readonly live = computed(() => this.meetings().filter((m) => m.state === 'RECORDING' || m.state === 'PAUSED'));
   readonly past = computed(() => this.meetings().filter((m) => m.state === 'STOPPED' || m.state === 'FAILED'));
 
@@ -345,6 +407,10 @@ export class MeetingCapturePanelComponent implements OnInit, OnDestroy {
       });
   }
 
+  startCapture(meeting: TeamsMeeting): void {
+    this.run(this.service.startCapture(this.hostId, meeting.id), 'Enregistrement démarré.');
+  }
+
   stop(meeting: TeamsMeeting): void {
     this.run(this.service.stop(this.hostId, meeting.id), 'Capture arrêtée.');
   }
@@ -358,7 +424,7 @@ export class MeetingCapturePanelComponent implements OnInit, OnDestroy {
   }
 
   private create(request: CreateMeetingRequest): void {
-    this.run(this.service.create(this.hostId, request), 'Réunion rejointe : capture démarrée.');
+    this.run(this.service.create(this.hostId, request), 'Réunion rejointe. Démarrez l\'enregistrement une fois « en réunion ».');
   }
 
   private run(source: import('rxjs').Observable<TeamsMeeting>, success: string): void {

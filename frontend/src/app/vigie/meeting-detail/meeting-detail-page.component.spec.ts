@@ -25,7 +25,7 @@ describe('MeetingDetailPageComponent', () => {
   const meeting: TeamsMeeting = {
     id: 'm1', hostId: 'h1', subjectId: null, title: 'Comité Data',
     meetingUrl: 'https://teams.microsoft.com/x', state: 'STOPPED', consentAcknowledged: true,
-    retentionDays: 30, captureRef: null, hasAudio: true, audioBytes: 2_097_152, imageCount: 1,
+    inCall: false, retentionDays: 30, captureRef: null, hasAudio: true, audioBytes: 2_097_152, imageCount: 1,
     transcriptStatus: 'TRANSCRIBED', transcriptLang: 'fr', hasTranscript: true, mediaPurgedAt: null,
     startedAt: '2026-09-18T10:00:00Z', endedAt: '2026-09-18T10:47:00Z', createdAt: '2026-09-18T10:00:00Z',
   };

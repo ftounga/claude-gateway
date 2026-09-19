@@ -54,8 +54,11 @@ public class TeamsMeetingService {
     }
 
     /**
-     * « Rejoindre & capturer » : valide, ordonne au runner de rejoindre l'onglet dans le Chrome managé,
-     * puis — seulement en cas de succès — persiste l'artefact (aucune ligne fantôme si le runner échoue).
+     * <b>« Rejoindre »</b> (F-128 / SF-128-16, 1ᵉʳ temps) : valide, ordonne au runner de rejoindre l'onglet
+     * dans le Chrome managé (le runner clique « Rejoindre maintenant » puis détecte le <b>vrai</b> in-call),
+     * puis — seulement en cas de succès — persiste l'artefact en {@link MeetingState#JOINED} (aucune ligne
+     * fantôme si le runner échoue). <b>L'enregistrement ne démarre pas ici</b> : il est lancé au 2ᵉ temps
+     * ({@link #startCapture}), une fois l'in-call confirmé — pour que le capteur survive.
      */
     public MeetingResponse create(RadarScope scope, CreateMeetingRequest request) {
         String url = normalizeUrl(request.meetingUrl());
@@ -83,32 +86,48 @@ public class TeamsMeetingService {
                 .subjectId(request.subjectId())
                 .title(title)
                 .meetingUrl(url)
-                .state(MeetingState.RECORDING)
+                .state(MeetingState.JOINED)
                 .consentAcknowledged(true)
+                .inCall(readInCall(result))
                 .retentionDays(retentionDays)
                 .captureRef(readCaptureRef(result))
                 .startedAt(OffsetDateTimeProvider.now())
                 .build();
-        Meeting saved = repository.save(meeting);
-        // SF-128-02 : démarre la capture d'onglet (audio réunion + micro). Best-effort : un micro
-        // refusé ne défait pas la réunion rejointe — l'utilisateur est dans le call, il verra
-        // simplement l'artefact sans audio. Le join (ci-dessus) reste la seule garde de création.
-        startCapture(target, saved.getId());
-        return MeetingResponse.of(saved);
+        return MeetingResponse.of(repository.save(meeting));
     }
 
-    private void startCapture(RunnerTarget target, UUID meetingId) {
+    /**
+     * <b>« Démarrer l'enregistrement »</b> (F-128 / SF-128-16, 2ᵉ temps) : sur une réunion déjà
+     * {@link MeetingState#JOINED} (donc in-call, page stabilisée), ordonne au runner de démarrer la
+     * capture d'onglet (audio réunion + micro). Comme il n'y a plus de navigation après, le capteur
+     * <b>survit</b> — c'est le cœur du correctif. Passe {@code JOINED → RECORDING} en cas de succès ;
+     * un échec runner est remonté (la réunion reste {@code JOINED}, l'utilisateur peut réessayer).
+     */
+    public MeetingResponse startCapture(RadarScope scope, UUID meetingId) {
+        Meeting meeting = require(scope, meetingId);
+        if (meeting.getState() != MeetingState.JOINED) {
+            throw new MeetingStateException(
+                    "L'enregistrement ne peut démarrer que sur une réunion rejointe et en cours.");
+        }
+        Workspace teamsTerminal = workspaceService.openTeamsTerminal(scope.userId(), scope.hostId());
+        RunnerTarget target = RunnerTargets.of(teamsTerminal);
         ObjectNode input = objectMapper.createObjectNode();
         input.put("meeting_id", meetingId.toString());
+        RunnerCallResult result;
         try {
-            RunnerCallResult result = runnerToolGateway.teamsRead(target, UUID.randomUUID().toString(),
+            result = runnerToolGateway.teamsRead(target, UUID.randomUUID().toString(),
                     TeamsToolCatalog.MEETING_CAPTURE_START, input);
-            if (!result.ok()) {
-                log.info("Capture non démarrée pour la réunion {} : {}", meetingId, result.errorCode());
-            }
         } catch (RuntimeException e) {
             log.info("Capture non démarrée pour la réunion {} (runner)", meetingId);
+            throw new MeetingCaptureException(MeetingCaptureException.MANAGED_CHROME_UNREACHABLE,
+                    "Impossible de démarrer l'enregistrement dans le Chrome managé : ouvrez la Vigie sur "
+                            + "ce poste et réessayez.");
         }
+        if (!result.ok()) {
+            throw mapRunnerFailure(result);
+        }
+        meeting.setState(MeetingState.RECORDING);
+        return MeetingResponse.of(repository.save(meeting));
     }
 
     /** Arrête la capture : passe STOPPED et horodate la fin. (Ordre runner d'arrêt = SF-128-02.) */
@@ -239,6 +258,22 @@ public class TeamsMeetingService {
         return new MeetingCaptureException(MeetingCaptureException.MANAGED_CHROME_UNREACHABLE,
                 "Impossible de rejoindre la réunion dans le Chrome managé : ouvrez la Vigie sur ce poste "
                         + "et relancez « Rejoindre & capturer ».");
+    }
+
+    /**
+     * Lit l'état {@code inCall} rendu par le runner au join (F-128 / SF-128-16). Best-effort : un
+     * contenu illisible ou sans le champ vaut « pas confirmé in-call » ({@code false}).
+     */
+    private boolean readInCall(RunnerCallResult result) {
+        String content = result.content();
+        if (content == null || content.isBlank()) {
+            return false;
+        }
+        try {
+            return objectMapper.readTree(content).path("inCall").asBoolean(false);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            return false;
+        }
     }
 
     private static String readCaptureRef(RunnerCallResult result) {

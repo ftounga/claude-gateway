@@ -25,12 +25,19 @@ describe('TeamsMeetingService', () => {
     expect(httpMock.expectOne('/api/vigie/hosts/h1/meetings/m1').request.method).toBe('GET');
   });
 
-  it('crée une réunion (Rejoindre & capturer) avec le corps attendu', () => {
+  it('crée une réunion (Rejoindre) avec le corps attendu', () => {
     const body = { meetingUrl: 'https://teams.microsoft.com/x', consentAcknowledged: true, retentionDays: 30 };
     service.create('h1', body).subscribe();
     const req = httpMock.expectOne('/api/vigie/hosts/h1/meetings');
     expect(req.request.method).toBe('POST');
     expect(req.request.body).toEqual(body);
+  });
+
+  it('démarre l\'enregistrement (SF-128-16) sur POST capture-start', () => {
+    service.startCapture('h1', 'm1').subscribe();
+    const req = httpMock.expectOne('/api/vigie/hosts/h1/meetings/m1/capture-start');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({});
   });
 
   it('arrête, met en pause et reprend', () => {
