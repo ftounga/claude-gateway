@@ -4,17 +4,50 @@
 
 .diag {
   display: block;
-  padding: 12px 16px;
   border: 1px solid var(--cg-divider, #e2e8f0);
   border-radius: 8px;
   background: var(--cg-surface, #ffffff);
 }
 
-.diag__head {
+// En-tête cliquable de l'accordéon (SF-132-06). `<summary>` natif : clavier + annonce gratuits.
+.diag__summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  padding: 12px 16px;
+  cursor: pointer;
+  list-style: none; // masque le marqueur natif ; le chevron le remplace.
+  border-radius: 8px;
+}
+
+.diag__summary::-webkit-details-marker {
+  display: none;
+}
+
+.diag__summary:hover {
+  background: var(--cg-bg, #f5f6fa);
+}
+
+.diag__summary:focus-visible {
+  outline: 2px solid var(--cg-accent, #e07b39);
+  outline-offset: -2px;
+}
+
+.diag__summary-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.diag__chevron {
+  color: var(--cg-text-secondary, #64748b);
+  transition: transform 0.15s ease;
+}
+
+.diag[open] .diag__chevron {
+  transform: rotate(180deg);
 }
 
 .diag__title {
@@ -22,6 +55,27 @@
   font-size: 14px;
   font-weight: 600;
   color: var(--cg-text-primary, #0f172a);
+}
+
+.diag__hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.diag__hint-text {
+  font-size: 12px;
+  color: var(--cg-text-secondary, #64748b);
+}
+
+.diag__content {
+  padding: 0 16px 12px;
+}
+
+.diag__toolbar {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .diag__debug {
