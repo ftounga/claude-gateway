@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      SF-132-02 — Observabilité du runner : journal de diagnostic (F-132). Une table neuve :
+
+      * runner_diag_events : un événement de diagnostic STRUCTURÉ et EXPURGÉ par ligne, remonté par le
+        runner dans la trame runner_diag (SF-132-01) sur le WebSocket existant. On y range des FORMES et
+        des ÉTATS — état du Chrome managé, verdict de la sonde Teams, cycle de vie de la capture (tailles,
+        jamais le média), ticks de la Vigie, erreurs (type + message court). JAMAIS un secret, une URL
+        brute (seulement sa classe), un chemin sensible ni un contenu Teams : l'expurgation est faite à
+        la source (runner). Le poste est un poste CLIENT/BANQUE — c'est un invariant.
+
+      Stockage BORNÉ : anneau par poste (les plus anciennes lignes au-delà de la capacité sont
+      supprimées) + TTL 7 jours (purge planifiée). Négligeable sur la RDS partagée (cadrage §6).
+
+      Isolation : user_id + host_id viennent de la SESSION runner (RunnerIdentity), jamais d'un champ du
+      message. Toute lecture filtre sur user_id + host_id. Index dédié à ce filtre + tri chronologique.
+
+      Aucune donnée existante n'est touchée (table neuve). Réversible : dropTable.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="114-runner-diag-events-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="runner_diag_events">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="level" type="varchar(8)"><constraints nullable="false"/></column>
+            <column name="category" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="message" type="varchar(500)"/>
+            <column name="fields" type="varchar(2000)"/>
+            <column name="observed_at" type="timestamptz"/>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="runner_diag_events" indexName="idx_runner_diag_events_user_host_created">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="created_at"/>
+        </createIndex>
+        <createIndex tableName="runner_diag_events" indexName="idx_runner_diag_events_created">
+            <column name="created_at"/>
+        </createIndex>
+        <rollback><dropTable tableName="runner_diag_events"/></rollback>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="114-runner-diag-events-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="runner_diag_events">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="level" type="varchar(8)"><constraints nullable="false"/></column>
+            <column name="category" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="code" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="message" type="varchar(500)"/>
+            <column name="fields" type="varchar(2000)"/>
+            <column name="observed_at" type="timestamp with time zone"/>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="runner_diag_events" indexName="idx_runner_diag_events_user_host_created">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="created_at"/>
+        </createIndex>
+        <createIndex tableName="runner_diag_events" indexName="idx_runner_diag_events_created">
+            <column name="created_at"/>
+        </createIndex>
+        <rollback><dropTable tableName="runner_diag_events"/></rollback>
+    </changeSet>
+
+</databaseChangeLog>

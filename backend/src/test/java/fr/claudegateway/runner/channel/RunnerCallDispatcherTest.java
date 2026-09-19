@@ -452,6 +452,25 @@ class RunnerCallDispatcherTest {
     }
 
     @Test
+    void diagFramesArePublishedWithTheSessionIdentity() throws Exception {
+        // F-132 / SF-132-02 : une trame runner_diag est publiée vers le service, avec l'identité
+        // (utilisateur + poste) de la SESSION — jamais un champ de la trame.
+        java.util.List<Object> events = new java.util.ArrayList<>();
+        dispatcher.setApplicationEventPublisher(events::add);
+
+        dispatcher.onFrame(identity, "runner_diag", objectMapper.readTree(
+                "{\"type\":\"runner_diag\",\"events\":[{\"level\":\"INFO\",\"cat\":\"chrome\","
+                        + "\"code\":\"chrome_state\",\"fields\":{\"state\":\"REACHABLE\"}}],"
+                        + "\"userId\":\"" + UUID.randomUUID() + "\"}"));
+
+        assertThat(events).hasSize(1);
+        RunnerDiagFrameEvent diag = (RunnerDiagFrameEvent) events.get(0);
+        assertThat(diag.userId()).isEqualTo(userId);
+        assertThat(diag.hostId()).isEqualTo(hostId);
+        assertThat(diag.frame().path("events").size()).isEqualTo(1);
+    }
+
+    @Test
     void handsTheCompleteDeclarationToTheRecorder() throws Exception {
         // F-111 / SF-111-01 : contrat, Java, lanceur et capacités voyagent avec la version.
         java.util.List<fr.claudegateway.runner.host.RunnerDeclaration> declarations =

@@ -399,6 +399,9 @@ public class RunnerCallDispatcher implements org.springframework.context.Applica
             case "protocol_error" -> onProtocolError(identity, frame);
             // F-111 / SF-111-04 : où en est la mise à jour. L'identité est celle de la session.
             case "update_status" -> publishUpdateFrame(identity, type, frame, null);
+            // F-132 / SF-132-02 : diagnostic du runner. L'identité (user + poste) est celle de la
+            // session, jamais un champ de la trame.
+            case "runner_diag" -> publishDiagFrame(identity, frame);
             default -> log.debug("Trame runner de type inconnu ignorée (poste={})",
                     identity.hostId());
         }
@@ -484,6 +487,24 @@ public class RunnerCallDispatcher implements org.springframework.context.Applica
         } catch (RuntimeException e) {
             log.warn("Interpréteur déclaré non enregistré (poste={}) : {}",
                     identity.hostId(), e.getMessage());
+        }
+    }
+
+    /**
+     * Publie une trame de diagnostic du runner (F-132 / SF-132-02) vers {@code RunnerDiagService}.
+     * Best-effort : une remontée de diagnostic en échec ne coupe jamais une liaison saine ; l'identité
+     * (utilisateur + poste) est celle de la <b>session</b>, jamais un champ de la trame.
+     */
+    private void publishDiagFrame(RunnerIdentity identity, JsonNode frame) {
+        org.springframework.context.ApplicationEventPublisher publisher = this.events;
+        if (publisher == null) {
+            return;
+        }
+        try {
+            publisher.publishEvent(new RunnerDiagFrameEvent(identity.userId(), identity.hostId(), frame));
+        } catch (RuntimeException e) {
+            log.warn("Diagnostic du runner non remonté (poste={}) : {}", identity.hostId(),
+                    e.getMessage());
         }
     }
 
