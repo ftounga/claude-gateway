@@ -62,6 +62,13 @@ export class RunnerDiagJournalComponent implements OnChanges {
   /** Recherche simple (filtre côté client sur la page chargée). */
   readonly search = signal('');
 
+  /** Durée du DEBUG ponctuel (SF-132-05). */
+  readonly debugMinutes = 10;
+  /** Vrai pendant l'appel d'activation du DEBUG. */
+  readonly debugBusy = signal(false);
+  /** Note sur le résultat de l'activation (remis / non joignable / échec), ou `null`. */
+  readonly debugNote = signal<string | null>(null);
+
   /** Les niveaux proposés au filtre. */
   readonly levelOptions: ReadonlyArray<{ value: LevelFilter; label: string }> = [
     { value: '', label: 'Tous les niveaux' },
@@ -121,6 +128,35 @@ export class RunnerDiagJournalComponent implements OnChanges {
   /** Met à jour la recherche (filtre côté client, sans rechargement). */
   onSearch(value: string): void {
     this.search.set(value);
+  }
+
+  /**
+   * Passe le poste en DEBUG le temps d'un diagnostic (SF-132-05). Le retour à INFO est automatique
+   * côté runner. Best-effort : un poste hors ligne ou un échec est dit, jamais une panne de la Vigie.
+   */
+  enableDebug(): void {
+    if (!this.hostId || this.debugBusy()) {
+      return;
+    }
+    this.debugBusy.set(true);
+    this.debugNote.set(null);
+    this.vigie.setRunnerDiagDebug(this.hostId, this.debugMinutes).subscribe({
+      next: (result) => {
+        this.debugBusy.set(false);
+        if (result.delivered) {
+          this.debugNote.set(
+            `DEBUG activé pour ${result.minutes} min — retour automatique à INFO ensuite.`,
+          );
+          this.refresh();
+        } else {
+          this.debugNote.set('Poste non joignable : le DEBUG n\'a pas pu être activé.');
+        }
+      },
+      error: () => {
+        this.debugBusy.set(false);
+        this.debugNote.set('Activation du DEBUG impossible. Réessayez.');
+      },
+    });
   }
 
   /** La classe de badge d'un niveau — jamais une couleur nouvelle (charte, `styles.scss`). */

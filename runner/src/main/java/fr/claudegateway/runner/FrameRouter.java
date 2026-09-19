@@ -3,6 +3,9 @@ package fr.claudegateway.runner;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import fr.claudegateway.runner.diag.RunnerDiag;
+import fr.claudegateway.runner.diag.RunnerDiagLevel;
+
 /**
  * Aiguillage d'une trame entrante du contrat de messages (F-38 / SF-38-09), <b>indépendant du
  * transport</b> : la même trame doit produire le même effet qu'elle soit arrivée par le WebSocket ou
@@ -58,9 +61,27 @@ public final class FrameRouter {
             case "tool_cancel" -> dispatcher.onToolCancel(frame);
             // F-111 / SF-111-04 : la gateway propose une mise à jour ; le runner vérifie et décide.
             case "update" -> onUpdate.accept(frame);
+            // F-132 / SF-132-05 : la gateway règle le niveau de diagnostic pour un diagnostic ponctuel.
+            case "runner_diag_level" -> onDiagLevel(frame);
             default -> {
                 // Type inconnu : ignoré, jamais une erreur ni une fermeture de canal.
             }
         }
+    }
+
+    /**
+     * Applique un réglage temporaire du niveau de diagnostic (F-132 / SF-132-05) :
+     * {@code {level, ttlSeconds}}. Un niveau illisible laisse le seuil inchangé ; le retour au niveau
+     * de base est automatique à l'expiration (porté par {@link RunnerDiag}). Best-effort — ne lève jamais.
+     */
+    private void onDiagLevel(JsonNode frame) {
+        RunnerDiagLevel level = RunnerDiagLevel.parse(frame.path("level").asText(null));
+        if (level == null) {
+            return; // trame incomplète ou niveau inconnu : on ne change rien (compat ascendante)
+        }
+        long ttlSeconds = frame.path("ttlSeconds").asLong(0L);
+        RunnerDiag.setTemporaryLevel(level, ttlSeconds);
+        console.info("Niveau de diagnostic réglé sur " + level
+                + (ttlSeconds > 0 ? " pour " + ttlSeconds + " s (retour auto à INFO)." : "."));
     }
 }

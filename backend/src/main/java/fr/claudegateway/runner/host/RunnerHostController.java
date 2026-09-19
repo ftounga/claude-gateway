@@ -72,6 +72,8 @@ public class RunnerHostController {
     private final HostSpaceService spaceService;
     /** Journal de diagnostic du runner (F-132 / SF-132-02). */
     private final fr.claudegateway.runner.diag.RunnerDiagService diagService;
+    /** Réglage du niveau de diagnostic d'un poste (F-132 / SF-132-05). */
+    private final fr.claudegateway.runner.diag.RunnerDiagControlService diagControlService;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
     private final CurrentUser currentUser;
 
@@ -82,6 +84,7 @@ public class RunnerHostController {
             RunnerHostFolderBrowser folderBrowser, AtelierAccessService atelierAccess,
             TeamsAccessService teamsAccess, HostSpaceService spaceService,
             fr.claudegateway.runner.diag.RunnerDiagService diagService,
+            fr.claudegateway.runner.diag.RunnerDiagControlService diagControlService,
             com.fasterxml.jackson.databind.ObjectMapper objectMapper, CurrentUser currentUser) {
         this.hostService = hostService;
         this.overviewService = overviewService;
@@ -95,6 +98,7 @@ public class RunnerHostController {
         this.teamsAccess = teamsAccess;
         this.spaceService = spaceService;
         this.diagService = diagService;
+        this.diagControlService = diagControlService;
         this.objectMapper = objectMapper;
         this.currentUser = currentUser;
     }
@@ -338,6 +342,23 @@ public class RunnerHostController {
                 .stream()
                 .map(e -> fr.claudegateway.runner.dto.RunnerDiagResponse.from(e, objectMapper))
                 .toList();
+    }
+
+    /**
+     * <b>Passe un poste en DEBUG</b> le temps d'un diagnostic (F-132 / SF-132-05) : envoie au runner
+     * une commande descendante ; le retour à {@code INFO} est <b>automatique</b> à l'expiration (aucune
+     * commande de retour). Rend si la commande a été <b>remise</b> ({@code delivered=false} si le poste
+     * n'est joignable — l'écran l'affiche, ce n'est pas une panne). Isolation {@code user_id}+{@code host_id}
+     * (404 si le poste n'est pas possédé).
+     */
+    @PostMapping("/{hostId}/diag/level")
+    public fr.claudegateway.runner.dto.RunnerDiagLevelResponse setDiagLevel(@PathVariable UUID hostId,
+            @Valid @RequestBody(required = false) fr.claudegateway.runner.dto.RunnerDiagLevelRequest request) {
+        atelierAccess.requireRunnerAccess();
+        UUID userId = currentUser.requireId();
+        Integer minutes = request == null ? null : request.minutes();
+        return fr.claudegateway.runner.dto.RunnerDiagLevelResponse.from(
+                diagControlService.enableDebug(userId, hostId, minutes));
     }
 
     /** Renomme un poste. */

@@ -24,6 +24,19 @@
   color: var(--cg-text-primary, #0f172a);
 }
 
+.diag__debug {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.diag__debug-note {
+  font-size: 12px;
+  color: var(--cg-text-secondary, #64748b);
+}
+
 .diag__filters {
   display: flex;
   flex-wrap: wrap;

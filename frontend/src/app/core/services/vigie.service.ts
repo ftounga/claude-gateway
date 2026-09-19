@@ -13,7 +13,7 @@ import {
   VigieSyncSummary,
 } from '../models/vigie.models';
 import { VigieReadiness } from '../models/vigie-readiness.models';
-import { RunnerDiagEntry, RunnerDiagQuery } from '../models/runner-diag.models';
+import { RunnerDiagEntry, RunnerDiagLevelResult, RunnerDiagQuery } from '../models/runner-diag.models';
 
 /**
  * **La Vigie et les espaces d'un client** (F-106 / SF-106-02).
@@ -117,6 +117,18 @@ export class VigieService {
     return this.http.get<RunnerDiagEntry[]>(
       `/api/runner-hosts/${encodeURIComponent(hostId)}/diag`,
       { params },
+    );
+  }
+
+  /**
+   * **Passe un poste en DEBUG** le temps d'un diagnostic (F-132 / SF-132-05). Le retour à INFO est
+   * **automatique** côté runner à l'expiration ; `result.delivered` dit si la commande a atteint le
+   * runner (`false` s'il est hors ligne).
+   */
+  setRunnerDiagDebug(hostId: string, minutes?: number): Observable<RunnerDiagLevelResult> {
+    return this.http.post<RunnerDiagLevelResult>(
+      `/api/runner-hosts/${encodeURIComponent(hostId)}/diag/level`,
+      minutes != null ? { minutes } : {},
     );
   }
 }

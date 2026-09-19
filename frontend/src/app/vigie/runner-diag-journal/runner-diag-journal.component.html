@@ -13,6 +13,22 @@
     </button>
   </header>
 
+  <div class="diag__debug">
+    <button
+      mat-stroked-button
+      type="button"
+      class="diag__debug-btn"
+      (click)="enableDebug()"
+      [disabled]="debugBusy()"
+    >
+      <mat-icon>bug_report</mat-icon>
+      Activer le DEBUG ({{ debugMinutes }} min)
+    </button>
+    @if (debugNote(); as note) {
+      <span class="diag__debug-note" role="status">{{ note }}</span>
+    }
+  </div>
+
   <div class="diag__filters">
     <mat-form-field appearance="outline" class="diag__level">
       <mat-label>Niveau</mat-label>
