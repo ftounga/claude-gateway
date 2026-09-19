@@ -95,6 +95,35 @@ describe('RunnerDiagJournalComponent', () => {
       .toContain('Aucun événement de diagnostic');
   });
 
+  it('active le DEBUG : commande remise → note + relecture du journal (SF-132-05)', () => {
+    load([]);
+
+    component.enableDebug();
+    const cmd = httpMock.expectOne('/api/runner-hosts/h1/diag/level');
+    expect(cmd.request.method).toBe('POST');
+    expect(cmd.request.body).toEqual({ minutes: 10 });
+    cmd.flush({ delivered: true, level: 'DEBUG', minutes: 10 });
+
+    // Remis → le composant relit le journal (une nouvelle requête GET part).
+    httpMock.expectOne('/api/runner-hosts/h1/diag').flush([]);
+    fixture.detectChanges();
+
+    expect(component.debugNote()).toContain('DEBUG activé');
+    expect(component.debugBusy()).toBeFalse();
+  });
+
+  it('active le DEBUG : poste non joignable → note claire, aucune relecture', () => {
+    load([]);
+
+    component.enableDebug();
+    httpMock.expectOne('/api/runner-hosts/h1/diag/level')
+      .flush({ delivered: false, level: 'DEBUG', minutes: 10 });
+    fixture.detectChanges();
+
+    expect(component.debugNote()).toContain('non joignable');
+    // Pas de relecture : aucune requête GET supplémentaire (httpMock.verify() en afterEach le garantit).
+  });
+
   it('affiche un état d\'échec discret quand l\'appel échoue, sans casser la Vigie', () => {
     component.hostId = 'h1';
     component.ngOnChanges({ hostId: new SimpleChange(undefined, 'h1', true) });

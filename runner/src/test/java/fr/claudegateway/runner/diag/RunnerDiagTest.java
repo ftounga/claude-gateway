@@ -83,6 +83,48 @@ class RunnerDiagTest {
     }
 
     @Test
+    @DisplayName("Niveau temporaire (SF-132-05) : DEBUG passe, puis retour AUTO à INFO à l'échéance")
+    void temporary_level_reverts_to_info() {
+        long[] now = { 1_000_000L };
+        RunnerDiag.setClock(() -> now[0]);
+
+        RunnerDiag.setTemporaryLevel(RunnerDiagLevel.DEBUG, 600); // 10 min
+        assertEquals(RunnerDiagLevel.DEBUG, RunnerDiag.level());
+        RunnerDiag.debug("vigie", "tick", null, null);
+        assertEquals(1, RunnerDiag.drain(100).events().size(), "le DEBUG passe pendant la fenêtre");
+
+        // L'échéance est franchie : le retour à INFO est constaté paresseusement.
+        now[0] += 600_000L + 1;
+        assertEquals(RunnerDiagLevel.INFO, RunnerDiag.level(), "retour auto à INFO");
+        RunnerDiag.debug("vigie", "tick", null, null);
+        assertEquals(0, RunnerDiag.drain(100).events().size(), "le DEBUG est de nouveau écarté");
+    }
+
+    @Test
+    @DisplayName("setLevel permanent annule un réglage temporaire en cours")
+    void permanent_level_cancels_temporary() {
+        long[] now = { 5_000L };
+        RunnerDiag.setClock(() -> now[0]);
+        RunnerDiag.setTemporaryLevel(RunnerDiagLevel.DEBUG, 600);
+
+        RunnerDiag.setLevel(RunnerDiagLevel.WARN);
+        now[0] += 10_000_000L; // bien au-delà de l'ancienne échéance
+
+        assertEquals(RunnerDiagLevel.WARN, RunnerDiag.level(),
+                "un réglage permanent ne doit pas retomber à INFO");
+    }
+
+    @Test
+    @DisplayName("Un TTL nul règle le niveau sans expiration")
+    void temporary_level_without_ttl_is_permanent() {
+        long[] now = { 0L };
+        RunnerDiag.setClock(() -> now[0]);
+        RunnerDiag.setTemporaryLevel(RunnerDiagLevel.DEBUG, 0);
+        now[0] += 10_000_000L;
+        assertEquals(RunnerDiagLevel.DEBUG, RunnerDiag.level());
+    }
+
+    @Test
     @DisplayName("isEmpty reflète l'état ; un drainage vide l'anneau")
     void is_empty_and_drain_clears() {
         assertTrue(RunnerDiag.isEmpty());

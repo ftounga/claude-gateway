@@ -7,6 +7,7 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.LongSupplier;
 
 /**
  * <b>Le collecteur d'événements de diagnostic du runner</b> (F-132 / SF-132-01).
@@ -35,27 +36,71 @@ public final class RunnerDiag {
     /** Nombre d'événements retenus en mémoire avant écrasement du plus ancien (cadrage §5–6). */
     public static final int CAPACITY = 500;
 
+    /** Niveau de base auquel on revient à l'expiration d'un réglage temporaire (défaut confirmé PO). */
+    private static final RunnerDiagLevel BASE_LEVEL = RunnerDiagLevel.INFO;
+
     private static final AtomicReference<RunnerDiagLevel> LEVEL =
             new AtomicReference<>(RunnerDiagLevel.INFO);
     private static final Deque<RunnerDiagEvent> RING = new ArrayDeque<>(CAPACITY);
     private static final Object LOCK = new Object();
     private static long dropped;
+    /** Échéance (ms épochales) d'un réglage temporaire ; {@code 0} = pas d'expiration. */
+    private static volatile long revertAtMillis;
+    /** Horloge, injectable pour les tests (SF-132-05). */
+    private static volatile LongSupplier clock = System::currentTimeMillis;
 
     private RunnerDiag() {
     }
 
-    /** Le seuil courant : un événement n'est retenu que si son niveau l'atteint. */
+    /**
+     * Le seuil courant : un événement n'est retenu que si son niveau l'atteint. Constate d'abord
+     * l'expiration d'un éventuel réglage temporaire (revert paresseux — SF-132-05).
+     */
     public static RunnerDiagLevel level() {
+        expireTemporaryIfDue();
         return LEVEL.get();
     }
 
     /**
-     * Règle le seuil (SF-132-05 : passage en {@code DEBUG} le temps d'un diagnostic). Une valeur
-     * nulle est ignorée — le seuil courant est conservé.
+     * Règle le seuil de façon <b>permanente</b> : annule tout réglage temporaire en cours. Une valeur
+     * nulle est ignorée.
      */
     public static void setLevel(RunnerDiagLevel level) {
         if (level != null) {
+            synchronized (LOCK) {
+                LEVEL.set(level);
+                revertAtMillis = 0;
+            }
+        }
+    }
+
+    /**
+     * Règle le seuil <b>temporairement</b> (SF-132-05 : passage en {@code DEBUG} le temps d'un
+     * diagnostic). À l'expiration du délai, le seuil <b>revient automatiquement</b> à
+     * {@link #BASE_LEVEL} — bascule <b>paresseuse</b>, constatée au prochain événement/relevé (aucun
+     * ordonnanceur). Un {@code ttlSeconds} nul ou négatif règle le seuil sans expiration. Une valeur de
+     * niveau nulle est ignorée. Ne lève jamais.
+     */
+    public static void setTemporaryLevel(RunnerDiagLevel level, long ttlSeconds) {
+        if (level == null) {
+            return;
+        }
+        synchronized (LOCK) {
             LEVEL.set(level);
+            revertAtMillis = ttlSeconds > 0 ? clock.getAsLong() + ttlSeconds * 1_000L : 0;
+        }
+    }
+
+    /** Constate l'expiration d'un réglage temporaire et revient au niveau de base le cas échéant. */
+    private static void expireTemporaryIfDue() {
+        if (revertAtMillis == 0) {
+            return;
+        }
+        synchronized (LOCK) {
+            if (revertAtMillis != 0 && clock.getAsLong() >= revertAtMillis) {
+                LEVEL.set(BASE_LEVEL);
+                revertAtMillis = 0;
+            }
         }
     }
 
@@ -66,7 +111,7 @@ public final class RunnerDiag {
     public static void event(RunnerDiagLevel level, String cat, String code, String msg,
             Map<String, ?> fields) {
         try {
-            if (level == null || !level.reaches(LEVEL.get())) {
+            if (level == null || !level.reaches(level())) {
                 return;
             }
             String safeCat = RunnerDiagRedaction.label(cat);
@@ -136,7 +181,14 @@ public final class RunnerDiag {
             RING.clear();
             dropped = 0;
             LEVEL.set(RunnerDiagLevel.INFO);
+            revertAtMillis = 0;
+            clock = System::currentTimeMillis;
         }
+    }
+
+    /** Remplace l'horloge (tests uniquement) pour éprouver le retour automatique à INFO. */
+    static void setClock(LongSupplier testClock) {
+        clock = testClock == null ? System::currentTimeMillis : testClock;
     }
 
     private static void offer(RunnerDiagEvent e) {

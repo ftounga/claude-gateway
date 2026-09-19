@@ -105,6 +105,16 @@ describe('VigieService', () => {
     expect(filtered.request.params.get('limit')).toBe('50');
   });
 
+  it('passe un poste en DEBUG le temps d\'un diagnostic (F-132 / SF-132-05)', () => {
+    service.setRunnerDiagDebug('h1', 10).subscribe();
+    const req = httpMock.expectOne('/api/runner-hosts/h1/diag/level');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ minutes: 10 });
+
+    service.setRunnerDiagDebug('h1').subscribe();
+    expect(httpMock.expectOne('/api/runner-hosts/h1/diag/level').request.body).toEqual({});
+  });
+
   it('un Radar illisible compte zéro, sans erreur', () => {
     let counts: VigieRadarCounts | undefined;
     let failed = false;

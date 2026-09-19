@@ -30,3 +30,16 @@ export interface RunnerDiagQuery {
   /** Nombre max de lignes (le serveur borne à 500). */
   readonly limit?: number;
 }
+
+/**
+ * Résultat d'une demande de passage d'un poste en DEBUG (F-132 / SF-132-05). Le retour à INFO est
+ * automatique côté runner à l'expiration.
+ */
+export interface RunnerDiagLevelResult {
+  /** La commande a été remise au runner (`false` si le poste n'est pas joignable). */
+  readonly delivered: boolean;
+  /** Le niveau demandé (`DEBUG`). */
+  readonly level: RunnerDiagLevel;
+  /** La durée effective, en minutes. */
+  readonly minutes: number;
+}

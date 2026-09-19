@@ -1,8 +1,11 @@
 package fr.claudegateway.runner.diag;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import org.springframework.http.MediaType;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -157,6 +160,44 @@ class RunnerDiagApiIntegrationTest {
                 .andExpect(jsonPath("$[0].code").value("stop"))
                 .andExpect(jsonPath("$[0].fields.bytes").value(1600))
                 .andExpect(jsonPath("$[0].fields.images").value(3));
+    }
+
+    // --------------------------------------------- SF-132-05 : niveau réglable par poste
+
+    @Test
+    void setDiagLevelReturns200WithNotDeliveredWhenRunnerOffline() throws Exception {
+        // Aucun runner connecté en test : la commande n'est pas remise, mais ce n'est pas une panne.
+        mockMvc.perform(post("/api/runner-hosts/" + aliceHostId + "/diag/level").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"minutes\":10}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.delivered").value(false))
+                .andExpect(jsonPath("$.level").value("DEBUG"))
+                .andExpect(jsonPath("$.minutes").value(10));
+    }
+
+    @Test
+    void setDiagLevelWithoutBodyDefaultsMinutes() throws Exception {
+        mockMvc.perform(post("/api/runner-hosts/" + aliceHostId + "/diag/level").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.minutes").value(10));
+    }
+
+    @Test
+    void setDiagLevelNeverReachesAnotherAccountsHost() throws Exception {
+        mockMvc.perform(post("/api/runner-hosts/" + bobHostId + "/diag/level").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void setDiagLevelIsClosedWithoutRunnerAccess() throws Exception {
+        mockMvc.perform(post("/api/runner-hosts/" + aliceHostId + "/diag/level").contextPath("/api")
+                        .header("Authorization", "Bearer " + plainToken)
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isForbidden());
     }
 
     private UUID userId(String email) {
