@@ -114,6 +114,49 @@ class TeamsMeetingRecaptureToolTest {
     }
 
     @Test
+    @DisplayName("SF-122-08 : après « Chrome fermé », le join relance + ATTEND le port (lent) + réussit")
+    void secondJoinWaitsForSlowPortThenSucceeds(@TempDir Path profile) throws Exception {
+        FakeCdpConnection first = new FakeCdpConnection();
+        FakeCdpConnection second = new FakeCdpConnection();
+        Iterator<FakeCdpConnection> browsers = List.of(first, second).iterator();
+
+        // Un Chrome managé dont le port de débogage remonte LENTEMENT (après quelques sondes) : recover
+        // doit tenir le backoff avant de conclure, au lieu de dire « injoignable » tout de suite.
+        int[] localLaunches = { 0 };
+        int[] postProbes = { 0 };
+        ProcessSession session = (command, workingDir) -> {
+            localLaunches[0]++;
+            return new ManagedChromeTest.FakeHandle();
+        };
+        ManagedChrome.Probe slowPort = port -> {
+            if (localLaunches[0] == 0) {
+                return false; // Chrome fermé, pas encore relancé
+            }
+            boolean up = ++postProbes[0] >= 3; // port lent : répond après quelques sondes
+            if (up) {
+                chromeUp.set(true); // le port répond ⇒ l'attache pourra réussir au retry
+            }
+            return up;
+        };
+        ManagedChrome chrome = new ManagedChrome(Optional.of(Path.of("/opt/chrome")), profile, 9222,
+                session, slowPort, millis -> { }, null);
+        TeamsTools tools = new TeamsTools(sessionOver(browsers), millis -> { })
+                .withManagedChrome(chrome);
+
+        assertTrue(join(tools).ok(), "la 1ère jonction réussit (Chrome joignable)");
+
+        chromeUp.set(false);
+        first.close();
+
+        ToolOutcome two = join(tools);
+
+        assertTrue(two.ok(), "le join doit réussir après avoir attendu que le port lent réponde");
+        assertEquals(1, localLaunches[0], "une seule relance");
+        assertTrue(postProbes[0] >= 3, "le port a été sondé plusieurs fois (backoff tenu)");
+        assertTrue(second.navigations().contains(URL), "la navigation est retentée une fois le port prêt");
+    }
+
+    @Test
     @DisplayName("Chrome managé toujours vivant : le 2ᵉ join ne relance rien (récupération idempotente)")
     void secondJoinDoesNotRelaunchWhenAlive(@TempDir Path profile) throws Exception {
         FakeCdpConnection browser = new FakeCdpConnection();
