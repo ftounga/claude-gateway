@@ -109,19 +109,22 @@ import {
         @if (past().length > 0) {
           <section class="meetings__past" aria-label="Réunions passées">
             <h4 class="meetings__subtitle">Réunions capturées</h4>
-            @for (m of past(); track m.id) {
-              <a
-                class="past-row"
-                [routerLink]="['/vigie', hostId, 'reunions', m.id]"
-                queryParamsHandling="preserve"
-              >
-                <mat-icon aria-hidden="true">event_available</mat-icon>
-                <span class="past-row__name">{{ m.title || 'Réunion sans titre' }}</span>
-                <span class="past-row__when">{{ m.startedAt | date: 'd MMM, HH:mm' }}</span>
-                <span class="past-row__state">{{ m.state === 'FAILED' ? 'Échec' : 'Terminée' }}</span>
-                <mat-icon class="past-row__go" aria-hidden="true">chevron_right</mat-icon>
-              </a>
-            }
+            <!-- SF-128-15 : liste défilante bornée — hauteur max + scroll interne, la page ne s'étire plus. -->
+            <div class="meetings__past-list">
+              @for (m of past(); track m.id) {
+                <a
+                  class="past-row"
+                  [routerLink]="['/vigie', hostId, 'reunions', m.id]"
+                  queryParamsHandling="preserve"
+                >
+                  <mat-icon aria-hidden="true">event_available</mat-icon>
+                  <span class="past-row__name">{{ m.title || 'Réunion sans titre' }}</span>
+                  <span class="past-row__when">{{ m.startedAt | date: 'd MMM, HH:mm' }}</span>
+                  <span class="past-row__state">{{ m.state === 'FAILED' ? 'Échec' : 'Terminée' }}</span>
+                  <mat-icon class="past-row__go" aria-hidden="true">chevron_right</mat-icon>
+                </a>
+              }
+            </div>
           </section>
         }
 
@@ -266,6 +269,12 @@ import {
         font-size: 13px;
         text-transform: uppercase;
         letter-spacing: 0.06em;
+      }
+      /* SF-128-15 : liste des réunions passées défilante bornée — la page ne s'étire plus. */
+      .meetings__past-list {
+        max-height: 320px;
+        overflow-y: auto;
+        overflow-x: hidden;
       }
       .past-row {
         display: flex;
