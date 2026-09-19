@@ -70,6 +70,9 @@ public class RunnerHostController {
     private final TeamsAccessService teamsAccess;
     /** Les espaces d'un client (F-106 / SF-106-01). */
     private final HostSpaceService spaceService;
+    /** Journal de diagnostic du runner (F-132 / SF-132-02). */
+    private final fr.claudegateway.runner.diag.RunnerDiagService diagService;
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
     private final CurrentUser currentUser;
 
     public RunnerHostController(RunnerHostService hostService,
@@ -77,7 +80,9 @@ public class RunnerHostController {
             RunnerTokenService tokenService, RunnerStatusService statusService,
             RunnerKillSwitchService killSwitchService, WorkspaceService workspaceService,
             RunnerHostFolderBrowser folderBrowser, AtelierAccessService atelierAccess,
-            TeamsAccessService teamsAccess, HostSpaceService spaceService, CurrentUser currentUser) {
+            TeamsAccessService teamsAccess, HostSpaceService spaceService,
+            fr.claudegateway.runner.diag.RunnerDiagService diagService,
+            com.fasterxml.jackson.databind.ObjectMapper objectMapper, CurrentUser currentUser) {
         this.hostService = hostService;
         this.overviewService = overviewService;
         this.pairingService = pairingService;
@@ -89,6 +94,8 @@ public class RunnerHostController {
         this.atelierAccess = atelierAccess;
         this.teamsAccess = teamsAccess;
         this.spaceService = spaceService;
+        this.diagService = diagService;
+        this.objectMapper = objectMapper;
         this.currentUser = currentUser;
     }
 
@@ -306,6 +313,31 @@ public class RunnerHostController {
         UUID userId = currentUser.requireId();
         RunnerHost host = hostService.requireOwned(userId, hostId);
         return RunnerHostResponse.from(host, statusService.statusOf(userId, host).connected());
+    }
+
+    /**
+     * <b>Journal de diagnostic</b> d'un poste possédé (F-132 / SF-132-02) : les derniers événements
+     * de plomberie remontés par le runner (état du Chrome managé, sonde Teams, cycle de vie de la
+     * capture, ticks de la Vigie, erreurs), du plus récent au plus ancien. Des <b>formes et des
+     * états</b>, jamais un contenu.
+     *
+     * <p>Filtres facultatifs : {@code level} (niveau minimum), {@code since}/{@code until} (fenêtre
+     * temporelle ISO-8601), {@code limit} (défaut 100, plafond 500). Isolation
+     * {@code user_id}+{@code host_id} : un poste d'un autre utilisateur (ou inexistant) rend 404.</p>
+     */
+    @GetMapping("/{hostId}/diag")
+    public List<fr.claudegateway.runner.dto.RunnerDiagResponse> diag(@PathVariable UUID hostId,
+            @RequestParam(name = "level", required = false) String level,
+            @RequestParam(name = "since", required = false) java.time.OffsetDateTime since,
+            @RequestParam(name = "until", required = false) java.time.OffsetDateTime until,
+            @RequestParam(name = "limit", required = false) Integer limit) {
+        atelierAccess.requireRunnerAccess();
+        UUID userId = currentUser.requireId();
+        return diagService.list(userId, hostId,
+                        fr.claudegateway.runner.diag.RunnerDiagLevel.parse(level), since, until, limit)
+                .stream()
+                .map(e -> fr.claudegateway.runner.dto.RunnerDiagResponse.from(e, objectMapper))
+                .toList();
     }
 
     /** Renomme un poste. */
