@@ -1,0 +1,71 @@
+<section class="diag" aria-label="Journal du runner">
+  <header class="diag__head">
+    <h3 class="diag__title">Journal du runner</h3>
+    <button
+      mat-icon-button
+      type="button"
+      class="diag__refresh"
+      (click)="refresh()"
+      [disabled]="loading()"
+      aria-label="Rafraîchir le journal"
+    >
+      <mat-icon>refresh</mat-icon>
+    </button>
+  </header>
+
+  <div class="diag__filters">
+    <mat-form-field appearance="outline" class="diag__level">
+      <mat-label>Niveau</mat-label>
+      <mat-select [value]="level()" (selectionChange)="onLevelChange($event.value)">
+        @for (option of levelOptions; track option.value) {
+          <mat-option [value]="option.value">{{ option.label }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="diag__search">
+      <mat-label>Rechercher</mat-label>
+      <input
+        matInput
+        type="text"
+        [value]="search()"
+        (input)="onSearch($any($event.target).value)"
+        placeholder="catégorie, code, message…"
+      />
+    </mat-form-field>
+  </div>
+
+  @if (loading()) {
+    <div class="diag__loading" role="status">
+      <mat-progress-spinner mode="indeterminate" diameter="24"></mat-progress-spinner>
+      <span>Lecture du journal…</span>
+    </div>
+  } @else if (failed()) {
+    <p class="diag__error" role="alert">Journal indisponible. Réessayez.</p>
+  } @else if (visible().length === 0) {
+    <p class="diag__empty">
+      @if (entries().length === 0) {
+        Aucun événement de diagnostic pour ce poste.
+      } @else {
+        Aucun événement ne correspond à la recherche.
+      }
+    </p>
+  } @else {
+    <ul class="diag__list">
+      @for (event of visible(); track event.id) {
+        <li class="diag__row">
+          <span class="badge {{ levelBadge(event.level) }} diag__level-badge">{{ event.level }}</span>
+          <div class="diag__text">
+            <div class="diag__line">
+              <span class="diag__code">{{ event.category }} · {{ event.code }}</span>
+              <time class="diag__time">{{ event.createdAt }}</time>
+            </div>
+            @if (event.message) {
+              <span class="diag__message">{{ event.message }}</span>
+            }
+          </div>
+        </li>
+      }
+    </ul>
+  }
+</section>

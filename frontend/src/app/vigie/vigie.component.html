@@ -168,6 +168,8 @@
                   <app-host-mail-address class="vigie__mail" [hostId]="hostId" [hostName]="host.name"></app-host-mail-address>
                   <!-- LA MISE EN SERVICE GUIDÉE (F-122 / SF-122-02) : la check-list vert/rouge avant de démarrer. -->
                   <app-vigie-readiness class="vigie__readiness" [hostId]="hostId"></app-vigie-readiness>
+                  <!-- LE JOURNAL DU RUNNER (F-132 / SF-132-03) : les événements de diagnostic, filtrables. -->
+                  <app-runner-diag-journal class="vigie__diag" [hostId]="hostId"></app-runner-diag-journal>
                 }
               </div>
 

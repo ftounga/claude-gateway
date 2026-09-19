@@ -1,0 +1,116 @@
+// Panneau « Journal du runner » (F-132 / SF-132-03).
+// Aucune couleur nouvelle : jetons `--cg-*` de la charte + badges `.badge--*` (styles.scss).
+// Espacements multiples de 4px.
+
+.diag {
+  display: block;
+  padding: 12px 16px;
+  border: 1px solid var(--cg-divider, #e2e8f0);
+  border-radius: 8px;
+  background: var(--cg-surface, #ffffff);
+}
+
+.diag__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.diag__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--cg-text-primary, #0f172a);
+}
+
+.diag__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.diag__level {
+  flex: 0 1 220px;
+}
+
+.diag__search {
+  flex: 1 1 220px;
+}
+
+.diag__loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  color: var(--cg-text-secondary, #64748b);
+}
+
+.diag__error {
+  margin: 8px 0 0;
+  color: var(--cg-error, #dc2626);
+}
+
+.diag__empty {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--cg-text-secondary, #64748b);
+}
+
+.diag__list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.diag__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--cg-bg, #f5f6fa);
+}
+
+.diag__level-badge {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.diag__text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.diag__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.diag__code {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--cg-text-primary, #0f172a);
+  font-family: var(--cg-font-mono, monospace);
+}
+
+.diag__time {
+  font-size: 12px;
+  color: var(--cg-text-secondary, #64748b);
+}
+
+.diag__message {
+  font-size: 12px;
+  color: var(--cg-text-secondary, #64748b);
+  word-break: break-word;
+}

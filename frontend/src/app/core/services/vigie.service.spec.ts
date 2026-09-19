@@ -93,6 +93,18 @@ describe('VigieService', () => {
     expect(counts?.lastSync?.status).toBe('RUNNING');
   });
 
+  it('lit le journal de diagnostic d\'un poste, avec le niveau minimum en paramètre (F-132)', () => {
+    service.runnerDiag('h1').subscribe();
+    const all = httpMock.expectOne('/api/runner-hosts/h1/diag');
+    expect(all.request.method).toBe('GET');
+    expect(all.request.params.get('level')).toBeNull();
+
+    service.runnerDiag('h1', { level: 'WARN', limit: 50 }).subscribe();
+    const filtered = httpMock.expectOne((r) => r.url === '/api/runner-hosts/h1/diag');
+    expect(filtered.request.params.get('level')).toBe('WARN');
+    expect(filtered.request.params.get('limit')).toBe('50');
+  });
+
   it('un Radar illisible compte zéro, sans erreur', () => {
     let counts: VigieRadarCounts | undefined;
     let failed = false;
