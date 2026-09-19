@@ -2,6 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { HttpErrorResponse } from '@angular/common/http';
 
@@ -19,6 +20,7 @@ describe('MeetingCapturePanelComponent', () => {
   const recording: TeamsMeeting = {
     id: 'm1', hostId: 'h1', subjectId: null, title: 'Comité', meetingUrl: 'https://teams.microsoft.com/x',
     state: 'RECORDING', consentAcknowledged: true, retentionDays: 30, captureRef: 'cap-1',
+    hasAudio: false, audioBytes: null, imageCount: 0,
     startedAt: '2026-09-18T10:00:00Z', endedAt: null, createdAt: '2026-09-18T10:00:00Z',
   };
 
@@ -34,6 +36,7 @@ describe('MeetingCapturePanelComponent', () => {
       imports: [MeetingCapturePanelComponent],
       providers: [
         provideNoopAnimations(),
+        provideRouter([]),
         { provide: TeamsMeetingService, useValue: service },
         { provide: MatDialog, useValue: dialog },
         { provide: MatSnackBar, useValue: snackBar },

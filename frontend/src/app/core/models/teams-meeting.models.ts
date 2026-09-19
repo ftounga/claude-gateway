@@ -16,6 +16,12 @@ export interface TeamsMeeting {
   consentAcknowledged: boolean;
   retentionDays: number;
   captureRef: string | null;
+  /** Vrai dès que l'audio capturé est remonté (SF-128-02) et lisible (SF-128-10). */
+  hasAudio: boolean;
+  /** Taille de l'audio capturé en octets, ou `null` tant qu'aucun audio. */
+  audioBytes: number | null;
+  /** Nombre d'images clés (deck reconstitué, SF-128-03). */
+  imageCount: number;
   startedAt: string;
   endedAt: string | null;
   createdAt: string;

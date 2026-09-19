@@ -98,6 +98,74 @@ class MeetingMediaServiceTest {
         verify(storage, never()).putFile(anyString(), any(), any());
     }
 
+    // ------------------------------------------------------------------ lecture (SF-128-10)
+
+    @Test
+    @DisplayName("findAudio : rend le type (de l'extension) et les octets d'une réunion du couple")
+    void findAudioReturnsTypeAndBytes() {
+        String key = "teams-meetings/" + userId + "/" + hostId + "/" + meetingId + "/audio.webm";
+        Meeting meeting = Meeting.builder().userId(userId).hostId(hostId).state(MeetingState.STOPPED)
+                .meetingUrl("https://x").consentAcknowledged(true).retentionDays(30).audioKey(key).build();
+        when(repository.findByIdAndUserIdAndHostId(meetingId, userId, hostId)).thenReturn(Optional.of(meeting));
+        byte[] bytes = "opus".getBytes(StandardCharsets.UTF_8);
+        when(storage.getFile(key)).thenReturn(Optional.of(bytes));
+
+        Optional<MeetingMediaService.StoredMedia> audio = service.findAudio(userId, hostId, meetingId);
+
+        assertThat(audio).isPresent();
+        assertThat(audio.get().contentType()).isEqualTo("audio/webm");
+        assertThat(audio.get().content()).isEqualTo(bytes);
+    }
+
+    @Test
+    @DisplayName("findAudio : réunion sans audio → vide")
+    void findAudioEmptyWhenNoAudio() {
+        Meeting meeting = Meeting.builder().userId(userId).hostId(hostId).state(MeetingState.STOPPED)
+                .meetingUrl("https://x").consentAcknowledged(true).retentionDays(30).build();
+        when(repository.findByIdAndUserIdAndHostId(meetingId, userId, hostId)).thenReturn(Optional.of(meeting));
+
+        assertThat(service.findAudio(userId, hostId, meetingId)).isEmpty();
+        verify(storage, never()).getFile(anyString());
+    }
+
+    @Test
+    @DisplayName("ISOLATION findAudio : réunion d'un autre couple → vide, aucun octet lu")
+    void findAudioIsolatedByCouple() {
+        when(repository.findByIdAndUserIdAndHostId(meetingId, userId, hostId)).thenReturn(Optional.empty());
+
+        assertThat(service.findAudio(userId, hostId, meetingId)).isEmpty();
+        verify(storage, never()).getFile(anyString());
+    }
+
+    @Test
+    @DisplayName("listFrames : rend les identifiants (sans extension), triés")
+    void listFramesReturnsIds() {
+        String prefix = "teams-meetings/" + userId + "/" + hostId + "/" + meetingId + "/frames/";
+        when(storage.listKeys(prefix)).thenReturn(List.of(prefix + "b2.jpg", prefix + "a1.png"));
+
+        assertThat(service.listFrames(userId, hostId, meetingId)).containsExactly("a1", "b2");
+    }
+
+    @Test
+    @DisplayName("findFrame : id sûr existant → type + octets ; id inconnu → vide")
+    void findFrameReturnsImage() {
+        String pngKey = "teams-meetings/" + userId + "/" + hostId + "/" + meetingId + "/frames/img1.png";
+        // Un seul stub souple : seule la clé .png porte des octets (ordre d'essai des extensions non garanti).
+        when(storage.getFile(anyString()))
+                .thenAnswer(inv -> pngKey.equals(inv.getArgument(0)) ? Optional.of(new byte[] {9}) : Optional.empty());
+
+        Optional<MeetingMediaService.StoredMedia> frame = service.findFrame(userId, hostId, meetingId, "img1");
+        assertThat(frame).isPresent();
+        assertThat(frame.get().contentType()).isEqualTo("image/png");
+    }
+
+    @Test
+    @DisplayName("findFrame : identifiant non sûr (traversée) → vide, aucun accès stockage")
+    void findFrameRejectsUnsafeId() {
+        assertThat(service.findFrame(userId, hostId, meetingId, "../secret")).isEmpty();
+        verify(storage, never()).getFile(anyString());
+    }
+
     @Test
     @DisplayName("type inconnu : repli sur l'extension webm")
     void unknownTypeFallsBackToWebm() {
