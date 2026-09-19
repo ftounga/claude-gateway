@@ -1,13 +1,17 @@
 import { DatePipe } from '@angular/common';
 import { Component, DestroyRef, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
+import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
+import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { HttpErrorResponse } from '@angular/common/http';
 import { DomSanitizer, SafeUrl } from '@angular/platform-browser';
 
-import { TeamsMeeting } from '../../core/models/teams-meeting.models';
+import { MeetingInsights, TeamsMeeting } from '../../core/models/teams-meeting.models';
 import { TeamsMeetingService } from '../../core/services/teams-meeting.service';
 import { httpErrorMessage } from '../../shared/http-error.util';
 
@@ -32,7 +36,16 @@ interface DeckImage {
 @Component({
   selector: 'app-meeting-detail-page',
   standalone: true,
-  imports: [DatePipe, RouterLink, MatButtonModule, MatIconModule, MatProgressSpinnerModule],
+  imports: [
+    DatePipe,
+    FormsModule,
+    RouterLink,
+    MatButtonModule,
+    MatFormFieldModule,
+    MatIconModule,
+    MatInputModule,
+    MatProgressSpinnerModule,
+  ],
   template: `
     <div class="detail">
       <a class="detail__back" [routerLink]="['/vigie', hostRef()]" queryParamsHandling="preserve">
@@ -108,6 +121,111 @@ interface DeckImage {
             <p class="detail__error">{{ deckError() }}</p>
           } @else {
             <div class="detail__loading"><mat-spinner diameter="24"></mat-spinner></div>
+          }
+        </section>
+
+        <section class="card" aria-label="Exploitation par l'agent">
+          <div class="card__head">
+            <h2 class="card__title">Exploitation par l'agent</h2>
+            <button mat-flat-button color="primary" type="button" [disabled]="analyzing()" (click)="analyze(m)">
+              <mat-icon>auto_awesome</mat-icon>
+              {{ insights() ? 'Ré-analyser' : 'Analyser la réunion' }}
+            </button>
+          </div>
+          @if (analyzing()) {
+            <div class="detail__loading"><mat-spinner diameter="24"></mat-spinner></div>
+          } @else if (insightsError()) {
+            <p class="detail__error">{{ insightsError() }}</p>
+          } @else if (insights()) {
+            @if (insights(); as ins) {
+            @if (ins.missing) {
+              <p class="detail__missing"><mat-icon aria-hidden="true">info</mat-icon>{{ ins.missing }}</p>
+            }
+            <div class="essential">
+              <span class="essential__lbl">L'essentiel</span>
+              <p>{{ ins.summary }}</p>
+            </div>
+            @if (ins.decisions.length > 0) {
+              <h3 class="block__h">Décisions</h3>
+              <ul class="block__list">
+                @for (d of ins.decisions; track $index) {<li>{{ d }}</li>}
+              </ul>
+            }
+            @if (ins.actions.length > 0) {
+              <h3 class="block__h">Actions</h3>
+              <ul class="block__list block__list--tasks">
+                @for (a of ins.actions; track $index) {<li>{{ a }}</li>}
+              </ul>
+            }
+            @if (ins.keyPoints.length > 0) {
+              <h3 class="block__h">Points clés</h3>
+              <ul class="block__list">
+                @for (k of ins.keyPoints; track $index) {<li>{{ k }}</li>}
+              </ul>
+            }
+            }
+          } @else {
+            <p class="card__empty">
+              Demandez à l'agent de résumer cette réunion : l'essentiel, les décisions et les actions,
+              à partir de la transcription et des images captées.
+            </p>
+          }
+        </section>
+
+        <section class="card" aria-label="Demander à l'agent">
+          <h2 class="card__title">Demander à l'agent</h2>
+          <form class="ask" (ngSubmit)="ask(m)">
+            <mat-form-field appearance="outline" class="ask__field">
+              <mat-label>Votre question sur la réunion</mat-label>
+              <input matInput name="question" [(ngModel)]="question" [disabled]="asking()"
+                     placeholder="Que doit-on trancher avant le go/no-go ?" />
+            </mat-form-field>
+            <button mat-flat-button color="primary" type="submit" [disabled]="asking() || !question.trim()">
+              <mat-icon>send</mat-icon>
+              Demander
+            </button>
+          </form>
+          <div class="ask__examples">
+            @for (example of examples; track example) {
+              <button type="button" class="ask__chip" (click)="askExample(m, example)">{{ example }}</button>
+            }
+          </div>
+          @if (asking()) {
+            <div class="detail__loading"><mat-spinner diameter="24"></mat-spinner></div>
+          } @else if (askError()) {
+            <p class="detail__error">{{ askError() }}</p>
+          } @else if (answer()) {
+            <div class="answer">{{ answer() }}</div>
+          }
+        </section>
+
+        <section class="card" aria-label="Transcription">
+          <div class="card__head">
+            <h2 class="card__title">Transcription</h2>
+            @if (m.hasAudio && !m.hasTranscript && !transcriptInFlight(m)) {
+              <button mat-stroked-button type="button" [disabled]="transcribing()" (click)="transcribe(m)">
+                <mat-icon>subtitles</mat-icon>
+                Transcrire
+              </button>
+            }
+          </div>
+          @if (transcriptMessage()) {
+            <p class="detail__missing"><mat-icon aria-hidden="true">info</mat-icon>{{ transcriptMessage() }}</p>
+          }
+          @if (transcriptInFlight(m)) {
+            <p class="card__empty">Transcription en cours… revenez dans quelques instants (Rafraîchir).</p>
+          } @else if (m.transcriptStatus === 'FAILED') {
+            <p class="detail__error">La transcription a échoué. Vous pouvez réessayer.</p>
+          } @else if (m.hasTranscript) {
+            @if (transcriptText()) {
+              <pre class="transcript">{{ transcriptText() }}</pre>
+            } @else {
+              <div class="detail__loading"><mat-spinner diameter="24"></mat-spinner></div>
+            }
+          } @else if (!m.hasAudio) {
+            <p class="card__empty">Aucun audio : rien à transcrire.</p>
+          } @else {
+            <p class="card__empty">Pas encore de transcription. Lancez « Transcrire » (si le service STT est activé).</p>
           }
         </section>
         }
@@ -227,6 +345,122 @@ interface DeckImage {
         width: 100%;
         height: auto;
       }
+      .card__head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: var(--cg-space-3, 16px);
+        flex-wrap: wrap;
+        margin-bottom: var(--cg-space-3, 16px);
+      }
+      .card__head .card__title {
+        margin: 0;
+      }
+      .detail__missing {
+        display: flex;
+        align-items: center;
+        gap: var(--cg-space-1, 4px);
+        margin: 0 0 var(--cg-space-2, 8px);
+        font-size: 13px;
+        color: var(--cg-gold-ink, #8a5200);
+      }
+      .detail__missing mat-icon {
+        font-size: 17px;
+        width: 17px;
+        height: 17px;
+      }
+      .essential {
+        background: var(--cg-surface-2, #eef1f6);
+        border-left: 4px solid var(--cg-accent, #c9973a);
+        border-radius: 10px;
+        padding: var(--cg-space-3, 16px);
+        margin-bottom: var(--cg-space-3, 16px);
+      }
+      .essential__lbl {
+        display: block;
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        font-weight: 700;
+        color: var(--cg-gold-ink, #8a5200);
+        margin-bottom: var(--cg-space-1, 4px);
+      }
+      .essential p {
+        margin: 0;
+      }
+      .block__h {
+        margin: var(--cg-space-3, 16px) 0 var(--cg-space-2, 8px);
+        font-size: 12px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--cg-text-secondary, #6b7a8d);
+      }
+      .block__list {
+        margin: 0;
+        padding-left: var(--cg-space-4, 24px);
+        display: flex;
+        flex-direction: column;
+        gap: var(--cg-space-1, 4px);
+      }
+      .block__list--tasks {
+        list-style: none;
+        padding-left: 0;
+      }
+      .block__list--tasks li {
+        padding-left: var(--cg-space-4, 24px);
+        position: relative;
+      }
+      .block__list--tasks li::before {
+        content: '☐';
+        position: absolute;
+        left: 0;
+        color: var(--cg-primary, #1a3a5c);
+      }
+      .ask {
+        display: flex;
+        gap: var(--cg-space-2, 8px);
+        align-items: flex-start;
+      }
+      .ask__field {
+        flex: 1;
+      }
+      .ask__examples {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--cg-space-1, 4px);
+        margin-bottom: var(--cg-space-2, 8px);
+      }
+      .ask__chip {
+        font: inherit;
+        font-size: 12px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--cg-divider, #e0e4ea);
+        background: var(--cg-surface-2, #eef1f6);
+        color: var(--cg-primary, #1a3a5c);
+        cursor: pointer;
+      }
+      .ask__chip:hover {
+        border-color: var(--cg-accent, #c9973a);
+      }
+      .answer {
+        white-space: pre-wrap;
+        background: var(--cg-surface-2, #eef1f6);
+        border-radius: 10px;
+        padding: var(--cg-space-3, 16px);
+      }
+      .transcript {
+        white-space: pre-wrap;
+        font-family: var(--cg-font-mono, monospace);
+        font-size: 12.5px;
+        line-height: 1.6;
+        margin: 0;
+        max-height: 420px;
+        overflow: auto;
+        background: var(--cg-surface-2, #eef1f6);
+        border-radius: 10px;
+        padding: var(--cg-space-3, 16px);
+      }
     `,
   ],
 })
@@ -247,6 +481,26 @@ export class MeetingDetailPageComponent implements OnInit, OnDestroy {
   readonly downloading = signal(false);
   readonly deck = signal<DeckImage[]>([]);
   readonly deckError = signal<string | null>(null);
+
+  // Exploitation (SF-128-05)
+  readonly insights = signal<MeetingInsights | null>(null);
+  readonly analyzing = signal(false);
+  readonly insightsError = signal<string | null>(null);
+  question = '';
+  readonly answer = signal<string | null>(null);
+  readonly asking = signal(false);
+  readonly askError = signal<string | null>(null);
+
+  // Transcription (SF-128-04 surfacée ici)
+  readonly transcriptText = signal<string | null>(null);
+  readonly transcribing = signal(false);
+  readonly transcriptMessage = signal<string | null>(null);
+
+  readonly examples = [
+    'Résume les décisions et les actions',
+    'Qui s\'est engagé sur quoi ?',
+    'Que doit-on trancher ensuite ?',
+  ];
 
   /** Les URLs d'objet à révoquer à la destruction (audio + deck), pour ne pas fuir de mémoire. */
   private objectUrls: string[] = [];
@@ -282,6 +536,12 @@ export class MeetingDetailPageComponent implements OnInit, OnDestroy {
     this.audioError.set(null);
     this.deck.set([]);
     this.deckError.set(null);
+    this.insights.set(null);
+    this.insightsError.set(null);
+    this.answer.set(null);
+    this.askError.set(null);
+    this.transcriptText.set(null);
+    this.transcriptMessage.set(null);
 
     this.service.get(hostId, meetingId).subscribe({
       next: (meeting) => {
@@ -293,6 +553,9 @@ export class MeetingDetailPageComponent implements OnInit, OnDestroy {
         }
         if (meeting.imageCount > 0) {
           this.loadDeck(hostId, meetingId);
+        }
+        if (meeting.hasTranscript) {
+          this.loadTranscript(hostId, meetingId);
         }
       },
       error: (err: unknown) => {
@@ -339,6 +602,94 @@ export class MeetingDetailPageComponent implements OnInit, OnDestroy {
       },
       error: (err: unknown) => {
         this.deckError.set(httpErrorMessage(err, 'Le deck n\'a pas pu être chargé.'));
+      },
+    });
+  }
+
+  private loadTranscript(hostId: string, meetingId: string): void {
+    this.service.transcript(hostId, meetingId).subscribe({
+      next: (text) => this.transcriptText.set(text),
+      error: () => {
+        // 404 = pas (encore) de transcript : l'écran le dit déjà via le statut, rien à signaler ici.
+      },
+    });
+  }
+
+  /** Vrai tant que la transcription est demandée ou en cours (SF-128-04). */
+  transcriptInFlight(meeting: TeamsMeeting): boolean {
+    return meeting.transcriptStatus === 'PENDING' || meeting.transcriptStatus === 'TRANSCRIBING';
+  }
+
+  transcribe(meeting: TeamsMeeting): void {
+    const hostId = this.hostRef();
+    const meetingId = this.meetingId();
+    if (!hostId || !meetingId) {
+      return;
+    }
+    this.transcribing.set(true);
+    this.transcriptMessage.set(null);
+    this.service.transcribe(hostId, meetingId).subscribe({
+      next: (updated) => {
+        this.transcribing.set(false);
+        this.meeting.set(updated);
+        this.transcriptMessage.set('Transcription demandée : elle sera prête dans quelques instants.');
+      },
+      error: (err: unknown) => {
+        this.transcribing.set(false);
+        if (err instanceof HttpErrorResponse && err.status === 503) {
+          this.transcriptMessage.set(
+            'STT non configuré : la transcription est désactivée tant qu\'un service n\'a pas été paramétré.',
+          );
+        } else {
+          this.transcriptMessage.set(httpErrorMessage(err, 'La transcription n\'a pas pu être lancée.'));
+        }
+      },
+    });
+  }
+
+  analyze(meeting: TeamsMeeting): void {
+    const hostId = this.hostRef();
+    const meetingId = this.meetingId();
+    if (!hostId || !meetingId) {
+      return;
+    }
+    this.analyzing.set(true);
+    this.insightsError.set(null);
+    this.service.insights(hostId, meetingId).subscribe({
+      next: (insights) => {
+        this.analyzing.set(false);
+        this.insights.set(insights);
+      },
+      error: (err: unknown) => {
+        this.analyzing.set(false);
+        this.insightsError.set(httpErrorMessage(err, "L'analyse de la réunion a échoué."));
+      },
+    });
+  }
+
+  askExample(meeting: TeamsMeeting, example: string): void {
+    this.question = example;
+    this.ask(meeting);
+  }
+
+  ask(meeting: TeamsMeeting): void {
+    const hostId = this.hostRef();
+    const meetingId = this.meetingId();
+    const question = this.question.trim();
+    if (!hostId || !meetingId || !question) {
+      return;
+    }
+    this.asking.set(true);
+    this.askError.set(null);
+    this.answer.set(null);
+    this.service.ask(hostId, meetingId, question).subscribe({
+      next: (result) => {
+        this.asking.set(false);
+        this.answer.set(result.answer);
+      },
+      error: (err: unknown) => {
+        this.asking.set(false);
+        this.askError.set(httpErrorMessage(err, "La question à l'agent a échoué."));
       },
     });
   }

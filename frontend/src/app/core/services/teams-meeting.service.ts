@@ -3,7 +3,12 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 
-import { CreateMeetingRequest, TeamsMeeting } from '../models/teams-meeting.models';
+import {
+  CreateMeetingRequest,
+  MeetingAnswer,
+  MeetingInsights,
+  TeamsMeeting,
+} from '../models/teams-meeting.models';
 
 /**
  * Accès HTTP aux API Réunions de la Vigie (F-128 / SF-128-01). Le JWT est ajouté par
@@ -70,5 +75,25 @@ export class TeamsMeetingService {
     return this.http.get(`${this.base(hostId)}/${meetingId}/images/${encodeURIComponent(imageId)}`, {
       responseType: 'blob',
     });
+  }
+
+  /** Déclenche la transcription (SF-128-04) : 202 si enfilé, 503 si STT non configuré. */
+  transcribe(hostId: string, meetingId: string): Observable<TeamsMeeting> {
+    return this.http.post<TeamsMeeting>(`${this.base(hostId)}/${meetingId}/transcribe`, {});
+  }
+
+  /** Le texte du transcript (SF-128-04), ou 404 s'il n'y en a pas. */
+  transcript(hostId: string, meetingId: string): Observable<string> {
+    return this.http.get(`${this.base(hostId)}/${meetingId}/transcript`, { responseType: 'text' });
+  }
+
+  /** Analyse la réunion (SF-128-05) : résumé, points clés, décisions, actions. */
+  insights(hostId: string, meetingId: string): Observable<MeetingInsights> {
+    return this.http.post<MeetingInsights>(`${this.base(hostId)}/${meetingId}/insights`, {});
+  }
+
+  /** Pose une question libre à l'agent sur la réunion (SF-128-05). */
+  ask(hostId: string, meetingId: string, question: string): Observable<MeetingAnswer> {
+    return this.http.post<MeetingAnswer>(`${this.base(hostId)}/${meetingId}/ask`, { question });
   }
 }

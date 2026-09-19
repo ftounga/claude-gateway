@@ -18,16 +18,24 @@ describe('MeetingDetailPageComponent', () => {
     id: 'm1', hostId: 'h1', subjectId: null, title: 'Comité Data',
     meetingUrl: 'https://teams.microsoft.com/x', state: 'STOPPED', consentAcknowledged: true,
     retentionDays: 30, captureRef: null, hasAudio: true, audioBytes: 2_097_152, imageCount: 1,
+    transcriptStatus: 'TRANSCRIBED', transcriptLang: 'fr', hasTranscript: true,
     startedAt: '2026-09-18T10:00:00Z', endedAt: '2026-09-18T10:47:00Z', createdAt: '2026-09-18T10:00:00Z',
   };
 
   function setup(get = of(meeting)): HTMLElement {
     service = jasmine.createSpyObj<TeamsMeetingService>('TeamsMeetingService',
-      ['get', 'audioBlob', 'imageIds', 'imageBlob']);
+      ['get', 'audioBlob', 'imageIds', 'imageBlob', 'transcript', 'transcribe', 'insights', 'ask']);
     service.get.and.returnValue(get);
     service.audioBlob.and.returnValue(of(new Blob(['audio'], { type: 'audio/webm' })));
     service.imageIds.and.returnValue(of(['img1']));
     service.imageBlob.and.returnValue(of(new Blob(['img'], { type: 'image/png' })));
+    service.transcript.and.returnValue(of('[00:00] Bonjour à tous'));
+    service.transcribe.and.returnValue(of(meeting));
+    service.insights.and.returnValue(of({
+      summary: 'L\'essentiel', keyPoints: ['kp'], decisions: ['d1'], actions: ['a1'],
+      hasTranscript: true, imagesUsed: 1, missing: null,
+    }));
+    service.ask.and.returnValue(of({ answer: 'La migration est validée.' }));
 
     TestBed.configureTestingModule({
       imports: [MeetingDetailPageComponent],
@@ -66,10 +74,38 @@ describe('MeetingDetailPageComponent', () => {
     expect(root.querySelectorAll('.deck__img').length).toBe(1);
   });
 
+  it('affiche le transcript quand il existe (SF-128-04)', () => {
+    const root = setup();
+    expect(service.transcript).toHaveBeenCalledOnceWith('h1', 'm1');
+    expect(root.querySelector('.transcript')?.textContent).toContain('Bonjour à tous');
+  });
+
+  it('« Analyser » rend l\'essentiel, les décisions et les actions (SF-128-05)', () => {
+    const root = setup();
+    fixture.componentInstance.analyze(meeting);
+    fixture.detectChanges();
+    expect(service.insights).toHaveBeenCalledOnceWith('h1', 'm1');
+    expect(root.querySelector('.essential')?.textContent).toContain('L\'essentiel');
+    expect(root.textContent).toContain('d1');
+    expect(root.textContent).toContain('a1');
+  });
+
+  it('« Demander à l\'agent » rend la réponse (SF-128-05)', () => {
+    const root = setup();
+    fixture.componentInstance.question = 'Qui décide ?';
+    fixture.componentInstance.ask(meeting);
+    fixture.detectChanges();
+    expect(service.ask).toHaveBeenCalledOnceWith('h1', 'm1', 'Qui décide ?');
+    expect(root.querySelector('.answer')?.textContent).toContain('La migration est validée.');
+  });
+
   it('sans audio : message clair, pas d\'appel audioBlob', () => {
     service = jasmine.createSpyObj<TeamsMeetingService>('TeamsMeetingService',
-      ['get', 'audioBlob', 'imageIds', 'imageBlob']);
-    service.get.and.returnValue(of({ ...meeting, hasAudio: false, audioBytes: null, imageCount: 0 }));
+      ['get', 'audioBlob', 'imageIds', 'imageBlob', 'transcript', 'transcribe', 'insights', 'ask']);
+    service.get.and.returnValue(of({
+      ...meeting, hasAudio: false, audioBytes: null, imageCount: 0,
+      hasTranscript: false, transcriptStatus: 'NONE' as const,
+    }));
     service.imageIds.and.returnValue(of([]));
     TestBed.configureTestingModule({
       imports: [MeetingDetailPageComponent],
