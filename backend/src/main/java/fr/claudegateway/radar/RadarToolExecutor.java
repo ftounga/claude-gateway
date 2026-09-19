@@ -407,9 +407,31 @@ public class RadarToolExecutor {
         UUID from = person(scope, optionalText(params, "from_person", RadarPerson.MAX_NAME_LENGTH));
         UUID to = person(scope, optionalText(params, "to_person", RadarPerson.MAX_NAME_LENGTH));
         UUID other = person(scope, optionalText(params, "other_person", RadarPerson.MAX_NAME_LENGTH));
+        Change change = recordSovereignEngagement(scope, subject, direction, description, due,
+                from, to, other, null, proof);
+        return written(List.of(change), proof, null);
+    }
+
+    /**
+     * Enregistre un engagement <b>souverain, journalisé et annulable</b> à partir d'une preuve déjà tenue.
+     *
+     * <p>C'est le <b>cœur partagé</b> de l'écriture d'un engagement : l'outil « Donner la nouvelle »
+     * (F-104, {@link #addEngagement}) et le pont réunion→Radar (SF-128-06,
+     * {@code MeetingActionsToRadarService}) l'appellent tous deux — la logique n'est écrite qu'ici. Comme
+     * l'écriture d'un outil : {@link RadarRegistry#recordCommitment} pour le fait et sa preuve, le drapeau
+     * souverain (une écriture voulue par l'utilisateur), et une ligne de journal {@code ADD_COMMITMENT}
+     * portée par la preuve — ce qui la rend annulable depuis la chronologie du sujet.</p>
+     *
+     * <p>Doit être appelé dans une transaction (l'appelant en ouvre une, comme {@link #execute}).</p>
+     *
+     * @param proof la preuve déjà enregistrée dans le même périmètre (une note F-104, une réunion SF-128-06)
+     */
+    public Change recordSovereignEngagement(RadarScope scope, RadarSubject subject,
+            RadarCommitmentDirection direction, String description, LocalDate due,
+            UUID from, UUID to, UUID other, String extractionKey, RadarEvidence proof) {
         RadarCommitment commitment = registry.recordCommitment(scope, new RadarRegistry.CommitmentInput(
                 subject.getId(), direction, description, from, to, other, due, false, RadarCertainty.CERTAIN,
-                null, List.of(proof.getId())));
+                extractionKey, List.of(proof.getId())));
         commitment.setSovereign(true);
         commitments.save(commitment);
         Map<String, Object> after = new LinkedHashMap<>();
@@ -417,14 +439,18 @@ public class RadarToolExecutor {
         after.put("description", commitment.getDescription());
         RadarCorrection added = journal.record(scope, subject.getId(), RadarCorrectionAction.Target.COMMITMENT,
                 commitment.getId(), RadarCorrectionAction.ADD_COMMITMENT, new LinkedHashMap<>(), after, proof.getId());
-        String label = switch (direction) {
+        return new Change("ADD_COMMITMENT", subject.getId(), subject.getName(), added.getId(),
+                engagementLabel(direction) + " sur « " + subject.getName() + " » : " + commitment.getDescription()
+                        + (due == null ? "" : " (pour le " + due + ")"));
+    }
+
+    /** L'intitulé lisible d'un sens d'engagement. */
+    static String engagementLabel(RadarCommitmentDirection direction) {
+        return switch (direction) {
             case ME_TO_OTHER -> "À faire par moi";
             case OTHER_TO_ME -> "J'attends des autres";
             case INTRODUCTION -> "Mise en relation";
         };
-        return written(List.of(new Change("ADD_COMMITMENT", subject.getId(), subject.getName(), added.getId(),
-                label + " sur « " + subject.getName() + " » : " + description
-                        + (due == null ? "" : " (pour le " + due + ")"))), proof, null);
     }
 
     private Outcome markEngagement(RadarScope scope, JsonNode params, RadarNote note) {

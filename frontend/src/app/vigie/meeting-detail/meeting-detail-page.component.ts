@@ -4,18 +4,23 @@ import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatSelectModule } from '@angular/material/select';
 import { HttpErrorResponse } from '@angular/common/http';
 import { DomSanitizer, SafeUrl } from '@angular/platform-browser';
 
 import {
+  MeetingActionsToRadar,
   MeetingCardPromotion,
   MeetingInsights,
   TeamsMeeting,
 } from '../../core/models/teams-meeting.models';
+import { RadarSubjectSummary } from '../../core/models/radar.models';
+import { RadarService } from '../../core/services/radar.service';
 import { TeamsMeetingService } from '../../core/services/teams-meeting.service';
 import { httpErrorMessage } from '../../shared/http-error.util';
 
@@ -45,10 +50,12 @@ interface DeckImage {
     FormsModule,
     RouterLink,
     MatButtonModule,
+    MatCheckboxModule,
     MatFormFieldModule,
     MatIconModule,
     MatInputModule,
     MatProgressSpinnerModule,
+    MatSelectModule,
   ],
   template: `
     <div class="detail">
@@ -183,9 +190,45 @@ interface DeckImage {
             }
             @if (ins.actions.length > 0) {
               <h3 class="block__h">Actions</h3>
-              <ul class="block__list block__list--tasks">
-                @for (a of ins.actions; track $index) {<li>{{ a }}</li>}
-              </ul>
+              <div class="radar-push">
+                <ul class="radar-push__list">
+                  @for (a of ins.actions; track $index) {
+                    <li>
+                      <mat-checkbox
+                        [checked]="isActionSelected($index)"
+                        (change)="toggleAction($index, $event.checked)"
+                      >{{ a }}</mat-checkbox>
+                    </li>
+                  }
+                </ul>
+                <div class="radar-push__controls">
+                  <mat-form-field appearance="outline" class="radar-push__subject">
+                    <mat-label>Sujet du Radar</mat-label>
+                    <mat-select name="radarSubject" [(ngModel)]="selectedSubjectId">
+                      <mat-option [value]="null">— Sujet de la réunion —</mat-option>
+                      @for (s of radarSubjects(); track s.id) {
+                        <mat-option [value]="s.id">{{ s.name }}</mat-option>
+                      }
+                    </mat-select>
+                  </mat-form-field>
+                  <button
+                    mat-flat-button
+                    color="primary"
+                    type="button"
+                    [disabled]="pushingToRadar() || selectedActionCount(ins) === 0"
+                    (click)="pushActionsToRadar(m, ins)"
+                    title="Créer des engagements « À faire par moi » sur le sujet, avec la réunion pour preuve"
+                  >
+                    <mat-icon>radar</mat-icon>
+                    Pousser vers « À faire par moi »
+                  </button>
+                </div>
+                @if (pushingToRadar()) {
+                  <div class="detail__loading"><mat-spinner diameter="24"></mat-spinner></div>
+                } @else if (radarPushMessage()) {
+                  <p class="detail__missing"><mat-icon aria-hidden="true">radar</mat-icon>{{ radarPushMessage() }}</p>
+                }
+              </div>
             }
             @if (ins.keyPoints.length > 0) {
               <h3 class="block__h">Points clés</h3>
@@ -451,6 +494,29 @@ interface DeckImage {
         left: 0;
         color: var(--cg-primary, #1a3a5c);
       }
+      .radar-push {
+        display: flex;
+        flex-direction: column;
+        gap: var(--cg-space-2, 8px);
+      }
+      .radar-push__list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: var(--cg-space-1, 4px);
+      }
+      .radar-push__controls {
+        display: flex;
+        align-items: center;
+        gap: var(--cg-space-3, 16px);
+        flex-wrap: wrap;
+        margin-top: var(--cg-space-1, 4px);
+      }
+      .radar-push__subject {
+        min-width: 240px;
+      }
       .ask {
         display: flex;
         gap: var(--cg-space-2, 8px);
@@ -502,6 +568,7 @@ interface DeckImage {
 export class MeetingDetailPageComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly service = inject(TeamsMeetingService);
+  private readonly radar = inject(RadarService);
   private readonly sanitizer = inject(DomSanitizer);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -534,6 +601,15 @@ export class MeetingDetailPageComponent implements OnInit, OnDestroy {
   // Rangement dans la carte du poste (SF-128-11)
   readonly promoting = signal(false);
   readonly cardMessage = signal<string | null>(null);
+
+  // Pousser les actions dans le Radar (SF-128-06)
+  readonly radarSubjects = signal<RadarSubjectSummary[]>([]);
+  /** Sujet cible ; `null` = reprendre le sujet de la réunion côté serveur. */
+  selectedSubjectId: string | null = null;
+  /** Cases cochées, par index d'action (toutes cochées par défaut). */
+  private actionSelected: boolean[] = [];
+  readonly pushingToRadar = signal(false);
+  readonly radarPushMessage = signal<string | null>(null);
 
   readonly examples = [
     'Résume les décisions et les actions',
@@ -583,12 +659,19 @@ export class MeetingDetailPageComponent implements OnInit, OnDestroy {
     this.transcriptMessage.set(null);
     this.promoting.set(false);
     this.cardMessage.set(null);
+    this.radarSubjects.set([]);
+    this.selectedSubjectId = null;
+    this.actionSelected = [];
+    this.pushingToRadar.set(false);
+    this.radarPushMessage.set(null);
 
     this.service.get(hostId, meetingId).subscribe({
       next: (meeting) => {
         this.meeting.set(meeting);
         this.loading.set(false);
         this.downloadName = this.buildDownloadName(meeting);
+        this.selectedSubjectId = meeting.subjectId;
+        this.loadRadarSubjects(hostId);
         if (meeting.hasAudio) {
           this.loadAudio(hostId, meetingId);
         }
@@ -700,6 +783,8 @@ export class MeetingDetailPageComponent implements OnInit, OnDestroy {
       next: (insights) => {
         this.analyzing.set(false);
         this.insights.set(insights);
+        this.actionSelected = insights.actions.map(() => true);
+        this.radarPushMessage.set(null);
       },
       error: (err: unknown) => {
         this.analyzing.set(false);
@@ -727,6 +812,66 @@ export class MeetingDetailPageComponent implements OnInit, OnDestroy {
         this.cardMessage.set(httpErrorMessage(err, 'Le rangement dans la carte a échoué.'));
       },
     });
+  }
+
+  /** Charge les sujets du poste, pour désigner la cible du push (SF-128-06). Silencieux si indisponible. */
+  private loadRadarSubjects(hostId: string): void {
+    this.radar.subjects(hostId).subscribe({
+      next: (subjects) => this.radarSubjects.set(subjects),
+      error: () => {
+        // Le sélecteur reste vide : on peut toujours reprendre le sujet de la réunion (subjectId null).
+      },
+    });
+  }
+
+  /** Vrai si l'action d'index `i` est cochée (par défaut oui). */
+  isActionSelected(i: number): boolean {
+    return this.actionSelected[i] ?? true;
+  }
+
+  toggleAction(i: number, checked: boolean): void {
+    this.actionSelected[i] = checked;
+  }
+
+  /** Le nombre d'actions cochées à pousser. */
+  selectedActionCount(insights: MeetingInsights): number {
+    return insights.actions.filter((_, i) => this.isActionSelected(i)).length;
+  }
+
+  /** Pousse les actions cochées dans le Radar comme engagements « À faire par moi » (SF-128-06). */
+  pushActionsToRadar(meeting: TeamsMeeting, insights: MeetingInsights): void {
+    const hostId = this.hostRef();
+    const meetingId = this.meetingId();
+    if (!hostId || !meetingId) {
+      return;
+    }
+    const actions = insights.actions.filter((_, i) => this.isActionSelected(i));
+    if (actions.length === 0) {
+      return;
+    }
+    this.pushingToRadar.set(true);
+    this.radarPushMessage.set(null);
+    this.service.pushActionsToRadar(hostId, meetingId, actions, this.selectedSubjectId).subscribe({
+      next: (result) => {
+        this.pushingToRadar.set(false);
+        this.radarPushMessage.set(this.describePush(result));
+      },
+      error: (err: unknown) => {
+        this.pushingToRadar.set(false);
+        this.radarPushMessage.set(httpErrorMessage(err, 'Le push des actions vers le Radar a échoué.'));
+      },
+    });
+  }
+
+  private describePush(result: MeetingActionsToRadar): string {
+    if (result.needsSubject) {
+      return result.note ?? 'Désignez un sujet du Radar, puis poussez de nouveau.';
+    }
+    if (result.added > 0) {
+      const on = result.subjectName ? ` sur « ${result.subjectName} »` : '';
+      return `${result.added} action(s) ajoutée(s) à « À faire par moi »${on}.`;
+    }
+    return result.note ?? 'Aucune action ajoutée.';
   }
 
   private describeCardPromotion(result: MeetingCardPromotion): string {

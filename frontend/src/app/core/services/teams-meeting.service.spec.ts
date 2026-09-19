@@ -93,4 +93,11 @@ describe('TeamsMeetingService', () => {
     expect(req.request.method).toBe('POST');
     expect(req.request.body).toEqual({});
   });
+
+  it('pousse les actions vers le Radar avec le sujet et les actions (SF-128-06)', () => {
+    service.pushActionsToRadar('h1', 'm1', ['Envoyer le CR'], 's1').subscribe();
+    const req = httpMock.expectOne('/api/vigie/hosts/h1/meetings/m1/actions-to-radar');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ subjectId: 's1', actions: ['Envoyer le CR'] });
+  });
 });
