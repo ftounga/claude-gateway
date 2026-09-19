@@ -31,6 +31,18 @@ public final class ToolStack {
      * dépassait son premier mot.</p>
      */
     public static ToolStack create(RunnerConfig config, Console console, FrameSender sender) {
+        return create(config, console, sender, null);
+    }
+
+    /**
+     * Même montage, avec le <b>Chrome managé partagé</b> (F-128 / SF-128-09) : l'instance unique créée
+     * et pilotée par {@code RunnerConnection} (cycle de vie Vigie) est confiée à {@link
+     * fr.claudegateway.runner.teams.TeamsTools}, qui la <b>(re)garantit</b> avant qu'un ordre de réunion
+     * conclue « injoignable ». {@code null}-safe : le repli long-polling passe {@code null} et le join
+     * garde son comportement d'avant.
+     */
+    public static ToolStack create(RunnerConfig config, Console console, FrameSender sender,
+            fr.claudegateway.runner.teams.ManagedChrome managedChrome) {
         // L'interpréteur est élu ici, une fois, et non redécidé à chaque commande (SF-38-27) : c'est
         // le même point de montage qui garantit que les deux transports exécutent sous le même shell.
         ShellElection shell = ShellElection.elect();
@@ -47,6 +59,9 @@ public final class ToolStack {
                         .withCapture(capture(config, console))
                         .withMeetingAudio(meetingAudio(config))
                         .withMeetingImages(meetingImages(config))
+                        // F-128 / SF-128-09 — le Chrome managé partagé : le join le (re)garantit avant
+                        // de conclure « injoignable » (null-safe : repli long-polling inchangé).
+                        .withManagedChrome(managedChrome)
                         .withTranscription(transcription(config, console))
                         // F-100 / SF-100-02 — la synchro du soir : remontée par le jeton du poste.
                         .withRadarUplink(radarUplink(config), console::info)

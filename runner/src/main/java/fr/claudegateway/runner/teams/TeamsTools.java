@@ -146,6 +146,13 @@ public final class TeamsTools implements ToolExecutor {
     private MeetingAudioUploader meetingAudio;
     /** Uploader des images clés de réunion (F-128 / SF-128-03) ; {@code null} = images non remontées. */
     private MeetingImageUploader meetingImages;
+    /**
+     * Le Chrome managé partagé (F-122 / SF-122-01), pour le <b>(re)garantir</b> avant qu'un ordre de
+     * réunion conclue « injoignable » (F-128 / SF-128-09). {@code null} quand aucun n'est branché
+     * (repli long-polling) : le join se comporte alors comme avant. Instance <b>unique</b> partagée avec
+     * {@code VigieLoop} — ses méthodes de cycle de vie sont {@code synchronized}, donc sûres à partager.
+     */
+    private ManagedChrome managedChrome;
 
     /**
      * La transcription locale (F-91 / SF-91-03). {@code null} quand ce runner n'en a pas — une
@@ -214,6 +221,16 @@ public final class TeamsTools implements ToolExecutor {
     /** Branche l'uploader des images clés de réunion (F-128 / SF-128-03). */
     public TeamsTools withMeetingImages(MeetingImageUploader value) {
         this.meetingImages = value;
+        return this;
+    }
+
+    /**
+     * Branche le Chrome managé partagé (F-128 / SF-128-09) : le join s'en sert pour le <b>(re)garantir</b>
+     * (relance idempotente) avant de conclure « injoignable ». {@code null}-safe : sans lui, le join
+     * garde son comportement d'avant (repli long-polling, tests d'échec nominal).
+     */
+    public TeamsTools withManagedChrome(ManagedChrome value) {
+        this.managedChrome = value;
         return this;
     }
 
@@ -445,18 +462,58 @@ public final class TeamsTools implements ToolExecutor {
             return ToolOutcome.error("invalid_input", "URL de réunion absente.");
         }
         try {
-            BrowserLink link = link();
-            PageActions actions = new PageActions(link, sleeper, gesture -> { });
-            String reached = actions.navigate(url);
-            ObjectNode json = mapper.createObjectNode();
-            json.put("joined", true);
-            json.put("tabUrl", reached == null ? url : reached);
-            return ToolOutcome.ok(json.toString());
-        } catch (BrowserLinkException e) {
-            return ToolOutcome.error("browser_unreachable",
-                    "Impossible de joindre le Chrome managé ou d'ouvrir la réunion sur cet onglet.");
+            return navigateToMeeting(url);
+        } catch (BrowserLinkException first) {
+            // SF-128-09 : le Chrome managé a pu tomber APRÈS une capture (onglet/fenêtre refermés →
+            // process sorti → CDP muet). Avant de conclure « injoignable », on le (re)garantit
+            // (ManagedChrome.ensureRunning, idempotent — SF-122-01/06) puis on RETENTE la navigation.
+            // Le message actionnable n'est rendu qu'après un échec RÉEL de récupération.
+            if (!recoverManagedChrome()) {
+                return ToolOutcome.error("browser_unreachable", JOIN_UNREACHABLE);
+            }
+            try {
+                return navigateToMeeting(url);
+            } catch (BrowserLinkException retry) {
+                return ToolOutcome.error("browser_unreachable", JOIN_UNREACHABLE);
+            } catch (RuntimeException retry) {
+                return ToolOutcome.error("navigate_failed", "L'ouverture de la réunion a échoué.");
+            }
         } catch (RuntimeException e) {
             return ToolOutcome.error("navigate_failed", "L'ouverture de la réunion a échoué.");
+        }
+    }
+
+    /** Le message actionnable d'un Chrome managé qui reste injoignable après tentative de récupération. */
+    private static final String JOIN_UNREACHABLE =
+            "Impossible de joindre le Chrome managé ou d'ouvrir la réunion sur cet onglet.";
+
+    /** Attache l'onglet Teams du Chrome managé et le navigue vers l'URL de la réunion. */
+    private ToolOutcome navigateToMeeting(String url) {
+        BrowserLink link = link();
+        PageActions actions = new PageActions(link, sleeper, gesture -> { });
+        String reached = actions.navigate(url);
+        ObjectNode json = mapper.createObjectNode();
+        json.put("joined", true);
+        json.put("tabUrl", reached == null ? url : reached);
+        return ToolOutcome.ok(json.toString());
+    }
+
+    /**
+     * (Re)garantit le Chrome managé (F-128 / SF-128-09) : réutilise {@link ManagedChrome#ensureRunning()}
+     * (idempotent — relance s'il est tombé, ne fait rien s'il répond déjà). Rend {@code true} si le port
+     * répond après la tentative ({@code REACHABLE}/{@code LAUNCHED}). {@code false} sans Chrome managé
+     * branché, ou si la récupération a réellement échoué ({@code NO_BROWSER}/{@code UNREACHABLE}).
+     */
+    private boolean recoverManagedChrome() {
+        ManagedChrome chrome = this.managedChrome;
+        if (chrome == null) {
+            return false;
+        }
+        try {
+            ManagedChrome.State state = chrome.ensureRunning();
+            return state == ManagedChrome.State.REACHABLE || state == ManagedChrome.State.LAUNCHED;
+        } catch (RuntimeException e) {
+            return false;
         }
     }
 
@@ -544,6 +601,9 @@ public final class TeamsTools implements ToolExecutor {
             // SF-128-03 : les images clés du partage d'écran, après l'audio. Best-effort : un échec
             // d'images ne défait pas l'audio déjà remonté.
             int images = uploadFrames(workspaceId, meetingId);
+            // SF-128-09 : l'onglet est remis dans un état ré-utilisable (global effacé, échantillonneur
+            // et pistes coupés) — une 2ᵉ capture repart proprement. Best-effort : ne défait pas la remontée.
+            cleanupCaptureState();
             ObjectNode json = mapper.createObjectNode();
             json.put("uploaded", true);
             json.put("bytes", uploaded);
@@ -556,6 +616,21 @@ public final class TeamsTools implements ToolExecutor {
             return ToolOutcome.error("upload_failed", "La remontée de l'audio a échoué.");
         } catch (RuntimeException e) {
             return ToolOutcome.error("capture_stop_failed", "L'arrêt de la capture a échoué.");
+        }
+    }
+
+    /**
+     * Remet l'onglet dans un état ré-utilisable après un arrêt de capture (F-128 / SF-128-09) :
+     * efface {@code window.__cgMeetingCapture} (et coupe échantillonneur/pistes restés ouverts).
+     * <b>Best-effort strict</b> : un nettoyage manqué ne défait jamais une remontée réussie — et la
+     * prochaine capture repart de toute façon (le garde de démarrage ne bloque que sur un enregistrement
+     * <b>actif</b>).
+     */
+    private void cleanupCaptureState() {
+        try {
+            evalInPage(MeetingTabCapture.CLEANUP_SCRIPT, false);
+        } catch (RuntimeException e) {
+            // Ignoré volontairement : la remontée est déjà faite ; l'onglet sera de toute façon réutilisable.
         }
     }
 

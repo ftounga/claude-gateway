@@ -110,14 +110,18 @@ public final class RunnerConnection {
             return t;
         });
         sender = new FrameSender(console);
+        // F-128 / SF-128-09 : le Chrome managé est créé UNE FOIS ici et PARTAGÉ — la boucle Vigie en
+        // pilote le cycle de vie, la pile d'outils (teams_meeting_join) le (re)garantit à la demande.
+        // Une seule instance ⇒ pas de double process ; ses méthodes de cycle de vie sont synchronized.
+        fr.claudegateway.runner.teams.ManagedChrome chrome = createManagedChrome();
         // Meme montage d'outils que le repli long-polling : les deux transports ne doivent
         // jamais dependre du transport (SF-38-09).
-        dispatcher = ToolStack.create(config, console, sender).dispatcher();
+        dispatcher = ToolStack.create(config, console, sender, chrome).dispatcher();
         router = new FrameRouter(dispatcher, console, this::onUpdate);
         // F-122 / SF-122-06 : la boucle Vigie vit avec le runner. Elle est indépendante du transport
         // (elle remonte l'état par son propre POST /runner/vigie/readiness) et démarrée une seule
         // fois ici, sur l'exécuteur du heartbeat, avant la boucle de (re)connexion.
-        startVigie(token);
+        startVigie(token, chrome);
         URI uri = config.webSocketUri(token);
         String target = safeUri(uri);
         console.info("Cible WebSocket : " + target);
@@ -203,19 +207,36 @@ public final class RunnerConnection {
      * démarrage n'empêche jamais le runner ni ses autres outils de fonctionner. Sans effet si le volet
      * Teams est désactivé (--no-teams).
      */
-    private void startVigie(String token) {
+    /**
+     * Construit l'instance <b>partagée</b> du Chrome managé (F-122 / SF-122-06, réutilisée F-128 /
+     * SF-128-09) : profil dédié résolu, lancement et sonde réels. Ne lance <b>rien</b> à la
+     * construction — Chrome n'est lancé qu'au premier {@code ensureRunning}. Rend {@code null} quand le
+     * volet Teams est désactivé (--no-teams) : la pile d'outils et la Vigie s'en passent alors.
+     */
+    private fr.claudegateway.runner.teams.ManagedChrome createManagedChrome() {
         if (!config.allowTeams()) {
+            return null;
+        }
+        try {
+            fr.claudegateway.runner.teams.ManagedChromeSettings settings =
+                    fr.claudegateway.runner.teams.ManagedChromeSettings.resolve(
+                            Integer.toString(config.teamsPort()),
+                            System.getenv(fr.claudegateway.runner.teams.ChromePaths.PROFILE_ENV),
+                            System::getenv);
+            return fr.claudegateway.runner.teams.ManagedChrome.real(settings, console::info);
+        } catch (RuntimeException e) {
+            console.warn("Vigie : Chrome managé non préparé (" + Failures.describe(e)
+                    + ") — le reste du runner continue normalement.");
+            return null;
+        }
+    }
+
+    private void startVigie(String token, fr.claudegateway.runner.teams.ManagedChrome chrome) {
+        if (!config.allowTeams() || chrome == null) {
             return;
         }
         try {
             int port = config.teamsPort();
-            fr.claudegateway.runner.teams.ManagedChromeSettings settings =
-                    fr.claudegateway.runner.teams.ManagedChromeSettings.resolve(
-                            Integer.toString(port),
-                            System.getenv(fr.claudegateway.runner.teams.ChromePaths.PROFILE_ENV),
-                            System::getenv);
-            fr.claudegateway.runner.teams.ManagedChrome chrome =
-                    fr.claudegateway.runner.teams.ManagedChrome.real(settings, console::info);
             // Coutures SF-122-03 : à l'expiration, la fenêtre managée surgit pour le login ; une fois
             // reconnecté, elle se remasque. Le runner ne se connecte jamais à la place de l'utilisateur.
             fr.claudegateway.runner.teams.VigieSonde sonde =

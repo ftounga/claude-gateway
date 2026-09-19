@@ -125,6 +125,19 @@ final class MeetingTabCapture {
             })()
             """;
 
+    /**
+     * <b>Remet l'onglet dans un état ré-utilisable</b> après un arrêt (F-128 / SF-128-09) : coupe un
+     * éventuel échantillonneur et des pistes restées ouvertes (défensif — {@link #STOP_SCRIPT} les a
+     * normalement déjà arrêtées), puis <b>efface</b> le global {@code window.__cgMeetingCapture}. Sans ce
+     * nettoyage, le résultat encodé et les images clés de la capture précédente resteraient en mémoire de
+     * l'onglet ; avec lui, une 2ᵉ capture repart proprement. Synchrone, ne lève jamais.
+     */
+    static final String CLEANUP_SCRIPT = "(function(){try{var c=window.__cgMeetingCapture;if(c){"
+            + "try{if(c.sampler)clearInterval(c.sampler);}catch(e){}"
+            + "try{(c.display?c.display.getTracks():[]).forEach(function(t){t.stop();});}catch(e){}"
+            + "try{(c.mic?c.mic.getTracks():[]).forEach(function(t){t.stop();});}catch(e){}}"
+            + "window.__cgMeetingCapture=null;return {cleared:true};}catch(e){return {cleared:false};}})()";
+
     /** Nombre maximum d'images clés retenues par réunion. */
     static final int MAX_FRAMES = 60;
 

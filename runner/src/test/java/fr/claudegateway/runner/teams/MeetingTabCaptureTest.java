@@ -82,4 +82,24 @@ class MeetingTabCaptureTest {
         assertEquals("AAAB", MeetingTabCapture.stripDataUrl("AAAB"));
         assertEquals("", MeetingTabCapture.stripDataUrl(null));
     }
+
+    @Test
+    @DisplayName("SF-128-09 : le script de nettoyage efface le global et coupe échantillonneur/pistes")
+    void cleanupScriptResetsGlobal() {
+        assertTrue(MeetingTabCapture.CLEANUP_SCRIPT.contains("window.__cgMeetingCapture=null"),
+                "le global doit être remis à zéro pour qu'une 2ᵉ capture reparte proprement");
+        assertTrue(MeetingTabCapture.CLEANUP_SCRIPT.contains("clearInterval"),
+                "l'échantillonneur d'images clés doit être coupé");
+        assertTrue(MeetingTabCapture.CLEANUP_SCRIPT.contains("getTracks"),
+                "les pistes restées ouvertes doivent être arrêtées (défensif)");
+    }
+
+    @Test
+    @DisplayName("SF-128-09 : le garde de démarrage ne court-circuite que sur un enregistrement ACTIF")
+    void startScriptOnlyShortCircuitsWhenRecording() {
+        // Un global effacé (null) ou une capture arrêtée (state !== 'recording') ne bloque PAS un
+        // nouveau démarrage : le garde ne rend { already } que si un enregistrement est réellement actif.
+        assertTrue(MeetingTabCapture.START_SCRIPT.contains("recorder.state === 'recording'"));
+        assertTrue(MeetingTabCapture.START_SCRIPT.contains("already: true"));
+    }
 }
