@@ -1117,7 +1117,10 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   - `meetings` : `id (uuid)`, `user_id (uuid, FK users ON DELETE CASCADE)`, `host_id (uuid, FK
     runner_hosts ON DELETE CASCADE)`, `subject_id (uuid, nullable — pointeur vers radar_subjects, sans
     FK, même choix que le registre du Radar)`, `title (varchar 300, nullable)`, `meeting_url (varchar
-    2048)`, `state (varchar 20 — RECORDING/PAUSED/STOPPED/FAILED)`, `consent_acknowledged (boolean)`,
+    2048)`, `state (varchar 20 — JOINED/RECORDING/PAUSED/STOPPED/FAILED — JOINED ajouté SF-128-16)`,
+    `consent_acknowledged (boolean)`, `in_call (boolean NOT NULL défaut false — SF-128-16, migration 117 :
+    vrai si l'utilisateur est réellement en réunion au join ; l'UI n'active « Démarrer l'enregistrement »
+    que si vrai)`,
     `retention_days (int, défaut 30, borne applicative [1;365])`, `capture_ref (varchar 200, nullable)`,
     `audio_key (varchar 300, nullable — SF-128-02, migration 112)`, `audio_bytes (bigint, nullable)`,
     `image_count (int, nullable — SF-128-03, migration 113)`,
@@ -1126,7 +1129,8 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     nullable)`, `transcript_error (varchar 500, nullable)`,
     `media_purged_at (timestamptz, nullable — SF-128-07, migration 116 : instant de purge des médias lourds)`,
     `started_at`, `ended_at (nullable)`, `created_at`, `updated_at`. Index `(user_id, host_id,
-    started_at)`. Endpoints `/api/vigie/hosts/{hostId}/meetings` (create/stop/pause/resume/list/get),
+    started_at)`. Endpoints `/api/vigie/hosts/{hostId}/meetings` (create=« Rejoindre »/capture-start=
+    « Démarrer l'enregistrement », SF-128-16 /stop/pause/resume/list/get),
     lecture des médias `…/{meetingId}/audio` (Range/téléchargement) et `…/{meetingId}/images[/{imageId}]`
     (SF-128-10), transcription `…/{meetingId}/transcribe` (POST, opt-in) + `…/{meetingId}/transcript`
     (GET) (SF-128-04), exploitation `…/{meetingId}/insights` + `…/{meetingId}/ask` (POST) (SF-128-05),
