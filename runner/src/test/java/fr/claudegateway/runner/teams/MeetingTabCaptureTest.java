@@ -2,6 +2,7 @@ package fr.claudegateway.runner.teams;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.charset.StandardCharsets;
@@ -92,6 +93,29 @@ class MeetingTabCaptureTest {
                 "l'échantillonneur d'images clés doit être coupé");
         assertTrue(MeetingTabCapture.CLEANUP_SCRIPT.contains("getTracks"),
                 "les pistes restées ouvertes doivent être arrêtées (défensif)");
+    }
+
+    @Test
+    @DisplayName("SF-128-12 : la sonde d'activité lit l'état du MediaRecorder du contexte courant")
+    void activeProbeReadsRecorderState() {
+        assertTrue(MeetingTabCapture.ACTIVE_PROBE_SCRIPT.contains("__cgMeetingCapture"),
+                "la sonde interroge le global du capteur");
+        assertTrue(MeetingTabCapture.ACTIVE_PROBE_SCRIPT.contains("recorder.state === 'recording'"),
+                "la sonde ne se dit active que si un enregistrement tourne");
+        assertTrue(MeetingTabCapture.ACTIVE_PROBE_SCRIPT.contains("active"),
+                "la sonde rend un champ active");
+    }
+
+    @Test
+    @DisplayName("SF-128-12 : le garde de ré-injection — armé ET capture inactive")
+    void shouldReinjectOnlyWhenArmedAndInactive() {
+        assertTrue(MeetingTabCapture.shouldReinject(true, false),
+                "armé + capture perdue par la navigation ⇒ ré-injecter");
+        assertFalse(MeetingTabCapture.shouldReinject(true, true),
+                "capture encore active (même contexte) ⇒ ne pas doubler l'enregistrement");
+        assertFalse(MeetingTabCapture.shouldReinject(false, false),
+                "désarmé (arrêt/nettoyage) ⇒ ne rien ré-injecter");
+        assertFalse(MeetingTabCapture.shouldReinject(false, true));
     }
 
     @Test

@@ -149,6 +149,12 @@ public final class TeamsTools implements ToolExecutor {
     /** Uploader des images clés de réunion (F-128 / SF-128-03) ; {@code null} = images non remontées. */
     private MeetingImageUploader meetingImages;
     /**
+     * Le ré-armement de la capture (F-128 / SF-128-12) : ré-injecte le capteur quand Teams (SPA)
+     * recharge la page entre {@code start} et {@code stop}. {@code null} tant qu'aucune capture n'est
+     * en cours ; armé au démarrage, désarmé à l'arrêt/nettoyage. Best-effort strict.
+     */
+    private CaptureReinjector captureReinjector;
+    /**
      * Le Chrome managé partagé (F-122 / SF-122-01), pour le <b>(re)garantir</b> avant qu'un ordre de
      * réunion conclue « injoignable » (F-128 / SF-128-09). {@code null} quand aucun n'est branché
      * (repli long-polling) : le join se comporte alors comme avant. Instance <b>unique</b> partagée avec
@@ -541,15 +547,20 @@ public final class TeamsTools implements ToolExecutor {
             return ToolOutcome.error("browser_unreachable", disabledReason);
         }
         try {
-            JsonNode value = evalInPage(MeetingTabCapture.START_SCRIPT, true);
+            BrowserLink link = link();
+            JsonNode value = evalOn(link.connection(), MeetingTabCapture.START_SCRIPT, true);
             if (value != null && value.path("started").asBoolean(false)) {
                 ObjectNode json = mapper.createObjectNode();
                 json.put("started", true);
                 boolean micDenied = value.path("micDenied").asBoolean(false);
                 json.put("micDenied", micDenied);
-                // Diagnostic F-132 : la capture a démarré — un état, jamais le média.
+                // SF-128-12 : arme le ré-armement — le capteur sera ré-injecté si Teams recharge la
+                // page (SPA) avant l'arrêt. Best-effort : un ré-armement raté ne défait pas la capture.
+                boolean reinjectArmed = armReinjection(link.connection());
+                // Diagnostic F-132 : la capture a démarré — un état, jamais le média. On dit aussi si
+                // le ré-armement (robustesse à la navigation) est en place, pour le VOIR sur call réel.
                 RunnerDiag.info("capture", "start", null,
-                        Map.of("result", "ok", "micDenied", micDenied));
+                        Map.of("result", "ok", "micDenied", micDenied, "reinjectArmed", reinjectArmed));
                 return ToolOutcome.ok(json.toString());
             }
             String error = value == null ? "capture_start_failed"
@@ -587,6 +598,9 @@ public final class TeamsTools implements ToolExecutor {
         if (meetingId.isBlank() || workspaceId.isBlank()) {
             return ToolOutcome.error("invalid_input", "Identifiants de réunion/terminal manquants.");
         }
+        // SF-128-12 : on désarme AVANT d'arrêter, pour qu'une navigation concomitante ne relance pas
+        // le capteur pendant qu'on l'arrête (le ré-armement écoute la même connexion).
+        disarmReinjection();
         try {
             JsonNode stop = evalInPage(MeetingTabCapture.STOP_SCRIPT, false);
             if (stop == null || !stop.path("stopped").asBoolean(false)) {
@@ -661,6 +675,9 @@ public final class TeamsTools implements ToolExecutor {
      * <b>actif</b>).
      */
     private void cleanupCaptureState() {
+        // SF-128-12 : défensif — le ré-armement est déjà désarmé au début de l'arrêt ; on le refait
+        // ici pour couvrir tout chemin qui appellerait le nettoyage sans passer par l'arrêt nominal.
+        disarmReinjection();
         try {
             evalInPage(MeetingTabCapture.CLEANUP_SCRIPT, false);
         } catch (RuntimeException e) {
@@ -670,7 +687,15 @@ public final class TeamsTools implements ToolExecutor {
 
     /** Évalue un script DANS la page, avec attente de promesse (et geste simulé si demandé). */
     private JsonNode evalInPage(String expression, boolean userGesture) {
-        BrowserLink link = link();
+        return evalOn(link().connection(), expression, userGesture);
+    }
+
+    /**
+     * Évalue un script sur une <b>connexion CDP donnée</b> (F-128 / SF-128-12) : le ré-armement de la
+     * capture réutilise la connexion capturée au démarrage — un onglet garde son socket de débogage à
+     * travers une navigation, c'est ce qui permet de ré-injecter le capteur après un rechargement.
+     */
+    private JsonNode evalOn(CdpConnection connection, String expression, boolean userGesture) {
         ObjectNode params = mapper.createObjectNode();
         params.put("expression", expression);
         params.put("returnByValue", true);
@@ -678,8 +703,37 @@ public final class TeamsTools implements ToolExecutor {
         if (userGesture) {
             params.put("userGesture", true);
         }
-        JsonNode result = link.connection().send(CdpCommands.EVALUATE, params);
+        JsonNode result = connection.send(CdpCommands.EVALUATE, params);
         return result == null ? null : result.path("result").get("value");
+    }
+
+    /**
+     * Arme le ré-armement de la capture (F-128 / SF-128-12) sur la connexion de l'onglet de capture.
+     * Best-effort strict : un échec de mise en place est avalé (la capture démarrée reste valable) et
+     * la méthode rend {@code false} — jamais d'exception vers l'appelant.
+     *
+     * @return {@code true} si le ré-armement est en place
+     */
+    private boolean armReinjection(CdpConnection connection) {
+        try {
+            CaptureReinjector reinjector = new CaptureReinjector(connection,
+                    (script, userGesture) -> evalOn(connection, script, userGesture));
+            reinjector.arm();
+            this.captureReinjector = reinjector;
+            return reinjector.armed();
+        } catch (RuntimeException e) {
+            this.captureReinjector = null;
+            return false;
+        }
+    }
+
+    /** Désarme le ré-armement de la capture (F-128 / SF-128-12) — après un arrêt ou un nettoyage. */
+    private void disarmReinjection() {
+        CaptureReinjector reinjector = this.captureReinjector;
+        if (reinjector != null) {
+            reinjector.disarm();
+            this.captureReinjector = null;
+        }
     }
 
     /** Récupère et téléverse les images clés retenues (F-128 / SF-128-03). Best-effort : rend le compte. */
