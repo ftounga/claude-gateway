@@ -74,6 +74,15 @@ public class Meeting {
     @Column(name = "consent_acknowledged", nullable = false)
     private boolean consentAcknowledged;
 
+    /**
+     * L'utilisateur est <b>réellement en réunion</b> (in-call) au moment du join (F-128 / SF-128-16),
+     * constaté best-effort par le runner. L'UI n'active « Démarrer l'enregistrement » que si vrai ;
+     * {@code false} si le join s'est arrêté au pré-join (plafond atteint sans signal in-call).
+     */
+    @Column(name = "in_call", nullable = false)
+    @Builder.Default
+    private boolean inCall = false;
+
     /** Durée de conservation en jours (défaut 30 ; purge active = SF-128-07). */
     @Column(name = "retention_days", nullable = false)
     private int retentionDays;

@@ -2,8 +2,11 @@
  * Modèles de l'artefact « réunion » de la Vigie (F-128 / SF-128-01).
  */
 
-/** États d'une capture de réunion. `RECORDING`/`PAUSED` gardent l'indicateur « capture en cours ». */
-export type MeetingState = 'RECORDING' | 'PAUSED' | 'STOPPED' | 'FAILED';
+/**
+ * États d'une capture de réunion. `JOINED` = rejointe, en attente de « Démarrer l'enregistrement »
+ * (SF-128-16) ; `RECORDING`/`PAUSED` gardent l'indicateur « capture en cours ».
+ */
+export type MeetingState = 'JOINED' | 'RECORDING' | 'PAUSED' | 'STOPPED' | 'FAILED';
 
 /** Une réunion Teams rejointe et capturée depuis un poste. */
 export interface TeamsMeeting {
@@ -14,6 +17,11 @@ export interface TeamsMeeting {
   meetingUrl: string;
   state: MeetingState;
   consentAcknowledged: boolean;
+  /**
+   * Vrai si l'utilisateur est réellement en réunion (in-call) au join (SF-128-16), constaté best-effort
+   * par le runner. L'UI n'active « Démarrer l'enregistrement » que si vrai.
+   */
+  inCall: boolean;
   retentionDays: number;
   captureRef: string | null;
   /** Vrai dès que l'audio capturé est remonté (SF-128-02) et lisible (SF-128-10). */

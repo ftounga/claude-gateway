@@ -103,16 +103,49 @@ class TeamsMeetingApiIntegrationTest {
     // ---------------------------------------------------------------- nominal
 
     @Test
-    @DisplayName("Rejoindre & capturer : 201, état RECORDING, rétention par défaut 30")
+    @DisplayName("Rejoindre (SF-128-16) : 201, état JOINED (pas d'enregistrement auto), rétention par défaut 30")
     void create_nominal() throws Exception {
         mockMvc.perform(post(url(aliceHost, "")).contextPath("/api")
                         .header("Authorization", "Bearer " + aliceToken)
                         .contentType("application/json")
                         .content(body("https://teams.microsoft.com/l/meetup-join/abc", true, null)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.state").value("RECORDING"))
+                .andExpect(jsonPath("$.state").value("JOINED"))
+                .andExpect(jsonPath("$.inCall").value(false))
                 .andExpect(jsonPath("$.retentionDays").value(30))
                 .andExpect(jsonPath("$.consentAcknowledged").value(true));
+    }
+
+    @Test
+    @DisplayName("Démarrer l'enregistrement (SF-128-16) : JOINED -> 200 RECORDING")
+    void captureStart_nominal() throws Exception {
+        UUID id = created();
+        mockMvc.perform(post(url(aliceHost, "/" + id + "/capture-start")).contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("RECORDING"));
+    }
+
+    @Test
+    @DisplayName("Démarrer l'enregistrement : 409 si la réunion n'est pas JOINED (déjà arrêtée)")
+    void captureStart_wrongState() throws Exception {
+        UUID id = created();
+        mockMvc.perform(post(url(aliceHost, "/" + id + "/stop")).contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk());
+        mockMvc.perform(post(url(aliceHost, "/" + id + "/capture-start")).contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("invalid_state"));
+    }
+
+    @Test
+    @DisplayName("ISOLATION : Bob ne peut pas démarrer l'enregistrement d'une réunion d'Alice (404)")
+    void captureStart_isolation() throws Exception {
+        UUID id = created();
+        mockMvc.perform(post(url(aliceHost, "/" + id + "/capture-start")).contextPath("/api")
+                        .header("Authorization", "Bearer " + bobToken))
+                .andExpect(status().isNotFound());
     }
 
     @Test

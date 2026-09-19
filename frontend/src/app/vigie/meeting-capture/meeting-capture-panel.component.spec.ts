@@ -19,18 +19,23 @@ describe('MeetingCapturePanelComponent', () => {
 
   const recording: TeamsMeeting = {
     id: 'm1', hostId: 'h1', subjectId: null, title: 'Comité', meetingUrl: 'https://teams.microsoft.com/x',
-    state: 'RECORDING', consentAcknowledged: true, retentionDays: 30, captureRef: 'cap-1',
+    state: 'RECORDING', consentAcknowledged: true, inCall: true, retentionDays: 30, captureRef: 'cap-1',
     hasAudio: false, audioBytes: null, imageCount: 0,
     transcriptStatus: 'NONE', transcriptLang: null, hasTranscript: false, mediaPurgedAt: null,
     startedAt: '2026-09-18T10:00:00Z', endedAt: null, createdAt: '2026-09-18T10:00:00Z',
   };
 
+  const joined = (inCall: boolean): TeamsMeeting => ({
+    ...recording, id: 'j1', state: 'JOINED', inCall,
+  });
+
   function setup(list = of([recording])): HTMLElement {
     service = jasmine.createSpyObj<TeamsMeetingService>('TeamsMeetingService',
-      ['list', 'get', 'create', 'stop', 'pause', 'resume']);
+      ['list', 'get', 'create', 'startCapture', 'stop', 'pause', 'resume']);
     service.list.and.returnValue(list);
     service.stop.and.returnValue(of({ ...recording, state: 'STOPPED', endedAt: '2026-09-18T11:00:00Z' }));
-    service.create.and.returnValue(of(recording));
+    service.create.and.returnValue(of({ ...recording, state: 'JOINED' }));
+    service.startCapture.and.returnValue(of(recording));
     dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
     TestBed.configureTestingModule({
@@ -62,7 +67,31 @@ describe('MeetingCapturePanelComponent', () => {
     expect(root.querySelector('.capture__dot')).not.toBeNull();
   });
 
-  it('« Rejoindre & capturer » ouvre le dialogue puis crée la réunion sur retour', () => {
+  it('SF-128-16 : une réunion JOINED in-call active « Démarrer l\'enregistrement »', () => {
+    const root = setup(of([joined(true)]));
+    const bar = root.querySelector('.capture--joined .capture__bar--joined');
+    expect(bar?.textContent).toContain('En réunion');
+    const btn = root.querySelector<HTMLButtonElement>('.capture--joined .capture__actions button');
+    expect(btn).not.toBeNull();
+    expect(btn!.disabled).toBeFalse();
+  });
+
+  it('SF-128-16 : une réunion JOINED PAS in-call désactive « Démarrer l\'enregistrement »', () => {
+    const root = setup(of([joined(false)]));
+    expect(root.querySelector('.capture--joined .capture__bar--joined')?.textContent)
+      .toContain('Réunion à confirmer');
+    const btn = root.querySelector<HTMLButtonElement>('.capture--joined .capture__actions button');
+    expect(btn!.disabled).toBeTrue();
+  });
+
+  it('SF-128-16 : « Démarrer l\'enregistrement » appelle le service et notifie', () => {
+    setup(of([joined(true)]));
+    fixture.componentInstance.startCapture(joined(true));
+    expect(service.startCapture).toHaveBeenCalledOnceWith('h1', 'j1');
+    expect(snackBar.open).toHaveBeenCalled();
+  });
+
+  it('« Rejoindre » ouvre le dialogue puis crée la réunion sur retour', () => {
     const root = setup();
     dialog.open.and.returnValue({
       afterClosed: () => of({ meetingUrl: 'https://teams.microsoft.com/y', consentAcknowledged: true }),

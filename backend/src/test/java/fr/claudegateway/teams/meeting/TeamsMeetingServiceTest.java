@@ -67,13 +67,11 @@ class TeamsMeetingServiceTest {
     }
 
     @Test
-    @DisplayName("Création nominale : ordre runner teams_meeting_join émis, ligne RECORDING persistée")
+    @DisplayName("« Rejoindre » (SF-128-16) : ordre runner teams_meeting_join émis, ligne JOINED persistée, PAS de capture démarrée")
     void create_nominal() {
         stubTeamsTerminal();
         when(runnerToolGateway.teamsRead(any(RunnerTarget.class), anyString(), eq(TeamsToolCatalog.MEETING_JOIN),
                 any(JsonNode.class))).thenReturn(ok("cap-42"));
-        when(runnerToolGateway.teamsRead(any(RunnerTarget.class), anyString(),
-                eq(TeamsToolCatalog.MEETING_CAPTURE_START), any(JsonNode.class))).thenReturn(ok("started"));
         when(repository.save(any(Meeting.class))).thenAnswer(inv -> {
             Meeting mm = inv.getArgument(0);
             if (mm.getId() == null) {
@@ -85,12 +83,13 @@ class TeamsMeetingServiceTest {
         MeetingResponse response = service.create(scope, new CreateMeetingRequest(
                 "https://teams.microsoft.com/l/meetup-join/xyz", "Comité", null, true, null));
 
-        assertThat(response.state()).isEqualTo("RECORDING");
+        // SF-128-16 : « Rejoindre » persiste en JOINED — l'enregistrement démarre au 2ᵉ temps seulement.
+        assertThat(response.state()).isEqualTo("JOINED");
         assertThat(response.retentionDays()).isEqualTo(Meeting.DEFAULT_RETENTION_DAYS);
         assertThat(response.consentAcknowledged()).isTrue();
         assertThat(response.captureRef()).isEqualTo("cap-42");
-        // SF-128-02 : la capture d'onglet est démarrée après le join.
-        verify(runnerToolGateway).teamsRead(any(RunnerTarget.class), anyString(),
+        // SF-128-16 : la capture N'EST PAS démarrée automatiquement par « Rejoindre ».
+        verify(runnerToolGateway, never()).teamsRead(any(RunnerTarget.class), anyString(),
                 eq(TeamsToolCatalog.MEETING_CAPTURE_START), any(JsonNode.class));
 
         ArgumentCaptor<JsonNode> input = ArgumentCaptor.forClass(JsonNode.class);
@@ -103,6 +102,97 @@ class TeamsMeetingServiceTest {
         verify(repository).save(saved.capture());
         assertThat(saved.getValue().getUserId()).isEqualTo(userId);
         assertThat(saved.getValue().getHostId()).isEqualTo(hostId);
+        assertThat(saved.getValue().getState()).isEqualTo(MeetingState.JOINED);
+    }
+
+    @Test
+    @DisplayName("« Rejoindre » (SF-128-16) : l'état in-call remonté par le runner est persisté (inCall=true)")
+    void create_reportsInCall() {
+        stubTeamsTerminal();
+        when(runnerToolGateway.teamsRead(any(RunnerTarget.class), anyString(), eq(TeamsToolCatalog.MEETING_JOIN),
+                any(JsonNode.class))).thenReturn(ok("{\"joined\":true,\"inCall\":true}"));
+        when(repository.save(any(Meeting.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        MeetingResponse response = service.create(scope, new CreateMeetingRequest(
+                "https://teams.microsoft.com/l/meetup-join/xyz", null, null, true, null));
+
+        assertThat(response.state()).isEqualTo("JOINED");
+        assertThat(response.inCall()).isTrue();
+    }
+
+    @Test
+    @DisplayName("« Rejoindre » : pré-join (inCall absent/illisible) → inCall=false, réunion tout de même JOINED")
+    void create_preJoinInCallFalse() {
+        stubTeamsTerminal();
+        when(runnerToolGateway.teamsRead(any(RunnerTarget.class), anyString(), eq(TeamsToolCatalog.MEETING_JOIN),
+                any(JsonNode.class))).thenReturn(ok("{\"joined\":true,\"inCall\":false}"));
+        when(repository.save(any(Meeting.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        MeetingResponse response = service.create(scope, new CreateMeetingRequest(
+                "https://teams.microsoft.com/l/meetup-join/xyz", null, null, true, null));
+
+        assertThat(response.state()).isEqualTo("JOINED");
+        assertThat(response.inCall()).isFalse();
+    }
+
+    @Test
+    @DisplayName("« Démarrer l'enregistrement » (SF-128-16) : JOINED -> RECORDING, ordre capture_start émis")
+    void startCapture_nominal() {
+        stubTeamsTerminal();
+        UUID id = UUID.randomUUID();
+        Meeting m = Meeting.builder().id(id).userId(userId).hostId(hostId).state(MeetingState.JOINED)
+                .meetingUrl("https://x").consentAcknowledged(true).inCall(true).retentionDays(30).build();
+        when(repository.findByIdAndUserIdAndHostId(id, userId, hostId)).thenReturn(Optional.of(m));
+        when(repository.save(any(Meeting.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(runnerToolGateway.teamsRead(any(RunnerTarget.class), anyString(),
+                eq(TeamsToolCatalog.MEETING_CAPTURE_START), any(JsonNode.class))).thenReturn(ok("started"));
+
+        MeetingResponse response = service.startCapture(scope, id);
+
+        assertThat(response.state()).isEqualTo("RECORDING");
+        ArgumentCaptor<JsonNode> input = ArgumentCaptor.forClass(JsonNode.class);
+        verify(runnerToolGateway).teamsRead(any(RunnerTarget.class), anyString(),
+                eq(TeamsToolCatalog.MEETING_CAPTURE_START), input.capture());
+        assertThat(input.getValue().path("meeting_id").asText()).isEqualTo(id.toString());
+    }
+
+    @Test
+    @DisplayName("« Démarrer l'enregistrement » : refus 409 si la réunion n'est pas JOINED")
+    void startCapture_wrongState() {
+        UUID id = UUID.randomUUID();
+        Meeting m = Meeting.builder().id(id).userId(userId).hostId(hostId).state(MeetingState.RECORDING)
+                .meetingUrl("https://x").consentAcknowledged(true).retentionDays(30).build();
+        when(repository.findByIdAndUserIdAndHostId(id, userId, hostId)).thenReturn(Optional.of(m));
+
+        assertThatThrownBy(() -> service.startCapture(scope, id)).isInstanceOf(MeetingStateException.class);
+        verify(runnerToolGateway, never()).teamsRead(any(), anyString(),
+                eq(TeamsToolCatalog.MEETING_CAPTURE_START), any());
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("« Démarrer l'enregistrement » : échec runner -> MeetingCaptureException, reste JOINED")
+    void startCapture_runnerFailure() {
+        stubTeamsTerminal();
+        UUID id = UUID.randomUUID();
+        Meeting m = Meeting.builder().id(id).userId(userId).hostId(hostId).state(MeetingState.JOINED)
+                .meetingUrl("https://x").consentAcknowledged(true).inCall(true).retentionDays(30).build();
+        when(repository.findByIdAndUserIdAndHostId(id, userId, hostId)).thenReturn(Optional.of(m));
+        when(runnerToolGateway.teamsRead(any(RunnerTarget.class), anyString(),
+                eq(TeamsToolCatalog.MEETING_CAPTURE_START), any(JsonNode.class)))
+                .thenReturn(RunnerCallResult.backendError("managed_chrome_unreachable", "Chrome fermé"));
+
+        assertThatThrownBy(() -> service.startCapture(scope, id)).isInstanceOf(MeetingCaptureException.class);
+        verify(repository, never()).save(any());
+        assertThat(m.getState()).isEqualTo(MeetingState.JOINED);
+    }
+
+    @Test
+    @DisplayName("« Démarrer l'enregistrement » : isolation — id hors périmètre -> 404")
+    void startCapture_isolation() {
+        UUID id = UUID.randomUUID();
+        when(repository.findByIdAndUserIdAndHostId(id, userId, hostId)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.startCapture(scope, id)).isInstanceOf(MeetingNotFoundException.class);
     }
 
     @Test

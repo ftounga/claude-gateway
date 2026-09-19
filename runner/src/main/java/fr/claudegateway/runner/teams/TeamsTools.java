@@ -504,18 +504,85 @@ public final class TeamsTools implements ToolExecutor {
         return ToolOutcome.error(code, message);
     }
 
-    /** Attache l'onglet Teams du Chrome managé et le navigue vers l'URL de la réunion. */
+    /**
+     * Attache l'onglet Teams du Chrome managé, le navigue vers l'URL de la réunion, puis <b>entre
+     * réellement en réunion</b> (F-128 / SF-128-16) : clic « Rejoindre maintenant » (best-effort) et
+     * détection du <b>vrai</b> état in-call, remonté dans le JSON ({@code inCall}) pour que l'UI n'active
+     * « Démarrer l'enregistrement » qu'une fois la réunion confirmée. Le clic et la détection sont
+     * <b>best-effort stricts</b> : ils ne relancent jamais de navigation (qui tuerait l'entrée en
+     * réunion) et ne font jamais échouer le join.
+     */
     private ToolOutcome navigateToMeeting(String url) {
         BrowserLink link = link();
-        PageActions actions = new PageActions(link, sleeper, gesture -> { });
+        CdpConnection connection = link.connection();
+        PageActions actions = new PageActions(connection, sleeper, gesture -> { });
         String reached = actions.navigate(url);
+        // SF-128-16 : cliquer « Rejoindre maintenant » (best-effort) puis DÉTECTER le vrai in-call.
+        clickJoinNow(actions);
+        InCallGate.State incall = awaitInCall(connection);
+        boolean inCall = incall == InCallGate.State.IN_CALL;
         ObjectNode json = mapper.createObjectNode();
         json.put("joined", true);
         json.put("tabUrl", reached == null ? url : reached);
-        // Diagnostic F-132 : le join a abouti — on remonte la CLASSE de l'URL atteinte, jamais l'URL.
+        json.put("inCall", inCall);
+        // Diagnostic F-132 : le join a abouti — on remonte la CLASSE de l'URL atteinte, jamais l'URL,
+        // et l'état in-call réellement constaté (pour le VOIR sur call réel).
         RunnerDiag.info("capture", "join", null,
-                Map.of("result", "ok", "url", RunnerDiagRedaction.urlClass(reached == null ? url : reached)));
+                Map.of("result", "ok", "url", RunnerDiagRedaction.urlClass(reached == null ? url : reached),
+                        "inCall", inCall));
         return ToolOutcome.ok(json.toString());
+    }
+
+    /**
+     * <b>Clique « Rejoindre maintenant »</b> dans le Chrome managé (F-128 / SF-128-16). Le Chrome étant
+     * hors écran, personne ne clique le bouton de pré-jonction : on le fait par CDP
+     * ({@link MeetingPresence#JOIN_NOW_SCRIPT}, plusieurs sélecteurs/libellés FR/EN — <b>fragile v2</b>,
+     * {@link MeetingPresence#SELECTORS_FLAG}). Déjà in-call ou pas de bouton → on continue. <b>Best-effort
+     * strict</b> : un domaine refusé, une page d'identification ou un socket mort n'échoue jamais le join
+     * ni ne relance de navigation. Diag F-132 {@code capture/join_click}.
+     */
+    private void clickJoinNow(PageActions actions) {
+        String reason;
+        try {
+            JsonNode result = actions.runScript("rejoindre la réunion", MeetingPresence.JOIN_NOW_SCRIPT);
+            reason = MeetingPresence.clickReason(result);
+        } catch (RuntimeException e) {
+            reason = "absent";
+        }
+        RunnerDiag.info("capture", "join_click", null, Map.of("result", reason));
+    }
+
+    /**
+     * <b>Attend l'entrée réelle en réunion</b> (F-128 / SF-128-16) : sonde le vrai signal in-call
+     * ({@link MeetingPresence#IN_CALL_PROBE_SCRIPT} — contrôles d'appel, sinon média actif) à chaque
+     * créneau, jusqu'à l'observer ({@link InCallGate.State#IN_CALL}) ou atteindre le plafond
+     * ({@link InCallGate.State#CAP_REACHED}, best-effort). Ne lève jamais : une sonde qui échoue vaut
+     * « pas encore in-call » et on retente au créneau suivant. Diag F-132 {@code capture/incall}.
+     */
+    private InCallGate.State awaitInCall(CdpConnection connection) {
+        InCallGate gate = new InCallGate(InCallGate.DEFAULT_CAP_MILLIS, InCallGate.DEFAULT_POLL_MILLIS);
+        BrowserLink.Sleeper waiter = sleeper != null ? sleeper : millis -> { };
+        String[] by = { "none" };
+        InCallGate.State state = gate.awaitInCall(waiter, () -> {
+            JsonNode probe = probeInCall(connection);
+            boolean inCall = MeetingPresence.inCall(probe);
+            if (inCall) {
+                by[0] = MeetingPresence.detectedBy(probe);
+            }
+            return inCall;
+        });
+        RunnerDiag.info("capture", "incall", null,
+                Map.of("result", state == InCallGate.State.IN_CALL ? "in_call" : "cap", "by", by[0]));
+        return state;
+    }
+
+    /** Sonde le vrai état in-call sur une connexion donnée (F-128 / SF-128-16). Best-effort : {@code null} si injoignable. */
+    private JsonNode probeInCall(CdpConnection connection) {
+        try {
+            return evalOn(connection, MeetingPresence.IN_CALL_PROBE_SCRIPT, false);
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     /**
@@ -565,11 +632,15 @@ public final class TeamsTools implements ToolExecutor {
                 // SF-128-12/13 : arme le ré-armement — FILET si une navigation TARDIVE survenait malgré
                 // la stabilisation. Best-effort : un ré-armement raté ne défait pas la capture.
                 boolean reinjectArmed = armReinjection(connection);
+                // SF-128-16 : la capture doit démarrer une fois RÉELLEMENT in-call (l'UI ne l'a activée
+                // qu'à la confirmation du join). On (re)constate l'in-call — best-effort — pour le VOIR.
+                boolean inCall = MeetingPresence.inCall(probeInCall(connection));
                 // Diagnostic F-132 : la capture a démarré — un état, jamais le média. On dit aussi si la
-                // page était stable (vs démarrage best-effort au plafond) et si le filet est en place.
+                // page était stable (vs démarrage best-effort au plafond), si le filet est en place, et
+                // si l'on était bien in-call au démarrage (SF-128-16).
                 RunnerDiag.info("capture", "start", null,
                         Map.of("result", "ok", "micDenied", micDenied, "reinjectArmed", reinjectArmed,
-                                "stable", stability == CaptureStabilityGate.State.STABLE));
+                                "stable", stability == CaptureStabilityGate.State.STABLE, "in_call", inCall));
                 return ToolOutcome.ok(json.toString());
             }
             String error = value == null ? "capture_start_failed"

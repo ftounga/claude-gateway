@@ -35,9 +35,21 @@ export class TeamsMeetingService {
     return this.http.get<TeamsMeeting>(`${this.base(hostId)}/${meetingId}`);
   }
 
-  /** « Rejoindre & capturer » : ouvre l'URL dans le Chrome managé et crée l'artefact. */
+  /**
+   * « Rejoindre » (SF-128-16, 1ᵉʳ temps) : ouvre l'URL dans le Chrome managé, entre réellement en
+   * réunion (clic « Rejoindre maintenant » + détection du vrai in-call) et crée l'artefact en `JOINED`.
+   * L'enregistrement ne démarre pas ici : voir {@link startCapture}.
+   */
   create(hostId: string, request: CreateMeetingRequest): Observable<TeamsMeeting> {
     return this.http.post<TeamsMeeting>(this.base(hostId), request);
+  }
+
+  /**
+   * « Démarrer l'enregistrement » (SF-128-16, 2ᵉ temps) : sur une réunion déjà rejointe et in-call,
+   * lance la capture d'onglet (`JOINED → RECORDING`). Le capteur survit car il n'y a plus de navigation.
+   */
+  startCapture(hostId: string, meetingId: string): Observable<TeamsMeeting> {
+    return this.http.post<TeamsMeeting>(`${this.base(hostId)}/${meetingId}/capture-start`, {});
   }
 
   /** Arrête la capture. */

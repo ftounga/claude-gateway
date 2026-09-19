@@ -51,6 +51,15 @@ public class TeamsMeetingController {
         return meetingService.create(scope(hostId), request);
     }
 
+    /**
+     * « Démarrer l'enregistrement » (F-128 / SF-128-16, 2ᵉ temps) : sur une réunion déjà rejointe et
+     * in-call, lance la capture d'onglet (JOINED → RECORDING). 409 si la réunion n'est pas rejointe.
+     */
+    @PostMapping("/{meetingId}/capture-start")
+    public MeetingResponse startCapture(@PathVariable UUID hostId, @PathVariable UUID meetingId) {
+        return meetingService.startCapture(scope(hostId), meetingId);
+    }
+
     @PostMapping("/{meetingId}/stop")
     public MeetingResponse stop(@PathVariable UUID hostId, @PathVariable UUID meetingId) {
         return meetingService.stop(scope(hostId), meetingId);

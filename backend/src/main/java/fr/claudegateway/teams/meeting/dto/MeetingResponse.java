@@ -17,6 +17,7 @@ public record MeetingResponse(
         String meetingUrl,
         String state,
         boolean consentAcknowledged,
+        boolean inCall,
         int retentionDays,
         String captureRef,
         boolean hasAudio,
@@ -32,7 +33,8 @@ public record MeetingResponse(
 
     public static MeetingResponse of(Meeting m) {
         return new MeetingResponse(m.getId(), m.getHostId(), m.getSubjectId(), m.getTitle(),
-                m.getMeetingUrl(), m.getState().name(), m.isConsentAcknowledged(), m.getRetentionDays(),
+                m.getMeetingUrl(), m.getState().name(), m.isConsentAcknowledged(), m.isInCall(),
+                m.getRetentionDays(),
                 m.getCaptureRef(), m.getAudioKey() != null, m.getAudioBytes(),
                 m.getImageCount() == null ? 0 : m.getImageCount(),
                 m.getTranscriptStatus() == null ? "NONE" : m.getTranscriptStatus().name(),

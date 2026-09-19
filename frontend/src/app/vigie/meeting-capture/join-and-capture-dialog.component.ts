@@ -34,12 +34,13 @@ export interface JoinAndCaptureDialogData {
     MatButtonModule,
   ],
   template: `
-    <h2 mat-dialog-title>Rejoindre &amp; capturer</h2>
+    <h2 mat-dialog-title>Rejoindre la réunion</h2>
     <form [formGroup]="form" (ngSubmit)="submit()">
       <mat-dialog-content class="join-capture">
         <p class="join-capture__lede">
-          La réunion s'ouvre dans le <strong>Chrome managé</strong> de {{ data.hostName }} et la capture
-          démarre sur cet onglet. Rejoignez la réunion depuis la Vigie, pas dans un navigateur à côté.
+          La réunion s'ouvre dans le <strong>Chrome managé</strong> de {{ data.hostName }} et vous y entrez
+          réellement. Une fois « En réunion », vous démarrerez l'enregistrement. Rejoignez depuis la Vigie,
+          pas dans un navigateur à côté.
         </p>
 
         <mat-form-field appearance="outline" class="join-capture__field">
@@ -74,7 +75,7 @@ export interface JoinAndCaptureDialogData {
       <mat-dialog-actions align="end">
         <button mat-button type="button" [mat-dialog-close]="null">Annuler</button>
         <button mat-flat-button color="primary" type="submit" [disabled]="form.invalid">
-          Rejoindre &amp; capturer
+          Rejoindre
         </button>
       </mat-dialog-actions>
     </form>
