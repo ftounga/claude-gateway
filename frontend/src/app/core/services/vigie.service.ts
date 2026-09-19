@@ -1,4 +1,4 @@
-import { HttpClient, HttpResponse } from '@angular/common/http';
+import { HttpClient, HttpParams, HttpResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable, catchError, map, of } from 'rxjs';
 
@@ -13,6 +13,7 @@ import {
   VigieSyncSummary,
 } from '../models/vigie.models';
 import { VigieReadiness } from '../models/vigie-readiness.models';
+import { RunnerDiagEntry, RunnerDiagQuery } from '../models/runner-diag.models';
 
 /**
  * **La Vigie et les espaces d'un client** (F-106 / SF-106-02).
@@ -97,6 +98,25 @@ export class VigieService {
   readiness(hostId: string): Observable<VigieReadiness> {
     return this.http.get<VigieReadiness>(
       `/api/runner-hosts/${encodeURIComponent(hostId)}/vigie/readiness`,
+    );
+  }
+
+  /**
+   * **Le journal de diagnostic d'un poste** (F-132 / SF-132-03) : les derniers événements de
+   * plomberie du runner (SF-132-02), du plus récent au plus ancien. `opts.level` filtre au niveau
+   * **minimum** ; sans lui, tous les niveaux. Des formes et des états, jamais un contenu.
+   */
+  runnerDiag(hostId: string, opts?: RunnerDiagQuery): Observable<RunnerDiagEntry[]> {
+    let params = new HttpParams();
+    if (opts?.level) {
+      params = params.set('level', opts.level);
+    }
+    if (opts?.limit != null) {
+      params = params.set('limit', String(opts.limit));
+    }
+    return this.http.get<RunnerDiagEntry[]>(
+      `/api/runner-hosts/${encodeURIComponent(hostId)}/diag`,
+      { params },
     );
   }
 }

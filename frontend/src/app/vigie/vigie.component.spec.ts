@@ -91,8 +91,11 @@ describe('VigieComponent', () => {
     atelier.teamsAccess.and.returnValue(of({ entitled: options.entitled ?? true }));
     atelier.runnerHostsOverview.and.returnValue(of(options.hosts ?? [client('h1', 'EDENRED')]));
     vigie = jasmine.createSpyObj<VigieService>('VigieService',
-      ['radarCounts', 'people', 'activate', 'remove', 'purgeRadar', 'hostSpaces', 'readiness']);
+      ['radarCounts', 'people', 'activate', 'remove', 'purgeRadar', 'hostSpaces', 'readiness',
+        'runnerDiag']);
     vigie.readiness.and.returnValue(of({ checks: [], canStart: false, teamsSignInRequired: false }));
+    // F-132 / SF-132-03 : le panneau « Journal du runner » se charge seul sous chaque poste.
+    vigie.runnerDiag.and.returnValue(of([]));
     vigie.radarCounts.and.callFake((hostId: string) => of(options.counts?.[hostId] ?? noCounts));
     vigie.people.and.returnValue(of([]));
     vigie.activate.and.returnValue(of({ hostId: 'h1', name: 'EDENRED', missionStatus: 'ACTIVE', spaces: ['FORGE', 'VIGIE'] }));
