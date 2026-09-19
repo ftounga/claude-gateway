@@ -28,6 +28,8 @@ export interface TeamsMeeting {
   transcriptLang: string | null;
   /** Vrai dès qu'un transcript est rattaché (SF-128-04). */
   hasTranscript: boolean;
+  /** Instant où les médias lourds (audio + images) ont été purgés (SF-128-07), ou `null`. */
+  mediaPurgedAt: string | null;
   startedAt: string;
   endedAt: string | null;
   createdAt: string;

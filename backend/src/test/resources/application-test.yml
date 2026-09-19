@@ -54,6 +54,13 @@ app:
     api-key: ""
     worker:
       enabled: false
+  # F-128 / SF-128-07 : worker de rétention des médias de réunion désactivé en tests ; la logique est
+  # testée en appelant MeetingRetentionService.purgeExpired() directement (déterminisme, pas de scheduler
+  # concurrent).
+  teams:
+    meeting:
+      purge:
+        enabled: false
   jwt:
     secret: test-only-jwt-secret-please-override-in-every-real-environment-0123456789
     expiration: PT24H

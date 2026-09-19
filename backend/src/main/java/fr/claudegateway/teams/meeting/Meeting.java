@@ -112,6 +112,14 @@ public class Meeting {
     @Column(name = "transcript_error", length = 500)
     private String transcriptError;
 
+    /**
+     * Instant où les <b>médias lourds</b> (audio + images) ont été purgés au-delà de {@link #retentionDays}
+     * (F-128 / SF-128-07), ou {@code null} tant qu'aucune purge. Une réunion horodatée n'est plus
+     * candidate (idempotence) ; l'artefact et le transcript, eux, sont conservés.
+     */
+    @Column(name = "media_purged_at")
+    private OffsetDateTime mediaPurgedAt;
+
     @Column(name = "started_at", nullable = false)
     private OffsetDateTime startedAt;
 

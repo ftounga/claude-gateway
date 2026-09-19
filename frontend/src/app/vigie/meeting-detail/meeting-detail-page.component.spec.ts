@@ -18,7 +18,7 @@ describe('MeetingDetailPageComponent', () => {
     id: 'm1', hostId: 'h1', subjectId: null, title: 'Comité Data',
     meetingUrl: 'https://teams.microsoft.com/x', state: 'STOPPED', consentAcknowledged: true,
     retentionDays: 30, captureRef: null, hasAudio: true, audioBytes: 2_097_152, imageCount: 1,
-    transcriptStatus: 'TRANSCRIBED', transcriptLang: 'fr', hasTranscript: true,
+    transcriptStatus: 'TRANSCRIBED', transcriptLang: 'fr', hasTranscript: true, mediaPurgedAt: null,
     startedAt: '2026-09-18T10:00:00Z', endedAt: '2026-09-18T10:47:00Z', createdAt: '2026-09-18T10:00:00Z',
   };
 
@@ -142,5 +142,34 @@ describe('MeetingDetailPageComponent', () => {
   it('réunion introuvable (404) : message d\'erreur', () => {
     const root = setup(throwError(() => new HttpErrorResponse({ status: 404 })));
     expect(root.querySelector('.detail__error')).not.toBeNull();
+  });
+
+  it('médias purgés : l\'écran le dit plutôt que « aucun audio » (SF-128-07)', () => {
+    service = jasmine.createSpyObj<TeamsMeetingService>('TeamsMeetingService',
+      ['get', 'audioBlob', 'imageIds', 'imageBlob', 'transcript', 'transcribe', 'insights', 'ask',
+        'promoteToCard']);
+    service.get.and.returnValue(of({
+      ...meeting, hasAudio: false, audioBytes: null, imageCount: 0,
+      mediaPurgedAt: '2026-09-19T03:40:00Z',
+    }));
+    service.imageIds.and.returnValue(of([]));
+    service.transcript.and.returnValue(of('[00:00] Bonjour'));
+    TestBed.configureTestingModule({
+      imports: [MeetingDetailPageComponent],
+      providers: [
+        provideNoopAnimations(),
+        provideRouter([]),
+        { provide: TeamsMeetingService, useValue: service },
+        {
+          provide: ActivatedRoute,
+          useValue: { paramMap: of(convertToParamMap({ hostRef: 'h1', meetingId: 'm1' })) },
+        },
+      ],
+    });
+    fixture = TestBed.createComponent(MeetingDetailPageComponent);
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.textContent).toContain('purgés');
+    expect(service.audioBlob).not.toHaveBeenCalled();
   });
 });
