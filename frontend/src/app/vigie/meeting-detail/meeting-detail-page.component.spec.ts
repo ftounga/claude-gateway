@@ -24,8 +24,12 @@ describe('MeetingDetailPageComponent', () => {
 
   function setup(get = of(meeting)): HTMLElement {
     service = jasmine.createSpyObj<TeamsMeetingService>('TeamsMeetingService',
-      ['get', 'audioBlob', 'imageIds', 'imageBlob', 'transcript', 'transcribe', 'insights', 'ask']);
+      ['get', 'audioBlob', 'imageIds', 'imageBlob', 'transcript', 'transcribe', 'insights', 'ask',
+        'promoteToCard']);
     service.get.and.returnValue(get);
+    service.promoteToCard.and.returnValue(
+      of({ files: [{ path: 'plateformes.md', factsWritten: 2, status: 'WRITTEN' as const }], factsWritten: 2, note: null }),
+    );
     service.audioBlob.and.returnValue(of(new Blob(['audio'], { type: 'audio/webm' })));
     service.imageIds.and.returnValue(of(['img1']));
     service.imageBlob.and.returnValue(of(new Blob(['img'], { type: 'image/png' })));
@@ -99,9 +103,18 @@ describe('MeetingDetailPageComponent', () => {
     expect(root.querySelector('.answer')?.textContent).toContain('La migration est validée.');
   });
 
+  it('« Ranger dans la carte du poste » range et affiche le bilan (SF-128-11)', () => {
+    const root = setup();
+    fixture.componentInstance.promoteToCard(meeting);
+    fixture.detectChanges();
+    expect(service.promoteToCard).toHaveBeenCalledOnceWith('h1', 'm1');
+    expect(root.textContent).toContain('rangé(s) dans la carte du poste');
+  });
+
   it('sans audio : message clair, pas d\'appel audioBlob', () => {
     service = jasmine.createSpyObj<TeamsMeetingService>('TeamsMeetingService',
-      ['get', 'audioBlob', 'imageIds', 'imageBlob', 'transcript', 'transcribe', 'insights', 'ask']);
+      ['get', 'audioBlob', 'imageIds', 'imageBlob', 'transcript', 'transcribe', 'insights', 'ask',
+        'promoteToCard']);
     service.get.and.returnValue(of({
       ...meeting, hasAudio: false, audioBytes: null, imageCount: 0,
       hasTranscript: false, transcriptStatus: 'NONE' as const,

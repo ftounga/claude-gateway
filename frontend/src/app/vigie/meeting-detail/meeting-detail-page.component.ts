@@ -11,7 +11,11 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { HttpErrorResponse } from '@angular/common/http';
 import { DomSanitizer, SafeUrl } from '@angular/platform-browser';
 
-import { MeetingInsights, TeamsMeeting } from '../../core/models/teams-meeting.models';
+import {
+  MeetingCardPromotion,
+  MeetingInsights,
+  TeamsMeeting,
+} from '../../core/models/teams-meeting.models';
 import { TeamsMeetingService } from '../../core/services/teams-meeting.service';
 import { httpErrorMessage } from '../../shared/http-error.util';
 
@@ -127,11 +131,28 @@ interface DeckImage {
         <section class="card" aria-label="Exploitation par l'agent">
           <div class="card__head">
             <h2 class="card__title">Exploitation par l'agent</h2>
-            <button mat-flat-button color="primary" type="button" [disabled]="analyzing()" (click)="analyze(m)">
-              <mat-icon>auto_awesome</mat-icon>
-              {{ insights() ? 'Ré-analyser' : 'Analyser la réunion' }}
-            </button>
+            <div class="card__head-actions">
+              <button mat-flat-button color="primary" type="button" [disabled]="analyzing()" (click)="analyze(m)">
+                <mat-icon>auto_awesome</mat-icon>
+                {{ insights() ? 'Ré-analyser' : 'Analyser la réunion' }}
+              </button>
+              <button
+                mat-stroked-button
+                type="button"
+                [disabled]="promoting()"
+                (click)="promoteToCard(m)"
+                title="Ranger les faits durables (infra, contacts, décisions durables) dans la carte du poste"
+              >
+                <mat-icon>inventory_2</mat-icon>
+                Ranger dans la carte du poste
+              </button>
+            </div>
           </div>
+          @if (promoting()) {
+            <div class="detail__loading"><mat-spinner diameter="24"></mat-spinner></div>
+          } @else if (cardMessage()) {
+            <p class="detail__missing"><mat-icon aria-hidden="true">inventory_2</mat-icon>{{ cardMessage() }}</p>
+          }
           @if (analyzing()) {
             <div class="detail__loading"><mat-spinner diameter="24"></mat-spinner></div>
           } @else if (insightsError()) {
@@ -356,6 +377,11 @@ interface DeckImage {
       .card__head .card__title {
         margin: 0;
       }
+      .card__head-actions {
+        display: flex;
+        gap: var(--cg-space-2, 8px);
+        flex-wrap: wrap;
+      }
       .detail__missing {
         display: flex;
         align-items: center;
@@ -496,6 +522,10 @@ export class MeetingDetailPageComponent implements OnInit, OnDestroy {
   readonly transcribing = signal(false);
   readonly transcriptMessage = signal<string | null>(null);
 
+  // Rangement dans la carte du poste (SF-128-11)
+  readonly promoting = signal(false);
+  readonly cardMessage = signal<string | null>(null);
+
   readonly examples = [
     'Résume les décisions et les actions',
     'Qui s\'est engagé sur quoi ?',
@@ -542,6 +572,8 @@ export class MeetingDetailPageComponent implements OnInit, OnDestroy {
     this.askError.set(null);
     this.transcriptText.set(null);
     this.transcriptMessage.set(null);
+    this.promoting.set(false);
+    this.cardMessage.set(null);
 
     this.service.get(hostId, meetingId).subscribe({
       next: (meeting) => {
@@ -665,6 +697,38 @@ export class MeetingDetailPageComponent implements OnInit, OnDestroy {
         this.insightsError.set(httpErrorMessage(err, "L'analyse de la réunion a échoué."));
       },
     });
+  }
+
+  /** Range les faits durables de la réunion dans la carte du poste (SF-128-11). */
+  promoteToCard(meeting: TeamsMeeting): void {
+    const hostId = this.hostRef();
+    const meetingId = this.meetingId();
+    if (!hostId || !meetingId) {
+      return;
+    }
+    this.promoting.set(true);
+    this.cardMessage.set(null);
+    this.service.promoteToCard(hostId, meetingId).subscribe({
+      next: (result) => {
+        this.promoting.set(false);
+        this.cardMessage.set(this.describeCardPromotion(result));
+      },
+      error: (err: unknown) => {
+        this.promoting.set(false);
+        this.cardMessage.set(httpErrorMessage(err, 'Le rangement dans la carte a échoué.'));
+      },
+    });
+  }
+
+  private describeCardPromotion(result: MeetingCardPromotion): string {
+    if (result.factsWritten > 0) {
+      const files = result.files
+        .filter((file) => file.status === 'WRITTEN')
+        .map((file) => file.path)
+        .join(', ');
+      return `${result.factsWritten} fait(s) durable(s) rangé(s) dans la carte du poste (${files}).`;
+    }
+    return result.note ?? 'Rien de durable à ranger dans la carte du poste.';
   }
 
   askExample(meeting: TeamsMeeting, example: string): void {

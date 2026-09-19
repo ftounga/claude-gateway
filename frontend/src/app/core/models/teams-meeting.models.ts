@@ -52,6 +52,23 @@ export interface MeetingAnswer {
   answer: string;
 }
 
+/** Un fichier de carte concerné par un rangement (SF-128-11). */
+export interface PromotedCardFile {
+  path: string;
+  factsWritten: number;
+  /** `WRITTEN` (écrit) ou `SKIPPED` (ignoré : absent, illisible, poste injoignable). */
+  status: 'WRITTEN' | 'SKIPPED';
+}
+
+/** Le bilan d'un rangement d'une réunion dans la carte du poste (SF-128-11). */
+export interface MeetingCardPromotion {
+  files: PromotedCardFile[];
+  /** Nombre total de faits durables réellement écrits dans la carte. */
+  factsWritten: number;
+  /** Un mot lisible quand rien n'est écrit (aucune carte active, rien de durable), ou `null`. */
+  note: string | null;
+}
+
 /** Demande « Rejoindre & capturer ». */
 export interface CreateMeetingRequest {
   meetingUrl: string;
