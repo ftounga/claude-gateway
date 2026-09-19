@@ -49,6 +49,17 @@ public final class VigieLoop {
     }
 
     /**
+     * <b>Le maintien de l'onglet Teams</b> (F-122 / SF-122-07) : à chaque relevé où le Chrome est
+     * joignable, s'assurer qu'un onglet Teams reste ouvert (le rouvrir sinon), pour que « Teams
+     * connecté » puisse passer au vert sans réunion et que le Radar observe. Injecté (défaut : no-op)
+     * pour rester additif et éprouvable sans navigateur.
+     */
+    @FunctionalInterface
+    public interface TabGuard {
+        void ensureTeamsTab();
+    }
+
+    /**
      * Ce qu'un relevé a établi.
      *
      * @param sessionState l'état de la session Teams observée ({@link TeamsSessionWatch})
@@ -71,6 +82,9 @@ public final class VigieLoop {
     private final OperatingSystem system;
     private final Consumer<String> say;
     private final long periodSeconds;
+    // SF-122-07 : maintien de l'onglet Teams. No-op par défaut (additif) ; la garde réelle est posée
+    // par le runner (RunnerConnection). Best-effort : n'appartient jamais au chemin fatal du tick.
+    private TabGuard tabGuard = () -> { };
 
     private ScheduledFuture<?> task;
     // Anti-spam : un diagnostic n'est redit qu'à la bascule (comme TeamsSessionWatch, SF-122-03).
@@ -94,6 +108,15 @@ public final class VigieLoop {
         this.system = system;
         this.say = say;
         this.periodSeconds = periodSeconds;
+    }
+
+    /**
+     * Pose la garde de maintien de l'onglet Teams (F-122 / SF-122-07). Fluide, additif : sans elle, la
+     * boucle se comporte comme avant. Une garde {@code null} rétablit le no-op.
+     */
+    public VigieLoop withTabGuard(TabGuard guard) {
+        this.tabGuard = guard == null ? () -> { } : guard;
+        return this;
     }
 
     /**
@@ -142,6 +165,13 @@ public final class VigieLoop {
                 || state == ManagedChrome.State.LAUNCHED;
         announceFault(state);
         diagChromeState(state);
+
+        // SF-122-07 : tant que le Chrome répond, on maintient l'onglet Teams ouvert (rouvert s'il a
+        // été fermé) AVANT de sonder — ainsi « Teams connecté » peut passer au vert sans réunion et le
+        // Radar observe. Best-effort strict : jamais fatal pour le relevé ni le heartbeat.
+        if (reachable) {
+            ensureTeamsTabSafely();
+        }
 
         Reading reading = reachable ? senseSafely() : Reading.blank();
         diagSession(reachable, reading.sessionState());
@@ -199,6 +229,17 @@ public final class VigieLoop {
         fields.put("teamsConnected", report.teamsConnected());
         fields.put("signInRequired", report.teamsSignInRequired());
         RunnerDiag.debug("vigie", "tick", null, fields);
+    }
+
+    /** Maintien de l'onglet Teams (SF-122-07), blindé : une garde qui explose ne casse jamais le tick. */
+    private void ensureTeamsTabSafely() {
+        try {
+            tabGuard.ensureTeamsTab();
+        } catch (RuntimeException e) {
+            // Best-effort strict : l'onglet sera retenté au prochain relevé, le tick continue.
+            RunnerDiag.warn("chrome", "teams_tab",
+                    e.getClass().getSimpleName() + ": " + e.getMessage(), null);
+        }
     }
 
     private Reading senseSafely() {
