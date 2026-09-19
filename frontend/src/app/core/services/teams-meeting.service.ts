@@ -6,6 +6,7 @@ import { map } from 'rxjs/operators';
 import {
   CreateMeetingRequest,
   MeetingAnswer,
+  MeetingCardPromotion,
   MeetingInsights,
   TeamsMeeting,
 } from '../models/teams-meeting.models';
@@ -95,5 +96,16 @@ export class TeamsMeetingService {
   /** Pose une question libre à l'agent sur la réunion (SF-128-05). */
   ask(hostId: string, meetingId: string, question: string): Observable<MeetingAnswer> {
     return this.http.post<MeetingAnswer>(`${this.base(hostId)}/${meetingId}/ask`, { question });
+  }
+
+  /**
+   * Range les faits durables de la réunion dans la carte du poste (SF-128-11) : « le travail est
+   * jetable, le savoir est durable ». Rend le bilan (ce qui a été rangé, où, et pourquoi rien parfois).
+   */
+  promoteToCard(hostId: string, meetingId: string): Observable<MeetingCardPromotion> {
+    return this.http.post<MeetingCardPromotion>(
+      `${this.base(hostId)}/${meetingId}/promote-to-card`,
+      {},
+    );
   }
 }

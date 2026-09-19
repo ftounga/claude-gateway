@@ -86,4 +86,11 @@ describe('TeamsMeetingService', () => {
     expect(req.request.method).toBe('POST');
     expect(req.request.body).toEqual({ question: 'Qui décide ?' });
   });
+
+  it('range la réunion dans la carte du poste (SF-128-11)', () => {
+    service.promoteToCard('h1', 'm1').subscribe();
+    const req = httpMock.expectOne('/api/vigie/hosts/h1/meetings/m1/promote-to-card');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({});
+  });
 });
