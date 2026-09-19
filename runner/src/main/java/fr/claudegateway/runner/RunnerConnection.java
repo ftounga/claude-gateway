@@ -60,6 +60,12 @@ public final class RunnerConnection {
     private FrameSender sender;
     private ToolDispatcher dispatcher;
     private FrameRouter router;
+    /**
+     * L'émetteur de diagnostic (F-132 / SF-132-01) : draine {@link fr.claudegateway.runner.diag.RunnerDiag}
+     * par lots et émet la trame {@code runner_diag} sur le WebSocket existant, sur l'exécuteur du
+     * heartbeat. Best-effort : n'impacte jamais le runner.
+     */
+    private volatile fr.claudegateway.runner.diag.RunnerDiagEmitter diagEmitter;
 
     public RunnerConnection(HttpClient httpClient, RunnerConfig config, Console console) {
         this(httpClient, config, console, new TransportFallbackPolicy(config.transport()));
@@ -110,6 +116,13 @@ public final class RunnerConnection {
             return t;
         });
         sender = new FrameSender(console);
+        // F-132 / SF-132-01 : le diagnostic du runner est batché et émis sur le WebSocket existant
+        // (via la file d'émission), sur l'exécuteur du heartbeat. Best-effort strict : rien ici ne peut
+        // casser le runner (l'émetteur avale ses propres erreurs).
+        fr.claudegateway.runner.diag.RunnerDiagEmitter emitter =
+                new fr.claudegateway.runner.diag.RunnerDiagEmitter(sender::send);
+        emitter.start(heartbeatExecutor);
+        this.diagEmitter = emitter;
         // F-128 / SF-128-09 : le Chrome managé est créé UNE FOIS ici et PARTAGÉ — la boucle Vigie en
         // pilote le cycle de vie, la pile d'outils (teams_meeting_join) le (re)garantit à la demande.
         // Une seule instance ⇒ pas de double process ; ses méthodes de cycle de vie sont synchronized.
@@ -173,6 +186,7 @@ public final class RunnerConnection {
             }
         } finally {
             stopVigie();
+            stopDiag();
             shutdownHeartbeat();
             closeChannel();
         }
@@ -198,6 +212,7 @@ public final class RunnerConnection {
             latch.countDown();
         }
         stopVigie();
+        stopDiag();
         shutdownHeartbeat();
     }
 
@@ -260,6 +275,24 @@ public final class RunnerConnection {
             console.warn("Vigie : démarrage impossible (" + Failures.describe(e)
                     + ") — le reste du runner continue normalement.");
         }
+    }
+
+    /**
+     * Arrête l'émetteur de diagnostic (F-132 / SF-132-01) et tente un dernier drainage best-effort.
+     * Idempotent ; ne lève jamais.
+     */
+    private void stopDiag() {
+        fr.claudegateway.runner.diag.RunnerDiagEmitter emitter = this.diagEmitter;
+        if (emitter == null) {
+            return;
+        }
+        try {
+            emitter.stop();
+            emitter.flush();
+        } catch (RuntimeException e) {
+            // Le diagnostic ne casse jamais l'arrêt du runner.
+        }
+        this.diagEmitter = null;
     }
 
     /** Arrête la boucle Vigie et le Chrome managé (pas d'orphelin, F-122 / SF-122-06). Idempotent. */

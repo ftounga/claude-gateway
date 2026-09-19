@@ -1,12 +1,16 @@
 package fr.claudegateway.runner.teams;
 
 import java.io.IOException;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 import fr.claudegateway.runner.OperatingSystem;
+import fr.claudegateway.runner.diag.RunnerDiag;
+import fr.claudegateway.runner.diag.RunnerDiagLevel;
 
 /**
  * <b>La boucle de mise en service de la Vigie</b> (F-122 / SF-122-06) : le câblage qui manquait.
@@ -72,6 +76,10 @@ public final class VigieLoop {
     // Anti-spam : un diagnostic n'est redit qu'à la bascule (comme TeamsSessionWatch, SF-122-03).
     private VigieServiceDiagnostic.Fault lastFault = VigieServiceDiagnostic.Fault.NONE;
     private boolean uploadFailing;
+    // Diagnostic F-132 : l'état Chrome et l'état de session ne sont émis qu'à la bascule (anti-spam) ;
+    // le tick lui-même reste en DEBUG (visible seulement quand un diagnostic est activé, SF-132-05).
+    private ManagedChrome.State lastDiagState;
+    private TeamsSessionState lastDiagSession;
 
     public VigieLoop(ManagedChrome chrome, Sonde sonde, VigieReadinessUploader uploader,
             OperatingSystem system, Consumer<String> say) {
@@ -118,6 +126,9 @@ public final class VigieLoop {
         } catch (RuntimeException e) {
             note("Vigie : incident non fatal ignoré (" + e.getMessage()
                     + ") — nouvel essai au prochain relevé.");
+            // Diagnostic F-132 : le TYPE d'erreur + un message court expurgé, jamais une stacktrace.
+            RunnerDiag.error("vigie", "tick_error",
+                    e.getClass().getSimpleName() + ": " + e.getMessage(), null);
         }
     }
 
@@ -130,13 +141,64 @@ public final class VigieLoop {
         boolean reachable = state == ManagedChrome.State.REACHABLE
                 || state == ManagedChrome.State.LAUNCHED;
         announceFault(state);
+        diagChromeState(state);
 
         Reading reading = reachable ? senseSafely() : Reading.blank();
+        diagSession(reachable, reading.sessionState());
 
         VigieReadinessReport report =
                 VigieBackground.assemble(reachable, reading.sessionState(), reading.readTest());
+        diagTick(reachable, reading, report);
         upload(report);
         return report;
+    }
+
+    /**
+     * Diagnostic F-132 : l'état du Chrome managé, <b>à la bascule seulement</b> (anti-spam). On
+     * remonte l'état, le port et le <b>nom</b> de l'exécutable — jamais son chemin complet (cadrage
+     * §3–4). Best-effort : {@link RunnerDiag} n'échoue jamais.
+     */
+    private void diagChromeState(ManagedChrome.State state) {
+        if (state == lastDiagState) {
+            return;
+        }
+        lastDiagState = state;
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("state", state);
+        fields.put("port", chrome.port());
+        chrome.executable().ifPresent(p -> fields.put("exe", p.getFileName().toString()));
+        RunnerDiagLevel level = switch (state) {
+            case REACHABLE, LAUNCHED -> RunnerDiagLevel.INFO;
+            case UNREACHABLE -> RunnerDiagLevel.WARN;
+            case NO_BROWSER -> RunnerDiagLevel.ERROR;
+        };
+        RunnerDiag.event(level, "chrome", "chrome_state", null, fields);
+    }
+
+    /**
+     * Diagnostic F-132 : l'état de la session Teams observée, <b>à la bascule seulement</b>. Un
+     * <b>état</b>, jamais un contenu ; une reconnexion requise est un {@code WARN}.
+     */
+    private void diagSession(boolean reachable, TeamsSessionState session) {
+        if (!reachable || session == lastDiagSession) {
+            return;
+        }
+        lastDiagSession = session;
+        RunnerDiagLevel level = session == TeamsSessionState.RELOGIN_REQUIRED
+                ? RunnerDiagLevel.WARN
+                : RunnerDiagLevel.INFO;
+        RunnerDiag.event(level, "teams", "session_state", null, Map.of("session", session));
+    }
+
+    /** Diagnostic F-132 : le battement de la boucle, en {@code DEBUG} (liveness d'un diagnostic actif). */
+    private void diagTick(boolean reachable, Reading reading, VigieReadinessReport report) {
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("reachable", reachable);
+        fields.put("session", reading.sessionState());
+        fields.put("readTest", reading.readTest());
+        fields.put("teamsConnected", report.teamsConnected());
+        fields.put("signInRequired", report.teamsSignInRequired());
+        RunnerDiag.debug("vigie", "tick", null, fields);
     }
 
     private Reading senseSafely() {
