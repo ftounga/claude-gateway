@@ -211,6 +211,14 @@ export const routes: Routes = [
           import('./vigie/radar-subject/radar-subject-page.component').then((m) => m.RadarSubjectPageComponent),
       },
       {
+        // F-128 / SF-128-10 — **le détail d'une réunion capturée** (audio + deck ; exploitation à venir
+        // SF-128-05). Déclarée AVANT `vigieMatcher` (qui n'avale pas quatre segments), même forme que la
+        // page sujet ci-dessus : changer de réunion dans l'adresse réemploie la page.
+        path: 'vigie/:hostRef/reunions/:meetingId',
+        loadComponent: () =>
+          import('./vigie/meeting-detail/meeting-detail-page.component').then((m) => m.MeetingDetailPageComponent),
+      },
+      {
         // F-106 / SF-106-02 — **la Vigie**, l'espace du pilotage : la même forme maître–détail que la
         // Forge. Préfixe disjoint de `forge` et d'`atelier` : elle n'en masque aucune.
         matcher: vigieMatcher,

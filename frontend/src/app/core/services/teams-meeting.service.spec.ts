@@ -43,4 +43,27 @@ describe('TeamsMeetingService', () => {
     service.resume('h1', 'm1').subscribe();
     expect(httpMock.expectOne('/api/vigie/hosts/h1/meetings/m1/resume').request.method).toBe('POST');
   });
+
+  it('charge l\'audio en blob (SF-128-10)', () => {
+    service.audioBlob('h1', 'm1').subscribe();
+    const req = httpMock.expectOne('/api/vigie/hosts/h1/meetings/m1/audio');
+    expect(req.request.method).toBe('GET');
+    expect(req.request.responseType).toBe('blob');
+  });
+
+  it('liste les identifiants d\'images et déballe imageIds', () => {
+    let ids: string[] | undefined;
+    service.imageIds('h1', 'm1').subscribe((v) => (ids = v));
+    const req = httpMock.expectOne('/api/vigie/hosts/h1/meetings/m1/images');
+    expect(req.request.method).toBe('GET');
+    req.flush({ imageIds: ['a', 'b'] });
+    expect(ids).toEqual(['a', 'b']);
+  });
+
+  it('charge une image en blob', () => {
+    service.imageBlob('h1', 'm1', 'img1').subscribe();
+    const req = httpMock.expectOne('/api/vigie/hosts/h1/meetings/m1/images/img1');
+    expect(req.request.method).toBe('GET');
+    expect(req.request.responseType).toBe('blob');
+  });
 });

@@ -1,7 +1,9 @@
 package fr.claudegateway.teams.meeting;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -37,6 +39,20 @@ public class MeetingMediaService {
             "image/jpeg", "jpg",
             "image/png", "png",
             "image/webp", "webp");
+
+    /** Extension → type audio canonique (F-128 / SF-128-10) : redonne le bon Content-Type à la lecture. */
+    private static final Map<String, String> AUDIO_TYPE_BY_EXT = Map.of(
+            "webm", "audio/webm",
+            "ogg", "audio/ogg",
+            "m4a", "audio/mp4",
+            "mp3", "audio/mpeg",
+            "wav", "audio/wav");
+
+    /** Extension → type image canonique (F-128 / SF-128-10). */
+    private static final Map<String, String> IMAGE_TYPE_BY_EXT = Map.of(
+            "jpg", "image/jpeg",
+            "png", "image/png",
+            "webp", "image/webp");
 
     private final MeetingRepository meetings;
     private final WorkspaceStorage storage;
@@ -85,6 +101,79 @@ public class MeetingMediaService {
     /** Le nombre d'images clés déjà remontées pour cette réunion (sert au plafond et au compteur). */
     public int countImages(UUID userId, UUID hostId, UUID meetingId) {
         return storage.listKeys(framesPrefixOf(userId, hostId, meetingId)).size();
+    }
+
+    // ----------------------------------------------------------------- lecture (F-128 / SF-128-10)
+
+    /**
+     * L'audio d'une réunion, si elle existe <b>pour ce couple {@code user_id}/{@code host_id}</b> et
+     * porte un audio. La réunion est résolue par le triplet (isolation), puis les octets sont relus à
+     * la clé enregistrée. Le {@code Content-Type} est redéduit de l'extension de la clé, jamais d'un
+     * paramètre client.
+     *
+     * @return le type et les octets, ou vide — <b>vide</b> couvre « inconnue », « à quelqu'un d'autre »
+     *         et « sans audio », qui doivent rester indiscernables (404 unique côté controller)
+     */
+    public Optional<StoredMedia> findAudio(UUID userId, UUID hostId, UUID meetingId) {
+        Meeting meeting = meetings.findByIdAndUserIdAndHostId(meetingId, userId, hostId).orElse(null);
+        if (meeting == null || meeting.getAudioKey() == null) {
+            return Optional.empty();
+        }
+        String contentType = AUDIO_TYPE_BY_EXT.getOrDefault(extensionOf(meeting.getAudioKey()), "audio/webm");
+        return storage.getFile(meeting.getAudioKey())
+                .map(bytes -> new StoredMedia(contentType, bytes));
+    }
+
+    /**
+     * Les identifiants des images clés d'une réunion (deck reconstitué), ordre stable. La clé porte
+     * déjà {@code user_id}/{@code host_id}/{@code meeting_id} : une réunion d'un autre couple ne rend
+     * aucune image. Vide si aucune image (ou réunion inconnue) — indiscernable, comme les moments F-89.
+     */
+    public List<String> listFrames(UUID userId, UUID hostId, UUID meetingId) {
+        String prefix = framesPrefixOf(userId, hostId, meetingId);
+        return storage.listKeys(prefix).stream()
+                .map(key -> key.substring(prefix.length()))
+                .map(name -> name.contains(".") ? name.substring(0, name.lastIndexOf('.')) : name)
+                .sorted()
+                .toList();
+    }
+
+    /**
+     * Une image clé d'une réunion, si elle existe pour ce couple. L'identifiant est un <b>dernier
+     * segment</b> (lettres/chiffres/{@code -}/{@code _}), jamais un chemin : un {@code ../} est rejeté.
+     */
+    public Optional<StoredMedia> findFrame(UUID userId, UUID hostId, UUID meetingId, String imageId) {
+        if (!isSafeId(imageId)) {
+            return Optional.empty();
+        }
+        String base = framesPrefixOf(userId, hostId, meetingId) + imageId + ".";
+        for (Map.Entry<String, String> type : IMAGE_TYPE_BY_EXT.entrySet()) {
+            Optional<byte[]> content = storage.getFile(base + type.getKey());
+            if (content.isPresent()) {
+                return Optional.of(new StoredMedia(type.getValue(), content.get()));
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static String extensionOf(String key) {
+        int dot = key.lastIndexOf('.');
+        return dot < 0 ? "" : key.substring(dot + 1).toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Un identifiant d'image est un <b>dernier segment</b>, jamais un chemin : lettres, chiffres,
+     * {@code -} et {@code _} seulement. Ce qui exclut {@code ..}, {@code /} et toute traversée.
+     */
+    private static boolean isSafeId(String imageId) {
+        if (imageId == null || imageId.isBlank() || imageId.length() > 100) {
+            return false;
+        }
+        return imageId.chars().allMatch(c -> Character.isLetterOrDigit(c) || c == '-' || c == '_');
+    }
+
+    /** Un média de réunion relu : son type, et ses octets. */
+    public record StoredMedia(String contentType, byte[] content) {
     }
 
     static String prefixOf(UUID userId, UUID hostId, UUID meetingId) {

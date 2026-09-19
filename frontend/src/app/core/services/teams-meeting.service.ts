@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
 
 import { CreateMeetingRequest, TeamsMeeting } from '../models/teams-meeting.models';
 
@@ -45,5 +46,29 @@ export class TeamsMeetingService {
   /** Reprend une capture en pause. */
   resume(hostId: string, meetingId: string): Observable<TeamsMeeting> {
     return this.http.post<TeamsMeeting>(`${this.base(hostId)}/${meetingId}/resume`, {});
+  }
+
+  /**
+   * L'audio de la réunion, chargé en `Blob` via `HttpClient` (SF-128-10). On passe par le client HTTP
+   * — et non un `<audio src>` natif — pour que le JWT (ajouté par l'intercepteur sur `/api`) parte bien :
+   * un élément média natif n'emporte pas l'en-tête `Authorization`. Le blob alimente ensuite un
+   * `URL.createObjectURL` pour l'écoute et le téléchargement.
+   */
+  audioBlob(hostId: string, meetingId: string): Observable<Blob> {
+    return this.http.get(`${this.base(hostId)}/${meetingId}/audio`, { responseType: 'blob' });
+  }
+
+  /** Les identifiants des images clés (deck reconstitué). */
+  imageIds(hostId: string, meetingId: string): Observable<string[]> {
+    return this.http
+      .get<{ imageIds: string[] }>(`${this.base(hostId)}/${meetingId}/images`)
+      .pipe(map((response) => response.imageIds ?? []));
+  }
+
+  /** Une image clé, chargée en `Blob` (même raison JWT que l'audio). */
+  imageBlob(hostId: string, meetingId: string, imageId: string): Observable<Blob> {
+    return this.http.get(`${this.base(hostId)}/${meetingId}/images/${encodeURIComponent(imageId)}`, {
+      responseType: 'blob',
+    });
   }
 }

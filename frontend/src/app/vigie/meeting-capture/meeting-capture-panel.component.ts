@@ -13,6 +13,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { RouterLink } from '@angular/router';
 
 import { CreateMeetingRequest, TeamsMeeting } from '../../core/models/teams-meeting.models';
 import { TeamsMeetingService } from '../../core/services/teams-meeting.service';
@@ -36,6 +37,7 @@ import {
     MatButtonModule,
     MatIconModule,
     MatProgressSpinnerModule,
+    RouterLink,
   ],
   template: `
     <div class="meetings">
@@ -108,12 +110,17 @@ import {
           <section class="meetings__past" aria-label="Réunions passées">
             <h4 class="meetings__subtitle">Réunions capturées</h4>
             @for (m of past(); track m.id) {
-              <div class="past-row">
+              <a
+                class="past-row"
+                [routerLink]="['/vigie', hostId, 'reunions', m.id]"
+                queryParamsHandling="preserve"
+              >
                 <mat-icon aria-hidden="true">event_available</mat-icon>
                 <span class="past-row__name">{{ m.title || 'Réunion sans titre' }}</span>
                 <span class="past-row__when">{{ m.startedAt | date: 'd MMM, HH:mm' }}</span>
                 <span class="past-row__state">{{ m.state === 'FAILED' ? 'Échec' : 'Terminée' }}</span>
-              </div>
+                <mat-icon class="past-row__go" aria-hidden="true">chevron_right</mat-icon>
+              </a>
             }
           </section>
         }
@@ -264,12 +271,23 @@ import {
         display: flex;
         align-items: center;
         gap: var(--cg-space-2, 8px);
-        padding: var(--cg-space-2, 8px) 0;
+        padding: var(--cg-space-2, 8px);
+        margin: 0 calc(-1 * var(--cg-space-2, 8px));
         border-top: 1px solid var(--cg-divider, #e0e4ea);
+        border-radius: 8px;
+        color: inherit;
+        text-decoration: none;
+        cursor: pointer;
+      }
+      .past-row:hover {
+        background: var(--cg-surface-2, #eef1f6);
       }
       .past-row__name {
         flex: 1;
         font-weight: 500;
+      }
+      .past-row__go {
+        color: var(--cg-text-secondary, #6b7a8d);
       }
       .past-row__when,
       .past-row__state {
