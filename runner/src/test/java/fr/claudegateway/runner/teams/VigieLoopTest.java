@@ -17,17 +17,89 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import fr.claudegateway.runner.OperatingSystem;
+import fr.claudegateway.runner.diag.RunnerDiag;
+import fr.claudegateway.runner.diag.RunnerDiagEvent;
+import fr.claudegateway.runner.diag.RunnerDiagLevel;
 
 /**
  * F-122 / SF-122-06 — la boucle Vigie assemble et remonte l'état, best-effort, sans jamais casser le
  * runner ; le Chrome managé est idempotent et arrêté proprement.
  */
 class VigieLoopTest {
+
+    @BeforeEach
+    @AfterEach
+    void cleanDiag() {
+        RunnerDiag.reset();
+    }
+
+    // --- Diagnostic F-132 / SF-132-01 -------------------------------------------------------
+
+    @Test
+    @DisplayName("Diag F-132 : un relevé émet l'état Chrome et l'état de session (INFO), pas le tick (DEBUG)")
+    void tick_emits_chrome_and_session_events() {
+        VigieLoop loop = new VigieLoop(reachableChrome(), connectedSonde(), new RecordingUploader(),
+                OperatingSystem.LINUX, msg -> { });
+
+        loop.tick();
+
+        RunnerDiag.Drained drained = RunnerDiag.drain(100);
+        assertTrue(drained.events().stream()
+                .anyMatch(e -> e.cat().equals("chrome") && e.code().equals("chrome_state")));
+        assertTrue(drained.events().stream()
+                .anyMatch(e -> e.cat().equals("teams") && e.code().equals("session_state")));
+        assertFalse(drained.events().stream().anyMatch(e -> e.code().equals("tick")),
+                "le tick est en DEBUG, filtré au seuil INFO par défaut");
+    }
+
+    @Test
+    @DisplayName("Diag F-132 : l'état Chrome porte le NOM de l'exécutable et le port, jamais le chemin complet")
+    void chrome_event_carries_exe_name_not_path() {
+        VigieLoop loop = new VigieLoop(reachableChrome(), connectedSonde(), new RecordingUploader(),
+                OperatingSystem.LINUX, msg -> { });
+
+        loop.tick();
+
+        RunnerDiagEvent chrome = RunnerDiag.drain(100).events().stream()
+                .filter(e -> e.code().equals("chrome_state")).findFirst().orElseThrow();
+        assertEquals("REACHABLE", chrome.fields().get("state"));
+        assertEquals(9222, chrome.fields().get("port"));
+        assertEquals("chrome", chrome.fields().get("exe"), "le NOM du fichier, jamais /opt/chrome");
+    }
+
+    @Test
+    @DisplayName("Diag F-132 : l'état Chrome n'est réémis qu'à la bascule (anti-spam)")
+    void chrome_event_only_on_transition() {
+        VigieLoop loop = new VigieLoop(reachableChrome(), connectedSonde(), new RecordingUploader(),
+                OperatingSystem.LINUX, msg -> { });
+
+        loop.tick();
+        RunnerDiag.drain(100);
+        loop.tick(); // même état : ne doit pas réémettre chrome_state
+
+        assertFalse(RunnerDiag.drain(100).events().stream()
+                .anyMatch(e -> e.code().equals("chrome_state")), "pas de spam à état constant");
+    }
+
+    @Test
+    @DisplayName("Diag F-132 : en DEBUG (SF-132-05), le tick de la boucle est émis")
+    void tick_emitted_at_debug_level() {
+        RunnerDiag.setLevel(RunnerDiagLevel.DEBUG);
+        VigieLoop loop = new VigieLoop(reachableChrome(), connectedSonde(), new RecordingUploader(),
+                OperatingSystem.LINUX, msg -> { });
+
+        loop.tick();
+
+        assertTrue(RunnerDiag.drain(100).events().stream()
+                .anyMatch(e -> e.cat().equals("vigie") && e.code().equals("tick")));
+    }
 
     // --- Assemble + remonte -----------------------------------------------------------------
 

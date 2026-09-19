@@ -16,6 +16,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import fr.claudegateway.runner.ToolContext;
 import fr.claudegateway.runner.ToolExecutor;
 import fr.claudegateway.runner.ToolOutcome;
+import fr.claudegateway.runner.diag.RunnerDiag;
+import fr.claudegateway.runner.diag.RunnerDiagRedaction;
 
 /**
  * <b>Les outils Teams</b> donnés à l'agent (F-87 / SF-87-03 pour {@code teams_status},
@@ -469,23 +471,32 @@ public final class TeamsTools implements ToolExecutor {
             // (ManagedChrome.ensureRunning, idempotent — SF-122-01/06) puis on RETENTE la navigation.
             // Le message actionnable n'est rendu qu'après un échec RÉEL de récupération.
             if (!recoverManagedChrome()) {
-                return ToolOutcome.error("browser_unreachable", JOIN_UNREACHABLE);
+                return joinFailed("browser_unreachable", JOIN_UNREACHABLE);
             }
             try {
                 return navigateToMeeting(url);
             } catch (BrowserLinkException retry) {
-                return ToolOutcome.error("browser_unreachable", JOIN_UNREACHABLE);
+                return joinFailed("browser_unreachable", JOIN_UNREACHABLE);
             } catch (RuntimeException retry) {
-                return ToolOutcome.error("navigate_failed", "L'ouverture de la réunion a échoué.");
+                return joinFailed("navigate_failed", "L'ouverture de la réunion a échoué.");
             }
         } catch (RuntimeException e) {
-            return ToolOutcome.error("navigate_failed", "L'ouverture de la réunion a échoué.");
+            return joinFailed("navigate_failed", "L'ouverture de la réunion a échoué.");
         }
     }
 
     /** Le message actionnable d'un Chrome managé qui reste injoignable après tentative de récupération. */
     private static final String JOIN_UNREACHABLE =
             "Impossible de joindre le Chrome managé ou d'ouvrir la réunion sur cet onglet.";
+
+    /**
+     * Diagnostic F-132 : un échec de {@code teams_meeting_join}, en {@code WARN} — le <b>motif</b>
+     * (code), jamais l'URL de réunion. Best-effort (ne change pas l'issue rendue à l'agent).
+     */
+    private ToolOutcome joinFailed(String code, String message) {
+        RunnerDiag.warn("capture", "join", null, Map.of("result", "error", "reason", code));
+        return ToolOutcome.error(code, message);
+    }
 
     /** Attache l'onglet Teams du Chrome managé et le navigue vers l'URL de la réunion. */
     private ToolOutcome navigateToMeeting(String url) {
@@ -495,6 +506,9 @@ public final class TeamsTools implements ToolExecutor {
         ObjectNode json = mapper.createObjectNode();
         json.put("joined", true);
         json.put("tabUrl", reached == null ? url : reached);
+        // Diagnostic F-132 : le join a abouti — on remonte la CLASSE de l'URL atteinte, jamais l'URL.
+        RunnerDiag.info("capture", "join", null,
+                Map.of("result", "ok", "url", RunnerDiagRedaction.urlClass(reached == null ? url : reached)));
         return ToolOutcome.ok(json.toString());
     }
 
@@ -531,17 +545,26 @@ public final class TeamsTools implements ToolExecutor {
             if (value != null && value.path("started").asBoolean(false)) {
                 ObjectNode json = mapper.createObjectNode();
                 json.put("started", true);
-                json.put("micDenied", value.path("micDenied").asBoolean(false));
+                boolean micDenied = value.path("micDenied").asBoolean(false);
+                json.put("micDenied", micDenied);
+                // Diagnostic F-132 : la capture a démarré — un état, jamais le média.
+                RunnerDiag.info("capture", "start", null,
+                        Map.of("result", "ok", "micDenied", micDenied));
                 return ToolOutcome.ok(json.toString());
             }
             String error = value == null ? "capture_start_failed"
                     : value.path("error").asText("capture_start_failed");
             String code = "NotAllowedError".equals(error) ? "permission_denied" : "capture_start_failed";
+            RunnerDiag.warn("capture", "start", null, Map.of("result", "error", "reason", code));
             return ToolOutcome.error(code, "La capture d'onglet n'a pas démarré : " + error);
         } catch (BrowserLinkException e) {
+            RunnerDiag.warn("capture", "start", null,
+                    Map.of("result", "error", "reason", "browser_unreachable"));
             return ToolOutcome.error("browser_unreachable",
                     "Chrome managé injoignable pour démarrer la capture.");
         } catch (RuntimeException e) {
+            RunnerDiag.warn("capture", "start", null,
+                    Map.of("result", "error", "reason", "capture_start_failed"));
             return ToolOutcome.error("capture_start_failed", "La capture d'onglet n'a pas pu démarrer.");
         }
     }
@@ -569,6 +592,7 @@ public final class TeamsTools implements ToolExecutor {
             if (stop == null || !stop.path("stopped").asBoolean(false)) {
                 String error = stop == null ? "no_active_capture" : stop.path("error").asText("no_active_capture");
                 String code = "no_active_capture".equals(error) ? "no_active_capture" : "capture_stop_failed";
+                RunnerDiag.warn("capture", "stop", null, Map.of("result", "error", "reason", code));
                 return ToolOutcome.error(code, "Aucun audio à remonter : " + error);
             }
             List<String> chunks = new ArrayList<>();
@@ -595,6 +619,7 @@ public final class TeamsTools implements ToolExecutor {
             }
             byte[] audio = MeetingTabCapture.decode(MeetingTabCapture.reassemble(chunks));
             if (audio.length == 0) {
+                RunnerDiag.warn("capture", "stop", null, Map.of("result", "error", "reason", "empty_audio"));
                 return ToolOutcome.error("empty_audio", "La capture n'a produit aucun audio.");
             }
             long uploaded = meetingAudio.upload(workspaceId, meetingId, audio);
@@ -608,13 +633,22 @@ public final class TeamsTools implements ToolExecutor {
             json.put("uploaded", true);
             json.put("bytes", uploaded);
             json.put("images", images);
+            // Diagnostic F-132 : l'arrêt a remonté audio+images — les TAILLES (octets, nb images),
+            // jamais le média (cadrage §3).
+            RunnerDiag.info("capture", "stop", null,
+                    Map.of("result", "ok", "bytes", uploaded, "images", images));
             return ToolOutcome.ok(json.toString());
         } catch (BrowserLinkException e) {
+            RunnerDiag.warn("capture", "stop", null,
+                    Map.of("result", "error", "reason", "browser_unreachable"));
             return ToolOutcome.error("browser_unreachable",
                     "Chrome managé injoignable pour arrêter la capture.");
         } catch (java.io.IOException e) {
+            RunnerDiag.warn("capture", "stop", null, Map.of("result", "error", "reason", "upload_failed"));
             return ToolOutcome.error("upload_failed", "La remontée de l'audio a échoué.");
         } catch (RuntimeException e) {
+            RunnerDiag.warn("capture", "stop", null,
+                    Map.of("result", "error", "reason", "capture_stop_failed"));
             return ToolOutcome.error("capture_stop_failed", "L'arrêt de la capture a échoué.");
         }
     }
