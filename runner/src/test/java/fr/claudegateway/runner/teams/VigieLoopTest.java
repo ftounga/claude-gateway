@@ -155,6 +155,50 @@ class VigieLoopTest {
         assertTrue(said.stream().anyMatch(s -> s.contains("Débogage Chrome bloqué")), said.toString());
     }
 
+    // --- SF-122-07 : maintien de l'onglet Teams --------------------------------------------
+
+    @Test
+    @DisplayName("SF-122-07 : Chrome joignable ⇒ la garde d'onglet est appelée avant la sonde")
+    void tab_guard_called_when_reachable() {
+        int[] guardCalls = { 0 };
+        VigieLoop loop = new VigieLoop(reachableChrome(), connectedSonde(), new RecordingUploader(),
+                OperatingSystem.LINUX, msg -> { })
+                .withTabGuard(() -> guardCalls[0]++);
+
+        loop.tick();
+
+        assertEquals(1, guardCalls[0], "un Chrome joignable doit voir sa garde d'onglet appelée");
+    }
+
+    @Test
+    @DisplayName("SF-122-07 : Chrome absent (NO_BROWSER) ⇒ la garde d'onglet n'est PAS appelée")
+    void tab_guard_not_called_without_browser() {
+        int[] guardCalls = { 0 };
+        VigieLoop loop = new VigieLoop(noBrowserChrome(), connectedSonde(), new RecordingUploader(),
+                OperatingSystem.LINUX, msg -> { })
+                .withTabGuard(() -> guardCalls[0]++);
+
+        loop.tick();
+
+        assertEquals(0, guardCalls[0], "sans navigateur joignable, on ne tente pas d'ouvrir d'onglet");
+    }
+
+    @Test
+    @DisplayName("SF-122-07 : une garde qui explose ne casse pas le tick (best-effort)")
+    void tab_guard_failure_is_not_fatal() {
+        RecordingUploader uploader = new RecordingUploader();
+        VigieLoop loop = new VigieLoop(reachableChrome(), connectedSonde(), uploader,
+                OperatingSystem.LINUX, msg -> { })
+                .withTabGuard(() -> {
+                    throw new RuntimeException("ouverture d'onglet cassée");
+                });
+
+        VigieReadinessReport report = loop.tick();
+
+        assertNotNull(report, "le tick doit aboutir malgré une garde d'onglet en échec");
+        assertEquals(1, uploader.reports.size());
+    }
+
     // --- Idempotence ------------------------------------------------------------------------
 
     @Test

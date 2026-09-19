@@ -266,7 +266,11 @@ public final class RunnerConnection {
             fr.claudegateway.runner.teams.VigieLoop loop =
                     new fr.claudegateway.runner.teams.VigieLoop(chrome, sonde, uploader,
                             fr.claudegateway.runner.teams.ManagedChrome.currentSystem(),
-                            console::info);
+                            console::info)
+                            // SF-122-07 : maintenir un onglet Teams ouvert (le rouvrir s'il a été fermé),
+                            // pour que « Teams connecté » passe au vert sans réunion et que le Radar observe.
+                            .withTabGuard(fr.claudegateway.runner.teams.TeamsTabOpener.real(
+                                    port, console::info));
             loop.start(heartbeatExecutor);
             this.vigieLoop = loop;
             console.info("Vigie : boucle de mise en service démarrée (Chrome managé dédié + remontée "
