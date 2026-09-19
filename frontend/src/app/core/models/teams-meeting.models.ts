@@ -71,6 +71,34 @@ export interface MeetingCardPromotion {
   note: string | null;
 }
 
+/** Demande de push des actions d'une réunion vers le Radar (SF-128-06). */
+export interface PushActionsToRadarRequest {
+  /** Le sujet cible, ou `null` pour reprendre celui de la réunion (`meeting.subjectId`). */
+  subjectId?: string | null;
+  /** Les textes des actions retenues. */
+  actions: string[];
+}
+
+/** Le sort d'une action poussée vers le Radar (SF-128-06). */
+export interface PushedRadarAction {
+  description: string;
+  /** `ADDED` (engagement créé) ou `SKIPPED` (déjà poussée : pas de doublon). */
+  status: 'ADDED' | 'SKIPPED';
+}
+
+/** Le bilan d'un push des actions d'une réunion vers le Radar (SF-128-06). */
+export interface MeetingActionsToRadar {
+  subjectId: string | null;
+  subjectName: string | null;
+  /** Nombre d'engagements « À faire par moi » réellement créés. */
+  added: number;
+  actions: PushedRadarAction[];
+  evidenceId: string | null;
+  /** Vrai si aucun sujet cible n'a pu être déterminé : rien n'est écrit, désignez-en un. */
+  needsSubject: boolean;
+  note: string | null;
+}
+
 /** Demande « Rejoindre & capturer ». */
 export interface CreateMeetingRequest {
   meetingUrl: string;

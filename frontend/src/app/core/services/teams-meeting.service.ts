@@ -5,6 +5,7 @@ import { map } from 'rxjs/operators';
 
 import {
   CreateMeetingRequest,
+  MeetingActionsToRadar,
   MeetingAnswer,
   MeetingCardPromotion,
   MeetingInsights,
@@ -106,6 +107,23 @@ export class TeamsMeetingService {
     return this.http.post<MeetingCardPromotion>(
       `${this.base(hostId)}/${meetingId}/promote-to-card`,
       {},
+    );
+  }
+
+  /**
+   * Pousse les actions retenues d'une réunion (SF-128-05) dans le **Radar** comme engagements « À faire
+   * par moi » (SF-128-06), rattachés à un sujet, avec la réunion pour preuve. Sans `subjectId`, le
+   * serveur reprend le sujet de la réunion ; s'il n'y en a pas, le bilan porte `needsSubject`.
+   */
+  pushActionsToRadar(
+    hostId: string,
+    meetingId: string,
+    actions: string[],
+    subjectId: string | null,
+  ): Observable<MeetingActionsToRadar> {
+    return this.http.post<MeetingActionsToRadar>(
+      `${this.base(hostId)}/${meetingId}/actions-to-radar`,
+      { subjectId, actions },
     );
   }
 }

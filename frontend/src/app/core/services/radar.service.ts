@@ -15,6 +15,7 @@ import {
   RadarNews,
   RadarNewsUndo,
   RadarSubjectState,
+  RadarSubjectSummary,
   RadarSyncStarted,
   RadarSchedule,
   RadarScheduleRequest,
@@ -39,6 +40,11 @@ export class RadarService {
   /** Le résumé du matin : ce qui a bougé, les compteurs, la couverture (SF-102-01). */
   brief(hostId: string): Observable<RadarBrief> {
     return this.http.get<RadarBrief>(`${this.base(hostId)}/brief`);
+  }
+
+  /** Les sujets suivis du poste (F-99), pour désigner une cible — p. ex. où pousser des actions (SF-128-06). */
+  subjects(hostId: string): Observable<RadarSubjectSummary[]> {
+    return this.http.get<RadarSubjectSummary[]>(`${this.base(hostId)}/subjects`);
   }
 
   /** « Synchroniser maintenant » (F-100) : 202, la synchro tourne sur la machine. */

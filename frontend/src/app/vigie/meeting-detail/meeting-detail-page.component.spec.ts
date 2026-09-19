@@ -7,12 +7,20 @@ import { of, throwError } from 'rxjs';
 
 import { TeamsMeeting } from '../../core/models/teams-meeting.models';
 import { TeamsMeetingService } from '../../core/services/teams-meeting.service';
+import { RadarService } from '../../core/services/radar.service';
 import { MeetingDetailPageComponent } from './meeting-detail-page.component';
 
 /** La page de détail d'une réunion (F-128 / SF-128-10) : lecteur audio, téléchargement, deck. */
 describe('MeetingDetailPageComponent', () => {
   let fixture: ComponentFixture<MeetingDetailPageComponent>;
   let service: jasmine.SpyObj<TeamsMeetingService>;
+  let radar: jasmine.SpyObj<RadarService>;
+
+  function radarSpy(): jasmine.SpyObj<RadarService> {
+    const spy = jasmine.createSpyObj<RadarService>('RadarService', ['subjects']);
+    spy.subjects.and.returnValue(of([]));
+    return spy;
+  }
 
   const meeting: TeamsMeeting = {
     id: 'm1', hostId: 'h1', subjectId: null, title: 'Comité Data',
@@ -25,8 +33,14 @@ describe('MeetingDetailPageComponent', () => {
   function setup(get = of(meeting)): HTMLElement {
     service = jasmine.createSpyObj<TeamsMeetingService>('TeamsMeetingService',
       ['get', 'audioBlob', 'imageIds', 'imageBlob', 'transcript', 'transcribe', 'insights', 'ask',
-        'promoteToCard']);
+        'promoteToCard', 'pushActionsToRadar']);
+    radar = radarSpy();
     service.get.and.returnValue(get);
+    service.pushActionsToRadar.and.returnValue(
+      of({ subjectId: 's1', subjectName: 'Migration', added: 1,
+        actions: [{ description: 'a1', status: 'ADDED' as const }],
+        evidenceId: 'e1', needsSubject: false, note: null }),
+    );
     service.promoteToCard.and.returnValue(
       of({ files: [{ path: 'plateformes.md', factsWritten: 2, status: 'WRITTEN' as const }], factsWritten: 2, note: null }),
     );
@@ -47,6 +61,7 @@ describe('MeetingDetailPageComponent', () => {
         provideNoopAnimations(),
         provideRouter([]),
         { provide: TeamsMeetingService, useValue: service },
+        { provide: RadarService, useValue: radar },
         {
           provide: ActivatedRoute,
           useValue: { paramMap: of(convertToParamMap({ hostRef: 'h1', meetingId: 'm1' })) },
@@ -111,6 +126,16 @@ describe('MeetingDetailPageComponent', () => {
     expect(root.textContent).toContain('rangé(s) dans la carte du poste');
   });
 
+  it('« Pousser vers À faire par moi » envoie les actions cochées et affiche le bilan (SF-128-06)', () => {
+    const root = setup();
+    fixture.componentInstance.analyze(meeting);
+    fixture.detectChanges();
+    fixture.componentInstance.pushActionsToRadar(meeting, fixture.componentInstance.insights()!);
+    fixture.detectChanges();
+    expect(service.pushActionsToRadar).toHaveBeenCalledOnceWith('h1', 'm1', ['a1'], null);
+    expect(root.textContent).toContain('ajoutée(s) à « À faire par moi »');
+  });
+
   it('sans audio : message clair, pas d\'appel audioBlob', () => {
     service = jasmine.createSpyObj<TeamsMeetingService>('TeamsMeetingService',
       ['get', 'audioBlob', 'imageIds', 'imageBlob', 'transcript', 'transcribe', 'insights', 'ask',
@@ -126,6 +151,7 @@ describe('MeetingDetailPageComponent', () => {
         provideNoopAnimations(),
         provideRouter([]),
         { provide: TeamsMeetingService, useValue: service },
+        { provide: RadarService, useValue: radarSpy() },
         {
           provide: ActivatedRoute,
           useValue: { paramMap: of(convertToParamMap({ hostRef: 'h1', meetingId: 'm1' })) },
@@ -160,6 +186,7 @@ describe('MeetingDetailPageComponent', () => {
         provideNoopAnimations(),
         provideRouter([]),
         { provide: TeamsMeetingService, useValue: service },
+        { provide: RadarService, useValue: radarSpy() },
         {
           provide: ActivatedRoute,
           useValue: { paramMap: of(convertToParamMap({ hostRef: 'h1', meetingId: 'm1' })) },
