@@ -19,11 +19,15 @@ import org.springframework.web.client.RestClientException;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 /**
- * <b>Implémentation HTTP compatible Whisper</b> du {@link TranscriptionProvider} (F-128 / SF-128-04).
+ * <b>Implémentation HTTP compatible Whisper / OpenAI</b> du {@link TranscriptionProvider}
+ * (F-128 / SF-128-04, branchée sur OpenAI en SF-128-18).
  *
  * <p>Relais Provider-First : {@code POST {base-url}/audio/transcriptions} en {@code multipart/form-data}
- * (champ {@code file} + {@code model} + {@code response_format=verbose_json}), à la façon de l'API
- * OpenAI/Whisper. <b>Base URL et clé configurables, rien en dur</b> ({@link TranscriptionProperties}).</p>
+ * (champ {@code file} + {@code model} + {@code response_format}), exactement la forme de l'API OpenAI
+ * ({@code https://api.openai.com/v1}) : auth {@code Authorization: Bearer <clé>}, réponse
+ * {@code {text, language, segments?}}. Le {@code response_format} s'adapte au modèle
+ * (voir {@link #responseFormat(String)}). <b>Base URL et clé configurables, rien en dur</b>
+ * ({@link TranscriptionProperties}).</p>
  *
  * <p><b>Éteint par défaut.</b> Si {@link TranscriptionProperties#isConfigured()} est faux, on lève
  * {@link TranscriptionProviderUnavailableException} <b>sans aucun appel réseau</b> — l'audio ne part pas.</p>
@@ -66,7 +70,7 @@ public class HttpTranscriptionProvider implements TranscriptionProvider {
         MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
         body.add("file", new NamedAudio(audio, filename(contentType)));
         body.add("model", properties.model());
-        body.add("response_format", "verbose_json");
+        body.add("response_format", responseFormat(properties.model()));
         String language = languageHint != null && !languageHint.isBlank()
                 ? languageHint : properties.language();
         if (language != null && !language.isBlank()) {
@@ -95,6 +99,18 @@ public class HttpTranscriptionProvider implements TranscriptionProvider {
             log.warn("Appel au service STT en échec (modèle={})", properties.model());
             throw new TranscriptionProviderException("Échec de l'appel au service de transcription.", e);
         }
+    }
+
+    /**
+     * Le {@code response_format} adapté au modèle OpenAI. Seuls les modèles <b>Whisper</b> acceptent
+     * {@code verbose_json} (segments horodatés) ; {@code gpt-4o-transcribe} / {@code gpt-4o-mini-transcribe}
+     * n'acceptent que {@code json} ou {@code text} (un {@code verbose_json} y renvoie un 400). On demande
+     * donc {@code verbose_json} pour Whisper (transcript horodaté) et {@code json} sinon (texte brut, le
+     * rendu retombe alors sur le texte complet).
+     */
+    private static String responseFormat(String model) {
+        String name = model == null ? "" : model.toLowerCase(Locale.ROOT);
+        return name.startsWith("whisper") ? "verbose_json" : "json";
     }
 
     /** Construit un texte horodaté depuis les segments ({@code [mm:ss] texte}), sinon le texte brut. */

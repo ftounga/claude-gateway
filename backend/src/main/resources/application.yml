@@ -422,11 +422,13 @@ app:
       # rejoué, la série d'outils du tour pourrait être exécutée deux fois.
       agent-max-attempts: ${ANTHROPIC_AGENT_MAX_ATTEMPTS:3}
   stt:
-    # SERVICE DE TRANSCRIPTION (F-128 / SF-128-04), relais compatible Whisper. ETEINT PAR DEFAUT
-    # (DRAPEAU FORT) : l'audio de réunion sort du poste vers ce service — sensible en banque. Tant que
-    # base-url ET api-key ne sont pas fournis par l'environnement, aucune donnée ne part et le
-    # déclenchement répond « STT non configuré ». La clé vient EXCLUSIVEMENT de l'environnement, jamais
-    # commitée ni journalisée. Le PO tranchera service hébergé vs local ; ici, le tuyau, éteint.
+    # SERVICE DE TRANSCRIPTION (F-128 / SF-128-04), relais compatible Whisper/OpenAI. BRANCHÉ SUR OPENAI
+    # (SF-128-18) : base-url + model fournis par backend-config (https://api.openai.com/v1, whisper-1).
+    # ETEINT PAR DEFAUT (DRAPEAU FORT) : l'audio de réunion sort du poste vers OpenAI — sensible en banque.
+    # Tant que api-key n'est pas fournie par l'environnement (secret backend-secrets APP_STT_API_KEY),
+    # aucune donnée ne part et le déclenchement répond « STT non configuré » (503). La clé vient
+    # EXCLUSIVEMENT de l'environnement, jamais commitée ni journalisée, jamais exposée au client. Le
+    # déclenchement est manuel, réunion par réunion, avec avertissement de confidentialité côté écran.
     base-url: ${APP_STT_BASE_URL:}
     api-key: ${APP_STT_API_KEY:}
     model: ${APP_STT_MODEL:whisper-1}

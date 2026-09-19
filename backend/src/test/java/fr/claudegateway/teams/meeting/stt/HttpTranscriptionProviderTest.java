@@ -72,6 +72,40 @@ class HttpTranscriptionProviderTest {
     }
 
     @Test
+    @DisplayName("modèle Whisper : response_format=verbose_json (segments horodatés)")
+    void whisperUsesVerboseJson() {
+        AtomicReference<String> body = new AtomicReference<>();
+        String responseBody = "{\"text\":\"salut\",\"language\":\"fr\"}";
+        String baseUrl = startServerCapturingBody(200, responseBody, body);
+        TranscriptionProperties on = new TranscriptionProperties(baseUrl, "secret-key", "whisper-1", null,
+                Duration.ofSeconds(10), null);
+        HttpTranscriptionProvider provider = new HttpTranscriptionProvider(on, RestClient.builder());
+
+        provider.transcribe("opus".getBytes(StandardCharsets.UTF_8), "audio/webm", null);
+
+        assertThat(body.get()).contains("name=\"model\"").contains("whisper-1");
+        assertThat(body.get()).contains("verbose_json");
+    }
+
+    @Test
+    @DisplayName("modèle gpt-4o-transcribe : response_format=json (pas verbose_json), model transmis")
+    void gpt4oUsesPlainJson() {
+        AtomicReference<String> body = new AtomicReference<>();
+        String responseBody = "{\"text\":\"salut\"}";
+        String baseUrl = startServerCapturingBody(200, responseBody, body);
+        TranscriptionProperties on = new TranscriptionProperties(baseUrl, "secret-key", "gpt-4o-transcribe", null,
+                Duration.ofSeconds(10), null);
+        HttpTranscriptionProvider provider = new HttpTranscriptionProvider(on, RestClient.builder());
+
+        Transcript transcript = provider.transcribe("opus".getBytes(StandardCharsets.UTF_8), "audio/webm", null);
+
+        assertThat(body.get()).contains("name=\"model\"").contains("gpt-4o-transcribe");
+        assertThat(body.get()).contains("name=\"response_format\"").contains("json");
+        assertThat(body.get()).doesNotContain("verbose_json");
+        assertThat(transcript.text()).isEqualTo("salut");
+    }
+
+    @Test
     @DisplayName("erreur du service (500) : TranscriptionProviderException")
     void serviceErrorThrows() {
         String baseUrl = startServer(new AtomicInteger(), 500, "boom");
@@ -84,6 +118,26 @@ class HttpTranscriptionProviderTest {
 
     private String startServer(AtomicInteger hits, int status, String body) {
         return startServer(hits, status, body, new AtomicReference<>());
+    }
+
+    /** Démarre un serveur qui capture le corps multipart brut reçu (pour vérifier les champs envoyés). */
+    private String startServerCapturingBody(int status, String responseBody, AtomicReference<String> captured) {
+        try {
+            server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+            server.createContext("/audio/transcriptions", exchange -> {
+                captured.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+                byte[] out = responseBody.getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().add("Content-Type", "application/json");
+                exchange.sendResponseHeaders(status, out.length);
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(out);
+                }
+            });
+            server.start();
+            return "http://127.0.0.1:" + server.getAddress().getPort();
+        } catch (IOException e) {
+            throw new IllegalStateException("Serveur HTTP de test non démarré", e);
+        }
     }
 
     private String startServer(AtomicInteger hits, int status, String body, AtomicReference<String> auth) {

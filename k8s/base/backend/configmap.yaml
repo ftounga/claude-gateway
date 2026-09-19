@@ -16,6 +16,15 @@ data:
   APP_RAG_EMBEDDING_PROVIDER: "local"
   APP_RAG_VECTOR_STORE: "pgvector"
   APP_EMAIL_PROVIDER: "smtp"
+  # F-128 / SF-128-18 — Transcription des réunions Teams branchée sur OpenAI (Whisper /
+  # gpt-4o-transcribe). Base URL et modèle sont de la config non secrète ; la CLÉ vient
+  # EXCLUSIVEMENT du secret backend-secrets (APP_STT_API_KEY), jamais ici, jamais côté client.
+  # Tant que la clé est absente, le service reste ÉTEINT (503 stt_not_configured, aucun octet
+  # ne part). Manuel, réunion par réunion, avec avertissement de confidentialité (l'audio sort
+  # du poste vers OpenAI). Pour Whisper : transcript horodaté (verbose_json) ; gpt-4o-transcribe :
+  # texte brut (json).
+  APP_STT_BASE_URL: "https://api.openai.com/v1"
+  APP_STT_MODEL: "whisper-1"
   # Atelier / Claude Code Lite (F-28) : stockage des workspaces sur S3 (bucket S3_BUCKET, préfixe
   # atelier/) pour la persistance entre redémarrages. Défaut `in-memory` réservé aux tests.
   APP_ATELIER_STORAGE: "s3"

@@ -10,8 +10,14 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
+import { MatDialog } from '@angular/material/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
 import { DomSanitizer, SafeUrl } from '@angular/platform-browser';
+
+import {
+  ConfirmDialogComponent,
+  ConfirmDialogData,
+} from '../../chat/confirm-dialog/confirm-dialog.component';
 
 import {
   MeetingActionsToRadar,
@@ -577,6 +583,7 @@ export class MeetingDetailPageComponent implements OnInit, OnDestroy {
   private readonly service = inject(TeamsMeetingService);
   private readonly radar = inject(RadarService);
   private readonly sanitizer = inject(DomSanitizer);
+  private readonly dialog = inject(MatDialog);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly hostRef = signal<string | null>(null);
@@ -792,12 +799,39 @@ export class MeetingDetailPageComponent implements OnInit, OnDestroy {
     return meeting.transcriptStatus === 'PENDING' || meeting.transcriptStatus === 'TRANSCRIBING';
   }
 
+  /**
+   * Lance la transcription (SF-128-04) — mais **jamais sans consentement** (SF-128-18). L'audio sort du
+   * poste vers OpenAI : on exige un avertissement de confidentialité **confirmé, réunion par réunion**,
+   * avant d'appeler `…/transcribe`. Si l'utilisateur annule, aucun octet ne part.
+   */
   transcribe(meeting: TeamsMeeting): void {
     const hostId = this.hostRef();
     const meetingId = this.meetingId();
     if (!hostId || !meetingId) {
       return;
     }
+    const data: ConfirmDialogData = {
+      title: 'Envoyer l\'audio à OpenAI ?',
+      message:
+        'L\'audio de cette réunion sera envoyé à OpenAI (hors du poste) pour être transcrit. '
+        + 'Ne pas utiliser pour une réunion confidentielle.',
+      confirmLabel: 'Envoyer et transcrire',
+    };
+    this.dialog
+      .open<ConfirmDialogComponent, ConfirmDialogData, boolean>(ConfirmDialogComponent, {
+        width: '480px',
+        data,
+      })
+      .afterClosed()
+      .subscribe((confirmed) => {
+        if (confirmed) {
+          this.runTranscription(hostId, meetingId);
+        }
+      });
+  }
+
+  /** L'appel effectif à la gateway, une fois le consentement recueilli. */
+  private runTranscription(hostId: string, meetingId: string): void {
     this.transcribing.set(true);
     this.transcriptMessage.set(null);
     this.service.transcribe(hostId, meetingId).subscribe({
