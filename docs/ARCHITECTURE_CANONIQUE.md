@@ -1011,6 +1011,29 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     une demande d'autorisation de la boucle Assistant) — JWT, gardés par l'accès Atelier.
     L'écriture d'audit est **hors transaction et non bloquante** pour la boucle tool-use.
 
+- **runner_diag_events** — journal de **diagnostic** du runner (F-132 / SF-132-02, migration `114`).
+  Table neuve, **un événement de diagnostic structuré et expurgé par ligne**, remonté par le runner
+  dans la trame `runner_diag` (SF-132-01) sur le WebSocket existant. On y range des **formes et des
+  états** — état du Chrome managé (`REACHABLE`/`LAUNCHED`/`UNREACHABLE`/`NO_BROWSER`), verdict de la
+  sonde Teams, cycle de vie de la capture (tailles : octets audio, nb images), ticks de la Vigie,
+  erreurs (type + message court). Distinct de `runner_audit` (qui trace les appels d'outils) : ici
+  c'est la **plomberie** Vigie/Teams, invisible du serveur jusqu'ici.
+  - `runner_diag_events` : `id (uuid)`, `user_id (uuid, NOT NULL)`, `host_id (uuid, NOT NULL)`,
+    `level (varchar 8 — DEBUG/INFO/WARN/ERROR)`, `category (varchar 32)`, `code (varchar 64)`,
+    `message (varchar 500, nullable)`, `fields (varchar 2000, nullable — JSON compact de scalaires)`,
+    `observed_at (timestamptz, nullable — horloge runner)`, `created_at`. Index
+    `(user_id, host_id, created_at)` (isolation + tri) et `(created_at)` (purge TTL).
+  - **Ce que la table ne contient jamais** (invariant, poste **client/banque**) : aucun secret,
+    aucune URL brute (seulement sa **classe**), aucun chemin sensible, aucun contenu Teams —
+    l'**expurgation est faite à la source** (runner, SF-132-01). La gateway borne en plus (longueurs).
+  - **Stockage borné** : **anneau par poste** (2000 lignes, les plus anciennes supprimées au-delà) +
+    **TTL 7 jours** (purge planifiée nocturne, désactivable). Négligeable sur la RDS partagée.
+  - **Isolation** : `user_id` et `host_id` viennent de la **session** runner (`RunnerIdentity`),
+    jamais d'un champ du message. Toute lecture filtre sur les deux.
+  - Endpoint **`GET /runner-hosts/{hostId}/diag`** (JWT, accès runner + poste possédé → **404**
+    sinon ; filtres `level`/`since`/`until`, `limit` borné à `[1..500]`). Lisible par l'assistant
+    **via la base** (comme `runner_audit`). L'ingestion est **hors du fil runner et non bloquante**.
+
 - **atelier_permission_rules** — politique de permission des outils de la boucle maison (F-121 /
   SF-121-02, migration `075`). Table neuve, **une ligne par règle** allow/ask/deny persistée par
   workspace/utilisateur — c'est ce qui donne au modèle de permission une mémoire qui survit au tour et
@@ -1297,7 +1320,7 @@ Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 rée
 
 Règle d'isolation des données :
 Tout accès aux données filtre obligatoirement sur **`user_id`**
-(documents/messages/subscriptions/uploaded_files/usage_counters/usage_turns/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/host_seat_months/live_terminals/runner_tokens/runner_pairing_codes/runner_audit/atelier_permission_rules/atelier_deposited_files/poste_billing/activity_settings/cra_entries/governance_selections/governance_activations/governance_host_activations/governance_map_growth/governance_deposited_files/pages/page_versions/page_shares/page_events via `user_id` ; tables `radar_*` via `user_id` **et** `host_id` ; `meetings` via `user_id` **et** `host_id` ; `promotion_reportee` via `user_id` + `host_id` + `workspace_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
+(documents/messages/subscriptions/uploaded_files/usage_counters/usage_turns/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/host_seat_months/live_terminals/runner_tokens/runner_pairing_codes/runner_audit/atelier_permission_rules/atelier_deposited_files/poste_billing/activity_settings/cra_entries/governance_selections/governance_activations/governance_host_activations/governance_map_growth/governance_deposited_files/pages/page_versions/page_shares/page_events via `user_id` ; tables `radar_*` via `user_id` **et** `host_id` ; `meetings` via `user_id` **et** `host_id` ; `runner_diag_events` via `user_id` **et** `host_id` ; `promotion_reportee` via `user_id` + `host_id` + `workspace_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
 
 ---
 
