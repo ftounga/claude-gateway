@@ -693,9 +693,10 @@ public final class TeamsTools implements ToolExecutor {
     }
 
     /**
-     * Évalue un script sur une <b>connexion CDP donnée</b> (F-128 / SF-128-12) : le ré-armement de la
-     * capture réutilise la connexion capturée au démarrage — un onglet garde son socket de débogage à
-     * travers une navigation, c'est ce qui permet de ré-injecter le capteur après un rechargement.
+     * Évalue un script sur une <b>connexion CDP donnée</b> (F-128). Le ré-armement de la capture ne
+     * réutilise <b>plus</b> la connexion capturée au démarrage (SF-128-13) : après la navigation Teams,
+     * l'onglet de réunion est une <b>nouvelle cible CDP</b> et l'ancien socket est fermé. La connexion
+     * fraîche est re-résolue à chaque navigation par {@link #reattachCaptureTarget()}.
      */
     private JsonNode evalOn(CdpConnection connection, String expression, boolean userGesture) {
         ObjectNode params = mapper.createObjectNode();
@@ -718,14 +719,35 @@ public final class TeamsTools implements ToolExecutor {
      */
     private boolean armReinjection(CdpConnection connection) {
         try {
-            CaptureReinjector reinjector = new CaptureReinjector(connection,
-                    (script, userGesture) -> evalOn(connection, script, userGesture));
+            CaptureReinjector reinjector = new CaptureReinjector(connection, this::reattachCaptureTarget);
             reinjector.arm();
             this.captureReinjector = reinjector;
             return reinjector.armed();
         } catch (RuntimeException e) {
             this.captureReinjector = null;
             return false;
+        }
+    }
+
+    /**
+     * Re-résout la cible CDP courante de la capture (F-128 / SF-128-13) et rend un
+     * {@link CaptureReinjector.Eval} rattaché <b>à neuf</b>, ou {@code null} si aucun onglet Teams
+     * n'est joignable.
+     *
+     * <p>Après une navigation Teams, l'onglet de réunion est une <b>nouvelle cible CDP</b> ; le socket
+     * capturé au démarrage est fermé. On re-résout par le <b>même chemin que la boucle Vigie</b> :
+     * {@link #link()} (= {@link TeamsSession#link()}) ré-attache dès que le socket précédent est mort
+     * ({@code isOpen()==false}), en ré-listant les cibles ({@link BrowserLink#attach}) et en retrouvant
+     * l'onglet Teams courant ({@link BrowserTargets#teamsTab}). L'{@link CaptureReinjector.Eval} rendu
+     * est lié à cette connexion fraîche. Une liaison impossible (aucun onglet Teams) rend {@code null},
+     * seul cas d'injoignabilité — jamais une exception vers la boucle d'événements.</p>
+     */
+    private CaptureReinjector.Eval reattachCaptureTarget() {
+        try {
+            CdpConnection fresh = link().connection();
+            return (script, userGesture) -> evalOn(fresh, script, userGesture);
+        } catch (BrowserLinkException e) {
+            return null;
         }
     }
 

@@ -41,7 +41,8 @@ class CaptureReinjectorTest {
     @DisplayName("arm() active Page.enable et s'abonne aux événements de chargement")
     void armEnablesPageAndSubscribes() {
         FakePageConnection connection = new FakePageConnection();
-        CaptureReinjector reinjector = new CaptureReinjector(connection, (script, gesture) -> null);
+        CaptureReinjector reinjector =
+                new CaptureReinjector(connection, () -> (script, gesture) -> null);
 
         reinjector.arm();
 
@@ -55,11 +56,11 @@ class CaptureReinjectorTest {
     }
 
     @Test
-    @DisplayName("navigation + capture perdue ⇒ ré-injecte START_SCRIPT avec geste utilisateur")
+    @DisplayName("navigation + capture perdue ⇒ re-résout la cible fraîche puis ré-injecte avec geste")
     void navigationWhenInactiveReinjectsWithUserGesture() {
         FakePageConnection connection = new FakePageConnection();
         RecordingEval eval = new RecordingEval(false); // la sonde dira : capture inactive
-        CaptureReinjector reinjector = new CaptureReinjector(connection, eval);
+        CaptureReinjector reinjector = new CaptureReinjector(connection, () -> eval);
         reinjector.arm();
 
         connection.fireLoad();
@@ -67,10 +68,60 @@ class CaptureReinjectorTest {
         assertEquals(1, reinjector.reinjections(), "une navigation avec capture perdue ré-injecte");
         assertTrue(eval.reinjectedWithGesture(),
                 "START_SCRIPT doit être ré-injecté avec userGesture (getDisplayMedia l'exige)");
-        assertTrue(RunnerDiag.drain(100).events().stream()
+        var events = RunnerDiag.drain(100).events();
+        assertTrue(events.stream()
+                        .anyMatch(e -> e.cat().equals("capture") && e.code().equals("reattach")
+                                && "ok".equals(e.fields().get("result"))),
+                "la re-résolution de la cible doit être diagnostiquée (F-132)");
+        assertTrue(events.stream()
                         .anyMatch(e -> e.cat().equals("capture") && e.code().equals("reinject")
                                 && "ok".equals(e.fields().get("result"))),
                 "une ré-injection réussie doit être diagnostiquée (F-132)");
+    }
+
+    @Test
+    @DisplayName("ancienne cible morte + nouvelle cible Teams présente ⇒ re-résout et ré-injecte")
+    void reattachesToNewTargetWhenOldOneIsDead() {
+        FakePageConnection connection = new FakePageConnection();
+        // L'Eval de l'ancienne cible lèverait (socket mort) ; la re-résolution DOIT rendre la cible fraîche.
+        CaptureReinjector.Eval deadTarget = (script, gesture) -> {
+            throw new BrowserLinkException(BrowserLinkException.LINK_LOST, "socket fermé");
+        };
+        RecordingEval freshTarget = new RecordingEval(false);
+        boolean[] resolved = { false };
+        CaptureReinjector.Reattacher reattacher = () -> {
+            resolved[0] = true;
+            return freshTarget; // on ne rend JAMAIS deadTarget : on re-résout à neuf
+        };
+        CaptureReinjector reinjector = new CaptureReinjector(connection, reattacher);
+        // deadTarget n'est utilisé nulle part : la preuve que le lien capturé au start n'est pas réutilisé.
+        assertFalse(deadTarget == freshTarget);
+        reinjector.arm();
+
+        connection.fireLoad();
+
+        assertTrue(resolved[0], "la ré-injection doit re-résoudre la cible à chaque navigation");
+        assertEquals(1, reinjector.reinjections(),
+                "avec une nouvelle cible Teams joignable, la ré-injection réussit");
+        assertTrue(freshTarget.reinjectedWithGesture(),
+                "START_SCRIPT est ré-injecté sur la cible FRAÎCHE, avec userGesture");
+    }
+
+    @Test
+    @DisplayName("aucune cible Teams joignable ⇒ no_teams_tab, pas de ré-injection (seul cas injoignable)")
+    void concludesUnreachableOnlyWhenNoTeamsTab() {
+        FakePageConnection connection = new FakePageConnection();
+        // La re-résolution ne trouve aucun onglet Teams : elle rend null.
+        CaptureReinjector reinjector = new CaptureReinjector(connection, () -> null);
+        reinjector.arm();
+
+        connection.fireLoad();
+
+        assertEquals(0, reinjector.reinjections(), "sans cible joignable, on ne ré-injecte pas");
+        assertTrue(RunnerDiag.drain(100).events().stream()
+                        .anyMatch(e -> e.cat().equals("capture") && e.code().equals("reattach")
+                                && "no_teams_tab".equals(e.fields().get("reason"))),
+                "l'absence totale de cible Teams doit être diagnostiquée en capture/reattach");
     }
 
     @Test
@@ -78,7 +129,7 @@ class CaptureReinjectorTest {
     void navigationWhenActiveDoesNotReinject() {
         FakePageConnection connection = new FakePageConnection();
         RecordingEval eval = new RecordingEval(true); // la sonde dira : capture toujours active
-        CaptureReinjector reinjector = new CaptureReinjector(connection, eval);
+        CaptureReinjector reinjector = new CaptureReinjector(connection, () -> eval);
         reinjector.arm();
 
         connection.fireLoad();
@@ -93,7 +144,7 @@ class CaptureReinjectorTest {
     void disarmedIgnoresLoadEvents() {
         FakePageConnection connection = new FakePageConnection();
         RecordingEval eval = new RecordingEval(false);
-        CaptureReinjector reinjector = new CaptureReinjector(connection, eval);
+        CaptureReinjector reinjector = new CaptureReinjector(connection, () -> eval);
         reinjector.arm();
         reinjector.disarm();
 
@@ -104,10 +155,11 @@ class CaptureReinjectorTest {
     }
 
     @Test
-    @DisplayName("Chrome injoignable pendant le ré-armement ⇒ avalé + diagnostiqué (best-effort)")
+    @DisplayName("cible retrouvée mais injoignable en cours ⇒ avalé + diagnostiqué reinject (best-effort)")
     void unreachableDuringReinjectIsSwallowedAndDiagnosed() {
         FakePageConnection connection = new FakePageConnection();
-        CaptureReinjector reinjector = new CaptureReinjector(connection, (script, gesture) -> {
+        // La cible est re-résolue (Eval non-null) mais devient injoignable pendant la sonde/l'injection.
+        CaptureReinjector reinjector = new CaptureReinjector(connection, () -> (script, gesture) -> {
             throw new BrowserLinkException(BrowserLinkException.BROWSER_NOT_DETECTED, "injoignable");
         });
         reinjector.arm();
@@ -119,7 +171,7 @@ class CaptureReinjectorTest {
         assertTrue(RunnerDiag.drain(100).events().stream()
                         .anyMatch(e -> e.cat().equals("capture") && e.code().equals("reinject")
                                 && "browser_unreachable".equals(e.fields().get("reason"))),
-                "un Chrome injoignable doit être diagnostiqué en erreur");
+                "une cible retrouvée puis injoignable doit être diagnostiquée en erreur reinject");
     }
 
     @Test
@@ -127,7 +179,7 @@ class CaptureReinjectorTest {
     void subFrameNavigationIsIgnored() {
         FakePageConnection connection = new FakePageConnection();
         RecordingEval eval = new RecordingEval(false);
-        CaptureReinjector reinjector = new CaptureReinjector(connection, eval);
+        CaptureReinjector reinjector = new CaptureReinjector(connection, () -> eval);
         reinjector.arm();
 
         ObjectMapper mapper = new ObjectMapper();
