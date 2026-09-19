@@ -9,6 +9,8 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 import fr.claudegateway.runner.OperatingSystem;
+import fr.claudegateway.runner.diag.RunnerDiag;
+import fr.claudegateway.runner.diag.RunnerDiagLevel;
 
 /**
  * <b>Le runner lance et gère un Chrome dédié, tout seul</b> (F-122 / SF-122-01).
@@ -200,6 +202,45 @@ public final class ManagedChrome {
             handle = null;
         }
         return launchAndWait();
+    }
+
+    /**
+     * <b>Récupère</b> un Chrome managé après une fermeture manuelle/sale (F-122 / SF-122-08). Plus
+     * robuste qu'{@link #ensureRunning()} : si le port ne répond pas, elle <b>oublie un handle mort</b>,
+     * <b>nettoie un verrou de profil resté</b> (fermeture sale — sans quoi un nouveau Chrome « passe la
+     * main » à une instance fantôme et sort sans ouvrir le port), <b>relance</b> et <b>attend</b> le port
+     * (backoff borné existant) <b>avant</b> de conclure. Le verrou n'est <b>jamais</b> touché quand le
+     * port répond (on ne perturbe pas une instance vivante).
+     *
+     * @return l'état atteint ({@link State})
+     */
+    public synchronized State recover() {
+        if (probe.reachable(port)) {
+            return State.REACHABLE;
+        }
+        if (executable.isEmpty()) {
+            diagRecover(State.NO_BROWSER, false);
+            return State.NO_BROWSER;
+        }
+        if (handle != null && !handle.alive()) {
+            handle = null;
+        }
+        // Le port ne répond pas ⇒ aucun Chrome ne tient le profil : on peut retirer un verrou resté.
+        boolean lockCleared = ChromeProfileLock.clearStale(profileDir, say);
+        State state = launchAndWait();
+        diagRecover(state, lockCleared);
+        return state;
+    }
+
+    /** Diagnostic F-132 : le résultat d'une récupération — l'état, et si un verrou a été nettoyé. */
+    private void diagRecover(State state, boolean lockCleared) {
+        RunnerDiagLevel level = switch (state) {
+            case REACHABLE, LAUNCHED -> RunnerDiagLevel.INFO;
+            case UNREACHABLE -> RunnerDiagLevel.WARN;
+            case NO_BROWSER -> RunnerDiagLevel.ERROR;
+        };
+        RunnerDiag.event(level, "chrome", "recover", null, java.util.Map.of(
+                "state", state, "port", port, "lockCleared", lockCleared));
     }
 
     /** Arrête le Chrome managé. Le profil (et donc la session Teams) persiste sur le disque. */

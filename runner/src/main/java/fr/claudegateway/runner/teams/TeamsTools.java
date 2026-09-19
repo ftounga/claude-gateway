@@ -519,10 +519,12 @@ public final class TeamsTools implements ToolExecutor {
     }
 
     /**
-     * (Re)garantit le Chrome managé (F-128 / SF-128-09) : réutilise {@link ManagedChrome#ensureRunning()}
-     * (idempotent — relance s'il est tombé, ne fait rien s'il répond déjà). Rend {@code true} si le port
-     * répond après la tentative ({@code REACHABLE}/{@code LAUNCHED}). {@code false} sans Chrome managé
-     * branché, ou si la récupération a réellement échoué ({@code NO_BROWSER}/{@code UNREACHABLE}).
+     * (Re)garantit le Chrome managé (F-128 / SF-128-09, durci SF-122-08) : délègue à
+     * {@link ManagedChrome#recover()} — plus robuste qu'{@code ensureRunning} face à une fermeture
+     * manuelle/sale (oublie un handle mort, nettoie un verrou de profil resté, relance et <b>attend</b>
+     * le port avant de conclure). Rend {@code true} si le port répond après la tentative
+     * ({@code REACHABLE}/{@code LAUNCHED}). {@code false} sans Chrome managé branché, ou si la
+     * récupération a réellement échoué ({@code NO_BROWSER}/{@code UNREACHABLE}).
      */
     private boolean recoverManagedChrome() {
         ManagedChrome chrome = this.managedChrome;
@@ -530,7 +532,7 @@ public final class TeamsTools implements ToolExecutor {
             return false;
         }
         try {
-            ManagedChrome.State state = chrome.ensureRunning();
+            ManagedChrome.State state = chrome.recover();
             return state == ManagedChrome.State.REACHABLE || state == ManagedChrome.State.LAUNCHED;
         } catch (RuntimeException e) {
             return false;
