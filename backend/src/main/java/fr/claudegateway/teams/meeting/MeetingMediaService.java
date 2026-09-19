@@ -103,6 +103,21 @@ public class MeetingMediaService {
         return storage.listKeys(framesPrefixOf(userId, hostId, meetingId)).size();
     }
 
+    /**
+     * Purge du stockage objet les <b>médias lourds</b> d'une réunion (audio + images du deck), au-delà de
+     * la rétention (F-128 / SF-128-07). Efface tout ce qui vit sous
+     * {@code teams-meetings/{userId}/{hostId}/{meetingId}/} — {@code audio.*} <b>et</b> {@code frames/*} —
+     * en un seul geste borné/paginé côté stockage. La clé porte {@code user_id}+{@code host_id} : une
+     * réunion d'un autre couple n'est jamais touchée.
+     *
+     * <p>N'écrit rien en base : la mise à vide des pointeurs et l'horodatage {@code media_purged_at}
+     * relèvent de {@code MeetingRetentionService}. Un effacement <b>incomplet</b> lève
+     * {@code WorkspaceStorageDeletionException} (l'appelant ne marque alors pas la réunion purgée).</p>
+     */
+    public void deleteMedia(UUID userId, UUID hostId, UUID meetingId) {
+        storage.deletePrefix(prefixOf(userId, hostId, meetingId));
+    }
+
     // ----------------------------------------------------------------- lecture (F-128 / SF-128-10)
 
     /**

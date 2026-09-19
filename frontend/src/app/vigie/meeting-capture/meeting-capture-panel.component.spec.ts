@@ -21,7 +21,7 @@ describe('MeetingCapturePanelComponent', () => {
     id: 'm1', hostId: 'h1', subjectId: null, title: 'Comité', meetingUrl: 'https://teams.microsoft.com/x',
     state: 'RECORDING', consentAcknowledged: true, retentionDays: 30, captureRef: 'cap-1',
     hasAudio: false, audioBytes: null, imageCount: 0,
-    transcriptStatus: 'NONE', transcriptLang: null, hasTranscript: false,
+    transcriptStatus: 'NONE', transcriptLang: null, hasTranscript: false, mediaPurgedAt: null,
     startedAt: '2026-09-18T10:00:00Z', endedAt: null, createdAt: '2026-09-18T10:00:00Z',
   };
 

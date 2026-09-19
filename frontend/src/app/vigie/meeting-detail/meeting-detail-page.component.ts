@@ -104,6 +104,11 @@ interface DeckImage {
             } @else {
               <div class="detail__loading"><mat-spinner diameter="24"></mat-spinner></div>
             }
+          } @else if (m.mediaPurgedAt) {
+            <p class="card__empty">
+              Les médias (audio + images) ont été purgés le {{ m.mediaPurgedAt | date: 'd MMM y' }}
+              (conservation {{ m.retentionDays }} j). Le transcript et la synthèse restent disponibles.
+            </p>
           } @else {
             <p class="card__empty">Aucun audio n'a été capturé pour cette réunion.</p>
           }
@@ -112,7 +117,11 @@ interface DeckImage {
         <section class="card" aria-label="Deck reconstitué">
           <h2 class="card__title">Deck reconstitué</h2>
           @if (m.imageCount === 0) {
-            <p class="card__empty">Aucune image clé du partage d'écran n'a été retenue.</p>
+            @if (m.mediaPurgedAt) {
+              <p class="card__empty">Les images du deck ont été purgées (rétention {{ m.retentionDays }} j).</p>
+            } @else {
+              <p class="card__empty">Aucune image clé du partage d'écran n'a été retenue.</p>
+            }
           } @else if (deck().length > 0) {
             <ul class="deck">
               @for (image of deck(); track image.id) {

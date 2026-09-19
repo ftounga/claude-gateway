@@ -25,6 +25,7 @@ public record MeetingResponse(
         String transcriptStatus,
         String transcriptLang,
         boolean hasTranscript,
+        OffsetDateTime mediaPurgedAt,
         OffsetDateTime startedAt,
         OffsetDateTime endedAt,
         OffsetDateTime createdAt) {
@@ -37,6 +38,7 @@ public record MeetingResponse(
                 m.getTranscriptStatus() == null ? "NONE" : m.getTranscriptStatus().name(),
                 m.getTranscriptLang(),
                 m.getTranscript() != null && !m.getTranscript().isBlank(),
+                m.getMediaPurgedAt(),
                 m.getStartedAt(), m.getEndedAt(), m.getCreatedAt());
     }
 }
