@@ -3,6 +3,7 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
 import { ActivatedRoute, convertToParamMap } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
+import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { of, throwError } from 'rxjs';
 
 import { TeamsMeeting } from '../../core/models/teams-meeting.models';
@@ -239,6 +240,68 @@ describe('MeetingDetailPageComponent', () => {
     const root = fixture.nativeElement as HTMLElement;
     expect(root.querySelector('audio.detail__player')).toBeNull();
     expect(service.audioBlob).not.toHaveBeenCalled();
+  });
+
+  // ── Consentement avant envoi à OpenAI (SF-128-18) ────────────────────────────────────────────
+  const needsTranscription: TeamsMeeting = {
+    ...meeting, hasTranscript: false, transcriptStatus: 'NONE', transcriptLang: null,
+  };
+
+  function setupWithDialog(confirmResult: boolean | undefined): {
+    root: HTMLElement;
+    dialog: jasmine.SpyObj<MatDialog>;
+  } {
+    service = jasmine.createSpyObj<TeamsMeetingService>('TeamsMeetingService',
+      ['get', 'audioBlob', 'imageIds', 'imageBlob', 'transcript', 'transcribe', 'insights', 'ask',
+        'promoteToCard', 'pushActionsToRadar']);
+    service.get.and.returnValue(of(needsTranscription));
+    service.audioBlob.and.returnValue(of(new Blob(['audio'], { type: 'audio/webm' })));
+    service.imageIds.and.returnValue(of([]));
+    service.transcript.and.returnValue(of(''));
+    service.transcribe.and.returnValue(of(needsTranscription));
+
+    const dialogRef = { afterClosed: () => of(confirmResult) } as MatDialogRef<unknown, boolean>;
+    const dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
+    dialog.open.and.returnValue(dialogRef as never);
+
+    TestBed.configureTestingModule({
+      imports: [MeetingDetailPageComponent],
+      providers: [
+        provideNoopAnimations(),
+        provideRouter([]),
+        { provide: TeamsMeetingService, useValue: service },
+        { provide: RadarService, useValue: radarSpy() },
+        { provide: MatDialog, useValue: dialog },
+        {
+          provide: ActivatedRoute,
+          useValue: { paramMap: of(convertToParamMap({ hostRef: 'h1', meetingId: 'm1' })) },
+        },
+      ],
+    });
+    fixture = TestBed.createComponent(MeetingDetailPageComponent);
+    fixture.detectChanges();
+    return { root: fixture.nativeElement as HTMLElement, dialog };
+  }
+
+  it('« Transcrire » ouvre un avertissement nommant OpenAI et « hors du poste » (SF-128-18)', () => {
+    const { dialog } = setupWithDialog(true);
+    fixture.componentInstance.transcribe(needsTranscription);
+    expect(dialog.open).toHaveBeenCalledTimes(1);
+    const data = (dialog.open.calls.mostRecent().args[1] as { data: { message: string; title: string } }).data;
+    expect(data.title + ' ' + data.message).toContain('OpenAI');
+    expect(data.message).toContain('hors du poste');
+  });
+
+  it('n\'appelle …/transcribe qu\'après confirmation du dialogue (SF-128-18)', () => {
+    setupWithDialog(true);
+    fixture.componentInstance.transcribe(needsTranscription);
+    expect(service.transcribe).toHaveBeenCalledOnceWith('h1', 'm1');
+  });
+
+  it('n\'envoie AUCUN audio si l\'avertissement est annulé (SF-128-18)', () => {
+    setupWithDialog(false);
+    fixture.componentInstance.transcribe(needsTranscription);
+    expect(service.transcribe).not.toHaveBeenCalled();
   });
 
   it('réunion introuvable (404) : message d\'erreur', () => {
