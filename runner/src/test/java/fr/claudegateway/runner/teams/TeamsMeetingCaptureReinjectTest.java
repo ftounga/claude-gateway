@@ -177,6 +177,41 @@ class TeamsMeetingCaptureReinjectTest {
         assertTrue(uploadedBytes[0] > 0);
     }
 
+    @Test
+    @DisplayName("SF-128-14 : start sur page stable ⇒ awaiting_stable=stable, aucun reinject en boucle")
+    void startWaitsForStablePageThenNoReinjectLoop() throws Exception {
+        CaptureBrowser browser = new CaptureBrowser();
+        int[] uploadedBytes = { 0 };
+        int[] uploadedImages = { 0 };
+        MeetingAudioUploader audio = (workspaceId, meetingId, bytes) -> {
+            uploadedBytes[0] = bytes.length;
+            return bytes.length;
+        };
+        MeetingImageUploader images = (workspaceId, meetingId, image) -> uploadedImages[0]++;
+        TeamsTools tools = toolsWith(browser, audio, images);
+
+        // Aucune navigation pendant le démarrage : la page est d'emblée stable → on démarre UNE fois.
+        ToolOutcome start = exec(tools, TeamsTools.MEETING_CAPTURE_START, "{}");
+        assertTrue(start.ok(), "le démarrage doit réussir une fois la page stable");
+        assertTrue(browser.captureActive(), "le capteur doit être en place après la stabilisation");
+        assertEquals(1, browser.starts(), "sur page stable, on n'injecte le capteur qu'UNE fois");
+
+        var afterStart = RunnerDiag.drain(200).events();
+        assertTrue(afterStart.stream().anyMatch(e -> e.cat().equals("capture")
+                        && e.code().equals("awaiting_stable") && "stable".equals(e.fields().get("result"))),
+                "la stabilisation avant démarrage doit être diagnostiquée (F-132)");
+        assertFalse(afterStart.stream().anyMatch(e -> e.cat().equals("capture")
+                        && e.code().equals("reinject")),
+                "sans navigation, aucune ré-injection ne doit être tentée (pas de course perdante)");
+
+        // L'arrêt trouve un enregistrement actif : le capteur a survécu (rien à ré-injecter).
+        ToolOutcome stop = exec(tools, TeamsTools.MEETING_CAPTURE_STOP,
+                "{\"meeting_id\":\"m1\",\"workspace_id\":\"w1\"}");
+        assertTrue(stop.ok(), "l'arrêt doit réussir : " + stop.errorCode());
+        assertTrue(uploadedBytes[0] > 0, "audio_bytes > 0 attendu");
+        assertTrue(uploadedImages[0] > 0, "image_count > 0 attendu");
+    }
+
     // ------------------------------------------------------------------ navigateur de papier
 
     /**
