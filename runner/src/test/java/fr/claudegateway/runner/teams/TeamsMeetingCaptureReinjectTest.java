@@ -1,6 +1,7 @@
 package fr.claudegateway.runner.teams;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -46,13 +47,25 @@ class TeamsMeetingCaptureReinjectTest {
 
     private TeamsTools toolsWith(CaptureBrowser browser, MeetingAudioUploader audio,
             MeetingImageUploader images) {
+        return toolsWithTargets(List.of(browser), audio, images);
+    }
+
+    /**
+     * Une session dont chaque (ré-)attache ouvre la cible suivante de la liste : la 1ʳᵉ à
+     * {@code start}, la 2ᵉ à la re-résolution après navigation (SF-128-13). Une liste d'un seul
+     * élément modélise la cible qui survit (non-régression SF-128-12), en la ré-ouvrant si besoin.
+     */
+    private TeamsTools toolsWithTargets(List<CaptureBrowser> targets, MeetingAudioUploader audio,
+            MeetingImageUploader images) {
+        java.util.Iterator<CaptureBrowser> it = targets.iterator();
+        CaptureBrowser last = targets.get(targets.size() - 1);
         TeamsSession session = new TeamsSession(9222, TeamsAdapters.current(), said::add,
                 (port, adapter, say) -> BrowserLink.attach(port, adapter,
                         url -> url.endsWith("/json/version")
                                 ? "{\"Browser\":\"Chrome/140.0.0.0\"}"
                                 : "[{\"id\":\"1\",\"type\":\"page\",\"url\":\"https://teams.microsoft.com/v2/\","
                                         + "\"webSocketDebuggerUrl\":\"ws://127.0.0.1:9222/d/1\"}]",
-                        wsUrl -> browser, say));
+                        wsUrl -> it.hasNext() ? it.next() : last, say));
         TeamsTools tools = new TeamsTools(session, millis -> { });
         return tools.withMeetingAudio(audio).withMeetingImages(images);
     }
@@ -98,6 +111,49 @@ class TeamsMeetingCaptureReinjectTest {
     }
 
     @Test
+    @DisplayName("navigation ⇒ NOUVELLE cible CDP : la ré-injection re-résout et remonte audio+images")
+    void reinjectionReresolvesToNewCdpTarget() throws Exception {
+        // La cause exacte (F-132, prod CAGIP) : après la navigation Teams, l'onglet de réunion est une
+        // NOUVELLE cible CDP ; le socket capturé au start est mort. La ré-injection DOIT re-résoudre.
+        CaptureBrowser oldTarget = new CaptureBrowser();
+        CaptureBrowser newTarget = new CaptureBrowser();
+        int[] uploadedBytes = { 0 };
+        int[] uploadedImages = { 0 };
+        MeetingAudioUploader audio = (workspaceId, meetingId, bytes) -> {
+            uploadedBytes[0] = bytes.length;
+            return bytes.length;
+        };
+        MeetingImageUploader images = (workspaceId, meetingId, image) -> uploadedImages[0]++;
+        TeamsTools tools = toolsWithTargets(List.of(oldTarget, newTarget), audio, images);
+
+        // 1) Démarrage sur la cible initiale.
+        ToolOutcome start = exec(tools, TeamsTools.MEETING_CAPTURE_START, "{}");
+        assertTrue(start.ok(), "le démarrage doit réussir");
+        assertTrue(oldTarget.captureActive(), "le capteur doit être en place sur la cible initiale");
+
+        // 2) Teams navigue : l'ancien socket meurt (nouvelle cible CDP) ET Page.loadEventFired est émis.
+        oldTarget.navigateLosingCaptureAndDie();
+        assertTrue(newTarget.captureActive(),
+                "la ré-injection doit avoir re-résolu la NOUVELLE cible et y ré-injecté le capteur");
+        assertFalse(oldTarget.captureActive(), "l'ancienne cible morte n'est plus utilisée");
+
+        // 3) Arrêt : passe par la cible fraîche (l'ancienne est morte) et remonte audio + images.
+        ToolOutcome stop = exec(tools, TeamsTools.MEETING_CAPTURE_STOP,
+                "{\"meeting_id\":\"m1\",\"workspace_id\":\"w1\"}");
+        assertTrue(stop.ok(), "l'arrêt doit réussir sur la cible fraîche : " + stop.errorCode());
+        assertTrue(uploadedBytes[0] > 0, "audio_bytes > 0 attendu");
+        assertTrue(uploadedImages[0] > 0, "image_count > 0 attendu");
+
+        var events = RunnerDiag.drain(200).events();
+        assertTrue(events.stream().anyMatch(e -> e.cat().equals("capture")
+                        && e.code().equals("reattach") && "ok".equals(e.fields().get("result"))),
+                "la re-résolution de la cible doit être visible dans le diagnostic F-132");
+        assertTrue(events.stream().anyMatch(e -> e.cat().equals("capture")
+                        && e.code().equals("reinject") && "ok".equals(e.fields().get("result"))),
+                "une ré-injection réussie sur la cible fraîche doit être visible (F-132)");
+    }
+
+    @Test
     @DisplayName("sans navigation, une capture qui reste active n'est pas doublée puis s'arrête bien")
     void noNavigationStillStopsCleanly() throws Exception {
         CaptureBrowser browser = new CaptureBrowser();
@@ -138,10 +194,15 @@ class TeamsMeetingCaptureReinjectTest {
 
         private boolean active;
         private int starts;
+        private boolean open = true;
 
         @Override
         public JsonNode send(String method, ObjectNode params) {
             CdpCommands.assertAllowed(method);
+            if (!open) {
+                // Cible CDP détruite (navigation) : le socket est fermé, comme WebSocketCdpConnection.
+                throw new BrowserLinkException(BrowserLinkException.LINK_LOST, "cible détruite");
+            }
             if (!CdpCommands.EVALUATE.equals(method)) {
                 return mapper.createObjectNode();
             }
@@ -192,6 +253,17 @@ class TeamsMeetingCaptureReinjectTest {
             fire(CaptureReinjector.LOAD_EVENT);
         }
 
+        /**
+         * Teams navigue vers une NOUVELLE cible CDP (SF-128-13) : le global disparaît, l'ancien socket
+         * <b>meurt</b> (toute commande lèvera), puis Page.loadEventFired est émis sur cette cible morte
+         * — la ré-injection devra re-résoudre la cible courante plutôt que réutiliser celle-ci.
+         */
+        void navigateLosingCaptureAndDie() {
+            active = false;
+            open = false;
+            fire(CaptureReinjector.LOAD_EVENT);
+        }
+
         /** Un événement de chargement sans perte du global (route SPA qui préserve le contexte). */
         void fireLoadKeepingCapture() {
             fire(CaptureReinjector.LOAD_EVENT);
@@ -225,12 +297,12 @@ class TeamsMeetingCaptureReinjectTest {
 
         @Override
         public boolean isOpen() {
-            return true;
+            return open;
         }
 
         @Override
         public void close() {
-            // rien
+            open = false;
         }
     }
 }
