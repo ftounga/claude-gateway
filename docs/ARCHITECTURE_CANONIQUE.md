@@ -1111,8 +1111,9 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   Chrome managé** (F-122, tool `teams_meeting_join` — hors catalogue agent, appelé directement par
   `TeamsMeetingService` via `RunnerToolGateway.teamsRead`). **Gateway-First** : le backend orchestre, il
   ne capture ni ne transcrit. **DRAPEAU SF-128-01** : les octets média (audio onglet + micro) sont
-  capturés en SF-128-02 ; ici `state=RECORDING` signifie « session ouverte / onglet rejoint ». La purge
-  active de la rétention est SF-128-07 (ici la durée est seulement **stockée**).
+  capturés en SF-128-02 ; ici `state=RECORDING` signifie « session ouverte / onglet rejoint ». La
+  rétention est **active** (SF-128-07) : au-delà de `retention_days`, les médias lourds (audio + images)
+  sont purgés et `media_purged_at` horodaté, l'artefact et le transcript étant conservés.
   - `meetings` : `id (uuid)`, `user_id (uuid, FK users ON DELETE CASCADE)`, `host_id (uuid, FK
     runner_hosts ON DELETE CASCADE)`, `subject_id (uuid, nullable — pointeur vers radar_subjects, sans
     FK, même choix que le registre du Radar)`, `title (varchar 300, nullable)`, `meeting_url (varchar
@@ -1123,11 +1124,14 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     `transcript (text — SF-128-04, migration 115, texte horodaté)`, `transcript_status (varchar 20 NOT
     NULL défaut NONE — NONE/PENDING/TRANSCRIBING/TRANSCRIBED/FAILED)`, `transcript_lang (varchar 20,
     nullable)`, `transcript_error (varchar 500, nullable)`,
+    `media_purged_at (timestamptz, nullable — SF-128-07, migration 116 : instant de purge des médias lourds)`,
     `started_at`, `ended_at (nullable)`, `created_at`, `updated_at`. Index `(user_id, host_id,
     started_at)`. Endpoints `/api/vigie/hosts/{hostId}/meetings` (create/stop/pause/resume/list/get),
     lecture des médias `…/{meetingId}/audio` (Range/téléchargement) et `…/{meetingId}/images[/{imageId}]`
     (SF-128-10), transcription `…/{meetingId}/transcribe` (POST, opt-in) + `…/{meetingId}/transcript`
-    (GET) (SF-128-04), exploitation `…/{meetingId}/insights` + `…/{meetingId}/ask` (POST) (SF-128-05) ;
+    (GET) (SF-128-04), exploitation `…/{meetingId}/insights` + `…/{meetingId}/ask` (POST) (SF-128-05),
+    rangement dans la carte du poste `…/{meetingId}/promote-to-card` (POST) (SF-128-11), purge manuelle
+    des médias `…/{meetingId}/media` (DELETE) (SF-128-07) ;
     gardés par le droit Teams + possession du poste + activation Vigie.
   - **Transcription (SF-128-04)** : relais Provider-First `TranscriptionProvider` (impl HTTP compatible
     Whisper, `app.stt.*` **configurable**), **asynchrone** (`TranscriptionWorker` `@Scheduled`),
@@ -1136,8 +1140,18 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   - **Exploitation (SF-128-05)** : `MeetingExploitationService` (calqué sur `RadarManagerAnswerService`)
     résume/extrait décisions·actions et répond aux questions via l'`AIProvider` — transcript (si présent)
     + images clés en **multimodal** (upload Files API → `ProviderAttachment`, ≤6). Quota + BYOK, contenu
-    = donnée (anti-injection), **rien de persisté**. L'écriture durable dans la carte du poste est
-    SF-128-11 (découpée).
+    = donnée (anti-injection), **rien de persisté**.
+  - **Enrichir la carte du poste (SF-128-11)** : `MeetingCardPromotionService` extrait les faits
+    **durables** d'une réunion (via l'`AIProvider`, patron SF-128-05) et les **range** dans le bon fichier
+    de la carte du poste — destinations = `GovernanceMapDestinations.filesOf` (fichiers `MAP` des paquets
+    actifs), écriture read-modify-write via `GovernanceHostFiles` (outils runner **existants**
+    `readFile`/`writeFile`, **aucune mise à jour runner**). Geste explicite (`POST …/promote-to-card`) ;
+    rien d'écrit si rien de durable / aucune carte active / fichier absent ; rien de persisté.
+  - **Rétention & purge des médias (SF-128-07)** : `MeetingRetentionWorker` (`@Scheduled`, désactivable)
+    → `MeetingRetentionService.purgeExpired` purge les médias lourds (audio + images, via
+    `WorkspaceStorage.deletePrefix`) au-delà de `retention_days`, vide `audio_key`/`audio_bytes`/`image_count`
+    et horodate `media_purged_at` ; **artefact + transcript conservés**. Idempotent, best-effort, borné.
+    Purge manuelle : `DELETE …/media`.
   - **Capture par onglet (Option A, §2bis)** : « Rejoindre & capturer » ordonne au runner
     `teams_meeting_join` (navigue l'onglet Teams du Chrome managé vers l'URL), puis
     `teams_meeting_capture_start` (SF-128-02 : audio onglet + micro mixés, script injecté piloté CDP) ;
