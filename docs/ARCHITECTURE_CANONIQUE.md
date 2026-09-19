@@ -1130,7 +1130,8 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     lecture des médias `…/{meetingId}/audio` (Range/téléchargement) et `…/{meetingId}/images[/{imageId}]`
     (SF-128-10), transcription `…/{meetingId}/transcribe` (POST, opt-in) + `…/{meetingId}/transcript`
     (GET) (SF-128-04), exploitation `…/{meetingId}/insights` + `…/{meetingId}/ask` (POST) (SF-128-05),
-    rangement dans la carte du poste `…/{meetingId}/promote-to-card` (POST) (SF-128-11), purge manuelle
+    rangement dans la carte du poste `…/{meetingId}/promote-to-card` (POST) (SF-128-11), push des actions
+    vers le Radar `…/{meetingId}/actions-to-radar` (POST) (SF-128-06), purge manuelle
     des médias `…/{meetingId}/media` (DELETE) (SF-128-07) ;
     gardés par le droit Teams + possession du poste + activation Vigie.
   - **Transcription (SF-128-04)** : relais Provider-First `TranscriptionProvider` (impl HTTP compatible
@@ -1147,6 +1148,14 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     actifs), écriture read-modify-write via `GovernanceHostFiles` (outils runner **existants**
     `readFile`/`writeFile`, **aucune mise à jour runner**). Geste explicite (`POST …/promote-to-card`) ;
     rien d'écrit si rien de durable / aucune carte active / fichier absent ; rien de persisté.
+  - **Actions → engagements Radar (SF-128-06)** : `MeetingActionsToRadarService` pousse les actions
+    retenues d'une réunion (SF-128-05) en engagements **`ME_TO_OTHER` (« À faire par moi »)** sur un sujet
+    du Radar, avec la **réunion pour preuve** (`RadarEvidence` `TEAMS_MEETING`), **annulables** et remontant
+    dans le résumé du matin (F-102). Réutilise le cœur d'engagement `RadarToolExecutor.recordSovereignEngagement`
+    (extrait de F-104, partagé avec « Donner la nouvelle ») + `RadarRegistry.recordEvidence` — **pas de
+    nouvelle liste de tâches**. Rattachement : `subjectId` de la requête, sinon `meeting.subjectId`, sinon
+    `needsSubject` (le consultant désigne un sujet — « le PO reste maître »). Idempotence par
+    `extraction_key` ; **aucun appel modèle** (écriture pure), rien de persisté d'autre, aucune migration.
   - **Rétention & purge des médias (SF-128-07)** : `MeetingRetentionWorker` (`@Scheduled`, désactivable)
     → `MeetingRetentionService.purgeExpired` purge les médias lourds (audio + images, via
     `WorkspaceStorage.deletePrefix`) au-delà de `retention_days`, vide `audio_key`/`audio_bytes`/`image_count`
