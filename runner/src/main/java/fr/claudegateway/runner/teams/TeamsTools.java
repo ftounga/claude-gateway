@@ -550,19 +550,26 @@ public final class TeamsTools implements ToolExecutor {
         }
         try {
             BrowserLink link = link();
-            JsonNode value = evalOn(link.connection(), MeetingTabCapture.START_SCRIPT, true);
+            CdpConnection connection = link.connection();
+            // SF-128-14 : ne PAS démarrer trop tôt. Après le join, Teams enchaîne plusieurs navigations
+            // pour rejoindre la réunion (cible CDP mouvante) ; un capteur injecté maintenant mourrait à
+            // chaque navigation. On attend d'abord que la page soit STABILISÉE (« in-call ») — plus
+            // aucune navigation depuis N secondes, avec un plafond — puis on injecte UNE fois.
+            CaptureStabilityGate.State stability = awaitMeetingStable(connection);
+            JsonNode value = evalOn(connection, MeetingTabCapture.START_SCRIPT, true);
             if (value != null && value.path("started").asBoolean(false)) {
                 ObjectNode json = mapper.createObjectNode();
                 json.put("started", true);
                 boolean micDenied = value.path("micDenied").asBoolean(false);
                 json.put("micDenied", micDenied);
-                // SF-128-12 : arme le ré-armement — le capteur sera ré-injecté si Teams recharge la
-                // page (SPA) avant l'arrêt. Best-effort : un ré-armement raté ne défait pas la capture.
-                boolean reinjectArmed = armReinjection(link.connection());
-                // Diagnostic F-132 : la capture a démarré — un état, jamais le média. On dit aussi si
-                // le ré-armement (robustesse à la navigation) est en place, pour le VOIR sur call réel.
+                // SF-128-12/13 : arme le ré-armement — FILET si une navigation TARDIVE survenait malgré
+                // la stabilisation. Best-effort : un ré-armement raté ne défait pas la capture.
+                boolean reinjectArmed = armReinjection(connection);
+                // Diagnostic F-132 : la capture a démarré — un état, jamais le média. On dit aussi si la
+                // page était stable (vs démarrage best-effort au plafond) et si le filet est en place.
                 RunnerDiag.info("capture", "start", null,
-                        Map.of("result", "ok", "micDenied", micDenied, "reinjectArmed", reinjectArmed));
+                        Map.of("result", "ok", "micDenied", micDenied, "reinjectArmed", reinjectArmed,
+                                "stable", stability == CaptureStabilityGate.State.STABLE));
                 return ToolOutcome.ok(json.toString());
             }
             String error = value == null ? "capture_start_failed"
@@ -708,6 +715,40 @@ public final class TeamsTools implements ToolExecutor {
         }
         JsonNode result = connection.send(CdpCommands.EVALUATE, params);
         return result == null ? null : result.path("result").get("value");
+    }
+
+    /**
+     * <b>Attend que la page de réunion soit stabilisée</b> avant de démarrer la capture (F-128 /
+     * SF-128-14). Après le join, Teams enchaîne des navigations : on active le domaine {@code Page}
+     * (best-effort, comme {@link CaptureReinjector#arm()}), on s'abonne à ses événements de cycle de
+     * vie, et on ré-arme un minuteur de silence à chaque navigation du cadre principal — on ne rend la
+     * main qu'une fois la page {@link CaptureStabilityGate.State#STABLE stable} (plus de navigation
+     * depuis {@code QUIET_MILLIS}) ou le {@link CaptureStabilityGate.State#CAP_REACHED plafond} atteint
+     * (démarrage best-effort). Ne lève jamais : un {@code Page.enable} raté n'empêche pas l'attente.
+     *
+     * @return l'issue de l'attente ({@code STABLE} nominal, {@code CAP_REACHED} best-effort)
+     */
+    private CaptureStabilityGate.State awaitMeetingStable(CdpConnection connection) {
+        CaptureStabilityGate gate = new CaptureStabilityGate(
+                CaptureStabilityGate.DEFAULT_QUIET_MILLIS,
+                CaptureStabilityGate.DEFAULT_CAP_MILLIS,
+                CaptureStabilityGate.DEFAULT_POLL_MILLIS);
+        try {
+            connection.send(CdpCommands.PAGE_ENABLE, mapper.createObjectNode());
+        } catch (RuntimeException e) {
+            // Page.enable a pu déjà être activé (NetworkObserver) ou échouer : sans conséquence, on
+            // s'abonne quand même — l'événement arrivera si le domaine est actif d'une façon ou d'une autre.
+        }
+        connection.onEvent(CaptureReinjector.LOAD_EVENT, event -> gate.onNavigation());
+        connection.onEvent(CaptureReinjector.FRAME_NAVIGATED, gate::onFrameNavigated);
+        BrowserLink.Sleeper waiter = sleeper != null ? sleeper : millis -> { };
+        CaptureStabilityGate.State state = gate.awaitStable(waiter);
+        // Diagnostic F-132 : combien de navigations observées, et comment l'attente s'est conclue —
+        // pour VOIR sur call réel que la capture n'a démarré qu'une fois la réunion « in-call ».
+        RunnerDiag.info("capture", "awaiting_stable", null,
+                Map.of("result", state == CaptureStabilityGate.State.STABLE ? "stable" : "cap",
+                        "navigations", gate.navigationsObserved()));
+        return state;
     }
 
     /**
