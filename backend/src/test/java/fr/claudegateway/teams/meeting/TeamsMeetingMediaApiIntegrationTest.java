@@ -101,6 +101,21 @@ class TeamsMeetingMediaApiIntegrationTest {
     }
 
     @Test
+    @DisplayName("GET audio : Content-Type audio/webm même si l'upload était ambigu (SF-128-17)")
+    void audioContentTypeIsWebmEvenIfUploadedAmbiguous() throws Exception {
+        // Le runner a pu déposer l'audio en application/octet-stream : la lecture doit malgré tout
+        // servir audio/webm (redéduit de l'extension), sans quoi le <audio> reste à 0:00/0:00.
+        UUID id = meetingRepository.save(baseMeeting(userId(aliceHost), aliceHost)
+                .state(MeetingState.STOPPED).build()).getId();
+        mediaService.storeAudio(userId(aliceHost), aliceHost, id, "application/octet-stream", AUDIO);
+        mockMvc.perform(get(audioUrl(aliceHost, id)).contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CONTENT_TYPE, "audio/webm"))
+                .andExpect(header().string(HttpHeaders.ACCEPT_RANGES, "bytes"));
+    }
+
+    @Test
     @DisplayName("GET audio avec Range : 206 + Content-Range + corps partiel")
     void audioRange() throws Exception {
         UUID id = seedMeetingWithAudio(userId(aliceHost), aliceHost);

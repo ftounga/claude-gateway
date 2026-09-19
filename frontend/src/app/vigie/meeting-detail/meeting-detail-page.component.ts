@@ -93,7 +93,14 @@ interface DeckImage {
           <h2 class="card__title">Audio</h2>
           @if (m.hasAudio) {
             @if (audioUrl(); as url) {
-              <audio class="detail__player" [src]="url" controls preload="metadata"></audio>
+              <audio
+                #player
+                class="detail__player"
+                [src]="url"
+                controls
+                preload="metadata"
+                (loadedmetadata)="onAudioMetadata(player)"
+              ></audio>
               <div class="detail__actions">
                 <button
                   mat-flat-button
@@ -621,6 +628,8 @@ export class MeetingDetailPageComponent implements OnInit, OnDestroy {
   private objectUrls: string[] = [];
   private audioObjectUrl: string | null = null;
   private downloadName = 'reunion.webm';
+  /** La réparation de durée (webm sans Duration) ne se joue qu'une fois par chargement. */
+  private durationRepairDone = false;
 
   readonly hasMeeting = computed(() => this.meeting() !== null);
 
@@ -647,6 +656,7 @@ export class MeetingDetailPageComponent implements OnInit, OnDestroy {
     this.loading.set(true);
     this.error.set('none');
     this.revokeAll();
+    this.durationRepairDone = false;
     this.audioUrl.set(null);
     this.audioError.set(null);
     this.deck.set([]);
@@ -692,7 +702,9 @@ export class MeetingDetailPageComponent implements OnInit, OnDestroy {
   private loadAudio(hostId: string, meetingId: string): void {
     this.service.audioBlob(hostId, meetingId).subscribe({
       next: (blob) => {
-        this.audioObjectUrl = URL.createObjectURL(blob);
+        // Ré-typage défensif : sans un type audio décodable, `<audio>` refuse la source (0:00/0:00).
+        const audioBlob = this.ensureAudioType(blob);
+        this.audioObjectUrl = URL.createObjectURL(audioBlob);
         this.objectUrls.push(this.audioObjectUrl);
         this.audioUrl.set(this.sanitizer.bypassSecurityTrustUrl(this.audioObjectUrl));
       },
@@ -700,6 +712,42 @@ export class MeetingDetailPageComponent implements OnInit, OnDestroy {
         this.audioError.set(httpErrorMessage(err, "L'audio n'a pas pu être chargé."));
       },
     });
+  }
+
+  /**
+   * Garantit un type audio **décodable** sur le Blob qui alimente le `<audio>`. Le webm de
+   * `MediaRecorder` peut arriver sans type exploitable (Blob de type vide, ou `application/octet-stream`
+   * selon l'environnement) : le navigateur refuse alors de décoder et le lecteur reste à `0:00 / 0:00`.
+   * On conserve un type audio déjà valide, sinon on force `audio/webm` (défaut de la capture, Opus).
+   */
+  private ensureAudioType(blob: Blob): Blob {
+    if (blob.type && blob.type.startsWith('audio/')) {
+      return blob;
+    }
+    return new Blob([blob], { type: 'audio/webm' });
+  }
+
+  /**
+   * Répare la **durée** d'un webm `MediaRecorder`, souvent dépourvu de l'élément *Duration* dans son
+   * en-tête (flux « live »). Sans elle, Chrome lit `duration = Infinity`, affiche `0:00 / 0:00`,
+   * désactive la barre de progression et **refuse de lancer la lecture** — le lecteur paraît grisé.
+   * Un *seek* en toute fin force le navigateur à calculer la vraie durée ; on revient ensuite à `0`.
+   * Déclenché **une seule fois** par chargement ; si la durée est déjà connue, on ne touche à rien.
+   */
+  onAudioMetadata(el: HTMLAudioElement): void {
+    if (this.durationRepairDone) {
+      return;
+    }
+    if (el.duration === Infinity || Number.isNaN(el.duration)) {
+      this.durationRepairDone = true;
+      const reset = (): void => {
+        el.removeEventListener('timeupdate', reset);
+        el.currentTime = 0;
+      };
+      el.addEventListener('timeupdate', reset);
+      // Valeur volontairement énorme : Chrome borne au réel et déclenche le calcul de durée.
+      el.currentTime = 1e101;
+    }
   }
 
   private loadDeck(hostId: string, meetingId: string): void {
