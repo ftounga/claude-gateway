@@ -94,4 +94,25 @@ describe('MeetingCapturePanelComponent', () => {
     const root = setup(throwError(() => new HttpErrorResponse({ status: 500 })));
     expect(root.querySelector('.meetings__error')).not.toBeNull();
   });
+
+  // --- SF-128-15 : liste des réunions passées défilante bornée ---
+
+  const past = (id: string): TeamsMeeting => ({
+    ...recording, id, title: `Réunion ${id}`, state: 'STOPPED', endedAt: '2026-09-18T11:00:00Z',
+  });
+
+  it('SF-128-15 : les réunions passées sont dans un conteneur défilant borné', () => {
+    const root = setup(of([past('m1'), past('m2'), past('m3')]));
+    const list = root.querySelector('.meetings__past-list');
+    expect(list).not.toBeNull();
+    expect(list!.querySelectorAll('.past-row').length).toBe(3);
+  });
+
+  it('SF-128-15 : chaque réunion passée reste cliquable vers son détail', () => {
+    const root = setup(of([past('m1')]));
+    const row = root.querySelector<HTMLAnchorElement>('.meetings__past-list .past-row');
+    expect(row).not.toBeNull();
+    // routerLink résolu → href vers l'écran de détail de la réunion.
+    expect(row!.getAttribute('href')).toContain('/vigie/h1/reunions/m1');
+  });
 });
