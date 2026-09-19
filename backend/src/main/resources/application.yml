@@ -421,6 +421,25 @@ app:
       # TEMPORAIRES du fournisseur (429 trop de requêtes, 529 surchargé) : un 500 n'est jamais
       # rejoué, la série d'outils du tour pourrait être exécutée deux fois.
       agent-max-attempts: ${ANTHROPIC_AGENT_MAX_ATTEMPTS:3}
+  stt:
+    # SERVICE DE TRANSCRIPTION (F-128 / SF-128-04), relais compatible Whisper. ETEINT PAR DEFAUT
+    # (DRAPEAU FORT) : l'audio de réunion sort du poste vers ce service — sensible en banque. Tant que
+    # base-url ET api-key ne sont pas fournis par l'environnement, aucune donnée ne part et le
+    # déclenchement répond « STT non configuré ». La clé vient EXCLUSIVEMENT de l'environnement, jamais
+    # commitée ni journalisée. Le PO tranchera service hébergé vs local ; ici, le tuyau, éteint.
+    base-url: ${APP_STT_BASE_URL:}
+    api-key: ${APP_STT_API_KEY:}
+    model: ${APP_STT_MODEL:whisper-1}
+    # Langue attendue (ex. fr) ou vide pour laisser le service détecter.
+    language: ${APP_STT_LANGUAGE:}
+    timeout: ${APP_STT_TIMEOUT:PT120S}
+    # Borne de taille de l'audio envoyé (25 Mo, limite usuelle Whisper) ; au-delà => FAILED nommé.
+    max-audio-bytes: ${APP_STT_MAX_AUDIO_BYTES:26214400}
+    worker:
+      # Worker intra-backend qui transcrit les réunions PENDING hors thread HTTP (async, règle CLAUDE.md),
+      # aligné sur OcrPollingWorker/IngestionWorker. `false` en test pour piloter le service directement.
+      enabled: ${APP_STT_WORKER_ENABLED:true}
+      interval: ${APP_STT_WORKER_INTERVAL:20000}
   governance:
     # Le JUGE INDÉPENDANT (F-94 / SF-94-02) : un SECOND appel qui compare la carte du poste aux
     # notes des projets et répond à une question unique — « qu'est-ce qui est cité là et absent

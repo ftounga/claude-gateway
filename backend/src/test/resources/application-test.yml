@@ -46,6 +46,14 @@ app:
     # IngestionService.ingestPending()/ingest() directement (déterminisme, pas de scheduler concurrent).
     ingestion:
       enabled: false
+  # STT (F-128 / SF-128-04) : worker de transcription désactivé en tests ; la logique est testée en
+  # appelant TranscriptionService.transcribePending() directement. Base-url/api-key vides = STT éteint
+  # (les tests qui veulent un STT « configuré » surchargent ces propriétés).
+  stt:
+    base-url: ""
+    api-key: ""
+    worker:
+      enabled: false
   jwt:
     secret: test-only-jwt-secret-please-override-in-every-real-environment-0123456789
     expiration: PT24H

@@ -975,6 +975,16 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse("invalid_state", ex.getMessage()));
     }
 
+    @ExceptionHandler(fr.claudegateway.teams.meeting.stt.TranscriptionProviderUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handleTranscriptionNotConfigured(
+            fr.claudegateway.teams.meeting.stt.TranscriptionProviderUnavailableException ex) {
+        // DRAPEAU FORT (F-128 / SF-128-04) : STT éteint par défaut. Aucun octet ne sort tant que le PO
+        // n'a pas configuré de service — le déclenchement répond « STT non configuré », rien n'est enfilé.
+        log.debug("Transcription refusée : STT non configuré");
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(new ErrorResponse("stt_not_configured", ex.getMessage()));
+    }
+
     @ExceptionHandler(fr.claudegateway.teams.meeting.MeetingCaptureException.class)
     public ResponseEntity<ErrorResponse> handleMeetingCapture(
             fr.claudegateway.teams.meeting.MeetingCaptureException ex) {
