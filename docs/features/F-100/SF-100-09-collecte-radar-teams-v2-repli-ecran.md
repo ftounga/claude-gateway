@@ -1,5 +1,12 @@
 # SF-100-09 — Collecte Radar sur Teams v2 : brancher le repli « lecture-écran »
 
+> **⛔ CLOSE — DÉJÀ LIVRÉ (2026-09-19).** Vérification à la livraison : le repli lecture-écran est **déjà
+> branché et mergé** par **SF-89-06 (PR #560, 2026-09-13)** — `RadarTools.verify`, `TeamsRadarCollector.run`
+> via `TeamsScreenFallback`, 38 tests verts. La prémisse de ce cadrage (« pas branché ») venait d'une note
+> de risque F-100 **périmée** (corrigée). **Aucun code écrit.** Seul reliquat réel (non-code) : **activer la
+> synchro du soir** (SF-100-07, geste) et **caler/valider les sélecteurs DOM Teams v2 sur poste réel**
+> (`TeamsScreen.VERSION` « à confirmer »). Le cadrage ci-dessous est conservé pour trace.
+
 > Cadrage du 2026-09-19 (PO). **Livraison demandée.** Referme le **risque déjà suivi dans F-100** : sur le
 > nouveau Teams (v2), la collecte du Radar capte les réunions mais **pas les conversations ni les
 > transcriptions**.
