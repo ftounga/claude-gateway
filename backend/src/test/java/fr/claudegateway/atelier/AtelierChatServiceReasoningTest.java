@@ -137,16 +137,43 @@ class AtelierChatServiceReasoningTest {
     }
 
     @Test
-    void doesNotKeepTheReasoningBeyondTheTurn() {
+    void keepsTheReasoningInTheTraceSoTheNextTurnCanReplayIt() {
+        // DÉCISION RENVERSÉE, F-134 / SF-134-04. La trajectoire ne gardait RIEN du raisonnement :
+        // « il vit le temps d'un tour ». L'intention était sage — ne pas rejouer un bloc signé hors
+        // de son contexte.
+        //
+        // Mais la conséquence ne se voyait pas : pendant le tour, le message assistant envoyé au
+        // fournisseur commence par ses blocs de raisonnement, et c'est CET ensemble qu'il met en
+        // cache. En les omettant au rejeu, on lui renvoyait un ruban qui différait du sien dès le
+        // premier bloc de chaque tour — tout le reste était réécrit au double du tarif d'entrée.
+        // Mesuré : 23 % de contexte relu sur un fil de deux tours, 98 % du coût d'un tour en
+        // écriture de cache.
+        //
+        // Sur le modèle servi, les blocs de raisonnement des tours précédents sont PRÉSERVÉS par
+        // le fournisseur : les lui renvoyer inchangés est ce qu'il attend. Ce qu'il refuse, c'est
+        // un bloc RETOUCHÉ — et le rejeu ne les retouche pas, il les recopie.
         agentProvider.enqueueToolCallWithReasoning("read_file", "sig-1", "path", "notes.txt");
         agentProvider.enqueueFinal("J'ai lu notes.txt.");
 
         service.chat(userId, workspaceId, "lis notes.txt");
 
-        // Le raisonnement vit le temps d'un tour : la trajectoire persistée n'en garde rien, donc le
-        // message suivant ne peut pas rejouer un bloc signé hors de son contexte.
         String trace = lastSavedAssistant().getToolTrace();
-        assertThat(trace).doesNotContain("sig-1").doesNotContain("thinking");
+        assertThat(trace).contains("sig-1");
+    }
+
+    @Test
+    void theReasoningIsNeverExposedOutsideTheProviderLoop() {
+        // La contrepartie de la décision ci-dessus : le raisonnement est conservé POUR LE REJEU,
+        // pas pour être lu. Il ne part ni dans la réponse rendue au client, ni dans le relevé du
+        // tour — seule la trajectoire, qui ne sort jamais telle quelle, le porte.
+        agentProvider.enqueueToolCallWithReasoning("read_file", "sig-1", "path", "notes.txt");
+        agentProvider.enqueueFinal("J'ai lu notes.txt.");
+
+        AtelierChatService.AtelierChatResult result =
+                service.chat(userId, workspaceId, "lis notes.txt");
+
+        assertThat(result.reply()).doesNotContain("sig-1");
+        assertThat(lastSavedAssistant().getTerminalJson()).doesNotContain("sig-1");
     }
 
     // ------------------------------------------- F-118 / SF-118-01 : effort adaptatif à l'étape

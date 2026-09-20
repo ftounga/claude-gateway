@@ -7,6 +7,8 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import org.springframework.util.StringUtils;
+
 import fr.claudegateway.agent.AgentContentBlock;
 import fr.claudegateway.agent.AgentMessage;
 
@@ -45,9 +47,53 @@ public record AtelierToolTrace(List<Step> steps) {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    /** Une itération de la boucle : le commentaire de l'agent, puis ses appels d'outils. */
+    /**
+     * Une itération de la boucle : le <b>raisonnement</b> du modèle, son commentaire, puis ses
+     * appels d'outils — exactement l'ordre dans lequel ils ont été envoyés au fournisseur.
+     *
+     * <p><b>{@code thoughts} est arrivé avec F-134 / SF-134-04.</b> Une trace écrite avant ne le
+     * porte pas : le champ vaut alors {@code null} et le tour se rejoue comme avant, sans erreur —
+     * c'est tout l'objet du {@code @JsonIgnoreProperties} ci-dessus.</p>
+     */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Step(String text, List<Call> calls) {
+    public record Step(String text, List<Call> calls, List<Thought> thoughts) {
+
+        /** Forme d'avant F-134 / SF-134-04, conservée pour les appelants et les traces déjà écrites. */
+        public Step(String text, List<Call> calls) {
+            this(text, calls, List.of());
+        }
+
+        public Step {
+            thoughts = thoughts == null ? List.of() : List.copyOf(thoughts);
+        }
+    }
+
+    /**
+     * Un bloc de <b>raisonnement</b> du modèle, conservé pour être rejoué <b>tel quel</b>
+     * (F-134 / SF-134-04).
+     *
+     * <p><b>Pourquoi il est persisté.</b> Pendant un tour, le message assistant envoyé au
+     * fournisseur commence par ses blocs de raisonnement — et c'est cet ensemble qu'il met en
+     * cache. Jusqu'ici, le rejeu les omettait : le ruban renvoyé différait donc de celui qui était
+     * en mémoire <b>dès le premier bloc de chaque tour</b>, et tout ce qui suivait était réécrit au
+     * double du tarif d'entrée. Mesuré : 23 % de contexte relu sur un fil de deux tours.</p>
+     *
+     * <p><b>Le bloc est signé.</b> Le fournisseur exige de le retrouver inchangé : ni retouché, ni
+     * reconstruit, ni omis (voir {@code AgentContentBlock.Reasoning}, F-39 / SF-39-10). Le texte est
+     * le plus souvent vide — la signature, elle, ne l'est jamais et doit survivre au trajet.</p>
+     *
+     * @param text      texte du raisonnement, souvent vide
+     * @param signature signature opaque du fournisseur
+     * @param redacted  charge d'un raisonnement <b>expurgé</b>, réémise sans interprétation ; quand
+     *                  elle est présente, elle prime et les deux autres champs sont ignorés
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record Thought(String text, String signature, String redacted) {
+
+        /** Vrai quand le bloc ne porte rien : ni signature, ni charge expurgée. Inutile à rejouer. */
+        boolean isEmpty() {
+            return !StringUtils.hasText(signature) && !StringUtils.hasText(redacted);
+        }
     }
 
     /** Un appel d'outil et son résultat, appariés par {@code id} — l'API refuse l'un sans l'autre. */
@@ -138,6 +184,18 @@ public record AtelierToolTrace(List<Step> steps) {
             List<Call> calls = step.calls() == null ? List.of() : step.calls();
             List<AgentContentBlock> assistant = new ArrayList<>();
             List<AgentContentBlock> results = new ArrayList<>();
+            // Le raisonnement EN TÊTE, avant le texte : c'est l'ordre dans lequel le fournisseur
+            // l'a reçu, et donc mis en cache (F-134 / SF-134-04). Le remettre ailleurs — ou pas du
+            // tout — suffit à faire réécrire tout ce qui suit.
+            for (Thought thought : step.thoughts()) {
+                if (thought == null || thought.isEmpty()) {
+                    continue;
+                }
+                assistant.add(StringUtils.hasText(thought.redacted())
+                        ? new AgentContentBlock.RedactedReasoning(thought.redacted())
+                        : new AgentContentBlock.Reasoning(
+                                thought.text() == null ? "" : thought.text(), thought.signature()));
+            }
             if (step.text() != null && !step.text().isBlank()) {
                 assistant.add(new AgentContentBlock.Text(step.text()));
             }
