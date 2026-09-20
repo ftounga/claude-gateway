@@ -1190,10 +1190,15 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     Whisper, `app.stt.*` **configurable**), **asynchrone** (`TranscriptionWorker` `@Scheduled`),
     **éteinte par défaut** (sans base-url/clé : 503 `stt_not_configured`, aucun octet ne sort). DRAPEAU
     FORT : une fois configuré, l'audio de réunion quitte le poste vers le service STT (sensible en banque).
-  - **Exploitation (SF-128-05)** : `MeetingExploitationService` (calqué sur `RadarManagerAnswerService`)
-    résume/extrait décisions·actions et répond aux questions via l'`AIProvider` — transcript (si présent)
-    + images clés en **multimodal** (upload Files API → `ProviderAttachment`, ≤6). Quota + BYOK, contenu
-    = donnée (anti-injection), **rien de persisté**.
+  - **Exploitation (SF-128-05 ; consolidation SF-128-20b)** : `MeetingExploitationService` (calqué sur
+    `RadarManagerAnswerService`) résume/extrait décisions·actions et répond aux questions via l'`AIProvider`.
+    Il **consolide jusqu'à trois matières distinctes et balisées** (SF-128-20b) : (1) la **transcription du
+    client** (`external_transcript`, SF-128-20a) **prioritaire** — les **vrais noms** n'en viennent que
+    d'elle, (2) **notre** transcript (SF-128-04) en complément, (3) les **images clés** en **multimodal**
+    (upload Files API → `ProviderAttachment`, ≤6). Les consignes imposent de **tracer la provenance** de
+    chaque point et de **signaler les contradictions** (jamais de mélange muet). `MeetingInsights` porte
+    `hasTranscript`/`hasExternalTranscript`/`imagesUsed`. Bornes de dépense (troncature par transcription,
+    images plafonnées, sortie bornée). Quota + BYOK, contenu = donnée (anti-injection), **rien de persisté**.
   - **Enrichir la carte du poste (SF-128-11)** : `MeetingCardPromotionService` extrait les faits
     **durables** d'une réunion (via l'`AIProvider`, patron SF-128-05) et les **range** dans le bon fichier
     de la carte du poste — destinations = `GovernanceMapDestinations.filesOf` (fichiers `MAP` des paquets
