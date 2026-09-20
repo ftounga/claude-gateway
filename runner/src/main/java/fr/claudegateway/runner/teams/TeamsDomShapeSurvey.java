@@ -42,6 +42,13 @@ final class TeamsDomShapeSurvey {
      */
     static final String CHAT_LIST_CODE = "chat_list";
     /**
+     * SF-89-19 : la <b>forme d'une zone de layout</b> du document principal
+     * ({@code [data-tid^="app-layout-area--"]} : main, sidebar, rail, header…). SF-89-16→18 ne relevaient
+     * que {@code --main} ; c'est dans une <b>autre</b> zone (panneau de gauche) que vit la liste des chats.
+     * {@code fields.area} porte le {@code data-tid} de la zone (ex. {@code app-layout-area--sidebar}).
+     */
+    static final String LAYOUT_CODE = "layout_area";
+    /**
      * SF-89-17 : un cadre iframe inaccessible — <b>SF-89-18</b> le recentre sur les iframes réellement
      * cross-origin ({@code contentDocument} nul). Dit, jamais tu.
      */
@@ -114,6 +121,9 @@ final class TeamsDomShapeSurvey {
         TeamsDomShape.Survey mainList = captureAt(conversationsRoute(before));
         emit(LIST_CODE, mainList, true, MAIN, null);
         emit(RAIL_CODE, capture(TeamsDomShape.RAIL_SELECTORS), true, MAIN, RAIL_AREA);
+        // SF-89-19 : TOUTES les zones de layout du document principal (dont --sidebar), et la liste des
+        // chats qui y vit — SF-89-16→18 ne relevaient que --main, où la liste des conversations n'est pas.
+        surveyLayoutAreas();
         boolean opened = openFirstThread();
         emit(THREAD_CODE, capture(TeamsDomShape.ROOT_SELECTORS), opened, MAIN, null);
         emit(THREAD_CODE, capture(TeamsDomShape.RUNWAY_SELECTORS), opened, MAIN, RUNWAY_AREA);
@@ -123,6 +133,33 @@ final class TeamsDomShapeSurvey {
         // vit vraiment la liste des conversations v2, invisible à l'auto-attache car pas une cible séparée.
         surveySameOriginFrames();
         restore(before);
+    }
+
+    /**
+     * <b>Relève toutes les zones de layout du document principal</b> (SF-89-19) : exécute <b>un</b> script
+     * dans l'onglet ({@link PageActions#readScript}, {@code Runtime.evaluate} déjà en liste blanche — aucune
+     * nouvelle commande CDP) qui énumère {@code [data-tid^="app-layout-area--"]} et, pour chaque zone, relève
+     * sa forme (émise sous {@link #LAYOUT_CODE}, {@code fields.area} = le {@code data-tid} de la zone) et la
+     * <b>liste des chats</b> qui y vit (émise sous {@link #CHAT_LIST_CODE} avec la même {@code area}, si
+     * trouvée). C'est dans une zone autre que {@code --main} (le panneau de gauche) que vit la liste des
+     * conversations v2, jamais captée par SF-89-16→18. Ne lève jamais.
+     */
+    private void surveyLayoutAreas() {
+        java.util.List<TeamsDomShape.AreaShape> areas;
+        try {
+            JsonNode raw = actions.readScript(TeamsDomShape.areasScript(mapper));
+            areas = TeamsDomShape.refilterAreas(raw);
+        } catch (RuntimeException e) {
+            // Page sortie du domaine (garde F-108) ou lecture refusée : le document principal a déjà été relevé.
+            return;
+        }
+        for (TeamsDomShape.AreaShape area : areas) {
+            emit(LAYOUT_CODE, area.shape(), true, MAIN, area.area());
+            // La liste des chats n'est émise que si une zone la porte : on ne noie pas le Journal de vues vides.
+            if (area.list().found() || !area.list().nodes().isEmpty()) {
+                emit(CHAT_LIST_CODE, area.list(), true, MAIN, area.area());
+            }
+        }
     }
 
     /**

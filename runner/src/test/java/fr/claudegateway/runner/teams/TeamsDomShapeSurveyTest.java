@@ -164,7 +164,7 @@ class TeamsDomShapeSurveyTest {
     }
 
     @Test
-    @DisplayName("Vie privée bout-en-bout (CA7) : aucun nom/message/id ne fuit — document ET iframe")
+    @DisplayName("Vie privée bout-en-bout (CA5/CA7) : aucun nom/message/id ne fuit — document, iframe ET sidebar")
     void no_value_leaks_end_to_end_including_iframe() {
         RunnerDiag.setLevel(RunnerDiagLevel.DEBUG);
         StubConnection cdp = new StubConnection("https://teams.microsoft.com/v2/#/conversations");
@@ -175,11 +175,53 @@ class TeamsDomShapeSurveyTest {
         String all = drainShape().stream()
                 .map(e -> e.msg() + " " + e.fields())
                 .reduce("", (a, b) -> a + " || " + b);
-        // Valeurs semées dans le document principal ET dans l'iframe.
+        // Valeurs semées dans le document principal, dans l'iframe same-origin ET dans la zone --sidebar (SF-89-19).
         for (String forbidden : List.of("Jean Dupont", "bonjour", "Paul", "secret", "thread.v2",
                 "jean.dupont@client.fr", "Marie Martin", "demain")) {
             assertFalse(all.contains(forbidden), "une valeur a fui : « " + forbidden + " » — " + all);
         }
+    }
+
+    @Test
+    @DisplayName("Zones de layout (SF-89-19/CA2) : chaque app-layout-area-- est relevée sous layout_area")
+    void surveys_all_layout_areas() {
+        RunnerDiag.setLevel(RunnerDiagLevel.DEBUG);
+        StubConnection cdp = new StubConnection("https://teams.microsoft.com/v2/#/conversations");
+        PageActions actions = new PageActions(cdp, noSleep(), sink);
+
+        TeamsDomShapeSurvey.run(actions, noSleep());
+
+        List<RunnerDiagEvent> events = drainShape();
+        // CA2 : --main ET --sidebar sont relevées sous layout_area, étiquetées frame=main.
+        assertTrue(events.stream().anyMatch(e -> TeamsDomShapeSurvey.LAYOUT_CODE.equals(e.code())
+                        && "app-layout-area--main".equals(e.fields().get("area"))
+                        && TeamsDomShapeSurvey.MAIN.equals(e.fields().get("frame"))),
+                "la zone --main est relevée sous layout_area (CA2) : " + events);
+        assertTrue(events.stream().anyMatch(e -> TeamsDomShapeSurvey.LAYOUT_CODE.equals(e.code())
+                        && "app-layout-area--sidebar".equals(e.fields().get("area"))
+                        && TeamsDomShapeSurvey.MAIN.equals(e.fields().get("frame"))),
+                "la zone --sidebar est relevée sous layout_area (CA2) : " + events);
+    }
+
+    @Test
+    @DisplayName("Liste dans la sidebar (SF-89-19/CA3) : chat_list émis avec area=app-layout-area--sidebar")
+    void surveys_chat_list_in_sidebar_layout_area() {
+        RunnerDiag.setLevel(RunnerDiagLevel.DEBUG);
+        StubConnection cdp = new StubConnection("https://teams.microsoft.com/v2/#/conversations");
+        PageActions actions = new PageActions(cdp, noSleep(), sink);
+
+        TeamsDomShapeSurvey.run(actions, noSleep());
+
+        List<RunnerDiagEvent> events = drainShape();
+        // CA3 : la liste des chats vit dans la zone --sidebar du document principal.
+        assertTrue(events.stream().anyMatch(e -> TeamsDomShapeSurvey.CHAT_LIST_CODE.equals(e.code())
+                        && "app-layout-area--sidebar".equals(e.fields().get("area"))
+                        && TeamsDomShapeSurvey.MAIN.equals(e.fields().get("frame"))),
+                "la liste des chats est relevée sous chat_list depuis la sidebar (CA3) : " + events);
+        // La zone --main n'a pas de liste : aucun chat_list ne doit porter area=app-layout-area--main.
+        assertFalse(events.stream().anyMatch(e -> TeamsDomShapeSurvey.CHAT_LIST_CODE.equals(e.code())
+                        && "app-layout-area--main".equals(e.fields().get("area"))),
+                "aucune liste n'est inventée pour une zone qui n'en porte pas : " + events);
     }
 
     @Test
@@ -297,6 +339,9 @@ class TeamsDomShapeSurveyTest {
             ObjectNode holder = result.putObject("result");
             if (expression.contains("location.href")) {
                 holder.put("value", url);
+            } else if (expression.contains("cg-domareas")) {
+                // SF-89-19 : l'énumération de toutes les zones de layout du document principal.
+                holder.set("value", layoutAreasDom());
             } else if (expression.contains("cg-domframes")) {
                 // SF-89-18 : la descente same-origin par contentDocument, exécutée dans l'onglet.
                 holder.set("value", sameOriginFramesDom());
@@ -390,6 +435,53 @@ class TeamsDomShapeSurveyTest {
             ObjectNode blocked = frames.addObject();
             blocked.put("label", "iframe#same-origin-xo");
             blocked.put("blocked", true);
+            return dom;
+        }
+
+        /**
+         * SF-89-19 : ce que l'énumération des zones de layout (script « cg-domareas », dans l'onglet) rend —
+         * plusieurs {@code app-layout-area--*}, dont {@code --main} (sans liste) et {@code --sidebar} portant
+         * la <b>liste des chats</b> (arbre + item) seedée de valeurs sensibles, pour prouver que rien ne
+         * franchit l'expurgation, zone sidebar incluse.
+         */
+        private JsonNode layoutAreasDom() {
+            ObjectNode dom = mapper.createObjectNode();
+            ArrayNode areas = dom.putArray("areas");
+
+            // La zone --main : sa forme, mais pas de liste des conversations (c'est le volet du chat ouvert).
+            ObjectNode main = areas.addObject();
+            main.put("area", "app-layout-area--main");
+            ObjectNode mainShape = main.putObject("shape");
+            mainShape.put("found", true);
+            mainShape.put("truncated", false);
+            ArrayNode mainNodes = mainShape.putArray("nodes");
+            ObjectNode mainRoot = mainNodes.addObject();
+            fill(mainRoot, 0, 1, "div", "app-layout-area--main", "main", 0, 1);
+            emptyShape(main, "list");
+
+            // La zone --sidebar : LÀ vit la liste des conversations, seedée de valeurs sensibles.
+            ObjectNode sidebar = areas.addObject();
+            sidebar.put("area", "app-layout-area--sidebar");
+            ObjectNode sideShape = sidebar.putObject("shape");
+            sideShape.put("found", true);
+            sideShape.put("truncated", false);
+            ArrayNode sideNodes = sideShape.putArray("nodes");
+            ObjectNode sideRoot = sideNodes.addObject();
+            fill(sideRoot, 0, 1, "div", "app-layout-area--sidebar", "complementary", 0, 1);
+            ObjectNode list = sidebar.putObject("list");
+            list.put("found", true);
+            list.put("truncated", false);
+            ArrayNode listNodes = list.putArray("nodes");
+            ObjectNode tree = listNodes.addObject();
+            fill(tree, 0, 1, "div", "chat-list", "tree", 0, 12);
+            ObjectNode item = listNodes.addObject();
+            fill(item, 1, 12, "div", "chat-list-item-19:secret@thread.v2", "treeitem", 0, 2);
+            // Toutes ces valeurs doivent être expurgées, même venant de la zone sidebar.
+            item.put("text", "bonjour Paul, on se voit demain ?");
+            item.putArray("aria").add("aria-label");
+            item.putArray("attrs").add("id");
+            item.put("title", "Marie Martin");
+            item.put("href", "https://teams.microsoft.com/x/19:secret@thread.v2");
             return dom;
         }
 
