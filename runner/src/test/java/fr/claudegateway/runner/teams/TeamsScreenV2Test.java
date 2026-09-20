@@ -26,6 +26,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  * <p>Ces DOM modèles v2 restent <b>à confirmer sur poste réel</b> : ils éprouvent la logique de sélection et
  * d'extraction recalée, pas que Teams sert exactement cette structure. Le repli ancien reste couvert par
  * {@link TeamsScreenFallbackTest} (DOM {@code conversations.html} / {@code fil-ecran-1.html}).</p>
+ *
+ * <p>SF-89-21 : le rail v2 mêle des {@code treeitem} de navigation (« Mentions »…) et de conversation. Seuls
+ * ceux qui portent un {@code PersonaAvatar} <b>ou</b> un {@code presence-badge} sont des conversations ; la
+ * navigation est écartée. Le repli ancien ({@code chat-list-item}) n'est pas soumis à ce filtre.</p>
  */
 class TeamsScreenV2Test {
 
@@ -40,8 +44,8 @@ class TeamsScreenV2Test {
     // ------------------------------------------------------------------ la liste (rail v2)
 
     @Test
-    @DisplayName("Liste v2 : le rail simple-collab-dnd-rail (tree) est lu, chaque treeitem donne son nom (aria-label et texte)")
-    void the_v2_rail_is_read_with_conversation_names() throws Exception {
+    @DisplayName("Liste v2 : seuls les treeitems porteurs d'un avatar/présence remontent (nav exclue), avatar OU présence suffit")
+    void the_v2_rail_keeps_only_treeitems_with_avatar_or_presence() throws Exception {
         PaperTeams teams = new PaperTeams();
         teams.browser.screen("", PaperScreen.of("conversations-v2.html"));
 
@@ -49,13 +53,36 @@ class TeamsScreenV2Test {
         JsonNode json = mapper.readTree(rendered);
 
         assertEquals("ecran", json.path("source").asText());
+        // Le rail mêle 4 treeitems : « Mentions » et « Activité » (nav, sans avatar/présence) + 2 chats.
+        // SF-89-21 : seuls les 2 chats remontent.
         assertEquals(2, json.path("conversations").size(), rendered);
-        // 1er treeitem : nom accessible via aria-label ; id porté par l'attribut id (préfixe retiré).
+        // 1er chat : PersonaAvatar SEUL (pas de presence-badge) → retenu. Nom via aria-label ; id via id (préfixe retiré).
         assertEquals("19:fabrique@thread.v2", json.path("conversations").get(0).path("id").asText());
         assertEquals("Migration IAM", json.path("conversations").get(0).path("topic").asText());
-        // 2e treeitem : imbriqué (role=group), SANS aria-label → nom lu depuis le texte de l'item.
+        // 2e chat : imbriqué (role=group), presence-badge SEUL (pas de PersonaAvatar), SANS aria-label → nom = texte de l'item.
         assertEquals("Paul Durand", json.path("conversations").get(1).path("topic").asText());
+        // Les items de navigation ne remontent jamais comme conversations.
+        List<String> topics = new ArrayList<>();
+        json.path("conversations").forEach(c -> topics.add(c.path("topic").asText()));
+        assertFalse(topics.contains("Mentions"), "un item de navigation n'est pas une conversation : " + rendered);
+        assertFalse(topics.contains("Activité"), "un item de navigation n'est pas une conversation : " + rendered);
         assertFalse(rendered.contains("SECRET-RECHERCHE-EN-COURS"), "un champ de recherche n'est jamais lu");
+    }
+
+    @Test
+    @DisplayName("Liste v2 : un rail de pure navigation (aucun avatar/présence) ne remonte aucune conversation")
+    void a_navigation_only_rail_yields_no_conversation() throws Exception {
+        PaperTeams teams = new PaperTeams();
+        teams.browser.screen("", PaperScreen.of("conversations-v2-nav-seule.html"));
+
+        String rendered = teams.tools().execute(TeamsTools.FIND_CONVERSATIONS, mapper.createObjectNode()).content();
+        JsonNode json = mapper.readTree(rendered);
+
+        // Le rail est trouvé, mais aucun de ses treeitems ne porte d'avatar/présence → 0 conversation utile
+        // (au lieu de remonter « Mentions »/« Activité »/« Non lus » comme avant SF-89-21).
+        assertEquals(0, json.path("conversations").size(), rendered);
+        assertFalse(rendered.contains("Mentions"), rendered);
+        assertFalse(rendered.contains("Activité"), rendered);
     }
 
     // ------------------------------------------------------------------ le fil (runway v2)

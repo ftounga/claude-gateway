@@ -75,11 +75,26 @@ final class PaperScreen {
             }
             ArrayNode items = out.putArray("items");
             Elements els = new Elements();
+            String wonWith = null;
             for (JsonNode selector : spec.path("item")) {
                 els = box.select(selector.asText());
                 if (!els.isEmpty()) {
+                    wonWith = selector.asText();
                     break;
                 }
+            }
+            JsonNode need = spec.path("require").path(wonWith == null ? "" : wonWith);
+            if (need.isArray() && need.size() > 0) {
+                Elements kept = new Elements();
+                for (Element el : els) {
+                    for (JsonNode marker : need) {
+                        if (el.is(marker.asText()) || !el.select(marker.asText()).isEmpty()) {
+                            kept.add(el);
+                            break;
+                        }
+                    }
+                }
+                els = kept;
             }
             for (Element el : els) {
                 ObjectNode item = items.addObject();

@@ -1,0 +1,23 @@
+<!-- DOM modèle du Teams v2 (F-89 / SF-89-21) — À CONFIRMER SUR POSTE RÉEL. Cas limite : le rail
+     « simple-collab-dnd-rail » ne contient que des « treeitem » de NAVIGATION (« Mentions », « Activité »,
+     un filtre), AUCUN ne porte de PersonaAvatar ni de presence-badge. Attendu SF-89-21 : 0 conversation
+     (au lieu de remonter la structure de l'écran comme avant le raffinement). -->
+<html><body>
+<div data-tid="app-layout-area--sidebar">
+  <div data-tid="app-layout-area--mid-nav">
+    <div data-tid="simple-collab-dnd-rail" role="tree" class="fui-Tree ___1a2b3c">
+      <div role="treeitem" class="fui-TreeItem ___nav1" aria-label="Mentions">
+        <div class="fui-TreeItemLayout"><span class="fui-TreeItemLayout__main">Mentions</span></div>
+      </div>
+      <div role="treeitem" class="fui-TreeItem ___nav2" aria-label="Activité">
+        <div class="fui-TreeItemLayout"><span class="fui-TreeItemLayout__main">Activité</span></div>
+      </div>
+      <div role="group" class="fui-TreeItem__group">
+        <div role="treeitem" class="fui-TreeItem ___nav3" aria-label="Non lus">
+          <div class="fui-TreeItemLayout"><span class="fui-TreeItemLayout__main">Non lus</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body></html>

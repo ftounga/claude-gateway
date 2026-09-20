@@ -44,7 +44,8 @@ import com.fasterxml.jackson.databind.node.TextNode;
 final class TeamsScreen {
 
     /** Version de la table des sélecteurs : citée dans chaque manque d'écran et dans chaque résultat. */
-    static final String VERSION = "ecran-v2-2026-09-20 (recalage v2 CAGIP SF-89-20 — à confirmer sur poste réel)";
+    static final String VERSION = "ecran-v2-2026-09-20b (liste : treeitems porteurs d'avatar/présence SF-89-21 —"
+            + " à confirmer sur poste réel)";
 
     /** Longueur maximale d'une valeur lue à l'écran. */
     static final int MAX_VALUE_CHARS = 4_000;
@@ -109,17 +110,32 @@ final class TeamsScreen {
     /**
      * Une vue lisible : son conteneur défilable, ses éléments, et les champs d'un élément.
      *
-     * @param name      nom de la vue, cité dans un manque
-     * @param container sélecteurs candidats du conteneur (le premier trouvé l'emporte)
-     * @param item      sélecteurs candidats d'un élément dans le conteneur
-     * @param fields    champs lus dans chaque élément, dans l'ordre
+     * @param name       nom de la vue, cité dans un manque
+     * @param container  sélecteurs candidats du conteneur (le premier trouvé l'emporte)
+     * @param item       sélecteurs candidats d'un élément dans le conteneur
+     * @param fields     champs lus dans chaque élément, dans l'ordre
+     * @param requireAny <b>filtre discriminant</b>, clé = sélecteur d'item, valeur = marqueurs (sélecteurs) :
+     *                   un élément sélectionné <b>par ce sélecteur</b> n'est retenu que s'il (ou un descendant)
+     *                   porte l'<b>un</b> des marqueurs. Sert la liste v2 (SF-89-21) : un {@code role=treeitem}
+     *                   n'est une conversation que s'il porte un {@code PersonaAvatar} ou un {@code presence-badge} ;
+     *                   les {@code treeitem} de navigation (« Mentions »…), qui n'en portent pas, sont écartés. Un
+     *                   sélecteur absent de la table (repli ancien) n'est <b>jamais</b> filtré.
      */
-    record View(String name, List<String> container, List<String> item, Map<String, Field> fields) {
+    record View(String name, List<String> container, List<String> item, Map<String, Field> fields,
+            Map<String, List<String>> requireAny) {
 
         View {
             container = List.copyOf(container);
             item = List.copyOf(item);
             fields = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(fields));
+            Map<String, List<String>> markers = new LinkedHashMap<>();
+            requireAny.forEach((selector, list) -> markers.put(selector, List.copyOf(list)));
+            requireAny = java.util.Collections.unmodifiableMap(markers);
+        }
+
+        /** Une vue sans filtre discriminant : tout élément sélectionné est retenu. */
+        View(String name, List<String> container, List<String> item, Map<String, Field> fields) {
+            this(name, container, item, fields, Map.of());
         }
     }
 
@@ -142,13 +158,18 @@ final class TeamsScreen {
     // Liste v2 (relevé réel CAGIP 2026-09-20, SF-89-16→19) : le rail « simple-collab-dnd-rail » (role=tree),
     // chaque conversation un « treeitem » (parfois imbriqué dans un role=group), le nom = nom accessible de
     // l'item. Le conteneur et l'item d'avant (chat-list / chat-list-item) restent en repli.
+    // SF-89-21 : un « treeitem » n'est une conversation que s'il porte un PersonaAvatar OU un presence-badge ;
+    // les « treeitem » de navigation (« Mentions », « Activité », filtres…) n'en portent pas et sont écartés.
+    // Le filtre ne vise QUE le sélecteur « treeitem » : le repli « chat-list-item » n'y figure pas → inchangé.
     static final View CONVERSATIONS = new View("liste des conversations",
             List.of("[data-tid=\"simple-collab-dnd-rail\"][role=\"tree\"]", "[data-tid=\"simple-collab-dnd-rail\"]",
                     "[data-tid=\"chat-list\"]"),
             List.of("[role=\"treeitem\"]", "[data-tid=\"chat-list-item\"]"),
             fields("id", Field.attribute(List.of(), "data-item-id", "id"),
                     "title", Field.name(List.of("[data-tid=\"chat-list-item-title\"]")),
-                    "time", Field.attribute(List.of("time[datetime]"), "datetime")));
+                    "time", Field.attribute(List.of("time[datetime]"), "datetime")),
+            Map.of("[role=\"treeitem\"]",
+                    List.of("[data-tid=\"PersonaAvatar\"]", "[data-tid=\"presence-badge\"]")));
 
     static final View ACTIVITY = new View("flux d'activité",
             List.of("[data-tid=\"activity-feed-list\"]"),
@@ -210,6 +231,11 @@ final class TeamsScreen {
                 node.put("name", true);
             }
         });
+        ObjectNode require = spec.putObject("require");
+        view.requireAny().forEach((selector, markers) -> {
+            ArrayNode list = require.putArray(selector);
+            markers.forEach(list::add);
+        });
         return spec.toString();
     }
 
@@ -223,8 +249,12 @@ final class TeamsScreen {
     static String readScript(ObjectMapper mapper, View view) {
         return "(() => { /*cg-screen:read*/ const spec = " + spec(mapper, view) + "; /*cg-end*/" + COMMON
                 + " if (!box) { return { found: false }; }"
-                + " let els = []; for (const s of spec.item) { els = Array.from(box.querySelectorAll(s));"
-                + "   if (els.length) { break; } }"
+                + " let els = []; let wonWith = null;"
+                + " for (const s of spec.item) { els = Array.from(box.querySelectorAll(s));"
+                + "   if (els.length) { wonWith = s; break; } }"
+                + " const need = (spec.require && spec.require[wonWith]) || [];"
+                + " if (need.length) { els = els.filter((el) =>"
+                + "   need.some((s) => (el.matches && el.matches(s)) || el.querySelector(s))); }"
                 + " const items = [];"
                 + " for (const el of els.slice(0, " + MAX_ITEMS + ")) {"
                 + "   const out = {};"
