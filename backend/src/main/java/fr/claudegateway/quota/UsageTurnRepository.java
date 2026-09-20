@@ -47,6 +47,34 @@ public interface UsageTurnRepository extends JpaRepository<UsageTurn, UUID> {
     List<UsageTurnAggregate> aggregateByHostAndWorkspace(@Param("userId") UUID userId,
             @Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to);
 
+    /**
+     * <b>Dépense réelle</b> d'un utilisateur sur une fenêtre, agrégée par <b>poste</b>
+     * (F-133 / SF-133-03) — la lecture des budgets hebdomadaires, des alertes et de l'écran
+     * d'administration.
+     *
+     * <p><b>Elle somme {@code provider_cost_usd}</b>, c'est-à-dire ce que les tours ont réellement
+     * coûté, et non une estimation reconstituée des tokens. {@code coalesce} ramène à zéro les
+     * tours antérieurs à F-133, qui n'ont pas de coût : ils comptent dans les volumes et pour rien
+     * dans la dépense. Leur substituer une estimation donnerait un montant crédible et faux.</p>
+     *
+     * <p>Les tours sans poste sont <b>conservés</b> : ce sont les tours « hors client », sans
+     * lesquels la somme des lignes ne ferait pas le total.</p>
+     *
+     * @param userId utilisateur du contexte de sécurité (jamais un paramètre client)
+     * @param from   borne basse incluse
+     * @param to     borne haute <b>exclue</b>
+     */
+    @Query("""
+            select t.hostId as hostId,
+                   coalesce(sum(t.providerCostUsd), 0) as costUsd,
+                   sum(t.inputTokens) as inputTokens, sum(t.outputTokens) as outputTokens
+            from UsageTurn t
+            where t.userId = :userId and t.occurredAt >= :from and t.occurredAt < :to
+            group by t.hostId
+            """)
+    List<HostCostAggregate> aggregateCostByHost(@Param("userId") UUID userId,
+            @Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to);
+
     /** Tours d'un utilisateur, les plus récents d'abord (diagnostic et tests ; isolation `user_id`). */
     List<UsageTurn> findByUserIdOrderByOccurredAtDesc(UUID userId);
 
