@@ -69,6 +69,22 @@ public class TurnCostView {
         }
     }
 
+    /**
+     * Convertit un montant du dollar vers l'euro, <b>sans</b> la garde d'affichage
+     * (F-133 / SF-133-06).
+     *
+     * <p>Séparée de {@link #labelFor(BigDecimal)} parce que les deux répondent à deux questions :
+     * celle-là demande « a-t-on le droit de montrer ce montant, et comment l'écrire », celle-ci
+     * « combien cela fait-il en euros ». Les alertes ont déjà passé leur propre garde et n'ont
+     * besoin que de la seconde.</p>
+     */
+    public BigDecimal toEur(BigDecimal costUsd) {
+        if (costUsd == null || costUsd.signum() <= 0) {
+            return BigDecimal.ZERO;
+        }
+        return costUsd.multiply(pricing.usdToEur()).setScale(2, RoundingMode.HALF_UP);
+    }
+
     /** Vrai si l'appelant courant est administrateur. Jamais d'exception : l'absence vaut non. */
     private boolean isAdmin() {
         try {
