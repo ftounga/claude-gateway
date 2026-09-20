@@ -1168,6 +1168,11 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     `transcript (text — SF-128-04, migration 115, texte horodaté)`, `transcript_status (varchar 20 NOT
     NULL défaut NONE — NONE/PENDING/TRANSCRIBING/TRANSCRIBED/FAILED)`, `transcript_lang (varchar 20,
     nullable)`, `transcript_error (varchar 500, nullable)`,
+    `external_transcript (text — SF-128-20a, migration 121 : LA TRANSCRIPTION DU CLIENT apportée par
+    l'utilisateur, avec les vrais noms, stockée telle quelle — distincte de transcript ; docx mis à plat)`,
+    `external_transcript_source (varchar 200, nullable — libellé, défaut « Transcription externe (client) »)`,
+    `external_transcript_format (varchar 10, nullable — TEXT/VTT/DOCX)`, `external_transcript_added_at
+    (timestamptz, nullable)`,
     `media_purged_at (timestamptz, nullable — SF-128-07, migration 116 : instant de purge des médias lourds)`,
     `started_at`, `ended_at (nullable)`, `created_at`, `updated_at`. Index `(user_id, host_id,
     started_at)`. Endpoints `/api/vigie/hosts/{hostId}/meetings` (create=« Rejoindre »/capture-start=
@@ -1177,7 +1182,9 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     (GET) (SF-128-04), exploitation `…/{meetingId}/insights` + `…/{meetingId}/ask` (POST) (SF-128-05),
     rangement dans la carte du poste `…/{meetingId}/promote-to-card` (POST) (SF-128-11), push des actions
     vers le Radar `…/{meetingId}/actions-to-radar` (POST) (SF-128-06), purge manuelle
-    des médias `…/{meetingId}/media` (DELETE) (SF-128-07) ;
+    des médias `…/{meetingId}/media` (DELETE) (SF-128-07),
+    transcription externe (client) `…/{meetingId}/external-transcript` (PUT texte / POST fichier /
+    GET texte / DELETE) (SF-128-20a) ;
     gardés par le droit Teams + possession du poste + activation Vigie.
   - **Transcription (SF-128-04)** : relais Provider-First `TranscriptionProvider` (impl HTTP compatible
     Whisper, `app.stt.*` **configurable**), **asynchrone** (`TranscriptionWorker` `@Scheduled`),
