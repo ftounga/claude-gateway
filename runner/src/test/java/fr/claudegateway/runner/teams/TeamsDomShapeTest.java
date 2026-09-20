@@ -268,6 +268,95 @@ class TeamsDomShapeTest {
         assertEquals(SurveyPaths.ID, second.label(), "un label porteur d'id est assaini");
     }
 
+    // ------------------------------------------------------------------ SF-89-19 : toutes les zones de layout
+
+    @Test
+    @DisplayName("Liste des chats (SF-89-19/CA4) : LIST_SELECTORS couvrent tree/list/grid + data-tid, jamais une classe")
+    void chat_list_roots_cover_tree_list_grid_and_data_tid() {
+        for (String selector : TeamsDomShape.LIST_SELECTORS) {
+            assertTrue(selector.contains("data-tid") || selector.contains("role"),
+                    "la liste des chats se cible par data-tid/role, pas par classe : " + selector);
+        }
+        assertTrue(TeamsDomShape.LIST_SELECTORS.contains("[role=\"grid\"]"), "role=grid est couvert (SF-89-19)");
+        assertTrue(TeamsDomShape.LIST_SELECTORS.contains("[data-tid^=\"list-\"]"),
+                "les data-tid de liste (list-*) sont couverts (SF-89-19)");
+    }
+
+    @Test
+    @DisplayName("Script zones (SF-89-19/CA7) : énumère app-layout-area--, sans textContent/cookie/stockage")
+    void areas_script_enumerates_layout_areas_without_forbidden_reads() {
+        String js = TeamsDomShape.areasScript(mapper);
+
+        // Le cœur de la voie retenue : on énumère TOUTES les zones de layout par leur préfixe d'attribut.
+        assertTrue(js.contains("app-layout-area--"), "le script énumère les zones app-layout-area--");
+        assertTrue(js.contains("querySelectorAll"), "le script parcourt toutes les zones");
+        // Mêmes interdits que la racine large : jamais un contenu, jamais un cookie, jamais le stockage.
+        assertFalse(js.contains("textContent"), "le script ne lit jamais textContent");
+        assertFalse(js.contains("innerText"), "le script ne lit jamais innerText");
+        assertFalse(js.toLowerCase(java.util.Locale.ROOT).contains("cookie"));
+        assertFalse(js.contains("localStorage"));
+        assertFalse(js.contains("sessionStorage"));
+        // Il ne mesure QUE des longueurs de nœuds texte, cible les data-tid, et ne lit aucune URL de cadre.
+        assertTrue(js.contains("nodeValue"));
+        assertTrue(js.contains(".length"));
+        assertTrue(js.contains("data-tid"));
+        assertFalse(js.contains(".src"), "le script ne lit jamais le src d'un cadre");
+    }
+
+    @Test
+    @DisplayName("refilterAreas (SF-89-19/CA6) : area assaini, borne MAX_AREAS, sidebar avec liste expurgée")
+    void refilter_areas_sanitizes_and_bounds() {
+        ObjectNode raw = mapper.createObjectNode();
+        ArrayNode areas = raw.putArray("areas");
+
+        // Une zone --main sans liste.
+        ObjectNode main = areas.addObject();
+        main.put("area", "app-layout-area--main");
+        emptySurvey(main, "shape");
+        emptySurvey(main, "list");
+
+        // Une zone --sidebar : sa forme + une liste des chats portant un id de fil dans le data-tid d'un item.
+        ObjectNode sidebar = areas.addObject();
+        sidebar.put("area", "app-layout-area--sidebar");
+        ObjectNode shape = sidebar.putObject("shape");
+        shape.put("found", true);
+        shape.put("truncated", false);
+        shape.putArray("nodes").add(node(0, 1, "div", "app-layout-area--sidebar", "complementary", 0,
+                List.of(), List.of(), List.of(), 0));
+        ObjectNode list = sidebar.putObject("list");
+        list.put("found", true);
+        list.put("truncated", false);
+        ArrayNode listNodes = list.putArray("nodes");
+        listNodes.add(node(0, 1, "div", "chat-list", "tree", 0, List.of(), List.of(), List.of(), 0));
+        listNodes.add(node(1, 12, "div", "chat-list-item-19:secret@thread.v2", "treeitem", 0,
+                List.of(), List.of(), List.of(), 0));
+
+        // Une zone au label porteur d'id → assaini.
+        ObjectNode weird = areas.addObject();
+        weird.put("area", "app-layout-area--19:secret@thread.v2");
+        emptySurvey(weird, "shape");
+        emptySurvey(weird, "list");
+
+        // Plus de zones que la borne : ignorées.
+        for (int i = 0; i < TeamsDomShape.MAX_AREAS; i++) {
+            ObjectNode extra = areas.addObject();
+            extra.put("area", "app-layout-area--extra" + i);
+            emptySurvey(extra, "shape");
+            emptySurvey(extra, "list");
+        }
+
+        List<TeamsDomShape.AreaShape> out = TeamsDomShape.refilterAreas(raw);
+
+        assertEquals(TeamsDomShape.MAX_AREAS, out.size(), "le nombre de zones est borné à MAX_AREAS");
+        assertEquals("app-layout-area--main", out.get(0).area());
+        TeamsDomShape.AreaShape side = out.get(1);
+        assertEquals("app-layout-area--sidebar", side.area(), "le data-tid de la zone survit intact");
+        assertTrue(side.list().found(), "la liste de la sidebar est relevée");
+        // L'id de fil embarqué dans le data-tid de l'item est assaini, zone incluse.
+        assertEquals(SurveyPaths.ID, side.list().nodes().get(1).tid());
+        assertEquals(SurveyPaths.ID, out.get(2).area(), "un label de zone porteur d'id est assaini");
+    }
+
     @Test
     @DisplayName("Bornes : au-delà de MAX_NODES, la squelette est coupée et le dit")
     void node_count_is_bounded() {

@@ -64,6 +64,12 @@ final class TeamsDomShape {
     static final int MAX_NODES = 160;
     /** Cadres iframe relevés au plus par relevé (SF-89-17) : borne le volume et le temps. */
     static final int MAX_FRAMES = 3;
+    /**
+     * Zones de layout relevées au plus par relevé (SF-89-19) : borne le volume et le temps. Teams v2
+     * découpe l'écran en quelques zones {@code [data-tid^="app-layout-area--"]} (main, sidebar, rail,
+     * header…) ; 8 couvre largement et plafonne le Journal.
+     */
+    static final int MAX_AREAS = 8;
 
     static final int MAX_CLASS_TOKENS = 6;
     static final int MAX_ATTR_NAMES = 16;
@@ -117,7 +123,17 @@ final class TeamsDomShape {
      */
     static final List<String> LIST_SELECTORS = List.of(
             "[data-tid=\"chat-list\"]", "[data-tid=\"chatListItems\"]", "[data-tid$=\"chatListItem\"]",
-            "[data-tid*=\"chat-list\"]", "[role=\"tree\"]", "[role=\"list\"]");
+            "[data-tid*=\"chat-list\"]", "[data-tid^=\"list-\"]", "[role=\"tree\"]", "[role=\"list\"]",
+            "[role=\"grid\"]");
+
+    /**
+     * Le sélecteur de <b>découverte des zones de layout</b> (SF-89-19). Teams v2 découpe l'écran en
+     * plusieurs {@code [data-tid^="app-layout-area--"]} (main, sidebar, rail, header…). SF-89-16→18 ne
+     * relevaient que {@code --main} (le volet du chat ouvert) ; la <b>liste des conversations</b> vit dans
+     * une <b>autre</b> zone (panneau de gauche, ex. {@code app-layout-area--sidebar}), jamais captée. On
+     * les énumère toutes par ce préfixe d'attribut — stable, indépendant des classes hashées de la v2.
+     */
+    static final String AREA_DISCOVERY = "[data-tid^=\"app-layout-area--\"]";
 
     /** Un nom d'attribut admissible : une clé, jamais une valeur (pas de {@code =}, pas d'espace). */
     private static final Pattern ATTR_NAME = Pattern.compile("^[a-zA-Z][a-zA-Z0-9:_-]*$");
@@ -190,6 +206,16 @@ final class TeamsDomShape {
      * son label : {@code contentDocument} était nul, rien n'a été lu.
      */
     record FrameShape(String label, boolean blocked, Survey root, Survey list, Survey rail, Survey runway) {
+    }
+
+    /**
+     * La forme d'une <b>zone de layout</b> du document principal (F-89 / SF-89-19) : son {@code area} (le
+     * {@code data-tid} de la zone, assaini, ex. {@code app-layout-area--sidebar}), la forme de la zone
+     * elle-même ({@code shape}) et — s'il y en a une — la forme de la <b>liste des chats</b> qui y vit
+     * ({@code list}, ciblée par {@link #LIST_SELECTORS}). C'est dans ces zones (autres que {@code --main})
+     * que se trouve la liste des conversations v2.
+     */
+    record AreaShape(String area, Survey shape, Survey list) {
     }
 
     // ------------------------------------------------------------------ le script
@@ -334,6 +360,83 @@ final class TeamsDomShape {
                 + "})()";
     }
 
+    /**
+     * <b>Le script qui énumère toutes les zones de layout</b> (F-89 / SF-89-19), à passer à
+     * {@code Runtime.evaluate} <b>dans l'onglet</b> (via {@link PageActions#readScript(String)}) — aucune
+     * nouvelle commande CDP. Il parcourt {@code document.querySelectorAll('[data-tid^="app-layout-area--"]')}
+     * (bornées à {@link #MAX_AREAS}) et, pour chaque zone :
+     *
+     * <ul>
+     *   <li>relève la <b>forme de la zone</b> elle-même (racine = l'élément de zone), avec exactement les
+     *       mêmes gardes que {@link #surveyScript} (texte élidé en longueur, valeurs d'attributs jamais lues
+     *       hors {@code data-tid}/{@code role}/{@code class}, ni {@code textContent}/{@code innerText}/
+     *       cookie/stockage) ;</li>
+     *   <li>relève, <b>dans</b> cette zone, la forme de la <b>liste des chats</b> (premier
+     *       {@link #LIST_SELECTORS} trouvé sous la zone) — c'est elle qu'on cherche ; vide si absente.</li>
+     * </ul>
+     *
+     * <p>Chaque zone porte son {@code area} : le {@code data-tid} de l'élément de zone (p. ex.
+     * {@code app-layout-area--sidebar}), assaini côté Java ({@link #refilterAreas}).</p>
+     */
+    static String areasScript(ObjectMapper mapper) {
+        ArrayNode list = mapper.createArrayNode();
+        LIST_SELECTORS.forEach(list::add);
+        return "(() => { /*cg-domareas*/"
+                + " const MAX_DEPTH = " + MAX_DEPTH + ", MAX_CHILDREN = " + MAX_CHILDREN
+                + ", MAX_NODES = " + MAX_NODES + ", MAX_AREAS = " + MAX_AREAS + ";"
+                + " const AREA = " + mapper.getNodeFactory().textNode(AREA_DISCOVERY) + ", LIST = " + list + ";"
+                + " const sig = (el) => el.tagName + '|' + (el.getAttribute('data-tid') || '') + '|'"
+                + "   + (el.getAttribute('role') || '');"
+                + " const textLen = (el) => { let n = 0; for (const c of el.childNodes) {"
+                + "   if (c.nodeType === 3) { n += (c.nodeValue || '').length; } } return n; };"
+                + " const attrNames = (el) => { const aria = [], other = [];"
+                + "   const list = el.attributes || [];"
+                + "   for (let i = 0; i < list.length; i++) { const nm = list[i].name;"
+                + "     if (nm === 'class' || nm === 'style' || nm === 'data-tid' || nm === 'role') { continue; }"
+                + "     if (nm.indexOf('aria-') === 0) { aria.push(nm); } else { other.push(nm); } }"
+                + "   return { aria: aria, other: other }; };"
+                + " const classesOf = (el) => { try { return Array.prototype.slice.call(el.classList); }"
+                + "   catch (e) { return []; } };"
+                + " const surveyFrom = (root) => {"
+                + "   if (!root) { return { found: false, truncated: false, nodes: [] }; }"
+                + "   const nodes = []; let truncated = false;"
+                + "   const walk = (el, depth, repeat) => {"
+                + "     if (nodes.length >= MAX_NODES) { truncated = true; return; }"
+                + "     const names = attrNames(el);"
+                + "     const kids = el.children ? el.children.length : 0;"
+                + "     nodes.push({ d: depth, n: repeat, tag: (el.tagName || '').toLowerCase(),"
+                + "       tid: el.getAttribute('data-tid') || '', role: el.getAttribute('role') || '',"
+                + "       aria: names.aria, attrs: names.other, cls: classesOf(el), text: textLen(el), kids: kids });"
+                + "     if (depth >= MAX_DEPTH) { if (kids > 0) { truncated = true; } return; }"
+                + "     const children = el.children ? Array.prototype.slice.call(el.children) : [];"
+                + "     let emitted = 0, i = 0;"
+                + "     while (i < children.length) {"
+                + "       if (emitted >= MAX_CHILDREN) { truncated = true; break; }"
+                + "       const s = sig(children[i]); let j = i + 1;"
+                + "       while (j < children.length && sig(children[j]) === s) { j++; }"
+                + "       walk(children[i], depth + 1, j - i); emitted++; i = j;"
+                + "     }"
+                + "   };"
+                + "   walk(root, 0, 1);"
+                + "   return { found: true, truncated: truncated, nodes: nodes };"
+                + " };"
+                + " const listIn = (zone) => {"
+                + "   for (const s of LIST) { let e = null; try { e = zone.querySelector(s); } catch (x) { e = null; }"
+                + "     if (e) { return surveyFrom(e); } }"
+                + "   return { found: false, truncated: false, nodes: [] };"
+                + " };"
+                + " const areas = []; let zones = [];"
+                + " try { zones = Array.prototype.slice.call(document.querySelectorAll(AREA)); }"
+                + "   catch (e) { zones = []; }"
+                + " for (let i = 0; i < zones.length && areas.length < MAX_AREAS; i++) {"
+                + "   const z = zones[i];"
+                + "   const area = z.getAttribute('data-tid') || ('area#' + (i + 1));"
+                + "   areas.push({ area: area, shape: surveyFrom(z), list: listIn(z) });"
+                + " }"
+                + " return { areas: areas };"
+                + "})()";
+    }
+
     // ------------------------------------------------------------------ le re-filtre Java (cœur vie privée)
 
     /**
@@ -397,6 +500,37 @@ final class TeamsDomShape {
             out.add(new FrameShape(label, false, refilter(frame.path("root")),
                     refilter(frame.path("list")), refilter(frame.path("rail")),
                     refilter(frame.path("runway"))));
+        }
+        return out;
+    }
+
+    /**
+     * Ce que {@link #areasScript} a rendu, <b>re-filtré</b> (F-89 / SF-89-19) : la liste des zones de layout
+     * énumérées, bornée à {@link #MAX_AREAS}, {@code area} <b>assaini</b> ({@link #scrubToken}), et chaque
+     * forme (zone + liste des chats) re-filtrée par {@link #refilter} (même cœur de vie privée que le
+     * document principal — aucune valeur ne franchit cette couche, zone {@code --sidebar} incluse).
+     */
+    static List<AreaShape> refilterAreas(JsonNode raw) {
+        List<AreaShape> out = new ArrayList<>();
+        if (raw == null || !raw.isObject()) {
+            return out;
+        }
+        JsonNode areas = raw.path("areas");
+        if (!areas.isArray()) {
+            return out;
+        }
+        for (JsonNode area : areas) {
+            if (out.size() >= MAX_AREAS) {
+                break;
+            }
+            if (!area.isObject()) {
+                continue;
+            }
+            String label = scrubToken(area.path("area").asText(""), MAX_TID_CHARS);
+            if (label.isEmpty()) {
+                label = "area#" + (out.size() + 1);
+            }
+            out.add(new AreaShape(label, refilter(area.path("shape")), refilter(area.path("list"))));
         }
         return out;
     }
