@@ -28,6 +28,7 @@ import fr.claudegateway.atelier.permission.AtelierPermissionService;
 import fr.claudegateway.atelier.permission.PermissionEffect;
 import fr.claudegateway.byok.ByokKeyService;
 import fr.claudegateway.quota.QuotaService;
+import fr.claudegateway.quota.TurnExtras;
 import fr.claudegateway.quota.TurnTokens;
 import fr.claudegateway.runner.audit.RunnerAuditOutcome;
 import fr.claudegateway.runner.audit.RunnerAuditService;
@@ -1082,6 +1083,12 @@ public class AtelierChatService implements RelayInterruptTarget {
          */
         int cacheReadTokens = compaction.cacheReadTokens();
         int cacheWriteTokens = compaction.cacheWriteTokens();
+        /**
+         * Recherches web du tour (F-133 / SF-133-08). Facturées <b>à la requête</b> — 10 $ les
+         * mille — en plus des tokens qu'elles rapportent : aucun compteur de tokens ne les révèle,
+         * et l'outil de recherche est déclaré à chaque appel d'agent.
+         */
+        int webSearchRequests = 0;
         /** Plus grosse itération observée dans ce tour : majorant de la suivante (D-L8-2). */
         long largestIterationTokens = 0L;
         boolean interrupted = false;
@@ -1258,6 +1265,7 @@ public class AtelierChatService implements RelayInterruptTarget {
             outputTokens += turn.outputTokens();
             cacheReadTokens += turn.cacheReadTokens();
             cacheWriteTokens += turn.cacheWriteTokens();
+            webSearchRequests += turn.webSearchRequests();
             largestIterationTokens =
                     Math.max(largestIterationTokens, (long) turn.inputTokens() + turn.outputTokens());
             // Consommation relayée au fil de l'eau : c'est ce qui fait apparaître les tokens dans la
@@ -1354,6 +1362,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                 outputTokens += synthesis.outputTokens();
                 cacheReadTokens += synthesis.cacheReadTokens();
                 cacheWriteTokens += synthesis.cacheWriteTokens();
+                webSearchRequests += synthesis.webSearchRequests();
                 largestIterationTokens = Math.max(largestIterationTokens,
                         (long) synthesis.inputTokens() + synthesis.outputTokens());
                 String synthText = stripTurnMetadata(synthesis.text());
@@ -1544,6 +1553,9 @@ public class AtelierChatService implements RelayInterruptTarget {
             quotaService.recordUsage(userId,
                     new TurnTokens(Math.max(0, inputTokens - cacheReadTokens - cacheWriteTokens),
                             outputTokens, cacheReadTokens, cacheWriteTokens),
+                    // Pas de temps de session ici : la boucle maison n'a pas de bac à sable
+                    // facturé, seuls les Managed Agents en ont un (F-133 / SF-133-08).
+                    new TurnExtras(webSearchRequests, 0L),
                     null, model, workspaceId, workspace.getHostId());
         }
 

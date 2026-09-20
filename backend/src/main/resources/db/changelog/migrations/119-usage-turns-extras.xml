@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-133 / SF-133-08 — LES DÉPENSES QU'AUCUN TOKEN NE MONTRE.
+
+      La grille du fournisseur facture deux choses EN DEHORS des tokens :
+
+        * la RECHERCHE WEB, 10 $ les mille requêtes. Elle n'était comptée NULLE PART, alors que
+          l'outil `web_search` est déclaré à chaque tour d'agent (AnthropicAgentProvider:78) et que
+          le fournisseur rapporte le compte dans `usage.server_tool_use` — que pas une ligne du
+          dépôt ne lisait ;
+        * le TEMPS DE SESSION des Managed Agents, 0,08 $ l'heure. Il était COMPTÉ depuis F-30
+          (`usage_counters.sandbox_seconds`) mais jamais TARIFÉ.
+
+      Un coût reconstitué des seuls tokens sous-estime donc systématiquement, et d'autant plus que
+      l'usage est agentique — le profil exact de l'Atelier et de la Vigie.
+
+      POURQUOI GARDER LES COMPTEURS et pas seulement le montant : un coût élevé doit pouvoir être
+      EXPLIQUÉ. « 2,40 $ » ne dit rien ; « 2,40 $ dont 180 recherches web » dit où regarder.
+
+      NOT NULL À 0 : un tour sans recherche n'est pas un tour dont les recherches sont inconnues.
+      Les lignes antérieures valent donc 0, ce qui est vrai pour le temps de session (il n'était
+      imputé à aucun tour) et FAUX pour les recherches web (elles ont eu lieu, sans être comptées).
+      C'est assumé : `pricing_version` (migration 118) dit avec quelle grille un montant a été
+      calculé, et les lignes d'avant portent une grille qui ignorait ces postes.
+    -->
+
+    <changeSet id="119-usage-turns-extras" author="claude-gateway">
+        <addColumn tableName="usage_turns">
+            <column name="web_search_requests" type="BIGINT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="sandbox_seconds" type="BIGINT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+
+        <rollback>
+            <dropColumn tableName="usage_turns" columnName="web_search_requests"/>
+            <dropColumn tableName="usage_turns" columnName="sandbox_seconds"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

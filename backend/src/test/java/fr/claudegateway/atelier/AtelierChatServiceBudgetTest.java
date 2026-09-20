@@ -254,7 +254,8 @@ class AtelierChatServiceBudgetTest {
         verify(quotaService, never()).currentUsage(any());
         verify(quotaService, never()).assertWithinQuota(any());
         verify(quotaService, never()).recordUsage(any(),
-                any(fr.claudegateway.quota.TurnTokens.class), any(), any(), any(), any());
+                any(fr.claudegateway.quota.TurnTokens.class), any(), any(), any(), any(),
+                any());
     }
 
     @Test
@@ -270,8 +271,8 @@ class AtelierChatServiceBudgetTest {
         // Deux itérations à 7/3 : le décompte porte sur ce qui a réellement été traité, plafond
         // atteint ou non. Aucun cache rapporté ici : tout est de l'entrée au plein tarif (F-63).
         verify(quotaService).recordUsage(userId,
-                new fr.claudegateway.quota.TurnTokens(14L, 6L, 0L, 0L), null, "claude-opus-5",
-                workspaceId, null);
+                new fr.claudegateway.quota.TurnTokens(14L, 6L, 0L, 0L),
+                fr.claudegateway.quota.TurnExtras.NONE, null, "claude-opus-5", workspaceId, null);
     }
 
     // ------------------------------------------------------------ la consommation est visible

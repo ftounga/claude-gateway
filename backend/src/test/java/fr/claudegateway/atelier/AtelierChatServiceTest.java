@@ -427,7 +427,7 @@ class AtelierChatServiceTest {
 
         verify(quotaService).assertWithinQuota(userId);
         verify(quotaService).recordUsage(eq(userId), any(fr.claudegateway.quota.TurnTokens.class),
-                org.mockito.ArgumentMatchers.isNull(), any(), any(), any());
+                any(), org.mockito.ArgumentMatchers.isNull(), any(), any(), any());
     }
 
     @Test
@@ -442,7 +442,7 @@ class AtelierChatServiceTest {
 
         verify(quotaService).recordUsage(userId,
                 new fr.claudegateway.quota.TurnTokens(5_000L, 500L, 90_000L, 5_000L),
-                null, "claude-opus-5", workspaceId, null);
+                fr.claudegateway.quota.TurnExtras.NONE, null, "claude-opus-5", workspaceId, null);
     }
 
     @Test

@@ -241,6 +241,35 @@ class AnthropicAgentProviderTest {
     }
 
     @Test
+    void countsWebSearchesBecauseNoTokenCounterShowsThem() {
+        // F-133 / SF-133-08 : la recherche web est facturée À LA REQUÊTE — 10 $ les mille — en plus
+        // des tokens qu'elle rapporte. Le fournisseur la compte dans `server_tool_use`, et c'est
+        // le seul endroit où l'information existe.
+        build(null);
+        server.expect(requestTo(URL)).andRespond(withSuccess("""
+                {"content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn",
+                 "usage": {"input_tokens": 500, "output_tokens": 40,
+                           "server_tool_use": {"web_search_requests": 7}}}
+                """, MediaType.APPLICATION_JSON));
+
+        AgentTurn turn = call();
+
+        assertThat(turn.webSearchRequests()).isEqualTo(7);
+    }
+
+    @Test
+    void countsNoWebSearchWhenTheProviderReportsNone() {
+        // Le cas de tous les chemins qui ne déclarent pas l'outil de recherche : zéro, pas d'erreur.
+        build(null);
+        server.expect(requestTo(URL)).andRespond(withSuccess("""
+                {"content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn",
+                 "usage": {"input_tokens": 500, "output_tokens": 40}}
+                """, MediaType.APPLICATION_JSON));
+
+        assertThat(call().webSearchRequests()).isZero();
+    }
+
+    @Test
     void keepsCountingExactlyAsBeforeWhenTheResponseHasNoCacheFields() {
         build(null);
         server.expect(requestTo(URL)).andRespond(withSuccess("""

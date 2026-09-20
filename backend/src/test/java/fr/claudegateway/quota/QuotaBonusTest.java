@@ -62,7 +62,7 @@ class QuotaBonusTest {
                 org.mockito.Mockito.mock(UsageLedgerService.class),
                 new BilledTokensCalculator(
                         new TokenPricingProperties(null, null, null, null, null, null)),
-                new ProviderCostCalculator(new ProviderPricingProperties(null, null, null)),
+                new ProviderCostCalculator(new ProviderPricingProperties(null, null, null, null, null)),
                 new QuotaProperties(null, null, null), clock);
     }
 

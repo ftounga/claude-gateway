@@ -37,20 +37,36 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * F-133). {@link #pricingVersion()} date le relevé et accompagne chaque montant enregistré, pour
  * qu'un coût ancien reste explicable quand les tarifs auront changé.</p>
  *
- * @param pricingVersion date du relevé de la grille (ex. {@code 2026-09-20}), écrite sur chaque
- *                       ligne de coût
- * @param defaultModel   modèle dont les tarifs servent de repli quand le modèle servi est inconnu
- *                       de la grille — jamais d'échec de tour pour un problème de tarif
- * @param models         grille par identifiant de modèle ({@code claude-opus-5}, …)
+ * <p><b>Deux dépenses ne sont pas des tokens</b> (SF-133-08) et figurent ici à part : la recherche
+ * web, facturée à mille, et le temps de session des Managed Agents, facturé à l'heure. Les ignorer
+ * ferait sous-estimer tout tour agentique.</p>
+ *
+ * @param pricingVersion      date du relevé de la grille (ex. {@code 2026-09-20}), écrite sur chaque
+ *                            ligne de coût
+ * @param defaultModel        modèle dont les tarifs servent de repli quand le modèle servi est
+ *                            inconnu de la grille — jamais d'échec de tour pour un problème de tarif
+ * @param models              grille par identifiant de modèle ({@code claude-opus-5}, …)
+ * @param webSearchPerThousand tarif de mille recherches web, en dollars (défaut {@code 10.00})
+ * @param sessionHour         tarif d'une heure de session {@code running}, en dollars (défaut
+ *                            {@code 0.08}). Ne s'applique qu'aux Managed Agents : la boucle maison
+ *                            n'a pas de bac à sable facturé
  */
 @ConfigurationProperties(prefix = "app.cost.provider")
 public record ProviderPricingProperties(
         String pricingVersion,
         String defaultModel,
-        Map<String, ModelPricing> models) {
+        Map<String, ModelPricing> models,
+        BigDecimal webSearchPerThousand,
+        BigDecimal sessionHour) {
 
     static final String DEFAULT_PRICING_VERSION = "2026-09-20";
     static final String DEFAULT_MODEL = "claude-opus-5";
+    static final BigDecimal DEFAULT_WEB_SEARCH_PER_THOUSAND = new BigDecimal("10.00");
+    static final BigDecimal DEFAULT_SESSION_HOUR = new BigDecimal("0.08");
+
+    // Pas de constructeur de commodité : un second constructeur rendrait la liaison de
+    // configuration ambiguë (Spring ne saurait plus lequel utiliser) et le contexte refuserait de
+    // démarrer. Les appelants passent les cinq composants, quitte à en laisser à `null`.
 
     /**
      * Grille par défaut, relevée le 2026-09-20 sur
@@ -79,6 +95,14 @@ public record ProviderPricingProperties(
                 : defaultModel.trim();
         // Une grille vide n'est pas un réglage : ce serait facturer zéro, donc ne rien mesurer.
         models = models == null || models.isEmpty() ? defaultModels() : Map.copyOf(models);
+        // Un tarif d'extra absent retombe sur son défaut publié. Jamais zéro : une recherche web
+        // gratuite ferait disparaître du rapport une dépense bien réelle.
+        webSearchPerThousand = webSearchPerThousand == null || webSearchPerThousand.signum() <= 0
+                ? DEFAULT_WEB_SEARCH_PER_THOUSAND
+                : webSearchPerThousand;
+        sessionHour = sessionHour == null || sessionHour.signum() <= 0
+                ? DEFAULT_SESSION_HOUR
+                : sessionHour;
     }
 
     /**

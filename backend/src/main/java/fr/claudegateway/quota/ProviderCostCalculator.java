@@ -35,6 +35,8 @@ public class ProviderCostCalculator {
     private static final Logger log = LoggerFactory.getLogger(ProviderCostCalculator.class);
 
     private static final BigDecimal TOKENS_PER_MILLION = BigDecimal.valueOf(1_000_000L);
+    private static final BigDecimal SEARCHES_PER_THOUSAND = BigDecimal.valueOf(1_000L);
+    private static final BigDecimal SECONDS_PER_HOUR = BigDecimal.valueOf(3_600L);
 
     /**
      * Six décimales : un tour minuscule coûte une fraction de centime, et des milliers de tours
@@ -58,6 +60,16 @@ public class ProviderCostCalculator {
      * @param model  modèle servi, ou {@code null} s'il n'a pas été rapporté
      */
     public TurnCost calculate(TurnTokens tokens, String model) {
+        return calculate(tokens, TurnExtras.NONE, model);
+    }
+
+    /**
+     * Coût d'un tour, <b>tokens et dépenses hors tokens</b> (SF-133-08) : la recherche web et le
+     * temps de session s'ajoutent au coût des tokens, parce que le fournisseur les facture aussi.
+     *
+     * @param extras recherches web et secondes de session imputées au tour
+     */
+    public TurnCost calculate(TurnTokens tokens, TurnExtras extras, String model) {
         ProviderPricingProperties.ModelPricing rates = pricing.pricingOf(model);
         boolean fallback = rates == null;
         if (fallback) {
@@ -68,6 +80,7 @@ public class ProviderCostCalculator {
                 .add(cost(tokens.outputTokens(), rates.output()))
                 .add(cost(tokens.cacheReadTokens(), rates.cacheRead()))
                 .add(cost(tokens.cacheWriteTokens(), rates.cacheWrite()))
+                .add(extrasCost(extras))
                 .setScale(COST_SCALE, RoundingMode.HALF_UP);
         return new TurnCost(amount, TurnCost.Source.CALCULATED, model, pricing.pricingVersion(),
                 fallback);
@@ -84,11 +97,41 @@ public class ProviderCostCalculator {
      * @param model           modèle servi, ou {@code null}
      */
     public TurnCost calculate(BigDecimal providerCostUsd, TurnTokens tokens, String model) {
+        return calculate(providerCostUsd, tokens, TurnExtras.NONE, model);
+    }
+
+    /**
+     * Même chose, avec les dépenses hors tokens (SF-133-08).
+     *
+     * <p><b>Les extras ne sont PAS ajoutés quand le fournisseur rapporte son coût</b> : ce coût
+     * comprend déjà ses recherches web et son temps de session. Les ajouter les compterait deux
+     * fois — et d'autant plus lourdement que c'est justement sur ce chemin (Managed Agents) que le
+     * temps de session existe.</p>
+     */
+    public TurnCost calculate(BigDecimal providerCostUsd, TurnTokens tokens, TurnExtras extras,
+            String model) {
         if (providerCostUsd == null || providerCostUsd.signum() <= 0) {
-            return calculate(tokens, model);
+            return calculate(tokens, extras, model);
         }
         return new TurnCost(providerCostUsd.setScale(COST_SCALE, RoundingMode.HALF_UP),
                 TurnCost.Source.PROVIDER, model, pricing.pricingVersion(), false);
+    }
+
+    /**
+     * Coût des dépenses hors tokens : {@code recherches × tarif_mille ÷ 1000 + secondes ×
+     * tarif_heure ÷ 3600}.
+     */
+    private BigDecimal extrasCost(TurnExtras extras) {
+        if (extras == null || extras.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal searches = BigDecimal.valueOf(extras.webSearchRequests())
+                .multiply(pricing.webSearchPerThousand())
+                .divide(SEARCHES_PER_THOUSAND, COST_SCALE, RoundingMode.HALF_UP);
+        BigDecimal seconds = BigDecimal.valueOf(extras.sandboxSeconds())
+                .multiply(pricing.sessionHour())
+                .divide(SECONDS_PER_HOUR, COST_SCALE, RoundingMode.HALF_UP);
+        return searches.add(seconds);
     }
 
     private void warnOnce(String model) {

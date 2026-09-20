@@ -207,7 +207,26 @@ public class QuotaService {
     @Transactional
     public void recordUsage(UUID userId, TurnTokens tokens, BigDecimal providerCostUsd,
             String model, UUID workspaceId, UUID hostId) {
-        if (tokens.isEmpty() && (providerCostUsd == null || providerCostUsd.signum() <= 0)) {
+        recordUsage(userId, tokens, TurnExtras.NONE, providerCostUsd, model, workspaceId, hostId);
+    }
+
+    /**
+     * Même décompte, en comptant aussi les <b>dépenses hors tokens</b> du tour
+     * (F-133 / SF-133-08) : la recherche web, facturée à mille, et le temps de session, facturé à
+     * l'heure.
+     *
+     * <p><b>Elles n'entrent pas dans le quota.</b> Le décompte commercial reste celui de F-63,
+     * fondé sur les tokens : changer ce qu'un client paie n'est pas l'objet de F-133, qui mesure ce
+     * que nous payons. Seul le <b>relevé</b> les enregistre.</p>
+     *
+     * @param extras recherches web et secondes de session imputées au tour
+     */
+    @Transactional
+    public void recordUsage(UUID userId, TurnTokens tokens, TurnExtras extras,
+            BigDecimal providerCostUsd, String model, UUID workspaceId, UUID hostId) {
+        TurnExtras spent = extras == null ? TurnExtras.NONE : extras;
+        if (tokens.isEmpty() && spent.isEmpty()
+                && (providerCostUsd == null || providerCostUsd.signum() <= 0)) {
             return;
         }
         long input = tokens.processedInputTokens();
@@ -228,8 +247,8 @@ public class QuotaService {
         // (il sert à refacturer un client) et, depuis F-133, le COÛT RÉEL du tour — les deux
         // natures de cache comprises, sans lesquelles la dépense serait surestimée d'un ordre de
         // grandeur en usage agentique.
-        usageLedgerService.recordTurn(userId, workspaceId, hostId, tokens,
-                providerCostCalculator.calculate(providerCostUsd, tokens, model));
+        usageLedgerService.recordTurn(userId, workspaceId, hostId, tokens, spent,
+                providerCostCalculator.calculate(providerCostUsd, tokens, spent, model));
     }
 
     /**

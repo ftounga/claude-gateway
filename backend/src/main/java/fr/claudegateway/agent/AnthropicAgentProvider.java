@@ -574,6 +574,16 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         }
         // La sortie est portée par les deux événements ; celle de `message_delta` (cumulée) prime.
         copyIntField(source, target, "output_tokens");
+        // Les recherches web arrivent dans `message_delta` (F-133 / SF-133-08). Le compteur est
+        // recopié tel quel : le streamé doit rendre le même coût que le non streamé, sans quoi la
+        // dépense dépendrait du mode d'appel.
+        JsonNode serverTools = source.path("server_tool_use");
+        if (serverTools.isObject()) {
+            ObjectNode copy = target.has("server_tool_use") && target.get("server_tool_use").isObject()
+                    ? (ObjectNode) target.get("server_tool_use")
+                    : target.putObject("server_tool_use");
+            copyIntField(serverTools, copy, "web_search_requests");
+        }
     }
 
     private static void copyIntField(JsonNode source, ObjectNode target, String field) {
@@ -789,8 +799,12 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         log.debug("Tour d'agent : {} tokens d'entrée (dont {} écrits en cache, {} lus en cache).",
                 inputTokens, cacheCreation, cacheRead);
         logAppliedContextEdits(response);
+        // La recherche web est facturée À LA REQUÊTE (10 $ les mille), en plus des tokens qu'elle
+        // rapporte : c'est le seul endroit où le compte existe (F-133 / SF-133-08). Sans lui, un
+        // tour qui cherche beaucoup coûte visiblement le prix d'un tour qui ne cherche pas.
+        int webSearches = usage.path("server_tool_use").path("web_search_requests").asInt(0);
         return new AgentTurn(text.toString(), toolCalls, finished, inputTokens, outputTokens, truncated,
-                reasoning, cacheRead, cacheCreation);
+                reasoning, cacheRead, cacheCreation, webSearches);
     }
 
     /**

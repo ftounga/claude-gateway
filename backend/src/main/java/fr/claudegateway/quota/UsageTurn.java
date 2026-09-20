@@ -143,6 +143,20 @@ public class UsageTurn {
     @Builder.Default
     private boolean pricingFallback = false;
 
+    /**
+     * Recherches web facturées sur le tour (F-133 / SF-133-08), à 10 $ les mille, <b>en plus</b>
+     * des tokens qu'elles rapportent. Le compteur est conservé à côté du montant pour qu'un coût
+     * élevé puisse être <b>expliqué</b>, et pas seulement constaté.
+     */
+    @Column(name = "web_search_requests", nullable = false, updatable = false)
+    @Builder.Default
+    private long webSearchRequests = 0L;
+
+    /** Secondes de session {@code running} imputées au tour (0,08 $/heure chez le fournisseur). */
+    @Column(name = "sandbox_seconds", nullable = false, updatable = false)
+    @Builder.Default
+    private long sandboxSeconds = 0L;
+
     /** Instant du tour (horloge applicative). Posé à l'écriture, jamais fourni par un client. */
     @Column(name = "occurred_at", nullable = false, updatable = false)
     private OffsetDateTime occurredAt;

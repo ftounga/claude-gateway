@@ -45,17 +45,21 @@ public class UsageLedgerService {
      * @param tokens      tokens du tour <b>par nature</b> (F-133 / SF-133-01). Les quatre sont
      *                    conservées : jusqu'ici seuls l'entrée traitée et la sortie descendaient
      *                    jusqu'ici, et le cache — l'essentiel du volume en agentique — était perdu
+     * @param extras      dépenses hors tokens du tour (F-133 / SF-133-08) : un tour peut n'avoir
+     *                    consommé aucun token et avoir tout de même coûté — une recherche web, du
+     *                    temps de session — auquel cas la ligne est écrite quand même
      * @param cost        coût réel du tour, ou {@code null} si aucun n'a pu être établi
      */
     public void recordTurn(UUID userId, UUID workspaceId, UUID hostId, TurnTokens tokens,
-            TurnCost cost) {
-        if (userId == null || tokens == null || tokens.isEmpty()) {
+            TurnExtras extras, TurnCost cost) {
+        TurnExtras spent = extras == null ? TurnExtras.NONE : extras;
+        if (userId == null || tokens == null || (tokens.isEmpty() && spent.isEmpty())) {
             // Un tour sans consommation n'est pas une ligne de facture : ne rien écrire évite un
             // journal rempli de zéros, dans lequel la vraie consommation se lirait moins bien.
             return;
         }
         try {
-            writer.write(userId, workspaceId, hostId, tokens, cost);
+            writer.write(userId, workspaceId, hostId, tokens, spent, cost);
         } catch (RuntimeException failure) {
             log.warn("Relevé de consommation non enregistré pour l'utilisateur {} (projet {}) :"
                     + " la consommation reste comptée par les compteurs de période.",
