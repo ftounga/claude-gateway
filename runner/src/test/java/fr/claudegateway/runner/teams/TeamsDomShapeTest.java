@@ -191,6 +191,83 @@ class TeamsDomShapeTest {
         }
     }
 
+    // ------------------------------------------------------------------ SF-89-18 : iframe same-origin
+
+    @Test
+    @DisplayName("Liste des chats (SF-89-18) : LIST_SELECTORS ciblent data-tid/role, jamais une classe")
+    void chat_list_roots_target_data_tid_or_role_not_class() {
+        for (String selector : TeamsDomShape.LIST_SELECTORS) {
+            assertTrue(selector.contains("data-tid") || selector.contains("role"),
+                    "la liste des chats se cible par data-tid/role, pas par classe : " + selector);
+        }
+    }
+
+    @Test
+    @DisplayName("Script iframe (SF-89-18/CA7) : descend via contentDocument, sans textContent/cookie/stockage")
+    void frames_script_descends_content_document_without_forbidden_reads() {
+        String js = TeamsDomShape.framesScript(mapper);
+
+        // Le cœur de la voie retenue : on lit contentDocument, dans l'onglet.
+        assertTrue(js.contains("contentDocument"), "le script descend via iframe.contentDocument");
+        assertTrue(js.contains("querySelectorAll('iframe')"), "le script parcourt les <iframe>");
+        // Mêmes interdits que la racine large : jamais un contenu, jamais un cookie, jamais le stockage.
+        assertFalse(js.contains("textContent"), "le script ne lit jamais textContent");
+        assertFalse(js.contains("innerText"), "le script ne lit jamais innerText");
+        assertFalse(js.toLowerCase(java.util.Locale.ROOT).contains("cookie"));
+        assertFalse(js.contains("localStorage"));
+        assertFalse(js.contains("sessionStorage"));
+        // Il ne mesure QUE des longueurs de nœuds texte, et cible les data-tid.
+        assertTrue(js.contains("nodeValue"));
+        assertTrue(js.contains(".length"));
+        assertTrue(js.contains("data-tid"));
+        // Et il ne lit jamais l'adresse d'un cadre cross-origin (aucune URL du cadre ne franchit — D4).
+        assertFalse(js.contains(".src"), "le script ne lit jamais le src d'une iframe cross-origin");
+    }
+
+    @Test
+    @DisplayName("refilterFrames (SF-89-18) : label assaini, borne MAX_FRAMES, cross-origin marqué blocked")
+    void refilter_frames_sanitizes_and_bounds() {
+        ObjectNode raw = mapper.createObjectNode();
+        ArrayNode frames = raw.putArray("frames");
+        // Un cadre same-origin lisible : sa liste porte un item (avec un id de fil dans le data-tid).
+        ObjectNode ok = frames.addObject();
+        ok.put("label", "hwc-iframe");
+        ok.put("blocked", false);
+        emptySurvey(ok, "root");
+        ObjectNode list = ok.putObject("list");
+        list.put("found", true);
+        list.put("truncated", false);
+        ArrayNode listNodes = list.putArray("nodes");
+        listNodes.add(node(0, 1, "div", "chat-list", "tree", 0, List.of(), List.of(), List.of(), 0));
+        listNodes.add(node(1, 12, "div", "chat-list-item-19:secret@thread.v2", "treeitem", 0,
+                List.of(), List.of(), List.of(), 0));
+        emptySurvey(ok, "rail");
+        emptySurvey(ok, "runway");
+        // Un cadre cross-origin : blocked, dont le label porte un id → assaini.
+        ObjectNode blocked = frames.addObject();
+        blocked.put("label", "frame-19:secret@thread.v2");
+        blocked.put("blocked", true);
+        // Deux cadres de plus que la borne : ignorés.
+        for (int i = 0; i < TeamsDomShape.MAX_FRAMES; i++) {
+            ObjectNode extra = frames.addObject();
+            extra.put("label", "iframe#extra" + i);
+            extra.put("blocked", true);
+        }
+
+        List<TeamsDomShape.FrameShape> out = TeamsDomShape.refilterFrames(raw);
+
+        assertEquals(TeamsDomShape.MAX_FRAMES, out.size(), "le nombre de cadres est borné à MAX_FRAMES");
+        TeamsDomShape.FrameShape first = out.get(0);
+        assertEquals("hwc-iframe", first.label());
+        assertFalse(first.blocked());
+        assertTrue(first.list().found(), "la liste du cadre same-origin est relevée");
+        // L'id de fil embarqué dans le data-tid de l'item est assaini, iframe incluse.
+        assertEquals(SurveyPaths.ID, first.list().nodes().get(1).tid());
+        TeamsDomShape.FrameShape second = out.get(1);
+        assertTrue(second.blocked(), "le cadre cross-origin est marqué blocked");
+        assertEquals(SurveyPaths.ID, second.label(), "un label porteur d'id est assaini");
+    }
+
     @Test
     @DisplayName("Bornes : au-delà de MAX_NODES, la squelette est coupée et le dit")
     void node_count_is_bounded() {
@@ -225,6 +302,14 @@ class TeamsDomShapeTest {
     }
 
     // ------------------------------------------------------------------ util
+
+    /** Pose une squelette vide (found=false) sous la clé donnée d'un cadre — zone absente. */
+    private void emptySurvey(ObjectNode frame, String key) {
+        ObjectNode survey = frame.putObject(key);
+        survey.put("found", false);
+        survey.put("truncated", false);
+        survey.putArray("nodes");
+    }
 
     private ObjectNode node(int depth, int repeat, String tag, String tid, String role, int kids,
             List<String> aria, List<String> attrs, List<String> classes, int textLen) {
