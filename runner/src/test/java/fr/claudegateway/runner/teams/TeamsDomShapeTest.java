@@ -116,15 +116,79 @@ class TeamsDomShapeTest {
     void scrubbing_and_bounds() {
         ObjectNode raw = mapper.createObjectNode();
         ArrayNode nodes = raw.putArray("nodes");
-        nodes.add(node(20, 1, "div", "12345678-1234-1234-1234-123456789012", "listitem", 0,
+        nodes.add(node(25, 1, "div", "12345678-1234-1234-1234-123456789012", "listitem", 0,
                 List.of("aria-hidden", "x=y", "bad name"), List.of(), List.of("__abcdef0123456789hex"), 0));
 
         TeamsDomShape.Node node = TeamsDomShape.refilter(raw).nodes().get(0);
 
         assertEquals(SurveyPaths.ID, node.tid(), "un GUID en data-tid doit devenir {id}");
-        assertEquals(TeamsDomShape.MAX_DEPTH, node.depth(), "la profondeur est bornée");
+        assertEquals(TeamsDomShape.MAX_DEPTH, node.depth(), "la profondeur est bornée à MAX_DEPTH");
         assertEquals(List.of("aria-hidden"), node.aria(), "seules les vraies clés survivent");
         assertTrue(node.classes().contains(SurveyPaths.ID), "un jeton de classe hex long est assaini");
+    }
+
+    // ------------------------------------------------------------------ SF-89-17 : profondeur accrue
+
+    @Test
+    @DisplayName("Profondeur accrue (CA5) : le cap monte à 22 ; un nœud à 21 est gardé, à 23 borné")
+    void deeper_capture_reaches_message_nodes() {
+        assertEquals(22, TeamsDomShape.MAX_DEPTH, "SF-89-17 : le cap de profondeur monte de 12 à 22");
+
+        ObjectNode raw = mapper.createObjectNode();
+        ArrayNode nodes = raw.putArray("nodes");
+        // un nœud auteur à profondeur 21 (hors de portée du cap 12 de SF-89-16)
+        nodes.add(node(21, 1, "div", "message-body", "listitem", 0, List.of(), List.of(), List.of(), 0));
+        // un nœud plus profond que le cap → borné à 22
+        nodes.add(node(23, 1, "span", "author", "", 0, List.of(), List.of(), List.of(), 0));
+
+        List<TeamsDomShape.Node> out = TeamsDomShape.refilter(raw).nodes();
+
+        assertEquals(21, out.get(0).depth(), "un nœud à 21 est capturé (impossible avec le cap 12)");
+        assertEquals(22, out.get(1).depth(), "un nœud plus profond que le cap est ramené à 22");
+    }
+
+    // ------------------------------------------------------------------ SF-89-17 : labels de cadre
+
+    @Test
+    @DisplayName("Labels de cadre (SF-89-17) : les tids des nœuds iframe sortent, dans l'ordre, assainis")
+    void iframe_tids_are_collected_in_order() {
+        ObjectNode raw = mapper.createObjectNode();
+        ArrayNode nodes = raw.putArray("nodes");
+        nodes.add(node(0, 1, "div", "app-layout-area--main", "main", 0,
+                List.of(), List.of(), List.of(), 0));
+        nodes.add(node(1, 1, "iframe", "hwc-iframe", "", 0, List.of(), List.of(), List.of(), 0));
+        // une seconde iframe dont le tid porte un id → assaini en {id}, mais toujours listé dans l'ordre
+        nodes.add(node(1, 1, "iframe", "frame-19:secret@thread.v2", "", 0,
+                List.of(), List.of(), List.of(), 0));
+
+        List<String> tids = TeamsDomShape.iframeTids(TeamsDomShape.refilter(raw));
+
+        assertEquals(List.of("hwc-iframe", SurveyPaths.ID), tids,
+                "les iframes sortent dans l'ordre, tid assaini");
+    }
+
+    // ------------------------------------------------------------------ SF-89-17 : racines rail/runway
+
+    @Test
+    @DisplayName("Rail/runway (SF-89-17) : racines ciblées par data-tid/role, script sans interdits")
+    void rail_and_runway_roots_target_data_tid_not_class() {
+        // Les racines ne ciblent que des data-tid / role, jamais une classe (les classes v2 sont hashées).
+        for (String selector : TeamsDomShape.RAIL_SELECTORS) {
+            assertTrue(selector.contains("data-tid") || selector.contains("role"),
+                    "le rail se cible par data-tid/role, pas par classe : " + selector);
+        }
+        for (String selector : TeamsDomShape.RUNWAY_SELECTORS) {
+            assertTrue(selector.contains("data-tid"),
+                    "le runway se cible par data-tid : " + selector);
+        }
+        // Le script des nouvelles racines garde les mêmes interdits que la racine large.
+        for (List<String> roots : List.of(TeamsDomShape.RAIL_SELECTORS, TeamsDomShape.RUNWAY_SELECTORS)) {
+            String js = TeamsDomShape.surveyScript(mapper, roots);
+            assertFalse(js.contains("textContent"));
+            assertFalse(js.contains("innerText"));
+            assertFalse(js.toLowerCase(java.util.Locale.ROOT).contains("cookie"));
+            assertFalse(js.contains("localStorage"));
+        }
     }
 
     @Test

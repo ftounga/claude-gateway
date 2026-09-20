@@ -1,6 +1,7 @@
 package fr.claudegateway.runner.teams;
 
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -38,6 +39,9 @@ public final class PageActions {
 
     /** Lit l'adresse de l'onglet — la même porte que {@code PageGestures}, déjà autorisée. */
     private static final String CURRENT_URL = "(() => location.href)()";
+
+    /** L'événement qui annonce un cadre/worker attaché (F-100 / SF-100-00) — un {@code sessionId} par cible. */
+    private static final String TARGET_ATTACHED = "Target.attachedToTarget";
 
     private final CdpConnection connection;
     private final BrowserLink.Sleeper sleeper;
@@ -207,6 +211,62 @@ public final class PageActions {
     public JsonNode readScript(String expression) {
         assertCurrentPageAllowed("script");
         return evaluate(expression);
+    }
+
+    /**
+     * <b>Enrôle l'auto-attache des cadres intégrés et collecte leurs sessions</b> (F-89 / SF-89-17), en
+     * réutilisant le mécanisme F-100 : {@code Target.setAutoAttach} (déjà en liste blanche) fait remonter
+     * un {@code sessionId} par cible via {@code Target.attachedToTarget}, sur lequel on pourra ensuite
+     * relever la <b>forme</b> du cadre ({@link #readScriptInFrame(String, String)}).
+     *
+     * <p>Ne remonte que les cadres de type {@code iframe} <b>sur un domaine Microsoft autorisé</b> — la
+     * même garde de domaine F-108 que pour la navigation s'applique à {@code targetInfo.url}. Un cadre hors
+     * liste est ignoré. Lecture pure : le réglage est ré-émis à l'identique (idempotent avec l'auto-attache
+     * réseau de F-100) et n'est pas tracé au Journal des gestes.</p>
+     *
+     * @return les cadres iframe attachés, dans l'ordre où ils ont été annoncés (peut être vide)
+     */
+    public List<Frame> attachedFrames() {
+        List<Frame> frames = new CopyOnWriteArrayList<>();
+        connection.onSessionEvent(TARGET_ATTACHED, (parent, params) -> {
+            String sessionId = params.path("sessionId").asText("");
+            JsonNode info = params.path("targetInfo");
+            String type = info.path("type").asText("");
+            String url = info.path("url").asText("");
+            if (!sessionId.isEmpty() && "iframe".equals(type) && MicrosoftDomains.isAllowed(url)) {
+                frames.add(new Frame(sessionId, url, type));
+            }
+        });
+        ObjectNode params = mapper.createObjectNode();
+        params.put("autoAttach", true);
+        params.put("waitForDebuggerOnStart", false);
+        params.put("flatten", true);
+        connection.send(CdpCommands.SET_AUTO_ATTACH, params);
+        settle();
+        return List.copyOf(frames);
+    }
+
+    /**
+     * <b>Relève une valeur DANS la session d'un cadre attaché</b> (F-89 / SF-89-17) : {@code Runtime.evaluate}
+     * adressé à la {@code sessionId} du cadre (contrat F-100 / SF-100-00), et non à l'onglet. C'est ce qui
+     * permet de voir la forme du DOM qui vit à l'intérieur de {@code hwc-iframe}, invisible au document
+     * principal. {@code Runtime.evaluate} est déjà en liste blanche ; aucune nouvelle commande CDP.
+     *
+     * @return la valeur rendue par le script dans le cadre, ou {@code null} si le cadre est inaccessible
+     */
+    public JsonNode readScriptInFrame(String sessionId, String expression) {
+        ObjectNode params = mapper.createObjectNode();
+        params.put("expression", expression);
+        params.put("returnByValue", true);
+        JsonNode result = connection.send(sessionId, CdpCommands.EVALUATE, params);
+        return result == null ? null : result.path("result").get("value");
+    }
+
+    /**
+     * Un cadre intégré attaché, tel qu'annoncé par {@code Target.attachedToTarget} (SF-89-17) : la session
+     * sur laquelle l'interroger, son adresse (déjà jugée sur un domaine Microsoft autorisé) et son type.
+     */
+    public record Frame(String sessionId, String url, String type) {
     }
 
     /** Remet l'onglet sur une adresse antérieure (§4.7), si elle est encore autorisée. */

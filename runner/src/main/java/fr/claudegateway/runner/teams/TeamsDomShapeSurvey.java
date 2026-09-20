@@ -33,6 +33,15 @@ final class TeamsDomShapeSurvey {
     static final String CATEGORY = "shape";
     static final String LIST_CODE = "conversations_list";
     static final String THREAD_CODE = "thread";
+    /** SF-89-17 : la forme du rail de gauche (liste des chats), zone de layout distincte du volet main. */
+    static final String RAIL_CODE = "chat_rail";
+    /** SF-89-17 : un cadre iframe attaché mais inaccessible (cross-origin/détaché) — dit, jamais tu. */
+    static final String FRAME_BLOCKED_CODE = "frame_blocked";
+
+    /** L'étiquette du document principal, opposée au label d'un cadre intégré (SF-89-17). */
+    static final String MAIN = "main";
+    static final String RAIL_AREA = "rail";
+    static final String RUNWAY_AREA = "message_runway";
 
     /** On ne relance pas le relevé plus d'une fois par minute, même à {@code DEBUG} soutenu. */
     static final long MIN_INTERVAL_MS = 60_000L;
@@ -90,13 +99,19 @@ final class TeamsDomShapeSurvey {
      */
     void survey() {
         String before = safeCurrentUrl();
-        emit(LIST_CODE, captureAt(conversationsRoute(before)), true);
+        // Document principal — la coquille (SF-89-16), désormais aussi le rail de gauche (SF-89-17).
+        TeamsDomShape.Survey mainList = captureAt(conversationsRoute(before));
+        emit(LIST_CODE, mainList, true, MAIN, null);
+        emit(RAIL_CODE, capture(TeamsDomShape.RAIL_SELECTORS), true, MAIN, RAIL_AREA);
         boolean opened = openFirstThread();
-        emit(THREAD_CODE, capture(), opened);
+        emit(THREAD_CODE, capture(TeamsDomShape.ROOT_SELECTORS), opened, MAIN, null);
+        emit(THREAD_CODE, capture(TeamsDomShape.RUNWAY_SELECTORS), opened, MAIN, RUNWAY_AREA);
+        // Les cadres intégrés — là où vit réellement le chat v2 (cause n°1, SF-89-17).
+        surveyFrames(mainList);
         restore(before);
     }
 
-    /** Navigue vers la vue Conversations puis relève la forme. */
+    /** Navigue vers la vue Conversations puis relève la forme de la racine large. */
     private TeamsDomShape.Survey captureAt(String route) {
         try {
             actions.navigate(route);
@@ -104,17 +119,79 @@ final class TeamsDomShapeSurvey {
         } catch (BrowserLinkException ignored) {
             // Destination refusée par la garde F-108 : on relève ce qui est à l'écran, sans naviguer.
         }
-        return capture();
+        return capture(TeamsDomShape.ROOT_SELECTORS);
     }
 
-    /** Relève la forme de la racine large sur la page courante. Rend une squelette vide si refusé. */
-    private TeamsDomShape.Survey capture() {
+    /** Relève la forme des racines données sur la page courante. Rend une squelette vide si refusé. */
+    private TeamsDomShape.Survey capture(java.util.List<String> roots) {
         try {
-            JsonNode raw = actions.readScript(TeamsDomShape.surveyScript(mapper, TeamsDomShape.ROOT_SELECTORS));
+            JsonNode raw = actions.readScript(TeamsDomShape.surveyScript(mapper, roots));
             return TeamsDomShape.refilter(raw);
         } catch (BrowserLinkException e) {
             return new TeamsDomShape.Survey(false, false, java.util.List.of());
         }
+    }
+
+    /**
+     * <b>Entre dans les cadres iframe</b> (SF-89-17, cause n°1) : passe l'onglet en auto-attache (mécanisme
+     * F-100, aucune nouvelle commande CDP), puis relève la forme DANS chaque cadre iframe attaché sur un
+     * domaine Microsoft — sa racine large, son rail, et le sous-arbre des messages. Un cadre inaccessible
+     * (cross-origin non attachable, détaché) est <b>dit</b> par {@link #FRAME_BLOCKED_CODE}, jamais un crash.
+     */
+    private void surveyFrames(TeamsDomShape.Survey mainList) {
+        java.util.List<PageActions.Frame> frames;
+        try {
+            frames = actions.attachedFrames();
+        } catch (RuntimeException e) {
+            return; // pas d'attache disponible : le document principal a déjà été relevé.
+        }
+        java.util.List<String> tids = TeamsDomShape.iframeTids(mainList);
+        int i = 0;
+        for (PageActions.Frame frame : frames) {
+            if (i >= TeamsDomShape.MAX_FRAMES) {
+                break;
+            }
+            String label = frameLabel(tids, i);
+            i++;
+            TeamsDomShape.Survey shape = captureInFrame(frame, TeamsDomShape.ROOT_SELECTORS);
+            if (!shape.found() && shape.nodes().isEmpty()) {
+                emitBlocked(label, frame);
+                continue;
+            }
+            emit(LIST_CODE, shape, true, label, null);
+            emit(RAIL_CODE, captureInFrame(frame, TeamsDomShape.RAIL_SELECTORS), true, label, RAIL_AREA);
+            emit(THREAD_CODE, captureInFrame(frame, TeamsDomShape.RUNWAY_SELECTORS), true, label,
+                    RUNWAY_AREA);
+        }
+    }
+
+    /** Relève la forme des racines données DANS la session d'un cadre. Vide (inaccessible) si refusé. */
+    private TeamsDomShape.Survey captureInFrame(PageActions.Frame frame, java.util.List<String> roots) {
+        try {
+            JsonNode raw = actions.readScriptInFrame(frame.sessionId(),
+                    TeamsDomShape.surveyScript(mapper, roots));
+            return TeamsDomShape.refilter(raw);
+        } catch (BrowserLinkException e) {
+            return new TeamsDomShape.Survey(false, false, java.util.List.of());
+        }
+    }
+
+    /** Le label d'un cadre : le tid de la n<sup>e</sup> iframe du document, sinon {@code iframe#N}. */
+    private static String frameLabel(java.util.List<String> tids, int index) {
+        if (index < tids.size() && tids.get(index) != null && !tids.get(index).isEmpty()) {
+            return tids.get(index);
+        }
+        return "iframe#" + (index + 1);
+    }
+
+    /** Dit qu'un cadre iframe attaché n'a pas pu être relevé — avec son label et son motif d'hôte. */
+    private void emitBlocked(String label, PageActions.Frame frame) {
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("kind", "frame_blocked");
+        fields.put("frame", label);
+        fields.put("host", SurveyPaths.hostMotif(frame.url()));
+        RunnerDiag.info(CATEGORY, FRAME_BLOCKED_CODE,
+                "cadre inaccessible (cross-origin/detache) : " + label, fields);
     }
 
     /** Clique le premier fil plausible (sélecteurs larges) ; vrai si un fil a été ouvert. */
@@ -137,9 +214,18 @@ final class TeamsDomShapeSurvey {
         return TeamsRoutes.onTabHost(TeamsRoutes.CONVERSATIONS, tabUrl);
     }
 
-    private void emit(String code, TeamsDomShape.Survey survey, boolean opened) {
+    /**
+     * Émet une vue relevée dans le Journal (F-132), <b>étiquetée</b> par son cadre ({@code main} ou le label
+     * d'un cadre iframe) et, le cas échéant, sa zone ({@code rail}/{@code message_runway}) — SF-89-17. Ces
+     * étiquettes sont sur l'en-tête <b>et</b> sur chaque nœud, pour se filtrer en base.
+     */
+    private void emit(String code, TeamsDomShape.Survey survey, boolean opened, String frame, String area) {
         Map<String, Object> header = new LinkedHashMap<>();
         header.put("kind", "header");
+        header.put("frame", frame);
+        if (area != null) {
+            header.put("area", area);
+        }
         header.put("found", survey.found());
         header.put("nodes", survey.nodes().size());
         header.put("depth", survey.maxDepth());
@@ -147,12 +233,18 @@ final class TeamsDomShapeSurvey {
         header.put("opened", opened);
         // Émis en INFO : produit uniquement quand le relevé tourne (gardé DEBUG), donc visible dans le
         // panneau par défaut et robuste à un retour de niveau en cours de rafale.
-        RunnerDiag.info(CATEGORY, code, "releve DOM " + code + " : " + survey.nodes().size()
+        RunnerDiag.info(CATEGORY, code, "releve DOM " + code + " [" + frame
+                + (area == null ? "" : "/" + area) + "] : " + survey.nodes().size()
                 + " noeud(s), profondeur " + survey.maxDepth() + (survey.truncated() ? ", tronque" : "")
                 + (opened ? "" : " (aucun fil ouvert)"), header);
         int seq = 1;
         for (TeamsDomShape.Node node : survey.nodes()) {
-            RunnerDiag.info(CATEGORY, code, TeamsDomShape.line(node), TeamsDomShape.fields(node, seq));
+            Map<String, Object> fields = TeamsDomShape.fields(node, seq);
+            fields.put("frame", frame);
+            if (area != null) {
+                fields.put("area", area);
+            }
+            RunnerDiag.info(CATEGORY, code, TeamsDomShape.line(node), fields);
             seq++;
         }
     }
