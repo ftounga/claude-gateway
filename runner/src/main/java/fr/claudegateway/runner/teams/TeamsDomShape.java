@@ -108,6 +108,17 @@ final class TeamsDomShape {
             "[data-tid=\"message-pane-list-runway\"]", "[data-tid=\"message-pane-body\"]",
             "[data-tid=\"message-pane-list-viewport\"]");
 
+    /**
+     * La racine de la <b>liste des chats</b> (les conversations) — SF-89-18. Distincte du {@code rail}
+     * (barre d'icônes d'application, zone de layout captée sous {@code chat_rail} par SF-89-17) : c'est
+     * <b>cette</b> liste, à l'intérieur de l'iframe same-origin {@code hwc-iframe}, qui portait le
+     * <i>0 conversation</i>. Ciblée par {@code role=tree}/{@code role=list} et les {@code data-tid} de
+     * liste de chats (<b>jamais</b> par classe : les classes v2 sont hashées). Premier candidat trouvé.
+     */
+    static final List<String> LIST_SELECTORS = List.of(
+            "[data-tid=\"chat-list\"]", "[data-tid=\"chatListItems\"]", "[data-tid$=\"chatListItem\"]",
+            "[data-tid*=\"chat-list\"]", "[role=\"tree\"]", "[role=\"list\"]");
+
     /** Un nom d'attribut admissible : une clé, jamais une valeur (pas de {@code =}, pas d'espace). */
     private static final Pattern ATTR_NAME = Pattern.compile("^[a-zA-Z][a-zA-Z0-9:_-]*$");
     /** Un jeton de balise/rôle : lettres, chiffres, tiret, souligné, espace (pour rôle). */
@@ -169,6 +180,18 @@ final class TeamsDomShape {
         return out;
     }
 
+    /** Une squelette vide, réutilisée pour les zones absentes d'un cadre (SF-89-18). */
+    private static final Survey EMPTY = new Survey(false, false, List.of());
+
+    /**
+     * La forme d'un iframe <b>same-origin</b> descendu par {@link #framesScript} (F-89 / SF-89-18) : son
+     * {@code label} (assaini), et — s'il est lisible — la forme de sa racine large, de sa <b>liste des
+     * chats</b>, de son rail et de son runway. Un cadre <b>cross-origin</b> ({@code blocked}) ne porte que
+     * son label : {@code contentDocument} était nul, rien n'a été lu.
+     */
+    record FrameShape(String label, boolean blocked, Survey root, Survey list, Survey rail, Survey runway) {
+    }
+
     // ------------------------------------------------------------------ le script
 
     /**
@@ -222,6 +245,95 @@ final class TeamsDomShape {
                 + "})()";
     }
 
+    /**
+     * <b>Le script qui descend dans les iframes same-origin</b> (F-89 / SF-89-18), à passer à
+     * {@code Runtime.evaluate} <b>dans l'onglet</b> (via {@link PageActions#readScript(String)}) — aucune
+     * nouvelle commande CDP. Il parcourt les {@code <iframe>} du document (bornés à {@link #MAX_FRAMES}) et,
+     * pour chacun, tente d'accéder à {@code iframe.contentDocument} :
+     *
+     * <ul>
+     *   <li><b>same-origin</b> ({@code contentDocument} non nul) : il relève la forme de la racine large,
+     *       de la <b>liste des chats</b> ({@link #LIST_SELECTORS}), du rail et du runway <b>dans ce
+     *       {@code contentDocument}</b>, avec exactement les mêmes gardes que {@link #surveyScript} (texte
+     *       élidé en longueur, valeurs d'attributs jamais lues hors {@code data-tid}/{@code role}/{@code
+     *       class}, ni {@code textContent}/{@code innerText}/cookie/stockage) ;</li>
+     *   <li><b>cross-origin</b> ({@code contentDocument} nul ou accès qui lève) : le cadre est marqué
+     *       {@code blocked} — <b>aucune URL du cadre n'est lue</b>, on ne franchit pas la barrière
+     *       d'origine.</li>
+     * </ul>
+     *
+     * <p>Chaque cadre porte un {@code label} best-effort : le {@code data-tid} de l'{@code <iframe>} (p. ex.
+     * {@code hwc-iframe}, lisible car le document parent est same-origin), sinon {@code iframe#N}. Le label
+     * est assaini côté Java ({@link #refilterFrames}).</p>
+     */
+    static String framesScript(ObjectMapper mapper) {
+        ArrayNode root = mapper.createArrayNode();
+        ROOT_SELECTORS.forEach(root::add);
+        ArrayNode list = mapper.createArrayNode();
+        LIST_SELECTORS.forEach(list::add);
+        ArrayNode rail = mapper.createArrayNode();
+        RAIL_SELECTORS.forEach(rail::add);
+        ArrayNode runway = mapper.createArrayNode();
+        RUNWAY_SELECTORS.forEach(runway::add);
+        return "(() => { /*cg-domframes*/"
+                + " const MAX_DEPTH = " + MAX_DEPTH + ", MAX_CHILDREN = " + MAX_CHILDREN
+                + ", MAX_NODES = " + MAX_NODES + ", MAX_FRAMES = " + MAX_FRAMES + ";"
+                + " const ROOT = " + root + ", LIST = " + list + ", RAIL = " + rail
+                + ", RUNWAY = " + runway + ";"
+                + " const sig = (el) => el.tagName + '|' + (el.getAttribute('data-tid') || '') + '|'"
+                + "   + (el.getAttribute('role') || '');"
+                + " const textLen = (el) => { let n = 0; for (const c of el.childNodes) {"
+                + "   if (c.nodeType === 3) { n += (c.nodeValue || '').length; } } return n; };"
+                + " const attrNames = (el) => { const aria = [], other = [];"
+                + "   const list = el.attributes || [];"
+                + "   for (let i = 0; i < list.length; i++) { const nm = list[i].name;"
+                + "     if (nm === 'class' || nm === 'style' || nm === 'data-tid' || nm === 'role') { continue; }"
+                + "     if (nm.indexOf('aria-') === 0) { aria.push(nm); } else { other.push(nm); } }"
+                + "   return { aria: aria, other: other }; };"
+                + " const classesOf = (el) => { try { return Array.prototype.slice.call(el.classList); }"
+                + "   catch (e) { return []; } };"
+                + " const surveyRoot = (doc, roots) => {"
+                + "   let root = null;"
+                + "   for (const s of roots) { let e = null; try { e = doc.querySelector(s); } catch (x) { e = null; }"
+                + "     if (e) { root = e; break; } }"
+                + "   if (!root) { return { found: false, truncated: false, nodes: [] }; }"
+                + "   const nodes = []; let truncated = false;"
+                + "   const walk = (el, depth, repeat) => {"
+                + "     if (nodes.length >= MAX_NODES) { truncated = true; return; }"
+                + "     const names = attrNames(el);"
+                + "     const kids = el.children ? el.children.length : 0;"
+                + "     nodes.push({ d: depth, n: repeat, tag: (el.tagName || '').toLowerCase(),"
+                + "       tid: el.getAttribute('data-tid') || '', role: el.getAttribute('role') || '',"
+                + "       aria: names.aria, attrs: names.other, cls: classesOf(el), text: textLen(el), kids: kids });"
+                + "     if (depth >= MAX_DEPTH) { if (kids > 0) { truncated = true; } return; }"
+                + "     const children = el.children ? Array.prototype.slice.call(el.children) : [];"
+                + "     let emitted = 0, i = 0;"
+                + "     while (i < children.length) {"
+                + "       if (emitted >= MAX_CHILDREN) { truncated = true; break; }"
+                + "       const s = sig(children[i]); let j = i + 1;"
+                + "       while (j < children.length && sig(children[j]) === s) { j++; }"
+                + "       walk(children[i], depth + 1, j - i); emitted++; i = j;"
+                + "     }"
+                + "   };"
+                + "   walk(root, 0, 1);"
+                + "   return { found: true, truncated: truncated, nodes: nodes };"
+                + " };"
+                + " const frames = []; let iframes = [];"
+                + " try { iframes = Array.prototype.slice.call(document.querySelectorAll('iframe')); }"
+                + "   catch (e) { iframes = []; }"
+                + " for (let i = 0; i < iframes.length && frames.length < MAX_FRAMES; i++) {"
+                + "   const f = iframes[i];"
+                + "   const label = f.getAttribute('data-tid') || ('iframe#' + (i + 1));"
+                + "   let cd = null; try { cd = f.contentDocument; } catch (e) { cd = null; }"
+                + "   if (!cd) { frames.push({ label: label, blocked: true }); continue; }"
+                + "   frames.push({ label: label, blocked: false,"
+                + "     root: surveyRoot(cd, ROOT), list: surveyRoot(cd, LIST),"
+                + "     rail: surveyRoot(cd, RAIL), runway: surveyRoot(cd, RUNWAY) });"
+                + " }"
+                + " return { frames: frames };"
+                + "})()";
+    }
+
     // ------------------------------------------------------------------ le re-filtre Java (cœur vie privée)
 
     /**
@@ -249,6 +361,44 @@ final class TeamsDomShape {
             }
         }
         return new Survey(found, truncated, out);
+    }
+
+    /**
+     * Ce que {@link #framesScript} a rendu, <b>re-filtré</b> (F-89 / SF-89-18) : la liste des cadres iframe
+     * descendus, bornée à {@link #MAX_FRAMES}, label <b>assaini</b> ({@link #scrubToken}), et chaque zone
+     * re-filtrée par {@link #refilter} (même cœur de vie privée que le document principal — aucune valeur
+     * ne franchit cette couche, {@code contentDocument} inclus). Un cadre {@code blocked} ne porte que son
+     * label.
+     */
+    static List<FrameShape> refilterFrames(JsonNode raw) {
+        List<FrameShape> out = new ArrayList<>();
+        if (raw == null || !raw.isObject()) {
+            return out;
+        }
+        JsonNode frames = raw.path("frames");
+        if (!frames.isArray()) {
+            return out;
+        }
+        for (JsonNode frame : frames) {
+            if (out.size() >= MAX_FRAMES) {
+                break;
+            }
+            if (!frame.isObject()) {
+                continue;
+            }
+            String label = scrubToken(frame.path("label").asText(""), MAX_TID_CHARS);
+            if (label.isEmpty()) {
+                label = "iframe#" + (out.size() + 1);
+            }
+            if (frame.path("blocked").asBoolean(false)) {
+                out.add(new FrameShape(label, true, EMPTY, EMPTY, EMPTY, EMPTY));
+                continue;
+            }
+            out.add(new FrameShape(label, false, refilter(frame.path("root")),
+                    refilter(frame.path("list")), refilter(frame.path("rail")),
+                    refilter(frame.path("runway"))));
+        }
+        return out;
     }
 
     private static Node node(JsonNode n) {

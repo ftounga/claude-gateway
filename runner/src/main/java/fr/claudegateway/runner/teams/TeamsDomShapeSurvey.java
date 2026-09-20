@@ -33,15 +33,26 @@ final class TeamsDomShapeSurvey {
     static final String CATEGORY = "shape";
     static final String LIST_CODE = "conversations_list";
     static final String THREAD_CODE = "thread";
-    /** SF-89-17 : la forme du rail de gauche (liste des chats), zone de layout distincte du volet main. */
+    /** SF-89-17 : la forme du rail de gauche (barre d'icônes d'app), zone de layout distincte du volet main. */
     static final String RAIL_CODE = "chat_rail";
-    /** SF-89-17 : un cadre iframe attaché mais inaccessible (cross-origin/détaché) — dit, jamais tu. */
+    /**
+     * SF-89-18 : la <b>liste des chats</b> (les conversations) relevée dans un cadre same-origin — distincte
+     * du {@link #RAIL_CODE} (barre d'icônes d'app) qui la captait à tort. C'est elle qui portait le
+     * <i>0 conversation</i>.
+     */
+    static final String CHAT_LIST_CODE = "chat_list";
+    /**
+     * SF-89-17 : un cadre iframe inaccessible — <b>SF-89-18</b> le recentre sur les iframes réellement
+     * cross-origin ({@code contentDocument} nul). Dit, jamais tu.
+     */
     static final String FRAME_BLOCKED_CODE = "frame_blocked";
 
     /** L'étiquette du document principal, opposée au label d'un cadre intégré (SF-89-17). */
     static final String MAIN = "main";
     static final String RAIL_AREA = "rail";
     static final String RUNWAY_AREA = "message_runway";
+    /** SF-89-18 : la zone de la liste des chats à l'intérieur d'un cadre same-origin. */
+    static final String LIST_AREA = "chat_list";
 
     /** On ne relance pas le relevé plus d'une fois par minute, même à {@code DEBUG} soutenu. */
     static final long MIN_INTERVAL_MS = 60_000L;
@@ -106,9 +117,53 @@ final class TeamsDomShapeSurvey {
         boolean opened = openFirstThread();
         emit(THREAD_CODE, capture(TeamsDomShape.ROOT_SELECTORS), opened, MAIN, null);
         emit(THREAD_CODE, capture(TeamsDomShape.RUNWAY_SELECTORS), opened, MAIN, RUNWAY_AREA);
-        // Les cadres intégrés — là où vit réellement le chat v2 (cause n°1, SF-89-17).
+        // Les cadres intégrés cross-origin — chemin d'attache CDP (SF-89-17), conservé pour les vrais OOPIF.
         surveyFrames(mainList);
+        // Les iframes SAME-ORIGIN (dont hwc-iframe) — par leur contentDocument (SF-89-18) : c'est là que
+        // vit vraiment la liste des conversations v2, invisible à l'auto-attache car pas une cible séparée.
+        surveySameOriginFrames();
         restore(before);
+    }
+
+    /**
+     * <b>Entre dans les iframes same-origin</b> (SF-89-18) : exécute <b>un</b> script dans l'onglet
+     * ({@link PageActions#readScript}, {@code Runtime.evaluate} déjà en liste blanche — aucune nouvelle
+     * commande CDP) qui descend dans {@code iframe.contentDocument} de chaque cadre same-origin et relève sa
+     * forme (racine large, <b>liste des chats</b>, rail, runway). Un cadre <b>cross-origin</b>
+     * ({@code contentDocument} nul) est <b>dit</b> par {@link #FRAME_BLOCKED_CODE}, jamais un crash — et
+     * aucune URL du cadre n'est lue. Ne lève jamais.
+     */
+    private void surveySameOriginFrames() {
+        java.util.List<TeamsDomShape.FrameShape> frames;
+        try {
+            JsonNode raw = actions.readScript(TeamsDomShape.framesScript(mapper));
+            frames = TeamsDomShape.refilterFrames(raw);
+        } catch (RuntimeException e) {
+            // Page sortie du domaine (garde F-108) ou lecture refusée : le document principal a déjà été relevé.
+            return;
+        }
+        for (TeamsDomShape.FrameShape frame : frames) {
+            if (frame.blocked()) {
+                emitBlockedFrame(frame.label());
+                continue;
+            }
+            emit(LIST_CODE, frame.root(), true, frame.label(), null);
+            emit(CHAT_LIST_CODE, frame.list(), true, frame.label(), LIST_AREA);
+            emit(RAIL_CODE, frame.rail(), true, frame.label(), RAIL_AREA);
+            emit(THREAD_CODE, frame.runway(), true, frame.label(), RUNWAY_AREA);
+        }
+    }
+
+    /**
+     * Dit qu'un cadre iframe est <b>cross-origin</b> (son {@code contentDocument} était nul) — avec son seul
+     * label. <b>Aucune URL du cadre n'est lue</b> : on ne franchit pas la barrière d'origine (SF-89-18, D4).
+     */
+    private void emitBlockedFrame(String label) {
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("kind", "frame_blocked");
+        fields.put("frame", label);
+        RunnerDiag.info(CATEGORY, FRAME_BLOCKED_CODE,
+                "cadre iframe cross-origin (contentDocument nul) : " + label, fields);
     }
 
     /** Navigue vers la vue Conversations puis relève la forme de la racine large. */

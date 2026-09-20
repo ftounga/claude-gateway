@@ -92,6 +92,46 @@ class TeamsDomShapeSurveyTest {
     }
 
     @Test
+    @DisplayName("Iframe same-origin (SF-89-18/CA2/CA3) : contentDocument descendu, chat_list relevée")
+    void surveys_same_origin_iframe_via_content_document() {
+        RunnerDiag.setLevel(RunnerDiagLevel.DEBUG);
+        StubConnection cdp = new StubConnection("https://teams.microsoft.com/v2/#/conversations");
+        PageActions actions = new PageActions(cdp, noSleep(), sink);
+
+        TeamsDomShapeSurvey.run(actions, noSleep());
+
+        List<RunnerDiagEvent> events = drainShape();
+        // CA3 : la liste des chats est relevée sous chat_list, marquée area=chat_list.
+        assertTrue(events.stream().anyMatch(e -> TeamsDomShapeSurvey.CHAT_LIST_CODE.equals(e.code())
+                        && TeamsDomShapeSurvey.LIST_AREA.equals(e.fields().get("area"))),
+                "la liste des chats est relevée sous chat_list/area=chat_list (CA3) : " + events);
+        // CA2 : elle vit dans le cadre same-origin hwc-iframe (descente par contentDocument).
+        assertTrue(events.stream().anyMatch(e -> TeamsDomShapeSurvey.CHAT_LIST_CODE.equals(e.code())
+                        && "hwc-iframe".equals(e.fields().get("frame"))),
+                "la liste vient du cadre same-origin hwc-iframe (CA2) : " + events);
+    }
+
+    @Test
+    @DisplayName("Iframe cross-origin (SF-89-18/CA4) : contentDocument nul → frame_blocked, aucune URL lue")
+    void cross_origin_iframe_is_blocked_by_content_document() {
+        RunnerDiag.setLevel(RunnerDiagLevel.DEBUG);
+        StubConnection cdp = new StubConnection("https://teams.microsoft.com/v2/#/conversations");
+        PageActions actions = new PageActions(cdp, noSleep(), sink);
+
+        TeamsDomShapeSurvey.run(actions, noSleep());
+
+        List<RunnerDiagEvent> events = drainShape();
+        // Le cadre cross-origin de la descente same-origin est dit par frame_blocked, avec son seul label.
+        assertTrue(events.stream().anyMatch(e -> TeamsDomShapeSurvey.FRAME_BLOCKED_CODE.equals(e.code())
+                        && "iframe#same-origin-xo".equals(e.fields().get("frame"))),
+                "un cadre same-origin cross-origin (contentDocument nul) est dit par frame_blocked (CA4)");
+        // Aucune URL de cadre cross-origin ne franchit (D4) : le motif d'hôte n'est pas émis pour ce cadre.
+        assertTrue(events.stream().filter(e -> "iframe#same-origin-xo".equals(e.fields().get("frame")))
+                        .noneMatch(e -> e.fields().containsKey("host")),
+                "aucune URL/host du cadre cross-origin n'est lue (D4)");
+    }
+
+    @Test
     @DisplayName("Cadre inaccessible (CA3) : un cadre attaché mais inévaluable est dit par frame_blocked")
     void inaccessible_frame_is_reported_not_crashed() {
         RunnerDiag.setLevel(RunnerDiagLevel.DEBUG);
@@ -257,6 +297,9 @@ class TeamsDomShapeSurveyTest {
             ObjectNode holder = result.putObject("result");
             if (expression.contains("location.href")) {
                 holder.put("value", url);
+            } else if (expression.contains("cg-domframes")) {
+                // SF-89-18 : la descente same-origin par contentDocument, exécutée dans l'onglet.
+                holder.set("value", sameOriginFramesDom());
             } else if (expression.contains("cg-domshape")) {
                 holder.set("value", inFrame ? frameDom() : mainDom());
             } else if (expression.contains(".click()")) {
@@ -309,6 +352,53 @@ class TeamsDomShapeSurveyTest {
             message.put("title", "Marie Martin");
             message.put("href", "https://teams.microsoft.com/x/19:secret@thread.v2");
             return dom;
+        }
+
+        /**
+         * SF-89-18 : ce que la descente same-origin (script « cg-domframes », dans l'onglet) rend — un
+         * cadre same-origin lisible (hwc-iframe, contentDocument non nul) portant la <b>liste des chats</b>
+         * seedée de valeurs sensibles, et un cadre <b>cross-origin</b> (contentDocument nul → blocked).
+         */
+        private JsonNode sameOriginFramesDom() {
+            ObjectNode dom = mapper.createObjectNode();
+            ArrayNode frames = dom.putArray("frames");
+
+            ObjectNode hwc = frames.addObject();
+            hwc.put("label", "hwc-iframe");
+            hwc.put("blocked", false);
+            emptyShape(hwc, "root");
+            // La liste des chats, DANS le contentDocument same-origin : un arbre + un item porteur de nom.
+            ObjectNode list = hwc.putObject("list");
+            list.put("found", true);
+            list.put("truncated", false);
+            ArrayNode listNodes = list.putArray("nodes");
+            ObjectNode tree = listNodes.addObject();
+            fill(tree, 0, 1, "div", "chat-list", "tree", 0, 12);
+            ObjectNode item = listNodes.addObject();
+            fill(item, 1, 12, "div", "chat-list-item-19:secret@thread.v2", "treeitem", 0, 2);
+            // Toutes ces valeurs doivent être expurgées, même venant du contentDocument same-origin.
+            item.put("text", "bonjour Paul, on se voit demain ?");
+            item.putArray("aria").add("aria-label");
+            item.putArray("attrs").add("id");
+            item.put("title", "Marie Martin");
+            item.put("href", "https://teams.microsoft.com/x/19:secret@thread.v2");
+            emptyShape(hwc, "rail");
+            emptyShape(hwc, "runway");
+
+            // Un cadre réellement cross-origin : contentDocument nul → blocked, aucune URL lue. Label
+            // distinct du chemin CDP (SF-89-17), pour prouver que la voie same-origin n'émet aucun host.
+            ObjectNode blocked = frames.addObject();
+            blocked.put("label", "iframe#same-origin-xo");
+            blocked.put("blocked", true);
+            return dom;
+        }
+
+        /** Une squelette vide sous une clé de zone d'un cadre (SF-89-18). */
+        private void emptyShape(ObjectNode frame, String key) {
+            ObjectNode survey = frame.putObject(key);
+            survey.put("found", false);
+            survey.put("truncated", false);
+            survey.putArray("nodes");
         }
 
         private static void fill(ObjectNode n, int depth, int repeat, String tag, String tid, String role,
