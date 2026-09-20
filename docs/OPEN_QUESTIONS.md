@@ -604,7 +604,11 @@ Ce que la réponse engageait, et comment cela s'est réglé :
 
 ## OQ-19 — Le compte Anthropic est-il une **organisation**, avec une clé Admin ?
 
-**Statut** : **Ouverte — bloquante pour SF-133-05 uniquement** (posée le 2026-09-20, cadrage F-133).
+**Statut** : **Close le 2026-09-20 — sans objet pour la livraison.** Le PO tranche : on se passe de
+la clé Admin. Les **tarifs sont publics** et aucune API ne les expose ; ils sont relevés à la main sur
+la grille officielle et **revus chaque trimestre** (décision D9 du cadrage F-133). SF-133-05
+(réconciliation) devient **optionnelle** — elle ne fournit pas le coût, elle en mesure l'écart. La
+question ne redeviendra ouverte que si l'on veut vérifier que le calcul ne dérive pas dans le temps.
 
 **Mesuré le 2026-09-20** avec la clé réellement déployée (secret `backend-secrets`, ns
 `claude-gateway-staging`) :

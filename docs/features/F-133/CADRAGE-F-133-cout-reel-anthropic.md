@@ -98,6 +98,24 @@ une organisation Console et une clé `sk-ant-admin01-…` (une clé API normale 
 workspace aussi). **C'est la seule inconnue bloquante de ce cadrage** — elle ne bloque que la
 réconciliation (SF-05), pas le reste.
 
+### C6 — Deux dépenses réelles n'apparaissent dans **aucun** token
+
+Relevé sur la grille tarifaire officielle le 2026-09-20 :
+
+| Dépense | Tarif | Où elle est aujourd'hui |
+|---|---|---|
+| **Recherche web** | **10 $ / 1 000 recherches**, en plus des tokens | **Nulle part.** `server_tool_use.web_search_requests` n'est lu par aucune ligne du dépôt — le Radar et la Vigie en consomment pourtant |
+| **Temps de session Managed Agents** | **0,08 $ / heure** de session `running` | **Déjà compté** (`UsageCounter.sandboxSeconds:94`, alimenté par `AtelierSessionService:1063`) mais **jamais tarifé** |
+
+Un coût reconstitué à partir des seuls tokens **sous-estime donc systématiquement** la dépense, et
+d'autant plus que l'usage est agentique — exactement le profil de l'Atelier et de la Vigie. Les deux
+sont modélisables : le compteur de secondes existe déjà, et le nombre de recherches est rapporté par
+l'API dans `usage.server_tool_use`. C'est une subfeature à part entière (SF-133-08), et c'est elle,
+plus que la réconciliation, qui décide si le montant affiché est croyable.
+
+**Trois autres modificateurs** à porter dans la table de tarifs, parce qu'ils multiplient tout :
+Batch **−50 %**, `inference_geo: "us"` **×1,1**, fast mode Opus 5 **10 $/50 $**.
+
 ---
 
 ## 2. Périmètre
@@ -138,13 +156,19 @@ réconciliation (SF-05), pas le reste.
 | **SF-133-02** | **Le coût sous la réponse** | `AtelierTurnCost` porte le montant ; `costLabel()` affiche « 1 min 12 s · 34 210 tokens · 0,42 € » — **uniquement si l'appelant est admin** | 01 |
 | **SF-133-03** | **La semaine comme fenêtre** | `UsageWindow` apprend le grain semaine (ISO, lundi UTC) à côté du mois ; agrégats par semaine | 01 |
 | **SF-133-04** | **Le budget par client et par semaine** | table `host_budgets` (poste, période, montant, seuil) ; budget global par défaut ; écran de réglage admin | 03 |
-| **SF-133-05** | **La facture fait foi** | client Admin API (`cost_report` + `usage_report`), tâche planifiée quotidienne, table `provider_cost_days`, **écart** calculé et affiché | 01, **C5** |
+| **SF-133-05** | **La facture fait foi** *(optionnelle)* | client Admin API (`cost_report` + `usage_report`), tâche planifiée quotidienne, table `provider_cost_days`, **écart** calculé et affiché | 01, **C5** |
 | **SF-133-06** | **Les deux alertes** | « 80 % du budget de la semaine » puis « budget dépassé » ; par poste et global ; une fois par franchissement et par période | 04 |
 | **SF-133-07** | **L'écran du PO** | sous `admin/`, une vue : cette semaine / ce mois, par client, coût réel, écart vs facture, budgets et leur état | 01→06 |
+| **SF-133-08** | **Les dépenses hors tokens** | recherches web comptées (`usage.server_tool_use`) et tarifées à 10 $/1 000 ; secondes de session déjà comptées, tarifées à 0,08 $/h ; les deux entrent dans le coût du tour | 01 |
 
-**Ordre de livraison** : 01 → 02 → 03 → 04 → 06 → 07, avec **05 en parallèle** dès que la question
-C5 est tranchée. Si C5 est négative, 05 est reportée et l'écran affiche « coût calculé » sans écart —
-le reste de la feature tient debout sans elle.
+**Ordre de livraison** : 01 → **08** → 02 → 03 → 04 → 06 → 07. **SF-133-08 passe avant l'affichage** :
+montrer un montant dont on sait qu'il sous-estime ferait perdre confiance dès le premier écran.
+
+**SF-133-05 est optionnelle.** Décision du PO le 2026-09-20 : plutôt qu'une clé Admin, on tient la
+grille publique à jour tous les trimestres (D9). La feature entière fonctionne sans elle ; la
+réconciliation n'ajoute qu'une ligne — *« facturé : 49,05 € — écart +2,6 % »* — qui mesure la qualité
+du calcul sans le remplacer. À faire si l'écran est utilisé longtemps et qu'on veut vérifier qu'il ne
+dérive pas.
 
 ---
 
@@ -158,8 +182,35 @@ le reste de la feature tient debout sans elle.
 | **D4** | La semaine est **ISO, du lundi 00:00 UTC** | cohérent avec le reste des fenêtres (UTC) ; évite un débat de fuseau sur une frontière de budget |
 | **D5** | Le dépassement **alerte**, ne bloque pas | **Confirmé par le PO le 2026-09-20.** Le refus de service reste l'affaire du quota commercial (F-10/F-36), qui a déjà ses plafonds et ses exceptions |
 | **D6** | Visible pour `ROLE_ADMIN` **ou** le super-admin configuré, via `AdminService.requireAdmin()` | le mécanisme existe (`application.yml:89`) et porte déjà ntounga@gmail.com |
-| **D7** | Les tarifs de vérité sont **par modèle**, en configuration | Opus 5 à 5/25, Sonnet 5 à 2/10, Haiku 4.5 à 1/5 : un tarif unique se tromperait dès qu'un modèle change |
+| **D7** | Les tarifs de vérité sont **par modèle**, en configuration, avec les **quatre natures** | un tarif unique se tromperait dès qu'un modèle change. Grille officielle relevée le 2026-09-20 en §4 bis |
 | **D8** | Aucun texte n'entre dans la nouvelle table, comme aujourd'hui | garantie tenue par la structure, pas par la prudence des requêtes (`UsageTurn` javadoc) |
+| **D9** | Les tarifs sont **relevés à la main sur la grille publique**, datés, et **revus tous les trimestres** | **Proposition du PO, retenue le 2026-09-20.** Les prix sont **publics** : aucune clé n'est nécessaire pour les connaître, et aucune API ne les expose (`GET /v1/models` rend les capacités, jamais les prix). Une table datée en configuration, plus un rappel trimestriel, coûte quelques minutes par an et suffit. Le champ `pricing_version` sur chaque ligne de coût permet de savoir avec quelle grille un montant a été calculé |
+
+---
+
+## 4 bis. La grille de vérité (relevée le 2026-09-20, USD par million de tokens)
+
+| Modèle | Entrée | Écriture cache 5 min | **Écriture cache 1 h** | Lecture cache | Sortie |
+|---|---|---|---|---|---|
+| **Claude Opus 5** | 5,00 | 6,25 | **10,00** | 0,50 | 25,00 |
+| Claude Sonnet 5 | 2,00 | 2,50 | 4,00 | 0,20 | 10,00 |
+| Claude Haiku 4.5 | 1,00 | 1,25 | 2,00 | 0,10 | 5,00 |
+| Claude Fable 5.1 | 10,00 | 12,50 | 20,00 | **0,25** (0,025×) | 50,00 |
+
+Hors tokens : **recherche web 10 $ / 1 000**, **session Managed Agents 0,08 $/heure**, exécution de
+code 0,05 $/heure au-delà de 1 550 heures offertes par mois et par organisation.
+
+Multiplicateurs : Batch **×0,5**, `inference_geo: "us"` **×1,1**, fast mode (Opus 5) **10/50**.
+
+**La seule correction à faire sur l'existant** : la boucle pose un cache **TTL 1 h** depuis F-130,
+dont l'écriture vaut **10,00** et non 6,25. Les cinq autres valeurs du projet sont exactes. Le 6,25
+**reste** dans `app.atelier.agent.cost` (décompte commercial, choix assumé en faveur du client) ; le
+10,00 va dans `app.cost.provider` (vérité). C'est précisément pour ça que les deux tables sont
+séparées.
+
+**Revue** : tous les trimestres (D9), sur `https://platform.claude.com/docs/en/about-claude/pricing`.
+Chaque relevé incrémente `pricing_version` et garde la date, pour qu'un montant ancien reste
+explicable.
 
 ---
 
