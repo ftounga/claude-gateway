@@ -96,9 +96,14 @@ class TeamsRadarCollectorTest {
     }
 
     private static TeamsRadarCollector collector(PaperTeams teams, List<PageActions.GestureRecord> gestures) {
+        return collector(teams, gestures, millis -> { });
+    }
+
+    private static TeamsRadarCollector collector(PaperTeams teams, List<PageActions.GestureRecord> gestures,
+            BrowserLink.Sleeper sleeper) {
         TeamsLedger ledger = teams.ledger();
         TeamsSession session = new TeamsSession(9222, teams.adapter, line -> { }, (port, adapter, say) -> teams.link);
-        return new TeamsRadarCollector(session, () -> ledger, millis -> { }, () -> NOW,
+        return new TeamsRadarCollector(session, () -> ledger, sleeper, () -> NOW,
                 gestures == null ? record -> { } : gestures::add, new Object());
     }
 
@@ -347,6 +352,81 @@ class TeamsRadarCollectorTest {
         assertEquals(TeamsPayloadKind.UNKNOWN, TeamsUrls.classify(
                 "https://contoso.sharepoint.com/sites/Projet/_layouts/15/stream.aspx"));
         assertEquals(TeamsPayloadKind.UNKNOWN, TeamsUrls.classify("https://sharepoint.com/transcripts"));
+    }
+
+    // ------------------------------------------------------------------ SF-100-10 : la vue Chat avant de lire
+
+    @Test
+    @DisplayName("SF-100-10 : réseau vide → la découverte navigue vers la vue Chat et ATTEND la liste avant de lire")
+    void discoveryNavigatesToChatViewAndWaitsForTheList() {
+        PaperTeams teams = new PaperTeams(); // le réseau ne sert aucune liste
+        // La liste « mid-nav » v2 ne « charge » qu'après deux sondages de présence : la collecte doit attendre.
+        teams.browser.listPresentAfter(2, PaperScreen.of("conversations-v2.html"));
+        List<PageActions.GestureRecord> gestures = new ArrayList<>();
+        int[] polls = { 0 };
+        BrowserLink.Sleeper sleeper = millis -> polls[0]++;
+
+        // Fenêtre postérieure à l'activité des fils : la découverte LISTE sans avoir à lire (le sujet ici,
+        // c'est le contexte de navigation, pas la lecture — prouvée par ailleurs par SF-89-20/21).
+        RadarCollector.Outcome outcome = collector(teams, gestures, sleeper)
+                .collect(assignment("2026-09-30T00:00:00Z", null), new PaperContext());
+
+        JsonNode discovery = outcome.coverage().path("discovery");
+        assertTrue(discovery.path("served").asBoolean(), outcome.coverage().toString());
+        assertEquals(TeamsTools.SOURCE_SCREEN, discovery.path("source").asText(), outcome.coverage().toString());
+        assertEquals(1, discovery.path("listed").asInt(), "le treeitem porteur d'un id de fil (SF-89-21)");
+        assertTrue(teams.browser.navigations().contains(TeamsRoutes.CHAT), teams.browser.navigations().toString());
+        assertTrue(polls[0] >= 2, "la collecte a attendu que la liste charge (poll borné) : " + polls[0]);
+        PageActions.GestureRecord diag = gestures.stream()
+                .filter(g -> "radar/chat_view".equals(g.action())).findFirst()
+                .orElseThrow(() -> new AssertionError("diag F-132 radar/chat_view attendu : " + gestures));
+        assertTrue(diag.result().contains("reached"), diag.result());
+        assertTrue(diag.result().contains("listed=1"), diag.result());
+    }
+
+    @Test
+    @DisplayName("SF-100-10 : liste jamais chargée → best-effort borné, listed=0, la couverture le dit, aucun crash")
+    void discoveryIsBestEffortWhenTheChatListNeverLoads() {
+        PaperTeams teams = new PaperTeams(); // ni réseau, ni écran : la liste ne charge jamais
+        List<PageActions.GestureRecord> gestures = new ArrayList<>();
+        int[] polls = { 0 };
+        BrowserLink.Sleeper sleeper = millis -> polls[0]++;
+
+        RadarCollector.Outcome outcome = collector(teams, gestures, sleeper)
+                .collect(assignment("2026-09-01T00:00:00Z", null), new PaperContext());
+
+        JsonNode discovery = outcome.coverage().path("discovery");
+        assertFalse(discovery.path("served").asBoolean());
+        assertEquals(0, discovery.path("listed").asInt());
+        assertEquals("aucune", discovery.path("source").asText());
+        assertEquals("PARTIAL", outcome.status(), "best-effort : partielle, jamais un crash ni une réussite mensongère");
+        assertTrue(teams.browser.navigations().contains(TeamsRoutes.CHAT));
+        assertTrue(polls[0] >= TeamsScreenFallback.MAX_CHAT_LIST_POLLS, "poll borné et épuisé : " + polls[0]);
+        PageActions.GestureRecord diag = gestures.stream()
+                .filter(g -> "radar/chat_view".equals(g.action())).findFirst()
+                .orElseThrow(() -> new AssertionError("diag F-132 radar/chat_view attendu : " + gestures));
+        assertTrue(diag.result().contains("timeout"), diag.result());
+        assertTrue(diag.result().contains("listed=0"), diag.result());
+    }
+
+    @Test
+    @DisplayName("SF-100-10 : liste déjà présente (déjà sur la vue Chat) → lecture immédiate, aucune navigation superflue")
+    void discoveryReadsImmediatelyWhenAlreadyOnTheChatView() {
+        PaperTeams teams = new PaperTeams();
+        teams.browser.screen("", PaperScreen.of("conversations-v2.html")); // la liste est déjà affichée
+        List<PageActions.GestureRecord> gestures = new ArrayList<>();
+
+        RadarCollector.Outcome outcome = collector(teams, gestures)
+                .collect(assignment("2026-09-30T00:00:00Z", null), new PaperContext());
+
+        JsonNode discovery = outcome.coverage().path("discovery");
+        assertEquals(TeamsTools.SOURCE_SCREEN, discovery.path("source").asText(), outcome.coverage().toString());
+        assertEquals(1, discovery.path("listed").asInt());
+        assertFalse(teams.browser.navigations().contains(TeamsRoutes.CHAT),
+                "déjà sur la vue Chat : pas de navigation vers la vue Chat");
+        PageActions.GestureRecord diag = gestures.stream()
+                .filter(g -> "radar/chat_view".equals(g.action())).findFirst().orElseThrow();
+        assertTrue(diag.result().contains("reached"), diag.result());
     }
 
     @Test

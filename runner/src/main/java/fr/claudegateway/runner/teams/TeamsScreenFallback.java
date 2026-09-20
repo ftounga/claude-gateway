@@ -5,6 +5,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 /**
  * <b>Le repli sur l'écran, en termes du domaine</b> (F-89 / SF-89-06) : fils, listes, flux d'activité et
  * transcriptions lus à l'écran quand le réseau n'a rien servi.
@@ -16,9 +19,26 @@ import java.util.function.Consumer;
  */
 final class TeamsScreenFallback {
 
+    /**
+     * SF-100-10 : sondages d'attente au plus pour que la liste des chats se charge après navigation. Un
+     * plafond dur : si la liste ne se charge jamais, la collecte le dit (best-effort), elle ne boucle pas.
+     */
+    static final int MAX_CHAT_LIST_POLLS = 20;
+
+    /**
+     * SF-100-10 : le geste de repli pour amener l'onglet sur la vue Chat quand la route seule n'a pas
+     * chargé la liste « mid-nav » — un clic sur l'entrée « Chat » de la barre d'app. Candidats de
+     * sélecteurs de <b>navigation</b> (jamais de lecture), <b>hypothèse à confirmer sur poste réel</b> du
+     * même ordre que les routes de {@link TeamsRoutes}. Le premier trouvé l'emporte.
+     */
+    private static final List<String> CHAT_APP_OPENERS = List.of("[data-tid=\"app-bar-chat\"]",
+            "button[data-tid=\"app-bar-chat\"]", "[data-tid=\"appBarChat\"]",
+            "button[aria-label=\"Chat\"]", "a[aria-label=\"Chat\"]");
+
     private final BrowserLink link;
     private final BrowserLink.Sleeper sleeper;
     private final Consumer<PageActions.GestureRecord> journal;
+    private final ObjectMapper mapper = new ObjectMapper();
 
     TeamsScreenFallback(BrowserLink link, BrowserLink.Sleeper sleeper, Consumer<PageActions.GestureRecord> journal) {
         this.link = link;
@@ -71,6 +91,97 @@ final class TeamsScreenFallback {
 
     /** Un écran de liste lu (conversations, activité), et ce qui a été fait dans la fenêtre. */
     record ScreenList(boolean found, List<Map<String, String>> items, List<TeamsGap> gaps, String viewport) {
+    }
+
+    /**
+     * SF-100-10 : le résultat d'une mise en contexte sur la vue Chat.
+     *
+     * @param reached     la vue Chat a été atteinte (déjà présente, ou navigation/geste émis sans refus)
+     * @param listPresent la liste « mid-nav » est présente à la fin (prête à lire)
+     * @param polls       nombre de sondages d'attente effectués (via le {@link BrowserLink.Sleeper})
+     */
+    record ChatView(boolean reached, boolean listPresent, int polls) {
+    }
+
+    /**
+     * <b>Amène l'onglet sur la vue Chat (liste « mid-nav » v2) et attend que la liste soit chargée</b>
+     * (F-100 / SF-100-10) — <b>avant</b> toute lecture.
+     *
+     * <p>La vérification (SF-100-01) réussit parce que l'utilisateur est déjà sur cette vue ; la synchro
+     * du soir navigue <b>seule</b> (Chrome managé) et n'y atterrit pas, d'où 0 conversation collectée alors
+     * que la vérification en voit (prod CAGIP 2026-09-20). On procède comme la vérification, mais en se
+     * plaçant explicitement dans le bon contexte :</p>
+     *
+     * <ol>
+     *   <li>Liste déjà présente → on ne bouge pas (cas « déjà sur la vue Chat »).</li>
+     *   <li>Sinon on <b>navigue</b> vers {@link TeamsRoutes#CHAT} (gardes F-108 : domaine, jamais une page
+     *       d'identification), reportée sur l'hôte de l'onglet.</li>
+     *   <li>On <b>attend</b> la présence de la liste par un <b>poll borné</b> (via le {@link
+     *       BrowserLink.Sleeper}, jamais l'horloge murale), plafond {@link #MAX_CHAT_LIST_POLLS}.</li>
+     *   <li>Si la route seule n'a pas chargé la liste, <b>geste de repli</b> : clic sur l'entrée « Chat »
+     *       de la barre d'app ({@link #CHAT_APP_OPENERS}), puis nouvelle attente bornée.</li>
+     * </ol>
+     *
+     * <p><b>Best-effort</b> : si la liste ne se charge jamais, on rend {@code listPresent=false} sans
+     * planter — l'appelant le dit dans la couverture et le diag F-132. La <b>présence</b> réutilise les
+     * sélecteurs de conteneur de {@link TeamsScreen#CONVERSATIONS} (aucune nouvelle table de lecture) : la
+     * lecture, elle, reste faite par {@link #list} avec les sélecteurs recalés (SF-89-20/21), inchangés.
+     * La vue n'est <b>pas</b> remise ici (la liste doit rester affichée pour être lue) : l'appelant remet
+     * la vue d'avant la découverte une fois la lecture faite (§4.7).</p>
+     */
+    ChatView reachChatList(int maxPolls) {
+        PageActions actions = actions();
+        try {
+            if (listPresent(actions)) {
+                return new ChatView(true, true, 0);
+            }
+            String before = actions.currentUrl();
+            if (MicrosoftDomains.isSignIn(before) || !MicrosoftDomains.isAllowed(before)) {
+                // La garde de F-108 tranchera de toute façon ; on ne force rien depuis une page d'identification.
+                return new ChatView(false, false, 0);
+            }
+            actions.navigate(TeamsRoutes.onTabHost(TeamsRoutes.CHAT, before));
+            int polls = waitForList(actions, maxPolls);
+            if (listPresent(actions)) {
+                return new ChatView(true, true, polls);
+            }
+            for (String opener : CHAT_APP_OPENERS) {
+                if (actions.click(opener)) {
+                    break;
+                }
+            }
+            polls += waitForList(actions, maxPolls);
+            return new ChatView(true, listPresent(actions), polls);
+        } catch (BrowserLinkException e) {
+            // Garde de F-108 (domaine, identification) : rien n'est forcé ; l'appelant le dit.
+            return new ChatView(false, false, 0);
+        }
+    }
+
+    /** Attend la présence de la liste par un poll borné via le {@link BrowserLink.Sleeper}. */
+    private int waitForList(PageActions actions, int maxPolls) {
+        int cap = Math.max(0, Math.min(maxPolls, MAX_CHAT_LIST_POLLS));
+        int polls = 0;
+        for (int i = 0; i < cap; i++) {
+            if (sleeper != null) {
+                sleeper.sleep(BrowserLink.SCROLL_SETTLE_MS);
+            }
+            polls++;
+            if (listPresent(actions)) {
+                break;
+            }
+        }
+        return polls;
+    }
+
+    /**
+     * La liste « mid-nav » est-elle présente ? Réutilise le conteneur de {@link TeamsScreen#CONVERSATIONS}
+     * ({@code [data-tid=simple-collab-dnd-rail]} / repli {@code chat-list}) : {@code positionScript >= 0}
+     * signifie que le conteneur a été trouvé. Aucune nouvelle table de lecture, aucune donnée lue.
+     */
+    private boolean listPresent(PageActions actions) {
+        JsonNode position = actions.readScript(TeamsScreen.positionScript(mapper, TeamsScreen.CONVERSATIONS));
+        return position != null && position.isNumber() && position.asDouble() >= 0;
     }
 
     /**

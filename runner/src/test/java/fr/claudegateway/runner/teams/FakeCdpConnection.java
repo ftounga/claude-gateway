@@ -308,6 +308,11 @@ final class FakeCdpConnection implements CdpConnection {
         if (expression.contains("/*cg-screen:")) {
             // F-89 / SF-89-06 : la lecture d'écran, appliquée à l'écran de papier affiché (ou à rien).
             screenScripts.add(expression);
+            if (revealListAfterProbes >= 0 && expression.contains("/*cg-screen:position*/")
+                    && ++positionProbes > revealListAfterProbes && revealListScreen != null) {
+                // SF-100-10 : la liste a fini par charger — désormais visible sur toute route.
+                screens.put("", revealListScreen);
+            }
             PaperScreen shown = screenFor(route);
             if (shown == null) {
                 result.putObject("result").set("value", expression.contains("/*cg-screen:position*/")
@@ -547,9 +552,24 @@ final class FakeCdpConnection implements CdpConnection {
     private final List<String> screenScripts = new ArrayList<>();
     private final List<String> clickedSelectors = new ArrayList<>();
 
+    /**
+     * SF-100-10 : la liste des chats qui « charge » — elle n'apparaît qu'après N sondages de présence
+     * ({@code cg-screen:position}), comme le DOM « mid-nav » qui arrive après la navigation vers la vue
+     * Chat. {@code -1} : dispositif éteint (comportement d'avant).
+     */
+    private int revealListAfterProbes = -1;
+    private PaperScreen revealListScreen;
+    private int positionProbes;
+
     /** Cet écran est affiché quand la route contient ce fragment ({@code ""} : toujours). */
     void screen(String routeFragment, PaperScreen screen) {
         screens.put(routeFragment, screen);
+    }
+
+    /** SF-100-10 : la liste (sur toute route) n'apparaît qu'après {@code probes} sondages de présence. */
+    void listPresentAfter(int probes, PaperScreen screen) {
+        this.revealListAfterProbes = probes;
+        this.revealListScreen = screen;
     }
 
     /** Cet écran apparaît (sur toute route) après un clic dont le sélecteur contient ce fragment. */
