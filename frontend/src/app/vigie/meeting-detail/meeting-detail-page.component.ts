@@ -191,6 +191,19 @@ interface DeckImage {
             @if (ins.missing) {
               <p class="detail__missing"><mat-icon aria-hidden="true">info</mat-icon>{{ ins.missing }}</p>
             }
+            <p class="sources">
+              <mat-icon aria-hidden="true">layers</mat-icon>
+              <span>Sources consolidées :</span>
+              @if (ins.hasExternalTranscript) {
+                <span class="sources__tag sources__tag--client">transcription client (vrais noms)</span>
+              }
+              @if (ins.hasTranscript) {
+                <span class="sources__tag">notre transcription</span>
+              }
+              @if (ins.imagesUsed > 0) {
+                <span class="sources__tag">{{ ins.imagesUsed }} image(s)</span>
+              }
+            </p>
             <div class="essential">
               <span class="essential__lbl">L'essentiel</span>
               <p>{{ ins.summary }}</p>
@@ -677,6 +690,31 @@ interface DeckImage {
         display: flex;
         flex-wrap: wrap;
         gap: var(--cg-space-2, 8px);
+      }
+      .sources {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: var(--cg-space-1, 4px);
+        margin: 0 0 var(--cg-space-3, 16px);
+        font-size: 12px;
+        color: var(--cg-text-secondary, #6b7a8d);
+      }
+      .sources mat-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+      }
+      .sources__tag {
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: var(--cg-surface-2, #eef1f6);
+        color: var(--cg-primary, #1a3a5c);
+        font-weight: 600;
+      }
+      .sources__tag--client {
+        background: var(--cg-accent, #c9973a);
+        color: #fff;
       }
     `,
   ],
