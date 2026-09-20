@@ -599,3 +599,50 @@ Ce que la réponse engageait, et comment cela s'est réglé :
 - **La CI.** Reste à câbler : `.github/workflows/backend.yml` ne joue que la suite du backend, et la
   livraison de F-81 n'avait pas le droit de modifier `.github/`. L'ajout est d'**une ligne** —
   une étape `run: ./scripts/contract-tests.sh`. C'est le seul reste ouvert de cette question.
+
+---
+
+## OQ-19 — Le compte Anthropic est-il une **organisation**, avec une clé Admin ?
+
+**Statut** : **Ouverte — bloquante pour SF-133-05 uniquement** (posée le 2026-09-20, cadrage F-133).
+
+La réconciliation entre ce que l'application calcule et ce qu'Anthropic facture passe par l'API
+Usage & Cost (`GET /v1/organizations/cost_report`, `GET /v1/organizations/usage_report/messages`).
+La documentation est explicite : *« The Admin API is unavailable for individual accounts »*. Il faut
+une **organisation** dans la Console **et** une clé `sk-ant-admin01-…` (une clé API ordinaire est
+rejetée ; une clé liée à un workspace aussi).
+
+| Réponse | Conséquence |
+|---------|-------------|
+| **Oui**, organisation + clé Admin disponible | SF-133-05 se fait : écart calculé ↔ facturé, par jour et par modèle |
+| **Non**, compte individuel | SF-133-05 est reportée. F-133 livre un coût **calculé** au tarif de vérité, sans confrontation à la facture. Le reste de la feature (budgets, alertes, écrans) est intact |
+
+**Ne pas implémenter SF-133-05 avant d'avoir la réponse** : sans clé Admin, le code serait écrit
+contre une API que l'on ne peut pas appeler.
+
+---
+
+## OQ-20 — Un « client » peut-il avoir plusieurs postes ?
+
+**Statut** : **Ouverte** (posée le 2026-09-20, cadrage F-133).
+
+F-61 a posé l'équivalence **client = poste** (`runner_hosts`), et `usage_turns` fige le poste au
+moment du tour. F-133 reprend cette équivalence par défaut (décision D1). Si un client réel peut
+avoir deux postes — deux machines, deux consultants — alors un budget « par client » doit porter sur
+une entité **au-dessus** du poste, qui n'existe pas encore.
+
+Trancher **avant SF-133-04** : un budget attaché au mauvais objet se remigre mal.
+
+---
+
+## OQ-21 — Faut-il une clé API Anthropic **par client** ?
+
+**Statut** : **Ouverte — non bloquante** (posée le 2026-09-20, cadrage F-133).
+
+Le `usage_report` d'Anthropic sait grouper par `api_key_id` et par `workspace_id`. Une clé (ou un
+workspace Anthropic) par client donnerait une ventilation par client **certifiée par la facture**,
+là où F-133 la **calcule** à partir du journal interne.
+
+Le prix à payer est une complexité d'exploitation réelle : création, rotation, révocation, quotas et
+limites de débit par clé, et un chemin de secours quand une clé manque. À cadrer séparément si le
+besoin de certification se matérialise — la ventilation calculée suffit à piloter.
