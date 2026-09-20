@@ -152,11 +152,11 @@ le reste de la feature tient debout sans elle.
 
 | # | Décision | Pourquoi |
 |---|---|---|
-| **D1** | Le « client » est le **poste** (`runner_hosts`), comme en F-61 | ne pas inventer une deuxième notion de client ; le poste est déjà l'instantané figé dans `usage_turns` |
+| **D1** | Le « client » est le **poste** (`runner_hosts`), comme en F-61 | **Confirmé par le PO le 2026-09-20.** Ne pas inventer une deuxième notion de client ; le poste est déjà l'instantané figé dans `usage_turns` |
 | **D2** | La devise de **vérité** est le **dollar**. L'euro est un affichage, avec un taux configurable (`app.cost.usd-to-eur`) et la date du taux | Anthropic facture en USD ; convertir en dur ferait diverger l'application et la facture d'un écart de change invisible |
 | **D3** | Le coût d'un **message** = somme de **tous** les appels du tour, sous-agents et outils compris | un tour d'Atelier peut lancer plusieurs appels ; n'en montrer qu'un sous-estimerait massivement |
 | **D4** | La semaine est **ISO, du lundi 00:00 UTC** | cohérent avec le reste des fenêtres (UTC) ; évite un débat de fuseau sur une frontière de budget |
-| **D5** | Le dépassement **alerte**, ne bloque pas | cf. §2 ; le blocage reste au quota commercial |
+| **D5** | Le dépassement **alerte**, ne bloque pas | **Confirmé par le PO le 2026-09-20.** Le refus de service reste l'affaire du quota commercial (F-10/F-36), qui a déjà ses plafonds et ses exceptions |
 | **D6** | Visible pour `ROLE_ADMIN` **ou** le super-admin configuré, via `AdminService.requireAdmin()` | le mécanisme existe (`application.yml:89`) et porte déjà ntounga@gmail.com |
 | **D7** | Les tarifs de vérité sont **par modèle**, en configuration | Opus 5 à 5/25, Sonnet 5 à 2/10, Haiku 4.5 à 1/5 : un tarif unique se tromperait dès qu'un modèle change |
 | **D8** | Aucun texte n'entre dans la nouvelle table, comme aujourd'hui | garantie tenue par la structure, pas par la prudence des requêtes (`UsageTurn` javadoc) |
@@ -210,8 +210,8 @@ c'est précisément là qu'il sera le plus instructif.
 
 | # | Question | Impact si non tranchée |
 |---|---|---|
-| **OQ-A** | Le compte Anthropic est-il une **organisation** Console avec une clé `sk-ant-admin01-…` ? | **SF-133-05 impossible** sans elle : pas de réconciliation, uniquement du calculé |
-| **OQ-B** | Un client peut-il avoir **plusieurs postes** ? | change D1 : il faudrait une entité « client » au-dessus du poste |
+| **OQ-A** | Le compte Anthropic est-il une **organisation** Console avec une clé `sk-ant-admin01-…` ? | **En cours de vérification par le PO (2026-09-20).** Sans elle, **SF-133-05 est impossible** : pas de réconciliation, uniquement du calculé. Vérification : une requête `cost_report` qui répond `401`/`403` avec un message d'authentification admin tranche la question |
+| ~~OQ-B~~ | ~~Un client peut-il avoir plusieurs postes ?~~ | **Tranchée le 2026-09-20 : un client = un poste.** D1 confirmé, aucune entité intermédiaire à créer (OQ-20 close) |
 | **OQ-C** | Taux EUR/USD : figé en configuration, ou relevé automatiquement ? | figé par défaut (D2) ; l'automatiser ajoute une dépendance externe |
 | **OQ-D** | Veut-on, à terme, **une clé API Anthropic par client** ? | ce serait la seule façon d'obtenir une ventilation par client **certifiée par la facture** (`group_by[]=api_key_id`) au lieu de calculée. Gros changement d'exploitation — à cadrer séparément si le sujet compte |
 

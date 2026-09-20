@@ -624,14 +624,15 @@ contre une API que l'on ne peut pas appeler.
 
 ## OQ-20 — Un « client » peut-il avoir plusieurs postes ?
 
-**Statut** : **Ouverte** (posée le 2026-09-20, cadrage F-133).
+**Statut** : **Tranchée le 2026-09-20 — un client = un poste.** Le PO confirme l'équivalence posée
+par F-61 : le budget de F-133 s'attache au **poste** (`runner_hosts`), aucune entité « client » au-dessus
+n'est créée. La décision D1 du cadrage F-133 est donc définitive.
 
 F-61 a posé l'équivalence **client = poste** (`runner_hosts`), et `usage_turns` fige le poste au
-moment du tour. F-133 reprend cette équivalence par défaut (décision D1). Si un client réel peut
-avoir deux postes — deux machines, deux consultants — alors un budget « par client » doit porter sur
-une entité **au-dessus** du poste, qui n'existe pas encore.
-
-Trancher **avant SF-133-04** : un budget attaché au mauvais objet se remigre mal.
+moment du tour. F-133 reprend cette équivalence (décision D1). L'alternative écartée : si un client réel pouvait
+avoir deux postes — deux machines, deux consultants — un budget « par client » aurait dû porter sur
+une entité **au-dessus** du poste, qui n'existe pas. Ce n'est pas le cas ; SF-133-04 peut attacher le
+budget au poste.
 
 ---
 
