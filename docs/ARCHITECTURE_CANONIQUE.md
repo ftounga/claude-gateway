@@ -260,6 +260,23 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     qui **ré-arme l'alerte sans code de remise à zéro**. `raised_at` est posé **une seule fois** (unicité
     de l'émission) ; `dismissed_at` retient que l'utilisateur l'a écartée. L'évaluation est faite après
     l'incrément et **avant** la sauvegarde — même écriture — et encadrée : elle n'échoue jamais l'appel.
+- **cost_budgets** — budget **hebdomadaire** de dépense (F-133 / SF-133-04, migration `120`).
+  - `cost_budgets` : `id (uuid)`, `user_id (uuid, NOT NULL)`, `host_id (uuid, nullable)`,
+    `amount_eur (numeric(10,2), NOT NULL)`, `updated_at (timestamptz)`.
+    Index unique `(user_id, host_id)` + index partiel `(user_id) WHERE host_id IS NULL`.
+  - **Deux portées, une seule table** : `host_id` à `null` est le budget **par défaut**, celui qui
+    vaut pour tout client qui n'en a pas de propre. Une seconde table pour le défaut aurait dédoublé
+    les lectures et les validations sans rien clarifier.
+  - **Pourquoi l'index partiel** : PostgreSQL traite deux `NULL` comme **distincts** dans un index
+    unique. Sans lui, rien n'empêcherait deux budgets par défaut pour le même utilisateur, et la
+    résolution deviendrait non déterministe — elle prendrait l'un ou l'autre selon l'ordre de
+    lecture.
+  - **Aucune clé étrangère** vers `runner_hosts`, même choix que `usage_turns` : ranger un poste ne
+    doit pas faire disparaître silencieusement la consigne de dépense qui le visait.
+  - **Il n'arrête rien** : aucun tour n'est refusé parce qu'un budget est dépassé. Le refus de
+    service reste l'affaire du quota commercial (F-10 / F-36). Mélanger les deux ferait qu'un client
+    serait coupé, un jour, par un réglage interne qu'il n'a jamais vu.
+
 - **usage_turns** — journal de consommation **par tour** (F-61 / SF-61-01, migration `068` ;
   **coût réel** F-133 / SF-133-01, migration `118`).
   **Append-only** : une ligne par tour facturé, jamais modifiée, effacée seulement avec le compte.
