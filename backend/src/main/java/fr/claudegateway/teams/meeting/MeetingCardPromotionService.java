@@ -167,8 +167,13 @@ public class MeetingCardPromotionService {
         }
 
         boolean hasTranscript = meeting.getTranscript() != null && !meeting.getTranscript().isBlank();
+        boolean hasExternalTranscript =
+                meeting.getExternalTranscript() != null && !meeting.getExternalTranscript().isBlank();
         List<ProviderAttachment> images = uploadImages(scope, meeting);
-        String material = MeetingExploitationService.analysisMaterial(meeting, hasTranscript, images.size())
+        // SF-128-20b : la matière consolidée (transcription client prioritaire + la nôtre + images) sert
+        // aussi au rangement dans la carte — les vrais noms du client enrichissent les faits durables.
+        String material = MeetingExploitationService.analysisMaterial(
+                meeting, hasExternalTranscript, hasTranscript, images.size())
                 + destinationsBlock(allowedPaths);
 
         ChatCompletionResult result = call(scope, material, images);

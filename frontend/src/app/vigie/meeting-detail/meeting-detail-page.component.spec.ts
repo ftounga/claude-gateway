@@ -59,7 +59,7 @@ describe('MeetingDetailPageComponent', () => {
     service.transcribe.and.returnValue(of(meeting));
     service.insights.and.returnValue(of({
       summary: 'L\'essentiel', keyPoints: ['kp'], decisions: ['d1'], actions: ['a1'],
-      hasTranscript: true, imagesUsed: 1, missing: null,
+      hasTranscript: true, hasExternalTranscript: true, imagesUsed: 1, missing: null,
     }));
     service.ask.and.returnValue(of({ answer: 'La migration est validée.' }));
 
@@ -270,6 +270,9 @@ describe('MeetingDetailPageComponent', () => {
     expect(root.querySelector('.essential')?.textContent).toContain('L\'essentiel');
     expect(root.textContent).toContain('d1');
     expect(root.textContent).toContain('a1');
+    // SF-128-20b : la provenance des sources consolidées est affichée.
+    expect(root.querySelector('.sources')?.textContent).toContain('transcription client');
+    expect(root.querySelector('.sources')?.textContent).toContain('notre transcription');
   });
 
   it('« Demander à l\'agent » rend la réponse (SF-128-05)', () => {

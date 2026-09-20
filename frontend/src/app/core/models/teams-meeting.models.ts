@@ -57,13 +57,16 @@ export type TranscriptStatus = 'NONE' | 'PENDING' | 'TRANSCRIBING' | 'TRANSCRIBE
 /** Format d'origine d'une transcription externe (client) (SF-128-20a). */
 export type ExternalTranscriptFormat = 'TEXT' | 'VTT' | 'DOCX';
 
-/** L'exploitation d'une réunion par l'agent (SF-128-05). */
+/** L'exploitation d'une réunion par l'agent (SF-128-05 ; consolidation SF-128-20b). */
 export interface MeetingInsights {
   summary: string;
   keyPoints: string[];
   decisions: string[];
   actions: string[];
+  /** Vrai si NOTRE transcription (SF-128-04) a nourri l'analyse. */
   hasTranscript: boolean;
+  /** Vrai si la transcription EXTERNE (client, SF-128-20a) a nourri l'analyse (SF-128-20b). */
+  hasExternalTranscript: boolean;
   imagesUsed: number;
   missing: string | null;
 }
