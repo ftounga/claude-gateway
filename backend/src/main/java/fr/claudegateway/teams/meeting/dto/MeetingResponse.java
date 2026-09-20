@@ -26,6 +26,10 @@ public record MeetingResponse(
         String transcriptStatus,
         String transcriptLang,
         boolean hasTranscript,
+        boolean hasExternalTranscript,
+        String externalTranscriptSource,
+        String externalTranscriptFormat,
+        OffsetDateTime externalTranscriptAddedAt,
         OffsetDateTime mediaPurgedAt,
         OffsetDateTime startedAt,
         OffsetDateTime endedAt,
@@ -40,6 +44,10 @@ public record MeetingResponse(
                 m.getTranscriptStatus() == null ? "NONE" : m.getTranscriptStatus().name(),
                 m.getTranscriptLang(),
                 m.getTranscript() != null && !m.getTranscript().isBlank(),
+                m.getExternalTranscript() != null && !m.getExternalTranscript().isBlank(),
+                m.getExternalTranscriptSource(),
+                m.getExternalTranscriptFormat() == null ? null : m.getExternalTranscriptFormat().name(),
+                m.getExternalTranscriptAddedAt(),
                 m.getMediaPurgedAt(),
                 m.getStartedAt(), m.getEndedAt(), m.getCreatedAt());
     }

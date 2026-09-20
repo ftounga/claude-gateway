@@ -36,6 +36,14 @@ export interface TeamsMeeting {
   transcriptLang: string | null;
   /** Vrai dès qu'un transcript est rattaché (SF-128-04). */
   hasTranscript: boolean;
+  /** Vrai dès qu'une transcription externe (client) est attachée (SF-128-20a). */
+  hasExternalTranscript: boolean;
+  /** Libellé de la source de la transcription externe (ex. « Transcription Teams (client) »), ou `null`. */
+  externalTranscriptSource: string | null;
+  /** Format d'origine de la transcription externe : `TEXT` / `VTT` / `DOCX`, ou `null`. */
+  externalTranscriptFormat: ExternalTranscriptFormat | null;
+  /** Instant où la transcription externe a été apportée (SF-128-20a), ou `null`. */
+  externalTranscriptAddedAt: string | null;
   /** Instant où les médias lourds (audio + images) ont été purgés (SF-128-07), ou `null`. */
   mediaPurgedAt: string | null;
   startedAt: string;
@@ -45,6 +53,9 @@ export interface TeamsMeeting {
 
 /** État de la transcription d'une réunion (SF-128-04). */
 export type TranscriptStatus = 'NONE' | 'PENDING' | 'TRANSCRIBING' | 'TRANSCRIBED' | 'FAILED';
+
+/** Format d'origine d'une transcription externe (client) (SF-128-20a). */
+export type ExternalTranscriptFormat = 'TEXT' | 'VTT' | 'DOCX';
 
 /** L'exploitation d'une réunion par l'agent (SF-128-05). */
 export interface MeetingInsights {
