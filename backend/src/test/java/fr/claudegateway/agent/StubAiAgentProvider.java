@@ -41,6 +41,14 @@ public class StubAiAgentProvider implements AiAgentProvider {
      * #lastRequest} ne porte que le dernier ; l'effort adaptatif se prouve en comparant le premier
      * tour (effort normal) aux étapes de continuation (effort réduit).
      */
+    /**
+     * Niveau d'effort <b>effectif</b> de chaque appel (F-134 / SF-134-05) : le réglage de la
+     * requête, corrigé par la dernière consigne glissée dans la conversation. Depuis que l'effort
+     * voyage par message, c'est cette suite — et non {@link #reasoningSnapshots} — qui dit ce que
+     * le modèle a réellement reçu.
+     */
+    public final List<String> effectiveEfforts = new java.util.ArrayList<>();
+
     public final List<AgentReasoning> reasoningSnapshots =
             java.util.Collections.synchronizedList(new ArrayList<>());
 
@@ -72,6 +80,7 @@ public class StubAiAgentProvider implements AiAgentProvider {
         toolNamesSeen.clear();
         toolBelts.clear();
         reasoningSnapshots.clear();
+        effectiveEfforts.clear();
         emitTextDeltas = false;
         throwPromptTooLongTimes = 0;
         idSeq = 0;
@@ -223,6 +232,16 @@ public class StubAiAgentProvider implements AiAgentProvider {
         this.lastRequest = request;
         messageSnapshots.add(String.valueOf(request.messages()));
         reasoningSnapshots.add(request.reasoning());
+        // Le niveau EFFECTIF : celui de la requête, sauf si une consigne glissée dans la
+        // conversation l'a changé depuis (F-134 / SF-134-05). C'est lui qui gouverne la réponse,
+        // et donc lui que les tests de F-118 / F-119 doivent vérifier — le véhicule, non.
+        String effective = request.reasoning() == null ? null : request.reasoning().effort();
+        for (AgentMessage message : request.messages()) {
+            if (message.isEffortDirective()) {
+                effective = message.effort();
+            }
+        }
+        effectiveEfforts.add(effective);
         if (throwPromptTooLongTimes > 0) {
             throwPromptTooLongTimes--;
             throw new AgentPromptTooLongException("prompt too long (simulé)");

@@ -127,8 +127,15 @@ class AtelierChatServiceReasoningTest {
 
         // Le fournisseur exige de retrouver ses blocs signés, inchangés et EN TÊTE, sur le dernier
         // tour d'assistant quand on lui renvoie les tool_result (D-L5-3).
+        //
+        // Le dernier message assistant n'est plus forcément l'avant-dernier depuis F-134 /
+        // SF-134-05 : une consigne d'effort peut s'être glissée entre lui et les résultats
+        // d'outils. On le cherche donc par son rôle — ce que le test aurait dû faire dès l'origine.
         List<AgentMessage> sent = agentProvider.lastRequest.messages();
-        AgentMessage assistant = sent.get(sent.size() - 2);
+        AgentMessage assistant = sent.stream()
+                .filter(message -> "assistant".equals(message.role()))
+                .reduce((first, second) -> second)
+                .orElseThrow();
         assertThat(assistant.role()).isEqualTo("assistant");
         assertThat(assistant.content().get(0))
                 .isEqualTo(new AgentContentBlock.Reasoning("", "sig-1"));
@@ -186,7 +193,7 @@ class AtelierChatServiceReasoningTest {
 
         service.chat(userId, workspaceId, "bonjour");
 
-        assertThat(agentProvider.reasoningSnapshots).containsExactly(new AgentReasoning(true, "high"));
+        assertThat(agentProvider.effectiveEfforts).containsExactly("high");
     }
 
     @Test
@@ -199,9 +206,63 @@ class AtelierChatServiceReasoningTest {
 
         service.chat(userId, workspaceId, "lis notes.txt");
 
-        assertThat(agentProvider.reasoningSnapshots).containsExactly(
-                new AgentReasoning(true, "high"),
-                new AgentReasoning(true, "low"));
+        assertThat(agentProvider.effectiveEfforts).containsExactly("high", "low");
+    }
+
+    // ------------------------------- F-134 / SF-134-05 : l'effort voyage dans la conversation
+
+    @Test
+    void theTopLevelEffortNeverChangesWithinATurn() {
+        // LA PROPRIÉTÉ QUI FAIT TENIR LE CACHE. Le réglage à la racine de la requête est rendu
+        // AVANT la conversation : le changer invalide tout le cache des messages. Il doit donc
+        // rester constant, pendant que le niveau EFFECTIF, lui, varie comme avant.
+        agentProvider.enqueueToolCall("read_file", "path", "notes.txt");
+        agentProvider.enqueueFinal("J'ai lu notes.txt.");
+
+        service.chat(userId, workspaceId, "lis notes.txt");
+
+        assertThat(agentProvider.reasoningSnapshots)
+                .extracting(AgentReasoning::effort)
+                .containsOnly("high");
+        // …alors que le niveau effectif, lui, baisse bien à l'étape de continuation.
+        assertThat(agentProvider.effectiveEfforts).containsExactly("high", "low");
+    }
+
+    @Test
+    void theDirectiveIsGlidedBeforeTheMessageThatTriggersTheAnswer() {
+        // Le niveau prend effet « à partir du prochain tour utilisateur » : la consigne doit donc
+        // précéder les résultats d'outils, qui sont ce message. Posée après, elle ne vaudrait que
+        // pour le tour suivant.
+        agentProvider.enqueueToolCall("read_file", "path", "notes.txt");
+        agentProvider.enqueueFinal("J'ai lu notes.txt.");
+
+        service.chat(userId, workspaceId, "lis notes.txt");
+
+        List<AgentMessage> sent = agentProvider.lastRequest.messages();
+        int directive = -1;
+        for (int i = 0; i < sent.size(); i++) {
+            if (sent.get(i).isEffortDirective()) {
+                directive = i;
+            }
+        }
+        assertThat(directive).as("une consigne d'effort a été glissée").isNotEqualTo(-1);
+        assertThat(sent.get(directive).content()).isEmpty();
+        assertThat(sent.get(directive).effort()).isEqualTo("low");
+        // Elle précède bien le dernier message — celui qui déclenche la réponse.
+        assertThat(directive).isEqualTo(sent.size() - 2);
+        assertThat(sent.get(sent.size() - 1).role()).isEqualTo("user");
+    }
+
+    @Test
+    void noDirectiveWhenTheLevelDoesNotChange() {
+        // Un message de plus est un octet de plus dans le ruban, et le ruban est ce qu'on cherche
+        // à garder stable : on ne glisse une consigne que lorsque le niveau change vraiment.
+        agentProvider.enqueueFinal("Bonjour.");
+
+        service.chat(userId, workspaceId, "bonjour");
+
+        assertThat(agentProvider.lastRequest.messages())
+                .noneMatch(AgentMessage::isEffortDirective);
     }
 
     @Test
@@ -216,9 +277,7 @@ class AtelierChatServiceReasoningTest {
 
         service.chat(userId, workspaceId, "lis notes.txt");
 
-        assertThat(agentProvider.reasoningSnapshots).containsExactly(
-                new AgentReasoning(true, "high"),
-                new AgentReasoning(true, "high"));
+        assertThat(agentProvider.effectiveEfforts).containsExactly("high", "high");
     }
 
     // ------------------------------------------- F-119 / SF-119-01 : ré-escalade de l'effort sur signal
@@ -233,9 +292,7 @@ class AtelierChatServiceReasoningTest {
 
         service.chat(userId, workspaceId, "fais un truc");
 
-        assertThat(agentProvider.reasoningSnapshots).containsExactly(
-                new AgentReasoning(true, "high"),
-                new AgentReasoning(true, "high"));
+        assertThat(agentProvider.effectiveEfforts).containsExactly("high", "high");
     }
 
     @Test
@@ -248,9 +305,7 @@ class AtelierChatServiceReasoningTest {
 
         service.chat(userId, workspaceId, "lis notes.txt");
 
-        assertThat(agentProvider.reasoningSnapshots).containsExactly(
-                new AgentReasoning(true, "high"),
-                new AgentReasoning(true, "high"));
+        assertThat(agentProvider.effectiveEfforts).containsExactly("high", "high");
     }
 
     @Test
@@ -262,9 +317,7 @@ class AtelierChatServiceReasoningTest {
 
         service.chat(userId, workspaceId, "lis notes.txt");
 
-        assertThat(agentProvider.reasoningSnapshots).containsExactly(
-                new AgentReasoning(true, "high"),
-                new AgentReasoning(true, "low"));
+        assertThat(agentProvider.effectiveEfforts).containsExactly("high", "low");
     }
 
     @Test
@@ -279,9 +332,7 @@ class AtelierChatServiceReasoningTest {
 
         service.chat(userId, workspaceId, "fais un truc");
 
-        assertThat(agentProvider.reasoningSnapshots).containsExactly(
-                new AgentReasoning(true, "high"),
-                new AgentReasoning(true, "low"));
+        assertThat(agentProvider.effectiveEfforts).containsExactly("high", "low");
     }
 
     @Test

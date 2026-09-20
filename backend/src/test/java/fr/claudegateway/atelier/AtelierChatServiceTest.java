@@ -295,7 +295,7 @@ class AtelierChatServiceTest {
                 runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
                 fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(), runnerHostService,
                 new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null,
-                        null, true, null, null, null, null, null, null, null, false));
+                        null, true, null, null, null, null, null, null, null, false, null));
         stubHappyPath();
         when(workspaceService.readFile(userId, workspaceId, "notes.txt")).thenReturn("bonjour monde");
         agentProvider.enqueueToolCall("edit_file", "path", "notes.txt",

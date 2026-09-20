@@ -326,10 +326,24 @@ class AtelierPropertiesTest {
 
     // ------------------------------------------- F-119 / SF-119-05 : aide-mémoire d'état de fichier
 
-    /** Aide-mémoire d'état de fichier (21e et dernier composant). */
+    /** Aide-mémoire d'état de fichier (21ᵉ composant). */
     private static AtelierProperties withFileStateHints(Boolean value) {
         return new AtelierProperties(null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null, value);
+                null, null, null, null, null, null, null, null, null, null, value, null);
+    }
+
+    /** Effort transmis par message (22ᵉ et dernier composant, F-134 / SF-134-05). */
+    private static AtelierProperties withPerMessageEffort(Boolean value) {
+        return new AtelierProperties(null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, value);
+    }
+
+    @Test
+    void perMessageEffortIsOnByDefaultAndCanBeTurnedOff() {
+        // Le réglage n'existe que pour revenir en arrière si la bêta du fournisseur venait à
+        // fermer : un cache inefficace, jamais un service en panne (F-134 / SF-134-05).
+        assertThat(withPerMessageEffort(null).perMessageEffort()).isTrue();
+        assertThat(withPerMessageEffort(Boolean.FALSE).perMessageEffort()).isFalse();
     }
 
     @Test
