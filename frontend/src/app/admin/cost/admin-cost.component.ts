@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
@@ -151,6 +151,26 @@ export class AdminCostComponent implements OnInit {
       }),
     });
   }
+
+  /**
+   * **Ce que le budget par défaut plafonne vraiment** (F-133 / SF-133-14).
+   *
+   * <p>Le PO a lu « par défaut » comme une enveloppe commune à tous les clients. C'est l'inverse :
+   * `CostBudgetService.budgetOf` applique ce montant <b>à chaque client</b> qui n'a pas de budget
+   * propre. Avec cinq clients à 50 €, le plafond de la semaine est de 250 €, pas de 50 €.</p>
+   *
+   * <p>Le total est <b>lu</b> du résumé (`budgetEur`), jamais recalculé ici : deux calculs du même
+   * chiffre finissent par en donner deux différents.</p>
+   */
+  readonly budgetTotalLabel = computed<string | null>(() => {
+    const data = this.summary();
+    if (!data || data.budgetEur === null) {
+      return null;
+    }
+    const budgeted = data.clients.filter((client) => client.budgetEur !== null).length;
+    const word = budgeted > 1 ? 'clients budgétés' : 'client budgété';
+    return `${budgeted} ${word} · ${this.euros(data.budgetEur)} de plafond au total cette semaine`;
+  });
 
   /** Montant en euros, à la française. */
   euros(amount: number | null): string {

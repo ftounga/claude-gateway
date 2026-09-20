@@ -1,0 +1,18 @@
+@if (lines().length > 0) {
+  <!-- `role="status"` et non `alert` : l'information est importante, elle n'est pas urgente — elle
+       ne doit pas interrompre un lecteur d'écran au milieu d'une phrase. -->
+  <aside class="cost-alert" [class.cost-alert--exceeded]="severity() === 'EXCEEDED'" role="status">
+    <mat-icon class="cost-alert__icon" aria-hidden="true">
+      {{ severity() === 'EXCEEDED' ? 'error_outline' : 'schedule' }}
+    </mat-icon>
+    <ul class="cost-alert__lines">
+      @for (line of lines(); track line.key) {
+        <li class="cost-alert__line">
+          <b>{{ line.title }}</b>
+          <span class="cost-alert__detail num">{{ line.detail }}</span>
+        </li>
+      }
+    </ul>
+    <button mat-button type="button" class="cost-alert__dismiss" (click)="dismiss()">Masquer</button>
+  </aside>
+}
