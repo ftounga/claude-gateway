@@ -103,6 +103,25 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse("forbidden", ex.getMessage()));
     }
 
+    @ExceptionHandler(fr.claudegateway.quota.InvalidCostBudgetException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidCostBudget(
+            fr.claudegateway.quota.InvalidCostBudgetException ex) {
+        // Le message nomme la règle enfreinte : il est lu par l'admin en train de poser le budget.
+        log.debug("Budget de dépense refusé : {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("invalid_cost_budget", ex.getMessage()));
+    }
+
+    @ExceptionHandler(fr.claudegateway.quota.CostBudgetHostNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleCostBudgetHostNotFound(
+            fr.claudegateway.quota.CostBudgetHostNotFoundException ex) {
+        // « Inconnu » et « pas à vous » rendent la MÊME réponse : les distinguer dirait à un
+        // appelant quels identifiants existent chez les autres.
+        log.debug("Budget de dépense : poste inconnu ou d'un autre compte");
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ErrorResponse("host_not_found", "Poste introuvable."));
+    }
+
     @ExceptionHandler(InvalidGovernancePackageException.class)
     public ResponseEntity<ErrorResponse> handleInvalidGovernancePackage(
             InvalidGovernancePackageException ex) {

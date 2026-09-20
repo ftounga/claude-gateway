@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-133 / SF-133-04 — LE BUDGET HEBDOMADAIRE, par client.
+
+      CE QU'IL EST : une consigne de PILOTAGE, opposée à la dépense réelle (SF-133-03) pour savoir
+      où on en est. Rien de plus.
+
+      CE QU'IL N'EST PAS : un plafond. Aucun tour n'est refusé parce qu'un budget est dépassé — le
+      refus de service reste l'affaire du quota commercial (F-10 / F-36), qui a déjà ses plafonds,
+      ses exceptions et sa facturation. Mélanger les deux ferait qu'un client serait coupé, un jour,
+      par un réglage interne qu'il n'a jamais vu.
+
+      DEUX PORTÉES, UNE SEULE TABLE : `host_id` à NULL est le budget PAR DÉFAUT, celui qui vaut pour
+      tout client qui n'en a pas de propre. Une seconde table pour le défaut aurait dédoublé les
+      lectures et les validations sans rien clarifier.
+
+      PAS DE CLÉ ÉTRANGÈRE vers `runner_hosts`, même choix que `usage_turns` : ranger un poste ne
+      doit pas faire disparaître silencieusement la consigne de dépense qui le visait.
+
+      UNICITÉ : un seul budget par (utilisateur, client). En base, et pas seulement dans le service —
+      deux budgets concurrents pour le même client rendraient l'écran non déterministe.
+    -->
+
+    <changeSet id="120-cost-budgets" author="claude-gateway">
+        <createTable tableName="cost_budgets">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <!-- NULL = budget par défaut de l'utilisateur. -->
+            <column name="host_id" type="UUID"/>
+            <column name="amount_eur" type="NUMERIC(10,2)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP WITH TIME ZONE">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <!-- Un seul budget par (utilisateur, client). ATTENTION : PostgreSQL traite deux NULL
+             comme DISTINCTS dans un index unique — cet index ne protège donc PAS le budget par
+             défaut, dont le `host_id` est nul. C'est l'index partiel qui suit qui s'en charge. -->
+        <createIndex tableName="cost_budgets" indexName="idx_cost_budgets_user_host" unique="true">
+            <column name="user_id"/>
+            <column name="host_id"/>
+        </createIndex>
+
+        <createIndex tableName="cost_budgets" indexName="idx_cost_budgets_user">
+            <column name="user_id"/>
+        </createIndex>
+
+        <!-- Un seul budget PAR DÉFAUT par utilisateur. Deux défauts concurrents rendraient l'écran
+             non déterministe : la résolution prendrait l'un ou l'autre selon l'ordre de lecture.
+             Index partiel, donc PostgreSQL seulement ; H2 (tests) n'en a pas besoin — il ne sert
+             qu'à borner une course, que les tests ne provoquent pas. -->
+        <sql dbms="postgresql">
+            CREATE UNIQUE INDEX idx_cost_budgets_user_default
+                ON cost_budgets (user_id) WHERE host_id IS NULL
+        </sql>
+
+        <rollback>
+            <sql dbms="postgresql">DROP INDEX IF EXISTS idx_cost_budgets_user_default</sql>
+            <dropTable tableName="cost_budgets"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
