@@ -755,6 +755,15 @@ app:
       input-cost-per-million-tokens: ${APP_USAGE_INPUT_COST_PER_M:5.00}
       output-cost-per-million-tokens: ${APP_USAGE_OUTPUT_COST_PER_M:25.00}
   cost:
+    # --- ALERTES DE DEPENSE (F-133 / SF-133-06) ---------------------------------------------------
+    # A partir de quelle part du budget hebdomadaire on previent. DISTINCT de `app.quota.alert`
+    # (F-42), qui previent l'UTILISATEUR que son quota commercial MENSUEL s'epuise et lui propose
+    # une recharge : ici on previent l'ADMINISTRATEUR d'une depense HEBDOMADAIRE qu'il a lui-meme
+    # budgetee, et il n'y a rien a racheter. Partager le reglage aurait lie deux decisions qui n'ont
+    # rien a voir. Hors de ]0,1[ => 0,8 : un seuil a 0 alerterait en permanence, un seuil a 1 ne
+    # previendrait qu'une fois le budget deja depasse — ce que fait deja l'autre niveau.
+    alert:
+      near-threshold: ${APP_COST_ALERT_NEAR_THRESHOLD:0.8}
     # --- LA GRILLE DE VERITE (F-133 / SF-133-01) -------------------------------------------------
     # Ce que le FOURNISSEUR nous facture reellement. A ne pas confondre avec
     # `app.atelier.agent.cost`, qui dit ce qu'on DECOMPTE AU CLIENT : les deux partent des memes

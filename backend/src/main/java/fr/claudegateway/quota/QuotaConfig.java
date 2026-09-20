@@ -18,7 +18,8 @@ import org.springframework.context.annotation.Primary;
         QuotaAlertProperties.class,
         UsageReportProperties.class,
         TokenPricingProperties.class,
-        ProviderPricingProperties.class})
+        ProviderPricingProperties.class,
+        CostAlertProperties.class})
 public class QuotaConfig {
 
     /** Horloge par défaut de la plateforme (UTC), surchargée dans les tests si besoin. */

@@ -156,6 +156,20 @@ class CostBudgetApiIntegrationTest {
     }
 
     @Test
+    void theAlertsRouteIsAdminOnlyAndSaysNothingWithoutABudget() throws Exception {
+        // F-133 / SF-133-06. Sans budget, aucune alerte : on ne peut pas dépasser ce qui n'existe
+        // pas. Et la route est réservée à l'administrateur comme les quatre autres.
+        mockMvc.perform(get("/api/admin/cost/alerts").contextPath("/api")
+                        .header("Authorization", "Bearer " + userToken))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/admin/cost/alerts").contextPath("/api")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
     void aBudgetNeverRefusesAnything() throws Exception {
         // LE TEST DE NON-RÉGRESSION DE LA SUBFEATURE. Un budget est une consigne de PILOTAGE :
         // il n'a aucun droit sur le service rendu. Budget à zéro, dépense massive — et le quota
