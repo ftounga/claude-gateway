@@ -59,6 +59,24 @@ public class CostAlertService {
     @Transactional(readOnly = true)
     public List<CostAlert> currentWeek(UUID userId) {
         adminService.assertAdmin();
+        return alertsOf(userId);
+    }
+
+    /**
+     * Les mêmes alertes, <b>sans garde d'administration</b> (F-133 / SF-133-12) : elles s'affichent
+     * dans la Forge, où travaillent aussi les consultants.
+     *
+     * <p><b>Ce que cela ne relâche pas</b> : l'isolation. Elle ne repose plus sur le rôle mais sur
+     * {@code user_id}, comme partout ailleurs — un compte ne voit que ses propres postes. Et les
+     * <b>montants</b> sont retirés à la sortie pour qui n'est pas administrateur : le coût reste une
+     * information d'administration, la part consommée non.</p>
+     */
+    @Transactional(readOnly = true)
+    public List<CostAlert> currentWeekForOwner(UUID userId) {
+        return alertsOf(userId);
+    }
+
+    private List<CostAlert> alertsOf(UUID userId) {
         CostWindow week = CostWindow.currentWeek(clock);
         HostCost costs = hostCostService.costs(userId, week);
 

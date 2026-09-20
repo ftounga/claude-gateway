@@ -70,9 +70,12 @@
         }
       </div>
 
+      <!-- F-133 / SF-133-14 — « par défaut » se lisait « enveloppe commune ». C'est l'inverse : le
+           montant s'applique À CHAQUE client sans budget propre. Le libellé et la note le disent
+           maintenant, et le plafond qui en résulte est écrit. -->
       <div class="cost-admin__default-budget">
         <mat-form-field appearance="outline" class="cost-admin__field">
-          <mat-label>Budget hebdomadaire par défaut (€)</mat-label>
+          <mat-label>Budget hebdomadaire par client (€)</mat-label>
           <input
             matInput
             type="text"
@@ -86,6 +89,13 @@
           Enregistrer
         </button>
       </div>
+      <p class="cost-admin__note">
+        S'applique à <b>chaque</b> client qui n'a pas de budget propre. Ce n'est pas une enveloppe
+        commune&nbsp;: deux clients à 50&nbsp;€ plafonnent la semaine à 100&nbsp;€.
+      </p>
+      @if (budgetTotalLabel(); as total) {
+        <p class="cost-admin__note cost-admin__note--total num">{{ total }}</p>
+      }
 
       @if (data.clients.length === 0) {
         <p class="cost-admin__empty">Aucune dépense sur la période.</p>

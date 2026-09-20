@@ -12,6 +12,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import fr.claudegateway.admin.AdminService;
+import fr.claudegateway.runner.host.HostMissionStatus;
+import fr.claudegateway.runner.host.RunnerHost;
+import fr.claudegateway.runner.host.RunnerHostRepository;
 
 /**
  * L'écran du coût réel, en une lecture (F-133 / SF-133-07) : dépense, budget, part — par client et
@@ -21,8 +24,10 @@ import fr.claudegateway.admin.AdminService;
  * {@link CostBudgetService}. Il les assemble, et c'est tout. Une part calculée ici <b>et</b> dans
  * les alertes finirait par donner deux chiffres différents sur le même écran.</p>
  *
- * <p><b>Un client budgété mais sans dépense apparaît quand même</b>, à zéro : c'est une information
- * — un budget posé sur un client qui ne travaille pas se voit, et se corrige.</p>
+ * <p><b>Tous les clients apparaissent</b>, qu'ils aient dépensé ou non (F-133 / SF-133-13). C'est
+ * au moment où un client n'a <b>pas encore</b> dépensé qu'on veut lui poser un plafond : la liste
+ * ne peut donc pas venir de la seule dépense. Un client sans dépense est écrit à zéro, avec son
+ * nom, et son champ « Budget ».</p>
  */
 @Service
 public class CostSummaryService {
@@ -32,16 +37,18 @@ public class CostSummaryService {
     private final HostCostService hostCostService;
     private final CostBudgetService budgetService;
     private final CostBudgetRepository budgetRepository;
+    private final RunnerHostRepository hostRepository;
     private final TurnCostView costView;
     private final AdminService adminService;
     private final Clock clock;
 
     public CostSummaryService(HostCostService hostCostService, CostBudgetService budgetService,
-            CostBudgetRepository budgetRepository, TurnCostView costView, AdminService adminService,
-            Clock clock) {
+            CostBudgetRepository budgetRepository, RunnerHostRepository hostRepository,
+            TurnCostView costView, AdminService adminService, Clock clock) {
         this.hostCostService = hostCostService;
         this.budgetService = budgetService;
         this.budgetRepository = budgetRepository;
+        this.hostRepository = hostRepository;
         this.costView = costView;
         this.adminService = adminService;
         this.clock = clock;
@@ -84,8 +91,27 @@ public class CostSummaryService {
                     hasOwnBudget(userId, client.hostId()), client.totalTokens()));
         }
 
-        // Un client budgété qui n'a rien dépensé apparaît quand même, à zéro : un budget posé sur
-        // un client qui ne travaille pas se voit, et se corrige.
+        // Puis TOUS LES AUTRES CLIENTS, à zéro (SF-133-13). Le budget est une décision d'avance :
+        // tant que la liste venait de la seule dépense, on ne pouvait poser un plafond qu'APRÈS
+        // coup — et un client budgété sans dépense n'était visible qu'une fois budgété. Les
+        // clôturés sont exclus : on ne budgète pas une mission terminée.
+        for (RunnerHost host : hostRepository
+                .findByUserIdAndMissionStatusNotOrderByCreatedAtAsc(userId, HostMissionStatus.CLOSED)) {
+            if (seen.contains(host.getId())) {
+                continue;
+            }
+            seen.add(host.getId());
+            Optional<BigDecimal> budget = budgetService.budgetOf(userId, host.getId());
+            if (budget.isPresent()) {
+                anyBudget = true;
+                budgetTotal = budgetTotal.add(budget.get());
+            }
+            clients.add(new CostSummary.Client(host.getId(), host.getName(), BigDecimal.ZERO,
+                    budget.orElse(null), percentOf(BigDecimal.ZERO, budget.orElse(null)),
+                    hasOwnBudget(userId, host.getId()), 0L));
+        }
+
+        // Enfin, un budget posé sur un poste qui n'existe plus : il se voit, donc il se retire.
         for (CostBudget budget : budgetRepository.findByUserId(userId)) {
             if (budget.getHostId() == null || seen.contains(budget.getHostId())) {
                 continue;

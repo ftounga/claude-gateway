@@ -1,5 +1,7 @@
+
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
-import { HttpErrorResponse } from '@angular/common/http';
+import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { ActivatedRoute, ParamMap, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { BehaviorSubject, Observable, of, throwError } from 'rxjs';
@@ -242,6 +244,11 @@ describe('PostesComponent', () => {
         { provide: PagesService, useValue: pagesSpy },
         { provide: ExportService, useValue: jasmine.createSpyObj<ExportService>('ExportService', ['triggerDownload']) },
         { provide: MatDialog, useValue: dialog },
+        // F-133 / SF-133-12 : l'écran porte désormais le bandeau d'alerte de dépense, qui lit
+        // `/api/cost/alerts/mine`. La requête reste pendante ici — sans réponse, pas de bandeau,
+        // ce qui est exactement l'état attendu de ces tests-là.
+        provideHttpClient(),
+        provideHttpClientTesting(),
         provideRouter([]),
         provideNoopAnimations(),
         // Déclaré APRÈS `provideRouter` : c'est ce jeton-là que l'écran lit pour son ancrage.
@@ -2442,6 +2449,8 @@ describe('PostesComponent', () => {
           { provide: PosteBillingService, useValue: billing },
           { provide: MailService, useValue: jasmine.createSpyObj<MailService>('MailService', { address: EMPTY }) },
           { provide: MatDialog, useValue: dialog },
+          provideHttpClient(),
+          provideHttpClientTesting(),
           provideRouter([]),
           provideNoopAnimations(),
           { provide: ActivatedRoute, useValue: routeMock(null) },

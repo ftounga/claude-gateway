@@ -133,3 +133,18 @@
     font-size: 13px;
   }
 }
+
+/* La règle du budget par défaut, écrite sous le champ (F-133 / SF-133-14). Une note, pas une
+   alerte : encre secondaire de charte, aucune couleur nouvelle. */
+.cost-admin__note {
+  margin: -8px 0 0;
+  color: var(--cg-text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.cost-admin__note--total {
+  margin-top: 4px;
+  color: var(--cg-text-primary);
+  font-variant-numeric: tabular-nums;
+}

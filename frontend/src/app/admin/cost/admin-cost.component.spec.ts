@@ -65,6 +65,85 @@ describe('AdminCostComponent', () => {
     return (fixture.nativeElement as HTMLElement).textContent ?? '';
   }
 
+  // ---------------------------------------- le budget par défaut, expliqué (SF-133-14)
+
+  it('dit que le budget par défaut vaut PAR CLIENT, pas en enveloppe commune', () => {
+    // LE CRITÈRE DE LA SUBFEATURE. Le PO avait lu « par défaut » comme un pot commun ; la règle
+    // réelle applique le montant à chaque client. Un libellé ambigu sur un plafond de dépense est
+    // un défaut, pas une question de style.
+    setup();
+
+    expect(text()).toContain('Budget hebdomadaire par client');
+    expect(text()).toContain("Ce n'est pas une enveloppe commune");
+  });
+
+  it('écrit le plafond total qui en résulte, lu du résumé', () => {
+    setup();
+
+    // 120 € vient de `budgetEur` : l'écran ne le recalcule pas.
+    expect(text()).toContain('120,00 € de plafond au total cette semaine');
+    expect(text()).toContain('1 client budgété');
+  });
+
+  it("n'écrit aucun plafond total quand aucun budget n'est posé", () => {
+    service = jasmine.createSpyObj<AdminCostService>('AdminCostService', [
+      'summary', 'alerts', 'setDefaultBudget', 'setHostBudget', 'clearHostBudget',
+    ]);
+    snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
+    service.summary.and.returnValue(of(summary({ budgetEur: null, percent: null })));
+    service.alerts.and.returnValue(of([]));
+    TestBed.configureTestingModule({
+      imports: [AdminCostComponent, NoopAnimationsModule],
+      providers: [
+        { provide: AdminCostService, useValue: service },
+        { provide: MatSnackBar, useValue: snackBar },
+      ],
+    });
+    fixture = TestBed.createComponent(AdminCostComponent);
+    fixture.detectChanges();
+
+    expect(text()).not.toContain('de plafond au total');
+    // La règle, elle, reste écrite : elle vaut même sans budget posé.
+    expect(text()).toContain("Ce n'est pas une enveloppe commune");
+  });
+
+  it('affiche le champ « Budget » pour un client qui n\'a rien dépensé', () => {
+    // SF-133-13 : le résumé liste désormais tous les clients. L'écran doit leur proposer le champ,
+    // sans quoi la correction backend resterait invisible.
+    service = jasmine.createSpyObj<AdminCostService>('AdminCostService', [
+      'summary', 'alerts', 'setDefaultBudget', 'setHostBudget', 'clearHostBudget',
+    ]);
+    snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
+    service.summary.and.returnValue(of(summary({
+      spentEur: 0,
+      budgetEur: null,
+      percent: null,
+      clients: [{
+        hostId: 'h9',
+        hostName: 'poste-kg',
+        spentEur: 0,
+        budgetEur: null,
+        percent: null,
+        ownBudget: false,
+        totalTokens: 0,
+      }],
+    })));
+    service.alerts.and.returnValue(of([]));
+    TestBed.configureTestingModule({
+      imports: [AdminCostComponent, NoopAnimationsModule],
+      providers: [
+        { provide: AdminCostService, useValue: service },
+        { provide: MatSnackBar, useValue: snackBar },
+      ],
+    });
+    fixture = TestBed.createComponent(AdminCostComponent);
+    fixture.detectChanges();
+
+    expect(text()).toContain('poste-kg');
+    expect((fixture.nativeElement as HTMLElement).querySelectorAll('.cost-admin__client-actions').length)
+      .toBe(1);
+  });
+
   it('affiche le total et les clients en euros', () => {
     setup();
 
