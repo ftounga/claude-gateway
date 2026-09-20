@@ -181,6 +181,117 @@ class AnthropicAgentProviderTest {
         assertThat(system.get(0).path("cache_control").path("ttl").asText()).isEqualTo("1h");
     }
 
+    // ------------------------------- F-134 / SF-134-02 : des marqueurs à portée
+
+    @Test
+    void marksTheLastToolSoTheHeadOfTheRibbonIsCacheable() {
+        // La panoplie OUVRE le ruban — avant la consigne et l'historique — et n'avait aucun
+        // marqueur : le fournisseur ne pouvait jamais reprendre la lecture au point le plus en
+        // amont de tous.
+        build(null);
+        JsonNode tools = captureBody().get("tools");
+
+        JsonNode lastTool = tools.get(tools.size() - 1);
+        assertThat(lastTool.path("cache_control").path("type").asText()).isEqualTo("ephemeral");
+        assertThat(lastTool.path("cache_control").path("ttl").asText()).isEqualTo("1h");
+        // Les autres outils n'en portent pas : un marqueur par segment, pas un par bloc.
+        assertThat(tools.get(0).has("cache_control")).isFalse();
+    }
+
+    @Test
+    void marksAnIntermediateMessageOnALongConversation() {
+        // Le fournisseur remonte AU PLUS VINGT positions depuis un marqueur. Un tour d'agent à
+        // quinze étapes en ajoute davantage : sans repère à mi-chemin, il ne trouve rien et
+        // réécrit tout, sans rien signaler.
+        build(null);
+        List<AgentMessage> longThread = new java.util.ArrayList<>();
+        for (int i = 0; i < 30; i++) {
+            longThread.add(AgentMessage.userText("message " + i));
+        }
+
+        JsonNode messages = captureBody(null, longThread).get("messages");
+
+        long marked = 0;
+        for (JsonNode message : messages) {
+            for (JsonNode block : message.get("content")) {
+                if (block.has("cache_control")) {
+                    marked++;
+                }
+            }
+        }
+        assertThat(marked).as("un intermédiaire et le dernier").isEqualTo(2);
+        // L'intermédiaire est bien à quinze positions de la fin.
+        assertThat(messages.get(messages.size() - 1 - 15).get("content").get(0).has("cache_control"))
+                .isTrue();
+    }
+
+    @Test
+    void aShortConversationKeepsASingleMarker() {
+        build(null);
+        JsonNode messages = captureBody(null, List.of(AgentMessage.userText("bonjour"))).get("messages");
+
+        long marked = 0;
+        for (JsonNode message : messages) {
+            for (JsonNode block : message.get("content")) {
+                if (block.has("cache_control")) {
+                    marked++;
+                }
+            }
+        }
+        assertThat(marked).isEqualTo(1);
+    }
+
+    @Test
+    void theRequestNeverCarriesMoreThanFourMarkers() {
+        // LE PLAFOND DU FOURNISSEUR. Un cinquième marqueur ferait ÉCHOUER la requête : outils,
+        // consigne, intermédiaire et dernier saturent exactement la limite.
+        build(null);
+        List<AgentMessage> longThread = new java.util.ArrayList<>();
+        for (int i = 0; i < 40; i++) {
+            longThread.add(AgentMessage.userText("message " + i));
+        }
+
+        JsonNode body = captureBody(null, longThread);
+
+        long total = countMarkers(body.get("tools")) + countMarkers(body.get("system"));
+        for (JsonNode message : body.get("messages")) {
+            total += countMarkers(message.get("content"));
+        }
+        assertThat(total).isLessThanOrEqualTo(4);
+    }
+
+    @Test
+    void anEffortDirectiveIsNeverMarked() {
+        // Elle ne porte aucun bloc : il n'y a nulle part où poser le marqueur, et le fournisseur
+        // refuserait un `cache_control` sur un contenu vide.
+        build(null);
+        List<AgentMessage> thread = new java.util.ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            thread.add(AgentMessage.userText("message " + i));
+        }
+        thread.add(AgentMessage.effort("low"));
+
+        JsonNode messages = captureBody(null, thread).get("messages");
+
+        JsonNode directive = messages.get(messages.size() - 1);
+        assertThat(directive.get("role").asText()).isEqualTo("system");
+        assertThat(directive.get("content")).isEmpty();
+    }
+
+    /** Nombre de blocs porteurs d'un marqueur dans un tableau JSON, {@code null} compris. */
+    private static long countMarkers(JsonNode array) {
+        if (array == null || !array.isArray()) {
+            return 0;
+        }
+        long count = 0;
+        for (JsonNode node : array) {
+            if (node.has("cache_control")) {
+                count++;
+            }
+        }
+        return count;
+    }
+
     @Test
     void marksTheLastBlockOfTheLastMessageForCaching() {
         build(null);
@@ -198,9 +309,11 @@ class AnthropicAgentProviderTest {
         build(null);
         String body = captureBody().toString();
 
-        // Le fournisseur en accepte 4 au plus ; on en pose 2 par construction.
+        // Le fournisseur en accepte 4 au plus. Sur une conversation courte on en pose 3 —
+        // outils, consigne, dernier bloc — le quatrième, l'intermédiaire, n'apparaissant que sur
+        // les longues (F-134 / SF-134-02).
         int markers = body.split("cache_control", -1).length - 1;
-        assertThat(markers).isLessThanOrEqualTo(4).isEqualTo(2);
+        assertThat(markers).isLessThanOrEqualTo(4).isEqualTo(3);
     }
 
     @Test
@@ -913,8 +1026,9 @@ class AnthropicAgentProviderTest {
                     .path("cache_control").path("type").asText()).isEqualTo("ephemeral");
             assertThat(messages.get(messages.size() - 1).get("content").get(0)
                     .path("cache_control").path("ttl").asText()).isEqualTo("1h");
-            // Deux marqueurs, comme le non streamé (SF-39-01) : le flux n'en ajoute aucun.
-            assertThat(captured.get().split("cache_control", -1).length - 1).isEqualTo(2);
+            // Le MÊME nombre de marqueurs que le non streamé (SF-39-01) : le flux n'en ajoute
+            // aucun. Trois depuis F-134 / SF-134-02 — outils, consigne, dernier bloc.
+            assertThat(captured.get().split("cache_control", -1).length - 1).isEqualTo(3);
         } catch (Exception ex) {
             throw new IllegalStateException(ex);
         }

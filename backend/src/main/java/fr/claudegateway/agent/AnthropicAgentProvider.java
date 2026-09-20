@@ -105,6 +105,15 @@ public class AnthropicAgentProvider implements AiAgentProvider {
      * entièrement. Vérifié sur la clé de production contre {@code claude-opus-5} avant d'être posé.
      */
     private static final String PER_MESSAGE_EFFORT_BETA = "mid-conversation-output-config-2026-07-01";
+    /**
+     * Distance du marqueur intermédiaire à la fin de la conversation (F-134 / SF-134-02).
+     *
+     * <p>Quinze, et non vingt : le fournisseur remonte <b>au plus vingt positions</b> depuis un
+     * marqueur, et cette marge évite d'être juste à la limite. Le fournisseur n'accepte que
+     * <b>quatre</b> marqueurs par requête — outils, consigne, intermédiaire, dernier : la limite
+     * est atteinte, et un cinquième ferait échouer l'appel.</p>
+     */
+    private static final int INTERMEDIATE_MARKER_GAP = 15;
     /** Lecture des événements SSE et reconstruction de la réponse (F-116 / SF-116-01). */
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -696,6 +705,15 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         }
     }
 
+    /**
+     * Traduit la panoplie, en posant un marqueur de cache sur le <b>dernier</b> outil
+     * (F-134 / SF-134-02).
+     *
+     * <p><b>Pourquoi il manquait, et pourquoi il compte.</b> La panoplie ouvre le ruban : elle est
+     * rendue <b>avant</b> la consigne système et l'historique. Elle était pourtant le seul segment
+     * sans marqueur — le fournisseur ne pouvait donc jamais reprendre la lecture à cet endroit,
+     * le plus en amont de tous.</p>
+     */
     private List<Map<String, Object>> toApiTools(List<AgentTool> tools) {
         List<Map<String, Object>> apiTools = new ArrayList<>(tools.size() + 2);
         for (AgentTool tool : tools) {
@@ -705,6 +723,9 @@ public class AnthropicAgentProvider implements AiAgentProvider {
                     "input_schema", tool.inputSchema()));
         }
         apiTools.addAll(SERVER_TOOLS);
+        if (!apiTools.isEmpty()) {
+            apiTools.set(apiTools.size() - 1, cached(apiTools.get(apiTools.size() - 1)));
+        }
         return apiTools;
     }
 
@@ -718,6 +739,14 @@ public class AnthropicAgentProvider implements AiAgentProvider {
      */
     private List<Map<String, Object>> toApiMessages(List<AgentMessage> messages) {
         List<Map<String, Object>> apiMessages = new ArrayList<>(messages.size());
+        // Un marqueur INTERMÉDIAIRE, en plus du dernier (F-134 / SF-134-02). Pour retrouver le
+        // ruban précédent, le fournisseur part du marqueur et remonte AU PLUS VINGT positions :
+        // au-delà, il ne trouve rien et réécrit tout, sans rien signaler. Or un tour d'agent à
+        // quinze étapes ajoute une trentaine de positions. Un repère à mi-chemin garantit qu'il en
+        // reste toujours un à portée.
+        int intermediate = messages.size() > INTERMEDIATE_MARKER_GAP + 1
+                ? messages.size() - 1 - INTERMEDIATE_MARKER_GAP
+                : -1;
         for (int i = 0; i < messages.size(); i++) {
             AgentMessage message = messages.get(i);
             if (message.isEffortDirective()) {
@@ -727,11 +756,14 @@ public class AnthropicAgentProvider implements AiAgentProvider {
                         "output_config", Map.of("effort", message.effort())));
                 continue;
             }
-            boolean last = i == messages.size() - 1;
+            // Un message sans contenu — une consigne d'effort — ne peut pas porter de marqueur :
+            // il n'a aucun bloc où le poser, et le fournisseur le refuserait.
+            boolean marked = (i == messages.size() - 1 || i == intermediate)
+                    && !message.content().isEmpty();
             List<Map<String, Object>> blocks = new ArrayList<>(message.content().size());
             for (int j = 0; j < message.content().size(); j++) {
                 Map<String, Object> block = toApiBlock(message.content().get(j));
-                if (last && j == message.content().size() - 1) {
+                if (marked && j == message.content().size() - 1) {
                     block = cached(block);
                 }
                 blocks.add(block);
