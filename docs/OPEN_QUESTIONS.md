@@ -606,6 +606,21 @@ Ce que la réponse engageait, et comment cela s'est réglé :
 
 **Statut** : **Ouverte — bloquante pour SF-133-05 uniquement** (posée le 2026-09-20, cadrage F-133).
 
+**Mesuré le 2026-09-20** avec la clé réellement déployée (secret `backend-secrets`, ns
+`claude-gateway-staging`) :
+
+| Appel | Résultat |
+|---|---|
+| `GET /v1/models` | **200** — la clé de production est valide et vivante |
+| `GET /v1/organizations/cost_report` | **401** `authentication_error` — *« The Admin API requires an Admin API key or an organization-scoped API key »* |
+| `GET /v1/organizations/usage_report/messages` | **401** — message identique |
+
+**Ce que la mesure établit** : la clé de production (`sk-ant-api0…`, liée à un workspace) n'ouvrira
+**jamais** l'Admin API, quel que soit le type de compte. Une seconde clé est nécessaire dans tous les
+cas. **Ce qu'elle n'établit pas** : le message d'erreur est le même pour un compte individuel et pour
+une organisation dont la clé est mal scopée — seule la Console (**Settings → Admin keys**) distingue
+les deux.
+
 La réconciliation entre ce que l'application calcule et ce qu'Anthropic facture passe par l'API
 Usage & Cost (`GET /v1/organizations/cost_report`, `GET /v1/organizations/usage_report/messages`).
 La documentation est explicite : *« The Admin API is unavailable for individual accounts »*. Il faut
