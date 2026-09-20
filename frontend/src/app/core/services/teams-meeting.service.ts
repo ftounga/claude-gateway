@@ -101,6 +101,44 @@ export class TeamsMeetingService {
     return this.http.get(`${this.base(hostId)}/${meetingId}/transcript`, { responseType: 'text' });
   }
 
+  /** Le texte de la transcription externe (client) (SF-128-20a), ou 404 s'il n'y en a pas. */
+  externalTranscript(hostId: string, meetingId: string): Observable<string> {
+    return this.http.get(`${this.base(hostId)}/${meetingId}/external-transcript`, {
+      responseType: 'text',
+    });
+  }
+
+  /**
+   * Attache (ou remplace) une transcription externe **collée** (SF-128-20a) : le texte du client, avec
+   * les vrais noms. Une seule par réunion, remplaçable.
+   */
+  setExternalTranscript(
+    hostId: string,
+    meetingId: string,
+    text: string,
+    source: string | null,
+  ): Observable<TeamsMeeting> {
+    return this.http.put<TeamsMeeting>(`${this.base(hostId)}/${meetingId}/external-transcript`, {
+      text,
+      source,
+    });
+  }
+
+  /** Attache (ou remplace) une transcription externe **déposée en fichier** `.txt`/`.vtt`/`.docx` (SF-128-20a). */
+  uploadExternalTranscript(hostId: string, meetingId: string, file: File): Observable<TeamsMeeting> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.post<TeamsMeeting>(
+      `${this.base(hostId)}/${meetingId}/external-transcript`,
+      form,
+    );
+  }
+
+  /** Retire la transcription externe (SF-128-20a). */
+  clearExternalTranscript(hostId: string, meetingId: string): Observable<void> {
+    return this.http.delete<void>(`${this.base(hostId)}/${meetingId}/external-transcript`);
+  }
+
   /** Analyse la réunion (SF-128-05) : résumé, points clés, décisions, actions. */
   insights(hostId: string, meetingId: string): Observable<MeetingInsights> {
     return this.http.post<MeetingInsights>(`${this.base(hostId)}/${meetingId}/insights`, {});

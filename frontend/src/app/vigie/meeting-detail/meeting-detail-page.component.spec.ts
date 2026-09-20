@@ -27,16 +27,23 @@ describe('MeetingDetailPageComponent', () => {
     id: 'm1', hostId: 'h1', subjectId: null, title: 'Comité Data',
     meetingUrl: 'https://teams.microsoft.com/x', state: 'STOPPED', consentAcknowledged: true,
     inCall: false, retentionDays: 30, captureRef: null, hasAudio: true, audioBytes: 2_097_152, imageCount: 1,
-    transcriptStatus: 'TRANSCRIBED', transcriptLang: 'fr', hasTranscript: true, mediaPurgedAt: null,
+    transcriptStatus: 'TRANSCRIBED', transcriptLang: 'fr', hasTranscript: true,
+    hasExternalTranscript: false, externalTranscriptSource: null, externalTranscriptFormat: null,
+    externalTranscriptAddedAt: null, mediaPurgedAt: null,
     startedAt: '2026-09-18T10:00:00Z', endedAt: '2026-09-18T10:47:00Z', createdAt: '2026-09-18T10:00:00Z',
   };
 
   function setup(get = of(meeting)): HTMLElement {
     service = jasmine.createSpyObj<TeamsMeetingService>('TeamsMeetingService',
       ['get', 'audioBlob', 'imageIds', 'imageBlob', 'transcript', 'transcribe', 'insights', 'ask',
-        'promoteToCard', 'pushActionsToRadar']);
+        'promoteToCard', 'pushActionsToRadar', 'externalTranscript', 'setExternalTranscript',
+        'uploadExternalTranscript', 'clearExternalTranscript']);
     radar = radarSpy();
     service.get.and.returnValue(get);
+    service.externalTranscript.and.returnValue(of('Alice Martin : bonjour'));
+    service.setExternalTranscript.and.returnValue(of({ ...meeting, hasExternalTranscript: true }));
+    service.uploadExternalTranscript.and.returnValue(of({ ...meeting, hasExternalTranscript: true }));
+    service.clearExternalTranscript.and.returnValue(of(void 0));
     service.pushActionsToRadar.and.returnValue(
       of({ subjectId: 's1', subjectName: 'Migration', added: 1,
         actions: [{ description: 'a1', status: 'ADDED' as const }],
@@ -227,6 +234,32 @@ describe('MeetingDetailPageComponent', () => {
     const root = setup();
     expect(service.transcript).toHaveBeenCalledOnceWith('h1', 'm1');
     expect(root.querySelector('.transcript')?.textContent).toContain('Bonjour à tous');
+  });
+
+  it('attache une transcription externe collée et l\'affiche (SF-128-20a)', () => {
+    const root = setup();
+    fixture.componentInstance.externalPaste = 'Alice Martin : bonjour';
+    fixture.componentInstance.externalSource = 'Transcription Teams (client)';
+    fixture.componentInstance.saveExternalPaste(meeting);
+    fixture.detectChanges();
+    expect(service.setExternalTranscript).toHaveBeenCalledOnceWith(
+      'h1', 'm1', 'Alice Martin : bonjour', 'Transcription Teams (client)');
+    expect(service.externalTranscript).toHaveBeenCalledWith('h1', 'm1');
+    expect(root.textContent).toContain('Transcription externe (client)');
+  });
+
+  it('retire la transcription externe (SF-128-20a)', () => {
+    setup();
+    fixture.componentInstance.meeting.set({ ...meeting, hasExternalTranscript: true });
+    fixture.componentInstance.clearExternal(meeting);
+    fixture.detectChanges();
+    expect(service.clearExternalTranscript).toHaveBeenCalledOnceWith('h1', 'm1');
+    expect(fixture.componentInstance.meeting()?.hasExternalTranscript).toBeFalse();
+  });
+
+  it('lit la transcription externe au chargement si présente (SF-128-20a)', () => {
+    setup(of({ ...meeting, hasExternalTranscript: true }));
+    expect(service.externalTranscript).toHaveBeenCalledOnceWith('h1', 'm1');
   });
 
   it('« Analyser » rend l\'essentiel, les décisions et les actions (SF-128-05)', () => {

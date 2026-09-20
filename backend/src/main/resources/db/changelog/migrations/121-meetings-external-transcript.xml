@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-128 / SF-128-20a — LA TRANSCRIPTION EXTERNE (CLIENT) DE LA REUNION.
+
+      On rattache à l'artefact réunion une SECONDE transcription : celle du client (affichée dans Teams,
+      avec les vrais noms), apportée par collage de texte ou dépôt de fichier (.txt/.vtt/.docx). Elle est
+      DISTINCTE de `transcript` (SF-128-04, notre transcription OpenAI) qui reste INCHANGEE. Colonnes
+      ajoutées à meetings :
+        - external_transcript          : le texte apporté (docx mis à plat), NULL tant qu'aucun apport.
+        - external_transcript_source   : libellé de la source (ex. « Transcription Teams (client) »).
+        - external_transcript_format   : TEXT / VTT / DOCX (EnumType.STRING).
+        - external_transcript_added_at : instant de l'apport, NULL sinon.
+      v1 : UNE transcription externe par réunion, remplaçable. Additif et compatible : les réunions
+      existantes prennent external_transcript = NULL. Réversible.
+
+      La colonne `external_transcript` suit le patron des grands textes du projet (cf. 115-meetings-transcript) :
+      Postgres `text` (JDBC VARCHAR), H2 `varchar(1000000)`, pour concorder avec l'entité
+      columnDefinition="text" à la validation de schéma Hibernate sur les deux bases.
+    -->
+    <changeSet id="121-meetings-external-transcript-meta" author="claude-gateway">
+        <addColumn tableName="meetings">
+            <column name="external_transcript_source" type="varchar(200)"/>
+            <column name="external_transcript_format" type="varchar(10)"/>
+            <column name="external_transcript_added_at" type="timestamp with time zone"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="meetings" columnName="external_transcript_source"/>
+            <dropColumn tableName="meetings" columnName="external_transcript_format"/>
+            <dropColumn tableName="meetings" columnName="external_transcript_added_at"/>
+        </rollback>
+    </changeSet>
+
+    <!-- Postgres : `text` (JDBC VARCHAR), concorde avec l'entité columnDefinition="text". -->
+    <changeSet id="121-meetings-external-transcript-text-postgresql" author="claude-gateway" dbms="postgresql">
+        <addColumn tableName="meetings">
+            <column name="external_transcript" type="text"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="meetings" columnName="external_transcript"/>
+        </rollback>
+    </changeSet>
+
+    <!-- H2 : VARCHAR large (JDBC VARCHAR), même type effectif que le `text` de Postgres. -->
+    <changeSet id="121-meetings-external-transcript-text-h2" author="claude-gateway" dbms="h2">
+        <addColumn tableName="meetings">
+            <column name="external_transcript" type="varchar(1000000)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="meetings" columnName="external_transcript"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

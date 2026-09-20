@@ -44,6 +44,15 @@ public class Meeting {
     public static final int MIN_RETENTION_DAYS = 1;
     public static final int MAX_RETENTION_DAYS = 365;
 
+    /** Borne du texte d'une transcription externe (F-128 / SF-128-20a) — même ordre que notre transcript. */
+    public static final int MAX_EXTERNAL_TRANSCRIPT_CHARS = 1_000_000;
+
+    /** Borne du libellé de source d'une transcription externe (F-128 / SF-128-20a). */
+    public static final int MAX_EXTERNAL_TRANSCRIPT_SOURCE_LENGTH = 200;
+
+    /** Libellé par défaut d'une transcription externe si l'utilisateur n'en fournit pas (F-128 / SF-128-20a). */
+    public static final String DEFAULT_EXTERNAL_TRANSCRIPT_SOURCE = "Transcription externe (client)";
+
     @Id
     @GeneratedValue
     @UuidGenerator
@@ -120,6 +129,28 @@ public class Meeting {
     /** Message nommé du dernier échec de transcription (F-128 / SF-128-04), ou {@code null}. */
     @Column(name = "transcript_error", length = 500)
     private String transcriptError;
+
+    /**
+     * La transcription <b>externe</b> apportée par l'utilisateur (celle du client, avec les vrais noms —
+     * F-128 / SF-128-20a), stockée telle quelle en texte (docx mis à plat). Distincte de
+     * {@link #transcript} (la nôtre, OpenAI) ; {@code null} tant qu'aucun apport. v1 : une seule,
+     * remplaçable.
+     */
+    @Column(name = "external_transcript", columnDefinition = "text")
+    private String externalTranscript;
+
+    /** Libellé de la source de la transcription externe (ex. « Transcription Teams (client) »), ou {@code null}. */
+    @Column(name = "external_transcript_source", length = MAX_EXTERNAL_TRANSCRIPT_SOURCE_LENGTH)
+    private String externalTranscriptSource;
+
+    /** Format d'origine de la transcription externe (F-128 / SF-128-20a), ou {@code null}. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "external_transcript_format", length = 10)
+    private ExternalTranscriptFormat externalTranscriptFormat;
+
+    /** Instant où la transcription externe a été apportée (F-128 / SF-128-20a), ou {@code null}. */
+    @Column(name = "external_transcript_added_at")
+    private OffsetDateTime externalTranscriptAddedAt;
 
     /**
      * Instant où les <b>médias lourds</b> (audio + images) ont été purgés au-delà de {@link #retentionDays}

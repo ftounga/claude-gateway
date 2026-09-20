@@ -285,9 +285,72 @@ interface DeckImage {
           }
         </section>
 
+        <section class="card" aria-label="Transcription externe (client)">
+          <div class="card__head">
+            <h2 class="card__title">Transcription externe (client)</h2>
+            @if (m.hasExternalTranscript) {
+              <button mat-stroked-button type="button" [disabled]="savingExternal()" (click)="clearExternal(m)">
+                <mat-icon>delete_outline</mat-icon>
+                Retirer
+              </button>
+            }
+          </div>
+          <p class="ext__hint">
+            Collez la transcription affichée dans Teams (avec les vrais noms), ou déposez un fichier
+            <code>.txt</code>, <code>.vtt</code> ou <code>.docx</code>. Une seule par réunion, remplaçable.
+          </p>
+          @if (externalMessage()) {
+            <p class="detail__missing"><mat-icon aria-hidden="true">info</mat-icon>{{ externalMessage() }}</p>
+          }
+          @if (externalError()) {
+            <p class="detail__error">{{ externalError() }}</p>
+          }
+          @if (m.hasExternalTranscript) {
+            <p class="ext__meta">
+              <mat-icon aria-hidden="true">description</mat-icon>
+              {{ m.externalTranscriptSource || 'Transcription externe (client)' }}
+              @if (m.externalTranscriptFormat) { · {{ m.externalTranscriptFormat }} }
+              @if (m.externalTranscriptAddedAt) { · ajoutée le {{ m.externalTranscriptAddedAt | date: 'd MMM y, HH:mm' }} }
+            </p>
+            @if (externalTranscriptText()) {
+              <pre class="transcript">{{ externalTranscriptText() }}</pre>
+            } @else {
+              <div class="detail__loading"><mat-spinner diameter="24"></mat-spinner></div>
+            }
+          }
+          <div class="ext__editor">
+            <mat-form-field appearance="outline" class="ext__source">
+              <mat-label>Libellé de la source</mat-label>
+              <input matInput name="externalSource" [(ngModel)]="externalSource" [disabled]="savingExternal()"
+                     placeholder="Transcription Teams (client)" />
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="ext__paste">
+              <mat-label>Coller la transcription</mat-label>
+              <textarea matInput name="externalPaste" [(ngModel)]="externalPaste" [disabled]="savingExternal()"
+                        rows="6" placeholder="Alice Martin : Bonjour à tous…"></textarea>
+            </mat-form-field>
+            <div class="ext__actions">
+              <button mat-flat-button color="primary" type="button"
+                      [disabled]="savingExternal() || !externalPaste.trim()" (click)="saveExternalPaste(m)">
+                <mat-icon>content_paste</mat-icon>
+                {{ m.hasExternalTranscript ? 'Remplacer par ce texte' : 'Attacher ce texte' }}
+              </button>
+              <button mat-stroked-button type="button" [disabled]="savingExternal()" (click)="fileInput.click()">
+                <mat-icon>upload_file</mat-icon>
+                Déposer un fichier
+              </button>
+              <input #fileInput type="file" hidden accept=".txt,.vtt,.docx"
+                     (change)="onExternalFileSelected($event, m)" />
+            </div>
+          </div>
+          @if (savingExternal()) {
+            <div class="detail__loading"><mat-spinner diameter="24"></mat-spinner></div>
+          }
+        </section>
+
         <section class="card" aria-label="Transcription">
           <div class="card__head">
-            <h2 class="card__title">Transcription</h2>
+            <h2 class="card__title">Transcription (la nôtre)</h2>
             @if (m.hasAudio && !m.hasTranscript && !transcriptInFlight(m)) {
               <button mat-stroked-button type="button" [disabled]="transcribing()" (click)="transcribe(m)">
                 <mat-icon>subtitles</mat-icon>
@@ -575,6 +638,46 @@ interface DeckImage {
         border-radius: 10px;
         padding: var(--cg-space-3, 16px);
       }
+      .ext__hint {
+        margin: 0 0 var(--cg-space-3, 16px);
+        color: var(--cg-text-secondary, #6b7a8d);
+        font-size: 13px;
+      }
+      .ext__hint code {
+        font-family: var(--cg-font-mono, monospace);
+        font-size: 12px;
+      }
+      .ext__meta {
+        display: flex;
+        align-items: center;
+        gap: var(--cg-space-1, 4px);
+        margin: 0 0 var(--cg-space-2, 8px);
+        font-size: 13px;
+        color: var(--cg-primary, #1a3a5c);
+        font-weight: 600;
+      }
+      .ext__meta mat-icon {
+        font-size: 17px;
+        width: 17px;
+        height: 17px;
+      }
+      .ext__editor {
+        display: flex;
+        flex-direction: column;
+        gap: var(--cg-space-2, 8px);
+        margin-top: var(--cg-space-3, 16px);
+      }
+      .ext__source {
+        max-width: 360px;
+      }
+      .ext__paste {
+        width: 100%;
+      }
+      .ext__actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--cg-space-2, 8px);
+      }
     `,
   ],
 })
@@ -611,6 +714,14 @@ export class MeetingDetailPageComponent implements OnInit, OnDestroy {
   readonly transcriptText = signal<string | null>(null);
   readonly transcribing = signal(false);
   readonly transcriptMessage = signal<string | null>(null);
+
+  // Transcription externe (client) (SF-128-20a)
+  readonly externalTranscriptText = signal<string | null>(null);
+  externalPaste = '';
+  externalSource = '';
+  readonly savingExternal = signal(false);
+  readonly externalMessage = signal<string | null>(null);
+  readonly externalError = signal<string | null>(null);
 
   // Rangement dans la carte du poste (SF-128-11)
   readonly promoting = signal(false);
@@ -674,6 +785,12 @@ export class MeetingDetailPageComponent implements OnInit, OnDestroy {
     this.askError.set(null);
     this.transcriptText.set(null);
     this.transcriptMessage.set(null);
+    this.externalTranscriptText.set(null);
+    this.externalPaste = '';
+    this.externalSource = '';
+    this.savingExternal.set(false);
+    this.externalMessage.set(null);
+    this.externalError.set(null);
     this.promoting.set(false);
     this.cardMessage.set(null);
     this.radarSubjects.set([]);
@@ -697,6 +814,9 @@ export class MeetingDetailPageComponent implements OnInit, OnDestroy {
         }
         if (meeting.hasTranscript) {
           this.loadTranscript(hostId, meetingId);
+        }
+        if (meeting.hasExternalTranscript) {
+          this.loadExternalTranscript(hostId, meetingId);
         }
       },
       error: (err: unknown) => {
@@ -808,6 +928,109 @@ export class MeetingDetailPageComponent implements OnInit, OnDestroy {
         // 404 = pas (encore) de transcript : l'écran le dit déjà via le statut, rien à signaler ici.
       },
     });
+  }
+
+  private loadExternalTranscript(hostId: string, meetingId: string): void {
+    this.service.externalTranscript(hostId, meetingId).subscribe({
+      next: (text) => this.externalTranscriptText.set(text),
+      error: () => {
+        // 404 = pas de transcription externe : l'écran le montre déjà via `hasExternalTranscript`.
+      },
+    });
+  }
+
+  /** Attache (ou remplace) la transcription externe collée (SF-128-20a). */
+  saveExternalPaste(meeting: TeamsMeeting): void {
+    const hostId = this.hostRef();
+    const meetingId = this.meetingId();
+    const text = this.externalPaste.trim();
+    if (!hostId || !meetingId || !text) {
+      return;
+    }
+    const source = this.externalSource.trim() || null;
+    this.savingExternal.set(true);
+    this.externalMessage.set(null);
+    this.externalError.set(null);
+    this.service.setExternalTranscript(hostId, meetingId, text, source).subscribe({
+      next: (updated) => this.onExternalAttached(updated, hostId, meetingId, 'Transcription externe attachée.'),
+      error: (err: unknown) => {
+        this.savingExternal.set(false);
+        this.externalError.set(httpErrorMessage(err, "La transcription externe n'a pas pu être attachée."));
+      },
+    });
+  }
+
+  /** Attache (ou remplace) la transcription externe déposée en fichier (SF-128-20a). */
+  onExternalFileSelected(event: Event, meeting: TeamsMeeting): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    // On réinitialise l'input pour pouvoir re-déposer le même fichier ensuite.
+    input.value = '';
+    const hostId = this.hostRef();
+    const meetingId = this.meetingId();
+    if (!file || !hostId || !meetingId) {
+      return;
+    }
+    this.savingExternal.set(true);
+    this.externalMessage.set(null);
+    this.externalError.set(null);
+    this.service.uploadExternalTranscript(hostId, meetingId, file).subscribe({
+      next: (updated) =>
+        this.onExternalAttached(updated, hostId, meetingId, `Transcription externe attachée (${file.name}).`),
+      error: (err: unknown) => {
+        this.savingExternal.set(false);
+        this.externalError.set(httpErrorMessage(err, "Le fichier n'a pas pu être attaché."));
+      },
+    });
+  }
+
+  /** Retire la transcription externe (SF-128-20a). */
+  clearExternal(meeting: TeamsMeeting): void {
+    const hostId = this.hostRef();
+    const meetingId = this.meetingId();
+    if (!hostId || !meetingId) {
+      return;
+    }
+    this.savingExternal.set(true);
+    this.externalMessage.set(null);
+    this.externalError.set(null);
+    this.service.clearExternalTranscript(hostId, meetingId).subscribe({
+      next: () => {
+        this.savingExternal.set(false);
+        this.externalTranscriptText.set(null);
+        this.meeting.update((m) =>
+          m
+            ? {
+                ...m,
+                hasExternalTranscript: false,
+                externalTranscriptSource: null,
+                externalTranscriptFormat: null,
+                externalTranscriptAddedAt: null,
+              }
+            : m,
+        );
+        this.externalMessage.set('Transcription externe retirée.');
+      },
+      error: (err: unknown) => {
+        this.savingExternal.set(false);
+        this.externalError.set(httpErrorMessage(err, "La transcription externe n'a pas pu être retirée."));
+      },
+    });
+  }
+
+  private onExternalAttached(
+    updated: TeamsMeeting,
+    hostId: string,
+    meetingId: string,
+    message: string,
+  ): void {
+    this.savingExternal.set(false);
+    this.meeting.set(updated);
+    this.externalPaste = '';
+    this.externalMessage.set(message);
+    if (updated.hasExternalTranscript) {
+      this.loadExternalTranscript(hostId, meetingId);
+    }
   }
 
   /** Vrai tant que la transcription est demandée ou en cours (SF-128-04). */
