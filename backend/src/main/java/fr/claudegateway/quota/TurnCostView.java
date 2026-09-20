@@ -53,8 +53,27 @@ public class TurnCostView {
      * @return le montant formaté en euros (ex. {@code "0,42 €"}, {@code "< 0,01 €"}), ou {@code null}
      */
     public String labelFor(BigDecimal costUsd) {
+        return labelFor(costUsd, isAdmin());
+    }
+
+    /**
+     * Même chose, avec une décision d'administration <b>déjà prise</b> (F-133 / SF-133-09).
+     *
+     * <p><b>Pourquoi cette forme existe.</b> Le flux SSE de l'Atelier — le chemin nominal de
+     * l'écran — s'exécute sur un thread d'exécuteur, où le {@code SecurityContext} de Spring
+     * <b>n'est pas propagé</b> : le contrôleur y capture déjà {@code userId} avant d'entrer, pour
+     * exactement cette raison. Une garde évaluée là-bas ne trouve personne et répond « pas
+     * administrateur », si bien que le montant disparaît du seul chemin qui compte — sans la
+     * moindre erreur pour le signaler.</p>
+     *
+     * <p>L'appelant décide donc <b>avant</b> le changement de thread, avec {@link #callerIsAdmin()},
+     * et passe le résultat ici.</p>
+     *
+     * @param admin l'appelant d'origine est administrateur
+     */
+    public String labelFor(BigDecimal costUsd, boolean admin) {
         try {
-            if (costUsd == null || costUsd.signum() <= 0 || !isAdmin()) {
+            if (costUsd == null || costUsd.signum() <= 0 || !admin) {
                 return null;
             }
             BigDecimal eur = costUsd.multiply(pricing.usdToEur());
@@ -83,6 +102,14 @@ public class TurnCostView {
             return BigDecimal.ZERO;
         }
         return costUsd.multiply(pricing.usdToEur()).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Décide si l'appelant <b>courant</b> est administrateur, à appeler <b>depuis le thread de la
+     * requête</b> — avant tout passage dans un exécuteur, où le contexte de sécurité n'existe plus.
+     */
+    public boolean callerIsAdmin() {
+        return isAdmin();
     }
 
     /** Vrai si l'appelant courant est administrateur. Jamais d'exception : l'absence vaut non. */
