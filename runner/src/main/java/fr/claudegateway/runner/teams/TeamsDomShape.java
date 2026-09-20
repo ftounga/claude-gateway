@@ -49,12 +49,21 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
  */
 final class TeamsDomShape {
 
-    /** Profondeur au-delà de laquelle on ne déplie plus (un DOM est profond ; on borne pour le relevé). */
-    static final int MAX_DEPTH = 12;
+    /**
+     * Profondeur au-delà de laquelle on ne déplie plus (un DOM est profond ; on borne pour le relevé).
+     *
+     * <p>SF-89-17 : monté de 12 à <b>22</b> — le premier relevé (SF-89-16) s'arrêtait à 12, avant les
+     * nœuds message/auteur du sous-arbre {@code message-pane-list-runway}. Le volume reste borné : le
+     * <b>repli des frères</b> garde le compte de nœuds bas même en profondeur (50 messages → un nœud
+     * représentatif {@code n=50}), et {@link #MAX_NODES} plafonne toujours la vue.</p>
+     */
+    static final int MAX_DEPTH = 22;
     /** Enfants dépliés au plus par nœud (après repli des frères identiques). */
     static final int MAX_CHILDREN = 40;
     /** Nœuds au plus par vue : borne le volume remonté au Journal. */
     static final int MAX_NODES = 160;
+    /** Cadres iframe relevés au plus par relevé (SF-89-17) : borne le volume et le temps. */
+    static final int MAX_FRAMES = 3;
 
     static final int MAX_CLASS_TOKENS = 6;
     static final int MAX_ATTR_NAMES = 16;
@@ -78,6 +87,26 @@ final class TeamsDomShape {
     static final List<String> THREAD_OPENERS = List.of(
             "[role=\"treeitem\"]", "[role=\"listitem\"] a[href]", "a[href*=\"conversations\"]",
             "[data-tid$=\"list-item\"] a[href]", "[data-tid*=\"chat-list-item\"]");
+
+    /**
+     * La racine du <b>rail de gauche</b> (liste des chats) — SF-89-17. SF-89-16 ne captait que le volet
+     * {@code app-layout-area--main} ; le rail vit dans une autre zone de layout. On le cible par
+     * {@code data-tid}/{@code role} structurants (<b>jamais</b> par classe : les classes v2 sont hashées
+     * et instables). Le premier candidat trouvé l'emporte.
+     */
+    static final List<String> RAIL_SELECTORS = List.of(
+            "[data-tid=\"app-layout-area--rail\"]", "[data-tid=\"chat-list\"]",
+            "[data-tid=\"chat-list-tree\"]", "[role=\"navigation\"]", "[role=\"tree\"]",
+            "[data-tid$=\"-rail\"]");
+
+    /**
+     * La racine du <b>sous-arbre des messages</b> (un fil ouvert) — SF-89-17. On y cible en profondeur les
+     * enfants répétés (= les messages) pour capter la forme d'<b>un</b> message (conteneur, auteur,
+     * horodatage, texte — <b>structure seulement</b>). Ciblé par {@code data-tid}, jamais par classe.
+     */
+    static final List<String> RUNWAY_SELECTORS = List.of(
+            "[data-tid=\"message-pane-list-runway\"]", "[data-tid=\"message-pane-body\"]",
+            "[data-tid=\"message-pane-list-viewport\"]");
 
     /** Un nom d'attribut admissible : une clé, jamais une valeur (pas de {@code =}, pas d'espace). */
     private static final Pattern ATTR_NAME = Pattern.compile("^[a-zA-Z][a-zA-Z0-9:_-]*$");
@@ -121,6 +150,23 @@ final class TeamsDomShape {
         int maxDepth() {
             return nodes.stream().mapToInt(Node::depth).max().orElse(0);
         }
+    }
+
+    /**
+     * Les {@code data-tid} (déjà assainis) des nœuds {@code <iframe>} d'une squelette, <b>dans l'ordre</b>
+     * — SF-89-17. Sert à <b>étiqueter</b> les cadres relevés : le cadre attaché n°{@code i} prend le tid
+     * de la n<sup>e</sup> iframe du document principal (p. ex. {@code hwc-iframe}), à défaut {@code iframe#N}.
+     * Corrélation d'ordre, best-effort : l'étiquette est un confort de lecture, la valeur utile est la forme
+     * du cadre. Ne porte jamais qu'un tid déjà assaini (aucune valeur).
+     */
+    static List<String> iframeTids(Survey survey) {
+        List<String> out = new ArrayList<>();
+        for (Node node : survey.nodes()) {
+            if ("iframe".equals(node.tag())) {
+                out.add(node.tid());
+            }
+        }
+        return out;
     }
 
     // ------------------------------------------------------------------ le script

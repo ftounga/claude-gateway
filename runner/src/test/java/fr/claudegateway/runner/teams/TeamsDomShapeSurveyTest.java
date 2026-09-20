@@ -5,11 +5,15 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import fr.claudegateway.runner.diag.RunnerDiag;
@@ -22,10 +26,11 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * F-89 / SF-89-16 — le <b>pilote</b> du relevé de forme du DOM, gardé par le niveau F-132. Ce que ce
- * test tient : l'<b>inertie</b> hors {@code DEBUG} (rien ne part), le relevé des deux vues à
- * {@code DEBUG}, la remise de la vue, l'anti-rafale, et — non négociable — <b>aucune valeur ne fuit</b>
- * dans les événements émis, même quand le navigateur de papier rend un DOM porteur de noms.
+ * F-89 / SF-89-17 — le <b>pilote approfondi</b> du relevé de forme du DOM, gardé par le niveau F-132. Ce
+ * que ce test tient : l'<b>inertie</b> hors {@code DEBUG} (rien ne part, pas même l'auto-attache), le
+ * relevé du document principal <b>et des cadres iframe</b> (là où vit le chat v2), le <b>rail</b> de gauche
+ * et le <b>runway</b> des messages, le cas <b>cadre inaccessible</b> ({@code frame_blocked}), et — non
+ * négociable — <b>aucune valeur ne fuit</b>, y compris depuis l'iframe.
  */
 class TeamsDomShapeSurveyTest {
 
@@ -45,7 +50,7 @@ class TeamsDomShapeSurveyTest {
     }
 
     @Test
-    @DisplayName("Inertie (CA1) : hors DEBUG, aucun script, aucune navigation, aucun événement")
+    @DisplayName("Inertie (CA1) : hors DEBUG, aucun script, aucune navigation, aucune auto-attache")
     void inert_when_not_debug() {
         RunnerDiag.setLevel(RunnerDiagLevel.INFO);
         StubConnection cdp = new StubConnection("https://teams.microsoft.com/v2/#/conversations");
@@ -54,12 +59,13 @@ class TeamsDomShapeSurveyTest {
         TeamsDomShapeSurvey.run(actions, noSleep());
 
         assertTrue(cdp.sent.isEmpty(), "aucune commande CDP hors DEBUG : " + cdp.sent);
+        assertFalse(cdp.sent.contains(CdpCommands.SET_AUTO_ATTACH), "aucune auto-attache hors DEBUG");
         assertTrue(RunnerDiag.isEmpty(), "aucun événement de forme hors DEBUG");
     }
 
     @Test
-    @DisplayName("Relevé (CA2/CA3/CA9) : à DEBUG, la liste ET un fil sont relevés, la vue est remise")
-    void surveys_list_and_thread_and_restores() {
+    @DisplayName("Relevé (CA2/CA4/CA6/CA9) : liste, rail, runway et cadre hwc-iframe relevés, vue remise")
+    void surveys_main_rail_frame_and_restores() {
         RunnerDiag.setLevel(RunnerDiagLevel.DEBUG);
         String before = "https://teams.microsoft.com/v2/#/conversations";
         StubConnection cdp = new StubConnection(before);
@@ -68,20 +74,58 @@ class TeamsDomShapeSurveyTest {
         TeamsDomShapeSurvey.run(actions, noSleep());
 
         List<RunnerDiagEvent> events = drainShape();
-        assertTrue(codes(events).contains(TeamsDomShapeSurvey.LIST_CODE), "la liste est relevée");
-        assertTrue(codes(events).contains(TeamsDomShapeSurvey.THREAD_CODE), "un fil est relevé");
-        // Deux en-têtes (une par vue) + des nœuds.
-        long headers = events.stream().filter(e -> "header".equals(e.fields().get("kind"))).count();
-        assertEquals(2, headers, "un en-tête par vue");
-        assertTrue(events.stream().anyMatch(e -> String.valueOf(e.msg()).contains("chat-list")),
-                "la forme de la liste porte ses data-tid");
+        List<String> codes = codes(events);
+        assertTrue(codes.contains(TeamsDomShapeSurvey.LIST_CODE), "la liste est relevée");
+        assertTrue(codes.contains(TeamsDomShapeSurvey.THREAD_CODE), "un fil / le runway est relevé");
+        assertTrue(codes.contains(TeamsDomShapeSurvey.RAIL_CODE), "le rail de gauche est relevé (CA4)");
+        // CA6 : le sous-arbre des messages est relevé, marqué message_runway.
+        assertTrue(events.stream().anyMatch(e -> TeamsDomShapeSurvey.RUNWAY_AREA.equals(e.fields().get("area"))),
+                "le runway des messages est marqué area=message_runway (CA6)");
+        // CA2 : le cadre hwc-iframe est relevé — des événements portent frame != main.
+        assertTrue(events.stream().anyMatch(e -> "hwc-iframe".equals(e.fields().get("frame"))),
+                "le cadre hwc-iframe est relevé (CA2) : " + events);
+        // Le document principal reste étiqueté main.
+        assertTrue(events.stream().anyMatch(e -> TeamsDomShapeSurvey.MAIN.equals(e.fields().get("frame"))),
+                "le document principal est étiqueté main");
         // La vue a été remise là où elle était.
         assertEquals(before, cdp.url, "la vue est remise après le relevé");
     }
 
     @Test
-    @DisplayName("Vie privée bout-en-bout : aucun nom, message ou id ne fuit dans les événements émis")
-    void no_value_leaks_end_to_end() {
+    @DisplayName("Cadre inaccessible (CA3) : un cadre attaché mais inévaluable est dit par frame_blocked")
+    void inaccessible_frame_is_reported_not_crashed() {
+        RunnerDiag.setLevel(RunnerDiagLevel.DEBUG);
+        StubConnection cdp = new StubConnection("https://teams.microsoft.com/v2/#/conversations");
+        PageActions actions = new PageActions(cdp, noSleep(), sink);
+
+        TeamsDomShapeSurvey.run(actions, noSleep());
+
+        List<RunnerDiagEvent> events = drainShape();
+        assertTrue(codes(events).contains(TeamsDomShapeSurvey.FRAME_BLOCKED_CODE),
+                "le cadre inaccessible est dit par frame_blocked (CA3)");
+        // Le relevé continue malgré le cadre bloqué : le cadre accessible est bien relevé.
+        assertTrue(events.stream().anyMatch(e -> "hwc-iframe".equals(e.fields().get("frame"))),
+                "un cadre bloqué n'empêche pas les autres d'être relevés");
+    }
+
+    @Test
+    @DisplayName("Cadre hors domaine : un iframe non-Microsoft n'est ni relevé ni bloqué (garde F-108)")
+    void off_domain_frame_is_ignored() {
+        RunnerDiag.setLevel(RunnerDiagLevel.DEBUG);
+        StubConnection cdp = new StubConnection("https://teams.microsoft.com/v2/#/conversations");
+        PageActions actions = new PageActions(cdp, noSleep(), sink);
+
+        TeamsDomShapeSurvey.run(actions, noSleep());
+
+        // Le cadre evil.example.com ne doit jamais apparaître : ni relevé, ni frame_blocked.
+        String all = drainShape().stream().map(e -> e.msg() + " " + e.fields())
+                .reduce("", (a, b) -> a + " || " + b);
+        assertFalse(all.contains("example.com"), "un cadre hors domaine ne remonte jamais : " + all);
+    }
+
+    @Test
+    @DisplayName("Vie privée bout-en-bout (CA7) : aucun nom/message/id ne fuit — document ET iframe")
+    void no_value_leaks_end_to_end_including_iframe() {
         RunnerDiag.setLevel(RunnerDiagLevel.DEBUG);
         StubConnection cdp = new StubConnection("https://teams.microsoft.com/v2/#/conversations");
         PageActions actions = new PageActions(cdp, noSleep(), sink);
@@ -91,8 +135,9 @@ class TeamsDomShapeSurveyTest {
         String all = drainShape().stream()
                 .map(e -> e.msg() + " " + e.fields())
                 .reduce("", (a, b) -> a + " || " + b);
-        for (String forbidden : List.of("Jean Dupont", "bonjour", "secret", "thread.v2",
-                "jean.dupont@client.fr")) {
+        // Valeurs semées dans le document principal ET dans l'iframe.
+        for (String forbidden : List.of("Jean Dupont", "bonjour", "Paul", "secret", "thread.v2",
+                "jean.dupont@client.fr", "Marie Martin", "demain")) {
             assertFalse(all.contains(forbidden), "une valeur a fui : « " + forbidden + " » — " + all);
         }
     }
@@ -138,14 +183,17 @@ class TeamsDomShapeSurveyTest {
     }
 
     /**
-     * Un navigateur de papier : il connaît son adresse (et la change à la navigation), sait cliquer, et
-     * rend pour le script de forme un DOM modèle <b>porteur de noms</b> — pour prouver que rien de tout
-     * cela ne franchit l'expurgation.
+     * Un navigateur de papier <b>avec des cadres</b> (SF-89-17) : il connaît son adresse, sait cliquer, rend
+     * un DOM modèle pour le document principal <b>et</b> pour chaque cadre attaché — tous porteurs de noms,
+     * pour prouver que rien ne franchit l'expurgation. Trois cadres iframe sont annoncés à l'auto-attache :
+     * {@code F1} accessible (le vrai chat, dans hwc-iframe), {@code F2} attaché mais inévaluable
+     * (→ {@code frame_blocked}), et {@code F3} hors domaine Microsoft (→ ignoré par la garde).
      */
     private static final class StubConnection implements CdpConnection {
 
         private final ObjectMapper mapper = new ObjectMapper();
         private final List<String> sent = new ArrayList<>();
+        private final Map<String, List<BiConsumer<String, JsonNode>>> sessionListeners = new LinkedHashMap<>();
         private String url;
 
         StubConnection(String url) {
@@ -161,18 +209,56 @@ class TeamsDomShapeSurveyTest {
                 return mapper.createObjectNode();
             }
             if (CdpCommands.EVALUATE.equals(method)) {
-                return evaluate(params.path("expression").asText(""));
+                return evaluate(params.path("expression").asText(""), false);
+            }
+            if (CdpCommands.SET_AUTO_ATTACH.equals(method)) {
+                fireAttached();
+                return mapper.createObjectNode();
             }
             return mapper.createObjectNode();
         }
 
-        private JsonNode evaluate(String expression) {
+        @Override
+        public JsonNode send(String sessionId, String method, ObjectNode params) {
+            if (sessionId == null || sessionId.isBlank()) {
+                return send(method, params);
+            }
+            CdpCommands.assertAllowed(method);
+            sent.add(sessionId + ':' + method);
+            if ("F2".equals(sessionId)) {
+                // Cadre attaché mais inévaluable : détaché / cross-origin non attachable.
+                throw new BrowserLinkException(BrowserLinkException.COMMAND_REFUSED, "cadre inaccessible");
+            }
+            if (CdpCommands.EVALUATE.equals(method)) {
+                return evaluate(params.path("expression").asText(""), true);
+            }
+            return mapper.createObjectNode();
+        }
+
+        /** Annonce les cadres attachés (comme le ferait {@code Target.attachedToTarget} après setAutoAttach). */
+        private void fireAttached() {
+            attach("F1", "iframe", "https://teams.microsoft.com/hwc");
+            attach("F2", "iframe", "https://teams.microsoft.com/other-frame");
+            attach("F3", "iframe", "https://evil.example.com/embed");
+        }
+
+        private void attach(String sessionId, String type, String targetUrl) {
+            ObjectNode params = mapper.createObjectNode();
+            params.put("sessionId", sessionId);
+            ObjectNode info = params.putObject("targetInfo");
+            info.put("type", type);
+            info.put("url", targetUrl);
+            sessionListeners.getOrDefault("Target.attachedToTarget", List.of())
+                    .forEach(l -> l.accept("", params));
+        }
+
+        private JsonNode evaluate(String expression, boolean inFrame) {
             ObjectNode result = mapper.createObjectNode();
             ObjectNode holder = result.putObject("result");
             if (expression.contains("location.href")) {
                 holder.put("value", url);
             } else if (expression.contains("cg-domshape")) {
-                holder.set("value", modelDom());
+                holder.set("value", inFrame ? frameDom() : mainDom());
             } else if (expression.contains(".click()")) {
                 holder.put("value", true);
             } else {
@@ -181,46 +267,72 @@ class TeamsDomShapeSurveyTest {
             return result;
         }
 
-        /** Un DOM modèle : une liste de fils, chaque item portant un nom et un id — jamais reproduits. */
-        private JsonNode modelDom() {
+        /** La coquille du document principal : le volet main, une iframe hwc, et un item porteur de nom. */
+        private JsonNode mainDom() {
             ObjectNode dom = mapper.createObjectNode();
             dom.put("found", true);
             dom.put("truncated", false);
-            com.fasterxml.jackson.databind.node.ArrayNode nodes = dom.putArray("nodes");
+            ArrayNode nodes = dom.putArray("nodes");
 
-            ObjectNode listRoot = nodes.addObject();
-            listRoot.put("d", 0);
-            listRoot.put("n", 1);
-            listRoot.put("tag", "div");
-            listRoot.put("tid", "chat-list");
-            listRoot.put("role", "tree");
-            listRoot.put("text", 0);
-            listRoot.put("kids", 1);
-            listRoot.putArray("aria");
-            listRoot.putArray("attrs");
-            listRoot.putArray("cls").add("fui-Tree");
+            ObjectNode main = nodes.addObject();
+            fill(main, 0, 1, "div", "app-layout-area--main", "main", 0, 2);
+
+            ObjectNode iframe = nodes.addObject();
+            fill(iframe, 1, 1, "iframe", "hwc-iframe", "", 0, 0);
 
             ObjectNode item = nodes.addObject();
-            item.put("d", 1);
-            item.put("n", 12);
-            item.put("tag", "div");
-            item.put("tid", "chat-list-item-19:secret@thread.v2");
-            item.put("role", "treeitem");
+            fill(item, 1, 12, "div", "chat-list-item-19:secret@thread.v2", "treeitem", 0, 2);
             // un script défaillant rendrait du texte : ce doit être ramené à une longueur
             item.put("text", "bonjour Jean Dupont");
-            item.put("kids", 2);
             item.putArray("aria").add("aria-label");
             item.putArray("attrs").add("id");
-            item.putArray("cls").add("fui-TreeItem");
-            // clés hors schéma porteuses de valeurs sensibles → jamais lues
             item.put("title", "jean.dupont@client.fr");
-
             return dom;
+        }
+
+        /** Le vrai chat, DANS l'iframe : le runway et un message porteur de nom, message, adresse, id. */
+        private JsonNode frameDom() {
+            ObjectNode dom = mapper.createObjectNode();
+            dom.put("found", true);
+            dom.put("truncated", false);
+            ArrayNode nodes = dom.putArray("nodes");
+
+            ObjectNode runway = nodes.addObject();
+            fill(runway, 0, 1, "div", "message-pane-list-runway", "list", 0, 20);
+
+            ObjectNode message = nodes.addObject();
+            fill(message, 1, 20, "div", "message-19:secret@thread.v2", "listitem", 0, 3);
+            // Toutes ces valeurs doivent être expurgées, même venant de l'iframe.
+            message.put("text", "bonjour Paul, on se voit demain ?");
+            message.putArray("aria").add("aria-label");
+            message.putArray("attrs").add("id");
+            message.put("title", "Marie Martin");
+            message.put("href", "https://teams.microsoft.com/x/19:secret@thread.v2");
+            return dom;
+        }
+
+        private static void fill(ObjectNode n, int depth, int repeat, String tag, String tid, String role,
+                int textLen, int kids) {
+            n.put("d", depth);
+            n.put("n", repeat);
+            n.put("tag", tag);
+            n.put("tid", tid);
+            n.put("role", role);
+            n.put("text", textLen);
+            n.put("kids", kids);
+            n.putArray("aria");
+            n.putArray("attrs");
+            n.putArray("cls");
         }
 
         @Override
         public void onEvent(String method, Consumer<JsonNode> listener) {
-            // aucun événement dans ce stub
+            onSessionEvent(method, (sessionId, params) -> listener.accept(params));
+        }
+
+        @Override
+        public void onSessionEvent(String method, BiConsumer<String, JsonNode> listener) {
+            sessionListeners.computeIfAbsent(method, k -> new ArrayList<>()).add(listener);
         }
 
         @Override
