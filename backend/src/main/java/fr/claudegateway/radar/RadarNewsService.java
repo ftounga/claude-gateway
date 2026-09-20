@@ -223,7 +223,7 @@ public class RadarNewsService {
                 }
             }
         } catch (AIProviderException | AIProviderUnavailableException e) {
-            record(scope, input, output, cacheRead, cacheWrite);
+            record(scope, model, input, output, cacheRead, cacheWrite);
             if (changes.isEmpty()) {
                 throw e;
             }
@@ -231,7 +231,7 @@ public class RadarNewsService {
                     changes.size(), scope.hostId());
             return view(null, changes, evidenceId, note, mail, true);
         }
-        record(scope, input, output, cacheRead, cacheWrite);
+        record(scope, model, input, output, cacheRead, cacheWrite);
         return view(understandingOf(finalText), changes, evidenceId, note, mail, stoppedEarly);
     }
 
@@ -326,14 +326,15 @@ public class RadarNewsService {
     }
 
     /** Décompte : les jetons consommés le sont, même quand rien n'est écrit. */
-    private void record(RadarScope scope, long input, long output, long cacheRead, long cacheWrite) {
+    private void record(RadarScope scope, String model, long input, long output, long cacheRead,
+            long cacheWrite) {
         if (input + output == 0) {
             return;
         }
         try {
             quotaService.recordUsage(scope.userId(),
                     new TurnTokens(Math.max(0, input - cacheRead - cacheWrite), output, cacheRead, cacheWrite),
-                    null, null, scope.hostId());
+                    null, model, null, scope.hostId());
         } catch (RuntimeException e) {
             log.warn("Radar : consommation d'une nouvelle non décomptée ({})", e.getClass().getSimpleName());
         }

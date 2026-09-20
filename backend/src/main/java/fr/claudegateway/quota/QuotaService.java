@@ -45,6 +45,8 @@ public class QuotaService {
     private final QuotaAlertService quotaAlertService;
     private final UsageLedgerService usageLedgerService;
     private final BilledTokensCalculator billedTokensCalculator;
+    /** Le coût RÉEL du tour (F-133), distinct de ce qu'on décompte au client ci-dessus. */
+    private final ProviderCostCalculator providerCostCalculator;
     private final QuotaProperties quotaProperties;
     private final Clock clock;
 
@@ -57,6 +59,7 @@ public class QuotaService {
             QuotaAlertService quotaAlertService,
             UsageLedgerService usageLedgerService,
             BilledTokensCalculator billedTokensCalculator,
+            ProviderCostCalculator providerCostCalculator,
             QuotaProperties quotaProperties,
             Clock clock) {
         this.usageCounterRepository = usageCounterRepository;
@@ -67,6 +70,7 @@ public class QuotaService {
         this.quotaAlertService = quotaAlertService;
         this.usageLedgerService = usageLedgerService;
         this.billedTokensCalculator = billedTokensCalculator;
+        this.providerCostCalculator = providerCostCalculator;
         this.quotaProperties = quotaProperties;
         this.clock = clock;
     }
@@ -182,6 +186,27 @@ public class QuotaService {
     @Transactional
     public void recordUsage(UUID userId, TurnTokens tokens, BigDecimal providerCostUsd,
             UUID workspaceId, UUID hostId) {
+        recordUsage(userId, tokens, providerCostUsd, null, workspaceId, hostId);
+    }
+
+    /**
+     * Même décompte, en disant <b>quel modèle</b> a servi (F-133 / SF-133-01).
+     *
+     * <p>Le modèle ne change <b>rien</b> au quota : le décompte commercial reste celui de F-63, aux
+     * tarifs de {@code app.atelier.agent.cost}. Il sert au <b>relevé</b>, qui enregistre désormais
+     * ce que le tour a réellement coûté — et un tour d'Opus 5 coûte cinq fois un tour de Haiku 4.5
+     * à volume égal.</p>
+     *
+     * <p><b>Deux coûts cohabitent ici, volontairement</b> : {@code billedTokensCalculator} dit ce
+     * qu'on décompte au client, {@code providerCostCalculator} ce que le tour nous coûte. Ils
+     * partent des mêmes tokens et n'arrivent pas au même montant — voir
+     * {@link ProviderPricingProperties}.</p>
+     *
+     * @param model modèle servi, tel que rapporté par le fournisseur, ou {@code null}
+     */
+    @Transactional
+    public void recordUsage(UUID userId, TurnTokens tokens, BigDecimal providerCostUsd,
+            String model, UUID workspaceId, UUID hostId) {
         if (tokens.isEmpty() && (providerCostUsd == null || providerCostUsd.signum() <= 0)) {
             return;
         }
@@ -200,8 +225,11 @@ public class QuotaService {
         usageCounterRepository.save(counter);
         // Après le compteur, et jamais avant : si quelque chose doit manquer, c'est le relevé
         // d'attribution, pas la consommation opposable au quota. Le journal enregistre des VOLUMES
-        // (il sert à refacturer un client), pas le décompte facturé.
-        usageLedgerService.recordTurn(userId, workspaceId, hostId, input, output);
+        // (il sert à refacturer un client) et, depuis F-133, le COÛT RÉEL du tour — les deux
+        // natures de cache comprises, sans lesquelles la dépense serait surestimée d'un ordre de
+        // grandeur en usage agentique.
+        usageLedgerService.recordTurn(userId, workspaceId, hostId, tokens,
+                providerCostCalculator.calculate(providerCostUsd, tokens, model));
     }
 
     /**

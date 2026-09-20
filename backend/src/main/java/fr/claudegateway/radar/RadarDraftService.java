@@ -235,7 +235,7 @@ public class RadarDraftService {
             return;
         }
         try {
-            quotaService.recordUsage(scope.userId(), result.turnTokens(), null, null, scope.hostId());
+            quotaService.recordUsage(scope.userId(), result.turnTokens(), null, result.model(), null, scope.hostId());
         } catch (RuntimeException ex) {
             log.warn("Radar : consommation d'un brouillon non décomptée ({})", ex.getClass().getSimpleName());
         }

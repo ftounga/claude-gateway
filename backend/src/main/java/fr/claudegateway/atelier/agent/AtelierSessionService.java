@@ -1058,8 +1058,12 @@ public class AtelierSessionService implements RelaySessionInterruptTarget {
             // tour est la seule source qui ne rétrécit pas — les compteurs `agent_*_tokens` de ce
             // workspace, eux, repartent de zéro à chaque session (voir markSessionOpened).
             TurnUsage turn = new TurnUsage(inputDelta, outputDelta, secondsDelta);
+            // Le modèle accompagne le décompte (F-133 / SF-133-01). Ici il ne sert qu'au REPLI :
+            // quand le fournisseur rapporte son coût — le cas nominal des Managed Agents — c'est
+            // ce coût qui est enregistré, et il a déjà tarifé le modèle réellement servi.
             quotaService.recordUsage(userId, turnTokens(usage, inputDelta, outputDelta),
-                    cost == null ? null : usdOf(costDelta), workspaceId, workspace.getHostId());
+                    cost == null ? null : usdOf(costDelta), properties.model(), workspaceId,
+                    workspace.getHostId());
             quotaService.recordSandboxSeconds(userId, secondsDelta);
             return turn;
         } catch (RuntimeException ex) {

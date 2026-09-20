@@ -104,7 +104,7 @@ public class AskService {
                 model, List.of(new ChatMessage(ChatRole.USER, prompt))));
 
         // Enregistre la consommation de tokens (F-10).
-        quotaService.recordUsage(userId, completion.turnTokens(), null, null, null);
+        quotaService.recordUsage(userId, completion.turnTokens(), null, completion.model(), null, null);
 
         List<CitationResponse> citations = grounded
                 ? buildCitations(contextChunks, documents)

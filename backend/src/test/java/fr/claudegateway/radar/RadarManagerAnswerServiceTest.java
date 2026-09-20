@@ -127,7 +127,7 @@ class RadarManagerAnswerServiceTest {
                         "- Aucune échéance n'est connue. À demander à Sophie Laurent, qui pilote le sujet.")
                 .doesNotContain("Envoyer la note tenue");
         verify(quota).assertWithinQuota(scope.userId());
-        verify(quota).recordUsage(eq(scope.userId()), any(TurnTokens.class), isNull(), isNull(), eq(scope.hostId()));
+        verify(quota).recordUsage(eq(scope.userId()), any(TurnTokens.class), isNull(), any(), isNull(), eq(scope.hostId()));
     }
 
     @Test
@@ -158,7 +158,7 @@ class RadarManagerAnswerServiceTest {
         answers("Voici la réponse sans marqueur.");
 
         assertThatThrownBy(() -> service.prepare(scope, subjectId)).isInstanceOf(RadarAnswerUnreadableException.class);
-        verify(quota).recordUsage(eq(scope.userId()), any(TurnTokens.class), isNull(), isNull(), eq(scope.hostId()));
+        verify(quota).recordUsage(eq(scope.userId()), any(TurnTokens.class), isNull(), any(), isNull(), eq(scope.hostId()));
     }
 
     @Test

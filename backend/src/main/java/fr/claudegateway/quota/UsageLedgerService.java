@@ -39,23 +39,23 @@ public class UsageLedgerService {
     /**
      * Range le relevé d'un tour. Sans effet si le tour n'a rien consommé.
      *
-     * @param userId       utilisateur du contexte de sécurité (jamais un paramètre client)
-     * @param workspaceId  projet du tour, ou {@code null} pour un tour hors projet
-     * @param hostId       poste du projet <b>au moment du tour</b>, ou {@code null}
-     * @param inputTokens  tokens d'entrée rapportés (négatif ramené à 0)
-     * @param outputTokens tokens de sortie rapportés (négatif ramené à 0)
+     * @param userId      utilisateur du contexte de sécurité (jamais un paramètre client)
+     * @param workspaceId projet du tour, ou {@code null} pour un tour hors projet
+     * @param hostId      poste du projet <b>au moment du tour</b>, ou {@code null}
+     * @param tokens      tokens du tour <b>par nature</b> (F-133 / SF-133-01). Les quatre sont
+     *                    conservées : jusqu'ici seuls l'entrée traitée et la sortie descendaient
+     *                    jusqu'ici, et le cache — l'essentiel du volume en agentique — était perdu
+     * @param cost        coût réel du tour, ou {@code null} si aucun n'a pu être établi
      */
-    public void recordTurn(UUID userId, UUID workspaceId, UUID hostId,
-            long inputTokens, long outputTokens) {
-        long input = Math.max(0L, inputTokens);
-        long output = Math.max(0L, outputTokens);
-        if (userId == null || (input == 0L && output == 0L)) {
+    public void recordTurn(UUID userId, UUID workspaceId, UUID hostId, TurnTokens tokens,
+            TurnCost cost) {
+        if (userId == null || tokens == null || tokens.isEmpty()) {
             // Un tour sans consommation n'est pas une ligne de facture : ne rien écrire évite un
             // journal rempli de zéros, dans lequel la vraie consommation se lirait moins bien.
             return;
         }
         try {
-            writer.write(userId, workspaceId, hostId, input, output);
+            writer.write(userId, workspaceId, hostId, tokens, cost);
         } catch (RuntimeException failure) {
             log.warn("Relevé de consommation non enregistré pour l'utilisateur {} (projet {}) :"
                     + " la consommation reste comptée par les compteurs de période.",

@@ -203,7 +203,7 @@ class JugeIndependantServiceTest {
 
             assertThat(avis.issue()).isEqualTo(JugeAvis.Issue.INDISPONIBLE);
             assertThat(attente).isLessThan(JugeProperties.MIN_TIMEOUT.plusSeconds(5));
-            verify(quotaService, never()).recordUsage(any(), any(TurnTokens.class), any(), any(),
+            verify(quotaService, never()).recordUsage(any(), any(TurnTokens.class), any(), any(), any(),
                     any());
         } finally {
             bloque.countDown();
@@ -271,6 +271,7 @@ class JugeIndependantServiceTest {
         ArgumentCaptor<TurnTokens> tokens = ArgumentCaptor.forClass(TurnTokens.class);
         verify(quotaService).recordUsage(org.mockito.ArgumentMatchers.eq(alice), tokens.capture(),
                 org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.eq(workspaceId),
                 org.mockito.ArgumentMatchers.eq(hostId));
         assertThat(tokens.getValue().processedInputTokens()).isEqualTo(120L);
@@ -289,7 +290,7 @@ class JugeIndependantServiceTest {
                 ArgumentCaptor.forClass(ChatCompletionRequest.class);
         verify(aiProvider).complete(captor.capture());
         assertThat(captor.getValue().apiKey()).isEqualTo("sk-utilisateur");
-        verify(quotaService, never()).recordUsage(any(), any(TurnTokens.class), any(), any(), any());
+        verify(quotaService, never()).recordUsage(any(), any(TurnTokens.class), any(), any(), any(), any());
     }
 
     @Test
@@ -297,7 +298,7 @@ class JugeIndependantServiceTest {
     void decompteEnEchec() {
         repond("===VERDICT===\n- serveur alpha — cité dans p/STATE.md");
         doThrow(new IllegalStateException("compteur indisponible")).when(quotaService)
-                .recordUsage(any(), any(TurnTokens.class), any(), any(), any());
+                .recordUsage(any(), any(TurnTokens.class), any(), any(), any(), any());
 
         assertThat(service().consulter(alice, workspaceId).issue())
                 .isEqualTo(JugeAvis.Issue.ELEMENTS);

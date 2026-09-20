@@ -78,7 +78,9 @@ class QuotaServiceTest {
                 new QuotaWindowService(usageCounterRepository, entitlementService,
                         new fr.claudegateway.billing.BillingProperties(null, null), clock),
                 quotaAlertService, usageLedgerService,
-                billedTokensCalculator, quotaProperties, clock);
+                billedTokensCalculator,
+                new ProviderCostCalculator(new ProviderPricingProperties(null, null, null)),
+                quotaProperties, clock);
     }
 
     private void stubQuota(long quota) {

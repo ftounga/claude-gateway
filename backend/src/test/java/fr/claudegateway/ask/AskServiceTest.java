@@ -127,8 +127,11 @@ class AskServiceTest {
 
         // Quota vérifié avant, consommation enregistrée après.
         verify(quotaService).assertWithinQuota(alice);
+        // Le modèle servi accompagne le décompte (F-133 / SF-133-01) : sans lui, le coût réel
+        // du tour ne peut pas être établi — Opus et Haiku ne coûtent pas le même prix.
         verify(quotaService).recordUsage(alice,
-                new fr.claudegateway.quota.TurnTokens(20L, 10L, 0L, 0L), null, null, null);
+                new fr.claudegateway.quota.TurnTokens(20L, 10L, 0L, 0L), null, "claude-opus-4-8",
+                null, null);
     }
 
     @Test
@@ -148,7 +151,8 @@ class AskServiceTest {
         verify(chunkRepository, never()).findByIdInAndUserId(anyList(), any());
         verifyNoInteractions(documentRepository);
         verify(quotaService).recordUsage(alice,
-                new fr.claudegateway.quota.TurnTokens(5L, 3L, 0L, 0L), null, null, null);
+                new fr.claudegateway.quota.TurnTokens(5L, 3L, 0L, 0L), null, "claude-opus-4-8",
+                null, null);
     }
 
     @Test

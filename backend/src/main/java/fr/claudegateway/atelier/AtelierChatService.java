@@ -1537,10 +1537,14 @@ public class AtelierChatService implements RelayInterruptTarget {
             // Chaque nature de token à son prix (F-63) : l'entrée au plein tarif, le cache au sien.
             // Le VOLUME enregistré ne bouge pas — `TurnTokens` le recompose — mais ce qui est
             // décompté du quota cesse de facturer au plein tarif des tokens relus au dixième.
+            // Le modèle voyage avec le décompte (F-133 / SF-133-01) : à volume égal, un tour
+            // d'Opus coûte cinq fois un tour de Haiku. C'est le modèle DEMANDÉ pour la session —
+            // la boucle maison ne fait pas remonter celui que le fournisseur rapporte, et les
+            // deux ne diffèrent que si le fournisseur substitue, ce qu'il ne fait pas ici.
             quotaService.recordUsage(userId,
                     new TurnTokens(Math.max(0, inputTokens - cacheReadTokens - cacheWriteTokens),
                             outputTokens, cacheReadTokens, cacheWriteTokens),
-                    null, workspaceId, workspace.getHostId());
+                    null, model, workspaceId, workspace.getHostId());
         }
 
         // Jamais de message vide dans l'historique (SF-28-18) : il serait relu au tour suivant et

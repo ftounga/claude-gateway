@@ -243,7 +243,7 @@ public class MeetingCardPromotionService {
             return;
         }
         try {
-            quotaService.recordUsage(scope.userId(), result.turnTokens(), null, null, scope.hostId());
+            quotaService.recordUsage(scope.userId(), result.turnTokens(), null, result.model(), null, scope.hostId());
         } catch (RuntimeException ex) {
             log.warn("Réunion : consommation du rangement carte non décomptée ({})",
                     ex.getClass().getSimpleName());

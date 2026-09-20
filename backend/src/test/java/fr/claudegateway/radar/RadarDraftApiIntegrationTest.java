@@ -91,7 +91,7 @@ class RadarDraftApiIntegrationTest extends RadarIntegrationTestBase {
         assertThat(material).contains("relance", "Retour de l'éditeur SSO", "PERSONNE QUI DOIT : Julie Martin",
                 "Oui je t'envoie ça jeudi", "Julie Martin : « Oui").doesNotContain("LDAP");
         verify(quotaService).assertWithinQuota(alice.getId());
-        verify(quotaService).recordUsage(eq(alice.getId()), any(TurnTokens.class), isNull(), isNull(), eq(aliceA.hostId()));
+        verify(quotaService).recordUsage(eq(alice.getId()), any(TurnTokens.class), isNull(), any(), isNull(), eq(aliceA.hostId()));
     }
 
     @Test
@@ -153,6 +153,6 @@ class RadarDraftApiIntegrationTest extends RadarIntegrationTestBase {
 
         draft(aliceA, commitment.getId()).andExpect(status().isBadGateway())
                 .andExpect(jsonPath("$.error").value("radar_answer_unreadable"));
-        verify(quotaService).recordUsage(eq(alice.getId()), any(TurnTokens.class), isNull(), isNull(), eq(aliceA.hostId()));
+        verify(quotaService).recordUsage(eq(alice.getId()), any(TurnTokens.class), isNull(), any(), isNull(), eq(aliceA.hostId()));
     }
 }

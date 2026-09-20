@@ -414,7 +414,7 @@ class AtelierChatServiceTest {
         assertThat(agentProvider.lastRequest).isNull();
         assertThat(listener.actions).isEmpty();
         verify(quotaService, never()).recordUsage(any(), any(fr.claudegateway.quota.TurnTokens.class),
-                any(), any(), any());
+                any(), any(), any(), any());
     }
 
     @Test
@@ -427,7 +427,7 @@ class AtelierChatServiceTest {
 
         verify(quotaService).assertWithinQuota(userId);
         verify(quotaService).recordUsage(eq(userId), any(fr.claudegateway.quota.TurnTokens.class),
-                org.mockito.ArgumentMatchers.isNull(), any(), any());
+                org.mockito.ArgumentMatchers.isNull(), any(), any(), any());
     }
 
     @Test
@@ -442,7 +442,7 @@ class AtelierChatServiceTest {
 
         verify(quotaService).recordUsage(userId,
                 new fr.claudegateway.quota.TurnTokens(5_000L, 500L, 90_000L, 5_000L),
-                null, workspaceId, null);
+                null, "claude-opus-5", workspaceId, null);
     }
 
     @Test
@@ -467,7 +467,7 @@ class AtelierChatServiceTest {
 
         verify(quotaService, never()).assertWithinQuota(any());
         verify(quotaService, never()).recordUsage(any(), any(fr.claudegateway.quota.TurnTokens.class),
-                any(), any(), any());
+                any(), any(), any(), any());
     }
 
     @Test
@@ -482,7 +482,7 @@ class AtelierChatServiceTest {
 
         assertThat(agentProvider.lastRequest).isNull();
         verify(quotaService, never()).recordUsage(any(), any(fr.claudegateway.quota.TurnTokens.class),
-                any(), any(), any());
+                any(), any(), any(), any());
     }
 
     // ------------------------------------------------- SF-28-18 : tour tronqué et mémoire vide
