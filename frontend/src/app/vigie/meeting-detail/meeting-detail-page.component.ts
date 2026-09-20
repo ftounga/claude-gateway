@@ -738,8 +738,16 @@ export class MeetingDetailPageComponent implements OnInit, OnDestroy {
    * Répare la **durée** d'un webm `MediaRecorder`, souvent dépourvu de l'élément *Duration* dans son
    * en-tête (flux « live »). Sans elle, Chrome lit `duration = Infinity`, affiche `0:00 / 0:00`,
    * désactive la barre de progression et **refuse de lancer la lecture** — le lecteur paraît grisé.
-   * Un *seek* en toute fin force le navigateur à calculer la vraie durée ; on revient ensuite à `0`.
-   * Déclenché **une seule fois** par chargement ; si la durée est déjà connue, on ne touche à rien.
+   * Un *seek* en toute fin (`currentTime = 1e101`) force le navigateur à calculer la vraie durée.
+   *
+   * <p><b>Pourquoi SF-128-17 ne corrigeait pas.</b> La première version remettait la tête à `0` dès le
+   * <b>premier</b> {@code timeupdate}, sans vérifier que la durée était redevenue finie. Or Chrome émet
+   * des {@code timeupdate} <b>pendant</b> le seek, alors que {@code duration} vaut encore
+   * {@code Infinity} : ce retour prématuré à `0` <b>annule le seek</b> avant le recalcul, et la durée
+   * restait `Infinity` (lecteur toujours à `0:00 / 0:00`). On écoute désormais {@code durationchange}
+   * (l'événement qui porte la durée recalculée) <b>et</b> {@code timeupdate} en repli, et l'on ne
+   * revient à `0` <b>que</b> lorsque {@code duration} est <b>finie</b>. Déclenché une seule fois par
+   * chargement ; si la durée est déjà connue à {@code loadedmetadata}, on ne touche à rien.</p>
    */
   onAudioMetadata(el: HTMLAudioElement): void {
     if (this.durationRepairDone) {
@@ -747,12 +755,20 @@ export class MeetingDetailPageComponent implements OnInit, OnDestroy {
     }
     if (el.duration === Infinity || Number.isNaN(el.duration)) {
       this.durationRepairDone = true;
-      const reset = (): void => {
-        el.removeEventListener('timeupdate', reset);
+      const finish = (): void => {
+        // On ne remet la tête à 0 QUE lorsque la vraie durée est connue (finie) : y revenir pendant le
+        // seek (durée encore Infinity) annulerait le calcul et laisserait le lecteur à 0:00 / 0:00.
+        if (!Number.isFinite(el.duration)) {
+          return;
+        }
+        el.removeEventListener('durationchange', finish);
+        el.removeEventListener('timeupdate', finish);
         el.currentTime = 0;
       };
-      el.addEventListener('timeupdate', reset);
-      // Valeur volontairement énorme : Chrome borne au réel et déclenche le calcul de durée.
+      // `durationchange` est l'événement primaire (Chrome + Safari) ; `timeupdate` sert de repli.
+      el.addEventListener('durationchange', finish);
+      el.addEventListener('timeupdate', finish);
+      // Valeur volontairement énorme : le navigateur borne au réel et déclenche le calcul de durée.
       el.currentTime = 1e101;
     }
   }

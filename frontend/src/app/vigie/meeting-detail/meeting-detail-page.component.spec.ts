@@ -132,11 +132,15 @@ describe('MeetingDetailPageComponent', () => {
     expect(audioBlobArg!.type).toBe('audio/webm');
   });
 
-  it('répare la durée d\'un webm sans Duration : seek en fin puis retour à 0 (SF-128-17)', () => {
-    setup();
+  /** Élément audio simulé : durée mutable + registre d'écouteurs, pour piloter le seek-hack. */
+  function audioMock(duration: number): {
+    el: HTMLAudioElement;
+    listeners: Record<string, Array<() => void>>;
+    ref: { duration: number; currentTime: number };
+  } {
     const listeners: Record<string, Array<() => void>> = {};
-    const el = {
-      duration: Infinity,
+    const ref = {
+      duration,
       currentTime: 0,
       addEventListener(evt: string, cb: () => void): void {
         (listeners[evt] ??= []).push(cb);
@@ -144,23 +148,72 @@ describe('MeetingDetailPageComponent', () => {
       removeEventListener(evt: string, cb: () => void): void {
         listeners[evt] = (listeners[evt] ?? []).filter((fn) => fn !== cb);
       },
-    } as unknown as HTMLAudioElement;
+    };
+    return { el: ref as unknown as HTMLAudioElement, listeners, ref };
+  }
+
+  it('durée Infinity : déclenche le seek en fin et s\'abonne à durationchange + timeupdate (SF-128-19)', () => {
+    setup();
+    const { el, listeners, ref } = audioMock(Infinity);
 
     fixture.componentInstance.onAudioMetadata(el);
-    expect(el.currentTime).toBe(1e101);
-    expect(listeners['timeupdate']?.length).toBe(1);
 
-    // Le navigateur émet timeupdate une fois la vraie durée calculée : on revient à 0.
+    expect(ref.currentTime).toBe(1e101);
+    expect(listeners['durationchange']?.length).toBe(1);
+    expect(listeners['timeupdate']?.length).toBe(1);
+  });
+
+  it('ne remet PAS la tête à 0 tant que la durée reste Infinity — le seek n\'est pas annulé (SF-128-19)', () => {
+    setup();
+    const { el, listeners, ref } = audioMock(Infinity);
+
+    fixture.componentInstance.onAudioMetadata(el);
+    // Chrome émet un timeupdate PENDANT le seek, durée encore Infinity : on ne doit pas revenir à 0
+    // (c'était le bug de SF-128-17, qui annulait le calcul de durée).
     listeners['timeupdate'][0]();
-    expect(el.currentTime).toBe(0);
+
+    expect(ref.currentTime).toBe(1e101);
+    expect(listeners['durationchange'].length).toBe(1);
+    expect(listeners['timeupdate'].length).toBe(1);
+  });
+
+  it('durationchange avec durée finie : retour à 0 et retrait des deux écouteurs (SF-128-19)', () => {
+    setup();
+    const { el, listeners, ref } = audioMock(Infinity);
+
+    fixture.componentInstance.onAudioMetadata(el);
+    // Le navigateur a calculé la vraie durée : durationchange arrive avec une durée finie.
+    ref.duration = 47;
+    listeners['durationchange'][0]();
+
+    expect(ref.currentTime).toBe(0);
+    expect(listeners['durationchange'].length).toBe(0);
     expect(listeners['timeupdate'].length).toBe(0);
   });
 
-  it('ne touche pas à currentTime si la durée est déjà connue (SF-128-17)', () => {
+  it('repli : si seul timeupdate porte la durée finie, retour à 0 quand même (SF-128-19)', () => {
     setup();
-    const el = { duration: 42, currentTime: 5, addEventListener: () => {}, removeEventListener: () => {} } as unknown as HTMLAudioElement;
+    const { el, listeners, ref } = audioMock(Infinity);
+
     fixture.componentInstance.onAudioMetadata(el);
-    expect(el.currentTime).toBe(5);
+    ref.duration = 12;
+    listeners['timeupdate'][0]();
+
+    expect(ref.currentTime).toBe(0);
+    expect(listeners['timeupdate'].length).toBe(0);
+    expect(listeners['durationchange'].length).toBe(0);
+  });
+
+  it('ne touche pas à currentTime si la durée est déjà connue (SF-128-19)', () => {
+    setup();
+    const { el, listeners, ref } = audioMock(42);
+    ref.currentTime = 5;
+
+    fixture.componentInstance.onAudioMetadata(el);
+
+    expect(ref.currentTime).toBe(5);
+    expect(listeners['durationchange']).toBeUndefined();
+    expect(listeners['timeupdate']).toBeUndefined();
   });
 
   it('charge et affiche le deck', () => {
