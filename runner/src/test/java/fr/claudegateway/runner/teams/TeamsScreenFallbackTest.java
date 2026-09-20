@@ -171,6 +171,35 @@ class TeamsScreenFallbackTest {
         assertFalse(json.toString().toLowerCase(Locale.ROOT).contains("réagi"));
     }
 
+    // ------------------------------------------------------------------ SF-100-10 : la vue Chat avant de lire
+
+    @Test
+    @DisplayName("SF-100-10 : reachChatList navigue vers la vue Chat et attend la liste ; jamais chargée → best-effort borné")
+    void reach_chat_list_navigates_then_waits_for_the_mid_nav_list() {
+        // La liste « mid-nav » ne charge qu'après deux sondages de présence : reachChatList doit l'attendre.
+        PaperTeams present = new PaperTeams();
+        present.browser.listPresentAfter(2, PaperScreen.of("conversations-v2.html"));
+        int[] polls = { 0 };
+        TeamsScreenFallback loads = new TeamsScreenFallback(present.link, millis -> polls[0]++, null);
+
+        TeamsScreenFallback.ChatView view = loads.reachChatList(TeamsScreenFallback.MAX_CHAT_LIST_POLLS);
+
+        assertTrue(view.reached(), "la navigation vers la vue Chat a été tentée");
+        assertTrue(view.listPresent(), "la liste a fini par charger, reachChatList l'a attendue");
+        assertTrue(present.browser.navigations().contains(TeamsRoutes.CHAT), present.browser.navigations().toString());
+        assertTrue(polls[0] >= 2, "poll d'attente via le Sleeper : " + polls[0]);
+
+        // Jamais chargée : best-effort borné, pas de crash, la liste reste absente.
+        PaperTeams never = new PaperTeams();
+        TeamsScreenFallback nothing = new TeamsScreenFallback(never.link, millis -> { }, null);
+
+        TeamsScreenFallback.ChatView timeout = nothing.reachChatList(TeamsScreenFallback.MAX_CHAT_LIST_POLLS);
+
+        assertTrue(timeout.reached());
+        assertFalse(timeout.listPresent(), "best-effort : la liste ne s'est jamais chargée");
+        assertTrue(never.browser.navigations().contains(TeamsRoutes.CHAT));
+    }
+
     // ------------------------------------------------------------------ transcription
 
     @Test

@@ -113,15 +113,41 @@ final class TeamsRadarCollector implements RadarCollector {
             // ---------------------------------------------------------------- découverte
             List<TeamsConversation> listed = book.conversations();
             if (listed.isEmpty()) {
-                // F-89 / SF-89-06 : le réseau n'a rien servi — la liste AFFICHÉE, ouverte par les gestes gardés
-                // de F-108 puis remise. Seuls les fils identifiables (ouvrables) sont retenus.
+                // F-89 / SF-89-06 : le réseau n'a rien servi — la liste AFFICHÉE est lue à l'écran.
+                // SF-100-10 : mais la synchro navigue SEULE (Chrome managé) et n'atterrit pas sur la vue Chat
+                // (la route CONVERSATIONS tombe sur un volet message) — d'où 0 collecté alors que la vérification,
+                // partie d'une vue Chat, voit les conversations (prod CAGIP 2026-09-20). On se place donc dans le
+                // MÊME contexte que la vérification : ouvrir la vue Chat et ATTENDRE que la liste « mid-nav » soit
+                // chargée AVANT de lire. Puis la lecture par les sélecteurs recalés (SF-89-20/21), inchangés.
+                TeamsScreenFallback fallback = new TeamsScreenFallback(link, sleeper, journal);
+                PageActions nav = new PageActions(link, sleeper, journal);
+                String beforeDiscovery = nav.currentUrl();
+                TeamsScreenFallback.ChatView chat = fallback.reachChatList(TeamsScreenFallback.MAX_CHAT_LIST_POLLS);
                 TeamsScreenFallback.ScreenList onScreen =
-                        new TeamsScreenFallback(link, sleeper, journal).list(TeamsScreen.CONVERSATIONS, TeamsRoutes.CONVERSATIONS);
+                        fallback.list(TeamsScreen.CONVERSATIONS, TeamsRoutes.CHAT);
                 if (onScreen.found()) {
                     listed = TeamsScreenFallback.conversations(onScreen.items()).stream()
                             .filter(conversation -> !conversation.id().startsWith("ecran:")).toList();
-                    coverage.discoverySource = listed.isEmpty() ? "aucune" : TeamsTools.SOURCE_SCREEN;
                 }
+                if (listed.isEmpty()) {
+                    // Le réseau n'a rien servi ET l'écran n'a rien donné (liste jamais chargée, ou vide) : la
+                    // source n'est pas « réseau ». Best-effort — la couverture le dit, la collecte ne plante pas.
+                    coverage.discoverySource = "aucune";
+                } else {
+                    coverage.discoverySource = TeamsTools.SOURCE_SCREEN;
+                }
+                // §4.7 : la vue d'avant la découverte est remise (la synchro ne laisse pas l'onglet ailleurs).
+                try {
+                    nav.restore(beforeDiscovery);
+                } catch (BrowserLinkException e) {
+                    // l'onglet a quitté les domaines Microsoft entre-temps : rien à remettre de plus
+                }
+                // Diagnostic F-132 : la navigation/attente vers la vue Chat, et ce qu'on a fini par lister.
+                String state = chat.listPresent() ? "reached"
+                        : chat.reached() ? "timeout (liste jamais chargée)" : "non atteinte";
+                journal.accept(new PageActions.GestureRecord("radar/chat_view",
+                        MicrosoftDomains.hostOf(TeamsRoutes.CHAT), "liste des conversations",
+                        state + " ; listed=" + listed.size() + " ; polls=" + chat.polls()));
             }
             coverage.discovery(!listed.isEmpty(), listed.stream().anyMatch(c -> c.lastActivityAt() != null
                     && !c.lastActivityAt().isAfter(floor)), listed.size());

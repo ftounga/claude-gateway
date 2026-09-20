@@ -34,6 +34,19 @@ final class TeamsRoutes {
      */
     static final String CONVERSATIONS = "https://teams.microsoft.com/v2/#/conversations";
 
+    /**
+     * La <b>vue Chat</b> du client v2 (F-100 / SF-100-10), celle qui charge la liste « mid-nav »
+     * ({@code [data-tid=app-layout-area--mid-nav]} + {@code [data-tid=simple-collab-dnd-rail]}). La
+     * vérification (SF-100-01) voit les conversations parce que l'utilisateur est <b>déjà</b> sur cette
+     * vue ; la synchro du soir, elle, navigue <b>seule</b> et n'y atterrit pas — la route
+     * {@link #CONVERSATIONS} tombe sur un volet message sans cette liste (prod CAGIP 2026-09-20 :
+     * {@code listed=0} alors que la vérification voit 11 conversations). La collecte doit donc ouvrir
+     * cette vue <b>explicitement</b> et attendre que la liste soit chargée avant de lire. <b>Hypothèse</b>
+     * du même ordre que {@link #CALENDAR}/{@link #CONVERSATIONS} : à confirmer sur poste réel ; à défaut,
+     * le geste de repli est un clic sur l'entrée « Chat » de la barre d'app.
+     */
+    static final String CHAT = "https://teams.microsoft.com/v2/#/chat";
+
     /** Le flux d'activité (F-89 / SF-89-06), ouvert pour lire les mentions à l'écran. Hypothèse, comme les autres. */
     static final String ACTIVITY = "https://teams.microsoft.com/v2/#/activity";
 
