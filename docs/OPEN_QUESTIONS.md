@@ -666,3 +666,20 @@ là où F-133 la **calcule** à partir du journal interne.
 Le prix à payer est une complexité d'exploitation réelle : création, rotation, révocation, quotas et
 limites de débit par clé, et un chemin de secours quand une clé manque. À cadrer séparément si le
 besoin de certification se matérialise — la ventilation calculée suffit à piloter.
+
+
+---
+
+## OQ-22 — La compaction annule-t-elle le gain de cache attendu ?
+
+**Statut** : **Ouverte — à vérifier après SF-134-01** (posée le 2026-09-20, cadrage F-134).
+
+La compaction (F-117) réécrit l'historique : elle invalide donc **nécessairement** le préfixe de
+cache. C'est normal, et acceptable — c'est le prix d'un fil qui tient dans la fenêtre du modèle.
+
+Mais si elle se déclenche souvent, elle annulerait le gain de SF-134-01 : un préfixe stabilisé qu'on
+réécrit toutes les trois demandes ne sert à rien. Les colonnes de F-133 permettent désormais de le
+mesurer — un effondrement de la part relue qui coïncide avec une compaction se verra.
+
+**À trancher seulement si la mesure le montre** : rien ne justifie de toucher au seuil de compaction
+avant d'avoir vu qu'il pose problème.
