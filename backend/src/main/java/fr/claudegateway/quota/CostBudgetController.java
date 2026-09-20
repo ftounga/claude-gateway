@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -33,12 +34,14 @@ public class CostBudgetController {
 
     private final CostBudgetService service;
     private final CostAlertService alertService;
+    private final CostSummaryService summaryService;
     private final CurrentUser currentUser;
 
     public CostBudgetController(CostBudgetService service, CostAlertService alertService,
-            CurrentUser currentUser) {
+            CostSummaryService summaryService, CurrentUser currentUser) {
         this.service = service;
         this.alertService = alertService;
+        this.summaryService = summaryService;
         this.currentUser = currentUser;
     }
 
@@ -79,5 +82,22 @@ public class CostBudgetController {
     @GetMapping("/alerts")
     public List<CostAlert> alerts() {
         return alertService.currentWeek(currentUser.requireId());
+    }
+
+    /**
+     * La synthèse de la période (F-133 / SF-133-07) : dépense, budget et part, par client et au
+     * total.
+     *
+     * <p><b>Une seule route plutôt que trois appels combinés côté écran</b> : la part consommée
+     * dépend d'une règle métier — le budget propre, sinon le défaut, sinon aucun — et la recalculer
+     * dans le navigateur en ferait une seconde définition, qui divergerait un jour de celle des
+     * alertes.</p>
+     *
+     * @param period {@code week} (défaut) ou {@code month}
+     */
+    @GetMapping("/summary")
+    public CostSummary summary(
+            @RequestParam(name = "period", defaultValue = "week") String period) {
+        return summaryService.summary(currentUser.requireId(), period);
     }
 }

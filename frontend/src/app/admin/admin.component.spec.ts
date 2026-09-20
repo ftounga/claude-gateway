@@ -10,6 +10,7 @@ import { AdminUser } from './admin.models';
 import { AuthService } from '../core/services/auth.service';
 import { AccessCodeAdminService } from './access-code-admin.service';
 import { GovernanceAdminService } from './governance-admin.service';
+import { AdminCostService } from './cost/admin-cost.service';
 import { AdminUsageService } from './admin-usage.service';
 
 describe('AdminComponent', () => {
@@ -76,6 +77,23 @@ describe('AdminComponent', () => {
       }),
     );
 
+    // Et pour la section Coût réel (F-133 / SF-133-07), qui a elle aussi son propre spec.
+    const costSpy = jasmine.createSpyObj<AdminCostService>('AdminCostService', [
+      'summary', 'alerts', 'setDefaultBudget', 'setHostBudget', 'clearHostBudget',
+    ]);
+    costSpy.summary.and.returnValue(
+      of({
+        period: 'week' as const,
+        from: '2026-09-14',
+        to: '2026-09-20',
+        spentEur: 0,
+        budgetEur: null,
+        percent: null,
+        clients: [],
+      }),
+    );
+    costSpy.alerts.and.returnValue(of([]));
+
     await TestBed.configureTestingModule({
       imports: [AdminComponent],
       providers: [
@@ -84,6 +102,7 @@ describe('AdminComponent', () => {
         { provide: GovernanceAdminService, useValue: governanceSpy },
         { provide: AccessCodeAdminService, useValue: accessCodeSpy },
         { provide: AdminUsageService, useValue: usageSpy },
+        { provide: AdminCostService, useValue: costSpy },
       ],
     }).compileComponents();
 

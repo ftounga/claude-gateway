@@ -170,6 +170,44 @@ class CostBudgetApiIntegrationTest {
     }
 
     @Test
+    void theSummaryRouteIsAdminOnlyAndRefusesAnUnknownPeriod() throws Exception {
+        // F-133 / SF-133-07.
+        mockMvc.perform(get("/api/admin/cost/summary").contextPath("/api")
+                        .header("Authorization", "Bearer " + userToken))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/admin/cost/summary").contextPath("/api")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.period").value("week"))
+                .andExpect(jsonPath("$.spentEur").value(0));
+
+        mockMvc.perform(get("/api/admin/cost/summary?period=month").contextPath("/api")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.period").value("month"));
+
+        mockMvc.perform(get("/api/admin/cost/summary?period=trimestre").contextPath("/api")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void theSummaryShowsABudgetedClientAndItsShare() throws Exception {
+        setBudget("/" + adminHost, adminToken, "{\"amountEur\": 100.00}").andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/admin/cost/summary").contextPath("/api")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                // Aucune dépense, mais le client budgété apparaît : un budget posé sur un client
+                // qui ne travaille pas doit se voir.
+                .andExpect(jsonPath("$.clients.length()").value(1))
+                .andExpect(jsonPath("$.clients[0].budgetEur").value(100.00))
+                .andExpect(jsonPath("$.clients[0].percent").value(0))
+                .andExpect(jsonPath("$.clients[0].ownBudget").value(true));
+    }
+
+    @Test
     void aBudgetNeverRefusesAnything() throws Exception {
         // LE TEST DE NON-RÉGRESSION DE LA SUBFEATURE. Un budget est une consigne de PILOTAGE :
         // il n'a aucun droit sur le service rendu. Budget à zéro, dépense massive — et le quota

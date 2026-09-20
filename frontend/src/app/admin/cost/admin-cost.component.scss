@@ -1,0 +1,135 @@
+// Section « Coût réel » de l'administration (F-133 / SF-133-07).
+// Calquée sur la section Consommation : mêmes jetons, mêmes formes, aucune couleur nouvelle.
+.cost-admin {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cg-space-3);
+  padding: var(--cg-space-4);
+
+  &__header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--cg-space-3);
+
+    h2 {
+      margin: 0 0 var(--cg-space-1);
+      font-size: 18px;
+    }
+  }
+
+  &__subtitle {
+    margin: 0;
+    color: var(--cg-text-secondary);
+    max-width: 72ch;
+  }
+
+  &__card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cg-space-3);
+    padding: var(--cg-space-4);
+  }
+
+  &__section-title {
+    margin: 0;
+    font-size: 15px;
+  }
+
+  &__error {
+    display: flex;
+    align-items: center;
+    gap: var(--cg-space-1);
+    margin: 0;
+    color: var(--cg-text-secondary);
+  }
+
+  &__alerts {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cg-space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  &__alert {
+    display: flex;
+    align-items: center;
+    gap: var(--cg-space-1);
+  }
+
+  &__total {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--cg-space-2);
+  }
+
+  &__total-label {
+    margin: 0;
+    color: var(--cg-text-secondary);
+  }
+
+  &__total-amount {
+    margin: 0;
+    font-size: 28px;
+    font-weight: 600;
+  }
+
+  &__total-budget {
+    margin: 0;
+    color: var(--cg-text-secondary);
+  }
+
+  &__default-budget,
+  &__client-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cg-space-2);
+  }
+
+  &__field {
+    min-width: 220px;
+  }
+
+  &__empty {
+    margin: 0;
+    color: var(--cg-text-secondary);
+  }
+
+  &__clients {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cg-space-3);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  &__client {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cg-space-1);
+  }
+
+  &__client-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--cg-space-2);
+  }
+
+  &__client-name {
+    font-weight: 600;
+  }
+
+  &__client-budget {
+    margin: 0;
+    color: var(--cg-text-secondary);
+    font-size: 13px;
+  }
+}
