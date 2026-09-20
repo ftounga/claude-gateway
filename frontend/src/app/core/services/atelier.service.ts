@@ -559,6 +559,8 @@ export class AtelierService {
       steerIds?: string[];
       step?: number;
       followUp?: boolean;
+      /** Montant du tour, déjà formaté en euros (F-133 / SF-133-02). Absent hors administration. */
+      costEur?: string;
     };
     try {
       payload = JSON.parse(data);
@@ -650,6 +652,10 @@ export class AtelierService {
         budgetReached: payload.budgetReached === true,
         // F-84 / SF-84-06 : un tour de suite part dans le même flux — ce `done` n'est pas la fin.
         followUp: payload.followUp === true,
+        // F-133 / SF-133-10 : le montant du tour. Ce relais recopie l'événement CHAMP PAR CHAMP —
+        // tout champ oublié ici est jeté en silence, si près du but que la passerelle l'aura
+        // calculé, formaté et envoyé pour rien.
+        costEur: payload.costEur,
       });
     } else if (event === 'steered') {
       // F-84 / SF-84-06 : l'envoi est devenu une précision du tour qui tournait déjà.

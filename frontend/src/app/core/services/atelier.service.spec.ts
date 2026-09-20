@@ -308,6 +308,41 @@ describe('AtelierService', () => {
     expect(error).toBe(0);
   });
 
+  it('streamChat transmet le montant du tour (F-133 / SF-133-10)', async () => {
+    // LE DÉFAUT QUE CE TEST FIGE. Ce relais recopie l'événement CHAMP PAR CHAMP : `costEur` n'y
+    // figurait pas, et le montant — calculé, formaté et envoyé par la passerelle — était jeté à
+    // l'entrée du navigateur, sans la moindre trace.
+    fakeSseFetch([
+      'event:done\ndata:{"reply":"ok","actions":[],"messageId":"m1","inputTokens":10,'
+        + '"outputTokens":5,"activeSeconds":3,"costEur":"1,61 €"}',
+    ]);
+    let amount: string | undefined;
+
+    await service.streamChat('w1', 'go', {
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: (done) => (amount = done.costEur),
+      onError: () => undefined,
+    });
+
+    expect(amount).toBe('1,61 €');
+  });
+
+  it('streamChat laisse le montant absent quand la passerelle n\'en envoie pas (F-133 / SF-133-10)', async () => {
+    // Le cas de tout utilisateur non administrateur : rien à afficher, et rien d'inventé.
+    fakeSseFetch(['event:done\ndata:{"reply":"ok","actions":[],"messageId":"m1"}']);
+    let amount: string | undefined = 'valeur précédente';
+
+    await service.streamChat('w1', 'go', {
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: (done) => (amount = done.costEur),
+      onError: () => undefined,
+    });
+
+    expect(amount).toBeUndefined();
+  });
+
   it("streamChat n'appelle PAS onClosed après un done non-suite (F-131 / SF-131-01)", async () => {
     fakeSseFetch(['event:done\ndata:{"reply":"ok","actions":[],"messageId":"m1"}']);
     let closed = 0;
