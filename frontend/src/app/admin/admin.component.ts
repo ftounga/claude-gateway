@@ -9,6 +9,7 @@ import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 import { AdminService } from './admin.service';
 import { AdminUser } from './admin.models';
 import { AccessCodesComponent } from './access-codes/access-codes.component';
+import { AdminCostComponent } from './cost/admin-cost.component';
 import { AdminUsageComponent } from './usage/admin-usage.component';
 import { GovernancePackagesComponent } from './governance-packages/governance-packages.component';
 
@@ -37,6 +38,7 @@ import { GovernancePackagesComponent } from './governance-packages/governance-pa
     DecimalPipe,
     GovernancePackagesComponent,
     AccessCodesComponent,
+    AdminCostComponent,
     AdminUsageComponent,
   ],
   templateUrl: './admin.component.html',

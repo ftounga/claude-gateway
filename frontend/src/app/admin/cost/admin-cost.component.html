@@ -1,0 +1,142 @@
+<!-- F-133 / SF-133-07 — « combien ça me coûte », au-dessus de « qui consomme ». -->
+<section class="cost-admin">
+  <header class="cost-admin__header">
+    <div>
+      <h2>Coût réel</h2>
+      <p class="cost-admin__subtitle">
+        Ce que chaque client coûte vraiment, au tarif du fournisseur — à ne pas confondre avec la
+        consommation en jetons ci-dessous. Les budgets <strong>informent</strong> : aucun tour n'est
+        refusé parce qu'un budget est dépassé.
+      </p>
+    </div>
+    <mat-button-toggle-group
+      class="cost-admin__period"
+      [value]="period()"
+      (change)="selectPeriod($event.value)"
+      aria-label="Période observée"
+    >
+      <mat-button-toggle value="week">Cette semaine</mat-button-toggle>
+      <mat-button-toggle value="month">Ce mois</mat-button-toggle>
+    </mat-button-toggle-group>
+  </header>
+
+  @if (loading()) {
+    <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+  }
+
+  @if (error(); as message) {
+    <mat-card class="cost-admin__card">
+      <p class="cost-admin__error" role="status">
+        <mat-icon aria-hidden="true">error_outline</mat-icon>
+        {{ message }}
+      </p>
+    </mat-card>
+  }
+
+  @if (alerts().length > 0) {
+    <mat-card class="cost-admin__card">
+      <h3 class="cost-admin__section-title">Alertes de la semaine</h3>
+      <ul class="cost-admin__alerts">
+        @for (alert of alerts(); track alert.scope + (alert.hostId ?? '')) {
+          <li
+            class="badge cost-admin__alert"
+            [class.badge--warning]="alert.level === 'NEAR'"
+            [class.badge--error]="alert.level === 'EXCEEDED'"
+            role="status"
+          >
+            <mat-icon aria-hidden="true">
+              {{ alert.level === 'EXCEEDED' ? 'error_outline' : 'warning_amber' }}
+            </mat-icon>
+            {{ alertLabel(alert) }}
+          </li>
+        }
+      </ul>
+    </mat-card>
+  }
+
+  @if (summary(); as data) {
+    <mat-card class="cost-admin__card">
+      <div class="cost-admin__total">
+        <div>
+          <p class="cost-admin__total-label">
+            {{ data.period === 'week' ? 'Cette semaine' : 'Ce mois' }} · du {{ data.from }} au {{ data.to }}
+          </p>
+          <p class="cost-admin__total-amount">{{ euros(data.spentEur) }}</p>
+        </div>
+        @if (data.budgetEur !== null) {
+          <p class="cost-admin__total-budget">
+            sur {{ euros(data.budgetEur) }} budgétés · {{ data.percent }} %
+          </p>
+        }
+      </div>
+
+      <div class="cost-admin__default-budget">
+        <mat-form-field appearance="outline" class="cost-admin__field">
+          <mat-label>Budget hebdomadaire par défaut (€)</mat-label>
+          <input
+            matInput
+            type="text"
+            inputmode="decimal"
+            [ngModel]="defaultBudgetDraft()"
+            (ngModelChange)="defaultBudgetDraft.set($event)"
+            name="defaultBudget"
+          />
+        </mat-form-field>
+        <button mat-flat-button color="primary" type="button" (click)="saveDefaultBudget()">
+          Enregistrer
+        </button>
+      </div>
+
+      @if (data.clients.length === 0) {
+        <p class="cost-admin__empty">Aucune dépense sur la période.</p>
+      } @else {
+        <ul class="cost-admin__clients">
+          @for (client of data.clients; track client.hostId ?? 'outside') {
+            <li class="cost-admin__client">
+              <div class="cost-admin__client-head">
+                <span class="cost-admin__client-name">{{ clientName(client) }}</span>
+                <span class="cost-admin__client-spent">{{ euros(client.spentEur) }}</span>
+              </div>
+
+              @if (client.budgetEur !== null) {
+                <p class="cost-admin__client-budget">
+                  sur {{ euros(client.budgetEur) }} · {{ client.percent }} %
+                </p>
+                <mat-progress-bar
+                  mode="determinate"
+                  [value]="barValue(client.percent)"
+                  [attr.aria-label]="'Part du budget consommée par ' + clientName(client)"
+                ></mat-progress-bar>
+              } @else if (client.hostId !== null) {
+                <!-- Sans budget, aucune part n'est affichée : une part inventée serait pire que
+                     pas de part du tout. -->
+                <p class="cost-admin__client-budget">Aucun budget</p>
+              }
+
+              @if (client.hostId !== null) {
+                <div class="cost-admin__client-actions">
+                  <mat-form-field appearance="outline" class="cost-admin__field">
+                    <mat-label>Budget (€)</mat-label>
+                    <input matInput type="text" inputmode="decimal" #hostBudget />
+                  </mat-form-field>
+                  <button
+                    mat-stroked-button
+                    type="button"
+                    (click)="saveHostBudget(client, hostBudget.value)"
+                  >
+                    Fixer
+                  </button>
+                  @if (client.ownBudget) {
+                    <button mat-button type="button" (click)="clearHostBudget(client)">
+                      Retirer
+                    </button>
+                  }
+                </div>
+              }
+            </li>
+          }
+        </ul>
+      }
+    </mat-card>
+  }
+</section>
