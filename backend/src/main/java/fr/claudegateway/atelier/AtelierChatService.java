@@ -1662,15 +1662,59 @@ public class AtelierChatService implements RelayInterruptTarget {
 
     /**
      * Index à partir duquel un message assistant est rejoué <b>avec</b> sa trajectoire d'outils
-     * (SF-39-03) : les {@code traceTurns} derniers tours, pas davantage (F-119 / SF-119-03 rend la
-     * fenêtre configurable, défaut 12).
+     * (SF-39-03) : au moins les {@code traceTurns} derniers tours (F-119 / SF-119-03, défaut 12),
+     * la coupure se déplaçant <b>par paliers</b> (F-134 / SF-134-01).
+     *
+     * <p><b>Pourquoi les paliers.</b> Cette coupure comptait les tours <b>depuis la fin</b> : elle
+     * avançait donc d'un cran à <b>chaque</b> tour, et le tour qui cessait d'être tracé
+     * <b>changeait de forme</b> — au <b>début</b> du préfixe envoyé au fournisseur. Or l'API met en
+     * cache un <b>préfixe</b> : tout ce qui suit un octet modifié doit être réécrit. Le préfixe
+     * mutait donc à chaque tour, par construction, et le cache ne pouvait pas prendre. Mesuré en
+     * production avant ce correctif : <b>14 à 16 %</b> du contexte relu au-delà du douzième tour
+     * (contre 90 % en deçà), et <b>98 % du coût d'un tour</b> en écriture de cache — l'écriture
+     * coûtant <b>vingt fois</b> la lecture.</p>
+     *
+     * <p>La coupure est désormais calculée <b>depuis le début</b> et ne bouge que tous les
+     * {@code traceTurns} tours : une mutation sur douze, au lieu d'une par tour.</p>
+     *
+     * <p><b>La qualité ne peut pas y perdre</b>, et c'est ce qui rend le changement recevable au
+     * regard de la contrainte de F-130 : le nombre de tours rejoués avec leurs traces passe de
+     * <b>exactement</b> {@code traceTurns} à <b>entre</b> {@code traceTurns} <b>et</b>
+     * {@code 2×traceTurns−1}. Il n'est <b>jamais inférieur</b> à ce qu'il était. Le modèle voit
+     * autant ou plus de preuves qu'avant, jamais moins.</p>
+     *
+     * <p><b>Et le contexte supplémentaire coûte moins cher</b> : ces tours sont <b>relus</b> du
+     * cache à un dixième du tarif d'entrée, au lieu d'être réécrits au double. Plus de contexte,
+     * moins cher — c'est tout l'intérêt d'un cache qui prend.</p>
      */
-    private static int firstTracedIndex(List<AtelierMessage> past, int traceTurns) {
+    // Visible pour les tests : la propriété à garantir — « la coupure ne bouge qu'aux paliers » —
+    // est arithmétique, et se vérifie ici bien mieux qu'à travers dix couches de service.
+    static int firstTracedIndex(List<AtelierMessage> past, int traceTurns) {
+        if (traceTurns <= 0) {
+            // Fenêtre absurde : tout est tracé, comme avant que la fenêtre n'existe. Jamais de
+            // division par zéro sur un réglage.
+            return 0;
+        }
+        int assistants = 0;
+        for (AtelierMessage message : past) {
+            if ("ASSISTANT".equalsIgnoreCase(message.getRole())) {
+                assistants++;
+            }
+        }
+        if (assistants <= traceTurns) {
+            return 0;
+        }
+        // Le palier : combien de tours, en partant du DÉBUT, sont laissés en texte seul. Il ne
+        // change qu'aux multiples de la fenêtre — c'est là, et seulement là, que le préfixe mute.
+        int untraced = ((assistants - traceTurns) / traceTurns) * traceTurns;
+        if (untraced == 0) {
+            return 0;
+        }
         int seen = 0;
-        for (int index = past.size() - 1; index >= 0; index--) {
+        for (int index = 0; index < past.size(); index++) {
             if ("ASSISTANT".equalsIgnoreCase(past.get(index).getRole())) {
                 seen++;
-                if (seen == traceTurns) {
+                if (seen > untraced) {
                     return index;
                 }
             }
