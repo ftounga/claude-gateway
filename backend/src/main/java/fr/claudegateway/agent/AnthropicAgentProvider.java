@@ -99,6 +99,12 @@ public class AnthropicAgentProvider implements AiAgentProvider {
     private static final String CLEAR_TOOL_USES_EDIT = "clear_tool_uses_20250919";
     /** En-tête beta exigé par l'édition de contexte (F-39 / SF-39-12). */
     private static final String CONTEXT_MANAGEMENT_BETA = "context-management-2025-06-27";
+    /**
+     * Effort transmis <b>par message</b> (F-134 / SF-134-05) : change le niveau de réflexion en
+     * cours de conversation <b>sans invalider le cache</b>, là où le réglage à la racine le vide
+     * entièrement. Vérifié sur la clé de production contre {@code claude-opus-5} avant d'être posé.
+     */
+    private static final String PER_MESSAGE_EFFORT_BETA = "mid-conversation-output-config-2026-07-01";
     /** Lecture des événements SSE et reconstruction de la réponse (F-116 / SF-116-01). */
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -182,7 +188,8 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         streamBody.put("stream", true);
         try {
             return callWithRetry(request.model(), prepared.contextEditing(),
-                    () -> streamTurn(prepared.apiKey(), streamBody, prepared.contextEditing(), sink));
+                    () -> streamTurn(prepared.apiKey(), streamBody, prepared.contextEditing(),
+                            prepared.perMessageEffort(), sink));
         } catch (StreamingFallbackException ex) {
             // Le fournisseur a refusé le flux, l'a coupé, ou l'a rendu illisible : on retombe
             // proprement sur l'appel complet. Un refus temporaire (429/529) épuisé, lui, n'atterrit
@@ -195,7 +202,8 @@ public class AnthropicAgentProvider implements AiAgentProvider {
     }
 
     /** Corps de requête prêt à partir, calculé <b>une fois</b> et partagé streamé/non streamé. */
-    private record Prepared(String apiKey, Map<String, Object> body, boolean contextEditing) {
+    private record Prepared(String apiKey, Map<String, Object> body, boolean contextEditing,
+            boolean perMessageEffort) {
     }
 
     /**
@@ -223,7 +231,11 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         }
         applyReasoning(body, request.reasoning());
         boolean contextEditing = applyContextPolicy(body, request.contextPolicy());
-        return new Prepared(apiKey, body, contextEditing);
+        // L'en-tête n'est posé QUE si une consigne d'effort voyage réellement dans la conversation :
+        // annoncer une bêta qu'on n'utilise pas, c'est s'exposer à son retrait sans raison.
+        boolean perMessageEffort = request.messages().stream()
+                .anyMatch(AgentMessage::isEffortDirective);
+        return new Prepared(apiKey, body, contextEditing, perMessageEffort);
     }
 
     /**
@@ -320,21 +332,29 @@ public class AnthropicAgentProvider implements AiAgentProvider {
     }
 
     /** En-tête commun aux deux modes d'appel — même URL, même version, même beta d'édition. */
-    private RestClient.RequestBodySpec requestSpec(String apiKey, boolean contextEditing) {
+    private RestClient.RequestBodySpec requestSpec(String apiKey, boolean contextEditing,
+            boolean perMessageEffort) {
         RestClient.RequestBodySpec spec = restClient.post()
                 .uri("/v1/messages")
                 .header("x-api-key", apiKey)
                 .header("anthropic-version", properties.version())
                 .contentType(MediaType.APPLICATION_JSON);
+        List<String> betas = new ArrayList<>(2);
         if (contextEditing) {
-            spec = spec.header("anthropic-beta", CONTEXT_MANAGEMENT_BETA);
+            betas.add(CONTEXT_MANAGEMENT_BETA);
+        }
+        if (perMessageEffort) {
+            betas.add(PER_MESSAGE_EFFORT_BETA);
+        }
+        if (!betas.isEmpty()) {
+            spec = spec.header("anthropic-beta", String.join(",", betas));
         }
         return spec;
     }
 
     /** Appel complet (non streamé) : la réponse entière du fournisseur en une fois. */
     private JsonNode sendNonStreamed(Prepared prepared) {
-        return requestSpec(prepared.apiKey(), prepared.contextEditing())
+        return requestSpec(prepared.apiKey(), prepared.contextEditing(), prepared.perMessageEffort())
                 .body(prepared.body())
                 .retrieve()
                 .body(JsonNode.class);
@@ -349,8 +369,8 @@ public class AnthropicAgentProvider implements AiAgentProvider {
      * déclencher le repli.</p>
      */
     private AgentTurn streamTurn(String apiKey, Map<String, Object> streamBody, boolean contextEditing,
-            AgentTextListener textListener) {
-        return requestSpec(apiKey, contextEditing)
+            boolean perMessageEffort, AgentTextListener textListener) {
+        return requestSpec(apiKey, contextEditing, perMessageEffort)
                 .accept(MediaType.TEXT_EVENT_STREAM)
                 .body(streamBody)
                 .exchange((request, response) -> {
@@ -700,6 +720,13 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         List<Map<String, Object>> apiMessages = new ArrayList<>(messages.size());
         for (int i = 0; i < messages.size(); i++) {
             AgentMessage message = messages.get(i);
+            if (message.isEffortDirective()) {
+                // Contenu VIDE : c'est ce qui dispense ce message des règles de placement des
+                // autres messages système, et ce qui fait qu'il ne coûte presque rien.
+                apiMessages.add(Map.of("role", "system", "content", List.of(),
+                        "output_config", Map.of("effort", message.effort())));
+                continue;
+            }
             boolean last = i == messages.size() - 1;
             List<Map<String, Object>> blocks = new ArrayList<>(message.content().size());
             for (int j = 0; j < message.content().size(); j++) {

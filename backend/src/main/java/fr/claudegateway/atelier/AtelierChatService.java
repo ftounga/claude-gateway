@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
@@ -458,6 +459,11 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     private final int replayedTraceTurns;
     /**
+     * L'effort voyage-t-il <b>dans</b> la conversation plutôt qu'à la racine (F-134 / SF-134-05) ?
+     * Le changer à la racine vide tout le cache des messages — or il change à presque chaque étape.
+     */
+    private final boolean perMessageEffort;
+    /**
      * Aide-mémoire d'état de fichier (F-119 / SF-119-05) : quand vrai, une édition d'un fichier que le
      * modèle n'a ni lu ni écrit dans ce fil reçoit un rappel léger de lecture-avant-édition. Jamais un
      * refus dur — le disque évite déjà la corruption. Coupe-circuit à {@code false}.
@@ -747,6 +753,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.exploreReasoning = new AgentReasoning(true, atelierProperties.exploreEffort());
         this.escalateOnSignal = !Boolean.FALSE.equals(atelierProperties.escalateOnSignal());
         this.replayedTraceTurns = atelierProperties.replayedTraceTurns();
+        this.perMessageEffort = Boolean.TRUE.equals(atelierProperties.perMessageEffort());
         this.fileStateHints = !Boolean.FALSE.equals(atelierProperties.fileStateHints());
         this.contextPolicy = Boolean.TRUE.equals(atelierProperties.contextPruning())
                 ? new AgentContextPolicy(true, CONTEXT_TRIGGER_INPUT_TOKENS,
@@ -1089,6 +1096,13 @@ public class AtelierChatService implements RelayInterruptTarget {
          * et l'outil de recherche est déclaré à chaque appel d'agent.
          */
         int webSearchRequests = 0;
+        /**
+         * Niveau d'effort <b>en vigueur</b> dans la conversation (F-134 / SF-134-05). Une consigne
+         * n'est glissée que lorsque le niveau change : un message de plus est un octet de plus dans
+         * le ruban, et le ruban est ce qu'on cherche à garder stable. Tableau d'une case parce que
+         * la valeur est relue et réécrite depuis la boucle.
+         */
+        final String[] effortInEffect = {reasoning.effort()};
         /** Plus grosse itération observée dans ce tour : majorant de la suivante (D-L8-2). */
         long largestIterationTokens = 0L;
         boolean interrupted = false;
@@ -1214,10 +1228,34 @@ public class AtelierChatService implements RelayInterruptTarget {
             boolean promptOverflow = false;
             while (turn == null) {
                 boolean[] streamed = {false};
+                AgentReasoning wanted = reasoningForIteration(iteration, escalateNextTurn);
+                // L'effort voyage DANS la conversation plutôt qu'à la racine de la requête
+                // (F-134 / SF-134-05). Le changer à la racine vide tout le cache des messages : or
+                // F-118 le baisse dès la 2ᵉ étape et F-119 le remonte sur difficulté, si bien que
+                // l'optimisation de vitesse annulait celle du coût. Le niveau EFFECTIF ne change
+                // pas d'un iota — seul son véhicule change.
+                AgentReasoning sent = wanted;
+                if (perMessageEffort && StringUtils.hasText(wanted.effort())
+                        && !wanted.effort().equals(effortInEffect[0])) {
+                    // AVANT le dernier message, pas après : le niveau prend effet « à partir du
+                    // prochain tour utilisateur », et c'est justement ce dernier message —
+                    // les résultats d'outils — qui déclenche la réponse à venir. Posée après, la
+                    // consigne ne s'appliquerait qu'au tour suivant.
+                    //
+                    // Cette place est explicitement prévue : un message d'effort au contenu vide
+                    // est dispensé des règles de placement et peut se glisser « entre un tour
+                    // assistant et le tour utilisateur suivant ».
+                    int at = messages.isEmpty() ? 0 : messages.size() - 1;
+                    messages.add(at, AgentMessage.effort(wanted.effort()));
+                    effortInEffect[0] = wanted.effort();
+                }
+                if (perMessageEffort) {
+                    // À la racine, l'effort reste CONSTANT : c'est ce qui fait tenir le cache.
+                    sent = reasoning;
+                }
                 AgentTurnRequest turnRequest =
-                        new AgentTurnRequest(model, system, messages, tools, apiKey,
-                                reasoningForIteration(iteration, escalateNextTurn), contextPolicy,
-                                turnMode);
+                        new AgentTurnRequest(model, system, messages, tools, apiKey, sent,
+                                contextPolicy, turnMode);
                 try {
                     if (streaming) {
                         turn = agentProvider.nextTurn(turnRequest, delta -> {

@@ -162,9 +162,7 @@ class AtelierChatServiceRunnerTargetTest {
 
         service.chat(userId, workspaceId, "lance faux");
 
-        assertThat(agentProvider.reasoningSnapshots).containsExactly(
-                new AgentReasoning(true, "high"),
-                new AgentReasoning(true, "high"));
+        assertThat(agentProvider.effectiveEfforts).containsExactly("high", "high");
     }
 
     @Test
@@ -179,9 +177,7 @@ class AtelierChatServiceRunnerTargetTest {
 
         service.chat(userId, workspaceId, "lance vrai");
 
-        assertThat(agentProvider.reasoningSnapshots).containsExactly(
-                new AgentReasoning(true, "high"),
-                new AgentReasoning(true, "low"));
+        assertThat(agentProvider.effectiveEfforts).containsExactly("high", "low");
     }
 
     @Test

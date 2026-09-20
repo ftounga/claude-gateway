@@ -132,7 +132,23 @@ public record AtelierProperties(
         String exploreEffort,
         Boolean escalateOnSignal,
         Integer replayedTraceTurns,
-        Boolean fileStateHints) {
+        Boolean fileStateHints,
+        Boolean perMessageEffort) {
+
+
+    /**
+     * L'effort voyage-t-il <b>dans</b> la conversation plutôt qu'à la racine de la requête
+     * (F-134 / SF-134-05) ? Défaut <b>vrai</b>.
+     *
+     * <p>Le changer à la racine <b>vide tout le cache des messages</b> — or F-118 le baisse dès la
+     * deuxième étape et F-119 le remonte sur difficulté. Transmis par un message glissé dans la
+     * conversation, le même niveau s'applique sans rien invalider.</p>
+     *
+     * <p><b>Pourquoi le réglage existe</b> : la forme repose sur une bêta du fournisseur, vérifiée
+     * sur la clé de production avant livraison. Si elle venait à fermer, ce drapeau rétablit le
+     * comportement d'avant — un cache inefficace, jamais un service en panne.</p>
+     */
+    public static final boolean DEFAULT_PER_MESSAGE_EFFORT = true;
 
     /** Modèle de la boucle maison à défaut de configuration (F-39 / SF-39-10). */
     public static final String DEFAULT_MODEL = "claude-opus-5";
@@ -294,6 +310,11 @@ public record AtelierProperties(
         if (fileStateHints == null) {
             fileStateHints = Boolean.TRUE;
         }
+        // Absent => l'effort voyage dans la conversation (F-134 / SF-134-05). Le réglage n'existe
+        // que pour revenir en arrière si la bêta du fournisseur venait à fermer.
+        if (perMessageEffort == null) {
+            perMessageEffort = DEFAULT_PER_MESSAGE_EFFORT;
+        }
     }
 
     /**
@@ -309,7 +330,7 @@ public record AtelierProperties(
             Duration turnBudget) {
         this(storage, bucket, prefix, maxTotalBytes, maxEntries, maxFileBytes, maxIterations, model,
                 effort, contextPruning, maxTurnTokens, maxDelegations, storageExecution, streaming,
-                stepEffort, adaptiveEffort, turnBudget, null, null, null, null);
+                stepEffort, adaptiveEffort, turnBudget, null, null, null, null, null);
     }
 
     /**
@@ -324,7 +345,7 @@ public record AtelierProperties(
             Duration turnBudget, String exploreEffort, Boolean escalateOnSignal) {
         this(storage, bucket, prefix, maxTotalBytes, maxEntries, maxFileBytes, maxIterations, model,
                 effort, contextPruning, maxTurnTokens, maxDelegations, storageExecution, streaming,
-                stepEffort, adaptiveEffort, turnBudget, exploreEffort, escalateOnSignal, null, null);
+                stepEffort, adaptiveEffort, turnBudget, exploreEffort, escalateOnSignal, null, null, null);
     }
 
     /**
@@ -340,7 +361,7 @@ public record AtelierProperties(
         this(storage, bucket, prefix, maxTotalBytes, maxEntries, maxFileBytes, maxIterations, model,
                 effort, contextPruning, maxTurnTokens, maxDelegations, storageExecution, streaming,
                 stepEffort, adaptiveEffort, turnBudget, exploreEffort, escalateOnSignal,
-                replayedTraceTurns, null);
+                replayedTraceTurns, null, null);
     }
 
     /**
