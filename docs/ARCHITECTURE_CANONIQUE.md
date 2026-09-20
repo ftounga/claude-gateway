@@ -268,7 +268,8 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     `cache_read_tokens (bigint, défaut 0)`, `cache_write_tokens (bigint, défaut 0)`,
     `provider_cost_usd (numeric(12,6), nullable)`, `cost_source (varchar(16), nullable)`,
     `model (varchar(64), nullable)`, `pricing_version (varchar(32), nullable)`,
-    `pricing_fallback (boolean, défaut false)`, `occurred_at (timestamptz)`.
+    `pricing_fallback (boolean, défaut false)`, `web_search_requests (bigint, défaut 0)`,
+    `sandbox_seconds (bigint, défaut 0)`, `occurred_at (timestamptz)`.
     Index `(user_id, occurred_at)`.
   - **Ventilation, pas addition** : `input_tokens` porte le volume d'entrée **traité**, cache
     compris, comme depuis F-61 ; les deux colonnes de cache le **détaillent**. Les y ajouter ferait
@@ -278,6 +279,11 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     peuvent pas en avoir — ni le cache, ni le modèle n'étaient conservés. Elles ne sont **pas**
     rétro-calculées : inventer un cache plausible produirait des montants crédibles et faux, ce qui
     est pire que des montants absents. Un trou se voit, une approximation non.
+  - **Les deux dépenses hors tokens** (F-133 / SF-133-08, migration `119`) : la **recherche web**
+    (10 $ les mille) n'était comptée nulle part, et le **temps de session** (0,08 $/heure) était
+    compté depuis F-30 sans jamais être tarifé. Les compteurs vivent à côté du montant pour qu'un
+    coût élevé puisse être **expliqué** et pas seulement constaté. Quand le fournisseur rapporte
+    lui-même son coût, il les comprend déjà : ils ne sont alors **pas** rajoutés au montant.
   - **Toujours aucun texte libre** : `model` est un identifiant de modèle (`claude-opus-5`) borné à
     64 caractères, `pricing_version` une date de relevé, `cost_source` un **énuméré**
     (`CALCULATED` / `PROVIDER`). La garantie — aucun contenu utilisateur dans le journal — est
