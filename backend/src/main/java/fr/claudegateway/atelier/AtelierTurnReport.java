@@ -36,7 +36,18 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record AtelierTurnReport(List<Object> blocks, int omittedBlocks, long inputTokens,
         long outputTokens, long activeSeconds, boolean interrupted, boolean budgetReached,
-        List<PlanStep> plan) {
+        List<PlanStep> plan, java.math.BigDecimal costUsd) {
+
+    /**
+     * Forme sans coût — celle d'avant F-133 / SF-133-02, conservée pour les appelants et les
+     * relevés déjà écrits.
+     */
+    public AtelierTurnReport(List<Object> blocks, int omittedBlocks, long inputTokens,
+            long outputTokens, long activeSeconds, boolean interrupted, boolean budgetReached,
+            List<PlanStep> plan) {
+        this(blocks, omittedBlocks, inputTokens, outputTokens, activeSeconds, interrupted,
+                budgetReached, plan, null);
+    }
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -115,11 +126,29 @@ public record AtelierTurnReport(List<Object> blocks, int omittedBlocks, long inp
      */
     public AtelierTurnReport(long inputTokens, long outputTokens, long activeSeconds,
             boolean interrupted, boolean budgetReached, AtelierPlan plan, List<Block> blocks) {
+        this(inputTokens, outputTokens, activeSeconds, interrupted, budgetReached, plan, blocks,
+                null);
+    }
+
+    /**
+     * Même relevé, avec le <b>coût réel du tour</b> (F-133 / SF-133-02).
+     *
+     * <p>Il est conservé <b>en dollars</b>, c'est-à-dire dans la monnaie où le fournisseur facture.
+     * L'euro se calcule à la lecture, au taux du moment : figer un montant converti ferait mentir
+     * un vieux relevé dès que le change bouge.</p>
+     *
+     * <p>Ce champ <b>ne part pas tel quel au client</b> : {@code AtelierMessageResponse} le retire
+     * pour un appelant qui n'est pas administrateur.</p>
+     */
+    public AtelierTurnReport(long inputTokens, long outputTokens, long activeSeconds,
+            boolean interrupted, boolean budgetReached, AtelierPlan plan, List<Block> blocks,
+            java.math.BigDecimal costUsd) {
         this(bounded(blocks), omitted(blocks), inputTokens, outputTokens, activeSeconds, interrupted,
                 budgetReached,
                 plan == null ? List.of() : plan.steps().stream()
                         .map(step -> new PlanStep(step.title(), step.status().label()))
-                        .toList());
+                        .toList(),
+                costUsd);
     }
 
     /** Les {@link #MAX_BLOCKS} <b>derniers</b> blocs, sorties ramenées à leur borne. */

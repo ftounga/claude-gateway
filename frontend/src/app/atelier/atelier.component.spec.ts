@@ -2653,6 +2653,60 @@ describe('AtelierComponent', () => {
     expect(last.budgetReached).toBeFalse();
   });
 
+  it('ajoute le montant à la ligne de coût quand la passerelle l\'envoie (F-133 / SF-133-02)', () => {
+    // Le montant n'arrive que pour l'administrateur : la passerelle décide, l'écran affiche.
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.engine.set('LOCAL_MACHINE');
+    service.streamChat.and.callFake((_id, _message, handlers) => {
+      handlers.onDone({
+        reply: 'Terminé.',
+        actions: [],
+        messageId: 'm1',
+        inputTokens: 40_000,
+        outputTokens: 2_000,
+        activeSeconds: 137,
+        budgetReached: false,
+        costEur: '0,42 €',
+      });
+      return Promise.resolve();
+    });
+
+    component.draft.set('Fais un truc');
+    component.send();
+
+    const last = component.messages()[component.messages().length - 1];
+    expect(last.cost).toEqual({ elapsedSeconds: 137, tokens: 42_000, amount: '0,42 €' });
+    expect(component.costLabel(last.cost!)).toContain('0,42 €');
+  });
+
+  it('n\'ajoute aucun montant quand la passerelle n\'en envoie pas (F-133 / SF-133-02)', () => {
+    // Le cas de tout utilisateur non administrateur : le champ est ABSENT, pas masqué. La ligne
+    // reste exactement celle d'avant.
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.engine.set('LOCAL_MACHINE');
+    service.streamChat.and.callFake((_id, _message, handlers) => {
+      handlers.onDone({
+        reply: 'Terminé.',
+        actions: [],
+        messageId: 'm1',
+        inputTokens: 10,
+        outputTokens: 5,
+        activeSeconds: 3,
+        budgetReached: false,
+      });
+      return Promise.resolve();
+    });
+
+    component.draft.set('Fais un truc');
+    component.send();
+
+    const last = component.messages()[component.messages().length - 1];
+    expect(last.cost).toEqual({ elapsedSeconds: 3, tokens: 15 });
+    expect(component.costLabel(last.cost!)).not.toContain('€');
+  });
+
   it('n\'affiche aucun coût quand la consommation n\'a pas été relevée', () => {
     // Un « 0 token » se lirait comme une mesure. Un backend antérieur n'émet pas ces champs.
     setup();

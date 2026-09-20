@@ -254,7 +254,11 @@ class AtelierChatControllerSteerTest {
     /** Contrôleur synchrone ; chaque flux ouvert prend l'émetteur suivant de la file. */
     private AtelierChatController controller() {
         return new AtelierChatController(chatService, threadService, currentUser, access,
-                Runnable::run, Runnable::run, liveTurns, RelayTurnSource.disabled()) {
+                Runnable::run, Runnable::run, liveTurns, RelayTurnSource.disabled(),
+                new fr.claudegateway.quota.TurnCostView(
+                        org.mockito.Mockito.mock(fr.claudegateway.admin.AdminService.class),
+                        new fr.claudegateway.quota.ProviderPricingProperties(
+                                null, null, null, null, null, null))) {
             @Override
             SseEmitter newEmitter() {
                 RecordingEmitter next = emitters.pollFirst();

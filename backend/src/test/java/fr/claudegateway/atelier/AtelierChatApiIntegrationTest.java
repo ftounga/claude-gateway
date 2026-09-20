@@ -196,6 +196,30 @@ class AtelierChatApiIntegrationTest {
     }
 
     @Test
+    void theCostInEurosNeverLeavesTheServerForSomeoneWhoIsNotAdmin() throws Exception {
+        // F-133 / SF-133-02 : le montant est une information d'ADMINISTRATION. Alice est une
+        // utilisatrice ordinaire — le champ ne doit pas être « masqué » côté écran, il doit être
+        // ABSENT DU JSON. Masqué, il resterait lisible dans le flux réseau.
+        UUID ws = createWorkspace(alice, "a.txt", "x");
+        stub.enqueueFinal("Bonjour.");
+
+        mockMvc.perform(post("/api/workspaces/" + ws + "/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"salut\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.costEur").doesNotExist());
+
+        // Et il ne revient pas davantage par l'historique : le relevé stocke le coût en dollars,
+        // que la vue retire pour qui n'y a pas droit.
+        mockMvc.perform(get("/api/workspaces/" + ws + "/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[1].terminal.costEur").doesNotExist())
+                .andExpect(jsonPath("$[1].terminal.costUsd").doesNotExist());
+    }
+
+    @Test
     void toolTrajectoryIsRememberedForReplayButNeverExposedByTheHistory() throws Exception {
         // SF-39-03 : la trajectoire est une donnée de REJEU. Elle doit être en base pour que le tour
         // suivant ne refasse pas le travail, et absente de la réponse d'historique — l'écran a déjà

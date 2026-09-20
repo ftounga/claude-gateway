@@ -79,7 +79,7 @@ class QuotaServiceTest {
                         new fr.claudegateway.billing.BillingProperties(null, null), clock),
                 quotaAlertService, usageLedgerService,
                 billedTokensCalculator,
-                new ProviderCostCalculator(new ProviderPricingProperties(null, null, null, null, null)),
+                new ProviderCostCalculator(new ProviderPricingProperties(null, null, null, null, null, null)),
                 quotaProperties, clock);
     }
 

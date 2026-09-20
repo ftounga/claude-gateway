@@ -345,7 +345,11 @@ class AtelierChatControllerAttachTest {
 
     private AtelierChatController windowed(SseEmitter emitter, ManualTimer timer) {
         return new AtelierChatController(chatService, threadService, currentUser, access,
-                Runnable::run, Runnable::run, liveTurns, RelayTurnSource.disabled()) {
+                Runnable::run, Runnable::run, liveTurns, RelayTurnSource.disabled(),
+                new fr.claudegateway.quota.TurnCostView(
+                        org.mockito.Mockito.mock(fr.claudegateway.admin.AdminService.class),
+                        new fr.claudegateway.quota.ProviderPricingProperties(
+                                null, null, null, null, null, null))) {
             @Override
             SseEmitter newEmitter() {
                 return emitter;
@@ -362,7 +366,11 @@ class AtelierChatControllerAttachTest {
 
     private AtelierChatController controller(SseEmitter emitter, RemoteTurnSource remote) {
         return new AtelierChatController(chatService, threadService, currentUser, access,
-                Runnable::run, Runnable::run, liveTurns, remote) {
+                Runnable::run, Runnable::run, liveTurns, remote,
+                new fr.claudegateway.quota.TurnCostView(
+                        org.mockito.Mockito.mock(fr.claudegateway.admin.AdminService.class),
+                        new fr.claudegateway.quota.ProviderPricingProperties(
+                                null, null, null, null, null, null))) {
             @Override
             SseEmitter newEmitter() {
                 return emitter;

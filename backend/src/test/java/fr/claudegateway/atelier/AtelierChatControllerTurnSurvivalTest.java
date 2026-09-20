@@ -88,7 +88,11 @@ class AtelierChatControllerTurnSurvivalTest {
     private AtelierChatController controller() {
         return new AtelierChatController(chatService, threadService, currentUser, access,
                 Runnable::run, Runnable::run, liveTurns,
-                fr.claudegateway.runner.relay.RelayTurnSource.disabled()) {
+                fr.claudegateway.runner.relay.RelayTurnSource.disabled(),
+                new fr.claudegateway.quota.TurnCostView(
+                        org.mockito.Mockito.mock(fr.claudegateway.admin.AdminService.class),
+                        new fr.claudegateway.quota.ProviderPricingProperties(
+                                null, null, null, null, null, null))) {
             @Override
             SseEmitter newEmitter() {
                 return new DeadEmitter();

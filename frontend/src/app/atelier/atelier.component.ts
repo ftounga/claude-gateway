@@ -1664,7 +1664,11 @@ export class AtelierComponent implements OnInit, OnDestroy {
         terminal: transcript.length > 0 ? transcript : undefined,
         // Ce qu'a coûté le tour (acquis §4 n°6, SF-30-05) : la boucle maison ne le relevait
         // pas, si bien que l'acquis ne valait pas sur le moteur qui exécute réellement.
-        cost: tokens > 0 ? { elapsedSeconds: elapsed, tokens } : undefined,
+        // `amount` n'est POSÉ que s'il existe : une clé à `undefined` n'est pas la même chose
+        // qu'une clé absente — pour l'égalité stricte comme pour qui relit l'objet.
+        cost: tokens > 0
+          ? { elapsedSeconds: elapsed, tokens, ...(done.costEur ? { amount: done.costEur } : {}) }
+          : undefined,
         // Plafond de consommation de CE message atteint (F-39 / SF-39-15) : le travail est
         // conservé, et l'écran le dit — un arrêt au milieu sans explication serait le pire
         // des deux mondes.
@@ -2636,7 +2640,9 @@ export class AtelierComponent implements OnInit, OnDestroy {
               actions: [],
               changedFiles: done.changedFiles ?? [],
               terminal: transcript,
-              cost: tokens > 0 ? { elapsedSeconds: elapsed, tokens } : undefined,
+              cost: tokens > 0
+                ? { elapsedSeconds: elapsed, tokens, ...(done.costEur ? { amount: done.costEur } : {}) }
+                : undefined,
               // Le tour interrompu reste affiché : il a eu lieu et il est facturé (F-32).
               interrupted: done.interrupted === true,
               // Plafond de dépense de ce run atteint (F-36 SF-36-04) : le tour est conservé, et
@@ -2719,7 +2725,10 @@ export class AtelierComponent implements OnInit, OnDestroy {
 
   /** Coût d'un tour terminé : « m:ss · N tokens » (F-30 SF-30-05). */
   costLabel(cost: AtelierTurnCost): string {
-    return `${formatElapsed(cost.elapsedSeconds)} · ${cost.tokens.toLocaleString('fr-FR')} tokens`;
+    const base = `${formatElapsed(cost.elapsedSeconds)} · ${cost.tokens.toLocaleString('fr-FR')} tokens`;
+    // Le montant n'arrive que pour l'administrateur (F-133 / SF-133-02) : rien à cacher ici, il
+    // est simplement absent pour les autres.
+    return cost.amount ? `${base} · ${cost.amount}` : base;
   }
 
   /** Démarre le chronomètre du run (hors zone : il ne pilote qu'un signal). */
@@ -3472,7 +3481,13 @@ export function toThreadItem(message: AtelierMessage): AtelierThreadItem {
   // consommation sans persister de transcription, et un tour mesuré perdait sa mesure ici.
   const tokens = (stored.inputTokens ?? 0) + (stored.outputTokens ?? 0);
   if (tokens > 0) {
-    item.cost = { elapsedSeconds: stored.activeSeconds ?? 0, tokens };
+    // Le montant (F-133 / SF-133-02) n'est présent dans le relevé relu que pour l'administrateur :
+    // la passerelle le retire des autres réponses, il n'est pas filtré ici.
+    item.cost = {
+      elapsedSeconds: stored.activeSeconds ?? 0,
+      tokens,
+      ...(stored.costEur ? { amount: stored.costEur } : {}),
+    };
   }
   if (!Array.isArray(stored.blocks) || stored.blocks.length === 0) {
     return item;

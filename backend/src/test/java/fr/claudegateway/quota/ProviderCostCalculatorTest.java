@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
 class ProviderCostCalculatorTest {
 
     private final ProviderCostCalculator calculator = new ProviderCostCalculator(
-            new ProviderPricingProperties(null, null, null, null, null));
+            new ProviderPricingProperties(null, null, null, null, null, null));
 
     @Test
     void chargesEachNatureAtItsOwnRate() {
@@ -130,7 +130,7 @@ class ProviderCostCalculatorTest {
     void anEmptyConfiguredGridFallsBackOnTheBuiltInOne() {
         // Une grille vide n'est pas un réglage : ce serait facturer zéro, donc ne rien mesurer.
         ProviderCostCalculator bare = new ProviderCostCalculator(
-                new ProviderPricingProperties("", "", Map.of(), null, null));
+                new ProviderPricingProperties("", "", Map.of(), null, null, null));
 
         assertThat(bare.calculate(new TurnTokens(1_000_000L, 0L, 0L, 0L), "claude-opus-5")
                 .amountUsd()).isEqualByComparingTo("5.000000");
