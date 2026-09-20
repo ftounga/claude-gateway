@@ -260,11 +260,29 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     qui **ré-arme l'alerte sans code de remise à zéro**. `raised_at` est posé **une seule fois** (unicité
     de l'émission) ; `dismissed_at` retient que l'utilisateur l'a écartée. L'évaluation est faite après
     l'incrément et **avant** la sauvegarde — même écriture — et encadrée : elle n'échoue jamais l'appel.
-- **usage_turns** — journal de consommation **par tour** (F-61 / SF-61-01, migration `068`).
+- **usage_turns** — journal de consommation **par tour** (F-61 / SF-61-01, migration `068` ;
+  **coût réel** F-133 / SF-133-01, migration `118`).
   **Append-only** : une ligne par tour facturé, jamais modifiée, effacée seulement avec le compte.
   - `usage_turns` : `id (uuid)`, `user_id (uuid, NOT NULL)`, `workspace_id (uuid, nullable)`,
     `host_id (uuid, nullable)`, `input_tokens (bigint, défaut 0)`, `output_tokens (bigint, défaut 0)`,
-    `occurred_at (timestamptz)`. Index `(user_id, occurred_at)`.
+    `cache_read_tokens (bigint, défaut 0)`, `cache_write_tokens (bigint, défaut 0)`,
+    `provider_cost_usd (numeric(12,6), nullable)`, `cost_source (varchar(16), nullable)`,
+    `model (varchar(64), nullable)`, `pricing_version (varchar(32), nullable)`,
+    `pricing_fallback (boolean, défaut false)`, `occurred_at (timestamptz)`.
+    Index `(user_id, occurred_at)`.
+  - **Ventilation, pas addition** : `input_tokens` porte le volume d'entrée **traité**, cache
+    compris, comme depuis F-61 ; les deux colonnes de cache le **détaillent**. Les y ajouter ferait
+    compter deux fois, et le rapport d'usage (F-16) comme la consommation par client (F-61)
+    mentiraient du jour au lendemain.
+  - **Le coût est nullable** : les lignes antérieures à la migration `118` n'en ont pas et ne
+    peuvent pas en avoir — ni le cache, ni le modèle n'étaient conservés. Elles ne sont **pas**
+    rétro-calculées : inventer un cache plausible produirait des montants crédibles et faux, ce qui
+    est pire que des montants absents. Un trou se voit, une approximation non.
+  - **Toujours aucun texte libre** : `model` est un identifiant de modèle (`claude-opus-5`) borné à
+    64 caractères, `pricing_version` une date de relevé, `cost_source` un **énuméré**
+    (`CALCULATED` / `PROVIDER`). La garantie — aucun contenu utilisateur dans le journal — est
+    tenue par la structure, et le test qui la vérifie exige que tout champ texte soit nommément
+    autorisé **et** borné.
   - **Pourquoi elle existe** : `workspaces.agent_input_tokens` (migration `040`) est un **repère de
     delta remis à zéro à chaque ouverture de session** (`markSessionOpened`) — l'agréger ferait
     **rétrécir** les totaux, et un consultant verrait la consommation d'un client baisser toute
