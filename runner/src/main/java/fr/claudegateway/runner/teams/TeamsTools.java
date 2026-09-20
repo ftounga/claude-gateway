@@ -1051,6 +1051,11 @@ public final class TeamsTools implements ToolExecutor {
                 viewport = joined(viewport, screen.viewport());
             }
         }
+        // F-89 / SF-89-16 : quand le poste a été passé en DEBUG (F-132), relever la FORME du DOM de la
+        // liste des conversations et d'un fil — jamais leur contenu — pour recaler les sélecteurs v2 qui
+        // lisent aujourd'hui 0 conversation. Inerte hors DEBUG ; ne lève jamais ; ne change pas le résultat.
+        TeamsDomShapeSurvey.run(link, sleeper, record -> gestureSay().accept("Teams : geste "
+                + record.action() + " sur " + record.domain() + " — " + record.result()));
         List<TeamsConversation> matching = new ArrayList<>();
         for (TeamsConversation conversation : listed) {
             if (matches(conversation, query)) {
