@@ -16,9 +16,20 @@ import java.util.UUID;
  * @param outputTokens  tokens de sortie du tour
  * @param activeSeconds durée d'horloge du tour, en secondes
  * @param budgetReached le tour s'est arrêté sur le <b>plafond de consommation</b> du message
+ * @param costEur       ce que le tour a coûté, formaté en euros (F-133 / SF-133-02), ou
+ *                      {@code null} — pour un appelant qui n'est pas administrateur, le montant ne
+ *                      quitte pas le serveur
  */
 public record AtelierChatResponse(String reply, List<AtelierAction> actions, UUID messageId,
-        long inputTokens, long outputTokens, long activeSeconds, boolean budgetReached) {
+        long inputTokens, long outputTokens, long activeSeconds, boolean budgetReached,
+        String costEur) {
+
+    /** Forme sans coût, conservée pour les appelants (et les tests) qui l'attendent. */
+    public AtelierChatResponse(String reply, List<AtelierAction> actions, UUID messageId,
+            long inputTokens, long outputTokens, long activeSeconds, boolean budgetReached) {
+        this(reply, actions, messageId, inputTokens, outputTokens, activeSeconds, budgetReached,
+                null);
+    }
 
     /** Action de fichier réalisée par l'agent : {@code type} = {@code read} ou {@code write}. */
     public record AtelierAction(String type, String path) {

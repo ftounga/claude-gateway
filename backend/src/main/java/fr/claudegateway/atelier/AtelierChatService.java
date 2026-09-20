@@ -1574,8 +1574,16 @@ public class AtelierChatService implements RelayInterruptTarget {
         // Relevé du tour rangé dans la colonne d'affichage existante (F-39 / SF-39-15, D-L8-6) :
         // sans lui, le coût du tour et le motif de son arrêt disparaîtraient au rechargement — et
         // c'est précisément après un rechargement qu'on se demande pourquoi un tour s'est arrêté.
+        // Le coût réel du tour (F-133 / SF-133-02), calculé une fois, ici : le relevé le garde en
+        // DOLLARS — la monnaie où le fournisseur facture —, et la conversion en euros se fait à la
+        // lecture, au taux du moment. Figer un montant converti ferait mentir un vieux relevé dès
+        // que le change bouge.
+        java.math.BigDecimal costUsd = quotaService.costOf(
+                new TurnTokens(Math.max(0, inputTokens - cacheReadTokens - cacheWriteTokens),
+                        outputTokens, cacheReadTokens, cacheWriteTokens),
+                new TurnExtras(webSearchRequests, 0L), model);
         AtelierTurnReport report = new AtelierTurnReport(inputTokens, outputTokens, activeSeconds,
-                interrupted, spendCapReached, planOfTurn.get(), List.copyOf(transcript));
+                interrupted, spendCapReached, planOfTurn.get(), List.copyOf(transcript), costUsd);
         AtelierMessage assistant = messageRepository.save(AtelierMessage.builder()
                 .workspaceId(workspaceId).userId(userId).role("ASSISTANT")
                 .content(reply)
@@ -1584,7 +1592,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                 .build());
 
         return new AtelierChatResult(reply, actions, assistant.getId(), inputTokens, outputTokens,
-                activeSeconds, spendCapReached);
+                activeSeconds, spendCapReached, costUsd);
     }
 
     /**
@@ -3777,11 +3785,19 @@ public class AtelierChatService implements RelayInterruptTarget {
      *                      jamais sur le budget de temps, qui dit déjà sa cause dans {@code reply}
      */
     public record AtelierChatResult(String reply, List<AtelierAction> actions, UUID messageId,
-            long inputTokens, long outputTokens, long activeSeconds, boolean budgetReached) {
+            long inputTokens, long outputTokens, long activeSeconds, boolean budgetReached,
+            java.math.BigDecimal costUsd) {
 
         /** Forme historique, conservée pour les appelants (et les tests) qui l'attendent. */
         public AtelierChatResult(String reply, List<AtelierAction> actions, UUID messageId) {
-            this(reply, actions, messageId, 0L, 0L, 0L, false);
+            this(reply, actions, messageId, 0L, 0L, 0L, false, null);
+        }
+
+        /** Forme sans coût (F-133 / SF-133-02 ne concerne que la boucle d'atelier). */
+        public AtelierChatResult(String reply, List<AtelierAction> actions, UUID messageId,
+                long inputTokens, long outputTokens, long activeSeconds, boolean budgetReached) {
+            this(reply, actions, messageId, inputTokens, outputTokens, activeSeconds, budgetReached,
+                    null);
         }
 
         /**

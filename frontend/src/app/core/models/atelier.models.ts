@@ -490,6 +490,11 @@ export interface AtelierPersistedTranscript {
    * version, et des tours qui n'ont rien modifié : traité comme une liste vide.
    */
   diffs?: AtelierFileDiff[];
+  /**
+   * Ce que le tour a coûté, formaté en euros (F-133 / SF-133-02). La passerelle ne le met dans le
+   * relevé relu que pour l'**administrateur** ; il est absent des relevés d'avant F-133.
+   */
+  costEur?: string;
 }
 
 /** Message de l'historique. Réponse de `GET /api/workspaces/{id}/chat`. */
@@ -571,6 +576,11 @@ export interface AtelierStreamDone {
    * flux (F-84 / SF-84-06) : ce `done` n'est pas la fin du flux. Absent ⇒ fin.
    */
   followUp?: boolean;
+  /**
+   * Ce que le tour a coûté, déjà formaté en euros par la passerelle (F-133 / SF-133-02).
+   * **Absent pour qui n'est pas administrateur** : le montant ne quitte pas le serveur.
+   */
+  costEur?: string;
 }
 
 /** L'envoi est devenu une précision du tour qui tournait déjà (F-84 / SF-84-06). */
@@ -814,6 +824,13 @@ export interface AtelierAgentStreamDone {
    * il vaut `false` et le tour s'affiche comme un tour mené à son terme.
    */
   interrupted: boolean;
+  /**
+   * Ce que le tour a coûté, formaté en euros (F-133 / SF-133-02). **Absent sur ce chemin** : seule
+   * la boucle maison remonte le coût aujourd'hui — les sessions gérées le connaissent
+   * (le fournisseur le rapporte) mais ne le font pas encore traverser jusqu'ici. Absent aussi,
+   * partout, pour qui n'est pas administrateur.
+   */
+  costEur?: string;
   /**
    * Le tour s'est arrêté sur le **plafond de dépense de ce run** (F-36 SF-36-01) — distinct du quota
    * mensuel épuisé : le travail est conservé, et relancer repart d'un plafond neuf dans la même

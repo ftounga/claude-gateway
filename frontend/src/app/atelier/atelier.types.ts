@@ -83,6 +83,12 @@ export interface AtelierSteerState {
 export interface AtelierTurnCost {
   elapsedSeconds: number;
   tokens: number;
+  /**
+   * Ce que le tour a coûté, déjà formaté en euros par la passerelle (F-133 / SF-133-02) —
+   * « 0,42 € », « < 0,01 € ». **Absent pour qui n'est pas administrateur** : le montant ne quitte
+   * alors pas le serveur, il n'est pas masqué ici.
+   */
+  amount?: string;
 }
 
 /** Tour assistant « en cours » pendant le streaming : étapes relayées + commentaire partiel. */

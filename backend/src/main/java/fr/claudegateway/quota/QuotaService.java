@@ -252,6 +252,20 @@ public class QuotaService {
     }
 
     /**
+     * Ce qu'un tour a <b>réellement coûté</b>, en dollars (F-133 / SF-133-02).
+     *
+     * <p>Exposé ici et non par le calculateur directement : {@code QuotaService} est déjà le point
+     * d'entrée du décompte, et ses appelants l'ont déjà injecté. Leur faire ajouter une dépendance
+     * pour une question aussi proche aurait multiplié les constructeurs sans rien clarifier.</p>
+     *
+     * <p><b>Ce montant n'est pas ce que le client paie</b> : c'est ce que nous payons. Le décompte
+     * commercial, lui, ne bouge pas.</p>
+     */
+    public BigDecimal costOf(TurnTokens tokens, TurnExtras extras, String model) {
+        return providerCostCalculator.calculate(tokens, extras, model).amountUsd();
+    }
+
+    /**
      * Juge le seuil d'alerte de consommation (F-42) sur le compteur fraîchement incrémenté, avant sa
      * sauvegarde : la marque éventuelle part dans la <b>même</b> écriture que la consommation.
      *

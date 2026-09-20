@@ -79,13 +79,16 @@ public class AtelierChatController {
     private final Executor turnAttachExecutor;
     private final LiveTurnRegistry liveTurns;
     private final RemoteTurnSource remoteTurns;
+    /** Décide si le coût d'un tour part à l'écran, et sous quelle forme (F-133 / SF-133-02). */
+    private final fr.claudegateway.quota.TurnCostView turnCostView;
 
     public AtelierChatController(AtelierChatService atelierChatService,
             AtelierThreadService atelierThreadService, CurrentUser currentUser,
             AtelierAccessService atelierAccess,
             @Qualifier("chatStreamExecutor") Executor chatStreamExecutor,
             @Qualifier("turnAttachExecutor") Executor turnAttachExecutor,
-            LiveTurnRegistry liveTurns, RemoteTurnSource remoteTurns) {
+            LiveTurnRegistry liveTurns, RemoteTurnSource remoteTurns,
+            fr.claudegateway.quota.TurnCostView turnCostView) {
         this.atelierChatService = atelierChatService;
         this.atelierThreadService = atelierThreadService;
         this.currentUser = currentUser;
@@ -94,6 +97,7 @@ public class AtelierChatController {
         this.turnAttachExecutor = turnAttachExecutor;
         this.liveTurns = liveTurns;
         this.remoteTurns = remoteTurns;
+        this.turnCostView = turnCostView;
     }
 
     @PostMapping
@@ -103,7 +107,7 @@ public class AtelierChatController {
                 request.message(), request.modeOrDefault());
         return new AtelierChatResponse(result.reply(), result.actions(), result.messageId(),
                 result.inputTokens(), result.outputTokens(), result.activeSeconds(),
-                result.budgetReached());
+                result.budgetReached(), turnCostView.labelFor(result.costUsd()));
     }
 
     /**
@@ -353,7 +357,7 @@ public class AtelierChatController {
     public List<AtelierMessageResponse> history(@PathVariable UUID id) {
         atelierAccess.requireTerminalAccess(id);
         return atelierChatService.history(currentUser.requireId(), id).stream()
-                .map(AtelierMessageResponse::from)
+                .map(message -> AtelierMessageResponse.from(message, turnCostView))
                 .toList();
     }
 
@@ -526,13 +530,14 @@ public class AtelierChatController {
                     // précision restée en file ne relance un tour derrière elle — mais aucune ne
                     // disparaît en silence non plus.
                     turn.publishSteersDropped(turn.sealAndDrain(), "interrupted");
-                    turn.publish("done", StreamDone.of(result, false));
+                    turn.publish("done", StreamDone.of(result, false, turnCostView.labelFor(result.costUsd())));
                     break;
                 }
                 // Prendre la première précision restante OU sceller, en un seul geste : aucune
                 // précision ne peut être acceptée entre les deux par un tour qui ne la lirait jamais.
                 java.util.Optional<LiveTurn.Steer> followUp = turn.pollFollowUpOrSeal();
-                turn.publish("done", StreamDone.of(result, followUp.isPresent()));
+                turn.publish("done", StreamDone.of(result, followUp.isPresent(),
+                        turnCostView.labelFor(result.costUsd())));
                 if (followUp.isEmpty()) {
                     break;
                 }
@@ -678,12 +683,18 @@ public class AtelierChatController {
      * flux, et {@code steer_followup} le suit.</p>
      */
     record StreamDone(String reply, List<AtelierAction> actions, UUID messageId, long inputTokens,
-            long outputTokens, long activeSeconds, boolean budgetReached, boolean followUp) {
+            long outputTokens, long activeSeconds, boolean budgetReached, boolean followUp,
+            String costEur) {
 
-        static StreamDone of(AtelierChatResult result, boolean followUp) {
+        /**
+         * <b>Le flux est le chemin nominal de l'écran</b> : c'est ici, et pas seulement dans la
+         * réponse synchrone, que le coût doit voyager (F-133 / SF-133-02). Il reste {@code null}
+         * pour un appelant qui n'est pas administrateur — le montant ne quitte pas le serveur.
+         */
+        static StreamDone of(AtelierChatResult result, boolean followUp, String costEur) {
             return new StreamDone(result.reply(), result.actions(), result.messageId(),
                     result.inputTokens(), result.outputTokens(), result.activeSeconds(),
-                    result.budgetReached(), followUp);
+                    result.budgetReached(), followUp, costEur);
         }
     }
 

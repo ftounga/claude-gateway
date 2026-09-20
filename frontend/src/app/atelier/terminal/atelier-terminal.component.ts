@@ -1161,7 +1161,10 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
   /** Coût d'un tour : « m:ss · N tokens ». */
   costLabel(cost: AtelierTurnCost): string {
-    return `${formatElapsed(cost.elapsedSeconds)} · ${cost.tokens.toLocaleString('fr-FR')} tokens`;
+    const base = `${formatElapsed(cost.elapsedSeconds)} · ${cost.tokens.toLocaleString('fr-FR')} tokens`;
+    // Le montant n'arrive que pour l'administrateur (F-133 / SF-133-02) : rien à cacher ici, il
+    // est simplement absent pour les autres.
+    return cost.amount ? `${base} · ${cost.amount}` : base;
   }
 
   /** Déplie/replie la sortie d'un bloc. */

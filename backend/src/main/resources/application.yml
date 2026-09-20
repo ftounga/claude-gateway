@@ -781,6 +781,10 @@ app:
       # et les ignorer fait sous-estimer tout tour agentique.
       web-search-per-thousand: ${APP_COST_WEB_SEARCH_PER_K:10.00}
       session-hour: ${APP_COST_SESSION_HOUR:0.08}
+      # Taux de conversion pour l'AFFICHAGE (SF-133-02). Le fournisseur facture en DOLLARS : la
+      # verite est en dollars, l'euro n'est qu'une commodite de lecture. Le montant affiche depend
+      # donc de ce reglage — assume et ecrit ici, plutot qu'un arrondi cache dans le code.
+      usd-to-eur: ${APP_COST_USD_TO_EUR:0.92}
       # USD par million de tokens. Releve du 2026-09-20.
       models:
         claude-opus-5:

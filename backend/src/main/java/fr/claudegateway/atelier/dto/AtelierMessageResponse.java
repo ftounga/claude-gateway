@@ -5,8 +5,10 @@ import java.util.UUID;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import fr.claudegateway.atelier.AtelierMessage;
+import fr.claudegateway.quota.TurnCostView;
 
 /**
  * Vue d'un message Atelier exposée au client (F-28 / SF-28-02).
@@ -21,8 +23,40 @@ public record AtelierMessageResponse(UUID id, String role, String content, Offse
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     public static AtelierMessageResponse from(AtelierMessage message) {
+        return from(message, null);
+    }
+
+    /**
+     * Même vue, en décidant du <b>coût</b> (F-133 / SF-133-02).
+     *
+     * <p>Le relevé est stocké avec le coût du tour <b>en dollars</b>. Ce champ ne doit jamais
+     * partir tel quel : il est remplacé par un montant en euros pour l'administrateur, et
+     * <b>retiré</b> pour tout le monde d'autre. Le masquer côté écran ne suffirait pas — il
+     * resterait lisible dans le flux réseau.</p>
+     *
+     * @param costView décideur d'affichage, ou {@code null} pour retirer le coût sans condition
+     */
+    public static AtelierMessageResponse from(AtelierMessage message, TurnCostView costView) {
         return new AtelierMessageResponse(message.getId(), message.getRole(), message.getContent(),
-                message.getCreatedAt(), parseTranscript(message.getTerminalJson()));
+                message.getCreatedAt(),
+                withCost(parseTranscript(message.getTerminalJson()), costView));
+    }
+
+    /**
+     * Remplace {@code costUsd} par {@code costEur} quand l'appelant y a droit, et le retire sinon.
+     * Un relevé sans coût (tous ceux d'avant F-133) traverse inchangé.
+     */
+    private static JsonNode withCost(JsonNode transcript, TurnCostView costView) {
+        if (transcript == null || !transcript.isObject() || !transcript.hasNonNull("costUsd")) {
+            return transcript;
+        }
+        ObjectNode node = (ObjectNode) transcript;
+        String label = costView == null ? null : costView.labelFor(node.get("costUsd").decimalValue());
+        node.remove("costUsd");
+        if (label != null) {
+            node.put("costEur", label);
+        }
+        return node;
     }
 
     /**

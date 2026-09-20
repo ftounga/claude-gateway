@@ -50,6 +50,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param sessionHour         tarif d'une heure de session {@code running}, en dollars (défaut
  *                            {@code 0.08}). Ne s'applique qu'aux Managed Agents : la boucle maison
  *                            n'a pas de bac à sable facturé
+ * @param usdToEur            taux de conversion pour l'<b>affichage</b> (défaut {@code 0.92}). Le
+ *                            fournisseur facture en dollars ; la vérité est donc en dollars, et
+ *                            l'euro n'est qu'une commodité de lecture (SF-133-02). Convertir en dur
+ *                            ferait diverger l'application de la facture d'un écart de change
+ *                            invisible
  */
 @ConfigurationProperties(prefix = "app.cost.provider")
 public record ProviderPricingProperties(
@@ -57,12 +62,14 @@ public record ProviderPricingProperties(
         String defaultModel,
         Map<String, ModelPricing> models,
         BigDecimal webSearchPerThousand,
-        BigDecimal sessionHour) {
+        BigDecimal sessionHour,
+        BigDecimal usdToEur) {
 
     static final String DEFAULT_PRICING_VERSION = "2026-09-20";
     static final String DEFAULT_MODEL = "claude-opus-5";
     static final BigDecimal DEFAULT_WEB_SEARCH_PER_THOUSAND = new BigDecimal("10.00");
     static final BigDecimal DEFAULT_SESSION_HOUR = new BigDecimal("0.08");
+    static final BigDecimal DEFAULT_USD_TO_EUR = new BigDecimal("0.92");
 
     // Pas de constructeur de commodité : un second constructeur rendrait la liaison de
     // configuration ambiguë (Spring ne saurait plus lequel utiliser) et le contexte refuserait de
@@ -103,6 +110,9 @@ public record ProviderPricingProperties(
         sessionHour = sessionHour == null || sessionHour.signum() <= 0
                 ? DEFAULT_SESSION_HOUR
                 : sessionHour;
+        // Un taux nul ou négatif afficherait zéro euro sur une dépense réelle : c'est un incident,
+        // pas un réglage.
+        usdToEur = usdToEur == null || usdToEur.signum() <= 0 ? DEFAULT_USD_TO_EUR : usdToEur;
     }
 
     /**
