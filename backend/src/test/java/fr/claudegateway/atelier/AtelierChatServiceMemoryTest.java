@@ -159,10 +159,19 @@ class AtelierChatServiceMemoryTest {
     }
 
     @Test
-    void onlyTheMostRecentTurnsAreReplayedWithTheirTrajectory() {
-        // F-119 / SF-119-03 : la fenêtre de rejeu des trajectoires est passée de 5 à 12 tours par
-        // défaut — l'agent perdait ses preuves plus vite que ses affirmations. Sur 15 tours, les 12
-        // derniers repartent AVEC leurs résultats d'outils ; au-delà, texte seul.
+    void aThreadBelowTwiceTheWindowKeepsAllItsTrajectories() {
+        // F-119 / SF-119-03 avait fixé la fenêtre à 12 tours — l'agent perdait ses preuves plus
+        // vite que ses affirmations.
+        //
+        // F-134 / SF-134-01 change la RÈGLE, jamais dans le sens d'en montrer moins : la coupure ne
+        // se déplace plus qu'aux multiples de la fenêtre. Sur 15 tours, elle n'a pas encore bougé,
+        // donc les QUINZE repartent avec leurs résultats d'outils — là où l'ancienne règle en
+        // laissait trois en texte seul.
+        //
+        // Pourquoi ce changement : la coupure comptait depuis la FIN et avançait à chaque tour ; le
+        // message qui cessait d'être tracé changeait de forme AU DÉBUT du préfixe, et le cache de
+        // prompt — qui porte sur un préfixe — devait tout réécrire. 98 % du coût d'un tour y
+        // passait.
         for (int turn = 0; turn < 15; turn++) {
             history.add(userMessage("demande " + turn));
             history.add(assistantMessage("réponse " + turn, traceJson("call_" + turn)));
@@ -171,17 +180,64 @@ class AtelierChatServiceMemoryTest {
 
         service.chat(userId, workspaceId, "suite");
 
-        List<String> replayedIds = new ArrayList<>();
+        assertThat(replayedToolIds()).containsExactly("call_0", "call_1", "call_2", "call_3",
+                "call_4", "call_5", "call_6", "call_7", "call_8", "call_9", "call_10", "call_11",
+                "call_12", "call_13", "call_14");
+    }
+
+    @Test
+    void beyondTwiceTheWindowTheOldestTurnsFallBackToTextOnly() {
+        // La coupure existe toujours : sans elle, un fil grossirait sans borne jusqu'à la
+        // compaction — laquelle réécrit l'historique et invaliderait le cache à chaque fois. À 24
+        // tours, le premier palier s'applique : les 12 premiers repassent en texte seul.
+        for (int turn = 0; turn < 24; turn++) {
+            history.add(userMessage("demande " + turn));
+            history.add(assistantMessage("réponse " + turn, traceJson("call_" + turn)));
+        }
+        agentProvider.enqueueFinal("Compris.");
+
+        service.chat(userId, workspaceId, "suite");
+
+        assertThat(replayedToolIds()).containsExactly("call_12", "call_13", "call_14", "call_15",
+                "call_16", "call_17", "call_18", "call_19", "call_20", "call_21", "call_22",
+                "call_23");
+    }
+
+    @Test
+    void twoConsecutiveTurnsReplayTheSamePrefix() {
+        // LA PROPRIÉTÉ QUI FAIT TENIR LE CACHE, vérifiée de bout en bout : à 20 puis 21 tours, la
+        // coupure n'a pas bougé, donc le début de ce qui part au fournisseur est IDENTIQUE. Avant
+        // SF-134-01, il changeait à chaque tour.
+        for (int turn = 0; turn < 20; turn++) {
+            history.add(userMessage("demande " + turn));
+            history.add(assistantMessage("réponse " + turn, traceJson("call_" + turn)));
+        }
+        agentProvider.enqueueFinal("Compris.");
+        service.chat(userId, workspaceId, "suite");
+        List<String> first = replayedToolIds();
+
+        history.add(userMessage("demande 20"));
+        history.add(assistantMessage("réponse 20", traceJson("call_20")));
+        agentProvider.enqueueFinal("Compris aussi.");
+        service.chat(userId, workspaceId, "encore");
+        List<String> second = replayedToolIds();
+
+        // Le second rejeu commence exactement comme le premier : c'est ce préfixe commun que le
+        // fournisseur relit au dixième du tarif au lieu de le réécrire au double.
+        assertThat(second).startsWith(first.toArray(new String[0]));
+    }
+
+    /** Les identifiants d'appels d'outils rejoués au fournisseur, dans l'ordre. */
+    private List<String> replayedToolIds() {
+        List<String> ids = new ArrayList<>();
         for (AgentMessage message : agentProvider.lastRequest.messages()) {
             for (AgentContentBlock block : message.content()) {
                 if (block instanceof AgentContentBlock.ToolUse use) {
-                    replayedIds.add(use.id());
+                    ids.add(use.id());
                 }
             }
         }
-        // Les 12 derniers tours (call_3 → call_14) ; call_0..call_2 retombent en texte seul.
-        assertThat(replayedIds).containsExactly("call_3", "call_4", "call_5", "call_6", "call_7",
-                "call_8", "call_9", "call_10", "call_11", "call_12", "call_13", "call_14");
+        return ids;
     }
 
     @Test
