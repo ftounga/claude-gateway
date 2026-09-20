@@ -1518,7 +1518,11 @@ public class AtelierChatService implements RelayInterruptTarget {
             }
             messages.add(AgentMessage.assistant(assistantBlocks));
             messages.add(AgentMessage.toolResults(toolResults));
-            trace.add(new AtelierToolTrace.Step(turn.text(), List.copyOf(tracedCalls)));
+            // Le raisonnement du modèle est rangé AVEC l'étape (F-134 / SF-134-04). Sans lui, le
+            // tour suivant rejouait un message assistant amputé de son premier bloc : le ruban
+            // différait de celui que le fournisseur avait mis en cache, et tout était réécrit.
+            trace.add(new AtelierToolTrace.Step(turn.text(), List.copyOf(tracedCalls),
+                    thoughtsOf(turn)));
             // Le tour suivant remonte à l'effort normal si ce tour a rencontré une difficulté
             // (F-119 / SF-119-01) : c'est là — après un résultat d'outil — qu'il faut réfléchir le plus.
             escalateNextTurn = signalThisTurn;
@@ -1593,6 +1597,31 @@ public class AtelierChatService implements RelayInterruptTarget {
 
         return new AtelierChatResult(reply, actions, assistant.getId(), inputTokens, outputTokens,
                 activeSeconds, spendCapReached, costUsd);
+    }
+
+    /**
+     * Les blocs de raisonnement d'une itération, sous la forme que la trace sait conserver
+     * (F-134 / SF-134-04).
+     *
+     * <p>Ils sont <b>recopiés, jamais reconstruits</b> : le fournisseur les signe et exige de les
+     * retrouver inchangés. Un bloc sans signature ni charge expurgée n'est pas retenu — il
+     * n'apporte rien au rejeu et pourrait être refusé.</p>
+     */
+    private static List<AtelierToolTrace.Thought> thoughtsOf(AgentTurn turn) {
+        List<AtelierToolTrace.Thought> thoughts = new ArrayList<>(turn.reasoning().size());
+        for (AgentContentBlock block : turn.reasoning()) {
+            AtelierToolTrace.Thought thought = switch (block) {
+                case AgentContentBlock.Reasoning reasoning ->
+                        new AtelierToolTrace.Thought(reasoning.text(), reasoning.signature(), null);
+                case AgentContentBlock.RedactedReasoning redacted ->
+                        new AtelierToolTrace.Thought(null, null, redacted.data());
+                default -> null;
+            };
+            if (thought != null && !thought.isEmpty()) {
+                thoughts.add(thought);
+            }
+        }
+        return List.copyOf(thoughts);
     }
 
     /**

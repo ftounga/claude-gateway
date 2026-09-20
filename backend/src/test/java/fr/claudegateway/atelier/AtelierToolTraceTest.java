@@ -128,4 +128,101 @@ class AtelierToolTraceTest {
         AgentContentBlock.ToolResult result = (AgentContentBlock.ToolResult) messages.get(1).content().get(0);
         assertThat(result.content()).isEqualTo("(vide)");
     }
+
+    // ---------------------------------------- le raisonnement rejoué (F-134 / SF-134-04)
+
+    @Test
+    void theReasoningComesBackFirst_beforeTheTextAndTheToolCalls() {
+        // L'ORDRE EST LA PROPRIÉTÉ. Le fournisseur a mis en cache « raisonnement, texte, appels » :
+        // le rejeu doit rendre exactement cette suite, sinon le ruban diffère dès le premier bloc
+        // et tout ce qui suit est réécrit au double du tarif d'entrée.
+        AtelierToolTrace trace = new AtelierToolTrace(List.of(new AtelierToolTrace.Step(
+                "Je regarde le fichier.",
+                List.of(new AtelierToolTrace.Call("c1", "read_file", input("path", "a.txt"),
+                        "contenu", false)),
+                List.of(new AtelierToolTrace.Thought("", "sig-abc", null)))));
+
+        List<AgentMessage> replayed = trace.replay();
+
+        List<AgentContentBlock> assistant = replayed.get(0).content();
+        assertThat(assistant).hasSize(3);
+        assertThat(assistant.get(0)).isInstanceOf(AgentContentBlock.Reasoning.class);
+        assertThat(assistant.get(1)).isInstanceOf(AgentContentBlock.Text.class);
+        assertThat(assistant.get(2)).isInstanceOf(AgentContentBlock.ToolUse.class);
+    }
+
+    @Test
+    void theSignatureSurvivesIntact() {
+        // Le bloc est signé par le fournisseur, qui refuse un bloc retouché : la signature doit
+        // traverser la base de données sans une modification.
+        AtelierToolTrace trace = new AtelierToolTrace(List.of(new AtelierToolTrace.Step(
+                "texte",
+                List.of(new AtelierToolTrace.Call("c1", "read_file", input("path", "a"), "ok", false)),
+                List.of(new AtelierToolTrace.Thought("réflexion", "SIG-9f3a==", null)))));
+
+        AgentContentBlock first = trace.replay().get(0).content().get(0);
+
+        assertThat(first).isInstanceOf(AgentContentBlock.Reasoning.class);
+        AgentContentBlock.Reasoning reasoning = (AgentContentBlock.Reasoning) first;
+        assertThat(reasoning.signature()).isEqualTo("SIG-9f3a==");
+        assertThat(reasoning.text()).isEqualTo("réflexion");
+    }
+
+    @Test
+    void aRedactedBlockSurvivesWithoutBeingInterpreted() {
+        AtelierToolTrace trace = new AtelierToolTrace(List.of(new AtelierToolTrace.Step(
+                "texte",
+                List.of(new AtelierToolTrace.Call("c1", "read_file", input("path", "a"), "ok", false)),
+                List.of(new AtelierToolTrace.Thought(null, null, "charge-opaque")))));
+
+        AgentContentBlock first = trace.replay().get(0).content().get(0);
+
+        assertThat(first).isInstanceOf(AgentContentBlock.RedactedReasoning.class);
+        assertThat(((AgentContentBlock.RedactedReasoning) first).data()).isEqualTo("charge-opaque");
+    }
+
+    @Test
+    void anEmptyThoughtIsNotReplayed() {
+        // Un bloc sans signature ni charge n'apporte rien et pourrait être refusé.
+        AtelierToolTrace trace = new AtelierToolTrace(List.of(new AtelierToolTrace.Step(
+                "texte",
+                List.of(new AtelierToolTrace.Call("c1", "read_file", input("path", "a"), "ok", false)),
+                List.of(new AtelierToolTrace.Thought("", null, null),
+                        new AtelierToolTrace.Thought(null, "  ", "")))));
+
+        assertThat(trace.replay().get(0).content())
+                .noneMatch(block -> block instanceof AgentContentBlock.Reasoning
+                        || block instanceof AgentContentBlock.RedactedReasoning);
+    }
+
+    @Test
+    void aTraceWrittenBeforeThisFeatureReplaysExactlyAsBefore() {
+        // RÉTRO-COMPATIBILITÉ. Les traces déjà en base n'ont pas de champ `thoughts` : elles
+        // doivent se rejouer comme avant, sans erreur et sans bloc fantôme.
+        AtelierToolTrace old = AtelierToolTrace.fromJson("""
+                {"steps":[{"text":"texte","calls":[{"id":"c1","name":"read_file",
+                 "input":{"path":"a"},"result":"ok","error":false}]}]}
+                """);
+
+        List<AgentContentBlock> assistant = old.replay().get(0).content();
+
+        assertThat(assistant).hasSize(2);
+        assertThat(assistant.get(0)).isInstanceOf(AgentContentBlock.Text.class);
+        assertThat(assistant.get(1)).isInstanceOf(AgentContentBlock.ToolUse.class);
+    }
+
+    @Test
+    void theTraceSurvivesTheRoundTripThroughJson() {
+        // Le vrai trajet : écriture en base, relecture, rejeu. C'est là que se perdrait une
+        // signature mal sérialisée.
+        AtelierToolTrace before = new AtelierToolTrace(List.of(new AtelierToolTrace.Step(
+                "texte",
+                List.of(new AtelierToolTrace.Call("c1", "bash", input("cmd", "ls"), "a.txt", false)),
+                List.of(new AtelierToolTrace.Thought("", "SIG-round-trip", null)))));
+
+        AtelierToolTrace after = AtelierToolTrace.fromJson(before.toJson());
+
+        AgentContentBlock first = after.replay().get(0).content().get(0);
+        assertThat(((AgentContentBlock.Reasoning) first).signature()).isEqualTo("SIG-round-trip");
+    }
 }
