@@ -72,4 +72,45 @@ class TurnCostViewTest {
                 .doesNotThrowAnyException();
         assertThat(viewFor(broken).labelFor(new BigDecimal("1.00"))).isNull();
     }
+
+    // ---------------------------------------- la part relue (F-134 / SF-134-03)
+
+    @Test
+    void addsTheReusedShareAfterTheAmount() {
+        // Relire coûte un vingtième d'écrire : cette part dit d'un coup d'œil si le cache fait son
+        // travail. 90 000 relus sur 100 000 de cache ⇒ 90 %.
+        String label = viewFor(admin).labelFor(new BigDecimal("1.00"),
+                new TurnTokens(0L, 0L, 90_000L, 10_000L), true);
+
+        assertThat(label).isEqualTo("0,92 € · 90 % relu");
+    }
+
+    @Test
+    void saysNothingAboutTheShareWhenNoCacheWasTouched() {
+        // Un tour sans cache n'a pas de part à montrer : « 0 % » se lirait comme un échec, alors
+        // qu'il n'y avait rien à mettre en cache.
+        String label = viewFor(admin).labelFor(new BigDecimal("1.00"),
+                TurnTokens.of(1_000L, 100L), true);
+
+        assertThat(label).isEqualTo("0,92 €");
+    }
+
+    @Test
+    void theShareNeverLeaksToSomeoneWhoIsNotAdmin() {
+        doThrow(new AdminForbiddenException()).when(notAdmin).assertAdmin();
+
+        assertThat(viewFor(notAdmin).labelFor(new BigDecimal("1.00"),
+                new TurnTokens(0L, 0L, 90_000L, 10_000L), false)).isNull();
+    }
+
+    @Test
+    void computesTheShareOnTheCacheAlone() {
+        // L'entrée au plein tarif et la sortie n'entrent pas dans le calcul : la question est
+        // « ce qui POUVAIT être caché l'a-t-il été ? », pas « quelle part du tour est du cache ? ».
+        assertThat(TurnCostView.reusedPercent(new TurnTokens(500_000L, 500_000L, 50L, 50L)))
+                .isEqualTo(50);
+        assertThat(TurnCostView.reusedPercent(new TurnTokens(0L, 0L, 0L, 1_000L))).isZero();
+        assertThat(TurnCostView.reusedPercent(TurnTokens.of(10L, 10L))).isNull();
+        assertThat(TurnCostView.reusedPercent(null)).isNull();
+    }
 }

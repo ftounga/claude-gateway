@@ -89,6 +89,41 @@ public class TurnCostView {
     }
 
     /**
+     * Le montant du tour, <b>suivi de la part de contexte relue</b> quand elle est connue
+     * (F-134 / SF-134-03) : {@code "0,42 € · 91 % relu"}.
+     *
+     * <p><b>Pourquoi ce chiffre mérite d'être à l'écran.</b> Relire coûte un vingtième d'écrire.
+     * La part relue est donc le seul indicateur qui dise, d'un coup d'œil, si le cache fait son
+     * travail — et une régression future s'y verra sans qu'on ait à interroger la base.</p>
+     *
+     * @param tokens tokens du tour, par nature ; la part est calculée sur le cache seul
+     */
+    public String labelFor(BigDecimal costUsd, TurnTokens tokens, boolean admin) {
+        String amount = labelFor(costUsd, admin);
+        if (amount == null) {
+            return null;
+        }
+        Integer reused = reusedPercent(tokens);
+        return reused == null ? amount : amount + " · " + reused + " % relu";
+    }
+
+    /**
+     * Part du contexte <b>relue</b> plutôt que réécrite, en pourcentage entier, ou {@code null}
+     * quand le tour n'a touché aucun cache — auquel cas il n'y a pas de part à montrer, et un
+     * « 0 % » se lirait comme un échec alors qu'il n'y avait rien à cacher.
+     */
+    public static Integer reusedPercent(TurnTokens tokens) {
+        if (tokens == null) {
+            return null;
+        }
+        long cached = tokens.cacheReadTokens() + tokens.cacheWriteTokens();
+        if (cached <= 0L) {
+            return null;
+        }
+        return Math.toIntExact(Math.round(tokens.cacheReadTokens() * 100.0 / cached));
+    }
+
+    /**
      * Convertit un montant du dollar vers l'euro, <b>sans</b> la garde d'affichage
      * (F-133 / SF-133-06).
      *

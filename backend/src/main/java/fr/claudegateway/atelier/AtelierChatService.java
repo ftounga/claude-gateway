@@ -1620,10 +1620,15 @@ public class AtelierChatService implements RelayInterruptTarget {
         // DOLLARS — la monnaie où le fournisseur facture —, et la conversion en euros se fait à la
         // lecture, au taux du moment. Figer un montant converti ferait mentir un vieux relevé dès
         // que le change bouge.
-        java.math.BigDecimal costUsd = quotaService.costOf(
+        TurnTokens turnTokens =
                 new TurnTokens(Math.max(0, inputTokens - cacheReadTokens - cacheWriteTokens),
-                        outputTokens, cacheReadTokens, cacheWriteTokens),
+                        outputTokens, cacheReadTokens, cacheWriteTokens);
+        java.math.BigDecimal costUsd = quotaService.costOf(turnTokens,
                 new TurnExtras(webSearchRequests, 0L), model);
+        // La part de contexte RELUE plutôt que réécrite (F-134 / SF-134-03) : relire coûte un
+        // vingtième d'écrire, si bien que ce seul chiffre dit d'un coup d'œil si le cache fait son
+        // travail — et une régression future s'y verra sans avoir à interroger la base.
+        Integer reusedPercent = fr.claudegateway.quota.TurnCostView.reusedPercent(turnTokens);
         AtelierTurnReport report = new AtelierTurnReport(inputTokens, outputTokens, activeSeconds,
                 interrupted, spendCapReached, planOfTurn.get(), List.copyOf(transcript), costUsd);
         AtelierMessage assistant = messageRepository.save(AtelierMessage.builder()
@@ -1634,7 +1639,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                 .build());
 
         return new AtelierChatResult(reply, actions, assistant.getId(), inputTokens, outputTokens,
-                activeSeconds, spendCapReached, costUsd);
+                activeSeconds, spendCapReached, costUsd, reusedPercent);
     }
 
     /**
@@ -3897,18 +3902,18 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     public record AtelierChatResult(String reply, List<AtelierAction> actions, UUID messageId,
             long inputTokens, long outputTokens, long activeSeconds, boolean budgetReached,
-            java.math.BigDecimal costUsd) {
+            java.math.BigDecimal costUsd, Integer reusedPercent) {
 
         /** Forme historique, conservée pour les appelants (et les tests) qui l'attendent. */
         public AtelierChatResult(String reply, List<AtelierAction> actions, UUID messageId) {
-            this(reply, actions, messageId, 0L, 0L, 0L, false, null);
+            this(reply, actions, messageId, 0L, 0L, 0L, false, null, null);
         }
 
         /** Forme sans coût (F-133 / SF-133-02 ne concerne que la boucle d'atelier). */
         public AtelierChatResult(String reply, List<AtelierAction> actions, UUID messageId,
                 long inputTokens, long outputTokens, long activeSeconds, boolean budgetReached) {
             this(reply, actions, messageId, inputTokens, outputTokens, activeSeconds, budgetReached,
-                    null);
+                    null, null);
         }
 
         /**
