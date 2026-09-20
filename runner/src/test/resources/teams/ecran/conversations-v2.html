@@ -1,28 +1,43 @@
-<!-- DOM modèle du Teams v2 RÉEL (F-89 / SF-89-20) — ancres relevées en prod CAGIP 2026-09-20 (SF-89-16→19).
-     À CONFIRMER SUR POSTE RÉEL. Liste des conversations : rail « simple-collab-dnd-rail » (role=tree),
-     chaque conversation un « treeitem » (le 2e imbriqué dans un role=group). Le nom = nom accessible :
-     aria-label pour le 1er, texte du layout pour le 2e (sans aria-label). Les classes fui-*/___* ne servent
-     JAMAIS de sélecteur. Le champ de recherche porte un secret qui ne doit JAMAIS être lu. -->
+<!-- DOM modèle du Teams v2 RÉEL (F-89 / SF-89-20, complété SF-89-21) — ancres relevées en prod CAGIP
+     2026-09-20 (SF-89-16→19). À CONFIRMER SUR POSTE RÉEL. Liste des conversations : rail
+     « simple-collab-dnd-rail » (role=tree). Le rail mêle des « treeitem » de NAVIGATION (« Mentions »,
+     « Activité »…) — SANS avatar ni présence — et des « treeitem » de CONVERSATION — AVEC un
+     « PersonaAvatar » et/ou un « presence-badge ». SF-89-21 : seuls les seconds doivent remonter.
+     Le nom = nom accessible : aria-label pour le 1er chat, texte du layout pour le 2e (sans aria-label).
+     Les classes fui-*/___* ne servent JAMAIS de sélecteur. Le champ de recherche porte un secret qui ne
+     doit JAMAIS être lu. -->
 <html><body>
 <div data-tid="app-layout-area--sidebar">
   <input type="search" aria-label="Rechercher" value="SECRET-RECHERCHE-EN-COURS">
   <div data-tid="app-layout-area--mid-nav">
     <div data-tid="simple-collab-dnd-rail" role="tree" class="fui-Tree ___1a2b3c">
+      <!-- Item de NAVIGATION : un treeitem SANS avatar ni présence → doit être écarté (SF-89-21). -->
+      <div role="treeitem" class="fui-TreeItem ___n0av00" aria-label="Mentions">
+        <div class="fui-TreeItemLayout ___navx01">
+          <span class="fui-TreeItemLayout__main ___navm01">Mentions</span>
+        </div>
+      </div>
+      <!-- 1re CONVERSATION : porte un PersonaAvatar SEUL (pas de presence-badge) → retenue (l'un suffit). -->
       <div role="treeitem" class="fui-TreeItem ___4d5e6f" id="chat-list-item_19:fabrique@thread.v2"
            aria-label="Migration IAM">
         <div class="fui-TreeItemLayout ___7g8h9i">
           <span data-tid="PersonaAvatar" class="fui-Avatar" aria-label="Groupe"></span>
-          <span data-tid="presence-badge" role="img" aria-label="Disponible"></span>
           <span class="fui-TreeItemLayout__main ___j1k2l3">Migration IAM</span>
           <time datetime="2026-09-12T08:15:00.000Z" aria-label="12 septembre 10:15">10:15</time>
         </div>
       </div>
-      <!-- 2e conversation, imbriquée, SANS aria-label : le nom vient du texte de l'item (repli du nom
-           accessible). Avatar/présence/horodatage ne portent pas de texte pour que ce texte reste le nom. -->
+      <!-- Item de NAVIGATION : un treeitem de filtre, SANS avatar ni présence → doit être écarté. -->
+      <div role="treeitem" class="fui-TreeItem ___n0av02" aria-label="Activité">
+        <div class="fui-TreeItemLayout ___navx02">
+          <span class="fui-TreeItemLayout__main ___navm02">Activité</span>
+        </div>
+      </div>
+      <!-- 2e CONVERSATION, imbriquée, SANS aria-label : le nom vient du texte de l'item (repli du nom
+           accessible). Porte un presence-badge SEUL (pas de PersonaAvatar) → retenue (l'un suffit).
+           Présence/horodatage ne portent pas de texte pour que ce texte reste le nom. -->
       <div role="group" class="fui-TreeItem__group">
         <div role="treeitem" class="fui-TreeItem ___m4n5o6" data-item-id="chat-2">
           <div class="fui-TreeItemLayout ___p7q8r9">
-            <span data-tid="PersonaAvatar" class="fui-Avatar" aria-label="Paul Durand"></span>
             <span data-tid="presence-badge" role="img" aria-label="Absent"></span>
             <span class="fui-TreeItemLayout__main ___s1t2u3">Paul Durand</span>
             <time datetime="2026-09-11T16:40:00.000Z" aria-label="hier 18:40"></time>
