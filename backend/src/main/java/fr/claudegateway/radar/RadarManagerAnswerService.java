@@ -142,7 +142,7 @@ public class RadarManagerAnswerService {
             return;
         }
         try {
-            quotaService.recordUsage(scope.userId(), result.turnTokens(), null, null, scope.hostId());
+            quotaService.recordUsage(scope.userId(), result.turnTokens(), null, result.model(), null, scope.hostId());
         } catch (RuntimeException ex) {
             // Perdre une ligne de compteur ne doit pas faire perdre la réponse ; le motif n'est pas détaillé.
             log.warn("Radar : consommation de la réponse au manager non décomptée ({})", ex.getClass().getSimpleName());

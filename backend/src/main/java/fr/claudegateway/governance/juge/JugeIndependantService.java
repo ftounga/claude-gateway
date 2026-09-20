@@ -233,7 +233,7 @@ public class JugeIndependantService {
     private void decompter(UUID userId, UUID workspaceId, GovernanceHostRef host,
             ChatCompletionResult result) {
         try {
-            quotaService.recordUsage(userId, result.turnTokens(), null, workspaceId,
+            quotaService.recordUsage(userId, result.turnTokens(), null, result.model(), workspaceId,
                     host.hosted() ? null : host.hostId());
         } catch (RuntimeException ex) {
             log.debug("Consommation du juge non décomptée ({})", ex.getClass().getSimpleName());

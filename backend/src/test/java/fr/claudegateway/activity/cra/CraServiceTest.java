@@ -85,7 +85,7 @@ class CraServiceTest {
         verify(craRepository, org.mockito.Mockito.times(2)).save(any(CraEntry.class));
         // Provider-First + quota : quota vérifié AVANT, consommation enregistrée APRÈS.
         verify(quotaService).assertWithinQuota(userId);
-        verify(quotaService).recordUsage(eq(userId), any(), eq(null), eq(null), eq(null));
+        verify(quotaService).recordUsage(eq(userId), any(), eq(null), any(), eq(null), eq(null));
     }
 
     @Test

@@ -456,7 +456,7 @@ class AtelierSessionServiceTest {
         assertThat(result.reply()).isEqualTo("Terminé.");
         // Décompte : tokens sur le quota, secondes de bac à sable sur le plafond.
         verify(quotaService).recordUsage(USER, new TurnTokens(1_000L, 200L, 0L, 0L), null,
-                WORKSPACE, null);
+                "claude-opus-5", WORKSPACE, null);
         verify(quotaService).recordSandboxSeconds(USER, 8L);
     }
 
@@ -591,11 +591,11 @@ class AtelierSessionServiceTest {
         service.runTask(USER, WORKSPACE, "deux");
 
         verify(quotaService).recordUsage(USER, new TurnTokens(1_000L, 200L, 0L, 0L), null,
-                WORKSPACE, null);
+                "claude-opus-5", WORKSPACE, null);
         verify(quotaService).recordSandboxSeconds(USER, 8L);
         // Second tour : seul l'écart est décompté, pas le cumul.
         verify(quotaService).recordUsage(USER, new TurnTokens(500L, 60L, 0L, 0L), null,
-                WORKSPACE, null);
+                "claude-opus-5", WORKSPACE, null);
         verify(quotaService).recordSandboxSeconds(USER, 12L);
     }
 
@@ -620,7 +620,7 @@ class AtelierSessionServiceTest {
 
         // Ouvrir une session remet les compteurs à zéro : le delta est le relevé lui-même, jamais négatif.
         verify(quotaService).recordUsage(USER, new TurnTokens(10L, 2L, 0L, 0L), null,
-                WORKSPACE, null);
+                "claude-opus-5", WORKSPACE, null);
         verify(quotaService).recordSandboxSeconds(USER, 1L);
     }
 
@@ -1227,7 +1227,7 @@ class AtelierSessionServiceTest {
         // Le tour a réellement consommé du bac à sable : il est décompté comme tout autre tour (D3).
         assertThat(result.activeSeconds()).isEqualTo(42L);
         verify(quotaService).recordUsage(USER, new TurnTokens(900L, 100L, 0L, 0L), null,
-                WORKSPACE, null);
+                "claude-opus-5", WORKSPACE, null);
         verify(quotaService).recordSandboxSeconds(USER, 42L);
         // ... et conservé, avec sa transcription partielle et sa marque (D2).
         ArgumentCaptor<fr.claudegateway.atelier.AtelierMessage> saved =
@@ -1701,7 +1701,7 @@ class AtelierSessionServiceTest {
         AtelierSessionResult result = service(enabled()).runTask(USER, WORKSPACE, "go");
 
         verify(quotaService).recordUsage(USER, new TurnTokens(1_000L, 200L, 0L, 0L), usd("0.90"),
-                WORKSPACE, null);
+                "claude-opus-5", WORKSPACE, null);
         verify(quotaService).recordSandboxSeconds(USER, 8L);
         // Le tour affiche les tokens RÉELLEMENT rapportés (F-63) : jusqu'ici il montrait l'équivalent
         // token issu du coût, un chiffre qui n'était le volume de rien.
@@ -1728,7 +1728,7 @@ class AtelierSessionServiceTest {
 
         // Delta = 45 cents, et deltas de tokens de 1 000 / 200 : le cumul n'est jamais refacturé.
         verify(quotaService).recordUsage(USER, new TurnTokens(1_000L, 200L, 0L, 0L), usd("0.45"),
-                WORKSPACE, null);
+                "claude-opus-5", WORKSPACE, null);
         assertThat(workspace.getAgentListCost()).isEqualTo(135L);
     }
 
@@ -1742,7 +1742,7 @@ class AtelierSessionServiceTest {
         service(enabled()).runTask(USER, WORKSPACE, "go");
 
         verify(quotaService).recordUsage(USER, new TurnTokens(1_000L, 200L, 0L, 0L), null,
-                WORKSPACE, null);
+                "claude-opus-5", WORKSPACE, null);
     }
 
     @Test
@@ -1754,7 +1754,7 @@ class AtelierSessionServiceTest {
         service(enabled()).runTask(USER, WORKSPACE, "go");
 
         verify(quotaService).recordUsage(USER, new TurnTokens(0L, 0L, 0L, 0L), usd("0.18"),
-                WORKSPACE, null);
+                "claude-opus-5", WORKSPACE, null);
     }
 
     @Test
@@ -1773,7 +1773,7 @@ class AtelierSessionServiceTest {
         service(enabled()).runTask(USER, WORKSPACE, "go");
 
         verify(quotaService).recordUsage(USER, new TurnTokens(0L, 0L, 0L, 0L), usd("0.00"),
-                WORKSPACE, null);
+                "claude-opus-5", WORKSPACE, null);
     }
 
     @Test
@@ -1794,7 +1794,7 @@ class AtelierSessionServiceTest {
 
         // Le cumul de l'ancienne session ne doit pas masquer les premiers tours de la nouvelle.
         verify(quotaService).recordUsage(USER, new TurnTokens(0L, 0L, 0L, 0L), usd("0.09"),
-                WORKSPACE, null);
+                "claude-opus-5", WORKSPACE, null);
     }
 
     // ------------------------------------ F-35 / SF-35-01 : roster de sous-agents

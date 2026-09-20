@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-133 / SF-133-01 — LE COÛT RÉEL SURVIT AU TOUR.
+
+      CE QUI MANQUAIT, et pourquoi ça ne se rattrape pas après coup :
+
+      Le coût fournisseur d'un tour était DÉJÀ calculé à chaque appel
+      (`BilledTokensCalculator.costUsd`, quatre natures de tokens, F-63) — puis JETÉ trois lignes
+      plus bas, au moment de descendre vers le journal (`QuotaService:204` avant cette migration) :
+
+          usageLedgerService.recordTurn(userId, workspaceId, hostId, input, output);
+
+      Ni le cache, ni le coût, ni le modèle ne franchissaient cette ligne. Conséquence : AUCUNE
+      requête ne pouvait reconstituer la dépense réelle d'un tour passé, et le coût affiché par le
+      rapport d'usage (F-16) et la consommation par client (F-61) SURESTIMAIT l'usage agentique —
+      l'essentiel de l'entrée y est relu du cache, facturé un DIXIÈME du tarif plein.
+
+      LES LIGNES ANTÉRIEURES RESTENT À NULL. Elles ne sont pas rétro-calculées : leurs données
+      n'existent pas. Inventer un cache ou un modèle plausible produirait des montants crédibles et
+      faux, ce qui est pire que des montants absents — un trou se voit, une approximation non.
+
+      CE QUE LA TABLE NE GAGNE TOUJOURS PAS : aucune colonne de texte libre. `model` est un
+      identifiant de modèle (`claude-opus-5`), borné à 64 caractères, pas un contenu. La garantie de
+      F-61 — des volumes et des horodatages, jamais de contenus — est tenue par la STRUCTURE.
+
+      VENTILATION, PAS ADDITION : `input_tokens` continue de porter le volume d'entrée TRAITÉ, cache
+      compris, exactement comme depuis F-61. Les deux colonnes de cache le DÉTAILLENT. Les y ajouter
+      ferait compter deux fois, et les rapports existants mentiraient du jour au lendemain.
+    -->
+
+    <changeSet id="118-usage-turns-cout-reel" author="claude-gateway">
+
+        <!-- Les deux natures de cache, jusqu'ici repliées dans `input_tokens`. NOT NULL à 0 : un
+             tour sans cache n'est pas un tour dont le cache est inconnu. -->
+        <addColumn tableName="usage_turns">
+            <column name="cache_read_tokens" type="BIGINT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="cache_write_tokens" type="BIGINT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+
+        <!-- Le coût, lui, est NULLABLE : les lignes d'avant n'en ont pas, et ne peuvent pas en
+             avoir. NUMERIC(12,6) — six décimales parce qu'un tour minuscule coûte une fraction de
+             centime et que des milliers de tours s'additionnent ; douze chiffres parce qu'un total
+             annuel doit tenir sans déborder. -->
+        <addColumn tableName="usage_turns">
+            <column name="provider_cost_usd" type="NUMERIC(12,6)"/>
+            <column name="cost_source" type="VARCHAR(16)"/>
+            <column name="model" type="VARCHAR(64)"/>
+            <column name="pricing_version" type="VARCHAR(32)"/>
+            <column name="pricing_fallback" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+
+        <rollback>
+            <dropColumn tableName="usage_turns" columnName="cache_read_tokens"/>
+            <dropColumn tableName="usage_turns" columnName="cache_write_tokens"/>
+            <dropColumn tableName="usage_turns" columnName="provider_cost_usd"/>
+            <dropColumn tableName="usage_turns" columnName="cost_source"/>
+            <dropColumn tableName="usage_turns" columnName="model"/>
+            <dropColumn tableName="usage_turns" columnName="pricing_version"/>
+            <dropColumn tableName="usage_turns" columnName="pricing_fallback"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

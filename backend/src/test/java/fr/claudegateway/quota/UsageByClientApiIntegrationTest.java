@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -207,11 +208,36 @@ class UsageByClientApiIntegrationTest {
 
     @Test
     void ledgerHoldsNoContentAtAll() {
-        // Garantie structurelle : l'entité n'a que des identifiants, des volumes et un horodatage.
+        // GARANTIE STRUCTURELLE : aucun contenu utilisateur ne peut entrer dans le journal — ni
+        // message, ni commande, ni chemin, ni nom. Elle est tenue par la forme de la table, pas par
+        // la prudence des appelants.
+        //
+        // Jusqu'à F-133 elle s'écrivait « aucun champ String », ce qui était commode tant que la
+        // table ne portait que des volumes. Le coût réel (SF-133-01) a besoin de nommer le modèle
+        // servi et la grille de tarifs : deux textes, mais deux textes BORNÉS et ÉNUMÉRÉS ici même.
+        //
+        // La règle est donc resserrée plutôt qu'assouplie : tout champ texte doit être nommément
+        // autorisé ET déclarer une longueur maximale. Un futur champ `prompt`, `content` ou `path`
+        // ferait échouer ce test — ce que l'ancienne version faisait déjà —, et un champ autorisé
+        // mais sans borne le ferait échouer aussi, ce qu'elle ne faisait pas.
         turn(aliceId, aliceProject, aliceHost, 10L, 10L);
         UsageTurn stored = usageTurnRepository.findByUserIdOrderByOccurredAtDesc(aliceId).get(0);
 
-        assertThat(stored.getClass().getDeclaredFields())
-                .noneMatch(field -> field.getType().equals(String.class));
+        List<String> allowedTextFields = List.of("model", "pricingVersion");
+        for (java.lang.reflect.Field field : stored.getClass().getDeclaredFields()) {
+            if (!field.getType().equals(String.class)) {
+                continue;
+            }
+            assertThat(allowedTextFields)
+                    .as("champ texte non autorisé dans le journal : %s", field.getName())
+                    .contains(field.getName());
+            jakarta.persistence.Column column =
+                    field.getAnnotation(jakarta.persistence.Column.class);
+            assertThat(column).as("le champ %s doit déclarer sa colonne", field.getName())
+                    .isNotNull();
+            assertThat(column.length())
+                    .as("le champ %s doit être borné", field.getName())
+                    .isLessThanOrEqualTo(64);
+        }
     }
 }

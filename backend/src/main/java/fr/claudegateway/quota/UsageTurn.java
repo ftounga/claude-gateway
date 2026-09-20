@@ -1,5 +1,6 @@
 package fr.claudegateway.quota;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -7,6 +8,8 @@ import org.hibernate.annotations.UuidGenerator;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
@@ -85,11 +88,72 @@ public class UsageTurn {
     @Builder.Default
     private long outputTokens = 0L;
 
+    /**
+     * Tokens servis <b>depuis</b> le cache (F-133 / SF-133-01). Compris dans {@link #inputTokens}
+     * jusqu'à F-133 ; désormais à part, parce qu'ils coûtent un <b>dixième</b> de l'entrée et que
+     * les confondre surestimait la dépense d'un ordre de grandeur en usage agentique.
+     */
+    @Column(name = "cache_read_tokens", nullable = false, updatable = false)
+    @Builder.Default
+    private long cacheReadTokens = 0L;
+
+    /** Tokens <b>écrits</b> dans le cache : deux fois l'entrée au TTL d'une heure, celui que pose la boucle. */
+    @Column(name = "cache_write_tokens", nullable = false, updatable = false)
+    @Builder.Default
+    private long cacheWriteTokens = 0L;
+
+    /**
+     * Ce que le tour a <b>réellement coûté</b>, en dollars (F-133 / SF-133-01).
+     *
+     * <p>C'est la colonne qui manquait : le coût était calculé à chaque tour puis jeté
+     * ({@code QuotaService:204}), si bien qu'aucune requête ne pouvait le reconstituer après coup —
+     * ni le cache, ni le modèle n'étaient conservés. Les lignes antérieures à la migration 118 la
+     * laissent à {@code null} : leurs données n'existent pas, et les inventer serait pire que de
+     * les manquer.</p>
+     */
+    @Column(name = "provider_cost_usd", precision = 12, scale = 6, updatable = false)
+    private BigDecimal providerCostUsd;
+
+    /**
+     * D'où vient le montant : {@code PROVIDER} quand le fournisseur l'a rapporté lui-même,
+     * {@code CALCULATED} quand il a été reconstitué des tokens. Porté avec le montant, jamais
+     * déduit après coup — c'est cette distinction qui dira où chercher un écart avec la facture.
+     *
+     * <p><b>Un énuméré, pas une chaîne</b> : la table n'accueille que des valeurs qu'on a nommées.
+     * Une colonne de texte de plus serait une porte de plus par où un contenu pourrait entrer, et
+     * la garantie de F-61 est tenue par la structure, pas par la prudence des appelants.</p>
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "cost_source", length = 16, updatable = false)
+    private TurnCost.Source costSource;
+
+    /** Modèle servi, tel que rapporté par le fournisseur. {@code null} s'il ne l'a pas dit. */
+    @Column(name = "model", length = 64, updatable = false)
+    private String model;
+
+    /**
+     * Date du relevé de la grille de tarifs ayant servi au calcul (ex. {@code 2026-09-20}). Les
+     * prix changent ; sans cette colonne, un montant ancien deviendrait inexplicable.
+     */
+    @Column(name = "pricing_version", length = 32, updatable = false)
+    private String pricingVersion;
+
+    /** Vrai si le modèle était absent de la grille et que les tarifs de repli ont servi : montant approché. */
+    @Column(name = "pricing_fallback", nullable = false, updatable = false)
+    @Builder.Default
+    private boolean pricingFallback = false;
+
     /** Instant du tour (horloge applicative). Posé à l'écriture, jamais fourni par un client. */
     @Column(name = "occurred_at", nullable = false, updatable = false)
     private OffsetDateTime occurredAt;
 
-    /** Total de tokens du tour (entrée + sortie). Commodité d'affichage, jamais de tarification. */
+    /**
+     * Total de tokens du tour (entrée + sortie). Commodité d'affichage, jamais de tarification.
+     *
+     * <p>{@link #inputTokens} porte toujours le volume d'entrée <b>traité</b>, cache compris : les
+     * colonnes de cache ajoutées en F-133 le <b>ventilent</b>, elles ne s'y ajoutent pas. Sans quoi
+     * le rapport d'usage (F-16) et la consommation par client (F-61) compteraient deux fois.</p>
+     */
     public long totalTokens() {
         return inputTokens + outputTokens;
     }

@@ -118,7 +118,7 @@ class RadarNewsApiIntegrationTest extends RadarIntegrationTestBase {
                 .map(AgentMessage::content).flatMap(List::stream).map(Object::toString).reduce("", String::concat);
         assertThat(findResult).contains("MFA prestataires").doesNotContain("CAGIP");
         verify(quotaService).assertWithinQuota(alice.getId());
-        verify(quotaService).recordUsage(eq(alice.getId()), any(TurnTokens.class), isNull(), isNull(), eq(aliceA.hostId()));
+        verify(quotaService).recordUsage(eq(alice.getId()), any(TurnTokens.class), isNull(), any(), isNull(), eq(aliceA.hostId()));
 
         // Annuler la nouvelle : tout est défait, la preuve disparaît.
         mockMvc.perform(post(url(aliceA, "/news/" + evidenceId + "/undo")).contextPath("/api")
@@ -164,7 +164,7 @@ class RadarNewsApiIntegrationTest extends RadarIntegrationTestBase {
         assertThat(view.path("understanding").asText()).startsWith("Rien à noter");
         assertThat(view.path("evidenceId").isNull()).isTrue();
         assertThat(evidence.findAll()).noneMatch(e -> e.getSource() == RadarEvidenceSource.USER_NOTE);
-        verify(quotaService).recordUsage(eq(alice.getId()), any(TurnTokens.class), isNull(), isNull(), eq(aliceA.hostId()));
+        verify(quotaService).recordUsage(eq(alice.getId()), any(TurnTokens.class), isNull(), any(), isNull(), eq(aliceA.hostId()));
     }
 
     @Test

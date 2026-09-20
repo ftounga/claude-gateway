@@ -122,7 +122,7 @@ class MeetingCardPromotionServiceTest {
                 .contains("Le cluster de production est k8s-edenred");
         verify(hostFiles, never()).write(eq(userId), any(), eq("inconnu.md"), any());
         verify(quotaService).assertWithinQuota(userId);
-        verify(quotaService).recordUsage(eq(userId), any(), any(), any(), eq(hostId));
+        verify(quotaService).recordUsage(eq(userId), any(), any(), any(), any(), eq(hostId));
     }
 
     @Test

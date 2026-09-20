@@ -32,15 +32,29 @@ class UsageTurnWriter {
         this.clock = clock;
     }
 
-    /** Ajoute la ligne. Les volumes sont déjà normalisés par {@link UsageLedgerService}. */
+    /**
+     * Ajoute la ligne. Les volumes sont déjà normalisés par {@link UsageLedgerService}.
+     *
+     * @param tokens tokens du tour par nature ; {@code inputTokens} de la ligne reçoit le volume
+     *               <b>traité</b> (cache compris), inchangé depuis F-61, et les deux colonnes de
+     *               cache le ventilent
+     * @param cost   coût réel du tour (F-133), ou {@code null} si aucun n'a pu être établi
+     */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    void write(UUID userId, UUID workspaceId, UUID hostId, long inputTokens, long outputTokens) {
+    void write(UUID userId, UUID workspaceId, UUID hostId, TurnTokens tokens, TurnCost cost) {
         usageTurnRepository.save(UsageTurn.builder()
                 .userId(userId)
                 .workspaceId(workspaceId)
                 .hostId(hostId)
-                .inputTokens(inputTokens)
-                .outputTokens(outputTokens)
+                .inputTokens(tokens.processedInputTokens())
+                .outputTokens(tokens.outputTokens())
+                .cacheReadTokens(tokens.cacheReadTokens())
+                .cacheWriteTokens(tokens.cacheWriteTokens())
+                .providerCostUsd(cost == null ? null : cost.amountUsd())
+                .costSource(cost == null ? null : cost.source())
+                .model(cost == null ? null : cost.model())
+                .pricingVersion(cost == null ? null : cost.pricingVersion())
+                .pricingFallback(cost != null && cost.pricingFallback())
                 .occurredAt(OffsetDateTime.now(clock))
                 .build());
     }

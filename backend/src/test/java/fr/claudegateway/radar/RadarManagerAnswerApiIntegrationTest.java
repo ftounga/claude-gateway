@@ -73,7 +73,7 @@ class RadarManagerAnswerApiIntegrationTest extends RadarIntegrationTestBase {
         assertThat(material).contains("MFA prestataires", "Le périmètre est validé.")
                 .doesNotContain("LDAP", "CAGIP");
         verify(quotaService).assertWithinQuota(alice.getId());
-        verify(quotaService).recordUsage(eq(alice.getId()), any(TurnTokens.class), isNull(), isNull(), eq(aliceA.hostId()));
+        verify(quotaService).recordUsage(eq(alice.getId()), any(TurnTokens.class), isNull(), any(), isNull(), eq(aliceA.hostId()));
     }
 
     @Test
@@ -95,7 +95,7 @@ class RadarManagerAnswerApiIntegrationTest extends RadarIntegrationTestBase {
                 .andExpect(status().isConflict());
 
         verify(aiProvider, never()).complete(any());
-        verify(quotaService, never()).recordUsage(any(), any(TurnTokens.class), any(), any(), any());
+        verify(quotaService, never()).recordUsage(any(), any(TurnTokens.class), any(), any(), any(), any());
     }
 
     @Test

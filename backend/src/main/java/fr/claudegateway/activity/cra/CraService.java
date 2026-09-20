@@ -103,7 +103,7 @@ public class CraService {
                 null,               // clé plateforme (utilitaire de la Gateway)
                 systemPrompt(defaultMonth, hostNames),
                 512));
-        quotaService.recordUsage(userId, completion.turnTokens(), null, null, null);
+        quotaService.recordUsage(userId, completion.turnTokens(), null, completion.model(), null, null);
 
         List<CraExtraction> extracted = parser.parse(completion.content());
 

@@ -132,8 +132,10 @@ class ChatServiceStreamTest {
         verify(messageRepository).save(captor.capture());
         assertThat(captor.getValue().getRole()).isEqualTo(MessageRole.ASSISTANT);
         // Décompte ventilé par nature (F-63) : aucun cache rapporté ici, donc tout en entrée.
+        // Le modèle servi accompagne le décompte (F-133 / SF-133-01).
         verify(quotaService, times(1)).recordUsage(alice,
-                new fr.claudegateway.quota.TurnTokens(11L, 5L, 0L, 0L), null, null, null);
+                new fr.claudegateway.quota.TurnTokens(11L, 5L, 0L, 0L), null, "claude-opus-4-8",
+                null, null);
     }
 
     @Test
