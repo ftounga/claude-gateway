@@ -1147,6 +1147,12 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     setup();
     component.format.set('jar');
     service.downloadRunnerJar.and.returnValue(of(new Blob(['x'])));
+    // Sans ce leurre, `saveBlob` clique une vraie ancre : le Chrome de Karma enregistre alors le
+    // blob dans le dossier de téléchargement du poste, un `claude-runner.jar` d'un octet par
+    // exécution de la suite. Le test vérifie l'avancement de l'étape, pas l'écriture du fichier.
+    const anchor = document.createElement('a');
+    spyOn(anchor, 'click');
+    spyOn(document, 'createElement').and.returnValue(anchor);
 
     component.downloadJar();
 
