@@ -85,6 +85,39 @@ final class PaperScreen {
                 ObjectNode item = items.addObject();
                 spec.path("fields").fields().forEachRemaining(entry -> {
                     JsonNode field = entry.getValue();
+                    if (field.path("presence").asBoolean(false)) {
+                        for (JsonNode selector : field.path("sel")) {
+                            if (el.is(selector.asText()) || !el.select(selector.asText()).isEmpty()) {
+                                item.put(entry.getKey(), "true");
+                                break;
+                            }
+                        }
+                        return;
+                    }
+                    if (field.path("name").asBoolean(false)) {
+                        String name = "";
+                        for (JsonNode attribute : field.path("attr")) {
+                            if (el.hasAttr(attribute.asText())) {
+                                name = el.attr(attribute.asText());
+                                if (!name.isEmpty()) {
+                                    break;
+                                }
+                            }
+                        }
+                        if (name.isEmpty()) {
+                            Element child = first(el, field.path("sel"));
+                            if (child != null && !unsafe(child)) {
+                                name = child.text();
+                            }
+                        }
+                        if (name.isEmpty() && !unsafe(el)) {
+                            name = el.text();
+                        }
+                        if (!name.isEmpty()) {
+                            item.put(entry.getKey(), name);
+                        }
+                        return;
+                    }
                     Element target = field.path("sel").size() == 0 ? el : first(el, field.path("sel"));
                     if (target == null || unsafe(target)) {
                         return;

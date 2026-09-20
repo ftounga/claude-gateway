@@ -44,7 +44,7 @@ import com.fasterxml.jackson.databind.node.TextNode;
 final class TeamsScreen {
 
     /** Version de la table des sélecteurs : citée dans chaque manque d'écran et dans chaque résultat. */
-    static final String VERSION = "ecran-v2-2026-09-13 (à confirmer sur poste réel)";
+    static final String VERSION = "ecran-v2-2026-09-20 (recalage v2 CAGIP SF-89-20 — à confirmer sur poste réel)";
 
     /** Longueur maximale d'une valeur lue à l'écran. */
     static final int MAX_VALUE_CHARS = 4_000;
@@ -60,8 +60,22 @@ final class TeamsScreen {
     static final String BANNED = "input,textarea,select,[contenteditable]:not([contenteditable=\"false\"]),"
             + "[role=\"textbox\"],[type=\"password\"]";
 
-    /** Un champ : où le lire dans l'élément, et comment (texte, ou un attribut listé). */
-    record Field(List<String> selectors, List<String> attributes) {
+    /**
+     * Un champ : où le lire dans l'élément, et comment. Quatre modes, exclusifs :
+     * <ul>
+     *   <li><b>texte</b> ({@link #text}) : le texte du premier sous-élément trouvé (ou de l'élément si aucun
+     *       sélecteur) ;</li>
+     *   <li><b>attribut</b> ({@link #attribute}) : la valeur d'un attribut de {@link #READABLE_ATTRIBUTES} ;</li>
+     *   <li><b>présence</b> ({@link #presence}) : {@code "true"} si un marqueur (sélecteur) est porté par
+     *       l'élément ou l'un de ses descendants — <b>aucune valeur n'est lue</b>. Sert le drapeau « moi » du
+     *       fil v2, dont le seul marqueur connu est la classe sémantique {@code ChatMyMessage} (fragile : un
+     *       renommage Fluent UI la ferait disparaître, et le message serait alors compté « d'un autre ») ;</li>
+     *   <li><b>nom accessible</b> ({@link #name}) : {@code aria-label} de l'élément, sinon le texte d'un
+     *       sous-élément (sélecteurs), sinon le texte de l'élément. C'est le nom d'une conversation v2, dont
+     *       l'item ({@code role=treeitem}) ne porte pas de {@code data-tid} de titre dédié.</li>
+     * </ul>
+     */
+    record Field(List<String> selectors, List<String> attributes, boolean presence, boolean nameMode) {
 
         Field {
             selectors = List.copyOf(selectors == null ? List.of() : selectors);
@@ -74,11 +88,21 @@ final class TeamsScreen {
         }
 
         static Field text(String... selectors) {
-            return new Field(List.of(selectors), List.of());
+            return new Field(List.of(selectors), List.of(), false, false);
         }
 
         static Field attribute(List<String> selectors, String... attributes) {
-            return new Field(selectors, List.of(attributes));
+            return new Field(selectors, List.of(attributes), false, false);
+        }
+
+        /** Présence d'un marqueur sémantique dans l'élément (ou un descendant) : rend {@code "true"}, ou rien. */
+        static Field presence(String... selectors) {
+            return new Field(List.of(selectors), List.of(), true, false);
+        }
+
+        /** Nom accessible : {@code aria-label} de l'élément, sinon le texte d'un sous-élément, sinon celui de l'élément. */
+        static Field name(List<String> selectors) {
+            return new Field(selectors, List.of("aria-label"), false, true);
         }
     }
 
@@ -101,20 +125,29 @@ final class TeamsScreen {
 
     // ------------------------------------------------------------------ la table (à confirmer sur poste)
 
+    // Fil v2 (relevé réel CAGIP 2026-09-20, SF-89-16→19) : la liste des messages est « runway », chaque
+    // message un « chat-pane-item » ; le drapeau « moi » est la classe sémantique ChatMyMessage. Le conteneur
+    // et l'item d'avant (viewport / chat-pane-list) restent en repli (premier trouvé l'emporte).
     static final View MESSAGES = new View("fil affiché",
-            List.of("[data-tid=\"message-pane-list-viewport\"]", "[data-tid=\"chat-pane-list\"]"),
+            List.of("[data-tid=\"message-pane-list-runway\"]", "[data-tid=\"message-pane-list-viewport\"]",
+                    "[data-tid=\"chat-pane-list\"]"),
             List.of("[data-tid=\"chat-pane-item\"]"),
             fields("id", Field.attribute(List.of("[data-mid]"), "data-mid"),
                     "author", Field.text("[data-tid=\"message-author-name\"]"),
                     "time", Field.attribute(List.of("time[datetime]"), "datetime"),
+                    "self", Field.presence("[class*=\"ChatMyMessage\"]"),
                     "text", Field.text("[data-tid=\"chat-pane-message\"] [id^=\"content-\"]",
                             "[data-tid=\"message-body-content\"]")));
 
+    // Liste v2 (relevé réel CAGIP 2026-09-20, SF-89-16→19) : le rail « simple-collab-dnd-rail » (role=tree),
+    // chaque conversation un « treeitem » (parfois imbriqué dans un role=group), le nom = nom accessible de
+    // l'item. Le conteneur et l'item d'avant (chat-list / chat-list-item) restent en repli.
     static final View CONVERSATIONS = new View("liste des conversations",
-            List.of("[data-tid=\"chat-list\"]", "[role=\"tree\"][data-tid=\"simple-collab-dnd-rail\"]"),
-            List.of("[data-tid=\"chat-list-item\"]"),
+            List.of("[data-tid=\"simple-collab-dnd-rail\"][role=\"tree\"]", "[data-tid=\"simple-collab-dnd-rail\"]",
+                    "[data-tid=\"chat-list\"]"),
+            List.of("[role=\"treeitem\"]", "[data-tid=\"chat-list-item\"]"),
             fields("id", Field.attribute(List.of(), "data-item-id", "id"),
-                    "title", Field.text("[data-tid=\"chat-list-item-title\"]"),
+                    "title", Field.name(List.of("[data-tid=\"chat-list-item-title\"]")),
                     "time", Field.attribute(List.of("time[datetime]"), "datetime")));
 
     static final View ACTIVITY = new View("flux d'activité",
@@ -170,6 +203,12 @@ final class TeamsScreen {
             field.selectors().forEach(selectors::add);
             ArrayNode attributes = node.putArray("attr");
             field.attributes().forEach(attributes::add);
+            if (field.presence()) {
+                node.put("presence", true);
+            }
+            if (field.nameMode()) {
+                node.put("name", true);
+            }
         });
         return spec.toString();
     }
@@ -191,6 +230,16 @@ final class TeamsScreen {
                 + "   const out = {};"
                 + "   for (const name of Object.keys(spec.fields)) {"
                 + "     const f = spec.fields[name];"
+                + "     if (f.presence) { let hit = false;"
+                + "       for (const s of f.sel) { if ((el.matches && el.matches(s)) || el.querySelector(s))"
+                + "         { hit = true; break; } }"
+                + "       if (hit) { out[name] = 'true'; } continue; }"
+                + "     if (f.name) { let v = '';"
+                + "       for (const a of f.attr) { const x = el.getAttribute(a); if (x) { v = x; break; } }"
+                + "       if (!v) { const child = first(el, f.sel);"
+                + "         if (child && !unsafe(child)) { v = child.innerText || child.textContent || ''; } }"
+                + "       if (!v && !unsafe(el)) { v = el.innerText || el.textContent || ''; }"
+                + "       if (v) { out[name] = String(v).slice(0, " + MAX_VALUE_CHARS + "); } continue; }"
                 + "     const target = f.sel.length ? first(el, f.sel) : el;"
                 + "     if (!target || unsafe(target)) { continue; }"
                 + "     let v = '';"

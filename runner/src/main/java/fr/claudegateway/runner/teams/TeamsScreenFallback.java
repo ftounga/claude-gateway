@@ -176,8 +176,10 @@ final class TeamsScreenFallback {
                         || (window.requestedTo() != null && at.isAfter(window.requestedTo()))) {
                     continue;
                 }
+                // Drapeau moi/autre v2 : le message porte la classe sémantique ChatMyMessage (SF-89-20).
+                boolean fromMe = "true".equals(item.get("self"));
                 messages.add(new TeamsMessage(screenId(screenKey(item, "author", "time", "text")), target, "",
-                        new TeamsParticipant("ecran:" + author, author, null, false), at, null, false,
+                        new TeamsParticipant("ecran:" + author, author, null, fromMe), at, null, false,
                         TeamsMessageKind.TEXT, item.getOrDefault("text", ""), "", List.of(), List.of(), List.of(),
                         ""));
             }

@@ -1,0 +1,22 @@
+<!-- DOM modèle du Teams v2 RÉEL (F-89 / SF-89-20) — ancres relevées en prod CAGIP 2026-09-20 (SF-89-16→19).
+     À CONFIRMER SUR POSTE RÉEL. Fil ouvert : liste « message-pane-list-runway » (fui-Chat), chaque message
+     un « chat-pane-item » (fui-unstable-ChatItem). Auteur = message-author-name (le vrai nom), horodatage =
+     balise time (datetime + aria-label), drapeau « moi » = classe sémantique ChatMyMessage (le 2e message).
+     Le composeur porte un brouillon et un mot de passe qui ne doivent JAMAIS être lus. -->
+<html><body>
+<div data-tid="message-pane-list-runway" class="fui-Chat ___0a1b2c">
+  <div data-tid="chat-pane-item" class="fui-unstable-ChatItem fui-ChatMessage ___3d4e5f" data-mid="1726000003000">
+    <div data-mid="1726000003000"></div>
+    <span data-tid="message-author-name" class="fui-ChatMessage__author ___6g7h8i">Paul Durand</span>
+    <time datetime="2026-09-11T09:30:00.000Z" aria-label="11 septembre 11:30">11/09 11:30</time>
+    <div data-tid="chat-pane-message"><div id="content-1726000003000">On valide le lot 3 demain ?</div></div>
+  </div>
+  <div data-tid="chat-pane-item" class="fui-unstable-ChatItem fui-ChatMyMessage ___9j1k2l" data-mid="1726000004000">
+    <div data-mid="1726000004000"></div>
+    <span data-tid="message-author-name" class="fui-ChatMyMessage__author ___3m4n5o">Francky Tounga</span>
+    <time datetime="2026-09-11T10:00:00.000Z" aria-label="11 septembre 12:00" class="fui-ChatMyMessage__timestamp">11/09 12:00</time>
+    <div data-tid="chat-pane-message"><div id="content-1726000004000">Oui, je t'envoie le plan demain.</div></div>
+  </div>
+  <div data-tid="message-composer"><div role="textbox" contenteditable="true">SECRET-BROUILLON</div><input type="password" value="SECRET-MOT-DE-PASSE"></div>
+</div>
+</body></html>
