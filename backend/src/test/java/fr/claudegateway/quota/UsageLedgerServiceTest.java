@@ -48,9 +48,9 @@ class UsageLedgerServiceTest {
     void recordsTurnWithProjectAndHost() {
         TurnTokens tokens = TurnTokens.of(1_000L, 200L);
 
-        service.recordTurn(alice, project, host, tokens, COST);
+        service.recordTurn(alice, project, host, tokens, TurnExtras.NONE, COST);
 
-        verify(writer).write(alice, project, host, tokens, COST);
+        verify(writer).write(alice, project, host, tokens, TurnExtras.NONE, COST);
     }
 
     @Test
@@ -59,9 +59,9 @@ class UsageLedgerServiceTest {
         // réconcilier avec le total de la période.
         TurnTokens tokens = TurnTokens.of(500L, 100L);
 
-        service.recordTurn(alice, null, null, tokens, COST);
+        service.recordTurn(alice, null, null, tokens, TurnExtras.NONE, COST);
 
-        verify(writer).write(alice, null, null, tokens, COST);
+        verify(writer).write(alice, null, null, tokens, TurnExtras.NONE, COST);
     }
 
     @Test
@@ -70,14 +70,14 @@ class UsageLedgerServiceTest {
         // d'un tour agentique est surestimée d'un ordre de grandeur.
         TurnTokens tokens = new TurnTokens(10_000L, 5_000L, 40_000L, 8_000L);
 
-        service.recordTurn(alice, project, host, tokens, COST);
+        service.recordTurn(alice, project, host, tokens, TurnExtras.NONE, COST);
 
-        verify(writer).write(alice, project, host, tokens, COST);
+        verify(writer).write(alice, project, host, tokens, TurnExtras.NONE, COST);
     }
 
     @Test
     void writesNothingWhenTurnConsumedNothing() {
-        service.recordTurn(alice, project, host, TurnTokens.of(0L, 0L), COST);
+        service.recordTurn(alice, project, host, TurnTokens.of(0L, 0L), TurnExtras.NONE, COST);
 
         verifyNoInteractions(writer);
     }
@@ -85,14 +85,14 @@ class UsageLedgerServiceTest {
     @Test
     void negativeValuesAreClampedToZero() {
         // `TurnTokens` normalise déjà : une valeur négative n'atteint jamais le journal.
-        service.recordTurn(alice, project, host, TurnTokens.of(-10, 300), COST);
+        service.recordTurn(alice, project, host, TurnTokens.of(-10, 300), TurnExtras.NONE, COST);
 
-        verify(writer).write(alice, project, host, TurnTokens.of(0, 300), COST);
+        verify(writer).write(alice, project, host, TurnTokens.of(0, 300), TurnExtras.NONE, COST);
     }
 
     @Test
     void writesNothingWithoutUser() {
-        service.recordTurn(null, project, host, TurnTokens.of(100L, 100L), COST);
+        service.recordTurn(null, project, host, TurnTokens.of(100L, 100L), TurnExtras.NONE, COST);
 
         verifyNoInteractions(writer);
     }
@@ -103,9 +103,9 @@ class UsageLedgerServiceTest {
         // vit, et elle existait avant que le coût ne soit enregistré.
         TurnTokens tokens = TurnTokens.of(800L, 90L);
 
-        service.recordTurn(alice, project, host, tokens, null);
+        service.recordTurn(alice, project, host, tokens, TurnExtras.NONE, null);
 
-        verify(writer).write(alice, project, host, tokens, null);
+        verify(writer).write(alice, project, host, tokens, TurnExtras.NONE, null);
     }
 
     @Test
@@ -113,16 +113,27 @@ class UsageLedgerServiceTest {
         // Quand le journal échoue, le fournisseur a déjà été appelé et payé : un relevé perdu est un
         // défaut d'information, un tour en échec serait un défaut de service ET d'argent.
         doThrow(new IllegalStateException("base indisponible"))
-                .when(writer).write(any(), any(), any(), any(), any());
+                .when(writer).write(any(), any(), any(), any(), any(), any());
 
         assertThatCode(() -> service.recordTurn(alice, project, host, TurnTokens.of(1_000L, 200L),
-                COST)).doesNotThrowAnyException();
+                TurnExtras.NONE, COST)).doesNotThrowAnyException();
     }
 
     @Test
     void doesNotWriteWhenOnlyOutputIsNegative() {
-        service.recordTurn(alice, project, host, TurnTokens.of(0, -5), COST);
+        service.recordTurn(alice, project, host, TurnTokens.of(0, -5), TurnExtras.NONE, COST);
 
-        verify(writer, never()).write(eq(alice), any(), any(), any(), any());
+        verify(writer, never()).write(eq(alice), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void aTurnWithoutTokensButWithASpendIsStillRecorded() {
+        // Un tour peut n'avoir consommé aucun token et avoir tout de même coûté — une recherche
+        // web, du temps de session. Le traiter comme vide ferait disparaître la dépense (SF-133-08).
+        TurnExtras extras = new TurnExtras(3L, 0L);
+
+        service.recordTurn(alice, project, host, TurnTokens.of(0L, 0L), extras, COST);
+
+        verify(writer).write(alice, project, host, TurnTokens.of(0L, 0L), extras, COST);
     }
 }

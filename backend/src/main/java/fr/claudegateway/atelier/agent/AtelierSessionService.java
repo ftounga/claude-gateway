@@ -32,6 +32,7 @@ import fr.claudegateway.git.GitTokenMissingException;
 import fr.claudegateway.git.GitTokenService;
 import fr.claudegateway.quota.BilledTokensCalculator;
 import fr.claudegateway.quota.QuotaService;
+import fr.claudegateway.quota.TurnExtras;
 import fr.claudegateway.quota.TurnTokens;
 import fr.claudegateway.quota.UsageSnapshot;
 import fr.claudegateway.runner.relay.RelaySessionInterruptTarget;
@@ -1061,7 +1062,13 @@ public class AtelierSessionService implements RelaySessionInterruptTarget {
             // Le modèle accompagne le décompte (F-133 / SF-133-01). Ici il ne sert qu'au REPLI :
             // quand le fournisseur rapporte son coût — le cas nominal des Managed Agents — c'est
             // ce coût qui est enregistré, et il a déjà tarifé le modèle réellement servi.
+            // Les dépenses hors tokens du tour (F-133 / SF-133-08) : le temps de session, facturé
+            // 0,08 $/heure, était compté depuis F-30 sans jamais être tarifé. Quand le fournisseur
+            // rapporte son coût — le cas nominal ici — il le comprend déjà, et le calculateur ne
+            // l'ajoute donc PAS ; le compteur n'en est pas moins enregistré, pour expliquer le
+            // montant plutôt que de le faire seulement constater.
             quotaService.recordUsage(userId, turnTokens(usage, inputDelta, outputDelta),
+                    new TurnExtras(0L, secondsDelta),
                     cost == null ? null : usdOf(costDelta), properties.model(), workspaceId,
                     workspace.getHostId());
             quotaService.recordSandboxSeconds(userId, secondsDelta);

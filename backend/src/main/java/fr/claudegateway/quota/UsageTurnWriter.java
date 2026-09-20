@@ -38,10 +38,12 @@ class UsageTurnWriter {
      * @param tokens tokens du tour par nature ; {@code inputTokens} de la ligne reçoit le volume
      *               <b>traité</b> (cache compris), inchangé depuis F-61, et les deux colonnes de
      *               cache le ventilent
+     * @param extras dépenses hors tokens du tour (F-133 / SF-133-08)
      * @param cost   coût réel du tour (F-133), ou {@code null} si aucun n'a pu être établi
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    void write(UUID userId, UUID workspaceId, UUID hostId, TurnTokens tokens, TurnCost cost) {
+    void write(UUID userId, UUID workspaceId, UUID hostId, TurnTokens tokens, TurnExtras extras,
+            TurnCost cost) {
         usageTurnRepository.save(UsageTurn.builder()
                 .userId(userId)
                 .workspaceId(workspaceId)
@@ -50,6 +52,8 @@ class UsageTurnWriter {
                 .outputTokens(tokens.outputTokens())
                 .cacheReadTokens(tokens.cacheReadTokens())
                 .cacheWriteTokens(tokens.cacheWriteTokens())
+                .webSearchRequests(extras == null ? 0L : extras.webSearchRequests())
+                .sandboxSeconds(extras == null ? 0L : extras.sandboxSeconds())
                 .providerCostUsd(cost == null ? null : cost.amountUsd())
                 .costSource(cost == null ? null : cost.source())
                 .model(cost == null ? null : cost.model())

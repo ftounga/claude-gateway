@@ -37,12 +37,26 @@ import java.util.List;
  */
 public record AgentTurn(String text, List<AgentToolCall> toolCalls, boolean finished,
         int inputTokens, int outputTokens, boolean truncated, List<AgentContentBlock> reasoning,
-        int cacheReadTokens, int cacheWriteTokens) {
+        int cacheReadTokens, int cacheWriteTokens, int webSearchRequests) {
+
+    /**
+     * Forme sans recherche web — celle des chemins qui ne déclarent pas l'outil de recherche
+     * (F-133 / SF-133-08).
+     */
+    public AgentTurn(String text, List<AgentToolCall> toolCalls, boolean finished,
+            int inputTokens, int outputTokens, boolean truncated, List<AgentContentBlock> reasoning,
+            int cacheReadTokens, int cacheWriteTokens) {
+        this(text, toolCalls, finished, inputTokens, outputTokens, truncated, reasoning,
+                cacheReadTokens, cacheWriteTokens, 0);
+    }
 
     public AgentTurn {
         reasoning = reasoning == null ? List.of() : List.copyOf(reasoning);
         cacheReadTokens = Math.max(0, cacheReadTokens);
         cacheWriteTokens = Math.max(0, cacheWriteTokens);
+        // La recherche web est facturée À LA REQUÊTE, hors tokens (10 $ les mille) : ne pas la
+        // compter revient à ignorer une dépense que rien d'autre ne révèle (F-133 / SF-133-08).
+        webSearchRequests = Math.max(0, webSearchRequests);
     }
 
     /** Forme sans ventilation de cache — conservée pour les appelants qui l'attendent. */

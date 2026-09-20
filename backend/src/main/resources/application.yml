@@ -775,6 +775,12 @@ app:
       # Tarifs de repli quand le modele servi est absent de la grille. Un probleme de tarif ne fait
       # JAMAIS echouer un tour : le fournisseur a deja ete appele et paye.
       default-model: ${APP_COST_DEFAULT_MODEL:claude-opus-5}
+      # --- Ce que le fournisseur facture EN DEHORS des tokens (SF-133-08) ------------------------
+      # La recherche web est facturee A LA REQUETE, en plus des tokens qu'elle rapporte ; le temps
+      # de session des Managed Agents est facture A L'HEURE. Aucun compteur de tokens ne les revele,
+      # et les ignorer fait sous-estimer tout tour agentique.
+      web-search-per-thousand: ${APP_COST_WEB_SEARCH_PER_K:10.00}
+      session-hour: ${APP_COST_SESSION_HOUR:0.08}
       # USD par million de tokens. Releve du 2026-09-20.
       models:
         claude-opus-5:

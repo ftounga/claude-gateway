@@ -142,6 +142,58 @@ class UsageTurnCostIntegrationTest {
         assertThat(turn.getProviderCostUsd()).isEqualByComparingTo("5.000000");
     }
 
+    // ------------------------------------------------ les dépenses hors tokens (SF-133-08)
+
+    @Test
+    void recordsWebSearchesAndChargesThem() {
+        quotaService.recordUsage(userId, TurnTokens.of(10_000L, 5_000L), new TurnExtras(2L, 0L),
+                null, "claude-opus-5", null, null);
+
+        UsageTurn turn = onlyTurn();
+        assertThat(turn.getWebSearchRequests()).isEqualTo(2L);
+        // 0,175 $ de tokens + 2 × 0,01 $ de recherches.
+        assertThat(turn.getProviderCostUsd()).isEqualByComparingTo("0.195000");
+    }
+
+    @Test
+    void recordsSessionSecondsWithoutDoubleCountingTheProviderCost() {
+        // Le coût rapporté par les Managed Agents comprend déjà leur temps de session : le
+        // compteur est enregistré pour EXPLIQUER le montant, pas pour le gonfler.
+        quotaService.recordUsage(userId, TurnTokens.of(1_000L, 500L), new TurnExtras(0L, 3_600L),
+                new BigDecimal("0.80"), "claude-opus-5", null, null);
+
+        UsageTurn turn = onlyTurn();
+        assertThat(turn.getSandboxSeconds()).isEqualTo(3_600L);
+        assertThat(turn.getProviderCostUsd()).isEqualByComparingTo("0.800000");
+        assertThat(turn.getCostSource()).isEqualTo(TurnCost.Source.PROVIDER);
+    }
+
+    @Test
+    void aTurnThatOnlySearchedIsStillRecorded() {
+        quotaService.recordUsage(userId, TurnTokens.of(0L, 0L), new TurnExtras(4L, 0L),
+                null, "claude-opus-5", null, null);
+
+        UsageTurn turn = onlyTurn();
+        assertThat(turn.getWebSearchRequests()).isEqualTo(4L);
+        assertThat(turn.getProviderCostUsd()).isEqualByComparingTo("0.040000");
+    }
+
+    @Test
+    void extrasNeverEnterTheQuota() {
+        // NON-RÉGRESSION. F-133 mesure ce que NOUS payons ; il ne change pas ce que le CLIENT paie.
+        // Deux tours identiques en tokens, l'un avec 100 recherches : même décompte de quota.
+        quotaService.recordUsage(userId, TurnTokens.of(1_000L, 100L), new TurnExtras(100L, 7_200L),
+                null, "claude-opus-5", null, null);
+
+        UsageCounter counter = usageCounterRepository.findAll().stream()
+                .filter(c -> c.getUserId().equals(userId))
+                .findFirst()
+                .orElseThrow();
+        // 1 000×5 + 100×25 = 7 500 µ$ ⇒ 0,0075 $ ÷ 9 $ par million = 833 tokens de quota.
+        // Exactement ce que vaudrait le même tour sans aucune recherche.
+        assertThat(counter.getBilledTokens()).isEqualTo(833L);
+    }
+
     private UsageTurn onlyTurn() {
         List<UsageTurn> turns = usageTurnRepository.findAll().stream()
                 .filter(t -> t.getUserId().equals(userId))

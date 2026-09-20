@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
 class ProviderCostCalculatorTest {
 
     private final ProviderCostCalculator calculator = new ProviderCostCalculator(
-            new ProviderPricingProperties(null, null, null));
+            new ProviderPricingProperties(null, null, null, null, null));
 
     @Test
     void chargesEachNatureAtItsOwnRate() {
@@ -130,9 +130,70 @@ class ProviderCostCalculatorTest {
     void anEmptyConfiguredGridFallsBackOnTheBuiltInOne() {
         // Une grille vide n'est pas un réglage : ce serait facturer zéro, donc ne rien mesurer.
         ProviderCostCalculator bare = new ProviderCostCalculator(
-                new ProviderPricingProperties("", "", Map.of()));
+                new ProviderPricingProperties("", "", Map.of(), null, null));
 
         assertThat(bare.calculate(new TurnTokens(1_000_000L, 0L, 0L, 0L), "claude-opus-5")
                 .amountUsd()).isEqualByComparingTo("5.000000");
+    }
+
+    // ------------------------------------------------ les dépenses hors tokens (SF-133-08)
+
+    @Test
+    void chargesWebSearchesPerThousand() {
+        // 10 $ les mille : trois recherches valent trois centimes, et aucun compteur de tokens ne
+        // les aurait révélées.
+        TurnCost cost = calculator.calculate(TurnTokens.of(0L, 0L), new TurnExtras(3L, 0L),
+                "claude-opus-5");
+
+        assertThat(cost.amountUsd()).isEqualByComparingTo("0.030000");
+    }
+
+    @Test
+    void chargesSessionTimePerHour() {
+        // 0,08 $ l'heure : un quart d'heure de session vaut deux centimes. Ces secondes étaient
+        // comptées depuis F-30 et n'avaient jamais été tarifées.
+        TurnCost cost = calculator.calculate(TurnTokens.of(0L, 0L), new TurnExtras(0L, 900L),
+                "claude-opus-5");
+
+        assertThat(cost.amountUsd()).isEqualByComparingTo("0.020000");
+    }
+
+    @Test
+    void addsExtrasOnTopOfTheTokens() {
+        // (10 000×5 + 5 000×25) ÷ 1e6 = 0,175 $ de tokens, plus 2 × 0,01 $ de recherches.
+        TurnCost cost = calculator.calculate(TurnTokens.of(10_000L, 5_000L),
+                new TurnExtras(2L, 0L), "claude-opus-5");
+
+        assertThat(cost.amountUsd()).isEqualByComparingTo("0.195000");
+    }
+
+    @Test
+    void doesNotAddExtrasWhenTheProviderAlreadyReportedItsCost() {
+        // LE PIÈGE DE LA SUBFEATURE : le coût rapporté par les Managed Agents comprend DÉJÀ leurs
+        // recherches web et leur temps de session. Les ajouter les compterait deux fois — et
+        // lourdement, puisque c'est précisément sur ce chemin que le temps de session existe.
+        TurnCost cost = calculator.calculate(new BigDecimal("0.80"), TurnTokens.of(1_000L, 500L),
+                new TurnExtras(50L, 3_600L), "claude-opus-5");
+
+        assertThat(cost.amountUsd()).isEqualByComparingTo("0.800000");
+        assertThat(cost.source()).isEqualTo(TurnCost.Source.PROVIDER);
+    }
+
+    @Test
+    void emptyOrNegativeExtrasCostNothing() {
+        assertThat(calculator.calculate(TurnTokens.of(0L, 0L), TurnExtras.NONE, "claude-opus-5")
+                .amountUsd()).isEqualByComparingTo("0.000000");
+        assertThat(calculator.calculate(TurnTokens.of(0L, 0L), new TurnExtras(-5L, -900L),
+                "claude-opus-5").amountUsd()).isEqualByComparingTo("0.000000");
+        assertThatCode(() -> calculator.calculate(TurnTokens.of(1L, 1L), null, "claude-opus-5"))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void aTurnWithoutTokensButWithSearchesStillCosts() {
+        // Un tour peut n'avoir consommé aucun token et avoir tout de même coûté. Le traiter comme
+        // vide ferait disparaître la dépense du relevé.
+        assertThat(calculator.calculate(TurnTokens.of(0L, 0L), new TurnExtras(1L, 0L),
+                "claude-opus-5").amountUsd()).isEqualByComparingTo("0.010000");
     }
 }
