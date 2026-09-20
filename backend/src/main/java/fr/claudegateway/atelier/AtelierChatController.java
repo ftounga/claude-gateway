@@ -107,7 +107,7 @@ public class AtelierChatController {
                 request.message(), request.modeOrDefault());
         return new AtelierChatResponse(result.reply(), result.actions(), result.messageId(),
                 result.inputTokens(), result.outputTokens(), result.activeSeconds(),
-                result.budgetReached(), turnCostView.labelFor(result.costUsd()));
+                result.budgetReached(), turnCostView.labelFor(result.costUsd(), null, turnCostView.callerIsAdmin()));
     }
 
     /**
@@ -390,6 +390,22 @@ public class AtelierChatController {
      * l'utilisateur l'a <b>interrompu</b> explicitement (F-32 / SF-38-07) — jamais parce qu'un
      * navigateur est parti.</p>
      */
+    /**
+     * Le montant du tour, suivi de sa <b>part de contexte relue</b> (F-134 / SF-134-03) :
+     * {@code "0,42 € · 91 % relu"}.
+     *
+     * <p>Relire coûte un vingtième d'écrire : cette part est donc le seul chiffre qui dise, d'un
+     * coup d'œil, si le cache fait son travail — et une régression future s'y verra sans qu'on ait
+     * à interroger la base.</p>
+     */
+    private String labelOf(AtelierChatResult result, boolean admin) {
+        String amount = turnCostView.labelFor(result.costUsd(), admin);
+        if (amount == null || result.reusedPercent() == null) {
+            return amount;
+        }
+        return amount + " · " + result.reusedPercent() + " % relu";
+    }
+
     private void relay(SseEmitter emitter, UUID userId, UUID workspaceId, String message,
             fr.claudegateway.agent.AgentTurnMode mode, boolean hasAccess, boolean admin) {
         LiveTurn turn;
@@ -535,14 +551,14 @@ public class AtelierChatController {
                     // précision restée en file ne relance un tour derrière elle — mais aucune ne
                     // disparaît en silence non plus.
                     turn.publishSteersDropped(turn.sealAndDrain(), "interrupted");
-                    turn.publish("done", StreamDone.of(result, false, turnCostView.labelFor(result.costUsd(), admin)));
+                    turn.publish("done", StreamDone.of(result, false, labelOf(result, admin)));
                     break;
                 }
                 // Prendre la première précision restante OU sceller, en un seul geste : aucune
                 // précision ne peut être acceptée entre les deux par un tour qui ne la lirait jamais.
                 java.util.Optional<LiveTurn.Steer> followUp = turn.pollFollowUpOrSeal();
                 turn.publish("done", StreamDone.of(result, followUp.isPresent(),
-                        turnCostView.labelFor(result.costUsd(), admin)));
+                        labelOf(result, admin)));
                 if (followUp.isEmpty()) {
                     break;
                 }
