@@ -1,3 +1,5 @@
+import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideHttpClient } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
@@ -282,7 +284,12 @@ describe('AtelierTerminalComponent — la peau du terminal Teams (F-89 / SF-89-0
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [AtelierTerminalComponent, NoopAnimationsModule],
-      providers: [provideRouter([])],
+      providers: [
+        // F-133 / SF-133-15 : la barre de budget de la semaine vit dans la barre du terminal
+        // et lit `/api/admin/cost/summary`. Sans droit de lecture, elle ne montre rien —
+        // c'est l'état par défaut de ces tests.
+        provideHttpClient(),
+        provideHttpClientTesting(),provideRouter([])],
     }).compileComponents();
     fixture = TestBed.createComponent(AtelierTerminalComponent);
     component = fixture.componentInstance;

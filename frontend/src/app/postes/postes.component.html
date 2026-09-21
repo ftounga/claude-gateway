@@ -251,6 +251,10 @@
               <mat-icon>{{ online(host) ? 'cloud_done' : 'cloud_off' }}</mat-icon>
               {{ presenceState(host) }}
             </span>
+            <!-- F-133 / SF-133-15 — OÙ L'ON EN EST DU BUDGET de ce client, tout de suite et pas
+                 seulement au dépassement. Ne s'affiche que si un budget s'applique, et que pour
+                 l'administrateur : le montant ne quitte pas le serveur pour les autres. -->
+            <app-weekly-budget [hostId]="host.id"></app-weekly-budget>
             @if (host.rootName) {
               <span class="poste__mono poste__fact" matTooltip="Racine du poste">{{ host.rootName }}</span>
             }

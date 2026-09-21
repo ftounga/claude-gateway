@@ -44,6 +44,10 @@
           {{ localFolder }}
         </span>
       }
+      <!-- F-133 / SF-133-15 — LE BUDGET DE LA SEMAINE de ce client, dans la barre. Le coût de
+           chaque réponse était déjà là (SF-133-02) ; ce qui manquait était le cumul et son
+           plafond. Rien ne s'affiche sans budget applicable, ni hors administration. -->
+      <app-weekly-budget [hostId]="hostId" [compact]="true"></app-weekly-budget>
       <!-- Pastille de moteur (F-39 / SF-39-08, D1) : dit **où le code s'exécute**, jamais un nom de
            mode. C'est tout ce qui reste, à l'écran, des anciens « Assistant » et « Terminal ». -->
       <span

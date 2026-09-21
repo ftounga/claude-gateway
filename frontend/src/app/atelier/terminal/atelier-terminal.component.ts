@@ -29,6 +29,8 @@ import {
   ForgeCrumb,
 } from '../../shared/forge-breadcrumb/forge-breadcrumb.component';
 import { LiveBadgeComponent } from '../../shared/live-badge/live-badge.component';
+import { WeeklyBudgetComponent } from '../../shared/weekly-budget/weekly-budget.component';
+import { WeeklyBudgetService } from '../../core/services/weekly-budget.service';
 import { MarkdownPipe } from '../../shared/markdown.pipe';
 import { TeamsLinkBadgeComponent } from '../../shared/teams-link-badge/teams-link-badge.component';
 import { TeamsLink } from '../teams/teams-link.service';
@@ -128,6 +130,7 @@ export const LONG_THREAD_TURNS = 40;
     TeamsLinkBadgeComponent, NgTemplateOutlet, TerminalEmailComponent, PageBlockComponent, PagePanelComponent,
     MatButtonToggleModule, MatIconModule, MatProgressBarModule, MatProgressSpinnerModule,
     MatTooltipModule, RouterLink,
+    WeeklyBudgetComponent,
   ],
   templateUrl: './atelier-terminal.component.html',
   // DEUX FEUILLES, ET C'EST DÉLIBÉRÉ (F-83 / SF-83-02) : la peau « lecture seule » vit à part.
@@ -216,6 +219,12 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   @Input()
   set hostId(value: string | null) {
     this.hostIdValue.set(value ?? null);
+    // F-133 / SF-133-15 : c'est ici qu'on sait DE QUEL client il s'agit — donc ici qu'on demande le
+    // budget de la semaine. Le service ne lit qu'une fois, même si la Forge l'a déjà fait, et se
+    // tait s'il n'y a pas de droit de lecture.
+    if (value) {
+      this.weeklyBudget.load();
+    }
   }
   get hostId(): string | null {
     return this.hostIdValue();
@@ -903,6 +912,9 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
   /** Cadence du spinner : assez vive pour vivre, assez lente pour ne pas scintiller. */
   private static readonly SPINNER_INTERVAL_MS = 120;
+
+  /** Le budget de la semaine, partagé avec la Forge (F-133 / SF-133-15). */
+  private readonly weeklyBudget = inject(WeeklyBudgetService);
 
   private readonly changeDetector = inject(ChangeDetectorRef);
   private readonly snackBar = inject(MatSnackBar);
