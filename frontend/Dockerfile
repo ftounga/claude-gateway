@@ -9,6 +9,10 @@ RUN npm ci
 COPY . .
 ARG BUILD_CONFIGURATION=production
 RUN npm run build -- --configuration=$BUILD_CONFIGURATION
+# La coquille des pages partagées, dérivée de l'index fraîchement construit (F-110 / SF-110-06).
+# Le script échoue si le nom de l'outil y subsiste : on préfère un build rouge à un aperçu de lien
+# qui nomme l'outil dans le fil de discussion d'un client.
+RUN npm run build:partage
 
 # ---- Run stage ----
 FROM nginx:alpine AS run

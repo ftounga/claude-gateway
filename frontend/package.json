@@ -8,7 +8,8 @@
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "verify:public": "node scripts/verify-public-metadata.mjs",
-    "verify:public:dist": "node scripts/verify-public-metadata.mjs dist/frontend/browser"
+    "verify:public:dist": "node scripts/verify-public-metadata.mjs dist/frontend/browser",
+    "build:partage": "node scripts/page-partagee.mjs dist/frontend/browser && node scripts/page-partagee.test.mjs dist/frontend/browser/partage.html"
   },
   "private": true,
   "dependencies": {
