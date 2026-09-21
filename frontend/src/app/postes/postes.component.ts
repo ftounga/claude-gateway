@@ -30,6 +30,7 @@ import {
   GovernanceMapFile,
   GovernanceMapGain,
   GovernanceMapGrowth,
+  HostLearning,
 } from '../core/models/governance.models';
 import {
   HostFolder,
@@ -356,6 +357,12 @@ export class PostesComponent implements OnInit {
    * n'est <b>pas</b> la même chose qu'une carte vide.</p>
    */
   private readonly maps = signal<Record<string, GovernanceMap>>({});
+  /**
+   * La mesure d'apprentissage par poste (F-140 / SF-140-01) : appels d'outils par tour, sur deux
+   * fenêtres. Lue avec la carte, au même rythme et sous la même garde — c'est une lecture en base,
+   * elle ne touche pas la machine.
+   */
+  private readonly learnings = signal<Record<string, HostLearning>>({});
 
   /** Postes dont la carte a déjà été lue dans cette page — le sondage ne la relit jamais. */
   private readonly mapsRead = new Set<string>();
@@ -1129,6 +1136,40 @@ export class PostesComponent implements OnInit {
     return `depuis le ${since}, cette carte est passée de ${growth.sinceFacts} à ${map.facts} fait(s)`;
   }
 
+  /**
+   * **La mesure qui décide** (F-140 / SF-140-01) : l'agent cherche-t-il moins qu'avant ?
+   *
+   * <p>Absente tant qu'aucun tour n'a eu lieu sur la fenêtre longue — un ratio calculé sur rien
+   * n'apprendrait rien, et « 0,0 appel par tour » se lirait comme un succès éclatant.</p>
+   */
+  learningOf(host: RunnerHostOverview): HostLearning | null {
+    const id = host.id;
+    if (id === null) {
+      return null;
+    }
+    const learning = this.learnings()[id];
+    return learning && learning.longCallsPerTurn !== null ? learning : null;
+  }
+
+  /** La phrase de la mesure, avec les deux fenêtres côte à côte : c'est l'écart qui informe. */
+  learningLabel(learning: HostLearning): string {
+    const long = learning.longCallsPerTurn?.toFixed(1).replace('.', ',');
+    if (learning.recentCallsPerTurn === null) {
+      return `${long} appel(s) d'outil par tour sur 30 jours`;
+    }
+    const recent = learning.recentCallsPerTurn.toFixed(1).replace('.', ',');
+    return `${recent} appel(s) d'outil par tour sur 7 jours, contre ${long} sur 30 jours`;
+  }
+
+  /** Vrai quand l'agent cherche moins qu'avant : c'est la promesse de F-136 et F-137, vérifiée. */
+  learningImproving(learning: HostLearning): boolean {
+    return (
+      learning.recentCallsPerTurn !== null &&
+      learning.longCallsPerTurn !== null &&
+      learning.recentCallsPerTurn < learning.longCallsPerTurn
+    );
+  }
+
   /** Les constats montrés par niveau : trois au plus, erreurs et avertissements jamais mêlés. */
   integriteConstats(constats: GovernanceIntegriteConstat[]): GovernanceIntegriteConstat[] {
     return constats.slice(0, MAX_SHOWN_CONSTATS);
@@ -1256,6 +1297,13 @@ export class PostesComponent implements OnInit {
       }
       this.mapsRead.add(hostId);
       this.loadIntegrite(hostId);
+      this.governance.getLearning(hostId).subscribe({
+        next: (learning) =>
+          this.learnings.update((all) => ({ ...all, [hostId]: learning })),
+        // Silencieux : une mesure absente n'empêche rien, et un rouge ici ferait croire à une panne
+        // de la carte elle-même.
+        error: () => undefined,
+      });
       this.governance.getMap(hostId).subscribe({
         next: (map) => this.maps.update((all) => ({ ...all, [hostId]: map })),
         // SILENCIEUX, comme la liste des dossiers : la carte du poste reste exacte, et un rouge ici

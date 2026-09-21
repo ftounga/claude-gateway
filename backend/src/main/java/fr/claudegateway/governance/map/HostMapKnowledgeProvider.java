@@ -1,11 +1,14 @@
 package fr.claudegateway.governance.map;
 
+import java.time.Clock;
+import java.time.LocalDate;
 import java.util.UUID;
 import java.util.concurrent.Executor;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import fr.claudegateway.atelier.HostKnowledgeSource;
@@ -30,12 +33,23 @@ public class HostMapKnowledgeProvider implements HostKnowledgeSource {
     private final HostMapStore store;
     private final GovernanceHostScope hostScope;
     private final Executor executor;
+    private final Clock clock;
+    /**
+     * Âge au-delà duquel un fait d'infrastructure est dit « à re-vérifier » (F-139 / SF-139-01).
+     *
+     * <p>Quatre mois par défaut : au-delà, une version, un certificat ou un droit ont eu le temps de
+     * changer sans que personne ne l'écrive. Réglable, parce que le bon seuil dépend du client.</p>
+     */
+    private final int factMaxAgeDays;
 
     public HostMapKnowledgeProvider(HostMapStore store, GovernanceHostScope hostScope,
-            @Qualifier("hostMapRefreshExecutor") Executor executor) {
+            @Qualifier("hostMapRefreshExecutor") Executor executor, Clock clock,
+            @Value("${app.governance.map.fact-max-age-days:120}") int factMaxAgeDays) {
         this.store = store;
         this.hostScope = hostScope;
         this.executor = executor;
+        this.clock = clock;
+        this.factMaxAgeDays = factMaxAgeDays;
     }
 
     @Override
@@ -62,7 +76,8 @@ public class HostMapKnowledgeProvider implements HostKnowledgeSource {
         try {
             // La recherche porte sur la carte DU POSTE DU TOUR, lue par (user_id, host_id) : aucun
             // fait d'un autre client ne peut être joint à cette question.
-            return HostFactLookup.factsFor(store.filesOf(userId, host.hostId()), question);
+            return HostFactLookup.factsFor(store.filesOf(userId, host.hostId()), question,
+                    LocalDate.now(clock), factMaxAgeDays);
         } catch (RuntimeException ex) {
             log.debug("Rappel de faits indisponible ({})", ex.getClass().getSimpleName());
             return null;

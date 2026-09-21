@@ -17,6 +17,7 @@ import fr.claudegateway.auth.CurrentUser;
 import fr.claudegateway.governance.dto.GovernanceDepositPlan;
 import fr.claudegateway.governance.dto.GovernanceFileComparison;
 import fr.claudegateway.governance.dto.GovernanceHostSummary;
+import fr.claudegateway.governance.dto.HostLearningView;
 import fr.claudegateway.governance.dto.GovernanceHostView;
 import fr.claudegateway.governance.dto.GovernanceIntegriteConstatView;
 import fr.claudegateway.governance.dto.GovernanceIntegriteView;
@@ -54,6 +55,7 @@ public class GovernanceHostController {
     private final IntegriteInspection integriteInspection;
     private final GovernanceHostScope hostScope;
     private final HostMemoryService memoryService;
+    private final HostLearningService learningService;
     private final AtelierAccessService atelierAccess;
     private final CurrentUser currentUser;
 
@@ -62,6 +64,7 @@ public class GovernanceHostController {
             GovernanceFileReadingService fileReadingService,
             GovernanceMapReadingService mapReadingService, IntegriteInspection integriteInspection,
             GovernanceHostScope hostScope, HostMemoryService memoryService,
+            HostLearningService learningService,
             AtelierAccessService atelierAccess, CurrentUser currentUser) {
         this.activationService = activationService;
         this.depositService = depositService;
@@ -70,6 +73,7 @@ public class GovernanceHostController {
         this.integriteInspection = integriteInspection;
         this.hostScope = hostScope;
         this.memoryService = memoryService;
+        this.learningService = learningService;
         this.atelierAccess = atelierAccess;
         this.currentUser = currentUser;
     }
@@ -219,6 +223,20 @@ public class GovernanceHostController {
         atelierAccess.requireAccess();
         UUID userId = currentUser.requireId();
         return depositService.deposit(userId, hostScope.require(userId, hostRef), packageId);
+    }
+
+    /**
+     * <b>L'application apprend-elle ?</b> (F-140 / SF-140-01)
+     *
+     * <p>Combien d'appels d'outils il faut pour répondre à un tour, sur une fenêtre récente et sur
+     * une longue. C'est le critère de réussite désigné par l'audit pour F-136 et F-137 : si la carte
+     * sert, l'agent cherche moins. Lecture seule, deux comptages.</p>
+     */
+    @GetMapping("/{hostRef}/learning")
+    public HostLearningView learning(@PathVariable String hostRef) {
+        atelierAccess.requireAccess();
+        UUID userId = currentUser.requireId();
+        return learningService.describe(userId, hostScope.require(userId, hostRef));
     }
 
     /**

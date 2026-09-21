@@ -67,4 +67,14 @@ public interface RunnerAuditRepository extends JpaRepository<RunnerAudit, UUID> 
      * projet ne suffit jamais à effacer le journal de quelqu'un d'autre.</p>
      */
     void deleteByUserIdAndWorkspaceId(UUID userId, UUID workspaceId);
+
+    /**
+     * Combien d'appels d'outils ce poste a-t-il demandés depuis une date (F-140 / SF-140-01).
+     *
+     * <p>C'est la moitié de la mesure qui décide si l'application apprend : si elle sait déjà, elle
+     * cherche moins. Filtré par {@code user_id} <b>et</b> {@code host_id} — un poste ne compte jamais
+     * pour un autre, ni pour un autre compte.</p>
+     */
+    long countByUserIdAndHostIdAndCreatedAtGreaterThanEqual(UUID userId, UUID hostId,
+            java.time.OffsetDateTime since);
 }

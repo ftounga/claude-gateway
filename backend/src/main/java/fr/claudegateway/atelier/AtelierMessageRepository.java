@@ -25,4 +25,14 @@ public interface AtelierMessageRepository extends JpaRepository<AtelierMessage, 
 
     /** Purge des messages d'un workspace supprimé (SF-11-03) : sans elle, ils restent orphelins. */
     void deleteByWorkspaceId(UUID workspaceId);
+
+    /**
+     * Combien de <b>tours</b> ont été demandés sur ces projets depuis une date (F-140 / SF-140-01).
+     *
+     * <p>Un tour = un message de l'utilisateur. C'est l'autre moitié de la mesure : le dénominateur
+     * de « combien d'appels d'outils faut-il pour répondre ». Les projets sont ceux du poste, et le
+     * filtre porte aussi sur {@code user_id}.</p>
+     */
+    long countByUserIdAndWorkspaceIdInAndRoleAndCreatedAtGreaterThanEqual(UUID userId,
+            java.util.Collection<UUID> workspaceIds, String role, java.time.OffsetDateTime since);
 }
