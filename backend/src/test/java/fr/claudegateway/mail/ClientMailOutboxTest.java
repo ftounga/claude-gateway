@@ -51,7 +51,7 @@ class ClientMailOutboxTest {
     void setUp() {
         lenient().when(transactionManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         outbox = new ClientMailOutbox(repository, emailService, attachmentStore, transactionManager,
-                Clock.fixed(NOW, ZoneOffset.UTC));
+                Clock.fixed(NOW, ZoneOffset.UTC), new ClientMailIdentity(""));
         email = ClientEmail.builder().id(UUID.randomUUID()).userId(UUID.randomUUID()).hostId(UUID.randomUUID())
                 .kind(ClientEmail.Kind.AGENT).clientName("CAGIP").recipient("franck@cagip.fr").recipientVerified(true)
                 .subject("Compte rendu").sizeBytes(120).bodyText("# CR").bodyHtml("<h1>CR</h1>")
@@ -86,7 +86,8 @@ class ClientMailOutboxTest {
 
         ArgumentCaptor<ClientMailMessage> message = ArgumentCaptor.forClass(ClientMailMessage.class);
         verify(emailService).sendClientMail(message.capture());
-        assertThat(message.getValue()).isEqualTo(new ClientMailMessage("franck@cagip.fr", "claude-gateway pour CAGIP",
+        // F-110 / SF-110-06 : l'expéditeur ne nomme plus l'outil — ni le client, qui sait qui il est.
+        assertThat(message.getValue()).isEqualTo(new ClientMailMessage("franck@cagip.fr", "NG IT Consulting",
                 "Compte rendu", "# CR", "<h1>CR</h1>"));
         assertThat(email.getStatus()).isEqualTo(ClientEmailStatus.SENT);
         assertThat(email.getSentAt()).isEqualTo(AT);

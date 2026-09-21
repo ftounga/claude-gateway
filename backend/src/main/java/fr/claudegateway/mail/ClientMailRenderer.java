@@ -6,7 +6,6 @@ import org.commonmark.Extension;
 import org.commonmark.ext.gfm.tables.TablesExtension;
 import org.commonmark.parser.Parser;
 import org.commonmark.renderer.html.HtmlRenderer;
-import org.springframework.web.util.HtmlUtils;
 
 /**
  * <b>Markdown → HTML sobre, et sa version texte</b> (F-110 / SF-110-02, cadrage §4).
@@ -43,12 +42,13 @@ public final class ClientMailRenderer {
      * Rend un corps Markdown.
      *
      * @param markdown   corps écrit par l'agent
-     * @param clientName nom du client, cité dans le pied
+     * @param clientName nom du client — <b>plus utilisé depuis F-110 / SF-110-06</b>, le pied de
+     *                   page ayant disparu. Conservé au contrat pour ne pas toucher aux appelants,
+     *                   et parce qu'un rendu par client pourrait le reprendre.
      * @return versions texte et HTML
      */
     public static Rendered render(String markdown, String clientName) {
         String source = markdown == null ? "" : markdown;
-        String footer = "Envoyé depuis claude-gateway pour " + clientName + ", à votre demande.";
         String body = HTML.render(PARSER.parse(source));
         String styled = body
                 .replace("<table>", "<table style=\"border-collapse:collapse;margin:8px 0\">")
@@ -59,10 +59,8 @@ public final class ClientMailRenderer {
                 + "<div style=\"font-family:Inter,Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;"
                 + "color:#0F172A;max-width:760px\">"
                 + styled
-                + "<hr style=\"border:none;border-top:1px solid #E2E8F0;margin:24px 0 8px\">"
-                + "<p style=\"font-size:12px;color:#64748B\">" + HtmlUtils.htmlEscape(footer, "UTF-8") + "</p>"
                 + "</div></body></html>";
-        String text = source.strip() + "\n\n-- \n" + footer + "\n";
+        String text = source.strip() + "\n";
         return new Rendered(text, html);
     }
 }

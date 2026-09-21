@@ -1,5 +1,6 @@
-import { Component, computed, inject } from '@angular/core';
+import { Component, OnInit, computed, inject } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
+import { Title } from '@angular/platform-browser';
 import { ActivatedRoute } from '@angular/router';
 import { map } from 'rxjs';
 
@@ -19,7 +20,9 @@ const SHARE_TOKEN = /^[A-Za-z0-9_-]{43}$/;
   template: `
     <section class="shared-page">
       <header class="shared-page__bar">
-        <img class="shared-page__logo" src="/claude-portal-logo.png" alt="" width="24" height="24" />
+        <!-- F-110 / SF-110-06 : ni logo ni nom d'outil. Cette page est ouverte par un CLIENT, et
+             rien de ce qui lui parvient ne doit désigner l'outil qui l'a produite. Le bandeau garde
+             ce qui lui est utile : ce qu'est ce lien, et qu'il ne durera pas. -->
         <span class="shared-page__label">Page partagée</span>
         <span class="shared-page__hint">Lien révocable, à durée limitée</span>
       </header>
@@ -69,7 +72,21 @@ const SHARE_TOKEN = /^[A-Za-z0-9_-]{43}$/;
     }
   `,
 })
-export class SharedPageComponent {
+export class SharedPageComponent implements OnInit {
+
+  private readonly title = inject(Title);
+
+  /**
+   * Le titre de l'onglet, posé à l'ouverture (F-110 / SF-110-06).
+   *
+   * <p>Sans cela, le client lit dans son navigateur le titre de l'application entière — qui nomme
+   * l'outil. Le titre du document est la trace la plus facile à oublier, et l'une des plus
+   * visibles.</p>
+   */
+  ngOnInit(): void {
+    this.title.setTitle('Page partagée');
+  }
+
   private readonly token = toSignal(inject(ActivatedRoute).paramMap.pipe(map((params) => params.get('token') ?? '')),
     { initialValue: '' });
 

@@ -59,6 +59,8 @@ public class ClientMailOutbox {
     static final int BATCH = 20;
 
     private final ClientEmailRepository repository;
+    /** Sous quel nom part le courriel (F-110 / SF-110-06) — jamais celui de l'outil. */
+    private final ClientMailIdentity identity;
     private final EmailService emailService;
     private final ClientMailAttachmentStore attachmentStore;
     private final TransactionTemplate transactions;
@@ -66,7 +68,9 @@ public class ClientMailOutbox {
 
     public ClientMailOutbox(ClientEmailRepository repository, EmailService emailService,
             ClientMailAttachmentStore attachmentStore,
-            org.springframework.transaction.PlatformTransactionManager transactionManager, Clock clock) {
+            org.springframework.transaction.PlatformTransactionManager transactionManager, Clock clock,
+            ClientMailIdentity identity) {
+        this.identity = identity;
         this.repository = repository;
         this.emailService = emailService;
         this.attachmentStore = attachmentStore;
@@ -234,7 +238,9 @@ public class ClientMailOutbox {
         }
         try {
             emailService.sendClientMail(new ClientMailMessage(email.getRecipient(),
-                    "claude-gateway pour " + email.getClientName(), email.getSubject(), email.getBodyText(),
+                    // F-110 / SF-110-06 : le nom de l'outil ne part plus chez le client, et le nom
+                    // du client non plus — il sait qui il est.
+                    identity.senderName(), email.getSubject(), email.getBodyText(),
                     email.getBodyHtml(), attachments));
             email.setStatus(ClientEmailStatus.SENT);
             email.setSentAt(OffsetDateTime.now(clock));

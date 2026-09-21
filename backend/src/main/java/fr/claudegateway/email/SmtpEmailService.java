@@ -57,8 +57,11 @@ public class SmtpEmailService implements EmailService {
     public void sendReceptionAddressCode(String toEmail, String clientName, String code) {
         send(toEmail,
                 "Code de vérification — adresse de réception pour " + clientName,
-                "Bonjour,\n\nVous avez indiqué cette adresse pour recevoir les courriels que vous vous envoyez "
-                        + "depuis claude-gateway pour le client « " + clientName + " ».\n\n"
+                // F-110 / SF-110-06 : ce courriel est le PREMIER que reçoit une adresse
+                // professionnelle. Il ne nomme plus l'outil — la phrase dit ce qui compte pour le
+                // destinataire : c'est lui qui a demandé à recevoir ces messages.
+                "Bonjour,\n\nVous avez indiqué cette adresse pour recevoir les courriels que vous vous "
+                        + "envoyez au titre du client « " + clientName + " ».\n\n"
                         + "Votre code de vérification : " + code
                         + "\n\nIl est valable 15 minutes. Tant qu'il n'est pas saisi, rien n'est envoyé à cette "
                         + "adresse.\n\nSi vous n'êtes pas à l'origine de cette demande, ignorez ce courriel.");
