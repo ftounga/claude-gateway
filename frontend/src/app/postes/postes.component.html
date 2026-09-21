@@ -628,6 +628,16 @@
                   </ul>
                 }
               }
+
+              <!-- LA MESURE QUI DÉCIDE (F-140 / SF-140-01) : la carte sert-elle vraiment ? Si oui,
+                   l'agent cherche MOINS pour répondre. Absente tant qu'aucun tour n'a eu lieu :
+                   un ratio calculé sur rien n'apprendrait rien. -->
+              @if (learningOf(host); as learning) {
+                <p class="poste__carte-gain" [class.poste__carte-gain--down]="learningImproving(learning)">
+                  <mat-icon>{{ learningImproving(learning) ? 'trending_down' : 'insights' }}</mat-icon>
+                  <span>{{ learningLabel(learning) }}</span>
+                </p>
+              }
             }
           }
         </section>

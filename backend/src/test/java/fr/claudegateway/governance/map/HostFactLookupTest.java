@@ -183,4 +183,71 @@ class HostFactLookupTest {
         assertThat(block.length()).isLessThan(longLine.length());
         assertThat(block).contains("…");
     }
+    // ---------------------------------------- le savoir qui vieillit (F-139 / SF-139-01)
+
+    private static final java.time.LocalDate TODAY = java.time.LocalDate.of(2026, 9, 21);
+
+    @Test
+    @DisplayName("LE CRITÈRE : un fait trop vieux est présenté comme à re-vérifier")
+    void anOldFactIsMarkedForRecheck() {
+        // Une infrastructure bouge : un fait de six mois rappelé comme un fait frais fait répondre
+        // faux avec assurance — le pire mode d'échec, parce qu'il ne se voit pas.
+        HostMapFile old = file("acces.md",
+                "# Accès\n\n- CyberArk est en 11.2, constaté le 2026-01-10\n");
+
+        String block = HostFactLookup.factsFor(List.of(old), "version de CyberArk ?", TODAY, 120);
+
+        assertThat(block).contains(HostFactLookup.STALE_MARK.strip());
+        assertThat(block).contains("vérifie-le avant de l'affirmer");
+    }
+
+    @Test
+    @DisplayName("un fait récent n'est pas marqué, et la consigne ne s'écrit pas")
+    void arecentFactIsNotMarked() {
+        String block = HostFactLookup.factsFor(List.of(acces), "CyberArk ?", TODAY, 120);
+
+        assertThat(block).doesNotContain(HostFactLookup.STALE_MARK.strip());
+        // Une phrase qui ne s'applique à rien apprend au modèle à ne plus la lire.
+        assertThat(block).doesNotContain("vérifie-le avant de l'affirmer");
+    }
+
+    @Test
+    @DisplayName("un fait SANS date n'est pas marqué : on ne devine pas un âge")
+    void afactWithoutADateIsNotMarked() {
+        HostMapFile undated = file("acces.md", "# Accès\n\n- CyberArk garde les comptes\n");
+
+        assertThat(HostFactLookup.factsFor(List.of(undated), "CyberArk ?", TODAY, 120))
+                .doesNotContain(HostFactLookup.STALE_MARK.strip());
+    }
+
+    @Test
+    @DisplayName("une date illisible ou future ne marque rien")
+    void anUnreadableOrFutureDateMarksNothing() {
+        assertThat(HostFactLookup.isStale("- CyberArk, constaté le 2026-13-45", TODAY, 120)).isFalse();
+        // Faute de saisie, pas fait périmé.
+        assertThat(HostFactLookup.isStale("- CyberArk, constaté le 2027-01-10", TODAY, 120)).isFalse();
+    }
+
+    @Test
+    @DisplayName("le seuil s'applique à la limite exacte")
+    void thethresholdAppliesExactly() {
+        // 120 jours pile : pas encore périmé. 121 : périmé.
+        String atLimit = "- X, constaté le " + TODAY.minusDays(120);
+        String pastLimit = "- X, constaté le " + TODAY.minusDays(121);
+
+        assertThat(HostFactLookup.isStale(atLimit, TODAY, 120)).isFalse();
+        assertThat(HostFactLookup.isStale(pastLimit, TODAY, 120)).isTrue();
+    }
+
+    @Test
+    @DisplayName("sans date du jour ni seuil, rien n'est marqué — le comportement d'avant F-139")
+    void withoutAReferenceNothingIsMarked() {
+        HostMapFile old = file("acces.md",
+                "# A\n\n- CyberArk est en 11.2, constaté le 2020-01-10\n");
+
+        assertThat(HostFactLookup.factsFor(List.of(old), "CyberArk ?"))
+                .doesNotContain(HostFactLookup.STALE_MARK.strip());
+        assertThat(HostFactLookup.isStale("- X, constaté le 2020-01-10", TODAY, 0)).isFalse();
+        assertThat(HostFactLookup.isStale("- X, constaté le 2020-01-10", null, 120)).isFalse();
+    }
 }

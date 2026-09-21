@@ -381,4 +381,27 @@ class GovernanceHostApiIntegrationTest {
 
         assertThat(activations.findAll()).isEmpty();
     }
+
+    // --------------------------------- la mesure qui décide (F-140 / SF-140-01)
+
+    @Test
+    @DisplayName("sans tour, aucun ratio : on ne divise pas par zéro et on n'invente pas")
+    void withoutTurnsThereIsNoRatio() throws Exception {
+        // « 0,0 appel par tour » se lirait comme un succès éclatant alors qu'il ne s'est rien passé.
+        mockMvc.perform(get(hostPath(aliceHost) + "/learning").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.recentTurns").value(0))
+                .andExpect(jsonPath("$.recentCallsPerTurn").doesNotExist())
+                .andExpect(jsonPath("$.longCallsPerTurn").doesNotExist())
+                .andExpect(jsonPath("$.facts").value(0));
+    }
+
+    @Test
+    @DisplayName("Bob ne lit pas la mesure du poste d'Alice")
+    void bobCannotReadAliceLearning() throws Exception {
+        mockMvc.perform(get(hostPath(aliceHost) + "/learning").contextPath("/api")
+                        .header("Authorization", "Bearer " + bobToken))
+                .andExpect(status().isNotFound());
+    }
 }

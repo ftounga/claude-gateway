@@ -231,8 +231,21 @@ describe('PostesComponent', () => {
     pagesSpy = jasmine.createSpyObj<PagesService>('PagesService', ['list']);
     pagesSpy.list.and.returnValue(of([]));
     governance = jasmine.createSpyObj<GovernanceService>('GovernanceService',
-      ['getMap', 'readMapFile', 'getIntegrite', 'getHosts']);
+      ['getMap', 'readMapFile', 'getIntegrite', 'getHosts', 'getLearning']);
     governance.getMap.and.returnValue(of(carte));
+    // F-140 / SF-140-01 : la mesure d'apprentissage est lue en même temps que la carte. Sans tour
+    // sur la fenêtre longue, elle ne s'affiche pas — c'est l'état par défaut de ces tests.
+    governance.getLearning.and.returnValue(
+      of({
+        recentTurns: 0,
+        recentCalls: 0,
+        recentCallsPerTurn: null,
+        longTurns: 0,
+        longCalls: 0,
+        longCallsPerTurn: null,
+        facts: 0,
+      }),
+    );
     governance.getIntegrite.and.returnValue(of(integriteSaine));
     governance.getHosts.and.returnValue(of([]));
     // F-124 / SF-124-01 : le TJM par poste et le mois de départ. Vides par défaut dans les tests.
@@ -2436,17 +2449,54 @@ describe('PostesComponent', () => {
     });
 
     /** Rejoue l'écran avec un relevé de carte donné. */
+    it('dit si l\'agent cherche MOINS qu\'avant — la promesse de F-136/F-137, vérifiée', () => {
+      // LE CRITÈRE DE F-140. Sans ce chiffre, la promesse de tout le chantier resterait
+      // invérifiable, et une régression future passerait inaperçue.
+      learningAnswer = {
+        recentTurns: 10, recentCalls: 45, recentCallsPerTurn: 4.5,
+        longTurns: 40, longCalls: 320, longCallsPerTurn: 8, facts: 2593,
+      };
+      governanceReturns(carte);
+
+      const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+      expect(text).toContain("4,5 appel(s) d'outil par tour sur 7 jours");
+      expect(text).toContain('contre 8,0 sur 30 jours');
+      expect((fixture.nativeElement as HTMLElement).querySelector('.poste__carte-gain--down'))
+        .not.toBeNull();
+      learningAnswer = {
+        recentTurns: 0, recentCalls: 0, recentCallsPerTurn: null,
+        longTurns: 0, longCalls: 0, longCallsPerTurn: null, facts: 0,
+      };
+    });
+
+    it('n\'affiche aucune mesure tant qu\'aucun tour n\'a eu lieu', () => {
+      // Un ratio calculé sur rien n'apprendrait rien, et « 0,0 appel par tour » se lirait comme un
+      // succès éclatant.
+      governanceReturns(carte);
+
+      expect((fixture.nativeElement as HTMLElement).textContent ?? '')
+        .not.toContain("appel(s) d'outil par tour");
+    });
+
     function governanceReturns(map: GovernanceMap): void {
       service = spyService();
       service.runnerHostsOverview.and.returnValue(of([poste]));
       buildWithMap(of(map));
     }
 
+    /** La mesure d'apprentissage imposée au prochain montage (F-140 / SF-140-01). */
+    let learningAnswer = {
+      recentTurns: 0, recentCalls: 0, recentCallsPerTurn: null as number | null,
+      longTurns: 0, longCalls: 0, longCallsPerTurn: null as number | null, facts: 0,
+    };
+
     /** Construit l'écran en imposant ce que la lecture de carte répond. */
     function buildWithMap(answer: Observable<GovernanceMap>): void {
       governance = jasmine.createSpyObj<GovernanceService>('GovernanceService',
-        ['getMap', 'readMapFile', 'getIntegrite', 'getHosts']);
+        ['getMap', 'readMapFile', 'getIntegrite', 'getHosts', 'getLearning']);
       governance.getMap.and.returnValue(answer);
+      // F-140 / SF-140-01 : lue avec la carte. Aucun tour sur la fenêtre longue ⇒ rien ne s'affiche.
+      governance.getLearning.and.returnValue(of(learningAnswer));
       governance.getIntegrite.and.returnValue(of(integriteSaine));
       governance.getHosts.and.returnValue(of([]));
       billing = jasmine.createSpyObj<PosteBillingService>('PosteBillingService',

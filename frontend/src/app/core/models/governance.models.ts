@@ -322,3 +322,22 @@ export interface GovernanceIntegrite {
   /** Ce qui la fait vieillir mal — informatif, jamais bloquant. */
   warnings: GovernanceIntegriteConstat[];
 }
+
+/**
+ * **La mesure qui décide** : l'application apprend-elle vraiment ? (F-140 / SF-140-01)
+ *
+ * Combien d'appels d'outils il faut pour répondre à un tour, sur une fenêtre récente et sur une
+ * longue. Si la carte sert, ce nombre **baisse** : l'agent cherche moins parce qu'il sait déjà.
+ *
+ * Les ratios valent `null` — jamais `0` — quand il n'y a eu aucun tour : « 0,0 appel par tour » se
+ * lirait comme un succès éclatant alors qu'il ne s'est rien passé.
+ */
+export interface HostLearning {
+  recentTurns: number;
+  recentCalls: number;
+  recentCallsPerTurn: number | null;
+  longTurns: number;
+  longCalls: number;
+  longCallsPerTurn: number | null;
+  facts: number;
+}

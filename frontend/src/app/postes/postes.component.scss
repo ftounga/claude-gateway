@@ -161,6 +161,12 @@
   }
 }
 
+/* La mesure qui décide (F-140 / SF-140-01) : même forme que le gain de carte, et un vert de charte
+   quand l'agent cherche moins qu'avant — la promesse de F-136/F-137, vérifiée à l'œil. */
+.poste__carte-gain--down {
+  color: var(--cg-success);
+}
+
 .poste__carte-gain-list {
   display: flex;
   flex-wrap: wrap;

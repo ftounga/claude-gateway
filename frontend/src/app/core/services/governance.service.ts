@@ -10,6 +10,7 @@ import {
   GovernanceIntegrite,
   GovernanceMap,
   GovernanceMapFileContent,
+  HostLearning,
   HostMemoryState,
   GovernancePackage,
   GovernanceSelection,
@@ -101,6 +102,14 @@ export class GovernanceService {
    */
   getMap(hostRef: string): Observable<GovernanceMap> {
     return this.http.get<GovernanceMap>(`/api/governance/hosts/${hostRef}/map`);
+  }
+
+  /**
+   * **L'application apprend-elle ?** (F-140 / SF-140-01) — appels d'outils par tour, sur deux
+   * fenêtres. Le critère de réussite de F-136 et F-137 : si la carte sert, l'agent cherche moins.
+   */
+  getLearning(hostRef: string): Observable<HostLearning> {
+    return this.http.get<HostLearning>(`/api/governance/hosts/${hostRef}/learning`);
   }
 
   /**
