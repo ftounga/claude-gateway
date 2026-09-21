@@ -359,6 +359,36 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "endroit.\n"
                     + "- N'annonce rien quand rien de durable n'a été rangé : pas de « rien à ranger », "
                     + "pas de statut — c'est le silence de la carte qui reprend.\n\n";
+    /**
+     * Aiguillage à la racine (F-141 / SF-141-02, cadrage §4.1). Ajouté <b>uniquement au terminal du
+     * poste</b> ({@link Workspace#isHostTerminal()}) : c'est là, et là seulement, que la place d'un
+     * fait est ambiguë. Dans un sujet (terminal de projet), le routage n'a aucune ambiguïté (cadrage
+     * §5) et un préfixe plus court préserve le cache (F-134) — la consigne ne s'y injecte donc pas.
+     *
+     * <p>À la racine, sur un sujet nouveau ou flou, l'agent <b>classe et propose</b> une destination
+     * (sujet existant nommé / transverse / nouveau / répartition d'un mix), après avoir <b>découvert
+     * les sujets existants</b> avec les outils existants (liste de la racine, carte du poste, sujets
+     * suivis), puis <b>attend la validation</b>. Prompt-only, aucun nouvel outil.</p>
+     */
+    private static final String SUBJECT_ROUTING_DOCTRINE =
+            "À la racine du poste, aiguille avant de ranger — non négociable :\n"
+                    + "- Tu es au TERMINAL DU POSTE (la racine), pas dans un sujet. Quand l'utilisateur "
+                    + "amène un sujet nouveau, ou une info dont la place est floue, NE RANGE PAS "
+                    + "d'emblée : d'abord AIGUILLE.\n"
+                    + "- Découvre les sujets existants avec tes outils, sans rien inventer : liste les "
+                    + "dossiers de projet sous la racine (les sujets sont des dossiers), appuie-toi sur "
+                    + "ce que tu sais déjà du poste (la carte : README, plateformes, réseau, accès, "
+                    + "données, exploitation) et sur les sujets déjà suivis.\n"
+                    + "- PROPOSE alors une destination, nommée et justifiée, parmi quatre :\n"
+                    + "  1) sujet EXISTANT : « ça relève de `data-platform` (parce que…) » ;\n"
+                    + "  2) TRANSVERSE : « c'est un fait du poste → carte racine (`plateformes.md`…) » ;\n"
+                    + "  3) NOUVEAU sujet : « je propose de créer le dossier `X` » ;\n"
+                    + "  4) MIX : « ça touche `data-platform` ET `lzi` → répartition : A→data-platform, "
+                    + "B→lzi, C→racine ».\n"
+                    + "- Puis ATTENDS la validation (ou la correction) de l'utilisateur AVANT d'écrire. "
+                    + "Sur un mix, présente la RÉPARTITION explicite — jamais un rangement muet dans un "
+                    + "seul sujet. Si deux sujets sont également plausibles, DEMANDE plutôt que de "
+                    + "trancher tout seul.\n\n";
     private static final List<String> SKILL_PREFIXES = List.of(".claude/skills/", "skills/");
     /**
      * Nombre de skills annoncés dans la consigne (F-39 / SF-39-02, décision D3). Une borne explicite
@@ -3783,6 +3813,13 @@ public class AtelierChatService implements RelayInterruptTarget {
         // plomberie reste tue, mais la destination d'un fait durable devient visible et validable — le
         // remède au cas réel (journal rangé dans `lzi/` au lieu de `data-platform/`, découvert tard).
         system.append(DESTINATION_ANNOUNCE_DOCTRINE);
+
+        // Aiguillage à la racine (F-141 / SF-141-02) : UNIQUEMENT au terminal du poste, là où la
+        // place d'un fait est ambiguë. Dans un sujet, le routage n'a aucune ambiguïté (cadrage §5) et
+        // un préfixe plus court préserve le cache (F-134) — d'où l'injection conditionnelle.
+        if (workspace.isHostTerminal()) {
+            system.append(SUBJECT_ROUTING_DOCTRINE);
+        }
 
         // Mode explicite « Réponse/Plan » (F-120 / SF-120-02) : quand l'utilisateur l'a choisi, on
         // renforce la doctrine par une consigne de mode, en écho au retrait des outils mutants dans
