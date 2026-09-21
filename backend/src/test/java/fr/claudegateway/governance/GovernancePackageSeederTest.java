@@ -425,4 +425,29 @@ class GovernancePackageSeederTest {
                 .filter(file -> "STATE.md".equals(file.getPath())).findFirst().orElseThrow();
         assertThat(state.knownDigestList()).containsExactly(STATE_AVANT_F95);
     }
+
+    /**
+     * F-141 / SF-141-01 : la doctrine livrée porte la nuance « dis où tu ranges, demande si ambigu »,
+     * sans rouvrir la plomberie de fin de tour (F-125). C'est un test de la RESSOURCE embarquée.
+     */
+    @Test
+    @DisplayName("regles.md livré porte l'annonce de destination et la demande si ambigu (SF-141-01)")
+    void shippedRulesCarryTheDestinationNuance() throws Exception {
+        String rules;
+        try (var in = getClass().getClassLoader()
+                .getResourceAsStream("governance/savoir-durable/regles.md")) {
+            assertThat(in).as("regles.md doit être embarqué").isNotNull();
+            rules = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        }
+        // La destination se dit…
+        assertThat(rules).contains("Mais dis *où* tu as rangé");
+        assertThat(rules).contains("data-platform/PLAN-ACTION.md");
+        // …et si c'est ambigu, on demande au lieu de deviner…
+        assertThat(rules).contains("si la destination est ambiguë, demande");
+        // …mais la plomberie reste en silence (F-125 non régressé).
+        assertThat(rules).contains("plomberie");
+        assertThat(rules).contains("reste en silence");
+        // Les invariants de clonage restés intacts : le semeur les exige toujours.
+        assertThat(GovernancePackageSeeder.ruleMissingFrom(rules)).isNull();
+    }
 }
