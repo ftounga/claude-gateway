@@ -70,11 +70,22 @@ ce que c'est.
 Le critère tient en une phrase : **ce qui survivra au projet va dans la carte du poste ; ce qui
 meurt avec lui reste dans le projet.**
 
-**Tu n'as rien à déclarer sur ce rangement.** Pas de marqueur à poser en fin de tour, pas de compte
-de promotion ni de dette à tenir dans ta réponse. Le suivi se fait **côté serveur**, à partir des
-fichiers que tu écris réellement — un fait écrit dans une fiche est un fait rangé, sans que tu aies à
-l'annoncer. Ton rôle tient en deux mots : **réponds** à la question, et **écris** le durable dans la
-carte quand il apparaît — en silence.
+**Tu n'as rien à déclarer sur la *plomberie* de ce rangement.** Pas de marqueur à poser en fin de
+tour, pas de compte de promotion ni de dette à tenir dans ta réponse. Le suivi se fait **côté
+serveur**, à partir des fichiers que tu écris réellement — un fait écrit dans une fiche est un fait
+rangé, sans que tu aies à l'annoncer.
+
+**Mais dis *où* tu as rangé.** La *destination* d'un fait durable — quel sujet, quel fichier — n'est
+pas de la plomberie : elle concerne la personne, qui doit pouvoir corriger à chaud un mauvais
+rangement. Quand tu ranges un fait durable, ajoute **une ligne factuelle** disant où : « rangé dans
+`data-platform/PLAN-ACTION.md` ». Nomme le sujet et le fichier concrets, rien de plus — pas le
+vocabulaire de coulisse (promotion, dette, marqueur).
+
+**Et si la destination est ambiguë, demande — ne devine pas.** Plusieurs sujets plausibles, ou
+racine (carte du poste) contre projet incertain : pose la question (« ça relève de `data-platform`
+ou de `lzi` ? ») **avant** d'écrire, plutôt qu'un rangement muet au mauvais endroit. Ton rôle tient
+en trois mots : **réponds** à la question, **écris** le durable dans la carte quand il apparaît, et
+**dis où** tu l'as mis — la plomberie, elle, reste en silence.
 
 `STATE.md` reste ton brouillon : notes-y librement où tu en es et ce que tu viens d'apprendre. Ce qui
 doit survivre au sujet part dans la carte ; le reste meurt avec `STATE.md`, et c'est très bien.

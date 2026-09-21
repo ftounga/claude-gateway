@@ -264,9 +264,14 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "la gouvernance) est un travail de COULISSE : tu le fais sans jamais le raconter "
                     + "dans ta réponse.\n"
                     + "- N'emploie pas dans ta réponse les termes de plomberie interne — « promotion », "
-                    + "« fin-de-tour », « hors gouvernance », « libellé », une fiche de carte comme "
-                    + "« destination ». Si un rangement a échoué ou reste à faire, garde-le pour toi : "
-                    + "ne t'en explique pas à l'utilisateur, qui n'en a que faire.\n\n";
+                    + "« fin-de-tour », « hors gouvernance », « libellé », « dette ». Si un rangement a "
+                    + "échoué ou reste à faire, garde-le pour toi : ne t'en explique pas à "
+                    + "l'utilisateur, qui n'en a que faire.\n"
+                    + "- Une seule exception (F-141 / SF-141-01) : quand tu ranges un fait durable, tu "
+                    + "NOMMES le fichier de carte où tu l'as rangé. Le OÙ (quel sujet, quel fichier) "
+                    + "est une information utile à l'utilisateur, pas de la plomberie ; le COMMENT "
+                    + "(marqueurs, comptabilité de promotion) reste, lui, en coulisse. Voir « Dis où tu "
+                    + "ranges un fait durable » ci-dessous.\n\n";
     /**
      * Balisage de la réponse essentielle (F-126 / SF-126-01) : ajouté au rôle sur les <b>deux</b>
      * cibles, aux côtés de la discipline (SF-119-02), de la doctrine (SF-120-01), du style (SF-121-03)
@@ -325,6 +330,35 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "« aucun fait nouveau », « déjà rangé dans X.md », « ce tour n'était qu'un "
                     + "conseil » ne sont PAS des réponses. Si rien n'est à ranger, n'en parle pas — "
                     + "réponds à la question.\n\n";
+    /**
+     * Annonce de destination + demande si ambigu (F-141 / SF-141-01, cadrage §4.3 et §2). Ajouté au
+     * rôle sur les <b>deux</b> cibles, à la suite des doctrines de carte. La nuance clé du cadrage :
+     * la <b>plomberie</b> de fin de tour (marqueurs, comptabilité de promotion/dette) reste invisible
+     * (F-125 / SF-125-01 intact), mais la <b>destination</b> d'un fait durable — quel sujet, quel
+     * fichier — est une information qui concerne l'utilisateur, pas de la plomberie : elle devient
+     * <b>visible</b>, pour qu'un mauvais rangement (le cas réel : {@code lzi/} au lieu de
+     * {@code data-platform/}) se corrige à chaud plutôt que se découvre tard.
+     *
+     * <p>Prompt-only, dans l'esprit de SF-125-05 / SF-126-01. Placé en tête du préfixe stable, il
+     * survit à la coupe {@link #SYSTEM_MAX_CHARS} et reste caché (cache de prompt préservé). Ne touche
+     * ni le strip {@code fin-de-tour} ({@link #stripTurnMetadata}) ni la doctrine « carte silencieuse ».</p>
+     */
+    private static final String DESTINATION_ANNOUNCE_DOCTRINE =
+            "Dis où tu ranges un fait durable — non négociable :\n"
+                    + "- Quand tu ranges un fait durable (une décision, une contrainte, un piège, un "
+                    + "fait d'infrastructure) dans une carte, AJOUTE à ta réponse une ligne factuelle "
+                    + "disant OÙ : « rangé dans `data-platform/PLAN-ACTION.md` ». Nomme le sujet et le "
+                    + "fichier concrets, rien de plus.\n"
+                    + "- Cette ligne n'est PAS de la plomberie : la destination d'un fait durable "
+                    + "concerne l'utilisateur, qui doit pouvoir corriger à chaud un mauvais rangement. "
+                    + "La plomberie (marqueurs, promotion, dette) reste tue ; seule la destination se "
+                    + "dit.\n"
+                    + "- Si la destination est AMBIGUË — plusieurs sujets plausibles, ou racine (carte "
+                    + "du poste) vs projet incertain — NE DEVINE PAS : demande. « Ce journal relève de "
+                    + "`data-platform` ou de `lzi` ? » vaut mieux qu'un rangement muet au mauvais "
+                    + "endroit.\n"
+                    + "- N'annonce rien quand rien de durable n'a été rangé : pas de « rien à ranger », "
+                    + "pas de statut — c'est le silence de la carte qui reprend.\n\n";
     private static final List<String> SKILL_PREFIXES = List.of(".claude/skills/", "skills/");
     /**
      * Nombre de skills annoncés dans la consigne (F-39 / SF-39-02, décision D3). Une borne explicite
@@ -3743,6 +3777,12 @@ public class AtelierChatService implements RelayInterruptTarget {
         // l'essentiel (SF-126-01) sans les écraser : sur une question de conseil, l'agent prend
         // position et balise l'essentiel même court, et ne répond jamais par un statut de rangement.
         system.append(ADVICE_DECISION_DOCTRINE);
+
+        // Annonce de destination + demande si ambigu (F-141 / SF-141-01) : sur les DEUX cibles, à la
+        // suite des doctrines de carte. Prolonge la carte silencieuse (SF-125-01) sans la casser : la
+        // plomberie reste tue, mais la destination d'un fait durable devient visible et validable — le
+        // remède au cas réel (journal rangé dans `lzi/` au lieu de `data-platform/`, découvert tard).
+        system.append(DESTINATION_ANNOUNCE_DOCTRINE);
 
         // Mode explicite « Réponse/Plan » (F-120 / SF-120-02) : quand l'utilisateur l'a choisi, on
         // renforce la doctrine par une consigne de mode, en écho au retrait des outils mutants dans

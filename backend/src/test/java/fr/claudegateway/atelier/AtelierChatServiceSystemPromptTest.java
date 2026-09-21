@@ -339,6 +339,59 @@ class AtelierChatServiceSystemPromptTest {
         assertThat(system).contains("bash (ls, find, grep -n)");
     }
 
+    // ------------------------------------------- F-141 / SF-141-01 : annonce de destination + demande si ambigu
+
+    @Test
+    void theDestinationAnnounceDoctrineIsPresentOnASandboxProject() {
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+
+        String system = systemPrompt();
+
+        // Nommer la destination d'un fait durable.
+        assertThat(system).contains("Dis où tu ranges un fait durable");
+        assertThat(system).contains("rangé dans `data-platform/PLAN-ACTION.md`");
+        // La destination est une information, pas de la plomberie.
+        assertThat(system).contains("n'est PAS de la plomberie");
+        // Demander si ambigu au lieu de deviner.
+        assertThat(system).contains("Si la destination est AMBIGUË");
+        assertThat(system).contains("NE DEVINE PAS : demande");
+        // Non-régression F-125 : la carte silencieuse et le reste des doctrines coexistent.
+        assertThat(system).contains("Tenue de la carte, en silence");
+        assertThat(system).contains("Vérifie avant d'affirmer");
+        assertThat(system).contains("Mets en avant l'essentiel");
+        assertThat(system).contains("Sur une question de conseil ou de décision, tranche");
+    }
+
+    @Test
+    void theDestinationAnnounceDoctrineIsPresentOnARunnerProject() {
+        String system = systemPromptOfRunnerProjectDeclaring(null);
+
+        assertThat(system).contains("Dis où tu ranges un fait durable");
+        assertThat(system).contains("rangé dans `data-platform/PLAN-ACTION.md`");
+        assertThat(system).contains("NE DEVINE PAS : demande");
+        // Non-régression F-125 + rôle RUNNER.
+        assertThat(system).contains("Tenue de la carte, en silence");
+        assertThat(system).contains("bash (ls, find, grep -n)");
+    }
+
+    @Test
+    void theDestinationExceptionDoesNotReopenTheFinDeTourPlumbing() {
+        // La destination devient visible, mais le strip du marqueur `fin-de-tour` (F-125) ne change
+        // pas : le commentaire HTML reste retiré, l'annonce de destination (texte simple) reste.
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+
+        String system = systemPrompt();
+
+        assertThat(system).doesNotContain("<!-- fin-de-tour");
+        assertThat(AtelierChatService.stripTurnMetadata(
+                "rangé dans `data-platform/PLAN-ACTION.md`\n<!-- fin-de-tour: promu=1 -->"))
+                .isEqualTo("rangé dans `data-platform/PLAN-ACTION.md`");
+    }
+
     @Test
     void theSetPlanDescriptionOnlyPlansWhenAskedOrActing() {
         when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
