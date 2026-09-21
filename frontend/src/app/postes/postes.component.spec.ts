@@ -1,5 +1,6 @@
 
 import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { Component } from '@angular/core';
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
@@ -9,6 +10,7 @@ import { BehaviorSubject, Observable, of, throwError } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
+import { ForgeMemoryNoticeComponent } from '../shared/forge-memory-notice/forge-memory-notice.component';
 import { POSTES_REFRESH_MS, PostesComponent } from './postes.component';
 import { AtelierService } from '../core/services/atelier.service';
 import { GovernanceService } from '../core/services/governance.service';
@@ -28,6 +30,16 @@ import { ExportService } from '../core/services/export.service';
  * L'écran des postes (F-49 / SF-49-02) : ce qu'il montre, ce qu'il ne fait pas, et ce qu'il ne
  * casse pas quand le réseau hoquette.
  */
+/**
+ * Doublure du bandeau de mémoire (F-135 / SF-135-02) pour les tests de l'écran.
+ *
+ * <p>Le vrai composant lit `getHosts()` de son côté — c'est légitime, mais cela ferait compter deux
+ * appels au test qui vérifie que <b>l'écran</b> ne sonde pas la gouvernance en boucle. On neutralise
+ * l'enfant plutôt que d'affaiblir cette assertion : c'est elle qui protège du sondage.</p>
+ */
+@Component({ selector: 'app-forge-memory-notice', standalone: true, template: '' })
+class MemoryNoticeStub {}
+
 describe('PostesComponent', () => {
   let fixture: ComponentFixture<PostesComponent>;
   let component: PostesComponent;
@@ -254,6 +266,10 @@ describe('PostesComponent', () => {
         // Déclaré APRÈS `provideRouter` : c'est ce jeton-là que l'écran lit pour son ancrage.
         { provide: ActivatedRoute, useValue: routeMock(fragment) },
       ],
+    });
+    TestBed.overrideComponent(PostesComponent, {
+      remove: { imports: [ForgeMemoryNoticeComponent] },
+      add: { imports: [MemoryNoticeStub] },
     });
     fixture = TestBed.createComponent(PostesComponent);
     component = fixture.componentInstance;
@@ -997,7 +1013,9 @@ describe('PostesComponent', () => {
       service.runnerHostsOverview.and.returnValue(of([poste]));
       build();
       governance.getHosts.and.returnValue(of([
-        { ref: 'h1', id: 'h1', name: 'Poste CAGIP', virtual: false, projects: 2, active: 1, outdated: 2 },
+        // F-135 / SF-135-01 : l'état de mémoire voyage désormais avec la liste des postes.
+        { ref: 'h1', id: 'h1', name: 'Poste CAGIP', virtual: false, projects: 2, active: 1,
+          outdated: 2, memory: 'ACTIVE' as const, facts: 2593 },
       ]));
       component.refresh();
       fixture.detectChanges();
@@ -2455,6 +2473,10 @@ describe('PostesComponent', () => {
           provideNoopAnimations(),
           { provide: ActivatedRoute, useValue: routeMock(null) },
         ],
+      });
+      TestBed.overrideComponent(PostesComponent, {
+        remove: { imports: [ForgeMemoryNoticeComponent] },
+        add: { imports: [MemoryNoticeStub] },
       });
       fixture = TestBed.createComponent(PostesComponent);
       component = fixture.componentInstance;

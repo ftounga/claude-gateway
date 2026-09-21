@@ -1,0 +1,32 @@
+@if (forgetful().length > 0) {
+  <!-- `role="status"` : important, pas urgent — cela ne doit pas couper la parole à un lecteur
+       d'écran au milieu d'une phrase. -->
+  <aside class="memory-notice" role="status">
+    <mat-icon class="memory-notice__icon" aria-hidden="true">psychology_alt</mat-icon>
+    <div class="memory-notice__body">
+      <p class="memory-notice__title">
+        {{ forgetful().length > 1 ? forgetful().length + ' clients n\'accumulent aucun savoir' : 'Un client n\'accumule aucun savoir' }}
+      </p>
+      <p class="memory-notice__text">
+        Sans mémoire, chaque question repart de zéro sur cette infrastructure.
+      </p>
+      <ul class="memory-notice__hosts">
+        @for (host of forgetful(); track host.ref) {
+          <li class="memory-notice__host">
+            <span class="memory-notice__name">{{ host.name }}</span>
+            @if (host.pending) {
+              <span class="memory-notice__pending">activé, fichiers non posés</span>
+            }
+            @if (working() === host.ref) {
+              <mat-spinner diameter="18"></mat-spinner>
+            } @else {
+              <button mat-stroked-button type="button" (click)="remember(host)">
+                Mettre en mémoire
+              </button>
+            }
+          </li>
+        }
+      </ul>
+    </div>
+  </aside>
+}

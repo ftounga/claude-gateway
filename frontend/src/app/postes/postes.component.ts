@@ -38,6 +38,7 @@ import {
 } from '../core/models/atelier.models';
 import { HostBadgeComponent } from '../shared/host-badge/host-badge.component';
 import { ForgeCostAlertComponent } from '../shared/forge-cost-alert/forge-cost-alert.component';
+import { ForgeMemoryNoticeComponent } from '../shared/forge-memory-notice/forge-memory-notice.component';
 import { LiveBadgeComponent } from '../shared/live-badge/live-badge.component';
 import { HostPagesComponent } from '../shared/pages/host-pages.component';
 import { ARCHIVE_ACCEPT } from '../shared/file-selectors';
@@ -201,6 +202,7 @@ const EMPTY_HOSTED: RunnerHostOverview = {
     ForgeRailComponent,
     ForgeProjectTileComponent,
     ForgeCostAlertComponent,
+    ForgeMemoryNoticeComponent,
     HostBadgeComponent,
     LiveBadgeComponent,
     MissionBadgeComponent,

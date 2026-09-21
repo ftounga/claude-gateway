@@ -10,6 +10,7 @@ import {
   GovernanceIntegrite,
   GovernanceMap,
   GovernanceMapFileContent,
+  HostMemoryState,
   GovernancePackage,
   GovernanceSelection,
 } from '../models/governance.models';
@@ -52,6 +53,14 @@ export class GovernanceService {
   /** Mes postes gouvernables : mes machines, puis « Hébergé » s'il porte des dossiers. */
   getHosts(): Observable<GovernanceHostSummary[]> {
     return this.http.get<GovernanceHostSummary[]>('/api/governance/hosts');
+  }
+
+  /**
+   * **Met un poste en mémoire** (F-135 / SF-135-01) : embarque les paquets par défaut et pose leurs
+   * fichiers, en un seul appel. Idempotent — le refaire ne repose que ce qui manque.
+   */
+  rememberHost(hostRef: string): Observable<HostMemoryState> {
+    return this.http.post<HostMemoryState>(`/api/governance/hosts/${hostRef}/memory`, {});
   }
 
   /** Ce qui s'applique à ce poste, ce qui pourrait s'y appliquer, et les dossiers concernés. */

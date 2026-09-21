@@ -47,8 +47,11 @@ describe('GovernanceComponent', () => {
   const selection: GovernanceSelection[] = [{ pkg, defaultApplied: false, activeProjects: 0 }];
 
   const hosts: GovernanceHostSummary[] = [
-    { ref: 'h1', id: 'h1', name: 'EDENRED', virtual: false, projects: 2, active: 0 },
-    { ref: 'hosted', id: null, name: 'Hébergé', virtual: true, projects: 1, active: 0 },
+    // F-135 / SF-135-01 : l'état de mémoire voyage avec la liste des postes.
+    { ref: 'h1', id: 'h1', name: 'EDENRED', virtual: false, projects: 2, active: 0,
+      memory: 'ABSENT', facts: 0 },
+    { ref: 'hosted', id: null, name: 'Hébergé', virtual: true, projects: 1, active: 0,
+      memory: 'UNSUPPORTED', facts: 0 },
   ];
 
   const emptyHost: GovernanceHost = {
