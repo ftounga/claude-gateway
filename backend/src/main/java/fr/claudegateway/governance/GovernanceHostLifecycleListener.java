@@ -34,11 +34,14 @@ public class GovernanceHostLifecycleListener {
 
     private final GovernanceActivationService activationService;
     private final GovernanceDepositService depositService;
+    private final fr.claudegateway.governance.map.HostMapFileRepository mapFiles;
 
     public GovernanceHostLifecycleListener(GovernanceActivationService activationService,
-            GovernanceDepositService depositService) {
+            GovernanceDepositService depositService,
+            fr.claudegateway.governance.map.HostMapFileRepository mapFiles) {
         this.activationService = activationService;
         this.depositService = depositService;
+        this.mapFiles = mapFiles;
     }
 
     @EventListener
@@ -53,6 +56,9 @@ public class GovernanceHostLifecycleListener {
                     // Et les empreintes de ce qu'on y avait déposé (F-96 / SF-96-01) : sans machine,
                     // elles ne répondent plus à aucune question et resteraient à jamais.
                     depositService.forgetHost(event.userId(), event.hostId());
+                    // Et la copie de travail de sa carte (F-136 / SF-136-01) : elle décrit une
+                    // machine qui n'existe plus, et c'est le savoir d'un client.
+                    mapFiles.deleteByUserIdAndHostId(event.userId(), event.hostId());
                 }
             }
         } catch (RuntimeException ex) {

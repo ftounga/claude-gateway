@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-136 / SF-136-01 — LE MAGASIN DE CARTE : une copie de travail, côté gateway.
+
+      CE QU'IL EST : le reflet de la carte d'un poste — les fichiers .md de sa racine — relu APRÈS
+      chaque tour, pour servir au tour SUIVANT sans coûter une seconde d'attente. La carte elle-même
+      reste sur la machine du client : c'est elle qui fait foi, ceci n'est qu'une copie.
+
+      POURQUOI PAS UNE LECTURE À LA DEMANDE : lire six fichiers au DÉBUT d'un tour ajouterait six
+      allers-retours runner avant le premier mot du modèle — pour un savoir qui ne change qu'en fin
+      de tour. On paie donc la lecture après la réponse, jamais avant.
+
+      LE CONTENU EST STOCKÉ, délibérément. La règle du paquet interdit déjà aux fichiers de carte de
+      porter un secret (« jamais un mot de passe, une clé ou un jeton ; on note OÙ le secret vit et
+      QUI l'accorde »), et le produit conserve déjà les conversations, bien plus bavardes. En
+      échange, l'index par entité (F-137) et la péremption (F-139) travailleront sans jamais relire
+      la machine.
+
+      ISOLATION : la clé unique porte (user_id, host_id, path). Deux clients ne peuvent pas se
+      retrouver sur la même ligne, et aucune lecture ne peut omettre le poste sans omettre la clé.
+
+      PAS DE CLÉ ÉTRANGÈRE vers runner_hosts, même choix que usage_turns et cost_budgets : ranger un
+      poste ne doit pas faire disparaître en silence la copie de son savoir. La purge est explicite.
+    -->
+
+    <changeSet id="122-host-map-files" author="claude-gateway">
+        <createTable tableName="host_map_files">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="host_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <!-- Chemin relatif à la racine du poste : « acces.md », jamais un chemin absolu. -->
+            <column name="path" type="varchar(500)">
+                <constraints nullable="false"/>
+            </column>
+            <!-- Titre de niveau 1 du fichier, ou son nom à défaut. -->
+            <column name="title" type="varchar(500)"/>
+            <!-- Titres des sections, une par ligne, dans l'ordre du fichier.
+                 VARCHAR non borné (JDBC VARCHAR) pour concorder avec l'entité
+                 (columnDefinition="text" -> Types#VARCHAR), à l'image du `text` de Postgres — même
+                 convention que `messages.content` (006). `clob` donnerait un oid sur Postgres et un
+                 CLOB sur H2 : la validation de schéma refuserait de démarrer, dans les deux sens. -->
+            <column name="sections" type="varchar(1000000)"/>
+            <!-- Nombre de lignes porteuses de faits, tel que GovernanceMapDigest les compte. -->
+            <column name="facts" type="int" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="content" type="varchar(1000000)"/>
+            <!-- Empreinte du contenu : permet de ne rien réécrire quand rien n'a changé. -->
+            <column name="digest" type="varchar(64)"/>
+            <column name="observed_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addUniqueConstraint tableName="host_map_files"
+                             columnNames="user_id, host_id, path"
+                             constraintName="uk_host_map_files_user_host_path"/>
+
+        <createIndex tableName="host_map_files" indexName="idx_host_map_files_user_host">
+            <column name="user_id"/>
+            <column name="host_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

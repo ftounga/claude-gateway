@@ -51,6 +51,8 @@ public class AccountService {
     private final UserService userService;
     private final RadarPurgeService radarPurgeService;
     private final fr.claudegateway.runner.host.HostSpaceService hostSpaceService;
+    /** F-136 / SF-136-01 : la copie de travail des cartes des clients de ce compte. */
+    private final fr.claudegateway.governance.map.HostMapFileRepository hostMapFileRepository;
     private final SubscriptionRepository subscriptionRepository;
     private final UsageCounterRepository usageCounterRepository;
     private final UsageTurnRepository usageTurnRepository;
@@ -97,9 +99,11 @@ public class AccountService {
             ChunkRepository chunkRepository,
             MessageLibraryDocumentRepository messageLibraryDocumentRepository,
             RadarPurgeService radarPurgeService,
-            fr.claudegateway.runner.host.HostSpaceService hostSpaceService) {
+            fr.claudegateway.runner.host.HostSpaceService hostSpaceService,
+            fr.claudegateway.governance.map.HostMapFileRepository hostMapFileRepository) {
         this.radarPurgeService = radarPurgeService;
         this.hostSpaceService = hostSpaceService;
+        this.hostMapFileRepository = hostMapFileRepository;
         this.userService = userService;
         this.subscriptionRepository = subscriptionRepository;
         this.usageCounterRepository = usageCounterRepository;
@@ -250,6 +254,9 @@ public class AccountService {
         radarPurgeService.purgeUser(userId);
         // Les espaces des postes (F-106 / SF-106-01) : sans clé étrangère, ils partent explicitement.
         hostSpaceService.purgeUser(userId);
+        // La copie de travail des cartes (F-136 / SF-136-01) : c'est le savoir accumulé sur
+        // l'infrastructure des clients de ce compte. Il ne lui survit pas.
+        hostMapFileRepository.deleteByUserId(userId);
         runnerHostRepository.deleteByUserId(userId);
         // Places de terminal vivant (F-70 / SF-70-01) : elles nomment les projets ouverts par le
         // compte. Sans purge, elles survivraient à sa suppression jusqu'à leur expiration.
