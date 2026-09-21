@@ -75,6 +75,9 @@ export interface GovernanceHostProject {
  * **nul** pour le poste « Hébergé » — décision F-71 : ce poste est une vue, il n'a pas
  * d'identifiant.
  */
+/** L'état de la mémoire d'un poste (F-135 / SF-135-01) : apprend-il, ou pas ? */
+export type HostMemoryState = 'ABSENT' | 'PENDING' | 'ACTIVE' | 'UNSUPPORTED';
+
 export interface GovernanceHostSummary {
   ref: string;
   id: string | null;
@@ -82,6 +85,14 @@ export interface GovernanceHostSummary {
   virtual: boolean;
   projects: number;
   active: number;
+  /**
+   * Apprend-il ? `ABSENT` : rien n'est activé. `PENDING` : activé, mais les fichiers ne sont pas
+   * posés — l'état le plus trompeur, le poste semble gouverné de l'extérieur. `ACTIVE` : la carte
+   * existe et grossit. `UNSUPPORTED` : poste « Hébergé », sans racine donc sans carte.
+   */
+  memory: HostMemoryState;
+  /** Faits déjà accumulés sur sa carte — zéro tant qu'elle n'a pas été lue. */
+  facts: number;
   /**
    * Nombre de paquets actifs sur ce poste dont une **version plus récente** existe (F-96).
    *

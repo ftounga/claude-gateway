@@ -1,0 +1,61 @@
+/* Les clients sans mémoire, signalés dans la Forge (F-135 / SF-135-02).
+   Aucune couleur nouvelle : l'ambre d'encre de charte, celui qui tient l'AA sur surface claire. */
+.memory-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--cg-divider);
+  border-left: 4px solid var(--cg-gold-ink);
+  border-radius: 8px;
+  background: var(--cg-surface);
+  color: var(--cg-text-primary);
+}
+
+.memory-notice__icon {
+  flex: 0 0 auto;
+  color: var(--cg-gold-ink);
+}
+
+.memory-notice__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.memory-notice__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.memory-notice__text {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--cg-text-secondary);
+}
+
+.memory-notice__hosts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.memory-notice__host {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.memory-notice__name {
+  font-weight: 600;
+}
+
+.memory-notice__pending {
+  font-size: 12px;
+  color: var(--cg-text-secondary);
+}
