@@ -44,17 +44,25 @@ public class GovernanceActivationService {
     private final GovernanceSelectionService selectionService;
     private final GovernancePackageService packageService;
     private final GovernanceHostScope hostScope;
+    private final GovernanceMapGrowthRepository growth;
 
     public GovernanceActivationService(GovernanceActivationRepository activations,
             GovernanceSelectionService selectionService, GovernancePackageService packageService,
-            GovernanceHostScope hostScope) {
+            GovernanceHostScope hostScope, GovernanceMapGrowthRepository growth) {
         this.activations = activations;
         this.selectionService = selectionService;
         this.packageService = packageService;
         this.hostScope = hostScope;
+        this.growth = growth;
     }
 
-    /** Les postes gouvernables et, pour chacun, ce qui y est actif. */
+    /**
+     * Les postes gouvernables et, pour chacun, ce qui y est actif — et <b>s'il apprend</b>.
+     *
+     * <p>L'état de mémoire (F-135 / SF-135-01) est joint ici plutôt que servi par une route à part :
+     * c'est la même liste, lue au même moment, et la séparer ferait deux appels pour une seule
+     * question. Tout se calcule <b>en base</b>, sans toucher aucune machine.</p>
+     */
     @Transactional(readOnly = true)
     public List<GovernanceHostSummary> hosts(UUID userId) {
         List<GovernanceHostSummary> summaries = new ArrayList<>();
@@ -68,9 +76,21 @@ public class GovernanceActivationService {
                     host.hosted(),
                     hostScope.projectsOf(userId, host).size(),
                     active.size(),
-                    outdated(active)));
+                    outdated(active),
+                    HostMemoryState.of(!host.hosted(), active),
+                    factsOf(userId, host)));
         }
         return List.copyOf(summaries);
+    }
+
+    /** Les faits déjà accumulés sur la carte de ce poste, tous fichiers confondus (SF-135-01). */
+    private int factsOf(UUID userId, GovernanceHostRef host) {
+        if (host.hostId() == null) {
+            return 0;
+        }
+        return growth.findByUserIdAndHostId(userId, host.hostId()).stream()
+                .mapToInt(GovernanceMapGrowth::getFacts)
+                .sum();
     }
 
     /**
@@ -211,10 +231,45 @@ public class GovernanceActivationService {
         return List.copyOf(embarked);
     }
 
-    /** Les activations d'un poste — lecture interne, déjà bornée à l'utilisateur. */
+    /**
+     * Les activations d'un poste <b>dont les fichiers sont réellement posés</b> — lecture interne,
+     * déjà bornée à l'utilisateur.
+     *
+     * <p>Depuis F-135 / SF-135-01, une activation dont le dépôt n'a <b>jamais</b> abouti n'est plus
+     * rendue ici : ses règles décriraient une carte absente de la machine. {@link #allOn} rend la
+     * liste complète pour qui doit voir ce retard plutôt que l'ignorer.</p>
+     */
     @Transactional(readOnly = true)
     public List<GovernanceActivation> activeOn(UUID userId, GovernanceHostRef host) {
+        return allOn(userId, host).stream().filter(GovernanceActivationService::deposited).toList();
+    }
+
+    /**
+     * Les activations d'un poste, <b>déposées ou non</b> — ce que l'utilisateur a demandé, par
+     * opposition à ce qui est réellement en place.
+     *
+     * <p>Sert aux écrans, qui doivent pouvoir dire « activé, mais jamais posé », et au dépôt sur un
+     * projet neuf, qui a précisément pour rôle de rattraper ce retard.</p>
+     */
+    @Transactional(readOnly = true)
+    public List<GovernanceActivation> allOn(UUID userId, GovernanceHostRef host) {
         return activations.findByUserIdAndHostIdOrderByCreatedAtAsc(userId, host.hostId());
+    }
+
+    /**
+     * Ce paquet a-t-il réellement posé ses fichiers sur la machine ? (F-135 / SF-135-01)
+     *
+     * <p><b>Le critère est {@code appliedAt}, pas le statut.</b> Un paquet <b>mis à jour</b> repasse
+     * en {@link GovernanceActivationStatus#PENDING} alors que ses fichiers sont bel et bien là —
+     * filtrer sur le statut retirerait ses règles au seul poste qui en a (mesuré le 2026-09-21 :
+     * CAGIP, {@code PENDING} avec {@code applied_at} rempli, 16 fichiers déposés, 2 593 faits).
+     * {@code appliedAt} dit exactement ce qu'on cherche : l'instant du dernier dépôt <b>abouti</b>.</p>
+     *
+     * <p>Ce qu'on évite dans l'autre sens : une doctrine qui décrit une carte <b>absente</b> de la
+     * machine. L'agent y cherche des fichiers qui n'existent pas.</p>
+     */
+    private static boolean deposited(GovernanceActivation activation) {
+        return activation.getAppliedAt() != null;
     }
 
     /**

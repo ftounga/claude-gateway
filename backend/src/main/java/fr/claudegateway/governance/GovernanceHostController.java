@@ -53,6 +53,7 @@ public class GovernanceHostController {
     private final GovernanceMapReadingService mapReadingService;
     private final IntegriteInspection integriteInspection;
     private final GovernanceHostScope hostScope;
+    private final HostMemoryService memoryService;
     private final AtelierAccessService atelierAccess;
     private final CurrentUser currentUser;
 
@@ -60,14 +61,15 @@ public class GovernanceHostController {
             GovernanceDepositService depositService,
             GovernanceFileReadingService fileReadingService,
             GovernanceMapReadingService mapReadingService, IntegriteInspection integriteInspection,
-            GovernanceHostScope hostScope, AtelierAccessService atelierAccess,
-            CurrentUser currentUser) {
+            GovernanceHostScope hostScope, HostMemoryService memoryService,
+            AtelierAccessService atelierAccess, CurrentUser currentUser) {
         this.activationService = activationService;
         this.depositService = depositService;
         this.fileReadingService = fileReadingService;
         this.mapReadingService = mapReadingService;
         this.integriteInspection = integriteInspection;
         this.hostScope = hostScope;
+        this.memoryService = memoryService;
         this.atelierAccess = atelierAccess;
         this.currentUser = currentUser;
     }
@@ -217,6 +219,24 @@ public class GovernanceHostController {
         atelierAccess.requireAccess();
         UUID userId = currentUser.requireId();
         return depositService.deposit(userId, hostScope.require(userId, hostRef), packageId);
+    }
+
+    /**
+     * <b>Met ce poste en mémoire</b> (F-135 / SF-135-01) : embarque les paquets par défaut et pose
+     * leurs fichiers, en <b>un seul appel</b>.
+     *
+     * <p>Le même résultat s'obtenait déjà en activant un paquet puis en l'appliquant — encore
+     * fallait-il connaître la console de gouvernance et savoir qu'il y a deux gestes. Trois postes
+     * sur quatre n'apprenaient rien, faute de ce chemin.</p>
+     *
+     * <p><b>Idempotent</b>, et silencieux sur l'échec d'un dépôt : l'état rendu dit où l'on en est,
+     * et reprendre le geste est sans risque.</p>
+     */
+    @PostMapping("/{hostRef}/memory")
+    public HostMemoryState remember(@PathVariable String hostRef) {
+        atelierAccess.requireAccess();
+        UUID userId = currentUser.requireId();
+        return memoryService.remember(userId, hostScope.require(userId, hostRef));
     }
 
     /** Désactive un paquet sur ce poste. Les fichiers déjà déposés restent (décision D4). */

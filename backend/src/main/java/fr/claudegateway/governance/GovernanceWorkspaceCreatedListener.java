@@ -63,7 +63,10 @@ public class GovernanceWorkspaceCreatedListener {
                 // machine qui le fait exister. C'est donc ici qu'il embarque la sélection par défaut.
                 activationService.embarkDefaults(event.userId(), host);
             }
-            if (activationService.activeOn(event.userId(), host).isEmpty()) {
+            // `allOn` et non `activeOn` (F-135 / SF-135-01) : un poste activé dont le dépôt n'a
+            // jamais abouti est exactement celui qu'un projet neuf doit rattraper. Le filtrer ici
+            // condamnerait au vide le cas que cette feature répare.
+            if (activationService.allOn(event.userId(), host).isEmpty()) {
                 return; // Poste non gouverné : rien à faire, et surtout rien à lire.
             }
             depositService.depositOnNewProjectQuietly(event.userId(), event.workspaceId());

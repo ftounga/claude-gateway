@@ -319,4 +319,66 @@ class GovernanceHostApiIntegrationTest {
         mockMvc.perform(get("/api/governance/hosts").contextPath("/api"))
                 .andExpect(status().isUnauthorized());
     }
+
+    // --------------------------------- la mémoire d'un poste (F-135 / SF-135-01)
+
+    @Test
+    @DisplayName("la liste des postes dit lesquels n'apprennent rien")
+    void theHostListSaysWhichOnesLearnNothing() throws Exception {
+        // Le constat de l'audit : trois postes sur quatre n'apprenaient rien, et AUCUN écran ne le
+        // disait. L'état voyage donc avec la liste, sans appel de plus.
+        mockMvc.perform(get("/api/governance/hosts").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].name").value("EDENRED"))
+                .andExpect(jsonPath("$[0].memory").value("ABSENT"))
+                .andExpect(jsonPath("$[0].facts").value(0));
+    }
+
+    @Test
+    @DisplayName("mettre un poste en mémoire en UN geste")
+    void oneGestureputsAHostIntoMemory() throws Exception {
+        // Le paquet doit d'abord être retenu comme défaut : le geste embarque les défauts, il
+        // n'ouvre pas de sélecteur.
+        mockMvc.perform(put("/api/governance/selection/" + publishedId).contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"defaultApplied\":true}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post(hostPath(aliceHost) + "/memory").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                // Ce paquet n'apporte aucun fichier : le dépôt aboutit immédiatement.
+                .andExpect(jsonPath("$").value("ACTIVE"));
+
+        assertThat(activations.findAll()).hasSize(1);
+
+        // Idempotent : le refaire ne crée pas une seconde activation ni ne réécrit la machine.
+        mockMvc.perform(post(hostPath(aliceHost) + "/memory").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").value("ACTIVE"));
+        assertThat(activations.findAll()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("sans paquet par défaut, le geste ne crée aucune activation vide")
+    void withoutADefaultPackageNothingIsCreated() throws Exception {
+        mockMvc.perform(post(hostPath(aliceHost) + "/memory").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").value("ABSENT"));
+
+        assertThat(activations.findAll()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Bob ne met pas en mémoire le poste d'Alice, et n'écrit aucune ligne")
+    void bobCannotRememberAliceHost() throws Exception {
+        mockMvc.perform(post(hostPath(aliceHost) + "/memory").contextPath("/api")
+                        .header("Authorization", "Bearer " + bobToken))
+                .andExpect(status().isNotFound());
+
+        assertThat(activations.findAll()).isEmpty();
+    }
 }

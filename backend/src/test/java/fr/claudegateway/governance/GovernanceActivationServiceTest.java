@@ -7,6 +7,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -40,6 +41,8 @@ class GovernanceActivationServiceTest {
     private GovernancePackageService packageService;
     @Mock
     private GovernanceHostScope hostScope;
+    @Mock
+    private GovernanceMapGrowthRepository growth;
 
     private GovernanceActivationService service;
 
@@ -52,7 +55,7 @@ class GovernanceActivationServiceTest {
     @BeforeEach
     void setUp() {
         service = new GovernanceActivationService(activations, selectionService, packageService,
-                hostScope);
+                hostScope, growth);
         pkg = GovernancePackage.builder().id(UUID.randomUUID()).slug("p").name("P").version(3)
                 .published(true).rules("r").build();
         when(packageService.requirePublished(pkg.getId())).thenReturn(pkg);
@@ -217,9 +220,15 @@ class GovernanceActivationServiceTest {
     void workspaceIsGovernedByItsHost() {
         UUID workspaceId = UUID.randomUUID();
         when(hostScope.hostOf(alice, workspaceId)).thenReturn(host);
+        // `appliedAt` ajouté par F-135 / SF-135-01 : ce test fige le RATTACHEMENT d'un projet aux
+        // activations de son poste, pas la question du dépôt. Depuis SF-135-01, une activation dont
+        // les fichiers n'ont jamais été posés ne gouverne rien — le cas est couvert par son propre
+        // test (`neverDepositedGivesNoRules`), et celui-ci reste sur son sujet avec un paquet
+        // réellement déposé.
         GovernanceActivation activation = GovernanceActivation.builder()
                 .id(UUID.randomUUID()).userId(alice).hostId(hostId).packageId(pkg.getId())
-                .appliedVersion(3).status(GovernanceActivationStatus.APPLIED).build();
+                .appliedVersion(3).status(GovernanceActivationStatus.APPLIED)
+                .appliedAt(OffsetDateTime.now()).build();
         when(activations.findByUserIdAndHostIdOrderByCreatedAtAsc(alice, hostId))
                 .thenReturn(List.of(activation));
 
@@ -232,5 +241,75 @@ class GovernanceActivationServiceTest {
         service.forgetHost(alice, hostId);
 
         verify(activations).deleteByUserIdAndHostId(alice, hostId);
+    }
+
+    // ------------------------------------- le dépôt réel, pas le statut (F-135 / SF-135-01)
+
+    @Test
+    @DisplayName("un paquet jamais déposé ne donne AUCUNE règle")
+    void neverDepositedGivesNoRules() {
+        // Mesuré le 2026-09-21 : EDENRED recevait une doctrine décrivant une carte absente de sa
+        // machine, et son agent y cherchait des fichiers qui n'existent pas.
+        when(activations.findByUserIdAndHostIdOrderByCreatedAtAsc(alice, hostId))
+                .thenReturn(List.of(activationWith(null)));
+
+        assertThat(service.activeOn(alice, host)).isEmpty();
+        // Elle reste visible pour qui doit voir le retard, au lieu de disparaître.
+        assertThat(service.allOn(alice, host)).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("un paquet déposé PUIS MIS À JOUR garde ses règles, bien qu'il soit PENDING")
+    void depositedThenUpdatedKeepsItsRules() {
+        // LE PIÈGE DE LA SUBFEATURE. Filtrer sur le statut aurait retiré ses règles au seul poste
+        // qui en a : CAGIP était PENDING (paquet republié en v2) avec ses 16 fichiers bien posés.
+        GovernanceActivation updated = activationWith(OffsetDateTime.now().minusDays(7));
+        updated.setStatus(GovernanceActivationStatus.PENDING);
+        when(activations.findByUserIdAndHostIdOrderByCreatedAtAsc(alice, hostId))
+                .thenReturn(List.of(updated));
+
+        assertThat(service.activeOn(alice, host)).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("l'état de mémoire d'un poste se lit sur la liste, sans toucher la machine")
+    void theHostListSaysWhetherItLearns() {
+        when(hostScope.governable(alice)).thenReturn(List.of(host));
+        when(packageService.require(pkg.getId())).thenReturn(pkg);
+        when(activations.findByUserIdAndHostIdOrderByCreatedAtAsc(alice, hostId))
+                .thenReturn(List.of(activationWith(null)));
+        when(growth.findByUserIdAndHostId(alice, hostId)).thenReturn(List.of());
+
+        assertThat(service.hosts(alice)).singleElement()
+                .satisfies(summary -> {
+                    assertThat(summary.memory()).isEqualTo(HostMemoryState.PENDING);
+                    assertThat(summary.facts()).isZero();
+                });
+    }
+
+    @Test
+    @DisplayName("les faits accumulés remontent avec le poste")
+    void accumulatedFactsTravelWithTheHost() {
+        when(hostScope.governable(alice)).thenReturn(List.of(host));
+        when(packageService.require(pkg.getId())).thenReturn(pkg);
+        when(activations.findByUserIdAndHostIdOrderByCreatedAtAsc(alice, hostId))
+                .thenReturn(List.of(activationWith(OffsetDateTime.now())));
+        when(growth.findByUserIdAndHostId(alice, hostId)).thenReturn(List.of(
+                GovernanceMapGrowth.builder().userId(alice).hostId(hostId).path("acces.md")
+                        .facts(641).build(),
+                GovernanceMapGrowth.builder().userId(alice).hostId(hostId).path("reseau.md")
+                        .facts(249).build()));
+
+        assertThat(service.hosts(alice)).singleElement()
+                .satisfies(summary -> {
+                    assertThat(summary.memory()).isEqualTo(HostMemoryState.ACTIVE);
+                    assertThat(summary.facts()).isEqualTo(890);
+                });
+    }
+
+    private GovernanceActivation activationWith(OffsetDateTime appliedAt) {
+        return GovernanceActivation.builder()
+                .userId(alice).hostId(hostId).packageId(pkg.getId()).appliedVersion(1)
+                .status(GovernanceActivationStatus.APPLIED).appliedAt(appliedAt).build();
     }
 }
