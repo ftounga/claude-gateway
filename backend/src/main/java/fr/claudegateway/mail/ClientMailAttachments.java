@@ -488,7 +488,9 @@ public class ClientMailAttachments {
         if (links.isEmpty()) {
             return "";
         }
-        StringBuilder md = new StringBuilder("\n\n---\n\n**Pages** (liens privés : connexion à claude-gateway "
+        // F-110 / SF-110-06 : la phrase dit la CONTRAINTE (lien privé, connexion requise) sans
+        // nommer l'outil qui la porte — c'est ce que le destinataire a besoin de savoir.
+        StringBuilder md = new StringBuilder("\n\n---\n\n**Pages** (liens privés, connexion "
                 + "requise)\n\n");
         for (PageLink link : links) {
             md.append("- ").append(RadarMarkdown.text(link.title())).append(" — <").append(link.url()).append(">\n");

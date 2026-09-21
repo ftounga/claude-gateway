@@ -129,7 +129,8 @@ class ClientEmailApiIntegrationTest {
         ArgumentCaptor<ClientMailMessage> message = ArgumentCaptor.forClass(ClientMailMessage.class);
         verify(emailService).sendClientMail(message.capture());
         assertThat(message.getValue().to()).isEqualTo("vera@cagip.fr");
-        assertThat(message.getValue().displayName()).isEqualTo("claude-gateway pour CAGIP");
+        // F-110 / SF-110-06 : l'expéditeur ne nomme plus l'outil — ni le client, qui sait qui il est.
+        assertThat(message.getValue().displayName()).isEqualTo("NG IT Consulting");
         assertThat(message.getValue().html()).contains("<li>MFA en octobre</li>");
 
         mockMvc.perform(get("/api/client-emails/" + id).contextPath("/api").header("Authorization", "Bearer " + veraToken))
