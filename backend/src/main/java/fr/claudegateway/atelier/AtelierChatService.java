@@ -2649,6 +2649,53 @@ public class AtelierChatService implements RelayInterruptTarget {
         return outcome.error() ? ToolOutcome.error(outcome.content()) : ToolOutcome.info(outcome.content());
     }
 
+    /**
+     * Exécute {@code create_subject} (F-141 / SF-141-03) : crée un dossier-projet sous la racine du
+     * poste et hérite la gouvernance par le <b>chemin de création existant</b>
+     * ({@link WorkspaceService#openOnHost} → {@code WorkspaceCreatedEvent} → dépôt idempotent
+     * {@code CREATE_ONLY} de STATE.md/PLAN-ACTION.md/skills). Aucune logique de semis dupliquée,
+     * aucun écrasement.
+     *
+     * <p><b>Isolation</b> : la création porte le {@code user_id} de l'appelant et le {@code host_id}
+     * du terminal <b>déjà possédé</b> ({@code workspace} vient de {@code requireOwned} dans
+     * {@link #chat}). Réservé au terminal du poste : ailleurs, l'outil n'est même pas déclaré, et ce
+     * garde-fou refuse un appel malgré tout.</p>
+     */
+    private ToolOutcome executeCreateSubject(UUID userId, Workspace workspace, AgentToolCall call) {
+        if (!workspace.isHostTerminal()) {
+            return ToolOutcome.error("create_subject n'existe qu'au terminal du poste (la racine). "
+                    + "Réponds sans lui.");
+        }
+        UUID hostId = workspace.getHostId();
+        if (hostId == null) {
+            return ToolOutcome.error("Ce terminal n'est rattaché à aucun poste : impossible de créer "
+                    + "un sujet. Réponds sans lui.");
+        }
+        String name = arg(call.input(), "name");
+        if (name == null || name.isBlank()) {
+            return ToolOutcome.error("Donne un nom de dossier pour le sujet (paramètre « name »), "
+                    + "puis reprends.");
+        }
+        try {
+            Workspace created = workspaceService.openOnHost(userId, hostId, name.strip(),
+                    workspace.getName());
+            String path = created.getProjectPath() == null ? name.strip() : created.getProjectPath();
+            // Le dépôt de gouvernance est un effet de bord silencieux du chemin de création (F-75) :
+            // il s'est déclenché sur la validation de la transaction, sans rien à narrer ici.
+            return ToolOutcome.info("Sujet « " + created.getName() + " » créé sous la racine du poste ("
+                    + path + "), avec sa gouvernance héritée (STATE.md, PLAN-ACTION.md, skills) si le "
+                    + "poste est gouverné. Dépose maintenant l'information dans « " + path
+                    + " » avec write_file.");
+        } catch (fr.claudegateway.runner.host.HostProjectExistsException ex) {
+            // Jamais d'écrasement : le sujet existe déjà. On dépose dedans, ou on reclasse.
+            return ToolOutcome.error("Ce sujet existe déjà : " + ex.getMessage()
+                    + " Dépose l'information dedans avec write_file, ou reclasse-la — ne le recrée pas.");
+        } catch (fr.claudegateway.runner.host.InvalidProjectPathException ex) {
+            return ToolOutcome.error("Nom de sujet inexploitable : " + ex.getMessage()
+                    + " Donne un nom de dossier simple sous la racine, puis reprends.");
+        }
+    }
+
     /** Les deux outils qui modifient un fichier du projet, et eux seuls (F-50 / SF-50-01). */
     private static boolean isFileWrite(String tool) {
         return "write_file".equals(tool) || "edit_file".equals(tool);
@@ -2694,6 +2741,12 @@ public class AtelierChatService implements RelayInterruptTarget {
         // traité AVANT le routage par cible (F-39 / SF-39-13).
         if ("set_plan".equals(call.name())) {
             return applyPlan(call, listener, planOfTurn);
+        }
+        // Créer un sujet (F-141 / SF-141-03) : geste de la gateway, pas du runner — il crée un
+        // dossier-projet et hérite la gouvernance par le chemin existant. Traité ici, avant le
+        // routage par cible, comme set_plan et les blocs de présentation.
+        if ("create_subject".equals(call.name())) {
+            return executeCreateSubject(userId, workspace, call);
         }
         // Les outils de PRÉSENTATION (F-89 / SF-89-02) non plus : ils ne touchent ni la machine ni
         // le stockage, ils posent un bloc dans le fil. Traités ici, avant le routage par cible.
@@ -3621,6 +3674,25 @@ public class AtelierChatService implements RelayInterruptTarget {
                                                         "enum", List.of("pending", "active", "done"))),
                                         "required", List.of("title")))),
                         "required", List.of("steps"))));
+        // Créer un sujet à la racine (F-141 / SF-141-03) : UNIQUEMENT au terminal du poste, là où
+        // l'on aiguille (SF-141-02). L'outil crée un dossier-projet sous la racine et hérite la
+        // gouvernance par le chemin de création EXISTANT (WorkspaceService.openOnHost →
+        // WorkspaceCreatedEvent → dépôt idempotent CREATE_ONLY) — jamais un semis dupliqué, jamais un
+        // écrasement.
+        if (workspace.isHostTerminal()) {
+            tools.add(new AgentTool("create_subject",
+                    "Crée un NOUVEAU sujet (un dossier sous la racine du poste) et y fait HÉRITER la "
+                            + "gouvernance (STATE.md, PLAN-ACTION.md, skills), comme un projet créé par "
+                            + "l'écran. À n'utiliser qu'APRÈS validation de l'utilisateur au terminal du "
+                            + "poste (voir la consigne d'aiguillage). Ne crée rien d'autre : dépose "
+                            + "ensuite l'information dans le sujet avec write_file. Un sujet déjà "
+                            + "existant n'est jamais écrasé.",
+                    Map.of("type", "object",
+                            "properties", Map.of("name", Map.of("type", "string",
+                                    "description", "Nom du dossier du sujet, sous la racine du poste "
+                                            + "(ex. « data-platform »).")),
+                            "required", List.of("name"))));
+        }
         // Le volet Teams, en dernier : ce qui précède est la panoplie de tout terminal, ce qui suit
         // n'existe que là où Teams a été payé ET où l'on est dans SON terminal (F-89 / SF-89-01).
         tools.addAll(teamsToolCatalog.toolsFor(userId, workspace));
