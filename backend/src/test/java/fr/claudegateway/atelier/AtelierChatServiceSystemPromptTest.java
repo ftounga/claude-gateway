@@ -450,6 +450,103 @@ class AtelierChatServiceSystemPromptTest {
         assertThat(system).doesNotContain("À la racine du poste, aiguille avant de ranger");
     }
 
+    // ------------------------------------------- F-141 / SF-141-03 : créer un sujet + gouvernance héritée
+
+    /** Prépare un TERMINAL DU POSTE (racine) sans envoyer de tour : pour scénariser des appels d'outil. */
+    private void configureHostTerminal() {
+        Workspace host = new Workspace();
+        host.setId(workspaceId);
+        host.setUserId(userId);
+        host.setSource(WorkspaceSource.ARCHIVE);
+        host.setExecutionTarget(WorkspaceExecutionTarget.RUNNER);
+        host.setHostId(hostId);
+        host.setHostTerminal(true);
+        host.setName("Terminal du poste");
+        when(workspaceService.requireOwned(userId, workspaceId)).thenReturn(host);
+        lenient().when(runnerToolGateway.listFiles(any(), any())).thenReturn(runnerOk(""));
+        lenient().when(runnerToolGateway.readFile(any(), any(), any())).thenReturn(runnerOk("conventions"));
+    }
+
+    private static java.util.List<String> toolNames(java.util.List<fr.claudegateway.agent.AgentTool> tools) {
+        return tools.stream().map(fr.claudegateway.agent.AgentTool::name).toList();
+    }
+
+    @Test
+    void createSubjectToolIsOfferedOnlyOnTheHostTerminal() {
+        // Présent à la racine.
+        configureHostTerminal();
+        agentProvider.enqueueFinal("fini");
+        service.chat(userId, workspaceId, "bonjour");
+        assertThat(toolNames(agentProvider.lastRequest.tools())).contains("create_subject");
+    }
+
+    @Test
+    void createSubjectToolIsAbsentOnAnOrdinaryProject() {
+        systemPromptOfRunnerProjectDeclaring(null);
+        assertThat(toolNames(agentProvider.lastRequest.tools())).doesNotContain("create_subject");
+    }
+
+    @Test
+    void createSubjectToolIsAbsentOnAHostedProject() {
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+        agentProvider.enqueueFinal("fini");
+        service.chat(userId, workspaceId, "bonjour");
+        assertThat(toolNames(agentProvider.lastRequest.tools())).doesNotContain("create_subject");
+    }
+
+    @Test
+    void createSubjectDelegatesToOpenOnHostWithUserAndHost() {
+        configureHostTerminal();
+        Workspace created = new Workspace();
+        created.setId(UUID.randomUUID());
+        created.setUserId(userId);
+        created.setName("data-platform");
+        created.setHostId(hostId);
+        created.setProjectPath("data-platform");
+        when(workspaceService.openOnHost(userId, hostId, "data-platform", "Terminal du poste"))
+                .thenReturn(created);
+        agentProvider.enqueueToolCall("create_subject", "name", "data-platform");
+        agentProvider.enqueueFinal("déposé");
+
+        service.chat(userId, workspaceId, "range ce journal dans un nouveau sujet data-platform");
+
+        // Le chemin de création EXISTANT est appelé, avec l'isolation user_id + host_id.
+        org.mockito.Mockito.verify(workspaceService).openOnHost(userId, hostId, "data-platform",
+                "Terminal du poste");
+    }
+
+    @Test
+    void createSubjectOnAnExistingFolderDoesNotOverwrite() {
+        configureHostTerminal();
+        when(workspaceService.openOnHost(userId, hostId, "data-platform", "Terminal du poste"))
+                .thenThrow(new fr.claudegateway.runner.host.HostProjectExistsException("data-platform",
+                        "data-platform"));
+        agentProvider.enqueueToolCall("create_subject", "name", "data-platform");
+        agentProvider.enqueueFinal("compris");
+
+        service.chat(userId, workspaceId, "crée data-platform");
+
+        // Une seule tentative : le doublon n'est jamais réécrit ni recréé.
+        org.mockito.Mockito.verify(workspaceService, org.mockito.Mockito.times(1))
+                .openOnHost(userId, hostId, "data-platform", "Terminal du poste");
+        // Le modèle a reçu le refus dans le résultat de l'outil.
+        assertThat(agentProvider.toolNamesSeen).contains("create_subject");
+    }
+
+    @Test
+    void createSubjectRejectsABlankNameWithoutTouchingTheWorkspace() {
+        configureHostTerminal();
+        agentProvider.enqueueToolCall("create_subject", "name", "   ");
+        agentProvider.enqueueFinal("ok");
+
+        service.chat(userId, workspaceId, "crée un sujet");
+
+        org.mockito.Mockito.verify(workspaceService, org.mockito.Mockito.never())
+                .openOnHost(any(), any(), any(), any());
+    }
+
     @Test
     void theSetPlanDescriptionOnlyPlansWhenAskedOrActing() {
         when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
