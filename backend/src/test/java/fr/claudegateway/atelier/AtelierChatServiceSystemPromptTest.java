@@ -43,6 +43,7 @@ class AtelierChatServiceSystemPromptTest {
     @Mock private fr.claudegateway.runner.exec.RunnerConfirmationGate confirmationGate;
     @Mock private fr.claudegateway.runner.audit.RunnerAuditService runnerAuditService;
     @Mock private fr.claudegateway.runner.host.RunnerHostService runnerHostService;
+    @Mock private fr.claudegateway.governance.GovernanceHostFiles governanceHostFiles;
 
     private StubAiAgentProvider agentProvider;
     private AtelierChatService service;
@@ -545,6 +546,150 @@ class AtelierChatServiceSystemPromptTest {
 
         org.mockito.Mockito.verify(workspaceService, org.mockito.Mockito.never())
                 .openOnHost(any(), any(), any(), any());
+    }
+
+    // ------------------------------------------- F-141 / SF-141-04 : reclasser une entrée
+
+    private static fr.claudegateway.governance.GovernanceHostFiles.HostFileRead present(String content) {
+        return new fr.claudegateway.governance.GovernanceHostFiles.HostFileRead(
+                fr.claudegateway.governance.GovernanceHostFiles.Presence.PRESENT, content, false);
+    }
+
+    @Test
+    void reclassEntryToolIsOfferedOnlyOnTheHostTerminalWhenWired() {
+        configureHostTerminal();
+        service.setGovernanceHostFiles(governanceHostFiles);
+        agentProvider.enqueueFinal("fini");
+        service.chat(userId, workspaceId, "bonjour");
+        assertThat(toolNames(agentProvider.lastRequest.tools())).contains("reclass_entry");
+    }
+
+    @Test
+    void reclassEntryToolIsAbsentWhenNotWired() {
+        configureHostTerminal();
+        // Pas de setGovernanceHostFiles : l'outil n'existe pas.
+        agentProvider.enqueueFinal("fini");
+        service.chat(userId, workspaceId, "bonjour");
+        assertThat(toolNames(agentProvider.lastRequest.tools())).doesNotContain("reclass_entry");
+    }
+
+    @Test
+    void reclassEntryToolIsAbsentOnAnOrdinaryProject() {
+        // Même câblé, l'outil ne s'offre pas hors du terminal du poste.
+        Workspace runner = new Workspace();
+        runner.setId(workspaceId);
+        runner.setUserId(userId);
+        runner.setSource(WorkspaceSource.ARCHIVE);
+        runner.setExecutionTarget(WorkspaceExecutionTarget.RUNNER);
+        runner.setHostId(hostId);
+        when(workspaceService.requireOwned(userId, workspaceId)).thenReturn(runner);
+        lenient().when(runnerToolGateway.listFiles(any(), any())).thenReturn(runnerOk(""));
+        lenient().when(runnerToolGateway.readFile(any(), any(), any())).thenReturn(runnerOk("x"));
+        service.setGovernanceHostFiles(governanceHostFiles);
+        agentProvider.enqueueFinal("fini");
+        service.chat(userId, workspaceId, "bonjour");
+        assertThat(toolNames(agentProvider.lastRequest.tools())).doesNotContain("reclass_entry");
+    }
+
+    @Test
+    void reclassEntryMovesTheLineWithTraceFromSourceToTarget() {
+        configureHostTerminal();
+        service.setGovernanceHostFiles(governanceHostFiles);
+        String fromContent = "- fait A\n- fait B mal rangé\n- fait C\n";
+        when(governanceHostFiles.read(eqUser(), any(), org.mockito.ArgumentMatchers.eq("lzi/PLAN-ACTION.md")))
+                .thenReturn(present(fromContent));
+        when(governanceHostFiles.read(eqUser(), any(),
+                org.mockito.ArgumentMatchers.eq("data-platform/PLAN-ACTION.md")))
+                .thenReturn(present("- déjà là\n"));
+        when(governanceHostFiles.write(eqUser(), any(), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString())).thenReturn(true);
+
+        agentProvider.enqueueToolCall("reclass_entry",
+                "from", "lzi/PLAN-ACTION.md",
+                "to", "data-platform/PLAN-ACTION.md",
+                "entry", "- fait B mal rangé");
+        agentProvider.enqueueFinal("reclassé");
+
+        service.chat(userId, workspaceId, "reclasse ce fait vers data-platform");
+
+        org.mockito.ArgumentCaptor<String> path = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.ArgumentCaptor<String> body = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(governanceHostFiles, org.mockito.Mockito.times(2))
+                .write(eqUser(), any(), path.capture(), body.capture());
+        int toIdx = path.getAllValues().indexOf("data-platform/PLAN-ACTION.md");
+        int fromIdx = path.getAllValues().indexOf("lzi/PLAN-ACTION.md");
+        // La destination reçoit le fait AVEC sa trace de provenance.
+        assertThat(body.getAllValues().get(toIdx)).contains("- fait B mal rangé (reclassé depuis "
+                + "lzi/PLAN-ACTION.md le ");
+        assertThat(body.getAllValues().get(toIdx)).contains("- déjà là");
+        // La source ne contient plus le fait déplacé, mais garde les autres.
+        assertThat(body.getAllValues().get(fromIdx)).doesNotContain("fait B mal rangé");
+        assertThat(body.getAllValues().get(fromIdx)).contains("- fait A");
+        assertThat(body.getAllValues().get(fromIdx)).contains("- fait C");
+    }
+
+    @Test
+    void reclassEntryDoesNotLoseTheFactWhenTargetWriteFails() {
+        configureHostTerminal();
+        service.setGovernanceHostFiles(governanceHostFiles);
+        when(governanceHostFiles.read(eqUser(), any(), org.mockito.ArgumentMatchers.eq("lzi/x.md")))
+                .thenReturn(present("- fait B\n"));
+        when(governanceHostFiles.read(eqUser(), any(), org.mockito.ArgumentMatchers.eq("data/x.md")))
+                .thenReturn(present("- autre\n"));
+        // La destination refuse l'écriture : on n'écrit JAMAIS la source ensuite (fait non perdu).
+        when(governanceHostFiles.write(eqUser(), any(), org.mockito.ArgumentMatchers.eq("data/x.md"),
+                org.mockito.ArgumentMatchers.anyString())).thenReturn(false);
+
+        agentProvider.enqueueToolCall("reclass_entry", "from", "lzi/x.md", "to", "data/x.md",
+                "entry", "- fait B");
+        agentProvider.enqueueFinal("compris");
+
+        service.chat(userId, workspaceId, "reclasse");
+
+        // La source n'est jamais réécrite : le fait reste là où il était.
+        org.mockito.Mockito.verify(governanceHostFiles, org.mockito.Mockito.never())
+                .write(eqUser(), any(), org.mockito.ArgumentMatchers.eq("lzi/x.md"),
+                        org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    void reclassEntryRejectsWhenTheLineIsNotInTheSource() {
+        configureHostTerminal();
+        service.setGovernanceHostFiles(governanceHostFiles);
+        when(governanceHostFiles.read(eqUser(), any(), org.mockito.ArgumentMatchers.eq("lzi/x.md")))
+                .thenReturn(present("- rien de tel\n"));
+
+        agentProvider.enqueueToolCall("reclass_entry", "from", "lzi/x.md", "to", "data/x.md",
+                "entry", "- fait absent");
+        agentProvider.enqueueFinal("ok");
+
+        service.chat(userId, workspaceId, "reclasse");
+
+        // Aucune écriture : rien n'a bougé.
+        org.mockito.Mockito.verify(governanceHostFiles, org.mockito.Mockito.never())
+                .write(any(), any(), org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    void reclassEntryRejectsIdenticalSourceAndTarget() {
+        configureHostTerminal();
+        service.setGovernanceHostFiles(governanceHostFiles);
+        agentProvider.enqueueToolCall("reclass_entry", "from", "a.md", "to", "a.md", "entry", "- x");
+        agentProvider.enqueueFinal("ok");
+
+        service.chat(userId, workspaceId, "reclasse");
+
+        // Ni lecture ni écriture : refus immédiat.
+        org.mockito.Mockito.verify(governanceHostFiles, org.mockito.Mockito.never())
+                .read(any(), any(), org.mockito.ArgumentMatchers.anyString());
+        org.mockito.Mockito.verify(governanceHostFiles, org.mockito.Mockito.never())
+                .write(any(), any(), org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyString());
+    }
+
+    private UUID eqUser() {
+        return org.mockito.ArgumentMatchers.eq(userId);
     }
 
     @Test

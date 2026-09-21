@@ -588,6 +588,12 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     private fr.claudegateway.mail.ClientMailTool clientMailTool;
     /**
+     * L'écriture des cartes du poste (F-141 / SF-141-04), pour reclasser un fait d'un sujet vers un
+     * autre (ou racine↔projet). Injecté par mutateur pour ne toucher à aucune forme de constructeur :
+     * {@code null} (formes historiques, tests) = l'outil {@code reclass_entry} n'existe pas.
+     */
+    private fr.claudegateway.governance.GovernanceHostFiles governanceHostFiles;
+    /**
      * Compaction automatique du fil (F-117 / SF-117-01). Injecté par mutateur pour ne toucher à aucun
      * des constructeurs conservés : {@code null} (formes historiques, tests antérieurs à F-117) = la
      * compaction est inerte, et le fil est rejoué exactement comme avant.
@@ -865,6 +871,13 @@ public class AtelierChatService implements RelayInterruptTarget {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setClientMailTool(fr.claudegateway.mail.ClientMailTool clientMailTool) {
         this.clientMailTool = clientMailTool;
+    }
+
+    /** Branche l'écriture des cartes du poste pour le reclassement (F-141 / SF-141-04). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setGovernanceHostFiles(
+            fr.claudegateway.governance.GovernanceHostFiles governanceHostFiles) {
+        this.governanceHostFiles = governanceHostFiles;
     }
 
     /** Branche la compaction automatique du fil (F-117 / SF-117-01). */
@@ -2696,6 +2709,101 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
     }
 
+    /**
+     * Exécute {@code reclass_entry} (F-141 / SF-141-04) : déplace un fait durable d'une carte vers
+     * une autre (sujet↔sujet, racine↔projet) en un geste, avec trace. <b>Réutilise l'écriture des
+     * cartes existante</b> ({@link fr.claudegateway.governance.GovernanceHostFiles}, outils runner
+     * existants {@code governance_map_read}/{@code governance_map_write}) — aucun nouvel outil runner.
+     *
+     * <p><b>Ordre choisi pour ne jamais perdre le fait</b> : on ajoute d'abord à la destination, puis
+     * on retire de la source. Si le retrait échoue, le fait est <b>dupliqué</b> (récupérable), jamais
+     * perdu. Pas d'annulation automatique (aucune infrastructure d'annulation) : la trace vit dans le
+     * journal d'audit des écritures et dans la confirmation rendue.</p>
+     *
+     * <p><b>Isolation</b> {@code user_id}+{@code host_id} : la carte visée est celle du poste
+     * <b>déjà possédé</b> du terminal ({@code workspace} vient de {@code requireOwned}).</p>
+     */
+    private ToolOutcome executeReclassEntry(UUID userId, Workspace workspace, AgentToolCall call) {
+        if (!workspace.isHostTerminal() || governanceHostFiles == null) {
+            return ToolOutcome.error("reclass_entry n'existe qu'au terminal du poste (la racine). "
+                    + "Réponds sans lui.");
+        }
+        UUID hostId = workspace.getHostId();
+        if (hostId == null) {
+            return ToolOutcome.error("Ce terminal n'est rattaché à aucun poste : rien à reclasser.");
+        }
+        String from = arg(call.input(), "from");
+        String to = arg(call.input(), "to");
+        String entry = arg(call.input(), "entry");
+        if (from == null || from.isBlank() || to == null || to.isBlank()
+                || entry == null || entry.isBlank()) {
+            return ToolOutcome.error("Donne le fichier source (« from »), le fichier destination "
+                    + "(« to ») et le texte exact de la ligne à déplacer (« entry »), puis reprends.");
+        }
+        from = from.strip();
+        to = to.strip();
+        String needle = entry.strip();
+        if (from.equals(to)) {
+            return ToolOutcome.error("Source et destination sont identiques (" + from + ") : rien à "
+                    + "déplacer.");
+        }
+        fr.claudegateway.governance.GovernanceHostRef host =
+                fr.claudegateway.governance.GovernanceHostRef.of(hostId);
+        // 1) Lire la source et vérifier que l'entrée y est. Le doute n'écrit pas.
+        var sourceRead = governanceHostFiles.read(userId, host, from);
+        if (sourceRead.presence()
+                != fr.claudegateway.governance.GovernanceHostFiles.Presence.PRESENT) {
+            return ToolOutcome.error("Impossible de lire la carte source « " + from + " » (état : "
+                    + sourceRead.presence() + "). Vérifie le chemin, puis reprends — rien n'a été "
+                    + "déplacé.");
+        }
+        String sourceContent = sourceRead.contentOrEmpty();
+        String[] sourceLines = sourceContent.split("\n", -1);
+        java.util.List<String> kept = new java.util.ArrayList<>(sourceLines.length);
+        boolean found = false;
+        for (String line : sourceLines) {
+            if (!found && line.strip().equals(needle)) {
+                found = true; // On ne retire que la PREMIÈRE occurrence exacte.
+                continue;
+            }
+            kept.add(line);
+        }
+        if (!found) {
+            return ToolOutcome.error("La ligne exacte n'a pas été trouvée dans « " + from + " ». "
+                    + "Copie le texte EXACT de la ligne (paramètre « entry »), puis reprends — rien "
+                    + "n'a été déplacé.");
+        }
+        // 2) Ajouter d'abord à la destination (jamais perdre le fait), avec une trace de provenance.
+        var targetRead = governanceHostFiles.read(userId, host, to);
+        // Seuls PRESENT (on complète) et ABSENT (on crée) autorisent l'écriture ; tout doute s'abstient.
+        if (targetRead.presence()
+                != fr.claudegateway.governance.GovernanceHostFiles.Presence.PRESENT
+                && targetRead.presence()
+                != fr.claudegateway.governance.GovernanceHostFiles.Presence.ABSENT) {
+            return ToolOutcome.error("Impossible de lire la carte destination « " + to + " » (état : "
+                    + targetRead.presence() + "). Rien n'a été déplacé.");
+        }
+        String targetContent = targetRead.contentOrEmpty();
+        String trace = " (reclassé depuis " + from + " le " + java.time.LocalDate.now() + ")";
+        StringBuilder newTarget = new StringBuilder(targetContent);
+        if (newTarget.length() > 0 && newTarget.charAt(newTarget.length() - 1) != '\n') {
+            newTarget.append('\n');
+        }
+        newTarget.append(needle).append(trace).append('\n');
+        if (!governanceHostFiles.write(userId, host, to, newTarget.toString())) {
+            return ToolOutcome.error("Écriture de la destination « " + to + " » impossible : rien "
+                    + "n'a été déplacé (la source est intacte).");
+        }
+        // 3) Retirer de la source. En cas d'échec ici, le fait est en double (récupérable), pas perdu.
+        String newSource = String.join("\n", kept);
+        if (!governanceHostFiles.write(userId, host, from, newSource)) {
+            return ToolOutcome.error("Le fait a été ajouté à « " + to + " » mais n'a pas pu être "
+                    + "retiré de « " + from + " » : retire-le à la main pour éviter le doublon.");
+        }
+        return ToolOutcome.info("Reclassé : la ligne a été déplacée de « " + from + " » vers « " + to
+                + " »" + trace + ".");
+    }
+
     /** Les deux outils qui modifient un fichier du projet, et eux seuls (F-50 / SF-50-01). */
     private static boolean isFileWrite(String tool) {
         return "write_file".equals(tool) || "edit_file".equals(tool);
@@ -2747,6 +2855,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         // routage par cible, comme set_plan et les blocs de présentation.
         if ("create_subject".equals(call.name())) {
             return executeCreateSubject(userId, workspace, call);
+        }
+        // Reclasser un fait (F-141 / SF-141-04) : écriture des cartes du poste par la gateway, jamais
+        // par le runner « brut ». Traité ici, avant le routage par cible.
+        if ("reclass_entry".equals(call.name())) {
+            return executeReclassEntry(userId, workspace, call);
         }
         // Les outils de PRÉSENTATION (F-89 / SF-89-02) non plus : ils ne touchent ni la machine ni
         // le stockage, ils posent un bloc dans le fil. Traités ici, avant le routage par cible.
@@ -3692,6 +3805,25 @@ public class AtelierChatService implements RelayInterruptTarget {
                                     "description", "Nom du dossier du sujet, sous la racine du poste "
                                             + "(ex. « data-platform »).")),
                             "required", List.of("name"))));
+        }
+        // Reclasser un fait mal rangé (F-141 / SF-141-04) : au terminal du poste, déplacer une entrée
+        // durable d'un sujet vers un autre (ou racine↔projet) en UN geste, avec trace. Réutilise
+        // l'écriture des cartes existante (GovernanceHostFiles, outils runner existants).
+        if (workspace.isHostTerminal() && governanceHostFiles != null) {
+            tools.add(new AgentTool("reclass_entry",
+                    "Déplace un fait durable mal rangé d'une carte vers une autre (d'un sujet à un "
+                            + "autre, ou racine↔projet), en un seul geste et avec trace. Donne le "
+                            + "fichier source (`from`), le fichier destination (`to`), tous deux "
+                            + "relatifs à la racine du poste (ex. « lzi/PLAN-ACTION.md », "
+                            + "« data-platform/PLAN-ACTION.md », « plateformes.md »), et le texte "
+                            + "EXACT de la ligne à déplacer (`entry`). Le fait est d'abord ajouté à la "
+                            + "destination, puis retiré de la source, pour ne jamais le perdre.",
+                    Map.of("type", "object",
+                            "properties", Map.of(
+                                    "from", stringProp,
+                                    "to", stringProp,
+                                    "entry", stringProp),
+                            "required", List.of("from", "to", "entry"))));
         }
         // Le volet Teams, en dernier : ce qui précède est la panoplie de tout terminal, ce qui suit
         // n'existe que là où Teams a été payé ET où l'on est dans SON terminal (F-89 / SF-89-01).
