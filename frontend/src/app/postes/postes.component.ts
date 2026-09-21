@@ -40,6 +40,8 @@ import {
 import { HostBadgeComponent } from '../shared/host-badge/host-badge.component';
 import { ForgeCostAlertComponent } from '../shared/forge-cost-alert/forge-cost-alert.component';
 import { ForgeMemoryNoticeComponent } from '../shared/forge-memory-notice/forge-memory-notice.component';
+import { WeeklyBudgetComponent } from '../shared/weekly-budget/weekly-budget.component';
+import { WeeklyBudgetService } from '../core/services/weekly-budget.service';
 import { LiveBadgeComponent } from '../shared/live-badge/live-badge.component';
 import { HostPagesComponent } from '../shared/pages/host-pages.component';
 import { ARCHIVE_ACCEPT } from '../shared/file-selectors';
@@ -204,6 +206,7 @@ const EMPTY_HOSTED: RunnerHostOverview = {
     ForgeProjectTileComponent,
     ForgeCostAlertComponent,
     ForgeMemoryNoticeComponent,
+    WeeklyBudgetComponent,
     HostBadgeComponent,
     LiveBadgeComponent,
     MissionBadgeComponent,
@@ -238,6 +241,8 @@ export class PostesComponent implements OnInit {
    * lecture, et le lit — si bien qu'un refus reçu dans un terminal la fait suivre sans rien relire.
    */
   private readonly presence = inject(HostPresenceService);
+  /** Où l'on en est du budget de la semaine (F-133 / SF-133-15) — une lecture pour tous les écrans. */
+  private readonly weeklyBudget = inject(WeeklyBudgetService);
   private readonly vigie = inject(VigieService);
 
   /** Les trois états proposés au choix, dans l'ordre : du plus vivant au plus rangé. */
@@ -537,6 +542,9 @@ export class PostesComponent implements OnInit {
     this.loadTeamsAccess();
     this.loadGovernanceHosts();
     this.loadBilling();
+    // F-133 / SF-133-15 : une seule lecture du budget de la semaine, partagée avec le terminal.
+    // Silencieuse : sans droit de lecture, rien ne s'affiche et rien ne casse.
+    this.weeklyBudget.load();
     this.startPolling();
     document.addEventListener('visibilitychange', this.onVisibilityChange);
     // Les libellés datés avancent à la seconde, sans appel (F-97 / SF-97-02).
