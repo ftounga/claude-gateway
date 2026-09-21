@@ -56,9 +56,32 @@ usage, la seconde parce qu'elle n'apparaît qu'en ouvrant le lien.
 - [ ] **Un test balaie tout ce qui part** vers un client et échoue si le nom de l'outil y réapparaît — c'est ce qui empêche la régression, pas la vigilance.
 - [ ] L'application de l'utilisateur est **inchangée** : logo, titre, écrans.
 
+## Correction de cadrage (2026-09-22, après vérification en production)
+
+La version initiale de cette mini-spec classait le **titre global** en hors scope, au motif qu'il
+« ne s'affiche que pour l'utilisateur ». **C'était faux**, et la vérification après déploiement l'a
+montré : les métadonnées de `index.html` sont lues par Teams, Outlook et Slack pour composer
+l'**aperçu d'un lien**, **sans exécuter le JavaScript**. Le correctif Angular (titre, logo) n'agit
+qu'après chargement : l'aperçu affichait donc encore *« Claude Portal — passerelle professionnelle
+vers Claude »* et le logo, **dans le fil de discussion du client**, avant même qu'il ne clique.
+
+Trois couches se sont révélées l'une après l'autre, chacune invisible depuis la précédente :
+
+1. les métadonnées `og:` / `twitter:` et le `<title>` ;
+2. l'icône d'onglet, qui est le logo de marque ;
+3. **deux** blocs de repli — celui que lisent les crawlers avant le démarrage d'Angular, **et** celui
+   du `<noscript>`. Le second a été trouvé par la garde du script, pas par relecture.
+
+**Le correctif** : la route `/p/` est servie par une coquille **`partage.html` dérivée de
+`index.html` au moment du build**, dont titre, métadonnées, icône et replis sont neutres. Dérivée et
+non maintenue à part : l'index référence les bundles par des noms qui changent à chaque compilation,
+et une copie figée cesserait de fonctionner au build suivant, **en silence**. Le script **échoue le
+build** si une trace subsiste, et un test vérifie le fichier **réellement produit** — la seule façon
+de voir ce qu'un client reçoit.
+
 ## Hors scope
-- Le **titre global** de l'application (`index.html`) : il ne s'affiche que pour l'utilisateur ; le
-  changer serait une décision de marque, pas une correction de fuite.
+- Le titre global de l'application **pour ses propres écrans** : l'utilisateur voit son produit.
+  Seule la route ouverte par un client est neutralisée.
 - `PageViewTicketService.KEY_LABEL` : étiquette de **dérivation cryptographique**, jamais affichée.
   La modifier **invaliderait tous les liens de page en circulation**. On n'y touche pas.
 - L'adresse d'envoi elle-même (`no-reply@ng-itconsulting.com`), déjà neutre.
