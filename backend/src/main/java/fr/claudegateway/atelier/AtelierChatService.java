@@ -1078,6 +1078,20 @@ public class AtelierChatService implements RelayInterruptTarget {
             }
         }
 
+        // F-137 / SF-137-01 — LES FAITS DÉJÀ CONNUS sur ce que la question mentionne, joints à la
+        // CONSIGNE du tour. Jamais à la consigne système : ils dépendent de la question, donc
+        // changent à chaque tour, et invalideraient le cache du préfixe à chaque demande (F-134).
+        // Même patron que F-115 / SF-115-03 : la consigne ENVOYÉE est augmentée, le message
+        // PERSISTÉ reste la parole de l'utilisateur. Best-effort : un échec ne casse pas le tour.
+        try {
+            String knownFacts = hostKnowledge.factsFor(userId, workspaceId, userText);
+            if (knownFacts != null && !knownFacts.isBlank()) {
+                consigne = knownFacts + "\n" + consigne;
+            }
+        } catch (RuntimeException ex) {
+            log.debug("Rappel de faits ignoré (best-effort) : {}", ex.getMessage());
+        }
+
         List<AgentMessage> messages = buildReplayMessages(userId, workspace);
         messages.add(AgentMessage.userText(consigne));
 

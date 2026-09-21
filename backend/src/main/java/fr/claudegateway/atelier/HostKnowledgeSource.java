@@ -22,6 +22,11 @@ public interface HostKnowledgeSource {
         }
 
         @Override
+        public String factsFor(UUID userId, UUID workspaceId, String question) {
+            return null;
+        }
+
+        @Override
         public void refreshAfterTurn(UUID userId, UUID workspaceId) {
             // Rien à rafraîchir.
         }
@@ -38,6 +43,18 @@ public interface HostKnowledgeSource {
      * @return le bloc, ou {@code null} s'il n'y a rien à dire
      */
     String outlineFor(UUID userId, UUID workspaceId);
+
+    /**
+     * Les <b>faits</b> de la carte de ce client qui portent sur ce que la question mentionne
+     * (F-137 / SF-137-01) — déjà composés et bornés.
+     *
+     * <p><b>Destinés au message du tour, jamais à la consigne système</b> : ils dépendent de la
+     * question, donc changent à chaque tour. Dans le préfixe, ils invalideraient le cache à chaque
+     * demande ; dans le dernier message, ils n'invalident rien.</p>
+     *
+     * @return le bloc, ou {@code null} si la question ne cite rien de connu
+     */
+    String factsFor(UUID userId, UUID workspaceId, String question);
 
     /**
      * Signale qu'un tour vient de se terminer sur ce projet : la carte du poste peut avoir changé.
