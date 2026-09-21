@@ -54,6 +54,22 @@ public class HostMapKnowledgeProvider implements HostKnowledgeSource {
     }
 
     @Override
+    public String factsFor(UUID userId, UUID workspaceId, String question) {
+        GovernanceHostRef host = hostOf(userId, workspaceId);
+        if (host == null || host.hostId() == null || question == null || question.isBlank()) {
+            return null;
+        }
+        try {
+            // La recherche porte sur la carte DU POSTE DU TOUR, lue par (user_id, host_id) : aucun
+            // fait d'un autre client ne peut être joint à cette question.
+            return HostFactLookup.factsFor(store.filesOf(userId, host.hostId()), question);
+        } catch (RuntimeException ex) {
+            log.debug("Rappel de faits indisponible ({})", ex.getClass().getSimpleName());
+            return null;
+        }
+    }
+
+    @Override
     public void refreshAfterTurn(UUID userId, UUID workspaceId) {
         GovernanceHostRef host = hostOf(userId, workspaceId);
         if (host == null || host.hostId() == null) {
