@@ -497,6 +497,8 @@ public class AtelierChatService implements RelayInterruptTarget {
      * rien n'est actif : la consigne système est alors celle d'avant F-51, à l'octet près.
      */
     private final ProjectRulesSource projectRules;
+    /** Ce que la gateway sait déjà du client de ce projet (F-136). */
+    private final HostKnowledgeSource hostKnowledge;
     /**
      * Catalogue d'outils du volet Teams (F-89 / SF-89-01), <b>et sa garde</b>. Vide tant que le
      * workspace n'est pas un terminal Teams ou que le droit n'est pas ouvert : la panoplie est alors
@@ -695,7 +697,37 @@ public class AtelierChatService implements RelayInterruptTarget {
                 gitWorkspaceService, runnerToolGateway, runnerCallDispatcher, confirmationGate,
                 runnerAuditService, relayBroadcaster, runnerHostService, atelierProperties,
                 checkpointRunner, projectRules, teamsToolCatalog, momentImages, radarToolCatalog,
-                radarToolExecutor, fr.claudegateway.pages.PageToolCatalog.none(), null);
+                radarToolExecutor, fr.claudegateway.pages.PageToolCatalog.none(), null,
+                HostKnowledgeSource.NONE);
+    }
+
+    /**
+     * Forme d'avant F-136, conservée pour les appelants (et les tests) antérieurs au savoir du
+     * client : {@link HostKnowledgeSource#NONE}, donc le tour d'avant, à l'octet près.
+     */
+    public AtelierChatService(WorkspaceService workspaceService, AtelierMessageRepository messageRepository,
+            AiAgentProvider agentProvider, ByokKeyService byokKeyService, QuotaService quotaService,
+            fr.claudegateway.atelier.git.GitWorkspaceService gitWorkspaceService,
+            RunnerToolGateway runnerToolGateway,
+            fr.claudegateway.runner.channel.RunnerCallDispatcher runnerCallDispatcher,
+            RunnerConfirmationGate confirmationGate,
+            RunnerAuditService runnerAuditService,
+            RunnerRelayBroadcaster relayBroadcaster,
+            fr.claudegateway.runner.host.RunnerHostService runnerHostService,
+            AtelierProperties atelierProperties,
+            AtelierCheckpointRunner checkpointRunner,
+            ProjectRulesSource projectRules,
+            fr.claudegateway.teams.TeamsToolCatalog teamsToolCatalog,
+            fr.claudegateway.teams.block.TeamsMomentImageService momentImages,
+            fr.claudegateway.radar.RadarToolCatalog radarToolCatalog,
+            fr.claudegateway.radar.RadarToolExecutor radarToolExecutor,
+            fr.claudegateway.pages.PageToolCatalog pageToolCatalog,
+            fr.claudegateway.pages.PageToolExecutor pageToolExecutor) {
+        this(workspaceService, messageRepository, agentProvider, byokKeyService, quotaService,
+                gitWorkspaceService, runnerToolGateway, runnerCallDispatcher, confirmationGate,
+                runnerAuditService, relayBroadcaster, runnerHostService, atelierProperties,
+                checkpointRunner, projectRules, teamsToolCatalog, momentImages, radarToolCatalog,
+                radarToolExecutor, pageToolCatalog, pageToolExecutor, HostKnowledgeSource.NONE);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -716,7 +748,8 @@ public class AtelierChatService implements RelayInterruptTarget {
             fr.claudegateway.radar.RadarToolCatalog radarToolCatalog,
             fr.claudegateway.radar.RadarToolExecutor radarToolExecutor,
             fr.claudegateway.pages.PageToolCatalog pageToolCatalog,
-            fr.claudegateway.pages.PageToolExecutor pageToolExecutor) {
+            fr.claudegateway.pages.PageToolExecutor pageToolExecutor,
+            HostKnowledgeSource hostKnowledge) {
         this.pageToolCatalog = pageToolCatalog == null
                 ? fr.claudegateway.pages.PageToolCatalog.none() : pageToolCatalog;
         this.pageToolExecutor = pageToolExecutor;
@@ -728,6 +761,9 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.momentImages = momentImages;
         this.checkpointRunner = checkpointRunner;
         this.projectRules = projectRules == null ? ProjectRulesSource.NONE : projectRules;
+        // Repli NONE, même geste que les règles : sans le module de gouvernance (les tests de
+        // la boucle s'en passent), le tour est celui d'avant F-136, à l'octet près.
+        this.hostKnowledge = hostKnowledge == null ? HostKnowledgeSource.NONE : hostKnowledge;
         this.workspaceService = workspaceService;
         this.messageRepository = messageRepository;
         this.agentProvider = agentProvider;
@@ -1637,6 +1673,11 @@ public class AtelierChatService implements RelayInterruptTarget {
                 .toolTrace(new AtelierToolTrace(List.copyOf(trace)).toJson())
                 .terminalJson(report.toJson())
                 .build());
+
+        // F-136 / SF-136-01 — la carte du client a pu changer pendant ce tour (promotion). On la
+        // relit MAINTENANT, une fois la réponse prête : lire au début d'un tour coûterait six
+        // allers-retours vers la machine avant le premier mot du modèle. Ne bloque pas, ne lève pas.
+        hostKnowledge.refreshAfterTurn(userId, workspaceId);
 
         return new AtelierChatResult(reply, actions, assistant.getId(), inputTokens, outputTokens,
                 activeSeconds, spendCapReached, costUsd, reusedPercent);
@@ -3729,6 +3770,15 @@ public class AtelierChatService implements RelayInterruptTarget {
         int reads = 0;
         long chars = 0L;
 
+        // F-136 / SF-136-02 — CE QU'ON SAIT DÉJÀ DE CE CLIENT, avant tout ce qui vient du projet.
+        // Placé ici, dans le préfixe stable : le bloc ne porte que des TITRES (fichiers, sections),
+        // jamais un compte de faits ni une date — ces deux-là changent à chaque tour et
+        // reconstruiraient le cache à chaque demande, exactement le défaut que F-134 a corrigé.
+        String knowledge = hostOutline(userId, workspace);
+        if (knowledge != null) {
+            system.append(knowledge);
+        }
+
         java.util.Optional<String> instructions = readOptional(userId, workspace, "CLAUDE.md");
         if (instructions.isPresent()) {
             reads++;
@@ -3792,6 +3842,22 @@ public class AtelierChatService implements RelayInterruptTarget {
      * tour SANS règles plutôt qu'un tour raté. Un bogue de gouvernance ne doit pas condamner le
      * travail d'un utilisateur, qui n'a rien pour le débrayer.</p>
      */
+    /**
+     * Le sommaire de ce que la gateway sait du client de ce projet, ou {@code null} (F-136 /
+     * SF-136-02).
+     *
+     * <p><b>Repli passant</b>, même geste que pour les règles : un magasin en panne rend un tour
+     * <b>sans</b> savoir plutôt qu'un tour raté. Ce savoir est un avantage, jamais une condition.</p>
+     */
+    private String hostOutline(UUID userId, Workspace workspace) {
+        try {
+            return hostKnowledge.outlineFor(userId, workspace.getId());
+        } catch (RuntimeException ex) {
+            log.warn("Sommaire de carte ignoré pour ce tour ({})", ex.getClass().getSimpleName());
+            return null;
+        }
+    }
+
     private String governanceRules(UUID userId, UUID workspaceId) {
         try {
             String rules = projectRules.rulesFor(userId, workspaceId);

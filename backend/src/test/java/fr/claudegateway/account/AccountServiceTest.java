@@ -93,6 +93,8 @@ class AccountServiceTest {
     private fr.claudegateway.radar.RadarPurgeService radarPurgeService;
     @Mock
     private fr.claudegateway.runner.host.HostSpaceService hostSpaceService;
+    @Mock
+    private fr.claudegateway.governance.map.HostMapFileRepository hostMapFileRepository;
 
     private AccountService service() {
         return new AccountService(userService, subscriptionRepository, usageCounterRepository,
@@ -103,7 +105,7 @@ class AccountServiceTest {
                 workspaceRepository, workspaceService,
                 atelierMessageRepository,
                 documentRepository, chunkRepository, messageLibraryDocumentRepository, radarPurgeService,
-                hostSpaceService);
+                hostSpaceService, hostMapFileRepository);
     }
 
     private User user(UUID id) {
@@ -208,5 +210,8 @@ class AccountServiceTest {
         verify(userService).findByIdOrThrow(any());
         // Le Radar (F-99 / SF-99-05) : extraits de communications et données de tiers, purgés avec le compte.
         verify(radarPurgeService).purgeUser(userId);
+        // La copie de travail des cartes (F-136 / SF-136-01) : c'est le savoir accumulé sur
+        // l'infrastructure des CLIENTS de ce compte. Il ne lui survit pas.
+        verify(hostMapFileRepository).deleteByUserId(userId);
     }
 }
