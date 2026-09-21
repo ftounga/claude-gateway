@@ -392,6 +392,64 @@ class AtelierChatServiceSystemPromptTest {
                 .isEqualTo("rangé dans `data-platform/PLAN-ACTION.md`");
     }
 
+    // ------------------------------------------- F-141 / SF-141-02 : aiguillage à la racine
+
+    /** Consigne du TERMINAL DU POSTE (racine) : projet RUNNER avec {@code hostTerminal = true}. */
+    private String systemPromptOfHostTerminal() {
+        Workspace host = new Workspace();
+        host.setId(workspaceId);
+        host.setUserId(userId);
+        host.setSource(WorkspaceSource.ARCHIVE);
+        host.setExecutionTarget(WorkspaceExecutionTarget.RUNNER);
+        host.setHostId(hostId);
+        host.setHostTerminal(true);
+        when(workspaceService.requireOwned(userId, workspaceId)).thenReturn(host);
+        when(runnerToolGateway.listFiles(any(), any())).thenReturn(runnerOk(""));
+        when(runnerToolGateway.readFile(any(), any(), any())).thenReturn(runnerOk("conventions"));
+        return systemPrompt();
+    }
+
+    @Test
+    void theSubjectRoutingDoctrineIsPresentOnTheHostTerminal() {
+        String system = systemPromptOfHostTerminal();
+
+        assertThat(system).contains("À la racine du poste, aiguille avant de ranger");
+        // Découverte des sujets existants avant de proposer.
+        assertThat(system).contains("Découvre les sujets existants");
+        // Les quatre classes de destination + le mix explicite.
+        assertThat(system).contains("sujet EXISTANT");
+        assertThat(system).contains("TRANSVERSE");
+        assertThat(system).contains("NOUVEAU sujet");
+        assertThat(system).contains("MIX");
+        assertThat(system).contains("répartition : A→data-platform");
+        // Attendre validation, demander si vraiment ambigu.
+        assertThat(system).contains("ATTENDS la validation");
+        assertThat(system).contains("DEMANDE plutôt que de trancher tout seul");
+        // Non-régression : SF-141-01 et F-125 tiennent aussi à la racine.
+        assertThat(system).contains("Dis où tu ranges un fait durable");
+        assertThat(system).contains("Tenue de la carte, en silence");
+    }
+
+    @Test
+    void theSubjectRoutingDoctrineIsAbsentOnAnOrdinaryProject() {
+        // Terminal de projet RUNNER : dans un sujet, aucun routage — la consigne ne s'injecte pas.
+        String runner = systemPromptOfRunnerProjectDeclaring(null);
+        assertThat(runner).doesNotContain("À la racine du poste, aiguille avant de ranger");
+        // Les doctrines universelles, elles, restent (non-régression).
+        assertThat(runner).contains("Dis où tu ranges un fait durable");
+    }
+
+    @Test
+    void theSubjectRoutingDoctrineIsAbsentOnAHostedProject() {
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+
+        String system = systemPrompt();
+
+        assertThat(system).doesNotContain("À la racine du poste, aiguille avant de ranger");
+    }
+
     @Test
     void theSetPlanDescriptionOnlyPlansWhenAskedOrActing() {
         when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
