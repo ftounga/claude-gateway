@@ -151,6 +151,11 @@ class GovernancePackageSeederTest {
                 .containsIgnoringCase("graphviz").contains("diagrams.aws")
                 .contains("architecture-beta")
                 .containsIgnoringCase("officielles");
+        // SF-142-04 : la doctrine « image décorative » — generate_image, ornement seulement, JAMAIS
+        // un schéma d'architecture (frontière avec le diagramme-as-code).
+        assertThat(pptx.getContent()).contains("generate_image")
+                .containsIgnoringCase("décorati").containsIgnoringCase("jamais")
+                .containsIgnoringCase("diagramme-as-code");
     }
 
     @Test

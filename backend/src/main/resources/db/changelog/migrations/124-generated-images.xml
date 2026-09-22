@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-142 / SF-142-04 — IMAGES ILLUSTRATIVES (DECORATIVES) GENEREES PAR IA.
+
+      generated_images : le suivi d'une image decorative generee en relayant un fournisseur d'images
+      (OpenAI). Chaque ligne porte user_id (isolation : une image ne se lit que par son proprietaire) ;
+      space (FORGE / VIGIE) + host_id rangent l'image du bon cote, workspace_id dit le projet d'origine.
+      host_id / workspace_id sont NULLABLES (projet sans poste), meme patron que les pages (098/099) et
+      les presentations (123). Le PNG vit dans le stockage objet ; la table n'en porte que la cle
+      (image_key) et la taille (image_bytes). status porte l'etat lisible de la generation
+      (PENDING / READY / FAILED) ; cost_eur enregistre le cout ; error porte le motif d'un echec.
+
+      Cle etrangere user_id EN CASCADE : aucune image ne survit au compte. Types portables (un seul
+      changeSet PostgreSQL + H2). Reversible : dropTable.
+    -->
+    <changeSet id="124-generated-images" author="claude-gateway">
+        <createTable tableName="generated_images">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="space" type="varchar(8)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="host_id" type="uuid"/>
+            <column name="workspace_id" type="uuid"/>
+            <column name="prompt" type="varchar(4000)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="size" type="varchar(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="varchar(8)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="image_key" type="varchar(300)"/>
+            <column name="image_bytes" type="bigint"/>
+            <column name="cost_eur" type="numeric(12,4)"/>
+            <column name="error" type="varchar(500)"/>
+            <column name="created_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addForeignKeyConstraint baseTableName="generated_images" baseColumnNames="user_id"
+                referencedTableName="users" referencedColumnNames="id"
+                constraintName="fk_generated_images_user" onDelete="CASCADE"/>
+        <createIndex tableName="generated_images" indexName="idx_generated_images_place">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="space"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="generated_images"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

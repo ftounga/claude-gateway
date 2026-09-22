@@ -76,6 +76,15 @@ class PresentationToolCatalogTest {
     }
 
     @Test
+    @DisplayName("SF-142-04 : le guide renvoie à generate_image pour le DÉCORATIF, jamais l'architecture")
+    void guideMentionsDecorativeImage() {
+        assertThat(PresentationToolCatalog.GUIDE)
+                .contains("generate_image")
+                .containsIgnoringCase("décorati")
+                .containsIgnoringCase("jamais");
+    }
+
+    @Test
     @DisplayName("catalogue vide (none) → jamais d'outil")
     void noneGivesNothing() {
         assertThat(PresentationToolCatalog.none().isOpenFor(userId, workspace)).isFalse();

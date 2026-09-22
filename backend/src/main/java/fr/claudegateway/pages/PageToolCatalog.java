@@ -86,6 +86,10 @@ public class PageToolCatalog {
             + "lib Python diagrams DANS LE SANDBOX (recette skill pptx : diagrams+graphviz), puis JOINS-le à "
             + "la page (pièce jointe, <img src=\"archi.png\">). diagrams = le haut de gamme (icônes "
             + "officielles) ; architecture-beta = le repli zéro-installation.\n"
+            + "IMAGE DÉCORATIVE : pour un ORNEMENT (couverture, ambiance, bandeau — jamais un schéma), tu "
+            + "peux générer une image avec generate_image ; elle est déposée dans le projet et se joint à la "
+            + "page (attachments, <img src=\"couverture.png\">). JAMAIS pour une architecture ni un "
+            + "diagramme (l'IA d'images invente les icônes) : reste au diagramme-as-code ci-dessus.\n"
             + "Jamais de transcription brute de réunion dans une page : des extraits courts, sourcés.\n"
             + "Pour modifier une page déjà publiée, republie avec son page_id : c'est une nouvelle version, pas "
             + "une nouvelle page.";
