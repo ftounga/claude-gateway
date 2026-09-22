@@ -35,6 +35,7 @@ import { ProjectCostComponent } from '../../shared/project-cost/project-cost.com
 import { ProjectCostService } from '../../core/services/project-cost.service';
 import { TurnOutcome } from '../../shared/turn-suggestions/turn-suggestions';
 import { TurnSuggestionsComponent } from '../../shared/turn-suggestions/turn-suggestions.component';
+import { DictationButtonComponent } from '../../shared/dictation/dictation-button.component';
 import { MarkdownPipe } from '../../shared/markdown.pipe';
 import { TeamsLinkBadgeComponent } from '../../shared/teams-link-badge/teams-link-badge.component';
 import { TeamsLink } from '../teams/teams-link.service';
@@ -134,7 +135,7 @@ export const LONG_THREAD_TURNS = 40;
     TeamsLinkBadgeComponent, NgTemplateOutlet, TerminalEmailComponent, PageBlockComponent, PagePanelComponent,
     MatButtonToggleModule, MatIconModule, MatProgressBarModule, MatProgressSpinnerModule,
     MatTooltipModule, RouterLink,
-    WeeklyBudgetComponent, ProjectCostComponent, TurnSuggestionsComponent,
+    WeeklyBudgetComponent, ProjectCostComponent, TurnSuggestionsComponent, DictationButtonComponent,
   ],
   templateUrl: './atelier-terminal.component.html',
   // DEUX FEUILLES, ET C'EST DÉLIBÉRÉ (F-83 / SF-83-02) : la peau « lecture seule » vit à part.
