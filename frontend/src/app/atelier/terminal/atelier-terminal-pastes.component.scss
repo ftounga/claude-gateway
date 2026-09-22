@@ -1,0 +1,45 @@
+/* LES TEXTES COLLÉS, REPLIÉS (F-146 / SF-146-01) — feuille à part, comme quatre autres avant elle
+   (F-117, F-115, F-126) : la feuille principale du terminal a atteint le budget de build de
+   12 ko (angular.json), et le franchir fait ÉCHOUER la compilation. Ce n'est pas un choix de style,
+   c'est la contrainte du projet, déjà rencontrée deux fois. */
+/* Les textes collés, repliés en références (F-146 / SF-146-01). Une puce discrète : ce n'est pas le
+   sujet du message, c'est une pièce qui l'accompagne. Aucune couleur nouvelle. */
+.terminal-pastes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 0;
+}
+
+.terminal-paste {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 2px 8px;
+  border: 1px solid var(--cg-divider);
+  border-radius: 16px;
+  background: var(--cg-surface);
+  color: var(--cg-text-primary);
+  font-size: 12px;
+}
+
+.terminal-paste__icon {
+  font-size: 14px;
+  width: 14px;
+  height: 14px;
+}
+
+.terminal-paste__remove {
+  border: none;
+  background: none;
+  color: var(--cg-text-secondary);
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 4px;
+  cursor: pointer;
+}
+
+.terminal-paste__remove:hover,
+.terminal-paste__remove:focus-visible {
+  color: var(--cg-error);
+}
