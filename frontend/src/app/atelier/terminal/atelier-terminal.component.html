@@ -1049,7 +1049,12 @@
   <!-- L'INVITE N'EXISTE PAS EN LECTURE SEULE (F-83 / SF-83-01). Écrire reste un geste pris
        dans le terminal entier, devant son flux : un clic pour y entrer. -->
   @if (!readOnly) {
-    <form class="terminal-input" (ngSubmit)="submit()">
+    <form
+      class="terminal-input"
+      [class.terminal-input--recording]="dictationState() === 'recording'"
+      [class.terminal-input--transcribing]="dictationState() === 'transcribing'"
+      (ngSubmit)="submit()"
+    >
       <span class="terminal-dollar" aria-hidden="true">$</span>
       <!-- TROMBONE (F-115 / SF-115-02, parité SF-28-13 étendue aux terminaux runner). -->
       <input
@@ -1076,6 +1081,9 @@
            s'ouvre au maintien du bouton, ou de Ctrl/⌘ + Espace. La dictée ÉCRIT, elle n'envoie
            pas : le texte rejoint le brouillon et se corrige avant l'envoi. -->
       <app-dictation-button
+        [draft]="draft"
+        (draftRestored)="draftChange.emit($event)"
+        (stateChange)="dictationState.set($event)"
         (transcribed)="draftChange.emit(draft ? draft + ' ' + $event : $event)"
       ></app-dictation-button>
       <input
@@ -1083,9 +1091,10 @@
         class="terminal-field"
         name="draft"
         autocomplete="off"
-        [placeholder]="liveLimitReached
-          ? 'Terminal en attente d\'une place — fermez-en un autre pour reprendre ici'
-          : (submitting ? 'Précisez pendant qu\'il travaille…' : 'Décrivez la tâche à exécuter…')"
+        [placeholder]="dictationPlaceholder()
+          ?? (liveLimitReached
+            ? 'Terminal en attente d\'une place — fermez-en un autre pour reprendre ici'
+            : (submitting ? 'Précisez pendant qu\'il travaille…' : 'Décrivez la tâche à exécuter…'))"
         aria-label="Demande à exécuter"
         [disabled]="publishing || liveLimitReached"
         [ngModel]="draft"

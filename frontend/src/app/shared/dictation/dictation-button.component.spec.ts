@@ -121,12 +121,105 @@ describe('DictationButtonComponent', () => {
     expect(dictation.stop).toHaveBeenCalled();
   });
 
-  it('ignore la barre d\'espace SEULE : elle sert à écrire', async () => {
-    build();
+  // ------------------------------------- la barre d'espace MAINTENUE (F-145 / SF-145-02)
 
-    document.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space' }));
+  /** Envoie une frappe comme si elle partait de cet élément. */
+  function key(type: 'keydown' | 'keyup', target: EventTarget, options: KeyboardEventInit = {}): void {
+    const event = new KeyboardEvent(type, { code: 'Space', bubbles: true, cancelable: true, ...options });
+    Object.defineProperty(event, 'target', { value: target });
+    document.dispatchEvent(event);
+  }
+
+  /** Laisse passer le délai de maintien. */
+  async function hold(): Promise<void> {
+    jasmine.clock().tick(DictationButtonComponent.HOLD_MS + 10);
+    await fixture.whenStable();
+  }
+
+  it('LE CRITÈRE : un appui COURT écrit un espace et ne déclenche rien', async () => {
+    build();
+    jasmine.clock().install();
+
+    key('keydown', document.body);
+    jasmine.clock().tick(200);
+    key('keyup', document.body);
     await fixture.whenStable();
 
     expect(dictation.start).not.toHaveBeenCalled();
+    jasmine.clock().uninstall();
+  });
+
+  it('LE CRITÈRE : un MAINTIEN bascule en dictée, même depuis le champ', async () => {
+    build();
+    jasmine.clock().install();
+    const field = document.createElement('input');
+
+    key('keydown', field);
+    await hold();
+
+    expect(dictation.start).toHaveBeenCalled();
+    jasmine.clock().uninstall();
+  });
+
+  it('au basculement, les espaces insérés pendant le maintien sont retirés', async () => {
+    build();
+    jasmine.clock().install();
+    fixture.componentRef.setInput('draft', 'vérifie le certificat');
+    fixture.detectChanges();
+    const restored: string[] = [];
+    fixture.componentInstance.draftRestored.subscribe((value) => restored.push(value));
+
+    key('keydown', document.body);
+    // La répétition du clavier insère des espaces : le composant ne doit pas en tenir compte.
+    key('keydown', document.body, { repeat: true });
+    await hold();
+
+    expect(restored).toEqual(['vérifie le certificat']);
+    jasmine.clock().uninstall();
+  });
+
+  it('Espace sur un BOUTON active le bouton : on ne vole pas une touche au clavier', async () => {
+    build();
+    jasmine.clock().install();
+    const button = document.createElement('button');
+
+    key('keydown', button);
+    await hold();
+
+    expect(dictation.start).not.toHaveBeenCalled();
+    jasmine.clock().uninstall();
+  });
+
+  it('Ctrl + Espace bascule IMMÉDIATEMENT, sans attendre le seuil', async () => {
+    build();
+
+    key('keydown', document.createElement('input'), { ctrlKey: true });
+    await fixture.whenStable();
+
+    expect(dictation.start).toHaveBeenCalled();
+  });
+
+  it('un maintien ne lance qu\'UN enregistrement malgré la répétition', async () => {
+    build();
+    jasmine.clock().install();
+
+    key('keydown', document.body);
+    key('keydown', document.body, { repeat: true });
+    key('keydown', document.body, { repeat: true });
+    await hold();
+
+    expect(dictation.start).toHaveBeenCalledTimes(1);
+    jasmine.clock().uninstall();
+  });
+
+  it('annonce son état, pour que la zone de saisie le traduise', async () => {
+    build();
+    const states: string[] = [];
+    fixture.componentInstance.stateChange.subscribe((state) => states.push(state));
+
+    await fixture.componentInstance.begin();
+    await fixture.componentInstance.finish();
+
+    expect(states).toEqual(['recording', 'transcribing', 'idle']);
   });
 });
