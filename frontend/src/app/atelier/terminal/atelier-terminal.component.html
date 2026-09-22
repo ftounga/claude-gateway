@@ -1072,6 +1072,12 @@
       >
         <mat-icon>attach_file</mat-icon>
       </button>
+      <!-- F-145 / SF-145-01 — DICTER sa demande. La barre d'espace seule sert à écrire : le micro
+           s'ouvre au maintien du bouton, ou de Ctrl/⌘ + Espace. La dictée ÉCRIT, elle n'envoie
+           pas : le texte rejoint le brouillon et se corrige avant l'envoi. -->
+      <app-dictation-button
+        (transcribed)="draftChange.emit(draft ? draft + ' ' + $event : $event)"
+      ></app-dictation-button>
       <input
         type="text"
         class="terminal-field"
