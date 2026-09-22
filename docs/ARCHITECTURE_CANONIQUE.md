@@ -1230,6 +1230,31 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     **DRAPEAU** : la capture navigateur est validée sur call réel ; STT (SF-128-04) et exploitation
     (SF-128-05) restent à venir.
 
+- **presentations** — l'**artefact « présentation »** (F-129 / SF-129-02, migration `123`). Table neuve :
+  un vrai fichier `.pptx` produit par l'agent sur le terminal (skill `pptx`, SF-129-01) et **capturé**
+  dans l'application. Prolonge le patron des pages (F-109) au format PowerPoint. Le fichier vit dans le
+  **stockage objet** (`PresentationStore`, préfixe `presentations/{userId}/{presentationId}/…`, réemploi
+  de `WorkspaceStorage` — aucun bucket neuf) ; la table n'en porte que la clé et la taille.
+  - `presentations` : `id (uuid)`, `user_id (uuid NOT NULL, FK users ON DELETE CASCADE)`,
+    `space (varchar 8 — FORGE/VIGIE)`, `host_id (uuid, nullable)`, `workspace_id (uuid, nullable)`,
+    `title (varchar 120 NOT NULL)`, `description (varchar 300, nullable)`, `pptx_key (varchar 300 NOT
+    NULL)`, `pptx_bytes (bigint NOT NULL)`, `slide_count (int, nullable — dormant, rempli par le rendu
+    par slides SF-129-03)`, `created_at`, `updated_at`. Index `idx_presentations_place (user_id, host_id,
+    space)`. **Isolation** : toute lecture filtre `user_id` (`findByIdAndUserId`) ; un accès croisé est un
+    **404**, jamais un 403.
+  - **Production/capture** : l'agent écrit un `.pptx` sur le terminal puis appelle l'outil
+    `presentation_publish` (`PresentationToolCatalog`/`PresentationToolExecutor`, patron `PageToolExecutor`),
+    **sous la garde d'espace** du terminal (droit Forge/Vigie, ouvert d'office à l'ADMIN — `SpaceEntitlementService`).
+    La gateway lit le fichier **là où vit le projet** — poste (`read_file_bytes`, par tranches, **outil
+    runner existant, aucune mise à jour runner**) ou projet hébergé (`WorkspaceService.readFileBytes`) —,
+    valide (extension `.pptx` + en-tête ZIP `PK\x03\x04` + borne `app.presentations.max-pptx-bytes`, défaut
+    25 Mo) et range. Accord d'un clic (porte d'autorisation existante). **Gateway-First** : production de
+    fichier, **aucun moteur IA** (`AIProvider` non requis). Endpoints `/api/presentations` (GET liste
+    `?hostId=&space=`, GET `{id}`, GET `{id}/pptx` téléchargement, DELETE), scellés par `CurrentUser`.
+  - **DRAPEAU périmètre** : le **rendu par slides** (images) + la **visionneuse** in-app = SF-129-03,
+    fait **dans le sandbox/terminal** (pas de pod LibreOffice sur le cluster `legalcase-shared`, à
+    capacité — instruction PO). C'est pourquoi `slide_count` reste dormant ici.
+
 - **Repli de transport du runner — aucune table** (F-38 / SF-38-09). Le canal runner peut être porté
   par le WebSocket de SF-38-02 **ou** par un long-polling HTTP quand un proxy refuse (ou coupe)
   l'`Upgrade`. **Aucune migration, aucune colonne, aucun type de message nouveau** : les deux
