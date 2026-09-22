@@ -1158,7 +1158,9 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   - `meetings` : `id (uuid)`, `user_id (uuid, FK users ON DELETE CASCADE)`, `host_id (uuid, FK
     runner_hosts ON DELETE CASCADE)`, `subject_id (uuid, nullable — pointeur vers radar_subjects, sans
     FK, même choix que le registre du Radar)`, `title (varchar 300, nullable)`, `meeting_url (varchar
-    2048)`, `state (varchar 20 — JOINED/RECORDING/PAUSED/STOPPED/FAILED — JOINED ajouté SF-128-16)`,
+    2048, **nullable depuis la migration 124** — F-147 / SF-147-02 : une réunion née d'un enregistrement
+    déposé n'a pas d'URL de visio ; l'absence EST l'information, et lui inventer une adresse serait un
+    mensonge stocké)`, `state (varchar 20 — JOINED/RECORDING/PAUSED/STOPPED/FAILED — JOINED ajouté SF-128-16)`,
     `consent_acknowledged (boolean)`, `in_call (boolean NOT NULL défaut false — SF-128-16, migration 117 :
     vrai si l'utilisateur est réellement en réunion au join ; l'UI n'active « Démarrer l'enregistrement »
     que si vrai)`,
@@ -1177,6 +1179,9 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     `started_at`, `ended_at (nullable)`, `created_at`, `updated_at`. Index `(user_id, host_id,
     started_at)`. Endpoints `/api/vigie/hosts/{hostId}/meetings` (create=« Rejoindre »/capture-start=
     « Démarrer l'enregistrement », SF-128-16 /stop/pause/resume/list/get),
+    remontée du **texte** d'un enregistrement déposé `POST /api/runner/teams/meetings/{meetingId}/local-transcript`
+    (F-147 / SF-147-02 — jeton runner, couple compte/poste pris DANS LE JETON, option Teams exigée ; corps
+    JSON `{text, failure}` : sans texte, la réunion porte l'échec plutôt que de rester vide en silence),
     lecture des médias `…/{meetingId}/audio` (Range/téléchargement) et `…/{meetingId}/images[/{imageId}]`
     (SF-128-10), transcription `…/{meetingId}/transcribe` (POST, opt-in) + `…/{meetingId}/transcript`
     (GET) (SF-128-04), exploitation `…/{meetingId}/insights` + `…/{meetingId}/ask` (POST) (SF-128-05),

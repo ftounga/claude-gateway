@@ -46,6 +46,10 @@ final class RadarDepositReceiver {
     static final long DISK_MARGIN = 64L * 1024 * 1024;
     /** Âge au-delà duquel un dépôt inachevé est purgé. */
     static final Duration STALE_AFTER = Duration.ofHours(24);
+    /** Attente maximale de la fin d'une transcription avant d'abandonner la remontée (F-147 / SF-147-02). */
+    static final Duration MAX_WAIT = Duration.ofHours(6);
+    /** Intervalle entre deux regards sur l'avancement du travail. */
+    static final long POLL_MS = 1_000L;
 
     private static final Pattern UPLOAD_ID = Pattern.compile("[0-9a-fA-F-]{36}");
     private static final Pattern FORBIDDEN = Pattern.compile("[\\\\/:*?\"<>|\\p{Cntrl}]");
@@ -73,6 +77,17 @@ final class RadarDepositReceiver {
     /** Les travaux lancés par ce récepteur, par identifiant de dépôt. */
     private final java.util.Map<String, TranscriptionJob> jobs = new java.util.concurrent.ConcurrentHashMap<>();
 
+    /**
+     * Ce qui fait monter le texte vers la <b>réunion</b> du dépôt (F-147 / SF-147-02), et ce qui attend
+     * la fin du travail sans bloquer l'appel en cours. Nuls sont permis : un récepteur monté sans eux
+     * dépose comme avant, et le texte sera relevé plus tard.
+     */
+    private final TranscriptSink sink;
+    private final Watcher watcher;
+
+    /** La réunion à remplir, par identifiant de dépôt — annoncée par la gateway après {@code finish}. */
+    private final java.util.Map<String, String> meetings = new java.util.concurrent.ConcurrentHashMap<>();
+
     /** Ce que la transcription locale offre au dépôt — une interface, pour s'éprouver sans moteur. */
     interface Transcriber {
 
@@ -80,15 +95,35 @@ final class RadarDepositReceiver {
         TranscriptionJob start(String id, Path file, Instant startedAt);
     }
 
+    /** Ce qui porte le texte (ou l'échec) jusqu'à la réunion, côté gateway. */
+    interface TranscriptSink {
+
+        /** Dépose le résultat d'un travail terminé ; rend vrai si la gateway l'a pris. */
+        boolean deposit(String meetingId, TranscriptionJob job);
+    }
+
+    /** Ce qui exécute l'attente de la fin d'un travail — ailleurs que dans le fil de l'appel. */
+    interface Watcher {
+
+        void watch(Runnable task);
+    }
+
     RadarDepositReceiver(Path depot, Supplier<Instant> clock, DiskSpace disk) {
         this(depot, clock, disk, null);
     }
 
     RadarDepositReceiver(Path depot, Supplier<Instant> clock, DiskSpace disk, Transcriber transcriber) {
+        this(depot, clock, disk, transcriber, null, null);
+    }
+
+    RadarDepositReceiver(Path depot, Supplier<Instant> clock, DiskSpace disk, Transcriber transcriber,
+            TranscriptSink sink, Watcher watcher) {
         this.depot = depot;
         this.clock = clock;
         this.disk = disk;
         this.transcriber = transcriber;
+        this.sink = sink;
+        this.watcher = watcher;
     }
 
     static RadarDepositReceiver real(Path depot) {
@@ -101,9 +136,16 @@ final class RadarDepositReceiver {
                 dir -> Files.getFileStore(dir).getUsableSpace(), transcriber);
     }
 
+    /** Le même, sachant aussi porter le texte jusqu'à la réunion du dépôt (F-147 / SF-147-02). */
+    static RadarDepositReceiver real(Path depot, Transcriber transcriber, TranscriptSink sink, Watcher watcher) {
+        return new RadarDepositReceiver(depot, Instant::now,
+                dir -> Files.getFileStore(dir).getUsableSpace(), transcriber, sink, watcher);
+    }
+
     /**
-     * Point d'entrée : {@code op} = {@code open}, {@code chunk}, {@code finish}, {@code abort} ou
-     * {@code status} (F-147 / SF-147-01 — où en est la transcription).
+     * Point d'entrée : {@code op} = {@code open}, {@code chunk}, {@code finish}, {@code abort},
+     * {@code status} (F-147 / SF-147-01 — où en est la transcription) ou {@code attach}
+     * (F-147 / SF-147-02 — la réunion où déposer le texte).
      */
     ToolOutcome handle(JsonNode input) {
         if (depot == null) {
@@ -121,6 +163,7 @@ final class RadarDepositReceiver {
                 case "finish" -> finish(id);
                 case "abort" -> abort(id);
                 case "status" -> status(id);
+                case "attach" -> attach(input, id);
                 default -> ToolOutcome.error("invalid_input", "Opération de dépôt inconnue : " + op + ".");
             };
         } catch (IOException e) {
@@ -155,6 +198,12 @@ final class RadarDepositReceiver {
         meta.put("size", size);
         meta.put("title", title.length() <= 200 ? title : title.substring(0, 200));
         meta.put("recorded_at", date);
+        // F-147 / SF-147-02 : le sujet choisi au geste voyage avec le dépôt. Le poste ne le juge pas —
+        // il le rend à la fin, et c'est la gateway qui le revalide dans son périmètre.
+        String subject = text(input, "subject_id");
+        if (!subject.isEmpty()) {
+            meta.put("subject_id", subject);
+        }
         Files.writeString(metaOf(id), meta.toString());
         Files.write(partOf(id), new byte[0], StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
         return accepted(0, size);
@@ -223,6 +272,9 @@ final class RadarDepositReceiver {
         done.put("size", size);
         done.put("title", meta.path("title").asText());
         done.put("recorded_at", meta.path("recorded_at").asText());
+        if (meta.hasNonNull("subject_id")) {
+            done.put("subject_id", meta.path("subject_id").asText());
+        }
         // F-147 / SF-147-01 : on transcrit TOUT DE SUITE. Le fichier est là, le moteur est là ;
         // attendre un relevé périodique n'apportait qu'un délai que personne ne pouvait prévoir.
         startTranscription(id, target, done);
@@ -280,7 +332,64 @@ final class RadarDepositReceiver {
         return ToolOutcome.ok(node.toString());
     }
 
+    /**
+     * <b>La réunion où déposer le texte</b> (F-147 / SF-147-02) : la gateway l'annonce juste après
+     * {@code finish}, une fois le fichier arrivé — une réunion créée plus tôt resterait fantôme si le
+     * transfert était abandonné.
+     *
+     * <p>Le poste <b>attend la fin du travail</b> puis poste le texte ; il n'attend rien dans le fil de
+     * cet appel, qui répond tout de suite. Sans moyen de faire monter le texte ({@code sink} nul), on le
+     * <b>dit</b> : le fichier reste sur la machine et un relevé ultérieur le reprendra.</p>
+     */
+    private ToolOutcome attach(JsonNode input, String id) {
+        String meetingId = text(input, "meeting_id");
+        ObjectNode node = mapper.createObjectNode();
+        if (meetingId.isEmpty()) {
+            return ToolOutcome.error("invalid_input", "Identifiant de réunion manquant.");
+        }
+        meetings.put(id, meetingId);
+        TranscriptionJob job = jobs.get(id);
+        if (job == null) {
+            node.put("attached", false);
+            node.put("reason", "NO_JOB");
+            return ToolOutcome.ok(node.toString());
+        }
+        if (sink == null || watcher == null) {
+            node.put("attached", false);
+            node.put("reason", "NO_UPLINK");
+            return ToolOutcome.ok(node.toString());
+        }
+        watcher.watch(() -> deliver(id, meetingId, job));
+        node.put("attached", true);
+        node.put("job_id", job.id());
+        return ToolOutcome.ok(node.toString());
+    }
+
+    /**
+     * Attend la fin du travail, puis porte le résultat à la réunion — le texte s'il y en a, l'échec
+     * sinon. <b>L'attente est bornée</b> : une transcription qui ne finit jamais ne doit pas laisser
+     * un fil vivant pour l'éternité.
+     */
+    private void deliver(String id, String meetingId, TranscriptionJob job) {
+        long deadline = System.nanoTime() + MAX_WAIT.toNanos();
+        while (!job.isOver() && System.nanoTime() < deadline) {
+            try {
+                Thread.sleep(POLL_MS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+        try {
+            sink.deposit(meetingId, job);
+        } catch (RuntimeException e) {
+            // La réunion reste « en attente » : le texte n'est pas perdu, il est resté ici.
+            meetings.remove(id);
+        }
+    }
+
     private ToolOutcome abort(String id) throws IOException {
+        meetings.remove(id);
         Files.deleteIfExists(partOf(id));
         Files.deleteIfExists(metaOf(id));
         ObjectNode done = mapper.createObjectNode();

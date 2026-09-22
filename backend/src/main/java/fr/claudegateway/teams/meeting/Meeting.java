@@ -72,7 +72,12 @@ public class Meeting {
     @Column(name = "title", length = MAX_TITLE_LENGTH)
     private String title;
 
-    @Column(name = "meeting_url", nullable = false, length = MAX_URL_LENGTH)
+    /**
+     * L'URL de la visio — <b>absente</b> quand la réunion vient d'un enregistrement déposé
+     * (F-147 / SF-147-02) : la réunion a eu lieu ailleurs, parfois en salle, parfois au téléphone.
+     * Lui inventer une URL serait un mensonge stocké ; l'absence <b>est</b> l'information.
+     */
+    @Column(name = "meeting_url", length = MAX_URL_LENGTH)
     private String meetingUrl;
 
     @Enumerated(EnumType.STRING)

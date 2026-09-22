@@ -129,9 +129,9 @@ export class RadarService {
 
   /** Ouvre un dépôt sur le poste : le fichier ira sur la machine, jamais dans la gateway. */
   openDeposit(hostId: string, fileName: string, sizeBytes: number, title: string,
-    recordedAt: string): Observable<RadarDepositOpened> {
+    recordedAt: string, subjectId: string): Observable<RadarDepositOpened> {
     return this.http.post<RadarDepositOpened>(`${this.base(hostId)}/recordings`,
-      { fileName, sizeBytes, title, recordedAt });
+      { fileName, sizeBytes, title, recordedAt, subjectId });
   }
 
   /** Un morceau du fichier, à sa position. */

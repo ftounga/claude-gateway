@@ -1,9 +1,11 @@
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { HttpErrorResponse } from '@angular/common/http';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { provideRouter } from '@angular/router';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { of, throwError } from 'rxjs';
 
+import { RadarSubjectSummary } from '../../core/models/radar.models';
 import { RadarService } from '../../core/services/radar.service';
 import { RadarDepositDialogComponent } from './radar-deposit-dialog.component';
 
@@ -14,12 +16,14 @@ describe('RadarDepositDialogComponent', () => {
 
   function build(): RadarDepositDialogComponent {
     radar = jasmine.createSpyObj<RadarService>('RadarService',
-      ['openDeposit', 'sendDepositChunk', 'finishDeposit', 'abortDeposit', 'recordingProgress']);
+      ['openDeposit', 'sendDepositChunk', 'finishDeposit', 'abortDeposit', 'recordingProgress', 'subjects']);
+    radar.subjects.and.returnValue(of([{ id: 's1', name: 'Migration CAGIP', state: 'ADVANCING',
+      nextStep: null, dueDate: null, lastActivityAt: null, openCommitments: 0, awake: false }] as RadarSubjectSummary[]));
     radar.openDeposit.and.returnValue(of({ uploadId: 'u1', chunkBytes: 4, maxBytes: 500 * 1024 * 1024 }));
     radar.sendDepositChunk.and.callFake((_h, _u, offset, chunk) => of({ received: offset + chunk.size }));
     radar.finishDeposit.and.returnValue(of({ fileName: 'salle.m4a', title: 'Atelier sécurité',
       recordedAt: '2026-09-12T10:00:00+02:00', sizeBytes: 10, transcription: 'started', jobId: 'u1',
-      phase: 'AUDIO', phaseLabel: "j'extrais le son de l'enregistrement" }));
+      phase: 'AUDIO', phaseLabel: "j'extrais le son de l'enregistrement", meetingId: 'm1' }));
     radar.recordingProgress.and.returnValue(of({ known: true, jobId: 'u1', phase: 'TERMINE',
       phaseLabel: 'terminé', over: true, failure: '' }));
     radar.abortDeposit.and.returnValue(of(undefined));
@@ -28,6 +32,7 @@ describe('RadarDepositDialogComponent', () => {
       imports: [RadarDepositDialogComponent],
       providers: [
         provideNoopAnimations(),
+        provideRouter([]),
         { provide: RadarService, useValue: radar },
         { provide: MatDialogRef, useValue: dialogRef },
         { provide: MAT_DIALOG_DATA, useValue: { hostId: 'h1' } },
@@ -46,6 +51,9 @@ describe('RadarDepositDialogComponent', () => {
     dialog.choose(file('atelier_securite.m4a', 10));
     expect(dialog.title()).toBe('atelier securite');
     expect(dialog.recordedAt()).toBe('2026-09-12T10:00');
+    // F-147 / SF-147-02 : sans sujet, rien ne part — c'est au geste qu'on sait de quel dossier il s'agit.
+    expect(dialog.canSend()).toBeFalse();
+    dialog.subjectId.set('s1');
     expect(dialog.canSend()).toBeTrue();
 
     dialog.choose(file('rapport.pdf', 10));
@@ -57,10 +65,11 @@ describe('RadarDepositDialogComponent', () => {
     const dialog = build();
     dialog.choose(file('salle.m4a', 10));
     dialog.title.set('Atelier sécurité');
+    dialog.subjectId.set('s1');
     await dialog.send();
 
     expect(radar.openDeposit).toHaveBeenCalledWith('h1', 'salle.m4a', 10, 'Atelier sécurité',
-      jasmine.stringMatching(/^2026-09-12T10:00:00[+-]\d{2}:\d{2}$/));
+      jasmine.stringMatching(/^2026-09-12T10:00:00[+-]\d{2}:\d{2}$/), 's1');
     expect(radar.sendDepositChunk.calls.allArgs().map((args) => args[2])).toEqual([0, 4, 8]);
     expect(radar.finishDeposit).toHaveBeenCalledWith('h1', 'u1');
     // F-147 / SF-147-01 : le poste a commencé à transcrire — le dialogue le suit au lieu de dire « plus tard ».
@@ -76,6 +85,7 @@ describe('RadarDepositDialogComponent', () => {
     radar.sendDepositChunk.and.returnValue(throwError(() => new HttpErrorResponse({ status: 409,
       error: { message: 'Place insuffisante sur le poste.' } })));
     dialog.choose(file('salle.m4a', 10));
+    dialog.subjectId.set('s1');
     await dialog.send();
 
     expect(dialog.error()).toBe('Place insuffisante sur le poste.');
@@ -91,6 +101,7 @@ describe('RadarDepositDialogComponent', () => {
       return of({ received: offset + chunk.size });
     });
     dialog.choose(file('salle.m4a', 10));
+    dialog.subjectId.set('s1');
     await dialog.send();
 
     expect(radar.abortDeposit).toHaveBeenCalledWith('h1', 'u1');
@@ -111,6 +122,7 @@ describe('RadarDepositDialogComponent', () => {
         : of({ known: true, jobId: 'u1', phase: 'TERMINE', phaseLabel: 'terminé', over: true, failure: '' });
     });
     dialog.choose(file('salle.m4a', 10));
+    dialog.subjectId.set('s1');
     void dialog.send();
     tick();
 
@@ -129,8 +141,9 @@ describe('RadarDepositDialogComponent', () => {
     const dialog = build();
     radar.finishDeposit.and.returnValue(of({ fileName: 'salle.m4a', title: 'Atelier sécurité',
       recordedAt: '2026-09-12T10:00:00+02:00', sizeBytes: 10, transcription: 'unavailable', jobId: '',
-      phase: '', phaseLabel: '' }));
+      phase: '', phaseLabel: '', meetingId: null }));
     dialog.choose(file('salle.m4a', 10));
+    dialog.subjectId.set('s1');
     await dialog.send();
 
     expect(dialog.phase()).toBe('done');
@@ -142,6 +155,7 @@ describe('RadarDepositDialogComponent', () => {
     const dialog = build();
     radar.recordingProgress.and.returnValue(throwError(() => new HttpErrorResponse({ status: 409 })));
     dialog.choose(file('salle.m4a', 10));
+    dialog.subjectId.set('s1');
     void dialog.send();
     tick();
 
@@ -151,6 +165,19 @@ describe('RadarDepositDialogComponent', () => {
     expect(radar.recordingProgress).toHaveBeenCalledTimes(RadarDepositDialogComponent.MAX_MISSES);
     expect(dialog.phase()).toBe('done');
     expect(dialog.outcome()).toContain('ne répond plus');
+    tick();
+  }));
+  it('la réunion créée est offerte à l\'ouverture', fakeAsync(() => {
+    const dialog = build();
+    dialog.choose(file('salle.m4a', 10));
+    dialog.subjectId.set('s1');
+    void dialog.send();
+    tick();
+
+    tick(RadarDepositDialogComponent.POLL_MS);
+    expect(dialog.phase()).toBe('done');
+    expect(dialog.done()?.meetingId).toBe('m1');
+    expect(dialog.outcome()).toContain('rejoint la réunion');
     tick();
   }));
 });

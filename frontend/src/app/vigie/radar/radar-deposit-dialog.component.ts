@@ -6,8 +6,10 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
+import { MatSelectModule } from '@angular/material/select';
+import { RouterLink } from '@angular/router';
 
-import { RadarDepositDone, RadarRecordingProgress } from '../../core/models/radar.models';
+import { RadarDepositDone, RadarRecordingProgress, RadarSubjectSummary } from '../../core/models/radar.models';
 import { RadarService } from '../../core/services/radar.service';
 import {
   depositErrorOf,
@@ -29,12 +31,13 @@ type DepositPhase = 'form' | 'sending' | 'transcribing' | 'done';
  * **Déposer un enregistrement** (F-104 / SF-104-04) : un enregistrement hors Teams (téléphone, salle, autre
  * visio) part **par morceaux** sur la machine du client, dans le dossier de dépôt du Radar, avec son titre et sa
  * date. **Le poste le transcrit tout de suite** (F-147 / SF-147-01) et le dialogue dit où il en est, en toutes
- * lettres ; seul le texte remonte. La gateway ne garde jamais le fichier.
+ * lettres ; seul le texte remonte. La gateway ne garde jamais le fichier. Le **sujet est obligatoire**
+ * (F-147 / SF-147-02) : le texte devient une **réunion** rattachée à ce dossier, exploitable comme les autres.
  */
 @Component({
   selector: 'app-radar-deposit-dialog',
   imports: [FormsModule, MatDialogModule, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule,
-    MatProgressBarModule],
+    MatProgressBarModule, MatSelectModule, RouterLink],
   template: `
     <h2 mat-dialog-title>Déposer un enregistrement</h2>
     <mat-dialog-content class="radar-deposit">
@@ -68,6 +71,19 @@ type DepositPhase = 'form' | 'sending' | 'transcribing' | 'done';
             <input matInput type="datetime-local" name="recordedAt" required [ngModel]="recordedAt()"
               (ngModelChange)="recordedAt.set($event)" />
           </mat-form-field>
+          <mat-form-field appearance="outline">
+            <mat-label>Sujet</mat-label>
+            <mat-select name="subjectId" required [ngModel]="subjectId()" (ngModelChange)="subjectId.set($event)">
+              @for (subject of subjects(); track subject.id) {
+                <mat-option [value]="subject.id">{{ subject.name }}</mat-option>
+              }
+            </mat-select>
+            @if (subjects().length === 0) {
+              <mat-hint>Aucun sujet ouvert sur ce poste : créez-en un avant de déposer.</mat-hint>
+            } @else if (!subjectId()) {
+              <mat-error>Le sujet est requis.</mat-error>
+            }
+          </mat-form-field>
         }
         @case ('sending') {
           <p class="radar-deposit__lead">Envoi sur le poste… {{ percent() }} %</p>
@@ -84,6 +100,10 @@ type DepositPhase = 'form' | 'sending' | 'transcribing' | 'done';
           <p class="radar-deposit__lead">
             Déposé sur le poste : « {{ done()?.title }} ». {{ outcome() }}
           </p>
+          @if (done()?.meetingId; as meetingId) {
+            <a class="radar-deposit__meeting" [routerLink]="['/vigie', hostId, 'reunions', meetingId]"
+              (click)="close()">Ouvrir la réunion</a>
+          }
         }
       }
       @if (error(); as message) {
@@ -147,6 +167,11 @@ type DepositPhase = 'form' | 'sending' | 'transcribing' | 'done';
       color: var(--cg-text-primary);
     }
 
+    .radar-deposit__meeting {
+      font-size: 14px;
+      color: var(--cg-primary);
+    }
+
     .radar-deposit__error {
       margin: 0;
       font-size: 14px;
@@ -165,6 +190,9 @@ export class RadarDepositDialogComponent {
   readonly fileProblem = signal<string | null>(null);
   readonly title = signal('');
   readonly recordedAt = signal('');
+  /** F-147 / SF-147-02 : le sujet, choisi au moment du geste — c'est là qu'on sait de quel dossier il s'agit. */
+  readonly subjectId = signal('');
+  readonly subjects = signal<RadarSubjectSummary[]>([]);
   readonly percent = signal(0);
   readonly error = signal<string | null>(null);
   readonly done = signal<RadarDepositDone | null>(null);
@@ -183,9 +211,17 @@ export class RadarDepositDialogComponent {
   private watching: ReturnType<typeof setTimeout> | null = null;
   private misses = 0;
 
+  /** Le poste, tel que la route des réunions le nomme. */
+  readonly hostId = this.data.hostId;
+
   constructor() {
     // Le dialogue fermé, plus une seule demande d'avancement : le travail, lui, continue sur le poste.
     inject(DestroyRef).onDestroy(() => this.stopWatching());
+    // Les sujets du poste : sans eux, pas de dépôt — et le dire vaut mieux qu'une liste vide muette.
+    this.radar.subjects(this.data.hostId).subscribe({
+      next: (list) => this.subjects.set(list),
+      error: () => this.error.set('Les sujets de ce poste n\'ont pas pu être chargés.'),
+    });
   }
 
   pick(files: FileList | null): void {
@@ -211,7 +247,7 @@ export class RadarDepositDialogComponent {
   canSend(): boolean {
     const file = this.file();
     return !!file && depositFileProblem(file) === null && this.title().trim().length > 0
-      && isoWithOffset(this.recordedAt()) !== null;
+      && isoWithOffset(this.recordedAt()) !== null && this.subjectId().length > 0;
   }
 
   async send(): Promise<void> {
@@ -227,7 +263,7 @@ export class RadarDepositDialogComponent {
     this.percent.set(0);
     try {
       const opened = await new Promise<{ uploadId: string; chunkBytes: number }>((resolve, reject) =>
-        this.radar.openDeposit(hostId, file.name, file.size, this.title().trim(), recordedAt)
+        this.radar.openDeposit(hostId, file.name, file.size, this.title().trim(), recordedAt, this.subjectId())
           .subscribe({ next: resolve, error: reject }));
       this.uploadId = opened.uploadId;
       const complete = await sendInChunks(file, opened.chunkBytes,
@@ -294,7 +330,9 @@ export class RadarDepositDialogComponent {
     }
     this.outcome.set(progress.failure
       ? `La transcription n'a pas abouti : ${progress.failure}`
-      : 'Transcription terminée sur la machine ; seul le texte en est sorti.');
+      : this.done()?.meetingId
+        ? 'Transcription terminée sur la machine ; le texte a rejoint la réunion.'
+        : 'Transcription terminée sur la machine ; seul le texte en est sorti.');
     this.phase.set('done');
   }
 

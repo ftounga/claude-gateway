@@ -53,6 +53,7 @@ Le reproche du PO est juste, mais il ne porte pas sur le geste d'entrée :
 | **SF-147-03** | Promotion vers la carte **proposée et rappelée** tant qu'elle n'est pas faite (régime de la dette de F-125) | non |
 | **SF-147-04** | `meeting_transcript` — lire le transcript d'une réunion depuis un terminal | non |
 | **SF-147-05** | Retirer la **surveillance périodique** du dossier — devenue inutile une fois SF-147-01 en place | oui (retrait) |
+| **SF-147-06** | **Rattraper** un texte resté sur un poste qui était hors ligne au moment de le déposer (ajoutée le 2026-09-22, en écrivant SF-147-02 : la remontée peut échouer, et une réunion « en attente » ne doit pas le rester pour toujours) | oui |
 
 **Le dossier n'est pas supprimé** : il reste la zone où le fichier atterrit le temps d'être traité.
 Ce qui disparaît, c'est la **boîte aux lettres** — le relevé automatique sans geste ni progression.
