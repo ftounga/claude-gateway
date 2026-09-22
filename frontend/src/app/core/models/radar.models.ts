@@ -247,6 +247,23 @@ export interface RadarDepositDone {
   title: string;
   recordedAt: string;
   sizeBytes: number;
+  /** F-147 / SF-147-01 : `started`, `unavailable` ou `refused` — ce que le poste fait déjà du fichier. */
+  transcription: string;
+  /** Le travail à suivre, quand la transcription a démarré. */
+  jobId: string;
+  phase: string;
+  /** La phrase d'avancement, écrite par le poste pour être lue telle quelle. */
+  phaseLabel: string;
+}
+
+/** Où en est la transcription d'un dépôt (F-147 / SF-147-01). */
+export interface RadarRecordingProgress {
+  known: boolean;
+  jobId: string;
+  phase: string;
+  phaseLabel: string;
+  over: boolean;
+  failure: string;
 }
 
 // ------------------------------------------------------------ Relances et présentations (F-104 / SF-104-05)

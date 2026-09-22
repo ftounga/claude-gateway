@@ -295,7 +295,22 @@ public final class TeamsTools implements ToolExecutor {
         }
         this.radarDepot = depot;
         this.radarWork = new TeamsWorkFolder(hostRoot);
-        this.radarDeposit = RadarDepositReceiver.real(depot);
+        // F-147 / SF-147-01 : le récepteur transcrit DÈS que le fichier est arrivé. Le moteur est
+        // le même que celui du relevé — il n'était simplement pas branché ici, si bien qu'un dépôt
+        // attendait une synchronisation dont personne ne pouvait prévoir l'heure.
+        RadarDepositReceiver.Transcriber onArrival = transcription == null ? null
+                : (id, file, startedAt) -> {
+                    java.nio.file.Path into;
+                    try {
+                        into = radarWork.workDir(id);
+                    } catch (java.io.IOException e) {
+                        TranscriptionJob refused = new TranscriptionJob(id);
+                        refused.failed("Le dossier de travail de la transcription n'a pas pu être créé.", "");
+                        return refused;
+                    }
+                    return transcription.startOrResumeFile(id, file, into, startedAt, "Dépôt Radar", say);
+                };
+        this.radarDeposit = RadarDepositReceiver.real(depot, onArrival);
         return this;
     }
 

@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
@@ -7,7 +7,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 
-import { RadarDepositDone } from '../../core/models/radar.models';
+import { RadarDepositDone, RadarRecordingProgress } from '../../core/models/radar.models';
 import { RadarService } from '../../core/services/radar.service';
 import {
   depositErrorOf,
@@ -23,12 +23,13 @@ export interface RadarDepositDialogData {
   hostId: string;
 }
 
-type DepositPhase = 'form' | 'sending' | 'done';
+type DepositPhase = 'form' | 'sending' | 'transcribing' | 'done';
 
 /**
  * **Déposer un enregistrement** (F-104 / SF-104-04) : un enregistrement hors Teams (téléphone, salle, autre
  * visio) part **par morceaux** sur la machine du client, dans le dossier de dépôt du Radar, avec son titre et sa
- * date. Il y sera transcrit à la prochaine synchro ; seul le texte remonte. La gateway ne le garde jamais.
+ * date. **Le poste le transcrit tout de suite** (F-147 / SF-147-01) et le dialogue dit où il en est, en toutes
+ * lettres ; seul le texte remonte. La gateway ne garde jamais le fichier.
  */
 @Component({
   selector: 'app-radar-deposit-dialog',
@@ -40,7 +41,7 @@ type DepositPhase = 'form' | 'sending' | 'done';
       @switch (phase()) {
         @case ('form') {
           <p class="radar-deposit__lead">
-            Le fichier va sur la machine du client ; il y est transcrit à la prochaine synchro, seul le texte remonte.
+            Le fichier va sur la machine du client ; il y est transcrit aussitôt, sur place, et seul le texte remonte.
           </p>
           <input #picker type="file" class="radar-deposit__picker" [accept]="accept" (change)="pick(picker.files)" />
           <div class="radar-deposit__file">
@@ -72,9 +73,16 @@ type DepositPhase = 'form' | 'sending' | 'done';
           <p class="radar-deposit__lead">Envoi sur le poste… {{ percent() }} %</p>
           <mat-progress-bar mode="determinate" [value]="percent()"></mat-progress-bar>
         }
+        @case ('transcribing') {
+          <p class="radar-deposit__lead">
+            Déposé sur le poste : « {{ done()?.title }} ». Transcription en cours, sur la machine.
+          </p>
+          <p class="radar-deposit__phase" role="status">{{ phaseLabel() }}</p>
+          <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+        }
         @case ('done') {
           <p class="radar-deposit__lead">
-            Déposé sur le poste : « {{ done()?.title }} ». Il sera transcrit sur la machine à la prochaine synchro.
+            Déposé sur le poste : « {{ done()?.title }} ». {{ outcome() }}
           </p>
         }
       }
@@ -92,6 +100,9 @@ type DepositPhase = 'form' | 'sending' | 'done';
         }
         @case ('sending') {
           <button mat-button type="button" (click)="cancel()">Annuler le dépôt</button>
+        }
+        @case ('transcribing') {
+          <button mat-button type="button" (click)="close()">Fermer</button>
         }
         @case ('done') {
           <button mat-flat-button color="primary" type="button" (click)="close()">Fermer</button>
@@ -130,6 +141,12 @@ type DepositPhase = 'form' | 'sending' | 'done';
       word-break: break-all;
     }
 
+    .radar-deposit__phase {
+      margin: 0;
+      font-size: 14px;
+      color: var(--cg-text-primary);
+    }
+
     .radar-deposit__error {
       margin: 0;
       font-size: 14px;
@@ -151,9 +168,25 @@ export class RadarDepositDialogComponent {
   readonly percent = signal(0);
   readonly error = signal<string | null>(null);
   readonly done = signal<RadarDepositDone | null>(null);
+  /** La phrase d'avancement **du poste**, recopiée telle quelle (F-147 / SF-147-01). */
+  readonly phaseLabel = signal('');
+  /** Ce qu'il est advenu de la transcription, une fois la phase terminée. */
+  readonly outcome = signal('');
+
+  /** Intervalle entre deux demandes d'avancement. */
+  static readonly POLL_MS = 3000;
+  /** Échecs d'affilée au-delà desquels on cesse de demander, et on le dit. */
+  static readonly MAX_MISSES = 3;
 
   private uploadId: string | null = null;
   private cancelled = false;
+  private watching: ReturnType<typeof setTimeout> | null = null;
+  private misses = 0;
+
+  constructor() {
+    // Le dialogue fermé, plus une seule demande d'avancement : le travail, lui, continue sur le poste.
+    inject(DestroyRef).onDestroy(() => this.stopWatching());
+  }
 
   pick(files: FileList | null): void {
     const file = files && files.length > 0 ? files[0] : null;
@@ -208,11 +241,78 @@ export class RadarDepositDialogComponent {
         this.radar.finishDeposit(hostId, opened.uploadId).subscribe({ next: resolve, error: reject }));
       this.uploadId = null;
       this.done.set(done);
-      this.phase.set('done');
+      this.startTranscription(done, opened.uploadId);
     } catch (err) {
       this.abortQuietly();
       this.phase.set('form');
       this.error.set(depositErrorOf(err));
+    }
+  }
+
+  /**
+   * Le dépôt est fini : ou bien le poste a **commencé** à transcrire et on suit, ou bien il ne l'a pas
+   * fait — et on le dit plutôt que de laisser croire que c'est en cours.
+   */
+  private startTranscription(done: RadarDepositDone, uploadId: string): void {
+    if (done.transcription === 'started' && done.jobId) {
+      this.phaseLabel.set(done.phaseLabel || 'Transcription en cours sur la machine.');
+      this.phase.set('transcribing');
+      this.watch(uploadId);
+      return;
+    }
+    this.outcome.set(done.transcription === 'unavailable'
+      ? 'Ce poste ne sait pas encore transcrire sur place : mettez le runner à jour.'
+      : 'La transcription n\'a pas pu démarrer sur le poste ; le fichier, lui, est bien déposé.');
+    this.phase.set('done');
+  }
+
+  /** Demande l'avancement au poste, encore et encore, jusqu'à la fin du travail. */
+  private watch(uploadId: string): void {
+    this.stopWatching();
+    this.watching = setTimeout(() => {
+      this.radar.recordingProgress(this.data.hostId, uploadId).subscribe({
+        next: (progress) => this.applyProgress(progress, uploadId),
+        error: () => this.missed(uploadId),
+      });
+    }, RadarDepositDialogComponent.POLL_MS);
+  }
+
+  private applyProgress(progress: RadarRecordingProgress, uploadId: string): void {
+    this.misses = 0;
+    if (!progress.known) {
+      // Le runner a redémarré : le travail n'est plus suivi, le fichier déposé reste bon.
+      this.outcome.set('Le poste ne suit plus cette transcription (runner redémarré) ; le fichier est déposé.');
+      this.phase.set('done');
+      return;
+    }
+    if (progress.phaseLabel) {
+      this.phaseLabel.set(progress.phaseLabel);
+    }
+    if (!progress.over) {
+      this.watch(uploadId);
+      return;
+    }
+    this.outcome.set(progress.failure
+      ? `La transcription n'a pas abouti : ${progress.failure}`
+      : 'Transcription terminée sur la machine ; seul le texte en est sorti.');
+    this.phase.set('done');
+  }
+
+  private missed(uploadId: string): void {
+    this.misses += 1;
+    if (this.misses < RadarDepositDialogComponent.MAX_MISSES) {
+      this.watch(uploadId);
+      return;
+    }
+    this.outcome.set('Le poste ne répond plus : la transcription se poursuit sur la machine, '
+      + 'son résultat apparaîtra dans les réunions.');
+    this.phase.set('done');
+  }
+
+  private stopWatching(): void {
+    if (this.watching !== null) {
+      clearTimeout(this.watching);
+      this.watching = null;
     }
   }
 

@@ -10,6 +10,7 @@ import {
   RadarCorrection,
   RadarDepositChunk,
   RadarDepositDone,
+  RadarRecordingProgress,
   RadarDepositOpened,
   RadarDraft,
   RadarNews,
@@ -144,6 +145,11 @@ export class RadarService {
   /** Termine le dépôt : le fichier apparaît dans le dossier du poste, avec son titre et sa date. */
   finishDeposit(hostId: string, uploadId: string): Observable<RadarDepositDone> {
     return this.http.post<RadarDepositDone>(`${this.base(hostId)}/recordings/${uploadId}/finish`, null);
+  }
+
+  /** Où en est la transcription lancée à la fin du dépôt (F-147 / SF-147-01). */
+  recordingProgress(hostId: string, uploadId: string): Observable<RadarRecordingProgress> {
+    return this.http.get<RadarRecordingProgress>(`${this.base(hostId)}/recordings/${uploadId}/status`);
   }
 
   /** Abandonne le dépôt. */

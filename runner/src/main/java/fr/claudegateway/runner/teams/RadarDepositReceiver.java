@@ -59,18 +59,52 @@ final class RadarDepositReceiver {
     private final Path depot;
     private final Supplier<Instant> clock;
     private final DiskSpace disk;
+    /**
+     * Ce qui transcrit, <b>tout de suite</b> (F-147 / SF-147-01).
+     *
+     * <p>Avant, {@code finish} posait le fichier et s'arrêtait là : un relevé périodique le prenait,
+     * plus tard, sans qu'on sache quand. Le moteur savait pourtant déjà transcrire un fichier
+     * désigné — il n'était simplement pas branché sur le dépôt.</p>
+     *
+     * <p><b>Nul est permis</b> : un récepteur monté sans moteur se comporte comme avant, et le dit.</p>
+     */
+    private final Transcriber transcriber;
+
+    /** Les travaux lancés par ce récepteur, par identifiant de dépôt. */
+    private final java.util.Map<String, TranscriptionJob> jobs = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Ce que la transcription locale offre au dépôt — une interface, pour s'éprouver sans moteur. */
+    interface Transcriber {
+
+        /** Lance ou reprend la transcription d'un fichier ; rend le travail. */
+        TranscriptionJob start(String id, Path file, Instant startedAt);
+    }
 
     RadarDepositReceiver(Path depot, Supplier<Instant> clock, DiskSpace disk) {
+        this(depot, clock, disk, null);
+    }
+
+    RadarDepositReceiver(Path depot, Supplier<Instant> clock, DiskSpace disk, Transcriber transcriber) {
         this.depot = depot;
         this.clock = clock;
         this.disk = disk;
+        this.transcriber = transcriber;
     }
 
     static RadarDepositReceiver real(Path depot) {
         return new RadarDepositReceiver(depot, Instant::now, dir -> Files.getFileStore(dir).getUsableSpace());
     }
 
-    /** Point d'entrée : {@code op} = {@code open}, {@code chunk}, {@code finish} ou {@code abort}. */
+    /** Le même, doté du moteur de transcription locale (F-147 / SF-147-01). */
+    static RadarDepositReceiver real(Path depot, Transcriber transcriber) {
+        return new RadarDepositReceiver(depot, Instant::now,
+                dir -> Files.getFileStore(dir).getUsableSpace(), transcriber);
+    }
+
+    /**
+     * Point d'entrée : {@code op} = {@code open}, {@code chunk}, {@code finish}, {@code abort} ou
+     * {@code status} (F-147 / SF-147-01 — où en est la transcription).
+     */
     ToolOutcome handle(JsonNode input) {
         if (depot == null) {
             return refused("DEPOT_UNAVAILABLE", "Le dossier de dépôt du Radar n'existe pas sur ce poste.");
@@ -86,6 +120,7 @@ final class RadarDepositReceiver {
                 case "chunk" -> chunk(input, id);
                 case "finish" -> finish(id);
                 case "abort" -> abort(id);
+                case "status" -> status(id);
                 default -> ToolOutcome.error("invalid_input", "Opération de dépôt inconnue : " + op + ".");
             };
         } catch (IOException e) {
@@ -188,7 +223,61 @@ final class RadarDepositReceiver {
         done.put("size", size);
         done.put("title", meta.path("title").asText());
         done.put("recorded_at", meta.path("recorded_at").asText());
+        // F-147 / SF-147-01 : on transcrit TOUT DE SUITE. Le fichier est là, le moteur est là ;
+        // attendre un relevé périodique n'apportait qu'un délai que personne ne pouvait prévoir.
+        startTranscription(id, target, done);
         return ToolOutcome.ok(done.toString());
+    }
+
+    /**
+     * Lance la transcription du fichier qui vient d'arriver, et dit son état dans la réponse.
+     *
+     * <p><b>Ne fait jamais échouer le dépôt</b> : le fichier est arrivé entier, c'est acquis. Si le
+     * moteur manque ou refuse, on le <b>dit</b> et le dépôt reste bon — un relevé ultérieur ou une
+     * reprise pourra le traiter.</p>
+     */
+    private void startTranscription(String id, Path target, ObjectNode done) {
+        if (transcriber == null) {
+            done.put("transcription", "unavailable");
+            return;
+        }
+        try {
+            TranscriptionJob job = transcriber.start(id, target, clock.get());
+            jobs.put(id, job);
+            done.put("transcription", "started");
+            done.put("job_id", job.id());
+            done.put("phase", job.phase().name());
+            done.put("phase_label", job.phase().label());
+        } catch (RuntimeException e) {
+            done.put("transcription", "refused");
+            done.put("transcription_error", e.getMessage() == null ? "" : e.getMessage());
+        }
+    }
+
+    /**
+     * Où en est la transcription de ce dépôt (F-147 / SF-147-01).
+     *
+     * <p>La <b>phase en toutes lettres</b> voyage avec : elle a été écrite pour être lue par
+     * l'utilisateur — « j'extrais le son », « je transcris, ici, sans rien envoyer nulle part » —
+     * et la recopier côté écran en ferait une seconde version à maintenir.</p>
+     */
+    private ToolOutcome status(String id) {
+        TranscriptionJob job = jobs.get(id);
+        ObjectNode node = mapper.createObjectNode();
+        if (job == null) {
+            node.put("known", false);
+            return ToolOutcome.ok(node.toString());
+        }
+        node.put("known", true);
+        node.put("job_id", job.id());
+        node.put("phase", job.phase().name());
+        node.put("phase_label", job.phase().label());
+        node.put("over", job.isOver());
+        String failure = job.failure();
+        if (failure != null && !failure.isBlank()) {
+            node.put("failure", failure);
+        }
+        return ToolOutcome.ok(node.toString());
     }
 
     private ToolOutcome abort(String id) throws IOException {
