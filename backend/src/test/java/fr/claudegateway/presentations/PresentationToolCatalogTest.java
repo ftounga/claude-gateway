@@ -65,6 +65,17 @@ class PresentationToolCatalogTest {
     }
 
     @Test
+    @DisplayName("SF-142-03 : le guide apprend les icônes cloud officielles via diagrams + repli Mermaid")
+    void guideTeachesOfficialCloudIconsViaDiagrams() {
+        assertThat(PresentationToolCatalog.GUIDE)
+                .contains("diagrams")
+                .containsIgnoringCase("officielles")
+                .containsIgnoringCase("graphviz")
+                .containsIgnoringCase("sandbox")
+                .contains("architecture-beta");
+    }
+
+    @Test
     @DisplayName("catalogue vide (none) → jamais d'outil")
     void noneGivesNothing() {
         assertThat(PresentationToolCatalog.none().isOpenFor(userId, workspace)).isFalse();

@@ -145,6 +145,12 @@ class GovernancePackageSeederTest {
         assertThat(pptx.getContent()).containsIgnoringCase("mermaid")
                 .contains("mmdc").contains("add_picture")
                 .containsIgnoringCase("sandbox").containsIgnoringCase("factuel");
+        // SF-142-03 : la recette « icônes cloud officielles » — lib diagrams (nœuds officiels) → PNG via
+        // graphviz → slide/page, dans le sandbox, repli NOMMÉ sur Mermaid architecture-beta, factuel.
+        assertThat(pptx.getContent()).contains("diagrams")
+                .containsIgnoringCase("graphviz").contains("diagrams.aws")
+                .contains("architecture-beta")
+                .containsIgnoringCase("officielles");
     }
 
     @Test

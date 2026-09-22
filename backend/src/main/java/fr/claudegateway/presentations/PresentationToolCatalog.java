@@ -48,6 +48,11 @@ public class PresentationToolCatalog {
             + "PNG dans le sandbox (mmdc/mermaid-cli), puis insère-le dans la slide (add_picture) — recette "
             + "détaillée dans le skill pptx. Rendu dans le sandbox, jamais sur le cluster ; échec NOMMÉ si "
             + "le moteur de rendu manque ; FACTUEL (ne dessine que l'établi, marque le supposé).\n"
+            + "ICÔNES CLOUD OFFICIELLES : pour une architecture cloud soignée avec les VRAIS glyphes de "
+            + "service (S3, Lambda, RDS, VNet…), utilise la lib Python diagrams (nœuds diagrams.aws/azure/"
+            + "gcp/onprem, rendus par graphviz) → PNG → add_picture — recette dans le skill pptx. C'est le "
+            + "HAUT DE GAMME, dans le sandbox (exige python+graphviz) ; si indisponible, REPLI NOMMÉ sur "
+            + "Mermaid architecture-beta (icônes génériques, zéro installation).\n"
             + "ACCORD : quand une présentation serait utile, PROPOSE-la en une phrase et attends, sauf si "
             + "l'utilisateur l'a demandée. Pour REMPLACER une présentation déjà capturée, rappelle son "
             + "presentation_id (nouveau fichier, même entrée).";

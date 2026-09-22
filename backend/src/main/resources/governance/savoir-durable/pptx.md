@@ -137,6 +137,81 @@ images ci-dessous.
    comme les autres — le diagramme est lisible à l'ouverture **et** dans la visionneuse, sans rien
    ajouter côté application.
 
+## Icônes cloud officielles (AWS/Azure/GCP/on-prem) : la lib `diagrams`
+
+`architecture-beta` (Mermaid, ci-dessus) rend la **structure** avec des icônes **génériques**. Pour un
+livrable **soigné** avec les **vrais glyphes de service** — S3, Lambda, RDS, API Gateway, VNet, GKE… —,
+fais du diagramme-as-code avec la lib Python **`diagrams`** (mingrammer), qui s'appuie sur **graphviz**.
+La sortie est un **PNG** que tu insères dans une **slide** (`add_picture`, ci-dessus) **ou** que tu joins
+à une **page** (F-109, image jointe référencée par `<img src="…">`). Tout tourne **dans le sandbox, jamais
+sur le serveur/cluster** — comme le rendu Mermaid et le rendu des slides.
+
+**Quel outil choisir ?**
+
+- **`diagrams` = le haut de gamme.** Une **architecture cloud** avec les **icônes officielles** (livrable
+  client soigné). **Exige** `python` + le binaire `graphviz` (`dot`) : dispo dans le **sandbox**, souvent
+  **absent d'un poste banque verrouillé**.
+- **Mermaid `architecture-beta` = le rapide et le portable.** **Zéro installation** (rendu navigateur en
+  page, cf. F-142/SF-142-01, ou `mmdc` en slide), icônes génériques. C'est le **cœur** quand on ne peut
+  rien installer, et le **repli** de `diagrams`.
+
+**La recette :**
+
+1. **Installe (sandbox)** la lib et graphviz — échec **nommé** si l'installation est bloquée :
+
+   ```bash
+   pip install diagrams          # la lib Python (mingrammer)
+   apt-get install -y graphviz   # le binaire `dot` (ou `brew install graphviz`)
+   ```
+
+   - **Échec nommé + repli** : si `diagrams` ou `graphviz` sont absents **et** l'installation est bloquée
+     (poste verrouillé, proxy d'entreprise), **dis-le** clairement — par exemple : « Les icônes cloud
+     officielles (lib `diagrams` + graphviz) ne sont pas disponibles ici et l'installation est bloquée.
+     Je bascule sur **Mermaid `architecture-beta`** (rendu navigateur/`mmdc`, zéro installation, icônes
+     génériques). » Puis **produis le diagramme en Mermaid** (recette ci-dessus / diagrammes en page).
+     **Ne fabrique pas** de fausse image, ne pose pas d'image cassée.
+
+2. **Écris le diagramme en Python** avec les **nœuds officiels** — `diagrams.aws.*`, `diagrams.azure.*`,
+   `diagrams.gcp.*`, `diagrams.onprem.*`. Garde l'import **gardé** (échec nommé, pas de traceback nu) :
+
+   ```python
+   import sys
+   try:
+       from diagrams import Diagram, Cluster
+       from diagrams.aws.compute import Lambda
+       from diagrams.aws.network import APIGateway
+       from diagrams.aws.database import RDS
+       from diagrams.aws.storage import S3
+   except ModuleNotFoundError:
+       sys.exit(
+           "La lib `diagrams` (icônes cloud officielles) est absente. Sandbox : "
+           "`pip install diagrams` + `apt-get install graphviz`. Poste verrouillé : "
+           "si l'installation est bloquée, basculer sur Mermaid architecture-beta (zéro installation)."
+       )
+
+   # `dot` (graphviz) rend le PNG. show=False : ne pas ouvrir de fenêtre.
+   with Diagram("Architecture cible", filename="archi", outformat="png", show=False):
+       api = APIGateway("API Gateway")
+       with Cluster("Traitement"):
+           fn = Lambda("Ingestion")
+       api >> fn >> RDS("Métadonnées")
+       fn >> S3("Documents")
+   # -> produit archi.png
+   ```
+
+   **FACTUEL (F-119)** : ne dessine que l'architecture **établie** (celle que tu as lue dans le projet ou
+   le sujet) — jamais un service ni un lien **inventé** ; ce qui est supposé se marque « (supposé) ».
+   Si le code `diagrams` est invalide, `graphviz`/`dot` échoue : signale CE diagramme en échec, n'insère
+   pas d'image, livre le reste.
+
+3. **Insère le PNG** — comme n'importe quelle image :
+   - **slide** : `s.shapes.add_picture("archi.png", Inches(0.6), Inches(1.4), width=Inches(9))`
+     (mêmes titre/légende que la recette Mermaid ci-dessus) ;
+   - **page** (F-109) : joins `archi.png` à la page (pièce jointe) et référence-la `<img src="archi.png">`.
+
+   Garde le **code Python** du diagramme à côté du livrable : le diagramme reste **éditable et
+   régénérable**.
+
 ## Pour l'aperçu dans l'application (lisible slide par slide)
 
 Le `.pptx` se **télécharge** toujours. Pour que l'utilisateur **lise le deck entièrement dans l'app**

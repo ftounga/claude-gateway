@@ -123,4 +123,14 @@ class PageToolCatalogTest {
                 .contains("ÉTABLI")
                 .contains("n'ajoute PAS toi-même la bibliothèque mermaid");
     }
+
+    @Test
+    @DisplayName("SF-142-03 — le guide dit les icônes cloud officielles via diagrams (sandbox, PNG joint), Mermaid en repli")
+    void designGuideTeachesOfficialCloudIcons() {
+        assertThat(PageToolCatalog.DESIGN_GUIDE)
+                .contains("diagrams")
+                .containsIgnoringCase("officielles")
+                .containsIgnoringCase("sandbox")
+                .contains("architecture-beta");
+    }
 }
