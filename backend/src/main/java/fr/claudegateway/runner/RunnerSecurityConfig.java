@@ -98,6 +98,11 @@ public class RunnerSecurityConfig {
                         // Remontée des images clés d'une réunion (F-128 / SF-128-03) : même nature —
                         // jeton X-Runner-Token vérifié PAR LE CONTRÔLEUR (RunnerMeetingImageController).
                         .requestMatchers(HttpMethod.POST, "/runner/teams/meetings/*/images").permitAll()
+                        // Remontée du TEXTE d'un enregistrement déposé (F-147 / SF-147-02) : même nature
+                        // encore — jeton X-Runner-Token vérifié PAR LE CONTRÔLEUR
+                        // (RunnerRecordingTranscriptController). Déclarée une par une, comme les autres :
+                        // le seul joker reste l'identifiant de la réunion.
+                        .requestMatchers(HttpMethod.POST, "/runner/teams/meetings/*/local-transcript").permitAll()
                         // Synchro du soir du Radar (F-100 / SF-100-02) : battement et fin, même nature
                         // que les captures — jeton X-Runner-Token vérifié PAR LE CONTRÔLEUR
                         // (RunnerRadarSyncController), rien dans le SecurityContext (D9). Déclarées une

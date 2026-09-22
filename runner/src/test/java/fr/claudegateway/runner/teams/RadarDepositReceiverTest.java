@@ -59,6 +59,12 @@ class RadarDepositReceiverTest {
         return node;
     }
 
+    private static ObjectNode openWithSubject(String id, String name, long size, String subjectId) {
+        ObjectNode node = open(id, name, size);
+        node.put("subject_id", subjectId);
+        return node;
+    }
+
     private static ObjectNode chunk(String id, long offset, byte[] data) {
         ObjectNode node = op("chunk", id);
         node.put("offset", offset);
@@ -213,6 +219,28 @@ class RadarDepositReceiverTest {
         return new RadarDepositReceiver(depot, () -> NOW, dir -> usable, engine);
     }
 
+    /** F-147 / SF-147-02 : ce qui porte le texte à la réunion — ici, un carnet. */
+    private static final class Sink implements RadarDepositReceiver.TranscriptSink {
+        String meetingId;
+        TranscriptionJob job;
+        RuntimeException refuse;
+
+        @Override
+        public boolean deposit(String meetingId, TranscriptionJob job) {
+            if (refuse != null) {
+                throw refuse;
+            }
+            this.meetingId = meetingId;
+            this.job = job;
+            return true;
+        }
+    }
+
+    /** L'attente jouée ici même : le test n'a pas à dormir pour prouver la chaîne. */
+    private RadarDepositReceiver receiverWith(Engine engine, Sink sink) {
+        return new RadarDepositReceiver(depot, () -> NOW, dir -> usable, engine, sink, Runnable::run);
+    }
+
     private void deposit(RadarDepositReceiver receiver, String id, byte[] data) throws Exception {
         json(receiver.handle(open(id, "reunion.mp4", data.length)));
         json(receiver.handle(chunk(id, 0, data)));
@@ -285,5 +313,87 @@ class RadarDepositReceiverTest {
 
         assertTrue(done.path("deposited").asBoolean());
         assertEquals("unavailable", done.path("transcription").asText());
+    }
+    // ---------------------------------------------------------------- F-147 / SF-147-02 : la réunion du dépôt
+
+    @Test
+    @DisplayName("le sujet choisi au geste voyage avec le dépôt et revient à la fin — le poste ne le juge pas")
+    void theSubjectTravelsWithTheDeposit() throws Exception {
+        Engine engine = new Engine();
+        RadarDepositReceiver receiver = receiverWith(engine);
+        String id = "55555555-5555-5555-5555-555555555555";
+        byte[] data = "video".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        json(receiver.handle(openWithSubject(id, "reunion.mp4", data.length,
+                "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")));
+        json(receiver.handle(chunk(id, 0, data)));
+
+        JsonNode done = json(receiver.handle(op("finish", id)));
+
+        assertEquals("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", done.path("subject_id").asText());
+    }
+
+    @Test
+    @DisplayName("LE CRITÈRE : la réunion annoncée reçoit le texte au terme du travail")
+    void theMeetingReceivesTheText() throws Exception {
+        Engine engine = new Engine();
+        Sink sink = new Sink();
+        RadarDepositReceiver receiver = receiverWith(engine, sink);
+        String id = "66666666-6666-6666-6666-666666666666";
+        deposit(receiver, id, "video".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        json(receiver.handle(op("finish", id)));
+        engine.job.phase(TranscriptionJob.Phase.TERMINE);
+
+        ObjectNode attach = op("attach", id);
+        attach.put("meeting_id", "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+        JsonNode attached = json(receiver.handle(attach));
+
+        assertTrue(attached.path("attached").asBoolean(), attached.toString());
+        assertEquals("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", sink.meetingId);
+        assertEquals(engine.job, sink.job, "c'est bien le travail de CE dépôt qui remonte");
+    }
+
+    @Test
+    @DisplayName("sans moyen de faire remonter le texte, le dépôt le dit — il ne fait pas semblant")
+    void withoutAnUplinkTheDepositSaysSo() throws Exception {
+        Engine engine = new Engine();
+        RadarDepositReceiver receiver = receiverWith(engine);
+        String id = "77777777-7777-7777-7777-777777777777";
+        deposit(receiver, id, "video".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        json(receiver.handle(op("finish", id)));
+
+        ObjectNode attach = op("attach", id);
+        attach.put("meeting_id", "cccccccc-cccc-cccc-cccc-cccccccccccc");
+        JsonNode answer = json(receiver.handle(attach));
+
+        assertFalse(answer.path("attached").asBoolean());
+        assertEquals("NO_UPLINK", answer.path("reason").asText());
+    }
+
+    @Test
+    @DisplayName("une remontée qui échoue ne casse rien : le texte reste sur la machine")
+    void afailingUplinkKeepsTheTextHere() throws Exception {
+        Engine engine = new Engine();
+        Sink sink = new Sink();
+        sink.refuse = new IllegalStateException("gateway injoignable");
+        RadarDepositReceiver receiver = receiverWith(engine, sink);
+        String id = "88888888-8888-8888-8888-888888888888";
+        deposit(receiver, id, "video".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        json(receiver.handle(op("finish", id)));
+        engine.job.phase(TranscriptionJob.Phase.TERMINE);
+
+        ObjectNode attach = op("attach", id);
+        attach.put("meeting_id", "dddddddd-dddd-dddd-dddd-dddddddddddd");
+        JsonNode attached = json(receiver.handle(attach));
+
+        assertTrue(attached.path("attached").asBoolean(), "l'adresse est prise ; c'est la remontée qui a échoué");
+        assertTrue(java.nio.file.Files.exists(depot.resolve("reunion.mp4")), "le fichier reste en place");
+    }
+
+    @Test
+    @DisplayName("une réunion annoncée sans identifiant est refusée")
+    void anAttachWithoutMeetingIsRefused() throws Exception {
+        ToolOutcome outcome = receiver().handle(op("attach", "99999999-9999-9999-9999-999999999999"));
+
+        assertFalse(outcome.ok());
     }
 }

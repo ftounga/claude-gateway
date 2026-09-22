@@ -24,6 +24,7 @@ import fr.claudegateway.radar.RadarTeamsDisabledException;
 import fr.claudegateway.runner.RunnerLiveness;
 import fr.claudegateway.runner.channel.RunnerCallResult;
 import fr.claudegateway.runner.channel.RunnerErrorCodes;
+import fr.claudegateway.teams.meeting.RecordingMeetingService;
 
 /**
  * <b>Déposer un enregistrement depuis l'écran</b> (F-104 / SF-104-04, cadrage §9) : le fichier va <b>au
@@ -48,8 +49,12 @@ public class RadarRecordingDepositService {
     static final List<String> EXTENSIONS = List.of(".mp3", ".m4a", ".wav", ".ogg", ".aac", ".flac", ".mp4", ".mov",
             ".mkv", ".webm");
 
-    /** Ce que l'écran demande pour ouvrir un dépôt. */
-    public record DepositRequest(String fileName, Long sizeBytes, String title, String recordedAt) {
+    /**
+     * Ce que l'écran demande pour ouvrir un dépôt. Le <b>sujet est obligatoire</b> depuis F-147 /
+     * SF-147-02 : c'est au moment du geste que l'utilisateur sait de quel dossier il s'agit.
+     */
+    public record DepositRequest(String fileName, Long sizeBytes, String title, String recordedAt,
+            UUID subjectId) {
     }
 
     /** Un dépôt ouvert : où envoyer, et par morceaux de quelle taille. */
@@ -66,7 +71,7 @@ public class RadarRecordingDepositService {
      * {@code refused} ; quand elle a démarré, {@code jobId} sert à suivre l'avancement.
      */
     public record DepositDone(String fileName, String title, String recordedAt, long sizeBytes,
-            String transcription, String jobId, String phase, String phaseLabel) {
+            String transcription, String jobId, String phase, String phaseLabel, UUID meetingId) {
     }
 
     /**
@@ -82,11 +87,14 @@ public class RadarRecordingDepositService {
     private final RadarRunnerCalls calls;
     private final RunnerLiveness liveness;
     private final ObjectMapper mapper;
+    private final RecordingMeetingService meetings;
 
-    public RadarRecordingDepositService(RadarRunnerCalls calls, RunnerLiveness liveness, ObjectMapper mapper) {
+    public RadarRecordingDepositService(RadarRunnerCalls calls, RunnerLiveness liveness, ObjectMapper mapper,
+            RecordingMeetingService meetings) {
         this.calls = calls;
         this.liveness = liveness;
         this.mapper = mapper;
+        this.meetings = meetings;
     }
 
     /** Ouvre un dépôt sur le poste. */
@@ -111,6 +119,13 @@ public class RadarRecordingDepositService {
         } catch (DateTimeParseException e) {
             throw new InvalidRadarInputException("La date et l'heure de la réunion sont requises.");
         }
+        if (request.subjectId() == null) {
+            throw new InvalidRadarInputException("Le sujet de la réunion est requis : un enregistrement "
+                    + "appartient à un dossier.");
+        }
+        // Le sujet est validé ICI, dans le périmètre de l'appelant : un sujet d'un autre compte ou
+        // d'un autre poste est introuvable (404), et rien ne part vers le poste.
+        UUID subjectId = meetings.requireLiveSubjectId(scope, request.subjectId());
         requireOnline(scope);
         UUID uploadId = UUID.randomUUID();
         ObjectNode input = base("open", uploadId);
@@ -118,6 +133,7 @@ public class RadarRecordingDepositService {
         input.put("size", size);
         input.put("title", title);
         input.put("recorded_at", recordedAt.toString());
+        input.put("subject_id", subjectId.toString());
         answer(calls.call(scope, DEPOSIT, input, OPEN_TIMEOUT_MS));
         return new DepositOpened(uploadId, CHUNK_BYTES, MAX_BYTES);
     }
@@ -146,10 +162,43 @@ public class RadarRecordingDepositService {
     public DepositDone finish(RadarScope scope, UUID uploadId) {
         requireOnline(scope);
         JsonNode answer = answer(calls.call(scope, DEPOSIT, base("finish", uploadId), FINISH_TIMEOUT_MS));
+        UUID meetingId = openMeeting(scope, uploadId, answer);
         return new DepositDone(answer.path("file_name").asText(), answer.path("title").asText(),
                 answer.path("recorded_at").asText(), answer.path("size").asLong(),
                 answer.path("transcription").asText(""), answer.path("job_id").asText(""),
-                answer.path("phase").asText(""), answer.path("phase_label").asText(""));
+                answer.path("phase").asText(""), answer.path("phase_label").asText(""), meetingId);
+    }
+
+    /**
+     * La <b>réunion</b> du dépôt (F-147 / SF-147-02) : créée une fois le fichier arrivé — pas avant,
+     * sans quoi un transfert abandonné laisserait une réunion fantôme — puis <b>annoncée au poste</b>,
+     * qui saura où déposer le texte au terme de la transcription.
+     *
+     * <p>Le sujet revient du poste : il est <b>revalidé</b> dans le périmètre de l'appelant avant la
+     * moindre écriture. Le poste n'a jamais le dernier mot sur le périmètre.</p>
+     */
+    private UUID openMeeting(RadarScope scope, UUID uploadId, JsonNode answer) {
+        String subject = answer.path("subject_id").asText("");
+        if (subject.isBlank()) {
+            return null;
+        }
+        UUID meetingId;
+        try {
+            meetingId = meetings.create(scope, UUID.fromString(subject), answer.path("title").asText(),
+                    OffsetDateTime.parse(answer.path("recorded_at").asText())).getId();
+        } catch (RuntimeException e) {
+            // Le fichier EST arrivé : on ne le perd pas pour une réunion qui n'a pas pu naître.
+            return null;
+        }
+        ObjectNode attach = base("attach", uploadId);
+        attach.put("meeting_id", meetingId.toString());
+        try {
+            answer(calls.call(scope, DEPOSIT, attach, OPEN_TIMEOUT_MS));
+        } catch (RuntimeException e) {
+            // Le poste n'a pas pris l'adresse : la réunion reste « en attente », elle n'est pas perdue.
+            return meetingId;
+        }
+        return meetingId;
     }
 
     /**

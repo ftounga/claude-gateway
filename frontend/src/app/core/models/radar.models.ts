@@ -254,6 +254,8 @@ export interface RadarDepositDone {
   phase: string;
   /** La phrase d'avancement, écrite par le poste pour être lue telle quelle. */
   phaseLabel: string;
+  /** F-147 / SF-147-02 : la réunion créée pour ce dépôt, rattachée au sujet choisi. */
+  meetingId: string | null;
 }
 
 /** Où en est la transcription d'un dépôt (F-147 / SF-147-01). */

@@ -167,6 +167,8 @@ public final class TeamsTools implements ToolExecutor {
      * capture reste possible, mais elle n'aura pas de transcription, et c'est <b>dit</b>.
      */
     private TranscriptionWorker transcription;
+    /** La remontée du texte d'un enregistrement vers sa réunion (F-147 / SF-147-02). */
+    private LocalTranscriptUploader localTranscript;
 
     /**
      * Les outils fichiers (F-108 / SF-108-03). {@code null} quand ce runner ne les a pas montés —
@@ -253,6 +255,16 @@ public final class TeamsTools implements ToolExecutor {
     }
 
     /**
+     * Branche la remontée du <b>texte</b> d'un enregistrement déposé vers sa réunion (F-147 /
+     * SF-147-02). {@code null} quand ce poste n'a pas de jeton : le dépôt le <b>dit</b>, et le texte
+     * reste sur la machine en attendant un relevé.
+     */
+    public TeamsTools withLocalTranscript(LocalTranscriptUploader value) {
+        this.localTranscript = value;
+        return this;
+    }
+
+    /**
      * Branche la <b>synchro du soir</b> (F-100 / SF-100-02) : la remontée par le jeton du poste, et le
      * travail en tâche de fond qui l'utilise. Sans jeton, la gateway se voit répondre {@code NO_UPLINK}.
      */
@@ -310,7 +322,28 @@ public final class TeamsTools implements ToolExecutor {
                     }
                     return transcription.startOrResumeFile(id, file, into, startedAt, "Dépôt Radar", say);
                 };
-        this.radarDeposit = RadarDepositReceiver.real(depot, onArrival);
+        // F-147 / SF-147-02 : le texte terminé rejoint la RÉUNION du dépôt. L'attente de la fin du
+        // travail se fait sur un fil démon dédié — jamais dans le fil de l'appel, qui doit répondre.
+        RadarDepositReceiver.TranscriptSink sink = localTranscript == null ? null
+                : (meetingId, job) -> {
+                    String text = LocalTranscriptUploader.textOf(job.cues());
+                    String failure = job.phase() == TranscriptionJob.Phase.TERMINE ? "" : job.describe();
+                    try {
+                        return localTranscript.deposit(meetingId, text, failure);
+                    } catch (java.io.IOException e) {
+                        if (say != null) {
+                            say.accept("Radar : le texte de l'enregistrement n'a pas pu remonter ("
+                                    + e.getMessage() + ") ; il reste sur cette machine.");
+                        }
+                        return false;
+                    }
+                };
+        RadarDepositReceiver.Watcher watcher = task -> {
+            Thread thread = new Thread(task, "radar-depot-transcript");
+            thread.setDaemon(true);
+            thread.start();
+        };
+        this.radarDeposit = RadarDepositReceiver.real(depot, onArrival, sink, watcher);
         return this;
     }
 

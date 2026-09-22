@@ -65,6 +65,8 @@ public final class ToolStack {
                         .withTranscription(transcription(config, console))
                         // F-100 / SF-100-02 — la synchro du soir : remontée par le jeton du poste.
                         .withRadarUplink(radarUplink(config), console::info)
+                        // F-147 / SF-147-02 — le texte d'un enregistrement rejoint sa réunion.
+                        .withLocalTranscript(localTranscript(config))
                         // F-100 / SF-100-05 — le dossier de dépôt du Radar, sous la racine du poste.
                         .withRadarDeposit(config.hostRoot(), console::info)
                         // F-108 / SF-108-03 — les fichiers Microsoft 365 : dossier fixe des
@@ -142,6 +144,21 @@ public final class ToolStack {
                 ? fr.claudegateway.runner.teams.MeetingAudioUploader.unavailable(
                         "ce poste n'a pas de jeton runner : l'audio ne peut pas remonter")
                 : fr.claudegateway.runner.teams.MeetingAudioUploader.over(
+                        java.net.http.HttpClient.newHttpClient(), config.gatewayBaseUrl(), token);
+    }
+
+    /**
+     * <b>La remontée du texte d'un enregistrement déposé</b> (F-147 / SF-147-02), par le jeton du poste.
+     * Sans jeton, elle le <b>dit</b> : le texte reste sur la machine.
+     */
+    private static fr.claudegateway.runner.teams.LocalTranscriptUploader localTranscript(RunnerConfig config) {
+        String token = new TokenStore(config.hostRoot(),
+                java.nio.file.Path.of(System.getProperty("user.home", "."))).load()
+                .map(StoredToken::token).orElse("");
+        return token.isBlank()
+                ? fr.claudegateway.runner.teams.LocalTranscriptUploader.unavailable(
+                        "ce poste n'a pas de jeton runner : le texte ne peut pas remonter")
+                : fr.claudegateway.runner.teams.LocalTranscriptUploader.over(
                         java.net.http.HttpClient.newHttpClient(), config.gatewayBaseUrl(), token);
     }
 

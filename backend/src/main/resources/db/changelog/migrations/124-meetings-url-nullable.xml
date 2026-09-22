@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-147 / SF-147-02 — UNE REUNION VENUE D'UN ENREGISTREMENT N'A PAS D'URL.
+
+      Jusqu'ici toute réunion naissait d'un « Rejoindre » : une URL de visio existait forcément, et
+      meeting_url était NOT NULL. Un enregistrement déposé depuis l'écran (F-104 / SF-104-04) donne
+      désormais lieu à une réunion, et celle-là n'a aucune URL : la visio a eu lieu ailleurs, parfois
+      dans une salle, parfois au téléphone. Lui inventer une URL serait un mensonge stocké — donc la
+      colonne devient nullable, et l'absence d'URL EST l'information (réunion issue d'un enregistrement).
+
+      Additif et compatible : les réunions existantes gardent leur URL. Réversible tant qu'aucune
+      réunion sans URL n'existe (rollback = addNotNullConstraint) ; passé la première réunion issue
+      d'un enregistrement, le retour arrière demanderait de traiter ces lignes — c'est écrit ici pour
+      que personne ne le découvre au mauvais moment.
+    -->
+    <changeSet id="124-meetings-url-nullable" author="claude-gateway">
+        <dropNotNullConstraint tableName="meetings" columnName="meeting_url" columnDataType="varchar(2048)"/>
+        <rollback>
+            <addNotNullConstraint tableName="meetings" columnName="meeting_url" columnDataType="varchar(2048)"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
