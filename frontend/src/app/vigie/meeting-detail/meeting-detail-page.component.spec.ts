@@ -29,7 +29,7 @@ describe('MeetingDetailPageComponent', () => {
     inCall: false, retentionDays: 30, captureRef: null, hasAudio: true, audioBytes: 2_097_152, imageCount: 1,
     transcriptStatus: 'TRANSCRIBED', transcriptLang: 'fr', hasTranscript: true,
     hasExternalTranscript: false, externalTranscriptSource: null, externalTranscriptFormat: null,
-    externalTranscriptAddedAt: null, mediaPurgedAt: null,
+    externalTranscriptAddedAt: null, mediaPurgedAt: null, cardPromotedAt: null, cardFactsWritten: null,
     startedAt: '2026-09-18T10:00:00Z', endedAt: '2026-09-18T10:47:00Z', createdAt: '2026-09-18T10:00:00Z',
   };
 
@@ -290,6 +290,26 @@ describe('MeetingDetailPageComponent', () => {
     fixture.detectChanges();
     expect(service.promoteToCard).toHaveBeenCalledOnceWith('h1', 'm1');
     expect(root.textContent).toContain('rangé(s) dans la carte du poste');
+  });
+
+  it('F-147 / SF-147-03 : tant que rien n\'est rangé, le geste est PROPOSÉ', () => {
+    const root = setup();
+
+    expect(fixture.componentInstance.cardPending(meeting)).toBeTrue();
+    expect(root.textContent).toContain('ne sont pas encore rangés dans la carte du poste');
+  });
+
+  it('F-147 / SF-147-03 : une fois rangée, la réunion dit quand et combien — et ne propose plus', () => {
+    const promoted: TeamsMeeting = { ...meeting, cardPromotedAt: '2026-09-22T09:30:00Z', cardFactsWritten: 4 };
+
+    const root = setup(of(promoted));
+
+    expect(fixture.componentInstance.cardPending(promoted)).toBeFalse();
+    expect(root.textContent).not.toContain('ne sont pas encore rangés');
+    expect(fixture.componentInstance.cardDoneLabel(promoted)).toContain('4 fait(s) durable(s)');
+    // « Rien de durable » se dit aussi : un blanc laisserait croire que rien n'a été tenté.
+    expect(fixture.componentInstance.cardDoneLabel({ ...promoted, cardFactsWritten: 0 }))
+      .toContain('rien de durable');
   });
 
   it('« Pousser vers À faire par moi » envoie les actions cochées et affiche le bilan (SF-128-06)', () => {

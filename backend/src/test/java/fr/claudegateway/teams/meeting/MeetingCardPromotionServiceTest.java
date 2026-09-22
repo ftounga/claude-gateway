@@ -154,6 +154,69 @@ class MeetingCardPromotionServiceTest {
         verify(hostFiles, never()).write(any(), any(), any(), any());
     }
 
+    // ---------------------------------------------------------------- F-147 / SF-147-03 : la trace
+
+    @Test
+    @DisplayName("F-147 : une promotion réussie est HORODATÉE, avec le nombre de faits — c'est elle qui arrête le rappel")
+    void asuccessfulPromotionIsStamped() {
+        found();
+        destinations("plateformes.md");
+        stubModel("===CARTE===\n{\"files\":[{\"path\":\"plateformes.md\",\"facts\":"
+                + "[\"Le cluster de production est k8s-edenred.\",\"L'astreinte passe par PagerDuty.\"]}]}");
+        when(hostFiles.read(eq(userId), any(), eq("plateformes.md")))
+                .thenReturn(new HostFileRead(Presence.PRESENT, "# Plateformes\n", false));
+        when(hostFiles.write(eq(userId), any(), eq("plateformes.md"), any())).thenReturn(true);
+
+        service.promote(scope, meetingId);
+
+        ArgumentCaptor<Meeting> saved = ArgumentCaptor.forClass(Meeting.class);
+        verify(repository).save(saved.capture());
+        assertThat(saved.getValue().getCardPromotedAt()).isNotNull();
+        assertThat(saved.getValue().getCardFactsWritten()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("F-147 : « rien de durable » compte comme FAIT — sinon la réunion se rappellerait pour toujours")
+    void nothingDurableCountsAsDone() {
+        found();
+        destinations("plateformes.md");
+        stubModel("===CARTE===\n{\"files\":[]}");
+
+        service.promote(scope, meetingId);
+
+        ArgumentCaptor<Meeting> saved = ArgumentCaptor.forClass(Meeting.class);
+        verify(repository).save(saved.capture());
+        assertThat(saved.getValue().getCardPromotedAt()).isNotNull();
+        assertThat(saved.getValue().getCardFactsWritten()).isZero();
+    }
+
+    @Test
+    @DisplayName("F-147 : rien d'écrit (poste injoignable) ⇒ RIEN d'horodaté, le rappel reste — et c'est juste")
+    void afailedWriteIsNotStamped() {
+        found();
+        destinations("plateformes.md");
+        stubModel("===CARTE===\n{\"files\":[{\"path\":\"plateformes.md\",\"facts\":[\"Un fait\"]}]}");
+        when(hostFiles.read(eq(userId), any(), eq("plateformes.md")))
+                .thenReturn(new HostFileRead(Presence.PRESENT, "# Plateformes\n", false));
+        when(hostFiles.write(eq(userId), any(), eq("plateformes.md"), any())).thenReturn(false);
+
+        MeetingCardPromotion result = service.promote(scope, meetingId);
+
+        assertThat(result.factsWritten()).isZero();
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("F-147 : aucune carte active ⇒ rien d'horodaté non plus — il n'y a rien où ranger")
+    void noCardActiveIsNotStamped() {
+        found();
+        when(destinations.filesOf(eq(userId), any())).thenReturn(Map.of());
+
+        service.promote(scope, meetingId);
+
+        verify(repository, never()).save(any());
+    }
+
     @Test
     @DisplayName("chemin hors des destinations réelles : ignoré, jamais écrit")
     void ignoresPathOutsideAllowed() {

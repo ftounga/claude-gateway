@@ -162,6 +162,20 @@ public class Meeting {
      * (F-128 / SF-128-07), ou {@code null} tant qu'aucune purge. Une réunion horodatée n'est plus
      * candidate (idempotence) ; l'artefact et le transcript, eux, sont conservés.
      */
+    /**
+     * Quand les faits durables de cette réunion ont été rangés dans la carte du poste
+     * (F-147 / SF-147-03). {@code null} : le geste <b>reste à faire</b>, et il est rappelé.
+     */
+    @Column(name = "card_promoted_at")
+    private OffsetDateTime cardPromotedAt;
+
+    /**
+     * Combien de faits y ont été écrits. <b>Zéro compte comme fait</b> : une réunion sans rien de
+     * durable ne doit pas se rappeler indéfiniment — c'est la boucle que F-125 a supprimée.
+     */
+    @Column(name = "card_facts_written")
+    private Integer cardFactsWritten;
+
     @Column(name = "media_purged_at")
     private OffsetDateTime mediaPurgedAt;
 

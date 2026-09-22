@@ -152,6 +152,15 @@ import {
           </section>
         }
 
+        @if (toFile().length > 0) {
+          <!-- F-147 / SF-147-03 : rappelé tant que ce n'est pas fait — le savoir n'entre dans la boucle
+               que si quelqu'un range, et personne n'y pense sans rappel. -->
+          <p class="meetings__to-file" role="status">
+            <mat-icon aria-hidden="true">inventory_2</mat-icon>
+            {{ toFile().length }} réunion(s) attendent d'être rangées dans la carte du poste.
+          </p>
+        }
+
         @if (past().length > 0) {
           <section class="meetings__past" aria-label="Réunions passées">
             <h4 class="meetings__subtitle">Réunions capturées</h4>
@@ -366,6 +375,15 @@ import {
       .meetings__empty {
         color: var(--cg-text-secondary, #6b7a8d);
       }
+
+      .meetings__to-file {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0;
+        color: var(--cg-text-primary, #1c2b3a);
+        font-size: 14px;
+      }
     `,
   ],
 })
@@ -386,6 +404,13 @@ export class MeetingCapturePanelComponent implements OnInit, OnDestroy {
   readonly joined = computed(() => this.meetings().filter((m) => m.state === 'JOINED'));
   readonly live = computed(() => this.meetings().filter((m) => m.state === 'RECORDING' || m.state === 'PAUSED'));
   readonly past = computed(() => this.meetings().filter((m) => m.state === 'STOPPED' || m.state === 'FAILED'));
+  /**
+   * **Le rappel** (F-147 / SF-147-03) : les réunions qui portent du texte et dont les faits durables
+   * ne sont pas encore rangés dans la carte du poste. Calculé sur la liste **déjà chargée** — une
+   * route de plus ne dirait rien que celle-ci ne dise déjà.
+   */
+  readonly toFile = computed(() => this.meetings().filter(
+    (m) => m.cardPromotedAt === null && (m.hasTranscript || m.hasExternalTranscript)));
 
   ngOnInit(): void {
     this.reload();

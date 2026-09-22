@@ -46,6 +46,10 @@ export interface TeamsMeeting {
   externalTranscriptAddedAt: string | null;
   /** Instant où les médias lourds (audio + images) ont été purgés (SF-128-07), ou `null`. */
   mediaPurgedAt: string | null;
+  /** F-147 / SF-147-03 : quand les faits durables ont été rangés dans la carte ; `null` = à faire. */
+  cardPromotedAt: string | null;
+  /** Combien y ont été écrits — `0` veut dire « analysée, rien de durable », pas « à refaire ». */
+  cardFactsWritten: number | null;
   startedAt: string;
   endedAt: string | null;
   createdAt: string;
