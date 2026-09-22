@@ -1273,6 +1273,44 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     instruction PO ; un éventuel worker serveur futur devra être **scale-to-zero, strictement borné et
     validé par le PO** pour la capacité.
 
+- **generated_images** — l'**image décorative générée par IA** (F-142 / SF-142-04, migration `124`).
+  Table neuve : le suivi d'une image **décorative** (couverture de deck, ambiance de page) que la
+  gateway génère en **relayant** un fournisseur d'images (OpenAI gpt-image / DALL·E). **Cadre d'usage
+  strict — décoratif seulement** : jamais un schéma d'architecture, qui reste **diagramme-as-code**
+  (SF-142-01/02/03). Le PNG vit dans le **stockage objet** (`GeneratedImageStore`, préfixe
+  `generated-images/{userId}/{imageId}/image.png`, réemploi de `WorkspaceStorage` — aucun bucket neuf) ;
+  la table n'en porte que la clé, la taille et le coût.
+  - `generated_images` : `id (uuid)`, `user_id (uuid NOT NULL, FK users ON DELETE CASCADE)`,
+    `space (varchar 8 — FORGE/VIGIE)`, `host_id (uuid, nullable)`, `workspace_id (uuid, nullable)`,
+    `prompt (varchar 4000 NOT NULL — la description, donnée de l'utilisateur)`, `size (varchar 16 NOT NULL
+    — liste blanche 1024x1024/1536x1024/1024x1536)`, `status (varchar 8 NOT NULL — PENDING/READY/FAILED,
+    le statut lisible de la génération)`, `image_key (varchar 300, nullable tant que non READY)`,
+    `image_bytes (bigint, nullable)`, `cost_eur (numeric(12,4), nullable — coût journalisé)`,
+    `error (varchar 500, nullable — motif d'un échec)`, `created_at`, `updated_at`. Index
+    `idx_generated_images_place (user_id, host_id, space)`. **Isolation** : toute lecture filtre `user_id`
+    (`findByIdAndUserId`) ; un accès croisé est un **404**, jamais un 403.
+  - **Provider Independence** : le code métier dépend de l'interface abstraite **`ImageProvider`** ;
+    l'implémentation **`OpenAiImageProvider`** (relais `POST {base-url}/images/generations`, compatible
+    OpenAI) est la seule à connaître le fournisseur. Un futur autre fournisseur se branche sans réécriture.
+  - **Gateway-First / async borné** : l'agent appelle l'outil **`generate_image`**
+    (`ImageToolCatalog`/`ImageToolExecutor`, patron `PresentationToolExecutor`), **sous la garde d'espace**
+    du terminal (droit Forge/Vigie, ouvert d'office à l'ADMIN — `SpaceEntitlementService`) + accord d'un
+    clic. `ImageGenerationService` borne (prompt, quota compte, nombre par tour), persiste la ligne
+    **PENDING** (commitée **avant** l'appel), **relaie** le fournisseur (appel réseau sortant **borné par
+    timeout** `app.image.timeout`, hors thread de requête HTTP — jamais un traitement lourd synchrone),
+    range le PNG et passe **READY** (ou **FAILED** + motif). Puis l'exécuteur **dépose** le PNG **là où
+    vit le projet** — poste (`RunnerToolGateway.writeFileBytes`, **outil runner existant F-115, aucune
+    mise à jour runner**) ou projet hébergé (`WorkspaceService.depositHostedFile`) — et rend le **chemin
+    insérable** en page (pièce jointe) ou slide (`add_picture`). **Aucun moteur d'images dans le backend**
+    (le calcul lourd est chez le fournisseur, Provider-First). **Aucun composant cluster nouveau.**
+  - **Clé par secret d'environnement** : `app.image.api-key` (`APP_IMAGE_API_KEY`) vient **exclusivement**
+    de l'environnement (jamais dans le repo ni les logs) ; `app.image.base-url` (défaut
+    `https://api.openai.com/v1`) et `app.image.model` (défaut `gpt-image-1`) par config — même modèle que
+    le STT (F-128) et les embeddings RAG. **Éteint par défaut** : sans clé, aucun octet ne part et l'outil
+    répond « non configuré ». Endpoints `/api/generated-images` (GET liste `?hostId=&space=`, GET `{id}`
+    statut, GET `{id}/image` PNG, DELETE), scellés par `CurrentUser`. **Aucun composant Angular** (les
+    visionneuses page F-109 / slide F-129 affichent déjà l'image insérée).
+
 - **Repli de transport du runner — aucune table** (F-38 / SF-38-09). Le canal runner peut être porté
   par le WebSocket de SF-38-02 **ou** par un long-polling HTTP quand un proxy refuse (ou coupe)
   l'`Upgrade`. **Aucune migration, aucune colonne, aucun type de message nouveau** : les deux
