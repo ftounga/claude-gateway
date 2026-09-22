@@ -68,6 +68,16 @@ public class PresentationController {
                 .body(content);
     }
 
+    /** Une image de slide (F-129 / SF-129-03), 1-based, PNG, scellée par le propriétaire. */
+    @GetMapping("/{id}/slides/{index}")
+    public ResponseEntity<byte[]> slide(@PathVariable UUID id, @PathVariable int index) {
+        byte[] content = presentations.slide(currentUser.requireId(), id, index);
+        return ResponseEntity.ok()
+                .contentType(MediaType.IMAGE_PNG)
+                .cacheControl(CacheControl.maxAge(Duration.ofHours(1)).cachePrivate())
+                .body(content);
+    }
+
     /** Supprime une présentation et tout son contenu. */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable UUID id) {

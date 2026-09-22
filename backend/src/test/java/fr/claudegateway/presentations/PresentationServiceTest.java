@@ -138,4 +138,71 @@ class PresentationServiceTest {
         assertThatThrownBy(() -> service.pptx(userId, id))
                 .isInstanceOf(PresentationNotFoundException.class);
     }
+
+    // ------------------------------------------------------------ SF-129-03 : le rendu par slides
+
+    @Test
+    @DisplayName("attacher des slides : efface l'ancien rendu, range dans l'ordre, pose slide_count")
+    void attachSlidesStoresAndCounts() {
+        UUID id = UUID.randomUUID();
+        Presentation existing = Presentation.builder().id(id).userId(userId).space(PresentationSpace.FORGE)
+                .hostId(hostId).title("Deck").pptxKey("k").pptxBytes(10).build();
+        when(repository.findByIdAndUserId(id, userId)).thenReturn(Optional.of(existing));
+
+        byte[] a = "img1".getBytes(StandardCharsets.UTF_8);
+        byte[] b = "img2".getBytes(StandardCharsets.UTF_8);
+        byte[] c = "img3".getBytes(StandardCharsets.UTF_8);
+        Presentation saved = service.attachSlides(userId, id, java.util.List.of(a, b, c));
+
+        assertThat(saved.getSlideCount()).isEqualTo(3);
+        verify(store).deleteSlides(userId, id);
+        verify(store).putSlide(userId, id, 1, a, "image/png");
+        verify(store).putSlide(userId, id, 2, b, "image/png");
+        verify(store).putSlide(userId, id, 3, c, "image/png");
+    }
+
+    @Test
+    @DisplayName("attacher : au-delà de max-slides → refus, rien n'est rangé")
+    void attachTooManySlides() {
+        UUID id = UUID.randomUUID();
+        Presentation existing = Presentation.builder().id(id).userId(userId).space(PresentationSpace.FORGE)
+                .title("Deck").pptxKey("k").pptxBytes(10).build();
+        when(repository.findByIdAndUserId(id, userId)).thenReturn(Optional.of(existing));
+        java.util.List<byte[]> many = new java.util.ArrayList<>();
+        for (int i = 0; i < 101; i++) {
+            many.add(("s" + i).getBytes(StandardCharsets.UTF_8));
+        }
+        assertThatThrownBy(() -> service.attachSlides(userId, id, many))
+                .isInstanceOf(PresentationRejectedException.class).hasMessageContaining("slides");
+        verify(store, never()).putSlide(any(), any(), org.mockito.ArgumentMatchers.anyInt(), any(), any());
+    }
+
+    @Test
+    @DisplayName("attacher les slides d'un autre compte → introuvable (isolation)")
+    void attachSlidesForeignIdRejected() {
+        UUID id = UUID.randomUUID();
+        when(repository.findByIdAndUserId(id, userId)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.attachSlides(userId, id,
+                java.util.List.of("x".getBytes(StandardCharsets.UTF_8))))
+                .isInstanceOf(PresentationNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("lire une slide hors bornes ou non rendue → introuvable")
+    void slideOutOfBounds() {
+        UUID id = UUID.randomUUID();
+        Presentation rendered = Presentation.builder().id(id).userId(userId).space(PresentationSpace.FORGE)
+                .title("Deck").pptxKey("k").pptxBytes(10).slideCount(3).build();
+        when(repository.findByIdAndUserId(id, userId)).thenReturn(Optional.of(rendered));
+        assertThatThrownBy(() -> service.slide(userId, id, 0))
+                .isInstanceOf(PresentationNotFoundException.class);
+        assertThatThrownBy(() -> service.slide(userId, id, 4))
+                .isInstanceOf(PresentationNotFoundException.class);
+
+        Presentation noRender = Presentation.builder().id(id).userId(userId).space(PresentationSpace.FORGE)
+                .title("Deck").pptxKey("k").pptxBytes(10).build();
+        when(repository.findByIdAndUserId(id, userId)).thenReturn(Optional.of(noRender));
+        assertThatThrownBy(() -> service.slide(userId, id, 1))
+                .isInstanceOf(PresentationNotFoundException.class);
+    }
 }

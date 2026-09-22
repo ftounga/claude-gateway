@@ -88,9 +88,32 @@ le demande**. On l'écrit avec la bibliothèque Python `python-pptx` et on l'ex�
 4. **Dis où est le fichier** (chemin complet). C'est ce fichier que l'application capturera pour
    l'afficher et le proposer au téléchargement (F-129).
 
+## Pour l'aperçu dans l'application (lisible slide par slide)
+
+Le `.pptx` se **télécharge** toujours. Pour que l'utilisateur **lise le deck entièrement dans l'app**
+(slide par slide, sans ouvrir PowerPoint), rends-le aussi en **images PNG**, une par slide.
+
+- **Où ça tourne** : là où tu travailles — de préférence le **sandbox**, où tu peux installer
+  LibreOffice. **N'ajoute jamais** de service de conversion sur le serveur/cluster ; la conversion est
+  locale à ton terminal.
+- **La recette** (standard et robuste) :
+  ```bash
+  soffice --headless --convert-to pdf presentation.pptx   # -> presentation.pdf
+  pdftoppm -png -r 150 presentation.pdf slide             # -> slide-1.png, slide-2.png, ...
+  ```
+  (Si `pdftoppm` manque, `pdftocairo -png` ou `magick -density 150 presentation.pdf slide.png` font
+  l'affaire.) Garde-les **dans l'ordre des slides**.
+- **Échec nommé** : si LibreOffice n'est pas disponible et ne peut pas être installé (poste verrouillé),
+  **dis-le** — la présentation reste téléchargeable, seul l'aperçu manque. Ne fabrique pas de fausses
+  images.
+
+Ensuite, l'application capture le tout (le `.pptx` **et** les PNG dans l'ordre) : le deck devient
+lisible en grand avec ses miniatures.
+
 ## Ce que ça produit
 
-Un fichier `.pptx` réel, dans le répertoire de travail, avec un chemin annoncé clairement.
+Un fichier `.pptx` réel, dans le répertoire de travail, avec un chemin annoncé clairement — et, quand
+tu as rendu les slides, une image PNG par slide pour l'aperçu in-app.
 
 ## Ce qu'il ne faut pas faire
 

@@ -11,6 +11,7 @@ import { ConfirmDialogComponent, ConfirmDialogData } from '../../chat/confirm-di
 import { Presentation, PresentationSpace } from '../../core/models/presentation.models';
 import { ExportService } from '../../core/services/export.service';
 import { PresentationService } from '../../core/services/presentation.service';
+import { DeckViewerComponent } from './deck-viewer.component';
 
 /**
  * **Les présentations d'un lieu** (F-129 / SF-129-02) : l'onglet Présentations du poste (Forge) et du
@@ -19,7 +20,8 @@ import { PresentationService } from '../../core/services/presentation.service';
  */
 @Component({
   selector: 'app-presentations-panel',
-  imports: [DatePipe, MatButtonModule, MatIconModule, MatMenuModule, MatProgressSpinnerModule],
+  imports: [DatePipe, MatButtonModule, MatIconModule, MatMenuModule, MatProgressSpinnerModule,
+    DeckViewerComponent],
   template: `
     @if (presentations(); as list) {
       @if (list.length === 0) {
@@ -30,22 +32,29 @@ import { PresentationService } from '../../core/services/presentation.service';
         <div class="decks__grid">
           @for (deck of list; track deck.id) {
             <article class="decks__card" [attr.data-deck]="deck.id">
-              <div class="decks__icon" aria-hidden="true"><mat-icon>slideshow</mat-icon></div>
-              <div class="decks__body">
-                <h4 class="decks__title">{{ deck.title }}</h4>
-                @if (deck.description) {
-                  <p class="decks__desc">{{ deck.description }}</p>
-                }
-                <p class="decks__meta">
-                  Modifiée le {{ deck.updatedAt | date: 'dd/MM/yyyy HH:mm' }} · {{ sizeLabel(deck.pptxBytes) }}
-                  @if (deck.slideCount) { · {{ deck.slideCount }} slides }
-                </p>
-              </div>
+              <button type="button" class="decks__open" (click)="open(deck)"
+                [attr.aria-label]="'Ouvrir l\\'aperçu de ' + deck.title">
+                <div class="decks__icon" aria-hidden="true"><mat-icon>slideshow</mat-icon></div>
+                <div class="decks__body">
+                  <h4 class="decks__title">{{ deck.title }}</h4>
+                  @if (deck.description) {
+                    <p class="decks__desc">{{ deck.description }}</p>
+                  }
+                  <p class="decks__meta">
+                    Modifiée le {{ deck.updatedAt | date: 'dd/MM/yyyy HH:mm' }} · {{ sizeLabel(deck.pptxBytes) }}
+                    @if (deck.slideCount) { · {{ deck.slideCount }} slides }
+                    @else { · aperçu à venir }
+                  </p>
+                </div>
+              </button>
               <button mat-icon-button type="button" class="decks__menu" [matMenuTriggerFor]="menu"
                 [attr.aria-label]="'Actions sur la présentation ' + deck.title">
                 <mat-icon>more_vert</mat-icon>
               </button>
               <mat-menu #menu="matMenu">
+                <button mat-menu-item type="button" class="decks__view" (click)="open(deck)">
+                  <mat-icon>visibility</mat-icon>Ouvrir l'aperçu
+                </button>
                 <button mat-menu-item type="button" class="decks__download" (click)="download(deck)">
                   <mat-icon>download</mat-icon>Télécharger le .pptx
                 </button>
@@ -62,6 +71,11 @@ import { PresentationService } from '../../core/services/presentation.service';
     } @else {
       <div class="decks__loading"><mat-spinner diameter="28"></mat-spinner></div>
     }
+
+    @if (opened(); as deck) {
+      <app-deck-viewer [presentationId]="deck.id" [title]="deck.title" [slideCount]="deck.slideCount"
+        (close)="closeViewer()"></app-deck-viewer>
+    }
   `,
   styles: `
     .decks__grid {
@@ -72,15 +86,28 @@ import { PresentationService } from '../../core/services/presentation.service';
 
     .decks__card {
       position: relative;
-      display: flex;
-      align-items: flex-start;
-      gap: var(--cg-space-3);
-      padding: var(--cg-space-3) var(--cg-space-6) var(--cg-space-3) var(--cg-space-3);
       border-radius: 8px;
       background: var(--cg-surface);
       border: 1px solid var(--cg-divider);
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
     }
+
+    .decks__open {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--cg-space-3);
+      width: 100%;
+      padding: var(--cg-space-3) var(--cg-space-6) var(--cg-space-3) var(--cg-space-3);
+      border: 0;
+      border-radius: 8px;
+      background: none;
+      text-align: left;
+      cursor: pointer;
+      font: inherit;
+      color: inherit;
+    }
+
+    .decks__open:hover { background: var(--cg-surface-2); }
 
     .decks__icon {
       display: grid;
@@ -137,6 +164,8 @@ export class PresentationsPanelComponent {
 
   readonly presentations = signal<Presentation[] | null>(null);
   readonly failed = signal(false);
+  /** La présentation ouverte dans la visionneuse (overlay), ou `null`. */
+  readonly opened = signal<Presentation | null>(null);
 
   constructor() {
     effect(() => {
@@ -152,6 +181,16 @@ export class PresentationsPanelComponent {
       return `${(bytes / (1024 * 1024)).toFixed(1).replace('.', ',')} Mo`;
     }
     return `${Math.max(1, Math.round(bytes / 1024))} Ko`;
+  }
+
+  /** Ouvre la visionneuse (overlay plein écran) sur cette présentation. */
+  open(deck: Presentation): void {
+    this.opened.set(deck);
+  }
+
+  /** Ferme la visionneuse. */
+  closeViewer(): void {
+    this.opened.set(null);
   }
 
   download(deck: Presentation): void {

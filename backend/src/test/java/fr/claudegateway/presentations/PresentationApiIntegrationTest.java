@@ -138,6 +138,30 @@ class PresentationApiIntegrationTest {
     }
 
     @Test
+    @DisplayName("SF-129-03 CA3 — servir une slide PNG ; hors bornes 404 ; autre utilisateur 404")
+    void serveSlides() throws Exception {
+        presentationService.attachSlides(alice, deck,
+                java.util.List.of("slide1".getBytes(StandardCharsets.UTF_8),
+                        "slide2".getBytes(StandardCharsets.UTF_8)));
+
+        mockMvc.perform(as(get("/api/presentations/" + deck + "/slides/1"), aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "image/png"));
+        // Hors bornes → 404.
+        mockMvc.perform(as(get("/api/presentations/" + deck + "/slides/3"), aliceToken))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(as(get("/api/presentations/" + deck + "/slides/0"), aliceToken))
+                .andExpect(status().isNotFound());
+        // Isolation : Bob n'accède pas aux slides d'Alice.
+        mockMvc.perform(as(get("/api/presentations/" + deck + "/slides/1"), bobToken))
+                .andExpect(status().isNotFound());
+        // slideCount reflété dans la liste.
+        mockMvc.perform(as(get("/api/presentations").param("hostId", host.toString()).param("space", "VIGIE"),
+                        aliceToken))
+                .andExpect(jsonPath("$[0].slideCount").value(2));
+    }
+
+    @Test
     @DisplayName("CA4/CA5 — supprimer : 204, et les objets du stockage disparaissent")
     void deleteRemovesObjects() throws Exception {
         assertThat(storage.listKeys(PresentationStore.PREFIX + alice + "/" + deck + "/")).isNotEmpty();

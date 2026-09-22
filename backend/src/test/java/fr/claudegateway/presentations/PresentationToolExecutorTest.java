@@ -142,4 +142,67 @@ class PresentationToolExecutorTest {
         assertThat(outcome.error()).isTrue();
         assertThat(outcome.content()).contains("presentation_id");
     }
+
+    // ------------------------------------------------------------ SF-129-03 : le rendu par slides
+
+    private JsonNode inputWithSlides(String... slidePaths) {
+        ObjectNode node = MAPPER.createObjectNode();
+        node.put("title", "Deck");
+        node.put("path", "deck.pptx");
+        node.set("slides", MAPPER.valueToTree(slidePaths));
+        return node;
+    }
+
+    @Test
+    @DisplayName("slides fournies : lues (sandbox) et attachées, slide_count posé")
+    void slidesReadAndAttached() {
+        when(workspace.isRunnerTarget()).thenReturn(false);
+        byte[] pptx = "PKdeck".getBytes(StandardCharsets.ISO_8859_1);
+        when(workspaceService.readFileBytes(userId, workspaceId, "deck.pptx")).thenReturn(pptx);
+        when(workspaceService.readFileBytes(userId, workspaceId, "slide-1.png"))
+                .thenReturn("img1".getBytes(StandardCharsets.UTF_8));
+        when(workspaceService.readFileBytes(userId, workspaceId, "slide-2.png"))
+                .thenReturn("img2".getBytes(StandardCharsets.UTF_8));
+        UUID id = UUID.randomUUID();
+        Presentation saved = Presentation.builder().id(id).title("Deck").build();
+        when(presentationService.publish(any(), eq(null), eq("Deck"), any(), eq(pptx))).thenReturn(saved);
+        Presentation withSlides = Presentation.builder().id(id).title("Deck").slideCount(2).build();
+        when(presentationService.attachSlides(eq(userId), eq(id), any())).thenReturn(withSlides);
+
+        PresentationToolExecutor.Outcome outcome = executor.execute(userId, workspace, "c1",
+                inputWithSlides("slide-1.png", "slide-2.png"));
+
+        assertThat(outcome.error()).isFalse();
+        ArgumentCaptor<java.util.List<byte[]>> images = ArgumentCaptor.forClass(java.util.List.class);
+        verify(presentationService).attachSlides(eq(userId), eq(id), images.capture());
+        assertThat(images.getValue()).hasSize(2);
+        assertThat(outcome.content()).contains("2 slides");
+    }
+
+    @Test
+    @DisplayName("plus de max-slides → erreur, rien n'est publié ni lu")
+    void tooManySlides() {
+        String[] many = new String[101];
+        for (int i = 0; i < many.length; i++) {
+            many[i] = "slide-" + i + ".png";
+        }
+        PresentationToolExecutor.Outcome outcome = executor.execute(userId, workspace, "c1",
+                inputWithSlides(many));
+        assertThat(outcome.error()).isTrue();
+        assertThat(outcome.content()).contains("Trop de slides");
+        verify(presentationService, never()).publish(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("une slide non-png → erreur nommée")
+    void slideNotPng() {
+        when(workspace.isRunnerTarget()).thenReturn(false);
+        when(workspaceService.readFileBytes(userId, workspaceId, "deck.pptx"))
+                .thenReturn("PK".getBytes(StandardCharsets.ISO_8859_1));
+        PresentationToolExecutor.Outcome outcome = executor.execute(userId, workspace, "c1",
+                inputWithSlides("slide-1.jpg"));
+        assertThat(outcome.error()).isTrue();
+        assertThat(outcome.content()).contains(".png");
+        verify(presentationService, never()).attachSlides(any(), any(), any());
+    }
 }
