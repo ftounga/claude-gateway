@@ -157,4 +157,23 @@ class PagePublicRouteIntegrationTest {
         // « /pages » ne commence pas par « /p/ » : le préfixe ouvert ne s'étend pas par ressemblance.
         mockMvc.perform(get("/api/pages").contextPath("/api")).andExpect(status().isUnauthorized());
     }
+    // ---------------------------------------------------------------- F-142 / SF-142-05
+
+    @Test
+    @DisplayName("F-142 : la bibliothèque des diagrammes est servie SANS COMPTE, en JavaScript, avec un cache long")
+    void thediagramLibraryIsServedPublicly() throws Exception {
+        mockMvc.perform(get("/api/pages/lib/" + PageLibraryController.MERMAID_FILE).contextPath("/api"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", containsString("javascript")))
+                .andExpect(header().string("Cache-Control", containsString("immutable")));
+    }
+
+    @Test
+    @DisplayName("F-142 : aucun autre fichier ne sort par cette route — la liste est close")
+    void nootherFileEscapesThroughThatRoute() throws Exception {
+        mockMvc.perform(get("/api/pages/lib/mermaid-10.9.1.min.js").contextPath("/api"))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/pages/lib/application.yml").contextPath("/api"))
+                .andExpect(status().isNotFound());
+    }
 }

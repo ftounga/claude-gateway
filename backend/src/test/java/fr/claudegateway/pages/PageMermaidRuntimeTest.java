@@ -15,7 +15,7 @@ class PageMermaidRuntimeTest {
     }
 
     @Test
-    @DisplayName("CA1 — un bloc <pre class=\"mermaid\"> déclenche le chargeur cdnjs, le marqueur, et garde le code")
+    @DisplayName("CA1 — un bloc <pre class=\"mermaid\"> déclenche le chargeur LOCAL, le marqueur, et garde le code")
     void injectsRuntimeAndKeepsSource() {
         String source = "<!doctype html><html><body>"
                 + "<pre class=\"mermaid\">flowchart TD\n  A[Client]-->B[Gateway]</pre>"
@@ -26,7 +26,12 @@ class PageMermaidRuntimeTest {
         assertThat(out)
                 .contains(PageMermaidRuntime.MARKER)
                 .contains(PageMermaidRuntime.SCRIPT_URL)
-                .contains("cdnjs.cloudflare.com")
+                // F-142 / SF-142-05 : la bibliothèque vient de la gateway. Plus AUCUN CDN public —
+                // chez un client derrière un proxy, il est injoignable, et l'adresse épinglée à
+                // l'origine répondait de surcroît 404.
+                .doesNotContain("cdnjs.cloudflare.com")
+                .doesNotContain("cdn.jsdelivr.net")
+                .contains("/pages/lib/mermaid-")
                 // le code Mermaid d'origine reste présent — éditable, jamais seulement rendu
                 .contains("flowchart TD")
                 .contains("A[Client]-->B[Gateway]");
@@ -53,8 +58,12 @@ class PageMermaidRuntimeTest {
                 .contains("cg-mermaid-fallback")
                 .contains(".catch(")
                 .contains("Diagramme invalide")
-                // la lib absente (hors ligne) est aussi gérée
-                .contains("!window.mermaid");
+                // La bibliothèque absente est aussi gérée — et depuis SF-142-05 on la cherche sous ses
+                // DEUX noms : le build v11 ne pose pas window.mermaid mais un namespace esbuild, et se
+                // tromper de nom donnait exactement le même symptôme qu'un fichier manquant.
+                .contains("window.mermaid")
+                .contains("__esbuild_esm_mermaid_nm")
+                .contains("typeof lib.render");
     }
 
     @Test

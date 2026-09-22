@@ -77,6 +77,10 @@ public class SecurityConfig {
                         // sert que le contenu désigné par un jeton signé (ticket de l'écran) ou un lien
                         // de partage, sous la politique d'origine opaque — et en GET seulement.
                         .requestMatchers(HttpMethod.GET, "/p/**").permitAll()
+                        // F-142 / SF-142-05 : la bibliothèque de diagrammes d'une page publiée. Une page
+                        // se lit sans compte ; sa bibliothèque aussi. Liste close d'un seul fichier
+                        // statique, aucun paramètre utilisateur, aucune donnée de compte.
+                        .requestMatchers(HttpMethod.GET, "/pages/lib/**").permitAll()
                         .requestMatchers("/hello").permitAll()
                         .requestMatchers("/h2-console/**").permitAll()
                         .anyRequest().authenticated())

@@ -8,8 +8,10 @@ import java.util.regex.Pattern;
  * <b>Le rendu des diagrammes Mermaid dans une page</b> (F-142 / SF-142-01).
  *
  * <p>Une page F-109 est un document HTML servi en origine opaque dans une {@code iframe} bac-à-sable, sous
- * la CSP de {@link PageContentPolicy}. Cette CSP autorise <b>déjà</b> les scripts depuis {@code cdnjs} et
- * {@code jsDelivr} et le style en ligne : un diagramme Mermaid peut donc être <b>rendu côté navigateur</b>,
+ * la CSP de {@link PageContentPolicy}. Cette CSP autorise <b>déjà</b> {@code 'self'} — et c'est de là que
+ * vient désormais la bibliothèque (F-142 / SF-142-05), servie par {@link PageLibraryController} : un CDN
+ * public est injoignable chez un client derrière un proxy, et l'adresse épinglée à l'origine répondait de
+ * surcroît <b>404</b>. La CSP autorise aussi le style en ligne : un diagramme Mermaid peut donc être <b>rendu côté navigateur</b>,
  * sans ouvrir la moindre brèche — aucune sortie réseau ({@code connect-src 'none'}) n'est requise pour le
  * rendu lui-même, et Mermaid est initialisé en {@code securityLevel:'strict'} (il assainit le SVG, refuse
  * le HTML arbitraire dans les libellés et les gestionnaires {@code click}).</p>
@@ -30,12 +32,21 @@ import java.util.regex.Pattern;
  */
 public final class PageMermaidRuntime {
 
-    /** Version épinglée de la bibliothèque (build UMD exposant {@code window.mermaid}). */
-    public static final String MERMAID_VERSION = "11.4.1";
+    /**
+     * Version épinglée de la bibliothèque. <b>11.15.0</b> : elle existe (la 11.4.1 d'origine répondait
+     * <b>404</b> sur cdnjs) et elle porte {@code architecture-beta}, dont dépend le repli « icônes cloud »
+     * de SF-142-03.
+     */
+    public static final String MERMAID_VERSION = "11.15.0";
 
-    /** L'adresse du chargeur, sur un CDN de la liste close de {@link PageContentPolicy}. */
-    public static final String SCRIPT_URL =
-            "https://cdnjs.cloudflare.com/ajax/libs/mermaid/" + MERMAID_VERSION + "/mermaid.min.js";
+    /**
+     * L'adresse du chargeur : <b>la gateway elle-même</b> (F-142 / SF-142-05), jamais un CDN public.
+     *
+     * <p>Chez un client, un CDN public est injoignable — poste verrouillé, proxy d'entreprise — et c'est
+     * le cas d'usage réel, pas une exception. Le chemin est servi par {@link PageLibraryController}, sur
+     * la même origine que la page : la CSP l'autorise déjà par {@code 'self'}, inchangée.</p>
+     */
+    public static final String SCRIPT_URL = "/api/pages/lib/mermaid-" + MERMAID_VERSION + ".min.js";
 
     /** Le marqueur d'idempotence : présent ⇒ le runtime est déjà là, on ne touche à rien. */
     static final String MARKER = "<!--cg-mermaid-->";
@@ -171,16 +182,22 @@ public final class PageMermaidRuntime {
                 var nodes=Array.prototype.slice.call(document.querySelectorAll(SEL));
                 if(!nodes.length){ return; }
                 var items=nodes.map(function(el){ return { el: el, code: (el.getAttribute("data-cg-src")||el.textContent||"").trim() }; });
-                if(!window.mermaid){
+                // Le build v11 n'expose PAS window.mermaid : il pose son objet dans un namespace
+                // esbuild. On accepte les deux noms — se tromper de nom donne exactement le meme
+                // symptome qu'une bibliotheque absente, et c'est l'un des deux defauts corriges ici.
+                var lib = window.mermaid
+                  || (window.__esbuild_esm_mermaid_nm && window.__esbuild_esm_mermaid_nm.mermaid)
+                  || (window.mermaidAPI ? window.mermaidAPI : null);
+                if(!lib || typeof lib.render !== "function"){
                   items.forEach(function(it){ fallback(it.el, it.code, "Diagramme non rendu : la bibliotheque n'a pas pu etre chargee (hors ligne ?)."); });
                   return;
                 }
                 var dark=window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-                try { window.mermaid.initialize({ startOnLoad:false, securityLevel:"strict", theme: dark?"dark":"default" }); } catch(e){}
+                try { lib.initialize({ startOnLoad:false, securityLevel:"strict", theme: dark?"dark":"default" }); } catch(e){}
                 items.forEach(function(it, i){
                   var id="cg-mmd-"+i+"-"+Math.floor(Math.random()*1000000000);
                   try {
-                    var out=window.mermaid.render(id, it.code);
+                    var out=lib.render(id, it.code);
                     Promise.resolve(out).then(function(res){
                       var box=document.createElement("div");
                       box.className="cg-mermaid";
