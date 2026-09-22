@@ -360,4 +360,47 @@ class AtelierPropertiesTest {
         assertThat(withFileStateHints(false).fileStateHints()).isFalse();
         assertThat(withFileStateHints(true).fileStateHints()).isTrue();
     }
+
+    // ------------------------------------------- F-39 / SF-39-21 : parallélisme d'exploration
+
+    /** Parallélisme d'exploration (23ᵉ et dernier composant, F-39 / SF-39-21). */
+    private static AtelierProperties withExploreParallelism(Integer value) {
+        return new AtelierProperties(null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null, value);
+    }
+
+    @Test
+    void exploreParallelismDefaultsToThree() {
+        assertThat(withExploreParallelism(null).exploreParallelism()).isEqualTo(3);
+        assertThat(withExploreParallelism(null).exploreParallelism())
+                .isEqualTo(AtelierProperties.DEFAULT_EXPLORE_PARALLELISM);
+        // Le constructeur de compatibilité (forme F-134, sans ce réglage) applique le même défaut.
+        AtelierProperties legacy = new AtelierProperties(null, null, null, null, null, null, null,
+                null, null, null, null, null, true, null, null, null, null, null, null, null, null, null);
+        assertThat(legacy.exploreParallelism()).isEqualTo(3);
+    }
+
+    @Test
+    void exploreParallelismFallsBackToTheDefaultWhenBelowOne() {
+        // Une faute de config ne doit pas couper la concurrence à zéro (elle repart du défaut).
+        assertThat(withExploreParallelism(0).exploreParallelism()).isEqualTo(3);
+        assertThat(withExploreParallelism(-4).exploreParallelism()).isEqualTo(3);
+    }
+
+    @Test
+    void exploreParallelismHonoursAConfiguredValueAndIsCapped() {
+        assertThat(withExploreParallelism(1).exploreParallelism()).isEqualTo(1);
+        assertThat(withExploreParallelism(5).exploreParallelism()).isEqualTo(5);
+        // Au-delà, on lancerait plus de sous-boucles que de délégations utiles : borne lisible.
+        assertThat(withExploreParallelism(100).exploreParallelism())
+                .isEqualTo(AtelierProperties.MAX_EXPLORE_PARALLELISM);
+    }
+
+    @Test
+    void theFullCanonicalConstructorCarriesTheParallelism() {
+        // La forme complète (23 composants) est honorée telle quelle.
+        AtelierProperties full = new AtelierProperties(null, null, null, null, null, null, null,
+                null, null, null, null, null, true, null, null, null, null, null, null, null, null, null, 7);
+        assertThat(full.exploreParallelism()).isEqualTo(7);
+    }
 }
