@@ -109,6 +109,15 @@ import org.springframework.boot.context.properties.bind.ConstructorBinding;
  *                      pas sûr de son contenu » (incitation à la lecture-avant-édition), sans jamais
  *                      refuser l'opération (le disque évite déjà la corruption). Coupe-circuit à
  *                      {@code false}
+ * @param exploreParallelism nombre maximal d'explorations menées <b>en parallèle</b> dans un même
+ *                      message (F-39 / SF-39-21, défaut 3). Quand un tour émet plusieurs {@code explore}
+ *                      indépendants, ils sont exécutés ensemble via un pool borné de cette taille ;
+ *                      au-delà, les explorations sont servies <b>par vagues</b>. Le plafond total par
+ *                      message reste {@link #maxDelegations()} — le parallélisme ne l'ouvre pas, il ne
+ *                      fait que recouvrir le temps de mur (la pensée du modèle) de délégations déjà
+ *                      bornées et en lecture seule. Repli comme les autres bornes : une valeur absente,
+ *                      nulle ou {@code < 1} retombe sur le défaut, et une valeur déraisonnable est
+ *                      ramenée à un plafond lisible ({@code 16})
  */
 @ConfigurationProperties(prefix = "app.atelier")
 public record AtelierProperties(
@@ -133,7 +142,8 @@ public record AtelierProperties(
         Boolean escalateOnSignal,
         Integer replayedTraceTurns,
         Boolean fileStateHints,
-        Boolean perMessageEffort) {
+        Boolean perMessageEffort,
+        Integer exploreParallelism) {
 
 
     /**
@@ -173,6 +183,17 @@ public record AtelierProperties(
     public static final int DEFAULT_REPLAYED_TRACE_TURNS = 12;
     /** Plafond lisible de la fenêtre de rejeu : au-delà, la compaction aurait tranché de toute façon. */
     public static final int MAX_REPLAYED_TRACE_TURNS = 40;
+    /**
+     * Parallélisme d'exploration par défaut (F-39 / SF-39-21) : 3, comme {@link #maxDelegations()}.
+     * Recouvre le temps de mur de plusieurs {@code explore} indépendants sans jamais ouvrir le plafond
+     * par message.
+     */
+    public static final int DEFAULT_EXPLORE_PARALLELISM = 3;
+    /**
+     * Plafond lisible du parallélisme d'exploration : au-delà, on lancerait plus de sous-boucles que
+     * de délégations utiles, pour rien. Même esprit que {@link #MAX_REPLAYED_TRACE_TURNS}.
+     */
+    public static final int MAX_EXPLORE_PARALLELISM = 16;
     /** Niveaux d'effort acceptés — même vocabulaire que le chemin Managed Agents (SF-28-17). */
     private static final java.util.Set<String> ALLOWED_EFFORTS =
             java.util.Set.of("low", "medium", "high", "xhigh", "max");
@@ -315,6 +336,32 @@ public record AtelierProperties(
         if (perMessageEffort == null) {
             perMessageEffort = DEFAULT_PER_MESSAGE_EFFORT;
         }
+        // Parallélisme d'exploration (F-39 / SF-39-21) : même repli que les autres bornes. Une valeur
+        // absente, nulle ou < 1 retombe sur le défaut (3) — une faute de config ne doit pas couper la
+        // concurrence à zéro ; une valeur déraisonnable est ramenée à un plafond lisible.
+        if (exploreParallelism == null || exploreParallelism < 1) {
+            exploreParallelism = DEFAULT_EXPLORE_PARALLELISM;
+        }
+        if (exploreParallelism > MAX_EXPLORE_PARALLELISM) {
+            exploreParallelism = MAX_EXPLORE_PARALLELISM;
+        }
+    }
+
+    /**
+     * Constructeur de compatibilité, sans le parallélisme d'exploration (F-39 / SF-39-21) :
+     * {@code exploreParallelism} retombe sur son défaut (3). Conserve la forme F-134 (jusqu'à
+     * {@code perMessageEffort}) pour n'obliger aucun appelant à exprimer un réglage qu'il n'a pas.
+     */
+    public AtelierProperties(String storage, String bucket, String prefix, Long maxTotalBytes,
+            Integer maxEntries, Long maxFileBytes, Integer maxIterations, String model, String effort,
+            Boolean contextPruning, Long maxTurnTokens, Integer maxDelegations,
+            Boolean storageExecution, Boolean streaming, String stepEffort, Boolean adaptiveEffort,
+            Duration turnBudget, String exploreEffort, Boolean escalateOnSignal,
+            Integer replayedTraceTurns, Boolean fileStateHints, Boolean perMessageEffort) {
+        this(storage, bucket, prefix, maxTotalBytes, maxEntries, maxFileBytes, maxIterations, model,
+                effort, contextPruning, maxTurnTokens, maxDelegations, storageExecution, streaming,
+                stepEffort, adaptiveEffort, turnBudget, exploreEffort, escalateOnSignal,
+                replayedTraceTurns, fileStateHints, perMessageEffort, null);
     }
 
     /**
@@ -330,7 +377,7 @@ public record AtelierProperties(
             Duration turnBudget) {
         this(storage, bucket, prefix, maxTotalBytes, maxEntries, maxFileBytes, maxIterations, model,
                 effort, contextPruning, maxTurnTokens, maxDelegations, storageExecution, streaming,
-                stepEffort, adaptiveEffort, turnBudget, null, null, null, null, null);
+                stepEffort, adaptiveEffort, turnBudget, null, null, null, null, null, null);
     }
 
     /**
@@ -345,7 +392,8 @@ public record AtelierProperties(
             Duration turnBudget, String exploreEffort, Boolean escalateOnSignal) {
         this(storage, bucket, prefix, maxTotalBytes, maxEntries, maxFileBytes, maxIterations, model,
                 effort, contextPruning, maxTurnTokens, maxDelegations, storageExecution, streaming,
-                stepEffort, adaptiveEffort, turnBudget, exploreEffort, escalateOnSignal, null, null, null);
+                stepEffort, adaptiveEffort, turnBudget, exploreEffort, escalateOnSignal, null, null, null,
+                null);
     }
 
     /**
@@ -361,7 +409,7 @@ public record AtelierProperties(
         this(storage, bucket, prefix, maxTotalBytes, maxEntries, maxFileBytes, maxIterations, model,
                 effort, contextPruning, maxTurnTokens, maxDelegations, storageExecution, streaming,
                 stepEffort, adaptiveEffort, turnBudget, exploreEffort, escalateOnSignal,
-                replayedTraceTurns, null, null);
+                replayedTraceTurns, null, null, null);
     }
 
     /**

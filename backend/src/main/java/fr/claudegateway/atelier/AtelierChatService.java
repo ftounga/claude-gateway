@@ -80,6 +80,13 @@ public class AtelierChatService implements RelayInterruptTarget {
     private final long maxTurnTokens;
     /** Plafond d'explorations déléguées par message (F-39 / SF-39-14). */
     private final int maxDelegations;
+    /**
+     * Nombre maximal d'explorations menées <b>en parallèle</b> dans un même message (F-39 / SF-39-21).
+     * Quand un tour émet plusieurs {@code explore} indépendants, ils sont exécutés ensemble via un pool
+     * borné de cette taille ; au-delà, par vagues. Le plafond total par message reste {@link
+     * #maxDelegations} — le parallélisme recouvre le temps de mur, il n'ouvre pas la vanne du coût.
+     */
+    private final int exploreParallelism;
     /** Coupe-circuit de la cible {@code SANDBOX} de la boucle maison (F-39 / SF-39-16). */
     private final boolean storageExecution;
     /**
@@ -893,6 +900,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.maxTurnTokens = atelierProperties.maxTurnTokens();
         this.turnBudgetMs = atelierProperties.turnBudget().toMillis();
         this.maxDelegations = atelierProperties.maxDelegations();
+        this.exploreParallelism = atelierProperties.exploreParallelism();
         this.storageExecution = atelierProperties.storageExecution();
         this.streaming = !Boolean.FALSE.equals(atelierProperties.streaming());
         this.model = atelierProperties.model();
@@ -1605,6 +1613,23 @@ public class AtelierChatService implements RelayInterruptTarget {
             // éventuelle du texte, complété par chaque résultat d'outil ci-dessous. S'il est vrai, le
             // tour suivant remonte à l'effort normal.
             boolean signalThisTurn = looksLikeSelfCorrection(turn.text());
+            // Explorations concurrentes (F-39 / SF-39-21) : on ISOLE les `explore` de ce tour et on les
+            // exécute ENSEMBLE, via un pool borné (`explore-parallelism`), dans la limite du plafond par
+            // message (`maxDelegations`). Les autres outils du tour restent SÉQUENTIELS et dans l'ordre
+            // (l'ordre des écritures ne bouge pas). Chaque conclusion sera rattachée à SON appel dans la
+            // boucle ci-dessous, dans l'ordre des appels — quel que soit l'ordre de fin (D6). Le coût est
+            // agrégé sur CE thread, après la jointure du pool (D4 : exact, sans compteur muté par un
+            // ouvrier) ; le `stop`/`deadline` du tour sont partagés par toutes les sous-boucles (D7).
+            List<AgentToolCall> runnableExplores = new ArrayList<>();
+            for (AgentToolCall call : turn.toolCalls()) {
+                if ("explore".equals(call.name())
+                        && delegations + runnableExplores.size() < maxDelegations) {
+                    runnableExplores.add(call);
+                }
+            }
+            java.util.Map<AgentToolCall, ExplorationOutcome> exploredResults =
+                    exploreConcurrently(userId, workspace, model, apiKey, deadline, runnableExplores);
+            delegations += runnableExplores.size();
             for (AgentToolCall call : turn.toolCalls()) {
                 // Identifiant de corrélation unique de l'appel (contrat de messages runner §1) : celui
                 // du fournisseur, ou un UUID généré s'il manque — et le MÊME partout (bloc tool_use,
@@ -1625,16 +1650,16 @@ public class AtelierChatService implements RelayInterruptTarget {
                     outcome = ToolOutcome.error(
                             fr.claudegateway.teams.block.TeamsReadFailure.GATE_MESSAGE);
                 } else if ("explore".equals(call.name())) {
-                    // Délégation (F-39 / SF-39-14) : bornée en nombre, et sa consommation revient
-                    // dans les compteurs du TOUR — déléguer ne doit jamais permettre de passer sous
-                    // le plafond par message (D4).
-                    if (delegations >= maxDelegations) {
+                    // Délégation (F-39 / SF-39-14, concurrente depuis SF-39-21) : la sous-boucle a déjà
+                    // été exécutée AVANT cette boucle (en parallèle avec les autres `explore` du tour) ;
+                    // ici on ne fait que RATTACHER sa conclusion à SON appel et IMPUTER sa consommation
+                    // au tour, sur ce thread, dans l'ordre des appels (D4/D6). Un `explore` absent de la
+                    // carte est un appel au-delà du plafond par message : rien n'a été lancé pour lui.
+                    ExplorationOutcome explored = exploredResults.get(call);
+                    if (explored == null) {
                         outcome = ToolOutcome.error("Limite de délégations atteinte pour ce message ("
                                 + maxDelegations + ") : poursuis toi-même.");
                     } else {
-                        delegations++;
-                        ExplorationOutcome explored =
-                                explore(userId, workspace, call, model, apiKey, deadline);
                         inputTokens += explored.inputTokens();
                         outputTokens += explored.outputTokens();
                         cacheReadTokens += explored.cacheReadTokens();
@@ -2493,6 +2518,77 @@ public class AtelierChatService implements RelayInterruptTarget {
     }
 
     /**
+     * Exécute <b>ensemble</b> les explorations d'un même tour (F-39 / SF-39-21), via un pool borné à
+     * {@link #exploreParallelism}. C'est l'unique endroit où plusieurs sous-boucles tournent à la fois
+     * — et c'est sûr <b>parce que</b> l'exploration est en lecture seule (D2) : pas de conflit
+     * d'écriture sur le poste, pas d'invite d'autorisation surgie d'un agent invisible.
+     *
+     * <p><b>Isolation des échecs</b> (D5) : chaque sous-boucle rend son issue (l'{@code explore} attrape
+     * déjà ses propres pannes) ; une tâche qui casserait malgré tout donne un résultat d'outil en
+     * erreur pour <i>son</i> appel, sans toucher les autres. <b>Vagues</b> : un pool de taille au plus
+     * {@code exploreParallelism} borne le nombre de sous-boucles en vol ; au-delà, elles attendent leur
+     * tour. <b>Coût</b> : rien n'est agrégé ici — les issues reviennent à l'appelant, qui impute leur
+     * consommation au tour sur son propre thread, dans l'ordre des appels (D4/D6).
+     *
+     * @param calls les {@code explore} de ce tour retenus dans le plafond par message (dans l'ordre)
+     * @return la carte {@code appel → issue}, indexée par <b>identité</b> d'appel (jamais par callId :
+     *         {@link #correlationId} fabriquerait un identifiant différent à chaque invocation)
+     */
+    private java.util.Map<AgentToolCall, ExplorationOutcome> exploreConcurrently(UUID userId,
+            Workspace workspace, String model, String apiKey, long deadline,
+            List<AgentToolCall> calls) {
+        java.util.Map<AgentToolCall, ExplorationOutcome> results = new java.util.IdentityHashMap<>();
+        if (calls.isEmpty()) {
+            return results;
+        }
+        if (calls.size() == 1) {
+            // Un seul `explore` : aucun pool, exactement le chemin d'avant SF-39-21.
+            AgentToolCall only = calls.get(0);
+            results.put(only, explore(userId, workspace, only, model, apiKey, deadline));
+            return results;
+        }
+        int poolSize = Math.max(1, Math.min(exploreParallelism, calls.size()));
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(
+                poolSize, exploreThreadFactory());
+        try {
+            List<java.util.concurrent.Future<ExplorationOutcome>> futures = new ArrayList<>(calls.size());
+            for (AgentToolCall call : calls) {
+                futures.add(pool.submit(
+                        () -> explore(userId, workspace, call, model, apiKey, deadline)));
+            }
+            for (int i = 0; i < calls.size(); i++) {
+                try {
+                    results.put(calls.get(i), futures.get(i).get());
+                } catch (java.util.concurrent.ExecutionException ex) {
+                    // Isolation des échecs (D5) : la panne d'une sous-boucle est SON résultat d'outil.
+                    results.put(calls.get(i), new ExplorationOutcome(
+                            ToolOutcome.error("L'exploration a échoué ; poursuis toi-même."), 0, 0, 0, 0));
+                } catch (InterruptedException ex) {
+                    // Interruption du tour : on rend la main proprement, les tâches restantes sont
+                    // abandonnées par le shutdownNow ci-dessous. L'appel non résolu devient une erreur.
+                    Thread.currentThread().interrupt();
+                    results.put(calls.get(i), new ExplorationOutcome(
+                            ToolOutcome.error("L'exploration a été interrompue ; poursuis toi-même."),
+                            0, 0, 0, 0));
+                }
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+        return results;
+    }
+
+    /** Fabrique de threads d'exploration : nommés (diagnostic) et démons (n'empêchent pas l'arrêt). */
+    private static java.util.concurrent.ThreadFactory exploreThreadFactory() {
+        java.util.concurrent.atomic.AtomicInteger seq = new java.util.concurrent.atomic.AtomicInteger();
+        return runnable -> {
+            Thread thread = new Thread(runnable, "atelier-explore-" + seq.incrementAndGet());
+            thread.setDaemon(true);
+            return thread;
+        };
+    }
+
+    /**
      * Exécute une délégation d'exploration (F-39 / SF-39-14) : une sous-boucle en lecture seule dont
      * <b>seule la réponse</b> revient ici. Ce qu'elle a lu reste chez elle — c'est tout l'intérêt.
      *
@@ -2500,6 +2596,12 @@ public class AtelierChatService implements RelayInterruptTarget {
      * elle n'a ni quota propre, ni plafond propre. Une panne dans la sous-boucle devient un résultat
      * d'outil en erreur, jamais un échec du tour principal : c'est une aide, et quand elle échoue,
      * l'agent doit pouvoir faire le travail lui-même.</p>
+     *
+     * <p>Depuis SF-39-21, {@code explore} peut être appelé <b>concurremment</b> pour plusieurs
+     * délégations d'un même tour (voir {@link #exploreConcurrently}). Le corps ci-dessous ne partage
+     * aucun état mutable propre au service : {@code userId} et la cible sont passés explicitement, la
+     * panoplie est construite par appel, la voie de lecture route par {@code callId} unique côté runner
+     * (dispatcher multiplexé), et le {@code stop}/{@code deadline} du tour est partagé (D7).</p>
      */
     private ExplorationOutcome explore(UUID userId, Workspace workspace, AgentToolCall call,
             String model, String apiKey, long deadline) {
