@@ -798,6 +798,15 @@
           }
         </section>
       }
+
+      @case ('presentations') {
+        <!-- LES PRÉSENTATIONS DU POSTE (F-129 / SF-129-02) : .pptx capturés depuis ses projets. -->
+        <section class="poste__panel poste__presentations" role="tabpanel">
+          @if (host.id; as hostId) {
+            <app-presentations-panel [hostId]="hostId" space="FORGE"></app-presentations-panel>
+          }
+        </section>
+      }
     }
   </section>
 </ng-template>

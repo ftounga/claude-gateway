@@ -44,6 +44,7 @@ import { WeeklyBudgetComponent } from '../shared/weekly-budget/weekly-budget.com
 import { WeeklyBudgetService } from '../core/services/weekly-budget.service';
 import { LiveBadgeComponent } from '../shared/live-badge/live-badge.component';
 import { HostPagesComponent } from '../shared/pages/host-pages.component';
+import { PresentationsPanelComponent } from '../shared/presentations/presentations-panel.component';
 import { ARCHIVE_ACCEPT } from '../shared/file-selectors';
 import { HostTone, hostTone } from '../shared/host-identity';
 import { MissionBadgeComponent } from '../shared/mission-badge/mission-badge.component';
@@ -202,6 +203,7 @@ const EMPTY_HOSTED: RunnerHostOverview = {
     NgTemplateOutlet,
     RouterLink,
     HostPagesComponent,
+    PresentationsPanelComponent,
     ForgeRailComponent,
     ForgeProjectTileComponent,
     ForgeCostAlertComponent,

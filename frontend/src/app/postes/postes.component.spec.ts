@@ -988,10 +988,10 @@ describe('PostesComponent', () => {
       expect(head.textContent).not.toContain('vu il y a');
     });
 
-    it('propose quatre onglets à une machine, et Projets seul à « Hébergé »', () => {
+    it('propose les onglets d\'une machine (dont Présentations), et Projets seul à « Hébergé »', () => {
       setup();
       expect(tabs().map((node) => node.getAttribute('data-tab')))
-        .toEqual(['projets', 'carte', 'gouvernance', 'activite', 'pages']);
+        .toEqual(['projets', 'carte', 'gouvernance', 'activite', 'pages', 'presentations']);
 
       openHost('heberge');
       expect(tabs().map((node) => node.getAttribute('data-tab'))).toEqual(['projets']);

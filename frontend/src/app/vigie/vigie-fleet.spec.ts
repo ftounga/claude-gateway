@@ -20,6 +20,8 @@ describe('vigie-fleet', () => {
     expect(effectiveVigieTab('carte')).toBe('radar');
     // F-109 / SF-109-04 : l'onglet des pages du client.
     expect(effectiveVigieTab('pages')).toBe('pages');
+    // F-129 / SF-129-02 : l'onglet des présentations du client.
+    expect(effectiveVigieTab('presentations')).toBe('presentations');
     expect(effectiveVigieTab(null)).toBe('radar');
   });
 

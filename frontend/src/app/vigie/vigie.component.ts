@@ -16,6 +16,7 @@ import { RunnerHostOverview } from '../core/models/atelier.models';
 import { VigiePerson, VigieRadarCounts } from '../core/models/vigie.models';
 import { AtelierService } from '../core/services/atelier.service';
 import { HostPagesComponent } from '../shared/pages/host-pages.component';
+import { PresentationsPanelComponent } from '../shared/presentations/presentations-panel.component';
 import { PagesService } from '../core/services/pages.service';
 import { HostPresenceService } from '../core/services/host-presence.service';
 import { VigieService, countsOfBrief } from '../core/services/vigie.service';
@@ -100,6 +101,7 @@ export type VigieError = 'none' | 'network' | 'forbidden' | 'not-entitled';
   imports: [
     RouterLink,
     HostPagesComponent,
+    PresentationsPanelComponent,
     ForgeRailComponent,
     HostBadgeComponent,
     LiveBadgeComponent,

@@ -606,6 +606,13 @@ public class AtelierChatService implements RelayInterruptTarget {
     private final fr.claudegateway.pages.PageToolCatalog pageToolCatalog;
     /** Exécution de {@code page_publish} (F-109 / SF-109-02) ; {@code null} pour les formes historiques. */
     private final fr.claudegateway.pages.PageToolExecutor pageToolExecutor;
+    /**
+     * L'outil {@code presentation_publish} <b>et sa garde</b> (F-129 / SF-129-02) : capture un {@code .pptx}
+     * produit sur le terminal. Même garde d'espace que les pages ; vide hors garde.
+     */
+    private final fr.claudegateway.presentations.PresentationToolCatalog presentationToolCatalog;
+    /** Exécution de {@code presentation_publish} (F-129 / SF-129-02) ; {@code null} pour les formes historiques. */
+    private final fr.claudegateway.presentations.PresentationToolExecutor presentationToolExecutor;
 
     /**
      * Tours pour lesquels une interruption a été demandée (F-38 / SF-38-07, même geste que F-32).
@@ -800,7 +807,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                 radarToolExecutor, pageToolCatalog, pageToolExecutor, HostKnowledgeSource.NONE);
     }
 
-    @org.springframework.beans.factory.annotation.Autowired
+    /**
+     * Forme d'avant F-129, conservée pour les appelants (et les tests) antérieurs aux présentations :
+     * l'outil {@code presentation_publish} n'est jamais donné, donc le tour d'avant, à l'identique.
+     */
     public AtelierChatService(WorkspaceService workspaceService, AtelierMessageRepository messageRepository,
             AiAgentProvider agentProvider, ByokKeyService byokKeyService, QuotaService quotaService,
             fr.claudegateway.atelier.git.GitWorkspaceService gitWorkspaceService,
@@ -820,9 +830,42 @@ public class AtelierChatService implements RelayInterruptTarget {
             fr.claudegateway.pages.PageToolCatalog pageToolCatalog,
             fr.claudegateway.pages.PageToolExecutor pageToolExecutor,
             HostKnowledgeSource hostKnowledge) {
+        this(workspaceService, messageRepository, agentProvider, byokKeyService, quotaService,
+                gitWorkspaceService, runnerToolGateway, runnerCallDispatcher, confirmationGate,
+                runnerAuditService, relayBroadcaster, runnerHostService, atelierProperties,
+                checkpointRunner, projectRules, teamsToolCatalog, momentImages, radarToolCatalog,
+                radarToolExecutor, pageToolCatalog, pageToolExecutor, hostKnowledge,
+                fr.claudegateway.presentations.PresentationToolCatalog.none(), null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public AtelierChatService(WorkspaceService workspaceService, AtelierMessageRepository messageRepository,
+            AiAgentProvider agentProvider, ByokKeyService byokKeyService, QuotaService quotaService,
+            fr.claudegateway.atelier.git.GitWorkspaceService gitWorkspaceService,
+            RunnerToolGateway runnerToolGateway,
+            fr.claudegateway.runner.channel.RunnerCallDispatcher runnerCallDispatcher,
+            RunnerConfirmationGate confirmationGate,
+            RunnerAuditService runnerAuditService,
+            RunnerRelayBroadcaster relayBroadcaster,
+            fr.claudegateway.runner.host.RunnerHostService runnerHostService,
+            AtelierProperties atelierProperties,
+            AtelierCheckpointRunner checkpointRunner,
+            ProjectRulesSource projectRules,
+            fr.claudegateway.teams.TeamsToolCatalog teamsToolCatalog,
+            fr.claudegateway.teams.block.TeamsMomentImageService momentImages,
+            fr.claudegateway.radar.RadarToolCatalog radarToolCatalog,
+            fr.claudegateway.radar.RadarToolExecutor radarToolExecutor,
+            fr.claudegateway.pages.PageToolCatalog pageToolCatalog,
+            fr.claudegateway.pages.PageToolExecutor pageToolExecutor,
+            HostKnowledgeSource hostKnowledge,
+            fr.claudegateway.presentations.PresentationToolCatalog presentationToolCatalog,
+            fr.claudegateway.presentations.PresentationToolExecutor presentationToolExecutor) {
         this.pageToolCatalog = pageToolCatalog == null
                 ? fr.claudegateway.pages.PageToolCatalog.none() : pageToolCatalog;
         this.pageToolExecutor = pageToolExecutor;
+        this.presentationToolCatalog = presentationToolCatalog == null
+                ? fr.claudegateway.presentations.PresentationToolCatalog.none() : presentationToolCatalog;
+        this.presentationToolExecutor = presentationToolExecutor;
         this.radarToolCatalog = radarToolCatalog == null
                 ? fr.claudegateway.radar.RadarToolCatalog.none() : radarToolCatalog;
         this.radarToolExecutor = radarToolExecutor;
@@ -1608,6 +1651,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                 } else if (fr.claudegateway.pages.PageToolCatalog.isPageTool(call.name())) {
                     // F-109 : la page est rangée par la gateway ; son bloc est admis dans tout terminal.
                     outcome = applyPagePublish(userId, workspace, callId, call, listener, pagesOfTurn);
+                } else if (fr.claudegateway.presentations.PresentationToolCatalog
+                        .isPresentationTool(call.name())) {
+                    // F-129 : la présentation (.pptx) est rangée par la gateway comme un artefact.
+                    outcome = applyPresentationPublish(userId, workspace, callId, call, listener);
                 } else {
                     outcome = executeTool(userId, workspace, callId, call, listener, deadline,
                             planOfTurn, cardsOfTurn);
@@ -2377,6 +2424,43 @@ public class AtelierChatService implements RelayInterruptTarget {
             fr.claudegateway.pages.PageBlock block = fr.claudegateway.pages.PageBlock.of(outcome.published());
             pagesOfTurn.put(callId, block);
             listener.onPage(callId, block);
+        }
+        return ToolOutcome.info(outcome.content());
+    }
+
+    /**
+     * <b>Capturer une présentation</b> (F-129 / SF-129-02).
+     *
+     * <p>Même doctrine que les pages : second verrou de garde ici, et <b>accord d'un clic</b> (la porte
+     * d'autorisation existante, couverte par « tout autoriser pour ce message »). Refus ou délai : rien
+     * n'est capturé, et l'agent le sait. Pas de bloc riche : l'utilisateur la retrouve dans l'onglet
+     * Présentations ; le retour d'outil suffit à l'agent.</p>
+     */
+    private ToolOutcome applyPresentationPublish(UUID userId, Workspace workspace, String callId,
+            AgentToolCall call, AtelierProgressListener listener) {
+        if (presentationToolExecutor == null || !presentationToolCatalog.isOpenFor(userId, workspace)) {
+            return ToolOutcome.error("La capture de présentations n'est pas ouverte dans ce terminal. "
+                    + "Réponds en clair.");
+        }
+        String title = fr.claudegateway.presentations.PresentationToolExecutor.auditTarget(call.input());
+        if (!blanketAllowedTurns.contains(turnKey(userId, workspace.getId()))) {
+            RunnerConfirmationGate.Outcome decision = askPermission(userId, workspace.getId(), callId,
+                    call.name(), "Capturer la présentation « " + (title == null ? "sans titre" : title)
+                            + " » — privée, visible par vous seul", listener);
+            if (!decision.decision().allows()) {
+                if (decision.decision() == RunnerConfirmationGate.Decision.TIMEOUT) {
+                    return ToolOutcome.error("Capture refusée : aucune autorisation n'a été donnée dans "
+                            + "le délai imparti.");
+                }
+                return ToolOutcome.error(decision.reason() == null || decision.reason().isBlank()
+                        ? "Capture refusée par l'utilisateur."
+                        : "Capture refusée par l'utilisateur. Motif : " + decision.reason());
+            }
+        }
+        fr.claudegateway.presentations.PresentationToolExecutor.Outcome outcome =
+                presentationToolExecutor.execute(userId, workspace, callId, call.input());
+        if (outcome.error()) {
+            return ToolOutcome.error(outcome.content());
         }
         return ToolOutcome.info(outcome.content());
     }
@@ -3839,6 +3923,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         // Les pages (F-109 / SF-109-02) : sur un poste, avec le droit de l'espace du terminal. La règle vit
         // dans PageToolCatalog, à un seul endroit.
         tools.addAll(pageToolCatalog.toolsFor(userId, workspace));
+        // F-129 / SF-129-02 : l'outil presentation_publish, sous la même garde d'espace que les pages.
+        tools.addAll(presentationToolCatalog.toolsFor(userId, workspace));
         return List.copyOf(tools);
     }
 
@@ -4057,6 +4143,10 @@ public class AtelierChatService implements RelayInterruptTarget {
         // F-109 / SF-109-02 : le guide de conception des pages, sous la même garde que l'outil.
         if (pageToolCatalog.isOpenFor(userId, workspace)) {
             system.append(fr.claudegateway.pages.PageToolCatalog.DESIGN_GUIDE).append("\n\n");
+        }
+        // F-129 / SF-129-02 : le guide des présentations, sous la même garde que l'outil.
+        if (presentationToolCatalog.isOpenFor(userId, workspace)) {
+            system.append(fr.claudegateway.presentations.PresentationToolCatalog.GUIDE).append("\n\n");
         }
 
         // Compteurs d'amorçage : ces lectures sont journalisées en UNE ligne (F-38 / SF-38-08).

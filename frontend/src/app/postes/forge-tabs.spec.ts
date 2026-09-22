@@ -21,8 +21,9 @@ describe('forge-tabs', () => {
     warnings: Array.from({ length: warnings }, (_, i) => ({ rule: 'r', target: `w${i}`, message: 'm' })),
   });
 
-  it('quatre onglets pour une machine, Projets seul pour « Hébergé »', () => {
-    expect(tabsFor(machine)).toEqual(['projets', 'carte', 'gouvernance', 'activite', 'pages']);
+  it('les onglets d\'une machine (dont Présentations), Projets seul pour « Hébergé »', () => {
+    expect(tabsFor(machine))
+      .toEqual(['projets', 'carte', 'gouvernance', 'activite', 'pages', 'presentations']);
     expect(tabsFor(hosted)).toEqual(['projets']);
   });
 
