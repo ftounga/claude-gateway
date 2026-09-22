@@ -67,6 +67,13 @@ public class RadarToolExecutor {
     /** Borne du résultat de la recherche, en caractères. */
     static final int MAX_RESULT_CHARS = 12_000;
     static final int MAX_QUERY_LENGTH = 200;
+    /**
+     * F-147 / SF-147-04 : la tranche de texte rendue en une fois. Un transcript pèse parfois des
+     * centaines de milliers de caractères ; le déverser d'un coup mangerait un tour de contexte.
+     */
+    static final int MAX_TRANSCRIPT_CHARS = 20_000;
+    /** Combien d'autres réunions du sujet sont nommées, pour qu'on puisse en demander une autre. */
+    static final int MAX_MEETINGS_LISTED = 10;
 
     /** Mots trop communs pour retrouver un sujet. */
     private static final Set<String> STOP_WORDS = Set.of("les", "des", "une", "sur", "pour", "avec", "dans",
@@ -106,13 +113,16 @@ public class RadarToolExecutor {
     private final RadarSubjectAliasRepository aliases;
     private final RadarCommitmentRepository commitments;
     private final RadarPersonRepository people;
+    /** F-147 / SF-147-04 : les réunions du poste — lues, jamais écrites, par cet outil. */
+    private final fr.claudegateway.teams.meeting.MeetingRepository meetings;
     private final ObjectMapper mapper;
     private final TransactionTemplate tx;
 
     public RadarToolExecutor(RadarRegistry registry, RadarReadService readService,
             RadarCorrectionService corrections, RadarClosureService closure, RadarStructureService structure,
             RadarCorrectionJournal journal, RadarSubjectRepository subjects, RadarSubjectAliasRepository aliases,
-            RadarCommitmentRepository commitments, RadarPersonRepository people, ObjectMapper mapper,
+            RadarCommitmentRepository commitments, RadarPersonRepository people,
+            fr.claudegateway.teams.meeting.MeetingRepository meetings, ObjectMapper mapper,
             PlatformTransactionManager transactionManager) {
         this.registry = registry;
         this.readService = readService;
@@ -124,6 +134,7 @@ public class RadarToolExecutor {
         this.aliases = aliases;
         this.commitments = commitments;
         this.people = people;
+        this.meetings = meetings;
         this.mapper = mapper;
         this.tx = new TransactionTemplate(transactionManager);
     }
@@ -142,6 +153,10 @@ public class RadarToolExecutor {
         try {
             if (RadarToolCatalog.FIND_SUBJECT.equals(tool)) {
                 return tx.execute(status -> find(scope, params));
+            }
+            if (RadarToolCatalog.MEETING_TRANSCRIPT.equals(tool)) {
+                // F-147 / SF-147-04 : une LECTURE — aucune preuve exigée, rien n'est écrit.
+                return tx.execute(status -> meetingTranscript(scope, params));
             }
             if (!RadarToolCatalog.isWrite(tool)) {
                 return Outcome.failure("Outil Radar inconnu : " + tool + ".");
@@ -169,6 +184,111 @@ public class RadarToolExecutor {
     }
 
     // ------------------------------------------------------------------------------------ lecture
+
+    /**
+     * <b>Le texte d'une réunion du poste</b> (F-147 / SF-147-04).
+     *
+     * <p>Désignée par son identifiant, ou par son <b>sujet</b> — auquel cas c'est la plus récente, les
+     * autres étant <b>nommées</b> pour qu'on puisse en demander une autre. Le texte sort par
+     * <b>tranches</b> : un transcript pèse parfois des centaines de milliers de caractères, et les
+     * déverser d'un coup mangerait un tour de contexte pour rien.</p>
+     *
+     * <p><b>Une réunion sans texte dit pourquoi.</b> Un silence laisserait le modèle compléter de
+     * lui-même, ce qui est exactement ce qu'on ne veut pas d'une réunion qu'il n'a pas entendue.</p>
+     */
+    private Outcome meetingTranscript(RadarScope scope, JsonNode params) {
+        String meetingId = optionalText(params, "meeting_id", 64);
+        String subjectId = optionalText(params, "subject_id", 64);
+        if ((meetingId == null || meetingId.isBlank()) && (subjectId == null || subjectId.isBlank())) {
+            return Outcome.failure("Donne « meeting_id », ou « subject_id » pour la dernière réunion d'un "
+                    + "sujet (trouve-le avec " + RadarToolCatalog.FIND_SUBJECT + ").");
+        }
+        List<fr.claudegateway.teams.meeting.Meeting> found;
+        if (meetingId != null && !meetingId.isBlank()) {
+            UUID id = uuidOrNull(meetingId);
+            found = id == null ? List.of()
+                    : meetings.findByIdAndUserIdAndHostId(id, scope.userId(), scope.hostId())
+                            .map(List::of).orElse(List.of());
+            if (found.isEmpty()) {
+                return Outcome.failure("Aucune réunion de ce client ne porte cet identifiant.");
+            }
+        } else {
+            UUID id = uuidOrNull(subjectId);
+            found = id == null ? List.of()
+                    : meetings.findByUserIdAndHostIdAndSubjectIdOrderByStartedAtDesc(
+                            scope.userId(), scope.hostId(), id);
+            if (found.isEmpty()) {
+                return Outcome.failure("Aucune réunion n'est rattachée à ce sujet.");
+            }
+        }
+        fr.claudegateway.teams.meeting.Meeting meeting = found.get(0);
+        String text = textOf(meeting);
+        if (text.isEmpty()) {
+            return Outcome.read(noTextNode(meeting).toString());
+        }
+        int offset = Math.max(0, params.path("offset").asInt(0));
+        if (offset >= text.length()) {
+            offset = text.length();
+        }
+        int end = Math.min(text.length(), offset + MAX_TRANSCRIPT_CHARS);
+        ObjectNode node = mapper.createObjectNode();
+        node.put("meeting_id", meeting.getId().toString());
+        node.put("title", meeting.getTitle() == null ? "" : meeting.getTitle());
+        node.put("started_at", meeting.getStartedAt() == null ? "" : meeting.getStartedAt().toString());
+        node.put("source", meeting.getMeetingUrl() == null ? "enregistrement déposé" : "réunion capturée");
+        node.put("text", text.substring(offset, end));
+        node.put("offset", offset);
+        node.put("total_chars", text.length());
+        node.put("remaining_chars", text.length() - end);
+        if (end < text.length()) {
+            node.put("more", "Il reste du texte : redemande avec offset=" + end + ".");
+        }
+        if (found.size() > 1) {
+            var others = node.putArray("other_meetings");
+            found.stream().skip(1).limit(MAX_MEETINGS_LISTED).forEach(other -> {
+                ObjectNode row = others.addObject();
+                row.put("meeting_id", other.getId().toString());
+                row.put("title", other.getTitle() == null ? "" : other.getTitle());
+                row.put("started_at", other.getStartedAt() == null ? "" : other.getStartedAt().toString());
+            });
+        }
+        return Outcome.read(node.toString());
+    }
+
+    /** Le texte de la réunion : celui du client d'abord (vrais noms), sinon le nôtre. */
+    private static String textOf(fr.claudegateway.teams.meeting.Meeting meeting) {
+        String external = meeting.getExternalTranscript();
+        if (external != null && !external.isBlank()) {
+            return external.strip();
+        }
+        String own = meeting.getTranscript();
+        return own == null ? "" : own.strip();
+    }
+
+    /** Pas de texte : on dit POURQUOI. Un silence laisserait le modèle inventer la réunion. */
+    private ObjectNode noTextNode(fr.claudegateway.teams.meeting.Meeting meeting) {
+        ObjectNode node = mapper.createObjectNode();
+        node.put("meeting_id", meeting.getId().toString());
+        node.put("title", meeting.getTitle() == null ? "" : meeting.getTitle());
+        node.put("text", "");
+        String status = meeting.getTranscriptStatus() == null ? "NONE" : meeting.getTranscriptStatus().name();
+        node.put("reason", switch (status) {
+            case "PENDING", "TRANSCRIBING" -> "La transcription est en cours sur le poste : redemande plus tard.";
+            case "FAILED" -> meeting.getTranscriptError() == null || meeting.getTranscriptError().isBlank()
+                    ? "La transcription n'a pas abouti."
+                    : "La transcription n'a pas abouti : " + meeting.getTranscriptError();
+            default -> "Cette réunion n'a pas de transcription : elle n'a pas été transcrite.";
+        });
+        return node;
+    }
+
+    private static UUID uuidOrNull(String value) {
+        try {
+            return UUID.fromString(value.strip());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
 
     private Outcome find(RadarScope scope, JsonNode params) {
         String query = optionalText(params, "query", MAX_QUERY_LENGTH);

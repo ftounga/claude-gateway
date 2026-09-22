@@ -297,8 +297,9 @@ public final class TeamsTools implements ToolExecutor {
         try {
             java.nio.file.Files.createDirectories(depot);
             if (say != null) {
-                say.accept("Radar : déposez les enregistrements hors Teams dans " + depot
-                        + " — ils seront transcrits sur cette machine à la prochaine synchro, seul le texte remonte.");
+                say.accept("Radar : le dossier " + depot + " reçoit les enregistrements déposés depuis "
+                        + "l'écran ; ils sont transcrits sur cette machine aussitôt arrivés, et seul le texte "
+                        + "remonte. Un fichier posé ici à la main n'est pas relevé.");
             }
         } catch (java.io.IOException e) {
             if (say != null) {
@@ -344,6 +345,16 @@ public final class TeamsTools implements ToolExecutor {
             thread.start();
         };
         this.radarDeposit = RadarDepositReceiver.real(depot, onArrival, sink, watcher);
+        // F-147 / SF-147-06 : au démarrage, on rattrape les dépôts dont le texte n'a jamais pu
+        // remonter (gateway injoignable, runner redémarré, moteur absent). UNIQUEMENT ceux venus de
+        // l'écran — ils portent leur réunion dans leur compagnon ; un fichier posé à la main n'en a
+        // pas, et n'est donc jamais pris. Sur un fil démon : un poste qui démarre n'attend pas.
+        RadarDepositResume resume = new RadarDepositResume(depot, onArrival, sink, say);
+        if (resume.ready()) {
+            Thread thread = new Thread(resume::resumeAll, "radar-depot-reprise");
+            thread.setDaemon(true);
+            thread.start();
+        }
         return this;
     }
 
@@ -363,25 +374,17 @@ public final class TeamsTools implements ToolExecutor {
                 record -> radarSay.accept("Radar : geste " + record.action() + " sur " + record.domain() + " — "
                         + record.result()),
                 teamsLock);
-        // F-100 / SF-100-05 : puis le dossier de dépôt, transcrit sur la machine par le moteur de F-91.
-        RadarDepositCollector deposit = null;
-        if (radarDepot != null) {
-            TranscriptionWorker worker = transcription;
-            RadarDepositCollector.Transcriber transcriber = worker == null ? null
-                    : (id, file, startedAt) -> {
-                        java.nio.file.Path into;
-                        try {
-                            into = radarWork.workDir(id);
-                        } catch (java.io.IOException e) {
-                            TranscriptionJob refused = new TranscriptionJob(id);
-                            refused.failed("Le dossier de travail de la transcription n'a pas pu être créé.", "");
-                            return refused;
-                        }
-                        return worker.startOrResumeFile(id, file, into, startedAt, "Dépôt Radar", radarSay);
-                    };
-            deposit = new RadarDepositCollector(radarDepot, transcriber, java.time.Instant::now, sleeper);
-        }
-        return RadarCollectors.chain(teams, deposit);
+        // F-147 / SF-147-05 : la synchro ne RELÈVE PLUS le dossier de dépôt.
+        //
+        // C'était la « boîte aux lettres » refusée par le PO : un fichier posé là était transcrit puis
+        // remonté à une heure que personne ne choisissait, et — depuis SF-147-02 — sous la mauvaise
+        // forme (des preuves Radar là où l'on veut une réunion). Ce qui arrive par l'écran est
+        // désormais transcrit TOUT DE SUITE (SF-147-01) et rattrapé AU DÉMARRAGE s'il l'a fallu
+        // (SF-147-06). Le dossier, lui, reste : c'est la zone d'arrivée du transfert par morceaux.
+        //
+        // RadarDepositCollector n'est pas supprimé : il redeviendra utile le jour où un relevé
+        // EXPLICITE sera demandé. Seul son branchement automatique disparaît.
+        return RadarCollectors.chain(teams, null);
     }
 
     /**

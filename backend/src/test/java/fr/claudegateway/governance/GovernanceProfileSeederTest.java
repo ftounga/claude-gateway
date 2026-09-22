@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,6 +28,17 @@ class GovernanceProfileSeederTest {
     @Autowired private GovernancePackageRepository packages;
     @Autowired private GovernancePackageFileRepository files;
     @Autowired private GovernanceSelectionRepository selections;
+
+    /**
+     * Le semeur tourne au démarrage du contexte — mais <b>d'autres tests effacent tous les paquets</b>
+     * ({@code packages.deleteAll()}), si bien que ce test ne passait que placé avant eux. On re-sème
+     * donc explicitement : l'opération est idempotente (c'est même ce que vérifie
+     * {@code seedingTwiceChangesNothing}), et le test cesse de dépendre de l'ordre d'exécution.
+     */
+    @BeforeEach
+    void reseed() {
+        seeder.seedOnStartup();
+    }
 
     @AfterEach
     void tearDown() {

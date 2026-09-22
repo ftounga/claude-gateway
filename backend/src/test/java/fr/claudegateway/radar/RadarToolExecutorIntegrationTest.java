@@ -21,6 +21,8 @@ class RadarToolExecutorIntegrationTest extends RadarIntegrationTestBase {
 
     @Autowired private RadarToolExecutor executor;
     @Autowired private ObjectMapper mapper;
+    /** F-147 / SF-147-04 : les réunions du poste, semées ici pour éprouver la lecture. */
+    @Autowired private fr.claudegateway.teams.meeting.MeetingRepository meetings;
 
     private final UUID messageId = UUID.randomUUID();
 
@@ -248,5 +250,100 @@ class RadarToolExecutorIntegrationTest extends RadarIntegrationTestBase {
         assertThat(evidenceWithMfa).isEqualTo(evidenceBefore + 1);
         assertThat(corrections.count()).isEqualTo(correctionsBefore);
         assertThat(subjects.findById(cagip.getId()).orElseThrow().getState()).isEqualTo(RadarSubjectState.NEW);
+    }
+    // ---------------------------------------------------------------- F-147 / SF-147-04 : lire le texte
+
+    private UUID seedMeeting(RadarScope scope, UUID subjectId, String title, String transcript,
+            fr.claudegateway.teams.meeting.TranscriptStatus status, OffsetDateTime startedAt) {
+        return meetings.save(fr.claudegateway.teams.meeting.Meeting.builder()
+                .userId(scope.userId()).hostId(scope.hostId()).subjectId(subjectId).title(title)
+                .state(fr.claudegateway.teams.meeting.MeetingState.STOPPED).consentAcknowledged(true)
+                .retentionDays(30).startedAt(startedAt).transcript(transcript).transcriptStatus(status)
+                .build()).getId();
+    }
+
+    @Test
+    @DisplayName("F-147 : le texte d'une réunion par son identifiant, borné, avec ce qui reste annoncé")
+    void transcriptByMeetingId() {
+        String long_ = "a".repeat(RadarToolExecutor.MAX_TRANSCRIPT_CHARS + 500);
+        UUID meetingId = seedMeeting(aliceA, null, "Comité Infra", long_,
+                fr.claudegateway.teams.meeting.TranscriptStatus.TRANSCRIBED, OffsetDateTime.now());
+
+        JsonNode first = json(run(aliceA, RadarToolCatalog.MEETING_TRANSCRIPT,
+                "{\"meeting_id\":\"" + meetingId + "\"}", "").content());
+
+        assertThat(first.path("text").asText()).hasSize(RadarToolExecutor.MAX_TRANSCRIPT_CHARS);
+        assertThat(first.path("remaining_chars").asInt()).isEqualTo(500);
+        assertThat(first.path("more").asText()).contains("offset=" + RadarToolExecutor.MAX_TRANSCRIPT_CHARS);
+        assertThat(first.path("source").asText()).isEqualTo("enregistrement déposé");
+
+        JsonNode next = json(run(aliceA, RadarToolCatalog.MEETING_TRANSCRIPT,
+                "{\"meeting_id\":\"" + meetingId + "\",\"offset\":" + RadarToolExecutor.MAX_TRANSCRIPT_CHARS + "}",
+                "").content());
+
+        assertThat(next.path("text").asText()).hasSize(500);
+        assertThat(next.path("remaining_chars").asInt()).isZero();
+        assertThat(next.has("more")).isFalse();
+    }
+
+    @Test
+    @DisplayName("F-147 : par le sujet, la plus récente — les autres sont NOMMÉES, pas perdues")
+    void transcriptBySubjectTakesTheLatest() {
+        RadarSubject subject = mfa();
+        seedMeeting(aliceA, subject.getId(), "Première", "ancien texte",
+                fr.claudegateway.teams.meeting.TranscriptStatus.TRANSCRIBED, OffsetDateTime.now().minusDays(3));
+        UUID recent = seedMeeting(aliceA, subject.getId(), "Dernière", "texte récent",
+                fr.claudegateway.teams.meeting.TranscriptStatus.TRANSCRIBED, OffsetDateTime.now());
+
+        JsonNode answer = json(run(aliceA, RadarToolCatalog.MEETING_TRANSCRIPT,
+                "{\"subject_id\":\"" + subject.getId() + "\"}", "").content());
+
+        assertThat(answer.path("meeting_id").asText()).isEqualTo(recent.toString());
+        assertThat(answer.path("text").asText()).isEqualTo("texte récent");
+        assertThat(answer.path("other_meetings")).hasSize(1);
+        assertThat(answer.path("other_meetings").get(0).path("title").asText()).isEqualTo("Première");
+    }
+
+    @Test
+    @DisplayName("F-147 : une réunion sans texte dit POURQUOI — jamais un silence que le modèle comblerait")
+    void aameetingWithoutTextSaysWhy() {
+        UUID pending = seedMeeting(aliceA, null, "En cours", null,
+                fr.claudegateway.teams.meeting.TranscriptStatus.PENDING, OffsetDateTime.now());
+
+        JsonNode answer = json(run(aliceA, RadarToolCatalog.MEETING_TRANSCRIPT,
+                "{\"meeting_id\":\"" + pending + "\"}", "").content());
+
+        assertThat(answer.path("text").asText()).isEmpty();
+        assertThat(answer.path("reason").asText()).contains("en cours sur le poste");
+    }
+
+    @Test
+    @DisplayName("F-147 / ISOLATION : la réunion d'un autre compte ou d'un autre poste ne rend RIEN, même avec son id")
+    void transcriptStaysInScope() {
+        UUID bobMeeting = seedMeeting(bobScope, null, "Chez Bob", "secret de Bob",
+                fr.claudegateway.teams.meeting.TranscriptStatus.TRANSCRIBED, OffsetDateTime.now());
+        UUID otherHost = seedMeeting(aliceB, null, "Autre poste", "secret d'un autre poste",
+                fr.claudegateway.teams.meeting.TranscriptStatus.TRANSCRIBED, OffsetDateTime.now());
+
+        RadarToolExecutor.Outcome fromBob = run(aliceA, RadarToolCatalog.MEETING_TRANSCRIPT,
+                "{\"meeting_id\":\"" + bobMeeting + "\"}", "");
+        RadarToolExecutor.Outcome fromOtherHost = run(aliceA, RadarToolCatalog.MEETING_TRANSCRIPT,
+                "{\"meeting_id\":\"" + otherHost + "\"}", "");
+
+        assertThat(fromBob.error()).isTrue();
+        assertThat(fromBob.content()).doesNotContain("secret");
+        assertThat(fromOtherHost.error()).isTrue();
+        assertThat(fromOtherHost.content()).doesNotContain("secret");
+    }
+
+    @Test
+    @DisplayName("F-147 : sans identifiant, le refus dit la marche à suivre ; la lecture n'exige AUCUNE preuve")
+    void withoutAnIdentifierTheRefusalTeaches() {
+        RadarToolExecutor.Outcome outcome = executor.execute(aliceA, RadarToolCatalog.MEETING_TRANSCRIPT,
+                json("{}"), null);
+
+        assertThat(outcome.error()).isTrue();
+        assertThat(outcome.content()).contains(RadarToolCatalog.FIND_SUBJECT);
+        // La preuve (note) est nulle : une LECTURE ne l'exige pas, contrairement aux écritures.
     }
 }
