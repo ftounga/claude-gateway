@@ -18,6 +18,12 @@ public interface MeetingRepository extends JpaRepository<Meeting, UUID> {
 
     List<Meeting> findByUserIdAndHostIdOrderByStartedAtDesc(UUID userId, UUID hostId);
 
+    /**
+     * Les réunions d'un <b>sujet</b>, la plus récente d'abord (F-147 / SF-147-04). Le filtre
+     * {@code user_id} + {@code host_id} est dans la requête : un sujet d'un autre couple ne rend rien.
+     */
+    List<Meeting> findByUserIdAndHostIdAndSubjectIdOrderByStartedAtDesc(UUID userId, UUID hostId, UUID subjectId);
+
     Optional<Meeting> findByIdAndUserIdAndHostId(UUID id, UUID userId, UUID hostId);
 
     /** Les réunions dans un état de transcription donné — sert au worker STT (F-128 / SF-128-04). */

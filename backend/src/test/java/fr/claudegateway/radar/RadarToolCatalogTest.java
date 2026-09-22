@@ -42,6 +42,9 @@ class RadarToolCatalogTest {
             assertThat(tool.inputSchema()).containsEntry("type", "object");
         });
         assertThat(RadarToolCatalog.isWrite(RadarToolCatalog.FIND_SUBJECT)).isFalse();
+        // La lecture du transcript n'écrit rien : elle reste hors de la liste des écritures.
+        assertThat(RadarToolCatalog.isWrite(RadarToolCatalog.MEETING_TRANSCRIPT)).isFalse();
+        assertThat(RadarToolCatalog.isRead(RadarToolCatalog.MEETING_TRANSCRIPT)).isTrue();
         assertThat(RadarToolCatalog.WRITE).hasSize(5);
     }
 
@@ -50,7 +53,8 @@ class RadarToolCatalogTest {
     void guard() {
         when(teamsAccess.hasAccess(userId)).thenReturn(true);
         when(spaces.isActive(userId, hostId, ClientSpace.VIGIE)).thenReturn(true);
-        assertThat(catalog.toolsFor(userId, teamsTerminal())).hasSize(6);
+        // F-147 / SF-147-04 : sept outils — les six du registre, plus la LECTURE du texte d'une réunion.
+        assertThat(catalog.toolsFor(userId, teamsTerminal())).hasSize(7);
 
         Workspace project = teamsTerminal();
         project.setTeamsTerminal(false);

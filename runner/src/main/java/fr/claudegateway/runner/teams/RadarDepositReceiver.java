@@ -88,6 +88,9 @@ final class RadarDepositReceiver {
     /** La réunion à remplir, par identifiant de dépôt — annoncée par la gateway après {@code finish}. */
     private final java.util.Map<String, String> meetings = new java.util.concurrent.ConcurrentHashMap<>();
 
+    /** Le fichier déposé, par identifiant : c'est son compagnon qu'on complète (F-147 / SF-147-06). */
+    private final java.util.Map<String, Path> deposited = new java.util.concurrent.ConcurrentHashMap<>();
+
     /** Ce que la transcription locale offre au dépôt — une interface, pour s'éprouver sans moteur. */
     interface Transcriber {
 
@@ -266,6 +269,7 @@ final class RadarDepositReceiver {
         Files.writeString(depot.resolve(finalBase + ".json"), companion.toString());
         Files.move(partOf(id), target, StandardCopyOption.ATOMIC_MOVE);
         Files.deleteIfExists(metaOf(id));
+        deposited.put(id, target);
         ObjectNode done = mapper.createObjectNode();
         done.put("deposited", true);
         done.put("file_name", target.getFileName().toString());
@@ -348,6 +352,10 @@ final class RadarDepositReceiver {
             return ToolOutcome.error("invalid_input", "Identifiant de réunion manquant.");
         }
         meetings.put(id, meetingId);
+        // F-147 / SF-147-06 : la réunion est écrite dans le compagnon. Sans cela, un runner qui
+        // redémarre ne saurait plus à quelle réunion appartient ce fichier, et le texte serait perdu
+        // pour toujours — alors que le fichier, lui, est encore là.
+        RadarDepositCompanion.rememberMeeting(deposited.get(id), meetingId);
         TranscriptionJob job = jobs.get(id);
         if (job == null) {
             node.put("attached", false);
@@ -381,7 +389,11 @@ final class RadarDepositReceiver {
             }
         }
         try {
-            sink.deposit(meetingId, job);
+            if (sink.deposit(meetingId, job)) {
+                // La marque est la SEULE chose qui dit « c'est remonté » : sans elle, la reprise du
+                // prochain démarrage le referait, et la réunion recevrait deux fois le même texte.
+                RadarDepositCompanion.markSent(deposited.get(id));
+            }
         } catch (RuntimeException e) {
             // La réunion reste « en attente » : le texte n'est pas perdu, il est resté ici.
             meetings.remove(id);
