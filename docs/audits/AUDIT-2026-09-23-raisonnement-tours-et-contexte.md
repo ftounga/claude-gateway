@@ -79,8 +79,9 @@ OK 86,7 % · **ERROR 13,1 %** · TIMEOUT 0,2 %. Point saillant : **`governance_m
    `STATE.md`/`PLAN-ACTION.md` (déjà en base, `HostMapStore`) reste lu par l'agent (F-136/137 ne
    couvrent que l'outline + les faits par entité).
 5. Rappel de faits **keyword-only** (`HostFactLookup.java:81-100`) : une question sans terme distinctif
-   → pas de match → ré-exploration. **Décision 09-21 : embeddings reportés au-delà de ~20 000 faits**
-   (on est à ~3 000). À garder en réserve, pas à faire maintenant.
+   → pas de match → ré-exploration. **Embeddings en réserve — déclencheur = preuve mesurée, pas un
+   compteur** : on les ouvre quand on mesure que le rappel rate (agent qui ré-explore un fait présent ;
+   F-140 suit déjà les explorations/tour), et non à « ~20 000 faits » (ordre de grandeur de l'audit 09-21).
 6. `governance_map_read` échoue 25 % (gateway-side) — défaut à diagnostiquer.
 7. Pas d'index de repo persistant (`grep`/`glob` runner à chaque appel `:4181-4203`).
 8. Pas de mémoire de résolutions (question → conclusion) réutilisable.
@@ -93,5 +94,5 @@ nouveau pod, aucun nœud plus gros — cohérent avec le cluster à capacité.
 
 ## 5. Suite
 Cadrage **F-148 « Performance du raisonnement — affinages »** (`docs/features/F-148/`), **9 leviers**
-(embeddings/RAG retiré, en réserve tant que < ~20 000 faits), dont plusieurs sont des **extensions** de
-F-135→140 (dits comme tels), zéro impact infra.
+(embeddings/RAG retiré, en réserve — déclencheur = **preuve mesurée** de ratés de rappel, pas un
+compteur), dont plusieurs sont des **extensions** de F-135→140 (dits comme tels), zéro impact infra.

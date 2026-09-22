@@ -13,8 +13,9 @@
 > **Ce qu'on ne touche pas :** la discipline « lire avant d'agir » (F-119) — c'est elle qui rend les
 > résultats justes. On rend chaque lecture **moins chère / précalculée**, on ne la supprime pas.
 >
-> **9 subfeatures.** Le levier « embeddings/RAG » a été **retiré du découpage** : il est **en réserve**
-> (décision de l'audit 09-21 : pas avant ~20 000 faits par poste ; on est à ~3 000). Voir §Hors périmètre.
+> **9 subfeatures.** Le levier « embeddings/RAG » est **retiré du découpage**, en **réserve** : son
+> **déclencheur n'est pas un compteur de faits mais une preuve mesurée** que le rappel par mots-clés rate
+> (voir §Hors périmètre). Le seuil « ~20 000 faits » de l'audit 09-21 n'était qu'un ordre de grandeur.
 
 ## Découpage — 9 leviers
 
@@ -96,10 +97,14 @@ infra · garde-fous.*
 
 ## Hors périmètre (dont le levier retiré)
 - **Embeddings / recherche vectorielle sur la carte (F-137 v2)** — **en réserve**, pas dans ce découpage.
-  Rappel `HostFactLookup` keyword-only (`HostFactLookup.java:81-100`) ; décision de l'audit 09-21 :
-  **reporté tant que < ~20 000 faits par poste** (on est à ~3 000). À rouvrir seulement au-delà du seuil,
-  ou si une meilleure extraction de termes ne suffit pas. Vivrait dans le **Postgres existant** (pgvector,
-  ADR-011) — donc **sans infra** le jour venu.
+  Rappel `HostFactLookup` keyword-only (`HostFactLookup.java:81-100`). **Déclencheur = preuve mesurée, pas
+  un compteur de faits** : on l'ouvre quand on **mesure** que le rappel rate — c.-à-d. que l'agent
+  **ré-explore un fait pourtant présent** dans la carte — et **non** à « ~20 000 faits » (ce nombre de
+  l'audit 09-21 n'était qu'un ordre de grandeur). **La mesure existe déjà en partie** : F-140 suit le
+  **nombre d'appels d'exploration par tour** ; s'il **ne baisse pas** à mesure que la carte grossit, c'est
+  le signal que le keyword ne suffit plus → on avance les embeddings, quel que soit le nombre de faits.
+  Complément possible (petite instrumentation) : compter les questions où un fait **existant** n'a pas été
+  rappelé. Le jour venu, ça vit dans le **Postgres existant** (pgvector, ADR-011) — donc **sans infra**.
 - Moteur de raisonnement maison (Provider-First) ; refonte sur Claude Agent SDK (décision 2026-09-15) ;
   sous-agents *écrivains* parallèles (impossible proprement sur poste unique) ; tout composant cluster.
 
