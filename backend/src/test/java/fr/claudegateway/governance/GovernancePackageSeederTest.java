@@ -106,13 +106,37 @@ class GovernancePackageSeederTest {
         assertThat(written).extracting(GovernancePackageFile::getPath)
                 .containsExactly("README.md", "acces.md", "reseau.md", "plateformes.md",
                         "donnees.md", "exploitation.md", "GOUVERNANCE.md", "PLAN-ACTION.md",
-                        "STATE.md", ".claude/skills/explique.md", ".claude/skills/plan-dashboard.md");
+                        "STATE.md", ".claude/skills/explique.md", ".claude/skills/plan-dashboard.md",
+                        // F-129 / SF-129-01 : la skill pptx rejoint le paquet.
+                        ".claude/skills/pptx.md");
         assertThat(written).extracting(GovernancePackageFile::getKind)
                 .containsExactly(GovernanceFileKind.MAP, GovernanceFileKind.MAP,
                         GovernanceFileKind.MAP, GovernanceFileKind.MAP, GovernanceFileKind.MAP,
                         GovernanceFileKind.MAP, GovernanceFileKind.TEMPLATE,
                         GovernanceFileKind.TEMPLATE, GovernanceFileKind.TEMPLATE,
-                        GovernanceFileKind.SKILL, GovernanceFileKind.SKILL);
+                        GovernanceFileKind.SKILL, GovernanceFileKind.SKILL,
+                        GovernanceFileKind.SKILL);
+    }
+
+    @Test
+    @DisplayName("F-129 : la skill pptx enseigne python-pptx, l'échec nommé et le choix sandbox/poste")
+    void thePptxSkillTeachesPythonPptxAndNamesItsFailure() {
+        when(packages.findBySlug(GovernancePackageSeeder.SLUG)).thenReturn(Optional.empty());
+
+        seeder(fullRegistry, true).seed();
+
+        GovernancePackageFile pptx = captureFiles().stream()
+                .filter(file -> ".claude/skills/pptx.md".equals(file.getPath()))
+                .findFirst().orElseThrow();
+        assertThat(pptx.getKind()).isEqualTo(GovernanceFileKind.SKILL);
+        // La recette : python-pptx, et les briques d'une vraie présentation.
+        assertThat(pptx.getContent()).contains("python-pptx")
+                .contains(".pptx").containsIgnoringCase("puces").containsIgnoringCase("tableau")
+                .containsIgnoringCase("notes");
+        // L'échec NOMMÉ quand la lib manque (import gardé), et le drapeau sandbox/poste.
+        assertThat(pptx.getContent()).contains("ModuleNotFoundError")
+                .containsIgnoringCase("sandbox").containsIgnoringCase("poste")
+                .contains("pip install python-pptx");
     }
 
     @Test

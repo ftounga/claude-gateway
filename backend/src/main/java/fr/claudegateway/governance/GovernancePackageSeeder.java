@@ -128,7 +128,11 @@ public class GovernancePackageSeeder {
             new SeededFile("STATE.md", "STATE.md", GovernanceFileKind.TEMPLATE),
             new SeededFile("explique.md", ".claude/skills/explique.md", GovernanceFileKind.SKILL),
             new SeededFile("plan-dashboard.md", ".claude/skills/plan-dashboard.md",
-                    GovernanceFileKind.SKILL));
+                    GovernanceFileKind.SKILL),
+            // F-129 / SF-129-01 : la skill qui apprend à produire un vrai .pptx (python-pptx). Un
+            // fichier de skill de plus, même patron — l'agent le lit sur la machine et écrit un
+            // script qu'il exécute sur le terminal. Aucune capacité IA réimplémentée (Provider-First).
+            new SeededFile("pptx.md", ".claude/skills/pptx.md", GovernanceFileKind.SKILL));
 
     private final GovernancePackageRepository packages;
     private final GovernancePackageFileRepository files;
