@@ -3948,7 +3948,14 @@ public class AtelierChatService implements RelayInterruptTarget {
                     "Délègue une exploration en LECTURE SEULE à un agent qui ne voit pas cette "
                             + "conversation : il lit, cherche, et te rend une réponse courte. Utile "
                             + "quand répondre demande de parcourir beaucoup de fichiers dont tu n'as "
-                            + "pas besoin ensuite. Il ne peut ni écrire, ni exécuter de commande.",
+                            + "pas besoin ensuite. Il ne peut ni écrire, ni exécuter de commande. "
+                            // F-39 / SF-39-22 : doctrine de groupement. Le moteur (SF-39-21) exécute
+                            // en parallèle les explorations d'un même tour ; le gain n'apparaît que si
+                            // le modèle les émet groupées. Factuel (F-119).
+                            + "Quand tu as plusieurs questions INDÉPENDANTES à explorer, émets tous "
+                            + "les appels explore dans le MÊME tour : ils s'exécutent alors en "
+                            + "parallèle. Ne groupe PAS une exploration qui a besoin du résultat d'une "
+                            + "autre : enchaîne-la au tour suivant, une fois la première réponse reçue.",
                     Map.of("type", "object",
                             "properties", Map.of("question", stringProp, "path", stringProp),
                             "required", List.of("question"))));

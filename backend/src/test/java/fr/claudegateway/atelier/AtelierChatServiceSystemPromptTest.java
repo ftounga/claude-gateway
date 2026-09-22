@@ -708,6 +708,32 @@ class AtelierChatServiceSystemPromptTest {
     }
 
     @Test
+    void theExploreToolTeachesGroupingIndependentExplorations() {
+        // F-39 / SF-39-22 : le moteur (SF-39-21) exécute en parallèle les `explore` d'un même tour ;
+        // la doctrine, dans la description de l'outil, apprend à l'agent à les GROUPER quand elles sont
+        // indépendantes et à NE PAS les grouper quand l'une dépend de l'autre.
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+        agentProvider.enqueueFinal("fini");
+
+        service.chat(userId, workspaceId, "bonjour");
+
+        String exploreDesc = agentProvider.lastRequest.tools().stream()
+                .filter(t -> "explore".equals(t.name())).findFirst().orElseThrow().description();
+        // Grouper les indépendantes dans le même tour (parallélisme).
+        assertThat(exploreDesc).contains("INDÉPENDANTES");
+        assertThat(exploreDesc).contains("MÊME tour");
+        assertThat(exploreDesc).contains("en parallèle");
+        // Ne pas grouper une exploration qui dépend d'une autre.
+        assertThat(exploreDesc).contains("Ne groupe PAS");
+        assertThat(exploreDesc).contains("tour suivant");
+        // La garantie de base reste dite : lecture seule, ni écriture ni commande.
+        assertThat(exploreDesc).contains("LECTURE SEULE");
+        assertThat(exploreDesc).contains("ni écrire, ni exécuter de commande");
+    }
+
+    @Test
     void theGovernancePreambleFramesTheInjectedClaudeMd() {
         when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
         when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
