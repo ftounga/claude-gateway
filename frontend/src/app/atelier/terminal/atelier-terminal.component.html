@@ -1099,6 +1099,26 @@
         {{ submitting && steerable ? 'Préciser' : 'Envoyer' }}
       </button>
     </form>
+    <!-- F-146 / SF-146-01 — LES TEXTES COLLÉS, repliés en références. Ce qu'on voit est ce qui
+         part : retirer une puce retire sa référence du champ, et son texte ne sera pas envoyé. -->
+    @if (pastes().length > 0) {
+      <div class="terminal-pastes" role="group" aria-label="Textes collés">
+        @for (paste of pastes(); track paste.index) {
+          <span class="terminal-paste">
+            <mat-icon class="terminal-paste__icon" aria-hidden="true">content_paste</mat-icon>
+            texte collé #{{ paste.index }} · {{ paste.lines }} ligne{{ paste.lines > 1 ? 's' : '' }}
+            <button
+              type="button"
+              class="terminal-paste__remove"
+              (click)="removePaste(paste)"
+              [attr.aria-label]="'Retirer le texte collé numéro ' + paste.index"
+            >
+              ×
+            </button>
+          </span>
+        }
+      </div>
+    }
     <!-- F-144 / SF-144-01 — LA SUITE SUGGÉRÉE, dérivée du dernier tour et de rien d'autre : aucun
          appel au modèle, donc aucun jeton et aucune attente. Un clic REMPLIT le champ ; rien ne
          part sans un geste. Les puces s'effacent dès qu'on écrit. -->

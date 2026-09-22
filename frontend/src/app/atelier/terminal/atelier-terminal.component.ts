@@ -36,6 +36,14 @@ import { ProjectCostService } from '../../core/services/project-cost.service';
 import { TurnOutcome } from '../../shared/turn-suggestions/turn-suggestions';
 import { TurnSuggestionsComponent } from '../../shared/turn-suggestions/turn-suggestions.component';
 import { DictationButtonComponent } from '../../shared/dictation/dictation-button.component';
+import {
+  PastedText,
+  countLines,
+  expand,
+  referenceOf,
+  removeReference,
+  shouldFold,
+} from './pasted-text';
 import { MarkdownPipe } from '../../shared/markdown.pipe';
 import { TeamsLinkBadgeComponent } from '../../shared/teams-link-badge/teams-link-badge.component';
 import { TeamsLink } from '../teams/teams-link.service';
@@ -164,6 +172,10 @@ export const LONG_THREAD_TURNS = 40;
     // HUIT FEUILLES (F-126 / SF-126-02) : les questions repérables et leur rail « Vos questions »
     // vivent à part, pour la même raison de budget de build.
     './atelier-terminal-questions.component.scss',
+    // NEUF FEUILLES (F-146 / SF-146-01) : les textes collés repliés vivent à part, pour la même
+    // raison que les quatre précédentes — le budget de 12 ko de la feuille principale, dont le
+    // dépassement fait ÉCHOUER le build (constaté ici : 12,53 ko).
+    './atelier-terminal-pastes.component.scss',
   ],
 })
 export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
@@ -704,7 +716,37 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     if (files.length > 0) {
       event.preventDefault();
       this.filesSelected.emit(files);
+      return;
     }
+    // F-146 / SF-146-01 — UN LONG TEXTE COLLÉ NE NOIE PAS LA SAISIE. Le champ tient sur une ligne :
+    // y déverser trois cents lignes le rend illisible. On y met une RÉFÉRENCE, et le texte complet
+    // revient à l'envoi. Un collage court n'est pas replié : ce qui tient dans le champ y reste.
+    if (this.readOnly) {
+      return;
+    }
+    const text = event.clipboardData?.getData('text/plain') ?? '';
+    if (!shouldFold(text)) {
+      return;
+    }
+    event.preventDefault();
+    const index = this.pastes().length + 1;
+    this.pastes.update((all) => [...all, { index, text, lines: countLines(text) }]);
+    const reference = referenceOf(index);
+    this.draftChange.emit(this.draft ? `${this.draft} ${reference}` : reference);
+  }
+
+  /**
+   * Les textes collés mis de côté pour ce message (F-146 / SF-146-01).
+   *
+   * <p>Ils vivent le temps du message : après l'envoi, la liste repart de zéro — un collage du
+   * message précédent n'a rien à faire dans le suivant.</p>
+   */
+  readonly pastes = signal<PastedText[]>([]);
+
+  /** Retire un collage : sa référence disparaît du champ, et son texte ne partira pas. */
+  removePaste(paste: PastedText): void {
+    this.pastes.update((all) => all.filter((item) => item.index !== paste.index));
+    this.draftChange.emit(removeReference(this.draft, paste.index));
   }
 
   /** Ouvre le sélecteur de fichiers du trombone. */
@@ -1068,6 +1110,17 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     // Pendant un tour, envoyer PRÉCISE (F-84 / SF-84-06) — le parent en décide. Sans précision
     // possible (bac à sable hébergé), un envoi pendant un tour reste refusé.
     if (!this.submitting || this.steerable) {
+      // F-146 / SF-146-01 : les références encore présentes reprennent leur texte intégral. Celles
+      // que l'utilisateur a effacées ne sont PAS réinjectées — rien ne part qu'il n'ait sous les
+      // yeux. Le brouillon est réécrit avant l'émission, car c'est lui que le parent envoie.
+      const pastes = this.pastes();
+      if (pastes.length > 0) {
+        const expanded = expand(this.draft, pastes);
+        if (expanded !== this.draft) {
+          this.draftChange.emit(expanded);
+        }
+        this.pastes.set([]);
+      }
       this.send.emit();
     }
   }
