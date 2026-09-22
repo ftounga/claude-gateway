@@ -35,7 +35,10 @@ import { ProjectCostComponent } from '../../shared/project-cost/project-cost.com
 import { ProjectCostService } from '../../core/services/project-cost.service';
 import { TurnOutcome } from '../../shared/turn-suggestions/turn-suggestions';
 import { TurnSuggestionsComponent } from '../../shared/turn-suggestions/turn-suggestions.component';
-import { DictationButtonComponent } from '../../shared/dictation/dictation-button.component';
+import {
+  DictationButtonComponent,
+  DictationState,
+} from '../../shared/dictation/dictation-button.component';
 import {
   PastedText,
   countLines,
@@ -176,6 +179,9 @@ export const LONG_THREAD_TURNS = 40;
     // raison que les quatre précédentes — le budget de 12 ko de la feuille principale, dont le
     // dépassement fait ÉCHOUER le build (constaté ici : 12,53 ko).
     './atelier-terminal-pastes.component.scss',
+    // DIX FEUILLES (F-145 / SF-145-02) : l'état de dictée dans la zone de saisie, à part comme les
+    // précédentes — le budget de 12 ko de la feuille principale fait échouer le build.
+    './atelier-terminal-dictation.component.scss',
   ],
 })
 export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
@@ -742,6 +748,26 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    * message précédent n'a rien à faire dans le suivant.</p>
    */
   readonly pastes = signal<PastedText[]>([]);
+
+  /**
+   * Où en est la dictée (F-145 / SF-145-02) — **la zone de saisie elle-même** le traduit.
+   *
+   * <p>Une icône qui change de couleur dans un coin ne suffit pas : quand on parle, l'œil est sur le
+   * champ. C'est donc lui qui doit dire qu'on écoute, et qu'on n'écoute plus.</p>
+   */
+  readonly dictationState = signal<DictationState>('idle');
+
+  /** Ce que le champ annonce pendant une dictée, à la place de son invite ordinaire. */
+  dictationPlaceholder(): string | null {
+    switch (this.dictationState()) {
+      case 'recording':
+        return 'Parlez — relâchez la barre d\'espace pour transcrire';
+      case 'transcribing':
+        return 'Transcription en cours…';
+      default:
+        return null;
+    }
+  }
 
   /** Retire un collage : sa référence disparaît du champ, et son texte ne partira pas. */
   removePaste(paste: PastedText): void {

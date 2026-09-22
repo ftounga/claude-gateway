@@ -1,0 +1,49 @@
+/* L'ÉTAT DE DICTÉE, DANS LA ZONE DE SAISIE (F-145 / SF-145-02).
+
+   Une icône qui change de couleur dans un coin ne suffit pas : quand on parle, l'œil est sur le
+   champ. C'est donc le champ qui dit qu'on écoute — et qu'on n'écoute plus.
+
+   Feuille à part comme les neuf précédentes : le budget de 12 ko de la feuille principale du
+   terminal fait ÉCHOUER le build (constaté en F-146). Aucune couleur nouvelle. */
+
+.terminal-input--recording {
+  border-color: var(--cg-error);
+  box-shadow: 0 0 0 1px var(--cg-error);
+}
+
+/* Le point qui bat : il dit « en ce moment », ce qu'un texte seul ne dit pas. */
+.terminal-input--recording::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  margin-left: 4px;
+  border-radius: 50%;
+  background: var(--cg-error);
+  animation: dictation-pulse 1.2s ease-in-out infinite;
+}
+
+.terminal-input--recording .terminal-field::placeholder {
+  color: var(--cg-error);
+}
+
+.terminal-input--transcribing {
+  border-color: var(--cg-accent);
+}
+
+.terminal-input--transcribing .terminal-field::placeholder {
+  color: var(--cg-gold-ink);
+}
+
+@keyframes dictation-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+/* Un battement permanent gêne certaines personnes : on le coupe quand le système le demande, et la
+   couleur suffit alors à dire l'état. */
+@media (prefers-reduced-motion: reduce) {
+  .terminal-input--recording::before {
+    animation: none;
+  }
+}
