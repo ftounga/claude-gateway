@@ -9,6 +9,7 @@ import { RadarSubjectRef } from '../../core/models/radar-subject.models';
 import { HostPresenceService, elapsedLabel } from '../../core/services/host-presence.service';
 import { LiveBadgeComponent } from '../../shared/live-badge/live-badge.component';
 import { TerminalPreviewComponent } from '../../shared/terminal-preview/terminal-preview.component';
+import { ProjectCostComponent } from '../../shared/project-cost/project-cost.component';
 import { tileCenter } from '../forge-projects';
 
 /**
@@ -23,7 +24,8 @@ import { tileCenter } from '../forge-projects';
  */
 @Component({
   selector: 'app-forge-project-tile',
-  imports: [LiveBadgeComponent, MatButtonModule, MatIconModule, MatMenuModule, RouterLink, TerminalPreviewComponent],
+  imports: [LiveBadgeComponent, MatButtonModule, MatIconModule, MatMenuModule, ProjectCostComponent,
+    RouterLink, TerminalPreviewComponent],
   templateUrl: './forge-project-tile.component.html',
   styleUrl: './forge-project-tile.component.scss',
 })

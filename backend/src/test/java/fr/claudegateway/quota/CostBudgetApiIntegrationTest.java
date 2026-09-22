@@ -229,4 +229,25 @@ class CostBudgetApiIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body));
     }
+
+    // --------------------------------- ce que chaque projet a coûté (F-143 / SF-143-01)
+
+    @Test
+    void projectCostsAreReservedToAdmins() throws Exception {
+        // Comme tout F-133 : le montant ne quitte pas le serveur pour qui n'est pas administrateur.
+        mockMvc.perform(get("/api/admin/cost/projects").contextPath("/api")
+                        .header("Authorization", "Bearer " + userToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void projectCostsCarryTheWeekAndTheTotal() throws Exception {
+        mockMvc.perform(get("/api/admin/cost/projects").contextPath("/api")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                // La fenêtre est celle de tout F-133 : la semaine ISO, du lundi au dimanche.
+                .andExpect(jsonPath("$.from").exists())
+                .andExpect(jsonPath("$.to").exists())
+                .andExpect(jsonPath("$.projects").isArray());
+    }
 }

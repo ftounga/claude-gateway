@@ -1,3 +1,5 @@
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
@@ -22,7 +24,12 @@ describe('ForgeProjectTileComponent', () => {
   });
 
   function render(project: HostProjectSummary, hosted = false): HTMLElement {
-    TestBed.configureTestingModule({ imports: [ForgeProjectTileComponent] });
+    TestBed.configureTestingModule({
+      imports: [ForgeProjectTileComponent],
+      // F-143 / SF-143-01 : la tuile lit ce que le projet a coûté. Sans droit de lecture, elle ne
+      // montre rien — l'état par défaut de ces tests.
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    });
     fixture = TestBed.createComponent(ForgeProjectTileComponent);
     fixture.componentRef.setInput('project', project);
     fixture.componentRef.setInput('hosted', hosted);
@@ -105,7 +112,12 @@ describe('ForgeProjectTileComponent', () => {
       TestBed.resetTestingModule();
       TestBed.configureTestingModule({
         imports: [ForgeProjectTileComponent],
-        providers: [provideRouter([]), provideNoopAnimations()],
+        providers: [
+      // F-143 / SF-143-01 : la tuile porte ce que le projet a coûté, lu sur
+      // `/api/admin/cost/projects`. Sans droit de lecture, elle ne montre rien — c'est
+      // l'état par défaut de ces tests.
+        provideHttpClient(),
+        provideHttpClientTesting(),provideRouter([]), provideNoopAnimations()],
       });
       fixture = TestBed.createComponent(ForgeProjectTileComponent);
       fixture.componentRef.setInput('project', base);
