@@ -75,6 +75,54 @@ public interface UsageTurnRepository extends JpaRepository<UsageTurn, UUID> {
     List<HostCostAggregate> aggregateCostByHost(@Param("userId") UUID userId,
             @Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to);
 
+    /**
+     * <b>Dépense réelle par PROJET</b>, sur une fenêtre (F-143 / SF-143-01).
+     *
+     * <p>Le grain manquant. F-133 agrège par <b>poste</b> — ce qu'un client coûte —, et F-16 agrège
+     * par projet mais en <b>jetons</b> seulement. Or un client porte plusieurs projets, et savoir
+     * lequel coûte est ce qui permet d'arbitrer.</p>
+     *
+     * <p>Mêmes règles que son voisin par poste : {@code coalesce} ramène à zéro les tours antérieurs
+     * à F-133, qui n'ont pas de coût — leur substituer une estimation donnerait un montant crédible
+     * et faux. Les tours <b>sans projet</b> sont écartés ici : la question posée est « ce projet a
+     * coûté combien », et une ligne sans projet n'y répond pas.</p>
+     *
+     * <p><b>Le filtre {@code user_id} est dans la requête</b>, pas après coup : c'est ce qui garantit
+     * qu'aucune dépense d'un autre compte ne peut être additionnée à celle-ci.</p>
+     *
+     * @param userId utilisateur du contexte de sécurité (jamais un paramètre client)
+     * @param from   borne basse incluse
+     * @param to     borne haute <b>exclue</b>
+     */
+    @Query("""
+            select t.workspaceId as workspaceId,
+                   coalesce(sum(t.providerCostUsd), 0) as costUsd,
+                   count(t) as turns
+            from UsageTurn t
+            where t.userId = :userId and t.workspaceId is not null
+                  and t.occurredAt >= :from and t.occurredAt < :to
+            group by t.workspaceId
+            """)
+    List<ProjectCostAggregate> aggregateCostByProject(@Param("userId") UUID userId,
+            @Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to);
+
+    /**
+     * <b>Dépense réelle par projet depuis l'origine</b> (F-143 / SF-143-01) — sans borne de temps.
+     *
+     * <p>Une requête distincte plutôt qu'une fenêtre très large : « depuis l'origine » n'est pas une
+     * fenêtre, et une borne arbitraire (dix ans) finirait par devenir fausse sans que personne ne le
+     * remarque.</p>
+     */
+    @Query("""
+            select t.workspaceId as workspaceId,
+                   coalesce(sum(t.providerCostUsd), 0) as costUsd,
+                   count(t) as turns
+            from UsageTurn t
+            where t.userId = :userId and t.workspaceId is not null
+            group by t.workspaceId
+            """)
+    List<ProjectCostAggregate> aggregateCostByProjectAllTime(@Param("userId") UUID userId);
+
     /** Tours d'un utilisateur, les plus récents d'abord (diagnostic et tests ; isolation `user_id`). */
     List<UsageTurn> findByUserIdOrderByOccurredAtDesc(UUID userId);
 

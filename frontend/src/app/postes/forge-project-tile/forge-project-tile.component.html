@@ -14,6 +14,11 @@
     <span class="projet__path">{{ path() }}</span>
   }
 
+  <!-- F-143 / SF-143-01 — CE QUE CE PROJET A COÛTÉ : la semaine, puis le total. Un projet calme
+       cette semaine peut avoir coûté cher depuis mars ; c'est le total qu'on relit pour décider.
+       Rien ne s'affiche hors administration. -->
+  <app-project-cost [projectId]="project().id"></app-project-cost>
+
   <!-- UN SEUL CONTENU CENTRAL. L'attente et les dernières lignes passent par le composant unique de
        l'aperçu (§12) : il ÉCRIT « Attend votre autorisation » et la commande — jamais la couleur seule. -->
   <div class="projet__center">

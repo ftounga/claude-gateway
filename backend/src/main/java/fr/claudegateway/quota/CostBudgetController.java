@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import fr.claudegateway.auth.CurrentUser;
+import fr.claudegateway.quota.dto.ProjectCostView;
 import fr.claudegateway.quota.dto.CostBudgetRequest;
 import fr.claudegateway.quota.dto.CostBudgetResponse;
 import jakarta.validation.Valid;
@@ -35,13 +36,16 @@ public class CostBudgetController {
     private final CostBudgetService service;
     private final CostAlertService alertService;
     private final CostSummaryService summaryService;
+    private final ProjectCostService projectCostService;
     private final CurrentUser currentUser;
 
     public CostBudgetController(CostBudgetService service, CostAlertService alertService,
-            CostSummaryService summaryService, CurrentUser currentUser) {
+            CostSummaryService summaryService, CurrentUser currentUser,
+            ProjectCostService projectCostService) {
         this.service = service;
         this.alertService = alertService;
         this.summaryService = summaryService;
+        this.projectCostService = projectCostService;
         this.currentUser = currentUser;
     }
 
@@ -99,5 +103,22 @@ public class CostBudgetController {
     public CostSummary summary(
             @RequestParam(name = "period", defaultValue = "week") String period) {
         return summaryService.summary(currentUser.requireId(), period);
+    }
+
+    /**
+     * <b>Ce que chaque projet a coûté</b> (F-143 / SF-143-01) : la semaine en cours, et le total
+     * depuis l'origine.
+     *
+     * <p>Le grain qui manquait entre la réponse (SF-133-02) et le client (SF-133-03). Un client
+     * porte plusieurs projets, et c'est le projet qu'on ouvre : savoir lequel coûte est ce qui
+     * permet d'arbitrer.</p>
+     *
+     * <p><b>Deux montants, pas un</b> : un projet à 2 € cette semaine peut en avoir coûté 300 depuis
+     * mars. Les deux viennent du <b>même</b> service, qui délègue conversion et fenêtre plutôt que
+     * de les redéfinir.</p>
+     */
+    @GetMapping("/projects")
+    public ProjectCostView projects() {
+        return projectCostService.describe(currentUser.requireId());
     }
 }

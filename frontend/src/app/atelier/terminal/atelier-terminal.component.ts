@@ -31,6 +31,8 @@ import {
 import { LiveBadgeComponent } from '../../shared/live-badge/live-badge.component';
 import { WeeklyBudgetComponent } from '../../shared/weekly-budget/weekly-budget.component';
 import { WeeklyBudgetService } from '../../core/services/weekly-budget.service';
+import { ProjectCostComponent } from '../../shared/project-cost/project-cost.component';
+import { ProjectCostService } from '../../core/services/project-cost.service';
 import { MarkdownPipe } from '../../shared/markdown.pipe';
 import { TeamsLinkBadgeComponent } from '../../shared/teams-link-badge/teams-link-badge.component';
 import { TeamsLink } from '../teams/teams-link.service';
@@ -130,7 +132,7 @@ export const LONG_THREAD_TURNS = 40;
     TeamsLinkBadgeComponent, NgTemplateOutlet, TerminalEmailComponent, PageBlockComponent, PagePanelComponent,
     MatButtonToggleModule, MatIconModule, MatProgressBarModule, MatProgressSpinnerModule,
     MatTooltipModule, RouterLink,
-    WeeklyBudgetComponent,
+    WeeklyBudgetComponent, ProjectCostComponent,
   ],
   templateUrl: './atelier-terminal.component.html',
   // DEUX FEUILLES, ET C'EST DÉLIBÉRÉ (F-83 / SF-83-02) : la peau « lecture seule » vit à part.
@@ -224,6 +226,8 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     // tait s'il n'y a pas de droit de lecture.
     if (value) {
       this.weeklyBudget.load();
+      // F-143 / SF-143-01 : ce que ce projet a coûté, lu une fois et partagé avec la Forge.
+      this.projectCosts.load();
     }
   }
   get hostId(): string | null {
@@ -915,6 +919,8 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
   /** Le budget de la semaine, partagé avec la Forge (F-133 / SF-133-15). */
   private readonly weeklyBudget = inject(WeeklyBudgetService);
+  /** Ce que chaque projet a coûté (F-143 / SF-143-01), partagé avec la Forge. */
+  private readonly projectCosts = inject(ProjectCostService);
 
   private readonly changeDetector = inject(ChangeDetectorRef);
   private readonly snackBar = inject(MatSnackBar);

@@ -48,6 +48,8 @@
            chaque réponse était déjà là (SF-133-02) ; ce qui manquait était le cumul et son
            plafond. Rien ne s'affiche sans budget applicable, ni hors administration. -->
       <app-weekly-budget [hostId]="hostId" [compact]="true"></app-weekly-budget>
+      <!-- F-143 / SF-143-01 — et ce que CE PROJET a coûté : la semaine, puis le total. -->
+      <app-project-cost [projectId]="projectId" [compact]="true"></app-project-cost>
       <!-- Pastille de moteur (F-39 / SF-39-08, D1) : dit **où le code s'exécute**, jamais un nom de
            mode. C'est tout ce qui reste, à l'écran, des anciens « Assistant » et « Terminal ». -->
       <span
