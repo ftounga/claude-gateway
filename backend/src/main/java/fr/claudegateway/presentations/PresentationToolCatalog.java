@@ -53,6 +53,10 @@ public class PresentationToolCatalog {
             + "gcp/onprem, rendus par graphviz) → PNG → add_picture — recette dans le skill pptx. C'est le "
             + "HAUT DE GAMME, dans le sandbox (exige python+graphviz) ; si indisponible, REPLI NOMMÉ sur "
             + "Mermaid architecture-beta (icônes génériques, zéro installation).\n"
+            + "IMAGE DÉCORATIVE : pour un ORNEMENT (couverture du deck, visuel d'ambiance — jamais un "
+            + "schéma), tu peux générer une image avec generate_image ; elle est déposée dans le projet et "
+            + "s'insère en add_picture. JAMAIS pour une architecture ni un diagramme technique (icônes "
+            + "inventées) : garde le diagramme-as-code (Mermaid / diagrams) ci-dessus.\n"
             + "ACCORD : quand une présentation serait utile, PROPOSE-la en une phrase et attends, sauf si "
             + "l'utilisateur l'a demandée. Pour REMPLACER une présentation déjà capturée, rappelle son "
             + "presentation_id (nouveau fichier, même entrée).";

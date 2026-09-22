@@ -620,6 +620,17 @@ public class AtelierChatService implements RelayInterruptTarget {
     private final fr.claudegateway.presentations.PresentationToolCatalog presentationToolCatalog;
     /** Exécution de {@code presentation_publish} (F-129 / SF-129-02) ; {@code null} pour les formes historiques. */
     private final fr.claudegateway.presentations.PresentationToolExecutor presentationToolExecutor;
+    /**
+     * L'outil {@code generate_image} <b>et sa garde</b> (F-142 / SF-142-04) : génère une image décorative
+     * en relayant un fournisseur d'images. Même garde d'espace que les pages ; {@code none()} par défaut
+     * (formes historiques, tests) = l'outil n'existe pas.
+     */
+    private fr.claudegateway.images.ImageToolCatalog imageToolCatalog =
+            fr.claudegateway.images.ImageToolCatalog.none();
+    /** Exécution de {@code generate_image} (F-142 / SF-142-04) ; {@code null} pour les formes historiques. */
+    private fr.claudegateway.images.ImageToolExecutor imageToolExecutor;
+    /** Bornes du fournisseur d'images (F-142 / SF-142-04) ; {@code null} pour les formes historiques. */
+    private fr.claudegateway.images.ImageGenerationProperties imageProperties;
 
     /**
      * Tours pour lesquels une interruption a été demandée (F-38 / SF-38-07, même geste que F-32).
@@ -922,6 +933,22 @@ public class AtelierChatService implements RelayInterruptTarget {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setClientMailTool(fr.claudegateway.mail.ClientMailTool clientMailTool) {
         this.clientMailTool = clientMailTool;
+    }
+
+    /**
+     * Branche l'outil de génération d'images décoratives (F-142 / SF-142-04) par mutateur, pour ne
+     * toucher à aucun constructeur conservé : {@code null} (formes historiques / tests) ⇒ l'outil n'est
+     * jamais donné, comportement d'avant F-142.
+     */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setImageGenerationTool(fr.claudegateway.images.ImageToolCatalog imageToolCatalog,
+            fr.claudegateway.images.ImageToolExecutor imageToolExecutor,
+            fr.claudegateway.images.ImageGenerationProperties imageProperties) {
+        if (imageToolCatalog != null) {
+            this.imageToolCatalog = imageToolCatalog;
+        }
+        this.imageToolExecutor = imageToolExecutor;
+        this.imageProperties = imageProperties;
     }
 
     /** Branche l'écriture des cartes du poste pour le reclassement (F-141 / SF-141-04). */
@@ -1255,6 +1282,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         java.util.Map<String, fr.claudegateway.mail.ClientMailReceipt> emailsOfTurn = new java.util.HashMap<>();
         /** Pages publiées pendant ce tour (F-109 / SF-109-03), par appel, local au tour. */
         java.util.Map<String, fr.claudegateway.pages.PageBlock> pagesOfTurn = new java.util.HashMap<>();
+        /** Nombre d'images décoratives générées pendant ce tour (F-142 / SF-142-04), pour la borne par tour. */
+        int[] imageCountOfTurn = {0};
         // La compaction (F-117 / SF-117-01) est un appel modèle : sa consommation entre dans les
         // compteurs du tour dès le départ, pour passer par le décompte d'usage existant
         // (`recordUsage`) sans chemin de quota séparé ni double comptage.
@@ -1680,6 +1709,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                         .isPresentationTool(call.name())) {
                     // F-129 : la présentation (.pptx) est rangée par la gateway comme un artefact.
                     outcome = applyPresentationPublish(userId, workspace, callId, call, listener);
+                } else if (fr.claudegateway.images.ImageToolCatalog.isImageTool(call.name())) {
+                    // F-142 / SF-142-04 : l'image décorative est générée par la gateway (relais fournisseur),
+                    // rangée, puis déposée dans le projet — jamais un schéma d'architecture.
+                    outcome = applyImageGenerate(userId, workspace, callId, call, listener, imageCountOfTurn);
                 } else {
                     outcome = executeTool(userId, workspace, callId, call, listener, deadline,
                             planOfTurn, cardsOfTurn);
@@ -2491,6 +2524,51 @@ public class AtelierChatService implements RelayInterruptTarget {
     }
 
     /**
+     * <b>Générer une image décorative</b> (F-142 / SF-142-04).
+     *
+     * <p>Même doctrine que les pages et les présentations : second verrou de garde ici, <b>accord d'un
+     * clic</b> (la porte d'autorisation existante, couverte par « tout autoriser pour ce message »), et
+     * <b>borne par tour</b> ({@code app.image.max-per-turn}). La gateway relaie le fournisseur, range
+     * l'image et la dépose dans le projet ; l'exécuteur rend le chemin à insérer. Refus ou délai : rien
+     * n'est généré, et l'agent le sait. Pas de bloc riche : l'image se voit dans la page/slide où l'agent
+     * l'insère.</p>
+     */
+    private ToolOutcome applyImageGenerate(UUID userId, Workspace workspace, String callId,
+            AgentToolCall call, AtelierProgressListener listener, int[] imageCountOfTurn) {
+        if (imageToolExecutor == null || !imageToolCatalog.isOpenFor(userId, workspace)) {
+            return ToolOutcome.error("La génération d'images n'est pas ouverte dans ce terminal. "
+                    + "Réponds en clair.");
+        }
+        int cap = imageProperties == null ? 3 : imageProperties.maxPerTurn();
+        if (imageCountOfTurn[0] >= cap) {
+            return ToolOutcome.error("Limite d'images atteinte pour ce message (" + cap + ") : réutilise "
+                    + "une image déjà générée, ou poursuis sans nouvelle image.");
+        }
+        String prompt = fr.claudegateway.images.ImageToolExecutor.auditTarget(call.input());
+        if (!blanketAllowedTurns.contains(turnKey(userId, workspace.getId()))) {
+            RunnerConfirmationGate.Outcome decision = askPermission(userId, workspace.getId(), callId,
+                    call.name(), "Générer une image décorative « "
+                            + (prompt == null ? "sans description" : prompt) + " »", listener);
+            if (!decision.decision().allows()) {
+                if (decision.decision() == RunnerConfirmationGate.Decision.TIMEOUT) {
+                    return ToolOutcome.error("Génération refusée : aucune autorisation n'a été donnée dans "
+                            + "le délai imparti.");
+                }
+                return ToolOutcome.error(decision.reason() == null || decision.reason().isBlank()
+                        ? "Génération refusée par l'utilisateur."
+                        : "Génération refusée par l'utilisateur. Motif : " + decision.reason());
+            }
+        }
+        fr.claudegateway.images.ImageToolExecutor.Outcome outcome =
+                imageToolExecutor.execute(userId, workspace, callId, call.input());
+        if (outcome.error()) {
+            return ToolOutcome.error(outcome.content());
+        }
+        imageCountOfTurn[0]++;
+        return ToolOutcome.info(outcome.content());
+    }
+
+    /**
      * Ce que le modèle reçoit en retour : <b>ce qui a été retenu</b>, pour qu'il puisse se corriger
      * sans qu'on ait à le deviner à l'écran. Le décompte « explicite / à confirmer » est là pour
      * cela — un bloc entièrement « à confirmer » est un bloc qu'il faut étayer.
@@ -3058,6 +3136,11 @@ public class AtelierChatService implements RelayInterruptTarget {
             // Traité par la boucle (F-109 / SF-109-03), jamais ici : ce chemin ne porte pas le bloc du tour.
             return ToolOutcome.error("La publication de pages n'est pas ouverte ici. Réponds en clair.");
         }
+        // F-142 / SF-142-04 : la génération d'images est traitée par la boucle (garde + accord + borne),
+        // jamais par ce chemin de routage vers la machine.
+        if (fr.claudegateway.images.ImageToolCatalog.isImageTool(call.name())) {
+            return ToolOutcome.error("La génération d'images n'est pas ouverte ici. Réponds en clair.");
+        }
         if (workspace.isRunnerTarget()) {
             return executeToolOnRunner(userId, workspace, callId, call, listener, deadline);
         }
@@ -3451,6 +3534,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                 // F-109 / SF-109-02 : une page se lit par son titre, jamais par son contenu.
                 if (fr.claudegateway.pages.PageToolCatalog.isPageTool(call.name())) {
                     yield shorten(fr.claudegateway.pages.PageToolExecutor.auditTarget(input), AUDIT_TARGET_CHARS);
+                }
+                // F-142 / SF-142-04 : une génération d'image se lit par sa description, jamais l'image.
+                if (fr.claudegateway.images.ImageToolCatalog.isImageTool(call.name())) {
+                    yield shorten(fr.claudegateway.images.ImageToolExecutor.auditTarget(input), AUDIT_TARGET_CHARS);
                 }
                 if (fr.claudegateway.teams.TeamsToolCatalog.isCapture(call.name())) {
                     yield shorten(teamsCaptureAuditTarget(call), AUDIT_TARGET_CHARS);
@@ -4034,6 +4121,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         tools.addAll(pageToolCatalog.toolsFor(userId, workspace));
         // F-129 / SF-129-02 : l'outil presentation_publish, sous la même garde d'espace que les pages.
         tools.addAll(presentationToolCatalog.toolsFor(userId, workspace));
+        // F-142 / SF-142-04 : l'outil de génération d'images décoratives, sous la même garde d'espace.
+        tools.addAll(imageToolCatalog.toolsFor(userId, workspace));
         return List.copyOf(tools);
     }
 
@@ -4256,6 +4345,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         // F-129 / SF-129-02 : le guide des présentations, sous la même garde que l'outil.
         if (presentationToolCatalog.isOpenFor(userId, workspace)) {
             system.append(fr.claudegateway.presentations.PresentationToolCatalog.GUIDE).append("\n\n");
+        }
+        // F-142 / SF-142-04 : le guide des images décoratives (frontière « jamais l'architecture »),
+        // sous la même garde que l'outil.
+        if (imageToolCatalog.isOpenFor(userId, workspace)) {
+            system.append(fr.claudegateway.images.ImageToolCatalog.GUIDE).append("\n\n");
         }
 
         // Compteurs d'amorçage : ces lectures sont journalisées en UNE ligne (F-38 / SF-38-08).

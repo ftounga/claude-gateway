@@ -133,4 +133,13 @@ class PageToolCatalogTest {
                 .containsIgnoringCase("sandbox")
                 .contains("architecture-beta");
     }
+
+    @Test
+    @DisplayName("SF-142-04 — le guide renvoie à generate_image pour le DÉCORATIF, jamais l'architecture")
+    void designGuideMentionsDecorativeImage() {
+        assertThat(PageToolCatalog.DESIGN_GUIDE)
+                .contains("generate_image")
+                .containsIgnoringCase("décorati")
+                .containsIgnoringCase("jamais");
+    }
 }

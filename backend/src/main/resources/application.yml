@@ -442,6 +442,30 @@ app:
       # aligné sur OcrPollingWorker/IngestionWorker. `false` en test pour piloter le service directement.
       enabled: ${APP_STT_WORKER_ENABLED:true}
       interval: ${APP_STT_WORKER_INTERVAL:20000}
+  image:
+    # FOURNISSEUR D'IMAGES (F-142 / SF-142-04) : génération d'images DÉCORATIVES (couverture de deck,
+    # ambiance de page) relayée depuis la gateway. Compatible OpenAI (gpt-image / DALL·E) : base-url +
+    # model par config, comme le STT et les embeddings RAG.
+    # ÉTEINT PAR DÉFAUT (DRAPEAU FORT) : tant que api-key n'est pas fournie par l'environnement (secret
+    # backend-secrets APP_IMAGE_API_KEY), aucune donnée ne part et l'outil répond « génération d'images
+    # non configurée ». La clé vient EXCLUSIVEMENT de l'environnement, jamais commitée ni journalisée,
+    # jamais exposée au client. USAGE STRICT : décoratif seulement, JAMAIS un schéma d'architecture
+    # (qui reste diagramme-as-code, SF-142-01/02/03).
+    base-url: ${APP_IMAGE_BASE_URL:https://api.openai.com/v1}
+    api-key: ${APP_IMAGE_API_KEY:}
+    model: ${APP_IMAGE_MODEL:gpt-image-1}
+    # Borne de l'appel au fournisseur (async borné, règle CLAUDE.md) ; au-delà => FAILED nommé.
+    timeout: ${APP_IMAGE_TIMEOUT:PT60S}
+    # Borne de taille de l'image rangée (8 Mo, aligné sur une page F-109) ; au-delà => rejet nommé.
+    max-image-bytes: ${APP_IMAGE_MAX_IMAGE_BYTES:8388608}
+    # Longueur maximale d'une description (prompt).
+    max-prompt-chars: ${APP_IMAGE_MAX_PROMPT_CHARS:1000}
+    # Nombre maximal d'images par tour (la boucle applique cette borne).
+    max-per-turn: ${APP_IMAGE_MAX_PER_TURN:3}
+    # Quota d'images REELLES (READY) par compte.
+    max-account-images: ${APP_IMAGE_MAX_ACCOUNT_IMAGES:500}
+    # Coût enregistré par image (EUR) — journalisé sur la ligne generated_images.
+    cost-eur-per-image: ${APP_IMAGE_COST_EUR_PER_IMAGE:0.04}
   governance:
     # Le JUGE INDÉPENDANT (F-94 / SF-94-02) : un SECOND appel qui compare la carte du poste aux
     # notes des projets et répond à une question unique — « qu'est-ce qui est cité là et absent

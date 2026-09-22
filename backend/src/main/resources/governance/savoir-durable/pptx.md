@@ -212,6 +212,20 @@ sur le serveur/cluster** — comme le rendu Mermaid et le rendu des slides.
    Garde le **code Python** du diagramme à côté du livrable : le diagramme reste **éditable et
    régénérable**.
 
+## Images décoratives (génération IA) : `generate_image`, ornement seulement
+
+Pour un **ornement** — couverture du deck, visuel d'ambiance d'une slide, bandeau —, tu peux **générer
+une image** avec l'outil **`generate_image`** : la gateway relaie un fournisseur d'images, range l'image
+et la **dépose dans le projet** ; réfère le chemin rendu en `add_picture` (slide) ou en pièce jointe
+(page). C'est un service **payant et borné** (nombre par tour, quota de compte) et il demande l'accord de
+l'utilisateur — n'en génère que lorsqu'une illustration sert vraiment.
+
+**FRONTIÈRE ABSOLUE — décoratif uniquement.** N'utilise **JAMAIS** `generate_image` pour un **schéma
+d'architecture** ni un diagramme technique : l'IA d'images invente des icônes, du texte en charabia, des
+liens absurdes — inutilisable en livrable. Un schéma reste du **diagramme-as-code** : Mermaid (recette
+ci-dessus) ou la lib `diagrams` (icônes cloud officielles). Décoratif = `generate_image` ; technique =
+diagramme-as-code.
+
 ## Pour l'aperçu dans l'application (lisible slide par slide)
 
 Le `.pptx` se **télécharge** toujours. Pour que l'utilisateur **lise le deck entièrement dans l'app**
