@@ -54,6 +54,17 @@ class PresentationToolCatalogTest {
     }
 
     @Test
+    @DisplayName("SF-142-02 : le guide apprend le diagramme-as-code inséré en slide (renvoi skill pptx)")
+    void guideTeachesDiagramInSlide() {
+        assertThat(PresentationToolCatalog.GUIDE)
+                .containsIgnoringCase("diagramme")
+                .containsIgnoringCase("mermaid")
+                .contains("add_picture")
+                .containsIgnoringCase("sandbox")
+                .containsIgnoringCase("factuel");
+    }
+
+    @Test
     @DisplayName("catalogue vide (none) → jamais d'outil")
     void noneGivesNothing() {
         assertThat(PresentationToolCatalog.none().isOpenFor(userId, workspace)).isFalse();

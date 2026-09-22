@@ -140,6 +140,11 @@ class GovernancePackageSeederTest {
         // SF-129-03 : le rendu par images pour l'aperçu in-app, dans le sandbox (pas de composant serveur).
         assertThat(pptx.getContent()).contains("pdftoppm").contains("--convert-to pdf")
                 .containsIgnoringCase("png");
+        // SF-142-02 : la recette « diagramme dans une slide » — Mermaid → PNG (mmdc) → add_picture,
+        // dans le sandbox, échec nommé si le moteur manque, et la règle factuelle (F-119).
+        assertThat(pptx.getContent()).containsIgnoringCase("mermaid")
+                .contains("mmdc").contains("add_picture")
+                .containsIgnoringCase("sandbox").containsIgnoringCase("factuel");
     }
 
     @Test

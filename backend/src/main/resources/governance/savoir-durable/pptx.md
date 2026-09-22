@@ -88,6 +88,55 @@ le demande**. On l'écrit avec la bibliothèque Python `python-pptx` et on l'ex�
 4. **Dis où est le fichier** (chemin complet). C'est ce fichier que l'application capturera pour
    l'afficher et le proposer au téléchargement (F-129).
 
+## Insérer un diagramme dans une slide (schéma d'architecture, flux, séquence)
+
+Pour un **schéma** — architecture cloud/on-prem, flux, séquence —, ne mets pas une image inventée par
+une IA (icônes fausses, texte en charabia). On fait du **diagramme-as-code** : exact, éditable,
+déterministe. La chaîne est **diagramme Mermaid → image PNG → `add_picture`**, et elle tourne
+**entièrement sur le terminal (sandbox), jamais sur le serveur/cluster** — comme le rendu des slides en
+images ci-dessous.
+
+1. **Écris le diagramme en Mermaid** (même langage que dans les pages, cf. F-142/SF-142-01) : `flowchart`
+   (flux), `sequenceDiagram` (séquence), `architecture-beta` (architecture cloud/on-prem : group,
+   service, edge). **FACTUEL (F-119)** : ne dessine que ce qui est **établi** — jamais un composant ni un
+   lien inventé ; ce qui est supposé se marque « (supposé) ».
+
+2. **Rends-le en PNG dans le sandbox** avec `mmdc` (mermaid-cli). Mets l'échec **nommé** si l'outil manque
+   (jamais de traceback nu) :
+
+   ```bash
+   # Sandbox : installe si besoin (tire chromium/puppeteer).
+   npm install -g @mermaid-js/mermaid-cli   # fournit `mmdc`
+   mmdc -i archi.mmd -o archi.png -b transparent -w 1600
+   ```
+
+   - **Échec nommé** : si `mmdc` (ou son chromium) est absent **et** l'installation est bloquée (poste
+     verrouillé, proxy d'entreprise), **dis-le** clairement — par exemple :
+     « Le moteur de rendu de diagramme (`mmdc`/chromium) n'est pas disponible ici et son installation est
+     bloquée. Je peux (a) rendre ce diagramme dans une **page** (rendu navigateur, zéro installation,
+     cf. diagrammes en page) et livrer le deck sans cette image, ou (b) insérer le **code Mermaid en zone
+     de texte** dans la slide. » **Ne fabrique pas** de fausse image, ne pose pas d'image cassée.
+   - Si le code Mermaid est invalide, `mmdc` échoue : signale CE diagramme en échec, n'insère pas d'image,
+     livre le reste du deck.
+
+3. **Insère le PNG dans la slide** avec `python-pptx`, avec un **titre** et, si utile, une **légende** :
+
+   ```python
+   s = prs.slides.add_slide(prs.slide_layouts[5])   # disposition « titre seul »
+   s.shapes.title.text = "Architecture cible — flux d'ingestion"
+   s.shapes.add_picture("archi.png", Inches(0.6), Inches(1.4), width=Inches(9))
+   # Légende facultative sous le schéma :
+   box = s.shapes.add_textbox(Inches(0.6), Inches(6.6), Inches(9), Inches(0.5))
+   box.text_frame.text = "Source : carte d'infra du poste (établi). Le lien (supposé) est marqué."
+   ```
+
+   Dimensionne l'image pour tenir dans la slide (largeur ~9 pouces sur un deck 10 pouces) ; garde le
+   **code Mermaid** (le `.mmd`) à côté du deck : le diagramme reste **éditable et régénérable**.
+
+4. Le reste est identique : le `.pptx` porte la slide, et l'aperçu in-app (ci-dessous) la rend en PNG
+   comme les autres — le diagramme est lisible à l'ouverture **et** dans la visionneuse, sans rien
+   ajouter côté application.
+
 ## Pour l'aperçu dans l'application (lisible slide par slide)
 
 Le `.pptx` se **télécharge** toujours. Pour que l'utilisateur **lise le deck entièrement dans l'app**

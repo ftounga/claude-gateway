@@ -43,6 +43,11 @@ public class PresentationToolCatalog {
             + "chemins ORDONNÉS dans slides. Le rendu se fait LÀ OÙ TU TRAVAILLES (sandbox de préférence : "
             + "`soffice --headless --convert-to pdf deck.pptx` puis `pdftoppm -png -r 150 deck.pdf slide`), "
             + "jamais sur un composant serveur dédié. Sans slides, seul le téléchargement est offert.\n"
+            + "DIAGRAMME DANS UNE SLIDE : pour un schéma — architecture, flux, séquence —, n'utilise PAS "
+            + "d'image IA (icônes inventées). Fais du diagramme-as-code : écris-le en Mermaid, rends-le en "
+            + "PNG dans le sandbox (mmdc/mermaid-cli), puis insère-le dans la slide (add_picture) — recette "
+            + "détaillée dans le skill pptx. Rendu dans le sandbox, jamais sur le cluster ; échec NOMMÉ si "
+            + "le moteur de rendu manque ; FACTUEL (ne dessine que l'établi, marque le supposé).\n"
             + "ACCORD : quand une présentation serait utile, PROPOSE-la en une phrase et attends, sauf si "
             + "l'utilisateur l'a demandée. Pour REMPLACER une présentation déjà capturée, rappelle son "
             + "presentation_id (nouveau fichier, même entrée).";
