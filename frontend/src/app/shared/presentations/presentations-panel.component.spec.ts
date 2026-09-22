@@ -31,6 +31,7 @@ describe('PresentationsPanelComponent', () => {
       ? throwError(() => new HttpErrorResponse({ status: 500 })) : of(list));
     service.download.and.returnValue(of(new HttpResponse({ body: new Blob(['PK']) })));
     service.delete.and.returnValue(of(void 0));
+    service.slide.and.returnValue(of(new Blob(['img'], { type: 'image/png' })));
     files = jasmine.createSpyObj<ExportService>('ExportService', ['triggerDownload']);
     dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
     dialog.open.and.callFake((() => ({ afterClosed: () => of(dialogAnswer) })) as never);
@@ -89,5 +90,16 @@ describe('PresentationsPanelComponent', () => {
     dialogAnswer = false;
     fixture.componentInstance.remove(deck('d1', 'Onboarding CI/CD'));
     expect(service.delete).not.toHaveBeenCalled();
+  });
+
+  it('Ouvrir : montre la visionneuse ; fermer la retire (SF-129-03)', () => {
+    const root = build();
+    expect(root.querySelector('app-deck-viewer')).toBeNull();
+    fixture.componentInstance.open(deck('d1', 'Onboarding CI/CD'));
+    fixture.detectChanges();
+    expect(root.querySelector('app-deck-viewer')).not.toBeNull();
+    fixture.componentInstance.closeViewer();
+    fixture.detectChanges();
+    expect(root.querySelector('app-deck-viewer')).toBeNull();
   });
 });

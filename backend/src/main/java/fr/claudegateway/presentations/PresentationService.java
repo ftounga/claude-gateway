@@ -122,6 +122,52 @@ public class PresentationService {
         return store.pptx(userId, presentation.getId()).orElseThrow(PresentationNotFoundException::new);
     }
 
+    /**
+     * Attache le <b>rendu par slides</b> (F-129 / SF-129-03) : des images PNG, une par slide, dans
+     * l'ordre. Efface d'abord un éventuel rendu précédent, puis pose {@code slide_count}. Les images
+     * sont produites <b>ailleurs</b> (sandbox/terminal) — la gateway ne fait que ranger.
+     *
+     * @param slides les images PNG, dans l'ordre des slides (peut être vide → aucun rendu)
+     */
+    @Transactional
+    public Presentation attachSlides(UUID userId, UUID presentationId, List<byte[]> slides) {
+        Presentation presentation = presentations.findByIdAndUserId(presentationId, userId)
+                .orElseThrow(PresentationNotFoundException::new);
+        if (slides.size() > limits.maxSlides()) {
+            throw new PresentationRejectedException("Trop de slides : " + slides.size()
+                    + " (maximum " + limits.maxSlides() + ").");
+        }
+        // Valider AVANT d'écrire quoi que ce soit : pas de rendu à moitié rangé.
+        for (byte[] image : slides) {
+            if (image == null || image.length == 0) {
+                throw new PresentationRejectedException("Une image de slide est vide.");
+            }
+            if (image.length > limits.maxSlideBytes()) {
+                throw new PresentationRejectedException("Une image de slide dépasse "
+                        + (limits.maxSlideBytes() / (1024 * 1024)) + " Mo.");
+            }
+        }
+        store.deleteSlides(userId, presentation.getId());
+        int index = 1;
+        for (byte[] image : slides) {
+            store.putSlide(userId, presentation.getId(), index++, image, "image/png");
+        }
+        presentation.setSlideCount(slides.isEmpty() ? null : slides.size());
+        return presentations.save(presentation);
+    }
+
+    /** Une image de slide (1-based), scellée par le propriétaire et bornée par {@code slide_count}. */
+    @Transactional(readOnly = true)
+    public byte[] slide(UUID userId, UUID presentationId, int index) {
+        Presentation presentation = get(userId, presentationId);
+        if (index < 1 || presentation.getSlideCount() == null
+                || index > presentation.getSlideCount()) {
+            throw new PresentationNotFoundException();
+        }
+        return store.slide(userId, presentation.getId(), index)
+                .orElseThrow(PresentationNotFoundException::new);
+    }
+
     /** Supprime une présentation et tout son contenu objet. */
     @Transactional
     public void delete(UUID userId, UUID presentationId) {

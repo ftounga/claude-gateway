@@ -84,9 +84,35 @@ public class PresentationToolExecutor {
             }
         }
 
+        // F-129 / SF-129-03 : les chemins du rendu par slides. La borne de nombre est vérifiée
+        // AVANT toute lecture — c'est une validation d'entrée, pas la peine de lire quoi que ce soit.
+        java.util.List<String> slidePaths = slidePaths(input);
+        if (slidePaths.size() > limits.maxSlides()) {
+            return Outcome.error("Trop de slides : " + slidePaths.size() + " (maximum "
+                    + limits.maxSlides() + "). Regroupe ou allège la présentation.");
+        }
+
         Read read = readBytes(userId, workspace, callId, path, limits.maxPptxBytes());
         if (read.error() != null) {
             return Outcome.error(read.error());
+        }
+
+        // Le rendu par slides (images PNG produites dans le sandbox/terminal), lu AVANT de publier
+        // pour ne jamais laisser un artefact à moitié capturé.
+        java.util.List<byte[]> slides = new java.util.ArrayList<>(slidePaths.size());
+        int slideIndex = 0;
+        for (String slidePath : slidePaths) {
+            slideIndex++;
+            if (!extension(slidePath).equals("png")) {
+                return Outcome.error("La slide « " + slidePath + " » n'est pas un .png : rends les "
+                        + "slides en PNG (LibreOffice → PDF → pdftoppm -png) puis donne leurs chemins.");
+            }
+            Read slideRead = readBytes(userId, workspace, callId + "#s" + slideIndex, slidePath,
+                    limits.maxSlideBytes());
+            if (slideRead.error() != null) {
+                return Outcome.error(slideRead.error());
+            }
+            slides.add(slideRead.content());
         }
 
         PresentationPlace place = new PresentationPlace(userId,
@@ -94,14 +120,36 @@ public class PresentationToolExecutor {
         try {
             Presentation saved = presentationService.publish(place, presentationId, title,
                     text(input, "description"), read.content());
+            if (!slides.isEmpty()) {
+                saved = presentationService.attachSlides(userId, saved.getId(), slides);
+            }
+            String aperçu = saved.getSlideCount() != null
+                    ? " Aperçu prêt : " + saved.getSlideCount() + " slides lisibles dans l'application."
+                    : " L'utilisateur peut la télécharger ; pour l'aperçu in-app, joins le rendu en PNG"
+                            + " (slides).";
             return new Outcome("Présentation capturée : « " + saved.getTitle() + " ». presentation_id : "
-                    + saved.getId() + ". L'utilisateur la voit dans l'application et peut la télécharger ; "
-                    + "pour la remplacer, rappelle ce presentation_id.", false, saved);
+                    + saved.getId() + "." + aperçu + " Pour la remplacer, rappelle ce presentation_id.",
+                    false, saved);
         } catch (PresentationNotFoundException e) {
             return Outcome.error(unknownPresentation());
         } catch (PresentationRejectedException e) {
             return Outcome.error(e.getMessage());
         }
+    }
+
+    /** Les chemins d'images de slides, dans l'ordre ({@code slides} : un tableau de chaînes). */
+    private static java.util.List<String> slidePaths(JsonNode input) {
+        java.util.List<String> paths = new java.util.ArrayList<>();
+        JsonNode list = input == null ? null : input.get("slides");
+        if (list != null && list.isArray()) {
+            for (JsonNode node : list) {
+                String path = node == null ? "" : node.asText("").strip();
+                if (!path.isEmpty()) {
+                    paths.add(path);
+                }
+            }
+        }
+        return paths;
     }
 
     /** Titre lisible d'un appel, pour l'étape et le journal : jamais le contenu. */

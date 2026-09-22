@@ -137,6 +137,9 @@ class GovernancePackageSeederTest {
         assertThat(pptx.getContent()).contains("ModuleNotFoundError")
                 .containsIgnoringCase("sandbox").containsIgnoringCase("poste")
                 .contains("pip install python-pptx");
+        // SF-129-03 : le rendu par images pour l'aperçu in-app, dans le sandbox (pas de composant serveur).
+        assertThat(pptx.getContent()).contains("pdftoppm").contains("--convert-to pdf")
+                .containsIgnoringCase("png");
     }
 
     @Test
