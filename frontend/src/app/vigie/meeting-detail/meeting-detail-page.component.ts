@@ -181,6 +181,17 @@ interface DeckImage {
             <div class="detail__loading"><mat-spinner diameter="24"></mat-spinner></div>
           } @else if (cardMessage()) {
             <p class="detail__missing"><mat-icon aria-hidden="true">inventory_2</mat-icon>{{ cardMessage() }}</p>
+          } @else if (cardPending(m)) {
+            <!-- F-147 / SF-147-03 : proposé tant que ce n'est pas fait, jamais fait à la place. -->
+            <p class="detail__missing" role="status">
+              <mat-icon aria-hidden="true">inventory_2</mat-icon>
+              Les faits durables de cette réunion ne sont pas encore rangés dans la carte du poste.
+            </p>
+          } @else if (m.cardPromotedAt) {
+            <p class="detail__missing">
+              <mat-icon aria-hidden="true">check</mat-icon>
+              {{ cardDoneLabel(m) }}
+            </p>
           }
           @if (analyzing()) {
             <div class="detail__loading"><mat-spinner diameter="24"></mat-spinner></div>
@@ -1150,6 +1161,26 @@ export class MeetingDetailPageComponent implements OnInit, OnDestroy {
         this.insightsError.set(httpErrorMessage(err, "L'analyse de la réunion a échoué."));
       },
     });
+  }
+
+  /**
+   * **Reste-t-il à ranger ?** (F-147 / SF-147-03) — seulement si la réunion porte du texte : sans
+   * matière, proposer le geste n'aurait aucun sens.
+   */
+  cardPending(meeting: TeamsMeeting): boolean {
+    return meeting.cardPromotedAt === null && (meeting.hasTranscript || meeting.hasExternalTranscript);
+  }
+
+  /** Ce qui a été rangé, et quand — « rien de durable » se dit aussi, plutôt que de laisser un blanc. */
+  cardDoneLabel(meeting: TeamsMeeting): string {
+    const when = meeting.cardPromotedAt
+      ? new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+        .format(new Date(meeting.cardPromotedAt))
+      : '';
+    const facts = meeting.cardFactsWritten ?? 0;
+    return facts === 0
+      ? `Rangée le ${when} : rien de durable à retenir.`
+      : `${facts} fait(s) durable(s) rangé(s) dans la carte du poste le ${when}.`;
   }
 
   /** Range les faits durables de la réunion dans la carte du poste (SF-128-11). */

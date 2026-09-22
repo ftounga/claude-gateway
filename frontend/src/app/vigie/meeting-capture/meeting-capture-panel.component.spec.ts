@@ -23,7 +23,7 @@ describe('MeetingCapturePanelComponent', () => {
     hasAudio: false, audioBytes: null, imageCount: 0,
     transcriptStatus: 'NONE', transcriptLang: null, hasTranscript: false,
     hasExternalTranscript: false, externalTranscriptSource: null, externalTranscriptFormat: null,
-    externalTranscriptAddedAt: null, mediaPurgedAt: null,
+    externalTranscriptAddedAt: null, mediaPurgedAt: null, cardPromotedAt: null, cardFactsWritten: null,
     startedAt: '2026-09-18T10:00:00Z', endedAt: null, createdAt: '2026-09-18T10:00:00Z',
   };
 
@@ -137,6 +137,26 @@ describe('MeetingCapturePanelComponent', () => {
     const list = root.querySelector('.meetings__past-list');
     expect(list).not.toBeNull();
     expect(list!.querySelectorAll('.past-row').length).toBe(3);
+  });
+
+  it('F-147 / SF-147-03 : une réunion transcrite non rangée est RAPPELÉE', () => {
+    const toFile = { ...past('m1'), hasTranscript: true };
+    const done = { ...past('m2'), hasTranscript: true, cardPromotedAt: '2026-09-22T09:00:00Z',
+      cardFactsWritten: 3 };
+    const empty = past('m3'); // pas de texte : rien à ranger, donc rien à rappeler
+
+    const root = setup(of([toFile, done, empty]));
+
+    expect(root.querySelector('.meetings__to-file')?.textContent).toContain('1 réunion(s)');
+  });
+
+  it('F-147 / SF-147-03 : rien en attente, aucun rappel — on ne parle pas pour ne rien dire', () => {
+    const done = { ...past('m2'), hasTranscript: true, cardPromotedAt: '2026-09-22T09:00:00Z',
+      cardFactsWritten: 0 };
+
+    const root = setup(of([done]));
+
+    expect(root.querySelector('.meetings__to-file')).toBeNull();
   });
 
   it('SF-128-15 : chaque réunion passée reste cliquable vers son détail', () => {

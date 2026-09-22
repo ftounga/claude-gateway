@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-147 / SF-147-03 — LA PROMOTION VERS LA CARTE : PROPOSÉE, ET RAPPELÉE.
+
+      « Ranger dans la carte du poste » (SF-128-11) existe depuis F-128, mais rien n'en gardait trace :
+      une réunion rangée et une réunion jamais rangée se ressemblaient exactement, si bien qu'on ne
+      pouvait ni proposer le geste à bon escient, ni le rappeler. Deux colonnes suffisent :
+        - card_promoted_at    : quand la promotion a abouti (NULL = elle reste à faire).
+        - card_facts_written  : combien de faits durables y ont été écrits (0 = rien de durable, ce qui
+                                compte tout de même comme FAIT — sinon le rappel reviendrait pour
+                                toujours, exactement la boucle que F-125 a supprimée).
+
+      Additif et compatible : les réunions existantes prennent NULL, donc « à ranger » — ce qui est vrai,
+      personne n'ayant jamais horodaté la moindre promotion. Réversible (dropColumn).
+    -->
+    <changeSet id="125-meetings-card-promotion" author="claude-gateway">
+        <addColumn tableName="meetings">
+            <column name="card_promoted_at" type="timestamp with time zone"/>
+            <column name="card_facts_written" type="int"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="meetings" columnName="card_promoted_at"/>
+            <dropColumn tableName="meetings" columnName="card_facts_written"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

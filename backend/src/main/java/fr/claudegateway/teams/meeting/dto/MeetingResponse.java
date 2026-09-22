@@ -31,6 +31,10 @@ public record MeetingResponse(
         String externalTranscriptFormat,
         OffsetDateTime externalTranscriptAddedAt,
         OffsetDateTime mediaPurgedAt,
+        /** F-147 / SF-147-03 : quand les faits durables ont été rangés dans la carte ; null = à faire. */
+        OffsetDateTime cardPromotedAt,
+        /** Combien y ont été écrits — zéro veut dire « analysée, rien de durable », pas « à refaire ». */
+        Integer cardFactsWritten,
         OffsetDateTime startedAt,
         OffsetDateTime endedAt,
         OffsetDateTime createdAt) {
@@ -48,7 +52,7 @@ public record MeetingResponse(
                 m.getExternalTranscriptSource(),
                 m.getExternalTranscriptFormat() == null ? null : m.getExternalTranscriptFormat().name(),
                 m.getExternalTranscriptAddedAt(),
-                m.getMediaPurgedAt(),
+                m.getMediaPurgedAt(), m.getCardPromotedAt(), m.getCardFactsWritten(),
                 m.getStartedAt(), m.getEndedAt(), m.getCreatedAt());
     }
 }

@@ -179,6 +179,10 @@ public class MeetingCardPromotionService {
         ChatCompletionResult result = call(scope, material, images);
         Map<String, List<String>> byFile = parseFacts(result, allowedPaths);
         if (byFile.isEmpty()) {
+            // F-147 / SF-147-03 : « rien de durable » est un RÉSULTAT, pas un échec — la matière a été
+            // analysée. On l'horodate, sans quoi cette réunion se rappellerait pour toujours : c'est
+            // exactement la boucle que F-125 a supprimée.
+            markPromoted(meeting, 0);
             return MeetingCardPromotion.nothingDurable(NOTHING_DURABLE_NOTE);
         }
         return writeToCard(scope, host, meeting, byFile);
@@ -211,7 +215,21 @@ public class MeetingCardPromotionService {
         String note = totalWritten == 0
                 ? "La carte n'a pas pu être écrite : le poste est peut-être injoignable. Réessayez."
                 : null;
+        if (totalWritten > 0) {
+            // Rien n'a été écrit ⇒ rien n'est horodaté : le rappel RESTE, et c'est juste.
+            markPromoted(meeting, totalWritten);
+        }
         return new MeetingCardPromotion(List.copyOf(files), totalWritten, note);
+    }
+
+    /**
+     * Garde la trace du rangement (F-147 / SF-147-03) : c'est elle qui permet de <b>proposer</b> le
+     * geste tant qu'il reste à faire, et de ne plus le proposer une fois fait.
+     */
+    private void markPromoted(Meeting meeting, int factsWritten) {
+        meeting.setCardPromotedAt(java.time.OffsetDateTime.now());
+        meeting.setCardFactsWritten(factsWritten);
+        repository.save(meeting);
     }
 
     /** La section ajoutée au fichier de carte : datée, sobre, une puce par fait. */

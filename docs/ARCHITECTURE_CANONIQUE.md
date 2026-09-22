@@ -1176,6 +1176,10 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     `external_transcript_format (varchar 10, nullable — TEXT/VTT/DOCX)`, `external_transcript_added_at
     (timestamptz, nullable)`,
     `media_purged_at (timestamptz, nullable — SF-128-07, migration 116 : instant de purge des médias lourds)`,
+    `card_promoted_at (timestamptz, nullable — F-147 / SF-147-03, migration 125 : quand les faits durables
+    ont été rangés dans la carte du poste ; NULL = le geste reste à faire, et il est rappelé)`,
+    `card_facts_written (int, nullable — combien y ont été écrits ; 0 signifie « analysée, rien de durable »
+    et compte comme FAITE, sinon la réunion se rappellerait indéfiniment — la boucle supprimée par F-125)`,
     `started_at`, `ended_at (nullable)`, `created_at`, `updated_at`. Index `(user_id, host_id,
     started_at)`. Endpoints `/api/vigie/hosts/{hostId}/meetings` (create=« Rejoindre »/capture-start=
     « Démarrer l'enregistrement », SF-128-16 /stop/pause/resume/list/get),
