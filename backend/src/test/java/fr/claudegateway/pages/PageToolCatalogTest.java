@@ -116,6 +116,11 @@ class PageToolCatalogTest {
                 .contains("transcription brute")
                 .contains("page_id")
                 // SF-109-06 : une image de la machine peut être jointe.
-                .contains("pièce jointe").contains("png");
+                .contains("pièce jointe").contains("png")
+                // F-142 / SF-142-01 : l'agent sait émettre un diagramme Mermaid, factuel, sans câbler la lib.
+                .contains("class=\"mermaid\"")
+                .contains("architecture-beta")
+                .contains("ÉTABLI")
+                .contains("n'ajoute PAS toi-même la bibliothèque mermaid");
     }
 }

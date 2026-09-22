@@ -155,7 +155,9 @@ public class PageService {
         versions.findByPageIdAndUserIdAndVersion(page.getId(), userId, wanted)
                 .orElseThrow(PageNotFoundException::new);
         byte[] content = store.html(userId, page.getId(), wanted).orElseThrow(PageNotFoundException::new);
-        return new PageContent(page, wanted, content, "text/html; charset=utf-8");
+        // F-142 / SF-142-01 : les diagrammes Mermaid sont rendus à la livraison (le stockage reste
+        // pristine, le code éditable). Une page sans bloc Mermaid repart octet pour octet identique.
+        return new PageContent(page, wanted, PageMermaidRuntime.render(content), "text/html; charset=utf-8");
     }
 
     /** Une pièce jointe d'une version d'une page du compte, ou vide. */
@@ -244,7 +246,8 @@ public class PageService {
                 }
                 String folder = uniqueFolder(slug(page.getTitle()), folders);
                 zip.putNextEntry(new java.util.zip.ZipEntry(folder + "/index.html"));
-                zip.write(html.get());
+                // F-142 / SF-142-01 : le livrable exporté rend aussi ses diagrammes Mermaid.
+                zip.write(PageMermaidRuntime.render(html.get()));
                 zip.closeEntry();
                 for (String name : store.attachmentNames(userId, page.getId(), version)) {
                     java.util.Optional<byte[]> content = store.attachment(userId, page.getId(), version, name);

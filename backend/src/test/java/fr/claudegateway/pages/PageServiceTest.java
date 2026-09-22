@@ -87,6 +87,31 @@ class PageServiceTest {
     }
 
     @Test
+    @DisplayName("F-142 — html() rend les blocs Mermaid à la livraison ; le stockage reste le code brut")
+    void servesMermaidRuntimeButStoresRawCode() {
+        String withDiagram = "<html><body><pre class=\"mermaid\">flowchart TD\nA-->B</pre></body></html>";
+        UUID pageId = service.publish(place(alice), null, "Schéma", null, withDiagram, Map.of()).page().getId();
+
+        String served = new String(service.html(alice, pageId, null).content(), StandardCharsets.UTF_8);
+        assertThat(served).contains(PageMermaidRuntime.SCRIPT_URL).contains(PageMermaidRuntime.MARKER)
+                .contains("flowchart TD");
+
+        // Le contenu STOCKÉ n'est pas altéré : le code Mermaid reste éditable, sans runtime.
+        String stored = new String(new PageStore(storage).html(alice, pageId, 1).orElseThrow(),
+                StandardCharsets.UTF_8);
+        assertThat(stored).isEqualTo(withDiagram).doesNotContain(PageMermaidRuntime.MARKER);
+    }
+
+    @Test
+    @DisplayName("F-142 — une page sans Mermaid est servie exactement comme stockée")
+    void servesNonMermaidPageUnchanged() {
+        String plain = "<html><body><h1>Compte rendu</h1></body></html>";
+        UUID pageId = service.publish(place(alice), null, "CR", null, plain, Map.of()).page().getId();
+
+        assertThat(new String(service.html(alice, pageId, null).content(), StandardCharsets.UTF_8)).isEqualTo(plain);
+    }
+
+    @Test
     @DisplayName("CA2 — au-delà de la borne de versions, la plus ancienne est purgée (ligne ET objets)")
     void purgeOldestVersions() {
         UUID pageId = service.publish(place(alice), null, "P", null, "v1", Map.of("a.css", "b{}".getBytes()))
