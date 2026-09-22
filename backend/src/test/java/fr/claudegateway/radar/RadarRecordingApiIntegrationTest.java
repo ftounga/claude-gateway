@@ -9,6 +9,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -41,12 +42,15 @@ class RadarRecordingApiIntegrationTest extends RadarSyncIntegrationTestBase {
     private final Map<String, ByteArrayOutputStream> received = new HashMap<>();
     private final Map<String, JsonNode> opened = new HashMap<>();
     private final Map<String, UUID> targets = new HashMap<>();
+    /** F-147 / SF-147-01 : les transcriptions lancées par {@code finish}, et le nombre de demandes reçues. */
+    private final Map<String, Integer> transcribing = new HashMap<>();
 
     @BeforeEach
     void fakeRunner() {
         received.clear();
         opened.clear();
         targets.clear();
+        transcribing.clear();
         when(liveness.isAlive(any(UUID.class), any(UUID.class))).thenReturn(true);
         when(router.call(any(RunnerTarget.class), anyString(), eq(RadarRecordingDepositService.DEPOSIT), any(), anyLong()))
                 .thenAnswer(invocation -> {
@@ -72,9 +76,27 @@ class RadarRecordingApiIntegrationTest extends RadarSyncIntegrationTestBase {
                             bytes.writeBytes(Base64.getDecoder().decode(input.path("data").asText()));
                             yield ok("{\"accepted\":true,\"received\":" + bytes.size() + "}");
                         }
-                        case "finish" -> ok("{\"deposited\":true,\"file_name\":\"" + opened.get(id).path("file_name").asText()
-                                + "\",\"title\":\"" + opened.get(id).path("title").asText() + "\",\"recorded_at\":\""
-                                + opened.get(id).path("recorded_at").asText() + "\",\"size\":" + received.get(id).size() + "}");
+                        case "finish" -> {
+                            transcribing.put(id, 0);
+                            yield ok("{\"deposited\":true,\"file_name\":\"" + opened.get(id).path("file_name").asText()
+                                    + "\",\"title\":\"" + opened.get(id).path("title").asText() + "\",\"recorded_at\":\""
+                                    + opened.get(id).path("recorded_at").asText() + "\",\"size\":" + received.get(id).size()
+                                    + ",\"transcription\":\"started\",\"job_id\":\"" + id
+                                    + "\",\"phase\":\"AUDIO\",\"phase_label\":\"j'extrais le son\"}");
+                        }
+                        // F-147 / SF-147-01 : le poste dit où en est la transcription ; ici, deux demandes puis fini.
+                        case "status" -> {
+                            Integer asked = transcribing.get(id);
+                            if (asked == null) {
+                                yield ok("{\"known\":false}");
+                            }
+                            transcribing.put(id, asked + 1);
+                            yield asked == 0
+                                    ? ok("{\"known\":true,\"job_id\":\"" + id + "\",\"phase\":\"TRANSCRIPTION\","
+                                            + "\"phase_label\":\"je transcris, ici\",\"over\":false}")
+                                    : ok("{\"known\":true,\"job_id\":\"" + id + "\",\"phase\":\"TERMINE\","
+                                            + "\"phase_label\":\"terminé\",\"over\":true}");
+                        }
                         default -> {
                             received.remove(id);
                             yield ok("{\"aborted\":true}");
@@ -125,7 +147,10 @@ class RadarRecordingApiIntegrationTest extends RadarSyncIntegrationTestBase {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.fileName").value("salle B.m4a"))
                 .andExpect(jsonPath("$.title").value("Atelier sécurité"))
-                .andExpect(jsonPath("$.sizeBytes").value(700_000));
+                .andExpect(jsonPath("$.sizeBytes").value(700_000))
+                .andExpect(jsonPath("$.transcription").value("started"))
+                .andExpect(jsonPath("$.jobId").value(uploadId))
+                .andExpect(jsonPath("$.phaseLabel").value("j'extrais le son"));
 
         byte[] all = received.get(uploadId).toByteArray();
         assertThat(all).hasSize(700_000);
@@ -174,6 +199,42 @@ class RadarRecordingApiIntegrationTest extends RadarSyncIntegrationTestBase {
         when(router.call(any(RunnerTarget.class), anyString(), eq(RadarRecordingDepositService.DEPOSIT), any(), anyLong()))
                 .thenReturn(RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_TIMEOUT));
         open(aliceA, aliceToken, request("a.mp3", 10), 409);
+    }
+
+    @Test
+    @DisplayName("F-147 : l'avancement de la transcription se lit en toutes lettres, jusqu'à la fin ; inconnu → known=false")
+    void transcriptionProgress() throws Exception {
+        String uploadId = mapper.readTree(open(aliceA, aliceToken, request("salle B.m4a", 3), 201)).path("uploadId").asText();
+        mockMvc.perform(put(url(aliceA, "/recordings/" + uploadId + "/chunks")).contextPath("/api").param("offset", "0")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_OCTET_STREAM).content(new byte[3]))
+                .andExpect(status().isOk());
+        mockMvc.perform(post(url(aliceA, "/recordings/" + uploadId + "/finish")).contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get(url(aliceA, "/recordings/" + uploadId + "/status")).contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.known").value(true))
+                .andExpect(jsonPath("$.over").value(false))
+                .andExpect(jsonPath("$.phaseLabel").value("je transcris, ici"));
+        mockMvc.perform(get(url(aliceA, "/recordings/" + uploadId + "/status")).contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.over").value(true))
+                .andExpect(jsonPath("$.phaseLabel").value("terminé"));
+
+        // Un dépôt jamais terminé n'a pas de travail : on le dit, on ne l'invente pas.
+        mockMvc.perform(get(url(aliceA, "/recordings/" + UUID.randomUUID() + "/status")).contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.known").value(false));
+
+        // ISOLATION : le poste d'un autre compte n'est pas interrogeable.
+        mockMvc.perform(get(url(bobScope, "/recordings/" + uploadId + "/status")).contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isNotFound());
     }
 
     @Test

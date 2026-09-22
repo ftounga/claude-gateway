@@ -60,8 +60,23 @@ public class RadarRecordingDepositService {
     public record ChunkReceived(long received) {
     }
 
-    /** Un enregistrement déposé dans le dossier du poste. */
-    public record DepositDone(String fileName, String title, String recordedAt, long sizeBytes) {
+    /**
+     * Un enregistrement déposé dans le dossier du poste, <b>et ce que le poste en fait déjà</b>
+     * (F-147 / SF-147-01) : {@code transcription} vaut {@code started}, {@code unavailable} ou
+     * {@code refused} ; quand elle a démarré, {@code jobId} sert à suivre l'avancement.
+     */
+    public record DepositDone(String fileName, String title, String recordedAt, long sizeBytes,
+            String transcription, String jobId, String phase, String phaseLabel) {
+    }
+
+    /**
+     * Où en est la transcription d'un dépôt (F-147 / SF-147-01).
+     *
+     * <p>La phrase d'avancement vient du <b>poste</b> : elle y est écrite une fois, pour être lue par
+     * l'utilisateur, et la réécrire ici en ferait une seconde version à maintenir.</p>
+     */
+    public record RecordingProgress(boolean known, String jobId, String phase, String phaseLabel, boolean over,
+            String failure) {
     }
 
     private final RadarRunnerCalls calls;
@@ -123,12 +138,33 @@ public class RadarRecordingDepositService {
         return new ChunkReceived(answer.path("received").asLong());
     }
 
-    /** Termine le dépôt : le fichier apparaît dans le dossier, avec son titre et sa date. */
+    /**
+     * Termine le dépôt : le fichier apparaît dans le dossier, avec son titre et sa date, et le poste
+     * <b>commence tout de suite</b> à le transcrire (F-147 / SF-147-01) — plus rien n'attend un passage
+     * périodique.
+     */
     public DepositDone finish(RadarScope scope, UUID uploadId) {
         requireOnline(scope);
         JsonNode answer = answer(calls.call(scope, DEPOSIT, base("finish", uploadId), FINISH_TIMEOUT_MS));
         return new DepositDone(answer.path("file_name").asText(), answer.path("title").asText(),
-                answer.path("recorded_at").asText(), answer.path("size").asLong());
+                answer.path("recorded_at").asText(), answer.path("size").asLong(),
+                answer.path("transcription").asText(""), answer.path("job_id").asText(""),
+                answer.path("phase").asText(""), answer.path("phase_label").asText(""));
+    }
+
+    /**
+     * L'avancement de la transcription lancée par {@link #finish}. Poste hors ligne : on ne l'invente pas,
+     * on le dit — le travail vit sur la machine, pas ici.
+     */
+    public RecordingProgress progress(RadarScope scope, UUID uploadId) {
+        requireOnline(scope);
+        JsonNode answer = answer(calls.call(scope, DEPOSIT, base("status", uploadId), OPEN_TIMEOUT_MS));
+        if (!answer.path("known").asBoolean(false)) {
+            return new RecordingProgress(false, "", "", "", false, "");
+        }
+        return new RecordingProgress(true, answer.path("job_id").asText(""), answer.path("phase").asText(""),
+                answer.path("phase_label").asText(""), answer.path("over").asBoolean(false),
+                answer.path("failure").asText(""));
     }
 
     /** Abandonne le dépôt ; hors ligne, le poste le purgera à 24 h. */

@@ -188,4 +188,102 @@ class RadarDepositReceiverTest {
         assertFalse(new RadarDepositReceiver(null, () -> NOW, dir -> 0).handle(open(UUID.randomUUID().toString(), "a.mp3", 2))
                 .content().contains("\"accepted\":true"));
     }
+
+    // ------------------------------------- transcrire tout de suite (F-147 / SF-147-01)
+
+    /** Un moteur de transcription en dur : on vérifie le BRANCHEMENT, pas la transcription. */
+    private static final class Engine implements RadarDepositReceiver.Transcriber {
+        Path seen;
+        String id;
+        final TranscriptionJob job = new TranscriptionJob("job-1");
+        RuntimeException refuse;
+
+        @Override
+        public TranscriptionJob start(String id, Path file, Instant startedAt) {
+            if (refuse != null) {
+                throw refuse;
+            }
+            this.id = id;
+            this.seen = file;
+            return job;
+        }
+    }
+
+    private RadarDepositReceiver receiverWith(Engine engine) {
+        return new RadarDepositReceiver(depot, () -> NOW, dir -> usable, engine);
+    }
+
+    private void deposit(RadarDepositReceiver receiver, String id, byte[] data) throws Exception {
+        json(receiver.handle(open(id, "reunion.mp4", data.length)));
+        json(receiver.handle(chunk(id, 0, data)));
+    }
+
+    @Test
+    @DisplayName("LE CRITÈRE : finir un dépôt DÉCLENCHE la transcription, sans attendre aucune synchro")
+    void finishingStartsTheTranscription() throws Exception {
+        Engine engine = new Engine();
+        RadarDepositReceiver receiver = receiverWith(engine);
+        byte[] data = "video".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        deposit(receiver, "11111111-1111-1111-1111-111111111111", data);
+
+        JsonNode done = json(receiver.handle(op("finish", "11111111-1111-1111-1111-111111111111")));
+
+        assertEquals("started", done.path("transcription").asText());
+        assertEquals("job-1", done.path("job_id").asText());
+        // Le moteur a bien reçu le fichier DÉPOSÉ, pas le fichier partiel.
+        assertEquals("reunion.mp4", engine.seen.getFileName().toString());
+        // Et la phase voyage en toutes lettres : c'est ce que l'écran affichera.
+        assertTrue(done.path("phase_label").asText().length() > 5, "la phase doit être lisible");
+    }
+
+    @Test
+    @DisplayName("où en est la transcription : la phase, en toutes lettres")
+    void statusTellsThePhase() throws Exception {
+        Engine engine = new Engine();
+        RadarDepositReceiver receiver = receiverWith(engine);
+        deposit(receiver, "22222222-2222-2222-2222-222222222222", "video".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        json(receiver.handle(op("finish", "22222222-2222-2222-2222-222222222222")));
+
+        JsonNode status = json(receiver.handle(op("status", "22222222-2222-2222-2222-222222222222")));
+
+        assertTrue(status.path("known").asBoolean(), "le travail doit être connu");
+        assertEquals("job-1", status.path("job_id").asText());
+        assertTrue(status.path("phase_label").asText().length() > 5);
+    }
+
+    @Test
+    @DisplayName("un dépôt inconnu répond clairement, il n'invente pas un travail")
+    void statusOfAnUnknownDepositSaysSo() throws Exception {
+        JsonNode status = json(receiver().handle(op("status", "99999999-9999-9999-9999-999999999999")));
+
+        assertFalse(status.path("known").asBoolean());
+    }
+
+    @Test
+    @DisplayName("un moteur qui refuse ne fait PAS échouer le dépôt : le fichier est arrivé entier")
+    void arefusingEngineNeverBreaksTheDeposit() throws Exception {
+        Engine engine = new Engine();
+        engine.refuse = new IllegalStateException("ffmpeg introuvable");
+        RadarDepositReceiver receiver = receiverWith(engine);
+        deposit(receiver, "33333333-3333-3333-3333-333333333333", "video".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        JsonNode done = json(receiver.handle(op("finish", "33333333-3333-3333-3333-333333333333")));
+
+        assertTrue(done.path("deposited").asBoolean(), "le dépôt reste bon");
+        assertEquals("refused", done.path("transcription").asText());
+        assertTrue(done.path("transcription_error").asText().contains("ffmpeg"));
+        assertTrue(java.nio.file.Files.exists(depot.resolve("reunion.mp4")), "le fichier reste en place");
+    }
+
+    @Test
+    @DisplayName("sans moteur, le dépôt se comporte comme avant — et le dit")
+    void withoutAnEngineTheDepositIsUnchanged() throws Exception {
+        RadarDepositReceiver receiver = receiver();
+        deposit(receiver, "44444444-4444-4444-4444-444444444444", "video".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        JsonNode done = json(receiver.handle(op("finish", "44444444-4444-4444-4444-444444444444")));
+
+        assertTrue(done.path("deposited").asBoolean());
+        assertEquals("unavailable", done.path("transcription").asText());
+    }
 }

@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -22,6 +23,7 @@ import fr.claudegateway.radar.sync.RadarRecordingDepositService.ChunkReceived;
 import fr.claudegateway.radar.sync.RadarRecordingDepositService.DepositDone;
 import fr.claudegateway.radar.sync.RadarRecordingDepositService.DepositOpened;
 import fr.claudegateway.radar.sync.RadarRecordingDepositService.DepositRequest;
+import fr.claudegateway.radar.sync.RadarRecordingDepositService.RecordingProgress;
 import fr.claudegateway.teams.TeamsAccessService;
 
 /**
@@ -63,6 +65,12 @@ public class RadarRecordingController {
     @PostMapping("/{uploadId}/finish")
     public DepositDone finish(@PathVariable UUID hostId, @PathVariable UUID uploadId) {
         return deposits.finish(scope(hostId), uploadId);
+    }
+
+    /** Où en est la transcription lancée par {@code finish} (F-147 / SF-147-01). */
+    @GetMapping("/{uploadId}/status")
+    public RecordingProgress status(@PathVariable UUID hostId, @PathVariable UUID uploadId) {
+        return deposits.progress(scope(hostId), uploadId);
     }
 
     @DeleteMapping("/{uploadId}")

@@ -126,8 +126,10 @@ class TeamsScreenFallbackTest {
         PaperTeams teams = new PaperTeams().already("r1", PaperTeams.MESSAGES_URL, "conversation-messages.json");
         teams.browser.screen("", PaperScreen.of("fil-ecran-1.html"));
 
-        JsonNode json = call(teams.tools(), TeamsTools.READ_CONVERSATION,
-                mapper.createObjectNode().put("conversation_id", PaperTeams.THREAD));
+        // Fenêtre explicite : sans elle, la lecture applique les 7 derniers jours comptés depuis
+        // l'horloge du jour, et les messages de la réponse enregistrée (2026-09) en sortiraient —
+        // ce test porte sur la priorité du réseau sur l'écran, pas sur la fenêtre de lecture.
+        JsonNode json = call(teams.tools(), TeamsTools.READ_CONVERSATION, thread("2026-08-01T00:00:00Z"));
 
         assertEquals("reseau", json.path("source").asText());
         assertTrue(json.path("messages").size() > 0);
