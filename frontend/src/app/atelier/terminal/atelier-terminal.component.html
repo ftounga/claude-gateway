@@ -1093,6 +1093,14 @@
         {{ submitting && steerable ? 'Préciser' : 'Envoyer' }}
       </button>
     </form>
+    <!-- F-144 / SF-144-01 — LA SUITE SUGGÉRÉE, dérivée du dernier tour et de rien d'autre : aucun
+         appel au modèle, donc aucun jeton et aucune attente. Un clic REMPLIT le champ ; rien ne
+         part sans un geste. Les puces s'effacent dès qu'on écrit. -->
+    <app-turn-suggestions
+      [report]="lastOutcome()"
+      [draft]="draft"
+      (pick)="draftChange.emit($event)"
+    ></app-turn-suggestions>
   }
   <!-- LA PAGE OUVERTE (F-109 / SF-109-03) : un panneau à droite du terminal, un état d'écran. -->
   @if (openedPageId(); as pageId) {

@@ -33,6 +33,8 @@ import { WeeklyBudgetComponent } from '../../shared/weekly-budget/weekly-budget.
 import { WeeklyBudgetService } from '../../core/services/weekly-budget.service';
 import { ProjectCostComponent } from '../../shared/project-cost/project-cost.component';
 import { ProjectCostService } from '../../core/services/project-cost.service';
+import { TurnOutcome } from '../../shared/turn-suggestions/turn-suggestions';
+import { TurnSuggestionsComponent } from '../../shared/turn-suggestions/turn-suggestions.component';
 import { MarkdownPipe } from '../../shared/markdown.pipe';
 import { TeamsLinkBadgeComponent } from '../../shared/teams-link-badge/teams-link-badge.component';
 import { TeamsLink } from '../teams/teams-link.service';
@@ -132,7 +134,7 @@ export const LONG_THREAD_TURNS = 40;
     TeamsLinkBadgeComponent, NgTemplateOutlet, TerminalEmailComponent, PageBlockComponent, PagePanelComponent,
     MatButtonToggleModule, MatIconModule, MatProgressBarModule, MatProgressSpinnerModule,
     MatTooltipModule, RouterLink,
-    WeeklyBudgetComponent, ProjectCostComponent,
+    WeeklyBudgetComponent, ProjectCostComponent, TurnSuggestionsComponent,
   ],
   templateUrl: './atelier-terminal.component.html',
   // DEUX FEUILLES, ET C'EST DÉLIBÉRÉ (F-83 / SF-83-02) : la peau « lecture seule » vit à part.
@@ -307,6 +309,29 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    * Marque d'une étape du plan (F-39 / SF-39-13). Un caractère, pas une icône : le plan s'affiche
    * dans un terminal, et une puce Material y jurerait.
    */
+  /**
+   * Ce qu'on sait du **dernier tour de l'agent** (F-144 / SF-144-01), pour en déduire la suite.
+   *
+   * <p>Le dernier message d'assistant du fil, et rien d'autre : c'est lui qui porte l'interruption,
+   * le plafond atteint et les fichiers modifiés. Le plan vient de l'état du tour quand il est encore
+   * connu — il n'est pas conservé sur le message.</p>
+   */
+  lastOutcome(): TurnOutcome | null {
+    for (let index = this.messages.length - 1; index >= 0; index--) {
+      const item = this.messages[index];
+      if (item.role !== 'ASSISTANT') {
+        continue;
+      }
+      return {
+        interrupted: item.interrupted,
+        budgetReached: item.budgetReached,
+        diffs: item.diffs,
+        plan: this.streaming?.plan ?? undefined,
+      };
+    }
+    return null;
+  }
+
   planMark(status: string): string {
     return switch_(status);
   }
