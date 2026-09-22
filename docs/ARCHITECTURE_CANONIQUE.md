@@ -1238,8 +1238,8 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   - `presentations` : `id (uuid)`, `user_id (uuid NOT NULL, FK users ON DELETE CASCADE)`,
     `space (varchar 8 — FORGE/VIGIE)`, `host_id (uuid, nullable)`, `workspace_id (uuid, nullable)`,
     `title (varchar 120 NOT NULL)`, `description (varchar 300, nullable)`, `pptx_key (varchar 300 NOT
-    NULL)`, `pptx_bytes (bigint NOT NULL)`, `slide_count (int, nullable — dormant, rempli par le rendu
-    par slides SF-129-03)`, `created_at`, `updated_at`. Index `idx_presentations_place (user_id, host_id,
+    NULL)`, `pptx_bytes (bigint NOT NULL)`, `slide_count (int, nullable — nombre d'images du rendu par
+    slides, posé par SF-129-03, `null` tant qu'aucun rendu)`, `created_at`, `updated_at`. Index `idx_presentations_place (user_id, host_id,
     space)`. **Isolation** : toute lecture filtre `user_id` (`findByIdAndUserId`) ; un accès croisé est un
     **404**, jamais un 403.
   - **Production/capture** : l'agent écrit un `.pptx` sur le terminal puis appelle l'outil
@@ -1250,10 +1250,23 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     valide (extension `.pptx` + en-tête ZIP `PK\x03\x04` + borne `app.presentations.max-pptx-bytes`, défaut
     25 Mo) et range. Accord d'un clic (porte d'autorisation existante). **Gateway-First** : production de
     fichier, **aucun moteur IA** (`AIProvider` non requis). Endpoints `/api/presentations` (GET liste
-    `?hostId=&space=`, GET `{id}`, GET `{id}/pptx` téléchargement, DELETE), scellés par `CurrentUser`.
-  - **DRAPEAU périmètre** : le **rendu par slides** (images) + la **visionneuse** in-app = SF-129-03,
-    fait **dans le sandbox/terminal** (pas de pod LibreOffice sur le cluster `legalcase-shared`, à
-    capacité — instruction PO). C'est pourquoi `slide_count` reste dormant ici.
+    `?hostId=&space=`, GET `{id}`, GET `{id}/pptx` téléchargement, GET `{id}/slides/{index}` image PNG,
+    DELETE), scellés par `CurrentUser`.
+  - **Rendu par slides + visionneuse (SF-129-03, livrée)** : la présentation est **lisible entièrement
+    dans l'app**. Le **rendu `.pptx` → une image PNG par slide** tourne **dans le sandbox/terminal** —
+    l'agent le produit là où il a produit le `.pptx` (`soffice --headless --convert-to pdf` puis
+    `pdftoppm -png`, skill `pptx`) et envoie les PNG **ordonnés** via `presentation_publish` (paramètre
+    `slides`). La gateway les lit (`read_file_bytes`, **outil runner existant**), les **borne**
+    (`app.presentations.max-slides` défaut 100, `max-slide-bytes` défaut 5 Mo, format **PNG**) ;
+    `PresentationService.attachSlides` efface l'ancien rendu, range
+    (`presentations/{userId}/{id}/slides/NNNN.png`) et pose `slide_count` ; `GET …/slides/{index}` sert
+    l'image PNG (1-based, scellée `user_id`, 404 hors bornes/cross-user). Le front `DeckViewerComponent`
+    (overlay) rend la slide courante en grand, les miniatures de toutes les slides, la navigation clavier
+    ← →, le plein écran (overlay + Échap) et le téléchargement ; dégradation gracieuse si `slide_count`
+    est `null`. **DÉCISION D'INFRA (drapeau)** : **aucun pod LibreOffice permanent** n'est ajouté au
+    cluster `legalcase-shared` (à capacité) — cela **amende le cadrage D2** (worker serveur), sur
+    instruction PO ; un éventuel worker serveur futur devra être **scale-to-zero, strictement borné et
+    validé par le PO** pour la capacité.
 
 - **Repli de transport du runner — aucune table** (F-38 / SF-38-09). Le canal runner peut être porté
   par le WebSocket de SF-38-02 **ou** par un long-polling HTTP quand un proxy refuse (ou coupe)
