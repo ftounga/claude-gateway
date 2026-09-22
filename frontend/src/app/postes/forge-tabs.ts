@@ -9,7 +9,7 @@ import { GovernanceIntegrite, GovernanceMap } from '../core/models/governance.mo
  * regarde.</p>
  */
 
-export type ForgeTab = 'projets' | 'carte' | 'gouvernance' | 'activite' | 'pages';
+export type ForgeTab = 'projets' | 'carte' | 'gouvernance' | 'activite' | 'pages' | 'presentations';
 
 export const FORGE_TAB_LABELS: Record<ForgeTab, string> = {
   projets: 'Projets',
@@ -18,9 +18,12 @@ export const FORGE_TAB_LABELS: Record<ForgeTab, string> = {
   activite: 'Activité',
   // F-109 / SF-109-04 : les pages publiées depuis les projets et le terminal de ce poste.
   pages: 'Pages',
+  // F-129 / SF-129-02 : les présentations .pptx capturées depuis les projets de ce poste.
+  presentations: 'Présentations',
 };
 
-const MACHINE_TABS: readonly ForgeTab[] = ['projets', 'carte', 'gouvernance', 'activite', 'pages'];
+const MACHINE_TABS: readonly ForgeTab[] =
+  ['projets', 'carte', 'gouvernance', 'activite', 'pages', 'presentations'];
 
 /** Le poste « Hébergé » n'a pas de racine (F-71) : ni carte, ni gouvernance, ni activité de machine. */
 const HOSTED_TABS: readonly ForgeTab[] = ['projets'];

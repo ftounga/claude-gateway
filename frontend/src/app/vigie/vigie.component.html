@@ -331,6 +331,12 @@
                     <app-host-pages class="vigie__pages" [hostId]="hostId" space="VIGIE"></app-host-pages>
                   }
                 }
+                @case ('presentations') {
+                  <!-- LES PRÉSENTATIONS DU CLIENT (F-129 / SF-129-02) : .pptx capturés du terminal Teams. -->
+                  @if (host.id; as hostId) {
+                    <app-presentations-panel [hostId]="hostId" space="VIGIE"></app-presentations-panel>
+                  }
+                }
               }
             </div>
           </section>

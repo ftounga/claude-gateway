@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-129 / SF-129-02 — L'ARTEFACT « PRESENTATION » (capturer un .pptx produit sur le terminal).
+
+      presentations : un vrai fichier PowerPoint produit par l'agent sur le terminal, capture dans
+      l'application. Chaque ligne porte user_id (isolation : une presentation ne se lit que par son
+      proprietaire) ; space (FORGE / VIGIE) + host_id rangent l'artefact du bon cote, workspace_id dit
+      le projet d'origine. host_id / workspace_id sont NULLABLES (projet sans poste), meme patron que
+      les pages (098). Le fichier .pptx vit dans le stockage objet ; la table n'en porte que la cle
+      (pptx_key) et la taille (pptx_bytes). slide_count reste NULL tant que le rendu par slides
+      (SF-129-03) n'a pas ete produit.
+
+      Cle etrangere user_id EN CASCADE : aucune presentation ne survit au compte. Types portables
+      (un seul changeSet PostgreSQL + H2). Reversible : dropTable.
+    -->
+    <changeSet id="123-presentations" author="claude-gateway">
+        <createTable tableName="presentations">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="space" type="varchar(8)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="host_id" type="uuid"/>
+            <column name="workspace_id" type="uuid"/>
+            <column name="title" type="varchar(120)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="description" type="varchar(300)"/>
+            <column name="pptx_key" type="varchar(300)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="pptx_bytes" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="slide_count" type="int"/>
+            <column name="created_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addForeignKeyConstraint baseTableName="presentations" baseColumnNames="user_id"
+                referencedTableName="users" referencedColumnNames="id"
+                constraintName="fk_presentations_user" onDelete="CASCADE"/>
+        <createIndex tableName="presentations" indexName="idx_presentations_place">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="space"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="presentations"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

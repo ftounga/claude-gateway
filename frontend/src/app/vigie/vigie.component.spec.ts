@@ -255,7 +255,7 @@ describe('VigieComponent', () => {
     const root = build();
 
     expect(Array.from(root.querySelectorAll('.poste__tab')).map((t) => t.textContent?.trim()))
-      .toEqual(['Radar', 'Conversations', 'Réunions', 'Personnes', 'Pages']);
+      .toEqual(['Radar', 'Conversations', 'Réunions', 'Personnes', 'Pages', 'Présentations']);
     expect(component.activeTab()).toBe('radar');
     expect(root.querySelector('.vigie__radar-empty')).toBeNull();
     expect(root.querySelector('app-radar-board')).not.toBeNull();
