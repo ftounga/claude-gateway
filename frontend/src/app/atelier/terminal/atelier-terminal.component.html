@@ -1065,6 +1065,25 @@
   <!-- L'INVITE N'EXISTE PAS EN LECTURE SEULE (F-83 / SF-83-01). Écrire reste un geste pris
        dans le terminal entier, devant son flux : un clic pour y entrer. -->
   @if (!readOnly) {
+    <!-- F-121 / SF-121-23 — MENU DE SLASH-COMMANDS. Taper « / » ouvre la liste ; une entrée
+         complète la commande dans le champ (elle n'envoie pas). Déterministe : seule une commande
+         connue sera expansée en son prompt imposé à l'envoi. -->
+    @if (slashMenuOpen) {
+      <ul class="slash-menu" role="listbox" aria-label="Commandes disponibles">
+        @for (command of slashMenu; track command.name; let i = $index) {
+          <li
+            class="slash-menu__item"
+            role="option"
+            [class.slash-menu__item--active]="i === highlightedSlash()"
+            [attr.aria-selected]="i === highlightedSlash()"
+            (mousedown)="$event.preventDefault(); acceptSlash(command)"
+          >
+            <span class="slash-menu__name">{{ command.title }}</span>
+            <span class="slash-menu__desc">{{ command.description }}</span>
+          </li>
+        }
+      </ul>
+    }
     <form
       class="terminal-input"
       [class.terminal-input--recording]="dictationState() === 'recording'"
@@ -1114,7 +1133,8 @@
         aria-label="Demande à exécuter"
         [disabled]="publishing || liveLimitReached"
         [ngModel]="draft"
-        (ngModelChange)="draftChange.emit($event)"
+        (ngModelChange)="onDraftInput($event)"
+        (keydown)="onComposerKeydown($event)"
       />
       <button
         mat-button

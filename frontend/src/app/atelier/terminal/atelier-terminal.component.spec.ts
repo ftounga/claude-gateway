@@ -482,6 +482,52 @@ describe('AtelierTerminalComponent', () => {
     expect(sent).toBe(1);
   });
 
+  // ------------------------------------ F-121 / SF-121-23 : slash-commands dans le composer
+
+  it('ouvre un menu de slash-commands quand la saisie commence par « / »', () => {
+    component.draft = '/';
+    fixture.detectChanges();
+
+    const menu = fixture.nativeElement.querySelector('.slash-menu');
+    expect(menu).not.toBeNull();
+    expect(menu.querySelectorAll('.slash-menu__item').length).toBeGreaterThan(0);
+  });
+
+  it('ne montre aucun menu pour une saisie ordinaire', () => {
+    component.draft = 'lance les tests';
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.slash-menu')).toBeNull();
+  });
+
+  it('à l\'envoi, expanse une slash-command connue en son prompt imposé puis émet send', () => {
+    const drafts: string[] = [];
+    let sent = 0;
+    component.draftChange.subscribe((value) => drafts.push(value));
+    component.send.subscribe(() => (sent += 1));
+
+    component.draft = '/revue';
+    component.submit();
+
+    expect(drafts.length).toBe(1);
+    expect(drafts[0]).toContain('Passe en revue les modifications');
+    expect(drafts[0]).not.toBe('/revue');
+    expect(sent).toBe(1);
+  });
+
+  it('à l\'envoi, un texte sans « / » part inchangé (le parseur ne réécrit pas le brouillon)', () => {
+    const drafts: string[] = [];
+    let sent = 0;
+    component.draftChange.subscribe((value) => drafts.push(value));
+    component.send.subscribe(() => (sent += 1));
+
+    component.draft = 'lance les tests';
+    component.submit();
+
+    expect(drafts).toEqual([]);
+    expect(sent).toBe(1);
+  });
+
   // ------------------------------------ F-84 / SF-84-06 : un message pendant un tour est une précision
 
   it('pendant un tour de la boucle maison, le champ reste actif et le bouton dit « Préciser »', () => {
