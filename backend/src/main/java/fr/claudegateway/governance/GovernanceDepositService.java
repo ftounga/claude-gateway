@@ -353,6 +353,13 @@ public class GovernanceDepositService {
     /** Le dépôt proprement dit, sur un projet déjà possédé. */
     private ProjectDeposit depositOn(Run run, Workspace workspace,
             List<GovernancePackageFile> files) {
+        if (files.isEmpty()) {
+            // Rien à déposer dans ce dossier : rien ne peut y manquer. On ne lit MÊME PAS la machine
+            // (SF-149-01). Un profil (F-138 : des règles, aucun fichier) doit s'appliquer d'emblée —
+            // machine joignable ou non —, sinon un profil activé pendant que le runner est déconnecté
+            // resterait PENDING pour toujours (applied_at nul), donc n'injecterait jamais ses règles.
+            return new ProjectDeposit(true, true, List.of());
+        }
         Optional<Set<String>> present = projectFiles.listPaths(run.userId, workspace);
         if (present.isEmpty()) {
             // Dossier illisible — machine éteinte, refus : on ne prétend NI qu'un fichier manque, NI

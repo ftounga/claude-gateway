@@ -343,6 +343,26 @@ class GovernanceDepositServiceTest {
     }
 
     @Test
+    @DisplayName("SF-149-01 : un profil (sans fichier) est APPLIQUÉ même machine injoignable")
+    void packageWithoutFilesIsAppliedEvenWhenMachineUnreachable() {
+        // LE DÉFAUT F-149 / SF-149-01. Un profil (F-138) n'apporte aucun fichier : rien à déposer,
+        // donc rien qui manque. Il doit passer APPLIED (applied_at posé) DÈS l'activation, que la
+        // machine réponde ou non — sinon un profil activé alors que le runner est déconnecté reste
+        // PENDING pour toujours et n'injecte jamais ses règles (deposited() = applied_at != null).
+        when(packageService.filesOf(pkg.getId())).thenReturn(List.of());
+        when(projectFiles.listPaths(alice, workspace)).thenReturn(Optional.empty()); // machine éteinte
+
+        service.deposit(alice, host, pkg.getId());
+
+        assertThat(activation.getStatus()).isEqualTo(GovernanceActivationStatus.APPLIED);
+        assertThat(activation.getAppliedAt()).isNotNull();
+        // On ne touche même pas la machine : une liste de fichiers vide ne se lit pas dossier par
+        // dossier. C'est ce qui rend le profil applicable hors ligne.
+        verify(projectFiles, never()).listPaths(any(), any());
+        verify(projectFiles, never()).write(any(), any(), any(), any());
+    }
+
+    @Test
     @DisplayName("un poste sans dossier passe APPLIED : il n'y a rien à attendre")
     void hostWithoutProjectIsApplied() {
         when(hostScope.projectsOf(alice, host)).thenReturn(List.of());
