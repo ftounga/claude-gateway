@@ -73,6 +73,26 @@ public class PromptSourceStore {
      */
     static final String TREE_PATH = "/__prompt_source_tree__";
 
+    /**
+     * Chemin réservé sous lequel l'<b>instantané d'environnement git</b> est rangé (F-121 / SF-121-21).
+     * Même garantie d'absence de collision que {@link #TREE_PATH} — barre oblique en tête. Son contenu
+     * est le sous-bloc git déjà mis en forme (branche + statut court, ou « non »), embarqué verbatim
+     * dans le bloc « Environnement » de la consigne système. <b>Figé (write-once)</b> : le statut git
+     * change à chaque édition ; le rafraîchir casserait le cache de préfixe (F-134) à chaque tour
+     * d'écriture. Il est donc capturé une seule fois et servi stable — la sémantique « instantané au
+     * démarrage, non rafraîchi » de Claude Code.
+     */
+    public static final String ENV_PATH = "/__prompt_source_env__";
+
+    /** Sentinelle rangée quand le répertoire n'est pas un dépôt git : n'interroge plus git ensuite. */
+    static final String ENV_NO_GIT = "Dépôt git : non";
+
+    /** Lignes de statut git conservées dans l'instantané : au-delà, le bloc n'est plus « court ». */
+    static final int MAX_GIT_STATUS_LINES = 15;
+
+    /** Fenêtre bornée de la commande git de capture (clampée par le gateway bash). */
+    static final long GIT_PROBE_TIMEOUT_MS = 15_000L;
+
     private final RunnerToolGateway runnerToolGateway;
     private final PromptSourceFileRepository files;
 
@@ -174,6 +194,87 @@ public class PromptSourceStore {
                 log.debug("Source de consigne non lue ({})", ex.getClass().getSimpleName());
             }
         }
+
+        // 3) L'instantané d'environnement git, figé (write-once) : capturé une seule fois, servi stable
+        //    ensuite pour ne pas casser le préfixe (F-134). Voir ENV_PATH.
+        captureEnvSnapshot(userId, workspace, target);
+    }
+
+    /**
+     * Capture <b>une seule fois</b> l'instantané git du projet (F-121 / SF-121-21) et le range mis en
+     * forme au chemin réservé {@link #ENV_PATH}. Déjà rangé → on ne touche à rien (figé). Répertoire
+     * non git → sentinelle {@link #ENV_NO_GIT} figée (on cesse d'interroger git). Échec de transport →
+     * rien n'est rangé, le prochain refresh réessaiera. Ne lève jamais.
+     */
+    void captureEnvSnapshot(UUID userId, Workspace workspace, RunnerTarget target) {
+        try {
+            if (read(userId, workspace.getId(), ENV_PATH).isPresent()) {
+                return; // Figé : déjà capturé.
+            }
+            String cwd = workspace.getProjectPath();
+            RunnerCallResult probe = runnerToolGateway.bash(target, UUID.randomUUID().toString(),
+                    "git status --short --branch", cwd, GIT_PROBE_TIMEOUT_MS, output -> { });
+            if (probe == null || !probe.ok()) {
+                return; // Transport en échec : ne rien figer, on réessaiera.
+            }
+            String rendered = renderGitSnapshot(probe.content());
+            store(userId, workspace, ENV_PATH, rendered);
+        } catch (RuntimeException ex) {
+            log.debug("Instantané d'environnement non capturé ({})", ex.getClass().getSimpleName());
+        }
+    }
+
+    /**
+     * Met en forme la sortie de {@code git status --short --branch} en sous-bloc git de la consigne.
+     * Une sortie sans ligne {@code ## <branche>} (répertoire non git) rend la sentinelle {@link
+     * #ENV_NO_GIT}.
+     */
+    static String renderGitSnapshot(String rawOutput) {
+        String output = rawOutput == null ? "" : rawOutput;
+        String[] lines = output.split("\n", -1);
+        String branchLine = null;
+        List<String> statusLines = new ArrayList<>();
+        for (String line : lines) {
+            // Le retour trait est ôté, mais PAS l'espace de tête : dans `git status --short`, la
+            // première colonne (statut de l'index) peut être un espace significatif (« M » = modifié
+            // dans la copie de travail). Le stripper effacerait cette information.
+            String trimmedRight = line.replace("\r", "");
+            while (trimmedRight.endsWith(" ")) {
+                trimmedRight = trimmedRight.substring(0, trimmedRight.length() - 1);
+            }
+            if (trimmedRight.isBlank()) {
+                continue;
+            }
+            if (branchLine == null && trimmedRight.strip().startsWith("## ")) {
+                branchLine = trimmedRight.strip().substring(3);
+            } else {
+                statusLines.add(trimmedRight);
+            }
+        }
+        if (branchLine == null) {
+            return ENV_NO_GIT; // Pas de dépôt git ici.
+        }
+        // La ligne de branche de --branch est « main...origin/main » : on ne garde que le nom local.
+        int marker = branchLine.indexOf("...");
+        String branch = (marker >= 0 ? branchLine.substring(0, marker) : branchLine).strip();
+        StringBuilder block = new StringBuilder();
+        block.append("Dépôt git : oui (branche : ").append(branch).append(")\n");
+        block.append("État git (instantané au démarrage, non rafraîchi en cours de session) :\n");
+        if (statusLines.isEmpty()) {
+            block.append("(arbre de travail propre)");
+        } else {
+            int shown = Math.min(statusLines.size(), MAX_GIT_STATUS_LINES);
+            for (int i = 0; i < shown; i++) {
+                block.append(statusLines.get(i));
+                if (i < shown - 1) {
+                    block.append('\n');
+                }
+            }
+            if (statusLines.size() > shown) {
+                block.append("\n… et ").append(statusLines.size() - shown).append(" autre(s) ligne(s)");
+            }
+        }
+        return block.toString();
     }
 
     // -------------------------------------------------------------- internes

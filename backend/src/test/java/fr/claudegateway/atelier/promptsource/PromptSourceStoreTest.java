@@ -2,6 +2,7 @@ package fr.claudegateway.atelier.promptsource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -20,6 +21,7 @@ import java.util.function.Predicate;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import fr.claudegateway.atelier.Workspace;
 import fr.claudegateway.atelier.WorkspaceExecutionTarget;
@@ -164,6 +166,74 @@ class PromptSourceStoreTest {
 
         assertThat(store.read(userId, workspaceId, "CLAUDE.md")).contains("# Conventions");
         assertThat(store.tree(userId, workspaceId)).containsExactly("a.md", "b.md");
+    }
+
+    // ----------------------------------------------- F-121 / SF-121-21 : instantané d'environnement
+
+    @Test
+    @DisplayName("renderGitSnapshot : dépôt git → branche locale + statut court")
+    void renderGitSnapshotFormatsRepo() {
+        String rendered = PromptSourceStore.renderGitSnapshot(
+                "## main...origin/main [ahead 1]\n M src/App.java\n?? nouveau.txt\n");
+
+        assertThat(rendered)
+                .contains("Dépôt git : oui (branche : main)")
+                .contains("instantané au démarrage, non rafraîchi")
+                .contains(" M src/App.java")
+                .contains("?? nouveau.txt");
+    }
+
+    @Test
+    @DisplayName("renderGitSnapshot : arbre propre → mention explicite ; hors dépôt → sentinelle non")
+    void renderGitSnapshotCleanAndNonGit() {
+        assertThat(PromptSourceStore.renderGitSnapshot("## main\n"))
+                .contains("Dépôt git : oui (branche : main)")
+                .contains("(arbre de travail propre)");
+        assertThat(PromptSourceStore.renderGitSnapshot("fatal: not a git repository"))
+                .isEqualTo(PromptSourceStore.ENV_NO_GIT);
+    }
+
+    @Test
+    @DisplayName("l'instantané git est CAPTURÉ une fois et FIGÉ : déjà rangé → git n'est plus interrogé")
+    void gitSnapshotIsCapturedOnceThenFrozen() {
+        when(runner.listFiles(any(RunnerTarget.class), any())).thenReturn(ok(""));
+        when(files.findByUserIdAndWorkspaceIdAndPath(userId, workspaceId, PromptSourceStore.ENV_PATH))
+                .thenReturn(Optional.of(PromptSourceFile.builder()
+                        .content("Dépôt git : oui (branche : main)").build()));
+
+        store.refresh(userId, runnerWorkspace(), CORE, IS_SKILL, 15);
+
+        verify(runner, never()).bash(any(RunnerTarget.class), any(), any(), any(), anyLong(), any());
+    }
+
+    @Test
+    @DisplayName("répertoire non git → la sentinelle « non » est figée")
+    void nonGitDirectoryFreezesTheSentinel() {
+        // Arborescence muette : seul l'instantané d'environnement est rangé, ce qui isole l'assertion.
+        when(runner.listFiles(any(RunnerTarget.class), any())).thenReturn(unreachable());
+        when(runner.readFile(any(RunnerTarget.class), any(), any())).thenReturn(unreachable());
+        when(runner.bash(any(RunnerTarget.class), any(), any(), any(), anyLong(), any()))
+                .thenReturn(ok("fatal: not a git repository"));
+
+        store.refresh(userId, runnerWorkspace(), CORE, IS_SKILL, 15);
+
+        ArgumentCaptor<PromptSourceFile> saved = ArgumentCaptor.forClass(PromptSourceFile.class);
+        verify(files).save(saved.capture());
+        assertThat(saved.getValue().getPath()).isEqualTo(PromptSourceStore.ENV_PATH);
+        assertThat(saved.getValue().getContent()).isEqualTo(PromptSourceStore.ENV_NO_GIT);
+    }
+
+    @Test
+    @DisplayName("git en échec de transport → rien n'est figé (on réessaiera)")
+    void gitTransportFailureFreezesNothing() {
+        when(runner.listFiles(any(RunnerTarget.class), any())).thenReturn(unreachable());
+        when(runner.readFile(any(RunnerTarget.class), any(), any())).thenReturn(unreachable());
+        when(runner.bash(any(RunnerTarget.class), any(), any(), any(), anyLong(), any()))
+                .thenReturn(unreachable());
+
+        store.refresh(userId, runnerWorkspace(), CORE, IS_SKILL, 15);
+
+        verify(files, never()).save(any());
     }
 
     private static String digestOf(String content) {

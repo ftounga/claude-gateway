@@ -215,6 +215,56 @@ class AtelierChatServiceSystemPromptTest {
         assertThat(system).contains("bash (ls, find, grep -n)");
     }
 
+    // ------------------------------------------- F-121 / SF-121-21 : bloc « environnement »
+
+    @Test
+    void theEnvironmentBlockIsPresentOnASandboxProject() {
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+
+        String system = systemPrompt();
+
+        assertThat(system).contains("--- Environnement ---");
+        assertThat(system).contains("Date du jour : " + java.time.LocalDate.now());
+        assertThat(system).contains("Plateforme : espace de travail hébergé");
+        // Projet archive : pas un dépôt git, pas de statut git déversé.
+        assertThat(system).contains("Dépôt git : non");
+        // Coexistence : les doctrines en tête ne sont pas écrasées, le rôle reste la 1re phrase.
+        assertThat(system).contains("Vérifie avant d'affirmer");
+        assertThat(system).startsWith("Tu es un assistant de développement");
+    }
+
+    @Test
+    void theEnvironmentBlockIsPresentOnARunnerProject() {
+        String system = systemPromptOfRunnerProjectDeclaring("posix");
+
+        assertThat(system).contains("--- Environnement ---");
+        assertThat(system).contains("Date du jour : " + java.time.LocalDate.now());
+        assertThat(system).contains("Plateforme : poste de l'utilisateur");
+        assertThat(system).contains("Shell : posix");
+        // Non-régression : le rôle RUNNER et la discipline restent annoncés.
+        assertThat(system).contains("bash (ls, find, grep -n)");
+        assertThat(system).contains("Vérifie avant d'affirmer");
+    }
+
+    @Test
+    void theEnvironmentBlockIsByteStableBetweenTwoBuilds() {
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+
+        // Deux tours successifs, environnement inchangé : le bloc doit être identique à l'octet, sans
+        // quoi le préfixe change à chaque tour et le cache (F-134) tombe.
+        String first = systemPrompt();
+        String second = systemPrompt();
+        String firstEnv = first.substring(first.indexOf("--- Environnement ---"),
+                first.indexOf("\n\n", first.indexOf("--- Environnement ---")));
+        String secondEnv = second.substring(second.indexOf("--- Environnement ---"),
+                second.indexOf("\n\n", second.indexOf("--- Environnement ---")));
+        assertThat(firstEnv).isEqualTo(secondEnv);
+    }
+
     // ------------------------------------------- F-125 / SF-125-01 : silence de la tenue de carte
 
     @Test

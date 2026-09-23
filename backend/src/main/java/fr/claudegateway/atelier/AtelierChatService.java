@@ -4534,6 +4534,13 @@ public class AtelierChatService implements RelayInterruptTarget {
                     .append("résume clairement ce que tu as changé.\n\n");
         }
 
+        // Bloc « Environnement » (F-121 / SF-121-21) : sur les DEUX cibles, juste après l'amorce de
+        // rôle (qui reste la 1re phrase, SF-148-02 préservée) et avant les doctrines — à la manière du
+        // bloc <env> de Claude Code : date du jour, répertoire de travail, plateforme/OS, shell et
+        // instantané git. STABLE entre tours (date à la granularité du jour, propriétés de poste/
+        // workspace, instantané git figé) : le préfixe reste byte-stable, le cache (F-134) tient.
+        system.append(environmentBlock(userId, workspace));
+
         // Discipline d'investigation (F-119 / SF-119-02) : ajoutée sur les DEUX cibles, juste après le
         // rôle — c'est ce qui pousse l'agent à se vérifier avant d'affirmer, plutôt que d'improviser
         // et de se rattraper au tour suivant. Placée en tête, elle survit à la coupe SYSTEM_MAX_CHARS.
@@ -4752,6 +4759,48 @@ public class AtelierChatService implements RelayInterruptTarget {
      * <p><b>Repli passant</b>, même geste que pour les règles : un magasin en panne rend un tour
      * <b>sans</b> savoir plutôt qu'un tour raté. Ce savoir est un avantage, jamais une condition.</p>
      */
+    /**
+     * Le bloc « Environnement » de la consigne (F-121 / SF-121-21) : date du jour, répertoire de
+     * travail, plateforme/OS, shell et instantané git, à la manière du {@code <env>} de Claude Code.
+     *
+     * <p>Sur cible {@code RUNNER}, l'OS et le shell viennent de ce que le runner a déclaré, le
+     * répertoire de la racine du poste, et l'instantané git de la copie <b>figée</b> du cache
+     * (capturée une fois, jamais rafraîchie — cf. {@code PromptSourceStore.ENV_PATH}). Sur cible
+     * {@code SANDBOX}, le dépôt est déduit des colonnes du workspace, sans statut git.</p>
+     *
+     * <p><b>Repli passant.</b> Une valeur absente est simplement omise ; ce bloc ne condamne jamais un
+     * tour.</p>
+     */
+    private String environmentBlock(UUID userId, Workspace workspace) {
+        java.time.LocalDate today = java.time.LocalDate.now();
+        if (workspace.isRunnerTarget()) {
+            UUID hostId = workspace.getHostId();
+            String cwd = runnerCwd(runnerHostService.rootName(hostId), workspace.getProjectPath());
+            String os = runnerHostService.declaredOs(hostId);
+            String shell = RunnerShell.resolve(runnerHostService.declaredShell(hostId)).declared();
+            String gitSnapshot = promptSource
+                    .read(userId, workspace,
+                            fr.claudegateway.atelier.promptsource.PromptSourceStore.ENV_PATH)
+                    .orElse(null);
+            return AtelierEnvironmentBlock.runner(today, cwd, os, shell, gitSnapshot);
+        }
+        return AtelierEnvironmentBlock.sandbox(today, workspace.getProjectPath(), workspace.isGit(),
+                workspace.getGitBranch());
+    }
+
+    /** Répertoire de travail lisible du poste : racine + chemin du projet, ou l'un des deux, ou vide. */
+    private static String runnerCwd(String rootName, String projectPath) {
+        String root = rootName == null ? "" : rootName.strip();
+        String path = projectPath == null ? "" : projectPath.strip();
+        while (path.startsWith("/")) {
+            path = path.substring(1);
+        }
+        if (root.isEmpty()) {
+            return path;
+        }
+        return path.isEmpty() ? root : root + "/" + path;
+    }
+
     private String hostOutline(UUID userId, Workspace workspace) {
         try {
             return hostKnowledge.outlineFor(userId, workspace.getId());
