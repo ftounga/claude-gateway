@@ -553,6 +553,27 @@ public class RunnerToolGateway {
         return router.call(target, callId, "worktree_reap", input, WORKTREE_TIMEOUT_MS);
     }
 
+    /**
+     * <b>Restitution</b> d'une sous-tâche (F-150 / SF-150-05) : committe le worktree sur sa branche et
+     * rend {@code {branch, committed, hasChanges, diffStat}}. La branche reste dans le dépôt après le
+     * démontage — la reprise est un acte explicite ultérieur (jamais de merge aveugle). Un runner
+     * antérieur répond {@code unsupported_tool} : la synthèse remonte alors sans référence branche/diff.
+     */
+    public RunnerCallResult worktreeFinalize(RunnerTarget target, String callId, String taskId,
+            String message) {
+        String id = safeTaskId(taskId);
+        if (id == null) {
+            return invalid("Identifiant de tâche invalide.");
+        }
+        ObjectNode input = objectMapper.createObjectNode();
+        input.put("taskId", id);
+        if (message != null && !message.isBlank()) {
+            input.put("message", message.length() > MAX_COMMAND_CHARS
+                    ? message.substring(0, MAX_COMMAND_CHARS) : message);
+        }
+        return router.call(target, callId, "worktree_finalize", input, WORKTREE_TIMEOUT_MS);
+    }
+
     /** Identifiant de tâche sûr, ou {@code null} : {@code [A-Za-z0-9_-]}, borné. Le runner refait foi. */
     static String safeTaskId(String taskId) {
         if (taskId == null) {

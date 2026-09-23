@@ -202,6 +202,33 @@ class AtelierChatServiceTaskTest {
     }
 
     @Test
+    void theSynthesisReportsTheBranchAndDiffAndNeverMergesBlindly() {
+        stubRunnerWorkspace();
+        when(runnerToolGateway.worktreeCreate(any(), anyString(), anyString())).thenReturn(ok(WORKTREE_JSON));
+        when(runnerToolGateway.worktreeRemove(any(), anyString(), anyString())).thenReturn(ok(""));
+        when(runnerToolGateway.writeFile(any(), anyString(), eq("a.txt"), eq("hop"))).thenReturn(ok("ok"));
+        when(runnerToolGateway.worktreeFinalize(any(), anyString(), anyString(), any())).thenReturn(
+                ok("{\"branch\":\"atelier/task/wt1\",\"committed\":true,\"hasChanges\":true,"
+                        + "\"diffStat\":\" a.txt | 1 +\"}"));
+
+        agentProvider.enqueueToolCall("task", "prompt", "écris a.txt");
+        agentProvider.enqueueToolCall("write_file", "path", "a.txt", "content", "hop");
+        agentProvider.enqueueFinal("Fait.");
+        agentProvider.enqueueFinal("Terminé.");
+
+        service.chat(userId, workspaceId, "délègue");
+
+        // La restitution a lieu AVANT le démontage, et la synthèse porte la branche + le diff résumé.
+        verify(runnerToolGateway).worktreeFinalize(any(), anyString(), anyString(), any());
+        verify(runnerToolGateway).worktreeRemove(any(), anyString(), anyString());
+        String synthesis = lastToolResult().content();
+        assertThat(synthesis).contains("atelier/task/wt1");
+        assertThat(synthesis).contains("a.txt | 1 +");
+        // Jamais de merge aveugle : la reprise reste un acte explicite.
+        assertThat(synthesis).contains("merge/cherry-pick");
+    }
+
+    @Test
     void theTaskToolIsDeclaredOnRunnerButNotOnSandbox() {
         Workspace runner = stubRunnerWorkspace();
         assertThat(service.buildTools(userId, runner).stream().map(AgentTool::name)).contains("task");

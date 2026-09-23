@@ -42,6 +42,10 @@ public final class WorktreeTool {
     static final String CREATE = "worktree_create";
     static final String REMOVE = "worktree_remove";
     static final String REAP = "worktree_reap";
+    /** Restitution (F-150 / SF-150-05) : committe le worktree sur sa branche et rend le diff résumé. */
+    static final String FINALIZE = "worktree_finalize";
+    /** Borne du diff résumé remonté : au-delà, il n'informe plus, il encombre. */
+    static final int MAX_DIFFSTAT_CHARS = 4_000;
 
     /** Dossier, <b>sous la racine du poste</b>, où vivent les worktrees isolés des sous-tâches. */
     static final String WORKTREES_DIR = ".atelier-worktrees";
@@ -79,6 +83,7 @@ public final class WorktreeTool {
                 case CREATE -> create(input);
                 case REMOVE -> remove(input);
                 case REAP -> reap(input);
+                case FINALIZE -> finalizeWorktree(input);
                 default -> ToolOutcome.error("unsupported_tool", "Opération de worktree inconnue.");
             };
         } catch (ToolException e) {
@@ -162,6 +167,51 @@ public final class WorktreeTool {
         git.run(projectFolder, "worktree", "prune");
         ObjectNode result = MAPPER.createObjectNode();
         result.put("reaped", reaped);
+        return ToolOutcome.ok(result.toString());
+    }
+
+    // ---------------------------------------------------------------- finalize
+
+    /**
+     * <b>Restitution</b> (F-150 / SF-150-05) : stage tout le worktree, committe sur sa branche s'il y a
+     * des changements, et rend {@code {branch, committed, hasChanges, diffStat}}. La branche <b>reste</b>
+     * dans le dépôt après le démontage du worktree — la reprise (merge/cherry-pick) dans la copie de
+     * travail réelle est un <b>acte explicite ultérieur</b> (jamais un merge aveugle).
+     */
+    private ToolOutcome finalizeWorktree(JsonNode input) {
+        String taskId = requireTaskId(input);
+        Path worktreeDir = worktreeDirFor(taskId);
+        if (!Files.isDirectory(worktreeDir)) {
+            return ToolOutcome.error("not_found", "Worktree introuvable pour cette tâche.");
+        }
+        String branch = BRANCH_PREFIX + taskId;
+        git.run(worktreeDir, "add", "-A");
+        GitCli.Result status = git.run(worktreeDir, "status", "--porcelain");
+        boolean hasChanges = status.ok() && !status.stdout().isBlank();
+        boolean committed = false;
+        String diffStat = "";
+        if (hasChanges) {
+            JsonNode messageNode = input == null ? null : input.get("message");
+            String message = messageNode != null && messageNode.isTextual()
+                    && !messageNode.asText().isBlank()
+                    ? messageNode.asText()
+                    : "atelier task " + taskId;
+            committed = git.run(worktreeDir, "commit", "-m", message).ok();
+            if (committed) {
+                GitCli.Result diff = git.run(worktreeDir, "diff", "--stat", "HEAD~1", "HEAD");
+                if (diff.ok() && !diff.stdout().isBlank()) {
+                    diffStat = diff.stdout();
+                    if (diffStat.length() > MAX_DIFFSTAT_CHARS) {
+                        diffStat = diffStat.substring(0, MAX_DIFFSTAT_CHARS) + "\n… (résumé tronqué)";
+                    }
+                }
+            }
+        }
+        ObjectNode result = MAPPER.createObjectNode();
+        result.put("branch", branch);
+        result.put("committed", committed);
+        result.put("hasChanges", hasChanges);
+        result.put("diffStat", diffStat);
         return ToolOutcome.ok(result.toString());
     }
 
