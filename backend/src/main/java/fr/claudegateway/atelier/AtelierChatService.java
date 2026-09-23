@@ -672,6 +672,18 @@ public class AtelierChatService implements RelayInterruptTarget {
             java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     /**
+     * Tours ayant muté le projet (F-148 / SF-148-07), clef {@code userId:workspaceId}.
+     *
+     * <p>Portée le <b>tour</b>, effacée à l'ouverture de chaque message comme les marques ci-dessus.
+     * Posée dès qu'un {@code write_file}/{@code edit_file} aboutit, ou dès qu'un {@code bash} part
+     * (une commande peut créer un fichier sans qu'on le voie). Tant qu'elle est posée, {@code glob}
+     * n'est plus servi depuis l'index mais repart en direct : un fichier créé ce tour ne peut pas
+     * être manqué.</p>
+     */
+    private final java.util.Set<String> mutatedTurns =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /**
      * Ce que chaque tour a constaté de la machine (F-93 / SF-93-04), clef {@code userId:workspaceId}.
      *
      * <p>Remis à zéro à l'ouverture de chaque message, comme les deux marques ci-dessus ; mis à jour
@@ -1019,6 +1031,25 @@ public class AtelierChatService implements RelayInterruptTarget {
     }
 
     /**
+     * Index de repo persistant (F-148 / SF-148-07). Injecté par mutateur : {@link RepoIndex#NONE}
+     * (formes historiques, tests) ⇒ {@code glob} toujours en direct, comportement d'avant F-148.
+     *
+     * <p>Sur cible {@code RUNNER}, l'outil {@code glob} est servi depuis l'index — sans aller-retour
+     * runner — quand c'est sûr : index amorcé <b>et</b> aucune mutation du projet pendant ce tour
+     * (sinon un fichier créé ce tour serait manqué). {@code runLoop} planifie la relecture après le
+     * tour et suit la mutation via {@link #mutatedTurns}.</p>
+     */
+    private RepoIndex repoIndex = RepoIndex.NONE;
+
+    /** Branche l'index de repo persistant (F-148 / SF-148-07). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setRepoIndex(RepoIndex repoIndex) {
+        if (repoIndex != null) {
+            this.repoIndex = repoIndex;
+        }
+    }
+
+    /**
      * Politique de permission allow/ask/deny persistée par workspace/user (F-121 / SF-121-02). Injectée
      * par mutateur pour ne toucher à aucun des constructeurs conservés : {@code null} (formes
      * historiques, tests antérieurs à F-121) ⇒ la porte retombe sur son comportement binaire d'avant
@@ -1237,6 +1268,9 @@ public class AtelierChatService implements RelayInterruptTarget {
         blanketAllowedTurns.remove(turnKey(userId, workspaceId));
         // Ni la machine d'hier ni celle d'un tour abandonné ne jugent ce tour-ci (F-93 / SF-93-04).
         machineOfTurn.remove(turnKey(userId, workspaceId));
+        // La marque de mutation ne survit jamais au message (F-148 / SF-148-07) : chaque tour part
+        // « non muté », si bien que le 1er glob du tour peut être servi par l'index.
+        mutatedTurns.remove(turnKey(userId, workspaceId));
         long startedAt = System.currentTimeMillis();
         long deadline = startedAt + turnBudgetMs;
         String userText = rawMessage.trim();
@@ -1852,6 +1886,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
         // Le constat sur la machine ne survit pas au tour (F-93 / SF-93-04).
         machineOfTurn.remove(turnKey(userId, workspaceId));
+        // La marque de mutation non plus (F-148 / SF-148-07).
+        mutatedTurns.remove(turnKey(userId, workspaceId));
 
         if (hosted) {
             // Le projet et son poste voyagent avec le décompte (F-61 / SF-61-01) : c'est ce qui
@@ -1925,6 +1961,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         promptCoreFiles.addAll(SUBJECT_STATE_FILES);
         promptSource.refreshAfterTurn(userId, workspace, promptCoreFiles,
                 AtelierChatService::isSkillPath, MAX_SKILLS_ANNOUNCED);
+
+        // F-148 / SF-148-07 — l'arborescence a pu changer pendant ce tour. On relit l'index de repo
+        // MAINTENANT, une fois la réponse prête, pour servir `glob` depuis la base au tour suivant.
+        // Throttlé, asynchrone, repli passant : ne bloque pas, ne lève pas.
+        repoIndex.refreshAfterTurn(userId, workspace);
 
         return new AtelierChatResult(reply, actions, assistant.getId(), inputTokens, outputTokens,
                 activeSeconds, spendCapReached, costUsd, reusedPercent);
@@ -3268,6 +3309,15 @@ public class AtelierChatService implements RelayInterruptTarget {
                 }
             }
         }
+        // F-148 / SF-148-07 : `glob` est servi depuis l'index de repo — sans aller-retour runner —
+        // quand c'est sûr (index amorcé ET aucune mutation du projet ce tour). Après la porte, avant
+        // toute émission. Si l'index ne peut pas répondre, on retombe sur le glob runner ci-dessous.
+        if ("glob".equals(tool)) {
+            ToolOutcome served = serveGlobFromIndex(userId, workspace, runnerTarget, callId, call, target);
+            if (served != null) {
+                return served;
+            }
+        }
         // F-121 / SF-121-04 : un échec de TRANSPORT (runner_timeout/unavailable/not_on_this_node/
         // protocol_error) est réessayé, borné, AVANT de rendre la main au modèle — ~17 % des appels
         // échouent derrière le proxy en prod, et un négatif rendu au modèle le fait conclure faux.
@@ -3278,12 +3328,50 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
         runnerAuditService.recordCall(userId, runnerTarget, callId, tool, target, result);
         noteMachine(userId, workspaceId, result);
+        // F-148 / SF-148-07 : dès que ce tour a muté le projet, `glob` ne sera plus servi par l'index
+        // (il repart en direct) — un fichier créé ce tour ne peut pas être manqué. Un `bash` marque
+        // toujours (il peut créer un fichier sans qu'on le voie) ; write/edit seulement s'ils aboutissent.
+        markTurnMutation(userId, workspaceId, tool, result);
         if (RunnerErrorCodes.RUNNER_UNAVAILABLE.equals(result.errorCode())
                 && runnerTarget.hostId() != null) {
             // F-97 / SF-97-02 : le refus est aussi dit à l'écran, pas seulement au modèle.
             listener.onRunnerOffline(runnerTarget.hostId());
         }
         return runnerOutcome(call, result);
+    }
+
+    /**
+     * Sert {@code glob} depuis l'index de repo (F-148 / SF-148-07), ou {@code null} pour retomber sur
+     * le runner. Ne sert que lorsque l'index ne peut pas mentir : projet <b>non muté</b> ce tour et
+     * index <b>amorcé</b>. Le résultat servi est tracé comme un glob abouti (le journal dit ce que le
+     * modèle a cherché), sans aller-retour runner.
+     */
+    private ToolOutcome serveGlobFromIndex(UUID userId, Workspace workspace, RunnerTarget runnerTarget,
+            String callId, AgentToolCall call, String target) {
+        if (mutatedTurns.contains(turnKey(userId, workspace.getId()))
+                || !repoIndex.isPrimed(userId, workspace)) {
+            return null;
+        }
+        JsonNode input = call.input();
+        String pattern = input.path("pattern").asText(null);
+        String base = input.path("path").asText("");
+        java.util.Optional<String> served = repoIndex.glob(userId, workspace, pattern, base);
+        if (served.isEmpty()) {
+            return null; // Index incapable de répondre (non amorcé, motif exotique) : en direct.
+        }
+        String content = served.get();
+        runnerAuditService.recordCall(userId, runnerTarget, callId, "glob", target,
+                new RunnerCallResult(true, content, false, null, 0L, null, null, null, "", false));
+        return ToolOutcome.info(content);
+    }
+
+    /** Pose la marque de mutation du tour si l'outil a modifié (ou a pu modifier) le projet. */
+    private void markTurnMutation(UUID userId, UUID workspaceId, String tool, RunnerCallResult result) {
+        boolean mutates = "bash".equals(tool)
+                || (("write_file".equals(tool) || "edit_file".equals(tool)) && result.ok());
+        if (mutates) {
+            mutatedTurns.add(turnKey(userId, workspaceId));
+        }
     }
 
     /**
