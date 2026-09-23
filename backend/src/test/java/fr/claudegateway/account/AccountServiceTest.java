@@ -99,6 +99,8 @@ class AccountServiceTest {
     private fr.claudegateway.atelier.promptsource.PromptSourceFileRepository promptSourceFileRepository;
     @Mock
     private fr.claudegateway.atelier.repoindex.RepoIndexPathRepository repoIndexPathRepository;
+    @Mock
+    private fr.claudegateway.atelier.resolution.ResolutionMemoryRepository resolutionMemoryRepository;
 
     private AccountService service() {
         return new AccountService(userService, subscriptionRepository, usageCounterRepository,
@@ -109,7 +111,8 @@ class AccountServiceTest {
                 workspaceRepository, workspaceService,
                 atelierMessageRepository,
                 documentRepository, chunkRepository, messageLibraryDocumentRepository, radarPurgeService,
-                hostSpaceService, hostMapFileRepository, promptSourceFileRepository, repoIndexPathRepository);
+                hostSpaceService, hostMapFileRepository, promptSourceFileRepository, repoIndexPathRepository,
+                resolutionMemoryRepository);
     }
 
     private User user(UUID id) {
@@ -222,5 +225,7 @@ class AccountServiceTest {
         verify(promptSourceFileRepository).deleteByUserId(userId);
         // L'index de repo persistant (F-148 / SF-148-07) : chemins des projets de ce compte.
         verify(repoIndexPathRepository).deleteByUserId(userId);
+        // La mémoire de résolutions (F-148 / SF-148-08) : questions/conclusions de ce compte.
+        verify(resolutionMemoryRepository).deleteByUserId(userId);
     }
 }

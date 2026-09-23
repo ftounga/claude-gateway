@@ -1050,6 +1050,24 @@ public class AtelierChatService implements RelayInterruptTarget {
     }
 
     /**
+     * Mémoire de résolutions par poste (F-148 / SF-148-08). Injectée par mutateur :
+     * {@link ResolutionMemory#NONE} (formes historiques, tests) ⇒ aucun rappel ni enregistrement,
+     * comportement d'avant F-148.
+     *
+     * <p>Rappel injecté dans le MESSAGE du tour (patron F-137), jamais dans la consigne système
+     * (cache F-134 préservé) ; enregistrement post-tour, seulement pour un tour abouti.</p>
+     */
+    private ResolutionMemory resolutionMemory = ResolutionMemory.NONE;
+
+    /** Branche la mémoire de résolutions (F-148 / SF-148-08). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setResolutionMemory(ResolutionMemory resolutionMemory) {
+        if (resolutionMemory != null) {
+            this.resolutionMemory = resolutionMemory;
+        }
+    }
+
+    /**
      * Politique de permission allow/ask/deny persistée par workspace/user (F-121 / SF-121-02). Injectée
      * par mutateur pour ne toucher à aucun des constructeurs conservés : {@code null} (formes
      * historiques, tests antérieurs à F-121) ⇒ la porte retombe sur son comportement binaire d'avant
@@ -1319,6 +1337,20 @@ public class AtelierChatService implements RelayInterruptTarget {
             }
         } catch (RuntimeException ex) {
             log.debug("Rappel de faits ignoré (best-effort) : {}", ex.getMessage());
+        }
+
+        // F-148 / SF-148-08 — UNE RÉSOLUTION DÉJÀ TROUVÉE sur ce poste pour une question proche, jointe
+        // à la CONSIGNE (jamais à la consigne système : elle dépend de la question, l'y mettre casserait
+        // le cache F-134). Même patron que F-137 : la consigne ENVOYÉE est augmentée, le message
+        // PERSISTÉ reste la parole de l'utilisateur. Le bloc est encadré comme une donnée à vérifier
+        // (anti-injection). Best-effort : un échec ne casse pas le tour.
+        try {
+            java.util.Optional<String> recalled = resolutionMemory.recall(userId, workspace, userText);
+            if (recalled.isPresent() && !recalled.get().isBlank()) {
+                consigne = recalled.get() + "\n" + consigne;
+            }
+        } catch (RuntimeException ex) {
+            log.debug("Rappel de résolution ignoré (best-effort) : {}", ex.getMessage());
         }
 
         List<AgentMessage> messages = buildReplayMessages(userId, workspace);
@@ -1966,6 +1998,19 @@ public class AtelierChatService implements RelayInterruptTarget {
         // MAINTENANT, une fois la réponse prête, pour servir `glob` depuis la base au tour suivant.
         // Throttlé, asynchrone, repli passant : ne bloque pas, ne lève pas.
         repoIndex.refreshAfterTurn(userId, workspace);
+
+        // F-148 / SF-148-08 — on mémorise « question -> conclusion (+ fichiers touchés) », mais SEULEMENT
+        // pour un tour ABOUTI : ni interrompu, ni coupé au plafond, réponse non vide. Un tour inachevé
+        // n'a pas de conclusion fiable — l'enregistrer polluerait le rappel. Asynchrone, par poste,
+        // repli passant. Les fichiers sont les chemins distincts des actions du tour.
+        if (!interrupted && !spendCapReached && reply != null && !reply.isBlank()) {
+            java.util.List<String> touchedFiles = actions.stream()
+                    .map(AtelierAction::path)
+                    .filter(path -> path != null && !path.isBlank())
+                    .distinct()
+                    .toList();
+            resolutionMemory.recordAfterTurn(userId, workspace, userText, reply, touchedFiles);
+        }
 
         return new AtelierChatResult(reply, actions, assistant.getId(), inputTokens, outputTokens,
                 activeSeconds, spendCapReached, costUsd, reusedPercent);

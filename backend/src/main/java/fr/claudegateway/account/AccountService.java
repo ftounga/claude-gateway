@@ -57,6 +57,8 @@ public class AccountService {
     private final fr.claudegateway.atelier.promptsource.PromptSourceFileRepository promptSourceFileRepository;
     /** F-148 / SF-148-07 : l'index de repo persistant (chemins de fichiers des projets). */
     private final fr.claudegateway.atelier.repoindex.RepoIndexPathRepository repoIndexPathRepository;
+    /** F-148 / SF-148-08 : la mémoire de résolutions (question → conclusion) par poste. */
+    private final fr.claudegateway.atelier.resolution.ResolutionMemoryRepository resolutionMemoryRepository;
     private final SubscriptionRepository subscriptionRepository;
     private final UsageCounterRepository usageCounterRepository;
     private final UsageTurnRepository usageTurnRepository;
@@ -106,12 +108,14 @@ public class AccountService {
             fr.claudegateway.runner.host.HostSpaceService hostSpaceService,
             fr.claudegateway.governance.map.HostMapFileRepository hostMapFileRepository,
             fr.claudegateway.atelier.promptsource.PromptSourceFileRepository promptSourceFileRepository,
-            fr.claudegateway.atelier.repoindex.RepoIndexPathRepository repoIndexPathRepository) {
+            fr.claudegateway.atelier.repoindex.RepoIndexPathRepository repoIndexPathRepository,
+            fr.claudegateway.atelier.resolution.ResolutionMemoryRepository resolutionMemoryRepository) {
         this.radarPurgeService = radarPurgeService;
         this.hostSpaceService = hostSpaceService;
         this.hostMapFileRepository = hostMapFileRepository;
         this.promptSourceFileRepository = promptSourceFileRepository;
         this.repoIndexPathRepository = repoIndexPathRepository;
+        this.resolutionMemoryRepository = resolutionMemoryRepository;
         this.userService = userService;
         this.subscriptionRepository = subscriptionRepository;
         this.usageCounterRepository = usageCounterRepository;
@@ -271,6 +275,9 @@ public class AccountService {
         // L'index de repo persistant (F-148 / SF-148-07) : chemins des fichiers des projets de ce
         // compte. Il ne lui survit pas.
         repoIndexPathRepository.deleteByUserId(userId);
+        // La mémoire de résolutions (F-148 / SF-148-08) : questions et conclusions des tours de ce
+        // compte. Elle ne lui survit pas.
+        resolutionMemoryRepository.deleteByUserId(userId);
         runnerHostRepository.deleteByUserId(userId);
         // Places de terminal vivant (F-70 / SF-70-01) : elles nomment les projets ouverts par le
         // compte. Sans purge, elles survivraient à sa suppression jusqu'à leur expiration.
