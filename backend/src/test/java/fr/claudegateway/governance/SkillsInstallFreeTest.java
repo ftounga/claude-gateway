@@ -27,7 +27,9 @@ class SkillsInstallFreeTest {
     /** Ce qui ne doit plus jamais apparaître pour un DIAGRAMME. */
     private static final List<String> FORBIDDEN = List.of(
             "npm install", "apt-get install", "brew install",
-            "pip install diagrams", "mermaid-cli", "mmdc");
+            "pip install diagrams", "mermaid-cli", "mmdc",
+            // F-129 / SF-129-05 : le FICHIER lui aussi est construit par la gateway.
+            "pip install python-pptx");
 
     private String skill(String path) throws IOException {
         ClassPathResource resource = new ClassPathResource(path);
@@ -59,6 +61,8 @@ class SkillsInstallFreeTest {
                 .contains("render_diagram")
                 .contains("engine: \"cloud\"")
                 .contains("aws.rds")
+                // SF-129-05 : la voie recommandée pour le fichier lui-même.
+                .contains("build_presentation")
                 .as("le rendu est gratuit — sans le dire, l'agent l'évitera comme generate_image")
                 .contains("GRATUIT");
     }

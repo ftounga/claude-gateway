@@ -40,8 +40,20 @@ public interface DiagramRenderer {
         }
     }
 
-    /** L'image rendue, et ce qu'il faut pour la ranger. */
-    record Rendered(byte[] bytes, Format format) {
+    /**
+     * L'image rendue, ce qu'il faut pour la ranger, et — s'il y en a — les types rendus <b>sans icône
+     * officielle</b> (F-142 / SF-142-09). Ce dernier point doit remonter jusqu'à l'agent : un composant
+     * dessiné en boîte neutre se dit, il ne se devine pas.
+     */
+    record Rendered(byte[] bytes, Format format, String unknownTypes) {
+
+        public Rendered(byte[] bytes, Format format) {
+            this(bytes, format, "");
+        }
+
+        public boolean hasUnknownTypes() {
+            return unknownTypes != null && !unknownTypes.isBlank();
+        }
     }
 
     /**

@@ -9,19 +9,45 @@ Produit un **vrai fichier `.pptx`** — ouvrable dans PowerPoint, Keynote, Libre
 le demande**. On l'écrit avec la bibliothèque Python `python-pptx` et on l'exécute sur le terminal
 (`bash`). Ce n'est pas une image d'un slide ni du HTML : c'est le format PowerPoint natif.
 
-## Avant d'écrire quoi que ce soit : où tournes-tu ?
+## La voie recommandée : la gateway construit le deck
 
-`python-pptx` est une dépendance Python. Selon l'endroit, elle s'installe ou non :
+**Décris la présentation et appelle `build_presentation`.** La gateway construit le `.pptx`, le dépose
+dans le projet et te rend son chemin ; tu le publies ensuite avec `presentation_publish`.
 
-- **Sandbox** (environnement managé) : `pip install python-pptx` est autorisé. Installe-la si elle
-  manque, puis produis.
-- **Poste d'un client** (souvent une banque) : `pip install` est **fréquemment bloqué** (proxy
-  d'entreprise, politique de sécurité). Deux cas :
-  - `python-pptx` est déjà présente → produis normalement.
-  - elle est absente **et** l'installation échoue → **ne fais pas semblant**. Dis-le clairement :
-    « `python-pptx` n'est pas disponible sur ce poste et son installation est bloquée (proxy/politique
-    d'entreprise probable). Je peux produire la présentation depuis le sandbox si tu le souhaites. »
-    Ne produis **pas** un `.pptx` vide ni un substitut silencieux.
+**Tu n'installes RIEN sur la machine du client** (F-129 / SF-129-05). C'est la même règle que pour les
+diagrammes : sur un poste d'entreprise, `pip install` est bloqué — le deck ne se produisait pas.
+
+```
+build_presentation(filename: "cible-aws", images: {"archi.png": "archi.png"}, spec: {
+  "title": "AGENOR — cible AWS",
+  "slides": [
+    {"type": "title",   "title": "AGENOR — cible AWS", "subtitle": "Étude, septembre 2026"},
+    {"type": "bullets", "title": "Ce qui change",
+     "bullets": ["Entrée par WAF puis ALB", "Exécution sur EKS", "Données sur RDS"],
+     "notes": "Insister sur le chiffrement en transit."},
+    {"type": "image",   "title": "Architecture cible", "image": "archi.png",
+     "caption": "Flux nominal, hors sauvegardes"},
+    {"type": "table",   "title": "Coûts", "rows": [["Service", "Mensuel"], ["EKS", "420 EUR"]]},
+    {"type": "text",    "title": "Prochaine étape", "text": "Valider avec le RSSI."}
+  ]
+})
+```
+
+- **Types de slides** : `title`, `bullets`, `text`, `image`, `table` — chacun accepte `notes`.
+- **Les images** viennent de fichiers **déjà déposés dans le projet** : un diagramme rendu par
+  `render_diagram`, une image décorative de `generate_image`. Donne leur **chemin** dans `images`.
+  Une image absente est **refusée** : produis-la d'abord, ou retire la slide.
+- **C'est gratuit** : aucun appel fournisseur, aucun jeton.
+
+## Si le poste a déjà `python-pptx` (voie historique)
+
+Elle reste valable, et **seulement si la bibliothèque est déjà là** — ne l'installe jamais. Le script
+`python-pptx` te donne des mises en page plus fines que la description ci-dessus ; c'est son seul
+avantage, et il ne vaut pas une installation sur le poste d'un client.
+
+Si `build_presentation` est indisponible **et** que `python-pptx` est absente, **dis-le** :
+« La construction de présentations est indisponible ici et `python-pptx` n'est pas présente sur ce
+poste. » **Ne produis pas** un `.pptx` vide ni un substitut silencieux.
 
 ## Comment procéder
 
@@ -35,14 +61,13 @@ le demande**. On l'écrit avec la bibliothèque Python `python-pptx` et on l'ex�
        from pptx.util import Inches, Pt
    except ModuleNotFoundError:
        sys.exit(
-           "python-pptx est absente. Sandbox : `pip install python-pptx`. "
-           "Poste : si `pip install` est bloqué (proxy/politique d'entreprise), "
-           "produire la présentation depuis le sandbox."
+           "python-pptx est absente sur cette machine. Utilise build_presentation : "
+           "la gateway construit le .pptx sans rien installer ici."
        )
    ```
 
-   Si tu peux installer (sandbox), fais-le d'abord : `pip install python-pptx` (elle tire `Pillow`
-   pour les images et `lxml`).
+   **Ne l'installe pas.** Si elle manque, la voie est `build_presentation` — c'est exactement le cas
+   qu'elle existe pour couvrir.
 
 2. **Écris le script `python-pptx`.** Une présentation, des slides, des espaces réservés. Les briques
    utiles :

@@ -122,7 +122,9 @@ public class HttpDiagramRenderer implements DiagramRenderer {
                 throw new DiagramRejectedException("Image rendue trop lourde : " + image.length
                         + " octets pour un maximum de " + properties.getMaxImageBytes() + ".");
             }
-            return new Rendered(image, format);
+            // F-142 / SF-142-09 : les types rendus sans icône officielle voyagent en en-tête.
+            String unknown = response.headers().firstValue("X-Cg-Unknown-Types").orElse("");
+            return new Rendered(image, format, unknown);
         }
         if (status == 400 || status == 413 || status == 422) {
             throw new DiagramRejectedException(reason(response.body()));

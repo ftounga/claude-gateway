@@ -16,11 +16,11 @@ ENV PUPPETEER_SKIP_DOWNLOAD=true \
 RUN apk add --no-cache chromium ttf-freefont font-noto font-noto-emoji \
         python3 py3-pip graphviz ttf-dejavu \
     && npm install -g @mermaid-js/mermaid-cli@11.4.2 \
-    && pip install --no-cache-dir --break-system-packages diagrams==0.24.4 \
+    && pip install --no-cache-dir --break-system-packages diagrams==0.24.4 python-pptx==1.0.2 \
     && adduser -D -u 10001 renderer
 
 WORKDIR /app
-COPY server.js puppeteer.json cloud.py check_catalog.py ./
+COPY server.js puppeteer.json cloud.py deck.py check_catalog.py ./
 # Le catalogue d'icônes est vérifié AU BUILD : une entrée qui ne désigne aucune classe réelle ferait
 # échouer le premier schéma d'un client, et pas la construction de l'image. On le refuse ici.
 RUN python3 check_catalog.py && chown -R renderer:renderer /app

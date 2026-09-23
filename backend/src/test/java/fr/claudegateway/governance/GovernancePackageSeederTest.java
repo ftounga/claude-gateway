@@ -133,10 +133,13 @@ class GovernancePackageSeederTest {
         assertThat(pptx.getContent()).contains("python-pptx")
                 .contains(".pptx").containsIgnoringCase("puces").containsIgnoringCase("tableau")
                 .containsIgnoringCase("notes");
-        // L'échec NOMMÉ quand la lib manque (import gardé), et le drapeau sandbox/poste.
+        // SF-129-05 : l'échec NOMMÉ quand la lib manque (import gardé) renvoie désormais vers la
+        // construction PAR LA GATEWAY — et non plus vers une installation que le poste refuse.
         assertThat(pptx.getContent()).contains("ModuleNotFoundError")
-                .containsIgnoringCase("sandbox").containsIgnoringCase("poste")
-                .contains("pip install python-pptx");
+                .containsIgnoringCase("poste")
+                .contains("build_presentation")
+                .contains("Ne l'installe pas")
+                .doesNotContain("pip install python-pptx");
         // SF-129-03 : le rendu par images pour l'aperçu in-app, dans le sandbox (pas de composant serveur).
         assertThat(pptx.getContent()).contains("pdftoppm").contains("--convert-to pdf")
                 .containsIgnoringCase("png");

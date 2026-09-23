@@ -671,6 +671,15 @@ public class AtelierChatService implements RelayInterruptTarget {
     private fr.claudegateway.diagrams.DiagramToolExecutor diagramToolExecutor;
 
     /**
+     * L'outil {@code build_presentation} (F-129 / SF-129-05) : le {@code .pptx} est construit <b>par la
+     * gateway</b>, pour que le poste du client n'installe pas {@code python-pptx}. {@code none()} par défaut.
+     */
+    private fr.claudegateway.decks.DeckToolCatalog deckToolCatalog =
+            fr.claudegateway.decks.DeckToolCatalog.none();
+    /** Exécution de {@code build_presentation} ; {@code null} pour les formes historiques. */
+    private fr.claudegateway.decks.DeckToolExecutor deckToolExecutor;
+
+    /**
      * Tours pour lesquels une interruption a été demandée (F-38 / SF-38-07, même geste que F-32).
      * Clef {@code userId:workspaceId} : l'isolation est déjà garantie par {@code requireOwned}, la
      * clef composite évite en plus qu'une marque déborde d'un utilisateur à l'autre. Remise à zéro à
@@ -1016,6 +1025,19 @@ public class AtelierChatService implements RelayInterruptTarget {
             this.diagramToolCatalog = diagramToolCatalog;
         }
         this.diagramToolExecutor = diagramToolExecutor;
+    }
+
+    /**
+     * Branche l'outil de construction de présentations (F-129 / SF-129-05) : sans service configuré,
+     * l'outil n'est pas donné — l'ancienne voie {@code python-pptx} reste possible là où elle marche.
+     */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setDeckTool(fr.claudegateway.decks.DeckToolCatalog deckToolCatalog,
+            fr.claudegateway.decks.DeckToolExecutor deckToolExecutor) {
+        if (deckToolCatalog != null) {
+            this.deckToolCatalog = deckToolCatalog;
+        }
+        this.deckToolExecutor = deckToolExecutor;
     }
 
     /** Branche l'écriture des cartes du poste pour le reclassement (F-141 / SF-141-04). */
@@ -1859,6 +1881,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                         .isPresentationTool(call.name())) {
                     // F-129 : la présentation (.pptx) est rangée par la gateway comme un artefact.
                     outcome = applyPresentationPublish(userId, workspace, callId, call, listener);
+                } else if (fr.claudegateway.decks.DeckToolCatalog.isDeckTool(call.name())) {
+                    // F-129 / SF-129-05 : la gateway construit le .pptx et le dépose dans le projet.
+                    outcome = applyDeckBuild(userId, workspace, callId, call);
                 } else if (fr.claudegateway.diagrams.DiagramToolCatalog.isDiagramTool(call.name())) {
                     // F-142 / SF-142-06 : la gateway rend le diagramme et le dépose dans le projet.
                     outcome = applyDiagramRender(userId, workspace, callId, call);
@@ -2731,6 +2756,20 @@ public class AtelierChatService implements RelayInterruptTarget {
      * n'appelle aucun fournisseur et ne consomme aucun jeton — le brider n'économiserait rien et
      * priverait un livrable de ses schémas.
      */
+    /**
+     * Exécute {@code build_presentation} (F-129 / SF-129-05) : la gateway construit le fichier, le
+     * poste ne fabrique plus rien. Aucun plafond par tour — aucun appel fournisseur derrière.
+     */
+    private ToolOutcome applyDeckBuild(UUID userId, Workspace workspace, String callId,
+            AgentToolCall call) {
+        if (deckToolExecutor == null || !deckToolCatalog.isOpenFor(userId, workspace)) {
+            return ToolOutcome.error("La construction de présentations n'est pas ouverte dans ce terminal.");
+        }
+        fr.claudegateway.decks.DeckToolExecutor.Outcome outcome =
+                deckToolExecutor.execute(userId, workspace, callId, call.input());
+        return outcome.error() ? ToolOutcome.error(outcome.content()) : ToolOutcome.info(outcome.content());
+    }
+
     private ToolOutcome applyDiagramRender(UUID userId, Workspace workspace, String callId,
             AgentToolCall call) {
         if (diagramToolExecutor == null || !diagramToolCatalog.isOpenFor(userId, workspace)) {
@@ -4773,6 +4812,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         tools.addAll(imageToolCatalog.toolsFor(userId, workspace));
         // F-142 / SF-142-06 : le rendu de diagrammes, côté gateway — aucune installation chez le client.
         tools.addAll(diagramToolCatalog.toolsFor(userId, workspace));
+        // F-129 / SF-129-05 : la construction du .pptx, côté gateway, pour la même raison.
+        tools.addAll(deckToolCatalog.toolsFor(userId, workspace));
         return List.copyOf(tools);
     }
 
@@ -5044,6 +5085,10 @@ public class AtelierChatService implements RelayInterruptTarget {
         // quoi l'agent le traiterait avec la parcimonie due à generate_image et éviterait de dessiner.
         if (diagramToolCatalog.isOpenFor(userId, workspace)) {
             system.append(fr.claudegateway.diagrams.DiagramToolCatalog.GUIDE).append("\n\n");
+        }
+        // F-129 / SF-129-05 : le guide de la construction de deck, sous la même garde que l'outil.
+        if (deckToolCatalog.isOpenFor(userId, workspace)) {
+            system.append(fr.claudegateway.decks.DeckToolCatalog.GUIDE).append("\n\n");
         }
 
         // Compteurs d'amorçage : ces lectures sont journalisées en UNE ligne (F-38 / SF-38-08).
