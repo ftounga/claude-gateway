@@ -53,6 +53,8 @@ public class AccountService {
     private final fr.claudegateway.runner.host.HostSpaceService hostSpaceService;
     /** F-136 / SF-136-01 : la copie de travail des cartes des clients de ce compte. */
     private final fr.claudegateway.governance.map.HostMapFileRepository hostMapFileRepository;
+    /** F-148 / SF-148-06 : le cache des sources de la consigne (CLAUDE.md, STATE/PLAN, skills). */
+    private final fr.claudegateway.atelier.promptsource.PromptSourceFileRepository promptSourceFileRepository;
     private final SubscriptionRepository subscriptionRepository;
     private final UsageCounterRepository usageCounterRepository;
     private final UsageTurnRepository usageTurnRepository;
@@ -100,10 +102,12 @@ public class AccountService {
             MessageLibraryDocumentRepository messageLibraryDocumentRepository,
             RadarPurgeService radarPurgeService,
             fr.claudegateway.runner.host.HostSpaceService hostSpaceService,
-            fr.claudegateway.governance.map.HostMapFileRepository hostMapFileRepository) {
+            fr.claudegateway.governance.map.HostMapFileRepository hostMapFileRepository,
+            fr.claudegateway.atelier.promptsource.PromptSourceFileRepository promptSourceFileRepository) {
         this.radarPurgeService = radarPurgeService;
         this.hostSpaceService = hostSpaceService;
         this.hostMapFileRepository = hostMapFileRepository;
+        this.promptSourceFileRepository = promptSourceFileRepository;
         this.userService = userService;
         this.subscriptionRepository = subscriptionRepository;
         this.usageCounterRepository = usageCounterRepository;
@@ -257,6 +261,9 @@ public class AccountService {
         // La copie de travail des cartes (F-136 / SF-136-01) : c'est le savoir accumulé sur
         // l'infrastructure des clients de ce compte. Il ne lui survit pas.
         hostMapFileRepository.deleteByUserId(userId);
+        // Le cache des sources de la consigne (F-148 / SF-148-06) : copie des CLAUDE.md, STATE/PLAN et
+        // skills des projets de ce compte. Il ne lui survit pas.
+        promptSourceFileRepository.deleteByUserId(userId);
         runnerHostRepository.deleteByUserId(userId);
         // Places de terminal vivant (F-70 / SF-70-01) : elles nomment les projets ouverts par le
         // compte. Sans purge, elles survivraient à sa suppression jusqu'à leur expiration.

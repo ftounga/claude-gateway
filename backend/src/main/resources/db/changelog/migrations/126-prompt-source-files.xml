@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-148 / SF-148-06 — LE CACHE DES SOURCES DE LA CONSIGNE : une copie de travail, cote gateway,
+      des fichiers que buildSystemPrompt relit a CHAQUE message sur le runner.
+
+      CE QU'IL EST : le reflet de CLAUDE.md, de STATE.md/PLAN-ACTION.md du sujet, de l'arborescence et
+      des fichiers de skills d'un PROJET (workspace), relu APRES un tour, pour servir au tour SUIVANT
+      sans couter jusqu'a ~19 allers-retours runner avant le premier mot du modele. La machine du
+      client fait foi : ceci n'est qu'une copie, exactement comme host_map_files (122).
+
+      POURQUOI PAR (user_id, host_id, WORKSPACE_ID, path) ET NON (host_id, path) : ces fichiers sont
+      lus RELATIVEMENT au projectPath du workspace (readOptional(userId, workspace, path)). Deux sujets
+      d'un meme poste ont des projectPath differents, donc des CLAUDE.md differents. Une cle par poste
+      servirait le CLAUDE.md du sujet A au sujet B. host_map_files cle bien par (user, host) parce
+      qu'il ne range que les fichiers MAP de la RACINE du poste — pas le meme perimetre.
+
+      L'ARBORESCENCE est rangee comme une ligne a part, sous un chemin reserve a barre oblique en tete
+      (ce qu'un chemin RELATIF de listFiles n'a jamais ; voir PromptSourceStore.TREE_PATH) : son
+      contenu est le listage brut, une ligne par chemin, tel que safeTree le decoupe.
+
+      ISOLATION : la cle unique porte (user_id, workspace_id, path). Aucune lecture n'omet le couple
+      (user_id, workspace_id) ; la copie d'un client ne peut pas etre servie au tour d'un autre.
+
+      PAS DE CLE ETRANGERE vers workspaces/runner_hosts, meme choix que host_map_files et usage_turns :
+      ranger un projet ne doit pas faire disparaitre en silence la copie de sa consigne. La purge est
+      explicite (deleteByUserId a la suppression du compte).
+    -->
+
+    <changeSet id="126-prompt-source-files" author="claude-gateway">
+        <createTable tableName="prompt_source_files">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <!-- Le poste sous lequel ce projet vit — range pour l'isolation et la purge. -->
+            <column name="host_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <!-- Le projet (workspace) dont c'est la consigne : c'est lui qui determine le projectPath,
+                 donc quels octets CLAUDE.md/STATE.md/skills portent. -->
+            <column name="workspace_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <!-- Chemin relatif au projectPath du workspace ("CLAUDE.md", ".claude/skills/x.md"), ou le
+                 chemin reserve de l'arborescence (PromptSourceStore.TREE_PATH). -->
+            <column name="path" type="varchar(512)">
+                <constraints nullable="false"/>
+            </column>
+            <!-- Contenu du fichier (ou listage brut pour l'arborescence). VARCHAR non borne (JDBC
+                 VARCHAR) pour concorder avec columnDefinition="text" cote entite, meme convention que
+                 host_map_files (122) et messages.content (006). -->
+            <column name="content" type="varchar(1000000)"/>
+            <!-- Empreinte du contenu : permet de ne rien reecrire quand rien n'a change, et c'est ce
+                 qui garantit un prefixe byte-stable tant que la source ne change pas (cache F-134). -->
+            <column name="digest" type="varchar(64)"/>
+            <column name="observed_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addUniqueConstraint tableName="prompt_source_files"
+                             columnNames="user_id, workspace_id, path"
+                             constraintName="uk_prompt_source_files_user_workspace_path"/>
+
+        <createIndex tableName="prompt_source_files" indexName="idx_prompt_source_files_user_workspace">
+            <column name="user_id"/>
+            <column name="workspace_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>
