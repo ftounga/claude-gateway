@@ -98,6 +98,16 @@ public class RunnerToolGateway {
     private static final int MAX_PATH_CHARS = 4_096;
     private static final int MAX_QUERY_CHARS = 1_024;
 
+    /**
+     * Délai du cycle de vie d'un worktree (F-150 / SF-150-01) : un {@code git worktree add} recopie
+     * l'arbre de travail et peut être long sur un gros dépôt — aligné sur le délai de {@code bash}.
+     */
+    public static final long WORKTREE_TIMEOUT_MS = 120_000L;
+    /** Longueur maximale d'un identifiant de tâche (le runner applique la même borne). */
+    public static final int MAX_TASK_ID_CHARS = 64;
+    private static final java.util.regex.Pattern TASK_ID =
+            java.util.regex.Pattern.compile("[A-Za-z0-9_-]{1," + MAX_TASK_ID_CHARS + "}");
+
     private final RunnerCallRouter router;
     private final ObjectMapper objectMapper;
 
@@ -488,6 +498,68 @@ public class RunnerToolGateway {
                         "L'exécution de commandes n'est pas activée sur ce runner. "
                                 + "Redémarre-le sans --no-bash pour l'autoriser.")
                 : result;
+    }
+
+    /**
+     * Matérialise un <b>worktree git isolé</b> du projet cible, sous la racine du poste (F-150 /
+     * SF-150-01). La cible porte le projet dont on tire le worktree ({@link RunnerTarget#projectPath}) ;
+     * l'appel ne fait voyager que le {@code taskId}, borné ici (le runner refait foi).
+     *
+     * <p>Le runner répond {@code ok} avec un contenu JSON {@code {worktreePath, branch}} :
+     * {@code worktreePath} est <b>relatif à la racine du poste</b>, donc réutilisable tel quel comme
+     * {@code project} des appels de la sous-boucle {@code task}. Un runner antérieur répond
+     * {@code unsupported_tool} — {@code task} refusera alors proprement.</p>
+     */
+    public RunnerCallResult worktreeCreate(RunnerTarget target, String callId, String taskId) {
+        String id = safeTaskId(taskId);
+        if (id == null) {
+            return invalid("Identifiant de tâche invalide.");
+        }
+        ObjectNode input = objectMapper.createObjectNode();
+        input.put("taskId", id);
+        return router.call(target, callId, "worktree_create", input, WORKTREE_TIMEOUT_MS);
+    }
+
+    /**
+     * Démonte le worktree d'une tâche (F-150 / SF-150-01). Idempotent côté runner : un worktree déjà
+     * absent est un succès (nettoyage garanti, D9).
+     */
+    public RunnerCallResult worktreeRemove(RunnerTarget target, String callId, String taskId) {
+        String id = safeTaskId(taskId);
+        if (id == null) {
+            return invalid("Identifiant de tâche invalide.");
+        }
+        ObjectNode input = objectMapper.createObjectNode();
+        input.put("taskId", id);
+        return router.call(target, callId, "worktree_remove", input, WORKTREE_TIMEOUT_MS);
+    }
+
+    /**
+     * Réape les worktrees orphelins sous la racine du poste (F-150 / SF-150-01, D9), en préservant
+     * ceux de {@code keep} (tâches encore en vol). Filet complémentaire du reap au démarrage du runner.
+     */
+    public RunnerCallResult worktreeReap(RunnerTarget target, String callId,
+            java.util.Collection<String> keep) {
+        ObjectNode input = objectMapper.createObjectNode();
+        if (keep != null && !keep.isEmpty()) {
+            com.fasterxml.jackson.databind.node.ArrayNode kept = input.putArray("keep");
+            for (String candidate : keep) {
+                String id = safeTaskId(candidate);
+                if (id != null) {
+                    kept.add(id);
+                }
+            }
+        }
+        return router.call(target, callId, "worktree_reap", input, WORKTREE_TIMEOUT_MS);
+    }
+
+    /** Identifiant de tâche sûr, ou {@code null} : {@code [A-Za-z0-9_-]}, borné. Le runner refait foi. */
+    static String safeTaskId(String taskId) {
+        if (taskId == null) {
+            return null;
+        }
+        String trimmed = taskId.trim();
+        return TASK_ID.matcher(trimmed).matches() ? trimmed : null;
     }
 
     private static RunnerCallResult invalid(String message) {

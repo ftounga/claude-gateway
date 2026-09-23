@@ -361,4 +361,60 @@ class RunnerToolGatewayTest {
 
         assertThat(capturedInput("glob").path("pattern").asText()).isEqualTo("**/*.java");
     }
+
+    // ------------------------------------------------------ worktrees `task` (F-150 / SF-150-01)
+
+    private JsonNode capturedWorktreeInput(String expectedTool) {
+        ArgumentCaptor<JsonNode> input = ArgumentCaptor.forClass(JsonNode.class);
+        ArgumentCaptor<Long> timeout = ArgumentCaptor.forClass(Long.class);
+        verify(router).call(org.mockito.ArgumentMatchers.eq(target), anyString(),
+                org.mockito.ArgumentMatchers.eq(expectedTool), input.capture(), timeout.capture());
+        assertThat(timeout.getValue()).isEqualTo(RunnerToolGateway.WORKTREE_TIMEOUT_MS);
+        return input.getValue();
+    }
+
+    @Test
+    void worktreeCreateSendsTheTaskIdWithTheWorktreeTimeout() {
+        gateway().worktreeCreate(target, "toolu_1", "task-42");
+
+        assertThat(capturedWorktreeInput("worktree_create").path("taskId").asText()).isEqualTo("task-42");
+    }
+
+    @Test
+    void worktreeRemoveSendsTheTaskId() {
+        gateway().worktreeRemove(target, "toolu_1", "task-42");
+
+        assertThat(capturedWorktreeInput("worktree_remove").path("taskId").asText()).isEqualTo("task-42");
+    }
+
+    @Test
+    void worktreeReapForwardsOnlyValidTaskIdsToKeep() {
+        gateway().worktreeReap(target, "toolu_1", java.util.List.of("garde", "in valide", "autre"));
+
+        JsonNode keep = capturedWorktreeInput("worktree_reap").path("keep");
+        assertThat(keep.isArray()).isTrue();
+        assertThat(keep).hasSize(2);
+        assertThat(keep.get(0).asText()).isEqualTo("garde");
+        assertThat(keep.get(1).asText()).isEqualTo("autre");
+    }
+
+    @Test
+    void worktreeCreateRefusesAMalformedTaskIdBeforeEmission() {
+        RunnerCallResult result = gateway().worktreeCreate(target, "toolu_1", "pas/valide");
+
+        assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.INVALID_INPUT);
+        verify(router, never()).call(any(), anyString(), anyString(), any(), anyLong());
+    }
+
+    @Test
+    void worktreeCreateSurfacesUnsupportedToolFromAnOlderRunner() {
+        when(router.call(any(), anyString(), org.mockito.ArgumentMatchers.eq("worktree_create"),
+                any(), anyLong()))
+                .thenReturn(RunnerCallResult.backendError(RunnerErrorCodes.UNSUPPORTED_TOOL));
+
+        RunnerCallResult result = new RunnerToolGateway(router, objectMapper)
+                .worktreeCreate(target, "toolu_1", "task-42");
+
+        assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.UNSUPPORTED_TOOL);
+    }
 }

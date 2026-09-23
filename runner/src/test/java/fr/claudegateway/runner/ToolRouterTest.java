@@ -71,8 +71,36 @@ class ToolRouterTest {
         assertEquals("unsupported_tool", outcome.errorCode());
     }
 
+    @Test
+    void aiguilleLesOperationsWorktreeVersLeWorktreeTool() {
+        // Un taskId malformé fait répondre `invalid_input` au WorktreeTool : ce code prouve que
+        // l'appel a bien été routé là, et non au FileTools (qui répondrait `unsupported_tool`).
+        ToolOutcome outcome = routerWithWorktree().execute("worktree_create",
+                MAPPER.createObjectNode().put("taskId", "pas/valide"), ToolContext.none());
+
+        assertFalse(outcome.ok());
+        assertEquals("invalid_input", outcome.errorCode());
+    }
+
+    @Test
+    void sansWorktreeToolUneOperationWorktreeEstNonSupportee() {
+        // Rétro-compatibilité : un runner sans ce montage (constructeur historique) route
+        // `worktree_*` vers FileTools, qui répond `unsupported_tool` — exactement un runner antérieur.
+        ToolOutcome outcome = router(true).execute("worktree_create",
+                MAPPER.createObjectNode().put("taskId", "abc"), ToolContext.none());
+
+        assertFalse(outcome.ok());
+        assertEquals("unsupported_tool", outcome.errorCode());
+    }
+
     private ToolRouter router(boolean allowBash) {
         PathResolver guard = new PathResolver(root);
         return new ToolRouter(new FileTools(guard), new BashTool(guard, allowBash, ShellElection.elect()));
+    }
+
+    private ToolRouter routerWithWorktree() {
+        PathResolver guard = new PathResolver(root);
+        return new ToolRouter(new FileTools(guard), new BashTool(guard, true, ShellElection.elect()),
+                null, new WorktreeTool(root, root, new GitCli()));
     }
 }

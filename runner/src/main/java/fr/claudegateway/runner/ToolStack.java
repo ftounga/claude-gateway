@@ -86,6 +86,10 @@ public final class ToolStack {
         //
         // La répétition au repli long-polling est, elle, VOULUE : ces lignes attestent que le second
         // transport monte les mêmes gardes que la socket, ce qui est la raison d'être de cette classe.
+        // Reap des worktrees `task` orphelins au démarrage (F-150 / SF-150-01, D9) : une déconnexion
+        // a pu tuer un tour et laisser un worktree sous .atelier-worktrees/. Best-effort, jamais bloquant.
+        WorktreeTool.reapAtStartup(scopes.hostRoot(), console);
+
         console.info("Racine du poste : " + scopes.hostRoot());
         console.info("Le dossier du projet est le point de DÉPART de chaque tour ; il ne borne pas "
                 + "ce qu'une commande peut atteindre.");
