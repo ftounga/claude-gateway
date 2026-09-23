@@ -512,6 +512,14 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     private final String model;
     /**
+     * Modèle de la <b>sous-boucle d'exploration</b> (F-149 / SF-149-03) : la lecture lourde déléguée
+     * (SF-149-02) tourne sur un modèle moins cher (Sonnet) que la boucle principale (Opus), là où se
+     * concentre le coût. {@code null}/vide ⇒ <b>repli</b> sur {@link #model} (comportement d'avant
+     * SF-149-03). Le modèle voyage comme une chaîne via {@link AiAgentProvider} — aucun couplage direct
+     * à un modèle (Provider Independence).
+     */
+    private final String exploreModel;
+    /**
      * Raisonnement du <b>premier</b> tour d'une demande (F-39 / SF-39-10, effort adaptatif
      * F-118 / SF-118-01) : effort normal ({@code app.atelier.effort}). C'est le tour où la réflexion
      * sert à cadrer le travail.
@@ -948,6 +956,9 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.storageExecution = atelierProperties.storageExecution();
         this.streaming = !Boolean.FALSE.equals(atelierProperties.streaming());
         this.model = atelierProperties.model();
+        // F-149 / SF-149-03 : modèle de la sous-boucle d'exploration (Sonnet en prod), repli sur le
+        // modèle principal quand non configuré (null/vide) — décidé au moment de déléguer, dans explore().
+        this.exploreModel = atelierProperties.exploreModel();
         this.reasoning = new AgentReasoning(true, atelierProperties.effort());
         this.stepReasoning = new AgentReasoning(true, atelierProperties.stepEffort());
         this.adaptiveEffort = !Boolean.FALSE.equals(atelierProperties.adaptiveEffort());
@@ -2830,8 +2841,14 @@ public class AtelierChatService implements RelayInterruptTarget {
         // (SF-39-20, D1) : elle est la même sur les deux cibles, et n'y perd rien quand la panoplie
         // principale change.
         List<AgentTool> readTools = explorationTools();
+        // F-149 / SF-149-03 : la sous-boucle tourne sur le modèle d'exploration (Sonnet en prod), là
+        // où se concentre la lecture lourde déléguée — repli SÛR sur le modèle principal si non
+        // configuré. `model` (le principal) est passé jusqu'ici : la boucle principale n'est jamais
+        // affectée. Aucun couplage direct à un modèle : `subModel` est une chaîne remise à
+        // `AiAgentProvider` (Provider Independence).
+        String subModel = (exploreModel == null || exploreModel.isBlank()) ? model : exploreModel;
         try {
-            AtelierExploration.Result result = AtelierExploration.run(agentProvider, model, apiKey,
+            AtelierExploration.Result result = AtelierExploration.run(agentProvider, subModel, apiKey,
                     question.trim(), scope, readTools,
                     subCall -> {
                         ToolOutcome outcome = READ_ONLY_TOOLS.contains(subCall.name())

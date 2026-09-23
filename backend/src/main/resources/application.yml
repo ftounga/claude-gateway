@@ -183,6 +183,12 @@ app:
     # defaut `low`. Corrige le raisonnement ZERO d'origine (l'exploration lit et interprete). Sobre
     # par defaut pour ne pas alourdir chaque lecture deleguee. Meme repli que `effort`.
     explore-effort: ${APP_ATELIER_EXPLORE_EFFORT:low}
+    # Modele de la SOUS-BOUCLE d'exploration (F-149 / SF-149-03) : la revue et la lecture lourde
+    # deleguees (la ou se concentre le cout, SF-149-02) tournent sur un modele moins cher que la boucle
+    # principale (`app.atelier.model`, Opus). Defaut Sonnet (claude-sonnet-5). Repli sur : null/vide =>
+    # la sous-boucle suit le modele principal (comportement d'avant SF-149-03). Non valide contre le
+    # ModelCatalog (comme `model`) : le catalogue dit ce que le chat propose, pas ce que le harnais execute.
+    explore-model: ${APP_ATELIER_EXPLORE_MODEL:claude-sonnet-5}
     # Fenetre de rejeu des TRAJECTOIRES d'outils (F-119 / SF-119-03) : les N derniers tours sont
     # rejoues AVEC leurs resultats d'outils, au-dela en texte seul. Relevee de 5 a 12 : l'agent
     # perdait ses preuves (resultats d'outils) plus vite que ses affirmations (texte garde), d'ou des

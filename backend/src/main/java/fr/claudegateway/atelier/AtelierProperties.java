@@ -120,6 +120,17 @@ import org.springframework.boot.context.properties.bind.ConstructorBinding;
  *                      bornées et en lecture seule. Repli comme les autres bornes : une valeur absente,
  *                      nulle ou {@code < 1} retombe sur le défaut, et une valeur déraisonnable est
  *                      ramenée à un plafond lisible ({@code 16})
+ * @param exploreModel  modèle de la <b>sous-boucle d'exploration</b> (F-149 / SF-149-03) : la revue et
+ *                      la lecture lourde déléguées (là où se concentre le coût, SF-149-02) tournent sur
+ *                      un modèle moins cher que la boucle principale — <b>Sonnet</b>
+ *                      ({@code claude-sonnet-5}) par défaut de production ({@code application.yml}),
+ *                      tandis que la boucle principale reste sur {@link #model()} (Opus). <b>Repli
+ *                      sûr</b> : {@code null}/vide ⇒ la sous-boucle suit le modèle principal
+ *                      (comportement d'avant SF-149-03), ce qui garde byte-identiques les appelants qui
+ *                      n'expriment pas ce réglage. <b>Non</b> validé contre {@code ModelCatalog}, comme
+ *                      {@link #model()} : le catalogue dit ce que le chat propose, pas ce que le harnais
+ *                      exécute. Le modèle voyage comme une chaîne via {@code AiAgentProvider} — aucun
+ *                      couplage direct à un modèle (Provider Independence)
  */
 @ConfigurationProperties(prefix = "app.atelier")
 public record AtelierProperties(
@@ -145,7 +156,8 @@ public record AtelierProperties(
         Integer replayedTraceTurns,
         Boolean fileStateHints,
         Boolean perMessageEffort,
-        Integer exploreParallelism) {
+        Integer exploreParallelism,
+        String exploreModel) {
 
 
     /**
@@ -164,6 +176,13 @@ public record AtelierProperties(
 
     /** Modèle de la boucle maison à défaut de configuration (F-39 / SF-39-10). */
     public static final String DEFAULT_MODEL = "claude-opus-5";
+    /**
+     * Modèle de la <b>sous-boucle d'exploration</b> à défaut de production (F-149 / SF-149-03) :
+     * {@code claude-sonnet-5}. Porté par {@code application.yml} (et non par le record), pour que le
+     * repli du record ({@code null} ⇒ suivre le modèle principal) garde byte-identiques les appelants
+     * qui n'expriment pas ce réglage. Référence de valeur ; le repli sûr vit dans le service.
+     */
+    public static final String DEFAULT_EXPLORE_MODEL = "claude-sonnet-5";
     /** Effort par défaut : celui du fournisseur, écrit pour être réglable (F-39 / SF-39-10). */
     public static final String DEFAULT_EFFORT = "high";
     /**
@@ -361,6 +380,25 @@ public record AtelierProperties(
     }
 
     /**
+     * Constructeur de compatibilité, sans le modèle d'exploration (F-149 / SF-149-03) :
+     * {@code exploreModel} retombe sur son repli ({@code null} ⇒ la sous-boucle suit le modèle
+     * principal). Conserve la forme SF-39-21 (jusqu'à {@code exploreParallelism}) pour n'obliger
+     * aucun appelant à exprimer un réglage qu'il n'a pas.
+     */
+    public AtelierProperties(String storage, String bucket, String prefix, Long maxTotalBytes,
+            Integer maxEntries, Long maxFileBytes, Integer maxIterations, String model, String effort,
+            Boolean contextPruning, Long maxTurnTokens, Integer maxDelegations,
+            Boolean storageExecution, Boolean streaming, String stepEffort, Boolean adaptiveEffort,
+            Duration turnBudget, String exploreEffort, Boolean escalateOnSignal,
+            Integer replayedTraceTurns, Boolean fileStateHints, Boolean perMessageEffort,
+            Integer exploreParallelism) {
+        this(storage, bucket, prefix, maxTotalBytes, maxEntries, maxFileBytes, maxIterations, model,
+                effort, contextPruning, maxTurnTokens, maxDelegations, storageExecution, streaming,
+                stepEffort, adaptiveEffort, turnBudget, exploreEffort, escalateOnSignal,
+                replayedTraceTurns, fileStateHints, perMessageEffort, exploreParallelism, null);
+    }
+
+    /**
      * Constructeur de compatibilité, sans le parallélisme d'exploration (F-39 / SF-39-21) :
      * {@code exploreParallelism} retombe sur son défaut (3). Conserve la forme F-134 (jusqu'à
      * {@code perMessageEffort}) pour n'obliger aucun appelant à exprimer un réglage qu'il n'a pas.
@@ -374,7 +412,7 @@ public record AtelierProperties(
         this(storage, bucket, prefix, maxTotalBytes, maxEntries, maxFileBytes, maxIterations, model,
                 effort, contextPruning, maxTurnTokens, maxDelegations, storageExecution, streaming,
                 stepEffort, adaptiveEffort, turnBudget, exploreEffort, escalateOnSignal,
-                replayedTraceTurns, fileStateHints, perMessageEffort, null);
+                replayedTraceTurns, fileStateHints, perMessageEffort, null, null);
     }
 
     /**
