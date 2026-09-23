@@ -47,6 +47,11 @@ import {
   removeReference,
   shouldFold,
 } from './pasted-text';
+import {
+  SlashCommand,
+  expandSlashCommand,
+  slashSuggestions,
+} from './slash-commands';
 import { MarkdownPipe } from '../../shared/markdown.pipe';
 import { TeamsLinkBadgeComponent } from '../../shared/teams-link-badge/teams-link-badge.component';
 import { TeamsLink } from '../teams/teams-link.service';
@@ -183,6 +188,9 @@ export const LONG_THREAD_TURNS = 40;
     // DIX FEUILLES (F-145 / SF-145-02) : l'état de dictée dans la zone de saisie, à part comme les
     // précédentes — le budget de 12 ko de la feuille principale fait échouer le build.
     './atelier-terminal-dictation.component.scss',
+    // ONZE FEUILLES (F-121 / SF-121-23) : le menu de slash-commands vit à part, pour la même raison
+    // de budget de build (12 ko) de la feuille principale.
+    './atelier-terminal-slash.component.scss',
   ],
 })
 export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
@@ -1131,6 +1139,91 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     }
   }
 
+  // ------------------------------------------------ slash-commands du composer (F-121 / SF-121-23)
+
+  /** Index surligné dans le menu de slash-commands (borné par `highlightedSlash`). */
+  private readonly slashHighlight = signal(0);
+  /** Menu fermé à la main (Échap) ou après acceptation, jusqu'à la frappe suivante. */
+  private readonly slashDismissed = signal(false);
+
+  /**
+   * Les commandes à proposer pour le brouillon courant. Vide → aucun menu, et la frappe/l'envoi
+   * gardent EXACTEMENT le comportement d'avant cette subfeature (aucune régression).
+   */
+  get slashMenu(): SlashCommand[] {
+    if (this.slashDismissed()) {
+      return [];
+    }
+    return slashSuggestions(this.draft);
+  }
+
+  /** Vrai quand le menu de slash-commands est ouvert. */
+  get slashMenuOpen(): boolean {
+    return this.slashMenu.length > 0;
+  }
+
+  /** Index surligné, borné au menu courant ; `-1` si le menu est vide. */
+  highlightedSlash(): number {
+    const menu = this.slashMenu;
+    if (menu.length === 0) {
+      return -1;
+    }
+    return Math.min(Math.max(this.slashHighlight(), 0), menu.length - 1);
+  }
+
+  /**
+   * Frappe dans le champ : le parent reste propriétaire du brouillon, mais on rouvre le menu (une
+   * fermeture par Échap ne vaut que pour le jeton en cours) et on remet le surlignage en tête.
+   */
+  onDraftInput(value: string): void {
+    this.slashDismissed.set(false);
+    this.slashHighlight.set(0);
+    this.draftChange.emit(value);
+  }
+
+  /**
+   * Clavier du composer. **N'agit que menu ouvert** : ↑/↓ déplacent le surlignage, Tab/Entrée
+   * complètent la commande surlignée (sans envoyer), Échap ferme le menu. Menu fermé, l'événement
+   * suit son cours (Entrée envoie via le `ngSubmit` du formulaire) — aucun changement de saisie.
+   */
+  onComposerKeydown(event: KeyboardEvent): void {
+    const menu = this.slashMenu;
+    if (menu.length === 0) {
+      return;
+    }
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault();
+        this.slashHighlight.set((this.highlightedSlash() + 1) % menu.length);
+        break;
+      case 'ArrowUp':
+        event.preventDefault();
+        this.slashHighlight.set((this.highlightedSlash() - 1 + menu.length) % menu.length);
+        break;
+      case 'Tab':
+      case 'Enter':
+        event.preventDefault();
+        this.acceptSlash(menu[this.highlightedSlash()]);
+        break;
+      case 'Escape':
+        event.preventDefault();
+        this.slashDismissed.set(true);
+        break;
+      default:
+        break;
+    }
+  }
+
+  /**
+   * Complète le brouillon avec le nom de la commande suivi d'une espace (`/revue ␣`) : la complétion
+   * ÉCRIT, elle n'envoie pas. L'espace clôt le jeton, donc le menu se referme de lui-même.
+   */
+  acceptSlash(command: SlashCommand): void {
+    this.slashDismissed.set(true);
+    this.slashHighlight.set(0);
+    this.draftChange.emit(`/${command.name} `);
+  }
+
   /** Envoie la demande saisie (touche Entrée ou bouton), sauf pendant un envoi. */
   submit(): void {
     // LECTURE SEULE STRICTE (F-83 / SF-83-01) : le gabarit ne rend aucune invite, et le code refuse
@@ -1152,14 +1245,23 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
       // F-146 / SF-146-01 : les références encore présentes reprennent leur texte intégral. Celles
       // que l'utilisateur a effacées ne sont PAS réinjectées — rien ne part qu'il n'ait sous les
       // yeux. Le brouillon est réécrit avant l'émission, car c'est lui que le parent envoie.
+      let outgoing = this.draft;
       const pastes = this.pastes();
       if (pastes.length > 0) {
-        const expanded = expand(this.draft, pastes);
-        if (expanded !== this.draft) {
-          this.draftChange.emit(expanded);
-        }
+        outgoing = expand(this.draft, pastes);
         this.pastes.set([]);
       }
+      // F-121 / SF-121-23 : une slash-command CONNUE est expansée de façon déterministe en son
+      // prompt imposé (arguments libres ajoutés en contexte). Une commande inconnue part littérale.
+      const commandExpansion = expandSlashCommand(outgoing);
+      if (commandExpansion !== null) {
+        outgoing = commandExpansion;
+      }
+      if (outgoing !== this.draft) {
+        this.draftChange.emit(outgoing);
+      }
+      this.slashDismissed.set(false);
+      this.slashHighlight.set(0);
       this.send.emit();
     }
   }

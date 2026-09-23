@@ -1,0 +1,39 @@
+// F-121 / SF-121-23 — MENU DE SLASH-COMMANDS. Feuille à part : la feuille principale du terminal
+// est au plafond de build de 12 ko (angular.json), comme pour les feuilles compaction/deposit/…
+//
+// Posé DANS LE FLUX, au-dessus de l'invite. Sobre, aux jetons du terminal (navy / orange / mono) —
+// jamais une couleur hors charte (DESIGN_SYSTEM.md).
+.slash-menu {
+  margin: 0;
+  padding: var(--cg-space-1);
+  list-style: none;
+  border-top: 1px solid var(--cg-navy-2);
+  max-height: 12rem;
+  overflow-y: auto;
+}
+
+.slash-menu__item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-1) var(--cg-space-2);
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: var(--cg-font-mono);
+  font-size: 13px;
+
+  &--active,
+  &:hover {
+    background: var(--cg-navy-2);
+  }
+}
+
+.slash-menu__name {
+  color: var(--cg-orange-2);
+  font-weight: 600;
+}
+
+.slash-menu__desc {
+  color: var(--cg-text-secondary);
+  font-size: 12px;
+}
