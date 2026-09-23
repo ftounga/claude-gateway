@@ -121,10 +121,11 @@ class AtelierPropertiesTest {
     }
 
     @Test
-    void delegationsDefaultToThreePerMessage() {
-        // Au-delà, c'est le travail principal qu'il faut redécouper (F-39 / SF-39-14).
+    void delegationsDefaultToFivePerMessage() {
+        // Défaut relevé de 3 à 5 (F-148 / SF-148-01) : une investigation multi-zones tient en un tour ;
+        // au-delà, c'est le travail principal qu'il faut redécouper (F-39 / SF-39-14).
         assertThat(new AtelierProperties(null, null, null, null, null, null, null, null, null, null,
-                null, null, true).maxDelegations()).isEqualTo(3);
+                null, null, true).maxDelegations()).isEqualTo(5);
     }
 
     @Test
@@ -137,7 +138,7 @@ class AtelierPropertiesTest {
     @Test
     void negativeDelegationsFallBackToTheDefault() {
         assertThat(new AtelierProperties(null, null, null, null, null, null, null, null, null, null,
-                null, -2, true).maxDelegations()).isEqualTo(3);
+                null, -2, true).maxDelegations()).isEqualTo(5);
     }
 
     @Test
@@ -181,28 +182,30 @@ class AtelierPropertiesTest {
     }
 
     @Test
-    void continuationEffortDefaultsToLowAndAdaptiveIsOn() {
-        // Absent => enchaîner un outil part en effort réduit `low`, et l'effort suit l'étape.
+    void continuationEffortDefaultsToMediumAndAdaptiveIsOn() {
+        // Défaut porté de `low` à `medium` (F-148 / SF-148-01) : la continuation tient la trajectoire
+        // sans « réfléchir fort » comme le premier tour ; l'effort suit toujours l'étape.
         AtelierProperties properties = withAdaptiveEffort(null, null);
-        assertThat(properties.stepEffort()).isEqualTo("low");
+        assertThat(properties.stepEffort()).isEqualTo("medium");
         assertThat(properties.adaptiveEffort()).isTrue();
         // Le constructeur de compatibilité (sans ces deux réglages) applique les mêmes défauts.
         AtelierProperties legacy = new AtelierProperties(null, null, null, null, null, null, null,
                 null, null, null, null, null, true);
-        assertThat(legacy.stepEffort()).isEqualTo("low");
+        assertThat(legacy.stepEffort()).isEqualTo("medium");
         assertThat(legacy.adaptiveEffort()).isTrue();
     }
 
     @Test
-    void continuationEffortFallsBackToLowWhenUnknownOrBlank() {
+    void continuationEffortFallsBackToMediumWhenUnknownOrBlank() {
         // Même repli que `effort` : une faute de config ne casse pas les tours (F-118, D-118-1).
-        assertThat(withAdaptiveEffort("turbo", null).stepEffort()).isEqualTo("low");
-        assertThat(withAdaptiveEffort("  ", null).stepEffort()).isEqualTo("low");
+        assertThat(withAdaptiveEffort("turbo", null).stepEffort()).isEqualTo("medium");
+        assertThat(withAdaptiveEffort("  ", null).stepEffort()).isEqualTo("medium");
     }
 
     @Test
     void continuationEffortHonoursAConfiguredValue() {
-        assertThat(withAdaptiveEffort("medium", null).stepEffort()).isEqualTo("medium");
+        // Réglable dans les deux sens : `low` reste possible (repli), et l'on peut monter plus haut.
+        assertThat(withAdaptiveEffort("low", null).stepEffort()).isEqualTo("low");
         assertThat(withAdaptiveEffort("high", null).stepEffort()).isEqualTo("high");
     }
 

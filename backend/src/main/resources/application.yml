@@ -139,8 +139,9 @@ app:
     # Explorations déléguées par message (F-39 / SF-39-14). Une sous-boucle en LECTURE SEULE
     # absorbe le volume de lecture qui, sinon, remplit le contexte du travail principal. Sa
     # dépense appartient au tour : déléguer ne permet jamais de passer sous le plafond par
-    # message. `0` retire l'outil de la liste déclarée au modèle.
-    max-delegations: ${APP_ATELIER_MAX_DELEGATIONS:3}
+    # message. `0` retire l'outil de la liste déclarée au modèle. Défaut relevé de 3 à 5
+    # (F-148 / SF-148-01) pour qu'une investigation multi-zones tienne en un tour.
+    max-delegations: ${APP_ATELIER_MAX_DELEGATIONS:5}
     # Coupe-circuit de la cible SANDBOX de la boucle maison (F-39 / SF-39-16). FERMÉ par
     # défaut : depuis le lot 4, l'écran ne l'emprunte plus — un projet sans runner passe par
     # les Managed Agents. Le code reste, parce qu'il est le socle de test de toute la boucle ;
@@ -160,10 +161,12 @@ app:
     effort: ${APP_ATELIER_EFFORT:high}
     # Effort adaptatif a l'etape (F-118 / SF-118-01) : low | medium | high | xhigh | max. Le PREMIER
     # tour d'une demande garde l'effort normal ci-dessus (la reflexion sert a cadrer le travail) ; les
-    # etapes de CONTINUATION (enchainer un outil, relire un fichier) partent avec cet effort REDUIT
-    # (defaut `low`) — reflechir « fort » pour un read_file ou un ls coute des secondes inutiles.
-    # Meme repli que `effort` : une valeur inconnue retombe sur le defaut.
-    step-effort: ${APP_ATELIER_STEP_EFFORT:low}
+    # etapes de CONTINUATION (enchainer un outil, relire un fichier) partent avec cet effort REDUIT.
+    # Defaut porte de `low` a `medium` (F-148 / SF-148-01) : `low` laissait passer du sous-raisonnement
+    # en continuation (auto-corrections, tours de rattrapage) ; `medium` tient la trajectoire sans
+    # « reflechir fort » comme le premier tour. Meme repli que `effort` : une valeur inconnue retombe
+    # sur le defaut. Reglable dans les deux sens (repli `low` possible sans livraison).
+    step-effort: ${APP_ATELIER_STEP_EFFORT:medium}
     # Drapeau de repli de l'effort adaptatif (F-118 / SF-118-01). `true` : l'effort suit l'etape.
     # COUPE-CIRCUIT : `false` retablit l'effort normal a CHAQUE etape (comportement d'avant F-118),
     # sans livraison — si l'effort reduit degradait la qualite observee.
