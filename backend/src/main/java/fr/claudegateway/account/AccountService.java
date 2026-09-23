@@ -55,6 +55,8 @@ public class AccountService {
     private final fr.claudegateway.governance.map.HostMapFileRepository hostMapFileRepository;
     /** F-148 / SF-148-06 : le cache des sources de la consigne (CLAUDE.md, STATE/PLAN, skills). */
     private final fr.claudegateway.atelier.promptsource.PromptSourceFileRepository promptSourceFileRepository;
+    /** F-148 / SF-148-07 : l'index de repo persistant (chemins de fichiers des projets). */
+    private final fr.claudegateway.atelier.repoindex.RepoIndexPathRepository repoIndexPathRepository;
     private final SubscriptionRepository subscriptionRepository;
     private final UsageCounterRepository usageCounterRepository;
     private final UsageTurnRepository usageTurnRepository;
@@ -103,11 +105,13 @@ public class AccountService {
             RadarPurgeService radarPurgeService,
             fr.claudegateway.runner.host.HostSpaceService hostSpaceService,
             fr.claudegateway.governance.map.HostMapFileRepository hostMapFileRepository,
-            fr.claudegateway.atelier.promptsource.PromptSourceFileRepository promptSourceFileRepository) {
+            fr.claudegateway.atelier.promptsource.PromptSourceFileRepository promptSourceFileRepository,
+            fr.claudegateway.atelier.repoindex.RepoIndexPathRepository repoIndexPathRepository) {
         this.radarPurgeService = radarPurgeService;
         this.hostSpaceService = hostSpaceService;
         this.hostMapFileRepository = hostMapFileRepository;
         this.promptSourceFileRepository = promptSourceFileRepository;
+        this.repoIndexPathRepository = repoIndexPathRepository;
         this.userService = userService;
         this.subscriptionRepository = subscriptionRepository;
         this.usageCounterRepository = usageCounterRepository;
@@ -264,6 +268,9 @@ public class AccountService {
         // Le cache des sources de la consigne (F-148 / SF-148-06) : copie des CLAUDE.md, STATE/PLAN et
         // skills des projets de ce compte. Il ne lui survit pas.
         promptSourceFileRepository.deleteByUserId(userId);
+        // L'index de repo persistant (F-148 / SF-148-07) : chemins des fichiers des projets de ce
+        // compte. Il ne lui survit pas.
+        repoIndexPathRepository.deleteByUserId(userId);
         runnerHostRepository.deleteByUserId(userId);
         // Places de terminal vivant (F-70 / SF-70-01) : elles nomment les projets ouverts par le
         // compte. Sans purge, elles survivraient à sa suppression jusqu'à leur expiration.

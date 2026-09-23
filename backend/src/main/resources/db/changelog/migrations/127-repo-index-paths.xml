@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-148 / SF-148-07 — L'INDEX DE REPO PERSISTANT (chemins) : une aide de localisation, cote
+      gateway, pour servir l'outil `glob` sans aller-retour runner « trouver le fichier ».
+
+      CE QU'IL EST : la liste des chemins de fichiers d'un PROJET (workspace), relue APRES un tour
+      (throttlee ~30 s/projet), pour servir `glob` au tour suivant depuis la base. Il NE porte PAS le
+      contenu (donc `grep` reste sur le runner), NI de symboles (decision minimale et sure du cadrage).
+
+      CE QU'IL NE FAIT PAS MENTIR : `glob` n'est servi depuis l'index que lorsqu'il ne peut pas se
+      tromper — index amorce ET aucune mutation du projet pendant le tour. Un fichier cree/modifie
+      pendant le tour fait basculer `glob` en direct. Un repo au-dela de la borne n'est pas indexe du
+      tout (jamais de liste incomplete servie). L'index est une AIDE, jamais l'autorite : bash reste.
+
+      UNE LIGNE PAR PROJET : la liste entiere, bornee, tient dans `paths` (une ligne par chemin), a
+      l'image du listage brut de `safeTree`. `path_count` dit combien de chemins sont indexes.
+
+      ISOLATION : la cle unique porte (user_id, workspace_id). `host_id` est range pour l'isolation et
+      la purge. Aucune lecture n'omet le couple (user_id, workspace_id).
+
+      PAS DE CLE ETRANGERE, meme choix que host_map_files / prompt_source_files : ranger un projet ne
+      doit pas effacer en silence son index. Purge explicite a la suppression du compte.
+    -->
+
+    <changeSet id="127-repo-index-paths" author="claude-gateway">
+        <createTable tableName="repo_index_paths">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="host_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="workspace_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <!-- La liste des chemins relatifs, un par ligne (format de safeTree). VARCHAR non borne
+                 (JDBC VARCHAR) pour concorder avec columnDefinition="text" cote entite, meme convention
+                 que host_map_files (122) et prompt_source_files (126). -->
+            <column name="paths" type="varchar(1000000)"/>
+            <!-- Nombre de chemins indexes : borne de securite lue sans decouper la liste. -->
+            <column name="path_count" type="int" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="observed_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addUniqueConstraint tableName="repo_index_paths"
+                             columnNames="user_id, workspace_id"
+                             constraintName="uk_repo_index_paths_user_workspace"/>
+
+        <createIndex tableName="repo_index_paths" indexName="idx_repo_index_paths_user_workspace">
+            <column name="user_id"/>
+            <column name="workspace_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

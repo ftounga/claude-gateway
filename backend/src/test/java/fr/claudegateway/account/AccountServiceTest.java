@@ -97,6 +97,8 @@ class AccountServiceTest {
     private fr.claudegateway.governance.map.HostMapFileRepository hostMapFileRepository;
     @Mock
     private fr.claudegateway.atelier.promptsource.PromptSourceFileRepository promptSourceFileRepository;
+    @Mock
+    private fr.claudegateway.atelier.repoindex.RepoIndexPathRepository repoIndexPathRepository;
 
     private AccountService service() {
         return new AccountService(userService, subscriptionRepository, usageCounterRepository,
@@ -107,7 +109,7 @@ class AccountServiceTest {
                 workspaceRepository, workspaceService,
                 atelierMessageRepository,
                 documentRepository, chunkRepository, messageLibraryDocumentRepository, radarPurgeService,
-                hostSpaceService, hostMapFileRepository, promptSourceFileRepository);
+                hostSpaceService, hostMapFileRepository, promptSourceFileRepository, repoIndexPathRepository);
     }
 
     private User user(UUID id) {
@@ -218,5 +220,7 @@ class AccountServiceTest {
         // Le cache des sources de la consigne (F-148 / SF-148-06) : copie des CLAUDE.md/STATE/PLAN/skills
         // des projets de ce compte. Il ne lui survit pas.
         verify(promptSourceFileRepository).deleteByUserId(userId);
+        // L'index de repo persistant (F-148 / SF-148-07) : chemins des projets de ce compte.
+        verify(repoIndexPathRepository).deleteByUserId(userId);
     }
 }
