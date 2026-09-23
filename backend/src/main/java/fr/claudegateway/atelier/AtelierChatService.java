@@ -4246,6 +4246,13 @@ public class AtelierChatService implements RelayInterruptTarget {
 
     String buildSystemPrompt(UUID userId, Workspace workspace, AgentTurnMode mode) {
         StringBuilder system = new StringBuilder();
+        // F-148 / SF-148-02 : un profil métier actif (F-138) REMPLACE l'amorce de rôle générique au
+        // lieu de rejoindre le bloc de règles plus bas — le bon cadre est ainsi lu dès la 1re phrase.
+        // Sans profil actif, l'amorce générique est rendue à l'octet près. La phrase de rôle est stable
+        // par session (le profil actif ne change pas d'un tour à l'autre) : aucune volatilité de préfixe
+        // n'est introduite, le cache (F-134) tient. Le reste de l'amorce — opérationnel, propre à la
+        // cible — et toutes les doctrines qui suivent restent inchangés (garde-fou F-138).
+        String profileRole = activeProfileRole(userId, workspace);
         // L'énoncé du rôle suit l'outillage réellement déclaré (SF-39-05) : annoncer des outils qui
         // n'existent pas dans ce projet ne produirait que des appels perdus.
         if (workspace.isRunnerTarget()) {
@@ -4253,16 +4260,19 @@ public class AtelierChatService implements RelayInterruptTarget {
             // (F-38 / SF-38-27). Dicter `ls`/`find`/`grep -n` à un poste qui n'a que `cmd.exe`
             // faisait échouer chaque exploration — et sur cette cible, bash est le SEUL moyen
             // d'explorer, puisque list_files et search_files n'y sont pas déclarés (SF-39-05).
-            system.append("Tu es un assistant de développement qui travaille sur le projet de l'utilisateur, ")
-                    .append("sur sa machine. ")
+            system.append(profileRole != null ? profileRole + " "
+                    : "Tu es un assistant de développement qui travaille sur le projet de l'utilisateur, "
+                            + "sur sa machine. ")
                     .append(RunnerShell.resolve(runnerHostService.declaredShell(workspace.getHostId()))
                             .explorationGuidance())
                     .append(" Utilise read_file pour lire un fichier que tu vas ")
                     .append("utiliser, et write_file pour l'écrire. Ne fais aucune supposition sur un fichier ")
                     .append("sans l'avoir lu. Après une modification, résume clairement ce que tu as changé.\n\n");
         } else {
-            system.append("Tu es un assistant de développement qui travaille sur le projet de l'utilisateur, ")
-                    .append("dans un espace de travail hébergé. Utilise les outils fournis (list_files, read_file, ")
+            system.append(profileRole != null ? profileRole + " "
+                    : "Tu es un assistant de développement qui travaille sur le projet de l'utilisateur, "
+                            + "dans un espace de travail hébergé. ")
+                    .append("Utilise les outils fournis (list_files, read_file, ")
                     .append("write_file, search_files) pour lire et modifier les fichiers du projet. ")
                     .append("Ne fais aucune supposition sur un fichier sans l'avoir lu. Après une modification, ")
                     .append("résume clairement ce que tu as changé.\n\n");
@@ -4457,6 +4467,23 @@ public class AtelierChatService implements RelayInterruptTarget {
             return rules == null || rules.isBlank() ? null : rules;
         } catch (RuntimeException ex) {
             log.warn("Règles de gouvernance ignorées pour ce tour ({})", ex.getClass().getSimpleName());
+            return null;
+        }
+    }
+
+    /**
+     * La phrase de rôle du profil métier actif, ou {@code null} (F-148 / SF-148-02).
+     *
+     * <p><b>Repli passant</b>, même geste que pour les règles et le sommaire de carte : un profil
+     * illisible rend l'amorce générique plutôt qu'un tour raté. Le profil est un cadrage, jamais une
+     * condition du travail.</p>
+     */
+    private String activeProfileRole(UUID userId, Workspace workspace) {
+        try {
+            String role = projectRules.activeProfileRole(userId, workspace.getId());
+            return role == null || role.isBlank() ? null : role;
+        } catch (RuntimeException ex) {
+            log.warn("Profil de rôle ignoré pour ce tour ({})", ex.getClass().getSimpleName());
             return null;
         }
     }

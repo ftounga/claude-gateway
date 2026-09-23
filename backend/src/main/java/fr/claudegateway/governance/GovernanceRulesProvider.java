@@ -87,4 +87,65 @@ public class GovernanceRulesProvider implements ProjectRulesSource {
                 ? result
                 : result.substring(0, MAX_RULES_BLOCK_CHARS) + TRUNCATION_NOTICE;
     }
+
+    /** Longueur maximale de la phrase de rôle substituée à l'amorce (F-148 / SF-148-02). */
+    static final int PROFILE_ROLE_MAX_CHARS = 400;
+
+    @Override
+    public String activeProfileRole(UUID userId, UUID workspaceId) {
+        if (userId == null || workspaceId == null) {
+            return null; // On n'invente pas un propriétaire pour aller chercher un profil.
+        }
+        List<GovernanceActivation> active;
+        try {
+            active = activationService.activeOnWorkspace(userId, workspaceId);
+        } catch (RuntimeException ex) {
+            log.debug("Profil actif illisible ({})", ex.getClass().getSimpleName());
+            return null; // Repli passant : l'amorce générique, jamais un tour raté.
+        }
+        for (GovernanceActivation activation : active) {
+            GovernancePackage pkg;
+            try {
+                pkg = packageService.require(activation.getPackageId());
+            } catch (RuntimeException ex) {
+                continue; // Un paquet disparu n'empêche pas de trouver un profil parmi les autres.
+            }
+            if (pkg.getSlug() == null
+                    || !pkg.getSlug().startsWith(GovernanceProfileSeeder.PROFILE_SLUG_PREFIX)) {
+                continue; // Pas un profil : ne peut pas fournir de phrase de rôle.
+            }
+            String role = roleSentenceOf(pkg.getRules());
+            if (role != null) {
+                // Le PREMIER profil actif (ordre d'activation) donne le cadre : un seul rôle en tête.
+                return role;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * La <b>1re phrase</b> du texte d'un profil, prête à servir d'amorce de rôle
+     * (F-148 / SF-148-02).
+     *
+     * <p>Chaque profil livré ouvre par une phrase de rôle (« Tu interviens comme architecte… »). On la
+     * rend en prose : marqueurs de gras Markdown retirés, espaces normalisés, bornée. La coupe à la 1re
+     * phrase évite d'injecter tout le profil en tête — il vit déjà en entier dans le bloc de règles.</p>
+     *
+     * @return la phrase, ou {@code null} s'il n'y a rien d'exploitable
+     */
+    static String roleSentenceOf(String rules) {
+        if (rules == null || rules.isBlank()) {
+            return null;
+        }
+        String text = rules.strip().replace("**", "").replaceAll("\\s+", " ").strip();
+        if (text.isEmpty()) {
+            return null;
+        }
+        int end = text.indexOf(". ");
+        String sentence = end >= 0 ? text.substring(0, end + 1) : text;
+        if (sentence.length() > PROFILE_ROLE_MAX_CHARS) {
+            sentence = sentence.substring(0, PROFILE_ROLE_MAX_CHARS).stripTrailing();
+        }
+        return sentence.isBlank() ? null : sentence;
+    }
 }

@@ -149,6 +149,53 @@ class AtelierChatServiceGovernanceRulesTest {
                 .doesNotContain(AtelierChatService.GOVERNANCE_HEADER);
     }
 
+    // ---------------------------------------------- F-148 / SF-148-02 : profil qui remplace l'amorce
+
+    /** Source de règles qui déclare aussi un profil de rôle actif (SF-148-02). */
+    private ProjectRulesSource rulesWithProfile(String rules, String role) {
+        return new ProjectRulesSource() {
+            @Override
+            public String rulesFor(UUID user, UUID workspace) {
+                return rules;
+            }
+
+            @Override
+            public String activeProfileRole(UUID user, UUID workspace) {
+                return role;
+            }
+        };
+    }
+
+    @Test
+    @DisplayName("un profil actif remplace l'amorce de rôle en tête de consigne")
+    void activeProfileReplacesTheRoleAmorce() {
+        AtelierChatService service = serviceWith(rulesWithProfile("## Profil — Architecte\nTexte.",
+                "Tu interviens comme architecte sur l'infrastructure d'un client."));
+        agentProvider.enqueueFinal("Bonjour.");
+
+        service.chat(userId, workspaceId, "salut");
+
+        String system = agentProvider.lastRequest.system();
+        // La phrase de rôle du profil ouvre la consigne, l'amorce générique a disparu.
+        assertThat(system).startsWith("Tu interviens comme architecte sur l'infrastructure d'un client.");
+        assertThat(system).doesNotContain("Tu es un assistant de développement");
+        // Garde-fou F-138 : l'amorce opérationnelle et la discipline d'investigation F-119 restent.
+        assertThat(system).contains("list_files, read_file, write_file, search_files");
+        assertThat(system).contains("Vérifie avant d'affirmer");
+    }
+
+    @Test
+    @DisplayName("sans profil actif, l'amorce générique est inchangée")
+    void withoutProfileTheGenericAmorceStays() {
+        AtelierChatService service = serviceWith(ProjectRulesSource.NONE);
+        agentProvider.enqueueFinal("Bonjour.");
+
+        service.chat(userId, workspaceId, "salut");
+
+        assertThat(agentProvider.lastRequest.system())
+                .startsWith("Tu es un assistant de développement qui travaille sur le projet");
+    }
+
     @Test
     @DisplayName("les règles sont demandées pour le couple (utilisateur, projet) du tour")
     void rulesAreScopedToTheTurn() {
