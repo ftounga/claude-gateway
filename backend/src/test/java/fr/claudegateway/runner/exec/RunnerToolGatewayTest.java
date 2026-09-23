@@ -203,13 +203,67 @@ class RunnerToolGatewayTest {
     }
 
     @Test
-    void bashClampsTheTimeoutBetweenTheFloorAndTheContractCeiling() {
+    void bashClampsTheTimeoutBetweenTheFloorAndTheWidenedCeiling() {
         bashGateway(bashOk()).bash(target, "toolu_1", "ls", null, 10L, null);
         capturedBashInput(RunnerToolGateway.MIN_BASH_TIMEOUT_MS);
 
+        // F-121 / SF-121-07 : le plafond est élargi à 10 minutes (au lieu de 120 s).
         org.mockito.Mockito.reset(router);
         bashGateway(bashOk()).bash(target, "toolu_2", "ls", null, 3_600_000L, null);
-        capturedBashInput(RunnerToolGateway.BASH_TIMEOUT_MS);
+        capturedBashInput(RunnerToolGateway.MAX_BASH_TIMEOUT_MS);
+    }
+
+    // -------------------------------------------------- bash en arrière-plan (F-121 / SF-121-07)
+
+    @Test
+    void bashBackgroundFlagsTheInputAndUsesAShortTimeout() {
+        bashGateway(bashOk()).bashBackground(target, "toolu_1", "  npm run dev  ", null);
+
+        JsonNode input = capturedBashInput(RunnerToolGateway.FILE_TOOL_TIMEOUT_MS);
+        assertThat(input.path("command").asText()).isEqualTo("npm run dev");
+        assertThat(input.path("background").asBoolean()).isTrue();
+    }
+
+    @Test
+    void bashBackgroundRefusesAnEmptyCommandBeforeSending() {
+        RunnerCallResult result = bashGateway(bashOk()).bashBackground(target, "toolu_1", "   ", null);
+
+        assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.INVALID_INPUT);
+        verify(router, never()).call(any(), anyString(), anyString(), any(), anyLong(), any());
+    }
+
+    @Test
+    void bashOutputSendsTheIdentifier() {
+        when(router.call(any(), anyString(), anyString(), any(), anyLong(), any()))
+                .thenReturn(new RunnerCallResult(true, "sortie", false, null, 1L, null, null, null, "", false));
+        new RunnerToolGateway(router, objectMapper).bashOutput(target, "toolu_1", "bash_1");
+
+        ArgumentCaptor<JsonNode> input = ArgumentCaptor.forClass(JsonNode.class);
+        verify(router).call(org.mockito.ArgumentMatchers.eq(target), anyString(),
+                org.mockito.ArgumentMatchers.eq("bash_output"), input.capture(), anyLong(), any());
+        assertThat(input.getValue().path("bash_id").asText()).isEqualTo("bash_1");
+    }
+
+    @Test
+    void killShellSendsTheIdentifier() {
+        when(router.call(any(), anyString(), anyString(), any(), anyLong(), any()))
+                .thenReturn(new RunnerCallResult(true, "arrêtée", false, null, 1L, null, null, null, "", false));
+        new RunnerToolGateway(router, objectMapper).killShell(target, "toolu_1", "bash_2");
+
+        ArgumentCaptor<JsonNode> input = ArgumentCaptor.forClass(JsonNode.class);
+        verify(router).call(org.mockito.ArgumentMatchers.eq(target), anyString(),
+                org.mockito.ArgumentMatchers.eq("kill_shell"), input.capture(), anyLong(), any());
+        assertThat(input.getValue().path("shell_id").asText()).isEqualTo("bash_2");
+    }
+
+    @Test
+    void bashOutputAndKillShellRefuseABlankIdentifier() {
+        RunnerToolGateway gateway = new RunnerToolGateway(router, objectMapper);
+        assertThat(gateway.bashOutput(target, "toolu_1", "  ").errorCode())
+                .isEqualTo(RunnerErrorCodes.INVALID_INPUT);
+        assertThat(gateway.killShell(target, "toolu_2", "  ").errorCode())
+                .isEqualTo(RunnerErrorCodes.INVALID_INPUT);
+        verify(router, never()).call(any(), anyString(), anyString(), any(), anyLong(), any());
     }
 
     @Test

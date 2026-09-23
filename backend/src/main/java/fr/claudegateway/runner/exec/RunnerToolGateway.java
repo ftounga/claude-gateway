@@ -39,8 +39,15 @@ public class RunnerToolGateway {
 
     /** Délai imposé aux outils fichiers par le contrat de messages §2.2. */
     public static final long FILE_TOOL_TIMEOUT_MS = 30_000L;
-    /** Délai imposé à {@code bash} par le contrat de messages §2.2. */
+    /** Délai <b>par défaut</b> de {@code bash} (contrat §2.2) quand le modèle n'en demande pas. */
     public static final long BASH_TIMEOUT_MS = 120_000L;
+    /**
+     * Plafond <b>élargi</b> d'un {@code timeout} de {@code bash} demandé par le modèle (F-121 / SF-121-07).
+     * Le délai effectif reste par ailleurs borné au budget de tour restant, calculé par l'appelant :
+     * une commande de premier plan ne survit jamais à son tour. L'arrière-plan, lui, échappe à cette
+     * borne — il rend la main tout de suite (voir {@link #bashBackground}).
+     */
+    public static final long MAX_BASH_TIMEOUT_MS = 600_000L;
     /**
      * Délai des outils Teams (F-87 / SF-87-03) : plus long que celui des fichiers, parce que la
      * sonde <b>observe</b> le réseau du navigateur pendant quelques secondes avant de conclure.
@@ -393,16 +400,76 @@ public class RunnerToolGateway {
      * c'est la machine qui tranche (opt-out {@code --no-bash}, SF-38-19), et ce sera la validation par
      * commande de SF-38-08 côté gateway.</p>
      *
-     * @param timeoutMs délai souhaité, clampé dans {@code [1 000 ; 120 000]} ms
+     * @param timeoutMs délai souhaité, clampé dans {@code [1 000 ; 600 000]} ms (F-121 / SF-121-07)
      * @param onOutput  relais de la sortie au fil de l'eau, ou {@code null}
      */
     public RunnerCallResult bash(RunnerTarget target, String callId, String command, String cwd,
             long timeoutMs, Consumer<String> onOutput) {
+        ObjectNode input = objectMapper.createObjectNode();
+        RunnerCallResult prepared = prepareBashInput(input, command, cwd);
+        if (prepared != null) {
+            return prepared;
+        }
+        long effective = Math.max(MIN_BASH_TIMEOUT_MS, Math.min(MAX_BASH_TIMEOUT_MS, timeoutMs));
+        RunnerCallResult result =
+                router.call(target, callId, "bash", input, effective, onOutput);
+        return RunnerErrorCodes.UNSUPPORTED_TOOL.equals(result.errorCode())
+                ? RunnerCallResult.backendError(RunnerErrorCodes.UNSUPPORTED_TOOL,
+                        // Le drapeau nommé ici doit être celui qui AGIT : --allow-bash n'a plus
+                        // d'effet depuis SF-38-19, et le conseiller envoyait l'utilisateur relancer
+                        // une commande qui n'aurait rien changé (SF-38-26, D4).
+                        "L'exécution de commandes n'est pas activée sur ce runner. "
+                                + "Redémarre-le sans --no-bash pour l'autoriser.")
+                : result;
+    }
+
+    /**
+     * Lance une commande <b>en arrière-plan</b> (F-121 / SF-121-07) : la machine la détache et rend la
+     * main tout de suite, avec un identifiant à relire par {@link #bashOutput} et arrêter par
+     * {@link #killShell}. Le délai est court par construction — le runner ne fait qu'enregistrer le
+     * processus, il ne l'attend pas. Réservé aux postes qui annoncent la capacité {@code bash_background}
+     * (la boucle maison ne déclare {@code run_in_background} que là) ; un runner ancien ignorerait le
+     * drapeau et bloquerait, d'où le garde-fou de déclaration côté gateway.
+     */
+    public RunnerCallResult bashBackground(RunnerTarget target, String callId, String command, String cwd) {
+        ObjectNode input = objectMapper.createObjectNode();
+        RunnerCallResult prepared = prepareBashInput(input, command, cwd);
+        if (prepared != null) {
+            return prepared;
+        }
+        input.put("background", true);
+        RunnerCallResult result = router.call(target, callId, "bash", input, FILE_TOOL_TIMEOUT_MS, null);
+        return unsupportedBash(result);
+    }
+
+    /** Relit la sortie nouvelle d'une commande de fond (F-121 / SF-121-07). */
+    public RunnerCallResult bashOutput(RunnerTarget target, String callId, String bashId) {
+        String id = bashId == null ? "" : bashId.strip();
+        if (id.isEmpty() || id.length() > 64) {
+            return invalid("Identifiant de commande invalide.");
+        }
+        ObjectNode input = objectMapper.createObjectNode();
+        input.put("bash_id", id);
+        return unsupportedBash(router.call(target, callId, "bash_output", input, FILE_TOOL_TIMEOUT_MS, null));
+    }
+
+    /** Arrête une commande de fond (F-121 / SF-121-07). */
+    public RunnerCallResult killShell(RunnerTarget target, String callId, String shellId) {
+        String id = shellId == null ? "" : shellId.strip();
+        if (id.isEmpty() || id.length() > 64) {
+            return invalid("Identifiant de commande invalide.");
+        }
+        ObjectNode input = objectMapper.createObjectNode();
+        input.put("shell_id", id);
+        return unsupportedBash(router.call(target, callId, "kill_shell", input, FILE_TOOL_TIMEOUT_MS, null));
+    }
+
+    /** Borne la commande, normalise le {@code cwd}, ou rend une issue {@code invalid_input}. */
+    private RunnerCallResult prepareBashInput(ObjectNode input, String command, String cwd) {
         String cmd = command == null ? "" : command.strip();
         if (cmd.isEmpty() || cmd.length() > MAX_COMMAND_CHARS || cmd.indexOf('\0') >= 0) {
             return invalid("Commande invalide ou trop longue.");
         }
-        ObjectNode input = objectMapper.createObjectNode();
         input.put("command", cmd);
         if (cwd != null && !cwd.isBlank()) {
             String rel = normalizePath(cwd);
@@ -411,14 +478,13 @@ public class RunnerToolGateway {
             }
             input.put("cwd", rel);
         }
-        long effective = Math.max(MIN_BASH_TIMEOUT_MS, Math.min(BASH_TIMEOUT_MS, timeoutMs));
-        RunnerCallResult result =
-                router.call(target, callId, "bash", input, effective, onOutput);
+        return null;
+    }
+
+    /** Reformule un {@code unsupported_tool} en conseil d'activation, comme le fait {@code bash}. */
+    private static RunnerCallResult unsupportedBash(RunnerCallResult result) {
         return RunnerErrorCodes.UNSUPPORTED_TOOL.equals(result.errorCode())
                 ? RunnerCallResult.backendError(RunnerErrorCodes.UNSUPPORTED_TOOL,
-                        // Le drapeau nommé ici doit être celui qui AGIT : --allow-bash n'a plus
-                        // d'effet depuis SF-38-19, et le conseiller envoyait l'utilisateur relancer
-                        // une commande qui n'aurait rien changé (SF-38-26, D4).
                         "L'exécution de commandes n'est pas activée sur ce runner. "
                                 + "Redémarre-le sans --no-bash pour l'autoriser.")
                 : result;
