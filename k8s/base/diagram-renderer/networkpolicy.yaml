@@ -1,0 +1,38 @@
+# F-142 / SF-142-07 — LE POD DE RENDU NE SORT PAS.
+#
+# Depuis SF-142-07, ce pod reçoit des descriptions qui viennent du modèle. Il ne les exécute pas (le
+# générateur lit des données, jamais du code), mais on ne s'en remet pas à cette seule garantie : la
+# politique lui interdit TOUTE sortie hors de la résolution DNS, et n'autorise l'entrée que depuis la
+# gateway. Même si quelque chose tournait mal dans ce pod, il ne verrait rien du cluster.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: diagram-renderer
+spec:
+  podSelector:
+    matchLabels:
+      app: diagram-renderer
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Seule la gateway appelle le service de rendu.
+    - from:
+        - podSelector:
+            matchLabels:
+              app: claude-gateway-backend
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    # DNS seulement : rien d'autre ne sort. Pas d'Internet, pas de base, pas d'autre service.
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

@@ -26,7 +26,7 @@ const DEFAULT_WIDTH = 1600;
  */
 const DEFAULT_SCALE = 3;
 const MAX_SCALE = 5;
-const MAX_BODY_BYTES = 64 * 1024;
+const MAX_BODY_BYTES = 256 * 1024;
 
 const PORT = Number(process.env.PORT || 8080);
 
@@ -55,6 +55,27 @@ async function readBody(req) {
   return Buffer.concat(chunks).toString("utf-8");
 }
 
+/**
+ * Le rendu d'une architecture cloud avec les icônes officielles (F-142 / SF-142-07).
+ *
+ * Le programme Python reçoit la DESCRIPTION sur son entrée standard — jamais du code. C'est la
+ * décision de la subfeature : `diagrams` se pilote en écrivant du Python, et exécuter le Python d'un
+ * modèle sur notre infrastructure serait une porte qu'on n'ouvre pas.
+ */
+function renderCloud(spec, outputBase) {
+  return new Promise((resolve, reject) => {
+    const child = execFile("python3", ["/app/cloud.py"], { timeout: RENDER_TIMEOUT_MS },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(new Error((stderr || error.message || "").toString().slice(0, 500)));
+          return;
+        }
+        resolve((stdout || "").trim());
+      });
+    child.stdin.end(JSON.stringify({ ...spec, output: outputBase }), "utf-8");
+  });
+}
+
 function renderWithMermaid(input, output, format, width, scale) {
   return new Promise((resolve, reject) => {
     const args = ["-i", input, "-o", output, "-b", "transparent", "-w", String(width),
@@ -80,6 +101,9 @@ async function render(req, res) {
     payload = JSON.parse(await readBody(req) || "{}");
   } catch (e) {
     return fail(res, 400, "Corps illisible : " + e.message);
+  }
+  if (payload.engine === "cloud") {
+    return renderCloudRequest(payload, res);
   }
   const code = typeof payload.code === "string" ? payload.code.trim() : "";
   const format = payload.format === "svg" ? "svg" : "png";
@@ -111,6 +135,30 @@ async function render(req, res) {
     res.end(image);
   } catch (e) {
     return fail(res, 422, "Le diagramme n'a pas pu etre rendu : " + (e.message || "raison inconnue"));
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+/** La branche « icônes officielles » : une description entre, un PNG sort. */
+async function renderCloudRequest(payload, res) {
+  const spec = payload.spec;
+  if (!spec || typeof spec !== "object" || Array.isArray(spec)) {
+    return fail(res, 400, "La description du schema est manquante (champ « spec »).");
+  }
+  const dir = await mkdtemp(path.join(tmpdir(), "cg-cloud-"));
+  try {
+    const base = path.join(dir, "cloud");
+    const produced = await renderCloud(spec, base);
+    const image = await readFile(produced || base + ".png");
+    if (image.length > MAX_IMAGE_BYTES) {
+      return fail(res, 413, "Image rendue trop lourde : " + image.length + " octets.");
+    }
+    res.writeHead(200, { "Content-Type": "image/png", "Content-Length": image.length });
+    res.end(image);
+  } catch (e) {
+    // Le message vient du generateur : il dit quoi corriger (type inconnu, lien pendant, borne).
+    return fail(res, 422, (e.message || "Le schema n'a pas pu etre rendu.").slice(0, 500));
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => undefined);
   }

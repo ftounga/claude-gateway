@@ -46,20 +46,30 @@ public class DiagramToolExecutor {
     }
 
     public Outcome execute(UUID userId, Workspace workspace, String callId, JsonNode input) {
+        // F-142 / SF-142-07 : deux moteurs, une seule suite. « cloud » dessine avec les icônes
+        // OFFICIELLES à partir d'une DESCRIPTION ; « mermaid » (défaut) rend du code Mermaid.
+        boolean cloud = "cloud".equalsIgnoreCase(text(input, "engine"));
+        JsonNode spec = input == null ? null : input.path("spec");
         String code = text(input, "code");
-        if (code.isEmpty()) {
-            return Outcome.error("code est requis : le diagramme en Mermaid.");
+        if (cloud && (spec == null || !spec.isObject())) {
+            return Outcome.error("Pour engine=cloud, donne « spec » : les nœuds (id, type, label), les "
+                    + "groupes et les liens. Le service dessine à partir de cette description.");
         }
-        Format format = Format.of(text(input, "format"));
+        if (!cloud && code.isEmpty()) {
+            return Outcome.error("code est requis : le diagramme en Mermaid "
+                    + "(ou engine=cloud avec « spec » pour les icônes officielles).");
+        }
+        Format format = cloud ? Format.PNG : Format.of(text(input, "format"));
         Integer width = input != null && input.path("width").isInt() ? input.path("width").asInt() : null;
 
         DiagramRenderer.Rendered rendered;
         try {
-            rendered = renderer.render(code, format, width);
+            rendered = cloud ? renderer.renderCloud(spec) : renderer.render(code, format, width);
         } catch (DiagramRejectedException e) {
-            // Le code est en cause : la raison du moteur permet de le corriger.
+            // Le code (ou la description) est en cause : la raison du moteur permet de le corriger.
             return Outcome.error("Diagramme non rendu : " + e.getMessage()
-                    + " Corrige le code ; ne fabrique pas d'image.");
+                    + (cloud ? " Corrige la description ; ne fabrique pas d'image."
+                             : " Corrige le code ; ne fabrique pas d'image."));
         } catch (DiagramRendererUnavailableException e) {
             // Le code n'y est pour rien : on propose le repli qui, lui, ne dépend de rien.
             return Outcome.error("Le rendu de diagrammes est indisponible (" + e.getMessage()
@@ -85,6 +95,10 @@ public class DiagramToolExecutor {
     /** Titre lisible pour l'étape et le journal : la première ligne du diagramme, jamais tout le code. */
     public static String auditTarget(JsonNode input) {
         String code = text(input, "code");
+        if (code.isEmpty() && input != null && input.path("spec").isObject()) {
+            String title = input.path("spec").path("title").asText("");
+            return title.isBlank() ? "schéma cloud" : title;
+        }
         if (code.isEmpty()) {
             return null;
         }

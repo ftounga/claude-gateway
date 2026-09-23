@@ -65,14 +65,16 @@ class PresentationToolCatalogTest {
     }
 
     @Test
-    @DisplayName("SF-142-03 : le guide apprend les icônes cloud officielles via diagrams + repli Mermaid")
+    @DisplayName("SF-142-07 : le guide apprend les icônes cloud officielles, rendues PAR LA GATEWAY")
     void guideTeachesOfficialCloudIconsViaDiagrams() {
         assertThat(PresentationToolCatalog.GUIDE)
-                .contains("diagrams")
+                .contains("render_diagram")
+                .contains("engine=cloud")
                 .containsIgnoringCase("officielles")
-                .containsIgnoringCase("graphviz")
-                .containsIgnoringCase("sandbox")
-                .contains("architecture-beta");
+                .contains("aws.rds")
+                // Ce que le guide ne doit PLUS dire : installer un moteur sur la machine du client.
+                .doesNotContain("graphviz")
+                .doesNotContain("mmdc");
     }
 
     @Test

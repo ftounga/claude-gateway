@@ -45,12 +45,21 @@ public interface DiagramRenderer {
     }
 
     /**
-     * Rend un diagramme.
+     * Rend un diagramme <b>Mermaid</b>.
      *
      * @throws DiagramRejectedException    le code est invalide ou hors bornes — la raison est dite
      * @throws DiagramRendererUnavailableException le service n'a pas répondu — le repli est dit
      */
     Rendered render(String code, Format format, Integer width);
+
+    /**
+     * Rend une <b>architecture cloud avec les icônes officielles</b> (F-142 / SF-142-07), depuis une
+     * <b>description</b> — jamais du code : {@code diagrams} se pilote en Python, et exécuter le Python
+     * d'un modèle sur notre infrastructure serait une porte qu'on n'ouvre pas.
+     *
+     * @param spec la description (nœuds typés, groupes, liens), telle que l'agent l'a donnée
+     */
+    Rendered renderCloud(com.fasterxml.jackson.databind.JsonNode spec);
 
     /** Vrai si un moteur est configuré : sans lui, l'outil n'est pas proposé plutôt que de promettre. */
     boolean isAvailable();
