@@ -100,6 +100,50 @@ class MapReferencesTest {
     }
 
     @Test
+    @DisplayName("SF-148-09 — un répertoire cité comme une carte est écarté (jamais lu)")
+    void aCitedDirectoryIsNotAMapFile() {
+        List<String> references = MapReferences.of("""
+                ## Sujets
+
+                Voir le sujet [lzi](lzi/), la plateforme `data-platform/`, les dépôts dans `repos/`,
+                et le socle `socle-reseau-corp/`.
+                """, CARTE);
+
+        assertThat(references).isEmpty();
+    }
+
+    @Test
+    @DisplayName("SF-148-09 — un dépôt (« corp.git », « repos/nom ») n'est pas un fichier de carte")
+    void aRepositoryIsNotAMapFile() {
+        List<String> references = MapReferences.of(
+                "Le dépôt est dans `corporate-center/corp.git`, cloné sous `repos/portail-client`.",
+                CARTE);
+
+        assertThat(references).isEmpty();
+    }
+
+    @Test
+    @DisplayName("SF-148-09 — « STATE.md »/« PLAN-ACTION.md » nus, et « .md » seul, sont écartés")
+    void bareSubjectFileNamesAtRootAreExcluded() {
+        List<String> references = MapReferences.of("""
+                ## Convention
+
+                Chaque sujet porte son `STATE.md` et son `PLAN-ACTION.md` ; tout `.md` est daté.
+                """, CARTE);
+
+        assertThat(references).isEmpty();
+    }
+
+    @Test
+    @DisplayName("SF-148-09 — un « STATE.md »/« PLAN-ACTION.md » DANS un sujet reste retenu")
+    void subjectScopedStateAndPlanAreKept() {
+        List<String> references = MapReferences.of(
+                "Le fil est dans [l'état](lzi/STATE.md) et le [plan](lzi/PLAN-ACTION.md).", CARTE);
+
+        assertThat(references).containsExactly("lzi/STATE.md", "lzi/PLAN-ACTION.md");
+    }
+
+    @Test
     @DisplayName("un contenu nul ne lève pas")
     void nullContentIsSurvivable() {
         assertThat(MapReferences.of(null, CARTE)).isEmpty();

@@ -315,19 +315,20 @@ class IntegriteInspectionTest {
     // ----------------------------------------------------------- les liens morts
 
     @Test
-    @DisplayName("une référence introuvable est un lien mort, un dossier ne l'est pas")
+    @DisplayName("une référence introuvable est un lien mort, un dossier n'est même pas lu (SF-148-09)")
     void aMissingReferenceIsADeadLinkADirectoryIsNot() {
         when(hostFiles.read(alice, host, "acces.md")).thenReturn(presente(
                 "# Accès\n\n## VPN\n\nLe sujet vit dans `vieux-sujet/STATE.md`, "
                         + "et les dépôts dans `repos/portail-client`.\n"));
         when(hostFiles.presence(alice, host, "vieux-sujet/STATE.md")).thenReturn(Presence.ABSENT);
-        when(hostFiles.presence(alice, host, "repos/portail-client")).thenReturn(Presence.UNKNOWN);
 
         IntegriteRapport rapport = inspection.dePoste(alice, host);
 
         assertThat(rapport.avertissements()).extracting(IntegriteConstat::regle)
                 .containsExactly(IntegriteRegle.CARTE_LIEN_MORT);
         assertThat(rapport.avertissements().get(0).message()).contains("vieux-sujet/STATE.md");
+        // Un dossier n'est pas un fichier de carte : on ne le lit même pas (plus de « is_directory »).
+        verify(hostFiles, never()).presence(alice, host, "repos/portail-client");
     }
 
     // ----------------------------------- F-125 / SF-125-03 : carte non déclarée, tolérée
