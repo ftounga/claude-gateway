@@ -295,6 +295,23 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   - **Aucune clé étrangère** vers `workspaces`/`runner_hosts`, même choix que `usage_turns` et
     `host_map_files` : ranger un projet ne doit pas faire disparaître en silence la copie de sa
     consigne. Purge explicite à la suppression du compte (`deleteByUserId`).
+- **repo_index_paths** — index de repo persistant (**chemins seuls**) pour servir l'outil `glob`
+  depuis la base, aide de localisation (F-148 / SF-148-07, migration `127`). Une ligne par projet :
+  la liste des chemins de fichiers, relue **après** un tour (throttlée ~30 s, pool dédié borné).
+  - `repo_index_paths` : `id (uuid)`, `user_id (uuid, NOT NULL)`, `host_id (uuid, NOT NULL)`,
+    `workspace_id (uuid, NOT NULL)`, `paths (text)`, `path_count (int, défaut 0)`,
+    `observed_at (timestamptz, NOT NULL)`.
+    Unicité `(user_id, workspace_id)` + index `(user_id, workspace_id)`.
+  - **Ni contenu ni symboles** : `grep` (contenu) reste sur le runner ; les symboles imposeraient une
+    analyse par langage sur la gateway (frôlant le « moteur » proscrit par Gateway-First). Décision
+    minimale et sûre du cadrage.
+  - **L'index ne ment jamais** : `glob` n'est servi depuis la base que si l'index est amorcé **et**
+    qu'aucune mutation du projet n'a eu lieu pendant le tour ; un repo au-delà de la borne
+    (`MAX_PATHS`/`MAX_CONTENT_CHARS`) n'est **pas** indexé (jamais de liste incomplète servie). C'est
+    une aide, jamais l'autorité — `bash` reste.
+  - **Aucune clé étrangère** vers `workspaces`/`runner_hosts`, même choix que `usage_turns`,
+    `host_map_files` et `prompt_source_files`. Purge explicite à la suppression du compte
+    (`deleteByUserId`).
 
 - **usage_turns** — journal de consommation **par tour** (F-61 / SF-61-01, migration `068` ;
   **coût réel** F-133 / SF-133-01, migration `118`).
