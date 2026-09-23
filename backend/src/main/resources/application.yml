@@ -475,6 +475,20 @@ app:
     max-account-images: ${APP_IMAGE_MAX_ACCOUNT_IMAGES:500}
     # Coût enregistré par image (EUR) — journalisé sur la ligne generated_images.
     cost-eur-per-image: ${APP_IMAGE_COST_EUR_PER_IMAGE:0.04}
+  # F-142 / SF-142-06 — LE RENDU DES DIAGRAMMES, CÔTÉ GATEWAY.
+  #
+  # Le schéma est rendu par un service de NOTRE cluster, pour que le poste du client n'installe rien :
+  # l'ancienne chaîne réclamait mermaid-cli + chromium sur la machine, ce qu'un poste d'entreprise
+  # refuse (proxy, droits, 150 Mo à télécharger) — et le livrable partait sans ses diagrammes.
+  # Vide ⇒ l'outil n'est pas proposé : mieux vaut ne rien promettre que promettre et échouer.
+  diagrams:
+    base-url: ${APP_DIAGRAMS_BASE_URL:}
+    timeout: ${APP_DIAGRAMS_TIMEOUT:PT30S}
+    # Bornes : les mêmes des deux côtés, pour que le refus soit cohérent.
+    max-code-chars: ${APP_DIAGRAMS_MAX_CODE_CHARS:20000}
+    max-image-bytes: ${APP_DIAGRAMS_MAX_IMAGE_BYTES:8388608}
+    default-width: ${APP_DIAGRAMS_DEFAULT_WIDTH:1600}
+    max-per-turn: ${APP_DIAGRAMS_MAX_PER_TURN:6}
   governance:
     # Le JUGE INDÉPENDANT (F-94 / SF-94-02) : un SECOND appel qui compare la carte du poste aux
     # notes des projets et répond à une question unique — « qu'est-ce qui est cité là et absent

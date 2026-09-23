@@ -106,3 +106,8 @@ data:
   # (et non localhost). Non secret.
   STRIPE_SUCCESS_URL: "https://portal.ng-itconsulting.com/billing?checkout=success"
   STRIPE_CANCEL_URL: "https://portal.ng-itconsulting.com/billing?checkout=cancel"
+  # F-142 / SF-142-06 — le service de rendu de diagrammes, DANS le cluster (Service ClusterIP, jamais
+  # exposé hors du cluster). Sans cette URL, l'outil render_diagram n'est pas proposé à l'agent : on ne
+  # promet pas une image qu'on ne saurait pas produire.
+  # Nom court : le Service vit dans le MÊME namespace que la gateway, la résolution suffit.
+  APP_DIAGRAMS_BASE_URL: "http://diagram-renderer"

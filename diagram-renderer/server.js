@@ -1,0 +1,130 @@
+/**
+ * Le service de rendu de diagrammes (F-142 / SF-142-06).
+ *
+ * Il fait une seule chose : recevoir du code Mermaid, rendre une image, la renvoyer. Il tourne DANS
+ * NOTRE CLUSTER pour que le poste du client n'ait rien à installer — c'est tout l'objet de cette
+ * subfeature. Il n'est pas exposé hors du cluster (Service ClusterIP) et ne parle à personne d'autre.
+ *
+ * Ce qu'il ne fait pas : il ne garde rien, n'écrit rien de durable, ne connaît aucun compte. Le code
+ * d'un diagramme entre, une image sort.
+ */
+const http = require("node:http");
+const { execFile } = require("node:child_process");
+const { mkdtemp, writeFile, readFile, rm } = require("node:fs/promises");
+const { tmpdir } = require("node:os");
+const path = require("node:path");
+
+/** Bornes — les mêmes que celles annoncées côté gateway, pour que le refus soit cohérent des deux côtés. */
+const MAX_CODE_CHARS = 20000;
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const RENDER_TIMEOUT_MS = 30000;
+const DEFAULT_WIDTH = 1600;
+/**
+ * Facteur d'échelle du rendu. `-w` fixe la largeur de la PAGE, pas celle de l'image : un petit
+ * diagramme sort en 170 px de large, illisible une fois posé dans une slide. Le scale multiplie la
+ * définition réelle — c'est ce qui rend le PNG net en projection.
+ */
+const DEFAULT_SCALE = 3;
+const MAX_SCALE = 5;
+const MAX_BODY_BYTES = 64 * 1024;
+
+const PORT = Number(process.env.PORT || 8080);
+
+/** La configuration puppeteer : chromium du système, sans bac à sable (on est déjà dans un conteneur). */
+const PUPPETEER_CONFIG = "/app/puppeteer.json";
+
+function send(res, status, body, type) {
+  res.writeHead(status, { "Content-Type": type, "Content-Length": Buffer.byteLength(body) });
+  res.end(body);
+}
+
+function fail(res, status, message) {
+  send(res, status, JSON.stringify({ error: message }), "application/json; charset=utf-8");
+}
+
+async function readBody(req) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > MAX_BODY_BYTES) {
+      throw new Error("corps trop volumineux");
+    }
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks).toString("utf-8");
+}
+
+function renderWithMermaid(input, output, format, width, scale) {
+  return new Promise((resolve, reject) => {
+    const args = ["-i", input, "-o", output, "-b", "transparent", "-w", String(width),
+      "-s", String(scale), "-p", PUPPETEER_CONFIG];
+    if (format === "svg") {
+      args.push("-e", "svg");
+    }
+    execFile("mmdc", args, { timeout: RENDER_TIMEOUT_MS }, (error, stdout, stderr) => {
+      if (error) {
+        // Le message du moteur est repris tel quel : « diagramme invalide » sans la raison
+        // n'aide personne à corriger son code.
+        reject(new Error((stderr || stdout || error.message || "").toString().slice(0, 500)));
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+async function render(req, res) {
+  let payload;
+  try {
+    payload = JSON.parse(await readBody(req) || "{}");
+  } catch (e) {
+    return fail(res, 400, "Corps illisible : " + e.message);
+  }
+  const code = typeof payload.code === "string" ? payload.code.trim() : "";
+  const format = payload.format === "svg" ? "svg" : "png";
+  const width = Number.isFinite(payload.width) ? Math.min(Math.max(payload.width, 200), 4000) : DEFAULT_WIDTH;
+  // Le SVG est vectoriel : le mettre à l'échelle n'apporte rien, et alourdirait le fichier.
+  const scale = format === "svg" ? 1
+    : (Number.isFinite(payload.scale) ? Math.min(Math.max(payload.scale, 1), MAX_SCALE) : DEFAULT_SCALE);
+  if (!code) {
+    return fail(res, 400, "Aucun code de diagramme.");
+  }
+  if (code.length > MAX_CODE_CHARS) {
+    return fail(res, 400, "Diagramme trop long : " + code.length + " caracteres pour un maximum de "
+      + MAX_CODE_CHARS + ".");
+  }
+  const dir = await mkdtemp(path.join(tmpdir(), "cg-diagram-"));
+  try {
+    const input = path.join(dir, "diagram.mmd");
+    const output = path.join(dir, "diagram." + format);
+    await writeFile(input, code, "utf-8");
+    await renderWithMermaid(input, output, format, width, scale);
+    const image = await readFile(output);
+    if (image.length > MAX_IMAGE_BYTES) {
+      return fail(res, 413, "Image rendue trop lourde : " + image.length + " octets.");
+    }
+    res.writeHead(200, {
+      "Content-Type": format === "svg" ? "image/svg+xml" : "image/png",
+      "Content-Length": image.length,
+    });
+    res.end(image);
+  } catch (e) {
+    return fail(res, 422, "Le diagramme n'a pas pu etre rendu : " + (e.message || "raison inconnue"));
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+const server = http.createServer((req, res) => {
+  if (req.method === "GET" && req.url === "/health") {
+    return send(res, 200, JSON.stringify({ status: "UP" }), "application/json; charset=utf-8");
+  }
+  if (req.method === "POST" && req.url === "/render") {
+    return render(req, res).catch((e) => fail(res, 500, "Erreur interne : " + e.message));
+  }
+  return fail(res, 404, "Rien ici.");
+});
+
+server.requestTimeout = RENDER_TIMEOUT_MS + 5000;
+server.listen(PORT, () => console.log("diagram-renderer a l'ecoute sur " + PORT));

@@ -49,7 +49,12 @@ class ImageToolExecutorTest {
 
     @BeforeEach
     void setUp() {
-        executor = new ImageToolExecutor(imageService, workspaceService, runnerToolGateway, runnerAuditService);
+        // F-142 / SF-142-06 : le dépôt est désormais un composant partagé (ProjectFileDeposit), le même
+        // que celui du rendu de diagrammes. On le construit avec les mêmes doublures : ce test continue
+        // donc de vérifier le comportement réel du dépôt, poste et hébergé.
+        executor = new ImageToolExecutor(imageService,
+                new fr.claudegateway.atelier.ProjectFileDeposit(workspaceService, runnerToolGateway,
+                        runnerAuditService));
         when(workspace.getId()).thenReturn(workspaceId);
         when(workspace.getHostId()).thenReturn(hostId);
         when(workspace.isTeamsTerminal()).thenReturn(false);

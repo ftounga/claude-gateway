@@ -90,7 +90,19 @@ docker push $REG/claude-gateway-backend:$TAG && docker push $REG/claude-gateway-
 docker build --build-arg BUILD_CONFIGURATION=production \
   -t $REG/claude-gateway-frontend:$TAG -t $REG/claude-gateway-frontend:staging-latest ./frontend
 docker push $REG/claude-gateway-frontend:$TAG && docker push $REG/claude-gateway-frontend:staging-latest
+
+# F-142 / SF-142-06 — le service de rendu de diagrammes (mermaid-cli + chromium), qui évite au poste
+# du client d'installer quoi que ce soit. Son image change rarement : reconstruire seulement quand
+# diagram-renderer/ bouge, mais TOUJOURS pousser le tag du commit (le manifeste l'exige).
+docker build -t $REG/claude-gateway-diagram-renderer:$TAG \
+  -t $REG/claude-gateway-diagram-renderer:staging-latest ./diagram-renderer
+docker push $REG/claude-gateway-diagram-renderer:$TAG \
+  && docker push $REG/claude-gateway-diagram-renderer:staging-latest
 ```
+
+> **Les trois images portent le même tag** — celui du commit. C'est le manifeste qui l'impose, et un
+> oubli se paie par un `ImagePullBackOff` (arrivé le 2026-09-22 sur le frontend) : construisez les
+> trois, même quand une seule a changé.
 
 ## Étape 5 — Déploiement Kustomize
 
@@ -101,6 +113,7 @@ IRSA=$(cd ~/dev/legalcase-infra/environments/staging && terraform output -raw cl
 
 sed -i "s|REGISTRY_PLACEHOLDER|$REG|g;  s|BACKEND_IMAGE_TAG|$TAG|g" k8s/base/backend/deployment.yaml
 sed -i "s|REGISTRY_PLACEHOLDER|$REG|g;  s|FRONTEND_IMAGE_TAG|$TAG|g" k8s/base/frontend/deployment.yaml
+sed -i "s|REGISTRY_PLACEHOLDER|$REG|g;  s|RENDERER_IMAGE_TAG|$TAG|g" k8s/base/diagram-renderer/deployment.yaml
 HASH=$(kubectl -n $NS get secret backend-secrets -o yaml | sha256sum | cut -c1-16)
 sed -i "s|SECRETS_HASH_PLACEHOLDER|$HASH|g" k8s/base/backend/deployment.yaml
 sed -i "s|IRSA_ROLE_ARN_PLACEHOLDER|$IRSA|g" \
@@ -109,6 +122,7 @@ sed -i "s|IRSA_ROLE_ARN_PLACEHOLDER|$IRSA|g" \
 kubectl apply -k k8s/overlays/staging/
 kubectl -n $NS rollout status deployment/claude-gateway-backend --timeout=10m
 kubectl -n $NS rollout status deployment/claude-gateway-frontend --timeout=10m
+kubectl -n $NS rollout status deployment/diagram-renderer --timeout=10m
 ```
 > Ne pas committer les manifests après ces `sed` (placeholders remplacés). Utiliser `git checkout k8s/` ensuite.
 
