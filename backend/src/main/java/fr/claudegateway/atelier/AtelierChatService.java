@@ -4012,12 +4012,26 @@ public class AtelierChatService implements RelayInterruptTarget {
     }
 
     /**
-     * Édition ciblée sur la machine de l'utilisateur (SF-39-06) : lire, remplacer, réécrire — avec
-     * les primitives que le runner expose déjà, donc <b>sans</b> évolution du protocole (D1).
+     * Tranche binaire d'une lecture/écriture de gros fichier (SF-121-22) : la borne du runner pour
+     * {@code read_file_bytes}/{@code write_file_bytes} ({@code FileTools.MAX_BYTES_CHUNK}). Ses octets
+     * Base64 (× 4/3) tiennent sous le champ {@code content} d'un bloc (512 Kio), donc sous la trame.
+     */
+    private static final int EDIT_LARGE_CHUNK_BYTES = 393_216;
+
+    /**
+     * Édition ciblée sur la machine de l'utilisateur (SF-39-06, étendu SF-121-22) : lire, remplacer,
+     * réécrire — avec les primitives que le runner expose déjà, donc <b>sans</b> évolution du
+     * protocole (D1).
      *
-     * <p>Une lecture <b>tronquée</b> arrête l'opération (D2) : appliquer un remplacement sur un
-     * fragment puis le réécrire détruirait la fin du fichier, en silence. C'est le seul cas où
-     * l'outil refuse ce que le modèle croit possible, et il le dit.</p>
+     * <p>Un fichier plus gros que la borne du champ {@code content} (512 Kio) rend une lecture
+     * {@code read_file} <b>tronquée</b> : éditer ce fragment puis le réécrire détruirait la fin du
+     * fichier. Jusqu'à SF-39-06 c'était un refus ; depuis SF-121-22 on <b>relit l'intégralité</b> du
+     * fichier par tranches binaires ({@code read_file_bytes}), on applique le remplacement sur le
+     * contenu complet, puis on réécrit — par {@code write_file} si le résultat tient dans la borne,
+     * sinon par tranches ({@code write_file_bytes}). Ces quatre outils sont déjà au contrat (F-110 /
+     * F-115) : <b>aucune mise à jour runner</b>. La borne haute de sûreté est conservée —
+     * {@code read_file} refuse déjà {@code > 8 Mio} en {@code too_large} avant toute troncature, si
+     * bien que la plage éditable passe de « ≤ 512 Kio » à « ≤ 8 Mio », jamais au-delà.</p>
      */
     private RunnerCallResult editFileOnRunner(RunnerTarget target, String callId, JsonNode input) {
         String path = requiredArg(input, "path");
@@ -4027,23 +4041,107 @@ public class AtelierChatService implements RelayInterruptTarget {
         if (!read.ok()) {
             return read;
         }
+        String fullContent;
         if (read.truncated()) {
-            return RunnerCallResult.backendError(RunnerErrorCodes.INVALID_INPUT,
-                    "Fichier trop volumineux pour une édition ciblée : la lecture a été tronquée.");
+            // SF-121-22 : fichier > 512 Kio. On relit tout par tranches binaires — jamais d'édition
+            // sur un fragment. Un runner antérieur à F-110 répond unsupported_tool : échec propre.
+            LargeFileRead whole = readWholeFileForEdit(target, path,
+                    read.bytes() == null ? -1L : read.bytes());
+            if (!whole.ok()) {
+                return whole.failure();
+            }
+            fullContent = whole.content();
+        } else {
+            fullContent = read.content();
         }
         AtelierFileText.Edit edit;
         try {
-            edit = AtelierFileText.replace(read.content(), requiredArg(input, "old_string"),
+            edit = AtelierFileText.replace(fullContent, requiredArg(input, "old_string"),
                     input.path("new_string").asText(""), input.path("replace_all").asBoolean(false));
         } catch (RuntimeException ex) {
             return RunnerCallResult.backendError(RunnerErrorCodes.INVALID_INPUT, ex.getMessage());
         }
-        RunnerCallResult written = runnerToolGateway.writeFile(target, callId, path, edit.content());
+        byte[] editedBytes = edit.content().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        RunnerCallResult written = editedBytes.length > RunnerToolGateway.MAX_WRITE_BYTES
+                ? writeWholeFileForEdit(target, callId, path, editedBytes)
+                : runnerToolGateway.writeFile(target, callId, path, edit.content());
         if (!written.ok()) {
             return written;
         }
         return new RunnerCallResult(true, editedMessage(path, edit.replacements()), false, null,
                 written.durationMs(), written.bytes(), null, null, "", false);
+    }
+
+    /**
+     * Relit l'intégralité d'un fichier de la machine par tranches binaires ({@code read_file_bytes}),
+     * pour éditer un fichier plus gros que la borne du champ {@code content} sans le tronquer
+     * (SF-121-22). Reconstitue les octets sans perte (Base64) puis décode en UTF-8 — comme le chemin
+     * ≤ 512 Kio décode déjà. Rend le contenu complet, ou l'issue d'erreur du runner à propager.
+     */
+    private LargeFileRead readWholeFileForEdit(RunnerTarget target, String path, long totalBytes) {
+        int hint = (int) Math.min(Math.max(totalBytes, EDIT_LARGE_CHUNK_BYTES), Integer.MAX_VALUE);
+        java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream(hint);
+        long offset = 0L;
+        while (true) {
+            RunnerCallResult chunk = runnerToolGateway.readFileBytes(
+                    target, UUID.randomUUID().toString(), path, offset, EDIT_LARGE_CHUNK_BYTES);
+            if (!chunk.ok()) {
+                return LargeFileRead.failure(chunk);
+            }
+            byte[] decoded;
+            try {
+                decoded = java.util.Base64.getDecoder().decode(chunk.content());
+            } catch (IllegalArgumentException ex) {
+                return LargeFileRead.failure(RunnerCallResult.backendError(
+                        RunnerErrorCodes.RUNNER_PROTOCOL_ERROR,
+                        "Tranche de lecture illisible pendant l'édition d'un gros fichier."));
+            }
+            buffer.writeBytes(decoded);
+            // truncated ⇒ il reste des octets après cette tranche. decoded vide ⇒ garde anti-boucle
+            // (un runner qui ne progresse pas ne doit pas figer le tour).
+            if (!chunk.truncated() || decoded.length == 0) {
+                break;
+            }
+            offset += decoded.length;
+        }
+        return LargeFileRead.success(new String(buffer.toByteArray(), java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    /**
+     * Réécrit l'intégralité d'un fichier de la machine par tranches binaires ({@code write_file_bytes})
+     * quand le contenu dépasse la borne d'une écriture d'un bloc (512 Kio) (SF-121-22). La tranche à
+     * {@code offset 0} tronque et crée le fichier ; les suivantes s'ajoutent. Rend l'issue de la
+     * dernière écriture (ou la première en échec).
+     */
+    private RunnerCallResult writeWholeFileForEdit(RunnerTarget target, String callId, String path,
+            byte[] bytes) {
+        long offset = 0L;
+        RunnerCallResult last = null;
+        do {
+            int end = (int) Math.min(bytes.length, offset + EDIT_LARGE_CHUNK_BYTES);
+            byte[] slice = java.util.Arrays.copyOfRange(bytes, (int) offset, end);
+            String base64 = java.util.Base64.getEncoder().encodeToString(slice);
+            // La 1re tranche (offset 0) porte l'identifiant visible de l'appel d'édition ; les
+            // suivantes un id propre — deux trames ne partagent jamais une clef de corrélation.
+            String frameId = offset == 0L ? callId : UUID.randomUUID().toString();
+            last = runnerToolGateway.writeFileBytes(target, frameId, path, base64, offset);
+            if (!last.ok()) {
+                return last;
+            }
+            offset = end;
+        } while (offset < bytes.length);
+        return last;
+    }
+
+    /** Issue d'une relecture complète par tranches (SF-121-22) : le contenu, ou l'échec à propager. */
+    private record LargeFileRead(boolean ok, String content, RunnerCallResult failure) {
+        static LargeFileRead success(String content) {
+            return new LargeFileRead(true, content, null);
+        }
+
+        static LargeFileRead failure(RunnerCallResult result) {
+            return new LargeFileRead(false, null, result);
+        }
     }
 
     /** Message rendu au modèle après une édition ciblée : ce qui a changé, et combien de fois. */
