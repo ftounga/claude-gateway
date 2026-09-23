@@ -50,6 +50,13 @@ class GovernanceRulesProviderTest {
         return pkg;
     }
 
+    private GovernancePackage profile(String slug, String name, String rules) {
+        GovernancePackage pkg = GovernancePackage.builder().id(UUID.randomUUID())
+                .slug(slug).name(name).version(1).published(true).rules(rules).build();
+        when(packageService.require(pkg.getId())).thenReturn(pkg);
+        return pkg;
+    }
+
     private GovernanceActivation activationOf(GovernancePackage pkg) {
         return GovernanceActivation.builder().userId(alice).hostId(host)
                 .packageId(pkg.getId()).appliedVersion(1)
@@ -156,6 +163,92 @@ class GovernanceRulesProviderTest {
         assertThat(provider.rulesFor(null, workspace)).isNull();
         assertThat(provider.rulesFor(alice, null)).isNull();
         verify(activationService, never()).activeOnWorkspace(any(), any());
+    }
+
+    // ---------------------------------------------- F-148 / SF-148-02 : profil qui remplace l'amorce
+
+    @Test
+    @DisplayName("un profil actif fournit sa 1re phrase comme rôle")
+    void activeProfileYieldsItsRoleSentence() {
+        GovernancePackage archi = profile("profil-architecte", "Profil — Architecte",
+                "Tu interviens comme **architecte** sur l'infrastructure d'un client. Ce n'est pas un "
+                        + "travail de développement : tu comprends un existant.");
+        when(activationService.activeOnWorkspace(alice, workspace))
+                .thenReturn(List.of(activationOf(archi)));
+
+        String role = provider.activeProfileRole(alice, workspace);
+
+        // 1re phrase seulement, gras Markdown retiré.
+        assertThat(role).isEqualTo("Tu interviens comme architecte sur l'infrastructure d'un client.");
+    }
+
+    @Test
+    @DisplayName("le premier profil actif (ordre d'activation) donne le rôle")
+    void firstActiveProfileWins() {
+        GovernancePackage premier = profile("profil-architecte", "Architecte", "Tu es architecte. Suite.");
+        GovernancePackage second = profile("profil-securite", "Sécurité", "Tu es en sécurité. Suite.");
+        when(activationService.activeOnWorkspace(alice, workspace))
+                .thenReturn(List.of(activationOf(premier), activationOf(second)));
+
+        assertThat(provider.activeProfileRole(alice, workspace)).isEqualTo("Tu es architecte.");
+    }
+
+    @Test
+    @DisplayName("un paquet non-profil ne fournit jamais de rôle")
+    void nonProfilePackageIsNeverARole() {
+        GovernancePackage livrables = pkg("Livrables", "Aucune trace de LLM. Point.");
+        when(activationService.activeOnWorkspace(alice, workspace))
+                .thenReturn(List.of(activationOf(livrables)));
+
+        assertThat(provider.activeProfileRole(alice, workspace)).isNull();
+    }
+
+    @Test
+    @DisplayName("un profil sans règles n'impose aucun rôle")
+    void blankProfileYieldsNoRole() {
+        GovernancePackage muet = profile("profil-donnees", "Données", "   ");
+        when(activationService.activeOnWorkspace(alice, workspace))
+                .thenReturn(List.of(activationOf(muet)));
+
+        assertThat(provider.activeProfileRole(alice, workspace)).isNull();
+    }
+
+    @Test
+    @DisplayName("aucune activation, ou identité nulle : pas de rôle et pas de lecture inutile")
+    void noProfileMeansNoRole() {
+        when(activationService.activeOnWorkspace(alice, workspace)).thenReturn(List.of());
+        assertThat(provider.activeProfileRole(alice, workspace)).isNull();
+        assertThat(provider.activeProfileRole(null, workspace)).isNull();
+        assertThat(provider.activeProfileRole(alice, null)).isNull();
+    }
+
+    @Test
+    @DisplayName("une lecture impossible rend l'amorce générique, pas un tour raté")
+    void unreadableProfileFallsBack() {
+        when(activationService.activeOnWorkspace(alice, workspace))
+                .thenThrow(new IllegalStateException("base indisponible"));
+
+        assertThat(provider.activeProfileRole(alice, workspace)).isNull();
+    }
+
+    @Test
+    @DisplayName("la phrase de rôle est bornée")
+    void roleSentenceIsBounded() {
+        String noPeriod = "x".repeat(GovernanceRulesProvider.PROFILE_ROLE_MAX_CHARS + 200);
+        assertThat(GovernanceRulesProvider.roleSentenceOf(noPeriod))
+                .hasSize(GovernanceRulesProvider.PROFILE_ROLE_MAX_CHARS);
+    }
+
+    @Test
+    @DisplayName("le rôle est lu pour le couple (utilisateur, projet) du tour, et lui seul")
+    void roleReadsOnlyTheTurnScope() {
+        GovernancePackage archi = profile("profil-architecte", "Architecte", "Tu es architecte. Suite.");
+        when(activationService.activeOnWorkspace(alice, workspace))
+                .thenReturn(List.of(activationOf(archi)));
+
+        provider.activeProfileRole(alice, workspace);
+
+        verify(activationService).activeOnWorkspace(alice, workspace);
     }
 
     @Test

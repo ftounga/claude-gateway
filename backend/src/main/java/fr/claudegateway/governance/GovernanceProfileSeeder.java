@@ -44,6 +44,13 @@ public class GovernanceProfileSeeder {
 
     private static final String ROOT = "governance/profils/";
 
+    /**
+     * Préfixe de slug d'un profil métier (F-148 / SF-148-02). Il distingue un profil d'un paquet de
+     * savoir durable parmi les activations d'un poste, sans avoir à ajouter une colonne ni une table :
+     * les slugs livrés (« profil-architecte »…) le portent déjà.
+     */
+    public static final String PROFILE_SLUG_PREFIX = "profil-";
+
     /** Un profil : son identifiant stable, son nom, ce qu'il promet, et le fichier qui le porte. */
     record Profile(String slug, String name, String summary, String resource) {
     }

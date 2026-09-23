@@ -28,4 +28,29 @@ public interface ProjectRulesSource {
      * @return le bloc de règles, déjà borné, ou {@code null} s'il n'y en a aucune
      */
     String rulesFor(UUID userId, UUID workspaceId);
+
+    /**
+     * La <b>phrase de rôle</b> du profil métier actif sur le poste de ce projet, ou {@code null}
+     * (F-148 / SF-148-02).
+     *
+     * <p>Un profil métier (F-138) dit ce qui vaut preuve dans un métier — architecture, infra, sécurité,
+     * données. Tant que ses règles rejoignaient la consigne <b>après</b> l'amorce « Tu es un assistant
+     * de développement », le mauvais cadre était lu en premier et l'effet du profil était dilué. Cette
+     * méthode rend la 1re phrase du profil pour qu'elle <b>remplace</b> l'amorce générique, sans rien
+     * desserrer d'autre (garde-fou F-138 : discipline d'investigation et règles de plateforme intactes).</p>
+     *
+     * <p><b>Méthode {@code default}</b> : l'interface reste fonctionnelle (le SAM est {@link #rulesFor}),
+     * et {@link #NONE} comme toute lambda rendent {@code null} — l'amorce générique, comportement d'avant
+     * F-148.</p>
+     *
+     * <p><b>Stable par session</b> : le profil actif ne change pas d'un tour à l'autre. Substituer une
+     * phrase stable ne touche pas au cache de prompt (F-134).</p>
+     *
+     * @param userId      propriétaire du tour (isolation : le profil d'un autre compte ne remonte jamais)
+     * @param workspaceId projet du tour
+     * @return la phrase de rôle, déjà bornée, ou {@code null} s'il n'y a aucun profil actif
+     */
+    default String activeProfileRole(UUID userId, UUID workspaceId) {
+        return null;
+    }
 }
