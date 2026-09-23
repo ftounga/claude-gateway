@@ -15,6 +15,17 @@ public interface AiAgentProvider {
     AgentTurn nextTurn(AgentTurnRequest request);
 
     /**
+     * Types MIME que le fournisseur « voit » nativement (F-121 / SF-121-15) — vision et lecture de
+     * documents. Provider-First : le domaine ne suppose <b>rien</b> de la capacité multimodale, il la
+     * <b>demande</b> ; il ne pose un bloc {@code image}/{@code document} que si le type figure ici.
+     * Défaut <b>vide</b> (Provider Independence) : un fournisseur muet sur ce point n'induit aucun
+     * comportement multimodal, la lecture reste textuelle.
+     */
+    default java.util.Set<String> supportedMediaTypes() {
+        return java.util.Set.of();
+    }
+
+    /**
      * Écouteur des <b>deltas de texte</b> d'un tour streamé (F-116). Neutre vis-à-vis du fournisseur :
      * le domaine y relaie chaque fragment vers son écran, sans que le paquet {@code agent} connaisse
      * l'Atelier (Provider Independence).

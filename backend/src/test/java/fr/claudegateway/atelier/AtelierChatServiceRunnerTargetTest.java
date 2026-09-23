@@ -240,6 +240,98 @@ class AtelierChatServiceRunnerTargetTest {
         assertThat(block.content()).contains("Aucun runner");
     }
 
+    // ------------------------------------------- F-121 / SF-121-15 : lecture multimodale (images / PDF)
+
+    private static final byte[] PNG_BYTES =
+            {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3, 4, 5, 6, 7, 8};
+    private static final byte[] PDF_BYTES = {'%', 'P', 'D', 'F', '-', '1', '.', '7', 'x', 'y', 'z'};
+
+    private RunnerCallResult okBytes(byte[] bytes) {
+        String base64 = java.util.Base64.getEncoder().encodeToString(bytes);
+        return new RunnerCallResult(true, base64, false, null, 5L, (long) bytes.length, null, null, "",
+                false);
+    }
+
+    @Test
+    void readingAnImageReturnsAMultimodalImageBlock() {
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        when(runnerToolGateway.readFileBytes(eq(runnerTarget), anyString(), eq("assets/logo.png"),
+                eq(0L), anyInt())).thenReturn(okBytes(PNG_BYTES));
+        agentProvider.enqueueToolCall("read_file", "path", "assets/logo.png");
+        agentProvider.enqueueFinal("Vu l'image.");
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "regarde assets/logo.png");
+
+        AgentContentBlock.ToolResult block = lastToolResult();
+        assertThat(block.isError()).isFalse();
+        assertThat(block.blocks()).isNotNull();
+        AgentContentBlock media = block.blocks().get(0);
+        assertThat(media).isInstanceOf(AgentContentBlock.Image.class);
+        AgentContentBlock.Image image = (AgentContentBlock.Image) media;
+        assertThat(image.mediaType()).isEqualTo("image/png");
+        assertThat(image.base64Data()).isEqualTo(java.util.Base64.getEncoder().encodeToString(PNG_BYTES));
+        // La lecture est bien tracée comme une action « read » et NE passe pas par read_file texte.
+        assertThat(result.actions()).extracting(a -> a.type() + ":" + a.path())
+                .contains("read:assets/logo.png");
+        verify(runnerToolGateway, never()).readFile(eq(runnerTarget), anyString(), eq("assets/logo.png"));
+    }
+
+    @Test
+    void readingAPdfReturnsAMultimodalDocumentBlock() {
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        when(runnerToolGateway.readFileBytes(eq(runnerTarget), anyString(), eq("rapport.pdf"),
+                eq(0L), anyInt())).thenReturn(okBytes(PDF_BYTES));
+        agentProvider.enqueueToolCall("read_file", "path", "rapport.pdf");
+        agentProvider.enqueueFinal("Lu le PDF.");
+
+        service.chat(userId, workspaceId, "lis rapport.pdf");
+
+        AgentContentBlock.ToolResult block = lastToolResult();
+        assertThat(block.blocks()).isNotNull();
+        assertThat(block.blocks().get(0)).isInstanceOf(AgentContentBlock.Document.class);
+        assertThat(((AgentContentBlock.Document) block.blocks().get(0)).mediaType())
+                .isEqualTo("application/pdf");
+    }
+
+    @Test
+    void aMediaExtensionWhoseBytesLieFallsBackToTheNormalTextRead() {
+        // Décision D5 : une extension trompeuse (un .png qui n'en est pas) retombe sur la lecture
+        // texte normale — jamais un bloc média corrompu.
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        when(runnerToolGateway.readFileBytes(eq(runnerTarget), anyString(), eq("faux.png"),
+                eq(0L), anyInt())).thenReturn(okBytes("pas une image".getBytes()));
+        when(runnerToolGateway.readFile(eq(runnerTarget), anyString(), eq("faux.png")))
+                .thenReturn(ok("pas une image"));
+        agentProvider.enqueueToolCall("read_file", "path", "faux.png");
+        agentProvider.enqueueFinal("Lu.");
+
+        service.chat(userId, workspaceId, "lis faux.png");
+
+        AgentContentBlock.ToolResult block = lastToolResult();
+        assertThat(block.blocks()).isNull();
+        assertThat(block.content()).contains("pas une image");
+    }
+
+    @Test
+    void anOversizedImageReturnsATextNoteNotAMediaBlock() {
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        // La première tranche annonce une taille totale au-delà de la borne image (5 Mio) : aucun
+        // rapatriement, une note texte, jamais un média tronqué.
+        RunnerCallResult overBound = new RunnerCallResult(true,
+                java.util.Base64.getEncoder().encodeToString(PNG_BYTES), true, null, 5L,
+                6L * 1024 * 1024, null, null, "", false);
+        when(runnerToolGateway.readFileBytes(eq(runnerTarget), anyString(), eq("enorme.png"),
+                eq(0L), anyInt())).thenReturn(overBound);
+        agentProvider.enqueueToolCall("read_file", "path", "enorme.png");
+        agentProvider.enqueueFinal("Trop gros.");
+
+        service.chat(userId, workspaceId, "lis enorme.png");
+
+        AgentContentBlock.ToolResult block = lastToolResult();
+        assertThat(block.blocks()).isNull();
+        assertThat(block.content()).contains("trop volumineux");
+    }
+
     @Test
     void theSystemPromptIsReadThroughTheRunner() {
         stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);

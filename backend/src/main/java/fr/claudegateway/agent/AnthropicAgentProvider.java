@@ -95,6 +95,13 @@ public class AnthropicAgentProvider implements AiAgentProvider {
      * la règle « TTL long avant TTL court » est trivialement respectée.</p>
      */
     private static final Map<String, Object> CACHE_CONTROL = Map.of("type", "ephemeral", "ttl", "1h");
+    /**
+     * Types MIME qu'Anthropic « voit » nativement (F-121 / SF-121-15) : les quatre formats d'image
+     * de l'API {@code /v1/messages} et le PDF. Provider-First : c'est le fournisseur qui déclare ce
+     * qu'il sait voir, la gateway ne pose un bloc média que pour ces types.
+     */
+    private static final java.util.Set<String> SUPPORTED_MEDIA_TYPES = java.util.Set.of(
+            "image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf");
     /** Stratégie d'édition de contexte du fournisseur (F-39 / SF-39-12). */
     private static final String CLEAR_TOOL_USES_EDIT = "clear_tool_uses_20250919";
     /** En-tête beta exigé par l'édition de contexte (F-39 / SF-39-12). */
@@ -168,6 +175,11 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         factory.setConnectTimeout(millis);
         factory.setReadTimeout(millis);
         return factory;
+    }
+
+    @Override
+    public java.util.Set<String> supportedMediaTypes() {
+        return SUPPORTED_MEDIA_TYPES;
     }
 
     @Override
@@ -798,11 +810,32 @@ public class AnthropicAgentProvider implements AiAgentProvider {
             }
             case AgentContentBlock.RedactedReasoning redacted -> Map.of(
                     "type", "redacted_thinking", "data", redacted.data() == null ? "" : redacted.data());
+            // Média « vu » par le fournisseur (SF-121-15) : bloc `image`/`document` à source Base64.
+            // Apparaît surtout imbriqué dans un tool_result, mais reste mappable seul (exhaustivité).
+            case AgentContentBlock.Image image -> Map.of(
+                    "type", "image",
+                    "source", Map.of("type", "base64", "media_type", image.mediaType(),
+                            "data", image.base64Data() == null ? "" : image.base64Data()));
+            case AgentContentBlock.Document document -> Map.of(
+                    "type", "document",
+                    "source", Map.of("type", "base64", "media_type", document.mediaType(),
+                            "data", document.base64Data() == null ? "" : document.base64Data()));
             case AgentContentBlock.ToolResult result -> {
                 Map<String, Object> map = new HashMap<>();
                 map.put("type", "tool_result");
                 map.put("tool_use_id", result.toolUseId());
-                map.put("content", result.content());
+                // Multimodal (SF-121-15) : des sous-blocs riches ⇒ `content` TABLEAU (image/document
+                // + légende). Sans eux, la forme historique CHAÎNE est conservée à l'identique — aucune
+                // régression sur les milliers de résultats texte.
+                if (result.blocks() != null && !result.blocks().isEmpty()) {
+                    List<Map<String, Object>> content = new ArrayList<>(result.blocks().size());
+                    for (AgentContentBlock inner : result.blocks()) {
+                        content.add(toApiBlock(inner));
+                    }
+                    map.put("content", content);
+                } else {
+                    map.put("content", result.content());
+                }
                 if (result.isError()) {
                     map.put("is_error", true);
                 }
