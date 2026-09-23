@@ -577,6 +577,16 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   réactif (F-117 / SF-117-02) force une compaction et relance une fois quand le fournisseur refuse
   le contexte (400 « prompt too long », traduit en `AgentPromptTooLongException`), au lieu de tuer le
   tour. Consommation agrégée aux compteurs du tour (décompte d'usage existant).
+- **workspaces — mode et plan du fil** (F-121 / SF-121-10, migration `129`). Deux colonnes
+  **nullables**, à côté de `chat_thread_summary` : `chat_thread_mode` (varchar 16 ; `ANSWER_PLAN`/`ACT`,
+  `null` = `ACT`, défaut) restaure le **sélecteur de mode** à l'ouverture du projet ; `chat_thread_plan`
+  (texte ; JSON des étapes `title`/`status`) porte le **dernier plan encore actif** posé par `set_plan`
+  **ou** `exit_plan_mode` (ExitPlanMode maison, déclaré en Réponse/Plan). Le plan est **réinjecté au
+  tour suivant dans la CONSIGNE** (jamais la consigne système → cache de prompt préservé, patron
+  F-137/F-148) et **rendu à l'écran** ; un plan **entièrement terminé** n'est pas reporté. `null` =
+  aucun plan/mode (comportement d'avant SF-121-10) ; un « nouveau départ » (SF-39-04) efface les deux.
+  Persistance best-effort via `AtelierThreadStateStore` (isolation `findByIdAndUserId`), défaut `NONE`.
+  **Aucune table nouvelle** : colonnes ajoutées à `workspaces`.
 - **Outillage de la boucle maison — aucune persistance** (F-39 / SF-39-05 et SF-39-06). La panoplie
   déclarée au modèle suit la **capacité de la cible** : en `RUNNER`, `read_file` / `write_file` /
   `edit_file` / `bash` (`list_files` et `search_files` retirés — `ls`, `find` et `grep -n` font
