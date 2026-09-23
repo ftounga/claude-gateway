@@ -227,6 +227,17 @@ public class StubAiAgentProvider implements AiAgentProvider {
 
     private volatile Runnable duringTurn;
 
+    /**
+     * F-121 / SF-121-15 : le stub simule un fournisseur <b>capable de vision</b> — mêmes types que la
+     * production —, pour que la boucle pose bien un bloc {@code image}/{@code document} sur une lecture
+     * multimodale. Provider-First : sans cette déclaration, la boucle retomberait sur une note texte.
+     */
+    @Override
+    public java.util.Set<String> supportedMediaTypes() {
+        return java.util.Set.of("image/png", "image/jpeg", "image/gif", "image/webp",
+                "application/pdf");
+    }
+
     @Override
     public AgentTurn nextTurn(AgentTurnRequest request) {
         this.lastRequest = request;

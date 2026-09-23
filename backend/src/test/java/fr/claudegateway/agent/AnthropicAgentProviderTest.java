@@ -1112,4 +1112,71 @@ class AnthropicAgentProviderTest {
         server.verify();
         assertThat(waits).hasSize(2);
     }
+
+    // ------------------------------------------------- SF-121-15 : lecture multimodale (images / PDF)
+
+    @Test
+    void declaresTheMediaTypesTheProviderCanSee() {
+        build(null);
+        assertThat(provider.supportedMediaTypes())
+                .containsExactlyInAnyOrder("image/png", "image/jpeg", "image/gif", "image/webp",
+                        "application/pdf");
+    }
+
+    @Test
+    void theInterfaceAssumesNoMultimodalCapabilityByDefault() {
+        // Provider Independence : un fournisseur muet n'induit aucun comportement multimodal.
+        AiAgentProvider mute = request -> null;
+        assertThat(mute.supportedMediaTypes()).isEmpty();
+    }
+
+    @Test
+    void encodesAnImageToolResultAsAContentArrayWithABase64ImageBlock() {
+        build(null);
+        AgentContentBlock image = new AgentContentBlock.Image("image/png", "QUJD");
+        AgentMessage toolResult = AgentMessage.toolResults(List.of(
+                new AgentContentBlock.ToolResult("call-1", "Image image/png lue.", false,
+                        List.of(image, new AgentContentBlock.Text("Image image/png lue.")))));
+        JsonNode body = captureBody(AgentReasoning.none(), List.of(toolResult));
+
+        JsonNode result = body.path("messages").get(0).path("content").get(0);
+        assertThat(result.path("type").asText()).isEqualTo("tool_result");
+        assertThat(result.path("content").isArray()).isTrue();
+        JsonNode img = result.path("content").get(0);
+        assertThat(img.path("type").asText()).isEqualTo("image");
+        assertThat(img.path("source").path("type").asText()).isEqualTo("base64");
+        assertThat(img.path("source").path("media_type").asText()).isEqualTo("image/png");
+        assertThat(img.path("source").path("data").asText()).isEqualTo("QUJD");
+        assertThat(result.path("content").get(1).path("type").asText()).isEqualTo("text");
+    }
+
+    @Test
+    void encodesADocumentToolResultAsABase64DocumentBlock() {
+        build(null);
+        AgentContentBlock pdf = new AgentContentBlock.Document("application/pdf", "JVBERi0=");
+        AgentMessage toolResult = AgentMessage.toolResults(List.of(
+                new AgentContentBlock.ToolResult("call-2", "Document application/pdf lu.", false,
+                        List.of(pdf))));
+        JsonNode body = captureBody(AgentReasoning.none(), List.of(toolResult));
+
+        JsonNode doc = body.path("messages").get(0).path("content").get(0).path("content").get(0);
+        assertThat(doc.path("type").asText()).isEqualTo("document");
+        assertThat(doc.path("source").path("type").asText()).isEqualTo("base64");
+        assertThat(doc.path("source").path("media_type").asText()).isEqualTo("application/pdf");
+        assertThat(doc.path("source").path("data").asText()).isEqualTo("JVBERi0=");
+    }
+
+    @Test
+    void keepsAPlainTextToolResultAsAStringContent() {
+        // Non-régression : sans sous-blocs média, le `content` reste une CHAÎNE, comme avant SF-121-15.
+        build(null);
+        AgentMessage toolResult = AgentMessage.toolResults(List.of(
+                new AgentContentBlock.ToolResult("call-3", "contenu texte", false)));
+        JsonNode body = captureBody(AgentReasoning.none(), List.of(toolResult));
+
+        JsonNode result = body.path("messages").get(0).path("content").get(0);
+        assertThat(result.path("type").asText()).isEqualTo("tool_result");
+        assertThat(result.path("content").isTextual()).isTrue();
+        assertThat(result.path("content").asText()).isEqualTo("contenu texte");
+    }
 }

@@ -1916,7 +1916,14 @@ public class AtelierChatService implements RelayInterruptTarget {
                         teamsReadFailedThisTurn = true;
                     }
                 }
-                toolResults.add(new AgentContentBlock.ToolResult(callId, modelContent, outcome.isError()));
+                // Multimodal (F-121 / SF-121-15) : une lecture d'image/PDF joint ses sous-blocs média
+                // au résultat DU TOUR VIVANT — le fournisseur les voit. La trace/transcription, elle,
+                // ne garde que la légende texte (décision D3) : on ne rejoue pas des mégaoctets à
+                // chaque tour, le préfixe caché (F-134) reste stable.
+                toolResults.add(outcome.mediaBlocks() != null && !outcome.mediaBlocks().isEmpty()
+                        ? new AgentContentBlock.ToolResult(callId, modelContent, outcome.isError(),
+                                outcome.mediaBlocks())
+                        : new AgentContentBlock.ToolResult(callId, modelContent, outcome.isError()));
                 // Signal de difficulté (F-119 / SF-119-01) : un résultat en erreur ou un bash en code
                 // de sortie ≠ 0 fera remonter l'effort au tour suivant.
                 signalThisTurn |= isDifficultySignal(call, outcome);
@@ -3481,6 +3488,16 @@ public class AtelierChatService implements RelayInterruptTarget {
                 }
             }
         }
+        // F-121 / SF-121-15 : `read_file` sur une image/PDF est servi en MULTIMODAL — la gateway lit
+        // les octets par les primitives déjà au contrat (read_file_bytes, F-110) et rend un bloc que
+        // le fournisseur voit, au lieu d'un charabia UTF-8. `null` ⇒ pas un média : lecture texte
+        // normale ci-dessous. Après la porte (la permission a déjà tranché), avant l'émission texte.
+        if ("read_file".equals(tool)) {
+            ToolOutcome media = readMediaFromRunner(userId, runnerTarget, callId, call, target);
+            if (media != null) {
+                return media;
+            }
+        }
         // F-148 / SF-148-07 : `glob` est servi depuis l'index de repo — sans aller-retour runner —
         // quand c'est sûr (index amorcé ET aucune mutation du projet ce tour). Après la porte, avant
         // toute émission. Si l'index ne peut pas répondre, on retombe sur le glob runner ci-dessous.
@@ -4021,6 +4038,130 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
         String content = result.truncated() ? page + "\n… (contenu tronqué)" : page;
         return new ToolOutcome(content, false, new AtelierAction("read", arg(input, "path")));
+    }
+
+    /**
+     * Lecture <b>multimodale</b> d'un {@code read_file} (F-121 / SF-121-15) : si le chemin désigne une
+     * image (PNG/JPEG/GIF/WebP) ou un PDF <b>confirmé par ses octets d'en-tête</b>, rend un
+     * {@link ToolOutcome} porteur d'un sous-bloc {@link AgentContentBlock.Image}/{@code Document} que
+     * le fournisseur voit lui-même — jamais le charabia UTF-8 d'une lecture texte. Rend {@code null}
+     * pour tout ce qui n'est pas un média (le chemin texte normal prend alors le relais, inchangé).
+     *
+     * <p><b>Runner-free (décision D1)</b> : lit par {@code read_file_bytes} (F-110), déjà au contrat,
+     * comme la relecture de gros fichier de SF-121-22 — aucune évolution du protocole ni du runner.
+     * <b>Provider-First (D2)</b> : ne pose un bloc que si le fournisseur déclare voir ce type. Bornes
+     * strictes : au-delà, une note texte, jamais un média tronqué. Un échec runner ou un Base64
+     * illisible retombe proprement sur la lecture texte ({@code null}).</p>
+     */
+    private ToolOutcome readMediaFromRunner(UUID userId, RunnerTarget target, String callId,
+            AgentToolCall call, String auditTarget) {
+        String path = arg(call.input(), "path");
+        if (path == null || path.isBlank() || AtelierMediaRead.fromExtension(path).isEmpty()) {
+            return null; // argument absent, ou extension non média : lecture texte normale
+        }
+        // Première tranche : confirme le type (magic) ET donne la taille totale (champ `bytes`).
+        RunnerCallResult first = runnerToolGateway.readFileBytes(
+                target, UUID.randomUUID().toString(), path, 0L, EDIT_LARGE_CHUNK_BYTES);
+        if (!first.ok()) {
+            return null; // échec/indispo runner : le chemin texte rendra un « non concluant » cohérent
+        }
+        byte[] firstChunk = decodeBase64OrNull(first.content());
+        if (firstChunk == null) {
+            return null;
+        }
+        java.util.Optional<AtelierMediaRead.Kind> kindOpt =
+                AtelierMediaRead.detect(path, AtelierMediaRead.head(firstChunk));
+        if (kindOpt.isEmpty()) {
+            return null; // extension trompeuse : lecture texte normale
+        }
+        AtelierMediaRead.Kind kind = kindOpt.get();
+        long totalBytes = first.bytes() == null || first.bytes() < 0 ? firstChunk.length : first.bytes();
+        // Provider-First : un fournisseur qui ne voit pas ce type ⇒ note texte, pas de bloc média.
+        if (!agentProvider.supportedMediaTypes().contains(kind.mediaType())) {
+            return recordedMediaOutcome(userId, target, callId, auditTarget, path, totalBytes,
+                    "Ce fournisseur ne peut pas afficher un fichier " + kind.mediaType()
+                            + " : décris-le autrement (" + path + ").", null);
+        }
+        // Borne stricte AVANT de tout rapatrier : au-delà, jamais un média tronqué.
+        if (totalBytes > kind.maxBytes()) {
+            return recordedMediaOutcome(userId, target, callId, auditTarget, path, totalBytes,
+                    tooLargeNote(kind, path), null);
+        }
+        java.io.ByteArrayOutputStream buffer =
+                new java.io.ByteArrayOutputStream((int) Math.min(totalBytes, Integer.MAX_VALUE));
+        buffer.writeBytes(firstChunk);
+        long offset = firstChunk.length;
+        boolean more = first.truncated() && firstChunk.length > 0;
+        while (more) {
+            RunnerCallResult chunk = runnerToolGateway.readFileBytes(
+                    target, UUID.randomUUID().toString(), path, offset, EDIT_LARGE_CHUNK_BYTES);
+            if (!chunk.ok()) {
+                return null; // repli texte cohérent plutôt qu'un média incomplet
+            }
+            byte[] decoded = decodeBase64OrNull(chunk.content());
+            if (decoded == null) {
+                return null;
+            }
+            buffer.writeBytes(decoded);
+            offset += decoded.length;
+            if (buffer.size() > kind.maxBytes()) {
+                return recordedMediaOutcome(userId, target, callId, auditTarget, path, buffer.size(),
+                        tooLargeNote(kind, path), null);
+            }
+            more = chunk.truncated() && decoded.length > 0;
+        }
+        byte[] all = buffer.toByteArray();
+        String base64 = java.util.Base64.getEncoder().encodeToString(all);
+        AgentContentBlock mediaBlock = kind.isDocument()
+                ? new AgentContentBlock.Document(kind.mediaType(), base64)
+                : new AgentContentBlock.Image(kind.mediaType(), base64);
+        String caption = (kind.isDocument() ? "Document " : "Image ") + kind.mediaType()
+                + " lu (" + path + ", " + humanBytes(all.length) + "). Contenu joint pour lecture.";
+        return recordedMediaOutcome(userId, target, callId, auditTarget, path, all.length, caption,
+                List.of(mediaBlock, new AgentContentBlock.Text(caption)));
+    }
+
+    /** Décode une tranche Base64 du runner, ou {@code null} si elle est illisible (repli texte). */
+    private static byte[] decodeBase64OrNull(String base64) {
+        if (base64 == null) {
+            return null;
+        }
+        try {
+            return java.util.Base64.getDecoder().decode(base64);
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
+    }
+
+    /** Note texte d'un média au-delà de la borne (F-121 / SF-121-15) : jamais un bloc tronqué. */
+    private static String tooLargeNote(AtelierMediaRead.Kind kind, String path) {
+        return "Fichier " + kind.mediaType() + " trop volumineux pour être lu comme média ("
+                + humanBytes(kind.maxBytes()) + " au plus) : " + path;
+    }
+
+    /**
+     * Journalise la lecture (audit F-38 / SF-38-08, comme tout appel runner) puis rend l'issue média.
+     * L'audit passe par un résultat synthétique {@code ok} : le média a bien été lu sur le poste, même
+     * si l'assemblage du bloc vit dans la gateway (D1, aucun aller-retour texte superflu).
+     */
+    private ToolOutcome recordedMediaOutcome(UUID userId, RunnerTarget target, String callId,
+            String auditTarget, String path, long bytes, String caption,
+            List<AgentContentBlock> mediaBlocks) {
+        RunnerCallResult synthetic =
+                new RunnerCallResult(true, caption, false, null, 0L, bytes, null, null, "", false);
+        runnerAuditService.recordCall(userId, target, callId, "read_file", auditTarget, synthetic);
+        return new ToolOutcome(caption, false, new AtelierAction("read", path), mediaBlocks);
+    }
+
+    /** Taille lisible (Kio/Mio) pour une légende ou une note — jamais un chiffre brut d'octets. */
+    private static String humanBytes(long bytes) {
+        if (bytes >= 1024L * 1024) {
+            return String.format(java.util.Locale.ROOT, "%.1f Mio", bytes / (1024.0 * 1024));
+        }
+        if (bytes >= 1024) {
+            return (bytes / 1024) + " Kio";
+        }
+        return bytes + " o";
     }
 
     /**
@@ -5242,8 +5383,19 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
     }
 
-    /** Issue interne d'un outil : contenu renvoyé au modèle, indicateur d'erreur, action pour l'UI. */
-    private record ToolOutcome(String content, boolean isError, AtelierAction action) {
+    /**
+     * Issue interne d'un outil : contenu renvoyé au modèle, indicateur d'erreur, action pour l'UI et,
+     * depuis F-121 / SF-121-15, d'éventuels sous-blocs <b>média</b> ({@code mediaBlocks}) — image ou
+     * document que le fournisseur « voit » lui-même. Nul/vide pour la quasi-totalité des outils : le
+     * résultat reste alors un texte pur.
+     */
+    private record ToolOutcome(String content, boolean isError, AtelierAction action,
+            java.util.List<AgentContentBlock> mediaBlocks) {
+
+        ToolOutcome(String content, boolean isError, AtelierAction action) {
+            this(content, isError, action, null);
+        }
+
         static ToolOutcome info(String content) {
             return new ToolOutcome(content, false, null);
         }
