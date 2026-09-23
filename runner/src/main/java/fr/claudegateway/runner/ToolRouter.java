@@ -19,20 +19,30 @@ public final class ToolRouter implements ToolExecutor {
     private final FileTools files;
     private final BashTool bash;
     private final fr.claudegateway.runner.teams.TeamsTools teams;
+    private final WorktreeTool worktree;
 
     public ToolRouter(FileTools files, BashTool bash) {
-        this(files, bash, null);
+        this(files, bash, null, null);
+    }
+
+    public ToolRouter(FileTools files, BashTool bash,
+            fr.claudegateway.runner.teams.TeamsTools teams) {
+        this(files, bash, teams, null);
     }
 
     /**
-     * @param teams outils du volet Teams, ou {@code null} quand ce runner n'en a pas : un appel
-     *              {@code teams_*} est alors refusé comme n'importe quel outil non supporté
+     * @param teams    outils du volet Teams, ou {@code null} quand ce runner n'en a pas : un appel
+     *                 {@code teams_*} est alors refusé comme n'importe quel outil non supporté
+     * @param worktree cycle de vie des worktrees isolés de {@code task} (F-150 / SF-150-01), ou
+     *                 {@code null} : un appel {@code worktree_*} est alors refusé en
+     *                 {@code unsupported_tool} — exactement ce que fait un runner antérieur
      */
     public ToolRouter(FileTools files, BashTool bash,
-            fr.claudegateway.runner.teams.TeamsTools teams) {
+            fr.claudegateway.runner.teams.TeamsTools teams, WorktreeTool worktree) {
         this.files = files;
         this.bash = bash;
         this.teams = teams;
+        this.worktree = worktree;
     }
 
     @Override
@@ -50,6 +60,12 @@ public final class ToolRouter implements ToolExecutor {
         }
         if ("kill_shell".equals(tool)) {
             return bash.killOf(input);
+        }
+        // Worktrees isolés de `task` (F-150 / SF-150-01). Un runner sans ce montage — ou un runner
+        // antérieur — n'entre pas ici : l'appel file au `unsupported_tool` de FileTools, ce qui est
+        // exactement la rétro-compatibilité attendue.
+        if (WorktreeTool.handles(tool) && worktree != null) {
+            return worktree.execute(tool, input, context);
         }
         return "bash".equals(tool) ? bash.run(input, context) : files.execute(tool, input, context);
     }

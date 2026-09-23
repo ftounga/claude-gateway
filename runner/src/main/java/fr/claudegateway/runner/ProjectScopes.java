@@ -48,6 +48,11 @@ public final class ProjectScopes implements ToolScopes {
      * ouvrirait autant de sockets sur le même onglet.
      */
     private final fr.claudegateway.runner.teams.TeamsTools teams;
+    /**
+     * Invocation git partagée (F-150 / SF-150-01) : le cycle de vie des worktrees isolés de
+     * {@code task}. Une seule instance suffit — elle est sans état, chaque appel dit son dossier.
+     */
+    private final GitCli git = new GitCli();
     private final Map<String, ToolRouter> byProject = new ConcurrentHashMap<>();
     /**
      * Registre des commandes de fond (F-121 / SF-121-07) — <b>unique par machine</b>, partagé par tous
@@ -113,8 +118,11 @@ public final class ProjectScopes implements ToolScopes {
         Path folder = resolveFolder(relative);
         ExclusionRules exclusions = ExclusionRules.load(folder, console);
         PathResolver paths = new PathResolver(folder, exclusions);
+        // Worktrees isolés de `task` (F-150 / SF-150-01) : la racine du poste donne l'emplacement,
+        // le dossier du projet donne le dépôt git dont on tire le worktree.
+        WorktreeTool worktree = new WorktreeTool(hostRoot, folder, git);
         ToolRouter router = new ToolRouter(new FileTools(paths),
-                new BashTool(paths, allowBash, shell, background), teams);
+                new BashTool(paths, allowBash, shell, background), teams, worktree);
         ToolRouter raced = byProject.putIfAbsent(relative, router);
         return raced == null ? router : raced;
     }
