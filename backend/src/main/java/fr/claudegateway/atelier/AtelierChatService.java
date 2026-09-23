@@ -4219,7 +4219,17 @@ public class AtelierChatService implements RelayInterruptTarget {
                     "Délègue une exploration en LECTURE SEULE à un agent qui ne voit pas cette "
                             + "conversation : il lit, cherche, et te rend une réponse courte. Utile "
                             + "quand répondre demande de parcourir beaucoup de fichiers dont tu n'as "
-                            + "pas besoin ensuite. Il ne peut ni écrire, ni exécuter de commande. "
+                            + "pas besoin ensuite. "
+                            // F-149 / SF-149-02 : sortir l'audit lourd de dépôt de la boucle
+                            // principale. Factuel (F-119) : `explore` a read_file/grep/glob, la boucle
+                            // principale a bash ; déléguer garde le volume de lecture HORS de ce
+                            // contexte (seule la conclusion remonte). Préfixe stable → cache F-134.
+                            + "Pour LIRE, AUDITER ou COMPRENDRE un dépôt (revue de code ou d'infra), "
+                            + "DÉLÈGUE-la ici avec read_file/grep/glob plutôt que de lire fichier par "
+                            + "fichier en bash dans la boucle principale : les fichiers lus restent "
+                            + "chez l'agent délégué et ne gonflent pas ton contexte — seule sa "
+                            + "conclusion te revient. "
+                            + "Il ne peut ni écrire, ni exécuter de commande. "
                             // F-39 / SF-39-22, durci par F-148 / SF-148-04 : doctrine de groupement.
                             // Le moteur (SF-39-21) exécute en parallèle les explorations d'un même
                             // tour ; le gain n'apparaît que si le modèle les émet groupées. La consigne
