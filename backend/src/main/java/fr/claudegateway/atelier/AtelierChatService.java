@@ -412,11 +412,18 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "Reprends le fil à partir de cet état ; inutile de rouvrir ces fichiers pour "
                     + "t'orienter, ne les ouvre que si tu dois les modifier.\n\n";
     /**
-     * Nombre de skills annoncés dans la consigne (F-39 / SF-39-02, décision D3). Une borne explicite
-     * vaut mieux qu'une coupe au caractère près : le point d'arrêt devient prévisible, donc le
-     * préfixe cacheable.
+     * Nombre de skills annoncés dans la consigne (F-39 / SF-39-02, décision D3 ; abaissé de 50 à 15 par
+     * F-148 / SF-148-03). Une borne explicite vaut mieux qu'une coupe au caractère près : le point
+     * d'arrêt devient prévisible, donc le préfixe cacheable.
+     *
+     * <p><b>Pourquoi 15.</b> Chaque skill annoncé est lu (round-trip runner en cible {@code RUNNER})
+     * pour en extraire la description, <b>avant le premier token</b> : 50 lectures pesaient sur la
+     * latence de démarrage pour un catalogue que le modèle ne parcourt jamais en entier. Le plafond
+     * reste une <b>constante</b> et l'ordre des skills reste <b>déterministe</b> (jamais classé par la
+     * question) : le préfixe reste stable d'un tour à l'autre — seulement plus court (cache F-134
+     * préservé). La coupe se dit déjà (« … et N autre(s) skill(s) non listé(s). »).</p>
      */
-    private static final int MAX_SKILLS_ANNOUNCED = 50;
+    private static final int MAX_SKILLS_ANNOUNCED = 15;
     /** Longueur d'une description de skill dans le catalogue (F-39 / SF-39-02). */
     private static final int SKILL_DESCRIPTION_CHARS = 200;
     /**
