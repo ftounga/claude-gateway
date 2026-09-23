@@ -95,6 +95,8 @@ class AccountServiceTest {
     private fr.claudegateway.runner.host.HostSpaceService hostSpaceService;
     @Mock
     private fr.claudegateway.governance.map.HostMapFileRepository hostMapFileRepository;
+    @Mock
+    private fr.claudegateway.atelier.promptsource.PromptSourceFileRepository promptSourceFileRepository;
 
     private AccountService service() {
         return new AccountService(userService, subscriptionRepository, usageCounterRepository,
@@ -105,7 +107,7 @@ class AccountServiceTest {
                 workspaceRepository, workspaceService,
                 atelierMessageRepository,
                 documentRepository, chunkRepository, messageLibraryDocumentRepository, radarPurgeService,
-                hostSpaceService, hostMapFileRepository);
+                hostSpaceService, hostMapFileRepository, promptSourceFileRepository);
     }
 
     private User user(UUID id) {
@@ -213,5 +215,8 @@ class AccountServiceTest {
         // La copie de travail des cartes (F-136 / SF-136-01) : c'est le savoir accumulé sur
         // l'infrastructure des CLIENTS de ce compte. Il ne lui survit pas.
         verify(hostMapFileRepository).deleteByUserId(userId);
+        // Le cache des sources de la consigne (F-148 / SF-148-06) : copie des CLAUDE.md/STATE/PLAN/skills
+        // des projets de ce compte. Il ne lui survit pas.
+        verify(promptSourceFileRepository).deleteByUserId(userId);
     }
 }

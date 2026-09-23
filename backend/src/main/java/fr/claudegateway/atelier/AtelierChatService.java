@@ -1000,6 +1000,25 @@ public class AtelierChatService implements RelayInterruptTarget {
     }
 
     /**
+     * Cache des sources de la consigne système (F-148 / SF-148-06). Injecté par mutateur pour ne
+     * toucher à aucun des constructeurs conservés : {@link PromptSource#NONE} (formes historiques,
+     * tests) ⇒ tout est lu en direct par la boucle, comportement d'avant F-148, à l'octet près.
+     *
+     * <p>Sur cible {@code RUNNER}, une fois le cache amorcé, {@code buildSystemPrompt} sert la
+     * consigne depuis la base au lieu du runner, et {@code runLoop} planifie sa relecture après le
+     * tour. En {@code SANDBOX}, jamais consulté (les fichiers vivent dans le stockage objet).</p>
+     */
+    private PromptSource promptSource = PromptSource.NONE;
+
+    /** Branche le cache des sources de la consigne (F-148 / SF-148-06). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setPromptSource(PromptSource promptSource) {
+        if (promptSource != null) {
+            this.promptSource = promptSource;
+        }
+    }
+
+    /**
      * Politique de permission allow/ask/deny persistée par workspace/user (F-121 / SF-121-02). Injectée
      * par mutateur pour ne toucher à aucun des constructeurs conservés : {@code null} (formes
      * historiques, tests antérieurs à F-121) ⇒ la porte retombe sur son comportement binaire d'avant
@@ -1895,6 +1914,17 @@ public class AtelierChatService implements RelayInterruptTarget {
         // relit MAINTENANT, une fois la réponse prête : lire au début d'un tour coûterait six
         // allers-retours vers la machine avant le premier mot du modèle. Ne bloque pas, ne lève pas.
         hostKnowledge.refreshAfterTurn(userId, workspaceId);
+
+        // F-148 / SF-148-06 — les sources de la consigne (CLAUDE.md, STATE/PLAN du sujet, arborescence,
+        // skills) ont pu changer pendant ce tour. On les relit MAINTENANT, une fois la réponse prête,
+        // pour les servir depuis la base au tour suivant sans aller-retour runner d'amorçage. Throttlé
+        // (~30 s/projet), asynchrone, repli passant : ne bloque pas, ne lève pas. Fichiers cœur =
+        // CLAUDE.md + STATE/PLAN (mêmes chemins que ci-dessus), skills bornés au catalogue annoncé.
+        java.util.List<String> promptCoreFiles = new ArrayList<>();
+        promptCoreFiles.add("CLAUDE.md");
+        promptCoreFiles.addAll(SUBJECT_STATE_FILES);
+        promptSource.refreshAfterTurn(userId, workspace, promptCoreFiles,
+                AtelierChatService::isSkillPath, MAX_SKILLS_ANNOUNCED);
 
         return new AtelierChatResult(reply, actions, assistant.getId(), inputTokens, outputTokens,
                 activeSeconds, spendCapReached, costUsd, reusedPercent);
@@ -4403,7 +4433,16 @@ public class AtelierChatService implements RelayInterruptTarget {
             system.append(knowledge);
         }
 
-        java.util.Optional<String> instructions = readOptional(userId, workspace, "CLAUDE.md");
+        // F-148 / SF-148-06 : sur cible RUNNER, une fois le cache amorcé, les sources de la consigne
+        // (CLAUDE.md, STATE/PLAN, arborescence, skills) sont servies depuis la base au lieu du runner —
+        // jusqu'à ~19 allers-retours supprimés avant le 1er token. Tant que le cache n'est pas amorcé,
+        // on lit en direct (comportement d'avant F-148, à l'octet près), et le refresh post-tour
+        // (runLoop) l'amorce pour les tours suivants. En SANDBOX, jamais de cache : les fichiers vivent
+        // dans le stockage objet et ne coûtent aucun aller-retour. Le contenu servi est byte-identique
+        // à la lecture directe tant que l'empreinte ne change pas → préfixe stable, cache F-134 préservé.
+        boolean usePromptCache = workspace.isRunnerTarget() && promptSource.isPrimed(userId, workspace);
+
+        java.util.Optional<String> instructions = promptFile(userId, workspace, "CLAUDE.md", usePromptCache);
         if (instructions.isPresent()) {
             reads++;
             chars += instructions.get().length();
@@ -4433,7 +4472,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         if (!workspace.isHostTerminal()) {
             StringBuilder subjectState = new StringBuilder();
             for (String path : SUBJECT_STATE_FILES) {
-                java.util.Optional<String> body = readOptional(userId, workspace, path);
+                java.util.Optional<String> body = promptFile(userId, workspace, path, usePromptCache);
                 if (body.isEmpty() || body.get().isBlank()) {
                     continue; // Absent ou vide : simplement omis, jamais bloquant (repli passant).
                 }
@@ -4451,14 +4490,15 @@ public class AtelierChatService implements RelayInterruptTarget {
             }
         }
 
-        List<String> tree = safeTree(userId, workspace);
+        List<String> tree = usePromptCache ? promptSource.tree(userId, workspace)
+                : safeTree(userId, workspace);
         if (!tree.isEmpty()) {
             reads++; // Le listage est lui aussi une action menée sur la machine.
         }
         List<String> skillPaths = tree.stream().filter(AtelierChatService::isSkillPath).toList();
         StringBuilder catalog = new StringBuilder();
         for (String path : skillPaths.stream().limit(MAX_SKILLS_ANNOUNCED).toList()) {
-            java.util.Optional<String> skill = readOptional(userId, workspace, path);
+            java.util.Optional<String> skill = promptFile(userId, workspace, path, usePromptCache);
             if (skill.isEmpty()) {
                 continue; // Skill illisible : ignoré, jamais bloquant pour les autres.
             }
@@ -4608,6 +4648,17 @@ public class AtelierChatService implements RelayInterruptTarget {
         } catch (RuntimeException ex) {
             return List.of();
         }
+    }
+
+    /**
+     * Lecture d'un fichier d'amorçage de la consigne, depuis le cache (F-148 / SF-148-06) quand il est
+     * amorcé, sinon en direct via {@link #readOptional}. Le vide a la même sémantique dans les deux
+     * cas (fichier absent) : le préfixe est identique à l'octet près.
+     */
+    private java.util.Optional<String> promptFile(UUID userId, Workspace workspace, String path,
+            boolean usePromptCache) {
+        return usePromptCache ? promptSource.read(userId, workspace, path)
+                : readOptional(userId, workspace, path);
     }
 
     /** Lecture optionnelle pour la consigne système, prise là où les fichiers vivent réellement. */
