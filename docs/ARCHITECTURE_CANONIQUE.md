@@ -276,6 +276,25 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   - **Il n'arrête rien** : aucun tour n'est refusé parce qu'un budget est dépassé. Le refus de
     service reste l'affaire du quota commercial (F-10 / F-36). Mélanger les deux ferait qu'un client
     serait coupé, un jour, par un réglage interne qu'il n'a jamais vu.
+- **prompt_source_files** — cache des **sources de la consigne système** relues à chaque message sur
+  le runner (F-148 / SF-148-06, migration `126`). Copie de travail, côté gateway, de `CLAUDE.md`, de
+  `STATE.md`/`PLAN-ACTION.md` du sujet, de l'arborescence et des fichiers de skills d'un **projet** ;
+  relue **après** un tour (throttlé ~30 s/projet, pool dédié borné), servie au tour suivant sans
+  ~19 allers-retours runner avant le 1er token. Même geste que `host_map_files`.
+  - `prompt_source_files` : `id (uuid)`, `user_id (uuid, NOT NULL)`, `host_id (uuid, NOT NULL)`,
+    `workspace_id (uuid, NOT NULL)`, `path (varchar(512), NOT NULL)`, `content (text)`,
+    `digest (varchar(64))`, `observed_at (timestamptz, NOT NULL)`.
+    Unicité `(user_id, workspace_id, path)` + index `(user_id, workspace_id)`.
+  - **Clé par projet, pas par poste** : ces fichiers sont lus **relativement au `projectPath` du
+    workspace** — deux sujets d'un même poste ont des `CLAUDE.md` différents. Une clé `(host, path)`
+    servirait la consigne d'un sujet à un autre. `host_id` reste rangé pour l'isolation et la purge.
+    (À l'inverse, `host_map_files` clé par `(user, host)` car il ne range que les fichiers `MAP` de la
+    **racine** du poste.)
+  - **Byte-identique tant que le digest ne change pas** : le contenu servi est identique à la lecture
+    directe → le préfixe reste stable, le cache de prompt (F-134) est préservé.
+  - **Aucune clé étrangère** vers `workspaces`/`runner_hosts`, même choix que `usage_turns` et
+    `host_map_files` : ranger un projet ne doit pas faire disparaître en silence la copie de sa
+    consigne. Purge explicite à la suppression du compte (`deleteByUserId`).
 
 - **usage_turns** — journal de consommation **par tour** (F-61 / SF-61-01, migration `068` ;
   **coût réel** F-133 / SF-133-01, migration `118`).
