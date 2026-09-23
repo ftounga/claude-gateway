@@ -43,6 +43,14 @@ public final class ToolRouter implements ToolExecutor {
                             "Le volet Teams n'est pas actif sur cette machine : " + tool)
                     : teams.execute(tool, input, context);
         }
+        // F-121 / SF-121-07 : relecture et arrêt d'une commande de fond. La gateway ne les émet que si
+        // la capacité bash_background est annoncée ; un montage sans arrière-plan les refuse proprement.
+        if ("bash_output".equals(tool)) {
+            return bash.outputOf(input);
+        }
+        if ("kill_shell".equals(tool)) {
+            return bash.killOf(input);
+        }
         return "bash".equals(tool) ? bash.run(input, context) : files.execute(tool, input, context);
     }
 
@@ -56,6 +64,12 @@ public final class ToolRouter implements ToolExecutor {
         capabilities.add("files");
         if (bash.enabled()) {
             capabilities.add("bash");
+        }
+        // F-121 / SF-121-07 : l'arrière-plan (run_in_background + bash_output/kill_shell) n'est annoncé
+        // que si l'exécution est autorisée ET qu'un registre est monté. Sans cette annonce, la gateway
+        // sait d'avance de ne pas émettre ces outils, et le comportement d'un runner ancien est intact.
+        if (bash.backgroundEnabled()) {
+            capabilities.add("bash_background");
         }
         // Teams (F-87 / SF-87-03) : annoncée seulement si la machine l'autorise. Sans elle, la
         // gateway sait d'avance que ce poste ne lira pas Teams, et l'écran le dit sans appeler.

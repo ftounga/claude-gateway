@@ -69,6 +69,12 @@ public final class BashTool {
     private final boolean enabled;
     private final ShellElection shell;
     private final Semaphore slot = new Semaphore(1);
+    /**
+     * Registre des commandes de fond (F-121 / SF-121-07), partagé par la machine, ou {@code null} quand
+     * ce montage n'offre pas l'arrière-plan (tests, chemins historiques) : {@code run_in_background} est
+     * alors ignoré et la commande s'exécute en synchrone, exactement comme avant.
+     */
+    private final BackgroundShells background;
 
     /**
      * @param paths   résolution du {@code cwd} — dossier de <b>départ</b>, pas une borne (F-73)
@@ -77,14 +83,37 @@ public final class BashTool {
      *                lui-même, il exécute sous celui que la machine a réellement
      */
     public BashTool(PathResolver paths, boolean enabled, ShellElection shell) {
+        this(paths, enabled, shell, null);
+    }
+
+    /**
+     * @param background registre des commandes de fond (F-121 / SF-121-07), partagé par tous les projets
+     *                  de la machine ; {@code null} = pas d'arrière-plan sur ce montage
+     */
+    public BashTool(PathResolver paths, boolean enabled, ShellElection shell, BackgroundShells background) {
         this.paths = paths;
         this.enabled = enabled;
         this.shell = shell;
+        this.background = background;
     }
 
     /** Vrai si cette machine autorise l'exécution de commandes (capacité {@code bash} annoncée). */
     public boolean enabled() {
         return enabled;
+    }
+
+    /**
+     * Vrai si cette machine sait lancer des commandes <b>en arrière-plan</b> (F-121 / SF-121-07) :
+     * l'exécution est autorisée <b>et</b> un registre est monté. Conditionne l'annonce de la capacité
+     * {@code bash_background} et l'aiguillage de {@code bash_output}/{@code kill_shell}.
+     */
+    public boolean backgroundEnabled() {
+        return enabled && background != null;
+    }
+
+    /** Registre des commandes de fond, ou {@code null} — pour l'aiguilleur {@link ToolRouter}. */
+    BackgroundShells background() {
+        return background;
     }
 
     /**
@@ -104,6 +133,13 @@ public final class BashTool {
         } catch (ToolException e) {
             return ToolOutcome.error(e);
         }
+        // F-121 / SF-121-07 : un lancement en arrière-plan ne prend PAS le sémaphore « une commande à
+        // la fois » (un serveur de dev ne doit pas bloquer un bash de premier plan) et rend la main
+        // tout de suite. Ignoré si le montage n'offre pas l'arrière-plan (background == null) : la
+        // commande retombe alors en synchrone, exactement comme avant.
+        if (background != null && input != null && input.path("background").asBoolean(false)) {
+            return startInBackground(command, workingDirectory);
+        }
         if (!slot.tryAcquire()) {
             // Pas d'exécution concurrente non bornée : un seul processus à la fois par runner.
             return ToolOutcome.error("denied", "Une commande est déjà en cours sur ce runner.");
@@ -113,6 +149,82 @@ public final class BashTool {
         } finally {
             slot.release();
         }
+    }
+
+    // ------------------------------------------------------------------ arrière-plan
+
+    /**
+     * Démarre la commande <b>détachée</b> (F-121 / SF-121-07) : le processus survit à cet appel, sa
+     * sortie est bufferisée dans le registre, et l'identifiant rendu ({@code bash_N}) sert ensuite à
+     * {@code bash_output} et {@code kill_shell}. Rend la main immédiatement, sans attendre la fin.
+     */
+    private ToolOutcome startInBackground(String command, Path workingDirectory) {
+        ProcessBuilder builder = new ProcessBuilder(shellCommand(command))
+                .directory(workingDirectory.toFile());
+        builder.redirectErrorStream(false);
+        Process process;
+        try {
+            process = builder.start();
+        } catch (IOException | RuntimeException e) {
+            return ToolOutcome.error("exec_failed", "La commande n'a pas pu être démarrée.");
+        }
+        java.util.Optional<String> id = background.register(command, process);
+        if (id.isEmpty()) {
+            // Registre plein : on ne laisse pas un processus orphelin derrière un refus.
+            process.destroyForcibly();
+            return ToolOutcome.error("denied",
+                    "Trop de commandes en arrière-plan (" + BackgroundShells.MAX_SHELLS
+                            + " au plus). Arrête-en une avec kill_shell.");
+        }
+        return ToolOutcome.ok("Commande lancée en arrière-plan. Identifiant : " + id.get()
+                + ". Relis sa sortie avec bash_output, arrête-la avec kill_shell.");
+    }
+
+    /** Sortie nouvelle d'une commande de fond (F-121 / SF-121-07) ; {@code not_found} si l'id est inconnu. */
+    ToolOutcome outputOf(JsonNode input) {
+        if (background == null) {
+            return ToolOutcome.error("unsupported_tool",
+                    "L'arrière-plan n'est pas activé sur ce runner.");
+        }
+        String id = requireId(input);
+        if (id == null) {
+            return ToolOutcome.error("invalid_input", "Paramètre requis manquant : bash_id");
+        }
+        return background.output(id)
+                .map(ToolOutcome::ok)
+                .orElseGet(() -> ToolOutcome.error("not_found",
+                        "Aucune commande en arrière-plan sous cet identifiant."));
+    }
+
+    /** Arrête une commande de fond (F-121 / SF-121-07) ; {@code not_found} si l'id est inconnu. */
+    ToolOutcome killOf(JsonNode input) {
+        if (background == null) {
+            return ToolOutcome.error("unsupported_tool",
+                    "L'arrière-plan n'est pas activé sur ce runner.");
+        }
+        String id = requireId(input);
+        if (id == null) {
+            return ToolOutcome.error("invalid_input", "Paramètre requis manquant : shell_id");
+        }
+        return background.kill(id)
+                .map(ToolOutcome::ok)
+                .orElseGet(() -> ToolOutcome.error("not_found",
+                        "Aucune commande en arrière-plan sous cet identifiant."));
+    }
+
+    /** Identifiant de shell de fond, accepté sous {@code bash_id} ou {@code shell_id}, ou {@code null}. */
+    private static String requireId(JsonNode input) {
+        if (input == null) {
+            return null;
+        }
+        for (String field : new String[] {"bash_id", "shell_id", "id"}) {
+            JsonNode value = input.get(field);
+            if (value != null && value.isTextual() && !value.asText().isBlank()) {
+                String id = value.asText().strip();
+                return id.length() <= 64 ? id : null;
+            }
+        }
+        return null;
     }
 
     // ------------------------------------------------------------------ exécution

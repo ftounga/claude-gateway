@@ -29,6 +29,17 @@ class ToolRouterTest {
     }
 
     @Test
+    void annonceBashBackgroundQuandUnRegistreEstMonte() {
+        // F-121 / SF-121-07 : la capacité n'apparaît que si bash est autorisé ET qu'un registre existe.
+        PathResolver guard = new PathResolver(root);
+        ToolRouter withBackground = new ToolRouter(new FileTools(guard),
+                new BashTool(guard, true, ShellElection.elect(), new BackgroundShells()));
+        assertEquals(List.of("files", "bash", "bash_background"), withBackground.capabilities());
+        // Sans registre : pas d'arrière-plan annoncé (retro-compat).
+        assertEquals(List.of("files", "bash"), router(true).capabilities());
+    }
+
+    @Test
     void aiguilleLesOutilsFichiersVersFileTools() throws IOException {
         Files.writeString(root.resolve("a.txt"), "bonjour");
 

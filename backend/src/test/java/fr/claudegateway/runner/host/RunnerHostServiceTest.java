@@ -199,6 +199,27 @@ class RunnerHostServiceTest {
     }
 
     @Test
+    void declaresBackgroundCapabilityWhenTheRunnerAnnouncesIt() {
+        // F-121 / SF-121-07 : les capacités jointes par des virgules sont relues, normalisées en
+        // minuscules, pour décider si l'arrière-plan est déclaré au modèle.
+        RunnerHost host = new RunnerHost();
+        host.setRunnerCapabilities("files,bash,bash_background");
+        when(repository.findById(hostId)).thenReturn(Optional.of(host));
+
+        assertThat(service().declaredCapabilities(hostId)).contains("bash_background", "bash", "files");
+    }
+
+    @Test
+    void reportsNoCapabilitiesForAnOlderRunner() {
+        RunnerHost host = new RunnerHost();
+        host.setRunnerCapabilities("files,bash");
+        when(repository.findById(hostId)).thenReturn(Optional.of(host));
+
+        assertThat(service().declaredCapabilities(hostId)).doesNotContain("bash_background");
+        assertThat(service().declaredCapabilities(null)).isEmpty();
+    }
+
+    @Test
     void recordsTheDeclaredInterpreterOnTheMachine() {
         RunnerHost host = new RunnerHost();
         when(repository.findById(hostId)).thenReturn(Optional.of(host));

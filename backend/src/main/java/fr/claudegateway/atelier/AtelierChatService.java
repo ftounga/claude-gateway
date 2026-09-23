@@ -3033,6 +3033,12 @@ public class AtelierChatService implements RelayInterruptTarget {
             // pour qu'un one-liner de 3 000 caractères ne noie pas la liste des étapes (contrat §3).
             case "bash" -> new AtelierProgressListener.AtelierStepEvent("bash",
                     shorten(arg(input, "command"), STEP_COMMAND_CHARS));
+            // F-121 / SF-121-07 : le suivi d'une commande de fond s'affiche comme un bash, avec
+            // l'identifiant relu/arrêté — l'information utile à l'écran.
+            case "bash_output" -> new AtelierProgressListener.AtelierStepEvent("bash",
+                    "sortie " + arg(input, "bash_id"));
+            case "kill_shell" -> new AtelierProgressListener.AtelierStepEvent("bash",
+                    "arrêt " + arg(input, "shell_id"));
             // F-84 / SF-84-04 : une délégation peut durer des minutes — la question part à l'écran
             // AVANT, sans quoi le terminal reste muet tout du long.
             case "explore" -> new AtelierProgressListener.AtelierStepEvent("explore",
@@ -3830,11 +3836,24 @@ public class AtelierChatService implements RelayInterruptTarget {
             // regex/le motif — la gateway relaie les paramètres bornés, jamais le shell.
             case "grep" -> runnerToolGateway.grep(target, callId, input);
             case "glob" -> runnerToolGateway.glob(target, callId, input);
-            // Le délai est ramené au budget de tour restant : une commande ne doit jamais pouvoir
-            // survivre au tour qui l'a lancée.
-            case "bash" -> runnerToolGateway.bash(target, callId, requiredArg(input, "command"),
-                    input.path("cwd").asText(null), deadline - System.currentTimeMillis(),
-                    listener::onOutput);
+            // F-121 / SF-121-07 : un `bash run_in_background` démarre détaché et rend la main tout de
+            // suite — on le route vers bashBackground SEULEMENT si le poste annonce la capacité
+            // (garde-fou : un runner ancien bloquerait, ici on retombe en synchrone). Sinon, un bash de
+            // premier plan, avec un délai `timeout` élargi mais borné au budget de tour restant : une
+            // commande ne survit jamais au tour qui l'a lancée.
+            case "bash" -> input.path("run_in_background").asBoolean(false)
+                    && hostSupportsBackground(target.hostId())
+                            ? runnerToolGateway.bashBackground(target, callId,
+                                    requiredArg(input, "command"), input.path("cwd").asText(null))
+                            : runnerToolGateway.bash(target, callId, requiredArg(input, "command"),
+                                    input.path("cwd").asText(null), effectiveBashTimeout(input, deadline),
+                                    listener::onOutput);
+            // F-121 / SF-121-07 : relecture et arrêt d'une commande de fond (déclarés seulement quand
+            // le poste annonce bash_background). Idempotents et sans porte : ce sont un suivi et un arrêt.
+            case "bash_output" -> runnerToolGateway.bashOutput(target, callId,
+                    requiredArg(input, "bash_id"));
+            case "kill_shell" -> runnerToolGateway.killShell(target, callId,
+                    requiredArg(input, "shell_id"));
             // Le volet Teams (F-88 / SF-88-03) : un seul relais pour les huit outils, parce qu'ils
             // partagent le même contrat — des paramètres que SEUL le runner sait interpréter, et une
             // enveloppe JSON en retour. La gateway relaie ; elle ne réinterprète ni la période, ni
@@ -3845,6 +3864,20 @@ public class AtelierChatService implements RelayInterruptTarget {
                             ? runnerToolGateway.teamsRead(target, callId, call.name(), input)
                             : null;
         };
+    }
+
+    /**
+     * Délai effectif d'un {@code bash} de premier plan (F-121 / SF-121-07) : le {@code timeout} demandé
+     * par le modèle (ms), à défaut 120 s, jamais au-delà du <b>budget de tour restant</b> — une commande
+     * ne survit pas à son tour. La gateway le clampe ensuite au plafond élargi de 10 minutes.
+     */
+    private static long effectiveBashTimeout(JsonNode input, long deadline) {
+        long remaining = deadline - System.currentTimeMillis();
+        long requested = input == null ? 0L : input.path("timeout").asLong(0L);
+        if (requested <= 0) {
+            requested = RunnerToolGateway.BASH_TIMEOUT_MS;
+        }
+        return Math.min(requested, remaining);
     }
 
     /** Traduit l'issue d'un appel runner en résultat d'outil, aux formats du mode sandbox. */
@@ -3862,7 +3895,14 @@ public class AtelierChatService implements RelayInterruptTarget {
                     ? new ToolOutcome("Fichier écrit : " + arg(input, "path"), false,
                             new AtelierAction("write", arg(input, "path")))
                     : ToolOutcome.error(result.errorMessage());
-            case "bash" -> bashOutcome(arg(input, "command"), result);
+            // F-121 / SF-121-07 : un lancement en arrière-plan rend un `content` (l'identifiant du
+            // shell), pas un flux — le résultat vient donc du content, pas de la sortie streamée.
+            case "bash" -> input.path("run_in_background").asBoolean(false)
+                    ? textOutcome(result, null)
+                    : bashOutcome(arg(input, "command"), result);
+            // F-121 / SF-121-07 : relecture/arrêt d'une commande de fond — contenu verbatim, échec
+            // de transport rendu « non concluant » (textOutcome, cohérent SF-119-04/SF-121-04).
+            case "bash_output", "kill_shell" -> textOutcome(result, null);
             // Grep/Glob (F-121 / SF-121-01) : contenu verbatim en cas de succès ; un échec de
             // transport est « non concluant » (cohérent SF-119-04), pas une preuve d'absence.
             case "grep", "glob" -> result.ok()
@@ -3884,6 +3924,9 @@ public class AtelierChatService implements RelayInterruptTarget {
             // F-121 / SF-121-01 : on trace le MOTIF cherché, jamais le contenu trouvé.
             case "grep", "glob" -> shorten(arg(input, "pattern"), AUDIT_TARGET_CHARS);
             case "bash" -> shorten(arg(input, "command"), AUDIT_TARGET_CHARS);
+            // F-121 / SF-121-07 : on trace l'identifiant du shell de fond relu/arrêté, jamais sa sortie.
+            case "bash_output" -> "sortie " + arg(input, "bash_id");
+            case "kill_shell" -> "arrêt " + arg(input, "shell_id");
             // Teams (F-88 / SF-88-03) : ce qui est tracé est CE QU'ON A DEMANDÉ — un fil, une
             // requête, une réunion —, jamais ce qui est revenu. Un journal d'audit qui porterait
             // le texte des messages d'un client serait précisément l'entrepôt de données sensibles
@@ -4688,16 +4731,73 @@ public class AtelierChatService implements RelayInterruptTarget {
         return full;
     }
 
+    /**
+     * Vrai si le poste de ce workspace sait lancer des commandes <b>en arrière-plan</b>
+     * (F-121 / SF-121-07) : cible RUNNER <b>et</b> capacité {@code bash_background} annoncée par le
+     * runner. Une propriété stable du poste, lue au même endroit que le shell/OS déclarés — elle
+     * conditionne la déclaration des outils (préfixe caché) et l'aiguillage de {@code callRunner}.
+     */
+    private boolean supportsBackgroundBash(Workspace workspace) {
+        return workspace.isRunnerTarget() && hostSupportsBackground(workspace.getHostId());
+    }
+
+    /**
+     * Vrai si le runner du poste {@code hostId} annonce la capacité {@code bash_background}
+     * (F-121 / SF-121-07). Null-safe : un poste inconnu, ou un service qui ne déclare rien, vaut
+     * « pas d'arrière-plan » — la boucle retombe alors sur le comportement synchrone d'avant.
+     */
+    private boolean hostSupportsBackground(java.util.UUID hostId) {
+        if (hostId == null) {
+            return false;
+        }
+        java.util.Set<String> caps = runnerHostService.declaredCapabilities(hostId);
+        return caps != null && caps.contains("bash_background");
+    }
+
     private List<AgentTool> buildToolsFull(java.util.UUID userId, Workspace workspace) {
         Map<String, Object> stringProp = Map.of("type", "string");
+        Map<String, Object> intProp = Map.of("type", "integer");
         List<AgentTool> tools = new ArrayList<>(fileTools(stringProp, workspace.isRunnerTarget()));
         if (workspace.isRunnerTarget()) {
-            tools.add(new AgentTool("bash",
+            // F-121 / SF-121-07 : l'arrière-plan (run_in_background + bash_output/kill_shell) n'est
+            // déclaré que si le poste annonce la capacité `bash_background` — un runner ancien ne
+            // l'annonce pas, la panoplie reste alors celle d'avant (retro-compat). C'est une propriété
+            // STABLE du poste : le préfixe caché (F-134) ne change pas d'un tour à l'autre.
+            boolean background = supportsBackgroundBash(workspace);
+            Map<String, Object> bashProps = new java.util.LinkedHashMap<>();
+            bashProps.put("command", stringProp);
+            bashProps.put("cwd", stringProp);
+            // `timeout` (ms) est déclaré sur TOUS les postes : il voyage déjà dans le champ timeoutMs du
+            // contrat (§2.2), qu'un runner honore quel que soit son âge — aucune capacité requise.
+            bashProps.put("timeout", intProp);
+            StringBuilder bashDesc = new StringBuilder(
                     "Exécute une commande shell sur la machine connectée (runner), depuis la racine "
-                            + "du projet. Renvoie la sortie (stdout et stderr) et le code de sortie.",
-                    Map.of("type", "object",
-                            "properties", Map.of("command", stringProp, "cwd", stringProp),
-                            "required", List.of("command"))));
+                            + "du projet. Renvoie la sortie (stdout et stderr) et le code de sortie. "
+                            + "timeout (optionnel, en millisecondes) élargit le délai jusqu'à "
+                            + "10 minutes, sans jamais dépasser le budget du tour.");
+            if (background) {
+                bashProps.put("run_in_background", Map.of("type", "boolean"));
+                bashDesc.append(" Pour un serveur de dev ou un build long qui ne doit pas bloquer le "
+                        + "tour, passe run_in_background à true : la commande démarre détachée et tu "
+                        + "reçois un identifiant à relire avec bash_output et à arrêter avec kill_shell.");
+            }
+            tools.add(new AgentTool("bash", bashDesc.toString(),
+                    Map.of("type", "object", "properties", bashProps, "required", List.of("command"))));
+            if (background) {
+                tools.add(new AgentTool("bash_output",
+                        "Relit la sortie NOUVELLE (depuis ta dernière lecture) d'une commande lancée "
+                                + "en arrière-plan, avec son état (en cours / terminé + code de sortie / "
+                                + "arrêté). Donne bash_id, l'identifiant rendu par bash run_in_background.",
+                        Map.of("type", "object",
+                                "properties", Map.of("bash_id", stringProp),
+                                "required", List.of("bash_id"))));
+                tools.add(new AgentTool("kill_shell",
+                        "Arrête une commande lancée en arrière-plan. Donne shell_id, l'identifiant "
+                                + "rendu par bash run_in_background.",
+                        Map.of("type", "object",
+                                "properties", Map.of("shell_id", stringProp),
+                                "required", List.of("shell_id"))));
+            }
         }
         // L'exploration est déclarée sur les deux cibles, et seulement si elle est autorisée
         // (F-39 / SF-39-14). Elle absorbe le volume de lecture qui, sinon, remplit le contexte du

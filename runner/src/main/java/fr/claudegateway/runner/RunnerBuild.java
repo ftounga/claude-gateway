@@ -24,13 +24,15 @@ public record RunnerBuild(String version, String stamp, String commit) {
     /**
      * Niveau de contrat runner ↔ gateway que ce runner parle (F-81, F-111). {@code 1} : le contrat
      * d'outils de F-38 avec la déclaration de version de F-111 ; {@code 2} : la commande {@code update}
-     * (F-111 / SF-111-04). Il monte quand le runner apprend une
-     * trame que la gateway doit savoir pouvoir lui envoyer.
+     * (F-111 / SF-111-04) ; {@code 3} : les commandes en <b>arrière-plan</b> (F-121 / SF-121-07 —
+     * {@code run_in_background} sur {@code bash}, outils {@code bash_output}/{@code kill_shell},
+     * capacité {@code bash_background}). Il monte quand le runner apprend une trame que la gateway doit
+     * savoir pouvoir lui envoyer.
      *
      * <p>Il est écrit <b>aussi</b> dans {@code runner-build.properties} (propriété {@code runner.contract}
      * du pom) : c'est là que la gateway le lit dans le jar qu'elle sert. Un test garde les deux égaux.</p>
      */
-    public static final int CONTRACT = 2;
+    public static final int CONTRACT = 3;
 
     /** Ressource filtrée par Maven (voir {@code pom.xml}). */
     static final String RESOURCE = "/runner-build.properties";

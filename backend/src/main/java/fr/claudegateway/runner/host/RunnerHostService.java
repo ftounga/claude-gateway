@@ -253,6 +253,28 @@ public class RunnerHostService implements RunnerShellRecorder, RunnerVersionReco
     }
 
     /**
+     * Capacités déclarées par le runner de ce poste dans sa dernière trame {@code ready}
+     * (F-121 / SF-121-07), en minuscules, ou un ensemble vide — poste inconnu, non rattaché, ou runner
+     * qui n'a rien déclaré. Sert à la boucle maison pour ne déclarer les outils d'arrière-plan
+     * ({@code bash_background}) que là où le poste sait les honorer : un runner ancien n'annonce pas la
+     * capacité, la panoplie reste alors celle d'avant (retro-compat).
+     */
+    @Transactional(readOnly = true)
+    public java.util.Set<String> declaredCapabilities(UUID hostId) {
+        if (hostId == null) {
+            return java.util.Set.of();
+        }
+        return repository.findById(hostId)
+                .map(RunnerHost::getRunnerCapabilities)
+                .filter(caps -> caps != null && !caps.isBlank())
+                .map(caps -> java.util.Arrays.stream(caps.split(","))
+                        .map(cap -> cap.strip().toLowerCase(java.util.Locale.ROOT))
+                        .filter(cap -> !cap.isEmpty())
+                        .collect(java.util.stream.Collectors.toUnmodifiableSet()))
+                .orElseGet(java.util.Set::of);
+    }
+
+    /**
      * Système d'exploitation déclaré par le runner de ce poste à l'appairage (F-121 / SF-121-21), ou
      * {@code null} — poste inconnu ou runner qui n'a rien déclaré. Sert le bloc « Environnement » de la
      * consigne système, à la manière du {@code <env>} de Claude Code. Une propriété de la machine, lue

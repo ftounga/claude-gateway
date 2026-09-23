@@ -49,6 +49,12 @@ public final class ProjectScopes implements ToolScopes {
      */
     private final fr.claudegateway.runner.teams.TeamsTools teams;
     private final Map<String, ToolRouter> byProject = new ConcurrentHashMap<>();
+    /**
+     * Registre des commandes de fond (F-121 / SF-121-07) — <b>unique par machine</b>, partagé par tous
+     * les projets : un serveur de dev lancé depuis un projet se relit et s'arrête quel que soit le
+     * projet du tour suivant. Monté seulement si l'exécution de commandes est autorisée sur ce poste.
+     */
+    private final BackgroundShells background;
 
     /** Portée sans volet Teams : chemins historiques et tests. */
     public ProjectScopes(Path hostRoot, boolean allowBash, ShellElection shell, Console console) {
@@ -74,6 +80,9 @@ public final class ProjectScopes implements ToolScopes {
         this.allowBash = allowBash;
         this.shell = shell;
         this.console = console;
+        // Le registre de fond n'est monté que là où bash est autorisé : inutile ailleurs, et son
+        // absence fait retomber run_in_background en synchrone (retro-compat).
+        this.background = allowBash ? new BackgroundShells() : null;
     }
 
     /** Racine canonique du poste — jamais celle d'un projet. */
@@ -105,7 +114,7 @@ public final class ProjectScopes implements ToolScopes {
         ExclusionRules exclusions = ExclusionRules.load(folder, console);
         PathResolver paths = new PathResolver(folder, exclusions);
         ToolRouter router = new ToolRouter(new FileTools(paths),
-                new BashTool(paths, allowBash, shell), teams);
+                new BashTool(paths, allowBash, shell, background), teams);
         ToolRouter raced = byProject.putIfAbsent(relative, router);
         return raced == null ? router : raced;
     }
