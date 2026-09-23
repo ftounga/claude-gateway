@@ -561,6 +561,8 @@ export class AtelierService {
       followUp?: boolean;
       /** Montant du tour, déjà formaté en euros (F-133 / SF-133-02). Absent hors administration. */
       costEur?: string;
+      /** Le modèle a soumis un plan à approbation ce tour (F-121 / SF-121-10). */
+      planSubmitted?: boolean;
     };
     try {
       payload = JSON.parse(data);
@@ -656,6 +658,8 @@ export class AtelierService {
         // tout champ oublié ici est jeté en silence, si près du but que la passerelle l'aura
         // calculé, formaté et envoyé pour rien.
         costEur: payload.costEur,
+        // F-121 / SF-121-10 : le modèle a soumis un plan à approbation ce tour.
+        planSubmitted: payload.planSubmitted === true,
       });
     } else if (event === 'steered') {
       // F-84 / SF-84-06 : l'envoi est devenu une précision du tour qui tournait déjà.

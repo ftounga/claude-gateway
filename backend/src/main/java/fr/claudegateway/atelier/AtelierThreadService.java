@@ -52,8 +52,14 @@ public class AtelierThreadService {
                 ? null
                 : replayable.get(replayable.size() - 1).getCreatedAt();
         boolean idle = last != null && last.isBefore(OffsetDateTime.now().minus(IDLE_AFTER));
+        // F-121 / SF-121-10 : le mode et le dernier plan persistés du fil, pour restaurer le sélecteur
+        // de mode et réafficher le plan dès l'ouverture du projet. null/absent ⇒ comportement d'avant.
+        AtelierPlan plan = AtelierPlan.fromJson(workspace.getChatThreadPlan());
+        List<AtelierResumeResponse.PlanStep> planSteps = plan.steps().stream()
+                .map(step -> new AtelierResumeResponse.PlanStep(step.title(), step.status().label()))
+                .toList();
         return new AtelierResumeResponse(replayable.size(), last, workspace.getChatThreadStartedAt(),
-                idle ? "IDLE" : "NONE");
+                idle ? "IDLE" : "NONE", workspace.getChatThreadMode(), planSteps);
     }
 
     /**
@@ -70,6 +76,10 @@ public class AtelierThreadService {
         // Repartir propre, c'est aussi oublier le résumé de compaction (F-117 / SF-117-01) : sans
         // cela, un « nouveau départ » rejouerait encore le résumé des tours désormais mis de côté.
         workspace.setChatThreadSummary(null);
+        // ... et oublier le mode et le plan persistés (F-121 / SF-121-10) : un nouveau départ ne
+        // reporte ni un plan ni un mode d'un fil qu'on vient de laisser derrière soi.
+        workspace.setChatThreadMode(null);
+        workspace.setChatThreadPlan(null);
         workspaceRepository.save(workspace);
         return new AtelierResumeResponse(0, null, workspace.getChatThreadStartedAt(), "NONE");
     }

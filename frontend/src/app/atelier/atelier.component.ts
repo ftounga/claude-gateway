@@ -93,6 +93,7 @@ import {
   AtelierSteerQueued,
   AtelierTurnFollower,
   AtelierTurnMode,
+  AtelierPlanStep,
   GitPullRequestResult,
   GitPushResult,
   HostProjectSummary,
@@ -394,6 +395,18 @@ export class AtelierComponent implements OnInit, OnDestroy {
    * **Défaut `ACT`** : l'usage actuel n'est pas surpris.
    */
   readonly mode = signal<AtelierTurnMode>('ACT');
+
+  /**
+   * Un plan a été **soumis à approbation** par le modèle au dernier tour (F-121 / SF-121-10,
+   * `exit_plan_mode`) : l'écran propose « Approuver & exécuter ». Remis à faux dès qu'un tour démarre.
+   */
+  readonly planAwaitingApproval = signal(false);
+
+  /**
+   * Plan **reporté** du fil (F-121 / SF-121-10) : le dernier plan encore actif, restauré à l'ouverture
+   * du projet et affiché au repos. Le plan vivant d'un tour en cours reste porté par `execStreaming`.
+   */
+  readonly carriedPlan = signal<AtelierPlanStep[]>([]);
 
   readonly creating = signal(false);
   readonly submitting = signal(false);
@@ -1311,6 +1324,12 @@ export class AtelierComponent implements OnInit, OnDestroy {
         this.resumeTurns.set(resume.turns);
         this.resumeLastMessageAt.set(resume.lastMessageAt);
         this.resumeChoice.set(resume.prompt === 'IDLE');
+        // F-121 / SF-121-10 : restaurer le mode persisté du fil (null ⇒ ACT) et réafficher le dernier
+        // plan encore actif. Un plan soumis n'est plus « en attente » après un rechargement : c'est un
+        // état de fin de tour, pas de fil ; on repart sans invite d'approbation.
+        this.mode.set(resume.mode === 'ANSWER_PLAN' ? 'ANSWER_PLAN' : 'ACT');
+        this.carriedPlan.set(resume.plan ?? []);
+        this.planAwaitingApproval.set(false);
       },
       error: () => this.resumeChoice.set(false),
     });
@@ -1388,6 +1407,29 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.startTurn(id, content);
   }
 
+  /**
+   * « Approuver & exécuter » (F-121 / SF-121-10), à l'image de l'approbation d'*ExitPlanMode* de Claude
+   * Code : l'utilisateur valide le plan proposé, on bascule en mode **Agir** et on lance aussitôt un
+   * tour d'exécution. La passerelle réinjecte le plan validé en tête de la consigne de ce tour ACT.
+   *
+   * <p>Sans plan en attente, le bouton n'a que son sens historique (basculer en Agir) : on bascule le
+   * mode sans lancer de tour.</p>
+   */
+  approveAndExecute(): void {
+    const awaiting = this.planAwaitingApproval();
+    this.mode.set('ACT');
+    this.planAwaitingApproval.set(false);
+    if (!awaiting) {
+      return;
+    }
+    const id = this.activeWorkspaceId();
+    if (!id || this.submitting() || this.liveTerminals.limitReached()) {
+      return;
+    }
+    // La consigne matérialise le geste d'approbation ; la passerelle y préfixe le plan validé.
+    this.startTurn(id, 'Exécute le plan approuvé.');
+  }
+
   /** Lance un tour avec cette demande — depuis la saisie, ou pour une précision arrivée trop tard. */
   private startTurn(id: string, content: string): void {
     const userItem: AtelierThreadItem = {
@@ -1398,6 +1440,10 @@ export class AtelierComponent implements OnInit, OnDestroy {
     };
     this.messages.update((current) => [...current, userItem]);
     this.submitting.set(true);
+    // F-121 / SF-121-10 : un nouveau tour démarre — l'éventuel plan « en attente d'approbation » du
+    // tour précédent est superposé par celui-ci ; on retire l'invite (elle reviendra si le modèle
+    // resoumet un plan). Le plan reporté, lui, reste vivant dans le flux du tour.
+    this.planAwaitingApproval.set(false);
     // F-131 / SF-131-01 : on retient la requête pour un éventuel rejeu, et on efface tout état
     // « réponse non reçue » d'un tour précédent — un nouveau tour repart d'un écran propre.
     this.lastRequest = content;
@@ -1559,6 +1605,11 @@ export class AtelierComponent implements OnInit, OnDestroy {
           this.stopTurnWindows();
           this.submitting.set(false);
           this.interrupting.set(false);
+          // F-121 / SF-121-10 : le modèle a-t-il soumis un plan à approbation (exit_plan_mode) ? Si
+          // oui, l'écran proposera « Approuver & exécuter ». On retient aussi le dernier plan pour
+          // l'afficher au repos, une fois le tour refermé.
+          this.planAwaitingApproval.set(done.planSubmitted === true);
+          this.carriedPlan.set(this.execStreaming()?.plan ?? this.carriedPlan());
           if (joined) {
             // Ce tour a été demandé avant cet envoi : le fil est rechargé plutôt que complété,
             // comme pour un rebranchement — c'est le serveur qui sait ce qui a été dit.

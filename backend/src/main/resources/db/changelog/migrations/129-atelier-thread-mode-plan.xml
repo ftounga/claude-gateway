@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-121 / SF-121-10 — PLAN MODE PILOTE PAR LE MODELE + PERSISTANCE DU PLAN (parite Claude Code).
+
+      Le mode du tour (F-120 / SF-120-02) etait per-tour et le plan (F-39 / SF-39-13) etait jete a la
+      fin de chaque tour. On les persiste desormais PAR THREAD (= le workspace), a cote de
+      chat_thread_summary (F-117) :
+
+        - chat_thread_mode : le mode du dernier tour (ANSWER_PLAN / ACT). NULL => ACT (retrocompat :
+          tous les projets existants gardent le comportement d'avant). Restaure le selecteur de mode
+          a l'ouverture du projet ; efface par un « nouveau depart » (SF-39-04).
+
+        - chat_thread_plan : JSON du DERNIER plan encore actif (etapes title/status), pose par set_plan
+          ou exit_plan_mode. NULL => aucun plan (cas de tous les projets existants). Reinjecte dans la
+          CONSIGNE du tour suivant (jamais la consigne systeme : cache F-134 preserve) et rendu a
+          l'ecran. Un plan entierement termine n'est pas reporte (remis a NULL). Efface par un
+          « nouveau depart ».
+
+      Deux colonnes NULLABLE, sans defaut : aucune donnee reecrite, aucune regression. Reversible
+      (dropColumn). Aucune nouvelle table, aucun composant cluster.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="129-atelier-thread-mode-plan-postgresql" author="claude-gateway" dbms="postgresql">
+        <addColumn tableName="workspaces">
+            <column name="chat_thread_mode" type="varchar(16)"/>
+            <column name="chat_thread_plan" type="text"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="workspaces" columnName="chat_thread_mode"/>
+            <dropColumn tableName="workspaces" columnName="chat_thread_plan"/>
+        </rollback>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="129-atelier-thread-mode-plan-h2" author="claude-gateway" dbms="h2">
+        <addColumn tableName="workspaces">
+            <column name="chat_thread_mode" type="varchar(16)"/>
+            <!-- Comme chat_thread_summary (migration 107), H2 utilise varchar(1000000) pour valider
+                 contre columnDefinition="text" côté entité. -->
+            <column name="chat_thread_plan" type="varchar(1000000)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="workspaces" columnName="chat_thread_mode"/>
+            <dropColumn tableName="workspaces" columnName="chat_thread_plan"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

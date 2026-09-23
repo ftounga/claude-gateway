@@ -93,4 +93,45 @@ class AtelierPlanTest {
                 [{"title":"A"},{"title":"B"}]""").acknowledgement(2))
                 .isEqualTo("Plan enregistré : 2 étape(s).");
     }
+
+    // ------------------------------------------------------------ F-121 / SF-121-10 : persistance JSON
+
+    @Test
+    void serialisesAndRereadsThePlanRoundTrip() {
+        AtelierPlan plan = parse("""
+                [{"title":"Lire","status":"done"},
+                 {"title":"Écrire","status":"active"},
+                 {"title":"Tester","status":"pending"}]""");
+
+        AtelierPlan reread = AtelierPlan.fromJson(plan.toJson());
+
+        assertThat(reread.steps()).extracting(AtelierPlan.Step::title)
+                .containsExactly("Lire", "Écrire", "Tester");
+        assertThat(reread.steps()).extracting(AtelierPlan.Step::status)
+                .containsExactly(Status.DONE, Status.ACTIVE, Status.PENDING);
+    }
+
+    @Test
+    void anEmptyPlanSerialisesToNull() {
+        assertThat(AtelierPlan.EMPTY.toJson()).isNull();
+    }
+
+    @Test
+    void aCorruptOrBlankDocumentReadsAsAnEmptyPlan() {
+        // De la mémoire, pas une source de vérité : un document illisible ne casse jamais un tour.
+        assertThat(AtelierPlan.fromJson(null).isEmpty()).isTrue();
+        assertThat(AtelierPlan.fromJson("   ").isEmpty()).isTrue();
+        assertThat(AtelierPlan.fromJson("{ ceci n'est pas du JSON").isEmpty()).isTrue();
+    }
+
+    @Test
+    void isCompleteOnlyWhenEveryStepIsDone() {
+        assertThat(AtelierPlan.EMPTY.isComplete()).isFalse();
+        assertThat(parse("""
+                [{"title":"A","status":"done"},{"title":"B","status":"pending"}]""").isComplete())
+                .isFalse();
+        assertThat(parse("""
+                [{"title":"A","status":"done"},{"title":"B","status":"done"}]""").isComplete())
+                .isTrue();
+    }
 }

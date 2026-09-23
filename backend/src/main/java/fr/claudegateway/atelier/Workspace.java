@@ -228,6 +228,31 @@ public class Workspace {
     private String chatThreadSummary;
 
     /**
+     * Mode du dernier tour du fil (F-121 / SF-121-10), à l'image du <i>plan mode</i> de Claude Code :
+     * {@code ANSWER_PLAN} (répondre / proposer un plan sans muter) ou {@code ACT} (panoplie complète).
+     *
+     * <p>{@code null} — le cas de tous les projets existants — vaut {@code ACT} (comportement d'avant
+     * SF-121-10 : le mode était choisi par tour, jamais persisté). Persisté en fin de tour au mode du
+     * tour, il <b>restaure le sélecteur de mode</b> à l'ouverture du projet. Un « nouveau départ »
+     * (SF-39-04) le remet à {@code null}.</p>
+     */
+    @Column(name = "chat_thread_mode", length = 16)
+    private String chatThreadMode;
+
+    /**
+     * Dernier plan de travail encore actif du fil (F-121 / SF-121-10), au format JSON : la liste des
+     * étapes ({@code title}/{@code status}) posées par {@code set_plan} ou {@code exit_plan_mode}.
+     *
+     * <p>{@code null} — le cas de tous les projets existants — signifie qu'aucun plan n'est reporté (le
+     * plan était jeté à chaque tour avant SF-121-10). Persisté en fin de tour (dernier plan <b>non
+     * vide et non entièrement terminé</b>), il est <b>réinjecté dans la consigne</b> du tour suivant
+     * (jamais la consigne système : cache F-134 préservé) et <b>rendu à l'écran</b>. Un « nouveau
+     * départ » (SF-39-04) l'efface.</p>
+     */
+    @Column(name = "chat_thread_plan", columnDefinition = "text")
+    private String chatThreadPlan;
+
+    /**
      * Session sandbox en cours pour ce workspace (F-30 SF-30-04, ADR-014), ou {@code null} si aucune.
      * La sandbox et son système de fichiers survivent d'un message à l'autre : c'est cet identifiant
      * qui les relie.

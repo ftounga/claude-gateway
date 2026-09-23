@@ -1849,6 +1849,35 @@ describe('AtelierTerminalComponent', () => {
       exec.click();
       expect(seen.length).toBe(1);
     });
+
+    it('affiche « Approuver & exécuter » quand un plan attend l\'approbation, même en Agir (SF-121-10)', () => {
+      const seen: number[] = [];
+      component.switchToAct.subscribe(() => seen.push(1));
+      component.mode = 'ACT';
+      component.planAwaitingApproval = true;
+      fixture.detectChanges();
+
+      const exec = fixture.nativeElement.querySelector('.terminal-mode-exec') as HTMLButtonElement;
+      expect(exec).not.toBeNull();
+      expect(exec.textContent).toContain('Approuver & exécuter');
+      exec.click();
+      expect(seen.length).toBe(1);
+    });
+
+    it('affiche le plan reporté au repos (aucun tour en cours) — SF-121-10', () => {
+      component.mode = 'ACT';
+      component.streaming = null;
+      component.carriedPlan = [
+        { title: 'Poursuivre la migration', status: 'active' },
+        { title: 'Lancer les tests', status: 'pending' },
+      ];
+      fixture.detectChanges();
+
+      const carried = fixture.nativeElement.querySelector('.terminal-plan--carried');
+      expect(carried).not.toBeNull();
+      expect(carried.textContent).toContain('Poursuivre la migration');
+      expect(carried.textContent).toContain('Lancer les tests');
+    });
   });
 
   // ------------------------------------------------ dépôt de fichiers (F-115 / SF-115-02)

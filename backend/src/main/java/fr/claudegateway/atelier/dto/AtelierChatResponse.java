@@ -19,16 +19,26 @@ import java.util.UUID;
  * @param costEur       ce que le tour a coûté, formaté en euros (F-133 / SF-133-02), ou
  *                      {@code null} — pour un appelant qui n'est pas administrateur, le montant ne
  *                      quitte pas le serveur
+ * @param planSubmitted le modèle a soumis un plan à approbation ce tour (F-121 / SF-121-10, additif) :
+ *                      l'écran propose alors « Approuver &amp; exécuter »
  */
 public record AtelierChatResponse(String reply, List<AtelierAction> actions, UUID messageId,
         long inputTokens, long outputTokens, long activeSeconds, boolean budgetReached,
-        String costEur) {
+        String costEur, boolean planSubmitted) {
 
     /** Forme sans coût, conservée pour les appelants (et les tests) qui l'attendent. */
     public AtelierChatResponse(String reply, List<AtelierAction> actions, UUID messageId,
             long inputTokens, long outputTokens, long activeSeconds, boolean budgetReached) {
         this(reply, actions, messageId, inputTokens, outputTokens, activeSeconds, budgetReached,
-                null);
+                null, false);
+    }
+
+    /** Forme sans le drapeau de plan soumis (F-121 / SF-121-10 additif), conservée pour les appelants. */
+    public AtelierChatResponse(String reply, List<AtelierAction> actions, UUID messageId,
+            long inputTokens, long outputTokens, long activeSeconds, boolean budgetReached,
+            String costEur) {
+        this(reply, actions, messageId, inputTokens, outputTokens, activeSeconds, budgetReached,
+                costEur, false);
     }
 
     /** Action de fichier réalisée par l'agent : {@code type} = {@code read} ou {@code write}. */

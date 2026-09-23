@@ -481,6 +481,29 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "- Présente ce que tu ferais, puis attends : l'utilisateur passera en mode "
                     + "« Agir » (bouton « Passer à l'exécution ») quand il voudra que tu exécutes.\n\n";
 
+    /**
+     * Outil {@code exit_plan_mode} (F-121 / SF-121-10), déclaré <b>uniquement</b> en mode Réponse/Plan :
+     * le modèle y soumet son plan final à l'approbation de l'utilisateur, à l'image d'<i>ExitPlanMode</i>
+     * de Claude Code. Même schéma que {@code set_plan} (liste d'étapes {@code title}/{@code status}) —
+     * traité par la gateway avant tout routage par cible, sans toucher la machine ni le stockage.
+     */
+    private static final AgentTool EXIT_PLAN_MODE_TOOL = new AgentTool("exit_plan_mode",
+            "Soumets ton plan final à l'approbation de l'utilisateur, une fois ton exploration terminée "
+                    + "et le plan prêt. N'appelle cet outil qu'APRÈS avoir établi un plan clair : il "
+                    + "présente le plan à l'utilisateur pour validation. Tu n'exécutes rien toi-même — "
+                    + "l'utilisateur validera (« Approuver & exécuter ») pour passer à l'exécution. Envoie "
+                    + "la liste COMPLÈTE des étapes.",
+            Map.of("type", "object",
+                    "properties", Map.of("steps", Map.of(
+                            "type", "array",
+                            "items", Map.of("type", "object",
+                                    "properties", Map.of(
+                                            "title", Map.of("type", "string"),
+                                            "status", Map.of("type", "string",
+                                                    "enum", List.of("pending", "active", "done"))),
+                                    "required", List.of("title")))),
+                    "required", List.of("steps")));
+
     /** Cible d'audit d'une commande (F-38 / SF-38-08) : la ligne du journal, pas un contenu. */
     private static final int AUDIT_TARGET_CHARS = 1_000;
     /**
@@ -1146,6 +1169,21 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.permissionService = permissionService;
     }
 
+    /**
+     * Persistance du mode et du plan par thread (F-121 / SF-121-10). Injectée par mutateur :
+     * {@link AtelierThreadStateStore#NONE} (formes historiques, tests) ⇒ mode et plan restent
+     * per-tour, jetés en fin de tour — comportement d'avant SF-121-10.
+     */
+    private AtelierThreadStateStore threadStateStore = AtelierThreadStateStore.NONE;
+
+    /** Branche la persistance du mode et du plan par thread (F-121 / SF-121-10). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setThreadStateStore(AtelierThreadStateStore threadStateStore) {
+        if (threadStateStore != null) {
+            this.threadStateStore = threadStateStore;
+        }
+    }
+
     /** Réglage du défaut « demander avant une édition » — exposé pour les tests (F-121 / SF-121-02). */
     void setAskBeforeEdit(boolean askBeforeEdit) {
         this.askBeforeEdit = askBeforeEdit;
@@ -1409,6 +1447,17 @@ public class AtelierChatService implements RelayInterruptTarget {
             log.debug("Rappel de résolution ignoré (best-effort) : {}", ex.getMessage());
         }
 
+        // F-121 / SF-121-10 — LE DERNIER PLAN encore actif du thread, réinjecté dans la CONSIGNE
+        // (patron F-137/F-148 : jamais dans la consigne système, sinon le cache F-134 sauterait), pour
+        // que le modèle retrouve son plan au lieu de le voir jeté à chaque tour. Rendu à l'écran plus
+        // bas (`listener.onPlan`). Il n'est PAS injecté dans `planOfTurn` : la porte de complétude
+        // (SF-121-05) ne juge que le plan posé CE tour, pas un plan simplement reporté. Vide pour tous
+        // les projets d'avant SF-121-10 (colonne null) : consigne inchangée à l'octet près.
+        AtelierPlan carriedPlan = AtelierPlan.fromJson(workspace.getChatThreadPlan());
+        if (!carriedPlan.isEmpty()) {
+            consigne = carriedPlanNote(carriedPlan, turnMode) + "\n" + consigne;
+        }
+
         List<AgentMessage> messages = buildReplayMessages(userId, workspace);
         messages.add(AgentMessage.userText(consigne));
 
@@ -1427,6 +1476,23 @@ public class AtelierChatService implements RelayInterruptTarget {
         // Plan du tour (F-39 / SF-39-13) : local, donc jamais partagé entre utilisateurs.
         java.util.concurrent.atomic.AtomicReference<AtelierPlan> planOfTurn =
                 new java.util.concurrent.atomic.AtomicReference<>(AtelierPlan.EMPTY);
+        // F-121 / SF-121-10 — le plan SOUMIS à approbation via exit_plan_mode (distinct de planOfTurn
+        // pour ne PAS déclencher la porte de complétude SF-121-05 sur un plan tout `pending`), et le
+        // drapeau « un plan attend l'approbation de l'utilisateur ». Local au tour.
+        java.util.concurrent.atomic.AtomicReference<AtelierPlan> submittedPlan =
+                new java.util.concurrent.atomic.AtomicReference<>(AtelierPlan.EMPTY);
+        java.util.concurrent.atomic.AtomicBoolean planSubmitted =
+                new java.util.concurrent.atomic.AtomicBoolean(false);
+        // Vrai dès que le modèle TOUCHE son plan ce tour (set_plan) — y compris pour l'effacer : sans
+        // ce drapeau, un effacement explicite serait confondu avec « plan non touché » et l'ancien
+        // plan serait re-persisté à tort.
+        java.util.concurrent.atomic.AtomicBoolean planTouched =
+                new java.util.concurrent.atomic.AtomicBoolean(false);
+        // Rendre le plan reporté à l'écran dès l'ouverture du tour (F-121 / SF-121-10) : le modèle le
+        // voit dans la consigne, l'utilisateur le revoit aussitôt — utile après un rechargement.
+        if (!carriedPlan.isEmpty()) {
+            listener.onPlan(carriedPlan);
+        }
         List<AtelierAction> actions = new ArrayList<>();
         /** Trajectoire du tour (SF-39-03), rejouée au message suivant. */
         List<AtelierToolTrace.Step> trace = new ArrayList<>();
@@ -1843,6 +1909,14 @@ public class AtelierChatService implements RelayInterruptTarget {
                 String freshnessRefusal = freshnessGuard(userId, workspace, freshness, call);
                 if (freshnessRefusal != null) {
                     outcome = ToolOutcome.error(freshnessRefusal);
+                } else if ("exit_plan_mode".equals(call.name())) {
+                    // F-121 / SF-121-10 — ExitPlanMode piloté par le modèle : il soumet son plan à
+                    // l'approbation de l'utilisateur. Le plan est normalisé, rendu à l'écran, et le tour
+                    // marqué « en attente d'approbation ». Il n'entre PAS dans planOfTurn (porte de
+                    // complétude SF-121-05). Traité ici, avant tout routage par cible — l'outil ne
+                    // touche ni la machine ni le stockage, comme set_plan.
+                    planTouched.set(true);
+                    outcome = applyExitPlan(call, listener, submittedPlan, planSubmitted);
                 } else if (teamsReadFailedThisTurn && !fallbackAuthorized
                         && fr.claudegateway.teams.block.TeamsReadFailure.isProjectAnswerTool(call.name())) {
                     // F-89 / SF-89-11 : le SECOND VERROU. Une lecture Teams a échoué dans ce tour et
@@ -1913,6 +1987,11 @@ public class AtelierChatService implements RelayInterruptTarget {
                 } else {
                     outcome = executeTool(userId, workspace, callId, call, listener, deadline,
                             planOfTurn, cardsOfTurn);
+                }
+                // F-121 / SF-121-10 : le modèle a TOUCHÉ son plan ce tour (set_plan), y compris pour
+                // l'effacer — on le sait pour ne pas re-persister l'ancien plan à tort en fin de tour.
+                if ("set_plan".equals(call.name())) {
+                    planTouched.set(true);
                 }
                 // Mémoire des écritures du tour (F-50 / SF-50-02), prise AVANT le crochet : un
                 // fichier bloqué reste un fichier écrit, et le contrôle de fin de tour doit le voir.
@@ -2111,8 +2190,27 @@ public class AtelierChatService implements RelayInterruptTarget {
             resolutionMemory.recordAfterTurn(userId, workspace, userText, reply, touchedFiles);
         }
 
+        // F-121 / SF-121-10 — persistance du mode et du plan par thread (le workspace). Best-effort :
+        // NONE tant que le store n'est pas branché (comportement d'avant SF-121-10). Le plan retenu est,
+        // dans l'ordre : celui soumis (exit_plan_mode), sinon celui posé ce tour (set_plan) — y compris
+        // un effacement explicite —, sinon le plan reporté inchangé. Un plan vide ou entièrement terminé
+        // remet la colonne à null (rien à reprendre). Le mode ACT (le défaut) est stocké null.
+        AtelierPlan planToPersist;
+        if (!submittedPlan.get().isEmpty()) {
+            planToPersist = submittedPlan.get();
+        } else if (planTouched.get()) {
+            planToPersist = planOfTurn.get();
+        } else {
+            planToPersist = carriedPlan;
+        }
+        String planJson = planToPersist.isEmpty() || planToPersist.isComplete()
+                ? null
+                : planToPersist.toJson();
+        String modeToPersist = turnMode == AgentTurnMode.ACT ? null : turnMode.name();
+        threadStateStore.persist(userId, workspaceId, modeToPersist, planJson);
+
         return new AtelierChatResult(reply, actions, assistant.getId(), inputTokens, outputTokens,
-                activeSeconds, spendCapReached, costUsd, reusedPercent);
+                activeSeconds, spendCapReached, costUsd, reusedPercent, planSubmitted.get());
     }
 
     /**
@@ -2631,6 +2729,59 @@ public class AtelierChatService implements RelayInterruptTarget {
         planOfTurn.set(plan);
         listener.onPlan(plan);
         return ToolOutcome.info(plan.acknowledgement(submitted));
+    }
+
+    /**
+     * Applique un appel {@code exit_plan_mode} (F-121 / SF-121-10), à l'image d'<i>ExitPlanMode</i> de
+     * Claude Code : le modèle <b>soumet son plan à l'approbation</b> de l'utilisateur. Le plan est
+     * normalisé (mêmes règles que {@code set_plan}), rendu à l'écran, retenu dans {@code submittedPlan}
+     * (pour la persistance par thread) et le tour marqué {@code planSubmitted}.
+     *
+     * <p><b>Il n'entre pas dans {@code planOfTurn}.</b> La porte de complétude (SF-121-05) juge le plan
+     * posé pendant le tour : un plan de proposition, tout {@code pending} par nature, y rebloquerait la
+     * clôture. On le tient donc à part — c'est une proposition, pas un travail en cours.</p>
+     *
+     * <p>Le compte rendu rendu au modèle lui dit d'attendre : rien à exécuter tant que l'utilisateur
+     * n'a pas validé (« Approuver &amp; exécuter »), qui rouvre le fil en mode {@code ACT} avec ce plan
+     * réinjecté en tête de la consigne.</p>
+     */
+    private ToolOutcome applyExitPlan(AgentToolCall call, AtelierProgressListener listener,
+            java.util.concurrent.atomic.AtomicReference<AtelierPlan> submittedPlan,
+            java.util.concurrent.atomic.AtomicBoolean planSubmitted) {
+        JsonNode stepsNode = call.input() == null ? null : call.input().get("steps");
+        AtelierPlan plan = AtelierPlan.from(stepsNode);
+        if (plan.isEmpty()) {
+            // Un plan vide n'est pas une soumission : rien à approuver. On le dit au modèle plutôt que
+            // de bloquer le fil sur une proposition inexistante.
+            return ToolOutcome.info("Aucune étape à soumettre : pose d'abord ton plan (set_plan), "
+                    + "puis soumets-le avec exit_plan_mode.");
+        }
+        submittedPlan.set(plan);
+        planSubmitted.set(true);
+        listener.onPlan(plan);
+        return ToolOutcome.info("Plan soumis à l'approbation de l'utilisateur (" + plan.steps().size()
+                + " étape(s)). N'exécute rien de plus : attends qu'il valide (« Approuver & exécuter »), "
+                + "ce qui rouvrira le fil en mode Agir avec ce plan.");
+    }
+
+    /**
+     * Note de réinjection du plan reporté (F-121 / SF-121-10) : préfixée à la CONSIGNE du tour (jamais
+     * la consigne système — cache F-134 préservé). Encadrée comme un rappel, avec un cadrage qui suit
+     * le mode : en {@code ACT}, « reprends/exécute » ; en {@code ANSWER_PLAN}, « affine, puis
+     * exit_plan_mode ». Bornée par construction ({@link AtelierPlan#MAX_STEPS}).
+     */
+    private static String carriedPlanNote(AtelierPlan plan, AgentTurnMode mode) {
+        StringBuilder sb = new StringBuilder();
+        boolean answerPlan = mode == AgentTurnMode.ANSWER_PLAN;
+        sb.append(answerPlan
+                ? "[Ton plan proposé précédemment (non encore approuvé par l'utilisateur) — affine-le "
+                        + "si besoin, puis soumets-le avec exit_plan_mode quand il est prêt :]\n"
+                : "[Ton plan de travail en cours, établi précédemment — reprends-le et tiens-le à jour "
+                        + "avec set_plan au fil de ta progression :]\n");
+        for (AtelierPlan.Step step : plan.steps()) {
+            sb.append("- [").append(step.status().label()).append("] ").append(step.title()).append('\n');
+        }
+        return sb.toString();
     }
 
     /**
@@ -3203,6 +3354,8 @@ public class AtelierChatService implements RelayInterruptTarget {
                     shorten(arg(input, "prompt"), STEP_COMMAND_CHARS));
             // Le plan a son propre affichage (SF-39-13) : une étape de plus le dirait deux fois.
             case "set_plan" -> null;
+            // Le plan soumis a son propre affichage (SF-121-10, comme set_plan) : pas d'étape en double.
+            case "exit_plan_mode" -> null;
             // Tout autre outil (volet Teams, outils à venir) se montre quand il COMMENCE, avec sa
             // cible d'audit — ce qu'on a demandé, jamais ce qui est revenu (F-88 / SF-88-03, D2).
             default -> call.name() == null || call.name().isBlank()
@@ -4910,7 +5063,13 @@ public class AtelierChatService implements RelayInterruptTarget {
     List<AgentTool> buildTools(java.util.UUID userId, Workspace workspace, AgentTurnMode mode) {
         List<AgentTool> full = buildToolsFull(userId, workspace);
         if (mode == AgentTurnMode.ANSWER_PLAN) {
-            return full.stream().filter(tool -> ANSWER_PLAN_TOOLS.contains(tool.name())).toList();
+            List<AgentTool> filtered = new ArrayList<>(full.stream()
+                    .filter(tool -> ANSWER_PLAN_TOOLS.contains(tool.name())).toList());
+            // F-121 / SF-121-10 — exit_plan_mode n'est déclaré QU'en mode Réponse/Plan : c'est le
+            // geste par lequel le modèle soumet son plan à l'approbation de l'utilisateur (ExitPlanMode
+            // de Claude Code). Inutile en Agir (où l'agent exécute déjà) : la doctrine « opt-in » tient.
+            filtered.add(EXIT_PLAN_MODE_TOOL);
+            return List.copyOf(filtered);
         }
         return full;
     }
@@ -5709,18 +5868,26 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     public record AtelierChatResult(String reply, List<AtelierAction> actions, UUID messageId,
             long inputTokens, long outputTokens, long activeSeconds, boolean budgetReached,
-            java.math.BigDecimal costUsd, Integer reusedPercent) {
+            java.math.BigDecimal costUsd, Integer reusedPercent, boolean planSubmitted) {
 
         /** Forme historique, conservée pour les appelants (et les tests) qui l'attendent. */
         public AtelierChatResult(String reply, List<AtelierAction> actions, UUID messageId) {
-            this(reply, actions, messageId, 0L, 0L, 0L, false, null, null);
+            this(reply, actions, messageId, 0L, 0L, 0L, false, null, null, false);
         }
 
         /** Forme sans coût (F-133 / SF-133-02 ne concerne que la boucle d'atelier). */
         public AtelierChatResult(String reply, List<AtelierAction> actions, UUID messageId,
                 long inputTokens, long outputTokens, long activeSeconds, boolean budgetReached) {
             this(reply, actions, messageId, inputTokens, outputTokens, activeSeconds, budgetReached,
-                    null, null);
+                    null, null, false);
+        }
+
+        /** Forme sans le drapeau de plan soumis (F-121 / SF-121-10 additif), conservée pour les appelants. */
+        public AtelierChatResult(String reply, List<AtelierAction> actions, UUID messageId,
+                long inputTokens, long outputTokens, long activeSeconds, boolean budgetReached,
+                java.math.BigDecimal costUsd, Integer reusedPercent) {
+            this(reply, actions, messageId, inputTokens, outputTokens, activeSeconds, budgetReached,
+                    costUsd, reusedPercent, false);
         }
 
         /**
