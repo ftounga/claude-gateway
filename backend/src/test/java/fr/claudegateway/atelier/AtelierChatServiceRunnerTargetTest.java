@@ -374,11 +374,11 @@ class AtelierChatServiceRunnerTargetTest {
                 // d'organisation, pas d'exécution — rien de ce qu'il fait ne dépend du lieu.
                 // `explore` et `set_plan` sont déclarés sur les DEUX cibles (F-39 / SF-39-13 et 14) :
                 // ce sont des outils d'organisation et de lecture, pas d'exécution.
-                .containsExactly("list_files", "read_file", "write_file", "edit_file", "search_files",
-                        "grep", "glob", "explore", "set_plan");
+                .containsExactly("list_files", "read_file", "write_file", "edit_file", "multi_edit",
+                        "search_files", "grep", "glob", "explore", "set_plan");
         assertThat(service.buildTools(java.util.UUID.randomUUID(), runner)).extracting(fr.claudegateway.agent.AgentTool::name)
-                .containsExactly("read_file", "write_file", "edit_file", "grep", "glob", "bash",
-                        "explore", "set_plan");
+                .containsExactly("read_file", "write_file", "edit_file", "multi_edit", "grep", "glob",
+                        "bash", "explore", "set_plan");
     }
 
     @Test
@@ -580,10 +580,54 @@ class AtelierChatServiceRunnerTargetTest {
         service.chat(userId, workspaceId, "remplace x par y");
 
         assertThat(service.buildTools(java.util.UUID.randomUUID(), runner)).extracting(fr.claudegateway.agent.AgentTool::name)
-                .containsExactly("read_file", "write_file", "edit_file", "grep", "glob", "bash",
-                        "explore", "set_plan");
+                .containsExactly("read_file", "write_file", "edit_file", "multi_edit", "grep", "glob",
+                        "bash", "explore", "set_plan");
         verify(runnerAuditService).recordCall(eq(userId), eq(runnerTarget), anyString(), eq("edit_file"),
                 eq("a.ts"), any());
+    }
+
+    @Test
+    void multiEditAppliesEveryEditAtomicallyInOneReadAndOneWriteOnTheMachine() {
+        // F-121 / SF-121-06 : plusieurs remplacements en UNE lecture + UNE écriture ; le cœur est
+        // partagé avec edit_file (aucun nouvel outil runner). Les éditions sont séquentielles.
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        when(runnerToolGateway.readFile(eq(runnerTarget), anyString(), eq("a.ts")))
+                .thenReturn(ok("const a = 1; const b = 2;"));
+        when(runnerToolGateway.writeFile(eq(runnerTarget), anyString(), eq("a.ts"),
+                eq("const a = 10; const b = 20;")))
+                .thenReturn(ok(""));
+        agentProvider.enqueueToolCallWithObject("multi_edit",
+                "{\"path\":\"a.ts\",\"edits\":[{\"old_string\":\"a = 1\",\"new_string\":\"a = 10\"},"
+                        + "{\"old_string\":\"b = 2\",\"new_string\":\"b = 20\"}]}");
+        agentProvider.enqueueFinal("Modifié.");
+
+        service.chat(userId, workspaceId, "double a et b");
+
+        verify(runnerToolGateway, times(1)).readFile(eq(runnerTarget), anyString(), eq("a.ts"));
+        verify(runnerToolGateway, times(1)).writeFile(eq(runnerTarget), anyString(), eq("a.ts"),
+                eq("const a = 10; const b = 20;"));
+        assertThat(lastToolResult().isError()).isFalse();
+        assertThat(toolResultText()).startsWith("Fichier modifié : a.ts (2 remplacements)");
+    }
+
+    @Test
+    void multiEditWritesNothingWhenAnyEditFailsOnTheMachine() {
+        // F-121 / SF-121-06 : tout-ou-rien. La 2e édition est introuvable → aucune écriture n'est émise,
+        // le fichier reste intact, et le modèle reçoit une erreur qui situe l'édition fautive.
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        when(runnerToolGateway.readFile(eq(runnerTarget), anyString(), eq("a.ts")))
+                .thenReturn(ok("const a = 1;"));
+        agentProvider.enqueueToolCallWithObject("multi_edit",
+                "{\"path\":\"a.ts\",\"edits\":[{\"old_string\":\"a = 1\",\"new_string\":\"a = 10\"},"
+                        + "{\"old_string\":\"absent\",\"new_string\":\"x\"}]}");
+        agentProvider.enqueueFinal("Rien.");
+
+        service.chat(userId, workspaceId, "édite a.ts");
+
+        verify(runnerToolGateway, never()).writeFile(any(), anyString(), anyString(), anyString());
+        verify(runnerToolGateway, never()).writeFileBytes(any(), anyString(), anyString(), anyString(), anyLong());
+        assertThat(lastToolResult().isError()).isTrue();
+        assertThat(toolResultText()).contains("Édition n°2").contains("introuvable");
     }
 
     @Test
@@ -884,8 +928,8 @@ class AtelierChatServiceRunnerTargetTest {
                 .containsExactly("list_files", "read_file", "search_files", "grep", "glob");
         // Et le travail principal garde exactement la sienne : D4 n'est pas défaite (non-régression).
         assertThat(agentProvider.toolBelts.get(0))
-                .containsExactly("read_file", "write_file", "edit_file", "grep", "glob", "bash",
-                        "explore", "set_plan");
+                .containsExactly("read_file", "write_file", "edit_file", "multi_edit", "grep", "glob",
+                        "bash", "explore", "set_plan");
     }
 
     @Test

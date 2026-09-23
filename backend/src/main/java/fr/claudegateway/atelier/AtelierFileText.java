@@ -99,6 +99,47 @@ final class AtelierFileText {
         return new Edit(edited, replaceAll ? occurrences : 1);
     }
 
+    /**
+     * Applique <b>plusieurs</b> remplacements littéraux au même contenu, <b>en séquence</b> et
+     * <b>en mémoire</b> (F-121 / SF-121-06 — MultiEdit). Chaque édition voit le résultat de la
+     * précédente, exactement comme le MultiEdit de Claude Code.
+     *
+     * <p><b>Atomicité par construction</b> : le contenu de travail est local ; si une seule édition
+     * échoue (texte introuvable, ambigu, {@code old==new}, {@code old_string} absent…), une
+     * {@link InvalidFilePathException} est levée <b>avant</b> tout retour, et l'appelant n'écrit
+     * jamais rien — le fichier reste inchangé (tout-ou-rien). Chaque étape réutilise
+     * {@link #replace(String, String, String, boolean)} : la sémantique de remplacement reste
+     * <b>une seule vérité</b>, partagée avec {@code edit_file}.</p>
+     *
+     * @param content contenu complet du fichier
+     * @param edits   éditions à appliquer dans l'ordre (au moins une)
+     * @return le contenu final et le <b>total</b> cumulé des remplacements
+     * @throws InvalidFilePathException si {@code edits} est vide, ou dès qu'une édition échoue — le
+     *                                  message nomme le n° de l'édition fautive et rappelle que rien
+     *                                  n'a été appliqué
+     */
+    static Edit applyEdits(String content, java.util.List<EditSpec> edits) {
+        if (edits == null || edits.isEmpty()) {
+            throw new InvalidFilePathException("Aucune édition demandée : le tableau edits est vide.");
+        }
+        String working = content == null ? "" : content;
+        int total = 0;
+        for (int index = 0; index < edits.size(); index++) {
+            EditSpec spec = edits.get(index);
+            try {
+                Edit step = replace(working, spec.oldString(), spec.newString(), spec.replaceAll());
+                working = step.content();
+                total += step.replacements();
+            } catch (InvalidFilePathException ex) {
+                // Tout-ou-rien : on n'a encore rien écrit (le contenu de travail est local). On rend
+                // à l'appelant une erreur qui situe l'édition fautive et rappelle l'atomicité.
+                throw new InvalidFilePathException("Édition n°" + (index + 1) + " : " + ex.getMessage()
+                        + " Aucune modification n'a été appliquée (tout ou rien).");
+            }
+        }
+        return new Edit(working, total);
+    }
+
     private static int count(String haystack, String needle) {
         int found = 0;
         int from = 0;
@@ -112,5 +153,12 @@ final class AtelierFileText {
 
     /** Contenu après édition, et nombre de passages remplacés. */
     record Edit(String content, int replacements) {
+    }
+
+    /**
+     * Une édition d'un lot {@link #applyEdits(String, java.util.List)} (F-121 / SF-121-06) : le texte
+     * exact à remplacer, son remplacement, et si tous les passages doivent l'être.
+     */
+    record EditSpec(String oldString, String newString, boolean replaceAll) {
     }
 }

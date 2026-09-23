@@ -2977,7 +2977,8 @@ public class AtelierChatService implements RelayInterruptTarget {
             case "write_file" -> new AtelierProgressListener.AtelierStepEvent("write", arg(input, "path"));
             // SF-39-06 (D4) : une édition ciblée est une écriture pour l'écran — c'est ce qui
             // déclenche le rafraîchissement du fichier ouvert. Le journal, lui, garde le nom réel.
-            case "edit_file" -> new AtelierProgressListener.AtelierStepEvent("write", arg(input, "path"));
+            // multi_edit (F-121 / SF-121-06) est une écriture pour l'écran, comme edit_file.
+            case "edit_file", "multi_edit" -> new AtelierProgressListener.AtelierStepEvent("write", arg(input, "path"));
             case "list_files" -> new AtelierProgressListener.AtelierStepEvent("list", null);
             case "search_files" -> new AtelierProgressListener.AtelierStepEvent("search", arg(input, "query"));
             // F-121 / SF-121-01 : grep/glob se montrent à l'écran comme une recherche, avec le motif.
@@ -3048,9 +3049,13 @@ public class AtelierChatService implements RelayInterruptTarget {
         JsonNode input = call.input();
         // Ce que le modèle a DEMANDÉ d'écrire, jamais une relecture du disque : en cible RUNNER le
         // fichier vit sur la machine de l'utilisateur, et la gateway n'y retourne pas pour contrôler.
-        String content = "edit_file".equals(call.name())
-                ? arg(input, "new_string")
-                : arg(input, "content");
+        // Ce que le modèle a introduit : le new_string d'edit_file, la concaténation des new_string
+        // de multi_edit (F-121 / SF-121-06), le content plein de write_file.
+        String content = switch (call.name()) {
+            case "edit_file" -> arg(input, "new_string");
+            case "multi_edit" -> multiEditNewText(input);
+            default -> arg(input, "content");
+        };
         AtelierCheckpointVerdict verdict = checkpointRunner.run(AtelierCheckpointKind.AFTER_FILE_WRITE,
                 AtelierCheckpointContext.afterFileWrite(userId, workspaceId, call.name(),
                         arg(input, "path"), content));
@@ -3276,9 +3281,14 @@ public class AtelierChatService implements RelayInterruptTarget {
                 + " »" + trace + ".");
     }
 
-    /** Les deux outils qui modifient un fichier du projet, et eux seuls (F-50 / SF-50-01). */
+    /**
+     * Les outils qui modifient un fichier du projet, et eux seuls (F-50 / SF-50-01, étendu F-121 /
+     * SF-121-06 à {@code multi_edit}). Point unique : en rangeant {@code multi_edit} ici, il hérite
+     * <b>sans autre modification</b> du point de contrôle après écriture (F-50), de la garde/note de
+     * fraîcheur (SF-121-19), du défaut de permission {@code askBeforeEdit} et de la marque de mutation.
+     */
     private static boolean isFileWrite(String tool) {
-        return "write_file".equals(tool) || "edit_file".equals(tool);
+        return "write_file".equals(tool) || "edit_file".equals(tool) || "multi_edit".equals(tool);
     }
 
     /**
@@ -3529,8 +3539,7 @@ public class AtelierChatService implements RelayInterruptTarget {
 
     /** Pose la marque de mutation du tour si l'outil a modifié (ou a pu modifier) le projet. */
     private void markTurnMutation(UUID userId, UUID workspaceId, String tool, RunnerCallResult result) {
-        boolean mutates = "bash".equals(tool)
-                || (("write_file".equals(tool) || "edit_file".equals(tool)) && result.ok());
+        boolean mutates = "bash".equals(tool) || (isFileWrite(tool) && result.ok());
         if (mutates) {
             mutatedTurns.add(turnKey(userId, workspaceId));
         }
@@ -3755,6 +3764,8 @@ public class AtelierChatService implements RelayInterruptTarget {
             case "read_file" -> runnerToolGateway.readFile(target, callId,
                     requiredArg(input, "path"));
             case "edit_file" -> editFileOnRunner(target, callId, input);
+            // MultiEdit (F-121 / SF-121-06) : éditions atomiques groupées, cœur partagé avec edit_file.
+            case "multi_edit" -> multiEditOnRunner(target, callId, input);
             case "write_file" -> runnerToolGateway.writeFile(target, callId,
                     requiredArg(input, "path"), input.path("content").asText(""));
             case "search_files" -> runnerToolGateway.searchFiles(target, callId,
@@ -3785,7 +3796,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         JsonNode input = call.input();
         return switch (call.name()) {
             case "read_file" -> readOutcome(result, input);
-            case "edit_file" -> result.ok()
+            // edit_file et multi_edit (F-121 / SF-121-06) : même issue — écriture sur le chemin, ou erreur.
+            case "edit_file", "multi_edit" -> result.ok()
                     ? new ToolOutcome(result.content(), false, new AtelierAction("write", arg(input, "path")))
                     : ToolOutcome.error(result.errorMessage());
             // Le `content` renvoyé par le runner est ignoré : seul compte l'aboutissement, et le
@@ -3811,7 +3823,7 @@ public class AtelierChatService implements RelayInterruptTarget {
     String auditTarget(AgentToolCall call) {
         JsonNode input = call.input();
         return switch (call.name()) {
-            case "read_file", "write_file", "edit_file" -> arg(input, "path");
+            case "read_file", "write_file", "edit_file", "multi_edit" -> arg(input, "path");
             case "search_files" -> arg(input, "query");
             // F-121 / SF-121-01 : on trace le MOTIF cherché, jamais le contenu trouvé.
             case "grep", "glob" -> shorten(arg(input, "pattern"), AUDIT_TARGET_CHARS);
@@ -4034,7 +4046,35 @@ public class AtelierChatService implements RelayInterruptTarget {
      * bien que la plage éditable passe de « ≤ 512 Kio » à « ≤ 8 Mio », jamais au-delà.</p>
      */
     private RunnerCallResult editFileOnRunner(RunnerTarget target, String callId, JsonNode input) {
-        String path = requiredArg(input, "path");
+        // edit_file = un seul remplacement exact. On délègue au cœur partagé avec multi_edit :
+        // même lecture (repli gros fichier SF-121-22), même écriture, une seule vérité.
+        return applyReplacementsOnRunner(target, callId, requiredArg(input, "path"),
+                content -> AtelierFileText.replace(content, requiredArg(input, "old_string"),
+                        input.path("new_string").asText(""), input.path("replace_all").asBoolean(false)));
+    }
+
+    /**
+     * <b>MultiEdit sur le poste</b> (F-121 / SF-121-06) : plusieurs remplacements exacts sur UN
+     * fichier, appliqués <b>atomiquement</b> — soit tous réussissent, soit rien n'est écrit. Réutilise
+     * le cœur d'{@code editFileOnRunner} : une seule lecture (repli tranches SF-121-22), une seule
+     * écriture, la sémantique de remplacement d'{@code edit_file} ({@link AtelierFileText#applyEdits}).
+     * <b>Aucun nouvel outil runner</b> : ni {@code read_file}/{@code write_file} ni le protocole ne
+     * changent.
+     */
+    private RunnerCallResult multiEditOnRunner(RunnerTarget target, String callId, JsonNode input) {
+        return applyReplacementsOnRunner(target, callId, requiredArg(input, "path"),
+                content -> AtelierFileText.applyEdits(content, parseEdits(input)));
+    }
+
+    /**
+     * Cœur partagé d'{@code edit_file} et {@code multi_edit} sur le poste (F-121 / SF-121-06) : lit
+     * l'<b>intégralité</b> du fichier (repli tranches binaires SF-121-22 quand {@code read_file} est
+     * tronqué), applique le remplacement fourni <b>en mémoire</b>, puis n'écrit qu'<b>une fois</b> si
+     * et seulement si le remplacement a réussi. L'atomicité de multi_edit tient donc jusqu'ici : une
+     * édition fautive lève avant toute écriture, et rien n'est envoyé sur la machine.
+     */
+    private RunnerCallResult applyReplacementsOnRunner(RunnerTarget target, String callId, String path,
+            java.util.function.Function<String, AtelierFileText.Edit> editor) {
         // Identifiant propre pour la lecture interne : deux trames ne partagent jamais une clef de
         // corrélation (contrat de messages §1). L'appel visible reste l'écriture.
         RunnerCallResult read = runnerToolGateway.readFile(target, UUID.randomUUID().toString(), path);
@@ -4056,8 +4096,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
         AtelierFileText.Edit edit;
         try {
-            edit = AtelierFileText.replace(fullContent, requiredArg(input, "old_string"),
-                    input.path("new_string").asText(""), input.path("replace_all").asBoolean(false));
+            edit = editor.apply(fullContent);
         } catch (RuntimeException ex) {
             return RunnerCallResult.backendError(RunnerErrorCodes.INVALID_INPUT, ex.getMessage());
         }
@@ -4144,6 +4183,50 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
     }
 
+    /**
+     * Convertit le tableau {@code edits} d'un appel {@code multi_edit} (F-121 / SF-121-06) en une
+     * liste d'{@link AtelierFileText.EditSpec}. Un tableau absent, non-tableau ou vide lève une
+     * {@link InvalidFilePathException} — traitée en {@code INVALID_INPUT} par l'appelant, aucune
+     * écriture. La validité de chaque remplacement (texte présent, unique/replace_all…) est laissée à
+     * {@link AtelierFileText#applyEdits} : une seule vérité.
+     */
+    private static java.util.List<AtelierFileText.EditSpec> parseEdits(JsonNode input) {
+        JsonNode edits = input == null ? null : input.get("edits");
+        if (edits == null || !edits.isArray() || edits.isEmpty()) {
+            throw new InvalidFilePathException(
+                    "Paramètre requis manquant ou vide : edits (tableau d'éditions {old_string, new_string}).");
+        }
+        java.util.List<AtelierFileText.EditSpec> specs = new ArrayList<>(edits.size());
+        for (JsonNode entry : edits) {
+            specs.add(new AtelierFileText.EditSpec(
+                    entry.path("old_string").asText(null),
+                    entry.path("new_string").asText(""),
+                    entry.path("replace_all").asBoolean(false)));
+        }
+        return specs;
+    }
+
+    /**
+     * Le contenu candidat présenté au point de contrôle après écriture (F-50) pour un {@code multi_edit}
+     * (F-121 / SF-121-06) : la concaténation des {@code new_string}, comme {@code edit_file} présente son
+     * unique {@code new_string}. Le fichier entier n'est pas en main (édition ciblée) ; c'est le texte
+     * introduit qu'un contrôle inspecte.
+     */
+    private static String multiEditNewText(JsonNode input) {
+        JsonNode edits = input == null ? null : input.get("edits");
+        if (edits == null || !edits.isArray()) {
+            return null;
+        }
+        StringBuilder text = new StringBuilder();
+        for (JsonNode entry : edits) {
+            if (text.length() > 0) {
+                text.append('\n');
+            }
+            text.append(entry.path("new_string").asText(""));
+        }
+        return text.toString();
+    }
+
     /** Message rendu au modèle après une édition ciblée : ce qui a changé, et combien de fois. */
     private static String editedMessage(String path, int replacements) {
         return "Fichier modifié : " + path + " (" + replacements + " remplacement"
@@ -4188,6 +4271,16 @@ public class AtelierChatService implements RelayInterruptTarget {
                             workspaceService.readFile(userId, workspaceId, path),
                             requiredArg(input, "old_string"), input.path("new_string").asText(""),
                             input.path("replace_all").asBoolean(false));
+                    workspaceService.writeFile(userId, workspaceId, path, edit.content());
+                    yield new ToolOutcome(editedMessage(path, edit.replacements()), false,
+                            new AtelierAction("write", path));
+                }
+                case "multi_edit" -> {
+                    // MultiEdit sur l'arbre hébergé (F-121 / SF-121-06) : une lecture, les éditions
+                    // appliquées atomiquement en mémoire, une écriture — et seulement si tout réussit.
+                    String path = requiredArg(input, "path");
+                    AtelierFileText.Edit edit = AtelierFileText.applyEdits(
+                            workspaceService.readFile(userId, workspaceId, path), parseEdits(input));
                     workspaceService.writeFile(userId, workspaceId, path, edit.content());
                     yield new ToolOutcome(editedMessage(path, edit.replacements()), false,
                             new AtelierAction("write", path));
@@ -4585,6 +4678,28 @@ public class AtelierChatService implements RelayInterruptTarget {
                         "properties", Map.of("path", stringProp, "old_string", stringProp,
                                 "new_string", stringProp, "replace_all", Map.of("type", "boolean")),
                         "required", List.of("path", "old_string", "new_string"))));
+        // MultiEdit (F-121 / SF-121-06) : plusieurs remplacements exacts sur UN fichier, en une seule
+        // lecture+écriture et de façon ATOMIQUE (tout-ou-rien). Déclaré sur les DEUX cibles, comme
+        // edit_file. Réutilise le moteur de remplacement d'edit_file (AtelierFileText) — même
+        // fiabilité, aucune expression régulière, aucun nouvel outil côté runner.
+        tools.add(new AgentTool("multi_edit",
+                "Applique PLUSIEURS remplacements exacts à UN fichier, de façon ATOMIQUE : soit tous "
+                        + "réussissent, soit AUCUN n'est écrit. edits est un tableau d'objets "
+                        + "{old_string, new_string, replace_all}, appliqués DANS L'ORDRE — chaque "
+                        + "édition voit le résultat de la précédente. Copie chaque old_string "
+                        + "EXACTEMENT (indentation et espaces compris) ; il doit être unique dans "
+                        + "l'état courant du fichier, sinon passe replace_all à true pour cette "
+                        + "édition. Si une seule édition échoue, le fichier n'est pas modifié : relis-le "
+                        + "avant de réessayer. Préfère multi_edit à plusieurs edit_file sur le même fichier.",
+                Map.of("type", "object",
+                        "properties", Map.of("path", stringProp,
+                                "edits", Map.of("type", "array",
+                                        "items", Map.of("type", "object",
+                                                "properties", Map.of("old_string", stringProp,
+                                                        "new_string", stringProp,
+                                                        "replace_all", Map.of("type", "boolean")),
+                                                "required", List.of("old_string", "new_string")))),
+                        "required", List.of("path", "edits"))));
         if (!bashAvailable) {
             tools.add(new AgentTool("search_files", "Recherche une chaîne dans les fichiers du projet.",
                     Map.of("type", "object", "properties", Map.of("query", stringProp),

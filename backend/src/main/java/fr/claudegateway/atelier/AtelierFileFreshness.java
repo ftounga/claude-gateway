@@ -83,7 +83,7 @@ final class AtelierFileFreshness {
         if (!guardEnabled || path == null || path.isBlank() || known.contains(path) || !existsOnDisk) {
             return Optional.empty();
         }
-        if ("edit_file".equals(tool)) {
+        if (isTargetedEdit(tool)) {
             return Optional.of("Tu n'as pas lu « " + path + " » dans ce fil : lis-le avec read_file avant "
                     + "de l'éditer. Éditer un fichier sans l'avoir lu, c'est raisonner sur un contenu supposé.");
         }
@@ -140,11 +140,20 @@ final class AtelierFileFreshness {
         } else {
             fingerprints.remove(path);
         }
-        if (guardEnabled && !wasKnown && "edit_file".equals(tool)) {
+        if (guardEnabled && !wasKnown && isTargetedEdit(tool)) {
             return Optional.of("Rappel : tu as modifié « " + path + " » sans l'avoir lu dans ce fil. "
                     + "Relis-le avant de l'éditer si tu n'es pas sûr de son contenu.");
         }
         return Optional.empty();
+    }
+
+    /**
+     * Une <b>édition ciblée</b> — {@code edit_file} ou {@code multi_edit} (F-121 / SF-121-06) : elle ne
+     * connaît pas le fichier entier (seuls les remplacements), au contraire de {@code write_file}. La
+     * garde et le rappel de lecture-avant-édition s'y appliquent de la même façon.
+     */
+    private static boolean isTargetedEdit(String tool) {
+        return "edit_file".equals(tool) || "multi_edit".equals(tool);
     }
 
     private static String sha256(String content) {

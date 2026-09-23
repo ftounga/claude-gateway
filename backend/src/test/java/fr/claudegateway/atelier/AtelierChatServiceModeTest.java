@@ -97,8 +97,8 @@ class AtelierChatServiceModeTest {
         // Non-régression stricte : en ACT, la panoplie RUNNER est celle d'avant SF-120-02.
         Workspace runner = bareWorkspace(WorkspaceExecutionTarget.RUNNER);
         assertThat(names(service.buildTools(userId, runner, AgentTurnMode.ACT)))
-                .containsExactly("read_file", "write_file", "edit_file", "grep", "glob", "bash",
-                        "explore", "set_plan");
+                .containsExactly("read_file", "write_file", "edit_file", "multi_edit", "grep", "glob",
+                        "bash", "explore", "set_plan");
     }
 
     @Test
@@ -108,15 +108,15 @@ class AtelierChatServiceModeTest {
         List<String> tools = names(service.buildTools(userId, runner, AgentTurnMode.ANSWER_PLAN));
         // grep/glob (F-121 / SF-121-01) sont de la lecture : ils survivent au mode Réponse/Plan.
         assertThat(tools).containsExactly("read_file", "grep", "glob", "explore", "set_plan");
-        assertThat(tools).doesNotContain("write_file", "edit_file", "bash");
+        assertThat(tools).doesNotContain("write_file", "edit_file", "multi_edit", "bash");
     }
 
     @Test
     void actModeKeepsTheFullToolBeltOnSandbox() {
         Workspace sandbox = bareWorkspace(WorkspaceExecutionTarget.SANDBOX);
         assertThat(names(service.buildTools(userId, sandbox, AgentTurnMode.ACT)))
-                .containsExactly("list_files", "read_file", "write_file", "edit_file", "search_files",
-                        "grep", "glob", "explore", "set_plan");
+                .containsExactly("list_files", "read_file", "write_file", "edit_file", "multi_edit",
+                        "search_files", "grep", "glob", "explore", "set_plan");
     }
 
     @Test
@@ -126,7 +126,7 @@ class AtelierChatServiceModeTest {
         // La lecture/exploration de SANDBOX (list_files, search_files) survit ; write/edit non.
         assertThat(tools).containsExactly("list_files", "read_file", "search_files", "grep", "glob",
                 "explore", "set_plan");
-        assertThat(tools).doesNotContain("write_file", "edit_file");
+        assertThat(tools).doesNotContain("write_file", "edit_file", "multi_edit");
     }
 
     @Test
@@ -173,7 +173,7 @@ class AtelierChatServiceModeTest {
 
         assertThat(agentProvider.lastRequest.mode()).isEqualTo(AgentTurnMode.ANSWER_PLAN);
         assertThat(agentProvider.toolBelts.get(0))
-                .doesNotContain("write_file", "edit_file", "bash")
+                .doesNotContain("write_file", "edit_file", "multi_edit", "bash")
                 .contains("read_file", "set_plan");
         assertThat(agentProvider.lastRequest.system()).contains("Mode Réponse/Plan");
     }

@@ -134,4 +134,69 @@ class AtelierFileTextTest {
     void anEmptyNewStringDeletesThePassage() {
         assertThat(AtelierFileText.replace("alpha beta", " beta", "", false).content()).isEqualTo("alpha");
     }
+
+    // --- MultiEdit : éditions atomiques groupées (F-121 / SF-121-06) ---------------------------
+
+    @Test
+    void applyEditsAppliesEveryEditAndSumsTheReplacements() {
+        AtelierFileText.Edit edit = AtelierFileText.applyEdits("const a = 1; const b = 2;",
+                java.util.List.of(
+                        new AtelierFileText.EditSpec("a = 1", "a = 10", false),
+                        new AtelierFileText.EditSpec("b = 2", "b = 20", false)));
+
+        assertThat(edit.content()).isEqualTo("const a = 10; const b = 20;");
+        assertThat(edit.replacements()).isEqualTo(2);
+    }
+
+    @Test
+    void applyEditsAreSequentialEachSeesThePreviousResult() {
+        // La 2e édition opère sur le résultat de la 1re : "one" -> "two" puis "two" -> "three".
+        AtelierFileText.Edit edit = AtelierFileText.applyEdits("one",
+                java.util.List.of(
+                        new AtelierFileText.EditSpec("one", "two", false),
+                        new AtelierFileText.EditSpec("two", "three", false)));
+
+        assertThat(edit.content()).isEqualTo("three");
+        assertThat(edit.replacements()).isEqualTo(2);
+    }
+
+    @Test
+    void applyEditsCountsReplaceAllOccurrences() {
+        AtelierFileText.Edit edit = AtelierFileText.applyEdits("x x x y",
+                java.util.List.of(
+                        new AtelierFileText.EditSpec("x", "z", true),
+                        new AtelierFileText.EditSpec("y", "w", false)));
+
+        assertThat(edit.content()).isEqualTo("z z z w");
+        assertThat(edit.replacements()).isEqualTo(4);
+    }
+
+    @Test
+    void applyEditsIsAtomicAFailingEditNamesItsRankAndAppliesNothing() {
+        // La 2e édition est introuvable : l'exception situe l'édition fautive et rappelle le tout-ou-rien.
+        // applyEdits ne retourne rien d'exploitable ⇒ l'appelant n'écrit jamais (atomicité).
+        assertThatThrownBy(() -> AtelierFileText.applyEdits("alpha beta",
+                java.util.List.of(
+                        new AtelierFileText.EditSpec("alpha", "ALPHA", false),
+                        new AtelierFileText.EditSpec("absent", "X", false))))
+                .isInstanceOf(InvalidFilePathException.class)
+                .hasMessageContaining("Édition n°2")
+                .hasMessageContaining("introuvable")
+                .hasMessageContaining("tout ou rien");
+    }
+
+    @Test
+    void applyEditsRefusesAnEmptyEditList() {
+        assertThatThrownBy(() -> AtelierFileText.applyEdits("alpha", java.util.List.of()))
+                .isInstanceOf(InvalidFilePathException.class)
+                .hasMessageContaining("edits");
+    }
+
+    @Test
+    void applyEditsPropagatesTheNoOpRefusalOfAnyEdit() {
+        assertThatThrownBy(() -> AtelierFileText.applyEdits("alpha",
+                java.util.List.of(new AtelierFileText.EditSpec("alpha", "alpha", false))))
+                .isInstanceOf(InvalidFilePathException.class)
+                .hasMessageContaining("Aucune modification");
+    }
 }
