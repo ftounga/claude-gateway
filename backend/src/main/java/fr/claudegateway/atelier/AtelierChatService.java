@@ -4036,13 +4036,18 @@ public class AtelierChatService implements RelayInterruptTarget {
                             + "conversation : il lit, cherche, et te rend une réponse courte. Utile "
                             + "quand répondre demande de parcourir beaucoup de fichiers dont tu n'as "
                             + "pas besoin ensuite. Il ne peut ni écrire, ni exécuter de commande. "
-                            // F-39 / SF-39-22 : doctrine de groupement. Le moteur (SF-39-21) exécute
-                            // en parallèle les explorations d'un même tour ; le gain n'apparaît que si
-                            // le modèle les émet groupées. Factuel (F-119).
-                            + "Quand tu as plusieurs questions INDÉPENDANTES à explorer, émets tous "
-                            + "les appels explore dans le MÊME tour : ils s'exécutent alors en "
-                            + "parallèle. Ne groupe PAS une exploration qui a besoin du résultat d'une "
-                            + "autre : enchaîne-la au tour suivant, une fois la première réponse reçue.",
+                            // F-39 / SF-39-22, durci par F-148 / SF-148-04 : doctrine de groupement.
+                            // Le moteur (SF-39-21) exécute en parallèle les explorations d'un même
+                            // tour ; le gain n'apparaît que si le modèle les émet groupées. La consigne
+                            // rend le groupement des indépendantes SYSTÉMATIQUE (impératif), sans jamais
+                            // grouper une dépendance. Factuel (F-119) : décrit un parallélisme réel.
+                            + "Dès que plusieurs questions sont INDÉPENDANTES, groupe-les "
+                            + "SYSTÉMATIQUEMENT : émets TOUS leurs appels explore dans le MÊME tour — "
+                            + "ils s'exécutent alors en parallèle et tu reçois toutes les réponses "
+                            + "ensemble. Ne les étale JAMAIS sur des tours séparés quand rien ne les "
+                            + "relie : c'est la première cause de tours inutiles. SEULE exception : une "
+                            + "exploration qui a besoin du résultat d'une autre ne se groupe pas — "
+                            + "enchaîne-la au tour suivant, une fois la première réponse reçue.",
                     Map.of("type", "object",
                             "properties", Map.of("question", stringProp, "path", stringProp),
                             "required", List.of("question"))));
