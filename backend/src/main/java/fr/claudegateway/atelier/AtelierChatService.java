@@ -3688,6 +3688,16 @@ public class AtelierChatService implements RelayInterruptTarget {
             // DENY refuse d'emblée (rien n'est demandé, rien n'est émis) ; ASK demande une
             // autorisation (sauf « tout autoriser pour ce message ») ; ALLOW exécute sans demander.
             PermissionEffect effect = resolveEffect(userId, workspace, tool, call);
+            // F-150 / SF-150-03 : dans un worktree ISOLÉ (sous-tâche `task`), l'ÉDITION est
+            // automatique — équivalent acceptEdits : le worktree est sûr par construction (rien n'y
+            // touche la copie de travail réelle), et faire cliquer l'utilisateur à chaque écriture
+            // d'un agent délégué le noierait d'invites. On ne lève donc que le ASK (jamais un DENY
+            // persisté, qui reste respecté) ; `bash`/commandes, eux, restent TOUJOURS sous la porte
+            // et la politique (décision PO 2), même dans le worktree. La permission reste résolue par
+            // WORKSPACE (D10), pas par le chemin transitoire du worktree.
+            if (projectOverride != null && isFileWrite(tool) && effect == PermissionEffect.ASK) {
+                effect = PermissionEffect.ALLOW;
+            }
             if (effect == PermissionEffect.DENY) {
                 runnerAuditService.recordDenied(userId, runnerTarget, callId, tool, target,
                         RunnerAuditOutcome.DENIED);
