@@ -738,6 +738,34 @@ class AtelierChatServiceSystemPromptTest {
     }
 
     @Test
+    void theExploreToolTeachesDelegatingRepoAudit() {
+        // F-149 / SF-149-02 : la description de l'outil `explore` apprend à DÉLÉGUER l'audit lourd de
+        // dépôt (read_file/grep/glob) plutôt que de lire fichier par fichier en bash dans la boucle
+        // principale — le volume de lecture reste hors du contexte principal.
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+        agentProvider.enqueueFinal("fini");
+
+        service.chat(userId, workspaceId, "bonjour");
+
+        String exploreDesc = agentProvider.lastRequest.tools().stream()
+                .filter(t -> "explore".equals(t.name())).findFirst().orElseThrow().description();
+        // La doctrine de délégation d'audit de dépôt.
+        assertThat(exploreDesc).contains("AUDITER");
+        assertThat(exploreDesc).contains("dépôt");
+        assertThat(exploreDesc).contains("read_file/grep/glob");
+        assertThat(exploreDesc).contains("fichier par fichier");
+        assertThat(exploreDesc).contains("bash");
+        // Non-régression : la doctrine de groupement (SF-39-22 / SF-148-04) coexiste toujours.
+        assertThat(exploreDesc).contains("INDÉPENDANTES");
+        assertThat(exploreDesc).contains("SYSTÉMATIQUEMENT");
+        // La garantie de base reste dite.
+        assertThat(exploreDesc).contains("LECTURE SEULE");
+        assertThat(exploreDesc).contains("ni écrire, ni exécuter de commande");
+    }
+
+    @Test
     void theGovernancePreambleFramesTheInjectedClaudeMd() {
         when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
         when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
