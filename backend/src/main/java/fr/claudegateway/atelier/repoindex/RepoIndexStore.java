@@ -78,6 +78,15 @@ public class RepoIndexStore {
                 .orElseGet(List::of);
     }
 
+    /** Vrai si un chemin exact figure dans l'index de ce projet (F-121 / SF-121-19). */
+    @Transactional(readOnly = true)
+    public boolean contains(UUID userId, UUID workspaceId, String path) {
+        if (userId == null || workspaceId == null || path == null || path.isBlank()) {
+            return false;
+        }
+        return paths(userId, workspaceId).contains(path);
+    }
+
     /**
      * Évalue un motif {@code glob} sur les chemins indexés, ou {@code Optional.empty()} si l'index ne
      * peut pas répondre (non amorcé, motif invalide). Un résultat présent — même vide — signifie « la

@@ -16,6 +16,16 @@ public interface RepoIndex {
     boolean isPrimed(UUID userId, Workspace workspace);
 
     /**
+     * Vrai si un chemin exact figure dans l'index de ce projet (F-121 / SF-121-19). Sert à <b>prouver
+     * l'existence</b> d'un fichier sans aller-retour runner (garde d'écrasement à l'aveugle) : une réponse
+     * {@code false} — index non amorcé, panne, ou chemin absent — vaut « pas prouvé existant », donc
+     * l'appelant reste en <b>repli sûr</b> (il n'empêche jamais la création d'un fichier neuf).
+     */
+    default boolean indexed(UUID userId, Workspace workspace, String path) {
+        return false;
+    }
+
+    /**
      * Évalue un motif {@code glob} sur l'index, ou {@code Optional.empty()} si l'index ne peut pas
      * répondre (non amorcé, motif invalide, panne). Un résultat présent — même vide — vient de
      * l'index. L'appelant ne l'utilise que lorsque c'est sûr (amorcé + aucune mutation du tour).

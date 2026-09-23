@@ -105,12 +105,16 @@ import org.springframework.boot.context.properties.bind.ConstructorBinding;
  *                      avant ses affirmations, d'où des contradictions. Repli comme les autres
  *                      bornes : une valeur absente, nulle ou négative retombe sur le défaut ; bornée à
  *                      un plafond lisible ({@code 40})
- * @param fileStateHints <b>aide-mémoire d'état de fichier</b> (F-119 / SF-119-05), défaut
- *                      {@code true}. Actif, une édition (`edit_file`) d'un fichier que le modèle n'a
- *                      ni lu ni écrit dans ce fil reçoit un rappel léger « relis-le avant si tu n'es
- *                      pas sûr de son contenu » (incitation à la lecture-avant-édition), sans jamais
- *                      refuser l'opération (le disque évite déjà la corruption). Coupe-circuit à
- *                      {@code false}
+ * @param fileStateHints <b>suivi de fraîcheur des fichiers</b> (F-119 / SF-119-05, <b>étendu</b> par
+ *                      F-121 / SF-121-19), défaut {@code true}. Actif, le suivi est <b>à l'échelle du
+ *                      fil</b> (amorcé depuis l'historique rejoué) et : (a) <b>refuse</b> avant émission
+ *                      une écriture ({@code edit_file}/{@code write_file}) sur un fichier <b>jamais lu</b>
+ *                      dont l'<b>existence est prouvée</b> par l'index de repo (read-before-edit /
+ *                      read-before-overwrite) ; (b) à défaut de preuve d'existence, garde le <b>rappel
+ *                      doux</b> d'origine sur une édition à l'aveugle (jamais bloquant — repli sûr, la
+ *                      création d'un fichier neuf n'est jamais bloquée) ; (c) joint une <b>note</b> « ce
+ *                      fichier a changé depuis ta lecture » à une relecture pleine dont le contenu diffère.
+ *                      Coupe-circuit à {@code false} : ni garde, ni rappel, ni note
  * @param exploreParallelism nombre maximal d'explorations menées <b>en parallèle</b> dans un même
  *                      message (F-39 / SF-39-21, défaut 3). Quand un tour émet plusieurs {@code explore}
  *                      indépendants, ils sont exécutés ensemble via un pool borné de cette taille ;
