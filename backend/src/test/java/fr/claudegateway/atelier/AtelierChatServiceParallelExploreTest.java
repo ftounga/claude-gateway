@@ -151,21 +151,22 @@ class AtelierChatServiceParallelExploreTest {
     // ------------------------------------------------- plafond par message (maxDelegations)
 
     @Test
-    void aFourthExploreInOneTurnHitsThePerMessageCapWithoutBreakingTheTurn() {
-        // maxDelegations défaut = 3 : sur quatre explorations d'un même tour, trois s'exécutent, la
-        // quatrième reçoit l'erreur de limite — le tour aboutit quand même.
-        provider.enqueueExplores("q-a", "q-b", "q-c", "q-d");
+    void aSixthExploreInOneTurnHitsThePerMessageCapWithoutBreakingTheTurn() {
+        // maxDelegations défaut = 5 (F-148 / SF-148-01) : sur six explorations d'un même tour, cinq
+        // s'exécutent, la sixième reçoit l'erreur de limite — le tour aboutit quand même.
+        provider.enqueueExplores("q-a", "q-b", "q-c", "q-d", "q-e", "q-f");
 
         AtelierChatResult result = serviceWith(3).chat(userId, workspaceId, "explore beaucoup");
 
         assertThat(result.reply()).isEqualTo("done");
         String finalConvo = provider.lastMainConvo;
-        assertThat(finalConvo).contains("ANSWER-Q-A").contains("ANSWER-Q-B").contains("ANSWER-Q-C");
-        // La quatrième n'a jamais été lancée : elle porte le message de limite, pas une réponse.
+        assertThat(finalConvo).contains("ANSWER-Q-A").contains("ANSWER-Q-B").contains("ANSWER-Q-C")
+                .contains("ANSWER-Q-D").contains("ANSWER-Q-E");
+        // La sixième n'a jamais été lancée : elle porte le message de limite, pas une réponse.
         assertThat(finalConvo).contains("Limite de délégations atteinte");
-        assertThat(finalConvo).doesNotContain("ANSWER-Q-D");
-        // Au plus trois sous-boucles ont réellement tourné.
-        assertThat(provider.startedQuestions).hasSize(3);
+        assertThat(finalConvo).doesNotContain("ANSWER-Q-F");
+        // Au plus cinq sous-boucles ont réellement tourné.
+        assertThat(provider.startedQuestions).hasSize(5);
     }
 
     // ------------------------------------------------- plafond de parallélisme (vagues)

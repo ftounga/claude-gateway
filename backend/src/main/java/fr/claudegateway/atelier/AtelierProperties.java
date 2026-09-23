@@ -40,8 +40,9 @@ import org.springframework.boot.context.properties.bind.ConstructorBinding;
  *                         n'emprunte plus ce chemin — un projet sans runner passe par les Managed
  *                         Agents. Ouvrable par variable d'environnement, sans livraison.
  * @param maxDelegations nombre maximal d'explorations déléguées dans un même message
- *                       (F-39 / SF-39-14, défaut 3). Au-delà, c'est le travail principal qu'il faut
- *                       redécouper — pas la délégation qu'il faut ouvrir.
+ *                       (F-39 / SF-39-14 ; défaut relevé de 3 à 5 par F-148 / SF-148-01, pour qu'une
+ *                       investigation multi-zones tienne en un tour). Au-delà, c'est le travail
+ *                       principal qu'il faut redécouper — pas la délégation qu'il faut ouvrir.
  * @param streaming     appel modèle en <b>flux</b> de la boucle maison (F-116 / SF-116-01), défaut
  *                      {@code true}. Actif, chaque tour consomme le flux SSE du fournisseur et fait
  *                      défiler le texte mot à mot dans le terminal ; le corps de requête, le cache, le
@@ -51,7 +52,8 @@ import org.springframework.boot.context.properties.bind.ConstructorBinding;
  *                      livraison. Un refus ou une coupure du flux replie de toute façon sur l'appel
  *                      complet, tour par tour.
  * @param stepEffort    effort de raisonnement des <b>étapes de continuation</b> de la boucle maison
- *                      (F-118 / SF-118-01) : {@code low} à {@code max}, défaut {@code low}. Le
+ *                      (F-118 / SF-118-01) : {@code low} à {@code max}, défaut {@code medium}
+ *                      (relevé de {@code low} par F-148 / SF-148-01). Le
  *                      <b>premier</b> tour d'une demande garde l'effort normal ({@link #effort()}) — la
  *                      réflexion y sert à cadrer le travail ; les tours suivants (enchaîner un outil,
  *                      relire un fichier) exécutent une trajectoire déjà tracée et n'ont pas besoin de
@@ -165,11 +167,21 @@ public record AtelierProperties(
     /** Effort par défaut : celui du fournisseur, écrit pour être réglable (F-39 / SF-39-10). */
     public static final String DEFAULT_EFFORT = "high";
     /**
-     * Effort par défaut des étapes de continuation (F-118 / SF-118-01) : le plancher du vocabulaire.
-     * Enchaîner un {@code read_file} ou un {@code ls} n'a pas besoin de « réfléchir fort ». Réglable
-     * via {@code APP_ATELIER_STEP_EFFORT} sans livraison si {@code medium} s'avère plus sûr.
+     * Effort par défaut des étapes de continuation (F-118 / SF-118-01 ; porté de {@code low} à
+     * {@code medium} par F-148 / SF-148-01). {@code low} laissait passer du sous-raisonnement en
+     * continuation → auto-corrections → tours de rattrapage (le garde-fou F-119 réagit <i>après</i>) ;
+     * {@code medium} raisonne assez pour tenir la trajectoire sans « réfléchir fort » comme le premier
+     * tour. Le premier tour garde {@link #effort()}. Réglable via {@code APP_ATELIER_STEP_EFFORT} sans
+     * livraison (repli sur {@code low} possible dans les deux sens).
      */
-    public static final String DEFAULT_STEP_EFFORT = "low";
+    public static final String DEFAULT_STEP_EFFORT = "medium";
+    /**
+     * Plafond par défaut d'explorations déléguées par message (F-39 / SF-39-14 ; relevé de 3 à 5 par
+     * F-148 / SF-148-01). Cinq laisse une investigation multi-zones se faire en un tour ; au-delà,
+     * c'est le travail principal qu'il faut redécouper. Réglable via {@code APP_ATELIER_MAX_DELEGATIONS}
+     * sans livraison.
+     */
+    public static final int DEFAULT_MAX_DELEGATIONS = 5;
     /**
      * Effort par défaut de la sous-boucle d'exploration (F-119 / SF-119-01) : {@code low}. Non nul
      * (correctif du {@code none()}), mais sobre — une exploration lit, elle n'a pas à « réfléchir
@@ -184,9 +196,10 @@ public record AtelierProperties(
     /** Plafond lisible de la fenêtre de rejeu : au-delà, la compaction aurait tranché de toute façon. */
     public static final int MAX_REPLAYED_TRACE_TURNS = 40;
     /**
-     * Parallélisme d'exploration par défaut (F-39 / SF-39-21) : 3, comme {@link #maxDelegations()}.
-     * Recouvre le temps de mur de plusieurs {@code explore} indépendants sans jamais ouvrir le plafond
-     * par message.
+     * Parallélisme d'exploration par défaut (F-39 / SF-39-21) : 3. Recouvre le temps de mur de
+     * plusieurs {@code explore} indépendants sans jamais ouvrir le plafond par message
+     * ({@link #maxDelegations()}, porté à 5 par SF-148-01) : le parallélisme borne combien tournent
+     * <i>en même temps</i>, pas combien sont autorisées au total.
      */
     public static final int DEFAULT_EXPLORE_PARALLELISM = 3;
     /**
@@ -274,7 +287,7 @@ public record AtelierProperties(
             storageExecution = false;
         }
         if (maxDelegations == null || maxDelegations < 0) {
-            maxDelegations = 3;
+            maxDelegations = DEFAULT_MAX_DELEGATIONS;
         }
         if (maxTurnTokens == null || maxTurnTokens <= 0L) {
             maxTurnTokens = DEFAULT_MAX_TURN_TOKENS;
