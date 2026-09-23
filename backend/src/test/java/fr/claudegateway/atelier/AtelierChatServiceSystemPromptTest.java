@@ -709,9 +709,10 @@ class AtelierChatServiceSystemPromptTest {
 
     @Test
     void theExploreToolTeachesGroupingIndependentExplorations() {
-        // F-39 / SF-39-22 : le moteur (SF-39-21) exécute en parallèle les `explore` d'un même tour ;
-        // la doctrine, dans la description de l'outil, apprend à l'agent à les GROUPER quand elles sont
-        // indépendantes et à NE PAS les grouper quand l'une dépend de l'autre.
+        // F-39 / SF-39-22, DURCI par F-148 / SF-148-04 : le moteur (SF-39-21) exécute en parallèle les
+        // `explore` d'un même tour ; la doctrine, dans la description de l'outil, apprend à l'agent à
+        // les GROUPER SYSTÉMATIQUEMENT quand elles sont indépendantes et à NE PAS les grouper quand
+        // l'une dépend de l'autre.
         when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
         lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
                 .thenThrow(new InvalidFilePathException("absent"));
@@ -721,12 +722,15 @@ class AtelierChatServiceSystemPromptTest {
 
         String exploreDesc = agentProvider.lastRequest.tools().stream()
                 .filter(t -> "explore".equals(t.name())).findFirst().orElseThrow().description();
-        // Grouper les indépendantes dans le même tour (parallélisme).
+        // Grouper SYSTÉMATIQUEMENT les indépendantes dans le même tour (parallélisme).
         assertThat(exploreDesc).contains("INDÉPENDANTES");
+        assertThat(exploreDesc).contains("SYSTÉMATIQUEMENT");
         assertThat(exploreDesc).contains("MÊME tour");
         assertThat(exploreDesc).contains("en parallèle");
-        // Ne pas grouper une exploration qui dépend d'une autre.
-        assertThat(exploreDesc).contains("Ne groupe PAS");
+        // Consigne impérative de ne pas les étaler sur des tours séparés quand rien ne les relie.
+        assertThat(exploreDesc).contains("Ne les étale JAMAIS");
+        // Garde de dépendance : l'exception, puis enchaîner au tour suivant.
+        assertThat(exploreDesc).contains("SEULE exception");
         assertThat(exploreDesc).contains("tour suivant");
         // La garantie de base reste dite : lecture seule, ni écriture ni commande.
         assertThat(exploreDesc).contains("LECTURE SEULE");
