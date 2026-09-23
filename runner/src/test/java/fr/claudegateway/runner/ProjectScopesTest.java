@@ -148,7 +148,10 @@ class ProjectScopesTest {
 
     @Test
     void lesCapacitesDecriventLaMachinePasUnProjet() {
-        assertEquals(java.util.List.of("files", "bash"), scopes().capabilities());
+        // F-121 / SF-121-07 : quand bash est autorisé, ProjectScopes monte un registre de fond, donc
+        // la capacité bash_background est aussi annoncée (le montage par projet passe le registre au
+        // BashTool). Sans bash, aucune de ces capacités n'apparaît.
+        assertEquals(java.util.List.of("files", "bash", "bash_background"), scopes().capabilities());
         assertEquals(java.util.List.of("files"),
                 new ProjectScopes(hostRoot, false, ShellElection.elect(), new Console())
                         .capabilities());
