@@ -38,6 +38,13 @@ import java.util.regex.Pattern;
  *       problème.</li>
  * </ol>
  *
+ * <p><b>Et l'on ne cite que de vrais fichiers de carte</b> (SF-148-09) : la dernière composante d'une
+ * référence retenue est un {@code .md} <b>nommé</b>. Un répertoire, un dépôt ({@code corp.git}) ou le
+ * dégénéré {@code .md} sont écartés — les lire comme un fichier échoue toujours ({@code is_directory}),
+ * et un {@code STATE.md}/{@code PLAN-ACTION.md} cité <b>nu</b> désigne un fichier de sujet qui n'existe
+ * pas à la racine ({@code not_found}). Ces lectures gâchées faisaient 25 % d'échecs de
+ * {@code governance_map_read}.</p>
+ *
  * <p>Classe <b>pure</b> : aucune entrée-sortie. Savoir si un chemin existe encore est le travail de
  * SF-95-02, qui interroge la machine.</p>
  */
@@ -61,7 +68,11 @@ public final class MapReferences {
     private static final Set<String> EXCEPTIONS_DECLAREES = Set.of(
             "chemin/vers", "chemin/vers/fichier", "dossier/fichier", "projet/state.md",
             "projet/plan-action.md", "dossier/state.md", "repos/depot", "repos/nom-du-depot",
-            "src/foo.java", "and/or", "et/ou");
+            "src/foo.java", "and/or", "et/ou",
+            // Les fichiers de sujet cités NUS (sans dossier) : ils vivent DANS un sujet
+            // (« lzi/PLAN-ACTION.md »), jamais à la racine du poste. Nus, ce sont des mentions
+            // génériques de prose — les lire à la racine renvoie « not_found » à coup sûr (SF-148-09).
+            "state.md", "plan-action.md");
 
     /** Ce qui trahit une forme plutôt qu'un chemin réel. */
     private static final String CARACTERES_DE_GABARIT = "<>*${}?|…\"'";
@@ -111,10 +122,33 @@ public final class MapReferences {
         Matcher matcher = motif.matcher(ligne);
         while (matcher.find() && trouvees.size() < MAX_REFERENCES) {
             String candidat = matcher.group(1).strip();
-            if (estUnChemin(candidat) && !estUneException(candidat, fichiersDeLaCarte)) {
-                trouvees.add(nettoie(candidat));
+            if (!estUnChemin(candidat) || estUneException(candidat, fichiersDeLaCarte)) {
+                continue;
+            }
+            String nettoye = nettoie(candidat);
+            // On ne cite QUE de vrais fichiers de carte : un dossier lu comme un fichier échoue
+            // toujours (« is_directory »), et l'échec compte comme une lecture gâchée. Le contrôle
+            // des liens morts ne suit donc que les « .md » nommés — jamais un répertoire, jamais un
+            // dépôt (« corp.git »), jamais le dégénéré « .md » (SF-148-09).
+            if (estUnFichierDeCarte(nettoye)) {
+                trouvees.add(nettoye);
             }
         }
+    }
+
+    /**
+     * Vrai si la référence nettoyée désigne un <b>vrai fichier de carte</b> : sa dernière composante
+     * est un {@code .md} <b>nommé</b> (radical non vide).
+     *
+     * <p>Écarte les répertoires ({@code lzi/}, {@code repos/portail-client}), les dépôts
+     * ({@code corporate-center/corp.git}) et le dégénéré {@code .md} — autant de cibles qu'une lecture
+     * de fichier ne peut que faire échouer (SF-148-09).</p>
+     */
+    private static boolean estUnFichierDeCarte(String reference) {
+        String minuscule = reference.toLowerCase(Locale.ROOT);
+        int slash = minuscule.lastIndexOf('/');
+        String segment = slash < 0 ? minuscule : minuscule.substring(slash + 1);
+        return segment.length() > ".md".length() && segment.endsWith(".md");
     }
 
     /** Vrai si cette chaîne <b>ressemble</b> à un chemin relatif du poste. */
