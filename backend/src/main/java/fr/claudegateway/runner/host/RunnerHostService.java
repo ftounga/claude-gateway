@@ -252,6 +252,33 @@ public class RunnerHostService implements RunnerShellRecorder, RunnerVersionReco
         return repository.findById(hostId).map(RunnerHost::getShell).orElse(null);
     }
 
+    /**
+     * Système d'exploitation déclaré par le runner de ce poste à l'appairage (F-121 / SF-121-21), ou
+     * {@code null} — poste inconnu ou runner qui n'a rien déclaré. Sert le bloc « Environnement » de la
+     * consigne système, à la manière du {@code <env>} de Claude Code. Une propriété de la machine, lue
+     * comme {@link #declaredShell} : le bloc l'omet simplement quand elle est absente.
+     */
+    @Transactional(readOnly = true)
+    public String declaredOs(UUID hostId) {
+        if (hostId == null) {
+            return null;
+        }
+        return repository.findById(hostId).map(RunnerHost::getOs).orElse(null);
+    }
+
+    /**
+     * Dernier segment de la racine déclarée du poste (F-121 / SF-121-21), ou {@code null}. C'est le
+     * répertoire de travail lisible du bloc « Environnement » ; le chemin complet de la machine de
+     * l'utilisateur n'entre jamais en base (cf. {@link #recordDeclaration}).
+     */
+    @Transactional(readOnly = true)
+    public String rootName(UUID hostId) {
+        if (hostId == null) {
+            return null;
+        }
+        return repository.findById(hostId).map(RunnerHost::getRootName).orElse(null);
+    }
+
     private static String requireName(String name) {
         String trimmed = name == null ? "" : name.trim();
         if (trimmed.isEmpty()) {
