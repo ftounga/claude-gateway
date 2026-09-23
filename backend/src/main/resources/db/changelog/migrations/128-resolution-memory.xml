@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-148 / SF-148-08 — LA MEMOIRE DE RESOLUTIONS : « question -> conclusion (+ fichiers touches) »
+      des tours ABOUTIS, PAR POSTE (host_id), pour proposer une resolution deja trouvee sur une
+      question similaire et eviter de re-raisonner.
+
+      CE QU'ELLE EST : un journal, append par tour abouti. Le rappel se fait par SIMILARITE LEXICALE
+      simple (Jaccard sur tokens significatifs), PAS d'embeddings (reserve F-148). Le jour ou l'on
+      MESURE que le keyword rate, pgvector (ADR-011) prendra le relais — hors perimetre ici.
+
+      OU VIT LE RAPPEL : dans le MESSAGE du tour (patron F-137), jamais dans la consigne systeme — il
+      depend de la question, l'y mettre casserait le cache de prompt (F-134). Encadre comme une DONNEE
+      a verifier (anti-injection), jamais comme une consigne.
+
+      PAR POSTE, pas par sujet : un probleme d'infra tranche dans un sujet vaut pour un autre sujet du
+      meme poste. D'ou la cle (user_id, host_id). workspace_id est range pour reference, pas pour filtrer.
+
+      ISOLATION : toute lecture filtre (user_id, host_id). La memoire d'un poste/utilisateur n'est
+      jamais servie a un autre.
+
+      PAS DE CLE ETRANGERE, meme choix que usage_turns / host_map_files / prompt_source_files /
+      repo_index_paths. Purge explicite a la suppression du compte.
+    -->
+
+    <changeSet id="128-resolution-memory" author="claude-gateway">
+        <createTable tableName="resolution_memory">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="host_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <!-- Le sujet ou la resolution a ete trouvee, range pour reference (le rappel filtre par
+                 poste, pas par sujet). Nullable : un terminal de poste n'est pas un sujet. -->
+            <column name="workspace_id" type="uuid"/>
+            <!-- La parole de l'utilisateur (question), bornee. -->
+            <column name="question" type="varchar(4000)"/>
+            <!-- La reponse du tour (conclusion), bornee cote entite. -->
+            <column name="conclusion" type="varchar(1000000)"/>
+            <!-- Chemins des fichiers touches, un par ligne, bornes. -->
+            <column name="files" type="varchar(4000)"/>
+            <column name="created_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createIndex tableName="resolution_memory" indexName="idx_resolution_memory_user_host_created">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="created_at"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>
