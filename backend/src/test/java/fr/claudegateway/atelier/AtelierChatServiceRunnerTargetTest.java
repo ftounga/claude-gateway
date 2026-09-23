@@ -470,7 +470,7 @@ class AtelierChatServiceRunnerTargetTest {
                         "search_files", "grep", "glob", "explore", "set_plan");
         assertThat(service.buildTools(java.util.UUID.randomUUID(), runner)).extracting(fr.claudegateway.agent.AgentTool::name)
                 .containsExactly("read_file", "write_file", "edit_file", "multi_edit", "grep", "glob",
-                        "bash", "explore", "set_plan");
+                        "bash", "explore", "task", "set_plan");
     }
 
     @Test
@@ -673,7 +673,7 @@ class AtelierChatServiceRunnerTargetTest {
 
         assertThat(service.buildTools(java.util.UUID.randomUUID(), runner)).extracting(fr.claudegateway.agent.AgentTool::name)
                 .containsExactly("read_file", "write_file", "edit_file", "multi_edit", "grep", "glob",
-                        "bash", "explore", "set_plan");
+                        "bash", "explore", "task", "set_plan");
         verify(runnerAuditService).recordCall(eq(userId), eq(runnerTarget), anyString(), eq("edit_file"),
                 eq("a.ts"), any());
     }
@@ -1021,7 +1021,7 @@ class AtelierChatServiceRunnerTargetTest {
         // Et le travail principal garde exactement la sienne : D4 n'est pas défaite (non-régression).
         assertThat(agentProvider.toolBelts.get(0))
                 .containsExactly("read_file", "write_file", "edit_file", "multi_edit", "grep", "glob",
-                        "bash", "explore", "set_plan");
+                        "bash", "explore", "task", "set_plan");
     }
 
     @Test

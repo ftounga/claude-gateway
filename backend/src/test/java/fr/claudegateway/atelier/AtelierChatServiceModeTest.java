@@ -98,7 +98,7 @@ class AtelierChatServiceModeTest {
         Workspace runner = bareWorkspace(WorkspaceExecutionTarget.RUNNER);
         assertThat(names(service.buildTools(userId, runner, AgentTurnMode.ACT)))
                 .containsExactly("read_file", "write_file", "edit_file", "multi_edit", "grep", "glob",
-                        "bash", "explore", "set_plan");
+                        "bash", "explore", "task", "set_plan");
     }
 
     @Test
