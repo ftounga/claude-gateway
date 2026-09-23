@@ -10,6 +10,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -1007,5 +1008,46 @@ class AtelierChatServiceSystemPromptTest {
         // Le 16ᵉ skill (index 15) et suivants ne sont plus annoncés.
         assertThat(system).doesNotContain("skills/s15.md");
         assertThat(system).contains("et 40 autre(s) skill(s) non listé(s).");
+    }
+    // ---------------------------------------------------------------- F-142 / SF-142-10
+
+    @Test
+    @DisplayName("SF-142-10 : l'outil de la gateway PRIME sur une recette périmée du poste, et c'est dit APRÈS les skills")
+    void thetoolPrimesOverAnOutdatedLocalRecipe() {
+        // Un poste qui porte encore l'ancienne recette : c'est exactement le cas de production du
+        // 2026-09-24 — le correctif déployé, l'outil ouvert, et pourtant jamais appelé.
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of(".claude/skills/pptx.md"));
+        when(workspaceService.readFile(userId, workspaceId, ".claude/skills/pptx.md")).thenReturn(SKILL_BODY);
+        service.setDiagramTool(openDiagramCatalog(), null);
+
+        String system = systemPrompt();
+
+        assertThat(system).contains(AtelierChatService.TOOL_PRIMACY);
+        assertThat(system).contains("N'installe rien").contains("render_diagram").contains("python-pptx");
+        // L'ordre fait la décision : ce qu'on lit en dernier pèse le plus.
+        assertThat(system.indexOf(AtelierChatService.TOOL_PRIMACY))
+                .as("la règle doit venir APRÈS le catalogue des skills")
+                .isGreaterThan(system.indexOf("--- Skills du projet"));
+    }
+
+    @Test
+    @DisplayName("SF-142-10 : sans outil de production ouvert, la règle n'est pas injectée — elle parlerait dans le vide")
+    void withoutToolsTheRuleIsAbsent() {
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of(".claude/skills/pptx.md"));
+        when(workspaceService.readFile(userId, workspaceId, ".claude/skills/pptx.md")).thenReturn(SKILL_BODY);
+
+        String system = systemPrompt();
+
+        assertThat(system).doesNotContain(AtelierChatService.TOOL_PRIMACY);
+    }
+
+    /** Un catalogue de diagrammes RÉELLEMENT ouvert : le moteur est configuré. */
+    private fr.claudegateway.diagrams.DiagramToolCatalog openDiagramCatalog() {
+        fr.claudegateway.diagrams.DiagramProperties properties =
+                new fr.claudegateway.diagrams.DiagramProperties();
+        properties.setBaseUrl("http://diagram-renderer");
+        return new fr.claudegateway.diagrams.DiagramToolCatalog(
+                new fr.claudegateway.diagrams.HttpDiagramRenderer(properties,
+                        new com.fasterxml.jackson.databind.ObjectMapper()));
     }
 }
