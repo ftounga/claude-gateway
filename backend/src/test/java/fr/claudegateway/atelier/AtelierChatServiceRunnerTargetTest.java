@@ -3,6 +3,7 @@ package fr.claudegateway.atelier;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -442,6 +443,10 @@ class AtelierChatServiceRunnerTargetTest {
         AtelierChatResult result = service.chat(userId, workspaceId, "passe a à 2");
 
         verify(runnerToolGateway).writeFile(eq(runnerTarget), anyString(), eq("a.ts"), eq("const a = 2;"));
+        // SF-121-22 : un petit fichier (lecture non tronquée) garde EXACTEMENT le chemin historique —
+        // jamais les primitives par tranches.
+        verify(runnerToolGateway, never()).readFileBytes(any(), anyString(), anyString(), anyLong(), anyInt());
+        verify(runnerToolGateway, never()).writeFileBytes(any(), anyString(), anyString(), anyString(), anyLong());
         // SF-119-05 : édition d'un fichier non lu dans ce fil → message d'édition + rappel léger.
         assertThat(toolResultText()).startsWith("Fichier modifié : a.ts (1 remplacement)");
         // L'écran voit une écriture : c'est ce qui rafraîchit le fichier ouvert (D4).
@@ -449,20 +454,117 @@ class AtelierChatServiceRunnerTargetTest {
     }
 
     @Test
-    void editFileRefusesToWriteBackATruncatedRead() {
-        // SF-39-06 (D2) : appliquer un remplacement sur un fragment puis le réécrire détruirait la
-        // fin du fichier, en silence. C'est le seul refus d'une opération que le modèle croit possible.
+    void editFileOnALargeFileReReadsItWholeByBinaryChunksInsteadOfRefusing() {
+        // SF-121-22 : une lecture read_file tronquée (fichier > 512 Kio) ne fait plus échouer
+        // l'édition ; on relit l'intégralité par read_file_bytes, on remplace, on réécrit.
         stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
         when(runnerToolGateway.readFile(eq(runnerTarget), anyString(), eq("gros.ts")))
-                .thenReturn(new RunnerCallResult(true, "const a = 1;", true, null, 5L, null, null, null, "", false));
+                .thenReturn(new RunnerCallResult(true, "const a = 1;", true, null, 5L, 900_000L, null, null, "", false));
+        String base64 = java.util.Base64.getEncoder()
+                .encodeToString("const a = 1;".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        when(runnerToolGateway.readFileBytes(eq(runnerTarget), anyString(), eq("gros.ts"), anyLong(), anyInt()))
+                .thenReturn(new RunnerCallResult(true, base64, false, null, 5L, 900_000L, null, null, "", false));
+        when(runnerToolGateway.writeFile(eq(runnerTarget), anyString(), eq("gros.ts"), eq("const a = 2;")))
+                .thenReturn(ok(""));
         agentProvider.enqueueToolCall("edit_file", "path", "gros.ts", "old_string", "1", "new_string", "2");
-        agentProvider.enqueueFinal("Refusé.");
+        agentProvider.enqueueFinal("Modifié.");
+
+        service.chat(userId, workspaceId, "passe a à 2");
+
+        verify(runnerToolGateway).readFileBytes(eq(runnerTarget), anyString(), eq("gros.ts"), anyLong(), anyInt());
+        verify(runnerToolGateway).writeFile(eq(runnerTarget), anyString(), eq("gros.ts"), eq("const a = 2;"));
+        assertThat(lastToolResult().isError()).isFalse();
+        assertThat(toolResultText()).startsWith("Fichier modifié : gros.ts (1 remplacement)");
+    }
+
+    @Test
+    void editFileKeepsExactReplacementSemanticsOnALargeFile() {
+        // SF-121-22 : « remplacement exact unique, échec si ambigu » vaut aussi sur le contenu complet
+        // reconstitué — un old_string introuvable échoue, sans aucune écriture.
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        when(runnerToolGateway.readFile(eq(runnerTarget), anyString(), eq("gros.ts")))
+                .thenReturn(new RunnerCallResult(true, "hello", true, null, 5L, 900_000L, null, null, "", false));
+        String base64 = java.util.Base64.getEncoder()
+                .encodeToString("hello world".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        when(runnerToolGateway.readFileBytes(eq(runnerTarget), anyString(), eq("gros.ts"), anyLong(), anyInt()))
+                .thenReturn(new RunnerCallResult(true, base64, false, null, 5L, 900_000L, null, null, "", false));
+        agentProvider.enqueueToolCall("edit_file", "path", "gros.ts", "old_string", "absent", "new_string", "x");
+        agentProvider.enqueueFinal("Rien.");
+
+        service.chat(userId, workspaceId, "remplace absent");
+
+        verify(runnerToolGateway, never()).writeFile(any(), anyString(), anyString(), anyString());
+        verify(runnerToolGateway, never()).writeFileBytes(any(), anyString(), anyString(), anyString(), anyLong());
+        assertThat(lastToolResult().isError()).isTrue();
+        assertThat(toolResultText()).contains("introuvable");
+    }
+
+    @Test
+    void editFileWritesBackByChunksWhenTheResultExceedsTheBlockBound() {
+        // SF-121-22 : un contenu résultant > 512 Kio est réécrit par tranches write_file_bytes, la
+        // 1re à offset 0 (tronque/crée), sans jamais franchir le champ content d'un bloc.
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        String original = "A".repeat(600_000) + "OLD";
+        byte[] originalBytes = original.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        String expected = "A".repeat(600_000) + "NEWVALUE";
+        byte[] expectedBytes = expected.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+
+        when(runnerToolGateway.readFile(eq(runnerTarget), anyString(), eq("big.txt")))
+                .thenReturn(new RunnerCallResult(true, "A".repeat(10), true, null, 5L,
+                        (long) originalBytes.length, null, null, "", false));
+        when(runnerToolGateway.readFileBytes(eq(runnerTarget), anyString(), eq("big.txt"), anyLong(), anyInt()))
+                .thenAnswer(invocation -> {
+                    long offset = invocation.getArgument(3);
+                    int length = invocation.getArgument(4);
+                    int from = (int) offset;
+                    int to = Math.min(originalBytes.length, from + length);
+                    byte[] slice = java.util.Arrays.copyOfRange(originalBytes, from, to);
+                    boolean remaining = to < originalBytes.length;
+                    String b64 = java.util.Base64.getEncoder().encodeToString(slice);
+                    return new RunnerCallResult(true, b64, remaining, null, 5L,
+                            (long) originalBytes.length, null, null, "", false);
+                });
+        java.io.ByteArrayOutputStream reassembled = new java.io.ByteArrayOutputStream();
+        java.util.List<Long> writeOffsets = new java.util.ArrayList<>();
+        when(runnerToolGateway.writeFileBytes(eq(runnerTarget), anyString(), eq("big.txt"), anyString(), anyLong()))
+                .thenAnswer(invocation -> {
+                    String b64 = invocation.getArgument(3);
+                    long offset = invocation.getArgument(4);
+                    writeOffsets.add(offset);
+                    reassembled.writeBytes(java.util.Base64.getDecoder().decode(b64));
+                    return ok("");
+                });
+        agentProvider.enqueueToolCall("edit_file", "path", "big.txt", "old_string", "OLD", "new_string", "NEWVALUE");
+        agentProvider.enqueueFinal("Modifié.");
+
+        service.chat(userId, workspaceId, "remplace OLD");
+
+        // Jamais write_file (un bloc) : le résultat déborde la borne.
+        verify(runnerToolGateway, never()).writeFile(any(), anyString(), anyString(), anyString());
+        // Au moins deux tranches, la première à offset 0 (tronque/crée).
+        assertThat(writeOffsets).hasSizeGreaterThan(1);
+        assertThat(writeOffsets.get(0)).isZero();
+        assertThat(reassembled.toByteArray()).isEqualTo(expectedBytes);
+        assertThat(toolResultText()).startsWith("Fichier modifié : big.txt (1 remplacement)");
+    }
+
+    @Test
+    void editFileOnALargeFileFailsCleanlyWhenTheRunnerCannotReadBytes() {
+        // SF-121-22 : un runner antérieur à F-110 ne connaît pas read_file_bytes → unsupported_tool.
+        // L'édition échoue PROPREMENT : aucune écriture à partir d'un contenu tronqué.
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        when(runnerToolGateway.readFile(eq(runnerTarget), anyString(), eq("gros.ts")))
+                .thenReturn(new RunnerCallResult(true, "const a = 1;", true, null, 5L, 900_000L, null, null, "", false));
+        when(runnerToolGateway.readFileBytes(eq(runnerTarget), anyString(), eq("gros.ts"), anyLong(), anyInt()))
+                .thenReturn(RunnerCallResult.backendError(RunnerErrorCodes.UNSUPPORTED_TOOL));
+        agentProvider.enqueueToolCall("edit_file", "path", "gros.ts", "old_string", "1", "new_string", "2");
+        agentProvider.enqueueFinal("Échec.");
 
         service.chat(userId, workspaceId, "passe a à 2");
 
         verify(runnerToolGateway, never()).writeFile(any(), anyString(), anyString(), anyString());
+        verify(runnerToolGateway, never()).writeFileBytes(any(), anyString(), anyString(), anyString(), anyLong());
         assertThat(lastToolResult().isError()).isTrue();
-        assertThat(toolResultText()).contains("tronquée");
     }
 
     @Test
