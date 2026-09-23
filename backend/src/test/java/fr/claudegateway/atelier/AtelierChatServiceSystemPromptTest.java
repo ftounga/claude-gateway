@@ -908,6 +908,8 @@ class AtelierChatServiceSystemPromptTest {
 
     @Test
     void catalogIsBoundedAndAnnouncesTheRemainder() {
+        // F-148 / SF-148-03 : le plafond du catalogue annoncé est abaissé à 15 (moins de lectures
+        // d'amorçage avant le 1er token), la coupe se dit toujours, l'ordre reste déterministe.
         List<String> many = new java.util.ArrayList<>();
         for (int i = 0; i < 55; i++) {
             many.add("skills/s" + i + ".md");
@@ -924,7 +926,8 @@ class AtelierChatServiceSystemPromptTest {
         String system = systemPrompt();
 
         assertThat(system).contains("- skills/s0.md : Description de skills/s0.md");
-        assertThat(system).doesNotContain("skills/s50.md");
-        assertThat(system).contains("et 5 autre(s) skill(s) non listé(s).");
+        // Le 16ᵉ skill (index 15) et suivants ne sont plus annoncés.
+        assertThat(system).doesNotContain("skills/s15.md");
+        assertThat(system).contains("et 40 autre(s) skill(s) non listé(s).");
     }
 }
