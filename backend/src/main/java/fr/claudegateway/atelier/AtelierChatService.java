@@ -694,6 +694,24 @@ public class AtelierChatService implements RelayInterruptTarget {
     private fr.claudegateway.diagrams.DiagramToolExecutor diagramToolExecutor;
 
     /**
+     * <b>L'outil de la gateway prime sur une recette périmée du poste</b> (F-142 / SF-142-10).
+     *
+     * <p>Elle ne dit pas « ignore le skill » : le skill reste la référence pour la structure du
+     * livrable, le style, le contenu. Seule la <b>fabrication</b> passe par l'outil.</p>
+     */
+    static final String TOOL_PRIMACY = "--- Ce que tu fabriques, et avec quoi ---\n"
+            + "Un skill posé sur cette machine peut avoir été écrit AVANT que la gateway sache faire le "
+            + "travail elle-même. Quand une recette te demande d'INSTALLER quelque chose pour fabriquer "
+            + "un livrable — un moteur de rendu de diagrammes, un navigateur, python-pptx — et qu'un "
+            + "outil ci-dessus fait la même chose, c'est L'OUTIL QUI PRIME. N'installe rien.\n"
+            + "Concrètement : un schéma se rend avec render_diagram ; une présentation se construit "
+            + "avec build_presentation. Si l'outil n'est pas disponible et que la bibliothèque n'est pas "
+            + "DÉJÀ présente sur la machine, dis-le — ne l'installe pas, et ne fabrique pas un "
+            + "substitut.\n"
+            + "Le skill garde toute son autorité sur le RESTE : la structure du livrable, le style, le "
+            + "contenu, ce qu'il faut y mettre et ce qu'il ne faut pas.";
+
+    /**
      * L'outil {@code build_presentation} (F-129 / SF-129-05) : le {@code .pptx} est construit <b>par la
      * gateway</b>, pour que le poste du client n'installe pas {@code python-pptx}. {@code none()} par défaut.
      */
@@ -5656,6 +5674,20 @@ public class AtelierChatService implements RelayInterruptTarget {
                         .append(" autre(s) skill(s) non listé(s).\n");
             }
             system.append("Ouvre un skill avec read_file au moment où il sert ; ne suppose pas son contenu.\n\n");
+        }
+        // F-142 / SF-142-10 — L'OUTIL PRIME SUR UNE RECETTE PÉRIMÉE DU POSTE.
+        //
+        // Les fichiers d'un paquet de gouvernance sont déposés SUR LA MACHINE du client, et une
+        // republication ne les réécrit pas (décision D5 : on ne touche à rien chez lui dans son dos).
+        // Un poste garde donc des recettes anciennes — celles qui font installer un moteur de rendu ou
+        // python-pptx, ce qu'un poste d'entreprise refuse. Constaté en production le 2026-09-24 : le
+        // correctif déployé, l'outil ouvert… et jamais appelé, parce que le skill local disait autre chose.
+        //
+        // La règle vient APRÈS le catalogue des skills : ce qu'on lit en dernier pèse le plus. Elle est
+        // conditionnée à la présence réelle d'un de ces outils — sinon elle parlerait dans le vide — et
+        // son texte est FIXE : le préfixe système reste stable, le cache de F-134 n'est pas touché.
+        if (diagramToolCatalog.isOpenFor(userId, workspace) || deckToolCatalog.isOpenFor(userId, workspace)) {
+            system.append(TOOL_PRIMACY).append("\n\n");
         }
         if (workspace.isRunnerTarget()) {
             runnerAuditService.recordBootstrap(userId, RunnerTargets.of(workspace),
