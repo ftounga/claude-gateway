@@ -1868,6 +1868,25 @@ public class AtelierChatService implements RelayInterruptTarget {
                         listener.onProgress((long) inputTokens + outputTokens);
                         outcome = explored.outcome();
                     }
+                } else if ("task".equals(call.name())) {
+                    // Sous-tâche ÉCRIVAINE (F-150 / SF-150-02) : SÉRIELLE (les mutations ne se
+                    // parallélisent pas — hors du pré-passage parallèle d'`explore`). La sous-boucle
+                    // crée un worktree isolé, y agit, rend sa synthèse, et le worktree est TOUJOURS
+                    // démonté (D9). Son coût est imputé au tour (D4), comme `explore`.
+                    if (delegations >= maxDelegations) {
+                        outcome = ToolOutcome.error("Limite de délégations atteinte pour ce message ("
+                                + maxDelegations + ") : poursuis toi-même.");
+                    } else {
+                        delegations++;
+                        TaskOutcome done =
+                                task(userId, workspace, callId, call, model, apiKey, listener, deadline);
+                        inputTokens += done.inputTokens();
+                        outputTokens += done.outputTokens();
+                        cacheReadTokens += done.cacheReadTokens();
+                        cacheWriteTokens += done.cacheWriteTokens();
+                        listener.onProgress((long) inputTokens + outputTokens);
+                        outcome = done.outcome();
+                    }
                 } else if (fr.claudegateway.radar.RadarToolCatalog.isRadarTool(call.name())) {
                     // F-104 / SF-104-01 : le registre du Radar vit dans la gateway, pas sur la machine.
                     outcome = executeRadarTool(userId, workspace, call, turnNote);
@@ -2981,6 +3000,142 @@ public class AtelierChatService implements RelayInterruptTarget {
     }
 
     /**
+     * Délègue une <b>sous-tâche écrivaine</b> {@code task} (F-150 / SF-150-02) : le pendant écrivain
+     * d'{@link #explore}. Crée un <b>worktree git isolé</b> côté runner (SF-150-01), y fait tourner
+     * la sous-boucle {@link AtelierTask} avec la panoplie complète — chaque outil routé vers le runner
+     * avec le worktree comme projet —, puis <b>démonte toujours</b> le worktree (D9), y compris sur
+     * échec ou interruption. Le coût est imputé au tour (D4) ; seule la synthèse remonte (D5).
+     *
+     * <p>La porte de confirmation, l'audit et les permissions sont <b>réutilisés</b> : les outils de
+     * la sous-boucle passent par {@link #executeToolOnRunner}, comme la boucle principale. Le worktree
+     * n'est qu'un chemin transitoire ; l'isolation reste résolue par {@code (user_id, workspace_id)}
+     * du tour (D10).</p>
+     */
+    private TaskOutcome task(UUID userId, Workspace workspace, String callId, AgentToolCall call,
+            String model, String apiKey, AtelierProgressListener listener, long deadline) {
+        if (!workspace.isRunnerTarget()) {
+            return new TaskOutcome(ToolOutcome.error(
+                    "`task` n'est disponible que sur un poste connecté (runner)."), 0, 0, 0, 0);
+        }
+        String prompt = call.input() == null ? null : call.input().path("prompt").asText(null);
+        if (prompt == null || prompt.isBlank()) {
+            return new TaskOutcome(ToolOutcome.error(
+                    "Consigne (`prompt`) requise pour déléguer une sous-tâche."), 0, 0, 0, 0);
+        }
+        String scope = call.input().path("path").asText(null);
+        String taskId = newTaskId();
+        RunnerTarget projectTarget = RunnerTargets.of(workspace);
+        // 1. Matérialiser le worktree isolé côté runner (SF-150-01). Un refus (pas git, runner ancien)
+        //    est relayé tel quel : le message guide l'utilisateur, rien n'est laissé derrière.
+        RunnerCallResult created = runnerToolGateway.worktreeCreate(projectTarget, callId, taskId);
+        if (!created.ok()) {
+            return new TaskOutcome(ToolOutcome.error(taskWorktreeRefusal(created)), 0, 0, 0, 0);
+        }
+        String worktreePath = worktreePathFrom(created.content());
+        if (worktreePath == null || worktreePath.isBlank()) {
+            safeRemoveWorktree(projectTarget, callId, taskId);
+            return new TaskOutcome(ToolOutcome.error(
+                    "Le worktree n'a pas pu être préparé pour la sous-tâche."), 0, 0, 0, 0);
+        }
+        // F-150 / SF-150-02 : modèle PRINCIPAL (SF-150-04 introduira app.atelier.task-model + repli).
+        // Provider Independence : le modèle voyage comme chaîne, aucun couplage direct.
+        String subModel = model;
+        List<AgentTool> tools = taskTools();
+        try {
+            AtelierTask.Result result = AtelierTask.run(agentProvider, subModel, apiKey, prompt.trim(),
+                    scope, tools,
+                    subCall -> {
+                        // Chaque outil de la sous-boucle s'exécute SUR LE RUNNER, avec le worktree
+                        // comme projet — la porte de confirmation/audit/permissions vient avec.
+                        ToolOutcome sub = executeToolOnRunner(userId, workspace,
+                                UUID.randomUUID().toString(), subCall, listener, deadline, worktreePath);
+                        return new AtelierTask.ExecutedTool(sub.content(), sub.isError());
+                    },
+                    () -> interruptedTurns.contains(turnKey(userId, workspace.getId()))
+                            || System.currentTimeMillis() >= deadline,
+                    reasoning);
+            return new TaskOutcome(ToolOutcome.info(result.answer()),
+                    result.inputTokens(), result.outputTokens(),
+                    result.cacheReadTokens(), result.cacheWriteTokens());
+        } catch (RuntimeException ex) {
+            return new TaskOutcome(ToolOutcome.error(
+                    "La sous-tâche a échoué ; poursuis toi-même."), 0, 0, 0, 0);
+        } finally {
+            // Nettoyage GARANTI (D9), y compris sur échec/interruption : « le tour vit dans le flux ».
+            safeRemoveWorktree(projectTarget, callId, taskId);
+        }
+    }
+
+    /** Issue d'une sous-tâche : le résultat rendu au modèle, et ce qu'elle a consommé (imputé au tour). */
+    private record TaskOutcome(ToolOutcome outcome, int inputTokens, int outputTokens,
+            int cacheReadTokens, int cacheWriteTokens) {
+    }
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper TASK_MAPPER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
+    /** Identifiant de tâche sûr pour le runner (borné {@code [A-Za-z0-9_-]}) : 32 caractères hexa. */
+    private static String newTaskId() {
+        return UUID.randomUUID().toString().replace("-", "");
+    }
+
+    /**
+     * Panoplie <b>complète</b> de la sous-tâche (F-150 / SF-150-02) : les outils fichiers du runner
+     * ({@code read_file}/{@code write_file}/{@code edit_file}/{@code multi_edit}/{@code grep}/
+     * {@code glob}) et {@code bash}. Elle est CONSTRUITE, jamais dérivée de la panoplie du tour :
+     * elle reste stable quel que soit ce que la boucle principale déclare (cache F-134 de la
+     * sous-boucle).
+     */
+    private List<AgentTool> taskTools() {
+        Map<String, Object> stringProp = Map.of("type", "string");
+        List<AgentTool> tools = new ArrayList<>(fileTools(stringProp, true));
+        Map<String, Object> bashProps = new java.util.LinkedHashMap<>();
+        bashProps.put("command", stringProp);
+        bashProps.put("cwd", stringProp);
+        bashProps.put("timeout", Map.of("type", "integer"));
+        tools.add(new AgentTool("bash",
+                "Exécute une commande shell dans le worktree de la sous-tâche, depuis sa racine. "
+                        + "Renvoie la sortie (stdout et stderr) et le code de sortie.",
+                Map.of("type", "object", "properties", bashProps, "required", List.of("command"))));
+        return List.copyOf(tools);
+    }
+
+    /** Chemin du worktree renvoyé par le runner (relatif à la racine du poste), ou {@code null}. */
+    private static String worktreePathFrom(String content) {
+        if (content == null || content.isBlank()) {
+            return null;
+        }
+        try {
+            JsonNode node = TASK_MAPPER.readTree(content);
+            String path = node.path("worktreePath").asText(null);
+            return path == null || path.isBlank() ? null : path;
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            return null;
+        }
+    }
+
+    /** Message de refus guidant quand le worktree ne peut pas être créé (F-150 / SF-150-02). */
+    private static String taskWorktreeRefusal(RunnerCallResult created) {
+        if (RunnerErrorCodes.UNSUPPORTED_TOOL.equals(created.errorCode())) {
+            return "Le poste connecté ne prend pas encore en charge les sous-tâches `task` "
+                    + "(worktree) : mets à jour le runner, ou utilise `explore` pour lire.";
+        }
+        String message = created.errorMessage();
+        return message == null || message.isBlank()
+                ? "La sous-tâche n'a pas pu démarrer : worktree indisponible."
+                : message;
+    }
+
+    /** Démonte le worktree sans jamais lever : le nettoyage ne doit pas casser le tour (D9). */
+    private void safeRemoveWorktree(RunnerTarget projectTarget, String callId, String taskId) {
+        try {
+            runnerToolGateway.worktreeRemove(projectTarget, callId, taskId);
+        } catch (RuntimeException ignore) {
+            // Best-effort : le reap (démarrage runner / prochain task) rattrapera un worktree resté.
+        }
+    }
+
+    /**
      * Vérifie qu'une précision peut être déposée sur ce projet (F-39 / SF-39-19, F-84 / SF-84-06) :
      * l'appartenance d'abord — un projet qu'on ne possède pas rend 404, jamais un refus qui
      * révélerait son existence.
@@ -3043,6 +3198,9 @@ public class AtelierChatService implements RelayInterruptTarget {
             // AVANT, sans quoi le terminal reste muet tout du long.
             case "explore" -> new AtelierProgressListener.AtelierStepEvent("explore",
                     shorten(arg(input, "question"), STEP_COMMAND_CHARS));
+            // F-150 / SF-150-02 : une sous-tâche `task` peut durer — sa consigne part à l'écran AVANT.
+            case "task" -> new AtelierProgressListener.AtelierStepEvent("task",
+                    shorten(arg(input, "prompt"), STEP_COMMAND_CHARS));
             // Le plan a son propre affichage (SF-39-13) : une étape de plus le dirait deux fois.
             case "set_plan" -> null;
             // Tout autre outil (volet Teams, outils à venir) se montre quand il COMMENCE, avec sa
@@ -3475,9 +3633,25 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     private ToolOutcome executeToolOnRunner(UUID userId, Workspace workspace, String callId,
             AgentToolCall call, AtelierProgressListener listener, long deadline) {
+        return executeToolOnRunner(userId, workspace, callId, call, listener, deadline, null);
+    }
+
+    /**
+     * Même exécution, avec un <b>projet surchargé</b> (F-150 / SF-150-02) : quand {@code projectOverride}
+     * n'est pas {@code null}, la cible runner pointe ce chemin — le <b>worktree isolé</b> de la
+     * sous-tâche {@code task} — au lieu du projet du workspace. Tout le reste est inchangé : porte de
+     * confirmation, permissions (résolues par workspace, D10), audit, retransmission. Le service depuis
+     * l'index de repo ({@code glob}) est <b>désactivé</b> sous un worktree : l'index reflète le projet
+     * du workspace, pas la copie isolée.
+     */
+    private ToolOutcome executeToolOnRunner(UUID userId, Workspace workspace, String callId,
+            AgentToolCall call, AtelierProgressListener listener, long deadline, String projectOverride) {
         UUID workspaceId = workspace.getId();
         // Cible d'exécution : le POSTE et le chemin du projet sous sa racine (F-48 / SF-48-01).
-        RunnerTarget runnerTarget = RunnerTargets.of(workspace);
+        // Sous une sous-tâche `task`, le projet est le worktree isolé, pas la copie de travail réelle.
+        RunnerTarget runnerTarget = projectOverride == null
+                ? RunnerTargets.of(workspace)
+                : new RunnerTarget(workspace.getHostId(), workspaceId, projectOverride);
         String tool = call.name();
         String target = auditTarget(call);
         // Troisième point d'accroche (F-52 / SF-52-01) : AVANT la porte, et avant toute émission.
@@ -3546,7 +3720,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         // F-148 / SF-148-07 : `glob` est servi depuis l'index de repo — sans aller-retour runner —
         // quand c'est sûr (index amorcé ET aucune mutation du projet ce tour). Après la porte, avant
         // toute émission. Si l'index ne peut pas répondre, on retombe sur le glob runner ci-dessous.
-        if ("glob".equals(tool)) {
+        if ("glob".equals(tool) && projectOverride == null) {
             ToolOutcome served = serveGlobFromIndex(userId, workspace, runnerTarget, callId, call, target);
             if (served != null) {
                 return served;
@@ -4833,6 +5007,27 @@ public class AtelierChatService implements RelayInterruptTarget {
                     Map.of("type", "object",
                             "properties", Map.of("question", stringProp, "path", stringProp),
                             "required", List.of("question"))));
+        }
+        // La sous-tâche `task` (F-150 / SF-150-02) : le pendant ÉCRIVAIN d'`explore`. Déclarée
+        // UNIQUEMENT en cible RUNNER (il faut un poste, un dépôt git et un worktree) et si la
+        // délégation est autorisée. La panoplie complète de la sous-boucle est routée vers un
+        // worktree git ISOLÉ créé côté runner ; la copie de travail réelle n'est jamais touchée
+        // pendant la tâche, et seule la synthèse remonte. Description STABLE (cache F-134).
+        if (workspace.isRunnerTarget() && maxDelegations > 0) {
+            tools.add(new AgentTool("task",
+                    "Délègue une SOUS-TÂCHE qui ÉCRIT ou EXÉCUTE à un agent isolé, dans un worktree "
+                            + "git à part (une copie de travail dédiée) : il lit, écrit, édite et "
+                            + "lance des commandes SANS toucher ta copie de travail, puis te rend une "
+                            + "synthèse courte de ce qu'il a fait. Utilise-le pour un lot de "
+                            + "modifications cadré et autonome que tu veux mener à l'écart. "
+                            + "Contrairement à explore (LECTURE SEULE), task peut modifier des "
+                            + "fichiers et exécuter des commandes ; les détails restent chez l'agent "
+                            + "délégué, seule sa synthèse te revient. Donne une consigne précise dans "
+                            + "prompt, et éventuellement un chemin de départ dans path. Requiert un "
+                            + "projet git ; sinon utilise explore pour lire.",
+                    Map.of("type", "object",
+                            "properties", Map.of("prompt", stringProp, "path", stringProp),
+                            "required", List.of("prompt"))));
         }
         // Le plan est déclaré sur les DEUX cibles : c'est un outil d'organisation, pas d'exécution
         // (F-39 / SF-39-13). Rien de ce qu'il fait ne dépend de l'endroit où le code tourne.
