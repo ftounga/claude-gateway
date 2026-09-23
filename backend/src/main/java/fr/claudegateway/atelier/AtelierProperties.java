@@ -161,7 +161,8 @@ public record AtelierProperties(
         Boolean fileStateHints,
         Boolean perMessageEffort,
         Integer exploreParallelism,
-        String exploreModel) {
+        String exploreModel,
+        String taskModel) {
 
 
     /**
@@ -381,6 +382,26 @@ public record AtelierProperties(
         if (exploreParallelism > MAX_EXPLORE_PARALLELISM) {
             exploreParallelism = MAX_EXPLORE_PARALLELISM;
         }
+    }
+
+    /**
+     * Constructeur de compatibilité, sans le <b>modèle de la sous-tâche {@code task}</b> (F-150 /
+     * SF-150-04) : {@code taskModel} retombe sur son repli ({@code null} ⇒ la sous-boucle {@code task}
+     * suit le modèle principal). Conserve la forme SF-149-03 (jusqu'à {@code exploreModel}) pour
+     * n'obliger aucun appelant — ni test — à exprimer un réglage qu'il n'a pas.
+     */
+    public AtelierProperties(String storage, String bucket, String prefix, Long maxTotalBytes,
+            Integer maxEntries, Long maxFileBytes, Integer maxIterations, String model, String effort,
+            Boolean contextPruning, Long maxTurnTokens, Integer maxDelegations,
+            Boolean storageExecution, Boolean streaming, String stepEffort, Boolean adaptiveEffort,
+            Duration turnBudget, String exploreEffort, Boolean escalateOnSignal,
+            Integer replayedTraceTurns, Boolean fileStateHints, Boolean perMessageEffort,
+            Integer exploreParallelism, String exploreModel) {
+        this(storage, bucket, prefix, maxTotalBytes, maxEntries, maxFileBytes, maxIterations, model,
+                effort, contextPruning, maxTurnTokens, maxDelegations, storageExecution, streaming,
+                stepEffort, adaptiveEffort, turnBudget, exploreEffort, escalateOnSignal,
+                replayedTraceTurns, fileStateHints, perMessageEffort, exploreParallelism, exploreModel,
+                null);
     }
 
     /**

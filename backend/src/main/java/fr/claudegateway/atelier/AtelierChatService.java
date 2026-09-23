@@ -543,6 +543,13 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     private final String exploreModel;
     /**
+     * Modèle de la <b>sous-boucle {@code task}</b> (F-150 / SF-150-04) : la sous-tâche écrivaine peut
+     * tourner sur un modèle configurable ({@code app.atelier.task-model}). {@code null}/vide ⇒
+     * <b>repli</b> sur {@link #model} (le modèle principal). Le modèle voyage comme une chaîne via
+     * {@link AiAgentProvider} — aucun couplage direct à un modèle (Provider Independence).
+     */
+    private final String taskModel;
+    /**
      * Raisonnement du <b>premier</b> tour d'une demande (F-39 / SF-39-10, effort adaptatif
      * F-118 / SF-118-01) : effort normal ({@code app.atelier.effort}). C'est le tour où la réflexion
      * sert à cadrer le travail.
@@ -1000,6 +1007,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         // F-149 / SF-149-03 : modèle de la sous-boucle d'exploration (Sonnet en prod), repli sur le
         // modèle principal quand non configuré (null/vide) — décidé au moment de déléguer, dans explore().
         this.exploreModel = atelierProperties.exploreModel();
+        this.taskModel = atelierProperties.taskModel();
         this.reasoning = new AgentReasoning(true, atelierProperties.effort());
         this.stepReasoning = new AgentReasoning(true, atelierProperties.stepEffort());
         this.adaptiveEffort = !Boolean.FALSE.equals(atelierProperties.adaptiveEffort());
@@ -3188,9 +3196,10 @@ public class AtelierChatService implements RelayInterruptTarget {
             return new TaskOutcome(ToolOutcome.error(
                     "Le worktree n'a pas pu être préparé pour la sous-tâche."), 0, 0, 0, 0);
         }
-        // F-150 / SF-150-02 : modèle PRINCIPAL (SF-150-04 introduira app.atelier.task-model + repli).
-        // Provider Independence : le modèle voyage comme chaîne, aucun couplage direct.
-        String subModel = model;
+        // F-150 / SF-150-04 : la sous-boucle `task` tourne sur son modèle configurable
+        // (app.atelier.task-model), avec repli SÛR sur le modèle principal si non réglé. Le modèle
+        // voyage comme une chaîne via AiAgentProvider (Provider Independence) — aucun couplage direct.
+        String subModel = (taskModel == null || taskModel.isBlank()) ? model : taskModel;
         List<AgentTool> tools = taskTools();
         try {
             AtelierTask.Result result = AtelierTask.run(agentProvider, subModel, apiKey, prompt.trim(),
@@ -5189,11 +5198,19 @@ public class AtelierChatService implements RelayInterruptTarget {
                             + "lance des commandes SANS toucher ta copie de travail, puis te rend une "
                             + "synthèse courte de ce qu'il a fait. Utilise-le pour un lot de "
                             + "modifications cadré et autonome que tu veux mener à l'écart. "
-                            + "Contrairement à explore (LECTURE SEULE), task peut modifier des "
-                            + "fichiers et exécuter des commandes ; les détails restent chez l'agent "
-                            + "délégué, seule sa synthèse te revient. Donne une consigne précise dans "
-                            + "prompt, et éventuellement un chemin de départ dans path. Requiert un "
-                            + "projet git ; sinon utilise explore pour lire.",
+                            // F-150 / SF-150-04 : doctrine LITTÉRALE et STABLE task vs explore vs bash
+                            // (patron SF-149-02, cache F-134 préservé — rien de volatil, à l'identique
+                            // à chaque tour). Elle départage les trois voies pour éviter le mauvais outil.
+                            + "QUAND CHOISIR : `task` pour ÉCRIRE ou EXÉCUTER une sous-tâche isolée et "
+                            + "autonome (un lot de modifications, un refactor cadré, une génération à "
+                            + "l'écart) — elle agit dans un worktree isolé, seule sa synthèse revient. "
+                            + "`explore` pour seulement LIRE/COMPRENDRE beaucoup de fichiers dont tu "
+                            + "n'as pas besoin ensuite (elle ne peut ni écrire ni exécuter). `bash` (et "
+                            + "read_file/edit_file/write_file directement) pour AGIR toi-même, ici, dans "
+                            + "la boucle principale, sur la copie de travail réelle — quand le travail "
+                            + "n'a pas besoin d'être isolé. "
+                            + "Donne une consigne précise dans prompt, et éventuellement un chemin de "
+                            + "départ dans path. Requiert un projet git ; sinon utilise explore pour lire.",
                     Map.of("type", "object",
                             "properties", Map.of("prompt", stringProp, "path", stringProp),
                             "required", List.of("prompt"))));
