@@ -249,7 +249,7 @@ class AtelierChatServiceTest {
         assertThat(lastToolResultText()).startsWith("Fichier modifié : notes.txt (1 remplacement)");
     }
 
-    // ------------------------------------------- F-119 / SF-119-05 : suivi d'état de fichier
+    // ------------------------------------------- F-119 / SF-119-05 + F-121 / SF-121-19 : fraîcheur
 
     @Test
     void aBlindEditGetsAReadBeforeEditReminder() {
@@ -282,6 +282,24 @@ class AtelierChatServiceTest {
         service.chat(userId, workspaceId, "lis puis remplace");
 
         assertThat(lastToolResultText()).isEqualTo("Fichier modifié : notes.txt (1 remplacement)");
+    }
+
+    @Test
+    void aReReadOfAChangedFileGetsAChangeNote() {
+        // SF-121-19 : relire un fichier dont le contenu a changé depuis la lecture précédente du fil
+        // joint une note « ce fichier a changé » au résultat — jamais un refus.
+        stubHappyPath();
+        when(workspaceService.readFile(userId, workspaceId, "notes.txt"))
+                .thenReturn("version 1", "version 2");
+        agentProvider.enqueueToolCall("read_file", "path", "notes.txt");
+        agentProvider.enqueueToolCall("read_file", "path", "notes.txt");
+        agentProvider.enqueueFinal("Relu.");
+
+        service.chat(userId, workspaceId, "relis notes.txt");
+
+        assertThat(lastToolResultText())
+                .contains("version 2")
+                .contains("a changé depuis ta lecture précédente");
     }
 
     @Test

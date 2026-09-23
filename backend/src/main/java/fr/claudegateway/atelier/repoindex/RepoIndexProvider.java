@@ -47,6 +47,20 @@ public class RepoIndexProvider implements RepoIndex {
     }
 
     @Override
+    public boolean indexed(UUID userId, Workspace workspace, String path) {
+        if (workspace == null || path == null || path.isBlank()) {
+            return false;
+        }
+        try {
+            return store.contains(userId, workspace.getId(), path);
+        } catch (RuntimeException ex) {
+            // Index indisponible : « pas prouvé existant » ⇒ l'appelant reste en repli sûr.
+            log.debug("Existence non vérifiée depuis l'index ({})", ex.getClass().getSimpleName());
+            return false;
+        }
+    }
+
+    @Override
     public Optional<String> glob(UUID userId, Workspace workspace, String pattern, String base) {
         if (workspace == null) {
             return Optional.empty();

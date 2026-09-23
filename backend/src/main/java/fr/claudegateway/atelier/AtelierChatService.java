@@ -1517,10 +1517,12 @@ public class AtelierChatService implements RelayInterruptTarget {
         // rencontré une difficulté. Consulté à l'ouverture du tour suivant pour choisir l'effort, puis
         // recalculé après l'exécution des outils de ce tour.
         boolean escalateNextTurn = false;
-        // Aide-mémoire d'état de fichier (F-119 / SF-119-05) : les chemins que le modèle a lus ou
-        // écrits dans CE fil. Une édition d'un chemin absent de cet ensemble est « à l'aveugle » et
-        // reçoit un rappel léger de lecture-avant-édition.
-        java.util.Set<String> knownFiles = new java.util.HashSet<>();
+        // Suivi de fraîcheur des fichiers (F-121 / SF-121-19, étend F-119 / SF-119-05) : les chemins
+        // que le modèle a lus ou écrits dans CE fil, et leur empreinte. Amorcé depuis l'historique
+        // rejoué (les tours précédents comptent), puis tenu à jour au fil des outils. Il refuse une
+        // édition/écrasement à l'aveugle AVANT émission, et signale un fichier changé à la relecture.
+        AtelierFileFreshness freshness = new AtelierFileFreshness(fileStateHints);
+        seedFreshnessFromHistory(freshness, messages);
 
         for (int iteration = 0; iteration < maxIterations; iteration++) {
             iterationsUsed = iteration + 1;
@@ -1812,7 +1814,14 @@ public class AtelierChatService implements RelayInterruptTarget {
                     listener.onAction(step);
                 }
                 ToolOutcome outcome;
-                if (teamsReadFailedThisTurn && !fallbackAuthorized
+                // F-121 / SF-121-19 : garde de fraîcheur AVANT toute émission. Une édition à l'aveugle
+                // (fichier jamais lu dans ce fil) ou un écrasement à l'aveugle d'un fichier existant est
+                // refusé ici — rien n'est écrit, aucun aller-retour runner. Le repli sûr (index muet,
+                // fichier neuf, garde désactivée) laisse passer.
+                String freshnessRefusal = freshnessGuard(userId, workspace, freshness, call);
+                if (freshnessRefusal != null) {
+                    outcome = ToolOutcome.error(freshnessRefusal);
+                } else if (teamsReadFailedThisTurn && !fallbackAuthorized
                         && fr.claudegateway.teams.block.TeamsReadFailure.isProjectAnswerTool(call.name())) {
                     // F-89 / SF-89-11 : le SECOND VERROU. Une lecture Teams a échoué dans ce tour et
                     // l'utilisateur n'a pas choisi le repli : on refuse de répondre la question de
@@ -1881,11 +1890,12 @@ public class AtelierChatService implements RelayInterruptTarget {
                 // un bloc riche d'échec est posé dans le fil (couleur portée par le motif), et le
                 // modèle reçoit la règle non négociable de s'arrêter. Pas de repli silencieux.
                 String modelContent = outcome.content();
-                // Aide-mémoire d'état de fichier (F-119 / SF-119-05) : un rappel léger, jamais un
-                // refus. Une édition d'un fichier jamais lu ni écrit dans ce fil est « à l'aveugle » ;
-                // une lecture ou une écriture, elle, rend le fichier « connu » pour la suite.
-                if (fileStateHints && !outcome.isError()) {
-                    modelContent = withFileStateHint(call, modelContent, knownFiles);
+                // Suivi de fraîcheur (F-121 / SF-121-19, étend F-119 / SF-119-05) : APRÈS une lecture
+                // ou une écriture aboutie, on tient à jour la connaissance du fil. Une relecture PLEINE
+                // dont le contenu a changé joint une note « ce fichier a changé depuis ta lecture » —
+                // jamais un refus (la garde dure, elle, a déjà tranché AVANT l'émission, plus haut).
+                if (!outcome.isError()) {
+                    modelContent = withFreshnessNote(freshness, call, modelContent);
                 }
                 if (workspace.isTeamsTerminal()
                         && fr.claudegateway.teams.block.TeamsReadFailure.isReadingTool(call.name())) {
@@ -3272,35 +3282,81 @@ public class AtelierChatService implements RelayInterruptTarget {
     }
 
     /**
-     * Aide-mémoire d'état de fichier (F-119 / SF-119-05) : suit les fichiers lus/écrits du fil et, sur
-     * une <b>édition à l'aveugle</b> (un {@code edit_file} d'un chemin ni lu ni écrit auparavant dans
-     * ce fil), ajoute au résultat un rappel léger de lecture-avant-édition. Jamais un refus — le disque
-     * évite déjà la corruption ; c'est le <b>raisonnement</b> sur un contenu supposé qu'on prévient.
-     * {@code read_file}, {@code write_file} et {@code edit_file} rendent le chemin « connu » pour la
-     * suite du fil.
+     * Amorce le suivi de fraîcheur (F-121 / SF-121-19) depuis l'historique rejoué : tout chemin déjà
+     * lu ou écrit dans un tour <b>précédent</b> du fil est marqué connu, si bien que la garde ne refuse
+     * pas une édition d'un fichier lu au message d'avant. On lit les seuls blocs {@code tool_use}
+     * {@code read_file}/{@code write_file}/{@code edit_file} des messages déjà en mémoire — aucun accès
+     * base ni runner supplémentaire.
      */
-    private String withFileStateHint(AgentToolCall call, String content,
-            java.util.Set<String> knownFiles) {
-        String tool = call.name();
-        if (!"read_file".equals(tool) && !isFileWrite(tool)) {
-            return content;
+    private void seedFreshnessFromHistory(AtelierFileFreshness freshness, List<AgentMessage> messages) {
+        for (AgentMessage message : messages) {
+            if (message == null || message.content() == null) {
+                continue;
+            }
+            for (AgentContentBlock block : message.content()) {
+                if (block instanceof AgentContentBlock.ToolUse toolUse
+                        && ("read_file".equals(toolUse.name()) || isFileWrite(toolUse.name()))) {
+                    freshness.seedKnown(arg(toolUse.input(), "path"));
+                }
+            }
+        }
+    }
+
+    /**
+     * Garde de fraîcheur AVANT émission (F-121 / SF-121-19) : rend le message de refus d'une
+     * édition/écrasement à l'aveugle, ou {@code null} pour laisser passer. L'existence — qui distingue un
+     * écrasement d'une création — est <b>prouvée</b> via l'index de repo, sans aller-retour runner ;
+     * toute incertitude reste en repli sûr (autorisé).
+     */
+    private String freshnessGuard(UUID userId, Workspace workspace, AtelierFileFreshness freshness,
+            AgentToolCall call) {
+        if (!isFileWrite(call.name())) {
+            return null;
         }
         String path = arg(call.input(), "path");
-        if (path == null || path.isBlank()) {
-            return content;
+        // Existence PROUVÉE via l'index de repo (aucun aller-retour runner). L'index muet ⇒ non prouvée
+        // ⇒ repli sûr (pas de refus). Vaut pour les deux écritures : edit_file comme write_file.
+        boolean existsOnDisk = repoIndex.indexed(userId, workspace, path);
+        return freshness.refuseWrite(call.name(), path, existsOnDisk).orElse(null);
+    }
+
+    /**
+     * Tient à jour le suivi de fraîcheur après un outil de fichier abouti (F-121 / SF-121-19) et joint
+     * au résultat, le cas échéant, la note « ce fichier a changé depuis ta lecture ». Les autres outils
+     * passent inchangés.
+     */
+    private String withFreshnessNote(AtelierFileFreshness freshness, AgentToolCall call, String content) {
+        String tool = call.name();
+        if ("read_file".equals(tool)) {
+            java.util.Optional<String> note =
+                    freshness.noteRead(arg(call.input(), "path"), content, isPaginatedRead(call.input()));
+            if (note.isPresent()) {
+                String base = content == null ? "" : content;
+                return base.isBlank() ? note.get() : base + "\n\n" + note.get();
+            }
+        } else if (isFileWrite(tool)) {
+            boolean isWrite = "write_file".equals(tool);
+            // write_file connaît le fichier entier (le champ `content`) ; edit_file non (seul le
+            // remplacement) — on n'en garde alors pas d'empreinte, une relecture rétablira la base.
+            // Un edit_file à l'aveugle non refusé (existence non prouvée) reçoit le rappel doux SF-119-05.
+            java.util.Optional<String> reminder = freshness.noteWrite(tool, arg(call.input(), "path"),
+                    isWrite ? arg(call.input(), "content") : null, isWrite);
+            if (reminder.isPresent()) {
+                String base = content == null ? "" : content;
+                return base.isBlank() ? reminder.get() : base + "\n\n" + reminder.get();
+            }
         }
-        String hint = null;
-        if ("edit_file".equals(tool) && !knownFiles.contains(path)) {
-            hint = "Rappel : tu as modifié " + path + " sans l'avoir lu dans ce fil. Relis-le avant de "
-                    + "l'éditer si tu n'es pas sûr de son contenu.";
+        return content;
+    }
+
+    /** Vrai pour une lecture partielle (F-121 / SF-121-19) : {@code offset} au-delà de la 1re ligne, ou
+     * {@code limit} fixé — l'empreinte d'une tranche n'est pas comparable au fichier entier. */
+    private static boolean isPaginatedRead(JsonNode input) {
+        if (input == null) {
+            return false;
         }
-        // Lu ou écrit : désormais connu du fil (une écriture rend le contenu connu du modèle).
-        knownFiles.add(path);
-        if (hint == null) {
-            return content;
-        }
-        String base = content == null ? "" : content;
-        return base.isBlank() ? hint : base + "\n\n" + hint;
+        return (input.hasNonNull("offset") && input.path("offset").asInt(1) > 1)
+                || input.hasNonNull("limit");
     }
 
     private ToolOutcome executeTool(UUID userId, Workspace workspace, String callId, AgentToolCall call,
