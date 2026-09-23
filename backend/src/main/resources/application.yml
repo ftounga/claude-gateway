@@ -189,6 +189,11 @@ app:
     # la sous-boucle suit le modele principal (comportement d'avant SF-149-03). Non valide contre le
     # ModelCatalog (comme `model`) : le catalogue dit ce que le chat propose, pas ce que le harnais execute.
     explore-model: ${APP_ATELIER_EXPLORE_MODEL:claude-sonnet-5}
+    # Modele de la SOUS-BOUCLE `task` (F-150 / SF-150-04) : la sous-tache ecrivaine isolee (worktree)
+    # peut tourner sur un modele configurable. Repli SUR : null/vide => `task` suit le modele principal
+    # (`app.atelier.model`). Non valide contre le ModelCatalog (comme `model`/`explore-model`) : le
+    # catalogue dit ce que le chat propose, pas ce que le harnais execute. Defaut : vide (=> modele principal).
+    task-model: ${APP_ATELIER_TASK_MODEL:}
     # Fenetre de rejeu des TRAJECTOIRES d'outils (F-119 / SF-119-03) : les N derniers tours sont
     # rejoues AVEC leurs resultats d'outils, au-dela en texte seul. Relevee de 5 a 12 : l'agent
     # perdait ses preuves (resultats d'outils) plus vite que ses affirmations (texte garde), d'ou des
