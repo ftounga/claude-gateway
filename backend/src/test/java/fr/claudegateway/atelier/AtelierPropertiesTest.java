@@ -401,9 +401,31 @@ class AtelierPropertiesTest {
 
     @Test
     void theFullCanonicalConstructorCarriesTheParallelism() {
-        // La forme complète (23 composants) est honorée telle quelle.
+        // La forme SF-39-21 (23 composants) est honorée telle quelle (compat sans exploreModel).
         AtelierProperties full = new AtelierProperties(null, null, null, null, null, null, null,
                 null, null, null, null, null, true, null, null, null, null, null, null, null, null, null, 7);
         assertThat(full.exploreParallelism()).isEqualTo(7);
+    }
+
+    // ------------------------------------------- F-149 / SF-149-03 : modèle de la sous-boucle
+
+    @Test
+    void exploreModelIsNullByDefaultSoTheSubLoopFollowsTheMainModel() {
+        // Repli SÛR : le record ne force pas Sonnet (le défaut de prod vit dans application.yml) ;
+        // null => la sous-boucle suit le modèle principal (repli appliqué côté service).
+        assertThat(withMaxIterations(null).exploreModel()).isNull();
+        // Le constructeur de compatibilité SF-39-21 (23 composants) laisse aussi exploreModel à null.
+        AtelierProperties legacy = new AtelierProperties(null, null, null, null, null, null, null,
+                null, null, null, null, null, true, null, null, null, null, null, null, null, null, null, 3);
+        assertThat(legacy.exploreModel()).isNull();
+    }
+
+    @Test
+    void theFullCanonicalConstructorCarriesTheExploreModel() {
+        // La forme complète (24 composants) porte le modèle d'exploration tel quel.
+        AtelierProperties full = new AtelierProperties(null, null, null, null, null, null, null,
+                null, null, null, null, null, true, null, null, null, null, null, null, null, null, null, 3,
+                AtelierProperties.DEFAULT_EXPLORE_MODEL);
+        assertThat(full.exploreModel()).isEqualTo("claude-sonnet-5");
     }
 }
