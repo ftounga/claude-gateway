@@ -240,6 +240,27 @@ class GovernanceRulesProviderTest {
     }
 
     @Test
+    @DisplayName("SF-149-01 : un profil appliqué (applied_at posé) injecte règle ET rôle")
+    void appliedProfileInjectsBothRuleAndRole() {
+        // Ancre F-149 / SF-149-01. Un profil sans fichier est désormais marqué appliqué dès
+        // l'activation (applied_at posé, même machine injoignable) — c'est ce que garantit
+        // GovernanceDepositServiceTest. Il est donc rendu par activeOnWorkspace (barrière deposited(),
+        // F-135), et le provider en tire ses règles ET sa phrase de rôle.
+        GovernancePackage archi = profile("profil-architecte", "Architecte",
+                "Tu interviens comme architecte. Aucune trace de LLM.");
+        GovernanceActivation applied = GovernanceActivation.builder().userId(alice).hostId(host)
+                .packageId(archi.getId()).appliedVersion(1)
+                .status(GovernanceActivationStatus.APPLIED)
+                .appliedAt(java.time.OffsetDateTime.now()).build();
+        when(activationService.activeOnWorkspace(alice, workspace)).thenReturn(List.of(applied));
+
+        assertThat(provider.rulesFor(alice, workspace))
+                .contains("## Architecte").contains("Tu interviens comme architecte.");
+        assertThat(provider.activeProfileRole(alice, workspace))
+                .isEqualTo("Tu interviens comme architecte.");
+    }
+
+    @Test
     @DisplayName("le rôle est lu pour le couple (utilisateur, projet) du tour, et lui seul")
     void roleReadsOnlyTheTurnScope() {
         GovernancePackage archi = profile("profil-architecte", "Architecte", "Tu es architecte. Suite.");
