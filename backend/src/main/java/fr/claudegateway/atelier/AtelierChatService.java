@@ -398,6 +398,20 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "trancher tout seul.\n\n";
     private static final List<String> SKILL_PREFIXES = List.of(".claude/skills/", "skills/");
     /**
+     * Fichiers d'état du <b>sujet courant</b> injectés dans le préfixe (F-148 / SF-148-05), dans cet
+     * ordre : où le sujet en est, puis ce qu'il reste à faire.
+     */
+    private static final List<String> SUBJECT_STATE_FILES = List.of("STATE.md", "PLAN-ACTION.md");
+    /** Borne par fichier de l'état du sujet (F-148 / SF-148-05) : au-delà, la coupe se dit. */
+    private static final int SUBJECT_STATE_MAX_CHARS = 6_000;
+    /** Ce qui remplace la fin coupée d'un fichier d'état : une troncature muette serait pire. */
+    private static final String SUBJECT_STATE_TRUNCATION = "\n… (état tronqué)\n";
+    /** En-tête du bloc « état courant du sujet » (F-148 / SF-148-05). */
+    private static final String SUBJECT_STATE_HEADER =
+            "--- État courant du sujet (STATE.md / PLAN-ACTION.md) ---\n"
+                    + "Reprends le fil à partir de cet état ; inutile de rouvrir ces fichiers pour "
+                    + "t'orienter, ne les ouvre que si tu dois les modifier.\n\n";
+    /**
      * Nombre de skills annoncés dans la consigne (F-39 / SF-39-02, décision D3). Une borne explicite
      * vaut mieux qu'une coupe au caractère près : le point d'arrêt devient prévisible, donc le
      * préfixe cacheable.
@@ -4399,6 +4413,35 @@ public class AtelierChatService implements RelayInterruptTarget {
         String governance = governanceRules(userId, workspace.getId());
         if (governance != null) {
             system.append(GOVERNANCE_HEADER).append('\n').append(governance).append("\n\n");
+        }
+
+        // F-148 / SF-148-05 — ÉTAT COURANT DU SUJET : le contenu borné de STATE.md et PLAN-ACTION.md du
+        // sujet (projet) du tour, pour reprendre le fil sans un tour read_file d'amorçage. F-136
+        // n'injecte que des TITRES (racine du poste) et F-137 met les faits dans le MESSAGE : ce contenu
+        // n'est nulle part ailleurs dans le préfixe. Lu là où les fichiers vivent (même readOptional
+        // target-aware que le CLAUDE.md ci-dessus), borné par fichier. Injecté verbatim : à contenu
+        // stable, octets stables — le préfixe ne change QUE lorsque l'état change réellement (F-134
+        // préservé, même propriété que le CLAUDE.md injecté juste au-dessus). À la RACINE du poste il n'y
+        // a pas de sujet courant, on n'injecte rien.
+        if (!workspace.isHostTerminal()) {
+            StringBuilder subjectState = new StringBuilder();
+            for (String path : SUBJECT_STATE_FILES) {
+                java.util.Optional<String> body = readOptional(userId, workspace, path);
+                if (body.isEmpty() || body.get().isBlank()) {
+                    continue; // Absent ou vide : simplement omis, jamais bloquant (repli passant).
+                }
+                reads++;
+                chars += body.get().length();
+                String content = body.get();
+                String bounded = content.length() > SUBJECT_STATE_MAX_CHARS
+                        ? content.substring(0, SUBJECT_STATE_MAX_CHARS) + SUBJECT_STATE_TRUNCATION
+                        : content;
+                subjectState.append("### ").append(path).append('\n')
+                        .append(bounded.strip()).append("\n\n");
+            }
+            if (subjectState.length() > 0) {
+                system.append(SUBJECT_STATE_HEADER).append(subjectState);
+            }
         }
 
         List<String> tree = safeTree(userId, workspace);
