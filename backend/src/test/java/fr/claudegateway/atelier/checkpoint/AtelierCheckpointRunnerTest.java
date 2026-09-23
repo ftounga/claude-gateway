@@ -271,4 +271,18 @@ class AtelierCheckpointRunnerTest {
         assertThat(AtelierCheckpointVerdict.proceed().hasNotice()).isFalse();
         assertThat(new AtelierCheckpointVerdict(true, "x").notice()).isNull();
     }
+
+    @Test
+    void theEndOfTurnContextCarriesThePlanOfTheTurn() {
+        // Les fabriques historiques n'apportent pas de plan : il est vide, jamais null (F-121 / SF-121-05).
+        assertThat(AtelierCheckpointContext.endOfTurn(userId, workspaceId, "x", List.of()).plan())
+                .isEqualTo(fr.claudegateway.atelier.AtelierPlan.EMPTY);
+
+        fr.claudegateway.atelier.AtelierPlan plan = new fr.claudegateway.atelier.AtelierPlan(List.of(
+                new fr.claudegateway.atelier.AtelierPlan.Step("faire",
+                        fr.claudegateway.atelier.AtelierPlan.Status.PENDING)));
+        AtelierCheckpointContext withPlan = AtelierCheckpointContext.endOfTurn(userId, null,
+                workspaceId, "x", List.of(), AtelierMachineReach.UNKNOWN, plan);
+        assertThat(withPlan.plan()).isEqualTo(plan);
+    }
 }
