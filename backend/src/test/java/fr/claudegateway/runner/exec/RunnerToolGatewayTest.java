@@ -399,6 +399,15 @@ class RunnerToolGatewayTest {
     }
 
     @Test
+    void worktreeFinalizeSendsTaskIdAndMessage() {
+        gateway().worktreeFinalize(target, "toolu_1", "task-42", "mon message");
+
+        JsonNode input = capturedWorktreeInput("worktree_finalize");
+        assertThat(input.path("taskId").asText()).isEqualTo("task-42");
+        assertThat(input.path("message").asText()).isEqualTo("mon message");
+    }
+
+    @Test
     void worktreeCreateRefusesAMalformedTaskIdBeforeEmission() {
         RunnerCallResult result = gateway().worktreeCreate(target, "toolu_1", "pas/valide");
 

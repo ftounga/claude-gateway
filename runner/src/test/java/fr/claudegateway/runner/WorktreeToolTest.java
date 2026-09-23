@@ -128,4 +128,35 @@ class WorktreeToolTest {
         assertFalse(outcome.ok());
         assertEquals("invalid_input", outcome.errorCode());
     }
+
+    @Test
+    void finalizeCommitsTheChangesOnTheBranchAndReturnsTheDiff() throws IOException {
+        seedGitRepo();
+        assertTrue(tool().execute(WorktreeTool.CREATE, task("f1"), ToolContext.none()).ok());
+        // La sous-tâche a écrit dans le worktree.
+        Path worktree = hostRoot.resolve(".atelier-worktrees").resolve("f1");
+        Files.writeString(worktree.resolve("nouveau.txt"), "contenu produit");
+
+        ToolOutcome outcome = tool().execute(WorktreeTool.FINALIZE, task("f1"), ToolContext.none());
+
+        assertTrue(outcome.ok(), () -> "finalize : " + outcome.errorMessage());
+        JsonNode result = MAPPER.readTree(outcome.content());
+        assertTrue(result.get("hasChanges").asBoolean());
+        assertTrue(result.get("committed").asBoolean());
+        assertEquals("atelier/task/f1", result.get("branch").asText());
+        assertTrue(result.get("diffStat").asText().contains("nouveau.txt"), "le diff nomme le fichier");
+    }
+
+    @Test
+    void finalizeWithoutChangesReportsNothingToPickUp() throws IOException {
+        seedGitRepo();
+        assertTrue(tool().execute(WorktreeTool.CREATE, task("f2"), ToolContext.none()).ok());
+
+        ToolOutcome outcome = tool().execute(WorktreeTool.FINALIZE, task("f2"), ToolContext.none());
+
+        assertTrue(outcome.ok());
+        JsonNode result = MAPPER.readTree(outcome.content());
+        assertFalse(result.get("hasChanges").asBoolean());
+        assertFalse(result.get("committed").asBoolean());
+    }
 }

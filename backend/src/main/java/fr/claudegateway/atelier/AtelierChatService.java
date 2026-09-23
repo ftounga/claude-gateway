@@ -3232,7 +3232,12 @@ public class AtelierChatService implements RelayInterruptTarget {
                     () -> interruptedTurns.contains(turnKey(userId, workspace.getId()))
                             || System.currentTimeMillis() >= deadline,
                     reasoning);
-            return new TaskOutcome(ToolOutcome.info(result.answer()),
+            // F-150 / SF-150-05 : restitution — on committe le worktree sur SA branche et on remonte
+            // la référence (branche + diff résumé) DANS la synthèse. La branche reste dans le dépôt
+            // après démontage ; la reprise (merge/cherry-pick) est un acte explicite ultérieur, jamais
+            // un merge aveugle dans un arbre potentiellement sale.
+            String synthesis = result.answer() + taskRestitution(projectTarget, callId, taskId);
+            return new TaskOutcome(ToolOutcome.info(synthesis),
                     result.inputTokens(), result.outputTokens(),
                     result.cacheReadTokens(), result.cacheWriteTokens());
         } catch (RuntimeException ex) {
@@ -3302,6 +3307,43 @@ public class AtelierChatService implements RelayInterruptTarget {
         return message == null || message.isBlank()
                 ? "La sous-tâche n'a pas pu démarrer : worktree indisponible."
                 : message;
+    }
+
+    /**
+     * Restitution d'une sous-tâche (F-150 / SF-150-05) : committe le worktree sur SA branche et rend
+     * une référence (branche + diff résumé) à joindre à la synthèse. Ne casse jamais le tour — un
+     * runner ancien ({@code unsupported_tool}) ou un échec rend une référence vide, la synthèse remonte
+     * quand même. <b>Jamais de merge aveugle</b> : la branche reste dans le dépôt, la reprise est un
+     * acte explicite ultérieur de l'utilisateur.
+     */
+    private String taskRestitution(RunnerTarget projectTarget, String callId, String taskId) {
+        RunnerCallResult finalized;
+        try {
+            finalized = runnerToolGateway.worktreeFinalize(projectTarget, callId, taskId, null);
+        } catch (RuntimeException ex) {
+            return "";
+        }
+        if (finalized == null || !finalized.ok()) {
+            return "";
+        }
+        try {
+            JsonNode node = TASK_MAPPER.readTree(finalized.content());
+            if (!node.path("hasChanges").asBoolean(false)) {
+                return "\n\n(Sous-tâche sans changement : rien à reprendre.)";
+            }
+            String branch = node.path("branch").asText("");
+            String diffStat = node.path("diffStat").asText("");
+            StringBuilder note = new StringBuilder(
+                    "\n\n— Changements isolés sur la branche `").append(branch)
+                    .append("` (la copie de travail réelle n'a pas été touchée). Pour les intégrer, "
+                            + "reprends-la explicitement (merge/cherry-pick).");
+            if (!diffStat.isBlank()) {
+                note.append("\n").append(diffStat);
+            }
+            return note.toString();
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            return "";
+        }
     }
 
     /** Démonte le worktree sans jamais lever : le nettoyage ne doit pas casser le tour (D9). */
