@@ -249,6 +249,61 @@ class AtelierChatServiceTest {
         assertThat(lastToolResultText()).startsWith("Fichier modifié : notes.txt (1 remplacement)");
     }
 
+    // -------------------------------------------------- F-121 / SF-121-06 : MultiEdit (hébergé)
+
+    @Test
+    void multiEditAppliesEveryEditAtomicallyInOneWrite() {
+        // F-121 / SF-121-06 : plusieurs remplacements séquentiels sur l'arbre hébergé, une seule
+        // écriture avec le contenu final, total cumulé des remplacements.
+        stubHappyPath();
+        when(workspaceService.readFile(userId, workspaceId, "notes.txt"))
+                .thenReturn("bonjour monde et monde");
+        agentProvider.enqueueToolCallWithObject("multi_edit",
+                "{\"path\":\"notes.txt\",\"edits\":["
+                        + "{\"old_string\":\"monde\",\"new_string\":\"atelier\",\"replace_all\":true},"
+                        + "{\"old_string\":\"bonjour\",\"new_string\":\"salut\"}]}");
+        agentProvider.enqueueFinal("Modifié.");
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "réécris notes");
+
+        verify(workspaceService).writeFile(userId, workspaceId, "notes.txt", "salut atelier et atelier");
+        assertThat(result.actions()).extracting(a -> a.type() + ":" + a.path()).contains("write:notes.txt");
+        assertThat(lastToolResultText()).startsWith("Fichier modifié : notes.txt (3 remplacements)");
+    }
+
+    @Test
+    void multiEditWritesNothingWhenAnyEditFails() {
+        // F-121 / SF-121-06 : tout-ou-rien. La 2e édition est introuvable → aucune écriture, le
+        // fichier reste intact, et le modèle reçoit une erreur qui situe l'édition fautive.
+        stubHappyPath();
+        when(workspaceService.readFile(userId, workspaceId, "notes.txt")).thenReturn("bonjour monde");
+        agentProvider.enqueueToolCallWithObject("multi_edit",
+                "{\"path\":\"notes.txt\",\"edits\":["
+                        + "{\"old_string\":\"monde\",\"new_string\":\"atelier\"},"
+                        + "{\"old_string\":\"absent\",\"new_string\":\"x\"}]}");
+        agentProvider.enqueueFinal("Rien.");
+
+        service.chat(userId, workspaceId, "édite notes");
+
+        verify(workspaceService, never()).writeFile(any(), any(), any(), any());
+        assertThat(lastToolResultText()).contains("Édition n°2").contains("introuvable");
+    }
+
+    @Test
+    void multiEditRefusesAnEmptyEditList() {
+        // F-121 / SF-121-06 : un tableau edits vide est refusé sans aucune écriture.
+        stubHappyPath();
+        when(workspaceService.readFile(userId, workspaceId, "notes.txt")).thenReturn("bonjour monde");
+        agentProvider.enqueueToolCallWithObject("multi_edit",
+                "{\"path\":\"notes.txt\",\"edits\":[]}");
+        agentProvider.enqueueFinal("Rien.");
+
+        service.chat(userId, workspaceId, "édite notes");
+
+        verify(workspaceService, never()).writeFile(any(), any(), any(), any());
+        assertThat(lastToolResultText()).contains("edits");
+    }
+
     // ------------------------------------------- F-119 / SF-119-05 + F-121 / SF-121-19 : fraîcheur
 
     @Test
