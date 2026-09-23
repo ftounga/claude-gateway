@@ -199,14 +199,14 @@ class AtelierChatServiceReasoningTest {
     @Test
     void continuationStepsStartWithTheReducedEffort() {
         // Premier tour (cadrage) : effort normal `high`. Étape de continuation (relire le fichier
-        // après l'appel d'outil) : effort réduit `low` — enchaîner un outil n'a pas besoin de
+        // après l'appel d'outil) : effort réduit `medium` — enchaîner un outil n'a pas besoin de
         // « réfléchir fort ». Le raisonnement adaptatif reste actif sur les deux tours.
         agentProvider.enqueueToolCall("read_file", "path", "notes.txt");
         agentProvider.enqueueFinal("J'ai lu notes.txt.");
 
         service.chat(userId, workspaceId, "lis notes.txt");
 
-        assertThat(agentProvider.effectiveEfforts).containsExactly("high", "low");
+        assertThat(agentProvider.effectiveEfforts).containsExactly("high", "medium");
     }
 
     // ------------------------------- F-134 / SF-134-05 : l'effort voyage dans la conversation
@@ -225,7 +225,7 @@ class AtelierChatServiceReasoningTest {
                 .extracting(AgentReasoning::effort)
                 .containsOnly("high");
         // …alors que le niveau effectif, lui, baisse bien à l'étape de continuation.
-        assertThat(agentProvider.effectiveEfforts).containsExactly("high", "low");
+        assertThat(agentProvider.effectiveEfforts).containsExactly("high", "medium");
     }
 
     @Test
@@ -247,7 +247,7 @@ class AtelierChatServiceReasoningTest {
         }
         assertThat(directive).as("une consigne d'effort a été glissée").isNotEqualTo(-1);
         assertThat(sent.get(directive).content()).isEmpty();
-        assertThat(sent.get(directive).effort()).isEqualTo("low");
+        assertThat(sent.get(directive).effort()).isEqualTo("medium");
         // Elle précède bien le dernier message — celui qui déclenche la réponse.
         assertThat(directive).isEqualTo(sent.size() - 2);
         assertThat(sent.get(sent.size() - 1).role()).isEqualTo("user");
@@ -311,13 +311,13 @@ class AtelierChatServiceReasoningTest {
     @Test
     void aCleanContinuationKeepsTheReducedEffortDespiteTheSignalPath() {
         // Non-régression du gain F-118 : un enchaînement SANS incident (outil qui réussit, aucun
-        // marqueur d'auto-contradiction) garde l'effort réduit `low` au tour de continuation.
+        // marqueur d'auto-contradiction) garde l'effort réduit `medium` au tour de continuation.
         agentProvider.enqueueToolCall("read_file", "path", "notes.txt");
         agentProvider.enqueueFinal("J'ai lu notes.txt.");
 
         service.chat(userId, workspaceId, "lis notes.txt");
 
-        assertThat(agentProvider.effectiveEfforts).containsExactly("high", "low");
+        assertThat(agentProvider.effectiveEfforts).containsExactly("high", "medium");
     }
 
     @Test
@@ -332,7 +332,7 @@ class AtelierChatServiceReasoningTest {
 
         service.chat(userId, workspaceId, "fais un truc");
 
-        assertThat(agentProvider.effectiveEfforts).containsExactly("high", "low");
+        assertThat(agentProvider.effectiveEfforts).containsExactly("high", "medium");
     }
 
     @Test
