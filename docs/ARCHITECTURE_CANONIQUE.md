@@ -312,6 +312,23 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   - **Aucune clé étrangère** vers `workspaces`/`runner_hosts`, même choix que `usage_turns`,
     `host_map_files` et `prompt_source_files`. Purge explicite à la suppression du compte
     (`deleteByUserId`).
+- **resolution_memory** — mémoire de résolutions « question → conclusion (+ fichiers touchés) » des
+  tours **aboutis**, PAR POSTE, pour proposer une résolution déjà trouvée sur une question similaire
+  (F-148 / SF-148-08, migration `128`). Append par tour abouti ; le rappel se fait par **similarité
+  lexicale** (Jaccard sur tokens significatifs), **pas d'embeddings** (réserve F-148).
+  - `resolution_memory` : `id (uuid)`, `user_id (uuid, NOT NULL)`, `host_id (uuid, NOT NULL)`,
+    `workspace_id (uuid, nullable)`, `question (varchar 4000)`, `conclusion (text)`,
+    `files (varchar 4000)`, `created_at (timestamptz, NOT NULL)`.
+    Index `(user_id, host_id, created_at)`.
+  - **Par poste, pas par sujet** : un problème d'infra tranché dans un sujet vaut pour un autre du
+    même poste. `workspace_id` est rangé pour référence, le rappel filtre par `(user_id, host_id)`.
+  - **Où vit le rappel** : dans le MESSAGE du tour (patron F-137), jamais dans la consigne système —
+    il dépend de la question, l'y mettre casserait le cache de prompt (F-134). Encadré comme une
+    **donnée à vérifier** (anti-injection), jamais une consigne.
+  - **Seul un tour abouti fait mémoire** : ni interrompu, ni coupé au plafond, réponse non vide — un
+    tour inachevé n'a pas de conclusion fiable.
+  - **Aucune clé étrangère**, même choix que `usage_turns` / `host_map_files` / `prompt_source_files`
+    / `repo_index_paths`. Purge explicite à la suppression du compte (`deleteByUserId`).
 
 - **usage_turns** — journal de consommation **par tour** (F-61 / SF-61-01, migration `068` ;
   **coût réel** F-133 / SF-133-01, migration `118`).
