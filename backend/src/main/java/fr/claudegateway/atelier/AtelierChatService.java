@@ -1698,7 +1698,8 @@ public class AtelierChatService implements RelayInterruptTarget {
                             AtelierCheckpointContext.endOfTurn(userId, workspace.getHostId(),
                                     workspaceId, finalText, List.copyOf(writtenPaths),
                                     machineOfTurn.getOrDefault(turnKey(userId, workspaceId),
-                                            fr.claudegateway.atelier.checkpoint.AtelierMachineReach.UNKNOWN)));
+                                            fr.claudegateway.atelier.checkpoint.AtelierMachineReach.UNKNOWN),
+                                    planOfTurn.get()));
                     if (verdict.blocked()) {
                         endOfTurnBlocks++;
                         String correction = AtelierCheckpointRunner.endOfTurnBlockedMessage(verdict);
