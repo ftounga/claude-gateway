@@ -15,6 +15,8 @@ resources:
   # Rendu des diagrammes côté cluster (F-142 / SF-142-06) — pour que le poste du client n'installe
   # rien. Service ClusterIP : appelé par la gateway, jamais exposé hors du cluster, aucun Ingress.
   - diagram-renderer/deployment.yaml
+  # SF-142-07 : le pod de rendu ne sort pas du cluster (il reçoit des descriptions du modèle).
+  - diagram-renderer/networkpolicy.yaml
   - ingress/ingress.yaml
   # Site vitrine de l'éditeur — www.ng-itconsulting.com (F-29 SF-29-04)
   - corporate/configmap.yaml

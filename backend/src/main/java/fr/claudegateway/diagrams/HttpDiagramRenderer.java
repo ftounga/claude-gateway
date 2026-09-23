@@ -70,7 +70,33 @@ public class HttpDiagramRenderer implements DiagramRenderer {
         body.put("code", source);
         body.put("format", format == Format.SVG ? "svg" : "png");
         body.put("width", width == null || width <= 0 ? properties.getDefaultWidth() : width);
+        return call(body, format);
+    }
 
+    @Override
+    public Rendered renderCloud(JsonNode spec) {
+        if (!isAvailable()) {
+            throw new DiagramRendererUnavailableException(
+                    "Le rendu de diagrammes n'est pas configuré sur cette installation.");
+        }
+        if (spec == null || !spec.isObject() || !spec.path("nodes").isArray()
+                || spec.path("nodes").isEmpty()) {
+            throw new DiagramRejectedException("La description doit porter au moins un nœud "
+                    + "(« nodes »), chacun avec son « id », son « type » et son « label ».");
+        }
+        String payload = spec.toString();
+        if (payload.length() > properties.getMaxCodeChars()) {
+            throw new DiagramRejectedException("Description trop longue : " + payload.length()
+                    + " caractères pour un maximum de " + properties.getMaxCodeChars() + ".");
+        }
+        ObjectNode body = mapper.createObjectNode();
+        body.put("engine", "cloud");
+        body.set("spec", spec);
+        return call(body, Format.PNG);
+    }
+
+    /** L'appel au service, partagé par les deux moteurs — une seule façon de lire une réponse. */
+    private Rendered call(ObjectNode body, Format format) {
         HttpRequest request = HttpRequest.newBuilder(URI.create(base() + "/render"))
                 .timeout(properties.getTimeout())
                 .header("Content-Type", "application/json")
@@ -99,7 +125,6 @@ public class HttpDiagramRenderer implements DiagramRenderer {
             return new Rendered(image, format);
         }
         if (status == 400 || status == 413 || status == 422) {
-            // Le diagramme est en cause : on rend la raison du moteur, qui permet de le corriger.
             throw new DiagramRejectedException(reason(response.body()));
         }
         throw new DiagramRendererUnavailableException(

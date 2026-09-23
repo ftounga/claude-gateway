@@ -165,4 +165,66 @@ class DiagramToolExecutorTest {
         assertThat(DiagramToolExecutor.fileName("mon archi (v2)", Format.SVG)).isEqualTo("mon-archi-v2.svg");
         assertThat(DiagramToolExecutor.fileName(null, Format.PNG)).startsWith("diagramme-").endsWith(".png");
     }
+    // ---------------------------------------------------------------- F-142 / SF-142-07 : icônes officielles
+
+    @Test
+    @DisplayName("LE CRITÈRE : engine=cloud rend depuis une DESCRIPTION, et rien d'autre n'est exécuté")
+    void thecloudEngineRendersFromADescription() {
+        when(renderer.renderCloud(any()))
+                .thenReturn(new Rendered("PNG".getBytes(StandardCharsets.UTF_8), Format.PNG));
+        when(deposit.deposit(any(), any(), anyString(), anyString(), any(), eq("image/png"), anyString()))
+                .thenReturn("cible-aws.png");
+        ObjectNode spec = mapper.createObjectNode();
+        spec.put("title", "Cible AWS");
+        spec.putArray("nodes").addObject().put("id", "db").put("type", "aws.rds").put("label", "RDS");
+        ObjectNode input = mapper.createObjectNode();
+        input.put("engine", "cloud");
+        input.set("spec", spec);
+        input.put("filename", "cible-aws");
+
+        DiagramToolExecutor.Outcome outcome = executor.execute(userId, workspace, "call-7", input);
+
+        assertThat(outcome.error()).isFalse();
+        assertThat(outcome.content()).contains("cible-aws.png");
+        // Le moteur Mermaid n'a PAS été appelé : les deux voies restent distinctes.
+        verify(renderer, never()).render(anyString(), any(), any());
+        ArgumentCaptor<com.fasterxml.jackson.databind.JsonNode> sent =
+                ArgumentCaptor.forClass(com.fasterxml.jackson.databind.JsonNode.class);
+        verify(renderer).renderCloud(sent.capture());
+        assertThat(sent.getValue().path("title").asText()).isEqualTo("Cible AWS");
+    }
+
+    @Test
+    @DisplayName("engine=cloud sans description : refus qui ENSEIGNE la forme attendue, aucun rendu")
+    void thecloudEngineWithoutASpecTeaches() {
+        ObjectNode input = mapper.createObjectNode();
+        input.put("engine", "cloud");
+
+        DiagramToolExecutor.Outcome outcome = executor.execute(userId, workspace, "call-8", input);
+
+        assertThat(outcome.error()).isTrue();
+        assertThat(outcome.content()).contains("spec").contains("nœuds").contains("liens");
+        verify(renderer, never()).renderCloud(any());
+        verify(renderer, never()).render(anyString(), any(), any());
+    }
+
+    @Test
+    @DisplayName("un type inconnu remonte la raison ET les types proches : la réponse apprend le vocabulaire")
+    void anunknownTypeTeachesTheVocabulary() {
+        when(renderer.renderCloud(any())).thenThrow(new DiagramRejectedException(
+                "Type de nœud inconnu : « aws.magique ». Types proches : aws.alb, aws.rds."));
+        ObjectNode spec = mapper.createObjectNode();
+        spec.putArray("nodes").addObject().put("id", "a").put("type", "aws.magique");
+        ObjectNode input = mapper.createObjectNode();
+        input.put("engine", "cloud");
+        input.set("spec", spec);
+
+        DiagramToolExecutor.Outcome outcome = executor.execute(userId, workspace, "call-9", input);
+
+        assertThat(outcome.error()).isTrue();
+        assertThat(outcome.content())
+                .contains("Types proches")
+                .contains("Corrige la description");
+        verify(deposit, never()).deposit(any(), any(), anyString(), anyString(), any(), anyString(), anyString());
+    }
 }

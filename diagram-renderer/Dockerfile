@@ -11,13 +11,19 @@ ENV PUPPETEER_SKIP_DOWNLOAD=true \
     CHROME_BIN=/usr/bin/chromium \
     NODE_ENV=production
 
+# F-142 / SF-142-07 : python + graphviz + `diagrams` pour les ICÔNES OFFICIELLES (AWS/Azure/GCP/
+# on-prem). Ici aussi, c'est la gateway qui rend — le poste du client n'installe rien.
 RUN apk add --no-cache chromium ttf-freefont font-noto font-noto-emoji \
+        python3 py3-pip graphviz ttf-dejavu \
     && npm install -g @mermaid-js/mermaid-cli@11.4.2 \
+    && pip install --no-cache-dir --break-system-packages diagrams==0.24.4 \
     && adduser -D -u 10001 renderer
 
 WORKDIR /app
-COPY server.js puppeteer.json ./
-RUN chown -R renderer:renderer /app
+COPY server.js puppeteer.json cloud.py check_catalog.py ./
+# Le catalogue d'icônes est vérifié AU BUILD : une entrée qui ne désigne aucune classe réelle ferait
+# échouer le premier schéma d'un client, et pas la construction de l'image. On le refuse ici.
+RUN python3 check_catalog.py && chown -R renderer:renderer /app
 
 USER renderer
 EXPOSE 8080

@@ -90,127 +90,78 @@ le demande**. On l'écrit avec la bibliothèque Python `python-pptx` et on l'ex�
 
 ## Insérer un diagramme dans une slide (schéma d'architecture, flux, séquence)
 
-Pour un **schéma** — architecture cloud/on-prem, flux, séquence —, ne mets pas une image inventée par
-une IA (icônes fausses, texte en charabia). On fait du **diagramme-as-code** : exact, éditable,
-déterministe. La chaîne est **diagramme Mermaid → image PNG → `add_picture`**, et elle tourne
-**entièrement sur le terminal (sandbox), jamais sur le serveur/cluster** — comme le rendu des slides en
-images ci-dessous.
+**La gateway rend le diagramme. Tu n'installes RIEN sur la machine.**
 
-1. **Écris le diagramme en Mermaid** (même langage que dans les pages, cf. F-142/SF-142-01) : `flowchart`
-   (flux), `sequenceDiagram` (séquence), `architecture-beta` (architecture cloud/on-prem : group,
-   service, edge). **FACTUEL (F-119)** : ne dessine que ce qui est **établi** — jamais un composant ni un
-   lien inventé ; ce qui est supposé se marque « (supposé) ».
+C'est la règle depuis F-142 / SF-142-06 : l'ancienne recette faisait installer un moteur de rendu et un
+navigateur sur le poste, ce qu'un poste d'entreprise refuse (proxy, droits, 150 Mo à télécharger) — et
+le deck partait sans ses diagrammes. Appelle **`render_diagram`** : l'image est rendue côté gateway, **déposée dans le
+projet**, et tu reçois son chemin.
 
-2. **Rends-le en PNG dans le sandbox** avec `mmdc` (mermaid-cli). Mets l'échec **nommé** si l'outil manque
-   (jamais de traceback nu) :
+**C'est GRATUIT** : aucun appel fournisseur, aucun jeton — contrairement à `generate_image`. Dessine
+dès qu'un schéma aide à comprendre.
 
-   ```bash
-   # Sandbox : installe si besoin (tire chromium/puppeteer).
-   npm install -g @mermaid-js/mermaid-cli   # fournit `mmdc`
-   mmdc -i archi.mmd -o archi.png -b transparent -w 1600
+1. **Écris le diagramme en Mermaid** — `flowchart` (flux), `sequenceDiagram` (séquence),
+   `architecture-beta` (architecture, icônes génériques). **FACTUEL (F-119)** : ne dessine que ce qui
+   est **établi** — jamais un composant ni un lien inventé ; ce qui est supposé se marque « (supposé) ».
+
+2. **Appelle `render_diagram`** avec ce code et un `filename` parlant :
+
+   ```
+   render_diagram(code: "flowchart LR\n  A[Poste] --> B[Gateway] --> C[(RDS)]",
+                  filename: "flux-donnees")
+   → « Diagramme rendu par la gateway et déposé dans le projet sous « flux-donnees.png » »
    ```
 
-   - **Échec nommé** : si `mmdc` (ou son chromium) est absent **et** l'installation est bloquée (poste
-     verrouillé, proxy d'entreprise), **dis-le** clairement — par exemple :
-     « Le moteur de rendu de diagramme (`mmdc`/chromium) n'est pas disponible ici et son installation est
-     bloquée. Je peux (a) rendre ce diagramme dans une **page** (rendu navigateur, zéro installation,
-     cf. diagrammes en page) et livrer le deck sans cette image, ou (b) insérer le **code Mermaid en zone
-     de texte** dans la slide. » **Ne fabrique pas** de fausse image, ne pose pas d'image cassée.
-   - Si le code Mermaid est invalide, `mmdc` échoue : signale CE diagramme en échec, n'insère pas d'image,
-     livre le reste du deck.
+   - **Échec du rendu** : la réponse dit **pourquoi** (erreur du parseur, service indisponible).
+     Corrige ton code, ou — si le service est indisponible — livre le diagramme **dans une page**
+     (bloc `<pre class="mermaid">`, rendu par le navigateur, sans rien installer) et dis-le.
+     **Ne fabrique pas** de fausse image, ne pose pas d'image cassée. **N'installe rien.**
 
-3. **Insère le PNG dans la slide** avec `python-pptx`, avec un **titre** et, si utile, une **légende** :
+3. **Insère le PNG dans la slide** avec `python-pptx`, avec un **titre** et, si utile, une légende :
 
    ```python
    s = prs.slides.add_slide(prs.slide_layouts[5])   # disposition « titre seul »
-   s.shapes.title.text = "Architecture cible — flux d'ingestion"
-   s.shapes.add_picture("archi.png", Inches(0.6), Inches(1.4), width=Inches(9))
-   # Légende facultative sous le schéma :
-   box = s.shapes.add_textbox(Inches(0.6), Inches(6.6), Inches(9), Inches(0.5))
-   box.text_frame.text = "Source : carte d'infra du poste (établi). Le lien (supposé) est marqué."
+   s.shapes.title.text = "Architecture cible"
+   s.shapes.add_picture("flux-donnees.png", Inches(0.8), Inches(1.6), width=Inches(8.4))
    ```
 
-   Dimensionne l'image pour tenir dans la slide (largeur ~9 pouces sur un deck 10 pouces) ; garde le
-   **code Mermaid** (le `.mmd`) à côté du deck : le diagramme reste **éditable et régénérable**.
+## Icônes cloud officielles (AWS/Azure/GCP/on-prem) : `engine=cloud`
 
-4. Le reste est identique : le `.pptx` porte la slide, et l'aperçu in-app (ci-dessous) la rend en PNG
-   comme les autres — le diagramme est lisible à l'ouverture **et** dans la visionneuse, sans rien
-   ajouter côté application.
+Pour un livrable client soigné, les **vraies icônes** (AWS, Azure, GCP, on-prem) valent mieux que les
+formes génériques. Là encore, **la gateway s'en charge** — plus de `pip`, plus de `graphviz`, plus rien
+sur la machine du client (F-142 / SF-142-07).
 
-## Icônes cloud officielles (AWS/Azure/GCP/on-prem) : la lib `diagrams`
+Tu écris une **description**, jamais du code :
 
-`architecture-beta` (Mermaid, ci-dessus) rend la **structure** avec des icônes **génériques**. Pour un
-livrable **soigné** avec les **vrais glyphes de service** — S3, Lambda, RDS, API Gateway, VNet, GKE… —,
-fais du diagramme-as-code avec la lib Python **`diagrams`** (mingrammer), qui s'appuie sur **graphviz**.
-La sortie est un **PNG** que tu insères dans une **slide** (`add_picture`, ci-dessus) **ou** que tu joins
-à une **page** (F-109, image jointe référencée par `<img src="…">`). Tout tourne **dans le sandbox, jamais
-sur le serveur/cluster** — comme le rendu Mermaid et le rendu des slides.
+```
+render_diagram(engine: "cloud", filename: "cible-aws", spec: {
+  "title": "Cible AWS",
+  "direction": "LR",
+  "groups": [{"id": "vpc", "label": "VPC production"}],
+  "nodes": [
+    {"id": "u",   "type": "onprem.users",   "label": "Agents"},
+    {"id": "alb", "type": "aws.alb",        "label": "ALB",            "group": "vpc"},
+    {"id": "ecs", "type": "aws.ecs",        "label": "ECS Fargate",    "group": "vpc"},
+    {"id": "rds", "type": "aws.rds",        "label": "RDS PostgreSQL", "group": "vpc"}
+  ],
+  "edges": [{"from": "u", "to": "alb", "label": "HTTPS"},
+            {"from": "alb", "to": "ecs"}, {"from": "ecs", "to": "rds"}]
+})
+```
 
-**Quel outil choisir ?**
+- **Les types** ont la forme `famille.service` : `aws.alb`, `aws.ecs`, `aws.eks`, `aws.lambda`,
+  `aws.rds`, `aws.aurora`, `aws.dynamodb`, `aws.s3`, `aws.sqs`, `aws.sns`, `aws.cloudfront`,
+  `aws.apigateway`, `aws.iam`, `aws.secretsmanager`… et de même pour `azure.*`, `gcp.*`, `onprem.*`
+  (`onprem.postgresql`, `onprem.kafka`, `onprem.nginx`, `onprem.users`…), plus `k8s.*`.
+- **Un type inconnu est refusé** avec la liste des types proches : lis la réponse, elle t'apprend le
+  vocabulaire. **N'invente pas** un type, et ne remplace pas un composant par un autre « qui y
+  ressemble » — un schéma faux est pire qu'un schéma absent.
+- **Un lien vers un nœud non déclaré est refusé** : déclare d'abord, relie ensuite.
 
-- **`diagrams` = le haut de gamme.** Une **architecture cloud** avec les **icônes officielles** (livrable
-  client soigné). **Exige** `python` + le binaire `graphviz` (`dot`) : dispo dans le **sandbox**, souvent
-  **absent d'un poste banque verrouillé**.
-- **Mermaid `architecture-beta` = le rapide et le portable.** **Zéro installation** (rendu navigateur en
-  page, cf. F-142/SF-142-01, ou `mmdc` en slide), icônes génériques. C'est le **cœur** quand on ne peut
-  rien installer, et le **repli** de `diagrams`.
+**Quand choisir quoi** : `engine=cloud` pour une architecture cloud destinée au client (icônes
+officielles) ; Mermaid pour un flux, une séquence, un enchaînement logique, ou une architecture
+générique. Dans les deux cas, **rien ne s'installe nulle part**.
 
-**La recette :**
-
-1. **Installe (sandbox)** la lib et graphviz — échec **nommé** si l'installation est bloquée :
-
-   ```bash
-   pip install diagrams          # la lib Python (mingrammer)
-   apt-get install -y graphviz   # le binaire `dot` (ou `brew install graphviz`)
-   ```
-
-   - **Échec nommé + repli** : si `diagrams` ou `graphviz` sont absents **et** l'installation est bloquée
-     (poste verrouillé, proxy d'entreprise), **dis-le** clairement — par exemple : « Les icônes cloud
-     officielles (lib `diagrams` + graphviz) ne sont pas disponibles ici et l'installation est bloquée.
-     Je bascule sur **Mermaid `architecture-beta`** (rendu navigateur/`mmdc`, zéro installation, icônes
-     génériques). » Puis **produis le diagramme en Mermaid** (recette ci-dessus / diagrammes en page).
-     **Ne fabrique pas** de fausse image, ne pose pas d'image cassée.
-
-2. **Écris le diagramme en Python** avec les **nœuds officiels** — `diagrams.aws.*`, `diagrams.azure.*`,
-   `diagrams.gcp.*`, `diagrams.onprem.*`. Garde l'import **gardé** (échec nommé, pas de traceback nu) :
-
-   ```python
-   import sys
-   try:
-       from diagrams import Diagram, Cluster
-       from diagrams.aws.compute import Lambda
-       from diagrams.aws.network import APIGateway
-       from diagrams.aws.database import RDS
-       from diagrams.aws.storage import S3
-   except ModuleNotFoundError:
-       sys.exit(
-           "La lib `diagrams` (icônes cloud officielles) est absente. Sandbox : "
-           "`pip install diagrams` + `apt-get install graphviz`. Poste verrouillé : "
-           "si l'installation est bloquée, basculer sur Mermaid architecture-beta (zéro installation)."
-       )
-
-   # `dot` (graphviz) rend le PNG. show=False : ne pas ouvrir de fenêtre.
-   with Diagram("Architecture cible", filename="archi", outformat="png", show=False):
-       api = APIGateway("API Gateway")
-       with Cluster("Traitement"):
-           fn = Lambda("Ingestion")
-       api >> fn >> RDS("Métadonnées")
-       fn >> S3("Documents")
-   # -> produit archi.png
-   ```
-
-   **FACTUEL (F-119)** : ne dessine que l'architecture **établie** (celle que tu as lue dans le projet ou
-   le sujet) — jamais un service ni un lien **inventé** ; ce qui est supposé se marque « (supposé) ».
-   Si le code `diagrams` est invalide, `graphviz`/`dot` échoue : signale CE diagramme en échec, n'insère
-   pas d'image, livre le reste.
-
-3. **Insère le PNG** — comme n'importe quelle image :
-   - **slide** : `s.shapes.add_picture("archi.png", Inches(0.6), Inches(1.4), width=Inches(9))`
-     (mêmes titre/légende que la recette Mermaid ci-dessus) ;
-   - **page** (F-109) : joins `archi.png` à la page (pièce jointe) et référence-la `<img src="archi.png">`.
-
-   Garde le **code Python** du diagramme à côté du livrable : le diagramme reste **éditable et
-   régénérable**.
 
 ## Images décoratives (génération IA) : `generate_image`, ornement seulement
 

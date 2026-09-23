@@ -34,6 +34,15 @@ public class DiagramToolCatalog {
             + "bloc <pre class=\"mermaid\"> que la page rend elle-même), en document (.docx).\n"
             + "GRATUIT : ce rendu n'appelle aucun fournisseur et ne consomme aucun jeton — contrairement "
             + "à generate_image. Dessine dès qu'un schéma aide à comprendre.\n"
+            + "DEUX MOTEURS : par défaut du Mermaid (« code »). Pour une ARCHITECTURE CLOUD avec les "
+            + "ICÔNES OFFICIELLES (AWS, Azure, GCP, on-prem), passe engine=cloud et donne « spec » : "
+            + "{title, direction (LR/TB), groups:[{id,label}], nodes:[{id,type,label,group}], "
+            + "edges:[{from,to,label}]}. Les types sont de la forme « aws.rds », « aws.ecs », "
+            + "« aws.alb », « aws.s3 », « aws.lambda », « azure.aks », « gcp.gke », "
+            + "« onprem.postgresql », « onprem.kafka », « onprem.users »… Un type inconnu est REFUSÉ "
+            + "avec la liste des types proches : lis la réponse et corrige, elle t'apprend le "
+            + "vocabulaire. Tu écris une DESCRIPTION, jamais du code : rien de ce que tu donnes n'est "
+            + "exécuté.\n"
             + "FACTUEL : ne dessine que ce qui est établi ; ce qui est supposé se marque « (supposé) ». "
             + "Si le rendu échoue, DIS-LE avec la raison rendue — ne fabrique jamais une image, et "
             + "n'invente pas un composant pour faire joli.";
@@ -74,14 +83,24 @@ public class DiagramToolCatalog {
         return new AgentTool(RENDER,
                 "REND UN DIAGRAMME en image, côté gateway, et le dépose dans le projet ; te rend son "
                         + "chemin pour l'insérer en slide (add_picture), en page (<img>) ou en document. "
-                        + "Donne « code » en Mermaid (flowchart, sequenceDiagram, architecture-beta…). "
+                        + "Donne « code » en Mermaid (flowchart, sequenceDiagram, architecture-beta…), "
+                        + "ou engine=cloud + « spec » pour les ICÔNES OFFICIELLES AWS/Azure/GCP/on-prem. "
                         + "N'installe rien sur la machine du client : le rendu n'a PAS lieu là-bas. "
                         + "GRATUIT (aucun jeton, aucun fournisseur). Si le diagramme est invalide, la "
                         + "réponse dit pourquoi : corrige le code, ne fabrique pas d'image.",
                 Map.of("type", "object",
                         "properties", Map.of(
                                 "code", Map.of("type", "string",
-                                        "description", "Le diagramme en Mermaid."),
+                                        "description", "Le diagramme en Mermaid (moteur par défaut)."),
+                                "engine", Map.of("type", "string",
+                                        "description", "mermaid (défaut) ou cloud (icônes officielles "
+                                                + "AWS/Azure/GCP/on-prem, à partir de « spec »).",
+                                        "enum", List.of("mermaid", "cloud")),
+                                "spec", Map.of("type", "object",
+                                        "description", "Pour engine=cloud : la DESCRIPTION du schéma — "
+                                                + "title, direction, groups[{id,label}], "
+                                                + "nodes[{id,type,label,group}], edges[{from,to,label}]. "
+                                                + "Des données, jamais du code."),
                                 "format", Map.of("type", "string",
                                         "description", "png (défaut, pour une slide ou un document) ou "
                                                 + "svg (net à tout zoom, pour une page).",

@@ -140,16 +140,16 @@ class GovernancePackageSeederTest {
         // SF-129-03 : le rendu par images pour l'aperçu in-app, dans le sandbox (pas de composant serveur).
         assertThat(pptx.getContent()).contains("pdftoppm").contains("--convert-to pdf")
                 .containsIgnoringCase("png");
-        // SF-142-02 : la recette « diagramme dans une slide » — Mermaid → PNG (mmdc) → add_picture,
-        // dans le sandbox, échec nommé si le moteur manque, et la règle factuelle (F-119).
+        // SF-142-06 (remplace SF-142-02) : la recette « diagramme dans une slide » passe par LA GATEWAY
+        // — render_diagram → PNG déposé → add_picture. Ce qui est protégé ici a changé de nature : ce
+        // n'est plus « la recette d'installation est complète » mais « on n'installe plus rien ».
         assertThat(pptx.getContent()).containsIgnoringCase("mermaid")
-                .contains("mmdc").contains("add_picture")
-                .containsIgnoringCase("sandbox").containsIgnoringCase("factuel");
-        // SF-142-03 : la recette « icônes cloud officielles » — lib diagrams (nœuds officiels) → PNG via
-        // graphviz → slide/page, dans le sandbox, repli NOMMÉ sur Mermaid architecture-beta, factuel.
-        assertThat(pptx.getContent()).contains("diagrams")
-                .containsIgnoringCase("graphviz").contains("diagrams.aws")
-                .contains("architecture-beta")
+                .contains("render_diagram").contains("add_picture")
+                .contains("Tu n'installes RIEN sur la machine").containsIgnoringCase("factuel");
+        // SF-142-07 (remplace SF-142-03) : les icônes cloud officielles passent par engine=cloud et une
+        // DESCRIPTION (types « aws.rds »…), rendue par la gateway — plus de lib à poser sur le poste.
+        assertThat(pptx.getContent()).contains("engine: \"cloud\"")
+                .contains("aws.rds").contains("architecture-beta")
                 .containsIgnoringCase("officielles");
         // SF-142-04 : la doctrine « image décorative » — generate_image, ornement seulement, JAMAIS
         // un schéma d'architecture (frontière avec le diagramme-as-code).
