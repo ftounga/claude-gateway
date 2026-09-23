@@ -87,9 +87,16 @@ public class DiagramToolExecutor {
             return Outcome.error("Diagramme rendu (" + rendered.bytes().length + " octets), mais son dépôt "
                     + "dans le projet a échoué : réessaie, ou livre le diagramme dans une page.");
         }
+        String warning = rendered.hasUnknownTypes()
+                // F-142 / SF-142-09 : dit, et pas seulement dessiné. L'utilisateur doit savoir quels
+                // composants n'ont pas d'icône officielle — c'est à lui de juger si c'est acceptable.
+                ? " ATTENTION : ces composants n'ont pas d'icône officielle et sont dessinés en boîte "
+                        + "neutre — " + rendered.unknownTypes() + ". DIS-LE à l'utilisateur ; ne remplace "
+                        + "jamais un composant par une icône approchante."
+                : "";
         return new Outcome("Diagramme rendu par la gateway et déposé dans le projet sous « " + deposited
                 + " ». Insère ce chemin : add_picture pour une slide, <img src=\"" + deposited + "\"> pour "
-                + "une page, image pour un document. Rien n'a été installé sur la machine.", false);
+                + "une page, image pour un document. Rien n'a été installé sur la machine." + warning, false);
     }
 
     /** Titre lisible pour l'étape et le journal : la première ligne du diagramme, jamais tout le code. */

@@ -12,6 +12,7 @@ Sortie  : le chemin du PNG écrit, sur la sortie standard. Toute erreur part en 
           avec un message destiné à être LU (il dit quoi corriger), et un code de retour non nul.
 """
 import json
+import re
 import os
 import sys
 
@@ -20,89 +21,106 @@ MAX_GROUPS = 12
 MAX_EDGES = 120
 MAX_LABEL = 120
 
-# Le catalogue des icônes servies. Volontairement FERMÉ : un type inconnu est refusé avec des
-# suggestions, plutôt que rendu avec une icône approchante — un schéma d'architecture faux est pire
-# qu'un schéma absent.
-CATALOG = {
-    # --- AWS
-    "aws.alb": ("diagrams.aws.network", "ELB"),
-    "aws.apigateway": ("diagrams.aws.network", "APIGateway"),
-    "aws.cloudfront": ("diagrams.aws.network", "CloudFront"),
-    "aws.route53": ("diagrams.aws.network", "Route53"),
-    "aws.vpc": ("diagrams.aws.network", "VPC"),
-    "aws.ec2": ("diagrams.aws.compute", "EC2"),
-    "aws.ecs": ("diagrams.aws.compute", "ECS"),
-    "aws.eks": ("diagrams.aws.compute", "EKS"),
-    "aws.lambda": ("diagrams.aws.compute", "Lambda"),
-    "aws.fargate": ("diagrams.aws.compute", "Fargate"),
-    "aws.rds": ("diagrams.aws.database", "RDS"),
-    "aws.aurora": ("diagrams.aws.database", "Aurora"),
-    "aws.dynamodb": ("diagrams.aws.database", "Dynamodb"),
-    "aws.elasticache": ("diagrams.aws.database", "ElastiCache"),
-    "aws.s3": ("diagrams.aws.storage", "S3"),
-    "aws.efs": ("diagrams.aws.storage", "EFS"),
-    "aws.sqs": ("diagrams.aws.integration", "SQS"),
-    "aws.sns": ("diagrams.aws.integration", "SNS"),
-    "aws.eventbridge": ("diagrams.aws.integration", "Eventbridge"),
-    "aws.cloudwatch": ("diagrams.aws.management", "Cloudwatch"),
-    "aws.iam": ("diagrams.aws.security", "IAM"),
-    "aws.secretsmanager": ("diagrams.aws.security", "SecretsManager"),
-    "aws.waf": ("diagrams.aws.security", "WAF"),
-    "aws.cognito": ("diagrams.aws.security", "Cognito"),
-    "aws.ecr": ("diagrams.aws.compute", "ECR"),
-    # --- Azure
-    "azure.aks": ("diagrams.azure.compute", "AKS"),
-    "azure.vm": ("diagrams.azure.compute", "VM"),
-    "azure.functions": ("diagrams.azure.compute", "FunctionApps"),
-    "azure.appservice": ("diagrams.azure.compute", "AppServices"),
-    "azure.sql": ("diagrams.azure.database", "SQLDatabases"),
-    "azure.postgresql": ("diagrams.azure.database", "DatabaseForPostgresqlServers"),
-    "azure.cosmosdb": ("diagrams.azure.database", "CosmosDb"),
-    "azure.storage": ("diagrams.azure.storage", "StorageAccounts"),
-    "azure.loadbalancer": ("diagrams.azure.network", "LoadBalancers"),
-    "azure.appgateway": ("diagrams.azure.network", "ApplicationGateway"),
-    "azure.vnet": ("diagrams.azure.network", "VirtualNetworks"),
-    "azure.keyvault": ("diagrams.azure.security", "KeyVaults"),
-    "azure.monitor": ("diagrams.azure.analytics", "AnalysisServices"),
-    # --- GCP
-    "gcp.gke": ("diagrams.gcp.compute", "GKE"),
-    "gcp.gce": ("diagrams.gcp.compute", "ComputeEngine"),
-    "gcp.functions": ("diagrams.gcp.compute", "Functions"),
-    "gcp.run": ("diagrams.gcp.compute", "Run"),
-    "gcp.sql": ("diagrams.gcp.database", "SQL"),
-    "gcp.spanner": ("diagrams.gcp.database", "Spanner"),
-    "gcp.bigquery": ("diagrams.gcp.analytics", "BigQuery"),
-    "gcp.storage": ("diagrams.gcp.storage", "Storage"),
-    "gcp.pubsub": ("diagrams.gcp.analytics", "PubSub"),
-    "gcp.lb": ("diagrams.gcp.network", "LoadBalancing"),
-    # --- on-prem / générique
-    "onprem.server": ("diagrams.onprem.compute", "Server"),
-    "onprem.docker": ("diagrams.onprem.container", "Docker"),
-    "onprem.postgresql": ("diagrams.onprem.database", "PostgreSQL"),
-    "onprem.mysql": ("diagrams.onprem.database", "MySQL"),
-    "onprem.oracle": ("diagrams.onprem.database", "Oracle"),
-    "onprem.mongodb": ("diagrams.onprem.database", "MongoDB"),
-    "onprem.redis": ("diagrams.onprem.inmemory", "Redis"),
-    "onprem.kafka": ("diagrams.onprem.queue", "Kafka"),
-    "onprem.rabbitmq": ("diagrams.onprem.queue", "Rabbitmq"),
-    "onprem.nginx": ("diagrams.onprem.network", "Nginx"),
-    "onprem.haproxy": ("diagrams.onprem.network", "Haproxy"),
-    "onprem.vault": ("diagrams.onprem.security", "Vault"),
-    "onprem.jenkins": ("diagrams.onprem.ci", "Jenkins"),
-    "onprem.gitlab": ("diagrams.onprem.vcs", "Gitlab"),
-    "onprem.grafana": ("diagrams.onprem.monitoring", "Grafana"),
-    "onprem.prometheus": ("diagrams.onprem.monitoring", "Prometheus"),
-    "onprem.elasticsearch": ("diagrams.elastic.elasticsearch", "Elasticsearch"),
-    "onprem.user": ("diagrams.onprem.client", "User"),
-    "onprem.users": ("diagrams.onprem.client", "Users"),
-    "onprem.client": ("diagrams.onprem.client", "Client"),
-    "onprem.switch": ("diagrams.generic.network", "Switch"),
-    "onprem.firewall": ("diagrams.generic.network", "Firewall"),
-    "k8s.pod": ("diagrams.k8s.compute", "Pod"),
-    "k8s.deployment": ("diagrams.k8s.compute", "Deploy"),
-    "k8s.service": ("diagrams.k8s.network", "SVC"),
-    "k8s.ingress": ("diagrams.k8s.network", "Ing"),
+# ---------------------------------------------------------------------------------------------------
+# LA RÉSOLUTION DES ICÔNES (F-142 / SF-142-09)
+#
+# Première version : un catalogue de 74 types écrits à la main. Défaut constaté en production le
+# 2026-09-24 — « la NAT privée et la transit gateway n'ont pas d'icône », puis, pire, « le groupe
+# réseau entreprise est représenté par un poste client » : faute de trouver le bon type, on prenait
+# celui qui ressemblait, et un composant FAUX partait dans un livrable client.
+#
+# La bibliothèque expose des CENTAINES d'icônes. On les résout donc toutes, automatiquement : un type
+# « aws.natgateway » cherche la classe dont le nom normalisé vaut « natgateway » dans les modules de
+# « diagrams.aws ». Plus de liste à tenir, plus de composant manquant — et quand il n'existe vraiment
+# rien, une boîte NEUTRE, jamais une icône approchante.
+# ---------------------------------------------------------------------------------------------------
+
+# Les familles ouvertes à la résolution. Fermées volontairement : on dessine des architectures.
+FAMILIES = ("aws", "azure", "gcp", "k8s", "onprem", "generic", "elastic", "saas", "oci", "digitalocean")
+
+# Le nœud de repli : une boîte NEUTRE, sans marque.
+FALLBACK = ("diagrams.generic.blank", "Blank")
+
+# Quelques noms d'usage qui ne correspondent pas au nom de la classe. Courte, et c'est voulu : tout
+# le reste se résout tout seul.
+ALIASES = {
+    "aws.alb": "elbapplicationloadbalancer",
+    "aws.nlb": "elbnetworkloadbalancer",
+    "aws.clb": "elbclassicloadbalancer",
+    "aws.users": "user",
+    "onprem.postgres": "postgresql",
+    "onprem.k8s": "kubernetes",
 }
+
+_INDEX = {}
+
+
+def _normalize(name):
+    """« NAT Gateway », « nat_gateway », « NATGateway » désignent la même chose."""
+    return re.sub(r"[^a-z0-9]", "", str(name).lower())
+
+
+def _index_of(family):
+    """L'index des icônes d'une famille : {nom normalisé -> classe}, construit une fois."""
+    if family in _INDEX:
+        return _INDEX[family]
+    import importlib
+    import pkgutil
+
+    from diagrams import Node
+
+    index = {}
+    try:
+        package = importlib.import_module("diagrams." + family)
+    except ImportError:
+        _INDEX[family] = index
+        return index
+    modules = [package]
+    for info in pkgutil.iter_modules(package.__path__):
+        try:
+            modules.append(importlib.import_module("diagrams." + family + "." + info.name))
+        except ImportError:
+            continue
+    for module in modules:
+        for attribute in dir(module):
+            if attribute.startswith("_"):
+                continue
+            candidate = getattr(module, attribute)
+            if isinstance(candidate, type) and issubclass(candidate, Node) and candidate is not Node:
+                index.setdefault(_normalize(attribute), candidate)
+    _INDEX[family] = index
+    return index
+
+
+def resolve(kind):
+    """
+    La classe d'icône d'un type, ou None s'il n'en existe aucune.
+
+    On ne renvoie JAMAIS « ce qui ressemble » : une icône approchante dans un livrable client, c'est
+    un composant faux — le défaut signalé par le PO le 2026-09-24.
+    """
+    raw = str(kind or "").strip().lower()
+    if "." not in raw:
+        return None
+    family, _, name = raw.partition(".")
+    if family not in FAMILIES:
+        return None
+    wanted = _normalize(ALIASES.get(raw, name))
+    return _index_of(family).get(wanted)
+
+
+def suggestions(kind):
+    """Les types proches : un refus sans piste ne sert à rien."""
+    raw = str(kind or "").strip().lower()
+    family = raw.partition(".")[0]
+    if family not in FAMILIES:
+        return "Familles connues : " + ", ".join(FAMILIES) + "."
+    wanted = _normalize(raw.partition(".")[2])
+    index = _index_of(family)
+    near = [name for name in index if wanted and (wanted in name or name in wanted)]
+    if not near:
+        near = sorted(index)[:12]
+    return "Types proches : " + ", ".join(family + "." + n for n in sorted(near)[:12]) + "."
 
 
 class Refused(Exception):
@@ -141,15 +159,28 @@ def build(spec, output):
     if len(edges) > MAX_EDGES:
         raise Refused(f"Trop de liens ({len(edges)}, maximum {MAX_EDGES}).")
 
+    # F-142 / SF-142-09 : par défaut, un type inconnu ne fait plus échouer TOUT le schéma — il devient
+    # un nœud générique, et on dit lesquels. Refuser est juste quand on peut corriger ; ça ne l'est
+    # plus quand le composant n'a, réellement, aucune icône : le livrable perdrait son schéma.
+    strict = bool(spec.get("strict"))
+    unknown = []
     classes = {}
     for node in nodes:
         kind = str(node.get("type") or "").strip().lower()
-        if kind not in CATALOG:
+        if kind in classes:
+            continue
+        found = resolve(kind)
+        if found is not None:
+            classes[kind] = found
+            continue
+        if strict:
             raise Refused(f"Type de nœud inconnu : « {kind} ». " + suggestions(kind))
-        module, name = CATALOG[kind]
-        if kind not in classes:
-            imported = __import__(module, fromlist=[name])
-            classes[kind] = getattr(imported, name)
+        # Aucune icône : une boîte NEUTRE, et on le DIT. Jamais une icône approchante.
+        if kind not in unknown:
+            unknown.append(kind)
+        module, name = FALLBACK
+        imported = __import__(module, fromlist=[name])
+        classes[kind] = getattr(imported, name)
 
     title = label_of(spec.get("title"), "Le titre")
     direction = str(spec.get("direction") or "LR").upper()
@@ -183,6 +214,7 @@ def build(spec, output):
                               "Un schéma faux est pire qu'un schéma absent.")
             text = label_of(edge.get("label"), "Le nom d'un lien")
             created[source] >> Edge(label=text) >> created[target]
+    return unknown
 
 
 def main():
@@ -191,8 +223,12 @@ def main():
         if not isinstance(spec, dict):
             raise Refused("La description doit être un objet.")
         output = spec.get("output") or "/tmp/cloud-diagram"
-        build(spec, output)
+        unknown = build(spec, output)
+        # La première ligne est le fichier ; la seconde, s'il y en a une, nomme les types rendus SANS
+        # icône officielle — l'agent doit pouvoir le dire à l'utilisateur.
         print(output + ".png")
+        if unknown:
+            print("UNKNOWN_TYPES=" + ",".join(unknown))
         return 0
     except Refused as refused:
         sys.stderr.write(str(refused))

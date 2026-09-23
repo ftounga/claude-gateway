@@ -27,6 +27,10 @@ const DEFAULT_WIDTH = 1600;
 const DEFAULT_SCALE = 3;
 const MAX_SCALE = 5;
 const MAX_BODY_BYTES = 256 * 1024;
+/** Un deck porte ses images encodées : son corps est plus gros, et son temps de construction plus long. */
+const MAX_DECK_BODY_BYTES = 24 * 1024 * 1024;
+const MAX_DECK_BYTES = 8 * 1024 * 1024;
+const DECK_TIMEOUT_MS = 60000;
 
 const PORT = Number(process.env.PORT || 8080);
 
@@ -42,12 +46,12 @@ function fail(res, status, message) {
   send(res, status, JSON.stringify({ error: message }), "application/json; charset=utf-8");
 }
 
-async function readBody(req) {
+async function readBody(req, max = MAX_BODY_BYTES) {
   const chunks = [];
   let size = 0;
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > MAX_BODY_BYTES) {
+    if (size > max) {
       throw new Error("corps trop volumineux");
     }
     chunks.push(chunk);
@@ -70,7 +74,13 @@ function renderCloud(spec, outputBase) {
           reject(new Error((stderr || error.message || "").toString().slice(0, 500)));
           return;
         }
-        resolve((stdout || "").trim());
+        // Le générateur écrit le FICHIER sur la première ligne ; la seconde, quand elle existe, nomme
+        // les types rendus SANS icône officielle (F-142 / SF-142-09). Il faut les distinguer : tout
+        // prendre pour un chemin faisait échouer un rendu pourtant réussi.
+        const lines = (stdout || "").split("\n").map((l) => l.trim()).filter(Boolean);
+        const file = lines.find((l) => !l.startsWith("UNKNOWN_TYPES=")) || "";
+        const marker = lines.find((l) => l.startsWith("UNKNOWN_TYPES="));
+        resolve({ file, unknown: marker ? marker.slice("UNKNOWN_TYPES=".length) : "" });
       });
     child.stdin.end(JSON.stringify({ ...spec, output: outputBase }), "utf-8");
   });
@@ -140,6 +150,55 @@ async function render(req, res) {
   }
 }
 
+/**
+ * La construction d'un deck (F-129 / SF-129-05) : une description entre, un .pptx sort.
+ *
+ * Ici aussi, le programme Python reçoit des DONNÉES sur son entrée standard — jamais du code.
+ */
+function buildDeck(spec, outputBase) {
+  return new Promise((resolve, reject) => {
+    const child = execFile("python3", ["/app/deck.py"], { timeout: DECK_TIMEOUT_MS, maxBuffer: 1 << 20 },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(new Error((stderr || error.message || "").toString().slice(0, 500)));
+          return;
+        }
+        resolve((stdout || "").trim());
+      });
+    child.stdin.end(JSON.stringify({ ...spec, output: outputBase }), "utf-8");
+  });
+}
+
+async function presentation(req, res) {
+  let payload;
+  try {
+    payload = JSON.parse(await readBody(req, MAX_DECK_BODY_BYTES) || "{}");
+  } catch (e) {
+    return fail(res, 400, "Corps illisible : " + e.message);
+  }
+  const spec = payload.spec;
+  if (!spec || typeof spec !== "object" || Array.isArray(spec)) {
+    return fail(res, 400, "La description du deck est manquante (champ « spec »).");
+  }
+  const dir = await mkdtemp(path.join(tmpdir(), "cg-deck-"));
+  try {
+    const produced = await buildDeck(spec, path.join(dir, "deck"));
+    const file = await readFile(produced || path.join(dir, "deck.pptx"));
+    if (file.length > MAX_DECK_BYTES) {
+      return fail(res, 413, "Présentation trop lourde : " + file.length + " octets.");
+    }
+    res.writeHead(200, {
+      "Content-Type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "Content-Length": file.length,
+    });
+    res.end(file);
+  } catch (e) {
+    return fail(res, 422, (e.message || "Le deck n'a pas pu etre construit.").slice(0, 500));
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
 /** La branche « icônes officielles » : une description entre, un PNG sort. */
 async function renderCloudRequest(payload, res) {
   const spec = payload.spec;
@@ -150,11 +209,16 @@ async function renderCloudRequest(payload, res) {
   try {
     const base = path.join(dir, "cloud");
     const produced = await renderCloud(spec, base);
-    const image = await readFile(produced || base + ".png");
+    const image = await readFile(produced.file || base + ".png");
     if (image.length > MAX_IMAGE_BYTES) {
       return fail(res, 413, "Image rendue trop lourde : " + image.length + " octets.");
     }
-    res.writeHead(200, { "Content-Type": "image/png", "Content-Length": image.length });
+    const headers = { "Content-Type": "image/png", "Content-Length": image.length };
+    if (produced.unknown) {
+      // L'avertissement voyage avec l'image : l'agent doit pouvoir DIRE lesquels n'avaient pas d'icône.
+      headers["X-Cg-Unknown-Types"] = produced.unknown;
+    }
+    res.writeHead(200, headers);
     res.end(image);
   } catch (e) {
     // Le message vient du generateur : il dit quoi corriger (type inconnu, lien pendant, borne).
@@ -168,11 +232,14 @@ const server = http.createServer((req, res) => {
   if (req.method === "GET" && req.url === "/health") {
     return send(res, 200, JSON.stringify({ status: "UP" }), "application/json; charset=utf-8");
   }
+  if (req.method === "POST" && req.url === "/presentation") {
+    return presentation(req, res).catch((e) => fail(res, 500, "Erreur interne : " + e.message));
+  }
   if (req.method === "POST" && req.url === "/render") {
     return render(req, res).catch((e) => fail(res, 500, "Erreur interne : " + e.message));
   }
   return fail(res, 404, "Rien ici.");
 });
 
-server.requestTimeout = RENDER_TIMEOUT_MS + 5000;
+server.requestTimeout = DECK_TIMEOUT_MS + 10000;
 server.listen(PORT, () => console.log("diagram-renderer a l'ecoute sur " + PORT));

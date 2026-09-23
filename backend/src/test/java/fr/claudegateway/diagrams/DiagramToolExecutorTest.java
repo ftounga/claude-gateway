@@ -227,4 +227,28 @@ class DiagramToolExecutorTest {
                 .contains("Corrige la description");
         verify(deposit, never()).deposit(any(), any(), anyString(), anyString(), any(), anyString(), anyString());
     }
+    @Test
+    @DisplayName("F-142 / SF-142-09 : un composant sans icône est DIT à l'agent, pas remplacé en douce")
+    void componentsWithoutAnIconAreAnnounced() {
+        when(renderer.renderCloud(any())).thenReturn(new Rendered("PNG".getBytes(StandardCharsets.UTF_8),
+                Format.PNG, "aws.machin,onprem.truc"));
+        when(deposit.deposit(any(), any(), anyString(), anyString(), any(), anyString(), anyString()))
+                .thenReturn("reseau.png");
+        ObjectNode spec = mapper.createObjectNode();
+        spec.putArray("nodes").addObject().put("id", "a").put("type", "aws.machin").put("label", "Maison");
+        ObjectNode input = mapper.createObjectNode();
+        input.put("engine", "cloud");
+        input.set("spec", spec);
+
+        DiagramToolExecutor.Outcome outcome = executor.execute(userId, workspace, "call-10", input);
+
+        // Le schéma EST produit — c'est le point : plus rien n'échoue faute d'une icône.
+        assertThat(outcome.error()).isFalse();
+        assertThat(outcome.content())
+                .contains("reseau.png")
+                .contains("ATTENTION")
+                .contains("aws.machin,onprem.truc")
+                .contains("boîte neutre")
+                .contains("jamais un composant par une icône approchante");
+    }
 }
