@@ -983,6 +983,21 @@
        Claude Code. C'est bien UN MODE (distinct de la cible d'exécution ci-dessus), choisi par
        l'utilisateur et renvoyé à chaque tour. Défaut : Agir. Comme l'invite, il n'existe pas en
        lecture seule (donc absent de la mosaïque, qui n'initie aucun tour). -->
+  <!--
+    Plan REPORTÉ (F-121 / SF-121-10) : le dernier plan encore actif du fil, restauré à l'ouverture du
+    projet et affiché AU REPOS (aucun tour en cours). Pendant un tour, c'est `live.plan` qui parle.
+  -->
+  @if (!streaming && !readOnly && carriedPlan.length > 0) {
+    <ol class="terminal-plan terminal-plan--carried" aria-label="Plan de travail reporté">
+      @for (step of carriedPlan; track step.title) {
+        <li class="terminal-plan-step" [attr.data-status]="step.status">
+          <span class="terminal-plan-mark" aria-hidden="true">{{ planMark(step.status) }}</span>
+          <span class="terminal-plan-title">{{ step.title }}</span>
+        </li>
+      }
+    </ol>
+  }
+
   @if (!readOnly) {
     <div class="terminal-mode">
       <span class="terminal-mode-label">Mode</span>
@@ -1001,14 +1016,15 @@
           Agir
         </mat-button-toggle>
       </mat-button-toggle-group>
-      @if (mode === 'ANSWER_PLAN') {
+      @if (mode === 'ANSWER_PLAN' || planAwaitingApproval) {
         <button
           mat-button
           type="button"
           class="terminal-mode-exec"
+          [class.terminal-mode-exec--approve]="planAwaitingApproval"
           (click)="switchToAct.emit()"
         >
-          Passer à l'exécution
+          {{ planAwaitingApproval ? 'Approuver & exécuter' : 'Passer à l\'exécution' }}
         </button>
       }
     </div>

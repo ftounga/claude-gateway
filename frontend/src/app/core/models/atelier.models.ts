@@ -581,6 +581,11 @@ export interface AtelierStreamDone {
    * **Absent pour qui n'est pas administrateur** : le montant ne quitte pas le serveur.
    */
   costEur?: string;
+  /**
+   * Le modèle a **soumis un plan à approbation** ce tour (F-121 / SF-121-10, `exit_plan_mode`) :
+   * l'écran propose alors « Approuver & exécuter ». Absent/faux ⇒ aucun plan en attente.
+   */
+  planSubmitted?: boolean;
 }
 
 /** L'envoi est devenu une précision du tour qui tournait déjà (F-84 / SF-84-06). */
@@ -1174,6 +1179,16 @@ export interface AtelierResume {
   threadStartedAt: string | null;
   /** `NONE` — ne rien demander ; `IDLE` — projet inactif, proposer le choix. */
   prompt: 'NONE' | 'IDLE';
+  /**
+   * Mode persisté du fil (F-121 / SF-121-10) : `ANSWER_PLAN` ou `ACT`. Absent/`null` ⇒ `ACT` (défaut).
+   * Restaure le sélecteur de mode à l'ouverture du projet.
+   */
+  mode?: AtelierTurnMode | null;
+  /**
+   * Dernier plan encore actif du fil (F-121 / SF-121-10), ou liste vide/absente si aucun. Réaffiché à
+   * l'ouverture du projet.
+   */
+  plan?: AtelierPlanStep[];
 }
 
 /**

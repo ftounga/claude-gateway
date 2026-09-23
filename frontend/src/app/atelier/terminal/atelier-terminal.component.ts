@@ -63,6 +63,7 @@ import {
   LiveTerminalEntry,
   RunnerStatus,
   AtelierTurnMode,
+  AtelierPlanStep,
   TerminalDepositNotice,
   WorkspaceExecutionTarget,
 } from '../../core/models/atelier.models';
@@ -376,6 +377,18 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    * exécuter ; `ACT` : panoplie complète. **Défaut `ACT`** pour ne pas surprendre l'usage actuel.
    */
   @Input() mode: AtelierTurnMode = 'ACT';
+
+  /**
+   * Un plan a été **soumis à approbation** par le modèle ce tour (F-121 / SF-121-10, `exit_plan_mode`) :
+   * le bouton d'exécution devient « Approuver & exécuter » et s'affiche même hors du mode Réponse/Plan.
+   */
+  @Input() planAwaitingApproval = false;
+
+  /**
+   * Plan **reporté** du fil (F-121 / SF-121-10), affiché au repos (aucun tour en cours) : le dernier
+   * plan encore actif, restauré à l'ouverture du projet. Vide ⇒ rien n'est affiché.
+   */
+  @Input() carriedPlan: AtelierPlanStep[] = [];
 
   /** Bascule de cible en vol : le sélecteur reste inerte le temps de l'aller-retour. */
   @Input() switchingTarget = false;

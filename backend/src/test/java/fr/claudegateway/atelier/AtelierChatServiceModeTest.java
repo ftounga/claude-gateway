@@ -107,8 +107,26 @@ class AtelierChatServiceModeTest {
         Workspace runner = bareWorkspace(WorkspaceExecutionTarget.RUNNER);
         List<String> tools = names(service.buildTools(userId, runner, AgentTurnMode.ANSWER_PLAN));
         // grep/glob (F-121 / SF-121-01) sont de la lecture : ils survivent au mode Réponse/Plan.
-        assertThat(tools).containsExactly("read_file", "grep", "glob", "explore", "set_plan");
+        // exit_plan_mode (F-121 / SF-121-10) s'y ajoute : c'est le geste de soumission du plan.
+        assertThat(tools).containsExactly("read_file", "grep", "glob", "explore", "set_plan",
+                "exit_plan_mode");
         assertThat(tools).doesNotContain("write_file", "edit_file", "multi_edit", "bash");
+    }
+
+    @Test
+    void exitPlanModeIsDeclaredOnlyInAnswerPlan() {
+        // F-121 / SF-121-10 : exit_plan_mode (ExitPlanMode) est le geste par lequel le modèle soumet
+        // son plan à approbation — déclaré UNIQUEMENT en Réponse/Plan, absent en Agir.
+        Workspace runner = bareWorkspace(WorkspaceExecutionTarget.RUNNER);
+        assertThat(names(service.buildTools(userId, runner, AgentTurnMode.ANSWER_PLAN)))
+                .contains("exit_plan_mode");
+        assertThat(names(service.buildTools(userId, runner, AgentTurnMode.ACT)))
+                .doesNotContain("exit_plan_mode");
+        Workspace sandbox = bareWorkspace(WorkspaceExecutionTarget.SANDBOX);
+        assertThat(names(service.buildTools(userId, sandbox, AgentTurnMode.ANSWER_PLAN)))
+                .contains("exit_plan_mode");
+        assertThat(names(service.buildTools(userId, sandbox, AgentTurnMode.ACT)))
+                .doesNotContain("exit_plan_mode");
     }
 
     @Test
@@ -124,8 +142,9 @@ class AtelierChatServiceModeTest {
         Workspace sandbox = bareWorkspace(WorkspaceExecutionTarget.SANDBOX);
         List<String> tools = names(service.buildTools(userId, sandbox, AgentTurnMode.ANSWER_PLAN));
         // La lecture/exploration de SANDBOX (list_files, search_files) survit ; write/edit non.
+        // exit_plan_mode (F-121 / SF-121-10) s'y ajoute : le geste de soumission du plan.
         assertThat(tools).containsExactly("list_files", "read_file", "search_files", "grep", "glob",
-                "explore", "set_plan");
+                "explore", "set_plan", "exit_plan_mode");
         assertThat(tools).doesNotContain("write_file", "edit_file", "multi_edit");
     }
 

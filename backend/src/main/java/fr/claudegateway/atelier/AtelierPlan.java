@@ -4,6 +4,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
  * Plan de travail que l'agent pose et tient à jour pendant un tour (F-39 / SF-39-13).
@@ -31,6 +34,9 @@ public record AtelierPlan(List<Step> steps) {
 
     /** Plan vide : l'agent n'en a pas posé, ou vient de l'effacer. */
     public static final AtelierPlan EMPTY = new AtelierPlan(List.of());
+
+    /** Sérialisation JSON pour la persistance par thread (F-121 / SF-121-10). */
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /** État d'une étape. Une seule peut être {@link #ACTIVE} à la fois. */
     public enum Status {
@@ -61,6 +67,56 @@ public record AtelierPlan(List<Step> steps) {
     /** Vrai si le plan ne porte aucune étape. */
     public boolean isEmpty() {
         return steps.isEmpty();
+    }
+
+    /**
+     * Vrai si le plan porte au moins une étape et qu'elles sont <b>toutes</b> {@link Status#DONE}
+     * (F-121 / SF-121-10). Un plan terminé n'est pas reporté au tour suivant : il n'y a plus rien à
+     * reprendre, et le rejouer ne ferait que re-narrer un travail fini.
+     */
+    public boolean isComplete() {
+        if (steps.isEmpty()) {
+            return false;
+        }
+        return steps.stream().allMatch(step -> step.status() == Status.DONE);
+    }
+
+    /**
+     * Sérialise le plan pour la persistance par thread (F-121 / SF-121-10) : un tableau JSON
+     * d'objets {@code {title, status}} (statut en minuscules, comme rendu au modèle et à l'écran).
+     *
+     * @return le document JSON, ou {@code null} pour un plan vide — {@code null} en base signifie
+     *         « aucun plan reporté »
+     */
+    public String toJson() {
+        if (steps.isEmpty()) {
+            return null;
+        }
+        ArrayNode array = MAPPER.createArrayNode();
+        for (Step step : steps) {
+            ObjectNode node = MAPPER.createObjectNode();
+            node.put("title", step.title());
+            node.put("status", step.status().label());
+            array.add(node);
+        }
+        return array.toString();
+    }
+
+    /**
+     * Relit un plan persisté (F-121 / SF-121-10) en réutilisant le normaliseur {@link #from(JsonNode)}
+     * — donc les mêmes règles de tolérance (titres élagués, états inconnus ramenés à {@code pending},
+     * une seule étape active). Un document illisible (corrompu, tronqué) rend un plan <b>vide</b>
+     * plutôt que de casser un tour : c'est de la mémoire, pas une source de vérité.
+     */
+    public static AtelierPlan fromJson(String json) {
+        if (json == null || json.isBlank()) {
+            return EMPTY;
+        }
+        try {
+            return from(MAPPER.readTree(json));
+        } catch (com.fasterxml.jackson.core.JacksonException ex) {
+            return EMPTY;
+        }
     }
 
     /**

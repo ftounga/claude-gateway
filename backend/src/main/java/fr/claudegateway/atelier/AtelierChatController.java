@@ -107,7 +107,8 @@ public class AtelierChatController {
                 request.message(), request.modeOrDefault());
         return new AtelierChatResponse(result.reply(), result.actions(), result.messageId(),
                 result.inputTokens(), result.outputTokens(), result.activeSeconds(),
-                result.budgetReached(), turnCostView.labelFor(result.costUsd(), null, turnCostView.callerIsAdmin()));
+                result.budgetReached(), turnCostView.labelFor(result.costUsd(), null, turnCostView.callerIsAdmin()),
+                result.planSubmitted());
     }
 
     /**
@@ -705,17 +706,20 @@ public class AtelierChatController {
      */
     record StreamDone(String reply, List<AtelierAction> actions, UUID messageId, long inputTokens,
             long outputTokens, long activeSeconds, boolean budgetReached, boolean followUp,
-            String costEur) {
+            String costEur, boolean planSubmitted) {
 
         /**
          * <b>Le flux est le chemin nominal de l'écran</b> : c'est ici, et pas seulement dans la
          * réponse synchrone, que le coût doit voyager (F-133 / SF-133-02). Il reste {@code null}
          * pour un appelant qui n'est pas administrateur — le montant ne quitte pas le serveur.
+         *
+         * <p>{@code planSubmitted} (F-121 / SF-121-10, additif) : le modèle a soumis un plan à
+         * approbation ce tour — l'écran propose « Approuver &amp; exécuter ».</p>
          */
         static StreamDone of(AtelierChatResult result, boolean followUp, String costEur) {
             return new StreamDone(result.reply(), result.actions(), result.messageId(),
                     result.inputTokens(), result.outputTokens(), result.activeSeconds(),
-                    result.budgetReached(), followUp, costEur);
+                    result.budgetReached(), followUp, costEur, result.planSubmitted());
         }
     }
 
