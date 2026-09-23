@@ -39,16 +39,12 @@ public class ImageToolExecutor {
     static final int CHUNK_BYTES = 360 * 1024;
 
     private final ImageGenerationService imageService;
-    private final WorkspaceService workspaceService;
-    private final RunnerToolGateway runnerToolGateway;
-    private final RunnerAuditService runnerAuditService;
+    private final fr.claudegateway.atelier.ProjectFileDeposit projectFileDeposit;
 
-    public ImageToolExecutor(ImageGenerationService imageService, WorkspaceService workspaceService,
-            RunnerToolGateway runnerToolGateway, RunnerAuditService runnerAuditService) {
+    public ImageToolExecutor(ImageGenerationService imageService,
+            fr.claudegateway.atelier.ProjectFileDeposit projectFileDeposit) {
         this.imageService = imageService;
-        this.workspaceService = workspaceService;
-        this.runnerToolGateway = runnerToolGateway;
-        this.runnerAuditService = runnerAuditService;
+        this.projectFileDeposit = projectFileDeposit;
     }
 
     /**
@@ -106,44 +102,10 @@ public class ImageToolExecutor {
 
     /** Dépose le PNG dans le projet, hébergé ou sur poste. Rend le chemin déposé, ou {@code null}. */
     private String deposit(UUID userId, Workspace workspace, String callId, String name, byte[] bytes) {
-        if (workspace.isRunnerTarget()) {
-            return depositOnRunner(userId, workspace, callId, name, bytes);
-        }
-        try {
-            return workspaceService.depositHostedFile(userId, workspace.getId(), name, bytes, "image/png");
-        } catch (RuntimeException e) {
-            return null;
-        }
-    }
-
-    /**
-     * Pousse le PNG sur le poste par tranches ({@code write_file_bytes}, F-115) : {@code offset == 0}
-     * tronque/crée. La lecture/écriture est tracée une fois, sur le {@code callId} de l'appel.
-     */
-    private String depositOnRunner(UUID userId, Workspace workspace, String callId, String name, byte[] bytes) {
-        RunnerTarget target = RunnerTargets.of(workspace);
-        RunnerCallResult last = null;
-        int offset = 0;
-        int chunk = 0;
-        while (offset < bytes.length) {
-            int end = Math.min(bytes.length, offset + CHUNK_BYTES);
-            String base64 = Base64.getEncoder().encodeToString(java.util.Arrays.copyOfRange(bytes, offset, end));
-            RunnerCallResult result = runnerToolGateway.writeFileBytes(target, callId + "." + chunk, name,
-                    base64, offset);
-            last = result;
-            if (!result.ok()) {
-                runnerAuditService.recordCall(userId, target, callId, ImageToolCatalog.GENERATE, name, result);
-                if (chunk == 0 && RunnerErrorCodes.UNSUPPORTED_TOOL.equals(result.errorCode())) {
-                    // Runner trop ancien : pas de dépôt binaire. Le tour continue sans image déposée.
-                    return null;
-                }
-                return null;
-            }
-            offset = end;
-            chunk++;
-        }
-        runnerAuditService.recordCall(userId, target, callId, ImageToolCatalog.GENERATE, name, last);
-        return name;
+        // F-142 / SF-142-06 : le dépôt vit désormais dans ProjectFileDeposit, partagé avec le rendu de
+        // diagrammes. Deux copies du même dépôt auraient fini par diverger.
+        return projectFileDeposit.deposit(userId, workspace, callId, name, bytes, "image/png",
+                ImageToolCatalog.GENERATE);
     }
 
     // ------------------------------------------------------------------ util

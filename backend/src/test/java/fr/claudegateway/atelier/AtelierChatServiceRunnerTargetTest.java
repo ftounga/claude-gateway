@@ -168,7 +168,8 @@ class AtelierChatServiceRunnerTargetTest {
     @Test
     void aBashWithZeroExitCodeKeepsTheReducedEffort() {
         // Contrôle : un `bash` qui réussit (code 0) n'est pas un signal — la continuation garde
-        // l'effort réduit (`low`), le gain F-118 est préservé.
+        // l'effort RÉDUIT, le gain F-118 est préservé. Ce plancher réduit vaut « medium » depuis F-148
+        // (SF-148-01) ; le test frère avait été aligné, celui-ci était resté sur « low ».
         stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
         when(runnerToolGateway.bash(eq(runnerTarget), anyString(), eq("vrai"), any(), anyLong(), any()))
                 .thenReturn(new RunnerCallResult(true, "", false, 0, 5L, null, null, null, "ok", false));
@@ -177,7 +178,7 @@ class AtelierChatServiceRunnerTargetTest {
 
         service.chat(userId, workspaceId, "lance vrai");
 
-        assertThat(agentProvider.effectiveEfforts).containsExactly("high", "low");
+        assertThat(agentProvider.effectiveEfforts).containsExactly("high", "medium");
     }
 
     @Test

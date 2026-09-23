@@ -662,6 +662,15 @@ public class AtelierChatService implements RelayInterruptTarget {
     private fr.claudegateway.images.ImageGenerationProperties imageProperties;
 
     /**
+     * L'outil {@code render_diagram} (F-142 / SF-142-06) : le schéma est rendu <b>par la gateway</b>,
+     * pour que le poste du client n'installe ni mermaid-cli ni chromium. {@code none()} par défaut.
+     */
+    private fr.claudegateway.diagrams.DiagramToolCatalog diagramToolCatalog =
+            fr.claudegateway.diagrams.DiagramToolCatalog.none();
+    /** Exécution de {@code render_diagram} ; {@code null} pour les formes historiques. */
+    private fr.claudegateway.diagrams.DiagramToolExecutor diagramToolExecutor;
+
+    /**
      * Tours pour lesquels une interruption a été demandée (F-38 / SF-38-07, même geste que F-32).
      * Clef {@code userId:workspaceId} : l'isolation est déjà garantie par {@code requireOwned}, la
      * clef composite évite en plus qu'une marque déborde d'un utilisateur à l'autre. Remise à zéro à
@@ -993,6 +1002,20 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
         this.imageToolExecutor = imageToolExecutor;
         this.imageProperties = imageProperties;
+    }
+
+    /**
+     * Branche l'outil de rendu de diagrammes (F-142 / SF-142-06) par mutateur, comme les autres outils
+     * de la gateway : sans service de rendu configuré, l'outil n'est jamais donné — on ne promet pas
+     * une image qu'on ne saurait pas produire.
+     */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setDiagramTool(fr.claudegateway.diagrams.DiagramToolCatalog diagramToolCatalog,
+            fr.claudegateway.diagrams.DiagramToolExecutor diagramToolExecutor) {
+        if (diagramToolCatalog != null) {
+            this.diagramToolCatalog = diagramToolCatalog;
+        }
+        this.diagramToolExecutor = diagramToolExecutor;
     }
 
     /** Branche l'écriture des cartes du poste pour le reclassement (F-141 / SF-141-04). */
@@ -1826,6 +1849,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                         .isPresentationTool(call.name())) {
                     // F-129 : la présentation (.pptx) est rangée par la gateway comme un artefact.
                     outcome = applyPresentationPublish(userId, workspace, callId, call, listener);
+                } else if (fr.claudegateway.diagrams.DiagramToolCatalog.isDiagramTool(call.name())) {
+                    // F-142 / SF-142-06 : la gateway rend le diagramme et le dépose dans le projet.
+                    outcome = applyDiagramRender(userId, workspace, callId, call);
                 } else if (fr.claudegateway.images.ImageToolCatalog.isImageTool(call.name())) {
                     // F-142 / SF-142-04 : l'image décorative est générée par la gateway (relais fournisseur),
                     // rangée, puis déposée dans le projet — jamais un schéma d'architecture.
@@ -2681,6 +2707,23 @@ public class AtelierChatService implements RelayInterruptTarget {
      * n'est généré, et l'agent le sait. Pas de bloc riche : l'image se voit dans la page/slide où l'agent
      * l'insère.</p>
      */
+    /**
+     * Exécute {@code render_diagram} (F-142 / SF-142-06) : la gateway rend le schéma et le dépose dans
+     * le projet. <b>Aucun plafond par tour</b> ici, contrairement aux images décoratives : ce rendu
+     * n'appelle aucun fournisseur et ne consomme aucun jeton — le brider n'économiserait rien et
+     * priverait un livrable de ses schémas.
+     */
+    private ToolOutcome applyDiagramRender(UUID userId, Workspace workspace, String callId,
+            AgentToolCall call) {
+        if (diagramToolExecutor == null || !diagramToolCatalog.isOpenFor(userId, workspace)) {
+            return ToolOutcome.error("Le rendu de diagrammes n'est pas ouvert dans ce terminal : livre le "
+                    + "diagramme dans une page (bloc <pre class=\"mermaid\">), qui se rend sans rien installer.");
+        }
+        fr.claudegateway.diagrams.DiagramToolExecutor.Outcome outcome =
+                diagramToolExecutor.execute(userId, workspace, callId, call.input());
+        return outcome.error() ? ToolOutcome.error(outcome.content()) : ToolOutcome.info(outcome.content());
+    }
+
     private ToolOutcome applyImageGenerate(UUID userId, Workspace workspace, String callId,
             AgentToolCall call, AtelierProgressListener listener, int[] imageCountOfTurn) {
         if (imageToolExecutor == null || !imageToolCatalog.isOpenFor(userId, workspace)) {
@@ -4339,6 +4382,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         tools.addAll(presentationToolCatalog.toolsFor(userId, workspace));
         // F-142 / SF-142-04 : l'outil de génération d'images décoratives, sous la même garde d'espace.
         tools.addAll(imageToolCatalog.toolsFor(userId, workspace));
+        // F-142 / SF-142-06 : le rendu de diagrammes, côté gateway — aucune installation chez le client.
+        tools.addAll(diagramToolCatalog.toolsFor(userId, workspace));
         return List.copyOf(tools);
     }
 
@@ -4576,6 +4621,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         // sous la même garde que l'outil.
         if (imageToolCatalog.isOpenFor(userId, workspace)) {
             system.append(fr.claudegateway.images.ImageToolCatalog.GUIDE).append("\n\n");
+        }
+        // F-142 / SF-142-06 : le guide du rendu de diagrammes — il dit surtout que c'est GRATUIT, sans
+        // quoi l'agent le traiterait avec la parcimonie due à generate_image et éviterait de dessiner.
+        if (diagramToolCatalog.isOpenFor(userId, workspace)) {
+            system.append(fr.claudegateway.diagrams.DiagramToolCatalog.GUIDE).append("\n\n");
         }
 
         // Compteurs d'amorçage : ces lectures sont journalisées en UNE ligne (F-38 / SF-38-08).

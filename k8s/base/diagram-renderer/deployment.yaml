@@ -1,0 +1,68 @@
+# F-142 / SF-142-06 — le rendu des diagrammes, côté cluster.
+#
+# Une réplique suffit : le rendu est ponctuel (un livrable, quelques diagrammes) et le service ne garde
+# aucun état. Il n'est PAS exposé hors du cluster : seule la gateway l'appelle, par le Service ClusterIP.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: diagram-renderer
+  labels:
+    app: diagram-renderer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: diagram-renderer
+  template:
+    metadata:
+      labels:
+        app: diagram-renderer
+    spec:
+      containers:
+        - name: diagram-renderer
+          image: REGISTRY_PLACEHOLDER/claude-gateway-diagram-renderer:RENDERER_IMAGE_TAG
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          # Chromium est gourmand par à-coups : on borne, sans étrangler un rendu qui dure quelques
+          # secondes. /dev/shm par défaut est trop petit pour chromium — d'où --disable-dev-shm-usage.
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: diagram-renderer
+  labels:
+    app: diagram-renderer
+spec:
+  type: ClusterIP
+  selector:
+    app: diagram-renderer
+  ports:
+    - port: 80
+      targetPort: 8080

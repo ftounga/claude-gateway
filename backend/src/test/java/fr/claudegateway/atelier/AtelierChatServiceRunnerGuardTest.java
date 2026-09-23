@@ -248,7 +248,9 @@ class AtelierChatServiceRunnerGuardTest {
         ArgumentCaptor<Integer> reads = ArgumentCaptor.forClass(Integer.class);
         verify(auditService).recordBootstrap(eq(userId), eq(runnerTarget), anyString(),
                 reads.capture(), anyLong());
-        assertThat(reads.getValue()).isEqualTo(4); // CLAUDE.md + listage + 2 skills
+        // CLAUDE.md + STATE.md + PLAN.md + listage + 2 skills. Les deux fichiers de sujet sont lus à
+        // l'amorçage depuis F-148 (cache des sources de la consigne) ; l'attente était restée à 4.
+        assertThat(reads.getValue()).isEqualTo(6);
         // Et surtout : aucune ligne d'appel pour ces lectures d'amorçage.
         verify(auditService, never()).recordCall(any(), any(), anyString(), anyString(), any(), any());
     }
