@@ -153,6 +153,19 @@ public class AccountService {
     }
 
     /**
+     * Abonnements Web Push (F-153 / SF-153-02). Injectés par mutateur, comme les pages : {@code null}
+     * (tests unitaires historiques construits par constructeur) = aucun abonnement à effacer.
+     */
+    private fr.claudegateway.push.PushSubscriptionRepository pushSubscriptionRepository;
+
+    /** Branche la purge des abonnements Web Push à la suppression du compte (F-153 / SF-153-02). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setPushSubscriptionRepository(
+            fr.claudegateway.push.PushSubscriptionRepository pushSubscriptionRepository) {
+        this.pushSubscriptionRepository = pushSubscriptionRepository;
+    }
+
+    /**
      * Les pièces jointes des courriels en attente (F-110 / SF-110-03), même doctrine que les pages : {@code null}
      * (tests unitaires historiques) = rien à effacer.
      */
@@ -282,6 +295,11 @@ public class AccountService {
         // Places de terminal vivant (F-70 / SF-70-01) : elles nomment les projets ouverts par le
         // compte. Sans purge, elles survivraient à sa suppression jusqu'à leur expiration.
         liveTerminalRepository.deleteByUserId(userId);
+        // Abonnements Web Push (F-153 / SF-153-02) : les appareils notifiés d'un compte ne lui
+        // survivent pas. Setter optionnel : null dans les tests construits par constructeur.
+        if (pushSubscriptionRepository != null) {
+            pushSubscriptionRepository.deleteByUserId(userId);
+        }
         // Domaine documentaire (F-05/F-06) et Atelier (F-28), ajoutés par SF-11-03. Ces données
         // survivaient au compte : documents OCR (texte extrait et réponse brute du fournisseur
         // compris), embeddings, historique des sessions d'agent, et les fichiers de chaque

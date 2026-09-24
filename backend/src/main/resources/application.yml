@@ -480,6 +480,16 @@ app:
     max-account-images: ${APP_IMAGE_MAX_ACCOUNT_IMAGES:500}
     # Coût enregistré par image (EUR) — journalisé sur la ligne generated_images.
     cost-eur-per-image: ${APP_IMAGE_COST_EUR_PER_IMAGE:0.04}
+  # F-153 / SF-153-02 — WEB PUSH (notifications, app fermée / téléphone verrouillé).
+  # ÉTEINT PAR DÉFAUT (DRAPEAU FORT) : tant que les clés VAPID ne sont pas fournies par
+  # l'environnement (secrets backend APP_PUSH_VAPID_PUBLIC / APP_PUSH_VAPID_PRIVATE), aucune
+  # notification push ne part et l'émetteur est inactif — le signal in-tab (SF-153-01) reste le
+  # repli. Les clés viennent EXCLUSIVEMENT de l'environnement, jamais commitées ni journalisées ;
+  # la clé PRIVÉE n'est jamais exposée au frontend (seule la publique est servie).
+  push:
+    vapid-public-key: ${APP_PUSH_VAPID_PUBLIC:}
+    vapid-private-key: ${APP_PUSH_VAPID_PRIVATE:}
+    subject: ${APP_PUSH_SUBJECT:mailto:contact@ng-itconsulting.com}
   # F-142 / SF-142-06 — LE RENDU DES DIAGRAMMES, CÔTÉ GATEWAY.
   #
   # Le schéma est rendu par un service de NOTRE cluster, pour que le poste du client n'installe rien :
