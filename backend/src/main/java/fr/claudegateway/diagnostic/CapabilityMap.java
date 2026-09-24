@@ -3,6 +3,7 @@ package fr.claudegateway.diagnostic;
 import java.util.List;
 
 import fr.claudegateway.diagnostic.ProductCapability.Signal;
+import fr.claudegateway.diagnostic.ProductCapability.Wiring;
 
 /**
  * <b>La carte des capacités du produit</b> (F-156 / SF-156-01) : ce que l'application sait faire,
@@ -56,7 +57,11 @@ public final class CapabilityMap {
                             "backend/src/main/java/fr/claudegateway/atelier/promptsource/PromptSourceFileRepository.java"),
                     "Le préfixe envoyé au fournisseur reste stable d'un tour à l'autre : rien de "
                             + "volatil dans la consigne système (F-134).",
-                    List.of(Signal.usage("cache_read_tokens"))),
+                    List.of(Signal.usage("cache_read_tokens")),
+                    List.of(new Wiring(
+                            "backend/src/main/java/fr/claudegateway/agent/AnthropicAgentProvider.java",
+                            "marked.put(\"cache_control\", CACHE_CONTROL)",
+                            "le marqueur de cache est bien posé sur le bloc envoyé au fournisseur"))),
 
             new ProductCapability("index-du-depot",
                     "Servir l'index du dépôt depuis la base",
@@ -66,23 +71,40 @@ public final class CapabilityMap {
                             "backend/src/main/java/fr/claudegateway/atelier/repoindex/RepoIndexProvider.java"),
                     "L'index du projet a été amorcé sur ce poste, et le tour demande des chemins "
                             + "(SF-148-07).",
-                    List.of(Signal.table("repo_index_paths"), Signal.tool("glob"))),
+                    List.of(Signal.table("repo_index_paths"), Signal.tool("glob")),
+                    List.of(new Wiring(
+                            "backend/src/main/java/fr/claudegateway/atelier/repoindex/RepoIndexProvider.java",
+                            "public boolean isPrimed",
+                            "la question « l'index est-il amorcé ? » est bien posée avant de servir "
+                                    + "des chemins"))),
 
             new ProductCapability("compaction",
                     "Compacter le contexte",
                     "renvoyer au fournisseur un historique entier dont la moitié ne sert plus",
-                    List.of("backend/src/main/java/fr/claudegateway/atelier/AtelierCompactionService.java"),
+                    List.of("backend/src/main/java/fr/claudegateway/atelier/AtelierCompactionService.java",
+                            // Le SITE D'APPEL fait partie de la capacité : c'est là qu'un
+                            // remaniement la débranche, et c'est là qu'il faut aller regarder.
+                            "backend/src/main/java/fr/claudegateway/atelier/AtelierChatService.java"),
                     "Le fil dépasse le seuil de compaction et un résumé remplace les tours anciens "
                             + "(F-117).",
-                    List.of(Signal.usage("input_tokens"))),
+                    List.of(Signal.usage("input_tokens")),
+                    List.of(new Wiring(
+                            "backend/src/main/java/fr/claudegateway/atelier/AtelierChatService.java",
+                            "compactionService",
+                            "la boucle du tour appelle bien le service de compaction"))),
 
             new ProductCapability("plan",
                     "Tenir un plan",
                     "repartir de zéro à chaque tour sur une demande en plusieurs étapes, et refaire "
                             + "ce qui était déjà fait",
-                    List.of("backend/src/main/java/fr/claudegateway/atelier/AtelierPlan.java"),
+                    List.of("backend/src/main/java/fr/claudegateway/atelier/AtelierPlan.java",
+                            "backend/src/main/java/fr/claudegateway/atelier/AtelierChatService.java"),
                     "Le tour pose ou met à jour un plan (set_plan), persisté sur le fil (F-121).",
-                    List.of(Signal.tool("set_plan"))),
+                    List.of(Signal.tool("set_plan")),
+                    List.of(new Wiring(
+                            "backend/src/main/java/fr/claudegateway/atelier/AtelierChatService.java",
+                            "planTouched.set(true)",
+                            "la boucle reconnaît bien qu'un plan a été touché pendant le tour"))),
 
             new ProductCapability("memoire-de-resolutions",
                     "Rappeler une résolution déjà trouvée",
@@ -90,7 +112,11 @@ public final class CapabilityMap {
                     List.of("backend/src/main/java/fr/claudegateway/atelier/resolution/ResolutionMemoryStore.java"),
                     "Une question ressemble lexicalement à une conclusion déjà mémorisée pour ce "
                             + "poste (SF-148-08).",
-                    List.of(Signal.table("resolution_memory"))),
+                    List.of(Signal.table("resolution_memory")),
+                    List.of(new Wiring(
+                            "backend/src/main/java/fr/claudegateway/atelier/resolution/ResolutionMemoryStore.java",
+                            "public void record",
+                            "la mémoire sait encore enregistrer une résolution"))),
 
             new ProductCapability("carte-du-poste",
                     "Donner la carte du poste au tour",
@@ -98,7 +124,11 @@ public final class CapabilityMap {
                             + "déjà de la machine",
                     List.of("backend/src/main/java/fr/claudegateway/governance/map/HostMapKnowledgeProvider.java"),
                     "Une carte existe pour ce poste et entre dans le contexte du tour (F-136).",
-                    List.of(Signal.table("host_map_files"))));
+                    List.of(Signal.table("host_map_files")),
+                    List.of(new Wiring(
+                            "backend/src/main/java/fr/claudegateway/governance/map/HostMapKnowledgeProvider.java",
+                            "public String outlineFor",
+                            "la carte du poste sait encore produire son aperçu pour le tour"))));
 
     private CapabilityMap() {
     }
