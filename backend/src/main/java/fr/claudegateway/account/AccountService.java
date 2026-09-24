@@ -59,6 +59,20 @@ public class AccountService {
     private final fr.claudegateway.atelier.repoindex.RepoIndexPathRepository repoIndexPathRepository;
     /** F-148 / SF-148-08 : la mémoire de résolutions (question → conclusion) par poste. */
     private final fr.claudegateway.atelier.resolution.ResolutionMemoryRepository resolutionMemoryRepository;
+    /**
+     * Actions à faire des terminaux (F-151 / SF-151-01), purgées à la suppression du compte.
+     * Injecté par mutateur (null pour les tests historiques) pour ne pas toucher au constructeur,
+     * déjà long.
+     */
+    private fr.claudegateway.atelier.actions.TerminalActionRepository terminalActionRepository;
+
+    /** Branche la purge des actions du terminal à la suppression du compte (F-151 / SF-151-01). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setTerminalActionRepository(
+            fr.claudegateway.atelier.actions.TerminalActionRepository repository) {
+        this.terminalActionRepository = repository;
+    }
+
     private final SubscriptionRepository subscriptionRepository;
     private final UsageCounterRepository usageCounterRepository;
     private final UsageTurnRepository usageTurnRepository;
@@ -278,6 +292,11 @@ public class AccountService {
         // La mémoire de résolutions (F-148 / SF-148-08) : questions et conclusions des tours de ce
         // compte. Elle ne lui survit pas.
         resolutionMemoryRepository.deleteByUserId(userId);
+        // Les actions à faire des terminaux (F-151 / SF-151-01) : ce que le compte devait faire.
+        // Pas de clé étrangère, donc purge nommée — sinon elles survivraient au compte.
+        if (terminalActionRepository != null) {
+            terminalActionRepository.purgeUser(userId);
+        }
         runnerHostRepository.deleteByUserId(userId);
         // Places de terminal vivant (F-70 / SF-70-01) : elles nomment les projets ouverts par le
         // compte. Sans purge, elles survivraient à sa suppression jusqu'à leur expiration.
