@@ -24,6 +24,13 @@ public interface RunnerAuditRepository extends JpaRepository<RunnerAudit, UUID> 
             Pageable pageable);
 
     /**
+     * Les appels d'outils d'un projet sur une fenêtre de temps (F-155 / SF-155-01) — la seconde
+     * matière du bilan. Filtre {@code user_id} <b>et</b> {@code workspace_id}.
+     */
+    List<RunnerAudit> findByUserIdAndWorkspaceIdAndCreatedAtBetweenOrderByCreatedAtAsc(
+            UUID userId, UUID workspaceId, OffsetDateTime from, OffsetDateTime to);
+
+    /**
      * Dernière ligne de journal d'un projet possédé — l'outil qui a tourné en dernier (F-49 /
      * SF-49-01). Appelée seulement pour les projets ayant une activité dans la fenêtre observée :
      * un projet muet ne coûte aucune requête.
