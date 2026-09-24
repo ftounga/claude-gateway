@@ -202,6 +202,18 @@ class TerminalActionApiIntegrationTest {
     }
 
     @Test
+    @DisplayName("deux actions ajoutées à la main cohabitent — l'index unique ne mord que sur les clés")
+    void twoManualActionsCoexist() throws Exception {
+        createAction(aliceToken, "{\"description\":\"Relancer le support\"}");
+        createAction(aliceToken, "{\"description\":\"Obtenir la validation du RSSI\"}");
+
+        mockMvc.perform(get("/api/workspaces/" + workspaceId + "/actions").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(2)));
+    }
+
+    @Test
     @DisplayName("sans jeton, rien — la route est fermée")
     void requiresAuthentication() throws Exception {
         mockMvc.perform(get("/api/workspaces/" + workspaceId + "/actions").contextPath("/api"))
