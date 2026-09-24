@@ -34,6 +34,21 @@ public class AtelierThreadService {
     private final WorkspaceRepository workspaceRepository;
     private final AtelierMessageRepository messageRepository;
 
+    /**
+     * Le bilan de session (F-155 / SF-155-03), branché par mutateur (null pour les formes
+     * historiques et les tests) : sans lui, le nouveau départ se comporte exactement comme avant.
+     */
+    private fr.claudegateway.bilan.SessionBilanTriggerService bilanTrigger;
+    private fr.claudegateway.auth.CurrentUser currentUser;
+
+    /** Branche le bilan de session au nouveau départ (F-155 / SF-155-03). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setBilan(fr.claudegateway.bilan.SessionBilanTriggerService bilanTrigger,
+            fr.claudegateway.auth.CurrentUser currentUser) {
+        this.bilanTrigger = bilanTrigger;
+        this.currentUser = currentUser;
+    }
+
     public AtelierThreadService(WorkspaceService workspaceService, WorkspaceRepository workspaceRepository,
             AtelierMessageRepository messageRepository) {
         this.workspaceService = workspaceService;
@@ -72,7 +87,11 @@ public class AtelierThreadService {
     @Transactional
     public AtelierResumeResponse restart(UUID userId, UUID workspaceId) {
         Workspace workspace = workspaceService.requireOwned(userId, workspaceId);
-        workspace.setChatThreadStartedAt(OffsetDateTime.now());
+        // F-155 / SF-155-03 : relever la session QUI SE FERME, avant de déplacer la frontière —
+        // après, il n'y aurait plus rien à relever. Le bilan ne doit jamais faire échouer le geste.
+        OffsetDateTime closing = OffsetDateTime.now();
+        String bilan = bilanOf(userId, workspace, closing);
+        workspace.setChatThreadStartedAt(closing);
         // Repartir propre, c'est aussi oublier le résumé de compaction (F-117 / SF-117-01) : sans
         // cela, un « nouveau départ » rejouerait encore le résumé des tours désormais mis de côté.
         workspace.setChatThreadSummary(null);
@@ -81,7 +100,28 @@ public class AtelierThreadService {
         workspace.setChatThreadMode(null);
         workspace.setChatThreadPlan(null);
         workspaceRepository.save(workspace);
-        return new AtelierResumeResponse(0, null, workspace.getChatThreadStartedAt(), "NONE");
+        return new AtelierResumeResponse(0, null, workspace.getChatThreadStartedAt(), "NONE",
+                null, List.of(), bilan);
+    }
+
+    /**
+     * Ce que la fermeture décide du bilan. La fenêtre part de la frontière <b>précédente</b> — ou,
+     * à défaut, de la création du projet : la première session est une session.
+     *
+     * <p>Réservé à l'administrateur ; pour les autres, rien n'est même calculé.</p>
+     */
+    private String bilanOf(UUID userId, Workspace workspace, OffsetDateTime closing) {
+        if (bilanTrigger == null || currentUser == null) {
+            return "AUCUN";
+        }
+        fr.claudegateway.user.UserRole role = currentUser.principal()
+                .map(fr.claudegateway.auth.AuthenticatedUser::role)
+                .orElse(null);
+        OffsetDateTime from = workspace.getChatThreadStartedAt() != null
+                ? workspace.getChatThreadStartedAt()
+                : workspace.getCreatedAt();
+        return bilanTrigger.decide(userId, workspace.getId(), role, from, closing)
+                .trigger().name();
     }
 
     /** Messages que le prochain tour rejouera : tout le fil, ou ce qui suit la frontière. */

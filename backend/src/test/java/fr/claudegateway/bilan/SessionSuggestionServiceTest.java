@@ -35,7 +35,7 @@ class SessionSuggestionServiceTest {
 
     private SessionSuggestionService service(Integer threshold) {
         return new SessionSuggestionService(PRICING,
-                new SessionBilanProperties(threshold, null, null));
+                SessionBilanProperties.ofImpact(threshold, null, null));
     }
 
     private SessionLedger ledger(int turns, String costEur, long input, long cacheRead,
@@ -88,8 +88,8 @@ class SessionSuggestionServiceTest {
         @DisplayName("un seuil absent ou absurde retombe sur 10 % — le chiffre du PO")
         void defaultsToTheOwnersNumber() {
             assertThat(SessionBilanProperties.defaults().impactThresholdPct()).isEqualTo(10);
-            assertThat(new SessionBilanProperties(0, null, null).impactThresholdPct()).isEqualTo(10);
-            assertThat(new SessionBilanProperties(-5, null, null).impactThresholdPct()).isEqualTo(10);
+            assertThat(SessionBilanProperties.ofImpact(0, null, null).impactThresholdPct()).isEqualTo(10);
+            assertThat(SessionBilanProperties.ofImpact(-5, null, null).impactThresholdPct()).isEqualTo(10);
         }
     }
 
