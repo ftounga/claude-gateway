@@ -1,4 +1,4 @@
-import { Component, computed, inject } from '@angular/core';
+import { Component, HostListener, computed, effect, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { filter, map } from 'rxjs/operators';
@@ -50,6 +50,40 @@ export class ShellComponent {
 
   /** Affiche l'entrée « Administration » uniquement pour un utilisateur ADMIN (F-20). */
   protected readonly isAdmin = this.auth.isAdmin;
+
+  /**
+   * Menu de navigation replié (F-151 / SF-151-01) : sous 819 px, les 7 liens du shell se
+   * cachent derrière un bouton hamburger. Ce drapeau dit si le panneau est déployé. Il n'a
+   * aucun effet ≥ 820 px, où le CSS `@media` réaffiche la barre en ligne quoi qu'il vaille.
+   */
+  protected readonly menuOpen = signal(false);
+
+  constructor() {
+    // Toute navigation terminée referme le menu : ouvrir un lien, c'est vouloir la page, pas
+    // rester sur le panneau. On écoute l'URL déjà exposée plutôt que de recâbler le routeur.
+    effect(() => {
+      this.currentUrl();
+      this.menuOpen.set(false);
+    });
+  }
+
+  /** Bascule le panneau de navigation replié (bouton hamburger, < 820 px). */
+  protected toggleMenu(): void {
+    this.menuOpen.update((open) => !open);
+  }
+
+  /** Referme le panneau de navigation replié (clic hors zone, clic sur un lien, Échap). */
+  protected closeMenu(): void {
+    this.menuOpen.set(false);
+  }
+
+  /** Échap referme le panneau replié quand il est ouvert (accessibilité). */
+  @HostListener('document:keydown.escape')
+  protected onEscape(): void {
+    if (this.menuOpen()) {
+      this.closeMenu();
+    }
+  }
 
   /** URL courante, sans query ni fragment — recalculée à chaque navigation terminée. */
   private readonly currentUrl = toSignal(
