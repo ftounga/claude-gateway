@@ -106,8 +106,35 @@ public class SessionLedgerService {
                 input, output, cacheRead, cacheWrite,
                 cacheShare(input, cacheRead),
                 withoutCost,
+                dominantModel(turns),
+                totalToolTime(calls),
                 costliest(turns),
                 heaviest(calls));
+    }
+
+    /**
+     * Le modèle le plus servi de la session : les détecteurs de coût (SF-155-02) ont besoin de
+     * <b>sa</b> grille, pas d'un tarif moyen — un tour d'Opus coûte cinq fois un tour de Haiku.
+     */
+    private static String dominantModel(List<UsageTurn> turns) {
+        Map<String, Integer> byModel = new LinkedHashMap<>();
+        for (UsageTurn turn : turns) {
+            if (turn.getModel() != null) {
+                byModel.merge(turn.getModel(), 1, Integer::sum);
+            }
+        }
+        return byModel.entrySet().stream()
+                .max(Map.Entry.comparingByValue())
+                .map(Map.Entry::getKey)
+                .orElse(null);
+    }
+
+    /** La durée cumulée de TOUS les appels : sans elle, aucune « part du temps » n'est calculable. */
+    private static Duration totalToolTime(List<RunnerAudit> calls) {
+        long ms = calls.stream()
+                .mapToLong(c -> c.getDurationMs() == null ? 0 : c.getDurationMs())
+                .sum();
+        return Duration.ofMillis(ms);
     }
 
     /**

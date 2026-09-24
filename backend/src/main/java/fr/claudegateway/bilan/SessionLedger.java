@@ -26,6 +26,11 @@ import java.util.List;
  * @param cacheWriteTokens jetons écrits en cache
  * @param cacheShare     part du cache dans l'entrée totale, de 0 à 100
  * @param turnsWithoutCost tours dont le coût fournisseur est inconnu — dit, sinon le total paraîtrait faux
+ * @param model          le modèle le plus servi de la session ({@code null} si aucun tour) — les
+ *                       détecteurs de coût ont besoin de <b>sa</b> grille, pas d'un tarif moyen
+ *                       (F-155 / SF-155-02)
+ * @param totalToolTime  durée cumulée de <b>tous</b> les appels d'outils — sans elle, on ne peut
+ *                       pas dire quelle <b>part</b> du temps un outil concentre
  * @param costliestTurns les trois tours les plus chers
  * @param heaviestTools  les trois outils les plus lourds
  */
@@ -44,13 +49,15 @@ public record SessionLedger(
         long cacheWriteTokens,
         int cacheShare,
         int turnsWithoutCost,
+        String model,
+        Duration totalToolTime,
         List<CostlyTurn> costliestTurns,
         List<HeavyTool> heaviestTools) {
 
     /** Un relevé sans rien dedans — une session sans activité n'est pas une erreur. */
     public static SessionLedger empty(OffsetDateTime from, OffsetDateTime to) {
         return new SessionLedger(from, to, 0, Duration.ZERO, 0, 0, 0, BigDecimal.ZERO,
-                0, 0, 0, 0, 0, 0, List.of(), List.of());
+                0, 0, 0, 0, 0, 0, null, Duration.ZERO, List.of(), List.of());
     }
 
     /** Vrai quand il n'y a rien à dire : ni tour, ni appel d'outil. */
