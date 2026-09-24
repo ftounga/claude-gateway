@@ -7,7 +7,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import fr.claudegateway.user.UserRole;
 
 /**
  * <b>Le déclenchement du bilan</b> (F-155 / SF-155-03) : au moment où l'utilisateur ferme une
@@ -29,13 +28,16 @@ public class SessionBilanTriggerService {
     private final SessionLedgerService ledgers;
     private final SessionSuggestionService suggestions;
     private final SessionBilanProperties settings;
+    private final SessionBilanStore store;
 
     public SessionBilanTriggerService(SessionLedgerService ledgers,
                                       SessionSuggestionService suggestions,
-                                      SessionBilanProperties settings) {
+                                      SessionBilanProperties settings,
+                                      SessionBilanStore store) {
         this.ledgers = ledgers;
         this.suggestions = suggestions;
         this.settings = settings;
+        this.store = store;
     }
 
     /**
@@ -44,12 +46,14 @@ public class SessionBilanTriggerService {
      * <p><b>À appeler avant</b> que la frontière de rejeu ne bouge : après, il n'y aurait plus rien
      * à relever.</p>
      *
-     * @param role  rôle de l'utilisateur courant — seul l'administrateur a des bilans
+     * @param admin l'appelant est-il administrateur ? <b>Décidé par la définition unique</b>
+     *              ({@code AdminService.isAdmin}), jamais par une comparaison de rôle refaite ici —
+     *              le super-admin par e-mail n'aurait autrement jamais de bilan
      * @param from  début de la session : la frontière précédente, ou la création du projet
      */
-    public Decision decide(UUID userId, UUID workspaceId, UserRole role, OffsetDateTime from,
+    public Decision decide(UUID userId, UUID workspaceId, boolean admin, OffsetDateTime from,
                            OffsetDateTime to) {
-        if (role != UserRole.ADMIN) {
+        if (!admin) {
             return Decision.none(); // pas un calcul de moins : AUCUN calcul du tout
         }
         try {
@@ -63,8 +67,13 @@ public class SessionBilanTriggerService {
             }
             boolean worthIt = ledger.costEur().compareTo(settings.autoEuros()) >= 0
                     || ledger.turns() >= settings.autoTurns();
-            return new Decision(worthIt ? BilanTrigger.AUTOMATIQUE : BilanTrigger.PROPOSE,
-                    ledger, verdict);
+            if (!worthIt) {
+                return new Decision(BilanTrigger.PROPOSE, ledger, verdict, null);
+            }
+            // F-155 / SF-155-04 : l'automatique est GARDÉ au moment où il est décidé — un bilan
+            // qu'on ne relit pas ne se compare pas, et comparer est tout l'intérêt.
+            SessionBilan kept = store.keep(userId, workspaceId, null, "AUTOMATIQUE", ledger, verdict);
+            return new Decision(BilanTrigger.AUTOMATIQUE, ledger, verdict, kept.getId());
         } catch (RuntimeException e) {
             // On perd un bilan ; on ne perd pas le geste de l'utilisateur.
             log.warn("Bilan de session impossible au nouveau départ du projet {}", workspaceId, e);
@@ -78,12 +87,13 @@ public class SessionBilanTriggerService {
      * @param trigger l'issue
      * @param ledger  le relevé, {@code null} quand il n'y a rien
      * @param verdict les suggestions, {@code null} quand il n'y a rien
+     * @param bilanId l'artefact gardé, {@code null} sauf pour un automatique
      */
     public record Decision(BilanTrigger trigger, SessionLedger ledger,
-                           SessionSuggestionService.Verdict verdict) {
+                           SessionSuggestionService.Verdict verdict, UUID bilanId) {
 
         static Decision none() {
-            return new Decision(BilanTrigger.AUCUN, null, null);
+            return new Decision(BilanTrigger.AUCUN, null, null, null);
         }
     }
 }

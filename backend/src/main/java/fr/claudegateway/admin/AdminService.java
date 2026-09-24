@@ -83,11 +83,25 @@ public class AdminService {
      * @throws AdminForbiddenException si l'appelant n'est ni ADMIN ni le super-admin configuré (403)
      */
     public void assertAdmin() {
-        AuthenticatedUser principal = currentUser.principal().orElseThrow(AdminForbiddenException::new);
-        boolean admin = principal.role() == UserRole.ADMIN
-                || (!superAdminEmail.isEmpty() && superAdminEmail.equalsIgnoreCase(principal.email()));
-        if (!admin) {
+        if (!isAdmin()) {
             throw new AdminForbiddenException();
         }
+    }
+
+    /**
+     * La <b>même</b> question, sans lever : « l'appelant est-il administrateur ? ».
+     *
+     * <p>Existe pour que les appelants qui <b>décident</b> plutôt que d'<b>autoriser</b> — le bilan
+     * de session (F-155 / SF-155-03), qui se produit ou ne se produit pas — n'aient pas à
+     * réimplémenter la règle. Une seconde définition de « qui est admin », c'est-à-dire un jour
+     * deux définitions divergentes, laisserait le super-admin par e-mail sans bilan sans que rien
+     * ne le signale.</p>
+     */
+    public boolean isAdmin() {
+        return currentUser.principal()
+                .map(principal -> principal.role() == UserRole.ADMIN
+                        || (!superAdminEmail.isEmpty()
+                                && superAdminEmail.equalsIgnoreCase(principal.email())))
+                .orElse(false);
     }
 }

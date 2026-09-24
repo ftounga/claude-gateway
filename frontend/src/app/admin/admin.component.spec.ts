@@ -11,6 +11,7 @@ import { AuthService } from '../core/services/auth.service';
 import { AccessCodeAdminService } from './access-code-admin.service';
 import { GovernanceAdminService } from './governance-admin.service';
 import { AdminCostService } from './cost/admin-cost.service';
+import { AdminBilansService } from './bilans/admin-bilans.service';
 import { AdminUsageService } from './admin-usage.service';
 
 describe('AdminComponent', () => {
@@ -94,6 +95,10 @@ describe('AdminComponent', () => {
     );
     costSpy.alerts.and.returnValue(of([]));
 
+    const bilansSpy = jasmine.createSpyObj<AdminBilansService>('AdminBilansService',
+      ['list', 'open', 'produce']);
+    bilansSpy.list.and.returnValue(of([]));
+
     await TestBed.configureTestingModule({
       imports: [AdminComponent],
       providers: [
@@ -103,6 +108,9 @@ describe('AdminComponent', () => {
         { provide: AccessCodeAdminService, useValue: accessCodeSpy },
         { provide: AdminUsageService, useValue: usageSpy },
         { provide: AdminCostService, useValue: costSpy },
+        // F-155 / SF-155-04 : la section Bilans est un enfant de plus dans cette page. Comme les
+        // autres, son service est doublé — sinon il réclamerait un HttpClient que ce test n'a pas.
+        { provide: AdminBilansService, useValue: bilansSpy },
       ],
     }).compileComponents();
 

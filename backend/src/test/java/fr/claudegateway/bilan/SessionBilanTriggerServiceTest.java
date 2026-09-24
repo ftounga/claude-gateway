@@ -2,6 +2,7 @@ package fr.claudegateway.bilan;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -17,7 +18,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import fr.claudegateway.user.UserRole;
 
 /**
  * Le déclenchement du bilan (F-155 / SF-155-03).
@@ -33,6 +33,7 @@ class SessionBilanTriggerServiceTest {
 
     private final SessionLedgerService ledgers = mock(SessionLedgerService.class);
     private final SessionSuggestionService suggestions = mock(SessionSuggestionService.class);
+    private final SessionBilanStore store = mock(SessionBilanStore.class);
 
     private final UUID userId = UUID.randomUUID();
     private final UUID workspaceId = UUID.randomUUID();
@@ -42,7 +43,10 @@ class SessionBilanTriggerServiceTest {
     @BeforeEach
     void setUp() {
         service = new SessionBilanTriggerService(ledgers, suggestions,
-                SessionBilanProperties.defaults());
+                SessionBilanProperties.defaults(), store);
+        SessionBilan kept = new SessionBilan();
+        kept.setId(UUID.randomUUID());
+        when(store.keep(any(), any(), any(), any(), any(), any())).thenReturn(kept);
     }
 
     private SessionLedger ledger(int turns, String costEur) {
@@ -61,7 +65,7 @@ class SessionBilanTriggerServiceTest {
     }
 
     private BilanTrigger decide() {
-        return service.decide(userId, workspaceId, UserRole.ADMIN, FROM, TO).trigger();
+        return service.decide(userId, workspaceId, true, FROM, TO).trigger();
     }
 
     @Test
@@ -110,13 +114,23 @@ class SessionBilanTriggerServiceTest {
     @Test
     @DisplayName("non-administrateur : AUCUN, et AUCUN relevé n'est calculé")
     void aNonAdminCostsNothing() {
-        assertThat(service.decide(userId, workspaceId, UserRole.USER, FROM, TO).trigger())
-                .isEqualTo(BilanTrigger.AUCUN);
-        assertThat(service.decide(userId, workspaceId, null, FROM, TO).trigger())
+        assertThat(service.decide(userId, workspaceId, false, FROM, TO).trigger())
                 .isEqualTo(BilanTrigger.AUCUN);
 
         verify(ledgers, never()).of(any(), any(), any(), any());
         verify(suggestions, never()).examine(any());
+        verify(store, never()).keep(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("un AUTOMATIQUE est GARDÉ ; un PROPOSÉ ne l'est pas — on ne garde pas ce qu'on n'a pas produit")
+    void onlyTheAutomaticIsKept() {
+        given(ledger(25, "9.00"), 1, 0);
+        assertThat(service.decide(userId, workspaceId, true, FROM, TO).bilanId()).isNotNull();
+        verify(store).keep(eq(userId), eq(workspaceId), any(), eq("AUTOMATIQUE"), any(), any());
+
+        given(ledger(3, "0.20"), 1, 0);
+        assertThat(service.decide(userId, workspaceId, true, FROM, TO).bilanId()).isNull();
     }
 
     @Test
@@ -126,7 +140,7 @@ class SessionBilanTriggerServiceTest {
                 .thenThrow(new IllegalStateException("base HS"));
 
         SessionBilanTriggerService.Decision decision =
-                service.decide(userId, workspaceId, UserRole.ADMIN, FROM, TO);
+                service.decide(userId, workspaceId, true, FROM, TO);
 
         assertThat(decision.trigger()).isEqualTo(BilanTrigger.AUCUN);
         assertThat(decision.ledger()).isNull();
@@ -136,10 +150,10 @@ class SessionBilanTriggerServiceTest {
     @DisplayName("les seuils sont configurables, et respectés")
     void thresholdsAreConfigurable() {
         SessionBilanTriggerService strict = new SessionBilanTriggerService(ledgers, suggestions,
-                new SessionBilanProperties(null, null, null, new BigDecimal("100"), 1000));
+                new SessionBilanProperties(null, null, null, new BigDecimal("100"), 1000), store);
         given(ledger(25, "2.50"), 1, 0); // largement au-dessus des DÉFAUTS
 
-        assertThat(strict.decide(userId, workspaceId, UserRole.ADMIN, FROM, TO).trigger())
+        assertThat(strict.decide(userId, workspaceId, true, FROM, TO).trigger())
                 .as("sous les seuils configurés, quoi qu'en disent les défauts")
                 .isEqualTo(BilanTrigger.PROPOSE);
     }
@@ -151,7 +165,7 @@ class SessionBilanTriggerServiceTest {
         given(ledger, 2, 1);
 
         SessionBilanTriggerService.Decision decision =
-                service.decide(userId, workspaceId, UserRole.ADMIN, FROM, TO);
+                service.decide(userId, workspaceId, true, FROM, TO);
 
         assertThat(decision.ledger()).isSameAs(ledger);
         assertThat(decision.verdict().suggestions()).hasSize(2);

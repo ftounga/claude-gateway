@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-155 / SF-155-04 — LE BILAN DE SESSION, GARDÉ COMME ARTEFACT.
+
+      POURQUOI GARDER : un bilan qui n'existe que dans une réponse HTTP est un bilan qu'on ne relit
+      jamais et qu'on ne peut pas comparer. Or COMPARER est tout l'interet : « le cache est remonte
+      depuis la semaine derniere ».
+
+      DEUX COLONNES JSON, CINQ COLONNES DE TETE. Le releve et les suggestions sont des PHOTOGRAPHIES
+      d'un instant, pas des donnees a interroger : on les garde en `text`. Les cinq chiffres que la
+      liste trie et compare (tours, cout, part du cache, suggestions, ecartees) sont en colonnes.
+      L'inverse — tout en JSON — obligerait a desserialiser la base entiere pour afficher une liste.
+
+      ISOLATION : toute lecture filtre user_id. Un bilan n'est jamais lu par son seul identifiant.
+
+      PAS DE CLE ETRANGERE, meme choix que resolution_memory / usage_turns / terminal_actions.
+      Purge explicite a la suppression du compte.
+    -->
+
+    <changeSet id="132-session-bilans" author="claude-gateway">
+        <createTable tableName="session_bilans">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="workspace_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <!-- Le nom du projet, FIGE au moment du bilan : renommer un projet ne doit pas rendre
+                 un ancien bilan illisible, et le projet peut disparaitre. -->
+            <column name="workspace_name" type="varchar(255)"/>
+            <!-- La fenetre observee. -->
+            <column name="from_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+            <column name="to_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+            <!-- AUTOMATIQUE (seuil atteint) | MANUEL (demande d'un clic). -->
+            <column name="origin" type="varchar(16)">
+                <constraints nullable="false"/>
+            </column>
+
+            <!-- Les cinq chiffres de tete : ce que la liste trie et compare. -->
+            <column name="turns" type="int" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="cost_eur" type="numeric(12,2)" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="cache_share" type="int" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="suggestion_count" type="int" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="discarded_count" type="int" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+
+            <!-- Les photographies. `varchar(1000000)` et non `text` : convention du projet (voir
+                 resolution_memory), sinon H2 rend un CLOB et la validation de schema refuse de demarrer. -->
+            <column name="ledger_json" type="varchar(1000000)"/>
+            <column name="suggestions_json" type="varchar(1000000)"/>
+
+            <column name="created_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <!-- L'ecran lit exactement ceci : les bilans du compte, les plus recents d'abord. -->
+        <createIndex tableName="session_bilans" indexName="idx_session_bilans_user_created">
+            <column name="user_id"/>
+            <column name="created_at"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

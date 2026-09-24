@@ -39,14 +39,19 @@ public class AtelierThreadService {
      * historiques et les tests) : sans lui, le nouveau départ se comporte exactement comme avant.
      */
     private fr.claudegateway.bilan.SessionBilanTriggerService bilanTrigger;
-    private fr.claudegateway.auth.CurrentUser currentUser;
+    /**
+     * La <b>définition unique</b> de « qui est administrateur » (F-155 / SF-155-04). Comparer le
+     * rôle ici serait une seconde définition — et le super-admin par e-mail, dont le rôle stocké
+     * peut ne pas être promu, n'aurait jamais de bilan sans que rien ne le signale.
+     */
+    private fr.claudegateway.admin.AdminService adminService;
 
     /** Branche le bilan de session au nouveau départ (F-155 / SF-155-03). */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setBilan(fr.claudegateway.bilan.SessionBilanTriggerService bilanTrigger,
-            fr.claudegateway.auth.CurrentUser currentUser) {
+            fr.claudegateway.admin.AdminService adminService) {
         this.bilanTrigger = bilanTrigger;
-        this.currentUser = currentUser;
+        this.adminService = adminService;
     }
 
     public AtelierThreadService(WorkspaceService workspaceService, WorkspaceRepository workspaceRepository,
@@ -111,16 +116,13 @@ public class AtelierThreadService {
      * <p>Réservé à l'administrateur ; pour les autres, rien n'est même calculé.</p>
      */
     private String bilanOf(UUID userId, Workspace workspace, OffsetDateTime closing) {
-        if (bilanTrigger == null || currentUser == null) {
+        if (bilanTrigger == null || adminService == null) {
             return "AUCUN";
         }
-        fr.claudegateway.user.UserRole role = currentUser.principal()
-                .map(fr.claudegateway.auth.AuthenticatedUser::role)
-                .orElse(null);
         OffsetDateTime from = workspace.getChatThreadStartedAt() != null
                 ? workspace.getChatThreadStartedAt()
                 : workspace.getCreatedAt();
-        return bilanTrigger.decide(userId, workspace.getId(), role, from, closing)
+        return bilanTrigger.decide(userId, workspace.getId(), adminService.isAdmin(), from, closing)
                 .trigger().name();
     }
 

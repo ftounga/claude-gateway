@@ -60,7 +60,14 @@ public record SessionLedger(
                 0, 0, 0, 0, 0, 0, null, Duration.ZERO, List.of(), List.of());
     }
 
-    /** Vrai quand il n'y a rien à dire : ni tour, ni appel d'outil. */
+    /**
+     * Vrai quand il n'y a rien à dire : ni tour, ni appel d'outil.
+     *
+     * <p>{@code @JsonIgnore} : le relevé est <b>sérialisé puis relu</b> (SF-155-04). Sans cela,
+     * Jackson écrirait une propriété {@code empty} qu'aucun composant du record n'accepte à la
+     * relecture — et la photographie deviendrait illisible.</p>
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnore
     public boolean isEmpty() {
         return turns == 0 && toolCalls == 0;
     }
