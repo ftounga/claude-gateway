@@ -14,6 +14,8 @@ import { AccountExport } from '../core/models/account.models';
 import { ApiKeyStatus } from '../core/models/api-key.models';
 import { GitTokenStatus } from '../core/models/git-token.models';
 import { UserProfile } from '../core/models/auth.models';
+import { PushActivationService } from '../core/services/push-activation.service';
+import { signal } from '@angular/core';
 
 describe('SettingsComponent', () => {
   let fixture: ComponentFixture<SettingsComponent>;
@@ -115,6 +117,17 @@ describe('SettingsComponent', () => {
         { provide: GitTokenService, useValue: gitTokenService },
         { provide: AuthService, useValue: authService },
         { provide: MatDialog, useValue: dialog },
+        // F-153 / SF-153-03 : la page rend désormais la carte Notifications. On bouchonne le
+        // service de push (non supporté ici) pour ne dépendre ni du service worker ni de HttpClient.
+        {
+          provide: PushActivationService,
+          useValue: {
+            supported: false,
+            enabled: signal(false),
+            enable: () => Promise.resolve('unsupported'),
+            disable: () => Promise.resolve(),
+          },
+        },
       ],
     });
 

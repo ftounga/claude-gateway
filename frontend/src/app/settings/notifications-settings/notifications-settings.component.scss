@@ -1,0 +1,52 @@
+// Carte « Notifications » des paramètres (F-153 / SF-153-03) — jetons DESIGN_SYSTEM uniquement.
+.notifications-card {
+  margin-bottom: var(--cg-space-4, 16px);
+  padding: var(--cg-space-4, 16px);
+}
+
+.notifications-card__title {
+  font-family: var(--cg-font-heading);
+  font-weight: 600;
+  font-size: 18px;
+  color: var(--cg-text-primary);
+  margin: 0 0 var(--cg-space-2, 8px);
+}
+
+.notifications-card__text {
+  color: var(--cg-text-secondary);
+  font-size: 14px;
+  margin: 0 0 var(--cg-space-3, 12px);
+}
+
+.notifications-card__muted {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cg-space-2, 8px);
+  color: var(--cg-text-secondary);
+  font-size: 14px;
+  margin: 0;
+}
+
+.notifications-card__status {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2, 8px);
+  color: var(--cg-text-primary);
+  font-size: 14px;
+  margin-bottom: var(--cg-space-3, 12px);
+}
+
+.notifications-card__icon {
+  color: var(--cg-text-secondary);
+  flex: none;
+
+  &--on {
+    color: var(--cg-success);
+  }
+}
+
+.notifications-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cg-space-2, 8px);
+}

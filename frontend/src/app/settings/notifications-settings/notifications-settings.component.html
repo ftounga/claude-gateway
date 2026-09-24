@@ -1,0 +1,34 @@
+<mat-card class="notifications-card">
+  <h2 class="notifications-card__title">Notifications</h2>
+  <p class="notifications-card__text">
+    Recevez une notification quand une réponse est prête ou qu'une autorisation est demandée — même
+    l'application fermée ou le téléphone verrouillé. Le détail n'apparaît qu'après ouverture.
+  </p>
+
+  @if (!supported) {
+    <p class="notifications-card__muted">
+      <mat-icon class="notifications-card__icon" aria-hidden="true">info</mat-icon>
+      Les notifications ne sont pas disponibles sur cet appareil ou ce navigateur. Ajoutez
+      l'application à votre écran d'accueil, puis réessayez.
+    </p>
+  } @else if (enabled()) {
+    <div class="notifications-card__status">
+      <mat-icon class="notifications-card__icon notifications-card__icon--on" aria-hidden="true">
+        notifications_active
+      </mat-icon>
+      <span>Notifications activées sur cet appareil.</span>
+    </div>
+    <div class="notifications-card__actions">
+      <button mat-stroked-button type="button" [disabled]="busy()" (click)="deactivate()">
+        Désactiver les notifications
+      </button>
+    </div>
+  } @else {
+    <div class="notifications-card__actions">
+      <button mat-flat-button color="primary" type="button" [disabled]="busy()" (click)="activate()">
+        <mat-icon>notifications</mat-icon>
+        Activer les notifications
+      </button>
+    </div>
+  }
+</mat-card>
