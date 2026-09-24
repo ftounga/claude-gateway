@@ -111,6 +111,7 @@ public class SessionSuggestionService {
         // valait pas la peine », et le bilan ne pourrait plus dire combien il a écarté.
         int gain = percent(savingEur, ledger.costEur());
         return java.util.Optional.of(SessionSuggestion.ofCost(
+                SessionSuggestion.Kind.CACHE_FROID,
                 "Gardez le début de la conversation stable d'un tour à l'autre : ce qui change à "
                         + "chaque message empêche le cache et fait repayer la consigne entière.",
                 "cache lu : " + ledger.cacheShare() + " % de l'entrée sur " + ledger.turns()
@@ -136,6 +137,7 @@ public class SessionSuggestionService {
         BigDecimal saving = worst.costEur().subtract(average).max(BigDecimal.ZERO);
         int gain = percent(saving, ledger.costEur()); // même règle : c'est le seuil qui écarte
         return java.util.Optional.of(SessionSuggestion.ofCost(
+                SessionSuggestion.Kind.TOUR_HORS_NORME,
                 "Un seul tour a porté l'essentiel du coût : découpez ce genre de demande, ou "
                         + "donnez-lui d'emblée le fichier qu'il a dû aller chercher.",
                 "le tour du " + worst.occurredAt() + " a coûté " + worst.costEur() + " € sur "
@@ -157,7 +159,8 @@ public class SessionSuggestionService {
         if (share < DOMINANT_TOOL_SHARE) {
             return java.util.Optional.empty();
         }
-        return java.util.Optional.of(SessionSuggestion.of(SessionSuggestion.Axis.TEMPS,
+        return java.util.Optional.of(SessionSuggestion.of(
+                SessionSuggestion.Kind.OUTIL_DOMINANT, SessionSuggestion.Axis.TEMPS,
                 "L'attente vient presque entièrement de « " + worst.tool() + " » : lancez-le en "
                         + "arrière-plan, ou réduisez ce qu'il a à parcourir.",
                 "« " + worst.tool() + " » : " + worst.calls() + " appels, "
@@ -178,7 +181,8 @@ public class SessionSuggestionService {
                 .max(Comparator.comparingInt(SessionLedger.HeavyTool::failures))
                 .map(SessionLedger.HeavyTool::tool)
                 .orElse(null);
-        return java.util.Optional.of(SessionSuggestion.of(SessionSuggestion.Axis.RAISONNEMENT,
+        return java.util.Optional.of(SessionSuggestion.of(
+                SessionSuggestion.Kind.ECHECS_REPETES, SessionSuggestion.Axis.RAISONNEMENT,
                 culprit == null
                         ? "Une part des appels a échoué : dites d'emblée ce qui a déjà été tenté, "
                                 + "pour ne pas refaire le même chemin."

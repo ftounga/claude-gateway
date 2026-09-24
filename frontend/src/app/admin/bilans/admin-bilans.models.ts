@@ -71,9 +71,24 @@ export interface BilanSuggestion {
   gainEur: number | null;
 }
 
+/**
+ * **Un motif** : la même suggestion revenue assez souvent pour que ce ne soit plus une habitude à
+ * corriger, mais l'application qui laisse le défaut se reproduire.
+ */
+export interface BilanPattern {
+  kind: string;
+  /** Combien de fois sur la fenêtre. */
+  seen: number;
+  /** Combien de bilans ont été regardés. */
+  window: number;
+  /** Ce que le diagnostic du produit irait chercher. */
+  lead: string;
+}
+
 /** Un bilan ouvert. */
 export interface BilanDetail {
   headline: BilanSummary;
   ledger: BilanLedger | null;
   suggestions: BilanSuggestion[];
+  patterns: BilanPattern[];
 }

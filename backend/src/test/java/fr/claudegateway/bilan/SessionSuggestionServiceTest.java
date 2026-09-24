@@ -33,6 +33,11 @@ class SessionSuggestionServiceTest {
                     new BigDecimal("1.50"), new BigDecimal("18.75"))),
             null, null, new BigDecimal("1.00")); // 1 USD = 1 EUR : les chiffres restent lisibles
 
+    /** Le genre attendu d'une suggestion retenue, pour dire quel détecteur a parlé. */
+    private static SessionSuggestion.Kind kindOf(List<SessionSuggestion> kept, int index) {
+        return kept.get(index).kind();
+    }
+
     private SessionSuggestionService service(Integer threshold) {
         return new SessionSuggestionService(PRICING,
                 SessionBilanProperties.ofImpact(threshold, null, null));
@@ -108,6 +113,8 @@ class SessionSuggestionServiceTest {
         assertThat(kept).hasSize(1);
         SessionSuggestion s = kept.get(0);
         assertThat(s.axis()).isEqualTo(SessionSuggestion.Axis.COUT);
+        assertThat(s.kind()).as("le genre, stable, est ce qu'on comptera d'un bilan à l'autre")
+                .isEqualTo(SessionSuggestion.Kind.CACHE_FROID);
         assertThat(s.gainEur()).isEqualByComparingTo("12.15");
         assertThat(s.gainPct()).isEqualTo(30);
         assertThat(s.measure()).as("elle cite SA mesure, pas un adjectif")
@@ -135,6 +142,7 @@ class SessionSuggestionServiceTest {
 
         assertThat(kept).extracting(SessionSuggestion::axis)
                 .containsExactly(SessionSuggestion.Axis.COUT);
+        assertThat(kindOf(kept, 0)).isEqualTo(SessionSuggestion.Kind.TOUR_HORS_NORME);
         assertThat(kept.get(0).gainEur()).isEqualByComparingTo("60.00"); // 70 − (30/3)
         assertThat(kept.get(0).measure()).contains("70.00 €").contains("70 % de la session");
     }
@@ -153,6 +161,7 @@ class SessionSuggestionServiceTest {
 
         assertThat(kept).extracting(SessionSuggestion::axis)
                 .containsExactly(SessionSuggestion.Axis.TEMPS);
+        assertThat(kindOf(kept, 0)).isEqualTo(SessionSuggestion.Kind.OUTIL_DOMINANT);
         assertThat(kept.get(0).gainPct()).isEqualTo(93);
         assertThat(kept.get(0).advice()).contains("bash");
         assertThat(kept.get(0).measure()).contains("280 s sur 300 s");
@@ -184,6 +193,7 @@ class SessionSuggestionServiceTest {
                 .contains(SessionSuggestion.Axis.RAISONNEMENT);
         SessionSuggestion s = kept.stream()
                 .filter(x -> x.axis() == SessionSuggestion.Axis.RAISONNEMENT).findFirst().orElseThrow();
+        assertThat(s.kind()).isEqualTo(SessionSuggestion.Kind.ECHECS_REPETES);
         assertThat(s.gainPct()).isEqualTo(30); // 6 / 20
         assertThat(s.advice()).contains("bash");
         assertThat(s.measure()).isEqualTo("6 appels en échec sur 20");

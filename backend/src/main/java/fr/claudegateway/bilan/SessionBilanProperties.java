@@ -18,6 +18,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                   {@code 2} €). Une session courte mais coûteuse le mérite (F-155 / SF-155-03)
  * @param autoTurns  au-delà de ce nombre de tours, idem (défaut {@code 20}) — une session longue et
  *                   bon marché le mérite aussi. <b>Le premier des deux atteint déclenche.</b>
+ * @param patternWindow    combien de bilans on regarde en arrière pour reconnaître un motif
+ *                         (défaut {@code 10}) — F-155 / SF-155-05
+ * @param patternThreshold combien de fois un genre doit revenir sur cette fenêtre pour être un
+ *                         motif (défaut {@code 3}) : une anecdote n'en est pas un
  */
 @ConfigurationProperties(prefix = "app.bilan")
 public record SessionBilanProperties(
@@ -25,13 +29,17 @@ public record SessionBilanProperties(
         Integer minTurnsForPatterns,
         Integer minToolCallsForPatterns,
         java.math.BigDecimal autoEuros,
-        Integer autoTurns) {
+        Integer autoTurns,
+        Integer patternWindow,
+        Integer patternThreshold) {
 
     static final int DEFAULT_THRESHOLD_PCT = 10;
     static final int DEFAULT_MIN_TURNS = 3;
     static final int DEFAULT_MIN_TOOL_CALLS = 10;
     static final java.math.BigDecimal DEFAULT_AUTO_EUROS = new java.math.BigDecimal("2");
     static final int DEFAULT_AUTO_TURNS = 20;
+    static final int DEFAULT_PATTERN_WINDOW = 10;
+    static final int DEFAULT_PATTERN_THRESHOLD = 3;
 
     /**
      * Les réglages d'impact seuls, seuils de déclenchement par défaut.
@@ -43,7 +51,7 @@ public record SessionBilanProperties(
     public static SessionBilanProperties ofImpact(Integer impactThresholdPct,
             Integer minTurnsForPatterns, Integer minToolCallsForPatterns) {
         return new SessionBilanProperties(impactThresholdPct, minTurnsForPatterns,
-                minToolCallsForPatterns, null, null);
+                minToolCallsForPatterns, null, null, null, null);
     }
 
     public SessionBilanProperties {
@@ -55,10 +63,14 @@ public record SessionBilanProperties(
                 ? DEFAULT_MIN_TOOL_CALLS : minToolCallsForPatterns;
         autoEuros = autoEuros == null || autoEuros.signum() <= 0 ? DEFAULT_AUTO_EUROS : autoEuros;
         autoTurns = autoTurns == null || autoTurns <= 0 ? DEFAULT_AUTO_TURNS : autoTurns;
+        patternWindow = patternWindow == null || patternWindow <= 0
+                ? DEFAULT_PATTERN_WINDOW : patternWindow;
+        patternThreshold = patternThreshold == null || patternThreshold <= 0
+                ? DEFAULT_PATTERN_THRESHOLD : patternThreshold;
     }
 
     /** Les valeurs par défaut — celles du PO. */
     public static SessionBilanProperties defaults() {
-        return new SessionBilanProperties(null, null, null, null, null);
+        return new SessionBilanProperties(null, null, null, null, null, null, null);
     }
 }

@@ -35,6 +35,7 @@ function detail(over: Partial<BilanDetail> = {}): BilanDetail {
       axis: 'COUT', advice: 'Gardez le début stable.', measure: 'cache lu : 17 % sur 12 tours',
       gainPct: 28, gainEur: 2.6,
     }],
+    patterns: [],
     ...over,
   };
 }
@@ -118,6 +119,35 @@ describe('AdminBilansComponent (F-155 / SF-155-04)', () => {
     expect(text).toContain('Rien à signaler');
     expect(text).toContain('bien menée');
     expect(text).toContain('2 piste(s) écartée(s)');
+  });
+
+  it('un motif qui revient est rendu avec son compte, sa fenêtre et ce qu’irait chercher le diagnostic', () => {
+    build([summary()]);
+    service.open.and.returnValue(of(detail({
+      patterns: [{
+        kind: 'CACHE_FROID', seen: 4, window: 10,
+        lead: "ce que l'application place dans la consigne système et qui change à chaque tour",
+      }],
+    })));
+
+    component.open(summary());
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('Ce motif revient');
+    expect(text).toContain('4ᵉ fois sur 10 sessions');
+    expect(text).toContain("Ce n'est plus une habitude à corriger");
+    expect(text).toContain('consigne système');
+  });
+
+  it('sans motif, aucun encart — on ne renvoie pas au diagnostic sans raison', () => {
+    build([summary()]);
+    service.open.and.returnValue(of(detail()));
+
+    component.open(summary());
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.patterns')).toBeNull();
   });
 
   it('un échec d’ouverture est dit, sans détail technique', () => {

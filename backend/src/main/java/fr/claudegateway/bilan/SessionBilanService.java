@@ -32,15 +32,17 @@ public class SessionBilanService {
     private final SessionLedgerService ledgers;
     private final SessionSuggestionService suggestions;
     private final WorkspaceService workspaces;
+    private final SessionPatternService patterns;
     private final ObjectMapper json;
 
     public SessionBilanService(SessionBilanStore store, SessionLedgerService ledgers,
                                SessionSuggestionService suggestions, WorkspaceService workspaces,
-                               ObjectMapper json) {
+                               SessionPatternService patterns, ObjectMapper json) {
         this.store = store;
         this.ledgers = ledgers;
         this.suggestions = suggestions;
         this.workspaces = workspaces;
+        this.patterns = patterns;
         this.json = json;
     }
 
@@ -82,7 +84,8 @@ public class SessionBilanService {
         SessionBilan bilan = store.require(userId, id);
         return new SessionBilanDetail(SessionBilanView.from(bilan),
                 read(bilan.getLedgerJson(), new TypeReference<SessionLedger>() { }),
-                readList(bilan.getSuggestionsJson()));
+                readList(bilan.getSuggestionsJson()),
+                patterns.patternsFor(userId, bilan));
     }
 
     /**
