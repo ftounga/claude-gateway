@@ -6,6 +6,7 @@ import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -39,13 +40,18 @@ public class ProductDiagnosticService {
     private final ProductDiagnosisService diagnoses;
     private final ParityService parity;
     private final SessionBilanProperties settings;
+    private final SourceReader sources;
+    private final ReasonedReader reasoned;
 
     public ProductDiagnosticService(ProductSurveyService surveys, ProductDiagnosisService diagnoses,
-                                    ParityService parity, SessionBilanProperties settings) {
+                                    ParityService parity, SessionBilanProperties settings,
+                                    SourceReader sources, ReasonedReader reasoned) {
         this.surveys = surveys;
         this.diagnoses = diagnoses;
         this.parity = parity;
         this.settings = settings;
+        this.sources = sources;
+        this.reasoned = reasoned;
     }
 
     /** La durée demandée, ramenée aux bornes. */
@@ -59,18 +65,46 @@ public class ProductDiagnosticService {
     /** Le diagnostic d'une période, à la demande. */
     @Transactional(readOnly = true)
     public DiagnosticReport run(UUID userId, Integer requestedDays) {
+        return run(userId, requestedDays, null);
+    }
+
+    /**
+     * Le diagnostic, éventuellement <b>enrichi par la lecture du code</b> (F-157 / SF-157-05).
+     *
+     * <p><b>Un refus de lecture ne prive pas du diagnostic gratuit</b> : si le projet désigné n'est
+     * pas le dépôt, le rapport est rendu quand même, avec le mot qui le dit.</p>
+     *
+     * @param repositoryWorkspaceId le terminal ouvert sur le dépôt, ou {@code null}
+     */
+    @Transactional(readOnly = true)
+    public DiagnosticReport run(UUID userId, Integer requestedDays, UUID repositoryWorkspaceId) {
         int days = boundedDays(requestedDays);
         boolean corrected = requestedDays != null && requestedDays != days;
 
         OffsetDateTime to = OffsetDateTime.now();
         OffsetDateTime from = to.minus(Duration.ofDays(days));
 
+        // La lecture du code d'abord : elle cadre les verdicts. Son échec est AVALÉ et DIT.
+        Map<String, SourceRead> code = Map.of();
+        String sourceNote = null;
+        if (repositoryWorkspaceId != null) {
+            try {
+                code = sources.read(userId, repositoryWorkspaceId);
+                sourceNote = code.values().stream().filter(SourceRead::isRead).count()
+                        + " fichiers du dépôt lus : les constats sont enrichis.";
+            } catch (RepositoryNotRecognizedException e) {
+                sourceNote = e.getMessage();
+            }
+        }
+        boolean read = !code.isEmpty();
+
         ProductSurvey survey = surveys.survey(userId, from, to);
         if (survey.isEmpty()) {
-            return DiagnosticReport.nothingToObserve(from, to, parity.measure(null, survey).rows());
+            return DiagnosticReport.nothingToObserve(from, to, parity.measure(null, survey).rows())
+                    .withSource(read, sourceNote);
         }
 
-        ProductDiagnosisService.Diagnosis diagnosis = diagnoses.diagnose(userId, survey);
+        ProductDiagnosisService.Diagnosis diagnosis = diagnoses.diagnose(userId, survey, code);
         ParityService.Parity table = parity.measure(diagnosis, survey);
 
         List<CapabilityFinding> kept = new ArrayList<>();
@@ -91,7 +125,30 @@ public class ProductDiagnosticService {
                 survey.truncated() || corrected,
                 survey.turns(), survey.projects(), survey.costEur(),
                 List.copyOf(kept), discarded, diagnosis.active(), table.rows(),
-                specLines(kept, survey));
+                specLines(kept, survey))
+                .withSource(read, sourceNote);
+    }
+
+    /**
+     * Une <b>hypothèse</b> sur une capacité, tirée de la lecture de son code (F-157 / SF-157-04).
+     *
+     * <p><b>C'est la seule opération du diagnostic qui consomme des jetons.</b> Une capacité à la
+     * fois, à la demande.</p>
+     *
+     * @return l'hypothèse, ou vide — dépôt non reconnu, rien à lire, ou fournisseur indisponible
+     */
+    @Transactional(readOnly = true)
+    public java.util.Optional<SourceHypothesis> explain(UUID userId, UUID repositoryWorkspaceId,
+                                                        String capabilityId) {
+        Map<String, SourceRead> code = sources.read(userId, repositoryWorkspaceId);
+        CapabilityFinding finding = CapabilityMap.byId(capabilityId)
+                .map(c -> new CapabilityFinding(c.id(), c.name(), CapabilityVerdict.INDETERMINEE,
+                        "Lecture demandée par l'administrateur.", c.paths(), c.activates(), null))
+                .orElse(null);
+        if (finding == null) {
+            return java.util.Optional.empty();
+        }
+        return reasoned.read(finding, code);
     }
 
     /** Le gain calculé pèse-t-il assez, rapporté au coût de la période ? */

@@ -29,6 +29,8 @@ class ProductDiagnosticServiceTest {
     private final ProductSurveyService surveys = mock(ProductSurveyService.class);
     private final ProductDiagnosisService diagnoses = mock(ProductDiagnosisService.class);
     private final ParityService parity = new ParityService();
+    private final SourceReader sources = mock(SourceReader.class);
+    private final ReasonedReader reasoned = mock(ReasonedReader.class);
 
     private final UUID userId = UUID.randomUUID();
 
@@ -37,7 +39,7 @@ class ProductDiagnosticServiceTest {
     @BeforeEach
     void setUp() {
         service = new ProductDiagnosticService(surveys, diagnoses, parity,
-                SessionBilanProperties.defaults()); // seuil 10 %
+                SessionBilanProperties.defaults(), sources, reasoned); // seuil 10 %
     }
 
     private ProductSurvey survey(String costEur, boolean truncated) {
@@ -55,7 +57,7 @@ class ProductDiagnosticServiceTest {
 
     private void given(ProductSurvey survey, CapabilityFinding... findings) {
         when(surveys.survey(eq(userId), any(), any())).thenReturn(survey);
-        when(diagnoses.diagnose(eq(userId), eq(survey)))
+        when(diagnoses.diagnose(eq(userId), eq(survey), any()))
                 .thenReturn(new ProductDiagnosisService.Diagnosis(List.of(findings), 4));
     }
 
@@ -159,6 +161,77 @@ class ProductDiagnosticServiceTest {
         assertThat(report.projects()).isEqualTo(3);
         assertThat(report.costEur()).isEqualByComparingTo("100.00");
         assertThat(report.active()).as("comptées, pas listées").isEqualTo(4);
+    }
+
+    // --- F-157 / SF-157-05 : la lecture du code, facultative -----------------------------------
+
+    @Test
+    @DisplayName("SANS projet désigné, le rapport est celui de F-156 — aucune lecture, aucun coût")
+    void withoutARepositoryNothingIsRead() {
+        given(survey("100.00", false), finding("plan", CapabilityVerdict.DORMANTE, null));
+
+        DiagnosticReport report = service.run(userId, 7);
+
+        assertThat(report.sourceRead()).isFalse();
+        assertThat(report.sourceNote()).isNull();
+        org.mockito.Mockito.verify(sources, org.mockito.Mockito.never()).read(any(), any());
+    }
+
+    @Test
+    @DisplayName("un dépôt NON RECONNU ne prive pas du diagnostic gratuit : le rapport est rendu, avec le mot")
+    void anUnrecognizedRepositoryStillYieldsTheReport() {
+        UUID repo = UUID.randomUUID();
+        given(survey("100.00", false), finding("plan", CapabilityVerdict.DORMANTE, null));
+        when(sources.read(userId, repo))
+                .thenThrow(new RepositoryNotRecognizedException("Ce projet n'est pas le dépôt."));
+
+        DiagnosticReport report = service.run(userId, 7, repo);
+
+        assertThat(report.findings()).hasSize(1);
+        assertThat(report.sourceRead()).isFalse();
+        assertThat(report.sourceNote()).isEqualTo("Ce projet n'est pas le dépôt.");
+    }
+
+    @Test
+    @DisplayName("avec un dépôt lu, le code est transmis au diagnostic et le rapport le dit")
+    void withARepositoryTheCodeReachesTheDiagnosis() {
+        UUID repo = UUID.randomUUID();
+        java.util.Map<String, SourceRead> code =
+                java.util.Map.of("a.java", SourceRead.read("a.java", "du code"));
+        given(survey("100.00", false), finding("plan", CapabilityVerdict.DORMANTE, null));
+        when(sources.read(userId, repo)).thenReturn(code);
+
+        DiagnosticReport report = service.run(userId, 7, repo);
+
+        assertThat(report.sourceRead()).isTrue();
+        assertThat(report.sourceNote()).contains("1 fichiers du dépôt lus");
+        org.mockito.Mockito.verify(diagnoses).diagnose(eq(userId), any(), eq(code));
+    }
+
+    @Test
+    @DisplayName("l'hypothèse passe par le lecteur raisonné, sur la capacité demandée")
+    void theHypothesisGoesThroughTheReasonedReader() {
+        UUID repo = UUID.randomUUID();
+        java.util.Map<String, SourceRead> code =
+                java.util.Map.of("a.java", SourceRead.read("a.java", "du code"));
+        when(sources.read(userId, repo)).thenReturn(code);
+        when(reasoned.read(any(), eq(code))).thenReturn(java.util.Optional.of(
+                new SourceHypothesis("plan", "il manque X", false, "claude-opus-5", 100, 20)));
+
+        assertThat(service.explain(userId, repo, "plan"))
+                .get()
+                .extracting(SourceHypothesis::text)
+                .isEqualTo("il manque X");
+    }
+
+    @Test
+    @DisplayName("une capacité inconnue ne lance AUCUNE lecture raisonnée — donc aucun coût")
+    void anUnknownCapabilityCostsNothing() {
+        UUID repo = UUID.randomUUID();
+        when(sources.read(userId, repo)).thenReturn(java.util.Map.of());
+
+        assertThat(service.explain(userId, repo, "inventée")).isEmpty();
+        org.mockito.Mockito.verify(reasoned, org.mockito.Mockito.never()).read(any(), any());
     }
 
     @Test

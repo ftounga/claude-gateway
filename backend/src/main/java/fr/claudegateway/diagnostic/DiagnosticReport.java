@@ -21,6 +21,10 @@ import java.util.List;
  * @param parity     la table de parité
  * @param specLines  les lignes prêtes à coller dans {@code PRODUCT_SPEC.md}, au statut
  *                   {@code Candidate} : <b>l'application propose, le PO décide</b>
+ * @param sourceRead vrai quand le code a été lu et les constats enrichis (F-157 / SF-157-05)
+ * @param sourceNote ce qui s'est passé côté lecture — notamment le refus quand le projet désigné
+ *                   n'est pas le dépôt. <b>Un refus de lecture ne prive pas du diagnostic
+ *                   gratuit</b> : le rapport est rendu quand même, avec ce mot
  */
 public record DiagnosticReport(
         OffsetDateTime from,
@@ -33,7 +37,23 @@ public record DiagnosticReport(
         int discarded,
         int active,
         List<ParityRow> parity,
-        List<String> specLines) {
+        List<String> specLines,
+        boolean sourceRead,
+        String sourceNote) {
+
+    /** Forme d'avant la lecture du code (F-156), conservée pour les appelants qui l'attendent. */
+    public DiagnosticReport(OffsetDateTime from, OffsetDateTime to, boolean truncated, int turns,
+            int projects, BigDecimal costEur, List<CapabilityFinding> findings, int discarded,
+            int active, List<ParityRow> parity, List<String> specLines) {
+        this(from, to, truncated, turns, projects, costEur, findings, discarded, active, parity,
+                specLines, false, null);
+    }
+
+    /** Le même rapport, avec ce que la lecture du code a donné. */
+    public DiagnosticReport withSource(boolean read, String note) {
+        return new DiagnosticReport(from, to, truncated, turns, projects, costEur, findings,
+                discarded, active, parity, specLines, read, note);
+    }
 
     /** Un rapport sans matière — ce n'est pas une erreur, et rien n'est inventé. */
     public static DiagnosticReport nothingToObserve(OffsetDateTime from, OffsetDateTime to,

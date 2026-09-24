@@ -7,7 +7,15 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { AdminDiagnosticService } from './admin-diagnostic.service';
-import { DiagnosticReport, ParityState } from './admin-diagnostic.models';
+import { CapabilityFinding, DiagnosticReport, ParityState, SourceHypothesis }
+  from './admin-diagnostic.models';
+
+/**
+ * Le rappel qui accompagne toute hypothèse — **il ne doit jamais manquer**. Une hypothèse qui se
+ * déguise en constat est pire qu'un silence : on développerait sur une supposition.
+ */
+export const SourceHypothesis_CAVEAT =
+  "Hypothèse tirée de la lecture du code — à vérifier, ce n'est pas un constat mesuré.";
 
 /** L'état de parité en toutes lettres. */
 export function parityLabel(state: ParityState): string {
@@ -24,6 +32,7 @@ export function parityLabel(state: ParityState): string {
 export function verdictLabel(verdict: string): string {
   switch (verdict) {
     case 'DORMANTE': return 'Dormante';
+    case 'DEBRANCHEE': return 'Débranchée';
     case 'INDETERMINEE': return 'Indéterminée';
     default: return 'Active';
   }
@@ -58,12 +67,21 @@ export function verdictLabel(verdict: string): string {
             <input type="number" min="1" max="31" [(ngModel)]="days" name="days" />
             jours
           </label>
+          <label class="diag__repo">
+            Lire le code dans ce projet
+            <input type="text" [(ngModel)]="repositoryId" name="repositoryId"
+              placeholder="identifiant du terminal ouvert sur le dépôt (facultatif)" />
+          </label>
           <button mat-flat-button color="primary" type="button" [disabled]="running()"
             (click)="run()">
             <mat-icon>troubleshoot</mat-icon>
             {{ running() ? 'Analyse…' : 'Lancer le diagnostic' }}
           </button>
         </div>
+        <p class="diag__note">
+          Sans projet désigné, le diagnostic reste gratuit. La lecture du code l'est aussi ; seule
+          une hypothèse consomme des jetons.
+        </p>
 
         @if (report(); as r) {
           <p class="diag__denominator">
@@ -73,6 +91,12 @@ export function verdictLabel(verdict: string): string {
               <span class="diag__caveat">Période ramenée aux bornes.</span>
             }
           </p>
+
+          @if (r.sourceNote) {
+            <p class="diag__source" [class.diag__source--refused]="!r.sourceRead">
+              {{ r.sourceNote }}
+            </p>
+          }
 
           @if (!r.turns) {
             <p class="diag__clean">Rien à observer sur cette période.</p>
@@ -102,6 +126,30 @@ export function verdictLabel(verdict: string): string {
                 }
                 @for (path of finding.where; track path) {
                   <p class="finding__where">{{ path }}</p>
+                }
+                @if (r.sourceRead && repositoryId) {
+                  <button mat-button type="button" class="finding__explain"
+                    [disabled]="explaining() === finding.capabilityId"
+                    (click)="explain(finding)">
+                    <mat-icon>psychology</mat-icon>
+                    {{ explaining() === finding.capabilityId
+                        ? 'Lecture…'
+                        : 'Comprendre (lit le code — consomme des jetons)' }}
+                  </button>
+                }
+                @if (hypothesis()?.capabilityId === finding.capabilityId) {
+                  <aside class="hypothesis">
+                    <p class="hypothesis__caveat">{{ caveat }}</p>
+                    <p class="hypothesis__text">{{ hypothesis()!.text }}</p>
+                    <p class="hypothesis__cost">
+                      {{ hypothesis()!.model }} —
+                      {{ hypothesis()!.inputTokens }} jetons d'entrée,
+                      {{ hypothesis()!.outputTokens }} de sortie.
+                      @if (hypothesis()!.truncated) {
+                        <span>Code tronqué : la lecture n'a pas tout vu.</span>
+                      }
+                    </p>
+                  </aside>
                 }
               </article>
             }
@@ -241,6 +289,53 @@ export function verdictLabel(verdict: string): string {
       font-weight: 600;
     }
 
+    .diag__repo input {
+      width: 340px;
+      max-width: 100%;
+      margin-left: var(--cg-space-1);
+      padding: var(--cg-space-1);
+      border: 1px solid var(--cg-divider);
+      border-radius: 4px;
+      background: var(--cg-bg);
+      color: var(--cg-text);
+    }
+
+    .diag__source {
+      color: var(--cg-text-secondary);
+    }
+
+    .diag__source--refused {
+      color: var(--cg-orange-2);
+    }
+
+    /* UNE HYPOTHÈSE NE DOIT PAS RESSEMBLER À UN CONSTAT. Le constat porte un chiffre et une preuve ;
+       l'hypothèse porte un avertissement et un coût. Les afficher pareil ferait développer sur une
+       supposition — le défaut que tout F-157 s'emploie à éviter. */
+    .hypothesis {
+      margin-top: var(--cg-space-2);
+      padding: var(--cg-space-2);
+      border: 1px dashed var(--cg-orange-2);
+      border-radius: 8px;
+      background: var(--cg-bg);
+    }
+
+    .hypothesis__caveat {
+      margin: 0 0 var(--cg-space-1);
+      font-weight: 600;
+      color: var(--cg-orange-2);
+    }
+
+    .hypothesis__text {
+      margin: 0;
+      white-space: pre-wrap;
+    }
+
+    .hypothesis__cost {
+      margin: var(--cg-space-1) 0 0;
+      font-size: 12px;
+      color: var(--cg-text-secondary);
+    }
+
     .spec-line {
       white-space: pre-wrap;
       word-break: break-word;
@@ -260,12 +355,21 @@ export class AdminDiagnosticComponent {
   /** La fenêtre observée. Une semaine par défaut — l'unité dans laquelle le PO raisonne. */
   days = 7;
 
+  /** Le terminal ouvert sur le dépôt de l'application. Vide : aucune lecture de code. */
+  repositoryId = '';
+
+  /** Le rappel qui accompagne toute hypothèse — il ne doit jamais manquer. */
+  readonly caveat = SourceHypothesis_CAVEAT;
+
   readonly report = signal<DiagnosticReport | null>(null);
   readonly running = signal(false);
+  readonly hypothesis = signal<SourceHypothesis | null>(null);
+  readonly explaining = signal<string | null>(null);
 
   run(): void {
     this.running.set(true);
-    this.service.run(this.days).subscribe({
+    this.hypothesis.set(null); // un nouveau diagnostic périme l'hypothèse précédente
+    this.service.run(this.days, this.repositoryId.trim() || null).subscribe({
       next: report => {
         this.report.set(report);
         this.running.set(false);
@@ -273,6 +377,33 @@ export class AdminDiagnosticComponent {
       error: () => {
         this.running.set(false);
         this.snackBar.open("Le diagnostic n'a pas pu être lancé.", 'Fermer', { duration: 5000 });
+      },
+    });
+  }
+
+  /**
+   * Demande une hypothèse sur une capacité. **Seule opération qui coûte des jetons** — le libellé
+   * du bouton le dit avant le clic.
+   */
+  explain(finding: CapabilityFinding): void {
+    const repo = this.repositoryId.trim();
+    if (!repo) {
+      return;
+    }
+    this.explaining.set(finding.capabilityId);
+    this.service.explain(repo, finding.capabilityId).subscribe({
+      next: hypothesis => {
+        this.explaining.set(null);
+        if (!hypothesis) {
+          this.snackBar.open("Rien à tirer du code pour cette capacité.", 'Fermer',
+            { duration: 5000 });
+          return;
+        }
+        this.hypothesis.set(hypothesis);
+      },
+      error: () => {
+        this.explaining.set(null);
+        this.snackBar.open("La lecture du code n'a pas abouti.", 'Fermer', { duration: 5000 });
       },
     });
   }

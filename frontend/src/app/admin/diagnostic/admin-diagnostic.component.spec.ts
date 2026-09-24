@@ -5,7 +5,8 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { of, throwError } from 'rxjs';
 
-import { AdminDiagnosticComponent, parityLabel, verdictLabel } from './admin-diagnostic.component';
+import { AdminDiagnosticComponent, SourceHypothesis_CAVEAT, parityLabel, verdictLabel }
+  from './admin-diagnostic.component';
 import { AdminDiagnosticService } from './admin-diagnostic.service';
 import { DiagnosticReport } from './admin-diagnostic.models';
 
@@ -26,6 +27,8 @@ function report(over: Partial<DiagnosticReport> = {}): DiagnosticReport {
         state: 'ECARTEE', note: 'écartée du périmètre par F-39' },
     ],
     specLines: ['| F-??? | Réutiliser le cache — … | **Candidate** — proposée par le diagnostic |'],
+    sourceRead: false,
+    sourceNote: null,
     ...over,
   };
 }
@@ -44,7 +47,8 @@ describe('AdminDiagnosticComponent (F-156 / SF-156-05)', () => {
   let snackBar: jasmine.SpyObj<MatSnackBar>;
 
   beforeEach(() => {
-    service = jasmine.createSpyObj<AdminDiagnosticService>('AdminDiagnosticService', ['run']);
+    service = jasmine.createSpyObj<AdminDiagnosticService>('AdminDiagnosticService',
+      ['run', 'explain']);
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
     TestBed.configureTestingModule({
       imports: [AdminDiagnosticComponent, NoopAnimationsModule],
@@ -137,6 +141,98 @@ describe('AdminDiagnosticComponent (F-156 / SF-156-05)', () => {
     expect(fixture.nativeElement.textContent).not.toContain('boom');
   });
 
+  // --- F-157 / SF-157-05 : la lecture du code ------------------------------------------------
+
+  it("sans projet désigné, aucun bouton « Comprendre » — et la gratuité est annoncée", () => {
+    service.run.and.returnValue(of(report()));
+
+    component.run();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('le diagnostic reste gratuit');
+    expect(fixture.nativeElement.querySelector('.finding__explain')).toBeNull();
+    expect(service.run).toHaveBeenCalledWith(7, null);
+  });
+
+  it('un dépôt NON RECONNU ne prive pas du diagnostic : le rapport est là, le refus est dit', () => {
+    service.run.and.returnValue(of(report({
+      sourceRead: false, sourceNote: "Ce projet n'est pas le dépôt de l'application.",
+    })));
+    component.repositoryId = 'w-9';
+
+    component.run();
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain("n'est pas le dépôt de l'application");
+    expect(text).toContain('Réutiliser le cache de prompt'); // le constat est TOUJOURS là
+    expect(fixture.nativeElement.querySelector('.diag__source--refused')).not.toBeNull();
+    expect(service.run).toHaveBeenCalledWith(7, 'w-9');
+  });
+
+  it('avec un dépôt lu, le bouton « Comprendre » ANNONCE qu’il consomme des jetons', () => {
+    service.run.and.returnValue(of(report({ sourceRead: true, sourceNote: '8 fichiers lus.' })));
+    component.repositoryId = 'w-1';
+
+    component.run();
+    fixture.detectChanges();
+
+    const button = fixture.nativeElement.querySelector('.finding__explain');
+    expect(button).not.toBeNull();
+    expect(button.textContent).toContain('consomme des jetons');
+  });
+
+  it("l'hypothèse est rendue avec son AVERTISSEMENT et son COÛT, visuellement distincte", () => {
+    service.run.and.returnValue(of(report({ sourceRead: true, sourceNote: '8 fichiers lus.' })));
+    service.explain.and.returnValue(of({
+      capabilityId: 'cache-de-prompt', text: 'Le préfixe change à chaque tour.',
+      truncated: true, model: 'claude-opus-5', inputTokens: 4200, outputTokens: 380,
+    }));
+    component.repositoryId = 'w-1';
+    component.run();
+    fixture.detectChanges();
+
+    component.explain(report().findings[0]);
+    fixture.detectChanges();
+
+    const box = fixture.nativeElement.querySelector('.hypothesis');
+    expect(box).not.toBeNull();
+    expect(box.textContent).toContain(SourceHypothesis_CAVEAT);
+    expect(box.textContent).toContain('Le préfixe change à chaque tour.');
+    expect(box.textContent).toContain('4200 jetons');
+    expect(box.textContent).toContain('Code tronqué');
+  });
+
+  it("le rappel « ce n'est pas un constat mesuré » existe et ne doit jamais manquer", () => {
+    expect(SourceHypothesis_CAVEAT).toContain('Hypothèse');
+    expect(SourceHypothesis_CAVEAT).toContain("ce n'est pas un constat mesuré");
+  });
+
+  it('une lecture sans matière le dit, sans afficher d’encart vide', () => {
+    service.run.and.returnValue(of(report({ sourceRead: true, sourceNote: '8 fichiers lus.' })));
+    service.explain.and.returnValue(of(null));
+    component.repositoryId = 'w-1';
+    component.run();
+    fixture.detectChanges();
+
+    component.explain(report().findings[0]);
+    fixture.detectChanges();
+
+    expect(snackBar.open).toHaveBeenCalled();
+    expect(fixture.nativeElement.querySelector('.hypothesis')).toBeNull();
+  });
+
+  it('sans projet désigné, « Comprendre » n’appelle rien — donc aucun coût', () => {
+    service.run.and.returnValue(of(report()));
+    component.run();
+    fixture.detectChanges();
+
+    component.repositoryId = '   ';
+    component.explain(report().findings[0]);
+
+    expect(service.explain).not.toHaveBeenCalled();
+  });
+
   describe('les libellés', () => {
     it('nomme les cinq états de parité', () => {
       expect(parityLabel('TENUE')).toBe('Tenue');
@@ -146,9 +242,10 @@ describe('AdminDiagnosticComponent (F-156 / SF-156-05)', () => {
       expect(parityLabel('NON_OBSERVEE')).toBe('Non observée');
     });
 
-    it('nomme les trois verdicts', () => {
+    it('nomme les quatre verdicts, dont DÉBRANCHÉE', () => {
       expect(verdictLabel('ACTIVE')).toBe('Active');
       expect(verdictLabel('DORMANTE')).toBe('Dormante');
+      expect(verdictLabel('DEBRANCHEE')).toBe('Débranchée');
       expect(verdictLabel('INDETERMINEE')).toBe('Indéterminée');
     });
   });

@@ -41,8 +41,28 @@ public class ProductDiagnosticController {
      * fournisseur.</p>
      */
     @PostMapping
-    public DiagnosticReport run(@RequestParam(required = false) Integer days) {
+    public DiagnosticReport run(@RequestParam(required = false) Integer days,
+                                @RequestParam(required = false) java.util.UUID workspaceId) {
         adminService.assertAdmin();
-        return service.run(currentUser.requireId(), days);
+        return service.run(currentUser.requireId(), days, workspaceId);
+    }
+
+    /**
+     * Une <b>hypothèse</b> sur une capacité, tirée de la lecture de son code (F-157 / SF-157-05).
+     *
+     * <p><b>C'est la seule route du diagnostic qui consomme des jetons.</b> Une capacité par appel,
+     * à la demande. Le résultat est une hypothèse, <b>jamais un verdict</b> — l'écran le dit.</p>
+     *
+     * @return {@code 200} avec l'hypothèse, ou {@code 204} quand il n'y avait rien à en tirer
+     */
+    @PostMapping("/hypothesis")
+    public org.springframework.http.ResponseEntity<SourceHypothesis> explain(
+            @RequestParam java.util.UUID workspaceId,
+            @RequestParam String capabilityId) {
+        adminService.assertAdmin();
+        return service.explain(currentUser.requireId(), workspaceId, capabilityId)
+                .map(org.springframework.http.ResponseEntity::ok)
+                .orElseGet(() -> org.springframework.http.ResponseEntity
+                        .status(org.springframework.http.HttpStatus.NO_CONTENT).build());
     }
 }
