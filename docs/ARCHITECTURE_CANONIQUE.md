@@ -360,6 +360,12 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   - **Aucune clé étrangère**, même choix que `resolution_memory` / `usage_turns` /
     `repo_index_paths`. Purge explicite à la suppression du projet (`purgeWorkspace`) **et** du
     compte (`purgeUser`).
+  - **Deux racines d'API** (F-151 / SF-151-03) : `/workspaces/{id}/actions` pour le menu d'un
+    terminal (filtre `user_id` **et** `workspace_id`, `requireOwned` d'abord), et
+    `/terminal-actions` pour la section « Ailleurs » — lecture **volontairement transverse** aux
+    projets, dont le seul verrou est `user_id`. Racine distincte parce que `/workspaces/actions`
+    aurait le même nombre de segments que `/workspaces/{id}/actions` et serait lu comme un projet
+    nommé « actions ».
 
 - **usage_turns** — journal de consommation **par tour** (F-61 / SF-61-01, migration `068` ;
   **coût réel** F-133 / SF-133-01, migration `118`).
