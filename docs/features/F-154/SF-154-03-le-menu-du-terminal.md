@@ -1,7 +1,7 @@
-# Mini-spec — F-151 / SF-151-03 — Le menu du terminal
+# Mini-spec — F-154 / SF-154-03 — Le menu du terminal
 
 ## Identifiant
-`F-151 / SF-151-03` — feature parente `F-151` — dépend de **SF-151-01** et **SF-151-02**
+`F-154 / SF-154-03` — feature parente `F-154` — dépend de **SF-154-01** et **SF-154-02**
 
 ## Objectif
 Qu'en entrant dans un terminal, l'utilisateur voie **d'un coup d'œil** ce qu'il doit faire, lui.
@@ -46,7 +46,7 @@ Qu'en entrant dans un terminal, l'utilisateur voie **d'un coup d'œil** ce qu'il
 ## Hors scope
 **Envoyer le message depuis la liste** — le courriel client (F-110) part aujourd'hui **de l'agent**,
 pas d'un écran ; lui donner une porte d'écran est une subfeature à part entière, pas un bouton. ·
-La **fermeture par la conversation** (**SF-151-04**) · toute relance ou notification.
+La **fermeture par la conversation** (**SF-154-04**) · toute relance ou notification.
 
 ## Technique
 | Élément | Changement |

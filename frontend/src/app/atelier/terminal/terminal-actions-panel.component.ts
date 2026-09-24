@@ -29,7 +29,7 @@ export function ageLabel(createdAt: string, now = Date.now()): string {
 }
 
 /**
- * **Le menu des actions à faire, à droite du terminal** (F-151 / SF-151-03). Patron du panneau d'une
+ * **Le menu des actions à faire, à droite du terminal** (F-154 / SF-154-03). Patron du panneau d'une
  * page (F-109 / SF-109-03) : un état d'écran, pas une route. Échap le ferme.
  *
  * <p>Ce qu'il montre : les actions ouvertes de **ce** terminal, les plus anciennes d'abord — puis,

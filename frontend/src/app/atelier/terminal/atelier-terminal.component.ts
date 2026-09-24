@@ -516,7 +516,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   }
 
   /**
-   * **Les actions à faire, dans le panneau à droite** (F-151 / SF-151-03) : un état d'écran, comme
+   * **Les actions à faire, dans le panneau à droite** (F-154 / SF-154-03) : un état d'écran, comme
    * le panneau d'une page. La pastille de la barre, elle, est visible **sans** ouvrir le panneau —
    * c'est tout son intérêt.
    */

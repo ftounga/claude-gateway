@@ -11,7 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import fr.claudegateway.atelier.WorkspaceService;
 
 /**
- * <b>Les actions d'un terminal</b> (F-151 / SF-151-01) : les créer, les lister, les fermer, les
+ * <b>Les actions d'un terminal</b> (F-154 / SF-154-01) : les créer, les lister, les fermer, les
  * annuler.
  *
  * <p><b>Isolation.</b> Chaque méthode appelle {@code requireOwned} <b>en premier</b> — un projet
@@ -19,7 +19,7 @@ import fr.claudegateway.atelier.WorkspaceService;
  * {@code user_id} <i>et</i> {@code workspace_id} : deux verrous, pas un.</p>
  *
  * <p><b>La parole de l'utilisateur prime.</b> Il annule ce qu'il veut, et une action annulée ne
- * revient pas d'elle-même : l'agent qui redétecte le même blocage ne la recrée pas (SF-151-02 s'en
+ * revient pas d'elle-même : l'agent qui redétecte le même blocage ne la recrée pas (SF-154-02 s'en
  * charge par la clé de détection).</p>
  */
 @Service
@@ -101,7 +101,7 @@ public class TerminalActionService {
     }
 
     /**
-     * <b>Inscrit un blocage détecté par l'agent</b> (F-151 / SF-151-02), dédoublonné par sa clé.
+     * <b>Inscrit un blocage détecté par l'agent</b> (F-154 / SF-154-02), dédoublonné par sa clé.
      *
      * <p>Ce que dit l'issue rendue : {@code RECORDED} (c'est neuf), {@code ALREADY_OPEN} (le même
      * blocage attend déjà), {@code REFUSED_BY_USER} (l'utilisateur avait annulé — on ne recrée pas,
@@ -156,7 +156,7 @@ public class TerminalActionService {
     public record Recording(TerminalAction action, RecordingOutcome outcome) {
     }
 
-    /** Les quatre issues d'une inscription (F-151 / SF-151-02). */
+    /** Les quatre issues d'une inscription (F-154 / SF-154-02). */
     public enum RecordingOutcome {
         /** C'est neuf : l'action est inscrite. */
         RECORDED,
@@ -168,7 +168,56 @@ public class TerminalActionService {
         ALREADY_DONE
     }
 
-    /** Les actions d'un terminal, les plus anciennes d'abord. */
+    /**
+     * <b>Ferme l'action ouverte portant cette clé</b> (F-154 / SF-154-04) — ce que l'agent appelle
+     * quand l'utilisateur a répondu dans le terminal.
+     *
+     * <p>La raison conservée est <b>la parole de l'utilisateur</b>. Une action qui disparaît sans
+     * raison est une action qu'on refait ; fermée sur un résumé approximatif, c'est pire : elle fait
+     * croire à un fait qui n'a pas été dit.</p>
+     *
+     * @param cancelled vrai si l'utilisateur a dit que l'action n'avait pas lieu d'être — ce n'est
+     *                  pas « c'est fait », et les confondre ferait mentir l'historique
+     */
+    @Transactional
+    public Closing closeByKey(UUID userId, UUID workspaceId, String key, String reason,
+                              boolean cancelled) {
+        workspaceService.requireOwned(userId, workspaceId); // 404 si non possédé — TOUJOURS en premier
+
+        if (key == null || key.isBlank()) {
+            throw new InvalidTerminalActionException("key est requise : la clé de l'action à fermer.");
+        }
+        var found = repository.findByUserIdAndWorkspaceIdAndDedupKey(
+                userId, workspaceId, normalizeKey(key));
+        if (found.isEmpty()) {
+            return new Closing(null, ClosingOutcome.UNKNOWN);
+        }
+        TerminalAction action = found.get();
+        if (!action.isOpen()) {
+            return new Closing(action, ClosingOutcome.ALREADY_CLOSED);
+        }
+        TerminalAction settled = settle(userId, workspaceId, action.getId(),
+                cancelled ? TerminalActionStatus.CANCELLED : TerminalActionStatus.DONE, reason);
+        return new Closing(settled, cancelled ? ClosingOutcome.CANCELLED : ClosingOutcome.CLOSED);
+    }
+
+    /** Ce qu'une fermeture par clé a donné, et l'action concernée ({@code null} si inconnue). */
+    public record Closing(TerminalAction action, ClosingOutcome outcome) {
+    }
+
+    /** Les issues d'une fermeture par clé (F-154 / SF-154-04). */
+    public enum ClosingOutcome {
+        /** Fermée : c'est fait. */
+        CLOSED,
+        /** Fermée : elle n'avait pas lieu d'être. */
+        CANCELLED,
+        /** Aucune action ne porte cette clé ici. */
+        UNKNOWN,
+        /** Elle était déjà fermée — rien changé. */
+        ALREADY_CLOSED
+    }
+
+    /** Les actions d'un terminal, les plus anciennes d'abord. */    /** Les actions d'un terminal, les plus anciennes d'abord. */
     @Transactional(readOnly = true)
     public List<TerminalAction> list(UUID userId, UUID workspaceId, boolean openOnly) {
         workspaceService.requireOwned(userId, workspaceId);

@@ -12,7 +12,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import fr.claudegateway.atelier.Workspace;
 
 /**
- * <b>Exécute {@code record_blocker}</b> (F-151 / SF-151-02) : inscrit dans le terminal l'action que
+ * <b>Exécute {@code record_blocker}</b> (F-154 / SF-154-02) : inscrit dans le terminal l'action que
  * l'utilisateur seul peut faire.
  *
  * <p>La garde est posée <b>avant</b>, par la boucle : cet exécuteur ne décide de rien. Le
@@ -41,6 +41,57 @@ public class TerminalActionToolExecutor {
      * @param input     paramètres de l'outil
      */
     public Outcome execute(UUID userId, Workspace workspace, JsonNode input) {
+        return record(userId, workspace, input);
+    }
+
+    /**
+     * Ferme l'action dont l'utilisateur vient de parler (F-154 / SF-154-04).
+     *
+     * <p>Sans cela, la liste ne se vide jamais : elle devient un cimetière, et un cimetière ne se
+     * regarde plus.</p>
+     */
+    public Outcome close(UUID userId, Workspace workspace, JsonNode input) {
+        String key = text(input, "key");
+        if (key.isEmpty()) {
+            return Outcome.error("key est requise : la clé de l'action à fermer, celle de "
+                    + "l'inscription.");
+        }
+        boolean cancelled = input != null && input.hasNonNull("cancelled")
+                && input.get("cancelled").asBoolean(false);
+        try {
+            TerminalActionService.Closing closing = service.closeByKey(
+                    userId, workspace.getId(), key, text(input, "reason"), cancelled);
+            return new Outcome(closingMessage(closing, key), false, closing.action());
+        } catch (InvalidTerminalActionException e) {
+            return Outcome.error(e.getMessage());
+        } catch (RuntimeException e) {
+            log.warn("Fermeture d'une action de terminal impossible", e);
+            return Outcome.error("L'action n'a pas pu être fermée. Dis-le à l'utilisateur dans ta "
+                    + "réponse plutôt que de réessayer.");
+        }
+    }
+
+    /** Ce que l'agent lit après une fermeture — et qui doit lui éviter d'en reparler. */
+    private static String closingMessage(TerminalActionService.Closing closing, String key) {
+        return switch (closing.outcome()) {
+            case CLOSED -> "Action close : « " + closing.action().getDescription() + " »"
+                    + said(closing) + " Elle a disparu de la liste de l'utilisateur ; n'en reparle pas.";
+            case CANCELLED -> "Action annulée : « " + closing.action().getDescription() + " »"
+                    + said(closing) + " Elle n'avait pas lieu d'être ; ne la réinscris pas.";
+            case ALREADY_CLOSED -> "Cette action était déjà fermée : « "
+                    + closing.action().getDescription() + " ». Rien n'a changé.";
+            case UNKNOWN -> "Aucune action ouverte ne porte la clé « " + key + " » dans ce terminal. "
+                    + "N'insiste pas : elle a peut-être été annulée par l'utilisateur.";
+        };
+    }
+
+    /** La parole de l'utilisateur, rendue telle quelle — c'est elle qui justifie la fermeture. */
+    private static String said(TerminalActionService.Closing closing) {
+        String reason = closing.action().getClosedReason();
+        return reason == null || reason.isBlank() ? "." : " — vous avez dit : « " + reason + " ».";
+    }
+
+    private Outcome record(UUID userId, Workspace workspace, JsonNode input) {
         String description = text(input, "description");
         if (description.isEmpty()) {
             return Outcome.error("description est requise : ce que l'utilisateur doit faire, "

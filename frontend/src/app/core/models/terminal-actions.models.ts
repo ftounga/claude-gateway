@@ -1,5 +1,5 @@
 /**
- * **Les actions à faire d'un terminal** (F-151) : ce que l'utilisateur doit faire, lui, pour qu'un
+ * **Les actions à faire d'un terminal** (F-154) : ce que l'utilisateur doit faire, lui, pour qu'un
  * tour bloqué reprenne.
  */
 

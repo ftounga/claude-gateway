@@ -12,7 +12,7 @@ import fr.claudegateway.atelier.Workspace;
 import fr.claudegateway.atelier.WorkspaceRepository;
 
 /**
- * <b>La lecture qui traverse les projets</b> (F-151 / SF-151-03) : les actions ouvertes du compte,
+ * <b>La lecture qui traverse les projets</b> (F-154 / SF-154-03) : les actions ouvertes du compte,
  * avec le nom de leur projet.
  *
  * <p>Séparée de {@link TerminalActionService} à dessein : celui-ci porte la règle « un projet, ses

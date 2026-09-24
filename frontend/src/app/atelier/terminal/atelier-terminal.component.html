@@ -116,7 +116,7 @@
             {{ instructionsPath }}
           </button>
         }
-        <!-- LES ACTIONS À FAIRE (F-151 / SF-151-03) : ce que l'utilisateur doit faire, LUI, pour
+        <!-- LES ACTIONS À FAIRE (F-154 / SF-154-03) : ce que l'utilisateur doit faire, LUI, pour
              qu'un tour bloqué reprenne. ABSENTE À ZÉRO — une pastille à zéro est un bruit permanent
              qui apprend à ne plus la regarder. -->
         @if (pendingActions() > 0) {
@@ -1261,7 +1261,7 @@
   @if (openedPageId(); as pageId) {
     <app-page-panel [pageId]="pageId" (closed)="closePage()"></app-page-panel>
   }
-  <!-- LES ACTIONS À FAIRE (F-151 / SF-151-03) : même patron de panneau, même état d'écran. -->
+  <!-- LES ACTIONS À FAIRE (F-154 / SF-154-03) : même patron de panneau, même état d'écran. -->
   @if (actionsOpen() && projectId) {
     <app-terminal-actions-panel
       [workspaceId]="projectId"

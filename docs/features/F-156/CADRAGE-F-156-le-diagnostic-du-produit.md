@@ -1,4 +1,4 @@
-# Cadrage — F-153 — Le diagnostic du produit par lui-même
+# Cadrage — F-156 — Le diagnostic du produit par lui-même
 
 > Demande du PO, 2026-09-24 :
 > *« Ce qui m'intéresse le plus, c'est vraiment ce qu'on fait depuis plusieurs jours : des
@@ -23,7 +23,7 @@ C'est ainsi qu'ont été trouvés le cache de prompt (**F-134**, coût ÷16), le
 le cache des sources de la consigne (**SF-148-06**), l'index du dépôt (**SF-148-07**). Chacune de ces
 causes **portait une trace mesurable** dans des tables que nous avons déjà.
 
-F-153 fait démarrer ce cycle **tout seul**.
+F-156 fait démarrer ce cycle **tout seul**.
 
 ## 2. Le cœur : une même mesure, deux conclusions opposées
 
@@ -84,7 +84,7 @@ Pour chaque constat :
 ## 6. Déclenchement
 
 - **À la demande**, depuis l'espace d'administration.
-- **Suggéré par le bilan de session (F-152)** quand un motif se répète : *« ce motif apparaît pour la
+- **Suggéré par le bilan de session (F-155)** quand un motif se répète : *« ce motif apparaît pour la
   4ᵉ fois en dix sessions — un diagnostic dirait s'il manque une capacité ou si une capacité existante
   ne se déclenche pas »*.
 - **Réservé à l'administrateur.**
@@ -92,11 +92,11 @@ Pour chaque constat :
 ## 7. Découpage proposé
 | SF | Objet |
 |---|---|
-| **SF-153-01** | La **carte des capacités** : ce que le produit sait faire, où, et à quelle condition ça s'active |
-| **SF-153-02** | Les **motifs** sur plusieurs sessions : détection, fréquence, coût hebdomadaire |
-| **SF-153-03** | Le verdict **absente / dormante**, avec lecture du code quand elle est possible |
-| **SF-153-04** | La **parité** comme mesure : capacités de référence, présentes, déclenchées |
-| **SF-153-05** | L'écran du diagnostic, à la demande, réservé à l'administrateur |
+| **SF-156-01** | La **carte des capacités** : ce que le produit sait faire, où, et à quelle condition ça s'active |
+| **SF-156-02** | Les **motifs** sur plusieurs sessions : détection, fréquence, coût hebdomadaire |
+| **SF-156-03** | Le verdict **absente / dormante**, avec lecture du code quand elle est possible |
+| **SF-156-04** | La **parité** comme mesure : capacités de référence, présentes, déclenchées |
+| **SF-156-05** | L'écran du diagnostic, à la demande, réservé à l'administrateur |
 
 ## 8. Tranché : la suggestion retenue devient une ligne de la spec
 

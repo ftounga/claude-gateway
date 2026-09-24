@@ -1,7 +1,7 @@
-# Mini-spec — F-151 / SF-151-02 — L'agent inscrit le blocage
+# Mini-spec — F-154 / SF-154-02 — L'agent inscrit le blocage
 
 ## Identifiant
-`F-151 / SF-151-02` — feature parente `F-151` — dépend de **SF-151-01** (le modèle)
+`F-154 / SF-154-02` — feature parente `F-154` — dépend de **SF-154-01** (le modèle)
 
 ## Objectif
 Que l'agent **inscrive lui-même** l'action à faire au moment exact où il bute sur une dépendance
@@ -10,7 +10,7 @@ humaine — au lieu de l'écrire dans une réponse que personne ne relira.
 ## Le défaut
 > PO : *« Je commence un sujet, bim, je suis coincé. Il est question de contacter telle personne. »*
 
-SF-151-01 a donné la table. Sans cette subfeature, il faudrait l'alimenter **à la main** — c'est-à-dire
+SF-154-01 a donné la table. Sans cette subfeature, il faudrait l'alimenter **à la main** — c'est-à-dire
 jamais, puisque c'est précisément le moment où l'on passe à autre chose.
 
 ## Comportement attendu
@@ -49,7 +49,7 @@ jamais, puisque c'est précisément le moment où l'on passe à autre chose.
 - [ ] Le guide **n'entre dans la consigne que sous la garde**, comme tous les autres (cache F-134).
 
 ## Hors scope
-Le **menu** (**SF-151-03**) · la **fermeture par la conversation** (**SF-151-04**) · l'envoi du
+Le **menu** (**SF-154-03**) · la **fermeture par la conversation** (**SF-154-04**) · l'envoi du
 message depuis la liste · toute relance automatique.
 
 ## Technique

@@ -332,7 +332,7 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
 
 - **terminal_actions** — **les actions à faire d'un terminal** : ce que l'utilisateur doit faire,
   LUI, pour qu'un tour bloqué reprenne — contacter quelqu'un, demander un accès, obtenir une
-  validation (F-151 / SF-151-01, migration `130`). Écrite par l'agent quand il bute sur une
+  validation (F-154 / SF-154-01, migration `130`). Écrite par l'agent quand il bute sur une
   dépendance **humaine**, elle **survit au tour** qui l'a produite.
   - `terminal_actions` : `id (uuid)`, `user_id (uuid, NOT NULL)`, `workspace_id (uuid, NOT NULL)`,
     `subject_id (uuid, nullable)`, `description (varchar 300, NOT NULL)`, `blocks (varchar 200)`,
@@ -342,7 +342,7 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     `updated_at (timestamptz, NOT NULL)`, `dedup_key (varchar 200, nullable — migration `131`)`.
     Index `(user_id, workspace_id, status, created_at)` ; index **unique**
     `(user_id, workspace_id, dedup_key)`.
-  - **La clé de dédoublonnage** (F-151 / SF-151-02) : l'agent rencontre le même blocage à chaque tour
+  - **La clé de dédoublonnage** (F-154 / SF-154-02) : l'agent rencontre le même blocage à chaque tour
     tant qu'il n'est pas levé. L'unicité porte sur la clé **quel que soit le statut** — c'est
     exactement ce qui empêche de recréer une action que l'utilisateur a **annulée**. `NULL` pour une
     action ajoutée à la main : plusieurs `NULL` cohabitent sans violer l'unicité.
@@ -360,7 +360,7 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   - **Aucune clé étrangère**, même choix que `resolution_memory` / `usage_turns` /
     `repo_index_paths`. Purge explicite à la suppression du projet (`purgeWorkspace`) **et** du
     compte (`purgeUser`).
-  - **Deux racines d'API** (F-151 / SF-151-03) : `/workspaces/{id}/actions` pour le menu d'un
+  - **Deux racines d'API** (F-154 / SF-154-03) : `/workspaces/{id}/actions` pour le menu d'un
     terminal (filtre `user_id` **et** `workspace_id`, `requireOwned` d'abord), et
     `/terminal-actions` pour la section « Ailleurs » — lecture **volontairement transverse** aux
     projets, dont le seul verrou est `user_id`. Racine distincte parce que `/workspaces/actions`

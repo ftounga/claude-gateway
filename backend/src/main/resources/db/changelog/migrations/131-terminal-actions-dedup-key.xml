@@ -6,7 +6,7 @@
             http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
 
     <!--
-      F-151 / SF-151-02 — LA CLE DE DEDOUBLONNAGE des actions inscrites par l'agent.
+      F-154 / SF-154-02 — LA CLE DE DEDOUBLONNAGE des actions inscrites par l'agent.
 
       POURQUOI : l'agent rencontre le meme blocage a chaque tour tant qu'il n'est pas leve. Sans cle,
       la liste de l'utilisateur se remplirait de dix fois « demander l'acces VPN a Karim ».
@@ -15,7 +15,7 @@
       L'unicite porte donc sur (user_id, workspace_id, dedup_key) QUEL QUE SOIT LE STATUT — c'est
       exactement ce qui empeche la recreation.
 
-      Nullable : les actions ajoutees a la main par l'utilisateur (SF-151-01) n'en ont pas, et
+      Nullable : les actions ajoutees a la main par l'utilisateur (SF-154-01) n'en ont pas, et
       plusieurs NULL cohabitent sans violer l'unicite (PostgreSQL comme H2).
     -->
 
