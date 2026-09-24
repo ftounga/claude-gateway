@@ -77,6 +77,7 @@ import { AtelierService, TURN_STREAM_PROBE_MS } from '../core/services/atelier.s
 import { AtelierGuideService } from '../core/services/atelier-guide.service';
 import { HostPresenceService } from '../core/services/host-presence.service';
 import { LiveTerminalService } from '../core/services/live-terminal.service';
+import { TabAlertService } from '../core/services/tab-alert.service';
 import { ProviderMode } from '../core/models/api-key.models';
 import { GitPushDialogComponent, PickedGitPush } from './git/git-push-dialog.component';
 import { GitRepoDialogComponent, PickedGitRepository } from './git/git-repo-dialog.component';
@@ -224,6 +225,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
   private readonly zone = inject(NgZone);
   private readonly appRef = inject(ApplicationRef);
   private readonly dialog = inject(MatDialog);
+  /** Signal in-tab (F-153 / SF-153-01) : titre d'onglet + favicon quand l'onglet est caché. */
+  private readonly tabAlert = inject(TabAlertService);
 
   /**
    * Registre des terminaux vivants (F-70 / SF-70-01). Un terminal ouvert prend une place et la
@@ -1646,6 +1649,9 @@ export class AtelierComponent implements OnInit, OnDestroy {
           this.stopTurnWindows();
           this.submitting.set(false);
           this.interrupting.set(false);
+          // F-153 / SF-153-01 — Le tour s'achève : si l'onglet est caché, l'onglet s'allume
+          // (« Réponse prête »). Un « tour de suite » (followUp) est déjà reparti ci-dessus.
+          this.tabAlert.signalTurnDone();
           // F-121 / SF-121-10 : le modèle a-t-il soumis un plan à approbation (exit_plan_mode) ? Si
           // oui, l'écran proposera « Approuver & exécuter ». On retient aussi le dernier plan pour
           // l'afficher au repos, une fois le tour refermé.
@@ -2030,6 +2036,9 @@ export class AtelierComponent implements OnInit, OnDestroy {
       timeoutMs: request.timeoutMs ?? null,
     });
     this.startConfirmationCountdown();
+    // F-153 / SF-153-01 — Transition critique : le silence vaut refus (timeoutMs). Si l'onglet est
+    // caché, l'onglet s'allume (« Autorisation demandée ») pour ne pas laisser expirer sans le voir.
+    this.tabAlert.signalAwaitingAuthorization();
     this.nudgeRender();
   }
 
