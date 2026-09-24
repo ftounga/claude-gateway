@@ -1,0 +1,38 @@
+/* LE CONFORT AU DOIGT DE LA BARRE DU TERMINAL (F-151 / SF-151-03) — 14ᵉ feuille, à part comme les
+   treize précédentes (F-117, F-115, F-126, F-146, F-145, F-121, F-150) : la feuille principale du
+   terminal est au budget de build de 12 ko (angular.json), et le franchir fait ÉCHOUER la
+   compilation. Contrainte du projet, pas un choix de style. Aucune couleur nouvelle : jetons du
+   design system uniquement. Tout est sous le point de rupture 819 px — rendu >= 820 px inchangé. */
+@media (max-width: 819px) {
+  /* La barre d'en-tête et ses actions passent à la ligne plutôt que de déborder : jamais de
+     défilement horizontal (règle responsive DESIGN_SYSTEM, patron /forge des SF-151-01/02). */
+  .terminal-bar {
+    flex-wrap: wrap;
+  }
+
+  .terminal-bar-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  /* Interrompre : geste critique pendant un run, dimensionné pour le pouce (>= 44 px). */
+  .terminal-interrupt {
+    min-height: 44px;
+  }
+
+  /* Les boutons de décision d'autorisation (Autoriser / Tout autoriser pour ce message / Refuser /
+     Confirmer le refus) passent à la ligne et sont dimensionnés tactile. Le silence vaut refus
+     (timeoutMs) : ils ne doivent jamais exiger un défilement horizontal pour être touchés. */
+  .terminal-ask-actions {
+    flex-wrap: wrap;
+  }
+
+  .terminal-ask-actions button {
+    min-height: 44px;
+  }
+
+  /* La zone de saisie garde ses boutons (joindre, dictée, envoyer) atteignables au doigt. */
+  .terminal-input button {
+    min-height: 44px;
+  }
+}

@@ -211,6 +211,10 @@ export const LONG_THREAD_TURNS = 40;
     // parallèles, badge/filet du sous-agent `task`) vit à part, pour la même raison de budget de
     // build (12 ko) de la feuille principale.
     './atelier-terminal-subagents.component.scss',
+    // QUATORZE FEUILLES (F-151 / SF-151-03) : le confort au doigt de la barre du terminal (barre
+    // d'en-tête et actions qui passent à la ligne sous 819 px, boutons de décision au pouce) vit à
+    // part, pour la même raison de budget de build (12 ko) de la feuille principale.
+    './atelier-terminal-mobile.component.scss',
   ],
 })
 export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
