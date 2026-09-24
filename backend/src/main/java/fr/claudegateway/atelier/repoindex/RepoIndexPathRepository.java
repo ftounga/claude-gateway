@@ -22,6 +22,13 @@ public interface RepoIndexPathRepository extends JpaRepository<RepoIndexEntry, U
     /** Purge à la suppression du compte : l'index ne survit pas à son propriétaire. */
     void deleteByUserId(UUID userId);
 
+    /**
+     * Combien de lignes ce compte a-t-il ici (F-156 / SF-156-03) : <b>zéro</b> prouve que l'index du dépôt
+     * n'a jamais été alimentée — une capacité <b>dormante</b>, qui ne demande aucun développement
+     * mais qu'on s'en aperçoive.
+     */
+    long countByUserId(UUID userId);
+
     /** Purge à la suppression d'un projet : l'index ne survit pas au workspace. */
     void deleteByUserIdAndWorkspaceId(UUID userId, UUID workspaceId);
 }

@@ -23,4 +23,11 @@ public interface ResolutionMemoryRepository extends JpaRepository<ResolutionMemo
 
     /** Purge à la suppression du compte : la mémoire ne survit pas à son propriétaire. */
     void deleteByUserId(UUID userId);
+
+    /**
+     * Combien de lignes ce compte a-t-il ici (F-156 / SF-156-03) : <b>zéro</b> prouve que la mémoire de résolutions
+     * n'a jamais été alimentée — une capacité <b>dormante</b>, qui ne demande aucun développement
+     * mais qu'on s'en aperçoive.
+     */
+    long countByUserId(UUID userId);
 }
