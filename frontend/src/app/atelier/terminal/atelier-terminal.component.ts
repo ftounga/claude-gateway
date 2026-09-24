@@ -94,6 +94,13 @@ import {
   subtaskLabel,
   visibleOutput,
 } from './terminal-block';
+import {
+  exploreGroupAt,
+  isGroupedExploreMember,
+  isTaskBlock,
+  SubAgentExploreGroup,
+  subAgentQuestion,
+} from './sub-agents';
 import { splitEssential } from './essential';
 import {
   cardAsText,
@@ -200,6 +207,10 @@ export const LONG_THREAD_TURNS = 40;
     // DOUZE FEUILLES (F-121 / SF-121-24) : l'autocomplétion des @-mentions de fichiers, à part comme
     // les précédentes — le budget de 12 ko de la feuille principale fait échouer le build.
     './atelier-terminal-mentions.component.scss',
+    // TREIZE FEUILLES (F-150 / SF-150-06) : le rendu des sous-agents en action (lot d'explorations
+    // parallèles, badge/filet du sous-agent `task`) vit à part, pour la même raison de budget de
+    // build (12 ko) de la feuille principale.
+    './atelier-terminal-subagents.component.scss',
   ],
 })
 export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
@@ -1464,6 +1475,32 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
       this.subtaskCache.set(blocks, indexes);
     }
     return subtaskLabel(block, indexes);
+  }
+
+  // ------------------------------------------------ sous-agents en action (F-150 / SF-150-06)
+
+  /**
+   * Si le bloc à `index` **ouvre** un lot d'explorations parallèles (≥ 2 `explore` adjacents), rend
+   * le lot pour le gabarit ; sinon `null`. Voir `sub-agents.ts` : le regroupement se lit de la
+   * transcription, sans identifiant de groupe backend.
+   */
+  exploreGroupAt(blocks: AtelierTerminalBlock[], index: number): SubAgentExploreGroup | null {
+    return exploreGroupAt(blocks, index);
+  }
+
+  /** Vrai si le bloc à `index` est un membre non-ouvrant d'un lot regroupé : le gabarit le masque. */
+  isGroupedExploreMember(blocks: AtelierTerminalBlock[], index: number): boolean {
+    return isGroupedExploreMember(blocks, index);
+  }
+
+  /** Vrai si le bloc est une sous-tâche écrivaine `task` : le gabarit lui pose son badge/filet. */
+  isTaskBlock(block: AtelierTerminalBlock): boolean {
+    return isTaskBlock(block);
+  }
+
+  /** La question d'un sous-agent d'exploration, sans habillage — pour la liste du bloc groupé. */
+  subAgentQuestion(block: AtelierTerminalBlock): string {
+    return subAgentQuestion(block);
   }
 
   // ------------------------------------------------ questions repérables + navigateur (F-126 / SF-126-02)

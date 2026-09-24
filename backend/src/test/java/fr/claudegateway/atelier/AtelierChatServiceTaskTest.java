@@ -229,6 +229,50 @@ class AtelierChatServiceTaskTest {
     }
 
     @Test
+    void theLiveViewReceivesTheTaskSynthesisAsOutput() {
+        // F-150 / SF-150-06 : la synthèse (branche + diff) doit AUSSI défiler au fil de l'eau, pas
+        // seulement dans la transcription relue — sinon le bloc `task` reste « prompt brut » en direct.
+        stubRunnerWorkspace();
+        when(runnerToolGateway.worktreeCreate(any(), anyString(), anyString())).thenReturn(ok(WORKTREE_JSON));
+        when(runnerToolGateway.worktreeRemove(any(), anyString(), anyString())).thenReturn(ok(""));
+        when(runnerToolGateway.writeFile(any(), anyString(), eq("a.txt"), eq("hop"))).thenReturn(ok("ok"));
+        when(runnerToolGateway.worktreeFinalize(any(), anyString(), anyString(), any())).thenReturn(
+                ok("{\"branch\":\"atelier/task/wt1\",\"committed\":true,\"hasChanges\":true,"
+                        + "\"diffStat\":\" a.txt | 1 +\"}"));
+
+        agentProvider.enqueueToolCall("task", "prompt", "écris a.txt");
+        agentProvider.enqueueToolCall("write_file", "path", "a.txt", "content", "hop");
+        agentProvider.enqueueFinal("Fait.");
+        agentProvider.enqueueFinal("Terminé.");
+
+        OutputRecordingListener listener = new OutputRecordingListener();
+        service.chatStreaming(userId, workspaceId, "délègue", listener);
+
+        String relayed = String.join("\n", listener.outputs);
+        assertThat(relayed).contains("atelier/task/wt1");
+        assertThat(relayed).contains("a.txt | 1 +");
+        assertThat(relayed).contains("merge/cherry-pick");
+    }
+
+    /** Écoute qui capture les fragments de sortie relayés au fil de l'eau. */
+    private static final class OutputRecordingListener implements AtelierProgressListener {
+        final List<String> outputs = new java.util.ArrayList<>();
+
+        @Override
+        public void onAction(AtelierProgressListener.AtelierStepEvent step) {
+        }
+
+        @Override
+        public void onText(String text) {
+        }
+
+        @Override
+        public void onOutput(String chunk) {
+            outputs.add(chunk);
+        }
+    }
+
+    @Test
     void theTaskToolIsDeclaredOnRunnerButNotOnSandbox() {
         Workspace runner = stubRunnerWorkspace();
         assertThat(service.buildTools(userId, runner).stream().map(AgentTool::name)).contains("task");

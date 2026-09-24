@@ -535,10 +535,28 @@
       } @else {
         @if (message.terminal && message.terminal.length > 0) {
           @for (block of message.terminal; track $index) {
-            <div class="terminal-block" [class.failed]="block.error">
+            <!-- LOT D'EXPLORATIONS PARALLÈLES (F-150 / SF-150-06) : ≥ 2 explore adjacents → un seul
+                 bloc groupé, rendu sur son ouverture ; ses membres suivants sont masqués. Historique :
+                 état « terminé ». Un explore ISOLÉ garde son rendu ligne (branche @else). -->
+            @if (exploreGroupAt(message.terminal, $index); as group) {
+              <ng-container
+                *ngTemplateOutlet="subAgentsTemplate; context: { $implicit: group, live: false }"
+              ></ng-container>
+            } @else if (!isGroupedExploreMember(message.terminal, $index)) {
+            <div
+              class="terminal-block"
+              [class.failed]="block.error"
+              [class.terminal-block--subagent]="isTaskBlock(block)"
+            >
               @if (block.command || block.tool) {
                 <div class="terminal-command">
                   <span class="terminal-dollar" aria-hidden="true">$</span>
+                  <!-- SOUS-AGENT `task` (F-150 / SF-150-06) : badge dédié, pas un prompt brut. -->
+                  @if (isTaskBlock(block)) {
+                    <span class="terminal-subagent-badge">
+                      <mat-icon aria-hidden="true">account_tree</mat-icon>sous-agent · task
+                    </span>
+                  }
                   <code>{{ blockLabel(block) }}</code>
                   @if (subtaskLabel(message.terminal, block); as subtask) {
                     <span class="terminal-subtask">{{ subtask }}</span>
@@ -585,6 +603,7 @@
                 <app-page-block [page]="page" [readOnly]="readOnly" (open)="openPage($event)"></app-page-block>
               }
             </div>
+            }
           }
         }
         @if (message.content) {
@@ -701,10 +720,27 @@
     <!-- Tour en cours : mêmes lignes, au fil de l'eau. -->
     @if (streaming; as live) {
       @for (block of live.blocks; track $index) {
-        <div class="terminal-block" [class.failed]="block.error">
+        <!-- LOT D'EXPLORATIONS PARALLÈLES, AU FIL DE L'EAU (F-150 / SF-150-06) : mêmes règles qu'en
+             historique, mais l'état vaut « en cours » tant que le tour tourne. -->
+        @if (exploreGroupAt(live.blocks, $index); as group) {
+          <ng-container
+            *ngTemplateOutlet="subAgentsTemplate; context: { $implicit: group, live: true }"
+          ></ng-container>
+        } @else if (!isGroupedExploreMember(live.blocks, $index)) {
+        <div
+          class="terminal-block"
+          [class.failed]="block.error"
+          [class.terminal-block--subagent]="isTaskBlock(block)"
+        >
           @if (block.command || block.tool) {
             <div class="terminal-command">
               <span class="terminal-dollar" aria-hidden="true">$</span>
+              <!-- SOUS-AGENT `task` (F-150 / SF-150-06) : badge dédié, pas un prompt brut. -->
+              @if (isTaskBlock(block)) {
+                <span class="terminal-subagent-badge">
+                  <mat-icon aria-hidden="true">account_tree</mat-icon>sous-agent · task
+                </span>
+              }
               <code>{{ blockLabel(block) }}</code>
               @if (subtaskLabel(live.blocks, block); as subtask) {
                 <span class="terminal-subtask">{{ subtask }}</span>
@@ -748,6 +784,7 @@
             <app-page-block [page]="page" [readOnly]="readOnly" (open)="openPage($event)"></app-page-block>
           }
         </div>
+        }
       }
       @if (live.text.length > 0) {
         <!-- Même rendu au fil de l'eau : un Markdown encore incomplet se stabilise à mesure
@@ -1399,4 +1436,31 @@
       <p class="teams-fallback-banner__subtitle">{{ card.subtitle }}</p>
     }
   </aside>
+</ng-template>
+
+<!-- LES SOUS-AGENTS EN ACTION (F-150 / SF-150-06) : un lot d'explorations parallèles d'un même tour,
+     regroupé en UN bloc « N sous-agents (exploration) », chacun avec sa question et son état. But
+     informatif, pas décoratif. Charte §8 : la couleur entre par un FILET à gauche, jamais un aplat ;
+     encre sobre (l'or de marque reste réservé aux gestes). `live` dit l'état : en cours / terminé. -->
+<ng-template #subAgentsTemplate let-group let-live="live">
+  <div
+    class="terminal-subagents"
+    role="group"
+    [attr.aria-label]="group.questions.length + ' sous-agents (exploration), ' + (live ? 'en cours' : 'terminé')"
+  >
+    <div class="terminal-subagents__head">
+      <mat-icon class="terminal-subagents__icon" aria-hidden="true">travel_explore</mat-icon>
+      <span class="terminal-subagents__title">{{ group.questions.length }} sous-agents (exploration)</span>
+      <span class="terminal-subagents__state">{{ live ? 'en cours' : 'terminé' }}</span>
+    </div>
+    <ul class="terminal-subagents__list">
+      @for (question of group.questions; track $index) {
+        <li class="terminal-subagents__item">
+          <span class="terminal-subagents__dot" aria-hidden="true"></span>
+          <span class="terminal-subagents__question">{{ question }}</span>
+          <span class="terminal-subagents__item-state">{{ live ? 'en cours' : 'terminé' }}</span>
+        </li>
+      }
+    </ul>
+  </div>
 </ng-template>

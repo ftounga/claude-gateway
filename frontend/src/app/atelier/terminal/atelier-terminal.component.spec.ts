@@ -1134,6 +1134,155 @@ describe('AtelierTerminalComponent', () => {
     expect(text()).toContain('sous-tâche 1');
   });
 
+  // ---- F-150 / SF-150-06 : sous-agents en action (explorations parallèles + `task`) ----
+
+  it('regroupe plusieurs explorations parallèles en un bloc « N sous-agents » (transcription relue)', () => {
+    component.messages = [
+      {
+        id: 'a1',
+        role: 'ASSISTANT',
+        content: '',
+        actions: [],
+        terminal: [
+          {
+            tool: 'explore',
+            command: 'où est AppConfig ?',
+            toolUseId: 'tu_1',
+            threadId: null,
+            output: '',
+            hasOutput: false,
+            error: false,
+            expanded: false,
+          },
+          {
+            tool: 'explore',
+            command: 'qui appelle login ?',
+            toolUseId: 'tu_2',
+            threadId: null,
+            output: '',
+            hasOutput: false,
+            error: false,
+            expanded: false,
+          },
+        ],
+      },
+    ];
+    fixture.detectChanges();
+
+    const groups = fixture.nativeElement.querySelectorAll('.terminal-subagents');
+    expect(groups.length).toBe(1);
+    const groupText = (groups[0] as HTMLElement).textContent ?? '';
+    expect(groupText).toContain('2 sous-agents (exploration)');
+    expect(groupText).toContain('où est AppConfig ?');
+    expect(groupText).toContain('qui appelle login ?');
+    // Transcription relue : le tour est fini, donc « terminé ».
+    expect(groupText).toContain('terminé');
+  });
+
+  it('montre les explorations parallèles « en cours » pendant le tour vivant', () => {
+    component.streaming = {
+      tokens: null,
+      status: 'running',
+      blocks: [
+        {
+          tool: 'explore',
+          command: 'exploration « où est AppConfig ? »',
+          toolUseId: 'tu_1',
+          threadId: null,
+          output: '',
+          hasOutput: false,
+          error: false,
+          expanded: false,
+        },
+        {
+          tool: 'explore',
+          command: 'exploration « qui appelle login ? »',
+          toolUseId: 'tu_2',
+          threadId: null,
+          output: '',
+          hasOutput: false,
+          error: false,
+          expanded: false,
+        },
+      ],
+      text: '',
+    };
+    fixture.detectChanges();
+
+    const group = fixture.nativeElement.querySelector('.terminal-subagents') as HTMLElement;
+    expect(group).not.toBeNull();
+    const groupText = group.textContent ?? '';
+    expect(groupText).toContain('2 sous-agents (exploration)');
+    // L'habillage « exploration « … » » est retiré : on ne garde que la question.
+    expect(groupText).toContain('où est AppConfig ?');
+    expect(groupText).not.toContain('exploration «');
+    expect(groupText).toContain('en cours');
+  });
+
+  it("ne regroupe pas une exploration isolée : le rendu ligne est préservé", () => {
+    component.messages = [
+      {
+        id: 'a1',
+        role: 'ASSISTANT',
+        content: '',
+        actions: [],
+        terminal: [
+          {
+            tool: 'explore',
+            command: 'où est AppConfig ?',
+            toolUseId: 'tu_1',
+            threadId: null,
+            output: '',
+            hasOutput: false,
+            error: false,
+            expanded: false,
+          },
+        ],
+      },
+    ];
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelectorAll('.terminal-subagents').length).toBe(0);
+    expect(text()).toContain('où est AppConfig ?');
+  });
+
+  it('donne au sous-agent `task` un rendu dédié : badge + synthèse (branche/diff)', () => {
+    component.messages = [
+      {
+        id: 'a1',
+        role: 'ASSISTANT',
+        content: '',
+        actions: [],
+        terminal: [
+          {
+            tool: 'task',
+            command: 'range les imports de main.ts',
+            toolUseId: 'tu_1',
+            threadId: null,
+            output:
+              'Sous-tâche accomplie : imports rangés.\n'
+              + 'Branche : atelier/task/wt1\n a.txt | 1 +\n'
+              + 'Reprends-la explicitement (merge/cherry-pick).',
+            hasOutput: true,
+            error: false,
+            expanded: false,
+          },
+        ],
+      },
+    ];
+    fixture.detectChanges();
+
+    const badge = fixture.nativeElement.querySelector('.terminal-subagent-badge') as HTMLElement;
+    expect(badge).not.toBeNull();
+    expect(badge.textContent).toContain('sous-agent · task');
+    const block = fixture.nativeElement.querySelector('.terminal-block--subagent') as HTMLElement;
+    expect(block).not.toBeNull();
+    const blockText = block.textContent ?? '';
+    expect(blockText).toContain('range les imports de main.ts');
+    expect(blockText).toContain('atelier/task/wt1');
+    expect(blockText).toContain('a.txt | 1 +');
+  });
+
   // ---- F-37 SF-37-02 : modifications du tour, repliées par fichier ----
 
   /** Tour assistant portant les modifications données. */

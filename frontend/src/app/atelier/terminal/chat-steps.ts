@@ -49,6 +49,11 @@ function stepCommand(step: AtelierStreamAction): string {
     // Une délégation (F-84 / SF-84-04) : la question part à l'écran avant la réponse.
     case 'explore':
       return step.path ? `exploration « ${step.path} »` : 'exploration';
+    // Une sous-tâche écrivaine (F-150 / SF-150-06) : sa consigne part à l'écran, lisible comme une
+    // délégation — et non le prompt brut par le cas `default`. Le badge « sous-agent · task » est
+    // ajouté par le gabarit ; l'en-tête, lui, porte la consigne.
+    case 'task':
+      return step.path ? `sous-tâche « ${step.path} »` : 'sous-tâche';
     default:
       // F-104 / SF-104-03 : un outil Radar sans cible se dit « Radar », jamais par son nom technique.
       if (step.type.startsWith('radar_')) {
