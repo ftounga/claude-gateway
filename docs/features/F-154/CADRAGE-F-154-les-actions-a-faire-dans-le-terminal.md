@@ -1,4 +1,4 @@
-# Cadrage — F-151 — Les actions à faire, visibles dans le terminal
+# Cadrage — F-154 — Les actions à faire, visibles dans le terminal
 
 > Demande du PO, 2026-09-24 :
 > *« Je voudrais que lorsque je rentre dans un terminal — celui d'un sujet ou la racine — j'aie une
@@ -51,10 +51,10 @@ pas, et l'écran n'a aucun menu d'actions.
 ## 4. Découpage proposé
 | SF | Objet |
 |---|---|
-| **SF-151-01** | Les actions dans un terminal de projet : modèle, rattachement (sujet ou projet), outils d'écriture sous la preuve de l'utilisateur |
-| **SF-151-02** | L'agent inscrit un **blocage** comme action, nommément, quand il ne peut pas avancer |
-| **SF-151-03** | Le **menu du terminal** : la liste, l'annulation d'un clic |
-| **SF-151-04** | La **fermeture par la réponse** : ce que l'utilisateur rapporte clôt l'action correspondante |
+| **SF-154-01** | Les actions dans un terminal de projet : modèle, rattachement (sujet ou projet), outils d'écriture sous la preuve de l'utilisateur |
+| **SF-154-02** | L'agent inscrit un **blocage** comme action, nommément, quand il ne peut pas avancer |
+| **SF-154-03** | Le **menu du terminal** : la liste, l'annulation d'un clic |
+| **SF-154-04** | La **fermeture par la réponse** : ce que l'utilisateur rapporte clôt l'action correspondante |
 
 ## 5. Ce qui reste à trancher
 - **Rattachement** : une action née dans un terminal de projet appartient-elle au **projet** (elle suit

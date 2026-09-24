@@ -40,7 +40,7 @@ import fr.claudegateway.user.UserRepository;
 import fr.claudegateway.user.UserRole;
 
 /**
- * Les actions d'un terminal, de bout en bout (F-151 / SF-151-01) : inscription, liste, fermeture
+ * Les actions d'un terminal, de bout en bout (F-154 / SF-154-01) : inscription, liste, fermeture
  * avec sa raison, annulation — et <b>le terminal d'Alice est introuvable pour Bob</b>.
  */
 @SpringBootTest

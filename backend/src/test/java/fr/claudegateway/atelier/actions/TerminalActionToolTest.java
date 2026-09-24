@@ -29,7 +29,7 @@ import fr.claudegateway.billing.EntitlementSpace;
 import fr.claudegateway.billing.SpaceEntitlementService;
 
 /**
- * L'agent inscrit le blocage (F-151 / SF-151-02).
+ * L'agent inscrit le blocage (F-154 / SF-154-02).
  *
  * <p>Ce que ces tests tiennent : l'outil n'existe que sous sa garde, le même blocage ne fait pas
  * deux lignes, une action <b>annulée</b> n'est jamais recréée, et toute erreur est un
@@ -92,9 +92,11 @@ class TerminalActionToolTest {
 
         when(entitlements.isEntitled(userId, EntitlementSpace.FORGE)).thenReturn(true);
         assertThat(catalog.isOpenFor(userId, workspace)).isTrue();
+        // Les DEUX outils, ensemble : donner de quoi inscrire sans de quoi fermer remplirait une
+        // liste que rien ne viderait (F-154 / SF-154-04).
         assertThat(catalog.toolsFor(userId, workspace))
                 .extracting(AgentTool::name)
-                .containsExactly(TerminalActionToolCatalog.RECORD);
+                .containsExactly(TerminalActionToolCatalog.RECORD, TerminalActionToolCatalog.CLOSE);
     }
 
     @Test
@@ -115,6 +117,112 @@ class TerminalActionToolTest {
                 .contains("dépendance HUMAINE")
                 .contains("Pas une liste de choses à faire")
                 .contains("NE REDEMANDE");
+    }
+
+    @Test
+    @DisplayName("le guide dit aussi de FERMER quand l'utilisateur répond, et jamais sur une supposition")
+    void theGuideSaysWhenToClose() {
+        assertThat(TerminalActionToolCatalog.GUIDE)
+                .contains("close_blocker")
+                .contains("LA RAISON, C'EST SA PAROLE")
+                .contains("NE FERME JAMAIS SUR UNE SUPPOSITION")
+                .contains("cancelled=true");
+    }
+
+    // --- La fermeture par la conversation (SF-154-04) ------------------------------------------
+
+    @Test
+    @DisplayName("ferme l'action portant la clé, et garde LA PAROLE de l'utilisateur comme raison")
+    void closesByKeyAndKeepsTheUserWords() {
+        TerminalAction open = existing(TerminalActionStatus.OPEN, "acces-vpn-karim");
+        when(repository.findByUserIdAndWorkspaceIdAndDedupKey(userId, workspaceId, "acces-vpn-karim"))
+                .thenReturn(Optional.of(open));
+        when(repository.findByIdAndUserIdAndWorkspaceId(open.getId(), userId, workspaceId))
+                .thenReturn(Optional.of(open));
+
+        TerminalActionToolExecutor.Outcome outcome = executor.close(userId, workspace, input("""
+                {"key":"acces-vpn-karim","reason":"Karim a ouvert l'accès ce matin."}"""));
+
+        assertThat(outcome.error()).isFalse();
+        assertThat(open.getStatus()).isEqualTo(TerminalActionStatus.DONE);
+        assertThat(open.getClosedReason()).isEqualTo("Karim a ouvert l'accès ce matin.");
+        assertThat(outcome.content())
+                .contains("Action close")
+                .contains("vous avez dit : « Karim a ouvert l'accès ce matin. »")
+                .contains("n'en reparle pas");
+    }
+
+    @Test
+    @DisplayName("« ça n'avait pas lieu d'être » annule, ce n'est PAS « c'est fait »")
+    void cancelledIsNotDone() {
+        TerminalAction open = existing(TerminalActionStatus.OPEN, "acces-vpn-karim");
+        when(repository.findByUserIdAndWorkspaceIdAndDedupKey(userId, workspaceId, "acces-vpn-karim"))
+                .thenReturn(Optional.of(open));
+        when(repository.findByIdAndUserIdAndWorkspaceId(open.getId(), userId, workspaceId))
+                .thenReturn(Optional.of(open));
+
+        TerminalActionToolExecutor.Outcome outcome = executor.close(userId, workspace, input("""
+                {"key":"acces-vpn-karim","reason":"On passe par le bastion.","cancelled":true}"""));
+
+        assertThat(open.getStatus()).isEqualTo(TerminalActionStatus.CANCELLED);
+        assertThat(outcome.content()).contains("Action annulée").contains("ne la réinscris pas");
+    }
+
+    @Test
+    @DisplayName("clé inconnue : on le dit, on n'écrit rien, et l'agent n'insiste pas")
+    void anUnknownKeySaysSo() {
+        when(repository.findByUserIdAndWorkspaceIdAndDedupKey(userId, workspaceId, "inconnue"))
+                .thenReturn(Optional.empty());
+
+        TerminalActionToolExecutor.Outcome outcome = executor.close(userId, workspace, input("""
+                {"key":"inconnue"}"""));
+
+        assertThat(outcome.error()).isFalse();
+        assertThat(outcome.content()).contains("Aucune action ouverte").contains("N'insiste pas");
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("une action déjà fermée garde sa raison d'origine — rien n'est réécrit")
+    void anAlreadyClosedActionKeepsItsOriginalReason() {
+        TerminalAction done = existing(TerminalActionStatus.DONE, "acces-vpn-karim");
+        done.setClosedReason("la première raison");
+        when(repository.findByUserIdAndWorkspaceIdAndDedupKey(userId, workspaceId, "acces-vpn-karim"))
+                .thenReturn(Optional.of(done));
+
+        TerminalActionToolExecutor.Outcome outcome = executor.close(userId, workspace, input("""
+                {"key":"acces-vpn-karim","reason":"une autre raison"}"""));
+
+        assertThat(outcome.content()).contains("était déjà fermée").contains("Rien n'a changé");
+        assertThat(done.getClosedReason()).isEqualTo("la première raison");
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("sans clé, et base en panne : résultat en ERREUR, jamais une exception")
+    void closingFailuresAreToolResults() {
+        assertThat(executor.close(userId, workspace, input("{}")).error()).isTrue();
+
+        when(repository.findByUserIdAndWorkspaceIdAndDedupKey(any(), any(), any()))
+                .thenThrow(new IllegalStateException("base HS"));
+        TerminalActionToolExecutor.Outcome outage = executor.close(userId, workspace, input("""
+                {"key":"acces-vpn-karim"}"""));
+        assertThat(outage.error()).isTrue();
+        assertThat(outage.content()).contains("n'a pas pu être fermée");
+    }
+
+    @Test
+    @DisplayName("ISOLATION — la fermeture porte sur le compte et le projet DU TOUR")
+    void closingNeverReadsAnIdentifierFromTheInput() {
+        UUID intruder = UUID.randomUUID();
+        when(repository.findByUserIdAndWorkspaceIdAndDedupKey(userId, workspaceId, "k"))
+                .thenReturn(Optional.empty());
+
+        executor.close(userId, workspace, input("""
+                {"key":"k","user_id":"%s","workspace_id":"%s"}""".formatted(intruder, UUID.randomUUID())));
+
+        verify(workspaces).requireOwned(userId, workspaceId);
+        verify(repository).findByUserIdAndWorkspaceIdAndDedupKey(userId, workspaceId, "k");
     }
 
     // --- L'inscription ------------------------------------------------------------------------

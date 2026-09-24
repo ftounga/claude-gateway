@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 import fr.claudegateway.auth.CurrentUser;
 
 /**
- * Les actions à faire d'un terminal (F-151 / SF-151-01).
+ * Les actions à faire d'un terminal (F-154 / SF-154-01).
  *
  * <p>L'identité vient <b>exclusivement</b> du {@link CurrentUser} ; aucun identifiant de compte ne
  * transite par la requête. L'isolation est appliquée par le service ({@code requireOwned} d'abord :
@@ -41,7 +41,7 @@ public class TerminalActionController {
                 .toList();
     }
 
-    /** Ce que l'utilisateur ajoute lui-même — l'agent passe par son outil (SF-151-02). */
+    /** Ce que l'utilisateur ajoute lui-même — l'agent passe par son outil (SF-154-02). */
     @PostMapping
     public TerminalActionResponse create(@PathVariable UUID workspaceId,
                                          @RequestBody CreateRequest request) {

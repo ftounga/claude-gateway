@@ -20,10 +20,10 @@ function action(id: string, description: string, over: Partial<TerminalAction> =
 }
 
 /**
- * **Le menu des actions à faire** (F-151 / SF-151-03) : la pastille absente à zéro, la liste, les
+ * **Le menu des actions à faire** (F-154 / SF-154-03) : la pastille absente à zéro, la liste, les
  * gestes réversibles, et un écran qui ne ment jamais quand un appel échoue.
  */
-describe('Les actions à faire du terminal (F-151 / SF-151-03)', () => {
+describe('Les actions à faire du terminal (F-154 / SF-154-03)', () => {
 
   describe('la pastille dans la barre', () => {
     let fixture: ComponentFixture<AtelierTerminalComponent>;

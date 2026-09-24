@@ -1,7 +1,7 @@
 package fr.claudegateway.atelier.actions;
 
 /**
- * L'état d'une action du terminal (F-151 / SF-151-01). Trois états, et trois seulement.
+ * L'état d'une action du terminal (F-154 / SF-154-01). Trois états, et trois seulement.
  *
  * <p>Pas d'état « en cours » : une action que l'utilisateur a commencée reste {@link #OPEN} tant
  * qu'elle n'a pas abouti. Un état de plus n'apporterait rien à l'œil et une transition de plus au

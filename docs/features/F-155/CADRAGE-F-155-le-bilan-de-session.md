@@ -1,4 +1,4 @@
-# Cadrage — F-152 — Le bilan de session
+# Cadrage — F-155 — Le bilan de session
 
 > Demande du PO, 2026-09-24 :
 > *« Lorsque je ferme une session — quand je clique sur “reprendre depuis le début” —, qu'un processus
@@ -17,7 +17,7 @@ Ce cadrage couvre **une session** : ce qu'elle a produit, ce qu'elle a coûté, 
 aurait pu faire autrement.
 
 **Ce qu'il ne couvre pas** : les optimisations de **l'application elle-même**. Elles relèvent d'un autre
-objet — **F-153, le diagnostic du produit** — parce qu'elles regardent une **accumulation** de sessions,
+objet — **F-156, le diagnostic du produit** — parce qu'elles regardent une **accumulation** de sessions,
 coûtent cher à produire, et débouchent sur des **features**, pas sur un changement d'habitude. Les
 mélanger reviendrait à ré-analyser dix fois les mêmes données pour aboutir dix fois à la même
 conclusion : exactement le gaspillage que cette feature est censée traquer.
@@ -70,18 +70,18 @@ Elle est **structurelle**, pas une consigne polie :
 - **Analyser tout le transcript** : sur une session de plusieurs heures, l'appel serait démesuré — on
   reproduirait le défaut que F-134 et F-149 viennent de corriger. On part du **relevé** et d'un
   **échantillon** ciblé.
-- **Lire le code de l'application** : c'est F-153. Ici, les chiffres suffisent.
+- **Lire le code de l'application** : c'est F-156. Ici, les chiffres suffisent.
 - **Lire l'état des fichiers du poste** : reporté (arbitrage du PO). On saura **quoi** aller chercher
   une fois qu'on aura vu ce qui manque au bilan.
 
 ## 7. Découpage proposé
 | SF | Objet |
 |---|---|
-| **SF-152-01** | L'agrégation d'une session : ce qui a été fait, ce que ça a coûté, où est parti l'argent |
-| **SF-152-02** | Les suggestions d'**usage**, avec **gain calculé** et **seuil d'impact** |
-| **SF-152-03** | Le déclenchement : automatique au-delà du seuil, proposé en dessous |
-| **SF-152-04** | L'écran et l'**artefact gardé**, réservé à l'administrateur |
-| **SF-152-05** | Le **renvoi vers F-153** quand un motif se répète |
+| **SF-155-01** | L'agrégation d'une session : ce qui a été fait, ce que ça a coûté, où est parti l'argent |
+| **SF-155-02** | Les suggestions d'**usage**, avec **gain calculé** et **seuil d'impact** |
+| **SF-155-03** | Le déclenchement : automatique au-delà du seuil, proposé en dessous |
+| **SF-155-04** | L'écran et l'**artefact gardé**, réservé à l'administrateur |
+| **SF-155-05** | Le **renvoi vers F-156** quand un motif se répète |
 
 ## 8. Tranché
 - **Seuil** : **les deux** — euros **et** tours, au premier atteint (PO, 2026-09-24).

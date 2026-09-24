@@ -1,7 +1,7 @@
-# Mini-spec — F-151 / SF-151-01 — Le modèle des actions du terminal
+# Mini-spec — F-154 / SF-154-01 — Le modèle des actions du terminal
 
 ## Identifiant
-`F-151 / SF-151-01` — feature parente `F-151`
+`F-154 / SF-154-01` — feature parente `F-154`
 
 ## Objectif
 Qu'une action à faire, née dans un terminal de projet, **survive au tour** qui l'a produite.
@@ -56,8 +56,8 @@ sujet. Une liste pour l'œil, deux sources pour le code.
 - [ ] Le Radar est **inchangé** — aucune migration sur `radar_commitments`.
 
 ## Hors scope
-L'**inscription automatique** par l'agent (**SF-151-02**) · le **menu** (**SF-151-03**) · la **fermeture
-par la conversation** (**SF-151-04**) · l'envoi du message depuis la liste (plus tard, F-110 existe).
+L'**inscription automatique** par l'agent (**SF-154-02**) · le **menu** (**SF-154-03**) · la **fermeture
+par la conversation** (**SF-154-04**) · l'envoi du message depuis la liste (plus tard, F-110 existe).
 
 ## Technique
 | Élément | Changement |
@@ -82,4 +82,4 @@ ouvertes** par projet (au-delà, c'est que rien n'est traité — on le dit plut
 | Auth / Principal | non | routes utilisateur ordinaires, `CurrentUser` |
 | **Contexte tenant** | **oui** | `TerminalActionService` et son repository filtrent `user_id` **et** `workspace_id` ; le workspace est celui du tour ou de la requête, **vérifié comme possédé** (`WorkspaceService.requireOwned`). |
 | Plans / limites | non | aucun appel fournisseur |
-| **Navigation / routing** | **oui** *(API seulement ici)* | aucune route d'écran ; le menu arrive en SF-151-03 |
+| **Navigation / routing** | **oui** *(API seulement ici)* | aucune route d'écran ; le menu arrive en SF-154-03 |

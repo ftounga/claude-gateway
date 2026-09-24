@@ -10,7 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 /**
- * Les actions d'un terminal (F-151 / SF-151-01).
+ * Les actions d'un terminal (F-154 / SF-154-01).
  *
  * <p><b>Toute</b> méthode porte {@code user_id} — et celles qui servent un écran portent aussi
  * {@code workspace_id}. Aucune méthode ne lit une action par son seul identifiant : c'est la règle
@@ -21,7 +21,7 @@ public interface TerminalActionRepository extends JpaRepository<TerminalAction, 
     Optional<TerminalAction> findByIdAndUserIdAndWorkspaceId(UUID id, UUID userId, UUID workspaceId);
 
     /**
-     * L'action déjà inscrite pour ce blocage, <b>quel que soit son statut</b> (F-151 / SF-151-02) —
+     * L'action déjà inscrite pour ce blocage, <b>quel que soit son statut</b> (F-154 / SF-154-02) —
      * y compris annulée : la parole de l'utilisateur prime, on ne recrée pas.
      */
     Optional<TerminalAction> findByUserIdAndWorkspaceIdAndDedupKey(

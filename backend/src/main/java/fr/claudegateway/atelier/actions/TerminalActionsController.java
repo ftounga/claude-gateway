@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 import fr.claudegateway.auth.CurrentUser;
 
 /**
- * <b>Les actions ouvertes du compte, tous projets confondus</b> (F-151 / SF-151-03) — ce que la
+ * <b>Les actions ouvertes du compte, tous projets confondus</b> (F-154 / SF-154-03) — ce que la
  * section « Ailleurs » du menu montre.
  *
  * <p>Racine distincte de {@code /workspaces/{id}/actions} : les deux formes ont le même nombre de

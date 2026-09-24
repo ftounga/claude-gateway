@@ -5,7 +5,7 @@ import { Observable } from 'rxjs';
 import { TerminalAction, TerminalActionElsewhere } from '../models/terminal-actions.models';
 
 /**
- * **Les actions à faire d'un terminal** (F-151). Aucun appel ne porte d'identifiant de compte : la
+ * **Les actions à faire d'un terminal** (F-154). Aucun appel ne porte d'identifiant de compte : la
  * gateway part du JWT et ne rend que ce que le compte possède.
  */
 @Injectable({ providedIn: 'root' })

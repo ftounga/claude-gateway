@@ -19,7 +19,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * <b>Une action à faire</b>, née dans un terminal de projet (F-151 / SF-151-01).
+ * <b>Une action à faire</b>, née dans un terminal de projet (F-154 / SF-154-01).
  *
  * <p>Ce que l'agent ne peut pas faire à la place de l'utilisateur : contacter quelqu'un, demander un
  * accès, obtenir une validation. Écrite par l'agent quand il bute sur une dépendance humaine, elle
@@ -73,7 +73,7 @@ public class TerminalAction {
 
     /**
      * La clé qui identifie le <b>blocage</b>, pour qu'un même blocage rencontré dix fois ne fasse pas
-     * dix actions (F-151 / SF-151-02). Unique par {@code (user_id, workspace_id)}, <b>quel que soit
+     * dix actions (F-154 / SF-154-02). Unique par {@code (user_id, workspace_id)}, <b>quel que soit
      * le statut</b> : c'est ce qui empêche de recréer une action que l'utilisateur a annulée.
      *
      * <p>{@code null} pour une action ajoutée à la main : elle n'est pas le fruit d'une détection.</p>

@@ -6,7 +6,7 @@
             http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
 
     <!--
-      F-151 / SF-151-01 — LES ACTIONS D'UN TERMINAL : ce que l'utilisateur doit faire, LUI, pour
+      F-154 / SF-154-01 — LES ACTIONS D'UN TERMINAL : ce que l'utilisateur doit faire, LUI, pour
       qu'un tour bloque puisse reprendre. « Contacter Karim pour l'acces reseau », « envoyer la
       demande au support ». Ecrit par l'agent quand il bute sur une dependance HUMAINE, ferme quand
       l'utilisateur repond dans le terminal, annulable a tout moment par l'utilisateur.

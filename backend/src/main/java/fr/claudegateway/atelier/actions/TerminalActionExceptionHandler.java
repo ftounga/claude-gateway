@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import fr.claudegateway.shared.error.ErrorResponse;
 
 /**
- * Erreurs des actions du terminal (F-151), traduites <b>dans le paquet</b>. Limité aux contrôleurs
+ * Erreurs des actions du terminal (F-154), traduites <b>dans le paquet</b>. Limité aux contrôleurs
  * de {@code atelier.actions} ; toute autre exception continue vers le gestionnaire global.
  */
 @RestControllerAdvice(basePackageClasses = TerminalActionExceptionHandler.class)

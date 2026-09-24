@@ -20,7 +20,7 @@ import fr.claudegateway.atelier.Workspace;
 import fr.claudegateway.atelier.WorkspaceRepository;
 
 /**
- * La section « Ailleurs » du menu (F-151 / SF-151-03) : les actions ouvertes des AUTRES projets du
+ * La section « Ailleurs » du menu (F-154 / SF-154-03) : les actions ouvertes des AUTRES projets du
  * compte, avec le nom de leur projet — et jamais celles d'un autre compte.
  */
 class TerminalActionQueryServiceTest {

@@ -5,7 +5,7 @@ import java.util.UUID;
 
 /**
  * Une action ouverte d'un <b>autre</b> projet, telle que la section « Ailleurs » du menu la lit
- * (F-151 / SF-151-03) : elle porte le <b>nom du projet</b>, sans quoi elle serait illisible.
+ * (F-154 / SF-154-03) : elle porte le <b>nom du projet</b>, sans quoi elle serait illisible.
  *
  * <p>Lecture seule : on la voit, on ne la traite pas d'ici — la traiter demande le contexte de son
  * terminal.</p>

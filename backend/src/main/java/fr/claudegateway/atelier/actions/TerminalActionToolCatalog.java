@@ -14,7 +14,7 @@ import fr.claudegateway.billing.SpaceEntitlementService;
 
 /**
  * <b>L'outil {@code record_blocker} donné à un agent — et la garde qui décide s'il l'est</b>
- * (F-151 / SF-151-02).
+ * (F-154 / SF-154-02).
  *
  * <p>Même doctrine que les autres outils de la gateway : la garde est au niveau de l'outil, donné à
  * un utilisateur qui a le <b>droit de l'espace du terminal</b> (Vigie pour un terminal Teams, Forge
@@ -24,8 +24,11 @@ import fr.claudegateway.billing.SpaceEntitlementService;
 @Component
 public class TerminalActionToolCatalog {
 
-    /** Le nom de l'outil. */
+    /** Le nom de l'outil d'inscription. */
     public static final String RECORD = "record_blocker";
+
+    /** Le nom de l'outil de fermeture (F-154 / SF-154-04). */
+    public static final String CLOSE = "close_blocker";
 
     /** Le guide ajouté à la consigne quand l'outil est donné. */
     public static final String GUIDE = "--- Actions à faire par l'utilisateur ---\n"
@@ -47,7 +50,18 @@ public class TerminalActionToolCatalog {
             + "PAS, contourne ou explique ce qui restera impossible), « déjà faite ».\n"
             + "TU CONTINUES TON TOUR : inscrire une action n'interrompt rien et n'attend rien. Fais "
             + "ensuite tout ce qui ne dépend pas de ce blocage, puis dis clairement ce qui reste "
-            + "suspendu à lui.";
+            + "suspendu à lui.\n"
+            + "QUAND L'UTILISATEUR RÉPOND : s'il te dit que c'est fait, ou s'il te donne "
+            + "l'information que l'action demandait, appelle close_blocker avec la MÊME key. Sans "
+            + "cela sa liste ne se vide jamais et devient un cimetière — qu'on ne regarde plus.\n"
+            + "LA RAISON, C'EST SA PAROLE, pas ton résumé : recopie ce qu'il a dit (« Karim a ouvert "
+            + "l'accès ce matin »). Une action fermée sur un résumé approximatif fait croire à un "
+            + "fait qui n'a pas été dit.\n"
+            + "NE FERME JAMAIS SUR UNE SUPPOSITION. Seulement sur ce qu'il a effectivement dit. Dans "
+            + "le doute, laisse ouvert : une action qui reste est un rappel, une action fermée à tort "
+            + "est une information perdue.\n"
+            + "S'IL DIT QUE ÇA N'AVAIT PAS LIEU D'ÊTRE, passe cancelled=true : ce n'est pas « c'est "
+            + "fait », et les confondre ferait mentir l'historique.";
 
     private final SpaceEntitlementService entitlements;
 
@@ -61,9 +75,9 @@ public class TerminalActionToolCatalog {
         return new TerminalActionToolCatalog(null);
     }
 
-    /** Vrai si ce nom d'outil est celui des actions du terminal. */
+    /** Vrai si ce nom d'outil est l'un de ceux des actions du terminal. */
     public static boolean isTerminalActionTool(String tool) {
-        return RECORD.equals(tool);
+        return RECORD.equals(tool) || CLOSE.equals(tool);
     }
 
     /**
@@ -86,9 +100,16 @@ public class TerminalActionToolCatalog {
         }
     }
 
-    /** L'outil à donner à l'agent pour ce tour, ou <b>la liste vide</b>. */
+    /**
+     * Les outils à donner à l'agent pour ce tour, ou <b>la liste vide</b>.
+     *
+     * <p>Les deux vont <b>ensemble</b> : donner de quoi inscrire sans donner de quoi fermer
+     * remplirait une liste que rien ne viderait.</p>
+     */
     public List<AgentTool> toolsFor(UUID userId, Workspace workspace) {
-        return isOpenFor(userId, workspace) ? List.of(definition()) : List.of();
+        return isOpenFor(userId, workspace)
+                ? List.of(definition(), closeDefinition())
+                : List.of();
     }
 
     /** La définition de l'outil (schéma d'entrée). */
@@ -115,5 +136,24 @@ public class TerminalActionToolCatalog {
                                         "description", "Clé courte et STABLE du blocage (« acces-vpn-karim ») : "
                                                 + "elle évite d'inscrire dix fois la même action.")),
                         "required", List.of("description")));
+    }
+
+    /** La définition de l'outil de fermeture (F-154 / SF-154-04). */
+    static AgentTool closeDefinition() {
+        return new AgentTool(CLOSE,
+                "Ferme une action à faire quand L'UTILISATEUR A RÉPONDU : il dit que c'est fait, ou "
+                        + "il donne l'information demandée. Donne la MÊME key qu'à l'inscription, et "
+                        + "recopie SA parole dans reason. Ne ferme jamais sur une supposition.",
+                Map.of("type", "object",
+                        "properties", Map.of(
+                                "key", Map.of("type", "string",
+                                        "description", "La clé de l'action, celle qui a servi à l'inscrire."),
+                                "reason", Map.of("type", "string",
+                                        "description", "Ce que l'utilisateur a dit, recopié — pas ton résumé "
+                                                + "(300 caractères au plus)."),
+                                "cancelled", Map.of("type", "boolean",
+                                        "description", "Vrai s'il a dit que l'action n'avait pas lieu d'être — "
+                                                + "ce n'est pas « c'est fait ».")),
+                        "required", List.of("key")));
     }
 }

@@ -25,7 +25,7 @@ import fr.claudegateway.atelier.WorkspaceNotFoundException;
 import fr.claudegateway.atelier.WorkspaceService;
 
 /**
- * Les actions d'un terminal (F-151 / SF-151-01).
+ * Les actions d'un terminal (F-154 / SF-154-01).
  *
  * <p>Ce que ces tests tiennent : une action survit au tour, sa fermeture garde sa raison, ses
  * bornes sont réelles, et <b>le terminal d'un autre est introuvable</b>.</p>

@@ -1078,17 +1078,17 @@ public class AtelierChatService implements RelayInterruptTarget {
     }
 
     /**
-     * L'outil {@code record_blocker} <b>et sa garde</b> (F-151 / SF-151-02) : inscrit dans le terminal
+     * L'outil {@code record_blocker} <b>et sa garde</b> (F-154 / SF-154-02) : inscrit dans le terminal
      * l'action que l'utilisateur seul peut faire. Même garde d'espace que les pages ; {@code none()}
      * par défaut (formes historiques, tests) = l'outil n'existe pas.
      */
     private fr.claudegateway.atelier.actions.TerminalActionToolCatalog terminalActionToolCatalog =
             fr.claudegateway.atelier.actions.TerminalActionToolCatalog.none();
-    /** Exécution de {@code record_blocker} (F-151 / SF-151-02) ; {@code null} pour les formes historiques. */
+    /** Exécution de {@code record_blocker} (F-154 / SF-154-02) ; {@code null} pour les formes historiques. */
     private fr.claudegateway.atelier.actions.TerminalActionToolExecutor terminalActionToolExecutor;
 
     /**
-     * Branche l'outil des actions à faire (F-151 / SF-151-02) par mutateur, comme les autres outils de
+     * Branche l'outil des actions à faire (F-154 / SF-154-02) par mutateur, comme les autres outils de
      * la gateway : sans exécuteur, l'outil n'est jamais donné.
      */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -2072,7 +2072,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                     outcome = applyDiagramRender(userId, workspace, callId, call);
                 } else if (fr.claudegateway.atelier.actions.TerminalActionToolCatalog
                         .isTerminalActionTool(call.name())) {
-                    // F-151 / SF-151-02 : l'action à faire est inscrite par la gateway, dans le terminal.
+                    // F-154 / SF-154-02 : l'action à faire est inscrite par la gateway, dans le terminal.
                     outcome = applyRecordBlocker(userId, workspace, call);
                 } else if (fr.claudegateway.images.ImageToolCatalog.isImageTool(call.name())) {
                     // F-142 / SF-142-04 : l'image décorative est générée par la gateway (relais fournisseur),
@@ -3035,7 +3035,7 @@ public class AtelierChatService implements RelayInterruptTarget {
     }
 
     /**
-     * Inscrit une action que l'utilisateur seul peut faire (F-151 / SF-151-02).
+     * Inscrit une action que l'utilisateur seul peut faire (F-154 / SF-154-02).
      *
      * <p>Le projet et le compte écrits sont ceux <b>du tour</b> — {@code workspace} vient de
      * {@code requireOwned}. Aucun identifiant n'est lu dans les paramètres de l'outil.</p>
@@ -3046,8 +3046,13 @@ public class AtelierChatService implements RelayInterruptTarget {
             return ToolOutcome.error("Les actions à faire ne sont pas ouvertes dans ce terminal : "
                     + "dis dans ta réponse ce que l'utilisateur doit faire.");
         }
+        // F-154 / SF-154-04 : fermer quand l'utilisateur a répondu, inscrire sinon. Les deux outils
+        // sont donnés ensemble — donner de quoi inscrire sans de quoi fermer remplirait une liste
+        // que rien ne viderait.
         fr.claudegateway.atelier.actions.TerminalActionToolExecutor.Outcome outcome =
-                terminalActionToolExecutor.execute(userId, workspace, call.input());
+                fr.claudegateway.atelier.actions.TerminalActionToolCatalog.CLOSE.equals(call.name())
+                        ? terminalActionToolExecutor.close(userId, workspace, call.input())
+                        : terminalActionToolExecutor.execute(userId, workspace, call.input());
         return outcome.error() ? ToolOutcome.error(outcome.content()) : ToolOutcome.info(outcome.content());
     }
 
@@ -5462,7 +5467,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         tools.addAll(diagramToolCatalog.toolsFor(userId, workspace));
         // F-129 / SF-129-05 : la construction du .pptx, côté gateway, pour la même raison.
         tools.addAll(deckToolCatalog.toolsFor(userId, workspace));
-        // F-151 / SF-151-02 : inscrire une action que l'utilisateur SEUL peut faire, pour qu'elle
+        // F-154 / SF-154-02 : inscrire une action que l'utilisateur SEUL peut faire, pour qu'elle
         // survive au tour. Sous la même garde d'espace que les autres outils de la gateway.
         if (terminalActionToolExecutor != null) {
             tools.addAll(terminalActionToolCatalog.toolsFor(userId, workspace));
@@ -5743,7 +5748,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         if (deckToolCatalog.isOpenFor(userId, workspace)) {
             system.append(fr.claudegateway.decks.DeckToolCatalog.GUIDE).append("\n\n");
         }
-        // F-151 / SF-151-02 : le guide des actions à faire — il dit surtout QUAND ne PAS en inscrire,
+        // F-154 / SF-154-02 : le guide des actions à faire — il dit surtout QUAND ne PAS en inscrire,
         // sans quoi la liste de l'utilisateur se remplirait des étapes de l'agent.
         if (terminalActionToolExecutor != null
                 && terminalActionToolCatalog.isOpenFor(userId, workspace)) {
