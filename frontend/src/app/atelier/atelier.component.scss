@@ -11,6 +11,29 @@
   background: var(--cg-bg);
 }
 
+/* — Téléphone (< 820 px), F-151 / SF-151-02 : la vue « liste de projets » passe à UNE colonne,
+     sur le modèle `/forge` (DESIGN_SYSTEM §16, `_forge-layout-shell.scss:148`). La sidebar prend
+     toute la largeur, son filet droit devient un filet bas, et la page s'écoule verticalement
+     dans `.app-content` (pas de piège de défilement imbriqué). La vue terminal (projet ouvert)
+     n'est pas concernée : elle remplace toute la grille. Rendu >= 820 px inchangé. */
+@media (max-width: 819px) {
+  :host {
+    height: auto;
+    min-height: calc(100vh - 56px);
+  }
+
+  .atelier-layout {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+    min-height: calc(100vh - 56px);
+  }
+
+  .atelier-sidebar {
+    border-right: 0;
+    border-bottom: 1px solid var(--cg-divider);
+  }
+}
+
 // ---- Sidebar : projets ----
 .atelier-sidebar {
   background: var(--cg-surface);
