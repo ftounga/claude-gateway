@@ -102,6 +102,20 @@ public class WorkspaceService {
     }
 
     /**
+     * Actions à faire d'un terminal (F-151 / SF-151-01), purgées à sa suppression — il n'y a pas de
+     * clé étrangère, donc la purge doit être nommée. Injecté par mutateur (null pour les tests
+     * historiques) pour ne pas toucher au constructeur.
+     */
+    private fr.claudegateway.atelier.actions.TerminalActionRepository terminalActionRepository;
+
+    /** Branche la purge des actions du terminal à la suppression d'un projet (F-151 / SF-151-01). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setTerminalActionRepository(
+            fr.claudegateway.atelier.actions.TerminalActionRepository repository) {
+        this.terminalActionRepository = repository;
+    }
+
+    /**
      * Annonce la création d'un projet (F-51 / SF-51-03).
      *
      * <p>Un seul endroit pour les trois portes d'entrée — archive, dépôt distant, projet local :
@@ -622,6 +636,12 @@ public class WorkspaceService {
         // F-115 / SF-115-01 : les fichiers déposés dans ce terminal s'en vont avec lui.
         if (depositedFileRepository != null) {
             depositedFileRepository.deleteByWorkspaceId(id);
+        }
+        // F-151 / SF-151-01 : les actions à faire nées dans ce terminal s'en vont avec lui. Une
+        // action orpheline réapparaîtrait dans le regroupement du terminal racine sans plus avoir
+        // de terminal où la traiter.
+        if (terminalActionRepository != null) {
+            terminalActionRepository.purgeWorkspace(userId, id);
         }
         workspaceRepository.delete(workspace);
     }

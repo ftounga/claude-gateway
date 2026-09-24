@@ -330,6 +330,32 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   - **Aucune clé étrangère**, même choix que `usage_turns` / `host_map_files` / `prompt_source_files`
     / `repo_index_paths`. Purge explicite à la suppression du compte (`deleteByUserId`).
 
+- **terminal_actions** — **les actions à faire d'un terminal** : ce que l'utilisateur doit faire,
+  LUI, pour qu'un tour bloqué reprenne — contacter quelqu'un, demander un accès, obtenir une
+  validation (F-151 / SF-151-01, migration `130`). Écrite par l'agent quand il bute sur une
+  dépendance **humaine**, elle **survit au tour** qui l'a produite.
+  - `terminal_actions` : `id (uuid)`, `user_id (uuid, NOT NULL)`, `workspace_id (uuid, NOT NULL)`,
+    `subject_id (uuid, nullable)`, `description (varchar 300, NOT NULL)`, `blocks (varchar 200)`,
+    `person (varchar 120)`, `kind (varchar 16, NOT NULL : ACTION | MESSAGE)`,
+    `status (varchar 16, NOT NULL : OPEN | DONE | CANCELLED)`, `closed_reason (varchar 300)`,
+    `closed_at (timestamptz)`, `created_at (timestamptz, NOT NULL)`,
+    `updated_at (timestamptz, NOT NULL)`.
+    Index `(user_id, workspace_id, status, created_at)`.
+  - **Pourquoi pas `radar_commitments`**, qui dit déjà tout cela (F-99) : son `subject_id` est
+    **NOT NULL** — un engagement appartient à un **sujet** du Radar, et un terminal de projet n'en a
+    pas toujours un. Le rendre nullable toucherait le **cœur** du Radar (extraction, relances,
+    corrections, purge) pour un besoin qui n'est pas le sien. D'où une table à soi — et **une seule
+    liste à l'écran** : le menu du terminal agrège les actions du terminal **et**, quand le terminal
+    porte un sujet, les engagements « à faire par moi » de ce sujet.
+  - **Trois états, et trois seulement** : `OPEN`, `DONE`, `CANCELLED`. Une action fermée **garde sa
+    raison** (`closed_reason`) : sans elle, on ne saurait plus pourquoi elle a disparu de la liste —
+    et une action qui disparaît sans raison est une action qu'on refait.
+  - **Isolation** : toute lecture et toute écriture filtrent `(user_id, workspace_id)`, et
+    `requireOwned` passe **en premier** — le terminal d'un autre compte est **introuvable** (404).
+  - **Aucune clé étrangère**, même choix que `resolution_memory` / `usage_turns` /
+    `repo_index_paths`. Purge explicite à la suppression du projet (`purgeWorkspace`) **et** du
+    compte (`purgeUser`).
+
 - **usage_turns** — journal de consommation **par tour** (F-61 / SF-61-01, migration `068` ;
   **coût réel** F-133 / SF-133-01, migration `118`).
   **Append-only** : une ligne par tour facturé, jamais modifiée, effacée seulement avec le compte.

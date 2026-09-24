@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-151 / SF-151-01 — LES ACTIONS D'UN TERMINAL : ce que l'utilisateur doit faire, LUI, pour
+      qu'un tour bloque puisse reprendre. « Contacter Karim pour l'acces reseau », « envoyer la
+      demande au support ». Ecrit par l'agent quand il bute sur une dependance HUMAINE, ferme quand
+      l'utilisateur repond dans le terminal, annulable a tout moment par l'utilisateur.
+
+      POURQUOI UNE TABLE DEDIEE, et pas radar_commitments : le modele des engagements du Radar
+      (F-99) dit deja tout cela — direction, description, statut, souverainete de la parole de
+      l'utilisateur. MAIS son `subject_id` est NOT NULL : un engagement appartient a un SUJET du
+      Radar, et un terminal de projet n'en a pas toujours un. Rendre cette colonne nullable
+      toucherait le COEUR du Radar (extraction, relances, corrections, purge) pour un besoin qui
+      n'est pas le sien. On prefere une table a soi, et UNE SEULE LISTE A L'ECRAN : le menu du
+      terminal agrege les actions du terminal ET, quand le terminal porte un sujet, les engagements
+      « a faire par moi » de ce sujet. Une liste pour l'oeil, deux sources pour le code.
+
+      ISOLATION : toute lecture et toute ecriture filtrent (user_id, workspace_id). Le projet d'un
+      autre compte est INTROUVABLE — 404, jamais 403.
+
+      PAS DE CLE ETRANGERE, meme choix que resolution_memory / usage_turns / repo_index_paths.
+      La suppression d'un projet purge ses actions explicitement.
+    -->
+
+    <changeSet id="130-terminal-actions" author="claude-gateway">
+        <createTable tableName="terminal_actions">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <!-- Le projet (terminal) ou l'action est nee. Cle du filtre avec user_id. -->
+            <column name="workspace_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <!-- Le sujet du Radar quand le terminal en porte un, pour recoller les deux vues.
+                 Nullable : un terminal de projet n'est pas toujours un sujet. -->
+            <column name="subject_id" type="uuid"/>
+            <!-- Ce qu'il faut faire, a l'imperatif, du point de vue de l'utilisateur. -->
+            <column name="description" type="varchar(300)">
+                <constraints nullable="false"/>
+            </column>
+            <!-- Ce que ca debloque : la raison d'etre de l'action, ce qui la rend urgente. -->
+            <column name="blocks" type="varchar(200)"/>
+            <!-- Qui est concerne : texte libre, ce que l'agent a lu dans le fil. Pas une entite. -->
+            <column name="person" type="varchar(120)"/>
+            <!-- ACTION (faire quelque chose) ou MESSAGE (ecrire a quelqu'un) : oriente le bouton. -->
+            <column name="kind" type="varchar(16)">
+                <constraints nullable="false"/>
+            </column>
+            <!-- OPEN, DONE, CANCELLED. Trois etats, et trois seulement. -->
+            <column name="status" type="varchar(16)">
+                <constraints nullable="false"/>
+            </column>
+            <!-- La phrase qui a ferme l'action. Sans elle, on ne saurait plus POURQUOI elle a
+                 disparu de la liste. -->
+            <column name="closed_reason" type="varchar(300)"/>
+            <column name="closed_at" type="timestamp with time zone"/>
+            <column name="created_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <!-- Le menu du terminal lit exactement ceci : les actions d'un projet, par anciennete. -->
+        <createIndex tableName="terminal_actions" indexName="idx_terminal_actions_user_workspace">
+            <column name="user_id"/>
+            <column name="workspace_id"/>
+            <column name="status"/>
+            <column name="created_at"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>
