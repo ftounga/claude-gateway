@@ -39,6 +39,63 @@ class CapabilityMapTest {
     }
 
     @Test
+    @DisplayName("LA GARDE DES TÉMOINS : chaque fragment déclaré se trouve VRAIMENT dans son fichier")
+    void everyWiringFragmentIsActuallyThere() throws Exception {
+        for (ProductCapability capability : CapabilityMap.capabilities()) {
+            for (ProductCapability.Wiring wiring : capability.wirings()) {
+                Path file = REPO.resolve(wiring.path());
+                assertThat(Files.exists(file))
+                        .as("« %s » : le témoin pointe %s, qui n'existe pas",
+                                capability.id(), wiring.path())
+                        .isTrue();
+                assertThat(Files.readString(file))
+                        .as("« %s » : le fragment « %s » est ABSENT de %s — la carte mentirait, et "
+                                + "le diagnostic conclurait « débranchée » sur une capacité qui marche",
+                                capability.id(), wiring.fragment(), wiring.path())
+                        .contains(wiring.fragment());
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("un témoin pointe l'un des CHEMINS de sa capacité — pas ailleurs")
+    void everyWiringPointsInsideItsCapability() {
+        for (ProductCapability capability : CapabilityMap.capabilities()) {
+            for (ProductCapability.Wiring wiring : capability.wirings()) {
+                assertThat(capability.paths())
+                        .as("« %s » : le témoin pointe %s, qui n'est pas un chemin de cette "
+                                + "capacité — il échapperait à la garde des chemins",
+                                capability.id(), wiring.path())
+                        .contains(wiring.path());
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("un témoin dit toujours CE QU'IL PROUVE — un fragment de code seul est illisible")
+    void everyWiringExplainsItself() {
+        for (ProductCapability capability : CapabilityMap.capabilities()) {
+            for (ProductCapability.Wiring wiring : capability.wirings()) {
+                assertThat(wiring.fragment()).as(capability.id()).isNotBlank();
+                assertThat(wiring.proves())
+                        .as("« %s » : un fragment sans explication ne se lit pas dans un rapport",
+                                capability.id())
+                        .isNotBlank();
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("les capacités dont le branchement est vérifiable déclarent leur témoin")
+    void theVerifiableOnesDeclareTheirWiring() {
+        assertThat(CapabilityMap.capabilities().stream()
+                .filter(c -> !c.wirings().isEmpty())
+                .map(ProductCapability::id))
+                .contains("cache-de-prompt", "index-du-depot", "compaction", "plan",
+                        "memoire-de-resolutions", "carte-du-poste");
+    }
+
+    @Test
     @DisplayName("les identifiants sont uniques — un doublon fausserait tout comptage")
     void idsAreUnique() {
         List<String> ids = CapabilityMap.capabilities().stream()
