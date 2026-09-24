@@ -339,8 +339,13 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     `person (varchar 120)`, `kind (varchar 16, NOT NULL : ACTION | MESSAGE)`,
     `status (varchar 16, NOT NULL : OPEN | DONE | CANCELLED)`, `closed_reason (varchar 300)`,
     `closed_at (timestamptz)`, `created_at (timestamptz, NOT NULL)`,
-    `updated_at (timestamptz, NOT NULL)`.
-    Index `(user_id, workspace_id, status, created_at)`.
+    `updated_at (timestamptz, NOT NULL)`, `dedup_key (varchar 200, nullable — migration `131`)`.
+    Index `(user_id, workspace_id, status, created_at)` ; index **unique**
+    `(user_id, workspace_id, dedup_key)`.
+  - **La clé de dédoublonnage** (F-151 / SF-151-02) : l'agent rencontre le même blocage à chaque tour
+    tant qu'il n'est pas levé. L'unicité porte sur la clé **quel que soit le statut** — c'est
+    exactement ce qui empêche de recréer une action que l'utilisateur a **annulée**. `NULL` pour une
+    action ajoutée à la main : plusieurs `NULL` cohabitent sans violer l'unicité.
   - **Pourquoi pas `radar_commitments`**, qui dit déjà tout cela (F-99) : son `subject_id` est
     **NOT NULL** — un engagement appartient à un **sujet** du Radar, et un terminal de projet n'en a
     pas toujours un. Le rendre nullable toucherait le **cœur** du Radar (extraction, relances,

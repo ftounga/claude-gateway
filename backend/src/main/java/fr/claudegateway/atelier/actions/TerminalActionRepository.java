@@ -20,6 +20,13 @@ public interface TerminalActionRepository extends JpaRepository<TerminalAction, 
 
     Optional<TerminalAction> findByIdAndUserIdAndWorkspaceId(UUID id, UUID userId, UUID workspaceId);
 
+    /**
+     * L'action déjà inscrite pour ce blocage, <b>quel que soit son statut</b> (F-151 / SF-151-02) —
+     * y compris annulée : la parole de l'utilisateur prime, on ne recrée pas.
+     */
+    Optional<TerminalAction> findByUserIdAndWorkspaceIdAndDedupKey(
+            UUID userId, UUID workspaceId, String dedupKey);
+
     /** Le menu d'un terminal : les plus anciennes d'abord — l'ancienneté est le signal utile. */
     List<TerminalAction> findByUserIdAndWorkspaceIdOrderByCreatedAtAsc(UUID userId, UUID workspaceId);
 

@@ -71,6 +71,16 @@ public class TerminalAction {
     @Column(name = "person", length = 120)
     private String person;
 
+    /**
+     * La clé qui identifie le <b>blocage</b>, pour qu'un même blocage rencontré dix fois ne fasse pas
+     * dix actions (F-151 / SF-151-02). Unique par {@code (user_id, workspace_id)}, <b>quel que soit
+     * le statut</b> : c'est ce qui empêche de recréer une action que l'utilisateur a annulée.
+     *
+     * <p>{@code null} pour une action ajoutée à la main : elle n'est pas le fruit d'une détection.</p>
+     */
+    @Column(name = "dedup_key", length = 200)
+    private String dedupKey;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "kind", nullable = false, length = 16)
     private TerminalActionKind kind;

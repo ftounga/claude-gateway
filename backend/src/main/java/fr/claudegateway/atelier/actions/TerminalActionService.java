@@ -32,6 +32,7 @@ public class TerminalActionService {
     static final int MAX_BLOCKS = 200;
     static final int MAX_PERSON = 120;
     static final int MAX_REASON = 300;
+    static final int MAX_KEY = 200;
 
     private final TerminalActionRepository repository;
     private final WorkspaceService workspaceService;
@@ -55,7 +56,19 @@ public class TerminalActionService {
                                  String description, String blocks, String person,
                                  TerminalActionKind kind) {
         workspaceService.requireOwned(userId, workspaceId); // 404 si non possédé — TOUJOURS en premier
+        return insert(userId, workspaceId, subjectId, description, blocks, person, kind, null);
+    }
 
+    /**
+     * L'insertion elle-même : bornes, saturation, écriture. Appelée par {@link #create} (l'ajout à
+     * la main) et par {@link #record} (l'inscription par l'agent) — <b>une seule</b> implémentation,
+     * pour que les bornes soient les mêmes des deux côtés.
+     *
+     * <p>L'appelant a déjà passé {@code requireOwned}.</p>
+     */
+    private TerminalAction insert(UUID userId, UUID workspaceId, UUID subjectId,
+                                  String description, String blocks, String person,
+                                  TerminalActionKind kind, String dedupKey) {
         String cleanDescription = required(description, MAX_DESCRIPTION,
                 "L'action doit dire ce qu'il faut faire.");
         String cleanBlocks = optional(blocks, MAX_BLOCKS,
@@ -81,9 +94,78 @@ public class TerminalActionService {
                 .person(cleanPerson)
                 .kind(kind == null ? TerminalActionKind.ACTION : kind)
                 .status(TerminalActionStatus.OPEN)
+                .dedupKey(dedupKey)
                 .createdAt(now)
                 .updatedAt(now)
                 .build());
+    }
+
+    /**
+     * <b>Inscrit un blocage détecté par l'agent</b> (F-151 / SF-151-02), dédoublonné par sa clé.
+     *
+     * <p>Ce que dit l'issue rendue : {@code RECORDED} (c'est neuf), {@code ALREADY_OPEN} (le même
+     * blocage attend déjà), {@code REFUSED_BY_USER} (l'utilisateur avait annulé — on ne recrée pas,
+     * et l'agent doit le savoir plutôt que redemander), {@code ALREADY_DONE} (c'est déjà réglé).</p>
+     *
+     * <p>Le {@code userId} et le {@code workspaceId} viennent <b>du tour</b>, jamais des paramètres
+     * de l'outil.</p>
+     */
+    @Transactional
+    public Recording record(UUID userId, UUID workspaceId, UUID subjectId,
+                            String description, String blocks, String person,
+                            TerminalActionKind kind, String key) {
+        workspaceService.requireOwned(userId, workspaceId); // 404 si non possédé — TOUJOURS en premier
+
+        String cleanDescription = required(description, MAX_DESCRIPTION,
+                "L'action doit dire ce qu'il faut faire.");
+        String dedupKey = normalizeKey(key == null || key.isBlank() ? cleanDescription : key);
+
+        var existing = repository.findByUserIdAndWorkspaceIdAndDedupKey(userId, workspaceId, dedupKey);
+        if (existing.isPresent()) {
+            TerminalAction action = existing.get();
+            return new Recording(action, switch (action.getStatus()) {
+                case OPEN -> RecordingOutcome.ALREADY_OPEN;
+                case CANCELLED -> RecordingOutcome.REFUSED_BY_USER;
+                case DONE -> RecordingOutcome.ALREADY_DONE;
+            });
+        }
+
+        TerminalAction created = insert(userId, workspaceId, subjectId,
+                cleanDescription, blocks, person, kind, dedupKey);
+        return new Recording(created, RecordingOutcome.RECORDED);
+    }
+
+    /**
+     * La clé, ramenée à sa forme stable : minuscules, sans accent, un tiret pour tout le reste.
+     * Dérivée de l'énoncé quand l'agent n'en donne pas — <b>jamais vide</b>, sinon le dédoublonnage
+     * ne protégerait rien.
+     */
+    static String normalizeKey(String raw) {
+        String folded = java.text.Normalizer.normalize(raw.strip().toLowerCase(java.util.Locale.ROOT),
+                        java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}+", "")
+                .replaceAll("[^a-z0-9]+", "-")
+                .replaceAll("(^-+)|(-+$)", "");
+        if (folded.isEmpty()) {
+            folded = "action";
+        }
+        return folded.length() > MAX_KEY ? folded.substring(0, MAX_KEY) : folded;
+    }
+
+    /** Ce qu'une inscription a donné, et l'action concernée. */
+    public record Recording(TerminalAction action, RecordingOutcome outcome) {
+    }
+
+    /** Les quatre issues d'une inscription (F-151 / SF-151-02). */
+    public enum RecordingOutcome {
+        /** C'est neuf : l'action est inscrite. */
+        RECORDED,
+        /** Le même blocage attend déjà : rien de plus à faire. */
+        ALREADY_OPEN,
+        /** L'utilisateur avait annulé. On ne recrée pas — sa parole prime. */
+        REFUSED_BY_USER,
+        /** C'est déjà réglé. */
+        ALREADY_DONE
     }
 
     /** Les actions d'un terminal, les plus anciennes d'abord. */
