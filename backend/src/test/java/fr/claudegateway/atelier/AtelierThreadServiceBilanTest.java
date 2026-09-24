@@ -2,6 +2,7 @@ package fr.claudegateway.atelier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -9,7 +10,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.OffsetDateTime;
-import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -17,11 +17,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
-import fr.claudegateway.auth.AuthenticatedUser;
-import fr.claudegateway.auth.CurrentUser;
+import fr.claudegateway.admin.AdminService;
 import fr.claudegateway.bilan.BilanTrigger;
 import fr.claudegateway.bilan.SessionBilanTriggerService;
-import fr.claudegateway.user.UserRole;
 
 /**
  * Le bilan au nouveau départ (F-155 / SF-155-03).
@@ -36,7 +34,7 @@ class AtelierThreadServiceBilanTest {
     private final WorkspaceRepository workspaceRepository = mock(WorkspaceRepository.class);
     private final AtelierMessageRepository messageRepository = mock(AtelierMessageRepository.class);
     private final SessionBilanTriggerService bilan = mock(SessionBilanTriggerService.class);
-    private final CurrentUser currentUser = mock(CurrentUser.class);
+    private final AdminService adminService = mock(AdminService.class);
 
     private final UUID userId = UUID.randomUUID();
     private final UUID workspaceId = UUID.randomUUID();
@@ -48,19 +46,18 @@ class AtelierThreadServiceBilanTest {
     @BeforeEach
     void setUp() {
         service = new AtelierThreadService(workspaceService, workspaceRepository, messageRepository);
-        service.setBilan(bilan, currentUser);
+        service.setBilan(bilan, adminService);
         workspace = new Workspace();
         workspace.setId(workspaceId);
         workspace.setUserId(userId);
         workspace.setChatThreadStartedAt(previousBoundary);
         when(workspaceService.requireOwned(userId, workspaceId)).thenReturn(workspace);
-        when(currentUser.principal())
-                .thenReturn(Optional.of(new AuthenticatedUser(userId, "po@ex.com", UserRole.ADMIN)));
+        when(adminService.isAdmin()).thenReturn(true);
     }
 
     private void decides(BilanTrigger trigger) {
-        when(bilan.decide(eq(userId), eq(workspaceId), any(), any(), any()))
-                .thenReturn(new SessionBilanTriggerService.Decision(trigger, null, null));
+        when(bilan.decide(eq(userId), eq(workspaceId), anyBoolean(), any(), any()))
+                .thenReturn(new SessionBilanTriggerService.Decision(trigger, null, null, null));
     }
 
     @Test
@@ -72,8 +69,7 @@ class AtelierThreadServiceBilanTest {
 
         ArgumentCaptor<OffsetDateTime> from = ArgumentCaptor.forClass(OffsetDateTime.class);
         ArgumentCaptor<OffsetDateTime> to = ArgumentCaptor.forClass(OffsetDateTime.class);
-        verify(bilan).decide(eq(userId), eq(workspaceId), eq(UserRole.ADMIN),
-                from.capture(), to.capture());
+        verify(bilan).decide(eq(userId), eq(workspaceId), eq(true), from.capture(), to.capture());
 
         assertThat(from.getValue()).isEqualTo(previousBoundary);
         assertThat(to.getValue()).isAfter(previousBoundary);
@@ -91,7 +87,7 @@ class AtelierThreadServiceBilanTest {
 
         service.restart(userId, workspaceId);
 
-        verify(bilan).decide(eq(userId), eq(workspaceId), eq(UserRole.ADMIN), eq(created), any());
+        verify(bilan).decide(eq(userId), eq(workspaceId), eq(true), eq(created), any());
     }
 
     @Test
@@ -105,15 +101,17 @@ class AtelierThreadServiceBilanTest {
     }
 
     @Test
-    @DisplayName("le rôle vient du contexte de sécurité, jamais d'un paramètre")
-    void theRoleComesFromTheSecurityContext() {
-        when(currentUser.principal())
-                .thenReturn(Optional.of(new AuthenticatedUser(userId, "u@ex.com", UserRole.USER)));
+    @DisplayName("l'admin vient de la DÉFINITION UNIQUE — pas d'une comparaison de rôle refaite ici")
+    void adminComesFromTheSingleDefinition() {
+        when(adminService.isAdmin()).thenReturn(false);
         decides(BilanTrigger.AUCUN);
 
         service.restart(userId, workspaceId);
 
-        verify(bilan).decide(eq(userId), eq(workspaceId), eq(UserRole.USER), any(), any());
+        // C'est cette délégation qui fait que le SUPER-ADMIN PAR E-MAIL, dont le rôle stocké peut
+        // ne pas être promu, obtient bien un bilan — une comparaison `role == ADMIN` l'oublierait.
+        verify(adminService).isAdmin();
+        verify(bilan).decide(eq(userId), eq(workspaceId), eq(false), any(), any());
     }
 
     @Test
@@ -123,7 +121,7 @@ class AtelierThreadServiceBilanTest {
                 workspaceService, workspaceRepository, messageRepository);
 
         assertThat(bare.restart(userId, workspaceId).bilan()).isEqualTo("AUCUN");
-        verify(bilan, never()).decide(any(), any(), any(), any(), any());
+        verify(bilan, never()).decide(any(), any(), anyBoolean(), any(), any());
         assertThat(workspace.getChatThreadStartedAt()).isAfter(previousBoundary);
     }
 

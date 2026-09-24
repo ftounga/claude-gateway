@@ -367,6 +367,29 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     aurait le même nombre de segments que `/workspaces/{id}/actions` et serait lu comme un projet
     nommé « actions ».
 
+- **session_bilans** — **le bilan d'une session, gardé comme artefact** (F-155 / SF-155-04,
+  migration `132`). Un bilan qui n'existe que dans une réponse HTTP est un bilan qu'on ne relit
+  jamais et qu'on ne peut pas **comparer** — or comparer est tout l'intérêt (« le cache est remonté
+  depuis la semaine dernière »).
+  - `session_bilans` : `id (uuid)`, `user_id (uuid, NOT NULL)`, `workspace_id (uuid, NOT NULL)`,
+    `workspace_name (varchar 255)`, `from_at`/`to_at (timestamptz, NOT NULL)`,
+    `origin (varchar 16 : AUTOMATIQUE | MANUEL)`, `turns (int)`, `cost_eur (numeric(12,2))`,
+    `cache_share (int)`, `suggestion_count (int)`, `discarded_count (int)`,
+    `ledger_json`/`suggestions_json (varchar 1000000)`, `created_at (timestamptz, NOT NULL)`.
+    Index `(user_id, created_at)`.
+  - **Deux colonnes JSON, cinq colonnes de tête.** Le relevé et les suggestions sont des
+    **photographies** d'un instant, pas des données à interroger. Les cinq chiffres que la liste
+    **trie et compare** sont en colonnes — tout mettre en JSON obligerait à désérialiser la base
+    entière pour afficher une liste.
+  - **`varchar(1000000)`, pas `text`** : convention du projet (voir `resolution_memory`) — sinon H2
+    rend un CLOB et la validation de schéma refuse de démarrer.
+  - **Le nom du projet est figé** au moment du bilan : renommer un projet ne doit pas rendre un
+    ancien bilan illisible, et le projet peut disparaître.
+  - **Administrateur seulement**, par la **définition unique** (`AdminService.assertAdmin`, qui
+    accepte aussi le super-admin par e-mail). Un non-admin reçoit **403**, jamais une liste vide.
+  - **Isolation** : toute lecture filtre `user_id` ; un bilan n'est jamais lu par son seul
+    identifiant. **Aucune clé étrangère** ; purge explicite à la suppression du compte.
+
 - **usage_turns** — journal de consommation **par tour** (F-61 / SF-61-01, migration `068` ;
   **coût réel** F-133 / SF-133-01, migration `118`).
   **Append-only** : une ligne par tour facturé, jamais modifiée, effacée seulement avec le compte.

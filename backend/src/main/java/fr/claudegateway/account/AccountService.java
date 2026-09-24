@@ -66,6 +66,18 @@ public class AccountService {
      */
     private fr.claudegateway.atelier.actions.TerminalActionRepository terminalActionRepository;
 
+    /**
+     * Bilans de session (F-155 / SF-155-04), purgés à la suppression du compte. Injecté par
+     * mutateur (null pour les tests historiques) pour ne pas toucher au constructeur.
+     */
+    private fr.claudegateway.bilan.SessionBilanRepository sessionBilanRepository;
+
+    /** Branche la purge des bilans à la suppression du compte (F-155 / SF-155-04). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setSessionBilanRepository(fr.claudegateway.bilan.SessionBilanRepository repository) {
+        this.sessionBilanRepository = repository;
+    }
+
     /** Branche la purge des actions du terminal à la suppression du compte (F-154 / SF-154-01). */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setTerminalActionRepository(
@@ -309,6 +321,11 @@ public class AccountService {
         // Pas de clé étrangère, donc purge nommée — sinon elles survivraient au compte.
         if (terminalActionRepository != null) {
             terminalActionRepository.purgeUser(userId);
+        }
+        // Les bilans de session (F-155 / SF-155-04) : ce que le compte a produit et dépensé.
+        // Pas de clé étrangère, donc purge nommée.
+        if (sessionBilanRepository != null) {
+            sessionBilanRepository.purgeUser(userId);
         }
         runnerHostRepository.deleteByUserId(userId);
         // Places de terminal vivant (F-70 / SF-70-01) : elles nomment les projets ouverts par le
