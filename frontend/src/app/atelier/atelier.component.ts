@@ -1,5 +1,5 @@
 import { HttpErrorResponse, HttpEventType } from '@angular/common/http';
-import { Subscription } from 'rxjs';
+import { Observable, Subscription, catchError, forkJoin, map, of } from 'rxjs';
 import {
   ApplicationRef,
   Component,
@@ -51,6 +51,11 @@ import {
   visibleOutput,
 } from './terminal/terminal-block';
 import { toDiffViews } from './terminal/terminal-diff';
+import {
+  MentionedFile,
+  buildContextBlock,
+  mentionedPaths,
+} from './terminal/file-mentions';
 import {
   ConfirmDialogComponent,
   ConfirmDialogData,
@@ -1394,9 +1399,29 @@ export class AtelierComponent implements OnInit, OnDestroy {
     if (this.liveTerminals.limitReached()) {
       return;
     }
-    // Un tour travaille déjà : ce message est une PRÉCISION, pas un second tour (F-39 / SF-39-19,
-    // F-84 / SF-84-06). L'agent la lira au début de son étape suivante ; rien ne s'arrête. Le bac à
-    // sable hébergé n'a pas de précision : pendant un de ses tours, l'envoi reste refusé.
+    // F-121 / SF-121-24 : les @-mentions reconnues font LIRE leur fichier (lecture bornée, isolée
+    // par `requireOwned` + cible du workspace) et APPOSENT leur contenu au message. Le champ fait
+    // foi : un `@chemin` inconnu ou effacé n'entraîne aucune lecture (mémoire SF-146-01). Aucune
+    // capacité IA réimplémentée (Provider-First) et aucun ajout au prompt système (cache F-134) : le
+    // contenu va dans le message utilisateur. Sans mention, le flux reste synchrone.
+    const paths = mentionedPaths(content, this.tree());
+    if (paths.length === 0) {
+      this.dispatchMessage(id, content);
+      return;
+    }
+    this.resolveMentions(id, paths).subscribe((files) => {
+      this.dispatchMessage(id, content + buildContextBlock(files));
+    });
+  }
+
+  /**
+   * Aiguille un message prêt (mentions déjà résolues) vers un nouveau tour ou une précision.
+   *
+   * <p>Un tour travaille déjà : ce message est une PRÉCISION, pas un second tour (F-39 / SF-39-19,
+   * F-84 / SF-84-06). L'agent la lira au début de son étape suivante ; rien ne s'arrête. Le bac à
+   * sable hébergé n'a pas de précision : pendant un de ses tours, l'envoi reste refusé.</p>
+   */
+  private dispatchMessage(id: string, content: string): void {
     if (this.submitting()) {
       if (this.localEngine()) {
         this.steer(id, content);
@@ -1405,6 +1430,22 @@ export class AtelierComponent implements OnInit, OnDestroy {
     }
     this.draft.set('');
     this.startTurn(id, content);
+  }
+
+  /**
+   * Lit chaque fichier mentionné via l'endpoint borné et isolé existant (`GET /workspaces/{id}/file`).
+   * Un fichier illisible (hors ligne / exclu / refus runner) devient un contenu {@code null} : l'envoi
+   * n'est pas bloqué, un marqueur le signalera dans le message.
+   */
+  private resolveMentions(id: string, paths: string[]): Observable<MentionedFile[]> {
+    return forkJoin(
+      paths.map((path) =>
+        this.atelier.getFile(id, path).pipe(
+          map((file) => ({ path, content: file.content }) as MentionedFile),
+          catchError(() => of({ path, content: null } as MentionedFile)),
+        ),
+      ),
+    );
   }
 
   /**

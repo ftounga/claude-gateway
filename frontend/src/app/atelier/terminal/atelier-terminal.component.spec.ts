@@ -2089,4 +2089,56 @@ describe('AtelierTerminalComponent', () => {
       expect(fixture.nativeElement.querySelector('.terminal-replay-inline')).toBeNull();
     });
   });
+
+  // ------------------------------------------------ @-mentions de fichiers (F-121 / SF-121-24)
+  describe('@-mentions de fichiers (F-121 / SF-121-24)', () => {
+    function mentionField(): HTMLInputElement {
+      return fixture.nativeElement.querySelector(
+        '.terminal-mentions .terminal-field',
+      ) as HTMLInputElement;
+    }
+
+    it('ouvre la liste en tapant @, filtrée sur les fichiers du projet', () => {
+      component.filePaths = ['src/app/app.ts', 'README.md'];
+      fixture.detectChanges();
+      const input = mentionField();
+      input.value = '@app';
+      input.selectionStart = 4;
+      component.onDraftInput('@app', input);
+      fixture.detectChanges();
+
+      const items = fixture.nativeElement.querySelectorAll('.terminal-mentions__item');
+      expect(component.mentionOpen()).toBeTrue();
+      expect(items.length).toBe(1);
+      expect((items[0] as HTMLElement).textContent).toContain('src/app/app.ts');
+    });
+
+    it('insère @chemin et referme la liste à la sélection', fakeAsync(() => {
+      component.filePaths = ['src/app/app.ts'];
+      const emissions: string[] = [];
+      component.draftChange.subscribe((v) => emissions.push(v));
+      component.draft = '@app';
+      fixture.detectChanges();
+      const input = mentionField();
+      input.value = '@app';
+      input.selectionStart = 4;
+      component.onDraftInput('@app', input);
+      fixture.detectChanges();
+      expect(component.mentionOpen()).toBeTrue();
+
+      component.pickMention('src/app/app.ts', input, new MouseEvent('mousedown'));
+      tick();
+
+      expect(emissions[emissions.length - 1]).toBe('@src/app/app.ts ');
+      expect(component.mentionOpen()).toBeFalse();
+    }));
+
+    it('n\'ouvre aucune liste et ne rend aucun composer en lecture seule', () => {
+      component.readOnly = true;
+      component.filePaths = ['README.md'];
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('.terminal-mentions')).toBeNull();
+    });
+  });
 });
