@@ -97,20 +97,31 @@ public class PushNotificationService {
     }
 
     /**
-     * Construit la charge <b>neutre</b> : un titre, un corps générique et une route d'ouverture
-     * (identifiant de terminal opaque, jamais un nom ou une commande). C'est le service worker
-     * (SF-153-03) qui affichera la notification et ouvrira le bon terminal.
+     * Construit la charge <b>neutre</b> au format attendu par le service worker Angular
+     * (`ngsw-worker.js`, F-152) : une clé {@code notification} que le SW affiche telle quelle, même
+     * l'application fermée, et un {@code data.onActionClick} qui ouvre le bon terminal au clic
+     * (SF-153-03). Le titre et le corps sont génériques, l'{@code url} porte un identifiant de
+     * terminal <b>opaque</b> — jamais un nom de projet ni une commande (D4).
      */
     private String buildPayload(String title, String body, UUID workspaceId) {
         String url = workspaceId != null ? "/atelier/" + workspaceId : "/forge";
+        // Format ngsw : { notification: { title, body, icon, data: { url, onActionClick } } }.
+        Map<String, Object> notification = Map.of(
+                "title", title,
+                "body", body,
+                "icon", "/icons/icon-192.png",
+                "data", Map.of(
+                        "url", url,
+                        "onActionClick", Map.of(
+                                "default", Map.of("operation", "openWindow", "url", url))));
         try {
-            return objectMapper.writeValueAsString(Map.of(
-                    "title", title,
-                    "body", body,
-                    "url", url));
+            return objectMapper.writeValueAsString(Map.of("notification", notification));
         } catch (Exception e) {
             // Repli sans dépendance JSON : les valeurs sont des littéraux + un UUID (rien à échapper).
-            return "{\"title\":\"" + title + "\",\"body\":\"" + body + "\",\"url\":\"" + url + "\"}";
+            return "{\"notification\":{\"title\":\"" + title + "\",\"body\":\"" + body
+                    + "\",\"icon\":\"/icons/icon-192.png\",\"data\":{\"url\":\"" + url
+                    + "\",\"onActionClick\":{\"default\":{\"operation\":\"openWindow\",\"url\":\""
+                    + url + "\"}}}}}";
         }
     }
 
