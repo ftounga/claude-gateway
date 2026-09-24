@@ -1028,6 +1028,30 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   - `GET /runner-hosts/overview` gagne `liveTerminals` (par poste) et `liveTerminal` (par projet),
     champs **additifs** : la vue d'ensemble lit le registre **une fois** par appel.
 
+- **push_subscriptions** — l'**abonnement Web Push** d'un appareil (F-153 / SF-153-02, migration
+  `130`). Une ligne = **un appareil du propriétaire** qui a accepté de recevoir une notification
+  système (tour **terminé** / **autorisation demandée**), même l'application fermée. C'est le palier 3
+  de la « version mobile » : le pilotage à distance existe déjà (F-84), il manquait de quoi **alerter**
+  hors écran.
+  - `push_subscriptions` : `id (uuid)`, `user_id (uuid, NOT NULL)`, `endpoint (varchar 2000, NOT NULL)`,
+    `p256dh (varchar 255, NOT NULL)`, `auth (varchar 255, NOT NULL)`, `created_at`. Index `(user_id)`,
+    contrainte **unique** `(user_id, endpoint)` (un ré-abonnement du même appareil ne double pas).
+  - **Scellé par `user_id`** : toute lecture filtre le propriétaire — on ne notifie **que** ses
+    appareils. `endpoint`/`p256dh`/`auth` sont les paramètres du protocole **Web Push standard**
+    (RFC 8291) ; ce ne sont **pas** des secrets de la gateway. La clé **VAPID** (privée) vit en
+    **secret d'environnement** (`APP_PUSH_VAPID_PRIVATE`), **jamais en base**, jamais exposée au
+    frontend (seule la publique est servie par `GET /push/vapid-public-key`).
+  - **Aucune clé étrangère** vers `users` (cohérent avec `live_terminals` / le domaine runner) : purge
+    explicite (`deleteByUserId` dans `AccountService`). Un endpoint mort (404/410 du service push) est
+    purgé à l'émission (`deleteByEndpoint`).
+  - Endpoints **`POST/DELETE /push/subscriptions`** (s'abonner / se désabonner) et
+    **`GET /push/vapid-public-key`** (JWT) ; l'identité vient **toujours** du jeton, jamais du corps.
+  - **Émetteur** branché sur les **deux transitions de tour de F-84** (fin de `chatStreaming`,
+    `askPermission`) : charge **neutre** (aucun contenu de tour, nom de projet ou commande — le détail
+    n'apparaît qu'après ouverture authentifiée), émission **asynchrone** (jamais bloquante pour le
+    tour). Transport **VAPID** provider-agnostique (ne passe **pas** par `AIProvider`), **inactif** tant
+    que VAPID n'est pas configuré (repli : le signal in-tab SF-153-01).
+
 - **runner_pairing_codes / runner_tokens** — identité du runner (F-38 / SF-38-01, migration `047` ;
   clef passée de `workspace_id` à `host_id` par F-48 / SF-48-01, migration `064`).
   Deux tables neuves. Le **runner** est un second type de porteur d'identité, authentifié par jeton
