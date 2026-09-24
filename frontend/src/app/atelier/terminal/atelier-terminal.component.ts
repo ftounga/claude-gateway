@@ -52,6 +52,12 @@ import {
   expandSlashCommand,
   slashSuggestions,
 } from './slash-commands';
+import {
+  ActiveMention,
+  activeMention,
+  applyMention,
+  suggestPaths,
+} from './file-mentions';
 import { MarkdownPipe } from '../../shared/markdown.pipe';
 import { TeamsLinkBadgeComponent } from '../../shared/teams-link-badge/teams-link-badge.component';
 import { TeamsLink } from '../teams/teams-link.service';
@@ -191,6 +197,9 @@ export const LONG_THREAD_TURNS = 40;
     // ONZE FEUILLES (F-121 / SF-121-23) : le menu de slash-commands vit à part, pour la même raison
     // de budget de build (12 ko) de la feuille principale.
     './atelier-terminal-slash.component.scss',
+    // DOUZE FEUILLES (F-121 / SF-121-24) : l'autocomplétion des @-mentions de fichiers, à part comme
+    // les précédentes — le budget de 12 ko de la feuille principale fait échouer le build.
+    './atelier-terminal-mentions.component.scss',
   ],
 })
 export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
@@ -534,6 +543,12 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   @Input() draft = '';
 
   /**
+   * Chemins relatifs des fichiers du projet (F-121 / SF-121-24) — la matière de l'autocomplétion
+   * des @-mentions. Fournis par le parent (signal `tree()` / `WorkspaceDetail.files`), déjà chargés.
+   */
+  @Input() filePaths: string[] = [];
+
+  /**
    * Projet adossé à un dépôt Git (F-31 / SF-31-04) : le bouton de publication n'apparaît que là.
    */
   @Input() gitProject = false;
@@ -794,6 +809,130 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   removePaste(paste: PastedText): void {
     this.pastes.update((all) => all.filter((item) => item.index !== paste.index));
     this.draftChange.emit(removeReference(this.draft, paste.index));
+  }
+
+  // ------------------------------------------------------------------------------------------------
+  // F-121 / SF-121-24 — @-MENTIONS DE FICHIERS. L'autocomplétion vit ici (le champ est ici) ; la
+  // LECTURE et l'apposition du contenu à l'envoi vivent chez le parent (qui a l'id du workspace et
+  // le service). Ce qu'on voit est ce qui part : une référence effacée n'est pas réinjectée.
+  // ------------------------------------------------------------------------------------------------
+
+  /** La liste d'autocomplétion est-elle ouverte ? */
+  readonly mentionOpen = signal(false);
+  /** Les chemins proposés pour le jeton `@…` courant. */
+  readonly mentionSuggestions = signal<string[]>([]);
+  /** L'entrée surlignée (navigation clavier). */
+  readonly mentionActiveIndex = signal(0);
+  /** Le jeton `@…` courant, repéré au curseur — cible d'une insertion. */
+  private currentMention: ActiveMention | null = null;
+
+  /**
+   * Réévalue le jeton `@…` au curseur pour l'autocomplétion (appelée depuis {@link #onDraftInput},
+   * qui porte aussi la logique de slash-commands de SF-121-23).
+   */
+  refreshMentionOnInput(value: string, field: HTMLInputElement): void {
+    this.updateMention(value, field.selectionStart ?? value.length);
+  }
+
+  /** Déplacement du curseur (clic) : réévaluer le jeton sur la valeur courante du champ. */
+  refreshMention(field: HTMLInputElement): void {
+    this.updateMention(field.value, field.selectionStart ?? field.value.length);
+  }
+
+  /** Relâchement de touche hors navigation : réévaluer (flèches gauche/droite, etc.). */
+  onMentionKeyup(field: HTMLInputElement): void {
+    this.updateMention(field.value, field.selectionStart ?? field.value.length);
+  }
+
+  /** Recalcule le jeton `@…` au curseur et la liste de suggestions. */
+  private updateMention(draft: string, caret: number): void {
+    const mention = activeMention(draft, caret);
+    if (!mention) {
+      this.closeMentions();
+      return;
+    }
+    const suggestions = suggestPaths(this.filePaths, mention.query);
+    if (suggestions.length === 0) {
+      this.closeMentions();
+      return;
+    }
+    this.currentMention = mention;
+    this.mentionSuggestions.set(suggestions);
+    // Garder l'entrée surlignée dans les bornes de la nouvelle liste.
+    this.mentionActiveIndex.update((i) => Math.min(Math.max(i, 0), suggestions.length - 1));
+    this.mentionOpen.set(true);
+  }
+
+  /** Referme la liste d'autocomplétion et oublie le jeton courant. */
+  closeMentions(): void {
+    if (this.mentionOpen()) {
+      this.mentionOpen.set(false);
+    }
+    this.mentionSuggestions.set([]);
+    this.mentionActiveIndex.set(0);
+    this.currentMention = null;
+  }
+
+  /**
+   * Navigation clavier de la liste ouverte : flèches pour surligner, Entrée/Tab pour valider, Échap
+   * pour fermer. Tant que la liste est ouverte, ces touches ne tombent PAS dans l'envoi du formulaire.
+   */
+  onMentionKeydown(event: KeyboardEvent, field: HTMLInputElement): void {
+    if (!this.mentionOpen()) {
+      return;
+    }
+    const items = this.mentionSuggestions();
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault();
+        this.mentionActiveIndex.update((i) => (i + 1) % items.length);
+        break;
+      case 'ArrowUp':
+        event.preventDefault();
+        this.mentionActiveIndex.update((i) => (i - 1 + items.length) % items.length);
+        break;
+      case 'Enter':
+      case 'Tab': {
+        const picked = items[this.mentionActiveIndex()];
+        if (picked) {
+          event.preventDefault();
+          this.insertMention(picked, field);
+        }
+        break;
+      }
+      case 'Escape':
+        event.preventDefault();
+        this.closeMentions();
+        break;
+      default:
+        break;
+    }
+  }
+
+  /** Clic sur une suggestion. `mousedown` (avant le blur) + preventDefault gardent le focus. */
+  pickMention(path: string, field: HTMLInputElement, event: Event): void {
+    event.preventDefault();
+    this.insertMention(path, field);
+  }
+
+  /** Pose la référence `@chemin ` à la place du jeton, émet la saisie, referme la liste. */
+  private insertMention(path: string, field: HTMLInputElement): void {
+    if (!this.currentMention) {
+      return;
+    }
+    const result = applyMention(this.draft, this.currentMention, path);
+    this.draftChange.emit(result.draft);
+    this.closeMentions();
+    // Reposer le curseur juste après la référence insérée, une fois la valeur reflétée dans le champ.
+    setTimeout(() => {
+      field.focus();
+      try {
+        field.setSelectionRange(result.caret, result.caret);
+      } catch {
+        // Certains navigateurs refusent setSelectionRange sur un champ non encore mis à jour ; sans
+        // gravité — le focus suffit.
+      }
+    });
   }
 
   /** Ouvre le sélecteur de fichiers du trombone. */
@@ -1172,23 +1311,28 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   }
 
   /**
-   * Frappe dans le champ : le parent reste propriétaire du brouillon, mais on rouvre le menu (une
-   * fermeture par Échap ne vaut que pour le jeton en cours) et on remet le surlignage en tête.
+   * Frappe dans le champ : le parent reste propriétaire du brouillon, mais on rouvre le menu de
+   * slash-commands (une fermeture par Échap ne vaut que pour le jeton en cours) et on remet le
+   * surlignage en tête. On réévalue aussi le jeton `@…` pour l'autocomplétion (SF-121-24).
    */
-  onDraftInput(value: string): void {
+  onDraftInput(value: string, field: HTMLInputElement): void {
     this.slashDismissed.set(false);
     this.slashHighlight.set(0);
     this.draftChange.emit(value);
+    this.refreshMentionOnInput(value, field);
   }
 
   /**
-   * Clavier du composer. **N'agit que menu ouvert** : ↑/↓ déplacent le surlignage, Tab/Entrée
-   * complètent la commande surlignée (sans envoyer), Échap ferme le menu. Menu fermé, l'événement
-   * suit son cours (Entrée envoie via le `ngSubmit` du formulaire) — aucun changement de saisie.
+   * Clavier du composer. Le menu de slash-commands est prioritaire quand il est ouvert (SF-121-23) :
+   * ↑/↓ déplacent le surlignage, Tab/Entrée complètent la commande surlignée (sans envoyer), Échap
+   * ferme le menu. Sinon, si la liste d'@-mentions est ouverte (SF-121-24), elle prend le clavier.
+   * Aucun menu ouvert : l'événement suit son cours (Entrée envoie via le `ngSubmit` du formulaire).
    */
-  onComposerKeydown(event: KeyboardEvent): void {
+  onComposerKeydown(event: KeyboardEvent, field: HTMLInputElement): void {
     const menu = this.slashMenu;
     if (menu.length === 0) {
+      // Pas de slash-command en cours : laisser la liste d'@-mentions gérer le clavier si ouverte.
+      this.onMentionKeydown(event, field);
       return;
     }
     switch (event.key) {

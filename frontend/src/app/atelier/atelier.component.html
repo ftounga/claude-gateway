@@ -130,6 +130,7 @@
     [replaying]="replaying()"
     [steerable]="localEngine()"
     [draft]="draft()"
+    [filePaths]="tree()"
     (draftChange)="draft.set($event)"
     (send)="send()"
     (replay)="replayLastRequest()"

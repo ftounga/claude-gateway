@@ -1121,21 +1121,52 @@
         (stateChange)="dictationState.set($event)"
         (transcribed)="draftChange.emit(draft ? draft + ' ' + $event : $event)"
       ></app-dictation-button>
-      <input
-        type="text"
-        class="terminal-field"
-        name="draft"
-        autocomplete="off"
-        [placeholder]="dictationPlaceholder()
-          ?? (liveLimitReached
-            ? 'Terminal en attente d\'une place — fermez-en un autre pour reprendre ici'
-            : (submitting ? 'Précisez pendant qu\'il travaille…' : 'Décrivez la tâche à exécuter…'))"
-        aria-label="Demande à exécuter"
-        [disabled]="publishing || liveLimitReached"
-        [ngModel]="draft"
-        (ngModelChange)="onDraftInput($event)"
-        (keydown)="onComposerKeydown($event)"
-      />
+      <!-- F-121 / SF-121-24 — @-MENTIONS DE FICHIERS. Taper « @ » ouvre l'autocomplétion sur
+           l'arborescence du projet ; la sélection pose une référence lisible « @chemin ». À l'envoi,
+           le contenu du fichier mentionné est apposé au message (parent), jamais au prompt système
+           (cache F-134 préservé). Provider-First : simple injection ciblée de contexte. Le clavier
+           passe par `onComposerKeydown` : menu de slash-commands prioritaire (SF-121-23), puis la
+           liste d'@-mentions. -->
+      <span class="terminal-mentions">
+        <input
+          #draftField
+          type="text"
+          class="terminal-field"
+          name="draft"
+          autocomplete="off"
+          role="combobox"
+          aria-autocomplete="list"
+          [attr.aria-expanded]="mentionOpen()"
+          [placeholder]="dictationPlaceholder()
+            ?? (liveLimitReached
+              ? 'Terminal en attente d\'une place — fermez-en un autre pour reprendre ici'
+              : (submitting ? 'Précisez pendant qu\'il travaille…' : 'Décrivez la tâche à exécuter (@ pour un fichier)…'))"
+          aria-label="Demande à exécuter"
+          [disabled]="publishing || liveLimitReached"
+          [ngModel]="draft"
+          (ngModelChange)="onDraftInput($event, draftField)"
+          (keydown)="onComposerKeydown($event, draftField)"
+          (click)="refreshMention(draftField)"
+          (keyup)="onMentionKeyup(draftField)"
+          (blur)="closeMentions()"
+        />
+        @if (mentionOpen()) {
+          <ul class="terminal-mentions__list" role="listbox" aria-label="Fichiers du projet">
+            @for (suggestion of mentionSuggestions(); track suggestion; let i = $index) {
+              <li
+                class="terminal-mentions__item"
+                [class.terminal-mentions__item--active]="i === mentionActiveIndex()"
+                role="option"
+                [attr.aria-selected]="i === mentionActiveIndex()"
+                (mousedown)="pickMention(suggestion, draftField, $event)"
+              >
+                <mat-icon class="terminal-mentions__icon" aria-hidden="true">description</mat-icon>
+                <span class="terminal-mentions__path">{{ suggestion }}</span>
+              </li>
+            }
+          </ul>
+        }
+      </span>
       <button
         mat-button
         type="submit"

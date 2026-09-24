@@ -1,0 +1,69 @@
+/* LES @-MENTIONS DE FICHIERS (F-121 / SF-121-24) — feuille à part, comme celles avant elle
+   (F-146, F-145, F-126, F-117, F-115) : la feuille principale du terminal a atteint le budget de
+   build de 12 ko (angular.json), et le franchir fait ÉCHOUER la compilation. Contrainte du projet,
+   pas un choix de style. Aucune couleur nouvelle : jetons du design system uniquement. */
+
+/* Le conteneur prend la place du champ dans la barre (flex row) et ancre la liste au-dessus. */
+.terminal-mentions {
+  position: relative;
+  flex: 1;
+  display: flex;
+  min-width: 0;
+}
+
+.terminal-mentions .terminal-field {
+  flex: 1;
+  min-width: 0;
+}
+
+/* La liste flottante, ancrée au-dessus du champ. Une surface détachée, discrète : ce n'est pas le
+   sujet, c'est une aide à la frappe. */
+.terminal-mentions__list {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--cg-divider);
+  border-radius: 8px;
+  background: var(--cg-surface);
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.18);
+}
+
+.terminal-mentions__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  color: var(--cg-text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.terminal-mentions__item:hover,
+.terminal-mentions__item.terminal-mentions__item--active {
+  background: rgba(224, 123, 57, 0.12); /* --cg-accent à 12 %, pour l'item survolé/actif */
+  color: var(--cg-accent);
+}
+
+.terminal-mentions__icon {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+  color: var(--cg-text-secondary);
+  flex: none;
+}
+
+.terminal-mentions__path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
