@@ -91,6 +91,16 @@ public class SessionBilan {
     @Column(name = "suggestions_json", columnDefinition = "text")
     private String suggestionsJson;
 
+    /**
+     * Les <b>genres</b> des suggestions, en clair et séparés par des virgules (F-155 / SF-155-05).
+     *
+     * <p>En colonne, parce que repérer un motif demande de les compter sur les dix derniers
+     * bilans : les lire dans le JSON obligerait à désérialiser dix photographies pour n'en tirer
+     * que quatre mots. {@code null} sur les bilans d'avant — ignorés par le comptage.</p>
+     */
+    @Column(name = "suggestion_kinds", length = 200)
+    private String suggestionKinds;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 }

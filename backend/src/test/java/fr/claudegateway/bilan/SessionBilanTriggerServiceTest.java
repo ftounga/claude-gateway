@@ -58,7 +58,8 @@ class SessionBilanTriggerServiceTest {
     private void given(SessionLedger ledger, int kept, int discarded) {
         when(ledgers.of(userId, workspaceId, FROM, TO)).thenReturn(ledger);
         List<SessionSuggestion> list = java.util.stream.IntStream.range(0, kept)
-                .mapToObj(i -> SessionSuggestion.of(SessionSuggestion.Axis.TEMPS, "a", "m", 20))
+                .mapToObj(i -> SessionSuggestion.of(SessionSuggestion.Kind.OUTIL_DOMINANT,
+                        SessionSuggestion.Axis.TEMPS, "a", "m", 20))
                 .toList();
         when(suggestions.examine(ledger))
                 .thenReturn(new SessionSuggestionService.Verdict(list, discarded));
@@ -150,7 +151,8 @@ class SessionBilanTriggerServiceTest {
     @DisplayName("les seuils sont configurables, et respectés")
     void thresholdsAreConfigurable() {
         SessionBilanTriggerService strict = new SessionBilanTriggerService(ledgers, suggestions,
-                new SessionBilanProperties(null, null, null, new BigDecimal("100"), 1000), store);
+                new SessionBilanProperties(null, null, null, new BigDecimal("100"), 1000,
+                        null, null), store);
         given(ledger(25, "2.50"), 1, 0); // largement au-dessus des DÉFAUTS
 
         assertThat(strict.decide(userId, workspaceId, true, FROM, TO).trigger())

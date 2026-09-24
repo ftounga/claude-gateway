@@ -184,6 +184,23 @@ export function axisLabel(axis: string): string {
                 </p>
               }
             }
+
+            @if (detail.patterns.length) {
+              <div class="patterns">
+                <p class="detail__line"><strong>Ce motif revient</strong></p>
+                @for (pattern of detail.patterns; track pattern.kind) {
+                  <p class="pattern">
+                    <span class="pattern__count">
+                      {{ pattern.seen }}ᵉ fois sur {{ pattern.window }} sessions
+                    </span>
+                    <span class="pattern__lead">
+                      Ce n'est plus une habitude à corriger. Un diagnostic du produit irait chercher
+                      {{ pattern.lead }}.
+                    </span>
+                  </p>
+                }
+              </div>
+            }
           </section>
         }
       </mat-card-content>
@@ -258,6 +275,28 @@ export function axisLabel(axis: string): string {
 
     .suggestion {
       margin-bottom: var(--cg-space-2);
+    }
+
+    .patterns {
+      margin-top: var(--cg-space-3);
+      padding: var(--cg-space-2);
+      border: 1px solid var(--cg-divider);
+      border-radius: 8px;
+      background: var(--cg-bg);
+    }
+
+    .pattern {
+      margin: 0 0 var(--cg-space-1);
+    }
+
+    .pattern__count {
+      display: block;
+      font-weight: 600;
+    }
+
+    .pattern__lead {
+      display: block;
+      color: var(--cg-text-secondary);
     }
 
     .suggestion__gain {

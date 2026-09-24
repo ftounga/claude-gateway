@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-155 / SF-155-05 — LES GENRES DE SUGGESTIONS D'UN BILAN, EN CLAIR.
+
+      POURQUOI EN COLONNE et pas dans la photographie JSON : pour reperer un MOTIF il faut compter
+      les genres sur les dix derniers bilans. Les lire dans le JSON obligerait a deserialiser dix
+      photographies a chaque ouverture d'ecran, pour n'en tirer que quatre mots.
+
+      POURQUOI UN GENRE et pas le texte du conseil : un texte qu'on reformule cesserait de se
+      reconnaitre d'un bilan a l'autre, et le motif disparaitrait a la premiere retouche de phrase.
+
+      NULLABLE : les bilans produits AVANT cette subfeature n'en ont pas. Ils sont ignores par le
+      comptage, sans erreur — on ne reecrit pas le passe.
+    -->
+
+    <changeSet id="133-session-bilan-kinds" author="claude-gateway">
+        <addColumn tableName="session_bilans">
+            <!-- Genres separes par des virgules : CACHE_FROID,OUTIL_DOMINANT. Quatre detecteurs
+                 aujourd'hui, la borne laisse de la place. -->
+            <column name="suggestion_kinds" type="varchar(200)"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

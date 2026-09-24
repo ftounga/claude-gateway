@@ -80,8 +80,9 @@ class SessionBilanApiIntegrationTest {
                         200_000, 3_000, 0)),
                 List.of(new SessionLedger.HeavyTool("bash", 6, Duration.ofSeconds(200), 3)));
         SessionSuggestionService.Verdict verdict = new SessionSuggestionService.Verdict(
-                List.of(SessionSuggestion.ofCost("Gardez le début stable.",
-                        "cache lu : 17 % sur 12 tours", 28, new BigDecimal("2.60"))), 2);
+                List.of(SessionSuggestion.ofCost(SessionSuggestion.Kind.CACHE_FROID,
+                        "Gardez le début stable.", "cache lu : 17 % sur 12 tours", 28,
+                        new BigDecimal("2.60"))), 2);
         return store.keep(userId, UUID.randomUUID(), "AGENOR", "MANUEL", ledger, verdict);
     }
 

@@ -57,6 +57,7 @@ public class SessionBilanStore {
                 .discardedCount(verdict.discarded())
                 .ledgerJson(write(ledger))
                 .suggestionsJson(write(verdict.suggestions()))
+                .suggestionKinds(SessionPatternService.kindsColumn(verdict.suggestions()))
                 .createdAt(OffsetDateTime.now())
                 .build());
     }

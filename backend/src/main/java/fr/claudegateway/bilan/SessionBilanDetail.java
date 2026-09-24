@@ -10,9 +10,12 @@ import java.util.List;
  * @param headline  les chiffres de la liste
  * @param ledger    le relevé, {@code null} si la photographie manque
  * @param suggestions les suggestions retenues, vides s'il n'y avait rien à signaler
+ * @param patterns    les <b>motifs</b> qui reviennent (F-155 / SF-155-05) : quand la même
+ *                    suggestion revient séance après séance, ce n'est plus une habitude à corriger
  */
 public record SessionBilanDetail(
         SessionBilanView headline,
         SessionLedger ledger,
-        List<SessionSuggestion> suggestions) {
+        List<SessionSuggestion> suggestions,
+        List<SessionPattern> patterns) {
 }
