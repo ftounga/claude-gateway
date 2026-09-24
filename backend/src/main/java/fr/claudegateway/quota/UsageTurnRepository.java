@@ -134,6 +134,13 @@ public interface UsageTurnRepository extends JpaRepository<UsageTurn, UUID> {
             UUID userId, UUID workspaceId, OffsetDateTime from, OffsetDateTime to);
 
     /**
+     * Les tours d'un <b>compte</b> sur une période, tous projets confondus (F-156 / SF-156-02) — la
+     * matière du diagnostic du produit, qui observe une accumulation et non une session.
+     */
+    List<UsageTurn> findByUserIdAndOccurredAtBetweenOrderByOccurredAtAsc(
+            UUID userId, OffsetDateTime from, OffsetDateTime to);
+
+    /**
      * Purge à la suppression du compte (F-11 / SF-11-03) : le journal décrit l'activité d'un compte
      * et ne lui survit pas.
      */

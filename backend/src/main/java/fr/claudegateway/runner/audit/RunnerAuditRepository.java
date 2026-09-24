@@ -31,6 +31,13 @@ public interface RunnerAuditRepository extends JpaRepository<RunnerAudit, UUID> 
             UUID userId, UUID workspaceId, OffsetDateTime from, OffsetDateTime to);
 
     /**
+     * Les appels d'outils d'un <b>compte</b> sur une période, tous projets confondus
+     * (F-156 / SF-156-02).
+     */
+    List<RunnerAudit> findByUserIdAndCreatedAtBetweenOrderByCreatedAtAsc(
+            UUID userId, OffsetDateTime from, OffsetDateTime to);
+
+    /**
      * Dernière ligne de journal d'un projet possédé — l'outil qui a tourné en dernier (F-49 /
      * SF-49-01). Appelée seulement pour les projets ayant une activité dans la fenêtre observée :
      * un projet muet ne coûte aucune requête.
