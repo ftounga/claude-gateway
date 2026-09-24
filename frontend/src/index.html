@@ -28,6 +28,14 @@
   <meta name="twitter:image" content="https://portal.ng-itconsulting.com/claude-portal-logo.png">
 
   <link rel="icon" type="image/png" href="claude-portal-logo.png">
+
+  <!-- F-152 SF-152-01 — PWA installable : le manifest rend l'app ajoutable à l'écran d'accueil
+       (icône, plein écran `display: standalone`), sans store. `theme-color` = navy de la charte
+       (DESIGN_SYSTEM). L'`apple-touch-icon` sert l'ajout à l'écran d'accueil iOS (>= 16.4). -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#0B1020">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <!-- Fraunces : police DISPLAY des gros chiffres monétaires de la Vitrine (F-124 / SF-124-05, DESIGN_SYSTEM.md §19). Fallback serif si elle ne charge pas. -->
