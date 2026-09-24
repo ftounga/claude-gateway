@@ -12,6 +12,7 @@ import { AccessCodeAdminService } from './access-code-admin.service';
 import { GovernanceAdminService } from './governance-admin.service';
 import { AdminCostService } from './cost/admin-cost.service';
 import { AdminBilansService } from './bilans/admin-bilans.service';
+import { AdminDiagnosticService } from './diagnostic/admin-diagnostic.service';
 import { AdminUsageService } from './admin-usage.service';
 
 describe('AdminComponent', () => {
@@ -98,6 +99,10 @@ describe('AdminComponent', () => {
     const bilansSpy = jasmine.createSpyObj<AdminBilansService>('AdminBilansService',
       ['list', 'open', 'produce']);
     bilansSpy.list.and.returnValue(of([]));
+    // F-156 / SF-156-05 : le diagnostic ne se lance qu'À LA DEMANDE — le double n'a donc rien à
+    // renvoyer à l'ouverture de la page.
+    const diagnosticSpy = jasmine.createSpyObj<AdminDiagnosticService>('AdminDiagnosticService',
+      ['run']);
 
     await TestBed.configureTestingModule({
       imports: [AdminComponent],
@@ -111,6 +116,7 @@ describe('AdminComponent', () => {
         // F-155 / SF-155-04 : la section Bilans est un enfant de plus dans cette page. Comme les
         // autres, son service est doublé — sinon il réclamerait un HttpClient que ce test n'a pas.
         { provide: AdminBilansService, useValue: bilansSpy },
+        { provide: AdminDiagnosticService, useValue: diagnosticSpy },
       ],
     }).compileComponents();
 
