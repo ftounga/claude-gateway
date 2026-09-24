@@ -263,6 +263,74 @@ describe('ShellComponent', () => {
     expect(nav.querySelectorAll('a').length).toBe(7);
   });
 
+  // ---- F-151 / SF-151-04 : le menu mobile navigue enfin (correctif P0 du hamburger) ----
+
+  it('tapoter un lien navigue (routerLink respecté) ET referme le panneau replié', () => {
+    const shell = fixture.nativeElement as HTMLElement;
+    // RouterLink appelle navigateByUrl : on l'observe pour prouver que la navigation part réellement
+    // (avant le correctif, le voile captait le tap et la navigation n'avait jamais lieu).
+    const navByUrl = spyOn(router, 'navigateByUrl').and.resolveTo(true);
+
+    (shell.querySelector('.app-nav-toggle') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(shell.querySelector('.app-nav')?.classList).toContain('app-nav--open');
+
+    // Un lien standard : `routerLink="/documents"` doit rendre le bon href (routerLink respecté).
+    const link = shell.querySelector('.app-nav a[href="/documents"]') as HTMLAnchorElement;
+    expect(link).not.toBeNull();
+
+    link.click();
+    fixture.detectChanges();
+
+    // La navigation part (le lien est atteignable, plus volée par le voile)…
+    expect(navByUrl).toHaveBeenCalled();
+    // …et le panneau se referme derrière la navigation.
+    expect(shell.querySelector('.app-nav')?.classList).not.toContain('app-nav--open');
+  });
+
+  it('referme le panneau au tap sur un lien même quand aucune navigation terminée ne survient', () => {
+    // Cas du lien menant à la page courante : pas de NavigationEnd → la fermeture doit venir du
+    // (click)="closeMenu()", pas seulement de l'effet sur NavigationEnd.
+    const shell = fixture.nativeElement as HTMLElement;
+    spyOn(router, 'navigateByUrl').and.resolveTo(true);
+
+    (shell.querySelector('.app-nav-toggle') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(shell.querySelector('.app-nav')?.classList).toContain('app-nav--open');
+
+    (shell.querySelector('.app-nav a[href="/forge"]') as HTMLAnchorElement).click();
+    fixture.detectChanges(); // aucun arriveAt() : on ne simule PAS de NavigationEnd
+
+    expect(shell.querySelector('.app-nav')?.classList).not.toContain('app-nav--open');
+  });
+
+  it('garde le voile fermant au clic extérieur après le correctif (non-régression)', () => {
+    const shell = fixture.nativeElement as HTMLElement;
+    (shell.querySelector('.app-nav-toggle') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    (shell.querySelector('.app-nav-backdrop') as HTMLElement).click();
+    fixture.detectChanges();
+    expect(shell.querySelector('.app-nav')?.classList).not.toContain('app-nav--open');
+  });
+
+  it('laisse les états actifs Forge/Vigie intacts après un tap qui referme le menu', () => {
+    const shell = fixture.nativeElement as HTMLElement;
+    spyOn(router, 'navigateByUrl').and.resolveTo(true);
+    const forge = () => shell.querySelector('.app-nav a[href="/forge"]') as HTMLAnchorElement;
+
+    arriveAt('/atelier/w1'); // on travaille dans la Forge : l'onglet reste allumé (F-68)
+    expect(forge().classList).toContain('active');
+
+    (shell.querySelector('.app-nav-toggle') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    forge().click();
+    fixture.detectChanges();
+
+    // Le tap referme le menu mais ne casse pas le calcul d'état actif (toujours dans la Forge).
+    expect(forge().classList).toContain('active');
+  });
+
   // ---- F-29 SF-29-01 : garde-fou anti-régression sur la marque de la coquille ----
   it('affiche la marque « Claude Portal » sans le terme « Proxy »', () => {
     const brand = (fixture.nativeElement as HTMLElement).querySelector('.brand');

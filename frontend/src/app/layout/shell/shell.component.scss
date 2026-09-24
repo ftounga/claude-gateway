@@ -138,9 +138,15 @@
     position: fixed;
     inset: 0;
     top: 0;
-    // Sous la barre (z-index 10) et le panneau (z-index 20), au-dessus du contenu : capte le
-    // clic hors zone sans voiler la barre elle-même.
-    z-index: 15;
+    // F-151 / SF-151-04 — Piège de contexte d'empilement corrigé : `.app-bar` a
+    // `position: relative; z-index: 10`, donc le `z-index: 20` de `.app-nav` (panneau, enfant de
+    // la barre) est CONFINÉ dans ce contexte — à la racine, tout le sous-arbre de la barre peint
+    // au niveau 10. Un voile à 15 (frère de la barre, au niveau racine) passait donc AU-DESSUS du
+    // panneau et captait le tap → les liens ne naviguaient pas (bug P0 mobile). On abaisse le voile
+    // SOUS la barre (z-index 9 < 10) : il reste au-dessus du contenu de page (~0) pour fermer au
+    // tap extérieur, mais passe sous le panneau (dans le niveau 10) ET sous la barre elle-même
+    // (X et Compte redeviennent cliquables menu ouvert).
+    z-index: 9;
     background: transparent;
   }
 }

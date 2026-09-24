@@ -15,8 +15,12 @@
 
   <span class="brand" routerLink="/chat">Claude Portal</span>
 
+  <!-- F-151 / SF-151-04 — Tapoter un lien referme le panneau replié : (click)="closeMenu()" ferme
+       tout de suite, y compris quand le lien mène à la page courante (aucun NavigationEnd ne survient).
+       L'effet sur NavigationEnd (shell.component.ts) reste en filet pour les navigations programmatiques.
+       Sans effet ≥ 820 px : le menu n'y est pas replié. -->
   <nav id="app-nav" class="app-nav" [class.app-nav--open]="menuOpen()">
-    <a mat-button routerLink="/chat" routerLinkActive="active">
+    <a mat-button routerLink="/chat" routerLinkActive="active" (click)="closeMenu()">
       <mat-icon>chat</mat-icon>
       Chat
     </a>
@@ -26,28 +30,28 @@
          L'état actif est calculé plutôt que délégué à `routerLinkActive` : travailler dans un
          projet (`/atelier/:id`), c'est toujours être dans la Forge, et la section d'où l'on vient
          ne doit pas s'éteindre pendant qu'on y travaille. -->
-    <a mat-button class="app-nav__forge" [routerLink]="spaceLinks().forge" [class.active]="forgeActive()">
+    <a mat-button class="app-nav__forge" [routerLink]="spaceLinks().forge" [class.active]="forgeActive()" (click)="closeMenu()">
       <mat-icon>terminal</mat-icon>
       Forge
     </a>
     <!-- F-106 / SF-106-02 — la Vigie, à côté de la Forge : deux espaces, deux métiers. -->
-    <a mat-button class="app-nav__vigie" [routerLink]="spaceLinks().vigie" [class.active]="vigieActive()">
+    <a mat-button class="app-nav__vigie" [routerLink]="spaceLinks().vigie" [class.active]="vigieActive()" (click)="closeMenu()">
       <mat-icon>radar</mat-icon>
       Vigie
     </a>
-    <a mat-button routerLink="/gouvernance" routerLinkActive="active">
+    <a mat-button routerLink="/gouvernance" routerLinkActive="active" (click)="closeMenu()">
       <mat-icon>gavel</mat-icon>
       Gouvernance
     </a>
-    <a mat-button routerLink="/documents" routerLinkActive="active">
+    <a mat-button routerLink="/documents" routerLinkActive="active" (click)="closeMenu()">
       <mat-icon>library_books</mat-icon>
       Bibliothèque
     </a>
-    <a mat-button routerLink="/ask" routerLinkActive="active">
+    <a mat-button routerLink="/ask" routerLinkActive="active" (click)="closeMenu()">
       <mat-icon>help_outline</mat-icon>
       Q&A
     </a>
-    <a mat-button routerLink="/templates" routerLinkActive="active">
+    <a mat-button routerLink="/templates" routerLinkActive="active" (click)="closeMenu()">
       <mat-icon>description</mat-icon>
       Templates
     </a>
