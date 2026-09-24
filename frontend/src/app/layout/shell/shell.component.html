@@ -1,7 +1,21 @@
 <mat-toolbar class="app-bar">
+  <!-- F-151 / SF-151-01 — Bouton hamburger : masqué ≥ 820 px, il déploie sous 819 px le panneau
+       des 7 liens (mêmes liens, un seul jeu). Cible tactile conforme (mat-icon-button = 48 px). -->
+  <button
+    mat-icon-button
+    type="button"
+    class="app-nav-toggle"
+    [attr.aria-expanded]="menuOpen()"
+    aria-controls="app-nav"
+    [attr.aria-label]="menuOpen() ? 'Fermer le menu' : 'Ouvrir le menu'"
+    (click)="toggleMenu()"
+  >
+    <mat-icon>{{ menuOpen() ? 'close' : 'menu' }}</mat-icon>
+  </button>
+
   <span class="brand" routerLink="/chat">Claude Portal</span>
 
-  <nav class="app-nav">
+  <nav id="app-nav" class="app-nav" [class.app-nav--open]="menuOpen()">
     <a mat-button routerLink="/chat" routerLinkActive="active">
       <mat-icon>chat</mat-icon>
       Chat
@@ -79,6 +93,12 @@
     </button>
   </mat-menu>
 </mat-toolbar>
+
+<!-- F-151 / SF-151-01 — Voile de fermeture : un clic hors du panneau referme le menu replié.
+     Présent seulement quand le menu est ouvert ; masqué ≥ 820 px par le CSS (@media). -->
+@if (menuOpen()) {
+  <div class="app-nav-backdrop" (click)="closeMenu()"></div>
+}
 
 <app-quota-alert-banner></app-quota-alert-banner>
 

@@ -25,6 +25,18 @@
   letter-spacing: -0.01em;
 }
 
+// F-151 / SF-151-01 — Le hamburger n'existe que sur téléphone : au-dessus de 819 px, la barre
+// tient toute la navigation en ligne, il n'a rien à faire.
+.app-nav-toggle {
+  display: none;
+  color: var(--cg-text-secondary);
+  --mat-icon-button-icon-color: var(--cg-text-secondary);
+
+  mat-icon {
+    color: var(--cg-text-secondary);
+  }
+}
+
 .app-nav {
   display: flex;
   gap: 2px;
@@ -74,4 +86,61 @@
   min-height: 0;
   overflow: auto;
   background: var(--cg-bg);
+}
+
+// F-151 / SF-151-01 — Voile de fermeture du menu replié (sous 819 px seulement).
+.app-nav-backdrop {
+  display: none;
+}
+
+/* — Téléphone (< 820 px) : patron `/forge` étendu à la coquille (DESIGN_SYSTEM.md §16,
+     `_forge-layout-shell.scss:148`). Les 7 liens quittent la ligne pour un panneau déroulant
+     ouvert par le hamburger. Aucun lien n'est dupliqué : `.app-nav` change seulement de forme.
+     Rendu ≥ 820 px inchangé — tout est ici, sous le point de rupture. */
+@media (max-width: 819px) {
+  .app-nav-toggle {
+    display: inline-flex;
+  }
+
+  .brand {
+    margin-right: auto;
+  }
+
+  .app-nav {
+    // Replié par défaut ; déployé quand `.app-nav--open`.
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--cg-space-2);
+    background: var(--cg-surface);
+    border-bottom: 1px solid var(--cg-divider);
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.12);
+    z-index: 20;
+
+    &--open {
+      display: flex;
+    }
+
+    a {
+      width: 100%;
+      justify-content: flex-start;
+      // Cible tactile confortable au pouce (≥ 44 px, charte responsive).
+      min-height: 44px;
+    }
+  }
+
+  .app-nav-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    top: 0;
+    // Sous la barre (z-index 10) et le panneau (z-index 20), au-dessus du contenu : capte le
+    // clic hors zone sans voiler la barre elle-même.
+    z-index: 15;
+    background: transparent;
+  }
 }

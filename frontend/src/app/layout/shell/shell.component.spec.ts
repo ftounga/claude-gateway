@@ -197,6 +197,72 @@ describe('ShellComponent', () => {
     expect(href('.app-nav__vigie')).toBe('/vigie');
   });
 
+  // ---- F-151 / SF-151-01 : la navigation se replie derrière un hamburger sous 819 px ----
+
+  it('démarre menu replié fermé : bouton présent, aria-expanded=false, aucun voile', () => {
+    const shell = fixture.nativeElement as HTMLElement;
+    const toggle = shell.querySelector('.app-nav-toggle') as HTMLButtonElement;
+
+    expect(toggle).not.toBeNull();
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.getAttribute('aria-controls')).toBe('app-nav');
+    expect(shell.querySelector('.app-nav-backdrop')).toBeNull();
+    expect(shell.querySelector('.app-nav')?.classList).not.toContain('app-nav--open');
+  });
+
+  it('ouvre et referme le panneau au clic du hamburger (aria-expanded + voile suivent)', () => {
+    const shell = fixture.nativeElement as HTMLElement;
+    const toggle = () => shell.querySelector('.app-nav-toggle') as HTMLButtonElement;
+
+    toggle().click();
+    fixture.detectChanges();
+    expect(toggle().getAttribute('aria-expanded')).toBe('true');
+    expect(shell.querySelector('.app-nav')?.classList).toContain('app-nav--open');
+    expect(shell.querySelector('.app-nav-backdrop')).not.toBeNull();
+
+    toggle().click();
+    fixture.detectChanges();
+    expect(toggle().getAttribute('aria-expanded')).toBe('false');
+    expect(shell.querySelector('.app-nav-backdrop')).toBeNull();
+  });
+
+  it('referme le panneau à la navigation terminée', () => {
+    const shell = fixture.nativeElement as HTMLElement;
+    (shell.querySelector('.app-nav-toggle') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(shell.querySelector('.app-nav')?.classList).toContain('app-nav--open');
+
+    arriveAt('/documents');
+    expect(shell.querySelector('.app-nav')?.classList).not.toContain('app-nav--open');
+  });
+
+  it('referme le panneau à la touche Échap', () => {
+    const shell = fixture.nativeElement as HTMLElement;
+    (shell.querySelector('.app-nav-toggle') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(shell.querySelector('.app-nav')?.classList).toContain('app-nav--open');
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    fixture.detectChanges();
+    expect(shell.querySelector('.app-nav')?.classList).not.toContain('app-nav--open');
+  });
+
+  it('referme le panneau au clic sur le voile', () => {
+    const shell = fixture.nativeElement as HTMLElement;
+    (shell.querySelector('.app-nav-toggle') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    (shell.querySelector('.app-nav-backdrop') as HTMLElement).click();
+    fixture.detectChanges();
+    expect(shell.querySelector('.app-nav')?.classList).not.toContain('app-nav--open');
+  });
+
+  it('conserve les 7 liens dans un seul jeu, toujours interrogeables (non-régression)', () => {
+    const nav = (fixture.nativeElement as HTMLElement).querySelector('.app-nav') as HTMLElement;
+    expect(nav.querySelector('a[href="/forge"]')).not.toBeNull();
+    expect(nav.querySelectorAll('a').length).toBe(7);
+  });
+
   // ---- F-29 SF-29-01 : garde-fou anti-régression sur la marque de la coquille ----
   it('affiche la marque « Claude Portal » sans le terme « Proxy »', () => {
     const brand = (fixture.nativeElement as HTMLElement).querySelector('.brand');
