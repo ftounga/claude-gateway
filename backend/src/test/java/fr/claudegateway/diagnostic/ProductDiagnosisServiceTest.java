@@ -35,7 +35,9 @@ class ProductDiagnosisServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ProductDiagnosisService(tables);
+        // F-157 / SF-157-03 : l'inspecteur RÉEL, avec une carte de sources vide — c'est
+        // exactement la garantie que la lecture du code ENRICHIT sans rien remplacer.
+        service = new ProductDiagnosisService(tables, new WiringInspector());
     }
 
     private CapabilityObservation observation(String id, long hits, boolean measurable,
@@ -158,6 +160,34 @@ class ProductDiagnosisServiceTest {
         service.diagnose(userId, surveyOf(observation("index-du-depot", 0, false, null)));
 
         org.mockito.Mockito.verify(tables).count("repo_index_paths", userId);
+    }
+
+    @Test
+    @DisplayName("SANS dépôt lu, les verdicts de F-156 sont INCHANGÉS — non-régression de SF-157-03")
+    void withoutSourcesTheVerdictsAreUnchanged() {
+        ProductDiagnosisService.Diagnosis withoutSources =
+                service.diagnose(userId, surveyOf(observation("plan", 0, true, null)));
+        ProductDiagnosisService.Diagnosis withEmptyMap =
+                service.diagnose(userId, surveyOf(observation("plan", 0, true, null)), java.util.Map.of());
+
+        assertThat(finding(withoutSources, "plan").verdict()).isEqualTo(CapabilityVerdict.DORMANTE);
+        assertThat(finding(withoutSources, "plan").why())
+                .as("aucune mention de branchement quand rien n'a été lu")
+                .doesNotContain("Branchement");
+        assertThat(finding(withEmptyMap, "plan").why())
+                .isEqualTo(finding(withoutSources, "plan").why());
+    }
+
+    @Test
+    @DisplayName("AVEC un dépôt lu où le témoin manque, le verdict devient DÉBRANCHÉE")
+    void withSourcesAMissingWiringBecomesUnwired() {
+        ProductCapability.Wiring wiring = CapabilityMap.byId("plan").orElseThrow().wirings().get(0);
+
+        ProductDiagnosisService.Diagnosis enriched = service.diagnose(userId,
+                surveyOf(observation("plan", 0, true, null)),
+                java.util.Map.of(wiring.path(), SourceRead.read(wiring.path(), "l'appel a disparu")));
+
+        assertThat(finding(enriched, "plan").verdict()).isEqualTo(CapabilityVerdict.DEBRANCHEE);
     }
 
     @Test

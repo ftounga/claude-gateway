@@ -22,9 +22,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class ProductDiagnosisService {
 
     private final TableSignalResolver tables;
+    private final WiringInspector wirings;
 
-    public ProductDiagnosisService(TableSignalResolver tables) {
+    public ProductDiagnosisService(TableSignalResolver tables, WiringInspector wirings) {
         this.tables = tables;
+        this.wirings = wirings;
     }
 
     /**
@@ -34,6 +36,20 @@ public class ProductDiagnosisService {
      */
     @Transactional(readOnly = true)
     public Diagnosis diagnose(UUID userId, ProductSurvey survey) {
+        return diagnose(userId, survey, java.util.Map.of());
+    }
+
+    /**
+     * Les mêmes constats, <b>enrichis par le code lu</b> (F-157 / SF-157-03).
+     *
+     * <p>La lecture <b>enrichit, elle ne remplace pas</b> : avec une carte de sources vide, cette
+     * méthode rend exactement ce que rendait la précédente.</p>
+     *
+     * @param sources les fichiers du dépôt déjà lus, par chemin ; vide si aucun dépôt désigné
+     */
+    @Transactional(readOnly = true)
+    public Diagnosis diagnose(UUID userId, ProductSurvey survey,
+                              java.util.Map<String, SourceRead> sources) {
         if (survey == null || survey.isEmpty()) {
             return new Diagnosis(List.of(), 0);
         }
@@ -41,7 +57,7 @@ public class ProductDiagnosisService {
         List<CapabilityFinding> findings = new ArrayList<>();
         int active = 0;
         for (CapabilityObservation observation : survey.observations()) {
-            CapabilityFinding finding = judge(userId, observation);
+            CapabilityFinding finding = wirings.inspect(judge(userId, observation), sources);
             if (finding.isFinding()) {
                 findings.add(finding);
             } else {

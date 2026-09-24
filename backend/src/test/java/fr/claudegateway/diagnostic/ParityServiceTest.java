@@ -65,6 +65,21 @@ class ParityServiceTest {
     }
 
     @Test
+    @DisplayName("DÉBRANCHÉE compte comme un MANQUE RÉEL : il manque une ligne, pas un réglage")
+    void unwiredCountsAsARealGap() {
+        ParityService.Parity parity = service.measure(
+                diagnosisOf(finding("plan", CapabilityVerdict.DEBRANCHEE)), observedSurvey());
+
+        ParityRow plan = row(parity, "planifier");
+        assertThat(plan.state()).isEqualTo(ParityRow.State.ABSENTE);
+        assertThat(plan.isRealGap())
+                .as("contrairement à dormante, débranchée appelle du CODE")
+                .isTrue();
+        assertThat(plan.note()).contains("DÉBRANCHÉE").contains("il manque une ligne, pas un réglage");
+        assertThat(parity.gaps()).isEqualTo(1);
+    }
+
+    @Test
     @DisplayName("une référence ÉCARTÉE porte sa raison et n'est JAMAIS comptée comme un manque")
     void anExcludedReferenceIsNeverAGap() {
         ParityService.Parity parity = service.measure(diagnosisOf(), observedSurvey());

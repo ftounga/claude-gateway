@@ -63,6 +63,13 @@ public class ParityService {
             return new ParityRow(reference.id(), reference.name(), reference.gives(),
                     ParityRow.State.TENUE, "Portée et vue à l'œuvre.");
         }
+        // F-157 / SF-157-03 : DÉBRANCHÉE demande du CODE, pas un branchement à régler. C'est donc
+        // un manque réel au sens de la parité — le seul cas qui appelle un développement.
+        if (verdict == CapabilityVerdict.DEBRANCHEE) {
+            return new ParityRow(reference.id(), reference.name(), reference.gives(),
+                    ParityRow.State.ABSENTE,
+                    "Portée mais DÉBRANCHÉE dans le code : il manque une ligne, pas un réglage.");
+        }
         if (verdict == CapabilityVerdict.DORMANTE) {
             return new ParityRow(reference.id(), reference.name(), reference.gives(),
                     ParityRow.State.DORMANTE,

@@ -18,6 +18,16 @@ public enum CapabilityVerdict {
      */
     DORMANTE,
 
+    /**
+     * <b>Débranchée</b> (F-157 / SF-157-03) : un témoin de branchement <b>manque dans le code</b>.
+     * Un remaniement l'a détachée — rien n'a cassé, aucun test n'est tombé.
+     *
+     * <p>Distinguer ceci de {@link #DORMANTE} change le geste : devant « dormante » on cherche une
+     * donnée, une condition, un amorçage ; si la capacité est en réalité débranchée, cette
+     * recherche ne trouve rien, et l'on conclut que le diagnostic se trompe.</p>
+     */
+    DEBRANCHEE,
+
     /** On n'a pas pu conclure. On le dit. */
     INDETERMINEE
 }
