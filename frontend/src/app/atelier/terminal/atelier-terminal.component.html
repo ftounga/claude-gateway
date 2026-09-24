@@ -116,6 +116,22 @@
             {{ instructionsPath }}
           </button>
         }
+        <!-- LES ACTIONS À FAIRE (F-151 / SF-151-03) : ce que l'utilisateur doit faire, LUI, pour
+             qu'un tour bloqué reprenne. ABSENTE À ZÉRO — une pastille à zéro est un bruit permanent
+             qui apprend à ne plus la regarder. -->
+        @if (pendingActions() > 0) {
+          <button
+            mat-button
+            type="button"
+            class="terminal-todo"
+            matTooltip="Ce que vous devez faire pour débloquer le travail"
+            [attr.aria-label]="pendingActions() + ' action(s) à faire'"
+            (click)="openActions()"
+          >
+            <mat-icon>pan_tool</mat-icon>
+            {{ pendingActions() }} à faire
+          </button>
+        }
         <!-- Validation avant exécution (F-33 / SF-33-01) : le réglage vit ici, seul écran où l'agent
              exécute réellement. L'icône dit l'état d'un coup d'œil. -->
         <button
@@ -1244,6 +1260,14 @@
   <!-- LA PAGE OUVERTE (F-109 / SF-109-03) : un panneau à droite du terminal, un état d'écran. -->
   @if (openedPageId(); as pageId) {
     <app-page-panel [pageId]="pageId" (closed)="closePage()"></app-page-panel>
+  }
+  <!-- LES ACTIONS À FAIRE (F-151 / SF-151-03) : même patron de panneau, même état d'écran. -->
+  @if (actionsOpen() && projectId) {
+    <app-terminal-actions-panel
+      [workspaceId]="projectId"
+      (countChanged)="pendingActions.set($event)"
+      (closed)="closeActions()"
+    ></app-terminal-actions-panel>
   }
 </section>
 

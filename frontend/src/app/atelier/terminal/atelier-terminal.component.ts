@@ -117,6 +117,8 @@ import {
 import { TerminalEmailComponent } from './terminal-email.component';
 import { PageBlockComponent } from './page-block.component';
 import { PagePanelComponent } from './page-panel.component';
+import { TerminalActionsPanelComponent } from './terminal-actions-panel.component';
+import { TerminalActionsService } from '../../core/services/terminal-actions.service';
 import {
   AtelierFileDiffView,
   DiffLine,
@@ -163,6 +165,7 @@ export const LONG_THREAD_TURNS = 40;
   imports: [
     FormsModule, ForgeBreadcrumbComponent, LiveBadgeComponent, MarkdownPipe, MatButtonModule,
     TeamsLinkBadgeComponent, NgTemplateOutlet, TerminalEmailComponent, PageBlockComponent, PagePanelComponent,
+    TerminalActionsPanelComponent,
     MatButtonToggleModule, MatIconModule, MatProgressBarModule, MatProgressSpinnerModule,
     MatTooltipModule, RouterLink,
     WeeklyBudgetComponent, ProjectCostComponent, TurnSuggestionsComponent, DictationButtonComponent,
@@ -241,7 +244,11 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    */
   @Input()
   set projectId(value: string | null) {
+    const previous = this.projectIdValue();
     this.projectIdValue.set(value ?? null);
+    if (value && value !== previous) {
+      this.loadActionCount(value);
+    }
   }
   get projectId(): string | null {
     return this.projectIdValue();
@@ -506,6 +513,38 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
   closePage(): void {
     this.openedPageId.set(null);
+  }
+
+  /**
+   * **Les actions à faire, dans le panneau à droite** (F-151 / SF-151-03) : un état d'écran, comme
+   * le panneau d'une page. La pastille de la barre, elle, est visible **sans** ouvrir le panneau —
+   * c'est tout son intérêt.
+   */
+  readonly actionsOpen = signal(false);
+
+  /** Combien reste-t-il à faire ici. Zéro = pas de pastille du tout. */
+  readonly pendingActions = signal(0);
+
+  private readonly terminalActions = inject(TerminalActionsService);
+
+  openActions(): void {
+    this.actionsOpen.set(true);
+  }
+
+  closeActions(): void {
+    this.actionsOpen.set(false);
+    // Le panneau a pu fermer ou rouvrir des actions : la pastille suit ce qu'il a compté.
+  }
+
+  /**
+   * Relit le nombre d'actions ouvertes du terminal. Un échec laisse la pastille à zéro : mieux vaut
+   * ne rien annoncer qu'annoncer un chiffre faux.
+   */
+  private loadActionCount(workspaceId: string): void {
+    this.terminalActions.list(workspaceId).subscribe({
+      next: actions => this.pendingActions.set(actions.length),
+      error: () => this.pendingActions.set(0),
+    });
   }
 
   /**
