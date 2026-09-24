@@ -1986,6 +1986,16 @@ public class AtelierChatService implements RelayInterruptTarget {
                         cacheWriteTokens += done.cacheWriteTokens();
                         listener.onProgress((long) inputTokens + outputTokens);
                         outcome = done.outcome();
+                        // F-150 / SF-150-06 : la synthèse du sous-agent (avec branche/diff, SF-150-05)
+                        // est déjà écrite dans la transcription persistée comme SORTIE du bloc `task`
+                        // (plus bas) ; on la relaie AUSSI au fil de l'eau, sinon la vue vivante
+                        // n'afficherait que la consigne jusqu'au rechargement. Canal onOutput déjà
+                        // existant (aucun nouvel événement) : c'est une progression, pas la consigne
+                        // système — le cache F-134 n'est pas touché ; le listener NOOP l'ignore.
+                        String taskSynthesis = outcome.content();
+                        if (taskSynthesis != null && !taskSynthesis.isBlank()) {
+                            listener.onOutput(taskSynthesis);
+                        }
                     }
                 } else if (fr.claudegateway.radar.RadarToolCatalog.isRadarTool(call.name())) {
                     // F-104 / SF-104-01 : le registre du Radar vit dans la gateway, pas sur la machine.
@@ -2083,7 +2093,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                 // Transcription du tour (SF-39-17) : ce que l'écran relit après un rechargement.
                 // Elle ne l'était pas, et une coupure de connexion effaçait tout ce qui s'était
                 // passé — l'acquis §4 n°7 de F-30 ne valait pas pour le moteur qui exécute.
-                transcript.add(new AtelierTurnReport.Block(call.name(), auditTarget(call), callId,
+                transcript.add(new AtelierTurnReport.Block(call.name(), transcriptCommand(call), callId,
                         null, outcome.content() == null ? "" : outcome.content(),
                         outcome.content() != null, outcome.isError(), false,
                         // Le BLOC RICHE (F-89 / SF-89-02), s'il y en a un : c'est ce qui fait
@@ -4322,6 +4332,22 @@ public class AtelierChatService implements RelayInterruptTarget {
      * Cible journalisée d'un appel (F-38 / SF-38-08) : un chemin, un terme recherché ou une commande
      * tronquée — jamais un contenu de fichier ni une sortie de commande.
      */
+    /**
+     * En-tête du bloc de transcription (F-150 / SF-150-06) : pour un sous-agent (`explore`/`task`),
+     * la <b>consigne</b> (question / prompt), afin que l'historique relu porte la question de chaque
+     * sous-agent — comme le fil vivant. Pour tout le reste, la cible d'audit habituelle. Affichage
+     * seul : n'entre ni dans le journal d'audit runner, ni dans la consigne système (cache F-134
+     * intact).
+     */
+    private String transcriptCommand(AgentToolCall call) {
+        JsonNode input = call.input();
+        return switch (call.name()) {
+            case "explore" -> shorten(arg(input, "question"), STEP_COMMAND_CHARS);
+            case "task" -> shorten(arg(input, "prompt"), STEP_COMMAND_CHARS);
+            default -> auditTarget(call);
+        };
+    }
+
     String auditTarget(AgentToolCall call) {
         JsonNode input = call.input();
         return switch (call.name()) {

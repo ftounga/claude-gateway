@@ -46,6 +46,14 @@ describe('chatStepsToBlocks (F-39 SF-39-08)', () => {
     expect(blocks[0].hasOutput).toBeFalse();
   });
 
+  it('montre la consigne d’une sous-tâche `task`, pas le prompt brut (F-150 / SF-150-06)', () => {
+    const blocks = chatStepsToBlocks([{ type: 'task', path: 'range les imports de main.ts' }]);
+
+    expect(blocks[0].tool).toBe('task');
+    expect(blocks[0].command).toBe('sous-tâche « range les imports de main.ts »');
+    expect(blocks[0].hasOutput).toBeFalse();
+  });
+
   it('reste présentable sur un type inconnu plutôt que de l\'étiqueter faussement', () => {
     // Le type est une chaîne libre (contrat de messages runner §3) : le backend peut en ajouter.
     const blocks = chatStepsToBlocks([{ type: 'quelque_chose', path: 'argument brut' }]);

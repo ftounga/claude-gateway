@@ -1,0 +1,101 @@
+/*
+  SOUS-AGENTS EN ACTION (F-150 / SF-150-06) — restitution sobre et informative, jamais décorative,
+  de plusieurs sous-agents qui travaillent : les explorations parallèles d'un tour, et la sous-tâche
+  écrivaine `task`.
+
+  Charte DESIGN_SYSTEM §8 : la couleur entre par un FILET à gauche, jamais un aplat de fond ; l'or de
+  marque (`--cg-accent`) reste réservé aux GESTES. Ici, information → encre sobre (`--cg-divider` /
+  `--cg-surface`) sur la surface navy du terminal, filet neutre.
+
+  Feuille DÉDIÉE (F-117 / F-146) : les styles des sous-agents n'alourdissent pas la feuille
+  principale du terminal, déjà dense — le budget par feuille reste tenu.
+*/
+
+.terminal-subagents {
+  margin: var(--cg-space-2) 0;
+  padding: var(--cg-space-2) var(--cg-space-3);
+  border-left: 3px solid var(--cg-divider);
+  font-family: var(--cg-font-mono);
+  color: var(--cg-surface);
+}
+
+.terminal-subagents__head {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+}
+
+.terminal-subagents__icon {
+  flex: none;
+  font-size: 18px;
+  width: 18px;
+  height: 18px;
+  color: var(--cg-divider);
+}
+
+.terminal-subagents__title {
+  font-weight: 600;
+}
+
+.terminal-subagents__state,
+.terminal-subagents__item-state {
+  margin-left: auto;
+  color: var(--cg-divider);
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+
+.terminal-subagents__list {
+  margin: var(--cg-space-1) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.terminal-subagents__item {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-1) 0;
+}
+
+.terminal-subagents__dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--cg-divider);
+}
+
+.terminal-subagents__question {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/*
+  SOUS-AGENT `task` : le bloc porte un filet et un badge, pour qu'on le lise comme une délégation
+  écrivaine — pas comme une commande ordinaire, ni comme un prompt brut.
+*/
+.terminal-block--subagent {
+  border-left: 3px solid var(--cg-divider);
+  padding-left: var(--cg-space-3);
+}
+
+.terminal-subagent-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  margin-right: var(--cg-space-2);
+  padding: var(--cg-space-1) var(--cg-space-2);
+  border: 1px solid var(--cg-divider);
+  border-radius: 999px;
+  color: var(--cg-divider);
+  font-size: 0.8em;
+  white-space: nowrap;
+
+  mat-icon {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+  }
+}
