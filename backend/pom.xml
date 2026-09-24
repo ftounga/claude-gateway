@@ -207,6 +207,33 @@
 			<artifactId>lombok</artifactId>
 			<optional>true</optional>
 		</dependency>
+		<!-- F-153 / SF-153-02 — WEB PUSH STANDARD (VAPID / RFC 8291), provider-agnostique (D6, pas
+		     FCM). Signe et chiffre la charge avec BouncyCastle (deja tire par le projet). L'outil CLI
+		     (jcommander) est exclu : la gateway n'appelle que l'API. Le transport reel n'est instancie
+		     que si les cles VAPID sont configurees (sinon transport inactif). -->
+		<dependency>
+			<groupId>nl.martijndwars</groupId>
+			<artifactId>web-push</artifactId>
+			<version>5.1.1</version>
+			<exclusions>
+				<exclusion>
+					<groupId>com.beust</groupId>
+					<artifactId>jcommander</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+		<!-- web-push attend BouncyCastle fourni par le consommateur (il ne le tire pas). Versions
+		     gerees par le BOM Spring Boot (jdk18on), API compatible avec le web-push. -->
+		<dependency>
+			<groupId>org.bouncycastle</groupId>
+			<artifactId>bcprov-jdk18on</artifactId>
+			<version>1.78.1</version>
+		</dependency>
+		<dependency>
+			<groupId>org.bouncycastle</groupId>
+			<artifactId>bcpkix-jdk18on</artifactId>
+			<version>1.78.1</version>
+		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-test</artifactId>

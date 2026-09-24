@@ -1047,6 +1047,21 @@ public class AtelierChatService implements RelayInterruptTarget {
     }
 
     /**
+     * Émetteur Web Push (F-153 / SF-153-02), branché par mutateur pour ne toucher à aucun
+     * constructeur conservé : {@code null} (formes historiques / tests) ⇒ aucune notification poussée
+     * (comportement d'avant F-153). L'émission est de toute façon inactive tant que VAPID n'est pas
+     * configuré (repli in-tab SF-153-01).
+     */
+    private fr.claudegateway.push.PushNotificationService pushNotificationService;
+
+    /** Branche l'émetteur Web Push sur les transitions de tour (F-153 / SF-153-02). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setPushNotificationService(
+            fr.claudegateway.push.PushNotificationService pushNotificationService) {
+        this.pushNotificationService = pushNotificationService;
+    }
+
+    /**
      * Branche l'outil de génération d'images décoratives (F-142 / SF-142-04) par mutateur, pour ne
      * toucher à aucun constructeur conservé : {@code null} (formes historiques / tests) ⇒ l'outil n'est
      * jamais donné, comportement d'avant F-142.
@@ -1246,7 +1261,9 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     public AtelierChatResult chatStreaming(UUID userId, UUID workspaceId, String rawMessage,
             AtelierProgressListener listener) {
-        return runLoop(userId, workspaceId, rawMessage, AgentTurnMode.ACT, listener);
+        AtelierChatResult result = runLoop(userId, workspaceId, rawMessage, AgentTurnMode.ACT, listener);
+        notifyTurnDone(userId, workspaceId);
+        return result;
     }
 
     /**
@@ -1256,7 +1273,20 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     public AtelierChatResult chatStreaming(UUID userId, UUID workspaceId, String rawMessage,
             AgentTurnMode mode, AtelierProgressListener listener) {
-        return runLoop(userId, workspaceId, rawMessage, mode, listener);
+        AtelierChatResult result = runLoop(userId, workspaceId, rawMessage, mode, listener);
+        notifyTurnDone(userId, workspaceId);
+        return result;
+    }
+
+    /**
+     * F-153 / SF-153-02 — Le tour s'achève : pousse « Une réponse est prête » aux appareils du
+     * propriétaire (best-effort, jamais bloquant ; inactif si le push n'est pas configuré). Appelé
+     * seulement au retour <b>normal</b> de {@code runLoop} : une erreur n'est pas une réponse prête.
+     */
+    private void notifyTurnDone(UUID userId, UUID workspaceId) {
+        if (pushNotificationService != null) {
+            pushNotificationService.notifyTurnDone(userId, workspaceId);
+        }
     }
 
     /**
@@ -4108,6 +4138,12 @@ public class AtelierChatService implements RelayInterruptTarget {
     /** Pose la demande d'autorisation à l'écran, attend la décision, puis relaie sa résolution. */
     private RunnerConfirmationGate.Outcome askPermission(UUID userId, UUID workspaceId, String callId,
             String tool, String detail, AtelierProgressListener listener) {
+        // F-153 / SF-153-02 — Transition critique : une autorisation est demandée, et le silence
+        // vaut refus (timeoutMs). Pousse « Une autorisation est demandée » aux appareils du
+        // propriétaire (best-effort, jamais bloquant ; inactif si le push n'est pas configuré).
+        if (pushNotificationService != null) {
+            pushNotificationService.notifyAuthorizationRequested(userId, workspaceId);
+        }
         RunnerConfirmationGate.Outcome outcome = confirmationGate.await(userId, workspaceId, callId,
                 () -> listener.onConfirmRequest(new AtelierProgressListener.AtelierConfirmRequest(
                         callId, tool, detail, confirmationGate.timeoutMs(), offersAlwaysAllow(tool))));

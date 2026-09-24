@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-153 / SF-153-02 — LES ABONNEMENTS WEB PUSH : un appareil du proprietaire qui accepte de
+      recevoir une notification systeme (tour termine / autorisation demandee), meme app fermee.
+
+      SCELLE PAR user_id : toute lecture filtre (user_id). On ne notifie QUE les appareils du
+      proprietaire. Un abonnement ne survit pas a son compte (purge explicite dans deleteAccount).
+
+      CE QUE PORTE LA LIGNE : l'endpoint du service push du navigateur + les deux cles cliente
+      (p256dh, auth) du protocole Web Push (RFC 8291). Aucune donnee sensible, aucun contenu de tour.
+      Ce ne sont pas des secrets de la gateway : la cle VAPID (privee) vit en secret d'environnement,
+      jamais en base.
+
+      PAS DE CLE ETRANGERE vers users (meme choix que live_terminals / usage_turns) : rien ne tombe
+      en cascade, la purge a la suppression du compte est explicite.
+
+      UNICITE (user_id, endpoint) : un re-abonnement du meme appareil ne cree pas de doublon.
+    -->
+
+    <changeSet id="130-push-subscriptions" author="claude-gateway">
+        <createTable tableName="push_subscriptions">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <!-- Proprietaire (= users.id). Racine de l'isolation : aucune lecture sans ce filtre. -->
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <!-- URL du service push du navigateur (l'adresse a qui pousser). -->
+            <column name="endpoint" type="varchar(2000)">
+                <constraints nullable="false"/>
+            </column>
+            <!-- Cle publique cliente (base64url) — chiffrement de la charge (RFC 8291). -->
+            <column name="p256dh" type="varchar(255)">
+                <constraints nullable="false"/>
+            </column>
+            <!-- Secret d'authentification cliente (base64url). -->
+            <column name="auth" type="varchar(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createIndex tableName="push_subscriptions" indexName="idx_push_subscriptions_user">
+            <column name="user_id"/>
+        </createIndex>
+
+        <!-- Un re-abonnement du meme appareil (meme endpoint) pour le meme utilisateur ne cree pas
+             de doublon : la contrainte porte sur (user_id, endpoint). -->
+        <addUniqueConstraint tableName="push_subscriptions"
+                columnNames="user_id, endpoint"
+                constraintName="uq_push_subscriptions_user_endpoint"/>
+    </changeSet>
+
+</databaseChangeLog>
