@@ -254,4 +254,16 @@ describe('ForgeRailComponent', () => {
     expect((fixture.nativeElement as HTMLElement).querySelector('.forge-rail__empty')?.textContent)
       .toContain('Aucun client ne correspond.');
   });
+
+  // F-158 / SF-158-03 : les cibles tactiles rendues sur téléphone (recherche, ligne de poste,
+  // « Connecter ») existent bien comme éléments interactifs — garde-fou structurel du confort au doigt.
+  // Les hauteurs ≥ 44 px sont portées par le bloc `@media (max-width: 819px)` (non évaluable en jsdom).
+  it('rend les cibles tactiles de la colonne (recherche, ligne de poste, connexion)', () => {
+    const root = render(groupHosts([host('h1', 'FREE')], (h) => h.connected, ''));
+
+    expect(root.querySelector<HTMLInputElement>('.forge-rail__search-input')).not.toBeNull();
+    expect(rows(root).length).toBe(1);
+    expect(rows(root)[0].tagName).toBe('BUTTON');
+    expect(root.querySelector('.forge-rail__connect')?.tagName).toBe('BUTTON');
+  });
 });
