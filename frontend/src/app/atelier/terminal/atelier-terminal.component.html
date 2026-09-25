@@ -103,6 +103,11 @@
             }
           </button>
         }
+        <!-- DESKTOP (≥ 820 px) — BANDEAU D'ACTIONS COMPLET, INCHANGÉ (F-158 / SF-158-12).
+             Sur mobile (isNarrow), ces mêmes actions sont déplacées dans le menu ⋯ ci-dessous :
+             aucune n'est supprimée, chacune est seulement déplacée. Le bandeau desktop reste rendu
+             tel quel dès que isNarrow() est faux (≥ 820 px, et Karma 1440 px). -->
+        @if (!isNarrow()) {
         @if (instructionsPath) {
           <!-- Instructions du projet (F-34 / SF-34-02) : l'agent les suit depuis l'ouverture de la
                session ; le dire ici évite de croire à un comportement inexpliqué. -->
@@ -196,6 +201,86 @@
           <mat-icon>close</mat-icon>
           Quitter
         </button>
+        } @else {
+          <!-- MOBILE (< 820 px) — MENU ⋯ (F-158 / SF-158-12). Les actions secondaires du bandeau
+               desktop, regroupées derrière un seul bouton pour dégager la barre : chaque entrée émet
+               EXACTEMENT le même @Output que son bouton desktop. Aucune action n'est perdue. Le fil
+               d'Ariane, la pastille moteur et — pendant un run — Interrompre restent en clair. -->
+          <button
+            mat-icon-button
+            type="button"
+            class="terminal-overflow"
+            [matMenuTriggerFor]="barMenu"
+            aria-label="Plus d'actions"
+            matTooltip="Plus d'actions"
+          >
+            <mat-icon>more_vert</mat-icon>
+          </button>
+          <mat-menu #barMenu="matMenu" class="terminal-overflow-menu">
+            @if (instructionsPath) {
+              <button mat-menu-item type="button" (click)="openInstructions.emit()">
+                <mat-icon>menu_book</mat-icon>
+                <span>{{ instructionsPath }}</span>
+              </button>
+            }
+            @if (pendingActions() > 0) {
+              <button mat-menu-item type="button" (click)="openActions()">
+                <mat-icon>pan_tool</mat-icon>
+                <span>{{ pendingActions() }} à faire</span>
+              </button>
+            }
+            <button
+              mat-menu-item
+              type="button"
+              class="terminal-guard"
+              [class.active]="askBeforeBash"
+              [disabled]="togglingConfirmation"
+              [attr.aria-pressed]="askBeforeBash"
+              [matTooltip]="askBeforeBash
+                ? 'Chaque commande demande votre accord. Désactiver : ne plus jamais demander sur ce projet — l\'audit continue de tout consigner.'
+                : 'Ce projet ne demande plus d\'accord avant d\'exécuter. Activer : redemander à chaque commande.'"
+              (click)="toggleAskBeforeBash.emit()"
+            >
+              <mat-icon>{{ askBeforeBash ? 'shield' : 'security' }}</mat-icon>
+              <span>{{ askBeforeBash ? 'Validation activée' : 'Valider les commandes' }}</span>
+            </button>
+            <button mat-menu-item type="button" (click)="openFiles.emit()">
+              <mat-icon>folder</mat-icon>
+              <span>Fichiers</span>
+            </button>
+            @if (gitProject) {
+              <button
+                mat-menu-item
+                type="button"
+                [disabled]="submitting || publishing"
+                (click)="publish.emit()"
+              >
+                <mat-icon>upload</mat-icon>
+                <span>Publier</span>
+              </button>
+            }
+            @if (engine === 'HOSTED_SANDBOX') {
+              <button mat-menu-item type="button" [disabled]="submitting" (click)="resetSandbox.emit()">
+                <mat-icon>restart_alt</mat-icon>
+                <span>Réinitialiser</span>
+              </button>
+            }
+            <button
+              mat-menu-item
+              type="button"
+              class="terminal-restart"
+              matTooltip="Claude repart sans le contexte des tours précédents. La conversation reste affichée."
+              (click)="restart.emit()"
+            >
+              <mat-icon>history_toggle_off</mat-icon>
+              <span>Nouveau départ</span>
+            </button>
+            <button mat-menu-item type="button" (click)="quit.emit()">
+              <mat-icon>close</mat-icon>
+              <span>Quitter</span>
+            </button>
+          </mat-menu>
+        }
       </span>
     </header>
   }

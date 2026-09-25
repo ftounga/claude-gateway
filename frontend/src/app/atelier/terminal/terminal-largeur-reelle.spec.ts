@@ -191,4 +191,53 @@ describe('AtelierTerminalComponent — largeur réelle (F-158 / SF-158-10)', () 
       }
     });
   });
+
+  // ------------------------------------------------------------------ F-158 / SF-158-12
+  // En-tête compact + menu ⋯ sur téléphone ; bandeau d'actions COMPLET et AUCUN ⋯ en desktop.
+  // La bascule est pilotée par le signal `isNarrow` (matchMedia), pas par le CSS : le desktop
+  // (fenêtre Karma 1440 px) ne dépend jamais de la feuille mobile.
+  describe('en-tête compact + menu ⋯ (SF-158-12)', () => {
+    it('à largeur desktop (isNarrow=false), le bandeau d\'actions complet est présent et le menu ⋯ absent', () => {
+      // Fenêtre Karma 1440 px : matchMedia('(max-width:819px)') est faux → mode desktop par défaut.
+      expect(fixture.componentInstance.isNarrow())
+        .withContext('la fenêtre Karma (1440 px) doit être en mode desktop')
+        .toBe(false);
+      fixture.detectChanges();
+      expect(host.querySelector('.terminal-overflow'))
+        .withContext('aucun bouton ⋯ ne doit être rendu en desktop')
+        .toBeNull();
+      expect(host.querySelector('.terminal-bar-actions .terminal-restart'))
+        .withContext('le bandeau complet (Nouveau départ) reste en clair en desktop')
+        .toBeTruthy();
+      expect(host.querySelector('.terminal-bar-actions .terminal-guard'))
+        .withContext('le bandeau complet (Valider les commandes) reste en clair en desktop')
+        .toBeTruthy();
+    });
+
+    it('en mode téléphone (isNarrow=true), le menu ⋯ remplace le bandeau en clair', () => {
+      fixture.componentInstance.isNarrow.set(true);
+      fixture.detectChanges();
+      expect(host.querySelector('.terminal-overflow'))
+        .withContext('le bouton ⋯ est présent sur téléphone')
+        .toBeTruthy();
+      // Le bandeau desktop (rendu sous `@if (!isNarrow())`) quitte le DOM : ses actions vivent
+      // désormais dans le panneau du menu ⋯, ouvert à la demande — aucune n'est supprimée.
+      expect(host.querySelector('.terminal-bar-actions .terminal-restart'))
+        .withContext('le bandeau en clair est retiré sur téléphone (actions déplacées dans ⋯)')
+        .toBeNull();
+    });
+
+    for (const width of [360, 400]) {
+      it(`à ${width} px, l'en-tête compact ne fait PAS déborder la page`, () => {
+        fixture.componentInstance.isNarrow.set(true);
+        fixture.detectChanges();
+        applyTerminalMobileRules();
+        host.style.width = `${width}px`;
+        void host.getBoundingClientRect();
+        expect(host.scrollWidth)
+          .withContext(`l'en-tête compact devrait tenir dans ${width} px`)
+          .toBeLessThanOrEqual(host.clientWidth);
+      });
+    }
+  });
 });

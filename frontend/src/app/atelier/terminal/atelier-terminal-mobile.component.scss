@@ -142,4 +142,34 @@
   .terminal-command code {
     min-width: 0;
   }
+
+  /* ---- EN-TÊTE COMPACT + MENU ⋯ (F-158 / SF-158-12) ----
+     La barre desktop entasse fil + dossier + budget + coût + moteur + signe de vie + Teams + ~10
+     boutons. Sur téléphone on ne garde EN CLAIR que le fil (tronqué), la pastille moteur et — pendant
+     un run — Interrompre : le bandeau d'actions desktop est conditionné à `!isNarrow()` côté template,
+     ses actions partent dans le menu ⋯. Les chips PUREMENT INFORMATIVES sont masquées ICI (elles
+     restent visibles en desktop) : la maquette validée (`.bar`) ne montre que fil + moteur + ⋯.
+     Aucune couleur nouvelle. Rendu >= 820 px inchangé (sous le point de rupture). */
+  .terminal-folder,
+  app-weekly-budget,
+  app-project-cost,
+  app-live-badge,
+  app-teams-link-badge {
+    display: none;
+  }
+
+  /* Le fil d'Ariane prend la place libre et se TRONQUE plutôt que de pousser le moteur et le ⋯ hors
+     champ. */
+  .terminal-crumbs {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  /* Le déclencheur du menu ⋯ : cible tactile pleine (>= 44 px), jamais compressée. */
+  .terminal-overflow {
+    flex: 0 0 auto;
+    width: 44px;
+    height: 44px;
+  }
 }
