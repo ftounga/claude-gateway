@@ -1,3 +1,7 @@
+// Point de rupture unique 819 px du Lot 0 (F-159 / SF-159-01). On ne recopie jamais
+// `@media (max-width: 819px)` ni un breakpoint local : on réutilise le mixin partagé.
+@use '../../../styles/breakpoints' as bp;
+
 .picker-title {
   display: flex;
   align-items: center;
@@ -9,7 +13,10 @@
 }
 
 .picker-content {
-  min-width: 380px;
+  // Sur desktop la surface a la place → 380 px (inchangé). Sous 819 px, le garde-fou
+  // global du Lot 0 borne le panneau à <= 96vw et neutralise la min-width de la surface ;
+  // `min(380px, 100%)` laisse alors le contenu rétrécir au lieu de forcer un scroll-x.
+  min-width: min(380px, 100%);
   max-width: 520px;
 }
 
@@ -66,6 +73,13 @@
   mat-checkbox {
     width: 100%;
   }
+
+  // Cible tactile confortable au téléphone : la zone de coche (item plein largeur) fait >= 44 px.
+  @include bp.phone {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
 }
 
 .picker-item-body {
@@ -73,6 +87,8 @@
   flex-direction: column;
   gap: 2px;
   overflow: hidden;
+  // Permet aux enfants flex de rétrécir pour que l'ellipse joue au lieu de forcer la largeur.
+  min-width: 0;
 }
 
 .picker-item-name {
@@ -81,7 +97,9 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 340px;
+  // Fluide : le nom occupe l'espace disponible et s'ellipse, sans borne rigide en pixels
+  // qui déborderait dans un panneau borné à 96vw sur téléphone.
+  max-width: 100%;
 }
 
 .picker-item-meta {
@@ -94,4 +112,11 @@
 
 .picker-actions {
   padding: 8px 16px 16px;
+
+  // Cibles tactiles >= 44 px au téléphone, sans alourdir le desktop.
+  @include bp.phone {
+    button {
+      min-height: 44px;
+    }
+  }
 }
