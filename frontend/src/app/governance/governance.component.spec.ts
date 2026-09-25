@@ -147,6 +147,17 @@ describe('GovernanceComponent', () => {
     expect(governance.getHost).toHaveBeenCalledWith('h1');
   });
 
+  // F-158 / SF-158-04 : garde-fou du markup sur lequel repose le patron responsive (grille
+  // `.gouvernance__catalog` → 1 colonne sous 819 px). Si la structure change, ce test le signale.
+  it('rend le catalogue dans .gouvernance__catalog, une carte .gouvernance__package par paquet', () => {
+    fixture.detectChanges();
+    const host = fixture.nativeElement as HTMLElement;
+
+    const grid = host.querySelector('.gouvernance__catalog');
+    expect(grid).not.toBeNull();
+    expect(grid!.querySelectorAll('.gouvernance__package').length).toBe(component.catalog().length);
+  });
+
   it('nomme les dossiers du poste : ce sont eux qui recevront les fichiers', () => {
     fixture.detectChanges();
     const text = (fixture.nativeElement as HTMLElement).textContent ?? '';

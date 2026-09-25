@@ -250,3 +250,41 @@
     }
   }
 }
+
+/**
+ * Téléphone (< 819 px) — patron mobile F-158 / SF-158-04.
+ *
+ * Point de rupture 819 px hérité de la coquille maître–détail (`_forge-layout-shell.scss:148`,
+ * DESIGN_SYSTEM.md §686) : sous ce seuil, les grilles à colonnes fixes passent en une colonne et
+ * aucun geste ne descend sous 44 px. Le desktop (≥ 820 px) reste strictement inchangé — aucune
+ * couleur ni police ajoutée (jetons `--cg-*` uniquement).
+ */
+@media (max-width: 819px) {
+  .gouvernance {
+    // La grille du catalogue s'empile en une colonne pleine largeur ; `minmax(0, 1fr)` (et non
+    // `1fr`) empêche un contenu large (chemin de fichier) de faire déborder la page (D4).
+    &__catalog {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    // Les gestes d'une activation passent à la ligne plutôt que de se serrer au doigt.
+    &__activation-actions {
+      flex-wrap: wrap;
+    }
+
+    // Cibles tactiles ≥ 44 px pour tous les gestes de l'écran sous 819 px (D3 charte).
+    &__notice-actions a,
+    &__activation-actions button,
+    &__available button,
+    &__package-header button {
+      min-height: 44px;
+    }
+
+    // Le dépliant « fichiers déposés » est cliquable : hauteur de pouce et alignement vertical.
+    &__files summary {
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+    }
+  }
+}
