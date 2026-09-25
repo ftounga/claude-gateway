@@ -145,6 +145,38 @@
     --mdc-text-button-label-text-color: var(--cg-primary);
   }
 
+  /* ---- PEAU DU FIL SUR TÉLÉPHONE (F-158 / SF-158-14, maquette) ----
+     STYLE SEUL : le DOM, le rendu Markdown et le groupement des sous-agents sont inchangés. Les
+     sous-agents groupés (`.terminal-subagents`, F-150), l'essentiel (`.terminal-essential`, F-126) et
+     les étapes (`.terminal-command`) portent DÉJÀ leur peau (boîte à filet / filet accent + voile doré
+     / ligne compacte) — les gouttières 16 px de SF-158-13 leur redonnent leur respiration. On complète
+     ici ce qui manquait : la carte de la demande et la boîte de sortie. Aucune couleur nouvelle. */
+
+  /* La demande de l'utilisateur devient une CARTE (maquette `.req`) : creux `--cg-navy-2`, arrondie. */
+  .terminal-prompt-line {
+    padding: var(--cg-space-2) var(--cg-space-3);
+    background: var(--cg-navy-2);
+    border-radius: 8px;
+  }
+
+  /* La sortie / le bloc de code (maquette `.out`) : boîte en creux qui DÉFILE CHEZ ELLE
+     (`overflow-x: auto`, `white-space: pre`) — une ligne trop large glisse dans la boîte, jamais dans
+     la page (la vue clôt déjà l'axe, SF-158-10). */
+  .terminal-output {
+    padding: var(--cg-space-2);
+    background: var(--cg-navy);
+    border: 1px solid var(--cg-navy-2);
+    border-radius: 8px;
+    white-space: pre;
+    overflow-x: auto;
+  }
+
+  /* Ligne vivante (maquette `.live`) : le chrono (déjà en accent) est poussé à droite, comme le coût
+     de la maquette. */
+  .terminal-live-elapsed {
+    margin-left: auto;
+  }
+
   /* ---- RANGÉES DE CONTRÔLE EN PLEINE LARGEUR (F-158 / SF-158-11, P0) ----
      SF-158-10 a CLOS l'axe (rien ne remonte à la page) ; ici on rend les rangées rigides réellement
      UTILISABLES au doigt plutôt que clippées. Les `<mat-button-toggle>` sont écrits dans le template du
