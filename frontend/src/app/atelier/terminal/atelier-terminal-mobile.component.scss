@@ -92,4 +92,54 @@
   .terminal-field {
     min-width: 0;
   }
+
+  /* ---- RANGÉES DE CONTRÔLE EN PLEINE LARGEUR (F-158 / SF-158-11, P0) ----
+     SF-158-10 a CLOS l'axe (rien ne remonte à la page) ; ici on rend les rangées rigides réellement
+     UTILISABLES au doigt plutôt que clippées. Les `<mat-button-toggle>` sont écrits dans le template du
+     terminal (ils portent l'attribut de contenu du composant) → `flex:1` s'applique sans `::ng-deep`.
+     Aucune couleur nouvelle. Rendu >= 820 px inchangé. */
+
+  /* Sélecteur « target » (Où s'exécutent les outils) et sélecteur « mode » (Réponse/Plan / Agir) :
+     toggle-group pleine largeur, les 2 options à parts égales. Le groupe pleine largeur force le
+     libellé (`.terminal-*-label`) sur sa propre ligne (`.terminal-target`/`.terminal-mode` sont déjà
+     `flex-wrap: wrap`). */
+  .terminal-target-toggle,
+  .terminal-mode-toggle {
+    width: 100%;
+  }
+
+  .terminal-target-toggle mat-button-toggle,
+  .terminal-mode-toggle mat-button-toggle {
+    flex: 1;
+  }
+
+  /* État du poste : la rangée passe à la ligne, son corps peut rétrécir, et la commande de relance
+     (ou un chemin long) enroule au lieu de forcer un débordement. */
+  .terminal-host-state {
+    flex-wrap: wrap;
+  }
+
+  .terminal-host-state-body {
+    min-width: 0;
+  }
+
+  .terminal-host-state code {
+    overflow-wrap: anywhere;
+    word-break: break-all;
+  }
+
+  /* Proposition de runner : la rangée passe à la ligne, son texte peut rétrécir. */
+  .terminal-hint-runner {
+    flex-wrap: wrap;
+  }
+
+  .terminal-hint-runner-text {
+    min-width: 0;
+  }
+
+  /* Ligne de commande : `code` est un item flex de `.terminal-command` → `min-width: 0` le laisse
+     enrouler dans le cadre au lieu de forcer un débordement horizontal. */
+  .terminal-command code {
+    min-width: 0;
+  }
 }
