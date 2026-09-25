@@ -35,4 +35,40 @@
   .terminal-input button {
     min-height: 44px;
   }
+
+  /* ---- LE CONTENU DU TERMINAL SUR TÉLÉPHONE (F-158 / SF-158-09) ----
+     SF-151-03 a traité la BARRE ; ici, le CONTENU (fil, ligne vivante, plafond, saisie). Garantie
+     D4 du CADRAGE F-158 : jamais de défilement horizontal de PAGE. Le fil clôt l'axe horizontal —
+     une ligne trop large est ramenée dans son cadre. Les blocs qui DOIVENT défiler (diff, bloc de
+     code Markdown `pre`, tableau Markdown) portent DÉJÀ leur propre `overflow-x:auto` (SF-30-13 /
+     SF-30-14) et défilent CHEZ EUX : on ne leur retire rien. Aucune couleur nouvelle. */
+  .terminal-scrollback {
+    overflow-x: hidden;
+    /* Gouttières resserrées au téléphone : le bloc de code récupère la largeur qu'il perdait à
+       ~400 px. Rendu >= 820 px inchangé (règle sous le point de rupture). */
+    padding-left: var(--cg-space-2);
+    padding-right: var(--cg-space-2);
+  }
+
+  /* La ligne vivante (spinner · action · étapes · tokens · chrono) passe à la ligne plutôt que de
+     pousser les chiffres hors champ. */
+  .terminal-live {
+    flex-wrap: wrap;
+  }
+
+  /* Le bandeau « plafond de dépense atteint » : le bouton de rachat tombe sous le texte au lieu de
+     l'écraser, et reste dimensionné pour le pouce. */
+  .terminal-live-limit {
+    flex-wrap: wrap;
+  }
+
+  .terminal-live-limit-retry {
+    min-height: 44px;
+  }
+
+  /* Le champ de saisie peut rétrécir sous la largeur de ses boutons (joindre, dictée, envoyer) :
+     sans cela, son gabarit intrinsèque forcerait un débordement horizontal à ~400 px. */
+  .terminal-field {
+    min-width: 0;
+  }
 }
