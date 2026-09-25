@@ -1,0 +1,112 @@
+// Écran de chat — règles responsive téléphone (F-158 / SF-158-01).
+// Feuille dédiée (budget SCSS F-117) : la feuille principale est déjà proche du seuil
+// d'avertissement ; les règles mobile vivent ici, comme le précédent SF-151-03.
+//
+// Point de rupture 819 px (fait autorité : _forge-layout-shell.scss:148, DESIGN_SYSTEM.md:686).
+// Le desktop (>= 820 px) reste STRICTEMENT inchangé : rien hors de ce media.
+
+// Bouton d'ouverture du tiroir (barre latérale) et bouton de fermeture (en-tête du tiroir) :
+// n'existent que sur téléphone. Masqués par défaut ; le media les affiche.
+.sidebar-toggle,
+.sidebar-close {
+  display: none;
+}
+
+@media (max-width: 819px) {
+  // Grille 280px 1fr -> une seule colonne. Le fil et le composer prennent toute la largeur.
+  .chat-layout {
+    grid-template-columns: minmax(0, 1fr);
+    position: relative;
+  }
+
+  // La barre latérale devient un tiroir plein écran superposé, masqué par défaut.
+  .chat-sidebar {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    width: 100%;
+    border-right: 0;
+    display: none;
+  }
+
+  .chat-sidebar.mobile-open {
+    display: flex;
+  }
+
+  .sidebar-toggle {
+    display: inline-flex;
+  }
+
+  .sidebar-close {
+    display: inline-flex;
+  }
+
+  .chat-main {
+    min-width: 0;
+  }
+
+  // Barre d'outils sur une seule ligne, sans débordement : le titre s'ellipse, le sélecteur rétréci.
+  .chat-heading {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .toolbar-spacer {
+    display: none;
+  }
+
+  .model-select {
+    width: auto;
+    max-width: 44vw;
+    margin-left: auto;
+  }
+
+  // Fil et composer resserrés (marges latérales réduites) ; aucune largeur qui déborde.
+  .message-thread {
+    padding: var(--cg-space-3);
+  }
+
+  .message {
+    max-width: 100%;
+  }
+
+  .composer {
+    padding: var(--cg-space-3);
+    gap: var(--cg-space-2);
+  }
+
+  .composer-formats,
+  .composer-attachments,
+  .composer-library {
+    padding-left: var(--cg-space-3);
+    padding-right: var(--cg-space-3);
+  }
+
+  .files-panel-header,
+  .files-empty,
+  .files-list {
+    padding-left: var(--cg-space-3);
+    padding-right: var(--cg-space-3);
+  }
+
+  // La largeur fixe 180px du badge de type de fichier ne doit pas forcer un débordement.
+  .files-item-type {
+    max-width: 96px;
+  }
+
+  // Cibles tactiles >= 44px : boutons d'icône, bouton Envoyer, bascule/fermeture du tiroir.
+  .chat-toolbar button.mat-mdc-icon-button,
+  .composer button.mat-mdc-icon-button,
+  .sidebar-header button.mat-mdc-icon-button,
+  .sidebar-toggle,
+  .sidebar-close {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .composer button.mat-mdc-unelevated-button {
+    min-height: 44px;
+  }
+}

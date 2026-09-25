@@ -77,7 +77,7 @@ import {
     CopyBlockComponent,
   ],
   templateUrl: './chat.component.html',
-  styleUrl: './chat.component.scss',
+  styleUrls: ['./chat.component.scss', './chat-mobile.component.scss'],
 })
 export class ChatComponent implements OnInit {
   private readonly chatService = inject(ChatService);
@@ -104,6 +104,12 @@ export class ChatComponent implements OnInit {
   readonly filesPanelOpen = signal(false);
   readonly conversationFiles = signal<ConversationFile[]>([]);
   readonly filesLoading = signal(false);
+
+  /**
+   * Téléphone (F-158 / SF-158-01) : ouverture du tiroir « liste des conversations ». Sans effet
+   * au-dessus de 819 px, où la barre latérale reste affichée en colonne (piloté par le CSS).
+   */
+  readonly mobileSidebarOpen = signal(false);
 
   /** Vrai tant qu'au moins une pièce jointe est en cours de téléversement (bloque l'envoi). */
   readonly uploading = computed(() => this.attachments().some((a) => a.status === 'uploading'));
@@ -167,6 +173,11 @@ export class ChatComponent implements OnInit {
     });
   }
 
+  /** Bascule le tiroir « liste des conversations » sur téléphone (F-158 / SF-158-01). */
+  toggleMobileSidebar(): void {
+    this.mobileSidebarOpen.update((open) => !open);
+  }
+
   /** Démarre une nouvelle conversation (vide le fil ; la sélection du modèle reste éditable). */
   startNewConversation(): void {
     this.activeConversationId.set(null);
@@ -175,6 +186,7 @@ export class ChatComponent implements OnInit {
     this.libraryDocs.set([]);
     this.filesPanelOpen.set(false);
     this.conversationFiles.set([]);
+    this.mobileSidebarOpen.set(false);
   }
 
   /** Charge le détail d'une conversation existante. */
@@ -184,6 +196,7 @@ export class ChatComponent implements OnInit {
     this.libraryDocs.set([]);
     this.filesPanelOpen.set(false);
     this.conversationFiles.set([]);
+    this.mobileSidebarOpen.set(false);
     this.chatService.getConversation(conversation.id).subscribe({
       next: (detail) => this.messages.set(detail.messages),
       error: () => this.notifyError('Impossible de charger la conversation.'),

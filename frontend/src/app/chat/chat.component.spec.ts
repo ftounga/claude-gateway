@@ -560,4 +560,50 @@ describe('ChatComponent', () => {
 
     expect(component.libraryDocs()).toEqual([]);
   });
+
+  // ---- Tiroir « liste des conversations » sur téléphone (F-158 / SF-158-01) ----
+
+  it('keeps the mobile sidebar closed by default (F-158)', () => {
+    fixture.detectChanges();
+    flushInit();
+
+    expect(component.mobileSidebarOpen()).toBeFalse();
+  });
+
+  it('toggles the mobile sidebar open and closed (F-158)', () => {
+    fixture.detectChanges();
+    flushInit();
+
+    component.toggleMobileSidebar();
+    expect(component.mobileSidebarOpen()).toBeTrue();
+    component.toggleMobileSidebar();
+    expect(component.mobileSidebarOpen()).toBeFalse();
+  });
+
+  it('closes the mobile sidebar when selecting a conversation (F-158)', () => {
+    fixture.detectChanges();
+    flushInit();
+    component.mobileSidebarOpen.set(true);
+
+    component.selectConversation({
+      id: 'c-1',
+      title: 'Ancienne',
+      model: 'claude-opus-4-8',
+      createdAt: '',
+      updatedAt: '',
+    });
+    httpMock.expectOne('/api/conversations/c-1').flush({ id: 'c-1', messages: [] });
+
+    expect(component.mobileSidebarOpen()).toBeFalse();
+  });
+
+  it('closes the mobile sidebar when starting a new conversation (F-158)', () => {
+    fixture.detectChanges();
+    flushInit();
+    component.mobileSidebarOpen.set(true);
+
+    component.startNewConversation();
+
+    expect(component.mobileSidebarOpen()).toBeFalse();
+  });
 });
