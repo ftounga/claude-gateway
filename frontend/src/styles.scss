@@ -2,6 +2,7 @@
 // Refonte F-27 (2026-07-10) : abandon de l'identité "Indigo Tech" (--cg-primary indigo).
 // Voir docs/DESIGN_SYSTEM.md (source de vérité).
 @use '@angular/material' as mat;
+@use './styles/breakpoints' as bp; // F-159 / SF-159-01 — point de rupture unique 819 px
 
 html {
   @include mat.theme((
@@ -86,6 +87,10 @@ html {
 }
 
 // ---- Reset ----
+// Fondation responsive (F-159 / SF-159-01) : padding et bordure inclus dans les largeurs
+// déclarées partout — supprime les débordements horizontaux d'un contenu qui dépasse sa colonne.
+*, *::before, *::after { box-sizing: border-box; }
+
 html, body { height: 100%; }
 body {
   margin: 0;
@@ -227,3 +232,38 @@ code, pre { font-family: var(--cg-font-mono); }
 }
 .auth-feedback--success { color: var(--cg-success); }
 .auth-feedback--error { color: var(--cg-error); }
+
+// ---- Fondations responsive partagées (F-159 / SF-159-01) ----
+
+// Gouttière de page réutilisable : contenu centré, largeur maîtrisée, gouttière latérale
+// >= 16 px à toute largeur (montant à 24 px sur grand écran). Utilitaire disponible pour les
+// écrans ; aucun écran existant n'y est rattaché dans cette SF.
+.page {
+  max-width: 1120px;
+  margin-inline: auto;
+  padding-inline: clamp(16px, 4vw, 24px);
+  padding-block: var(--cg-space-4);
+}
+
+// Enveloppe standard d'un tableau large : seul autorisé à défiler horizontalement — jamais la page.
+.table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+// Garde-fou global des dialogs sous le point de rupture téléphone : un dialog ne doit jamais
+// déclencher de défilement horizontal de page. On borne le panneau overlay Material à <= 96vw et
+// on laisse la surface interne rétrécir (min-width neutralisée, contenu <= 100%). `!important`
+// pour l'emporter sur les largeurs posées par les composants. Overlay Material = niveau document,
+// donc règle globale légitime. Desktop (>= 820 px) intact.
+@include bp.phone {
+  .cdk-overlay-pane.mat-mdc-dialog-panel,
+  .cdk-overlay-pane {
+    max-width: 96vw !important;
+  }
+  .mat-mdc-dialog-surface,
+  .mat-mdc-dialog-container {
+    min-width: 0 !important;
+    max-width: 100%;
+  }
+}

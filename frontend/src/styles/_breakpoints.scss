@@ -1,0 +1,19 @@
+// Points de rupture responsive partagés — F-159 / SF-159-01 (Fondations responsive globales).
+//
+// Point de rupture UNIQUE de l'application : 819 px. « Téléphone » = < 820 px.
+// Valeur reprise telle quelle de l'existant (`app/postes/_forge-layout-shell.scss`,
+// `docs/DESIGN_SYSTEM.md` § « Téléphone (< 820 px) ») pour n'avoir qu'une seule vérité.
+//
+// Usage dans une feuille de composant :
+//   @use '../../styles/breakpoints' as bp;   // chemin relatif selon la profondeur
+//   .grille { grid-template-columns: 280px 1fr;
+//     @include bp.phone { grid-template-columns: minmax(0, 1fr); } }
+
+$bp-phone: 819px;
+
+// Applique @content sous le point de rupture téléphone (<= 819 px).
+@mixin phone {
+  @media (max-width: $bp-phone) {
+    @content;
+  }
+}
