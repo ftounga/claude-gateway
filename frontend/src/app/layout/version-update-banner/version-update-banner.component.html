@@ -1,0 +1,25 @@
+@if (visible()) {
+  <aside class="version-update" role="status" aria-live="polite">
+    <mat-icon class="version-update__icon" aria-hidden="true">system_update_alt</mat-icon>
+
+    <p class="version-update__text">
+      Une nouvelle version est disponible.
+    </p>
+
+    <div class="version-update__actions">
+      <button
+        mat-flat-button
+        color="primary"
+        type="button"
+        class="version-update__reload"
+        [disabled]="reloading()"
+        (click)="reload()"
+      >
+        {{ reloading() ? 'Rechargement…' : 'Recharger' }}
+      </button>
+      <button mat-button type="button" class="version-update__dismiss" (click)="dismiss()">
+        Plus tard
+      </button>
+    </div>
+  </aside>
+}
