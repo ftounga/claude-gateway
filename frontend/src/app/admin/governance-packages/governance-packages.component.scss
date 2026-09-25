@@ -1,3 +1,6 @@
+// Point de rupture partagé du Lot 0 (F-159 / SF-159-01) — jamais de breakpoint local.
+@use '../../../styles/breakpoints' as bp;
+
 .gov-admin {
   display: flex;
   flex-direction: column;
@@ -63,5 +66,15 @@
   &__meta {
     color: var(--cg-text-secondary);
     font-size: 13px;
+  }
+
+  // Téléphone (< 819 px) : gouttière reprise à 16 px, et chaque geste d'action (Modifier, Publier,
+  // Dépublier, Supprimer) atteint une cible tactile >= 44 px. Desktop (>= 820 px) inchangé.
+  @include bp.phone {
+    padding: var(--cg-space-3);
+
+    ::ng-deep .mat-mdc-button-base {
+      min-height: 44px;
+    }
   }
 }

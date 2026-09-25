@@ -1,7 +1,16 @@
+// Point de rupture partagé du Lot 0 (F-159 / SF-159-01) — jamais de breakpoint local.
+@use '../../styles/breakpoints' as bp;
+
 .admin-page {
   padding: 24px;
   max-width: 1100px;
   margin: 0 auto;
+
+  // Téléphone (< 819 px) : on reprend la largeur volée par le padding de 24 px en le ramenant à
+  // 16 px (gouttière toujours >= 16 px). Desktop (>= 820 px) inchangé.
+  @include bp.phone {
+    padding: var(--cg-space-3);
+  }
 }
 
 .admin-title {
@@ -29,4 +38,21 @@
 .admin-empty {
   padding: 16px;
   color: var(--cg-text-secondary);
+}
+
+// Cibles tactiles >= 44 px pour la pagination de la table des comptes sous 819 px (charte
+// DESIGN_SYSTEM.md). Bornées au téléphone : le desktop garde sa densité.
+@include bp.phone {
+  .admin-card ::ng-deep {
+    .mat-mdc-paginator .mat-mdc-icon-button {
+      min-height: 44px;
+      min-width: 44px;
+    }
+
+    .mat-mdc-paginator .mat-mdc-select-trigger {
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+    }
+  }
 }

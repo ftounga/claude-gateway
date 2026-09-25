@@ -1,8 +1,13 @@
+// Point de rupture partagé du Lot 0 (F-159 / SF-159-01) — jamais de breakpoint local.
+@use '../../../../styles/breakpoints' as bp;
+
 .editor {
   display: flex;
   flex-direction: column;
   gap: var(--cg-space-2);
-  min-width: 480px;
+  // F-159 / SF-159-06 — le garde-fou global du Lot 0 borne le panneau à <= 96vw ; `min(480px, 100%)`
+  // laisse le contenu rétrécir au lieu de forcer un scroll-x interne. Desktop : vaut 480 px.
+  min-width: min(480px, 100%);
 
   &__notice {
     margin: 0 0 var(--cg-space-2);
@@ -57,12 +62,10 @@
   &__file-content {
     grid-column: 1 / -1;
   }
-}
 
-@media (max-width: 640px) {
-  .editor {
-    min-width: 0;
-
+  // Téléphone (< 819 px) : la grille de fichier (contenu / cible / suppression) s'empile en une
+  // colonne pour ne jamais déborder. Breakpoint partagé du Lot 0.
+  @include bp.phone {
     &__file {
       grid-template-columns: 1fr;
     }

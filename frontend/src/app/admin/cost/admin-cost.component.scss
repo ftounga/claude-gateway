@@ -1,5 +1,9 @@
 // Section « Coût réel » de l'administration (F-133 / SF-133-07).
 // Calquée sur la section Consommation : mêmes jetons, mêmes formes, aucune couleur nouvelle.
+
+// Point de rupture partagé du Lot 0 (F-159 / SF-159-01) — jamais de breakpoint local.
+@use '../../../styles/breakpoints' as bp;
+
 .cost-admin {
   display: flex;
   flex-direction: column;
@@ -131,6 +135,27 @@
     margin: 0;
     color: var(--cg-text-secondary);
     font-size: 13px;
+  }
+
+  // Téléphone (< 819 px) : gouttière reprise à 16 px sur la section et ses cartes ; les champs de
+  // budget ne forcent plus leur largeur de 220 px (ils passent pleine largeur avant de déborder) ;
+  // chaque geste (Enregistrer, Fixer, Retirer, bascules de période) atteint une cible >= 44 px.
+  @include bp.phone {
+    padding: var(--cg-space-3);
+
+    &__card {
+      padding: var(--cg-space-3);
+    }
+
+    &__field {
+      min-width: 0;
+      width: 100%;
+    }
+
+    ::ng-deep .mat-mdc-button-base,
+    ::ng-deep .mat-button-toggle-button {
+      min-height: 44px;
+    }
   }
 }
 

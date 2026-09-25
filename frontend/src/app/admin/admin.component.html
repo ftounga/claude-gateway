@@ -25,6 +25,9 @@
   <app-admin-usage></app-admin-usage>
 
   <mat-card class="admin-card">
+    <!-- F-159 / SF-159-06 — la table à 6 colonnes défile dans son propre conteneur (.table-scroll,
+         Lot 0) sous 819 px : elle seule, jamais la page. -->
+    <div class="table-scroll">
     <table mat-table [dataSource]="dataSource" class="admin-table">
       <ng-container matColumnDef="email">
         <th mat-header-cell *matHeaderCellDef>E-mail</th>
@@ -59,6 +62,7 @@
       <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
       <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
     </table>
+    </div>
 
     @if (!loading() && dataSource.data.length === 0) {
       <p class="admin-empty">Aucun utilisateur.</p>
