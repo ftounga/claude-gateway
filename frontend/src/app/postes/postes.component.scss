@@ -254,6 +254,23 @@
   gap: 12px;
 }
 
+/* F-158 / SF-158-02 — Téléphone (< 819 px) : la grille passe à UNE colonne, les tuiles prennent
+   toute la largeur, aucune n'est plus large que l'écran, jamais de scroll horizontal. Même point de
+   rupture et même forme « colonnes fixes → 1 colonne » que le shell maître–détail
+   (`_forge-layout-shell.scss`, DESIGN_SYSTEM §16). `minmax(0, 1fr)` — et non `1fr` — pour qu'un
+   contenu large de tuile ne fasse pas déborder la colonne (`min-width:auto` par défaut). Le desktop
+   (≥ 820 px) reste inchangé. */
+@media (max-width: 819px) {
+  .poste__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Cibles tactiles au pouce (≥ 44 px) pour le tri des projets. */
+  .poste__sort-option {
+    min-height: 44px;
+  }
+}
+
 /* La tuile fantôme : pointillés `--cg-divider`, gris §5 — des dossiers, pas des projets. */
 .poste__ghost {
   display: flex;
