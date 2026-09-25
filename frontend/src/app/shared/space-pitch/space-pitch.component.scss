@@ -89,3 +89,36 @@
   flex-wrap: wrap;
   gap: var(--cg-space-2);
 }
+
+/* Téléphone (< 819 px, patron F-158 / DESIGN_SYSTEM `_forge-layout-shell.scss:148`) :
+   argumentaire empilé pleine largeur, cibles ≥ 44 px, jamais de scroll-x. Desktop inchangé. */
+@media (max-width: 819px) {
+  .space-pitch {
+    /* Gouttière latérale ≥ 16 px, plus de largeur utile qu'avec 32 px. */
+    padding: var(--cg-space-3);
+  }
+
+  .space-pitch__points {
+    /* `minmax(0, 1fr)` (et non `1fr`) : empêche un point de déborder à cause de son contenu. */
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .space-pitch__trial {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+  }
+
+  .space-pitch__actions {
+    flex-direction: column;
+    align-items: stretch;
+
+    a {
+      width: 100%;
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+  }
+}
