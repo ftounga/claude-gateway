@@ -252,24 +252,71 @@
   }
 }
 
-/* F-158 / SF-158-03 — Téléphone (< 820 px) : la coquille (F-151) met déjà la colonne en pleine
-   largeur ; ici on ne touche QUE la densité et les cibles tactiles (≥ 44 px), au doigt et sans
-   débordement. Le desktop (≥ 820 px) reste strictement inchangé. Jetons --cg-* uniquement. */
+/* F-158 / SF-158-03 puis F-160 / SF-160-02 — Téléphone (< 820 px).
+   SF-158-03 avait posé la densité et les cibles ≥ 44 px. SF-160-02 (refonte mobile pro) transforme
+   la colonne en une PILE DE CARTES pleine largeur, fidèle à la FORME de la maquette validée par le
+   PO : recherche pleine largeur, cartes de poste (nom, statut daté, nombre de projets) empilées, tap
+   pour ouvrir. Palette 100 % charte §16 (surface claire, filets `--cg-divider`, accent `--cg-orange`)
+   — la surface sombre `--cg-navy-2` de la maquette est réservée au terminal (§13) et n'est pas reprise
+   sur la Forge (divergence chromatique assumée, mini-spec D-A). Jetons `--cg-*` uniquement, aucune
+   couleur nouvelle. Restyle CSS pur : aucun binding, aucune structure HTML modifiés (D8).
+   Le desktop (≥ 820 px) reste strictement inchangé (toutes ces règles vivent sous max-width: 819px). */
 @media (max-width: 819px) {
   .forge-rail {
-    /* Des lignes assez espacées pour ne pas toucher la voisine au doigt. */
+    /* Le fond de la colonne passe au gris de page : les cartes claires s'en détachent. */
+    background: var(--cg-bg);
+    gap: var(--cg-space-2);
+    padding: var(--cg-space-3);
+
+    /* La recherche : pleine largeur, cible pleine hauteur, rayon de carte. */
+    &__search {
+      margin: 0 0 var(--cg-space-1);
+      min-height: 44px;
+      border-radius: 12px;
+    }
+
+    /* Des cartes assez espacées pour ne pas toucher la voisine au doigt. */
     &__list {
       gap: var(--cg-space-2);
     }
 
-    /* La ligne de poste : une cible confortable, la grille de ligne inchangée. */
+    /* LA CARTE DU POSTE : pleine largeur, surface + filet + rayon, retrait confortable, tap pour
+       ouvrir (le `(click)` existant est inchangé). `overflow: hidden` clôt l'axe horizontal : un nom
+       très long ou une méta insécable n'entraîne jamais de scroll de page (D4). */
     &__host {
       min-height: 44px;
+      padding: var(--cg-space-3);
+      border: 1px solid var(--cg-divider);
+      border-radius: 14px;
+      background: var(--cg-surface);
+      overflow: hidden;
+
+      &:hover {
+        background: var(--cg-surface);
+        border-color: var(--cg-accent);
+      }
+
+      /* La carte sélectionnée : filet d'accent + le repère de ton du poste (§9) calé sur le retrait. */
+      &--selected {
+        background: var(--cg-surface);
+        border-color: var(--cg-accent);
+
+        &::before {
+          top: var(--cg-space-3);
+          bottom: var(--cg-space-3);
+        }
+      }
     }
 
-    /* La recherche : une cible pleine hauteur. */
-    &__search {
-      min-height: 44px;
+    /* Le nom, un peu plus présent sur la carte. */
+    &__name {
+      font-size: 15px;
+    }
+
+    /* La méta (statut daté « … · vu il y a … ») enroule dans la carte plutôt que de déborder. */
+    &__meta {
+      white-space: normal;
+      word-break: break-word;
     }
 
     /* Le repli « Fermées » : un bouton atteignable au pouce. */
@@ -277,9 +324,10 @@
       min-height: 44px;
     }
 
-    /* « Connecter un poste » : au moins 44 px de haut. */
+    /* « Connecter un poste » : pleine largeur au doigt, au moins 44 px de haut. */
     &__connect {
       min-height: 44px;
+      margin: var(--cg-space-2) 0 0;
     }
   }
 }
