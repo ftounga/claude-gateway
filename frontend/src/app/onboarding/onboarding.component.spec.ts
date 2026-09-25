@@ -58,6 +58,14 @@ describe('OnboardingComponent', () => {
     expect(component).toBeTruthy();
   });
 
+  // F-158 / SF-158-05 — garde-fou markup du patron responsive : le conteneur d'actions
+  // (empilé en colonne sous 819 px) est présent dès la première étape.
+  it("rend le conteneur d'actions porteur du patron responsive", () => {
+    setup();
+    const actions = fixture.nativeElement.querySelector('.onboarding__actions');
+    expect(actions).not.toBeNull();
+  });
+
   it('Hosted : complète en HOSTED et route vers /chat', () => {
     setup();
     const navigateSpy = spyOn(router, 'navigate').and.resolveTo(true);
