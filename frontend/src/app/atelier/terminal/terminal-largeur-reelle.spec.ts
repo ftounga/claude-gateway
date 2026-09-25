@@ -132,4 +132,63 @@ describe('AtelierTerminalComponent — largeur réelle (F-158 / SF-158-10)', () 
     // Prouve que l'assertion mesure un vrai layout (et non une tautologie).
     expect(pageOverflowsAt(360)).toBe(true);
   });
+
+  // ------------------------------------------------------------------ F-158 / SF-158-11
+  // Les RANGÉES DE CONTRÔLE (target / mode / état du poste) tiennent dans l'écran à 360 px et
+  // sont pleine largeur, pas seulement clippées par le containment de SF-158-10.
+  describe('rangées de contrôle (SF-158-11)', () => {
+    /** Rend un tour avec target + mode + état du poste (avec commande de relance), à `width` px. */
+    function renderControls(width: number): void {
+      const c = fixture.componentInstance;
+      c.executionTarget = 'RUNNER'; // affiche `.terminal-target` et `.terminal-host-state`
+      c.mode = 'ANSWER_PLAN'; // affiche `.terminal-mode`
+      c.hostName = 'mac-de-bureau'; // hostKnown() = true
+      c.runnerStatus = { connected: false, paired: true, lastSeenAt: null }; // resumeAvailable() = true
+      fixture.detectChanges();
+      host.style.width = `${width}px`;
+      void host.getBoundingClientRect();
+    }
+
+    it('à 360 px, un tour avec target + mode + état du poste ne fait PAS défiler la page', () => {
+      applyTerminalMobileRules();
+      renderControls(360);
+      expect(host.scrollWidth)
+        .withContext('les rangées de contrôle devraient tenir dans 360 px')
+        .toBeLessThanOrEqual(host.clientWidth);
+    });
+
+    it('à 360 px, une commande de relance très longue ENROULE dans la rangée d\'état du poste', () => {
+      applyTerminalMobileRules();
+      renderControls(360);
+      const code = host.querySelector('.terminal-host-state code') as HTMLElement;
+      expect(code).withContext('commande de relance absente').toBeTruthy();
+      // Chaîne INSÉCABLE très longue (aucun tiret ni espace : pas d'opportunité de coupure naturelle) :
+      // sans `word-break: break-all` (SF-158-11) elle déborde la rangée ; avec, elle enroule.
+      code.textContent = 'usrlocallibclauderunnerjar'.repeat(25);
+      const row = host.querySelector('.terminal-host-state') as HTMLElement;
+      void row.getBoundingClientRect();
+      expect(row.scrollWidth)
+        .withContext('la rangée d\'état du poste devrait enrouler la commande longue')
+        .toBeLessThanOrEqual(row.clientWidth);
+    });
+
+    it('à 360 px, les toggle-groups target et mode remplissent la largeur de leur rangée', () => {
+      applyTerminalMobileRules();
+      renderControls(360);
+      for (const [rowSel, groupSel] of [
+        ['.terminal-target', '.terminal-target-toggle'],
+        ['.terminal-mode', '.terminal-mode-toggle'],
+      ]) {
+        const row = host.querySelector(rowSel) as HTMLElement;
+        const group = host.querySelector(groupSel) as HTMLElement;
+        expect(group).withContext(`${groupSel} absent`).toBeTruthy();
+        const cs = getComputedStyle(row);
+        const inner = row.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+        // `width:100%` → le groupe occupe toute la largeur de contenu de sa rangée (tolérance 2 px).
+        expect(Math.abs(group.getBoundingClientRect().width - inner))
+          .withContext(`${groupSel} devrait être pleine largeur`)
+          .toBeLessThanOrEqual(2);
+      }
+    });
+  });
 });

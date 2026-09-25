@@ -121,4 +121,16 @@ describe('AtelierTerminalComponent — contenu responsive (F-158 / SF-158-09)', 
     // (Angular réécrit `> *` en `> [_ngcontent…]` et sérialise `0px`.)
     expect(css).toMatch(/terminal-view[^}]*>[^}]*min-width:\s*0/);
   });
+
+  it('sous 819 px, les rangées de contrôle sont pleine largeur / enroulables (SF-158-11)', () => {
+    const css = mobileMediaCss().replace(/\s+/g, ' ');
+    // Toggle-groups target/mode pleine largeur, options à parts égales.
+    expect(css).toMatch(/terminal-target-toggle[^}]*width:\s*100%/);
+    expect(css).toMatch(/terminal-mode-toggle[^}]*width:\s*100%/);
+    expect(css).toMatch(/terminal-target-toggle[^}]*mat-button-toggle[^}]*flex:\s*1/);
+    // État du poste : la commande longue enroule.
+    expect(css).toMatch(/terminal-host-state[^}]*code[^}]*word-break:\s*break-all/);
+    // Ligne de commande : item flex qui peut rétrécir.
+    expect(css).toMatch(/terminal-command[^}]*code[^}]*min-width:\s*0/);
+  });
 });
