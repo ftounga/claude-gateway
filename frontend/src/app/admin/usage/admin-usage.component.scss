@@ -133,3 +133,32 @@
     border-radius: 2px 2px 0 0;
   }
 }
+
+/**
+ * Téléphone (< 819 px) — patron mobile F-158 / SF-158-07.
+ *
+ * Point de rupture 819 px hérité de la coquille maître–détail (`_forge-layout-shell.scss:148`,
+ * DESIGN_SYSTEM.md §686) : sous ce seuil, les grilles à colonnes fixes passent en une colonne et
+ * aucun geste ne descend sous 44 px. Le desktop (≥ 820 px) reste strictement inchangé — aucune
+ * couleur ni police ajoutée (jetons `--cg-*` uniquement).
+ */
+@media (max-width: 819px) {
+  .usage-admin {
+    // Gouttière ≥ 16 px sans resserrer : on libère la largeur volée par le padding de 24 px.
+    padding: var(--cg-space-3);
+
+    // Les tuiles de totaux s'empilent en une colonne pleine largeur ; `minmax(0, 1fr)` (et non
+    // `1fr`) empêche un contenu large (coût, gros volume) de faire déborder la page (D4).
+    &__totals {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    // Le tableau d'usage garde son défilement isolé (`overflow-x: auto` déjà posé plus haut) :
+    // la page, elle, ne défile jamais horizontalement.
+
+    // Cible tactile ≥ 44 px pour chaque bascule du sélecteur de période (D3 charte).
+    ::ng-deep .mat-button-toggle-button {
+      min-height: 44px;
+    }
+  }
+}
