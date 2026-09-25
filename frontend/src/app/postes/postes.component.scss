@@ -269,6 +269,33 @@
   .poste__sort-option {
     min-height: 44px;
   }
+
+  /* F-160 / SF-160-02 — Forge mobile pro : l'en-tête « Forge » COMPACT et le fond de liste qui fait
+     ressortir les cartes de postes (maquette validée PO). Palette 100 % charte §16 (surface claire,
+     filets `--cg-divider`) — la surface sombre `--cg-navy-2` de la maquette est RÉSERVÉE au terminal
+     (§13) et n'est pas reprise ici (voir mini-spec D-A). Jetons `--cg-*` uniquement, aucune couleur
+     nouvelle. Le desktop (≥ 820 px) reste strictement inchangé. */
+  .postes {
+    background: var(--cg-bg);
+  }
+
+  .forge-fleet {
+    /* Plus dense au doigt, KPIs et actions qui enroulent proprement. */
+    padding: var(--cg-space-2) var(--cg-space-3);
+    gap: var(--cg-space-1) var(--cg-space-2);
+
+    &__title {
+      font-size: 16px;
+    }
+
+    /* Les actions restent toutes présentes (F-160 ne retire aucune fonction), atteignables au pouce. */
+    &__cra,
+    &__clients,
+    &__watch,
+    &__refresh {
+      min-height: 44px;
+    }
+  }
 }
 
 /* La tuile fantôme : pointillés `--cg-divider`, gris §5 — des dossiers, pas des projets. */
