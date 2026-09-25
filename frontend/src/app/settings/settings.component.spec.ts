@@ -413,4 +413,42 @@ describe('SettingsComponent', () => {
       expect(button?.textContent).toContain('Enregistrer le jeton');
     });
   });
+
+  // F-159 / SF-159-04 — responsive téléphone : les styles scopés du composant doivent laisser
+  // les lignes et les valeurs longues passer à la ligne au lieu de déborder horizontalement.
+  // getComputedStyle ne reflète les règles scopées que si l'élément est réellement attaché au
+  // document ; on rattache la racine du fixture le temps du test.
+  describe('responsive téléphone (F-159 / SF-159-04)', () => {
+    it('wraps account rows and lets a long value break instead of overflowing', () => {
+      setup();
+      const host = fixture.nativeElement as HTMLElement;
+      document.body.appendChild(host);
+      try {
+        const row = host.querySelector<HTMLElement>('.settings__row');
+        expect(row).not.toBeNull();
+        expect(getComputedStyle(row!).flexWrap).toBe('wrap');
+
+        const value = host.querySelector<HTMLElement>('.settings__value');
+        expect(value).not.toBeNull();
+        const style = getComputedStyle(value!);
+        expect(['anywhere', 'break-word']).toContain(style.overflowWrap);
+        expect(style.minWidth).toBe('0px');
+      } finally {
+        host.remove();
+      }
+    });
+
+    it('wraps the action button rows so they never overflow a narrow screen', () => {
+      setup();
+      const host = fixture.nativeElement as HTMLElement;
+      document.body.appendChild(host);
+      try {
+        const actions = host.querySelector<HTMLElement>('.settings__actions');
+        expect(actions).not.toBeNull();
+        expect(getComputedStyle(actions!).flexWrap).toBe('wrap');
+      } finally {
+        host.remove();
+      }
+    });
+  });
 });

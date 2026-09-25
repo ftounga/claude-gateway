@@ -1,6 +1,10 @@
 // Écran Paramètres du compte (F-11) — conforme à docs/DESIGN_SYSTEM.md
 // Palette et espacements via variables globales (--cg-*), multiples de 4px uniquement.
 
+// Point de rupture unique 819 px du Lot 0 (F-159 / SF-159-01). On ne recopie jamais
+// `@media (max-width: 819px)` ni un breakpoint local : on réutilise le mixin partagé.
+@use '../../styles/breakpoints' as bp;
+
 .settings {
   max-width: 1280px;
   margin: 0 auto;
@@ -28,6 +32,10 @@
 
   &__row {
     display: flex;
+    // Sur desktop la ligne tient sur une ligne (la place ne manque pas) ; sous 819 px, quand
+    // un e-mail long ne tient plus à côté du libellé de 160 px, la valeur passe à la ligne au
+    // lieu de pousser la largeur de la page. Inerte tant que la place ne manque pas.
+    flex-wrap: wrap;
     gap: var(--cg-space-4);
     padding: var(--cg-space-2) 0;
     border-bottom: 1px solid var(--cg-divider);
@@ -42,6 +50,11 @@
   &__value {
     font-size: 16px;
     font-weight: 500;
+    // Une valeur longue (e-mail, jeton masqué mono) s'enroule dans sa colonne au lieu de
+    // déclencher un défilement horizontal de page. `min-width: 0` autorise l'enroulement en
+    // contexte flex ; `overflow-wrap: anywhere` casse une chaîne sans espace si nécessaire.
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   &__muted {
@@ -52,8 +65,19 @@
 
   &__actions {
     display: flex;
+    // Jusqu'à 5 boutons/liens (profil, documents, modèles, rapports, MCP) : ils passent à la
+    // ligne au lieu de déborder sur un écran étroit.
+    flex-wrap: wrap;
     gap: var(--cg-space-2);
     margin-top: var(--cg-space-3);
+
+    // Cibles tactiles >= 44 px au téléphone, sans alourdir le desktop.
+    @include bp.phone {
+      button,
+      a {
+        min-height: 44px;
+      }
+    }
   }
 
   &__mono {
