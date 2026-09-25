@@ -18,6 +18,7 @@ import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatIconModule } from '@angular/material/icon';
+import { MatMenuModule } from '@angular/material/menu';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
@@ -166,7 +167,7 @@ export const LONG_THREAD_TURNS = 40;
     FormsModule, ForgeBreadcrumbComponent, LiveBadgeComponent, MarkdownPipe, MatButtonModule,
     TeamsLinkBadgeComponent, NgTemplateOutlet, TerminalEmailComponent, PageBlockComponent, PagePanelComponent,
     TerminalActionsPanelComponent,
-    MatButtonToggleModule, MatIconModule, MatProgressBarModule, MatProgressSpinnerModule,
+    MatButtonToggleModule, MatIconModule, MatMenuModule, MatProgressBarModule, MatProgressSpinnerModule,
     MatTooltipModule, RouterLink,
     WeeklyBudgetComponent, ProjectCostComponent, TurnSuggestionsComponent, DictationButtonComponent,
   ],
@@ -1236,6 +1237,36 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   private readonly presence = inject(HostPresenceService);
   private readonly releaseClock = this.presence.watchClock();
 
+  // ------------------------------------------------------ F-158 / SF-158-12 : en-tête compact mobile
+  /**
+   * **Vue téléphone** (F-158 / SF-158-12) : vrai sous le point de rupture 819 px de la charte.
+   *
+   * <p>Pilote la bascule de la barre d'en-tête — bandeau d'actions complet en desktop, en-tête
+   * compact + menu ⋯ en mobile. Alimenté par `matchMedia` : un signal, jamais une largeur relue à
+   * chaque rendu. Repli `false` sans `window` (rendu desktop, aucune erreur). Le rendu desktop
+   * (≥ 820 px) ne dépend donc jamais de ce signal.</p>
+   */
+  readonly isNarrow = signal(AtelierTerminalComponent.narrowMedia()?.matches ?? false);
+
+  /** La requête média suivie, pour brancher puis débrancher le listener proprement. */
+  private readonly narrowQuery = AtelierTerminalComponent.narrowMedia();
+
+  /** Le viewport a franchi le point de rupture : l'en-tête bascule compact ↔ complet. */
+  private readonly onNarrowChange = (event: MediaQueryListEvent): void => {
+    this.isNarrow.set(event.matches);
+    this.changeDetector.markForCheck();
+  };
+
+  private static narrowMedia(): MediaQueryList | null {
+    return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(max-width: 819px)')
+      : null;
+  }
+
+  constructor() {
+    this.narrowQuery?.addEventListener('change', this.onNarrowChange);
+  }
+
   /** Image courante du spinner ; seule la ligne vivante la lit. */
   spinnerFrame = AtelierTerminalComponent.SPINNER_FRAMES[0];
 
@@ -1257,6 +1288,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   ngOnDestroy(): void {
     this.stopSpinner();
     this.releaseClock();
+    this.narrowQuery?.removeEventListener('change', this.onNarrowChange);
   }
 
   private startSpinner(): void {
