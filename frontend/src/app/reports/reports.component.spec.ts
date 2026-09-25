@@ -149,6 +149,14 @@ describe('ReportsComponent', () => {
     expect(component.report()?.totalTokens).toBe(23000);
   });
 
+  // F-158 / SF-158-06 : le tableau mensuel large défile dans son cadre, jamais la page.
+  it('enveloppe le tableau mensuel dans un conteneur défilant isolé', () => {
+    setup();
+    const wrap = (fixture.nativeElement as HTMLElement).querySelector('.reports__table-wrap');
+    expect(wrap).not.toBeNull();
+    expect(wrap!.querySelector('table.reports__table')).not.toBeNull();
+  });
+
   it('exposes the current period from the report', () => {
     setup();
     expect(component.currentPeriod()?.periodStart).toBe('2026-07-01');
