@@ -1,3 +1,5 @@
+@use '../../styles/breakpoints' as bp;
+
 .documents {
   max-width: 960px;
   margin: 0 auto;
@@ -91,5 +93,33 @@
   &__error {
     margin: 16px 0 0;
     color: var(--cg-error);
+  }
+}
+
+// ---- Responsive téléphone (< 819 px) — F-159 / SF-159-05 ----
+// Adopte le Lot 0 (SF-159-01) : point de rupture unique via `bp.phone`. Le tableau est enveloppé
+// dans `.table-scroll` (utilitaire global) côté gabarit. Ici on resserre les cartes et on rend les
+// gestes tactiles (>= 44 px). Tout est borné sous `bp.phone` : desktop (>= 820 px) inchangé.
+@include bp.phone {
+  .documents {
+    padding: var(--cg-space-3);
+    gap: var(--cg-space-3);
+
+    &__submit,
+    &__list,
+    &__detail {
+      padding: var(--cg-space-3);
+    }
+
+    // Lien « Poser une question… » pleine largeur et tactile au pouce.
+    &__ask-link {
+      width: 100%;
+      min-height: 44px;
+    }
+
+    // Actions de ligne (Voir / Supprimer) tactiles.
+    &__table button {
+      min-height: 44px;
+    }
   }
 }
