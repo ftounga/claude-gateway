@@ -240,4 +240,53 @@ describe('AtelierTerminalComponent — largeur réelle (F-158 / SF-158-10)', () 
       });
     }
   });
+
+  // ------------------------------------------------------------------ F-158 / SF-158-13
+  // Composeur ancré en bas + décisions d'autorisation empilées pleine largeur : rien ne déborde à
+  // 360/400 px, et les décisions sont bien en colonne.
+  describe('composeur ancré + décisions empilées (SF-158-13)', () => {
+    /** Rend une demande d'autorisation en attente (fait apparaître `.terminal-ask` + ses boutons). */
+    function renderPendingDecision(): void {
+      fixture.componentInstance.pendingConfirmation = {
+        toolUseId: 't1',
+        tool: 'bash',
+        detail: 'terraform plan -chdir=dev',
+        source: 'HOSTED_SANDBOX',
+        answering: false,
+        denying: false,
+        reason: '',
+        deadline: null,
+        timeoutMs: null,
+      };
+      fixture.detectChanges();
+    }
+
+    for (const width of [360, 400]) {
+      it(`à ${width} px, le composeur ne fait PAS déborder la page`, () => {
+        applyTerminalMobileRules();
+        host.style.width = `${width}px`;
+        void host.getBoundingClientRect();
+        const input = host.querySelector('.terminal-input') as HTMLElement;
+        expect(input).withContext('.terminal-input absent').toBeTruthy();
+        expect(host.scrollWidth)
+          .withContext(`le composeur devrait tenir dans ${width} px`)
+          .toBeLessThanOrEqual(host.clientWidth);
+      });
+
+      it(`à ${width} px, les boutons de décision sont empilés (colonne) et ne débordent pas`, () => {
+        renderPendingDecision();
+        applyTerminalMobileRules();
+        host.style.width = `${width}px`;
+        void host.getBoundingClientRect();
+        const acts = host.querySelector('.terminal-ask-actions') as HTMLElement;
+        expect(acts).withContext('.terminal-ask-actions absent').toBeTruthy();
+        expect(getComputedStyle(acts).flexDirection)
+          .withContext('les décisions doivent être empilées en colonne')
+          .toBe('column');
+        expect(host.scrollWidth)
+          .withContext(`les décisions empilées devraient tenir dans ${width} px`)
+          .toBeLessThanOrEqual(host.clientWidth);
+      });
+    }
+  });
 });
