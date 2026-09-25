@@ -42,14 +42,18 @@
   }
 
   /* Les boutons de décision d'autorisation (Autoriser / Tout autoriser pour ce message / Refuser /
-     Confirmer le refus) passent à la ligne et sont dimensionnés tactile. Le silence vaut refus
-     (timeoutMs) : ils ne doivent jamais exiger un défilement horizontal pour être touchés. */
+     Confirmer le refus) sont EMPILÉS pleine largeur et dimensionnés au pouce (>= 46 px, maquette
+     `.ask .acts .btn`) — SF-158-13. Le silence vaut refus (timeoutMs) : le geste doit être évident et
+     ne jamais exiger un défilement horizontal. La mention « administrateur » (`.terminal-ask-elevated`),
+     item de cette même colonne, s'empile au-dessus, pleine largeur. */
   .terminal-ask-actions {
-    flex-wrap: wrap;
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .terminal-ask-actions button {
-    min-height: 44px;
+    width: 100%;
+    min-height: 46px;
   }
 
   /* La zone de saisie garde ses boutons (joindre, dictée, envoyer) atteignables au doigt. */
@@ -65,10 +69,11 @@
      SF-30-14) et défilent CHEZ EUX : on ne leur retire rien. Aucune couleur nouvelle. */
   .terminal-scrollback {
     overflow-x: hidden;
-    /* Gouttières resserrées au téléphone : le bloc de code récupère la largeur qu'il perdait à
-       ~400 px. Rendu >= 820 px inchangé (règle sous le point de rupture). */
-    padding-left: var(--cg-space-2);
-    padding-right: var(--cg-space-2);
+    /* Gouttières du fil RENDUES à 16 px (SF-158-13, annule le rognage à 8 px de SF-158-09) : la peau
+       « pro » de la maquette respire (carte de la demande, blocs, étapes). Les blocs qui DOIVENT
+       défiler portent leur propre `overflow-x:auto` et ne perdent rien. Rendu >= 820 px inchangé. */
+    padding-left: var(--cg-space-3);
+    padding-right: var(--cg-space-3);
   }
 
   /* La ligne vivante (spinner · action · étapes · tokens · chrono) passe à la ligne plutôt que de
@@ -88,9 +93,56 @@
   }
 
   /* Le champ de saisie peut rétrécir sous la largeur de ses boutons (joindre, dictée, envoyer) :
-     sans cela, son gabarit intrinsèque forcerait un débordement horizontal à ~400 px. */
+     sans cela, son gabarit intrinsèque forcerait un débordement horizontal à ~400 px. Il passe aussi
+     PLEINE LARGEUR et boxé (SF-158-13, maquette `.field`) : creux `--cg-navy-2` sur le fond
+     `--cg-primary` du terminal, coins arrondis, gouttière interne. */
   .terminal-field {
     min-width: 0;
+    width: 100%;
+    padding: var(--cg-space-2) var(--cg-space-3);
+    background: var(--cg-navy-2);
+    border-radius: 8px;
+  }
+
+  /* ---- COMPOSEUR ANCRÉ EN BAS (F-158 / SF-158-13, maquette `.composer`) ----
+     La zone de saisie se colle au bas de l'écran : le CHAMP passe en première ligne (pleine largeur),
+     et la rangée d'icônes (joindre, dicter) + le bouton Envoyer passe DESSOUS. Le fond navy et le
+     `border-top` (déjà porté par `.terminal-input`) séparent la saisie du fil qui défile derrière ;
+     `env(safe-area-inset-bottom)` dégage l'encoche. STYLE SEUL — le DOM, la dictée (F-145), le dépôt,
+     l'envoi et la précision pendant un tour sont inchangés. Aucune couleur nouvelle. Rendu >= 820 px
+     inchangé (sous le point de rupture). */
+  .terminal-input {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    flex-wrap: wrap;
+    align-items: center;
+    background: var(--cg-primary);
+    padding-bottom: calc(var(--cg-space-2) + env(safe-area-inset-bottom));
+  }
+
+  /* Le prompt `$` (décoratif, aria-hidden) n'a pas sa place dans la peau mobile : la maquette montre
+     un champ boxé, pas une invite de shell. */
+  .terminal-dollar {
+    display: none;
+  }
+
+  /* Le champ (et sa liste d'@-mentions) occupe toute la première ligne ; les icônes suivent dessous. */
+  .terminal-mentions {
+    order: -1;
+    flex: 1 1 100%;
+    width: 100%;
+  }
+
+  /* Envoyer : poussé à droite de la rangée d'icônes, en pastille `--cg-accent` (jeton existant) façon
+     maquette `.send`. L'encre passe au navy du terminal pour tenir le contraste sur l'or. */
+  .terminal-input button[type="submit"] {
+    margin-left: auto;
+    min-height: 44px;
+    padding: 0 var(--cg-space-4);
+    border-radius: 8px;
+    background: var(--cg-accent);
+    --mdc-text-button-label-text-color: var(--cg-primary);
   }
 
   /* ---- RANGÉES DE CONTRÔLE EN PLEINE LARGEUR (F-158 / SF-158-11, P0) ----
