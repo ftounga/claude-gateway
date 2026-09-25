@@ -135,3 +135,31 @@
     align-items: center;
   }
 }
+
+/* F-158 / SF-158-05 — Téléphone (< 819 px) : l'onboarding passe à UNE colonne et devient
+   confortable au doigt. Les cartes de mode s'empilent pleine largeur, les actions passent en
+   colonne avec des cibles tactiles ≥ 44 px, jamais de scroll horizontal. Même point de rupture
+   et même forme « colonnes fixes → 1 colonne » que le shell maître–détail
+   (`_forge-layout-shell.scss`, DESIGN_SYSTEM §16). `minmax(0, 1fr)` — et non `1fr` — pour qu'un
+   contenu large de carte ne fasse pas déborder la colonne (`min-width:auto` par défaut). Le
+   desktop (≥ 820 px) reste inchangé. */
+@media (max-width: 819px) {
+  .onboarding {
+    /* Gouttière ≥ 16 px, plus de largeur utile qu'avec 24 px. */
+    padding: 16px;
+
+    &__modes {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    &__actions {
+      flex-direction: column;
+      align-items: stretch;
+
+      button {
+        width: 100%;
+        min-height: 44px;
+      }
+    }
+  }
+}
