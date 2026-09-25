@@ -620,3 +620,17 @@
   font-size: 12px;
   line-height: 1.5;
 }
+
+/* ---- MOMENT TEAMS EN COLONNE SUR TÉLÉPHONE (F-158 / SF-158-14) ----
+   L'image à côté de la phrase suppose de la largeur ; sous 819 px elle passe AU-DESSUS (colonne),
+   pleine largeur, plus de colonne fixe de 200 px. Aucune couleur nouvelle. Rendu >= 820 px inchangé. */
+@media (max-width: 819px) {
+  .teams-moment {
+    flex-direction: column;
+  }
+
+  .teams-moment__shot {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+}

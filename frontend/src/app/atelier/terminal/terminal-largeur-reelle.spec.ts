@@ -289,4 +289,68 @@ describe('AtelierTerminalComponent — largeur réelle (F-158 / SF-158-10)', () 
       });
     }
   });
+
+  // ------------------------------------------------------------------ F-158 / SF-158-14
+  // Peau du fil : la sortie DÉFILE DANS SA BOÎTE (jamais la page) et la demande est une carte.
+  describe('peau du fil — boîte de sortie + carte de la demande (SF-158-14)', () => {
+    /** Rend un vrai tour (demande utilisateur + bloc bash avec une sortie très large). */
+    function renderTurn(): void {
+      const c = fixture.componentInstance;
+      c.messages = [
+        { id: 'u1', role: 'USER', content: 'Regarde ce que Daoud a poussé', actions: [] },
+        {
+          id: 'a1',
+          role: 'ASSISTANT',
+          content: '',
+          actions: [],
+          terminal: [
+            {
+              tool: 'bash',
+              command: 'git log --oneline',
+              toolUseId: null,
+              threadId: null,
+              // Ligne INSÉCABLE très large : sans la boîte à défilement propre, elle déborderait.
+              output: 'bucket_data_ingestion_tfstate_dev_terraform_'.repeat(30),
+              hasOutput: true,
+              error: false,
+              expanded: true,
+            },
+          ],
+        },
+      ] as never;
+      fixture.detectChanges();
+    }
+
+    for (const width of [360, 400]) {
+      it(`à ${width} px, la sortie défile DANS sa boîte et ne fait PAS déborder la page`, () => {
+        renderTurn();
+        applyTerminalMobileRules();
+        host.style.width = `${width}px`;
+        void host.getBoundingClientRect();
+        const out = host.querySelector('.terminal-output') as HTMLElement;
+        expect(out).withContext('.terminal-output absente').toBeTruthy();
+        expect(getComputedStyle(out).overflowX)
+          .withContext('la boîte de sortie doit défiler chez elle (overflow-x:auto)')
+          .toBe('auto');
+        expect(out.scrollWidth)
+          .withContext('la sortie très large doit dépasser DANS sa boîte')
+          .toBeGreaterThan(out.clientWidth);
+        expect(host.scrollWidth)
+          .withContext('la page ne doit pas défiler horizontalement')
+          .toBeLessThanOrEqual(host.clientWidth);
+      });
+    }
+
+    it('à 360 px, la demande de l\'utilisateur est une carte boxée (fond non transparent)', () => {
+      renderTurn();
+      applyTerminalMobileRules();
+      host.style.width = '360px';
+      void host.getBoundingClientRect();
+      const req = host.querySelector('.terminal-prompt-line') as HTMLElement;
+      expect(req).withContext('.terminal-prompt-line absente').toBeTruthy();
+      expect(getComputedStyle(req).backgroundColor)
+        .withContext('la carte de la demande doit avoir un fond (creux navy)')
+        .not.toBe('rgba(0, 0, 0, 0)');
+    });
+  });
 });
