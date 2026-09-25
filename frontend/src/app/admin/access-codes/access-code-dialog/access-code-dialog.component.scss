@@ -2,7 +2,10 @@
   display: flex;
   flex-direction: column;
   gap: var(--cg-space-2);
-  min-width: 460px;
+  // F-159 / SF-159-06 — le garde-fou global du Lot 0 borne le panneau à <= 96vw et neutralise la
+  // min-width de la surface ; `min(460px, 100%)` laisse alors le contenu rétrécir au lieu de
+  // forcer un scroll-x interne sous ~460 px. Desktop (>= 820 px) : la valeur vaut 460 px.
+  min-width: min(460px, 100%);
 
   &__space {
     align-self: flex-start;
@@ -16,11 +19,5 @@
     border-radius: 8px;
     background: var(--cg-bg);
     color: var(--cg-text-primary);
-  }
-}
-
-@media (max-width: 640px) {
-  .code-form {
-    min-width: 0;
   }
 }

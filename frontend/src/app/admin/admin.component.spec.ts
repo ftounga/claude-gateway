@@ -131,6 +131,16 @@ describe('AdminComponent', () => {
     expect(text).toContain('a@example.com');
     expect(text).toContain('ADMIN');
   });
+
+  // F-159 / SF-159-06 — responsive téléphone : la table à 6 colonnes doit défiler dans son propre
+  // conteneur .table-scroll (Lot 0) sous 819 px, jamais élargir la page.
+  it('enveloppe la table des comptes dans un conteneur .table-scroll', () => {
+    const host = fixture.nativeElement as HTMLElement;
+    const table = host.querySelector('table[mat-table]');
+    expect(table).not.toBeNull();
+    const wrap = table!.closest('.table-scroll');
+    expect(wrap).not.toBeNull();
+  });
 });
 
 describe('AuthService.isAdmin', () => {

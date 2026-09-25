@@ -1,5 +1,9 @@
 // Section « Codes d'accès » de l'administration (F-62 / SF-62-03).
 // Calquée sur la section Gouvernance : mêmes jetons, mêmes formes. Aucune couleur nouvelle.
+
+// Point de rupture partagé du Lot 0 (F-159 / SF-159-01) — jamais de breakpoint local.
+@use '../../../styles/breakpoints' as bp;
+
 .codes-admin {
   display: flex;
   flex-direction: column;
@@ -47,6 +51,28 @@
 
   &__fresh-main {
     min-width: 260px;
+  }
+
+  // Téléphone (< 819 px) : gouttière reprise à 16 px ; le bloc du code fraîchement émis ne force
+  // plus sa largeur de 260 px (il rétrécit) ; l'alignement des traces repasse à gauche ; chaque
+  // geste (Nouveau code, Copier, J'ai copié, Réessayer) atteint une cible >= 44 px. Desktop intact.
+  @include bp.phone {
+    padding: var(--cg-space-3);
+
+    // Le bloc du code fraîchement émis ne force plus sa largeur de 260 px.
+    &__fresh-main {
+      min-width: 0;
+    }
+
+    // Les traces d'un code repassent à gauche (elles étaient alignées à droite sur desktop).
+    &__item-trace {
+      align-items: flex-start;
+      text-align: left;
+    }
+
+    ::ng-deep .mat-mdc-button-base {
+      min-height: 44px;
+    }
   }
 
   &__fresh-warning {
@@ -129,12 +155,5 @@
     display: flex;
     flex-direction: column;
     gap: var(--cg-space-1);
-  }
-}
-
-@media (max-width: 640px) {
-  .codes-admin__item-trace {
-    align-items: flex-start;
-    text-align: left;
   }
 }
