@@ -4,6 +4,27 @@
    compilation. Contrainte du projet, pas un choix de style. Aucune couleur nouvelle : jetons du
    design system uniquement. Tout est sous le point de rupture 819 px — rendu >= 820 px inchangé. */
 @media (max-width: 819px) {
+  /* ---- CONTAINMENT HORIZONTAL DU TERMINAL (F-158 / SF-158-10, P0) ----
+     Cause racine du débordement à droite sur téléphone : `:host` et `.terminal-view`
+     (`atelier-terminal.component.scss` l.2-12) n'ont AUCUN `overflow-x` / `max-width` / `min-width:0`.
+     Le fil (`.terminal-scrollback`) est clippé (SF-158-09), mais les RANGÉES DE CONTRÔLE (target,
+     mode, host-state, hint-runner), SŒURS du fil sous `.terminal-view`, remontent jusqu'au conteneur
+     de scroll de PAGE (`shell.component.scss .app-content{overflow:auto}`). On ferme l'axe ICI, au
+     niveau de la vue : plus rien ne remonte à `.app-content`. Les blocs qui DOIVENT défiler (diff,
+     `pre`, `table` Markdown) gardent leur `overflow-x:auto` isolé (SF-30-13/14) — on ne leur retire
+     rien. Aucune couleur nouvelle. Rendu >= 820 px inchangé (sous le point de rupture 819 px). */
+  :host,
+  .terminal-view {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  /* Backstop : les enfants flex de la colonne (rangées de contrôle, fil) peuvent rétrécir sous leur
+     taille intrinsèque au lieu de forcer un débordement horizontal (min-width:auto par défaut). */
+  .terminal-view > * {
+    min-width: 0;
+  }
+
   /* La barre d'en-tête et ses actions passent à la ligne plutôt que de déborder : jamais de
      défilement horizontal (règle responsive DESIGN_SYSTEM, patron /forge des SF-151-01/02). */
   .terminal-bar {

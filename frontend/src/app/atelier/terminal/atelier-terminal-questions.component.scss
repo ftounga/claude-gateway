@@ -21,8 +21,9 @@
   align-items: start;
 }
 
-/* Sous 820 px : une seule colonne, le rail en tête (comme la maquette). */
-@media (max-width: 820px) {
+/* Sous 819 px : une seule colonne, le rail en tête (comme la maquette). Point de rupture unique de la
+   charte (F-158 / SF-158-10 : uniformisation 820 -> 819, DESIGN_SYSTEM `_breakpoints.scss`). */
+@media (max-width: 819px) {
   .terminal-scrollback--railed {
     grid-template-columns: 1fr;
   }

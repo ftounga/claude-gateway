@@ -112,4 +112,13 @@ describe('AtelierTerminalComponent — contenu responsive (F-158 / SF-158-09)', 
     // Diff (SF-30-13), bloc de code et tableau Markdown (SF-30-14) : chacun défile CHEZ LUI.
     expect(css).toMatch(/terminal-diff-body[^}]*overflow-x:\s*auto/);
   });
+
+  it('sous 819 px, la vue clôt l\'axe horizontal — containment (SF-158-10)', () => {
+    const css = mobileMediaCss().replace(/\s+/g, ' ');
+    // `:host, .terminal-view { max-width:100%; overflow-x:hidden }` : plus rien ne remonte à `.app-content`.
+    expect(css).toMatch(/terminal-view[^}]*overflow-x:\s*hidden/);
+    // Backstop `.terminal-view > * { min-width:0 }` : les enfants flex peuvent rétrécir.
+    // (Angular réécrit `> *` en `> [_ngcontent…]` et sérialise `0px`.)
+    expect(css).toMatch(/terminal-view[^}]*>[^}]*min-width:\s*0/);
+  });
 });
