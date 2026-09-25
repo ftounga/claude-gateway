@@ -420,6 +420,16 @@ describe('PostesComponent', () => {
     expect(projects[1].textContent).toContain('api');
   });
 
+  // F-158 / SF-158-02 : le patron responsive (1 colonne sous 819 px) s'applique à `.poste__grid`.
+  // On garde le contrat de markup : les tuiles sont bien rangées DANS cette grille — c'est elle que
+  // la règle `@media` bascule en une colonne.
+  it('range les tuiles de projet dans la grille de la Forge (support du patron responsive)', () => {
+    setup();
+    const grid = (fixture.nativeElement as HTMLElement).querySelector('.poste__grid');
+    expect(grid).not.toBeNull();
+    expect(grid!.querySelectorAll('.projet').length).toBe(2);
+  });
+
   it('dit ce qui tourne', () => {
     setup();
     expect(component.activityLabel(poste)).toBe('1 projet actif');
