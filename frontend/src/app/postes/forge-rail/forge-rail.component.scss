@@ -251,3 +251,35 @@
     margin: var(--cg-space-2) var(--cg-space-1) 0;
   }
 }
+
+/* F-158 / SF-158-03 — Téléphone (< 820 px) : la coquille (F-151) met déjà la colonne en pleine
+   largeur ; ici on ne touche QUE la densité et les cibles tactiles (≥ 44 px), au doigt et sans
+   débordement. Le desktop (≥ 820 px) reste strictement inchangé. Jetons --cg-* uniquement. */
+@media (max-width: 819px) {
+  .forge-rail {
+    /* Des lignes assez espacées pour ne pas toucher la voisine au doigt. */
+    &__list {
+      gap: var(--cg-space-2);
+    }
+
+    /* La ligne de poste : une cible confortable, la grille de ligne inchangée. */
+    &__host {
+      min-height: 44px;
+    }
+
+    /* La recherche : une cible pleine hauteur. */
+    &__search {
+      min-height: 44px;
+    }
+
+    /* Le repli « Fermées » : un bouton atteignable au pouce. */
+    &__group--toggle {
+      min-height: 44px;
+    }
+
+    /* « Connecter un poste » : au moins 44 px de haut. */
+    &__connect {
+      min-height: 44px;
+    }
+  }
+}
