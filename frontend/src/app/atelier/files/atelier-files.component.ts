@@ -93,6 +93,10 @@ const DEFAULT_COMMIT_MESSAGE = 'Modifications depuis la Forge';
   styleUrls: [
     './atelier-files.component.scss',
     './atelier-files-viewer.component.scss',
+    // Confort au doigt < 819 px (F-159 / SF-159-02) — 3ᵉ feuille dédiée pour tenir le budget de
+    // style par composant (F-117), listée en dernier : elle affine l'ossature/l'aperçu sous le
+    // point de rupture, en s'appuyant sur le mixin `bp.phone` du Lot 0 (SF-159-01).
+    './atelier-files-mobile.component.scss',
   ],
 })
 export class AtelierFilesComponent implements OnInit {
