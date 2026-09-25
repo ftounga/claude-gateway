@@ -55,6 +55,9 @@
 
     <mat-card class="reports__list">
       <h2 class="reports__list-title">Historique mensuel</h2>
+      <!-- F-158 / SF-158-06 : le tableau large défile dans son cadre ; la page, elle, ne défile
+           jamais horizontalement sous 819 px (DESIGN_SYSTEM.md — écran étroit). -->
+      <div class="reports__table-wrap">
       <table mat-table [dataSource]="dataSource" class="reports__table">
         <ng-container matColumnDef="period">
           <th mat-header-cell *matHeaderCellDef>Période</th>
@@ -96,6 +99,7 @@
         <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
         <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
       </table>
+      </div>
       <mat-paginator [pageSizeOptions]="[6, 12, 24]" [pageSize]="12"></mat-paginator>
     </mat-card>
   }

@@ -75,6 +75,12 @@
     margin: 0 0 var(--cg-space-3);
   }
 
+  /* Le tableau mensuel (mat-table) peut être plus large que l'écran étroit : il défile dans son
+     cadre, jamais la page (F-158 / SF-158-06 ; DESIGN_SYSTEM.md — comportement sur écran étroit). */
+  &__table-wrap {
+    overflow-x: auto;
+  }
+
   &__table {
     width: 100%;
   }
@@ -219,6 +225,33 @@
 
     tr:last-child td {
       border-bottom: none;
+    }
+  }
+}
+
+/**
+ * Téléphone (< 819 px) — patron mobile F-158 / SF-158-06.
+ *
+ * Point de rupture 819 px hérité de la coquille maître–détail (`_forge-layout-shell.scss:148`,
+ * DESIGN_SYSTEM.md §686) : sous ce seuil, la grille de tuiles passe en une colonne et aucun geste
+ * ne descend sous 44 px. Les tableaux larges défilent dans leur conteneur `overflow-x:auto` isolé
+ * (D4) — la page ne défile jamais horizontalement. Le desktop (≥ 820 px) reste strictement
+ * inchangé — aucune couleur ni police ajoutée (jetons `--cg-*` uniquement).
+ */
+@media (max-width: 819px) {
+  .reports {
+    // Les tuiles de résumé s'empilent en une colonne pleine largeur ; `minmax(0, 1fr)` (et non
+    // `1fr`) empêche un contenu large de faire déborder la page (D4).
+    &__summary {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    // Cibles tactiles ≥ 44 px : les bascules de période et la pagination restent atteignables au
+    // pouce (D3 charte). `::ng-deep` scopé sous `.reports` — atteint les internes Material
+    // (mat-button-toggle, mat-paginator) sans fuir hors de cet écran.
+    ::ng-deep .mat-button-toggle-button,
+    ::ng-deep .mat-mdc-paginator .mat-mdc-icon-button {
+      min-height: 44px;
     }
   }
 }
