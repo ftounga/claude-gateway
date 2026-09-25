@@ -69,3 +69,43 @@
   p { margin: 0 0 var(--cg-space-2); }
   ul, ol { margin: 0 0 var(--cg-space-2); padding-left: var(--cg-space-4); }
 }
+
+// ---- Refonte mobile pro (F-160 / SF-160-01) ----
+// Sous 819 px, le bloc de code prend le look sombre de charte de la maquette validée : fond
+// --cg-navy-2, en-tête --cg-navy, encre claire --cg-divider. AUCUNE couleur nouvelle (jetons --cg-*,
+// filets dérivés par color-mix). Le contenu défile DANS le bloc (`.copy-block-content` porte déjà
+// `overflow-x: auto`) — jamais la page. Le desktop (>= 820 px) reste strictement inchangé.
+@media (max-width: 819px) {
+  .copy-block {
+    background: var(--cg-navy-2);
+    border-color: color-mix(in srgb, var(--cg-divider) 16%, transparent);
+  }
+
+  .copy-block-header {
+    background: var(--cg-navy);
+    border-bottom-color: color-mix(in srgb, var(--cg-divider) 16%, transparent);
+  }
+
+  .copy-block-title {
+    color: var(--cg-text-secondary);
+  }
+
+  .copy-button {
+    color: var(--cg-divider);
+  }
+
+  // Comme la maquette : le code DÉFILE en x dans le bloc (`overflow-x: auto` déjà porté par
+  // `.copy-block-content`), il n'enroule pas. Le débordement est contenu par le bloc, jamais la page.
+  .copy-block-content {
+    white-space: pre;
+
+    code {
+      color: var(--cg-divider);
+    }
+  }
+
+  .copy-block-rich {
+    background: var(--cg-navy-2);
+    color: var(--cg-divider);
+  }
+}

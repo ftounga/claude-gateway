@@ -1,9 +1,22 @@
-// Écran de chat — règles responsive téléphone (F-158 / SF-158-01).
-// Feuille dédiée (budget SCSS F-117) : la feuille principale est déjà proche du seuil
-// d'avertissement ; les règles mobile vivent ici, comme le précédent SF-151-03.
+// Écran de chat — règles responsive téléphone.
 //
-// Point de rupture 819 px (fait autorité : _forge-layout-shell.scss:148, DESIGN_SYSTEM.md:686).
-// Le desktop (>= 820 px) reste STRICTEMENT inchangé : rien hors de ce media.
+// F-158 / SF-158-01 : mise en 1 colonne + tiroir de conversations (base ci-dessous).
+// F-160 / SF-160-01 : REFONTE mobile pro (look sombre de charte + forme de la maquette validée).
+//
+// Feuille dédiée (budget de build `anyComponentStyle` = 12 ko, angular.json) : la feuille principale
+// du chat est déjà chargée ; les règles mobile vivent ici.
+//
+// Point de rupture 819 px (fait autorité : `_breakpoints.scss`, DESIGN_SYSTEM.md). Le desktop
+// (>= 820 px) reste STRICTEMENT inchangé : AUCUNE règle hors de ce media.
+//
+// Charte stricte (cadrage F-160 §2) — AUCUNE couleur nouvelle, jetons `--cg-*` uniquement :
+//   fond d'écran #0B1020         -> --cg-navy
+//   surfaces / cartes / code     -> --cg-navy-2
+//   texte principal #E7ECF6      -> --cg-divider (encre claire sur sombre)
+//   texte atténué                -> --cg-text-secondary
+//   accent (envoyer, filet)      -> --cg-orange
+// Les filets discrets sur fond sombre dérivent d'un jeton via color-mix (technique déjà employée
+// dans chat.component.scss) — ce n'est pas une couleur nouvelle.
 
 // Bouton d'ouverture du tiroir (barre latérale) et bouton de fermeture (en-tête du tiroir) :
 // n'existent que sur téléphone. Masqués par défaut ; le media les affiche.
@@ -13,10 +26,12 @@
 }
 
 @media (max-width: 819px) {
+  // -------------------------------------------------------------- Coquille 1 colonne (SF-158-01)
   // Grille 280px 1fr -> une seule colonne. Le fil et le composer prennent toute la largeur.
   .chat-layout {
     grid-template-columns: minmax(0, 1fr);
     position: relative;
+    background: var(--cg-navy);
   }
 
   // La barre latérale devient un tiroir plein écran superposé, masqué par défaut.
@@ -27,10 +42,31 @@
     width: 100%;
     border-right: 0;
     display: none;
+    background: var(--cg-navy-2);
   }
 
   .chat-sidebar.mobile-open {
     display: flex;
+  }
+
+  .sidebar-header {
+    border-bottom-color: color-mix(in srgb, var(--cg-divider) 16%, transparent);
+  }
+
+  .sidebar-title {
+    color: var(--cg-surface);
+  }
+
+  .sidebar-empty {
+    color: var(--cg-text-secondary);
+  }
+
+  .conversation-title {
+    color: var(--cg-divider);
+  }
+
+  .conversation-model {
+    color: var(--cg-text-secondary);
   }
 
   .sidebar-toggle {
@@ -43,6 +79,16 @@
 
   .chat-main {
     min-width: 0;
+    background: var(--cg-navy);
+  }
+
+  // -------------------------------------------------------------- En-tête compact (SF-160-01)
+  .chat-toolbar {
+    background: var(--cg-navy-2);
+    border-bottom-color: color-mix(in srgb, var(--cg-divider) 16%, transparent);
+    color: var(--cg-divider);
+    // Icônes de la barre (conversations, dossier, export) en encre claire sur fond sombre.
+    --mdc-icon-button-icon-color: var(--cg-divider);
   }
 
   // Barre d'outils sur une seule ligne, sans débordement : le titre s'ellipse, le sélecteur rétréci.
@@ -51,6 +97,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    color: var(--cg-surface);
   }
 
   .toolbar-spacer {
@@ -61,20 +108,133 @@
     width: auto;
     max-width: 44vw;
     margin-left: auto;
+    // Champ Material relu en sombre via les jetons MDC (pas de couleur nouvelle).
+    --mdc-outlined-text-field-input-text-color: var(--cg-divider);
+    --mdc-outlined-text-field-label-text-color: var(--cg-text-secondary);
+    --mdc-outlined-text-field-outline-color: color-mix(in srgb, var(--cg-divider) 24%, transparent);
+    --mat-select-enabled-trigger-text-color: var(--cg-divider);
+    --mat-select-enabled-arrow-color: var(--cg-divider);
+    --mat-select-placeholder-text-color: var(--cg-text-secondary);
   }
 
-  // Fil et composer resserrés (marges latérales réduites) ; aucune largeur qui déborde.
+  .files-trigger.active {
+    color: var(--cg-orange);
+  }
+
+  // -------------------------------------------------------------- Fil de messages (SF-160-01)
+  // Fil resserré (gouttières >= 16 px) sur fond d'écran sombre ; aucune largeur qui déborde.
   .message-thread {
     padding: var(--cg-space-3);
+    background: var(--cg-navy);
+    gap: var(--cg-space-3);
   }
 
+  .thread-empty {
+    color: var(--cg-text-secondary);
+  }
+
+  // Bulles : surface de charte --cg-navy-2, encre claire, rayon asymétrique. Le fond ne PORTE jamais
+  // seul l'info (D7) : la bulle utilisateur se distingue par l'alignement, le rayon ET un filet
+  // --cg-orange — pas d'aplat orange plein (DESIGN_SYSTEM §8).
   .message {
     max-width: 100%;
+    box-shadow: none;
+    border-radius: 14px;
+    color: var(--cg-divider);
   }
 
+  .message.user {
+    align-self: flex-end;
+    max-width: 85%;
+    background: var(--cg-navy-2);
+    border: 1px solid var(--cg-orange);
+    color: var(--cg-divider);
+    border-radius: 14px 14px 4px 14px;
+  }
+
+  .message.assistant {
+    align-self: flex-start;
+    max-width: 92%;
+    background: var(--cg-navy-2);
+    border: 1px solid color-mix(in srgb, var(--cg-divider) 16%, transparent);
+    color: var(--cg-divider);
+    border-radius: 14px 14px 14px 4px;
+  }
+
+  .message-role {
+    color: var(--cg-text-secondary);
+  }
+
+  .message-content {
+    color: var(--cg-divider);
+  }
+
+  // Rendu Markdown des réponses assistant, relu en sombre (liens accent, code mono sur fond navy).
+  .markdown-body {
+    a {
+      color: var(--cg-orange);
+    }
+
+    code {
+      background: var(--cg-navy);
+      color: var(--cg-divider);
+    }
+
+    pre {
+      background: var(--cg-navy);
+      border-color: color-mix(in srgb, var(--cg-divider) 16%, transparent);
+    }
+
+    blockquote {
+      border-left-color: color-mix(in srgb, var(--cg-divider) 24%, transparent);
+      color: var(--cg-text-secondary);
+    }
+
+    th,
+    td {
+      border-color: color-mix(in srgb, var(--cg-divider) 16%, transparent);
+    }
+  }
+
+  // -------------------------------------------------------------- Composeur ancré (SF-160-01)
+  // Ancré en bas de l'écran (sticky), respecte l'encoche (safe-area). Le champ passe pleine largeur
+  // AU-DESSUS, les outils (joindre / bibliothèque / Envoyer) s'alignent DESSOUS — obtenu par
+  // flex-wrap + order SANS réordonner le DOM (le desktop garde sa rangée unique).
   .composer {
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+    flex-wrap: wrap;
+    align-items: center;
     padding: var(--cg-space-3);
+    padding-bottom: calc(var(--cg-space-3) + env(safe-area-inset-bottom));
     gap: var(--cg-space-2);
+    background: var(--cg-navy-2);
+    border-top: 1px solid color-mix(in srgb, var(--cg-divider) 16%, transparent);
+  }
+
+  .composer-field {
+    order: -1;
+    flex: 1 0 100%;
+    // Saisie relue en sombre via jetons MDC (pas de couleur nouvelle).
+    --mdc-outlined-text-field-input-text-color: var(--cg-divider);
+    --mdc-outlined-text-field-label-text-color: var(--cg-text-secondary);
+    --mdc-outlined-text-field-caret-color: var(--cg-orange);
+    --mdc-outlined-text-field-outline-color: color-mix(in srgb, var(--cg-divider) 24%, transparent);
+    --mdc-outlined-text-field-hover-outline-color: color-mix(in srgb, var(--cg-divider) 36%, transparent);
+  }
+
+  // Le champ, plein largeur, force les boutons à passer sur la rangée suivante.
+  .composer button.mat-mdc-icon-button {
+    order: 1;
+    color: var(--cg-text-secondary);
+  }
+
+  // Envoyer : accent de charte, poussé à droite de la rangée d'outils.
+  .composer button.mat-mdc-unelevated-button {
+    order: 2;
+    margin-left: auto;
+    min-width: 96px;
   }
 
   .composer-formats,
@@ -84,6 +244,16 @@
     padding-right: var(--cg-space-3);
   }
 
+  .composer-formats {
+    color: var(--cg-text-secondary);
+  }
+
+  // -------------------------------------------------------------- Dossier de fichiers (SF-158-01)
+  .files-panel {
+    background: var(--cg-navy-2);
+    border-bottom-color: color-mix(in srgb, var(--cg-divider) 16%, transparent);
+  }
+
   .files-panel-header,
   .files-empty,
   .files-list {
@@ -91,12 +261,37 @@
     padding-right: var(--cg-space-3);
   }
 
+  .files-panel-header {
+    border-bottom-color: color-mix(in srgb, var(--cg-divider) 16%, transparent);
+  }
+
+  .files-panel-title {
+    color: var(--cg-surface);
+  }
+
+  .files-empty {
+    color: var(--cg-text-secondary);
+  }
+
+  .files-item {
+    background: var(--cg-navy);
+    border-color: color-mix(in srgb, var(--cg-divider) 16%, transparent);
+  }
+
+  .files-item-name {
+    color: var(--cg-divider);
+  }
+
+  .files-item-size {
+    color: var(--cg-text-secondary);
+  }
+
   // La largeur fixe 180px du badge de type de fichier ne doit pas forcer un débordement.
   .files-item-type {
     max-width: 96px;
   }
 
-  // Cibles tactiles >= 44px : boutons d'icône, bouton Envoyer, bascule/fermeture du tiroir.
+  // -------------------------------------------------------------- Cibles tactiles >= 44 px (D6)
   .chat-toolbar button.mat-mdc-icon-button,
   .composer button.mat-mdc-icon-button,
   .sidebar-header button.mat-mdc-icon-button,
