@@ -63,6 +63,8 @@
     } @else if (dataSource.data.length === 0) {
       <p class="documents__empty">Aucun document pour le moment.</p>
     } @else {
+      <!-- F-159 / SF-159-05 : seul le tableau défile horizontalement (jamais la page) au téléphone. -->
+      <div class="table-scroll">
       <table mat-table [dataSource]="dataSource" class="documents__table">
         <ng-container matColumnDef="filename">
           <th mat-header-cell *matHeaderCellDef>Nom</th>
@@ -106,6 +108,7 @@
         <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
         <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
       </table>
+      </div>
       <mat-paginator [pageSizeOptions]="[5, 10, 25]" [pageSize]="10"></mat-paginator>
     }
   </mat-card>
