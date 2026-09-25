@@ -163,4 +163,17 @@ describe('AdminUsageComponent', () => {
 
     expect(component.monthLabel('2026-09-01')).toBe('sept. 2026');
   });
+
+  // F-158 / SF-158-07 — patron responsive : la grille des totaux et le conteneur défilant
+  // isolé du tableau sont présents (sous 819 px, la grille passe en 1 colonne et le tableau
+  // défile dans son cadre, jamais la page).
+  it('porte la grille des totaux et le tableau dans un conteneur défilant isolé', () => {
+    setup();
+
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('.usage-admin__totals')).not.toBeNull();
+    const wrap = host.querySelector('.usage-admin__table-wrap');
+    expect(wrap).not.toBeNull();
+    expect(wrap?.querySelector('.usage-admin__table')).not.toBeNull();
+  });
 });
