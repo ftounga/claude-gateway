@@ -467,8 +467,25 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    */
   @Input() runnerHint: AtelierRunnerRecommendation | null = null;
 
-  /** Tours déjà terminés (demande, commentaire, transcription, coût). */
-  @Input() messages: AtelierThreadItem[] = [];
+  /**
+   * Tours déjà terminés (demande, commentaire, transcription, coût).
+   *
+   * <p>L'entrée est adossée à un <b>signal</b> (F-117 / SF-117-07) pour que tout calcul dérivé de la
+   * longueur du fil — au premier chef {@link #foldedCount} — se recalcule quand les messages
+   * arrivent. Sans cela, un tableau `@Input()` nu n'invalide aucun `computed()` : en prod l'état de
+   * reprise (`foldedTurns`) arrive AVANT le fil, `foldedCount` se mémoïsait à 0 sur un fil encore
+   * vide et le repli « Voir l'historique » ne s'affichait jamais. Le getter renvoie exactement la
+   * référence posée, donc tous les usages existants de {@code this.messages} (dont la clé WeakMap de
+   * {@link #questionNumberCache}) sont inchangés.</p>
+   */
+  @Input()
+  set messages(value: AtelierThreadItem[]) {
+    this.messagesValue.set(value ?? []);
+  }
+  get messages(): AtelierThreadItem[] {
+    return this.messagesValue();
+  }
+  private readonly messagesValue = signal<AtelierThreadItem[]>([]);
 
   /**
    * Nombre de messages à **replier** en tête du fil derrière « Voir l'historique » (F-117 /
@@ -1182,7 +1199,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    * Combien de messages sont effectivement repliés : jamais plus que ce que le fil chargé contient
    * (bornage — un `foldedTurns` en avance sur l'historique ne masque pas des messages absents).
    */
-  readonly foldedCount = computed(() => Math.min(this.foldedTurnsValue(), this.messages.length));
+  readonly foldedCount = computed(() => Math.min(this.foldedTurnsValue(), this.messagesValue().length));
 
   /** Vrai si un historique replié existe et reste caché : c'est ce qui affiche « Voir l'historique ». */
   hasFoldedHistory(): boolean {

@@ -2420,4 +2420,54 @@ describe('AtelierTerminalComponent', () => {
       expect(rail?.textContent).not.toContain('Question 1 ?');
     });
   });
+
+  // -------------------------------- repli réactif à l'ordre d'arrivée des entrées (F-117 / SF-117-07)
+
+  describe('« Voir l\'historique » quel que soit l\'ordre d\'arrivée de foldedTurns et messages', () => {
+    // Fil de 28 messages (14 tours) : reproduit l'échelle réelle où le bug est apparu en prod.
+    const bigThread = (): AtelierThreadItem[] => {
+      const items: AtelierThreadItem[] = [];
+      for (let turn = 1; turn <= 14; turn += 1) {
+        items.push({ id: `u${turn}`, role: 'USER', content: `Question ${turn} ?`, actions: [] });
+        items.push({ id: `a${turn}`, role: 'ASSISTANT', content: `Réponse ${turn}.`, actions: [] });
+      }
+      return items;
+    };
+
+    it('affiche le repli quand foldedTurns arrive AVANT les messages (ordre réel prod)', () => {
+      // Ordre prod : l'état de reprise (foldedTurns) arrive vite, le fil (messages) plus tard.
+      component.foldedTurns = 26;
+      fixture.detectChanges();
+
+      // Les messages arrivent ENSUITE : le calcul du repli doit se réactualiser (sinon foldedCount
+      // reste mémoïsé à min(26, 0) = 0 et l'affordance ne s'affiche jamais — le bug de prod).
+      component.messages = bigThread();
+      fixture.detectChanges();
+
+      expect(component.hasFoldedHistory()).toBeTrue();
+      expect(component.foldedCount()).toBe(26);
+      expect(component.displayedMessages.length).toBe(2);
+
+      const fold = fixture.nativeElement.querySelector('.terminal-history-fold') as HTMLElement;
+      expect(fold).not.toBeNull();
+      expect(fold.textContent).toContain('Voir l\'historique (26 messages)');
+      // Seuls les 2 derniers messages (dernier tour) restent affichés.
+      expect(text()).not.toContain('Question 1 ?');
+      expect(text()).toContain('Question 14 ?');
+      expect(text()).toContain('Réponse 14.');
+    });
+
+    it('affiche le repli quand messages arrive AVANT foldedTurns (non-régression SF-117-06)', () => {
+      component.messages = bigThread();
+      fixture.detectChanges();
+
+      component.foldedTurns = 26;
+      fixture.detectChanges();
+
+      expect(component.hasFoldedHistory()).toBeTrue();
+      expect(component.foldedCount()).toBe(26);
+      expect(component.displayedMessages.length).toBe(2);
+      expect(fixture.nativeElement.querySelector('.terminal-history-fold')).not.toBeNull();
+    });
+  });
 });
