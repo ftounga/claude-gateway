@@ -101,3 +101,25 @@ Workflow({ name: "autonomous-delivery-wave",
            args: { features: ["F-01","F-02","F-03"], dateISO: "2026-07-01" } })
 ```
 Directive budget `+2M` dans le prompt de lancement pour le plafond dur.
+
+⚠️ **`args` doit être un OBJET JSON, pas une chaîne JSON.** Une file passée en chaîne rend
+`args.features` indéfini : la skill recalcule alors sa propre file et **ignore silencieusement** la
+tienne.
+
+## Règles apprises en production — à imposer à CHAQUE agent de la vague
+
+Ces quatre règles viennent d'échecs réels. Sans elles, la vague les reproduit.
+
+| Règle | Pourquoi |
+|---|---|
+| **Lancer Maven au PREMIER PLAN**, jamais en tâche de fond, et **merger avant de rendre la main**. | En tâche de fond les agents calent : ils rendent « terminé » sur un build jamais relevé. Vérifier `origin/main` avant de croire un agent qui se dit terminé ; `TaskStop` avant toute relance, sinon doublon et collision de branches. |
+| **`git add` CIBLÉ**, jamais `git add -A`. | Plusieurs sessions partagent le même checkout : un `add -A` emporte le travail en cours d'une autre session dans ton commit. |
+| **Ne jamais rédiger de rapport de retour** (`SendFeedback`) — et l'interdire explicitement aux sous-agents. | Décision PO. |
+| **Ne jamais déployer depuis le checkout partagé** : worktree dédié sur `origin/main`. | Un build qui stashe ou bascule de branche casse le WIP d'une autre session. |
+
+Et une règle de fond, qui prime sur la vitesse :
+
+> **Vérifier l'existant avant de cadrer.** L'application est très avancée. Une feature « manquante »
+> est souvent une capacité **dormante** — écrite, payée, jamais branchée (diagnostic F-156 :
+> *manques réels = 0*). `grep` PRODUCT_SPEC **et le code** d'abord ; les notes TODO/risque peuvent
+> être périmées. Brancher ou valider l'existant rapporte plus que développer.
