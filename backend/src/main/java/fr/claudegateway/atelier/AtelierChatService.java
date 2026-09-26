@@ -182,6 +182,38 @@ public class AtelierChatService implements RelayInterruptTarget {
     /** Garde-fou : longueur max de la consigne système (CLAUDE.md + skills). */
     private static final int SYSTEM_MAX_CHARS = 40_000;
     /**
+     * Charpente de la consigne système (F-121 / SF-121-12) : des <b>bannières de section</b>, dans le
+     * vocabulaire déjà en place (<code>--- Titre ---</code>, cf. {@link #GOVERNANCE_HEADER},
+     * {@link #SUBJECT_STATE_HEADER}, {@code --- Environnement ---}), qui découpent un préfixe jusque-là
+     * <b>plat</b> : onze doctrines sédimentées se suivaient sans séparateur, et le modèle lisait un mur
+     * de paragraphes impératifs sans savoir où finit la méthode et où commence le style.
+     *
+     * <p>Elles ne déplacent rien et ne réécrivent rien : l'ordre des blocs est conservé à l'identique,
+     * chaque doctrine est rendue à l'octet près. Ce sont des <b>littéraux</b> — le préfixe change une
+     * fois, à la livraison, puis redevient byte-stable (cache F-134 préservé).</p>
+     *
+     * <p>L'amorce de rôle, elle, ne porte <b>pas</b> de bannière : elle reste les tout premiers octets
+     * du prompt (F-148 / SF-148-02 — le bon cadre se lit dès la première phrase).</p>
+     */
+    static final String SECTION_METHOD = "--- Méthode de travail ---\n";
+    /** Bannière de la section « style » — voir {@link #SECTION_METHOD}. */
+    static final String SECTION_STYLE = "--- Style de réponse ---\n";
+    /** Bannière de la section « outils » — voir {@link #SECTION_METHOD}. */
+    static final String SECTION_TOOLS = "--- Choix des outils ---\n";
+    /**
+     * Ouverture du {@code CLAUDE.md} injecté verbatim, et sa <b>fermeture</b> (F-121 / SF-121-12).
+     *
+     * <p>Le préambule de SF-120-01 <i>ouvrait</i> le fichier sans jamais le <i>refermer</i> : le
+     * contenu verbatim — souvent un manuel impératif plein de « REFUS si… » — coulait directement dans
+     * la section suivante, et sa dernière consigne devenait indiscernable d'une consigne de la
+     * passerelle. Encadrer, c'est deux bornes. Les deux apparaissent ou aucune : sans {@code CLAUDE.md}
+     * lisible, la section n'existe pas du tout.</p>
+     */
+    static final String PROJECT_CONVENTIONS_HEADER = "--- Conventions du projet (CLAUDE.md) ---\n";
+    /** Borne de fin des conventions du projet — voir {@link #PROJECT_CONVENTIONS_HEADER}. */
+    static final String PROJECT_CONVENTIONS_FOOTER =
+            "--- Fin des conventions du projet (CLAUDE.md) ---\n\n";
+    /**
      * Discipline d'investigation (F-119 / SF-119-02, cadrage Cause 2) : des consignes <b>non
      * négociables</b> ajoutées au rôle, sur les deux cibles. Le prompt d'origine était descriptif
      * (« ne suppose rien sur un fichier sans l'avoir lu ») ; rien ne poussait l'agent à se vérifier
@@ -254,6 +286,54 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "évite titres et tableaux pour une réponse brève.\n"
                     + "- Cite tes sources par `chemin:ligne` quand tu renvoies à du code.\n"
                     + "- Pas d'émoji, sauf si l'utilisateur en emploie ou en demande.\n\n";
+    /**
+     * Guidance de <b>choix d'outil</b> (F-121 / SF-121-12) : la partie commune aux deux cibles.
+     *
+     * <p>La panoplie est riche, mais chaque outil ne décrivait que <b>lui-même</b> : rien ne disait
+     * quand prendre {@code grep} plutôt que {@code bash}, ni {@code multi_edit} plutôt que trois
+     * {@code edit_file}. La seule doctrine comparative existante — {@code task} vs {@code explore} vs
+     * {@code bash} (F-150 / SF-150-04) — vit <b>dans la description de l'outil {@code task}</b> : elle
+     * n'existe donc pas là où {@code task} n'est pas déclaré. Cette section l'élève au niveau du
+     * prompt et la complète, sans la contredire (mêmes verbes).</p>
+     *
+     * <p>Les outils cités ici sont déclarés sur les <b>deux</b> cibles ({@code fileTools}) ; les lignes
+     * propres à une cible sont ajoutées par {@link #toolChoiceSection(Workspace)}, et seulement si
+     * l'outil est réellement déclaré (F-39 / SF-39-05 : annoncer un outil absent ne produit que des
+     * appels perdus). Littéraux + conditions <b>stables</b> (cible, {@code max-delegations}) : aucune
+     * volatilité, cache F-134 préservé.</p>
+     */
+    private static final String TOOL_CHOICE_COMMON =
+            "Prends le bon outil du premier coup :\n"
+                    + "- CHERCHER un texte ou un motif dans le code : `grep` (expression régulière, "
+                    + "`include` pour filtrer par nom de fichier). TROUVER un fichier par nom ou "
+                    + "extension : `glob`.\n"
+                    + "- LIRE un fichier que tu vas utiliser : `read_file`. Jamais une supposition à la "
+                    + "place d'une lecture.\n"
+                    + "- MODIFIER un fichier existant : `edit_file` pour un passage, `multi_edit` pour "
+                    + "plusieurs passages du MÊME fichier (une seule écriture, tout ou rien). "
+                    + "`write_file` seulement pour créer un fichier ou en réécrire l'intégralité.\n"
+                    + "- GROUPE dans le MÊME tour les appels indépendants : ils partent ensemble au "
+                    + "lieu de s'étaler sur des tours successifs.\n";
+    /** Ligne {@code explore} de la section « Choix des outils » — déclarée si la délégation est ouverte. */
+    private static final String TOOL_CHOICE_EXPLORE =
+            "- LIRE ET COMPRENDRE beaucoup de fichiers dont tu n'as pas besoin de garder le détail : "
+                    + "`explore` (lecture seule, elle ne peut ni écrire ni exécuter ; seule sa synthèse "
+                    + "te revient).\n";
+    /** Ligne {@code bash} de la section « Choix des outils » — cible RUNNER seulement. */
+    private static final String TOOL_CHOICE_BASH =
+            "- EXÉCUTER une commande (build, tests, git, outillage) : `bash`. Pour CHERCHER, préfère "
+                    + "`grep`/`glob` à `bash` : c'est plus rapide et indépendant de l'interpréteur du "
+                    + "poste.\n";
+    /** Lignes propres à la cible SANDBOX de la section « Choix des outils » (pas de `bash` là-bas). */
+    private static final String TOOL_CHOICE_SANDBOX =
+            "- LISTER les fichiers du projet : `list_files`. `search_files` ne cherche qu'une "
+                    + "sous-chaîne simple : préfère `grep` dès que le motif compte.\n";
+    /** Ligne {@code task} de la section « Choix des outils » — cible RUNNER + délégation ouverte. */
+    private static final String TOOL_CHOICE_TASK =
+            "- ÉCRIRE ou EXÉCUTER une sous-tâche isolée et autonome (un lot de modifications cadré, un "
+                    + "refactor à l'écart) : `task` — elle travaille dans un worktree git à part, sans "
+                    + "toucher ta copie de travail, et seule sa synthèse revient. Quand le travail n'a "
+                    + "pas besoin d'être isolé, agis TOI-MÊME ici, dans la boucle principale.\n";
     /**
      * Silence de la tenue de carte (F-125 / SF-125-01, cadrage §2) : ajouté au rôle sur les
      * <b>deux</b> cibles, aux côtés de la discipline (SF-119-02), de la doctrine (SF-120-01) et du
@@ -5804,6 +5884,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         // Discipline d'investigation (F-119 / SF-119-02) : ajoutée sur les DEUX cibles, juste après le
         // rôle — c'est ce qui pousse l'agent à se vérifier avant d'affirmer, plutôt que d'improviser
         // et de se rattraper au tour suivant. Placée en tête, elle survit à la coupe SYSTEM_MAX_CHARS.
+        //
+        // F-121 / SF-121-12 : la bannière « Méthode de travail » ouvre ici la section qui dit COMMENT
+        // travailler (investigation + retenue). Elle ne déplace rien : l'ordre des blocs est celui
+        // d'avant, à l'octet près.
+        system.append(SECTION_METHOD);
         system.append(INVESTIGATION_DISCIPLINE);
 
         // Doctrine de retenue (F-120 / SF-120-01) : « réponds d'abord, agis sur demande », sur les DEUX
@@ -5815,6 +5900,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         // Style de réponse (F-121 / SF-121-03) : sur les DEUX cibles, en tête du préfixe stable, aux
         // côtés de la discipline (SF-119-02) et de la doctrine (SF-120-01) — la concision orientée
         // terminal existait dans la sous-boucle explore, elle devient une règle du travail principal.
+        //
+        // F-121 / SF-121-12 : la bannière « Style de réponse » ouvre ici la section qui dit SOUS QUELLE
+        // FORME répondre — style terminal, carte silencieuse, balisage de l'essentiel, conseil qui
+        // tranche, annonce de destination, aiguillage, consigne de mode. Ordre inchangé.
+        system.append(SECTION_STYLE);
         system.append(RESPONSE_STYLE);
 
         // Silence de la tenue de carte (F-125 / SF-125-01) : sur les DEUX cibles, en tête du préfixe
@@ -5853,6 +5943,13 @@ public class AtelierChatService implements RelayInterruptTarget {
         if (mode == AgentTurnMode.ANSWER_PLAN) {
             system.append(ANSWER_PLAN_DIRECTIVE);
         }
+
+        // F-121 / SF-121-12 : la bannière « Choix des outils » ouvre la section outillage, et sa
+        // première partie est la guidance de choix elle-même — quel outil pour quel geste, et
+        // notamment `explore` (lire beaucoup) vs `bash` (agir ici) vs `task` (écrire à l'écart). Les
+        // notices et guides de volets qui suivent (Teams, Radar, pages, présentations, images,
+        // diagrammes, decks, actions) vivent désormais dans cette même section, où ils ont leur place.
+        system.append(SECTION_TOOLS).append(toolChoiceSection(workspace)).append('\n');
 
         // F-89 / SF-89-04 : un terminal Teams sans droit le DIT. Sans ce paragraphe, l'agent — privé
         // de ses outils teams_* en silence (SF-89-01) — fouillait la machine comme un terminal de
@@ -5936,9 +6033,14 @@ public class AtelierChatService implements RelayInterruptTarget {
             chars += instructions.get().length();
             // F-120 / SF-120-01 : le préambule cadre le CLAUDE.md injecté verbatim — ces conventions
             // valent quand on IMPLÉMENTE, pas quand l'utilisateur pose une simple question.
+            // F-121 / SF-121-12 : le fichier est désormais ENCADRÉ — ouverture ET fermeture. Sans la
+            // borne de fin, la dernière consigne d'un CLAUDE.md impératif coulait dans la section
+            // suivante et devenait indiscernable d'une consigne de la passerelle. Les deux bornes
+            // apparaissent ensemble, ou aucune (pas de CLAUDE.md lisible ⇒ pas de section du tout).
             system.append(GOVERNANCE_PREAMBLE)
-                    .append("--- Conventions du projet (CLAUDE.md) ---\n")
-                    .append(instructions.get()).append("\n\n");
+                    .append(PROJECT_CONVENTIONS_HEADER)
+                    .append(instructions.get()).append("\n\n")
+                    .append(PROJECT_CONVENTIONS_FOOTER);
         }
 
         // Les règles de gouvernance viennent APRÈS les conventions du projet et AVANT les skills
@@ -6071,6 +6173,37 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
         return AtelierEnvironmentBlock.sandbox(today, workspace.getProjectPath(), workspace.isGit(),
                 workspace.getGitBranch());
+    }
+
+    /**
+     * La section « Choix des outils » de la consigne (F-121 / SF-121-12) : quel outil pour quel geste.
+     *
+     * <p>Composée de <b>littéraux</b> ({@link #TOOL_CHOICE_COMMON} et ses compléments), assemblés
+     * selon ce qui est <b>réellement déclaré</b> au modèle pour ce workspace (F-39 / SF-39-05) : la
+     * cible décide de {@code bash} vs {@code list_files}/{@code search_files}, et
+     * {@code max-delegations} de la présence d'{@code explore} — et de {@code task}, qui exige en plus
+     * un poste. Ces deux conditions sont <b>stables</b> pour un workspace donné : la section est
+     * byte-identique d'un tour à l'autre, le cache de prompt (F-134) tient.</p>
+     *
+     * <p>Elle ne remplace pas la doctrine {@code task}/{@code explore}/{@code bash} portée par la
+     * description de l'outil {@code task} (F-150 / SF-150-04) : celle-ci se lit au moment de choisir
+     * <i>cet</i> outil, la section la résume pour qu'un arbitrage existe même là où {@code task} n'est
+     * pas déclaré.</p>
+     */
+    private String toolChoiceSection(Workspace workspace) {
+        StringBuilder choice = new StringBuilder(TOOL_CHOICE_COMMON);
+        if (maxDelegations > 0) {
+            choice.append(TOOL_CHOICE_EXPLORE);
+        }
+        if (workspace.isRunnerTarget()) {
+            choice.append(TOOL_CHOICE_BASH);
+            if (maxDelegations > 0) {
+                choice.append(TOOL_CHOICE_TASK);
+            }
+        } else {
+            choice.append(TOOL_CHOICE_SANDBOX);
+        }
+        return choice.toString();
     }
 
     /** Répertoire de travail lisible du poste : racine + chemin du projet, ou l'un des deux, ou vide. */

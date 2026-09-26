@@ -1041,6 +1041,138 @@ class AtelierChatServiceSystemPromptTest {
         assertThat(system).doesNotContain(AtelierChatService.TOOL_PRIMACY);
     }
 
+    // ------------------------------- F-121 / SF-121-12 : sections stables, CLAUDE.md encadré, choix d'outil
+
+    @Test
+    @DisplayName("SF-121-12 : les bannières de section apparaissent dans un ordre stable, le rôle d'abord")
+    void sectionsAppearInStableOrderAfterTheRole() {
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+
+        String system = systemPrompt();
+
+        // L'amorce de rôle reste les tout premiers octets (SF-148-02) : aucune bannière ne la précède.
+        assertThat(system).startsWith("Tu es un assistant de développement");
+        assertThat(system.indexOf("--- Environnement ---"))
+                .isLessThan(system.indexOf(AtelierChatService.SECTION_METHOD));
+        assertThat(system.indexOf(AtelierChatService.SECTION_METHOD))
+                .isLessThan(system.indexOf(AtelierChatService.SECTION_STYLE));
+        assertThat(system.indexOf(AtelierChatService.SECTION_STYLE))
+                .isLessThan(system.indexOf(AtelierChatService.SECTION_TOOLS));
+        // Chaque bannière ouvre bien SA section : elle précède immédiatement son premier bloc.
+        assertThat(system).contains(AtelierChatService.SECTION_METHOD + "Discipline de travail");
+        assertThat(system).contains(AtelierChatService.SECTION_STYLE + "Style de réponse (terminal)");
+    }
+
+    @Test
+    @DisplayName("SF-121-12 : le CLAUDE.md injecté verbatim est ENCADRÉ — ouverture ET fermeture")
+    void projectConventionsAreClosedByAnEndMarker() {
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenReturn("REFUS si le dev démarre sans mini-spec.");
+
+        String system = systemPrompt();
+
+        assertThat(system).contains(AtelierChatService.PROJECT_CONVENTIONS_HEADER)
+                .contains(AtelierChatService.PROJECT_CONVENTIONS_FOOTER);
+        // Le contenu verbatim est bien ENTRE les deux bornes : c'est ce qui le rend distinguable
+        // d'une consigne de la passerelle, au lieu de couler dans la section suivante.
+        assertThat(system.indexOf(AtelierChatService.PROJECT_CONVENTIONS_HEADER))
+                .isLessThan(system.indexOf("REFUS si le dev démarre sans mini-spec."));
+        assertThat(system.indexOf("REFUS si le dev démarre sans mini-spec."))
+                .isLessThan(system.indexOf(AtelierChatService.PROJECT_CONVENTIONS_FOOTER));
+    }
+
+    @Test
+    @DisplayName("SF-121-12 : sans CLAUDE.md lisible, NI la borne d'ouverture NI celle de fermeture")
+    void noConventionMarkersWhenNoProjectConventions() {
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+
+        String system = systemPrompt();
+
+        assertThat(system).doesNotContain(AtelierChatService.PROJECT_CONVENTIONS_HEADER);
+        assertThat(system).doesNotContain(AtelierChatService.PROJECT_CONVENTIONS_FOOTER);
+    }
+
+    @Test
+    @DisplayName("SF-121-12 : en SANDBOX, la section nomme les outils déclarés là-bas — jamais bash ni task")
+    void toolChoiceSectionNamesSandboxTools() {
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+
+        String choice = toolChoiceSectionOf(systemPrompt());
+
+        assertThat(choice).contains("`grep`").contains("`glob`").contains("`read_file`")
+                .contains("`edit_file`").contains("`multi_edit`").contains("`write_file`");
+        // Déclarés en SANDBOX seulement (SF-39-05).
+        assertThat(choice).contains("`list_files`").contains("`search_files`");
+        // Annoncer un outil absent ne produit que des appels perdus.
+        assertThat(choice).doesNotContain("`bash`").doesNotContain("`task`");
+        // L'exploration, elle, est déclarée sur les DEUX cibles quand la délégation est ouverte.
+        assertThat(choice).contains("`explore`");
+    }
+
+    @Test
+    @DisplayName("SF-121-12 : sur le poste, la section nomme bash et task, et préfère grep à bash pour chercher")
+    void toolChoiceSectionNamesRunnerTools() {
+        String choice = toolChoiceSectionOf(systemPromptOfRunnerProjectDeclaring("posix"));
+
+        assertThat(choice).contains("`bash`").contains("`task`").contains("`explore`");
+        assertThat(choice)
+                .as("la guidance doit trancher entre grep et bash pour chercher")
+                .contains("préfère `grep`/`glob` à `bash`");
+        // Retirés au profit de bash sur cette cible (SF-39-05) : ne pas les annoncer.
+        assertThat(choice).doesNotContain("`list_files`").doesNotContain("`search_files`");
+    }
+
+    @Test
+    @DisplayName("SF-121-12 : délégation fermée (max-delegations: 0) ⇒ ni explore ni task annoncés")
+    void toolChoiceSectionOmitsExploreAndTaskWithoutDelegation() {
+        serviceWithMaxDelegations(0);
+
+        String choice = toolChoiceSectionOf(systemPromptOfRunnerProjectDeclaring("posix"));
+
+        assertThat(choice).doesNotContain("`explore`").doesNotContain("`task`");
+        // Le reste de la section tient debout : les outils toujours déclarés restent nommés.
+        assertThat(choice).contains("`grep`").contains("`bash`");
+    }
+
+    @Test
+    @DisplayName("SF-121-12 : la section est byte-stable entre deux tours — le cache de prompt (F-134) tient")
+    void toolChoiceSectionIsByteStableBetweenTwoBuilds() {
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+
+        assertThat(toolChoiceSectionOf(systemPrompt()))
+                .isEqualTo(toolChoiceSectionOf(systemPrompt()));
+    }
+
+    /** La section « Choix des outils » extraite du prompt, de sa bannière à la ligne vide qui la clôt. */
+    private static String toolChoiceSectionOf(String system) {
+        int start = system.indexOf(AtelierChatService.SECTION_TOOLS);
+        assertThat(start).as("la section « Choix des outils » doit exister").isNotNegative();
+        int end = system.indexOf("\n\n", start);
+        return end < 0 ? system.substring(start) : system.substring(start, end);
+    }
+
+    /** Rebâtit le service sous test avec un plafond de délégations donné (F-39 / SF-39-14). */
+    private void serviceWithMaxDelegations(int maxDelegations) {
+        service = new AtelierChatService(workspaceService, messageRepository,
+                (AiAgentProvider) agentProvider, byokKeyService, quotaService,
+                new fr.claudegateway.atelier.git.GitWorkspaceService(workspaceService, gitTokenService,
+                        gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
+                runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
+                fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
+                runnerHostService,
+                new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null,
+                        maxDelegations, true));
+    }
+
     /** Un catalogue de diagrammes RÉELLEMENT ouvert : le moteur est configuré. */
     private fr.claudegateway.diagrams.DiagramToolCatalog openDiagramCatalog() {
         fr.claudegateway.diagrams.DiagramProperties properties =

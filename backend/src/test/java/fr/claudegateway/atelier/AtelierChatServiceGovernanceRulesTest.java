@@ -107,6 +107,12 @@ class AtelierChatServiceGovernanceRulesTest {
                 .contains("Aucune trace de LLM.");
         assertThat(system.indexOf("# Conventions maison"))
                 .isLessThan(system.indexOf(AtelierChatService.GOVERNANCE_HEADER));
+        // F-121 / SF-121-12 : le CLAUDE.md est REFERMÉ avant que les règles ne commencent — sans quoi
+        // sa dernière consigne coulerait dans le paquet de gouvernance et deviendrait indiscernable.
+        assertThat(system.indexOf(AtelierChatService.PROJECT_CONVENTIONS_FOOTER))
+                .as("la borne de fin du CLAUDE.md doit précéder les règles de gouvernance")
+                .isGreaterThan(system.indexOf("# Conventions maison"))
+                .isLessThan(system.indexOf(AtelierChatService.GOVERNANCE_HEADER));
     }
 
     @Test
