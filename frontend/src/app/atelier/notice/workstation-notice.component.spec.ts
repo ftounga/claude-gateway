@@ -107,4 +107,33 @@ describe('WorkstationNoticeComponent', () => {
     expect(fixture.nativeElement.querySelector('.notice')).toBeNull();
     expect(service.isDue(Date.now() + 100 * HOUR)).toBeFalse();
   });
+
+  // --- Repli mobile (F-158 / SF-158-17) ---
+
+  it('démarre replié : la chip « Note poste » est rendue', () => {
+    fixture = build();
+
+    // Signal local par défaut : replié — le bandeau ne recouvre pas la saisie du terminal.
+    expect(fixture.componentInstance.expanded()).toBeFalse();
+    const chip = fixture.nativeElement.querySelector('.notice-chip') as HTMLButtonElement;
+    expect(chip).withContext('la chip compacte doit exister').not.toBeNull();
+    expect(chip.textContent).toContain('Note poste');
+  });
+
+  it('la chip déploie le bandeau, le bouton réduire le referme, « Compris » reste joignable', () => {
+    fixture = build();
+    const service = TestBed.inject(WorkstationNoticeService);
+
+    (fixture.nativeElement.querySelector('.notice-chip') as HTMLButtonElement).click();
+    expect(fixture.componentInstance.expanded()).toBeTrue();
+
+    (fixture.nativeElement.querySelector('.notice-collapse') as HTMLButtonElement).click();
+    expect(fixture.componentInstance.expanded()).toBeFalse();
+
+    // L'action existante reste dans le DOM et opérante : l'acquittement referme et repart le compteur.
+    (fixture.nativeElement.querySelector('.notice-ack') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.notice')).toBeNull();
+    expect(service.isDue(Date.now())).toBeFalse();
+  });
 });

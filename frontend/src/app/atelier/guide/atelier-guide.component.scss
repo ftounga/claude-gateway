@@ -6,6 +6,8 @@
 //
 // z-index 950 : au-dessus de l'explorateur superposé (900), SOUS le rappel d'autorisation en attente
 // (1000), qui doit rester visible quoi qu'il arrive (F-47).
+@use '../../../styles/breakpoints' as bp;
+
 .guide {
   position: fixed;
   top: calc(64px + var(--cg-space-3));
@@ -175,4 +177,68 @@
   color: var(--cg-text-secondary);
   font-size: 13px;
   line-height: 1.5;
+}
+
+// --- Repli mobile (F-158 / SF-158-17) -------------------------------------------------------------
+//
+// Sur téléphone (≤ 819 px), le panneau de 320 px recouvrait le terminal sur toute sa hauteur et le
+// rendait inutilisable. Il s'affiche désormais REPLIÉ par défaut : une chip compacte « Vos premiers
+// pas · n/3 » qu'on déploie au tap. Le desktop (≥ 820 px) est rigoureusement inchangé — la chip et le
+// bouton réduire sont `display:none` hors du point de rupture, et le panneau reste toujours affiché
+// quel que soit l'état déployé (aucune branche JS ne dépend de la largeur d'écran).
+
+// La chip et le bouton réduire n'existent que sur téléphone.
+.guide-chip,
+.guide-collapse {
+  display: none;
+}
+
+@include bp.phone {
+  // La chip compacte, visible seulement quand le guide est replié : cible tactile ≥ 44 px.
+  .guide--collapsed .guide-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cg-space-2);
+    min-height: 44px;
+    padding: var(--cg-space-2) var(--cg-space-3);
+    border: none;
+    border-radius: 12px;
+    background: transparent;
+    color: var(--cg-text-primary);
+    font-family: var(--cg-font-heading);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+
+    mat-icon {
+      flex: none;
+      color: var(--cg-accent);
+    }
+  }
+
+  .guide-chip-count {
+    color: var(--cg-text-secondary);
+    font-family: var(--cg-font-body);
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  // Le bouton réduire, dans l'en-tête du panneau déployé.
+  .guide-collapse {
+    display: inline-flex;
+    flex: none;
+    color: var(--cg-text-secondary);
+  }
+
+  // Replié : la surface se réduit à la chip, le panneau disparaît — le terminal est libre.
+  .guide--collapsed {
+    width: auto;
+    max-width: calc(100vw - 2 * var(--cg-space-3));
+    padding: 0;
+    overflow: visible;
+
+    .guide-panel {
+      display: none;
+    }
+  }
 }

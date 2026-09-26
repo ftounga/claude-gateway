@@ -63,6 +63,24 @@ export class WorkstationNoticeComponent implements OnDestroy {
   /** Vrai quand le rappel est dû à cet instant. */
   readonly visible = computed(() => this.notice.isDue(this.now()));
 
+  /**
+   * Sur téléphone (≤ 819 px), le rappel s'affiche **replié** en chip compacte pour ne pas recouvrir
+   * la zone de saisie du terminal (F-158 / SF-158-17). Signal **local** de session, non persisté :
+   * l'acquittement qui compte (« Compris ») vit dans le service et n'est pas touché. Sur desktop il
+   * est ignoré (la feuille force le bandeau visible et masque la chip hors du point de rupture).
+   */
+  readonly expanded = signal(false);
+
+  /** Déploie le bandeau complet (tap sur la chip, téléphone). */
+  expand(): void {
+    this.expanded.set(true);
+  }
+
+  /** Referme sur la chip compacte (bouton réduire, téléphone). */
+  collapse(): void {
+    this.expanded.set(false);
+  }
+
   /** Périodicité courante, telle qu'elle s'affiche sur le bouton de réglage. */
   readonly intervalLabel = computed(() => workstationNoticeLabel(this.notice.intervalHours()));
 

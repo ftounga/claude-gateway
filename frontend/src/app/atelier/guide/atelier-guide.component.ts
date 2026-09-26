@@ -99,6 +99,24 @@ export class AtelierGuideComponent {
     command: false,
   });
 
+  /**
+   * Sur téléphone (≤ 819 px), le guide s'affiche **replié** en chip compacte pour ne pas recouvrir le
+   * terminal (F-158 / SF-158-17). Signal **local** de session, non persisté : le repli est un confort
+   * d'affichage, pas un état à retenir d'une visite à l'autre. Sur desktop il est ignoré (la feuille
+   * force le panneau visible et masque la chip hors du point de rupture téléphone).
+   */
+  readonly expanded = signal(false);
+
+  /** Déploie le panneau complet (tap sur la chip, téléphone). */
+  expand(): void {
+    this.expanded.set(true);
+  }
+
+  /** Referme sur la chip compacte (bouton réduire, téléphone). */
+  collapse(): void {
+    this.expanded.set(false);
+  }
+
   readonly views = ATELIER_GUIDE_STEPS;
 
   /** La demande proposée à l'étape 3, affichée telle qu'elle sera écrite. */
