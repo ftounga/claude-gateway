@@ -86,7 +86,9 @@ public class SessionSuggestionService {
      * fois un tour de Haiku, et un tarif moyen se tromperait dès qu'un chemin change de modèle.</p>
      */
     private java.util.Optional<SessionSuggestion> coldCache(SessionLedger ledger) {
-        long totalInput = ledger.inputTokens() + ledger.cacheReadTokens();
+        // SF-155-06 : `inputTokens` contient DÉJÀ le cache lu (TurnTokens.processedInputTokens).
+        // L'additionner comptait le cache deux fois et gonflait le volume déplaçable.
+        long totalInput = ledger.inputTokens();
         if (ledger.turns() < settings.minTurnsForPatterns() || totalInput == 0
                 || ledger.cacheShare() >= TARGET_CACHE_SHARE
                 || ledger.costEur().signum() <= 0) {

@@ -47,8 +47,9 @@ class SessionSuggestionServiceTest {
                                  int toolCalls, int failed, Duration toolTime,
                                  List<SessionLedger.CostlyTurn> costly,
                                  List<SessionLedger.HeavyTool> tools) {
-        long total = input + cacheRead;
-        int share = total == 0 ? 0 : (int) Math.round(100.0 * cacheRead / total);
+        // SF-155-06 : `input` CONTIENT le cache lu. La part se calcule donc sur `input` seul, et
+        // les jeux de données ci-dessous passent l'entrée TOTALE.
+        int share = CacheShare.of(input, cacheRead);
         return new SessionLedger(T0, T0.plusHours(2), turns, Duration.ofHours(2), toolCalls, failed,
                 0, new BigDecimal(costEur), input, 1000, cacheRead, 0, share, 0,
                 "claude-opus-5", toolTime, costly, tools);
@@ -64,7 +65,7 @@ class SessionSuggestionServiceTest {
         @DisplayName("écarte vraiment ce qui est sous le seuil — et DIT combien")
         void discardsAndCounts() {
             // Cache à 88 % : il ne reste que 2 points à gagner, très loin des 10 % de gain.
-            SessionLedger tiny = ledger(10, "100.00", 120_000, 880_000, 0, 0, Duration.ZERO,
+            SessionLedger tiny = ledger(10, "100.00", 1_000_000, 880_000, 0, 0, Duration.ZERO,
                     List.of(), List.of());
 
             SessionSuggestionService.Verdict verdict = service(null).examine(tiny);
@@ -80,7 +81,7 @@ class SessionSuggestionServiceTest {
         void isConfigurable() {
             // Cache à 60 % : viser 90 % déplace 300 000 jetons → 4,05 € sur 100 € = 4 %.
             // Écarté à 10 %, retenu à 1 % — c'est exactement ce que le réglage doit changer.
-            SessionLedger modest = ledger(10, "100.00", 400_000, 600_000, 0, 0, Duration.ZERO,
+            SessionLedger modest = ledger(10, "100.00", 1_000_000, 600_000, 0, 0, Duration.ZERO,
                     List.of(), List.of());
 
             assertThat(service(10).examine(modest).suggestions()).isEmpty();
@@ -96,6 +97,33 @@ class SessionSuggestionServiceTest {
             assertThat(SessionBilanProperties.ofImpact(0, null, null).impactThresholdPct()).isEqualTo(10);
             assertThat(SessionBilanProperties.ofImpact(-5, null, null).impactThresholdPct()).isEqualTo(10);
         }
+    }
+
+    @Test
+    @DisplayName("RÉGRESSION SF-155-06 — un cache SAIN (86 %) ne déclenche plus le détecteur")
+    void aHealthyCacheNoLongerFires() {
+        // Les chiffres RÉELS de la session du 25/09, avec la grille de production (5,00 / 0,50) et
+        // 1 USD = 1 EUR pour que l'arithmétique se lise : 81,70 € de coût, 86 % de cache.
+        ProviderPricingProperties production = new ProviderPricingProperties(
+                "2026-09-20", "claude-opus-5",
+                Map.of("claude-opus-5", new ProviderPricingProperties.ModelPricing(
+                        new BigDecimal("5.00"), new BigDecimal("25.00"),
+                        new BigDecimal("0.50"), new BigDecimal("10.00"))),
+                null, null, new BigDecimal("1.00"));
+        SessionSuggestionService onProduction = new SessionSuggestionService(production,
+                SessionBilanProperties.defaults());
+
+        SessionLedger kpmg = ledger(74, "81.70", 42_976_876, 37_085_919, 0, 0, Duration.ZERO,
+                List.of(), List.of());
+
+        assertThat(kpmg.cacheShare()).isEqualTo(86);
+
+        SessionSuggestionService.Verdict verdict = onProduction.examine(kpmg);
+        assertThat(verdict.suggestions())
+                .as("9 %% de gain théorique : sous le seuil, donc écarté — la formule fautive "
+                        + "annonçait 46 %% de cache et un gain énorme sur un cache sain")
+                .isEmpty();
+        assertThat(verdict.discarded()).isEqualTo(1);
     }
 
     // ---------------------------------------------------------------- COÛT
@@ -124,7 +152,7 @@ class SessionSuggestionServiceTest {
     @Test
     @DisplayName("un cache déjà chaud ne produit rien : il n'y a plus rien à gagner")
     void aWarmCacheSaysNothing() {
-        SessionLedger warm = ledger(10, "40.00", 50_000, 950_000, 0, 0, Duration.ZERO,
+        SessionLedger warm = ledger(10, "40.00", 1_000_000, 950_000, 0, 0, Duration.ZERO,
                 List.of(), List.of());
         assertThat(service(null).examine(warm).suggestions()).isEmpty();
     }

@@ -152,6 +152,20 @@ class ProductSurveyServiceTest {
     }
 
     @Test
+    @DisplayName("RÉGRESSION SF-155-06 — un tour au cache sain ne compte presque aucun gaspillage")
+    void aHealthyTurnWastesAlmostNothing() {
+        // Profil réel de la session du 25/09 ramené à un tour : 86 % de cache lu.
+        given(List.of(turn(projectA, "1.10", 580_000, 500_000)), List.of());
+
+        CapabilityObservation cache = observation(service.survey(userId, FROM, TO), "cache-de-prompt");
+
+        assertThat(cache.hits()).as("le cache a bien servi").isEqualTo(1);
+        assertThat(cache.wasteEur())
+                .as("86 %% de cache : le manque à gagner reste marginal, pas un « cache froid »")
+                .isLessThan(new BigDecimal("1.00"));
+    }
+
+    @Test
     @DisplayName("un signal de TABLE n'invente aucun montant : le verdict attend SF-156-03")
     void tableSignalsInventNothing() {
         given(List.of(turn(projectA, "1.00", 1000, 9000)), List.of());

@@ -171,10 +171,13 @@ public class SessionLedgerService {
      * La part du cache dans l'entrée totale, de 0 à 100. C'est le chiffre de F-134 : un jeton lu en
      * cache coûte une fraction d'un jeton plein, et cette part dit à elle seule si un projet paie sa
      * consigne système à chaque tour.
+     *
+     * <p>Déléguée à {@link CacheShare} depuis SF-155-06 : cette méthode divisait par
+     * {@code input + cacheRead} alors que {@code input} <b>contient déjà</b> le cache, et rendait
+     * donc la moitié de la vraie part.</p>
      */
     private static int cacheShare(long input, long cacheRead) {
-        long total = input + cacheRead;
-        return total == 0 ? 0 : (int) Math.round(100.0 * cacheRead / total);
+        return CacheShare.of(input, cacheRead);
     }
 
     private List<SessionLedger.CostlyTurn> costliest(List<UsageTurn> turns) {

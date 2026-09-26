@@ -151,11 +151,13 @@ public class ProductSurveyService {
     private BigDecimal coldCacheWaste(List<UsageTurn> turns) {
         BigDecimal usd = BigDecimal.ZERO;
         for (UsageTurn turn : turns) {
-            long total = turn.getInputTokens() + turn.getCacheReadTokens();
+            // SF-155-06 : `input_tokens` contient DÉJÀ le cache lu — l'additionner comptait le
+            // cache deux fois et faisait paraître froid un cache sain.
+            long total = turn.getInputTokens();
             if (total == 0) {
                 continue;
             }
-            int share = (int) Math.round(100.0 * turn.getCacheReadTokens() / total);
+            int share = fr.claudegateway.bilan.CacheShare.of(total, turn.getCacheReadTokens());
             if (share >= TARGET_CACHE_SHARE) {
                 continue;
             }
