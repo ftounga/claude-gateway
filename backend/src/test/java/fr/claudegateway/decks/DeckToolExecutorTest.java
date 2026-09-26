@@ -153,6 +153,36 @@ class DeckToolExecutorTest {
     }
 
     @Test
+    @DisplayName("F-129 / SF-129-04 : le thème voyage TEL QUEL dans la description — un seul valideur")
+    void thethemeTravelsVerbatim() {
+        when(builder.build(any())).thenReturn(new DeckBuilder.Deck("PPTX".getBytes(StandardCharsets.UTF_8)));
+        when(deposit.deposit(any(), any(), anyString(), anyString(), any(), anyString(), anyString()))
+                .thenReturn("deck.pptx");
+        ObjectNode input = deck();
+        ((ObjectNode) input.get("spec")).put("theme", "plain");
+
+        executor.execute(userId, workspace, "call-6", input);
+
+        ArgumentCaptor<JsonNode> sent = ArgumentCaptor.forClass(JsonNode.class);
+        verify(builder).build(sent.capture());
+        assertThat(sent.getValue().path("theme").asText()).isEqualTo("plain");
+    }
+
+    @Test
+    @DisplayName("F-129 / SF-129-04 : sans thème, rien n'est inventé côté Java — la charte est le défaut du constructeur")
+    void nothemeMeansNothingAddedHere() {
+        when(builder.build(any())).thenReturn(new DeckBuilder.Deck("PPTX".getBytes(StandardCharsets.UTF_8)));
+        when(deposit.deposit(any(), any(), anyString(), anyString(), any(), anyString(), anyString()))
+                .thenReturn("deck.pptx");
+
+        executor.execute(userId, workspace, "call-7", deck());
+
+        ArgumentCaptor<JsonNode> sent = ArgumentCaptor.forClass(JsonNode.class);
+        verify(builder).build(sent.capture());
+        assertThat(sent.getValue().has("theme")).isFalse();
+    }
+
+    @Test
     @DisplayName("le nom du fichier est dérivé du titre, et NETTOYÉ")
     void thefileNameIsCleaned() {
         // La casse du titre est conservée : c'est le nom que l'utilisateur lira dans son projet.
