@@ -1040,6 +1040,22 @@ public class AtelierChatService implements RelayInterruptTarget {
                 : AgentContextPolicy.none();
     }
 
+    /**
+     * La <b>porte d'entrée du runner</b> (F-161 / SF-161-01) : refuser un tour qui a besoin du poste
+     * AVANT de dépenser un jeton. {@code null} (formes historiques, tests) = pas de porte, donc le
+     * comportement d'avant.
+     */
+    private fr.claudegateway.runner.door.RunnerDoor runnerDoor;
+    private fr.claudegateway.runner.host.RunnerHostService runnerHostsForDoor;
+
+    /** Branche la porte d'entrée du runner (F-161 / SF-161-01). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setRunnerDoor(fr.claudegateway.runner.door.RunnerDoor runnerDoor,
+            fr.claudegateway.runner.host.RunnerHostService runnerHostsForDoor) {
+        this.runnerDoor = runnerDoor;
+        this.runnerHostsForDoor = runnerHostsForDoor;
+    }
+
     /** Branche l'outil {@code email_me} (F-110 / SF-110-02). */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setClientMailTool(fr.claudegateway.mail.ClientMailTool clientMailTool) {
@@ -1274,7 +1290,13 @@ public class AtelierChatService implements RelayInterruptTarget {
      * en {@link AgentTurnMode#ACT} (ou {@code null}), comportement historique.
      */
     public AtelierChatResult chat(UUID userId, UUID workspaceId, String rawMessage, AgentTurnMode mode) {
-        return runLoop(userId, workspaceId, rawMessage, mode, AtelierProgressListener.NOOP);
+        return chat(userId, workspaceId, rawMessage, mode, false);
+    }
+
+    /** Le tour, avec « demander quand même » (F-161 / SF-161-01) : la porte est passée outre. */
+    public AtelierChatResult chat(UUID userId, UUID workspaceId, String rawMessage,
+            AgentTurnMode mode, boolean force) {
+        return runLoop(userId, workspaceId, rawMessage, mode, AtelierProgressListener.NOOP, force);
     }
 
     /**
@@ -1297,7 +1319,16 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     public AtelierChatResult chatStreaming(UUID userId, UUID workspaceId, String rawMessage,
             AgentTurnMode mode, AtelierProgressListener listener) {
-        AtelierChatResult result = runLoop(userId, workspaceId, rawMessage, mode, listener);
+        return chatStreaming(userId, workspaceId, rawMessage, mode, listener, false);
+    }
+
+    /**
+     * Le flux, avec « demander quand même » (F-161 / SF-161-01). Le drapeau est <b>porté par
+     * l'appel</b> : cette boucle tourne sur le pool SSE, pas sur le thread de la requête.
+     */
+    public AtelierChatResult chatStreaming(UUID userId, UUID workspaceId, String rawMessage,
+            AgentTurnMode mode, AtelierProgressListener listener, boolean force) {
+        AtelierChatResult result = runLoop(userId, workspaceId, rawMessage, mode, listener, force);
         notifyTurnDone(userId, workspaceId);
         return result;
     }
@@ -1411,10 +1442,29 @@ public class AtelierChatService implements RelayInterruptTarget {
 
     private AtelierChatResult runLoop(UUID userId, UUID workspaceId, String rawMessage,
             AgentTurnMode mode, AtelierProgressListener listener) {
+        return runLoop(userId, workspaceId, rawMessage, mode, listener, false);
+    }
+
+    /**
+     * Le tour, avec le laissez-passer de la porte (F-161 / SF-161-01).
+     *
+     * <p>{@code force} est un <b>paramètre</b> et non un état de thread : le flux SSE exécute cette
+     * boucle sur un autre thread que la requête, où un {@code ThreadLocal} serait invisible — et
+     * « demander quand même » n'aurait pas fonctionné sur le chemin que l'écran emprunte.</p>
+     */
+    private AtelierChatResult runLoop(UUID userId, UUID workspaceId, String rawMessage,
+            AgentTurnMode mode, AtelierProgressListener listener, boolean force) {
         // Le mode (F-120 / SF-120-02) est normalisé ici : un mode absent vaut ACT (comportement
         // d'avant). Il ne change que la panoplie déclarée et la consigne système — jamais l'isolation.
         AgentTurnMode turnMode = mode == null ? AgentTurnMode.ACT : mode;
         Workspace workspace = workspaceService.requireOwned(userId, workspaceId); // 404 si non possédé (isolation) — TOUJOURS en premier
+        // F-161 / SF-161-01 : LA PORTE. Un tour qui a besoin du poste et ne l'aura pas doit être
+        // refusé ICI — avant le contexte, avant le modèle, avant le moindre jeton. Sur la session
+        // mesurée du 25/09, 8 tours « Non concluant » ont coûté 11 % de la facture pour DÉCOUVRIR
+        // que la machine ne répondait pas. Posée APRÈS `requireOwned` : un projet d'autrui rend 404.
+        if (!force) {
+            checkRunnerDoor(userId, workspace);
+        }
         // Mode « Assistant » sur un projet Git (F-31 / SF-31-03) : cette boucle lit et édite le
         // stockage objet, vide sur ce type de projet. Répondre quand même reviendrait à commenter un
         // projet inexistant ; le mode Terminal, lui, a le dépôt réellement cloné.
@@ -3032,6 +3082,31 @@ public class AtelierChatService implements RelayInterruptTarget {
         fr.claudegateway.decks.DeckToolExecutor.Outcome outcome =
                 deckToolExecutor.execute(userId, workspace, callId, call.input());
         return outcome.error() ? ToolOutcome.error(outcome.content()) : ToolOutcome.info(outcome.content());
+    }
+
+    /**
+     * Ferme la porte quand le poste ne portera pas ce tour (F-161 / SF-161-01).
+     *
+     * <p><b>Gratuit</b> : deux lectures déjà faites ailleurs — le battement et les capacités
+     * déclarées — et aucun appel fournisseur. <b>Et jamais bloquant sur une ignorance</b> : sans
+     * porte branchée, sans poste, ou sans capacités déclarées, le tour passe comme avant.</p>
+     */
+    private void checkRunnerDoor(UUID userId, Workspace workspace) {
+        if (runnerDoor == null || runnerHostsForDoor == null || !workspace.isRunnerTarget()) {
+            return;
+        }
+        UUID hostId = workspace.getHostId();
+        if (hostId == null) {
+            return;
+        }
+        fr.claudegateway.runner.door.RunnerDoorVerdict verdict = runnerDoor.check(
+                userId, hostId, runnerHostsForDoor.hostName(hostId),
+                runnerHostsForDoor.declaredCapabilities(hostId),
+                java.util.Set.of("bash", "files"));
+        if (!verdict.open()) {
+            throw new fr.claudegateway.runner.door.RunnerNotReadyException(
+                    verdict.code(), verdict.reason());
+        }
     }
 
     /**

@@ -530,7 +530,9 @@ describe('AtelierComponent', () => {
       component.replayLastRequest();
 
       expect(service.streamChat).toHaveBeenCalledWith(
-        'w1', 'Analyse le dépôt', jasmine.anything(), jasmine.anything(),
+        // Le dernier argument est « demander quand même » (F-161 / SF-161-01) : un rejeu ordinaire
+        // ne force RIEN — il repasse par la porte du runner comme le tour d'origine.
+        'w1', 'Analyse le dépôt', jasmine.anything(), jasmine.anything(), false,
       );
       expect(component.unanswered()).toBeFalse();
       expect(component.submitting()).toBeTrue();
@@ -1154,7 +1156,8 @@ describe('AtelierComponent', () => {
     component.send();
 
     // F-120 / SF-120-02 : le mode du tour est passé en 4e argument (défaut ACT).
-    expect(service.streamChat).toHaveBeenCalledWith('w1', 'Modifie main.ts', jasmine.anything(), 'ACT');
+    expect(service.streamChat)
+      .toHaveBeenCalledWith('w1', 'Modifie main.ts', jasmine.anything(), 'ACT', false);
     const messages = component.messages();
     expect(messages.length).toBe(2);
     expect(messages[0].role).toBe('USER');

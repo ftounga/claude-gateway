@@ -627,7 +627,11 @@ export interface AtelierStreamHandlers {
   onAction: (action: AtelierStreamAction) => void;
   onText: (text: string) => void;
   onDone: (done: AtelierStreamDone) => void;
-  onError: (code: string) => void;
+  /**
+   * Le tour a été refusé. `reason` n'accompagne que les refus qui ont une précision à donner —
+   * la porte du runner (F-161 / SF-161-01) y nomme le poste et l'ancienneté de son dernier signe.
+   */
+  onError: (code: string, reason?: string) => void;
   /**
    * Le flux d'émission s'est **refermé sans événement final** (F-131 / SF-131-01) : ni `done`
    * (non-suite), ni `error`. Le transport est tombé (SSE coupé, proxy, réseau) alors que le serveur a

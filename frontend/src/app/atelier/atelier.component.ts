@@ -183,6 +183,13 @@ export const TEAMS_LINK_POLL_MS = 60_000;
 const RETRY_TEAMS_READ_PRECISION = 'Réessaie la lecture Teams.';
 const SEARCH_PROJECT_INSTEAD_PRECISION = 'Autorisé à répondre via le projet à la place.';
 
+/**
+ * Les refus de la **porte du runner** (F-161 / SF-161-01). Ils se distinguent d'une panne : rien
+ * n'a été dépensé, et l'utilisateur peut passer outre. Ce sont les deux seuls codes auxquels
+ * l'écran propose « Demander quand même ».
+ */
+const RUNNER_DOOR_CODES = ['runner_offline', 'runner_missing_capability'];
+
 @Component({
   selector: 'app-atelier',
   imports: [
@@ -1475,7 +1482,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
   }
 
   /** Lance un tour avec cette demande — depuis la saisie, ou pour une précision arrivée trop tard. */
-  private startTurn(id: string, content: string): void {
+  private startTurn(id: string, content: string, force = false): void {
     const userItem: AtelierThreadItem = {
       id: `local-user-${Date.now()}`,
       role: 'USER',
@@ -1680,7 +1687,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
           }
           this.flushDeferredPrecisions(id);
         }),
-      onError: (code) =>
+      onError: (code, reason) =>
         this.zone.run(() => {
           this.stopTurnWindows();
           this.submitting.set(false);
@@ -1695,7 +1702,14 @@ export class AtelierComponent implements OnInit, OnDestroy {
           if (!joined && !followedUp) {
             this.messages.update((current) => current.filter((m) => m.id !== userItem.id));
           }
-          this.notifyError(this.streamErrorMessage(code));
+          // F-161 / SF-161-01 : la porte du runner n'est pas une panne — c'est un refus décidé,
+          // et l'utilisateur seul sait si sa question touche vraiment la machine. On lui rend le
+          // geste plutôt qu'un simple constat.
+          if (RUNNER_DOOR_CODES.includes(code)) {
+            this.offerAskAnyway(id, content, code, reason);
+          } else {
+            this.notifyError(this.streamErrorMessage(code));
+          }
           this.flushDeferredPrecisions(id);
         }),
       // Le flux d'émission s'est refermé SANS réponse finale (F-131 / SF-131-01) : le serveur a
@@ -1707,7 +1721,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
       // il bascule sur « réponse non reçue — Rejouer ? ».
       onIdle: () => this.zone.run(() => this.showUnanswered(generation)),
     };
-    void this.atelier.streamChat(id, content, handlers, this.mode());
+    void this.atelier.streamChat(id, content, handlers, this.mode(), force);
     // Si la prise en main n'arrive pas, un proxy retient le flux : on suit le tour par fenêtres, EN
     // PLUS du flux d'origine — qui garde la fin du tour s'il est relâché le premier.
     this.armStreamProbe(id, handlers);
@@ -1933,9 +1947,26 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.startTurn(id, deferred.map((d) => d.content).join('\n\n'));
   }
 
+  /**
+   * Le refus de la porte du runner (F-161 / SF-161-01), avec l'échappatoire à portée de clic. La
+   * raison vient du serveur : elle nomme le poste et l'ancienneté de son dernier signe, ce qu'un
+   * code seul ne pourrait pas dire.
+   */
+  private offerAskAnyway(id: string, content: string, code: string, reason?: string): void {
+    const message = reason && reason.trim() ? reason : this.streamErrorMessage(code);
+    this.snackBar
+      .open(message, 'Demander quand même', { duration: 12000, panelClass: 'snack-error' })
+      .onAction()
+      .subscribe(() => this.startTurn(id, content, true));
+  }
+
   /** Traduit un code d'erreur de flux en message utilisateur lisible (SF-28-05). */
   private streamErrorMessage(code: string): string {
     switch (code) {
+      case 'runner_offline':
+        return "Le poste de ce projet ne répond plus : aucun tour ne pourrait y exécuter de commande.";
+      case 'runner_missing_capability':
+        return "Le runner de ce poste ne déclare pas les capacités nécessaires à ce tour.";
       case 'too_many_steers':
         return 'Trop de précisions en attente pour ce message ; laissez-le avancer.';
       case 'quota_exceeded':

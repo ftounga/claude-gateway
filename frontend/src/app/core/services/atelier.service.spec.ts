@@ -451,6 +451,47 @@ describe('AtelierService', () => {
     expect(JSON.parse(body).mode).toBe('ACT');
   });
 
+  // ------------------------------ F-161 / SF-161-01 : la porte du runner et son échappatoire
+
+  it('streamChat envoie « demander quand même » quand on passe outre la porte (F-161 / SF-161-01)',
+    async () => {
+      const spy = fakeSseFetch([
+        'event:done\ndata:{"reply":"Fait.","actions":[],"messageId":"m1"}',
+      ]);
+
+      await service.streamChat('w1', 'vas-y', {
+        onAction: () => undefined,
+        onText: () => undefined,
+        onDone: () => undefined,
+        onError: () => undefined,
+      }, 'ACT', true);
+
+      const body = spy.calls.mostRecent().args[1]?.body as string;
+      expect(JSON.parse(body)).toEqual({ message: 'vas-y', mode: 'ACT', force: true });
+    });
+
+  it("streamChat remonte la RAISON du refus, pas seulement son code (F-161 / SF-161-01)",
+    async () => {
+      fakeSseFetch([
+        'event:error\ndata:{"error":"runner_offline",'
+          + '"reason":"Le runner du poste « CAGIP » ne répond plus (dernier signe il y a 12 min)."}',
+      ]);
+      const seen: Array<[string, string | undefined]> = [];
+
+      await service.streamChat('w1', 'go', {
+        onAction: () => undefined,
+        onText: () => undefined,
+        onDone: () => undefined,
+        onError: (code, reason) => seen.push([code, reason]),
+      });
+
+      expect(seen.length).toBe(1);
+      expect(seen[0][0]).toBe('runner_offline');
+      // Sans la raison, l'écran ne pourrait pas dire QUEL poste ni DEPUIS QUAND.
+      expect(seen[0][1]).toContain('CAGIP');
+      expect(seen[0][1]).toContain('12 min');
+    });
+
   // ------------------------------------------ F-97 / SF-97-02 : un refus met le poste à jour partout
 
   it("écrit event:runner_offline dans l'état partagé des postes, avec l'instant serveur", async () => {
