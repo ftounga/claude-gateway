@@ -125,6 +125,13 @@ export interface AtelierPendingConfirmation {
   deadline: number | null;
   /** Durée totale annoncée, en millisecondes : sert à dire l'expiration (« dans les 2 minutes »). */
   timeoutMs: number | null;
+  /**
+   * La gateway propose « **toujours autoriser cette commande** » (F-121 / SF-121-02-FE) : une
+   * règle de permission **persistante** pour ce projet, pas un raccourci de tour. Faux par défaut
+   * — on ne propose jamais un geste durable que la gateway n'a pas annoncé. Optionnel : la tuile
+   * de mosaïque en lecture seule (F-83) n'a aucun bouton à proposer.
+   */
+  allowAlwaysOffered?: boolean;
 }
 
 /**

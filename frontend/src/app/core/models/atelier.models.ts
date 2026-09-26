@@ -882,6 +882,14 @@ export interface AtelierConfirmRequest {
    * une valeur serait pire que de n'en donner aucune. Absent ⇒ aucun compte à rebours affiché.
    */
   timeoutMs?: number;
+  /**
+   * L'écran peut proposer « **toujours autoriser cette commande** » (F-121 / SF-121-02-FE) : la
+   * gateway a une politique de permission branchée, et la case écrirait donc une vraie règle
+   * persistante. **Additif** : absent d'un backend antérieur, du bac à sable et d'une écriture
+   * Teams — le bouton n'est alors pas proposé, plutôt que de promettre un effet qui n'aurait pas
+   * lieu.
+   */
+  allowAlwaysOffered?: boolean;
 }
 
 /**
@@ -907,6 +915,17 @@ export interface AtelierConfirmDecision {
    * additif : un backend antérieur l'ignore.</p>
    */
   allowAll?: boolean;
+
+  /**
+   * Écrit une règle de permission **persistante** pour ce projet (F-121 / SF-121-02-FE).
+   *
+   * <p>Un autre ordre de grandeur que {@link #allowAll} : la portée n'est plus le tour mais le
+   * **projet**, sans limite de durée. Pour `bash`, la gateway pose la règle sur le **premier mot**
+   * de la commande (« toujours autoriser `git` »), pas sur la commande entière — c'est ce que
+   * l'écran doit dire avant le clic. N'a d'effet qu'avec `decision: 'allow'` ; champ additif, un
+   * backend antérieur l'ignore.</p>
+   */
+  alwaysAllowCommand?: boolean;
 }
 
 /** Réponse de `PUT /api/workspaces/{id}/agent/confirmation` (F-33 / SF-33-01). */

@@ -1103,8 +1103,40 @@ describe('AtelierService', () => {
     });
 
     expect(seen).toEqual([
-      { toolUseId: 'toolu_1', tool: 'bash', detail: 'npm test' },
+      // `allowAlwaysOffered` est FAUX quand la gateway ne l'annonce pas (F-121 / SF-121-02-FE) :
+      // on ne propose pas une règle persistante que le backend n'écrirait pas.
+      { toolUseId: 'toolu_1', tool: 'bash', detail: 'npm test', allowAlwaysOffered: false },
       { toolUseId: 'toolu_1', decision: 'timeout' },
+    ]);
+  });
+
+  it("relaie « toujours autoriser » quand la gateway l'annonce, et l'omet sur l'aparté d'état "
+      + '(F-121 / SF-121-02-FE)', async () => {
+    fakeSseFetch([
+      'event:confirm_request\ndata:{"toolUseId":"toolu_2","tool":"bash","detail":"git push",'
+        + '"timeoutMs":120000,"allowAlwaysOffered":true}',
+      // L'aparté de rejeu (SF-84-03) ne connaît pas le drapeau : la clé doit rester ABSENTE, pour
+      // que l'écran conserve ce qu'il sait déjà de la même demande plutôt que de l'effacer.
+      'event:confirm_state\ndata:{"toolUseId":"toolu_2","tool":"bash","detail":"git push",'
+        + '"timeoutMs":20000}',
+      'event:done\ndata:{"reply":"Fini.","actions":[],"messageId":"m1"}',
+    ]);
+    const seen: unknown[] = [];
+
+    await service.streamChat('w1', 'lance', {
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: () => undefined,
+      onError: () => undefined,
+      onConfirmRequest: (r) => seen.push(r),
+    });
+
+    expect(seen).toEqual([
+      {
+        toolUseId: 'toolu_2', tool: 'bash', detail: 'git push', timeoutMs: 120000,
+        allowAlwaysOffered: true,
+      },
+      { toolUseId: 'toolu_2', tool: 'bash', detail: 'git push', timeoutMs: 20000 },
     ]);
   });
 

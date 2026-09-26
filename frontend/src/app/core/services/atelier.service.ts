@@ -536,6 +536,8 @@ export class AtelierService {
       decision?: string;
       /** Délai d'expiration d'une demande d'autorisation, en ms (F-47 / SF-47-02). */
       timeoutMs?: number;
+      /** La gateway propose « toujours autoriser cette commande » (F-121 / SF-121-02-FE). */
+      allowAlwaysOffered?: boolean;
       tokens?: number;
       inputTokens?: number;
       outputTokens?: number;
@@ -599,12 +601,21 @@ export class AtelierService {
         ...(typeof payload.timeoutMs === 'number' && payload.timeoutMs > 0
           ? { timeoutMs: payload.timeoutMs }
           : {}),
+        // « Toujours autoriser cette commande » (F-121 / SF-121-02-FE) : proposé UNIQUEMENT quand
+        // la gateway l'annonce — elle seule sait si une politique de permission est branchée. Tout
+        // ce qui n'est pas `true` vaut faux : mieux vaut ne pas proposer le geste que promettre une
+        // règle qui ne serait jamais écrite.
+        allowAlwaysOffered: payload.allowAlwaysOffered === true,
       });
     } else if (event === 'confirm_state') {
       // Ce que le tour attend À L'INSTANT (F-84 / SF-84-03). Il arrive après le rejeu, et son
       // `timeoutMs` est le TEMPS RESTANT calculé par la gateway : c'est lui qui corrige le compte à
       // rebours, là où le `confirm_request` rejoué annoncerait encore le délai d'origine (SF-47-02).
       // Routé vers la même invite : pour l'écran, une attente est une attente.
+      //
+      // L'aparté ne porte PAS `allowAlwaysOffered` (l'état du tour, `PendingApproval`, ne le
+      // connaît pas) : la clé est donc laissée ABSENTE plutôt que mise à faux, pour que l'invite
+      // conserve ce qu'elle sait déjà de la même demande (F-121 / SF-121-02-FE, arbitrage A2).
       handlers.onConfirmRequest?.({
         toolUseId: payload.toolUseId ?? '',
         tool: payload.tool ?? '',

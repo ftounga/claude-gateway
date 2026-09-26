@@ -3792,6 +3792,76 @@ describe('AtelierComponent', () => {
     expect(service.confirmChatToolUse.calls.mostRecent().args[1].allowAll).toBeUndefined();
   });
 
+  // --------------------------------------- SF-121-02-FE : toujours autoriser cette commande
+
+  /** Pose une invite en attente, telle que le flux la produit. */
+  function pendAsk(allowAlwaysOffered = true): void {
+    component.pendingConfirmation.set({
+      toolUseId: 'tu1',
+      tool: 'bash',
+      detail: 'git push',
+      reason: '',
+      deadline: null,
+      timeoutMs: null,
+      denying: false,
+      answering: false,
+      source: 'LOCAL_MACHINE',
+      allowAlwaysOffered,
+    });
+  }
+
+  it('sends the persistent rule only when the user asked for it (F-121 / SF-121-02-FE)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    service.confirmChatToolUse.and.returnValue(of(void 0));
+    pendAsk();
+
+    component.answerConfirmation(true, false, true);
+
+    const decision = service.confirmChatToolUse.calls.mostRecent().args[1];
+    expect(decision.decision).toBe('allow');
+    expect(decision.alwaysAllowCommand).toBeTrue();
+    // La règle persistante n'est pas un blanket de tour : les deux gestes restent distincts.
+    expect(decision.allowAll).toBeUndefined();
+  });
+
+  it('never sends the persistent rule on a plain authorisation (F-121 / SF-121-02-FE)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    service.confirmChatToolUse.and.returnValue(of(void 0));
+    pendAsk();
+
+    component.answerConfirmation(true);
+    expect(service.confirmChatToolUse.calls.mostRecent().args[1].alwaysAllowCommand)
+      .toBeUndefined();
+
+    component.pendingConfirmation.update((c) => (c ? { ...c, answering: false } : c));
+    component.answerConfirmation(true, true);
+    expect(service.confirmChatToolUse.calls.mostRecent().args[1].alwaysAllowCommand)
+      .toBeUndefined();
+  });
+
+  it('keeps the offer across a confirm_state replay of the SAME ask (F-121 / SF-121-02-FE)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    pendAsk();
+
+    // L'aparté `confirm_state` (SF-84-03) rejoue la MÊME demande, sans le drapeau : le bouton ne
+    // doit pas disparaître sous les yeux de l'utilisateur.
+    component['showConfirmation'](
+      { toolUseId: 'tu1', tool: 'bash', detail: 'git push', timeoutMs: 20000 },
+      'LOCAL_MACHINE',
+    );
+    expect(component.pendingConfirmation()?.allowAlwaysOffered).toBeTrue();
+
+    // Une AUTRE demande sans drapeau, elle, ne l'hérite pas : repli sûr.
+    component['showConfirmation'](
+      { toolUseId: 'tu2', tool: 'bash', detail: 'rm -rf build' },
+      'LOCAL_MACHINE',
+    );
+    expect(component.pendingConfirmation()?.allowAlwaysOffered).toBeFalse();
+  });
+
   // ------------------------------------------------- SF-39-19 : parler pendant qu'il travaille
 
   it('deposits a steer instead of opening a second turn while one is running', () => {
