@@ -234,6 +234,41 @@
     min-width: 0;
   }
 
+  /* ---- BANDEAUX TEXTE + BOUTONS EMPILÉS (F-158 / SF-158-18, P0) ----
+     Constat téléphone (390 px) : les bandeaux « icône + texte + rangée de boutons » gardaient texte et
+     boutons CÔTE À CÔTE. Le texte, en `min-width: 0`, se laissait écraser (colonne à ~100 px → un mot
+     par ligne) au lieu de forcer les boutons à passer dessous. `flex-wrap: wrap` SEUL ne suffit pas :
+     tant que le texte peut rétrécir, rien ne force le retour à la ligne des boutons. Le levier est la
+     rangée d'actions en `flex: 1 1 100%` — son gabarit pleine largeur ne peut pas cohabiter avec
+     l'icône et le texte → elle SAUTE sur sa propre ligne, et le texte récupère toute la première ligne.
+     Boutons dimensionnés au pouce (>= 44 px). Aucune couleur nouvelle. Rendu >= 820 px inchangé. */
+
+  /* Bandeau de compaction (« Cette conversation est longue — repartir propre ? », F-117 / SF-117-03).
+     Non traité jusqu'ici : deux boutons (« Nouveau départ » / « Plus tard ») écrasaient le texte. */
+  .terminal-compaction-hint {
+    flex-wrap: wrap;
+  }
+
+  .terminal-compaction-hint-actions {
+    flex: 1 1 100%;
+  }
+
+  .terminal-compaction-hint-actions button {
+    min-height: 44px;
+  }
+
+  /* Proposition de runner (F-39) : le conteneur porte DÉJÀ `flex-wrap: wrap` et le texte `min-width: 0`
+     (SF-158-11) ; on COMPLÈTE ce qui manquait — la descente pleine largeur de la rangée d'actions
+     (« Plus tard » + « Connecter un poste », ~240 px, écrasaient encore le texte). */
+  .terminal-hint-runner-actions {
+    flex: 1 1 100%;
+  }
+
+  .terminal-hint-runner-actions button,
+  .terminal-hint-runner-actions .terminal-hint-runner-pair {
+    min-height: 44px;
+  }
+
   /* ---- EN-TÊTE COMPACT + MENU ⋯ (F-158 / SF-158-12) ----
      La barre desktop entasse fil + dossier + budget + coût + moteur + signe de vie + Teams + ~10
      boutons. Sur téléphone on ne garde EN CLAIR que le fil (tronqué), la pastille moteur et — pendant
