@@ -798,10 +798,12 @@ public class AtelierChatService implements RelayInterruptTarget {
     static final String TOOL_PRIMACY = "--- Ce que tu fabriques, et avec quoi ---\n"
             + "Un skill posé sur cette machine peut avoir été écrit AVANT que la gateway sache faire le "
             + "travail elle-même. Quand une recette te demande d'INSTALLER quelque chose pour fabriquer "
-            + "un livrable — un moteur de rendu de diagrammes, un navigateur, python-pptx — et qu'un "
+            + "un livrable — un moteur de rendu de diagrammes, un navigateur, python-pptx, "
+            + "python-docx, openpyxl — et qu'un "
             + "outil ci-dessus fait la même chose, c'est L'OUTIL QUI PRIME. N'installe rien.\n"
             + "Concrètement : un schéma se rend avec render_diagram ; une présentation se construit "
-            + "avec build_presentation. Si l'outil n'est pas disponible et que la bibliothèque n'est pas "
+            + "avec build_presentation ; un document Word avec build_document ; un classeur Excel "
+            + "avec build_spreadsheet. Si l'outil n'est pas disponible et que la bibliothèque n'est pas "
             + "DÉJÀ présente sur la machine, dis-le — ne l'installe pas, et ne fabrique pas un "
             + "substitut.\n"
             + "Le skill garde toute son autorité sur le RESTE : la structure du livrable, le style, le "
@@ -815,6 +817,17 @@ public class AtelierChatService implements RelayInterruptTarget {
             fr.claudegateway.decks.DeckToolCatalog.none();
     /** Exécution de {@code build_presentation} ; {@code null} pour les formes historiques. */
     private fr.claudegateway.decks.DeckToolExecutor deckToolExecutor;
+
+    /**
+     * Les outils {@code build_document} / {@code build_spreadsheet} (F-129 / SF-129-07) : le
+     * {@code .docx} et le {@code .xlsx} sont construits <b>par la gateway</b>, pour la même raison
+     * que le deck — le poste du client n'installe ni {@code python-docx} ni {@code openpyxl}.
+     * {@code none()} par défaut.
+     */
+    private fr.claudegateway.office.OfficeToolCatalog officeToolCatalog =
+            fr.claudegateway.office.OfficeToolCatalog.none();
+    /** Exécution des outils Office ; {@code null} pour les formes historiques. */
+    private fr.claudegateway.office.OfficeToolExecutor officeToolExecutor;
 
     /**
      * Tours pour lesquels une interruption a été demandée (F-38 / SF-38-07, même geste que F-32).
@@ -1259,6 +1272,20 @@ public class AtelierChatService implements RelayInterruptTarget {
             this.deckToolCatalog = deckToolCatalog;
         }
         this.deckToolExecutor = deckToolExecutor;
+    }
+
+    /**
+     * Branche les outils de construction Office (F-129 / SF-129-07) : sans service configuré, ils ne
+     * sont pas donnés — l'ancienne voie {@code python-docx} / {@code openpyxl} reste possible là où
+     * elle marche déjà.
+     */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setOfficeTool(fr.claudegateway.office.OfficeToolCatalog officeToolCatalog,
+            fr.claudegateway.office.OfficeToolExecutor officeToolExecutor) {
+        if (officeToolCatalog != null) {
+            this.officeToolCatalog = officeToolCatalog;
+        }
+        this.officeToolExecutor = officeToolExecutor;
     }
 
     /** Branche l'écriture des cartes du poste pour le reclassement (F-141 / SF-141-04). */
@@ -2284,6 +2311,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                 } else if (fr.claudegateway.decks.DeckToolCatalog.isDeckTool(call.name())) {
                     // F-129 / SF-129-05 : la gateway construit le .pptx et le dépose dans le projet.
                     outcome = applyDeckBuild(userId, workspace, callId, call);
+                } else if (fr.claudegateway.office.OfficeToolCatalog.isOfficeTool(call.name())) {
+                    // F-129 / SF-129-07 : la gateway construit le .docx / .xlsx et le dépose dans le projet.
+                    outcome = applyOfficeBuild(userId, workspace, callId, call);
                 } else if (fr.claudegateway.diagrams.DiagramToolCatalog.isDiagramTool(call.name())) {
                     // F-142 / SF-142-06 : la gateway rend le diagramme et le dépose dans le projet.
                     outcome = applyDiagramRender(userId, workspace, callId, call);
@@ -3357,6 +3387,21 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
         fr.claudegateway.decks.DeckToolExecutor.Outcome outcome =
                 deckToolExecutor.execute(userId, workspace, callId, call.input());
+        return outcome.error() ? ToolOutcome.error(outcome.content()) : ToolOutcome.info(outcome.content());
+    }
+
+    /**
+     * Exécute {@code build_document} / {@code build_spreadsheet} (F-129 / SF-129-07) : la gateway
+     * construit le fichier, le poste ne fabrique plus rien. Aucun plafond par tour — aucun appel
+     * fournisseur derrière.
+     */
+    private ToolOutcome applyOfficeBuild(UUID userId, Workspace workspace, String callId,
+            AgentToolCall call) {
+        if (officeToolExecutor == null || !officeToolCatalog.isOpenFor(userId, workspace)) {
+            return ToolOutcome.error("La construction de documents n'est pas ouverte dans ce terminal.");
+        }
+        fr.claudegateway.office.OfficeToolExecutor.Outcome outcome =
+                officeToolExecutor.execute(userId, workspace, callId, call.name(), call.input());
         return outcome.error() ? ToolOutcome.error(outcome.content()) : ToolOutcome.info(outcome.content());
     }
 
@@ -5918,6 +5963,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         tools.addAll(diagramToolCatalog.toolsFor(userId, workspace));
         // F-129 / SF-129-05 : la construction du .pptx, côté gateway, pour la même raison.
         tools.addAll(deckToolCatalog.toolsFor(userId, workspace));
+        // F-129 / SF-129-07 : le .docx et le .xlsx, même moteur, même raison.
+        tools.addAll(officeToolCatalog.toolsFor(userId, workspace));
         // F-154 / SF-154-02 : inscrire une action que l'utilisateur SEUL peut faire, pour qu'elle
         // survive au tour. Sous la même garde d'espace que les autres outils de la gateway.
         if (terminalActionToolExecutor != null) {
@@ -6216,6 +6263,10 @@ public class AtelierChatService implements RelayInterruptTarget {
         if (deckToolCatalog.isOpenFor(userId, workspace)) {
             system.append(fr.claudegateway.decks.DeckToolCatalog.GUIDE).append("\n\n");
         }
+        // F-129 / SF-129-07 : le guide des documents Office, sous la même garde que les outils.
+        if (officeToolCatalog.isOpenFor(userId, workspace)) {
+            system.append(fr.claudegateway.office.OfficeToolCatalog.GUIDE).append("\n\n");
+        }
         // F-154 / SF-154-02 : le guide des actions à faire — il dit surtout QUAND ne PAS en inscrire,
         // sans quoi la liste de l'utilisateur se remplirait des étapes de l'agent.
         if (terminalActionToolExecutor != null
@@ -6342,7 +6393,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         // La règle vient APRÈS le catalogue des skills : ce qu'on lit en dernier pèse le plus. Elle est
         // conditionnée à la présence réelle d'un de ces outils — sinon elle parlerait dans le vide — et
         // son texte est FIXE : le préfixe système reste stable, le cache de F-134 n'est pas touché.
-        if (diagramToolCatalog.isOpenFor(userId, workspace) || deckToolCatalog.isOpenFor(userId, workspace)) {
+        if (diagramToolCatalog.isOpenFor(userId, workspace) || deckToolCatalog.isOpenFor(userId, workspace)
+                || officeToolCatalog.isOpenFor(userId, workspace)) {
             system.append(TOOL_PRIMACY).append("\n\n");
         }
         if (workspace.isRunnerTarget()) {
