@@ -645,6 +645,16 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   tour suivant dans la CONSIGNE** (jamais la consigne système → cache de prompt préservé, patron
   F-137/F-148) et **rendu à l'écran** ; un plan **entièrement terminé** n'est pas reporté. `null` =
   aucun plan/mode (comportement d'avant SF-121-10) ; un « nouveau départ » (SF-39-04) efface les deux.
+- **workspaces — marqueur de repli d'affichage du nouveau départ** (F-117 / SF-117-05, migration
+  `122`). Colonne `chat_history_folded_at` (horodatage, **nullable**) : un « nouveau départ » et la
+  compaction automatique posent la **même** frontière `chat_thread_started_at`, qui ne peut donc pas,
+  seule, distinguer le geste humain (dont l'ancien fil se **replie** à l'écran derrière « Voir
+  l'historique », SF-117-06) de la compaction **silencieuse** (tout gardé affiché). Ce marqueur est
+  posé **uniquement** par le restart manuel (`AtelierThreadService.restart`), **jamais** par la
+  compaction — **point fixe** : une compaction survenant après un nouveau départ déplace
+  `chat_thread_started_at` sans étendre le repli. L'état de reprise expose `foldedTurns` = nombre de
+  messages créés avant le marqueur (comptage isolé `user_id`), `0` sans nouveau départ. `null` =
+  aucun repli (comportement d'avant SF-117-05). **Non destructif** : pur affichage, rien n'est supprimé.
   Persistance best-effort via `AtelierThreadStateStore` (isolation `findByIdAndUserId`), défaut `NONE`.
   **Aucune table nouvelle** : colonnes ajoutées à `workspaces`.
 - **Outillage de la boucle maison — aucune persistance** (F-39 / SF-39-05 et SF-39-06). La panoplie
