@@ -94,6 +94,32 @@ gratuitement.
 
 **Ordre** : 01 → 02 → 03, puis 04 **seulement sur mesure**.
 
+## 7 bis. Clôture du découpage — arbitrage du 2026-09-26
+
+Le découpage annonçait « 01 → 02 → 03, puis 04 **seulement sur mesure** ». Les trois premières sont
+livrées. Deux décisions closent la feature.
+
+### SF-161-05 (ajoutée) — les deux savoirs entrent sur la carte
+Le §2 s'engageait à ajouter à la carte de F-156 la vivacité et les capacités déclarées : « il
+faudra les y ajouter ». C'était plus qu'une formalité — **une capacité hors carte se fait détacher
+sans que rien ne casse** (F-157). Livrée, avec un mur instructif : la carte suppose que toute
+capacité laisse une trace, or **les deux capacités de F-161 n'en laissent aucune par
+construction** — la porte réussit quand un tour *ne s'ouvre pas*, le journal quand il n'y a rien à
+consigner. D'où le verdict **BRANCHÉE** : jugée par ses seuls témoins, gratuitement.
+
+### SF-161-04 (ping conditionnel) — **maintenue en réserve, non livrée**
+La condition posée au §7 est « **seulement sur mesure** », et le §6 la garde « conditionnelle ». La
+mesure existe désormais — c'est SF-161-03 — mais elle est **vide** : le journal date du jour.
+
+**Livrer 04 maintenant serait faire exactement ce que le §6 refuse** : ajouter une latence à *tous*
+les tours pour rattraper un trou qu'aucun fait n'atteste. On ne remplace pas une hypothèse sur la
+cause par une hypothèse sur le remède.
+
+**Condition de réouverture, écrite pour ne pas être devinée plus tard** : des ruptures consignées
+**avec des appels en vol** alors que la porte venait de dire « vivant » — c'est le seul cas que 01
+(l'entrée) et 02 (l'arrêt net) ne couvrent pas, et le seul que le ping rattraperait. Tant que
+`runner_disconnects` ne le montre pas, 04 reste en réserve.
+
 ## 8. Garde-fous
 - **Aucun jeton** consommé par la porte : c'est tout son intérêt.
 - **Isolation** `user_id` : le poste lu est celui du projet, déjà vérifié par `requireOwned`.
