@@ -78,10 +78,22 @@ class AtelierChatServiceRunnerDoorTest {
         return workspace;
     }
 
+    /**
+     * La porte lit le battement <b>une fois</b> et en tire décision et ancienneté : on double donc
+     * la lecture, pas le verdict (F-161 / SF-161-01).
+     */
+    private void alive(boolean value) {
+        java.time.OffsetDateTime beat = value
+                ? java.time.OffsetDateTime.now().minusSeconds(10)
+                : java.time.OffsetDateTime.now().minusMinutes(12);
+        when(liveness.lastSeenAt(userId, hostId)).thenReturn(beat);
+        when(liveness.isFresh(beat)).thenReturn(value);
+    }
+
     @Test
     @DisplayName("poste HORS LIGNE : refus, et LE FOURNISSEUR N'EST JAMAIS APPELÉ — zéro jeton")
     void offlineSpendsNothing() {
-        when(liveness.isAlive(userId, hostId)).thenReturn(false);
+        alive(false);
 
         assertThatThrownBy(() -> service.chat(userId, workspaceId, "déploie la MR"))
                 .isInstanceOf(RunnerNotReadyException.class)
@@ -97,7 +109,7 @@ class AtelierChatServiceRunnerDoorTest {
     @Test
     @DisplayName("runner SANS bash : refus nommé, et toujours aucun appel fournisseur")
     void missingBashSpendsNothing() {
-        when(liveness.isAlive(userId, hostId)).thenReturn(true);
+        alive(true);
         when(runnerHostService.declaredCapabilities(hostId)).thenReturn(Set.of("files", "teams"));
 
         assertThatThrownBy(() -> service.chat(userId, workspaceId, "lance les tests"))
@@ -108,17 +120,19 @@ class AtelierChatServiceRunnerDoorTest {
     }
 
     @Test
-    @DisplayName("« demander quand même » passe outre, et ne vaut QUE pour ce tour")
+    @DisplayName("« demander quand même » passe outre, et ne vaut QUE pour l'appel qui le porte")
     void forceAppliesToThisTurnOnly() {
-        when(liveness.isAlive(userId, hostId)).thenReturn(false);
+        alive(false);
 
-        AtelierChatService.forceThisTurn();
-        // Le tour passe la porte ; il échouera plus loin, faute de montage complet — ce qui
-        // importe ici est qu'il ne soit PAS refusé par la porte.
-        assertThatThrownBy(() -> service.chat(userId, workspaceId, "vas-y"))
+        // Le drapeau est un ARGUMENT, pas un état posé quelque part : c'est ce qui lui permet de
+        // traverser le pool SSE, où une variable de thread serait invisible (F-161 / SF-161-01).
+        // Le tour passe la porte ; il échouera plus loin, faute de montage complet — ce qui importe
+        // ici est qu'il ne soit PAS refusé par la porte.
+        assertThatThrownBy(() -> service.chat(userId, workspaceId, "vas-y",
+                fr.claudegateway.agent.AgentTurnMode.ACT, true))
                 .isNotInstanceOf(RunnerNotReadyException.class);
 
-        // Le tour SUIVANT retrouve la porte fermée : le laissez-passer ne survit pas.
+        // L'appel SUIVANT, qui ne le porte pas, retrouve la porte fermée.
         assertThatThrownBy(() -> service.chat(userId, workspaceId, "et encore"))
                 .isInstanceOf(RunnerNotReadyException.class);
     }
@@ -133,7 +147,7 @@ class AtelierChatServiceRunnerDoorTest {
         assertThatThrownBy(() -> service.chat(intruder, workspaceId, "voir"))
                 .isInstanceOf(WorkspaceNotFoundException.class);
 
-        verify(liveness, never()).isAlive(any(), any());
+        verify(liveness, never()).lastSeenAt(any(), any());
     }
 
     @Test
@@ -147,7 +161,7 @@ class AtelierChatServiceRunnerDoorTest {
         assertThatThrownBy(() -> service.chat(userId, workspaceId, "bonjour"))
                 .isNotInstanceOf(RunnerNotReadyException.class);
 
-        verify(liveness, never()).isAlive(any(), any());
+        verify(liveness, never()).lastSeenAt(any(), any());
     }
 
     @Test
@@ -162,7 +176,7 @@ class AtelierChatServiceRunnerDoorTest {
 
         assertThatThrownBy(() -> bare.chat(userId, workspaceId, "bonjour"))
                 .isNotInstanceOf(RunnerNotReadyException.class);
-        verify(liveness, never()).isAlive(any(), any());
+        verify(liveness, never()).lastSeenAt(any(), any());
     }
 
     @Test

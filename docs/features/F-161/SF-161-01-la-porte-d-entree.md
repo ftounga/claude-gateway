@@ -74,9 +74,25 @@ L'**arrêt net en plein tour** (**SF-161-02**) · le **journal des ruptures** (*
 | `RunnerDoor` | la décision : vivant ? capacités ? — rend `Ouverte` ou un refus nommé |
 | `RunnerNotReadyException` | le refus, traduit en **409** (l'état de la machine, pas la requête) |
 | `AtelierChatService` | consulte la porte **en premier**, sauf « demander quand même » |
-| `AtelierChatController` | un paramètre `force` facultatif |
+| `AtelierChatController` | un paramètre `force` facultatif, **lu sur le thread de requête** |
+| `AtelierChatController` (SSE) | le refus devient un `error` **nommé**, porteur de sa raison |
+| `atelier.component.ts` | le refus ouvre « **Demander quand même** » au lieu d'un simple constat |
 
 **Aucune migration** : les deux colonnes existent et sont alimentées.
+
+### Le drapeau est un ARGUMENT, jamais un état de thread
+Première version : `force` posé en variable de thread sur `AtelierChatService`. **Faux** — le relais
+SSE tourne sur un pool, et **c'est le seul chemin qu'emprunte l'écran**. L'échappatoire n'aurait
+fonctionné que sur le chemin synchrone, que personne n'utilise : une porte sans sortie. Le drapeau
+traverse donc `chat(...)` / `chatStreaming(...)` / `runLoop(...)` **en paramètre**, et
+`AtelierChatControllerForceTest` le prouve sur un **vrai pool**, en vérifiant au passage que la
+boucle ne tourne pas sur le thread de la requête — sans quoi le test ne prouverait rien.
+
+### Un refus nommé doit le rester dans le flux
+Sur le chemin SSE, une exception non prévue tombe dans `internal_error`. La porte y serait
+**indiscernable d'un bogue**, et ferait plus de mal que le tour qu'elle évite. Elle a donc sa propre
+capture, qui publie son code (`runner_offline` / `runner_missing_capability`) **et sa raison** — le
+nom du poste et l'ancienneté de son dernier signe, qu'un code seul ne pourrait pas porter.
 
 ## Plan de test
 - [ ] Vivant + capacités → ouvert, et le fournisseur est appelé.

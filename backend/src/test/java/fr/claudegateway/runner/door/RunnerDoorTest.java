@@ -38,8 +38,17 @@ class RunnerDoorTest {
         door = new RunnerDoor(liveness);
     }
 
+    /**
+     * La porte lit le battement <b>une seule fois</b> et en tire les deux choses : la décision et
+     * l'ancienneté qu'elle annonce. Le double donc de la même façon — un poste mort a un dernier
+     * signe daté, pas une absence.
+     */
     private void alive(boolean value) {
-        when(liveness.isAlive(userId, hostId)).thenReturn(value);
+        OffsetDateTime beat = value
+                ? OffsetDateTime.now().minusSeconds(10)
+                : OffsetDateTime.now().minusMinutes(12);
+        when(liveness.lastSeenAt(userId, hostId)).thenReturn(beat);
+        when(liveness.isFresh(beat)).thenReturn(value);
     }
 
     @Test
@@ -66,6 +75,9 @@ class RunnerDoorTest {
         assertThat(verdict.code()).isEqualTo(RunnerDoorVerdict.OFFLINE);
         assertThat(verdict.reason())
                 .contains("CAGIP")
+                // L'ancienneté est dans le message : « ne répond plus » sans depuis quand ne dit pas
+                // s'il faut attendre ou aller relancer la machine.
+                .contains("dernier signe il y a 12 min")
                 .contains("Relance-le")
                 .contains("rien n'a été dépensé");
     }
@@ -117,7 +129,7 @@ class RunnerDoorTest {
         RunnerDoorVerdict verdict = door.check(userId, null, null, null, Set.of("bash"));
 
         assertThat(verdict.open()).isTrue();
-        verify(liveness, never()).isAlive(org.mockito.ArgumentMatchers.any(),
+        verify(liveness, never()).lastSeenAt(org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any());
     }
 
@@ -148,6 +160,6 @@ class RunnerDoorTest {
 
         door.check(userId, hostId, "CAGIP", Set.of("files","bash"), Set.of("bash"));
 
-        verify(liveness).isAlive(userId, hostId);
+        verify(liveness).lastSeenAt(userId, hostId);
     }
 }

@@ -49,10 +49,14 @@ public class RunnerDoor {
         if (hostId == null) {
             return RunnerDoorVerdict.opened(); // projet hébergé : la porte ne le concerne pas
         }
-        if (!liveness.isAlive(userId, hostId)) {
+        // Une SEULE lecture du battement : la décision et le message qui l'explique viennent de la
+        // même vérité. Deux lectures pourraient dire « hors ligne (dernier signe il y a 0 min) ».
+        OffsetDateTime lastSeenAt = liveness.lastSeenAt(userId, hostId);
+        if (!liveness.isFresh(lastSeenAt)) {
             return RunnerDoorVerdict.closed(RunnerDoorVerdict.OFFLINE,
-                    "Le runner du poste « " + name(hostName) + " » ne répond plus. Relance-le, puis "
-                            + "renvoie ta demande — rien n'a été dépensé.");
+                    "Le runner du poste « " + name(hostName) + " » ne répond plus (dernier signe "
+                            + sinceLabel(lastSeenAt) + "). Relance-le, puis renvoie ta demande — "
+                            + "rien n'a été dépensé.");
         }
 
         Set<String> known = declared == null ? Set.of() : declared;

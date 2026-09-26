@@ -278,7 +278,7 @@ export class AtelierService {
    * jamais : les échecs passent par `onError`.
    */
   async streamChat(id: string, message: string, handlers: AtelierStreamHandlers,
-      mode: AtelierTurnMode = 'ACT'): Promise<void> {
+      mode: AtelierTurnMode = 'ACT', force = false): Promise<void> {
     // F-131 / SF-131-01 : on retient si le tour s'est réellement CONCLU dans ce flux — un `done`
     // non-suite ou une erreur. Sinon, la fermeture du flux est un DÉTACHEMENT (le serveur a peut-être
     // fini, mais l'écran n'a rien reçu) : c'est ce cas qui laissait le spinner tourner sans fin.
@@ -292,9 +292,9 @@ export class AtelierService {
         }
         handlers.onDone(done);
       },
-      onError: (code) => {
+      onError: (code, reason) => {
         settled = true;
-        handlers.onError(code);
+        handlers.onError(code, reason);
       },
     };
     try {
@@ -307,7 +307,10 @@ export class AtelierService {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         // F-120 / SF-120-02 : le mode du tour voyage avec chaque requête ; défaut ACT.
-        body: JSON.stringify({ message, mode }),
+        // F-161 / SF-161-01 : `force` est « demander quand même ». Il ne voyage QUE lorsque
+        // l'utilisateur a explicitement passé outre la porte du runner — la requête ordinaire ne
+        // porte rien de plus qu'avant.
+        body: JSON.stringify(force ? { message, mode, force: true } : { message, mode }),
       });
       if (!response.ok || !response.body) {
         handlers.onError('request_failed');
@@ -409,9 +412,9 @@ export class AtelierService {
             ended = done.followUp !== true;
             handlers.onDone(done);
           },
-          onError: (code) => {
+          onError: (code, reason) => {
             ended = true;
-            handlers.onError(code);
+            handlers.onError(code, reason);
           },
         }, current, waitMs);
         if (stopped || ended) {
@@ -522,7 +525,7 @@ export class AtelierService {
       }
       handlers.onSeq?.(seq);
     }
-    let payload: Partial<AtelierStreamAction> & { text?: string; error?: string } & {
+    let payload: Partial<AtelierStreamAction> & { text?: string; error?: string; reason?: string } & {
       reply?: string;
       actions?: AtelierChatResponse['actions'];
       messageId?: string;
@@ -711,7 +714,8 @@ export class AtelierService {
           typeof payload.at === 'number' ? payload.at : Date.now());
       }
     } else if (event === 'error') {
-      handlers.onError(payload.error ?? 'provider_error');
+      handlers.onError(payload.error ?? 'provider_error',
+        typeof payload.reason === 'string' ? payload.reason : undefined);
     }
   }
 

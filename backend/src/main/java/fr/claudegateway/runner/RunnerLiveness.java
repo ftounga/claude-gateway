@@ -40,7 +40,16 @@ public class RunnerLiveness {
 
     /** Le poste de cet utilisateur a-t-il battu récemment ? Lecture filtrée {@code user_id} + {@code host_id}. */
     public boolean isAlive(UUID userId, UUID hostId) {
-        return isFresh(tokenRepository.findLastSeenAt(userId, hostId));
+        return isFresh(lastSeenAt(userId, hostId));
+    }
+
+    /**
+     * Le <b>dernier battement</b> de ce poste, ou {@code null} s'il n'a jamais été vu. Même lecture
+     * filtrée que {@link #isAlive} — exposée pour que l'appelant qui doit <b>dire</b> l'ancienneté
+     * (la porte de F-161) n'ait pas à interroger deux fois, au risque de deux vérités.
+     */
+    public OffsetDateTime lastSeenAt(UUID userId, UUID hostId) {
+        return tokenRepository.findLastSeenAt(userId, hostId);
     }
 
     /**

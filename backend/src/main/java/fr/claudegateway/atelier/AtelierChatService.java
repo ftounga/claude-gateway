@@ -1056,17 +1056,6 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.runnerHostsForDoor = runnerHostsForDoor;
     }
 
-    /**
-     * Le tour en cours doit-il passer outre la porte ? Posé par l'écran quand l'utilisateur clique
-     * « demander quand même » — il seul sait si sa question touche la machine.
-     */
-    private static final ThreadLocal<Boolean> FORCE_DOOR = ThreadLocal.withInitial(() -> false);
-
-    /** « Demander quand même » : ouvre la porte pour ce tour, et pour lui seul. */
-    public static void forceThisTurn() {
-        FORCE_DOOR.set(true);
-    }
-
     /** Branche l'outil {@code email_me} (F-110 / SF-110-02). */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setClientMailTool(fr.claudegateway.mail.ClientMailTool clientMailTool) {
@@ -1301,7 +1290,13 @@ public class AtelierChatService implements RelayInterruptTarget {
      * en {@link AgentTurnMode#ACT} (ou {@code null}), comportement historique.
      */
     public AtelierChatResult chat(UUID userId, UUID workspaceId, String rawMessage, AgentTurnMode mode) {
-        return runLoop(userId, workspaceId, rawMessage, mode, AtelierProgressListener.NOOP);
+        return chat(userId, workspaceId, rawMessage, mode, false);
+    }
+
+    /** Le tour, avec « demander quand même » (F-161 / SF-161-01) : la porte est passée outre. */
+    public AtelierChatResult chat(UUID userId, UUID workspaceId, String rawMessage,
+            AgentTurnMode mode, boolean force) {
+        return runLoop(userId, workspaceId, rawMessage, mode, AtelierProgressListener.NOOP, force);
     }
 
     /**
@@ -1324,7 +1319,16 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     public AtelierChatResult chatStreaming(UUID userId, UUID workspaceId, String rawMessage,
             AgentTurnMode mode, AtelierProgressListener listener) {
-        AtelierChatResult result = runLoop(userId, workspaceId, rawMessage, mode, listener);
+        return chatStreaming(userId, workspaceId, rawMessage, mode, listener, false);
+    }
+
+    /**
+     * Le flux, avec « demander quand même » (F-161 / SF-161-01). Le drapeau est <b>porté par
+     * l'appel</b> : cette boucle tourne sur le pool SSE, pas sur le thread de la requête.
+     */
+    public AtelierChatResult chatStreaming(UUID userId, UUID workspaceId, String rawMessage,
+            AgentTurnMode mode, AtelierProgressListener listener, boolean force) {
+        AtelierChatResult result = runLoop(userId, workspaceId, rawMessage, mode, listener, force);
         notifyTurnDone(userId, workspaceId);
         return result;
     }
@@ -1438,6 +1442,18 @@ public class AtelierChatService implements RelayInterruptTarget {
 
     private AtelierChatResult runLoop(UUID userId, UUID workspaceId, String rawMessage,
             AgentTurnMode mode, AtelierProgressListener listener) {
+        return runLoop(userId, workspaceId, rawMessage, mode, listener, false);
+    }
+
+    /**
+     * Le tour, avec le laissez-passer de la porte (F-161 / SF-161-01).
+     *
+     * <p>{@code force} est un <b>paramètre</b> et non un état de thread : le flux SSE exécute cette
+     * boucle sur un autre thread que la requête, où un {@code ThreadLocal} serait invisible — et
+     * « demander quand même » n'aurait pas fonctionné sur le chemin que l'écran emprunte.</p>
+     */
+    private AtelierChatResult runLoop(UUID userId, UUID workspaceId, String rawMessage,
+            AgentTurnMode mode, AtelierProgressListener listener, boolean force) {
         // Le mode (F-120 / SF-120-02) est normalisé ici : un mode absent vaut ACT (comportement
         // d'avant). Il ne change que la panoplie déclarée et la consigne système — jamais l'isolation.
         AgentTurnMode turnMode = mode == null ? AgentTurnMode.ACT : mode;
@@ -1446,7 +1462,9 @@ public class AtelierChatService implements RelayInterruptTarget {
         // refusé ICI — avant le contexte, avant le modèle, avant le moindre jeton. Sur la session
         // mesurée du 25/09, 8 tours « Non concluant » ont coûté 11 % de la facture pour DÉCOUVRIR
         // que la machine ne répondait pas. Posée APRÈS `requireOwned` : un projet d'autrui rend 404.
-        checkRunnerDoor(userId, workspace);
+        if (!force) {
+            checkRunnerDoor(userId, workspace);
+        }
         // Mode « Assistant » sur un projet Git (F-31 / SF-31-03) : cette boucle lit et édite le
         // stockage objet, vide sur ce type de projet. Répondre quand même reviendrait à commenter un
         // projet inexistant ; le mode Terminal, lui, a le dépôt réellement cloné.
@@ -3074,10 +3092,6 @@ public class AtelierChatService implements RelayInterruptTarget {
      * porte branchée, sans poste, ou sans capacités déclarées, le tour passe comme avant.</p>
      */
     private void checkRunnerDoor(UUID userId, Workspace workspace) {
-        if (Boolean.TRUE.equals(FORCE_DOOR.get())) {
-            FORCE_DOOR.remove(); // « demander quand même » vaut pour CE tour, pas pour les suivants
-            return;
-        }
         if (runnerDoor == null || runnerHostsForDoor == null || !workspace.isRunnerTarget()) {
             return;
         }

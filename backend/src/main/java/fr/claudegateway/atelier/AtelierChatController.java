@@ -104,7 +104,7 @@ public class AtelierChatController {
     public AtelierChatResponse chat(@PathVariable UUID id, @Valid @RequestBody AtelierChatRequest request) {
         atelierAccess.requireTerminalAccess(id);
         AtelierChatResult result = atelierChatService.chat(currentUser.requireId(), id,
-                request.message(), request.modeOrDefault());
+                request.message(), request.modeOrDefault(), request.forceOrDefault());
         return new AtelierChatResponse(result.reply(), result.actions(), result.messageId(),
                 result.inputTokens(), result.outputTokens(), result.activeSeconds(),
                 result.budgetReached(), turnCostView.labelFor(result.costUsd(), null, turnCostView.callerIsAdmin()),
@@ -133,9 +133,14 @@ public class AtelierChatController {
         // « pas administrateur » et le montant disparaît du chemin NOMINAL de l'écran, sans la
         // moindre erreur pour le signaler (F-133 / SF-133-09).
         boolean admin = turnCostView.callerIsAdmin();
+        // « Demander quand même » (F-161 / SF-161-01) est lu ICI pour la même raison que le mode :
+        // le relais tourne sur le pool SSE. Une variable de thread posée sur le thread de requête y
+        // serait invisible — et l'échappatoire de la porte du runner ne marcherait que sur le
+        // chemin synchrone, celui que l'écran n'emprunte PAS.
+        boolean force = request.forceOrDefault();
         SseEmitter emitter = newEmitter();
         fr.claudegateway.chat.SseStreamDispatch.submit(chatStreamExecutor, emitter,
-                () -> relay(emitter, userId, id, request.message(), mode, hasAccess, admin));
+                () -> relay(emitter, userId, id, request.message(), mode, hasAccess, admin, force));
         return emitter;
     }
 
@@ -408,7 +413,8 @@ public class AtelierChatController {
     }
 
     private void relay(SseEmitter emitter, UUID userId, UUID workspaceId, String message,
-            fr.claudegateway.agent.AgentTurnMode mode, boolean hasAccess, boolean admin) {
+            fr.claudegateway.agent.AgentTurnMode mode, boolean hasAccess, boolean admin,
+            boolean force) {
         LiveTurn turn;
         if (hasAccess) {
             // UN ENVOI PENDANT UN TOUR EST UNE PRÉCISION (F-84 / SF-84-06, décision du PO du
@@ -545,8 +551,8 @@ public class AtelierChatController {
             };
             String demand = message;
             for (;;) {
-                AtelierChatResult result =
-                        atelierChatService.chatStreaming(userId, workspaceId, demand, mode, listener);
+                AtelierChatResult result = atelierChatService.chatStreaming(
+                        userId, workspaceId, demand, mode, listener, force);
                 if (result.interrupted()) {
                     // L'interruption est le geste qui arrête VRAIMENT (cadrage F-84 §5) : aucune
                     // précision restée en file ne relance un tour derrière elle — mais aucune ne
@@ -581,6 +587,12 @@ public class AtelierChatController {
             outcome = failTurn(turn, "byok_key_required");
         } catch (WorkspaceNotFoundException ex) {
             outcome = failTurn(turn, "workspace_not_found");
+        } catch (fr.claudegateway.runner.door.RunnerNotReadyException ex) {
+            // La porte du runner (F-161 / SF-161-01) est un refus NOMMÉ, pas une panne : l'écran doit
+            // pouvoir dire lequel des deux motifs, et proposer « demander quand même ». Rangé dans
+            // `internal_error`, il serait indiscernable d'un bogue — et la porte ferait plus de mal
+            // que le tour qu'elle évite.
+            outcome = failTurn(turn, ex.code(), ex.getMessage());
         } catch (AIProviderUnavailableException ex) {
             outcome = failTurn(turn, "provider_unavailable");
         } catch (AIProviderException ex) {
@@ -605,8 +617,13 @@ public class AtelierChatController {
      * sont dites non prises en compte (F-84 / SF-84-06) — jamais perdues en silence.
      */
     private static String failTurn(LiveTurn turn, String code) {
+        return failTurn(turn, code, null);
+    }
+
+    /** Même chose, en portant jusqu'à l'écran la raison précise du refus quand il y en a une. */
+    private static String failTurn(LiveTurn turn, String code, String reason) {
         turn.publishSteersDropped(turn.sealAndDrain(), code);
-        turn.publish("error", new StreamError(code));
+        turn.publish("error", new StreamError(code, reason));
         return code;
     }
 
@@ -747,6 +764,15 @@ public class AtelierChatController {
     record StreamRunnerOffline(String hostId, long at) {
     }
 
-    record StreamError(String error) {
+    /**
+     * Le refus nommé du tour. {@code reason} n'est renseigné que par les refus qui ont quelque chose
+     * à dire de PRÉCIS — la porte du runner (F-161 / SF-161-01) nomme le poste et l'ancienneté du
+     * dernier signe ; un code seul n'aurait pas pu les porter jusqu'à l'écran.
+     */
+    record StreamError(String error, String reason) {
+
+        StreamError(String error) {
+            this(error, null);
+        }
     }
 }
