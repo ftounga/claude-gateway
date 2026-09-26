@@ -48,6 +48,17 @@ const CHROME = process.env.CHROME_BIN || "chromium";
 /** Les programmes appelés : figés dans l'image, ouverts par l'environnement pour pouvoir ÊTRE TESTÉS. */
 const PYTHON = process.env.PYTHON_BIN || "python3";
 const DECK_SCRIPT = process.env.DECK_SCRIPT || "/app/deck.py";
+const OFFICE_SCRIPT = process.env.OFFICE_SCRIPT || "/app/office.py";
+
+/**
+ * Le document Word et le classeur Excel (F-129 / SF-129-07) : même moteur que le deck, même refus.
+ * Une DESCRIPTION entre sur l'entrée standard du programme, un fichier sort — jamais du code.
+ */
+const OFFICE_FORMATS = {
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+};
+const MAX_OFFICE_BYTES = 8 * 1024 * 1024;
 
 const PORT = Number(process.env.PORT || 8080);
 
@@ -282,6 +293,59 @@ async function presentation(req, res) {
   }
 }
 
+/**
+ * La construction d'un document Office (F-129 / SF-129-07) : une description entre, un fichier sort.
+ * Le programme Python reçoit des DONNÉES sur son entrée standard — jamais du code, comme partout ici.
+ */
+function buildOffice(spec, outputBase) {
+  return new Promise((resolve, reject) => {
+    const child = execFile(PYTHON, [OFFICE_SCRIPT], { timeout: DECK_TIMEOUT_MS, maxBuffer: 1 << 20 },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(new Error((stderr || error.message || "").toString().slice(0, 500)));
+          return;
+        }
+        const lines = (stdout || "").split("\n").map((l) => l.trim()).filter(Boolean);
+        resolve(lines[0] || "");
+      });
+    child.stdin.end(JSON.stringify({ ...spec, output: outputBase }), "utf-8");
+  });
+}
+
+async function office(req, res) {
+  let payload;
+  try {
+    payload = JSON.parse(await readBody(req, MAX_DECK_BODY_BYTES) || "{}");
+  } catch (e) {
+    return fail(res, 400, "Corps illisible : " + e.message);
+  }
+  const spec = payload.spec;
+  if (!spec || typeof spec !== "object" || Array.isArray(spec)) {
+    return fail(res, 400, "La description du document est manquante (champ « spec »).");
+  }
+  // Le format est décidé ICI, pas dans la description : un fichier dont le nom et le type sortent
+  // d'un champ libre du modèle finirait par mentir sur son contenu.
+  const format = typeof payload.format === "string" ? payload.format.trim().toLowerCase() : "";
+  if (!OFFICE_FORMATS[format]) {
+    return fail(res, 400, "Format inconnu « " + format + " ». Formats connus : "
+      + Object.keys(OFFICE_FORMATS).join(", ") + ".");
+  }
+  const dir = await mkdtemp(path.join(tmpdir(), "cg-office-"));
+  try {
+    const produced = await buildOffice({ ...spec, format }, path.join(dir, "document"));
+    const file = await readFile(produced || path.join(dir, "document." + format));
+    if (file.length > MAX_OFFICE_BYTES) {
+      return fail(res, 413, "Document trop lourd : " + file.length + " octets.");
+    }
+    res.writeHead(200, { "Content-Type": OFFICE_FORMATS[format], "Content-Length": file.length });
+    res.end(file);
+  } catch (e) {
+    return fail(res, 422, (e.message || "Le document n'a pas pu etre construit.").slice(0, 500));
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
 /** La branche « icônes officielles » : une description entre, un PNG sort. */
 async function renderCloudRequest(payload, res) {
   const spec = payload.spec;
@@ -317,6 +381,9 @@ const server = http.createServer((req, res) => {
   }
   if (req.method === "POST" && req.url === "/presentation") {
     return presentation(req, res).catch((e) => fail(res, 500, "Erreur interne : " + e.message));
+  }
+  if (req.method === "POST" && req.url === "/document") {
+    return office(req, res).catch((e) => fail(res, 500, "Erreur interne : " + e.message));
   }
   if (req.method === "POST" && req.url === "/render") {
     return render(req, res).catch((e) => fail(res, 500, "Erreur interne : " + e.message));

@@ -36,7 +36,6 @@ public class DeckToolExecutor {
     /** Au-delà, l'aperçu n'est pas demandé : déposer 30 images sur un poste prend déjà du temps. */
     static final int MAX_PREVIEW_SLIDES = 30;
     static final String DEFAULT_NAME = "presentation";
-    static final int MAX_NAME = 60;
 
     private final DeckBuilder builder;
     private final ProjectFileRead reader;
@@ -192,42 +191,12 @@ public class DeckToolExecutor {
 
     /** Un chemin du modèle : relatif, sans remontée. Sinon, refus <b>dit</b>. */
     static String refusePath(String path) {
-        if (path.isEmpty()) {
-            return "Chemin d'image vide.";
-        }
-        if (path.startsWith("/") || path.startsWith("\\") || path.matches("^[A-Za-z]:.*")) {
-            return "Chemin d'image absolu refusé (« " + path + " ») : donne un chemin du projet.";
-        }
-        if (path.contains("..")) {
-            return "Chemin d'image hors du projet refusé (« " + path + " »).";
-        }
-        return null;
+        return fr.claudegateway.atelier.ProjectFileNames.refusePath(path, "d'image");
     }
 
     /** Le nom du fichier déposé : nettoyé, jamais un chemin. */
     static String fileName(String raw, String title) {
-        String base = raw == null || raw.isBlank() ? title : raw;
-        base = base == null ? "" : base.strip();
-        int slash = Math.max(base.lastIndexOf('/'), base.lastIndexOf('\\'));
-        if (slash >= 0) {
-            base = base.substring(slash + 1);
-        }
-        if (base.toLowerCase(Locale.ROOT).endsWith(".pptx")) {
-            base = base.substring(0, base.length() - 5);
-        }
-        StringBuilder sb = new StringBuilder();
-        for (char c : base.toCharArray()) {
-            if (Character.isLetterOrDigit(c) || c == '-' || c == '_') {
-                sb.append(c);
-            } else if (c == ' ' || c == '.' || c == '\'') {
-                sb.append('-');
-            }
-            if (sb.length() >= MAX_NAME) {
-                break;
-            }
-        }
-        String cleaned = sb.toString().replaceAll("-+", "-").replaceAll("^-|-$", "");
-        return (cleaned.isEmpty() ? DEFAULT_NAME : cleaned) + ".pptx";
+        return fr.claudegateway.atelier.ProjectFileNames.clean(raw, title, "pptx", DEFAULT_NAME);
     }
 
     private static String text(JsonNode input, String field) {

@@ -1173,6 +1173,38 @@ class AtelierChatServiceSystemPromptTest {
                         maxDelegations, true));
     }
 
+    // ---------------------------------------------------------------- F-129 / SF-129-07
+
+    @Test
+    @DisplayName("SF-129-07 : quand les outils Office sont ouverts, leur guide est injecté, et la règle « l'outil prime » aussi")
+    void theofficeGuideIsInjectedWhenTheToolsAreOpen() {
+        service.setOfficeTool(openOfficeCatalog(), null);
+
+        String system = systemPrompt();
+
+        assertThat(system).contains(fr.claudegateway.office.OfficeToolCatalog.GUIDE);
+        assertThat(system).contains(AtelierChatService.TOOL_PRIMACY)
+                .contains("build_document").contains("build_spreadsheet");
+    }
+
+    @Test
+    @DisplayName("SF-129-07 : sans service configuré, rien n'est promis — ni outils, ni guide")
+    void withoutTheServiceNoOfficeGuide() {
+        String system = systemPrompt();
+
+        assertThat(system).doesNotContain(fr.claudegateway.office.OfficeToolCatalog.GUIDE);
+    }
+
+    /** Un catalogue Office RÉELLEMENT ouvert : le constructeur est configuré. */
+    private fr.claudegateway.office.OfficeToolCatalog openOfficeCatalog() {
+        fr.claudegateway.diagrams.DiagramProperties properties =
+                new fr.claudegateway.diagrams.DiagramProperties();
+        properties.setBaseUrl("http://diagram-renderer");
+        return new fr.claudegateway.office.OfficeToolCatalog(
+                new fr.claudegateway.office.HttpOfficeBuilder(properties,
+                        new com.fasterxml.jackson.databind.ObjectMapper()));
+    }
+
     /** Un catalogue de diagrammes RÉELLEMENT ouvert : le moteur est configuré. */
     private fr.claudegateway.diagrams.DiagramToolCatalog openDiagramCatalog() {
         fr.claudegateway.diagrams.DiagramProperties properties =
