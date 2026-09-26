@@ -88,26 +88,40 @@
 }
 
 @include bp.phone {
-  // La chip compacte, visible seulement quand le rappel est replié : cible tactile ≥ 44 px.
+  // La chip repliée se réduit à un MINI-BOUTON ICÔNE SEUL (F-158 / SF-158-20).
+  //
+  // Jusque-là (SF-158-17), le repli montrait le bouclier ET le libellé « Note poste » : une pastille
+  // large (~200 px) qui, malgré la remontée SF-158-19, flottait par-dessus le début du rail « Vos
+  // questions ». On la réduit à un bouton icône seul, carré 48 px (cible tactile ≥ 44 px) — empreinte
+  // comparable au bouton d'aide « ? » (`help-chat-widget`) en bas-droite (symétrie, footprint minimal,
+  // côtés opposés). Le bouton reste transparent : la surface visible (fond `--cg-surface`, bordure,
+  // ombre, rayon 12 px) est portée par `.notice--collapsed` (l'`<aside>`), qui s'ajuste au carré via
+  // `width:auto`. Le nom accessible reste porté par l'`aria-label` du bouton ; le tap déploie la notice
+  // complète (SF-158-17 intact).
   .notice--collapsed .notice-chip {
     display: inline-flex;
     align-items: center;
-    gap: var(--cg-space-2);
-    min-height: 44px;
-    padding: var(--cg-space-2) var(--cg-space-3);
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    padding: 0;
     border: none;
     border-radius: 12px;
     background: transparent;
-    color: var(--cg-text-primary);
-    font-family: var(--cg-font-heading);
-    font-size: 14px;
-    font-weight: 600;
+    color: var(--cg-accent);
     cursor: pointer;
 
     mat-icon {
       flex: none;
       color: var(--cg-accent);
     }
+  }
+
+  // Icône seule : le libellé « Note poste » est masqué sur téléphone. Il reste dans le DOM — nom
+  // lisible de secours pour l'accessibilité, et jamais rendu sur desktop (la chip entière y est
+  // `display:none`).
+  .notice--collapsed .notice-chip-label {
+    display: none;
   }
 
   // Le bouton réduire, calé en haut à droite du bandeau déployé.

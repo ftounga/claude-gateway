@@ -169,4 +169,31 @@ describe('WorkstationNoticeComponent', () => {
     // plus le composeur ancré (`.terminal-input`, SF-158-13).
     expect(css).toMatch(/notice--collapsed[^}]*bottom:\s*calc\(112px \+ env\(safe-area-inset-bottom\)\)/);
   });
+
+  // --- Repli en mini-bouton icône seul (F-158 / SF-158-20) ---
+  //
+  // Même garde-fou CSSOM indépendant du viewport : la chip repliée doit se réduire à un bouton icône
+  // seul (le libellé masqué), carré 48 px — plus de pastille large par-dessus le rail « Vos questions ».
+
+  it('sous 819 px, la chip repliée est réduite à une icône seule (mini-bouton carré ≥ 44 px)', () => {
+    fixture = build();
+    const css = mobileMediaCss().replace(/\s+/g, ' ');
+
+    // Le libellé « Note poste » est masqué : plus de pastille large qui flotte par-dessus le fil.
+    // (`[^}]*` traverse les attributs d'encapsulation `[_ngcontent-…]` que le compilateur insère.)
+    expect(css).toMatch(/notice-chip-label[^}]*display:\s*none/);
+    // Bouton icône carré, cible tactile ≥ 44 px.
+    expect(css).toMatch(/notice--collapsed[^}]*\.notice-chip[^}]*width:\s*48px/);
+    expect(css).toMatch(/notice--collapsed[^}]*\.notice-chip[^}]*height:\s*48px/);
+  });
+
+  it('le libellé « Note poste » reste dans le DOM (nom lisible de secours) même masqué', () => {
+    fixture = build();
+
+    // Masqué en CSS, jamais retiré du DOM : le nom accessible de secours et le test SF-158-17 tiennent.
+    const chip = fixture.nativeElement.querySelector('.notice-chip') as HTMLButtonElement;
+    expect(chip.textContent).toContain('Note poste');
+    // Le nom accessible du bouton est porté par l'aria-label, indépendant du libellé masqué.
+    expect(chip.getAttribute('aria-label')).toContain('journalisation du poste');
+  });
 });
