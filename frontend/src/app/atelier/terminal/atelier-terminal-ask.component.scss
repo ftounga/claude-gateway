@@ -1,0 +1,16 @@
+/* L'INVITE D'AUTORISATION — SA RANGÉE DE BOUTONS (F-121 / SF-121-02-FE)
+   ---------------------------------------------------------------------------------------------
+   Déplacée hors de la feuille principale, qui est au plafond de build de 12 ko (angular.json,
+   `maximumError`) : le même motif que les treize feuilles satellites déjà en place. Aucune couleur
+   nouvelle, aucun espacement hors grille de 4 px — seule la règle de passage à la ligne change,
+   la rangée portant désormais QUATRE boutons (Autoriser / Tout autoriser pour ce message /
+   Toujours autoriser … / Refuser). Sur téléphone, `atelier-terminal-mobile.component.scss` les
+   empile déjà pleine largeur (SF-158-13) : cette feuille ne lui retire rien. */
+
+.terminal-ask-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  /* La rangée passe à la ligne plutôt que de déborder du bloc d'invite. */
+  flex-wrap: wrap;
+}

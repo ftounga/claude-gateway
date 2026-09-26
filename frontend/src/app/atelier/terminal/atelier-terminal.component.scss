@@ -634,11 +634,8 @@
   height: 18px;
 }
 
-.terminal-ask-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--cg-space-2);
-}
+/* La rangée d'actions de l'invite d'autorisation vit dans `atelier-terminal-ask.component.scss`
+   (F-121 / SF-121-02-FE) : la feuille principale est au plafond de build de 12 ko (angular.json). */
 
 /* Modifications du tour (F-37 / SF-37-02). Repliées par fichier : une ligne par fichier, le détail
    à un clic. Les seules couleurs employées sont celles de la charte — vert de succès pour ce qui

@@ -2067,6 +2067,15 @@ export class AtelierComponent implements OnInit, OnDestroy {
    * les commandes précédentes, qui sont ce qui permet de juger.
    */
   private showConfirmation(request: AtelierConfirmRequest, source: AtelierEngine): void {
+    // « Toujours autoriser cette commande » (F-121 / SF-121-02-FE) : le drapeau vient de la
+    // gateway. L'aparté `confirm_state` (SF-84-03) ne le porte pas — quand il arrive pour LA MÊME
+    // demande, on conserve ce qu'on sait déjà d'elle plutôt que de faire disparaître le bouton.
+    // Demande inconnue sans drapeau ⇒ faux : repli sûr, aucune règle persistante proposée à tort.
+    const known = this.pendingConfirmation();
+    const allowAlwaysOffered = request.allowAlwaysOffered === true
+      || (request.allowAlwaysOffered === undefined
+        && known?.toolUseId === request.toolUseId
+        && known.allowAlwaysOffered === true);
     this.pendingConfirmation.set({
       toolUseId: request.toolUseId,
       tool: request.tool,
@@ -2079,6 +2088,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
       // dur ferait mentir l'écran le jour où la configuration change.
       deadline: request.timeoutMs ? Date.now() + request.timeoutMs : null,
       timeoutMs: request.timeoutMs ?? null,
+      allowAlwaysOffered,
     });
     this.startConfirmationCountdown();
     // F-153 / SF-153-01 — Transition critique : le silence vaut refus (timeoutMs). Si l'onglet est
@@ -2257,7 +2267,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
    * <p>L'invite n'est retirée qu'à la **résolution** relayée par le flux : c'est elle qui prouve que
    * la décision est bien arrivée jusqu'à la session.</p>
    */
-  answerConfirmation(allow: boolean, allowAll = false): void {
+  answerConfirmation(allow: boolean, allowAll = false, alwaysAllowCommand = false): void {
     const id = this.activeWorkspaceId();
     const pending = this.pendingConfirmation();
     if (!id || !pending || pending.answering) {
@@ -2273,6 +2283,10 @@ export class AtelierComponent implements OnInit, OnDestroy {
       // suivant redemandera. La clé n'est posée que si elle vaut quelque chose — un `undefined`
       // explicite alourdirait le corps envoyé pour ne rien dire.
       ...(allow && allowAll ? { allowAll: true } : {}),
+      // « Toujours autoriser cette commande » (F-121 / SF-121-02-FE) : la portée n'est plus le
+      // tour mais le PROJET, sans limite de durée — la gateway écrit une règle persistante. Même
+      // discipline que ci-dessus : la clé n'est posée que quand le geste est celui-là.
+      ...(allow && alwaysAllowCommand ? { alwaysAllowCommand: true } : {}),
     };
     // La question est la même des deux côtés, la destination non : boucle maison sur machine
     // connectée (F-38 / SF-38-08) ou session de bac à sable (F-33).

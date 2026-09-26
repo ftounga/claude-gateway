@@ -215,6 +215,12 @@ export const LONG_THREAD_TURNS = 40;
     // parallèles, badge/filet du sous-agent `task`) vit à part, pour la même raison de budget de
     // build (12 ko) de la feuille principale.
     './atelier-terminal-subagents.component.scss',
+    // QUINZE FEUILLES (F-121 / SF-121-02-FE) : la rangée de boutons de l'invite d'autorisation,
+    // désormais à quatre gestes, vit à part pour la même raison de budget de build (12 ko) de la
+    // feuille principale. Déclarée AVANT la feuille mobile, à dessein : une `@media` n'ajoute
+    // aucune spécificité, et la feuille mobile doit rester celle qui gagne sous 819 px
+    // (`flex-direction: column` + `align-items: stretch`, empilement au pouce de SF-158-13).
+    './atelier-terminal-ask.component.scss',
     // QUATORZE FEUILLES (F-151 / SF-151-03) : le confort au doigt de la barre du terminal (barre
     // d'en-tête et actions qui passent à la ligne sous 819 px, boutons de décision au pouce) vit à
     // part, pour la même raison de budget de build (12 ko) de la feuille principale.
@@ -719,6 +725,14 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    * geste — on autorise la suite d'un travail dont on vient de voir le premier pas.
    */
   @Output() confirmAll = new EventEmitter<void>();
+
+  /**
+   * Autorise **durablement** cette commande dans ce projet (F-121 / SF-121-02-FE) : la gateway
+   * écrit une règle de permission persistante. Encore un autre geste que {@link #confirmAll} — la
+   * portée n'est plus le tour mais le projet, sans limite de durée. Proposé uniquement quand la
+   * gateway l'annonce (`allowAlwaysOffered`).
+   */
+  @Output() confirmAlways = new EventEmitter<void>();
   /** Ouverture du champ de motif de refus. */
   @Output() denyWithReason = new EventEmitter<void>();
   /** Saisie du motif de refus (le parent reste propriétaire de l'état). */
@@ -1212,6 +1226,50 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    */
   revealPendingAsk(): void {
     this.askBlock?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  /**
+   * Ce que « toujours autoriser » autoriserait **réellement** (F-121 / SF-121-02-FE).
+   *
+   * <p>Le libellé de Claude Code — « toujours autoriser cette commande » — est un raccourci
+   * trompeur : pour `bash`, la gateway écrit une règle sur le <b>premier mot</b>
+   * (`AtelierPermissionService.alwaysAllowCommand`). Autoriser « toujours »
+   * {@code git commit -m "x"} autorise donc <b>tout {@code git}</b>. L'écran nomme cette portée,
+   * exactement comme la gateway la calcule : premier mot, en minuscules. Pour tout autre outil, la
+   * règle porte sur l'outil entier.</p>
+   *
+   * <p>Chaîne vide quand aucune invite n'attend : le bouton n'est alors pas affiché.</p>
+   */
+  get alwaysAllowScope(): string {
+    const ask = this.pendingConfirmation;
+    if (!ask) {
+      return '';
+    }
+    const scope = ask.tool === 'bash'
+      ? (ask.detail ?? '').trim().split(/\s+/)[0]?.toLowerCase() ?? ''
+      : ask.tool;
+    if (!scope) {
+      // Une commande vide ne peut pas être nommée : la gateway tomberait sur la règle d'outil.
+      return ask.tool;
+    }
+    // Un premier mot démesuré (chemin absolu, ligne collée) est coupé : le bouton doit rester
+    // lisible, et la portée est déjà dite en toutes lettres par l'infobulle.
+    return scope.length > 32 ? `${scope.slice(0, 32)}…` : scope;
+  }
+
+  /**
+   * La portée, dite sans l'adoucir (F-121 / SF-121-02-FE) : ce geste ne vaut pas pour ce message,
+   * il vaut pour ce projet et sans limite de durée — et aucun écran ne permet encore de revenir
+   * dessus. C'est exactement ce qu'il faut lire avant de cliquer, pas après.
+   */
+  get alwaysAllowHint(): string {
+    const ask = this.pendingConfirmation;
+    const scope = this.alwaysAllowScope;
+    const what = ask?.tool === 'bash'
+      ? `Toutes les commandes commençant par « ${scope} »`
+      : `Toutes les utilisations de « ${scope} »`;
+    return `${what} s'exécuteront sans demander dans ce projet, sans limite de durée. `
+      + "Il n'existe pas encore d'écran pour retirer cette règle.";
   }
 
   /** Hauteur de contenu au dernier défilement : évite de forcer le scroll à chaque cycle. */

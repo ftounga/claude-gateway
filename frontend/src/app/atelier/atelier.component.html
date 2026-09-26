@@ -150,6 +150,7 @@
     [confirmationCountdown]="confirmationCountdown()"
     (confirmDecision)="answerConfirmation($event)"
     (confirmAll)="answerConfirmation(true, true)"
+    (confirmAlways)="answerConfirmation(true, false, true)"
     (denyWithReason)="startDenying()"
     (reasonChange)="setConfirmationReason($event)"
     (toggleAskBeforeBash)="toggleAskBeforeBash()"

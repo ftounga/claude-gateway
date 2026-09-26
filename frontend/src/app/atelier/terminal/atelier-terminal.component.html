@@ -1069,6 +1069,24 @@
           >
             Tout autoriser pour ce message
           </button>
+          @if (ask.allowAlwaysOffered) {
+            <!-- Le troisième geste (F-121 / SF-121-02-FE) : celui-là ne vaut pas pour ce message,
+                 il écrit une RÈGLE PERSISTANTE dans ce projet. Le libellé nomme la portée réelle
+                 — pour bash, le PREMIER MOT, puisque c'est sur lui que la gateway pose la règle :
+                 « toujours autoriser git », jamais « cette commande » qui ferait croire à un
+                 accord exact. Proposé seulement quand la gateway l'annonce : sans politique
+                 branchée, la case n'écrirait rien. Cerclé : le geste plein reste « Autoriser ». -->
+            <button
+              mat-stroked-button
+              type="button"
+              class="terminal-ask-allow-always"
+              [disabled]="ask.answering"
+              [matTooltip]="alwaysAllowHint"
+              (click)="confirmAlways.emit()"
+            >
+              Toujours autoriser {{ alwaysAllowScope }}
+            </button>
+          }
           @if (ask.denying) {
             <button
               mat-stroked-button
