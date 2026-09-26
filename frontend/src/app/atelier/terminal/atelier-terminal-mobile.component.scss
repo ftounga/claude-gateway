@@ -74,13 +74,21 @@
        défiler portent leur propre `overflow-x:auto` et ne perdent rien. Rendu >= 820 px inchangé. */
     padding-left: var(--cg-space-3);
     padding-right: var(--cg-space-3);
-    /* BAS DU FIL DÉGAGÉ (F-158 / SF-158-19) : la chip repliée « Note poste » (bas-gauche) et le bouton
-       d'aide « ? » (bas-droite), remontés AU-DESSUS du composeur, flottent désormais sur le bord bas du
-       fil. Ce padding pousse les dernières lignes AU-DESSUS d'eux — le texte n'est jamais masqué, les
-       éléments fixes flottent sur une bande vide. `scroll-padding-bottom` fait de même pour les sauts
-       d'ancre du rail « Vos questions ». Dégagement = hauteur du plus grand fixe (mat-fab ~56 px) + jour. */
-    padding-bottom: calc(var(--cg-space-6) + var(--cg-space-4));
-    scroll-padding-bottom: calc(var(--cg-space-6) + var(--cg-space-4));
+    /* BAS DU FIL DÉGAGÉ (F-158 / SF-158-19, réserve CORRIGÉE par SF-158-21) : la chip repliée « Note
+       poste » (bas-gauche, SF-158-20) et le bouton d'aide « ? » (bas-droite) sont `position:fixed`,
+       remontés à `bottom: calc(112px + env(safe-area-inset-bottom))` (SF-158-19), hauteur ~48 px : ils
+       occupent une bande au-dessus du composeur, par-dessus le bas de CE conteneur qui défile
+       (`.terminal-scrollback`, le seul `overflow-y:auto` en mobile ; le rail « Vos questions » et le fil
+       en sont les enfants). La réserve de 72 px de SF-158-19 (calibrée « mat-fab ~56 px sur le bord bas
+       du fil », SANS safe-area) était périmée dès que les FAB ont été ancrés à 112 px + encoche → le
+       titre « Vos questions » et le badge Q1 restaient recouverts (constat PO, 390 px). Réserve alignée
+       sur l'ancrage RÉEL : ancrage FAB (112 px) + hauteur FAB (48 px) + jour (`--cg-space-3`, 16 px) +
+       encoche (`env(safe-area-inset-bottom)`, pour SUIVRE la remontée des FAB). Ce `padding-bottom`
+       pousse les dernières lignes AU-DESSUS des fixes (jamais masquées) ; `scroll-padding-bottom` dépose
+       de même les sauts d'ancre du rail au-dessus de la bande. Aucune couleur nouvelle. Rendu >= 820 px
+       inchangé (sous le point de rupture 819 px). */
+    padding-bottom: calc(112px + 48px + var(--cg-space-3) + env(safe-area-inset-bottom));
+    scroll-padding-bottom: calc(112px + 48px + var(--cg-space-3) + env(safe-area-inset-bottom));
   }
 
   /* La ligne vivante (spinner · action · étapes · tokens · chrono) passe à la ligne plutôt que de

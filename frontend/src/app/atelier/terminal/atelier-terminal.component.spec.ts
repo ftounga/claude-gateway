@@ -376,6 +376,61 @@ describe('AtelierTerminalComponent', () => {
     expect(spy).toHaveBeenCalled();
   });
 
+  // --- Bas du fil dégagé des boutons flottants (F-158 / SF-158-21) ---
+  //
+  // Garde-fou INDÉPENDANT DU VIEWPORT (patron SF-158-09/19) : on inspecte la CSSOM et non `matchMedia`,
+  // de sorte que le test tient quelle que soit la taille de la fenêtre Karma. On récupère la règle
+  // `.terminal-scrollback` (le conteneur qui défile, PAS `--railed`) SOUS `@media (max-width:819px)` et on
+  // lit sa réserve basse, calibrée sur l'ancrage RÉEL des FAB (SF-158-19/20 : ancrage 112 px + hauteur
+  // 48 px + jour + encoche). NB : Chrome replie les littéraux `112px + 48px` en `160px` dans la CSSOM —
+  // on assemble donc sur les jetons signifiants (160 px replié, `--cg-space-3`, `safe-area`), pas sur la
+  // chaîne calc() brute.
+
+  /** La déclaration de style de `.terminal-scrollback` (base, pas `--railed`) sous <= 819 px, ou null. */
+  function mobileScrollbackStyle(): CSSStyleDeclaration | null {
+    fixture.detectChanges();
+    for (const sheet of Array.from(document.styleSheets)) {
+      let rules: CSSRuleList;
+      try {
+        rules = sheet.cssRules;
+      } catch {
+        continue;
+      }
+      for (const rule of Array.from(rules)) {
+        if (!(rule instanceof CSSMediaRule) || !/max-width:\s*819px/.test(rule.media.mediaText)) {
+          continue;
+        }
+        for (const inner of Array.from(rule.cssRules)) {
+          // `.terminal-scrollback[_ngcontent-…]` : le crochet écarte `.terminal-scrollback--railed`
+          // et le sélecteur descendant `… .terminal-qrail`.
+          if (inner instanceof CSSStyleRule && /\.terminal-scrollback\[/.test(inner.selectorText)) {
+            return inner.style;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  it('sous 819 px, le fil réserve en bas la clairance des boutons flottants (112 px + 48 px + jour + safe-area)', () => {
+    const style = mobileScrollbackStyle();
+    expect(style).not.toBeNull();
+
+    // La dernière portion du fil / du rail « Vos questions » défile AU-DESSUS de la bande des FAB, jamais
+    // masquée : réserve = ancrage FAB (112) + hauteur FAB (48) [= 160 replié par Chrome] + jour
+    // (`--cg-space-3`) + encoche (`safe-area-inset-bottom`, pour SUIVRE la remontée des FAB).
+    const pad = style!.getPropertyValue('padding-bottom');
+    expect(pad).toContain('160px');
+    expect(pad).toContain('var(--cg-space-3)');
+    expect(pad).toContain('env(safe-area-inset-bottom)');
+
+    // Le même dégagement s'applique aux sauts d'ancre du rail (clic « Vos questions »).
+    const scrollPad = style!.getPropertyValue('scroll-padding-bottom');
+    expect(scrollPad).toContain('160px');
+    expect(scrollPad).toContain('var(--cg-space-3)');
+    expect(scrollPad).toContain('env(safe-area-inset-bottom)');
+  });
+
   it('rend le tour en cours au fil de l\'eau', () => {
     component.streaming = {
       tokens: null,
