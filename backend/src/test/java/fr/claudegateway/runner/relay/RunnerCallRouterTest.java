@@ -16,6 +16,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -76,8 +77,40 @@ class RunnerCallRouterTest {
         when(liveness.isAliveForRouting(any())).thenReturn(true);
     }
 
+    /** F-161 / SF-161-04 : la preuve d'exécution, vraie instance — c'est elle qu'on observe. */
+    private final fr.claudegateway.runner.ping.RunnerExecutionProof proof =
+            new fr.claudegateway.runner.ping.RunnerExecutionProof();
+
     private RunnerCallRouter router() {
-        return new RunnerCallRouter(registry, dispatcher, properties, relayProvider, liveness);
+        return new RunnerCallRouter(registry, dispatcher, properties, relayProvider, liveness, proof);
+    }
+
+    @Test
+    @DisplayName("F-161 / SF-161-04 : une réponse du runner vaut PREUVE d'exécution")
+    void anAnswerFromTheRunnerProvesExecution() {
+        localSocketPresent();
+        when(dispatcher.call(any(), anyString(), anyString(), any(), anyLong(), any()))
+                .thenReturn(ok());
+
+        router().call(target, "call-1", "read_file", objectMapper.createObjectNode(), 1_000L);
+
+        assertThat(proof.provedWithin(hostId, java.time.Duration.ofMinutes(2)))
+                .as("sans cette preuve, la sonde repartirait à chaque tour — le ping systématique "
+                        + "que le cadrage §6 refuse")
+                .isTrue();
+    }
+
+    @Test
+    @DisplayName("F-161 / SF-161-04 : un refus PRODUIT PAR LA GATEWAY ne prouve rien")
+    void aBackendRefusalProvesNothing() {
+        when(registry.findLocal(hostId)).thenReturn(Optional.empty());
+        when(registry.isConnected(hostId)).thenReturn(false);
+
+        router().call(target, "call-2", "read_file", objectMapper.createObjectNode(), 1_000L);
+
+        assertThat(proof.provedWithin(hostId, java.time.Duration.ofMinutes(2)))
+                .as("personne n'a rien exécuté : `runner_unavailable` vient de nous, pas du poste")
+                .isFalse();
     }
 
     private RunnerCallResult ok() {

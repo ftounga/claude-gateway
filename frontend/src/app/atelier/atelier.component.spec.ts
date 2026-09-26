@@ -218,6 +218,43 @@ describe('AtelierComponent', () => {
   });
 
   /**
+   * **Le refus de la sonde est un refus de la porte** (F-161 / SF-161-04).
+   *
+   * `runner_unresponsive` dit une chose que les deux autres codes ne disent pas : le poste *parle*
+   * encore, il ne *travaille* plus. L'écran doit donc l'orienter vers un redémarrage — et, comme
+   * pour les deux autres, lui rendre le geste : rien n'a été dépensé, et l'utilisateur seul sait si
+   * sa question touche vraiment la machine.
+   */
+  describe('refus de la sonde du runner (F-161 / SF-161-04)', () => {
+    it('propose « Demander quand même » et dit que le poste n\'exécute plus', () => {
+      setup();
+      snackBar.open.and.returnValue({ onAction: () => of(undefined) } as never);
+
+      (component as unknown as {
+        offerAskAnyway: (id: string, content: string, code: string, reason?: string) => void;
+      }).offerAskAnyway('m1', 'lance les tests', 'runner_unresponsive');
+
+      const [message, action] = snackBar.open.calls.mostRecent().args;
+      expect(message as string).toContain('n\'exécute plus rien');
+      expect(action as string)
+        .withContext('un refus de la porte se passe outre d\'un clic — SF-161-01')
+        .toBe('Demander quand même');
+    });
+
+    it('préfère la raison du serveur, qui nomme le poste', () => {
+      setup();
+      snackBar.open.and.returnValue({ onAction: () => of(undefined) } as never);
+
+      (component as unknown as {
+        offerAskAnyway: (id: string, content: string, code: string, reason?: string) => void;
+      }).offerAskAnyway('m1', 'go', 'runner_unresponsive',
+        'Le runner du poste « CAGIP » donne signe de vie mais n\'exécute plus rien.');
+
+      expect(snackBar.open.calls.mostRecent().args[0] as string).toContain('CAGIP');
+    });
+  });
+
+  /**
    * **Le direct traverse les proxys qui retiennent le flux** (F-84 / SF-84-04).
    *
    * Constat du PO en production, le 2026-09-13 : derrière Netskope, un tour de 492 s et 29 appels

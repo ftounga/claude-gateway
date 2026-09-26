@@ -191,7 +191,40 @@ public final class CapabilityMap {
                                     "backend/src/main/java/fr/claudegateway/runner/channel/RunnerWebSocketHandler.java",
                                     "journal.record(identity.userId(), identity.hostId(), cause,",
                                     "la socket consigne encore les siennes, dont le CloseStatus "
-                                            + "qui sépare une coupure réseau d'un arrêt applicatif"))));
+                                            + "qui sépare une coupure réseau d'un arrêt applicatif"))),
+
+            // F-161 / SF-161-04 : la sonde. Sans signal elle aussi — et pour la même raison que la
+            // porte : sa réussite est un tour qui NE S'OUVRE PAS. Mais son témoin le plus précieux
+            // n'est pas son propre code : c'est la ligne qui retient la PREUVE d'exécution. Qu'elle
+            // disparaisse et la sonde continue de fonctionner — en partant à CHAQUE tour, donc en
+            // faisant payer à tous la latence que le cadrage §6 refuse. Une régression de coût
+            // qu'aucun test fonctionnel ne verrait.
+            ProductCapability.unmeasurable("ping-du-poste",
+                    "Sonder le poste avant d'ouvrir le tour",
+                    "payer un tour entier chez un runner qui bat encore et déclare tout ce qu'il "
+                            + "faut, mais n'exécute plus rien — le seul cas que la porte et "
+                            + "l'arrêt net ne couvrent pas",
+                    List.of("backend/src/main/java/fr/claudegateway/runner/ping/RunnerPing.java",
+                            // Le point de PREUVE fait partie de la capacité : sans lui, la sonde
+                            // devient systématique sans que rien ne casse.
+                            "backend/src/main/java/fr/claudegateway/runner/relay/RunnerCallRouter.java"),
+                    "Le tour vise le poste, la porte s'ouvre, et plus rien ne prouve que ce poste "
+                            + "ait exécuté depuis `app.runner.ping.after` (F-161 / SF-161-04).",
+                    List.of(new Wiring(
+                                    "backend/src/main/java/fr/claudegateway/runner/ping/RunnerPing.java",
+                                    "proof.provedWithin(hostId, after)",
+                                    "la sonde est encore CONDITIONNELLE — sans cette lecture, elle "
+                                            + "part à chaque tour et coûte à tous"),
+                            new Wiring(
+                                    "backend/src/main/java/fr/claudegateway/runner/ping/RunnerPing.java",
+                                    "router.call(target, probeCallId(), PROBE_TOOL",
+                                    "la sonde fait encore EXÉCUTER le poste, au lieu de croire ce "
+                                            + "qu'il déclare"),
+                            new Wiring(
+                                    "backend/src/main/java/fr/claudegateway/runner/relay/RunnerCallRouter.java",
+                                    "proof.note(target.hostId(), result);",
+                                    "un appel d'outil abouti vaut encore preuve : c'est ce qui "
+                                            + "dispense de sonder une session active"))));
 
     private CapabilityMap() {
     }

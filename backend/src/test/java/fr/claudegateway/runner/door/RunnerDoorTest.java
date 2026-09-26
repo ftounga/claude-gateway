@@ -162,4 +162,97 @@ class RunnerDoorTest {
 
         verify(liveness).lastSeenAt(userId, hostId);
     }
+
+    // ———————————————————————————————————————————————————————————————————————————————
+    // F-161 / SF-161-04 — la sonde : le poste exécute-t-il VRAIMENT ?
+    // ———————————————————————————————————————————————————————————————————————————————
+
+    private final fr.claudegateway.runner.ping.RunnerPing ping =
+            mock(fr.claudegateway.runner.ping.RunnerPing.class);
+
+    private final fr.claudegateway.runner.channel.RunnerTarget target =
+            new fr.claudegateway.runner.channel.RunnerTarget(UUID.randomUUID(), UUID.randomUUID(),
+                    "projet");
+
+    @Test
+    @DisplayName("SF-161-04 : poste qui bat, déclare tout, mais n'exécute plus → refus nommé")
+    void aMuteHostCloses() {
+        alive(true);
+        door.setPing(ping);
+        when(ping.probe(target, "CAGIP")).thenReturn(
+                fr.claudegateway.runner.ping.RunnerPingVerdict.mute("Le poste « CAGIP » n'exécute plus."));
+
+        RunnerDoorVerdict verdict = door.check(userId, hostId, "CAGIP", Set.of("files", "bash"),
+                Set.of("bash"), target);
+
+        assertThat(verdict.open()).isFalse();
+        assertThat(verdict.code()).isEqualTo(RunnerDoorVerdict.UNRESPONSIVE);
+        assertThat(verdict.reason()).contains("CAGIP");
+    }
+
+    @Test
+    @DisplayName("SF-161-04 : la sonde vient EN DERNIER — un poste déjà mort ne se fait pas sonder")
+    void aDeadHostIsNeverProbed() {
+        alive(false);
+        door.setPing(ping);
+
+        assertThat(door.check(userId, hostId, "CAGIP", Set.of("files", "bash"), Set.of("bash"),
+                target).code()).isEqualTo(RunnerDoorVerdict.OFFLINE);
+
+        verify(ping, never()).probe(org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    @DisplayName("SF-161-04 : une capacité manquante ferme AVANT la sonde — inutile de faire attendre")
+    void aMissingCapabilityClosesBeforeTheProbe() {
+        alive(true);
+        door.setPing(ping);
+
+        assertThat(door.check(userId, hostId, "CAGIP", Set.of("files"), Set.of("bash"), target)
+                .code()).isEqualTo(RunnerDoorVerdict.MISSING_CAPABILITY);
+
+        verify(ping, never()).probe(org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    @DisplayName("SF-161-04 : capacités inconnues — on ne ferme pas là-dessus, mais on sonde quand même")
+    void unknownCapabilitiesStillGetProbed() {
+        alive(true);
+        door.setPing(ping);
+        when(ping.probe(target, "CAGIP"))
+                .thenReturn(fr.claudegateway.runner.ping.RunnerPingVerdict.passes());
+
+        assertThat(door.check(userId, hostId, "CAGIP", Set.of(), Set.of("bash"), target).open())
+                .isTrue();
+
+        verify(ping).probe(target, "CAGIP");
+    }
+
+    @Test
+    @DisplayName("SF-161-04 : sans ping branché, ou sans cible, la porte juge comme avant")
+    void noProbeNoChange() {
+        alive(true);
+
+        assertThat(door.check(userId, hostId, "CAGIP", Set.of("files", "bash"), Set.of("bash"),
+                target).open()).as("ping non branché").isTrue();
+
+        door.setPing(ping);
+        assertThat(door.check(userId, hostId, "CAGIP", Set.of("files", "bash"), Set.of("bash"))
+                .open()).as("forme historique, sans cible").isTrue();
+        verify(ping, never()).probe(org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    @DisplayName("SF-161-04 : projet hébergé — jamais de porte, donc jamais de sonde")
+    void hostedProjectsAreNeverProbed() {
+        door.setPing(ping);
+
+        assertThat(door.check(userId, null, null, null, Set.of("bash"), target).open()).isTrue();
+
+        verify(ping, never()).probe(org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+    }
 }

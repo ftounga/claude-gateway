@@ -3420,10 +3420,14 @@ public class AtelierChatService implements RelayInterruptTarget {
         if (hostId == null) {
             return;
         }
+        // F-161 / SF-161-04 : la cible de la SONDE. Construite depuis le `Workspace` déjà rendu par
+        // `requireOwned` — jamais depuis un identifiant venu du client, l'isolation ne repose donc
+        // sur rien de nouveau.
         fr.claudegateway.runner.door.RunnerDoorVerdict verdict = runnerDoor.check(
                 userId, hostId, runnerHostsForDoor.hostName(hostId),
                 runnerHostsForDoor.declaredCapabilities(hostId),
-                java.util.Set.of("bash", "files"));
+                java.util.Set.of("bash", "files"),
+                fr.claudegateway.runner.exec.RunnerTargets.of(workspace));
         if (!verdict.open()) {
             throw new fr.claudegateway.runner.door.RunnerNotReadyException(
                     verdict.code(), verdict.reason());

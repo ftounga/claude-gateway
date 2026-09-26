@@ -128,7 +128,10 @@ class CapabilityMapTest {
                 .filter(c -> !c.isMeasurable())
                 .map(ProductCapability::id))
                 .as("une capacité sans signal est une décision, pas un oubli : elle se déclare ici")
-                .containsExactlyInAnyOrder("porte-du-runner", "journal-des-ruptures");
+                .containsExactlyInAnyOrder("porte-du-runner", "journal-des-ruptures",
+                        // F-161 / SF-161-04 : la sonde réussit quand un tour NE S'OUVRE PAS — même
+                        // raison que la porte, donc même verdict BRANCHÉE.
+                        "ping-du-poste");
 
         for (ProductCapability capability : CapabilityMap.capabilities()) {
             if (!capability.isMeasurable()) {
@@ -148,6 +151,17 @@ class CapabilityMapTest {
         assertThat(door.wirings()).extracting(ProductCapability.Wiring::path)
                 .as("sans le site d'appel, une porte supprimée de la boucle resterait invisible")
                 .contains("backend/src/main/java/fr/claudegateway/atelier/AtelierChatService.java");
+    }
+
+    @Test
+    @DisplayName("F-161 / SF-161-04 : la sonde est jugée sur son POINT DE PREUVE, pas seulement sur son code")
+    void theProbeIsJudgedOnItsProofSite() {
+        ProductCapability probe = CapabilityMap.byId("ping-du-poste").orElseThrow();
+
+        assertThat(probe.wirings()).extracting(ProductCapability.Wiring::path)
+                .as("sans le point de preuve, la sonde partirait à chaque tour sans que rien ne "
+                        + "casse — une régression de COÛT qu'aucun test fonctionnel ne verrait")
+                .contains("backend/src/main/java/fr/claudegateway/runner/relay/RunnerCallRouter.java");
     }
 
     @Test
@@ -182,7 +196,7 @@ class CapabilityMapTest {
                         "index-du-depot", "compaction", "plan", "memoire-de-resolutions",
                         "carte-du-poste",
                         // F-161 §2 : « il faudra les y ajouter » — la promesse est tenue ici.
-                        "porte-du-runner", "journal-des-ruptures");
+                        "porte-du-runner", "journal-des-ruptures", "ping-du-poste");
     }
 
     @Test

@@ -13,6 +13,12 @@ public record RunnerDoorVerdict(boolean open, String reason, String code) {
     public static final String OFFLINE = "runner_offline";
     /** Le runner répond mais ne sait pas faire ce que le tour demanderait. */
     public static final String MISSING_CAPABILITY = "runner_missing_capability";
+    /**
+     * Le poste bat et déclare ce qu'il faut, mais <b>n'exécute plus</b> (F-161 / SF-161-04) : la
+     * sonde n'a pas eu de réponse. Distinct de {@link #OFFLINE}, qui décrit un poste <i>muet</i> —
+     * ici la machine parle encore, elle ne travaille plus.
+     */
+    public static final String UNRESPONSIVE = "runner_unresponsive";
 
     static RunnerDoorVerdict opened() {
         return new RunnerDoorVerdict(true, null, null);
