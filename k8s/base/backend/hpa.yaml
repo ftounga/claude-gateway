@@ -13,6 +13,10 @@ spec:
   # Plafond ABAISSE de 4 a 3 apres l'incident du 2026-09-16 : la RDS est PARTAGEE avec legalcase.
   # A 4 pods x pool 30 (~120 connexions) la base saturait et faisait tomber legalcase aussi. Avec le
   # pool ramene a 10 (configmap) et un plafond de 3, on est a 30 connexions max cote claude-gateway.
+  #
+  # Cette regle (pool x maxReplicas <= 30) est VERIFIEE par
+  # backend/src/test/java/fr/claudegateway/health/KubernetesCapacityManifestTest (F-118 / SF-118-02) :
+  # remonter ce plafond sans baisser le pool fait echouer la suite backend, avant tout deploiement.
   maxReplicas: 3
   metrics:
     - type: Resource
