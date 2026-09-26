@@ -32,6 +32,9 @@ public class DeckToolCatalog {
             + "par render_diagram, une image décorative) dans « images » : {\"archi.png\": \"archi.png\"}. "
             + "La gateway le lit et l'insère. Une image absente est REFUSÉE — un deck avec une image "
             + "manquante est pire qu'un deck sans image.\n"
+            + "LA CHARTE : le deck sort par DÉFAUT à la charte de l'application (navy, accent "
+            + "orange, pied de page numéroté, 16:9). N'y touche pas sans raison ; « theme »: "
+            + "\"plain\" rend le gabarit Office neutre si le client le demande.\n"
             + "GRATUIT : aucun appel fournisseur, aucun jeton.\n"
             + "SI python-pptx EST DÉJÀ présent sur le poste, l'ancienne voie (script python) reste "
             + "possible — mais ne l'installe jamais.";
@@ -75,7 +78,9 @@ public class DeckToolCatalog {
                                 "spec", Map.of("type", "object",
                                         "description", "La description : {title, slides:[{type, title, "
                                                 + "subtitle|bullets|text|image|rows, caption, notes}]}. "
-                                                + "Types : title, bullets, text, image, table."),
+                                                + "Types : title, bullets, text, image, table. "
+                                                + "« theme » facultatif : \"cg\" (la charte, défaut) "
+                                                + "ou \"plain\" (gabarit Office neutre)."),
                                 "images", Map.of("type", "object",
                                         "description", "Les images à insérer : {nom utilisé dans les "
                                                 + "slides -> chemin du fichier dans le projet}."),
