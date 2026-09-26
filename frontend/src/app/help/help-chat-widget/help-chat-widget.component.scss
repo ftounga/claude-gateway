@@ -153,3 +153,18 @@
 .help-panel__counter--over {
   color: var(--cg-error);
 }
+
+// --- Bas d'écran dégagé sur téléphone (F-158 / SF-158-19) ------------------------------------------
+//
+// Le bouton d'aide flottant « ? » est ancré en bas à droite (`bottom: var(--cg-space-4)` = 24 px). Sur
+// téléphone, il passait PAR-DESSUS le composeur ancré du terminal (`.terminal-input`, sticky bottom,
+// SF-158-13) — il recouvrait le bouton Envoyer et le champ. On le remonte AU-DESSUS du composeur :
+// `bottom` = clairance composeur `calc(112px + env(safe-area-inset-bottom))`. Le widget étant global
+// (rendu dans la coquille), la remontée s'applique à tous les écrans <= 819 px : sur ceux à composeur
+// bas (chat) elle est bénéfique, sur les autres le « ? » flotte un peu plus haut sans jamais recouvrir
+// de contenu. Cible tactile (mat-fab >= 56 px) inchangée. Rendu >= 820 px strictement inchangé.
+@media (max-width: 819px) {
+  .help-widget {
+    bottom: calc(112px + env(safe-area-inset-bottom));
+  }
+}

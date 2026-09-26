@@ -136,4 +136,37 @@ describe('WorkstationNoticeComponent', () => {
     expect(fixture.nativeElement.querySelector('.notice')).toBeNull();
     expect(service.isDue(Date.now())).toBeFalse();
   });
+
+  // --- Bas d'écran dégagé (F-158 / SF-158-19) ---
+  //
+  // Garde-fou INDÉPENDANT DU VIEWPORT (patron SF-158-09) : on inspecte la CSSOM et non `matchMedia`,
+  // de sorte que le test tient quelle que soit la taille de la fenêtre Karma.
+
+  /** Le cssText concaténé des règles `@media` visant <= 819 px. */
+  function mobileMediaCss(): string {
+    let css = '';
+    for (const sheet of Array.from(document.styleSheets)) {
+      let rules: CSSRuleList;
+      try {
+        rules = sheet.cssRules;
+      } catch {
+        continue;
+      }
+      for (const rule of Array.from(rules)) {
+        if (rule instanceof CSSMediaRule && /max-width:\s*819px/.test(rule.media.mediaText)) {
+          css += rule.cssText + '\n';
+        }
+      }
+    }
+    return css;
+  }
+
+  it('sous 819 px, la chip repliée est remontée au-dessus du composeur (clairance + safe-area)', () => {
+    fixture = build();
+    const css = mobileMediaCss().replace(/\s+/g, ' ');
+
+    // `.notice--collapsed { bottom: calc(112px + env(safe-area-inset-bottom)) }` : la chip ne recouvre
+    // plus le composeur ancré (`.terminal-input`, SF-158-13).
+    expect(css).toMatch(/notice--collapsed[^}]*bottom:\s*calc\(112px \+ env\(safe-area-inset-bottom\)\)/);
+  });
 });
