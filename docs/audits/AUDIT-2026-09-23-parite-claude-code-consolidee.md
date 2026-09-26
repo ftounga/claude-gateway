@@ -21,7 +21,7 @@ Grep/Glob (SF-121-01) · **Web search/fetch** (outils serveur ajoutés à chaque
 ### P1 — impact fort sur « raisonner comme Claude Code »
 | # | Écart | Réf | Que livrer | État |
 |---|---|---|---|---|
-| P1-a | **Sous-agent qui AGIT** (écrit/exécute une sous-tâche, pas seulement lire) | F-121-13 | Outil `task` maison : sous-boucle `runLoop` panoplie complète routée vers le **même runner**, **isolée par git-worktree sur le poste**, budget déduit du tour, **seule la synthèse remonte**, confirmation/audit réutilisés | **Décidé (A), à cadrer** |
+| P1-a | **Sous-agent qui AGIT** (écrit/exécute une sous-tâche, pas seulement lire) | F-121-13 | Outil `task` maison : sous-boucle `runLoop` panoplie complète routée vers le **même runner**, **isolée par git-worktree sur le poste**, budget déduit du tour, **seule la synthèse remonte**, confirmation/audit réutilisés | **Livré (F-150, 2026-09-24→26) — écart CLOS**, parité vérifiée par SF-121-13 |
 | P1-b | **Lecture d'images / PDF** (le modèle ne « voit » pas) | F-121-15 | Bloc `Image`/`Document` dans `AgentContentBlock` (+ `toApiBlock`), `read_file` renvoyant un tool_result multimodal ; relais fournisseur (Provider-First) | À faire |
 | P1-c | **Bloc « Environnement »** (date du jour, `git status`/branche, OS, cwd) jamais injecté | — (neuf) | Bloc stable en tête de préfixe (compatible cache F-134), sur les 2 cibles | À faire |
 | P1-d | **Porte de complétude générique** : un tour se dit « fini » avec un plan à étapes non DONE | F-121-05 | Contrôle `END_OF_TURN` déterministe : si `planOfTurn` a du PENDING/ACTIVE → bloquer+réinjecter (zéro LLM, in-flux) | À faire |
@@ -48,8 +48,19 @@ Grep/Glob (SF-121-01) · **Web search/fetch** (outils serveur ajoutés à chaque
 | P3-c | Steering entre outils · gabarit de compaction · escalade xhigh/max · clé d'idempotence retry (rejeu sûr des 500) · thinking entrelacé · read-before-edit dur · signaux d'escalade multilingues | F-121-08/09/11/16/19 |
 | P3-d | **Client MCP** (consommer des serveurs MCP externes) — **décision de périmètre** (V1 gateway pure ; relayer des outils tiers reste du relais, pas un moteur) | — |
 
-## Décision — le sous-agent qui agit (P1-a / F-121-13)
-Voie **(A) git-worktree sur le poste** retenue (mémoire `decision-sous-agent-worktree-poste`). À cadrer :
+## Décision — le sous-agent qui agit (P1-a / F-121-13) — **LIVRÉE ET CLOSE (2026-09-26)**
+
+> **Clôture SF-121-13 (2026-09-26).** L'écart est **couvert par F-150** (Terminée) : outil `task`
+> maison, sous-boucle à panoplie complète (`read_file`/`write_file`/`edit_file`/`multi_edit`/`grep`/
+> `glob`/`bash`) routée vers le **même runner** dans un **worktree git isolé** créé sous la racine du
+> poste, **coût imputé au tour** (et plafond de délégations par message), **seule la synthèse remonte**
+> (avec branche + diff résumé, jamais de merge aveugle), porte de confirmation / audit / permissions
+> **réutilisés**, worktree **toujours** démonté, refus propre `not_git` sans git (décision PO : pas de
+> repli copie en V1), **aucun SDK, aucun composant cluster**. Vérification critère par critère et
+> témoins de test : `docs/features/F-121/SF-121-13-verification-parite-cloture.md`.
+
+Voie **(A) git-worktree sur le poste** retenue (mémoire `decision-sous-agent-worktree-poste`). Cadrée
+puis livrée en F-150 ; le cahier des charges d'origine était :
 un `task` réutilisant `runLoop` dans un **worktree isolé** créé côté runner ; **seule la synthèse remonte** ;
 budget déduit du plafond de tour ; porte de confirmation routée ; **caveat : exige git** → prévoir un repli
 (copie de travail isolée) ou restreindre aux projets git, sans jamais écrire hors zone. Gateway-First,
