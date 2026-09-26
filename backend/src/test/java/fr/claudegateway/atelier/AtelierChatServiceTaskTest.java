@@ -272,6 +272,104 @@ class AtelierChatServiceTaskTest {
         }
     }
 
+    // ------------------------------------------------------------------ parité F-121-13 (SF-121-13)
+    // Témoins des deux critères de l'écart de parité F-121-13 qu'aucun test ne gardait : la
+    // COMPOSITION de la panoplie de la sous-boucle (« panoplie complète »), et l'IMPUTATION de sa
+    // dépense au tour (« budget déduit du plafond du tour »). Le routage vers le runner, la synthèse
+    // seule et le démontage sont déjà couverts plus haut.
+
+    /** Panoplies offertes au fournisseur qui ne portent PAS `task` : ce sont celles de la sous-boucle. */
+    private List<List<String>> subLoopToolBelts() {
+        return agentProvider.toolBelts.stream().filter(belt -> !belt.contains("task")).toList();
+    }
+
+    @Test
+    void theSubLoopGetsTheFullToolBeltAndNoNestedSubAgent() {
+        // F-121-13 : le sous-agent qui AGIT doit avoir la panoplie COMPLÈTE — lire, écrire, éditer,
+        // chercher, exécuter. Une sous-boucle privée d'un de ces outils redeviendrait un `explore`
+        // déguisé sans qu'aucun test ne bronche (c'est exactement ce qui est arrivé à l'exploration,
+        // F-39 / SF-39-20). Et elle ne délègue pas à son tour : pas de sous-agent récursif.
+        stubRunnerWorkspace();
+        when(runnerToolGateway.worktreeCreate(any(), anyString(), anyString())).thenReturn(ok(WORKTREE_JSON));
+        when(runnerToolGateway.worktreeRemove(any(), anyString(), anyString())).thenReturn(ok(""));
+
+        agentProvider.enqueueToolCall("task", "prompt", "écris a.txt");
+        agentProvider.enqueueFinal("Sous-tâche accomplie.");
+        agentProvider.enqueueFinal("Terminé.");
+
+        service.chat(userId, workspaceId, "délègue une tâche");
+
+        List<List<String>> belts = subLoopToolBelts();
+        assertThat(belts).as("la sous-boucle n'a pas été appelée").isNotEmpty();
+        assertThat(belts.get(0)).as("panoplie complète de la sous-tâche")
+                .contains("read_file", "write_file", "edit_file", "multi_edit", "grep", "glob", "bash");
+        assertThat(belts.get(0)).as("pas de sous-agent récursif").doesNotContain("task", "explore");
+    }
+
+    @Test
+    void theSubTaskSpendIsChargedToTheTurn() {
+        // F-121-13 : « budget déduit du plafond du tour ». La sous-boucle n'a ni quota ni plafond
+        // propres : ce qu'elle consomme appartient au tour, sinon un tour pourrait dépenser sans
+        // limite en déléguant. Le stub facture 5 jetons d'entrée et 5 de sortie par appel — le tour
+        // doit donc compter TOUS les appels, sous-boucle comprise.
+        stubRunnerWorkspace();
+        when(runnerToolGateway.worktreeCreate(any(), anyString(), anyString())).thenReturn(ok(WORKTREE_JSON));
+        when(runnerToolGateway.worktreeRemove(any(), anyString(), anyString())).thenReturn(ok(""));
+        when(runnerToolGateway.writeFile(any(), anyString(), eq("a.txt"), eq("hop"))).thenReturn(ok("ok"));
+
+        agentProvider.enqueueToolCall("task", "prompt", "écris a.txt");            // boucle principale
+        agentProvider.enqueueToolCall("write_file", "path", "a.txt", "content", "hop"); // sous-boucle
+        agentProvider.enqueueFinal("Sous-tâche accomplie.");                       // synthèse
+        agentProvider.enqueueFinal("Terminé.");                                    // boucle principale
+
+        AtelierChatService.AtelierChatResult result = service.chat(userId, workspaceId, "délègue");
+
+        int calls = agentProvider.toolBelts.size();
+        assertThat(subLoopToolBelts()).as("la sous-boucle doit avoir consommé au moins deux appels")
+                .hasSizeGreaterThanOrEqualTo(2);
+        assertThat(result.inputTokens()).as("entrée du tour = tous les appels, sous-boucle comprise")
+                .isEqualTo(5L * calls);
+        assertThat(result.outputTokens()).as("sortie du tour = tous les appels, sous-boucle comprise")
+                .isEqualTo(5L * calls);
+    }
+
+    @Test
+    void theDelegationCapOfTheMessageAppliesToTask() {
+        // F-121-13 / F-118 : le plafond de délégations par message borne aussi les sous-tâches
+        // écrivaines — sans quoi un tour enchaînerait les worktrees. Au-delà, le `task` suivant est
+        // refusé AVANT toute création de worktree, et la boucle principale poursuit elle-même.
+        stubRunnerWorkspace();
+        when(runnerToolGateway.worktreeCreate(any(), anyString(), anyString())).thenReturn(ok(WORKTREE_JSON));
+        when(runnerToolGateway.worktreeRemove(any(), anyString(), anyString())).thenReturn(ok(""));
+        AtelierChatService capped = serviceWithMaxDelegations(1);
+
+        agentProvider.enqueueToolCall("task", "prompt", "première sous-tâche");  // acceptée
+        agentProvider.enqueueFinal("Première sous-tâche accomplie.");            // synthèse
+        agentProvider.enqueueToolCall("task", "prompt", "deuxième sous-tâche");  // refusée (plafond)
+        agentProvider.enqueueFinal("Terminé.");
+
+        capped.chat(userId, workspaceId, "délègue deux fois");
+
+        assertThat(lastToolResult().isError()).isTrue();
+        assertThat(lastToolResult().content()).contains("Limite de délégations atteinte");
+        // Un seul worktree : le `task` refusé n'en a pas créé (et n'a donc rien à démonter).
+        verify(runnerToolGateway, org.mockito.Mockito.times(1))
+                .worktreeCreate(eq(projectTarget), anyString(), anyString());
+    }
+
+    /** Même service, avec un plafond de délégations par message imposé (12e composant). */
+    private AtelierChatService serviceWithMaxDelegations(int maxDelegations) {
+        return new AtelierChatService(workspaceService, messageRepository, (AiAgentProvider) agentProvider,
+                byokKeyService, quotaService,
+                new fr.claudegateway.atelier.git.GitWorkspaceService(workspaceService, gitTokenService,
+                        gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
+                runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
+                fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
+                runnerHostService,
+                new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null,
+                        maxDelegations, true));
+    }
+
     @Test
     void theTaskToolIsDeclaredOnRunnerButNotOnSandbox() {
         Workspace runner = stubRunnerWorkspace();
