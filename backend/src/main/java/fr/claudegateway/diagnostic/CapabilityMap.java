@@ -128,7 +128,70 @@ public final class CapabilityMap {
                     List.of(new Wiring(
                             "backend/src/main/java/fr/claudegateway/governance/map/HostMapKnowledgeProvider.java",
                             "public String outlineFor",
-                            "la carte du poste sait encore produire son aperçu pour le tour"))));
+                            "la carte du poste sait encore produire son aperçu pour le tour"))),
+
+            // ————————————————————————————————————————————————————————————————————————
+            // F-161 / SF-161-05 : les deux capacités que F-161 a branchées. Elles sont SANS
+            // SIGNAL, et ce n'est pas un oubli — leur réussite est un événement qui N'A PAS LIEU.
+            // Leur inventer un signal les ferait accuser de dormir à chaque rapport.
+            // ————————————————————————————————————————————————————————————————————————
+
+            ProductCapability.unmeasurable("porte-du-runner",
+                    "Refuser un tour que le poste ne portera pas",
+                    "payer un tour entier — contexte, raisonnement, appel d'outil — pour "
+                            + "DÉCOUVRIR que la machine ne répondait pas : 8 tours, 11 % de la "
+                            + "facture sur la session mesurée du 25/09",
+                    List.of("backend/src/main/java/fr/claudegateway/runner/door/RunnerDoor.java",
+                            // Le SITE D'APPEL fait partie de la capacité : c'est LUI qu'un
+                            // remaniement supprime sans rien casser, et la porte muette ne
+                            // déclencherait aucun test.
+                            "backend/src/main/java/fr/claudegateway/atelier/AtelierChatService.java"),
+                    "Le tour vise le poste ; la porte lit le battement et les capacités déclarées "
+                            + "AVANT le moindre appel fournisseur (F-161 / SF-161-01).",
+                    List.of(new Wiring(
+                                    "backend/src/main/java/fr/claudegateway/runner/door/RunnerDoor.java",
+                                    "liveness.isFresh(lastSeenAt)",
+                                    "la porte lit encore le battement du poste — les 20 échecs "
+                                            + "« runner_unavailable » de la session mesurée"),
+                            new Wiring(
+                                    "backend/src/main/java/fr/claudegateway/runner/door/RunnerDoor.java",
+                                    "known.contains(capability)",
+                                    "la porte confronte encore les capacités DÉCLARÉES à celles "
+                                            + "qu'exige le tour — les 6 échecs d'un runner lancé "
+                                            + "avec --no-bash, qu'un test de socket ne voit pas"),
+                            new Wiring(
+                                    "backend/src/main/java/fr/claudegateway/atelier/AtelierChatService.java",
+                                    "checkRunnerDoor(userId, workspace);",
+                                    "la boucle du tour franchit encore la porte : sans cet appel, "
+                                            + "la porte existe et ne sert plus à rien"))),
+
+            ProductCapability.unmeasurable("journal-des-ruptures",
+                    "Consigner pourquoi le poste disparaît",
+                    "chercher la cause des déconnexions dans des logs que CloudWatch oublie en "
+                            + "quelques jours et qui ne se joignent ni à runner_audit ni à "
+                            + "usage_turns — donc la deviner",
+                    List.of("backend/src/main/java/fr/claudegateway/runner/rupture/RunnerDisconnectJournal.java",
+                            "backend/src/main/java/fr/claudegateway/runner/channel/RunnerPollingSessions.java",
+                            "backend/src/main/java/fr/claudegateway/runner/channel/RunnerWebSocketHandler.java"),
+                    "Un canal se ferme, sur l'un ou l'autre transport (F-161 / SF-161-03).",
+                    // PAS de signal de table sur `runner_disconnects`, à la différence de
+                    // `repo_index_paths` : une table d'index VIDE prouve que l'index n'a jamais
+                    // été amorcé, une table de ruptures vide prouve qu'il n'y a pas eu de panne.
+                    // La même règle sur les deux dirait une bêtise une semaine sur deux.
+                    List.of(new Wiring(
+                                    "backend/src/main/java/fr/claudegateway/runner/rupture/RunnerDisconnectJournal.java",
+                                    "repository.save(RunnerDisconnect.builder()",
+                                    "le point d'écriture unique écrit encore la rupture"),
+                            new Wiring(
+                                    "backend/src/main/java/fr/claudegateway/runner/channel/RunnerPollingSessions.java",
+                                    "journal.record(channel.userId(), channel.hostId(), cause,",
+                                    "le long-polling consigne encore ses ruptures — trois des "
+                                            + "cinq causes passent par lui"),
+                            new Wiring(
+                                    "backend/src/main/java/fr/claudegateway/runner/channel/RunnerWebSocketHandler.java",
+                                    "journal.record(identity.userId(), identity.hostId(), cause,",
+                                    "la socket consigne encore les siennes, dont le CloseStatus "
+                                            + "qui sépare une coupure réseau d'un arrêt applicatif"))));
 
     private CapabilityMap() {
     }

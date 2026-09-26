@@ -74,6 +74,17 @@ public class ProductDiagnosisService {
                     "Capacité inconnue de la carte : rien à conclure.");
         }
 
+        // F-161 / SF-161-05 : une capacité SANS SIGNAL ne peut pas être jugée par la période.
+        // Le dire AVANT tout comptage : sans cette porte, elle tomberait dans la branche « table »
+        // qui ne compte rien et conclurait « rien n'a pu être compté », une phrase qui laisse
+        // croire à une panne de mesure là où il n'y a rien à mesurer.
+        if (!capability.isMeasurable()) {
+            return finding(observation, capability, CapabilityVerdict.INDETERMINEE,
+                    "Rien à mesurer : sa réussite est un événement qui n'a pas lieu. Seul son "
+                            + "témoin de branchement peut la juger — désigne le dépôt, la "
+                            + "vérification est gratuite.");
+        }
+
         if (observation.hits() > 0) {
             return finding(observation, capability, CapabilityVerdict.ACTIVE,
                     "Vue " + observation.hits() + " fois sur "

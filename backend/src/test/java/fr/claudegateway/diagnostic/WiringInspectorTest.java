@@ -127,6 +127,93 @@ class WiringInspectorTest {
         assertThat(after.why()).contains("Branchement non vérifiable");
     }
 
+    /** Le constat tel que le diagnostic le produit pour une capacité non mesurable. */
+    private CapabilityFinding unmeasurable(String capabilityId) {
+        return new CapabilityFinding(capabilityId, capabilityId, CapabilityVerdict.INDETERMINEE,
+                "Rien à mesurer : sa réussite est un événement qui n'a pas lieu.",
+                List.of("un/chemin.java"), "la condition attendue", null);
+    }
+
+    /** Tous les fichiers d'une capacité, lus avec leurs fragments présents. */
+    private Map<String, SourceRead> allWiringsPresent(String capabilityId) {
+        return CapabilityMap.byId(capabilityId).orElseThrow().wirings().stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        ProductCapability.Wiring::path,
+                        w -> SourceRead.read(w.path(), "avant " + w.fragment() + " après"),
+                        (a, b) -> SourceRead.read(a.path(), a.content() + "\n" + b.content())));
+    }
+
+    @Test
+    @DisplayName("F-161 : NON MESURABLE + tous les témoins présents → BRANCHÉE, et sort des constats")
+    void anUnmeasurableCapabilityWithItsWiringsIsInPlace() {
+        assertThat(CapabilityMap.byId("porte-du-runner").orElseThrow().isMeasurable())
+                .as("la porte ne peut rien émettre : sa réussite est un tour qui ne s'ouvre pas")
+                .isFalse();
+
+        CapabilityFinding after = inspector.inspect(unmeasurable("porte-du-runner"),
+                allWiringsPresent("porte-du-runner"));
+
+        assertThat(after.verdict()).isEqualTo(CapabilityVerdict.BRANCHEE);
+        assertThat(after.isFinding())
+                .as("une capacité en place n'est pas un problème à lister")
+                .isFalse();
+        assertThat(after.why())
+                .contains("Branchement vérifié dans le code")
+                .contains("Rien à mesurer");
+        assertThat(after.gainEur()).isNull();
+    }
+
+    @Test
+    @DisplayName("F-161 : NON MESURABLE + un témoin absent → DÉBRANCHÉE, comme pour les autres")
+    void anUnmeasurableCapabilityUnwiredIsStillUnwired() {
+        ProductCapability capability = CapabilityMap.byId("porte-du-runner").orElseThrow();
+        ProductCapability.Wiring callSite = capability.wirings().stream()
+                .filter(w -> w.path().endsWith("AtelierChatService.java"))
+                .findFirst().orElseThrow();
+        Map<String, SourceRead> sources = new java.util.HashMap<>(
+                allWiringsPresent("porte-du-runner"));
+        sources.put(callSite.path(),
+                SourceRead.read(callSite.path(), "la boucle du tour, sans l'appel à la porte"));
+
+        CapabilityFinding after = inspector.inspect(unmeasurable("porte-du-runner"), sources);
+
+        assertThat(after.verdict()).isEqualTo(CapabilityVerdict.DEBRANCHEE);
+        assertThat(after.isFinding()).isTrue();
+        assertThat(after.why()).contains(callSite.fragment()).contains(callSite.proves());
+    }
+
+    @Test
+    @DisplayName("F-161 : le journal des ruptures est jugé sur SES DEUX transports")
+    void theDisconnectJournalIsJudgedOnBothTransports() {
+        assertThat(inspector.inspect(unmeasurable("journal-des-ruptures"),
+                allWiringsPresent("journal-des-ruptures")).verdict())
+                .isEqualTo(CapabilityVerdict.BRANCHEE);
+
+        ProductCapability.Wiring socket = CapabilityMap.byId("journal-des-ruptures").orElseThrow()
+                .wirings().stream()
+                .filter(w -> w.path().endsWith("RunnerWebSocketHandler.java"))
+                .findFirst().orElseThrow();
+        Map<String, SourceRead> halfBroken = new java.util.HashMap<>(
+                allWiringsPresent("journal-des-ruptures"));
+        halfBroken.put(socket.path(), SourceRead.read(socket.path(), "la socket se ferme en silence"));
+
+        assertThat(inspector.inspect(unmeasurable("journal-des-ruptures"), halfBroken).verdict())
+                .as("une rupture perdue sur UN SEUL transport suffit à mutiler la mesure")
+                .isEqualTo(CapabilityVerdict.DEBRANCHEE);
+    }
+
+    @Test
+    @DisplayName("NON-RÉGRESSION : une capacité MESURABLE aux témoins présents garde son verdict")
+    void aMeasurableCapabilityKeepsItsVerdict() {
+        ProductCapability.Wiring wiring = planWiring();
+        Map<String, SourceRead> sources = Map.of(wiring.path(),
+                SourceRead.read(wiring.path(), "du code ... " + wiring.fragment()));
+
+        assertThat(inspector.inspect(dormant("plan"), sources).verdict())
+                .as("BRANCHÉE ne doit jamais masquer une capacité qui, elle, pouvait se mesurer")
+                .isEqualTo(CapabilityVerdict.DORMANTE);
+    }
+
     @Test
     @DisplayName("une capacité inconnue de la carte est laissée telle quelle")
     void anUnmappedCapabilityIsUntouched() {

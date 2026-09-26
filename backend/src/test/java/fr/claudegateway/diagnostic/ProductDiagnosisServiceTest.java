@@ -146,6 +146,40 @@ class ProductDiagnosisServiceTest {
     }
 
     @Test
+    @DisplayName("F-161 : une capacité SANS SIGNAL n'est jamais dite dormante — rien à mesurer")
+    void anUnmeasurableCapabilityIsNeverCalledDormant() {
+        CapabilityFinding door = finding(
+                service.diagnose(userId, surveyOf(observation("porte-du-runner", 0, false, null))),
+                "porte-du-runner");
+
+        assertThat(door.verdict())
+                .as("l'accuser de dormir alors qu'elle tourne ferait perdre au rapport sa crédibilité")
+                .isEqualTo(CapabilityVerdict.INDETERMINEE);
+        assertThat(door.why())
+                .contains("Rien à mesurer")
+                .contains("témoin de branchement");
+        org.mockito.Mockito.verifyNoInteractions(tables);
+    }
+
+    @Test
+    @DisplayName("F-161 : avec le dépôt lu, la même capacité vaut BRANCHÉE — comptée, pas listée")
+    void anUnmeasurableCapabilityWithItsWiringsIsCountedNotListed() {
+        java.util.Map<String, SourceRead> sources = new java.util.HashMap<>();
+        for (ProductCapability.Wiring wiring
+                : CapabilityMap.byId("porte-du-runner").orElseThrow().wirings()) {
+            sources.merge(wiring.path(),
+                    SourceRead.read(wiring.path(), wiring.fragment()),
+                    (a, b) -> SourceRead.read(a.path(), a.content() + "\n" + b.content()));
+        }
+
+        ProductDiagnosisService.Diagnosis diagnosis = service.diagnose(userId,
+                surveyOf(observation("porte-du-runner", 0, false, null)), sources);
+
+        assertThat(diagnosis.findings()).isEmpty();
+        assertThat(diagnosis.active()).isEqualTo(1);
+    }
+
+    @Test
     @DisplayName("une enquête vide ou nulle ne produit aucun constat, sans exception")
     void anEmptySurveyProducesNothing() {
         assertThat(service.diagnose(userId, null).findings()).isEmpty();

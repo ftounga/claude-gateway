@@ -28,6 +28,18 @@ public enum CapabilityVerdict {
      */
     DEBRANCHEE,
 
+    /**
+     * <b>Branchée, et rien à mesurer</b> (F-161 / SF-161-05) : la capacité <b>ne laisse aucune
+     * trace par construction</b> — sa réussite est un événement qui <b>n'a pas lieu</b> (un tour
+     * que la porte n'ouvre pas, des jetons non dépensés) ou dont l'absence est une <b>bonne
+     * nouvelle</b> (aucune rupture à consigner). Son témoin de branchement, lui, est présent.
+     *
+     * <p><b>Ce n'est pas un constat à traiter</b> : elle est comptée avec ce qui est en ordre, pas
+     * listée. Sans ce verdict il aurait fallu choisir entre deux mensonges — la dire « dormante »
+     * alors qu'elle tourne, ou lui inventer un signal qu'elle ne peut pas émettre.</p>
+     */
+    BRANCHEE,
+
     /** On n'a pas pu conclure. On le dit. */
     INDETERMINEE
 }

@@ -25,8 +25,15 @@ public record CapabilityFinding(
         String check,
         BigDecimal gainEur) {
 
-    /** Vrai pour ce que le diagnostic retient : ce qui dort, et ce qu'il n'a pas su trancher. */
+    /**
+     * Vrai pour ce que le diagnostic retient : ce qui dort, et ce qu'il n'a pas su trancher.
+     *
+     * <p>Deux verdicts n'appellent rien : {@link CapabilityVerdict#ACTIVE} — elle s'est déclenchée
+     * — et {@link CapabilityVerdict#BRANCHEE} (F-161 / SF-161-05) — elle ne peut pas se mesurer,
+     * et son témoin prouve qu'elle est en place. Les lister ferait passer pour des problèmes deux
+     * situations saines, et noierait celles qui en sont.</p>
+     */
     public boolean isFinding() {
-        return verdict != CapabilityVerdict.ACTIVE;
+        return verdict != CapabilityVerdict.ACTIVE && verdict != CapabilityVerdict.BRANCHEE;
     }
 }
