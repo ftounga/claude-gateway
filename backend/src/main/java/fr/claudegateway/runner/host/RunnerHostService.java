@@ -253,6 +253,18 @@ public class RunnerHostService implements RunnerShellRecorder, RunnerVersionReco
     }
 
     /**
+     * Nom lisible du poste, ou {@code null} — pour que les messages parlent de « CAGIP » plutôt que
+     * d'un identifiant (F-161 / SF-161-01).
+     */
+    @Transactional(readOnly = true)
+    public String hostName(UUID hostId) {
+        if (hostId == null) {
+            return null;
+        }
+        return repository.findById(hostId).map(RunnerHost::getName).orElse(null);
+    }
+
+    /**
      * Capacités déclarées par le runner de ce poste dans sa dernière trame {@code ready}
      * (F-121 / SF-121-07), en minuscules, ou un ensemble vide — poste inconnu, non rattaché, ou runner
      * qui n'a rien déclaré. Sert à la boucle maison pour ne déclarer les outils d'arrière-plan
