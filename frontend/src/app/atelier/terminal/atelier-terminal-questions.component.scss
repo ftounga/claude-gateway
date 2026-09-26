@@ -21,8 +21,20 @@
   align-items: start;
 }
 
-/* Sous 819 px : une seule colonne, le rail en tête (comme la maquette). Point de rupture unique de la
-   charte (F-158 / SF-158-10 : uniformisation 820 -> 819, DESIGN_SYSTEM `_breakpoints.scss`). */
+/* DESKTOP — LE RAIL RESTE À DROITE (F-158 / SF-158-22). Le gabarit rend désormais le rail AVANT le fil
+   dans le DOM (« en tête sur mobile » = ordre naturel + ordre de lecture/focus correct pour un
+   aide-navigation). Pour ne RIEN changer au rendu desktop (fil à gauche, rail à droite), on repousse le
+   rail dans la 2ᵉ piste avec `order: 1` : l'ordre modifié par `order` redevient [fil, rail] → fil en
+   piste 1 (1fr), rail en piste 2 (232px). Rendu visuel identique au comportement d'avant SF-158-22. */
+.terminal-scrollback--railed .terminal-qrail {
+  order: 1;
+}
+
+/* Sous 819 px : une seule colonne, le rail EN TÊTE. Depuis SF-158-22, la mise en tête vient de l'ordre
+   DOM (le rail précède le fil) — on ANNULE simplement le `order: 1` desktop (`order: 0`) : le rail,
+   premier dans le DOM, occupe la 1ʳᵉ rangée. Plus d'artifice `order: -1` : la mise en tête tient même
+   si la grille était retirée. Point de rupture unique de la charte (F-158 / SF-158-10 : 820 -> 819,
+   DESIGN_SYSTEM `_breakpoints.scss`). */
 @media (max-width: 819px) {
   /* `minmax(0, 1fr)`, PAS `1fr` : `1fr` = `minmax(auto, 1fr)`, dont le minimum est le min-content
      du fil — une longue ligne de code insécable force alors la piste à ~504 px et `overflow-x: hidden`
@@ -34,7 +46,7 @@
 
   .terminal-scrollback--railed .terminal-qrail {
     position: static;
-    order: -1;
+    order: 0;
   }
 }
 

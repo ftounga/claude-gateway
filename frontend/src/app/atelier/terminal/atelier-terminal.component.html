@@ -580,12 +580,38 @@
 
   <!-- Flux continu : demandes, commentaires, commandes et sorties, dans l'ordre chronologique.
        F-126 / SF-126-02 : deux colonnes sur large — le fil, et un rail « Vos questions » qui aide à
-       repérer et à sauter aux questions posées. Sous 820 px, une seule colonne, le rail en tête. -->
+       repérer et à sauter aux questions posées. Sous 819 px, une seule colonne, le rail en tête.
+       F-158 / SF-158-22 : le rail est rendu AVANT le fil dans le DOM — « en tête sur mobile » devient
+       l'ordre NATUREL (flux), plus un artifice `order: -1`, et le rail (aide-navigation) est premier
+       au clavier et au lecteur d'écran. En desktop il reste à DROITE via `order: 1` (rendu inchangé). -->
   <div
     class="terminal-scrollback"
     [class.terminal-scrollback--railed]="!readOnly && userQuestions.length > 0"
     #scrollback
   >
+    <!-- RAIL « VOS QUESTIONS » (F-126 / SF-126-02 ; remonté en tête du DOM par F-158 / SF-158-22) :
+         repère les questions posées et permet d'y sauter d'un clic. N'existe qu'en terminal interactif
+         (jamais en lecture seule : une tuile de mosaïque montre le flux et rien d'autre, §13) et
+         seulement quand au moins une question a été posée. Sur mobile (≤ 819 px) il est en tête par
+         l'ordre DOM ; en desktop il reprend la 2ᵉ piste (à droite) via `order: 1` (CSS). -->
+    @if (!readOnly && userQuestions.length > 0) {
+      <aside class="terminal-qrail" aria-label="Vos questions">
+        <p class="terminal-qrail__title">Vos questions</p>
+        <nav>
+          @for (question of userQuestions; track question.anchorId) {
+            <button
+              type="button"
+              class="terminal-qrail__item"
+              (click)="scrollToQuestion(question.anchorId)"
+            >
+              <span class="terminal-qrail__n" aria-hidden="true">{{ question.number }}</span>
+              <span class="terminal-qrail__label">{{ question.content }}</span>
+            </button>
+          }
+        </nav>
+      </aside>
+    }
+
     <div class="terminal-thread">
     @if (messages.length === 0 && !streaming) {
       @if (readOnly) {
@@ -1111,28 +1137,6 @@
       }
     }
     </div>
-
-    <!-- RAIL « VOS QUESTIONS » (F-126 / SF-126-02) : repère les questions posées et permet d'y sauter
-         d'un clic. N'existe qu'en terminal interactif (jamais en lecture seule : une tuile de mosaïque
-         montre le flux et rien d'autre, §13) et seulement quand au moins une question a été posée. Sur
-         mobile (< 820 px), il passe en tête de colonne (CSS). -->
-    @if (!readOnly && userQuestions.length > 0) {
-      <aside class="terminal-qrail" aria-label="Vos questions">
-        <p class="terminal-qrail__title">Vos questions</p>
-        <nav>
-          @for (question of userQuestions; track question.anchorId) {
-            <button
-              type="button"
-              class="terminal-qrail__item"
-              (click)="scrollToQuestion(question.anchorId)"
-            >
-              <span class="terminal-qrail__n" aria-hidden="true">{{ question.number }}</span>
-              <span class="terminal-qrail__label">{{ question.content }}</span>
-            </button>
-          }
-        </nav>
-      </aside>
-    }
   </div>
 
   <!-- Mode du tour (F-120 / SF-120-02) : « Réponse/Plan » vs « Agir », à l'image du plan mode de
