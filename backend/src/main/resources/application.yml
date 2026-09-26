@@ -965,6 +965,21 @@ app:
       # une socket enregistrée ne suffit plus. Adossé à `last_seen_at` (base partagée), il reste juste
       # quel que soit le replica qui porte la socket.
       stale-after: ${APP_RUNNER_HEARTBEAT_STALE_AFTER:PT90S}
+    ping:
+      # F-161 / SF-161-04 : la SONDE de la porte d'entrée. Un battement prouve qu'un processus
+      # émet, pas qu'il exécute ; la sonde fait exécuter le poste pour de bon (un `read_file` sur un
+      # chemin aléatoire, donc un `stat` qui échoue) AVANT que le moindre jeton ne soit dépensé.
+      # `false` ⇒ la porte juge exactement comme avant SF-161-04.
+      enabled: ${APP_RUNNER_PING_ENABLED:true}
+      # CONDITIONNELLE, et c'est la condition du cadrage §6 : rien ne part tant qu'un appel d'outil
+      # a prouvé l'exécution de ce poste depuis moins que cette fenêtre. Une session active ne paie
+      # donc la latence de la sonde qu'à son PREMIER tour. L'allonger réduit la protection, la
+      # raccourcir fait payer plus souvent un aller-retour de quelques millisecondes.
+      after: ${APP_RUNNER_PING_AFTER:PT2M}
+      # Délai armé côté runner pour la sonde. Le backend attend en plus `app.runner.call.grace-ms`
+      # (5 s) avant de conclure au silence : un poste BLOQUÉ coûte donc ≈ 6,2 s d'attente, une fois
+      # par fenêtre — contre un tour complet payé pour découvrir la même chose.
+      timeout-ms: ${APP_RUNNER_PING_TIMEOUT_MS:1200}
     presence:
       # F-38 / SF-38-12 : convergence de la présence entre pods (registre `pg-notify` uniquement).
       # Ré-annonce périodique de chaque connexion locale, et péremption d'une présence distante non

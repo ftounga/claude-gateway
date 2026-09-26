@@ -184,5 +184,76 @@ class AtelierChatServiceRunnerDoorTest {
     void theVerdictCarriesAStableCode() {
         assertThat(RunnerDoorVerdict.OFFLINE).isEqualTo("runner_offline");
         assertThat(RunnerDoorVerdict.MISSING_CAPABILITY).isEqualTo("runner_missing_capability");
+        assertThat(RunnerDoorVerdict.UNRESPONSIVE).isEqualTo("runner_unresponsive");
+    }
+
+    // ———————————————————————————————————————————————————————————————————————————————
+    // F-161 / SF-161-04 — la SONDE, branchée : le poste bat, déclare tout… et n'exécute plus.
+    // ———————————————————————————————————————————————————————————————————————————————
+
+    private final fr.claudegateway.runner.ping.RunnerPing ping =
+            mock(fr.claudegateway.runner.ping.RunnerPing.class);
+
+    /** La porte, avec sa sonde branchée — exactement le montage de production. */
+    private void withProbe() {
+        RunnerDoor door = new RunnerDoor(liveness);
+        door.setPing(ping);
+        service.setRunnerDoor(door, runnerHostService);
+        when(runnerHostService.declaredCapabilities(hostId)).thenReturn(Set.of("files", "bash"));
+    }
+
+    @Test
+    @DisplayName("SF-161-04 : poste MUET à la sonde → refus, et LE FOURNISSEUR N'EST JAMAIS APPELÉ")
+    void aMuteHostSpendsNothing() {
+        alive(true);
+        withProbe();
+        when(ping.probe(any(), any())).thenReturn(
+                fr.claudegateway.runner.ping.RunnerPingVerdict.mute(
+                        "Le runner du poste « CAGIP » donne signe de vie mais n'exécute plus rien."));
+
+        assertThatThrownBy(() -> service.chat(userId, workspaceId, "lance les tests"))
+                .isInstanceOf(RunnerNotReadyException.class)
+                .hasMessageContaining("CAGIP")
+                .hasMessageContaining("n'exécute plus rien");
+
+        assertThat(agentProvider.messageSnapshots)
+                .as("c'est TOUTE la valeur de la sonde : le trou que la porte ne voyait pas, "
+                        + "fermé pour zéro jeton")
+                .isEmpty();
+        verify(messageRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("SF-161-04 : la sonde reçoit la cible du projet POSSÉDÉ — jamais un identifiant client")
+    void theProbeTargetsTheOwnedProject() {
+        alive(true);
+        withProbe();
+        when(ping.probe(any(), any()))
+                .thenReturn(fr.claudegateway.runner.ping.RunnerPingVerdict.passes());
+
+        assertThatThrownBy(() -> service.chat(userId, workspaceId, "bonjour"))
+                .isNotInstanceOf(RunnerNotReadyException.class);
+
+        org.mockito.ArgumentCaptor<fr.claudegateway.runner.channel.RunnerTarget> target =
+                org.mockito.ArgumentCaptor.forClass(fr.claudegateway.runner.channel.RunnerTarget.class);
+        verify(ping).probe(target.capture(), any());
+        assertThat(target.getValue().hostId()).isEqualTo(hostId);
+        assertThat(target.getValue().workspaceId()).isEqualTo(workspaceId);
+        assertThat(target.getValue().projectPath()).isEqualTo("projet");
+    }
+
+    @Test
+    @DisplayName("SF-161-04 : « demander quand même » passe outre un poste muet, comme pour les autres refus")
+    void forceBypassesTheProbe() {
+        alive(true);
+        withProbe();
+        when(ping.probe(any(), any())).thenReturn(
+                fr.claudegateway.runner.ping.RunnerPingVerdict.mute("muet"));
+
+        assertThatThrownBy(() -> service.chat(userId, workspaceId, "vas-y",
+                fr.claudegateway.agent.AgentTurnMode.ACT, true))
+                .isNotInstanceOf(RunnerNotReadyException.class);
+
+        verify(ping, never()).probe(any(), any());
     }
 }

@@ -186,11 +186,15 @@ const RETRY_TEAMS_READ_PRECISION = 'Réessaie la lecture Teams.';
 const SEARCH_PROJECT_INSTEAD_PRECISION = 'Autorisé à répondre via le projet à la place.';
 
 /**
- * Les refus de la **porte du runner** (F-161 / SF-161-01). Ils se distinguent d'une panne : rien
- * n'a été dépensé, et l'utilisateur peut passer outre. Ce sont les deux seuls codes auxquels
- * l'écran propose « Demander quand même ».
+ * Les refus de la **porte du runner** (F-161 / SF-161-01, étendue par SF-161-04). Ils se
+ * distinguent d'une panne : rien n'a été dépensé, et l'utilisateur peut passer outre. Ce sont les
+ * seuls codes auxquels l'écran propose « Demander quand même ».
+ *
+ * `runner_unresponsive` est le refus de la **sonde** (SF-161-04) : le poste donne signe de vie et
+ * déclare ce qu'il faut, mais n'exécute plus rien. Il se passe outre comme les deux autres —
+ * l'utilisateur seul sait si sa question touche vraiment la machine.
  */
-const RUNNER_DOOR_CODES = ['runner_offline', 'runner_missing_capability'];
+const RUNNER_DOOR_CODES = ['runner_offline', 'runner_missing_capability', 'runner_unresponsive'];
 
 @Component({
   selector: 'app-atelier',
@@ -1994,6 +1998,10 @@ export class AtelierComponent implements OnInit, OnDestroy {
         return "Le poste de ce projet ne répond plus : aucun tour ne pourrait y exécuter de commande.";
       case 'runner_missing_capability':
         return "Le runner de ce poste ne déclare pas les capacités nécessaires à ce tour.";
+      case 'runner_unresponsive':
+        // SF-161-04 : le poste PARLE encore (son battement est frais) mais ne TRAVAILLE plus —
+        // la distinction est utile, elle oriente vers un redémarrage plutôt que vers l'attente.
+        return "Le poste de ce projet répond encore mais n'exécute plus rien : relancez son runner.";
       case 'too_many_steers':
         // SF-121-11 : le refus vient du VOLUME en attente, pas du nombre de précisions — au-delà
         // de dix, elles se fondent dans la dernière au lieu d'être refusées.

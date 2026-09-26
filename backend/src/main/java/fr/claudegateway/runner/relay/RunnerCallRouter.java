@@ -56,15 +56,17 @@ public class RunnerCallRouter {
     private final RunnerRelayProperties properties;
     private final ObjectProvider<RunnerRelayClient> relayClient;
     private final RunnerLiveness liveness;
+    private final fr.claudegateway.runner.ping.RunnerExecutionProof proof;
 
     public RunnerCallRouter(RunnerRegistry registry, RunnerCallDispatcher dispatcher,
             RunnerRelayProperties properties, ObjectProvider<RunnerRelayClient> relayClient,
-            RunnerLiveness liveness) {
+            RunnerLiveness liveness, fr.claudegateway.runner.ping.RunnerExecutionProof proof) {
         this.registry = registry;
         this.dispatcher = dispatcher;
         this.properties = properties;
         this.relayClient = relayClient;
         this.liveness = liveness;
+        this.proof = proof;
     }
 
     /** Appel sans relais de flux. */
@@ -73,8 +75,26 @@ public class RunnerCallRouter {
         return call(target, callId, tool, input, timeoutMs, null);
     }
 
-    /** Appel avec relais de flux : {@code onChunk} reçoit les fragments, local ou distant. */
+    /**
+     * Appel avec relais de flux : {@code onChunk} reçoit les fragments, local ou distant.
+     *
+     * <p><b>F-161 / SF-161-04</b> — c'est ici, et nulle part ailleurs, qu'est retenue la
+     * <b>preuve</b> qu'un poste exécute : toute réponse venue du runner rafraîchit
+     * {@link fr.claudegateway.runner.ping.RunnerExecutionProof}, ce qui dispense le tour suivant de
+     * la sonde. Sans cette ligne, la sonde repartirait à <b>chaque</b> tour — exactement le ping
+     * systématique que le cadrage §6 refuse.</p>
+     */
     public RunnerCallResult call(RunnerTarget target, String callId, String tool, JsonNode input,
+            long timeoutMs, Consumer<String> onChunk) {
+        RunnerCallResult result = route(target, callId, tool, input, timeoutMs, onChunk);
+        if (proof != null && target != null) {
+            proof.note(target.hostId(), result);
+        }
+        return result;
+    }
+
+    /** La décision de routage elle-même, inchangée depuis SF-38-12. */
+    private RunnerCallResult route(RunnerTarget target, String callId, String tool, JsonNode input,
             long timeoutMs, Consumer<String> onChunk) {
 
         if (target == null || target.hostId() == null) {

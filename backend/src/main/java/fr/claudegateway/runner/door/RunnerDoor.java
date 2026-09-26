@@ -29,8 +29,21 @@ public class RunnerDoor {
 
     private final RunnerLiveness liveness;
 
+    /**
+     * Le <b>ping conditionnel</b> (F-161 / SF-161-04), branché par mutateur pour ne pas ajouter un
+     * second constructeur à ce composant. {@code null} (formes historiques, tests) ⇒ la porte juge
+     * exactement comme avant SF-161-04.
+     */
+    private fr.claudegateway.runner.ping.RunnerPing ping;
+
     public RunnerDoor(RunnerLiveness liveness) {
         this.liveness = liveness;
+    }
+
+    /** Branche le ping conditionnel (F-161 / SF-161-04). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setPing(fr.claudegateway.runner.ping.RunnerPing ping) {
+        this.ping = ping;
     }
 
     /**
@@ -46,6 +59,23 @@ public class RunnerDoor {
      */
     public RunnerDoorVerdict check(UUID userId, UUID hostId, String hostName, Set<String> declared,
                                    Set<String> required) {
+        return check(userId, hostId, hostName, declared, required, null);
+    }
+
+    /**
+     * La même porte, avec la <b>cible</b> du tour — ce qu'il faut pour <b>sonder</b> le poste
+     * (F-161 / SF-161-04) plutôt que de se fier à ce qu'il déclare.
+     *
+     * <p>La sonde vient <b>en dernier</b>, et ce n'est pas un détail : sonder un poste dont le
+     * battement est déjà périmé ferait attendre le tour pour apprendre ce que la lecture du
+     * battement disait gratuitement.</p>
+     *
+     * @param target poste et projet du tour, construits <b>après</b> le contrôle d'appartenance ;
+     *               {@code null} ⇒ aucune sonde, la porte juge comme avant SF-161-04
+     */
+    public RunnerDoorVerdict check(UUID userId, UUID hostId, String hostName, Set<String> declared,
+                                   Set<String> required,
+                                   fr.claudegateway.runner.channel.RunnerTarget target) {
         if (hostId == null) {
             return RunnerDoorVerdict.opened(); // projet hébergé : la porte ne le concerne pas
         }
@@ -61,8 +91,9 @@ public class RunnerDoor {
 
         Set<String> known = declared == null ? Set.of() : declared;
         if (known.isEmpty() || required == null || required.isEmpty()) {
-            // On ne sait pas ce que le runner sait faire : on ne ferme pas là-dessus.
-            return RunnerDoorVerdict.opened();
+            // On ne sait pas ce que le runner sait faire : on ne ferme pas là-dessus. La sonde, en
+            // revanche, reste due — elle ne demande rien à ce que le poste DÉCLARE.
+            return probe(target, hostName);
         }
         for (String capability : required) {
             if (!known.contains(capability)) {
@@ -70,7 +101,23 @@ public class RunnerDoor {
                         missing(capability, name(hostName)));
             }
         }
-        return RunnerDoorVerdict.opened();
+        return probe(target, hostName);
+    }
+
+    /**
+     * La <b>dernière</b> vérification, et la seule qui fasse travailler la machine (F-161 /
+     * SF-161-04) : le poste exécute-t-il <i>vraiment</i> ? Elle est <b>conditionnelle</b> — sans
+     * ping branché, sans cible, ou quand l'exécution vient d'être prouvée, elle ne coûte rien.
+     */
+    private RunnerDoorVerdict probe(fr.claudegateway.runner.channel.RunnerTarget target,
+                                    String hostName) {
+        if (ping == null || target == null) {
+            return RunnerDoorVerdict.opened();
+        }
+        fr.claudegateway.runner.ping.RunnerPingVerdict sonde = ping.probe(target, hostName);
+        return sonde.mute()
+                ? RunnerDoorVerdict.closed(RunnerDoorVerdict.UNRESPONSIVE, sonde.reason())
+                : RunnerDoorVerdict.opened();
     }
 
     /** Le message dit <b>quoi faire</b>, pas seulement ce qui ne va pas. */
