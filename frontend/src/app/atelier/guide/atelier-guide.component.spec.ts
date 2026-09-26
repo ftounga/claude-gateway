@@ -163,4 +163,29 @@ describe('AtelierGuideComponent', () => {
 
     expect(fixture.nativeElement.querySelector('.guide-failure')).toBeNull();
   });
+
+  // --- Repli mobile (F-158 / SF-158-17) ---
+
+  it('démarre replié : la chip compacte est rendue avec le compteur', () => {
+    setup({ project: true });
+
+    // Signal local par défaut : replié — le panneau ne recouvre pas le terminal sur téléphone.
+    expect(component.expanded()).toBeFalse();
+    const chip = fixture.nativeElement.querySelector('.guide-chip') as HTMLButtonElement;
+    expect(chip).withContext('la chip compacte doit exister').not.toBeNull();
+    expect(chip.textContent).toContain('Vos premiers pas');
+    expect(chip.textContent).toContain('1 / 3');
+  });
+
+  it('la chip déploie le panneau, le bouton réduire le referme', () => {
+    setup({ project: true });
+
+    (fixture.nativeElement.querySelector('.guide-chip') as HTMLButtonElement).click();
+    expect(component.expanded()).toBeTrue();
+
+    (fixture.nativeElement.querySelector('.guide-collapse') as HTMLButtonElement).click();
+    expect(component.expanded()).toBeFalse();
+    // Le panneau complet — étapes et actions — reste dans le DOM : seul l'affichage (CSS) change.
+    expect(fixture.nativeElement.querySelector('.guide-steps')).not.toBeNull();
+  });
 });

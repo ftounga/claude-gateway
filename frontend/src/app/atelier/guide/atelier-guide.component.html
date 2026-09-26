@@ -1,21 +1,52 @@
-<!-- Guide d'accueil de l'Atelier (F-53 / SF-53-01) : superposé, jamais modal, abandonnable partout. -->
-<aside class="guide" role="complementary" aria-label="Guide de démarrage">
-  <header class="guide-head">
-    <div class="guide-head-text">
-      <span class="guide-title">Vos premiers pas</span>
-      <span class="guide-progress">{{ doneCount() }} / {{ views.length }}</span>
-    </div>
-    <button
-      mat-icon-button
-      type="button"
-      class="guide-close"
-      matTooltip="Masquer le guide"
-      aria-label="Masquer le guide"
-      (click)="dismiss.emit()"
-    >
-      <mat-icon>close</mat-icon>
-    </button>
-  </header>
+<!-- Guide d'accueil de l'Atelier (F-53 / SF-53-01) : superposé, jamais modal, abandonnable partout.
+     Sur téléphone (F-158 / SF-158-17), il s'affiche replié en chip compacte pour libérer le terminal ;
+     le desktop rend toujours le panneau complet (la chip est masquée hors du point de rupture). -->
+<aside
+  class="guide"
+  [class.guide--collapsed]="!expanded()"
+  role="complementary"
+  aria-label="Guide de démarrage"
+>
+  <!-- Chip compacte — téléphone uniquement, quand le guide est replié. -->
+  <button
+    type="button"
+    class="guide-chip"
+    [attr.aria-expanded]="expanded()"
+    aria-label="Déployer le guide de démarrage"
+    (click)="expand()"
+  >
+    <mat-icon aria-hidden="true">flag</mat-icon>
+    <span class="guide-chip-label">Vos premiers pas</span>
+    <span class="guide-chip-count">{{ doneCount() }} / {{ views.length }}</span>
+  </button>
+
+  <div class="guide-panel">
+    <header class="guide-head">
+      <div class="guide-head-text">
+        <span class="guide-title">Vos premiers pas</span>
+        <span class="guide-progress">{{ doneCount() }} / {{ views.length }}</span>
+      </div>
+      <button
+        mat-icon-button
+        type="button"
+        class="guide-collapse"
+        matTooltip="Réduire le guide"
+        aria-label="Réduire le guide"
+        (click)="collapse()"
+      >
+        <mat-icon>expand_less</mat-icon>
+      </button>
+      <button
+        mat-icon-button
+        type="button"
+        class="guide-close"
+        matTooltip="Masquer le guide"
+        aria-label="Masquer le guide"
+        (click)="dismiss.emit()"
+      >
+        <mat-icon>close</mat-icon>
+      </button>
+    </header>
 
   @if (completed()) {
     <!-- Conclusion : la seule chose qui compte est dite, puis le guide s'efface pour de bon. -->
@@ -101,4 +132,5 @@
       </button>
     </footer>
   }
+  </div>
 </aside>

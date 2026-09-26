@@ -2,10 +2,37 @@
      `role="status"` et non `alert` : ce n'est pas une alerte de menace, c'est un rappel de
      responsabilité — il ne doit pas interrompre un lecteur d'écran en pleine phrase. -->
 @if (visible()) {
-  <aside class="notice" role="status" aria-label="Rappel : journalisation du poste">
+  <aside
+    class="notice"
+    [class.notice--collapsed]="!expanded()"
+    role="status"
+    aria-label="Rappel : journalisation du poste"
+  >
+    <!-- Chip compacte — téléphone uniquement, quand le rappel est replié (F-158 / SF-158-17) :
+         elle libère la zone de saisie du terminal, et se déploie au tap. -->
+    <button
+      type="button"
+      class="notice-chip"
+      [attr.aria-expanded]="expanded()"
+      aria-label="Déployer le rappel : journalisation du poste"
+      (click)="expand()"
+    >
+      <mat-icon aria-hidden="true">policy</mat-icon>
+      <span class="notice-chip-label">Note poste</span>
+    </button>
+
     <mat-icon class="notice-icon" aria-hidden="true">policy</mat-icon>
 
     <div class="notice-body">
+      <button
+        mat-icon-button
+        type="button"
+        class="notice-collapse"
+        aria-label="Réduire le rappel"
+        (click)="collapse()"
+      >
+        <mat-icon>expand_more</mat-icon>
+      </button>
       <p class="notice-title">
         Sur un poste d'entreprise, vos commandes sont vraisemblablement journalisées
       </p>
