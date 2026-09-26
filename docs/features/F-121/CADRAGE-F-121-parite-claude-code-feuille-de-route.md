@@ -36,6 +36,15 @@ traces → sans corriger l'estimateur *en même temps*, le seuil de compaction (
 ~50k tokens réels sans se déclencher, et c'est le filet réactif « prompt too long » (`:903-928`) qui
 rattrape après coup (latence + tour relancé). **À intégrer dans SF-119-03.** *(Signalé à l'agent F-119.)*
 
+> **CLOS le 2026-09-26** (SF-121-00, PR #963 ; mini-spec
+> `docs/features/F-121/SF-121-00-estimateur-compte-les-traces.md`). Première moitié livrée avec
+> SF-119-03 (les caractères des traces sont comptés). Deuxième moitié livrée ici : la **fenêtre**
+> comptée est celle que la boucle rejoue vraiment. F-134 / SF-134-01 avait déplacé la coupure du
+> rejeu **par paliers** (entre `traceTurns` et `2 × traceTurns − 1` tours tracés) sans que
+> l'estimateur suive : jusqu'à onze tours de traces, ~125 000 tokens, n'étaient pas comptés.
+> `estimateReplayTokens` appelle désormais `AtelierChatService.firstTracedIndex` — une seule règle de
+> fenêtre. Le **ratio** (4 → 3,5 car./token) avait été traité à part en SF-121-18.
+
 ## 2. Lot 1 — les manques qui pèsent le plus, faible risque (PRIORITÉ 1)
 
 | SF | Écart (vs Claude Code) | Notre état (fichier:ligne) | Correctif (boucle maison) |
