@@ -15,7 +15,7 @@
 
 ## Statut
 
-`ready`
+`done`
 
 ## Date de création
 
@@ -96,21 +96,21 @@ intacts.
 
 ## Critères d'acceptation
 
-- [ ] CA1 — `app.atelier.escalate-effort` absent : l'effort d'un tour de continuation **après signal**
+- [x] CA1 — `app.atelier.escalate-effort` absent : l'effort d'un tour de continuation **après signal**
       vaut exactement `effort` (`high`) — non-régression stricte de F-119.
-- [ ] CA2 — `escalate-effort: xhigh` : le tour de continuation **après signal** part à `xhigh`.
-- [ ] CA3 — `escalate-effort: xhigh` : le **premier** tour reste à `effort` (`high`) et une
+- [x] CA2 — `escalate-effort: xhigh` : le tour de continuation **après signal** part à `xhigh`.
+- [x] CA3 — `escalate-effort: xhigh` : le **premier** tour reste à `effort` (`high`) et une
       continuation **sans** signal reste à `step-effort` (`medium`).
-- [ ] CA4 — `escalate-effort` inconnu ou vide retombe sur `effort` (aucune exception au démarrage).
-- [ ] CA5 — `escalate-effort` suit `effort` quand il n'est pas exprimé : avec `effort: max` et
+- [x] CA4 — `escalate-effort` inconnu ou vide retombe sur `effort` (aucune exception au démarrage).
+- [x] CA5 — `escalate-effort` suit `effort` quand il n'est pas exprimé : avec `effort: max` et
       `escalate-effort` absent, l'escalade vaut `max`.
-- [ ] CA6 — Coupe-circuits intacts : `adaptive-effort: false` et `escalate-on-signal: false` rendent
+- [x] CA6 — Coupe-circuits intacts : `adaptive-effort: false` et `escalate-on-signal: false` rendent
       le réglage sans effet.
-- [ ] CA7 — Les constructeurs de compatibilité d'`AtelierProperties` (formes antérieures) restent
+- [x] CA7 — Les constructeurs de compatibilité d'`AtelierProperties` (formes antérieures) restent
       appelables et appliquent le repli.
-- [ ] CA8 — Le javadoc périmé de `effort` (« `xhigh` attend le lot 6 / appel non-streamé ») est
+- [x] CA8 — Le javadoc périmé de `effort` (« `xhigh` attend le lot 6 / appel non-streamé ») est
       corrigé ; `application.yml` documente le nouveau réglage.
-- [ ] CA9 — `mvn -pl backend test` vert ; aucune migration, aucun endpoint, aucun frontend touché.
+- [x] CA9 — `mvn -pl backend test` vert ; aucune migration, aucun endpoint, aucun frontend touché.
 
 ---
 
@@ -188,25 +188,25 @@ réglage d'exploitation **invisible** : pas de subfeature frontend à planifier.
 
 ### Tests unitaires
 
-- [ ] `AtelierPropertiesTest` — `escalate-effort` absent ⇒ `escalateEffort() == effort()` (`high`).
-- [ ] `AtelierPropertiesTest` — `escalate-effort` inconnu / vide ⇒ repli sur `effort()`.
-- [ ] `AtelierPropertiesTest` — `escalate-effort: xhigh` ⇒ honoré ; `max` ⇒ honoré.
-- [ ] `AtelierPropertiesTest` — `effort: max` + `escalate-effort` absent ⇒ escalade `max` (le repli
+- [x] `AtelierPropertiesTest` — `escalate-effort` absent ⇒ `escalateEffort() == effort()` (`high`).
+- [x] `AtelierPropertiesTest` — `escalate-effort` inconnu / vide ⇒ repli sur `effort()`.
+- [x] `AtelierPropertiesTest` — `escalate-effort: xhigh` ⇒ honoré ; `max` ⇒ honoré.
+- [x] `AtelierPropertiesTest` — `effort: max` + `escalate-effort` absent ⇒ escalade `max` (le repli
       suit `effort`, pas la constante).
-- [ ] `AtelierPropertiesTest` — constructeur de compatibilité (forme 25 composants) ⇒ repli appliqué.
+- [x] `AtelierPropertiesTest` — constructeur de compatibilité (forme 25 composants) ⇒ repli appliqué.
 
 ### Tests d'intégration
 
 Pas d'endpoint : l'« intégration » est la boucle d'agent complète, couverte via `StubAiAgentProvider`
 et le journal `effectiveEfforts` (le niveau réellement transmis au fournisseur, tour par tour).
 
-- [ ] `AtelierChatServiceReasoningTest` — erreur d'outil + `escalate-effort: xhigh` ⇒
+- [x] `AtelierChatServiceReasoningTest` — erreur d'outil + `escalate-effort: xhigh` ⇒
       `effectiveEfforts == [high, xhigh]`.
-- [ ] `AtelierChatServiceReasoningTest` — erreur d'outil, réglage absent ⇒ `[high, high]`
+- [x] `AtelierChatServiceReasoningTest` — erreur d'outil, réglage absent ⇒ `[high, high]`
       (non-régression F-119).
-- [ ] `AtelierChatServiceReasoningTest` — continuation **propre** + `escalate-effort: xhigh` ⇒
+- [x] `AtelierChatServiceReasoningTest` — continuation **propre** + `escalate-effort: xhigh` ⇒
       `[high, medium]` (le gain F-118 est préservé).
-- [ ] `AtelierChatServiceReasoningTest` — `escalate-on-signal: false` + `escalate-effort: xhigh` ⇒
+- [x] `AtelierChatServiceReasoningTest` — `escalate-on-signal: false` + `escalate-effort: xhigh` ⇒
       `[high, medium]`.
 
 ### Isolation workspace / `user_id`
