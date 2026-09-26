@@ -353,4 +353,96 @@ describe('AtelierTerminalComponent — largeur réelle (F-158 / SF-158-10)', () 
         .not.toBe('rgba(0, 0, 0, 0)');
     });
   });
+
+  // ------------------------------------------------------------------ F-158 / SF-158-15
+  // PEAU SOMBRE « PRO » : sur téléphone, le fond du fil passe au navy profond de la maquette
+  // (`--cg-navy` = #0B1020 = rgb(11,16,32)), le chrome en surface navy-2, les sous-agents en carte
+  // bordée arrondie et la demande d'autorisation en carte à rayon >= 12. Le DESKTOP reste inchangé
+  // (le fond `.terminal-view` reste `--cg-primary` = rgb(26,58,92) sans la feuille mobile).
+  describe('peau sombre pro du fil (SF-158-15)', () => {
+    const NAVY = 'rgb(11, 16, 32)'; // --cg-navy #0B1020
+    const PRIMARY = 'rgb(26, 58, 92)'; // --cg-primary #1A3A5C
+
+    /** Rend un tour avec un LOT d'explorations parallèles (>= 2 `explore` adjacents → `.terminal-subagents`). */
+    function renderSubAgents(): void {
+      const c = fixture.componentInstance;
+      c.messages = [
+        {
+          id: 'a1',
+          role: 'ASSISTANT',
+          content: '',
+          actions: [],
+          terminal: [
+            { tool: 'explore', command: 'où est défini le backend Terraform ?', toolUseId: null, threadId: null, output: '', hasOutput: false, error: false, expanded: false },
+            { tool: 'explore', command: 'quels comptes AWS sont référencés ?', toolUseId: null, threadId: null, output: '', hasOutput: false, error: false, expanded: false },
+          ],
+        },
+      ] as never;
+      fixture.detectChanges();
+    }
+
+    /** Rend une demande d'autorisation en attente (fait apparaître `.terminal-ask`). */
+    function renderPendingDecision(): void {
+      fixture.componentInstance.pendingConfirmation = {
+        toolUseId: 't1',
+        tool: 'bash',
+        detail: 'terraform plan -chdir=dev',
+        source: 'HOSTED_SANDBOX',
+        answering: false,
+        denying: false,
+        reason: '',
+        deadline: null,
+        timeoutMs: null,
+      };
+      fixture.detectChanges();
+    }
+
+    it('à 360 px, le fond du fil interactif est le navy profond de la maquette (--cg-navy)', () => {
+      applyTerminalMobileRules();
+      host.style.width = '360px';
+      void host.getBoundingClientRect();
+      const view = host.querySelector('.terminal-view') as HTMLElement;
+      expect(view).withContext('.terminal-view absente').toBeTruthy();
+      expect(getComputedStyle(view).backgroundColor)
+        .withContext('le fond du fil doit passer au navy profond (--cg-navy), pas rester le primary daté')
+        .toBe(NAVY);
+    });
+
+    it('DESKTOP (1440 px, sans la feuille mobile) : le fond du fil reste --cg-primary — peau inchangée', () => {
+      // Aucun applyTerminalMobileRules() : la fenêtre Karma est à 1440 px, les règles @media 819px
+      // ne s'appliquent pas → le desktop garde son fond primary. Garde-fou de non-régression desktop.
+      const view = host.querySelector('.terminal-view') as HTMLElement;
+      expect(getComputedStyle(view).backgroundColor)
+        .withContext('le desktop ne doit JAMAIS hériter de la peau mobile (fond primary conservé)')
+        .toBe(PRIMARY);
+    });
+
+    it('à 360 px, le lot de sous-agents est une CARTE bordée arrondie (fond non transparent, rayon > 0)', () => {
+      renderSubAgents();
+      applyTerminalMobileRules();
+      host.style.width = '360px';
+      void host.getBoundingClientRect();
+      const subs = host.querySelector('.terminal-subagents') as HTMLElement;
+      expect(subs).withContext('.terminal-subagents absente (lot d\'explorations non rendu)').toBeTruthy();
+      const cs = getComputedStyle(subs);
+      expect(cs.backgroundColor)
+        .withContext('la carte des sous-agents doit avoir une surface (navy-2)')
+        .not.toBe('rgba(0, 0, 0, 0)');
+      expect(parseFloat(cs.borderTopLeftRadius))
+        .withContext('la carte des sous-agents doit être arrondie (maquette .subs)')
+        .toBeGreaterThan(0);
+    });
+
+    it('à 360 px, la demande d\'autorisation est une carte à rayon >= 12 (maquette .ask)', () => {
+      renderPendingDecision();
+      applyTerminalMobileRules();
+      host.style.width = '360px';
+      void host.getBoundingClientRect();
+      const ask = host.querySelector('.terminal-ask') as HTMLElement;
+      expect(ask).withContext('.terminal-ask absente').toBeTruthy();
+      expect(parseFloat(getComputedStyle(ask).borderTopLeftRadius))
+        .withContext('la carte de décision doit être franchement arrondie (>= 12 px)')
+        .toBeGreaterThanOrEqual(12);
+    });
+  });
 });
