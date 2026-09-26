@@ -63,6 +63,20 @@ public class RunnerWebSocketHandler extends AbstractWebSocketHandler {
     /** Sockets ouvertes sur CE nœud, que le balayage examine (F-97 / SF-97-01). */
     private final Set<WebSocketSession> sessions = ConcurrentHashMap.newKeySet();
 
+    /**
+     * Le journal des ruptures (F-161 / SF-161-03), branché par mutateur : sans lui, ces sockets se
+     * ferment exactement comme avant.
+     */
+    private fr.claudegateway.runner.rupture.RunnerDisconnectJournal journal;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setJournal(fr.claudegateway.runner.rupture.RunnerDisconnectJournal journal) {
+        this.journal = journal;
+    }
+
+    /** L'instant d'ouverture de CETTE socket, pour dire combien de temps elle a tenu. */
+    private static final String OPENED_AT_ATTRIBUTE = "runnerSocketOpenedAt";
+
     public RunnerWebSocketHandler(RunnerRegistry registry, RunnerHeartbeatService heartbeatService,
             ObjectMapper objectMapper, RunnerCallDispatcher dispatcher, RunnerLiveness liveness) {
         this.registry = registry;
@@ -83,6 +97,9 @@ public class RunnerWebSocketHandler extends AbstractWebSocketHandler {
                 OffsetDateTime.now());
         // Retenue sur la session : c'est elle, et elle seule, que la fermeture pourra retirer.
         session.getAttributes().put(CONNECTION_ATTRIBUTE, connection);
+        // F-161 / SF-161-03 : sans cet instant, on saurait qu'une socket est tombée mais pas si
+        // elle a tenu deux secondes ou six heures — or c'est cette durée qui oriente l'enquête.
+        session.getAttributes().put(OPENED_AT_ATTRIBUTE, java.time.Instant.now());
         registry.register(connection);
         heartbeatService.touch(identity.tokenId());
         // Suivie par le balayage APRÈS le premier battement : une socket neuve n'est jamais muette.
@@ -116,6 +133,13 @@ public class RunnerWebSocketHandler extends AbstractWebSocketHandler {
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         RunnerIdentity identity = identityOf(session);
+        // Consigné AVANT `release` : celui-ci termine les appels en vol, et après il n'y aurait
+        // plus rien à compter. Le CloseStatus finissait jusqu'ici dans le log.debug ci-dessous,
+        // c'est-à-dire nulle part en production — alors qu'il sépare une coupure réseau d'un arrêt
+        // applicatif (F-161 / SF-161-03).
+        journal(session, identity,
+                fr.claudegateway.runner.rupture.RunnerDisconnectCause.SOCKET_FERMEE,
+                status == null ? null : status.toString());
         release(session, identity);
         log.debug("Runner deconnecte: poste={} token={} ({})",
                 identity.hostId(), identity.tokenId(), status);
@@ -163,6 +187,9 @@ public class RunnerWebSocketHandler extends AbstractWebSocketHandler {
                 log.debug("Fermeture d'une socket runner muette en échec (poste={})",
                         identity.hostId());
             } finally {
+                journal(session, identity,
+                        fr.claudegateway.runner.rupture.RunnerDisconnectCause.SOCKET_MUETTE,
+                        SILENT_SOCKET.toString());
                 // La fermeture d'une socket à moitié ouverte ne rappelle pas toujours
                 // afterConnectionClosed : on libère nous-mêmes. Idempotent si elle l'a fait.
                 release(session, identity);
@@ -179,6 +206,22 @@ public class RunnerWebSocketHandler extends AbstractWebSocketHandler {
      * par jeton du registre ne suffit pas : un runner qui se reconnecte garde le même jeton, et la
      * fermeture tardive de sa vieille socket effaçait sa nouvelle présence. Idempotent.</p>
      */
+    /**
+     * Consigne la rupture de cette socket. Best-effort de bout en bout : ni l'absence de journal,
+     * ni l'absence d'identité ne doivent empêcher une socket de se fermer.
+     */
+    private void journal(WebSocketSession session, RunnerIdentity identity,
+            fr.claudegateway.runner.rupture.RunnerDisconnectCause cause, String closeStatus) {
+        if (journal == null || identity == null) {
+            return;
+        }
+        Object openedAt = session.getAttributes().get(OPENED_AT_ATTRIBUTE);
+        journal.record(identity.userId(), identity.hostId(), cause,
+                fr.claudegateway.runner.rupture.RunnerTransport.WEBSOCKET,
+                openedAt instanceof java.time.Instant instant ? instant : null,
+                null, closeStatus, dispatcher.inFlightCountFor(identity.hostId()));
+    }
+
     private void release(WebSocketSession session, RunnerIdentity identity) {
         sessions.remove(session);
         dispatcher.detach(session, identity);

@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-161 / SF-161-03 — LE JOURNAL DES RUPTURES.
+
+      POURQUOI CETTE TABLE EXISTE. Le cadrage F-161 §6 REFUSE de corriger la cause des
+      deconnexions : le runner bat toutes les 30 s, la gateway tolere 90 s — trois battements de
+      marge, ce n'est pas un probleme de reglage. Le runner a reellement disparu, et ON NE SAIT PAS
+      POURQUOI. Deviner produirait un correctif qui ne corrige rien. Cette table ne corrige rien
+      non plus : elle MESURE, pour qu'un jour on repare sur des faits.
+
+      POURQUOI UNE TABLE ET PAS DES LOGS. CloudWatch garde les logs quelques jours et ne se joint a
+      rien. La question a laquelle il faudra repondre — « ce poste decroche-t-il plus que les
+      autres, et a quelle heure ? » — demande de croiser avec runner_audit et usage_turns.
+
+      POURQUOI UNE LIGNE PAR RUPTURE, JAMAIS PAR BATTEMENT. Un enregistrement toutes les 30 s par
+      poste noierait le signal et couterait en ecritures. Une rupture est rare : c'est ce qui la
+      rend interessante.
+    -->
+
+    <changeSet id="134-runner-disconnects" author="claude-gateway">
+        <createTable tableName="runner_disconnects">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+
+            <!-- ISOLATION : toute lecture filtre dessus. -->
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="host_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+
+            <!-- ARRET_PROPRE | INACTIVITE | REMPLACE | SOCKET_FERMEE | SOCKET_MUETTE -->
+            <column name="cause" type="varchar(32)">
+                <constraints nullable="false"/>
+            </column>
+
+            <!-- POLLING | WEBSOCKET : les deux transports ne tombent pas pour les memes raisons. -->
+            <column name="transport" type="varchar(16)">
+                <constraints nullable="false"/>
+            </column>
+
+            <!-- Duree de vie du canal, du premier contact a sa fermeture. -->
+            <column name="lived_ms" type="bigint"/>
+
+            <!-- Temps ecoule depuis le dernier signe du poste. C'est LUI qui dira si la marge de
+                 90 s est genereuse ou juste. -->
+            <column name="silent_ms" type="bigint"/>
+
+            <!-- Le CloseStatus du WebSocket, aujourd'hui jete dans un log debug. C'est le
+                 renseignement le plus precieux du lot : il distingue une coupure reseau d'un arret
+                 applicatif. Nul pour le long-polling, qui n'en a pas. -->
+            <column name="close_status" type="varchar(120)"/>
+
+            <!-- Des appels etaient-ils EN VOL ? C'est le cas qui tue un tour, et le seul qui coute
+                 de l'argent. -->
+            <column name="calls_in_flight" type="integer" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="created_at" type="timestamptz">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <!-- L'ordre des colonnes suit la question posee : « les ruptures de CE compte, sur CE
+             poste, sur une periode ». -->
+        <createIndex tableName="runner_disconnects" indexName="idx_runner_disconnects_user_host_at">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="created_at"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

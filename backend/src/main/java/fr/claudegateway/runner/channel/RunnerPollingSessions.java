@@ -45,11 +45,38 @@ public class RunnerPollingSessions {
 
     private final Map<UUID, LongPollingRunnerOutbound> channels = new ConcurrentHashMap<>();
 
+    /**
+     * Le journal des ruptures (F-161 / SF-161-03), branché par mutateur : sans lui, ces canaux se
+     * ferment exactement comme avant. Rien ici ne doit dépendre de sa présence.
+     */
+    private fr.claudegateway.runner.rupture.RunnerDisconnectJournal journal;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setJournal(fr.claudegateway.runner.rupture.RunnerDisconnectJournal journal) {
+        this.journal = journal;
+    }
+
     public RunnerPollingSessions(RunnerRegistry registry, RunnerCallDispatcher dispatcher,
             @Value("${app.runner.poll.idle-timeout-ms:90000}") long idleTimeoutMs) {
         this.registry = registry;
         this.dispatcher = dispatcher;
         this.idleTimeoutMs = idleTimeoutMs > 0 ? idleTimeoutMs : 90_000L;
+    }
+
+    /**
+     * Consigne la rupture d'un canal de long-polling. Le compte des appels en vol est lu
+     * <b>ici</b>, avant que la fermeture ne les termine tous — après, il n'y aurait plus rien à
+     * compter, et c'est pourtant le chiffre qui dit si la rupture a tué un tour.
+     */
+    private void journal(LongPollingRunnerOutbound channel,
+            fr.claudegateway.runner.rupture.RunnerDisconnectCause cause) {
+        if (journal == null) {
+            return;
+        }
+        journal.record(channel.userId(), channel.hostId(), cause,
+                fr.claudegateway.runner.rupture.RunnerTransport.POLLING,
+                channel.connectedAt(), channel.lastPollAt(), null,
+                dispatcher.inFlightCountFor(channel.hostId()));
     }
 
     /**
@@ -67,6 +94,9 @@ public class RunnerPollingSessions {
                 identity.hostId(), identity.userId(), identity.tokenId(), this::cleanup);
         LongPollingRunnerOutbound previous = channels.put(identity.hostId(), channel);
         if (previous != null) {
+            // F-161 / SF-161-03 : le poste est REVENU, il n'est pas parti. Confondre ce cas avec une
+            // vraie coupure gonflerait le compte des ruptures d'autant de reconnexions.
+            journal(previous, fr.claudegateway.runner.rupture.RunnerDisconnectCause.REMPLACE);
             // La carte porte déjà le nouveau canal : le nettoyage de l'ancien ne peut plus l'effacer.
             previous.close();
         }
@@ -92,6 +122,9 @@ public class RunnerPollingSessions {
      */
     public boolean close(RunnerIdentity identity) {
         return find(identity).map(channel -> {
+            // Le cas SAIN : le runner a raccroché lui-même. Le distinguer est ce qui permettra de
+            // dire quelle part des ruptures est subie.
+            journal(channel, fr.claudegateway.runner.rupture.RunnerDisconnectCause.ARRET_PROPRE);
             channel.close();
             return true;
         }).orElse(false);
@@ -108,6 +141,7 @@ public class RunnerPollingSessions {
         for (LongPollingRunnerOutbound channel : List.copyOf(channels.values())) {
             if (channel.lastPollAt().isBefore(limit)) {
                 log.info("Canal runner long-polling inactif fermé (poste={})", channel.hostId());
+                journal(channel, fr.claudegateway.runner.rupture.RunnerDisconnectCause.INACTIVITE);
                 channel.close();
             }
         }

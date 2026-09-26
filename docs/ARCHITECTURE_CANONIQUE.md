@@ -1174,6 +1174,27 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     un **replica unique ou une affinité d'ingress**. `NOTIFY` (plafonné à 8 000 octets) ne peut pas
     relayer du contenu de fichier entre pods.
 
+- **runner_disconnects** — **le journal des ruptures** (F-161 / SF-161-03, migration `134`). Table
+  neuve, **une ligne par fermeture de canal**, jamais par battement : un enregistrement toutes les
+  30 s et par poste noierait le signal, alors qu'une rupture est rare — c'est ce qui la rend
+  intéressante.
+  - `runner_disconnects` : `id (uuid)`, `user_id (uuid, NOT NULL)`, `host_id (uuid, NOT NULL)`,
+    `cause (varchar 32, NOT NULL)`, `transport (varchar 16, NOT NULL)`, `lived_ms (bigint)`,
+    `silent_ms (bigint)`, `close_status (varchar 120)`, `calls_in_flight (int, NOT NULL)`,
+    `created_at (timestamptz, NOT NULL)`. Index `(user_id, host_id, created_at)`.
+  - **Cinq causes**, toutes déjà distinguées par le code et jusque-là **jetées** : `ARRET_PROPRE`
+    (le runner a raccroché, le cas sain), `INACTIVITE` (le long-polling n'interroge plus),
+    `REMPLACE` (une reconnexion a pris la place — le poste **revient**, il ne part pas),
+    `SOCKET_FERMEE`, `SOCKET_MUETTE`. Les deux **transports** sont séparés parce qu'ils ne tombent
+    pas pour les mêmes raisons : un proxy d'entreprise coupe les longs POST bien avant une socket.
+  - **Pourquoi une table et pas des logs** : CloudWatch garde les logs quelques jours et ne se
+    joint à rien. La question à laquelle il faudra répondre — « ce poste décroche-t-il plus que les
+    autres, et à quelle heure ? » — demande de croiser avec `runner_audit` et `usage_turns`.
+  - **Ce que la table ne fait pas** : corriger. Le cadrage F-161 §6 refuse de deviner la cause des
+    déconnexions ; cette table **mesure**, pour qu'un jour on répare sur des faits.
+  - `calls_in_flight` est relevé **avant** la fermeture, qui termine tous les appels en vol : après,
+    il n'y aurait plus rien à compter — or c'est le seul chiffre qui dise si la rupture a tué un tour.
+
 - **runner_audit** — journal d'audit du runner (F-38 / SF-38-08, décision D11, migration `049`).
   Table neuve, **une ligne par appel d'outil terminé** sur la machine de l'utilisateur et par appel
   **refusé avant émission** (validation d'action). Clef de corrélation `call_id` = l'identifiant
