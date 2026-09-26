@@ -28,11 +28,21 @@
 #   W3  checkout principal en avance sur la base (commits non pousses)
 #   W4  au moins une pull request ouverte
 #   W5  une meme branche checked out dans deux worktrees ou plus
+#   W6  une remise (git stash) creee il y a moins de N minutes
 #
 # Signaux informatifs, qui n'inversent jamais le verdict :
 #   I1  worktree dirty / unmerged / locked SANS activite recente -> RESIDU (voir le prune)
 #   I2  checkout principal en retard sur la base -> il manque une mise a jour locale
 #   I3  worktree dont le repertoire a disparu -> enregistrement perime
+#   I4  remise plus ancienne que N minutes -> residu de pile (dont les remises ANONYMES)
+#
+# Pourquoi la pile de remise compte (SF-SP-03) : refs/stash vit dans le git-dir COMMUN. La
+# pile est donc PARTAGEE par le checkout principal et par tous les worktrees lies — une
+# remise poussee depuis un worktree apparait dans la liste de tous les autres, et un dépilage
+# fait depuis n'importe ou retire l'entree pour tout le monde. Entre la mise de cote et la
+# restauration, le travail d'une session n'existe QUE dans la pile : ni dans un commit, ni
+# dans un arbre de travail. C'est le pire moment pour depiler a l'aveugle ou pour purger, et
+# c'est pourquoi une remise recente vaut « session en vol ».
 #
 # Usage :
 #   scripts/check-parallel-sessions.sh                  # verdict lisible
@@ -41,6 +51,7 @@
 #   scripts/check-parallel-sessions.sh --no-fetch       # ne pas contacter origin
 #   scripts/check-parallel-sessions.sh --no-gh          # ignorer le signal des PR ouvertes
 #   scripts/check-parallel-sessions.sh --require-gh     # gh indisponible => BUSY
+#   scripts/check-parallel-sessions.sh --no-stash       # ignorer le signal de la pile de remise
 #   scripts/check-parallel-sessions.sh --quiet          # n'imprimer que le verdict
 #
 # Sorties :
@@ -58,6 +69,7 @@ BASE_REF="origin/main"
 DO_FETCH=1
 USE_GH=1
 REQUIRE_GH=0
+USE_STASH=1
 INCLUDE_SELF=0
 QUIET=0
 WORKTREE_PREFIX=".claude/worktrees/"
@@ -73,6 +85,7 @@ while [[ $# -gt 0 ]]; do
         --no-fetch)     DO_FETCH=0; shift ;;
         --no-gh)        USE_GH=0; shift ;;
         --require-gh)   REQUIRE_GH=1; shift ;;
+        --no-stash)     USE_STASH=0; shift ;;
         --include-self) INCLUDE_SELF=1; shift ;;
         --quiet)        QUIET=1; shift ;;
         --age-minutes)  AGE_MINUTES="${2:?--age-minutes requiert une valeur}"; shift 2 ;;
@@ -179,6 +192,9 @@ collisions=0
 unreadable=0
 open_prs=0
 gh_status="ok"
+stash_recent=0
+stash_old=0
+stash_anon=0
 
 # --- Checkout principal : W2 (sale), W3 (en avance), I2 (en retard) ----------------------
 say "-- Checkout principal --"
@@ -304,6 +320,55 @@ for i in "${!wt_branches[@]}"; do
 done
 [[ "$shared_found" -eq 0 ]] && say "  (aucune branche partagee entre deux worktrees)"
 
+# --- W6 / I4 : pile de remise partagee ---------------------------------------------------
+# La pile n'est pas per-worktree (refs/stash est dans le git-dir commun) : ce qu'une session
+# met de cote, toutes les autres le voient et peuvent le retirer. Une remise RECENTE est donc
+# la trace d'une session en plein cycle « mettre de cote / restaurer », moment ou son travail
+# n'existe nulle part ailleurs. Une remise ancienne, elle, n'est qu'un residu de pile : la
+# compter BUSY rendrait le verdict rouge en permanence, meme erreur que celle evitee pour les
+# worktrees residuels.
+say
+say "-- Pile de remise --"
+if [[ "$USE_STASH" -eq 0 ]]; then
+    say "  (signal ignore — --no-stash)"
+elif ! git rev-parse --verify --quiet refs/stash >/dev/null 2>&1; then
+    say "  (pile vide)"
+elif ! stash_log="$(git --no-optional-locks log -g --format='%ct%x09%gd%x09%gs' refs/stash 2>/dev/null)"; then
+    # Meme doctrine que le statut Git illisible : ne jamais conclure « libre » sur une lecture
+    # ratee, surtout quand la purge s'appuie sur ce verdict pour detruire.
+    say "  ILLISIBLE — reflog de refs/stash illisible, compte comme occupe par prudence"
+    unreadable=$((unreadable + 1))
+elif [[ -z "$stash_log" ]]; then
+    say "  (pile vide)"
+else
+    now_ts="$(date +%s)"
+    while IFS=$'\t' read -r stash_ts stash_sel stash_msg; do
+        [[ -z "$stash_ts" ]] && continue
+        age_min=$(( (now_ts - stash_ts) / 60 ))
+        # Horloge faussee (remise « dans le futur ») : borner a 0 la fait passer pour recente,
+        # donc bloquante. Un garde-fou se trompe du cote prudent.
+        [[ "$age_min" -lt 0 ]] && age_min=0
+
+        # `git stash push -m "tag"` ecrit « On <branche>: tag » ; une remise NUE ecrit
+        # « WIP on <branche>: <sha> <sujet> ». Ce prefixe est le seul moyen de savoir si
+        # l'entree est attribuable a quelqu'un.
+        if [[ "$stash_msg" == "WIP on "* ]]; then
+            nature="ANONYME (remise nue — aucune session identifiable, ne jamais depiler)"
+            stash_anon=$((stash_anon + 1))
+        else
+            nature="nommee (attribuable)"
+        fi
+
+        if [[ "$AGE_MINUTES" -gt 0 && "$age_min" -lt "$AGE_MINUTES" ]]; then
+            say "  EN VOL  $stash_sel [il y a ${age_min} min] $stash_msg — W6 remise de moins de ${AGE_MINUTES} min, $nature"
+            stash_recent=$((stash_recent + 1))
+        else
+            say "  RESIDU  $stash_sel [il y a ${age_min} min] $stash_msg — I4 $nature"
+            stash_old=$((stash_old + 1))
+        fi
+    done <<<"$stash_log"
+fi
+
 # --- W4 : pull requests ouvertes ---------------------------------------------------------
 say
 say "-- Pull requests ouvertes --"
@@ -333,6 +398,7 @@ busy=0
 [[ "$collisions" -gt 0 ]] && busy=1
 [[ "$unreadable" -gt 0 ]] && busy=1
 [[ "$open_prs"   -gt 0 ]] && busy=1
+[[ "$stash_recent" -gt 0 ]] && busy=1
 
 gh_note=""
 if [[ "$gh_status" == "indisponible" ]]; then
@@ -349,7 +415,9 @@ say "== Verdict =="
 say "  sessions en vol  : $inflight"
 say "  collisions       : $collisions"
 say "  PR ouvertes      : $open_prs"
-say "  residus (inactifs, non bloquants) : $residus"
+say "  remises recentes (W6) : $stash_recent"
+say "  residus (inactifs, non bloquants) : $residus worktree(s), $stash_old remise(s)"
+[[ "$stash_anon" -gt 0 ]] && say "  remises ANONYMES en pile : $stash_anon — poussees par une remise nue, non attribuables (regle : jamais de remise nue)"
 [[ "$unreadable" -gt 0 ]] && say "  etats illisibles : $unreadable"
 
 if [[ "$busy" -eq 1 ]]; then

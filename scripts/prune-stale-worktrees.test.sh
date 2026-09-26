@@ -429,6 +429,43 @@ set -e
 [[ "$before" == "$(snapshot)" ]] \
     && check ok "etat Git inchange" || check ko "l'erreur d'usage a modifie l'etat"
 
+# --- Cas 19 (SF-SP-03) : le garde-fou 5 herite du signal « remise recente » --------------
+# La pile de remise est partagee par tout le depot. Une session qui vient d'y mettre son
+# travail de cote n'a plus rien ni dans un commit ni dans son arbre : c'est le pire moment
+# pour effacer un repertoire de travail. Le garde-fou 5 appelle le controle de vol, qui rend
+# desormais BUSY dans ce cas — la purge en herite SANS une ligne de code de son cote, et ce
+# cas est la pour figer cet heritage.
+echo "[19] garde-fou 5 : une remise recente refuse la purge"
+backdate_all
+echo travail-mis-de-cote > f.txt
+git stash push --quiet -m "session-parallele-en-cours"
+set +e
+bash "$SCRIPT" --no-fetch --apply >/dev/null 2>&1
+code=$?
+set -e
+[[ "$code" -eq 5 ]] && check ok "sortie 5 (remise recente en pile)" \
+    || check ko "sortie $code au lieu de 5 : la purge ignore la pile de remise"
+[[ -d .claude/worktrees/wf_test-12 ]] \
+    && check ok "RIEN n'a ete detruit : la victime est intacte" \
+    || check ko "un worktree a ete detruit malgre la remise recente"
+
+# Controle negatif : la meme remise, vieillie de 3 h, redevient un simple residu de pile.
+git stash drop --quiet
+echo travail-mis-de-cote > f.txt
+stamp_iso="$(date -d '3 hours ago' -Iseconds)"
+GIT_COMMITTER_DATE="$stamp_iso" GIT_AUTHOR_DATE="$stamp_iso" \
+    git stash push --quiet -m "vieille-remise"
+backdate_all
+set +e
+bash "$SCRIPT" --no-fetch --apply >/dev/null 2>&1
+code=$?
+set -e
+[[ "$code" -eq 0 ]] && check ok "controle negatif : remise ancienne => la purge aboutit" \
+    || check ko "sortie $code : une remise ancienne a bloque la purge"
+[[ ! -d .claude/worktrees/wf_test-12 ]] \
+    && check ok "controle negatif : la victime est bien retiree" \
+    || check ko "wf_test-12 aurait du etre retire"
+
 echo
 if [[ "$failures" -eq 0 ]]; then
     echo "TOUS LES CAS PASSES"
