@@ -52,17 +52,60 @@ class LiveTurnSteerTest {
         assertThat(turn.takeSteers()).as("prises, elles ne reviennent pas").isEmpty();
     }
 
+    /**
+     * SF-121-11 — le cap est assoupli (5 → 10) : ces dix-là attendent séparément, sans refus.
+     */
     @Test
-    void laSixiemePrecisionEstRefuseeSansToucherAuTour() {
+    void dixPrecisionsAttendentSeparement() {
         LiveTurn turn = registry.open(ALICE, PROJET);
         for (int i = 0; i < LiveTurn.MAX_PENDING_STEERS; i++) {
             assertThat(turn.offerSteer("précision " + i).status())
                     .isEqualTo(SteerReceipt.Status.ACCEPTED);
         }
 
-        assertThat(turn.offerSteer("une de trop").status()).isEqualTo(SteerReceipt.Status.FULL);
-        assertThat(turn.live()).isTrue();
+        assertThat(LiveTurn.MAX_PENDING_STEERS).isEqualTo(10);
         assertThat(turn.takeSteers()).hasSize(LiveTurn.MAX_PENDING_STEERS);
+    }
+
+    /**
+     * SF-121-11 — au-delà du cap, la précision n'est plus REFUSÉE : elle est <b>fondue</b> dans la
+     * dernière en attente, qui garde son identifiant. L'utilisateur qui pense à voix haute n'est
+     * pas rabroué pour un problème de comptage.
+     */
+    @Test
+    void auDelaDuCapLaPrecisionEstFondueDansLaDerniere() {
+        LiveTurn turn = registry.open(ALICE, PROJET);
+        String lastId = null;
+        for (int i = 0; i < LiveTurn.MAX_PENDING_STEERS; i++) {
+            lastId = turn.offerSteer("précision " + i).steerId();
+        }
+
+        SteerReceipt coalesced = turn.offerSteer("et aussi : garde le dossier dist");
+
+        assertThat(coalesced.status()).isEqualTo(SteerReceipt.Status.ACCEPTED);
+        assertThat(coalesced.steerId()).as("même identifiant que la dernière en attente")
+                .isEqualTo(lastId);
+        assertThat(turn.live()).isTrue();
+        List<LiveTurn.Steer> pending = turn.takeSteers();
+        assertThat(pending).as("la file ne grandit pas").hasSize(LiveTurn.MAX_PENDING_STEERS);
+        assertThat(pending.get(pending.size() - 1).text())
+                .isEqualTo("précision 9\net aussi : garde le dossier dist");
+    }
+
+    /**
+     * SF-121-11 — le vrai plafond est le VOLUME : ce qui coûte, c'est le texte ajouté à la
+     * conversation. Au-delà, {@code FULL} — et le tour n'est pas touché.
+     */
+    @Test
+    void auDelaDuVolumeCumuleLaPrecisionEstRefuseeSansToucherAuTour() {
+        LiveTurn turn = registry.open(ALICE, PROJET);
+        String pave = "x".repeat(LiveTurn.MAX_PENDING_STEER_CHARS - 10);
+        assertThat(turn.offerSteer(pave).status()).isEqualTo(SteerReceipt.Status.ACCEPTED);
+
+        assertThat(turn.offerSteer("onze caractères et plus encore").status())
+                .isEqualTo(SteerReceipt.Status.FULL);
+        assertThat(turn.live()).as("le tour n'est pas touché").isTrue();
+        assertThat(turn.takeSteers()).as("la file est inchangée").hasSize(1);
     }
 
     @Test
@@ -170,18 +213,37 @@ class LiveTurnSteerTest {
         assertThat(alice.takeSteers()).as("rien chez ALICE").isEmpty();
     }
 
+    /**
+     * File saturée <b>en volume</b> (SF-121-11 : c'est le seul vrai plafond) : le refus ne crée
+     * jamais un second tour sur le même projet.
+     */
     @Test
     void uneFilePleineNOuvrePasDeSecondTour() {
         LiveTurn vivant = registry.open(ALICE, PROJET);
-        for (int i = 0; i < LiveTurn.MAX_PENDING_STEERS; i++) {
-            vivant.offerSteer("précision " + i);
-        }
+        vivant.offerSteer("x".repeat(LiveTurn.MAX_PENDING_STEER_CHARS));
 
         LiveTurnRegistry.Entry entry = registry.openOrSteer(ALICE, PROJET, "une de trop");
 
         assertThat(entry.turn()).isSameAs(vivant);
         assertThat(entry.receipt().status()).isEqualTo(SteerReceipt.Status.FULL);
         assertThat(vivant.live()).isTrue();
+    }
+
+    /**
+     * Le cap de <b>comptage</b>, lui, n'ouvre plus rien non plus — il coalesce (SF-121-11).
+     */
+    @Test
+    void auDelaDuCapLOuvertureCoalesceDansLeTourVivant() {
+        LiveTurn vivant = registry.open(ALICE, PROJET);
+        for (int i = 0; i < LiveTurn.MAX_PENDING_STEERS; i++) {
+            vivant.offerSteer("précision " + i);
+        }
+
+        LiveTurnRegistry.Entry entry = registry.openOrSteer(ALICE, PROJET, "une de plus");
+
+        assertThat(entry.turn()).isSameAs(vivant);
+        assertThat(entry.receipt().status()).isEqualTo(SteerReceipt.Status.ACCEPTED);
+        assertThat(vivant.takeSteers()).hasSize(LiveTurn.MAX_PENDING_STEERS);
     }
 
     record Payload(String detail) {
