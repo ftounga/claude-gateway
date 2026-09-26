@@ -552,4 +552,84 @@ describe('AtelierTerminalComponent — largeur réelle (F-158 / SF-158-10)', () 
         .toBe('232px');
     });
   });
+
+  // ------------------------------------------------------------------ F-158 / SF-158-23
+  // ALLER AU FOND À L'ENTRÉE + SUIVRE LE FLUX, sur mobile comme desktop.
+  //
+  // L'hôte est ancré à `document.body` (beforeEach) → `scrollHeight` est réel, donc le déclencheur de
+  // `ngAfterViewChecked` (la hauteur du contenu a changé) se produit vraiment. On espionne
+  // `Element.prototype.scrollIntoView` et on vérifie que c'est bien LA SENTINELLE DE FOND
+  // (`.terminal-bottom-sentinel`) qu'on amène dans le champ de vision — ce que l'ancien
+  // `el.scrollTop = el.scrollHeight` ne faisait PAS (et qui était un no-op sur mobile, où
+  // `.terminal-scrollback` n'est pas le conteneur défilant). `scrollIntoView` défile l'ancêtre
+  // défilant réel (fenêtre sur mobile, scrollback sur desktop) : le correctif tient des deux côtés.
+  describe('aller au fond à l\'entrée et suivre le flux (SF-158-23)', () => {
+    /** Rend le terminal avec `n` messages assistant, en défilant vraiment (hôte ancré au document). */
+    function renderMessages(n: number): void {
+      const c = fixture.componentInstance;
+      c.readOnly = false;
+      const messages = [];
+      for (let i = 0; i < n; i += 1) {
+        messages.push({ id: `u${i}`, role: 'USER', content: `Question ${i}`, actions: [] });
+        messages.push({ id: `a${i}`, role: 'ASSISTANT', content: `Réponse ${i}`.repeat(30), actions: [] });
+      }
+      c.messages = messages as never;
+      fixture.detectChanges();
+    }
+
+    /** Vrai si un appel à scrollIntoView a visé la sentinelle de fond. */
+    function scrolledSentinelInto(spy: jasmine.Spy): boolean {
+      return spy.calls.all().some(
+        (call) => (call.object as HTMLElement)?.classList?.contains('terminal-bottom-sentinel'),
+      );
+    }
+
+    it('la sentinelle de fond est le DERNIER enfant du fil', () => {
+      renderMessages(3);
+      const thread = host.querySelector('.terminal-thread') as HTMLElement;
+      const last = thread.lastElementChild as HTMLElement;
+      expect(last)
+        .withContext('le fil n\'a pas d\'enfant')
+        .toBeTruthy();
+      expect(last.classList.contains('terminal-bottom-sentinel'))
+        .withContext('la sentinelle doit être le dernier enfant de .terminal-thread')
+        .toBe(true);
+    });
+
+    it('À L\'ENTRÉE : le 1er rendu avec des messages amène la sentinelle de fond dans le champ de vision', () => {
+      const spy = spyOn(Element.prototype, 'scrollIntoView');
+      renderMessages(12); // long fil : sans le fix, la vue resterait en haut sur mobile
+      expect(scrolledSentinelInto(spy))
+        .withContext('à l\'entrée, on doit scrollIntoView la sentinelle de fond (saut au dernier message)')
+        .toBe(true);
+    });
+
+    it('SUIVI DU FLUX : un nouveau message ré-amène la sentinelle de fond dans le champ de vision', () => {
+      renderMessages(4); // premier rendu (avant l'espion : on isole l'effet du nouveau contenu)
+      const spy = spyOn(Element.prototype, 'scrollIntoView');
+      const c = fixture.componentInstance;
+      c.messages = [
+        ...(c.messages as never[]),
+        { id: 'a-new', role: 'ASSISTANT', content: 'Nouveau contenu qui arrive'.repeat(30), actions: [] },
+      ] as never;
+      fixture.detectChanges();
+      expect(scrolledSentinelInto(spy))
+        .withContext('à l\'arrivée de contenu, le flux doit suivre (scrollIntoView de la sentinelle)')
+        .toBe(true);
+    });
+
+    it('le saut est INSTANTANÉ (block:end, aucun behavior smooth)', () => {
+      const spy = spyOn(Element.prototype, 'scrollIntoView');
+      renderMessages(6);
+      const sentinelCall = spy.calls.all().find(
+        (call) => (call.object as HTMLElement)?.classList?.contains('terminal-bottom-sentinel'),
+      );
+      expect(sentinelCall).withContext('aucun scrollIntoView sur la sentinelle').toBeTruthy();
+      const options = sentinelCall!.args[0] as ScrollIntoViewOptions | undefined;
+      expect(options?.block).withContext('la sentinelle doit être amenée au bas (block:end)').toBe('end');
+      expect(options?.behavior)
+        .withContext('aucune animation smooth : saut instantané à l\'entrée')
+        .not.toBe('smooth');
+    });
+  });
 });

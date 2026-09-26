@@ -1216,6 +1216,15 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
   @ViewChild('scrollback') private scrollback?: ElementRef<HTMLElement>;
 
+  /**
+   * Sentinelle posée en toute fin du fil (F-158 / SF-158-23). Le suivi du flux la fait entrer dans
+   * le champ de vision : `scrollIntoView` défile **l'ancêtre défilant quel qu'il soit** — la fenêtre
+   * sur mobile (≤ 819 px, où `.terminal-scrollback` n'est PAS le scroller), le conteneur
+   * `.terminal-scrollback` sur desktop. C'est ce qui remplace l'ancien `scrollTop = scrollHeight`,
+   * no-op sur mobile.
+   */
+  @ViewChild('bottomSentinel') private bottomSentinel?: ElementRef<HTMLElement>;
+
   /** Invite d'autorisation affichée dans le flux (F-33 / SF-33-03), quand il y en a une. */
   @ViewChild('askBlock') private askBlock?: ElementRef<HTMLElement>;
 
@@ -1413,13 +1422,34 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     return `${live.tokens.toLocaleString('fr-FR')} tokens`;
   }
 
-  /** Le flux suit le nouveau contenu, comme un vrai terminal. */
+  /**
+   * Le flux suit le nouveau contenu, comme un vrai terminal — et à l'ENTRÉE dans le terminal, la vue
+   * se pose directement sur le dernier message (fond du fil), sur mobile comme sur desktop.
+   *
+   * <p>On garde le déclencheur bon marché : ne défiler que quand la hauteur du contenu a changé
+   * (nouveau contenu, ou premier rendu où elle passe de 0 au fil complet — ce qui couvre l'entrée) ;
+   * le contenu asynchrone (images, markdown) qui grandit ensuite re-déclenche, de sorte que le saut
+   * TIENT une fois le contenu posé. L'ancien `el.scrollTop = el.scrollHeight` ne visait que
+   * `.terminal-scrollback` : sur mobile ce n'est pas le conteneur défilant (c'est la fenêtre), donc
+   * c'était un no-op et la vue restait en haut. On passe par la sentinelle : voir {@link #scrollToBottom}.</p>
+   */
   ngAfterViewChecked(): void {
     const el = this.scrollback?.nativeElement;
     if (el && el.scrollHeight !== this.lastScrollHeight) {
       this.lastScrollHeight = el.scrollHeight;
-      el.scrollTop = el.scrollHeight;
+      this.scrollToBottom();
     }
+  }
+
+  /**
+   * Amène le fond du fil dans le champ de vision. `scrollIntoView` défile l'ancêtre défilant réel —
+   * la fenêtre sur mobile, `.terminal-scrollback` sur desktop —, ce qu'un `scrollTop =` sur le seul
+   * scrollback ne faisait pas sur mobile. Saut INSTANTANÉ (aucun `behavior:'smooth'`, aucune règle
+   * `scroll-behavior:smooth` sur le scroller) : pas d'animation longue à l'entrée, rien à contrarier
+   * côté `prefers-reduced-motion`.
+   */
+  private scrollToBottom(): void {
+    this.bottomSentinel?.nativeElement.scrollIntoView({ block: 'end' });
   }
 
   // ------------------------------------------------ slash-commands du composer (F-121 / SF-121-23)
