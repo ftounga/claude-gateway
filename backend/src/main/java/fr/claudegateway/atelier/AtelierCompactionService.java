@@ -50,22 +50,70 @@ public class AtelierCompactionService {
     static final int CHARS_PER_TOKEN = 4;
 
     /**
-     * Consigne du résumé (F-117 / SF-117-01) : un compte rendu factuel et compact, orienté <b>reprise
-     * du travail</b> — ce qui a été décidé, les fichiers touchés, l'état courant de la tâche — et non
-     * une paraphrase bavarde. Le modèle sait résumer ; on lui dit seulement ce qui doit survivre.
+     * Titres du <b>gabarit sectionné</b> du résumé (F-121 / SF-121-09), dans l'ordre imposé. Le
+     * résumé n'est plus de la prose libre : il porte toujours les mêmes rubriques, à la même place.
+     *
+     * <p><b>Pourquoi un gabarit</b> : le résumé est réinjecté en tête du rejeu ({@link
+     * #summaryPrefix}) et la compaction est <b>incrémentale</b> (on résume le résumé précédent plus
+     * les tours accumulés depuis). En prose libre, chaque passe reformule la précédente et
+     * l'information dérive — « ce qui reste à faire » est la première victime de la compression.
+     * Avec un gabarit, chaque passe <b>fusionne section par section</b> et la reprise sait où
+     * regarder.</p>
+     */
+    static final List<String> SUMMARY_SECTIONS = List.of(
+            "## Objectif",
+            "## Fichiers",
+            "## Décisions et faits établis",
+            "## État courant",
+            "## Prochaines étapes");
+
+    /**
+     * Consigne du résumé (F-117 / SF-117-01, gabarit F-121 / SF-121-09) : un compte rendu factuel et
+     * compact, orienté <b>reprise du travail</b> — ce qui a été décidé, les fichiers touchés, l'état
+     * courant de la tâche — et non une paraphrase bavarde. Le modèle sait résumer ; on lui dit
+     * seulement ce qui doit survivre et <b>sous quelle forme</b>.
+     *
+     * <p>Consigne d'un appel <b>dédié</b> (hors boucle principale) : la faire évoluer n'invalide pas
+     * le préfixe caché du tour (F-134). Elle ne dépend d'aucune entrée — tout ce qui varie d'une
+     * compaction à l'autre est dit dans le message ({@link #renderForSummary}).</p>
      */
     static final String SUMMARY_SYSTEM_PROMPT =
             "Tu résumes la partie ancienne d'une conversation entre un utilisateur et un agent de "
                     + "développement, pour qu'elle puisse être reprise sans relire tout l'historique. "
-                    + "Produis un résumé FACTUEL et COMPACT (pas de préambule, pas de conclusion) qui "
-                    + "conserve : l'objectif poursuivi, les décisions prises, les fichiers lus ou "
-                    + "modifiés, les commandes importantes ET LEUR ISSUE (réussie/échouée, code de "
-                    + "sortie, valeurs de sortie notables), et l'état courant de la tâche (ce qui reste "
-                    + "à faire). Des lignes « outils utilisés » (préfixées « · ») accompagnent chaque "
+                    + "Produis un résumé FACTUEL et COMPACT (pas de préambule, pas de conclusion), "
+                    + "structuré EXACTEMENT selon ce gabarit, dans cet ordre, en reprenant les titres "
+                    + "tels quels :\n"
+                    + "## Objectif\n"
+                    + "Ce que l'utilisateur cherche à obtenir, et les contraintes qu'il a posées.\n"
+                    + "## Fichiers\n"
+                    + "Les fichiers lus, créés ou modifiés, avec pour chacun ce qui y a été fait.\n"
+                    + "## Décisions et faits établis\n"
+                    + "Les choix arrêtés et leur motif ; les commandes importantes ET LEUR ISSUE "
+                    + "(réussie/échouée, code de sortie, valeurs de sortie notables) ; les pistes "
+                    + "écartées et pourquoi.\n"
+                    + "## État courant\n"
+                    + "Où en est la tâche à l'instant du résumé : ce qui marche, ce qui est cassé, ce "
+                    + "qui est en cours.\n"
+                    + "## Prochaines étapes\n"
+                    + "Ce qui reste à faire, dans l'ordre, y compris ce qui était annoncé mais pas "
+                    + "encore exécuté.\n"
+                    + "Garde TOUJOURS les cinq sections : si l'une est vide, écris « — » dessous "
+                    + "plutôt que de la supprimer. "
+                    + "Des lignes « outils utilisés » (préfixées « · ») accompagnent chaque "
                     + "tour de l'agent : appuie-toi dessus pour les faits établis. "
                     + "N'INVENTE RIEN — ne cite aucune valeur, aucun code de sortie, aucun contenu de "
                     + "fichier qui ne figure pas dans ce qui t'est donné ; si une information manque, "
                     + "ne la mentionne pas.";
+
+    /**
+     * Consigne de <b>fusion incrémentale</b> (F-121 / SF-121-09), posée dans le message et non dans
+     * la consigne système : elle ne vaut que pour les compactions qui ont un résumé précédent, donc
+     * elle dépend de l'entrée — et rien de volatil n'a sa place dans un préfixe stable.
+     */
+    static final String MERGE_INSTRUCTION =
+            "Le résumé précédent suit déjà ce gabarit : FUSIONNE-le section par section avec la "
+                    + "conversation ci-dessous, et rends un seul résumé au même gabarit. N'imbrique "
+                    + "pas un résumé dans un résumé, ne crée pas de section « résumé précédent ».";
 
     /** Libellé du bloc de résumé injecté au rejeu (visible du modèle, marqueur du cadrage §2). */
     static final String SUMMARY_MARKER =
@@ -179,6 +227,12 @@ public class AtelierCompactionService {
                         workspace.getId(), workspace.getHostId());
                 return CompactionOutcome.NONE;
             }
+            if (log.isDebugEnabled() && !looksSectioned(summary)) {
+                // Observation, jamais un refus (F-121 / SF-121-09, D3) : ne pas compacter un fil qui
+                // déborde serait pire qu'un résumé mal formé, et reformater coûterait un second appel.
+                log.debug("Résumé de compaction hors gabarit (workspace={}, poste={}) : conservé tel "
+                        + "quel.", workspace.getId(), workspace.getHostId());
+            }
             workspace.setChatThreadSummary(summary.strip());
             workspace.setChatThreadStartedAt(newBoundary);
             workspaceRepository.save(workspace);
@@ -197,6 +251,26 @@ public class AtelierCompactionService {
         }
     }
 
+    /**
+     * Le résumé porte-t-il le gabarit attendu (F-121 / SF-121-09) ? <b>Observation seule</b> : la
+     * conformité n'est pas exigée, la compaction reste best-effort (F-117). Vraie dès que les cinq
+     * titres sont présents, dans l'ordre — l'ordre importe, c'est ce qui rend la lecture prévisible.
+     */
+    static boolean looksSectioned(String summary) {
+        if (summary == null || summary.isBlank()) {
+            return false;
+        }
+        int cursor = 0;
+        for (String section : SUMMARY_SECTIONS) {
+            int found = summary.indexOf(section, cursor);
+            if (found < 0) {
+                return false;
+            }
+            cursor = found + section.length();
+        }
+        return true;
+    }
+
     /** Un appel modèle dédié, sans outils, borné : il ne fait que produire le texte du résumé. */
     private AgentTurn summarize(String previousSummary, List<AtelierMessage> old, String apiKey) {
         AgentMessage input = AgentMessage.userText(renderForSummary(previousSummary, old));
@@ -209,10 +283,15 @@ public class AtelierCompactionService {
      * Rend les tours anciens en un texte à résumer : le résumé précédent d'abord (la compaction est
      * incrémentale — on résume le résumé plus les tours accumulés depuis), puis chaque message ancien
      * préfixé de son rôle.
+     *
+     * <p>Quand un résumé précédent existe, la consigne de <b>fusion</b> (F-121 / SF-121-09) est posée
+     * juste avant lui : sans elle, le modèle a tendance à recopier l'ancien résumé en bloc puis à
+     * ajouter les tours récents à la suite, ce qui empile deux structures au lieu d'en tenir une.</p>
      */
     static String renderForSummary(String previousSummary, List<AtelierMessage> old) {
         StringBuilder sb = new StringBuilder();
         if (previousSummary != null && !previousSummary.isBlank()) {
+            sb.append(MERGE_INSTRUCTION).append("\n\n");
             sb.append("Résumé précédent :\n").append(previousSummary.strip()).append("\n\n");
         }
         sb.append("Conversation à résumer :\n");
