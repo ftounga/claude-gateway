@@ -179,6 +179,15 @@ app:
     # incident garde l'effort reduit : le gain de vitesse de F-118 est preserve. COUPE-CIRCUIT :
     # `false` retablit le comportement F-118 strict (reduit sur toutes les continuations).
     escalate-on-signal: ${APP_ATELIER_ESCALATE_ON_SIGNAL:true}
+    # PLAFOND de cette re-escalade (F-121 / SF-121-08) : low | medium | high | xhigh | max.
+    # « Remonter » l'effort apres un incident voulait dire REVENIR AU NORMAL (`effort`) : le moment ou
+    # il faut reflechir le plus tournait au regime ordinaire. Monter `effort` pour y remedier paierait
+    # la profondeur sur 100 % des PREMIERS tours, demandes triviales comprises ; ce reglage n'ouvre que
+    # le chemin d'INCIDENT. Repli : vide ou valeur inconnue => suit `effort` (comportement d'avant
+    # SF-121-08, et jamais une escalade PLUS BASSE qu'un `effort` deja releve). Sans effet si
+    # `adaptive-effort` ou `escalate-on-signal` est a false. Defaut : vide (=> `effort`) — livrer le
+    # levier n'est pas le tirer, monter a xhigh/max reste un choix d'exploitation, sans livraison.
+    escalate-effort: ${APP_ATELIER_ESCALATE_EFFORT:}
     # Effort de la SOUS-BOUCLE d'exploration (F-119 / SF-119-01) : low | medium | high | xhigh | max,
     # defaut `low`. Corrige le raisonnement ZERO d'origine (l'exploration lit et interprete). Sobre
     # par defaut pour ne pas alourdir chaque lecture deleguee. Meme repli que `effort`.

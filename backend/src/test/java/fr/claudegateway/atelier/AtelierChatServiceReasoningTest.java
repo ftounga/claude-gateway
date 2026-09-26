@@ -335,6 +335,69 @@ class AtelierChatServiceReasoningTest {
         assertThat(agentProvider.effectiveEfforts).containsExactly("high", "medium");
     }
 
+    // ------------------------------------------- F-121 / SF-121-08 : plafond de la ré-escalade
+
+    /**
+     * Forme canonique (26 composants) réglée pour ces tests : {@code storageExecution=true} (13ᵉ) pour
+     * que la boucle parte, {@code escalateOnSignal} (19ᵉ) et {@code escalateEffort} (26ᵉ) au choix.
+     */
+    private void buildWithEscalationCeiling(Boolean escalateOnSignal, String escalateEffort) {
+        buildService(new AtelierProperties(null, null, null, null, null, null, null, null, null, null,
+                null, null, true, null, null, null, null, null, escalateOnSignal, null, null, null,
+                null, null, null, escalateEffort));
+    }
+
+    @Test
+    void aToolErrorEscalatesUpToTheConfiguredCeiling() {
+        // Le cœur de SF-121-08 : l'escalade F-119 était plafonnée à l'effort NORMAL (`high`). Réglée
+        // à `xhigh`, elle monte vraiment — mais seulement sur le tour qui suit l'incident.
+        buildWithEscalationCeiling(null, "xhigh");
+        agentProvider.enqueueToolCall("frobnicate");
+        agentProvider.enqueueFinal("Corrigé.");
+
+        service.chat(userId, workspaceId, "fais un truc");
+
+        assertThat(agentProvider.effectiveEfforts).containsExactly("high", "xhigh");
+    }
+
+    @Test
+    void aCleanContinuationIgnoresTheCeiling() {
+        // Non-régression du gain F-118 : sans incident, la continuation reste à l'effort réduit. Le
+        // plafond n'ouvre QUE le chemin d'escalade — et le premier tour reste au régime ordinaire.
+        buildWithEscalationCeiling(null, "max");
+        agentProvider.enqueueToolCall("read_file", "path", "notes.txt");
+        agentProvider.enqueueFinal("J'ai lu notes.txt.");
+
+        service.chat(userId, workspaceId, "lis notes.txt");
+
+        assertThat(agentProvider.effectiveEfforts).containsExactly("high", "medium");
+    }
+
+    @Test
+    void theEscalateOnSignalFlagAlsoNeutralisesTheCeiling() {
+        // Le coupe-circuit F-119 reste le maître : aucune ré-escalade, donc aucun plafond à atteindre.
+        buildWithEscalationCeiling(false, "max");
+        agentProvider.enqueueToolCall("frobnicate");
+        agentProvider.enqueueFinal("Tant pis.");
+
+        service.chat(userId, workspaceId, "fais un truc");
+
+        assertThat(agentProvider.effectiveEfforts).containsExactly("high", "medium");
+    }
+
+    @Test
+    void withoutTheSettingTheEscalationStaysAtTheNormalEffort() {
+        // Non-régression stricte : réglage absent => l'escalade vaut l'effort normal, exactement comme
+        // avant SF-121-08 (même assertion que le test F-119 d'origine, par la forme canonique).
+        buildWithEscalationCeiling(null, null);
+        agentProvider.enqueueToolCall("frobnicate");
+        agentProvider.enqueueFinal("Corrigé.");
+
+        service.chat(userId, workspaceId, "fais un truc");
+
+        assertThat(agentProvider.effectiveEfforts).containsExactly("high", "high");
+    }
+
     @Test
     void aReplayedHistoryCarriesNoReasoningBlock() {
         history.add(AtelierMessage.builder().id(UUID.randomUUID()).workspaceId(workspaceId).userId(userId)
