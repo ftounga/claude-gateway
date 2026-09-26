@@ -764,6 +764,13 @@ public class AtelierChatService implements RelayInterruptTarget {
      * par chaque appel runner, <b>le dernier faisant foi</b>. Lu en fin de tour : un contrôle qui
      * exige d'écrire sur la machine ne réclame pas une écriture impossible.</p>
      */
+    /**
+     * L'arrêt net quand le poste tombe en plein tour (F-161 / SF-161-02). Débranchable : à
+     * {@code false}, la boucle se comporte exactement comme avant.
+     */
+    @org.springframework.beans.factory.annotation.Value("${app.runner.stop-on-offline:true}")
+    private boolean stopOnRunnerOffline = true;
+
     private final java.util.Map<String, fr.claudegateway.atelier.checkpoint.AtelierMachineReach> machineOfTurn =
             new java.util.concurrent.ConcurrentHashMap<>();
 
@@ -1749,6 +1756,20 @@ public class AtelierChatService implements RelayInterruptTarget {
                 interrupted = true;
                 break;
             }
+            // F-161 / SF-161-02 : L'ARRÊT NET. Le poste a cessé de répondre pendant ce tour — le
+            // rappeler le fournisseur reviendrait à payer un appel complet pour qu'il écrive « Non
+            // concluant », c'est-à-dire ce que la gateway sait déjà. Testé APRÈS l'interruption :
+            // un geste de l'utilisateur prime sur un incident de machine.
+            //
+            // Le dernier appel fait foi (F-93 / SF-93-04) : un runner revenu en cours de tour a
+            // repassé l'état à REACHED, et n'arrête donc rien.
+            if (stopOnRunnerOffline && machineWentOffline(userId, workspaceId)) {
+                finalText = fr.claudegateway.runner.door.RunnerStopSummary.of(
+                        new AtelierToolTrace(List.copyOf(trace)), hostNameOfTurn(workspace));
+                log.info("Tour arrêté net : le poste ne répond plus (workspace={}, étapes={})",
+                        workspaceId, trace.size());
+                break;
+            }
             if (System.currentTimeMillis() >= deadline) {
                 // Frontière sûre : on s'arrête ici plutôt que de laisser tourner des commandes
                 // derrière un flux SSE déjà expiré.
@@ -2727,6 +2748,36 @@ public class AtelierChatService implements RelayInterruptTarget {
             return;
         }
         machineOfTurn.put(turnKey(userId, workspaceId), reach);
+    }
+
+    /**
+     * Le poste a-t-il cessé de répondre <b>pendant ce tour</b> (F-161 / SF-161-02) ? L'état vit le
+     * temps du tour et est écrit par {@code noteMachine} à chaque appel runner — le <b>dernier</b>
+     * appel faisant foi, un poste revenu ne rend pas vrai.
+     *
+     * <p>Lu par {@code (userId, workspaceId)} : l'incident d'un autre projet n'arrête pas celui-ci.</p>
+     */
+    private boolean machineWentOffline(UUID userId, UUID workspaceId) {
+        return machineOfTurn.get(turnKey(userId, workspaceId))
+                == fr.claudegateway.atelier.checkpoint.AtelierMachineReach.OFFLINE;
+    }
+
+    /**
+     * Le nom du poste, pour que le message d'arrêt soit concret. Jamais bloquant.
+     *
+     * <p>Lu sur la dépendance <b>obligatoire</b> du constructeur, pas sur le champ facultatif que
+     * la porte renseigne (F-161 / SF-161-01) : l'arrêt net doit nommer le poste même là où la porte
+     * n'est pas branchée, sinon le message perd sa précision sans que rien ne le signale.</p>
+     */
+    private String hostNameOfTurn(Workspace workspace) {
+        if (runnerHostService == null || workspace == null || workspace.getHostId() == null) {
+            return null;
+        }
+        try {
+            return runnerHostService.hostName(workspace.getHostId());
+        } catch (RuntimeException e) {
+            return null; // un nom manquant ne vaut pas de faire échouer l'arrêt
+        }
     }
 
     /** Vrai pour un code que la gateway émet elle-même, sans réponse du runner (contrat §4). */
@@ -6187,6 +6238,18 @@ public class AtelierChatService implements RelayInterruptTarget {
          */
         public boolean interrupted() {
             return INTERRUPTED_REPLY.equals(reply);
+        }
+
+        /**
+         * Le tour a été <b>arrêté net</b> parce que le poste ne répondait plus (F-161 / SF-161-02).
+         *
+         * <p>Distinct de {@link #interrupted()} — un geste de l'utilisateur — et d'une panne
+         * fournisseur : ce sont trois causes différentes, et l'écran doit pouvoir les distinguer.
+         * Reconnu au <b>début stable</b> du message, même idiome que l'interruption : ajouter un
+         * champ obligerait à le traîner dans les quatre formes historiques du résultat.</p>
+         */
+        public boolean stoppedByMachine() {
+            return fr.claudegateway.runner.door.RunnerStopSummary.isStopped(reply);
         }
     }
 

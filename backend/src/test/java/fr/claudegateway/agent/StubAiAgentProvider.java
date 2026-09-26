@@ -98,6 +98,22 @@ public class StubAiAgentProvider implements AiAgentProvider {
     }
 
     /**
+     * Empile un tour portant <b>plusieurs</b> appels du même outil, chacun avec sa commande. C'est
+     * la seule forme où un poste peut décrocher <b>puis revenir</b> sans que le fournisseur soit
+     * rappelé entre les deux — le cas qui distingue « le dernier appel fait foi » (F-93 /
+     * SF-93-04) de l'arrêt net (F-161 / SF-161-02).
+     */
+    public void enqueueToolCalls(String toolName, String key, String... values) {
+        List<AgentToolCall> calls = new ArrayList<>();
+        for (String value : values) {
+            ObjectNode input = mapper.createObjectNode();
+            input.put(key, value);
+            calls.add(new AgentToolCall("tool_" + (idSeq++), toolName, input));
+        }
+        script.add(new AgentTurn("", calls, false, 5, 5));
+    }
+
+    /**
      * Empile un tour « appel d'outil » portant en plus un <b>texte d'assistant</b> (F-119 /
      * SF-119-01) : c'est la forme utile pour tester une auto-contradiction dans le texte d'un tour
      * qui enchaîne pourtant un outil (une continuation, pas une réponse finale).

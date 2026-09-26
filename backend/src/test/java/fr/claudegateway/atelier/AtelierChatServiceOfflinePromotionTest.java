@@ -141,7 +141,7 @@ class AtelierChatServiceOfflinePromotionTest {
     }
 
     @Test
-    @DisplayName("runner hors ligne : le tour se clôt en UNE fois, aucun refus, aucune mention ajoutée")
+    @DisplayName("runner hors ligne : le tour se clôt SANS BOUCLE — et depuis F-161/SF-161-02, sans le dernier appel")
     void offlineRunnerClosesTheTurnInOnePass() {
         agentProvider.enqueueToolCall("write_file", "path", "plateformes.md", "content", "cluster atlas");
         agentProvider.enqueueFinal(FINAL_WITH_LEGACY_MARKER);
@@ -149,10 +149,21 @@ class AtelierChatServiceOfflinePromotionTest {
 
         AtelierChatResult result = service.chat(userId, workspaceId, "range le cluster dans la carte");
 
-        // Le fournisseur n'est pas rappelé : zéro refus de fin de tour.
-        assertThat(agentProvider.remaining()).isEqualTo(1);
-        // La réponse rendue est le texte du modèle, sans le marqueur hérité et sans mention ajoutée.
-        assertThat(result.reply()).isEqualTo(FINAL_RENDU);
+        // LA GARANTIE D'ORIGINE (F-125 / SF-125-06b) TIENT TOUJOURS : aucun refus de fin de tour ne
+        // relance le fournisseur — c'est le défaut de production (CAGIP) que cette classe protège.
+        //
+        // Ce qui a changé, et qui est le GAIN de F-161 / SF-161-02 : la boucle s'arrête désormais
+        // UN APPEL PLUS TÔT. Avant, on payait un appel complet, sur tout le contexte, pour que le
+        // modèle écrive « je ne peux pas écrire : le runner n'est pas connecté » — c'est-à-dire ce
+        // que la gateway savait déjà. Ce message est maintenant rendu pour zéro jeton, enrichi des
+        // étapes déjà abouties. Le compromis est celui du cadrage F-161 §5.
+        assertThat(agentProvider.remaining())
+                .as("deux tours restent au script : celui qu'on n'achète plus, et celui d'après")
+                .isEqualTo(2);
+        assertThat(result.stoppedByMachine()).isTrue();
+        assertThat(result.reply())
+                .startsWith(fr.claudegateway.runner.door.RunnerStopSummary.PREFIX);
+        // Aucun marqueur hérité ne peut fuiter : la réponse ne vient plus du modèle du tout.
         assertThat(result.reply()).doesNotContain("fin-de-tour");
     }
 
