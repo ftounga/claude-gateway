@@ -88,7 +88,7 @@ souvent **bloqué** (proxy/policy). La skill est donc explicite :
 - La **capture** du `.pptx` dans l'app (upload → stockage → liste → téléchargement) → **SF-129-02**.
 - Le **rendu par slides** (images) et la **visionneuse** → **SF-129-03**.
 - La **charte/gabarits** de marque → SF-129-04 (option).
-- `docx`/`xlsx` → SF-129-05 (plus tard).
+- `docx`/`xlsx` → SF-129-07 (plus tard ; renuméroté le 2026-09-26).
 
 ---
 

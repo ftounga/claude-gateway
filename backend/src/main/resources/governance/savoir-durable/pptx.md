@@ -205,7 +205,12 @@ diagramme-as-code.
 ## Pour l'aperçu dans l'application (lisible slide par slide)
 
 Le `.pptx` se **télécharge** toujours. Pour que l'utilisateur **lise le deck entièrement dans l'app**
-(slide par slide, sans ouvrir PowerPoint), rends-le aussi en **images PNG**, une par slide.
+(slide par slide, sans ouvrir PowerPoint), il faut aussi **une image PNG par slide**.
+
+> **D'abord : `build_presentation`.** Si l'outil est là, la gateway construit le fichier **et rend
+> l'aperçu** ; elle te donne les chemins des images, tu les passes à `presentation_publish` dans
+> « slides ». **Rien à installer** sur la machine : ni `python-pptx`, ni LibreOffice, ni `pdftoppm`.
+> La recette ci-dessous ne sert que **là où ces outils sont DÉJÀ présents** — ne les installe jamais.
 
 - **Où ça tourne** : là où tu travailles — de préférence le **sandbox**, où tu peux installer
   LibreOffice. **N'ajoute jamais** de service de conversion sur le serveur/cluster ; la conversion est

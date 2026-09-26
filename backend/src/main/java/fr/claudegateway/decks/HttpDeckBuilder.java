@@ -7,6 +7,9 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -32,6 +35,10 @@ public class HttpDeckBuilder implements DeckBuilder {
     static final Duration TIMEOUT = Duration.ofSeconds(90);
     /** Borne du fichier produit, alignée sur celle du service. */
     static final int MAX_DECK_BYTES = 8 * 1024 * 1024;
+    /** Bornes de l'aperçu (F-129 / SF-129-06), alignées sur celles du service — refusées des DEUX
+     * côtés : une borne tenue d'un seul côté finit par ne plus être tenue du tout. */
+    static final int MAX_PREVIEW_SLIDES = 30;
+    static final int MAX_PREVIEW_BYTES = 2 * 1024 * 1024;
 
     private final DiagramProperties properties;
     private final ObjectMapper mapper;
@@ -85,19 +92,61 @@ public class HttpDeckBuilder implements DeckBuilder {
         }
         int status = response.statusCode();
         if (status == 200) {
-            byte[] file = response.body();
-            if (file == null || file.length == 0) {
-                throw new DeckBuilderUnavailableException("Le service a renvoyé un fichier vide.");
-            }
-            if (file.length > MAX_DECK_BYTES) {
-                throw new DeckRejectedException("Présentation trop lourde : " + file.length + " octets.");
-            }
-            return new Deck(file);
+            boolean json = response.headers().firstValue("content-type").orElse("")
+                    .toLowerCase(java.util.Locale.ROOT).contains("json");
+            return json ? readJson(response.body()) : readBinary(response.body(), List.of(), "");
         }
         if (status == 400 || status == 413 || status == 422) {
             throw new DeckRejectedException(reason(response.body()));
         }
         throw new DeckBuilderUnavailableException("Le service a répondu " + status + ".");
+    }
+
+    /** La réponse avec aperçu : le fichier et ses images, encodés. */
+    private Deck readJson(byte[] body) {
+        JsonNode node;
+        try {
+            node = mapper.readTree(body == null ? new byte[0] : body);
+        } catch (IOException e) {
+            throw new DeckBuilderUnavailableException("Réponse du service illisible : " + e.getMessage());
+        }
+        byte[] file;
+        try {
+            file = Base64.getDecoder().decode(node.path("pptx").asText(""));
+        } catch (IllegalArgumentException e) {
+            throw new DeckBuilderUnavailableException("Présentation illisible dans la réponse.");
+        }
+        JsonNode slides = node.path("slides");
+        if (slides.size() > MAX_PREVIEW_SLIDES) {
+            throw new DeckRejectedException("Aperçu refusé : " + slides.size() + " images, maximum "
+                    + MAX_PREVIEW_SLIDES + ".");
+        }
+        List<byte[]> images = new ArrayList<>();
+        for (JsonNode slide : slides) {
+            byte[] image;
+            try {
+                image = Base64.getDecoder().decode(slide.asText(""));
+            } catch (IllegalArgumentException e) {
+                throw new DeckRejectedException("Image d'aperçu illisible dans la réponse.");
+            }
+            if (image.length > MAX_PREVIEW_BYTES) {
+                throw new DeckRejectedException("Image d'aperçu trop lourde : " + image.length
+                        + " octets (maximum " + MAX_PREVIEW_BYTES + ").");
+            }
+            images.add(image);
+        }
+        return readBinary(file, images, node.path("previewError").asText(""));
+    }
+
+    /** La réponse historique : le fichier seul. */
+    private Deck readBinary(byte[] file, List<byte[]> slides, String previewError) {
+        if (file == null || file.length == 0) {
+            throw new DeckBuilderUnavailableException("Le service a renvoyé un fichier vide.");
+        }
+        if (file.length > MAX_DECK_BYTES) {
+            throw new DeckRejectedException("Présentation trop lourde : " + file.length + " octets.");
+        }
+        return new Deck(file, slides, previewError == null ? "" : previewError);
     }
 
     private String reason(byte[] body) {

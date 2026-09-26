@@ -1,5 +1,7 @@
 package fr.claudegateway.decks;
 
+import java.util.List;
+
 import com.fasterxml.jackson.databind.JsonNode;
 
 /**
@@ -15,8 +17,17 @@ import com.fasterxml.jackson.databind.JsonNode;
  */
 public interface DeckBuilder {
 
-    /** Le fichier construit. */
-    record Deck(byte[] bytes) {
+    /**
+     * Le fichier construit, et son <b>aperçu</b> (F-129 / SF-129-06) : une image par slide, rendue
+     * par le service. {@code previewError} est <b>dit</b> quand l'aperçu manque — le fichier, lui,
+     * est toujours là : un aperçu en échec ne fait jamais échouer la présentation.
+     */
+    record Deck(byte[] bytes, List<byte[]> slides, String previewError) {
+
+        /** Un deck sans aperçu (formes historiques, tests). */
+        static Deck of(byte[] bytes) {
+            return new Deck(bytes, List.of(), "");
+        }
     }
 
     /**

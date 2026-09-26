@@ -35,6 +35,10 @@ public class DeckToolCatalog {
             + "LA CHARTE : le deck sort par DÉFAUT à la charte de l'application (navy, accent "
             + "orange, pied de page numéroté, 16:9). N'y touche pas sans raison ; « theme »: "
             + "\"plain\" rend le gabarit Office neutre si le client le demande.\n"
+            + "L'APERÇU : la gateway rend AUSSI une image par slide et te rend leurs chemins. "
+            + "Passe-les à presentation_publish dans « slides », DANS L'ORDRE : c'est ce qui rend la "
+            + "présentation lisible ENTIÈREMENT dans l'application, sans rien installer (ni "
+            + "LibreOffice, ni pdftoppm). « preview »: false si tu n'en veux pas.\n"
             + "GRATUIT : aucun appel fournisseur, aucun jeton.\n"
             + "SI python-pptx EST DÉJÀ présent sur le poste, l'ancienne voie (script python) reste "
             + "possible — mais ne l'installe jamais.";
@@ -84,6 +88,9 @@ public class DeckToolCatalog {
                                 "images", Map.of("type", "object",
                                         "description", "Les images à insérer : {nom utilisé dans les "
                                                 + "slides -> chemin du fichier dans le projet}."),
+                                "preview", Map.of("type", "boolean",
+                                        "description", "Rendre aussi l'aperçu (une image par "
+                                                + "slide) : vrai par défaut."),
                                 "filename", Map.of("type", "string",
                                         "description", "Nom du .pptx déposé ; dérivé du titre sinon.")),
                         "required", List.of("spec")));

@@ -33,9 +33,14 @@ def spec(**extra):
 
 
 def built(description):
-    directory = tempfile.mkdtemp(prefix="cg-deck-test-")
-    path = deck.build(description, os.path.join(directory, "deck"))
+    path, _ = produced(description)
     return Presentation(path), path
+
+
+def produced(description):
+    """Le fichier ET les pages d'aperçu, comme le service les reçoit."""
+    directory = tempfile.mkdtemp(prefix="cg-deck-test-")
+    return deck.build(description, os.path.join(directory, "deck"))
 
 
 class ThemeTest(unittest.TestCase):
@@ -132,6 +137,68 @@ class ImageTest(unittest.TestCase):
         with self.assertRaises(deck.Refused) as refused:
             built({"title": "Archi", "slides": [{"type": "image", "title": "x", "image": "b.png"}]})
         self.assertIn("b.png", str(refused.exception))
+
+
+class PreviewTest(unittest.TestCase):
+    """F-129 / SF-129-06 — l'aperçu est rendu par la gateway, pas par le poste."""
+
+    PNG = ("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQ"
+           "AAAABJRU5ErkJggg==")
+
+    def test_une_page_par_slide_dans_lordre(self):
+        """CA1 : une page d'aperçu par slide, dans l'ordre de la description."""
+        _, pages = produced(spec(preview=True))
+        self.assertEqual(3, len(pages))
+        self.assertEqual(["slide-001.html", "slide-002.html", "slide-003.html"],
+                         [os.path.basename(page) for page in pages])
+        second = open(pages[1], encoding="utf-8").read()
+        self.assertIn("Ce qui change", second)
+        self.assertIn("<li>Un</li>", second)
+        self.assertIn("Cible AWS", second, "le pied de page porte le titre du deck")
+
+    def test_sans_preview_aucune_page(self):
+        """CA5 : sans « preview », rien n'est écrit — le comportement d'avant."""
+        _, pages = produced(spec())
+        self.assertEqual([], pages)
+
+    def test_le_texte_est_echappe(self):
+        """Le texte de la description est ÉCHAPPÉ : un titre n'est jamais du HTML."""
+        _, pages = produced({"title": "x", "preview": True,
+                             "slides": [{"type": "bullets", "title": "<script>alert(1)</script>",
+                                         "bullets": ["a & b"]}]})
+        page = open(pages[0], encoding="utf-8").read()
+        self.assertNotIn("<script>alert", page)
+        self.assertIn("&lt;script&gt;", page)
+        self.assertIn("a &amp; b", page)
+
+    def test_limage_est_embarquee(self):
+        """L'image de la slide est embarquée dans la page : le rendu ne va chercher AUCUN réseau."""
+        _, pages = produced({"title": "Archi", "preview": True, "images": {"a.png": self.PNG},
+                             "slides": [{"type": "image", "title": "Cible", "image": "a.png"}]})
+        page = open(pages[0], encoding="utf-8").read()
+        self.assertIn("data:image/png;base64,", page)
+        self.assertNotIn("http://", page)
+        self.assertNotIn("https://", page)
+
+    def test_la_borne_daperçu_est_dite(self):
+        """CA6 : au-delà de 30 slides, l'aperçu est refusé AVEC sa raison."""
+        many = {"title": "Long", "preview": True,
+                "slides": [{"type": "bullets", "title": f"S{i}", "bullets": ["x"]}
+                           for i in range(deck.MAX_PREVIEW_SLIDES + 1)]}
+        with self.assertRaises(deck.Refused) as refused:
+            produced(many)
+        self.assertIn(str(deck.MAX_PREVIEW_SLIDES), str(refused.exception))
+        self.assertIn("preview", str(refused.exception))
+
+    def test_la_page_suit_la_fenetre_et_ne_coupe_rien(self):
+        """La page se dimensionne en unités de FENÊTRE : le chromium sans interface ne donne pas
+        toute la hauteur demandée, et un pied de page posé à 720 px fixes tombait hors de l'image."""
+        _, pages = produced(spec(preview=True))
+        page = open(pages[1], encoding="utf-8").read()
+        self.assertIn("height:100vh", page)
+        self.assertNotIn("height:720px", page)
+        self.assertIn("flex-direction:column", page)
+        self.assertEqual((1280, 720), (deck.PREVIEW_WIDTH, deck.PREVIEW_HEIGHT))
 
 
 if __name__ == "__main__":

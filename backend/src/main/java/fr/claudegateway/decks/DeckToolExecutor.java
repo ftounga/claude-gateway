@@ -1,7 +1,9 @@
 package fr.claudegateway.decks;
 
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
@@ -31,6 +33,8 @@ public class DeckToolExecutor {
     static final long MAX_IMAGE_BYTES = 8L * 1024 * 1024;
     /** Nombre maximal d'images d'un deck. */
     static final int MAX_IMAGES = 20;
+    /** Au-delà, l'aperçu n'est pas demandé : déposer 30 images sur un poste prend déjà du temps. */
+    static final int MAX_PREVIEW_SLIDES = 30;
     static final String DEFAULT_NAME = "presentation";
     static final int MAX_NAME = 60;
 
@@ -62,6 +66,18 @@ public class DeckToolExecutor {
             return Outcome.error("spec est requis : {title, slides:[{type, title, …}]} — au moins une slide.");
         }
         ObjectNode payload = spec.deepCopy();
+
+        // L'aperçu (F-129 / SF-129-06) : demandé PAR DÉFAUT, parce qu'une présentation qu'on ne
+        // peut pas lire dans l'application est exactement le défaut qu'on ferme ici. L'agent peut
+        // le refuser (« preview »: false), et un deck trop long ne le reçoit pas.
+        boolean preview = !input.path("preview").isBoolean() || input.path("preview").asBoolean();
+        if (spec.path("preview").isBoolean() && !spec.path("preview").asBoolean()) {
+            preview = false;
+        }
+        if (spec.path("slides").size() > MAX_PREVIEW_SLIDES) {
+            preview = false;
+        }
+        payload.put("preview", preview);
 
         // Les images : lues DANS LE PROJET, sous l'isolation du tour. Le modèle donne un chemin, pas
         // un contenu — et ce chemin est validé avant toute lecture.
@@ -112,10 +128,57 @@ public class DeckToolExecutor {
             return Outcome.error("Présentation construite (" + deck.bytes().length + " octets), mais son "
                     + "dépôt dans le projet a échoué : réessaie.");
         }
-        return new Outcome("Présentation construite par la gateway et déposée dans le projet sous « "
-                + deposited + " » (" + spec.path("slides").size() + " slides). Publie-la avec "
-                + "presentation_publish en donnant ce chemin. Rien n'a été installé sur la machine.",
-                false);
+
+        // Les images de l'aperçu suivent EXACTEMENT le chemin du fichier : même dépôt, même
+        // isolation. Aucun chemin ne vient du modèle — les noms sont dérivés de celui du deck.
+        List<String> shots = depositPreview(userId, workspace, callId, deposited, deck.slides());
+
+        StringBuilder message = new StringBuilder("Présentation construite par la gateway et déposée "
+                + "dans le projet sous « " + deposited + " » ("
+                + spec.path("slides").size() + " slides).");
+        if (!shots.isEmpty()) {
+            message.append(" Aperçu rendu par la gateway : ").append(shots.size())
+                    .append(" images déposées (").append(String.join(", ", shots))
+                    .append("). Publie avec presentation_publish en donnant le .pptx ET ces images "
+                            + "dans « slides », DANS CET ORDRE : la présentation sera alors lisible "
+                            + "entièrement dans l'application.");
+            if (shots.size() < deck.slides().size()) {
+                message.append(" ").append(deck.slides().size() - shots.size())
+                        .append(" image(s) n'ont pas pu être déposées : l'aperçu s'arrête là.");
+            }
+        } else {
+            message.append(" Aperçu non produit")
+                    .append(preview ? (deck.previewError().isBlank() ? "" : " (" + deck.previewError() + ")")
+                            : " (non demandé)")
+                    .append(" : publie-le avec presentation_publish sans « slides » — il reste "
+                            + "téléchargeable, et la visionneuse affichera son repli.");
+        }
+        message.append(" Rien n'a été installé sur la machine.");
+        return new Outcome(message.toString(), false);
+    }
+
+    /**
+     * Dépose les images d'aperçu et rend leurs noms, <b>dans l'ordre</b>. Un dépôt en échec arrête
+     * la série : un aperçu partiel mais ordonné se lit, un aperçu troué induit en erreur.
+     */
+    private List<String> depositPreview(UUID userId, Workspace workspace, String callId,
+            String deckName, List<byte[]> slides) {
+        List<String> names = new ArrayList<>();
+        String base = deckName.toLowerCase(Locale.ROOT).endsWith(".pptx")
+                ? deckName.substring(0, deckName.length() - 5)
+                : deckName;
+        int index = 0;
+        for (byte[] image : slides) {
+            index++;
+            String name = String.format("%s-slide-%02d.png", base, index);
+            String written = deposit.deposit(userId, workspace, callId, name, image, "image/png",
+                    DeckToolCatalog.BUILD);
+            if (written == null) {
+                break;
+            }
+            names.add(written);
+        }
+        return names;
     }
 
     /** Titre lisible pour l'étape et le journal. */

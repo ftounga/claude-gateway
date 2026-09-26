@@ -6,8 +6,9 @@ Comme pour les schémas cloud, ce programme ne reçoit JAMAIS de code : il lit u
 sur son entrée standard et construit le fichier lui-même. La raison est la même — le Python d'un
 modèle n'a pas à s'exécuter sur notre infrastructure.
 
-Entrée : {"title": "...", "theme": "cg"|"plain", "slides": [ {...}, ... ], "output": "/tmp/deck"}
-Sortie : le chemin du .pptx écrit, sur la sortie standard.
+Entrée : {"title": "...", "theme": "cg"|"plain", "preview": true, "slides": [...], "output": "/tmp/deck"}
+Sortie : le chemin du .pptx écrit sur la première ligne ; puis, si l'aperçu est demandé, une ligne
+« PREVIEW=<chemin html> » par slide, DANS L'ORDRE (F-129 / SF-129-06).
 
 Types de slides : "title" (titre + sous-titre), "bullets" (titre + puces), "image" (titre + image),
 "table" (titre + tableau), "text" (titre + paragraphe). Chacun accepte "notes".
@@ -27,6 +28,12 @@ MAX_LINE_CHARS = 400
 MAX_IMAGES = 20
 MAX_TABLE_ROWS = 20
 MAX_TABLE_COLS = 8
+
+# L'aperçu (F-129 / SF-129-06) : une page HTML par slide, que le service rend en PNG avec le
+# chromium qu'il a déjà. La borne est basse volontairement — un aperçu se lit, il ne s'archive pas.
+MAX_PREVIEW_SLIDES = 30
+PREVIEW_WIDTH = 1280
+PREVIEW_HEIGHT = 720
 
 # --- La charte (F-129 / SF-129-04) -------------------------------------------------------------
 # Les couleurs viennent de docs/DESIGN_SYSTEM.md. Aucune couleur n'est inventée ici : une charte
@@ -180,6 +187,10 @@ def build(spec, output):
     title_content = prs.slide_layouts[1]
     title_slide = prs.slide_layouts[0]
 
+    # Ce que l'aperçu rendra : le MÊME contenu que le fichier, capturé au passage. Le relire
+    # depuis le .pptx donnerait deux lectures d'une même description, qui finiraient par diverger.
+    views = []
+
     margin = Inches(0.8)
     content_width = prs.slide_width - 2 * margin
     body_top = Inches(1.95)
@@ -195,6 +206,7 @@ def build(spec, output):
             subtitle = text_of(slide.get("subtitle"), f"Le sous-titre de la slide {index}")
             if subtitle and len(made.placeholders) > 1:
                 made.placeholders[1].text = subtitle
+            views.append({"kind": "title", "title": heading, "subtitle": subtitle})
             if charte:
                 paint_background(made, NAVY)
                 place(made.shapes.title, margin, Inches(2.4), content_width, Inches(1.5))
@@ -218,6 +230,8 @@ def build(spec, output):
                 paragraph = body.paragraphs[0] if position == 0 else body.add_paragraph()
                 paragraph.text = content
                 paragraph.level = min(int(slide.get("level", 0) or 0), 4) if kind == "bullets" else 0
+            views.append({"kind": kind, "title": heading,
+                          "lines": [text_of(line, "ligne") for line in lines]})
             if charte:
                 dress(prs, made, deck_title, index, margin, content_width)
                 place(made.placeholders[1], margin, body_top, content_width, body_height)
@@ -233,6 +247,8 @@ def build(spec, output):
             path = f"/tmp/deck-image-{index}"
             with open(path, "wb") as handle:
                 handle.write(decoded[name])
+            views.append({"kind": "image", "title": heading, "bytes": decoded[name],
+                          "caption": text_of(slide.get("caption"), f"La légende de la slide {index}")})
             if charte:
                 dress(prs, made, deck_title, index, margin, content_width)
                 picture = made.shapes.add_picture(path, margin, body_top, width=content_width)
@@ -261,6 +277,9 @@ def build(spec, output):
                 raise Refused(f"Slide {index} : tableau trop grand "
                               f"(maximum {MAX_TABLE_ROWS} lignes x {MAX_TABLE_COLS} colonnes).")
             columns = max(len(r or []) for r in rows)
+            views.append({"kind": "table", "title": heading,
+                          "rows": [[text_of((r or [])[c] if c < len(r or []) else "", "cellule")
+                                    for c in range(columns)] for r in rows]})
             if charte:
                 dress(prs, made, deck_title, index, margin, content_width)
                 height = min(body_height, Inches(0.5) * len(rows))
@@ -290,7 +309,130 @@ def build(spec, output):
 
     target = output if output.endswith(".pptx") else output + ".pptx"
     prs.save(target)
-    return target
+    previews = write_previews(target, theme, deck_title, views) if spec.get("preview") else []
+    return target, previews
+
+
+# --- L'aperçu (F-129 / SF-129-06) ---------------------------------------------------------------
+# Une page HTML par slide, que le service rend en PNG avec le chromium qu'il a déjà pour Mermaid.
+# C'est une vue de la DESCRIPTION, pas une capture du fichier : le .pptx reste la source, l'aperçu
+# sert à LIRE dans l'application, y compris sur un poste où rien ne peut être installé.
+
+
+def hexa(color):
+    return "#%02X%02X%02X" % color
+
+
+def escape(value):
+    """Le texte vient de la description : il est ÉCHAPPÉ, jamais interprété."""
+    return (str(value).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            .replace('"', "&quot;"))
+
+
+def data_uri(payload):
+    kind = "png"
+    if payload[:3] == b"\xff\xd8\xff":
+        kind = "jpeg"
+    elif payload[:6] in (b"GIF87a", b"GIF89a"):
+        kind = "gif"
+    elif payload[:4] == b"<svg" or payload[:5] == b"<?xml":
+        kind = "svg+xml"
+    return "data:image/" + kind + ";base64," + base64.b64encode(payload).decode("ascii")
+
+
+def preview_body(view, charte):
+    """Le corps de la page : le même contenu que la slide, dans la même charte."""
+    ink = hexa(INK) if charte else "#000000"
+    muted = hexa(MUTED) if charte else "#444444"
+    kind = view["kind"]
+    if kind == "title":
+        subtitle = view.get("subtitle") or ""
+        return ("<div class='cover'><h1>" + escape(view["title"]) + "</h1><div class='rule'></div>"
+                + ("<p class='sub'>" + escape(subtitle) + "</p>" if subtitle else "") + "</div>")
+    head = "<h2>" + escape(view["title"]) + "</h2><div class='rule'></div>"
+    if kind in {"bullets", "text"}:
+        if kind == "text":
+            body = "".join("<p>" + escape(line) + "</p>" for line in view.get("lines") or [])
+        else:
+            body = "<ul>" + "".join("<li>" + escape(line) + "</li>"
+                                    for line in view.get("lines") or []) + "</ul>"
+        return head + "<div class='body'>" + body + "</div>"
+    if kind == "image":
+        caption = view.get("caption") or ""
+        return (head + "<div class='body picture'><img src='" + data_uri(view["bytes"]) + "' alt=''>"
+                + ("<p class='caption' style='color:" + muted + "'>" + escape(caption) + "</p>"
+                   if caption else "") + "</div>")
+    cells = ""
+    for position, row in enumerate(view.get("rows") or []):
+        tag = "th" if position == 0 else "td"
+        cells += "<tr>" + "".join("<" + tag + ">" + escape(cell) + "</" + tag + ">"
+                                  for cell in row) + "</tr>"
+    return head + "<div class='body'><table style='color:" + ink + "'>" + cells + "</table></div>"
+
+
+def preview_page(view, theme, deck_title, index):
+    """La page d'une slide, rendue à la taille de la FENÊTRE (1280x720 demandés au chromium).
+
+    Deux décisions, toutes deux apprises en rendant pour de vrai :
+
+    - la mise en page est un **flux** (flex column), pas un positionnement absolu ;
+    - la page se dimensionne en **unités de fenêtre** (100vw/100vh), pas en pixels fixes. Le
+      chromium sans interface ne donne pas à la page toute la hauteur de la fenêtre demandée
+      (≈ 87 px lui sont pris) : une page haute de 720 px fixes voyait son pied de page **tomber
+      hors de l'image**, et l'aperçu serait parti amputé sans que rien ne le signale. En unités de
+      fenêtre, rien n'est jamais coupé ; la bande restante prend la couleur du fond de la page,
+      donc ne se voit pas.
+    """
+    charte = theme == THEME_CHARTE
+    cover = view["kind"] == "title"
+    background = (hexa(NAVY) if cover else hexa(BG)) if charte else "#FFFFFF"
+    ink = (hexa(WHITE) if cover else hexa(INK)) if charte else "#000000"
+    accent = hexa(ORANGE) if charte else "#000000"
+    muted = hexa(MUTED) if charte else "#444444"
+    foot = "" if cover else ("<div class='foot'><span>" + escape(deck_title)
+                             + "</span><span>" + str(index) + "</span></div>")
+    return ("<!doctype html><html lang='fr'><head><meta charset='utf-8'><style>"
+            "*{box-sizing:border-box;margin:0;padding:0}"
+            "body{width:100vw;height:100vh;background:%s;color:%s;"
+            "font-family:Arial,Helvetica,sans-serif;padding:52px 72px 28px;"
+            "display:flex;flex-direction:column;overflow:hidden}"
+            ".main{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column}"
+            "h1{font-size:54px;line-height:1.15}h2{font-size:38px;line-height:1.2}"
+            ".rule{width:120px;height:8px;background:%s;margin:22px 0 26px;flex:none}"
+            ".cover{flex:1;display:flex;flex-direction:column;justify-content:center}"
+            ".sub{font-size:24px;color:%s}"
+            ".body{font-size:24px;line-height:1.55;flex:1;min-height:0;overflow:hidden}"
+            "ul{padding-left:28px}li{margin-bottom:12px}p{margin-bottom:12px}"
+            ".picture{display:flex;flex-direction:column;align-items:center}"
+            ".picture img{max-width:100%%;max-height:420px;object-fit:contain}"
+            ".caption{font-size:16px;margin-top:12px}"
+            "table{border-collapse:collapse;width:100%%;font-size:20px}"
+            "th,td{border:1px solid %s;padding:10px 14px;text-align:left}"
+            "th{background:%s;color:%s}"
+            ".foot{flex:none;display:flex;justify-content:space-between;font-size:16px;color:%s;"
+            "padding-top:16px}"
+            "</style></head><body><div class='main'>%s</div>%s</body></html>"
+            % (background, ink, accent,
+               hexa(ORANGE_LIGHT) if charte else muted,
+               hexa(MUTED) if charte else "#999999",
+               hexa(NAVY) if charte else "#DDDDDD", hexa(WHITE) if charte else "#000000",
+               muted, preview_body(view, charte), foot))
+
+
+def write_previews(target, theme, deck_title, views):
+    """Écrit une page par slide, DANS L'ORDRE. Au-delà de la borne, aucun aperçu — et on le dit."""
+    if len(views) > MAX_PREVIEW_SLIDES:
+        raise Refused("Aperçu refusé : %d slides, maximum %d. Le fichier, lui, se produit sans "
+                      "aperçu (« preview »: false)." % (len(views), MAX_PREVIEW_SLIDES))
+    directory = target[:-5] + "-apercu"
+    os.makedirs(directory, exist_ok=True)
+    pages = []
+    for index, view in enumerate(views, start=1):
+        page = os.path.join(directory, "slide-%03d.html" % index)
+        with open(page, "w", encoding="utf-8") as handle:
+            handle.write(preview_page(view, theme, deck_title, index))
+        pages.append(page)
+    return pages
 
 
 def dress(prs, slide, deck_title, index, margin, content_width):
@@ -308,7 +450,10 @@ def main():
         spec = json.loads(sys.stdin.read() or "{}")
         if not isinstance(spec, dict):
             raise Refused("La description doit être un objet.")
-        print(build(spec, spec.get("output") or "/tmp/deck"))
+        target, previews = build(spec, spec.get("output") or "/tmp/deck")
+        print(target)
+        for page in previews:
+            print(f"PREVIEW={page}")
         return 0
     except Refused as refused:
         sys.stderr.write(str(refused))

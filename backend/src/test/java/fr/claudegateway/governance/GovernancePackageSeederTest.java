@@ -143,6 +143,11 @@ class GovernancePackageSeederTest {
         // SF-129-03 : le rendu par images pour l'aperçu in-app, dans le sandbox (pas de composant serveur).
         assertThat(pptx.getContent()).contains("pdftoppm").contains("--convert-to pdf")
                 .containsIgnoringCase("png");
+        // SF-129-06 : l'aperçu passe D'ABORD par la gateway ; la recette locale ne sert que là où les
+        // outils sont DÉJÀ présents. Ce qui est protégé : l'ordre de préférence est écrit, pas déduit.
+        assertThat(pptx.getContent())
+                .contains("la gateway construit le fichier **et rend")
+                .contains("ne les installe jamais");
         // SF-142-06 (remplace SF-142-02) : la recette « diagramme dans une slide » passe par LA GATEWAY
         // — render_diagram → PNG déposé → add_picture. Ce qui est protégé ici a changé de nature : ce
         // n'est plus « la recette d'installation est complète » mais « on n'installe plus rien ».
