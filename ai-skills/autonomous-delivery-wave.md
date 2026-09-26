@@ -50,6 +50,12 @@ Aucune feature inventée. **REFUS** si une candidate n'est pas dans `PRODUCT_SPE
 ## Procédure
 
 ### Phase 0 — Bootstrap état
+0. **Contrôle de vol** — `bash scripts/check-parallel-sessions.sh` (SF-SP-01, lecture seule) :
+   `CLEAR` = la vague peut démarrer, `BUSY` = une autre session travaille (worktree actif,
+   checkout partagé sale ou en avance, PR ouverte, branche partagée par 2 worktrees, **remise
+   `stash` récente**). Le faire à la main, en prose, a déjà conclu « voie libre » alors que
+   **3 sessions volaient**. Sur `BUSY` : ne pas écrire dans le checkout partagé, ne jamais
+   lancer `prune-stale-worktrees.sh --apply` (il refuse de lui-même, sortie 5).
 1. `git fetch origin` → raisonner sur **`origin/main`**, jamais sur le working tree courant.
 2. Travail en cours **réellement** non fini : ⚠️ ne pas se fier à `git branch --no-merged` (squash-merge). Source de vérité = statut `PRODUCT_SPEC.md` + `gh pr list --state open`. Pour une branche suspecte : `git cherry origin/main feat/SF-X` (vide = déjà dans main).
 3. Lire `MEMORY.md` + mémoires projet (déploiement staging, pivot V1 gateway-pure, git-flow-autonomy). Contraintes dures.
@@ -108,14 +114,15 @@ tienne.
 
 ## Règles apprises en production — à imposer à CHAQUE agent de la vague
 
-Ces quatre règles viennent d'échecs réels. Sans elles, la vague les reproduit.
+Ces cinq règles viennent d'échecs réels. Sans elles, la vague les reproduit.
 
 | Règle | Pourquoi |
 |---|---|
 | **Lancer Maven au PREMIER PLAN**, jamais en tâche de fond, et **merger avant de rendre la main**. | En tâche de fond les agents calent : ils rendent « terminé » sur un build jamais relevé. Vérifier `origin/main` avant de croire un agent qui se dit terminé ; `TaskStop` avant toute relance, sinon doublon et collision de branches. |
 | **`git add` CIBLÉ**, jamais `git add -A`. | Plusieurs sessions partagent le même checkout : un `add -A` emporte le travail en cours d'une autre session dans ton commit. |
 | **Ne jamais rédiger de rapport de retour** (`SendFeedback`) — et l'interdire explicitement aux sous-agents. | Décision PO. |
-| **Ne jamais déployer depuis le checkout partagé** : worktree dédié sur `origin/main`. | Un build qui stashe ou bascule de branche casse le WIP d'une autre session. |
+| **Travailler dans un worktree isolé — TOUT le travail, pas seulement le déploiement** : une branche par agent, jamais le checkout partagé, et `git worktree` dédié sur `origin/main` pour build et déploiement. | Le checkout principal est partagé entre sessions : y écrire, y basculer de branche ou y lancer un build casse le WIP d'une autre session. Deux agents sur la même branche = collision (signal W5 du contrôle de vol). |
+| **Jamais de `git stash` nu** — ni `git stash pop`. | La pile de remise vit dans le **git-dir commun** : elle est **partagée** par le checkout principal et tous les worktrees. Un `pop` restaure — et **retire** — l'entrée d'une autre session ; une remise anonyme (`WIP on …`) n'est attribuable à personne. Préférer un **commit WIP**. Si une remise est inévitable : `git stash push -u -m "<tag unique>"`, relever son SHA (`git stash list --format='%H %gs'`), restaurer par `git stash apply <sha>` (**jamais `pop`**), puis retrouver l'entrée **par son tag** avant de la `drop`. Le contrôle de vol signale les remises récentes (W6, bloquant) et anonymes (I4). |
 
 Et une règle de fond, qui prime sur la vitesse :
 

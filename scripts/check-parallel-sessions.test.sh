@@ -281,6 +281,72 @@ after="$(snapshot)"
 [[ -f .claude/worktrees/wf_c/scratch.txt ]] \
     && check ok "aucun fichier non commite touche" || check ko "un fichier non commite a disparu"
 
+# --- Cas 15 a 17 (SF-SP-03) : la pile de remise, partagee par tout le depot ---------------
+# refs/stash vit dans le git-dir COMMUN : ce qu'une session met de cote, toutes les autres le
+# voient et peuvent le retirer. Entre la mise de cote et la restauration, le travail d'une
+# session n'existe QUE la — c'est le moment ou une purge ou un depilage a l'aveugle detruit.
+
+echo "[15] W6 : une remise recente rend le verdict BUSY"
+backdate_all
+echo remise-en-cours > f.txt
+git stash push --quiet                     # remise NUE => message « WIP on … » => anonyme
+run --no-fetch --no-gh
+[[ "$CODE" -eq 1 ]] && check ok "sortie 1" || check ko "sortie $CODE au lieu de 1"
+grep -q 'W6 remise de moins de' <<<"$OUT" \
+    && check ok "remise recente signalee (W6)" || check ko "W6 non detecte"
+grep -q 'ANONYME' <<<"$OUT" \
+    && check ok "remise nue signalee ANONYME" || check ko "la nature anonyme n'est pas signalee"
+grep -q 'remises ANONYMES en pile : 1' <<<"$OUT" \
+    && check ok "les remises anonymes sont comptees dans le verdict" \
+    || check ko "aucun compteur de remise anonyme dans le verdict"
+# Controle negatif 1 : le meme depot, seuil d'age desactive.
+run --no-fetch --no-gh --age-minutes 0
+[[ "$CODE" -eq 0 ]] && check ok "controle negatif : --age-minutes 0 => CLEAR" \
+    || check ko "sortie $CODE : --age-minutes 0 n'a pas desarme W6"
+# Controle negatif 2 : le signal explicitement ignore.
+run --no-fetch --no-gh --no-stash
+[[ "$CODE" -eq 0 ]] && check ok "controle negatif : --no-stash => CLEAR" \
+    || check ko "sortie $CODE : --no-stash n'a pas desarme W6"
+grep -q 'signal ignore' <<<"$OUT" \
+    && check ok "--no-stash annonce que le signal est ignore" || check ko "--no-stash muet"
+
+echo "[16] I4 : une remise ancienne est un residu, pas une session"
+git stash drop --quiet
+echo travail-mis-de-cote > f.txt
+stamp_iso="$(date -d '3 hours ago' -Iseconds)"
+GIT_COMMITTER_DATE="$stamp_iso" GIT_AUTHOR_DATE="$stamp_iso" \
+    git stash push --quiet -m "travail-de-la-session-A"
+backdate_all
+run --no-fetch --no-gh
+[[ "$CODE" -eq 0 ]] && check ok "sortie 0 (une remise ancienne ne bloque pas)" \
+    || check ko "sortie $CODE : une remise ancienne a rendu le verdict BUSY"
+grep -q 'RESIDU  stash@{0}.*I4' <<<"$OUT" \
+    && check ok "remise ancienne classee RESIDU (I4)" || check ko "I4 non signale"
+grep -q 'nommee (attribuable)' <<<"$OUT" \
+    && check ok "remise nommee reconnue comme attribuable" || check ko "nature nommee non reconnue"
+grep -q 'travail-de-la-session-A' <<<"$OUT" \
+    && check ok "le message de la remise est affiche" || check ko "message de remise absent"
+grep -q '1 remise(s)' <<<"$OUT" \
+    && check ok "la remise est comptee en residu dans le verdict" || check ko "residu de pile non compte"
+
+echo "[17] pile partagee : une remise poussee depuis un worktree lie est vue du principal"
+echo depuis-le-worktree > .claude/worktrees/wf_a/f.txt
+git -C .claude/worktrees/wf_a stash push --quiet -m "remise-du-worktree-wf_a"
+backdate_all
+stack_before="$(git stash list)"
+run --no-fetch --no-gh
+[[ "$CODE" -eq 1 ]] && check ok "sortie 1 : la remise d'un autre worktree est vue" \
+    || check ko "sortie $CODE : la remise du worktree lie est invisible du principal"
+grep -q 'remise-du-worktree-wf_a' <<<"$OUT" \
+    && check ok "l'entree poussee depuis wf_a est listee cote principal" \
+    || check ko "l'entree de wf_a n'apparait pas — la pile serait per-worktree"
+grep -q 'W1 activite' <<<"$OUT" \
+    && check ko "W1 s'est declenche : le BUSY ne prouve pas W6" \
+    || check ok "aucun worktree actif : le BUSY vient bien de la pile"
+[[ "$stack_before" == "$(git stash list)" ]] \
+    && check ok "non-destructivite : la pile est identique avant/apres" \
+    || check ko "le controle a modifie la pile de remise"
+
 # --- Cas 14 : codes de sortie d'erreur ---------------------------------------------------
 echo "[14] codes de sortie d'erreur"
 run --option-qui-nexiste-pas
