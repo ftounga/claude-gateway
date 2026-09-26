@@ -262,3 +262,45 @@
     gap: var(--cg-space-2);
   }
 }
+
+/* ---------------------------------------------------------------------------------------------------
+   LE RÉSUMÉ DU MATIN, PEAU MOBILE PRO (F-160 / SF-160-03) — la silhouette « digest » de la maquette
+   validée PO : une carte à FILET GAUCHE orange en tête du Radar. Palette 100 % charte CLAIRE de la
+   Vigie — la surface sombre `--cg-navy-2` de la maquette est réservée au terminal (§13) et n'est pas
+   reprise ici (divergence chromatique ASSUMÉE, mini-spec D-A, cohérente avec SF-160-02). Jetons
+   `--cg-*` uniquement, aucune couleur nouvelle. Restyle CSS pur : aucun binding ni structure HTML
+   modifiés (D8). Le desktop (≥ 820 px) reste strictement inchangé (tout vit sous max-width: 819px).
+   NB : le palier antérieur (859 px) reste en place ; ce bloc prend le relais du rendu téléphone. */
+@media (max-width: 819px) {
+  /* La carte digest : filet gauche orange, coin droit arrondi ; l'axe horizontal est clos, un libellé
+     insécable n'entraîne jamais de scroll de page (D4). L'état d'erreur garde sa forme propre. */
+  .radar-brief:not(.radar-brief--error) {
+    border-left: 3px solid var(--cg-orange);
+    border-radius: 0 14px 14px 0;
+    overflow: hidden;
+  }
+
+  .radar-brief {
+    /* La colonne « ce qui a bougé » : bornée à 0, ses enfants enroulent au lieu de pousser la page. */
+    &__main {
+      min-width: 0;
+    }
+
+    &__hello,
+    &__warning-text {
+      overflow-wrap: anywhere;
+    }
+
+    &__say {
+      overflow-wrap: anywhere;
+    }
+
+    /* « Synchroniser maintenant », « Annuler » et les gestes sur les manques : cibles pleines au pouce. */
+    &__sync,
+    &__cancel,
+    &__gesture,
+    &__undo-rule {
+      min-height: 44px;
+    }
+  }
+}

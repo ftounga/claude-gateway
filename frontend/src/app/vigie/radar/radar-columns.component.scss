@@ -212,3 +212,53 @@
   &--neutral { background: #F5F5F5; color: var(--cg-text-secondary); }
   &--blue    { background: #E7EFF9; color: #386599; }
 }
+
+/* ---------------------------------------------------------------------------------------------------
+   LES SECTIONS D'ENGAGEMENTS, PEAU MOBILE PRO (F-160 / SF-160-03) — la maquette validée PO : « À faire
+   par moi », « Sujets en cours », « J'attends des autres » en cartes empilées sur UNE seule colonne,
+   dans l'ordre du DOM (ce que je dois d'abord), méta en mono qui enroule, gestes atteignables au pouce.
+   Palette 100 % charte CLAIRE (D-A, cohérente SF-160-02) — la surface sombre de la maquette n'est pas
+   reprise (§13). Jetons `--cg-*` uniquement, aucune couleur nouvelle. Restyle CSS pur : aucun binding
+   ni structure HTML modifiés (D8). Desktop (≥ 820 px) inchangé (tout vit sous max-width: 819px).
+   NB : les paliers antérieurs (1019/639 px) restent en place ; ce bloc, placé en dernier, prend le
+   relais du rendu mobile jusqu'à 819 px (silhouette de la maquette, cibles ≥ 44 px). */
+@media (max-width: 819px) {
+  .radar-columns {
+    /* Une seule colonne, dans l'ordre naturel : à faire, sujets, puis ce que j'attends. */
+    grid-template-columns: minmax(0, 1fr);
+
+    .radar-columns__mid {
+      grid-column: auto;
+      order: 0;
+    }
+
+    /* La carte de section : rayon de carte de la maquette (les panneaux clippent déjà l'axe x). */
+    &__panel {
+      border-radius: 14px;
+    }
+
+    /* Le sujet, son titre et sa ligne enroulent plutôt que de déborder (D4). */
+    &__t,
+    &__nm,
+    &__ln {
+      overflow-wrap: anywhere;
+    }
+
+    /* La méta mono (source · « sujet » · moment) : bornée à 0, ses liens enroulent. */
+    &__m,
+    &__ft {
+      min-width: 0;
+
+      a {
+        overflow-wrap: anywhere;
+      }
+    }
+
+    /* Les gestes (fait, pas moi, reporter, clore…) et le choix d'ordre : cibles pleines au pouce. */
+    &__acts button,
+    &__acts a,
+    &__order button {
+      min-height: 44px;
+    }
+  }
+}
