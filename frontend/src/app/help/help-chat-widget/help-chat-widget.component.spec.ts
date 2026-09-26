@@ -136,4 +136,57 @@ describe('HelpChatWidgetComponent', () => {
     expect(text).toContain(HELP_SUGGESTIONS[0]);
     expect(text).toContain('Je ne vois ni vos projets');
   });
+
+  // --- Bas d'écran dégagé (F-158 / SF-158-19) ---
+  //
+  // Garde-fou INDÉPENDANT DU VIEWPORT (patron SF-158-09) : on inspecte la CSSOM, pas `matchMedia`.
+
+  /** Le cssText concaténé des règles `@media` visant <= 819 px. */
+  function mobileMediaCss(): string {
+    let css = '';
+    for (const sheet of Array.from(document.styleSheets)) {
+      let rules: CSSRuleList;
+      try {
+        rules = sheet.cssRules;
+      } catch {
+        continue;
+      }
+      for (const rule of Array.from(rules)) {
+        if (rule instanceof CSSMediaRule && /max-width:\s*819px/.test(rule.media.mediaText)) {
+          css += rule.cssText + '\n';
+        }
+      }
+    }
+    return css;
+  }
+
+  /** Le cssText concaténé des règles HORS `@media` (desktop / base). */
+  function baseCss(): string {
+    let css = '';
+    for (const sheet of Array.from(document.styleSheets)) {
+      let rules: CSSRuleList;
+      try {
+        rules = sheet.cssRules;
+      } catch {
+        continue;
+      }
+      for (const rule of Array.from(rules)) {
+        if (rule instanceof CSSStyleRule) {
+          css += rule.cssText + '\n';
+        }
+      }
+    }
+    return css;
+  }
+
+  it('sous 819 px, le bouton d’aide est remonté au-dessus du composeur (clairance + safe-area)', () => {
+    const css = mobileMediaCss().replace(/\s+/g, ' ');
+    expect(css).toMatch(/help-widget[^}]*bottom:\s*calc\(112px \+ env\(safe-area-inset-bottom\)\)/);
+  });
+
+  it('non-régression desktop : hors media, le bouton d’aide garde son ancrage bas 24 px', () => {
+    const css = baseCss().replace(/\s+/g, ' ');
+    // `.help-widget { bottom: var(--cg-space-4) }` : le desktop (>= 820 px) est strictement inchangé.
+    expect(css).toMatch(/\.help-widget[^}]*bottom:\s*var\(--cg-space-4\)/);
+  });
 });

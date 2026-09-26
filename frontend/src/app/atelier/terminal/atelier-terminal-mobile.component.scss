@@ -74,6 +74,13 @@
        défiler portent leur propre `overflow-x:auto` et ne perdent rien. Rendu >= 820 px inchangé. */
     padding-left: var(--cg-space-3);
     padding-right: var(--cg-space-3);
+    /* BAS DU FIL DÉGAGÉ (F-158 / SF-158-19) : la chip repliée « Note poste » (bas-gauche) et le bouton
+       d'aide « ? » (bas-droite), remontés AU-DESSUS du composeur, flottent désormais sur le bord bas du
+       fil. Ce padding pousse les dernières lignes AU-DESSUS d'eux — le texte n'est jamais masqué, les
+       éléments fixes flottent sur une bande vide. `scroll-padding-bottom` fait de même pour les sauts
+       d'ancre du rail « Vos questions ». Dégagement = hauteur du plus grand fixe (mat-fab ~56 px) + jour. */
+    padding-bottom: calc(var(--cg-space-6) + var(--cg-space-4));
+    scroll-padding-bottom: calc(var(--cg-space-6) + var(--cg-space-4));
   }
 
   /* La ligne vivante (spinner · action · étapes · tokens · chrono) passe à la ligne plutôt que de

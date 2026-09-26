@@ -125,10 +125,18 @@
   }
 
   // Replié : la surface se réduit à la chip, l'icône et le corps disparaissent — la saisie est libre.
+  //
+  // BAS D'ÉCRAN DÉGAGÉ (F-158 / SF-158-19) : la chip était ancrée à `bottom: var(--cg-space-4)` (24 px,
+  // hérité de `.notice`) et passait PAR-DESSUS le composeur ancré (`.terminal-input`, sticky bottom,
+  // SF-158-13, ≈ 104 px + safe-area) et les dernières lignes du fil. On la remonte AU-DESSUS du
+  // composeur : `bottom` = clairance composeur `calc(112px + env(safe-area-inset-bottom))` (> hauteur
+  // du composeur, ~8 px de jour). Clairance de layout pour surface fixe (px multiple de 4 + `env()`),
+  // pas un espacement de grille — aucune couleur/police nouvelle. Rendu >= 820 px inchangé.
   .notice--collapsed {
     width: auto;
     padding: 0;
     border-left-width: 1px;
+    bottom: calc(112px + env(safe-area-inset-bottom));
 
     .notice-icon,
     .notice-body {

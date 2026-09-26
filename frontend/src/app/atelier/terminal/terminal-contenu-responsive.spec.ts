@@ -91,6 +91,14 @@ describe('AtelierTerminalComponent — contenu responsive (F-158 / SF-158-09)', 
     expect(css.replace(/\s+/g, ' ')).toMatch(/terminal-scrollback[^}]*overflow-x:\s*hidden/);
   });
 
+  it('sous 819 px, le bas du fil est dégagé des éléments fixes (chip / « ? ») — SF-158-19', () => {
+    const css = mobileMediaCss().replace(/\s+/g, ' ');
+    // `.terminal-scrollback { padding-bottom: calc(...) }` : les dernières lignes défilent AU-DESSUS de
+    // la chip « Note poste » et du bouton d'aide remontés, jamais masquées par eux.
+    expect(css).toMatch(/terminal-scrollback[^}]*padding-bottom:\s*calc\(/);
+    expect(css).toMatch(/terminal-scrollback[^}]*scroll-padding-bottom:\s*calc\(/);
+  });
+
   it('sous 819 px, la ligne vivante et le bandeau plafond passent à la ligne', () => {
     const css = mobileMediaCss().replace(/\s+/g, ' ');
     expect(css).toMatch(/terminal-live[^}]*flex-wrap:\s*wrap/);
