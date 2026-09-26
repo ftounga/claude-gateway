@@ -1,5 +1,21 @@
 # F-114 — Durcir la sécurité de l'application, et être reconnu plutôt que caché
 
+> ## ⛔ RETIRÉE DU PÉRIMÈTRE — décision du PO du 2026-09-26
+>
+> **La ligne F-114 a été supprimée de `docs/PRODUCT_SPEC.md`.** Ce cadrage est conservé **pour
+> mémoire**, et ne doit pas être livré.
+>
+> **Motif** : ce qui lève réellement SmartScreen et Gatekeeper repose sur des **achats externes
+> récurrents** — certificat Windows OV (≈ 200–400 €/an) ou EV (≈ 300–700 €/an + jeton matériel),
+> Apple Developer (99 $/an) — que le produit ne peut pas décider seul. La part gratuite (empreintes,
+> SBOM, VirusTotal) ne suffit pas à lever un blocage antivirus : la livrer seule donnerait
+> l'apparence d'une feature faite sans en produire l'effet.
+>
+> **Reste écarté**, comme dans le cadrage d'origine : toute mesure d'**anti-détection** du runner —
+> elle augmente les vrais positifs et contourne la sécurité du client.
+>
+> Pour rouvrir : réinscrire la feature dans `PRODUCT_SPEC.md` **après** la décision d'achat.
+
 > Cadrage du 2026-09-14, à la demande du PO. **Cadrage seul : la livraison attend le go du PO.**
 > **Réduit au volet B, sur décision du PO du 2026-09-14** : le durcissement applicatif (ancien volet A)
 > et la fiche DSI enrichie (ancienne SF-114-09) sont retirés. Reste : **supprimer les faux positifs des
