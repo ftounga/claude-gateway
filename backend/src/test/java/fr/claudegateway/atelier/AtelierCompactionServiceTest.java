@@ -292,6 +292,92 @@ class AtelierCompactionServiceTest {
         assertThat(outcome.compacted()).isTrue();
     }
 
+    // ------------------------------------- F-121 / SF-121-09 : gabarit sectionné du résumé
+
+    @Test
+    void theSummaryInstructionImposesTheFiveSectionsInOrder() {
+        // Avant : « produis un résumé factuel et compact » → prose libre, forme différente à chaque
+        // compaction. Désormais le gabarit est imposé, et son ordre fait partie de la consigne.
+        String prompt = AtelierCompactionService.SUMMARY_SYSTEM_PROMPT;
+
+        int cursor = 0;
+        for (String section : AtelierCompactionService.SUMMARY_SECTIONS) {
+            int at = prompt.indexOf(section, cursor);
+            assertThat(at).as("section « %s » présente et après la précédente", section)
+                    .isGreaterThanOrEqualTo(0);
+            cursor = at + section.length();
+        }
+        assertThat(AtelierCompactionService.SUMMARY_SECTIONS).containsExactly(
+                "## Objectif", "## Fichiers", "## Décisions et faits établis", "## État courant",
+                "## Prochaines étapes");
+    }
+
+    @Test
+    void theSummaryInstructionKeepsEmptySectionsAndTheExistingGuardrails() {
+        String prompt = AtelierCompactionService.SUMMARY_SYSTEM_PROMPT;
+
+        // Une section vide est conservée (structure constante) plutôt que supprimée.
+        assertThat(prompt).contains("Garde TOUJOURS les cinq sections").contains("« — »");
+        // Les garde-fous F-117 / SF-119-03 survivent mot pour mot à la réécriture.
+        assertThat(prompt).contains("pas de préambule, pas de conclusion");
+        assertThat(prompt).contains("N'INVENTE RIEN");
+        assertThat(prompt).contains("« · »");
+        assertThat(prompt).contains("LEUR ISSUE");
+    }
+
+    @Test
+    void theMergeInstructionIsAddedOnlyWhenAPreviousSummaryExists() {
+        AtelierMessage turn = message("USER", "demande", OffsetDateTime.now());
+
+        String withoutPrevious = AtelierCompactionService.renderForSummary(null, List.of(turn));
+        String withPrevious = AtelierCompactionService.renderForSummary(
+                "## Objectif\nLivrer X.\n## Prochaines étapes\nFinir Y.", List.of(turn));
+
+        assertThat(withoutPrevious).doesNotContain(AtelierCompactionService.MERGE_INSTRUCTION);
+        // La consigne de fusion précède l'ancien résumé : elle dépend de l'entrée, donc elle vit dans
+        // le message et non dans la consigne système (préfixe stable).
+        assertThat(withPrevious).contains(AtelierCompactionService.MERGE_INSTRUCTION);
+        assertThat(withPrevious.indexOf(AtelierCompactionService.MERGE_INSTRUCTION))
+                .isLessThan(withPrevious.indexOf("Résumé précédent :"));
+        assertThat(withPrevious).contains("Livrer X.");
+    }
+
+    @Test
+    void looksSectionedRecognisesTheTemplateAndOnlyInTheRightOrder() {
+        String wellFormed = "## Objectif\nX\n## Fichiers\n—\n## Décisions et faits établis\n—\n"
+                + "## État courant\n—\n## Prochaines étapes\n—";
+        String shuffled = "## Fichiers\n—\n## Objectif\nX\n## Décisions et faits établis\n—\n"
+                + "## État courant\n—\n## Prochaines étapes\n—";
+
+        assertThat(AtelierCompactionService.looksSectioned(wellFormed)).isTrue();
+        assertThat(AtelierCompactionService.looksSectioned(shuffled)).isFalse();
+        assertThat(AtelierCompactionService.looksSectioned("de la prose libre")).isFalse();
+        assertThat(AtelierCompactionService.looksSectioned(null)).isFalse();
+        assertThat(AtelierCompactionService.looksSectioned("  ")).isFalse();
+    }
+
+    @Test
+    void anOffTemplateSummaryIsStillWritten() {
+        // D3 : la conformité est observée, jamais exigée — refuser un résumé mal formé reviendrait à
+        // ne pas compacter un fil qui déborde.
+        StubAiAgentProvider provider = new StubAiAgentProvider();
+        provider.enqueueFinal("Résumé en prose libre, sans le moindre titre.");
+        OffsetDateTime t0 = OffsetDateTime.now().minusHours(1);
+        stubHistory(new ArrayList<>(List.of(
+                message("USER", longText("d1"), t0),
+                message("ASSISTANT", longText("r1"), t0.plusMinutes(1)),
+                message("USER", longText("d2"), t0.plusMinutes(2)),
+                message("ASSISTANT", longText("r2"), t0.plusMinutes(3)))));
+
+        AtelierCompactionService.CompactionOutcome outcome =
+                service(provider).compactIfOversized(userId, workspace, null);
+
+        assertThat(outcome.compacted()).isTrue();
+        assertThat(workspace.getChatThreadSummary())
+                .isEqualTo("Résumé en prose libre, sans le moindre titre.");
+        verify(workspaceRepository).save(workspace);
+    }
+
     private AtelierMessage assistantWithTrace(String content, String toolTrace, OffsetDateTime at) {
         return AtelierMessage.builder().id(UUID.randomUUID()).workspaceId(workspaceId).userId(userId)
                 .role("ASSISTANT").content(content).toolTrace(toolTrace).createdAt(at).build();
