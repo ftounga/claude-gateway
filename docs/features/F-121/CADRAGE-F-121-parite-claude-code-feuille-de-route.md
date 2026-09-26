@@ -65,15 +65,43 @@ rattrape après coup (latence + tour relancé). **À intégrer dans SF-119-03.**
   même tour (pool borné, ré-ordonné par `callId`) ; mutations en série. (P3)
 - **F-121-15** — **Lecture multimodale** : `read_file` détecte le binaire et remonte image/PDF en bloc
   `image`/`document` au modèle (Provider-First : c'est Claude qui « voit »). (P3)
-- **F-121-16** — **Thinking entrelacé** (en-tête beta `interleaved-thinking` quand adaptatif) : laisse
-  penser entre `tool_use` parallèles. Largement émulé aujourd'hui par la boucle → raffinement. (P3)
+- **F-121-16** ✅ **CLOS le 2026-09-26 sans développement** (SF-121-16, PR #952) — **Thinking entrelacé**
+  (en-tête beta `interleaved-thinking` quand adaptatif) : laisse penser entre `tool_use` parallèles.
+  Largement émulé aujourd'hui par la boucle → raffinement. (P3) — **Le correctif proposé est caduc** :
+  l'en-tête datait de la génération Claude 4 ; depuis la 4.6, le **thinking adaptatif active
+  l'entrelacement de lui-même**, sans beta. Le harnais tourne sur `claude-opus-5` et écrit
+  `thinking: {type: adaptive}` explicitement (D-L5-2) : poser l'en-tête serait au mieux mort, au pire un
+  beta inconnu rejeté en 400. Le reste est structurel (rappel du fournisseur après chaque lot de
+  `tool_result`, raisonnement réémis signature comprise, aucun `cache_control` dessus, pas de
+  `clear_thinking`). Aucun code de production touché ; un **témoin** interdit désormais la
+  réintroduction de l'en-tête. Mini-spec : `docs/features/F-121/SF-121-16-thinking-entrelace.md`.
 - **F-121-17** — **END_OF_TURN** : neutraliser le crochet de relance sur les tours qui répondent à une
   question / en mode ANSWER-PLAN, ou le restreindre aux tours ayant réellement écrit. (P3)
-- **F-121-18** — **Estimateur 4→~3,5 car./token** (une fois les traces intégrées, F-121-00). (P3)
+- **F-121-18** ✅ **LIVRÉ le 2026-09-26** (SF-121-18, PR #951) — **Estimateur 4→~3,5 car./token** (une
+  fois les traces intégrées, F-121-00). (P3) — **Livré** : le diviseur passe à **3,5**. Quatre car./token
+  est le rapport de la **prose** ; ce qui est rejoué (chemins, diffs, sorties de commandes, JSON de
+  trajectoires) se tokenise plus densément — l'estimation était basse d'environ **14 %**, le seuil était
+  franchi en réalité sans que la compaction se déclenche, et le filet réactif « prompt too long »
+  rattrapait après coup. L'erreur n'étant pas symétrique, l'arrondi va au pessimisme. Ratio verrouillé par
+  **deux témoins** (texte de longueur connue ; fil calibré **entre** les deux estimations). Seuil
+  `trigger-tokens` inchangé, aucun appel fournisseur ajouté. Mini-spec :
+  `docs/features/F-121/SF-121-18-estimateur-ratio-tokens.md`.
 - **F-121-19** — **Garde dure read-before-edit** (refuser `edit_file` sans Read récent / sur lecture
   périmée) ; **Write read-before-overwrite**. Prio basse : 0 échec `edit_file` en prod. (P3)
-- **F-121-20** — **Thinking préservé inter-tours** (dernier tour seulement) — optionnel, à peser (coût
-  jetons, signatures qui expirent). (P4) — **NotebookEdit** : optionnel. (P4)
+- **F-121-20** ✅ **CLOS le 2026-09-26 par F-134, vérification SF-121-20 (PR #953)** — **Thinking préservé
+  inter-tours** (dernier tour seulement) — optionnel, à peser (coût jetons, signatures qui expirent). (P4)
+  — **Couvert, et au-delà** : **F-134 / SF-134-04** a renversé la décision « le raisonnement vit le temps
+  d'un tour » sur une mesure (l'omettre au rejeu cassait le cache dès le premier bloc de chaque tour :
+  23 % de contexte relu sur deux tours, 98 % du coût d'un tour en écriture). Il est persisté dans la
+  trajectoire et rejoué **en tête** sur **toute la fenêtre tracée**, pas seulement le dernier tour ; bloc
+  signé recopié sans retouche, expurgé réémis sans interprétation, jamais exposé hors boucle. Les deux
+  réserves sont levées : le coût jetons allait dans l'autre sens (c'est la **signature** qui voyage), et
+  les signatures ne sont ni recalculées ni interprétées, sur un périmètre borné par la fenêtre de traces
+  et la compaction. **Reste volontairement non préservé** : le raisonnement de l'**étape finale** (sans
+  appel d'outil), écartée du rejeu faute de `tool_use` apparié. Deux témoins ajoutés, aucun code de
+  production touché. Mini-spec : `docs/features/F-121/SF-121-20-thinking-inter-tours.md`.
+  — **NotebookEdit** : optionnel, **reste hors périmètre** (sans rapport avec le thinking, aucun usage
+  identifié sur le produit). (P4)
 
 ## 5. Ce qu'on ne fait PAS
 - Adopter le Claude Agent SDK / Managed Agents (décision PO). Réactiver le `multiagent` du SDK
@@ -81,6 +109,13 @@ rattrape après coup (latence + tour relancé). **À intégrer dans SF-119-03.**
 - Ajouter un `budget_tokens` fixe de thinking (régresserait le sens adaptatif du modèle effort).
 
 ## 6. Ordre proposé
+
+> **État au 2026-09-26 : feuille de route CLOSE.** Lot 1 (01→05, frontend compris), Lot 2 (06→13) et
+> Lot 3 (14→20) sont tous livrés ou clos par vérification. F-121 est **Terminée** dans `PRODUCT_SPEC.md`.
+> Les trois derniers points — 16 (thinking entrelacé), 18 (ratio de l'estimateur), 20 (thinking
+> inter-tours) — sont traités ci-dessus ; deux d'entre eux se sont révélés **déjà couverts**, et l'ont
+> été **verrouillés par des témoins** plutôt que redéveloppés.
+
 1. **F-121-00 dans F-119-03** (dépendance dure). 2. **Lot 1** (F-121-01→05). 3. **Lot 2**
 (F-121-06→13). 4. **Lot 3** (F-121-14→20). F-121-03/05/12 touchent `buildSystemPrompt` comme
 SF-119-02/SF-120-01 → **séquencer** sur ce fichier cœur.
