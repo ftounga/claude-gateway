@@ -56,7 +56,7 @@ class AtelierThreadServiceBilanTest {
     }
 
     private void decides(BilanTrigger trigger) {
-        when(bilan.decide(eq(userId), eq(workspaceId), anyBoolean(), any(), any()))
+        when(bilan.decide(eq(userId), eq(workspaceId), any(), anyBoolean(), any(), any()))
                 .thenReturn(new SessionBilanTriggerService.Decision(trigger, null, null, null));
     }
 
@@ -69,7 +69,7 @@ class AtelierThreadServiceBilanTest {
 
         ArgumentCaptor<OffsetDateTime> from = ArgumentCaptor.forClass(OffsetDateTime.class);
         ArgumentCaptor<OffsetDateTime> to = ArgumentCaptor.forClass(OffsetDateTime.class);
-        verify(bilan).decide(eq(userId), eq(workspaceId), eq(true), from.capture(), to.capture());
+        verify(bilan).decide(eq(userId), eq(workspaceId), any(), eq(true), from.capture(), to.capture());
 
         assertThat(from.getValue()).isEqualTo(previousBoundary);
         assertThat(to.getValue()).isAfter(previousBoundary);
@@ -87,7 +87,7 @@ class AtelierThreadServiceBilanTest {
 
         service.restart(userId, workspaceId);
 
-        verify(bilan).decide(eq(userId), eq(workspaceId), eq(true), eq(created), any());
+        verify(bilan).decide(eq(userId), eq(workspaceId), any(), eq(true), eq(created), any());
     }
 
     @Test
@@ -111,7 +111,7 @@ class AtelierThreadServiceBilanTest {
         // C'est cette délégation qui fait que le SUPER-ADMIN PAR E-MAIL, dont le rôle stocké peut
         // ne pas être promu, obtient bien un bilan — une comparaison `role == ADMIN` l'oublierait.
         verify(adminService).isAdmin();
-        verify(bilan).decide(eq(userId), eq(workspaceId), eq(false), any(), any());
+        verify(bilan).decide(eq(userId), eq(workspaceId), any(), eq(false), any(), any());
     }
 
     @Test
@@ -121,7 +121,7 @@ class AtelierThreadServiceBilanTest {
                 workspaceService, workspaceRepository, messageRepository);
 
         assertThat(bare.restart(userId, workspaceId).bilan()).isEqualTo("AUCUN");
-        verify(bilan, never()).decide(any(), any(), anyBoolean(), any(), any());
+        verify(bilan, never()).decide(any(), any(), any(), anyBoolean(), any(), any());
         assertThat(workspace.getChatThreadStartedAt()).isAfter(previousBoundary);
     }
 

@@ -320,3 +320,10 @@
 </div>
 }
 }
+
+<!-- LE BILAN DE LA SESSION QUI SE FERME (F-155 / SF-155-07). Monté ICI, chez le parent, parce que
+     c'est lui qui porte le geste « nouveau départ » et donc la réponse qui rapporte le bilan. Le
+     panneau est en position fixe : sa place dans l'arbre ne change rien à l'écran. -->
+@if (bilanReport(); as bilan) {
+  <app-session-bilan-panel [report]="bilan" (closed)="closeBilan()"></app-session-bilan-panel>
+}

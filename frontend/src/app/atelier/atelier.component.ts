@@ -98,6 +98,7 @@ import {
   AtelierStreamHandlers,
   AtelierSteerQueued,
   AtelierTurnFollower,
+  AtelierBilanReport,
   AtelierTurnMode,
   AtelierPlanStep,
   GitPullRequestResult,
@@ -125,6 +126,7 @@ import { cardBlock, withCards } from './terminal/teams-block';
 import { emailBlock } from './terminal/terminal-email';
 import { pageBlock } from './terminal/page-block';
 import { derivePreview } from './terminal/terminal-preview';
+import { SessionBilanPanelComponent } from './terminal/session-bilan-panel.component';
 import { RADAR_DRAFT_STATE, radarDraftFrom } from '../shared/radar-draft';
 
 // Les types et constantes du fil vivent dans `atelier.types` (F-30 SF-30-07) : la vue terminal les
@@ -207,6 +209,7 @@ const RUNNER_DOOR_CODES = ['runner_offline', 'runner_missing_capability'];
     ForgeBreadcrumbComponent,
     HostBadgeComponent,
     MissionBadgeComponent,
+    SessionBilanPanelComponent,
   ],
   templateUrl: './atelier.component.html',
   styleUrl: './atelier.component.scss',
@@ -1370,6 +1373,10 @@ export class AtelierComponent implements OnInit, OnDestroy {
         this.resumeTurns.set(resume.turns);
         this.resumeLastMessageAt.set(null);
         this.resumeChoice.set(false);
+        // F-155 / SF-155-07 : le bilan de la session qui vient de se fermer. Il était calculé,
+        // gardé en base et JETÉ ICI — l'écran n'affichait qu'un bandeau générique, et le PO a cru
+        // la fonctionnalité non livrée. Absent ⇒ rien ne s'ouvre, comportement d'avant.
+        this.bilanReport.set(resume.bilanReport ?? null);
         this.snackBar.open(
           'Nouveau départ : Claude repart sans le contexte des tours précédents. La conversation reste affichée.',
           'Fermer',
@@ -1378,6 +1385,13 @@ export class AtelierComponent implements OnInit, OnDestroy {
       },
       error: () => this.notifyError('Impossible de repartir à neuf.'),
     });
+  }
+
+  /** Le bilan de la dernière session fermée, ou `null` — un panneau, pas une route. */
+  readonly bilanReport = signal<AtelierBilanReport | null>(null);
+
+  closeBilan(): void {
+    this.bilanReport.set(null);
   }
 
   private refreshTree(id: string): void {

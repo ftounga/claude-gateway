@@ -53,6 +53,16 @@ public class SessionBilanTriggerService {
      */
     public Decision decide(UUID userId, UUID workspaceId, boolean admin, OffsetDateTime from,
                            OffsetDateTime to) {
+        return decide(userId, workspaceId, null, admin, from, to);
+    }
+
+    /**
+     * Même décision, en <b>nommant le projet</b> (F-155 / SF-155-07). Le nom n'était pas transmis :
+     * tous les bilans gardés depuis SF-155-04 portent une colonne {@code workspace_name} vide, et
+     * une liste de bilans sans nom de projet ne se lit pas.
+     */
+    public Decision decide(UUID userId, UUID workspaceId, String workspaceName, boolean admin,
+                           OffsetDateTime from, OffsetDateTime to) {
         if (!admin) {
             return Decision.none(); // pas un calcul de moins : AUCUN calcul du tout
         }
@@ -72,7 +82,8 @@ public class SessionBilanTriggerService {
             }
             // F-155 / SF-155-04 : l'automatique est GARDÉ au moment où il est décidé — un bilan
             // qu'on ne relit pas ne se compare pas, et comparer est tout l'intérêt.
-            SessionBilan kept = store.keep(userId, workspaceId, null, "AUTOMATIQUE", ledger, verdict);
+            SessionBilan kept =
+                    store.keep(userId, workspaceId, workspaceName, "AUTOMATIQUE", ledger, verdict);
             return new Decision(BilanTrigger.AUTOMATIQUE, ledger, verdict, kept.getId());
         } catch (RuntimeException e) {
             // On perd un bilan ; on ne perd pas le geste de l'utilisateur.
@@ -92,7 +103,8 @@ public class SessionBilanTriggerService {
     public record Decision(BilanTrigger trigger, SessionLedger ledger,
                            SessionSuggestionService.Verdict verdict, UUID bilanId) {
 
-        static Decision none() {
+        /** Rien à relever — et c'est une conclusion valide, pas un échec. */
+        public static Decision none() {
             return new Decision(BilanTrigger.AUCUN, null, null, null);
         }
     }
