@@ -2345,4 +2345,79 @@ describe('AtelierTerminalComponent', () => {
       expect(fixture.nativeElement.querySelector('.terminal-mentions')).toBeNull();
     });
   });
+
+  // ------------------------------------------------ repli de l'historique (F-117 / SF-117-06)
+
+  describe('repli de l\'historique après un nouveau départ', () => {
+    const thread = (): AtelierThreadItem[] => [
+      { id: 'u1', role: 'USER', content: 'Question 1 ?', actions: [] },
+      { id: 'a1', role: 'ASSISTANT', content: 'Réponse 1.', actions: [] },
+      { id: 'u2', role: 'USER', content: 'Question 2 ?', actions: [] },
+      { id: 'a2', role: 'ASSISTANT', content: 'Réponse 2.', actions: [] },
+    ];
+
+    it('replie les N premiers messages derrière « Voir l\'historique » avec le compte', () => {
+      component.messages = thread();
+      component.foldedTurns = 2;
+      fixture.detectChanges();
+
+      const fold = fixture.nativeElement.querySelector('.terminal-history-fold') as HTMLElement;
+      expect(fold).not.toBeNull();
+      expect(fold.textContent).toContain('Voir l\'historique (2 messages)');
+      // Les 2 premiers sont masqués, les 2 suivants restés visibles.
+      expect(text()).not.toContain('Question 1 ?');
+      expect(text()).toContain('Question 2 ?');
+      expect(text()).toContain('Réponse 2.');
+    });
+
+    it('révèle puis replie l\'historique au tap', () => {
+      component.messages = thread();
+      component.foldedTurns = 2;
+      fixture.detectChanges();
+
+      component.toggleHistory();
+      fixture.detectChanges();
+      expect(text()).toContain('Question 1 ?');
+      expect(fixture.nativeElement.querySelector('.terminal-history-fold')?.textContent)
+        .toContain('Masquer l\'historique');
+
+      component.toggleHistory();
+      fixture.detectChanges();
+      expect(text()).not.toContain('Question 1 ?');
+    });
+
+    it('n\'affiche aucun affordance et rend tout le fil sans repli (foldedTurns = 0)', () => {
+      component.messages = thread();
+      component.foldedTurns = 0;
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('.terminal-history-fold')).toBeNull();
+      expect(text()).toContain('Question 1 ?');
+      expect(text()).toContain('Question 2 ?');
+    });
+
+    it('borne le repli : jamais plus de messages que le fil n\'en contient', () => {
+      component.messages = thread();
+      component.foldedTurns = 99;
+      fixture.detectChanges();
+
+      expect(component.foldedCount()).toBe(4);
+      // Tout est replié : aucune question visible, mais pas de plantage.
+      expect(text()).not.toContain('Question 1 ?');
+      expect(text()).not.toContain('Question 2 ?');
+      expect(fixture.nativeElement.querySelector('.terminal-history-fold')).not.toBeNull();
+    });
+
+    it('le rail « Vos questions » ne liste que les questions affichées', () => {
+      component.readOnly = false;
+      component.messages = thread();
+      component.foldedTurns = 2;
+      fixture.detectChanges();
+
+      // Q1 est repliée : le rail ne propose que Q2 (numérotation globale conservée).
+      const rail = fixture.nativeElement.querySelector('.terminal-qrail') as HTMLElement;
+      expect(rail?.textContent).toContain('Question 2 ?');
+      expect(rail?.textContent).not.toContain('Question 1 ?');
+    });
+  });
 });

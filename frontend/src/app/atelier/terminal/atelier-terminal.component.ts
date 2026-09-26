@@ -470,6 +470,18 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   /** Tours déjà terminés (demande, commentaire, transcription, coût). */
   @Input() messages: AtelierThreadItem[] = [];
 
+  /**
+   * Nombre de messages à **replier** en tête du fil derrière « Voir l'historique » (F-117 /
+   * SF-117-06) : ceux d'avant le dernier **nouveau départ manuel**, tel que l'état de reprise
+   * (`GET .../chat/resume`, SF-117-05) le compte. `0` (défaut) ⇒ rien n'est replié — la compaction
+   * automatique (SF-117-01), qui ne pose pas le marqueur, laisse donc tout affiché.
+   */
+  @Input()
+  set foldedTurns(value: number) {
+    this.foldedTurnsValue.set(value ?? 0);
+  }
+  private readonly foldedTurnsValue = signal(0);
+
   /** Tour en cours, ou `null` hors exécution. */
   @Input() streaming: AtelierExecStreamingItem | null = null;
 
@@ -1157,6 +1169,53 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     this.restartSuggestionDismissed.set(true);
   }
 
+  // ------------------------------------------------ repli de l'historique (F-117 / SF-117-06)
+
+  /**
+   * L'historique d'avant le dernier nouveau départ est **révélé** (`true`) ou **replié** (`false`,
+   * défaut). État d'écran local, non persisté : le repli qui TIENT au rechargement vient de
+   * {@link #foldedTurnsValue} (donnée serveur SF-117-05), pas de ce drapeau.
+   */
+  readonly historyRevealed = signal(false);
+
+  /**
+   * Combien de messages sont effectivement repliés : jamais plus que ce que le fil chargé contient
+   * (bornage — un `foldedTurns` en avance sur l'historique ne masque pas des messages absents).
+   */
+  readonly foldedCount = computed(() => Math.min(this.foldedTurnsValue(), this.messages.length));
+
+  /** Vrai si un historique replié existe et reste caché : c'est ce qui affiche « Voir l'historique ». */
+  hasFoldedHistory(): boolean {
+    return this.foldedCount() > 0;
+  }
+
+  /**
+   * Les messages **affichés** : le fil entier une fois l'historique révélé, sinon seulement ce qui
+   * suit la frontière du dernier nouveau départ (les {@link #foldedCount} premiers sont repliés).
+   * Le fil est chargé en ordre chronologique croissant ({@code GET .../chat}) : replier = masquer
+   * les N premiers, et les nouveaux messages, ajoutés en fin, ne sont jamais repliés.
+   */
+  get displayedMessages(): AtelierThreadItem[] {
+    if (this.historyRevealed()) {
+      return this.messages;
+    }
+    const folded = this.foldedCount();
+    return folded > 0 ? this.messages.slice(folded) : this.messages;
+  }
+
+  /**
+   * Révèle ou replie l'historique. On **absorbe** le changement de hauteur qui en résulte pour ne
+   * pas déclencher l'auto-scroll au fond (SF-158-23) : révéler l'historique doit garder la vue là où
+   * elle est (l'utilisateur veut lire le haut), pas sauter en bas.
+   */
+  toggleHistory(): void {
+    this.historyRevealed.update((revealed) => !revealed);
+    this.absorbNextScrollChange = true;
+  }
+
+  /** Prochain cycle de vue : mettre à jour la hauteur de référence SANS défiler (voir {@link #toggleHistory}). */
+  private absorbNextScrollChange = false;
+
   /**
    * La commande de reprise : <b>le lanceur, nu</b>.
    *
@@ -1437,6 +1496,12 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     const el = this.scrollback?.nativeElement;
     if (el && el.scrollHeight !== this.lastScrollHeight) {
       this.lastScrollHeight = el.scrollHeight;
+      // F-117 / SF-117-06 : replier/révéler l'historique change la hauteur ; on l'absorbe une fois
+      // sans défiler, sinon révéler l'historique ferait sauter le fil en bas — l'inverse du besoin.
+      if (this.absorbNextScrollChange) {
+        this.absorbNextScrollChange = false;
+        return;
+      }
       this.scrollToBottom();
     }
   }
@@ -1723,7 +1788,10 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    */
   get userQuestions(): { number: number; content: string; anchorId: string }[] {
     const out: { number: number; content: string; anchorId: string }[] = [];
-    for (const message of this.messages) {
+    // F-117 / SF-117-06 : le rail ne liste que les questions AFFICHÉES — sinon il proposerait de
+    // sauter vers un bloc replié, dont l'ancre n'est pas dans le DOM. La numérotation reste globale
+    // (basée sur le fil complet), donc après un repli le rail commence honnêtement à Q5, Q6…
+    for (const message of this.displayedMessages) {
       if (message.role === 'USER') {
         const number = this.questionNumbers().get(message.id) ?? out.length + 1;
         out.push({ number, content: message.content, anchorId: `terminal-q-${number}` });
