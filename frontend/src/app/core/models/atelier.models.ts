@@ -1175,6 +1175,42 @@ export interface AtelierEngineStatus {
   recommendReason: AtelierRunnerRecommendation | null;
 }
 
+/**
+ * Une suggestion du bilan, telle que l'écran la rend (F-155 / SF-155-07). **La mesure voyage avec
+ * le conseil** : sans elle, ce ne serait qu'un avis, et un avis ne se vérifie pas.
+ */
+export interface AtelierBilanSuggestion {
+  /** Le genre du détecteur — stable, contrairement au texte du conseil. */
+  kind: string;
+  /** `COUT`, `TEMPS` ou `RAISONNEMENT`. */
+  axis: string;
+  advice: string;
+  measure: string;
+  gainPct: number;
+  gainEur: number | null;
+}
+
+/**
+ * Le bilan de la session qui vient de se fermer (F-155 / SF-155-07). Absent quand il n'y a rien à
+ * montrer, et pour qui n'est pas administrateur — auquel cas rien n'est même calculé.
+ */
+export interface AtelierBilanReport {
+  /** Gardé (`AUTOMATIQUE`) ou seulement proposé ? Un bilan proposé ne se comparera à rien. */
+  kept: boolean;
+  workspaceName: string | null;
+  turns: number;
+  elapsedMinutes: number;
+  costEur: number;
+  cacheShare: number;
+  toolCalls: number;
+  failedTools: number;
+  filesWritten: number;
+  model: string | null;
+  /** Suggestions écartées faute d'impact — leur nombre est dit, jamais tu. */
+  discarded: number;
+  suggestions: AtelierBilanSuggestion[];
+}
+
 export interface AtelierResume {
   /** Messages que le prochain tour rejouera au fournisseur. */
   turns: number;
@@ -1188,6 +1224,13 @@ export interface AtelierResume {
    * Restaure le sélecteur de mode à l'ouverture du projet.
    */
   mode?: AtelierTurnMode | null;
+  /**
+   * Ce que la fermeture a décidé du bilan (F-155 / SF-155-03) : `AUTOMATIQUE`, `PROPOSE` ou
+   * `AUCUN`. Vaut `AUCUN` hors nouveau départ, et pour qui n'est pas administrateur.
+   */
+  bilan?: string | null;
+  /** Le bilan lui-même (F-155 / SF-155-07), absent quand il n'y a rien à montrer. */
+  bilanReport?: AtelierBilanReport | null;
   /**
    * Dernier plan encore actif du fil (F-121 / SF-121-10), ou liste vide/absente si aucun. Réaffiché à
    * l'ouverture du projet.

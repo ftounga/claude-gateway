@@ -862,6 +862,48 @@ describe('AtelierComponent', () => {
 
     expect(service.restartThread).toHaveBeenCalledWith('w1');
     expect(component.resumeTurns()).toBe(0);
+    // Sans bilan dans la réponse, aucun panneau : le geste est exactement celui d'avant.
+    expect(component.bilanReport()).toBeNull();
+  });
+
+  // ------------------------------------------ le bilan de session (F-155 / SF-155-07)
+
+  it('« Nouveau départ » ouvre le bilan quand la réponse en porte un', () => {
+    setup();
+    service.restartThread.and.returnValue(
+      of({
+        turns: 0,
+        lastMessageAt: null,
+        threadStartedAt: '2026-09-26T01:27:47Z',
+        prompt: 'NONE' as const,
+        bilan: 'AUTOMATIQUE',
+        bilanReport: {
+          kept: true,
+          workspaceName: 'agenor',
+          turns: 113,
+          elapsedMinutes: 936,
+          costEur: 152.58,
+          cacheShare: 86,
+          toolCalls: 412,
+          failedTools: 31,
+          filesWritten: 47,
+          model: 'claude-opus-5',
+          discarded: 1,
+          suggestions: [],
+        },
+      }),
+    );
+    component.activeWorkspaceId.set('w1');
+
+    component.restartThread();
+
+    // C'EST LE DÉFAUT DU 2026-09-26 : le serveur envoyait déjà de quoi afficher un bilan, et
+    // l'écran le jetait. Le PO a coupé le contexte d'une session à 152,58 € et n'a rien vu.
+    expect(component.bilanReport()?.costEur).toBe(152.58);
+    expect(component.bilanReport()?.turns).toBe(113);
+
+    component.closeBilan();
+    expect(component.bilanReport()).toBeNull();
   });
 
   // ------------------------------------------------ état de mission (F-60 / SF-60-02)

@@ -95,7 +95,9 @@ public class AtelierThreadService {
         // F-155 / SF-155-03 : relever la session QUI SE FERME, avant de déplacer la frontière —
         // après, il n'y aurait plus rien à relever. Le bilan ne doit jamais faire échouer le geste.
         OffsetDateTime closing = OffsetDateTime.now();
-        String bilan = bilanOf(userId, workspace, closing);
+        fr.claudegateway.bilan.SessionBilanTriggerService.Decision decision =
+                bilanOf(userId, workspace, closing);
+        String bilan = decision.trigger().name();
         workspace.setChatThreadStartedAt(closing);
         // Repartir propre, c'est aussi oublier le résumé de compaction (F-117 / SF-117-01) : sans
         // cela, un « nouveau départ » rejouerait encore le résumé des tours désormais mis de côté.
@@ -106,7 +108,39 @@ public class AtelierThreadService {
         workspace.setChatThreadPlan(null);
         workspaceRepository.save(workspace);
         return new AtelierResumeResponse(0, null, workspace.getChatThreadStartedAt(), "NONE",
-                null, List.of(), bilan);
+                null, List.of(), bilan, reportOf(decision, workspace));
+    }
+
+    /**
+     * Le bilan tel que le terminal le montrera (F-155 / SF-155-07), ou {@code null} quand il n'y a
+     * rien — rien à signaler, ou appelant non administrateur, auquel cas rien n'a même été calculé.
+     */
+    private static AtelierResumeResponse.BilanReport reportOf(
+            fr.claudegateway.bilan.SessionBilanTriggerService.Decision decision,
+            Workspace workspace) {
+        fr.claudegateway.bilan.SessionLedger ledger = decision.ledger();
+        if (ledger == null || decision.verdict() == null) {
+            return null;
+        }
+        List<AtelierResumeResponse.BilanSuggestion> suggestions = decision.verdict().suggestions()
+                .stream()
+                .map(suggestion -> new AtelierResumeResponse.BilanSuggestion(
+                        suggestion.kind().name(), suggestion.axis().name(), suggestion.advice(),
+                        suggestion.measure(), suggestion.gainPct(), suggestion.gainEur()))
+                .toList();
+        return new AtelierResumeResponse.BilanReport(
+                decision.bilanId() != null,
+                workspace.getName(),
+                ledger.turns(),
+                ledger.elapsed() == null ? 0L : ledger.elapsed().toMinutes(),
+                ledger.costEur(),
+                ledger.cacheShare(),
+                ledger.toolCalls(),
+                ledger.failedTools(),
+                ledger.filesWritten(),
+                ledger.model(),
+                decision.verdict().discarded(),
+                suggestions);
     }
 
     /**
@@ -115,15 +149,18 @@ public class AtelierThreadService {
      *
      * <p>Réservé à l'administrateur ; pour les autres, rien n'est même calculé.</p>
      */
-    private String bilanOf(UUID userId, Workspace workspace, OffsetDateTime closing) {
+    private fr.claudegateway.bilan.SessionBilanTriggerService.Decision bilanOf(
+            UUID userId, Workspace workspace, OffsetDateTime closing) {
         if (bilanTrigger == null || adminService == null) {
-            return "AUCUN";
+            return fr.claudegateway.bilan.SessionBilanTriggerService.Decision.none();
         }
         OffsetDateTime from = workspace.getChatThreadStartedAt() != null
                 ? workspace.getChatThreadStartedAt()
                 : workspace.getCreatedAt();
-        return bilanTrigger.decide(userId, workspace.getId(), adminService.isAdmin(), from, closing)
-                .trigger().name();
+        // Le NOM du projet part avec la décision (F-155 / SF-155-07) : il n'était pas transmis, et
+        // la colonne `workspace_name` des bilans gardés est restée vide depuis SF-155-04.
+        return bilanTrigger.decide(userId, workspace.getId(), workspace.getName(),
+                adminService.isAdmin(), from, closing);
     }
 
     /** Messages que le prochain tour rejouera : tout le fil, ou ce qui suit la frontière. */
