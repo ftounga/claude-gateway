@@ -361,6 +361,76 @@ class AtelierCompactionServiceTest {
         assertThat(outcome.compacted()).isTrue();
     }
 
+    // ------------- F-121 / SF-121-00 : l'estimateur compte les traces RÉELLEMENT rejouées
+
+    /** Fil de {@code assistantTurns} tours assistant tracés, contenu minimal, traces de taille fixe. */
+    private List<AtelierMessage> tracedThread(int assistantTurns, int traceLength) {
+        OffsetDateTime t0 = OffsetDateTime.now().minusHours(2);
+        String trace = "x".repeat(traceLength);
+        List<AtelierMessage> history = new ArrayList<>();
+        for (int turn = 0; turn < assistantTurns; turn++) {
+            history.add(assistantWithTrace("a", trace, t0.plusMinutes(turn)));
+        }
+        return history;
+    }
+
+    @Test
+    void estimateCountsEveryTraceTheLoopReplaysNotJustTheLastWindow() {
+        // Depuis F-134 / SF-134-01 la coupure du rejeu bouge PAR PALIERS : à 13 tours et une fenêtre
+        // de 12, firstTracedIndex vaut 0 — les 13 trajectoires repartent. Compter « les 12 derniers »
+        // laissait donc un tour entier de traces hors du décompte (jusqu'à 11 tours au pire), soit
+        // plus que le seuil lui-même quand les sorties d'outils sont volumineuses.
+        List<AtelierMessage> history = tracedThread(13, 700);
+        assertThat(AtelierChatService.firstTracedIndex(history, 12)).isZero();
+
+        long estimated = AtelierCompactionService.estimateReplayTokens(null, history, 12);
+
+        // 13 contenus d'un caractère + 13 traces de 700 = 9 113 caractères / 3,5.
+        assertThat(estimated).isEqualTo(2603);
+        // Ce que rendait la fenêtre glissante : 13 + 12 × 700 = 8 413 / 3,5 = 2 403.
+        assertThat(estimated).isGreaterThan(2403);
+    }
+
+    @Test
+    void estimateIsUnchangedForThreadsShorterThanTheWindow() {
+        // Sous la fenêtre, les deux règles coïncident : aucune régression sur les fils courts.
+        List<AtelierMessage> history = tracedThread(3, 700);
+
+        // 3 contenus d'un caractère + 3 traces de 700 = 2 103 caractères / 3,5.
+        assertThat(AtelierCompactionService.estimateReplayTokens(null, history, 12)).isEqualTo(600);
+    }
+
+    @Test
+    void estimateToleratesANonPositiveTraceWindow() {
+        // Forme historique « texte seul » de la surcharge à deux arguments : pas de fenêtre, pas de
+        // traces comptées, et surtout aucune exception sur un réglage absurde.
+        List<AtelierMessage> history = List.of(assistantWithTrace(
+                "y".repeat(700), "x".repeat(700), OffsetDateTime.now()));
+        long textOnly = AtelierCompactionService.estimateReplayTokens(null, history);
+
+        assertThat(textOnly).isEqualTo(200); // 700 caractères de texte / 3,5, sans la trace
+        assertThat(AtelierCompactionService.estimateReplayTokens(null, history, 0))
+                .isEqualTo(textOnly);
+        assertThat(AtelierCompactionService.estimateReplayTokens(null, history, -5))
+                .isEqualTo(textOnly);
+    }
+
+    @Test
+    void tracesBeyondTheSlidingWindowStillTriggerCompaction() {
+        // Bout en bout, fil calibré ENTRE les deux fenêtres : 13 + 12 × 27 = 337 caractères (96 tokens,
+        // sous le seuil de test à 100) si l'on ne compte que les 12 derniers tours ; 13 + 13 × 27 = 364
+        // (104 tokens) en comptant ce que la boucle rejoue vraiment. La compaction doit se déclencher.
+        StubAiAgentProvider provider = new StubAiAgentProvider();
+        provider.enqueueFinal("Résumé compact.");
+        List<AtelierMessage> history = tracedThread(13, 27);
+        stubHistory(history);
+
+        AtelierCompactionService.CompactionOutcome outcome =
+                service(provider).compactIfOversized(userId, workspace, null);
+
+        assertThat(outcome.compacted()).isTrue();
+    }
+
     // ------------------------------------- F-121 / SF-121-09 : gabarit sectionné du résumé
 
     @Test

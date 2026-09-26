@@ -455,6 +455,15 @@ public class AtelierCompactionService {
      * plusieurs dizaines de milliers de tokens — le seuil de compaction serait franchi <b>sans se
      * déclencher</b>, et seul le filet réactif « prompt too long » (400) rattraperait après coup. On
      * compte donc les caractères des traces (déjà bornées à la sérialisation) des derniers tours.</p>
+     *
+     * <p><b>La même fenêtre que la boucle, pas une fenêtre qui lui ressemble</b> (F-121 / SF-121-00).
+     * Depuis F-134 / SF-134-01, la coupure du rejeu est calculée <b>depuis le début</b> et ne bouge que
+     * <b>par paliers</b> (pour ne pas muter le préfixe mis en cache) : le nombre de tours rejoués avec
+     * leur trajectoire vaut <b>entre {@code traceTurns} et {@code 2 × traceTurns − 1}</b>. Compter
+     * « les {@code traceTurns} derniers » laissait donc jusqu'à {@code traceTurns − 1} tours de traces
+     * partir au fournisseur <b>sans être comptés</b> — à 40 000 caractères la trajectoire, plus que le
+     * seuil lui-même. L'estimateur appelle donc {@link AtelierChatService#firstTracedIndex} : une seule
+     * règle, celle du rejeu, jamais une copie qui dérive.</p>
      */
     static long estimateReplayTokens(String summary, List<AtelierMessage> messages, int traceTurns) {
         long chars = summary == null ? 0L : summary.length();
@@ -464,16 +473,17 @@ public class AtelierCompactionService {
                 chars += content.length();
             }
         }
-        // Les trajectoires d'outils des `traceTurns` derniers tours assistant repartent AUSSI : mêmes
-        // tours que firstTracedIndex côté boucle, comptés depuis la fin.
+        // Les trajectoires d'outils repartent AUSSI : exactement celles que la boucle rejoue, donc
+        // exactement les tours qu'elle trace — la coupure est demandée à la boucle elle-même, pas
+        // recalculée ici (SF-121-00). `traceTurns <= 0` garde la forme historique « texte seul » de la
+        // surcharge à deux arguments ; en production la propriété se replie toujours sur son défaut.
         if (traceTurns > 0) {
-            int seen = 0;
-            for (int index = messages.size() - 1; index >= 0 && seen < traceTurns; index--) {
+            int tracedFrom = AtelierChatService.firstTracedIndex(messages, traceTurns);
+            for (int index = tracedFrom; index < messages.size(); index++) {
                 AtelierMessage message = messages.get(index);
                 if (!"ASSISTANT".equalsIgnoreCase(message.getRole())) {
                     continue;
                 }
-                seen++;
                 String trace = message.getToolTrace();
                 if (trace != null) {
                     chars += trace.length();
