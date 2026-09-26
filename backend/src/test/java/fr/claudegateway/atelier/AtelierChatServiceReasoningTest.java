@@ -27,7 +27,12 @@ import fr.claudegateway.quota.QuotaService;
 /**
  * Raisonnement de la boucle maison (F-39 / SF-39-10) : le modèle est celui du harnais, le tour
  * demande un raisonnement adaptatif, et les blocs signés rendus par le fournisseur sont remis en
- * tête du message assistant — mais ne survivent pas au tour.
+ * tête du message assistant.
+ *
+ * <p>Ils <b>survivent au tour</b> depuis F-134 / SF-134-04 (décision renversée) : la trajectoire les
+ * persiste et le rejeu les remet en tête, sans quoi le ruban renvoyé différait de celui qui était en
+ * cache dès le premier bloc de chaque tour. F-121 / SF-121-20 verrouille ce trajet de bout en
+ * bout.</p>
  */
 @ExtendWith(MockitoExtension.class)
 class AtelierChatServiceReasoningTest {
@@ -396,6 +401,59 @@ class AtelierChatServiceReasoningTest {
         service.chat(userId, workspaceId, "fais un truc");
 
         assertThat(agentProvider.effectiveEfforts).containsExactly("high", "high");
+    }
+
+    // ------------------- F-121 / SF-121-20 : le raisonnement survit au tour (couvert par SF-134-04)
+
+    @Test
+    void aReplayedHistoryCarriesTheSignedReasoningOfItsTracedTurns() {
+        // Le pendant de `aReplayedHistoryCarriesNoReasoningBlock` : quand la trajectoire d'un tour
+        // PRÉCÉDENT porte un bloc signé, ce bloc repart au fournisseur au tour suivant, EN TÊTE du
+        // message assistant — avant le texte et les tool_use. C'est l'ordre dans lequel il l'avait
+        // reçu, donc mis en cache ; le remettre ailleurs, ou pas du tout, fait réécrire la suite.
+        history.add(AtelierMessage.builder().id(UUID.randomUUID()).workspaceId(workspaceId)
+                .userId(userId).role("USER").content("lis notes.txt").build());
+        history.add(AtelierMessage.builder().id(UUID.randomUUID()).workspaceId(workspaceId)
+                .userId(userId).role("ASSISTANT").content("J'ai lu notes.txt.")
+                .toolTrace(new AtelierToolTrace(List.of(new AtelierToolTrace.Step("je lis",
+                        List.of(new AtelierToolTrace.Call("call_1", "read_file", null, "contenu", false)),
+                        List.of(new AtelierToolTrace.Thought("", "sig-1", null)))))
+                        .toJson())
+                .build());
+        agentProvider.enqueueFinal("Compris.");
+
+        service.chat(userId, workspaceId, "et maintenant ?");
+
+        AgentMessage replayedAssistant = agentProvider.lastRequest.messages().stream()
+                .filter(message -> "assistant".equals(message.role()))
+                .findFirst().orElseThrow();
+        assertThat(replayedAssistant.content().get(0))
+                .isEqualTo(new AgentContentBlock.Reasoning("", "sig-1"));
+        assertThat(replayedAssistant.content().get(1)).isEqualTo(new AgentContentBlock.Text("je lis"));
+    }
+
+    @Test
+    void aReplayedHistoryCarriesRedactedReasoningUntouched() {
+        // Un raisonnement expurgé n'est pas interprété : sa charge repart telle quelle, en
+        // redacted_thinking. La gateway ne sait pas ce qu'il y a dedans, et n'a pas à le savoir.
+        history.add(AtelierMessage.builder().id(UUID.randomUUID()).workspaceId(workspaceId)
+                .userId(userId).role("USER").content("lis notes.txt").build());
+        history.add(AtelierMessage.builder().id(UUID.randomUUID()).workspaceId(workspaceId)
+                .userId(userId).role("ASSISTANT").content("J'ai lu notes.txt.")
+                .toolTrace(new AtelierToolTrace(List.of(new AtelierToolTrace.Step("je lis",
+                        List.of(new AtelierToolTrace.Call("call_1", "read_file", null, "contenu", false)),
+                        List.of(new AtelierToolTrace.Thought(null, null, "charge-chiffree")))))
+                        .toJson())
+                .build());
+        agentProvider.enqueueFinal("Compris.");
+
+        service.chat(userId, workspaceId, "et maintenant ?");
+
+        AgentMessage replayedAssistant = agentProvider.lastRequest.messages().stream()
+                .filter(message -> "assistant".equals(message.role()))
+                .findFirst().orElseThrow();
+        assertThat(replayedAssistant.content().get(0))
+                .isEqualTo(new AgentContentBlock.RedactedReasoning("charge-chiffree"));
     }
 
     @Test
