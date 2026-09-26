@@ -366,6 +366,11 @@ export class AtelierComponent implements OnInit, OnDestroy {
   readonly resumeLastMessageAt = signal<string | null>(null);
   /** Nombre de tours encore rejoués : à zéro, « repartir à neuf » n'aurait rien à faire. */
   readonly resumeTurns = signal(0);
+  /**
+   * Messages à replier derrière « Voir l'historique » (F-117 / SF-117-06) : ceux d'avant le dernier
+   * nouveau départ manuel, comptés par le serveur (SF-117-05). `0` ⇒ rien de replié.
+   */
+  readonly resumeFoldedTurns = signal(0);
 
   /** Tour assistant « en cours » (étapes + texte partiel) affiché pendant le streaming (SF-28-05). */
   readonly streaming = signal<AtelierStreamingItem | null>(null);
@@ -1314,6 +1319,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.resumeChoice.set(false);
     this.resumeLastMessageAt.set(null);
     this.resumeTurns.set(0);
+    this.resumeFoldedTurns.set(0);
     this.loadHistory(workspace.id);
     this.loadResumeState(workspace.id);
     this.refreshTree(workspace.id);
@@ -1342,6 +1348,9 @@ export class AtelierComponent implements OnInit, OnDestroy {
         this.resumeTurns.set(resume.turns);
         this.resumeLastMessageAt.set(resume.lastMessageAt);
         this.resumeChoice.set(resume.prompt === 'IDLE');
+        // F-117 / SF-117-06 : le repli de l'historique tient au rechargement parce qu'il vient d'ici
+        // (donnée serveur), pas d'un état d'écran éphémère. 0 hors nouveau départ manuel.
+        this.resumeFoldedTurns.set(resume.foldedTurns ?? 0);
         // F-121 / SF-121-10 : restaurer le mode persisté du fil (null ⇒ ACT) et réafficher le dernier
         // plan encore actif. Un plan soumis n'est plus « en attente » après un rechargement : c'est un
         // état de fin de tour, pas de fil ; on repart sans invite d'approbation.
@@ -1360,8 +1369,9 @@ export class AtelierComponent implements OnInit, OnDestroy {
 
   /**
    * « Repartir à neuf » (F-39 / SF-39-04, décision D1) : les tours passés cessent d'être rejoués.
-   * **Rien n'est supprimé** — la conversation reste affichée ; c'est ce qui rend le geste
-   * réversible, et pourquoi il ne demande pas de confirmation destructive.
+   * **Rien n'est supprimé** — l'historique se replie derrière « Voir l'historique » (F-117 /
+   * SF-117-06), ré-affichable en un tap ; c'est ce qui rend le geste réversible, et pourquoi il ne
+   * demande pas de confirmation destructive.
    */
   restartThread(): void {
     const id = this.activeWorkspaceId();
@@ -1373,12 +1383,15 @@ export class AtelierComponent implements OnInit, OnDestroy {
         this.resumeTurns.set(resume.turns);
         this.resumeLastMessageAt.set(null);
         this.resumeChoice.set(false);
+        // F-117 / SF-117-06 : tout le fil est désormais replié derrière « Voir l'historique ».
+        this.resumeFoldedTurns.set(resume.foldedTurns ?? 0);
         // F-155 / SF-155-07 : le bilan de la session qui vient de se fermer. Il était calculé,
         // gardé en base et JETÉ ICI — l'écran n'affichait qu'un bandeau générique, et le PO a cru
         // la fonctionnalité non livrée. Absent ⇒ rien ne s'ouvre, comportement d'avant.
         this.bilanReport.set(resume.bilanReport ?? null);
         this.snackBar.open(
-          'Nouveau départ : Claude repart sans le contexte des tours précédents. La conversation reste affichée.',
+          'Nouveau départ : Claude repart sans le contexte des tours précédents. '
+            + 'L\'historique est replié derrière « Voir l\'historique » — rien n\'est supprimé.',
           'Fermer',
           { duration: 5000 },
         );

@@ -186,12 +186,13 @@
         }
         <!-- Nouveau départ (F-117 / SF-117-03) : le geste cesse d'être invisible (0/18 terminaux
              l'avaient fait). Claude repart sans le contexte des tours précédents ; RIEN n'est
-             supprimé — la conversation reste affichée, comme depuis F-39 / SF-39-04. -->
+             supprimé — l'historique se replie derrière « Voir l'historique » (F-117 / SF-117-06). -->
+
         <button
           mat-button
           type="button"
           class="terminal-restart"
-          matTooltip="Claude repart sans le contexte des tours précédents. La conversation reste affichée."
+          matTooltip="Claude repart sans le contexte des tours précédents. L'historique se replie derrière « Voir l'historique » — rien n'est supprimé."
           (click)="restart.emit()"
         >
           <mat-icon>history_toggle_off</mat-icon>
@@ -269,7 +270,7 @@
               mat-menu-item
               type="button"
               class="terminal-restart"
-              matTooltip="Claude repart sans le contexte des tours précédents. La conversation reste affichée."
+              matTooltip="Claude repart sans le contexte des tours précédents. L'historique se replie derrière « Voir l'historique » — rien n'est supprimé."
               (click)="restart.emit()"
             >
               <mat-icon>history_toggle_off</mat-icon>
@@ -361,7 +362,7 @@
         <p class="terminal-compaction-hint-title">Cette conversation est longue — repartir propre ?</p>
         <p class="terminal-compaction-hint-note">
           Claude résume déjà l'historique automatiquement ; un nouveau départ repart sans le contexte
-          des tours précédents. La conversation reste affichée.
+          des tours précédents et replie l'historique derrière « Voir l'historique » — rien n'est supprimé.
         </p>
       </div>
       <span class="terminal-compaction-hint-actions">
@@ -627,7 +628,29 @@
       }
     }
 
-    @for (message of messages; track message.id) {
+    <!-- REPLI DE L'HISTORIQUE (F-117 / SF-117-06) : après un NOUVEAU DÉPART MANUEL, les tours d'avant
+         la frontière sont repliés derrière cet affordance, masqué par défaut, ré-affichable en un tap
+         et repliable à nouveau. RIEN n'est supprimé (SF-117-05, pur affichage). La compaction
+         automatique (SF-117-01) ne pose pas le marqueur : `foldedTurns` y vaut 0, donc pas d'affordance
+         et tout reste affiché. Registre neutre du filet de contexte (§11, filet `--cg-accent`). -->
+    @if (hasFoldedHistory()) {
+      <button
+        type="button"
+        class="terminal-history-fold"
+        [attr.aria-expanded]="historyRevealed()"
+        (click)="toggleHistory()"
+      >
+        <mat-icon aria-hidden="true">{{ historyRevealed() ? 'expand_less' : 'history' }}</mat-icon>
+        @if (historyRevealed()) {
+          <span>Masquer l'historique</span>
+        } @else {
+          <span>Voir l'historique ({{ foldedCount() }}
+            {{ foldedCount() > 1 ? 'messages' : 'message' }})</span>
+        }
+      </button>
+    }
+
+    @for (message of displayedMessages; track message.id) {
       @if (message.role === 'USER') {
         <!-- LA QUESTION DE L'UTILISATEUR, REPÉRABLE (F-126 / SF-126-02) : bloc distinct, badge « Q<n> »
              et libellé « Votre question ». L'`id` est l'ancre vers laquelle le rail fait sauter. On

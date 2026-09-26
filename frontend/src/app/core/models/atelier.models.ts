@@ -1239,6 +1239,12 @@ export interface AtelierResume {
   /** `NONE` — ne rien demander ; `IDLE` — projet inactif, proposer le choix. */
   prompt: 'NONE' | 'IDLE';
   /**
+   * Messages à replier à l'écran derrière « Voir l'historique » (F-117 / SF-117-06) : ceux d'avant
+   * le dernier **nouveau départ manuel**. `0`/absent ⇒ rien n'est replié — la compaction automatique
+   * (SF-117-01), elle, ne replie rien.
+   */
+  foldedTurns?: number;
+  /**
    * Mode persisté du fil (F-121 / SF-121-10) : `ANSWER_PLAN` ou `ACT`. Absent/`null` ⇒ `ACT` (défaut).
    * Restaure le sélecteur de mode à l'ouverture du projet.
    */

@@ -853,7 +853,8 @@ describe('AtelierComponent', () => {
   it('« Nouveau départ » appelle le service et remet la taille du fil à zéro', () => {
     setup();
     service.restartThread.and.returnValue(
-      of({ turns: 0, lastMessageAt: null, threadStartedAt: '2026-09-14T00:00:00Z', prompt: 'NONE' as const }),
+      of({ turns: 0, lastMessageAt: null, threadStartedAt: '2026-09-14T00:00:00Z',
+        foldedTurns: 12, prompt: 'NONE' as const }),
     );
     component.activeWorkspaceId.set('w1');
     component.resumeTurns.set(60);
@@ -862,8 +863,25 @@ describe('AtelierComponent', () => {
 
     expect(service.restartThread).toHaveBeenCalledWith('w1');
     expect(component.resumeTurns()).toBe(0);
+    // F-117 / SF-117-06 : tout le fil est désormais replié derrière « Voir l'historique ».
+    expect(component.resumeFoldedTurns()).toBe(12);
     // Sans bilan dans la réponse, aucun panneau : le geste est exactement celui d'avant.
     expect(component.bilanReport()).toBeNull();
+  });
+
+  it('« Nouveau départ » annonce le repli de l\'historique, sans plus dire « reste affichée »', () => {
+    setup();
+    service.restartThread.and.returnValue(
+      of({ turns: 0, lastMessageAt: null, threadStartedAt: '2026-09-14T00:00:00Z',
+        foldedTurns: 3, prompt: 'NONE' as const }),
+    );
+    component.activeWorkspaceId.set('w1');
+
+    component.restartThread();
+
+    const message = snackBar.open.calls.mostRecent().args[0] as string;
+    expect(message).toContain('Voir l\'historique');
+    expect(message).not.toContain('reste affichée');
   });
 
   // ------------------------------------------ le bilan de session (F-155 / SF-155-07)

@@ -44,3 +44,33 @@
   flex-shrink: 0;
   font-size: 12px;
 }
+
+// REPLI DE L'HISTORIQUE (F-117 / SF-117-06) : l'affordance « Voir l'historique » en tête du fil,
+// après un nouveau départ manuel. Même registre neutre que le filet de contexte ci-dessus, aucune
+// couleur ni police nouvelle. Cible tactile >= 44 px, lisible desktop comme mobile (< 819 px).
+.terminal-history-fold {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  width: 100%;
+  min-height: 44px;
+  padding: var(--cg-space-2) var(--cg-space-3);
+  border: 0;
+  border-bottom: 1px solid var(--cg-navy-2);
+  border-left: 3px solid var(--cg-accent);
+  background: transparent;
+  color: var(--cg-accent);
+  font-family: var(--cg-font-body);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+
+  mat-icon {
+    flex-shrink: 0;
+  }
+
+  &:hover,
+  &:focus-visible {
+    background: var(--cg-navy-2);
+  }
+}
