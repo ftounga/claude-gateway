@@ -3,7 +3,7 @@
  */
 
 /** Ce qu'on conclut d'une capacité. */
-export type CapabilityVerdict = 'ACTIVE' | 'DORMANTE' | 'DEBRANCHEE' | 'INDETERMINEE';
+export type CapabilityVerdict = 'ACTIVE' | 'DORMANTE' | 'DEBRANCHEE' | 'BRANCHEE' | 'INDETERMINEE';
 
 /** Une **hypothèse** tirée de la lecture du code — jamais un verdict (F-157). */
 export interface SourceHypothesis {

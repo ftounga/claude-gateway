@@ -17,7 +17,12 @@ import java.util.List;
  * @param paths     où elle vit, en chemins <b>réels</b> du dépôt (un test le vérifie)
  * @param activates la condition d'activation, en une phrase
  * @param signals   ce qui prouve qu'elle s'est déclenchée — un outil appelé, ou une marque dans
- *                  les mesures existantes ; c'est ce que SF-156-03 ira chercher
+ *                  les mesures existantes ; c'est ce que SF-156-03 ira chercher. <b>Vide = non
+ *                  mesurable par construction</b> (F-161 / SF-161-05) : certaines capacités
+ *                  réussissent en <b>n'émettant rien</b> — la porte du runner réussit quand un
+ *                  tour ne s'ouvre pas, le journal des ruptures quand il n'y a rien à consigner.
+ *                  Leur inventer un signal les ferait accuser de dormir alors qu'elles tournent ;
+ *                  elles sont jugées par leurs seuls {@code wirings}, gratuitement
  * @param wirings   ce qui prouve qu'elle est encore <b>branchée</b> dans le code (F-157 / SF-157-01),
  *                  éventuellement vide. Sans eux, « présente mais jamais déclenchée » et
  *                  « débranchée par un remaniement » se confondent sous le mot « dormante » — et
@@ -36,6 +41,31 @@ public record ProductCapability(
     public ProductCapability(String id, String name, String avoids, List<String> paths,
                              String activates, List<Signal> signals) {
         this(id, name, avoids, paths, activates, signals, List.of());
+    }
+
+    /**
+     * <b>Une capacité que rien ne peut mesurer</b> (F-161 / SF-161-05), jugée par ses seuls
+     * témoins de branchement.
+     *
+     * <p>Les témoins sont ici <b>obligatoires</b> : sans signal <b>ni</b> témoin, on ne pourrait
+     * rien dire du tout de la capacité, et la déclarer n'ajouterait que du bruit au rapport. Une
+     * garde de build le vérifie.</p>
+     */
+    public static ProductCapability unmeasurable(String id, String name, String avoids,
+                                                 List<String> paths, String activates,
+                                                 List<Wiring> wirings) {
+        return new ProductCapability(id, name, avoids, paths, activates, List.of(), wirings);
+    }
+
+    /**
+     * Vrai quand la période peut, en principe, dire quelque chose de cette capacité.
+     *
+     * <p>Faux ne veut pas dire « défaillante » : cela veut dire que la <b>question</b> « s'est-elle
+     * déclenchée ? » n'a pas de sens pour elle, et qu'il faut poser l'autre — « est-elle encore
+     * branchée ? ».</p>
+     */
+    public boolean isMeasurable() {
+        return !signals.isEmpty();
     }
 
     /**

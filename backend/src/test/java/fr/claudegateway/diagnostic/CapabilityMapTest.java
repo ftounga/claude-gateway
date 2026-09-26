@@ -105,15 +105,58 @@ class CapabilityMapTest {
     }
 
     @Test
-    @DisplayName("chaque capacité a AU MOINS un signal — sans lui, on ne saurait jamais si elle se déclenche")
-    void everyCapabilityHasASignal() {
+    @DisplayName("chaque capacité est JUGEABLE : un signal, ou à défaut un témoin de branchement")
+    void everyCapabilityCanBeJudged() {
         for (ProductCapability capability : CapabilityMap.capabilities()) {
-            assertThat(capability.signals())
-                    .as("« %s » sans signal : le diagnostic ne pourrait rien en dire", capability.id())
-                    .isNotEmpty();
+            // F-161 / SF-161-05 : une capacité peut n'avoir AUCUN signal — sa réussite est alors
+            // un événement qui n'a pas lieu (la porte du runner, le journal des ruptures). Mais
+            // sans signal NI témoin, on ne pourrait rien en dire du tout : la déclarer
+            // n'ajouterait que du bruit au rapport.
+            assertThat(capability.signals().isEmpty() && capability.wirings().isEmpty())
+                    .as("« %s » n'a ni signal ni témoin : le diagnostic ne pourrait strictement "
+                            + "rien en dire", capability.id())
+                    .isFalse();
             assertThat(capability.signals())
                     .allSatisfy(signal -> assertThat(signal.value()).isNotBlank());
         }
+    }
+
+    @Test
+    @DisplayName("F-161 : les capacités non mesurables sont CELLES-LÀ, et elles ont leurs témoins")
+    void theUnmeasurableOnesAreKnownAndWired() {
+        assertThat(CapabilityMap.capabilities().stream()
+                .filter(c -> !c.isMeasurable())
+                .map(ProductCapability::id))
+                .as("une capacité sans signal est une décision, pas un oubli : elle se déclare ici")
+                .containsExactlyInAnyOrder("porte-du-runner", "journal-des-ruptures");
+
+        for (ProductCapability capability : CapabilityMap.capabilities()) {
+            if (!capability.isMeasurable()) {
+                assertThat(capability.wirings())
+                        .as("« %s » ne peut être jugée que par ses témoins", capability.id())
+                        .isNotEmpty();
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("F-161 : la porte est jugée sur son SITE D'APPEL, pas seulement sur son code")
+    void theDoorIsJudgedOnItsCallSite() {
+        ProductCapability door = CapabilityMap.byId("porte-du-runner").orElseThrow();
+
+        assertThat(door.wirings()).hasSize(3);
+        assertThat(door.wirings()).extracting(ProductCapability.Wiring::path)
+                .as("sans le site d'appel, une porte supprimée de la boucle resterait invisible")
+                .contains("backend/src/main/java/fr/claudegateway/atelier/AtelierChatService.java");
+    }
+
+    @Test
+    @DisplayName("F-161 : le journal n'a PAS de signal de table — une table vide y est une bonne nouvelle")
+    void theDisconnectJournalHasNoTableSignal() {
+        assertThat(CapabilityMap.byId("journal-des-ruptures").orElseThrow().signals())
+                .as("`repo_index_paths` vide = jamais amorcé ; `runner_disconnects` vide = rien "
+                        + "n'a cassé. La même règle sur les deux dirait une bêtise.")
+                .isEmpty();
     }
 
     @Test
@@ -137,7 +180,9 @@ class CapabilityMapTest {
         assertThat(CapabilityMap.capabilities()).extracting(ProductCapability::id)
                 .contains("sous-agents", "exploration-parallele", "lecture-seule", "cache-de-prompt",
                         "index-du-depot", "compaction", "plan", "memoire-de-resolutions",
-                        "carte-du-poste");
+                        "carte-du-poste",
+                        // F-161 §2 : « il faudra les y ajouter » — la promesse est tenue ici.
+                        "porte-du-runner", "journal-des-ruptures");
     }
 
     @Test

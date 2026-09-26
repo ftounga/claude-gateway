@@ -52,9 +52,26 @@ public class WiringInspector {
             return notVerifiable(finding);
         }
         if (broken.isEmpty()) {
-            return verified(finding);
+            return capability.isMeasurable() ? verified(finding) : inPlace(finding);
         }
         return unwired(finding, broken);
+    }
+
+    /**
+     * <b>En place</b> (F-161 / SF-161-05) : capacité non mesurable dont tous les témoins
+     * répondent.
+     *
+     * <p>Pour une capacité mesurable, un témoin vérifié <b>ne conclut pas</b> — il déplace la
+     * question vers la condition d'activation. Pour une capacité qui ne peut rien émettre, il
+     * <b>est</b> la conclusion : c'est la seule question qu'on pouvait honnêtement lui poser, et
+     * la réponse est bonne. Elle sort donc des constats.</p>
+     */
+    private static CapabilityFinding inPlace(CapabilityFinding finding) {
+        return new CapabilityFinding(finding.capabilityId(), finding.name(),
+                CapabilityVerdict.BRANCHEE,
+                "Branchement vérifié dans le code. Rien à mesurer par ailleurs : sa réussite est "
+                        + "un événement qui n'a pas lieu — c'est tout son intérêt.",
+                finding.where(), finding.check(), null);
     }
 
     /** Le branchement est vérifié : la capacité ne se déclenche pas pour une AUTRE raison. */

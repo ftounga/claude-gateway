@@ -118,6 +118,9 @@ describe('AdminDiagnosticComponent (F-156 / SF-156-05)', () => {
 
     const text = fixture.nativeElement.textContent;
     expect(text).toContain('Rien à signaler');
+    // F-161 / SF-161-05 : certaines capacités comptées sont seulement EN PLACE — ne plus
+    // promettre qu'elles se sont toutes déclenchées.
+    expect(text).toContain('sont en ordre');
     expect(text).toContain('6 capacités observées');
   });
 
@@ -242,11 +245,13 @@ describe('AdminDiagnosticComponent (F-156 / SF-156-05)', () => {
       expect(parityLabel('NON_OBSERVEE')).toBe('Non observée');
     });
 
-    it('nomme les quatre verdicts, dont DÉBRANCHÉE', () => {
+    it('nomme les cinq verdicts, dont DÉBRANCHÉE et BRANCHÉE', () => {
       expect(verdictLabel('ACTIVE')).toBe('Active');
       expect(verdictLabel('DORMANTE')).toBe('Dormante');
       expect(verdictLabel('DEBRANCHEE')).toBe('Débranchée');
       expect(verdictLabel('INDETERMINEE')).toBe('Indéterminée');
+      // F-161 / SF-161-05 : une capacité qui ne peut rien émettre, mais dont le témoin répond.
+      expect(verdictLabel('BRANCHEE')).toBe('Branchée');
     });
   });
 });

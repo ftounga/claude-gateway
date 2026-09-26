@@ -34,6 +34,9 @@ export function verdictLabel(verdict: string): string {
     case 'DORMANTE': return 'Dormante';
     case 'DEBRANCHEE': return 'Débranchée';
     case 'INDETERMINEE': return 'Indéterminée';
+    // F-161 / SF-161-05 : branchée, et rien à mesurer — sa réussite est un événement qui n'a
+    // pas lieu. Elle est comptée avec ce qui est en ordre, jamais listée comme un constat.
+    case 'BRANCHEE': return 'Branchée';
     default: return 'Active';
   }
 }
@@ -102,7 +105,8 @@ export function verdictLabel(verdict: string): string {
             <p class="diag__clean">Rien à observer sur cette période.</p>
           } @else if (!r.findings.length) {
             <p class="diag__clean">
-              Rien à signaler — les {{ r.active }} capacités observées se sont déclenchées.
+              Rien à signaler — les {{ r.active }} capacités observées sont en ordre
+              (déclenchées, ou branchées sans rien à mesurer).
               @if (r.discarded > 0) {
                 <span class="diag__caveat">
                   ({{ r.discarded }} piste(s) écartée(s) : gain sous le seuil.)
