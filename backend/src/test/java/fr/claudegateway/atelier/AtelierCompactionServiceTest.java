@@ -292,6 +292,48 @@ class AtelierCompactionServiceTest {
         assertThat(outcome.compacted()).isTrue();
     }
 
+    // ------------------------------- F-121 / SF-121-18 : ratio de l'estimateur (4 → 3,5 car./token)
+
+    @Test
+    void estimateUsesThreeAndAHalfCharactersPerToken() {
+        // Le ratio est verrouillé par un témoin, pas seulement par une constante : ce qui est rejoué
+        // n'est pas de la prose (chemins, diffs, JSON de traces) et se tokenise plus densément.
+        // À 4 car./token l'estimation était basse d'environ 14 % — assez pour que le seuil soit
+        // franchi en réalité sans que la compaction se déclenche.
+        String text = "y".repeat(700);
+        List<AtelierMessage> history = List.of(message("USER", text, OffsetDateTime.now()));
+
+        long estimated = AtelierCompactionService.estimateReplayTokens(null, history);
+
+        assertThat(estimated).isEqualTo(200); // 700 / 3,5
+        assertThat(estimated).isGreaterThan(175); // ce que donnait l'ancien ratio (700 / 4)
+    }
+
+    @Test
+    void aThreadBetweenTheOldAndTheNewEstimateNowCompacts() {
+        // Fil calibré ENTRE les deux estimations : 380 caractères rejoués valent 95 tokens à
+        // l'ancien ratio (sous le seuil de test, 100) et 108 au nouveau (au-dessus). C'est
+        // exactement la zone où la compaction ne se déclenchait pas et où le filet réactif
+        // « prompt too long » rattrapait après coup.
+        StubAiAgentProvider provider = new StubAiAgentProvider();
+        provider.enqueueFinal("Résumé compact.");
+        OffsetDateTime t0 = OffsetDateTime.now().minusHours(1);
+        String chunk = "z".repeat(95);
+        List<AtelierMessage> history = new ArrayList<>(List.of(
+                message("USER", chunk, t0),
+                message("ASSISTANT", chunk, t0.plusMinutes(1)),
+                message("USER", chunk, t0.plusMinutes(2)),
+                message("ASSISTANT", chunk, t0.plusMinutes(3))));
+        stubHistory(history);
+
+        assertThat(AtelierCompactionService.estimateReplayTokens(null, history)).isEqualTo(108);
+
+        AtelierCompactionService.CompactionOutcome outcome =
+                service(provider).compactIfOversized(userId, workspace, null);
+
+        assertThat(outcome.compacted()).isTrue();
+    }
+
     // ------------------------------------- F-121 / SF-121-09 : gabarit sectionné du résumé
 
     @Test

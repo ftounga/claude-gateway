@@ -41,13 +41,23 @@ public class AtelierCompactionService {
     private static final Logger log = LoggerFactory.getLogger(AtelierCompactionService.class);
 
     /**
-     * Diviseur caractères → tokens de l'estimation (F-117 / SF-117-01). Volontairement une
-     * <b>heuristique</b> et non un décompte exact : ce dernier exigerait un appel réseau à chaque
-     * tour, précisément ce qu'on cherche à borner. Quatre caractères par token est le rapport usuel,
-     * et le seuil garde une marge large sous la fenêtre réelle — l'approximation ne peut pas conduire
-     * à un débordement, le filet réactif (SF-117-02) couvrant le résiduel.
+     * Diviseur caractères → tokens de l'estimation (F-117 / SF-117-01, ratio révisé par
+     * F-121 / SF-121-18). Volontairement une <b>heuristique</b> et non un décompte exact : ce dernier
+     * exigerait un appel réseau à chaque tour, précisément ce qu'on cherche à borner.
+     *
+     * <p><b>Pourquoi 3,5 et non 4.</b> Quatre caractères par token est le rapport usuel de la
+     * <b>prose</b>. Ce qui est rejoué ici n'en est pas : chemins de fichiers, diffs, sorties de
+     * commandes et JSON de trajectoires d'outils (jusqu'à douze tours depuis SF-119-03, comptés
+     * depuis F-121-00). Ce matériau se tokenise plus densément — ponctuation, identifiants
+     * {@code camelCase}, séparateurs de chemin et indentation coupent les tokens court —, si bien
+     * qu'à 4 l'estimation était <b>systématiquement basse d'environ 14 %</b> : le seuil était franchi
+     * en réalité alors que l'estimation le croyait tenu, et c'est le filet réactif « prompt too
+     * long » (SF-117-02) qui rattrapait après coup, au prix d'un tour relancé.</p>
+     *
+     * <p>L'erreur n'est pas symétrique : surestimer ne coûte qu'une compaction un peu plus tôt,
+     * sous-estimer coûte un tour perdu. L'arrondi va donc vers le pessimisme.</p>
      */
-    static final int CHARS_PER_TOKEN = 4;
+    static final double CHARS_PER_TOKEN = 3.5;
 
     /**
      * Titres du <b>gabarit sectionné</b> du résumé (F-121 / SF-121-09), dans l'ordre imposé. Le
@@ -470,7 +480,7 @@ public class AtelierCompactionService {
                 }
             }
         }
-        return chars / CHARS_PER_TOKEN;
+        return (long) (chars / CHARS_PER_TOKEN);
     }
 
     /** Messages que le prochain tour rejouera : tout le fil, ou ce qui suit la frontière. */
