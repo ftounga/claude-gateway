@@ -28,7 +28,7 @@ surtout une **visionneuse de deck complète**.
 | # | Sujet | Décision |
 |---|-------|----------|
 | D1 | Production | **Skill `pptx` (`python-pptx`)** déposée par le paquet de gouvernance ; l'agent écrit un script et le lance sur le terminal (poste ou sandbox). **Provider-First** : capacité relayée (exécution de code), **aucun** moteur IA réimplémenté. **Gateway-First** : le backend orchestre/stocke/affiche. |
-| D2 | Lecture in-app | **Deck lisible entièrement dans l'app** : conversion **serveur** du `.pptx` en **une image par slide** (LibreOffice headless, en **worker** — traitement lourd async) ; l'app rend une **visionneuse** (slide courante grand format + miniatures + navigation clavier/flèches). |
+| D2 | Lecture in-app | **Deck lisible entièrement dans l'app** : une **image par slide** + **visionneuse** (slide courante grand format + miniatures + navigation clavier/flèches). **Amendé deux fois** : (a) SF-129-03 a écarté le pod LibreOffice permanent (cluster à capacité) et rendu les images **sur le terminal** ; (b) **SF-129-06** fait rendre ces images **par le service de la gateway**, à partir de la description et avec le **chromium déjà présent** — parce que sur un poste verrouillé LibreOffice n'est pas là, et que l'exigence du PO tombait précisément là. Le rendu **fidèle au fichier** (LibreOffice serveur) reste possible en worker scale-to-zero **validé par le PO**, hors lot. |
 | D3 | Récupération | **Téléchargement du vrai `.pptx`** toujours disponible, à côté de l'aperçu. |
 | D4 | Périmètre | **PPTX d'abord** ; `docx`/`xlsx` = même moteur/patron, **plus tard** (SF-129-05). |
 
@@ -44,10 +44,19 @@ Un artefact **présentation** rattaché à un **projet/sujet** (isolation `user_
 | **SF-129-01** | **Skill `pptx` : l'agent produit un vrai .pptx** | Skill `.claude/skills/pptx` (recette `python-pptx` : titres, puces, images, tableaux, notes ; charte optionnelle) déposée par le paquet de gouvernance ; disponibilité/installation de `python-pptx` gérée et **échec nommé** si absente. L'agent produit un `.pptx` sur le terminal. | — |
 | **SF-129-02** | **Capturer la présentation dans l'app + téléchargement** | Le `.pptx` produit devient un **artefact** rattaché au projet/sujet (upload → stockage objet, patron F-109), listé, avec **bouton Télécharger** (le vrai fichier). Isolation `user_id`+`host_id`, refus nommés. | ✅ |
 | **SF-129-03** | **Visionneuse de deck complète (lisible entièrement)** | Conversion serveur `.pptx` → **images par slide** (LibreOffice headless, **worker** async ; bornes taille/nombre) ; **visionneuse** in-app : slide courante en grand, **miniatures** de toutes les slides, navigation (flèches/clavier), plein écran. C'est l'exigence « lisible entièrement dans l'appli ». | ✅ |
-| **SF-129-04** *(option)* | **Charte & gabarits** | Un gabarit de marque (navy/gold `DESIGN_SYSTEM.md`) et quelques dispositions prêtes (titre, section, contenu, comparaison) pour des decks cohérents sans repartir de zéro. | partiel |
-| **SF-129-05** *(plus tard)* | **DOCX & XLSX** | Même moteur/patron (`python-docx`, `openpyxl`) + rendu/lecture in-app adaptés (Word : pages ; Excel : feuilles/tableaux). La « suite Office comme Claude Code ». | ✅ |
+| **SF-129-04** ✅ | **Charte & gabarits** | Le deck sort **à la charte** (navy `#0B1020`, accent orange `#E07B39`, pied de page numéroté, 16:9), appliquée **par le constructeur de la gateway** ; `theme: "plain"` rend le gabarit Office d'origine. **Livrée** (PR #954). | — |
+| **SF-129-05** ✅ | **Le deck est construit par la gateway** | L'agent **décrit** son deck (`build_presentation`) ; la gateway construit le `.pptx` et le dépose dans le projet. Le poste n'installe **rien** (ni `python-pptx`, ni `pip`). **Livrée** (PR #823). | — |
+| **SF-129-06** ✅ | **L'aperçu des slides est rendu par la gateway** | Une image PNG par slide, rendue **dans le service** (le chromium déjà présent pour Mermaid) à partir de la **description**, déposée dans le projet et publiée par le chemin existant. La présentation devient lisible **entièrement dans l'app même sur un poste verrouillé** — plus de LibreOffice ni de `pdftoppm` à installer. | — |
+| **SF-129-07** *(plus tard)* | **DOCX & XLSX** | Même moteur/patron (`python-docx`, `openpyxl`) + rendu/lecture in-app adaptés (Word : pages ; Excel : feuilles/tableaux). La « suite Office comme Claude Code ». | ✅ |
 
-**Ordre** : SF-129-01 → 02 → 03 (chaîne de valeur v1) → 04 (option) → 05 (plus tard).
+**Ordre** : SF-129-01 → 02 → 03 (chaîne de valeur v1) → 05 (construction par la gateway) → 04
+(charte) → 06 (aperçu par la gateway) → 07 (plus tard).
+
+> **Arbitrage du 2026-09-26 — la collision de numéro SF-129-05.** Ce tableau réservait SF-129-05 au
+> `.docx`/`.xlsx` ; la livraison du 2026-09-24 (PR #823) a pris ce numéro pour « le deck est construit
+> par la gateway ». **Le numéro suit ce qui est livré** — renuméroter une livraison rendrait faux tout
+> ce qui la cite (commits, PR, historique, en-têtes de code). Le `.docx`/`.xlsx` devient donc
+> **SF-129-07**, et l'aperçu rendu par la gateway prend **SF-129-06**.
 
 ## 6. Faisabilité & points durs
 - **Conversion fidèle** : `python-pptx` **produit** mais ne **rend** pas. Le rendu fidèle passe par

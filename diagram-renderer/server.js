@@ -32,6 +32,23 @@ const MAX_DECK_BODY_BYTES = 24 * 1024 * 1024;
 const MAX_DECK_BYTES = 8 * 1024 * 1024;
 const DECK_TIMEOUT_MS = 60000;
 
+/**
+ * L'aperçu du deck (F-129 / SF-129-06) : une image par slide, rendue ICI avec le chromium que le
+ * service a déjà pour Mermaid. Le poste du client n'installe ni LibreOffice ni pdftoppm — c'était
+ * le dernier maillon qui lui restait à installer pour que la présentation soit lisible dans l'app.
+ */
+const PREVIEW_WIDTH = 1280;
+const PREVIEW_HEIGHT = 720;
+const MAX_PREVIEW_SLIDES = 30;
+const MAX_PREVIEW_BYTES = 2 * 1024 * 1024;
+const PREVIEW_TIMEOUT_MS = 20000;
+/** Trois rendus de front : au-delà, les chromium se disputent la mémoire du conteneur. */
+const PREVIEW_CONCURRENCY = 3;
+const CHROME = process.env.CHROME_BIN || "chromium";
+/** Les programmes appelés : figés dans l'image, ouverts par l'environnement pour pouvoir ÊTRE TESTÉS. */
+const PYTHON = process.env.PYTHON_BIN || "python3";
+const DECK_SCRIPT = process.env.DECK_SCRIPT || "/app/deck.py";
+
 const PORT = Number(process.env.PORT || 8080);
 
 /** La configuration puppeteer : chromium du système, sans bac à sable (on est déjà dans un conteneur). */
@@ -157,16 +174,63 @@ async function render(req, res) {
  */
 function buildDeck(spec, outputBase) {
   return new Promise((resolve, reject) => {
-    const child = execFile("python3", ["/app/deck.py"], { timeout: DECK_TIMEOUT_MS, maxBuffer: 1 << 20 },
+    const child = execFile(PYTHON, [DECK_SCRIPT], { timeout: DECK_TIMEOUT_MS, maxBuffer: 1 << 20 },
       (error, stdout, stderr) => {
         if (error) {
           reject(new Error((stderr || error.message || "").toString().slice(0, 500)));
           return;
         }
-        resolve((stdout || "").trim());
+        // Le fichier sur la première ligne ; puis une ligne « PREVIEW= » par slide, DANS L'ORDRE
+        // (F-129 / SF-129-06). Le marqueur suit la convention déjà posée par cloud.py.
+        const lines = (stdout || "").split("\n").map((l) => l.trim()).filter(Boolean);
+        const file = lines.find((l) => !l.startsWith("PREVIEW=")) || "";
+        const pages = lines.filter((l) => l.startsWith("PREVIEW="))
+          .map((l) => l.slice("PREVIEW=".length));
+        resolve({ file, pages });
       });
     child.stdin.end(JSON.stringify({ ...spec, output: outputBase }), "utf-8");
   });
+}
+
+/** Une page d'aperçu -> un PNG. Un profil par rendu : trois chromium ne partagent pas un profil. */
+function shoot(page, output, profile) {
+  return new Promise((resolve, reject) => {
+    const args = ["--headless=new", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage",
+      "--hide-scrollbars", "--force-device-scale-factor=1", "--virtual-time-budget=3000",
+      `--user-data-dir=${profile}`, `--window-size=${PREVIEW_WIDTH},${PREVIEW_HEIGHT}`,
+      `--screenshot=${output}`, "file://" + page];
+    execFile(CHROME, args, { timeout: PREVIEW_TIMEOUT_MS }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error((stderr || error.message || "").toString().slice(0, 300)));
+        return;
+      }
+      resolve(output);
+    });
+  });
+}
+
+/**
+ * Rend toutes les pages, par paquets de {@link PREVIEW_CONCURRENCY}, et renvoie les PNG DANS
+ * L'ORDRE des slides — un aperçu dont les slides sont mélangées est pire que pas d'aperçu.
+ */
+async function shootAll(pages, dir) {
+  const shots = new Array(pages.length);
+  let next = 0;
+  async function worker(slot) {
+    while (next < pages.length) {
+      const index = next++;
+      const output = path.join(dir, `apercu-${String(index + 1).padStart(3, "0")}.png`);
+      await shoot(pages[index], output, path.join(dir, `profil-${slot}`));
+      const png = await readFile(output);
+      if (png.length > MAX_PREVIEW_BYTES) {
+        throw new Error(`Image d'aperçu trop lourde (${png.length} octets).`);
+      }
+      shots[index] = png.toString("base64");
+    }
+  }
+  const slots = Math.min(PREVIEW_CONCURRENCY, pages.length);
+  await Promise.all(Array.from({ length: slots }, (_, slot) => worker(slot)));
+  return shots;
 }
 
 async function presentation(req, res) {
@@ -180,18 +244,37 @@ async function presentation(req, res) {
   if (!spec || typeof spec !== "object" || Array.isArray(spec)) {
     return fail(res, 400, "La description du deck est manquante (champ « spec »).");
   }
+  const wantsPreview = spec.preview === true;
+  if (wantsPreview && Array.isArray(spec.slides) && spec.slides.length > MAX_PREVIEW_SLIDES) {
+    return fail(res, 422, `Aperçu refusé : ${spec.slides.length} slides, maximum `
+      + `${MAX_PREVIEW_SLIDES}. Le fichier se produit sans aperçu (« preview »: false).`);
+  }
   const dir = await mkdtemp(path.join(tmpdir(), "cg-deck-"));
   try {
     const produced = await buildDeck(spec, path.join(dir, "deck"));
-    const file = await readFile(produced || path.join(dir, "deck.pptx"));
+    const file = await readFile(produced.file || path.join(dir, "deck.pptx"));
     if (file.length > MAX_DECK_BYTES) {
       return fail(res, 413, "Présentation trop lourde : " + file.length + " octets.");
     }
-    res.writeHead(200, {
-      "Content-Type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-      "Content-Length": file.length,
-    });
-    res.end(file);
+    if (!wantsPreview) {
+      res.writeHead(200, {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "Content-Length": file.length,
+      });
+      res.end(file);
+      return;
+    }
+    // L'aperçu ne fait JAMAIS échouer le deck : le fichier part, et l'échec du rendu est DIT.
+    let slides = [];
+    let previewError = "";
+    try {
+      slides = await shootAll(produced.pages, dir);
+    } catch (e) {
+      slides = [];
+      previewError = (e.message || "rendu d'aperçu en échec").slice(0, 300);
+    }
+    const body = JSON.stringify({ pptx: file.toString("base64"), slides, previewError });
+    send(res, 200, body, "application/json; charset=utf-8");
   } catch (e) {
     return fail(res, 422, (e.message || "Le deck n'a pas pu etre construit.").slice(0, 500));
   } finally {

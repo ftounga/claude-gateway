@@ -88,7 +88,7 @@ slides, une **navigation** (flèches ‹ ›, clavier ← →, clic sur une mini
 
 - Édition du deck dans l'app (on produit et on lit).
 - Animations/transitions (python-pptx/rendu ne les portent pas).
-- `docx`/`xlsx` → SF-129-05.
+- `docx`/`xlsx` → SF-129-07 (renuméroté le 2026-09-26 : SF-129-05 est la construction par la gateway).
 
 ---
 

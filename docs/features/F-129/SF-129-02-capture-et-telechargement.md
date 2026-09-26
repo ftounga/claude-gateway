@@ -91,7 +91,7 @@ ouvert d'office à l'ADMIN). Hors garde : pas d'outil, pas de guide.
   liste + téléchargement en 02 ; l'aperçu vient en 03).
 - Le partage par lien (pas dans le cadrage v1 des présentations).
 - Les versions multiples conservées (on **remplace** ; pas d'historique de versions comme les pages).
-- `docx`/`xlsx` → SF-129-05.
+- `docx`/`xlsx` → SF-129-07 (renuméroté le 2026-09-26 : SF-129-05 est la construction par la gateway).
 
 ---
 
