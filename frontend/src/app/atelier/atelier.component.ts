@@ -1982,7 +1982,9 @@ export class AtelierComponent implements OnInit, OnDestroy {
       case 'runner_missing_capability':
         return "Le runner de ce poste ne déclare pas les capacités nécessaires à ce tour.";
       case 'too_many_steers':
-        return 'Trop de précisions en attente pour ce message ; laissez-le avancer.';
+        // SF-121-11 : le refus vient du VOLUME en attente, pas du nombre de précisions — au-delà
+        // de dix, elles se fondent dans la dernière au lieu d'être refusées.
+        return 'Trop de texte en attente pour ce message ; laissez-le avancer.';
       case 'quota_exceeded':
         return 'Quota de consommation atteint. Rachetez des tokens ou attendez la prochaine période.';
       case 'workspace_not_found':

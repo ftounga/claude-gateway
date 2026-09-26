@@ -1341,6 +1341,25 @@ describe('AtelierComponent', () => {
     expect(component.messages().length).toBe(0);
   });
 
+  // SF-121-11 : au-delà de dix précisions, le serveur les FOND dans la dernière au lieu de les
+  // refuser. Le seul refus restant vient du VOLUME de texte en attente — l'écran doit dire cette
+  // cause-là, pas « trop de précisions », qui n'existe plus.
+  it('dit que c’est le TEXTE en attente qui est de trop sur too_many_steers (SF-121-11)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.engine.set('LOCAL_MACHINE');
+    service.streamChat.and.callFake((_id, _message, handlers) => {
+      handlers.onError('too_many_steers');
+      return Promise.resolve();
+    });
+
+    component.draft.set('Fais un truc');
+    component.send();
+
+    const message = snackBar.open.calls.mostRecent().args[0] as string;
+    expect(message).toBe('Trop de texte en attente pour ce message ; laissez-le avancer.');
+  });
+
   it('moteur « ma machine » : send() appelle streamChat, pas streamAgent (F-39 SF-39-08)', () => {
     setup();
     component.activeWorkspaceId.set('w1');
