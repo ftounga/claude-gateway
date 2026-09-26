@@ -40,6 +40,15 @@ class PlanCompletudeCheckpointTest {
         assertThat(gate.kind()).isEqualTo(AtelierCheckpointKind.END_OF_TURN);
     }
 
+    @Test
+    @DisplayName("F-121 / SF-121-17 : juge aussi un tour qui n'a rien écrit — elle juge le PLAN")
+    void judgesTurnsWithoutWrites() {
+        // Sans cette déclaration, la neutralisation de SF-121-17 écarterait la porte de tout tour
+        // d'investigation (lectures, bash) et SF-121-05 ne vaudrait plus que pour les tours qui
+        // écrivent. Les contextes de ce test n'ont d'ailleurs aucun chemin écrit.
+        assertThat(gate.judgesTurnWithoutWrites()).isTrue();
+    }
+
     // -------------------------------------------------------------------- bloque
 
     @Test

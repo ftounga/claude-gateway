@@ -27,6 +27,11 @@ import org.springframework.stereotype.Component;
  *       existe, il ne fait rien. F-51 décidera ce qui s'y branche.</li>
  * </ol>
  *
+ * <p><b>Une quatrième règle, pour la fin de tour</b> (F-121 / SF-121-17) : un tour qui <i>répond</i>
+ * n'est pas renvoyé au travail. En mode Réponse/Plan, aucun contrôle de fin de tour n'est interrogé ;
+ * sur un tour qui n'a écrit aucun fichier, seuls ceux qui déclarent juger ces tours-là le sont. Voir
+ * {@link #runEndOfTurn(AtelierCheckpointContext, boolean)}.</p>
+ *
  * <p>Le journal ne dit <b>jamais</b> ce qui a été jugé : ni chemin, ni contenu, ni action corrective.
  * C'est la règle de l'audit runner (SF-38-08), et elle vaut ici — un contrôle porte, par
  * construction, sur ce que l'utilisateur écrit.</p>
@@ -96,11 +101,56 @@ public class AtelierCheckpointRunner {
      *         jamais {@code null}
      */
     public AtelierCheckpointVerdict run(AtelierCheckpointKind kind, AtelierCheckpointContext context) {
+        return run(kind, context, false);
+    }
+
+    /**
+     * Interroge les contrôles de <b>fin de tour</b>, en écartant ceux qui n'ont rien à juger
+     * (F-121 / SF-121-17).
+     *
+     * <p>Deux tours ne relèvent pas de ce crochet, et les y soumettre relançait un tour qui n'avait
+     * fait que répondre — l'écart de parité corrigé ici :</p>
+     * <ol>
+     *   <li><b>Un tour en mode Réponse/Plan</b> ({@code answeringTurn}) : aucune mutation n'y est
+     *       même déclarée (SF-120-02). <b>Aucun</b> contrôle n'est interrogé — y compris la porte de
+     *       complétude, car en mode plan le tour <i>est</i> le plan, et ses étapes sont par
+     *       construction encore à faire.</li>
+     *   <li><b>Un tour qui n'a écrit aucun fichier</b> : seuls les contrôles qui déclarent juger ces
+     *       tours-là ({@link AtelierCheckpoint#judgesTurnWithoutWrites()}) sont interrogés. Les
+     *       autres jugent le travail produit ; sans travail produit, ils n'ont rien à dire, et les
+     *       interroger coûterait la résolution des paquets actifs à chaque tour.</li>
+     * </ol>
+     *
+     * <p>Tout le reste est inchangé : premier blocage gagnant (D3), contrôle qui lève ignoré (D2),
+     * report retenu à défaut de blocage (F-93 / SF-93-04).</p>
+     *
+     * @param context      contexte de fin de tour ; {@code null} est traité comme « rien écrit »
+     * @param answeringTurn vrai si le tour est en mode {@code ANSWER_PLAN} (F-120 / SF-120-02)
+     */
+    public AtelierCheckpointVerdict runEndOfTurn(AtelierCheckpointContext context,
+            boolean answeringTurn) {
+        if (answeringTurn) {
+            // Un tour qui répond ou propose un plan n'est jamais renvoyé au travail.
+            return AtelierCheckpointVerdict.proceed();
+        }
+        boolean nothingWritten = context == null || context.writtenPaths().isEmpty();
+        return run(AtelierCheckpointKind.END_OF_TURN, context, nothingWritten);
+    }
+
+    /**
+     * @param writeScopedOnly vrai quand le tour n'a rien écrit : les contrôles qui jugent le travail
+     *                        produit (le défaut) sont alors écartés (F-121 / SF-121-17)
+     */
+    private AtelierCheckpointVerdict run(AtelierCheckpointKind kind, AtelierCheckpointContext context,
+            boolean writeScopedOnly) {
         // F-93 / SF-93-04 : un report ne bloque pas ; il est retenu, et rendu seulement si aucun
         // contrôle ne bloque — le premier blocage garde la priorité (D3).
         AtelierCheckpointVerdict deferred = null;
         for (AtelierCheckpoint checkpoint : checkpoints) {
             if (kind != kindOf(checkpoint)) {
+                continue;
+            }
+            if (writeScopedOnly && !judgesTurnWithoutWrites(checkpoint)) {
                 continue;
             }
             AtelierCheckpointVerdict verdict = evaluateSafely(checkpoint, context);
@@ -153,6 +203,20 @@ public class AtelierCheckpointRunner {
             log.warn("Point de contrôle ignoré : {} n'a pas su dire à quoi il s'applique ({})",
                     checkpoint.getClass().getSimpleName(), ex.getClass().getSimpleName());
             return null;
+        }
+    }
+
+    /**
+     * {@code judgesTurnWithoutWrites()} d'un contrôle (F-121 / SF-121-17), sans jamais laisser une
+     * implémentation bancale casser le tour : un contrôle qui lève ici est écarté, comme ailleurs.
+     */
+    private static boolean judgesTurnWithoutWrites(AtelierCheckpoint checkpoint) {
+        try {
+            return checkpoint.judgesTurnWithoutWrites();
+        } catch (RuntimeException ex) {
+            log.warn("Point de contrôle ignoré : {} n'a pas su dire s'il juge un tour sans écriture ({})",
+                    checkpoint.getClass().getSimpleName(), ex.getClass().getSimpleName());
+            return false;
         }
     }
 

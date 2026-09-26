@@ -37,4 +37,30 @@ public interface AtelierCheckpoint {
      *         {@code null} est traité comme « passe »
      */
     AtelierCheckpointVerdict evaluate(AtelierCheckpointContext context);
+
+    /**
+     * Ce contrôle juge-t-il aussi un tour qui n'a <b>rien écrit</b> ? (F-121 / SF-121-17)
+     *
+     * <p><b>Le défaut est {@code false}, et c'est la norme.</b> Un contrôle de fin de tour juge le
+     * <b>travail produit</b> : les fichiers écrits pendant le tour. L'interroger sur un tour qui n'a
+     * fait que répondre à une question ne peut rien produire d'utile — et le renvoi au travail qui
+     * s'ensuivrait est précisément l'écart de parité que SF-121-17 corrige (Claude Code ne relance
+     * jamais un tour de pure réponse).</p>
+     *
+     * <p><b>Rendre {@code true} est une exception assumée</b>, réservée à un contrôle qui juge le
+     * <b>tour lui-même</b> plutôt que ce qu'il a écrit : c'est le cas de la porte de complétude
+     * (SF-121-05), qui compare l'état du plan et doit continuer de refuser la clôture d'un tour
+     * d'investigation laissant des étapes en plan.</p>
+     *
+     * <p>Sans effet en mode Réponse/Plan : ce tour-là n'interroge <b>aucun</b> contrôle de fin de
+     * tour, quelle que soit cette déclaration. Sans effet non plus sur les autres points
+     * d'accroche ({@code AFTER_FILE_WRITE}, {@code BEFORE_COMMAND}), qui portent leur propre
+     * contexte.</p>
+     *
+     * <p>Une implémentation qui lève ici est <b>ignorée</b>, comme partout ailleurs dans F-50 : le
+     * contrôle est écarté du tour, il ne le casse pas.</p>
+     */
+    default boolean judgesTurnWithoutWrites() {
+        return false;
+    }
 }

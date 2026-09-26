@@ -285,4 +285,143 @@ class AtelierCheckpointRunnerTest {
                 workspaceId, "x", List.of(), AtelierMachineReach.UNKNOWN, plan);
         assertThat(withPlan.plan()).isEqualTo(plan);
     }
+
+    // ------------------------------------------------------------------ F-121 / SF-121-17
+    // Le crochet de fin de tour ne renvoie plus au travail un tour qui RÉPOND : mode Réponse/Plan,
+    // ou tour n'ayant écrit aucun fichier.
+
+    /** Contrôle de fin de tour qui déclare — ou non — juger les tours sans écriture. */
+    private static final class EndOfTurnCheckpoint implements AtelierCheckpoint {
+        private final String name;
+        private final boolean judgesWithoutWrites;
+        private final boolean scopeFails;
+        private final List<String> log;
+
+        EndOfTurnCheckpoint(String name, boolean judgesWithoutWrites, boolean scopeFails,
+                List<String> log) {
+            this.name = name;
+            this.judgesWithoutWrites = judgesWithoutWrites;
+            this.scopeFails = scopeFails;
+            this.log = log;
+        }
+
+        @Override
+        public AtelierCheckpointKind kind() {
+            return AtelierCheckpointKind.END_OF_TURN;
+        }
+
+        @Override
+        public boolean judgesTurnWithoutWrites() {
+            if (scopeFails) {
+                throw new IllegalStateException("boum");
+            }
+            return judgesWithoutWrites;
+        }
+
+        @Override
+        public AtelierCheckpointVerdict evaluate(AtelierCheckpointContext context) {
+            log.add(name);
+            return AtelierCheckpointVerdict.block("Corrige " + name + ".");
+        }
+    }
+
+    private AtelierCheckpointContext turnWithoutWrites() {
+        return AtelierCheckpointContext.endOfTurn(userId, workspaceId, "Voici la réponse.",
+                List.of());
+    }
+
+    private AtelierCheckpointContext turnThatWrote() {
+        return AtelierCheckpointContext.endOfTurn(userId, workspaceId, "C'est écrit.",
+                List.of("src/a.ts"));
+    }
+
+    @Test
+    void anAnsweringTurnAsksNoEndOfTurnCheckpointAtAll() {
+        // Mode Réponse/Plan : aucune mutation n'y est même déclarée — y compris un contrôle qui
+        // déclare juger les tours sans écriture (la porte de complétude) reste hors jeu.
+        List<String> log = new ArrayList<>();
+        AtelierCheckpointRunner runner = new AtelierCheckpointRunner(List.of(
+                new EndOfTurnCheckpoint("ordinaire", false, false, log),
+                new EndOfTurnCheckpoint("plan", true, false, log)));
+
+        assertThat(runner.runEndOfTurn(turnThatWrote(), true).blocked()).isFalse();
+        assertThat(log).isEmpty();
+    }
+
+    @Test
+    void aTurnThatWroteNothingSkipsTheCheckpointsThatJudgeWrittenWork() {
+        List<String> log = new ArrayList<>();
+        AtelierCheckpointRunner runner = new AtelierCheckpointRunner(
+                List.of(new EndOfTurnCheckpoint("ordinaire", false, false, log)));
+
+        assertThat(runner.runEndOfTurn(turnWithoutWrites(), false).blocked()).isFalse();
+        assertThat(log).isEmpty();
+    }
+
+    @Test
+    void aCheckpointThatJudgesTheTurnItselfStillRunsWithoutAnyWrite() {
+        // L'exception assumée : la porte de complétude (SF-121-05) juge le PLAN, pas les fichiers.
+        List<String> log = new ArrayList<>();
+        AtelierCheckpointRunner runner = new AtelierCheckpointRunner(List.of(
+                new EndOfTurnCheckpoint("ordinaire", false, false, log),
+                new EndOfTurnCheckpoint("plan", true, false, log)));
+
+        AtelierCheckpointVerdict verdict = runner.runEndOfTurn(turnWithoutWrites(), false);
+
+        assertThat(verdict.blocked()).isTrue();
+        assertThat(verdict.correction()).isEqualTo("Corrige plan.");
+        assertThat(log).containsExactly("plan");
+    }
+
+    @Test
+    void aTurnThatWroteStillAsksEveryCheckpoint() {
+        // Non-régression stricte de F-50 / SF-50-02 : dès qu'un fichier est écrit, rien ne change.
+        List<String> log = new ArrayList<>();
+        AtelierCheckpointRunner runner = new AtelierCheckpointRunner(
+                List.of(new EndOfTurnCheckpoint("ordinaire", false, false, log)));
+
+        AtelierCheckpointVerdict verdict = runner.runEndOfTurn(turnThatWrote(), false);
+
+        assertThat(verdict.blocked()).isTrue();
+        assertThat(verdict.correction()).isEqualTo("Corrige ordinaire.");
+        assertThat(log).containsExactly("ordinaire");
+    }
+
+    @Test
+    void aNullContextIsTreatedAsATurnWithoutWrites() {
+        List<String> log = new ArrayList<>();
+        AtelierCheckpointRunner runner = new AtelierCheckpointRunner(List.of(
+                new EndOfTurnCheckpoint("ordinaire", false, false, log),
+                new EndOfTurnCheckpoint("plan", true, false, log)));
+
+        assertThat(runner.runEndOfTurn(null, false).blocked()).isTrue();
+        assertThat(log).containsExactly("plan");
+    }
+
+    @Test
+    void aCheckpointThatFailsToSayItsScopeIsIgnored() {
+        // Repli passant (décision D2 de F-50) : un contrôle bancal est écarté, il ne casse pas le
+        // tour et ne s'invite pas sur un tour qui a seulement répondu.
+        List<String> log = new ArrayList<>();
+        AtelierCheckpointRunner runner = new AtelierCheckpointRunner(
+                List.of(new EndOfTurnCheckpoint("cassé", true, true, log)));
+
+        assertThat(runner.runEndOfTurn(turnWithoutWrites(), false).blocked()).isFalse();
+        assertThat(log).isEmpty();
+        // Sur un tour qui a écrit, il est interrogé comme avant : la portée n'est plus consultée.
+        assertThat(runner.runEndOfTurn(turnThatWrote(), false).blocked()).isTrue();
+        assertThat(log).containsExactly("cassé");
+    }
+
+    @Test
+    void theOtherHooksAreUntouchedByTheEndOfTurnNeutralisation() {
+        // AFTER_FILE_WRITE et BEFORE_COMMAND passent toujours par run(kind, context) : la portée
+        // « tour sans écriture » ne les concerne pas.
+        List<String> log = new ArrayList<>();
+        AtelierCheckpointRunner runner = new AtelierCheckpointRunner(
+                List.of(blocking("écriture", "Corrige A.", log)));
+
+        assertThat(runner.run(AtelierCheckpointKind.AFTER_FILE_WRITE, context()).blocked()).isTrue();
+        assertThat(log).containsExactly("écriture");
+    }
 }

@@ -21,8 +21,9 @@ import fr.claudegateway.atelier.AtelierPlan;
  * coché — le ressenti « il abandonne en route ».</p>
  *
  * <p><b>Ne se déclenche que si un plan existe.</b> Un tour sans {@code set_plan} — une simple réponse,
- * une question — porte un plan vide et passe sans bruit. La neutralisation fine du crochet en mode
- * Réponse/Plan relève de F-121-17 ; ici, l'absence de plan suffit à écarter ces tours.</p>
+ * une question — porte un plan vide et passe sans bruit. Depuis SF-121-17, le crochet lui-même
+ * n'interroge plus aucun contrôle en mode Réponse/Plan : cette porte n'y est donc jamais consultée,
+ * et un plan soumis à approbation ne peut plus rebloquer le tour qui le propose.</p>
  *
  * <p><b>Anti-boucle.</b> Aucun garde nouveau : la boucle borne déjà les refus de fin de tour à
  * {@code MAX_END_OF_TURN_BLOCKS} (F-50 / SF-50-02). Après ce plafond, la main est rendue même si le
@@ -51,6 +52,20 @@ public class PlanCompletudeCheckpoint implements AtelierCheckpoint {
     @Override
     public AtelierCheckpointKind kind() {
         return AtelierCheckpointKind.END_OF_TURN;
+    }
+
+    /**
+     * Exception assumée à la neutralisation de SF-121-17 : cette porte juge le <b>plan du tour</b>,
+     * pas les fichiers qu'il a écrits. Un tour d'investigation — lectures, {@code bash}, aucune
+     * écriture — qui laisse des étapes en plan doit continuer d'être refusé, sinon SF-121-05 ne
+     * vaudrait plus que pour les tours qui écrivent.
+     *
+     * <p>Sans effet en mode Réponse/Plan : ce tour-là n'interroge aucun contrôle de fin de tour, et
+     * c'est voulu — un plan de proposition est, par construction, entièrement à faire.</p>
+     */
+    @Override
+    public boolean judgesTurnWithoutWrites() {
+        return true;
     }
 
     @Override
