@@ -96,6 +96,33 @@ class AtelierCompactionServiceTest {
     }
 
     @Test
+    void compactionNeverTouchesTheManualFoldMarker() {
+        // F-117 / SF-117-05 : la compaction déplace la frontière de rejeu mais LAISSE INTACT le
+        // marqueur de repli du nouveau départ manuel — même quand une compaction survient APRÈS un
+        // nouveau départ. Sinon des tours se replieraient à l'écran sans que rien n'ait été demandé.
+        OffsetDateTime foldedAt = OffsetDateTime.now().minusHours(4);
+        workspace.setChatHistoryFoldedAt(foldedAt);
+        StubAiAgentProvider provider = new StubAiAgentProvider();
+        provider.enqueueFinal("Résumé : objectif X.");
+        OffsetDateTime t0 = OffsetDateTime.now().minusHours(3);
+        List<AtelierMessage> history = new ArrayList<>(List.of(
+                message("USER", longText("demande 1"), t0),
+                message("ASSISTANT", longText("réponse 1"), t0.plusMinutes(1)),
+                message("USER", longText("demande 2"), t0.plusMinutes(2)),
+                message("ASSISTANT", longText("réponse 2"), t0.plusMinutes(3))));
+        stubHistory(history);
+
+        AtelierCompactionService.CompactionOutcome outcome =
+                service(provider).compactIfOversized(userId, workspace, null);
+
+        assertThat(outcome.compacted()).isTrue();
+        // La frontière de rejeu a bien avancé...
+        assertThat(workspace.getChatThreadStartedAt()).isEqualTo(t0.plusMinutes(2));
+        // ...mais le marqueur de repli d'affichage, lui, n'a pas bougé.
+        assertThat(workspace.getChatHistoryFoldedAt()).isEqualTo(foldedAt);
+    }
+
+    @Test
     void doesNothingUnderThreshold() {
         StubAiAgentProvider provider = new StubAiAgentProvider();
         stubHistory(new ArrayList<>(List.of(

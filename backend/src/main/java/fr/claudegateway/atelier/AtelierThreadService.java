@@ -79,7 +79,23 @@ public class AtelierThreadService {
                 .map(step -> new AtelierResumeResponse.PlanStep(step.title(), step.status().label()))
                 .toList();
         return new AtelierResumeResponse(replayable.size(), last, workspace.getChatThreadStartedAt(),
-                idle ? "IDLE" : "NONE", workspace.getChatThreadMode(), planSteps);
+                foldedTurns(userId, workspace), idle ? "IDLE" : "NONE", workspace.getChatThreadMode(),
+                planSteps, "AUCUN", null);
+    }
+
+    /**
+     * Combien de messages l'écran replie derrière « Voir l'historique » (F-117 / SF-117-05) : ceux
+     * d'avant le dernier <b>nouveau départ manuel</b>. {@code 0} tant qu'aucun nouveau départ n'a été
+     * demandé — la compaction automatique (SF-117-01), qui ne touche pas ce marqueur, ne replie rien.
+     * Comptage isolé sur {@code user_id}, comme toute lecture de cette table.
+     */
+    private int foldedTurns(UUID userId, Workspace workspace) {
+        OffsetDateTime foldedAt = workspace.getChatHistoryFoldedAt();
+        if (foldedAt == null) {
+            return 0;
+        }
+        return (int) messageRepository
+                .countByWorkspaceIdAndUserIdAndCreatedAtLessThan(workspace.getId(), userId, foldedAt);
     }
 
     /**
@@ -106,9 +122,18 @@ public class AtelierThreadService {
         // reporte ni un plan ni un mode d'un fil qu'on vient de laisser derrière soi.
         workspace.setChatThreadMode(null);
         workspace.setChatThreadPlan(null);
+        // F-117 / SF-117-05 : poser le marqueur de repli d'affichage — et LUI SEUL le fait, jamais
+        // la compaction. L'écran replie désormais les tours d'avant ce point derrière « Voir
+        // l'historique ». Point fixe : une compaction ultérieure déplacera `chatThreadStartedAt`
+        // sans étendre ce repli.
+        workspace.setChatHistoryFoldedAt(closing);
         workspaceRepository.save(workspace);
-        return new AtelierResumeResponse(0, null, workspace.getChatThreadStartedAt(), "NONE",
-                null, List.of(), bilan, reportOf(decision, workspace));
+        // Tous les messages du fil sont désormais antérieurs au marqueur qu'on vient de poser : ils
+        // se replient tous. Le comptage traverse la même isolation `user_id`.
+        int foldedTurns = (int) messageRepository
+                .countByWorkspaceIdAndUserIdAndCreatedAtLessThan(workspace.getId(), userId, closing);
+        return new AtelierResumeResponse(0, null, workspace.getChatThreadStartedAt(), foldedTurns,
+                "NONE", null, List.of(), bilan, reportOf(decision, workspace));
     }
 
     /**
