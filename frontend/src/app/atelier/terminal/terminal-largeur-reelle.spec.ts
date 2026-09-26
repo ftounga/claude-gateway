@@ -445,4 +445,111 @@ describe('AtelierTerminalComponent — largeur réelle (F-158 / SF-158-10)', () 
         .toBeGreaterThanOrEqual(12);
     });
   });
+
+  // ------------------------------------------------------------------ F-158 / SF-158-16
+  // LE FIL DU TERMINAL « RAILED » (rail « Vos questions », F-126) NE DÉBORDE PLUS SUR MOBILE.
+  //
+  // Cause racine (mesurée en Chrome à 390 px) : l'override mobile de `.terminal-scrollback--railed`
+  // utilisait `grid-template-columns: 1fr` — or `1fr` = `minmax(auto, 1fr)`, dont le minimum de piste
+  // est le min-content de ses items. Le fil (`.terminal-thread`) porte `min-width: 0` et ne dilate
+  // donc PAS la piste ; mais le RAIL (`.terminal-qrail`, sœur de grille sans `min-width: 0`) le fait :
+  // une longue ligne insécable dans une question s'affiche dans `.terminal-qrail__label` dont le
+  // `-webkit-line-clamp` NE plafonne PAS son min-content, ce qui gonfle l'unique piste (mesuré ~6400 px)
+  // et étire le FIL avec elle (les deux items partagent la piste), d'où des messages coupés à droite.
+  // Le correctif — `minmax(0, 1fr)` — fixe le minimum de piste à 0 : la colonne suit la largeur du
+  // conteneur, le fil reste borné, le contenu se replie / défile dans ses propres boîtes.
+  //
+  // POURQUOI CE TEST ET PAS LES PRÉCÉDENTS : ils mesuraient `.terminal-scrollback` (le conteneur
+  // clippant, borné par `overflow-x: hidden`) — jamais `.terminal-thread` (le FIL, lui dilaté à la
+  // largeur de la piste). Ici on mesure LE FIL. Rouge avec `1fr`, vert avec `minmax(0, 1fr)`.
+  describe('fil railed — la grille mobile ne déborde plus (SF-158-16)', () => {
+    /**
+     * Rend un vrai tour AVEC rail « Vos questions » : une question de l'utilisateur (⇒ `userQuestions`
+     * non vide ⇒ classe `--railed` posée) portant une longue ligne insécable (elle alimente le rail),
+     * plus un bloc dont la commande est une longue ligne de code insécable (une « ligne de code dans
+     * un message »). Le contenu est volontairement sans espace ni tiret : aucune coupure naturelle.
+     */
+    function renderRailedWideTurn(): void {
+      const c = fixture.componentInstance;
+      c.readOnly = false;
+      c.messages = [
+        {
+          id: 'u1',
+          role: 'USER',
+          content: 'Regarde ' + 'bucket_data_ingestion_tfstate_dev_terraform_'.repeat(20),
+          actions: [],
+        },
+        {
+          id: 'a1',
+          role: 'ASSISTANT',
+          content: '',
+          actions: [],
+          terminal: [
+            {
+              tool: 'bash',
+              command: 'cat ' + 'usrlocallibclauderunnerjar'.repeat(20),
+              toolUseId: null,
+              threadId: null,
+              output: '',
+              hasOutput: false,
+              error: false,
+              expanded: false,
+            },
+          ],
+        },
+      ] as never;
+      fixture.detectChanges();
+    }
+
+    it('à 390 px, avec le rail et un contenu large, le FIL (.terminal-thread) tient dans l\'écran', () => {
+      renderRailedWideTurn();
+      applyTerminalMobileRules();
+      host.style.width = '390px';
+      void host.getBoundingClientRect();
+
+      const scrollback = host.querySelector('.terminal-scrollback') as HTMLElement;
+      expect(scrollback).withContext('.terminal-scrollback absente').toBeTruthy();
+      expect(scrollback.classList.contains('terminal-scrollback--railed'))
+        .withContext('le rail « Vos questions » doit être actif (grille --railed)')
+        .toBe(true);
+
+      const thread = host.querySelector('.terminal-thread') as HTMLElement;
+      expect(thread).withContext('.terminal-thread absent').toBeTruthy();
+      // LE cœur du correctif : sous `1fr` le fil était dilaté (~6400 px) par le rail ; sous
+      // `minmax(0, 1fr)` il reste borné à la largeur de l'écran.
+      expect(thread.clientWidth)
+        .withContext('le FIL doit rester dans 390 px (piste minmax(0,1fr), pas 1fr)')
+        .toBeLessThanOrEqual(390);
+    });
+
+    it('à 390 px, aucun enfant direct du fil ne déborde au-delà de la largeur du fil', () => {
+      renderRailedWideTurn();
+      applyTerminalMobileRules();
+      host.style.width = '390px';
+      void host.getBoundingClientRect();
+      const thread = host.querySelector('.terminal-thread') as HTMLElement;
+      for (const child of Array.from(thread.children) as HTMLElement[]) {
+        // Aucun enfant direct du fil ne dépasse l'écran (390 px, tolérance 1 px sous-pixel). Sous `1fr`
+        // le fil était étiré à ~6400 px et ses enfants avec ; sous `minmax(0,1fr)` ils se replient.
+        expect(child.offsetWidth)
+          .withContext(`un enfant direct du fil déborde de l'écran (${child.className || child.tagName})`)
+          .toBeLessThanOrEqual(391);
+      }
+    });
+
+    it('DESKTOP (1440 px, sans la feuille mobile) : la grille railed garde ses deux pistes (…232px)', () => {
+      // Aucun applyTerminalMobileRules() : à 1440 px les règles @media 819px ne s'appliquent pas →
+      // le desktop garde `grid-template-columns: minmax(0, 1fr) 232px`. Garde-fou de non-régression.
+      renderRailedWideTurn();
+      const scrollback = host.querySelector('.terminal-scrollback') as HTMLElement;
+      expect(scrollback.classList.contains('terminal-scrollback--railed')).toBe(true);
+      const tracks = getComputedStyle(scrollback).gridTemplateColumns.trim().split(/\s+/);
+      expect(tracks.length)
+        .withContext('le desktop doit garder DEUX pistes (fil + rail 232px), pas une seule')
+        .toBe(2);
+      expect(tracks[1])
+        .withContext('la seconde piste (le rail) doit rester 232px en desktop')
+        .toBe('232px');
+    });
+  });
 });

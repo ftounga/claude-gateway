@@ -24,8 +24,12 @@
 /* Sous 819 px : une seule colonne, le rail en tête (comme la maquette). Point de rupture unique de la
    charte (F-158 / SF-158-10 : uniformisation 820 -> 819, DESIGN_SYSTEM `_breakpoints.scss`). */
 @media (max-width: 819px) {
+  /* `minmax(0, 1fr)`, PAS `1fr` : `1fr` = `minmax(auto, 1fr)`, dont le minimum est le min-content
+     du fil — une longue ligne de code insécable force alors la piste à ~504 px et `overflow-x: hidden`
+     (mobile) clippe la partie droite (F-158 / SF-158-16, correctif P0). Minimum 0 → la colonne suit la
+     largeur du conteneur ; le contenu se replie et les blocs `pre`/`table`/`code` défilent chez eux. */
   .terminal-scrollback--railed {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .terminal-scrollback--railed .terminal-qrail {
