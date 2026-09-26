@@ -562,6 +562,15 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     private final AgentReasoning stepReasoning;
     /**
+     * Raisonnement d'un tour de continuation qui <b>ré-escalade sur signal de difficulté</b>
+     * (F-121 / SF-121-08, plafond du chemin F-119 / SF-119-01) : effort configurable
+     * ({@code app.atelier.escalate-effort}), <b>repli sur {@link #reasoning}</b> quand il n'est pas
+     * exprimé — le comportement d'avant SF-121-08, où « remonter » l'effort voulait dire revenir au
+     * niveau normal. Réglé à {@code xhigh}/{@code max}, il ne paie la profondeur <b>que</b> sur les
+     * tours d'incident, sans toucher aux premiers tours ni aux continuations qui roulent.
+     */
+    private final AgentReasoning escalateReasoning;
+    /**
      * Drapeau de repli de l'effort adaptatif (F-118 / SF-118-01). Faux : l'effort normal est appliqué
      * à chaque étape (comportement d'avant F-118), réglable par variable d'environnement.
      */
@@ -1035,6 +1044,10 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.taskModel = atelierProperties.taskModel();
         this.reasoning = new AgentReasoning(true, atelierProperties.effort());
         this.stepReasoning = new AgentReasoning(true, atelierProperties.stepEffort());
+        // F-121 / SF-121-08 : plafond de la ré-escalade. Le record garantit déjà le repli sur
+        // `effort` quand le réglage n'est pas exprimé — sans configuration, ce raisonnement est donc
+        // égal à `reasoning` et rien ne change.
+        this.escalateReasoning = new AgentReasoning(true, atelierProperties.escalateEffort());
         this.adaptiveEffort = !Boolean.FALSE.equals(atelierProperties.adaptiveEffort());
         this.exploreReasoning = new AgentReasoning(true, atelierProperties.exploreEffort());
         this.escalateOnSignal = !Boolean.FALSE.equals(atelierProperties.escalateOnSignal());
@@ -1367,16 +1380,24 @@ public class AtelierChatService implements RelayInterruptTarget {
      * <p><b>Ré-escalade sur signal</b> (F-119 / SF-119-01) : {@code escalate} vrai signale que le tour
      * <i>précédent</i> a rencontré une difficulté (résultat d'outil en erreur, {@code bash} en code de
      * sortie ≠ 0, {@code edit_file} raté, timeout/indispo runner, auto-contradiction du modèle). Ce
-     * sont justement les tours d'investigation/correction : l'effort y remonte au normal au lieu de
-     * rester à {@code stepEffort}. Une trajectoire qui roule sans incident garde l'effort réduit — le
+     * sont justement les tours d'investigation/correction : l'effort y remonte au lieu de rester à
+     * {@code stepEffort}. Une trajectoire qui roule sans incident garde l'effort réduit — le
      * gain de vitesse/coût de F-118 est préservé. Sous coupe-circuit {@code escalateOnSignal == false},
      * le signal est ignoré (comportement F-118 strict).</p>
+     *
+     * <p><b>Jusqu'où</b> il remonte est réglable depuis F-121 / SF-121-08
+     * ({@code app.atelier.escalate-effort}) : l'escalade était plafonnée à l'effort <i>normal</i>, si
+     * bien que le moment où il faut réfléchir le plus tournait au régime ordinaire. Non exprimé, le
+     * réglage suit {@link #reasoning} — comportement strictement inchangé.</p>
      */
     AgentReasoning reasoningForIteration(int iteration, boolean escalate) {
-        if (adaptiveEffort && iteration > 0 && !(escalate && escalateOnSignal)) {
-            return stepReasoning;
+        if (!adaptiveEffort || iteration == 0) {
+            return reasoning;
         }
-        return reasoning;
+        // Continuation : réduite par défaut (F-118), remontée au PLAFOND DE RÉ-ESCALADE sur signal
+        // (F-119 pour le déclencheur, F-121 / SF-121-08 pour le niveau atteint). Sans réglage,
+        // `escalateReasoning` vaut `reasoning` : la branche rend exactement ce qu'elle rendait avant.
+        return escalate && escalateOnSignal ? escalateReasoning : stepReasoning;
     }
 
     /** Forme historique : aucune ré-escalade. Conservée pour les appelants qui l'attendent. */

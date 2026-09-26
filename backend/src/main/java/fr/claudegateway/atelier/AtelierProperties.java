@@ -26,10 +26,13 @@ import org.springframework.boot.context.properties.bind.ConstructorBinding;
  *                      ce que le chat propose, pas ce que le harnais exécute
  * @param effort        effort de raisonnement de la boucle maison (F-39 / SF-39-10) : {@code low} à
  *                      {@code max}, défaut {@code high} — le défaut du fournisseur, posé
- *                      explicitement pour être réglable sans livraison. {@code xhigh} attend le
- *                      lot 6 : la boucle appelle en non-streamé, et monter l'effort avant d'avoir
- *                      câblé timeout et retry échangerait de la profondeur contre des tours coupés
- *                      au budget de temps
+ *                      explicitement pour être réglable sans livraison. {@code xhigh}/{@code max}
+ *                      sont alignables ici depuis que le <b>streaming</b> (F-116 / SF-116-01, timeout
+ *                      et retry câblés) est livré — la réserve « attend le lot 6 » portait sur l'appel
+ *                      non streamé, qui coupait les tours profonds au budget de temps. Monter le
+ *                      défaut reste un choix d'<b>exploitation</b> (profondeur contre latence et
+ *                      coût, sur 100 % des premiers tours) ; pour ne payer la profondeur que là où
+ *                      elle sert, voir {@link #escalateEffort()} (F-121 / SF-121-08)
  * @param contextPruning écartement des résultats d'outils périmés d'un tour long
  *                      (F-39 / SF-39-12), défaut {@code true}. <b>Coupe-circuit</b> : le mécanisme
  *                      repose sur une capacité <i>beta</i> du fournisseur ; si elle était retirée,
@@ -135,6 +138,18 @@ import org.springframework.boot.context.properties.bind.ConstructorBinding;
  *                      {@link #model()} : le catalogue dit ce que le chat propose, pas ce que le harnais
  *                      exécute. Le modèle voyage comme une chaîne via {@code AiAgentProvider} — aucun
  *                      couplage direct à un modèle (Provider Independence)
+ * @param escalateEffort <b>plafond de la ré-escalade</b> d'effort sur signal de difficulté (F-121 /
+ *                      SF-121-08) : {@code low} à {@code max}. Jusqu'ici, « remonter » l'effort après
+ *                      un incident (cf. {@link #escalateOnSignal()}) voulait dire <i>revenir au niveau
+ *                      normal</i> {@link #effort()} — le moment où il faudrait réfléchir le plus était
+ *                      plafonné au régime ordinaire, et le seul moyen d'aller plus haut (monter
+ *                      {@code effort}) payait la profondeur sur <b>100 %</b> des premiers tours, y
+ *                      compris les demandes triviales. Ce réglage n'ouvre que le <b>chemin d'incident</b>.
+ *                      <b>Repli</b> : absent, vide ou inconnu ⇒ suit {@link #effort()} — donc
+ *                      strictement le comportement d'avant SF-121-08, et jamais une escalade
+ *                      <i>plus basse</i> qu'un {@code effort} déjà relevé en exploitation. Sans effet
+ *                      sous les coupe-circuits existants ({@code adaptiveEffort} ou
+ *                      {@code escalateOnSignal} à {@code false}) : aucune ré-escalade n'a lieu
  */
 @ConfigurationProperties(prefix = "app.atelier")
 public record AtelierProperties(
@@ -162,7 +177,8 @@ public record AtelierProperties(
         Boolean perMessageEffort,
         Integer exploreParallelism,
         String exploreModel,
-        String taskModel) {
+        String taskModel,
+        String escalateEffort) {
 
 
     /**
@@ -382,6 +398,39 @@ public record AtelierProperties(
         if (exploreParallelism > MAX_EXPLORE_PARALLELISM) {
             exploreParallelism = MAX_EXPLORE_PARALLELISM;
         }
+        // Plafond de la ré-escalade sur signal (F-121 / SF-121-08). Repli sur `effort` — et non sur
+        // la constante `high` — pour deux raisons : (a) sans configuration, le comportement est
+        // exactement celui d'avant SF-121-08 (la ré-escalade revient au niveau normal) ; (b) une
+        // exploitation qui a déjà relevé `effort` ne se retrouve pas avec une escalade PLUS BASSE que
+        // son régime ordinaire. Même règle de tolérance que les autres efforts : une valeur inconnue
+        // retombe sur le repli, elle n'arrête ni le démarrage ni les tours.
+        //
+        // NB : `effort` est déjà normalisé plus haut dans ce constructeur compact — le repli hérite
+        // donc d'une valeur toujours valide.
+        if (escalateEffort == null || escalateEffort.isBlank()
+                || !ALLOWED_EFFORTS.contains(escalateEffort)) {
+            escalateEffort = effort;
+        }
+    }
+
+    /**
+     * Constructeur de compatibilité, sans le <b>plafond de ré-escalade</b> (F-121 / SF-121-08) :
+     * {@code escalateEffort} retombe sur son repli ({@code null} ⇒ suit {@code effort}, comportement
+     * d'avant SF-121-08). Conserve la forme SF-150-04 (jusqu'à {@code taskModel}) pour n'obliger aucun
+     * appelant — ni test — à exprimer un réglage qu'il n'a pas.
+     */
+    public AtelierProperties(String storage, String bucket, String prefix, Long maxTotalBytes,
+            Integer maxEntries, Long maxFileBytes, Integer maxIterations, String model, String effort,
+            Boolean contextPruning, Long maxTurnTokens, Integer maxDelegations,
+            Boolean storageExecution, Boolean streaming, String stepEffort, Boolean adaptiveEffort,
+            Duration turnBudget, String exploreEffort, Boolean escalateOnSignal,
+            Integer replayedTraceTurns, Boolean fileStateHints, Boolean perMessageEffort,
+            Integer exploreParallelism, String exploreModel, String taskModel) {
+        this(storage, bucket, prefix, maxTotalBytes, maxEntries, maxFileBytes, maxIterations, model,
+                effort, contextPruning, maxTurnTokens, maxDelegations, storageExecution, streaming,
+                stepEffort, adaptiveEffort, turnBudget, exploreEffort, escalateOnSignal,
+                replayedTraceTurns, fileStateHints, perMessageEffort, exploreParallelism, exploreModel,
+                taskModel, null);
     }
 
     /**
@@ -401,7 +450,7 @@ public record AtelierProperties(
                 effort, contextPruning, maxTurnTokens, maxDelegations, storageExecution, streaming,
                 stepEffort, adaptiveEffort, turnBudget, exploreEffort, escalateOnSignal,
                 replayedTraceTurns, fileStateHints, perMessageEffort, exploreParallelism, exploreModel,
-                null);
+                null, null);
     }
 
     /**

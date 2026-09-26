@@ -428,4 +428,61 @@ class AtelierPropertiesTest {
                 AtelierProperties.DEFAULT_EXPLORE_MODEL);
         assertThat(full.exploreModel()).isEqualTo("claude-sonnet-5");
     }
+
+    // ------------------------------------------- F-121 / SF-121-08 : plafond de la ré-escalade
+
+    /** Plafond de ré-escalade (26ᵉ et dernier composant, F-121 / SF-121-08). */
+    private static AtelierProperties withEscalateEffort(String effort, String escalateEffort) {
+        return new AtelierProperties(null, null, null, null, null, null, null, null, effort, null,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                null, escalateEffort);
+    }
+
+    @Test
+    void escalateEffortFollowsTheNormalEffortWhenNotExpressed() {
+        // Repli SÛR : sans réglage, « remonter » l'effort veut dire revenir au normal — exactement le
+        // comportement d'avant SF-121-08.
+        assertThat(withEscalateEffort(null, null).escalateEffort()).isEqualTo("high");
+        assertThat(withEscalateEffort(null, null).escalateEffort())
+                .isEqualTo(AtelierProperties.DEFAULT_EFFORT);
+    }
+
+    @Test
+    void escalateEffortFollowsAnAlreadyRaisedNormalEffort() {
+        // Le repli vise `effort`, PAS la constante `high` : une exploitation qui a déjà relevé son
+        // régime ordinaire ne doit pas se retrouver avec une escalade PLUS BASSE que lui.
+        assertThat(withEscalateEffort("max", null).escalateEffort()).isEqualTo("max");
+        assertThat(withEscalateEffort("xhigh", "").escalateEffort()).isEqualTo("xhigh");
+    }
+
+    @Test
+    void escalateEffortFallsBackWhenTheValueIsUnknown() {
+        // Même tolérance que `effort`/`step-effort` : une faute de frappe ne fait échouer ni le
+        // démarrage ni les tours, elle retombe sur le repli.
+        assertThat(withEscalateEffort(null, "tres-fort").escalateEffort()).isEqualTo("high");
+        assertThat(withEscalateEffort(null, "XHIGH").escalateEffort()).isEqualTo("high");
+        assertThat(withEscalateEffort("medium", "  ").escalateEffort()).isEqualTo("medium");
+    }
+
+    @Test
+    void escalateEffortHonoursAConfiguredCeiling() {
+        // Le levier : l'incident réfléchit plus fort que le régime ordinaire.
+        assertThat(withEscalateEffort(null, "xhigh").escalateEffort()).isEqualTo("xhigh");
+        assertThat(withEscalateEffort(null, "max").escalateEffort()).isEqualTo("max");
+        // Un plafond plus BAS que le régime ordinaire est honoré tel quel : réglage d'exploitation
+        // assumé, jamais corrigé en silence.
+        assertThat(withEscalateEffort("high", "low").escalateEffort()).isEqualTo("low");
+    }
+
+    @Test
+    void theCompatibilityConstructorLeavesTheCeilingOnItsFallback() {
+        // La forme SF-150-04 (25 composants, jusqu'à taskModel) reste appelable et applique le repli.
+        AtelierProperties legacy = new AtelierProperties(null, null, null, null, null, null, null,
+                null, "xhigh", null, null, null, true, null, null, null, null, null, null, null, null,
+                null, 3, AtelierProperties.DEFAULT_EXPLORE_MODEL, "claude-sonnet-5");
+        assertThat(legacy.taskModel()).isEqualTo("claude-sonnet-5");
+        assertThat(legacy.escalateEffort()).isEqualTo("xhigh");
+        // Et les formes plus anciennes aussi (celle de SF-39-10, 13 composants).
+        assertThat(withReasoning(null, null).escalateEffort()).isEqualTo("high");
+    }
 }
