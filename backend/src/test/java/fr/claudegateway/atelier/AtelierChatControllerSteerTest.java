@@ -222,12 +222,14 @@ class AtelierChatControllerSteerTest {
         assertThat(liveTurns.find(ALICE, PROJET).orElseThrow().takeSteers()).isEmpty();
     }
 
+    /**
+     * SF-121-11 — le refus vient désormais du <b>volume</b> en attente, pas du nombre : au-delà du
+     * cap de comptage, les précisions se fondent (cf. {@code LiveTurnSteerTest}).
+     */
     @Test
     void uneFilePleineRefuseLaPrecisionSansToucherAuTour() {
         LiveTurn turn = liveTurns.open(ALICE, PROJET);
-        for (int i = 0; i < LiveTurn.MAX_PENDING_STEERS; i++) {
-            turn.offerSteer("précision " + i);
-        }
+        turn.offerSteer("x".repeat(LiveTurn.MAX_PENDING_STEER_CHARS));
 
         assertThatThrownBy(() -> controller().steer(PROJET, new AtelierChatRequest("une de trop")))
                 .isInstanceOf(TooManySteersException.class);

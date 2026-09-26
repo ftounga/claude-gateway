@@ -873,6 +873,23 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     static final int MAX_END_OF_TURN_BLOCKS = 3;
 
+    /**
+     * Étiquette d'une <b>interjection</b> de l'utilisateur (F-121 / SF-121-11).
+     *
+     * <p>Une précision déposée en cours de tour arrivait au modèle en message utilisateur nu,
+     * indiscernable de la demande initiale. Étiquetée et datée, elle se lit pour ce qu'elle est :
+     * quelqu'un qui parle <b>pendant</b> le travail. Littéral <b>stable</b> — le préfixe caché
+     * (F-134) ne doit pas varier de forme d'un tour à l'autre.</p>
+     */
+    static final String INTERJECTION_LABEL = "[Interjection de l'utilisateur — ";
+
+    /** Zone de l'horodatage des interjections — convention du projet (cf. Radar). */
+    private static final java.time.ZoneId INTERJECTION_ZONE = java.time.ZoneId.of("Europe/Paris");
+
+    /** Motif de l'horodatage des interjections (F-121 / SF-121-11). */
+    private static final java.time.format.DateTimeFormatter INTERJECTION_STAMP =
+            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
     /** Titre du bloc de règles de gouvernance dans la consigne système (F-51 / SF-51-04). */
     static final String GOVERNANCE_HEADER = "--- Règles de gouvernance (paquets actifs) ---";
 
@@ -1893,14 +1910,14 @@ public class AtelierChatService implements RelayInterruptTarget {
             // sûre de la corrompre (D2). Prises APRÈS les arrêts subis : une précision annoncée
             // « prise en compte » doit réellement partir au modèle ; celles qui restent sont rendues
             // au tour vivant (tour de suite, ou abandon dit).
-            for (AtelierProgressListener.AtelierSteer steer : listener.takeSteers()) {
-                messages.add(AgentMessage.userText(steer.text()));
-                // Persistée à sa place chronologique, entre la demande et la réponse : le fil
-                // rechargé montre ce que l'utilisateur a dit, et quand.
-                messageRepository.save(AtelierMessage.builder()
-                        .workspaceId(workspaceId).userId(userId).role("USER").content(steer.text())
-                        .build());
-                listener.onSteerApplied(steer, iteration + 1);
+            //
+            // F-121 / SF-121-11 : elles partent en UN SEUL message utilisateur, chacune étiquetée
+            // et datée. Une par message donnait au modèle une rafale de messages utilisateur nus,
+            // indiscernables de la demande initiale — le « ressenti messages multiples ».
+            String frontierInterjections = takeAndRecordSteers(listener, userId, workspaceId,
+                    iteration + 1);
+            if (frontierInterjections != null) {
+                messages.add(AgentMessage.userText(frontierInterjections));
             }
             // Streaming mot à mot (F-116 / SF-116-01) : quand le flux est actif, le texte défile dans
             // la ligne vivante DÈS le premier delta, au lieu d'attendre la fin du tour (~100 % de
@@ -2123,6 +2140,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                 assistantBlocks.add(new AgentContentBlock.Text(turn.text()));
             }
             List<AgentContentBlock> toolResults = new ArrayList<>();
+            // F-121 / SF-121-11 : les interjections récoltées ENTRE les appels d'outils de cette
+            // étape. Elles rejoindront le message de résultats, après le dernier `tool_result`.
+            List<String> interjectionsBetweenCalls = new ArrayList<>();
             List<AtelierToolTrace.Call> tracedCalls = new ArrayList<>();
             // Signal de difficulté de CE tour (F-119 / SF-119-01) : amorcé par l'auto-contradiction
             // éventuelle du texte, complété par chaque résultat d'outil ci-dessous. S'il est vrai, le
@@ -2338,6 +2358,29 @@ public class AtelierChatService implements RelayInterruptTarget {
                         emailsOfTurn.get(callId),
                         // Le bloc « Page publiée » (F-109 / SF-109-03) : il survit au rechargement, partout.
                         pagesOfTurn.get(callId)));
+                // F-121 / SF-121-11 — LA FILE EST CONSULTÉE ENTRE LES APPELS D'OUTILS, et plus
+                // seulement à la frontière d'itération. Une précision déposée pendant un `bash` de
+                // 90 s ou au milieu d'une rafale de cinq outils était jusqu'ici ni prise ni
+                // ANNONCÉE avant la fin de la rafale : l'écran affichait « en attente » et
+                // l'utilisateur se croyait ignoré. Ici, dès l'appel fini, elle est persistée,
+                // annoncée « prise en compte », et jointe au message de résultats de CETTE étape —
+                // le modèle la lira donc à l'étape suivante, d'où `iteration + 2`.
+                //
+                // Ce qui ne change PAS : rien n'est interrompu. Une précision n'annule jamais un
+                // appel en vol — le geste qui arrête reste l'interruption (F-38 / SF-38-07) —, et
+                // la conversation n'est toujours pas modifiée pendant un appel au fournisseur (D2).
+                String betweenCalls =
+                        takeAndRecordSteers(listener, userId, workspaceId, iteration + 2);
+                if (betweenCalls != null) {
+                    interjectionsBetweenCalls.add(betweenCalls);
+                }
+            }
+            // Après TOUS les `tool_result` : le fournisseur exige que les résultats d'outils ouvrent
+            // le message utilisateur. Le texte qui suit est la voix de l'utilisateur, pas un
+            // résultat — d'où l'étiquette.
+            if (!interjectionsBetweenCalls.isEmpty()) {
+                toolResults.add(new AgentContentBlock.Text(
+                        String.join("\n\n", interjectionsBetweenCalls)));
             }
             messages.add(AgentMessage.assistant(assistantBlocks));
             messages.add(AgentMessage.toolResults(toolResults));
@@ -2480,6 +2523,62 @@ public class AtelierChatService implements RelayInterruptTarget {
 
         return new AtelierChatResult(reply, actions, assistant.getId(), inputTokens, outputTokens,
                 activeSeconds, spendCapReached, costUsd, reusedPercent, planSubmitted.get());
+    }
+
+    /**
+     * Prend les précisions en attente, les <b>persiste</b>, les <b>annonce</b>, et rend le texte
+     * <b>unique</b> à joindre à la conversation (F-39 / SF-39-19, F-84 / SF-84-06, étiquetage et
+     * coalescence F-121 / SF-121-11).
+     *
+     * <p>Trois invariants :</p>
+     * <ul>
+     *   <li><b>Un seul bloc</b> pour toutes les précisions prises ensemble : le modèle ne reçoit
+     *       plus une rafale de messages utilisateur nus (« ressenti messages multiples ») ;</li>
+     *   <li><b>étiquetées et datées</b> à l'instant du <b>dépôt</b> : le modèle sait que quelqu'un
+     *       a parlé pendant son travail, et quand ;</li>
+     *   <li><b>persistées brutes</b>, à leur place chronologique et sous le {@code user_id} du
+     *       tour : le fil rechargé montre ce que l'utilisateur a écrit, pas notre habillage.</li>
+     * </ul>
+     *
+     * <p>Une précision au texte blanc est annoncée mais n'est ni persistée ni envoyée : un bloc de
+     * texte vide est refusé par le fournisseur ({@code 400}) et condamnerait le projet.</p>
+     *
+     * @param readAtStep étape à laquelle le modèle lira ces précisions (à partir de 1)
+     * @return le texte à joindre à la conversation, ou {@code null} s'il n'y a rien à joindre
+     */
+    private String takeAndRecordSteers(AtelierProgressListener listener, UUID userId,
+            UUID workspaceId, int readAtStep) {
+        List<AtelierProgressListener.AtelierSteer> taken = listener.takeSteers();
+        if (taken.isEmpty()) {
+            return null;
+        }
+        StringBuilder joined = new StringBuilder();
+        for (AtelierProgressListener.AtelierSteer steer : taken) {
+            String text = steer.text() == null ? "" : steer.text().trim();
+            if (!text.isEmpty()) {
+                messageRepository.save(AtelierMessage.builder()
+                        .workspaceId(workspaceId).userId(userId).role("USER").content(text)
+                        .build());
+                if (joined.length() > 0) {
+                    joined.append("\n\n");
+                }
+                joined.append(interjection(steer.queuedAtMs(), text));
+            }
+            listener.onSteerApplied(steer, readAtStep);
+        }
+        return joined.length() == 0 ? null : joined.toString();
+    }
+
+    /**
+     * Une précision telle que le modèle la voit : <b>étiquetée</b> et <b>datée</b> de son dépôt
+     * (F-121 / SF-121-11).
+     */
+    static String interjection(long queuedAtMs, String text) {
+        long at = queuedAtMs > 0 ? queuedAtMs : System.currentTimeMillis();
+        return INTERJECTION_LABEL
+                + INTERJECTION_STAMP.format(
+                        java.time.Instant.ofEpochMilli(at).atZone(INTERJECTION_ZONE))
+                + "] " + text;
     }
 
     /**

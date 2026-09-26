@@ -281,7 +281,11 @@ public class AtelierChatController {
      *
      * <p><b>F-84 / SF-84-06</b> : la précision entre dans le <b>tour vivant</b>, ici ou chez le pair
      * qui l'exécute, et rend son identifiant. Plus aucun tour ⇒ {@code 409 no_live_turn} : l'écran
-     * l'envoie alors comme un message. File pleine ⇒ {@code 409 too_many_steers}.</p>
+     * l'envoie alors comme un message.</p>
+     *
+     * <p><b>F-121 / SF-121-11</b> : le refus {@code 409 too_many_steers} ne vient plus du
+     * <b>nombre</b> de précisions (au-delà de dix, elles se fondent dans la dernière) mais du
+     * <b>volume</b> de texte en attente.</p>
      */
     @PostMapping("/steer")
     public AtelierSteerResponse steer(@PathVariable UUID id,
@@ -296,7 +300,7 @@ public class AtelierChatController {
                         "Le tour vient de se terminer : envoyez ce message comme une nouvelle demande."));
         if (!receipt.accepted()) {
             throw new TooManySteersException(
-                    "Trop de précisions en attente pour ce message ; laissez-le avancer.");
+                    "Trop de texte en attente pour ce message ; laissez-le avancer.");
         }
         return new AtelierSteerResponse(receipt.steerId(), receipt.turnId());
     }
@@ -540,7 +544,7 @@ public class AtelierChatController {
                 public List<AtelierProgressListener.AtelierSteer> takeSteers() {
                     return turn.takeSteers().stream()
                             .map(steer -> new AtelierProgressListener.AtelierSteer(steer.steerId(),
-                                    steer.text()))
+                                    steer.text(), steer.queuedAtMs()))
                             .toList();
                 }
 

@@ -77,8 +77,19 @@ public final class LiveTurn {
     /** Le tour s'est arrêté (interruption, erreur) avec des précisions non lues (F-84 / SF-84-06). */
     public static final String STEERS_DROPPED = "steers_dropped";
 
-    /** Précisions en attente au plus : au-delà, c'est un nouveau tour qu'il faut, pas des rustines. */
-    public static final int MAX_PENDING_STEERS = 5;
+    /**
+     * Précisions en attente au plus (F-121 / SF-121-11 : 5 → 10). Au-delà, la précision n'est plus
+     * refusée : elle est <b>coalescée</b> dans la dernière en attente — c'est le <b>volume</b>
+     * ({@value #MAX_PENDING_STEER_CHARS} caractères) qui borne réellement la file, pas le comptage.
+     */
+    public static final int MAX_PENDING_STEERS = 10;
+
+    /**
+     * Volume cumulé des précisions en attente, en caractères (F-121 / SF-121-11). C'est le
+     * <b>vrai</b> plafond : ce qui coûte, c'est le texte ajouté à la conversation, pas le nombre de
+     * messages. Au-delà, {@link SteerReceipt.Status#FULL} — et là, c'est un nouveau tour qu'il faut.
+     */
+    public static final int MAX_PENDING_STEER_CHARS = 8_000;
 
     private static final Logger log = LoggerFactory.getLogger(LiveTurn.class);
 
@@ -273,8 +284,15 @@ public final class LiveTurn {
      * avant qu'elle soit en file.
      *
      * <p>Un tour <b>fini ou scellé</b> la refuse ({@link SteerReceipt.Status#ENDED}) : il ne lira plus
-     * rien, et l'appelant ouvre alors un tour neuf. Au-delà de {@value #MAX_PENDING_STEERS}
-     * précisions en attente, {@link SteerReceipt.Status#FULL} — le tour, lui, n'est pas touché.</p>
+     * rien, et l'appelant ouvre alors un tour neuf.</p>
+     *
+     * <p><b>F-121 / SF-121-11 — cap assoupli, puis coalescé.</b> Jusqu'à
+     * {@value #MAX_PENDING_STEERS} précisions attendent séparément. Au-delà, la précision n'est pas
+     * refusée : elle est <b>fondue dans la dernière en attente</b> (même {@code steerId}, même
+     * horodatage de dépôt, textes concaténés) — l'utilisateur qui pense à voix haute n'est pas
+     * rabroué pour un problème de comptage. Le seul refus ({@link SteerReceipt.Status#FULL}) vient
+     * du <b>volume</b> : au-delà de {@value #MAX_PENDING_STEER_CHARS} caractères cumulés, le tour
+     * n'est pas touché et c'est un nouveau tour qu'il faut.</p>
      *
      * <p>Une attente d'autorisation n'est <b>pas</b> modifiée : une précision ne vaut ni accord ni
      * refus.</p>
@@ -285,17 +303,38 @@ public final class LiveTurn {
             if (finished || sealed) {
                 return new SteerReceipt(SteerReceipt.Status.ENDED, null, turnId);
             }
-            if (steers.size() >= MAX_PENDING_STEERS) {
+            String trimmed = text == null ? "" : text.trim();
+            if (pendingSteerChars() + trimmed.length() > MAX_PENDING_STEER_CHARS) {
                 return new SteerReceipt(SteerReceipt.Status.FULL, null, turnId);
             }
-            Steer steer = new Steer(UUID.randomUUID().toString(), text == null ? "" : text.trim(),
-                    System.currentTimeMillis());
+            Steer steer;
+            if (steers.size() >= MAX_PENDING_STEERS) {
+                // Coalescence : la file garde sa taille, la dernière précision s'allonge. On
+                // réannonce `steer_queued` sous le MÊME identifiant — l'écran, qui suit les
+                // précisions par leur `steerId`, n'en crée pas une de plus et les verra toutes deux
+                // passer « prise en compte » ensemble.
+                Steer last = steers.removeLast();
+                steer = new Steer(last.steerId(),
+                        last.text().isEmpty() ? trimmed : last.text() + "\n" + trimmed,
+                        last.queuedAtMs());
+            } else {
+                steer = new Steer(UUID.randomUUID().toString(), trimmed, System.currentTimeMillis());
+            }
             steers.addLast(steer);
             publish(STEER_QUEUED, new SteerQueued(steer.steerId(), steer.text(), steer.queuedAtMs()));
             return new SteerReceipt(SteerReceipt.Status.ACCEPTED, steer.steerId(), turnId);
         } finally {
             lock.unlock();
         }
+    }
+
+    /** Volume cumulé des précisions en attente, en caractères. Appelé sous le verrou. */
+    private int pendingSteerChars() {
+        int chars = 0;
+        for (Steer steer : steers) {
+            chars += steer.text().length();
+        }
+        return chars;
     }
 
     /** Prend <b>toutes</b> les précisions en attente, dans l'ordre de dépôt — la boucle, à chaque étape. */

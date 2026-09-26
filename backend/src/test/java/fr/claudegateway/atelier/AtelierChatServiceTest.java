@@ -1234,13 +1234,26 @@ class AtelierChatServiceTest {
         final List<String> applied = new ArrayList<>();
         int takes;
 
+        /** Instant de dépôt fixe : l'étiquette datée (SF-121-11) doit être vérifiable. */
+        static final long DEPOSITED_AT =
+                java.time.ZonedDateTime.of(2026, 9, 26, 14, 32, 5, 0,
+                        java.time.ZoneId.of("Europe/Paris")).toInstant().toEpochMilli();
+
+        /** Précisions à déposer juste avant la n-ième consultation de la file (SF-121-11). */
+        final java.util.Map<Integer, String> depositBeforeTake = new java.util.HashMap<>();
+
         void deposit(String text) {
-            queue.addLast(new AtelierSteer("s-" + (queue.size() + applied.size() + 1), text));
+            queue.addLast(new AtelierSteer("s-" + (queue.size() + applied.size() + 1), text,
+                    DEPOSITED_AT));
         }
 
         @Override
         public List<AtelierSteer> takeSteers() {
             takes++;
+            String late = depositBeforeTake.remove(takes);
+            if (late != null) {
+                deposit(late);
+            }
             List<AtelierSteer> taken = List.copyOf(queue);
             queue.clear();
             return taken;
@@ -1280,6 +1293,78 @@ class AtelierChatServiceTest {
         assertThat(step2.indexOf("ToolResult")).as("après le résultat de l'outil en cours")
                 .isLessThan(step2.indexOf("saute les tests"));
         assertThat(listener.applied).containsExactly("en fait, saute les tests@2");
+    }
+
+    /**
+     * SF-121-11 — la file est consultée <b>entre les appels d'outils</b> : déposée pendant le
+     * premier des deux outils de l'étape, la précision est annoncée AVANT la fin de la rafale et
+     * part avec les résultats de CETTE étape, après le dernier {@code tool_result}.
+     */
+    @Test
+    void aSteerDepositedBetweenTwoToolCallsIsTakenWithoutWaitingForTheEndOfTheBurst() {
+        stubHappyPath();
+        SteeringListener listener = new SteeringListener();
+        agentProvider.enqueueToolCalls("read_file", "path", "a.txt", "b.txt");
+        agentProvider.enqueueFinal("Vu.");
+        // Consultation n°1 = frontière de l'étape 1 (rien) ; n°2 = juste après le PREMIER outil.
+        // La précision arrive donc pendant cet outil, au milieu de la rafale.
+        listener.depositBeforeTake.put(2, "en fait, regarde plutôt c.txt");
+
+        service.chatStreaming(userId, workspaceId, "compare a et b", listener);
+
+        assertThat(listener.takes).as("la file est consultée entre les appels, pas une fois par étape")
+                .isGreaterThan(2);
+        assertThat(listener.applied).containsExactly("en fait, regarde plutôt c.txt@2");
+        String step2 = agentProvider.messageSnapshots.get(1);
+        assertThat(step2).contains("regarde plutôt c.txt");
+        assertThat(step2.lastIndexOf("ToolResult")).as("après TOUS les résultats d'outils")
+                .isLessThan(step2.indexOf("regarde plutôt c.txt"));
+    }
+
+    /**
+     * SF-121-11 — présentée au modèle, la précision est <b>étiquetée</b> et <b>datée</b> de son
+     * dépôt ; persistée, elle reste le texte <b>brut</b> de l'utilisateur.
+     */
+    @Test
+    void aSteerReachesTheModelLabelledAndDatedButIsPersistedRaw() {
+        stubHappyPath();
+        SteeringListener listener = new SteeringListener();
+        agentProvider.onTurn(() -> listener.deposit("saute les tests"));
+        agentProvider.enqueueToolCall("read_file", "path", "a.txt");
+        agentProvider.enqueueFinal("Compris.");
+
+        service.chatStreaming(userId, workspaceId, "construis", listener);
+
+        assertThat(agentProvider.messageSnapshots.get(1))
+                .contains("[Interjection de l'utilisateur — 2026-09-26 14:32:05] saute les tests");
+        ArgumentCaptor<AtelierMessage> saved = ArgumentCaptor.forClass(AtelierMessage.class);
+        verify(messageRepository, atLeastOnce()).save(saved.capture());
+        assertThat(saved.getAllValues()).extracting(AtelierMessage::getContent)
+                .as("la base garde ce que l'utilisateur a écrit, pas notre habillage")
+                .contains("saute les tests");
+    }
+
+    /**
+     * SF-121-11 — deux précisions prises ensemble ne font qu'<b>un</b> bloc : le modèle ne reçoit
+     * plus une rafale de messages utilisateur nus.
+     */
+    @Test
+    void severalSteersTakenTogetherTravelInASingleBlock() {
+        stubHappyPath();
+        SteeringListener listener = new SteeringListener();
+        listener.deposit("et le changelog");
+        listener.deposit("et la doc");
+        agentProvider.enqueueFinal("Fait.");
+
+        service.chatStreaming(userId, workspaceId, "et ajoute un test", listener);
+
+        long blocks = agentProvider.lastRequest.messages().stream()
+                .flatMap(m -> m.content().stream())
+                .filter(b -> b.toString().contains("Interjection de l'utilisateur"))
+                .count();
+        assertThat(blocks).as("un seul bloc pour les deux").isEqualTo(1);
+        String sent = agentProvider.lastRequest.messages().toString();
+        assertThat(sent.indexOf("et le changelog")).isLessThan(sent.indexOf("et la doc"));
     }
 
     @Test

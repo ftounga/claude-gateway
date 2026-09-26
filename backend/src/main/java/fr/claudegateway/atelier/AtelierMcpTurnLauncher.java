@@ -188,7 +188,8 @@ public class AtelierMcpTurnLauncher {
             @Override
             public List<AtelierSteer> takeSteers() {
                 return turn.takeSteers().stream()
-                        .map(steer -> new AtelierSteer(steer.steerId(), steer.text()))
+                        .map(steer -> new AtelierSteer(steer.steerId(), steer.text(),
+                                steer.queuedAtMs()))
                         .toList();
             }
 

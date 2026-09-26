@@ -173,15 +173,18 @@ public interface AtelierProgressListener {
     /**
      * Une précision déposée pendant le tour (F-84 / SF-84-06).
      *
-     * @param steerId identifiant porté par les événements qui la concernent
-     * @param text    le message de l'utilisateur
+     * @param steerId    identifiant porté par les événements qui la concernent
+     * @param text       le message de l'utilisateur
+     * @param queuedAtMs instant du dépôt, en millisecondes depuis l'époque (F-121 / SF-121-11) :
+     *                   c'est lui qui <b>date</b> l'interjection présentée au modèle
      */
-    record AtelierSteer(String steerId, String text) {
+    record AtelierSteer(String steerId, String text, long queuedAtMs) {
     }
 
     /**
      * Les précisions déposées depuis la dernière étape, <b>prises</b> par la boucle au début de
-     * l'étape suivante (F-84 / SF-84-06). Une précision rendue ici ne l'est qu'une fois.
+     * l'étape suivante <b>et entre deux appels d'outils</b> (F-84 / SF-84-06, F-121 / SF-121-11).
+     * Une précision rendue ici ne l'est qu'une fois.
      *
      * <p>Volontairement <b>par défaut vide</b> : le mode synchrone n'a pas de tour vivant, donc
      * personne pour préciser.</p>
