@@ -43,7 +43,7 @@ class AtelierTaskTest {
             }
         };
 
-        AtelierTask.Result result = AtelierTask.run(provider, "m", null, "écris a", null, TOOLS,
+        AtelierTask.Result result = AtelierTask.run(provider, "m", null, "écris a", null, TOOLS, false,
                 call -> {
                     executed.incrementAndGet();
                     return new AtelierTask.ExecutedTool("ok", false);
@@ -65,7 +65,7 @@ class AtelierTaskTest {
             return new AgentTurn("jamais", List.of(), true, 1, 1);
         };
 
-        AtelierTask.Result result = AtelierTask.run(provider, "m", null, "écris a", null, TOOLS,
+        AtelierTask.Result result = AtelierTask.run(provider, "m", null, "écris a", null, TOOLS, false,
                 call -> new AtelierTask.ExecutedTool("ok", false),
                 () -> true, AgentReasoning.none());
 
@@ -78,11 +78,51 @@ class AtelierTaskTest {
         String huge = "x".repeat(AtelierTask.MAX_ANSWER_CHARS + 500);
         AiAgentProvider provider = request -> new AgentTurn(huge, List.of(), true, 1, 1);
 
-        AtelierTask.Result result = AtelierTask.run(provider, "m", null, "p", null, TOOLS,
+        AtelierTask.Result result = AtelierTask.run(provider, "m", null, "p", null, TOOLS, false,
                 call -> new AtelierTask.ExecutedTool("ok", false),
                 () -> false, AgentReasoning.none());
 
         assertThat(result.answer()).hasSizeLessThanOrEqualTo(AtelierTask.MAX_ANSWER_CHARS + 40);
         assertThat(result.answer()).endsWith("(synthèse tronquée)");
+    }
+
+    @Test
+    void theReadOnlySubTaskIsToldItCannotWriteAndIsNeverGivenAWorktreeStory() {
+        // F-121 / SF-121-14 : en lecture seule, la consigne système dit la VÉRITÉ de la panoplie —
+        // ni écriture, ni commande, et aucun worktree (rien n'écrit, il n'y a rien à isoler).
+        java.util.concurrent.atomic.AtomicReference<String> system =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        AiAgentProvider provider = request -> {
+            system.set(request.system());
+            return new AgentTurn("Constat : rien à signaler.", List.of(), true, 1, 1);
+        };
+
+        AtelierTask.Result result = AtelierTask.run(provider, "m", null, "audite a", null, TOOLS, true,
+                call -> new AtelierTask.ExecutedTool("ok", false),
+                () -> false, AgentReasoning.none());
+
+        assertThat(result.answer()).isEqualTo("Constat : rien à signaler.");
+        assertThat(system.get()).contains("EN LECTURE SEULE");
+        assertThat(system.get()).contains("ni écrire, ni éditer, ni exécuter");
+        assertThat(system.get()).doesNotContain("worktree");
+        assertThat(system.get()).doesNotContain("panoplie complète");
+    }
+
+    @Test
+    void theWritingSubTaskKeepsItsOwnSystemPrompt() {
+        // Sans le drapeau, la consigne historique (worktree isolé, panoplie complète) est intacte.
+        java.util.concurrent.atomic.AtomicReference<String> system =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        AiAgentProvider provider = request -> {
+            system.set(request.system());
+            return new AgentTurn("Fait.", List.of(), true, 1, 1);
+        };
+
+        AtelierTask.run(provider, "m", null, "écris a", null, TOOLS, false,
+                call -> new AtelierTask.ExecutedTool("ok", false),
+                () -> false, AgentReasoning.none());
+
+        assertThat(system.get()).contains("worktree git ISOLÉ");
+        assertThat(system.get()).contains("panoplie complète");
     }
 }

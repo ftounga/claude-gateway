@@ -2148,23 +2148,26 @@ public class AtelierChatService implements RelayInterruptTarget {
             // éventuelle du texte, complété par chaque résultat d'outil ci-dessous. S'il est vrai, le
             // tour suivant remonte à l'effort normal.
             boolean signalThisTurn = looksLikeSelfCorrection(turn.text());
-            // Explorations concurrentes (F-39 / SF-39-21) : on ISOLE les `explore` de ce tour et on les
-            // exécute ENSEMBLE, via un pool borné (`explore-parallelism`), dans la limite du plafond par
-            // message (`maxDelegations`). Les autres outils du tour restent SÉQUENTIELS et dans l'ordre
-            // (l'ordre des écritures ne bouge pas). Chaque conclusion sera rattachée à SON appel dans la
-            // boucle ci-dessous, dans l'ordre des appels — quel que soit l'ordre de fin (D6). Le coût est
-            // agrégé sur CE thread, après la jointure du pool (D4 : exact, sans compteur muté par un
-            // ouvrier) ; le `stop`/`deadline` du tour sont partagés par toutes les sous-boucles (D7).
-            List<AgentToolCall> runnableExplores = new ArrayList<>();
+            // Délégations en LECTURE concurrentes (F-39 / SF-39-21, étendu aux `task` en lecture par
+            // F-121 / SF-121-14) : on ISOLE les délégations en lecture de ce tour — les `explore` et les
+            // `task` marqués `read_only` — et on les exécute ENSEMBLE, via un pool borné
+            // (`explore-parallelism`), dans la limite du plafond par message (`maxDelegations`). Les
+            // autres outils du tour restent SÉQUENTIELS et dans l'ordre : les MUTATIONS ne se
+            // parallélisent pas (un `task` écrivain garde son chemin sériel, avec son worktree). Chaque
+            // conclusion sera rattachée à SON appel dans la boucle ci-dessous, dans l'ordre des appels —
+            // quel que soit l'ordre de fin (D6). Le coût est agrégé sur CE thread, après la jointure du
+            // pool (D4 : exact, sans compteur muté par un ouvrier) ; le `stop`/`deadline` du tour sont
+            // partagés par toutes les sous-boucles (D7).
+            List<AgentToolCall> readDelegations = new ArrayList<>();
             for (AgentToolCall call : turn.toolCalls()) {
-                if ("explore".equals(call.name())
-                        && delegations + runnableExplores.size() < maxDelegations) {
-                    runnableExplores.add(call);
+                if (isReadDelegation(workspace, call)
+                        && delegations + readDelegations.size() < maxDelegations) {
+                    readDelegations.add(call);
                 }
             }
-            java.util.Map<AgentToolCall, ExplorationOutcome> exploredResults =
-                    exploreConcurrently(userId, workspace, model, apiKey, deadline, runnableExplores);
-            delegations += runnableExplores.size();
+            java.util.Map<AgentToolCall, ExplorationOutcome> delegatedReads =
+                    readDelegationsConcurrently(userId, workspace, model, apiKey, deadline, readDelegations);
+            delegations += readDelegations.size();
             for (AgentToolCall call : turn.toolCalls()) {
                 // Identifiant de corrélation unique de l'appel (contrat de messages runner §1) : celui
                 // du fournisseur, ou un UUID généré s'il manque — et le MÊME partout (bloc tool_use,
@@ -2205,7 +2208,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                     // ici on ne fait que RATTACHER sa conclusion à SON appel et IMPUTER sa consommation
                     // au tour, sur ce thread, dans l'ordre des appels (D4/D6). Un `explore` absent de la
                     // carte est un appel au-delà du plafond par message : rien n'a été lancé pour lui.
-                    ExplorationOutcome explored = exploredResults.get(call);
+                    ExplorationOutcome explored = delegatedReads.get(call);
                     if (explored == null) {
                         outcome = ToolOutcome.error("Limite de délégations atteinte pour ce message ("
                                 + maxDelegations + ") : poursuis toi-même.");
@@ -2217,11 +2220,30 @@ public class AtelierChatService implements RelayInterruptTarget {
                         listener.onProgress((long) inputTokens + outputTokens);
                         outcome = explored.outcome();
                     }
+                } else if ("task".equals(call.name())
+                        && delegatedReads.get(call) != null) {
+                    // Sous-tâche en LECTURE SEULE (F-121 / SF-121-14) : elle a DÉJÀ tourné dans le
+                    // pré-passage parallèle, avec les `explore` du tour. Ici on ne fait que RATTACHER
+                    // sa synthèse à SON appel et IMPUTER sa consommation au tour, sur ce thread, dans
+                    // l'ordre des appels (D4/D6) — comme `explore` juste au-dessus.
+                    ExplorationOutcome readTask = delegatedReads.get(call);
+                    inputTokens += readTask.inputTokens();
+                    outputTokens += readTask.outputTokens();
+                    cacheReadTokens += readTask.cacheReadTokens();
+                    cacheWriteTokens += readTask.cacheWriteTokens();
+                    listener.onProgress((long) inputTokens + outputTokens);
+                    outcome = readTask.outcome();
+                    // Même relais au fil de l'eau que la sous-tâche écrivaine (F-150 / SF-150-06) :
+                    // la vue vivante montre la synthèse sans attendre le rechargement.
+                    String readSynthesis = outcome.content();
+                    if (readSynthesis != null && !readSynthesis.isBlank()) {
+                        listener.onOutput(readSynthesis);
+                    }
                 } else if ("task".equals(call.name())) {
                     // Sous-tâche ÉCRIVAINE (F-150 / SF-150-02) : SÉRIELLE (les mutations ne se
-                    // parallélisent pas — hors du pré-passage parallèle d'`explore`). La sous-boucle
-                    // crée un worktree isolé, y agit, rend sa synthèse, et le worktree est TOUJOURS
-                    // démonté (D9). Son coût est imputé au tour (D4), comme `explore`.
+                    // parallélisent pas — hors du pré-passage parallèle des délégations en lecture).
+                    // La sous-boucle crée un worktree isolé, y agit, rend sa synthèse, et le worktree
+                    // est TOUJOURS démonté (D9). Son coût est imputé au tour (D4), comme `explore`.
                     if (delegations >= maxDelegations) {
                         outcome = ToolOutcome.error("Limite de délégations atteinte pour ce message ("
                                 + maxDelegations + ") : poursuis toi-même.");
@@ -3459,10 +3481,32 @@ public class AtelierChatService implements RelayInterruptTarget {
     }
 
     /**
-     * Exécute <b>ensemble</b> les explorations d'un même tour (F-39 / SF-39-21), via un pool borné à
-     * {@link #exploreParallelism}. C'est l'unique endroit où plusieurs sous-boucles tournent à la fois
-     * — et c'est sûr <b>parce que</b> l'exploration est en lecture seule (D2) : pas de conflit
-     * d'écriture sur le poste, pas d'invite d'autorisation surgie d'un agent invisible.
+     * Vrai quand cet appel d'outil est une <b>délégation en lecture</b>, donc éligible au pré-passage
+     * concurrent : un {@code explore} (toujours en lecture seule, SF-39-14 D2), ou un {@code task}
+     * marqué {@code read_only} (F-121 / SF-121-14) sur une cible RUNNER — hors runner, {@code task}
+     * n'est pas disponible et son refus est rendu par le chemin sériel, inchangé.
+     *
+     * <p>Le drapeau est <b>explicite</b> : jamais deviné du texte de la consigne. Absent, l'appel reste
+     * une sous-tâche écrivaine, donc sérielle — les mutations ne se parallélisent pas.</p>
+     */
+    private static boolean isReadDelegation(Workspace workspace, AgentToolCall call) {
+        if ("explore".equals(call.name())) {
+            return true;
+        }
+        return "task".equals(call.name()) && workspace.isRunnerTarget() && isReadOnlyTask(call);
+    }
+
+    /** Le drapeau {@code read_only} d'un appel {@code task} — absent ou non booléen vaut {@code false}. */
+    private static boolean isReadOnlyTask(AgentToolCall call) {
+        return call.input() != null && call.input().path("read_only").asBoolean(false);
+    }
+
+    /**
+     * Exécute <b>ensemble</b> les délégations en lecture d'un même tour (F-39 / SF-39-21, étendu aux
+     * {@code task} en lecture par F-121 / SF-121-14), via un pool borné à {@link #exploreParallelism}.
+     * C'est l'unique endroit où plusieurs sous-boucles tournent à la fois — et c'est sûr <b>parce
+     * que</b> ces délégations sont en lecture seule (D2) : pas de conflit d'écriture sur le poste, pas
+     * d'invite d'autorisation surgie d'un agent invisible.
      *
      * <p><b>Isolation des échecs</b> (D5) : chaque sous-boucle rend son issue (l'{@code explore} attrape
      * déjà ses propres pannes) ; une tâche qui casserait malgré tout donne un résultat d'outil en
@@ -3471,11 +3515,12 @@ public class AtelierChatService implements RelayInterruptTarget {
      * tour. <b>Coût</b> : rien n'est agrégé ici — les issues reviennent à l'appelant, qui impute leur
      * consommation au tour sur son propre thread, dans l'ordre des appels (D4/D6).
      *
-     * @param calls les {@code explore} de ce tour retenus dans le plafond par message (dans l'ordre)
+     * @param calls les délégations en lecture de ce tour retenues dans le plafond par message, dans
+     *              l'ordre des appels ({@code explore} et {@code task} en lecture seule mêlés)
      * @return la carte {@code appel → issue}, indexée par <b>identité</b> d'appel (jamais par callId :
      *         {@link #correlationId} fabriquerait un identifiant différent à chaque invocation)
      */
-    private java.util.Map<AgentToolCall, ExplorationOutcome> exploreConcurrently(UUID userId,
+    private java.util.Map<AgentToolCall, ExplorationOutcome> readDelegationsConcurrently(UUID userId,
             Workspace workspace, String model, String apiKey, long deadline,
             List<AgentToolCall> calls) {
         java.util.Map<AgentToolCall, ExplorationOutcome> results = new java.util.IdentityHashMap<>();
@@ -3483,9 +3528,9 @@ public class AtelierChatService implements RelayInterruptTarget {
             return results;
         }
         if (calls.size() == 1) {
-            // Un seul `explore` : aucun pool, exactement le chemin d'avant SF-39-21.
+            // Une seule délégation : aucun pool, exactement le chemin d'avant SF-39-21.
             AgentToolCall only = calls.get(0);
-            results.put(only, explore(userId, workspace, only, model, apiKey, deadline));
+            results.put(only, readDelegation(userId, workspace, only, model, apiKey, deadline));
             return results;
         }
         int poolSize = Math.max(1, Math.min(exploreParallelism, calls.size()));
@@ -3495,7 +3540,7 @@ public class AtelierChatService implements RelayInterruptTarget {
             List<java.util.concurrent.Future<ExplorationOutcome>> futures = new ArrayList<>(calls.size());
             for (AgentToolCall call : calls) {
                 futures.add(pool.submit(
-                        () -> explore(userId, workspace, call, model, apiKey, deadline)));
+                        () -> readDelegation(userId, workspace, call, model, apiKey, deadline)));
             }
             for (int i = 0; i < calls.size(); i++) {
                 try {
@@ -3519,6 +3564,71 @@ public class AtelierChatService implements RelayInterruptTarget {
         return results;
     }
 
+    /**
+     * Aiguille une délégation <b>en lecture</b> vers sa sous-boucle : {@link #explore} (question →
+     * réponse) ou {@link #readOnlyTask} (sous-tâche en lecture seule, F-121 / SF-121-14). Les deux
+     * rendent la même issue, s'exécutent sans worktree et n'ont accès qu'aux outils de lecture — c'est
+     * ce qui les rend concurrentiables ensemble.
+     */
+    private ExplorationOutcome readDelegation(UUID userId, Workspace workspace, AgentToolCall call,
+            String model, String apiKey, long deadline) {
+        return "task".equals(call.name())
+                ? readOnlyTask(userId, workspace, call, model, apiKey, deadline)
+                : explore(userId, workspace, call, model, apiKey, deadline);
+    }
+
+    /**
+     * Sous-tâche {@code task} <b>en lecture seule</b> (F-121 / SF-121-14) : la sous-boucle d'action de
+     * {@link AtelierTask}, mais sans rien qui mute — pas d'écriture, pas de commande, et donc <b>pas de
+     * worktree</b> (il n'y a rien à isoler ; on épargne aussi la création/démontage git). Seule sa
+     * synthèse remonte, et sa consommation est imputée au tour par l'appelant (D4).
+     *
+     * <p><b>Double verrou de lecture seule</b> : la panoplie déclarée est celle de l'exploration
+     * (construite, jamais dérivée de la panoplie principale) <i>et</i> l'exécution refuse tout outil
+     * hors {@link #READ_ONLY_TOOLS}. C'est cette garantie qui autorise la concurrence (D2).</p>
+     *
+     * <p>Tout le reste est identique à la sous-tâche écrivaine : même modèle ({@code task-model}, repli
+     * sûr sur le modèle principal), même raisonnement, mêmes bornes. Le modèle voyage comme une chaîne
+     * remise à {@code AiAgentProvider} — aucun couplage à un fournisseur.</p>
+     */
+    private ExplorationOutcome readOnlyTask(UUID userId, Workspace workspace, AgentToolCall call,
+            String model, String apiKey, long deadline) {
+        String prompt = call.input() == null ? null : call.input().path("prompt").asText(null);
+        if (prompt == null || prompt.isBlank()) {
+            return new ExplorationOutcome(ToolOutcome.error(
+                    "Consigne (`prompt`) requise pour déléguer une sous-tâche."), 0, 0, 0, 0);
+        }
+        String scope = call.input().path("path").asText(null);
+        List<AgentTool> readTools = explorationTools();
+        String subModel = (taskModel == null || taskModel.isBlank()) ? model : taskModel;
+        try {
+            AtelierTask.Result result = AtelierTask.run(agentProvider, subModel, apiKey, prompt.trim(),
+                    scope, readTools, true,
+                    subCall -> {
+                        ToolOutcome sub = READ_ONLY_TOOLS.contains(subCall.name())
+                                ? executeTool(userId, workspace, UUID.randomUUID().toString(), subCall,
+                                        // Sous concurrence, l'écoute de progression n'est pas partagée :
+                                        // la synthèse est relayée après jointure, sur le thread du tour.
+                                        AtelierProgressListener.NOOP, deadline,
+                                        new java.util.concurrent.atomic.AtomicReference<>(AtelierPlan.EMPTY),
+                                        // En lecture seule, aucune carte n'est posée dans le fil.
+                                        java.util.Map.of())
+                                : ToolOutcome.error(
+                                        "Outil indisponible en sous-tâche de lecture : " + subCall.name());
+                        return new AtelierTask.ExecutedTool(sub.content(), sub.isError());
+                    },
+                    () -> interruptedTurns.contains(turnKey(userId, workspace.getId()))
+                            || System.currentTimeMillis() >= deadline,
+                    reasoning);
+            return new ExplorationOutcome(ToolOutcome.info(result.answer()),
+                    result.inputTokens(), result.outputTokens(),
+                    result.cacheReadTokens(), result.cacheWriteTokens());
+        } catch (RuntimeException ex) {
+            return new ExplorationOutcome(ToolOutcome.error(
+                    "La sous-tâche de lecture a échoué ; poursuis toi-même."), 0, 0, 0, 0);
+        }
+    }
+
     /** Fabrique de threads d'exploration : nommés (diagnostic) et démons (n'empêchent pas l'arrêt). */
     private static java.util.concurrent.ThreadFactory exploreThreadFactory() {
         java.util.concurrent.atomic.AtomicInteger seq = new java.util.concurrent.atomic.AtomicInteger();
@@ -3539,7 +3649,7 @@ public class AtelierChatService implements RelayInterruptTarget {
      * l'agent doit pouvoir faire le travail lui-même.</p>
      *
      * <p>Depuis SF-39-21, {@code explore} peut être appelé <b>concurremment</b> pour plusieurs
-     * délégations d'un même tour (voir {@link #exploreConcurrently}). Le corps ci-dessous ne partage
+     * délégations d'un même tour (voir {@link #readDelegationsConcurrently}). Le corps ci-dessous ne partage
      * aucun état mutable propre au service : {@code userId} et la cible sont passés explicitement, la
      * panoplie est construite par appel, la voie de lecture route par {@code callId} unique côté runner
      * (dispatcher multiplexé), et le {@code stop}/{@code deadline} du tour est partagé (D7).</p>
@@ -3640,7 +3750,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         List<AgentTool> tools = taskTools();
         try {
             AtelierTask.Result result = AtelierTask.run(agentProvider, subModel, apiKey, prompt.trim(),
-                    scope, tools,
+                    scope, tools, false,
                     subCall -> {
                         // Chaque outil de la sous-boucle s'exécute SUR LE RUNNER, avec le worktree
                         // comme projet — la porte de confirmation/audit/permissions vient avec.
@@ -5711,9 +5821,21 @@ public class AtelierChatService implements RelayInterruptTarget {
                             + "la boucle principale, sur la copie de travail réelle — quand le travail "
                             + "n'a pas besoin d'être isolé. "
                             + "Donne une consigne précise dans prompt, et éventuellement un chemin de "
-                            + "départ dans path. Requiert un projet git ; sinon utilise explore pour lire.",
+                            + "départ dans path. Requiert un projet git ; sinon utilise explore pour lire. "
+                            // F-121 / SF-121-14 : sous-tâche en LECTURE SEULE, concurrentiable. La
+                            // doctrine de groupement reprend celle d'`explore` (SF-39-22/SF-148-04) :
+                            // sans elle, le parallélisme n'apparaît que si le modèle groupe de lui-même.
+                            // Littéral STABLE (cache F-134) : rien de volatil n'y entre.
+                            + "Si la sous-tâche ne fait que LIRE (audit, revue, inventaire, "
+                            + "vérification), passe read_only à true : elle n'obtient alors que les "
+                            + "outils de lecture, ne crée aucun worktree, et plusieurs sous-tâches en "
+                            + "lecture seule émises dans le MÊME tour s'exécutent EN PARALLÈLE. Groupe "
+                            + "donc systématiquement les sous-tâches en lecture seule INDÉPENDANTES "
+                            + "dans un même tour, avec tes appels explore. Une sous-tâche qui ÉCRIT ne "
+                            + "se groupe jamais : les mutations s'exécutent l'une après l'autre.",
                     Map.of("type", "object",
-                            "properties", Map.of("prompt", stringProp, "path", stringProp),
+                            "properties", Map.of("prompt", stringProp, "path", stringProp,
+                                    "read_only", Map.of("type", "boolean")),
                             "required", List.of("prompt"))));
         }
         // Le plan est déclaré sur les DEUX cibles : c'est un outil d'organisation, pas d'exécution
