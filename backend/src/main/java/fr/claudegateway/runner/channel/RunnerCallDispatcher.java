@@ -689,6 +689,22 @@ public class RunnerCallDispatcher implements org.springframework.context.Applica
     }
 
     /** Termine tous les appels en vol d'un poste (socket fermée). */
+    /**
+     * Combien d'appels attendent <b>en ce moment</b> ce poste (F-161 / SF-161-03).
+     *
+     * <p>À lire <b>avant</b> {@code detachChannel} : celui-ci les termine tous en
+     * {@code runner_unavailable}, et après il n'y a plus rien à compter. C'est pourtant le chiffre
+     * qui distingue une rupture anodine d'une rupture qui a tué un tour — la seule qui coûte.</p>
+     */
+    public int inFlightCountFor(UUID hostId) {
+        if (hostId == null) {
+            return 0;
+        }
+        return (int) inFlight.values().stream()
+                .filter(pending -> hostId.equals(pending.hostId()))
+                .count();
+    }
+
     private void failAllOf(UUID hostId) {
         inFlight.forEach((id, pending) -> {
             if (pending.hostId().equals(hostId)) {
