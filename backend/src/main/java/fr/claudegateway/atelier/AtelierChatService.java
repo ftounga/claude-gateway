@@ -1934,13 +1934,16 @@ public class AtelierChatService implements RelayInterruptTarget {
                 // sur son plafond reviendrait à franchir le plafond (décision D3).
                 if (endOfTurnBlocks < MAX_END_OF_TURN_BLOCKS
                         && checkpointRunner.hasCheckpoints(AtelierCheckpointKind.END_OF_TURN)) {
-                    AtelierCheckpointVerdict verdict = checkpointRunner.run(
-                            AtelierCheckpointKind.END_OF_TURN,
+                    // F-121 / SF-121-17 : un tour qui RÉPOND n'est pas renvoyé au travail. En mode
+                    // Réponse/Plan, aucun contrôle n'est interrogé ; sur un tour sans écriture,
+                    // seuls ceux qui déclarent juger ces tours-là le sont (porte de complétude).
+                    AtelierCheckpointVerdict verdict = checkpointRunner.runEndOfTurn(
                             AtelierCheckpointContext.endOfTurn(userId, workspace.getHostId(),
                                     workspaceId, finalText, List.copyOf(writtenPaths),
                                     machineOfTurn.getOrDefault(turnKey(userId, workspaceId),
                                             fr.claudegateway.atelier.checkpoint.AtelierMachineReach.UNKNOWN),
-                                    planOfTurn.get()));
+                                    planOfTurn.get()),
+                            turnMode == AgentTurnMode.ANSWER_PLAN);
                     if (verdict.blocked()) {
                         endOfTurnBlocks++;
                         String correction = AtelierCheckpointRunner.endOfTurnBlockedMessage(verdict);

@@ -76,6 +76,17 @@ class AtelierChatServiceEndOfTurnCheckpointTest {
             return AtelierCheckpointKind.END_OF_TURN;
         }
 
+        /**
+         * F-121 / SF-121-17 : ce double sert à vérifier la <b>mécanique</b> du crochet (blocage,
+         * rejeu, plafond, transcription), sur des tours qui n'écrivent rien. Il se déclare donc
+         * comme la porte de complétude — un contrôle qui juge le tour lui-même. La neutralisation
+         * par défaut, elle, est vérifiée plus bas par {@link WrittenWorkCheckpoint}.
+         */
+        @Override
+        public boolean judgesTurnWithoutWrites() {
+            return true;
+        }
+
         @Override
         public AtelierCheckpointVerdict evaluate(AtelierCheckpointContext context) {
             seen.add(context);
@@ -319,5 +330,109 @@ class AtelierChatServiceEndOfTurnCheckpointTest {
         assertThat(assistant.getTerminalJson())
                 .contains("point de contrôle")
                 .contains("Fin de tour contrôlée : Renseigne STATE.md.");
+    }
+
+    // ------------------------------------------------------------------ F-121 / SF-121-17
+    // Un tour qui RÉPOND n'est plus renvoyé au travail : mode Réponse/Plan, ou tour sans écriture.
+
+    /**
+     * Contrôle <b>ordinaire</b> : il garde le défaut de SF-121-17 — il juge le travail écrit. C'est
+     * le cas de tous les contrôles de gouvernance branchés en fin de tour.
+     */
+    private static final class WrittenWorkCheckpoint implements AtelierCheckpoint {
+        final List<AtelierCheckpointContext> seen = new ArrayList<>();
+        private int remainingBlocks;
+
+        WrittenWorkCheckpoint(int blocks) {
+            this.remainingBlocks = blocks;
+        }
+
+        @Override
+        public AtelierCheckpointKind kind() {
+            return AtelierCheckpointKind.END_OF_TURN;
+        }
+
+        @Override
+        public AtelierCheckpointVerdict evaluate(AtelierCheckpointContext context) {
+            seen.add(context);
+            if (remainingBlocks <= 0) {
+                return AtelierCheckpointVerdict.proceed();
+            }
+            remainingBlocks--;
+            return AtelierCheckpointVerdict.block("Reprends le fichier écrit, puis conclus.");
+        }
+    }
+
+    @Test
+    void anAnsweringTurnIsNeverSentBackToWork() {
+        // Mode Réponse/Plan : aucune mutation n'y est même déclarée (SF-120-02). Même un contrôle
+        // qui juge le tour lui-même reste hors jeu — en mode plan, le tour EST le plan.
+        EndOfTurnCheckpoint checkpoint = new EndOfTurnCheckpoint("Ne devrait pas être rendu.", 9);
+        AtelierChatService service = serviceWith(checkpoint);
+        agentProvider.enqueueFinal("Voici ce que je ferais.");
+        agentProvider.enqueueFinal("ne devrait jamais être demandé");
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "que ferais-tu ?",
+                fr.claudegateway.agent.AgentTurnMode.ANSWER_PLAN);
+
+        assertThat(result.reply()).isEqualTo("Voici ce que je ferais.");
+        assertThat(checkpoint.seen).isEmpty();
+        assertThat(agentProvider.remaining()).isEqualTo(1);
+        assertThat(userTexts()).noneSatisfy(text ->
+                assertThat(text).startsWith("Fin de tour contrôlée : "));
+    }
+
+    @Test
+    void aTurnThatWroteNothingNeverAsksACheckpointThatJudgesWrittenWork() {
+        WrittenWorkCheckpoint checkpoint = new WrittenWorkCheckpoint(9);
+        AtelierChatService service = serviceWith(checkpoint);
+        agentProvider.enqueueToolCall("read_file", "path", "a.txt");
+        agentProvider.enqueueFinal("Voici la réponse.");
+        agentProvider.enqueueFinal("ne devrait jamais être demandé");
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "que fait a.txt ?");
+
+        assertThat(result.reply()).isEqualTo("Voici la réponse.");
+        assertThat(checkpoint.seen).isEmpty();
+        assertThat(agentProvider.remaining()).isEqualTo(1);
+    }
+
+    @Test
+    void aTurnThatWroteStillAsksTheSameCheckpoint() {
+        // Non-régression stricte de F-50 / SF-50-02 : dès qu'un fichier est écrit, rien ne change.
+        WrittenWorkCheckpoint checkpoint = new WrittenWorkCheckpoint(1);
+        AtelierChatService service = serviceWith(checkpoint);
+        agentProvider.enqueueToolCall("write_file", "path", "a.txt", "content", "un");
+        agentProvider.enqueueFinal("C'est écrit.");
+        agentProvider.enqueueFinal("Et corrigé.");
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "écris a.txt");
+
+        assertThat(result.reply()).isEqualTo("Et corrigé.");
+        assertThat(checkpoint.seen).hasSize(2);
+        assertThat(checkpoint.seen.get(0).writtenPaths()).containsExactly("a.txt");
+        assertThat(userTexts()).contains(
+                "Fin de tour contrôlée : Reprends le fichier écrit, puis conclus.");
+    }
+
+    @Test
+    void anUnfinishedPlanStillBlocksAReadOnlyTurn() {
+        // SF-121-05 n'est pas régressée : la porte de complétude juge le PLAN, et un tour
+        // d'investigation qui laisse des étapes en plan est toujours refusé.
+        AtelierChatService service = serviceWith(
+                new fr.claudegateway.atelier.checkpoint.PlanCompletudeCheckpoint(true));
+        agentProvider.enqueueToolCallWithJson("set_plan", "steps",
+                "[{\"title\":\"Lire\",\"status\":\"done\"},{\"title\":\"Conclure\"}]");
+        agentProvider.enqueueFinal("J'ai regardé.");
+        agentProvider.enqueueToolCallWithJson("set_plan", "steps",
+                "[{\"title\":\"Lire\",\"status\":\"done\"},{\"title\":\"Conclure\",\"status\":\"done\"}]");
+        agentProvider.enqueueFinal("Voilà, c'est conclu.");
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "analyse le projet");
+
+        assertThat(result.reply()).isEqualTo("Voilà, c'est conclu.");
+        assertThat(userTexts()).anySatisfy(text -> assertThat(text)
+                .startsWith("Fin de tour contrôlée : ")
+                .contains("Conclure"));
     }
 }
