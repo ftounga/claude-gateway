@@ -117,7 +117,10 @@ class SessionLedgerServiceTest {
     @Test
     @DisplayName("la part du cache est le chiffre de F-134 : ce qui dit si la consigne est repayée")
     void theCacheShareIsTheF134Number() {
-        given(List.of(turn("2026-09-24T09:00:00Z", "1.00", 1000, 100, 9000)), List.of());
+        // SF-155-06 : `input` est le volume TRAITÉ — il CONTIENT le cache lu. Un jeu de données où
+        // le cache dépasse l'entrée est impossible en production ; l'ancien encodait la sémantique
+        // fausse que cette subfeature corrige.
+        given(List.of(turn("2026-09-24T09:00:00Z", "1.00", 10_000, 100, 9_000)), List.of());
 
         SessionLedger ledger = service.of(userId, workspaceId, from, to);
         assertThat(ledger.cacheReadTokens()).isEqualTo(9000);
