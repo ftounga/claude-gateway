@@ -1136,6 +1136,13 @@
       </div>
       }
     }
+
+    <!-- SENTINELLE DE FOND (F-158 / SF-158-23) : dernier enfant du fil. À l'entrée dans le terminal et
+         à chaque nouveau contenu, on l'amène dans le champ de vision (`scrollIntoView`) — ce qui défile
+         l'ancêtre défilant RÉEL (la fenêtre sur mobile ≤ 819 px, où `.terminal-scrollback` n'est pas le
+         scroller ; le conteneur `.terminal-scrollback` sur desktop). Purement fonctionnelle, hauteur
+         nulle, hors lecture d'écran. -->
+    <div #bottomSentinel class="terminal-bottom-sentinel" aria-hidden="true"></div>
     </div>
   </div>
 
