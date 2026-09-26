@@ -228,6 +228,24 @@ public class Workspace {
     private String chatThreadSummary;
 
     /**
+     * Marqueur de repli d'affichage du nouveau départ manuel (F-117 / SF-117-05).
+     *
+     * <p>Un « nouveau départ » (F-39 / SF-39-04) et la compaction automatique (SF-117-01) posent la
+     * <b>même</b> frontière {@link #chatThreadStartedAt} : elle ne peut donc pas, à elle seule,
+     * distinguer le geste humain — dont l'ancien fil doit se replier derrière « Voir l'historique »
+     * — de la compaction silencieuse, qui garde tout affiché. Cette colonne est posée
+     * <b>uniquement</b> par le restart manuel ({@code AtelierThreadService.restart}), <b>jamais</b>
+     * par la compaction : elle marque le point avant lequel l'affichage se replie.</p>
+     *
+     * <p><b>Point fixe</b> : une compaction survenant après un nouveau départ déplace
+     * {@link #chatThreadStartedAt} mais laisse ce marqueur inchangé — le repli ne s'étend donc pas
+     * silencieusement. {@code null} — le cas de tous les projets existants — signifie qu'aucun
+     * nouveau départ n'a eu lieu : aucun repli, comportement d'avant SF-117-05.</p>
+     */
+    @Column(name = "chat_history_folded_at")
+    private OffsetDateTime chatHistoryFoldedAt;
+
+    /**
      * Mode du dernier tour du fil (F-121 / SF-121-10), à l'image du <i>plan mode</i> de Claude Code :
      * {@code ANSWER_PLAN} (répondre / proposer un plan sans muter) ou {@code ACT} (panoplie complète).
      *

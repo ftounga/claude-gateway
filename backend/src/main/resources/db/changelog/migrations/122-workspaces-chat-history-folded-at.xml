@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-117 / SF-117-05 — MARQUEUR DE REPLI D'AFFICHAGE DU NOUVEAU DEPART MANUEL.
+
+      Un « nouveau depart » (F-39 / SF-39-04) et la compaction automatique (SF-117-01) posent la
+      MEME frontiere `chat_thread_started_at` (migration 051) : elle ne peut donc pas, a elle seule,
+      distinguer le geste humain (a replier a l'ecran) de la compaction silencieuse (tout garde
+      affiche). Cette colonne est posee UNIQUEMENT par le restart manuel, jamais par la compaction :
+      elle marque, de facon durable et stable, le point avant lequel l'affichage se replie derriere
+      « Voir l'historique ».
+
+      Point FIXE : une compaction survenant apres un nouveau depart deplace `chat_thread_started_at`
+      mais laisse cette colonne inchangee — le repli ne s'etend donc pas silencieusement.
+
+      Colonne nullable : `null` = jamais de nouveau depart, aucun repli — exactement le comportement
+      d'avant SF-117-05 pour tous les projets existants. Reversible (`dropColumn`).
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="122-workspaces-chat-history-folded-at-postgresql" author="claude-gateway" dbms="postgresql">
+        <addColumn tableName="workspaces">
+            <column name="chat_history_folded_at" type="timestamp with time zone"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="workspaces" columnName="chat_history_folded_at"/>
+        </rollback>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="122-workspaces-chat-history-folded-at-h2" author="claude-gateway" dbms="h2">
+        <addColumn tableName="workspaces">
+            <column name="chat_history_folded_at" type="timestamp with time zone"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="workspaces" columnName="chat_history_folded_at"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

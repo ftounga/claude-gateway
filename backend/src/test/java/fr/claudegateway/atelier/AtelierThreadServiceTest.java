@@ -3,6 +3,7 @@ package fr.claudegateway.atelier;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -127,6 +128,53 @@ class AtelierThreadServiceTest {
         OffsetDateTime second = service.restart(userId, workspaceId).threadStartedAt();
 
         assertThat(second).isAfterOrEqualTo(first);
+    }
+
+    @Test
+    void aFreshStartSetsTheFoldMarkerAndCountsFoldedTurns() {
+        // F-117 / SF-117-05 : le nouveau départ manuel pose le marqueur de repli — à l'instant même
+        // de la frontière — et renvoie combien de messages se replient derrière « Voir l'historique ».
+        when(workspaceService.requireOwned(userId, workspaceId)).thenReturn(workspace);
+        when(messageRepository.countByWorkspaceIdAndUserIdAndCreatedAtLessThan(
+                eq(workspaceId), eq(userId), any())).thenReturn(3L);
+
+        AtelierResumeResponse state = service.restart(userId, workspaceId);
+
+        assertThat(workspace.getChatHistoryFoldedAt()).isNotNull();
+        // Le marqueur de repli coïncide avec la frontière de rejeu posée par ce même geste.
+        assertThat(workspace.getChatHistoryFoldedAt()).isEqualTo(workspace.getChatThreadStartedAt());
+        assertThat(state.foldedTurns()).isEqualTo(3);
+    }
+
+    @Test
+    void resumeCountsFoldedTurnsFromTheManualRestartMarker() {
+        OffsetDateTime folded = OffsetDateTime.now().minusHours(1);
+        workspace.setChatHistoryFoldedAt(folded);
+        when(workspaceService.requireOwned(userId, workspaceId)).thenReturn(workspace);
+        when(messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspaceId, userId))
+                .thenReturn(List.of(messageAt(OffsetDateTime.now())));
+        when(messageRepository.countByWorkspaceIdAndUserIdAndCreatedAtLessThan(workspaceId, userId, folded))
+                .thenReturn(5L);
+
+        AtelierResumeResponse state = service.resumeState(userId, workspaceId);
+
+        assertThat(state.foldedTurns()).isEqualTo(5);
+    }
+
+    @Test
+    void withoutAManualRestartNothingIsFolded() {
+        // Aucun nouveau départ : `chat_history_folded_at` est null → rien n'est replié, et on ne
+        // compte même pas. La compaction automatique (SF-117-01), qui ne pose pas ce marqueur, ne
+        // replie donc jamais l'affichage.
+        when(workspaceService.requireOwned(userId, workspaceId)).thenReturn(workspace);
+        when(messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspaceId, userId))
+                .thenReturn(List.of(messageAt(OffsetDateTime.now())));
+
+        AtelierResumeResponse state = service.resumeState(userId, workspaceId);
+
+        assertThat(state.foldedTurns()).isZero();
+        verify(messageRepository, never())
+                .countByWorkspaceIdAndUserIdAndCreatedAtLessThan(any(), any(), any());
     }
 
     @Test

@@ -9,6 +9,10 @@ import java.util.List;
  * @param turns           messages que le prochain tour rejouera au fournisseur
  * @param lastMessageAt   date du dernier message rejouable, ou {@code null} si le fil est vide
  * @param threadStartedAt frontière posée par un « nouveau départ », ou {@code null} si aucun
+ * @param foldedTurns     nombre de messages à replier à l'écran derrière « Voir l'historique »
+ *                        (F-117 / SF-117-05) : ceux d'avant le dernier <b>nouveau départ manuel</b>.
+ *                        {@code 0} si aucun nouveau départ — la compaction automatique (SF-117-01),
+ *                        elle, ne replie rien.
  * @param prompt          {@code NONE} — la reprise va de soi, ne rien demander ;
  *                        {@code IDLE} — projet inactif, proposer le choix explicite
  * @param mode            mode persisté du fil (F-121 / SF-121-10) : {@code ANSWER_PLAN} ou {@code ACT} ;
@@ -20,26 +24,26 @@ import java.util.List;
  *                        hors nouveau départ, et pour qui n'est pas administrateur.
  */
 public record AtelierResumeResponse(int turns, OffsetDateTime lastMessageAt,
-        OffsetDateTime threadStartedAt, String prompt, String mode, List<PlanStep> plan,
-        String bilan, BilanReport bilanReport) {
+        OffsetDateTime threadStartedAt, int foldedTurns, String prompt, String mode,
+        List<PlanStep> plan, String bilan, BilanReport bilanReport) {
 
     /** Forme historique (sans mode ni plan), conservée pour les appelants qui l'attendent. */
     public AtelierResumeResponse(int turns, OffsetDateTime lastMessageAt,
             OffsetDateTime threadStartedAt, String prompt) {
-        this(turns, lastMessageAt, threadStartedAt, prompt, null, List.of(), "AUCUN", null);
+        this(turns, lastMessageAt, threadStartedAt, 0, prompt, null, List.of(), "AUCUN", null);
     }
 
     /** Forme d'avant le bilan (F-155 / SF-155-03), conservée pour la reprise ordinaire. */
     public AtelierResumeResponse(int turns, OffsetDateTime lastMessageAt,
             OffsetDateTime threadStartedAt, String prompt, String mode, List<PlanStep> plan) {
-        this(turns, lastMessageAt, threadStartedAt, prompt, mode, plan, "AUCUN", null);
+        this(turns, lastMessageAt, threadStartedAt, 0, prompt, mode, plan, "AUCUN", null);
     }
 
     /** Forme d'avant SF-155-07 : le déclencheur sans son contenu. */
     public AtelierResumeResponse(int turns, OffsetDateTime lastMessageAt,
             OffsetDateTime threadStartedAt, String prompt, String mode, List<PlanStep> plan,
             String bilan) {
-        this(turns, lastMessageAt, threadStartedAt, prompt, mode, plan, bilan, null);
+        this(turns, lastMessageAt, threadStartedAt, 0, prompt, mode, plan, bilan, null);
     }
 
     /** Une étape du plan reporté, telle que l'écran l'affiche (F-121 / SF-121-10). */

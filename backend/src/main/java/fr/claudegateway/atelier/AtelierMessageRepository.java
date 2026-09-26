@@ -20,6 +20,15 @@ public interface AtelierMessageRepository extends JpaRepository<AtelierMessage, 
     List<AtelierMessage> findByWorkspaceIdAndUserIdAndCreatedAtGreaterThanEqualOrderByCreatedAtAsc(
             UUID workspaceId, UUID userId, java.time.OffsetDateTime since);
 
+    /**
+     * Combien de messages sont antérieurs au marqueur de repli du nouveau départ manuel
+     * (F-117 / SF-117-05) : le nombre de messages que l'écran replie derrière « Voir l'historique ».
+     * Tous rôles confondus — l'affichage replie le fil entier, comme {@code turns} le compte. Filtrée
+     * sur {@code user_id} comme toutes les lectures de cette table.
+     */
+    long countByWorkspaceIdAndUserIdAndCreatedAtLessThan(UUID workspaceId, UUID userId,
+            java.time.OffsetDateTime foldedAt);
+
     /** Purge à la suppression du compte (SF-11-03). */
     void deleteByUserId(UUID userId);
 
