@@ -632,7 +632,7 @@ describe('AtelierTerminalComponent', () => {
       fixture.nativeElement.querySelectorAll('.terminal-steer-state') as NodeListOf<HTMLElement>,
     ).map((el) => el.textContent?.trim());
     expect(states).toEqual([
-      'en attente de l’étape suivante',
+      'en attente — lue dès la fin de l’outil en cours',
       'prise en compte à l’étape 3',
       'ouvre un tour de suite',
       'non prise en compte — tour arrêté',

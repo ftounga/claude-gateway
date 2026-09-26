@@ -1564,7 +1564,9 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
       case 'dropped':
         return 'non prise en compte — tour arrêté';
       default:
-        return 'en attente de l’étape suivante';
+        // SF-121-11 : la file est consultée entre les appels d'outils, plus seulement à la
+        // frontière d'étape. Promettre « l'étape suivante » promettrait plus d'attente qu'il n'y en a.
+        return 'en attente — lue dès la fin de l’outil en cours';
     }
   }
 
