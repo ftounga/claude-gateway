@@ -442,6 +442,46 @@ class AnthropicAgentProviderTest {
         assertThat(body.path("output_config").path("effort").asText()).isEqualTo("xhigh");
     }
 
+    // --- F-121 / SF-121-16 : thinking entrelacé — aucun en-tête beta à poser --------------------
+
+    @Test
+    void postsNoInterleavedThinkingBetaOnAnAdaptiveTurn() {
+        // L'en-tête beta `interleaved-thinking` datait de la génération Claude 4, où penser ENTRE
+        // deux appels d'outils devait être demandé. Depuis 4.6, le thinking adaptatif l'active de
+        // lui-même : poser l'en-tête serait au mieux mort, au pire un beta inconnu rejeté (400).
+        // Ce témoin garde la propriété — une tentative de le « rajouter » fera échouer la suite.
+        build(null);
+        List<String> betaHeaders = new ArrayList<>();
+        java.util.concurrent.atomic.AtomicReference<String> captured =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        server.expect(requestTo(URL))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(request -> {
+                    captured.set(((org.springframework.mock.http.client.MockClientHttpRequest) request)
+                            .getBodyAsString());
+                    List<String> beta = request.getHeaders().get("anthropic-beta");
+                    if (beta != null) {
+                        betaHeaders.addAll(beta);
+                    }
+                })
+                .andRespond(withSuccess("""
+                        {"content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn",
+                         "usage": {"input_tokens": 1, "output_tokens": 1}}
+                        """, MediaType.APPLICATION_JSON));
+
+        provider.nextTurn(new AgentTurnRequest("claude-model", "consigne",
+                List.of(AgentMessage.userText("bonjour")), List.of(), null,
+                new AgentReasoning(true, "high")));
+        server.verify();
+
+        // Aucun beta du tout sur un tour ordinaire : les seuls posés ailleurs sont conditionnés à un
+        // usage réel (édition de contexte SF-39-12, effort par message SF-134-05).
+        assertThat(betaHeaders).isEmpty();
+        assertThat(betaHeaders).noneMatch(value -> value.contains("interleaved"));
+        // Et l'entrelacement vient de là : le mode adaptatif, écrit explicitement.
+        assertThat(captured.get()).contains("\"adaptive\"");
+    }
+
     @Test
     void sendsNothingAboutReasoningWhenItIsNotAsked() {
         build(null);
