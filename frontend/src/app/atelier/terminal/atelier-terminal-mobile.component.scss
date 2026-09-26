@@ -94,13 +94,15 @@
 
   /* Le champ de saisie peut rétrécir sous la largeur de ses boutons (joindre, dictée, envoyer) :
      sans cela, son gabarit intrinsèque forcerait un débordement horizontal à ~400 px. Il passe aussi
-     PLEINE LARGEUR et boxé (SF-158-13, maquette `.field`) : creux `--cg-navy-2` sur le fond
-     `--cg-primary` du terminal, coins arrondis, gouttière interne. */
+     PLEINE LARGEUR et boxé (SF-158-13, maquette `.field`). PEAU PRO (SF-158-15) : creux `--cg-navy`
+     bordé d'un filet dérivé de `--cg-divider` (color-mix, pas une couleur nouvelle) — il se lit comme
+     un champ SUR le composeur `--cg-navy-2`, exactement comme le champ de saisie du chat mobile. */
   .terminal-field {
     min-width: 0;
     width: 100%;
     padding: var(--cg-space-2) var(--cg-space-3);
-    background: var(--cg-navy-2);
+    background: var(--cg-navy);
+    border: 1px solid color-mix(in srgb, var(--cg-divider) 24%, transparent);
     border-radius: 8px;
   }
 
@@ -117,7 +119,10 @@
     z-index: 2;
     flex-wrap: wrap;
     align-items: center;
-    background: var(--cg-primary);
+    /* PEAU PRO (SF-158-15) : le composeur passe en SURFACE `--cg-navy-2` (chrome), comme le composeur
+       du chat mobile, séparé du fil par un filet dérivé de `--cg-divider` (color-mix). */
+    background: var(--cg-navy-2);
+    border-top-color: color-mix(in srgb, var(--cg-divider) 16%, transparent);
     padding-bottom: calc(var(--cg-space-2) + env(safe-area-inset-bottom));
   }
 
@@ -163,7 +168,9 @@
      (`overflow-x: auto`, `white-space: pre`) — une ligne trop large glisse dans la boîte, jamais dans
      la page (la vue clôt déjà l'axe, SF-158-10). */
   .terminal-output {
-    padding: var(--cg-space-2);
+    /* Respiration de la maquette (`.out`, gouttière interne 16 px) — SF-158-15 remonte le rognage
+       8 px de SF-158-14 au niveau de finition du chat. */
+    padding: var(--cg-space-3);
     background: var(--cg-navy);
     border: 1px solid var(--cg-navy-2);
     border-radius: 8px;
@@ -255,5 +262,69 @@
     flex: 0 0 auto;
     width: 44px;
     height: 44px;
+  }
+
+  /* ================================================================================================
+     PEAU SOMBRE « PRO » DU TERMINAL SUR TÉLÉPHONE (F-158 / SF-158-15, maquette `mobile-terminal-mockup.html`)
+     ------------------------------------------------------------------------------------------------
+     Retour PO : SF-158-12/13/14 ont posé la STRUCTURE (en-tête ⋯, composeur ancré, décisions
+     empilées) mais gardé l'ANCIENNE peau du fil — « toujours aussi moche ». Ici on applique VRAIMENT
+     la peau de la maquette, au niveau de finition du chat mobile refondu (F-160-01,
+     `chat-mobile.component.scss`) : fond du fil sombre, chrome en surface, cartes propres, respiration.
+
+     PARITÉ CHAT (barre de qualité) : le chat mobile pose le fil sur `--cg-navy` (`#0B1020` = `--bg` de
+     la maquette) et ses surfaces (barre, composeur, bulles) sur `--cg-navy-2` (`#141D33`). On reprend
+     EXACTEMENT ce mapping — aucune couleur nouvelle, jetons `--cg-*` uniquement ; les filets discrets
+     dérivent d'un jeton via `color-mix` (technique déjà employée dans `chat.component.scss`).
+
+     DESKTOP (>= 820 px) STRICTEMENT INCHANGÉ : tout est sous ce `@media (max-width: 819px)`.
+     TEAMS (« Papier » clair) et LECTURE SEULE (tuile `--cg-navy-2`) : NON TOUCHÉS — la règle de fond
+     ci-dessous s'en exclut explicitement, et les surfaces Teams l'emportent par spécificité. ============ */
+
+  /* LE FOND DU FIL passe au navy profond de la maquette (`--bg`), comme le chat mobile — au lieu du
+     `--cg-primary` daté. Exclu du terminal Teams (peau claire dédiée) et de la lecture seule (tuile
+     `--cg-navy-2` conservée, cf. `terminal-lecture-seule.spec.ts`). */
+  .terminal-view:not(.terminal-view--teams):not(.terminal-view--readonly) {
+    background: var(--cg-navy);
+  }
+
+  /* LE CHROME (barre d'en-tête) passe en SURFACE `--cg-navy-2`, comme la barre d'outils du chat. Le
+     filet du bas dérive de `--cg-divider` pour se détacher du fil navy. La peau Teams garde sa barre
+     (spécificité (0,3,0) de `.terminal-view.terminal-view--teams .terminal-bar`), la lecture seule n'a
+     pas d'en-tête. */
+  .terminal-bar {
+    background: var(--cg-navy-2);
+    border-bottom-color: color-mix(in srgb, var(--cg-divider) 16%, transparent);
+  }
+
+  /* LES SOUS-AGENTS GROUPÉS (F-150, maquette `.subs`) : la feuille dédiée les rend en simple filet
+     gauche ; la maquette veut une CARTE bordée arrondie sur surface. On la restyle ICI en mobile sans
+     toucher le desktop (la feuille F-150 reste la référence >= 820 px). */
+  .terminal-subagents {
+    border-left: 0;
+    border: 1px solid color-mix(in srgb, var(--cg-divider) 16%, transparent);
+    border-radius: 12px;
+    background: var(--cg-navy-2);
+    padding: var(--cg-space-2) var(--cg-space-3);
+  }
+
+  /* L'ESSENTIEL (F-126, maquette `.ess`) : déjà filet accent + voile doré + rayon ; on aligne le rayon
+     sur la carte pour une famille de surfaces cohérente sur le fil navy. */
+  .terminal-essential {
+    border-radius: 12px;
+  }
+
+  /* LA DEMANDE D'AUTORISATION (maquette `.ask`) : carte arrondie posée, avec une ombre douce dérivée
+     du navy (jeton `--cg-navy` voilé, pas une couleur nouvelle) ; sa commande passe en creux `--cg-navy`
+     arrondi (maquette `.ask .cmd`, fond très sombre). Les boutons restent empilés pleine largeur
+     (SF-158-13). */
+  .terminal-ask {
+    border-radius: 14px;
+    box-shadow: 0 6px 20px color-mix(in srgb, var(--cg-navy) 55%, transparent);
+  }
+
+  .terminal-ask-command {
+    background: var(--cg-navy);
+    border-radius: 8px;
   }
 }
