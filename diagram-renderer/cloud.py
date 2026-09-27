@@ -17,7 +17,13 @@ import os
 import sys
 
 MAX_NODES = 60
-MAX_GROUPS = 12
+# L'imbrication (SF-142-15) multiplie mécaniquement les cadres : un VPC, ses zones, leurs
+# sous-réseaux. La borne d'avant (12) était taillée pour des cadres frères ; elle refusait désormais
+# des topologies légitimes. Elle monte à 24 — elle reste une borne, pas une permission d'étaler.
+MAX_GROUPS = 24
+# Au-delà, le schéma n'est plus lisible : VPC > zone > sous-réseau > ressource suffit à décrire un
+# réseau réel, et une profondeur non bornée ouvre la porte à une descente sans fin.
+MAX_GROUP_DEPTH = 4
 MAX_EDGES = 120
 MAX_LABEL = 120
 
@@ -174,6 +180,107 @@ def label_of(raw, what):
     return text
 
 
+# ---------------------------------------------------------------------------------------------------
+# LES GROUPES IMBRIQUÉS (F-142 / SF-142-15)
+#
+# Défaut constaté sur le rendu réel du 2026-09-27 : le cadre « Sous-réseaux privés » et le cadre
+# « VPC 10.180.165.0/24 » étaient dessinés CÔTE À CÔTE, en frères. Or un VPC contient ses
+# sous-réseaux : la topologie affichée était FAUSSE.
+#
+# La cause tenait dans notre code, pas dans le modèle : la description n'avait qu'UN SEUL niveau —
+# chaque nœud portait un « group », et la carte plate rendait un Cluster par clé. L'imbrication était
+# IMPOSSIBLE À EXPRIMER. Les arêtes qui traversaient le vide en étaient la conséquence : sans
+# imbrication, graphviz étale tout et relie de loin.
+#
+# L'arbitrage : un « parent » sur le GROUPE, jamais un chemin sur le nœud. Le nœud continue de
+# déclarer un seul groupe ; c'est le groupe qui dit où il vit. Faire porter la hiérarchie par le nœud
+# obligerait à répéter le chemin sur chaque ressource, et deux nœuds du même sous-réseau pourraient
+# le décrire différemment.
+#
+# Rétrocompatible par construction : un « groups » sans « parent » rend exactement ce qu'il rendait.
+# ---------------------------------------------------------------------------------------------------
+
+
+def group_plan(groups, by_group):
+    """
+    L'arbre des cadres : (étiquettes, enfants, racines, groupes peuplés).
+
+    Un parent inconnu ou un cycle sont REFUSÉS : un cadre orphelin dessinerait une topologie fausse,
+    et un schéma faux est pire qu'un schéma absent.
+    """
+    labels = {}
+    parent_of = {}
+    declared = []
+    for group in groups:
+        group_id = str(group.get("id") or "").strip()
+        if not group_id:
+            raise Refused("Un groupe sans identifiant : « id » est obligatoire sur chaque groupe.")
+        if group_id in parent_of:
+            raise Refused(f"Deux groupes portent le même identifiant : « {group_id} ».")
+        declared.append(group_id)
+        labels[group_id] = label_of(group.get("label"), "Le nom d'un groupe")
+        raw = group.get("parent")
+        parent_of[group_id] = "" if raw is None else str(raw).strip()
+
+    # Un groupe nommé par un nœud mais jamais déclaré reste accepté — c'est le comportement d'avant.
+    # Il est alors une racine, et porte son identifiant pour étiquette.
+    for group_id in by_group:
+        if group_id and group_id not in parent_of:
+            parent_of[group_id] = ""
+            labels.setdefault(group_id, group_id)
+
+    for group_id, parent in parent_of.items():
+        if not parent:
+            continue
+        if parent == group_id:
+            raise Refused(f"Le groupe « {group_id} » se déclare son propre parent.")
+        if parent not in parent_of:
+            raise Refused(f"Groupe parent inconnu : « {parent} », déclaré par le groupe "
+                          f"« {group_id} ». Un cadre orphelin dessinerait une topologie fausse.")
+
+    for group_id in parent_of:
+        seen = {group_id}
+        current, depth = group_id, 1
+        while parent_of[current]:
+            current = parent_of[current]
+            if current in seen:
+                raise Refused(f"Les groupes forment un cycle : « {group_id} » est son propre "
+                              "ancêtre. Un cadre ne peut pas se contenir lui-même.")
+            seen.add(current)
+            depth += 1
+            if depth > MAX_GROUP_DEPTH:
+                raise Refused(f"Groupes imbriqués trop profondément depuis « {group_id} » "
+                              f"(maximum {MAX_GROUP_DEPTH} niveaux).")
+
+    # L'ordre de rendu suit l'ordre des NŒUDS, comme avant l'imbrication : une description plate doit
+    # rendre le même fichier, octet pour octet. Les groupes déclarés sans nœud viennent ensuite.
+    order = [group_id for group_id in by_group if group_id]
+    for group_id in declared:
+        if group_id not in order:
+            order.append(group_id)
+
+    children = {group_id: [] for group_id in parent_of}
+    roots = []
+    for group_id in order:
+        if parent_of[group_id]:
+            children[parent_of[group_id]].append(group_id)
+        else:
+            roots.append(group_id)
+
+    # Un cadre vide ne se dessine pas : c'était déjà le cas avant (un groupe déclaré sans nœud
+    # n'existait pas sur l'image), et un cadre vide n'apprend rien. Un cadre qui ne porte aucun nœud
+    # mais dont un descendant en porte, lui, se dessine — c'est tout l'objet de l'imbrication.
+    populated = set()
+    for group_id in order:
+        if not by_group.get(group_id):
+            continue
+        current = group_id
+        while current and current not in populated:
+            populated.add(current)
+            current = parent_of[current]
+    return labels, children, roots, populated
+
+
 def build(spec, output):
     from diagrams import Cluster, Diagram, Edge
 
@@ -219,21 +326,27 @@ def build(spec, output):
     by_group = {}
     for node in nodes:
         by_group.setdefault(str(node.get("group") or ""), []).append(node)
-    group_labels = {str(g.get("id")): label_of(g.get("label"), "Le nom d'un groupe") for g in groups}
+    labels, children, roots, populated = group_plan(groups, by_group)
 
     created = {}
-    with Diagram(title, filename=output, outformat="png", show=False,
-                 direction=direction, graph_attr={"pad": "0.4", "dpi": "144"}):
-        for node in by_group.get("", []):
+
+    def place(group_id):
+        """Les nœuds du cadre, puis ses cadres fils : l'imbrication est portée par la récursion."""
+        for node in by_group.get(group_id, []):
             created[str(node.get("id"))] = classes[str(node["type"]).lower()](
                 label_of(node.get("label"), "Le nom d'un nœud"))
-        for group_id, members in by_group.items():
-            if not group_id:
-                continue
-            with Cluster(group_labels.get(group_id, group_id)):
-                for node in members:
-                    created[str(node.get("id"))] = classes[str(node["type"]).lower()](
-                        label_of(node.get("label"), "Le nom d'un nœud"))
+        for child in children.get(group_id, []):
+            if child in populated:
+                with Cluster(labels.get(child, child)):
+                    place(child)
+
+    with Diagram(title, filename=output, outformat="png", show=False,
+                 direction=direction, graph_attr={"pad": "0.4", "dpi": "144"}):
+        place("")
+        for group_id in roots:
+            if group_id in populated:
+                with Cluster(labels.get(group_id, group_id)):
+                    place(group_id)
         for edge in edges:
             source = str(edge.get("from") or "")
             target = str(edge.get("to") or "")

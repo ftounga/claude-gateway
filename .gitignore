@@ -11,3 +11,6 @@ frontend/.angular/
 .env
 *.log
 .claude/worktrees/
+
+# Le cache de l'interpréteur Python : les tests du service de rendu en produisent.
+__pycache__/

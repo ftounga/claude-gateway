@@ -36,7 +36,7 @@ public class DiagramToolCatalog {
             + "à generate_image. Dessine dès qu'un schéma aide à comprendre.\n"
             + "DEUX MOTEURS : par défaut du Mermaid (« code »). Pour une ARCHITECTURE CLOUD avec les "
             + "ICÔNES OFFICIELLES (AWS, Azure, GCP, on-prem), passe engine=cloud et donne « spec » : "
-            + "{title, direction (LR/TB), groups:[{id,label}], nodes:[{id,type,label,group}], "
+            + "{title, direction (LR/TB), groups:[{id,label,parent}], nodes:[{id,type,label,group}], "
             + "edges:[{from,to,label}]}. Les types sont de la forme « aws.rds », « aws.ecs », "
             + "« aws.alb », « aws.s3 », « aws.lambda », « azure.aks », « gcp.gke », "
             + "« onprem.postgresql », « onprem.kafka », « onprem.users »… Plus de MILLE icônes sont "
@@ -48,6 +48,9 @@ public class DiagramToolCatalog {
             + "par exemple) met un composant FAUX dans un livrable client.\n"
             + "UN GROUPE N'EST PAS UN NŒUD : un réseau, un VPC, une zone se décrivent dans « groups », "
             + "pas par une icône.\n"
+            + "UN GROUPE PEUT EN CONTENIR UN AUTRE : donne « parent » (l'id d'un autre groupe) pour "
+            + "qu'un VPC CONTIENNE ses sous-réseaux au lieu d'être dessiné à côté d'eux — sans cela la "
+            + "topologie affichée est FAUSSE.\n"
             + "TROISIÈME MOTEUR — RÉOUVRABLE : engine=drawio rend DEUX fichiers depuis la MÊME « spec » "
             + "que cloud — un « .drawio » que l'utilisateur ROUVRE ET MODIFIE dans draw.io / "
             + "diagrams.net (ou VS Code, ou Confluence), et son aperçu PNG. Choisis-le dès que le "
@@ -116,9 +119,11 @@ public class DiagramToolCatalog {
                                 "spec", Map.of("type", "object",
                                         "description", "Pour engine=cloud ou engine=drawio : la "
                                                 + "DESCRIPTION du schéma — title, direction (LR/TB), "
-                                                + "groups[{id,label}], nodes[{id,type,label,group}], "
+                                                + "groups[{id,label,parent}] — « parent » est l'id du "
+                                                + "groupe CONTENANT, pour imbriquer un sous-réseau dans "
+                                                + "son VPC —, nodes[{id,type,label,group}], "
                                                 + "edges[{from,to,label}]. Des données, jamais du code. "
-                                                + "En drawio, « type » est ignoré (boîtes nommées)."),
+                                                + "En drawio, « type » et « parent » sont ignorés (boîtes nommées, cadres frères)."),
                                 "format", Map.of("type", "string",
                                         "description", "png (défaut, pour une slide ou un document) ou "
                                                 + "svg (net à tout zoom, pour une page).",
