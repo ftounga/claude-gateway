@@ -48,6 +48,13 @@ import fr.claudegateway.runner.exec.RunnerToolGateway;
 @Component
 public class PageToolExecutor {
 
+    /**
+     * La porte de SF-142-11, débranchable : à {@code false}, une page se publie exactement comme
+     * avant. Un garde-fou qu'on ne peut pas éteindre est un garde-fou qu'on finit par contourner.
+     */
+    @org.springframework.beans.factory.annotation.Value("${app.pages.refuse-hand-drawn-cloud:true}")
+    private boolean refuseHandDrawnCloud = true;
+
     /** Ce que le runner sait relire comme du texte sans le corrompre (D3, SF-109-02). Le {@code svg} en est (D1). */
     private static final Set<String> TEXT_ATTACHMENTS = Set.of("css", "js", "mjs", "json", "svg", "csv", "txt", "md");
 
@@ -140,6 +147,20 @@ public class PageToolExecutor {
                     return Outcome.error(read.error());
                 }
                 attachments.put(name, read.content());
+            }
+        }
+
+        // F-142 / SF-142-11 : LA PORTE. Une architecture cloud dessinée À LA MAIN en Mermaid sort en
+        // rectangles nommés, sans une seule icône officielle — c'est ce qui est arrivé à la page du
+        // 2026-09-26. Refus AVANT publication : aucune page fausse n'est écrite, aucun appel modèle
+        // n'est fait (une lecture de texte), et l'agent corrige DANS LE MÊME TOUR.
+        //
+        // Refuser et non réécrire : convertir le Mermaid en spec cloud reviendrait à deviner
+        // l'intention, et un composant faux est pire qu'un composant absent (règle de fond F-142).
+        if (refuseHandDrawnCloud) {
+            java.util.Set<String> markers = CloudArchitectureInMermaid.handDrawnCloud(html);
+            if (!markers.isEmpty()) {
+                return Outcome.error(CloudArchitectureInMermaid.refusal(markers));
             }
         }
 
