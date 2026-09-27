@@ -48,6 +48,13 @@ public class DiagramToolCatalog {
             + "par exemple) met un composant FAUX dans un livrable client.\n"
             + "UN GROUPE N'EST PAS UN NŒUD : un réseau, un VPC, une zone se décrivent dans « groups », "
             + "pas par une icône.\n"
+            + "TROISIÈME MOTEUR — RÉOUVRABLE : engine=drawio rend DEUX fichiers depuis la MÊME « spec » "
+            + "que cloud — un « .drawio » que l'utilisateur ROUVRE ET MODIFIE dans draw.io / "
+            + "diagrams.net (ou VS Code, ou Confluence), et son aperçu PNG. Choisis-le dès que le "
+            + "schéma a vocation à être REPRIS, discuté ou amendé par le client — un PNG est un "
+            + "cul-de-sac. Pose le PNG dans le livrable, et ANNONCE le « .drawio » comme la version "
+            + "modifiable : sans cela, l'utilisateur ne saura pas qu'il existe. Ce moteur n'a PAS les "
+            + "icônes officielles (boîtes nommées) : pour un schéma cloud définitif, garde engine=cloud.\n"
             + "Tu écris une DESCRIPTION, jamais du code : rien de ce que tu donnes n'est exécuté.\n"
             + "FACTUEL : ne dessine que ce qui est établi ; ce qui est supposé se marque « (supposé) ». "
             + "Si le rendu échoue, DIS-LE avec la raison rendue — ne fabrique jamais une image, et "
@@ -90,7 +97,9 @@ public class DiagramToolCatalog {
                 "REND UN DIAGRAMME en image, côté gateway, et le dépose dans le projet ; te rend son "
                         + "chemin pour l'insérer en slide (add_picture), en page (<img>) ou en document. "
                         + "Donne « code » en Mermaid (flowchart, sequenceDiagram, architecture-beta…), "
-                        + "ou engine=cloud + « spec » pour les ICÔNES OFFICIELLES AWS/Azure/GCP/on-prem. "
+                        + "ou engine=cloud + « spec » pour les ICÔNES OFFICIELLES AWS/Azure/GCP/on-prem, "
+                        + "ou engine=drawio + « spec » pour un schéma RÉOUVRABLE dans draw.io (deux "
+                        + "fichiers : le .drawio éditable ET son aperçu PNG). "
                         + "N'installe rien sur la machine du client : le rendu n'a PAS lieu là-bas. "
                         + "GRATUIT (aucun jeton, aucun fournisseur). Si le diagramme est invalide, la "
                         + "réponse dit pourquoi : corrige le code, ne fabrique pas d'image.",
@@ -99,14 +108,17 @@ public class DiagramToolCatalog {
                                 "code", Map.of("type", "string",
                                         "description", "Le diagramme en Mermaid (moteur par défaut)."),
                                 "engine", Map.of("type", "string",
-                                        "description", "mermaid (défaut) ou cloud (icônes officielles "
-                                                + "AWS/Azure/GCP/on-prem, à partir de « spec »).",
-                                        "enum", List.of("mermaid", "cloud")),
+                                        "description", "mermaid (défaut), cloud (icônes officielles "
+                                                + "AWS/Azure/GCP/on-prem) ou drawio (schéma RÉOUVRABLE "
+                                                + "et modifiable par l'utilisateur, rendu en .drawio + "
+                                                + "PNG). cloud et drawio partent de « spec ».",
+                                        "enum", List.of("mermaid", "cloud", "drawio")),
                                 "spec", Map.of("type", "object",
-                                        "description", "Pour engine=cloud : la DESCRIPTION du schéma — "
-                                                + "title, direction, groups[{id,label}], "
-                                                + "nodes[{id,type,label,group}], edges[{from,to,label}]. "
-                                                + "Des données, jamais du code."),
+                                        "description", "Pour engine=cloud ou engine=drawio : la "
+                                                + "DESCRIPTION du schéma — title, direction (LR/TB), "
+                                                + "groups[{id,label}], nodes[{id,type,label,group}], "
+                                                + "edges[{from,to,label}]. Des données, jamais du code. "
+                                                + "En drawio, « type » est ignoré (boîtes nommées)."),
                                 "format", Map.of("type", "string",
                                         "description", "png (défaut, pour une slide ou un document) ou "
                                                 + "svg (net à tout zoom, pour une page).",

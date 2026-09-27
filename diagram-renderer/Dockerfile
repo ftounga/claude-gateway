@@ -21,7 +21,7 @@ RUN apk add --no-cache chromium ttf-freefont font-noto font-noto-emoji \
     && adduser -D -u 10001 renderer
 
 WORKDIR /app
-COPY server.js puppeteer.json cloud.py deck.py office.py check_catalog.py ./
+COPY server.js drawio.js puppeteer.json cloud.py deck.py office.py check_catalog.py ./
 # Le catalogue d'icônes est vérifié AU BUILD : une entrée qui ne désigne aucune classe réelle ferait
 # échouer le premier schéma d'un client, et pas la construction de l'image. On le refuse ici.
 RUN python3 check_catalog.py && chown -R renderer:renderer /app

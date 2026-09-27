@@ -251,4 +251,153 @@ class DiagramToolExecutorTest {
                 .contains("boîte neutre")
                 .contains("jamais un composant par une icône approchante");
     }
+
+    // --- F-142 / SF-142-13 — le schéma réouvrable dans draw.io ---
+
+    private ObjectNode drawioInput(String filename) {
+        ObjectNode spec = mapper.createObjectNode();
+        spec.put("title", "Architecture cible");
+        spec.putArray("nodes").addObject().put("id", "a").put("label", "A");
+        ObjectNode input = mapper.createObjectNode();
+        input.put("engine", "drawio");
+        input.set("spec", spec);
+        if (filename != null) {
+            input.put("filename", filename);
+        }
+        return input;
+    }
+
+    @Test
+    @DisplayName("LE CRITÈRE SF-142-13 : deux fichiers déposés (.drawio puis .png), deux chemins rendus")
+    void editableDepositsBothArtefacts() {
+        when(renderer.renderEditable(any())).thenReturn(new DiagramRenderer.Editable(
+                "<mxfile/>".getBytes(StandardCharsets.UTF_8), "PNG".getBytes(StandardCharsets.UTF_8), ""));
+        when(deposit.deposit(eq(userId), eq(workspace), anyString(), eq("architecture.drawio"), any(),
+                eq("application/vnd.jgraph.mxfile"), eq(DiagramToolCatalog.RENDER)))
+                .thenReturn("architecture.drawio");
+        when(deposit.deposit(eq(userId), eq(workspace), anyString(), eq("architecture.png"), any(),
+                eq("image/png"), eq(DiagramToolCatalog.RENDER))).thenReturn("architecture.png");
+
+        DiagramToolExecutor.Outcome outcome = executor.execute(userId, workspace, "call-20",
+                drawioInput("architecture"));
+
+        assertThat(outcome.error()).isFalse();
+        assertThat(outcome.content())
+                .contains("architecture.drawio")
+                .contains("architecture.png")
+                .contains("MODIFIER dans draw.io")
+                .contains("DIS-LE-LUI")
+                .contains("Rien n'a été installé sur la machine");
+        // L'ÉDITABLE D'ABORD : c'est lui qui a de la valeur.
+        verify(deposit).deposit(eq(userId), eq(workspace), eq("call-20"), eq("architecture.drawio"), any(),
+                eq("application/vnd.jgraph.mxfile"), eq(DiagramToolCatalog.RENDER));
+        verify(deposit).deposit(eq(userId), eq(workspace), eq("call-20.png"), eq("architecture.png"), any(),
+                eq("image/png"), eq(DiagramToolCatalog.RENDER));
+    }
+
+    @Test
+    @DisplayName("SF-142-13 : sans « spec », refus nommé et AUCUN appel au service")
+    void editableWithoutSpecIsRefusedBeforeCalling() {
+        ObjectNode input = mapper.createObjectNode();
+        input.put("engine", "drawio");
+
+        DiagramToolExecutor.Outcome outcome = executor.execute(userId, workspace, "call-21", input);
+
+        assertThat(outcome.error()).isTrue();
+        assertThat(outcome.content()).contains("engine=drawio").contains("spec");
+        // Le vocabulaire de `cloud` (« type ») n'a rien à faire ici : drawio n'a pas d'icônes.
+        assertThat(outcome.content()).doesNotContain("type");
+        verify(renderer, never()).renderEditable(any());
+        verify(deposit, never()).deposit(any(), any(), anyString(), anyString(), any(), anyString(),
+                anyString());
+    }
+
+    @Test
+    @DisplayName("SF-142-13 : l'aperçu manquant est DIT, le .drawio part quand même — ce n'est pas une erreur")
+    void aMissingPreviewIsSaidNotFailed() {
+        when(renderer.renderEditable(any())).thenReturn(new DiagramRenderer.Editable(
+                "<mxfile/>".getBytes(StandardCharsets.UTF_8), new byte[0], "chromium injoignable"));
+        when(deposit.deposit(any(), any(), anyString(), anyString(), any(),
+                eq("application/vnd.jgraph.mxfile"), anyString())).thenReturn("schema.drawio");
+
+        DiagramToolExecutor.Outcome outcome = executor.execute(userId, workspace, "call-22",
+                drawioInput("schema"));
+
+        assertThat(outcome.error()).isFalse();
+        assertThat(outcome.content())
+                .contains("schema.drawio")
+                .contains("AUCUN aperçu PNG")
+                .contains("chromium injoignable")
+                .contains("ne fabrique pas d'image");
+        verify(deposit, never()).deposit(any(), any(), anyString(), anyString(), any(), eq("image/png"),
+                anyString());
+    }
+
+    @Test
+    @DisplayName("SF-142-13 : le dépôt du .drawio en échec est une erreur nommée")
+    void aFailedEditableDepositIsAnError() {
+        when(renderer.renderEditable(any())).thenReturn(new DiagramRenderer.Editable(
+                "<mxfile/>".getBytes(StandardCharsets.UTF_8), "PNG".getBytes(StandardCharsets.UTF_8), ""));
+        when(deposit.deposit(any(), any(), anyString(), anyString(), any(), anyString(), anyString()))
+                .thenReturn(null);
+
+        DiagramToolExecutor.Outcome outcome = executor.execute(userId, workspace, "call-23",
+                drawioInput("schema"));
+
+        assertThat(outcome.error()).isTrue();
+        assertThat(outcome.content()).contains("dépôt").contains("échoué");
+    }
+
+    @Test
+    @DisplayName("SF-142-13 : les deux familles d'échec gardent deux phrases distinctes")
+    void editableFailuresKeepTheirOwnMeaning() {
+        // `doThrow` et non `when(...)` : la seconde stubbing APPELLE le mock déjà armé, qui lèverait.
+        org.mockito.Mockito.doThrow(new DiagramRejectedException("Lien pendant n°1 : « zz »."))
+                .when(renderer).renderEditable(any());
+        DiagramToolExecutor.Outcome rejected = executor.execute(userId, workspace, "call-24",
+                drawioInput(null));
+        assertThat(rejected.error()).isTrue();
+        assertThat(rejected.content()).contains("zz").contains("Corrige la description");
+
+        org.mockito.Mockito.doThrow(new DiagramRendererUnavailableException("connexion refusée"))
+                .when(renderer).renderEditable(any());
+        DiagramToolExecutor.Outcome down = executor.execute(userId, workspace, "call-25",
+                drawioInput(null));
+        assertThat(down.error()).isTrue();
+        assertThat(down.content()).contains("indisponible").contains("PAGE");
+        verify(deposit, never()).deposit(any(), any(), anyString(), anyString(), any(), anyString(),
+                anyString());
+    }
+
+    @Test
+    @DisplayName("ISOLATION SF-142-13 : un nom venu du modèle est nettoyé pour LES DEUX fichiers")
+    void editableFileNamesAreCleaned() {
+        when(renderer.renderEditable(any())).thenReturn(new DiagramRenderer.Editable(
+                "<mxfile/>".getBytes(StandardCharsets.UTF_8), "PNG".getBytes(StandardCharsets.UTF_8), ""));
+        when(deposit.deposit(any(), any(), anyString(), anyString(), any(), anyString(), anyString()))
+                .thenReturn("passwd.drawio", "passwd.png");
+
+        executor.execute(userId, workspace, "call-26", drawioInput("../../etc/passwd"));
+
+        ArgumentCaptor<String> names = ArgumentCaptor.forClass(String.class);
+        verify(deposit, org.mockito.Mockito.times(2)).deposit(any(), any(), anyString(), names.capture(),
+                any(), anyString(), anyString());
+        assertThat(names.getAllValues()).containsExactly("passwd.drawio", "passwd.png");
+    }
+
+    @Test
+    @DisplayName("SF-142-13 : les moteurs mermaid et cloud sont inchangés — l'éditable n'est jamais appelé")
+    void theOtherEnginesAreUntouched() {
+        when(renderer.render(anyString(), eq(Format.PNG), any()))
+                .thenReturn(new Rendered("PNG".getBytes(StandardCharsets.UTF_8), Format.PNG));
+        when(deposit.deposit(any(), any(), anyString(), anyString(), any(), anyString(), anyString()))
+                .thenReturn("schema.png");
+
+        DiagramToolExecutor.Outcome outcome = executor.execute(userId, workspace, "call-27",
+                input("flowchart TD\n A-->B", null));
+
+        assertThat(outcome.error()).isFalse();
+        assertThat(outcome.content()).contains("schema.png").doesNotContain("draw.io");
+        verify(renderer, never()).renderEditable(any());
+    }
 }

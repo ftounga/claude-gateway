@@ -95,16 +95,82 @@ public class HttpDiagramRenderer implements DiagramRenderer {
         return call(body, Format.PNG);
     }
 
-    /** L'appel au service, partagé par les deux moteurs — une seule façon de lire une réponse. */
-    private Rendered call(ObjectNode body, Format format) {
+    @Override
+    public Editable renderEditable(JsonNode spec) {
+        if (!isAvailable()) {
+            throw new DiagramRendererUnavailableException(
+                    "Le rendu de diagrammes n'est pas configuré sur cette installation.");
+        }
+        if (spec == null || !spec.isObject() || !spec.path("nodes").isArray()
+                || spec.path("nodes").isEmpty()) {
+            throw new DiagramRejectedException("La description doit porter au moins un nœud "
+                    + "(« nodes »), chacun avec son « id » et son « label ».");
+        }
+        String payload = spec.toString();
+        if (payload.length() > properties.getMaxCodeChars()) {
+            throw new DiagramRejectedException("Description trop longue : " + payload.length()
+                    + " caractères pour un maximum de " + properties.getMaxCodeChars() + ".");
+        }
+        ObjectNode body = mapper.createObjectNode();
+        body.put("engine", "drawio");
+        body.set("spec", spec);
+        HttpResponse<byte[]> response = post(body);
+        int status = response.statusCode();
+        if (status == 400 || status == 413 || status == 422) {
+            throw new DiagramRejectedException(reason(response.body()));
+        }
+        if (status != 200) {
+            throw new DiagramRendererUnavailableException("Le service de rendu a répondu " + status
+                    + " : réessayez, ou rendez le diagramme en page.");
+        }
+        JsonNode json;
+        try {
+            json = mapper.readTree(new String(response.body(), StandardCharsets.UTF_8));
+        } catch (IOException | RuntimeException e) {
+            throw new DiagramRendererUnavailableException(
+                    "Le service de rendu a renvoyé une réponse illisible.");
+        }
+        byte[] drawio = decode(json.path("drawio").asText(""));
+        if (drawio.length == 0) {
+            // Sans le fichier éditable, il n'y a rien à livrer : mieux vaut le dire que déposer du vide.
+            throw new DiagramRendererUnavailableException(
+                    "Le service de rendu n'a renvoyé aucun fichier draw.io.");
+        }
+        if (drawio.length > properties.getMaxImageBytes()) {
+            throw new DiagramRejectedException("Fichier draw.io trop lourd : " + drawio.length
+                    + " octets pour un maximum de " + properties.getMaxImageBytes() + ".");
+        }
+        byte[] png = decode(json.path("png").asText(""));
+        String previewError = json.path("previewError").asText("");
+        if (png.length > properties.getMaxImageBytes()) {
+            // L'aperçu est perdu, pas le schéma : on le dit et on laisse partir le `.drawio`.
+            previewError = "Aperçu trop lourd : " + png.length + " octets.";
+            png = new byte[0];
+        }
+        return new Editable(drawio, png, previewError);
+    }
+
+    /** Base64 tolérant : une valeur absente ou illisible vaut « pas de fichier », jamais une exception. */
+    private static byte[] decode(String base64) {
+        if (base64 == null || base64.isBlank()) {
+            return new byte[0];
+        }
+        try {
+            return java.util.Base64.getDecoder().decode(base64);
+        } catch (IllegalArgumentException e) {
+            return new byte[0];
+        }
+    }
+
+    /** L'envoi au service, partagé par tous les moteurs — une seule façon de traiter un silence. */
+    private HttpResponse<byte[]> post(ObjectNode body) {
         HttpRequest request = HttpRequest.newBuilder(URI.create(base() + "/render"))
                 .timeout(properties.getTimeout())
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body.toString(), StandardCharsets.UTF_8))
                 .build();
-        HttpResponse<byte[]> response;
         try {
-            response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            return httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
         } catch (IOException e) {
             throw new DiagramRendererUnavailableException(
                     "Le service de rendu n'a pas répondu : " + e.getMessage());
@@ -112,6 +178,11 @@ public class HttpDiagramRenderer implements DiagramRenderer {
             Thread.currentThread().interrupt();
             throw new DiagramRendererUnavailableException("Rendu interrompu.");
         }
+    }
+
+    /** L'appel qui rend une IMAGE, partagé par Mermaid et les icônes officielles. */
+    private Rendered call(ObjectNode body, Format format) {
+        HttpResponse<byte[]> response = post(body);
         int status = response.statusCode();
         if (status == 200) {
             byte[] image = response.body();
