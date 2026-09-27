@@ -11,6 +11,7 @@ Entrée  : {"title": "...", "direction": "LR", "groups": [...], "nodes": [...], 
 Sortie  : le chemin du PNG écrit, sur la sortie standard. Toute erreur part en sortie d'erreur
           avec un message destiné à être LU (il dit quoi corriger), et un code de retour non nul.
 """
+import difflib
 import json
 import re
 import os
@@ -44,16 +45,70 @@ MAX_LABEL = 120
 # Les familles ouvertes à la résolution. Fermées volontairement : on dessine des architectures.
 FAMILIES = ("aws", "azure", "gcp", "k8s", "onprem", "generic", "elastic", "saas", "oci", "digitalocean")
 
-# Quelques noms d'usage qui ne correspondent pas au nom de la classe. Courte, et c'est voulu : tout
-# le reste se résout tout seul.
+# ---------------------------------------------------------------------------------------------------
+# LE VOCABULAIRE QUI PARDONNE (F-142 / SF-142-16)
+#
+# Défaut constaté sur le rendu réel du 2026-09-27 : « MWAA » était dessiné en pointillés rouges. Le
+# type n'avait pas été résolu. L'agent avait écrit le nom que TOUT LE MONDE emploie — « aws.mwaa » —
+# et le catalogue, lui, ne connaît que le nom de classe de la bibliothèque.
+#
+# Un alias est une ÉGALITÉ, jamais une ressemblance : « aws.mwaa » EST Managed Workflows for Apache
+# Airflow. Un rapprochement calculé finirait par mettre une icône FAUSSE dans un livrable client —
+# c'est la règle de fond de F-142, et elle ne bouge pas. La SUGGESTION, elle, a le droit d'approcher :
+# proposer n'engage à rien, c'est l'agent qui tranche.
+#
+# La cible est écrite ENTIÈREMENT (« famille.nom ») : un alias peut désigner une autre famille quand
+# c'est le même produit — MWAA est Apache Airflow managé, et son logo est celui d'Airflow.
+#
+# Chaque cible est vérifiée AU BUILD (`check_catalog.py`) : « onprem.k8s » pointait sur une classe
+# « kubernetes » QUI N'EXISTE PAS, et ne résolvait donc rien depuis le premier jour. Un alias mort
+# est pire qu'une absence d'alias : il promet et ne rend rien.
+# ---------------------------------------------------------------------------------------------------
 ALIASES = {
-    "aws.alb": "elbapplicationloadbalancer",
-    "aws.nlb": "elbnetworkloadbalancer",
-    "aws.clb": "elbclassicloadbalancer",
-    "aws.users": "user",
-    "onprem.postgres": "postgresql",
-    "onprem.k8s": "kubernetes",
+    # Les répartiteurs de charge, dont le nom de classe n'est employé par personne.
+    "aws.alb": "aws.elbapplicationloadbalancer",
+    "aws.nlb": "aws.elbnetworkloadbalancer",
+    "aws.clb": "aws.elbclassicloadbalancer",
+    "aws.elb": "aws.elasticloadbalancing",
+    # Les sigles que les architectes écrivent sans y penser.
+    "aws.sm": "aws.secretsmanager",
+    "aws.tgw": "aws.transitgateway",
+    "aws.igw": "aws.internetgateway",
+    "aws.natgw": "aws.natgateway",
+    # « ASG » désigne le groupe d'auto-scaling EC2 ; « autoscaling » tout court tombe, dans la
+    # bibliothèque, sur Application Auto Scaling — un autre service.
+    "aws.asg": "aws.ec2autoscaling",
+    "aws.apigw": "aws.apigateway",
+    "aws.cw": "aws.cloudwatch",
+    "aws.r53": "aws.route53",
+    "aws.ddb": "aws.dynamodb",
+    "aws.sfn": "aws.stepfunctions",
+    "aws.msk": "aws.managedstreamingforkafka",
+    "aws.eni": "aws.vpcelasticnetworkinterface",
+    "aws.vpcendpoint": "aws.endpoint",
+    "aws.kubernetes": "aws.elastickubernetesservice",
+    # Le service renommé : « Amazon Elasticsearch Service » est devenu « Amazon OpenSearch Service ».
+    # Même service, même icône — une égalité, pas une ressemblance.
+    "aws.opensearch": "aws.elasticsearchservice",
+    # MWAA est Apache Airflow managé : son icône est celle d'Airflow. La bibliothèque n'a pas d'icône
+    # AWS pour ce service, et prendre « ce qui ressemble » dans la famille aws serait un composant faux.
+    "aws.mwaa": "onprem.airflow",
+    "aws.airflow": "onprem.airflow",
+    "aws.snowflake": "saas.snowflake",
+    "onprem.snowflake": "saas.snowflake",
+    "aws.users": "aws.user",
+    "onprem.postgres": "onprem.postgresql",
+    # « kubernetes » n'existe pas dans onprem : l'icône Kubernetes de la bibliothèque est dans k8s.
+    "onprem.k8s": "k8s.master",
+    "onprem.kubernetes": "k8s.master",
+    "azure.k8s": "azure.kubernetesservices",
+    "gcp.k8s": "gcp.kubernetesengine",
 }
+
+# Au-delà, la piste n'aide plus : elle se lit comme une liste.
+MAX_SUGGESTIONS = 8
+# Un fragment plus court rapproche n'importe quoi de n'importe quoi (« sf » dans « workflowsfor »).
+MIN_FRAGMENT = 4
 
 _INDEX = {}
 
@@ -105,25 +160,76 @@ def resolve(kind):
     raw = str(kind or "").strip().lower()
     if "." not in raw:
         return None
-    family, _, name = raw.partition(".")
+    # Un alias désigne sa cible ENTIÈREMENT : il peut changer de famille quand c'est le même produit.
+    family, _, name = ALIASES.get(raw, raw).partition(".")
     if family not in FAMILIES:
         return None
-    wanted = _normalize(ALIASES.get(raw, name))
-    return _index_of(family).get(wanted)
+    return _index_of(family).get(_normalize(name))
+
+
+def _spellings(family):
+    """
+    Les orthographes proposables d'une famille : ses types, ET les alias qui la visent.
+
+    Un alias est cherché sur DEUX mots : le sigle lui-même (« mwaa ») et le nom de sa cible
+    (« airflow »). C'est ce second mot qui permet à « managedworkflowsforapacheairflow » de retrouver
+    « aws.mwaa » — la piste que le refus ne donnait pas.
+    """
+    found = [(family + "." + name, name) for name in _index_of(family)]
+    for alias, target in ALIASES.items():
+        alias_family, _, alias_name = alias.partition(".")
+        if alias_family != family:
+            continue
+        found.append((alias, alias_name))
+        found.append((alias, _normalize(target.partition(".")[2])))
+    return found
+
+
+def _ranked(wanted, spellings):
+    """Les orthographes pertinentes, les plus parlantes d'abord. Jamais l'ordre alphabétique."""
+    scored = {}
+    for spelling, searchable in spellings:
+        if not searchable or not wanted:
+            continue
+        if len(searchable) >= MIN_FRAGMENT and searchable in wanted:
+            score = (0, -len(searchable))          # le nom demandé CONTIENT ce type : le plus parlant
+        elif len(wanted) >= MIN_FRAGMENT and wanted in searchable:
+            score = (1, len(searchable))           # ce type contient le nom demandé
+        else:
+            ratio = difflib.SequenceMatcher(None, wanted, searchable).ratio()
+            if ratio < 0.7:
+                continue
+            score = (2, -ratio)                    # une faute de frappe, rien de plus
+        if spelling not in scored or score < scored[spelling]:
+            scored[spelling] = score
+    return [spelling for spelling, _ in sorted(scored.items(), key=lambda item: (item[1], item[0]))]
 
 
 def suggestions(kind):
-    """Les types proches : un refus sans piste ne sert à rien."""
+    """
+    Les types proches : un refus sans piste ne sert à rien (F-142 / SF-142-16).
+
+    Suggérer a le droit d'approcher — c'est l'agent qui tranche. RÉSOUDRE ne l'a pas : une icône
+    approchante dans un livrable client est un composant faux.
+    """
     raw = str(kind or "").strip().lower()
-    family = raw.partition(".")[0]
+    family, _, name = raw.partition(".")
     if family not in FAMILIES:
         return "Familles connues : " + ", ".join(FAMILIES) + "."
-    wanted = _normalize(raw.partition(".")[2])
-    index = _index_of(family)
-    near = [name for name in index if wanted and (wanted in name or name in wanted)]
+    wanted = _normalize(name)
+    near = _ranked(wanted, _spellings(family))
+    if len(near) < 3:
+        # Le bon composant vit parfois dans une autre famille (Airflow pour MWAA, Snowflake en saas) :
+        # on élargit plutôt que de rendre une liste alphabétique qui n'apprend rien.
+        ailleurs = []
+        for other in FAMILIES:
+            if other != family:
+                ailleurs.extend(_spellings(other))
+        near = near + [spelling for spelling in _ranked(wanted, ailleurs) if spelling not in near]
     if not near:
-        near = sorted(index)[:12]
-    return "Types proches : " + ", ".join(family + "." + n for n in sorted(near)[:12]) + "."
+        # Rien ne ressemble : une liste vaut mieux qu'un silence, mais elle reste le DERNIER recours.
+        near = sorted({spelling for spelling, _ in _spellings(family)})[:MAX_SUGGESTIONS]
+    return "Types proches : " + ", ".join(near[:MAX_SUGGESTIONS]) + "."
 
 
 class Refused(Exception):
@@ -370,7 +476,11 @@ def main():
         # icône officielle — l'agent doit pouvoir le dire à l'utilisateur.
         print(output + ".png")
         if unknown:
-            print("UNKNOWN_TYPES=" + ",".join(unknown))
+            # F-142 / SF-142-16 : la PISTE voyage avec l'avertissement. Jusqu'ici seul le refus
+            # « strict » la donnait — le mode normal disait « pas d'icône » sans dire quoi écrire.
+            # Le marqueur reste une LIGNE ASCII : il finit en en-tête HTTP, qui n'accepte rien d'autre.
+            said = " ; ".join(kind + " (" + suggestions(kind) + ")" for kind in unknown)
+            print("UNKNOWN_TYPES=" + said.encode("ascii", "replace").decode("ascii"))
         return 0
     except Refused as refused:
         sys.stderr.write(str(refused))

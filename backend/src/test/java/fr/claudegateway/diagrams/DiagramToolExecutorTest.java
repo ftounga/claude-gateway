@@ -252,6 +252,31 @@ class DiagramToolExecutorTest {
                 .contains("jamais un composant par une icône approchante");
     }
 
+    @Test
+    @DisplayName("F-142 / SF-142-16 : l'avertissement du mode normal porte la PISTE, pas seulement le manque")
+    void theWarningCarriesTheSuggestion() {
+        // Le service de rendu joint désormais les types proches au marqueur : dire « pas d'icône »
+        // sans dire quoi écrire laissait l'agent — et l'utilisateur — sans recours.
+        when(renderer.renderCloud(any())).thenReturn(new Rendered("PNG".getBytes(StandardCharsets.UTF_8),
+                Format.PNG, "aws.managedworkflowsforapacheairflow (Types proches : aws.mwaa, onprem.airflow)"));
+        when(deposit.deposit(any(), any(), anyString(), anyString(), any(), anyString(), anyString()))
+                .thenReturn("reseau.png");
+        ObjectNode spec = mapper.createObjectNode();
+        spec.putArray("nodes").addObject().put("id", "a")
+                .put("type", "aws.managedworkflowsforapacheairflow").put("label", "Airflow");
+        ObjectNode input = mapper.createObjectNode();
+        input.put("engine", "cloud");
+        input.set("spec", spec);
+
+        DiagramToolExecutor.Outcome outcome = executor.execute(userId, workspace, "call-16", input);
+
+        assertThat(outcome.error()).isFalse();
+        assertThat(outcome.content())
+                .contains("ATTENTION")
+                .contains("Types proches")
+                .contains("aws.mwaa");
+    }
+
     // --- F-142 / SF-142-13 — le schéma réouvrable dans draw.io ---
 
     private ObjectNode drawioInput(String filename) {
