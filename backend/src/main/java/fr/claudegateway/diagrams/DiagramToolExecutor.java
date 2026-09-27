@@ -48,12 +48,20 @@ public class DiagramToolExecutor {
     public Outcome execute(UUID userId, Workspace workspace, String callId, JsonNode input) {
         // F-142 / SF-142-07 : deux moteurs, une seule suite. « cloud » dessine avec les icônes
         // OFFICIELLES à partir d'une DESCRIPTION ; « mermaid » (défaut) rend du code Mermaid.
-        boolean cloud = "cloud".equalsIgnoreCase(text(input, "engine"));
+        String engine = text(input, "engine");
+        boolean cloud = "cloud".equalsIgnoreCase(engine);
+        // F-142 / SF-142-13 : le troisième moteur ne rend pas une image mais DEUX artefacts — la
+        // source réouvrable dans draw.io, et son aperçu.
+        boolean editable = "drawio".equalsIgnoreCase(engine);
         JsonNode spec = input == null ? null : input.path("spec");
         String code = text(input, "code");
-        if (cloud && (spec == null || !spec.isObject())) {
-            return Outcome.error("Pour engine=cloud, donne « spec » : les nœuds (id, type, label), les "
-                    + "groupes et les liens. Le service dessine à partir de cette description.");
+        if ((cloud || editable) && (spec == null || !spec.isObject())) {
+            return Outcome.error("Pour engine=" + (editable ? "drawio" : "cloud")
+                    + ", donne « spec » : les nœuds (id, label" + (editable ? "" : ", type")
+                    + "), les groupes et les liens. Le service dessine à partir de cette description.");
+        }
+        if (editable) {
+            return executeEditable(userId, workspace, callId, input, spec);
         }
         if (!cloud && code.isEmpty()) {
             return Outcome.error("code est requis : le diagramme en Mermaid "
@@ -97,6 +105,64 @@ public class DiagramToolExecutor {
         return new Outcome("Diagramme rendu par la gateway et déposé dans le projet sous « " + deposited
                 + " ». Insère ce chemin : add_picture pour une slide, <img src=\"" + deposited + "\"> pour "
                 + "une page, image pour un document. Rien n'a été installé sur la machine." + warning, false);
+    }
+
+    /**
+     * Le moteur <b>draw.io</b> (F-142 / SF-142-13) : <b>deux</b> fichiers déposés, <b>deux</b> chemins
+     * rendus.
+     *
+     * <p><b>L'ordre n'est pas indifférent</b> : le {@code .drawio} part le premier, parce que c'est lui
+     * qui a de la valeur. Un aperçu manquant se dit et n'empêche rien ; un {@code .drawio} manquant, si.</p>
+     */
+    private Outcome executeEditable(UUID userId, Workspace workspace, String callId, JsonNode input,
+            JsonNode spec) {
+        DiagramRenderer.Editable rendered;
+        try {
+            rendered = renderer.renderEditable(spec);
+        } catch (DiagramRejectedException e) {
+            return Outcome.error("Schéma non rendu : " + e.getMessage()
+                    + " Corrige la description ; ne fabrique pas de fichier.");
+        } catch (DiagramRendererUnavailableException e) {
+            return Outcome.error("Le rendu de diagrammes est indisponible (" + e.getMessage()
+                    + "). Tu peux livrer le diagramme dans une PAGE (bloc <pre class=\"mermaid\">, rendu "
+                    + "par le navigateur, sans rien installer), et dire que le fichier draw.io n'a pas pu "
+                    + "être produit. Ne fabrique pas de fichier.");
+        } catch (RuntimeException e) {
+            return Outcome.error("Rendu de diagramme en échec : " + e.getClass().getSimpleName() + ".");
+        }
+
+        String base = text(input, "filename");
+        String source = fileName(base, Format.DRAWIO);
+        String deposited = deposit.deposit(userId, workspace, callId, source, rendered.drawio(),
+                Format.DRAWIO.contentType(), DiagramToolCatalog.RENDER);
+        if (deposited == null) {
+            return Outcome.error("Schéma rendu (" + rendered.drawio().length + " octets), mais son dépôt "
+                    + "dans le projet a échoué : réessaie, ou livre le diagramme dans une page.");
+        }
+        String preview = null;
+        if (rendered.hasPreview()) {
+            preview = deposit.deposit(userId, workspace, callId + ".png",
+                    fileName(source, Format.PNG), rendered.png(), Format.PNG.contentType(),
+                    DiagramToolCatalog.RENDER);
+        }
+        StringBuilder message = new StringBuilder();
+        message.append("Schéma rendu par la gateway. Fichier RÉOUVRABLE déposé sous « ").append(deposited)
+                .append(" » : l'utilisateur peut l'ouvrir et le MODIFIER dans draw.io / diagrams.net "
+                        + "(ou VS Code, ou Confluence). DIS-LE-LUI — sans cela il ne le saura pas.");
+        if (preview != null) {
+            message.append(" Aperçu PNG déposé sous « ").append(preview)
+                    .append(" » : insère ce chemin dans le livrable (add_picture pour une slide, "
+                            + "<img src=\"").append(preview).append("\"> pour une page).");
+        } else {
+            // L'aperçu est perdu, pas le schéma. Le dire évite que l'agent invente une image.
+            message.append(" AUCUN aperçu PNG n'a pu être produit (")
+                    .append(rendered.previewError() == null || rendered.previewError().isBlank()
+                            ? "dépôt de l'aperçu en échec" : rendered.previewError())
+                    .append(") : livre le fichier draw.io, dis que l'image manque, et ne fabrique pas "
+                            + "d'image de remplacement.");
+        }
+        message.append(" Rien n'a été installé sur la machine.");
+        return new Outcome(message.toString(), false);
     }
 
     /** Titre lisible pour l'étape et le journal : la première ligne du diagramme, jamais tout le code. */

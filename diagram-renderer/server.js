@@ -13,6 +13,7 @@ const { execFile } = require("node:child_process");
 const { mkdtemp, writeFile, readFile, rm } = require("node:fs/promises");
 const { tmpdir } = require("node:os");
 const path = require("node:path");
+const drawio = require("./drawio.js");
 
 /** Bornes — les mêmes que celles annoncées côté gateway, pour que le refus soit cohérent des deux côtés. */
 const MAX_CODE_CHARS = 20000;
@@ -44,6 +45,11 @@ const MAX_PREVIEW_BYTES = 2 * 1024 * 1024;
 const PREVIEW_TIMEOUT_MS = 20000;
 /** Trois rendus de front : au-delà, les chromium se disputent la mémoire du conteneur. */
 const PREVIEW_CONCURRENCY = 3;
+/**
+ * F-142 / SF-142-13 — au-delà de ce budget de pixels, l'aperçu du `.drawio` se rend à l'échelle 1 :
+ * doubler la définition d'un très grand schéma produirait une image plus lourde que sa borne.
+ */
+const DRAWIO_SCALE_BUDGET = 2_000_000;
 const CHROME = process.env.CHROME_BIN || "chromium";
 /** Les programmes appelés : figés dans l'image, ouverts par l'environnement pour pouvoir ÊTRE TESTÉS. */
 const PYTHON = process.env.PYTHON_BIN || "python3";
@@ -142,6 +148,9 @@ async function render(req, res) {
   }
   if (payload.engine === "cloud") {
     return renderCloudRequest(payload, res);
+  }
+  if (payload.engine === "drawio") {
+    return renderDrawioRequest(payload, res);
   }
   const code = typeof payload.code === "string" ? payload.code.trim() : "";
   const format = payload.format === "svg" ? "svg" : "png";
@@ -344,6 +353,76 @@ async function office(req, res) {
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => undefined);
   }
+}
+
+/**
+ * La branche « draw.io » (F-142 / SF-142-13) : une description entre, DEUX artefacts sortent — le
+ * `.drawio` réouvrable ET son aperçu PNG.
+ *
+ * Le XML et le SVG viennent du module PUR `drawio.js` ; seule la rasterisation a lieu ici, avec le
+ * chromium que le service a déjà. La réponse est du JSON : un corps binaire ne peut pas porter deux
+ * fichiers, et c'est le `.drawio` — pas l'image — qui a de la valeur.
+ */
+async function rasterize(svg, width, height, dir) {
+  const page = path.join(dir, "apercu.svg");
+  const output = path.join(dir, "apercu.png");
+  await writeFile(page, svg, "utf-8");
+  // Un facteur d'échelle 2 tant que l'image reste raisonnable : un aperçu flou dans une slide est
+  // exactement le défaut que SF-142-06 a corrigé pour Mermaid.
+  const scale = width * height <= DRAWIO_SCALE_BUDGET ? 2 : 1;
+  const args = ["--headless=new", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage",
+    "--hide-scrollbars", `--force-device-scale-factor=${scale}`, "--virtual-time-budget=3000",
+    `--user-data-dir=${path.join(dir, "profil")}`, `--window-size=${width},${height}`,
+    `--screenshot=${output}`, "file://" + page];
+  await new Promise((resolve, reject) => {
+    execFile(CHROME, args, { timeout: PREVIEW_TIMEOUT_MS }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error((stderr || error.message || "").toString().slice(0, 300)));
+        return;
+      }
+      resolve();
+    });
+  });
+  return readFile(output);
+}
+
+async function renderDrawioRequest(payload, res) {
+  let built;
+  try {
+    built = drawio.build(payload.spec);
+  } catch (e) {
+    // Description refusée : la raison dit quoi corriger. Rien n'est fabriqué.
+    return fail(res, 422, (e.message || "Le schéma n'a pas pu être construit.").slice(0, 500));
+  }
+  const xml = Buffer.from(built.xml, "utf-8");
+  if (xml.length > MAX_IMAGE_BYTES) {
+    return fail(res, 413, "Fichier draw.io trop lourd : " + xml.length + " octets.");
+  }
+  const dir = await mkdtemp(path.join(tmpdir(), "cg-drawio-"));
+  // L'aperçu ne fait JAMAIS échouer le `.drawio` : c'est l'éditable qui a de la valeur, l'image se
+  // refait. L'échec est DIT, il n'est pas tu.
+  let png = "";
+  let previewError = "";
+  try {
+    const image = await rasterize(built.svg, built.width, built.height, dir);
+    if (image.length > MAX_IMAGE_BYTES) {
+      previewError = "Aperçu trop lourd (" + image.length + " octets) : le fichier draw.io est complet.";
+    } else {
+      png = image.toString("base64");
+    }
+  } catch (e) {
+    previewError = (e.message || "rendu d'aperçu en échec").slice(0, 300);
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+  }
+  const body = JSON.stringify({
+    drawio: xml.toString("base64"),
+    png,
+    previewError,
+    width: built.width,
+    height: built.height,
+  });
+  send(res, 200, body, "application/json; charset=utf-8");
 }
 
 /** La branche « icônes officielles » : une description entre, un PNG sort. */

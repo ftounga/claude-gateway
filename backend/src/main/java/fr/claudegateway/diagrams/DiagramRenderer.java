@@ -16,7 +16,12 @@ public interface DiagramRenderer {
     /** Le format demandé : une slide veut du PNG, une page gagne à recevoir du SVG. */
     enum Format {
         PNG("image/png", ".png"),
-        SVG("image/svg+xml", ".svg");
+        SVG("image/svg+xml", ".svg"),
+        /**
+         * Le schéma <b>réouvrable</b> dans draw.io / diagrams.net (F-142 / SF-142-13). Ce n'est pas une
+         * image : c'est la <b>source éditable</b>, déposée à côté de son aperçu.
+         */
+        DRAWIO("application/vnd.jgraph.mxfile", ".drawio");
 
         private final String contentType;
         private final String extension;
@@ -72,6 +77,28 @@ public interface DiagramRenderer {
      * @param spec la description (nœuds typés, groupes, liens), telle que l'agent l'a donnée
      */
     Rendered renderCloud(com.fasterxml.jackson.databind.JsonNode spec);
+
+    /**
+     * Les <b>deux artefacts</b> d'un schéma réouvrable (F-142 / SF-142-13) : la source {@code .drawio}
+     * et son aperçu PNG.
+     *
+     * <p><b>Pourquoi l'aperçu peut manquer</b> : c'est la <b>source éditable</b> qui a de la valeur —
+     * l'image se refait, le schéma perdu se refait à la main. Un aperçu en échec ne fait donc pas échouer
+     * le tout : il est <b>dit</b> ({@code previewError}), et le fichier part quand même.</p>
+     */
+    record Editable(byte[] drawio, byte[] png, String previewError) {
+
+        public boolean hasPreview() {
+            return png != null && png.length > 0;
+        }
+    }
+
+    /**
+     * Rend un schéma <b>réouvrable dans draw.io</b> (F-142 / SF-142-13), depuis une <b>description</b> —
+     * la même que {@link #renderCloud(com.fasterxml.jackson.databind.JsonNode)}, pour que l'agent n'ait
+     * pas un second vocabulaire à apprendre.
+     */
+    Editable renderEditable(com.fasterxml.jackson.databind.JsonNode spec);
 
     /** Vrai si un moteur est configuré : sans lui, l'outil n'est pas proposé plutôt que de promettre. */
     boolean isAvailable();
