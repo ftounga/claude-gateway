@@ -50,14 +50,27 @@ public interface DiagramRenderer {
      * officielle</b> (F-142 / SF-142-09). Ce dernier point doit remonter jusqu'à l'agent : un composant
      * dessiné en boîte neutre se dit, il ne se devine pas.
      */
-    record Rendered(byte[] bytes, Format format, String unknownTypes) {
+    record Rendered(byte[] bytes, Format format, String unknownTypes, String notice) {
 
         public Rendered(byte[] bytes, Format format) {
-            this(bytes, format, "");
+            this(bytes, format, "", "");
+        }
+
+        public Rendered(byte[] bytes, Format format, String unknownTypes) {
+            this(bytes, format, unknownTypes, "");
         }
 
         public boolean hasUnknownTypes() {
             return unknownTypes != null && !unknownTypes.isBlank();
+        }
+
+        /**
+         * Vrai si le service de rendu a quelque chose à dire sur le schéma lui-même — aujourd'hui sa
+         * <b>densité</b> (F-142 / SF-142-17). Ce n'est pas une erreur : l'image existe, elle est
+         * seulement trop grande pour se lire, et l'agent doit pouvoir proposer de la scinder.
+         */
+        public boolean hasNotice() {
+            return notice != null && !notice.isBlank();
         }
     }
 

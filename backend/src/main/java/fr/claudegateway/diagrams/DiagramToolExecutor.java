@@ -102,9 +102,13 @@ public class DiagramToolExecutor {
                         + "neutre — " + rendered.unknownTypes() + ". DIS-LE à l'utilisateur ; ne remplace "
                         + "jamais un composant par une icône approchante."
                 : "";
+        // F-142 / SF-142-17 : une note sur le schéma lui-même (sa densité). L'image EXISTE — ce n'est
+        // pas une erreur ; c'est une invitation à le scinder, que l'agent doit pouvoir relayer.
+        String notice = rendered.hasNotice() ? " NOTE DU RENDU : " + rendered.notice() : "";
         return new Outcome("Diagramme rendu par la gateway et déposé dans le projet sous « " + deposited
                 + " ». Insère ce chemin : add_picture pour une slide, <img src=\"" + deposited + "\"> pour "
-                + "une page, image pour un document. Rien n'a été installé sur la machine." + warning, false);
+                + "une page, image pour un document. Rien n'a été installé sur la machine."
+                + warning + notice, false);
     }
 
     /**

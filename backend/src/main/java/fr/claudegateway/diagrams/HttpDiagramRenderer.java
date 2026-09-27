@@ -195,7 +195,9 @@ public class HttpDiagramRenderer implements DiagramRenderer {
             }
             // F-142 / SF-142-09 : les types rendus sans icône officielle voyagent en en-tête.
             String unknown = response.headers().firstValue("X-Cg-Unknown-Types").orElse("");
-            return new Rendered(image, format, unknown);
+            // F-142 / SF-142-17 : « ce schéma est trop dense » suit le même chemin.
+            String notice = response.headers().firstValue("X-Cg-Diagram-Notice").orElse("");
+            return new Rendered(image, format, unknown, notice);
         }
         if (status == 400 || status == 413 || status == 422) {
             throw new DiagramRejectedException(reason(response.body()));
