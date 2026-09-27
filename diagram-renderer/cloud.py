@@ -32,14 +32,11 @@ MAX_LABEL = 120
 # La bibliothèque expose des CENTAINES d'icônes. On les résout donc toutes, automatiquement : un type
 # « aws.natgateway » cherche la classe dont le nom normalisé vaut « natgateway » dans les modules de
 # « diagrams.aws ». Plus de liste à tenir, plus de composant manquant — et quand il n'existe vraiment
-# rien, une boîte NEUTRE, jamais une icône approchante.
+# rien, une forme visible et nommée (SF-142-12), jamais une icône approchante.
 # ---------------------------------------------------------------------------------------------------
 
 # Les familles ouvertes à la résolution. Fermées volontairement : on dessine des architectures.
 FAMILIES = ("aws", "azure", "gcp", "k8s", "onprem", "generic", "elastic", "saas", "oci", "digitalocean")
-
-# Le nœud de repli : une boîte NEUTRE, sans marque.
-FALLBACK = ("diagrams.generic.blank", "Blank")
 
 # Quelques noms d'usage qui ne correspondent pas au nom de la classe. Courte, et c'est voulu : tout
 # le reste se résout tout seul.
@@ -127,14 +124,47 @@ class Refused(Exception):
     """Un refus DIT : le message explique quoi corriger."""
 
 
-def suggestions(kind):
-    """Les types proches d'un type inconnu : un refus sans piste ne sert à rien."""
-    family = kind.split(".")[0] if "." in kind else kind
-    near = [k for k in CATALOG if k.startswith(family + ".")]
-    if not near:
-        near = sorted({k.split(".")[0] for k in CATALOG})
-        return "Familles connues : " + ", ".join(near) + "."
-    return "Types proches : " + ", ".join(sorted(near)[:12]) + "."
+# ---------------------------------------------------------------------------------------------------
+# LE REPLI VISIBLE (F-142 / SF-142-12)
+#
+# Défaut constaté en production le 2026-09-27 : un nœud « aws.managedworkflowsforapacheairflow »
+# rendait HTTP 200, l'image sortait — et le composant n'y était pas. Seule son étiquette flottait dans
+# le vide, avec une flèche pointant sur rien.
+#
+# La cause tenait en une ligne : le repli était « diagrams.generic.blank.Blank », dont l'icône est un
+# PNG VIDE. Le commentaire annonçait « une boîte NEUTRE, et on le DIT » ; l'implémentation rendait
+# l'inverse. C'est pire qu'un refus : le lecteur d'un livrable ne voit pas un trou, il voit un schéma
+# qu'il croit complet.
+#
+# Le repli est désormais une FORME DESSINÉE : un cadre en pointillé, d'une couleur qu'aucune icône
+# officielle n'emploie, portant l'étiquette du nœud. On voit qu'il manque une icône SANS lire le texte.
+# Ce n'est JAMAIS une icône approchante — la règle de fond de F-142 ne bouge pas d'un pouce, et
+# « strict » reste là pour qui préfère le refus au schéma partiel.
+# ---------------------------------------------------------------------------------------------------
+UNKNOWN_STROKE = "#B03A2E"
+UNKNOWN_FILL = "#FDECEA"
+
+
+def unknown_component(label):
+    """
+    Le nœud d'un type sans icône : une forme VISIBLE et nommée (F-142 / SF-142-12).
+
+    Un `Node` sans icône est dessiné par graphviz, pas par une image : c'est précisément ce qu'il
+    faut ici. Le pointillé et la couleur disent « il manque une icône » d'un coup d'œil, sans mentir
+    sur ce qu'est le composant.
+    """
+    from diagrams import Node
+
+    return Node(label, shape="box", style="dashed,filled", fillcolor=UNKNOWN_FILL,
+                color=UNKNOWN_STROKE, penwidth="2", fontcolor=UNKNOWN_STROKE, labelloc="c",
+                fixedsize="false", width="1.8", height="1.0", margin="0.25")
+
+
+def unknown_factory(kind):
+    """Sans étiquette, la forme porte le type demandé : une forme muette ne vaut guère mieux qu'un trou."""
+    def make(label):
+        return unknown_component(label or kind)
+    return make
 
 
 def label_of(raw, what):
@@ -175,12 +205,11 @@ def build(spec, output):
             continue
         if strict:
             raise Refused(f"Type de nœud inconnu : « {kind} ». " + suggestions(kind))
-        # Aucune icône : une boîte NEUTRE, et on le DIT. Jamais une icône approchante.
+        # Aucune icône : une forme VISIBLE et nommée, et on le DIT (SF-142-12 — le repli était un PNG
+        # vide, donc un composant absent de l'image). Jamais une icône approchante.
         if kind not in unknown:
             unknown.append(kind)
-        module, name = FALLBACK
-        imported = __import__(module, fromlist=[name])
-        classes[kind] = getattr(imported, name)
+        classes[kind] = unknown_factory(kind)
 
     title = label_of(spec.get("title"), "Le titre")
     direction = str(spec.get("direction") or "LR").upper()
