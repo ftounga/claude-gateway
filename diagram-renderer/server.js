@@ -112,9 +112,16 @@ function renderCloud(spec, outputBase) {
         // les types rendus SANS icône officielle (F-142 / SF-142-09). Il faut les distinguer : tout
         // prendre pour un chemin faisait échouer un rendu pourtant réussi.
         const lines = (stdout || "").split("\n").map((l) => l.trim()).filter(Boolean);
-        const file = lines.find((l) => !l.startsWith("UNKNOWN_TYPES=")) || "";
+        const marked = (l) => l.startsWith("UNKNOWN_TYPES=") || l.startsWith("NOTICE=");
+        const file = lines.find((l) => !marked(l)) || "";
         const marker = lines.find((l) => l.startsWith("UNKNOWN_TYPES="));
-        resolve({ file, unknown: marker ? marker.slice("UNKNOWN_TYPES=".length) : "" });
+        // F-142 / SF-142-17 : la note de densité suit la même convention — une ligne marquée.
+        const notice = lines.find((l) => l.startsWith("NOTICE="));
+        resolve({
+          file,
+          unknown: marker ? marker.slice("UNKNOWN_TYPES=".length) : "",
+          notice: notice ? notice.slice("NOTICE=".length) : "",
+        });
       });
     child.stdin.end(JSON.stringify({ ...spec, output: outputBase }), "utf-8");
   });
@@ -443,6 +450,10 @@ async function renderCloudRequest(payload, res) {
     if (produced.unknown) {
       // L'avertissement voyage avec l'image : l'agent doit pouvoir DIRE lesquels n'avaient pas d'icône.
       headers["X-Cg-Unknown-Types"] = produced.unknown;
+    }
+    if (produced.notice) {
+      // F-142 / SF-142-17 : « ce schéma est trop dense » se dit, il ne se devine pas.
+      headers["X-Cg-Diagram-Notice"] = produced.notice;
     }
     res.writeHead(200, headers);
     res.end(image);

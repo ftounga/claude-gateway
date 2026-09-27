@@ -107,6 +107,44 @@ ALIASES = {
 
 # Au-delà, la piste n'aide plus : elle se lit comme une liste.
 MAX_SUGGESTIONS = 8
+# ---------------------------------------------------------------------------------------------------
+# LE PLACEMENT LISIBLE (F-142 / SF-142-17)
+#
+# Défaut constaté sur le rendu réel du 2026-09-27 : 3979 × 3131 pixels pour une quinzaine de
+# composants, un immense vide au centre, et des arêtes horizontales interminables dont les étiquettes
+# — « objets », « images », « files », « Snowflake » — flottaient au milieu de nulle part.
+#
+# L'arbitrage : RÉGLER graphviz, ne pas placer à sa place. Écrire notre propre moteur de placement
+# serait refaire ce que graphviz fait bien, et ajouter un second moteur à maintenir à côté de celui
+# de `drawio`. On agit sur les ATTRIBUTS, jamais sur les coordonnées.
+#
+#   * `nodesep` / `ranksep` : les séparations par défaut de la bibliothèque (0,60 et 0,75 pouce) sont
+#     taillées pour de petits schémas ; à quinze composants elles étalent.
+#   * `splines` : la valeur par défaut de la bibliothèque est « ortho ». C'est elle qui produisait les
+#     longues traversées horizontales — le routage à angle droit contourne par le bord. En « spline »,
+#     la plus longue arête horizontale de la vue réelle passe de 31 % à 10 % de la largeur.
+#   * `concentrate` a été ÉCARTÉ : il fusionne des arêtes parallèles, et deux liens de libellés
+#     différents (« objets » et « images ») y perdraient une étiquette. Un schéma faux est pire qu'un
+#     schéma étalé — et la mesure ne montrait AUCUN gain de surface.
+#   * On ne touche PAS au `dpi` : rapetisser n'est pas ranger, et une image illisible n'apprend rien.
+#
+# Ces attributs vivent ici, nommés, pour qu'un test puisse mesurer AVANT et APRÈS.
+# ---------------------------------------------------------------------------------------------------
+GRAPH_ATTR = {
+    "pad": "0.3",
+    "dpi": "144",
+    "nodesep": "0.30",
+    "ranksep": "0.45",
+    "splines": "spline",
+}
+EDGE_ATTR = {
+    # L'étiquette d'un lien est une précision, pas un titre : plus compacte, elle reste près de son
+    # arête au lieu de pousser les nœuds pour se faire de la place.
+    "fontsize": "12",
+}
+# Au-delà, le schéma ne se lit plus à l'écran : on le DIT à l'agent plutôt que de produire une image
+# que personne n'affiche. Une borne, pas un recadrage — rogner mentirait sur le contenu.
+MAX_DIMENSION = 4000
 # Un fragment plus court rapproche n'importe quoi de n'importe quoi (« sf » dans « workflowsfor »).
 MIN_FRAGMENT = 4
 
@@ -447,7 +485,7 @@ def build(spec, output):
                     place(child)
 
     with Diagram(title, filename=output, outformat="png", show=False,
-                 direction=direction, graph_attr={"pad": "0.4", "dpi": "144"}):
+                 direction=direction, graph_attr=GRAPH_ATTR, edge_attr=EDGE_ATTR):
         place("")
         for group_id in roots:
             if group_id in populated:
@@ -463,6 +501,35 @@ def build(spec, output):
             text = label_of(edge.get("label"), "Le nom d'un lien")
             created[source] >> Edge(label=text) >> created[target]
     return unknown
+
+
+def png_size(path):
+    """Les dimensions d'un PNG, lues dans son en-tête : (largeur, hauteur), ou None."""
+    try:
+        with open(path, "rb") as image:
+            head = image.read(24)
+    except OSError:
+        return None
+    if len(head) < 24 or head[12:16] != b"IHDR":
+        return None
+    return int.from_bytes(head[16:20], "big"), int.from_bytes(head[20:24], "big")
+
+
+def density_notice(path):
+    """
+    L'avertissement de densité (F-142 / SF-142-17), en ASCII : il finit en en-tête HTTP.
+
+    On ne recadre pas et on ne rapetisse pas : on DIT que le schéma est trop dense, et l'agent
+    décide de le scinder. Une image qu'aucun écran n'affiche n'apprend rien à personne.
+    """
+    size = png_size(path)
+    if size is None:
+        return ""
+    largeur, hauteur = size
+    if largeur <= MAX_DIMENSION and hauteur <= MAX_DIMENSION:
+        return ""
+    return (f"Schema tres dense : {largeur} x {hauteur} pixels, au-dela de la borne "
+            f"de {MAX_DIMENSION}. Scinde-le en plusieurs vues : a cette taille il ne se lit plus.")
 
 
 def main():
@@ -481,6 +548,9 @@ def main():
             # Le marqueur reste une LIGNE ASCII : il finit en en-tête HTTP, qui n'accepte rien d'autre.
             said = " ; ".join(kind + " (" + suggestions(kind) + ")" for kind in unknown)
             print("UNKNOWN_TYPES=" + said.encode("ascii", "replace").decode("ascii"))
+        notice = density_notice(output + ".png")
+        if notice:
+            print("NOTICE=" + notice)
         return 0
     except Refused as refused:
         sys.stderr.write(str(refused))

@@ -277,6 +277,30 @@ class DiagramToolExecutorTest {
                 .contains("aws.mwaa");
     }
 
+    @Test
+    @DisplayName("F-142 / SF-142-17 : un schéma trop dense est DIT à l'agent, l'image n'est pas refusée")
+    void aTooDenseDiagramIsAnnounced() {
+        when(renderer.renderCloud(any())).thenReturn(new Rendered("PNG".getBytes(StandardCharsets.UTF_8),
+                Format.PNG, "", "Schema tres dense : 4800 x 3900 pixels, au-dela de la borne de 4000."));
+        when(deposit.deposit(any(), any(), anyString(), anyString(), any(), anyString(), anyString()))
+                .thenReturn("reseau.png");
+        ObjectNode spec = mapper.createObjectNode();
+        spec.putArray("nodes").addObject().put("id", "a").put("type", "aws.s3").put("label", "Objets");
+        ObjectNode input = mapper.createObjectNode();
+        input.put("engine", "cloud");
+        input.set("spec", spec);
+
+        DiagramToolExecutor.Outcome outcome = executor.execute(userId, workspace, "call-17", input);
+
+        // Le schéma EST produit : la densité n'est pas une erreur, c'est une invitation à le scinder.
+        assertThat(outcome.error()).isFalse();
+        assertThat(outcome.content())
+                .contains("reseau.png")
+                .contains("NOTE DU RENDU")
+                .contains("4800 x 3900")
+                .doesNotContain("ATTENTION");
+    }
+
     // --- F-142 / SF-142-13 — le schéma réouvrable dans draw.io ---
 
     private ObjectNode drawioInput(String filename) {
