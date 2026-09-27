@@ -41,7 +41,7 @@ public class DiagramToolCatalog {
             + "« aws.alb », « aws.s3 », « aws.lambda », « azure.aks », « gcp.gke », "
             + "« onprem.postgresql », « onprem.kafka », « onprem.users »… Plus de MILLE icônes sont "
             + "atteignables : donne le NOM EXACT du composant (« aws.natgateway », "
-            + "« aws.transitgateway », « aws.privatesubnet »), il sera trouvé.\n"
+            + "« aws.transitgateway », « aws.privatesubnet »), il sera trouvé. Les SIGLES usuels sont compris aussi (« aws.mwaa », « aws.tgw », « aws.sm », « aws.asg », « aws.igw »).\n"
             + "N'UTILISE JAMAIS UNE ICÔNE APPROCHANTE. Si un composant n'a pas d'icône, garde son nom : "
             + "le service pose une BOÎTE NEUTRE avec son libellé et te le signale — dis-le alors à "
             + "l'utilisateur. Mettre « ce qui ressemble » (un poste client pour un réseau d'entreprise, "
