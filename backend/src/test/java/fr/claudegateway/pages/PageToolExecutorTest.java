@@ -315,4 +315,46 @@ class PageToolExecutorTest {
         assertThat(outcome.error()).isTrue();
         assertThat(outcome.content()).contains("500 Mo");
     }
+
+    // ------------------------------------------ F-142 / SF-142-11 : la porte de l'archi cloud
+
+    @Test
+    @DisplayName("SF-142-11 — une archi cloud dessinée à la main est REFUSÉE, et RIEN n'est publié")
+    void handDrawnCloudArchitectureIsRefused() throws Exception {
+        String html = "<pre class=\\\"mermaid\\\">flowchart TB subgraph VPC[VPC eu-west-3-dev 10.180.165.0/24] NODES[Noeuds EKS] end TGW[Transit gateway] NODES --> TGW</pre>";
+
+        PageToolExecutor.Outcome outcome = executor.execute(userId, workspace, "call-1",
+                json("{\"title\":\"4 vues\",\"html\":\"" + html + "\"}"));
+
+        assertThat(outcome.error()).isTrue();
+        assertThat(outcome.content()).contains("engine=\"cloud\"").contains("aws.eks");
+        // LE POINT QUI COMPTE : aucune page fausse n'est écrite.
+        verify(pageService, never()).publish(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("SF-142-11 — débranchée, la même page se publie comme avant")
+    void theGateIsSwitchable() throws Exception {
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                executor, "refuseHandDrawnCloud", false);
+        String html = "<pre class=\\\"mermaid\\\">flowchart TB subgraph VPC[VPC eu-west-3-dev 10.180.165.0/24] NODES[Noeuds EKS] end TGW[Transit gateway] NODES --> TGW</pre>";
+
+        PageToolExecutor.Outcome outcome = executor.execute(userId, workspace, "call-1",
+                json("{\"title\":\"4 vues\",\"html\":\"" + html + "\"}"));
+
+        assertThat(outcome.error()).isFalse();
+        verify(pageService).publish(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("SF-142-11 — un flux métier en Mermaid passe : le doute ne ferme rien")
+    void abusinessFlowStillPublishes() throws Exception {
+        String html = "<pre class=\\\"mermaid\\\">flowchart LR\\n  A[Demande] --> B[Validation]\\n</pre>";
+
+        PageToolExecutor.Outcome outcome = executor.execute(userId, workspace, "call-1",
+                json("{\"title\":\"Flux\",\"html\":\"" + html + "\"}"));
+
+        assertThat(outcome.error()).isFalse();
+        verify(pageService).publish(any(), any(), any(), any(), any(), any());
+    }
 }
