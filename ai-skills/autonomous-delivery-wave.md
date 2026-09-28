@@ -22,7 +22,7 @@ Chapeaute `feature-autonome.md` (autonomie intra-feature) et `parallel-frontback
 | Branche par défaut | **`main`** (merge en squash) |
 | Périmètre | Passerelle **puis** traitement documentaire — dans le périmètre (amendement `PROJECT.md`, ADR-011). Gateway-First + Provider Independence obligatoires. **Hors scope : V3** (F-17/F-18) + multi-LLM runtime. |
 | Features à construire | Passerelle : F-01→F-12 (F-01/02/04/09/10/11/12 livrées ; **F-03 BYOK parké 🔴** OQ-06). Documentaire : F-05→08, F-13, F-14, F-15, F-16. |
-| Staging | `https://portal.ng-itconsulting.com` — deploy via CI `gh workflow run backend.yml --ref main` + `frontend.yml` |
+| Environnement | **UNIQUE = PRODUCTION** : `https://portal.ng-itconsulting.com`, ns `claude-gateway-staging` (nom legacy). Déploiement **manuel**, en déroulant `docs/DEPLOYMENT.md` après son **Étape 0** (`scripts/preflight-deploy.sh`). Pas de staging séparé, pas de déploiement automatique sur `main`. |
 | CI docs-coupling | **Aucun** : `backend.yml` se déclenche sur `backend/** .github/** k8s/**`, **pas `docs/**`** → commiter des docs ne redéploie pas. Pas besoin de grouper les docs pour raison CI (on groupe quand même pour la lisibilité). |
 | AWS | profil `legalcase-terraform`, cluster EKS `legalcase-shared`, ns `claude-gateway-staging` |
 | Package backend | `fr.claudegateway.<module>` |
@@ -75,8 +75,18 @@ Par feature : cadrage → mini-spec(s) SF (`docs/features/F-XX/`) → readiness 
 
 **Règles dures gateway** : isolation `user_id` sur tout accès données ; **provider via interface `AIProvider`** jamais Anthropic direct ; clé (plateforme/BYOK) jamais exposée ni loggée ; secrets hors du code ; Liquibase uniquement (pas de DDL manuel).
 
-### Phase 4 — Docs groupées + staging unique
-1 commit `docs/wave-YYYY-MM-DD-complete` (statuts « Terminée », 1 entrée historique par SF, MAJ `ARCHITECTURE_CANONIQUE` si nouvelles tables). **1 seul** déploiement staging en fin : `gh workflow run backend.yml --ref main` + front, healthcheck `portal.ng-itconsulting.com/api/actuator/health`.
+### Phase 4 — Docs groupées + déploiement unique
+1 commit `docs/wave-YYYY-MM-DD-complete` (statuts « Terminée », 1 entrée historique par SF, MAJ `ARCHITECTURE_CANONIQUE` si nouvelles tables). Puis **un seul** déploiement, **à la fin de la vague** — jamais feature par feature, jamais lancé par un agent de vague.
+
+> ⚠️ **L'environnement est UNIQUE et c'est la PRODUCTION** (`portal.ng-itconsulting.com`, ns `claude-gateway-staging` = nom legacy). La vague **ne déploie pas d'elle-même** : elle s'arrête ici et rend la main.
+>
+> Le déploiement se fait en déroulant **`docs/DEPLOYMENT.md`**, dont l'**Étape 0** est obligatoire :
+> ```bash
+> ./scripts/preflight-deploy.sh     # GO=0 · NO-GO=1 · usage=2 · INDÉTERMINÉ=4
+> ```
+> La garde (F-84 / SF-84-09, lecture seule) vérifie le profil AWS `legalcase-terraform`, le contexte `kubectl`, l'état du dépôt, **les réglages de drainage de SF-84-08** — sans eux l'`apply` les retire du cluster et le déploiement se remet à **tuer les tours d'agent en cours** — et la présence des **trois** images sous le tag du commit. Sur `NO-GO`, on ne déploie pas.
+>
+> La garde vérifie la configuration, **pas l'instant** : si un tour long est connu, prévenir le PO et le laisser choisir le moment. Healthcheck ensuite : `portal.ng-itconsulting.com/api/actuator/health`.
 
 ### Phase 5 — Récap unique d'arbitrages
 Features livrées (PR + CI verts) ; liste des ARBITRAGES (quoi/pourquoi/alternative écartée/réversibilité) ; features 🔴 parkées + question ; features non atteintes (budget) ; état staging ; risques résiduels.
