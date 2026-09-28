@@ -25,6 +25,60 @@ workspace dédié (namespace **`claude-gateway-staging`** = **production**), exp
 
 ---
 
+## Étape 0 — La garde avant déploiement (F-84 / SF-84-09)
+
+**Avant de dérouler quoi que ce soit ci-dessous** :
+
+```bash
+./scripts/preflight-deploy.sh            # après le build des images
+./scripts/preflight-deploy.sh --no-ecr   # avant le build des images
+```
+
+| Verdict | Sortie | Suite |
+|---|---|---|
+| `GO` | 0 | Dérouler les étapes 4 → 7 (1 → 3 seulement à la création de l'environnement) |
+| `NO-GO` | 1 | Corriger ce qui est nommé, relancer. **Ne pas déployer.** |
+| usage | 2 | Option invalide |
+| `INDÉTERMINÉ` | 4 | AWS ou le cluster ne répond pas : ré-authentifier, relancer |
+
+La garde est **en lecture seule** (aucun `apply`, aucun `push`) et vérifie cinq choses : le profil
+AWS (`legalcase-terraform`), le contexte `kubectl` et le namespace, l'état du dépôt (`HEAD` propre
+et **contenu dans `origin/main`** — le tag d'image vaut son SHA), **les réglages de drainage**, et
+la présence des **trois** images sous le tag du commit.
+
+### Les trois règles que la garde fait respecter
+
+1. **Un seul environnement, et c'est la production.** Le nom `claude-gateway-staging` est legacy
+   (voir l'encadré en tête de ce document). Chaque `kubectl apply` touche de vrais utilisateurs.
+2. **Un seul déploiement, à la fin d'une vague, lancé par un humain.** Aucune vague de livraison ne
+   déploie d'elle-même, et on ne déploie pas feature par feature. La CI n'a pas de déploiement
+   automatique sur `main` : c'est cette procédure, à la main, qui met en production.
+3. **Un déploiement ne doit pas abandonner les tours en cours.** Depuis SF-84-08, le pod **draine**
+   avant de mourir. Ce drainage tient à quatre réglages répartis entre `k8s/base/backend/deployment.yaml`
+   et `backend/src/main/resources/application.yml` :
+
+   | Réglage | Valeur | Sans lui |
+   |---|---|---|
+   | `terminationGracePeriodSeconds` | 660 | `SIGKILL` 30 s après `SIGTERM` |
+   | `maxUnavailable: 0` / `maxSurge: 1` | — | les deux pods drainent en même temps : plus de capacité |
+   | `server.shutdown: graceful` | — | les requêtes en vol, flux SSE compris, coupées net |
+   | `app.shutdown.turn-drain-seconds` | 300 | le pool n'attend pas la boucle d'agent |
+
+   `kubectl apply -k` **écrase** la configuration vivante par celle du dépôt : un déploiement fait
+   depuis un dépôt qui a perdu ces réglages les retirerait du cluster, et la production se
+   remettrait à tuer les tours — silencieusement. C'est ce que la garde refuse (contrôle G4).
+
+> **Ce que la garde ne sait pas** : si un tour long tourne **à cet instant**. Elle vérifie que le
+> déploiement est de ceux qui laissent finir les tours, pas l'instant où on le lance. Un tour plus
+> long que 300 s reste perdu. Si un tour long est connu (démonstration, session client), prévenir
+> le PO et le laisser choisir le moment.
+
+> **Conséquence sur la durée** : un rollout backend prend désormais plusieurs minutes de plus
+> (drainage + remplacement un par un). Les `rollout status --timeout=10m` de l'étape 5 restent
+> suffisants.
+
+---
+
 ## Étape 1 — Infra AWS (Terraform)
 
 ```bash
