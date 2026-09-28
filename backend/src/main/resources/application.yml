@@ -3,6 +3,12 @@ spring:
     name: claude-gateway-backend
   profiles:
     active: dev
+  lifecycle:
+    # F-84 / SF-84-08 — Budget de temps de CHAQUE phase d'arrêt. Le défaut de Spring Boot est 30 s :
+    # il coupait la phase où le pool `chatStreamExecutor` draine ses tours bien avant la fin du
+    # drainage, rendant `awaitTerminationSeconds` inopérant. Doit rester STRICTEMENT supérieur à
+    # `app.shutdown.turn-drain-seconds` (300 s + 10 s de marge).
+    timeout-per-shutdown-phase: 310s
   mail:
     # SMTP transactionnel (vérification d'adresse, reset mot de passe). Actif seulement si
     # MAIL_HOST est fourni par l'environnement (secrets legalcase réutilisés) ; sinon aucune
@@ -36,6 +42,11 @@ server:
   port: 8080
   servlet:
     context-path: /api
+  # F-84 / SF-84-08 — Arrêt GRACIEUX : sur SIGTERM, le connecteur cesse d'accepter et laisse les
+  # requêtes en vol se terminer (flux SSE d'un tour compris) au lieu de les couper net. Posé ici,
+  # dans le profil de base, pour TOUS les profils : dupliqué par profil, un réglage d'arrêt finit
+  # corrigé d'un seul côté (leçon F-77, où les sondes vivaient en deux exemplaires).
+  shutdown: graceful
 management:
   endpoints:
     web:
@@ -70,6 +81,19 @@ management:
         readiness:
           include: readinessState,db
 app:
+  shutdown:
+    # F-84 / SF-84-08 — Combien de temps l'arrêt attend la fin des tours d'agent encore en cours
+    # sur ce pod, avant de les abandonner. Le tour vit dans le processus du pod (ADR-016) : un
+    # rollout le tue, et c'est ce qui est arrivé en production le 2026-09-16.
+    #
+    # 300 s = l'ordre de grandeur d'un tour long observé, pas une valeur ronde. Au-delà, on
+    # préfère perdre le tour plutôt que geler un déploiement correctif — et TurnDrainReporter
+    # écrit alors ce qui est perdu. Zéro désactive l'attente (utile en test).
+    #
+    # Trois valeurs sont liées et doivent le rester :
+    #   app.shutdown.turn-drain-seconds (300) < spring.lifecycle.timeout-per-shutdown-phase (310)
+    #   et terminationGracePeriodSeconds du Deployment (660) > 2 × 310.
+    turn-drain-seconds: ${APP_SHUTDOWN_TURN_DRAIN_SECONDS:300}
   # URL du frontend, utilisée pour construire les liens d'e-mail (vérification, reset) et
   # la redirection post-connexion OAuth.
   frontend-url: ${APP_FRONTEND_URL:http://localhost:4200}

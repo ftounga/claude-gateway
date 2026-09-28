@@ -133,6 +133,21 @@ public class LiveTurnRegistry {
         turn.finish();
     }
 
+    /**
+     * Combien de tours <b>vivants</b> ce pod porte encore (F-84 / SF-84-08).
+     *
+     * <p>Un entier, tous utilisateurs confondus, et rien d'autre : ni identité, ni contenu. C'est
+     * ce que l'arrêt du pod a besoin de savoir — « reste-t-il du travail à drainer ? » — et c'est
+     * la seule chose qu'il a le droit de savoir. Les lectures nominatives restent clefées par
+     * {@code userId} ({@link #find}, {@link #liveTurnsOf}).</p>
+     *
+     * <p>Les tours déjà terminés ne comptent pas : un tour scellé dont la clôture traîne dans la
+     * carte ferait croire à du travail en cours et retarderait chaque arrêt pour rien.</p>
+     */
+    public int liveCount() {
+        return (int) turns.values().stream().filter(LiveTurn::live).count();
+    }
+
     private static String key(UUID userId, UUID workspaceId) {
         return userId + ":" + workspaceId;
     }

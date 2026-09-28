@@ -57,4 +57,47 @@ class LiveTurnRegistryTest {
 
         assertThat(registry.find(ALICE, PROJET)).isEmpty();
     }
+
+    // ─── Le compte des tours à drainer (F-84 / SF-84-08) ─────────────────────────────────────
+    // C'est ce compte que l'arrêt du pod consulte pour dire ce qu'il risque d'emporter. Un compte
+    // faux serait pire que pas de compte : il ferait croire à un drainage inutile, ou à une perte
+    // qui n'a pas eu lieu.
+
+    @Test
+    void unRegistreVideNaRienADrainer() {
+        assertThat(registry.liveCount()).isZero();
+    }
+
+    @Test
+    void leCompteCouvreTousLesUtilisateursDuPod() {
+        registry.open(ALICE, PROJET);
+        registry.open(BOB, PROJET);
+        registry.open(BOB, UUID.randomUUID());
+
+        assertThat(registry.liveCount())
+                .as("l'arrêt du pod draine le travail de TOUS ses utilisateurs")
+                .isEqualTo(3);
+    }
+
+    @Test
+    void unTourFermeNestPlusCompte() {
+        LiveTurn turn = registry.open(ALICE, PROJET);
+        registry.open(BOB, PROJET);
+
+        registry.close(turn);
+
+        assertThat(registry.liveCount())
+                .as("retarder chaque arrêt pour un tour déjà fini serait payer sans rien sauver")
+                .isEqualTo(1);
+    }
+
+    @Test
+    void remplacerLeTourDunProjetNeDoublePasLeCompte() {
+        registry.open(ALICE, PROJET);
+        registry.open(ALICE, PROJET);
+
+        assertThat(registry.liveCount())
+                .as("un projet n'exécute qu'un tour à la fois : le précédent est fermé, pas ajouté")
+                .isEqualTo(1);
+    }
 }

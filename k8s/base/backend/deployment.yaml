@@ -4,6 +4,17 @@ metadata:
   name: claude-gateway-backend
 spec:
   replicas: 2
+  # ─── Bascule des pods (F-84 / SF-84-08) ───────────────────────────────────────────────────────
+  # Le défaut (25 % / 25 %) autorise, avec deux replicas, à remplacer les DEUX pods en même temps.
+  # Depuis SF-84-08 un pod qui s'arrête draine ses tours d'agent — jusqu'à cinq minutes. Deux
+  # drainages simultanés laisseraient la production sans aucune capacité pendant ce temps.
+  # maxUnavailable: 0 / maxSurge: 1 => un pod neuf sert le trafic PENDANT que l'ancien draine, et
+  # les pods sont remplacés un par un. Le coût est un pod de plus le temps du rollout.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: claude-gateway-backend
@@ -17,6 +28,17 @@ spec:
         secrets-hash: SECRETS_HASH_PLACEHOLDER
     spec:
       serviceAccountName: claude-gateway-backend
+      # ─── Le déploiement n'abandonne plus le tour en cours (F-84 / SF-84-08) ─────────────────
+      # Constat de production du 2026-09-16 : un déploiement a interrompu un tour d'agent chez un
+      # client. Le tour vit dans le PROCESSUS du pod (ADR-016) ; le rollout tue le processus, donc
+      # le tour. Avec le défaut Kubernetes — 30 s —, SIGKILL tombait avant que quoi que ce soit ait
+      # pu se terminer.
+      #
+      # 660 s couvre les DEUX phases bornées de l'arrêt Spring, chacune plafonnée par
+      # spring.lifecycle.timeout-per-shutdown-phase = 310 s (arrêt gracieux du serveur web, puis
+      # drainage du pool chatStreamExecutor où tourne la boucle d'agent), plus une marge. Le pod
+      # normal s'arrête bien plus vite : rien n'attend quand il n'y a rien à drainer.
+      terminationGracePeriodSeconds: 660
       containers:
         - name: backend
           image: REGISTRY_PLACEHOLDER/claude-gateway-backend:BACKEND_IMAGE_TAG

@@ -35,7 +35,8 @@ class ChatStreamConfig {
     Executor chatStreamExecutor(
             @Value("${app.chat.stream.core-threads:8}") int coreThreads,
             @Value("${app.chat.stream.max-threads:32}") int maxThreads,
-            @Value("${app.chat.stream.queue-capacity:0}") int queueCapacity) {
+            @Value("${app.chat.stream.queue-capacity:0}") int queueCapacity,
+            @Value("${app.shutdown.turn-drain-seconds:300}") int drainSeconds) {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         executor.setCorePoolSize(Math.max(1, coreThreads));
         executor.setMaxPoolSize(Math.max(Math.max(1, coreThreads), maxThreads));
@@ -43,6 +44,22 @@ class ChatStreamConfig {
         executor.setKeepAliveSeconds(60);
         executor.setAllowCoreThreadTimeOut(true);
         executor.setThreadNamePrefix("chat-sse-");
+        // ─── Drainage à l'arrêt (F-84 / SF-84-08) ────────────────────────────────────────────
+        // C'est ICI que se joue « un déploiement n'abandonne plus le tour en cours ». La boucle
+        // d'agent (AtelierMcpTurnLauncher.runLoop) tourne sur ce pool, découplée de la requête
+        // HTTP : l'arrêt gracieux du serveur web ne l'attend donc PAS. Sans les trois lignes qui
+        // suivent, la fermeture du contexte arrête le pool sans attendre ses tâches actives, et le
+        // tour meurt avec le pod — perte constatée en production le 2026-09-16.
+        //
+        // Le mécanisme est celui du cadre, pas un cycle de vie maison : ExecutorConfigurationSupport
+        // implémente SmartLifecycle en phase 1073741823, INFÉRIEURE à celle de l'arrêt gracieux du
+        // serveur web (SmartLifecycle.DEFAULT_PHASE - 1024). L'ordre est donc déjà le bon — on
+        // cesse d'accepter, PUIS on draine.
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(Math.max(0, drainSeconds));
+        // Un pod qui meurt ne démarre pas un tour de plus : la soumission tardive est refusée
+        // plutôt que lancée pour être tuée quelques secondes après.
+        executor.setAcceptTasksAfterContextClose(false);
         executor.initialize();
         return executor;
     }
