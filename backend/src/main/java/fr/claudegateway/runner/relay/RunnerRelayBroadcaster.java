@@ -41,6 +41,7 @@ import jakarta.annotation.PreDestroy;
 public class RunnerRelayBroadcaster {
 
     static final String CONFIRM_PATH = "/api/internal/runner/confirm";
+    static final String ANSWER_PATH = "/api/internal/atelier/answer";
     static final String INTERRUPT_PATH = "/api/internal/atelier/interrupt";
     static final String SESSION_INTERRUPT_PATH = "/api/internal/atelier/session-interrupt";
     static final String CONTROL_PATH = "/api/internal/runner/control";
@@ -88,6 +89,24 @@ public class RunnerRelayBroadcaster {
             payload.put("reason", reason);
         }
         return broadcast(CONFIRM_PATH, payload.toString()).stream()
+                .anyMatch(node -> node.path("resolved").asBoolean(false));
+    }
+
+    /**
+     * Diffuse une <b>réponse à une question structurée</b> aux pairs (F-164 / SF-164-01), sur le même
+     * modèle que {@link #broadcastConfirm} : la question vit sur le pod qui exécute la boucle, la réponse
+     * du navigateur peut atterrir ailleurs.
+     *
+     * @return vrai si un pair détenait la question et l'a tranchée ; faux ⇒ l'appelant relance son 409,
+     *         et la question qui attendrait ailleurs expirera — le silence ne vaut jamais réponse
+     */
+    public boolean broadcastAnswer(UUID userId, UUID workspaceId, String callId, String content) {
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("userId", userId.toString());
+        payload.put("workspaceId", workspaceId.toString());
+        payload.put("callId", callId);
+        payload.put("content", content == null ? "" : content);
+        return broadcast(ANSWER_PATH, payload.toString()).stream()
                 .anyMatch(node -> node.path("resolved").asBoolean(false));
     }
 

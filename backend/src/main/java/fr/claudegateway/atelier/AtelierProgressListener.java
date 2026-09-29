@@ -77,6 +77,42 @@ public interface AtelierProgressListener {
     }
 
     /**
+     * <b>Une question structurée posée à l'utilisateur</b> (F-164 / SF-164-01) : le tour est
+     * <b>suspendu</b> tant que rien n'est répondu, exactement comme une demande d'autorisation.
+     *
+     * <p>Volontairement <b>par défaut neutre</b> : additif, le mode synchrone (et les tests) n'a
+     * personne à qui relayer, et la question expirera alors sans réponse.</p>
+     */
+    default void onQuestion(AtelierQuestionRequest request) {
+        // Aucun relais : la question expirera à l'échéance.
+    }
+
+    /** Notifie la résolution d'une question, pour que l'écran retire l'invite. */
+    default void onQuestionResolved(AtelierQuestionResolved resolved) {
+        // Aucun relais : mode synchrone.
+    }
+
+    /**
+     * Une question structurée relayée à l'écran (F-164 / SF-164-01).
+     *
+     * @param callId    identifiant de corrélation — celui à renvoyer pour répondre
+     * @param form      le lot de questions déjà validé (l'écran ne valide rien)
+     * @param timeoutMs délai au bout duquel la question expire (F-47 / SF-47-02), pour l'affichage du
+     *                  temps restant ; {@code 0} quand il n'est pas connu
+     */
+    record AtelierQuestionRequest(String callId, AtelierQuestionForm form, long timeoutMs) {
+    }
+
+    /**
+     * Résolution d'une question (F-164 / SF-164-01).
+     *
+     * @param callId identifiant de la question tranchée
+     * @param status {@code answered}, {@code timeout}, {@code interrupted} ou {@code failed}
+     */
+    record AtelierQuestionResolved(String callId, String status) {
+    }
+
+    /**
      * Notifie un fragment de <b>sortie de commande</b> reçu du runner (F-38 / SF-38-07), au fil de
      * l'eau : c'est ce qui fait défiler {@code stdout}/{@code stderr} dans la session pendant qu'une
      * commande tourne, au lieu de tout découvrir à la fin.

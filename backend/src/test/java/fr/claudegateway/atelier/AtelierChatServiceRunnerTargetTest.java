@@ -467,10 +467,10 @@ class AtelierChatServiceRunnerTargetTest {
                 // `explore` et `set_plan` sont déclarés sur les DEUX cibles (F-39 / SF-39-13 et 14) :
                 // ce sont des outils d'organisation et de lecture, pas d'exécution.
                 .containsExactly("list_files", "read_file", "write_file", "edit_file", "multi_edit",
-                        "search_files", "grep", "glob", "explore", "set_plan", "recall");
+                        "search_files", "grep", "glob", "explore", "set_plan", "demander", "recall");
         assertThat(service.buildTools(java.util.UUID.randomUUID(), runner)).extracting(fr.claudegateway.agent.AgentTool::name)
                 .containsExactly("read_file", "write_file", "edit_file", "multi_edit", "grep", "glob",
-                        "bash", "explore", "task", "set_plan", "recall");
+                        "bash", "explore", "task", "set_plan", "demander", "recall");
     }
 
     @Test
@@ -673,7 +673,7 @@ class AtelierChatServiceRunnerTargetTest {
 
         assertThat(service.buildTools(java.util.UUID.randomUUID(), runner)).extracting(fr.claudegateway.agent.AgentTool::name)
                 .containsExactly("read_file", "write_file", "edit_file", "multi_edit", "grep", "glob",
-                        "bash", "explore", "task", "set_plan", "recall");
+                        "bash", "explore", "task", "set_plan", "demander", "recall");
         verify(runnerAuditService).recordCall(eq(userId), eq(runnerTarget), anyString(), eq("edit_file"),
                 eq("a.ts"), any());
     }
@@ -1021,7 +1021,7 @@ class AtelierChatServiceRunnerTargetTest {
         // Et le travail principal garde exactement la sienne : D4 n'est pas défaite (non-régression).
         assertThat(agentProvider.toolBelts.get(0))
                 .containsExactly("read_file", "write_file", "edit_file", "multi_edit", "grep", "glob",
-                        "bash", "explore", "task", "set_plan", "recall");
+                        "bash", "explore", "task", "set_plan", "demander", "recall");
     }
 
     @Test

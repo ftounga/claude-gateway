@@ -13,6 +13,7 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import fr.claudegateway.runner.exec.RunnerConfirmationGate.AnswerOutcome;
 import fr.claudegateway.runner.exec.RunnerConfirmationGate.Decision;
 import fr.claudegateway.runner.exec.RunnerConfirmationGate.Outcome;
 
@@ -143,5 +144,110 @@ class RunnerConfirmationGateTest {
         assertThat(Decision.ALLOW.label()).isEqualTo("allow");
         assertThat(Decision.DENY.label()).isEqualTo("deny");
         assertThat(Decision.TIMEOUT.label()).isEqualTo("timeout");
+    }
+
+    // ------------------------------------------------ F-164 / SF-164-01 : la question structurée
+
+    /** Lance l'attente d'une réponse sur un autre thread et rend la main dès l'enregistrement. */
+    private Future<AnswerOutcome> awaitAnswerAsync(RunnerConfirmationGate gate, String callId) throws Exception {
+        CountDownLatch registered = new CountDownLatch(1);
+        Future<AnswerOutcome> pending = executor.submit(
+                () -> gate.awaitAnswer(userId, workspaceId, callId, registered::countDown));
+        assertThat(registered.await(2, TimeUnit.SECONDS)).isTrue();
+        return pending;
+    }
+
+    @Test
+    void aQuestionCarriesTheUsersReplyBack() throws Exception {
+        RunnerConfirmationGate gate = new RunnerConfirmationGate(5_000L);
+        Future<AnswerOutcome> pending = awaitAnswerAsync(gate, "q_1");
+
+        gate.answerQuestions(userId, workspaceId, "q_1", "Option A");
+
+        AnswerOutcome outcome = pending.get(2, TimeUnit.SECONDS);
+        assertThat(outcome.answered()).isTrue();
+        assertThat(outcome.status()).isEqualTo(AnswerOutcome.Status.ANSWERED);
+        assertThat(outcome.content()).isEqualTo("Option A");
+    }
+
+    @Test
+    void silenceOnAQuestionTimesOutRatherThanAnswering() {
+        RunnerConfirmationGate gate = new RunnerConfirmationGate(120L);
+
+        AnswerOutcome outcome = gate.awaitAnswer(userId, workspaceId, "q_2", () -> { });
+
+        assertThat(outcome.status()).isEqualTo(AnswerOutcome.Status.TIMEOUT);
+        assertThat(outcome.answered()).isFalse();
+        // Une réponse tardive ne peut plus rien trancher : la question n'est plus en attente.
+        assertThatThrownBy(() -> gate.answerQuestions(userId, workspaceId, "q_2", "trop tard"))
+                .isInstanceOf(NoPendingConfirmationException.class);
+    }
+
+    @Test
+    void aQuestionCanBePausedAndResumedSeveralTimesInATurn() throws Exception {
+        // EXIGENCE PO : l'outil est appelable plusieurs fois dans un même tour. La porte doit donc
+        // supporter N pauses successives — une par callId, chacune tranchée à son tour.
+        RunnerConfirmationGate gate = new RunnerConfirmationGate(5_000L);
+
+        Future<AnswerOutcome> first = awaitAnswerAsync(gate, "q_a");
+        gate.answerQuestions(userId, workspaceId, "q_a", "réponse A");
+        assertThat(first.get(2, TimeUnit.SECONDS).content()).isEqualTo("réponse A");
+
+        Future<AnswerOutcome> second = awaitAnswerAsync(gate, "q_b");
+        gate.answerQuestions(userId, workspaceId, "q_b", "réponse B");
+        assertThat(second.get(2, TimeUnit.SECONDS).content()).isEqualTo("réponse B");
+    }
+
+    @Test
+    void aQuestionAlreadyPendingIsNotOverwritten() throws Exception {
+        RunnerConfirmationGate gate = new RunnerConfirmationGate(5_000L);
+        awaitAnswerAsync(gate, "q_dup");
+
+        // Un second awaitAnswer sur le même identifiant échoue plutôt que d'écraser la question en cours.
+        assertThat(gate.awaitAnswer(userId, workspaceId, "q_dup", () -> { }).status())
+                .isEqualTo(AnswerOutcome.Status.FAILED);
+    }
+
+    @Test
+    void anotherUserCannotAnswerMyQuestion() throws Exception {
+        RunnerConfirmationGate gate = new RunnerConfirmationGate(400L);
+        Future<AnswerOutcome> pending = awaitAnswerAsync(gate, "q_iso");
+
+        assertThatThrownBy(
+                () -> gate.answerQuestions(UUID.randomUUID(), workspaceId, "q_iso", "pas moi"))
+                .isInstanceOf(NoPendingConfirmationException.class);
+        assertThatThrownBy(
+                () -> gate.answerQuestions(userId, UUID.randomUUID(), "q_iso", "pas ici"))
+                .isInstanceOf(NoPendingConfirmationException.class);
+
+        // La question reste non tranchée : elle finit en TIMEOUT, jamais répondue par un tiers.
+        assertThat(pending.get(2, TimeUnit.SECONDS).status()).isEqualTo(AnswerOutcome.Status.TIMEOUT);
+    }
+
+    @Test
+    void aQuestionAndAConfirmationNeverCrossResolve() throws Exception {
+        // Le discriminant de genre : répondre « comme une autorisation » à une question (et l'inverse)
+        // ne tranche jamais — la reprise reste sûre.
+        RunnerConfirmationGate gate = new RunnerConfirmationGate(400L);
+        Future<AnswerOutcome> question = awaitAnswerAsync(gate, "mixte");
+        assertThatThrownBy(() -> gate.resolve(userId, workspaceId, "mixte", true, null))
+                .isInstanceOf(NoPendingConfirmationException.class);
+        assertThat(question.get(2, TimeUnit.SECONDS).status()).isEqualTo(AnswerOutcome.Status.TIMEOUT);
+
+        Future<Outcome> confirm = awaitAsync(gate, "mixte2");
+        assertThatThrownBy(() -> gate.answerQuestions(userId, workspaceId, "mixte2", "x"))
+                .isInstanceOf(NoPendingConfirmationException.class);
+        assertThat(confirm.get(2, TimeUnit.SECONDS).decision()).isEqualTo(Decision.TIMEOUT);
+    }
+
+    @Test
+    void interruptingTheTurnReleasesAPendingQuestionAsInterrupted() throws Exception {
+        RunnerConfirmationGate gate = new RunnerConfirmationGate(10_000L);
+        Future<AnswerOutcome> pending = awaitAnswerAsync(gate, "q_int");
+
+        assertThat(gate.cancelWorkspace(workspaceId)).isEqualTo(1);
+
+        assertThat(pending.get(2, TimeUnit.SECONDS).status())
+                .isEqualTo(AnswerOutcome.Status.INTERRUPTED);
     }
 }

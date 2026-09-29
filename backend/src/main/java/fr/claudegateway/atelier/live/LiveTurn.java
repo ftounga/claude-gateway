@@ -65,6 +65,19 @@ public final class LiveTurn {
      */
     public static final String CONFIRM_STATE = "confirm_state";
 
+    /** Nom de l'événement qui porte une question structurée posée à l'utilisateur (F-164 / SF-164-01). */
+    public static final String QUESTION_REQUEST = "question_request";
+
+    /** Nom de l'événement qui porte la résolution d'une question. */
+    public static final String QUESTION_RESOLVED = "question_resolved";
+
+    /**
+     * Nom de l'<b>aparté</b> qui dit à un spectateur quelle question le tour attend <b>à l'instant</b>
+     * (F-164 / SF-164-01), avec son temps restant exact — le pendant de {@link #CONFIRM_STATE} pour les
+     * questions. Ce n'est pas un événement du tour : il ne consomme aucun numéro d'ordre.
+     */
+    public static final String QUESTION_STATE = "question_state";
+
     /** Une précision vient d'être déposée dans le tour (F-84 / SF-84-06). */
     public static final String STEER_QUEUED = "steer_queued";
 
@@ -104,6 +117,7 @@ public final class LiveTurn {
     private final List<TurnSubscriber> subscribers = new ArrayList<>();
 
     private PendingApproval pendingApproval;
+    private PendingQuestion pendingQuestion;
     private final Deque<Steer> steers = new ArrayDeque<>();
     private boolean sealed;
     private long lastSeq;
@@ -253,6 +267,50 @@ public final class LiveTurn {
                 return java.util.Optional.empty();
             }
             return java.util.Optional.of(pendingApproval);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Publie une <b>question structurée</b> et l'enregistre comme état du tour, en un seul geste
+     * (F-164 / SF-164-01) — exactement comme {@link #publishApprovalRequest} pour une autorisation.
+     */
+    public long publishQuestionRequest(Object payload, PendingQuestion pending) {
+        lock.lock();
+        try {
+            pendingQuestion = pending;
+            return publishJson(QUESTION_REQUEST, serialize(QUESTION_REQUEST, payload));
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Publie la résolution d'une question et <b>retire</b> l'état — dans cet ordre, pour qu'un écran
+     * qui se branche entre les deux ne trouve jamais une attente déjà close.
+     */
+    public long publishQuestionResolved(Object payload, String callId) {
+        lock.lock();
+        try {
+            if (pendingQuestion != null
+                    && (callId == null || callId.equals(pendingQuestion.callId()))) {
+                pendingQuestion = null;
+            }
+            return publishJson(QUESTION_RESOLVED, serialize(QUESTION_RESOLVED, payload));
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /** La question que le tour attend <b>à l'instant</b>, ou vide si aucune ou expirée (F-164 / SF-164-01). */
+    public java.util.Optional<PendingQuestion> pendingQuestion() {
+        lock.lock();
+        try {
+            if (pendingQuestion == null || !pendingQuestion.stillOpen()) {
+                return java.util.Optional.empty();
+            }
+            return java.util.Optional.of(pendingQuestion);
         } finally {
             lock.unlock();
         }
@@ -437,6 +495,13 @@ public final class LiveTurn {
             if (pendingApproval != null && pendingApproval.stillOpen()
                     && !subscriber.deliver(new TurnEvent(0L, CONFIRM_STATE,
                             pendingApproval.toJson()))) {
+                return false;
+            }
+            // Même aparté pour une question en attente (F-164 / SF-164-01) : un écran arrivé après coup
+            // la retrouve, avec son temps restant exact — c'est ce qui la rend répondable cross-device.
+            if (pendingQuestion != null && pendingQuestion.stillOpen()
+                    && !subscriber.deliver(new TurnEvent(0L, QUESTION_STATE,
+                            pendingQuestion.toJson()))) {
                 return false;
             }
             subscribers.add(subscriber);

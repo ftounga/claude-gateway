@@ -25,6 +25,9 @@ import fr.claudegateway.atelier.AtelierChatService.AtelierChatResult;
 import fr.claudegateway.atelier.AtelierProgressListener.AtelierStepEvent;
 import fr.claudegateway.atelier.AtelierProgressListener.AtelierConfirmRequest;
 import fr.claudegateway.atelier.AtelierProgressListener.AtelierConfirmResolved;
+import fr.claudegateway.atelier.AtelierProgressListener.AtelierQuestionRequest;
+import fr.claudegateway.atelier.AtelierProgressListener.AtelierQuestionResolved;
+import fr.claudegateway.atelier.dto.AgentAnswerRequest;
 import fr.claudegateway.atelier.dto.AgentConfirmRequest;
 import fr.claudegateway.atelier.dto.AtelierChatRequest;
 import fr.claudegateway.atelier.dto.AtelierCompactResponse;
@@ -37,6 +40,7 @@ import fr.claudegateway.atelier.dto.AtelierTurnStateResponse;
 import fr.claudegateway.atelier.live.LiveTurn;
 import fr.claudegateway.atelier.live.LiveTurnRegistry;
 import fr.claudegateway.atelier.live.PendingApproval;
+import fr.claudegateway.atelier.live.PendingQuestion;
 import fr.claudegateway.atelier.live.RemoteTurnSource;
 import fr.claudegateway.atelier.live.SseTurnSubscriber;
 import fr.claudegateway.atelier.live.SteerReceipt;
@@ -342,6 +346,25 @@ public class AtelierChatController {
     }
 
     /**
+     * Répond à une <b>question structurée</b> posée par le tour en cours (F-164 / SF-164-01) : les
+     * choix (et l'éventuelle réponse libre) sont rendus au modèle, qui reprend le tour.
+     *
+     * <p>Endpoint JSON classique (pas SSE), <b>répondable depuis n'importe quel appareil</b> : le tour
+     * attend sur son flux, cette réponse arrive sur une autre requête, peut-être un autre appareil, et
+     * le service la diffuse au pod qui exécute si besoin. L'isolation {@code user_id} est appliquée par
+     * le service ({@code requireOwned} d'abord : 404 sur un projet d'autrui). <b>Robuste</b> : une
+     * réponse en double ou tardive ne trouve rien en attente et renvoie 409, sans rien casser.</p>
+     */
+    @PostMapping("/answer")
+    public ResponseEntity<Void> answer(@PathVariable UUID id,
+            @Valid @RequestBody AgentAnswerRequest request) {
+        atelierAccess.requireTerminalAccess(id);
+        atelierChatService.answerQuestion(currentUser.requireId(), id, request.callId(),
+                request.toEntries());
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
      * État de reprise du fil (F-39 / SF-39-04, décision D5) : ce que le prochain tour rejouera, et
      * s'il faut poser la question. Par défaut le fil reprend en silence — l'écran n'appelle cette
      * route que pour savoir s'il doit, exceptionnellement, proposer un choix.
@@ -574,6 +597,27 @@ public class AtelierChatController {
                 }
 
                 /**
+                 * Une question structurée devient l'ÉTAT du tour (F-164 / SF-164-01), exactement comme
+                 * une demande d'autorisation : un écran qui se branche après coup la retrouve encore en
+                 * attente (aparté {@code question_state}), et peut y répondre depuis n'importe quel
+                 * appareil.
+                 */
+                @Override
+                public void onQuestion(AtelierQuestionRequest request) {
+                    turn.publishQuestionRequest(new StreamQuestion(request.callId(),
+                            request.form().questions(), request.timeoutMs()),
+                            new PendingQuestion(request.callId(), questionsJson(request.form()),
+                                    request.timeoutMs(), System.currentTimeMillis()));
+                }
+
+                @Override
+                public void onQuestionResolved(AtelierQuestionResolved resolved) {
+                    turn.publishQuestionResolved(
+                            new StreamQuestionResolved(resolved.callId(), resolved.status()),
+                            resolved.callId());
+                }
+
+                /**
                  * Le poste vient de refuser un appel (F-97 / SF-97-02). L'instant est celui du
                  * SERVEUR : l'écran le compare au dernier battement connu, lui aussi en heure
                  * serveur, pour qu'un refus rejoué par le tampon du tour ne rende pas hors ligne un
@@ -736,6 +780,23 @@ public class AtelierChatController {
                 .toList());
     }
 
+    /**
+     * Mapper dédié à la sérialisation du lot de questions pour l'état du tour (F-164 / SF-164-01).
+     * Statique et réutilisé : sérialiser un tableau de records n'exige aucune configuration, et cela
+     * évite d'ajouter une dépendance au constructeur du contrôleur.
+     */
+    private static final com.fasterxml.jackson.databind.ObjectMapper QUESTION_MAPPER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
+    /** Le lot de questions sérialisé en JSON pour l'aparté {@code question_state} ; {@code "[]"} au pire. */
+    private static String questionsJson(AtelierQuestionForm form) {
+        try {
+            return QUESTION_MAPPER.writeValueAsString(form.questions());
+        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
+            return "[]";
+        }
+    }
+
 
     /**
      * Un bloc riche relayé au fil de l'eau (F-89 / SF-89-02). Il porte le même {@code toolUseId} que
@@ -746,6 +807,19 @@ public class AtelierChatController {
 
     /** Une page publiée relayée au fil de l'eau (F-109 / SF-109-03), rejouée par la transcription au rechargement. */
     record StreamPage(String toolUseId, fr.claudegateway.pages.PageBlock page) {
+    }
+
+    /**
+     * Une question structurée relayée à l'écran (F-164 / SF-164-01). Elle porte le {@code callId} à
+     * renvoyer pour répondre, le lot de questions, et le délai restant. Le rendu soigné (cartes, choix
+     * tactiles, champ libre) est SF-164-02 ; ici, le contrat de flux suffit au test bout-en-bout.
+     */
+    record StreamQuestion(String callId, java.util.List<AtelierQuestionForm.Question> questions,
+            long timeoutMs) {
+    }
+
+    /** La résolution d'une question (F-164 / SF-164-01) : {@code answered}/{@code timeout}/… — l'écran retire l'invite. */
+    record StreamQuestionResolved(String callId, String status) {
     }
 
     /** Un courriel mis en file (F-110 / SF-110-02), même {@code toolUseId} que son bloc de transcription. */

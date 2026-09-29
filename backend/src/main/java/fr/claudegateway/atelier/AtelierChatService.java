@@ -429,6 +429,30 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "conseil » ne sont PAS des réponses. Si rien n'est à ranger, n'en parle pas — "
                     + "réponds à la question.\n\n";
     /**
+     * Doctrine de l'outil {@code demander} (F-164 / SF-164-01), ajoutée au rôle sur les <b>deux</b>
+     * cibles, à la suite des doctrines de conseil/décision. Elle porte, <b>textuellement</b>, les trois
+     * exigences du cadrage : (a) la <b>règle par défaut obligatoire</b> — toute question à réponses
+     * proposables, a fortiori une liste, passe par l'outil structuré, jamais la prose ; (b) le
+     * <b>signal de déclenchement manuel</b> — « pose-moi les questions… » ⇒ utiliser {@code demander} ;
+     * (c) la <b>discipline anti-spam</b> — ne demander que si vraiment bloqué.
+     *
+     * <p>Prompt-only, littéral <b>stable</b> : placé en tête du préfixe caché, il survit à la coupe
+     * {@link #SYSTEM_MAX_CHARS} et préserve le cache de prompt (F-134).</p>
+     */
+    private static final String ASK_QUESTION_DOCTRINE =
+            "Poser des questions avec l'outil « demander » — non négociable :\n"
+                    + "- Toute question à réponses PROPOSABLES, a fortiori une LISTE de questions, passe "
+                    + "par l'outil structuré « demander », JAMAIS par de la prose. La prose est réservée "
+                    + "aux questions vraiment ouvertes, sans réponse proposable.\n"
+                    + "- Si l'utilisateur te dit en substance « pose-moi les questions que tu veux pour "
+                    + "comprendre tel sujet », tu DOIS utiliser « demander » (au besoin plusieurs fois, "
+                    + "une question ou un petit lot à la fois). C'est le même outil, pas un bouton à part.\n"
+                    + "- Propose des options claires et marque la plus sûre comme recommended. Une "
+                    + "réponse libre est toujours offerte automatiquement — ne l'ajoute pas toi-même.\n"
+                    + "- Ne demande QUE si tu es vraiment bloqué sur une décision qui appartient à "
+                    + "l'utilisateur ; sinon, décide et avance. Ne multiplie pas les questions par "
+                    + "confort.\n\n";
+    /**
      * Annonce de destination + demande si ambigu (F-141 / SF-141-01, cadrage §4.3 et §2). Ajouté au
      * rôle sur les <b>deux</b> cibles, à la suite des doctrines de carte. La nuance clé du cadrage :
      * la <b>plomberie</b> de fin de tour (marqueurs, comptabilité de promotion/dette) reste invisible
@@ -555,7 +579,7 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     private static final java.util.Set<String> ANSWER_PLAN_TOOLS =
             java.util.Set.of("read_file", "list_files", "search_files", "grep", "glob", "explore",
-                    "set_plan", "recall");
+                    "set_plan", "recall", "demander");
     /**
      * Consigne de mode ajoutée à la consigne système en {@link AgentTurnMode#ANSWER_PLAN}
      * (F-120 / SF-120-02). Cohérente avec la doctrine de retenue SF-120-01, mais plus forte : ici la
@@ -3228,6 +3252,33 @@ public class AtelierChatService implements RelayInterruptTarget {
     }
 
     /**
+     * Tranche une <b>question structurée</b> posée par le tour en cours (F-164 / SF-164-01) : compose le
+     * compte rendu des réponses et le remet à la porte, qui reprend le tour.
+     *
+     * <p>Même architecture que {@link #confirmToolUse} : l'isolation d'abord ({@code requireOwned} :
+     * 404 sur un projet d'autrui), puis résolution <b>locale</b> ; si la boucle attend sur un autre pod,
+     * la réponse est <b>diffusée</b> aux pairs (best-effort). <b>Robuste</b> : une réponse en double ou
+     * tardive ne trouve aucune question en attente et lève {@code NoPendingConfirmationException} (409),
+     * sans rien casser — le tour a déjà repris, ou a expiré.</p>
+     *
+     * @throws WorkspaceNotFoundException si le workspace n'est pas possédé (isolation)
+     * @throws fr.claudegateway.runner.exec.NoPendingConfirmationException si rien n'attend cette réponse
+     */
+    public void answerQuestion(UUID userId, UUID workspaceId, String callId,
+            java.util.List<AtelierAnswerEntry> answers) {
+        workspaceService.requireOwned(userId, workspaceId);
+        String content = AtelierAnswerEntry.compose(answers);
+        String id = callId == null ? "" : callId.trim();
+        try {
+            confirmationGate.answerQuestions(userId, workspaceId, id, content);
+        } catch (fr.claudegateway.runner.exec.NoPendingConfirmationException ex) {
+            if (!relayBroadcaster.broadcastAnswer(userId, workspaceId, id, content)) {
+                throw ex;
+            }
+        }
+    }
+
+    /**
      * Applique un appel {@code set_plan} (F-39 / SF-39-13) : le plan est normalisé, relayé à
      * l'écran, et rendu au modèle sous forme de compte rendu.
      *
@@ -3244,6 +3295,53 @@ public class AtelierChatService implements RelayInterruptTarget {
         planOfTurn.set(plan);
         listener.onPlan(plan);
         return ToolOutcome.info(plan.acknowledgement(submitted));
+    }
+
+    /**
+     * Applique un appel {@code demander} (F-164 / SF-164-01) : valide le lot de questions, <b>suspend</b>
+     * le tour en attendant la réponse humaine, puis rend au modèle le compte rendu des réponses.
+     *
+     * <p><b>Échouer bruyamment</b> : un lot mal formé rend une phrase qui dit quoi corriger — le tour
+     * n'est jamais figé, le modèle se reprend. <b>Pauses répétées</b> : chaque appel a son propre
+     * {@code callId} ; la boucle traite ses outils en série, donc rappeler {@code demander} plus loin
+     * dans le tour suspend à nouveau, sans rien de spécial à prévoir ici.</p>
+     */
+    private ToolOutcome applyQuestion(UUID userId, Workspace workspace, String callId, AgentToolCall call,
+            AtelierProgressListener listener) {
+        AtelierQuestionForm form;
+        try {
+            form = AtelierQuestionForm.from(call.input());
+        } catch (AtelierQuestionRejectedException ex) {
+            return ToolOutcome.error(ex.getMessage());
+        }
+        RunnerConfirmationGate.AnswerOutcome outcome =
+                askQuestion(userId, workspace.getId(), callId, form, listener);
+        if (outcome.answered()) {
+            return ToolOutcome.info(outcome.content());
+        }
+        // Pas de réponse : le silence ne vaut pas réponse. Le motif est rendu au modèle pour qu'il
+        // poursuive autrement plutôt que de rester bloqué. (La décision-par-défaut sur l'option
+        // recommandée en cas de timeout ou de vague autonome viendra en SF-164-03.)
+        return switch (outcome.status()) {
+            case TIMEOUT -> ToolOutcome.error(
+                    "Aucune réponse dans le délai imparti. Reprends sans la réponse, ou reformule.");
+            case INTERRUPTED -> ToolOutcome.error("Le tour a été interrompu avant la réponse.");
+            default -> ToolOutcome.error("La question n'a pas pu aboutir. Poursuis autrement.");
+        };
+    }
+
+    /**
+     * Pose la question à l'écran, attend la réponse, puis relaie sa résolution — le pendant de
+     * {@link #askPermission} pour les questions structurées (F-164 / SF-164-01).
+     */
+    private RunnerConfirmationGate.AnswerOutcome askQuestion(UUID userId, UUID workspaceId, String callId,
+            AtelierQuestionForm form, AtelierProgressListener listener) {
+        RunnerConfirmationGate.AnswerOutcome outcome = confirmationGate.awaitAnswer(userId, workspaceId,
+                callId, () -> listener.onQuestion(new AtelierProgressListener.AtelierQuestionRequest(
+                        callId, form, confirmationGate.timeoutMs())));
+        listener.onQuestionResolved(new AtelierProgressListener.AtelierQuestionResolved(
+                callId, outcome.status().name().toLowerCase(java.util.Locale.ROOT)));
+        return outcome;
     }
 
     /**
@@ -4305,6 +4403,8 @@ public class AtelierChatService implements RelayInterruptTarget {
             case "set_plan" -> null;
             // Le plan soumis a son propre affichage (SF-121-10, comme set_plan) : pas d'étape en double.
             case "exit_plan_mode" -> null;
+            // La question a son propre événement (F-164 / SF-164-01, onQuestion) : pas d'étape en double.
+            case "demander" -> null;
             // Tout autre outil (volet Teams, outils à venir) se montre quand il COMMENCE, avec sa
             // cible d'audit — ce qu'on a demandé, jamais ce qui est revenu (F-88 / SF-88-03, D2).
             default -> call.name() == null || call.name().isBlank()
@@ -4689,6 +4789,12 @@ public class AtelierChatService implements RelayInterruptTarget {
         // traité AVANT le routage par cible (F-39 / SF-39-13).
         if ("set_plan".equals(call.name())) {
             return applyPlan(call, listener, planOfTurn);
+        }
+        // Poser des questions structurées (F-164 / SF-164-01) : mécanisme d'INTERACTION, pas
+        // d'exécution — il ne touche ni la machine ni le stockage, il suspend le tour et attend une
+        // réponse humaine. Traité ici, avant le routage par cible, comme set_plan.
+        if ("demander".equals(call.name())) {
+            return applyQuestion(userId, workspace, callId, call, listener);
         }
         // Créer un sujet (F-141 / SF-141-03) : geste de la gateway, pas du runner — il crée un
         // dossier-projet et hérite la gouvernance par le chemin existant. Traité ici, avant le
@@ -6209,6 +6315,39 @@ public class AtelierChatService implements RelayInterruptTarget {
                                                         "enum", List.of("pending", "active", "done"))),
                                         "required", List.of("title")))),
                         "required", List.of("steps"))));
+        // Poser des questions structurées à l'utilisateur (F-164 / SF-164-01), parité Claude Code
+        // AskUserQuestion. Déclaré sur les DEUX cibles : c'est un outil d'INTERACTION, indépendant de
+        // l'endroit où le code tourne. Littéral STABLE (cache F-134) : rien de volatil n'y entre.
+        Map<String, Object> boolProp = Map.of("type", "boolean");
+        tools.add(new AgentTool("demander",
+                "Pose à l'utilisateur 1 à 4 QUESTIONS structurées et ATTENDS ses réponses avant de "
+                        + "continuer (le tour se met en pause). Chaque question porte : header (court "
+                        + "intitulé), question (le texte), multiSelect (true = plusieurs choix "
+                        + "possibles, défaut false), et options (1 à 8) — chacune avec label, "
+                        + "description (facultative) et recommended (au plus UNE option recommandée par "
+                        + "question). N'ajoute PAS d'option « autre » : une réponse libre est TOUJOURS "
+                        + "offerte automatiquement. Tu peux rappeler « demander » PLUSIEURS FOIS dans le "
+                        + "même tour : pose une question, lis la réponse, raisonne, repose-en une autre. "
+                        + "N'utilise « demander » QUE si tu es vraiment bloqué sur une décision qui "
+                        + "appartient à l'utilisateur ; sinon, décide et avance.",
+                Map.of("type", "object",
+                        "properties", Map.of("questions", Map.of(
+                                "type", "array",
+                                "items", Map.of("type", "object",
+                                        "properties", new java.util.LinkedHashMap<>(Map.of(
+                                                "header", stringProp,
+                                                "question", stringProp,
+                                                "multiSelect", boolProp,
+                                                "options", Map.of(
+                                                        "type", "array",
+                                                        "items", Map.of("type", "object",
+                                                                "properties", new java.util.LinkedHashMap<>(Map.of(
+                                                                        "label", stringProp,
+                                                                        "description", stringProp,
+                                                                        "recommended", boolProp)),
+                                                                "required", List.of("label"))))),
+                                        "required", List.of("question", "options")))),
+                        "required", List.of("questions"))));
         // Rappel à la demande (F-162 / SF-162-01) : déclaré sur les DEUX cibles — il fouille NOTRE
         // historique de conversation (atelier_messages), pas la machine ni le stockage du projet.
         // Indépendant de la cible d'exécution : c'est une capacité de gateway (recherche + relais).
@@ -6514,6 +6653,12 @@ public class AtelierChatService implements RelayInterruptTarget {
         // l'essentiel (SF-126-01) sans les écraser : sur une question de conseil, l'agent prend
         // position et balise l'essentiel même court, et ne répond jamais par un statut de rangement.
         system.append(ADVICE_DECISION_DOCTRINE);
+
+        // Questions structurées (F-164 / SF-164-01) : sur les DEUX cibles, à la suite des doctrines de
+        // conseil/décision. Apprend au modèle la règle par défaut obligatoire (toute question à réponses
+        // proposables passe par « demander », jamais la prose), le signal de déclenchement manuel, et la
+        // discipline anti-spam. Littéral stable : cache de prompt préservé (F-134).
+        system.append(ASK_QUESTION_DOCTRINE);
 
         // Annonce de destination + demande si ambigu (F-141 / SF-141-01) : sur les DEUX cibles, à la
         // suite des doctrines de carte. Prolonge la carte silencieuse (SF-125-01) sans la casser : la
