@@ -3967,6 +3967,76 @@ public class AtelierChatService implements RelayInterruptTarget {
         workspaceService.requireOwned(userId, workspaceId);
     }
 
+    /**
+     * Résultat d'une compaction manuelle (F-162 / SF-162-04) : le geste « Compacter maintenant ».
+     *
+     * @param compacted       vrai si des tours anciens ont été résumés ; faux quand il n'y avait rien à
+     *                        compacter, que la compaction est désactivée, ou que l'appel de synthèse a
+     *                        échoué (best-effort : le fil reste alors intact)
+     * @param summarizedTurns nombre de tours résumés, capté via {@link AtelierProgressListener#onCompactionDone(int)}
+     */
+    public record AtelierCompactResult(boolean compacted, int summarizedTurns) {
+    }
+
+    /**
+     * <b>Compaction douce à la demande</b> (F-162 / SF-162-04) : l'utilisateur demande explicitement de
+     * résumer les vieux tours pour alléger le contexte vif — <b>en gardant le résumé</b>. À la différence
+     * du « Nouveau départ » ({@link AtelierThreadService#restart}), qui est un reset <b>dur</b> (le résumé
+     * est effacé, tout l'historique replié), ce geste passe par {@link AtelierCompactionService#compactNow}
+     * : les tours anciens sont résumés, le résumé conservé dans {@code chatThreadSummary}, la frontière
+     * {@code chatThreadStartedAt} avancée. La mémoire reste — c'est ce qui distingue les deux chemins.
+     *
+     * <p><b>Isolation {@code user_id}</b> : {@code requireOwned} d'abord, toujours (404 sur un projet
+     * d'autrui — un utilisateur ne compacte jamais le workspace d'un autre). La compaction elle-même ne
+     * lit que les messages filtrés {@code workspace_id} + {@code user_id}.</p>
+     *
+     * <p><b>Best-effort</b> : comme la compaction automatique, un appel de synthèse en échec n'écrit rien
+     * et laisse le fil intact — on renvoie alors un résultat neutre plutôt qu'une erreur. Rien à compacter
+     * (fil déjà court) rend aussi un résultat neutre : ce n'est pas une anomalie.</p>
+     *
+     * @return le nombre de tours résumés et si une compaction a réellement eu lieu
+     */
+    public AtelierCompactResult compactManually(UUID userId, UUID workspaceId) {
+        Workspace workspace = workspaceService.requireOwned(userId, workspaceId); // 404 si non possédé (isolation) — TOUJOURS en premier
+        if (compactionService == null) {
+            // Service non branché (mêmes conditions que la boucle) : rien à compacter, pas d'erreur.
+            return new AtelierCompactResult(false, 0);
+        }
+        // Même clé fournisseur que la boucle : BYOK (compte du client) ou plateforme (null).
+        String apiKey = byokKeyService.resolveActiveApiKey(userId).orElse(null);
+        // Un listener capteur relève le N émis par la compaction (SF-162-03), sans rien afficher : le
+        // geste manuel n'a pas de tour vivant, l'écran pilote la barre et le marqueur depuis la réponse.
+        CompactionTurnCounter counter = new CompactionTurnCounter();
+        AtelierCompactionService.CompactionOutcome outcome =
+                compactionService.compactNow(userId, workspace, apiKey, counter);
+        return new AtelierCompactResult(outcome.compacted(), counter.summarizedTurns);
+    }
+
+    /**
+     * Listener minimal (F-162 / SF-162-04) qui ne fait que <b>relever</b> le nombre de tours résumés
+     * émis par la compaction — aucun affichage, aucun flux : la compaction manuelle rend son N dans la
+     * réponse HTTP. Best-effort côté compaction : ces méthodes ne lèvent jamais.
+     */
+    private static final class CompactionTurnCounter implements AtelierProgressListener {
+        private int summarizedTurns;
+
+        @Override
+        public void onCompactionDone(int turns) {
+            this.summarizedTurns = turns;
+        }
+
+        // Les deux seules méthodes non-`default` de l'interface : sans objet pour un capteur muet.
+        @Override
+        public void onAction(AtelierStepEvent step) {
+            // rien : la compaction manuelle ne relaie aucune étape
+        }
+
+        @Override
+        public void onText(String text) {
+            // rien : la compaction manuelle ne relaie aucun texte
+        }
+    }
+
     /** Identifiant d'appel normalisé, tel que la porte l'attend. */
     private static String callIdOf(String toolUseId) {
         return toolUseId == null ? "" : toolUseId.trim();

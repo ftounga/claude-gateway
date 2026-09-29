@@ -637,6 +637,17 @@ export interface AtelierRecallEvent {
   repere: string;
 }
 
+/**
+ * Résultat d'une **compaction manuelle** (F-162 / SF-162-04), réponse de `POST .../chat/compact`.
+ * Compaction **douce** : elle conserve le résumé, contrairement au « Nouveau départ ».
+ */
+export interface AtelierCompactResult {
+  /** Vrai si des tours anciens ont été résumés ; faux quand il n'y avait rien à compacter. */
+  compacted: boolean;
+  /** Nombre de tours résumés — `0` si rien n'a été écrit ; alimente le marqueur « Conversation compactée · N ». */
+  summarizedTurns: number;
+}
+
 export interface AtelierStreamHandlers {
   onAction: (action: AtelierStreamAction) => void;
   onText: (text: string) => void;

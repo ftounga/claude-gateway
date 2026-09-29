@@ -515,6 +515,18 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   }
   private readonly threadTurnsValue = signal(0);
 
+  /**
+   * **Compaction manuelle en cours** (F-162 / SF-162-04) : le temps de l'appel « Compacter maintenant ».
+   * Affiche la même barre indéterminée que la compaction automatique (SF-162-03), hors tour vivant.
+   */
+  @Input() compactingNow = false;
+
+  /**
+   * **Marqueur de la dernière compaction manuelle** (F-162 / SF-162-04) : « Conversation compactée · N
+   * tours résumés », rendu avec le même style que les marqueurs de flux (SF-162-03). `null` : rien à montrer.
+   */
+  @Input() compactionMarker: AtelierFluxMarker | null = null;
+
   /** Durée écoulée du run en cours, déjà formatée. */
   @Input() elapsedLabel = '';
 
@@ -728,6 +740,11 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   @Output() quit = new EventEmitter<void>();
   /** Nouveau départ (F-117 / SF-117-03) : Claude repart sans le contexte des tours précédents. */
   @Output() restart = new EventEmitter<void>();
+  /**
+   * Compacter maintenant (F-162 / SF-162-04) : compaction **douce** à la demande — elle allège le
+   * contexte en résumant les vieux tours **et garde le résumé**, contrairement au « Nouveau départ ».
+   */
+  @Output() compactNow = new EventEmitter<void>();
   @Output() resetSandbox = new EventEmitter<void>();
   @Output() openFiles = new EventEmitter<void>();
   @Output() publish = new EventEmitter<void>();

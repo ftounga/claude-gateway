@@ -188,6 +188,19 @@
              l'avaient fait). Claude repart sans le contexte des tours précédents ; RIEN n'est
              supprimé — l'historique se replie derrière « Voir l'historique » (F-117 / SF-117-06). -->
 
+        <!-- Compacter maintenant (F-162 / SF-162-04) : compaction DOUCE — allège en GARDANT la mémoire.
+             À côté de « Nouveau départ », mais l'inverse : l'un résume, l'autre repart à blanc. -->
+        <button
+          mat-button
+          type="button"
+          class="terminal-compact"
+          [disabled]="compactingNow"
+          matTooltip="Résume les vieux tours pour alléger le contexte — la mémoire est conservée. (« Nouveau départ » repart à blanc, sans résumé.)"
+          (click)="compactNow.emit()"
+        >
+          <mat-icon>compress</mat-icon>
+          Compacter maintenant
+        </button>
         <button
           mat-button
           type="button"
@@ -266,6 +279,18 @@
                 <span>Réinitialiser</span>
               </button>
             }
+            <!-- Compacter maintenant (F-162 / SF-162-04) : compaction douce — garde la mémoire. -->
+            <button
+              mat-menu-item
+              type="button"
+              class="terminal-compact"
+              [disabled]="compactingNow"
+              matTooltip="Résume les vieux tours pour alléger le contexte — la mémoire est conservée. (« Nouveau départ » repart à blanc, sans résumé.)"
+              (click)="compactNow.emit()"
+            >
+              <mat-icon>compress</mat-icon>
+              <span>Compacter maintenant</span>
+            </button>
             <button
               mat-menu-item
               type="button"
@@ -359,19 +384,50 @@
     <div class="terminal-compaction-hint" role="status">
       <mat-icon class="terminal-compaction-hint-icon" aria-hidden="true">history_toggle_off</mat-icon>
       <div class="terminal-compaction-hint-text">
-        <p class="terminal-compaction-hint-title">Cette conversation est longue — repartir propre ?</p>
+        <p class="terminal-compaction-hint-title">Cette conversation est longue — l'alléger ?</p>
+        <!-- SF-162-04 : deux issues, dites en une ligne. Compacter GARDE la mémoire (recommandé) ;
+             Nouveau départ repart à blanc. -->
         <p class="terminal-compaction-hint-note">
-          Claude résume déjà l'historique automatiquement ; un nouveau départ repart sans le contexte
-          des tours précédents et replie l'historique derrière « Voir l'historique » — rien n'est supprimé.
+          <strong>Compacter</strong> résume les vieux tours et <strong>garde la mémoire</strong> ;
+          <strong>Nouveau départ</strong> repart à blanc, sans résumé. Dans les deux cas, rien n'est
+          supprimé — l'historique reste derrière « Voir l'historique ».
         </p>
       </div>
       <span class="terminal-compaction-hint-actions">
+        <button
+          mat-flat-button
+          color="primary"
+          type="button"
+          class="terminal-compaction-hint-compact"
+          [disabled]="compactingNow"
+          (click)="compactNow.emit()"
+        >
+          Compacter
+        </button>
         <button mat-stroked-button type="button" class="terminal-compaction-hint-restart" (click)="restart.emit()">
           Nouveau départ
         </button>
         <button mat-button type="button" (click)="dismissRestartSuggestion()">Plus tard</button>
       </span>
     </div>
+  }
+
+  <!-- COMPACTION MANUELLE (F-162 / SF-162-04) : le geste « Compacter maintenant » n'a pas de tour vivant,
+       il pilote donc ici la barre (pendant l'appel) et le marqueur (au succès) — mêmes styles que
+       la visibilité SF-162-03 (aucune couleur nouvelle). Absent en lecture seule (c'est un geste). -->
+  @if (!readOnly && compactingNow) {
+    <div class="terminal-compaction-bar" role="status" aria-live="polite">
+      <span class="terminal-compaction-bar-label">Compaction de la conversation…</span>
+      <span class="terminal-compaction-bar-track" aria-hidden="true">
+        <span class="terminal-compaction-bar-fill"></span>
+      </span>
+    </div>
+  }
+  @if (!readOnly && !compactingNow && compactionMarker; as marker) {
+    <p class="terminal-flux-marker" [attr.data-kind]="marker.kind" role="status">
+      <mat-icon class="terminal-flux-marker-icon" aria-hidden="true">{{ fluxMarkerIcon(marker) }}</mat-icon>
+      <span class="terminal-flux-marker-text">{{ marker.label }}</span>
+    </p>
   }
 
   <!-- Cible d'exécution du projet (F-38 / SF-38-05) et gestes runner. **Pas un mode** : un réglage

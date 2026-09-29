@@ -497,6 +497,52 @@ describe('AtelierTerminalComponent', () => {
     expect(fixture.nativeElement.querySelector('.terminal-compaction-hint')).not.toBeNull();
   });
 
+  // -------------------------------------------- compacter maintenant (F-162 / SF-162-04)
+
+  it('émet compactNow depuis l\'action « Compacter maintenant », distincte de « Nouveau départ »', () => {
+    let compacted = 0;
+    let restarted = 0;
+    component.compactNow.subscribe(() => (compacted += 1));
+    component.restart.subscribe(() => (restarted += 1));
+    fixture.detectChanges();
+
+    const compact = fixture.nativeElement.querySelector('.terminal-compact') as HTMLButtonElement;
+    const restart = fixture.nativeElement.querySelector('.terminal-restart') as HTMLButtonElement;
+    expect(compact).not.toBeNull();
+    expect(restart).not.toBeNull();
+    expect(compact).not.toBe(restart); // deux gestes distincts
+
+    compact.click();
+    expect(compacted).toBe(1);
+    expect(restarted).toBe(0); // « Compacter » ne déclenche jamais « Nouveau départ »
+  });
+
+  it('affiche la barre de compaction pendant une compaction manuelle', () => {
+    component.compactingNow = true;
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.terminal-compaction-bar')).not.toBeNull();
+  });
+
+  it('affiche le marqueur « Conversation compactée · N » au succès d\'une compaction manuelle', () => {
+    component.compactingNow = false;
+    component.compactionMarker = { kind: 'compaction', label: 'Conversation compactée · 5 tours résumés' };
+    fixture.detectChanges();
+
+    const marker = fixture.nativeElement.querySelector('.terminal-flux-marker') as HTMLElement;
+    expect(marker).not.toBeNull();
+    expect(marker.textContent).toContain('Conversation compactée · 5 tours résumés');
+  });
+
+  it('propose DEUX issues (Compacter + Nouveau départ) dans le bandeau de suggestion', () => {
+    component.threadTurns = 60;
+    fixture.detectChanges();
+
+    const hint = fixture.nativeElement.querySelector('.terminal-compaction-hint') as HTMLElement;
+    expect(hint).not.toBeNull();
+    expect(hint.querySelector('.terminal-compaction-hint-compact')).not.toBeNull();
+    expect(hint.querySelector('.terminal-compaction-hint-restart')).not.toBeNull();
+  });
+
   it('la suggestion est fermable (« Plus tard ») et ne bloque rien', () => {
     component.threadTurns = 60;
     fixture.detectChanges();
