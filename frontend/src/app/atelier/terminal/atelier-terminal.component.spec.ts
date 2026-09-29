@@ -2340,6 +2340,66 @@ describe('AtelierTerminalComponent', () => {
     });
   });
 
+  // ------------------------------------------------ filet humain de rappel (F-162 / SF-162-05)
+
+  describe('filet humain de rappel (F-162 / SF-162-05)', () => {
+    const thread: AtelierThreadItem[] = [
+      { id: 'u1', role: 'USER', content: 'Quel port pour la base ?', actions: [] },
+      { id: 'a1', role: 'ASSISTANT', content: 'Une réponse ancienne.', actions: [] },
+      { id: 'u2', role: 'USER', content: 'Et pour le cache ?', actions: [] },
+      { id: 'a2', role: 'ASSISTANT', content: 'La dernière réponse.', actions: [] },
+    ];
+
+    it('pose l’action « Chercher dans l’historique » SOUS la dernière réponse de l’assistant', () => {
+      component.messages = thread;
+      component.submitting = false;
+      component.readOnly = false;
+      fixture.detectChanges();
+
+      const nets = fixture.nativeElement.querySelectorAll('.terminal-recall-net');
+      // Une seule : sur la dernière réponse de l'assistant, pas sur l'ancienne.
+      expect(nets.length).toBe(1);
+      expect(component.isLastAssistantMessage(thread[3])).toBeTrue();
+      expect(component.isLastAssistantMessage(thread[1])).toBeFalse();
+      expect((nets[0] as HTMLElement).textContent).toContain('Chercher dans l\'historique');
+    });
+
+    it('le clic émet recallContext (une fois)', () => {
+      component.messages = thread;
+      component.submitting = false;
+      let emitted = 0;
+      component.recallContext.subscribe(() => (emitted += 1));
+      fixture.detectChanges();
+
+      (fixture.nativeElement.querySelector('.terminal-recall-net') as HTMLButtonElement).click();
+      expect(emitted).toBe(1);
+    });
+
+    it('n’affiche rien pendant qu’un tour tourne (anti-doublon) ni en lecture seule', () => {
+      component.messages = thread;
+      component.submitting = true;
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.terminal-recall-net')).toBeNull();
+
+      component.submitting = false;
+      component.readOnly = true;
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.terminal-recall-net')).toBeNull();
+    });
+
+    it('n’affiche rien sous une réponse assistant sans contenu (rien à approfondir)', () => {
+      component.messages = [
+        { id: 'u1', role: 'USER', content: 'lance', actions: [] },
+        { id: 'a1', role: 'ASSISTANT', content: '', actions: [], terminal: [] },
+      ];
+      component.submitting = false;
+      component.readOnly = false;
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('.terminal-recall-net')).toBeNull();
+    });
+  });
+
   // ------------------------------------------------ @-mentions de fichiers (F-121 / SF-121-24)
   describe('@-mentions de fichiers (F-121 / SF-121-24)', () => {
     function mentionField(): HTMLInputElement {

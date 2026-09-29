@@ -158,3 +158,29 @@
   min-width: 0;
   font-weight: 600;
 }
+
+// FILET HUMAIN DE RAPPEL (F-162 / SF-162-05) : l'affordance discrète sous la dernière réponse de
+// l'assistant. Registre neutre, jamais tapageur — ce n'est pas le geste principal. Aucune couleur ni
+// police nouvelle (encre --cg-divider, accent --cg-accent au survol). Cible tactile >= 44 px. Elle
+// s'enveloppe proprement sur mobile (< 819 px) — le libellé est plus long que « Rejouer ».
+.terminal-recall-net {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  min-height: 44px;
+  max-width: 100%;
+  white-space: normal;
+  text-align: left;
+  line-height: 1.3;
+  color: var(--cg-divider);
+  font-size: 13px;
+
+  mat-icon {
+    flex-shrink: 0;
+  }
+
+  &:hover,
+  &:focus-visible {
+    color: var(--cg-accent);
+  }
+}

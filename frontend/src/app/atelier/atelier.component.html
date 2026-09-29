@@ -134,6 +134,7 @@
     (draftChange)="draft.set($event)"
     (send)="send()"
     (replay)="replayLastRequest()"
+    (recallContext)="requestContextRecall()"
     [teamsTerminal]="activeIsTeamsTerminal()"
     [gitProject]="activeIsGit()"
     [publishing]="publishing()"

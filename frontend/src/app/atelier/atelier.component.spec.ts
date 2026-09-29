@@ -590,6 +590,73 @@ describe('AtelierComponent', () => {
     }));
   });
 
+  // ------------------------------ le filet HUMAIN de rappel (F-162 / SF-162-05)
+
+  describe('filet humain de rappel (F-162 / SF-162-05)', () => {
+    function primeThread(): void {
+      component.activeWorkspaceId.set('w1');
+      component.engine.set('LOCAL_MACHINE');
+      component.messages.set([
+        { id: 'u1', role: 'USER', content: 'Quel port pour la base ?', actions: [] },
+        { id: 'a1', role: 'ASSISTANT', content: 'La dernière réponse.', actions: [] },
+      ]);
+    }
+
+    it('relance un tour CIBLÉ qui guide le modèle vers `recall` et cite la question précédente',
+      fakeAsync(() => {
+        setup();
+        service.streamChat.and.returnValue(new Promise<void>(() => undefined));
+        primeThread();
+
+        component.requestContextRecall();
+
+        expect(service.streamChat).toHaveBeenCalledTimes(1);
+        const [id, message] = service.streamChat.calls.mostRecent().args;
+        expect(id).toBe('w1');
+        // La consigne pointe l'outil recall ET cite le sujet de la question précédente.
+        expect(message).toContain('recall');
+        expect(message).toContain('Quel port pour la base ?');
+        expect(component.submitting()).toBeTrue();
+        fixture.destroy();
+        discardPeriodicTasks();
+      }));
+
+    it('refuse si un tour est visiblement en cours (anti-doublon)', () => {
+      setup();
+      primeThread();
+      component.submitting.set(true);
+
+      component.requestContextRecall();
+
+      expect(service.streamChat).not.toHaveBeenCalled();
+      expect(snackBar.open).toHaveBeenCalled();
+    });
+
+    it('refuse si le plafond de place est atteint', () => {
+      setup();
+      const live = TestBed.inject(LiveTerminalService);
+      spyOn(live, 'limitReached').and.returnValue(true);
+      primeThread();
+
+      component.requestContextRecall();
+
+      expect(service.streamChat).not.toHaveBeenCalled();
+    });
+
+    it('ne relance rien si le fil n’a aucune question utilisateur', () => {
+      setup();
+      component.activeWorkspaceId.set('w1');
+      component.engine.set('LOCAL_MACHINE');
+      component.messages.set([
+        { id: 'a1', role: 'ASSISTANT', content: 'Bonjour.', actions: [] },
+      ]);
+
+      component.requestContextRecall();
+
+      expect(service.streamChat).not.toHaveBeenCalled();
+    });
+  });
+
   // ------------------------------ « Nouveau projet » a disparu (F-72 / SF-72-04)
 
 

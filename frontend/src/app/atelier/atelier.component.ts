@@ -3252,6 +3252,62 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.startTurn(id, request);
   }
 
+  // -------------------------------------- F-162 / SF-162-05 : le filet HUMAIN de rappel
+
+  /**
+   * **Le filet HUMAIN de rappel** (F-162 / SF-162-05) : parfois c'est l'utilisateur qui voit, avant
+   * le modèle, qu'un détail d'un échange ancien manque. Le terminal l'a signalé sous la dernière
+   * réponse ; ici on **relance un tour CIBLÉ** en composant un message utilisateur qui invite
+   * explicitement le modèle à appeler l'outil {@code recall} (SF-162-01) sur le sujet de la question
+   * précédente, PUIS à répondre.
+   *
+   * <p>C'est un rappel <b>chirurgical</b>, PAS un « recharge tout l'ancien contexte » (qui recréerait
+   * le coût qu'on fuit). On <b>réutilise le chemin d'envoi existant</b> ({@link #startTurn}, celui de
+   * « Rejouer ») : aucun nouvel appel réseau, aucun nouvel endpoint. La consigne est un <b>message
+   * utilisateur</b> — jamais un ajout volatil à la consigne système (préfixe stable, cache intact).</p>
+   *
+   * <p>Anti-doublon : si un tour tourne visiblement ici, on refuse — jamais deux tours en parallèle ;
+   * le plafond de place borne comme pour un envoi ordinaire.</p>
+   */
+  requestContextRecall(): void {
+    const id = this.activeWorkspaceId();
+    const question = this.lastUserQuestion();
+    if (!id || !question) {
+      return;
+    }
+    if (this.submitting()) {
+      this.notifyError('Un tour est encore en cours ici. Laissez-le finir avant de relancer une recherche.');
+      return;
+    }
+    if (this.liveTerminals.limitReached()) {
+      return;
+    }
+    // La consigne CIBLE le sujet de la question précédente et pointe l'outil `recall` : le modèle
+    // retrouve le détail manquant dans l'historique durable, puis répond — sans qu'on rejoue tout.
+    const prompt =
+      'Il te manque peut-être un détail d\'un échange antérieur. Utilise d\'abord l\'outil recall pour '
+      + `retrouver dans l'historique le contexte pertinent à ma demande précédente («${question}»), `
+      + 'puis réponds.';
+    this.snackBar.open(
+      'Recherche du contexte pertinent dans l’historique…',
+      'Fermer',
+      { duration: 6000 },
+    );
+    this.startTurn(id, prompt);
+  }
+
+  /** La dernière question de l'utilisateur dans le fil — la question à laquelle se rattache la réponse. */
+  private lastUserQuestion(): string | null {
+    const items = this.messages();
+    for (let i = items.length - 1; i >= 0; i -= 1) {
+      const item = items[i];
+      if (item.role === 'USER' && item.content.trim().length > 0) {
+        return item.content.trim();
+      }
+    }
+    return null;
+  }
+
   /**
    * Ce que fait l'écran de ce qu'il reçoit d'un tour **déjà commencé**.
    *
