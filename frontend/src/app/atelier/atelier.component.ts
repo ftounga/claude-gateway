@@ -102,6 +102,7 @@ import {
   AtelierTurnMode,
   AtelierPlanStep,
   AtelierCompactionEvent,
+  AtelierFluxMarker,
   AtelierRecallEvent,
   GitPullRequestResult,
   GitPushResult,
@@ -127,7 +128,11 @@ import { chatStepsToBlocks } from './terminal/chat-steps';
 import { cardBlock, withCards } from './terminal/teams-block';
 import { emailBlock } from './terminal/terminal-email';
 import { pageBlock } from './terminal/page-block';
-import { compactionMarkerBlock, recallMarkerBlock } from './terminal/flux-markers';
+import {
+  compactionMarkerBlock,
+  compactionMarkerLabel,
+  recallMarkerBlock,
+} from './terminal/flux-markers';
 import { derivePreview } from './terminal/terminal-preview';
 import { SessionBilanPanelComponent } from './terminal/session-bilan-panel.component';
 import { RADAR_DRAFT_STATE, radarDraftFrom } from '../shared/radar-draft';
@@ -1404,6 +1409,50 @@ export class AtelierComponent implements OnInit, OnDestroy {
         );
       },
       error: () => this.notifyError('Impossible de repartir à neuf.'),
+    });
+  }
+
+  /** Compaction manuelle en cours (F-162 / SF-162-04) : pilote la barre indéterminée du terminal. */
+  readonly compactingNow = signal(false);
+
+  /**
+   * Marqueur de la dernière compaction manuelle (F-162 / SF-162-04) : « Conversation compactée · N
+   * tours résumés », rendu comme un marqueur de flux (SF-162-03). `null` tant qu'aucune n'a réussi.
+   */
+  readonly compactionMarker = signal<AtelierFluxMarker | null>(null);
+
+  /**
+   * « Compacter maintenant » (F-162 / SF-162-04) : la **compaction douce** à la demande. Elle résume
+   * les vieux tours pour alléger le contexte vif **en gardant le résumé** — c'est ce qui la distingue
+   * du « Nouveau départ » ({@link restartThread}), qui repart à blanc. Au succès (N>0), un marqueur
+   * « Conversation compactée · N tours résumés » reste affiché ; rien à compacter (N=0) le dit sans erreur.
+   */
+  compactNow(): void {
+    const id = this.activeWorkspaceId();
+    if (!id || this.compactingNow()) {
+      return;
+    }
+    this.compactingNow.set(true);
+    this.atelier.compactThread(id).subscribe({
+      next: (result) => {
+        this.compactingNow.set(false);
+        if (result.compacted && result.summarizedTurns > 0) {
+          this.compactionMarker.set({
+            kind: 'compaction',
+            label: compactionMarkerLabel(result.summarizedTurns),
+          });
+          // La taille du fil rejouable a baissé : la reprise le reflète (le bandeau de suggestion suit).
+          this.loadResumeState(id);
+        } else {
+          this.snackBar.open('Rien à compacter : la conversation est déjà légère.', 'Fermer', {
+            duration: 4000,
+          });
+        }
+      },
+      error: () => {
+        this.compactingNow.set(false);
+        this.notifyError('Impossible de compacter maintenant.');
+      },
     });
   }
 

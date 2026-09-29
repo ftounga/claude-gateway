@@ -230,6 +230,17 @@ describe('AtelierService', () => {
 
     expect(received).toEqual(history);
   });
+  it('POSTs a manual compaction to /api/workspaces/{id}/chat/compact (F-162 / SF-162-04)', () => {
+    let received: { compacted: boolean; summarizedTurns: number } | undefined;
+    service.compactThread('w1').subscribe((r) => (received = r));
+
+    const req = httpMock.expectOne('/api/workspaces/w1/chat/compact');
+    expect(req.request.method).toBe('POST');
+    req.flush({ compacted: true, summarizedTurns: 7 });
+
+    expect(received).toEqual({ compacted: true, summarizedTurns: 7 });
+  });
+
   it('DELETE la session sandbox du workspace (F-30 SF-30-06)', () => {
     service.resetAgentSession('w1').subscribe();
 

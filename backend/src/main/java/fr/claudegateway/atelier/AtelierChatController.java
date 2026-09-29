@@ -27,6 +27,7 @@ import fr.claudegateway.atelier.AtelierProgressListener.AtelierConfirmRequest;
 import fr.claudegateway.atelier.AtelierProgressListener.AtelierConfirmResolved;
 import fr.claudegateway.atelier.dto.AgentConfirmRequest;
 import fr.claudegateway.atelier.dto.AtelierChatRequest;
+import fr.claudegateway.atelier.dto.AtelierCompactResponse;
 import fr.claudegateway.atelier.dto.AtelierChatResponse;
 import fr.claudegateway.atelier.dto.AtelierChatResponse.AtelierAction;
 import fr.claudegateway.atelier.dto.AtelierMessageResponse;
@@ -366,6 +367,29 @@ public class AtelierChatController {
     public AtelierResumeResponse restart(@PathVariable UUID id) {
         atelierAccess.requireTerminalAccess(id);
         return atelierThreadService.restart(currentUser.requireId(), id);
+    }
+
+    /**
+     * <b>Compacter maintenant</b> (F-162 / SF-162-04) : la compaction <b>douce</b> à la demande.
+     *
+     * <p>À ne pas confondre avec le « Nouveau départ » ({@link #restart}) juste au-dessus : celui-là est
+     * un reset <b>dur</b> (le résumé est effacé, l'historique replié) ; celui-ci <b>conserve le résumé</b>
+     * — il résume les vieux tours pour alléger le contexte vif tout en gardant la mémoire. Deux gestes,
+     * deux chemins.</p>
+     *
+     * <p>Retourne le nombre de tours résumés ({@code summarizedTurns}) : l'écran s'en sert pour le
+     * marqueur « Conversation compactée · N tours résumés » (rendu SF-162-03), ou pour dire « Rien à
+     * compacter » quand N vaut 0. Best-effort : un échec de synthèse n'est pas une erreur (fil intact).</p>
+     *
+     * <p><b>Isolation {@code user_id}</b> appliquée par le service ({@code requireOwned} : 404 sur un
+     * projet d'autrui — un utilisateur ne compacte que SON workspace).</p>
+     */
+    @PostMapping("/compact")
+    public AtelierCompactResponse compact(@PathVariable UUID id) {
+        atelierAccess.requireTerminalAccess(id);
+        AtelierChatService.AtelierCompactResult result =
+                atelierChatService.compactManually(currentUser.requireId(), id);
+        return new AtelierCompactResponse(result.compacted(), result.summarizedTurns());
     }
 
     @GetMapping

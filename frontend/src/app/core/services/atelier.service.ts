@@ -13,6 +13,7 @@ import {
   AtelierConfirmDecision,
   AtelierConfirmationState,
   AtelierChatResponse,
+  AtelierCompactResult,
   AtelierEngineStatus,
   AtelierMessage,
   AtelierResume,
@@ -1020,6 +1021,16 @@ export class AtelierService {
    */
   restartThread(id: string): Observable<AtelierResume> {
     return this.http.post<AtelierResume>(`/api/workspaces/${id}/chat/restart`, null);
+  }
+
+  /**
+   * **Compacter maintenant** (F-162 / SF-162-04) : la compaction **douce** à la demande. Elle résume
+   * les vieux tours pour alléger le contexte vif **en gardant le résumé** — à la différence du
+   * « Nouveau départ » ({@link restartThread}), qui efface le résumé et replie tout l'historique.
+   * Renvoie le nombre de tours résumés (`0` quand il n'y avait rien à compacter).
+   */
+  compactThread(id: string): Observable<AtelierCompactResult> {
+    return this.http.post<AtelierCompactResult>(`/api/workspaces/${id}/chat/compact`, null);
   }
 
   /**

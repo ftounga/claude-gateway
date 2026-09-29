@@ -258,14 +258,17 @@
      l'icône et le texte → elle SAUTE sur sa propre ligne, et le texte récupère toute la première ligne.
      Boutons dimensionnés au pouce (>= 44 px). Aucune couleur nouvelle. Rendu >= 820 px inchangé. */
 
-  /* Bandeau de compaction (« Cette conversation est longue — repartir propre ? », F-117 / SF-117-03).
-     Non traité jusqu'ici : deux boutons (« Nouveau départ » / « Plus tard ») écrasaient le texte. */
+  /* Bandeau de compaction (« Cette conversation est longue — l'alléger ? », F-117 / SF-117-03,
+     F-162 / SF-162-04). Non traité jusqu'ici : les boutons écrasaient le texte. Trois issues depuis
+     SF-162-04 (« Compacter » / « Nouveau départ » / « Plus tard ») : la rangée d'actions enveloppe
+     pour qu'aucun bouton ne déborde à 390 px. */
   .terminal-compaction-hint {
     flex-wrap: wrap;
   }
 
   .terminal-compaction-hint-actions {
     flex: 1 1 100%;
+    flex-wrap: wrap;
   }
 
   .terminal-compaction-hint-actions button {

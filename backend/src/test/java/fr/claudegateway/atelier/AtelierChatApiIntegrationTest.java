@@ -313,6 +313,42 @@ class AtelierChatApiIntegrationTest {
     }
 
     @Test
+    void compactNowOnAShortThreadReturnsANeutralResult() throws Exception {
+        // F-162 / SF-162-04 : « Compacter maintenant » sur un fil court n'a rien à résumer — ce n'est
+        // pas une erreur, la réponse est neutre (compacted=false, summarizedTurns=0).
+        UUID ws = createWorkspace(alice, "a.txt", "x");
+        stub.enqueueFinal("Bonjour.");
+        mockMvc.perform(post("/api/workspaces/" + ws + "/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"salut\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/workspaces/" + ws + "/chat/compact").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.compacted", is(false)))
+                .andExpect(jsonPath("$.summarizedTurns", is(0)));
+    }
+
+    @Test
+    void cannotCompactAnotherUsersWorkspace() throws Exception {
+        // F-162 / SF-162-04 : un utilisateur ne compacte QUE son workspace (isolation user_id).
+        UUID ws = createWorkspace(alice, "a.txt", "x");
+
+        mockMvc.perform(post("/api/workspaces/" + ws + "/chat/compact").contextPath("/api")
+                        .header("Authorization", bearer(bobToken)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void compactNowRequiresAuthentication() throws Exception {
+        UUID ws = createWorkspace(alice, "a.txt", "x");
+        mockMvc.perform(post("/api/workspaces/" + ws + "/chat/compact").contextPath("/api"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void aTargetedEditReallyChangesTheFileAndIsAnnouncedAsAWrite() throws Exception {
         // SF-39-06 : changer trois caractères ne doit plus imposer de réémettre le fichier entier —
         // le coût est en tokens de sortie, les plus chers, et une réponse coupée réécrivait un
