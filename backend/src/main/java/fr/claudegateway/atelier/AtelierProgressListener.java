@@ -114,6 +114,48 @@ public interface AtelierProgressListener {
     }
 
     /**
+     * La <b>compaction du fil vient de démarrer</b> (F-162 / SF-162-03) : les tours anciens vont être
+     * résumés en un appel de synthèse. Émis <b>uniquement</b> quand une compaction a effectivement lieu
+     * (il y a des tours à résumer) — jamais quand le seuil n'est pas franchi ou qu'il n'y a rien à
+     * réduire. L'avancement est <b>indéterminé</b> (un appel unique, pas un pourcentage) : l'écran
+     * montre une barre animée « Compaction de la conversation… ».
+     *
+     * <p>Volontairement <b>par défaut neutre</b> : additif, le mode synchrone et les tests existants
+     * restent valides. L'émission est <b>best-effort</b> côté appelant — elle ne fait jamais échouer la
+     * compaction (F-117).</p>
+     */
+    default void onCompactionStarted() {
+        // Aucun relais : mode synchrone.
+    }
+
+    /**
+     * La <b>compaction du fil est terminée</b> (F-162 / SF-162-03). L'écran retire la barre et, si des
+     * tours ont bien été résumés, pose un marqueur « Conversation compactée · N tours résumés ».
+     *
+     * @param summarizedTurns nombre de <b>tours</b> résumés (messages {@code USER} de la tranche
+     *                        résumée — même notion de « tour » que {@code recall} et SF-162-02) ;
+     *                        {@code 0} quand rien n'a finalement été écrit (résumé blanc ou appel de
+     *                        synthèse en échec, best-effort) : la barre disparaît sans marqueur
+     */
+    default void onCompactionDone(int summarizedTurns) {
+        // Aucun relais : mode synchrone.
+    }
+
+    /**
+     * L'outil <b>{@code recall} vient de retrouver un détail</b> dans l'historique du fil
+     * (F-162 / SF-162-03). L'écran pose un marqueur « Détail rappelé · tour N » à la suite de l'étape
+     * « Recherche dans l'historique… ». Émis <b>seulement</b> quand des extraits ont été trouvés.
+     *
+     * <p>Volontairement <b>par défaut neutre</b> : additif ; l'émission est best-effort (elle ne fait
+     * jamais échouer l'outil).</p>
+     *
+     * @param repere repère du/des tour(s) retrouvé(s), déjà mis en forme (« tour 34 » ou « tours 12, 34 »)
+     */
+    default void onRecalled(String repere) {
+        // Aucun relais : mode synchrone.
+    }
+
+    /**
      * <b>Un bloc riche posé dans le fil</b> (F-89 / SF-89-02) : carte de réunion, moments, liste.
      *
      * <p>Relayé au fil de l'eau comme le plan, et pour la même raison : le bloc est le <b>travail

@@ -472,6 +472,31 @@ public class AtelierChatController {
                     turn.publish("progress", new StreamProgress(tokens));
                 }
 
+                /**
+                 * La COMPACTION démarre (F-162 / SF-162-03) : l'écran montre une barre indéterminée
+                 * « Compaction de la conversation… ». Émis seulement quand une compaction a bien lieu.
+                 */
+                @Override
+                public void onCompactionStarted() {
+                    turn.publish("compaction", new StreamCompaction(true, 0));
+                }
+
+                /**
+                 * La COMPACTION est terminée (F-162 / SF-162-03) : la barre disparaît et, si des tours
+                 * ont été résumés, un marqueur « Conversation compactée · N tours résumés » reste dans le
+                 * flux. {@code summarizedTurns == 0} ⇒ barre retirée sans marqueur.
+                 */
+                @Override
+                public void onCompactionDone(int summarizedTurns) {
+                    turn.publish("compaction", new StreamCompaction(false, summarizedTurns));
+                }
+
+                /** Le RECALL a retrouvé un détail (F-162 / SF-162-03) : « Détail rappelé · tour N ». */
+                @Override
+                public void onRecalled(String repere) {
+                    turn.publish("recall", new StreamRecall(repere));
+                }
+
                 @Override
                 public void onPlan(fr.claudegateway.atelier.AtelierPlan plan) {
                     turn.publish("plan", streamPlan(plan));
@@ -762,6 +787,18 @@ public class AtelierChatController {
     }
 
     record StreamProgress(long tokens) {
+    }
+
+    /**
+     * Une transition de COMPACTION relayée à l'écran (F-162 / SF-162-03). {@code running} vrai =
+     * démarrée (barre indéterminée) ; faux = terminée. {@code summarizedTurns} porte le nombre de tours
+     * résumés à la fin (0 quand rien n'a été écrit, ou tant que la compaction tourne).
+     */
+    record StreamCompaction(boolean running, int summarizedTurns) {
+    }
+
+    /** Le repère du/des tour(s) retrouvé(s) par {@code recall} (F-162 / SF-162-03), ex. « tour 34 ». */
+    record StreamRecall(String repere) {
     }
 
     /** Le poste du projet a refusé un appel (F-97 / SF-97-02) ; {@code at} en ms, heure serveur. */

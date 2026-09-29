@@ -54,6 +54,44 @@ describe('AtelierService', () => {
     expect(pages).toEqual([{ toolUseId: 'tu_1', page: { pageId: 'p-1', title: 'Maquette', description: null, version: 2 } }]);
   });
 
+  // F-162 / SF-162-03 — la compaction et le recall deviennent visibles via des événements SSE.
+  it('route les événements compaction (démarrée/terminée) et recall vers leurs handlers', () => {
+    const dispatch = (service as unknown as {
+      dispatchSseEvent: (raw: string, handlers: object) => void;
+    }).dispatchSseEvent.bind(service);
+    const compactions: unknown[] = [];
+    const recalls: unknown[] = [];
+    const handlers = {
+      onAction: () => undefined, onText: () => undefined, onDone: () => undefined, onError: () => undefined,
+      onCompaction: (event: unknown) => compactions.push(event),
+      onRecalled: (event: unknown) => recalls.push(event),
+    };
+
+    dispatch('event: compaction\ndata: {"running":true,"summarizedTurns":0}', handlers);
+    dispatch('event: compaction\ndata: {"running":false,"summarizedTurns":12}', handlers);
+    dispatch('event: recall\ndata: {"repere":"tour 34"}', handlers);
+
+    expect(compactions).toEqual([
+      { running: true, summarizedTurns: 0 },
+      { running: false, summarizedTurns: 12 },
+    ]);
+    expect(recalls).toEqual([{ repere: 'tour 34' }]);
+  });
+
+  it('ne lève pas quand aucun handler compaction/recall n\'est branché (additif)', () => {
+    const dispatch = (service as unknown as {
+      dispatchSseEvent: (raw: string, handlers: object) => void;
+    }).dispatchSseEvent.bind(service);
+    const handlers = {
+      onAction: () => undefined, onText: () => undefined, onDone: () => undefined, onError: () => undefined,
+    };
+
+    expect(() => {
+      dispatch('event: compaction\ndata: {"running":true,"summarizedTurns":0}', handlers);
+      dispatch('event: recall\ndata: {"repere":"tour 3"}', handlers);
+    }).not.toThrow();
+  });
+
   it('POSTs a multipart archive to /api/workspaces', () => {
     const detail: WorkspaceDetail = {
       id: 'w1',

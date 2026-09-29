@@ -70,6 +70,7 @@ import {
   AtelierTeamsLine,
   AtelierTeamsMoment,
   AtelierTerminalBlock,
+  AtelierFluxMarker,
   GitPullRequestResult,
   GitPushResult,
   LiveTerminalEntry,
@@ -1467,23 +1468,32 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   liveActionLabel(live: AtelierExecStreamingItem): string {
     for (let i = live.blocks.length - 1; i >= 0; i -= 1) {
       const block = live.blocks[i];
+      // Un marqueur de flux (F-162 / SF-162-03) n'est pas une étape : il ne pilote pas la ligne vivante.
+      if (block.marker) {
+        continue;
+      }
       if ((block.command || block.tool) && !block.hasOutput) {
         return blockLabel(block);
       }
     }
-    if (live.blocks.length > 0) {
+    if (live.blocks.some((block) => !block.marker)) {
       return 'traitement…';
     }
     return live.accepted ? 'demande reçue — Claude réfléchit…' : 'démarrage…';
   }
 
-  /** Étapes déjà faites : les blocs portant une commande ou un outil. Rien à dire avant la 1re. */
+  /** Étapes déjà faites : les blocs portant une commande ou un outil (jamais un marqueur de flux). */
   liveStepLabel(live: AtelierExecStreamingItem): string | null {
-    const steps = live.blocks.filter((block) => block.command || block.tool).length;
+    const steps = live.blocks.filter((block) => !block.marker && (block.command || block.tool)).length;
     if (steps === 0) {
       return null;
     }
     return steps === 1 ? '1 étape' : `${steps} étapes`;
+  }
+
+  /** L'icône d'un marqueur de flux (F-162 / SF-162-03) : compaction condensée, ou rappel d'historique. */
+  fluxMarkerIcon(marker: AtelierFluxMarker): string {
+    return marker.kind === 'compaction' ? 'compress' : 'history';
   }
 
   /**
