@@ -126,6 +126,23 @@ class AtelierRecallRepositoryTest {
     }
 
     @Test
+    @DisplayName("SF-162-06 : relecture par ids isolée user + workspace (défense en profondeur du sémantique)")
+    void findByIdsIsolatedByUserAndWorkspace() {
+        AtelierMessage mine = messageRepository.save(AtelierMessage.builder()
+                .workspaceId(aliceWs1).userId(aliceId).role("USER").content("à moi, ws1").build());
+        AtelierMessage otherWs = messageRepository.save(AtelierMessage.builder()
+                .workspaceId(aliceWs2).userId(aliceId).role("USER").content("à moi, mais autre ws").build());
+        AtelierMessage otherUser = messageRepository.save(AtelierMessage.builder()
+                .workspaceId(aliceWs1).userId(bobId).role("USER").content("à Bob, même ws").build());
+
+        // On demande les TROIS ids, mais scopé (aliceWs1, alice) : seul le sien remonte.
+        var hits = messageRepository.findByWorkspaceIdAndUserIdAndIdIn(aliceWs1, aliceId,
+                java.util.List.of(mine.getId(), otherWs.getId(), otherUser.getId()));
+
+        assertThat(hits).extracting(AtelierMessage::getId).containsExactly(mine.getId());
+    }
+
+    @Test
     @DisplayName("comptage de tour isolé user + workspace")
     void turnCountIsIsolated() {
         OffsetDateTime t1 = OffsetDateTime.parse("2026-09-12T10:00:00Z");

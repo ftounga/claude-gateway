@@ -1383,6 +1383,42 @@ public class AtelierChatService implements RelayInterruptTarget {
     }
 
     /**
+     * Recherche sémantique du {@code recall} (F-162 / SF-162-06). Injectée par mutateur :
+     * {@link fr.claudegateway.atelier.recall.AtelierSemanticRecall#NONE} (formes historiques, tests) ⇒
+     * {@code recall} reste en mot-clé (SF-162-01) et aucun embedding n'est calculé — le mot-clé est le
+     * filet dans tous les cas.
+     *
+     * <p>Deux usages : embeddre chaque message à l'écriture (asynchrone, best-effort) et, dans
+     * {@link #recall}, chercher par le sens avant de retomber sur le mot-clé. Isolée {@code user_id} +
+     * {@code workspace_id}.</p>
+     */
+    private fr.claudegateway.atelier.recall.AtelierSemanticRecall semanticRecall =
+            fr.claudegateway.atelier.recall.AtelierSemanticRecall.NONE;
+
+    /** Branche la recherche sémantique du recall (F-162 / SF-162-06). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setSemanticRecall(fr.claudegateway.atelier.recall.AtelierSemanticRecall semanticRecall) {
+        if (semanticRecall != null) {
+            this.semanticRecall = semanticRecall;
+        }
+    }
+
+    /**
+     * Embed un message à l'écriture (F-162 / SF-162-06), best-effort et asynchrone : ne bloque ni ne fait
+     * échouer le tour. {@code NONE} par défaut ⇒ ne fait rien.
+     */
+    private void embedForRecall(AtelierMessage saved) {
+        if (saved == null || saved.getId() == null) {
+            return;
+        }
+        try {
+            semanticRecall.embedAsync(saved.getId(), saved.getContent());
+        } catch (RuntimeException ex) {
+            log.debug("Embedding de message (recall) non planifié : {}", ex.getClass().getSimpleName());
+        }
+    }
+
+    /**
      * Politique de permission allow/ask/deny persistée par workspace/user (F-121 / SF-121-02). Injectée
      * par mutateur pour ne toucher à aucun des constructeurs conservés : {@code null} (formes
      * historiques, tests antérieurs à F-121) ⇒ la porte retombe sur son comportement binaire d'avant
@@ -1759,6 +1795,9 @@ public class AtelierChatService implements RelayInterruptTarget {
 
         AtelierMessage savedUserMessage = messageRepository.save(AtelierMessage.builder()
                 .workspaceId(workspaceId).userId(userId).role("USER").content(userText).build());
+        // F-162 / SF-162-06 : embed la parole de l'utilisateur pour le rappel sémantique — asynchrone,
+        // best-effort (NONE par défaut ⇒ ne fait rien ; un échec ne casse ni le tour ni l'enregistrement).
+        embedForRecall(savedUserMessage);
         // F-104 / SF-104-01 : la parole de l'utilisateur est la preuve des écritures Radar de ce tour. Une
         // seule preuve par message (idempotente par son identifiant), créée à la première écriture.
         fr.claudegateway.radar.RadarNote turnNote = fr.claudegateway.radar.RadarNote.ofTerminalMessage(
@@ -2539,6 +2578,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                 .toolTrace(new AtelierToolTrace(List.copyOf(trace)).toJson())
                 .terminalJson(report.toJson())
                 .build());
+        // F-162 / SF-162-06 : embed la réponse de l'assistant pour le rappel sémantique — asynchrone,
+        // best-effort (NONE par défaut ⇒ ne fait rien).
+        embedForRecall(assistant);
 
         // F-136 / SF-136-01 — la carte du client a pu changer pendant ce tour (promotion). On la
         // relit MAINTENANT, une fois la réponse prête : lire au début d'un tour coûterait six
@@ -2628,9 +2670,12 @@ public class AtelierChatService implements RelayInterruptTarget {
         for (AtelierProgressListener.AtelierSteer steer : taken) {
             String text = steer.text() == null ? "" : steer.text().trim();
             if (!text.isEmpty()) {
-                messageRepository.save(AtelierMessage.builder()
+                AtelierMessage savedSteer = messageRepository.save(AtelierMessage.builder()
                         .workspaceId(workspaceId).userId(userId).role("USER").content(text)
                         .build());
+                // F-162 / SF-162-06 : les précisions sont aussi de la parole de l'utilisateur — embeddées
+                // pour le rappel sémantique, best-effort (NONE par défaut ⇒ ne fait rien).
+                embedForRecall(savedSteer);
                 if (joined.length() > 0) {
                     joined.append("\n\n");
                 }
@@ -4074,6 +4119,17 @@ public class AtelierChatService implements RelayInterruptTarget {
                     "Requête requise pour recall : donne un mot-clé à chercher dans l'historique du fil.");
         }
         String needle = query.trim();
+
+        // F-162 / SF-162-06 : d'abord le SÉMANTIQUE (par le sens), s'il est actif — « adressage réseau »
+        // retrouve « VPC CIDR » sans le mot exact. Isolé user + workspace, relecture re-filtrée (défense
+        // en profondeur). Repli mot-clé si éteint, en échec, ou 0 résultat (un message pas encore embeddé
+        // reste ainsi retrouvable par le mot).
+        List<AtelierMessage> semantic = semanticRecallMatches(userId, workspace, needle);
+        if (semantic != null && !semantic.isEmpty()) {
+            return formatRecall(semantic, needle, true, workspace, userId, listener);
+        }
+
+        // Repli mot-clé (SF-162-01, INCHANGÉ) : le filet qui ne casse jamais.
         String term = "%" + needle.toLowerCase(java.util.Locale.ROOT) + "%";
         List<AtelierMessage> matches = messageRepository.searchByContent(workspace.getId(), userId,
                 term, org.springframework.data.domain.PageRequest.of(0, RECALL_MAX_EXTRACTS));
@@ -4081,12 +4137,65 @@ public class AtelierChatService implements RelayInterruptTarget {
             return ToolOutcome.info(
                     "Aucun extrait trouvé pour « " + needle + " » dans l'historique de ce fil.");
         }
+        return formatRecall(matches, needle, false, workspace, userId, listener);
+    }
+
+    /**
+     * Chemin sémantique du {@code recall} (F-162 / SF-162-06) : embed la requête, cherche les plus proches
+     * voisins pgvector <b>isolés {@code user_id} + {@code workspace_id}</b>, puis relit les messages par
+     * ids <b>re-filtrés {@code user_id} + {@code workspace_id}</b> (défense en profondeur) et les réordonne
+     * selon la similarité. Renvoie {@code null} — ce qui déclenche le repli mot-clé — quand le sémantique
+     * est éteint, en échec, ou sans résultat. Ne lève jamais.
+     */
+    private List<AtelierMessage> semanticRecallMatches(UUID userId, Workspace workspace, String needle) {
+        if (!semanticRecall.isEnabled()) {
+            return null;
+        }
+        try {
+            List<UUID> ids = semanticRecall.search(userId, workspace.getId(), needle, RECALL_MAX_EXTRACTS);
+            if (ids == null || ids.isEmpty()) {
+                return null;
+            }
+            List<AtelierMessage> found = messageRepository.findByWorkspaceIdAndUserIdAndIdIn(
+                    workspace.getId(), userId, ids);
+            if (found.isEmpty()) {
+                return null;
+            }
+            java.util.Map<UUID, AtelierMessage> byId = new java.util.HashMap<>();
+            for (AtelierMessage message : found) {
+                byId.put(message.getId(), message);
+            }
+            // Réordonne selon l'ordre de similarité (le IN du repository ne garantit pas l'ordre).
+            List<AtelierMessage> ordered = new java.util.ArrayList<>();
+            for (UUID id : ids) {
+                AtelierMessage message = byId.get(id);
+                if (message != null) {
+                    ordered.add(message);
+                }
+            }
+            return ordered.isEmpty() ? null : ordered;
+        } catch (RuntimeException ex) {
+            log.debug("Rappel sémantique indisponible, repli mot-clé : {}", ex.getClass().getSimpleName());
+            return null;
+        }
+    }
+
+    /**
+     * Met en forme le résultat de {@code recall} (F-162 / SF-162-01/06) : en-tête, puis un extrait borné et
+     * fenêtré par message, chacun repéré « tour N · date · rôle ». Émet le repère de visibilité (SF-162-03,
+     * best-effort). Commun au chemin sémantique et au repli mot-clé — seule l'en-tête diffère.
+     */
+    private ToolOutcome formatRecall(List<AtelierMessage> matches, String needle, boolean semantic,
+            Workspace workspace, UUID userId, AtelierProgressListener listener) {
         StringBuilder out = new StringBuilder();
         out.append(matches.size())
                 .append(matches.size() > 1 ? " extraits trouvés" : " extrait trouvé")
+                .append(semantic ? " par le sens" : "")
                 .append(" pour « ").append(needle)
                 .append(" » dans l'historique de ce fil (fil entier, y compris tours résumés, repliés "
-                        + "ou d'avant un « Nouveau départ »), du plus récent au plus ancien :\n");
+                        + "ou d'avant un « Nouveau départ »)")
+                .append(semantic ? ", du plus proche au plus lointain :\n"
+                        : ", du plus récent au plus ancien :\n");
         // Tours retrouvés, dans l'ordre de rencontre et sans doublon : le repère « Détail rappelé ·
         // tour N » (F-162 / SF-162-03) montre à l'écran OÙ le détail a été retrouvé.
         java.util.List<Long> foundTurns = new java.util.ArrayList<>();
@@ -6104,14 +6213,16 @@ public class AtelierChatService implements RelayInterruptTarget {
         // historique de conversation (atelier_messages), pas la machine ni le stockage du projet.
         // Indépendant de la cible d'exécution : c'est une capacité de gateway (recherche + relais).
         tools.add(new AgentTool("recall",
-                "Cherche un mot-clé dans l'HISTORIQUE de CETTE conversation et te rend seulement les "
-                        + "extraits pertinents (chacun avec son numéro de tour et sa date). Appelle-le "
-                        + "quand il te manque un détail d'un échange antérieur qui n'est plus dans le "
-                        + "contexte courant — une décision, un chiffre, un nom, une consigne donnés plus "
-                        + "tôt et que tu ne retrouves plus. Il porte sur TOUT le fil, y compris les tours "
-                        + "résumés, repliés, ou d'avant un « Nouveau départ ». Recherche par mot-clé : "
-                        + "donne un terme précis. Il ne lit ni les fichiers ni le web — pour cela, utilise "
-                        + "read_file, grep ou explore.",
+                "Cherche dans l'HISTORIQUE de CETTE conversation et te rend seulement les extraits "
+                        + "pertinents (chacun avec son numéro de tour et sa date). Appelle-le quand il te "
+                        + "manque un détail d'un échange antérieur qui n'est plus dans le contexte courant "
+                        + "— une décision, un chiffre, un nom, une consigne donnés plus tôt et que tu ne "
+                        + "retrouves plus. Il porte sur TOUT le fil, y compris les tours résumés, repliés, "
+                        + "ou d'avant un « Nouveau départ ». La recherche se fait PAR LE SENS quand c'est "
+                        + "disponible (une reformulation retrouve le passage même sans le mot exact) et "
+                        + "retombe sinon sur le mot-clé : tu peux donc décrire ce que tu cherches en "
+                        + "langage naturel, ou donner un terme précis. Il ne lit ni les fichiers ni le web "
+                        + "— pour cela, utilise read_file, grep ou explore.",
                 Map.of("type", "object",
                         "properties", Map.of("query", stringProp),
                         "required", List.of("query"))));

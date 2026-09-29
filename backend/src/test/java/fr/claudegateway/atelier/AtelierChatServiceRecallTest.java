@@ -64,6 +64,7 @@ class AtelierChatServiceRecallTest {
     @Mock private TeamsAccessService teamsAccess;
     @Mock private HostSpaceService spaces;
     @Mock private RadarToolExecutor executor;
+    @Mock private fr.claudegateway.atelier.recall.AtelierSemanticRecall semanticRecall;
 
     private StubAiAgentProvider agentProvider;
     private AtelierChatService service;
@@ -82,6 +83,9 @@ class AtelierChatServiceRecallTest {
                 new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null, null, true),
                 AtelierCheckpointRunner.none(), ProjectRulesSource.NONE, TeamsToolCatalog.none(), null,
                 new RadarToolCatalog(teamsAccess, spaces), executor);
+        // F-162 / SF-162-06 : sémantique branché mais ÉTEINT par défaut (isEnabled() = false du mock) ⇒
+        // recall reste en mot-clé, comme SF-162-01. Les tests sémantiques l'activent explicitement.
+        service.setSemanticRecall(semanticRecall);
 
         when(byokKeyService.resolveActiveApiKey(userId)).thenReturn(java.util.Optional.empty());
         when(quotaService.currentUsage(userId)).thenReturn(
@@ -299,5 +303,93 @@ class AtelierChatServiceRecallTest {
         service.chatStreaming(userId, workspaceId, "des licornes ?", captor);
 
         assertThat(captor.recalled).isEmpty();
+    }
+
+    // ---------------------------------------------------------------- F-162 / SF-162-06 : sémantique
+
+    @Test
+    @DisplayName("SF-162-06 : sémantique actif → recherche par ids (isolée), PAS le mot-clé ; « par le sens »")
+    void semanticActiveUsesVectorSearchNotKeyword() {
+        terminal(WorkspaceExecutionTarget.SANDBOX);
+        UUID hitId = UUID.randomUUID();
+        when(semanticRecall.isEnabled()).thenReturn(true);
+        when(semanticRecall.search(eq(userId), eq(workspaceId), eq("adressage réseau"), eq(5)))
+                .thenReturn(List.of(hitId));
+        AtelierMessage hit = AtelierMessage.builder().id(hitId).workspaceId(workspaceId).userId(userId)
+                .role("ASSISTANT").content("On a mis en place un VPC avec un CIDR 10.0.0.0/16.")
+                .createdAt(OffsetDateTime.parse("2026-05-01T10:00:00Z")).build();
+        when(messageRepository.findByWorkspaceIdAndUserIdAndIdIn(eq(workspaceId), eq(userId), any()))
+                .thenReturn(List.of(hit));
+        when(messageRepository.countByWorkspaceIdAndUserIdAndRoleAndCreatedAtLessThanEqual(
+                eq(workspaceId), eq(userId), eq("USER"), any())).thenReturn(12L);
+
+        agentProvider.enqueueToolCall("recall", "query", "adressage réseau");
+        agentProvider.enqueueFinal("Rappel fait.");
+        service.chatStreaming(userId, workspaceId, "comment on adresse le réseau ?", silent());
+
+        // Le sémantique est isolé (user + workspace) et le mot-clé n'est PAS emprunté quand il répond.
+        verify(semanticRecall).search(eq(userId), eq(workspaceId), eq("adressage réseau"), eq(5));
+        verify(messageRepository).findByWorkspaceIdAndUserIdAndIdIn(eq(workspaceId), eq(userId), any());
+        verify(messageRepository, never()).searchByContent(any(), any(), anyString(), any(Pageable.class));
+        String toModel = String.join("\n", agentProvider.messageSnapshots);
+        assertThat(toModel).contains("par le sens");
+        assertThat(toModel).contains("tour 12");
+        assertThat(toModel).contains("CIDR 10.0.0.0/16");
+    }
+
+    @Test
+    @DisplayName("SF-162-06 : sémantique 0 résultat → REPLI mot-clé dans le même appel")
+    void semanticEmptyFallsBackToKeyword() {
+        terminal(WorkspaceExecutionTarget.SANDBOX);
+        when(semanticRecall.isEnabled()).thenReturn(true);
+        when(semanticRecall.search(eq(userId), eq(workspaceId), anyString(), eq(5))).thenReturn(List.of());
+        when(messageRepository.searchByContent(eq(workspaceId), eq(userId), anyString(), any(Pageable.class)))
+                .thenReturn(List.of(message("USER", "on avait choisi Postgres",
+                        OffsetDateTime.parse("2026-02-01T09:00:00Z"))));
+        when(messageRepository.countByWorkspaceIdAndUserIdAndRoleAndCreatedAtLessThanEqual(
+                eq(workspaceId), eq(userId), eq("USER"), any())).thenReturn(4L);
+
+        agentProvider.enqueueToolCall("recall", "query", "base de données");
+        agentProvider.enqueueFinal("Rappel fait.");
+        service.chatStreaming(userId, workspaceId, "quelle base ?", silent());
+
+        // Le sémantique n'a rien trouvé → le mot-clé prend le relais (le message reste retrouvable).
+        verify(messageRepository).searchByContent(eq(workspaceId), eq(userId), anyString(), any(Pageable.class));
+        assertThat(String.join("\n", agentProvider.messageSnapshots)).contains("Postgres");
+    }
+
+    @Test
+    @DisplayName("SF-162-06 : sémantique en échec (relecture jette) → REPLI mot-clé, aucune exception")
+    void semanticFailureFallsBackToKeyword() {
+        terminal(WorkspaceExecutionTarget.SANDBOX);
+        when(semanticRecall.isEnabled()).thenReturn(true);
+        when(semanticRecall.search(eq(userId), eq(workspaceId), anyString(), eq(5)))
+                .thenReturn(List.of(UUID.randomUUID()));
+        when(messageRepository.findByWorkspaceIdAndUserIdAndIdIn(any(), any(), any()))
+                .thenThrow(new RuntimeException("db down"));
+        when(messageRepository.searchByContent(eq(workspaceId), eq(userId), anyString(), any(Pageable.class)))
+                .thenReturn(List.of(message("USER", "repli mot-clé OK",
+                        OffsetDateTime.parse("2026-03-01T09:00:00Z"))));
+        when(messageRepository.countByWorkspaceIdAndUserIdAndRoleAndCreatedAtLessThanEqual(
+                eq(workspaceId), eq(userId), eq("USER"), any())).thenReturn(2L);
+
+        agentProvider.enqueueToolCall("recall", "query", "quelque chose");
+        agentProvider.enqueueFinal("Rappel fait.");
+        service.chatStreaming(userId, workspaceId, "rappelle", silent());
+
+        verify(messageRepository).searchByContent(eq(workspaceId), eq(userId), anyString(), any(Pageable.class));
+        assertThat(String.join("\n", agentProvider.messageSnapshots)).contains("repli mot-clé OK");
+    }
+
+    @Test
+    @DisplayName("SF-162-06 : à l'écriture, la parole utilisateur ET la réponse sont embeddées (best-effort)")
+    void embedsMessagesOnWrite() {
+        terminal(WorkspaceExecutionTarget.SANDBOX);
+        agentProvider.enqueueFinal("Voici ma réponse.");
+
+        service.chatStreaming(userId, workspaceId, "ma question du jour", silent());
+
+        verify(semanticRecall).embedAsync(any(UUID.class), eq("ma question du jour"));
+        verify(semanticRecall).embedAsync(any(UUID.class), eq("Voici ma réponse."));
     }
 }

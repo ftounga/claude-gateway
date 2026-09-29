@@ -46,6 +46,14 @@ app:
     # IngestionService.ingestPending()/ingest() directement (déterminisme, pas de scheduler concurrent).
     ingestion:
       enabled: false
+  # F-162 / SF-162-06 : worker de backfill des embeddings du recall désactivé en tests (déterminisme,
+  # pas de scheduler concurrent ; le chemin pgvector ne tourne pas en H2). Le sémantique reste de toute
+  # façon éteint sans clé — les tests qui l'exercent branchent un AtelierSemanticRecall mocké.
+  atelier:
+    recall:
+      semantic:
+        backfill:
+          enabled: false
   # STT (F-128 / SF-128-04) : worker de transcription désactivé en tests ; la logique est testée en
   # appelant TranscriptionService.transcribePending() directement. Base-url/api-key vides = STT éteint
   # (les tests qui veulent un STT « configuré » surchargent ces propriétés).
