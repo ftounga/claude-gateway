@@ -16,11 +16,14 @@ import fr.claudegateway.ai.AIProviderUnavailableException;
 import fr.claudegateway.atelier.AtelierChatService.AtelierChatResult;
 import fr.claudegateway.atelier.AtelierProgressListener.AtelierConfirmRequest;
 import fr.claudegateway.atelier.AtelierProgressListener.AtelierConfirmResolved;
+import fr.claudegateway.atelier.AtelierProgressListener.AtelierQuestionRequest;
+import fr.claudegateway.atelier.AtelierProgressListener.AtelierQuestionResolved;
 import fr.claudegateway.atelier.AtelierProgressListener.AtelierSteer;
 import fr.claudegateway.atelier.AtelierProgressListener.AtelierStepEvent;
 import fr.claudegateway.atelier.live.LiveTurn;
 import fr.claudegateway.atelier.live.LiveTurnRegistry;
 import fr.claudegateway.atelier.live.PendingApproval;
+import fr.claudegateway.atelier.live.PendingQuestion;
 import fr.claudegateway.byok.ByokKeyRequiredException;
 import fr.claudegateway.quota.QuotaExceededException;
 
@@ -180,6 +183,24 @@ public class AtelierMcpTurnLauncher {
             }
 
             @Override
+            public void onQuestion(AtelierQuestionRequest request) {
+                // La question devient l'ÉTAT du tour (F-164 / SF-164-01) : LISTÉE par MCP pour être
+                // interrogeable, jamais répondue par ce canal (même garde que l'autorisation, §6.1).
+                List<Map<String, Object>> questions = questionsPayload(request.form());
+                turn.publishQuestionRequest(Map.of(
+                        "callId", request.callId(), "questions", questions,
+                        "timeoutMs", request.timeoutMs()),
+                        new PendingQuestion(request.callId(), questionsJson(questions),
+                                request.timeoutMs(), System.currentTimeMillis()));
+            }
+
+            @Override
+            public void onQuestionResolved(AtelierQuestionResolved resolved) {
+                turn.publishQuestionResolved(Map.of("callId", resolved.callId(),
+                        "status", resolved.status()), resolved.callId());
+            }
+
+            @Override
             public void onRunnerOffline(UUID hostId) {
                 turn.publish("runner_offline", Map.of(
                         "hostId", hostId.toString(), "at", System.currentTimeMillis()));
@@ -198,6 +219,33 @@ public class AtelierMcpTurnLauncher {
                 turn.publish(LiveTurn.STEER_APPLIED, Map.of("steerId", steer.steerId(), "step", step));
             }
         };
+    }
+
+    /** Mapper dédié à la sérialisation du lot de questions pour l'état du tour (F-164 / SF-164-01). */
+    private static final com.fasterxml.jackson.databind.ObjectMapper QUESTION_MAPPER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
+    /** Le lot de questions en structure JSON simple pour l'événement MCP (F-164 / SF-164-01). */
+    private static List<Map<String, Object>> questionsPayload(AtelierQuestionForm form) {
+        return form.questions().stream()
+                .map(q -> {
+                    List<Map<String, Object>> options = q.options().stream()
+                            .map(o -> Map.<String, Object>of("label", o.label(),
+                                    "description", o.description(), "recommended", o.recommended()))
+                            .toList();
+                    return Map.<String, Object>of("header", q.header(), "question", q.question(),
+                            "multiSelect", q.multiSelect(), "options", options);
+                })
+                .toList();
+    }
+
+    /** Le lot sérialisé en JSON pour l'aparté {@code question_state} ; {@code "[]"} au pire. */
+    private static String questionsJson(List<Map<String, Object>> questions) {
+        try {
+            return QUESTION_MAPPER.writeValueAsString(questions);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
+            return "[]";
+        }
     }
 
     private static Map<String, Object> done(AtelierChatResult result, boolean followUp) {

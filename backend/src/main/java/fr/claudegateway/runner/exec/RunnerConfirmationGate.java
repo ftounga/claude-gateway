@@ -72,7 +72,8 @@ public class RunnerConfirmationGate {
      * @return la décision, jamais {@code null} ({@link Decision#TIMEOUT} en cas de silence)
      */
     public Outcome await(UUID userId, UUID workspaceId, String callId, Runnable onRegistered) {
-        Pending entry = new Pending(userId, workspaceId, new CompletableFuture<>());
+        Pending entry = new Pending(userId, workspaceId, Kind.CONFIRMATION,
+                new CompletableFuture<>(), new Outcome(Decision.DENY, "Tour interrompu avant décision."));
         if (pending.putIfAbsent(callId, entry) != null) {
             // Identifiant déjà en attente : on refuse plutôt que d'écraser une demande en cours.
             return new Outcome(Decision.DENY, "Demande d'autorisation déjà en cours.");
@@ -85,7 +86,7 @@ public class RunnerConfirmationGate {
             log.info("Autorisation demandée (workspace={}, call={}) : décision attendue sous {} ms",
                     workspaceId, callId, timeoutMs);
             onRegistered.run();
-            return entry.future().get(timeoutMs, TimeUnit.MILLISECONDS);
+            return (Outcome) entry.future().get(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (TimeoutException ex) {
             log.info("Aucune décision d'autorisation dans le délai (workspace={}) : commande refusée",
                     workspaceId);
@@ -120,11 +121,69 @@ public class RunnerConfirmationGate {
     public void resolve(UUID userId, UUID workspaceId, String callId, boolean allow, String reason,
             boolean persistRule) {
         Pending entry = pending.get(callId);
-        if (entry == null || !entry.userId().equals(userId) || !entry.workspaceId().equals(workspaceId)) {
+        if (entry == null || entry.kind() != Kind.CONFIRMATION
+                || !entry.userId().equals(userId) || !entry.workspaceId().equals(workspaceId)) {
+            // Le discriminant de genre en fait partie : une réponse de question ne tranche jamais une
+            // autorisation (et l'inverse), même à identifiant de corrélation deviné.
             throw new NoPendingConfirmationException("Aucune autorisation n'est en attente pour cette action.");
         }
         entry.future().complete(new Outcome(allow ? Decision.ALLOW : Decision.DENY, shorten(reason),
                 allow && persistRule));
+    }
+
+    /**
+     * Enregistre une <b>question structurée</b> posée à l'utilisateur puis <b>attend</b> sa réponse
+     * (F-164 / SF-164-01). Même primitive que {@link #await} — même isolation, même délai, même
+     * annulation à l'interruption — mais le payload attendu est une <b>réponse</b>, pas un allow/deny.
+     *
+     * <p><b>Pauses répétées dans un même tour</b> : l'entrée est indexée par {@code callId} et retirée
+     * à la fin ({@code finally}). La boucle traite ses appels d'outil en série ; chaque
+     * {@code demander} a son propre {@code callId}, bloque, reprend, puis le suivant. Rien n'empêche
+     * donc N pauses successives — c'est le sens de la généralisation demandée au cadrage.</p>
+     *
+     * @return la réponse, jamais {@code null} ({@link AnswerOutcome.Status#TIMEOUT} en cas de silence)
+     */
+    public AnswerOutcome awaitAnswer(UUID userId, UUID workspaceId, String callId, Runnable onRegistered) {
+        Pending entry = new Pending(userId, workspaceId, Kind.QUESTION,
+                new CompletableFuture<>(), AnswerOutcome.interrupted());
+        if (pending.putIfAbsent(callId, entry) != null) {
+            // Identifiant déjà en attente : on refuse plutôt que d'écraser une question en cours.
+            return AnswerOutcome.failed();
+        }
+        try {
+            log.info("Question posée (workspace={}, call={}) : réponse attendue sous {} ms",
+                    workspaceId, callId, timeoutMs);
+            onRegistered.run();
+            return (AnswerOutcome) entry.future().get(timeoutMs, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException ex) {
+            log.info("Aucune réponse à la question dans le délai (workspace={})", workspaceId);
+            return AnswerOutcome.timedOut();
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            return AnswerOutcome.interrupted();
+        } catch (ExecutionException | RuntimeException ex) {
+            // Y compris un échec du relais à l'écran, ou une réponse d'un mauvais genre (cast) : la
+            // reprise reste sûre, le modèle apprendra simplement qu'aucune réponse n'a abouti.
+            return AnswerOutcome.failed();
+        } finally {
+            pending.remove(callId);
+        }
+    }
+
+    /**
+     * Tranche une <b>question</b> en attente avec le compte rendu des réponses de l'utilisateur
+     * (F-164 / SF-164-01). Comme {@link #resolve}, le workspace <b>et</b> le propriétaire doivent
+     * correspondre, et le genre doit être une question : une réponse ne tranche jamais une autorisation.
+     *
+     * @throws NoPendingConfirmationException si aucune question n'attend cette réponse
+     */
+    public void answerQuestions(UUID userId, UUID workspaceId, String callId, String content) {
+        Pending entry = pending.get(callId);
+        if (entry == null || entry.kind() != Kind.QUESTION
+                || !entry.userId().equals(userId) || !entry.workspaceId().equals(workspaceId)) {
+            throw new NoPendingConfirmationException("Aucune question n'est en attente pour cette réponse.");
+        }
+        entry.future().complete(AnswerOutcome.answered(content));
     }
 
     /**
@@ -138,8 +197,9 @@ public class RunnerConfirmationGate {
         int released = 0;
         for (Map.Entry<String, Pending> entry : pending.entrySet()) {
             if (entry.getValue().workspaceId().equals(workspaceId)) {
-                entry.getValue().future().complete(
-                        new Outcome(Decision.DENY, "Tour interrompu avant décision."));
+                // La valeur d'annulation dépend du genre de l'attente : un refus pour une autorisation,
+                // une réponse « interrompue » pour une question — chacune complète son propre payload.
+                entry.getValue().future().complete(entry.getValue().cancelValue());
                 released++;
             }
         }
@@ -193,7 +253,70 @@ public class RunnerConfirmationGate {
         }
     }
 
-    /** Demande en attente : qui l'a posée (isolation) et la promesse de décision. */
-    private record Pending(UUID userId, UUID workspaceId, CompletableFuture<Outcome> future) {
+    /**
+     * Genre d'attente portée par la porte : une <b>autorisation</b> (allow/deny historique) ou une
+     * <b>question structurée</b> (F-164). Le genre est vérifié à la résolution : une réponse d'un genre
+     * ne peut jamais trancher une attente de l'autre, même à identifiant deviné.
+     */
+    private enum Kind {
+        CONFIRMATION,
+        QUESTION
+    }
+
+    /**
+     * Réponse à une question structurée (F-164 / SF-164-01), rendue par {@link #awaitAnswer}.
+     *
+     * @param status  issue de l'attente
+     * @param content compte rendu des réponses de l'utilisateur, prêt à être rendu au modèle ; jamais
+     *                {@code null} pour {@link Status#ANSWERED}, {@code null} pour tout le reste
+     */
+    public record AnswerOutcome(Status status, String content) {
+
+        /** Issue d'une question posée. */
+        public enum Status {
+            /** L'utilisateur a répondu. */
+            ANSWERED,
+            /** Personne n'a répondu dans le délai : le tour reprend sans réponse. */
+            TIMEOUT,
+            /** Le tour a été interrompu (ou l'attente libérée) avant réponse. */
+            INTERRUPTED,
+            /** La question n'a pas pu aboutir (relais impossible, doublon d'identifiant). */
+            FAILED
+        }
+
+        /** Vrai uniquement quand l'utilisateur a effectivement répondu. */
+        public boolean answered() {
+            return status == Status.ANSWERED;
+        }
+
+        /** Réponse de l'utilisateur. */
+        public static AnswerOutcome answered(String content) {
+            return new AnswerOutcome(Status.ANSWERED, content);
+        }
+
+        /** Silence : personne n'a répondu dans le délai. */
+        public static AnswerOutcome timedOut() {
+            return new AnswerOutcome(Status.TIMEOUT, null);
+        }
+
+        /** Attente libérée par une interruption du tour. */
+        public static AnswerOutcome interrupted() {
+            return new AnswerOutcome(Status.INTERRUPTED, null);
+        }
+
+        /** La question n'a pas pu aboutir. */
+        public static AnswerOutcome failed() {
+            return new AnswerOutcome(Status.FAILED, null);
+        }
+    }
+
+    /**
+     * Attente en cours : qui l'a posée (isolation), son genre, la promesse de payload, et la valeur à
+     * compléter si le tour est interrompu ({@code cancelWorkspace}). Le payload est générique — un
+     * {@link Outcome} pour une autorisation, un {@link AnswerOutcome} pour une question — pour que la
+     * même primitive de pause/isolation/annulation serve les deux.
+     */
+    private record Pending(UUID userId, UUID workspaceId, Kind kind,
+            CompletableFuture<Object> future, Object cancelValue) {
     }
 }

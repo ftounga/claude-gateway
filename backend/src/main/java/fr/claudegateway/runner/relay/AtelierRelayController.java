@@ -20,6 +20,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import fr.claudegateway.atelier.live.LiveTurn;
 import fr.claudegateway.atelier.live.LiveTurnRegistry;
 import fr.claudegateway.atelier.live.SteerReceipt;
+import fr.claudegateway.runner.exec.NoPendingConfirmationException;
+import fr.claudegateway.runner.exec.RunnerConfirmationGate;
 
 /**
  * Gestes d'<b>interruption</b> reçus d'un pod pair (F-38 / SF-38-13, contrat du relais §6).
@@ -55,15 +57,44 @@ public class AtelierRelayController {
     private final LiveTurnRegistry liveTurns;
     private final RunnerRelayProperties properties;
     private final ObjectMapper objectMapper;
+    private final RunnerConfirmationGate confirmationGate;
 
     public AtelierRelayController(RelayInterruptTarget interruptTarget,
             RelaySessionInterruptTarget sessionInterruptTarget, LiveTurnRegistry liveTurns,
-            RunnerRelayProperties properties, ObjectMapper objectMapper) {
+            RunnerRelayProperties properties, ObjectMapper objectMapper,
+            RunnerConfirmationGate confirmationGate) {
         this.interruptTarget = interruptTarget;
         this.sessionInterruptTarget = sessionInterruptTarget;
         this.liveTurns = liveTurns;
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.confirmationGate = confirmationGate;
+    }
+
+    /**
+     * Tranche une <b>question structurée</b> en attente sur ce pod (F-164 / SF-164-01), relayée d'un
+     * pair : la question vit sur le pod qui exécute la boucle, la réponse a pu atterrir ailleurs.
+     *
+     * <p><b>Toujours 200</b>, comme la confirmation relayée : {@code resolved=false} veut dire « ce
+     * n'est pas moi qui attendais », le cas de tous les pods sauf un. L'appartenance est revérifiée par
+     * la porte elle-même ({@code userId} <i>et</i> {@code workspaceId}) ; l'événement
+     * {@code question_resolved} est publié par la boucle qui reprend, pas ici.</p>
+     */
+    @PostMapping(value = "/answer", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Map<String, Object>> answer(
+            @RequestBody(required = false) RelayGestureRequests.AnswerRequest request) {
+        if (request == null || !request.isValid()) {
+            return ResponseEntity.badRequest().build();
+        }
+        try {
+            confirmationGate.answerQuestions(request.userId(), request.workspaceId(),
+                    request.callId().trim(), request.content());
+            log.debug("Réponse à une question relayée et appliquée (workspace={}, appel={})",
+                    request.workspaceId(), request.callId());
+            return ResponseEntity.ok(Map.of("resolved", true));
+        } catch (NoPendingConfirmationException ex) {
+            return ResponseEntity.ok(Map.of("resolved", false));
+        }
     }
 
     /**

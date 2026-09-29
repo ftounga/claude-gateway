@@ -59,6 +59,20 @@ final class RelayGestureRequests {
     }
 
     /**
+     * Réponse à une <b>question structurée</b> de l'agent (F-164 / SF-164-01), relayée au pod qui
+     * exécute la boucle. Même règle que la confirmation : le {@code userId} est un critère
+     * d'appartenance rejoué par la porte, jamais une authentification.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record AnswerRequest(UUID userId, UUID workspaceId, String callId, String content) {
+
+        boolean isValid() {
+            return userId != null && workspaceId != null && callId != null && !callId.isBlank()
+                    && content != null;
+        }
+    }
+
+    /**
      * Désignation d'un <b>tour vivant</b> pour la sonde et le flux relayés (F-84 / SF-84-02).
      * Même règle que les autres enveloppes : le {@code userId} est un critère d'appartenance rejoué,
      * jamais une authentification.
