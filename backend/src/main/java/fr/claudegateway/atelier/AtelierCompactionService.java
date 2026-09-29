@@ -111,6 +111,12 @@ public class AtelierCompactionService {
                     + "plutôt que de la supprimer. "
                     + "Des lignes « outils utilisés » (préfixées « · ») accompagnent chaque "
                     + "tour de l'agent : appuie-toi dessus pour les faits établis. "
+                    + "ANCRE chaque point : les tours ci-dessous sont préfixés de leur numéro d'origine "
+                    + "« [tour N] » ; pour chaque décision, fait, fichier ou consigne que tu retiens, "
+                    + "indique entre parenthèses son ou ses numéros de tour d'origine — « (tour N) » — "
+                    + "et conserve les TERMES DISTINCTIFS (noms, identifiants, chemins, valeurs) qui "
+                    + "permettront de le retrouver plus tard. Ces ancres restent BORNÉES : c'est un "
+                    + "résumé, pas une copie — n'ancre que ce que tu retiens, ne recopie pas les tours. "
                     + "N'INVENTE RIEN — ne cite aucune valeur, aucun code de sortie, aucun contenu de "
                     + "fichier qui ne figure pas dans ce qui t'est donné ; si une information manque, "
                     + "ne la mentionne pas.";
@@ -125,9 +131,19 @@ public class AtelierCompactionService {
                     + "conversation ci-dessous, et rends un seul résumé au même gabarit. N'imbrique "
                     + "pas un résumé dans un résumé, ne crée pas de section « résumé précédent ».";
 
-    /** Libellé du bloc de résumé injecté au rejeu (visible du modèle, marqueur du cadrage §2). */
+    /**
+     * Libellé du bloc de résumé injecté au rejeu (visible du modèle, marqueur du cadrage §2).
+     *
+     * <p><b>Pont vers {@code recall}</b> (F-162 / SF-162-02) : le libellé rappelle au modèle que
+     * chaque point du résumé renvoie à son tour d'origine et que, pour un détail non listé ici, l'outil
+     * {@code recall} le retrouve dans l'historique complet. Une <b>constante</b> : préfixe stable, rien
+     * de volatil (le cache de prompt n'est pas cassé). La consigne système principale ne mentionne pas
+     * {@code recall} (SF-162-01 n'a ajouté qu'une description d'outil) — pas de duplication.</p>
+     */
     static final String SUMMARY_MARKER =
-            "[Résumé de la conversation précédente — conversation résumée jusqu'ici]";
+            "[Résumé de la conversation précédente — conversation résumée jusqu'ici. Chaque point "
+                    + "renvoie à son tour d'origine ; pour un détail non listé ici, utilise l'outil "
+                    + "recall pour le retrouver dans l'historique complet.]";
 
     private final AtelierMessageRepository messageRepository;
     private final WorkspaceRepository workspaceRepository;
@@ -199,7 +215,7 @@ public class AtelierCompactionService {
         if (estimated <= properties.triggerTokens()) {
             return CompactionOutcome.NONE;
         }
-        return doCompact(workspace, apiKey, replayable, estimated);
+        return doCompact(userId, workspace, apiKey, replayable, estimated);
     }
 
     /**
@@ -214,11 +230,11 @@ public class AtelierCompactionService {
             return CompactionOutcome.NONE;
         }
         List<AtelierMessage> replayable = replayable(userId, workspace);
-        return doCompact(workspace, apiKey, replayable,
+        return doCompact(userId, workspace, apiKey, replayable,
                 estimateReplayTokens(workspace.getChatThreadSummary(), replayable, replayedTraceTurns));
     }
 
-    private CompactionOutcome doCompact(Workspace workspace, String apiKey,
+    private CompactionOutcome doCompact(UUID userId, Workspace workspace, String apiKey,
             List<AtelierMessage> replayable, long estimated) {
         // On garde les derniers tours entiers ; tout ce qui précède (résumé existant compris) est
         // résumé. S'il n'y a rien d'ancien à résumer, la compaction ne peut rien réduire.
@@ -228,9 +244,15 @@ public class AtelierCompactionService {
         }
         List<AtelierMessage> old = replayable.subList(0, splitIndex);
         OffsetDateTime newBoundary = replayable.get(splitIndex).getCreatedAt();
+        // Offset de base du numéro de tour (F-162 / SF-162-02) : nombre de tours USER antérieurs à la
+        // fenêtre rejouée. La compaction est incrémentale — la frontière avance —, donc le premier tour
+        // de `old` n'est pas le tour 1 : on numérote à la suite pour que « tour N » désigne le même tour
+        // que `recall`. Filtré workspace_id + user_id (isolation).
+        long baseTurns = messageRepository.countByWorkspaceIdAndUserIdAndRoleAndCreatedAtLessThan(
+                workspace.getId(), userId, "USER", replayable.get(0).getCreatedAt());
 
         try {
-            AgentTurn turn = summarize(workspace.getChatThreadSummary(), old, apiKey);
+            AgentTurn turn = summarize(workspace.getChatThreadSummary(), old, baseTurns, apiKey);
             String summary = turn.text();
             if (summary == null || summary.isBlank()) {
                 log.warn("Compaction sans résumé exploitable (workspace={}, poste={}) : fil inchangé.",
@@ -282,8 +304,9 @@ public class AtelierCompactionService {
     }
 
     /** Un appel modèle dédié, sans outils, borné : il ne fait que produire le texte du résumé. */
-    private AgentTurn summarize(String previousSummary, List<AtelierMessage> old, String apiKey) {
-        AgentMessage input = AgentMessage.userText(renderForSummary(previousSummary, old));
+    private AgentTurn summarize(String previousSummary, List<AtelierMessage> old, long baseTurns,
+            String apiKey) {
+        AgentMessage input = AgentMessage.userText(renderForSummary(previousSummary, old, baseTurns));
         AgentTurnRequest request = new AgentTurnRequest(model, SUMMARY_SYSTEM_PROMPT,
                 List.of(input), List.of(), apiKey);
         return agentProvider.nextTurn(request);
@@ -297,24 +320,49 @@ public class AtelierCompactionService {
      * <p>Quand un résumé précédent existe, la consigne de <b>fusion</b> (F-121 / SF-121-09) est posée
      * juste avant lui : sans elle, le modèle a tendance à recopier l'ancien résumé en bloc puis à
      * ajouter les tours récents à la suite, ce qui empile deux structures au lieu d'en tenir une.</p>
+     *
+     * <p>Forme historique <b>sans numéro de tour</b> (surcharge à deux arguments) : conservée pour les
+     * appelants qui n'ont pas d'offset à donner. La compaction, elle, passe par la surcharge à trois
+     * arguments qui <b>ancre</b> chaque tour (F-162 / SF-162-02).</p>
      */
     static String renderForSummary(String previousSummary, List<AtelierMessage> old) {
+        return renderForSummary(previousSummary, old, 0L);
+    }
+
+    /**
+     * Rend les tours anciens en préfixant chacun de son <b>numéro de tour d'origine</b> « [tour N] »
+     * (F-162 / SF-162-02), pour que le résumé produit puisse <b>ancrer</b> chaque décision au tour où
+     * elle a été prise et que {@code recall} vise juste.
+     *
+     * <p><b>Numérotation cohérente avec {@code recall}</b> : « tour N » = nombre de messages
+     * {@code USER} du fil dont {@code createdAt <= createdAt} du message. On part de {@code baseTurns}
+     * (les tours {@code USER} déjà résumés, antérieurs à la fenêtre — la compaction est incrémentale)
+     * et on incrémente sur chaque message {@code USER}. Un message {@code ASSISTANT} porte le numéro du
+     * dernier tour {@code USER} vu, exactement comme {@code recall} l'étiquette (le tour utilisateur
+     * auquel il répond).</p>
+     */
+    static String renderForSummary(String previousSummary, List<AtelierMessage> old, long baseTurns) {
         StringBuilder sb = new StringBuilder();
         if (previousSummary != null && !previousSummary.isBlank()) {
             sb.append(MERGE_INSTRUCTION).append("\n\n");
             sb.append("Résumé précédent :\n").append(previousSummary.strip()).append("\n\n");
         }
         sb.append("Conversation à résumer :\n");
+        long turn = baseTurns;
         for (AtelierMessage message : old) {
             String content = message.getContent();
             boolean assistant = "ASSISTANT".equalsIgnoreCase(message.getRole());
+            if (!assistant) {
+                turn++; // un tour = un message utilisateur (même notion que recall)
+            }
             String digest = assistant ? toolDigest(message.getToolTrace()) : "";
             // Un message assistant sans texte mais avec une trajectoire d'outils a quand même quelque
             // chose à résumer (F-119 / SF-119-03) : ne pas l'écarter sur le seul contenu blanc.
             if ((content == null || content.isBlank()) && digest.isEmpty()) {
                 continue;
             }
-            sb.append(assistant ? "ASSISTANT : " : "UTILISATEUR : ")
+            sb.append("[tour ").append(turn).append("] ")
+                    .append(assistant ? "ASSISTANT : " : "UTILISATEUR : ")
                     .append(content == null ? "" : content.strip()).append('\n');
             if (!digest.isEmpty()) {
                 sb.append(digest);

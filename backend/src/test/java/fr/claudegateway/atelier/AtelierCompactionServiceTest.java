@@ -517,6 +517,100 @@ class AtelierCompactionServiceTest {
         verify(workspaceRepository).save(workspace);
     }
 
+    // ------------------------------------- F-162 / SF-162-02 : le résumé de compaction ancré
+
+    @Test
+    void renderForSummaryPrefixesEachTurnWithItsOriginNumber() {
+        // Chaque tour rendu porte son numéro d'origine « [tour N] » : le tour utilisateur incrémente,
+        // le tour assistant porte le numéro du tour utilisateur auquel il répond (même notion que recall).
+        OffsetDateTime t0 = OffsetDateTime.now().minusMinutes(10);
+        List<AtelierMessage> old = List.of(
+                message("USER", "demande 1", t0),
+                message("ASSISTANT", "réponse 1", t0.plusMinutes(1)),
+                message("USER", "demande 2", t0.plusMinutes(2)));
+
+        String rendered = AtelierCompactionService.renderForSummary(null, old, 0L);
+
+        assertThat(rendered).contains("[tour 1] UTILISATEUR : demande 1");
+        assertThat(rendered).contains("[tour 1] ASSISTANT : réponse 1");
+        assertThat(rendered).contains("[tour 2] UTILISATEUR : demande 2");
+    }
+
+    @Test
+    void renderForSummaryNumbersFromTheBaseOffsetForIncrementalCompaction() {
+        // La compaction est incrémentale : la frontière avance, donc le premier tour de la fenêtre
+        // n'est pas le tour 1. On numérote À PARTIR de l'offset de base pour que « tour N » désigne le
+        // même tour que recall — pas de remise à 1 à chaque passe.
+        OffsetDateTime t0 = OffsetDateTime.now().minusMinutes(5);
+        List<AtelierMessage> old = List.of(
+                message("USER", "demande", t0),
+                message("ASSISTANT", "réponse", t0.plusMinutes(1)));
+
+        String rendered = AtelierCompactionService.renderForSummary(
+                "## Objectif\nLivrer X.", old, 10L);
+
+        assertThat(rendered).contains("[tour 11] UTILISATEUR : demande");
+        assertThat(rendered).contains("[tour 11] ASSISTANT : réponse");
+        assertThat(rendered).doesNotContain("[tour 1]"); // pas de remise à 1
+    }
+
+    @Test
+    void theTwoArgRenderStillWorksAndDefaultsToBaseZero() {
+        // La surcharge historique à deux arguments reste disponible et délègue avec un offset nul —
+        // les appelants qui n'ont pas d'offset (et les tests existants) ne cassent pas.
+        OffsetDateTime t0 = OffsetDateTime.now();
+        String rendered = AtelierCompactionService.renderForSummary(
+                null, List.of(message("USER", "demande", t0)));
+
+        assertThat(rendered).contains("[tour 1] UTILISATEUR : demande");
+    }
+
+    @Test
+    void theSummaryInstructionRequiresTurnAnchorsButStaysBounded() {
+        // La consigne EXIGE des ancres (numéro de tour + termes distinctifs) pour que recall vise juste,
+        // tout en rappelant que ça reste un résumé, pas une copie.
+        String prompt = AtelierCompactionService.SUMMARY_SYSTEM_PROMPT;
+
+        assertThat(prompt).contains("ANCRE");
+        assertThat(prompt).contains("(tour N)");
+        assertThat(prompt).contains("[tour N]");
+        assertThat(prompt).contains("TERMES DISTINCTIFS");
+        assertThat(prompt).contains("c'est un résumé, pas une copie");
+    }
+
+    @Test
+    void theSummaryMarkerBridgesToRecall() {
+        // Le libellé du bloc de résumé rappelle recall pour un détail non listé — pont SF-162-01/02,
+        // et constante (préfixe stable : rien de volatil, cache préservé).
+        assertThat(AtelierCompactionService.SUMMARY_MARKER).contains("recall");
+        assertThat(AtelierCompactionService.SUMMARY_MARKER).contains("tour d'origine");
+    }
+
+    @Test
+    void compactionThreadsTheBaseOffsetIntoTheRenderedTurns() {
+        // Bout en bout : doCompact lit l'offset de base (tours USER antérieurs à la fenêtre, filtré
+        // workspace_id + user_id) et le propage au rendu — le texte soumis à la synthèse numérote à
+        // partir de cet offset.
+        StubAiAgentProvider provider = new StubAiAgentProvider();
+        provider.enqueueFinal("Résumé ancré.");
+        OffsetDateTime t0 = OffsetDateTime.now().minusHours(1);
+        List<AtelierMessage> history = new ArrayList<>(List.of(
+                message("USER", longText("demande 1"), t0),
+                message("ASSISTANT", longText("réponse 1"), t0.plusMinutes(1)),
+                message("USER", longText("demande 2"), t0.plusMinutes(2)),
+                message("ASSISTANT", longText("réponse 2"), t0.plusMinutes(3))));
+        stubHistory(history);
+        when(messageRepository.countByWorkspaceIdAndUserIdAndRoleAndCreatedAtLessThan(
+                workspaceId, userId, "USER", t0)).thenReturn(10L);
+
+        AtelierCompactionService.CompactionOutcome outcome =
+                service(provider).compactIfOversized(userId, workspace, null);
+
+        assertThat(outcome.compacted()).isTrue();
+        String submitted = provider.lastRequest.messages().get(0).content().get(0).toString();
+        assertThat(submitted).contains("[tour 11] "); // premier tour ancien = offset 10 + 1
+    }
+
     private AtelierMessage assistantWithTrace(String content, String toolTrace, OffsetDateTime at) {
         return AtelierMessage.builder().id(UUID.randomUUID()).workspaceId(workspaceId).userId(userId)
                 .role("ASSISTANT").content(content).toolTrace(toolTrace).createdAt(at).build();

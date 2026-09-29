@@ -44,6 +44,18 @@ public interface AtelierMessageRepository extends JpaRepository<AtelierMessage, 
             UUID workspaceId, UUID userId, String role, java.time.OffsetDateTime createdAt);
 
     /**
+     * Offset de base du numéro de tour pour le résumé de compaction (F-162 / SF-162-02) : nombre de
+     * messages d'un rôle donné (typiquement {@code USER}) <b>strictement antérieurs</b> à un instant,
+     * dans le fil. Symétrique de {@link #countByWorkspaceIdAndUserIdAndRoleAndCreatedAtLessThanEqual}
+     * (qui compte {@code <=}), utilisé ici pour numéroter les tours d'une fenêtre rejouée <b>à partir
+     * du dernier tour résumé</b> — la compaction étant incrémentale, la frontière avance et le premier
+     * tour de la fenêtre n'est pas le tour 1. « tour N » désigne ainsi le même tour que {@code recall}.
+     * Filtrée {@code workspace_id} + {@code user_id} comme toutes les lectures de cette table.
+     */
+    long countByWorkspaceIdAndUserIdAndRoleAndCreatedAtLessThan(
+            UUID workspaceId, UUID userId, String role, java.time.OffsetDateTime createdAt);
+
+    /**
      * Messages postérieurs à la frontière de rejeu du fil (F-39 / SF-39-04) : ce que l'agent a
      * encore en mémoire après un « nouveau départ ». Filtrée sur {@code user_id} comme toutes les
      * lectures de cette table.
