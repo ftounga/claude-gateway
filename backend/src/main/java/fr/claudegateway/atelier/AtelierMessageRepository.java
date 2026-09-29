@@ -36,6 +36,17 @@ public interface AtelierMessageRepository extends JpaRepository<AtelierMessage, 
             @Param("userId") UUID userId, @Param("term") String term, Pageable pageable);
 
     /**
+     * Relecture <b>isolée</b> de messages par identifiants (F-162 / SF-162-06, recherche sémantique) :
+     * charge les entités dont l'{@code id} est dans {@code ids}, <b>toujours filtrées {@code workspace_id}
+     * ET {@code user_id}</b>. C'est la défense en profondeur du chemin sémantique : même si la recherche
+     * vecteur (SQL natif) filtre déjà le tenant, cette relecture le refiltre — un id d'un autre
+     * utilisateur / workspace ne peut jamais être matérialisé ici. L'ordre de la liste n'est pas garanti :
+     * l'appelant réordonne selon l'ordre de similarité renvoyé par la recherche vecteur.
+     */
+    List<AtelierMessage> findByWorkspaceIdAndUserIdAndIdIn(UUID workspaceId, UUID userId,
+            java.util.Collection<UUID> ids);
+
+    /**
      * Numéro de tour d'un extrait (F-162 / SF-162-01) : nombre de messages d'un rôle donné (typiquement
      * {@code USER}) jusqu'à un instant inclus, dans le fil. Filtrée {@code workspace_id} + {@code user_id}
      * comme toutes les lectures de cette table. Sert à étiqueter chaque extrait « tour N ».

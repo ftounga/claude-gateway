@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-162 / SF-162-06 — RECHERCHE SEMANTIQUE DU recall : embeddings des messages + similarite pgvector.
+
+      POSTGRESQL UNIQUEMENT. La colonne vectorielle `embedding vector(1536)` et l'index de similarite
+      sont Postgres only : tout le DDL vector est isole en changesets dbms="postgresql". H2 (tests/dev)
+      ne recoit RIEN de `vector` (sinon les tests casseraient) — Liquibase marque ces changesets
+      MARK_RAN sur H2. La colonne N'EST PAS mappee en JPA (Hibernate ne connait pas le type vector) :
+      elle est manipulee par SQL natif (CAST(? AS vector) en ecriture, <=> cosine en recherche).
+
+      Dimension 1536 = text-embedding-3-small (defaut du schema 002-pgvector / 011-chunks-ingestion).
+      Index hnsw vector_cosine_ops (pgvector >= 0.5, present en prod 0.8.1) : pas d'entrainement requis,
+      operateur <=> = distance cosine, coherent avec la recherche du store.
+
+      Rollback : DROP COLUMN embedding (l'extension `vector` est partagee avec le RAG, on ne la retire pas).
+    -->
+
+    <changeSet id="135-enable-pgvector" author="claude-gateway" dbms="postgresql">
+        <sql>CREATE EXTENSION IF NOT EXISTS vector;</sql>
+    </changeSet>
+
+    <changeSet id="135-atelier-messages-embedding-column" author="claude-gateway" dbms="postgresql">
+        <sql>ALTER TABLE atelier_messages ADD COLUMN IF NOT EXISTS embedding vector(1536);</sql>
+        <rollback>
+            <sql>ALTER TABLE atelier_messages DROP COLUMN IF EXISTS embedding;</sql>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="135-atelier-messages-embedding-index" author="claude-gateway" dbms="postgresql">
+        <sql>CREATE INDEX IF NOT EXISTS atelier_messages_embedding_idx
+             ON atelier_messages USING hnsw (embedding vector_cosine_ops);</sql>
+        <rollback>
+            <sql>DROP INDEX IF EXISTS atelier_messages_embedding_idx;</sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
