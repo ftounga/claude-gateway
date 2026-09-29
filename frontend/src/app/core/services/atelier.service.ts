@@ -568,6 +568,11 @@ export class AtelierService {
       costEur?: string;
       /** Le modèle a soumis un plan à approbation ce tour (F-121 / SF-121-10). */
       planSubmitted?: boolean;
+      /** Compaction du fil (F-162 / SF-162-03) : en cours, et nombre de tours résumés à la fin. */
+      running?: boolean;
+      summarizedTurns?: number;
+      /** Repère du/des tour(s) retrouvé(s) par recall (F-162 / SF-162-03). */
+      repere?: string;
     };
     try {
       payload = JSON.parse(data);
@@ -635,6 +640,17 @@ export class AtelierService {
       // Consommation cumulée du tour (F-39 / SF-39-15). Additif : un backend antérieur ne l'émet
       // pas, et un appelant qui ne s'y abonne pas l'ignore.
       handlers.onProgress?.(payload.tokens ?? 0);
+    } else if (event === 'compaction') {
+      // F-162 / SF-162-03 : la compaction devient visible. `running` vrai = barre ; faux = finie, avec
+      // le nombre de tours résumés pour le marqueur « Conversation compactée · N tours résumés ».
+      handlers.onCompaction?.({
+        running: payload.running === true,
+        summarizedTurns:
+          typeof payload.summarizedTurns === 'number' ? payload.summarizedTurns : 0,
+      });
+    } else if (event === 'recall') {
+      // F-162 / SF-162-03 : recall a retrouvé un détail — le repère du tour part à l'écran.
+      handlers.onRecalled?.({ repere: typeof payload.repere === 'string' ? payload.repere : '' });
     } else if (event === 'plan') {
       // Plan de travail du tour (F-39 / SF-39-13) : la liste complète, qui remplace la précédente.
       handlers.onPlan?.(payload.steps ?? []);

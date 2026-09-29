@@ -2470,4 +2470,79 @@ describe('AtelierTerminalComponent', () => {
       expect(fixture.nativeElement.querySelector('.terminal-history-fold')).not.toBeNull();
     });
   });
+
+  // F-162 / SF-162-03 — la compaction et le recall deviennent VISIBLES : barre pendant la compaction,
+  // marqueurs persistants dans le flux. On teste le RENDU RÉEL (élément présent, dimensions), pas la
+  // seule présence d'une règle CSS.
+  describe('visibilité compaction / recall (F-162 / SF-162-03)', () => {
+    function live(over: Record<string, unknown> = {}) {
+      component.streaming = {
+        status: 'running',
+        blocks: [],
+        text: '',
+        tokens: null,
+        ...over,
+      } as AtelierTerminalComponent['streaming'];
+      fixture.detectChanges();
+    }
+
+    function markerBlock(kind: 'compaction' | 'recall', label: string): AtelierTerminalBlock {
+      return {
+        tool: kind,
+        toolUseId: kind,
+        threadId: null,
+        output: '',
+        hasOutput: false,
+        error: false,
+        expanded: false,
+        marker: { kind, label },
+      } as AtelierTerminalBlock;
+    }
+
+    it('affiche une barre de progression pendant la compaction, rendue réellement', () => {
+      live({ compacting: true });
+
+      const bar = (fixture.nativeElement as HTMLElement).querySelector('.terminal-compaction-bar');
+      expect(bar).not.toBeNull();
+      expect(bar?.textContent).toContain('Compaction de la conversation…');
+      const fill = bar?.querySelector('.terminal-compaction-bar-fill') as HTMLElement | null;
+      // Rendu réel : la jauge occupe de la place (mise en page effective), pas juste une classe posée.
+      expect(fill).not.toBeNull();
+      expect(fill!.getBoundingClientRect().width).toBeGreaterThan(0);
+    });
+
+    it('retire la barre quand la compaction est finie', () => {
+      live({ compacting: false });
+
+      expect((fixture.nativeElement as HTMLElement).querySelector('.terminal-compaction-bar')).toBeNull();
+    });
+
+    it('pose un marqueur « Conversation compactée · N tours résumés » dans le flux vivant', () => {
+      live({ blocks: [markerBlock('compaction', 'Conversation compactée · 12 tours résumés')] });
+
+      const marker = (fixture.nativeElement as HTMLElement)
+        .querySelector('.terminal-flux-marker[data-kind="compaction"]');
+      expect(marker).not.toBeNull();
+      expect(marker?.textContent).toContain('Conversation compactée · 12 tours résumés');
+      // Ce n'est PAS une sortie de commande : pas de shell « $ » dans un marqueur.
+      expect(marker?.querySelector('.terminal-dollar')).toBeNull();
+    });
+
+    it('pose un marqueur « Détail rappelé · tour N » dans le flux vivant', () => {
+      live({ blocks: [markerBlock('recall', 'Détail rappelé · tour 34')] });
+
+      const marker = (fixture.nativeElement as HTMLElement)
+        .querySelector('.terminal-flux-marker[data-kind="recall"]');
+      expect(marker).not.toBeNull();
+      expect(marker?.textContent).toContain('Détail rappelé · tour 34');
+    });
+
+    it('un marqueur ne compte pas comme une étape de la ligne vivante', () => {
+      live({ blocks: [markerBlock('compaction', 'Conversation compactée · 2 tours résumés')] });
+
+      // Aucune étape réelle : la ligne vivante annonce le démarrage, pas « 1 étape ».
+      const line = (fixture.nativeElement as HTMLElement).querySelector('.terminal-live')?.textContent ?? '';
+      expect(line).not.toContain('étape');
+    });
+  });
 });

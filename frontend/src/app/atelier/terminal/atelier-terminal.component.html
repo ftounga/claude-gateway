@@ -688,7 +688,17 @@
             <!-- LOT D'EXPLORATIONS PARALLÈLES (F-150 / SF-150-06) : ≥ 2 explore adjacents → un seul
                  bloc groupé, rendu sur son ouverture ; ses membres suivants sont masqués. Historique :
                  état « terminé ». Un explore ISOLÉ garde son rendu ligne (branche @else). -->
-            @if (exploreGroupAt(message.terminal, $index); as group) {
+            @if (block.marker; as marker) {
+              <!-- MARQUEUR DE FLUX (F-162 / SF-162-03) : compaction accomplie ou détail rappelé.
+                   Ni sortie de commande, ni carte — une ligne discrète et persistante. -->
+              <p class="terminal-flux-marker" [attr.data-kind]="marker.kind" role="status">
+                <mat-icon class="terminal-flux-marker-icon" aria-hidden="true">{{ fluxMarkerIcon(marker) }}</mat-icon>
+                <span class="terminal-flux-marker-text">{{ marker.label }}</span>
+              </p>
+            } @else {
+              <!-- Le `as group` n'est admis que sur un `@if` : on imbrique l'exploration ici, une
+                   fois le marqueur écarté. -->
+              @if (exploreGroupAt(message.terminal, $index); as group) {
               <ng-container
                 *ngTemplateOutlet="subAgentsTemplate; context: { $implicit: group, live: false }"
               ></ng-container>
@@ -753,6 +763,7 @@
                 <app-page-block [page]="page" [readOnly]="readOnly" (open)="openPage($event)"></app-page-block>
               }
             </div>
+            }
             }
           }
         }
@@ -869,10 +880,30 @@
 
     <!-- Tour en cours : mêmes lignes, au fil de l'eau. -->
     @if (streaming; as live) {
+      <!-- COMPACTION EN COURS (F-162 / SF-162-03) : une barre indéterminée, le temps de l'appel de
+           synthèse. Avancement indéterminé (un appel unique, pas un pourcentage) ; non animée sous
+           prefers-reduced-motion. Le marqueur « Conversation compactée · N » vit dans les blocs. -->
+      @if (live.compacting) {
+        <div class="terminal-compaction-bar" role="status" aria-live="polite">
+          <span class="terminal-compaction-bar-label">Compaction de la conversation…</span>
+          <span class="terminal-compaction-bar-track" aria-hidden="true">
+            <span class="terminal-compaction-bar-fill"></span>
+          </span>
+        </div>
+      }
       @for (block of live.blocks; track $index) {
         <!-- LOT D'EXPLORATIONS PARALLÈLES, AU FIL DE L'EAU (F-150 / SF-150-06) : mêmes règles qu'en
              historique, mais l'état vaut « en cours » tant que le tour tourne. -->
-        @if (exploreGroupAt(live.blocks, $index); as group) {
+        @if (block.marker; as marker) {
+          <!-- MARQUEUR DE FLUX AU FIL DE L'EAU (F-162 / SF-162-03). -->
+          <p class="terminal-flux-marker" [attr.data-kind]="marker.kind" role="status">
+            <mat-icon class="terminal-flux-marker-icon" aria-hidden="true">{{ fluxMarkerIcon(marker) }}</mat-icon>
+            <span class="terminal-flux-marker-text">{{ marker.label }}</span>
+          </p>
+        } @else {
+          <!-- Le `as group` n'est admis que sur un `@if` (jamais sur `@else if`) : on imbrique donc
+               la logique d'exploration ici, une fois le marqueur écarté. -->
+          @if (exploreGroupAt(live.blocks, $index); as group) {
           <ng-container
             *ngTemplateOutlet="subAgentsTemplate; context: { $implicit: group, live: true }"
           ></ng-container>
@@ -934,6 +965,7 @@
             <app-page-block [page]="page" [readOnly]="readOnly" (open)="openPage($event)"></app-page-block>
           }
         </div>
+        }
         }
       }
       @if (live.text.length > 0) {

@@ -1688,7 +1688,10 @@ public class AtelierChatService implements RelayInterruptTarget {
         AtelierCompactionService.CompactionOutcome compaction =
                 AtelierCompactionService.CompactionOutcome.NONE;
         if (compactionService != null) {
-            compaction = compactionService.compactIfOversized(userId, workspace, apiKey);
+            // Le listener rend la compaction visible (F-162 / SF-162-03) : barre pendant, marqueur
+            // « Conversation compactée · N tours » après. De l'affichage seul — rien ne change de ce qui
+            // repart au modèle ; best-effort, un échec d'émission ne casse pas la compaction.
+            compaction = compactionService.compactIfOversized(userId, workspace, apiKey, listener);
         }
 
         // Historique de l'atelier (texte) + nouveau message utilisateur.
@@ -2019,7 +2022,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                     }
                     promptTooLongHandled = true;
                     AtelierCompactionService.CompactionOutcome forced =
-                            compactionService.compactNow(userId, workspace, apiKey);
+                            compactionService.compactNow(userId, workspace, apiKey, listener);
                     inputTokens += forced.inputTokens();
                     outputTokens += forced.outputTokens();
                     cacheReadTokens += forced.cacheReadTokens();
@@ -2311,7 +2314,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                     // conversation (atelier_messages), côté gateway, indépendamment de la cible
                     // d'exécution (runner/sandbox) : c'est de la recherche + relais sur nos données,
                     // jamais un moteur IA. Isolation user_id + workspace_id portée par la requête.
-                    outcome = recall(userId, workspace, call);
+                    outcome = recall(userId, workspace, call, listener);
                 } else if (fr.claudegateway.radar.RadarToolCatalog.isRadarTool(call.name())) {
                     // F-104 / SF-104-01 : le registre du Radar vit dans la gateway, pas sur la machine.
                     outcome = executeRadarTool(userId, workspace, call, turnNote);
@@ -3993,7 +3996,8 @@ public class AtelierChatService implements RelayInterruptTarget {
      * résumés, repliés, ou d'avant un « Nouveau départ » — c'est ce qui rend la compaction et le reset
      * sûrs, le détail restant rappelable à la demande. Recherche + relais, jamais un moteur IA.</p>
      */
-    private ToolOutcome recall(UUID userId, Workspace workspace, AgentToolCall call) {
+    private ToolOutcome recall(UUID userId, Workspace workspace, AgentToolCall call,
+            AtelierProgressListener listener) {
         String query = arg(call.input(), "query");
         if (query == null || query.isBlank()) {
             return ToolOutcome.error(
@@ -4013,18 +4017,44 @@ public class AtelierChatService implements RelayInterruptTarget {
                 .append(" pour « ").append(needle)
                 .append(" » dans l'historique de ce fil (fil entier, y compris tours résumés, repliés "
                         + "ou d'avant un « Nouveau départ »), du plus récent au plus ancien :\n");
+        // Tours retrouvés, dans l'ordre de rencontre et sans doublon : le repère « Détail rappelé ·
+        // tour N » (F-162 / SF-162-03) montre à l'écran OÙ le détail a été retrouvé.
+        java.util.List<Long> foundTurns = new java.util.ArrayList<>();
         for (AtelierMessage message : matches) {
             // Numéro de tour : le nᵉ message USER jusqu'à cet instant inclus. Un extrait tiré d'une
             // réponse d'assistant porte le numéro du tour utilisateur auquel il répond.
             long turn = messageRepository.countByWorkspaceIdAndUserIdAndRoleAndCreatedAtLessThanEqual(
                     workspace.getId(), userId, "USER", message.getCreatedAt());
+            if (!foundTurns.contains(turn)) {
+                foundTurns.add(turn);
+            }
             String who = "USER".equals(message.getRole()) ? "utilisateur" : "assistant";
             out.append("\n[tour ").append(turn)
                     .append(" · ").append(message.getCreatedAt().toLocalDate())
                     .append(" · ").append(who).append("] ")
                     .append(recallExtract(message.getContent(), needle)).append('\n');
         }
+        // Visibilité (F-162 / SF-162-03) : best-effort — l'affichage ne fait jamais échouer l'outil.
+        safeRecalled(listener, foundTurns);
         return ToolOutcome.info(out.toString().strip());
+    }
+
+    /**
+     * Relaie « Détail rappelé · tour N » sans jamais lever (F-162 / SF-162-03) : l'affichage est
+     * best-effort. Le repère est mis en forme « tour N » (un seul) ou « tours N, M » (plusieurs).
+     */
+    private static void safeRecalled(AtelierProgressListener listener, List<Long> foundTurns) {
+        if (foundTurns == null || foundTurns.isEmpty()) {
+            return;
+        }
+        String repere = (foundTurns.size() == 1 ? "tour " : "tours ")
+                + foundTurns.stream().map(String::valueOf)
+                        .collect(java.util.stream.Collectors.joining(", "));
+        try {
+            listener.onRecalled(repere);
+        } catch (RuntimeException ex) {
+            log.debug("Signal de rappel (recall) ignoré : {}", ex.getClass().getSimpleName());
+        }
     }
 
     /**
@@ -4070,9 +4100,11 @@ public class AtelierChatService implements RelayInterruptTarget {
             case "search_files" -> new AtelierProgressListener.AtelierStepEvent("search", arg(input, "query"));
             // F-121 / SF-121-01 : grep/glob se montrent à l'écran comme une recherche, avec le motif.
             case "grep", "glob" -> new AtelierProgressListener.AtelierStepEvent("search", arg(input, "pattern"));
-            // F-162 / SF-162-01 : recall se montre comme une recherche, avec le mot-clé. La visibilité
-            // riche (« Recherche dans l'historique… ») est SF-162-03 ; ici, une étape simple, pas d'événement neuf.
-            case "recall" -> new AtelierProgressListener.AtelierStepEvent("search", arg(input, "query"));
+            // F-162 / SF-162-03 : recall a désormais son étape PROPRE (« Recherche dans l'historique… »),
+            // distincte de la recherche fichiers/web — l'écran nomme ainsi ce qui est fouillé (SF-162-01
+            // se contentait du type générique « search »). Le repère du tour retrouvé arrive après, par
+            // l'événement `recall` (onRecalled).
+            case "recall" -> new AtelierProgressListener.AtelierStepEvent("recall", arg(input, "query"));
             // F-38 / SF-38-07 : la commande elle-même est l'information utile à l'écran, tronquée
             // pour qu'un one-liner de 3 000 caractères ne noie pas la liste des étapes (contrat §3).
             case "bash" -> new AtelierProgressListener.AtelierStepEvent("bash",

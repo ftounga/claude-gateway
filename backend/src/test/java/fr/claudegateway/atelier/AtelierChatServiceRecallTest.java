@@ -223,4 +223,81 @@ class AtelierChatServiceRecallTest {
 
         assertThat(String.join("\n", agentProvider.messageSnapshots)).contains("Aucun extrait trouvé");
     }
+
+    // ---------------------------------------------------------------- F-162 / SF-162-03 : visibilité
+
+    /** Listener capteur : garde les étapes reçues et le repère de rappel émis. */
+    private static final class Captor implements AtelierProgressListener {
+        final List<AtelierStepEvent> steps = new java.util.ArrayList<>();
+        final List<String> recalled = new java.util.ArrayList<>();
+
+        @Override
+        public void onAction(AtelierStepEvent step) {
+            steps.add(step);
+        }
+
+        @Override
+        public void onText(String text) {
+            // rien
+        }
+
+        @Override
+        public void onRecalled(String repere) {
+            recalled.add(repere);
+        }
+    }
+
+    @Test
+    @DisplayName("SF-162-03 : l'étape de recall est SPÉCIALISÉE (type « recall »), pas la recherche générique")
+    void recallStepIsSpecialized() {
+        terminal(WorkspaceExecutionTarget.SANDBOX);
+        when(messageRepository.searchByContent(eq(workspaceId), eq(userId), anyString(), any(Pageable.class)))
+                .thenReturn(List.of(message("USER", "on avait choisi Postgres pour la base",
+                        OffsetDateTime.parse("2026-02-01T09:00:00Z"))));
+        when(messageRepository.countByWorkspaceIdAndUserIdAndRoleAndCreatedAtLessThanEqual(
+                eq(workspaceId), eq(userId), eq("USER"), any())).thenReturn(7L);
+        Captor captor = new Captor();
+
+        agentProvider.enqueueToolCall("recall", "query", "base");
+        agentProvider.enqueueFinal("Rappel fait.");
+        service.chatStreaming(userId, workspaceId, "quelle base déjà ?", captor);
+
+        assertThat(captor.steps).anySatisfy(step -> {
+            assertThat(step.type()).isEqualTo("recall");
+            assertThat(step.path()).isEqualTo("base");
+        });
+    }
+
+    @Test
+    @DisplayName("SF-162-03 : recall avec extraits → repère « tour N » émis ; sans extrait → rien")
+    void recallEmitsRetrievedTurnMarker() {
+        terminal(WorkspaceExecutionTarget.SANDBOX);
+        when(messageRepository.searchByContent(eq(workspaceId), eq(userId), anyString(), any(Pageable.class)))
+                .thenReturn(List.of(message("ASSISTANT", "La décision réseau : un VPC dédié.",
+                        OffsetDateTime.parse("2026-09-12T10:00:00Z"))));
+        when(messageRepository.countByWorkspaceIdAndUserIdAndRoleAndCreatedAtLessThanEqual(
+                eq(workspaceId), eq(userId), eq("USER"), any())).thenReturn(34L);
+        Captor captor = new Captor();
+
+        agentProvider.enqueueToolCall("recall", "query", "réseau");
+        agentProvider.enqueueFinal("Rappel fait.");
+        service.chatStreaming(userId, workspaceId, "la décision réseau ?", captor);
+
+        assertThat(captor.recalled).containsExactly("tour 34");
+    }
+
+    @Test
+    @DisplayName("SF-162-03 : recall sans extrait n'émet aucun repère")
+    void recallWithNoMatchEmitsNoMarker() {
+        terminal(WorkspaceExecutionTarget.SANDBOX);
+        when(messageRepository.searchByContent(eq(workspaceId), eq(userId), anyString(), any(Pageable.class)))
+                .thenReturn(List.of());
+        Captor captor = new Captor();
+
+        agentProvider.enqueueToolCall("recall", "query", "licorne");
+        agentProvider.enqueueFinal("Rien trouvé.");
+        service.chatStreaming(userId, workspaceId, "des licornes ?", captor);
+
+        assertThat(captor.recalled).isEmpty();
+    }
 }

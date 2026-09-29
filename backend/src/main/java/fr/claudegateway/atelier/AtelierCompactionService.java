@@ -206,6 +206,18 @@ public class AtelierCompactionService {
      * @return la consommation de l'appel de compaction, ou {@link CompactionOutcome#NONE}
      */
     public CompactionOutcome compactIfOversized(UUID userId, Workspace workspace, String apiKey) {
+        return compactIfOversized(userId, workspace, apiKey, AtelierProgressListener.NOOP);
+    }
+
+    /**
+     * Comme {@link #compactIfOversized(UUID, Workspace, String)}, mais relaie à {@code listener} les
+     * transitions de compaction (F-162 / SF-162-03 : « démarrée » puis « terminée · N tours ») pour
+     * les rendre visibles dans le terminal. La visibilité est <b>de l'affichage</b> : elle ne change
+     * rien à ce qui repart au modèle, et son émission est best-effort (elle ne fait jamais échouer la
+     * compaction). La surcharge historique reste valide (elle passe {@link AtelierProgressListener#NOOP}).
+     */
+    public CompactionOutcome compactIfOversized(UUID userId, Workspace workspace, String apiKey,
+            AtelierProgressListener listener) {
         if (!Boolean.TRUE.equals(properties.enabled())) {
             return CompactionOutcome.NONE;
         }
@@ -215,7 +227,7 @@ public class AtelierCompactionService {
         if (estimated <= properties.triggerTokens()) {
             return CompactionOutcome.NONE;
         }
-        return doCompact(userId, workspace, apiKey, replayable, estimated);
+        return doCompact(userId, workspace, apiKey, replayable, estimated, listener);
     }
 
     /**
@@ -226,16 +238,26 @@ public class AtelierCompactionService {
      * renvoie {@link CompactionOutcome#NONE} et l'appelant rend un message clair.
      */
     public CompactionOutcome compactNow(UUID userId, Workspace workspace, String apiKey) {
+        return compactNow(userId, workspace, apiKey, AtelierProgressListener.NOOP);
+    }
+
+    /**
+     * Comme {@link #compactNow(UUID, Workspace, String)}, mais relaie à {@code listener} les transitions
+     * de compaction (F-162 / SF-162-03). Best-effort comme la surcharge historique.
+     */
+    public CompactionOutcome compactNow(UUID userId, Workspace workspace, String apiKey,
+            AtelierProgressListener listener) {
         if (!Boolean.TRUE.equals(properties.enabled())) {
             return CompactionOutcome.NONE;
         }
         List<AtelierMessage> replayable = replayable(userId, workspace);
         return doCompact(userId, workspace, apiKey, replayable,
-                estimateReplayTokens(workspace.getChatThreadSummary(), replayable, replayedTraceTurns));
+                estimateReplayTokens(workspace.getChatThreadSummary(), replayable, replayedTraceTurns),
+                listener);
     }
 
     private CompactionOutcome doCompact(UUID userId, Workspace workspace, String apiKey,
-            List<AtelierMessage> replayable, long estimated) {
+            List<AtelierMessage> replayable, long estimated, AtelierProgressListener listener) {
         // On garde les derniers tours entiers ; tout ce qui précède (résumé existant compris) est
         // résumé. S'il n'y a rien d'ancien à résumer, la compaction ne peut rien réduire.
         int splitIndex = Math.max(0, replayable.size() - properties.keepRecentTurns());
@@ -250,13 +272,22 @@ public class AtelierCompactionService {
         // que `recall`. Filtré workspace_id + user_id (isolation).
         long baseTurns = messageRepository.countByWorkspaceIdAndUserIdAndRoleAndCreatedAtLessThan(
                 workspace.getId(), userId, "USER", replayable.get(0).getCreatedAt());
+        // Nombre de TOURS résumés (F-162 / SF-162-03) : les messages USER de la tranche résumée — même
+        // notion de « tour » que recall et SF-162-02. C'est ce N que l'écran affiche.
+        int summarizedTurns = countUserTurns(old);
 
+        // Visibilité (F-162 / SF-162-03) : on ne signale le DÉMARRAGE qu'ici, une fois certain qu'une
+        // compaction a bien lieu (la garde `splitIndex == 0` ci-dessus a déjà écarté « rien à réduire »).
+        // Best-effort : l'affichage ne fait jamais échouer la compaction (F-117).
+        safeStarted(listener);
         try {
             AgentTurn turn = summarize(workspace.getChatThreadSummary(), old, baseTurns, apiKey);
             String summary = turn.text();
             if (summary == null || summary.isBlank()) {
                 log.warn("Compaction sans résumé exploitable (workspace={}, poste={}) : fil inchangé.",
                         workspace.getId(), workspace.getHostId());
+                // Rien n'a été écrit : la barre disparaît, sans marqueur (N = 0).
+                safeDone(listener, 0);
                 return CompactionOutcome.NONE;
             }
             if (log.isDebugEnabled() && !looksSectioned(summary)) {
@@ -270,7 +301,9 @@ public class AtelierCompactionService {
             workspaceRepository.save(workspace);
             log.info("Fil d'Atelier compacté (workspace={}, poste={}) : ~{} tokens rejoués, "
                     + "{} tour(s) résumé(s), {} gardé(s).", workspace.getId(), workspace.getHostId(),
-                    estimated, old.size(), replayable.size() - splitIndex);
+                    estimated, summarizedTurns, replayable.size() - splitIndex);
+            // Terminée : l'écran retire la barre et pose le marqueur « Conversation compactée · N tours ».
+            safeDone(listener, summarizedTurns);
             return new CompactionOutcome(true, turn.inputTokens(), turn.outputTokens(),
                     turn.cacheReadTokens(), turn.cacheWriteTokens());
         } catch (RuntimeException ex) {
@@ -279,7 +312,41 @@ public class AtelierCompactionService {
             // prendra le relais s'il déborde.
             log.warn("Compaction du fil ignorée (workspace={}, poste={}) : {}",
                     workspace.getId(), workspace.getHostId(), ex.getClass().getSimpleName());
+            // La barre disparaît sans marqueur (N = 0) : rien n'a été compacté.
+            safeDone(listener, 0);
             return CompactionOutcome.NONE;
+        }
+    }
+
+    /** Nombre de messages {@code USER} (= de tours) dans une tranche de messages. */
+    private static int countUserTurns(List<AtelierMessage> messages) {
+        int turns = 0;
+        for (AtelierMessage message : messages) {
+            if (!"ASSISTANT".equalsIgnoreCase(message.getRole())) {
+                turns++;
+            }
+        }
+        return turns;
+    }
+
+    /**
+     * Relaie « compaction démarrée » sans jamais lever (F-162 / SF-162-03) : l'affichage est
+     * best-effort, un listener qui échoue ne doit pas casser la compaction (F-117).
+     */
+    private static void safeStarted(AtelierProgressListener listener) {
+        try {
+            listener.onCompactionStarted();
+        } catch (RuntimeException ex) {
+            log.debug("Signal de compaction (démarrée) ignoré : {}", ex.getClass().getSimpleName());
+        }
+    }
+
+    /** Relaie « compaction terminée · N tours » sans jamais lever (même best-effort que {@link #safeStarted}). */
+    private static void safeDone(AtelierProgressListener listener, int summarizedTurns) {
+        try {
+            listener.onCompactionDone(summarizedTurns);
+        } catch (RuntimeException ex) {
+            log.debug("Signal de compaction (terminée) ignoré : {}", ex.getClass().getSimpleName());
         }
     }
 

@@ -623,6 +623,20 @@ export interface AtelierPlanStep {
   status: string;
 }
 
+/** Transition de compaction du fil (F-162 / SF-162-03), événement SSE `compaction`. */
+export interface AtelierCompactionEvent {
+  /** Vrai = elle démarre (barre indéterminée) ; faux = elle est finie. */
+  running: boolean;
+  /** Nombre de tours résumés, connu à la fin ; `0` quand rien n'a finalement été écrit. */
+  summarizedTurns: number;
+}
+
+/** Un détail retrouvé par `recall` (F-162 / SF-162-03), événement SSE `recall`. */
+export interface AtelierRecallEvent {
+  /** Le repère du/des tour(s) retrouvé(s), déjà mis en forme (« tour 34 » / « tours 12, 34 »). */
+  repere: string;
+}
+
 export interface AtelierStreamHandlers {
   onAction: (action: AtelierStreamAction) => void;
   onText: (text: string) => void;
@@ -666,6 +680,19 @@ export interface AtelierStreamHandlers {
    * chaque appel : elle remplace la précédente. Additif — un backend antérieur ne l'émet pas.
    */
   onPlan?: (steps: AtelierPlanStep[]) => void;
+
+  /**
+   * **La compaction du fil** (F-162 / SF-162-03) : `running` vrai = elle démarre (barre indéterminée) ;
+   * faux = elle est finie (`summarizedTurns` porte le nombre de tours résumés, `0` quand rien n'a été
+   * écrit). Rend visible ce qui était muet. **Optionnel** : un backend antérieur ne l'émet pas.
+   */
+  onCompaction?: (event: AtelierCompactionEvent) => void;
+
+  /**
+   * **Un détail retrouvé par `recall`** (F-162 / SF-162-03) : `repere` dit OÙ (« tour 34 »). Marqueur
+   * « Détail rappelé · tour N ». **Optionnel** : un backend antérieur ne l'émet pas.
+   */
+  onRecalled?: (event: AtelierRecallEvent) => void;
 
   /**
    * **Un bloc riche posé dans le fil** (F-89 / SF-89-02) : carte, moments, liste. Relayé au fil de
@@ -1002,6 +1029,21 @@ export interface AtelierTerminalBlock {
    * c'est un document rendu par l'agent. Jamais le contenu — la page se relit par `GET /api/pages/{id}`.
    */
   page?: AtelierTerminalPage | null;
+
+  /**
+   * **Un marqueur de flux** (F-162 / SF-162-03) : « Conversation compactée · N tours résumés » ou
+   * « Détail rappelé · tour N ». Ce n'est ni une sortie de commande ni une carte — c'est une trace
+   * discrète, persistante dans le fil, de ce que la passerelle a fait pour tenir le contexte. Absent
+   * partout ailleurs. Rangé comme une carte (`withCards`) pour survivre au recalcul des blocs vivants.
+   */
+  marker?: AtelierFluxMarker | null;
+}
+
+/** Nature d'un marqueur de flux (F-162 / SF-162-03) : compaction accomplie, ou détail rappelé. */
+export interface AtelierFluxMarker {
+  kind: 'compaction' | 'recall';
+  /** Le libellé déjà mis en forme, ex. « Conversation compactée · 12 tours résumés » / « Détail rappelé · tour 34 ». */
+  label: string;
 }
 
 /**

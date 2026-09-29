@@ -74,6 +74,20 @@ describe('chatStepsToBlocks (F-39 SF-39-08)', () => {
     expect(blocks[0].threadId).toBeNull();
   });
 
+  it('F-162 / SF-162-03 : recall se nomme « recherche dans l\'historique », distincte de search', () => {
+    const blocks = chatStepsToBlocks([
+      { type: 'recall', path: 'réseau' },
+      { type: 'recall' },
+      { type: 'search', path: 'réseau' },
+    ]);
+
+    expect(blocks[0].tool).toBe('recall');
+    expect(blocks[0].command).toBe('recherche dans l\'historique « réseau »');
+    expect(blocks[1].command).toBe('recherche dans l\'historique');
+    // La recherche fichiers/web garde son propre libellé — pas de confusion avec l'historique.
+    expect(blocks[2].command).toBe('recherche « réseau »');
+  });
+
   it('F-104 / SF-104-03 : un outil Radar porte sa cible lisible, ou « Radar » sans cible', () => {
     const blocks = chatStepsToBlocks([
       { type: 'radar_find_subject', path: 'Radar · recherche « MFA »' },

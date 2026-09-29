@@ -101,6 +101,8 @@ import {
   AtelierBilanReport,
   AtelierTurnMode,
   AtelierPlanStep,
+  AtelierCompactionEvent,
+  AtelierRecallEvent,
   GitPullRequestResult,
   GitPushResult,
   HostProjectSummary,
@@ -125,6 +127,7 @@ import { chatStepsToBlocks } from './terminal/chat-steps';
 import { cardBlock, withCards } from './terminal/teams-block';
 import { emailBlock } from './terminal/terminal-email';
 import { pageBlock } from './terminal/page-block';
+import { compactionMarkerBlock, recallMarkerBlock } from './terminal/flux-markers';
 import { derivePreview } from './terminal/terminal-preview';
 import { SessionBilanPanelComponent } from './terminal/session-bilan-panel.component';
 import { RADAR_DRAFT_STATE, radarDraftFrom } from '../shared/radar-draft';
@@ -1636,6 +1639,11 @@ export class AtelierComponent implements OnInit, OnDestroy {
         this.zone.run(() =>
           this.execStreaming.update((current) => (current ? { ...current, plan: steps } : current)),
         ),
+      // COMPACTION VISIBLE (F-162 / SF-162-03) : barre pendant, marqueur « Conversation compactée · N »
+      // après. De l'affichage seul — rien du contexte envoyé au modèle ne change.
+      onCompaction: (event) => this.zone.run(() => this.applyCompaction(event)),
+      // RAPPEL VISIBLE (F-162 / SF-162-03) : « Détail rappelé · tour N » après une recherche d'historique.
+      onRecalled: (event) => this.zone.run(() => this.applyRecalled(event)),
       // UN BLOC RICHE posé dans le fil (F-89 / SF-89-02) : carte, moments, liste. On le range avec
       // le NOMBRE D'ÉTAPES déjà reçues — les blocs vivants sont recalculés à chaque étape, et une
       // carte simplement ajoutée serait effacée au relais suivant.
@@ -1774,6 +1782,46 @@ export class AtelierComponent implements OnInit, OnDestroy {
         ? { ...current, blocks: withCards(chatStepsToBlocks(steps), this.cardsOfTurn) }
         : current,
     );
+  }
+
+  /**
+   * Rend la COMPACTION visible (F-162 / SF-162-03). Pendant : une barre indéterminée (`compacting`).
+   * Après : la barre s'éteint et, si des tours ont été résumés, un marqueur « Conversation compactée ·
+   * N tours résumés » est rangé comme une carte — il survit au recalcul des blocs et reste dans le fil.
+   * Rien à résumer (`summarizedTurns === 0`) ⇒ la barre disparaît sans marqueur.
+   */
+  private applyCompaction(event: AtelierCompactionEvent): void {
+    this.execStreaming.update((current) =>
+      current ? { ...current, compacting: event.running } : current,
+    );
+    if (!event.running && event.summarizedTurns > 0) {
+      this.cardsOfTurn = [
+        ...this.cardsOfTurn,
+        {
+          afterSteps: this.streaming()?.steps.length ?? 0,
+          block: compactionMarkerBlock(event.summarizedTurns),
+        },
+      ];
+      this.mirrorLocalSteps();
+    }
+  }
+
+  /**
+   * Rend le RAPPEL visible (F-162 / SF-162-03) : « Détail rappelé · tour N », rangé comme une carte à
+   * la suite de l'étape « Recherche dans l'historique… ». Sans repère, rien n'est posé.
+   */
+  private applyRecalled(event: AtelierRecallEvent): void {
+    if (!event.repere) {
+      return;
+    }
+    this.cardsOfTurn = [
+      ...this.cardsOfTurn,
+      {
+        afterSteps: this.streaming()?.steps.length ?? 0,
+        block: recallMarkerBlock(event.repere),
+      },
+    ];
+    this.mirrorLocalSteps();
   }
 
   /**
@@ -3253,6 +3301,11 @@ export class AtelierComponent implements OnInit, OnDestroy {
         this.zone.run(() =>
           this.execStreaming.update((current) => (current ? { ...current, plan: steps } : current)),
         ),
+      // COMPACTION VISIBLE (F-162 / SF-162-03) : barre pendant, marqueur « Conversation compactée · N »
+      // après. De l'affichage seul — rien du contexte envoyé au modèle ne change.
+      onCompaction: (event) => this.zone.run(() => this.applyCompaction(event)),
+      // RAPPEL VISIBLE (F-162 / SF-162-03) : « Détail rappelé · tour N » après une recherche d'historique.
+      onRecalled: (event) => this.zone.run(() => this.applyRecalled(event)),
       // UN BLOC RICHE posé dans le fil (F-89 / SF-89-02) : carte, moments, liste. On le range avec
       // le NOMBRE D'ÉTAPES déjà reçues — les blocs vivants sont recalculés à chaque étape, et une
       // carte simplement ajoutée serait effacée au relais suivant.

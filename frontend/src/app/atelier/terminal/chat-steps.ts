@@ -46,6 +46,12 @@ function stepCommand(step: AtelierStreamAction): string {
       return 'liste des fichiers';
     case 'search':
       return step.path ? `recherche « ${step.path} »` : 'recherche';
+    // F-162 / SF-162-03 : recall a son étiquette PROPRE — « recherche dans l'historique » — pour dire
+    // ce qui est fouillé (la conversation passée), distincte de la recherche fichiers/web.
+    case 'recall':
+      return step.path
+        ? `recherche dans l'historique « ${step.path} »`
+        : "recherche dans l'historique";
     // Une délégation (F-84 / SF-84-04) : la question part à l'écran avant la réponse.
     case 'explore':
       return step.path ? `exploration « ${step.path} »` : 'exploration';

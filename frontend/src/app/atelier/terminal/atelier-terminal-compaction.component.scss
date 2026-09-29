@@ -74,3 +74,87 @@
     background: var(--cg-navy-2);
   }
 }
+
+// COMPACTION EN COURS (F-162 / SF-162-03) : barre INDÉTERMINÉE, le temps de l'appel de synthèse
+// (un appel unique — pas de pourcentage). Aucune couleur ni police nouvelle : jaugé sur --cg-accent,
+// piste sur --cg-navy-2, encre sur --cg-divider ; espacements sur la grille de 4 px.
+.terminal-compaction-bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cg-space-1);
+  padding: var(--cg-space-2) var(--cg-space-3);
+  border-left: 3px solid var(--cg-accent);
+}
+
+.terminal-compaction-bar-label {
+  color: var(--cg-divider);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.terminal-compaction-bar-track {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--cg-navy-2);
+}
+
+.terminal-compaction-bar-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 40%;
+  border-radius: 2px;
+  background: var(--cg-accent);
+  animation: terminal-compaction-slide 1.4s ease-in-out infinite;
+}
+
+@keyframes terminal-compaction-slide {
+  0% {
+    left: -40%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+// PARITÉ D'ACCESSIBILITÉ (charte, prefers-reduced-motion) : pas d'animation. La barre reste LISIBLE —
+// une jauge statique remplie dit « en cours » sans mouvement.
+@media (prefers-reduced-motion: reduce) {
+  .terminal-compaction-bar-fill {
+    position: static;
+    width: 100%;
+    animation: none;
+  }
+}
+
+// MARQUEUR DE FLUX (F-162 / SF-162-03) : « Conversation compactée · N tours résumés » et
+// « Détail rappelé · tour N ». Une trace discrète, persistante dans le fil. Même registre neutre que
+// le filet de contexte ; aucune couleur ni police nouvelle.
+.terminal-flux-marker {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  margin: 0;
+  padding: var(--cg-space-1) var(--cg-space-3);
+  border-left: 3px solid var(--cg-accent);
+  color: var(--cg-divider);
+  font-size: 12px;
+}
+
+.terminal-flux-marker-icon {
+  flex-shrink: 0;
+  color: var(--cg-accent);
+  font-size: 18px;
+  width: 18px;
+  height: 18px;
+}
+
+.terminal-flux-marker-text {
+  min-width: 0;
+  font-weight: 600;
+}

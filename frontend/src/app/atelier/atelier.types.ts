@@ -165,4 +165,12 @@ export interface AtelierExecStreamingItem {
    * secondes, et « démarrage… » laissait croire que rien n'était parti. Optionnel : absent vaut non.
    */
   accepted?: boolean;
+
+  /**
+   * Une **compaction est en cours** (F-162 / SF-162-03) : l'écran montre une barre indéterminée
+   * « Compaction de la conversation… », le temps de l'appel de synthèse. Passe à faux à la fin ; le
+   * marqueur « Conversation compactée · N tours résumés » vit, lui, dans les blocs (comme une carte),
+   * pour rester dans le flux. Optionnel : absent vaut « pas de compaction ».
+   */
+  compacting?: boolean;
 }
