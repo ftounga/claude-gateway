@@ -3,7 +3,10 @@ package fr.claudegateway.atelier;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 /** Persistance des messages Atelier (F-28 / SF-28-02). Lecture toujours filtrée sur {@code user_id}. */
@@ -11,6 +14,34 @@ import org.springframework.stereotype.Repository;
 public interface AtelierMessageRepository extends JpaRepository<AtelierMessage, UUID> {
 
     List<AtelierMessage> findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(UUID workspaceId, UUID userId);
+
+    /**
+     * Rappel à la demande (F-162 / SF-162-01) : recherche <b>mot-clé</b> dans le contenu des messages
+     * du fil, du plus récent au plus ancien, bornée par {@code pageable}.
+     *
+     * <p><b>Isolation stricte</b> : filtrée {@code workspace_id} <b>ET</b> {@code user_id} — un
+     * utilisateur ne peut jamais rappeler les messages d'un autre, ni d'un autre workspace.</p>
+     *
+     * <p><b>Sur TOUT le fil</b> : aucune frontière de rejeu / compaction / « Nouveau départ » n'est
+     * appliquée ici (contrairement à {@link #findByWorkspaceIdAndUserIdAndCreatedAtGreaterThanEqualOrderByCreatedAtAsc}).
+     * {@code recall} retrouve donc même les tours résumés, repliés ou d'avant un « Nouveau départ ».</p>
+     *
+     * <p><b>Portabilité</b> : {@code LOWER(content) LIKE :term} (avec {@code :term} déjà encadré de
+     * {@code %…%} et minuscule) — insensible à la casse et valide en H2 comme en PostgreSQL (pas de
+     * {@code to_tsvector}, qui casserait les tests H2).</p>
+     */
+    @Query("select m from AtelierMessage m where m.workspaceId = :workspaceId and m.userId = :userId "
+            + "and lower(m.content) like :term order by m.createdAt desc")
+    List<AtelierMessage> searchByContent(@Param("workspaceId") UUID workspaceId,
+            @Param("userId") UUID userId, @Param("term") String term, Pageable pageable);
+
+    /**
+     * Numéro de tour d'un extrait (F-162 / SF-162-01) : nombre de messages d'un rôle donné (typiquement
+     * {@code USER}) jusqu'à un instant inclus, dans le fil. Filtrée {@code workspace_id} + {@code user_id}
+     * comme toutes les lectures de cette table. Sert à étiqueter chaque extrait « tour N ».
+     */
+    long countByWorkspaceIdAndUserIdAndRoleAndCreatedAtLessThanEqual(
+            UUID workspaceId, UUID userId, String role, java.time.OffsetDateTime createdAt);
 
     /**
      * Messages postérieurs à la frontière de rejeu du fil (F-39 / SF-39-04) : ce que l'agent a

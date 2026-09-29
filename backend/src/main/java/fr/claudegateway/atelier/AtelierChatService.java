@@ -117,6 +117,17 @@ public class AtelierChatService implements RelayInterruptTarget {
     static final long TURN_BUDGET_MS = 600_000L;
     /** Longueur de la commande relayée à l'écran comme étape de progression (contrat §3). */
     private static final int STEP_COMMAND_CHARS = 200;
+    /**
+     * Rappel à la demande (F-162 / SF-162-01) : nombre maximal d'extraits rendus par {@code recall}.
+     * Borné pour ne pas re-gonfler le contexte vif qu'on cherche justement à alléger.
+     */
+    private static final int RECALL_MAX_EXTRACTS = 5;
+    /**
+     * Rappel à la demande (F-162 / SF-162-01) : taille d'un extrait de {@code recall}, en caractères,
+     * fenêtrée autour de la première occurrence du mot-clé. Constante et non réglage
+     * {@code @ConfigurationProperties} : y toucher rouvrirait le piège des constructeurs du record.
+     */
+    private static final int RECALL_EXTRACT_CHARS = 600;
     /** Agrégat de sortie de commande conservé et rendu au modèle (contrat §5), en octets. */
     private static final int MAX_BASH_OUTPUT_BYTES = 131_072;
     static final String INTERRUPTED_REPLY = "J'ai arrêté le travail en cours à ta demande.";
@@ -544,7 +555,7 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     private static final java.util.Set<String> ANSWER_PLAN_TOOLS =
             java.util.Set.of("read_file", "list_files", "search_files", "grep", "glob", "explore",
-                    "set_plan");
+                    "set_plan", "recall");
     /**
      * Consigne de mode ajoutée à la consigne système en {@link AgentTurnMode#ANSWER_PLAN}
      * (F-120 / SF-120-02). Cohérente avec la doctrine de retenue SF-120-01, mais plus forte : ici la
@@ -2295,6 +2306,12 @@ public class AtelierChatService implements RelayInterruptTarget {
                             listener.onOutput(taskSynthesis);
                         }
                     }
+                } else if ("recall".equals(call.name())) {
+                    // F-162 / SF-162-01 : rappel à la demande. Recherche dans NOTRE historique de
+                    // conversation (atelier_messages), côté gateway, indépendamment de la cible
+                    // d'exécution (runner/sandbox) : c'est de la recherche + relais sur nos données,
+                    // jamais un moteur IA. Isolation user_id + workspace_id portée par la requête.
+                    outcome = recall(userId, workspace, call);
                 } else if (fr.claudegateway.radar.RadarToolCatalog.isRadarTool(call.name())) {
                     // F-104 / SF-104-01 : le registre du Radar vit dans la gateway, pas sur la machine.
                     outcome = executeRadarTool(userId, workspace, call, turnNote);
@@ -3963,6 +3980,77 @@ public class AtelierChatService implements RelayInterruptTarget {
         return messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspaceId, userId);
     }
 
+    /**
+     * Rappel à la demande (F-162 / SF-162-01) : cherche un mot-clé dans l'historique de la
+     * <b>conversation</b> du fil courant et rend au modèle seulement des extraits pertinents bornés.
+     *
+     * <p><b>Isolation stricte</b> : la recherche est filtrée {@code workspace_id} <b>ET</b>
+     * {@code user_id} dans la requête ({@link AtelierMessageRepository#searchByContent}) — un
+     * utilisateur ne peut jamais rappeler les messages d'un autre, ni d'un autre workspace.</p>
+     *
+     * <p><b>Sur tout le fil</b> : la requête ne pose <b>aucune</b> frontière de rejeu/compaction (à la
+     * différence de la lecture bornée de la boucle). {@code recall} retrouve donc même les tours
+     * résumés, repliés, ou d'avant un « Nouveau départ » — c'est ce qui rend la compaction et le reset
+     * sûrs, le détail restant rappelable à la demande. Recherche + relais, jamais un moteur IA.</p>
+     */
+    private ToolOutcome recall(UUID userId, Workspace workspace, AgentToolCall call) {
+        String query = arg(call.input(), "query");
+        if (query == null || query.isBlank()) {
+            return ToolOutcome.error(
+                    "Requête requise pour recall : donne un mot-clé à chercher dans l'historique du fil.");
+        }
+        String needle = query.trim();
+        String term = "%" + needle.toLowerCase(java.util.Locale.ROOT) + "%";
+        List<AtelierMessage> matches = messageRepository.searchByContent(workspace.getId(), userId,
+                term, org.springframework.data.domain.PageRequest.of(0, RECALL_MAX_EXTRACTS));
+        if (matches.isEmpty()) {
+            return ToolOutcome.info(
+                    "Aucun extrait trouvé pour « " + needle + " » dans l'historique de ce fil.");
+        }
+        StringBuilder out = new StringBuilder();
+        out.append(matches.size())
+                .append(matches.size() > 1 ? " extraits trouvés" : " extrait trouvé")
+                .append(" pour « ").append(needle)
+                .append(" » dans l'historique de ce fil (fil entier, y compris tours résumés, repliés "
+                        + "ou d'avant un « Nouveau départ »), du plus récent au plus ancien :\n");
+        for (AtelierMessage message : matches) {
+            // Numéro de tour : le nᵉ message USER jusqu'à cet instant inclus. Un extrait tiré d'une
+            // réponse d'assistant porte le numéro du tour utilisateur auquel il répond.
+            long turn = messageRepository.countByWorkspaceIdAndUserIdAndRoleAndCreatedAtLessThanEqual(
+                    workspace.getId(), userId, "USER", message.getCreatedAt());
+            String who = "USER".equals(message.getRole()) ? "utilisateur" : "assistant";
+            out.append("\n[tour ").append(turn)
+                    .append(" · ").append(message.getCreatedAt().toLocalDate())
+                    .append(" · ").append(who).append("] ")
+                    .append(recallExtract(message.getContent(), needle)).append('\n');
+        }
+        return ToolOutcome.info(out.toString().strip());
+    }
+
+    /**
+     * Extrait borné et fenêtré autour de la première occurrence du mot-clé (F-162 / SF-162-01) : au
+     * plus {@link #RECALL_EXTRACT_CHARS} caractères, espaces normalisés, avec des points de suspension
+     * là où le contenu a été coupé. Le mot-clé reste ainsi visible même dans un long message.
+     */
+    private static String recallExtract(String content, String needle) {
+        if (content == null || content.isBlank()) {
+            return "";
+        }
+        String flat = content.replaceAll("\\s+", " ").strip();
+        if (flat.length() <= RECALL_EXTRACT_CHARS) {
+            return flat;
+        }
+        int idx = flat.toLowerCase(java.util.Locale.ROOT).indexOf(needle.toLowerCase(java.util.Locale.ROOT));
+        if (idx < 0) {
+            idx = 0;
+        }
+        int start = Math.max(0, idx - RECALL_EXTRACT_CHARS / 2);
+        int end = Math.min(flat.length(), start + RECALL_EXTRACT_CHARS);
+        start = Math.max(0, end - RECALL_EXTRACT_CHARS); // recadre si l'on a buté sur la fin
+        String slice = flat.substring(start, end).strip();
+        return (start > 0 ? "…" : "") + slice + (end < flat.length() ? "…" : "");
+    }
+
     // ----------------------------------------------------------------- outils
 
     /**
@@ -3982,6 +4070,9 @@ public class AtelierChatService implements RelayInterruptTarget {
             case "search_files" -> new AtelierProgressListener.AtelierStepEvent("search", arg(input, "query"));
             // F-121 / SF-121-01 : grep/glob se montrent à l'écran comme une recherche, avec le motif.
             case "grep", "glob" -> new AtelierProgressListener.AtelierStepEvent("search", arg(input, "pattern"));
+            // F-162 / SF-162-01 : recall se montre comme une recherche, avec le mot-clé. La visibilité
+            // riche (« Recherche dans l'historique… ») est SF-162-03 ; ici, une étape simple, pas d'événement neuf.
+            case "recall" -> new AtelierProgressListener.AtelierStepEvent("search", arg(input, "query"));
             // F-38 / SF-38-07 : la commande elle-même est l'information utile à l'écran, tronquée
             // pour qu'un one-liner de 3 000 caractères ne noie pas la liste des étapes (contrat §3).
             case "bash" -> new AtelierProgressListener.AtelierStepEvent("bash",
@@ -5907,6 +5998,21 @@ public class AtelierChatService implements RelayInterruptTarget {
                                                         "enum", List.of("pending", "active", "done"))),
                                         "required", List.of("title")))),
                         "required", List.of("steps"))));
+        // Rappel à la demande (F-162 / SF-162-01) : déclaré sur les DEUX cibles — il fouille NOTRE
+        // historique de conversation (atelier_messages), pas la machine ni le stockage du projet.
+        // Indépendant de la cible d'exécution : c'est une capacité de gateway (recherche + relais).
+        tools.add(new AgentTool("recall",
+                "Cherche un mot-clé dans l'HISTORIQUE de CETTE conversation et te rend seulement les "
+                        + "extraits pertinents (chacun avec son numéro de tour et sa date). Appelle-le "
+                        + "quand il te manque un détail d'un échange antérieur qui n'est plus dans le "
+                        + "contexte courant — une décision, un chiffre, un nom, une consigne donnés plus "
+                        + "tôt et que tu ne retrouves plus. Il porte sur TOUT le fil, y compris les tours "
+                        + "résumés, repliés, ou d'avant un « Nouveau départ ». Recherche par mot-clé : "
+                        + "donne un terme précis. Il ne lit ni les fichiers ni le web — pour cela, utilise "
+                        + "read_file, grep ou explore.",
+                Map.of("type", "object",
+                        "properties", Map.of("query", stringProp),
+                        "required", List.of("query"))));
         // Créer un sujet à la racine (F-141 / SF-141-03) : UNIQUEMENT au terminal du poste, là où
         // l'on aiguille (SF-141-02). L'outil crée un dossier-projet sous la racine et hérite la
         // gouvernance par le chemin de création EXISTANT (WorkspaceService.openOnHost →
