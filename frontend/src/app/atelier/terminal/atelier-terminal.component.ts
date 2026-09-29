@@ -737,6 +737,13 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   @Output() send = new EventEmitter<void>();
   /** Rejoue la dernière requête utilisateur comme nouveau tour (F-131 / SF-131-01). */
   @Output() replay = new EventEmitter<void>();
+  /**
+   * Filet HUMAIN de rappel (F-162 / SF-162-05) : l'utilisateur juge que le modèle a « perdu un
+   * détail » d'un échange ancien. Le parent relance un tour CIBLÉ en invitant explicitement le
+   * modèle à appeler `recall` (SF-162-01) sur le sujet de la question précédente — un rappel
+   * chirurgical, PAS un « recharge tout ».
+   */
+  @Output() recallContext = new EventEmitter<void>();
   @Output() quit = new EventEmitter<void>();
   /** Nouveau départ (F-117 / SF-117-03) : Claude repart sans le contexte des tours précédents. */
   @Output() restart = new EventEmitter<void>();
@@ -1814,6 +1821,20 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   isLastUserMessage(message: AtelierThreadItem): boolean {
     for (let i = this.messages.length - 1; i >= 0; i -= 1) {
       if (this.messages[i].role === 'USER') {
+        return this.messages[i].id === message.id;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Vrai si ce message est la **dernière réponse de l'assistant** du fil (F-162 / SF-162-05) : c'est
+   * la seule à porter le filet HUMAIN de rappel « Chercher dans l'historique ». On ne le pose que là
+   * pour rester discret — jamais sous chaque réponse.
+   */
+  isLastAssistantMessage(message: AtelierThreadItem): boolean {
+    for (let i = this.messages.length - 1; i >= 0; i -= 1) {
+      if (this.messages[i].role !== 'USER') {
         return this.messages[i].id === message.id;
       }
     }

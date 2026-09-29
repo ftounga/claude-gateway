@@ -931,6 +931,22 @@
         @if (message.cost) {
           <p class="terminal-cost">{{ costLabel(message.cost) }}</p>
         }
+        <!-- FILET HUMAIN DE RAPPEL (F-162 / SF-162-05) : parfois c'est l'utilisateur qui voit, avant
+             le modèle, qu'un détail d'un échange ancien manque. Sous la DERNIÈRE réponse (avec
+             contenu), hors lecture seule et hors tour en cours, une action DISCRÈTE relance un tour
+             ciblé qui invite le modèle à appeler `recall` (SF-162-01). Rappel chirurgical, pas
+             « recharge tout ». On ne la pose que sur la dernière réponse pour ne pas l'imposer. -->
+        @if (!readOnly && !submitting && message.content && isLastAssistantMessage(message)) {
+          <button
+            mat-button
+            type="button"
+            class="terminal-toggle terminal-recall-net"
+            (click)="recallContext.emit()"
+          >
+            <mat-icon>history</mat-icon>
+            Il manque un détail ? Chercher dans l'historique
+          </button>
+        }
       }
     }
 
