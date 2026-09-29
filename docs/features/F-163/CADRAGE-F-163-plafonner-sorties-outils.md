@@ -1,6 +1,17 @@
 # Cadrage — F-163 — Plafonner les sorties d'outils (réduire l'écriture cache)
 
-> **Statut : Cadrée / À faire.** Ce document est un **cadrage** — aucune ligne de code
+> **⛔ ABANDONNÉE le 2026-09-30 (décision PO).** Feature jamais développée (restée au stade
+> cadrage, aucun code produit). **Raison** : ce levier **échange du contexte contre du coût** et
+> risque de **dégrader la justesse du raisonnement** ; il **n'aidait même pas** le projet
+> « agenor », dont le coût vient de l'**accumulation de petites sorties bash** et non de gros
+> dumps ; il **viole la règle absolue du PO** « aucune feature ne doit diminuer la capacité de
+> raisonnement / la justesse ». **Contraste décisif** : la compaction (F-117/F-162) **range** le
+> détail de façon **récupérable** par l'outil `recall`, alors que plafonner une sortie bash la
+> **DÉTRUIT définitivement**. Le reste du document est conservé pour la trace.
+
+---
+
+> **Statut : ~~Cadrée / À faire~~ → Abandonnée (2026-09-30).** Ce document est un **cadrage** — aucune ligne de code
 > applicative n'est produite ici. Il pose la feature dans `PRODUCT_SPEC.md` (règle d'existence
 > CLAUDE.md) et arbitre son découpage avec le PO.
 >
