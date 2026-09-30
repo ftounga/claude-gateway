@@ -517,6 +517,86 @@ class AtelierChatServiceSystemPromptTest {
                 .isEqualTo("rangé dans `data-platform/PLAN-ACTION.md`");
     }
 
+    // ------------------------------------------- F-166 / SF-166-01 : savoir durable (REPO-MAP.md/STATE.md)
+
+    /** Vérifie le contenu clé de la doctrine « savoir durable » sur un préfixe donné. */
+    private static void assertDurableKnowledgeDoctrine(String system) {
+        // Amorce distinctive + les deux artefacts nommés.
+        assertThat(system).contains("Entretiens un savoir durable du dépôt");
+        assertThat(system).contains("`REPO-MAP.md`");
+        assertThat(system).contains("`STATE.md`");
+        // Lire d'abord au lieu de re-scanner.
+        assertThat(system).contains("LIS-LES D'ABORD");
+        // Proposer aux moments clés, jamais à chaque tour.
+        assertThat(system).contains("PROPOSE d'en créer un aux MOMENTS CLÉS");
+        assertThat(system).contains("jamais en douce ni à chaque tour");
+        // Construction bornée + ligne à revérifier.
+        assertThat(system).contains("git ls-files");
+        assertThat(system).contains("PAS une relecture complète du dépôt");
+        assertThat(system).contains("à revérifier avant de");
+        // Garde-fou : pointeur, jamais substitut à la lecture réelle.
+        assertThat(system).contains("POINTEUR À REVÉRIFIER, JAMAIS");
+        assertThat(system).contains("substitut à la lecture du fichier RÉEL");
+        // Rafraîchir quand le dépôt bouge + additive.
+        assertThat(system).contains("RAFRAÎCHIS la carte quand le dépôt bouge");
+        assertThat(system).contains("S'AJOUTE à ta démarche");
+    }
+
+    @Test
+    void theDurableKnowledgeDoctrineIsPresentOnTheHostTerminal() {
+        String system = systemPromptOfHostTerminal();
+
+        assertDurableKnowledgeDoctrine(system);
+        // Non-régression : coexiste avec les doctrines universelles et l'aiguillage host-only.
+        assertThat(system).contains("Dis où tu ranges un fait durable");
+        assertThat(system).contains("Tenue de la carte, en silence");
+        assertThat(system).contains("À la racine du poste, aiguille avant de ranger");
+    }
+
+    @Test
+    void theDurableKnowledgeDoctrineIsPresentOnARunnerProject() {
+        // Terminal de sujet / projet RUNNER : le savoir durable a un sens (dépôt réel) → présent.
+        String system = systemPromptOfRunnerProjectDeclaring(null);
+
+        assertDurableKnowledgeDoctrine(system);
+        // Le sujet n'a PAS l'aiguillage host-only : le scope host+sujet ne colle pas au host-only.
+        assertThat(system).doesNotContain("À la racine du poste, aiguille avant de ranger");
+        // Non-régression : doctrines universelles + rôle RUNNER.
+        assertThat(system).contains("Dis où tu ranges un fait durable");
+        assertThat(system).contains("bash (ls, find, grep -n)");
+    }
+
+    @Test
+    void theDurableKnowledgeDoctrineIsAbsentOnASandboxProject() {
+        // Projet hébergé (SANDBOX, hors poste) : hors scope → doctrine absente, préfixe plus court.
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+
+        String system = systemPrompt();
+
+        assertThat(system).doesNotContain("Entretiens un savoir durable du dépôt");
+        assertThat(system).doesNotContain("`REPO-MAP.md`");
+        // Les doctrines universelles restent (non-régression) : seul le bloc host+sujet manque.
+        assertThat(system).contains("Dis où tu ranges un fait durable");
+    }
+
+    @Test
+    void theDurableKnowledgeDoctrineIsByteStableBetweenTwoBuilds() {
+        // Le littéral est constant et injecté à un point fixe : le bloc de doctrine doit être identique
+        // à l'octet entre deux tours, sans quoi le préfixe change et le cache (F-134) tombe. Comparé sur
+        // le seul bloc de doctrine (même prudence que theEnvironmentBlockIsByteStableBetweenTwoBuilds).
+        String first = systemPromptOfRunnerProjectDeclaring(null);
+        String second = systemPromptOfRunnerProjectDeclaring(null);
+
+        String marker = "Entretiens un savoir durable du dépôt";
+        String firstDoctrine = first.substring(first.indexOf(marker),
+                first.indexOf("\n\n", first.indexOf(marker)));
+        String secondDoctrine = second.substring(second.indexOf(marker),
+                second.indexOf("\n\n", second.indexOf(marker)));
+        assertThat(firstDoctrine).isEqualTo(secondDoctrine);
+    }
+
     // ------------------------------------------- F-141 / SF-141-02 : aiguillage à la racine
 
     /** Consigne du TERMINAL DU POSTE (racine) : projet RUNNER avec {@code hostTerminal = true}. */

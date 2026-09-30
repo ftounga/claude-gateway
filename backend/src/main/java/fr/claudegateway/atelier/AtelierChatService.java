@@ -500,6 +500,43 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "- N'annonce rien quand rien de durable n'a été rangé : pas de « rien à ranger », "
                     + "pas de statut — c'est le silence de la carte qui reprend.\n\n";
     /**
+     * Savoir durable (F-166 / SF-166-01). Ajoutée sur le <b>poste</b> — terminal du poste (racine) ET
+     * terminaux de sujet ({@link Workspace#isRunnerTarget()}) —, c'est là que vivent des dépôts réels sur
+     * lesquels un {@code REPO-MAP.md} / {@code STATE.md} a du sens. Absente en SANDBOX (hébergé) et sur un
+     * terminal Teams : préfixe plus court, cache (F-134) préservé.
+     *
+     * <p>La doctrine apprend à l'agent à <b>lire l'artefact existant d'abord</b> au lieu de re-scanner, à
+     * <b>proposer</b> d'en créer un aux moments clés (jamais en douce à chaque tour), à le construire de
+     * façon <b>bornée</b> ({@code git ls-files} + points d'entrée, pas de relecture complète), et à le
+     * porter comme un <b>pointeur à revérifier</b> — jamais un substitut à la lecture du fichier réel
+     * quand la précision compte. Bénéfice double : coût (moins de re-exploration) et justesse
+     * (raisonnement stable). <b>Strictement additive</b> (règle absolue PO : justesse avant coût) : elle
+     * ne retire rien du contexte utile. Prompt-only, aucun nouvel outil (réutilise {@code write_file}),
+     * littéral <b>stable</b> (cache F-134 préservé).</p>
+     */
+    private static final String DURABLE_KNOWLEDGE_DOCTRINE =
+            "Entretiens un savoir durable du dépôt — lis la carte avant de re-scanner :\n"
+                    + "- Sur un travail substantiel dans un dépôt / un sujet, appuie-toi sur deux "
+                    + "artefacts PERSISTANTS s'ils existent : `REPO-MAP.md` (la structure — où vivent les "
+                    + "choses, points d'entrée) et `STATE.md` (l'état courant — décisions, conclusions, où "
+                    + "on en est). LIS-LES D'ABORD pour t'orienter, au lieu de re-scanner et re-dériver le "
+                    + "dépôt à chaque tour (c'est du coût pur, et un raisonnement moins stable).\n"
+                    + "- S'ils N'EXISTENT PAS, PROPOSE d'en créer un aux MOMENTS CLÉS — première "
+                    + "exploration substantielle, décision importante, avant une passation —, jamais en "
+                    + "douce ni à chaque tour (anti-spam). L'utilisateur décide ; tu n'écris pas ces "
+                    + "artefacts en silence.\n"
+                    + "- Construis-les de façon BORNÉE : un inventaire (`git ls-files` ou équivalent) plus "
+                    + "les points d'entrée, PAS une relecture complète du dépôt. Une carte se dresse d'un "
+                    + "survol, pas d'un audit. Fais porter à l'artefact une ligne « à revérifier avant de "
+                    + "s'y fier » (carte datée, pas source de vérité gelée).\n"
+                    + "- GARDE-FOU (justesse avant coût) : la carte est un POINTEUR À REVÉRIFIER, JAMAIS "
+                    + "un substitut à la lecture du fichier RÉEL quand la précision compte — nom exact d'un "
+                    + "symbole, signature, écriture de code. On lit la carte pour s'orienter ; on ouvre le "
+                    + "fichier pour agir.\n"
+                    + "- RAFRAÎCHIS la carte quand le dépôt bouge : une carte périmée qu'on croit fraîche "
+                    + "est pire que pas de carte. Ce savoir durable S'AJOUTE à ta démarche, il ne remplace "
+                    + "aucune lecture nécessaire.\n\n";
+    /**
      * Aiguillage à la racine (F-141 / SF-141-02, cadrage §4.1). Ajouté <b>uniquement au terminal du
      * poste</b> ({@link Workspace#isHostTerminal()}) : c'est là, et là seulement, que la place d'un
      * fait est ambiguë. Dans un sujet (terminal de projet), le routage n'a aucune ambiguïté (cadrage
@@ -6778,6 +6815,15 @@ public class AtelierChatService implements RelayInterruptTarget {
         // plomberie reste tue, mais la destination d'un fait durable devient visible et validable — le
         // remède au cas réel (journal rangé dans `lzi/` au lieu de `data-platform/`, découvert tard).
         system.append(DESTINATION_ANNOUNCE_DOCTRINE);
+
+        // Savoir durable (F-166 / SF-166-01) : sur le POSTE — terminal du poste ET terminaux de sujet
+        // (isRunnerTarget()) —, là où vivent des dépôts réels. Lire REPO-MAP.md/STATE.md d'abord, proposer
+        // de les entretenir aux moments clés, construction bornée, carte = pointeur à revérifier. Placée
+        // juste après l'annonce de destination (même thème : la « carte » des faits durables). Additive et
+        // littéral stable : cache (F-134) préservé. Absente en SANDBOX/Teams (préfixe plus court).
+        if (workspace.isRunnerTarget()) {
+            system.append(DURABLE_KNOWLEDGE_DOCTRINE);
+        }
 
         // Aiguillage à la racine (F-141 / SF-141-02) : UNIQUEMENT au terminal du poste, là où la
         // place d'un fait est ambiguë. Dans un sujet, le routage n'a aucune ambiguïté (cadrage §5) et
