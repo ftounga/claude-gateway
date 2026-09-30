@@ -464,6 +464,83 @@ class AtelierChatServiceSystemPromptTest {
         assertThat(system).contains("bash (ls, find, grep -n)");
     }
 
+    // ------------------------------------------- F-167 / SF-167-01 : décider par défaut et avancer
+
+    /** Vérifie le contenu clé de la doctrine « décider par défaut » sur un préfixe donné. */
+    private static void assertDecideByDefaultDoctrine(String system) {
+        // Amorce distinctive + positionnement comme complément de « demander ».
+        assertThat(system).contains("Décider par défaut et avancer — le complément de « demander »");
+        // Cas nominal : choix faible enjeu / réversible → défaut + annonce + avance.
+        assertThat(system).contains("FAIBLE ENJEU et RÉVERSIBLE");
+        assertThat(system).contains("je pars sur X");
+        assertThat(system).contains("L'ANNONCE n'est pas optionnelle");
+        // Garde-fou (cœur de la feature) : irréversible / sensible → interdit de décider seul.
+        assertThat(system).contains("jamais dégrader la justesse");
+        assertThat(system).contains("décider-par-défaut est INTERDIT");
+        assertThat(system).contains("QUESTION STRUCTURÉE (outil « demander »");
+        // Au moins un exemple irréversible concret énuméré.
+        assertThat(system).contains("ouvrir une MR/PR");
+        assertThat(system).contains("déployer en prod");
+        // Doute → traiter comme irréversible et demander.
+        assertThat(system).contains("traite le choix comme IRRÉVERSIBLE");
+    }
+
+    @Test
+    void theDecideByDefaultDoctrineIsPresentOnASandboxProject() {
+        // Scope universel : présent même sur un projet hébergé (SANDBOX), comme ASK_QUESTION_DOCTRINE.
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+
+        String system = systemPrompt();
+
+        assertDecideByDefaultDoctrine(system);
+        // Complément de F-164 : la doctrine « demander » reste présente et inchangée à côté.
+        assertThat(system).contains("Poser des questions avec l'outil « demander »");
+    }
+
+    @Test
+    void theDecideByDefaultDoctrineIsPresentOnARunnerProject() {
+        // Scope universel : présent aussi sur une cible RUNNER (host / sujet).
+        String system = systemPromptOfRunnerProjectDeclaring(null);
+
+        assertDecideByDefaultDoctrine(system);
+        // Coexistence + non-régression du rôle RUNNER et des doctrines voisines.
+        assertThat(system).contains("Poser des questions avec l'outil « demander »");
+        assertThat(system).contains("bash (ls, find, grep -n)");
+    }
+
+    @Test
+    void theDecideByDefaultGuardrailForbidsDecidingAloneOnIrreversibleActions() {
+        // Le cœur de la feature : sur l'irréversible / sensible, décider-par-défaut est INTERDIT et
+        // renvoie vers la question structurée (F-164), avec des exemples irréversibles énumérés.
+        String system = systemPromptOfRunnerProjectDeclaring(null);
+
+        assertThat(system).contains("INTERDIT — tu passes par une QUESTION STRUCTURÉE");
+        assertThat(system).contains("supprimer des données ou des fichiers");
+        assertThat(system).contains("envoyer à l'extérieur (e-mail, publication)");
+        assertThat(system).contains("dépenser de l'argent");
+        assertThat(system).contains("changement de sécurité ou de permissions");
+        // En cas de doute, on demande — la justesse prime sur l'économie d'une question.
+        assertThat(system).contains("La justesse prime toujours sur l'économie");
+    }
+
+    @Test
+    void theDecideByDefaultDoctrineIsByteStableBetweenTwoBuilds() {
+        // Le littéral est constant et injecté à un point fixe : le bloc doit être identique à l'octet
+        // entre deux constructions, sinon le préfixe change et le cache (F-134) tombe. Même prudence que
+        // theEnvironmentBlockIsByteStableBetweenTwoBuilds : on compare le seul bloc de doctrine.
+        String first = systemPromptOfRunnerProjectDeclaring(null);
+        String second = systemPromptOfRunnerProjectDeclaring(null);
+
+        String marker = "Décider par défaut et avancer — le complément de « demander »";
+        String firstDoctrine = first.substring(first.indexOf(marker),
+                first.indexOf("\n\n", first.indexOf(marker)));
+        String secondDoctrine = second.substring(second.indexOf(marker),
+                second.indexOf("\n\n", second.indexOf(marker)));
+        assertThat(firstDoctrine).isEqualTo(secondDoctrine);
+    }
+
     // ------------------------------------------- F-141 / SF-141-01 : annonce de destination + demande si ambigu
 
     @Test
