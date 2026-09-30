@@ -21,9 +21,13 @@ import fr.claudegateway.user.UserRole;
  * posent la question hors requête — la synchro de nuit du Radar, les relances du runner — n'ont
  * pas de principal, et deux sources du rôle finiraient par dire deux choses.</p>
  *
- * <p><b>Ce que le rôle n'ouvre pas</b> : le quota de jetons (paquet {@code quota}, jamais lu ici) et
- * le supplément par poste. Fail-closed : un utilisateur inconnu, ou un identifiant nul, n'est pas
- * administrateur.</p>
+ * <p><b>Le quota de jetons aussi (SF-10-03, décision du PO du 2026-09-30).</b> Ce composant ne lit
+ * jamais le quota lui-même, mais c'est désormais {@code EntitlementService} qui l'interroge pour
+ * rendre l'allocation d'un administrateur <b>illimitée</b> : le pré-vol ne le bloque plus, la borne
+ * du tour hébergé n'est plus rabotée, l'alerte de seuil ne se déclenche jamais. Sa consommation
+ * reste toutefois <b>mesurée</b> ({@code recordUsage} ne consulte pas ce composant).</p>
+ *
+ * <p><b>Fail-closed</b> : un utilisateur inconnu, ou un identifiant nul, n'est pas administrateur.</p>
  */
 @Component
 public class AdministratorEntitlement {

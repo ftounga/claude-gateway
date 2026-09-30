@@ -9,6 +9,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import fr.claudegateway.billing.AdministratorEntitlement;
 import fr.claudegateway.billing.BillingPeriod;
 import fr.claudegateway.billing.PlanCatalog;
 import fr.claudegateway.billing.PlanCode;
@@ -42,7 +43,8 @@ class EntitlementServiceYearlyTest {
                 Map.of("SOLO", SOLO_MONTHLY_TOKENS, "PRO", PRO_MONTHLY_TOKENS, "DAILY", 500_000L,
                         "GOLD", 12_000_000L, "BYOK", 0L),
                 null);
-        service = new EntitlementService(properties, new PlanCatalog(), mock(SeatQuotaService.class));
+        service = new EntitlementService(properties, new PlanCatalog(), mock(SeatQuotaService.class),
+                mock(AdministratorEntitlement.class));
     }
 
     private static Subscription active(PlanCode plan, BillingPeriod period) {

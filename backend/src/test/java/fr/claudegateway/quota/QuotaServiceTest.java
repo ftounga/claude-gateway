@@ -328,6 +328,66 @@ class QuotaServiceTest {
         assertThat(snapshot.remainingTokens()).isZero();
     }
 
+    // ------------------------------------------------ SF-10-03 : l'administrateur n'est jamais bridé
+
+    /**
+     * Un administrateur : l'entitlement effectif est illimité (c'est {@code EntitlementService} qui
+     * porte la décision, mocké ici). {@code QuotaService} n'a rien à savoir du rôle — il oppose le
+     * quota qu'on lui donne. Ces tests figent qu'un quota illimité ne bloque pas et ne rabote pas la
+     * borne, tout en laissant la mesure intacte.
+     */
+    private void stubAdministratorUnlimitedQuota() {
+        Subscription sub = Subscription.builder()
+                .userId(alice).status(SubscriptionStatus.ACTIVE).planCode(PlanCode.GOLD).build();
+        when(subscriptionService.getOrCreateForUser(alice)).thenReturn(sub);
+        when(entitlementService.resolveEffectiveMonthlyTokenQuota(sub))
+                .thenReturn(EntitlementService.UNLIMITED_TOKEN_QUOTA);
+    }
+
+    @Test
+    void assertWithinQuotaPassesForAdministratorEvenWhenPlanWouldBeExhausted() {
+        // Le cas mesuré en prod : consommation énorme (au-delà de tout plan), mais quota illimité.
+        stubAdministratorUnlimitedQuota();
+        when(usageCounterRepository.findByUserIdAndPeriodStart(alice, expectedPeriod))
+                .thenReturn(Optional.of(counter(20_000_000, 20_000_000)));
+
+        assertThatCode(() -> quotaService.assertWithinQuota(alice)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void currentUsageForAdministratorLeavesRemainingUncappedSoTheHostedTurnUsesTheFullCeiling() {
+        // La borne hébergée = min(maxTurnTokens, remaining). Pour l'ADMIN, remaining reste immense,
+        // donc la borne vaut le plafond configuré — le tour n'est plus raboté par le quota.
+        stubAdministratorUnlimitedQuota();
+        when(usageCounterRepository.findByUserIdAndPeriodStart(alice, expectedPeriod))
+                .thenReturn(Optional.of(counter(20_000_000, 20_000_000)));
+
+        UsageSnapshot snapshot = quotaService.currentUsage(alice);
+
+        // La consommation reste mesurée et exacte...
+        assertThat(snapshot.usedTokens()).isEqualTo(40_000_000L);
+        // ... mais le restant dépasse de très loin tout plafond de tour raisonnable.
+        assertThat(snapshot.remainingTokens()).isGreaterThan(1_000_000_000_000L);
+    }
+
+    @Test
+    void recordUsageStillMeasuresConsumptionForAdministrator() {
+        // La mesure reste : usage_counters incrémenté ET la ligne de relevé par tour écrite. L'ADMIN
+        // n'est pas bridé, mais le PO veut garder ses analyses de coût.
+        UsageCounter existing = counter(100, 50);
+        when(usageCounterRepository.findByUserIdAndPeriodStart(alice, expectedPeriod))
+                .thenReturn(Optional.of(existing));
+        when(usageCounterRepository.save(any(UsageCounter.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        quotaService.recordUsage(alice, 10, 5);
+
+        assertThat(existing.getInputTokens()).isEqualTo(110);
+        assertThat(existing.getOutputTokens()).isEqualTo(55);
+        verify(usageCounterRepository).save(existing);
+        verify(usageLedgerService).recordTurn(org.mockito.ArgumentMatchers.eq(alice), any(), any(),
+                any(), any(), any());
+    }
+
     // ---------------------------------------------------------------------------------------------
     // Bac à sable (SF-28-12) : cumul du temps de session et plafond de garde.
     // ---------------------------------------------------------------------------------------------

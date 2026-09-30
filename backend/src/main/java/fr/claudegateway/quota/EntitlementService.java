@@ -6,6 +6,7 @@ import java.util.Set;
 
 import org.springframework.stereotype.Service;
 
+import fr.claudegateway.billing.AdministratorEntitlement;
 import fr.claudegateway.billing.PlanCatalog;
 import fr.claudegateway.billing.PlanCode;
 import fr.claudegateway.billing.ProviderMode;
@@ -33,6 +34,16 @@ import fr.claudegateway.billing.seat.SeatQuotaService;
  * #resolveEffectiveMonthlyTokenQuota(Subscription)} y ajoute la part apportée par les <b>postes
  * supplémentaires</b>, et c'est elle qu'opposent le pré-vol, la jauge et le seuil d'alerte. Les
  * confondre ferait dire au catalogue des choses différentes selon le lecteur.</p>
+ *
+ * <p><b>SF-10-03 — l'administrateur n'est jamais bridé (décision PO du 2026-09-30).</b> Un
+ * utilisateur de rôle ADMIN a « tous les droits » ({@link AdministratorEntitlement}) ; on y ajoute
+ * ici l'exemption du quota de jetons. L'allocation <b>effective</b> d'un administrateur est
+ * illimitée ({@link #UNLIMITED_TOKEN_QUOTA}) : le pré-vol ne le bloque plus, la borne du tour
+ * hébergé n'est plus rabotée par son quota restant (elle vaut le plafond configuré, comme en BYOK) et
+ * l'alerte de seuil ne se déclenche jamais. La <b>mesure</b> reste intacte : {@code recordUsage} ne
+ * consulte pas l'entitlement — {@code usage_counters} et {@code usage_turns} continuent d'être
+ * alimentés pour l'ADMIN, afin de préserver les analyses de coût. L'allocation du <b>plan seul</b>
+ * ({@link #resolveMonthlyTokenQuota(Subscription)}, ce que le catalogue annonce) reste inchangée.</p>
  */
 @Service
 public class EntitlementService {
@@ -41,17 +52,29 @@ public class EntitlementService {
     private static final Set<SubscriptionStatus> LIVE_STATUSES =
             EnumSet.of(SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE);
 
+    /**
+     * Allocation effective d'un administrateur (SF-10-03) : « illimitée » en pratique. Choisie à
+     * {@code Long.MAX_VALUE / 2} plutôt qu'à {@code Long.MAX_VALUE} pour laisser de la marge : les
+     * appelants y <b>ajoutent</b> les bonus (F-21) et le report de fenêtre (F-66) avant de comparer,
+     * et un {@code Long.MAX_VALUE} déborderait alors en négatif — ce qui rebloquerait l'ADMIN. Aucun
+     * usage réel n'approche cet ordre de grandeur (~4,6·10^18 jetons).
+     */
+    public static final long UNLIMITED_TOKEN_QUOTA = Long.MAX_VALUE / 2;
+
     private final QuotaProperties properties;
     private final PlanCatalog planCatalog;
     private final SeatQuotaService seatQuotaService;
+    private final AdministratorEntitlement administratorEntitlement;
 
     public EntitlementService(
             QuotaProperties properties,
             PlanCatalog planCatalog,
-            SeatQuotaService seatQuotaService) {
+            SeatQuotaService seatQuotaService,
+            AdministratorEntitlement administratorEntitlement) {
         this.properties = properties;
         this.planCatalog = planCatalog;
         this.seatQuotaService = seatQuotaService;
+        this.administratorEntitlement = administratorEntitlement;
     }
 
     /**
@@ -92,6 +115,14 @@ public class EntitlementService {
      * @return quota de la période, postes supplémentaires compris
      */
     public long resolveEffectiveMonthlyTokenQuota(Subscription subscription) {
+        // SF-10-03 — l'administrateur n'est jamais bridé par le quota de jetons (décision PO du
+        // 2026-09-30), quel que soit son plan : « l'admin a tout ». Le rôle est lu en base
+        // (users.role) à partir de l'utilisateur de l'abonnement — jamais un paramètre client. Placé
+        // en tête pour primer sur tous les cas (essai, expiré, BYOK) : la mesure, elle, n'est pas
+        // affectée — recordUsage ne consulte pas l'entitlement.
+        if (administratorEntitlement.isAdministrator(subscription.getUserId())) {
+            return UNLIMITED_TOKEN_QUOTA;
+        }
         long planQuota = resolveMonthlyTokenQuota(subscription);
         if (!isLive(subscription.getStatus()) || isCustomerKeyBilled(subscription)) {
             return planQuota;

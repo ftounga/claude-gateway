@@ -13,6 +13,7 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 
+import fr.claudegateway.billing.AdministratorEntitlement;
 import fr.claudegateway.billing.PlanCatalog;
 import fr.claudegateway.billing.PlanCode;
 import fr.claudegateway.billing.Subscription;
@@ -33,11 +34,14 @@ class EntitlementServiceSeatTest {
     private static final long SEAT_TOKENS = 350_000L;
 
     private final SeatQuotaService seatQuotaService = mock(SeatQuotaService.class);
+    /** Aucun de ces abonnements n'est administrateur (SF-10-03) : on décrit l'apport des postes. */
+    private final AdministratorEntitlement administratorEntitlement = mock(AdministratorEntitlement.class);
     private final EntitlementService service = new EntitlementService(
             new QuotaProperties(200_000L,
                     Map.of("SOLO", SOLO_TOKENS, "GOLD", 12_000_000L, "BYOK", 0L), null),
             new PlanCatalog(),
-            seatQuotaService);
+            seatQuotaService,
+            administratorEntitlement);
 
     @Test
     void anActiveSubscriptionReceivesTheShareOfItsExtraSeats() {
