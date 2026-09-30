@@ -629,6 +629,63 @@ describe('AtelierTerminalComponent', () => {
     expect(sent).toBe(1);
   });
 
+  // ------------------------------------ F-165 / SF-165-01 : commandes slash vue/action (aucun tour)
+
+  it('taper « / » propose aussi la commande vue/action /aide dans le menu', () => {
+    component.draft = '/';
+    fixture.detectChanges();
+
+    const titles = Array.from(
+      fixture.nativeElement.querySelectorAll('.slash-menu__name'),
+    ).map((n) => (n as HTMLElement).textContent?.trim());
+    expect(titles).toContain('/aide');
+  });
+
+  it('dispatcher /aide n\'émet AUCUN send, vide le brouillon et rend un panneau dans le fil', () => {
+    const drafts: string[] = [];
+    let sent = 0;
+    component.draftChange.subscribe((value) => drafts.push(value));
+    component.send.subscribe(() => (sent += 1));
+
+    component.draft = '/aide';
+    component.submit();
+    fixture.detectChanges();
+
+    // La garantie fondatrice : une vue ne coûte aucun tour.
+    expect(sent).toBe(0);
+    // Le brouillon est consommé (vidé).
+    expect(drafts).toContain('');
+    // Un panneau apparaît dans le fil, avec le corps /aide.
+    expect(component.slashPanels().length).toBe(1);
+    expect(fixture.nativeElement.querySelector('app-atelier-slash-panel')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('app-atelier-slash-help')).not.toBeNull();
+  });
+
+  it('fermer un panneau le retire du fil', () => {
+    component.draft = '/aide';
+    component.submit();
+    fixture.detectChanges();
+    expect(component.slashPanels().length).toBe(1);
+
+    component.dismissPanel(component.slashPanels()[0]);
+    fixture.detectChanges();
+
+    expect(component.slashPanels().length).toBe(0);
+    expect(fixture.nativeElement.querySelector('app-atelier-slash-panel')).toBeNull();
+  });
+
+  it('une vue reste dispatchable même au plafond de terminaux vivants (elle ne coûte rien)', () => {
+    let sent = 0;
+    component.send.subscribe(() => (sent += 1));
+    component.liveLimitReached = true;
+
+    component.draft = '/aide';
+    component.submit();
+
+    expect(sent).toBe(0);
+    expect(component.slashPanels().length).toBe(1);
+  });
+
   // ------------------------------------ F-84 / SF-84-06 : un message pendant un tour est une précision
 
   it('pendant un tour de la boucle maison, le champ reste actif et le bouton dit « Préciser »', () => {

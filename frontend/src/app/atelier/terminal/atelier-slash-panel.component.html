@@ -1,0 +1,22 @@
+<!-- F-165 / SF-165-01 — CADRE DE PANNEAU réutilisable. En-tête + corps projeté. -->
+<section class="slash-panel" [attr.data-kind]="panel.kind" role="group" [attr.aria-label]="panel.title">
+  <header class="slash-panel__head">
+    <mat-icon class="slash-panel__icon" aria-hidden="true">{{ panel.icon }}</mat-icon>
+    <span class="slash-panel__title">{{ panel.title }}</span>
+    <span class="slash-panel__command" aria-hidden="true">{{ panel.command }}</span>
+    <span class="slash-panel__badge">{{ kindLabel }}</span>
+    <button
+      mat-icon-button
+      type="button"
+      class="slash-panel__close"
+      (click)="dismiss.emit()"
+      aria-label="Fermer le panneau"
+      matTooltip="Fermer"
+    >
+      <mat-icon aria-hidden="true">close</mat-icon>
+    </button>
+  </header>
+  <div class="slash-panel__body">
+    <ng-content></ng-content>
+  </div>
+</section>

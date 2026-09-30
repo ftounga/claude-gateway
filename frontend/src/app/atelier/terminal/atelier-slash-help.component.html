@@ -1,0 +1,14 @@
+<!-- F-165 / SF-165-01 — Corps du panneau /aide : la liste des commandes slash disponibles. -->
+<p class="slash-help__lead">
+  Tapez <span class="slash-help__hint">/</span> dans l'invite pour retrouver ces commandes. Une vue ne
+  coûte aucun tour&nbsp;: vérifier son coût ne doit rien coûter.
+</p>
+<ul class="slash-help__list">
+  @for (entry of entries; track entry.command) {
+    <li class="slash-help__item">
+      <span class="slash-help__name">{{ entry.command }}</span>
+      <span class="slash-help__kind">{{ entry.kindLabel }}</span>
+      <span class="slash-help__desc">{{ entry.description }}</span>
+    </li>
+  }
+</ul>

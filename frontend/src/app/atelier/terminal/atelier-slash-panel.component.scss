@@ -1,0 +1,93 @@
+/* ------------------------------------------------------------------ F-165 / SF-165-01
+   LE CADRE DE PANNEAU des commandes slash « à notre sauce ».
+
+   Composant DÉDIÉ (feuille dédiée, budget 12 ko propre — angular.json). La Forge est SOMBRE : le
+   panneau porte le fond navy du terminal et l'accent ORANGE de charte pour son titre / son jeton.
+   C'est une VUE consultée à la demande, pas un état « le tour vous attend » — donc un liseré plus
+   sobre que la carte d'autorisation, sans halo orange. AUCUNE couleur ni police hors charte : jetons
+   `--cg-*` uniquement. Cibles tactiles ≥ 44 px (SF-158). */
+
+.slash-panel {
+  margin: var(--cg-space-3) 0;
+  border: 1px solid var(--cg-navy-2);
+  border-radius: 6px;
+  background: var(--cg-navy-2);
+  color: var(--cg-surface);
+  overflow: hidden;
+}
+
+.slash-panel__head {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-2) var(--cg-space-3);
+  border-bottom: 1px solid color-mix(in srgb, var(--cg-surface) 14%, transparent);
+  background: var(--cg-primary);
+}
+
+.slash-panel__icon {
+  flex: 0 0 auto;
+  font-size: 18px;
+  width: 18px;
+  height: 18px;
+  color: var(--cg-orange-2);
+}
+
+.slash-panel__title {
+  min-width: 0;
+  font-family: var(--cg-font-heading);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cg-orange-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slash-panel__command {
+  flex: 0 0 auto;
+  font-family: var(--cg-font-mono);
+  font-size: 12px;
+  color: var(--cg-text-secondary);
+}
+
+/* Le badge de famille : discret, dans l'accent déjà porté par le panneau — pas un nouveau registre
+   de couleur (même démarche que la mention de portée de la carte d'autorisation). */
+.slash-panel__badge {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 0 var(--cg-space-1);
+  border: 1px solid var(--cg-orange-2);
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cg-orange-2);
+}
+
+.slash-panel__close {
+  flex: 0 0 auto;
+  width: 44px; /* SF-158 : cible tactile ≥ 44 px */
+  height: 44px;
+  color: var(--cg-surface);
+
+  &:hover {
+    color: var(--cg-orange-2);
+  }
+}
+
+.slash-panel__body {
+  padding: var(--cg-space-3);
+}
+
+/* Sous 819 px (SF-158) : l'en-tête ne déborde jamais ; le badge peut passer sous le titre. */
+@media (max-width: 819px) {
+  .slash-panel__head {
+    flex-wrap: wrap;
+  }
+
+  .slash-panel__badge {
+    margin-left: 0;
+  }
+}
