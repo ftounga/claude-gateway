@@ -1,0 +1,13 @@
+/* ------------------------------------------------------------------ F-165 / SF-165-06
+   Accusé d'une commande action (/compacter, /nouveau). Cadre SOMBRE du panneau (SF-165-01) : jetons
+   `--cg-*` uniquement. Cible ≥ 44 px. */
+
+.action-note {
+  margin: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--cg-text-secondary);
+}

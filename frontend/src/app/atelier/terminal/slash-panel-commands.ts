@@ -122,6 +122,34 @@ export const SLASH_PANEL_COMMANDS: readonly SlashPanelCommand[] = [
     panelKind: 'sujet',
   },
   {
+    name: 'compacter',
+    title: '/compacter',
+    description: 'Compaction douce : résume les vieux tours, garde la mémoire',
+    kind: 'action',
+    takesArgument: false,
+    icon: 'compress',
+    panelKind: 'compact',
+  },
+  {
+    name: 'nouveau',
+    title: '/nouveau',
+    description: 'Nouveau départ : repart sans le contexte (rien n’est supprimé)',
+    kind: 'action',
+    takesArgument: false,
+    icon: 'restart_alt',
+    panelKind: 'restart',
+  },
+  {
+    name: 'rappel',
+    title: '/rappel',
+    description: 'Retrouve des extraits de l’historique du fil (sans tour)',
+    kind: 'action',
+    takesArgument: true,
+    argHint: '<terme>',
+    icon: 'search',
+    panelKind: 'recall',
+  },
+  {
     name: 'aide',
     title: '/aide',
     description: 'Liste les commandes slash disponibles',
@@ -363,6 +391,29 @@ export interface ThreadSujetSummary {
   readonly hasFrontier: boolean;
 }
 
+/** État de chargement du panneau `/rappel` (F-165 / SF-165-06) : lecture REST (`/recall`), aucun tour. */
+export type RecallPanelState = 'loading' | 'ready' | 'empty' | 'error';
+
+/** Un extrait retrouvé par `/rappel` (F-165 / SF-165-06). Reflet du DTO `ThreadRecallResponse.Extract`. */
+export interface ThreadRecallExtract {
+  /** Rôle du message (`user` / `assistant`), pour situer l'extrait. */
+  readonly role: string;
+  /** Extrait borné du contenu. */
+  readonly excerpt: string;
+  /** Date du message (ISO). */
+  readonly createdAt: string;
+}
+
+/**
+ * Le résultat d'un `/rappel` (F-165 / SF-165-06) : le terme, s'il a répondu par le sens (sémantique) ou
+ * par mot-clé, et les extraits. Reflet du DTO backend `ThreadRecallResponse`.
+ */
+export interface ThreadRecallResult {
+  readonly query: string;
+  readonly semantic: boolean;
+  readonly extracts: readonly ThreadRecallExtract[];
+}
+
 /**
  * Un panneau **local** rendu dans le fil du terminal (résultat d'une commande slash F-165). Purement
  * de l'affichage : jamais dans l'historique envoyé au modèle.
@@ -404,6 +455,12 @@ export interface SlashPanel {
   readonly sujetState?: SujetPanelState;
   /** La carte du projet, présente pour `panelKind === 'sujet'` en état `ready`. */
   readonly sujet?: ThreadSujetSummary;
+  /** Message d'accusé pour une action locale (`panelKind === 'compact'`/`'restart'`). */
+  readonly actionMessage?: string;
+  /** État de la lecture, pour `panelKind === 'recall'` : `loading` → `ready`/`empty`/`error`. */
+  readonly recallState?: RecallPanelState;
+  /** Le résultat du rappel, présent pour `panelKind === 'recall'` en état `ready`. */
+  readonly recall?: ThreadRecallResult;
 }
 
 /** Construit les entrées d'aide à partir du registre (toutes les commandes F-165 disponibles). */
@@ -458,6 +515,30 @@ export function buildPanel(command: SlashPanelCommand, arg: string, id: string):
   if (command.panelKind === 'sujet') {
     // La donnée arrive d'un GET de lecture (`/resume`, jamais le modèle) : chargement d'abord.
     return { ...base, title: 'Le sujet', sujetState: 'loading' };
+  }
+  if (command.panelKind === 'compact') {
+    // Action : le dispatch émet la sortie EXISTANTE `compactNow` (câblée au parent). Accusé local.
+    return {
+      ...base,
+      title: 'Compaction lancée',
+      actionMessage:
+        'Compaction douce en cours : les vieux tours sont résumés, la mémoire est gardée. '
+        + 'Suivez le marqueur « Conversation compactée » dans le fil.',
+    };
+  }
+  if (command.panelKind === 'restart') {
+    // Action : le dispatch émet la sortie EXISTANTE `restart` (câblée au parent). Accusé local.
+    return {
+      ...base,
+      title: 'Nouveau départ lancé',
+      actionMessage:
+        'Claude repart sans le contexte des tours précédents. '
+        + 'Rien n’est supprimé : l’historique se replie derrière « Voir l’historique ».',
+    };
+  }
+  if (command.panelKind === 'recall') {
+    // La donnée arrive d'un GET de lecture (`/recall`, jamais le modèle) : chargement d'abord.
+    return { ...base, title: 'Rappel', recallState: 'loading' };
   }
   return base;
 }

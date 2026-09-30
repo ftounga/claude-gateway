@@ -39,6 +39,7 @@ import fr.claudegateway.atelier.dto.AtelierSteerResponse;
 import fr.claudegateway.atelier.dto.AtelierTurnStateResponse;
 import fr.claudegateway.atelier.dto.ThreadContextSummaryResponse;
 import fr.claudegateway.atelier.dto.ThreadCostSummaryResponse;
+import fr.claudegateway.atelier.dto.ThreadRecallResponse;
 import fr.claudegateway.atelier.live.LiveTurn;
 import fr.claudegateway.atelier.live.LiveTurnRegistry;
 import fr.claudegateway.atelier.live.PendingApproval;
@@ -92,6 +93,8 @@ public class AtelierChatController {
     private final AtelierThreadCostService threadCostService;
     /** L'état mémoire du fil courant, servi à la commande vue {@code /contexte} (F-165 / SF-165-03). */
     private final AtelierThreadContextService threadContextService;
+    /** Le rappel à la demande, servi à la commande action {@code /rappel} (F-165 / SF-165-06). */
+    private final AtelierRecallService recallService;
 
     public AtelierChatController(AtelierChatService atelierChatService,
             AtelierThreadService atelierThreadService, CurrentUser currentUser,
@@ -101,7 +104,8 @@ public class AtelierChatController {
             LiveTurnRegistry liveTurns, RemoteTurnSource remoteTurns,
             fr.claudegateway.quota.TurnCostView turnCostView,
             AtelierThreadCostService threadCostService,
-            AtelierThreadContextService threadContextService) {
+            AtelierThreadContextService threadContextService,
+            AtelierRecallService recallService) {
         this.atelierChatService = atelierChatService;
         this.atelierThreadService = atelierThreadService;
         this.currentUser = currentUser;
@@ -113,6 +117,7 @@ public class AtelierChatController {
         this.turnCostView = turnCostView;
         this.threadCostService = threadCostService;
         this.threadContextService = threadContextService;
+        this.recallService = recallService;
     }
 
     @PostMapping
@@ -424,6 +429,24 @@ public class AtelierChatController {
     public ThreadContextSummaryResponse contextSummary(@PathVariable UUID id) {
         atelierAccess.requireTerminalAccess(id);
         return threadContextService.summary(currentUser.requireId(), id);
+    }
+
+    /**
+     * <b>Rappel à la demande</b> (F-165 / SF-165-06) : la matière de la commande action {@code /rappel}.
+     *
+     * <p><b>Une recherche, aucun tour.</b> C'est une <b>lecture</b> qui réutilise la recherche du recall
+     * F-162 (sémantique puis mot-clé) pour surfacer des extraits de l'historique du fil — <b>sans</b>
+     * jamais passer par la boucle modèle. « Vérifier son coût ne doit rien coûter » vaut aussi pour
+     * retrouver un détail.</p>
+     *
+     * <p><b>Isolation</b> : identité du {@link CurrentUser} (JWT) ; le service applique {@code requireOwned}
+     * (404 indiscernable sur un fil d'autrui) et filtre {@code user_id} + {@code workspace_id} sur la
+     * recherche — jamais l'historique d'un autre.</p>
+     */
+    @GetMapping("/recall")
+    public ThreadRecallResponse recall(@PathVariable UUID id, @RequestParam("q") String q) {
+        atelierAccess.requireTerminalAccess(id);
+        return recallService.search(currentUser.requireId(), id, q);
     }
 
     /**

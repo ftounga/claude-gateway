@@ -1,0 +1,44 @@
+<!-- F-165 / SF-165-06 — Corps du panneau /rappel : les extraits retrouvés. Une recherche, aucun tour. -->
+@switch (state) {
+  @case ('empty') {
+    <p class="recall-note">
+      Donnez un terme à chercher : <span class="recall-cmd">/rappel &lt;terme&gt;</span>. La recherche
+      couvre tout le fil, même les tours rangés — et ne coûte aucun tour.
+    </p>
+  }
+  @case ('loading') {
+    <p class="recall-note">
+      <mat-spinner diameter="18" strokeWidth="2" aria-hidden="true"></mat-spinner>
+      Recherche de « {{ term }} » dans l'historique du fil…
+    </p>
+  }
+  @case ('error') {
+    <p class="recall-note recall-note--error">
+      Rappel indisponible pour l'instant. Réessayez dans un instant — cela ne coûte aucun tour.
+    </p>
+  }
+  @default {
+    @if (result) {
+      <p class="recall-head">
+        <span class="recall-head__term">« {{ result.query }} »</span>
+        <span class="recall-head__mode">
+          {{ result.semantic ? 'par le sens' : 'par mot-clé' }} · {{ result.extracts.length }} extrait(s)
+        </span>
+      </p>
+      @if (result.extracts.length === 0) {
+        <p class="recall-note">Aucun extrait trouvé pour « {{ result.query }} » dans ce fil.</p>
+      } @else {
+        <ul class="recall-list">
+          @for (extract of result.extracts; track $index) {
+            <li class="recall-item">
+              <span class="recall-item__meta">
+                {{ roleLabel(extract.role) }} · {{ date(extract.createdAt) }}
+              </span>
+              <span class="recall-item__excerpt">{{ extract.excerpt }}</span>
+            </li>
+          }
+        </ul>
+      }
+    }
+  }
+}

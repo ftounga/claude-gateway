@@ -69,10 +69,13 @@ import { AtelierSlashQuotaComponent } from './atelier-slash-quota.component';
 import { AtelierSlashBudgetComponent } from './atelier-slash-budget.component';
 import { AtelierSlashPosteComponent } from './atelier-slash-poste.component';
 import { AtelierSlashSujetComponent } from './atelier-slash-sujet.component';
+import { AtelierSlashRecallComponent } from './atelier-slash-recall.component';
+import { AtelierSlashActionComponent } from './atelier-slash-action.component';
 import { AtelierCostService } from '../../core/services/atelier-cost.service';
 import { AtelierContextService } from '../../core/services/atelier-context.service';
 import { UsageService } from '../../core/services/usage.service';
 import { AtelierService } from '../../core/services/atelier.service';
+import { AtelierRecallService } from '../../core/services/atelier-recall.service';
 import {
   ActiveMention,
   activeMention,
@@ -208,6 +211,7 @@ export interface SlashMenuEntry {
     AtelierSlashPanelComponent, AtelierSlashHelpComponent, AtelierSlashCostComponent,
     AtelierSlashContexteComponent, AtelierSlashQuotaComponent, AtelierSlashBudgetComponent,
     AtelierSlashPosteComponent, AtelierSlashSujetComponent,
+    AtelierSlashRecallComponent, AtelierSlashActionComponent,
     MatButtonToggleModule, MatIconModule, MatMenuModule, MatProgressBarModule, MatProgressSpinnerModule,
     MatTooltipModule, RouterLink,
     WeeklyBudgetComponent, ProjectCostComponent, TurnSuggestionsComponent, DictationButtonComponent,
@@ -1458,6 +1462,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   private readonly atelierContext = inject(AtelierContextService);
   private readonly usage = inject(UsageService);
   private readonly atelier = inject(AtelierService);
+  private readonly atelierRecall = inject(AtelierRecallService);
   /** Ce que chaque projet a coûté (F-143 / SF-143-01), partagé avec la Forge. */
   private readonly projectCosts = inject(ProjectCostService);
 
@@ -1795,6 +1800,40 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     if (command.panelKind === 'sujet') {
       this.loadSujetPanel(id);
     }
+    // F-165 / SF-165-06 : `/compacter` et `/nouveau` sont des ACTIONS — elles ÉMETTENT les sorties
+    // EXISTANTES du terminal (déjà câblées au parent), jamais `send`. Le panneau n'est qu'un accusé.
+    if (command.panelKind === 'compact') {
+      this.compactNow.emit();
+    }
+    if (command.panelKind === 'restart') {
+      this.restart.emit();
+    }
+    // F-165 / SF-165-06 : `/rappel` est une recherche (lecture), jamais un tour.
+    if (command.panelKind === 'recall') {
+      this.loadRecallPanel(id, arg);
+    }
+  }
+
+  /**
+   * F-165 / SF-165-06 — charge les extraits pour le panneau `/rappel` et le fait passer de `loading` à
+   * `ready`/`empty`/`error`. LECTURE seule (`GET .../chat/recall`, isolé `user_id` + `requireOwned`) :
+   * aucun tour. Sans terme → invite ; sans projet → échec, sans appel.
+   */
+  private loadRecallPanel(id: string, arg: string): void {
+    const term = (arg ?? '').trim();
+    if (!term) {
+      this.patchPanel(id, { recallState: 'empty' });
+      return;
+    }
+    const workspaceId = this.projectId;
+    if (!workspaceId) {
+      this.patchPanel(id, { recallState: 'error' });
+      return;
+    }
+    this.atelierRecall.recall(workspaceId, term).subscribe({
+      next: (recall) => this.patchPanel(id, { recallState: 'ready', recall }),
+      error: () => this.patchPanel(id, { recallState: 'error' }),
+    });
   }
 
   /**

@@ -1310,6 +1310,19 @@
               [engine]="engine"
             />
           }
+          @case ('compact') {
+            <app-atelier-slash-action [message]="panel.actionMessage ?? ''" />
+          }
+          @case ('restart') {
+            <app-atelier-slash-action [message]="panel.actionMessage ?? ''" />
+          }
+          @case ('recall') {
+            <app-atelier-slash-recall
+              [state]="panel.recallState ?? 'loading'"
+              [term]="panel.arg ?? ''"
+              [result]="panel.recall ?? null"
+            />
+          }
         }
       </app-atelier-slash-panel>
     }
