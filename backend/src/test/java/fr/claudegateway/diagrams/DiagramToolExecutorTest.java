@@ -188,6 +188,8 @@ class DiagramToolExecutorTest {
 
         assertThat(outcome.error()).isFalse();
         assertThat(outcome.content()).contains("cible-aws.svg");
+        // F-142 / SF-142-19 : le message d'insertion dit de ne pas écraser une archi large en page.
+        assertThat(outcome.content()).contains("conteneur défilable").contains("width:100%");
         // Le moteur Mermaid n'a PAS été appelé : les deux voies restent distinctes.
         verify(renderer, never()).render(anyString(), any(), any());
         ArgumentCaptor<com.fasterxml.jackson.databind.JsonNode> sent =

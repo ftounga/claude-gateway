@@ -215,6 +215,69 @@ class LaDensiteSeDit(unittest.TestCase):
         self.assertEqual("", cloud.density_notice(faux))
 
 
+# ---------------------------------------------------------------------------------------------------
+# F-142 / SF-142-19 — le schéma LARGE, sous la borne absolue, est signalé par sa FORME.
+#
+# Le défaut d'après SF-142-18 : le SVG est net, mais une archi large (3313 × 904, ratio 3,66:1, chaque
+# côté sous 4000) reste illisible car le HTML l'affiche en width:100% dans une colonne étroite. La borne
+# MAX_DIMENSION, qui ne compte que la taille absolue, ne la voyait pas.
+# ---------------------------------------------------------------------------------------------------
+def _chaine_large(n):
+    """Une chaîne LR de n nœuds : mécaniquement large (largeur ≫ hauteur), sous la borne absolue."""
+    return {"title": "pipeline", "direction": "LR",
+            "nodes": [{"id": f"n{i}", "type": "aws.lambda", "label": f"etape {i}"} for i in range(n)],
+            "edges": [{"from": f"n{i}", "to": f"n{i + 1}"} for i in range(n - 1)]}
+
+
+class UnSchemaLargeSeDit(unittest.TestCase):
+    """Sous la borne absolue, un schéma trop large pour une colonne de page est DIT — pas recadré."""
+
+    def _dimensions(self, spec):
+        sortie = os.path.join(tempfile.mkdtemp(), "vue")
+        cloud.build(spec, sortie)
+        return sortie + ".svg", cloud.svg_size(sortie + ".svg")
+
+    def test_une_archi_large_est_signalee_et_propose_tb(self):
+        chemin, (largeur, hauteur) = self._dimensions(_chaine_large(7))
+        # Le décor est bien celui du défaut : large, mais chaque côté sous la borne absolue.
+        self.assertLessEqual(largeur, cloud.MAX_DIMENSION)
+        self.assertLessEqual(hauteur, cloud.MAX_DIMENSION)
+        self.assertGreaterEqual(largeur, hauteur * cloud.WIDE_ASPECT_RATIO)
+        note = cloud.density_notice(chemin)
+        self.assertIn("large", note)
+        self.assertIn("TB", note)
+        self.assertIn(str(largeur), note)
+        self.assertIn(str(hauteur), note)
+        note.encode("ascii")  # elle finit en en-tête HTTP
+
+    def test_un_schema_ordinaire_ne_dit_rien(self):
+        # PETIT (trois nœuds, ratio ~2,1:1) reste sous le seuil : aucune note.
+        chemin, _ = self._dimensions(PETIT)
+        self.assertEqual("", cloud.density_notice(chemin))
+
+    def test_la_borne_absolue_prime_sur_la_forme(self):
+        # Un schéma large ET au-delà de la borne absolue est d'abord « dense », pas « large ».
+        chemin, (largeur, hauteur) = self._dimensions(_chaine_large(7))
+        vraie_borne = cloud.MAX_DIMENSION
+        cloud.MAX_DIMENSION = min(largeur, hauteur) - 1
+        try:
+            note = cloud.density_notice(chemin)
+        finally:
+            cloud.MAX_DIMENSION = vraie_borne
+        self.assertIn("dense", note)
+        self.assertNotIn("large", note)
+
+    def test_un_schema_large_mais_etroit_en_pixels_ne_dit_rien(self):
+        # La forme ne suffit pas : sous WIDE_MIN_WIDTH, la colonne ne rapetisse pas assez pour gêner.
+        chemin, (largeur, hauteur) = self._dimensions(_chaine_large(7))
+        vrai_min = cloud.WIDE_MIN_WIDTH
+        cloud.WIDE_MIN_WIDTH = largeur + 1
+        try:
+            self.assertEqual("", cloud.density_notice(chemin))
+        finally:
+            cloud.WIDE_MIN_WIDTH = vrai_min
+
+
 class LesAttributsRestentCeQuIlsSont(unittest.TestCase):
     """Des gardes : deux réglages sont interdits, et pour une raison écrite."""
 
