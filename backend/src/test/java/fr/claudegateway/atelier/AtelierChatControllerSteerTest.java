@@ -262,7 +262,8 @@ class AtelierChatControllerSteerTest {
                         org.mockito.Mockito.mock(fr.claudegateway.admin.AdminService.class),
                         new fr.claudegateway.quota.ProviderPricingProperties(
                                 null, null, null, null, null, null)),
-                        org.mockito.Mockito.mock(fr.claudegateway.atelier.AtelierThreadCostService.class)) {
+                        org.mockito.Mockito.mock(fr.claudegateway.atelier.AtelierThreadCostService.class),
+                        org.mockito.Mockito.mock(fr.claudegateway.atelier.AtelierThreadContextService.class)) {
             @Override
             SseEmitter newEmitter() {
                 RecordingEmitter next = emitters.pollFirst();
