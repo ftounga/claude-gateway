@@ -45,7 +45,10 @@ def rendu(spec):
     sortie = os.path.join(dossier, "schema")
     diagrams.Cluster = ClusterEspion
     try:
-        cloud.build(spec, sortie)
+        # PNG : ces tests LISENT des pixels et comparent des octets. La mise en page (l'objet de
+        # SF-142-15) vient de graphviz et ne dépend pas du format de sortie ; le SVG est couvert par
+        # test_cloud_svg.py (SF-142-18).
+        cloud.build(spec, sortie, outformat="png")
     finally:
         diagrams.Cluster = vrai_cluster
     return trace, Image.open(sortie + ".png").convert("RGB")
@@ -54,7 +57,7 @@ def rendu(spec):
 def octets(spec):
     dossier = tempfile.mkdtemp()
     sortie = os.path.join(dossier, "schema")
-    cloud.build(spec, sortie)
+    cloud.build(spec, sortie, outformat="png")
     with open(sortie + ".png", "rb") as fichier:
         return fichier.read()
 

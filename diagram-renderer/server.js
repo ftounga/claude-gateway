@@ -432,7 +432,13 @@ async function renderDrawioRequest(payload, res) {
   send(res, 200, body, "application/json; charset=utf-8");
 }
 
-/** La branche « icônes officielles » : une description entre, un PNG sort. */
+/**
+ * La branche « icônes officielles » : une description entre, un SVG sort (F-142 / SF-142-18).
+ *
+ * Le SVG est VECTORIEL — net quand la page l'affiche en `width:100%`, là où un PNG rapetissé rendait
+ * les libellés illisibles — et AUTO-CONTENU : `cloud.py` y a déjà inliné les icônes officielles en
+ * `data:` URI, donc rien ne pointe vers le disque du service une fois l'image posée dans une page.
+ */
 async function renderCloudRequest(payload, res) {
   const spec = payload.spec;
   if (!spec || typeof spec !== "object" || Array.isArray(spec)) {
@@ -442,11 +448,11 @@ async function renderCloudRequest(payload, res) {
   try {
     const base = path.join(dir, "cloud");
     const produced = await renderCloud(spec, base);
-    const image = await readFile(produced.file || base + ".png");
+    const image = await readFile(produced.file || base + ".svg");
     if (image.length > MAX_IMAGE_BYTES) {
       return fail(res, 413, "Image rendue trop lourde : " + image.length + " octets.");
     }
-    const headers = { "Content-Type": "image/png", "Content-Length": image.length };
+    const headers = { "Content-Type": "image/svg+xml", "Content-Length": image.length };
     if (produced.unknown) {
       // L'avertissement voyage avec l'image : l'agent doit pouvoir DIRE lesquels n'avaient pas d'icône.
       headers["X-Cg-Unknown-Types"] = produced.unknown;

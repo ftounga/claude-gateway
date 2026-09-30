@@ -131,6 +131,21 @@ class HttpDiagramRendererTest {
                 .isInstanceOf(DiagramRendererUnavailableException.class);
     }
 
+    @Test
+    @DisplayName("SF-142-18 : engine=cloud est posté, et le SVG revient annoncé en Format.SVG")
+    void cloudPostsEngineAndReturnsSvg() {
+        serve(200, "image/svg+xml", "<svg/>".getBytes(StandardCharsets.UTF_8));
+        ObjectMapper mapper = new ObjectMapper();
+        com.fasterxml.jackson.databind.node.ObjectNode spec = mapper.createObjectNode();
+        spec.putArray("nodes").addObject().put("id", "a").put("type", "aws.s3").put("label", "Bucket");
+
+        DiagramRenderer.Rendered rendered = renderer.renderCloud(spec);
+
+        assertThat(rendered.format()).isEqualTo(Format.SVG);
+        assertThat(new String(rendered.bytes(), StandardCharsets.UTF_8)).isEqualTo("<svg/>");
+        assertThat(lastBody.get()).contains("\"engine\":\"cloud\"").contains("aws.s3");
+    }
+
     // --- F-142 / SF-142-13 — le schéma réouvrable dans draw.io ---
 
     private static String base64(String value) {
