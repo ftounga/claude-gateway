@@ -1,5 +1,6 @@
 package fr.claudegateway.billing;
 
+import static fr.claudegateway.quota.EntitlementService.UNLIMITED_TOKEN_QUOTA;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
@@ -133,30 +134,42 @@ class AtelierOptionBillingApiIntegrationTest {
     }
 
     @Test
-    @DisplayName("F-107 / SF-107-06 : le rôle n'ouvre aucun jeton — quota ADMIN = quota USER, 0 si expiré")
-    void theAdministratorRoleDoesNotChangeTheTokenQuota() throws Exception {
+    @DisplayName("F-10 / SF-10-03 : l'ADMIN n'est jamais bridé — quota illimité, même abonnement résilié ;"
+            + " l'USER garde le quota fini de son plan")
+    void theAdministratorRoleGrantsAnUnlimitedTokenQuota() throws Exception {
         User admin = userRepository.save(User.builder().email("admin@example.com").emailVerified(true)
                 .provider(AuthProvider.LOCAL).role(UserRole.ADMIN).build());
         String adminToken = jwtService.generateToken(admin);
         subscribe(admin, PlanCode.SOLO, SubscriptionStatus.ACTIVE, null, null);
         subscribe(alice, PlanCode.SOLO, SubscriptionStatus.ACTIVE, null, null);
 
+        // Un USER sur SOLO voit le quota FINI de son plan — rien d'illimité : le rôle, lui, change tout.
         String userUsage = mockMvc.perform(get("/api/usage").contextPath("/api")
                         .header("Authorization", bearer(aliceToken)))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         long userQuota = JsonPath.parse(userUsage).read("$.quotaTokens", Long.class);
+        org.assertj.core.api.Assertions.assertThat(userQuota)
+                .isGreaterThan(0L)
+                .isLessThan(UNLIMITED_TOKEN_QUOTA);
 
-        mockMvc.perform(get("/api/usage").contextPath("/api")
+        // SF-10-03 : l'ADMIN n'est jamais bridé par le quota de jetons — quota effectivement illimité.
+        String adminUsage = mockMvc.perform(get("/api/usage").contextPath("/api")
                         .header("Authorization", bearer(adminToken)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.quotaTokens", is((int) userQuota)));
+                .andReturn().getResponse().getContentAsString();
+        long adminQuota = JsonPath.parse(adminUsage).read("$.quotaTokens", Long.class);
+        org.assertj.core.api.Assertions.assertThat(adminQuota).isEqualTo(UNLIMITED_TOKEN_QUOTA);
 
+        // L'exemption est placée en tête, avant le contrôle de statut : un ADMIN résilié reste illimité
+        // (et non 0, comme le serait un non-ADMIN) — « l'admin a tout ».
         subscribe(admin, PlanCode.SOLO, SubscriptionStatus.CANCELED, null, null);
-        mockMvc.perform(get("/api/usage").contextPath("/api")
+        String canceledAdminUsage = mockMvc.perform(get("/api/usage").contextPath("/api")
                         .header("Authorization", bearer(adminToken)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.quotaTokens", is(0)));
+                .andReturn().getResponse().getContentAsString();
+        long canceledAdminQuota = JsonPath.parse(canceledAdminUsage).read("$.quotaTokens", Long.class);
+        org.assertj.core.api.Assertions.assertThat(canceledAdminQuota).isEqualTo(UNLIMITED_TOKEN_QUOTA);
     }
 
     @Test
