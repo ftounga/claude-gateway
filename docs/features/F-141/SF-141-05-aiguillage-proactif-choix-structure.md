@@ -7,7 +7,7 @@
 `F-141` — L'aiguilleur de sujet à la racine (rouverte le 2026-09-30 pour cette subfeature)
 
 ## Statut
-`draft`
+`ready`
 
 ## Date de création
 2026-09-30

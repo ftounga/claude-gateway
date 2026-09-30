@@ -575,6 +575,57 @@ class AtelierChatServiceSystemPromptTest {
         assertThat(system).doesNotContain("À la racine du poste, aiguille avant de ranger");
     }
 
+    // ------------------------------------------- F-141 / SF-141-05 : aiguillage proactif à choix structuré (× F-164)
+
+    @Test
+    void theProactiveStructuredRoutingDoctrineIsPresentOnTheHostTerminal() {
+        String system = systemPromptOfHostTerminal();
+
+        // Le choix de rangement passe par « demander », pas par la prose.
+        assertThat(system).contains("Ne pose PAS ce choix de rangement en PROSE");
+        assertThat(system).contains("utilise l'outil « demander »");
+        // Options concrètes classées + raison courte + recommended.
+        assertThat(system).contains("chacun avec sa RAISON courte");
+        assertThat(system).contains("`cloudops-run` — même périmètre run/infra CAGIP");
+        assertThat(system).contains("Nouveau sujet : <nom déduit>");
+        assertThat(system).contains("comme recommended");
+        // Mapping du choix : rattacher / create_subject / transverse ; décider-par-défaut délégué.
+        assertThat(system).contains("crée-le avec create_subject");
+        assertThat(system).contains("prend l'option recommandée et la flague");
+        // Non-régression SF-141-02 (découverte + classement) : les quatre classes tiennent.
+        assertThat(system).contains("À la racine du poste, aiguille avant de ranger");
+        assertThat(system).contains("Découvre les sujets existants");
+        assertThat(system).contains("sujet EXISTANT");
+        assertThat(system).contains("TRANSVERSE");
+        assertThat(system).contains("NOUVEAU sujet");
+        assertThat(system).contains("répartition : A→data-platform");
+        // Non-régression SF-141-01 + F-125.
+        assertThat(system).contains("Dis où tu ranges un fait durable");
+        assertThat(system).contains("Tenue de la carte, en silence");
+    }
+
+    @Test
+    void theProactiveStructuredRoutingDoctrineIsAbsentOnAnOrdinaryProject() {
+        // Terminal de projet RUNNER : dans un sujet, aucun aiguillage à choix structuré.
+        String runner = systemPromptOfRunnerProjectDeclaring(null);
+        assertThat(runner).doesNotContain("Ne pose PAS ce choix de rangement en PROSE");
+        assertThat(runner).doesNotContain("À la racine du poste, aiguille avant de ranger");
+        // Les doctrines universelles (dont la règle « demander ») restent (non-régression).
+        assertThat(runner).contains("Dis où tu ranges un fait durable");
+        assertThat(runner).contains("Poser des questions avec l'outil « demander »");
+    }
+
+    @Test
+    void theProactiveStructuredRoutingDoctrineIsAbsentOnASandboxProject() {
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+
+        String system = systemPrompt();
+
+        assertThat(system).doesNotContain("Ne pose PAS ce choix de rangement en PROSE");
+    }
+
     // ------------------------------------------- F-141 / SF-141-03 : créer un sujet + gouvernance héritée
 
     /** Prépare un TERMINAL DU POSTE (racine) sans envoyer de tour : pour scénariser des appels d'outil. */

@@ -528,7 +528,20 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "- Puis ATTENDS la validation (ou la correction) de l'utilisateur AVANT d'écrire. "
                     + "Sur un mix, présente la RÉPARTITION explicite — jamais un rangement muet dans un "
                     + "seul sujet. Si deux sujets sont également plausibles, DEMANDE plutôt que de "
-                    + "trancher tout seul.\n\n";
+                    + "trancher tout seul.\n"
+                    + "- Ne pose PAS ce choix de rangement en PROSE : utilise l'outil « demander » "
+                    + "(question structurée). Une question « Où ranger ce sujet ? » avec des options "
+                    + "CONCRÈTES et CLASSÉES — un choix par sujet EXISTANT qui matche, chacun avec sa "
+                    + "RAISON courte (« `cloudops-run` — même périmètre run/infra CAGIP »), un choix "
+                    + "« Nouveau sujet : <nom déduit> », un choix « Transverse » si c'est un fait du "
+                    + "poste ; marque la destination la plus probable comme recommended (le meilleur "
+                    + "match, sinon « Nouveau sujet »). La réponse libre est déjà offerte "
+                    + "automatiquement — n'invente jamais un sujet existant que tu n'as pas découvert.\n"
+                    + "- Sur le CHOIX de l'utilisateur : sujet existant → dépose l'info dedans ; "
+                    + "« Nouveau sujet » → crée-le avec create_subject puis dépose l'info ; « Transverse » "
+                    + "→ range dans la carte du poste. Sans réponse (personne au clavier / vague "
+                    + "autonome), « demander » prend l'option recommandée et la flague : tu ne figes "
+                    + "jamais le tour ni ne ranges en silence.\n\n";
     private static final List<String> SKILL_PREFIXES = List.of(".claude/skills/", "skills/");
     /**
      * Fichiers d'état du <b>sujet courant</b> injectés dans le préfixe (F-148 / SF-148-05), dans cet
