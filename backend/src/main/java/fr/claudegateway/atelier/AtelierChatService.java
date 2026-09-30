@@ -537,6 +537,38 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "est pire que pas de carte. Ce savoir durable S'AJOUTE à ta démarche, il ne remplace "
                     + "aucune lecture nécessaire.\n\n";
     /**
+     * Déclencheur léger du savoir durable (F-166 / SF-166-02). S'ajoute <b>immédiatement après</b>
+     * {@link #DURABLE_KNOWLEDGE_DOCTRINE}, dans le <b>même</b> bloc {@link Workspace#isRunnerTarget()}
+     * (host + sujet) : c'est le déclencheur concret de la même doctrine, donc même scope. Absent en
+     * SANDBOX (hébergé) et sur un terminal Teams : préfixe plus court, cache (F-134) préservé.
+     *
+     * <p>Il rend <b>auto-observable</b> le moment où proposer : quand l'agent constate qu'il a déjà
+     * <b>ouvert plusieurs fichiers du même dépôt / sujet</b> pour se ré-orienter, <b>sans</b> qu'un
+     * {@code REPO-MAP.md} / {@code STATE.md} existe, <b>ce re-scan EST le signal</b> — il propose alors
+     * d'en créer un (bornée) <b>avant de continuer à re-explorer</b>. Le modèle observe son propre
+     * historique d'appels d'outils du tour ; <b>aucun compteur ni état persistant en code</b> (« le tour
+     * vit dans le flux », Gateway-First). <b>Anti-spam</b> : proposé au plus une fois, un « non » suffit.
+     * <b>Garde-fou (règle absolue PO : justesse avant coût)</b> : la suggestion ne <b>bloque</b> ni ne
+     * <b>remplace</b> JAMAIS la lecture réelle d'un fichier — on lit ce dont on a besoin, on propose en
+     * plus. Prompt-only, réutilise {@code write_file} ; littéral <b>stable</b> (cache F-134 préservé).</p>
+     */
+    private static final String DURABLE_KNOWLEDGE_TRIGGER_DOCTRINE =
+            "Repère le re-scan à vide — quand tu redécouvres, propose la carte :\n"
+                    + "- SIGNAL À SURVEILLER : si tu constates que tu as déjà OUVERT PLUSIEURS FICHIERS du "
+                    + "MÊME dépôt / sujet juste pour te ré-orienter (te repérer, retrouver où vivent les "
+                    + "choses) et qu'AUCUN `REPO-MAP.md` / `STATE.md` n'existe, ce re-scan EST le signal : "
+                    + "tu es en train de re-dériver ce qu'une carte retiendrait.\n"
+                    + "- ALORS PROPOSE d'en créer un (inventaire borné : `git ls-files` + points d'entrée) "
+                    + "AVANT de continuer à re-explorer — c'est le « déclencheur léger » du savoir durable, "
+                    + "au-delà des moments clés déjà connus (première exploration, décision, passation).\n"
+                    + "- UNE SEULE FOIS (anti-spam) : propose au plus une fois dans le fil ; si "
+                    + "l'utilisateur a déjà dit non, n'y reviens pas et poursuis normalement. Surveille-toi "
+                    + "toi-même, sans compteur ni cérémonie.\n"
+                    + "- NE BLOQUE JAMAIS, NE REMPLACE JAMAIS (justesse avant coût) : si tu as besoin d'un "
+                    + "fichier précis MAINTENANT, ouvre-le d'abord ; la suggestion s'AJOUTE, elle ne "
+                    + "suspend pas ta lecture réelle et ne s'y substitue pas. C'est un rappel, pas une "
+                    + "porte.\n\n";
+    /**
      * Aiguillage à la racine (F-141 / SF-141-02, cadrage §4.1). Ajouté <b>uniquement au terminal du
      * poste</b> ({@link Workspace#isHostTerminal()}) : c'est là, et là seulement, que la place d'un
      * fait est ambiguë. Dans un sujet (terminal de projet), le routage n'a aucune ambiguïté (cadrage
@@ -6823,6 +6855,12 @@ public class AtelierChatService implements RelayInterruptTarget {
         // littéral stable : cache (F-134) préservé. Absente en SANDBOX/Teams (préfixe plus court).
         if (workspace.isRunnerTarget()) {
             system.append(DURABLE_KNOWLEDGE_DOCTRINE);
+            // Déclencheur léger (F-166 / SF-166-02) : même scope (host + sujet), juste après la doctrine.
+            // Rend auto-observable le moment de proposer : plusieurs fichiers du même dépôt rouverts pour
+            // se ré-orienter, SANS REPO-MAP/STATE présent → ce re-scan EST le signal, propose (borné) avant
+            // de re-explorer. Aucun compteur/état en code (le tour vit dans le flux) ; une seule fois
+            // (anti-spam) ; ne bloque ni ne remplace JAMAIS la lecture réelle. Littéral stable (cache F-134).
+            system.append(DURABLE_KNOWLEDGE_TRIGGER_DOCTRINE);
         }
 
         // Aiguillage à la racine (F-141 / SF-141-02) : UNIQUEMENT au terminal du poste, là où la
