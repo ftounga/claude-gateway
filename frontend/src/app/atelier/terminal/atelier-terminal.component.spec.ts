@@ -197,6 +197,33 @@ describe('AtelierTerminalComponent', () => {
     expect(fixture.nativeElement.querySelector('.terminal-cost').textContent).toContain('1:05');
   });
 
+  it('rend les pièces jointes DANS la bulle du message qui défile (F-169 / SF-169-03)', () => {
+    component.messages = [
+      {
+        id: 'u1', role: 'USER', content: 'décris l\'image', actions: [],
+        files: [{ path: 'entrees/capture.png', size: 2411 }],
+      },
+    ];
+    fixture.detectChanges();
+
+    // La puce vit DANS la bulle de la question (donc dans `.terminal-scrollback`, elle défile).
+    const bubble = fixture.nativeElement.querySelector('.terminal-question') as HTMLElement;
+    const chip = bubble.querySelector('.terminal-attachment--in-bubble') as HTMLElement;
+    expect(chip).not.toBeNull();
+    expect(chip.querySelector('.terminal-attachment__name')?.textContent?.trim()).toBe('capture.png');
+    expect(chip.querySelector('.terminal-attachment__size')?.textContent?.trim()).not.toBe('');
+    // Lecture, pas composition : aucune croix de suppression dans la bulle.
+    expect(chip.querySelector('.terminal-attachment__remove')).toBeNull();
+  });
+
+  it('ne rend aucune pièce jointe dans la bulle d\'un message sans fichier (F-169 / SF-169-03)', () => {
+    component.messages = [{ id: 'u1', role: 'USER', content: 'bonjour', actions: [] }];
+    fixture.detectChanges();
+
+    const bubble = fixture.nativeElement.querySelector('.terminal-question') as HTMLElement;
+    expect(bubble.querySelector('.terminal-attachment--in-bubble')).toBeNull();
+  });
+
   it('marque en erreur le bloc d\'une commande en échec', () => {
     component.messages = [
       {

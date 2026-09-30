@@ -7,6 +7,7 @@ import {
   AtelierStreamAction,
   AtelierTerminalBlock,
   AtelierQuestion,
+  DepositedFileRef,
 } from '../core/models/atelier.models';
 import { AtelierFileDiffView } from './terminal/terminal-diff';
 
@@ -66,6 +67,12 @@ export interface AtelierThreadItem {
    * compte puisqu'elle y figure.
    */
   steer?: AtelierSteerState;
+  /**
+   * Pièces jointes envoyées avec ce message (F-169 / SF-169-03) : chemin + taille, rendues **dans la
+   * bulle** du message (nom court + taille). Posées à l'envoi depuis les puces du composer, et au
+   * rechargement depuis le transcript persistant (`message.files`, SF-169-02). Absent sinon.
+   */
+  files?: DepositedFileRef[];
 }
 
 /** Où en est une précision envoyée pendant un tour (F-84 / SF-84-06). */

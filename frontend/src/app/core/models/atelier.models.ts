@@ -497,6 +497,15 @@ export interface AtelierPersistedTranscript {
   costEur?: string;
 }
 
+/**
+ * Une pièce jointe attachée à un message (F-169 / SF-169-02) : le chemin où l'agent l'a lue et sa
+ * taille en octets. Le binaire ne repasse jamais par le message (Provider-First : `read_file`).
+ */
+export interface DepositedFileRef {
+  path: string;
+  size: number;
+}
+
 /** Message de l'historique. Réponse de `GET /api/workspaces/{id}/chat`. */
 export interface AtelierMessage {
   id: string;
@@ -505,6 +514,11 @@ export interface AtelierMessage {
   createdAt: string;
   /** Transcription du tour Terminal (F-30 SF-30-09) ; absente pour les tours du mode Assistant. */
   terminal?: AtelierPersistedTranscript | null;
+  /**
+   * Pièces jointes envoyées avec ce message (F-169 / SF-169-02) : chemin + taille, pour le rendu dans
+   * la bulle au rechargement. Vide / absent pour un message sans pièce jointe (et d'avant SF-169-02).
+   */
+  files?: DepositedFileRef[];
 }
 
 /** Action de fichier réalisée par l'agent pendant un tour : `type` = `read` ou `write`. */
@@ -524,6 +538,12 @@ export type AtelierTurnMode = 'ANSWER_PLAN' | 'ACT';
 export interface AtelierChatRequest {
   message: string;
   mode?: AtelierTurnMode;
+  /**
+   * Identifiants des dépôts joints à CE message (F-169 / SF-169-02) : le backend les associe
+   * exactement à ce message (isolation `user_id`+`workspace_id`). Absent / vide ⇒ fenêtre temporelle
+   * historique (F-115), rétrocompat stricte.
+   */
+  attachedDepositIds?: string[];
 }
 
 /** Réponse de `POST /api/workspaces/{id}/chat`. */
@@ -1654,6 +1674,8 @@ export interface LiveTerminals {
  * et la cible atteinte (`HOSTED` workspace S3, `RUNNER` poste). Le binaire ne remonte jamais.
  */
 export interface DepositedFile {
+  /** Identifiant du dépôt persisté (F-169 / SF-169-02) : renvoyé dans `attachedDepositIds` à l'envoi. */
+  id: string;
   path: string;
   size: number;
   target: string;
@@ -1675,4 +1697,11 @@ export interface TerminalDepositNotice {
   sizeLabel?: string;
   error?: string;
   cancelled?: boolean;
+  /**
+   * Identifiant du dépôt persisté (F-169 / SF-169-02) : joint au message à l'envoi
+   * (`attachedDepositIds`). Absent pour une puce d'échec / annulée.
+   */
+  depositId?: string;
+  /** Taille du dépôt en octets (F-169 / SF-169-02), pour rendre la pièce jointe dans la bulle. */
+  size?: number;
 }
