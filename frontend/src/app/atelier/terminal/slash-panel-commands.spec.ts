@@ -125,4 +125,38 @@ describe('slash-panel-commands (F-165 / SF-165-01)', () => {
     expect(panel.contextState).toBe('loading');
     expect(panel.context).toBeUndefined();
   });
+
+  // ------------------------------------ F-165 / SF-165-04 : /quota + /budget (vues conso & budget)
+
+  it('inscrit /quota et /budget au registre comme des VUES', () => {
+    const quota = findPanelCommand('quota');
+    const budget = findPanelCommand('budget');
+    expect(quota?.kind).toBe('view');
+    expect(quota?.panelKind).toBe('quota');
+    expect(budget?.kind).toBe('view');
+    expect(budget?.panelKind).toBe('budget');
+  });
+
+  it('propose /quota et /budget au préfixe', () => {
+    expect(panelCommandSuggestions('/qu').map((c) => c.name)).toContain('quota');
+    expect(panelCommandSuggestions('/bu').map((c) => c.name)).toContain('budget');
+    expect(panelCommandSuggestions('/').map((c) => c.name)).toEqual(
+      jasmine.arrayContaining(['quota', 'budget']),
+    );
+  });
+
+  it('intercepte /quota et /budget à l\'envoi', () => {
+    expect(parsePanelCommand('/quota')?.command.name).toBe('quota');
+    expect(parsePanelCommand('/budget')?.command.name).toBe('budget');
+  });
+
+  it('construit le panneau /quota en chargement, et /budget en simple cadre', () => {
+    const quota = buildPanel(findPanelCommand('quota')!, '', 'slash-3');
+    expect(quota.panelKind).toBe('quota');
+    expect(quota.quotaState).toBe('loading');
+
+    const budget = buildPanel(findPanelCommand('budget')!, '', 'slash-4');
+    expect(budget.panelKind).toBe('budget');
+    expect(budget.title).toBe('Budget de la semaine');
+  });
 });

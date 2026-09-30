@@ -1,0 +1,32 @@
+<!-- F-165 / SF-165-04 — Corps du panneau /budget : le budget hebdomadaire du poste. VUE pure (service
+     partagé WeeklyBudgetService, aucun tour). Chiffres en tabular-nums. -->
+@if (client(); as line) {
+  <div class="budget-figures">
+    <div class="budget-figure budget-figure--lead">
+      <span class="budget-figure__value">{{ money(remaining()) }}</span>
+      <span class="budget-figure__label">
+        Restant cette semaine{{ line.hostName ? ' · ' + line.hostName : '' }}
+      </span>
+    </div>
+    <div class="budget-figure">
+      <span class="budget-figure__value">{{ percent() }} %</span>
+      <span class="budget-figure__label">du budget consommé</span>
+    </div>
+  </div>
+
+  <section class="budget-section" aria-label="Budget de la semaine">
+    <div class="budget-bar" role="img" [attr.aria-label]="'Budget consommé ' + percent() + ' %'">
+      <span class="budget-bar__seg" [class.is-near]="nearLimit()" [style.width.%]="percent()"></span>
+    </div>
+    <p class="budget-hint">
+      {{ money(line.spentEur) }} dépensés sur {{ money(line.budgetEur ?? 0) }} de budget hebdomadaire.
+    </p>
+  </section>
+} @else {
+  <!-- Dégradation propre : jamais le budget d'autrui, jamais un plafond inventé. -->
+  <p class="budget-note">
+    Budget non disponible ici. Il est visible par les administrateurs, ou aucun plafond n'est défini pour
+    ce poste. Vérifier son coût reste gratuit&nbsp;: essayez <span class="budget-cmd">/cout</span> ou
+    <span class="budget-cmd">/quota</span>.
+  </p>
+}

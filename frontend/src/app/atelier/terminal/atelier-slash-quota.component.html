@@ -1,0 +1,52 @@
+<!-- F-165 / SF-165-04 — Corps du panneau /quota : la consommation de tokens du plan. VUE pure : aucune
+     donnée n'est calculée ici, aucun tour n'est déclenché. Chiffres en tabular-nums. -->
+@switch (state) {
+  @case ('loading') {
+    <p class="quota-note">
+      <mat-spinner diameter="18" strokeWidth="2" aria-hidden="true"></mat-spinner>
+      Lecture de la consommation du plan…
+    </p>
+  }
+  @case ('error') {
+    <p class="quota-note quota-note--error">
+      Quota indisponible pour l'instant. Réessayez dans un instant — cela ne coûte aucun tour.
+    </p>
+  }
+  @default {
+    @if (quota) {
+      <div class="quota-figures">
+        <div class="quota-figure quota-figure--lead">
+          <span class="quota-figure__value">{{ count(quota.remainingTokens) }}</span>
+          <span class="quota-figure__label">Tokens restants</span>
+        </div>
+        <div class="quota-figure">
+          <span class="quota-figure__value">{{ usedPercent }} %</span>
+          <span class="quota-figure__label">du plafond utilisé</span>
+        </div>
+      </div>
+
+      <section class="quota-section" aria-label="Consommation du plan">
+        <div class="quota-bar" role="img"
+             [attr.aria-label]="'Plan consommé à ' + usedPercent + ' %'">
+          <span class="quota-bar__seg" [class.is-near]="nearLimit" [style.width.%]="usedPercent"></span>
+        </div>
+        <p class="quota-hint">
+          {{ count(quota.usedTokens) }} / {{ count(quota.quotaTokens) }} tokens facturés sur la période.
+        </p>
+      </section>
+
+      <section class="quota-section" aria-label="Période">
+        <ul class="quota-facts">
+          <li class="quota-fact">
+            <span class="quota-fact__label">Reset le</span>
+            <span class="quota-fact__value">{{ date(quota.periodEnd) }}</span>
+          </li>
+          <li class="quota-fact">
+            <span class="quota-fact__label">Période</span>
+            <span class="quota-fact__value">{{ date(quota.periodStart) }} → {{ date(quota.periodEnd) }}</span>
+          </li>
+        </ul>
+      </section>
+    }
+  }
+}

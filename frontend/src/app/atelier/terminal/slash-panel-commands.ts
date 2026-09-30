@@ -86,6 +86,24 @@ export const SLASH_PANEL_COMMANDS: readonly SlashPanelCommand[] = [
     panelKind: 'context',
   },
   {
+    name: 'quota',
+    title: '/quota',
+    description: 'Consommation de tokens du plan : utilisé, restant, reset',
+    kind: 'view',
+    takesArgument: false,
+    icon: 'data_usage',
+    panelKind: 'quota',
+  },
+  {
+    name: 'budget',
+    title: '/budget',
+    description: 'Budget hebdomadaire du poste (si lisible)',
+    kind: 'view',
+    takesArgument: false,
+    icon: 'account_balance_wallet',
+    panelKind: 'budget',
+  },
+  {
     name: 'aide',
     title: '/aide',
     description: 'Liste les commandes slash disponibles',
@@ -258,6 +276,31 @@ export interface ThreadContextSummary {
 }
 
 /**
+ * État de chargement du panneau `/quota` (F-165 / SF-165-04) : une **VUE** appelle un endpoint REST de
+ * **lecture** (`/api/usage`, jamais la boucle modèle), et le panneau vit ces trois états.
+ */
+export type QuotaPanelState = 'loading' | 'ready' | 'error';
+
+/**
+ * La **consommation de tokens du plan** (F-165 / SF-165-04) telle que le panneau `/quota` la rend. Reflet
+ * du contrat `UsageView` (F-10, `GET /api/usage`, isolé `user_id`) : des volumes seulement, aucun contenu.
+ */
+export interface ThreadQuotaSummary {
+  /** Tokens facturés utilisés sur la période (le décompte que le quota oppose). */
+  readonly usedTokens: number;
+  /** Plafond de tokens de la période (entitlement du plan/essai). */
+  readonly quotaTokens: number;
+  /** Tokens restants (jamais négatif). */
+  readonly remainingTokens: number;
+  /** Volume de tokens traités sur la période (informatif), absent d'un backend antérieur à F-63. */
+  readonly processedTokens?: number;
+  /** Premier jour de la période (ISO `YYYY-MM-DD`). */
+  readonly periodStart: string;
+  /** Premier jour de la période suivante — la date de reset (ISO `YYYY-MM-DD`). */
+  readonly periodEnd: string;
+}
+
+/**
  * Un panneau **local** rendu dans le fil du terminal (résultat d'une commande slash F-165). Purement
  * de l'affichage : jamais dans l'historique envoyé au modèle.
  */
@@ -286,6 +329,10 @@ export interface SlashPanel {
   readonly contextState?: ContextPanelState;
   /** L'état mémoire du fil, présent pour `panelKind === 'context'` en état `ready`. */
   readonly context?: ThreadContextSummary;
+  /** État de la lecture, pour `panelKind === 'quota'` : `loading` → `ready`/`error`. */
+  readonly quotaState?: QuotaPanelState;
+  /** La consommation du plan, présente pour `panelKind === 'quota'` en état `ready`. */
+  readonly quota?: ThreadQuotaSummary;
 }
 
 /** Construit les entrées d'aide à partir du registre (toutes les commandes F-165 disponibles). */
@@ -323,6 +370,15 @@ export function buildPanel(command: SlashPanelCommand, arg: string, id: string):
     // Même règle : la donnée arrive d'un GET de lecture (jamais du modèle). *Vérifier sa mémoire ne
     // doit rien coûter.*
     return { ...base, title: 'État mémoire du fil', contextState: 'loading' };
+  }
+  if (command.panelKind === 'quota') {
+    // La donnée arrive d'un GET de lecture (`/api/usage`, jamais le modèle) : chargement d'abord.
+    return { ...base, title: 'Quota du plan', quotaState: 'loading' };
+  }
+  if (command.panelKind === 'budget') {
+    // Le corps `/budget` lit le service PARTAGÉ `WeeklyBudgetService` (réactif) : aucun état à porter
+    // ici — le panneau n'est qu'un cadre autour du corps.
+    return { ...base, title: 'Budget de la semaine' };
   }
   return base;
 }

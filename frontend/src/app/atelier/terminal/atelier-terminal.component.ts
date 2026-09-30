@@ -65,8 +65,11 @@ import { AtelierSlashPanelComponent } from './atelier-slash-panel.component';
 import { AtelierSlashHelpComponent } from './atelier-slash-help.component';
 import { AtelierSlashCostComponent } from './atelier-slash-cost.component';
 import { AtelierSlashContexteComponent } from './atelier-slash-contexte.component';
+import { AtelierSlashQuotaComponent } from './atelier-slash-quota.component';
+import { AtelierSlashBudgetComponent } from './atelier-slash-budget.component';
 import { AtelierCostService } from '../../core/services/atelier-cost.service';
 import { AtelierContextService } from '../../core/services/atelier-context.service';
+import { UsageService } from '../../core/services/usage.service';
 import {
   ActiveMention,
   activeMention,
@@ -200,7 +203,7 @@ export interface SlashMenuEntry {
     TeamsLinkBadgeComponent, NgTemplateOutlet, TerminalEmailComponent, PageBlockComponent, PagePanelComponent,
     TerminalActionsPanelComponent, AtelierTerminalDemandeComponent,
     AtelierSlashPanelComponent, AtelierSlashHelpComponent, AtelierSlashCostComponent,
-    AtelierSlashContexteComponent,
+    AtelierSlashContexteComponent, AtelierSlashQuotaComponent, AtelierSlashBudgetComponent,
     MatButtonToggleModule, MatIconModule, MatMenuModule, MatProgressBarModule, MatProgressSpinnerModule,
     MatTooltipModule, RouterLink,
     WeeklyBudgetComponent, ProjectCostComponent, TurnSuggestionsComponent, DictationButtonComponent,
@@ -1449,6 +1452,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   /** F-165 / SF-165-02 : la lecture de l'économie du fil pour la commande vue `/cout` (aucun tour). */
   private readonly atelierCost = inject(AtelierCostService);
   private readonly atelierContext = inject(AtelierContextService);
+  private readonly usage = inject(UsageService);
   /** Ce que chaque projet a coûté (F-143 / SF-143-01), partagé avec la Forge. */
   private readonly projectCosts = inject(ProjectCostService);
 
@@ -1773,6 +1777,12 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     if (command.panelKind === 'context') {
       this.loadContextPanel(id);
     }
+    // F-165 / SF-165-04 : `/quota` est une VUE — un GET de lecture (`/api/usage`, isolé user_id).
+    if (command.panelKind === 'quota') {
+      this.loadQuotaPanel(id);
+    }
+    // F-165 / SF-165-04 : `/budget` réutilise le service PARTAGÉ `WeeklyBudgetService` — le corps du
+    // panneau le lit lui-même (réactif) ; rien à charger ici, et jamais aucun tour.
   }
 
   /**
@@ -1806,6 +1816,18 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     this.atelierContext.contextSummary(workspaceId).subscribe({
       next: (context) => this.patchPanel(id, { contextState: 'ready', context }),
       error: () => this.patchPanel(id, { contextState: 'error' }),
+    });
+  }
+
+  /**
+   * F-165 / SF-165-04 — charge la consommation du plan pour le panneau `/quota` et le fait passer de
+   * `loading` à `ready`/`error`. LECTURE seule (`GET /api/usage`, isolé `user_id` par le JWT) : aucun
+   * tour modèle. La consommation est celle de l'utilisateur, pas d'un projet : aucun `projectId` requis.
+   */
+  private loadQuotaPanel(id: string): void {
+    this.usage.getUsage().subscribe({
+      next: (quota) => this.patchPanel(id, { quotaState: 'ready', quota }),
+      error: () => this.patchPanel(id, { quotaState: 'error' }),
     });
   }
 
