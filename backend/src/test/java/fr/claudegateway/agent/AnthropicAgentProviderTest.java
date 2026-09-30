@@ -204,9 +204,13 @@ class AnthropicAgentProviderTest {
         // quinze étapes en ajoute davantage : sans repère à mi-chemin, il ne trouve rien et
         // réécrit tout, sans rien signaler.
         build(null);
+        // Fil VALIDE (alternance user/assistant) : l'assainissement (F-117 / SF-117-08) le laisse
+        // intact, la taille ne change pas et le marqueur intermédiaire a sa place.
         List<AgentMessage> longThread = new java.util.ArrayList<>();
         for (int i = 0; i < 30; i++) {
-            longThread.add(AgentMessage.userText("message " + i));
+            longThread.add(i % 2 == 0
+                    ? AgentMessage.userText("message " + i)
+                    : AgentMessage.assistant(List.of(new AgentContentBlock.Text("réponse " + i))));
         }
 
         JsonNode messages = captureBody(null, longThread).get("messages");
@@ -246,9 +250,12 @@ class AnthropicAgentProviderTest {
         // LE PLAFOND DU FOURNISSEUR. Un cinquième marqueur ferait ÉCHOUER la requête : outils,
         // consigne, intermédiaire et dernier saturent exactement la limite.
         build(null);
+        // Fil VALIDE (alternance) pour un test qui a un sens après l'assainissement (SF-117-08).
         List<AgentMessage> longThread = new java.util.ArrayList<>();
         for (int i = 0; i < 40; i++) {
-            longThread.add(AgentMessage.userText("message " + i));
+            longThread.add(i % 2 == 0
+                    ? AgentMessage.userText("message " + i)
+                    : AgentMessage.assistant(List.of(new AgentContentBlock.Text("réponse " + i))));
         }
 
         JsonNode body = captureBody(null, longThread);
@@ -728,18 +735,62 @@ class AnthropicAgentProviderTest {
     }
 
     @Test
-    void keepsOtherBadRequestsAsProviderFailure() {
+    void translatesMalformedMessageSequenceIntoANeutralException() {
         build(null);
+        // Corps d'un 400 « invalid_request » STRUCTUREL (rôles non alternés) — le cœur du bug agenor
+        // (F-117 / SF-117-08). Distinct de « prompt too long » : il se réassainit, il ne se compacte pas.
         server.expect(ExpectedCount.once(), requestTo(URL))
                 .andExpect(method(HttpMethod.POST))
                 .andRespond(withStatus(HttpStatusCode.valueOf(400)).body("""
                         {"type":"error","error":{"type":"invalid_request_error",
-                         "message":"messages: unexpected role"}}""")
+                         "message":"messages: roles must alternate between user and assistant"}}""")
                         .contentType(MediaType.APPLICATION_JSON));
 
-        // Un autre 400 reste un échec fournisseur, pas un débordement de contexte.
+        // Signal NEUTRE distinct : la boucle doit pouvoir réassainir puis relancer, pas mourir.
+        assertThatThrownBy(this::call).isInstanceOf(AgentMalformedRequestException.class);
+
+        // Un seul appel : rejouer le même corps redonnerait le même 400 — il faut d'abord réassainir.
+        server.verify();
+        assertThat(waits).isEmpty();
+    }
+
+    @Test
+    void keepsOtherBadRequestsAsProviderFailure() {
+        build(null);
+        // 400 NON structurel (modèle inconnu) : ni « prompt too long », ni séquence malformée. Reste un
+        // échec fournisseur ordinaire.
+        server.expect(ExpectedCount.once(), requestTo(URL))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(HttpStatusCode.valueOf(400)).body("""
+                        {"type":"error","error":{"type":"invalid_request_error",
+                         "message":"model: claude-inconnu is not a valid model"}}""")
+                        .contentType(MediaType.APPLICATION_JSON));
+
         assertThatThrownBy(this::call).isInstanceOf(AIProviderException.class);
         server.verify();
+    }
+
+    @Test
+    void sanitizesTheSequenceBeforeSendingSoRolesNeverRepeat() {
+        build(null);
+        // Deux messages `user` consécutifs (comme un rejeu d'agenor) : le provider doit les FUSIONNER
+        // avant l'envoi — sans quoi le fournisseur renverrait un 400 (F-117 / SF-117-08).
+        JsonNode body = captureBody(AgentReasoning.none(), List.of(
+                AgentMessage.userText("premier"), AgentMessage.userText("second")));
+
+        JsonNode messages = body.get("messages");
+        assertThat(messages).hasSize(1);
+        assertThat(messages.get(0).path("role").asText()).isEqualTo("user");
+        // Les deux textes sont présents, dans l'ordre, aucun perdu.
+        JsonNode content = messages.get(0).get("content");
+        assertThat(content).hasSize(2);
+        assertThat(content.get(0).path("text").asText()).isEqualTo("premier");
+        assertThat(content.get(1).path("text").asText()).isEqualTo("second");
+        // Aucun rôle consécutif dupliqué dans le corps envoyé.
+        for (int i = 1; i < messages.size(); i++) {
+            assertThat(messages.get(i).path("role").asText())
+                    .isNotEqualTo(messages.get(i - 1).path("role").asText());
+        }
     }
 
     @Test

@@ -313,6 +313,16 @@ public class AnthropicAgentProvider implements AiAgentProvider {
                     throw new AgentPromptTooLongException(
                             "Le contexte dépasse la fenêtre du modèle.", ex);
                 }
+                // Requête structurellement invalide (F-117 / SF-117-08) : séquence de messages
+                // malformée (rôles non alternés, bloc vide…). Rejouer le même corps redonnerait le
+                // même 400 — il faut RÉASSAINIR la séquence. Traduit en signal neutre distinct pour
+                // que la boucle rebâtisse puis relance une fois, au lieu de mourir en provider_error.
+                // Testé APRÈS « prompt too long » : ce cas aussi est un invalid_request_error, mais il
+                // se compacte, il ne se réassainit pas.
+                if (status == 400 && isMalformedRequest(ex)) {
+                    throw new AgentMalformedRequestException(
+                            "La séquence de messages envoyée est invalide.", ex);
+                }
                 long delay = AgentRetryPolicy.retryableStatus(status) && retryPolicy.hasAttemptLeft(attempt)
                         ? retryPolicy.delayMs(attempt, retryAfterHeader(ex), waited)
                         : AgentRetryPolicy.NO_DELAY;
@@ -677,6 +687,27 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         return body.toLowerCase(java.util.Locale.ROOT).contains("prompt is too long");
     }
 
+    /**
+     * Vrai si ce 400 signale une <b>requête structurellement invalide</b> — séquence de messages
+     * malformée (F-117 / SF-117-08). Le fournisseur range ces refus dans un {@code invalid_request_error}
+     * dont le message cite la structure fautive : rôles non alternés (« roles must alternate »),
+     * message de tête d'un mauvais rôle, bloc de contenu vide (« text content blocks must be
+     * non-empty »)… On reconnaît donc un corps {@code invalid_request} portant sur {@code messages},
+     * {@code role} ou {@code content}, insensible à la casse. À tester <b>après</b>
+     * {@link #isPromptTooLong(RestClientResponseException)} : ce dernier est aussi un
+     * {@code invalid_request_error}, mais il se compacte, il ne se réassainit pas. Un autre 400
+     * (modèle inconnu, authentification…) n'est pas structurel et reste un échec fournisseur.
+     */
+    private static boolean isMalformedRequest(RestClientResponseException ex) {
+        String body = ex.getResponseBodyAsString();
+        if (body == null || body.isBlank()) {
+            return false;
+        }
+        String lower = body.toLowerCase(java.util.Locale.ROOT);
+        return lower.contains("invalid_request")
+                && (lower.contains("role") || lower.contains("messages") || lower.contains("content"));
+    }
+
     /** Première valeur de l'en-tête {@code Retry-After}, ou {@code null}. */
     private static String retryAfterHeader(RestClientResponseException ex) {
         HttpHeaders headers = ex.getResponseHeaders();
@@ -749,7 +780,13 @@ public class AnthropicAgentProvider implements AiAgentProvider {
      * toutes les suivantes relisent le segment à une fraction du prix (D2). Sur un tour de 30
      * itérations, chaque segment est écrit une fois et relu jusqu'à 29 fois.</p>
      */
-    private List<Map<String, Object>> toApiMessages(List<AgentMessage> messages) {
+    private List<Map<String, Object>> toApiMessages(List<AgentMessage> rawMessages) {
+        // Point de passage UNIQUE vers le fournisseur (F-117 / SF-117-08) : la séquence est assainie
+        // ICI, avant tout envoi (streamé, non streamé, synthèse, exploration, compaction), pour être
+        // toujours structurellement valide — alternance stricte, démarrage sur `user`, pas de bloc
+        // vide. Déterministe et sans perte de contenu : le préfixe stable reste stable (cache de
+        // prompt préservé), et un fil déjà en mauvais état (USER orphelins) remarche au rejeu.
+        List<AgentMessage> messages = AgentMessageSanitizer.sanitize(rawMessages);
         List<Map<String, Object>> apiMessages = new ArrayList<>(messages.size());
         // Un marqueur INTERMÉDIAIRE, en plus du dernier (F-134 / SF-134-02). Pour retrouver le
         // ruban précédent, le fournisseur part du marqueur et remonte AU PLUS VINGT positions :
