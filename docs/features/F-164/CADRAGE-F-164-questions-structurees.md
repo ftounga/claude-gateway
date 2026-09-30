@@ -134,6 +134,14 @@ Il n'existe **aucun outil générique « poser une question »** dans le catalog
 **Dépendances** : SF-164-01 réutilise **F-84** (pause/reprise) ; SF-164-02 dépend de **DESIGN_SYSTEM** et
 de la **version mobile** (F-151/152) ; SF-164-03 dépend de **F-153** (push) pour le volet notification.
 
+### Statut post-livraison — re-scope et clôture (2026-09-30)
+
+Le PO a **re-scopé** les numéros 03/04 par rapport à ce découpage initial :
+
+- **SF-164-03 livrée** = **déclenchement manuel** des questions structurées (mode unitaire, une par une). **SF-164-04 livrée** = **règle impérative** « toute liste de questions à réponses proposables passe par le format structuré `demander`, jamais la prose ».
+- Ancien **SF-164-03 « Politique décider-par-défaut + flag + push »** → **livré comme feature dédiée [F-167](../F-167/CADRAGE-F-167-decider-par-defaut.md)** « Décider par défaut et avancer » (2026-09-30), avec garde-fou : irréversible/sensible → question structurée.
+- Ancien **SF-164-04 (option) « Unifier les prompts ad-hoc »** → **CLOS SANS OBJET (2026-09-30)**. Audit lecture seule sur `origin/main` : **0 contournement** de la règle en prose. `ASK_QUESTION_DOCTRINE` est injectée et gardée par tests (`AtelierChatServiceSystemPromptTest`) ; les « prompts ad-hoc » visés (choix de reprise F-39, Nouveau départ F-117, porte F-84) sont **déjà des mécanismes structurés** (contrat back + UI dédiée), pas des questions en prose. Les « unifier » sous `demander` serait une **consolidation d'architecture optionnelle**, non prioritaire — **non retenue** (réflexe « brancher/valider l'existant plutôt que développer »).
+
 ---
 
 ## 6. Périmètre
