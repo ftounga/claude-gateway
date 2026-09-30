@@ -103,6 +103,31 @@ class PageServiceTest {
     }
 
     @Test
+    @DisplayName("SF-142-22 — html() embarque l'image en data:, garde le lien « ouvrir en grand », stockage pristine")
+    void servesDiagramInlineAsDataUriAndKeepsOpenLargeLink() {
+        byte[] svg = ("<svg xmlns=\"http://www.w3.org/2000/svg\"><rect/></svg>").getBytes(StandardCharsets.UTF_8);
+        String withDiagram = "<html><body>"
+                + "<a href=\"archi.svg\" target=\"_blank\">ouvrir en grand</a>"
+                + "<img src=\"archi.svg\" style=\"width:100%\">"
+                + "</body></html>";
+        UUID pageId = service.publish(place(alice), null, "Archi", null, withDiagram, Map.of("archi.svg", svg))
+                .page().getId();
+
+        String served = new String(service.html(alice, pageId, null).content(), StandardCharsets.UTF_8);
+        String expected = "data:image/svg+xml;base64," + java.util.Base64.getEncoder().encodeToString(svg);
+        assertThat(served)
+                .contains("<img src=\"" + expected + "\" style=\"width:100%\">")
+                .doesNotContain("src=\"archi.svg\"")
+                .contains("<a href=\"archi.svg\" target=\"_blank\">ouvrir en grand</a>");
+
+        // Le stockage reste pristine : le HTML garde le src relatif, l'image est rangée UNE fois.
+        String stored = new String(new PageStore(storage).html(alice, pageId, 1).orElseThrow(),
+                StandardCharsets.UTF_8);
+        assertThat(stored).isEqualTo(withDiagram);
+        assertThat(new PageStore(storage).attachment(alice, pageId, 1, "archi.svg").orElseThrow()).isEqualTo(svg);
+    }
+
+    @Test
     @DisplayName("F-142 — une page sans Mermaid est servie exactement comme stockée")
     void servesNonMermaidPageUnchanged() {
         String plain = "<html><body><h1>Compte rendu</h1></body></html>";
