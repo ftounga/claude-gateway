@@ -31,6 +31,9 @@ class AtelierPropertiesTest {
     void honoursAConfiguredValue() {
         assertThat(withMaxIterations(12).maxIterations()).isEqualTo(12);
         assertThat(withMaxIterations(50).maxIterations()).isEqualTo(50);
+        // SF-39-23 : la production porte le plafond d'itérations à 60 (APP_ATELIER_MAX_ITERATIONS),
+        // pour que les itérations ne redeviennent pas le goulot une fois les jetons relevés à 30 M.
+        assertThat(withMaxIterations(60).maxIterations()).isEqualTo(60);
     }
 
     @Test
@@ -110,6 +113,17 @@ class AtelierPropertiesTest {
         assertThat(withTurnCap(50_000_000L).maxTurnTokens())
                 .isEqualTo(AtelierProperties.MAX_TURN_TOKENS_CEILING);
         assertThat(withTurnCap(250_000L).maxTurnTokens()).isEqualTo(250_000L);
+    }
+
+    @Test
+    void raisedCeilingLetsAMessageGoMuchFurther() {
+        // SF-39-23 (décision PO 2026-09-30) : borne dure relevée de 10 M à 40 M pour relever
+        // drastiquement la marge d'un message (« justesse avant coût »).
+        assertThat(AtelierProperties.MAX_TURN_TOKENS_CEILING).isEqualTo(40_000_000L);
+        // La valeur portée par la production (30 M) est acceptée telle quelle, sous la borne.
+        assertThat(withTurnCap(30_000_000L).maxTurnTokens()).isEqualTo(30_000_000L);
+        // Au-delà de la borne (50 M) → ramené à 40 M, pas à l'ancien 10 M.
+        assertThat(withTurnCap(50_000_000L).maxTurnTokens()).isEqualTo(40_000_000L);
     }
 
     @Test
