@@ -1,0 +1,75 @@
+/* ------------------------------------------------------------------ F-165 / SF-165-05
+   LE CORPS DU PANNEAU /sujet — la carte du projet courant. Rendu dans le cadre SOMBRE du panneau
+   (SF-165-01) : jetons `--cg-*` uniquement, AUCUNE couleur ni police hors charte. Cibles ≥ 44 px. */
+
+.sujet-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: var(--cg-space-3);
+}
+
+.sujet-head__name {
+  font-family: var(--cg-font-heading);
+  font-weight: 700;
+  font-size: 20px;
+  color: var(--cg-surface);
+  word-break: break-word;
+}
+
+.sujet-head__host {
+  font-size: 12px;
+  color: var(--cg-text-secondary);
+}
+
+.sujet-note {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  margin: 0;
+  min-height: 44px;
+  font-size: 13px;
+  color: var(--cg-text-secondary);
+}
+
+.sujet-note--error {
+  color: var(--cg-orange-2);
+}
+
+.sujet-facts {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--cg-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sujet-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sujet-fact__label {
+  font-family: var(--cg-font-heading);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cg-text-secondary);
+}
+
+.sujet-fact__value {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  color: var(--cg-surface);
+}
+
+@media (max-width: 819px) {
+  .sujet-facts {
+    grid-template-columns: 1fr;
+    gap: var(--cg-space-2);
+  }
+}

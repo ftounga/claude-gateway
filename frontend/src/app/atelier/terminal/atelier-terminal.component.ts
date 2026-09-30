@@ -67,9 +67,12 @@ import { AtelierSlashCostComponent } from './atelier-slash-cost.component';
 import { AtelierSlashContexteComponent } from './atelier-slash-contexte.component';
 import { AtelierSlashQuotaComponent } from './atelier-slash-quota.component';
 import { AtelierSlashBudgetComponent } from './atelier-slash-budget.component';
+import { AtelierSlashPosteComponent } from './atelier-slash-poste.component';
+import { AtelierSlashSujetComponent } from './atelier-slash-sujet.component';
 import { AtelierCostService } from '../../core/services/atelier-cost.service';
 import { AtelierContextService } from '../../core/services/atelier-context.service';
 import { UsageService } from '../../core/services/usage.service';
+import { AtelierService } from '../../core/services/atelier.service';
 import {
   ActiveMention,
   activeMention,
@@ -204,6 +207,7 @@ export interface SlashMenuEntry {
     TerminalActionsPanelComponent, AtelierTerminalDemandeComponent,
     AtelierSlashPanelComponent, AtelierSlashHelpComponent, AtelierSlashCostComponent,
     AtelierSlashContexteComponent, AtelierSlashQuotaComponent, AtelierSlashBudgetComponent,
+    AtelierSlashPosteComponent, AtelierSlashSujetComponent,
     MatButtonToggleModule, MatIconModule, MatMenuModule, MatProgressBarModule, MatProgressSpinnerModule,
     MatTooltipModule, RouterLink,
     WeeklyBudgetComponent, ProjectCostComponent, TurnSuggestionsComponent, DictationButtonComponent,
@@ -1453,6 +1457,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   private readonly atelierCost = inject(AtelierCostService);
   private readonly atelierContext = inject(AtelierContextService);
   private readonly usage = inject(UsageService);
+  private readonly atelier = inject(AtelierService);
   /** Ce que chaque projet a coûté (F-143 / SF-143-01), partagé avec la Forge. */
   private readonly projectCosts = inject(ProjectCostService);
 
@@ -1783,6 +1788,13 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     }
     // F-165 / SF-165-04 : `/budget` réutilise le service PARTAGÉ `WeeklyBudgetService` — le corps du
     // panneau le lit lui-même (réactif) ; rien à charger ici, et jamais aucun tour.
+    // F-165 / SF-165-05 : `/poste` et `/sujet` sont des VUES — des GET de lecture, jamais le modèle.
+    if (command.panelKind === 'poste') {
+      this.loadPostePanel(id);
+    }
+    if (command.panelKind === 'sujet') {
+      this.loadSujetPanel(id);
+    }
   }
 
   /**
@@ -1828,6 +1840,67 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     this.usage.getUsage().subscribe({
       next: (quota) => this.patchPanel(id, { quotaState: 'ready', quota }),
       error: () => this.patchPanel(id, { quotaState: 'error' }),
+    });
+  }
+
+  /**
+   * F-165 / SF-165-05 — charge l'état du poste pour le panneau `/poste`. LECTURE seule
+   * (`GET /api/runner-hosts`, isolé `user_id`) : aucun tour. Sans poste (terminal hébergé/orphelin), le
+   * panneau bascule en « pas de poste » sans aucun appel.
+   */
+  private loadPostePanel(id: string): void {
+    const hostId = this.hostId;
+    if (!hostId) {
+      this.patchPanel(id, { posteState: 'none' });
+      return;
+    }
+    this.atelier.listRunnerHosts().subscribe({
+      next: (hosts) => {
+        const host = hosts.find((h) => h.id === hostId);
+        if (!host) {
+          this.patchPanel(id, { posteState: 'none' });
+          return;
+        }
+        this.patchPanel(id, {
+          posteState: 'ready',
+          poste: {
+            name: host.name,
+            rootName: host.rootName ?? null,
+            os: host.os ?? null,
+            shell: host.shell ?? null,
+            elevated: !!host.elevated,
+            connected: host.connected,
+            lastSeenAt: host.lastSeenAt ?? null,
+          },
+        });
+      },
+      error: () => this.patchPanel(id, { posteState: 'error' }),
+    });
+  }
+
+  /**
+   * F-165 / SF-165-05 — charge la carte du projet courant pour le panneau `/sujet`. LECTURE seule
+   * (`GET /api/workspaces/{id}/chat/resume`, isolé `user_id` + `requireOwned`) : aucun tour. Sans projet
+   * connu, le panneau bascule en échec (rien à lire).
+   */
+  private loadSujetPanel(id: string): void {
+    const workspaceId = this.projectId;
+    if (!workspaceId) {
+      this.patchPanel(id, { sujetState: 'error' });
+      return;
+    }
+    this.atelier.getResume(workspaceId).subscribe({
+      next: (resume) =>
+        this.patchPanel(id, {
+          sujetState: 'ready',
+          sujet: {
+            turns: resume.turns,
+            mode: resume.mode ?? null,
+            planTotal: resume.plan?.length ?? 0,
+            hasFrontier: !!resume.threadStartedAt,
+          },
+        }),
+      error: () => this.patchPanel(id, { sujetState: 'error' }),
     });
   }
 

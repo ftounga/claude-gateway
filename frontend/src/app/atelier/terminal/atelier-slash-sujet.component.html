@@ -1,0 +1,45 @@
+<!-- F-165 / SF-165-05 — Corps du panneau /sujet : la carte du projet courant. VUE pure : aucun tour. -->
+<div class="sujet-head">
+  <span class="sujet-head__name">{{ name || 'Projet courant' }}</span>
+  <span class="sujet-head__host">
+    {{ host ? host : 'Sans poste' }} · {{ engineLabel }}
+  </span>
+</div>
+
+@switch (state) {
+  @case ('loading') {
+    <p class="sujet-note">
+      <mat-spinner diameter="18" strokeWidth="2" aria-hidden="true"></mat-spinner>
+      Lecture de l'état du fil…
+    </p>
+  }
+  @case ('error') {
+    <p class="sujet-note sujet-note--error">
+      État du fil indisponible pour l'instant. Réessayez dans un instant — cela ne coûte aucun tour.
+    </p>
+  }
+  @default {
+    @if (sujet) {
+      <ul class="sujet-facts">
+        <li class="sujet-fact">
+          <span class="sujet-fact__label">Tours rejouables</span>
+          <span class="sujet-fact__value">{{ count(sujet.turns) }}</span>
+        </li>
+        <li class="sujet-fact">
+          <span class="sujet-fact__label">Mode</span>
+          <span class="sujet-fact__value">{{ modeLabel }}</span>
+        </li>
+        <li class="sujet-fact">
+          <span class="sujet-fact__label">Plan</span>
+          <span class="sujet-fact__value">
+            {{ sujet.planTotal > 0 ? count(sujet.planTotal) + ' étape(s)' : 'Aucun' }}
+          </span>
+        </li>
+        <li class="sujet-fact">
+          <span class="sujet-fact__label">Nouveau départ</span>
+          <span class="sujet-fact__value">{{ sujet.hasFrontier ? 'Posé' : 'Aucun' }}</span>
+        </li>
+      </ul>
+    }
+  }
+}

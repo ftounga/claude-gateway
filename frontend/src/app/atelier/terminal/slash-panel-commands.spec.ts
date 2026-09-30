@@ -159,4 +159,33 @@ describe('slash-panel-commands (F-165 / SF-165-01)', () => {
     expect(budget.panelKind).toBe('budget');
     expect(budget.title).toBe('Budget de la semaine');
   });
+
+  // ------------------------------------ F-165 / SF-165-05 : /poste + /sujet (vues poste & projet)
+
+  it('inscrit /poste et /sujet au registre comme des VUES', () => {
+    expect(findPanelCommand('poste')?.kind).toBe('view');
+    expect(findPanelCommand('poste')?.panelKind).toBe('poste');
+    expect(findPanelCommand('sujet')?.kind).toBe('view');
+    expect(findPanelCommand('sujet')?.panelKind).toBe('sujet');
+  });
+
+  it('propose /poste et /sujet au préfixe', () => {
+    expect(panelCommandSuggestions('/po').map((c) => c.name)).toContain('poste');
+    expect(panelCommandSuggestions('/su').map((c) => c.name)).toContain('sujet');
+  });
+
+  it('intercepte /poste et /sujet à l\'envoi', () => {
+    expect(parsePanelCommand('/poste')?.command.name).toBe('poste');
+    expect(parsePanelCommand('/sujet')?.command.name).toBe('sujet');
+  });
+
+  it('construit /poste et /sujet en chargement', () => {
+    const poste = buildPanel(findPanelCommand('poste')!, '', 'slash-5');
+    expect(poste.panelKind).toBe('poste');
+    expect(poste.posteState).toBe('loading');
+
+    const sujet = buildPanel(findPanelCommand('sujet')!, '', 'slash-6');
+    expect(sujet.panelKind).toBe('sujet');
+    expect(sujet.sujetState).toBe('loading');
+  });
 });

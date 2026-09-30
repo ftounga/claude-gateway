@@ -1295,6 +1295,21 @@
           @case ('budget') {
             <app-atelier-slash-budget [hostId]="hostId" />
           }
+          @case ('poste') {
+            <app-atelier-slash-poste
+              [state]="panel.posteState ?? 'loading'"
+              [poste]="panel.poste ?? null"
+            />
+          }
+          @case ('sujet') {
+            <app-atelier-slash-sujet
+              [state]="panel.sujetState ?? 'loading'"
+              [sujet]="panel.sujet ?? null"
+              [name]="projectName"
+              [host]="hostName"
+              [engine]="engine"
+            />
+          }
         }
       </app-atelier-slash-panel>
     }
