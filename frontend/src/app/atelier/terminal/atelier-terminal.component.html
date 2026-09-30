@@ -716,6 +716,21 @@
           <span class="terminal-qbody">
             <span class="terminal-qmeta">Votre question</span>
             <span class="terminal-request">{{ message.content }}</span>
+            <!-- LES PIÈCES JOINTES DANS LA BULLE (F-169 / SF-169-03) : nom court + taille, DANS la
+                 scrollback → elles défilent avec le fil. En lecture (pas de croix) : ces puces
+                 rappellent ce qui est parti, le composer (SF-169-01) gère ce qui va partir. -->
+            @if (message.files && message.files.length > 0) {
+              <span class="terminal-attachments terminal-attachments--in-bubble" role="group"
+                    aria-label="Pièces jointes envoyées avec ce message">
+                @for (file of message.files; track file.path) {
+                  <span class="terminal-attachment terminal-attachment--in-bubble">
+                    <mat-icon class="terminal-attachment__icon" aria-hidden="true">insert_drive_file</mat-icon>
+                    <span class="terminal-attachment__name" [title]="file.path">{{ shortName(file.path) }}</span>
+                    <span class="terminal-attachment__size">{{ fileSizeLabel(file.size) }}</span>
+                  </span>
+                }
+              </span>
+            }
             <!-- UNE PRÉCISION DIT OÙ ELLE EN EST (F-84 / SF-84-06), en toutes lettres et par la
                  typographie : aucune couleur nouvelle. -->
             @if (message.steer; as steer) {

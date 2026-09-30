@@ -82,6 +82,7 @@ import {
   applyMention,
   suggestPaths,
 } from './file-mentions';
+import { humanFileSize } from '../../shared/http-error.util';
 import { MarkdownPipe } from '../../shared/markdown.pipe';
 import { TeamsLinkBadgeComponent } from '../../shared/teams-link-badge/teams-link-badge.component';
 import { TeamsLink } from '../teams/teams-link.service';
@@ -918,6 +919,14 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   /** Vrai dès qu'au moins une pièce a été déposée avec succès (pilote le libellé « joint au message »). */
   get hasAttachments(): boolean {
     return this.depositNotices.some((notice) => !notice.error && !notice.cancelled);
+  }
+
+  /**
+   * Taille d'une pièce jointe rendue dans la bulle (F-169 / SF-169-03), en octets humanisés
+   * (« 2,3 Mo »). Réutilise l'utilitaire partagé, comme le composer côté parent.
+   */
+  fileSizeLabel(size: number): string {
+    return humanFileSize(size);
   }
 
   /** Champ de fichier caché ouvert par le trombone. */

@@ -500,6 +500,43 @@ describe('AtelierService', () => {
     expect(JSON.parse(body).mode).toBe('ACT');
   });
 
+  // ------------------------------ F-169 / SF-169-02 : pièces jointes attachées au message
+
+  it('streamChat envoie attachedDepositIds dans le corps quand des pièces sont jointes (F-169 / SF-169-02)',
+    async () => {
+      const spy = fakeSseFetch([
+        'event:done\ndata:{"reply":"Fait.","actions":[],"messageId":"m1"}',
+      ]);
+
+      await service.streamChat('w1', 'décris l\'image', {
+        onAction: () => undefined,
+        onText: () => undefined,
+        onDone: () => undefined,
+        onError: () => undefined,
+      }, 'ACT', false, ['dep-1', 'dep-2']);
+
+      const body = spy.calls.mostRecent().args[1]?.body as string;
+      expect(JSON.parse(body)).toEqual({
+        message: 'décris l\'image', mode: 'ACT', attachedDepositIds: ['dep-1', 'dep-2'],
+      });
+    });
+
+  it('streamChat n\'envoie PAS attachedDepositIds sans pièce jointe (F-169 / SF-169-02)', async () => {
+    const spy = fakeSseFetch([
+      'event:done\ndata:{"reply":"Fait.","actions":[],"messageId":"m1"}',
+    ]);
+
+    await service.streamChat('w1', 'bonjour', {
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: () => undefined,
+      onError: () => undefined,
+    });
+
+    const body = spy.calls.mostRecent().args[1]?.body as string;
+    expect(JSON.parse(body).attachedDepositIds).toBeUndefined();
+  });
+
   // ------------------------------ F-161 / SF-161-01 : la porte du runner et son échappatoire
 
   it('streamChat envoie « demander quand même » quand on passe outre la porte (F-161 / SF-161-01)',

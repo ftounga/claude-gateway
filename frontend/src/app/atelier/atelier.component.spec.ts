@@ -188,7 +188,7 @@ describe('AtelierComponent', () => {
       component.activeWorkspaceId.set('w1');
       service.deposit.and.returnValue(of({
         type: HttpEventType.Response,
-        body: { files: [{ path: 'entrees/notes.txt', size: 2_411_000, target: 'HOSTED' }] },
+        body: { files: [{ id: 'dep-1', path: 'entrees/notes.txt', size: 2_411_000, target: 'HOSTED' }] },
       } as HttpEvent<DepositResponse>));
 
       component.onFilesSelected([new File(['x'], 'notes.txt')]);
@@ -199,6 +199,51 @@ describe('AtelierComponent', () => {
       expect(notices.length).toBe(1);
       expect(notices[0].path).toBe('entrees/notes.txt');
       expect(notices[0].sizeLabel).toContain('Mo');
+      // F-169 / SF-169-02/03 : l'id du dépôt et la taille brute sont retenus dans la puce.
+      expect(notices[0].depositId).toBe('dep-1');
+      expect(notices[0].size).toBe(2_411_000);
+    });
+
+    // F-169 / SF-169-03 — les pièces jointes partent AVEC le message et s'affichent dans sa bulle.
+    it('joint les réfs des puces au message et les pose dans la bulle (send)', () => {
+      setup();
+      component.activeWorkspaceId.set('w1');
+      component.engine.set('LOCAL_MACHINE');
+      service.streamChat.and.callFake((_id, _message, handlers) => {
+        handlers.onDone({ reply: 'ok', actions: [], messageId: 'm1' });
+        return Promise.resolve();
+      });
+      component.depositNotices.set([
+        { id: 'a', path: 'entrees/capture.png', sizeLabel: '2,4 Mo', depositId: 'dep-1', size: 2_411_000 },
+      ]);
+      component.draft.set('décris l\'image');
+
+      component.send();
+
+      // Les ids partent dans le corps de requête (6ᵉ argument de streamChat).
+      const args = service.streamChat.calls.mostRecent().args;
+      expect(args[5]).toEqual(['dep-1']);
+      // Le message local porte ses pièces jointes, pour le rendu dans la bulle.
+      const userItem = component.messages().find((m) => m.role === 'USER');
+      expect(userItem?.files).toEqual([{ path: 'entrees/capture.png', size: 2_411_000 }]);
+    });
+
+    it('n\'envoie aucune réf de dépôt quand le message n\'a pas de pièce jointe (send)', () => {
+      setup();
+      component.activeWorkspaceId.set('w1');
+      component.engine.set('LOCAL_MACHINE');
+      service.streamChat.and.callFake((_id, _message, handlers) => {
+        handlers.onDone({ reply: 'ok', actions: [], messageId: 'm1' });
+        return Promise.resolve();
+      });
+      component.draft.set('bonjour');
+
+      component.send();
+
+      const args = service.streamChat.calls.mostRecent().args;
+      expect(args[5]).toEqual([]);
+      const userItem = component.messages().find((m) => m.role === 'USER');
+      expect(userItem?.files).toBeUndefined();
     });
 
     it('affiche un bloc d\'échec nommé si le dépôt échoue', () => {
@@ -601,9 +646,10 @@ describe('AtelierComponent', () => {
       component.replayLastRequest();
 
       expect(service.streamChat).toHaveBeenCalledWith(
-        // Le dernier argument est « demander quand même » (F-161 / SF-161-01) : un rejeu ordinaire
+        // L'avant-dernier argument est « demander quand même » (F-161 / SF-161-01) : un rejeu ordinaire
         // ne force RIEN — il repasse par la porte du runner comme le tour d'origine.
-        'w1', 'Analyse le dépôt', jasmine.anything(), jasmine.anything(), false,
+        // F-169 / SF-169-02 : dernier argument = pièces jointes désignées (vide pour un rejeu).
+        'w1', 'Analyse le dépôt', jasmine.anything(), jasmine.anything(), false, [],
       );
       expect(component.unanswered()).toBeFalse();
       expect(component.submitting()).toBeTrue();
@@ -1354,8 +1400,9 @@ describe('AtelierComponent', () => {
     component.send();
 
     // F-120 / SF-120-02 : le mode du tour est passé en 4e argument (défaut ACT).
+    // F-169 / SF-169-02 : 6e argument = pièces jointes désignées (vide sans pièce jointe).
     expect(service.streamChat)
-      .toHaveBeenCalledWith('w1', 'Modifie main.ts', jasmine.anything(), 'ACT', false);
+      .toHaveBeenCalledWith('w1', 'Modifie main.ts', jasmine.anything(), 'ACT', false, []);
     const messages = component.messages();
     expect(messages.length).toBe(2);
     expect(messages[0].role).toBe('USER');
@@ -2174,6 +2221,29 @@ describe('AtelierComponent', () => {
 
     expect(item.terminal).toBeUndefined();
     expect(item.content).toBe('Terminé.');
+  });
+
+  it('reporte les pièces jointes du message pour le rendu dans la bulle (F-169 / SF-169-03)', () => {
+    const item = toThreadItem({
+      id: 'm1',
+      role: 'USER',
+      content: 'décris l\'image',
+      createdAt: '2026-09-30T00:00:00Z',
+      files: [{ path: 'entrees/capture.png', size: 2411 }],
+    });
+
+    expect(item.files).toEqual([{ path: 'entrees/capture.png', size: 2411 }]);
+  });
+
+  it('un message sans pièce jointe ne porte pas de fichiers (F-169 / SF-169-03)', () => {
+    const item = toThreadItem({
+      id: 'm1',
+      role: 'USER',
+      content: 'bonjour',
+      createdAt: '2026-09-30T00:00:00Z',
+    });
+
+    expect(item.files).toBeUndefined();
   });
 
   it('sans consommation connue, le tour restitué ne porte pas de coût (F-30)', () => {

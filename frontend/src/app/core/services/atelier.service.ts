@@ -281,7 +281,7 @@ export class AtelierService {
    * jamais : les échecs passent par `onError`.
    */
   async streamChat(id: string, message: string, handlers: AtelierStreamHandlers,
-      mode: AtelierTurnMode = 'ACT', force = false): Promise<void> {
+      mode: AtelierTurnMode = 'ACT', force = false, attachedDepositIds: string[] = []): Promise<void> {
     // F-131 / SF-131-01 : on retient si le tour s'est réellement CONCLU dans ce flux — un `done`
     // non-suite ou une erreur. Sinon, la fermeture du flux est un DÉTACHEMENT (le serveur a peut-être
     // fini, mais l'écran n'a rien reçu) : c'est ce cas qui laissait le spinner tourner sans fin.
@@ -313,7 +313,14 @@ export class AtelierService {
         // F-161 / SF-161-01 : `force` est « demander quand même ». Il ne voyage QUE lorsque
         // l'utilisateur a explicitement passé outre la porte du runner — la requête ordinaire ne
         // porte rien de plus qu'avant.
-        body: JSON.stringify(force ? { message, mode, force: true } : { message, mode }),
+        // F-169 / SF-169-02 : `attachedDepositIds` ne voyage QUE lorsqu'un message joint des pièces —
+        // absent ⇒ le backend consomme les dépôts par fenêtre temporelle (rétrocompat stricte).
+        body: JSON.stringify({
+          message,
+          mode,
+          ...(force ? { force: true } : {}),
+          ...(attachedDepositIds.length > 0 ? { attachedDepositIds } : {}),
+        }),
       });
       if (!response.ok || !response.body) {
         handlers.onError('request_failed');

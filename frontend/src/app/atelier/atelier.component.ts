@@ -107,6 +107,7 @@ import {
   AtelierCompactionEvent,
   AtelierFluxMarker,
   AtelierRecallEvent,
+  DepositedFileRef,
   GitPullRequestResult,
   GitPushResult,
   HostProjectSummary,
@@ -1562,10 +1563,33 @@ export class AtelierComponent implements OnInit, OnDestroy {
       }
       return;
     }
+    // F-169 / SF-169-03 : capturer les réfs des puces AVANT la purge — elles sont jointes à CE
+    // message (rendu dans la bulle + `attachedDepositIds` envoyés au backend, SF-169-02).
+    const attachments = this.pendingAttachments();
     this.draft.set('');
     // F-169 / SF-169-01 : le message part → purge des puces (voir ci-dessus, aucune régression backend).
     this.depositNotices.set([]);
-    this.startTurn(id, content);
+    this.startTurn(id, content, false, attachments);
+  }
+
+  /**
+   * F-169 / SF-169-03 — Les pièces jointes en attente dans le composer, prêtes à partir avec le
+   * message : leurs chemins + tailles (rendu dans la bulle) et leurs identifiants de dépôt
+   * (`attachedDepositIds` envoyés au backend). Les puces d'échec / annulées sont ignorées.
+   */
+  private pendingAttachments(): { files: DepositedFileRef[]; ids: string[] } {
+    const files: DepositedFileRef[] = [];
+    const ids: string[] = [];
+    for (const notice of this.depositNotices()) {
+      if (notice.error || notice.cancelled || !notice.path) {
+        continue;
+      }
+      files.push({ path: notice.path, size: notice.size ?? 0 });
+      if (notice.depositId) {
+        ids.push(notice.depositId);
+      }
+    }
+    return { files, ids };
   }
 
   /**
@@ -1608,12 +1632,16 @@ export class AtelierComponent implements OnInit, OnDestroy {
   }
 
   /** Lance un tour avec cette demande — depuis la saisie, ou pour une précision arrivée trop tard. */
-  private startTurn(id: string, content: string, force = false): void {
+  private startTurn(id: string, content: string, force = false,
+      attachments: { files: DepositedFileRef[]; ids: string[] } = { files: [], ids: [] }): void {
     const userItem: AtelierThreadItem = {
       id: `local-user-${Date.now()}`,
       role: 'USER',
       content,
       actions: [],
+      // F-169 / SF-169-03 : les pièces jointes s'affichent DANS la bulle du message (elles défilent
+      // avec le fil). Vide ⇒ champ absent, bulle sans bloc de fichiers.
+      ...(attachments.files.length > 0 ? { files: attachments.files } : {}),
     };
     this.messages.update((current) => [...current, userItem]);
     this.submitting.set(true);
@@ -1856,7 +1884,9 @@ export class AtelierComponent implements OnInit, OnDestroy {
       // il bascule sur « réponse non reçue — Rejouer ? ».
       onIdle: () => this.zone.run(() => this.showUnanswered(generation)),
     };
-    void this.atelier.streamChat(id, content, handlers, this.mode(), force);
+    // F-169 / SF-169-02 : les dépôts joints à CE message (première demande du tour) partent avec la
+    // requête ; le backend les associe exactement à ce message. Une précision (steer) n'en porte pas.
+    void this.atelier.streamChat(id, content, handlers, this.mode(), force, attachments.ids);
     // Si la prise en main n'arrive pas, un proxy retient le flux : on suit le tour par fenêtres, EN
     // PLUS du flux d'origine — qui garde la fin du tour s'il est relâché le premier.
     this.armStreamProbe(id, handlers);
@@ -2730,6 +2760,10 @@ export class AtelierComponent implements OnInit, OnDestroy {
               id: this.depositNoticeId(),
               path: file.path,
               sizeLabel: humanFileSize(file.size),
+              // F-169 / SF-169-02/03 : on retient l'id du dépôt (joint au message à l'envoi) et sa
+              // taille brute (rendu de la pièce jointe dans la bulle).
+              depositId: file.id,
+              size: file.size,
             });
           }
           this.finishDeposit();
@@ -4019,6 +4053,9 @@ export function toThreadItem(message: AtelierMessage): AtelierThreadItem {
     role: message.role,
     content: message.content,
     actions: [],
+    // F-169 / SF-169-03 : les pièces jointes du message, reconstruites depuis le transcript persistant
+    // (SF-169-02), rendues dans la bulle au rechargement. Absent pour un message sans pièce jointe.
+    ...(message.files && message.files.length > 0 ? { files: message.files } : {}),
   };
   const stored = message.terminal;
   if (!stored) {
