@@ -792,6 +792,80 @@ describe('AtelierTerminalComponent', () => {
     http.expectNone('/api/workspaces/null/chat/context-summary');
   });
 
+  // ------------------------------------ F-165 / SF-165-04 : /quota + /budget (vues, aucun tour)
+
+  it('taper « / » propose aussi /quota et /budget dans le menu', () => {
+    component.draft = '/';
+    fixture.detectChanges();
+
+    const titles = Array.from(
+      fixture.nativeElement.querySelectorAll('.slash-menu__name'),
+    ).map((n) => (n as HTMLElement).textContent?.trim());
+    expect(titles).toEqual(jasmine.arrayContaining(['/quota', '/budget']));
+  });
+
+  it('dispatcher /quota n\'émet AUCUN send et lit la conso du plan via GET /api/usage', () => {
+    const http = TestBed.inject(HttpTestingController);
+    let sent = 0;
+    component.send.subscribe(() => (sent += 1));
+
+    component.draft = '/quota';
+    component.submit();
+    fixture.detectChanges();
+
+    expect(sent).toBe(0);
+    expect(component.slashPanels()[0].panelKind).toBe('quota');
+    expect(component.slashPanels()[0].quotaState).toBe('loading');
+
+    const req = http.expectOne('/api/usage');
+    expect(req.request.method).toBe('GET');
+    req.flush({
+      usedTokens: 800000, quotaTokens: 1000000, remainingTokens: 200000,
+      periodStart: '2026-09-01', periodEnd: '2026-10-01',
+    });
+    fixture.detectChanges();
+
+    expect(component.slashPanels()[0].quotaState).toBe('ready');
+    expect(fixture.nativeElement.querySelector('app-atelier-slash-quota')).not.toBeNull();
+  });
+
+  it('/quota sans réseau bascule en échec, sans aucun tour', () => {
+    const http = TestBed.inject(HttpTestingController);
+    let sent = 0;
+    component.send.subscribe(() => (sent += 1));
+
+    component.draft = '/quota';
+    component.submit();
+    fixture.detectChanges();
+
+    http.expectOne('/api/usage').error(new ProgressEvent('error'));
+    fixture.detectChanges();
+
+    expect(sent).toBe(0);
+    expect(component.slashPanels()[0].quotaState).toBe('error');
+  });
+
+  it('dispatcher /budget n\'émet AUCUN send et rend le corps budget (dégradé sans budget lisible)', () => {
+    const http = TestBed.inject(HttpTestingController);
+    let sent = 0;
+    component.send.subscribe(() => (sent += 1));
+
+    component.draft = '/budget';
+    component.submit();
+    fixture.detectChanges();
+
+    expect(sent).toBe(0);
+    expect(component.slashPanels()[0].panelKind).toBe('budget');
+    expect(fixture.nativeElement.querySelector('app-atelier-slash-budget')).not.toBeNull();
+
+    // Le corps réutilise le service partagé, qui lit une fois /api/admin/cost/summary. Sans droit,
+    // la lecture échoue et le budget dégrade (aucun budget d'autrui exposé).
+    const budgetReads = http.match((r) => r.url === '/api/admin/cost/summary');
+    budgetReads.forEach((r) => r.flush({ clients: [] } as unknown as object));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.budget-note')).not.toBeNull();
+  });
+
   it('une vue reste dispatchable même au plafond de terminaux vivants (elle ne coûte rien)', () => {
     let sent = 0;
     component.send.subscribe(() => (sent += 1));

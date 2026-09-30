@@ -1286,6 +1286,15 @@
               [context]="panel.context ?? null"
             />
           }
+          @case ('quota') {
+            <app-atelier-slash-quota
+              [state]="panel.quotaState ?? 'loading'"
+              [quota]="panel.quota ?? null"
+            />
+          }
+          @case ('budget') {
+            <app-atelier-slash-budget [hostId]="hostId" />
+          }
         }
       </app-atelier-slash-panel>
     }
