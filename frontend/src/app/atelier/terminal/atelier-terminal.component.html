@@ -1399,36 +1399,10 @@
     </div>
   }
 
-  <!-- DÉPÔT DE FICHIERS (F-115 / SF-115-02) : progression annulable, puis blocs discrets dans le fil.
-       Rendu même en lecture seule (tuile de mosaïque) : on peut y glisser/coller un fichier. -->
-  @for (notice of depositNotices; track notice.id) {
-    <div
-      class="terminal-deposit-notice"
-      [class.terminal-deposit-notice--error]="notice.error"
-      [class.terminal-deposit-notice--cancelled]="notice.cancelled"
-    >
-      <mat-icon aria-hidden="true">{{ notice.error ? 'error_outline' : (notice.cancelled ? 'block' : 'attachment') }}</mat-icon>
-      @if (notice.error) {
-        <span>Dépôt refusé : {{ notice.error }}</span>
-      } @else if (notice.cancelled) {
-        <span>Dépôt annulé.</span>
-      } @else {
-        <span>fichier déposé : <code>{{ notice.path }}</code> — {{ notice.sizeLabel }}</span>
-      }
-    </div>
-  }
-  @if (depositing) {
-    <div class="terminal-deposit-progress" role="status">
-      <mat-progress-bar
-        [mode]="depositProgress === null ? 'indeterminate' : 'determinate'"
-        [value]="depositProgress ?? 0"
-      ></mat-progress-bar>
-      <span class="terminal-deposit-progress__label">
-        Dépôt en cours@if (depositProgress !== null) {&nbsp;— {{ depositProgress }}&nbsp;%}…
-      </span>
-      <button mat-button type="button" (click)="depositCancel.emit()">Annuler</button>
-    </div>
-  }
+  <!-- F-169 / SF-169-01 — Les pièces jointes ne sont PLUS rendues ici, en bande figée au-dessus de la
+       saisie (elles s'y empilaient sans jamais être purgées et masquaient le flux). Elles vivent
+       désormais comme des PUCES DANS le composer (voir plus bas, dans `.terminal-input`), purgées à
+       l'envoi. Le dépôt reste « chemin uniquement » côté backend (l'agent lit par `read_file`). -->
 
   <!-- Invite. Ce qu'on saisit est une DEMANDE, pas une commande shell (ADR-014). -->
   <!-- L'INVITE N'EXISTE PAS EN LECTURE SEULE (F-83 / SF-83-01). Écrire reste un geste pris
@@ -1460,6 +1434,60 @@
       (ngSubmit)="submit()"
     >
       <span class="terminal-dollar" aria-hidden="true">$</span>
+      <!-- F-169 / SF-169-01 — PIÈCES JOINTES AU MESSAGE. Les fichiers déposés (glisser / coller /
+           trombone) deviennent des PUCES compactes DANS le composer (nom court + taille + croix),
+           regroupées sous un libellé clair. Le groupe prend une ligne entière du composer `flex-wrap`
+           (desktop ET mobile sticky). Les puces sont supprimables une à une et PURGÉES À L'ENVOI
+           (parent). Fini la bande figée qui grignotait l'écran. -->
+      @if (depositNotices.length > 0) {
+        <div class="terminal-attachments" role="group" aria-label="Pièces jointes au message">
+          @if (hasAttachments) {
+            <span class="terminal-attachments__label">
+              <mat-icon class="terminal-attachments__label-icon" aria-hidden="true">attachment</mat-icon>
+              Joint au message — sera envoyé avec ta demande
+            </span>
+          }
+          @for (notice of depositNotices; track notice.id) {
+            <span
+              class="terminal-attachment"
+              [class.terminal-attachment--error]="notice.error"
+              [class.terminal-attachment--cancelled]="notice.cancelled"
+            >
+              <mat-icon class="terminal-attachment__icon" aria-hidden="true">{{
+                notice.error ? 'error_outline' : (notice.cancelled ? 'block' : 'insert_drive_file')
+              }}</mat-icon>
+              @if (notice.error) {
+                <span class="terminal-attachment__text">Dépôt refusé : {{ notice.error }}</span>
+              } @else if (notice.cancelled) {
+                <span class="terminal-attachment__text">Dépôt annulé</span>
+              } @else {
+                <span class="terminal-attachment__name" [title]="notice.path">{{ shortName(notice.path) }}</span>
+                <span class="terminal-attachment__size">{{ notice.sizeLabel }}</span>
+              }
+              <button
+                type="button"
+                class="terminal-attachment__remove"
+                (click)="depositRemove.emit(notice.id)"
+                [attr.aria-label]="'Retirer ' + (notice.error || notice.cancelled ? 'cette pièce' : shortName(notice.path))"
+              >
+                ×
+              </button>
+            </span>
+          }
+        </div>
+      }
+      @if (depositing) {
+        <div class="terminal-deposit-progress" role="status">
+          <mat-progress-bar
+            [mode]="depositProgress === null ? 'indeterminate' : 'determinate'"
+            [value]="depositProgress ?? 0"
+          ></mat-progress-bar>
+          <span class="terminal-deposit-progress__label">
+            Dépôt en cours@if (depositProgress !== null) {&nbsp;— {{ depositProgress }}&nbsp;%}…
+          </span>
+          <button mat-button type="button" (click)="depositCancel.emit()">Annuler</button>
+        </div>
+      }
       <!-- TROMBONE (F-115 / SF-115-02, parité SF-28-13 étendue aux terminaux runner). -->
       <input
         #depositInput

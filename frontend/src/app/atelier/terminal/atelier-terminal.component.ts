@@ -884,13 +884,41 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   @Input() depositing = false;
   /** Progression du dépôt en cours, 0–100, ou `null` si indéterminée. */
   @Input() depositProgress: number | null = null;
-  /** Blocs discrets « fichier déposé » / échec / annulation affichés dans le fil. */
+  /**
+   * F-169 / SF-169-01 — Pièces jointes JOINTES AU MESSAGE, rendues comme des puces DANS le composer
+   * (et non plus dans une bande figée hors du fil, jamais purgée). Une puce de succès porte
+   * `path` + `sizeLabel` ; `error` / `cancelled` deviennent des puces d'échec / d'annulation. Le
+   * parent vide ce tableau à l'envoi (purge à l'envoi) et sur retrait d'une puce.
+   */
   @Input() depositNotices: TerminalDepositNotice[] = [];
 
   /** Fichiers choisis par glisser, coller ou trombone : le parent les dépose (D1, présentation seule). */
   @Output() filesSelected = new EventEmitter<File[]>();
   /** Annulation du dépôt en cours. */
   @Output() depositCancel = new EventEmitter<void>();
+  /**
+   * F-169 / SF-169-01 — Retrait d'une pièce jointe avant l'envoi (croix de la puce). On émet l'`id`
+   * de la notice ; le parent retire la référence de son état front (aucun endpoint backend de
+   * suppression n'est inventé — comportement documenté dans la mini-spec).
+   */
+  @Output() depositRemove = new EventEmitter<string>();
+
+  /**
+   * Nom court d'une pièce jointe (dernier segment du chemin), pour une puce compacte. Le chemin
+   * complet reste lisible en `title` (survol). Vide si le chemin est absent.
+   */
+  shortName(path: string | undefined): string {
+    if (!path) {
+      return '';
+    }
+    const segments = path.split('/').filter((segment) => segment.length > 0);
+    return segments.length > 0 ? segments[segments.length - 1] : path;
+  }
+
+  /** Vrai dès qu'au moins une pièce a été déposée avec succès (pilote le libellé « joint au message »). */
+  get hasAttachments(): boolean {
+    return this.depositNotices.some((notice) => !notice.error && !notice.cancelled);
+  }
 
   /** Champ de fichier caché ouvert par le trombone. */
   @ViewChild('depositInput') private depositInput?: ElementRef<HTMLInputElement>;
