@@ -150,6 +150,28 @@ EDGE_ATTR = {
 # Au-delà, le schéma ne se lit plus à l'écran : on le DIT à l'agent plutôt que de produire une image
 # que personne n'affiche. Une borne, pas un recadrage — rogner mentirait sur le contenu.
 MAX_DIMENSION = 4000
+# ---------------------------------------------------------------------------------------------------
+# LE SCHÉMA LARGE (F-142 / SF-142-19)
+#
+# Défaut constaté après SF-142-18 : le SVG est net, mais une archi LARGE reste illisible. Le HTML du
+# modèle l'affiche en « width:100% » dans une colonne d'environ 848 px ; un schéma de 3313 × 904 (ratio
+# 3,66:1, chaque côté SOUS la borne absolue de 4000) est réduit à ~26 %, texte minuscule. La borne
+# MAX_DIMENSION ne le voyait pas : elle ne compte que la taille absolue, pas la FORME.
+#
+# On ajoute donc un critère de FORME, sur la LARGEUR dominante — c'est elle qui s'écrase au width:100%,
+# et « disposition verticale (TB) » n'a de sens que pour rendre une figure large en figure haute. Un
+# schéma haut et étroit ne s'écrase pas et ne doit pas être signalé.
+#
+#   * WIDE_ASPECT_RATIO : largeur/hauteur au-delà de laquelle le schéma est « large ». Réglé au-dessus
+#     d'un schéma ordinaire (trois nœuds en ligne mesurent ~2,1:1) et en dessous du cas réel (3,66:1).
+#   * WIDE_MIN_WIDTH : sous cette largeur, la colonne ne rapetisse pas assez pour gêner — inutile de
+#     nagger une petite chaîne large.
+#
+# La borne absolue reste vérifiée EN PREMIER (un schéma à la fois énorme et large est d'abord « dense ») :
+# ce garde-fou (SF-142-17) ne bouge pas.
+# ---------------------------------------------------------------------------------------------------
+WIDE_ASPECT_RATIO = 3.0
+WIDE_MIN_WIDTH = 2000
 # Un fragment plus court rapproche n'importe quoi de n'importe quoi (« sf » dans « workflowsfor »).
 MIN_FRAGMENT = 4
 
@@ -624,15 +646,24 @@ def density_notice(path):
     On ne recadre pas et on ne rapetisse pas : on DIT que le schéma est trop dense, et l'agent
     décide de le scinder. Une image qu'aucun écran n'affiche n'apprend rien à personne. La mesure suit
     le format du fichier : dimensions du SVG (SF-142-18) ou en-tête du PNG.
+
+    Deux motifs, dans cet ordre (F-142 / SF-142-19) : la taille ABSOLUE (trop dense, borne historique),
+    puis la FORME (trop large — un schéma qui s'écrase au width:100% dans la page). La borne absolue
+    prime : un schéma à la fois énorme et large est d'abord « dense ».
     """
     size = svg_size(path) if path.endswith(".svg") else png_size(path)
     if size is None:
         return ""
     largeur, hauteur = size
-    if largeur <= MAX_DIMENSION and hauteur <= MAX_DIMENSION:
-        return ""
-    return (f"Schema tres dense : {largeur} x {hauteur} pixels, au-dela de la borne "
-            f"de {MAX_DIMENSION}. Scinde-le en plusieurs vues : a cette taille il ne se lit plus.")
+    if largeur > MAX_DIMENSION or hauteur > MAX_DIMENSION:
+        return (f"Schema tres dense : {largeur} x {hauteur} pixels, au-dela de la borne "
+                f"de {MAX_DIMENSION}. Scinde-le en plusieurs vues : a cette taille il ne se lit plus.")
+    if hauteur > 0 and largeur >= WIDE_MIN_WIDTH and largeur >= hauteur * WIDE_ASPECT_RATIO:
+        ratio = largeur / hauteur
+        return (f"Schema large : {largeur} x {hauteur} pixels (ratio {ratio:.1f}:1). Prefere le "
+                "scinder en plusieurs vues, ou une disposition verticale (TB) : etale ainsi, il "
+                "devient minuscule quand la page l'affiche.")
+    return ""
 
 
 def main():

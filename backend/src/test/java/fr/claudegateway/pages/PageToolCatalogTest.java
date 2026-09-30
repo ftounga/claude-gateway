@@ -121,7 +121,11 @@ class PageToolCatalogTest {
                 .contains("class=\"mermaid\"")
                 .contains("architecture-beta")
                 .contains("ÉTABLI")
-                .contains("n'ajoute PAS toi-même la bibliothèque mermaid");
+                .contains("n'ajoute PAS toi-même la bibliothèque mermaid")
+                // F-142 / SF-142-19 : une archi large se pose dans un conteneur défilable à taille
+                // naturelle, jamais écrasée en width:100%.
+                .contains("conteneur défilable")
+                .contains("width:100%");
     }
 
     @Test

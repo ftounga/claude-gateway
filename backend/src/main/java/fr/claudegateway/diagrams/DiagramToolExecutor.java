@@ -110,7 +110,9 @@ public class DiagramToolExecutor {
         String notice = rendered.hasNotice() ? " NOTE DU RENDU : " + rendered.notice() : "";
         return new Outcome("Diagramme rendu par la gateway et déposé dans le projet sous « " + deposited
                 + " ». Insère ce chemin : add_picture pour une slide, <img src=\"" + deposited + "\"> pour "
-                + "une page, image pour un document. Rien n'a été installé sur la machine."
+                + "une page, image pour un document. En page, une ARCHI est large : pose l'<img> dans son "
+                + "propre conteneur défilable à taille naturelle (div overflow:auto), jamais en "
+                + "width:100% qui l'écrase. Rien n'a été installé sur la machine."
                 + warning + notice, false);
     }
 
