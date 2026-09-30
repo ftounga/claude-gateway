@@ -521,6 +521,65 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "engage la suite) mérite aussi la question. Décider-par-défaut vise le petit, le "
                     + "local, le sans-regret — pas l'engageant.\n\n";
     /**
+     * Vérifier avant de conclure (F-168 / SF-168-01). Ajoutée sur <b>toutes</b> les cibles, sans
+     * condition, <b>immédiatement après</b> {@link #DECIDE_BY_DEFAULT_DOCTRINE} (F-167) : elle complète
+     * l'axe de conduite <i>demander (F-164) ↔ décider (F-167) ↔ prouver (F-168)</i>. Née d'un audit du
+     * 2026-09-30 sur conversations réelles : au 1<sup>er</sup> passage sur un sujet neuf, l'agent
+     * <b>suppose au lieu de vérifier</b> et <b>délègue à l'humain avant d'épuiser ses moyens locaux</b>
+     * (« MR fermée » alors qu'elle était ouverte ; « plus appliqué depuis oct. 2025 » = déduction
+     * corrigée en lisant le state S3 ; 14 questions préparées dont 5 répondables depuis la carte d'infra
+     * déjà en main). Cause racine : <b>pas de critère d'arrêt fondé sur la preuve</b> — « répondre »
+     * n'exigeait pas « avoir prouvé ou nommé le blocage précis », donc la supposition était le point
+     * d'équilibre le moins coûteux.
+     *
+     * <p><b>Scope universel</b> (et non {@link Workspace#isRunnerTarget()} comme F-166) : la doctrine
+     * régit <b>toute affirmation d'état factuel</b>, pas une cible précise — un « MR fermée », un « plus
+     * appliqué depuis… », un « le fichier contient X » s'affirment depuis n'importe quelle cible ; la
+     * <b>porte avant délégation</b> vaut partout ; l'axe demander ↔ décider ↔ prouver est universel de
+     * bout en bout.</p>
+     *
+     * <p><b>Garde-fou CRITIQUE — ne pas casser la frugalité</b> (règle absolue PO <i>justesse avant
+     * coût</i>, mais aussi l'acquis « lecture raisonnée à la demande », F-157) : l'exhaustivité
+     * OBLIGATOIRE porte sur les <b>affirmations d'état factuel</b> et la <b>vérification avant
+     * délégation</b>, PAS sur une exploration systématique de tout. La doctrine ne doit pas transformer
+     * chaque tour en exploration exhaustive : on prouve ce qu'on affirme et ce qu'on s'apprêtait à
+     * déléguer, pas l'univers.</p>
+     *
+     * <p>Prompt-only, aucun nouvel outil (réutilise {@code read_file}, {@code bash}/{@code run_command}
+     * et les appels d'API déjà outillés) ; littéral <b>stable</b> placé en tête du préfixe caché : il
+     * survit à la coupe {@link #SYSTEM_MAX_CHARS} et préserve le cache de prompt (F-134). Strictement
+     * additif (ne retire ni ne réordonne aucun bloc existant).</p>
+     */
+    private static final String VERIFY_BEFORE_CONCLUDE_DOCTRINE =
+            "Vérifier avant de conclure — prouve tout état factuel, ne suppose pas :\n"
+                    + "- Tranche tout ÉTAT FACTUEL (une MR est-elle ouverte ? une politique est-elle "
+                    + "appliquée ? ce fichier contient-il X ?) par une VÉRIFICATION LIVE : lecture de "
+                    + "fichier, commande, appel d'API, état (state), logs, carte d'infra. JAMAIS par une "
+                    + "note (`STATE.md`), un doc, ou une DÉDUCTION présentée comme un fait. Une carte ou "
+                    + "une note s'utilise pour s'orienter, pas pour affirmer un état courant.\n"
+                    + "- DISTINGUE explicitement « mesuré » et « supposé » dans ta réponse (obligatoire) : "
+                    + "dis ce que tu as VÉRIFIÉ (et comment) et ce que tu SUPPOSES encore. Ne présente "
+                    + "jamais une supposition avec l'assurance d'une mesure.\n"
+                    + "- PORTE AVANT DÉLÉGATION : avant d'écrire « à confirmer », « non vérifié » ou « je "
+                    + "recommande de demander à X », demande-toi D'ABORD « puis-je répondre depuis le repo "
+                    + "/ le cluster / le state / les logs / la carte ? ». Ne délègue à l'humain QUE si la "
+                    + "réponse est NON, et alors NOMME le blocage précis (droit refusé, authentification "
+                    + "humaine non scriptable, incident) — un report légitime nomme ce qui bloque, il ne "
+                    + "suppose pas. N'empile pas des questions à des humains pour des faits que tes outils "
+                    + "te donnent.\n"
+                    + "- FALSIFIE ta 1ʳᵉ hypothèse avant de conclure : contre-teste-la sur un autre cas ou "
+                    + "une autre fenêtre. La première cause trouvée n'est pas forcément la seule ; une "
+                    + "conclusion qui n'a pas résisté à un contre-test reste une hypothèse.\n"
+                    + "- MARQUAGE INCOMPLET : ne présente JAMAIS une investigation interrompue ou "
+                    + "partielle comme finie. Étiquette-la « INCOMPLET — vérifications restantes : … » en "
+                    + "listant ce qui reste à prouver — en particulier si le tour approche le plafond de "
+                    + "consommation (une réponse tronquée par la montre n'est pas une conclusion).\n"
+                    + "- GARDE-FOU (ne casse pas la frugalité — justesse avant coût, ET lecture raisonnée "
+                    + "à la demande) : l'exhaustivité obligatoire porte sur ce que tu AFFIRMES (état "
+                    + "factuel) et sur ce que tu t'apprêtais à DÉLÉGUER, PAS sur une exploration "
+                    + "systématique de tout. Ne transforme pas chaque tour en audit complet : prouve ce "
+                    + "que tu avances et ce que tu allais déléguer, pas l'univers.\n\n";
+    /**
      * Annonce de destination + demande si ambigu (F-141 / SF-141-01, cadrage §4.3 et §2). Ajouté au
      * rôle sur les <b>deux</b> cibles, à la suite des doctrines de carte. La nuance clé du cadrage :
      * la <b>plomberie</b> de fin de tour (marqueurs, comptabilité de promotion/dette) reste invisible
@@ -6900,6 +6959,18 @@ public class AtelierChatService implements RelayInterruptTarget {
         // Scope universel comme F-164 (l'outil « demander » est universel, le choix est agnostique de la
         // cible). Littéral stable, strictement additif : cache de prompt préservé (F-134).
         system.append(DECIDE_BY_DEFAULT_DOCTRINE);
+
+        // Vérifier avant de conclure (F-168 / SF-168-01) : sur TOUTES les cibles, sans condition, juste
+        // après DECIDE_BY_DEFAULT_DOCTRINE — elle complète l'axe demander (F-164) ↔ décider (F-167) ↔
+        // prouver (F-168). Installe un critère d'arrêt fondé sur la PREUVE : trancher tout état factuel
+        // par une vérification live (jamais une note/déduction), distinguer « mesuré » vs « supposé »,
+        // franchir la PORTE AVANT DÉLÉGATION (puis-je répondre depuis repo/cluster/state/logs/carte ?
+        // sinon nommer le blocage précis), falsifier sa 1re hypothèse, et étiqueter « INCOMPLET » une
+        // investigation interrompue (surtout au plafond). Garde-fou frugalité : l'exhaustivité porte sur
+        // les affirmations d'état et la vérification avant délégation, PAS sur une exploration de tout.
+        // Scope universel (la doctrine régit toute affirmation d'état factuel, agnostique de la cible).
+        // Littéral stable, strictement additif : cache de prompt préservé (F-134).
+        system.append(VERIFY_BEFORE_CONCLUDE_DOCTRINE);
 
         // Annonce de destination + demande si ambigu (F-141 / SF-141-01) : sur les DEUX cibles, à la
         // suite des doctrines de carte. Prolonge la carte silencieuse (SF-125-01) sans la casser : la
