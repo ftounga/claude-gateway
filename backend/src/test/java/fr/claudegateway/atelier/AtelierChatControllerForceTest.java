@@ -102,7 +102,7 @@ class AtelierChatControllerForceTest {
     private Capture capture() {
         Capture capture = new Capture();
         Thread requestThread = Thread.currentThread();
-        when(chatService.chatStreaming(any(), any(), any(), any(), any(), anyBoolean()))
+        when(chatService.chatStreaming(any(), any(), any(), any(), any(), anyBoolean(), any()))
                 .thenAnswer(invocation -> {
                     capture.force.set(invocation.getArgument(5));
                     capture.sameThread.set(Thread.currentThread() == requestThread);

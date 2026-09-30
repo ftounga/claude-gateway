@@ -90,8 +90,8 @@ public class WorkspaceDepositService {
             String path = runner
                     ? depositToRunner(workspace, name, bytes)
                     : depositToHosted(userId, workspaceId, name, bytes, file.contentType());
-            record(userId, workspaceId, path, bytes.length);
-            results.add(new DepositResponse.DepositedFile(path, bytes.length,
+            UUID depositId = record(userId, workspaceId, path, bytes.length);
+            results.add(new DepositResponse.DepositedFile(depositId, path, bytes.length,
                     runner ? "RUNNER" : "HOSTED"));
         }
         return new DepositResponse(results);
@@ -165,13 +165,14 @@ public class WorkspaceDepositService {
                 "Fichier trop volumineux (" + mib + " Mo au plus).");
     }
 
-    private void record(UUID userId, UUID workspaceId, String path, long size) {
-        depositedFileRepository.save(AtelierDepositedFile.builder()
+    /** Enregistre le dépôt et rend son identifiant persisté (F-169 / SF-169-02 : renvoyé au client). */
+    private UUID record(UUID userId, UUID workspaceId, String path, long size) {
+        return depositedFileRepository.save(AtelierDepositedFile.builder()
                 .userId(userId)
                 .workspaceId(workspaceId)
                 .path(path)
                 .sizeBytes(size)
-                .build());
+                .build()).getId();
     }
 
     private static String callId() {

@@ -1,6 +1,7 @@
 package fr.claudegateway.atelier.deposit;
 
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Réponse d'un dépôt (F-115 / SF-115-01) : un chemin par fichier reçu, tel que l'agent le lira, avec
@@ -9,7 +10,11 @@ import java.util.List;
  */
 public record DepositResponse(List<DepositedFile> files) {
 
-    /** @param target {@code HOSTED} (workspace S3) ou {@code RUNNER} (poste). */
-    public record DepositedFile(String path, long size, String target) {
+    /**
+     * @param id     identifiant du dépôt persisté (F-169 / SF-169-02) : c'est ce que le message renvoie
+     *               dans {@code attachedDepositIds} pour joindre EXACTEMENT ce dépôt.
+     * @param target {@code HOSTED} (workspace S3) ou {@code RUNNER} (poste).
+     */
+    public record DepositedFile(UUID id, String path, long size, String target) {
     }
 }

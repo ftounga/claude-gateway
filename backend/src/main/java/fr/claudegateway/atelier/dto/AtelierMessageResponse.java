@@ -1,6 +1,7 @@
 package fr.claudegateway.atelier.dto;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -8,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import fr.claudegateway.atelier.AtelierMessage;
+import fr.claudegateway.atelier.deposit.AtelierAttachedFile;
 import fr.claudegateway.quota.TurnCostView;
 
 /**
@@ -16,11 +18,25 @@ import fr.claudegateway.quota.TurnCostView;
  * <p>{@code terminal} porte la transcription d'un tour du mode Terminal (F-30 SF-30-09) : commandes,
  * sorties et coût. {@code null} pour les tours du mode Assistant — champ <b>additif</b>, un client
  * qui l'ignore se comporte comme avant.</p>
+ *
+ * <p>{@code files} porte les <b>pièces jointes</b> effectivement envoyées avec ce message (F-169 /
+ * SF-169-02) : chemin + taille, jamais le binaire. Vide pour un message sans pièce jointe — champ
+ * <b>additif</b>, un client d'avant SF-169-03 l'ignore et se comporte comme avant.</p>
  */
 public record AtelierMessageResponse(UUID id, String role, String content, OffsetDateTime createdAt,
-        JsonNode terminal) {
+        JsonNode terminal, List<AttachedFile> files) {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /**
+     * Une pièce jointe rendue dans la bulle (F-169 / SF-169-02) : le chemin où l'agent l'a lue et sa
+     * taille en octets. Le binaire ne repasse jamais par le message.
+     */
+    public record AttachedFile(String path, long size) {
+        static AttachedFile of(AtelierAttachedFile file) {
+            return new AttachedFile(file.path(), file.size());
+        }
+    }
 
     public static AtelierMessageResponse from(AtelierMessage message) {
         return from(message, null);
@@ -37,9 +53,20 @@ public record AtelierMessageResponse(UUID id, String role, String content, Offse
      * @param costView décideur d'affichage, ou {@code null} pour retirer le coût sans condition
      */
     public static AtelierMessageResponse from(AtelierMessage message, TurnCostView costView) {
+        return from(message, costView, List.of());
+    }
+
+    /**
+     * Même vue, en portant les <b>pièces jointes</b> du message (F-169 / SF-169-02) rendues au
+     * rechargement. {@code attached} vide ⇒ {@code files} vide, comportement d'avant SF-169-02.
+     */
+    public static AtelierMessageResponse from(AtelierMessage message, TurnCostView costView,
+            List<AtelierAttachedFile> attached) {
+        List<AttachedFile> files = attached == null ? List.of()
+                : attached.stream().map(AttachedFile::of).toList();
         return new AtelierMessageResponse(message.getId(), message.getRole(), message.getContent(),
                 message.getCreatedAt(),
-                withCost(parseTranscript(message.getTerminalJson()), costView));
+                withCost(parseTranscript(message.getTerminalJson()), costView), files);
     }
 
     /**

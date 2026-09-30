@@ -1765,6 +1765,16 @@ public class AtelierChatService implements RelayInterruptTarget {
     }
 
     /**
+     * Le tour, avec les <b>pièces jointes désignées</b> (F-169 / SF-169-02). {@code attachedDepositIds}
+     * vide ⇒ fenêtre temporelle historique (F-115) : rétrocompat stricte.
+     */
+    public AtelierChatResult chat(UUID userId, UUID workspaceId, String rawMessage,
+            AgentTurnMode mode, boolean force, java.util.List<UUID> attachedDepositIds) {
+        return runLoop(userId, workspaceId, rawMessage, mode, AtelierProgressListener.NOOP, force,
+                attachedDepositIds);
+    }
+
+    /**
      * Variante <b>streaming</b> (SF-28-05) : boucle tool-use identique à {@link #chat}, mais notifie
      * chaque étape (action fichier, commentaire de tour) via le {@code listener} pour un relais SSE au
      * fil de l'eau. Le résultat final ({@link AtelierChatResult}) et la persistance sont identiques —
@@ -1794,6 +1804,21 @@ public class AtelierChatService implements RelayInterruptTarget {
     public AtelierChatResult chatStreaming(UUID userId, UUID workspaceId, String rawMessage,
             AgentTurnMode mode, AtelierProgressListener listener, boolean force) {
         AtelierChatResult result = runLoop(userId, workspaceId, rawMessage, mode, listener, force);
+        notifyTurnDone(userId, workspaceId);
+        return result;
+    }
+
+    /**
+     * Le flux, avec les <b>pièces jointes désignées</b> (F-169 / SF-169-02). {@code attachedDepositIds}
+     * vide ⇒ fenêtre temporelle historique (F-115). Les pièces jointes ne valent que pour la
+     * <b>première</b> demande d'un tour : une précision (steer) qui rouvre un tour de suite n'en porte
+     * pas — l'appelant passe alors une liste vide.
+     */
+    public AtelierChatResult chatStreaming(UUID userId, UUID workspaceId, String rawMessage,
+            AgentTurnMode mode, AtelierProgressListener listener, boolean force,
+            java.util.List<UUID> attachedDepositIds) {
+        AtelierChatResult result = runLoop(userId, workspaceId, rawMessage, mode, listener, force,
+                attachedDepositIds);
         notifyTurnDone(userId, workspaceId);
         return result;
     }
@@ -1918,15 +1943,29 @@ public class AtelierChatService implements RelayInterruptTarget {
         return runLoop(userId, workspaceId, rawMessage, mode, listener, false);
     }
 
+    /** Le tour, sans pièce jointe désignée (fenêtre temporelle F-115). Conservé pour les appelants. */
+    private AtelierChatResult runLoop(UUID userId, UUID workspaceId, String rawMessage,
+            AgentTurnMode mode, AtelierProgressListener listener, boolean force) {
+        return runLoop(userId, workspaceId, rawMessage, mode, listener, force, java.util.List.of());
+    }
+
     /**
-     * Le tour, avec le laissez-passer de la porte (F-161 / SF-161-01).
+     * Le tour, avec le laissez-passer de la porte (F-161 / SF-161-01) et les <b>pièces jointes
+     * désignées</b> (F-169 / SF-169-02).
      *
      * <p>{@code force} est un <b>paramètre</b> et non un état de thread : le flux SSE exécute cette
      * boucle sur un autre thread que la requête, où un {@code ThreadLocal} serait invisible — et
-     * « demander quand même » n'aurait pas fonctionné sur le chemin que l'écran emprunte.</p>
+     * « demander quand même » n'aurait pas fonctionné sur le chemin que l'écran emprunte. Même
+     * raison pour {@code attachedDepositIds} : les identifiants des dépôts joints à ce message sont
+     * portés par l'appel, jamais par le thread.</p>
+     *
+     * <p>{@code attachedDepositIds} vide ⇒ les dépôts non lus sont consommés par <b>fenêtre
+     * temporelle</b> (F-115, comportement historique). Non vide ⇒ exactement ces dépôts sont
+     * attachés à ce message (isolation {@code user_id} + {@code workspace_id}).</p>
      */
     private AtelierChatResult runLoop(UUID userId, UUID workspaceId, String rawMessage,
-            AgentTurnMode mode, AtelierProgressListener listener, boolean force) {
+            AgentTurnMode mode, AtelierProgressListener listener, boolean force,
+            java.util.List<UUID> attachedDepositIds) {
         // Le mode (F-120 / SF-120-02) est normalisé ici : un mode absent vaut ACT (comportement
         // d'avant). Il ne change que la panoplie déclarée et la consigne système — jamais l'isolation.
         AgentTurnMode turnMode = mode == null ? AgentTurnMode.ACT : mode;
@@ -2014,11 +2053,27 @@ public class AtelierChatService implements RelayInterruptTarget {
         // l'utilisateur (le fil montre déjà le bloc « fichier déposé », SF-115-02). Inerte si le service
         // n'est pas branché (comportement d'avant F-115). Best-effort : un échec ne casse pas le tour.
         String consigne = userText;
+        // F-169 / SF-169-02 : les ids des dépôts réellement attachés à CE message, à lier une fois le
+        // message persisté (son id n'existe qu'après le save). Vide sur le chemin fenêtre temporelle.
+        java.util.List<UUID> linkedDepositIds = java.util.List.of();
         if (depositConsumptionService != null) {
             try {
-                String depositNote = depositConsumptionService.consumeForTurn(userId, workspaceId);
-                if (depositNote != null && !depositNote.isBlank()) {
-                    consigne = depositNote + "\n\n" + userText;
+                if (attachedDepositIds != null && !attachedDepositIds.isEmpty()) {
+                    // Désignation explicite (F-169 / SF-169-02) : EXACTEMENT ces dépôts, filtrés
+                    // (user_id, workspace_id) et non consommés. La fenêtre temporelle n'est pas
+                    // invoquée — aucune double-consommation. La note est bâtie à partir d'eux.
+                    fr.claudegateway.atelier.deposit.DepositConsumptionService.MessageDeposits designated =
+                            depositConsumptionService.consumeForMessage(userId, workspaceId, attachedDepositIds);
+                    linkedDepositIds = designated.depositIds();
+                    if (designated.note() != null && !designated.note().isBlank()) {
+                        consigne = designated.note() + "\n\n" + userText;
+                    }
+                } else {
+                    // Chemin historique (F-115 / SF-115-03) : fenêtre temporelle, tous les dépôts non lus.
+                    String depositNote = depositConsumptionService.consumeForTurn(userId, workspaceId);
+                    if (depositNote != null && !depositNote.isBlank()) {
+                        consigne = depositNote + "\n\n" + userText;
+                    }
                 }
             } catch (RuntimeException ex) {
                 log.debug("Consigne des fichiers déposés ignorée (best-effort) : {}", ex.getMessage());
@@ -2069,6 +2124,19 @@ public class AtelierChatService implements RelayInterruptTarget {
 
         AtelierMessage savedUserMessage = messageRepository.save(AtelierMessage.builder()
                 .workspaceId(workspaceId).userId(userId).role("USER").content(userText).build());
+        // F-169 / SF-169-02 : LIER les dépôts joints à CE message, maintenant que son id existe. Le
+        // lien (message_id) rend les pièces jointes persistantes — le rechargement du fil les retrouve
+        // (GET /chat). Isolation réappliquée au service. Best-effort : un échec de lien ne casse pas le
+        // tour (la consigne a déjà porté les chemins).
+        if (depositConsumptionService != null && !linkedDepositIds.isEmpty()
+                && savedUserMessage != null && savedUserMessage.getId() != null) {
+            try {
+                depositConsumptionService.linkToMessage(userId, workspaceId, linkedDepositIds,
+                        savedUserMessage.getId());
+            } catch (RuntimeException ex) {
+                log.debug("Lien pièces jointes ↔ message ignoré (best-effort) : {}", ex.getMessage());
+            }
+        }
         // F-162 / SF-162-06 : embed la parole de l'utilisateur pour le rappel sémantique — asynchrone,
         // best-effort (NONE par défaut ⇒ ne fait rien ; un échec ne casse ni le tour ni l'enregistrement).
         embedForRecall(savedUserMessage);
@@ -4485,6 +4553,19 @@ public class AtelierChatService implements RelayInterruptTarget {
     public List<AtelierMessage> history(UUID userId, UUID workspaceId) {
         workspaceService.requireOwned(userId, workspaceId);
         return messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspaceId, userId);
+    }
+
+    /**
+     * Les <b>pièces jointes</b> de chaque message donné (F-169 / SF-169-02), pour les rendre dans la
+     * bulle au rechargement du fil. Isolation stricte {@code (user_id, workspace_id)}. Vide (jamais
+     * {@code null}) quand le service de dépôt n'est pas branché ou qu'aucun message n'a de pièce jointe.
+     */
+    public java.util.Map<UUID, List<fr.claudegateway.atelier.deposit.AtelierAttachedFile>>
+            attachedFilesByMessage(UUID userId, UUID workspaceId, java.util.Collection<UUID> messageIds) {
+        if (depositConsumptionService == null) {
+            return java.util.Map.of();
+        }
+        return depositConsumptionService.attachedFilesByMessage(userId, workspaceId, messageIds);
     }
 
     /**
