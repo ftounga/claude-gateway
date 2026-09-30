@@ -537,8 +537,10 @@ def build(spec, output, outformat="svg"):
             created[source] >> Edge(label=text) >> created[target]
     # F-142 / SF-142-18 : le SVG doit voyager SEUL. Une fois posé dans une page, il n'a plus accès au
     # disque du service : ses icônes, référencées par chemin fichier, seraient cassées. On les inline.
+    # F-142 / SF-142-20 : et sa viewBox doit ENGLOBER le contenu, sinon la page en rogne les trois quarts.
     if outformat == "svg":
         inline_images(output + ".svg")
+        fit_viewbox(output + ".svg")
     return unknown
 
 
@@ -603,6 +605,72 @@ def inline_images(svg_path):
     with open(svg_path, "w", encoding="utf-8") as handle:
         handle.write(inlined)
     return inlined
+
+
+# ---------------------------------------------------------------------------------------------------
+# LA VIEWBOX QUI ENGLOBE LE CONTENU (F-142 / SF-142-20)
+#
+# Défaut introduit par SF-142-18, confirmé en production le 2026-09-30 : le SVG est net, mais une fois
+# embarqué en page (« <img style="width:100%"> »), il ROGNE les trois quarts du schéma — seul le quart
+# haut-gauche s'affiche.
+#
+# La cause est un quirk connu de graphviz avec un `dpi` non nul (ici 144, SF-142-17) : graphviz met le
+# `width`/`height` du <svg> et le `transform="scale(s …)"` du groupe racine à l'échelle du dpi, MAIS
+# laisse la `viewBox` à l'échelle 1×. Le contenu, une fois le `transform` appliqué, occupe une étendue
+# différente de la viewBox ; comme <svg> a `overflow:hidden`, tout ce qui dépasse la viewBox est clippé.
+#
+# On ne touche PAS au `dpi` (piste écartée) : il est load-bearing — le test SF-142-17 l'exige à « 144 »,
+# et `svg_size`/`density_notice` (SF-142-19) mesurent la densité via `dpi/72` sur le `width`/`height` en
+# points. On rend donc le SVG COHÉRENT avec lui-même : la viewBox réécrite = l'étendue RÉELLE du contenu
+# en espace utilisateur = viewBox_1× × scale (le facteur du transform racine). Rien d'autre ne bouge —
+# ni `width`/`height` (ils portent la mesure de densité), ni le transform, ni la géométrie.
+#
+# La formule vaut quel que soit le SENS du quirk selon la version de graphviz : scale « 0.5 » (viewBox
+# alors trop GRANDE, contenu tassé dans un coin) ou « 2 » (viewBox trop PETITE, contenu rogné). Dans les
+# deux cas, viewBox ← viewBox × scale fait coïncider le cadre et le contenu.
+# ---------------------------------------------------------------------------------------------------
+_SVG_TAG = re.compile(r"<svg\b[^>]*>", re.IGNORECASE)
+_VIEWBOX = re.compile(r'\bviewBox="([-\d.eE]+)\s+([-\d.eE]+)\s+([-\d.eE]+)\s+([-\d.eE]+)"')
+_ROOT_G_SCALE = re.compile(r'<g\b[^>]*\btransform="[^"]*?\bscale\(\s*([-\d.eE]+)(?:\s+([-\d.eE]+))?\s*\)')
+
+
+def fit_viewbox(svg_path):
+    """
+    Réécrit la `viewBox` du SVG pour qu'elle englobe EXACTEMENT le contenu dessiné (F-142 / SF-142-20).
+
+    graphviz laisse la viewBox à l'échelle 1× alors que le `transform` du groupe racine met le contenu à
+    l'échelle du `dpi` : la viewBox ne cadre plus le contenu, et la page en rogne (ou en tasse) une partie.
+    On remplace donc la largeur/hauteur de la viewBox par `viewBox × scale`, l'étendue réelle du contenu.
+
+    On ne modifie NI `width`/`height` (ils portent la mesure de densité, SF-142-19), NI le transform.
+    Sans viewBox, ou sans scale (ou scale = 1), c'est un no-op : on ne casse jamais un SVG déjà cohérent.
+    Rend le texte du SVG écrit.
+    """
+    with open(svg_path, encoding="utf-8") as handle:
+        svg = handle.read()
+
+    tag = _SVG_TAG.search(svg)
+    box = _VIEWBOX.search(tag.group(0)) if tag else None
+    scale = _ROOT_G_SCALE.search(svg)
+    if not box or not scale:
+        return svg  # rien à recadrer : SVG sans viewBox ou sans groupe mis à l'échelle.
+
+    min_x, min_y, width, height = (float(box.group(i)) for i in range(1, 5))
+    scale_x = float(scale.group(1))
+    scale_y = float(scale.group(2)) if scale.group(2) is not None else scale_x
+    new_width = width * scale_x
+    new_height = height * scale_y
+
+    # Déjà cohérent (scale ≈ 1, ou graphviz a corrigé le quirk) : ne rien réécrire.
+    if abs(new_width - width) < 0.5 and abs(new_height - height) < 0.5:
+        return svg
+
+    ancienne = box.group(0)
+    nouvelle = f'viewBox="{min_x:.2f} {min_y:.2f} {new_width:.2f} {new_height:.2f}"'
+    fixed = svg.replace(ancienne, nouvelle, 1)
+    with open(svg_path, "w", encoding="utf-8") as handle:
+        handle.write(fixed)
+    return fixed
 
 
 def png_size(path):

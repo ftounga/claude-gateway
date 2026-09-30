@@ -153,6 +153,130 @@ class InlineImagesNeTouchePasAuxLiens(unittest.TestCase):
         self.assertIn(absente, rendu)
 
 
+# ---------------------------------------------------------------------------------------------------
+# F-142 / SF-142-20 — la viewBox englobe TOUT le contenu (plus de schéma rogné en page).
+#
+# Défaut introduit par SF-142-18 : le SVG est net, mais embarqué en « width:100% » il rogne les trois
+# quarts du schéma — graphviz laisse la viewBox à l'échelle 1× alors que le transform du groupe racine
+# met le contenu à l'échelle du dpi. Ces tests VÉRIFIENT que la viewBox servie cadre exactement le
+# contenu réellement dessiné.
+# ---------------------------------------------------------------------------------------------------
+def _chaine_large(n):
+    """Une chaîne LR de n nœuds : mécaniquement large (type acces-cluster), pour éprouver le cadrage."""
+    return {"title": "acces cluster", "direction": "LR",
+            "nodes": [{"id": f"n{i}", "type": "aws.s3", "label": f"bucket {i}"} for i in range(n)],
+            "edges": [{"from": f"n{i}", "to": f"n{i + 1}"} for i in range(n - 1)]}
+
+
+def _lire(chemin):
+    with open(chemin, encoding="utf-8") as handle:
+        return handle.read()
+
+
+def _viewbox(svg):
+    m = re.search(r'viewBox="([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)"', svg)
+    return tuple(float(m.group(i)) for i in range(1, 5)) if m else None
+
+
+def _width_height(svg):
+    tag = re.search(r"<svg\b[^>]*>", svg).group(0)
+    w = re.search(r'width="([\d.]+)pt"', tag)
+    h = re.search(r'height="([\d.]+)pt"', tag)
+    return (float(w.group(1)), float(h.group(1))) if w and h else None
+
+
+def _contenu_bbox_utilisateur(svg):
+    """
+    La bounding box du contenu en espace UTILISATEUR : le polygone de fond de graphviz (le canevas),
+    ramené par le transform du groupe racine. C'est ce que la viewBox doit englober pour ne rien rogner.
+    """
+    g = re.search(r'<g\b[^>]*transform="([^"]+)"', svg).group(1)
+    sc = re.search(r"scale\(\s*([-\d.]+)(?:\s+([-\d.]+))?\s*\)", g)
+    sx = float(sc.group(1))
+    sy = float(sc.group(2)) if sc.group(2) is not None else sx
+    tr = re.search(r"translate\(\s*([-\d.]+)\s+([-\d.]+)\s*\)", g)
+    tx, ty = (float(tr.group(1)), float(tr.group(2))) if tr else (0.0, 0.0)
+    poly = re.search(r'<polygon\b[^>]*points="([^"]+)"', svg).group(1)
+    pts = [tuple(map(float, p.split(","))) for p in poly.split()]
+    xs = [sx * (x + tx) for x, _ in pts]
+    ys = [sy * (y + ty) for _, y in pts]
+    return min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys)
+
+
+class LaViewBoxEnglobeLeContenu(unittest.TestCase):
+    """Le cœur de SF-142-20 : la viewBox servie cadre exactement le contenu, sans rognage ni tassement."""
+
+    def test_la_viewbox_englobe_exactement_le_contenu_d_un_schema_large(self):
+        # LE test qui attrape le bug. Sans correctif, la viewBox est un multiple (≈2×) de l'étendue
+        # réelle du contenu → la page rogne ou tasse. Après correctif, viewBox == contenu (à l'unité près).
+        _, svg = rendu_svg(_chaine_large(8))
+        _, _, vb_w, vb_h = _viewbox(svg)
+        _, _, contenu_w, contenu_h = _contenu_bbox_utilisateur(svg)
+        self.assertAlmostEqual(vb_w, contenu_w, delta=max(2.0, contenu_w * 0.01),
+                               msg=f"la viewBox ({vb_w}) ne cadre pas le contenu ({contenu_w}) : "
+                                   "le schéma serait rogné ou tassé en page")
+        self.assertAlmostEqual(vb_h, contenu_h, delta=max(2.0, contenu_h * 0.01),
+                               msg=f"la viewBox en hauteur ({vb_h}) ne cadre pas le contenu ({contenu_h})")
+
+    def test_la_viewbox_a_le_meme_ratio_que_width_height(self):
+        # Cohérence de forme : la viewBox et le width/height doivent décrire la même figure.
+        _, svg = rendu_svg(_chaine_large(8))
+        _, _, vb_w, vb_h = _viewbox(svg)
+        w, h = _width_height(svg)
+        self.assertAlmostEqual(vb_w / vb_h, w / h, delta=0.02,
+                               msg="viewBox et width/height ne décrivent pas la même forme")
+
+
+class FitViewboxRendLeSvgCoherent(unittest.TestCase):
+    """Tests unitaires ciblés de `fit_viewbox`, indépendants de la version de graphviz."""
+
+    def _ecrire(self, contenu):
+        chemin = os.path.join(tempfile.mkdtemp(), "t.svg")
+        with open(chemin, "w", encoding="utf-8") as handle:
+            handle.write(contenu)
+        return chemin
+
+    def test_forme_production_la_viewbox_rejoint_width_height(self):
+        # La forme exacte du défaut de prod : scale(2 2), viewBox à 1×, width/height à 2×. Après
+        # correctif, la viewBox vaut la valeur numérique de width/height : PLUS DE RAPPORT 2×.
+        chemin = self._ecrire(
+            '<svg width="3312pt" height="904pt" viewBox="0.00 0.00 1656.00 452.00"'
+            ' xmlns="http://www.w3.org/2000/svg">'
+            '<g class="graph" transform="scale(2 2) rotate(0) translate(4 448)">'
+            '<polygon points="0,0 0,0"/></g></svg>')
+        cloud.fit_viewbox(chemin)
+        svg = _lire(chemin)
+        _, _, vb_w, vb_h = _viewbox(svg)
+        w, h = _width_height(svg)
+        self.assertAlmostEqual(vb_w, w, delta=1.0)
+        self.assertAlmostEqual(vb_h, h, delta=1.0)
+        self.assertAlmostEqual(vb_w, 3312.0, delta=1.0)
+
+    def test_sans_viewbox_le_fichier_est_inchange(self):
+        chemin = self._ecrire('<svg width="100pt" height="50pt">'
+                              '<g transform="scale(2 2)"><polygon points="0,0"/></g></svg>')
+        avant = _lire(chemin)
+        rendu = cloud.fit_viewbox(chemin)
+        self.assertEqual(avant, rendu)
+        self.assertEqual(avant, _lire(chemin))
+
+    def test_sans_scale_c_est_un_no_op(self):
+        # Un SVG déjà cohérent (pas de scale, ou scale = 1) n'est jamais réécrit.
+        chemin = self._ecrire('<svg width="100pt" height="50pt" viewBox="0 0 100 50">'
+                              '<g transform="rotate(0) translate(1 1)"><polygon points="0,0"/></g></svg>')
+        avant = _lire(chemin)
+        cloud.fit_viewbox(chemin)
+        self.assertEqual(avant, _lire(chemin))
+
+    def test_scale_a_un_seul_nombre_est_lu(self):
+        chemin = self._ecrire('<svg width="200pt" height="100pt" viewBox="0 0 100 50">'
+                              '<g transform="scale(2) translate(0 0)"><polygon points="0,0"/></g></svg>')
+        cloud.fit_viewbox(chemin)
+        _, _, vb_w, vb_h = _viewbox(_lire(chemin))
+        self.assertAlmostEqual(vb_w, 200.0, delta=1.0)
+        self.assertAlmostEqual(vb_h, 100.0, delta=1.0)
+
+
 class MainRendUnSvg(unittest.TestCase):
     """De bout en bout : le programme imprime le chemin du SVG, et le fichier est auto-contenu."""
 
