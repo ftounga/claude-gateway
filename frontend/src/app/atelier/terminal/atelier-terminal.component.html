@@ -1264,6 +1264,18 @@
       }
     }
 
+    <!-- QUESTION STRUCTURÉE (F-164 / SF-164-02) : le rendu de l'outil `demander`. Vit dans le flux, à
+         côté de l'invite d'autorisation dont elle partage le mécanisme de pause (SF-164-01). La carte
+         gère la saisie et émet la réponse composée, que le parent poste sur `/chat/answer`. -->
+    @if (pendingQuestion) {
+      <app-atelier-terminal-demande
+        [pending]="pendingQuestion"
+        [countdown]="questionCountdown"
+        [readOnly]="readOnly"
+        (answer)="questionAnswer.emit($event)"
+      />
+    }
+
     <!-- SENTINELLE DE FOND (F-158 / SF-158-23) : dernier enfant du fil. À l'entrée dans le terminal et
          à chaque nouveau contenu, on l'amène dans le champ de vision (`scrollIntoView`) — ce qui défile
          l'ancêtre défilant RÉEL (la fenêtre sur mobile ≤ 819 px, où `.terminal-scrollback` n'est pas le

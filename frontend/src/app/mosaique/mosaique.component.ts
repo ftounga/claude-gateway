@@ -299,7 +299,9 @@ export class MosaiqueComponent implements OnInit, OnDestroy {
       // DEUX SOURCES POUR UN SEUL SIGNAL, et c'est voulu : le flux le dit en quelques dizaines de
       // millisecondes, le registre le redit au battement suivant. Là où l'on regarde quatre choses
       // à la fois, une attente ne doit pas dépendre d'un seul canal (leçon du 2026-09-08, F-47).
-      awaiting: view.pending() !== null || terminal.activity === 'AWAITING_APPROVAL',
+      awaiting: view.pending() !== null
+        || view.pendingQuestion() !== null
+        || terminal.activity === 'AWAITING_APPROVAL',
       // Un backend antérieur ne le dit pas : la tuile garde alors la peau d'un terminal ordinaire.
       teamsTerminal: terminal.teamsTerminal === true,
     };

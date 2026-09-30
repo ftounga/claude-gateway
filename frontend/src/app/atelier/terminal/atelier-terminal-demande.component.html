@@ -1,0 +1,124 @@
+<!-- Carte de question structurée (F-164 / SF-164-02) : le rendu de l'outil `demander` (SF-164-01).
+     Vit DANS LE FLUX, pas dans une modale — ce qui précède reste lisible et aide à choisir, comme la
+     carte d'autorisation. Aucune couleur/police hors charte (jetons --cg-* uniquement). -->
+@if (pending; as q) {
+  @if (readOnly) {
+    <!-- CE QUI ATTEND UNE RÉPONSE SE SIGNALE, MÊME EN LECTURE SEULE (F-83) : on regarde, on ne tranche
+         pas. Pas de contrôle de saisie ici — le libellé écrit suffit. -->
+    <div class="terminal-demande terminal-demande--readonly" role="status">
+      <p class="terminal-demande-title">
+        <mat-icon class="terminal-demande-icon" aria-hidden="true">help</mat-icon>
+        Une question vous attend
+      </p>
+      @for (question of q.questions; track $index) {
+        <p class="terminal-demande-ro-question">{{ question.question }}</p>
+      }
+      <p class="terminal-demande-hint">Entrez dans le terminal pour répondre.</p>
+    </div>
+  } @else if (q.status !== 'awaiting') {
+    <!-- Répondu (ici ou sur un autre appareil) ou délai écoulé : carte verrouillée, plus aucun geste. -->
+    <div class="terminal-demande terminal-demande--done" role="status">
+      <p class="terminal-demande-title">
+        <mat-icon class="terminal-demande-icon" aria-hidden="true">{{
+          q.status === 'expired' ? 'timer_off' : 'check_circle'
+        }}</mat-icon>
+        {{
+          q.status === 'expired'
+            ? 'Délai écoulé'
+            : (q.answeredHere ? 'Répondu' : 'Répondu sur un autre appareil')
+        }}
+      </p>
+      @if (q.status === 'answered' && q.answeredHere && q.chosenSummary) {
+        <p class="terminal-demande-recap">{{ q.chosenSummary }}</p>
+      }
+    </div>
+  } @else {
+    <!-- Question interactive. -->
+    <div class="terminal-demande" role="group" aria-label="Question de l'agent">
+      <p class="terminal-demande-title">
+        <mat-icon class="terminal-demande-icon" aria-hidden="true">help</mat-icon>
+        Claude vous pose une question
+      </p>
+
+      @for (question of q.questions; track $index; let qi = $index) {
+        <fieldset class="terminal-demande-question">
+          <legend class="terminal-demande-legend">{{ question.header }}</legend>
+          <p class="terminal-demande-text">{{ question.question }}</p>
+
+          <div class="terminal-demande-options">
+            @for (opt of question.options; track opt.label) {
+              <label class="terminal-demande-option">
+                @if (question.multiSelect) {
+                  <input
+                    class="terminal-demande-control"
+                    type="checkbox"
+                    [checked]="isChecked(qi, opt.label)"
+                    [disabled]="!interactive"
+                    (change)="toggleMulti(qi, opt.label, $any($event.target).checked)"
+                  />
+                } @else {
+                  <input
+                    class="terminal-demande-control"
+                    type="radio"
+                    [name]="'terminal-demande-q-' + qi"
+                    [value]="opt.label"
+                    [checked]="single[qi] === opt.label"
+                    [disabled]="!interactive"
+                    (change)="setSingle(qi, opt.label)"
+                  />
+                }
+                <span class="terminal-demande-option-body">
+                  <span class="terminal-demande-option-label">
+                    {{ opt.label }}
+                    @if (opt.recommended) {
+                      <span class="terminal-demande-reco">Recommandé</span>
+                    }
+                  </span>
+                  @if (opt.description) {
+                    <span class="terminal-demande-option-desc">{{ opt.description }}</span>
+                  }
+                </span>
+              </label>
+            }
+
+            <!-- CHAMP LIBRE TOUJOURS PRÉSENT (§3 CADRAGE) : « autre / tape ta réponse », quelle que
+                 soit la question. -->
+            <label class="terminal-demande-other">
+              <span class="terminal-demande-other-label">Autre / tape ta réponse</span>
+              <textarea
+                class="terminal-demande-other-input"
+                rows="2"
+                maxlength="2000"
+                autocomplete="off"
+                [ngModel]="free[qi]"
+                [disabled]="!interactive"
+                (ngModelChange)="setFree(qi, $event)"
+                aria-label="Autre réponse à la question"
+              ></textarea>
+            </label>
+          </div>
+        </fieldset>
+      }
+
+      @if (countdown) {
+        <p class="terminal-demande-countdown">
+          <mat-icon class="terminal-demande-countdown-icon" aria-hidden="true">timer</mat-icon>
+          {{ countdown }}
+        </p>
+      }
+
+      <div class="terminal-demande-actions">
+        <button
+          mat-flat-button
+          color="primary"
+          type="button"
+          class="terminal-demande-send"
+          [disabled]="!canSend"
+          (click)="send()"
+        >
+          Envoyer
+        </button>
+      </div>
+    </div>
+  }
+}

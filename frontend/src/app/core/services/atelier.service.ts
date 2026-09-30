@@ -13,6 +13,8 @@ import {
   AtelierConfirmDecision,
   AtelierConfirmationState,
   AtelierChatResponse,
+  AtelierQuestion,
+  AtelierAnswerRequest,
   AtelierCompactResult,
   AtelierEngineStatus,
   AtelierMessage,
@@ -539,6 +541,12 @@ export class AtelierService {
       timeoutMs?: number;
       /** La gateway propose « toujours autoriser cette commande » (F-121 / SF-121-02-FE). */
       allowAlwaysOffered?: boolean;
+      /** Corrélation d'une question structurée (F-164 / SF-164-02) : `question_request`/`_state`/`_resolved`. */
+      callId?: string;
+      /** Le lot de questions posé par l'agent (F-164 / SF-164-02). */
+      questions?: AtelierQuestion[];
+      /** Statut de résolution d'une question (F-164 / SF-164-02) : `answered`, `timeout`, … */
+      status?: string;
       tokens?: number;
       inputTokens?: number;
       outputTokens?: number;
@@ -636,6 +644,38 @@ export class AtelierService {
         decision: payload.decision === 'deny' || payload.decision === 'timeout'
           ? payload.decision
           : 'allow',
+      });
+    } else if (event === 'question_request') {
+      // L'agent pose une question structurée (F-164 / SF-164-02) : le tour est en pause tant que rien
+      // n'est répondu. Sans lot de questions, rien — mieux vaut aucune carte qu'un cadre creux.
+      if (Array.isArray(payload.questions) && payload.questions.length > 0) {
+        handlers.onQuestionRequest?.({
+          callId: payload.callId ?? '',
+          questions: payload.questions,
+          // Même discipline que `confirm_request` (F-47 / SF-47-02) : la clé n'est posée que pour un
+          // nombre strictement positif ; tout le reste vaut « aucun compte à rebours ».
+          ...(typeof payload.timeoutMs === 'number' && payload.timeoutMs > 0
+            ? { timeoutMs: payload.timeoutMs }
+            : {}),
+        });
+      }
+    } else if (event === 'question_state') {
+      // Ce que le tour attend À L'INSTANT (F-84 / SF-84-03, comme `confirm_state`) : il arrive au
+      // rejeu, et son `timeoutMs` est le TEMPS RESTANT calculé par la gateway. Routé vers la même
+      // invite : pour l'écran, une attente est une attente.
+      if (Array.isArray(payload.questions) && payload.questions.length > 0) {
+        handlers.onQuestionRequest?.({
+          callId: payload.callId ?? '',
+          questions: payload.questions,
+          ...(typeof payload.timeoutMs === 'number' && payload.timeoutMs > 0
+            ? { timeoutMs: payload.timeoutMs }
+            : {}),
+        });
+      }
+    } else if (event === 'question_resolved') {
+      handlers.onQuestionResolved?.({
+        callId: payload.callId ?? '',
+        status: typeof payload.status === 'string' ? payload.status : 'answered',
       });
     } else if (event === 'progress') {
       // Consommation cumulée du tour (F-39 / SF-39-15). Additif : un backend antérieur ne l'émet
@@ -932,6 +972,16 @@ export class AtelierService {
    */
   confirmChatToolUse(id: string, decision: AtelierConfirmDecision): Observable<void> {
     return this.http.post<void>(`/api/workspaces/${id}/chat/confirm`, decision);
+  }
+
+  /**
+   * Répond à une **question structurée** posée par le tour en cours (F-164 / SF-164-02) : poste le
+   * lot de réponses (choix cochés et/ou texte libre) sur l'endpoint **isolé** existant (SF-164-01),
+   * qui reprend le tour. Chemin isolé (`requireTerminalAccess` + `requireOwned` côté backend) : on ne
+   * le contourne jamais. Le silence ne vaut pas réponse — sans envoi, la question finit par expirer.
+   */
+  answerQuestion(id: string, body: AtelierAnswerRequest): Observable<void> {
+    return this.http.post<void>(`/api/workspaces/${id}/chat/answer`, body);
   }
 
   /**

@@ -679,6 +679,18 @@ export interface AtelierStreamHandlers {
   onConfirmRequest?: (request: AtelierConfirmRequest) => void;
   /** Demande tranchée (ici, ailleurs, ou par expiration) : l'invite n'a plus lieu d'être. */
   onConfirmResolved?: (resolved: AtelierConfirmResolved) => void;
+
+  /**
+   * L'agent pose une **question structurée** à l'utilisateur (F-164 / SF-164-02) : le tour est
+   * **suspendu** tant que rien n'est répondu. Alimenté par `question_request` (posée maintenant) **et**
+   * par l'aparté `question_state` (rejoué à l'attache, avec le temps restant recalculé) — comme
+   * `confirm_state` pour la porte : pour l'écran, une attente est une attente. **Optionnel** : un
+   * appelant qui ne s'y abonne pas, ou un backend antérieur, ne voit aucune différence.
+   */
+  onQuestionRequest?: (request: AtelierQuestionRequest) => void;
+  /** La question a été tranchée (ici, sur un autre appareil, ou par expiration) : l'invite n'a plus lieu d'être. */
+  onQuestionResolved?: (resolved: AtelierQuestionResolved) => void;
+
   /**
    * Consommation **cumulée** du tour, relayée après chaque itération (F-39 / SF-39-15). C'est ce
    * qui remplit les tokens de la ligne vivante (acquis §4 n°5), muette sur la boucle maison
@@ -964,6 +976,65 @@ export interface AtelierConfirmDecision {
    * backend antérieur l'ignore.</p>
    */
   alwaysAllowCommand?: boolean;
+}
+
+/**
+ * Une **option** proposée pour une question structurée (F-164 / SF-164-02), telle que relayée par
+ * l'événement `question_request` / l'aparté `question_state`. `recommended` sert de défaut à
+ * SF-164-03 ; ici il n'est **que rendu** (repère « Recommandé »).
+ */
+export interface AtelierQuestionOption {
+  label: string;
+  description: string;
+  recommended: boolean;
+}
+
+/** Une **question** du lot posé par l'agent (F-164 / SF-164-02). */
+export interface AtelierQuestion {
+  /** Court intitulé (onglet) ; jamais vide côté backend (dérivé du texte si absent). */
+  header: string;
+  /** Le texte de la question posée à l'utilisateur. */
+  question: string;
+  /** Vrai si plusieurs options peuvent être cochées (choix multiple) ; sinon choix simple (radio). */
+  multiSelect: boolean;
+  /** Les options proposées (1 à 8 côté backend). L'option libre « autre » est implicite, jamais listée. */
+  options: AtelierQuestionOption[];
+}
+
+/**
+ * Question(s) structurée(s) en attente de réponse (F-164 / SF-164-02). `callId` corrèle la réponse ;
+ * `timeoutMs` est le délai — à l'attache, c'est le **temps restant** recalculé par la gateway
+ * (SF-47-02), comme pour `confirm_state`. **Additif** : un backend antérieur ne l'émet pas.
+ */
+export interface AtelierQuestionRequest {
+  callId: string;
+  questions: AtelierQuestion[];
+  timeoutMs?: number;
+}
+
+/**
+ * La question a été tranchée (F-164 / SF-164-02). `status` : `answered` (une réponse est arrivée,
+ * ici ou ailleurs), `timeout` (le délai a expiré), ou toute autre valeur de résolution du backend.
+ */
+export interface AtelierQuestionResolved {
+  callId: string;
+  status: string;
+}
+
+/** Une entrée de réponse à une question du lot (F-164 / SF-164-02). */
+export interface AtelierQuestionAnswerEntry {
+  /** Rappel d'intitulé pour le compte rendu lisible rendu au modèle (facultatif). */
+  header?: string;
+  /** Libellés des options choisies (vide si réponse libre seule). */
+  selected: string[];
+  /** Réponse libre saisie (« autre ») ; vide si des options suffisent. */
+  other?: string;
+}
+
+/** Corps de `POST /api/workspaces/{id}/chat/answer` (F-164 / SF-164-01 : contrat backend). */
+export interface AtelierAnswerRequest {
+  callId: string;
+  answers: AtelierQuestionAnswerEntry[];
 }
 
 /** Réponse de `PUT /api/workspaces/{id}/agent/confirmation` (F-33 / SF-33-01). */
