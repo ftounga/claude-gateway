@@ -2676,19 +2676,93 @@ describe('AtelierTerminalComponent', () => {
       expect(seen.length).toBe(1);
     });
 
-    it('rend un bloc « fichier déposé » et un bloc d\'échec nommé', () => {
+    // F-169 / SF-169-01 — les pièces jointes sont des PUCES DANS le composer (plus une bande figée).
+    it('rend les pièces jointes comme des puces DANS le composer, jamais en bande hors-scrollback', () => {
       component.depositNotices = [
         { id: '1', path: 'entrees/capture.png', sizeLabel: '2,3 Mo' },
         { id: '2', error: 'Le poste est hors ligne.' },
+        { id: '3', cancelled: true },
       ];
       fixture.detectChanges();
 
-      const blocks = fixture.nativeElement.querySelectorAll('.terminal-deposit-notice');
-      expect(blocks.length).toBe(2);
-      expect(text()).toContain('entrees/capture.png');
+      // L'ancien rendu empilé hors du fil a disparu.
+      expect(fixture.nativeElement.querySelector('.terminal-deposit-notice')).toBeNull();
+
+      // Les puces vivent DANS le composer (`.terminal-input`).
+      const chips = fixture.nativeElement.querySelectorAll('.terminal-input .terminal-attachment');
+      expect(chips.length).toBe(3);
+    });
+
+    it('affiche nom court + taille (tabular) pour une pièce jointe de succès', () => {
+      component.depositNotices = [{ id: '1', path: 'entrees/sous/capture.png', sizeLabel: '2,3 Mo' }];
+      fixture.detectChanges();
+
+      const name = fixture.nativeElement.querySelector('.terminal-attachment__name') as HTMLElement;
+      expect(name.textContent?.trim()).toBe('capture.png'); // nom court, pas le chemin entier
+      expect(name.getAttribute('title')).toBe('entrees/sous/capture.png'); // chemin complet au survol
       expect(text()).toContain('2,3 Mo');
+    });
+
+    it('lève le flou : un libellé « joint au message » coiffe les pièces jointes', () => {
+      component.depositNotices = [{ id: '1', path: 'entrees/notes.txt', sizeLabel: '1 Ko' }];
+      fixture.detectChanges();
+
+      const label = fixture.nativeElement.querySelector('.terminal-attachments__label') as HTMLElement;
+      expect(label).not.toBeNull();
+      expect(label.textContent).toContain('Joint au message');
+    });
+
+    it('un dépôt en échec / annulé devient une puce d\'échec / d\'annulation (sans libellé « joint »)', () => {
+      component.depositNotices = [
+        { id: '1', error: 'Le poste est hors ligne.' },
+        { id: '2', cancelled: true },
+      ];
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('.terminal-attachment--error')).not.toBeNull();
+      expect(fixture.nativeElement.querySelector('.terminal-attachment--cancelled')).not.toBeNull();
       expect(text()).toContain('Le poste est hors ligne.');
-      expect(fixture.nativeElement.querySelector('.terminal-deposit-notice--error')).not.toBeNull();
+      expect(text()).toContain('Dépôt annulé');
+      // Aucune pièce n'est réellement jointe → pas de libellé « joint au message ».
+      expect(fixture.nativeElement.querySelector('.terminal-attachments__label')).toBeNull();
+    });
+
+    it('la croix d\'une puce émet depositRemove avec l\'id de la notice', () => {
+      component.depositNotices = [{ id: 'dep-42', path: 'entrees/capture.png', sizeLabel: '2,3 Mo' }];
+      fixture.detectChanges();
+      const seen: string[] = [];
+      component.depositRemove.subscribe((id) => seen.push(id));
+
+      const cross = fixture.nativeElement.querySelector(
+        '.terminal-attachment__remove') as HTMLButtonElement;
+      cross.click();
+      expect(seen).toEqual(['dep-42']);
+    });
+
+    // Garde-fou de style (CSSOM, indépendant du viewport, patron SF-158) : les puces vivent dans le
+    // composer `flex-wrap` (ligne pleine largeur) et la croix reste une cible tactile >= 44 px.
+    it('les puces prennent une ligne pleine du composer et la croix fait >= 44 px', () => {
+      fixture.detectChanges();
+      let css = '';
+      for (const sheet of Array.from(document.styleSheets)) {
+        let rules: CSSRuleList;
+        try {
+          rules = sheet.cssRules;
+        } catch {
+          continue;
+        }
+        for (const rule of Array.from(rules)) {
+          css += rule.cssText + '\n';
+        }
+      }
+      css = css.replace(/\s+/g, ' ');
+      // Le groupe de puces occupe une ligne entière du composer `flex-wrap`.
+      // (patron CSSOM tolérant à l'attribut d'encapsulation `[_ngcontent-…]`, comme SF-158)
+      expect(css).toMatch(/terminal-attachments[^}]*flex:\s*1\s+1\s+100%/);
+      // La croix de suppression est une cible tactile d'au moins 44 px.
+      expect(css).toMatch(/terminal-attachment__remove[^}]*min-height:\s*44px/);
+      // Les tailles sont alignées (tabular-nums).
+      expect(css).toMatch(/terminal-attachment__size[^}]*tabular-nums/);
     });
   });
 

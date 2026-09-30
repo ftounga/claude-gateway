@@ -1554,11 +1554,17 @@ export class AtelierComponent implements OnInit, OnDestroy {
   private dispatchMessage(id: string, content: string): void {
     if (this.submitting()) {
       if (this.localEngine()) {
+        // F-169 / SF-169-01 : le message (précision) part → on purge les puces de pièces jointes.
+        // Le dépôt reste « chemin uniquement » côté backend (l'agent lit par `read_file`) : purger
+        // l'affichage ne change RIEN à la consommation des fichiers au tour suivant.
         this.steer(id, content);
+        this.depositNotices.set([]);
       }
       return;
     }
     this.draft.set('');
+    // F-169 / SF-169-01 : le message part → purge des puces (voir ci-dessus, aucune régression backend).
+    this.depositNotices.set([]);
     this.startTurn(id, content);
   }
 
@@ -2758,6 +2764,15 @@ export class AtelierComponent implements OnInit, OnDestroy {
 
   private pushDepositNotice(notice: TerminalDepositNotice): void {
     this.depositNotices.update((list) => [...list, notice]);
+  }
+
+  /**
+   * F-169 / SF-169-01 — Retrait d'une pièce jointe avant l'envoi (croix d'une puce du composer). On
+   * retire la référence de l'état front UNIQUEMENT : le dépôt est « chemin uniquement » et aucun
+   * endpoint backend de suppression n'existe (décision par défaut documentée dans la mini-spec).
+   */
+  onDepositRemove(id: string): void {
+    this.depositNotices.update((list) => list.filter((notice) => notice.id !== id));
   }
 
   private depositNoticeId(): string {

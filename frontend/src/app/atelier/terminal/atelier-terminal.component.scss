@@ -486,6 +486,9 @@
 .terminal-input {
   display: flex;
   align-items: center;
+  // F-169 : la rangée de puces de pièces jointes (`flex: 1 1 100%`) occupe sa propre ligne au-dessus
+  // du champ ; le champ (`flex: 1`) absorbe le mou, donc la saisie ne se scinde pas d'elle-même.
+  flex-wrap: wrap;
   gap: var(--cg-space-2);
   padding: var(--cg-space-2) var(--cg-space-3);
   border-top: 1px solid var(--cg-navy-2);

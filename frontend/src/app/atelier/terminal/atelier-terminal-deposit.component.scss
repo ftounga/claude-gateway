@@ -46,57 +46,128 @@
   color: var(--cg-text-secondary);
 }
 
-// Blocs discrets « fichier déposé » / échec / annulation dans le fil.
-.terminal-deposit-notice {
+// F-169 / SF-169-01 — PIÈCES JOINTES AU MESSAGE, en puces compactes DANS le composer (et non plus
+// une bande figée hors du fil, jamais purgée). Le groupe occupe une ligne entière du composer
+// `flex-wrap` (desktop ET mobile sticky), AU-DESSUS de la rangée de saisie. Aucune couleur nouvelle :
+// uniquement des jetons --cg-*, sur le patron des puces de texte collé (F-146).
+.terminal-attachments {
+  flex: 1 1 100%;
+  order: -2; // au-dessus de la rangée de saisie (champ, icônes, envoyer)
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--cg-space-2, 8px);
-  margin: var(--cg-space-1, 4px) 0;
-  padding: var(--cg-space-2, 8px) var(--cg-space-3, 12px);
-  border-left: 3px solid var(--cg-accent);
-  background: color-mix(in srgb, var(--cg-accent) 12%, transparent);
-  border-radius: var(--cg-radius-sm, 4px);
-  color: var(--cg-text-secondary);
-  font-size: 0.85rem;
+  width: 100%;
+  margin: 0 0 var(--cg-space-1, 4px);
 
-  code {
-    font-family: var(--cg-font-mono, 'JetBrains Mono', monospace);
-    color: var(--cg-text-primary);
+  // Le libellé « joint au message » lève le flou : ce qui est là partira avec la demande.
+  &__label {
+    flex: 1 1 100%; // le libellé sur sa propre ligne, au-dessus des puces
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cg-space-1, 4px);
+    color: var(--cg-text-secondary);
+    font-size: 0.8rem;
   }
 
-  mat-icon {
+  &__label-icon {
     flex: 0 0 auto;
-    width: 18px;
-    height: 18px;
-    font-size: 18px;
+    width: 16px;
+    height: 16px;
+    font-size: 16px;
+    color: var(--cg-accent);
+  }
+}
+
+.terminal-attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cg-space-1, 4px);
+  max-width: 100%;
+  padding: 2px 2px 2px var(--cg-space-2, 8px);
+  border: 1px solid var(--cg-divider);
+  border-radius: 16px;
+  background: var(--cg-surface);
+  color: var(--cg-text-primary);
+  font-size: 12px;
+
+  &__icon {
+    flex: 0 0 auto;
+    width: 14px;
+    height: 14px;
+    font-size: 14px;
     color: var(--cg-accent);
   }
 
-  &--error {
-    border-left-color: var(--cg-error);
-    background: color-mix(in srgb, var(--cg-error) 12%, transparent);
+  &__name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 14rem;
+  }
 
-    mat-icon {
+  &__size {
+    flex: 0 0 auto;
+    color: var(--cg-text-secondary);
+    font-variant-numeric: tabular-nums; // tailles alignées
+  }
+
+  &__text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 18rem;
+  }
+
+  // Croix de suppression : cible tactile >= 44 px (SF-158 / accessibilité) SANS grossir la puce —
+  // la zone cliquable déborde en marge négative, l'encre reste petite et discrète.
+  &__remove {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    margin: -14px -6px -14px 0;
+    border: none;
+    background: none;
+    color: var(--cg-text-secondary);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  &__remove:hover,
+  &__remove:focus-visible {
+    color: var(--cg-error);
+  }
+
+  &--error {
+    border-color: var(--cg-error);
+
+    .terminal-attachment__icon {
       color: var(--cg-error);
     }
   }
 
   &--cancelled {
-    border-left-color: var(--cg-text-secondary);
-    background: color-mix(in srgb, var(--cg-text-secondary) 12%, transparent);
+    border-color: var(--cg-text-secondary);
+    color: var(--cg-text-secondary);
 
-    mat-icon {
+    .terminal-attachment__icon {
       color: var(--cg-text-secondary);
     }
   }
 }
 
+// Progression du dépôt : elle aussi prend une ligne entière du composer, au-dessus de la saisie.
 .terminal-deposit-progress {
+  flex: 1 1 100%;
+  order: -1;
   display: flex;
   align-items: center;
   gap: var(--cg-space-3, 12px);
-  margin: var(--cg-space-1, 4px) 0;
-  padding: var(--cg-space-2, 8px) var(--cg-space-3, 12px);
+  margin: 0 0 var(--cg-space-1, 4px);
 
   mat-progress-bar {
     flex: 1 1 auto;

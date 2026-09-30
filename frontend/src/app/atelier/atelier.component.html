@@ -184,6 +184,7 @@
     [depositNotices]="depositNotices()"
     (filesSelected)="onFilesSelected($event)"
     (depositCancel)="cancelDeposit()"
+    (depositRemove)="onDepositRemove($event)"
   ></app-atelier-terminal>
 } @else {
 <div class="atelier-layout">

@@ -215,6 +215,40 @@ describe('AtelierComponent', () => {
       expect(notices[0].error).toContain('hors ligne');
       expect(component.depositing()).toBeFalse();
     });
+
+    // F-169 / SF-169-01 — retrait d'une puce et purge à l'envoi.
+    it('onDepositRemove retire la pièce jointe correspondante (côté front uniquement)', () => {
+      setup();
+      component.depositNotices.set([
+        { id: 'a', path: 'entrees/1.txt', sizeLabel: '1 Ko' },
+        { id: 'b', path: 'entrees/2.txt', sizeLabel: '2 Ko' },
+      ]);
+
+      component.onDepositRemove('a');
+
+      const remaining = component.depositNotices();
+      expect(remaining.length).toBe(1);
+      expect(remaining[0].id).toBe('b');
+      // Aucun endpoint backend de suppression n'est appelé (dépôt « chemin uniquement »).
+      expect(service.deposit).not.toHaveBeenCalled();
+    });
+
+    it('purge les pièces jointes à l\'envoi du message (send)', () => {
+      setup();
+      component.activeWorkspaceId.set('w1');
+      component.engine.set('LOCAL_MACHINE');
+      service.streamChat.and.callFake((_id, _message, handlers) => {
+        handlers.onDone({ reply: 'ok', actions: [], messageId: 'm1' });
+        return Promise.resolve();
+      });
+      component.depositNotices.set([{ id: 'a', path: 'entrees/1.txt', sizeLabel: '1 Ko' }]);
+      component.draft.set('Lis 1.txt');
+
+      component.send();
+
+      expect(service.streamChat).toHaveBeenCalled();
+      expect(component.depositNotices()).toEqual([]);
+    });
   });
 
   /**
