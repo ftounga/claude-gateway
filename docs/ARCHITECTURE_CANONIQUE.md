@@ -1274,8 +1274,16 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   c'est ce qui donne au dépôt une mémoire entre le geste de l'utilisateur et le tour suivant, dont la
   consigne portera le **chemin** (SF-115-03) — jamais le binaire.
   - `atelier_deposited_files` : `id (uuid)`, `user_id (uuid)`, `workspace_id (uuid)`,
-    `path (varchar 1024)`, `size_bytes (bigint)`, `created_at`, `consumed_at (nullable)`. Index
-    `(user_id, workspace_id)`.
+    `path (varchar 1024)`, `size_bytes (bigint)`, `created_at`, `consumed_at (nullable)`,
+    `message_id (uuid, nullable)` (F-169 / SF-169-02, migration `136`). Index
+    `(user_id, workspace_id)` et `(message_id)`.
+  - `message_id` (F-169 / SF-169-02) : le message utilisateur (`atelier_messages.id`) auquel ce
+    dépôt a été **explicitement joint** quand l'envoi a désigné ses pièces jointes
+    (`AtelierChatRequest.attachedDepositIds`). **NULL** pour les dépôts consommés par la **fenêtre
+    temporelle** historique (SF-115-03) — le lien fichier ↔ message n'existe que pour un envoi qui l'a
+    déclaré. Posé **après** la persistance du message ; sert le rendu des pièces jointes dans la bulle
+    au rechargement (`GET /chat` expose `files` = chemin + taille par message). Le binaire ne repasse
+    **jamais** par le message (Provider-First : l'agent lit par `read_file`).
   - `path` est le chemin **relatif** où l'agent lira le fichier : `entrees/<nom>` (workspace hébergé,
     octets bruts en S3) ou `.atelier/entrees/<nom>` (poste, écrit par le runner en transfert découpé
     via le nouvel outil `write_file_bytes`). Le « jamais hors de `entrees/` » est garanti **côté
