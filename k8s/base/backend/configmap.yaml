@@ -85,12 +85,20 @@ data:
   APP_ATELIER_MAX_TOTAL_BYTES: "419430400"   # 400 Mo décompressé
   APP_ATELIER_MAX_FILE_BYTES: "20971520"     # 20 Mo par fichier
   APP_ATELIER_MAX_ENTRIES: "8000"
-  # Plafond de consommation d'un tour (jetons). Relevé de 4 M (défaut) à 8 M le 2026-09-14 à la
-  # demande du PO : les longues tâches (config complète) touchaient le plafond et exigeaient
-  # « continue » à chaque tour. Plafond dur du code = 10 M. Ne change pas le quota mensuel.
-  APP_ATELIER_MAX_TURN_TOKENS: "8000000"
+  # Plafond de consommation d'un tour (jetons). Relevé de 4 M (défaut) à 8 M le 2026-09-14, puis
+  # RELEVÉ de 8 M à 30 M le 2026-09-30 à la demande du PO (SF-39-23) : relever DRASTIQUEMENT la
+  # marge d'un message (« justesse avant coût » — ce réglage AUGMENTE la marge, ne réduit rien).
+  # Le compteur additionne les tokens traités cache compris (SF-39-01) : relecture au ~1/10 via
+  # cache, la facture ne suit donc pas proportionnellement. Plafond dur du code relevé à 40 M
+  # (SF-39-23, headroom au-dessus de 30 M). Ne change pas le quota mensuel.
+  APP_ATELIER_MAX_TURN_TOKENS: "30000000"
+  # Plafond d'allers-retours d'un message dans la boucle d'agent (F-28 / SF-28-19). AJOUTÉ le
+  # 2026-09-30 (SF-39-23) : sans cette variable, le défaut code (30) devenait le nouveau goulot
+  # une fois le plafond de jetons relevé à 30 M ci-dessus. Porté à 60 pour aligner les itérations
+  # sur la nouvelle marge de jetons. Plafond dur du code = 100.
+  APP_ATELIER_MAX_ITERATIONS: "60"
   # Budget de TEMPS d'un tour (SF-118-03). Defaut code 10 min ; porte a 60 min le 2026-09-14 a la
-  # demande du PO (grosses taches : page complete, config). Plafond dur 2 h. ISO-8601.
+  # demande du PO (grosses taches : page complete, config). Plafond dur 2 h. ISO-8601. INCHANGÉ.
   APP_ATELIER_TURN_BUDGET: "PT60M"
   # F-118 / SF-118-02 (2026-09-14) : reglages de tenue en charge.
   # Pool de connexions base : RAMENE de 30 a 10 apres l'INCIDENT du 2026-09-16. La RDS est PARTAGEE

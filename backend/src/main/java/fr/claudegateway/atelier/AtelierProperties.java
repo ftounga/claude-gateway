@@ -269,8 +269,17 @@ public record AtelierProperties(
      * Borne haute du plafond de message : au-delà, {@code maxIterations} et le budget de temps
      * auraient tranché de toute façon. Mieux vaut une borne lisible qu'un plafond qui n'a jamais
      * l'occasion de s'appliquer — même règle que {@code maxIterations}.
+     *
+     * <p><b>Relevée de 10 M à 40 M le 2026-09-30</b> (F-39 / SF-39-23), sur décision du PO :
+     * la production porte le plafond de message à 30 M par {@code APP_ATELIER_MAX_TURN_TOKENS}
+     * ; cette borne dure garde du <i>headroom</i> au-dessus, pour régler encore plus haut sans
+     * nouvelle livraison. Aligné sur la règle « justesse avant coût » : le changement
+     * <b>augmente</b> la marge de raisonnement d'un message. Le compteur additionnant les
+     * tokens traités cache compris (SF-39-01, D3), relever la borne ne multiplie pas la
+     * facture dans les mêmes proportions — les relectures sont servies par le cache au ~1/10
+     * du tarif — et le quota mensuel reste la borne qui mesure ce que l'utilisateur a payé.</p>
      */
-    public static final long MAX_TURN_TOKENS_CEILING = 10_000_000L;
+    public static final long MAX_TURN_TOKENS_CEILING = 40_000_000L;
     /**
      * Budget de temps d'un message à défaut de configuration (F-118 / SF-118-03) : 10 min, la valeur
      * livrée. L'écrire ici ne change rien au comportement, il rend le levier réglable sans livraison.
