@@ -391,6 +391,43 @@ class AtelierChatServiceSystemPromptTest {
         assertThat(system).contains("bash (ls, find, grep -n)");
     }
 
+    // ------------------------------------------- F-164 / SF-164-03 : déclenchement manuel (dont unitaire)
+
+    @Test
+    void theManualQuestionTriggerAndUnitaryModeArePresentOnASandboxProject() {
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+
+        String system = systemPrompt();
+
+        // La doctrine « demander » est là.
+        assertThat(system).contains("Poser des questions avec l'outil « demander »");
+        // Signal de déclenchement manuel (SF-164-01, gardé).
+        assertThat(system).contains("pose-moi les questions que tu veux");
+        assertThat(system).contains("tu DOIS utiliser « demander »");
+        // Mode unitaire explicite (SF-164-03).
+        assertThat(system).contains("UNE PAR UNE");
+        assertThat(system).contains("UNE seule question par appel");
+        // Non-régression : règle par défaut obligatoire + anti-spam.
+        assertThat(system).contains("JAMAIS par de la prose");
+        assertThat(system).contains("Ne demande QUE si tu es vraiment bloqué");
+    }
+
+    @Test
+    void theManualQuestionTriggerAndUnitaryModeArePresentOnARunnerProject() {
+        String system = systemPromptOfRunnerProjectDeclaring(null);
+
+        // La doctrine « demander » vaut sur les DEUX cibles.
+        assertThat(system).contains("Poser des questions avec l'outil « demander »");
+        assertThat(system).contains("pose-moi les questions que tu veux");
+        assertThat(system).contains("UNE PAR UNE");
+        assertThat(system).contains("UNE seule question par appel");
+        assertThat(system).contains("JAMAIS par de la prose");
+        // Coexistence + non-régression du rôle RUNNER.
+        assertThat(system).contains("bash (ls, find, grep -n)");
+    }
+
     // ------------------------------------------- F-141 / SF-141-01 : annonce de destination + demande si ambigu
 
     @Test

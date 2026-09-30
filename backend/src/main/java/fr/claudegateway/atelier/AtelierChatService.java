@@ -444,8 +444,10 @@ public class AtelierChatService implements RelayInterruptTarget {
      * cibles, à la suite des doctrines de conseil/décision. Elle porte, <b>textuellement</b>, les trois
      * exigences du cadrage : (a) la <b>règle par défaut obligatoire</b> — toute question à réponses
      * proposables, a fortiori une liste, passe par l'outil structuré, jamais la prose ; (b) le
-     * <b>signal de déclenchement manuel</b> — « pose-moi les questions… » ⇒ utiliser {@code demander} ;
-     * (c) la <b>discipline anti-spam</b> — ne demander que si vraiment bloqué.
+     * <b>signal de déclenchement manuel</b> — « pose-moi les questions… » ⇒ utiliser {@code demander},
+     * y compris le <b>mode unitaire</b> (F-164 / SF-164-03) : sur une demande explicite « une par une »,
+     * une seule question par appel ; (c) la <b>discipline anti-spam</b> — ne demander que si vraiment
+     * bloqué.
      *
      * <p>Prompt-only, littéral <b>stable</b> : placé en tête du préfixe caché, il survit à la coupe
      * {@link #SYSTEM_MAX_CHARS} et préserve le cache de prompt (F-134).</p>
@@ -458,6 +460,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "- Si l'utilisateur te dit en substance « pose-moi les questions que tu veux pour "
                     + "comprendre tel sujet », tu DOIS utiliser « demander » (au besoin plusieurs fois, "
                     + "une question ou un petit lot à la fois). C'est le même outil, pas un bouton à part.\n"
+                    + "- S'il te demande de les poser UNE PAR UNE (mode unitaire), respecte-le à la "
+                    + "lettre : UNE seule question par appel « demander », tu attends la réponse, tu "
+                    + "raisonnes dessus, puis tu poses la suivante — n'empile pas un lot quand l'unitaire "
+                    + "est demandé.\n"
                     + "- Propose des options claires et marque la plus sûre comme recommended. Une "
                     + "réponse libre est toujours offerte automatiquement — ne l'ajoute pas toi-même.\n"
                     + "- Ne demande QUE si tu es vraiment bloqué sur une décision qui appartient à "
