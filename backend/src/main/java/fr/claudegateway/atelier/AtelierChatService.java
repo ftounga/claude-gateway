@@ -190,6 +190,17 @@ public class AtelierChatService implements RelayInterruptTarget {
             "Cette conversation est devenue trop longue pour la fenêtre du modèle : j'ai résumé "
                     + "l'historique, mais elle dépasse encore. Fais un « nouveau départ » pour "
                     + "repartir propre — la conversation reste affichée.";
+    /**
+     * Réponse rendue quand la séquence de messages reste invalide <b>malgré</b> la réparation
+     * (F-117 / SF-117-08). Le filet réactif a réassaini le fil et relancé une fois, mais le fournisseur
+     * la refuse encore : plutôt qu'un {@code provider_error} sans issue (le comportement d'avant
+     * SF-117-08), un message clair. Le tour n'a empilé aucun message orphelin, donc le fil reste
+     * réparable au rejeu (anti-cascade).
+     */
+    static final String MALFORMED_SEQUENCE_REPLY =
+            "Je n'ai pas pu envoyer cette conversation au modèle : sa structure était invalide, et la "
+                    + "réparation automatique n'a pas suffi. Relance-moi — si le problème persiste, un "
+                    + "« nouveau départ » repart sur une base saine, la conversation reste affichée.";
     /** Garde-fou : longueur max de la consigne système (CLAUDE.md + skills). */
     private static final int SYSTEM_MAX_CHARS = 40_000;
     /**
@@ -1908,6 +1919,13 @@ public class AtelierChatService implements RelayInterruptTarget {
          * que de boucler.
          */
         boolean promptTooLongHandled = false;
+        /**
+         * Filet réactif de la séquence malformée (F-117 / SF-117-08) : posé à la première réparation
+         * déclenchée par un 400 « invalid_request » structurel. Borne le filet à <b>une</b>
+         * réassainissement + relance par message — si ça échoue encore, on rend un message clair
+         * plutôt que de boucler, et sans jamais empiler un USER orphelin (anti-cascade).
+         */
+        boolean malformedHandled = false;
         /** Explorations déjà déléguées dans ce message (F-39 / SF-39-14). */
         int delegations = 0;
         /**
@@ -2036,6 +2054,11 @@ public class AtelierChatService implements RelayInterruptTarget {
             boolean textAlreadyStreamed = false;
             AgentTurn turn = null;
             boolean promptOverflow = false;
+            // Repli sur séquence malformée (F-117 / SF-117-08) : un 400 « invalid_request » structurel
+            // (rôles non alternés…) remonte en AgentMalformedRequestException. Au lieu de tuer le tour
+            // en provider_error, on rebâtit la conversation depuis la base (réassainie par le provider)
+            // et on relance UNE fois ; si ça échoue encore, message clair, sans empiler d'USER orphelin.
+            boolean malformedSequence = false;
             while (turn == null) {
                 boolean[] streamed = {false};
                 AgentReasoning wanted = reasoningForIteration(iteration, escalateNextTurn);
@@ -2103,10 +2126,30 @@ public class AtelierChatService implements RelayInterruptTarget {
                     messages = buildReplayMessages(userId, workspace);
                     log.info("Contexte débordé : fil compacté puis tour relancé une fois (workspace={}).",
                             workspaceId);
+                } catch (fr.claudegateway.agent.AgentMalformedRequestException ex) {
+                    // Séquence de messages invalide (F-117 / SF-117-08). Une seule réparation + relance
+                    // par message : rebâtir depuis la base (le message utilisateur et les précisions y
+                    // sont déjà persistés) abandonne d'éventuels messages en vol de cette itération qui
+                    // auraient créé la malformation, et le provider réassainit la séquence au rejeu.
+                    if (malformedHandled) {
+                        malformedSequence = true;
+                        break;
+                    }
+                    malformedHandled = true;
+                    messages = buildReplayMessages(userId, workspace);
+                    log.warn("Séquence de messages invalide : fil réassaini puis tour relancé une fois "
+                            + "(workspace={}).", workspaceId);
                 }
             }
             if (promptOverflow) {
                 finalText = PROMPT_TOO_LONG_REPLY;
+                break;
+            }
+            if (malformedSequence) {
+                // Toujours invalide après réparation : message clair, jamais un provider_error sans
+                // issue. Le tour n'a empilé aucun USER orphelin (le rebuild relit la base, il n'ajoute
+                // rien) et le fil reste réparable au rejeu par l'assainissement (anti-cascade).
+                finalText = MALFORMED_SEQUENCE_REPLY;
                 break;
             }
             inputTokens += turn.inputTokens();
@@ -2762,8 +2805,14 @@ public class AtelierChatService implements RelayInterruptTarget {
      *       suppression manuelle.</li>
      * </ul>
      *
-     * <p>Deux messages {@code user} consécutifs, eux, sont acceptés par le fournisseur (vérifié) :
-     * retirer un assistant au milieu ne casse donc pas l'échange.</p>
+     * <p><b>Alternance</b> (F-117 / SF-117-08) : ce rejeu peut produire des messages de <b>même rôle
+     * consécutifs</b> — deux {@code user} d'affilée quand un tour a échoué en laissant un message
+     * utilisateur sans réponse assistant (fil « agenor »), ou un {@code tool_result} (user) suivi d'un
+     * nouveau {@code user}. On <b>ne s'appuie plus</b> ici sur l'idée, fausse pour {@code claude-opus-5},
+     * que « deux {@code user} consécutifs sont acceptés » : elle provoquait un {@code 400 invalid_request}.
+     * La séquence est <b>assainie au point d'envoi</b> (fusion des mêmes rôles consécutifs) par
+     * {@code AnthropicAgentProvider}/{@code AgentMessageSanitizer}, ce qui répare aussi rétroactivement
+     * un fil déjà en mauvais état.</p>
      */
     /**
      * Historique rejoué d'un fil (F-117 / SF-117-01) : le message de résumé de compaction s'il y en a
@@ -2893,6 +2942,9 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
         if (PROMPT_TOO_LONG_REPLY.equals(finalText)) {
             return "contexte débordé malgré compaction";
+        }
+        if (MALFORMED_SEQUENCE_REPLY.equals(finalText)) {
+            return "séquence de messages invalide malgré réassainissement";
         }
         return "réponse rendue";
     }

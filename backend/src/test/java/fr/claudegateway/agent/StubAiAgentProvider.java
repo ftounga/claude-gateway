@@ -72,6 +72,19 @@ public class StubAiAgentProvider implements AiAgentProvider {
         this.throwPromptTooLongTimes = times;
     }
 
+    /**
+     * F-117 / SF-117-08 : nombre d'appels au fournisseur qui doivent lever
+     * {@link AgentMalformedRequestException} avant de servir le script — pour simuler une séquence de
+     * messages invalide (400 {@code invalid_request}) et vérifier que la boucle réassainit puis
+     * relance au lieu d'échouer en {@code provider_error}.
+     */
+    private volatile int throwMalformedTimes = 0;
+
+    /** Fait lever {@link AgentMalformedRequestException} sur les {@code times} prochains appels. */
+    public void enqueueMalformedRequest(int times) {
+        this.throwMalformedTimes = times;
+    }
+
     public void reset() {
         script.clear();
         lastRequest = null;
@@ -83,6 +96,7 @@ public class StubAiAgentProvider implements AiAgentProvider {
         effectiveEfforts.clear();
         emitTextDeltas = false;
         throwPromptTooLongTimes = 0;
+        throwMalformedTimes = 0;
         idSeq = 0;
     }
 
@@ -272,6 +286,10 @@ public class StubAiAgentProvider implements AiAgentProvider {
         if (throwPromptTooLongTimes > 0) {
             throwPromptTooLongTimes--;
             throw new AgentPromptTooLongException("prompt too long (simulé)");
+        }
+        if (throwMalformedTimes > 0) {
+            throwMalformedTimes--;
+            throw new AgentMalformedRequestException("invalid_request : messages roles (simulé)");
         }
         Runnable action = duringTurn;
         if (action != null) {
