@@ -10,7 +10,7 @@
 
 ## Statut
 
-`draft` (Cadrée / À faire)
+`ready` (implémentée — voir le § Notes et décisions)
 
 ## Date de création
 
@@ -328,6 +328,20 @@ aucun guard.
 - **Réattribution du numéro** : SF-141-05 citait « ex. SF-141-06 » pour un éventuel **appui sémantique** ;
   ce dernier reste **hors périmètre** et prendra **un autre numéro** si ouvert. SF-141-06 sert le besoin PO
   prioritaire (passation + garde-fou).
+
+### Implémentation (2026-09-30, PR #1017)
+
+- Nouvelle constante **`SUBJECT_HANDOFF_DOCTRINE`** dans `AtelierChatService`, injectée par
+  `buildSystemPrompt` **uniquement** au terminal du poste (`isHostTerminal()`), **immédiatement après**
+  `SUBJECT_ROUTING_DOCTRINE`. Prompt/doctrine **additif**, littéral **stable** (cache F-134 préservé) —
+  aucune nouvelle branche d'exécution d'outil, aucun nouvel outil.
+- Elle porte les cinq règles du cadrage : le poste route/n'exécute pas ; **passation** (nom + « rouvre le
+  terminal dans \<X\> » + phrase de démarrage, via `demander` sinon en clair) ; **garde-fou** (refus doux
+  + redirection sur poursuite substantielle de \<X\>) ; **distinction** poursuite vs usages légitimes
+  (routage, transverse, infra poste, autre sujet) ; **override** explicite avec caveat d'une ligne — pas
+  de verrou.
+- Tests : `AtelierChatServiceSystemPromptTest` — présence au terminal du poste, absence sur projet RUNNER
+  ordinaire et SANDBOX (scope `isHostTerminal()`), non-régression SF-141-01/02/05 + F-125.
 
 ## Références
 
