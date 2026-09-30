@@ -122,10 +122,12 @@ class PageToolCatalogTest {
                 .contains("architecture-beta")
                 .contains("ÉTABLI")
                 .contains("n'ajoute PAS toi-même la bibliothèque mermaid")
-                // F-142 / SF-142-19 : une archi large se pose dans un conteneur défilable à taille
-                // naturelle, jamais écrasée en width:100%.
-                .contains("conteneur défilable")
-                .contains("width:100%");
+                // F-142 / SF-142-21 : un diagramme SVG (les archi cloud le sont) s'affiche en
+                // width:100%; height:auto — vectoriel, il reste NET ; ce n'est plus une recette de
+                // taille naturelle. Les images ORDINAIRES restent, elles, en max-width:100 %.
+                .contains("width:100%; height:auto")
+                .contains("NET")
+                .contains("max-width:100 %");
     }
 
     @Test
