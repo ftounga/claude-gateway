@@ -1,7 +1,11 @@
 package fr.claudegateway.quota;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import java.time.OffsetDateTime;
 import java.util.Map;
@@ -10,6 +14,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import fr.claudegateway.billing.AdministratorEntitlement;
 import fr.claudegateway.billing.PlanCatalog;
 import fr.claudegateway.billing.PlanCode;
 import fr.claudegateway.billing.Subscription;
@@ -34,6 +39,9 @@ class EntitlementServiceTest {
      */
     private final SeatQuotaService seatQuotaService = mock(SeatQuotaService.class);
 
+    /** Par défaut personne n'est administrateur (SF-10-03) : ces tests décrivent l'utilisateur ordinaire. */
+    private final AdministratorEntitlement administratorEntitlement = mock(AdministratorEntitlement.class);
+
     @BeforeEach
     void setUp() {
         QuotaProperties properties = new QuotaProperties(
@@ -41,7 +49,8 @@ class EntitlementServiceTest {
                 Map.of("SOLO", 1_000_000L, "PRO", 5_000_000L, "DAILY", 500_000L, "GOLD", 12_000_000L,
                         "BYOK", 0L),
                 null);
-        service = new EntitlementService(properties, new PlanCatalog(), seatQuotaService);
+        service = new EntitlementService(properties, new PlanCatalog(), seatQuotaService,
+                administratorEntitlement);
     }
 
     private Subscription subscription(SubscriptionStatus status, PlanCode plan, OffsetDateTime trialEndsAt) {
@@ -114,7 +123,8 @@ class EntitlementServiceTest {
     @Test
     void activeWithUnconfiguredPlanFailsClosed() {
         EntitlementService noPlans = new EntitlementService(
-                new QuotaProperties(200_000L, Map.of(), null), new PlanCatalog(), seatQuotaService);
+                new QuotaProperties(200_000L, Map.of(), null), new PlanCatalog(), seatQuotaService,
+                administratorEntitlement);
         assertThat(noPlans.resolveMonthlyTokenQuota(
                 subscription(SubscriptionStatus.ACTIVE, PlanCode.PRO, null)))
                 .isZero();
@@ -180,5 +190,64 @@ class EntitlementServiceTest {
         assertThat(service.isCustomerKeyBilled(
                 subscription(SubscriptionStatus.TRIALING, null, OffsetDateTime.now().plusDays(5))))
                 .isFalse();
+    }
+
+    // ------------------------------------------------ SF-10-03 : l'administrateur n'est jamais bridé
+
+    @Test
+    void anAdministratorReceivesAnUnlimitedEffectiveQuota() {
+        // Décision PO du 2026-09-30 : l'ADMIN n'est jamais bridé par le quota de jetons. Le quota
+        // EFFECTIF (celui qu'opposent le pré-vol, la jauge, l'alerte et la borne du tour) est illimité.
+        Subscription admin = subscription(SubscriptionStatus.ACTIVE, PlanCode.GOLD, null);
+        when(administratorEntitlement.isAdministrator(admin.getUserId())).thenReturn(true);
+
+        assertThat(service.resolveEffectiveMonthlyTokenQuota(admin))
+                .isEqualTo(EntitlementService.UNLIMITED_TOKEN_QUOTA);
+    }
+
+    @Test
+    void anAdministratorSkipsTheSeatSupplementLookup() {
+        // Court-circuit en tête : l'apport par poste n'a plus de sens quand le quota est déjà illimité.
+        Subscription admin = subscription(SubscriptionStatus.ACTIVE, PlanCode.PRO, null);
+        when(administratorEntitlement.isAdministrator(admin.getUserId())).thenReturn(true);
+
+        service.resolveEffectiveMonthlyTokenQuota(admin);
+
+        verify(seatQuotaService, never()).grantedTokens(any());
+    }
+
+    @Test
+    void anAdministratorIsUnlimitedEvenWithoutALiveSubscription() {
+        // « L'admin a tout » : même un abonnement résilié n'oppose aucun quota à un administrateur.
+        Subscription admin = subscription(SubscriptionStatus.CANCELED, PlanCode.PRO, null);
+        when(administratorEntitlement.isAdministrator(admin.getUserId())).thenReturn(true);
+
+        assertThat(service.resolveEffectiveMonthlyTokenQuota(admin))
+                .isEqualTo(EntitlementService.UNLIMITED_TOKEN_QUOTA);
+    }
+
+    @Test
+    void theAdministratorExemptionDoesNotTouchThePlanOnlyAllocation() {
+        // Non-régression : ce que le CATALOGUE annonce (le plan seul) ne dépend pas du rôle du lecteur.
+        Subscription admin = subscription(SubscriptionStatus.ACTIVE, PlanCode.GOLD, null);
+        when(administratorEntitlement.isAdministrator(admin.getUserId())).thenReturn(true);
+
+        assertThat(service.resolveMonthlyTokenQuota(admin)).isEqualTo(12_000_000L);
+    }
+
+    @Test
+    void aNonAdministratorKeepsItsPlanQuota() {
+        // Non-régression : par défaut le mock répond « pas administrateur » — le quota reste celui du plan.
+        Subscription ordinary = subscription(SubscriptionStatus.ACTIVE, PlanCode.GOLD, null);
+
+        assertThat(service.resolveEffectiveMonthlyTokenQuota(ordinary)).isEqualTo(12_000_000L);
+    }
+
+    @Test
+    void theUnlimitedSentinelLeavesHeadroomForBonusAndCarryOver() {
+        // La borne est ajoutée à des bonus (F-21) et à du report (F-66) avant comparaison : le
+        // sentinel ne doit pas déborder en négatif quand on lui ajoute une valeur réaliste.
+        assertThat(EntitlementService.UNLIMITED_TOKEN_QUOTA).isPositive();
+        assertThat(EntitlementService.UNLIMITED_TOKEN_QUOTA + 1_000_000_000_000L).isPositive();
     }
 }
