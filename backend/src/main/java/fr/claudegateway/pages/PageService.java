@@ -155,9 +155,16 @@ public class PageService {
         versions.findByPageIdAndUserIdAndVersion(page.getId(), userId, wanted)
                 .orElseThrow(PageNotFoundException::new);
         byte[] content = store.html(userId, page.getId(), wanted).orElseThrow(PageNotFoundException::new);
+        // F-142 / SF-142-22 : les images en pièce jointe sont embarquées en data: URI à la livraison —
+        // sinon la CSP (origine opaque, 'self' sans origine) les bloque inline. Le stockage reste
+        // pristine (l'image reste rangée UNE fois), et le lien « ouvrir en grand » reste relatif.
+        // La lecture des pièces jointes est bornée au propriétaire (isolation user_id).
+        final int served = wanted;
+        byte[] withImages = PageImageInliner.inline(content,
+                name -> store.attachment(userId, page.getId(), served, name));
         // F-142 / SF-142-01 : les diagrammes Mermaid sont rendus à la livraison (le stockage reste
-        // pristine, le code éditable). Une page sans bloc Mermaid repart octet pour octet identique.
-        return new PageContent(page, wanted, PageMermaidRuntime.render(content), "text/html; charset=utf-8");
+        // pristine, le code éditable). Une page sans image ni bloc Mermaid repart octet pour octet identique.
+        return new PageContent(page, wanted, PageMermaidRuntime.render(withImages), "text/html; charset=utf-8");
     }
 
     /** Une pièce jointe d'une version d'une page du compte, ou vide. */

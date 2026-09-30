@@ -41,6 +41,34 @@ class PageContentPolicyTest {
     }
 
     @Test
+    @DisplayName("SF-142-22 — data: s'affiche inline, une pièce jointe 'self' est bloquée (origine opaque)")
+    void inlineImageIsAllowedOnlyAsDataUri() {
+        // La page est en origine opaque : c'est le fait qui bloque 'self'. Un garde-fou : si quelqu'un
+        // ajoutait allow-same-origin, cette assertion tombe et la preuve du correctif avec.
+        assertThat(PageContentPolicy.isOpaqueOrigin()).isTrue();
+
+        // data: — le SEUL schéma d'image qui s'affiche : img-src le porte, indépendamment de l'origine.
+        assertThat(PageContentPolicy.allowsInlineImage("data:image/svg+xml;base64,PHN2Zy8+")).isTrue();
+        assertThat(PageContentPolicy.allowsInlineImage("data:image/png;base64,iVBORw0KGgo=")).isTrue();
+
+        // Une pièce jointe relative ('self') est BLOQUÉE inline — c'est exactement le symptôme constaté
+        // (le diagramme n'apparaît pas dans la page), PNG hérité comme SVG neuf.
+        assertThat(PageContentPolicy.allowsInlineImage("agenor-avant.svg")).isFalse();
+        assertThat(PageContentPolicy.allowsInlineImage("agenor-avant.png")).isFalse();
+        assertThat(PageContentPolicy.allowsInlineImage("agenor-avant-v2.svg")).isFalse();
+
+        // blob: (fetch impossible, connect-src 'none') et http(s) (hors liste close) : bloqués aussi.
+        assertThat(PageContentPolicy.allowsInlineImage("blob:https://x/abc")).isFalse();
+        assertThat(PageContentPolicy.allowsInlineImage("https://cdn.example/x.svg")).isFalse();
+        assertThat(PageContentPolicy.allowsInlineImage("")).isFalse();
+        assertThat(PageContentPolicy.allowsInlineImage(null)).isFalse();
+
+        // La CSP servie est INCHANGÉE : img-src reste 'data: blob: 'self'', le bac à sable sans same-origin.
+        assertThat(PageContentPolicy.CSP).contains("img-src data: blob: 'self'")
+                .doesNotContain("allow-same-origin");
+    }
+
+    @Test
     @DisplayName("les en-têtes compagnons sont posés")
     void companionHeaders() {
         HttpHeaders headers = PageContentPolicy.headers("text/html; charset=utf-8");

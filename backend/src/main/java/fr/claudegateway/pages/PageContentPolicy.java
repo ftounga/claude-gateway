@@ -55,6 +55,45 @@ public final class PageContentPolicy {
     private PageContentPolicy() {
     }
 
+    /**
+     * <b>Vrai si le bac à sable met la page en origine opaque</b> (F-142 / SF-142-22).
+     *
+     * <p>C'est le cas dès lors que {@code allow-same-origin} est absent — et il l'est <b>toujours</b>
+     * ({@code sandbox allow-scripts allow-popups}), à raison : {@code sandbox + allow-scripts +
+     * allow-same-origin} rendrait l'évasion du bac à sable possible. Conséquence directe : {@code 'self'}
+     * ne correspond à <b>aucune</b> origine, si bien qu'une image en pièce jointe référencée en relatif
+     * est bloquée <b>inline</b> — le fait exact que SF-142-22 corrige en embarquant l'image en {@code data:}.</p>
+     */
+    public static boolean isOpaqueOrigin() {
+        return !SANDBOX.contains("allow-same-origin");
+    }
+
+    /**
+     * <b>Vrai si une image de cette source s'affiche inline sous cette politique</b> (F-142 / SF-142-22),
+     * page en <b>origine opaque</b> comprise. C'est la preuve logique du correctif.
+     *
+     * <ul>
+     *   <li>{@code data:} → <b>autorisé</b> : {@code img-src} porte {@code data:}, indépendamment de
+     *       l'origine. C'est pourquoi un diagramme embarqué en {@code data:} s'affiche.</li>
+     *   <li>une pièce jointe relative / {@code 'self'} → <b>bloqué</b> : la page est en origine opaque
+     *       ({@link #isOpaqueOrigin()}), donc {@code 'self'} ne correspond à aucune origine.</li>
+     *   <li>{@code blob:} → <b>bloqué en pratique</b> : bien que {@code img-src} le liste, {@code
+     *       connect-src 'none'} interdit de fetcher la pièce jointe pour en fabriquer un blob.</li>
+     *   <li>{@code http:} / {@code https:} / autre → <b>bloqué</b> : hors de la liste close d'{@code img-src}.</li>
+     * </ul>
+     */
+    public static boolean allowsInlineImage(String src) {
+        if (src == null) {
+            return false;
+        }
+        String s = src.strip().toLowerCase(java.util.Locale.ROOT);
+        if (s.isEmpty()) {
+            return false;
+        }
+        // Le seul schéma d'image qui s'affiche sans dépendre de l'origine : data:.
+        return s.startsWith("data:");
+    }
+
     /** Les en-têtes de la politique, à poser sur toute réponse de contenu. */
     public static HttpHeaders headers(String contentType) {
         HttpHeaders headers = new HttpHeaders();
