@@ -962,6 +962,79 @@ describe('AtelierTerminalComponent', () => {
     http.expectNone('/api/workspaces/null/chat/resume');
   });
 
+  // ------------------------------------ F-165 / SF-165-06 : actions /compacter /nouveau /rappel
+
+  it('dispatcher /compacter ÉMET la sortie existante compactNow, jamais send', () => {
+    let sent = 0;
+    let compact = 0;
+    component.send.subscribe(() => (sent += 1));
+    component.compactNow.subscribe(() => (compact += 1));
+
+    component.draft = '/compacter';
+    component.submit();
+    fixture.detectChanges();
+
+    expect(sent).toBe(0);
+    expect(compact).toBe(1);
+    expect(component.slashPanels()[0].panelKind).toBe('compact');
+    expect(fixture.nativeElement.querySelector('app-atelier-slash-action')).not.toBeNull();
+  });
+
+  it('dispatcher /nouveau ÉMET la sortie existante restart, jamais send', () => {
+    let sent = 0;
+    let restarted = 0;
+    component.send.subscribe(() => (sent += 1));
+    component.restart.subscribe(() => (restarted += 1));
+
+    component.draft = '/nouveau';
+    component.submit();
+    fixture.detectChanges();
+
+    expect(sent).toBe(0);
+    expect(restarted).toBe(1);
+    expect(component.slashPanels()[0].panelKind).toBe('restart');
+  });
+
+  it('dispatcher /rappel <terme> n\'émet AUCUN send et cherche via GET /recall', () => {
+    const http = TestBed.inject(HttpTestingController);
+    let sent = 0;
+    component.send.subscribe(() => (sent += 1));
+    component.projectId = 'w1';
+
+    component.draft = '/rappel vpc';
+    component.submit();
+    fixture.detectChanges();
+
+    expect(sent).toBe(0);
+    expect(component.slashPanels()[0].panelKind).toBe('recall');
+    expect(component.slashPanels()[0].recallState).toBe('loading');
+
+    const req = http.expectOne((r) => r.url === '/api/workspaces/w1/chat/recall');
+    expect(req.request.method).toBe('GET');
+    expect(req.request.params.get('q')).toBe('vpc');
+    req.flush({ query: 'vpc', semantic: false,
+      extracts: [{ role: 'user', excerpt: 'Le VPC…', createdAt: '2026-09-30T10:00:00Z' }] });
+    fixture.detectChanges();
+
+    expect(component.slashPanels()[0].recallState).toBe('ready');
+    expect(fixture.nativeElement.querySelector('app-atelier-slash-recall')).not.toBeNull();
+  });
+
+  it('/rappel sans terme affiche l\'invite, sans aucun appel ni tour', () => {
+    const http = TestBed.inject(HttpTestingController);
+    let sent = 0;
+    component.send.subscribe(() => (sent += 1));
+    component.projectId = 'w1';
+
+    component.draft = '/rappel';
+    component.submit();
+    fixture.detectChanges();
+
+    expect(sent).toBe(0);
+    expect(component.slashPanels()[0].recallState).toBe('empty');
+    http.expectNone((r) => r.url === '/api/workspaces/w1/chat/recall');
+  });
+
   it('une vue reste dispatchable même au plafond de terminaux vivants (elle ne coûte rien)', () => {
     let sent = 0;
     component.send.subscribe(() => (sent += 1));

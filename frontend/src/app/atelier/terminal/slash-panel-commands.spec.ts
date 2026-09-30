@@ -188,4 +188,49 @@ describe('slash-panel-commands (F-165 / SF-165-01)', () => {
     expect(sujet.panelKind).toBe('sujet');
     expect(sujet.sujetState).toBe('loading');
   });
+
+  // ------------------------------------ F-165 / SF-165-06 : actions /compacter /nouveau /rappel + /aide
+
+  it('inscrit /compacter, /nouveau, /rappel au registre comme des ACTIONS', () => {
+    expect(findPanelCommand('compacter')?.kind).toBe('action');
+    expect(findPanelCommand('compacter')?.panelKind).toBe('compact');
+    expect(findPanelCommand('nouveau')?.kind).toBe('action');
+    expect(findPanelCommand('nouveau')?.panelKind).toBe('restart');
+    const rappel = findPanelCommand('rappel');
+    expect(rappel?.kind).toBe('action');
+    expect(rappel?.panelKind).toBe('recall');
+    expect(rappel?.takesArgument).toBe(true);
+    expect(rappel?.argHint).toBe('<terme>');
+  });
+
+  it('intercepte /rappel avec son argument libre', () => {
+    const parsed = parsePanelCommand('/rappel adressage réseau');
+    expect(parsed?.command.name).toBe('rappel');
+    expect(parsed?.arg).toBe('adressage réseau');
+  });
+
+  it('construit les panneaux d\'action (accusé) et /rappel (chargement)', () => {
+    const compact = buildPanel(findPanelCommand('compacter')!, '', 'slash-7');
+    expect(compact.panelKind).toBe('compact');
+    expect(compact.actionMessage).toContain('Compaction');
+
+    const restart = buildPanel(findPanelCommand('nouveau')!, '', 'slash-8');
+    expect(restart.panelKind).toBe('restart');
+    expect(restart.actionMessage).toContain('repart');
+
+    const recall = buildPanel(findPanelCommand('rappel')!, 'vpc', 'slash-9');
+    expect(recall.panelKind).toBe('recall');
+    expect(recall.recallState).toBe('loading');
+    expect(recall.arg).toBe('vpc');
+  });
+
+  it('/aide liste TOUTES les commandes du registre', () => {
+    const entries = buildHelpEntries();
+    const names = entries.map((e) => e.command);
+    expect(names).toEqual(jasmine.arrayContaining([
+      '/cout', '/contexte', '/quota', '/budget', '/poste', '/sujet',
+      '/compacter', '/nouveau', '/rappel', '/aide',
+    ]));
+    expect(entries.length).toBe(SLASH_PANEL_COMMANDS.length);
+  });
 });

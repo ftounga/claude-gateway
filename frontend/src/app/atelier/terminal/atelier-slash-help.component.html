@@ -1,14 +1,19 @@
-<!-- F-165 / SF-165-01 — Corps du panneau /aide : la liste des commandes slash disponibles. -->
+<!-- F-165 / SF-165-01 (complété SF-165-06) — Corps du panneau /aide : les commandes slash groupées par
+     famille. Une vue ne coûte aucun tour. -->
 <p class="slash-help__lead">
   Tapez <span class="slash-help__hint">/</span> dans l'invite pour retrouver ces commandes. Une vue ne
   coûte aucun tour&nbsp;: vérifier son coût ne doit rien coûter.
 </p>
-<ul class="slash-help__list">
-  @for (entry of entries; track entry.command) {
-    <li class="slash-help__item">
-      <span class="slash-help__name">{{ entry.command }}</span>
-      <span class="slash-help__kind">{{ entry.kindLabel }}</span>
-      <span class="slash-help__desc">{{ entry.description }}</span>
-    </li>
-  }
-</ul>
+@for (group of groups; track group.label) {
+  <section class="slash-help__group">
+    <h4 class="slash-help__group-title">{{ group.label }}</h4>
+    <ul class="slash-help__list">
+      @for (entry of group.entries; track entry.command) {
+        <li class="slash-help__item">
+          <span class="slash-help__name">{{ entry.command }}</span>
+          <span class="slash-help__desc">{{ entry.description }}</span>
+        </li>
+      }
+    </ul>
+  </section>
+}
