@@ -29,10 +29,16 @@ def rgb(couleur):
 
 
 def rendu(spec):
-    """Construit le schéma pour de vrai et rend (types inconnus, image ouverte)."""
+    """
+    Construit le schéma pour de vrai et rend (types inconnus, image ouverte).
+
+    On demande explicitement le PNG : ces tests LISENT des pixels (SF-142-12), et la mise en page vient
+    de graphviz — identique quel que soit le format de sortie. Le SVG de production, lui, est couvert par
+    test_cloud_svg.py (SF-142-18).
+    """
     dossier = tempfile.mkdtemp()
     sortie = os.path.join(dossier, "schema")
-    inconnus = cloud.build(spec, sortie)
+    inconnus = cloud.build(spec, sortie, outformat="png")
     return inconnus, Image.open(sortie + ".png").convert("RGB")
 
 

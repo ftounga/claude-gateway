@@ -98,7 +98,10 @@ def rendu(spec, graph_attr=None, edge_attr=None):
         cloud.EDGE_ATTR = edge_attr
     try:
         sortie = os.path.join(tempfile.mkdtemp(), "vue")
-        cloud.build(spec, sortie)
+        # PNG : ces tests MESURENT surface et traversées en pixels. La mise en page (l'objet de
+        # SF-142-17) vient de graphviz et ne dépend pas du format ; le SVG est couvert par
+        # test_cloud_svg.py (SF-142-18).
+        cloud.build(spec, sortie, outformat="png")
     finally:
         cloud.GRAPH_ATTR, cloud.EDGE_ATTR = vrais
     return Image.open(sortie + ".png").convert("RGB")
@@ -169,18 +172,19 @@ class LaDensiteSeDit(unittest.TestCase):
     """Au-delà de la borne, on DIT que le schéma est trop dense — on ne recadre pas."""
 
     def test_un_schema_ordinaire_ne_dit_rien(self):
+        # SF-142-18 : la sortie de production est le SVG ; la densité se mesure sur ses dimensions.
         sortie = os.path.join(tempfile.mkdtemp(), "petit")
         cloud.build(PETIT, sortie)
-        self.assertEqual("", cloud.density_notice(sortie + ".png"))
+        self.assertEqual("", cloud.density_notice(sortie + ".svg"))
 
     def test_au_dela_de_la_borne_l_avertissement_nomme_les_dimensions(self):
         sortie = os.path.join(tempfile.mkdtemp(), "vue")
         cloud.build(vue_reseau(), sortie)
-        largeur, hauteur = cloud.png_size(sortie + ".png")
+        largeur, hauteur = cloud.svg_size(sortie + ".svg")
         vraie_borne = cloud.MAX_DIMENSION
         cloud.MAX_DIMENSION = min(largeur, hauteur) - 1
         try:
-            note = cloud.density_notice(sortie + ".png")
+            note = cloud.density_notice(sortie + ".svg")
         finally:
             cloud.MAX_DIMENSION = vraie_borne
         self.assertIn(str(largeur), note)
@@ -188,9 +192,17 @@ class LaDensiteSeDit(unittest.TestCase):
         self.assertIn("dense", note)
         note.encode("ascii")  # il finit en en-tête HTTP
 
-    def test_png_size_lit_l_entete(self):
+    def test_svg_size_lit_les_dimensions(self):
+        # SF-142-18 : le SVG porte sa taille en points ; svg_size la rend en pixels-équivalents.
         sortie = os.path.join(tempfile.mkdtemp(), "petit")
         cloud.build(PETIT, sortie)
+        taille = cloud.svg_size(sortie + ".svg")
+        self.assertIsNotNone(taille)
+        self.assertTrue(taille[0] > 0 and taille[1] > 0, taille)
+
+    def test_png_size_lit_l_entete(self):
+        sortie = os.path.join(tempfile.mkdtemp(), "petit")
+        cloud.build(PETIT, sortie, outformat="png")
         with Image.open(sortie + ".png") as image:
             self.assertEqual(image.size, cloud.png_size(sortie + ".png"))
 

@@ -92,7 +92,9 @@ public class HttpDiagramRenderer implements DiagramRenderer {
         ObjectNode body = mapper.createObjectNode();
         body.put("engine", "cloud");
         body.set("spec", spec);
-        return call(body, Format.PNG);
+        // F-142 / SF-142-18 : le service rend le schéma cloud en SVG auto-contenu (icônes inlinées en
+        // data:), net à toute échelle dans une page. On l'annonce comme tel pour l'extension et le type.
+        return call(body, Format.SVG);
     }
 
     @Override

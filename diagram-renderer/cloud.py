@@ -8,9 +8,14 @@ la bibliothèque `diagrams` se pilote en écrivant du Python, et exécuter le Py
 notre infrastructure serait une porte qu'on n'ouvre pas.
 
 Entrée  : {"title": "...", "direction": "LR", "groups": [...], "nodes": [...], "edges": [...]}
-Sortie  : le chemin du PNG écrit, sur la sortie standard. Toute erreur part en sortie d'erreur
+Sortie  : le chemin du SVG écrit, sur la sortie standard. Toute erreur part en sortie d'erreur
           avec un message destiné à être LU (il dit quoi corriger), et un code de retour non nul.
+
+Le SVG (F-142 / SF-142-18) est AUTO-CONTENU : les icônes officielles, que `diagrams` embarque comme
+des PNG sur le disque du service, sont inlinées en `data:` URI. Sans cela, le SVG servi dans une page
+pointerait sur des chemins fichier inaccessibles depuis le navigateur, et ses icônes seraient cassées.
 """
+import base64
 import difflib
 import json
 import re
@@ -425,7 +430,15 @@ def group_plan(groups, by_group):
     return labels, children, roots, populated
 
 
-def build(spec, output):
+def build(spec, output, outformat="svg"):
+    """
+    Construit le schéma et l'écrit sous « output.<outformat> ». Rend la liste des types sans icône.
+
+    Le format de sortie est SVG par défaut (F-142 / SF-142-18) : vectoriel, il reste NET quand la page
+    l'affiche en `width:100%`, là où un PNG rapetissé rendait les libellés illisibles. Les tests qui
+    MESURENT des pixels demandent « png » — la mise en page vient de graphviz et ne dépend pas du
+    format de sortie, seule sa sérialisation change.
+    """
     from diagrams import Cluster, Diagram, Edge
 
     nodes = spec.get("nodes") or []
@@ -484,7 +497,7 @@ def build(spec, output):
                 with Cluster(labels.get(child, child)):
                     place(child)
 
-    with Diagram(title, filename=output, outformat="png", show=False,
+    with Diagram(title, filename=output, outformat=outformat, show=False,
                  direction=direction, graph_attr=GRAPH_ATTR, edge_attr=EDGE_ATTR):
         place("")
         for group_id in roots:
@@ -500,7 +513,74 @@ def build(spec, output):
                               "Un schéma faux est pire qu'un schéma absent.")
             text = label_of(edge.get("label"), "Le nom d'un lien")
             created[source] >> Edge(label=text) >> created[target]
+    # F-142 / SF-142-18 : le SVG doit voyager SEUL. Une fois posé dans une page, il n'a plus accès au
+    # disque du service : ses icônes, référencées par chemin fichier, seraient cassées. On les inline.
+    if outformat == "svg":
+        inline_images(output + ".svg")
     return unknown
+
+
+# ---------------------------------------------------------------------------------------------------
+# LE SVG AUTO-CONTENU (F-142 / SF-142-18)
+#
+# `diagrams` dessine les icônes officielles avec des PNG posés sur le disque du service. En SVG,
+# graphviz les référence par leur chemin : <image xlink:href="/…/simple-storage-service-s3.png" …/>.
+# Ce chemin n'existe QUE dans le conteneur du renderer ; servi dans le navigateur d'un poste client,
+# il ne mène à rien et l'icône est cassée. On remplace donc chaque référence de FICHIER par un
+# `data:` URI (le PNG encodé en base64), pour que le SVG se suffise à lui-même.
+#
+# On ne touche PAS aux href qui sont déjà des `data:`, des URL http(s) ou des ancres « # » (ce sont des
+# liens, pas des icônes). Une icône illisible sur le disque est laissée telle quelle plutôt que de
+# faire échouer tout le schéma : mieux vaut une icône manquante qu'un livrable sans diagramme.
+# ---------------------------------------------------------------------------------------------------
+_MIME_BY_EXT = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".svg": "image/svg+xml",
+}
+
+# `xlink:href="…"` (les icônes) et `href="…"` (les liens éventuels) : on capture les deux, on ne
+# transforme que ceux qui désignent un fichier image local.
+_HREF = re.compile(r'((?:xlink:)?href)="([^"]+)"')
+
+
+def _data_uri(file_path):
+    """Le contenu d'un fichier image, encodé en `data:` URI."""
+    mime = _MIME_BY_EXT.get(os.path.splitext(file_path)[1].lower(), "image/png")
+    with open(file_path, "rb") as handle:
+        encoded = base64.b64encode(handle.read()).decode("ascii")
+    return f"data:{mime};base64,{encoded}"
+
+
+def inline_images(svg_path):
+    """
+    Inline dans le SVG chaque icône référencée par un chemin fichier, en `data:` URI (SF-142-18).
+
+    Après ce passage, plus aucune référence `file://` ni chemin absolu ne subsiste : le SVG est
+    portable. Rend le texte du SVG écrit.
+    """
+    with open(svg_path, encoding="utf-8") as handle:
+        svg = handle.read()
+
+    def replace(match):
+        attr, value = match.group(1), match.group(2)
+        if value.startswith(("data:", "http://", "https://", "#")):
+            return match.group(0)
+        local = value[len("file://"):] if value.startswith("file://") else value
+        if not os.path.isabs(local) or not os.path.isfile(local):
+            return match.group(0)
+        try:
+            return f'{attr}="{_data_uri(local)}"'
+        except OSError:
+            # Une icône illisible ne doit pas emporter tout le schéma : on la laisse telle quelle.
+            return match.group(0)
+
+    inlined = _HREF.sub(replace, svg)
+    with open(svg_path, "w", encoding="utf-8") as handle:
+        handle.write(inlined)
+    return inlined
 
 
 def png_size(path):
@@ -515,14 +595,37 @@ def png_size(path):
     return int.from_bytes(head[16:20], "big"), int.from_bytes(head[20:24], "big")
 
 
+def svg_size(path):
+    """
+    Les dimensions d'un SVG graphviz, en pixels-ÉQUIVALENTS : (largeur, hauteur), ou None.
+
+    Le SVG n'a pas de pixels fixes — c'est tout l'intérêt (SF-142-18). Mais graphviz écrit sa taille en
+    points (« width="389pt" »), et la borne de densité (SF-142-17) doit garder le même sens qu'avec le
+    PNG : on convertit les points en pixels via le `dpi` de GRAPH_ATTR (144 → un point vaut deux pixels),
+    exactement le facteur qu'appliquait la rastérisation PNG.
+    """
+    try:
+        with open(path, encoding="utf-8") as handle:
+            head = handle.read(8192)
+    except OSError:
+        return None
+    match = re.search(r'<svg[^>]*\bwidth="([\d.]+)pt"[^>]*\bheight="([\d.]+)pt"', head)
+    if not match:
+        return None
+    facteur = float(GRAPH_ATTR.get("dpi", "72") or "72") / 72.0
+    return (int(round(float(match.group(1)) * facteur)),
+            int(round(float(match.group(2)) * facteur)))
+
+
 def density_notice(path):
     """
     L'avertissement de densité (F-142 / SF-142-17), en ASCII : il finit en en-tête HTTP.
 
     On ne recadre pas et on ne rapetisse pas : on DIT que le schéma est trop dense, et l'agent
-    décide de le scinder. Une image qu'aucun écran n'affiche n'apprend rien à personne.
+    décide de le scinder. Une image qu'aucun écran n'affiche n'apprend rien à personne. La mesure suit
+    le format du fichier : dimensions du SVG (SF-142-18) ou en-tête du PNG.
     """
-    size = png_size(path)
+    size = svg_size(path) if path.endswith(".svg") else png_size(path)
     if size is None:
         return ""
     largeur, hauteur = size
@@ -541,14 +644,14 @@ def main():
         unknown = build(spec, output)
         # La première ligne est le fichier ; la seconde, s'il y en a une, nomme les types rendus SANS
         # icône officielle — l'agent doit pouvoir le dire à l'utilisateur.
-        print(output + ".png")
+        print(output + ".svg")
         if unknown:
             # F-142 / SF-142-16 : la PISTE voyage avec l'avertissement. Jusqu'ici seul le refus
             # « strict » la donnait — le mode normal disait « pas d'icône » sans dire quoi écrire.
             # Le marqueur reste une LIGNE ASCII : il finit en en-tête HTTP, qui n'accepte rien d'autre.
             said = " ; ".join(kind + " (" + suggestions(kind) + ")" for kind in unknown)
             print("UNKNOWN_TYPES=" + said.encode("ascii", "replace").decode("ascii"))
-        notice = density_notice(output + ".png")
+        notice = density_notice(output + ".svg")
         if notice:
             print("NOTICE=" + notice)
         return 0

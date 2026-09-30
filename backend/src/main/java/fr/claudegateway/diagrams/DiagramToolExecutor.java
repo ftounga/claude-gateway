@@ -67,7 +67,10 @@ public class DiagramToolExecutor {
             return Outcome.error("code est requis : le diagramme en Mermaid "
                     + "(ou engine=cloud avec « spec » pour les icônes officielles).");
         }
-        Format format = cloud ? Format.PNG : Format.of(text(input, "format"));
+        // F-142 / SF-142-18 : le moteur « cloud » rend désormais du SVG — vectoriel, il reste NET quand
+        // une page l'affiche en width:100%, là où le PNG rapetissé rendait les libellés illisibles. On
+        // ne force donc plus PNG pour cloud ; Mermaid garde son format demandé (png par défaut, svg au choix).
+        Format format = cloud ? Format.SVG : Format.of(text(input, "format"));
         Integer width = input != null && input.path("width").isInt() ? input.path("width").asInt() : null;
 
         DiagramRenderer.Rendered rendered;

@@ -168,12 +168,14 @@ class DiagramToolExecutorTest {
     // ---------------------------------------------------------------- F-142 / SF-142-07 : icônes officielles
 
     @Test
-    @DisplayName("LE CRITÈRE : engine=cloud rend depuis une DESCRIPTION, et rien d'autre n'est exécuté")
+    @DisplayName("LE CRITÈRE : engine=cloud rend depuis une DESCRIPTION en SVG net, et rien d'autre n'est exécuté")
     void thecloudEngineRendersFromADescription() {
+        // F-142 / SF-142-18 : le moteur cloud rend du SVG (vectoriel, net en width:100%), déposé en
+        // « image/svg+xml » — plus de PNG forcé.
         when(renderer.renderCloud(any()))
-                .thenReturn(new Rendered("PNG".getBytes(StandardCharsets.UTF_8), Format.PNG));
-        when(deposit.deposit(any(), any(), anyString(), anyString(), any(), eq("image/png"), anyString()))
-                .thenReturn("cible-aws.png");
+                .thenReturn(new Rendered("<svg/>".getBytes(StandardCharsets.UTF_8), Format.SVG));
+        when(deposit.deposit(any(), any(), anyString(), anyString(), any(), eq("image/svg+xml"), anyString()))
+                .thenReturn("cible-aws.svg");
         ObjectNode spec = mapper.createObjectNode();
         spec.put("title", "Cible AWS");
         spec.putArray("nodes").addObject().put("id", "db").put("type", "aws.rds").put("label", "RDS");
@@ -185,7 +187,7 @@ class DiagramToolExecutorTest {
         DiagramToolExecutor.Outcome outcome = executor.execute(userId, workspace, "call-7", input);
 
         assertThat(outcome.error()).isFalse();
-        assertThat(outcome.content()).contains("cible-aws.png");
+        assertThat(outcome.content()).contains("cible-aws.svg");
         // Le moteur Mermaid n'a PAS été appelé : les deux voies restent distinctes.
         verify(renderer, never()).render(anyString(), any(), any());
         ArgumentCaptor<com.fasterxml.jackson.databind.JsonNode> sent =
@@ -230,10 +232,10 @@ class DiagramToolExecutorTest {
     @Test
     @DisplayName("F-142 / SF-142-09 : un composant sans icône est DIT à l'agent, pas remplacé en douce")
     void componentsWithoutAnIconAreAnnounced() {
-        when(renderer.renderCloud(any())).thenReturn(new Rendered("PNG".getBytes(StandardCharsets.UTF_8),
-                Format.PNG, "aws.machin,onprem.truc"));
+        when(renderer.renderCloud(any())).thenReturn(new Rendered("<svg/>".getBytes(StandardCharsets.UTF_8),
+                Format.SVG, "aws.machin,onprem.truc"));
         when(deposit.deposit(any(), any(), anyString(), anyString(), any(), anyString(), anyString()))
-                .thenReturn("reseau.png");
+                .thenReturn("reseau.svg");
         ObjectNode spec = mapper.createObjectNode();
         spec.putArray("nodes").addObject().put("id", "a").put("type", "aws.machin").put("label", "Maison");
         ObjectNode input = mapper.createObjectNode();
@@ -245,7 +247,7 @@ class DiagramToolExecutorTest {
         // Le schéma EST produit — c'est le point : plus rien n'échoue faute d'une icône.
         assertThat(outcome.error()).isFalse();
         assertThat(outcome.content())
-                .contains("reseau.png")
+                .contains("reseau.svg")
                 .contains("ATTENTION")
                 .contains("aws.machin,onprem.truc")
                 .contains("boîte neutre")
@@ -257,10 +259,10 @@ class DiagramToolExecutorTest {
     void theWarningCarriesTheSuggestion() {
         // Le service de rendu joint désormais les types proches au marqueur : dire « pas d'icône »
         // sans dire quoi écrire laissait l'agent — et l'utilisateur — sans recours.
-        when(renderer.renderCloud(any())).thenReturn(new Rendered("PNG".getBytes(StandardCharsets.UTF_8),
-                Format.PNG, "aws.managedworkflowsforapacheairflow (Types proches : aws.mwaa, onprem.airflow)"));
+        when(renderer.renderCloud(any())).thenReturn(new Rendered("<svg/>".getBytes(StandardCharsets.UTF_8),
+                Format.SVG, "aws.managedworkflowsforapacheairflow (Types proches : aws.mwaa, onprem.airflow)"));
         when(deposit.deposit(any(), any(), anyString(), anyString(), any(), anyString(), anyString()))
-                .thenReturn("reseau.png");
+                .thenReturn("reseau.svg");
         ObjectNode spec = mapper.createObjectNode();
         spec.putArray("nodes").addObject().put("id", "a")
                 .put("type", "aws.managedworkflowsforapacheairflow").put("label", "Airflow");
@@ -280,10 +282,10 @@ class DiagramToolExecutorTest {
     @Test
     @DisplayName("F-142 / SF-142-17 : un schéma trop dense est DIT à l'agent, l'image n'est pas refusée")
     void aTooDenseDiagramIsAnnounced() {
-        when(renderer.renderCloud(any())).thenReturn(new Rendered("PNG".getBytes(StandardCharsets.UTF_8),
-                Format.PNG, "", "Schema tres dense : 4800 x 3900 pixels, au-dela de la borne de 4000."));
+        when(renderer.renderCloud(any())).thenReturn(new Rendered("<svg/>".getBytes(StandardCharsets.UTF_8),
+                Format.SVG, "", "Schema tres dense : 4800 x 3900 pixels, au-dela de la borne de 4000."));
         when(deposit.deposit(any(), any(), anyString(), anyString(), any(), anyString(), anyString()))
-                .thenReturn("reseau.png");
+                .thenReturn("reseau.svg");
         ObjectNode spec = mapper.createObjectNode();
         spec.putArray("nodes").addObject().put("id", "a").put("type", "aws.s3").put("label", "Objets");
         ObjectNode input = mapper.createObjectNode();
@@ -295,7 +297,7 @@ class DiagramToolExecutorTest {
         // Le schéma EST produit : la densité n'est pas une erreur, c'est une invitation à le scinder.
         assertThat(outcome.error()).isFalse();
         assertThat(outcome.content())
-                .contains("reseau.png")
+                .contains("reseau.svg")
                 .contains("NOTE DU RENDU")
                 .contains("4800 x 3900")
                 .doesNotContain("ATTENTION");
