@@ -541,6 +541,83 @@ class AtelierChatServiceSystemPromptTest {
         assertThat(firstDoctrine).isEqualTo(secondDoctrine);
     }
 
+    // ------------------------------------------- F-168 / SF-168-01 : vérifier avant de conclure
+
+    private static void assertVerifyBeforeConcludeDoctrine(String system) {
+        // Amorce distinctive.
+        assertThat(system).contains("Vérifier avant de conclure — prouve tout état factuel, ne suppose pas");
+        // Point 1 : trancher tout état factuel par une vérification live, jamais une note/déduction.
+        assertThat(system).contains("par une VÉRIFICATION LIVE");
+        assertThat(system).contains("JAMAIS par une note (`STATE.md`)");
+        assertThat(system).contains("une DÉDUCTION présentée comme un fait");
+        // Point 2 : distinguer explicitement « mesuré » vs « supposé ».
+        assertThat(system).contains("DISTINGUE explicitement « mesuré » et « supposé »");
+        // Point 3 : porte avant délégation + nommer le blocage précis.
+        assertThat(system).contains("PORTE AVANT DÉLÉGATION");
+        assertThat(system).contains("puis-je répondre depuis le repo");
+        assertThat(system).contains("NOMME le blocage précis");
+        // Point 4 : falsifier sa première hypothèse.
+        assertThat(system).contains("FALSIFIE ta 1ʳᵉ hypothèse");
+        // Point 5 : marquage INCOMPLET, en particulier au plafond.
+        assertThat(system).contains("MARQUAGE INCOMPLET");
+        assertThat(system).contains("INCOMPLET — vérifications restantes");
+        assertThat(system).contains("plafond de consommation");
+    }
+
+    @Test
+    void theVerifyBeforeConcludeDoctrineIsPresentOnASandboxProject() {
+        // Scope universel : présent même sur un projet hébergé (SANDBOX), comme DECIDE_BY_DEFAULT_DOCTRINE.
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+
+        String system = systemPrompt();
+
+        assertVerifyBeforeConcludeDoctrine(system);
+        // Complète l'axe demander ↔ décider ↔ prouver : les doctrines voisines restent présentes.
+        assertThat(system).contains("Poser des questions avec l'outil « demander »");
+        assertThat(system).contains("Décider par défaut et avancer — le complément de « demander »");
+    }
+
+    @Test
+    void theVerifyBeforeConcludeDoctrineIsPresentOnARunnerProject() {
+        // Scope universel : présent aussi sur une cible RUNNER (host / sujet).
+        String system = systemPromptOfRunnerProjectDeclaring(null);
+
+        assertVerifyBeforeConcludeDoctrine(system);
+        // Coexistence + non-régression du rôle RUNNER et des doctrines voisines.
+        assertThat(system).contains("Décider par défaut et avancer — le complément de « demander »");
+        assertThat(system).contains("bash (ls, find, grep -n)");
+    }
+
+    @Test
+    void theVerifyBeforeConcludeGuardrailKeepsFrugality() {
+        // Garde-fou critique : l'exhaustivité porte sur les affirmations d'état et la porte avant
+        // délégation, PAS sur une exploration systématique de tout — la doctrine ne doit pas casser la
+        // frugalité (règle absolue PO justesse avant coût + acquis « lecture raisonnée à la demande »).
+        String system = systemPromptOfRunnerProjectDeclaring(null);
+
+        assertThat(system).contains("ne casse pas la frugalité");
+        assertThat(system).contains("PAS sur une exploration systématique de tout");
+        assertThat(system).contains("pas l'univers");
+    }
+
+    @Test
+    void theVerifyBeforeConcludeDoctrineIsByteStableBetweenTwoBuilds() {
+        // Le littéral est constant et injecté à un point fixe : le bloc doit être identique à l'octet
+        // entre deux constructions, sinon le préfixe change et le cache (F-134) tombe. Même patron que
+        // theDecideByDefaultDoctrineIsByteStableBetweenTwoBuilds : on compare le seul bloc de doctrine.
+        String first = systemPromptOfRunnerProjectDeclaring(null);
+        String second = systemPromptOfRunnerProjectDeclaring(null);
+
+        String marker = "Vérifier avant de conclure — prouve tout état factuel, ne suppose pas";
+        String firstDoctrine = first.substring(first.indexOf(marker),
+                first.indexOf("\n\n", first.indexOf(marker)));
+        String secondDoctrine = second.substring(second.indexOf(marker),
+                second.indexOf("\n\n", second.indexOf(marker)));
+        assertThat(firstDoctrine).isEqualTo(secondDoctrine);
+    }
+
     // ------------------------------------------- F-141 / SF-141-01 : annonce de destination + demande si ambigu
 
     @Test
