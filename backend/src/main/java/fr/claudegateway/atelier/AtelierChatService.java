@@ -471,6 +471,56 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "l'utilisateur ; sinon, décide et avance. Ne multiplie pas les questions par "
                     + "confort.\n\n";
     /**
+     * Décider par défaut et avancer (F-167 / SF-167-01). Ajoutée sur les <b>deux</b> cibles, sans
+     * condition, <b>immédiatement après</b> {@link #ASK_QUESTION_DOCTRINE} (F-164) : c'est le
+     * <b>complément</b> de « demander ». F-164 dit <i>quand demander</i> ; F-167 dit <i>quand ne pas
+     * demander</i> — sur un choix à <b>faible enjeu / réversible</b>, l'agent choisit un défaut
+     * raisonnable, l'<b>annonce</b> (« je pars sur X, dis-moi si tu veux ajuster ») et <b>continue</b>,
+     * au lieu de figer le tour sur un aller-retour sans enjeu.
+     *
+     * <p><b>Scope universel</b> (et non {@link Workspace#isRunnerTarget()} comme F-166) : F-167 complète
+     * une doctrine universelle ({@link #ASK_QUESTION_DOCTRINE}), l'outil {@code demander} est universel,
+     * et le choix à trancher est agnostique de la cible. Scinder les deux moitiés de l'axe
+     * <i>demander ↔ ne pas demander</i> selon la cible les rendrait incohérentes.</p>
+     *
+     * <p><b>Garde-fou — cœur de la feature</b>, subordonné à la règle absolue PO <i>justesse avant
+     * coût</i> : sur l'<b>irréversible</b> ou le <b>sensible</b> (ouvrir une MR/PR, apply/déploiement
+     * prod, suppression de données/fichiers, envoi externe, dépense d'argent, opération destructive,
+     * changement de sécurité/permissions), décider-par-défaut est <b>interdit</b> — on passe par une
+     * <b>question structurée</b> ({@code demander}, F-164, référencée sans être réimplémentée). En cas
+     * de doute : traiter comme irréversible et demander.</p>
+     *
+     * <p>Prompt-only, aucun nouvel outil ; littéral <b>stable</b> placé en tête du préfixe caché : il
+     * survit à la coupe {@link #SYSTEM_MAX_CHARS} et préserve le cache de prompt (F-134). Strictement
+     * additif (ne retire ni ne réordonne aucun bloc existant).</p>
+     */
+    private static final String DECIDE_BY_DEFAULT_DOCTRINE =
+            "Décider par défaut et avancer — le complément de « demander » :\n"
+                    + "- Sur un choix à FAIBLE ENJEU et RÉVERSIBLE (nom de variable, emplacement d'un "
+                    + "fichier de travail, ordre de deux étapes indépendantes, format d'une sortie, "
+                    + "valeur par défaut d'une option sans conséquence), NE T'ARRÊTE PAS pour demander : "
+                    + "CHOISIS un défaut raisonnable, ANNONCE-le en une ligne (« je pars sur X — dis-moi "
+                    + "si tu veux ajuster ») et CONTINUE. Un tour figé sur une question à faible enjeu "
+                    + "coûte un aller-retour pour rien.\n"
+                    + "- L'ANNONCE n'est pas optionnelle : le défaut retenu se DIT (courtement), pour que "
+                    + "l'utilisateur puisse corriger à chaud. Décider en silence est un défaut ; décider "
+                    + "+ annoncer + avancer est la règle.\n"
+                    + "- GARDE-FOU — jamais seul sur l'IRRÉVERSIBLE ou le SENSIBLE (règle absolue : ne "
+                    + "jamais dégrader la justesse des résultats) : sur ces cas, décider-par-défaut est "
+                    + "INTERDIT — tu passes par une QUESTION STRUCTURÉE (outil « demander », voir la "
+                    + "doctrine ci-dessus). Sont irréversibles / sensibles, entre autres : ouvrir une "
+                    + "MR/PR, appliquer ou déployer en prod, supprimer des données ou des fichiers, "
+                    + "envoyer à l'extérieur (e-mail, publication), dépenser de l'argent, toute opération "
+                    + "destructive, un changement de sécurité ou de permissions.\n"
+                    + "- En cas de DOUTE sur le caractère réversible, traite le choix comme IRRÉVERSIBLE "
+                    + "et demande : le coût d'une question de trop est faible, celui d'une action "
+                    + "irréversible mal devinée ne l'est pas. La justesse prime toujours sur l'économie "
+                    + "d'une question.\n"
+                    + "- Ne confonds pas le petit choix réversible avec le fort enjeu : un choix "
+                    + "réversible mais LOURD de conséquences (réécriture large, orientation d'archi qui "
+                    + "engage la suite) mérite aussi la question. Décider-par-défaut vise le petit, le "
+                    + "local, le sans-regret — pas l'engageant.\n\n";
+    /**
      * Annonce de destination + demande si ambigu (F-141 / SF-141-01, cadrage §4.3 et §2). Ajouté au
      * rôle sur les <b>deux</b> cibles, à la suite des doctrines de carte. La nuance clé du cadrage :
      * la <b>plomberie</b> de fin de tour (marqueurs, comptabilité de promotion/dette) reste invisible
@@ -6841,6 +6891,15 @@ public class AtelierChatService implements RelayInterruptTarget {
         // proposables passe par « demander », jamais la prose), le signal de déclenchement manuel, et la
         // discipline anti-spam. Littéral stable : cache de prompt préservé (F-134).
         system.append(ASK_QUESTION_DOCTRINE);
+
+        // Décider par défaut et avancer (F-167 / SF-167-01) : sur les DEUX cibles, sans condition, juste
+        // après ASK_QUESTION_DOCTRINE — c'est son complément. F-164 dit QUAND demander ; F-167 dit QUAND
+        // NE PAS demander : sur un choix faible enjeu / réversible, choisir un défaut, l'annoncer et
+        // avancer. Garde-fou (justesse avant coût) : sur l'irréversible / sensible (MR/PR, prod,
+        // suppression, envoi, dépense…), décider-par-défaut INTERDIT → question structurée (« demander »).
+        // Scope universel comme F-164 (l'outil « demander » est universel, le choix est agnostique de la
+        // cible). Littéral stable, strictement additif : cache de prompt préservé (F-134).
+        system.append(DECIDE_BY_DEFAULT_DOCTRINE);
 
         // Annonce de destination + demande si ambigu (F-141 / SF-141-01) : sur les DEUX cibles, à la
         // suite des doctrines de carte. Prolonge la carte silencieuse (SF-125-01) sans la casser : la
