@@ -1264,6 +1264,19 @@
       }
     }
 
+    <!-- PANNEAUX DE COMMANDES SLASH (F-165 / SF-165-01) : le résultat d'une commande vue/action, rendu
+         DANS le fil, dans le cadre réutilisable. AFFICHAGE LOCAL — jamais dans l'historique envoyé au
+         modèle. Le corps est choisi par `panelKind` (patron d'extension des SF 02→06). -->
+    @for (panel of slashPanels(); track panel.id) {
+      <app-atelier-slash-panel [panel]="panel" (dismiss)="dismissPanel(panel)">
+        @switch (panel.panelKind) {
+          @case ('help') {
+            <app-atelier-slash-help [entries]="panel.help ?? []" />
+          }
+        }
+      </app-atelier-slash-panel>
+    }
+
     <!-- QUESTION STRUCTURÉE (F-164 / SF-164-02) : le rendu de l'outil `demander`. Vit dans le flux, à
          côté de l'invite d'autorisation dont elle partage le mécanisme de pause (SF-164-01). La carte
          gère la saisie et émet la réponse composée, que le parent poste sur `/chat/answer`. -->
@@ -1376,7 +1389,7 @@
          connue sera expansée en son prompt imposé à l'envoi. -->
     @if (slashMenuOpen) {
       <ul class="slash-menu" role="listbox" aria-label="Commandes disponibles">
-        @for (command of slashMenu; track command.name; let i = $index) {
+        @for (command of slashMenu; track command.family + '/' + command.name; let i = $index) {
           <li
             class="slash-menu__item"
             role="option"

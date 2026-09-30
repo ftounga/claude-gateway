@@ -1,0 +1,66 @@
+/* ------------------------------------------------------------------ F-165 / SF-165-01
+   LE CORPS DU PANNEAU /aide. Feuille dédiée (budget 12 ko propre — angular.json). Rendu dans le cadre
+   sombre du panneau : jetons `--cg-*` uniquement, aucune couleur ni police hors charte. */
+
+.slash-help__lead {
+  margin: 0 0 var(--cg-space-3);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--cg-text-secondary);
+}
+
+.slash-help__hint {
+  font-family: var(--cg-font-mono);
+  color: var(--cg-orange-2);
+}
+
+.slash-help__list {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: var(--cg-space-1) var(--cg-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.slash-help__item {
+  display: contents;
+}
+
+.slash-help__name {
+  font-family: var(--cg-font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cg-orange-2);
+}
+
+.slash-help__kind {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cg-text-secondary);
+  align-self: center;
+}
+
+.slash-help__desc {
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--cg-surface);
+}
+
+/* Sous 819 px (SF-158) : une commande par bloc empilé, jamais de débordement horizontal. */
+@media (max-width: 819px) {
+  .slash-help__list {
+    grid-template-columns: 1fr;
+    gap: var(--cg-space-3);
+  }
+
+  .slash-help__item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--cg-space-1) var(--cg-space-2);
+  }
+}

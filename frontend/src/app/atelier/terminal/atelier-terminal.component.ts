@@ -49,10 +49,19 @@ import {
   shouldFold,
 } from './pasted-text';
 import {
-  SlashCommand,
   expandSlashCommand,
   slashSuggestions,
 } from './slash-commands';
+import {
+  SlashPanel,
+  SlashPanelCommand,
+  buildPanel,
+  findPanelCommand,
+  panelCommandSuggestions,
+  parsePanelCommand,
+} from './slash-panel-commands';
+import { AtelierSlashPanelComponent } from './atelier-slash-panel.component';
+import { AtelierSlashHelpComponent } from './atelier-slash-help.component';
 import {
   ActiveMention,
   activeMention,
@@ -155,6 +164,20 @@ export const TEAMS_TERMINAL_BAR_LABEL = 'Conversations Teams';
 export const LONG_THREAD_TURNS = 40;
 
 /**
+ * Une entrée du menu de slash-commands, commune aux deux familles : les **macros de prompt** (F-121,
+ * envoyées au modèle) et les **commandes vue/action** (F-165, dispatchées localement). Le menu les
+ * fusionne ; c'est la `family` qui décide du comportement à la validation.
+ */
+export interface SlashMenuEntry {
+  readonly name: string;
+  readonly title: string;
+  readonly description: string;
+  readonly family: 'macro' | 'panel';
+  /** Uniquement pour la famille `panel` : la commande attend-elle un argument ? */
+  readonly takesArgument?: boolean;
+}
+
+/**
  * Vue **terminal immersive** du mode Terminal de l'Atelier (F-30 SF-30-07).
  *
  * <p>Occupe tout l'écran de l'Atelier : ni liste de projets, ni bulles de conversation — un flux
@@ -171,6 +194,7 @@ export const LONG_THREAD_TURNS = 40;
     FormsModule, ForgeBreadcrumbComponent, LiveBadgeComponent, MarkdownPipe, MatButtonModule,
     TeamsLinkBadgeComponent, NgTemplateOutlet, TerminalEmailComponent, PageBlockComponent, PagePanelComponent,
     TerminalActionsPanelComponent, AtelierTerminalDemandeComponent,
+    AtelierSlashPanelComponent, AtelierSlashHelpComponent,
     MatButtonToggleModule, MatIconModule, MatMenuModule, MatProgressBarModule, MatProgressSpinnerModule,
     MatTooltipModule, RouterLink,
     WeeklyBudgetComponent, ProjectCostComponent, TurnSuggestionsComponent, DictationButtonComponent,
@@ -1589,6 +1613,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   }
 
   // ------------------------------------------------ slash-commands du composer (F-121 / SF-121-23)
+  //                                                   + commandes vue/action (F-165 / SF-165-01)
 
   /** Index surligné dans le menu de slash-commands (borné par `highlightedSlash`). */
   private readonly slashHighlight = signal(0);
@@ -1596,14 +1621,37 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   private readonly slashDismissed = signal(false);
 
   /**
-   * Les commandes à proposer pour le brouillon courant. Vide → aucun menu, et la frappe/l'envoi
-   * gardent EXACTEMENT le comportement d'avant cette subfeature (aucune régression).
+   * F-165 / SF-165-01 : les panneaux de commandes slash rendus dans le fil. AFFICHAGE LOCAL — ils
+   * vivent ici, jamais dans `displayedMessages` (le fil venu du parent/backend), donc ils ne rejoignent
+   * JAMAIS l'historique envoyé au modèle. Purement éphémères (non persistés).
    */
-  get slashMenu(): SlashCommand[] {
+  readonly slashPanels = signal<SlashPanel[]>([]);
+  /** Compteur d'identifiants locaux pour les panneaux (unicité du `track` sans dépendre de l'horloge). */
+  private slashPanelSeq = 0;
+
+  /**
+   * Les commandes à proposer pour le brouillon courant, DEUX familles fusionnées : les commandes
+   * vue/action F-165 (`/aide`…) d'abord, puis les macros de prompt F-121 (`/revue`…). Vide → aucun
+   * menu, et la frappe/l'envoi gardent EXACTEMENT le comportement d'avant (aucune régression).
+   */
+  get slashMenu(): SlashMenuEntry[] {
     if (this.slashDismissed()) {
       return [];
     }
-    return slashSuggestions(this.draft);
+    const panels: SlashMenuEntry[] = panelCommandSuggestions(this.draft).map((command) => ({
+      name: command.name,
+      title: command.title,
+      description: command.description,
+      family: 'panel',
+      takesArgument: command.takesArgument,
+    }));
+    const macros: SlashMenuEntry[] = slashSuggestions(this.draft).map((command) => ({
+      name: command.name,
+      title: command.title,
+      description: command.description,
+      family: 'macro',
+    }));
+    return [...panels, ...macros];
   }
 
   /** Vrai quand le menu de slash-commands est ouvert. */
@@ -1669,13 +1717,48 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   }
 
   /**
-   * Complète le brouillon avec le nom de la commande suivi d'une espace (`/revue ␣`) : la complétion
-   * ÉCRIT, elle n'envoie pas. L'espace clôt le jeton, donc le menu se referme de lui-même.
+   * Validation d'une entrée du menu (Tab/Entrée/clic).
+   *
+   * - **Macro de prompt** (F-121) : complète le brouillon en `/<nom> ` — la complétion ÉCRIT, elle
+   *   n'envoie pas ; l'espace clôt le jeton, donc le menu se referme de lui-même (inchangé).
+   * - **Commande vue/action** (F-165) SANS argument (`/aide`) : **dispatch immédiat** (aucun tour).
+   * - **Commande vue/action** avec argument (`/rappel …`, SF-165-06) : complète en `/<nom> ` pour
+   *   laisser saisir l'argument avant l'envoi.
    */
-  acceptSlash(command: SlashCommand): void {
+  acceptSlash(entry: SlashMenuEntry): void {
     this.slashDismissed.set(true);
     this.slashHighlight.set(0);
-    this.draftChange.emit(`/${command.name} `);
+    if (entry.family === 'panel') {
+      const command = findPanelCommand(entry.name);
+      if (command && !command.takesArgument) {
+        this.dispatchPanelCommand(command, '');
+        return;
+      }
+    }
+    this.draftChange.emit(`/${entry.name} `);
+  }
+
+  /**
+   * F-165 / SF-165-01 — dispatch d'une commande vue/action.
+   *
+   * GARANTIE STRUCTURELLE « aucun tour modèle » : cette méthode n'appelle JAMAIS `send.emit()`. Elle
+   * efface le brouillon (le parent en est propriétaire) et ajoute un panneau LOCAL au fil. Les SF
+   * suivantes (02→06) brancheront ici l'appel aux endpoints REST de lecture pour les VUES ; aucune ne
+   * passe par la boucle modèle. *Vérifier son coût ne doit rien coûter.*
+   */
+  dispatchPanelCommand(command: SlashPanelCommand, arg: string): void {
+    this.slashDismissed.set(false);
+    this.slashHighlight.set(0);
+    this.closeMentions();
+    // Le brouillon a été consommé par la commande : on le vide (le parent applique).
+    this.draftChange.emit('');
+    const panel = buildPanel(command, arg, `slash-${this.slashPanelSeq++}`);
+    this.slashPanels.update((panels) => [...panels, panel]);
+  }
+
+  /** Retire un panneau du fil (bouton fermer). Purement local. */
+  dismissPanel(panel: SlashPanel): void {
+    this.slashPanels.update((panels) => panels.filter((p) => p.id !== panel.id));
   }
 
   /** Envoie la demande saisie (touche Entrée ou bouton), sauf pendant un envoi. */
@@ -1683,6 +1766,14 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     // LECTURE SEULE STRICTE (F-83 / SF-83-01) : le gabarit ne rend aucune invite, et le code refuse
     // aussi — un envoi n'a pas à dépendre du seul fait qu'un champ soit absent de l'écran.
     if (this.readOnly) {
+      return;
+    }
+    // F-165 / SF-165-01 : une commande vue/action est INTERCEPTÉE AVANT tout `send`. Elle se dispatche
+    // localement (panneau) et ne consomme AUCUN tour modèle — même au plafond de terminaux vivants, car
+    // une vue gratuite ne coûte rien. Une macro F-121 ou un message normal, eux, ne sont PAS interceptés.
+    const panelCommand = parsePanelCommand(this.draft);
+    if (panelCommand) {
+      this.dispatchPanelCommand(panelCommand.command, panelCommand.arg);
       return;
     }
     // Le refus du plafond bloque l'envoi — c'est ce qui fait du plafond un garde-fou de dépense
