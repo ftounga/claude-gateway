@@ -77,6 +77,7 @@ import {
   RunnerStatus,
   AtelierTurnMode,
   AtelierPlanStep,
+  AtelierAnswerRequest,
   TerminalDepositNotice,
   WorkspaceExecutionTarget,
 } from '../../core/models/atelier.models';
@@ -84,6 +85,7 @@ import { HostPresenceService, presenceLabel } from '../../core/services/host-pre
 import {
   AtelierExecStreamingItem,
   AtelierPendingConfirmation,
+  AtelierPendingQuestion,
   AtelierSteerState,
   AtelierThreadItem,
   AtelierTurnCost,
@@ -120,6 +122,7 @@ import { TerminalEmailComponent } from './terminal-email.component';
 import { PageBlockComponent } from './page-block.component';
 import { PagePanelComponent } from './page-panel.component';
 import { TerminalActionsPanelComponent } from './terminal-actions-panel.component';
+import { AtelierTerminalDemandeComponent } from './atelier-terminal-demande.component';
 import { TerminalActionsService } from '../../core/services/terminal-actions.service';
 import {
   AtelierFileDiffView,
@@ -167,7 +170,7 @@ export const LONG_THREAD_TURNS = 40;
   imports: [
     FormsModule, ForgeBreadcrumbComponent, LiveBadgeComponent, MarkdownPipe, MatButtonModule,
     TeamsLinkBadgeComponent, NgTemplateOutlet, TerminalEmailComponent, PageBlockComponent, PagePanelComponent,
-    TerminalActionsPanelComponent,
+    TerminalActionsPanelComponent, AtelierTerminalDemandeComponent,
     MatButtonToggleModule, MatIconModule, MatMenuModule, MatProgressBarModule, MatProgressSpinnerModule,
     MatTooltipModule, RouterLink,
     WeeklyBudgetComponent, ProjectCostComponent, TurnSuggestionsComponent, DictationButtonComponent,
@@ -701,6 +704,23 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    * chiffre inventé. Le composant reste une vue — il ne compte pas, il montre.
    */
   @Input() confirmationCountdown: string | null = null;
+
+  /**
+   * Question(s) structurée(s) en attente (F-164 / SF-164-02), ou `null`. Comme la demande
+   * d'autorisation, tant qu'elle est là le tour est en pause : c'est la réponse de l'utilisateur qui
+   * le relance. L'état vit dans le parent ; la carte de rendu ({@code app-atelier-terminal-demande})
+   * la reçoit et émet la réponse composée.
+   */
+  @Input() pendingQuestion: AtelierPendingQuestion | null = null;
+
+  /**
+   * Temps restant à la question en attente, déjà mis en mots par le parent (F-47 / SF-47-02).
+   * `null` quand aucun délai n'est connu : la carte n'affiche alors aucun chiffre.
+   */
+  @Input() questionCountdown: string | null = null;
+
+  /** Réponse composée à la question en attente (F-164 / SF-164-02), relayée au parent qui la poste. */
+  @Output() questionAnswer = new EventEmitter<AtelierAnswerRequest>();
 
   /**
    * Ce terminal **vit** : il tient une place au registre (F-70 / SF-70-01). C'est ce qui allume la

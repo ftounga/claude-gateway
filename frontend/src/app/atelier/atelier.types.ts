@@ -6,6 +6,7 @@ import {
   AtelierPlanStep,
   AtelierStreamAction,
   AtelierTerminalBlock,
+  AtelierQuestion,
 } from '../core/models/atelier.models';
 import { AtelierFileDiffView } from './terminal/terminal-diff';
 
@@ -132,6 +133,44 @@ export interface AtelierPendingConfirmation {
    * de mosaïque en lecture seule (F-83) n'a aucun bouton à proposer.
    */
   allowAlwaysOffered?: boolean;
+}
+
+/**
+ * Statut d'une question structurée affichée dans le flux (F-164 / SF-164-02) :
+ * `awaiting` = interactive, en attente de réponse ; `answered` = tranchée (verrouillée, montre le
+ * choix fait quand il vient d'ici) ; `expired` = le délai a expiré.
+ */
+export type AtelierQuestionStatus = 'awaiting' | 'answered' | 'expired';
+
+/**
+ * Question(s) structurée(s) affichée(s) dans le flux (F-164 / SF-164-02) : le lot posé par l'agent et
+ * l'état de la réponse. Mirroir de {@link AtelierPendingConfirmation} pour la porte d'autorisation —
+ * l'état du **tour** vit ici (dans le parent), le rendu et la saisie vivent dans la carte.
+ * `answering` garde les contrôles inertes le temps que la réponse parte (répondre deux fois n'aurait
+ * pas de sens).
+ */
+export interface AtelierPendingQuestion {
+  /** Identifiant de corrélation à renvoyer pour répondre (celui de `question_request`). */
+  callId: string;
+  /** Le lot de questions à rendre (1 à 4). */
+  questions: AtelierQuestion[];
+  status: AtelierQuestionStatus;
+  answering: boolean;
+  /**
+   * Vrai quand la réponse a été composée **ici** (on connaît le choix fait) ; faux quand la question a
+   * été tranchée ailleurs ou par expiration (on montre alors « Répondu sur un autre appareil » / le
+   * délai écoulé, sans inventer un choix).
+   */
+  answeredHere: boolean;
+  /** Le compte rendu lisible du choix fait ici, affiché à l'état « répondu » ; vide sinon. */
+  chosenSummary: string;
+  /**
+   * Instant (epoch ms) d'expiration, quand la gateway l'a annoncé (F-47 / SF-47-02). `null` sinon —
+   * aucun compte à rebours plutôt qu'un chiffre inventé.
+   */
+  deadline: number | null;
+  /** Durée totale annoncée, en millisecondes ; `null` quand elle n'est pas connue. */
+  timeoutMs: number | null;
 }
 
 /**

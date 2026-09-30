@@ -1,0 +1,237 @@
+/* ------------------------------------------------------------------ F-164 / SF-164-02
+   LA CARTE DE QUESTION STRUCTURÉE — le rendu de l'outil `demander` (SF-164-01).
+
+   Composant DÉDIÉ (donc feuille dédiée, budget 12 ko propre — angular.json). On reprend la langue
+   visuelle de la carte d'autorisation (`.terminal-ask`, F-33) : la Forge est SOMBRE, la carte porte
+   le fond navy et l'accent ORANGE de charte — celui des états « le tour vous attend ». AUCUNE couleur
+   ni police hors charte : jetons `--cg-*` uniquement. Préfixe `terminal-demande-*` pour ne rien
+   partager avec le rail « Vos questions » (SF-126-02, `terminal-q*` / `--railed`). */
+
+.terminal-demande {
+  margin: var(--cg-space-3) 0;
+  padding: var(--cg-space-3);
+  border: 1px solid var(--cg-orange-2);
+  border-radius: 4px;
+  background: var(--cg-navy-2);
+  color: var(--cg-surface);
+}
+
+.terminal-demande-title {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  margin: 0 0 var(--cg-space-2);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cg-orange-2);
+}
+
+.terminal-demande-icon,
+.terminal-demande-countdown-icon {
+  font-size: 18px;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+/* --- Une question du lot --- */
+.terminal-demande-question {
+  min-width: 0;
+  margin: 0 0 var(--cg-space-3);
+  padding: 0;
+  border: none;
+
+  &:last-of-type {
+    margin-bottom: var(--cg-space-2);
+  }
+}
+
+.terminal-demande-legend {
+  padding: 0;
+  margin-bottom: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cg-divider);
+}
+
+.terminal-demande-text {
+  margin: 0 0 var(--cg-space-2);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--cg-surface);
+}
+
+.terminal-demande-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cg-space-1);
+}
+
+/* --- Une option : cible tactile confortable, cochable au clavier comme au doigt --- */
+.terminal-demande-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cg-space-2);
+  min-height: 44px; /* SF-158 : cible tactile ≥ 44 px */
+  padding: var(--cg-space-2);
+  border: 1px solid color-mix(in srgb, var(--cg-surface) 16%, transparent);
+  border-radius: 4px;
+  background: var(--cg-primary);
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--cg-orange-2);
+  }
+
+  /* Le focus clavier suit le contrôle natif : on le rend visible sur toute la rangée. */
+  &:focus-within {
+    outline: 2px solid var(--cg-orange-2);
+    outline-offset: 1px;
+  }
+}
+
+/* Radios / cases NATIVES (même parti que le champ natif de `.terminal-ask-reason`) : les plus sûres
+   pour l'accessibilité et le tactile. L'accent de charte les teinte. */
+.terminal-demande-control {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  accent-color: var(--cg-orange-2);
+  cursor: pointer;
+}
+
+.terminal-demande-option-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.terminal-demande-option-label {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--cg-space-2);
+  font-size: 13px;
+  color: var(--cg-surface);
+}
+
+/* Le repère « Recommandé » : discret, dans l'accent déjà porté par la carte — pas un nouveau registre
+   de couleur (même démarche que la mention de portée de `.terminal-ask-scope`). */
+.terminal-demande-reco {
+  display: inline-block;
+  padding: 0 var(--cg-space-1);
+  border: 1px solid var(--cg-orange-2);
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cg-orange-2);
+}
+
+.terminal-demande-option-desc {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--cg-divider);
+}
+
+/* --- Le champ libre, toujours présent --- */
+.terminal-demande-other {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cg-space-1);
+  margin-top: var(--cg-space-1);
+}
+
+.terminal-demande-other-label {
+  font-size: 12px;
+  color: var(--cg-divider);
+}
+
+.terminal-demande-other-input {
+  width: 100%;
+  min-width: 0;
+  padding: var(--cg-space-2);
+  border: 1px solid var(--cg-navy-2);
+  border-radius: 4px;
+  background: var(--cg-primary);
+  color: var(--cg-surface);
+  font-family: var(--cg-font-mono);
+  font-size: 13px;
+  resize: vertical;
+
+  &::placeholder {
+    color: var(--cg-divider);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--cg-orange-2);
+    outline-offset: 1px;
+  }
+}
+
+.terminal-demande-countdown {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  margin: var(--cg-space-2) 0;
+  font-size: 12px;
+  color: var(--cg-orange-2);
+}
+
+.terminal-demande-actions {
+  display: flex;
+  flex-wrap: wrap; /* SF-158 : jamais de débordement horizontal */
+  gap: var(--cg-space-2);
+  margin-top: var(--cg-space-2);
+}
+
+.terminal-demande-send {
+  min-height: 44px; /* SF-158 : cible tactile ≥ 44 px */
+}
+
+/* --- États verrouillés (répondu / expiré / lecture seule) --- */
+.terminal-demande--done .terminal-demande-title,
+.terminal-demande--readonly .terminal-demande-title {
+  margin-bottom: 0;
+}
+
+.terminal-demande-recap {
+  margin: var(--cg-space-2) 0 0;
+  padding: var(--cg-space-2);
+  border-radius: 4px;
+  background: var(--cg-primary);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--cg-surface);
+  white-space: pre-wrap;
+}
+
+.terminal-demande-ro-question {
+  margin: var(--cg-space-2) 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--cg-surface);
+}
+
+.terminal-demande-hint {
+  margin: var(--cg-space-2) 0 0;
+  font-size: 12px;
+  color: var(--cg-divider);
+}
+
+/* Sous 819 px (SF-158) : la carte reste dans la largeur, les rangées ne débordent jamais. */
+@media (max-width: 819px) {
+  .terminal-demande-option {
+    /* déjà ≥ 44 px ; on garantit qu'un long libellé passe à la ligne plutôt que de pousser la largeur */
+    flex-wrap: nowrap;
+  }
+
+  .terminal-demande-send {
+    width: 100%;
+  }
+}

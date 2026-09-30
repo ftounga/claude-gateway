@@ -130,6 +130,7 @@
             [projectName]="tile.projectName"
             [streaming]="tile.view.stream()"
             [pendingConfirmation]="tile.view.pending()"
+            [pendingQuestion]="tile.view.pendingQuestion()"
             [elapsedLabel]="tile.view.elapsedLabel()"
             (filesSelected)="onTileFiles(tile, $event)"
           ></app-atelier-terminal>

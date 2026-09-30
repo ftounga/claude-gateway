@@ -87,6 +87,9 @@ import {
   AtelierAgentStreamActionResult,
   AtelierConfirmRequest,
   AtelierConfirmResolved,
+  AtelierQuestionRequest,
+  AtelierQuestionResolved,
+  AtelierAnswerRequest,
   AtelierEngine,
   AtelierEngineStatus,
   AtelierRunnerRecommendation,
@@ -142,6 +145,7 @@ import { RADAR_DRAFT_STATE, radarDraftFrom } from '../shared/radar-draft';
 import {
   AtelierExecStreamingItem,
   AtelierPendingConfirmation,
+  AtelierPendingQuestion,
   AtelierSteerState,
   AtelierStreamingItem,
   AtelierThreadItem,
@@ -704,6 +708,39 @@ export class AtelierComponent implements OnInit, OnDestroy {
    */
   readonly confirmationCountdown = computed(() => {
     const remaining = this.confirmationRemainingMs();
+    if (remaining === null) {
+      return null;
+    }
+    if (remaining <= 0) {
+      return 'Le délai est écoulé';
+    }
+    const seconds = Math.ceil(remaining / 1000);
+    if (seconds < 60) {
+      return `Il reste ${seconds} s pour répondre`;
+    }
+    const minutes = Math.floor(seconds / 60);
+    const rest = seconds % 60;
+    return rest === 0
+      ? `Il reste ${minutes} min pour répondre`
+      : `Il reste ${minutes} min ${rest} s pour répondre`;
+  });
+
+  /**
+   * Question(s) structurée(s) en attente (F-164 / SF-164-02), ou `null`. Comme la demande
+   * d'autorisation : une seule à la fois, la suivante prend la place une fois la précédente tranchée
+   * (pauses répétées d'un même tour, SF-164-01). L'état du tour vit ici ; la carte le rend.
+   */
+  readonly pendingQuestion = signal<AtelierPendingQuestion | null>(null);
+
+  /** Millisecondes restant à la question en attente (F-47 / SF-47-02), rafraîchies chaque seconde. */
+  readonly questionRemainingMs = signal<number | null>(null);
+
+  /** Minuteur du compte à rebours de la question ; jamais plus d'un à la fois. */
+  private questionTimer: ReturnType<typeof setInterval> | null = null;
+
+  /** Temps restant à la question, en clair, pour la carte. `null` quand aucun délai n'est connu. */
+  readonly questionCountdown = computed(() => {
+    const remaining = this.questionRemainingMs();
     if (remaining === null) {
       return null;
     }
@@ -1676,6 +1713,10 @@ export class AtelierComponent implements OnInit, OnDestroy {
       onConfirmRequest: (request) =>
         this.zone.run(() => this.showConfirmation(request, 'LOCAL_MACHINE')),
       onConfirmResolved: (resolved) => this.zone.run(() => this.clearConfirmation(resolved)),
+      // Question structurée posée par l'agent (F-164 / SF-164-02) : le tour est en pause tant que rien
+      // n'est répondu, exactement comme l'autorisation dont elle partage le mécanisme (SF-164-01).
+      onQuestionRequest: (request) => this.zone.run(() => this.showQuestion(request)),
+      onQuestionResolved: (resolved) => this.zone.run(() => this.clearQuestion(resolved)),
       // Consommation relevée après chaque itération (F-39 / SF-39-15) : la ligne vivante affichait
       // les étapes et la durée, jamais les tokens, sur le moteur qui exécute réellement.
       onProgress: (tokens) =>
@@ -1924,6 +1965,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.execStreaming.set(null);
     // Plus rien n'attend de décision : une invite restée à l'écran serait un piège.
     this.clearPendingConfirmation();
+    // Idem pour une question : le tour est fini, plus rien ne l'attend (F-164 / SF-164-02).
+    this.clearPendingQuestion();
   }
 
   // ---------------------------- F-84 / SF-84-06 : un message pendant un tour devient une précision
@@ -2056,6 +2099,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
   /** Le tour de suite part : ligne vivante neuve, chronomètre relancé, terminal toujours en tour. */
   private reopenForFollowUp(): void {
     this.clearPendingConfirmation();
+    this.clearPendingQuestion();
     this.submitting.set(true);
     this.streaming.set({ steps: [], text: '' });
     this.execStreaming.set({ status: '', blocks: [], text: '', tokens: null, plan: [], accepted: true });
@@ -2440,6 +2484,160 @@ export class AtelierComponent implements OnInit, OnDestroy {
     return "Votre réponse n'a pas pu être transmise. Veuillez réessayer.";
   }
 
+  // -------------------------------------- F-164 / SF-164-02 : les QUESTIONS structurées
+
+  /**
+   * Affiche une question structurée posée par l'agent (F-164 / SF-164-02). Comme la porte
+   * d'autorisation, l'invite vit **dans le flux** et met le tour en pause. Alimentée par
+   * `question_request` (posée maintenant) et par l'aparté `question_state` (rejoué à l'attache) : si
+   * la même question ({@code callId}) revient, on conserve les choix déjà commencés et on **recale**
+   * seulement le compte à rebours sur le temps restant recalculé par la gateway (SF-47-02).
+   */
+  private showQuestion(request: AtelierQuestionRequest): void {
+    const known = this.pendingQuestion();
+    const sameQuestion = known?.callId === request.callId;
+    this.pendingQuestion.set({
+      callId: request.callId,
+      questions: request.questions,
+      // Un rejeu (`question_state`) d'une question déjà répondue ici ne la rouvre pas : on garde son
+      // état. Sinon, c'est une question en attente, interactive.
+      status: sameQuestion ? (known?.status ?? 'awaiting') : 'awaiting',
+      answering: sameQuestion ? (known?.answering ?? false) : false,
+      answeredHere: sameQuestion ? (known?.answeredHere ?? false) : false,
+      chosenSummary: sameQuestion ? (known?.chosenSummary ?? '') : '',
+      deadline: request.timeoutMs ? Date.now() + request.timeoutMs : null,
+      timeoutMs: request.timeoutMs ?? null,
+    });
+    this.startQuestionCountdown();
+    // F-153 / SF-153-01 : le silence vaut expiration. Si l'onglet est caché, on l'allume pour ne pas
+    // laisser la question expirer sans la voir (même geste que la demande d'autorisation).
+    this.tabAlert.signalAwaitingAuthorization();
+    this.nudgeRender();
+  }
+
+  /**
+   * Retire (ou verrouille) la question quand elle a été tranchée — ici, sur un autre appareil, ou par
+   * expiration. Répondue **ici** : la carte reste un instant à « répondu » avec le choix fait. Ailleurs
+   * ou expirée : elle passe à un état terminal lisible, puis cède la place à la question suivante ou à
+   * la fin du tour.
+   */
+  private clearQuestion(resolved: AtelierQuestionResolved): void {
+    const pending = this.pendingQuestion();
+    if (pending && resolved.callId && pending.callId !== resolved.callId) {
+      return;
+    }
+    this.stopQuestionCountdown();
+    if (pending) {
+      const expired = resolved.status === 'timeout';
+      this.pendingQuestion.set({
+        ...pending,
+        status: expired ? 'expired' : 'answered',
+        answering: false,
+      });
+      if (expired) {
+        this.snackBar.open(
+          "Personne n'a répondu à la question dans le délai : le tour a repris sans réponse.",
+          'Fermer',
+          { duration: 8000 },
+        );
+      }
+    }
+    // Même silence qu'à la pose (F-47 / SF-47-01) : la résolution arrive sans qu'aucun autre événement
+    // ne suive, et sans forçage la carte resterait figée dans son état d'avant.
+    this.nudgeRender();
+  }
+
+  /** Retire l'invite de question **et** arrête son compte à rebours. Un seul point de sortie. */
+  private clearPendingQuestion(): void {
+    this.pendingQuestion.set(null);
+    this.stopQuestionCountdown();
+  }
+
+  /** Démarre (ou redémarre) le compte à rebours de la question en attente (F-47 / SF-47-02). */
+  private startQuestionCountdown(): void {
+    this.stopQuestionCountdown();
+    const deadline = this.pendingQuestion()?.deadline ?? null;
+    if (deadline === null) {
+      return;
+    }
+    this.questionRemainingMs.set(Math.max(0, deadline - Date.now()));
+    this.questionTimer = setInterval(() => {
+      this.zone.run(() => {
+        const current = this.pendingQuestion()?.deadline ?? null;
+        if (current === null) {
+          this.stopQuestionCountdown();
+          return;
+        }
+        const remaining = Math.max(0, current - Date.now());
+        this.questionRemainingMs.set(remaining);
+        if (remaining === 0) {
+          this.clearQuestionTimer();
+        }
+        this.nudgeRender();
+      });
+    }, 1000);
+  }
+
+  /** Arrête le compte à rebours de la question ; idempotent. */
+  private stopQuestionCountdown(): void {
+    this.clearQuestionTimer();
+    this.questionRemainingMs.set(null);
+  }
+
+  /** Coupe le minuteur de question sans effacer le temps affiché. */
+  private clearQuestionTimer(): void {
+    if (this.questionTimer !== null) {
+      clearInterval(this.questionTimer);
+      this.questionTimer = null;
+    }
+  }
+
+  /**
+   * Poste la réponse à la question en attente (F-164 / SF-164-02) sur l'endpoint **isolé** existant
+   * (SF-164-01), qui reprend le tour. La carte est verrouillée (`answering`) et passe à « répondu »
+   * (montrant le choix fait) le temps de l'aller-retour ; la résolution relayée par le flux
+   * (`question_resolved`) confirme. Un échec retire la carte plutôt que de laisser cliquer dans le vide.
+   */
+  submitQuestionAnswer(body: AtelierAnswerRequest): void {
+    const id = this.activeWorkspaceId();
+    const pending = this.pendingQuestion();
+    if (!id || !pending || pending.answering || pending.status !== 'awaiting') {
+      return;
+    }
+    this.pendingQuestion.set({
+      ...pending,
+      answering: true,
+      status: 'answered',
+      answeredHere: true,
+      chosenSummary: this.summarizeAnswer(body),
+    });
+    this.nudgeRender();
+    this.atelier.answerQuestion(id, body).subscribe({
+      error: (err: unknown) => {
+        this.clearPendingQuestion();
+        this.notifyError(this.confirmErrorMessage(err));
+        this.nudgeRender();
+      },
+    });
+  }
+
+  /** Compose un compte rendu lisible du choix fait, pour l'état « répondu » de la carte. */
+  private summarizeAnswer(body: AtelierAnswerRequest): string {
+    return body.answers
+      .map((entry) => {
+        const parts: string[] = [];
+        if (entry.selected && entry.selected.length > 0) {
+          parts.push(entry.selected.join(', '));
+        }
+        if (entry.other && entry.other.trim().length > 0) {
+          parts.push(`Autre : ${entry.other.trim()}`);
+        }
+        const answer = parts.join(' — ') || '(sans réponse)';
+        return entry.header ? `${entry.header} : ${answer}` : answer;
+      })
+      .join('\n');
+  }
+
   /**
    * Bascule l'option « demander avant d'exécuter » du projet (F-33 / SF-33-01).
    *
@@ -2752,6 +2950,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
           this.loadEngine(updated);
         }
         this.clearPendingConfirmation();
+        this.clearPendingQuestion();
         this.runnerStatus.set(null);
         this.syncRunnerPolling();
         // Le MÊME message que la carte du poste (SF-82-02) : il dit ce que la gateway a
@@ -3398,6 +3597,10 @@ export class AtelierComponent implements OnInit, OnDestroy {
       onConfirmRequest: (request) =>
         this.zone.run(() => this.showConfirmation(request, 'LOCAL_MACHINE')),
       onConfirmResolved: (resolved) => this.zone.run(() => this.clearConfirmation(resolved)),
+      // Une QUESTION posée pendant l'absence est rejouée à l'attache via l'aparté `question_state`
+      // (F-164 / SF-164-02) : un autre appareil la retrouve et peut y répondre (cross-device F-84).
+      onQuestionRequest: (request) => this.zone.run(() => this.showQuestion(request)),
+      onQuestionResolved: (resolved) => this.zone.run(() => this.clearQuestion(resolved)),
       onProgress: (tokens) =>
         this.zone.run(() =>
           this.execStreaming.update((current) => (current ? { ...current, tokens } : current)),

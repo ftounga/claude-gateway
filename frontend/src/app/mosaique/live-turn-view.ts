@@ -6,7 +6,11 @@ import {
   AtelierStreamHandlers,
   AtelierTurnFollower,
 } from '../core/models/atelier.models';
-import { AtelierExecStreamingItem, AtelierPendingConfirmation } from '../atelier/atelier.types';
+import {
+  AtelierExecStreamingItem,
+  AtelierPendingConfirmation,
+  AtelierPendingQuestion,
+} from '../atelier/atelier.types';
 import { chatStepsToBlocks } from '../atelier/terminal/chat-steps';
 import { formatElapsed } from '../atelier/terminal/terminal-block';
 
@@ -71,6 +75,13 @@ export class LiveTurnView {
 
   /** Ce que le tour attend, ou `null`. En lecture seule : la mention est écrite, sans bouton. */
   readonly pending = signal<AtelierPendingConfirmation | null>(null);
+
+  /**
+   * Une **question structurée** en attente (F-164 / SF-164-02), ou `null`. Comme la demande
+   * d'autorisation : ce qui attend une décision se voit, y compris ici (F-83 / SF-83-01) — la carte en
+   * lecture seule la signale, sans bouton.
+   */
+  readonly pendingQuestion = signal<AtelierPendingQuestion | null>(null);
 
   /** Durée du tour, déjà formatée. Elle vient du **tour**, pas de l'ouverture de l'écran. */
   readonly elapsedLabel = signal('');
@@ -236,6 +247,22 @@ export class LiveTurnView {
           }),
         ),
       onConfirmResolved: () => this.zone.run(() => this.pending.set(null)),
+      // Une QUESTION en attente se voit aussi ici (F-164 / SF-164-02, F-83 / SF-83-01) : la tuile en
+      // lecture seule la signale, sans bouton. La réponse se donne depuis le terminal, pas d'ici.
+      onQuestionRequest: (request) =>
+        this.zone.run(() =>
+          this.pendingQuestion.set({
+            callId: request.callId,
+            questions: request.questions,
+            status: 'awaiting',
+            answering: false,
+            answeredHere: false,
+            chosenSummary: '',
+            deadline: null,
+            timeoutMs: request.timeoutMs ?? null,
+          }),
+        ),
+      onQuestionResolved: () => this.zone.run(() => this.pendingQuestion.set(null)),
       // Un tour de suite (F-84 / SF-84-06) n'est pas la fin du tour vivant : son `done` porte
       // `followUp`, et la tuile reste vivante — le tour de suite s'y affiche. Seul un `done` final
       // met la tuile au repos.
@@ -270,6 +297,7 @@ export class LiveTurnView {
   private rest(): void {
     this.stream.set(null);
     this.pending.set(null);
+    this.pendingQuestion.set(null);
     this.elapsedLabel.set('');
     this.startedAt = 0;
     this.clearProbe();

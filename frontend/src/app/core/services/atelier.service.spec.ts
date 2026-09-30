@@ -934,6 +934,81 @@ describe('AtelierService', () => {
     expect(seen).toEqual([{ toolUseId: 'sevt_1', decision: 'allow' }]);
   });
 
+  // ---- F-164 / SF-164-02 : questions structurées (flux chat) ----
+
+  it('route question_request et question_state vers onQuestionRequest, question_resolved vers onQuestionResolved', () => {
+    const dispatch = (service as unknown as {
+      dispatchSseEvent: (raw: string, handlers: object) => void;
+    }).dispatchSseEvent.bind(service);
+    const requests: unknown[] = [];
+    const resolved: unknown[] = [];
+    const handlers = {
+      onAction: () => undefined, onText: () => undefined, onDone: () => undefined, onError: () => undefined,
+      onQuestionRequest: (r: unknown) => requests.push(r),
+      onQuestionResolved: (r: unknown) => resolved.push(r),
+    };
+    const lot = '[{"header":"Périmètre","question":"Combien ?","multiSelect":false,'
+      + '"options":[{"label":"Une","description":"","recommended":true}]}]';
+
+    dispatch(`event:question_request\ndata:{"callId":"c1","questions":${lot},"timeoutMs":120000}`, handlers);
+    // L'aparté d'attache route vers la MÊME invite, avec le temps RESTANT recalculé (comme confirm_state).
+    dispatch(`event:question_state\ndata:{"callId":"c1","questions":${lot},"timeoutMs":45000}`, handlers);
+    dispatch('event:question_resolved\ndata:{"callId":"c1","status":"answered"}', handlers);
+
+    expect(requests.length).toBe(2);
+    expect(requests[0]).toEqual(jasmine.objectContaining({ callId: 'c1', timeoutMs: 120000 }));
+    expect(requests[1]).toEqual(jasmine.objectContaining({ callId: 'c1', timeoutMs: 45000 }));
+    expect(resolved).toEqual([{ callId: 'c1', status: 'answered' }]);
+  });
+
+  it('n\'émet aucune question sans lot (question_request vide ignoré)', () => {
+    const dispatch = (service as unknown as {
+      dispatchSseEvent: (raw: string, handlers: object) => void;
+    }).dispatchSseEvent.bind(service);
+    const requests: unknown[] = [];
+    const handlers = {
+      onAction: () => undefined, onText: () => undefined, onDone: () => undefined, onError: () => undefined,
+      onQuestionRequest: (r: unknown) => requests.push(r),
+    };
+
+    dispatch('event:question_request\ndata:{"callId":"c1","questions":[]}', handlers);
+    dispatch('event:question_request\ndata:{"callId":"c1"}', handlers);
+
+    expect(requests).toEqual([]);
+  });
+
+  it('omet le compte à rebours quand timeoutMs n\'est pas strictement positif', () => {
+    const dispatch = (service as unknown as {
+      dispatchSseEvent: (raw: string, handlers: object) => void;
+    }).dispatchSseEvent.bind(service);
+    const requests: Array<Record<string, unknown>> = [];
+    const handlers = {
+      onAction: () => undefined, onText: () => undefined, onDone: () => undefined, onError: () => undefined,
+      onQuestionRequest: (r: Record<string, unknown>) => requests.push(r),
+    };
+    const lot = '[{"header":"H","question":"Q ?","multiSelect":false,'
+      + '"options":[{"label":"L","description":"","recommended":false}]}]';
+
+    dispatch(`event:question_request\ndata:{"callId":"c1","questions":${lot},"timeoutMs":0}`, handlers);
+
+    expect('timeoutMs' in requests[0]).toBeFalse();
+  });
+
+  it('answerQuestion poste la réponse sur l\'endpoint isolé /chat/answer', () => {
+    service.answerQuestion('w1', {
+      callId: 'c1',
+      answers: [{ header: 'Périmètre', selected: ['Deux'], other: 'ou autre' }],
+    }).subscribe();
+
+    const req = httpMock.expectOne('/api/workspaces/w1/chat/answer');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({
+      callId: 'c1',
+      answers: [{ header: 'Périmètre', selected: ['Deux'], other: 'ou autre' }],
+    });
+    req.flush(null);
+  });
+
   // ---- F-38 SF-38-06 : cible d'exécution et runner ----
 
   it('bascule la cible d\'exécution via PUT /api/workspaces/{id}/execution-target', () => {
