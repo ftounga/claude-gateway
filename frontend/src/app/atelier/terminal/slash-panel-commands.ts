@@ -77,6 +77,15 @@ export const SLASH_PANEL_COMMANDS: readonly SlashPanelCommand[] = [
     panelKind: 'cost',
   },
   {
+    name: 'contexte',
+    title: '/contexte',
+    description: 'L’état mémoire : contexte vivant, seuil, résumé ancré, rappel',
+    kind: 'view',
+    takesArgument: false,
+    icon: 'memory',
+    panelKind: 'context',
+  },
+  {
     name: 'aide',
     title: '/aide',
     description: 'Liste les commandes slash disponibles',
@@ -213,6 +222,42 @@ export interface ThreadCostBudget {
 }
 
 /**
+ * État de chargement du panneau `/contexte` (F-165 / SF-165-03) : une **VUE** appelle un endpoint REST de
+ * **lecture** (jamais la boucle modèle), et le panneau vit ces trois états.
+ */
+export type ContextPanelState = 'loading' | 'ready' | 'error';
+
+/**
+ * L'**état mémoire du fil courant** (F-165 / SF-165-03) tel que le panneau `/contexte` le rend. Reflet
+ * exact du DTO backend `ThreadContextSummaryResponse` : des volumes, des drapeaux et un seuil, **jamais**
+ * un contenu (on sait que le fil a un résumé ancré, jamais le résumé lui-même).
+ */
+export interface ThreadContextSummary {
+  /** Taille du contexte vivant (tokens). */
+  readonly contextTokens: number;
+  /** Ce contexte en « pages » (langage classeur). */
+  readonly contextPages: number;
+  /** Tours vivants (rejouables). */
+  readonly liveTurns: number;
+  /** Tours rangés (repliés). */
+  readonly foldedTurns: number;
+  /** Le fil a-t-il un résumé ancré (mémoire longue de la compaction douce) ? */
+  readonly hasAnchoredSummary: boolean;
+  /** La compaction automatique est-elle active ? */
+  readonly compactionEnabled: boolean;
+  /** Seuil de tokens au-delà duquel la compaction se déclenche. */
+  readonly triggerTokens: number;
+  /** Ce seuil en « pages ». */
+  readonly triggerPages: number;
+  /** Progression du contexte vivant vers le seuil (0–100 %). */
+  readonly fillPercent: number;
+  /** Nombre de messages récents gardés entiers au rejeu. */
+  readonly keepRecentTurns: number;
+  /** Le rappel sémantique (embeddings) est-il actif ? Le rappel par mot-clé couvre toujours tout le fil. */
+  readonly recallSemantic: boolean;
+}
+
+/**
  * Un panneau **local** rendu dans le fil du terminal (résultat d'une commande slash F-165). Purement
  * de l'affichage : jamais dans l'historique envoyé au modèle.
  */
@@ -237,6 +282,10 @@ export interface SlashPanel {
   readonly costState?: CostPanelState;
   /** L'économie du fil, présente pour `panelKind === 'cost'` en état `ready`. */
   readonly cost?: ThreadCostSummary;
+  /** État de la lecture, pour `panelKind === 'context'` : `loading` → `ready`/`error`. */
+  readonly contextState?: ContextPanelState;
+  /** L'état mémoire du fil, présent pour `panelKind === 'context'` en état `ready`. */
+  readonly context?: ThreadContextSummary;
 }
 
 /** Construit les entrées d'aide à partir du registre (toutes les commandes F-165 disponibles). */
@@ -269,6 +318,11 @@ export function buildPanel(command: SlashPanelCommand, arg: string, id: string):
     // La donnée arrive d'un appel REST de lecture (jamais du modèle) : le panneau naît en chargement,
     // et le dispatch le fera passer en `ready`/`error`. *Vérifier son coût ne doit rien coûter.*
     return { ...base, title: 'Économie du fil', costState: 'loading' };
+  }
+  if (command.panelKind === 'context') {
+    // Même règle : la donnée arrive d'un GET de lecture (jamais du modèle). *Vérifier sa mémoire ne
+    // doit rien coûter.*
+    return { ...base, title: 'État mémoire du fil', contextState: 'loading' };
   }
   return base;
 }

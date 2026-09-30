@@ -1280,6 +1280,12 @@
               [budget]="costBudget()"
             />
           }
+          @case ('context') {
+            <app-atelier-slash-contexte
+              [state]="panel.contextState ?? 'loading'"
+              [context]="panel.context ?? null"
+            />
+          }
         }
       </app-atelier-slash-panel>
     }

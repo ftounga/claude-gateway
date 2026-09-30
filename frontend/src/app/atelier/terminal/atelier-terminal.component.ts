@@ -64,7 +64,9 @@ import {
 import { AtelierSlashPanelComponent } from './atelier-slash-panel.component';
 import { AtelierSlashHelpComponent } from './atelier-slash-help.component';
 import { AtelierSlashCostComponent } from './atelier-slash-cost.component';
+import { AtelierSlashContexteComponent } from './atelier-slash-contexte.component';
 import { AtelierCostService } from '../../core/services/atelier-cost.service';
+import { AtelierContextService } from '../../core/services/atelier-context.service';
 import {
   ActiveMention,
   activeMention,
@@ -198,6 +200,7 @@ export interface SlashMenuEntry {
     TeamsLinkBadgeComponent, NgTemplateOutlet, TerminalEmailComponent, PageBlockComponent, PagePanelComponent,
     TerminalActionsPanelComponent, AtelierTerminalDemandeComponent,
     AtelierSlashPanelComponent, AtelierSlashHelpComponent, AtelierSlashCostComponent,
+    AtelierSlashContexteComponent,
     MatButtonToggleModule, MatIconModule, MatMenuModule, MatProgressBarModule, MatProgressSpinnerModule,
     MatTooltipModule, RouterLink,
     WeeklyBudgetComponent, ProjectCostComponent, TurnSuggestionsComponent, DictationButtonComponent,
@@ -1445,6 +1448,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   private readonly weeklyBudget = inject(WeeklyBudgetService);
   /** F-165 / SF-165-02 : la lecture de l'économie du fil pour la commande vue `/cout` (aucun tour). */
   private readonly atelierCost = inject(AtelierCostService);
+  private readonly atelierContext = inject(AtelierContextService);
   /** Ce que chaque projet a coûté (F-143 / SF-143-01), partagé avec la Forge. */
   private readonly projectCosts = inject(ProjectCostService);
 
@@ -1765,6 +1769,10 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     if (command.panelKind === 'cost') {
       this.loadCostPanel(id);
     }
+    // F-165 / SF-165-03 : `/contexte` est une VUE — même règle qu'au-dessus, un GET de lecture.
+    if (command.panelKind === 'context') {
+      this.loadContextPanel(id);
+    }
   }
 
   /**
@@ -1781,6 +1789,23 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     this.atelierCost.costSummary(workspaceId).subscribe({
       next: (cost) => this.patchPanel(id, { costState: 'ready', cost }),
       error: () => this.patchPanel(id, { costState: 'error' }),
+    });
+  }
+
+  /**
+   * F-165 / SF-165-03 — charge l'état mémoire du fil pour le panneau `/contexte` et le fait passer de
+   * `loading` à `ready`/`error`. LECTURE seule : aucun tour modèle. Sans projet connu, le panneau bascule
+   * directement en échec (rien à lire).
+   */
+  private loadContextPanel(id: string): void {
+    const workspaceId = this.projectId;
+    if (!workspaceId) {
+      this.patchPanel(id, { contextState: 'error' });
+      return;
+    }
+    this.atelierContext.contextSummary(workspaceId).subscribe({
+      next: (context) => this.patchPanel(id, { contextState: 'ready', context }),
+      error: () => this.patchPanel(id, { contextState: 'error' }),
     });
   }
 

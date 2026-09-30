@@ -1,0 +1,67 @@
+<!-- F-165 / SF-165-03 — Corps du panneau /contexte : l'état mémoire du fil, en langage « classeur ». VUE
+     pure : aucune donnée n'est calculée ici, aucun tour n'est déclenché. Chiffres en tabular-nums. -->
+@switch (state) {
+  @case ('loading') {
+    <p class="ctx-note">
+      <mat-spinner diameter="18" strokeWidth="2" aria-hidden="true"></mat-spinner>
+      Lecture de l'état mémoire du fil…
+    </p>
+  }
+  @case ('error') {
+    <p class="ctx-note ctx-note--error">
+      État mémoire indisponible pour l'instant. Réessayez dans un instant — cela ne coûte aucun tour.
+    </p>
+  }
+  @default {
+    @if (context) {
+      <!-- Le contexte vivant et sa progression vers le seuil de compaction. -->
+      <div class="ctx-figures">
+        <div class="ctx-figure ctx-figure--lead">
+          <span class="ctx-figure__value">{{ count(context.contextPages) }}</span>
+          <span class="ctx-figure__label">Pages vivantes ({{ count(context.contextTokens) }} tokens)</span>
+        </div>
+        <div class="ctx-figure">
+          <span class="ctx-figure__value">{{ context.fillPercent }} %</span>
+          <span class="ctx-figure__label">du seuil de compaction</span>
+        </div>
+      </div>
+
+      <section class="ctx-section" aria-label="Progression vers le seuil de compaction">
+        <div class="ctx-bar" role="img"
+             [attr.aria-label]="'Contexte vivant à ' + fillWidth + ' % du seuil'">
+          <span class="ctx-bar__seg" [class.is-near]="nearThreshold" [style.width.%]="fillWidth"></span>
+        </div>
+        <p class="ctx-hint">
+          La compaction range les vieux tours autour de {{ count(context.triggerPages) }} pages
+          ({{ count(context.triggerTokens) }} tokens).
+        </p>
+      </section>
+
+      <!-- L'état de la mémoire, d'un coup d'œil. -->
+      <section class="ctx-section" aria-label="Mémoire du fil">
+        <ul class="ctx-facts">
+          <li class="ctx-fact">
+            <span class="ctx-fact__label">Vivants / rangés</span>
+            <span class="ctx-fact__value">{{ count(context.liveTurns) }} / {{ count(context.foldedTurns) }}</span>
+          </li>
+          <li class="ctx-fact">
+            <span class="ctx-fact__label">Résumé ancré</span>
+            <span class="ctx-fact__value">{{ context.hasAnchoredSummary ? 'Présent' : 'Aucun' }}</span>
+          </li>
+          <li class="ctx-fact">
+            <span class="ctx-fact__label">Compaction</span>
+            <span class="ctx-fact__value">
+              {{ context.compactionEnabled ? 'Active' : 'Coupée' }} · {{ count(context.keepRecentTurns) }} récents gardés
+            </span>
+          </li>
+          <li class="ctx-fact">
+            <span class="ctx-fact__label">Rappel</span>
+            <span class="ctx-fact__value">
+              Mot-clé {{ context.recallSemantic ? '+ sémantique' : 'seul' }}
+            </span>
+          </li>
+        </ul>
+      </section>
+    }
+  }
+}

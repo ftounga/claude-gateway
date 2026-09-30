@@ -735,6 +735,63 @@ describe('AtelierTerminalComponent', () => {
     http.expectNone('/api/workspaces/null/chat/cost-summary');
   });
 
+  // ------------------------------------ F-165 / SF-165-03 : /contexte (vue état mémoire, aucun tour)
+
+  it('taper « / » propose aussi la commande vue /contexte dans le menu', () => {
+    component.draft = '/';
+    fixture.detectChanges();
+
+    const titles = Array.from(
+      fixture.nativeElement.querySelectorAll('.slash-menu__name'),
+    ).map((n) => (n as HTMLElement).textContent?.trim());
+    expect(titles).toContain('/contexte');
+  });
+
+  it('dispatcher /contexte n\'émet AUCUN send et lit l\'état mémoire via un GET de lecture', () => {
+    const http = TestBed.inject(HttpTestingController);
+    let sent = 0;
+    component.send.subscribe(() => (sent += 1));
+    component.projectId = 'w1';
+
+    component.draft = '/contexte';
+    component.submit();
+    fixture.detectChanges();
+
+    // La garantie fondatrice : une vue ne coûte aucun tour.
+    expect(sent).toBe(0);
+    expect(component.slashPanels().length).toBe(1);
+    expect(component.slashPanels()[0].panelKind).toBe('context');
+    expect(component.slashPanels()[0].contextState).toBe('loading');
+
+    // Une VUE interroge un endpoint REST de LECTURE (jamais la boucle modèle).
+    const req = http.expectOne('/api/workspaces/w1/chat/context-summary');
+    expect(req.request.method).toBe('GET');
+    req.flush({
+      contextTokens: 60000, contextPages: 120, liveTurns: 3, foldedTurns: 5,
+      hasAnchoredSummary: true, compactionEnabled: true, triggerTokens: 120000,
+      triggerPages: 240, fillPercent: 50, keepRecentTurns: 6, recallSemantic: true,
+    });
+    fixture.detectChanges();
+
+    expect(component.slashPanels()[0].contextState).toBe('ready');
+    expect(fixture.nativeElement.querySelector('app-atelier-slash-contexte')).not.toBeNull();
+  });
+
+  it('/contexte sans projet connu bascule en échec, sans aucun tour ni appel', () => {
+    const http = TestBed.inject(HttpTestingController);
+    let sent = 0;
+    component.send.subscribe(() => (sent += 1));
+    component.projectId = null;
+
+    component.draft = '/contexte';
+    component.submit();
+    fixture.detectChanges();
+
+    expect(sent).toBe(0);
+    expect(component.slashPanels()[0].contextState).toBe('error');
+    http.expectNone('/api/workspaces/null/chat/context-summary');
+  });
+
   it('une vue reste dispatchable même au plafond de terminaux vivants (elle ne coûte rien)', () => {
     let sent = 0;
     component.send.subscribe(() => (sent += 1));

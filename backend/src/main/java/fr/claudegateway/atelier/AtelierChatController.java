@@ -37,6 +37,7 @@ import fr.claudegateway.atelier.dto.AtelierMessageResponse;
 import fr.claudegateway.atelier.dto.AtelierResumeResponse;
 import fr.claudegateway.atelier.dto.AtelierSteerResponse;
 import fr.claudegateway.atelier.dto.AtelierTurnStateResponse;
+import fr.claudegateway.atelier.dto.ThreadContextSummaryResponse;
 import fr.claudegateway.atelier.dto.ThreadCostSummaryResponse;
 import fr.claudegateway.atelier.live.LiveTurn;
 import fr.claudegateway.atelier.live.LiveTurnRegistry;
@@ -89,6 +90,8 @@ public class AtelierChatController {
     private final fr.claudegateway.quota.TurnCostView turnCostView;
     /** L'économie du fil courant, servie à la commande vue {@code /cout} (F-165 / SF-165-02). */
     private final AtelierThreadCostService threadCostService;
+    /** L'état mémoire du fil courant, servi à la commande vue {@code /contexte} (F-165 / SF-165-03). */
+    private final AtelierThreadContextService threadContextService;
 
     public AtelierChatController(AtelierChatService atelierChatService,
             AtelierThreadService atelierThreadService, CurrentUser currentUser,
@@ -97,7 +100,8 @@ public class AtelierChatController {
             @Qualifier("turnAttachExecutor") Executor turnAttachExecutor,
             LiveTurnRegistry liveTurns, RemoteTurnSource remoteTurns,
             fr.claudegateway.quota.TurnCostView turnCostView,
-            AtelierThreadCostService threadCostService) {
+            AtelierThreadCostService threadCostService,
+            AtelierThreadContextService threadContextService) {
         this.atelierChatService = atelierChatService;
         this.atelierThreadService = atelierThreadService;
         this.currentUser = currentUser;
@@ -108,6 +112,7 @@ public class AtelierChatController {
         this.remoteTurns = remoteTurns;
         this.turnCostView = turnCostView;
         this.threadCostService = threadCostService;
+        this.threadContextService = threadContextService;
     }
 
     @PostMapping
@@ -400,6 +405,25 @@ public class AtelierChatController {
     public ThreadCostSummaryResponse costSummary(@PathVariable UUID id) {
         atelierAccess.requireTerminalAccess(id);
         return threadCostService.summary(currentUser.requireId(), id);
+    }
+
+    /**
+     * <b>L'état mémoire du fil courant</b> (F-165 / SF-165-03) : la matière de la commande vue
+     * {@code /contexte}.
+     *
+     * <p><b>Une vue, aucun tour.</b> C'est une <b>lecture</b> qui compose l'état de reprise, la taille du
+     * contexte vivant, la progression vers le seuil de compaction, la présence d'un résumé ancré et
+     * l'état du rappel — <b>sans</b> jamais passer par la boucle modèle ni rien recalculer côté modèle.
+     * « Vérifier son coût ne doit rien coûter » (cadrage F-165) vaut aussi pour vérifier sa mémoire.</p>
+     *
+     * <p><b>Isolation</b> : l'identité vient du {@link CurrentUser} (JWT) ; le service applique
+     * {@code requireOwned} (404 indiscernable sur un projet d'autrui) et filtre {@code user_id} sur le
+     * journal et le workspace — un utilisateur ne voit <b>que</b> son propre fil.</p>
+     */
+    @GetMapping("/context-summary")
+    public ThreadContextSummaryResponse contextSummary(@PathVariable UUID id) {
+        atelierAccess.requireTerminalAccess(id);
+        return threadContextService.summary(currentUser.requireId(), id);
     }
 
     /**

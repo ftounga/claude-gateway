@@ -1,0 +1,125 @@
+/* ------------------------------------------------------------------ F-165 / SF-165-03
+   LE CORPS DU PANNEAU /contexte — l'état mémoire du fil. Rendu dans le cadre SOMBRE du panneau
+   (SF-165-01) : jetons `--cg-*` uniquement, AUCUNE couleur ni police hors charte. Chiffres en
+   `tabular-nums`. Cibles ≥ 44 px (SF-158). */
+
+.ctx-note {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  margin: 0;
+  min-height: 44px; /* SF-158 : la ligne d'état reste une cible confortable */
+  font-size: 13px;
+  color: var(--cg-text-secondary);
+}
+
+.ctx-note--error {
+  color: var(--cg-orange-2);
+}
+
+/* --- Les deux chiffres phares --- */
+.ctx-figures {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--cg-space-3) var(--cg-space-5);
+  margin-bottom: var(--cg-space-3);
+}
+
+.ctx-figure {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ctx-figure__value {
+  font-family: var(--cg-font-heading);
+  font-weight: 700;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  color: var(--cg-surface);
+}
+
+.ctx-figure--lead .ctx-figure__value {
+  font-size: 30px;
+  color: var(--cg-orange-2);
+}
+
+.ctx-figure__label {
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--cg-text-secondary);
+}
+
+/* --- Sections --- */
+.ctx-section {
+  margin-top: var(--cg-space-4);
+}
+
+/* --- Jauge de progression vers le seuil --- */
+.ctx-bar {
+  display: flex;
+  width: 100%;
+  height: 12px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--cg-surface) 12%, transparent);
+}
+
+.ctx-bar__seg {
+  height: 100%;
+  min-width: 2px;
+  background: var(--cg-success);
+
+  &.is-near {
+    background: var(--cg-orange-2);
+  }
+}
+
+.ctx-hint {
+  margin: var(--cg-space-2) 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--cg-text-secondary);
+}
+
+/* --- Faits mémoire --- */
+.ctx-facts {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--cg-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ctx-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ctx-fact__label {
+  font-family: var(--cg-font-heading);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cg-text-secondary);
+}
+
+.ctx-fact__value {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  color: var(--cg-surface);
+}
+
+/* Sous 819 px (SF-158) : rien ne déborde ; les faits passent sur une colonne. */
+@media (max-width: 819px) {
+  .ctx-facts {
+    grid-template-columns: 1fr;
+    gap: var(--cg-space-2);
+  }
+}

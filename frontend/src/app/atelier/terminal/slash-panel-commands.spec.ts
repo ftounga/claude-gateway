@@ -95,4 +95,34 @@ describe('slash-panel-commands (F-165 / SF-165-01)', () => {
     expect(panel.costState).toBe('loading');
     expect(panel.cost).toBeUndefined();
   });
+
+  // -------------------------------------------- F-165 / SF-165-03 : /contexte (vue état mémoire du fil)
+
+  it('inscrit /contexte au registre comme une VUE (panelKind « context »)', () => {
+    const contexte = findPanelCommand('contexte');
+    expect(contexte).toBeDefined();
+    expect(contexte?.kind).toBe('view');
+    expect(contexte?.panelKind).toBe('context');
+    expect(contexte?.takesArgument).toBe(false);
+  });
+
+  it('propose /contexte au préfixe (« /con » → /contexte ; « / » → /contexte aussi)', () => {
+    expect(panelCommandSuggestions('/con').map((c) => c.name)).toContain('contexte');
+    expect(panelCommandSuggestions('/').map((c) => c.name)).toContain('contexte');
+  });
+
+  it('intercepte /contexte à l\'envoi (aucun argument)', () => {
+    const parsed = parsePanelCommand('/contexte');
+    expect(parsed?.command.name).toBe('contexte');
+    expect(parsed?.arg).toBe('');
+  });
+
+  it('construit le panneau /contexte en état de chargement (la donnée vient d\'un GET)', () => {
+    const contexte = findPanelCommand('contexte')!;
+    const panel = buildPanel(contexte, '', 'slash-2');
+    expect(panel.panelKind).toBe('context');
+    expect(panel.command).toBe('/contexte');
+    expect(panel.contextState).toBe('loading');
+    expect(panel.context).toBeUndefined();
+  });
 });
