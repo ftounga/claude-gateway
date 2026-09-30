@@ -134,6 +134,15 @@ public interface UsageTurnRepository extends JpaRepository<UsageTurn, UUID> {
             UUID userId, UUID workspaceId, OffsetDateTime from, OffsetDateTime to);
 
     /**
+     * <b>Tous les tours d'un projet</b>, du plus ancien au plus récent (F-165 / SF-165-02) — la matière
+     * de l'économie du fil (`/cout`). Filtre {@code user_id} <b>et</b> {@code workspace_id} : jamais par
+     * projet seul, jamais tous comptes confondus. La fenêtre « fil courant » (depuis le dernier nouveau
+     * départ) est appliquée par l'appelant, qui connaît {@code threadStartedAt} — pas par une borne de
+     * temps arbitraire ici.
+     */
+    List<UsageTurn> findByUserIdAndWorkspaceIdOrderByOccurredAtAsc(UUID userId, UUID workspaceId);
+
+    /**
      * Les tours d'un <b>compte</b> sur une période, tous projets confondus (F-156 / SF-156-02) — la
      * matière du diagnostic du produit, qui observe une accumulation et non une session.
      */

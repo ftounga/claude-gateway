@@ -55,6 +55,7 @@ import {
 import {
   SlashPanel,
   SlashPanelCommand,
+  ThreadCostBudget,
   buildPanel,
   findPanelCommand,
   panelCommandSuggestions,
@@ -62,6 +63,8 @@ import {
 } from './slash-panel-commands';
 import { AtelierSlashPanelComponent } from './atelier-slash-panel.component';
 import { AtelierSlashHelpComponent } from './atelier-slash-help.component';
+import { AtelierSlashCostComponent } from './atelier-slash-cost.component';
+import { AtelierCostService } from '../../core/services/atelier-cost.service';
 import {
   ActiveMention,
   activeMention,
@@ -194,7 +197,7 @@ export interface SlashMenuEntry {
     FormsModule, ForgeBreadcrumbComponent, LiveBadgeComponent, MarkdownPipe, MatButtonModule,
     TeamsLinkBadgeComponent, NgTemplateOutlet, TerminalEmailComponent, PageBlockComponent, PagePanelComponent,
     TerminalActionsPanelComponent, AtelierTerminalDemandeComponent,
-    AtelierSlashPanelComponent, AtelierSlashHelpComponent,
+    AtelierSlashPanelComponent, AtelierSlashHelpComponent, AtelierSlashCostComponent,
     MatButtonToggleModule, MatIconModule, MatMenuModule, MatProgressBarModule, MatProgressSpinnerModule,
     MatTooltipModule, RouterLink,
     WeeklyBudgetComponent, ProjectCostComponent, TurnSuggestionsComponent, DictationButtonComponent,
@@ -1440,6 +1443,8 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
   /** Le budget de la semaine, partagé avec la Forge (F-133 / SF-133-15). */
   private readonly weeklyBudget = inject(WeeklyBudgetService);
+  /** F-165 / SF-165-02 : la lecture de l'économie du fil pour la commande vue `/cout` (aucun tour). */
+  private readonly atelierCost = inject(AtelierCostService);
   /** Ce que chaque projet a coûté (F-143 / SF-143-01), partagé avec la Forge. */
   private readonly projectCosts = inject(ProjectCostService);
 
@@ -1752,8 +1757,51 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     this.closeMentions();
     // Le brouillon a été consommé par la commande : on le vide (le parent applique).
     this.draftChange.emit('');
-    const panel = buildPanel(command, arg, `slash-${this.slashPanelSeq++}`);
+    const id = `slash-${this.slashPanelSeq++}`;
+    const panel = buildPanel(command, arg, id);
     this.slashPanels.update((panels) => [...panels, panel]);
+    // F-165 / SF-165-02 : `/cout` est une VUE — elle interroge un endpoint REST de LECTURE (jamais la
+    // boucle modèle) et met à jour SON panneau à la réponse. Aucun `send.emit()` : aucun tour.
+    if (command.panelKind === 'cost') {
+      this.loadCostPanel(id);
+    }
+  }
+
+  /**
+   * F-165 / SF-165-02 — charge l'économie du fil pour le panneau `/cout` et le fait passer de
+   * `loading` à `ready`/`error`. LECTURE seule : aucun tour modèle. Sans projet connu, le panneau
+   * bascule directement en échec (rien à lire).
+   */
+  private loadCostPanel(id: string): void {
+    const workspaceId = this.projectId;
+    if (!workspaceId) {
+      this.patchPanel(id, { costState: 'error' });
+      return;
+    }
+    this.atelierCost.costSummary(workspaceId).subscribe({
+      next: (cost) => this.patchPanel(id, { costState: 'ready', cost }),
+      error: () => this.patchPanel(id, { costState: 'error' }),
+    });
+  }
+
+  /** Met à jour un panneau par son id, sans toucher aux autres. */
+  private patchPanel(id: string, patch: Partial<SlashPanel>): void {
+    this.slashPanels.update((panels) =>
+      panels.map((panel) => (panel.id === id ? { ...panel, ...patch } : panel)),
+    );
+  }
+
+  /**
+   * Le budget hebdomadaire applicable au fil, s'il est DÉJÀ lisible (lecture admin `WeeklyBudgetService`,
+   * déjà chargée par le terminal) — sinon `null`, et le panneau `/cout` n'affiche aucun budget (jamais
+   * un plafond inventé). La vue budget non-admin par projet est reportée à SF-165-04 (cadrage §7).
+   */
+  costBudget(): ThreadCostBudget | null {
+    const client = this.weeklyBudget.clientOf(this.hostId);
+    if (!client || client.budgetEur === null) {
+      return null;
+    }
+    return { hostName: client.hostName, budgetEur: client.budgetEur, spentEur: client.spentEur };
   }
 
   /** Retire un panneau du fil (bouton fermer). Purement local. */

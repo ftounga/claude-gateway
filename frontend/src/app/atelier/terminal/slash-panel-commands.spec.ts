@@ -65,4 +65,34 @@ describe('slash-panel-commands (F-165 / SF-165-01)', () => {
     expect(entries.length).toBe(SLASH_PANEL_COMMANDS.length);
     expect(entries.every((e) => e.command.startsWith('/'))).toBe(true);
   });
+
+  // ------------------------------------------------------ F-165 / SF-165-02 : /cout (vue économie du fil)
+
+  it('inscrit /cout au registre comme une VUE (panelKind « cost »)', () => {
+    const cout = findPanelCommand('cout');
+    expect(cout).toBeDefined();
+    expect(cout?.kind).toBe('view');
+    expect(cout?.panelKind).toBe('cost');
+    expect(cout?.takesArgument).toBe(false);
+  });
+
+  it('propose /cout au préfixe (« /co » → /cout ; « / » → /cout aussi)', () => {
+    expect(panelCommandSuggestions('/co').map((c) => c.name)).toContain('cout');
+    expect(panelCommandSuggestions('/').map((c) => c.name)).toContain('cout');
+  });
+
+  it('intercepte /cout à l\'envoi (aucun argument)', () => {
+    const parsed = parsePanelCommand('/cout');
+    expect(parsed?.command.name).toBe('cout');
+    expect(parsed?.arg).toBe('');
+  });
+
+  it('construit le panneau /cout en état de chargement (la donnée vient d\'un GET)', () => {
+    const cout = findPanelCommand('cout')!;
+    const panel = buildPanel(cout, '', 'slash-1');
+    expect(panel.panelKind).toBe('cost');
+    expect(panel.command).toBe('/cout');
+    expect(panel.costState).toBe('loading');
+    expect(panel.cost).toBeUndefined();
+  });
 });
