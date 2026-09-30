@@ -542,6 +542,47 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "→ range dans la carte du poste. Sans réponse (personne au clavier / vague "
                     + "autonome), « demander » prend l'option recommandée et la flague : tu ne figes "
                     + "jamais le tour ni ne ranges en silence.\n\n";
+    /**
+     * Passation vers le sujet + garde-fou anti-poursuite (F-141 / SF-141-06). Ajouté <b>uniquement au
+     * terminal du poste</b> ({@link Workspace#isHostTerminal()}), à la suite de
+     * {@link #SUBJECT_ROUTING_DOCTRINE} : SF-141-01→05 outillent l'<i>entrée</i> (annoncer, aiguiller,
+     * créer, reclasser, proposer en question structurée) ; SF-141-06 outille la <i>sortie</i> — la
+     * <b>passation</b> après création/rattachement, et le <b>garde-fou</b> qui empêche que le travail du
+     * sujet reflue dans le poste (sinon le poste devient un fil marathon → plafond par message atteint
+     * en boucle, coût N², à rebours de F-134).
+     *
+     * <p><b>Curseur retenu : refus doux avec redirection</b>, overridable explicitement avec un caveat
+     * d'une ligne. Ni simple rappel (n'endigue pas le marathon), ni verrou technique dur (casserait les
+     * usages légitimes du poste et contredirait F-141 §5). La distinction poursuite-du-sujet vs
+     * usage-légitime se fait par <b>raisonnement du modèle guidé par la doctrine</b>, sur un signal
+     * conversationnel (un {@code create_subject}/aiguillage vient d'avoir lieu dans ce terminal) — pas de
+     * machine à états persistante. Prompt-only, littéral <b>stable</b> (cache F-134 préservé).</p>
+     */
+    private static final String SUBJECT_HANDOFF_DOCTRINE =
+            "Après avoir créé ou rattaché un sujet, passe la main — non négociable :\n"
+                    + "- Le poste ROUTE, il n'EXÉCUTE pas le travail d'un sujet. Dès qu'un sujet <X> vient "
+                    + "d'être créé (create_subject) ou retenu à la racine, TERMINE par une PASSATION "
+                    + "visible : le NOM du sujet, « rouvre le terminal dans le sujet <X> », et une PHRASE "
+                    + "DE DÉMARRAGE prête à coller qui résume l'intention (« Reprends LDIC-223 : active le "
+                    + "Terraform State sur GitLab CAPFM — commence par lire le repo GitOps »).\n"
+                    + "- Présente cette passation avec l'outil « demander » quand c'est possible : options "
+                    + "« Ouvrir le sujet <X> » (recommended) / « Plus tard », la phrase de démarrage donnée "
+                    + "dans le corps. Sans « demander » (personne au clavier), émets la passation EN "
+                    + "CLAIR — jamais en silence.\n"
+                    + "- GARDE-FOU anti-poursuite : si, APRÈS cette création/ce rattachement, on te demande "
+                    + "d'AVANCER le travail substantiel de <X> au poste (lire/écrire ses fichiers, lancer "
+                    + "son build/déploiement, dérouler son PLAN-ACTION.md), NE L'EXÉCUTE PAS ici : redirige "
+                    + "— « ce travail vit dans <X>, rouvre le terminal là-bas » — et propose la bascule "
+                    + "(phrase de démarrage). Sinon le poste devient un fil marathon (plafond par message "
+                    + "atteint en boucle) et le travail s'accumule au mauvais endroit.\n"
+                    + "- Restent LÉGITIMES au poste, à exécuter normalement : router un fait, tenir la "
+                    + "carte du poste (transverse), l'infra du poste (git clone, VPN, accès réseau, lister "
+                    + "les sujets), et aiguiller un AUTRE sujet. Ne bloque QUE la poursuite substantielle "
+                    + "de <X>. En cas de doute, redirige en PROPOSANT — jamais un blocage d'autorité — et "
+                    + "ne répète pas l'injonction à chaque message (anti-spam).\n"
+                    + "- Ce n'est PAS un verrou : si l'utilisateur INSISTE explicitement (« fais-le ici "
+                    + "quand même »), OBTEMPÈRE, avec un caveat d'UNE ligne (le poste va devenir un fil "
+                    + "marathon → plafond atteint en boucle ; <X> reste le bon endroit).\n\n";
     private static final List<String> SKILL_PREFIXES = List.of(".claude/skills/", "skills/");
     /**
      * Fichiers d'état du <b>sujet courant</b> injectés dans le préfixe (F-148 / SF-148-05), dans cet
@@ -6743,6 +6784,10 @@ public class AtelierChatService implements RelayInterruptTarget {
         // un préfixe plus court préserve le cache (F-134) — d'où l'injection conditionnelle.
         if (workspace.isHostTerminal()) {
             system.append(SUBJECT_ROUTING_DOCTRINE);
+            // Passation vers le sujet + garde-fou anti-poursuite (F-141 / SF-141-06) : UNIQUEMENT au
+            // terminal du poste, à la suite de l'aiguillage. Le poste ROUTE, il n'EXÉCUTE pas le travail
+            // d'un sujet ; garder le poste léger repousse le plafond par message (cache F-134 préservé).
+            system.append(SUBJECT_HANDOFF_DOCTRINE);
         }
 
         // Mode explicite « Réponse/Plan » (F-120 / SF-120-02) : quand l'utilisateur l'a choisi, on

@@ -626,6 +626,59 @@ class AtelierChatServiceSystemPromptTest {
         assertThat(system).doesNotContain("Ne pose PAS ce choix de rangement en PROSE");
     }
 
+    // ------------------------------------------- F-141 / SF-141-06 : passation + garde-fou anti-poursuite
+
+    @Test
+    void theHandoffAndGuardDoctrineArePresentOnTheHostTerminal() {
+        String system = systemPromptOfHostTerminal();
+
+        // Passation visible après création/rattachement.
+        assertThat(system).contains("Après avoir créé ou rattaché un sujet, passe la main");
+        assertThat(system).contains("Le poste ROUTE, il n'EXÉCUTE pas le travail d'un sujet");
+        assertThat(system).contains("rouvre le terminal dans le sujet");
+        assertThat(system).contains("PHRASE DE DÉMARRAGE");
+        // Présentation via « demander » + repli en clair.
+        assertThat(system).contains("Ouvrir le sujet");
+        assertThat(system).contains("émets la passation EN CLAIR");
+        // Garde-fou anti-poursuite : refus doux + redirection.
+        assertThat(system).contains("GARDE-FOU anti-poursuite");
+        assertThat(system).contains("ce travail vit dans");
+        assertThat(system).contains("NE L'EXÉCUTE PAS ici : redirige");
+        // Distinction poursuite vs usages légitimes.
+        assertThat(system).contains("Restent LÉGITIMES au poste");
+        assertThat(system).contains("Ne bloque QUE la poursuite substantielle");
+        // Pas de verrou : override explicite avec caveat d'une ligne.
+        assertThat(system).contains("Ce n'est PAS un verrou");
+        assertThat(system).contains("caveat d'UNE ligne");
+        // Non-régression : aiguillage (SF-141-02/05), annonce (SF-141-01), carte silencieuse F-125.
+        assertThat(system).contains("À la racine du poste, aiguille avant de ranger");
+        assertThat(system).contains("Ne pose PAS ce choix de rangement en PROSE");
+        assertThat(system).contains("Dis où tu ranges un fait durable");
+        assertThat(system).contains("Tenue de la carte, en silence");
+    }
+
+    @Test
+    void theHandoffAndGuardDoctrineAreAbsentOnAnOrdinaryProject() {
+        // Terminal de projet RUNNER : dans un sujet, travailler le sujet EST légitime — pas de garde-fou.
+        String runner = systemPromptOfRunnerProjectDeclaring(null);
+        assertThat(runner).doesNotContain("Après avoir créé ou rattaché un sujet, passe la main");
+        assertThat(runner).doesNotContain("GARDE-FOU anti-poursuite");
+        // Doctrines universelles préservées (non-régression).
+        assertThat(runner).contains("Dis où tu ranges un fait durable");
+    }
+
+    @Test
+    void theHandoffAndGuardDoctrineAreAbsentOnASandboxProject() {
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+
+        String system = systemPrompt();
+
+        assertThat(system).doesNotContain("Après avoir créé ou rattaché un sujet, passe la main");
+        assertThat(system).doesNotContain("GARDE-FOU anti-poursuite");
+    }
+
     // ------------------------------------------- F-141 / SF-141-03 : créer un sujet + gouvernance héritée
 
     /** Prépare un TERMINAL DU POSTE (racine) sans envoyer de tour : pour scénariser des appels d'outil. */
