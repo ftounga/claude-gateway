@@ -455,8 +455,9 @@ public class AtelierChatService implements RelayInterruptTarget {
     private static final String ASK_QUESTION_DOCTRINE =
             "Poser des questions avec l'outil « demander » — non négociable :\n"
                     + "- Toute question à réponses PROPOSABLES, a fortiori une LISTE de questions, passe "
-                    + "par l'outil structuré « demander », JAMAIS par de la prose. La prose est réservée "
-                    + "aux questions vraiment ouvertes, sans réponse proposable.\n"
+                    + "par l'outil structuré « demander », JAMAIS par de la prose. C'est une RÈGLE, pas "
+                    + "un style : une liste de questions rendue en prose est un DÉFAUT. La prose est "
+                    + "réservée aux questions vraiment ouvertes, sans réponse proposable.\n"
                     + "- Si l'utilisateur te dit en substance « pose-moi les questions que tu veux pour "
                     + "comprendre tel sujet », tu DOIS utiliser « demander » (au besoin plusieurs fois, "
                     + "une question ou un petit lot à la fois). C'est le même outil, pas un bouton à part.\n"
