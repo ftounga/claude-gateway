@@ -108,11 +108,19 @@ public class DiagramToolExecutor {
         // F-142 / SF-142-17 : une note sur le schéma lui-même (sa densité). L'image EXISTE — ce n'est
         // pas une erreur ; c'est une invitation à le scinder, que l'agent doit pouvoir relayer.
         String notice = rendered.hasNotice() ? " NOTE DU RENDU : " + rendered.notice() : "";
+        // F-142 / SF-142-21 : la consigne d'affichage en page dépend du FORMAT. Un SVG est vectoriel
+        // (net à toute échelle) : il s'affiche en width:100%. Un PNG rapetissé devient flou : une archi
+        // raster large garde son conteneur défilable à taille naturelle.
+        String inPage = format == Format.SVG
+                ? "En page, ce SVG reste NET à toute échelle : affiche l'<img> en width:100%; height:auto "
+                        + "(il tient dans la colonne), avec un lien « ouvrir en grand » vers le SVG pour le "
+                        + "détail ; ne le laisse pas déborder à taille naturelle."
+                : "En page, une ARCHI raster (PNG) large se pose dans son propre conteneur défilable à "
+                        + "taille naturelle (div overflow:auto), jamais réduite en width:100% qui la rend "
+                        + "floue.";
         return new Outcome("Diagramme rendu par la gateway et déposé dans le projet sous « " + deposited
                 + " ». Insère ce chemin : add_picture pour une slide, <img src=\"" + deposited + "\"> pour "
-                + "une page, image pour un document. En page, une ARCHI est large : pose l'<img> dans son "
-                + "propre conteneur défilable à taille naturelle (div overflow:auto), jamais en "
-                + "width:100% qui l'écrase. Rien n'a été installé sur la machine."
+                + "une page, image pour un document. " + inPage + " Rien n'a été installé sur la machine."
                 + warning + notice, false);
     }
 
