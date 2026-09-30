@@ -124,7 +124,8 @@ public class AtelierChatController {
     public AtelierChatResponse chat(@PathVariable UUID id, @Valid @RequestBody AtelierChatRequest request) {
         atelierAccess.requireTerminalAccess(id);
         AtelierChatResult result = atelierChatService.chat(currentUser.requireId(), id,
-                request.message(), request.modeOrDefault(), request.forceOrDefault());
+                request.message(), request.modeOrDefault(), request.forceOrDefault(),
+                request.attachedDepositIdsOrEmpty());
         return new AtelierChatResponse(result.reply(), result.actions(), result.messageId(),
                 result.inputTokens(), result.outputTokens(), result.activeSeconds(),
                 result.budgetReached(), turnCostView.labelFor(result.costUsd(), null, turnCostView.callerIsAdmin()),
@@ -158,9 +159,13 @@ public class AtelierChatController {
         // serait invisible — et l'échappatoire de la porte du runner ne marcherait que sur le
         // chemin synchrone, celui que l'écran n'emprunte PAS.
         boolean force = request.forceOrDefault();
+        // Les pièces jointes désignées (F-169 / SF-169-02) sont lues ICI, sur le thread de requête,
+        // pour la même raison que le mode et `force` : le relais tourne sur le pool SSE.
+        List<UUID> attachedDepositIds = request.attachedDepositIdsOrEmpty();
         SseEmitter emitter = newEmitter();
         fr.claudegateway.chat.SseStreamDispatch.submit(chatStreamExecutor, emitter,
-                () -> relay(emitter, userId, id, request.message(), mode, hasAccess, admin, force));
+                () -> relay(emitter, userId, id, request.message(), mode, hasAccess, admin, force,
+                        attachedDepositIds));
         return emitter;
     }
 
@@ -489,8 +494,16 @@ public class AtelierChatController {
     @GetMapping
     public List<AtelierMessageResponse> history(@PathVariable UUID id) {
         atelierAccess.requireTerminalAccess(id);
-        return atelierChatService.history(currentUser.requireId(), id).stream()
-                .map(message -> AtelierMessageResponse.from(message, turnCostView))
+        UUID userId = currentUser.requireId();
+        List<fr.claudegateway.atelier.AtelierMessage> messages = atelierChatService.history(userId, id);
+        // F-169 / SF-169-02 : les pièces jointes de chaque message, chargées en UN lot (pas de N+1),
+        // isolation (user_id, workspace_id) au service. Un message sans pièce jointe rend `files` vide.
+        java.util.Map<UUID, List<fr.claudegateway.atelier.deposit.AtelierAttachedFile>> filesByMessage =
+                atelierChatService.attachedFilesByMessage(userId, id,
+                        messages.stream().map(fr.claudegateway.atelier.AtelierMessage::getId).toList());
+        return messages.stream()
+                .map(message -> AtelierMessageResponse.from(message, turnCostView,
+                        filesByMessage.get(message.getId())))
                 .toList();
     }
 
@@ -536,7 +549,7 @@ public class AtelierChatController {
 
     private void relay(SseEmitter emitter, UUID userId, UUID workspaceId, String message,
             fr.claudegateway.agent.AgentTurnMode mode, boolean hasAccess, boolean admin,
-            boolean force) {
+            boolean force, List<UUID> attachedDepositIds) {
         LiveTurn turn;
         if (hasAccess) {
             // UN ENVOI PENDANT UN TOUR EST UNE PRÉCISION (F-84 / SF-84-06, décision du PO du
@@ -718,9 +731,12 @@ public class AtelierChatController {
                 }
             };
             String demand = message;
+            // Les pièces jointes ne valent que pour la PREMIÈRE demande du tour (F-169 / SF-169-02) :
+            // un tour de suite ouvert par une précision (steer) n'en porte pas.
+            List<UUID> attachments = attachedDepositIds;
             for (;;) {
                 AtelierChatResult result = atelierChatService.chatStreaming(
-                        userId, workspaceId, demand, mode, listener, force);
+                        userId, workspaceId, demand, mode, listener, force, attachments);
                 if (result.interrupted()) {
                     // L'interruption est le geste qui arrête VRAIMENT (cadrage F-84 §5) : aucune
                     // précision restée en file ne relance un tour derrière elle — mais aucune ne
@@ -744,6 +760,7 @@ public class AtelierChatController {
                 log.info("Tour de suite ouvert par une précision (workspace={}, tour={})",
                         workspaceId, turn.turnId());
                 demand = followUp.get().text();
+                attachments = List.of();
             }
             outcome = "done";
         } catch (AtelierAccessDeniedException ex) {

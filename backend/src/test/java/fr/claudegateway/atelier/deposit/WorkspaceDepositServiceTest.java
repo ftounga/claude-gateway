@@ -50,6 +50,22 @@ class WorkspaceDepositServiceTest {
     private final UUID workspaceId = UUID.randomUUID();
     private final UUID hostId = UUID.randomUUID();
 
+    /**
+     * Le dépôt renvoie désormais l'id persisté (F-169 / SF-169-02) : le repository (mock) doit rendre
+     * l'entité avec un id, comme le ferait JPA. LENIENT : les tests de cas d'erreur n'atteignent pas
+     * l'enregistrement et n'utilisent pas ce stub.
+     */
+    @org.junit.jupiter.api.BeforeEach
+    void stubSaveReturnsPersistedEntity() {
+        when(depositedFileRepository.save(any(AtelierDepositedFile.class))).thenAnswer(invocation -> {
+            AtelierDepositedFile file = invocation.getArgument(0);
+            if (file.getId() == null) {
+                file.setId(UUID.randomUUID());
+            }
+            return file;
+        });
+    }
+
     /** chunk-bytes = 4 pour observer le découpage sur un petit fichier. */
     private WorkspaceDepositService service() {
         return new WorkspaceDepositService(workspaceService, runnerToolGateway, runnerLiveness,
@@ -91,6 +107,8 @@ class WorkspaceDepositServiceTest {
                 List.of(file("capture.png", new byte[] {1, 2, 3})));
 
         assertThat(response.files()).hasSize(1);
+        // F-169 / SF-169-02 : la réponse porte l'id du dépôt (renvoyé plus tard dans attachedDepositIds).
+        assertThat(response.files().get(0).id()).isNotNull();
         assertThat(response.files().get(0).path()).isEqualTo("entrees/capture.png");
         assertThat(response.files().get(0).target()).isEqualTo("HOSTED");
         assertThat(response.files().get(0).size()).isEqualTo(3);

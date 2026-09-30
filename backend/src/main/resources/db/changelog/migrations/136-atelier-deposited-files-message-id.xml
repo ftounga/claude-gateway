@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-169 / SF-169-02 — LIER LE DÉPÔT AU MESSAGE. Une colonne neuve sur une table existante :
+
+      * atelier_deposited_files.message_id : id (uuid) du message utilisateur auquel ce dépôt a été
+        EXPLICITEMENT joint (envoi avec pièces jointes). NULL pour les dépôts consommés par la
+        fenêtre temporelle historique (F-115 / SF-115-03) — rétrocompat stricte : rien ne change pour
+        un dépôt sans réf. Posé après la persistance du message (l'id du message n'existe qu'alors).
+
+      Aucune donnée existante n'est touchée (colonne nullable, sans valeur par défaut). L'index sert
+      la lecture « fichiers d'un message » faite au rechargement du fil (GET /chat). Réversible :
+      dropColumn.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="136-atelier-deposited-files-message-id-postgresql" author="claude-gateway" dbms="postgresql">
+        <addColumn tableName="atelier_deposited_files">
+            <column name="message_id" type="uuid"/>
+        </addColumn>
+        <createIndex tableName="atelier_deposited_files" indexName="idx_atelier_deposit_message">
+            <column name="message_id"/>
+        </createIndex>
+        <rollback>
+            <dropIndex tableName="atelier_deposited_files" indexName="idx_atelier_deposit_message"/>
+            <dropColumn tableName="atelier_deposited_files" columnName="message_id"/>
+        </rollback>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="136-atelier-deposited-files-message-id-h2" author="claude-gateway" dbms="h2">
+        <addColumn tableName="atelier_deposited_files">
+            <column name="message_id" type="uuid"/>
+        </addColumn>
+        <createIndex tableName="atelier_deposited_files" indexName="idx_atelier_deposit_message">
+            <column name="message_id"/>
+        </createIndex>
+        <rollback>
+            <dropIndex tableName="atelier_deposited_files" indexName="idx_atelier_deposit_message"/>
+            <dropColumn tableName="atelier_deposited_files" columnName="message_id"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

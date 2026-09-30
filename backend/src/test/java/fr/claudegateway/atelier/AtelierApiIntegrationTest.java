@@ -64,6 +64,8 @@ class AtelierApiIntegrationTest {
     @Autowired
     private AtelierMessageRepository atelierMessageRepository;
     @Autowired
+    private fr.claudegateway.atelier.deposit.AtelierDepositedFileRepository depositedFileRepository;
+    @Autowired
     private SubscriptionRepository subscriptionRepository;
     @Autowired
     private RunnerHostRepository runnerHostRepository;
@@ -255,6 +257,51 @@ class AtelierApiIntegrationTest {
                 .andExpect(jsonPath("$[0].terminal.blocks[0].command", is("npm test")))
                 .andExpect(jsonPath("$[0].terminal.blocks[0].output", is("12 passing")))
                 .andExpect(jsonPath("$[0].terminal.inputTokens", is(1000)));
+    }
+
+    @Test
+    void historyExposesAttachedFilesLinkedToAMessage() throws Exception {
+        // F-169 / SF-169-02 : au rechargement, un message expose ses pièces jointes (chemin + taille)
+        // reconstruites depuis atelier_deposited_files.message_id. Un dépôt SANS message_id (consommé
+        // par fenêtre temporelle) ni celui d'un autre utilisateur n'apparaissent jamais.
+        String id = createWorkspace(aliceToken, Map.of("a.txt", "x"));
+        java.util.UUID workspaceId = java.util.UUID.fromString(id);
+        fr.claudegateway.atelier.AtelierMessage userMessage = atelierMessageRepository.save(
+                fr.claudegateway.atelier.AtelierMessage.builder()
+                        .workspaceId(workspaceId).userId(alice.getId())
+                        .role("USER").content("décris l'image").build());
+
+        // Pièce jointe LIÉE à ce message.
+        depositedFileRepository.save(fr.claudegateway.atelier.deposit.AtelierDepositedFile.builder()
+                .userId(alice.getId()).workspaceId(workspaceId)
+                .path("entrees/capture.png").sizeBytes(2411L)
+                .consumedAt(java.time.OffsetDateTime.now()).messageId(userMessage.getId()).build());
+        // Dépôt du MÊME projet mais NON lié (fenêtre temporelle) : jamais dans la bulle.
+        depositedFileRepository.save(fr.claudegateway.atelier.deposit.AtelierDepositedFile.builder()
+                .userId(alice.getId()).workspaceId(workspaceId)
+                .path("entrees/orphelin.txt").sizeBytes(10L).build());
+
+        mockMvc.perform(get("/api/workspaces/" + id + "/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].role", is("USER")))
+                .andExpect(jsonPath("$[0].files.length()", is(1)))
+                .andExpect(jsonPath("$[0].files[0].path", is("entrees/capture.png")))
+                .andExpect(jsonPath("$[0].files[0].size", is(2411)));
+    }
+
+    @Test
+    void historyReturnsEmptyFilesForAMessageWithoutAttachments() throws Exception {
+        // F-169 / SF-169-02 : `files` est additif et vide pour un message sans pièce jointe.
+        String id = createWorkspace(aliceToken, Map.of("a.txt", "x"));
+        atelierMessageRepository.save(fr.claudegateway.atelier.AtelierMessage.builder()
+                .workspaceId(java.util.UUID.fromString(id)).userId(alice.getId())
+                .role("USER").content("bonjour").build());
+
+        mockMvc.perform(get("/api/workspaces/" + id + "/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].files.length()", is(0)));
     }
 
     @Test

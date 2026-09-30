@@ -68,4 +68,15 @@ public class AtelierDepositedFile {
     /** Horodaté quand un tour a porté ce chemin dans sa consigne (SF-115-03) ; {@code null} sinon. */
     @Column(name = "consumed_at")
     private OffsetDateTime consumedAt;
+
+    /**
+     * Message utilisateur auquel ce dépôt a été <b>explicitement joint</b> (F-169 / SF-169-02) : posé
+     * quand l'envoi porte des pièces jointes, après la persistance du message. {@code null} pour les
+     * dépôts consommés par la <b>fenêtre temporelle</b> historique (SF-115-03) — le lien fichier ↔
+     * message n'existe que pour un envoi qui l'a explicitement déclaré.
+     *
+     * <p>Settable (pas {@code updatable = false}) : c'est la seule mutation, une fois, à l'association.</p>
+     */
+    @Column(name = "message_id")
+    private UUID messageId;
 }

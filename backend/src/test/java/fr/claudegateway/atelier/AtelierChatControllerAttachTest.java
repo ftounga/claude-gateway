@@ -226,7 +226,8 @@ class AtelierChatControllerAttachTest {
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.anyBoolean())).thenAnswer(invocation -> {
+                org.mockito.ArgumentMatchers.anyBoolean(),
+                org.mockito.ArgumentMatchers.any())).thenAnswer(invocation -> {
                     vusAvantLaBoucle.addAll(ecran.names());
                     return new AtelierChatService.AtelierChatResult("fait", List.of(),
                             UUID.randomUUID());

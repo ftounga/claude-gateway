@@ -3,12 +3,15 @@ package fr.claudegateway.atelier;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+
+import fr.claudegateway.agent.AgentTurnMode;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -142,5 +145,55 @@ class AtelierChatServiceDepositTest {
         String sent = sentMessages();
         assertThat(sent).contains("bonjour");
         assertThat(sent).doesNotContain("Fichiers déposés dans ce terminal");
+    }
+
+    // ----------------------------------------------- F-169 / SF-169-02 : pièces jointes désignées
+
+    @Test
+    void avecDepotsDesignesConsommeParIdsEtLieAuMessagePasParFenetreTemporelle() {
+        UUID depositId = UUID.randomUUID();
+        AtelierDepositedFile designated = AtelierDepositedFile.builder()
+                .id(depositId).userId(userId).workspaceId(workspaceId)
+                .path("entrees/capture.png").sizeBytes(2411L).build();
+        when(depositedFileRepository
+                .findByUserIdAndWorkspaceIdAndIdInAndConsumedAtIsNullOrderByCreatedAtAsc(
+                        userId, workspaceId, List.of(depositId)))
+                .thenReturn(List.of(designated));
+        when(depositedFileRepository.findAllById(List.of(depositId))).thenReturn(List.of(designated));
+        agentProvider.enqueueFinal("fini");
+
+        service.chat(userId, workspaceId, "décris l'image", AgentTurnMode.ACT, false, List.of(depositId));
+
+        // La consigne envoyée porte le chemin (jamais le binaire), bâtie à partir des ids désignés.
+        String sent = sentMessages();
+        assertThat(sent).contains("entrees/capture.png").contains("read_file");
+        // La fenêtre temporelle N'EST PAS invoquée : aucune double-consommation.
+        verify(depositedFileRepository, never())
+                .findByUserIdAndWorkspaceIdAndConsumedAtIsNullOrderByCreatedAtAsc(any(), any());
+        // Le dépôt est lié au message utilisateur (message_id posé après persistance).
+        assertThat(designated.getMessageId()).isNotNull();
+    }
+
+    @Test
+    void avecDepotsDesignesLaParolePersisteeNePorteQueLeTexte() {
+        UUID depositId = UUID.randomUUID();
+        AtelierDepositedFile designated = AtelierDepositedFile.builder()
+                .id(depositId).userId(userId).workspaceId(workspaceId)
+                .path("entrees/capture.png").sizeBytes(2411L).build();
+        when(depositedFileRepository
+                .findByUserIdAndWorkspaceIdAndIdInAndConsumedAtIsNullOrderByCreatedAtAsc(
+                        userId, workspaceId, List.of(depositId)))
+                .thenReturn(List.of(designated));
+        when(depositedFileRepository.findAllById(List.of(depositId))).thenReturn(List.of(designated));
+        agentProvider.enqueueFinal("fini");
+
+        service.chat(userId, workspaceId, "décris l'image", AgentTurnMode.ACT, false, List.of(depositId));
+
+        ArgumentCaptor<AtelierMessage> saved = ArgumentCaptor.forClass(AtelierMessage.class);
+        verify(messageRepository, atLeastOnce()).save(saved.capture());
+        AtelierMessage userMessage = saved.getAllValues().stream()
+                .filter(m -> "USER".equals(m.getRole())).findFirst().orElseThrow();
+        assertThat(userMessage.getContent()).isEqualTo("décris l'image");
+        assertThat(userMessage.getContent()).doesNotContain("capture.png");
     }
 }

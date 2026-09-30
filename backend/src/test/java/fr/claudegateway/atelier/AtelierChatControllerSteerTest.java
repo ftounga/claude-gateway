@@ -73,7 +73,7 @@ class AtelierChatControllerSteerTest {
         RecordingEmitter premier = emitter();
         RecordingEmitter retour = emitter();
         AtomicReference<List<AtelierSteer>> lues = new AtomicReference<>();
-        when(chatService.chatStreaming(any(), any(), any(), any(), any(), anyBoolean())).thenAnswer(invocation -> {
+        when(chatService.chatStreaming(any(), any(), any(), any(), any(), anyBoolean(), any())).thenAnswer(invocation -> {
             AtelierProgressListener listener = invocation.getArgument(4);
             listener.onText("je travaille");
             // L'écran est revenu, n'a pas vu le tour (rebranchement retenu par un proxy) et renvoie.
@@ -87,7 +87,7 @@ class AtelierChatControllerSteerTest {
 
         controller().stream(PROJET, new AtelierChatRequest("lance les tests"));
 
-        verify(chatService, times(1)).chatStreaming(any(), any(), any(), any(), any(), anyBoolean());
+        verify(chatService, times(1)).chatStreaming(any(), any(), any(), any(), any(), anyBoolean(), any());
         assertThat(lues.get()).extracting(AtelierSteer::text).containsExactly("lance les tests");
         assertThat(retour.names())
                 .as("l'aparté qui dit la précision, le rejeu complet du tour, puis son direct")
@@ -104,7 +104,7 @@ class AtelierChatControllerSteerTest {
     void unePrecisionArriveePendantLaReponseFinaleOuvreUnTourDeSuite() {
         RecordingEmitter ecran = emitter();
         AtomicInteger appels = new AtomicInteger();
-        when(chatService.chatStreaming(any(), any(), any(), any(), any(), anyBoolean())).thenAnswer(invocation -> {
+        when(chatService.chatStreaming(any(), any(), any(), any(), any(), anyBoolean(), any())).thenAnswer(invocation -> {
             if (appels.incrementAndGet() == 1) {
                 // Déposée pendant l'appel qui rend la réponse finale : plus d'étape pour la lire.
                 AtelierSteerResponse steer =
@@ -117,8 +117,8 @@ class AtelierChatControllerSteerTest {
 
         controller().stream(PROJET, new AtelierChatRequest("corrige le bug"));
 
-        verify(chatService).chatStreaming(eq(ALICE), eq(PROJET), eq("corrige le bug"), any(), any(), anyBoolean());
-        verify(chatService).chatStreaming(eq(ALICE), eq(PROJET), eq("et ajoute un test"), any(), any(), anyBoolean());
+        verify(chatService).chatStreaming(eq(ALICE), eq(PROJET), eq("corrige le bug"), any(), any(), anyBoolean(), any());
+        verify(chatService).chatStreaming(eq(ALICE), eq(PROJET), eq("et ajoute un test"), any(), any(), anyBoolean(), any());
         assertThat(ecran.names()).containsExactly("started", LiveTurn.STEER_QUEUED, "done",
                 LiveTurn.STEER_FOLLOWUP, "done");
         assertThat(ecran.payloads().get(2)).contains("\"followUp\":true").contains("premier");
@@ -133,7 +133,7 @@ class AtelierChatControllerSteerTest {
     void unePrecisionPendantUneAutorisationNeVautNiAccordNiRefus() {
         emitter();
         AtomicReference<List<AtelierSteer>> lues = new AtomicReference<>();
-        when(chatService.chatStreaming(any(), any(), any(), any(), any(), anyBoolean())).thenAnswer(invocation -> {
+        when(chatService.chatStreaming(any(), any(), any(), any(), any(), anyBoolean(), any())).thenAnswer(invocation -> {
             AtelierProgressListener listener = invocation.getArgument(4);
             listener.onConfirmRequest(new AtelierConfirmRequest("call-1", "bash", "rm -rf build",
                     120_000L));
@@ -148,21 +148,21 @@ class AtelierChatControllerSteerTest {
 
         controller().stream(PROJET, new AtelierChatRequest("nettoie"));
 
-        verify(chatService, times(1)).chatStreaming(any(), any(), any(), any(), any(), anyBoolean());
+        verify(chatService, times(1)).chatStreaming(any(), any(), any(), any(), any(), anyBoolean(), any());
         assertThat(lues.get()).extracting(AtelierSteer::text).containsExactly("garde le dossier dist");
     }
 
     @Test
     void unTourInterrompuNOuvrePasDeTourDeSuiteEtDitLaPrecisionNonPriseEnCompte() {
         RecordingEmitter ecran = emitter();
-        when(chatService.chatStreaming(any(), any(), any(), any(), any(), anyBoolean())).thenAnswer(invocation -> {
+        when(chatService.chatStreaming(any(), any(), any(), any(), any(), anyBoolean(), any())).thenAnswer(invocation -> {
             controller().steer(PROJET, new AtelierChatRequest("et ensuite déploie"));
             return result(AtelierChatService.INTERRUPTED_REPLY);
         });
 
         controller().stream(PROJET, new AtelierChatRequest("construis"));
 
-        verify(chatService, times(1)).chatStreaming(any(), any(), any(), any(), any(), anyBoolean());
+        verify(chatService, times(1)).chatStreaming(any(), any(), any(), any(), any(), anyBoolean(), any());
         assertThat(ecran.names()).containsExactly("started", LiveTurn.STEER_QUEUED,
                 LiveTurn.STEERS_DROPPED, "done");
     }
@@ -170,7 +170,7 @@ class AtelierChatControllerSteerTest {
     @Test
     void unTourEnErreurDitLaPrecisionNonPriseEnCompte() {
         RecordingEmitter ecran = emitter();
-        when(chatService.chatStreaming(any(), any(), any(), any(), any(), anyBoolean())).thenAnswer(invocation -> {
+        when(chatService.chatStreaming(any(), any(), any(), any(), any(), anyBoolean(), any())).thenAnswer(invocation -> {
             controller().steer(PROJET, new AtelierChatRequest("et ensuite déploie"));
             throw new fr.claudegateway.ai.AIProviderUnavailableException("panne");
         });
@@ -187,7 +187,7 @@ class AtelierChatControllerSteerTest {
         emitter();
         AtomicInteger appels = new AtomicInteger();
         AtomicReference<List<AtelierSteer>> chezAlice = new AtomicReference<>();
-        when(chatService.chatStreaming(any(), any(), any(), any(), any(), anyBoolean())).thenAnswer(invocation -> {
+        when(chatService.chatStreaming(any(), any(), any(), any(), any(), anyBoolean(), any())).thenAnswer(invocation -> {
             if (appels.incrementAndGet() > 1) {
                 return result("tour de bob");
             }
@@ -201,7 +201,7 @@ class AtelierChatControllerSteerTest {
 
         controller().stream(PROJET, new AtelierChatRequest("travaille"));
 
-        verify(chatService).chatStreaming(eq(BOB), eq(PROJET), eq("je précise"), any(), any(), anyBoolean());
+        verify(chatService).chatStreaming(eq(BOB), eq(PROJET), eq("je précise"), any(), any(), anyBoolean(), any());
         assertThat(chezAlice.get()).as("aucune précision de BOB chez ALICE").isEmpty();
     }
 
@@ -239,7 +239,7 @@ class AtelierChatControllerSteerTest {
         assertThat(ecran.names()).containsExactly("error");
         assertThat(ecran.payloads().get(0)).contains("too_many_steers");
         assertThat(turn.live()).isTrue();
-        verify(chatService, times(0)).chatStreaming(any(), any(), any(), any(), any(), anyBoolean());
+        verify(chatService, times(0)).chatStreaming(any(), any(), any(), any(), any(), anyBoolean(), any());
     }
 
     // ------------------------------------------------------------------ outillage
