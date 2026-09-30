@@ -428,6 +428,42 @@ class AtelierChatServiceSystemPromptTest {
         assertThat(system).contains("bash (ls, find, grep -n)");
     }
 
+    // ------------------------------------------- F-164 / SF-164-04 : règle impérative du format structuré
+
+    @Test
+    void theStructuredFormatRuleForProposableQuestionsIsPresentOnASandboxProject() {
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+
+        String system = systemPrompt();
+
+        // Règle impérative : liste / réponses proposables → format structuré, jamais la prose.
+        assertThat(system).contains("Toute question à réponses PROPOSABLES");
+        assertThat(system).contains("JAMAIS par de la prose");
+        // Durcissement SF-164-04 : une liste en prose est un défaut, pas un style.
+        assertThat(system).contains("C'est une RÈGLE, pas un style");
+        assertThat(system).contains("une liste de questions rendue en prose est un DÉFAUT");
+        // Exception préservée : la prose reste pour les questions vraiment ouvertes.
+        assertThat(system).contains("réservée aux questions vraiment ouvertes");
+        // Non-régression SF-164-03 (même doctrine) : signal manuel + unitaire + anti-spam.
+        assertThat(system).contains("pose-moi les questions que tu veux");
+        assertThat(system).contains("UNE seule question par appel");
+        assertThat(system).contains("Ne demande QUE si tu es vraiment bloqué");
+    }
+
+    @Test
+    void theStructuredFormatRuleForProposableQuestionsIsPresentOnARunnerProject() {
+        String system = systemPromptOfRunnerProjectDeclaring(null);
+
+        assertThat(system).contains("Toute question à réponses PROPOSABLES");
+        assertThat(system).contains("JAMAIS par de la prose");
+        assertThat(system).contains("une liste de questions rendue en prose est un DÉFAUT");
+        assertThat(system).contains("réservée aux questions vraiment ouvertes");
+        // Coexistence + non-régression du rôle RUNNER.
+        assertThat(system).contains("bash (ls, find, grep -n)");
+    }
+
     // ------------------------------------------- F-141 / SF-141-01 : annonce de destination + demande si ambigu
 
     @Test
