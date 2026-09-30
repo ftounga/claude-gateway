@@ -1,0 +1,224 @@
+/* ------------------------------------------------------------------ F-165 / SF-165-02
+   LE CORPS DU PANNEAU /cout — le vaisseau amiral. Feuille dédiée (budget 12 ko propre — angular.json).
+   Rendu dans le cadre SOMBRE du panneau (SF-165-01) : jetons `--cg-*` uniquement, AUCUNE couleur ni
+   police hors charte. Chiffres en `tabular-nums` (colonnes qui s'alignent). Cibles ≥ 44 px (SF-158). */
+
+.cost-note {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  margin: 0;
+  min-height: 44px; /* SF-158 : la ligne d'état reste une cible confortable */
+  font-size: 13px;
+  color: var(--cg-text-secondary);
+}
+
+.cost-note--error {
+  color: var(--cg-orange-2);
+}
+
+/* --- Les deux chiffres phares --- */
+.cost-figures {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--cg-space-3) var(--cg-space-5);
+  margin-bottom: var(--cg-space-4);
+}
+
+.cost-figure {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cost-figure__value {
+  font-family: var(--cg-font-heading);
+  font-weight: 700;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  color: var(--cg-surface);
+}
+
+.cost-figure--lead .cost-figure__value {
+  font-size: 30px;
+  color: var(--cg-orange-2);
+}
+
+.cost-figure__label {
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--cg-text-secondary);
+}
+
+/* --- Sections --- */
+.cost-section {
+  margin-top: var(--cg-space-4);
+}
+
+.cost-section__title {
+  margin: 0 0 var(--cg-space-2);
+  font-family: var(--cg-font-heading);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cg-text-secondary);
+}
+
+/* --- Barre segmentée --- */
+.cost-bar {
+  display: flex;
+  width: 100%;
+  height: 12px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--cg-surface) 12%, transparent);
+}
+
+.cost-bar__seg {
+  height: 100%;
+  min-width: 2px;
+
+  &.is-write { background: var(--cg-orange-2); }
+  &.is-read { background: var(--cg-accent-2); }
+  &.is-output { background: var(--cg-success); }
+  &.is-budget { background: var(--cg-orange); }
+}
+
+.cost-bar--budget {
+  margin-top: var(--cg-space-1);
+  height: 8px;
+}
+
+/* --- Légende de la décomposition --- */
+.cost-legend {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: baseline;
+  gap: var(--cg-space-1) var(--cg-space-2);
+  margin: var(--cg-space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cost-legend__item {
+  display: contents;
+}
+
+.cost-legend__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  align-self: center;
+
+  &.is-write { background: var(--cg-orange-2); }
+  &.is-read { background: var(--cg-accent-2); }
+  &.is-output { background: var(--cg-success); }
+}
+
+.cost-legend__label {
+  min-width: 0;
+  font-size: 13px;
+  color: var(--cg-surface);
+}
+
+.cost-legend__pct {
+  font-family: var(--cg-font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--cg-orange-2);
+}
+
+.cost-legend__eur {
+  font-family: var(--cg-font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--cg-text-secondary);
+  text-align: right;
+}
+
+/* --- Statistiques (cache, contexte, mémoire) --- */
+.cost-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--cg-space-3);
+}
+
+.cost-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cost-stat__value {
+  font-family: var(--cg-font-heading);
+  font-weight: 700;
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  color: var(--cg-surface);
+}
+
+.cost-stat__label {
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--cg-text-secondary);
+}
+
+/* --- Budget --- */
+.cost-budget {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--cg-space-2);
+}
+
+.cost-budget__label {
+  min-width: 0;
+  font-size: 13px;
+  color: var(--cg-surface);
+}
+
+.cost-budget__value {
+  font-family: var(--cg-font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--cg-orange-2);
+}
+
+/* --- Mini-tendance --- */
+.cost-trend {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 40px;
+}
+
+.cost-trend__bar {
+  flex: 1 1 0;
+  min-width: 3px;
+  min-height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--cg-orange-2);
+}
+
+/* Sous 819 px (SF-158) : rien ne déborde ; stats et légende se réorganisent. */
+@media (max-width: 819px) {
+  .cost-stats {
+    grid-template-columns: 1fr;
+    gap: var(--cg-space-2);
+  }
+
+  .cost-legend {
+    grid-template-columns: auto 1fr auto;
+  }
+
+  .cost-legend__eur {
+    grid-column: 2 / -1;
+    text-align: left;
+  }
+}

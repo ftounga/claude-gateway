@@ -1,4 +1,4 @@
-import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideHttpClient } from '@angular/common/http';
 import {
   ComponentFixture,
@@ -672,6 +672,67 @@ describe('AtelierTerminalComponent', () => {
 
     expect(component.slashPanels().length).toBe(0);
     expect(fixture.nativeElement.querySelector('app-atelier-slash-panel')).toBeNull();
+  });
+
+  // ------------------------------------ F-165 / SF-165-02 : /cout (vue économie du fil, aucun tour)
+
+  it('taper « / » propose aussi la commande vue /cout dans le menu', () => {
+    component.draft = '/';
+    fixture.detectChanges();
+
+    const titles = Array.from(
+      fixture.nativeElement.querySelectorAll('.slash-menu__name'),
+    ).map((n) => (n as HTMLElement).textContent?.trim());
+    expect(titles).toContain('/cout');
+  });
+
+  it('dispatcher /cout n\'émet AUCUN send et lit l\'économie du fil via un GET de lecture', () => {
+    const http = TestBed.inject(HttpTestingController);
+    let sent = 0;
+    component.send.subscribe(() => (sent += 1));
+    component.projectId = 'w1';
+
+    component.draft = '/cout';
+    component.submit();
+    fixture.detectChanges();
+
+    // La garantie fondatrice : une vue ne coûte aucun tour.
+    expect(sent).toBe(0);
+    expect(component.slashPanels().length).toBe(1);
+    expect(component.slashPanels()[0].panelKind).toBe('cost');
+    expect(component.slashPanels()[0].costState).toBe('loading');
+
+    // Une VUE interroge un endpoint REST de LECTURE (jamais la boucle modèle).
+    const req = http.expectOne('/api/workspaces/w1/chat/cost-summary');
+    expect(req.request.method).toBe('GET');
+    req.flush({
+      currency: 'EUR', cumulativeEur: 0.46, lastTurnEur: 0.46, turnCount: 1,
+      breakdown: {
+        writeEur: 0.08, writePercent: 49, readEur: 0.04, readPercent: 24,
+        outputEur: 0.05, outputPercent: 27,
+      },
+      hotCachePercent: 90, contextTokens: 100000, contextPages: 200,
+      liveTurns: 3, foldedTurns: 5, trendEur: [0.46],
+    });
+    fixture.detectChanges();
+
+    expect(component.slashPanels()[0].costState).toBe('ready');
+    expect(fixture.nativeElement.querySelector('app-atelier-slash-cost')).not.toBeNull();
+  });
+
+  it('/cout sans projet connu bascule en échec, sans aucun tour ni appel', () => {
+    const http = TestBed.inject(HttpTestingController);
+    let sent = 0;
+    component.send.subscribe(() => (sent += 1));
+    component.projectId = null;
+
+    component.draft = '/cout';
+    component.submit();
+    fixture.detectChanges();
+
+    expect(sent).toBe(0);
+    expect(component.slashPanels()[0].costState).toBe('error');
+    http.expectNone('/api/workspaces/null/chat/cost-summary');
   });
 
   it('une vue reste dispatchable même au plafond de terminaux vivants (elle ne coûte rien)', () => {

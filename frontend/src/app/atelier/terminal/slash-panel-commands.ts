@@ -68,6 +68,15 @@ export interface SlashPanelCommand {
  */
 export const SLASH_PANEL_COMMANDS: readonly SlashPanelCommand[] = [
   {
+    name: 'cout',
+    title: '/cout',
+    description: 'L’économie du fil : coût, cache, contexte, tendance',
+    kind: 'view',
+    takesArgument: false,
+    icon: 'savings',
+    panelKind: 'cost',
+  },
+  {
     name: 'aide',
     title: '/aide',
     description: 'Liste les commandes slash disponibles',
@@ -143,6 +152,67 @@ export interface SlashPanelHelpEntry {
 }
 
 /**
+ * État de chargement d'un panneau qui interroge la gateway (F-165 / SF-165-02) : une **VUE** appelle un
+ * endpoint REST de **lecture** (jamais la boucle modèle), et le panneau vit ces trois états.
+ */
+export type CostPanelState = 'loading' | 'ready' | 'error';
+
+/** La décomposition d'un fil en trois postes réels (F-165 / SF-165-02). Somme des parts = 100 %. */
+export interface ThreadCostBreakdown {
+  /** Coût d'écriture (entrée neuve + écriture de cache), dans la devise du fil. */
+  readonly writeEur: number;
+  /** Part d'écriture (%). */
+  readonly writePercent: number;
+  /** Coût de lecture de cache. */
+  readonly readEur: number;
+  /** Part de lecture (%). */
+  readonly readPercent: number;
+  /** Coût de sortie. */
+  readonly outputEur: number;
+  /** Part de sortie (%). */
+  readonly outputPercent: number;
+}
+
+/**
+ * L'**économie du fil courant** (F-165 / SF-165-02) telle que le panneau `/cout` la rend. Reflet exact
+ * du DTO backend `ThreadCostSummaryResponse` : des volumes et des montants, **jamais** un contenu.
+ */
+export interface ThreadCostSummary {
+  /** Devise d'affichage (ex. `EUR`). */
+  readonly currency: string;
+  /** Coût cumulé du fil. */
+  readonly cumulativeEur: number;
+  /** Coût du dernier tour. */
+  readonly lastTurnEur: number;
+  /** Nombre de tours facturés du fil. */
+  readonly turnCount: number;
+  /** Décomposition écriture / lecture / sortie. */
+  readonly breakdown: ThreadCostBreakdown;
+  /** Part de l'entrée servie à chaud depuis le cache (%). */
+  readonly hotCachePercent: number;
+  /** Taille du contexte vivant (tokens). */
+  readonly contextTokens: number;
+  /** Ce contexte en « pages » (langage classeur). */
+  readonly contextPages: number;
+  /** Tours vivants (rejouables). */
+  readonly liveTurns: number;
+  /** Tours rangés (repliés). */
+  readonly foldedTurns: number;
+  /** Coût par tour des derniers tours (mini-tendance, du plus ancien au plus récent). */
+  readonly trendEur: readonly number[];
+}
+
+/** Le budget applicable au fil, quand il est déjà lisible (réutilise `WeeklyBudgetService`, admin). */
+export interface ThreadCostBudget {
+  /** Nom du client (poste), pour situer le budget. */
+  readonly hostName: string | null;
+  /** Plafond de la semaine. */
+  readonly budgetEur: number;
+  /** Dépensé sur la semaine. */
+  readonly spentEur: number;
+}
+
+/**
  * Un panneau **local** rendu dans le fil du terminal (résultat d'une commande slash F-165). Purement
  * de l'affichage : jamais dans l'historique envoyé au modèle.
  */
@@ -157,12 +227,16 @@ export interface SlashPanel {
   readonly icon: string;
   /** Famille (badge). */
   readonly kind: SlashPanelKind;
-  /** Corps à rendre (`@switch`). Ex. `help`. */
+  /** Corps à rendre (`@switch`). Ex. `help`, `cost`. */
   readonly panelKind: string;
   /** Argument libre saisi (éventuel), pour les commandes qui en prennent. */
   readonly arg?: string;
   /** Entrées d'aide, présentes uniquement pour `panelKind === 'help'`. */
   readonly help?: readonly SlashPanelHelpEntry[];
+  /** État de la lecture, pour `panelKind === 'cost'` : `loading` → `ready`/`error`. */
+  readonly costState?: CostPanelState;
+  /** L'économie du fil, présente pour `panelKind === 'cost'` en état `ready`. */
+  readonly cost?: ThreadCostSummary;
 }
 
 /** Construit les entrées d'aide à partir du registre (toutes les commandes F-165 disponibles). */
@@ -190,6 +264,11 @@ export function buildPanel(command: SlashPanelCommand, arg: string, id: string):
   };
   if (command.panelKind === 'help') {
     return { ...base, title: 'Commandes disponibles', help: buildHelpEntries() };
+  }
+  if (command.panelKind === 'cost') {
+    // La donnée arrive d'un appel REST de lecture (jamais du modèle) : le panneau naît en chargement,
+    // et le dispatch le fera passer en `ready`/`error`. *Vérifier son coût ne doit rien coûter.*
+    return { ...base, title: 'Économie du fil', costState: 'loading' };
   }
   return base;
 }

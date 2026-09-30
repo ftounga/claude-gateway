@@ -1273,6 +1273,13 @@
           @case ('help') {
             <app-atelier-slash-help [entries]="panel.help ?? []" />
           }
+          @case ('cost') {
+            <app-atelier-slash-cost
+              [state]="panel.costState ?? 'loading'"
+              [cost]="panel.cost ?? null"
+              [budget]="costBudget()"
+            />
+          }
         }
       </app-atelier-slash-panel>
     }

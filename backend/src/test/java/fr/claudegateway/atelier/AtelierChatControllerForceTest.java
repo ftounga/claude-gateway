@@ -127,6 +127,7 @@ class AtelierChatControllerForceTest {
                 new fr.claudegateway.quota.TurnCostView(
                         Mockito.mock(fr.claudegateway.admin.AdminService.class),
                         new fr.claudegateway.quota.ProviderPricingProperties(
-                                null, null, null, null, null, null)));
+                                null, null, null, null, null, null)),
+                        org.mockito.Mockito.mock(fr.claudegateway.atelier.AtelierThreadCostService.class));
     }
 }

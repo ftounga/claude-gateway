@@ -1,0 +1,103 @@
+<!-- F-165 / SF-165-02 — Corps du panneau /cout : l'économie du fil, en langage « classeur ». VUE pure :
+     aucune donnée n'est calculée ici, aucun tour n'est déclenché. Chiffres en tabular-nums. -->
+@switch (state) {
+  @case ('loading') {
+    <p class="cost-note">
+      <mat-spinner diameter="18" strokeWidth="2" aria-hidden="true"></mat-spinner>
+      Lecture de l'économie du fil…
+    </p>
+  }
+  @case ('error') {
+    <p class="cost-note cost-note--error">
+      Coût indisponible pour l'instant. Réessayez dans un instant — cela ne coûte aucun tour.
+    </p>
+  }
+  @default {
+    @if (cost) {
+      <!-- Les deux chiffres qui répondent à « combien ça me coûte ». -->
+      <div class="cost-figures">
+        <div class="cost-figure cost-figure--lead">
+          <span class="cost-figure__value">{{ money(cost.cumulativeEur) }}</span>
+          <span class="cost-figure__label">Coût du fil · {{ count(cost.turnCount) }} tour(s)</span>
+        </div>
+        <div class="cost-figure">
+          <span class="cost-figure__value">{{ money(cost.lastTurnEur) }}</span>
+          <span class="cost-figure__label">Dernier tour</span>
+        </div>
+      </div>
+
+      <!-- Où part l'argent : trois postes réels, barre segmentée + légende. -->
+      <section class="cost-section" aria-label="Décomposition du coût">
+        <h4 class="cost-section__title">Où part l'argent</h4>
+        @if (hasBreakdown) {
+          <div class="cost-bar" role="img"
+               [attr.aria-label]="'Écriture ' + segments[0].percent + ' %, lecture ' + segments[1].percent + ' %, sortie ' + segments[2].percent + ' %'">
+            @for (segment of segments; track segment.label) {
+              @if (segment.percent > 0) {
+                <span class="cost-bar__seg" [class]="segment.cssClass"
+                      [style.width.%]="segment.percent"></span>
+              }
+            }
+          </div>
+        }
+        <ul class="cost-legend">
+          @for (segment of segments; track segment.label) {
+            <li class="cost-legend__item">
+              <span class="cost-legend__dot" [class]="segment.cssClass" aria-hidden="true"></span>
+              <span class="cost-legend__label">{{ segment.icon }} {{ segment.label }}</span>
+              <span class="cost-legend__pct">{{ segment.percent }} %</span>
+              <span class="cost-legend__eur">{{ money(segment.eur) }}</span>
+            </li>
+          }
+        </ul>
+      </section>
+
+      <!-- L'état de la mémoire et du cache, d'un coup d'œil. -->
+      <section class="cost-section" aria-label="Contexte et cache">
+        <div class="cost-stats">
+          <div class="cost-stat">
+            <span class="cost-stat__value">{{ cost.hotCachePercent }} %</span>
+            <span class="cost-stat__label">Cache chaud</span>
+          </div>
+          <div class="cost-stat">
+            <span class="cost-stat__value">{{ count(cost.contextPages) }}</span>
+            <span class="cost-stat__label">Pages vivantes ({{ count(cost.contextTokens) }} tokens)</span>
+          </div>
+          <div class="cost-stat">
+            <span class="cost-stat__value">{{ count(cost.liveTurns) }} / {{ count(cost.foldedTurns) }}</span>
+            <span class="cost-stat__label">Vivants / rangés</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Budget de la semaine, seulement s'il est lisible (sinon rien : pas de plafond inventé). -->
+      @if (budget) {
+        <section class="cost-section" aria-label="Budget de la semaine">
+          <div class="cost-budget">
+            <span class="cost-budget__label">
+              Budget restant{{ budget.hostName ? ' · ' + budget.hostName : '' }}
+            </span>
+            <span class="cost-budget__value">{{ money(budgetRemaining) }}</span>
+          </div>
+          <div class="cost-bar cost-bar--budget" role="img"
+               [attr.aria-label]="'Budget consommé ' + budgetPercent + ' %'">
+            <span class="cost-bar__seg is-budget" [style.width.%]="budgetPercent"></span>
+          </div>
+        </section>
+      }
+
+      <!-- Mini-tendance coût/tour sur les derniers tours. -->
+      @if (hasTrend) {
+        <section class="cost-section" aria-label="Tendance du coût par tour">
+          <h4 class="cost-section__title">Coût par tour (récents)</h4>
+          <div class="cost-trend">
+            @for (bar of trend; track $index) {
+              <span class="cost-trend__bar" [style.height.%]="bar.heightPercent"
+                    [attr.title]="money(bar.eur)"></span>
+            }
+          </div>
+        </section>
+      }
+    }
+  }
+}
