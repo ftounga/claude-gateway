@@ -104,6 +104,24 @@ export const SLASH_PANEL_COMMANDS: readonly SlashPanelCommand[] = [
     panelKind: 'budget',
   },
   {
+    name: 'poste',
+    title: '/poste',
+    description: 'État du poste : connecté, vu il y a X, OS, shell',
+    kind: 'view',
+    takesArgument: false,
+    icon: 'dns',
+    panelKind: 'poste',
+  },
+  {
+    name: 'sujet',
+    title: '/sujet',
+    description: 'Carte du projet courant : client, moteur, tours, plan',
+    kind: 'view',
+    takesArgument: false,
+    icon: 'topic',
+    panelKind: 'sujet',
+  },
+  {
     name: 'aide',
     title: '/aide',
     description: 'Liste les commandes slash disponibles',
@@ -301,6 +319,51 @@ export interface ThreadQuotaSummary {
 }
 
 /**
+ * État de chargement du panneau `/poste` (F-165 / SF-165-05). `none` = ce projet n'a pas de poste
+ * (terminal hébergé/orphelin). Une **VUE** : lecture REST (`/api/runner-hosts`), jamais la boucle modèle.
+ */
+export type PostePanelState = 'loading' | 'ready' | 'none' | 'error';
+
+/**
+ * L'**état du poste** (F-165 / SF-165-05) tel que le panneau `/poste` le rend. Reflet du contrat
+ * `RunnerHost` (isolé `user_id`) — des drapeaux et des libellés d'état, jamais un contenu.
+ */
+export interface ThreadPosteSummary {
+  /** Nom libre du poste (souvent le nom du client). */
+  readonly name: string;
+  /** Dernier segment de la racine déclarée (ex. `dev`), ou `null`. */
+  readonly rootName: string | null;
+  /** OS déclaré par le runner, ou `null`. */
+  readonly os: string | null;
+  /** Shell : `posix` / `powershell` / `cmd`, ou `null`. */
+  readonly shell: string | null;
+  /** Le runner tourne-t-il avec les droits d'administrateur ? */
+  readonly elevated: boolean;
+  /** Un runner de ce poste est-il joignable maintenant ? */
+  readonly connected: boolean;
+  /** Dernier battement connu (ISO), ou `null` — sert au « vu il y a X ». */
+  readonly lastSeenAt: string | null;
+}
+
+/** État de chargement du panneau `/sujet` (F-165 / SF-165-05) : lecture REST (`/resume`), aucun tour. */
+export type SujetPanelState = 'loading' | 'ready' | 'error';
+
+/**
+ * La **carte du projet courant** (F-165 / SF-165-05) telle que le panneau `/sujet` la rend. La part
+ * chargée (depuis `/resume`) ; le nom, le client et le moteur viennent de l'écran (entrées du composant).
+ */
+export interface ThreadSujetSummary {
+  /** Nombre de tours rejouables du fil. */
+  readonly turns: number;
+  /** Mode persisté du fil : `ANSWER_PLAN` (Plan) ou `ACT` (Agir), ou `null` (défaut Agir). */
+  readonly mode: string | null;
+  /** Nombre d'étapes du dernier plan encore actif (0 si aucun). */
+  readonly planTotal: number;
+  /** Un « nouveau départ » a-t-il posé une frontière au fil ? */
+  readonly hasFrontier: boolean;
+}
+
+/**
  * Un panneau **local** rendu dans le fil du terminal (résultat d'une commande slash F-165). Purement
  * de l'affichage : jamais dans l'historique envoyé au modèle.
  */
@@ -333,6 +396,14 @@ export interface SlashPanel {
   readonly quotaState?: QuotaPanelState;
   /** La consommation du plan, présente pour `panelKind === 'quota'` en état `ready`. */
   readonly quota?: ThreadQuotaSummary;
+  /** État de la lecture, pour `panelKind === 'poste'` : `loading` → `ready`/`none`/`error`. */
+  readonly posteState?: PostePanelState;
+  /** L'état du poste, présent pour `panelKind === 'poste'` en état `ready`. */
+  readonly poste?: ThreadPosteSummary;
+  /** État de la lecture, pour `panelKind === 'sujet'` : `loading` → `ready`/`error`. */
+  readonly sujetState?: SujetPanelState;
+  /** La carte du projet, présente pour `panelKind === 'sujet'` en état `ready`. */
+  readonly sujet?: ThreadSujetSummary;
 }
 
 /** Construit les entrées d'aide à partir du registre (toutes les commandes F-165 disponibles). */
@@ -379,6 +450,14 @@ export function buildPanel(command: SlashPanelCommand, arg: string, id: string):
     // Le corps `/budget` lit le service PARTAGÉ `WeeklyBudgetService` (réactif) : aucun état à porter
     // ici — le panneau n'est qu'un cadre autour du corps.
     return { ...base, title: 'Budget de la semaine' };
+  }
+  if (command.panelKind === 'poste') {
+    // La donnée arrive d'un GET de lecture (`/api/runner-hosts`, jamais le modèle) : chargement d'abord.
+    return { ...base, title: 'Le poste', posteState: 'loading' };
+  }
+  if (command.panelKind === 'sujet') {
+    // La donnée arrive d'un GET de lecture (`/resume`, jamais le modèle) : chargement d'abord.
+    return { ...base, title: 'Le sujet', sujetState: 'loading' };
   }
   return base;
 }

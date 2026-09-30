@@ -1,0 +1,52 @@
+<!-- F-165 / SF-165-05 — Corps du panneau /poste : l'état du poste (runner). VUE pure : aucune donnée
+     n'est calculée ici, aucun tour n'est déclenché. -->
+@switch (state) {
+  @case ('loading') {
+    <p class="poste-note">
+      <mat-spinner diameter="18" strokeWidth="2" aria-hidden="true"></mat-spinner>
+      Lecture de l'état du poste…
+    </p>
+  }
+  @case ('none') {
+    <p class="poste-note">
+      Ce projet n'a pas de poste : il tourne sur le terminal hébergé. Rien à afficher côté runner.
+    </p>
+  }
+  @case ('error') {
+    <p class="poste-note poste-note--error">
+      État du poste indisponible pour l'instant. Réessayez dans un instant — cela ne coûte aucun tour.
+    </p>
+  }
+  @default {
+    @if (poste) {
+      <div class="poste-head">
+        <span class="poste-dot" [class.is-on]="poste.connected" aria-hidden="true"></span>
+        <div class="poste-head__text">
+          <span class="poste-head__name">{{ poste.name }}</span>
+          <span class="poste-head__state">
+            {{ poste.connected ? 'Connecté' : 'Hors ligne' }}{{ seenAgo ? ' · ' + seenAgo : '' }}
+          </span>
+        </div>
+      </div>
+
+      <ul class="poste-facts">
+        <li class="poste-fact">
+          <span class="poste-fact__label">OS</span>
+          <span class="poste-fact__value">{{ poste.os || '—' }}</span>
+        </li>
+        <li class="poste-fact">
+          <span class="poste-fact__label">Shell</span>
+          <span class="poste-fact__value">{{ shellLabel }}</span>
+        </li>
+        <li class="poste-fact">
+          <span class="poste-fact__label">Racine</span>
+          <span class="poste-fact__value">{{ poste.rootName || '—' }}</span>
+        </li>
+        <li class="poste-fact">
+          <span class="poste-fact__label">Droits</span>
+          <span class="poste-fact__value">{{ poste.elevated ? 'Administrateur' : 'Standard' }}</span>
+        </li>
+      </ul>
+    }
+  }
+}

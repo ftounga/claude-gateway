@@ -866,6 +866,102 @@ describe('AtelierTerminalComponent', () => {
     expect(fixture.nativeElement.querySelector('.budget-note')).not.toBeNull();
   });
 
+  // ------------------------------------ F-165 / SF-165-05 : /poste + /sujet (vues, aucun tour)
+
+  it('taper « / » propose aussi /poste et /sujet dans le menu', () => {
+    component.draft = '/';
+    fixture.detectChanges();
+    const titles = Array.from(
+      fixture.nativeElement.querySelectorAll('.slash-menu__name'),
+    ).map((n) => (n as HTMLElement).textContent?.trim());
+    expect(titles).toEqual(jasmine.arrayContaining(['/poste', '/sujet']));
+  });
+
+  it('dispatcher /poste avec un poste lit /api/runner-hosts et rend la bonne ligne, sans send', () => {
+    const http = TestBed.inject(HttpTestingController);
+    let sent = 0;
+    component.send.subscribe(() => (sent += 1));
+    component.hostId = 'h1';
+
+    component.draft = '/poste';
+    component.submit();
+    fixture.detectChanges();
+
+    expect(sent).toBe(0);
+    expect(component.slashPanels()[0].panelKind).toBe('poste');
+    expect(component.slashPanels()[0].posteState).toBe('loading');
+
+    const req = http.expectOne('/api/runner-hosts');
+    expect(req.request.method).toBe('GET');
+    req.flush([
+      { id: 'other', name: 'Autre', connected: false, createdAt: '2026-01-01' },
+      { id: 'h1', name: 'Poste ACME', os: 'Linux', shell: 'posix', rootName: 'dev',
+        connected: true, lastSeenAt: new Date().toISOString(), createdAt: '2026-01-01' },
+    ]);
+    fixture.detectChanges();
+
+    expect(component.slashPanels()[0].posteState).toBe('ready');
+    expect(component.slashPanels()[0].poste?.name).toBe('Poste ACME');
+    expect(fixture.nativeElement.querySelector('app-atelier-slash-poste')).not.toBeNull();
+
+    // Les lectures annexes déclenchées par l'affectation de hostId (budget, coûts projet) sont hors sujet.
+    http.match((r) => r.url.startsWith('/api/admin/cost')).forEach((r) => r.flush({ clients: [] }));
+  });
+
+  it('/poste sans poste (hostId absent) affiche « pas de poste » sans aucun appel ni tour', () => {
+    const http = TestBed.inject(HttpTestingController);
+    let sent = 0;
+    component.send.subscribe(() => (sent += 1));
+    component.hostId = null;
+
+    component.draft = '/poste';
+    component.submit();
+    fixture.detectChanges();
+
+    expect(sent).toBe(0);
+    expect(component.slashPanels()[0].posteState).toBe('none');
+    http.expectNone('/api/runner-hosts');
+  });
+
+  it('dispatcher /sujet lit /resume et rend la carte du projet, sans send', () => {
+    const http = TestBed.inject(HttpTestingController);
+    let sent = 0;
+    component.send.subscribe(() => (sent += 1));
+    component.projectId = 'w1';
+
+    component.draft = '/sujet';
+    component.submit();
+    fixture.detectChanges();
+
+    expect(sent).toBe(0);
+    expect(component.slashPanels()[0].panelKind).toBe('sujet');
+
+    const req = http.expectOne('/api/workspaces/w1/chat/resume');
+    expect(req.request.method).toBe('GET');
+    req.flush({ turns: 5, lastMessageAt: null, threadStartedAt: null, prompt: 'NONE',
+      mode: 'ACT', plan: [] });
+    fixture.detectChanges();
+
+    expect(component.slashPanels()[0].sujetState).toBe('ready');
+    expect(component.slashPanels()[0].sujet?.turns).toBe(5);
+    expect(fixture.nativeElement.querySelector('app-atelier-slash-sujet')).not.toBeNull();
+  });
+
+  it('/sujet sans projet connu bascule en échec, sans appel ni tour', () => {
+    const http = TestBed.inject(HttpTestingController);
+    let sent = 0;
+    component.send.subscribe(() => (sent += 1));
+    component.projectId = null;
+
+    component.draft = '/sujet';
+    component.submit();
+    fixture.detectChanges();
+
+    expect(sent).toBe(0);
+    expect(component.slashPanels()[0].sujetState).toBe('error');
+    http.expectNone('/api/workspaces/null/chat/resume');
+  });
+
   it('une vue reste dispatchable même au plafond de terminaux vivants (elle ne coûte rien)', () => {
     let sent = 0;
     component.send.subscribe(() => (sent += 1));

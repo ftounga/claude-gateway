@@ -1,0 +1,95 @@
+/* ------------------------------------------------------------------ F-165 / SF-165-05
+   LE CORPS DU PANNEAU /poste — l'état du poste (runner). Rendu dans le cadre SOMBRE du panneau
+   (SF-165-01) : jetons `--cg-*` uniquement, AUCUNE couleur ni police hors charte. Cibles ≥ 44 px. */
+
+.poste-note {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  margin: 0;
+  min-height: 44px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--cg-text-secondary);
+}
+
+.poste-note--error {
+  color: var(--cg-orange-2);
+}
+
+.poste-head {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  min-height: 44px;
+  margin-bottom: var(--cg-space-2);
+}
+
+.poste-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--cg-text-secondary);
+
+  &.is-on {
+    background: var(--cg-success);
+  }
+}
+
+.poste-head__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.poste-head__name {
+  font-family: var(--cg-font-heading);
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--cg-surface);
+}
+
+.poste-head__state {
+  font-size: 12px;
+  color: var(--cg-text-secondary);
+}
+
+.poste-facts {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--cg-space-3);
+  margin: var(--cg-space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.poste-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.poste-fact__label {
+  font-family: var(--cg-font-heading);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cg-text-secondary);
+}
+
+.poste-fact__value {
+  font-size: 14px;
+  color: var(--cg-surface);
+  word-break: break-word;
+}
+
+@media (max-width: 819px) {
+  .poste-facts {
+    grid-template-columns: 1fr;
+    gap: var(--cg-space-2);
+  }
+}
