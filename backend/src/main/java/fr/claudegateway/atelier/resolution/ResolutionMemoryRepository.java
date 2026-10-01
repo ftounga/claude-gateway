@@ -1,6 +1,7 @@
 package fr.claudegateway.atelier.resolution;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -20,6 +21,14 @@ public interface ResolutionMemoryRepository extends JpaRepository<ResolutionMemo
      * matche lexicalement dans cette fenêtre : on ne charge jamais tout l'historique.
      */
     List<ResolutionMemoryEntry> findTop100ByUserIdAndHostIdOrderByCreatedAtDesc(UUID userId, UUID hostId);
+
+    /**
+     * Relecture d'une résolution <b>re-filtrée</b> par poste (F-148 / SF-148-10). Le rappel sémantique
+     * obtient des ids depuis le store vectoriel (déjà filtré {@code user_id} + {@code host_id}) ; cette
+     * relecture ajoute la <b>défense en profondeur</b> : jamais servir une ligne d'un autre couple
+     * {@code (user_id, host_id)}, même sur un id inattendu.
+     */
+    Optional<ResolutionMemoryEntry> findByIdAndUserIdAndHostId(UUID id, UUID userId, UUID hostId);
 
     /** Purge à la suppression du compte : la mémoire ne survit pas à son propriétaire. */
     void deleteByUserId(UUID userId);

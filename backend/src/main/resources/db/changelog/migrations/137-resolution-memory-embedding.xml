@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-148 / SF-148-10 — RAPPEL SEMANTIQUE DE LA MEMOIRE DE RESOLUTIONS : embedding des QUESTIONS +
+      similarite pgvector, en lieu et place (ou en complement) du rappel lexical Jaccard de SF-148-08.
+
+      POSTGRESQL UNIQUEMENT. La colonne vectorielle `embedding vector(1536)` et l'index de similarite
+      sont Postgres only : tout le DDL vector est isole en changesets dbms="postgresql". H2 (tests/dev)
+      ne recoit RIEN de `vector` (sinon les tests casseraient) — Liquibase marque ces changesets
+      MARK_RAN sur H2. La colonne N'EST PAS mappee en JPA (Hibernate ne connait pas le type vector) :
+      elle est manipulee par SQL natif (CAST(? AS vector) en ecriture, <=> cosine en recherche),
+      exactement comme atelier_messages.embedding (migration 135 / SF-162-06).
+
+      Dimension 1536 = text-embedding-3-small (defaut partage avec le RAG et le recall de conversation).
+      Index hnsw vector_cosine_ops (pgvector >= 0.5, present en prod 0.8.1) : pas d'entrainement requis,
+      operateur <=> = distance cosine, coherent avec la recherche du store.
+
+      On apparie par la QUESTION (pas la conclusion) : SF-148-11 planifie l'embedding de la question a
+      l'enregistrement et embed la question entrante au rappel.
+
+      ADDITIF : colonne nullable, aucune ligne existante touchee ; sans APP_EMBEDDING_API_KEY le chemin
+      semantique reste eteint et cette colonne reste NULL (repli Jaccard inchange).
+
+      Rollback : DROP COLUMN embedding (l'extension `vector` est partagee avec le RAG et SF-162-06, on ne
+      la retire pas).
+    -->
+
+    <changeSet id="137-enable-pgvector" author="claude-gateway" dbms="postgresql">
+        <sql>CREATE EXTENSION IF NOT EXISTS vector;</sql>
+    </changeSet>
+
+    <changeSet id="137-resolution-memory-embedding-column" author="claude-gateway" dbms="postgresql">
+        <sql>ALTER TABLE resolution_memory ADD COLUMN IF NOT EXISTS embedding vector(1536);</sql>
+        <rollback>
+            <sql>ALTER TABLE resolution_memory DROP COLUMN IF EXISTS embedding;</sql>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="137-resolution-memory-embedding-index" author="claude-gateway" dbms="postgresql">
+        <sql>CREATE INDEX IF NOT EXISTS resolution_memory_embedding_idx
+             ON resolution_memory USING hnsw (embedding vector_cosine_ops);</sql>
+        <rollback>
+            <sql>DROP INDEX IF EXISTS resolution_memory_embedding_idx;</sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
