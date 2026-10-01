@@ -345,8 +345,10 @@ class AtelierChatServiceRunnerTargetTest {
 
         service.chat(userId, workspaceId, "salut");
 
+        // CLAUDE.md reste dans le préfixe système (stable). F-171 / SF-171-01 : le catalogue de skills
+        // (dérivé de l'arborescence, volatil) a quitté le système pour le message du tour.
         assertThat(agentProvider.lastRequest.system()).contains("# Conventions maison");
-        assertThat(agentProvider.lastRequest.system()).contains("Skill de déploiement");
+        assertThat(String.valueOf(agentProvider.lastRequest.messages())).contains("Skill de déploiement");
         verify(workspaceService, never()).tree(any(), any());
     }
 

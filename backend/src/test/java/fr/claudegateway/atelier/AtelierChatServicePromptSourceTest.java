@@ -158,9 +158,12 @@ class AtelierChatServicePromptSourceTest {
 
         // Tour 1 : cache vide → lecture directe (runner), puis le refresh synchrone amorce le cache.
         String system1 = turn();
+        String message1 = String.valueOf(agentProvider.lastRequest.messages());
         assertThat(system1).contains("conventions du projet");
-        assertThat(system1).contains("- .claude/skills/deploy.md : Déploie le projet sur l'environnement cible.");
-        assertThat(system1).doesNotContain("SECRET_INTERNE_DU_CORPS");
+        // F-171 / SF-171-01 : le catalogue de skills voyage désormais dans le message (pas le système).
+        assertThat(system1).doesNotContain("- .claude/skills/deploy.md : Déploie le projet sur l'environnement cible.");
+        assertThat(message1).contains("- .claude/skills/deploy.md : Déploie le projet sur l'environnement cible.");
+        assertThat(message1).doesNotContain("SECRET_INTERNE_DU_CORPS");
 
         // Tour 2 : le cache est amorcé → plus aucun aller-retour runner d'amorçage.
         clearInvocations(runnerToolGateway);

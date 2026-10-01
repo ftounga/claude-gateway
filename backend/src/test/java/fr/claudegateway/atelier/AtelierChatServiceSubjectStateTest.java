@@ -26,12 +26,14 @@ import fr.claudegateway.quota.QuotaService;
 
 /**
  * F-148 / SF-148-05 — l'état courant du sujet (contenu borné de {@code STATE.md} et
- * {@code PLAN-ACTION.md}) rejoint le préfixe de la consigne, pour reprendre le fil sans un tour
- * {@code read_file} d'amorçage.
+ * {@code PLAN-ACTION.md}) est lu à chaque tour pour reprendre le fil sans un {@code read_file}
+ * d'amorçage.
  *
- * <p>Le contenu est lu là où les fichiers vivent (même {@code readOptional} target-aware que le
- * {@code CLAUDE.md}), borné par fichier, et injecté verbatim : à contenu stable, la consigne est
- * byte-identique d'un tour au suivant — le cache de prompt (F-134) tient.</p>
+ * <p>F-171 / SF-171-01 — ce contenu, réécrit à chaque tour, a quitté le <b>bloc système</b> pour le
+ * <b>MESSAGE</b> du tour (préfixé à la consigne, sous le dernier breakpoint, patron F-137). Le
+ * contenu est inchangé à l'octet près ; seul son emplacement change. On vérifie donc : (1) le bloc
+ * système <b>ne porte plus</b> l'état du sujet et reste <b>byte-stable</b> d'un tour à l'autre même
+ * quand l'état change (c'est LE test du gain de cache) ; (2) l'état voyage bien dans le message.</p>
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -91,15 +93,21 @@ class AtelierChatServiceSubjectStateTest {
                 .thenThrow(new InvalidFilePathException("absent"));
     }
 
+    /** La consigne système effectivement envoyée au fournisseur pour un tour trivial. */
     private String systemPrompt() {
         agentProvider.enqueueFinal("fini");
         service.chat(userId, workspaceId, "bonjour");
         return agentProvider.lastRequest.system();
     }
 
+    /** Le message (consigne) effectivement envoyé — porte désormais l'état du sujet (F-171). */
+    private String message() {
+        return String.valueOf(agentProvider.lastRequest.messages());
+    }
+
     @Test
-    @DisplayName("STATE.md et PLAN-ACTION.md présents : leur contenu rejoint le préfixe")
-    void injectsStateAndPlanContent() {
+    @DisplayName("F-171 : STATE/PLAN présents voyagent dans le MESSAGE, pas dans le système")
+    void injectsStateAndPlanContentInTheMessage() {
         when(workspaceService.readFile(userId, workspaceId, "STATE.md"))
                 .thenReturn("Statut : migration DNS en cours, étape 3/5.");
         when(workspaceService.readFile(userId, workspaceId, "PLAN-ACTION.md"))
@@ -107,53 +115,71 @@ class AtelierChatServiceSubjectStateTest {
 
         String system = systemPrompt();
 
-        assertThat(system).contains("--- État courant du sujet (STATE.md / PLAN-ACTION.md) ---");
-        assertThat(system).contains("### STATE.md");
-        assertThat(system).contains("migration DNS en cours, étape 3/5.");
-        assertThat(system).contains("### PLAN-ACTION.md");
-        assertThat(system).contains("basculer les enregistrements MX");
+        // Déplacé : le bloc système ne porte plus l'état du sujet.
+        assertThat(system).doesNotContain("--- État courant du sujet (STATE.md / PLAN-ACTION.md) ---");
+        assertThat(system).doesNotContain("migration DNS en cours, étape 3/5.");
+
+        // Même contenu, à l'octet près, désormais dans le message du tour.
+        String message = message();
+        assertThat(message).contains("--- État courant du sujet (STATE.md / PLAN-ACTION.md) ---");
+        assertThat(message).contains("### STATE.md");
+        assertThat(message).contains("migration DNS en cours, étape 3/5.");
+        assertThat(message).contains("### PLAN-ACTION.md");
+        assertThat(message).contains("basculer les enregistrements MX");
     }
 
     @Test
-    @DisplayName("aucun fichier d'état : aucun bloc n'est ajouté")
+    @DisplayName("aucun fichier d'état : aucun bloc n'est ajouté, ni au système ni au message")
     void noStateMeansNoBlock() {
         when(workspaceService.readFile(userId, workspaceId, "STATE.md"))
                 .thenThrow(new InvalidFilePathException("absent"));
         when(workspaceService.readFile(userId, workspaceId, "PLAN-ACTION.md"))
                 .thenThrow(new InvalidFilePathException("absent"));
 
-        assertThat(systemPrompt())
+        systemPrompt();
+
+        assertThat(agentProvider.lastRequest.system())
+                .doesNotContain("--- État courant du sujet (STATE.md / PLAN-ACTION.md) ---");
+        assertThat(message())
                 .doesNotContain("--- État courant du sujet (STATE.md / PLAN-ACTION.md) ---");
     }
 
     @Test
-    @DisplayName("un état trop long est tronqué, et la coupe se dit")
+    @DisplayName("un état trop long est tronqué dans le message, et la coupe se dit")
     void oversizedStateIsTruncated() {
         String huge = "S".repeat(6_000 + 500);
         when(workspaceService.readFile(userId, workspaceId, "STATE.md")).thenReturn(huge);
         when(workspaceService.readFile(userId, workspaceId, "PLAN-ACTION.md"))
                 .thenThrow(new InvalidFilePathException("absent"));
 
-        String system = systemPrompt();
+        systemPrompt();
+        String message = message();
 
-        assertThat(system).contains("… (état tronqué)");
+        assertThat(message).contains("… (état tronqué)");
         // La borne par fichier est bien appliquée : le contenu brut complet n'est jamais injecté entier.
-        assertThat(system).doesNotContain("S".repeat(6_000 + 1));
+        assertThat(message).doesNotContain("S".repeat(6_000 + 1));
     }
 
     @Test
-    @DisplayName("à contenu identique, la consigne est byte-identique d'un tour au suivant (cache)")
-    void stablePrefixAcrossTurns() {
+    @DisplayName("F-171 : le préfixe système est byte-stable d'un tour à l'autre même quand l'état change")
+    void systemPrefixIsByteStableEvenWhenStateChanges() {
+        // L'état du sujet change entre les deux tours — exactement le cas qui, avant F-171, cassait le
+        // cache au niveau système. Désormais l'état vit dans le message : le préfixe système ne bouge pas.
         when(workspaceService.readFile(userId, workspaceId, "STATE.md"))
-                .thenReturn("Statut stable.");
+                .thenReturn("Statut tour 1.", "Statut tour 2, tout a changé.");
         when(workspaceService.readFile(userId, workspaceId, "PLAN-ACTION.md"))
                 .thenThrow(new InvalidFilePathException("absent"));
 
-        String first = systemPrompt();
-        String second = systemPrompt();
+        String firstSystem = systemPrompt();
+        String firstMessage = message();
+        String secondSystem = systemPrompt();
+        String secondMessage = message();
 
-        assertThat(second).isEqualTo(first);
-        assertThat(first).contains("Statut stable.");
+        // LE test du gain : le bloc système est byte-identique bien que l'état ait changé.
+        assertThat(secondSystem).isEqualTo(firstSystem);
+        // Et l'état, lui, a bien changé — dans le message (sous le dernier breakpoint).
+        assertThat(firstMessage).contains("Statut tour 1.");
+        assertThat(secondMessage).contains("Statut tour 2, tout a changé.");
     }
 
     @Test
@@ -187,7 +213,10 @@ class AtelierChatServiceSubjectStateTest {
                 .thenReturn(new fr.claudegateway.runner.channel.RunnerCallResult(
                         true, "peu importe", false, null, 5L, null, null, null, "", false));
 
-        assertThat(systemPrompt())
+        systemPrompt();
+        assertThat(agentProvider.lastRequest.system())
+                .doesNotContain("--- État courant du sujet (STATE.md / PLAN-ACTION.md) ---");
+        assertThat(message())
                 .doesNotContain("--- État courant du sujet (STATE.md / PLAN-ACTION.md) ---");
     }
 }
