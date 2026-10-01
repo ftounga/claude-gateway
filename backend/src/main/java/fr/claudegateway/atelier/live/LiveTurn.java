@@ -511,6 +511,29 @@ public final class LiveTurn {
         }
     }
 
+    /**
+     * <b>Bat le cœur</b> du tour (F-170 / SF-170-01) : pousse un signal « vide » à chaque spectateur
+     * pour garder sa connexion vivante à travers un proxy d'entreprise pendant une phase sans
+     * événement. Un spectateur dont le battement échoue est <b>détaché</b>, jamais une cause d'arrêt —
+     * exactement comme un envoi en échec.
+     *
+     * <p>Ce n'est <b>pas</b> une publication : le curseur n'avance pas, rien n'entre au tampon, rien
+     * n'est persisté. Un tour terminé est un no-op. L'appel est sérialisé par le verrou du tour, comme
+     * {@link #publishJson} : un battement et un événement ne peuvent jamais écrire en même temps sur le
+     * même émetteur.</p>
+     */
+    public void heartbeat() {
+        lock.lock();
+        try {
+            if (finished) {
+                return;
+            }
+            subscribers.removeIf(subscriber -> !subscriber.heartbeat());
+        } finally {
+            lock.unlock();
+        }
+    }
+
     /** Détache un spectateur sans rien changer au tour — le geste explicite d'une vue qui part. */
     public void detach(TurnSubscriber subscriber) {
         lock.lock();

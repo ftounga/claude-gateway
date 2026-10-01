@@ -6,6 +6,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.http.converter.HttpMessageNotWritableException;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -1055,6 +1057,55 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(new ErrorResponse("request_timeout",
                         "Le traitement a dépassé le délai imparti. Veuillez réessayer."));
+    }
+
+    /**
+     * <b>Client déconnecté en cours de flux</b> (F-170 / SF-170-01). Derrière un proxy d'entreprise qui
+     * coupe une connexion SSE restée inactive, le conteneur notifie « Servlet container error
+     * notification for disconnected client » via une {@link AsyncRequestNotUsableException} (elle-même
+     * une {@code IOException} enveloppant souvent un « Broken pipe »). Ce <b>n'est pas une panne</b> :
+     * le navigateur est parti.
+     *
+     * <p>On se <b>tait</b> (retour {@code null} : rien n'est réécrit). Tenter d'y sérialiser un
+     * {@link ErrorResponse} objet était précisément la cause de la cascade observée en prod — sur un
+     * flux {@code application/x-ndjson} cela levait {@code HttpMessageNotWritableException} (« No
+     * converter for [ErrorResponse] with preset Content-Type 'application/x-ndjson' »), rattrapée par
+     * {@link #handleUnexpected} qui exposait une erreur brute. Un client déjà parti n'a de toute façon
+     * plus personne pour lire une réponse.</p>
+     */
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public ResponseEntity<ErrorResponse> handleClientDisconnected(AsyncRequestNotUsableException ex) {
+        // Jamais le message de l'exception vers quoi que ce soit d'autre que le journal : c'est un
+        // événement de transport (client parti), pas une donnée métier.
+        log.debug("Client déconnecté en cours de flux : clôture nette, sans ErrorResponse");
+        return null;
+    }
+
+    /**
+     * <b>Écriture impossible sur un flux déjà engagé</b> (F-170 / SF-170-01). Dernier filet contre la
+     * cascade {@code No converter for [ErrorResponse] with preset Content-Type '…'} : dès que la
+     * réponse est <b>committée</b> ou porte un type de <b>flux</b> ({@code application/x-ndjson} ou
+     * {@code text/event-stream}), aucune réécriture d'{@link ErrorResponse} objet n'est possible sans
+     * casser le cadrage — on clôt <b>net</b> ({@code null}).
+     *
+     * <p>Sur une réponse JSON classique <b>non engagée</b>, une {@code HttpMessageNotWritableException}
+     * est une vraie panne de sérialisation : on rend l'{@code internal_error 500} habituel.</p>
+     */
+    @ExceptionHandler(HttpMessageNotWritableException.class)
+    public ResponseEntity<ErrorResponse> handleNotWritable(HttpMessageNotWritableException ex,
+            HttpServletResponse response) {
+        String contentType = response.getContentType();
+        boolean streamOrCommitted = response.isCommitted()
+                || (contentType != null
+                        && (contentType.startsWith(MediaType.APPLICATION_NDJSON_VALUE)
+                                || contentType.startsWith(MediaType.TEXT_EVENT_STREAM_VALUE)));
+        if (streamOrCommitted) {
+            log.warn("Écriture impossible sur un flux déjà engagé : clôture nette, sans ErrorResponse");
+            return null;
+        }
+        log.error("Réponse non sérialisable (hors flux)", ex);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new ErrorResponse("internal_error", "Une erreur interne est survenue."));
     }
 
     @ExceptionHandler(Exception.class)

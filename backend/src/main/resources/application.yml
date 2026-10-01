@@ -155,6 +155,14 @@ app:
     max-total-bytes: ${APP_ATELIER_MAX_TOTAL_BYTES:52428800}
     max-entries: ${APP_ATELIER_MAX_ENTRIES:2000}
     max-file-bytes: ${APP_ATELIER_MAX_FILE_BYTES:2097152}
+    # Flux de tour (F-170 / SF-170-01, 2026-10-01). Battement de cœur du flux SSE d'un tour vivant :
+    # un commentaire SSE (`: ping`) émis à cet intervalle garde la connexion vivante à travers un proxy
+    # d'entreprise (CAGIP/Netskope) qui coupe une connexion streaming restée INACTIVE pendant que le
+    # modèle réfléchit ou qu'un outil long tourne. En MILLISECONDES ; défaut 15 000 (bien sous le seuil
+    # de coupure usuel ~30-60 s). `<= 0` DÉSACTIVE le battement (comportement d'avant F-170), sans
+    # livraison. Le battement n'est ni persisté, ni compté, ni visible (lu par `TurnHeartbeat`).
+    stream:
+      heartbeat: ${APP_ATELIER_STREAM_HEARTBEAT:15000}
     # Recherche SÉMANTIQUE du `recall` (F-162 / SF-162-06) : embeddings des messages + similarité
     # pgvector (cosine), pour retrouver un passage PAR LE SENS. POSTGRESQL uniquement (la colonne
     # `vector` n'existe qu'en prod) ; le MOT-CLÉ (SF-162-01) reste le repli qui ne casse jamais.

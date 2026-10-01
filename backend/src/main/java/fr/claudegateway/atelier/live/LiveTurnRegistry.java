@@ -134,6 +134,20 @@ public class LiveTurnRegistry {
     }
 
     /**
+     * Tous les tours <b>vivants</b> de ce pod (F-170 / SF-170-01).
+     *
+     * <p>Le battement de cœur ({@code TurnHeartbeat}) les parcourt pour garder leurs flux ouverts à
+     * travers un proxy d'entreprise. C'est une lecture technique, tous utilisateurs confondus — le
+     * battement ne lit aucun contenu et ne prend aucune décision métier ; chaque {@link LiveTurn} reste
+     * clefé par {@code (userId, workspaceId)} et les lectures nominatives passent toujours par
+     * {@link #find} / {@link #liveTurnsOf}. Les tours déjà terminés en sont exclus : les pinguer ne
+     * ferait qu'écrire sur des flux clos.</p>
+     */
+    public java.util.List<LiveTurn> liveTurns() {
+        return turns.values().stream().filter(LiveTurn::live).toList();
+    }
+
+    /**
      * Combien de tours <b>vivants</b> ce pod porte encore (F-84 / SF-84-08).
      *
      * <p>Un entier, tous utilisateurs confondus, et rien d'autre : ni identité, ni contenu. C'est
