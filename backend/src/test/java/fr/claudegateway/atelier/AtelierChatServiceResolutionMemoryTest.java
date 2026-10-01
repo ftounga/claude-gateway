@@ -51,6 +51,8 @@ class AtelierChatServiceResolutionMemoryTest {
     @Mock private fr.claudegateway.runner.audit.RunnerAuditService runnerAuditService;
     @Mock private fr.claudegateway.runner.host.RunnerHostService runnerHostService;
     @Mock private ResolutionMemoryRepository memoryRepo;
+    // Sémantique éteint (isEnabled()=false par défaut) : le rappel reste le Jaccard de SF-148-08.
+    @Mock private fr.claudegateway.atelier.resolution.ResolutionSemanticRecall resolutionSemantic;
 
     private StubAiAgentProvider agentProvider;
     private AtelierChatService service;
@@ -71,7 +73,7 @@ class AtelierChatServiceResolutionMemoryTest {
                 runnerHostService,
                 new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null, null, true));
         service.setResolutionMemory(new ResolutionMemoryProvider(
-                new ResolutionMemoryStore(memoryRepo), Runnable::run));
+                new ResolutionMemoryStore(memoryRepo, resolutionSemantic), Runnable::run));
 
         lenient().when(runnerHostService.declaredShell(hostId)).thenReturn(null);
         lenient().when(runnerToolGateway.listFiles(any(RunnerTarget.class), any())).thenReturn(ok(""));
