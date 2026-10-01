@@ -609,74 +609,39 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "- N'annonce rien quand rien de durable n'a été rangé : pas de « rien à ranger », "
                     + "pas de statut — c'est le silence de la carte qui reprend.\n\n";
     /**
-     * Savoir durable (F-166 / SF-166-01). Ajoutée sur le <b>poste</b> — terminal du poste (racine) ET
-     * terminaux de sujet ({@link Workspace#isRunnerTarget()}) —, c'est là que vivent des dépôts réels sur
-     * lesquels un {@code REPO-MAP.md} / {@code STATE.md} a du sens. Absente en SANDBOX (hébergé) et sur un
-     * terminal Teams : préfixe plus court, cache (F-134) préservé.
+     * Savoir durable — socle universel (F-166 / SF-166-03, refonte de SF-166-01/02). Injectée sur le
+     * <b>poste</b> — terminal du poste (racine) ET terminaux de sujet ({@link Workspace#isRunnerTarget()})
+     * —, là où vivent des dépôts réels sur lesquels une carte de gouvernance a du sens. Absente en SANDBOX
+     * (hébergé) et sur un terminal Teams : préfixe plus court, cache (F-134) préservé.
      *
-     * <p>La doctrine apprend à l'agent à <b>lire l'artefact existant d'abord</b> au lieu de re-scanner, à
-     * <b>proposer</b> d'en créer un aux moments clés (jamais en douce à chaque tour), à le construire de
-     * façon <b>bornée</b> ({@code git ls-files} + points d'entrée, pas de relecture complète), et à le
-     * porter comme un <b>pointeur à revérifier</b> — jamais un substitut à la lecture du fichier réel
-     * quand la précision compte. Bénéfice double : coût (moins de re-exploration) et justesse
-     * (raisonnement stable). <b>Strictement additive</b> (règle absolue PO : justesse avant coût) : elle
-     * ne retire rien du contexte utile. Prompt-only, aucun nouvel outil (réutilise {@code write_file}),
-     * littéral <b>stable</b> (cache F-134 préservé).</p>
+     * <p>SF-166-03 <b>aligne ce socle sur le circuit de gouvernance réel</b> : il référence les artefacts
+     * <b>existants</b> — la <b>carte</b> du poste, le {@code PLAN-ACTION.md} (carte projet) et le
+     * {@code STATE.md} — et <b>abandonne</b> le nom de fichier hors-circuit inventé par F-166 (ni lu par le
+     * moteur de carte, ni vérifié, ni versionné). Ce socle est volontairement <b>court</b> : il est
+     * le <b>plancher universel</b> injecté pour <b>tous</b> les postes, même sans paquet {@code
+     * savoir-durable} activé ; le détail opérationnel vit dans {@code regles.md} (postes gouvernés), un
+     * léger recouvrement étant accepté et sans danger.
+     *
+     * <p>Il apprend à l'agent à <b>lire la carte d'abord</b> pour s'orienter au lieu de re-scanner, à ne
+     * pas tout re-explorer quand un résumé existe, à traiter la carte comme un <b>pointeur à revérifier</b>
+     * (jamais un substitut à la lecture du fichier réel quand la précision compte), et — essence du
+     * déclencheur SF-166-02 fondue ici — à <b>proposer</b> une carte <b>bornée</b> ({@code git ls-files} +
+     * points d'entrée) quand le re-scan répété des mêmes fichiers trahit une carte manquante.
+     * <b>Strictement additif</b> (règle absolue PO : justesse avant coût) ; prompt-only, réutilise
+     * {@code write_file} ; littéral <b>stable</b> (cache F-134 préservé).</p>
      */
     private static final String DURABLE_KNOWLEDGE_DOCTRINE =
-            "Entretiens un savoir durable du dépôt — lis la carte avant de re-scanner :\n"
-                    + "- Sur un travail substantiel dans un dépôt / un sujet, appuie-toi sur deux "
-                    + "artefacts PERSISTANTS s'ils existent : `REPO-MAP.md` (la structure — où vivent les "
-                    + "choses, points d'entrée) et `STATE.md` (l'état courant — décisions, conclusions, où "
-                    + "on en est). LIS-LES D'ABORD pour t'orienter, au lieu de re-scanner et re-dériver le "
-                    + "dépôt à chaque tour (c'est du coût pur, et un raisonnement moins stable).\n"
-                    + "- S'ils N'EXISTENT PAS, PROPOSE d'en créer un aux MOMENTS CLÉS — première "
-                    + "exploration substantielle, décision importante, avant une passation —, jamais en "
-                    + "douce ni à chaque tour (anti-spam). L'utilisateur décide ; tu n'écris pas ces "
-                    + "artefacts en silence.\n"
-                    + "- Construis-les de façon BORNÉE : un inventaire (`git ls-files` ou équivalent) plus "
-                    + "les points d'entrée, PAS une relecture complète du dépôt. Une carte se dresse d'un "
-                    + "survol, pas d'un audit. Fais porter à l'artefact une ligne « à revérifier avant de "
-                    + "s'y fier » (carte datée, pas source de vérité gelée).\n"
-                    + "- GARDE-FOU (justesse avant coût) : la carte est un POINTEUR À REVÉRIFIER, JAMAIS "
-                    + "un substitut à la lecture du fichier RÉEL quand la précision compte — nom exact d'un "
-                    + "symbole, signature, écriture de code. On lit la carte pour s'orienter ; on ouvre le "
-                    + "fichier pour agir.\n"
-                    + "- RAFRAÎCHIS la carte quand le dépôt bouge : une carte périmée qu'on croit fraîche "
-                    + "est pire que pas de carte. Ce savoir durable S'AJOUTE à ta démarche, il ne remplace "
-                    + "aucune lecture nécessaire.\n\n";
-    /**
-     * Déclencheur léger du savoir durable (F-166 / SF-166-02). S'ajoute <b>immédiatement après</b>
-     * {@link #DURABLE_KNOWLEDGE_DOCTRINE}, dans le <b>même</b> bloc {@link Workspace#isRunnerTarget()}
-     * (host + sujet) : c'est le déclencheur concret de la même doctrine, donc même scope. Absent en
-     * SANDBOX (hébergé) et sur un terminal Teams : préfixe plus court, cache (F-134) préservé.
-     *
-     * <p>Il rend <b>auto-observable</b> le moment où proposer : quand l'agent constate qu'il a déjà
-     * <b>ouvert plusieurs fichiers du même dépôt / sujet</b> pour se ré-orienter, <b>sans</b> qu'un
-     * {@code REPO-MAP.md} / {@code STATE.md} existe, <b>ce re-scan EST le signal</b> — il propose alors
-     * d'en créer un (bornée) <b>avant de continuer à re-explorer</b>. Le modèle observe son propre
-     * historique d'appels d'outils du tour ; <b>aucun compteur ni état persistant en code</b> (« le tour
-     * vit dans le flux », Gateway-First). <b>Anti-spam</b> : proposé au plus une fois, un « non » suffit.
-     * <b>Garde-fou (règle absolue PO : justesse avant coût)</b> : la suggestion ne <b>bloque</b> ni ne
-     * <b>remplace</b> JAMAIS la lecture réelle d'un fichier — on lit ce dont on a besoin, on propose en
-     * plus. Prompt-only, réutilise {@code write_file} ; littéral <b>stable</b> (cache F-134 préservé).</p>
-     */
-    private static final String DURABLE_KNOWLEDGE_TRIGGER_DOCTRINE =
-            "Repère le re-scan à vide — quand tu redécouvres, propose la carte :\n"
-                    + "- SIGNAL À SURVEILLER : si tu constates que tu as déjà OUVERT PLUSIEURS FICHIERS du "
-                    + "MÊME dépôt / sujet juste pour te ré-orienter (te repérer, retrouver où vivent les "
-                    + "choses) et qu'AUCUN `REPO-MAP.md` / `STATE.md` n'existe, ce re-scan EST le signal : "
-                    + "tu es en train de re-dériver ce qu'une carte retiendrait.\n"
-                    + "- ALORS PROPOSE d'en créer un (inventaire borné : `git ls-files` + points d'entrée) "
-                    + "AVANT de continuer à re-explorer — c'est le « déclencheur léger » du savoir durable, "
-                    + "au-delà des moments clés déjà connus (première exploration, décision, passation).\n"
-                    + "- UNE SEULE FOIS (anti-spam) : propose au plus une fois dans le fil ; si "
-                    + "l'utilisateur a déjà dit non, n'y reviens pas et poursuis normalement. Surveille-toi "
-                    + "toi-même, sans compteur ni cérémonie.\n"
-                    + "- NE BLOQUE JAMAIS, NE REMPLACE JAMAIS (justesse avant coût) : si tu as besoin d'un "
-                    + "fichier précis MAINTENANT, ouvre-le d'abord ; la suggestion s'AJOUTE, elle ne "
-                    + "suspend pas ta lecture réelle et ne s'y substitue pas. C'est un rappel, pas une "
-                    + "porte.\n\n";
+            "Oriente-toi sur la carte avant de re-scanner — savoir durable :\n"
+                    + "- Quand tu attaques un dépôt ou reprends un sujet, s'il existe une carte, un "
+                    + "`PLAN-ACTION.md` ou un `STATE.md`, LIS-LES D'ABORD pour t'orienter, au lieu de "
+                    + "re-scanner l'arborescence et de tout re-dériver (coût pur, raisonnement moins "
+                    + "stable). Si un résumé existe déjà, ne refais pas l'exploration complète.\n"
+                    + "- La carte est un POINTEUR À REVÉRIFIER, JAMAIS un substitut à la lecture du fichier "
+                    + "RÉEL quand la précision compte (nom exact, signature, ligne à modifier) : on lit la "
+                    + "carte pour savoir où regarder, on ouvre le fichier pour agir. Si elle manque et que "
+                    + "tu te surprends à rouvrir les mêmes fichiers pour te repérer, propose d'en écrire une "
+                    + "(bornée : `git ls-files` + points d'entrée, pas un audit complet) avant de "
+                    + "continuer. Strictement additif : n'écarte aucune lecture nécessaire.\n\n";
     /**
      * Aiguillage à la racine (F-141 / SF-141-02, cadrage §4.1). Ajouté <b>uniquement au terminal du
      * poste</b> ({@link Workspace#isHostTerminal()}) : c'est là, et là seulement, que la place d'un
@@ -7059,19 +7024,18 @@ public class AtelierChatService implements RelayInterruptTarget {
         // remède au cas réel (journal rangé dans `lzi/` au lieu de `data-platform/`, découvert tard).
         system.append(DESTINATION_ANNOUNCE_DOCTRINE);
 
-        // Savoir durable (F-166 / SF-166-01) : sur le POSTE — terminal du poste ET terminaux de sujet
-        // (isRunnerTarget()) —, là où vivent des dépôts réels. Lire REPO-MAP.md/STATE.md d'abord, proposer
-        // de les entretenir aux moments clés, construction bornée, carte = pointeur à revérifier. Placée
-        // juste après l'annonce de destination (même thème : la « carte » des faits durables). Additive et
-        // littéral stable : cache (F-134) préservé. Absente en SANDBOX/Teams (préfixe plus court).
+        // Savoir durable — socle universel (F-166 / SF-166-03, refonte de SF-166-01/02) : sur le POSTE —
+        // terminal du poste ET terminaux de sujet (isRunnerTarget()) —, là où vivent des dépôts réels. Un
+        // SEUL littéral court, aligné sur le circuit de gouvernance (carte / PLAN-ACTION.md / STATE.md ;
+        // l'ancien nom hors-circuit de F-166 abandonné) : lire la carte d'abord, ne pas re-scanner si un
+        // résumé existe, carte =
+        // pointeur à revérifier (jamais substitut à la lecture réelle), essence du déclencheur SF-166-02
+        // fondue (re-scan répété = signal → proposer une carte bornée). Le détail opérationnel vit dans
+        // regles.md (postes gouvernés) ; ce socle est le plancher injecté pour TOUS. Placé juste après
+        // l'annonce de destination (même thème : la « carte » des faits durables). Additif, littéral stable
+        // (cache F-134 préservé). Absent en SANDBOX/Teams (préfixe plus court).
         if (workspace.isRunnerTarget()) {
             system.append(DURABLE_KNOWLEDGE_DOCTRINE);
-            // Déclencheur léger (F-166 / SF-166-02) : même scope (host + sujet), juste après la doctrine.
-            // Rend auto-observable le moment de proposer : plusieurs fichiers du même dépôt rouverts pour
-            // se ré-orienter, SANS REPO-MAP/STATE présent → ce re-scan EST le signal, propose (borné) avant
-            // de re-explorer. Aucun compteur/état en code (le tour vit dans le flux) ; une seule fois
-            // (anti-spam) ; ne bloque ni ne remplace JAMAIS la lecture réelle. Littéral stable (cache F-134).
-            system.append(DURABLE_KNOWLEDGE_TRIGGER_DOCTRINE);
         }
 
         // Aiguillage à la racine (F-141 / SF-141-02) : UNIQUEMENT au terminal du poste, là où la

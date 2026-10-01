@@ -19,11 +19,11 @@ servira encore dans six mois.
 
 **La carte, ce sont les fichiers `.md` posés à la racine du poste**, à côté des dossiers de projets.
 Les projets sont des **dossiers**, la carte des **fichiers** : aucune confusion possible, et aucune
-convention de chemin n'est imposée — la racine est celle de la machine, quel que soit son nom.
+convention de chemin imposée — la racine est celle de la machine, quel que soit son nom.
 
-C'est l'endroit où la connaissance s'accumule : **à chaque projet qu'on ajoute, la connaissance de
-l'infrastructure augmente.** Un projet meurt avec son sujet ; ce qu'il a fait apparaître de durable
-reste sur la carte et sert au projet suivant.
+C'est là que la connaissance s'accumule : **à chaque projet ajouté, la connaissance de
+l'infrastructure augmente** — ce qu'un projet fait apparaître de durable reste sur la carte et sert
+au suivant.
 
 **Règle d'écriture, sans exception : n'y mettre que des faits**, chacun avec sa **date** (sous la
 forme `constaté le AAAA-MM-JJ`) et sa **source** (qui l'a dit, ou ce qui l'a montré). Trois
@@ -37,6 +37,14 @@ interdits qui vont avec :
 
 Le **terminal du poste** s'ouvre à la racine : c'est de là qu'on lit et qu'on écrit la carte.
 
+### Lire la carte avant de re-scanner
+
+Promouvoir le durable n'est que la moitié du geste ; **s'en servir** est l'autre. Avant d'attaquer un
+dépôt ou de reprendre un sujet, **lis d'abord** la carte, le `PLAN-ACTION.md` et le `STATE.md` pour
+t'orienter au lieu de tout re-scanner. La carte **oriente** sans jamais remplacer la lecture du fichier
+réel quand la précision compte ; quand elle manque, dresse-la **bornée** (`git ls-files`), pas par un
+audit.
+
 ### La règle des livrables
 
 **Rien de ce qui sort du projet ne doit suggérer qu'un modèle l'a produit.** Cela vaut pour les
@@ -48,8 +56,7 @@ Concrètement, et sans exception : pas de co-signature au nom d'un assistant, pa
 porte le nom de la personne qui l'a demandé.
 
 Un contrôle **refuse mécaniquement** un `git commit` portant l'un de ces marqueurs. Le reste — le
-ton, les tournures, les listes à trois éléments partout — n'est pas vérifiable par une machine : il
-est de ta responsabilité.
+ton, les tournures — n'est pas vérifiable par une machine : il est de ta responsabilité.
 
 ### La promotion : ranger le durable, tout de suite
 
@@ -87,8 +94,8 @@ ou de `lzi` ? ») **avant** d'écrire, plutôt qu'un rangement muet au mauvais e
 en trois mots : **réponds** à la question, **écris** le durable dans la carte quand il apparaît, et
 **dis où** tu l'as mis — la plomberie, elle, reste en silence.
 
-`STATE.md` reste ton brouillon : notes-y librement où tu en es et ce que tu viens d'apprendre. Ce qui
-doit survivre au sujet part dans la carte ; le reste meurt avec `STATE.md`, et c'est très bien.
+`STATE.md` reste ton brouillon : ce qui doit survivre au sujet part dans la carte, le reste meurt
+avec lui — et c'est très bien.
 
 ### Où se rangent les dépôts, et où ils ne se rangent pas
 
@@ -110,8 +117,7 @@ Quand un tour a **écrit**, un second regard compare la carte aux notes et liste
 et absent d'ici. **Filet best-effort, pas une autorité** : vérifie chaque élément dans le fichier
 cité ; s'il est durable et réellement absent, ajoute-le à la bonne carte ; sinon **ignore-le**. Ce
 filet lit **les fichiers**, jamais une déclaration que tu poserais — c'est lui qui rattrape ce qu'un
-tour aurait oublié de ranger. S'il ne rend rien de lisible, on te le dit — un filet qui se tait
-quand il ne comprend pas ne protège de rien.
+tour aurait oublié de ranger. S'il ne rend rien de lisible, on te le dit.
 
 ### Comment écrire un message d'erreur
 
