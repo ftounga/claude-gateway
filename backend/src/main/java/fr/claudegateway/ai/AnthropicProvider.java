@@ -254,6 +254,11 @@ public class AnthropicProvider implements AIProvider {
     /**
      * Le champ {@code system} : une chaîne, ou — si la requête demande le cache (F-101 / SF-101-03) —
      * un bloc texte marqué {@code cache_control: ephemeral}, seule forme qui accepte ce marqueur.
+     *
+     * <p>F-171 / SF-171-02 (Fix C) : le marqueur porte un {@code ttl} de <b>1 h</b>, aligné sur
+     * l'Atelier ({@code AnthropicAgentProvider.CACHE_CONTROL}). Sans {@code ttl}, le cache éphémère
+     * expire au bout de <b>5 min</b> par défaut — trop court entre deux messages du chemin
+     * chat-passerelle (F-101). Le {@code ttl} est <b>GA</b> : aucun en-tête beta n'est requis.</p>
      */
     static Object systemField(ChatCompletionRequest request) {
         if (!request.cacheSystem()) {
@@ -262,7 +267,7 @@ public class AnthropicProvider implements AIProvider {
         Map<String, Object> block = new HashMap<>();
         block.put("type", "text");
         block.put("text", request.system());
-        block.put("cache_control", Map.of("type", "ephemeral"));
+        block.put("cache_control", Map.of("type", "ephemeral", "ttl", "1h"));
         return List.of(block);
     }
 
