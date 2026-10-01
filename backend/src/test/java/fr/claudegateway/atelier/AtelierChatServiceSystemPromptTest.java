@@ -671,29 +671,30 @@ class AtelierChatServiceSystemPromptTest {
                 .isEqualTo("rangé dans `data-platform/PLAN-ACTION.md`");
     }
 
-    // ------------------------------------------- F-166 / SF-166-01 : savoir durable (REPO-MAP.md/STATE.md)
+    // ------------------------------------ F-166 / SF-166-03 : savoir durable — socle universel
+    // Refonte de SF-166-01/02 : UN SEUL littéral court, aligné sur le circuit de gouvernance
+    // (PLAN-ACTION.md / STATE.md / carte), REPO-MAP.md abandonné, essence du déclencheur SF-166-02 fondue.
 
-    /** Vérifie le contenu clé de la doctrine « savoir durable » sur un préfixe donné. */
+    /** Vérifie le contenu clé du socle universel « savoir durable » (SF-166-03) sur un préfixe donné. */
     private static void assertDurableKnowledgeDoctrine(String system) {
-        // Amorce distinctive + les deux artefacts nommés.
-        assertThat(system).contains("Entretiens un savoir durable du dépôt");
-        assertThat(system).contains("`REPO-MAP.md`");
+        // Amorce distinctive.
+        assertThat(system).contains("Oriente-toi sur la carte avant de re-scanner");
+        // Les noms EXISTANTS du circuit de gouvernance (plus de REPO-MAP.md).
+        assertThat(system).contains("`PLAN-ACTION.md`");
         assertThat(system).contains("`STATE.md`");
-        // Lire d'abord au lieu de re-scanner.
+        // Lire la carte d'abord au lieu de re-scanner / tout re-explorer.
         assertThat(system).contains("LIS-LES D'ABORD");
-        // Proposer aux moments clés, jamais à chaque tour.
-        assertThat(system).contains("PROPOSE d'en créer un aux MOMENTS CLÉS");
-        assertThat(system).contains("jamais en douce ni à chaque tour");
-        // Construction bornée + ligne à revérifier.
-        assertThat(system).contains("git ls-files");
-        assertThat(system).contains("PAS une relecture complète du dépôt");
-        assertThat(system).contains("à revérifier avant de");
-        // Garde-fou : pointeur, jamais substitut à la lecture réelle.
+        assertThat(system).contains("ne refais pas l'exploration complète");
+        // Garde-fou : pointeur à revérifier, jamais substitut à la lecture réelle.
         assertThat(system).contains("POINTEUR À REVÉRIFIER, JAMAIS");
-        assertThat(system).contains("substitut à la lecture du fichier RÉEL");
-        // Rafraîchir quand le dépôt bouge + additive.
-        assertThat(system).contains("RAFRAÎCHIS la carte quand le dépôt bouge");
-        assertThat(system).contains("S'AJOUTE à ta démarche");
+        assertThat(system).contains("lecture du fichier RÉEL");
+        // Essence du déclencheur SF-166-02 fondue : re-scan répété = signal → proposer une carte bornée.
+        assertThat(system).contains("rouvrir les mêmes fichiers");
+        assertThat(system).contains("git ls-files");
+        // Strictement additif.
+        assertThat(system).contains("n'écarte aucune lecture nécessaire");
+        // SF-166-03 : le nom hors-circuit REPO-MAP.md a disparu du prompt.
+        assertThat(system).doesNotContain("REPO-MAP");
     }
 
     @Test
@@ -722,15 +723,15 @@ class AtelierChatServiceSystemPromptTest {
 
     @Test
     void theDurableKnowledgeDoctrineIsAbsentOnASandboxProject() {
-        // Projet hébergé (SANDBOX, hors poste) : hors scope → doctrine absente, préfixe plus court.
+        // Projet hébergé (SANDBOX, hors poste) : hors scope → socle absent, préfixe plus court.
         when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
         lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
                 .thenThrow(new InvalidFilePathException("absent"));
 
         String system = systemPrompt();
 
-        assertThat(system).doesNotContain("Entretiens un savoir durable du dépôt");
-        assertThat(system).doesNotContain("`REPO-MAP.md`");
+        assertThat(system).doesNotContain("Oriente-toi sur la carte avant de re-scanner");
+        assertThat(system).doesNotContain("REPO-MAP");
         // Les doctrines universelles restent (non-régression) : seul le bloc host+sujet manque.
         assertThat(system).contains("Dis où tu ranges un fait durable");
     }
@@ -743,7 +744,7 @@ class AtelierChatServiceSystemPromptTest {
         String first = systemPromptOfRunnerProjectDeclaring(null);
         String second = systemPromptOfRunnerProjectDeclaring(null);
 
-        String marker = "Entretiens un savoir durable du dépôt";
+        String marker = "Oriente-toi sur la carte avant de re-scanner";
         String firstDoctrine = first.substring(first.indexOf(marker),
                 first.indexOf("\n\n", first.indexOf(marker)));
         String secondDoctrine = second.substring(second.indexOf(marker),
@@ -751,80 +752,11 @@ class AtelierChatServiceSystemPromptTest {
         assertThat(firstDoctrine).isEqualTo(secondDoctrine);
     }
 
-    // ------------------------------ F-166 / SF-166-02 : déclencheur léger (re-scan sans artefact)
-
-    /** Vérifie le contenu clé du déclencheur léger « savoir durable » sur un préfixe donné. */
-    private static void assertDurableKnowledgeTrigger(String system) {
-        // Amorce distinctive.
-        assertThat(system).contains("Repère le re-scan à vide");
-        // Le signal auto-observable : plusieurs fichiers du même dépôt, sans REPO-MAP/STATE.
-        assertThat(system).contains("OUVERT PLUSIEURS FICHIERS du MÊME dépôt");
-        assertThat(system).contains("AUCUN `REPO-MAP.md` / `STATE.md` n'existe");
-        assertThat(system).contains("ce re-scan EST le signal");
-        // Proposer (borné) avant de re-explorer.
-        assertThat(system).contains("PROPOSE d'en créer un");
-        assertThat(system).contains("AVANT de continuer à re-explorer");
-        // Anti-spam : une seule fois.
-        assertThat(system).contains("UNE SEULE FOIS (anti-spam)");
-        // Garde-fou : ne bloque ni ne remplace jamais la lecture réelle.
-        assertThat(system).contains("NE BLOQUE JAMAIS, NE REMPLACE JAMAIS");
-        assertThat(system).contains("ta lecture réelle");
-    }
-
-    @Test
-    void theDurableKnowledgeTriggerIsPresentOnTheHostTerminal() {
-        String system = systemPromptOfHostTerminal();
-
-        assertDurableKnowledgeTrigger(system);
-        // Non-régression : s'ajoute à la doctrine SF-166-01, ne la remplace pas.
-        assertDurableKnowledgeDoctrine(system);
-        // Non-régression : coexiste avec les doctrines universelles et l'aiguillage host-only.
-        assertThat(system).contains("Dis où tu ranges un fait durable");
-        assertThat(system).contains("À la racine du poste, aiguille avant de ranger");
-    }
-
-    @Test
-    void theDurableKnowledgeTriggerIsPresentOnARunnerProject() {
-        // Terminal de sujet / projet RUNNER : même scope que SF-166-01 → présent.
-        String system = systemPromptOfRunnerProjectDeclaring(null);
-
-        assertDurableKnowledgeTrigger(system);
-        // Non-régression : la doctrine SF-166-01 reste présente et inchangée à côté du déclencheur.
-        assertDurableKnowledgeDoctrine(system);
-        // Le sujet n'a PAS l'aiguillage host-only.
-        assertThat(system).doesNotContain("À la racine du poste, aiguille avant de ranger");
-    }
-
-    @Test
-    void theDurableKnowledgeTriggerIsAbsentOnASandboxProject() {
-        // Projet hébergé (SANDBOX, hors poste) : hors scope → déclencheur absent, préfixe plus court.
-        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
-        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
-                .thenThrow(new InvalidFilePathException("absent"));
-
-        String system = systemPrompt();
-
-        assertThat(system).doesNotContain("Repère le re-scan à vide");
-        assertThat(system).doesNotContain("ce re-scan EST le signal");
-        // La doctrine SF-166-01 est elle aussi absente (même scope) ; les universelles restent.
-        assertThat(system).doesNotContain("Entretiens un savoir durable du dépôt");
-        assertThat(system).contains("Dis où tu ranges un fait durable");
-    }
-
-    @Test
-    void theDurableKnowledgeTriggerIsByteStableBetweenTwoBuilds() {
-        // Littéral constant injecté à un point fixe : le bloc doit être identique à l'octet entre deux
-        // tours, sinon le préfixe change et le cache (F-134) tombe (même prudence que le test SF-166-01).
-        String first = systemPromptOfRunnerProjectDeclaring(null);
-        String second = systemPromptOfRunnerProjectDeclaring(null);
-
-        String marker = "Repère le re-scan à vide";
-        String firstBlock = first.substring(first.indexOf(marker),
-                first.indexOf("\n\n", first.indexOf(marker)));
-        String secondBlock = second.substring(second.indexOf(marker),
-                second.indexOf("\n\n", second.indexOf(marker)));
-        assertThat(firstBlock).isEqualTo(secondBlock);
-    }
+    // SF-166-02 (déclencheur léger) : le littéral DURABLE_KNOWLEDGE_TRIGGER_DOCTRINE a été SUPPRIMÉ par
+    // SF-166-03 et son essence (re-scan répété des mêmes fichiers = signal → proposer une carte bornée)
+    // fondue dans le socle unique ci-dessus. Les tests dédiés au déclencheur sont donc retirés ; la
+    // couverture correspondante est désormais assurée par assertDurableKnowledgeDoctrine (assertions
+    // « rouvrir les mêmes fichiers » + « git ls-files »).
 
     // ------------------------------------------- F-141 / SF-141-02 : aiguillage à la racine
 
