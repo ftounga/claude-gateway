@@ -19,9 +19,12 @@ class AnthropicProviderTest {
         ChatCompletionRequest plain = new ChatCompletionRequest("m", List.of(), List.of(), null, "Consigne", 10);
         org.assertj.core.api.Assertions.assertThat(AnthropicProvider.systemField(plain)).isEqualTo("Consigne");
 
+        // F-171 / SF-171-02 (Fix C) : le marqueur de cache porte un ttl de 1 h (aligné sur l'Atelier),
+        // sans quoi le cache éphémère expire au bout de 5 min par défaut.
         ChatCompletionRequest cached = new ChatCompletionRequest("m", List.of(), List.of(), null, "Consigne", 10, true);
         org.assertj.core.api.Assertions.assertThat(AnthropicProvider.systemField(cached)).isEqualTo(List.of(
-                java.util.Map.of("type", "text", "text", "Consigne", "cache_control", java.util.Map.of("type", "ephemeral"))));
+                java.util.Map.of("type", "text", "text", "Consigne",
+                        "cache_control", java.util.Map.of("type", "ephemeral", "ttl", "1h"))));
     }
 
     @Test
