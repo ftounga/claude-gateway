@@ -117,6 +117,16 @@ public final class WindowedTurnSubscriber implements TurnSubscriber {
         close(true);
     }
 
+    /**
+     * Relaie le battement de cœur (F-170 / SF-170-01) au spectateur enveloppé, tant que la fenêtre est
+     * ouverte. Une fenêtre close rend {@code false} : le tour détachera ce spectateur au prochain
+     * parcours, sans que le battement ait à toucher l'état de la fenêtre.
+     */
+    @Override
+    public boolean heartbeat() {
+        return !closed.get() && delegate.heartbeat();
+    }
+
     /** Clôture programmée (rafale livrée ou échéance) : jamais appelée sous le verrou du tour. */
     private void close() {
         close(true);

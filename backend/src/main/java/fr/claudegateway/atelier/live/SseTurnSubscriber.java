@@ -59,4 +59,26 @@ public final class SseTurnSubscriber implements TurnSubscriber {
             // Flux déjà clos : rien à faire de plus.
         }
     }
+
+    /**
+     * Émet un <b>commentaire SSE</b> (F-170 / SF-170-01) : une ligne {@code : ...} du protocole,
+     * ignorée nativement par {@code EventSource} comme par les parseurs du frontend. Elle fait circuler
+     * des octets sur une connexion restée inactive — ce qui empêche un proxy d'entreprise de la couper
+     * pendant que le modèle réfléchit ou qu'un outil long tourne.
+     *
+     * <p>Le commentaire ne porte aucune charge utile, ne consomme aucun numéro d'ordre et ne passe pas
+     * par le tampon du tour : il n'est ni persisté, ni compté, ni visible.</p>
+     *
+     * @return {@code false} si l'écriture échoue (navigateur parti, flux coupé) — le spectateur sera
+     *         détaché, exactement comme un {@link #deliver} en échec. Jamais d'exception propagée.
+     */
+    @Override
+    public boolean heartbeat() {
+        try {
+            emitter.send(SseEmitter.event().comment("ping"));
+            return true;
+        } catch (IOException | RuntimeException ex) {
+            return false;
+        }
+    }
 }

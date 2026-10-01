@@ -23,4 +23,21 @@ public interface TurnSubscriber {
      * qui vient d'être détaché — fermer proprement une connexion déjà morte n'est pas une erreur.
      */
     void finish();
+
+    /**
+     * <b>Battement de cœur</b> (F-170 / SF-170-01) : un signal « vide » qui garde la connexion vivante
+     * à travers un proxy d'entreprise pendant les phases sans événement (réflexion du modèle, outil
+     * long). Ce n'est <b>pas</b> un événement du tour : il ne consomme aucun numéro d'ordre, n'entre
+     * pas au tampon, n'est pas persisté et reste invisible à l'utilisateur.
+     *
+     * <p>Par défaut un no-op qui rend {@code true} : un spectateur qui porte déjà son propre battement
+     * (le relais ndjson entre pods, qui pingue dans {@code awaitFinish}) n'a rien à faire ici. Seuls
+     * les spectateurs SSE l'implémentent.</p>
+     *
+     * @return {@code true} si le battement est parti ; {@code false} si le spectateur est parti — il
+     *         sera alors <b>détaché</b>, exactement comme un {@link #deliver} en échec
+     */
+    default boolean heartbeat() {
+        return true;
+    }
 }

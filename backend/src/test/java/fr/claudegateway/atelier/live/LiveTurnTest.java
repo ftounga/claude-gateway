@@ -125,6 +125,55 @@ class LiveTurnTest {
     }
 
     @Test
+    void leBattementPingueLesSpectateursSansToucherAuCurseurNiAuTampon() {
+        LiveTurn turn = turn();
+        Recorder premier = new Recorder();
+        Recorder second = new Recorder();
+        turn.attach(premier, LiveTurn.FROM_START);
+        turn.attach(second, LiveTurn.FROM_START);
+        turn.publish("text", new Payload("un"));
+        long curseurAvant = turn.cursor();
+
+        turn.heartbeat();
+        turn.heartbeat();
+
+        assertThat(premier.heartbeats).as("chaque spectateur est pingué").isEqualTo(2);
+        assertThat(second.heartbeats).isEqualTo(2);
+        assertThat(turn.cursor()).as("le battement n'avance pas le curseur").isEqualTo(curseurAvant);
+        assertThat(premier.names()).as("le battement n'ajoute aucun événement au tampon")
+                .containsExactly("text");
+    }
+
+    @Test
+    void unSpectateurDontLeBattementEchoueEstDetacheSansArreterLeTour() {
+        LiveTurn turn = turn();
+        Recorder vivant = new Recorder();
+        Recorder mort = new Recorder();
+        mort.heartbeatAlive = false;
+        turn.attach(vivant, LiveTurn.FROM_START);
+        turn.attach(mort, LiveTurn.FROM_START);
+
+        turn.heartbeat();
+
+        assertThat(turn.subscriberCount()).as("le spectateur dont le battement échoue est détaché")
+                .isEqualTo(1);
+        assertThat(turn.live()).as("un battement en échec n'arrête jamais le tour").isTrue();
+        assertThat(vivant.heartbeats).isEqualTo(1);
+    }
+
+    @Test
+    void unTourTermineNeBatPlus() {
+        LiveTurn turn = turn();
+        Recorder spectateur = new Recorder();
+        turn.attach(spectateur, LiveTurn.FROM_START);
+        turn.finish();
+
+        turn.heartbeat();
+
+        assertThat(spectateur.heartbeats).as("un tour terminé ne pingue plus personne").isZero();
+    }
+
+    @Test
     void clore_previent_les_spectateurs_encore_branches() {
         LiveTurn turn = turn();
         Recorder spectateur = new Recorder();
@@ -145,6 +194,8 @@ class LiveTurnTest {
         private final List<TurnEvent> received = new ArrayList<>();
         private boolean alive = true;
         private boolean finished;
+        private boolean heartbeatAlive = true;
+        private int heartbeats;
 
         @Override
         public boolean deliver(TurnEvent event) {
@@ -158,6 +209,15 @@ class LiveTurnTest {
         @Override
         public void finish() {
             finished = true;
+        }
+
+        @Override
+        public boolean heartbeat() {
+            if (!heartbeatAlive) {
+                return false;
+            }
+            heartbeats++;
+            return true;
         }
 
         List<String> names() {

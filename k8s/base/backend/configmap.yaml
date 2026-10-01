@@ -100,6 +100,13 @@ data:
   # Budget de TEMPS d'un tour (SF-118-03). Defaut code 10 min ; porte a 60 min le 2026-09-14 a la
   # demande du PO (grosses taches : page complete, config). Plafond dur 2 h. ISO-8601. INCHANGÉ.
   APP_ATELIER_TURN_BUDGET: "PT60M"
+  # Battement de coeur du flux SSE d'un tour (F-170 / SF-170-01, AJOUTE le 2026-10-01). Un commentaire
+  # SSE (`: ping`) emis a cet intervalle garde la connexion vivante a travers le proxy corporate CAGIP
+  # qui coupe une connexion streaming restee INACTIVE (modele qui reflechit, outil long) -> sinon le
+  # tour est tronque cote ecran. En MILLISECONDES ; defaut code 15000. Doit rester SOUS le seuil de
+  # coupure d'inactivite du proxy (~30-60 s). `<= 0` desactive le battement. Non persiste, non compte,
+  # invisible. Pose explicitement a 15000 pour que la prod CAGIP soit couverte des le deploiement.
+  APP_ATELIER_STREAM_HEARTBEAT: "15000"
   # F-118 / SF-118-02 (2026-09-14) : reglages de tenue en charge.
   # Pool de connexions base : RAMENE de 30 a 10 apres l'INCIDENT du 2026-09-16. La RDS est PARTAGEE
   # avec legalcase ; a 30 x jusqu'a 4 pods (~120 connexions) la base epuisait ses slots
