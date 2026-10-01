@@ -2084,6 +2084,22 @@ public class AtelierChatService implements RelayInterruptTarget {
             consigne = carriedPlanNote(carriedPlan, turnMode) + "\n" + consigne;
         }
 
+        // F-171 / SF-171-01 — LE CONTEXTE VOLATIL DU SUJET (état courant STATE.md/PLAN-ACTION.md +
+        // catalogue de skills issu de l'arborescence) rejoint la CONSIGNE du tour au lieu du bloc
+        // SYSTÈME. Même patron que les faits datés (F-137), la conclusion rappelée (F-148/SF-148-08) et
+        // le plan reporté (SF-121-10) : préfixé à la `consigne`, donc SOUS le dernier breakpoint de
+        // cache. Ces éléments étaient réécrits à chaque tour ; dans le système ils cassaient le cache
+        // au niveau système (tout l'historique RÉÉCRIT, ≈ 20× le prix d'une relecture sur opus-5). Hors
+        // du système, le préfixe redevient byte-stable → l'historique repasse en cache-READ (F-134).
+        // Déplacer ≠ retirer : mêmes octets, mêmes en-têtes, à un autre endroit. Vide s'il n'y a rien à
+        // injecter (racine du poste sans sujet, pas de STATE/PLAN ni de skills). Le prompt est bâti ici
+        // (une fois par tour) pour que son contexte volatil précède la consigne ; son préfixe système
+        // est réutilisé plus bas.
+        PromptBuild prompt = buildPrompt(userId, workspace, turnMode);
+        if (!prompt.subjectContext().isEmpty()) {
+            consigne = prompt.subjectContext() + consigne;
+        }
+
         List<AgentMessage> messages = buildReplayMessages(userId, workspace);
         messages.add(AgentMessage.userText(consigne));
 
@@ -2112,7 +2128,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                         ? savedUserMessage.getId() : UUID.randomUUID(),
                 userText, java.time.OffsetDateTime.now());
 
-        String system = buildSystemPrompt(userId, workspace, turnMode);
+        // F-171 / SF-171-01 : le préfixe système (désormais byte-stable, sans le contexte volatil du
+        // sujet déplacé plus haut dans la consigne) est celui déjà bâti par buildPrompt ci-dessus.
+        String system = prompt.system();
         List<AgentTool> tools = buildTools(userId, workspace, turnMode);
 
         // Plan du tour (F-39 / SF-39-13) : local, donc jamais partagé entre utilisateurs.
@@ -6902,12 +6920,41 @@ public class AtelierChatService implements RelayInterruptTarget {
      * conventions du projet, <b>en silence</b> (les lectures optionnelles avalent l'erreur). C'est
      * exactement la panne qu'on ne verrait pas.</p>
      */
+    /**
+     * Résultat de la construction du prompt (F-171 / SF-171-01) : le préfixe <b>système</b>, devenu
+     * byte-stable d'un tour à l'autre, et le <b>contexte volatil du sujet</b> (état courant
+     * {@code STATE.md}/{@code PLAN-ACTION.md} + catalogue de skills issu de l'arborescence) qui en a
+     * été <b>déplacé vers le MESSAGE</b> du tour.
+     *
+     * <p><b>Pourquoi.</b> Sur opus-5, le cache fonctionne par <b>préfixe</b> : dès qu'un octet du bloc
+     * système change, tout l'historique qui suit est <b>réécrit</b> (≈ 20× le prix d'une relecture).
+     * Or STATE/PLAN et l'arborescence sont réécrits à chaque tour (`refreshAfterTurn`) : les laisser
+     * dans le système cassait le cache à chaque demande (cache_write = 71 % de la facture). Déplacés
+     * dans le message — <b>sous le dernier breakpoint</b>, exactement comme les faits datés
+     * (`factsFor`), la conclusion rappelée (`recall`) et le plan reporté (`carriedPlanNote`) —, le
+     * préfixe système redevient stable et l'historique repasse en cache-READ (F-134).</p>
+     *
+     * <p><b>Déplacer ≠ retirer</b> : le modèle voit exactement le même contenu (mêmes octets, mêmes
+     * en-têtes), à un autre endroit. {@code subjectContext} est vide quand il n'y a rien à injecter
+     * (racine du poste sans sujet, pas de STATE/PLAN ni de skills).</p>
+     */
+    record PromptBuild(String system, String subjectContext) {}
+
     /** Consigne système du tour en mode {@link AgentTurnMode#ACT} — forme historique conservée. */
     String buildSystemPrompt(UUID userId, Workspace workspace) {
         return buildSystemPrompt(userId, workspace, AgentTurnMode.ACT);
     }
 
+    /**
+     * Consigne système seule — enveloppe historique conservée pour les appelants et tests qui ne
+     * veulent que le préfixe (F-171 / SF-171-01 : le contexte volatil du sujet voyage désormais dans
+     * le message, via {@link #buildPrompt}).
+     */
     String buildSystemPrompt(UUID userId, Workspace workspace, AgentTurnMode mode) {
+        return buildPrompt(userId, workspace, mode).system();
+    }
+
+    PromptBuild buildPrompt(UUID userId, Workspace workspace, AgentTurnMode mode) {
         StringBuilder system = new StringBuilder();
         // F-148 / SF-148-02 : un profil métier actif (F-138) REMPLACE l'amorce de rôle générique au
         // lieu de rejoindre le bloc de règles plus bas — le bon cadre est ainsi lu dès la 1re phrase.
@@ -7167,14 +7214,27 @@ public class AtelierChatService implements RelayInterruptTarget {
             system.append(GOVERNANCE_HEADER).append('\n').append(governance).append("\n\n");
         }
 
-        // F-148 / SF-148-05 — ÉTAT COURANT DU SUJET : le contenu borné de STATE.md et PLAN-ACTION.md du
-        // sujet (projet) du tour, pour reprendre le fil sans un tour read_file d'amorçage. F-136
-        // n'injecte que des TITRES (racine du poste) et F-137 met les faits dans le MESSAGE : ce contenu
-        // n'est nulle part ailleurs dans le préfixe. Lu là où les fichiers vivent (même readOptional
-        // target-aware que le CLAUDE.md ci-dessus), borné par fichier. Injecté verbatim : à contenu
-        // stable, octets stables — le préfixe ne change QUE lorsque l'état change réellement (F-134
-        // préservé, même propriété que le CLAUDE.md injecté juste au-dessus). À la RACINE du poste il n'y
-        // a pas de sujet courant, on n'injecte rien.
+        // F-171 / SF-171-01 — LE CONTEXTE VOLATIL DU SUJET quitte le bloc système pour le MESSAGE.
+        //
+        // Ci-dessous : l'ÉTAT COURANT DU SUJET (STATE.md/PLAN-ACTION.md, F-148/SF-148-05) et le
+        // CATALOGUE DE SKILLS issu de l'arborescence (F-39/SF-39-02). Ces deux blocs sont RÉÉCRITS à
+        // chaque tour par l'agent et RELUS après chaque tour (`refreshAfterTurn`) : les laisser dans
+        // le préfixe système cassait le cache au NIVEAU SYSTÈME à chaque demande (sur opus-5,
+        // cache_write = 71 % de la facture ; écrire ≈ 20× lire). On les accumule donc dans
+        // `subjectCtx` — DESTINÉ AU MESSAGE du tour, préfixé à la `consigne` SOUS le dernier
+        // breakpoint, exactement comme les faits datés (`factsFor`), la conclusion rappelée
+        // (`recall`) et le plan reporté (`carriedPlanNote`). Le préfixe système redevient byte-stable
+        // d'un tour à l'autre → l'historique repasse en cache-READ (F-134). DÉPLACER ≠ RETIRER : le
+        // modèle voit exactement le même contenu (mêmes octets, mêmes en-têtes), à un autre endroit.
+        // Les lectures restent comptées dans le MÊME `recordBootstrap` (total inchangé, D11).
+        StringBuilder subjectCtx = new StringBuilder();
+
+        // ÉTAT COURANT DU SUJET : le contenu borné de STATE.md et PLAN-ACTION.md du sujet (projet) du
+        // tour, pour reprendre le fil sans un tour read_file d'amorçage. F-136 n'injecte que des TITRES
+        // (racine du poste) et F-137 met les faits dans le MESSAGE : ce contenu n'est nulle part
+        // ailleurs. Lu là où les fichiers vivent (même readOptional target-aware que le CLAUDE.md),
+        // borné par fichier, injecté verbatim. À la RACINE du poste il n'y a pas de sujet courant, on
+        // n'injecte rien.
         if (!workspace.isHostTerminal()) {
             StringBuilder subjectState = new StringBuilder();
             for (String path : SUBJECT_STATE_FILES) {
@@ -7192,7 +7252,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                         .append(bounded.strip()).append("\n\n");
             }
             if (subjectState.length() > 0) {
-                system.append(SUBJECT_STATE_HEADER).append(subjectState);
+                subjectCtx.append(SUBJECT_STATE_HEADER).append(subjectState);
             }
         }
 
@@ -7218,13 +7278,13 @@ public class AtelierChatService implements RelayInterruptTarget {
             catalog.append('\n');
         }
         if (catalog.length() > 0) {
-            system.append("--- Skills du projet (lis le fichier pour le mode d'emploi complet) ---\n")
+            subjectCtx.append("--- Skills du projet (lis le fichier pour le mode d'emploi complet) ---\n")
                     .append(catalog);
             if (skillPaths.size() > MAX_SKILLS_ANNOUNCED) {
-                system.append("… et ").append(skillPaths.size() - MAX_SKILLS_ANNOUNCED)
+                subjectCtx.append("… et ").append(skillPaths.size() - MAX_SKILLS_ANNOUNCED)
                         .append(" autre(s) skill(s) non listé(s).\n");
             }
-            system.append("Ouvre un skill avec read_file au moment où il sert ; ne suppose pas son contenu.\n\n");
+            subjectCtx.append("Ouvre un skill avec read_file au moment où il sert ; ne suppose pas son contenu.\n\n");
         }
         // F-142 / SF-142-10 — L'OUTIL PRIME SUR UNE RECETTE PÉRIMÉE DU POSTE.
         //
@@ -7234,19 +7294,25 @@ public class AtelierChatService implements RelayInterruptTarget {
         // python-pptx, ce qu'un poste d'entreprise refuse. Constaté en production le 2026-09-24 : le
         // correctif déployé, l'outil ouvert… et jamais appelé, parce que le skill local disait autre chose.
         //
-        // La règle vient APRÈS le catalogue des skills : ce qu'on lit en dernier pèse le plus. Elle est
-        // conditionnée à la présence réelle d'un de ces outils — sinon elle parlerait dans le vide — et
-        // son texte est FIXE : le préfixe système reste stable, le cache de F-134 n'est pas touché.
+        // Elle est conditionnée à la présence réelle d'un de ces outils — sinon elle parlerait dans le
+        // vide — et son texte est FIXE : littéral stable, le préfixe système reste byte-stable, le cache
+        // de F-134 n'est pas touché. (Depuis F-171/SF-171-01, le catalogue de skills a quitté le système
+        // pour le message ; cette doctrine reste une consigne stable, elle demeure dans le système.)
         if (diagramToolCatalog.isOpenFor(userId, workspace) || deckToolCatalog.isOpenFor(userId, workspace)
                 || officeToolCatalog.isOpenFor(userId, workspace)) {
             system.append(TOOL_PRIMACY).append("\n\n");
         }
         if (workspace.isRunnerTarget()) {
+            // D11 (SF-38-08) : les lectures d'amorçage — CLAUDE.md + STATE/PLAN + listage + skills —
+            // sont agrégées en UNE ligne. F-171 déplace le CONTENU STATE/PLAN/skills vers le message
+            // mais les lectures restent comptées ici, dans le même appel : le total est inchangé.
             runnerAuditService.recordBootstrap(userId, RunnerTargets.of(workspace),
                     UUID.randomUUID().toString(), reads, chars);
         }
         String result = system.toString();
-        return result.length() > SYSTEM_MAX_CHARS ? result.substring(0, SYSTEM_MAX_CHARS) : result;
+        String systemPrefix = result.length() > SYSTEM_MAX_CHARS
+                ? result.substring(0, SYSTEM_MAX_CHARS) : result;
+        return new PromptBuild(systemPrefix, subjectCtx.toString());
     }
 
     /**

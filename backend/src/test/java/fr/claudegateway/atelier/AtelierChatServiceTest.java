@@ -1014,6 +1014,14 @@ class AtelierChatServiceTest {
     @Test
     void delegatesAnExplorationAndBringsBackOnlyItsAnswer() {
         stubHappyPath();
+        // F-171 / SF-171-01 : l'état du sujet voyage désormais dans le message. Le stub générique
+        // renvoie « contenu du fichier » pour TOUTE lecture (y compris STATE/PLAN à l'amorçage) : on
+        // neutralise STATE/PLAN ici pour que la SEULE source possible de cette chaîne dans le message
+        // reste une fuite de la sous-boucle explore — ce que ce test vérifie.
+        when(workspaceService.readFile(userId, workspaceId, "STATE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+        when(workspaceService.readFile(userId, workspaceId, "PLAN-ACTION.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
         agentProvider.enqueueToolCall("explore", "question", "où est défini AppConfig ?");
         // Ce que la sous-boucle fait, et ce qu'elle conclut.
         agentProvider.enqueueToolCall("read_file", "path", "src/AppConfig.java");

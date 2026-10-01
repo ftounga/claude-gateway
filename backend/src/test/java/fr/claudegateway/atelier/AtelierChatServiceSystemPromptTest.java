@@ -118,10 +118,15 @@ class AtelierChatServiceSystemPromptTest {
                 .thenThrow(new InvalidFilePathException("absent"));
 
         String system = systemPrompt();
+        // F-171 / SF-171-01 : le catalogue de skills (dérivé de l'arborescence, réécrit à chaque tour)
+        // a quitté le bloc système pour le MESSAGE du tour. Le système ne le porte plus.
+        String message = String.valueOf(agentProvider.lastRequest.messages());
 
-        assertThat(system).contains("- .claude/skills/deploy.md : Déploie le projet sur l'environnement cible.");
-        assertThat(system).doesNotContain("SECRET_INTERNE_DU_CORPS");
-        assertThat(system).contains("read_file");
+        assertThat(system).doesNotContain("- .claude/skills/deploy.md : Déploie le projet sur l'environnement cible.");
+        // Même contenu, à l'octet près, désormais dans le message : chemin + description, jamais le corps.
+        assertThat(message).contains("- .claude/skills/deploy.md : Déploie le projet sur l'environnement cible.");
+        assertThat(message).doesNotContain("SECRET_INTERNE_DU_CORPS");
+        assertThat(message).contains("Ouvre un skill avec read_file au moment où il sert");
     }
 
     // ------------------------------------------- F-119 / SF-119-02 : discipline d'investigation
@@ -1397,10 +1402,12 @@ class AtelierChatServiceSystemPromptTest {
         lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
                 .thenThrow(new InvalidFilePathException("absent"));
 
-        String system = systemPrompt();
+        systemPrompt();
+        // F-171 / SF-171-01 : le catalogue de skills voyage dans le message (pas le système).
+        String message = String.valueOf(agentProvider.lastRequest.messages());
 
-        assertThat(system).doesNotContain("skills/broken.md");
-        assertThat(system).contains("- skills/ok.md : Fait la revue.");
+        assertThat(message).doesNotContain("skills/broken.md");
+        assertThat(message).contains("- skills/ok.md : Fait la revue.");
     }
 
     @Test
@@ -1420,17 +1427,19 @@ class AtelierChatServiceSystemPromptTest {
             return "Description de " + path;
         });
 
-        String system = systemPrompt();
+        systemPrompt();
+        // F-171 / SF-171-01 : le catalogue de skills (et son plafond) voyage dans le message.
+        String message = String.valueOf(agentProvider.lastRequest.messages());
 
-        assertThat(system).contains("- skills/s0.md : Description de skills/s0.md");
+        assertThat(message).contains("- skills/s0.md : Description de skills/s0.md");
         // Le 16ᵉ skill (index 15) et suivants ne sont plus annoncés.
-        assertThat(system).doesNotContain("skills/s15.md");
-        assertThat(system).contains("et 40 autre(s) skill(s) non listé(s).");
+        assertThat(message).doesNotContain("skills/s15.md");
+        assertThat(message).contains("et 40 autre(s) skill(s) non listé(s).");
     }
     // ---------------------------------------------------------------- F-142 / SF-142-10
 
     @Test
-    @DisplayName("SF-142-10 : l'outil de la gateway PRIME sur une recette périmée du poste, et c'est dit APRÈS les skills")
+    @DisplayName("SF-142-10 : l'outil de la gateway PRIME sur une recette périmée du poste (règle stable gardée au système)")
     void thetoolPrimesOverAnOutdatedLocalRecipe() {
         // Un poste qui porte encore l'ancienne recette : c'est exactement le cas de production du
         // 2026-09-24 — le correctif déployé, l'outil ouvert, et pourtant jamais appelé.
@@ -1439,13 +1448,16 @@ class AtelierChatServiceSystemPromptTest {
         service.setDiagramTool(openDiagramCatalog(), null);
 
         String system = systemPrompt();
+        String message = String.valueOf(agentProvider.lastRequest.messages());
 
+        // La règle est un LITTÉRAL STABLE : elle reste dans le préfixe système (cache F-134 préservé).
         assertThat(system).contains(AtelierChatService.TOOL_PRIMACY);
         assertThat(system).contains("N'installe rien").contains("render_diagram").contains("python-pptx");
-        // L'ordre fait la décision : ce qu'on lit en dernier pèse le plus.
-        assertThat(system.indexOf(AtelierChatService.TOOL_PRIMACY))
-                .as("la règle doit venir APRÈS le catalogue des skills")
-                .isGreaterThan(system.indexOf("--- Skills du projet"));
+        // F-171 / SF-171-01 : le catalogue de skills (volatil) a quitté le système pour le message.
+        // La règle garde donc son effet — le modèle lit la recette du poste (dans le message) PUIS la
+        // règle de primauté (dans le système) — sans casser le cache à chaque tour.
+        assertThat(message).contains("- .claude/skills/pptx.md");
+        assertThat(system).doesNotContain("--- Skills du projet");
     }
 
     @Test
