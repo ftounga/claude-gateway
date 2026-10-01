@@ -315,11 +315,19 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
 - **resolution_memory** — mémoire de résolutions « question → conclusion (+ fichiers touchés) » des
   tours **aboutis**, PAR POSTE, pour proposer une résolution déjà trouvée sur une question similaire
   (F-148 / SF-148-08, migration `128`). Append par tour abouti ; le rappel se fait par **similarité
-  lexicale** (Jaccard sur tokens significatifs), **pas d'embeddings** (réserve F-148).
+  lexicale** (Jaccard sur tokens significatifs), avec un **rappel sémantique** (embeddings pgvector)
+  branché par-dessus en SF-148-11, **repli Jaccard** si éteint ou sans résultat au-dessus du seuil.
   - `resolution_memory` : `id (uuid)`, `user_id (uuid, NOT NULL)`, `host_id (uuid, NOT NULL)`,
     `workspace_id (uuid, nullable)`, `question (varchar 4000)`, `conclusion (text)`,
-    `files (varchar 4000)`, `created_at (timestamptz, NOT NULL)`.
-    Index `(user_id, host_id, created_at)`.
+    `files (varchar 4000)`, `created_at (timestamptz, NOT NULL)`,
+    `embedding (vector(1536), Postgres only, nullable — migration `137` / SF-148-10)`.
+    Index `(user_id, host_id, created_at)` ; index **HNSW** `vector_cosine_ops` sur `embedding`
+    (Postgres only, migration `137`).
+  - **Rappel sémantique de la question** (F-148 / SF-148-10→12, réserve F-148 activée) : la colonne
+    `embedding` range le vecteur de la **question** (SQL natif `CAST(? AS vector)`, jamais mappée en
+    JPA, comme `atelier_messages.embedding`) ; la recherche `<=>` (distance cosine) est isolée
+    `(user_id, host_id)`. **Dormant sans `APP_EMBEDDING_API_KEY`** : la colonne reste NULL et le rappel
+    retombe sur le Jaccard — zéro régression par défaut.
   - **Par poste, pas par sujet** : un problème d'infra tranché dans un sujet vaut pour un autre du
     même poste. `workspace_id` est rangé pour référence, le rappel filtre par `(user_id, host_id)`.
   - **Où vit le rappel** : dans le MESSAGE du tour (patron F-137), jamais dans la consigne système —
