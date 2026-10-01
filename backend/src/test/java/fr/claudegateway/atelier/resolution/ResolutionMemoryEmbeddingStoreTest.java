@@ -83,4 +83,28 @@ class ResolutionMemoryEmbeddingStoreTest {
         assertThat(store.searchSimilarQuestions(userId, hostId, new float[] {0.1f}, 0)).isEmpty();
         verifyNoInteractions(jdbc);
     }
+
+    @Test
+    @DisplayName("findUnembeddedBatch sélectionne les résolutions sans vecteur, question non vide, borné")
+    void findUnembeddedBatchSelectsRowsWithoutVector() {
+        when(jdbc.query(anyString(), any(RowMapper.class), any(Object[].class))).thenReturn(List.of());
+
+        store.findUnembeddedBatch(50);
+
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(jdbc).query(sql.capture(), any(RowMapper.class), eq(50));
+        assertThat(sql.getValue())
+                .contains("FROM resolution_memory")
+                .contains("embedding IS NULL")
+                .contains("question IS NOT NULL AND question <> ''")
+                .contains("LIMIT ?");
+    }
+
+    @Test
+    @DisplayName("findUnembeddedBatch : limit ≤ 0 → liste vide, aucune requête")
+    void findUnembeddedBatchGuardsLimit() {
+        assertThat(store.findUnembeddedBatch(0)).isEmpty();
+        assertThat(store.findUnembeddedBatch(-1)).isEmpty();
+        verifyNoInteractions(jdbc);
+    }
 }

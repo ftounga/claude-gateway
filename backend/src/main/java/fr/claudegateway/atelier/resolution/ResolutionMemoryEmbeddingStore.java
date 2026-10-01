@@ -62,6 +62,25 @@ public class ResolutionMemoryEmbeddingStore {
                 literal, userId, hostId, literal, topN);
     }
 
+    /**
+     * Un lot de résolutions <b>sans embedding</b>, du plus récent au plus ancien, borné (F-148 / SF-148-12,
+     * backfill). Balayage global (tous tenants) : embeddre la <b>question</b> d'une résolution sur SA propre
+     * ligne ne croise aucun tenant ; la recherche, elle, reste toujours filtrée {@code (user_id, host_id)}.
+     * Ignore les questions vides.
+     */
+    public List<UnembeddedResolution> findUnembeddedBatch(int limit) {
+        if (limit <= 0) {
+            return List.of();
+        }
+        String sql = "SELECT id, question FROM resolution_memory "
+                + "WHERE embedding IS NULL AND question IS NOT NULL AND question <> '' "
+                + "ORDER BY created_at DESC LIMIT ?";
+        return jdbcTemplate.query(sql,
+                (rs, rowNum) -> new UnembeddedResolution(rs.getObject("id", UUID.class),
+                        rs.getString("question")),
+                limit);
+    }
+
     /** Sérialise un vecteur au format littéral pgvector : {@code [0.1,0.2,...]}. */
     private static String toVectorLiteral(float[] embedding) {
         StringBuilder builder = new StringBuilder(embedding.length * 8 + 2);
@@ -77,5 +96,9 @@ public class ResolutionMemoryEmbeddingStore {
 
     /** Une résolution candidate : son id et la distance cosine à la question entrante (plus petit = plus proche). */
     public record ScoredResolution(UUID id, double distance) {
+    }
+
+    /** Une résolution à embeddre (backfill) : son id et sa question. */
+    public record UnembeddedResolution(UUID id, String question) {
     }
 }
