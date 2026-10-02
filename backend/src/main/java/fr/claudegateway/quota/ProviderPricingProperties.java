@@ -65,7 +65,7 @@ public record ProviderPricingProperties(
         BigDecimal sessionHour,
         BigDecimal usdToEur) {
 
-    static final String DEFAULT_PRICING_VERSION = "2026-09-20";
+    static final String DEFAULT_PRICING_VERSION = "2026-10-02";
     static final String DEFAULT_MODEL = "claude-opus-5";
     static final BigDecimal DEFAULT_WEB_SEARCH_PER_THOUSAND = new BigDecimal("10.00");
     static final BigDecimal DEFAULT_SESSION_HOUR = new BigDecimal("0.08");
@@ -83,6 +83,9 @@ public record ProviderPricingProperties(
      */
     static Map<String, ModelPricing> defaultModels() {
         Map<String, ModelPricing> grid = new LinkedHashMap<>();
+        // Opus 5.5 (F-172 / SF-172-03), relevé le 2026-10-02 : moins cher qu'Opus 5, et lecture de
+        // cache à 0,05x l'entrée (et non 0,1x). Écriture au TTL 1 h = 2x l'entrée.
+        grid.put("claude-opus-5-5", ModelPricing.of("4.00", "20.00", "0.20", "8.00"));
         grid.put("claude-opus-5", ModelPricing.of("5.00", "25.00", "0.50", "10.00"));
         grid.put("claude-opus-4-8", ModelPricing.of("5.00", "25.00", "0.50", "10.00"));
         grid.put("claude-sonnet-5", ModelPricing.of("2.00", "10.00", "0.20", "4.00"));

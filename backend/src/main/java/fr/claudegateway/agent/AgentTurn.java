@@ -41,12 +41,44 @@ import java.util.List;
  *                     Informative seulement : le refus se reconnaît à {@code refused}
  * @param servedModel  modèle qui a <b>servi</b> le message, tel que rapporté par le fournisseur
  *                     (F-172 / SF-172-02), ou {@code null}. Diffère du modèle demandé après un repli
+ * @param usageByModel ventilation des tokens du tour par modèle servi (F-172 / SF-172-03), une
+ *                     entrée par tentative ; vide quand le fournisseur ne la rapporte pas. Les totaux
+ *                     ci-dessus en sont déjà la somme
  * @see #truncated()
  */
 public record AgentTurn(String text, List<AgentToolCall> toolCalls, boolean finished,
         int inputTokens, int outputTokens, boolean truncated, List<AgentContentBlock> reasoning,
         int cacheReadTokens, int cacheWriteTokens, int webSearchRequests, boolean refused,
-        String refusalCategory, String servedModel) {
+        String refusalCategory, String servedModel, List<ModelUsage> usageByModel) {
+
+    /**
+     * Part d'un tour servie par <b>un</b> modèle (F-172 / SF-172-03) — une tentative refusée puis son
+     * repli en font deux, chacune facturée au tarif du modèle qui l'a servie.
+     *
+     * @param model                modèle qui a servi cette part, ou {@code null} s'il est inconnu
+     * @param fullPriceInputTokens entrée hors cache
+     */
+    public record ModelUsage(String model, int fullPriceInputTokens, int outputTokens,
+            int cacheReadTokens, int cacheWriteTokens) {
+
+        public ModelUsage {
+            model = model == null || model.isBlank() ? null : model;
+            fullPriceInputTokens = Math.max(0, fullPriceInputTokens);
+            outputTokens = Math.max(0, outputTokens);
+            cacheReadTokens = Math.max(0, cacheReadTokens);
+            cacheWriteTokens = Math.max(0, cacheWriteTokens);
+        }
+    }
+
+    /** Forme sans ventilation par modèle — un tour servi par un seul modèle. */
+    public AgentTurn(String text, List<AgentToolCall> toolCalls, boolean finished,
+            int inputTokens, int outputTokens, boolean truncated, List<AgentContentBlock> reasoning,
+            int cacheReadTokens, int cacheWriteTokens, int webSearchRequests, boolean refused,
+            String refusalCategory, String servedModel) {
+        this(text, toolCalls, finished, inputTokens, outputTokens, truncated, reasoning,
+                cacheReadTokens, cacheWriteTokens, webSearchRequests, refused, refusalCategory,
+                servedModel, List.of());
+    }
 
     /** Forme sans modèle servi — celle des fournisseurs qui ne le rapportent pas. */
     public AgentTurn(String text, List<AgentToolCall> toolCalls, boolean finished,
@@ -85,6 +117,7 @@ public record AgentTurn(String text, List<AgentToolCall> toolCalls, boolean fini
         webSearchRequests = Math.max(0, webSearchRequests);
         refusalCategory = refusalCategory == null || refusalCategory.isBlank() ? null : refusalCategory;
         servedModel = servedModel == null || servedModel.isBlank() ? null : servedModel;
+        usageByModel = usageByModel == null ? List.of() : List.copyOf(usageByModel);
     }
 
     /** Forme sans ventilation de cache — conservée pour les appelants qui l'attendent. */

@@ -2,6 +2,7 @@ package fr.claudegateway.quota;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -115,6 +116,52 @@ public class ProviderCostCalculator {
         }
         return new TurnCost(providerCostUsd.setScale(COST_SCALE, RoundingMode.HALF_UP),
                 TurnCost.Source.PROVIDER, model, pricing.pricingVersion(), false);
+    }
+
+    /**
+     * Coût d'un tour servi en partie par <b>d'autres modèles</b> que le modèle demandé
+     * (F-172 / SF-172-03) — un refus suivi d'un repli sur un autre modèle, par exemple.
+     *
+     * <p>La part du modèle demandé est le total moins les autres parts ; chaque part est facturée au
+     * tarif de son modèle. Sans autre part, le calcul est exactement celui de
+     * {@link #calculate(TurnTokens, TurnExtras, String)}.</p>
+     *
+     * @param total          tokens du tour entier, par nature
+     * @param requestedModel modèle demandé pour le tour
+     * @param otherModels    parts servies par un autre modèle, par modèle ; vide ou {@code null} si
+     *                       le tour a été entièrement servi par le modèle demandé
+     * @param recordedModel  modèle à inscrire au relevé (le modèle servi), ou {@code null} pour le
+     *                       modèle demandé
+     */
+    public TurnCost calculate(TurnTokens total, TurnExtras extras, String requestedModel,
+            Map<String, TurnTokens> otherModels, String recordedModel) {
+        String recorded = recordedModel == null || recordedModel.isBlank() ? requestedModel : recordedModel;
+        if (otherModels == null || otherModels.isEmpty()) {
+            TurnCost single = calculate(total, extras, requestedModel);
+            return new TurnCost(single.amountUsd(), single.source(), recorded, single.pricingVersion(),
+                    single.pricingFallback());
+        }
+        long input = total.inputTokens();
+        long output = total.outputTokens();
+        long read = total.cacheReadTokens();
+        long write = total.cacheWriteTokens();
+        BigDecimal amount = BigDecimal.ZERO;
+        boolean fallback = false;
+        for (Map.Entry<String, TurnTokens> other : otherModels.entrySet()) {
+            TurnTokens share = other.getValue();
+            input -= share.inputTokens();
+            output -= share.outputTokens();
+            read -= share.cacheReadTokens();
+            write -= share.cacheWriteTokens();
+            TurnCost part = calculate(share, TurnExtras.NONE, other.getKey());
+            amount = amount.add(part.amountUsd());
+            fallback |= part.pricingFallback();
+        }
+        // La part du modèle demandé porte les dépenses hors tokens, une seule fois.
+        TurnCost own = calculate(new TurnTokens(input, output, read, write), extras, requestedModel);
+        amount = amount.add(own.amountUsd()).setScale(COST_SCALE, RoundingMode.HALF_UP);
+        return new TurnCost(amount, TurnCost.Source.CALCULATED, recorded, pricing.pricingVersion(),
+                fallback || own.pricingFallback());
     }
 
     /**

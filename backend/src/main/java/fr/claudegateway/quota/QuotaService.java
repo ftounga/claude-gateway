@@ -224,6 +224,24 @@ public class QuotaService {
     @Transactional
     public void recordUsage(UUID userId, TurnTokens tokens, TurnExtras extras,
             BigDecimal providerCostUsd, String model, UUID workspaceId, UUID hostId) {
+        recordUsage(userId, tokens, extras, providerCostUsd, model, null, null, workspaceId, hostId);
+    }
+
+    /**
+     * Même décompte, pour un tour servi en partie par <b>d'autres modèles</b> que le modèle demandé
+     * (F-172 / SF-172-03) — un refus rattrapé par un repli sur un autre modèle.
+     *
+     * <p>Le <b>quota ne bouge pas</b> : volumes et tokens facturés au client sont calculés sur le
+     * total, exactement comme avant. Seul le <b>relevé</b> change : chaque part est chiffrée au tarif
+     * du modèle qui l'a servie, et le modèle inscrit est le modèle servi.</p>
+     *
+     * @param otherModels   parts servies par un autre modèle que {@code model}, ou {@code null}
+     * @param recordedModel modèle servi à inscrire au relevé, ou {@code null} pour {@code model}
+     */
+    @Transactional
+    public void recordUsage(UUID userId, TurnTokens tokens, TurnExtras extras,
+            BigDecimal providerCostUsd, String model, java.util.Map<String, TurnTokens> otherModels,
+            String recordedModel, UUID workspaceId, UUID hostId) {
         TurnExtras spent = extras == null ? TurnExtras.NONE : extras;
         if (tokens.isEmpty() && spent.isEmpty()
                 && (providerCostUsd == null || providerCostUsd.signum() <= 0)) {
@@ -247,8 +265,10 @@ public class QuotaService {
         // (il sert à refacturer un client) et, depuis F-133, le COÛT RÉEL du tour — les deux
         // natures de cache comprises, sans lesquelles la dépense serait surestimée d'un ordre de
         // grandeur en usage agentique.
-        usageLedgerService.recordTurn(userId, workspaceId, hostId, tokens, spent,
-                providerCostCalculator.calculate(providerCostUsd, tokens, spent, model));
+        TurnCost cost = providerCostUsd == null || providerCostUsd.signum() <= 0
+                ? providerCostCalculator.calculate(tokens, spent, model, otherModels, recordedModel)
+                : providerCostCalculator.calculate(providerCostUsd, tokens, spent, model);
+        usageLedgerService.recordTurn(userId, workspaceId, hostId, tokens, spent, cost);
     }
 
     /**
@@ -263,6 +283,15 @@ public class QuotaService {
      */
     public BigDecimal costOf(TurnTokens tokens, TurnExtras extras, String model) {
         return providerCostCalculator.calculate(tokens, extras, model).amountUsd();
+    }
+
+    /**
+     * Même coût, pour un tour servi en partie par d'autres modèles (F-172 / SF-172-03) : chaque part
+     * à son tarif. Sans autre part, identique à {@link #costOf(TurnTokens, TurnExtras, String)}.
+     */
+    public BigDecimal costOf(TurnTokens tokens, TurnExtras extras, String model,
+            java.util.Map<String, TurnTokens> otherModels) {
+        return providerCostCalculator.calculate(tokens, extras, model, otherModels, null).amountUsd();
     }
 
     /**

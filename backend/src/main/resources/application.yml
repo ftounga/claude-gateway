@@ -914,7 +914,7 @@ app:
     # D9 du cadrage F-133). `pricing-version` date le releve et accompagne chaque montant enregistre
     # dans `usage_turns` : un cout ancien reste explicable quand les tarifs auront change.
     provider:
-      pricing-version: ${APP_COST_PRICING_VERSION:2026-09-20}
+      pricing-version: ${APP_COST_PRICING_VERSION:2026-10-02}
       # Tarifs de repli quand le modele servi est absent de la grille. Un probleme de tarif ne fait
       # JAMAIS echouer un tour : le fournisseur a deja ete appele et paye.
       default-model: ${APP_COST_DEFAULT_MODEL:claude-opus-5}
@@ -928,8 +928,14 @@ app:
       # verite est en dollars, l'euro n'est qu'une commodite de lecture. Le montant affiche depend
       # donc de ce reglage — assume et ecrit ici, plutot qu'un arrondi cache dans le code.
       usd-to-eur: ${APP_COST_USD_TO_EUR:0.92}
-      # USD par million de tokens. Releve du 2026-09-20.
+      # USD par million de tokens. Releve du 2026-09-20, Opus 5.5 ajoute le 2026-10-02 (F-172).
       models:
+        # Lecture de cache a 0,05x l'entree (et non 0,1x) ; ecriture au TTL 1 h = 2x l'entree.
+        claude-opus-5-5:
+          input: 4.00
+          output: 20.00
+          cache-read: 0.20
+          cache-write: 8.00
         claude-opus-5:
           input: 5.00
           output: 25.00

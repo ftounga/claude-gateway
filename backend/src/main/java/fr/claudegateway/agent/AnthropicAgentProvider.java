@@ -203,7 +203,7 @@ public class AnthropicAgentProvider implements AiAgentProvider {
     public AgentTurn nextTurn(AgentTurnRequest request) {
         Prepared prepared = prepare(request);
         return callWithRetry(request.model(), prepared.contextEditing(),
-                () -> toTurn(sendNonStreamed(prepared)));
+                () -> toTurn(sendNonStreamed(prepared), prepared.model()));
     }
 
     /**
@@ -234,13 +234,13 @@ public class AnthropicAgentProvider implements AiAgentProvider {
             log.warn("Streaming indisponible pour le tour (modèle={}, {}) : repli non streamé.",
                     request.model(), ex.getMessage());
             return callWithRetry(request.model(), prepared.contextEditing(),
-                    () -> toTurn(sendNonStreamed(prepared)));
+                    () -> toTurn(sendNonStreamed(prepared), prepared.model()));
         }
     }
 
     /** Corps de requête prêt à partir, calculé <b>une fois</b> et partagé streamé/non streamé. */
     private record Prepared(String apiKey, Map<String, Object> body, boolean contextEditing,
-            boolean perMessageEffort, List<String> extraBetas) {
+            boolean perMessageEffort, List<String> extraBetas, String model) {
     }
 
     /**
@@ -279,7 +279,8 @@ public class AnthropicAgentProvider implements AiAgentProvider {
             body.put("fallbacks", FALLBACKS_DEFAULT);
             extraBetas.add(SERVER_FALLBACK_BETA);
         }
-        return new Prepared(apiKey, body, contextEditing, perMessageEffort, List.copyOf(extraBetas));
+        return new Prepared(apiKey, body, contextEditing, perMessageEffort, List.copyOf(extraBetas),
+                request.model());
     }
 
     /**
@@ -439,7 +440,7 @@ public class AnthropicAgentProvider implements AiAgentProvider {
                         // Refus permanent du flux : on replie plutôt que de tuer le tour.
                         throw new StreamingFallbackException("statut " + status.value());
                     }
-                    return toTurn(parseSse(response.getBody(), textListener));
+                    return toTurn(parseSse(response.getBody(), textListener), prepared.model());
                 });
     }
 
@@ -675,6 +676,12 @@ public class AnthropicAgentProvider implements AiAgentProvider {
                     ? (ObjectNode) target.get("server_tool_use")
                     : target.putObject("server_tool_use");
             copyIntField(serverTools, copy, "web_search_requests");
+        }
+        // Ventilation par tentative (F-172 / SF-172-03) : recopiée telle quelle, la dernière vue
+        // l'emporte — c'est elle qui fait foi pour le coût.
+        JsonNode iterations = source.path("iterations");
+        if (iterations.isArray() && !iterations.isEmpty()) {
+            target.set("iterations", iterations.deepCopy());
         }
     }
 
@@ -922,7 +929,7 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         };
     }
 
-    private AgentTurn toTurn(JsonNode response) {
+    private AgentTurn toTurn(JsonNode response, String requestedModel) {
         if (response == null || !response.hasNonNull("content")) {
             throw new AIProviderException("Réponse vide du fournisseur IA.");
         }
@@ -931,7 +938,7 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         // en cours de flux) est jetée : elle n'est ni une réponse, ni un appel d'outil à exécuter.
         // Les tokens restent comptés — la partie déjà produite est facturée.
         if ("refusal".equals(response.path("stop_reason").asText(""))) {
-            return refusedTurn(response);
+            return refusedTurn(response, requestedModel);
         }
         StringBuilder text = new StringBuilder();
         List<AgentToolCall> toolCalls = new ArrayList<>();
@@ -979,15 +986,17 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         // la phrase qui précède. La distinguer ici est le seul endroit où l'information existe.
         boolean truncated = "max_tokens".equals(stopReason);
         JsonNode usage = response.path("usage");
+        String servedModel = servedModel(response);
         // Les tokens servis par le cache ne sont PAS dans `input_tokens` (SF-39-01, D3). Ne compter
         // que ce champ ferait chuter le VOLUME traité d'environ 90 % sans que rien ne le signale.
         // Ils sont donc additionnés ici — et, depuis F-63 / SF-63-02, portés AUSSI séparément : le
         // volume reste le volume, mais le décompte les facture à leur prix (un dixième du tarif
         // d'entrée en lecture, 1,25× en écriture) au lieu du plein tarif.
-        int cacheCreation = usage.path("cache_creation_input_tokens").asInt(0);
-        int cacheRead = usage.path("cache_read_input_tokens").asInt(0);
-        int inputTokens = usage.path("input_tokens").asInt(0) + cacheCreation + cacheRead;
-        int outputTokens = usage.path("output_tokens").asInt(0);
+        UsageReading reading = readUsage(usage, requestedModel, servedModel);
+        int cacheCreation = reading.cacheWrite();
+        int cacheRead = reading.cacheRead();
+        int inputTokens = reading.fullInput() + cacheCreation + cacheRead;
+        int outputTokens = reading.output();
         // Un cache qui ne prend pas ne lève aucune erreur : seuls ces compteurs le disent.
         log.debug("Tour d'agent : {} tokens d'entrée (dont {} écrits en cache, {} lus en cache).",
                 inputTokens, cacheCreation, cacheRead);
@@ -996,9 +1005,62 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         // rapporte : c'est le seul endroit où le compte existe (F-133 / SF-133-08). Sans lui, un
         // tour qui cherche beaucoup coûte visiblement le prix d'un tour qui ne cherche pas.
         int webSearches = usage.path("server_tool_use").path("web_search_requests").asInt(0);
-        String servedModel = servedModel(response);
         return new AgentTurn(text.toString(), toolCalls, finished, inputTokens, outputTokens, truncated,
-                reasoning, cacheRead, cacheCreation, webSearches, false, null, servedModel);
+                reasoning, cacheRead, cacheCreation, webSearches, false, null, servedModel,
+                reading.parts());
+    }
+
+    /** Tokens d'un tour, totaux et ventilation par modèle servi (F-172 / SF-172-03). */
+    private record UsageReading(int fullInput, int output, int cacheRead, int cacheWrite,
+            List<AgentTurn.ModelUsage> parts) {
+    }
+
+    /**
+     * Lit l'{@code usage} d'une réponse (F-172 / SF-172-03).
+     *
+     * <p>Quand le fournisseur ventile par tentative ({@code usage.iterations} — un refus suivi d'un
+     * repli, par exemple), c'est cette ventilation qui fait foi : le {@code usage} de premier niveau
+     * ne couvre que la tentative qui a produit le message, et compter celui-là seul ferait disparaître
+     * la tentative refusée, pourtant facturée. Les totaux sont alors la somme des tentatives, et
+     * chaque part porte le modèle qui l'a servie.</p>
+     *
+     * <p>Sans ventilation, une seule part, au modèle servi (à défaut, demandé) : le comptage est
+     * strictement celui d'avant.</p>
+     */
+    private static UsageReading readUsage(JsonNode usage, String requestedModel, String servedModel) {
+        JsonNode iterations = usage.path("iterations");
+        String single = servedModel != null ? servedModel : requestedModel;
+        if (!iterations.isArray() || iterations.isEmpty()) {
+            int input = usage.path("input_tokens").asInt(0);
+            int output = usage.path("output_tokens").asInt(0);
+            int read = usage.path("cache_read_input_tokens").asInt(0);
+            int write = usage.path("cache_creation_input_tokens").asInt(0);
+            return new UsageReading(input, output, read, write,
+                    List.of(new AgentTurn.ModelUsage(single, input, output, read, write)));
+        }
+        int input = 0;
+        int output = 0;
+        int read = 0;
+        int write = 0;
+        List<AgentTurn.ModelUsage> parts = new ArrayList<>(iterations.size());
+        for (JsonNode entry : iterations) {
+            String model = entry.path("model").asText("");
+            if (model.isEmpty()) {
+                // Entrée sans modèle : la tentative servie par un repli est au modèle de la réponse,
+                // toute autre au modèle demandé.
+                model = "fallback_message".equals(entry.path("type").asText("")) ? single : requestedModel;
+            }
+            AgentTurn.ModelUsage part = new AgentTurn.ModelUsage(model,
+                    entry.path("input_tokens").asInt(0), entry.path("output_tokens").asInt(0),
+                    entry.path("cache_read_input_tokens").asInt(0),
+                    entry.path("cache_creation_input_tokens").asInt(0));
+            parts.add(part);
+            input += part.fullPriceInputTokens();
+            output += part.outputTokens();
+            read += part.cacheReadTokens();
+            write += part.cacheWriteTokens();
+        }
+        return new UsageReading(input, output, read, write, parts);
     }
 
     /** Position du dernier bloc {@code fallback}, ou {@code -1} (F-172 / SF-172-02). */
@@ -1046,20 +1108,22 @@ public class AnthropicAgentProvider implements AiAgentProvider {
      * catégorie. Avant cette subfeature, un refus passait pour un tour terminé au texte vide — d'où
      * une réponse vide, sans explication.
      */
-    private AgentTurn refusedTurn(JsonNode response) {
+    private AgentTurn refusedTurn(JsonNode response, String requestedModel) {
         JsonNode details = response.path("stop_details");
         String category = details.path("category").isTextual() ? details.path("category").asText() : null;
         JsonNode usage = response.path("usage");
-        int cacheCreation = usage.path("cache_creation_input_tokens").asInt(0);
-        int cacheRead = usage.path("cache_read_input_tokens").asInt(0);
-        int inputTokens = usage.path("input_tokens").asInt(0) + cacheCreation + cacheRead;
-        int outputTokens = usage.path("output_tokens").asInt(0);
+        String servedModel = servedModel(response);
+        UsageReading reading = readUsage(usage, requestedModel, servedModel);
+        int cacheCreation = reading.cacheWrite();
+        int cacheRead = reading.cacheRead();
+        int inputTokens = reading.fullInput() + cacheCreation + cacheRead;
+        int outputTokens = reading.output();
         // Ni le contenu, ni l'explication : seulement de quoi compter et classer les refus.
         log.warn("Tour d'agent refusé par le fournisseur (stop_reason=refusal, catégorie={}, modèle={}).",
                 category == null ? "non précisée" : category, response.path("model").asText("?"));
         return new AgentTurn("", List.of(), true, inputTokens, outputTokens, false, List.of(),
                 cacheRead, cacheCreation, usage.path("server_tool_use").path("web_search_requests").asInt(0),
-                true, category, servedModel(response));
+                true, category, servedModel, reading.parts());
     }
 
     /**
