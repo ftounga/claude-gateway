@@ -33,11 +33,26 @@ import java.util.List;
  * @param cacheWriteTokens part de {@code inputTokens} <b>écrite</b> dans le cache, au tarif majoré
  *                     de l'écriture (1,25× l'entrée). Également déjà comptée dans
  *                     {@code inputTokens}
+ * @param refused      vrai si le fournisseur a <b>refusé</b> de poursuivre (F-172 / SF-172-01) :
+ *                     {@code finished} vaut vrai, mais sa sortie partielle a été jetée — {@code text}
+ *                     est vide et aucun outil n'est demandé. Ce n'est ni une réponse, ni une coupure
+ * @param refusalCategory catégorie du refus rapportée par le fournisseur ({@code cyber}, {@code bio},
+ *                     {@code reasoning_extraction}…), ou {@code null} si elle n'est pas précisée.
+ *                     Informative seulement : le refus se reconnaît à {@code refused}
  * @see #truncated()
  */
 public record AgentTurn(String text, List<AgentToolCall> toolCalls, boolean finished,
         int inputTokens, int outputTokens, boolean truncated, List<AgentContentBlock> reasoning,
-        int cacheReadTokens, int cacheWriteTokens, int webSearchRequests) {
+        int cacheReadTokens, int cacheWriteTokens, int webSearchRequests, boolean refused,
+        String refusalCategory) {
+
+    /** Forme sans refus — celle de tous les tours que le fournisseur a menés à terme. */
+    public AgentTurn(String text, List<AgentToolCall> toolCalls, boolean finished,
+            int inputTokens, int outputTokens, boolean truncated, List<AgentContentBlock> reasoning,
+            int cacheReadTokens, int cacheWriteTokens, int webSearchRequests) {
+        this(text, toolCalls, finished, inputTokens, outputTokens, truncated, reasoning,
+                cacheReadTokens, cacheWriteTokens, webSearchRequests, false, null);
+    }
 
     /**
      * Forme sans recherche web — celle des chemins qui ne déclarent pas l'outil de recherche
@@ -57,6 +72,7 @@ public record AgentTurn(String text, List<AgentToolCall> toolCalls, boolean fini
         // La recherche web est facturée À LA REQUÊTE, hors tokens (10 $ les mille) : ne pas la
         // compter revient à ignorer une dépense que rien d'autre ne révèle (F-133 / SF-133-08).
         webSearchRequests = Math.max(0, webSearchRequests);
+        refusalCategory = refusalCategory == null || refusalCategory.isBlank() ? null : refusalCategory;
     }
 
     /** Forme sans ventilation de cache — conservée pour les appelants qui l'attendent. */

@@ -84,6 +84,85 @@ class AnthropicAgentProviderTest {
         server.verify();
     }
 
+    // ------------------------------------------------- F-172 / SF-172-01 : refus visible
+
+    @Test
+    void recognisesARefusalAndDropsThePartialOutput() {
+        build(null);
+        server.expect(requestTo(URL)).andRespond(withSuccess("""
+                {"model": "claude-opus-5-5",
+                 "content": [{"type": "text", "text": "Voici l'exploit"},
+                             {"type": "tool_use", "id": "tu_1", "name": "run", "input": {}}],
+                 "stop_reason": "refusal",
+                 "stop_details": {"type": "refusal", "category": "cyber", "explanation": "x"},
+                 "usage": {"input_tokens": 10, "output_tokens": 20}}
+                """, MediaType.APPLICATION_JSON));
+
+        AgentTurn turn = call();
+
+        assertThat(turn.refused()).isTrue();
+        assertThat(turn.refusalCategory()).isEqualTo("cyber");
+        assertThat(turn.finished()).isTrue();
+        assertThat(turn.truncated()).isFalse();
+        assertThat(turn.text()).isEmpty();
+        assertThat(turn.toolCalls()).isEmpty();
+        // La partie produite est facturée : elle reste comptée.
+        assertThat(turn.inputTokens()).isEqualTo(10);
+        assertThat(turn.outputTokens()).isEqualTo(20);
+    }
+
+    @Test
+    void recognisesARefusalWithoutStopDetails() {
+        build(null);
+        respondWith("refusal", "[]");
+
+        AgentTurn turn = call();
+
+        assertThat(turn.refused()).isTrue();
+        assertThat(turn.refusalCategory()).isNull();
+    }
+
+    @Test
+    void normalTurnsAreNotRefused() {
+        build(null);
+        respondWith("end_turn", """
+                [{"type": "text", "text": "Voilà."}]""");
+
+        assertThat(call().refused()).isFalse();
+    }
+
+    @Test
+    void recognisesARefusalArrivingMidStream() {
+        build(null);
+        String sse = String.join("\n",
+                "data: {\"type\":\"message_start\",\"message\":{\"model\":\"claude-opus-5-5\","
+                        + "\"usage\":{\"input_tokens\":10,\"output_tokens\":1}}}",
+                "",
+                "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":"
+                        + "{\"type\":\"text\",\"text\":\"\"}}",
+                "",
+                "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":"
+                        + "{\"type\":\"text_delta\",\"text\":\"Début\"}}",
+                "",
+                "data: {\"type\":\"content_block_stop\",\"index\":0}",
+                "",
+                "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"refusal\","
+                        + "\"stop_details\":{\"type\":\"refusal\",\"category\":\"bio\"}},"
+                        + "\"usage\":{\"output_tokens\":7}}",
+                "",
+                "data: {\"type\":\"message_stop\"}",
+                "");
+        server.expect(requestTo(URL)).andRespond(withSuccess(sse, MediaType.TEXT_EVENT_STREAM));
+
+        AgentTurn turn = provider.nextTurn(new AgentTurnRequest("claude-model", "consigne",
+                List.of(AgentMessage.userText("bonjour")), List.of(), null), piece -> { });
+
+        assertThat(turn.refused()).isTrue();
+        assertThat(turn.refusalCategory()).isEqualTo("bio");
+        assertThat(turn.text()).isEmpty();
+        assertThat(turn.outputTokens()).isEqualTo(7);
+    }
+
     @Test
     void doesNotMarkNormalTurnsAsTruncated() {
         build(null);

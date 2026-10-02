@@ -211,6 +211,17 @@ public class StubAiAgentProvider implements AiAgentProvider {
         script.add(new AgentTurn(text, calls, true, 5, 5, true));
     }
 
+    /**
+     * Empile un tour <b>refusé</b> par le fournisseur (F-172 / SF-172-01). Il porte volontairement un
+     * appel d'outil : la boucle ne doit pas l'exécuter, même si un fournisseur oubliait de le jeter.
+     */
+    public void enqueueRefusal(String category, String toolName) {
+        List<AgentToolCall> calls = new ArrayList<>();
+        calls.add(new AgentToolCall("tool_" + (idSeq++), toolName, mapper.createObjectNode()));
+        script.add(new AgentTurn("début de réponse", calls, true, 5, 5, false, List.of(), 0, 0, 0,
+                true, category));
+    }
+
     /** Empile un tour final <b>sans aucun texte</b> : le tour n'a rien produit (SF-28-18). */
     public void enqueueEmptyFinal() {
         script.add(new AgentTurn("", List.of(), true, 5, 5));
