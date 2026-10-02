@@ -161,7 +161,7 @@ class ProviderCostCalculatorTest {
     void carriesThePricingVersionWithEveryAmount() {
         // Les prix changent. Sans cette date, un montant ancien deviendrait inexplicable.
         assertThat(calculator.calculate(new TurnTokens(10L, 10L, 0L, 0L), "claude-opus-5")
-                .pricingVersion()).isEqualTo("2026-09-20");
+                .pricingVersion()).isEqualTo("2026-10-02");
     }
 
     @Test
