@@ -215,7 +215,7 @@ class AnthropicAgentProviderTest {
 
     @Test
     void theKillSwitchTurnsTheFallbackOff() {
-        buildWith(new AgentApiFeaturesProperties(false, null));
+        buildWith(new AgentApiFeaturesProperties(false, null, null));
         server.expect(requestTo(URL))
                 .andExpect(jsonPath("$.fallbacks").doesNotExist())
                 .andRespond(withSuccess("""
@@ -389,6 +389,112 @@ class AnthropicAgentProviderTest {
         assertThat(turn.outputTokens()).isEqualTo(6);
         assertThat(turn.usageByModel()).extracting(AgentTurn.ModelUsage::model)
                 .containsExactly("claude-opus-5-5", "claude-opus-4-8");
+    }
+
+    // ------------------------------------------------- F-172 / SF-172-04 : narration entre outils
+
+    private static final String PROGRESS_RESPONSE = """
+            {"content": [
+               {"type": "thinking", "thinking": "", "signature": "sig-reason"},
+               {"type": "thinking", "thinking": "Je lis le fichier.", "signature": "sig-progress"},
+               {"type": "tool_use", "id": "tu_1", "name": "read_file", "input": {"path": "a"}}],
+             "stop_reason": "tool_use", "usage": {"input_tokens": 1, "output_tokens": 1}}
+            """;
+
+    @Test
+    void asksListedModelsForProgressUpdates() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        server.expect(requestTo(URL))
+                .andExpect(jsonPath("$.thinking.type").value("adaptive"))
+                .andExpect(jsonPath("$.thinking.display").value("updates"))
+                .andExpect(request -> assertThat(request.getHeaders().getFirst("anthropic-beta"))
+                        .contains("thinking-display-updates-2026-08-18"))
+                .andRespond(withSuccess(PROGRESS_RESPONSE, MediaType.APPLICATION_JSON));
+
+        AgentTurn turn = callModel("claude-opus-5-5");
+
+        assertThat(turn.narration()).isEqualTo("Je lis le fichier.");
+        assertThat(turn.text()).isEmpty();
+        assertThat(turn.spokenText()).isEqualTo("Je lis le fichier.");
+        // Les deux blocs sont rejoués tels quels, texte et signature.
+        assertThat(turn.reasoning()).containsExactly(
+                new AgentContentBlock.Reasoning("", "sig-reason"),
+                new AgentContentBlock.Reasoning("Je lis le fichier.", "sig-progress"));
+        server.verify();
+    }
+
+    @Test
+    void unlistedModelsGetNoProgressUpdatesAndNoNarration() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        server.expect(requestTo(URL))
+                .andExpect(jsonPath("$.thinking").doesNotExist())
+                .andRespond(withSuccess(PROGRESS_RESPONSE, MediaType.APPLICATION_JSON));
+
+        AgentTurn turn = callModel("claude-opus-5");
+
+        assertThat(turn.narration()).isEmpty();
+        assertThat(turn.spokenText()).isEmpty();
+        server.verify();
+    }
+
+    @Test
+    void theInterruptedSentinelIsNotNarration() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        server.expect(requestTo(URL)).andRespond(withSuccess("""
+                {"content": [
+                   {"type": "thinking", "thinking": "Je compile.", "signature": "s1"},
+                   {"type": "thinking",
+                    "thinking": "This part of the response was interrupted before it finished.",
+                    "signature": "s2"}],
+                 "stop_reason": "max_tokens", "usage": {"input_tokens": 1, "output_tokens": 1}}
+                """, MediaType.APPLICATION_JSON));
+
+        assertThat(callModel("claude-opus-5-5").narration()).isEqualTo("Je compile.");
+    }
+
+    @Test
+    void streamsProgressNotesToTheTerminalForListedModelsOnly() {
+        String sse = String.join("\n",
+                "data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":1}}}",
+                "",
+                "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":"
+                        + "{\"type\":\"text\",\"text\":\"\"}}",
+                "",
+                "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":"
+                        + "{\"type\":\"text_delta\",\"text\":\"Je regarde.\"}}",
+                "",
+                "data: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":"
+                        + "{\"type\":\"thinking\",\"thinking\":\"\"}}",
+                "",
+                "data: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":"
+                        + "{\"type\":\"thinking_delta\",\"thinking\":\"Je lis le fichier.\"}}",
+                "",
+                "data: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":"
+                        + "{\"type\":\"signature_delta\",\"signature\":\"sig-p\"}}",
+                "",
+                "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},"
+                        + "\"usage\":{\"output_tokens\":3}}",
+                "",
+                "data: {\"type\":\"message_stop\"}",
+                "");
+
+        buildWith(AgentApiFeaturesProperties.defaults());
+        server.expect(requestTo(URL)).andRespond(withSuccess(sse, MediaType.TEXT_EVENT_STREAM));
+        List<String> listed = new ArrayList<>();
+        AgentTurn turn = provider.nextTurn(new AgentTurnRequest("claude-opus-5-5", "consigne",
+                List.of(AgentMessage.userText("bonjour")), List.of(), null), listed::add);
+
+        assertThat(String.join("", listed)).isEqualTo("Je regarde.\n\nJe lis le fichier.");
+        assertThat(turn.narration()).isEqualTo("Je lis le fichier.");
+        assertThat(turn.text()).isEqualTo("Je regarde.");
+
+        buildWith(AgentApiFeaturesProperties.defaults());
+        server.expect(requestTo(URL)).andRespond(withSuccess(sse, MediaType.TEXT_EVENT_STREAM));
+        List<String> unlisted = new ArrayList<>();
+        provider.nextTurn(new AgentTurnRequest("claude-opus-5", "consigne",
+                List.of(AgentMessage.userText("bonjour")), List.of(), null), unlisted::add);
+
+        assertThat(String.join("", unlisted)).isEqualTo("Je regarde.");
     }
 
     @Test

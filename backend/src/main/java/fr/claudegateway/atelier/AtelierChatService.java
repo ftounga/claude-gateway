@@ -2546,13 +2546,17 @@ public class AtelierChatService implements RelayInterruptTarget {
             //    jamais promu en réponse) ;
             //  - sinon (essentiel déjà retenu, ou texte de plomberie) : on ne remplace pas — un texte
             //    postérieur sans essentiel ne peut pas évincer l'essentiel déjà produit.
-            String strippedTurnText = stripTurnMetadata(turn.text());
+            // F-172 / SF-172-04 : le texte « parlé » du tour — narration entre outils comprise. Sur
+            // les modèles qui l'écrivent en blocs de raisonnement, `text()` seul serait vide ici et
+            // le tri de narration ne retiendrait plus rien.
+            String spokenText = turn.spokenText();
+            String strippedTurnText = stripTurnMetadata(spokenText);
             if (strippedTurnText != null && !strippedTurnText.isBlank()) {
-                if (hasEssential(turn.text())) {
-                    backgroundText = turn.text();
+                if (hasEssential(spokenText)) {
+                    backgroundText = spokenText;
                     retainedHasEssential = true;
-                } else if (!retainedHasEssential && !isCardPlumbing(turn.text())) {
-                    backgroundText = turn.text();
+                } else if (!retainedHasEssential && !isCardPlumbing(spokenText)) {
+                    backgroundText = spokenText;
                 }
             }
             if (turn.finished() || turn.toolCalls().isEmpty()) {
@@ -2638,8 +2642,8 @@ public class AtelierChatService implements RelayInterruptTarget {
 
             // Commentaire du tour (le cas échéant) relayé avant l'exécution de ses outils. En flux, il
             // a DÉJÀ défilé mot à mot via les deltas (F-116) : le relayer entier ici le doublerait.
-            if (!textAlreadyStreamed && turn.text() != null && !turn.text().isBlank()) {
-                listener.onText(turn.text());
+            if (!textAlreadyStreamed && spokenText != null && !spokenText.isBlank()) {
+                listener.onText(spokenText);
             }
 
             // Rejoue le message assistant (texte + tool_use) puis exécute chaque outil.
@@ -2660,7 +2664,9 @@ public class AtelierChatService implements RelayInterruptTarget {
             // Signal de difficulté de CE tour (F-119 / SF-119-01) : amorcé par l'auto-contradiction
             // éventuelle du texte, complété par chaque résultat d'outil ci-dessous. S'il est vrai, le
             // tour suivant remonte à l'effort normal.
-            boolean signalThisTurn = looksLikeSelfCorrection(turn.text());
+            // Narration comprise (F-172 / SF-172-04) : sans elle, la ré-escalade serait aveugle sur
+            // les modèles qui écrivent leurs « en fait, je me suis trompé » entre deux outils.
+            boolean signalThisTurn = looksLikeSelfCorrection(spokenText);
             // Délégations en LECTURE concurrentes (F-39 / SF-39-21, étendu aux `task` en lecture par
             // F-121 / SF-121-14) : on ISOLE les délégations en lecture de ce tour — les `explore` et les
             // `task` marqués `read_only` — et on les exécute ENSEMBLE, via un pool borné
@@ -2931,7 +2937,7 @@ public class AtelierChatService implements RelayInterruptTarget {
             // Le raisonnement du modèle est rangé AVEC l'étape (F-134 / SF-134-04). Sans lui, le
             // tour suivant rejouait un message assistant amputé de son premier bloc : le ruban
             // différait de celui que le fournisseur avait mis en cache, et tout était réécrit.
-            trace.add(new AtelierToolTrace.Step(turn.text(), List.copyOf(tracedCalls),
+            trace.add(new AtelierToolTrace.Step(spokenText, List.copyOf(tracedCalls),
                     thoughtsOf(turn)));
             // Le tour suivant remonte à l'effort normal si ce tour a rencontré une difficulté
             // (F-119 / SF-119-01) : c'est là — après un résultat d'outil — qu'il faut réfléchir le plus.
@@ -2945,9 +2951,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                 break;
             }
             if (iteration == maxIterations - 1) {
-                finalText = (turn.text() == null || turn.text().isBlank())
+                finalText = (spokenText == null || spokenText.isBlank())
                         ? "J'ai atteint la limite d'étapes pour ce message ; relance-moi pour continuer."
-                        : turn.text();
+                        : spokenText;
             }
         }
         // Le constat sur la machine ne survit pas au tour (F-93 / SF-93-04).

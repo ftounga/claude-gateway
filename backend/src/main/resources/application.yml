@@ -507,6 +507,9 @@ app:
       # livraison : APP_ATELIER_FALLBACKS=false.
       fallbacks: ${APP_ATELIER_FALLBACKS:true}
       fallback-models: ${APP_AGENT_FALLBACK_MODELS:claude-opus-5-5,claude-opus-5,claude-fable-5-1,claude-fable-5}
+      # Narration entre outils (F-172 / SF-172-04) : ces modeles ecrivent leurs notes de progression
+      # dans des blocs `thinking`, vides par defaut. `display: "updates"` les rend lisibles.
+      progress-update-models: ${APP_AGENT_PROGRESS_UPDATE_MODELS:claude-opus-5-5,claude-fable-5-1,claude-fable-5,claude-sonnet-5-5}
   stt:
     # SERVICE DE TRANSCRIPTION (F-128 / SF-128-04), relais compatible Whisper/OpenAI. BRANCHÉ SUR OPENAI
     # (SF-128-18) : base-url + model fournis par backend-config (https://api.openai.com/v1, whisper-1).

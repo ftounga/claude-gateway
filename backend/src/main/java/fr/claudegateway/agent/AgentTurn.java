@@ -44,12 +44,40 @@ import java.util.List;
  * @param usageByModel ventilation des tokens du tour par modèle servi (F-172 / SF-172-03), une
  *                     entrée par tentative ; vide quand le fournisseur ne la rapporte pas. Les totaux
  *                     ci-dessus en sont déjà la somme
+ * @param narration    notes de progression écrites entre deux outils dans des blocs de raisonnement
+ *                     (F-172 / SF-172-04), jointes par une ligne vide ; vide si le modèle n'en
+ *                     produit pas. Elles restent AUSSI dans {@code reasoning}, inchangées, pour le rejeu
  * @see #truncated()
  */
 public record AgentTurn(String text, List<AgentToolCall> toolCalls, boolean finished,
         int inputTokens, int outputTokens, boolean truncated, List<AgentContentBlock> reasoning,
         int cacheReadTokens, int cacheWriteTokens, int webSearchRequests, boolean refused,
-        String refusalCategory, String servedModel, List<ModelUsage> usageByModel) {
+        String refusalCategory, String servedModel, List<ModelUsage> usageByModel, String narration) {
+
+    /** Forme sans narration — modèles qui écrivent leur narration en blocs {@code text}. */
+    public AgentTurn(String text, List<AgentToolCall> toolCalls, boolean finished,
+            int inputTokens, int outputTokens, boolean truncated, List<AgentContentBlock> reasoning,
+            int cacheReadTokens, int cacheWriteTokens, int webSearchRequests, boolean refused,
+            String refusalCategory, String servedModel, List<ModelUsage> usageByModel) {
+        this(text, toolCalls, finished, inputTokens, outputTokens, truncated, reasoning,
+                cacheReadTokens, cacheWriteTokens, webSearchRequests, refused, refusalCategory,
+                servedModel, usageByModel, "");
+    }
+
+    /**
+     * Ce que le modèle a « dit » pendant ce tour (F-172 / SF-172-04) : sa narration entre outils,
+     * puis son texte. C'est ce que lisent l'utilisateur, la ré-escalade d'effort et le tri de
+     * narration ; le <b>rejeu</b>, lui, n'emploie que {@link #text()} et les blocs de raisonnement.
+     */
+    public String spokenText() {
+        if (narration.isEmpty()) {
+            return text;
+        }
+        if (text == null || text.isBlank()) {
+            return narration;
+        }
+        return narration + "\n\n" + text;
+    }
 
     /**
      * Part d'un tour servie par <b>un</b> modèle (F-172 / SF-172-03) — une tentative refusée puis son
@@ -118,6 +146,7 @@ public record AgentTurn(String text, List<AgentToolCall> toolCalls, boolean fini
         refusalCategory = refusalCategory == null || refusalCategory.isBlank() ? null : refusalCategory;
         servedModel = servedModel == null || servedModel.isBlank() ? null : servedModel;
         usageByModel = usageByModel == null ? List.of() : List.copyOf(usageByModel);
+        narration = narration == null ? "" : narration;
     }
 
     /** Forme sans ventilation de cache — conservée pour les appelants qui l'attendent. */

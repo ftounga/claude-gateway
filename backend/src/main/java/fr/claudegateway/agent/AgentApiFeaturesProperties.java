@@ -21,11 +21,19 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param fallbacks      coupe-circuit du repli côté serveur (F-172 / SF-172-02, décision D1) —
  *                       {@code APP_ATELIER_FALLBACKS}, défaut {@code true}
  * @param fallbackModels modèles pour lesquels la requête porte {@code fallbacks: "default"}
+ * @param progressUpdateModels modèles qui écrivent leur narration entre deux outils dans des blocs
+ *                       {@code thinking} de progression (F-172 / SF-172-04) : la requête leur
+ *                       demande {@code display: "updates"}
  */
 @ConfigurationProperties(prefix = "app.agent.api-features")
 public record AgentApiFeaturesProperties(
         Boolean fallbacks,
-        List<String> fallbackModels) {
+        List<String> fallbackModels,
+        List<String> progressUpdateModels) {
+
+    /** Modèles à notes de progression (doc fournisseur, relevé du 2026-10-02). */
+    static final List<String> DEFAULT_PROGRESS_UPDATE_MODELS =
+            List.of("claude-opus-5-5", "claude-fable-5-1", "claude-fable-5", "claude-sonnet-5-5");
 
     /** Modèles qui acceptent le repli {@code "default"} (doc fournisseur, relevé du 2026-10-02). */
     static final List<String> DEFAULT_FALLBACK_MODELS =
@@ -34,16 +42,24 @@ public record AgentApiFeaturesProperties(
     public AgentApiFeaturesProperties {
         fallbacks = fallbacks == null ? Boolean.TRUE : fallbacks;
         fallbackModels = fallbackModels == null ? DEFAULT_FALLBACK_MODELS : List.copyOf(fallbackModels);
+        progressUpdateModels = progressUpdateModels == null
+                ? DEFAULT_PROGRESS_UPDATE_MODELS
+                : List.copyOf(progressUpdateModels);
     }
 
     /** Réglages par défaut — ceux d'un environnement qui ne configure rien. */
     public static AgentApiFeaturesProperties defaults() {
-        return new AgentApiFeaturesProperties(null, null);
+        return new AgentApiFeaturesProperties(null, null, null);
     }
 
     /** Vrai si la requête vers ce modèle doit porter le repli côté serveur. */
     public boolean fallbacksFor(String model) {
         return Boolean.TRUE.equals(fallbacks) && listed(fallbackModels, model);
+    }
+
+    /** Vrai si la requête vers ce modèle doit demander les notes de progression (SF-172-04). */
+    public boolean progressUpdatesFor(String model) {
+        return listed(progressUpdateModels, model);
     }
 
     static boolean listed(List<String> models, String model) {

@@ -143,6 +143,22 @@ public class StubAiAgentProvider implements AiAgentProvider {
     }
 
     /**
+     * Empile un tour « appel d'outil » dont la narration est arrivée en <b>note de progression</b>
+     * (F-172 / SF-172-04) : aucun bloc texte, la note vit dans un bloc de raisonnement signé.
+     */
+    public void enqueueToolCallWithNarration(String narration, String toolName, String... kv) {
+        ObjectNode input = mapper.createObjectNode();
+        for (int i = 0; i + 1 < kv.length; i += 2) {
+            input.put(kv[i], kv[i + 1]);
+        }
+        List<AgentToolCall> calls = new ArrayList<>();
+        calls.add(new AgentToolCall("tool_" + (idSeq++), toolName, input));
+        script.add(new AgentTurn("", calls, false, 5, 5, false,
+                List.of(new AgentContentBlock.Reasoning(narration, "sig-progress")), 0, 0, 0, false, null,
+                null, List.of(), narration));
+    }
+
+    /**
      * Empile un tour « appel d'outil » précédé de <b>blocs de raisonnement signés</b> (F-39 /
      * SF-39-10) : c'est la forme que rend le fournisseur quand le raisonnement est actif, et celle
      * que la boucle doit remettre en tête du message assistant rejoué.

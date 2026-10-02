@@ -314,6 +314,19 @@ class AtelierChatServiceReasoningTest {
     }
 
     @Test
+    void aSelfContradictionInTheNarrationRegainsNormalEffort() {
+        // F-172 / SF-172-04 : sur les modèles qui écrivent leur narration en notes de progression,
+        // le « je me suis trompé » n'est plus dans `text`. La ré-escalade doit le voir quand même.
+        agentProvider.enqueueToolCallWithNarration("Je me suis trompé, je relis.", "read_file",
+                "path", "notes.txt");
+        agentProvider.enqueueFinal("Voilà la bonne réponse.");
+
+        service.chat(userId, workspaceId, "lis notes.txt");
+
+        assertThat(agentProvider.effectiveEfforts).containsExactly("high", "high");
+    }
+
+    @Test
     void aCleanContinuationKeepsTheReducedEffortDespiteTheSignalPath() {
         // Non-régression du gain F-118 : un enchaînement SANS incident (outil qui réussit, aucun
         // marqueur d'auto-contradiction) garde l'effort réduit `medium` au tour de continuation.
