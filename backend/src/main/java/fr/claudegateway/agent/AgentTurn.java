@@ -39,19 +39,30 @@ import java.util.List;
  * @param refusalCategory catégorie du refus rapportée par le fournisseur ({@code cyber}, {@code bio},
  *                     {@code reasoning_extraction}…), ou {@code null} si elle n'est pas précisée.
  *                     Informative seulement : le refus se reconnaît à {@code refused}
+ * @param servedModel  modèle qui a <b>servi</b> le message, tel que rapporté par le fournisseur
+ *                     (F-172 / SF-172-02), ou {@code null}. Diffère du modèle demandé après un repli
  * @see #truncated()
  */
 public record AgentTurn(String text, List<AgentToolCall> toolCalls, boolean finished,
         int inputTokens, int outputTokens, boolean truncated, List<AgentContentBlock> reasoning,
         int cacheReadTokens, int cacheWriteTokens, int webSearchRequests, boolean refused,
-        String refusalCategory) {
+        String refusalCategory, String servedModel) {
+
+    /** Forme sans modèle servi — celle des fournisseurs qui ne le rapportent pas. */
+    public AgentTurn(String text, List<AgentToolCall> toolCalls, boolean finished,
+            int inputTokens, int outputTokens, boolean truncated, List<AgentContentBlock> reasoning,
+            int cacheReadTokens, int cacheWriteTokens, int webSearchRequests, boolean refused,
+            String refusalCategory) {
+        this(text, toolCalls, finished, inputTokens, outputTokens, truncated, reasoning,
+                cacheReadTokens, cacheWriteTokens, webSearchRequests, refused, refusalCategory, null);
+    }
 
     /** Forme sans refus — celle de tous les tours que le fournisseur a menés à terme. */
     public AgentTurn(String text, List<AgentToolCall> toolCalls, boolean finished,
             int inputTokens, int outputTokens, boolean truncated, List<AgentContentBlock> reasoning,
             int cacheReadTokens, int cacheWriteTokens, int webSearchRequests) {
         this(text, toolCalls, finished, inputTokens, outputTokens, truncated, reasoning,
-                cacheReadTokens, cacheWriteTokens, webSearchRequests, false, null);
+                cacheReadTokens, cacheWriteTokens, webSearchRequests, false, null, null);
     }
 
     /**
@@ -73,6 +84,7 @@ public record AgentTurn(String text, List<AgentToolCall> toolCalls, boolean fini
         // compter revient à ignorer une dépense que rien d'autre ne révèle (F-133 / SF-133-08).
         webSearchRequests = Math.max(0, webSearchRequests);
         refusalCategory = refusalCategory == null || refusalCategory.isBlank() ? null : refusalCategory;
+        servedModel = servedModel == null || servedModel.isBlank() ? null : servedModel;
     }
 
     /** Forme sans ventilation de cache — conservée pour les appelants qui l'attendent. */

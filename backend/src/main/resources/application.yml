@@ -497,6 +497,16 @@ app:
       # TEMPORAIRES du fournisseur (429 trop de requêtes, 529 surchargé) : un 500 n'est jamais
       # rejoué, la série d'outils du tour pourrait être exécutée deux fois.
       agent-max-attempts: ${ANTHROPIC_AGENT_MAX_ATTEMPTS:3}
+  # Capacites de l'API du fournisseur RELAYEES par la boucle d'agent (F-172). Chacune est attachee a
+  # une liste de modeles : un modele absent de la liste recoit une requete strictement inchangee
+  # (exploration sur Sonnet 5, appels utilitaires sur Haiku).
+  agent:
+    api-features:
+      # Repli cote serveur sur refus de filtre (F-172 / SF-172-02, D1) : `fallbacks: "default"`, le
+      # fournisseur rejoue sur le modele qu'il recommande pour la categorie. Coupe-circuit sans
+      # livraison : APP_ATELIER_FALLBACKS=false.
+      fallbacks: ${APP_ATELIER_FALLBACKS:true}
+      fallback-models: ${APP_AGENT_FALLBACK_MODELS:claude-opus-5-5,claude-opus-5,claude-fable-5-1,claude-fable-5}
   stt:
     # SERVICE DE TRANSCRIPTION (F-128 / SF-128-04), relais compatible Whisper/OpenAI. BRANCHÉ SUR OPENAI
     # (SF-128-18) : base-url + model fournis par backend-config (https://api.openai.com/v1, whisper-1).

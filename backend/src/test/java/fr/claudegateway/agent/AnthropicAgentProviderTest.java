@@ -55,6 +55,21 @@ class AnthropicAgentProviderTest {
         provider = new AnthropicAgentProvider(properties, builder, null, waits::add);
     }
 
+    /** Fournisseur aux capacités d'API choisies (F-172). */
+    private void buildWith(AgentApiFeaturesProperties features) {
+        AnthropicProperties properties = new AnthropicProperties(
+                "sk-ant-test-key", "https://api.anthropic.com", "2023-06-01",
+                null, null, 4096, null, Duration.ofSeconds(5), Duration.ofSeconds(5), 3);
+        RestClient.Builder builder = RestClient.builder();
+        server = MockRestServiceServer.bindTo(builder).build();
+        provider = new AnthropicAgentProvider(properties, features, builder, null, waits::add);
+    }
+
+    private AgentTurn callModel(String model) {
+        return provider.nextTurn(new AgentTurnRequest(model, "consigne",
+                List.of(AgentMessage.userText("bonjour")), List.of(), null));
+    }
+
     private AgentTurn call() {
         return provider.nextTurn(new AgentTurnRequest("claude-model", "consigne",
                 List.of(AgentMessage.userText("bonjour")), List.of(), null));
@@ -161,6 +176,136 @@ class AnthropicAgentProviderTest {
         assertThat(turn.refusalCategory()).isEqualTo("bio");
         assertThat(turn.text()).isEmpty();
         assertThat(turn.outputTokens()).isEqualTo(7);
+    }
+
+    // ------------------------------------------------- F-172 / SF-172-02 : repli serveur
+
+    @Test
+    void asksForTheServerSideFallbackOnAListedModel() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        server.expect(requestTo(URL))
+                .andExpect(jsonPath("$.fallbacks").value("default"))
+                .andExpect(request -> assertThat(request.getHeaders().getFirst("anthropic-beta"))
+                        .contains("server-side-fallback-2026-07-01"))
+                .andRespond(withSuccess("""
+                        {"content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn",
+                         "usage": {"input_tokens": 1, "output_tokens": 1}}
+                        """, MediaType.APPLICATION_JSON));
+
+        callModel("claude-opus-5-5");
+
+        server.verify();
+    }
+
+    @Test
+    void leavesAnUnlistedModelUntouched() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        server.expect(requestTo(URL))
+                .andExpect(jsonPath("$.fallbacks").doesNotExist())
+                .andExpect(request -> assertThat(request.getHeaders().getFirst("anthropic-beta")).isNull())
+                .andRespond(withSuccess("""
+                        {"content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn",
+                         "usage": {"input_tokens": 1, "output_tokens": 1}}
+                        """, MediaType.APPLICATION_JSON));
+
+        callModel("claude-sonnet-5");
+
+        server.verify();
+    }
+
+    @Test
+    void theKillSwitchTurnsTheFallbackOff() {
+        buildWith(new AgentApiFeaturesProperties(false, null));
+        server.expect(requestTo(URL))
+                .andExpect(jsonPath("$.fallbacks").doesNotExist())
+                .andRespond(withSuccess("""
+                        {"content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn",
+                         "usage": {"input_tokens": 1, "output_tokens": 1}}
+                        """, MediaType.APPLICATION_JSON));
+
+        callModel("claude-opus-5-5");
+
+        server.verify();
+    }
+
+    @Test
+    void dropsTheDeclinedAttemptBeforeTheLastFallbackBlock() {
+        build(null);
+        server.expect(requestTo(URL)).andRespond(withSuccess("""
+                {"model": "claude-opus-4-8",
+                 "content": [
+                   {"type": "thinking", "thinking": "", "signature": "sig-refused"},
+                   {"type": "text", "text": "Je regarde. "},
+                   {"type": "tool_use", "id": "tu_old", "name": "run", "input": {}},
+                   {"type": "fallback", "from": {"model": "claude-opus-5-5"},
+                    "to": {"model": "claude-opus-4-8"}},
+                   {"type": "thinking", "thinking": "", "signature": "sig-served"},
+                   {"type": "text", "text": "Je lis."},
+                   {"type": "tool_use", "id": "tu_new", "name": "read_file", "input": {"path": "a"}}],
+                 "stop_reason": "tool_use",
+                 "usage": {"input_tokens": 10, "output_tokens": 20}}
+                """, MediaType.APPLICATION_JSON));
+
+        AgentTurn turn = call();
+
+        assertThat(turn.toolCalls()).extracting(AgentToolCall::id).containsExactly("tu_new");
+        assertThat(turn.reasoning()).hasSize(1);
+        assertThat(((AgentContentBlock.Reasoning) turn.reasoning().get(0)).signature())
+                .isEqualTo("sig-served");
+        assertThat(turn.text()).isEqualTo("Je regarde. Je lis.");
+        assertThat(turn.servedModel()).isEqualTo("claude-opus-4-8");
+        assertThat(turn.finished()).isFalse();
+    }
+
+    @Test
+    void reportsTheServedModel() {
+        build(null);
+        server.expect(requestTo(URL)).andRespond(withSuccess("""
+                {"model": "claude-opus-5-5", "content": [{"type": "text", "text": "ok"}],
+                 "stop_reason": "end_turn", "usage": {"input_tokens": 1, "output_tokens": 1}}
+                """, MediaType.APPLICATION_JSON));
+
+        assertThat(call().servedModel()).isEqualTo("claude-opus-5-5");
+    }
+
+    @Test
+    void readsAFallbackArrivingMidStream() {
+        build(null);
+        String sse = String.join("\n",
+                "data: {\"type\":\"message_start\",\"message\":{\"model\":\"claude-opus-5-5\","
+                        + "\"usage\":{\"input_tokens\":10,\"output_tokens\":1}}}",
+                "",
+                "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":"
+                        + "{\"type\":\"tool_use\",\"id\":\"tu_old\",\"name\":\"run\",\"input\":{}}}",
+                "",
+                "data: {\"type\":\"content_block_stop\",\"index\":0}",
+                "",
+                "data: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":"
+                        + "{\"type\":\"fallback\",\"from\":{\"model\":\"claude-opus-5-5\"},"
+                        + "\"to\":{\"model\":\"claude-opus-4-8\"}}}",
+                "",
+                "data: {\"type\":\"content_block_stop\",\"index\":1}",
+                "",
+                "data: {\"type\":\"content_block_start\",\"index\":2,\"content_block\":"
+                        + "{\"type\":\"tool_use\",\"id\":\"tu_new\",\"name\":\"read_file\",\"input\":{}}}",
+                "",
+                "data: {\"type\":\"content_block_delta\",\"index\":2,\"delta\":"
+                        + "{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"path\\\":\\\"a\\\"}\"}}",
+                "",
+                "data: {\"type\":\"content_block_stop\",\"index\":2}",
+                "",
+                "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},"
+                        + "\"usage\":{\"output_tokens\":9}}",
+                "",
+                "data: {\"type\":\"message_stop\"}",
+                "");
+        server.expect(requestTo(URL)).andRespond(withSuccess(sse, MediaType.TEXT_EVENT_STREAM));
+
+        AgentTurn turn = provider.nextTurn(new AgentTurnRequest("claude-model", "consigne",
+                List.of(AgentMessage.userText("bonjour")), List.of(), null), piece -> { });
+
+        assertThat(turn.toolCalls()).extracting(AgentToolCall::id).containsExactly("tu_new");
+        assertThat(turn.servedModel()).isEqualTo("claude-opus-4-8");
     }
 
     @Test
