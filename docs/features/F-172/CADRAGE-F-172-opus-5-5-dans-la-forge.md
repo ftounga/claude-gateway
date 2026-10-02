@@ -37,7 +37,7 @@ préparation casserait **silencieusement** la Forge. Constats en lecture de code
 | F | **Blocs de raisonnement liés à la conversation** : un préfixe modifié invalide les blocs suivants. Le contrôle n'est appliqué par défaut qu'aux comptes créés depuis le 31/08/2026 | Historique réécrit par la compaction F-117 et par la porte de fin de tour (`blockedBlocks`) | Risque de 400 `bound to a different conversation`, ou de raisonnement perdu sans bruit. Ampleur **inconnue** |
 | G | `thinking` désactivé, `tool_choice` `any` / `tool`, `computer_20251124` refusés | Aucun usage (vérifié) | — |
 
-## 3. Décisions proposées (à valider par le PO)
+## 3. Décisions (validées par le PO le 2026-10-02)
 
 - **D1 — Repli côté serveur** (`fallbacks: "default"`). Règle Provider-First : Anthropic fournit le
   repli, on le relaie. Coupe-circuit `APP_ATELIER_FALLBACKS` (défaut `true`). Il vaut aussi pour
