@@ -516,6 +516,10 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         private final AgentTextListener textListener;
         private ObjectNode contextManagement;
         private String stopReason;
+        /** Détail d'un refus (F-172 / SF-172-01) : porté par {@code message_delta}, à côté du motif. */
+        private ObjectNode stopDetails;
+        /** Modèle qui a produit le message, annoncé par {@code message_start}. */
+        private String model;
         private boolean completed;
 
         ParseState(AgentTextListener textListener) {
@@ -526,6 +530,10 @@ public class AnthropicAgentProvider implements AiAgentProvider {
             switch (type) {
                 case "message_start" -> {
                     copyUsage(event.path("message").path("usage"), usage, true);
+                    String announced = event.path("message").path("model").asText("");
+                    if (!announced.isEmpty()) {
+                        model = announced;
+                    }
                     JsonNode ctx = event.path("message").path("context_management");
                     if (ctx.isObject()) {
                         contextManagement = ctx.deepCopy();
@@ -541,6 +549,10 @@ public class AnthropicAgentProvider implements AiAgentProvider {
                     String sr = event.path("delta").path("stop_reason").asText(null);
                     if (sr != null && !sr.isEmpty()) {
                         stopReason = sr;
+                    }
+                    JsonNode details = event.path("delta").path("stop_details");
+                    if (details.isObject()) {
+                        stopDetails = details.deepCopy();
                     }
                     // La sortie finale (cumulée) vit ici ; l'entrée et le cache restent ceux du start.
                     copyUsage(event.path("usage"), usage, false);
@@ -600,6 +612,12 @@ public class AnthropicAgentProvider implements AiAgentProvider {
             ArrayNode content = message.putArray("content");
             blocks.forEach(content::add);
             message.put("stop_reason", stopReason == null ? "" : stopReason);
+            if (stopDetails != null) {
+                message.set("stop_details", stopDetails);
+            }
+            if (model != null) {
+                message.put("model", model);
+            }
             message.set("usage", usage);
             if (contextManagement != null) {
                 message.set("context_management", contextManagement);
@@ -885,6 +903,13 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         if (response == null || !response.hasNonNull("content")) {
             throw new AIProviderException("Réponse vide du fournisseur IA.");
         }
+        // Refus du fournisseur (F-172 / SF-172-01) : HTTP 200, `stop_reason: refusal`. On branche sur
+        // le motif, JAMAIS sur `stop_details`, qui peut manquer. La sortie partielle éventuelle (refus
+        // en cours de flux) est jetée : elle n'est ni une réponse, ni un appel d'outil à exécuter.
+        // Les tokens restent comptés — la partie déjà produite est facturée.
+        if ("refusal".equals(response.path("stop_reason").asText(""))) {
+            return refusedTurn(response);
+        }
         StringBuilder text = new StringBuilder();
         List<AgentToolCall> toolCalls = new ArrayList<>();
         List<AgentContentBlock> reasoning = new ArrayList<>();
@@ -934,6 +959,27 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         int webSearches = usage.path("server_tool_use").path("web_search_requests").asInt(0);
         return new AgentTurn(text.toString(), toolCalls, finished, inputTokens, outputTokens, truncated,
                 reasoning, cacheRead, cacheCreation, webSearches);
+    }
+
+    /**
+     * Tour <b>refusé</b> par le fournisseur (F-172 / SF-172-01) : fini, sans texte ni outil, avec sa
+     * catégorie. Avant cette subfeature, un refus passait pour un tour terminé au texte vide — d'où
+     * une réponse vide, sans explication.
+     */
+    private AgentTurn refusedTurn(JsonNode response) {
+        JsonNode details = response.path("stop_details");
+        String category = details.path("category").isTextual() ? details.path("category").asText() : null;
+        JsonNode usage = response.path("usage");
+        int cacheCreation = usage.path("cache_creation_input_tokens").asInt(0);
+        int cacheRead = usage.path("cache_read_input_tokens").asInt(0);
+        int inputTokens = usage.path("input_tokens").asInt(0) + cacheCreation + cacheRead;
+        int outputTokens = usage.path("output_tokens").asInt(0);
+        // Ni le contenu, ni l'explication : seulement de quoi compter et classer les refus.
+        log.warn("Tour d'agent refusé par le fournisseur (stop_reason=refusal, catégorie={}, modèle={}).",
+                category == null ? "non précisée" : category, response.path("model").asText("?"));
+        return new AgentTurn("", List.of(), true, inputTokens, outputTokens, false, List.of(),
+                cacheRead, cacheCreation, usage.path("server_tool_use").path("web_search_requests").asInt(0),
+                true, category);
     }
 
     /**

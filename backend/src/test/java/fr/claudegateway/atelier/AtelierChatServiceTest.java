@@ -577,6 +577,31 @@ class AtelierChatServiceTest {
         assertThat(result.reply()).contains("rien n'a été exécuté");
     }
 
+    // ------------------------------------------------- F-172 / SF-172-01 : refus visible
+
+    @Test
+    void refusedTurnExecutesNoToolAndNamesTheCategory() {
+        stubHappyPath();
+        agentProvider.enqueueRefusal("cyber", "write_file");
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "audite ce pare-feu");
+
+        verify(workspaceService, never()).writeFile(any(), any(), any(), any());
+        assertThat(result.actions()).isEmpty();
+        assertThat(result.reply()).isEqualTo(AtelierChatService.refusalReply("cyber"));
+        assertThat(result.reply()).contains("cybersécurité").contains("rien n'a été");
+        assertThat(result.reply()).doesNotContain("début de réponse");
+    }
+
+    @Test
+    void refusalWithoutCategoryStillSaysWhatHappened() {
+        assertThat(AtelierChatService.refusalReply(null)).contains("non précisée");
+        assertThat(AtelierChatService.refusalReply("bio")).contains("biologie");
+        assertThat(AtelierChatService.refusalReply("reasoning_extraction"))
+                .contains("extraction du raisonnement");
+        assertThat(AtelierChatService.refusalReply("nouvelle_categorie")).contains("nouvelle_categorie");
+    }
+
     @Test
     void truncatedTurnPersistsANonEmptyAssistantMessage() {
         stubHappyPath();

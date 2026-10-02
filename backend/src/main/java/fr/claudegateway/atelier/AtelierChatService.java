@@ -136,6 +136,33 @@ public class AtelierChatService implements RelayInterruptTarget {
      * choses que l'utilisateur doit savoir : ce qui s'est passé, que <b>rien n'a été exécuté</b>, et
      * quoi faire ensuite. Sans elle, il ne voyait qu'une phrase d'intention suivie de rien.
      */
+    /**
+     * Réponse à un <b>refus du fournisseur</b> (F-172 / SF-172-01) : le modèle a décliné la demande
+     * (filtre de sécurité, HTTP 200 {@code stop_reason: refusal}). La catégorie est nommée en clair ;
+     * rien de la réponse partielle n'est conservé, aucune commande n'a été exécutée.
+     *
+     * @param category catégorie rapportée par le fournisseur, ou {@code null}
+     */
+    static String refusalReply(String category) {
+        String label;
+        if (category == null || category.isBlank()) {
+            label = "non précisée";
+        } else {
+            label = switch (category) {
+                case "cyber" -> "cybersécurité";
+                case "bio" -> "biologie";
+                case "reasoning_extraction" -> "extraction du raisonnement";
+                case "frontier_llm" -> "développement de modèles d'IA";
+                case "general_harms" -> "usage général";
+                default -> category;
+            };
+        }
+        return "Le modèle a refusé de poursuivre cette demande (filtre de sécurité du fournisseur, "
+                + "catégorie : " + label + "). Sa réponse partielle a été écartée et rien n'a été "
+                + "exécuté à cette étape. Reformule la demande en précisant le contexte légitime du "
+                + "travail, ou découpe-la en étapes plus ciblées.";
+    }
+
     static final String TRUNCATED_REPLY =
             "Ma réponse a dépassé la taille maximale autorisée et a été coupée : rien n'a été exécuté. "
                     + "Demande-moi une modification plus courte, ou de travailler fichier par fichier.";
@@ -2202,6 +2229,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         long largestIterationTokens = 0L;
         boolean interrupted = false;
         boolean spendCapReached = false;
+        // Arrêt sur refus du fournisseur (F-172 / SF-172-01), pour le journal de fin de tour.
+        boolean refusalStop = false;
         /**
          * Filet réactif du dépassement de fenêtre (F-117 / SF-117-02) : posé à la première
          * compaction forcée déclenchée par un 400 « prompt too long ». Borne le filet à <b>une</b>
@@ -2459,6 +2488,15 @@ public class AtelierChatService implements RelayInterruptTarget {
             // remplacerait un échec silencieux par un dégât silencieux (décision D3).
             if (turn.truncated()) {
                 finalText = TRUNCATED_REPLY;
+                break;
+            }
+            // Refus du fournisseur (F-172 / SF-172-01) : sa sortie partielle a été jetée par le
+            // provider, aucun de ses outils n'est exécuté. Sans cet arrêt, le refus passait pour un
+            // tour fini au texte vide — une réponse vide, sans explication. Arrêt SUBI : la porte de
+            // fin de tour n'est pas interrogée, renvoyer au travail un tour refusé n'aurait pas de sens.
+            if (turn.refused()) {
+                finalText = refusalReply(turn.refusalCategory());
+                refusalStop = true;
                 break;
             }
             // F-125 / SF-125-07 + SF-125-08 : rétention par SUBSTANCE, pas par ordre. On mémorise le
@@ -2903,7 +2941,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         // refusé par le fournisseur, condamnant le projet.
         log.info("Tour d'atelier terminé : {} étape(s), {} s, {} tokens — arrêt : {}",
                 iterationsUsed, Math.max(0L, (System.currentTimeMillis() - startedAt) / 1000L),
-                inputTokens + outputTokens, stopCause(interrupted, spendCapReached, finalText));
+                inputTokens + outputTokens,
+                refusalStop ? "refus du fournisseur" : stopCause(interrupted, spendCapReached, finalText));
         // F-125 / SF-125-01 : le marqueur de fin de tour parle au produit, pas au lecteur. Les
         // contrôles de fin de tour l'ont déjà lu sur `finalText` (plus haut, et en rejeu sur un
         // blocage) ; on le retire ici, AVANT persistance et renvoi, pour qu'il ne se retrouve jamais
