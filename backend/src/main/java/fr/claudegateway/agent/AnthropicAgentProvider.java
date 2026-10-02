@@ -133,6 +133,14 @@ public class AnthropicAgentProvider implements AiAgentProvider {
     static final String INTERRUPTED_SENTINEL =
             "This part of the response was interrupted before it finished.";
     /**
+     * Contrôle de liaison du raisonnement (F-172 / SF-172-05, D5) : un bloc de raisonnement dont
+     * l'historique a changé depuis sa production est ÉCARTÉ au lieu de faire échouer l'appel (400
+     * « bound to a different conversation »), et chaque bloc écarté est rapporté.
+     */
+    private static final String BINDING_CONTROLS_BETA = "thinking-binding-controls-2026-08-01";
+    /** Niveaux d'effort qui appellent le plafond de sortie relevé (SF-172-05). */
+    private static final java.util.Set<String> ESCALATED_EFFORTS = java.util.Set.of("xhigh", "max");
+    /**
      * Distance du marqueur intermédiaire à la fin de la conversation (F-134 / SF-134-02).
      *
      * <p>Quinze, et non vingt : le fournisseur remonte <b>au plus vingt positions</b> depuis un
@@ -236,6 +244,8 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         // Corps identique + `stream:true` : le préfixe caché et le retry restent ceux du non streamé.
         Map<String, Object> streamBody = new HashMap<>(prepared.body());
         streamBody.put("stream", true);
+        // Plafond relevé en flux seulement (SF-172-05) : le repli non streamé garde le sien.
+        streamBody.put("max_tokens", prepared.streamedMaxTokens());
         try {
             return callWithRetry(request.model(), prepared.contextEditing(),
                     () -> streamTurn(prepared, streamBody, sink));
@@ -252,7 +262,8 @@ public class AnthropicAgentProvider implements AiAgentProvider {
 
     /** Corps de requête prêt à partir, calculé <b>une fois</b> et partagé streamé/non streamé. */
     private record Prepared(String apiKey, Map<String, Object> body, boolean contextEditing,
-            boolean perMessageEffort, List<String> extraBetas, String model, boolean progressUpdates) {
+            boolean perMessageEffort, List<String> extraBetas, String model, boolean progressUpdates,
+            int streamedMaxTokens) {
     }
 
     /**
@@ -299,8 +310,53 @@ public class AnthropicAgentProvider implements AiAgentProvider {
             body.put("thinking", Map.of("type", "adaptive", "display", "updates"));
             extraBetas.add(PROGRESS_UPDATES_BETA);
         }
+        // Effort explicite (F-172 / SF-172-05) : sur un modèle dont le défaut fournisseur n'est pas
+        // `high`, un appel qui n'en précise aucun (synthèse, compaction, Radar…) baisserait son
+        // raisonnement sans que rien ne le dise. On pose le défaut configuré, et le raisonnement
+        // adaptatif qui va avec.
+        if (features.explicitEffortFor(request.model()) && !body.containsKey("output_config")) {
+            body.put("output_config", Map.of("effort", features.defaultEffort()));
+            body.putIfAbsent("thinking", Map.of("type", "adaptive"));
+        }
+        // Liaison du raisonnement à la conversation (D5) : écarter plutôt qu'échouer, et compter.
+        if (features.bindingControlsFor(request.model())) {
+            Object current = body.get("thinking");
+            Map<String, Object> thinking = current instanceof Map<?, ?> map
+                    ? new HashMap<>(castThinking(map))
+                    : new HashMap<>(Map.of("type", "adaptive"));
+            thinking.put("block_binding", Map.of("prefix_mismatch_behavior", "drop_block"));
+            body.put("thinking", thinking);
+            extraBetas.add(BINDING_CONTROLS_BETA);
+        }
         return new Prepared(apiKey, body, contextEditing, perMessageEffort, List.copyOf(extraBetas),
-                request.model(), progressUpdates);
+                request.model(), progressUpdates, streamedMaxTokens(request));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> castThinking(Map<?, ?> map) {
+        return (Map<String, Object>) map;
+    }
+
+    /**
+     * Plafond de sortie d'un appel <b>en flux</b> (F-172 / SF-172-05). Le raisonnement compte dans
+     * {@code max_tokens}, et les modèles récents raisonnent davantage à effort égal : à 16 384, un
+     * tour escaladé était coupé avant d'avoir répondu. En flux, aucun délai HTTP ne borne la
+     * longueur ; l'appel non streamé, lui, garde {@code agent-max-tokens}.
+     *
+     * <p>L'effort effectif est celui de la dernière consigne glissée dans la conversation
+     * (F-134 / SF-134-05) s'il y en a une, sinon celui de la requête.</p>
+     */
+    private int streamedMaxTokens(AgentTurnRequest request) {
+        String effort = request.reasoning() == null ? null : request.reasoning().effort();
+        for (AgentMessage message : request.messages()) {
+            if (message.isEffortDirective()) {
+                effort = message.effort();
+            }
+        }
+        int cap = effort != null && ESCALATED_EFFORTS.contains(effort)
+                ? features.escalatedMaxTokens()
+                : features.streamedMaxTokens();
+        return Math.max(cap, properties.agentMaxTokens());
     }
 
     /**
@@ -565,6 +621,8 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         private ObjectNode stopDetails;
         /** Modèle qui a produit le message, annoncé par {@code message_start}. */
         private String model;
+        /** Blocs de raisonnement écartés par le fournisseur (D5), annoncés par le message. */
+        private JsonNode inputTransformations;
         private boolean completed;
 
         /** Vrai si les blocs {@code thinking} non vides sont des notes de progression (SF-172-04). */
@@ -599,6 +657,10 @@ public class AnthropicAgentProvider implements AiAgentProvider {
                     if (!announced.isEmpty()) {
                         model = announced;
                     }
+                    JsonNode transformations = event.path("message").path("input_transformations");
+                    if (transformations.isArray()) {
+                        inputTransformations = transformations.deepCopy();
+                    }
                     JsonNode ctx = event.path("message").path("context_management");
                     if (ctx.isObject()) {
                         contextManagement = ctx.deepCopy();
@@ -618,6 +680,14 @@ public class AnthropicAgentProvider implements AiAgentProvider {
                     JsonNode details = event.path("delta").path("stop_details");
                     if (details.isObject()) {
                         stopDetails = details.deepCopy();
+                    }
+                    // Après un repli en cours de flux, le compte est redonné ici (SF-172-05).
+                    JsonNode transformations = event.path("input_transformations");
+                    if (!transformations.isArray()) {
+                        transformations = event.path("delta").path("input_transformations");
+                    }
+                    if (transformations.isArray()) {
+                        inputTransformations = transformations.deepCopy();
                     }
                     // La sortie finale (cumulée) vit ici ; l'entrée et le cache restent ceux du start.
                     copyUsage(event.path("usage"), usage, false);
@@ -689,6 +759,9 @@ public class AnthropicAgentProvider implements AiAgentProvider {
             }
             if (model != null) {
                 message.put("model", model);
+            }
+            if (inputTransformations != null) {
+                message.set("input_transformations", inputTransformations);
             }
             message.set("usage", usage);
             if (contextManagement != null) {
@@ -1068,7 +1141,34 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         int webSearches = usage.path("server_tool_use").path("web_search_requests").asInt(0);
         return new AgentTurn(text.toString(), toolCalls, finished, inputTokens, outputTokens, truncated,
                 reasoning, cacheRead, cacheCreation, webSearches, false, null, servedModel,
-                reading.parts(), narration.toString());
+                reading.parts(), narration.toString(), droppedThinkingBlocks(response, requestedModel));
+    }
+
+    /**
+     * Compte et journalise les blocs de raisonnement que le fournisseur a écartés (F-172 /
+     * SF-172-05, D5). Une ligne {@code thinking_dropped=N} par appel concerné, avec ses raisons —
+     * {@code prefix_binding_mismatch} (historique modifié) ou {@code model_binding_mismatch}
+     * (changement de modèle, attendu après un repli) — et leurs chemins. Ni contenu, ni clé : de quoi
+     * compter dans les journaux et décider, après une semaine, s'il faut un historique
+     * « append-only ». Un type inconnu est ignoré (le fournisseur en ajoutera).
+     */
+    private static int droppedThinkingBlocks(JsonNode response, String model) {
+        int dropped = 0;
+        java.util.Map<String, Integer> byReason = new java.util.TreeMap<>();
+        List<String> paths = new ArrayList<>();
+        for (JsonNode entry : response.path("input_transformations")) {
+            if (!"thinking_dropped".equals(entry.path("type").asText(""))) {
+                continue;
+            }
+            dropped++;
+            byReason.merge(entry.path("reason").asText("inconnue"), 1, Integer::sum);
+            paths.add(entry.path("path").asText("?"));
+        }
+        if (dropped > 0) {
+            log.info("Raisonnement écarté par le fournisseur : thinking_dropped={} raisons={} chemins={} "
+                    + "(modèle={}).", dropped, byReason, paths, model);
+        }
+        return dropped;
     }
 
     /** Tokens d'un tour, totaux et ventilation par modèle servi (F-172 / SF-172-03). */

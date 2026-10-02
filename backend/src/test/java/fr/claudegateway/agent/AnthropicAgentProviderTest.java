@@ -215,7 +215,7 @@ class AnthropicAgentProviderTest {
 
     @Test
     void theKillSwitchTurnsTheFallbackOff() {
-        buildWith(new AgentApiFeaturesProperties(false, null, null));
+        buildWith(new AgentApiFeaturesProperties(false, null, null, null, null, null, null, null));
         server.expect(requestTo(URL))
                 .andExpect(jsonPath("$.fallbacks").doesNotExist())
                 .andRespond(withSuccess("""
@@ -495,6 +495,188 @@ class AnthropicAgentProviderTest {
                 List.of(AgentMessage.userText("bonjour")), List.of(), null), unlisted::add);
 
         assertThat(String.join("", unlisted)).isEqualTo("Je regarde.");
+    }
+
+    // ------------------------------------------------- F-172 / SF-172-05 : garde-fous de requête
+
+    private static final String OK_SSE = String.join("\n",
+            "data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":1},"
+                    + "\"input_transformations\":[{\"type\":\"thinking_dropped\",\"path\":\"messages.1.content.0\","
+                    + "\"reason\":\"prefix_binding_mismatch\"}]}}",
+            "",
+            "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":"
+                    + "{\"type\":\"text\",\"text\":\"\"}}",
+            "",
+            "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":"
+                    + "{\"type\":\"text_delta\",\"text\":\"ok\"}}",
+            "",
+            "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},"
+                    + "\"usage\":{\"output_tokens\":1}}",
+            "",
+            "data: {\"type\":\"message_stop\"}",
+            "");
+
+    private AgentTurn streamWith(String model, AgentReasoning reasoning, List<AgentMessage> messages) {
+        return provider.nextTurn(new AgentTurnRequest(model, "consigne", messages, List.of(), null,
+                reasoning), piece -> { });
+    }
+
+    @Test
+    void aStreamedCallGetsTheRaisedOutputCap() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        server.expect(requestTo(URL))
+                .andExpect(jsonPath("$.max_tokens").value(32_768))
+                .andRespond(withSuccess(OK_SSE, MediaType.TEXT_EVENT_STREAM));
+
+        streamWith("claude-model", new AgentReasoning(true, "high"),
+                List.of(AgentMessage.userText("bonjour")));
+
+        server.verify();
+    }
+
+    @Test
+    void anEscalatedStreamedCallGetsTheHighestCap() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        server.expect(requestTo(URL))
+                .andExpect(jsonPath("$.max_tokens").value(65_536))
+                .andRespond(withSuccess(OK_SSE, MediaType.TEXT_EVENT_STREAM));
+
+        streamWith("claude-model", new AgentReasoning(true, "xhigh"),
+                List.of(AgentMessage.userText("bonjour")));
+
+        server.verify();
+    }
+
+    @Test
+    void anEscalationCarriedByAMessageAlsoRaisesTheCap() {
+        // F-134 : l'effort voyage dans la conversation ; la racine reste constante.
+        buildWith(AgentApiFeaturesProperties.defaults());
+        server.expect(requestTo(URL))
+                .andExpect(jsonPath("$.max_tokens").value(65_536))
+                .andRespond(withSuccess(OK_SSE, MediaType.TEXT_EVENT_STREAM));
+
+        streamWith("claude-model", new AgentReasoning(true, "high"),
+                List.of(AgentMessage.userText("bonjour"), AgentMessage.effort("max"),
+                        AgentMessage.userText("suite")));
+
+        server.verify();
+    }
+
+    @Test
+    void aNonStreamedCallKeepsItsCap() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        server.expect(requestTo(URL))
+                .andExpect(jsonPath("$.max_tokens").value(16_384))
+                .andRespond(withSuccess("""
+                        {"content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn",
+                         "usage": {"input_tokens": 1, "output_tokens": 1}}
+                        """, MediaType.APPLICATION_JSON));
+
+        provider.nextTurn(new AgentTurnRequest("claude-model", "consigne",
+                List.of(AgentMessage.userText("bonjour")), List.of(), null, new AgentReasoning(true, "max")));
+
+        server.verify();
+    }
+
+    @Test
+    void aCallWithoutEffortOnOpusFiveFiveGetsTheConfiguredDefault() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        server.expect(requestTo(URL))
+                .andExpect(jsonPath("$.output_config.effort").value("high"))
+                .andExpect(jsonPath("$.thinking.type").value("adaptive"))
+                .andRespond(withSuccess("""
+                        {"content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn",
+                         "usage": {"input_tokens": 1, "output_tokens": 1}}
+                        """, MediaType.APPLICATION_JSON));
+
+        callModel("claude-opus-5-5");
+
+        server.verify();
+    }
+
+    @Test
+    void aRequestedEffortIsNeverOverridden() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        server.expect(requestTo(URL))
+                .andExpect(jsonPath("$.output_config.effort").value("low"))
+                .andRespond(withSuccess("""
+                        {"content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn",
+                         "usage": {"input_tokens": 1, "output_tokens": 1}}
+                        """, MediaType.APPLICATION_JSON));
+
+        provider.nextTurn(new AgentTurnRequest("claude-opus-5-5", "consigne",
+                List.of(AgentMessage.userText("bonjour")), List.of(), null, new AgentReasoning(true, "low")));
+
+        server.verify();
+    }
+
+    @Test
+    void anUnlistedModelWithoutEffortStaysUntouched() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        server.expect(requestTo(URL))
+                .andExpect(jsonPath("$.output_config").doesNotExist())
+                .andExpect(jsonPath("$.thinking").doesNotExist())
+                .andRespond(withSuccess("""
+                        {"content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn",
+                         "usage": {"input_tokens": 1, "output_tokens": 1}}
+                        """, MediaType.APPLICATION_JSON));
+
+        callModel("claude-sonnet-5");
+
+        server.verify();
+    }
+
+    @Test
+    void opusFiveFiveDropsMismatchedReasoningInsteadOfFailing() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        server.expect(requestTo(URL))
+                .andExpect(jsonPath("$.thinking.block_binding.prefix_mismatch_behavior").value("drop_block"))
+                .andExpect(jsonPath("$.thinking.display").value("updates"))
+                .andExpect(request -> assertThat(request.getHeaders().getFirst("anthropic-beta"))
+                        .contains("thinking-binding-controls-2026-08-01"))
+                .andRespond(withSuccess("""
+                        {"content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn",
+                         "input_transformations": [
+                           {"type": "thinking_dropped", "path": "messages.1.content.0",
+                            "reason": "prefix_binding_mismatch"},
+                           {"type": "thinking_dropped", "path": "messages.3.content.0",
+                            "reason": "prefix_binding_mismatch"},
+                           {"type": "thinking_mismatch_allowed", "path": "messages.5.content.0",
+                            "reason": "prefix_binding_mismatch"}],
+                         "usage": {"input_tokens": 1, "output_tokens": 1}}
+                        """, MediaType.APPLICATION_JSON));
+
+        AgentTurn turn = callModel("claude-opus-5-5");
+
+        assertThat(turn.droppedThinkingBlocks()).isEqualTo(2);
+        server.verify();
+    }
+
+    @Test
+    void countsDroppedReasoningOnTheStreamToo() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        server.expect(requestTo(URL)).andRespond(withSuccess(OK_SSE, MediaType.TEXT_EVENT_STREAM));
+
+        AgentTurn turn = streamWith("claude-opus-5-5", new AgentReasoning(true, "high"),
+                List.of(AgentMessage.userText("bonjour")));
+
+        assertThat(turn.droppedThinkingBlocks()).isEqualTo(1);
+    }
+
+    @Test
+    void anUnlistedModelGetsNoBindingControl() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        server.expect(requestTo(URL))
+                .andExpect(jsonPath("$.thinking.block_binding").doesNotExist())
+                .andRespond(withSuccess("""
+                        {"content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn",
+                         "usage": {"input_tokens": 1, "output_tokens": 1}}
+                        """, MediaType.APPLICATION_JSON));
+
+        provider.nextTurn(new AgentTurnRequest("claude-opus-5", "consigne",
+                List.of(AgentMessage.userText("bonjour")), List.of(), null, new AgentReasoning(true, "high")));
+
+        server.verify();
     }
 
     @Test

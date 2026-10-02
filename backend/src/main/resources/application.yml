@@ -510,6 +510,19 @@ app:
       # Narration entre outils (F-172 / SF-172-04) : ces modeles ecrivent leurs notes de progression
       # dans des blocs `thinking`, vides par defaut. `display: "updates"` les rend lisibles.
       progress-update-models: ${APP_AGENT_PROGRESS_UPDATE_MODELS:claude-opus-5-5,claude-fable-5-1,claude-fable-5,claude-sonnet-5-5}
+      # Plafond de sortie des appels EN FLUX (F-172 / SF-172-05) : le raisonnement compte dans
+      # `max_tokens`. 64 k a l'effort xhigh/max. Les appels non streames gardent agent-max-tokens
+      # (un appel non streame plus long depasserait le delai HTTP).
+      streamed-max-tokens: ${APP_AGENT_STREAMED_MAX_TOKENS:32768}
+      escalated-max-tokens: ${APP_AGENT_ESCALATED_MAX_TOKENS:65536}
+      # Effort explicite (SF-172-05) : le defaut fournisseur d'Opus 5.5 est `medium`. Un appel qui ne
+      # precise pas d'effort part a `default-effort` (le defaut d'Opus 5) — rien n'est retire au
+      # raisonnement par la bascule.
+      explicit-effort-models: ${APP_AGENT_EXPLICIT_EFFORT_MODELS:claude-opus-5-5}
+      default-effort: ${APP_AGENT_DEFAULT_EFFORT:high}
+      # Raisonnement lie a la conversation (D5) : `drop_block` + journal `thinking_dropped=` — jamais
+      # de 400, chaque bloc perdu est compte.
+      binding-control-models: ${APP_AGENT_BINDING_CONTROL_MODELS:claude-opus-5-5,claude-fable-5-1}
   stt:
     # SERVICE DE TRANSCRIPTION (F-128 / SF-128-04), relais compatible Whisper/OpenAI. BRANCHÉ SUR OPENAI
     # (SF-128-18) : base-url + model fournis par backend-config (https://api.openai.com/v1, whisper-1).

@@ -47,12 +47,27 @@ import java.util.List;
  * @param narration    notes de progression écrites entre deux outils dans des blocs de raisonnement
  *                     (F-172 / SF-172-04), jointes par une ligne vide ; vide si le modèle n'en
  *                     produit pas. Elles restent AUSSI dans {@code reasoning}, inchangées, pour le rejeu
+ * @param droppedThinkingBlocks blocs de raisonnement rejoués que le fournisseur a écartés pour cet
+ *                     appel (F-172 / SF-172-05, D5) — historique modifié depuis leur production, ou
+ *                     changement de modèle. C'est la mesure qui dira s'il faut un historique
+ *                     « append-only »
  * @see #truncated()
  */
 public record AgentTurn(String text, List<AgentToolCall> toolCalls, boolean finished,
         int inputTokens, int outputTokens, boolean truncated, List<AgentContentBlock> reasoning,
         int cacheReadTokens, int cacheWriteTokens, int webSearchRequests, boolean refused,
-        String refusalCategory, String servedModel, List<ModelUsage> usageByModel, String narration) {
+        String refusalCategory, String servedModel, List<ModelUsage> usageByModel, String narration,
+        int droppedThinkingBlocks) {
+
+    /** Forme sans compte de blocs de raisonnement perdus. */
+    public AgentTurn(String text, List<AgentToolCall> toolCalls, boolean finished,
+            int inputTokens, int outputTokens, boolean truncated, List<AgentContentBlock> reasoning,
+            int cacheReadTokens, int cacheWriteTokens, int webSearchRequests, boolean refused,
+            String refusalCategory, String servedModel, List<ModelUsage> usageByModel, String narration) {
+        this(text, toolCalls, finished, inputTokens, outputTokens, truncated, reasoning,
+                cacheReadTokens, cacheWriteTokens, webSearchRequests, refused, refusalCategory,
+                servedModel, usageByModel, narration, 0);
+    }
 
     /** Forme sans narration — modèles qui écrivent leur narration en blocs {@code text}. */
     public AgentTurn(String text, List<AgentToolCall> toolCalls, boolean finished,
@@ -147,6 +162,7 @@ public record AgentTurn(String text, List<AgentToolCall> toolCalls, boolean fini
         servedModel = servedModel == null || servedModel.isBlank() ? null : servedModel;
         usageByModel = usageByModel == null ? List.of() : List.copyOf(usageByModel);
         narration = narration == null ? "" : narration;
+        droppedThinkingBlocks = Math.max(0, droppedThinkingBlocks);
     }
 
     /** Forme sans ventilation de cache — conservée pour les appelants qui l'attendent. */
