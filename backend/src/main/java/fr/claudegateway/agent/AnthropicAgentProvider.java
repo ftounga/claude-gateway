@@ -121,6 +121,18 @@ public class AnthropicAgentProvider implements AiAgentProvider {
     /** Valeur scalaire du repli : le fournisseur choisit la cible par catégorie de refus. */
     private static final String FALLBACKS_DEFAULT = "default";
     /**
+     * Notes de progression lisibles (F-172 / SF-172-04) : sur les modèles récents, la narration
+     * écrite entre deux outils arrive dans des blocs {@code thinking}, vides par défaut. Avec
+     * {@code display: "updates"}, ces notes reviennent en clair et le raisonnement reste caché.
+     */
+    private static final String PROGRESS_UPDATES_BETA = "thinking-display-updates-2026-08-18";
+    /**
+     * Sentinelle du fournisseur : dernier bloc d'une réponse coupée juste après un outil. Ce n'est
+     * pas une narration du modèle, elle ne part ni à l'écran ni dans le texte du tour.
+     */
+    static final String INTERRUPTED_SENTINEL =
+            "This part of the response was interrupted before it finished.";
+    /**
      * Distance du marqueur intermédiaire à la fin de la conversation (F-134 / SF-134-02).
      *
      * <p>Quinze, et non vingt : le fournisseur remonte <b>au plus vingt positions</b> depuis un
@@ -203,14 +215,14 @@ public class AnthropicAgentProvider implements AiAgentProvider {
     public AgentTurn nextTurn(AgentTurnRequest request) {
         Prepared prepared = prepare(request);
         return callWithRetry(request.model(), prepared.contextEditing(),
-                () -> toTurn(sendNonStreamed(prepared), prepared.model()));
+                () -> toTurn(sendNonStreamed(prepared), prepared));
     }
 
     /**
      * Variante <b>streamée</b> (F-116 / SF-116-01) : consomme le flux SSE d'Anthropic
      * ({@code stream:true}), pousse les deltas de <b>texte</b> dans {@code textListener} au fil de
      * l'eau, puis reconstitue <b>le même</b> {@link AgentTurn} qu'un appel non streamé — via le même
-     * {@link #toTurn(JsonNode)}, donc avec un comptage cache/usage et un raisonnement signé identiques.
+     * {@code toTurn}, donc avec un comptage cache/usage et un raisonnement signé identiques.
      *
      * <p>Le corps est <b>celui du chemin non streamé</b> augmenté du seul {@code stream:true} : les
      * marqueurs {@code cache_control}, le raisonnement et le retry {@code 429/529} ne bougent pas. Un
@@ -234,13 +246,13 @@ public class AnthropicAgentProvider implements AiAgentProvider {
             log.warn("Streaming indisponible pour le tour (modèle={}, {}) : repli non streamé.",
                     request.model(), ex.getMessage());
             return callWithRetry(request.model(), prepared.contextEditing(),
-                    () -> toTurn(sendNonStreamed(prepared), prepared.model()));
+                    () -> toTurn(sendNonStreamed(prepared), prepared));
         }
     }
 
     /** Corps de requête prêt à partir, calculé <b>une fois</b> et partagé streamé/non streamé. */
     private record Prepared(String apiKey, Map<String, Object> body, boolean contextEditing,
-            boolean perMessageEffort, List<String> extraBetas, String model) {
+            boolean perMessageEffort, List<String> extraBetas, String model, boolean progressUpdates) {
     }
 
     /**
@@ -279,8 +291,16 @@ public class AnthropicAgentProvider implements AiAgentProvider {
             body.put("fallbacks", FALLBACKS_DEFAULT);
             extraBetas.add(SERVER_FALLBACK_BETA);
         }
+        // Narration entre outils (F-172 / SF-172-04) : demandée aux seuls modèles qui l'écrivent en
+        // blocs de raisonnement. Le raisonnement y est toujours actif ; l'écrire explicitement ne
+        // change rien, et porte l'option d'affichage.
+        boolean progressUpdates = features.progressUpdatesFor(request.model());
+        if (progressUpdates) {
+            body.put("thinking", Map.of("type", "adaptive", "display", "updates"));
+            extraBetas.add(PROGRESS_UPDATES_BETA);
+        }
         return new Prepared(apiKey, body, contextEditing, perMessageEffort, List.copyOf(extraBetas),
-                request.model());
+                request.model(), progressUpdates);
     }
 
     /**
@@ -440,7 +460,8 @@ public class AnthropicAgentProvider implements AiAgentProvider {
                         // Refus permanent du flux : on replie plutôt que de tuer le tour.
                         throw new StreamingFallbackException("statut " + status.value());
                     }
-                    return toTurn(parseSse(response.getBody(), textListener), prepared.model());
+                    return toTurn(parseSse(response.getBody(), textListener, prepared.progressUpdates()),
+                            prepared);
                 });
     }
 
@@ -462,16 +483,16 @@ public class AnthropicAgentProvider implements AiAgentProvider {
      * accumulé ; {@code thinking} concatène ses {@code thinking_delta} et pose sa {@code signature}.
      * L'{@code usage} vient de {@code message_start} (entrée + cache) et de {@code message_delta}
      * (sortie finale) ; le {@code stop_reason} de {@code message_delta}. Le résultat a exactement la
-     * forme qu'attend {@link #toTurn(JsonNode)} : l'équivalence avec le non streamé est mécanique.</p>
+     * forme qu'attend {@code toTurn} : l'équivalence avec le non streamé est mécanique.</p>
      *
      * <p>Le raisonnement <b>n'est jamais</b> poussé dans le sink : il n'est pas la réponse
      * (SF-39-10).</p>
      */
-    private JsonNode parseSse(InputStream body, AgentTextListener textListener) {
+    private JsonNode parseSse(InputStream body, AgentTextListener textListener, boolean progressUpdates) {
         if (body == null) {
             throw new StreamingFallbackException("flux vide");
         }
-        ParseState state = new ParseState(textListener);
+        ParseState state = new ParseState(textListener, progressUpdates);
         try (BufferedReader reader =
                 new BufferedReader(new InputStreamReader(body, StandardCharsets.UTF_8))) {
             StringBuilder data = new StringBuilder();
@@ -530,7 +551,7 @@ public class AnthropicAgentProvider implements AiAgentProvider {
     /**
      * État de reconstruction d'un flux SSE (F-116 / SF-116-01) : blocs assemblés par index, JSON
      * d'entrée d'outils accumulé, {@code usage}, {@code stop_reason} et éditions de contexte. Assemble
-     * un objet réponse ayant exactement la forme qu'attend {@link #toTurn(JsonNode)}.
+     * un objet réponse ayant exactement la forme qu'attend {@code toTurn}.
      */
     private static final class ParseState {
 
@@ -546,8 +567,28 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         private String model;
         private boolean completed;
 
-        ParseState(AgentTextListener textListener) {
+        /** Vrai si les blocs {@code thinking} non vides sont des notes de progression (SF-172-04). */
+        private final boolean progressUpdates;
+        /** Dernier bloc dont un morceau est parti à l'écran, et s'il était une note de progression. */
+        private int lastEmittedIndex = -1;
+        private boolean lastEmittedWasProgress;
+
+        ParseState(AgentTextListener textListener, boolean progressUpdates) {
             this.textListener = textListener;
+            this.progressUpdates = progressUpdates;
+        }
+
+        /**
+         * Pousse un morceau à l'écran. Une note de progression est séparée de ce qui l'entoure par
+         * une ligne vide (F-172 / SF-172-04) ; entre deux blocs de texte, rien ne change.
+         */
+        private void emit(int index, String piece, boolean progress) {
+            if (lastEmittedIndex >= 0 && index != lastEmittedIndex && (progress || lastEmittedWasProgress)) {
+                textListener.onTextDelta("\n\n");
+            }
+            textListener.onTextDelta(piece);
+            lastEmittedIndex = index;
+            lastEmittedWasProgress = progress;
         }
 
         void apply(JsonNode event, String type) {
@@ -605,15 +646,22 @@ public class AnthropicAgentProvider implements AiAgentProvider {
                     block.put("text", block.path("text").asText("") + piece);
                     // Le SEUL point où le texte part vers l'écran au fil de l'eau (F-116).
                     if (!piece.isEmpty()) {
-                        textListener.onTextDelta(piece);
+                        emit(index, piece, false);
                     }
                 }
                 case "input_json_delta" ->
                         toolInputJson.get(index).append(delta.path("partial_json").asText(""));
-                case "thinking_delta" ->
-                        // Le raisonnement se reconstitue, mais ne rejoint JAMAIS le texte de la réponse.
-                        block.put("thinking",
-                                block.path("thinking").asText("") + delta.path("thinking").asText(""));
+                case "thinking_delta" -> {
+                    // Le raisonnement se reconstitue, mais ne rejoint JAMAIS le texte de la réponse.
+                    String piece = delta.path("thinking").asText("");
+                    block.put("thinking", block.path("thinking").asText("") + piece);
+                    // Sauf la note de progression d'un modèle qui en écrit (F-172 / SF-172-04) : avec
+                    // `display: "updates"`, un bloc de raisonnement non vide EST la narration entre
+                    // deux outils — la taire rendrait le terminal muet le temps du tour.
+                    if (progressUpdates && !piece.isEmpty()) {
+                        emit(index, piece, true);
+                    }
+                }
                 case "signature_delta" ->
                         block.put("signature",
                                 block.path("signature").asText("") + delta.path("signature").asText(""));
@@ -929,7 +977,11 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         };
     }
 
-    private AgentTurn toTurn(JsonNode response, String requestedModel) {
+    private AgentTurn toTurn(JsonNode response, Prepared prepared) {
+        return toTurn(response, prepared.model(), prepared.progressUpdates());
+    }
+
+    private AgentTurn toTurn(JsonNode response, String requestedModel, boolean progressUpdates) {
         if (response == null || !response.hasNonNull("content")) {
             throw new AIProviderException("Réponse vide du fournisseur IA.");
         }
@@ -941,6 +993,7 @@ public class AnthropicAgentProvider implements AiAgentProvider {
             return refusedTurn(response, requestedModel);
         }
         StringBuilder text = new StringBuilder();
+        StringBuilder narration = new StringBuilder();
         List<AgentToolCall> toolCalls = new ArrayList<>();
         List<AgentContentBlock> reasoning = new ArrayList<>();
         // Repli côté serveur (F-172 / SF-172-02) : un bloc `fallback` marque chaque bascule d'un
@@ -967,8 +1020,16 @@ public class AnthropicAgentProvider implements AiAgentProvider {
                 // Le raisonnement n'est PAS la réponse : il ne rejoint jamais `text`. Il est conservé
                 // pour être rejoué au tour suivant, signature comprise (SF-39-10, décision D-L5-3).
                 String signature = block.path("signature").asText("");
-                reasoning.add(new AgentContentBlock.Reasoning(block.path("thinking").asText(""),
-                        signature.isEmpty() ? null : signature));
+                String thought = block.path("thinking").asText("");
+                reasoning.add(new AgentContentBlock.Reasoning(thought, signature.isEmpty() ? null : signature));
+                // Note de progression (F-172 / SF-172-04) : lue AUSSI comme narration, sans que le
+                // bloc rejoué change d'un octet.
+                if (progressUpdates && !thought.isBlank() && !INTERRUPTED_SENTINEL.equals(thought.strip())) {
+                    if (narration.length() > 0) {
+                        narration.append("\n\n");
+                    }
+                    narration.append(thought.strip());
+                }
             } else if ("redacted_thinking".equals(type)) {
                 reasoning.add(new AgentContentBlock.RedactedReasoning(block.path("data").asText("")));
             } else if ("tool_use".equals(type)) {
@@ -1007,7 +1068,7 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         int webSearches = usage.path("server_tool_use").path("web_search_requests").asInt(0);
         return new AgentTurn(text.toString(), toolCalls, finished, inputTokens, outputTokens, truncated,
                 reasoning, cacheRead, cacheCreation, webSearches, false, null, servedModel,
-                reading.parts());
+                reading.parts(), narration.toString());
     }
 
     /** Tokens d'un tour, totaux et ventilation par modèle servi (F-172 / SF-172-03). */
