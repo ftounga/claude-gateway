@@ -137,6 +137,38 @@ public class AtelierChatService implements RelayInterruptTarget {
      * quoi faire ensuite. Sans elle, il ne voyait qu'une phrase d'intention suivie de rien.
      */
     /**
+     * Cumule les parts d'un appel servies par un autre modèle que le modèle demandé
+     * (F-172 / SF-172-03), et retient le dernier modèle servi. Un appel entièrement servi par le
+     * modèle demandé n'ajoute rien : le relevé reste alors strictement celui d'avant.
+     */
+    static void collectOtherModelShares(AgentTurn turn, String requestedModel,
+            java.util.Map<String, long[]> shares, String[] lastServed) {
+        if (turn == null) {
+            return;
+        }
+        if (turn.servedModel() != null) {
+            lastServed[0] = turn.servedModel();
+        }
+        for (AgentTurn.ModelUsage part : turn.usageByModel()) {
+            if (part.model() == null || part.model().equals(requestedModel)) {
+                continue;
+            }
+            long[] acc = shares.computeIfAbsent(part.model(), k -> new long[4]);
+            acc[0] += part.fullPriceInputTokens();
+            acc[1] += part.outputTokens();
+            acc[2] += part.cacheReadTokens();
+            acc[3] += part.cacheWriteTokens();
+        }
+    }
+
+    /** Parts cumulées, en tokens par nature (F-172 / SF-172-03). */
+    static java.util.Map<String, TurnTokens> toTurnTokens(java.util.Map<String, long[]> shares) {
+        java.util.Map<String, TurnTokens> tokens = new java.util.LinkedHashMap<>();
+        shares.forEach((m, acc) -> tokens.put(m, new TurnTokens(acc[0], acc[1], acc[2], acc[3])));
+        return tokens;
+    }
+
+    /**
      * Réponse à un <b>refus du fournisseur</b> (F-172 / SF-172-01) : le modèle a décliné la demande
      * (filtre de sécurité, HTTP 200 {@code stop_reason: refusal}). La catégorie est nommée en clair ;
      * rien de la réponse partielle n'est conservé, aucune commande n'a été exécutée.
@@ -2218,6 +2250,10 @@ public class AtelierChatService implements RelayInterruptTarget {
          * et l'outil de recherche est déclaré à chaque appel d'agent.
          */
         int webSearchRequests = 0;
+        // Parts du tour servies par un AUTRE modèle que celui demandé (F-172 / SF-172-03) — un refus
+        // rattrapé par un repli — et dernier modèle servi : le relevé chiffre chaque part à son tarif.
+        java.util.Map<String, long[]> otherModelShares = new java.util.LinkedHashMap<>();
+        String[] lastServedModel = {null};
         /**
          * Niveau d'effort <b>en vigueur</b> dans la conversation (F-134 / SF-134-05). Une consigne
          * n'est glissée que lorsque le niveau change : un message de plus est un octet de plus dans
@@ -2476,6 +2512,7 @@ public class AtelierChatService implements RelayInterruptTarget {
             cacheReadTokens += turn.cacheReadTokens();
             cacheWriteTokens += turn.cacheWriteTokens();
             webSearchRequests += turn.webSearchRequests();
+            collectOtherModelShares(turn, model, otherModelShares, lastServedModel);
             largestIterationTokens =
                     Math.max(largestIterationTokens, (long) turn.inputTokens() + turn.outputTokens());
             // Consommation relayée au fil de l'eau : c'est ce qui fait apparaître les tokens dans la
@@ -2586,6 +2623,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                 cacheReadTokens += synthesis.cacheReadTokens();
                 cacheWriteTokens += synthesis.cacheWriteTokens();
                 webSearchRequests += synthesis.webSearchRequests();
+                collectOtherModelShares(synthesis, model, otherModelShares, lastServedModel);
                 largestIterationTokens = Math.max(largestIterationTokens,
                         (long) synthesis.inputTokens() + synthesis.outputTokens());
                 String synthText = stripTurnMetadata(synthesis.text());
@@ -2928,13 +2966,23 @@ public class AtelierChatService implements RelayInterruptTarget {
             // d'Opus coûte cinq fois un tour de Haiku. C'est le modèle DEMANDÉ pour la session —
             // la boucle maison ne fait pas remonter celui que le fournisseur rapporte, et les
             // deux ne diffèrent que si le fournisseur substitue, ce qu'il ne fait pas ici.
-            quotaService.recordUsage(userId,
+            TurnTokens recorded =
                     new TurnTokens(Math.max(0, inputTokens - cacheReadTokens - cacheWriteTokens),
-                            outputTokens, cacheReadTokens, cacheWriteTokens),
-                    // Pas de temps de session ici : la boucle maison n'a pas de bac à sable
-                    // facturé, seuls les Managed Agents en ont un (F-133 / SF-133-08).
-                    new TurnExtras(webSearchRequests, 0L),
-                    null, model, workspaceId, workspace.getHostId());
+                            outputTokens, cacheReadTokens, cacheWriteTokens);
+            // Pas de temps de session ici : la boucle maison n'a pas de bac à sable
+            // facturé, seuls les Managed Agents en ont un (F-133 / SF-133-08).
+            TurnExtras recordedExtras = new TurnExtras(webSearchRequests, 0L);
+            if (otherModelShares.isEmpty()) {
+                quotaService.recordUsage(userId, recorded, recordedExtras, null, model, workspaceId,
+                        workspace.getHostId());
+            } else {
+                // Tour servi en partie par un modèle de repli (F-172 / SF-172-03) : le quota est
+                // décompté sur le total comme avant ; le relevé chiffre chaque part à son tarif et
+                // inscrit le modèle réellement servi.
+                quotaService.recordUsage(userId, recorded, recordedExtras, null, model,
+                        toTurnTokens(otherModelShares), lastServedModel[0], workspaceId,
+                        workspace.getHostId());
+            }
         }
 
         // Jamais de message vide dans l'historique (SF-28-18) : il serait relu au tour suivant et
@@ -2960,8 +3008,10 @@ public class AtelierChatService implements RelayInterruptTarget {
         TurnTokens turnTokens =
                 new TurnTokens(Math.max(0, inputTokens - cacheReadTokens - cacheWriteTokens),
                         outputTokens, cacheReadTokens, cacheWriteTokens);
-        java.math.BigDecimal costUsd = quotaService.costOf(turnTokens,
-                new TurnExtras(webSearchRequests, 0L), model);
+        java.math.BigDecimal costUsd = otherModelShares.isEmpty()
+                ? quotaService.costOf(turnTokens, new TurnExtras(webSearchRequests, 0L), model)
+                : quotaService.costOf(turnTokens, new TurnExtras(webSearchRequests, 0L), model,
+                        toTurnTokens(otherModelShares));
         // La part de contexte RELUE plutôt que réécrite (F-134 / SF-134-03) : relire coûte un
         // vingtième d'écrire, si bien que ce seul chiffre dit d'un coup d'œil si le cache fait son
         // travail — et une régression future s'y verra sans avoir à interroger la base.

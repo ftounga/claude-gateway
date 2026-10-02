@@ -33,6 +33,44 @@ class ProviderCostCalculatorTest {
         assertThat(cost.pricingFallback()).isFalse();
     }
 
+    // ------------------------------------------------- F-172 / SF-172-03 : coût juste
+
+    @Test
+    void opusFiveFiveHasItsOwnRates() {
+        // (10 000×4 + 5 000×20 + 40 000×0,20 + 8 000×8) ÷ 1e6 = 0,212 $ — au lieu de 0,275 $ au
+        // tarif d'Opus 5, qui aurait servi de repli faute de ligne dans la grille.
+        TurnCost cost = calculator.calculate(
+                new TurnTokens(10_000L, 5_000L, 40_000L, 8_000L), "claude-opus-5-5");
+
+        assertThat(cost.amountUsd()).isEqualByComparingTo("0.212000");
+        assertThat(cost.pricingFallback()).isFalse();
+    }
+
+    @Test
+    void chargesEachModelShareAtItsOwnRate() {
+        // Tour de 1 M d'entrée et 100 k de sortie demandé sur Opus 5.5, dont 200 k / 20 k servis
+        // par Opus 4.8 après un repli : 800 k×4 + 80 k×20 = 4,80 $ ; 200 k×5 + 20 k×25 = 1,50 $.
+        TurnCost cost = calculator.calculate(new TurnTokens(1_000_000L, 100_000L, 0L, 0L),
+                TurnExtras.NONE, "claude-opus-5-5",
+                Map.of("claude-opus-4-8", new TurnTokens(200_000L, 20_000L, 0L, 0L)),
+                "claude-opus-4-8");
+
+        assertThat(cost.amountUsd()).isEqualByComparingTo("6.300000");
+        assertThat(cost.model()).isEqualTo("claude-opus-4-8");
+        assertThat(cost.pricingFallback()).isFalse();
+    }
+
+    @Test
+    void withoutOtherSharesTheCostIsTheSingleModelOne() {
+        TurnTokens tokens = new TurnTokens(10_000L, 5_000L, 40_000L, 8_000L);
+
+        TurnCost cost = calculator.calculate(tokens, TurnExtras.NONE, "claude-opus-5", Map.of(), null);
+
+        assertThat(cost.amountUsd()).isEqualByComparingTo(
+                calculator.calculate(tokens, "claude-opus-5").amountUsd());
+        assertThat(cost.model()).isEqualTo("claude-opus-5");
+    }
+
     @Test
     void chargesCacheWritesAtTheOneHourRate() {
         // C'EST L'ÉCART QUI JUSTIFIE UNE SECONDE GRILLE. La boucle pose un cache TTL 1 h depuis

@@ -222,6 +222,17 @@ public class StubAiAgentProvider implements AiAgentProvider {
                 true, category));
     }
 
+    /**
+     * Empile un tour final servi en partie par un <b>modèle de repli</b> (F-172 / SF-172-03) :
+     * 10 tokens d'entrée / 0 de sortie refusés par le modèle demandé, 20 / 8 servis par
+     * {@code fallbackModel}.
+     */
+    public void enqueueFinalServedByFallback(String text, String requestedModel, String fallbackModel) {
+        script.add(new AgentTurn(text, List.of(), true, 30, 8, false, List.of(), 0, 0, 0, false, null,
+                fallbackModel, List.of(new AgentTurn.ModelUsage(requestedModel, 10, 0, 0, 0),
+                        new AgentTurn.ModelUsage(fallbackModel, 20, 8, 0, 0))));
+    }
+
     /** Empile un tour final <b>sans aucun texte</b> : le tour n'a rien produit (SF-28-18). */
     public void enqueueEmptyFinal() {
         script.add(new AgentTurn("", List.of(), true, 5, 5));

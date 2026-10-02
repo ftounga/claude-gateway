@@ -308,6 +308,89 @@ class AnthropicAgentProviderTest {
         assertThat(turn.servedModel()).isEqualTo("claude-opus-4-8");
     }
 
+    // ------------------------------------------------- F-172 / SF-172-03 : coût par tentative
+
+    @Test
+    void sumsEveryAttemptAndKeepsTheirModels() {
+        build(null);
+        server.expect(requestTo(URL)).andRespond(withSuccess("""
+                {"model": "claude-opus-4-8",
+                 "content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn",
+                 "usage": {"input_tokens": 7, "output_tokens": 30,
+                   "iterations": [
+                     {"type": "message", "model": "claude-opus-5-5", "input_tokens": 100,
+                      "output_tokens": 0, "cache_read_input_tokens": 1000,
+                      "cache_creation_input_tokens": 10},
+                     {"type": "fallback_message", "input_tokens": 7, "output_tokens": 30,
+                      "cache_read_input_tokens": 0, "cache_creation_input_tokens": 500}]}}
+                """, MediaType.APPLICATION_JSON));
+
+        AgentTurn turn = provider.nextTurn(new AgentTurnRequest("claude-opus-5-5", "consigne",
+                List.of(AgentMessage.userText("bonjour")), List.of(), null));
+
+        assertThat(turn.inputTokens()).isEqualTo(100 + 1000 + 10 + 7 + 500);
+        assertThat(turn.outputTokens()).isEqualTo(30);
+        assertThat(turn.cacheReadTokens()).isEqualTo(1000);
+        assertThat(turn.cacheWriteTokens()).isEqualTo(510);
+        assertThat(turn.usageByModel()).extracting(AgentTurn.ModelUsage::model)
+                .containsExactly("claude-opus-5-5", "claude-opus-4-8");
+        assertThat(turn.usageByModel().get(1).cacheWriteTokens()).isEqualTo(500);
+    }
+
+    @Test
+    void withoutIterationsASingleShareAtTheServedModel() {
+        build(null);
+        server.expect(requestTo(URL)).andRespond(withSuccess("""
+                {"model": "claude-opus-5", "content": [{"type": "text", "text": "ok"}],
+                 "stop_reason": "end_turn",
+                 "usage": {"input_tokens": 10, "output_tokens": 20, "cache_read_input_tokens": 5}}
+                """, MediaType.APPLICATION_JSON));
+
+        AgentTurn turn = call();
+
+        assertThat(turn.inputTokens()).isEqualTo(15);
+        assertThat(turn.usageByModel()).singleElement().satisfies(part -> {
+            assertThat(part.model()).isEqualTo("claude-opus-5");
+            assertThat(part.fullPriceInputTokens()).isEqualTo(10);
+            assertThat(part.cacheReadTokens()).isEqualTo(5);
+        });
+    }
+
+    @Test
+    void readsIterationsFromTheStream() {
+        build(null);
+        String sse = String.join("\n",
+                "data: {\"type\":\"message_start\",\"message\":{\"model\":\"claude-opus-5-5\","
+                        + "\"usage\":{\"input_tokens\":10,\"output_tokens\":1}}}",
+                "",
+                "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":"
+                        + "{\"type\":\"text\",\"text\":\"\"}}",
+                "",
+                "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":"
+                        + "{\"type\":\"text_delta\",\"text\":\"ok\"}}",
+                "",
+                "data: {\"type\":\"content_block_stop\",\"index\":0}",
+                "",
+                "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},"
+                        + "\"usage\":{\"output_tokens\":4,\"iterations\":["
+                        + "{\"type\":\"message\",\"model\":\"claude-opus-5-5\",\"input_tokens\":10,"
+                        + "\"output_tokens\":2},"
+                        + "{\"type\":\"fallback_message\",\"model\":\"claude-opus-4-8\","
+                        + "\"input_tokens\":10,\"output_tokens\":4}]}}",
+                "",
+                "data: {\"type\":\"message_stop\"}",
+                "");
+        server.expect(requestTo(URL)).andRespond(withSuccess(sse, MediaType.TEXT_EVENT_STREAM));
+
+        AgentTurn turn = provider.nextTurn(new AgentTurnRequest("claude-opus-5-5", "consigne",
+                List.of(AgentMessage.userText("bonjour")), List.of(), null), piece -> { });
+
+        assertThat(turn.inputTokens()).isEqualTo(20);
+        assertThat(turn.outputTokens()).isEqualTo(6);
+        assertThat(turn.usageByModel()).extracting(AgentTurn.ModelUsage::model)
+                .containsExactly("claude-opus-5-5", "claude-opus-4-8");
+    }
+
     @Test
     void doesNotMarkNormalTurnsAsTruncated() {
         build(null);

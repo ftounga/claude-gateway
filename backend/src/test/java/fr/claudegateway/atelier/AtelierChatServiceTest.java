@@ -504,6 +504,22 @@ class AtelierChatServiceTest {
     }
 
     @Test
+    void aTurnServedByAFallbackModelIsCostedPerModel() {
+        // F-172 / SF-172-03 : le quota est décompté sur le total, comme avant ; le relevé reçoit la
+        // part du modèle de repli et le modèle réellement servi.
+        stubHappyPath();
+        agentProvider.enqueueFinalServedByFallback("Bonjour.", "claude-opus-5", "claude-opus-4-8");
+
+        service.chat(userId, workspaceId, "salut");
+
+        verify(quotaService).recordUsage(userId,
+                new fr.claudegateway.quota.TurnTokens(30L, 8L, 0L, 0L),
+                fr.claudegateway.quota.TurnExtras.NONE, null, "claude-opus-5",
+                java.util.Map.of("claude-opus-4-8", new fr.claudegateway.quota.TurnTokens(20L, 8L, 0L, 0L)),
+                "claude-opus-4-8", workspaceId, null);
+    }
+
+    @Test
     void cacheTokensReachTheDecountSeparatelyFromFullPriceInput() {
         // F-63 / SF-63-02 : le fournisseur replie le cache dans l'entrée (D3 de SF-39-01), ce qui
         // faisait facturer au plein tarif des tokens relus au dixième. Le VOLUME ne change pas —

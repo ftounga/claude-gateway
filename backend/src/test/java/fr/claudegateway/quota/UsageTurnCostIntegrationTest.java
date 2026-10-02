@@ -68,7 +68,7 @@ class UsageTurnCostIntegrationTest {
         assertThat(turn.getProviderCostUsd()).isEqualByComparingTo("0.275000");
         assertThat(turn.getCostSource()).isEqualTo(TurnCost.Source.CALCULATED);
         assertThat(turn.getModel()).isEqualTo("claude-opus-5");
-        assertThat(turn.getPricingVersion()).isEqualTo("2026-09-20");
+        assertThat(turn.getPricingVersion()).isEqualTo("2026-10-02");
         assertThat(turn.isPricingFallback()).isFalse();
     }
 
