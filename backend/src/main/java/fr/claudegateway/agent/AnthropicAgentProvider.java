@@ -113,6 +113,14 @@ public class AnthropicAgentProvider implements AiAgentProvider {
      */
     private static final String PER_MESSAGE_EFFORT_BETA = "mid-conversation-output-config-2026-07-01";
     /**
+     * Repli côté serveur sur refus de filtre, forme {@code "default"} (F-172 / SF-172-02, D1) : le
+     * fournisseur rejoue la requête sur le modèle qu'il recommande pour la catégorie du refus. La
+     * forme tableau (autre en-tête) n'est pas employée — l'associer à cet en-tête serait un 400.
+     */
+    private static final String SERVER_FALLBACK_BETA = "server-side-fallback-2026-07-01";
+    /** Valeur scalaire du repli : le fournisseur choisit la cible par catégorie de refus. */
+    private static final String FALLBACKS_DEFAULT = "default";
+    /**
      * Distance du marqueur intermédiaire à la fin de la conversation (F-134 / SF-134-02).
      *
      * <p>Quinze, et non vingt : le fournisseur remonte <b>au plus vingt positions</b> depuis un
@@ -134,14 +142,22 @@ public class AnthropicAgentProvider implements AiAgentProvider {
     }
 
     private final AnthropicProperties properties;
+    private final AgentApiFeaturesProperties features;
     private final RestClient restClient;
     private final AgentRetryPolicy retryPolicy;
     private final Sleeper sleeper;
 
     /** Constructeur d'injection — désigné explicitement, la classe en ayant deux. */
     @Autowired
-    public AnthropicAgentProvider(AnthropicProperties properties, RestClient.Builder restClientBuilder) {
-        this(properties, restClientBuilder, requestFactory(properties), Thread::sleep);
+    public AnthropicAgentProvider(AnthropicProperties properties, AgentApiFeaturesProperties features,
+            RestClient.Builder restClientBuilder) {
+        this(properties, features, restClientBuilder, requestFactory(properties), Thread::sleep);
+    }
+
+    /** Variante de test aux capacités d'API par défaut (F-172). */
+    AnthropicAgentProvider(AnthropicProperties properties, RestClient.Builder restClientBuilder,
+            ClientHttpRequestFactory requestFactory, Sleeper sleeper) {
+        this(properties, AgentApiFeaturesProperties.defaults(), restClientBuilder, requestFactory, sleeper);
     }
 
     /**
@@ -152,9 +168,10 @@ public class AnthropicAgentProvider implements AiAgentProvider {
      *                       simulé de rester en place
      * @param sleeper        attente d'un réessai
      */
-    AnthropicAgentProvider(AnthropicProperties properties, RestClient.Builder restClientBuilder,
-            ClientHttpRequestFactory requestFactory, Sleeper sleeper) {
+    AnthropicAgentProvider(AnthropicProperties properties, AgentApiFeaturesProperties features,
+            RestClient.Builder restClientBuilder, ClientHttpRequestFactory requestFactory, Sleeper sleeper) {
         this.properties = properties;
+        this.features = features == null ? AgentApiFeaturesProperties.defaults() : features;
         RestClient.Builder builder = restClientBuilder.baseUrl(properties.baseUrl());
         if (requestFactory != null) {
             builder = builder.requestFactory(requestFactory);
@@ -209,8 +226,7 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         streamBody.put("stream", true);
         try {
             return callWithRetry(request.model(), prepared.contextEditing(),
-                    () -> streamTurn(prepared.apiKey(), streamBody, prepared.contextEditing(),
-                            prepared.perMessageEffort(), sink));
+                    () -> streamTurn(prepared, streamBody, sink));
         } catch (StreamingFallbackException ex) {
             // Le fournisseur a refusé le flux, l'a coupé, ou l'a rendu illisible : on retombe
             // proprement sur l'appel complet. Un refus temporaire (429/529) épuisé, lui, n'atterrit
@@ -224,7 +240,7 @@ public class AnthropicAgentProvider implements AiAgentProvider {
 
     /** Corps de requête prêt à partir, calculé <b>une fois</b> et partagé streamé/non streamé. */
     private record Prepared(String apiKey, Map<String, Object> body, boolean contextEditing,
-            boolean perMessageEffort) {
+            boolean perMessageEffort, List<String> extraBetas) {
     }
 
     /**
@@ -256,7 +272,14 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         // annoncer une bêta qu'on n'utilise pas, c'est s'exposer à son retrait sans raison.
         boolean perMessageEffort = request.messages().stream()
                 .anyMatch(AgentMessage::isEffortDirective);
-        return new Prepared(apiKey, body, contextEditing, perMessageEffort);
+        List<String> extraBetas = new ArrayList<>(1);
+        // Repli côté serveur (F-172 / SF-172-02, D1) : relayé, pas réécrit. Seulement vers les
+        // modèles qui le connaissent — les autres reçoivent une requête strictement inchangée.
+        if (features.fallbacksFor(request.model())) {
+            body.put("fallbacks", FALLBACKS_DEFAULT);
+            extraBetas.add(SERVER_FALLBACK_BETA);
+        }
+        return new Prepared(apiKey, body, contextEditing, perMessageEffort, List.copyOf(extraBetas));
     }
 
     /**
@@ -363,20 +386,20 @@ public class AnthropicAgentProvider implements AiAgentProvider {
     }
 
     /** En-tête commun aux deux modes d'appel — même URL, même version, même beta d'édition. */
-    private RestClient.RequestBodySpec requestSpec(String apiKey, boolean contextEditing,
-            boolean perMessageEffort) {
+    private RestClient.RequestBodySpec requestSpec(Prepared prepared) {
         RestClient.RequestBodySpec spec = restClient.post()
                 .uri("/v1/messages")
-                .header("x-api-key", apiKey)
+                .header("x-api-key", prepared.apiKey())
                 .header("anthropic-version", properties.version())
                 .contentType(MediaType.APPLICATION_JSON);
-        List<String> betas = new ArrayList<>(2);
-        if (contextEditing) {
+        List<String> betas = new ArrayList<>(4);
+        if (prepared.contextEditing()) {
             betas.add(CONTEXT_MANAGEMENT_BETA);
         }
-        if (perMessageEffort) {
+        if (prepared.perMessageEffort()) {
             betas.add(PER_MESSAGE_EFFORT_BETA);
         }
+        betas.addAll(prepared.extraBetas());
         if (!betas.isEmpty()) {
             spec = spec.header("anthropic-beta", String.join(",", betas));
         }
@@ -385,7 +408,7 @@ public class AnthropicAgentProvider implements AiAgentProvider {
 
     /** Appel complet (non streamé) : la réponse entière du fournisseur en une fois. */
     private JsonNode sendNonStreamed(Prepared prepared) {
-        return requestSpec(prepared.apiKey(), prepared.contextEditing(), prepared.perMessageEffort())
+        return requestSpec(prepared)
                 .body(prepared.body())
                 .retrieve()
                 .body(JsonNode.class);
@@ -399,9 +422,9 @@ public class AnthropicAgentProvider implements AiAgentProvider {
      * (statut d'erreur, coupure, SSE illisible) remonte en {@link StreamingFallbackException} pour
      * déclencher le repli.</p>
      */
-    private AgentTurn streamTurn(String apiKey, Map<String, Object> streamBody, boolean contextEditing,
-            boolean perMessageEffort, AgentTextListener textListener) {
-        return requestSpec(apiKey, contextEditing, perMessageEffort)
+    private AgentTurn streamTurn(Prepared prepared, Map<String, Object> streamBody,
+            AgentTextListener textListener) {
+        return requestSpec(prepared)
                 .accept(MediaType.TEXT_EVENT_STREAM)
                 .body(streamBody)
                 .exchange((request, response) -> {
@@ -913,8 +936,24 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         StringBuilder text = new StringBuilder();
         List<AgentToolCall> toolCalls = new ArrayList<>();
         List<AgentContentBlock> reasoning = new ArrayList<>();
+        // Repli côté serveur (F-172 / SF-172-02) : un bloc `fallback` marque chaque bascule d'un
+        // modèle qui a refusé vers le suivant. Avant le DERNIER, seuls les blocs `text` sont gardés —
+        // les `thinking`/`tool_use` appartiennent à la tentative refusée : les rejouer ferait rejeter
+        // le tour suivant, les exécuter appliquerait une décision abandonnée. Le marqueur lui-même
+        // est un repère d'audit que le fournisseur ignore : il n'est pas rejoué.
+        int boundary = lastFallbackIndex(response.get("content"));
+        int index = -1;
         for (JsonNode block : response.get("content")) {
+            index++;
             String type = block.path("type").asText("");
+            if ("fallback".equals(type)) {
+                log.info("Repli côté serveur : {} -> {}.", block.path("from").path("model").asText("?"),
+                        block.path("to").path("model").asText("?"));
+                continue;
+            }
+            if (index < boundary && !"text".equals(type)) {
+                continue;
+            }
             if ("text".equals(type)) {
                 text.append(block.path("text").asText(""));
             } else if ("thinking".equals(type)) {
@@ -957,8 +996,49 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         // rapporte : c'est le seul endroit où le compte existe (F-133 / SF-133-08). Sans lui, un
         // tour qui cherche beaucoup coûte visiblement le prix d'un tour qui ne cherche pas.
         int webSearches = usage.path("server_tool_use").path("web_search_requests").asInt(0);
+        String servedModel = servedModel(response);
         return new AgentTurn(text.toString(), toolCalls, finished, inputTokens, outputTokens, truncated,
-                reasoning, cacheRead, cacheCreation, webSearches);
+                reasoning, cacheRead, cacheCreation, webSearches, false, null, servedModel);
+    }
+
+    /** Position du dernier bloc {@code fallback}, ou {@code -1} (F-172 / SF-172-02). */
+    private static int lastFallbackIndex(JsonNode content) {
+        int last = -1;
+        int index = 0;
+        for (JsonNode block : content) {
+            if ("fallback".equals(block.path("type").asText(""))) {
+                last = index;
+            }
+            index++;
+        }
+        return last;
+    }
+
+    /**
+     * Modèle qui a <b>servi</b> le message (F-172 / SF-172-02) : le champ {@code model} de la
+     * réponse. Un tour servi par un modèle de repli — repéré par une entrée {@code fallback_message}
+     * dans {@code usage.iterations}, y compris sur un tour « collant » sans bloc {@code fallback} —
+     * est journalisé.
+     */
+    private static String servedModel(JsonNode response) {
+        String model = response.path("model").asText("");
+        // En flux, `message_start` annonce le modèle de départ : après un repli EN COURS de sortie,
+        // c'est le dernier bloc `fallback` qui dit qui a pris la suite.
+        JsonNode content = response.path("content");
+        int boundary = content.isArray() ? lastFallbackIndex(content) : -1;
+        if (boundary >= 0) {
+            String target = content.get(boundary).path("to").path("model").asText("");
+            if (!target.isEmpty()) {
+                model = target;
+            }
+        }
+        for (JsonNode iteration : response.path("usage").path("iterations")) {
+            if ("fallback_message".equals(iteration.path("type").asText(""))) {
+                log.info("Tour servi par un modèle de repli ({}).", model.isEmpty() ? "?" : model);
+                break;
+            }
+        }
+        return model.isEmpty() ? null : model;
     }
 
     /**
@@ -979,7 +1059,7 @@ public class AnthropicAgentProvider implements AiAgentProvider {
                 category == null ? "non précisée" : category, response.path("model").asText("?"));
         return new AgentTurn("", List.of(), true, inputTokens, outputTokens, false, List.of(),
                 cacheRead, cacheCreation, usage.path("server_tool_use").path("web_search_requests").asInt(0),
-                true, category);
+                true, category, servedModel(response));
     }
 
     /**
