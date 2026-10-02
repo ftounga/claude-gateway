@@ -683,3 +683,19 @@ mesurer — un effondrement de la part relue qui coïncide avec une compaction s
 
 **À trancher seulement si la mesure le montre** : rien ne justifie de toucher au seuil de compaction
 avant d'avoir vu qu'il pose problème.
+
+
+---
+
+## OQ-23 — La conservation de 30 jours de Fable est-elle acceptable pour nos clients ?
+
+**Statut** : **Ouverte — non bloquante pour F-172** (posée le 2026-10-02, cadrage F-172).
+
+Fable 5 / 5.1 (et Mythos 5) sont des « Covered Models » : Anthropic conserve les données **30 jours**
+et ne les propose pas en « zéro conservation » sauf accord exprès. F-172 réserve Fable à l'ADMIN,
+donc la question ne se pose pas encore.
+
+Elle devient **bloquante** avant toute ouverture de Fable à un client, CAGIP en tête : il faut
+vérifier ce que le contrat et la politique de sécurité du client autorisent, et, si besoin, demander
+l'accord d'Anthropic ou garder Fable fermé pour ce client (traitement par client, sans assouplir la
+règle pour tous).
