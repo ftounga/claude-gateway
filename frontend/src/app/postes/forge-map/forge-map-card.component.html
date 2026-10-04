@@ -1,0 +1,105 @@
+<!-- LA FICHE D'UNE RESSOURCE (F-173 / SF-173-03) : pièges en tête, faits datés et sourcés. -->
+<aside class="map-card" aria-label="Fiche de la ressource">
+  @if (loading() && !card()) {
+    <div class="map-card__state"><mat-spinner diameter="20"></mat-spinner> Lecture de la fiche…</div>
+  } @else if (failed()) {
+    <div class="map-card__state" role="alert">
+      <mat-icon>error_outline</mat-icon>
+      <span>La fiche n'a pas pu être lue.</span>
+      <button mat-button type="button" (click)="load()">Réessayer</button>
+    </div>
+  } @else {
+    @if (card(); as c) {
+      <header class="map-card__head">
+        <div>
+          <p class="map-card__kind">{{ kindLabel(c.node.kind) }}</p>
+          <h3 class="map-card__title">{{ c.node.label }}</h3>
+          <p class="map-card__meta">
+            @if (c.node.environment) { <span>{{ c.node.environment }}</span> }
+            @if (c.node.domain) { <span>{{ c.node.domain }}</span> }
+            @if (c.node.state) { <span>{{ c.node.state.replace('_', ' ') }}</span> }
+            @if (c.node.observedOn) {
+              <span [class.map-card__stale]="c.node.stale">
+                constaté le {{ c.node.observedOn | date: 'd MMM y' }}@if (c.node.stale) { · périmé }
+              </span>
+            }
+          </p>
+        </div>
+        <button mat-icon-button type="button" (click)="closed.emit()" aria-label="Fermer la fiche">
+          <mat-icon>close</mat-icon>
+        </button>
+      </header>
+
+      <ng-content select="[mapCardActions]"></ng-content>
+
+      @if (c.node.identifiers.length) {
+        <section class="map-card__section">
+          <h4>Identifiants</h4>
+          <ul class="map-card__ids">
+            @for (id of c.node.identifiers; track id) {
+              <li>
+                <code>{{ id }}</code>
+                <button mat-icon-button type="button" (click)="copy(id)" [attr.aria-label]="'Copier ' + id" matTooltip="Copier">
+                  <mat-icon>content_copy</mat-icon>
+                </button>
+              </li>
+            }
+          </ul>
+        </section>
+      }
+
+      <ng-content select="[mapCardPath]"></ng-content>
+
+      @if (traps().length) {
+        <section class="map-card__section">
+          <h4 class="map-card__traps-title"><mat-icon>warning_amber</mat-icon> Pièges ({{ traps().length }})</h4>
+          <ul class="map-card__facts">
+            @for (fact of traps(); track fact.path + fact.lineNo) {
+              <li class="map-card__fact map-card__fact--trap">
+                <span>{{ fact.text }}</span>
+                <button type="button" class="map-card__source" (click)="openFile(fact.path)">{{ factSource(fact) }}</button>
+              </li>
+            }
+          </ul>
+        </section>
+      }
+
+      <section class="map-card__section">
+        <h4>Ce que la carte en dit ({{ c.totalFacts }})</h4>
+        @if (others().length === 0 && traps().length === 0) {
+          <p class="map-card__hint">Aucun fait rattaché à cette ressource pour l'instant.</p>
+        }
+        <ul class="map-card__facts">
+          @for (fact of others(); track fact.path + fact.lineNo) {
+            <li class="map-card__fact" [class.map-card__fact--stale]="fact.stale">
+              <span>{{ fact.text }}</span>
+              <span class="map-card__fact-meta">
+                @if (fact.dueOn) { <span>échéance {{ fact.dueOn | date: 'd MMM y' }}</span> }
+                @if (fact.observedOn) { <span>constaté le {{ fact.observedOn | date: 'd MMM y' }}</span> }
+                @if (fact.stale) { <span>périmé</span> }
+                <button type="button" class="map-card__source" (click)="openFile(fact.path)">{{ factSource(fact) }}</button>
+              </span>
+            </li>
+          }
+        </ul>
+        @if (c.totalFacts > c.facts.length) {
+          <p class="map-card__hint">{{ c.facts.length }} faits affichés sur {{ c.totalFacts }}.</p>
+        }
+      </section>
+
+      @if (c.relations.length) {
+        <section class="map-card__section">
+          <h4>Relations</h4>
+          <ul class="map-card__relations">
+            @for (rel of c.relations; track rel.otherId + rel.nature + rel.direction) {
+              <li>
+                <span class="map-card__nature">{{ relationPhrase(rel) }}</span>
+                <button type="button" class="map-card__link" (click)="navigate.emit(rel.otherId)">{{ rel.otherLabel }}</button>
+              </li>
+            }
+          </ul>
+        </section>
+      }
+    }
+  }
+</aside>

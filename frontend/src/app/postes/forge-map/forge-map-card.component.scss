@@ -1,0 +1,58 @@
+// LA FICHE (F-173 / SF-173-03) — palette §2 seulement ; pièges en rouge erreur, périmé pâli.
+.map-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  background: var(--cg-surface);
+  border: 1px solid var(--cg-divider);
+  border-radius: 8px;
+  max-height: 640px;
+  overflow-y: auto;
+}
+
+.map-card__state { display: flex; align-items: center; gap: 8px; color: var(--cg-text-secondary); }
+
+.map-card__head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.map-card__kind { margin: 0; font: 400 11px 'JetBrains Mono', monospace; text-transform: uppercase; letter-spacing: 0.04em; color: var(--cg-text-secondary); }
+.map-card__title { margin: 4px 0; font: 600 18px 'Space Grotesk', sans-serif; color: var(--cg-text-primary); word-break: break-word; }
+.map-card__meta { margin: 0; display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; color: var(--cg-text-secondary); }
+.map-card__stale { font-style: italic; }
+
+.map-card__section h4 { margin: 0 0 8px; font: 600 14px Inter, sans-serif; color: var(--cg-text-primary); }
+.map-card__section h4.map-card__traps-title { display: flex; align-items: center; gap: 4px; color: var(--cg-error); }
+
+.map-card__ids, .map-card__facts, .map-card__relations { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.map-card__ids li { display: flex; align-items: center; gap: 4px; }
+.map-card__ids code { font: 400 12px 'JetBrains Mono', monospace; word-break: break-all; }
+
+.map-card__fact {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 8px;
+  border-left: 2px solid var(--cg-divider);
+  font-size: 13px;
+  color: var(--cg-text-primary);
+
+  &--trap { border-left-color: var(--cg-error); }
+  &--stale { color: var(--cg-text-secondary); }
+}
+
+.map-card__fact-meta { display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; color: var(--cg-text-secondary); }
+
+.map-card__source, .map-card__link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: 400 12px 'JetBrains Mono', monospace;
+  color: var(--cg-text-secondary);
+  text-align: left;
+  cursor: pointer;
+  &:hover { color: var(--cg-accent); text-decoration: underline; }
+}
+
+.map-card__link { font: 500 13px Inter, sans-serif; color: var(--cg-text-primary); }
+.map-card__relations li { display: flex; gap: 8px; align-items: baseline; font-size: 13px; }
+.map-card__nature { color: var(--cg-text-secondary); }
+.map-card__hint { margin: 0; font-size: 12px; color: var(--cg-text-secondary); }

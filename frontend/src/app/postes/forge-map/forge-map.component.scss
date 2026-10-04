@@ -120,3 +120,15 @@ button.forge-map__crumb:hover { color: var(--cg-text-primary); text-decoration: 
 
 .forge-map__item-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .forge-map__item-meta { font: 400 12px 'JetBrains Mono', monospace; color: var(--cg-text-secondary); }
+
+.forge-map__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+
+  &--with-card { grid-template-columns: minmax(0, 1fr) 360px; }
+}
+
+@media (max-width: 1023px) {
+  .forge-map__body--with-card { grid-template-columns: minmax(0, 1fr); }
+}
