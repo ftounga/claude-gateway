@@ -19,6 +19,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param maxOutputTokens  plafond de sortie d'une extraction
  * @param maxFacts         faits joints au tour, au plus (D6)
  * @param maxChars         caractères du bloc de faits, au plus (D6)
+ * @param semanticMaxDistance distance cosine au-delà de laquelle un voisin pgvector n'est pas joint (D5)
+ * @param semanticTopN     voisins sémantiques demandés
+ * @param embeddingsPerRun faits embeddés par passe du travailleur (si la clé d'embedding est là)
  */
 @ConfigurationProperties(prefix = "app.map-index")
 public record HostMapIndexProperties(
@@ -30,7 +33,10 @@ public record HostMapIndexProperties(
         Integer maxSectionChars,
         Integer maxOutputTokens,
         Integer maxFacts,
-        Integer maxChars) {
+        Integer maxChars,
+        Double semanticMaxDistance,
+        Integer semanticTopN,
+        Integer embeddingsPerRun) {
 
     public static final String DEFAULT_MODEL = "claude-sonnet-5-5";
 
@@ -48,6 +54,11 @@ public record HostMapIndexProperties(
         maxOutputTokens = positive(maxOutputTokens, 8_000);
         maxFacts = positive(maxFacts, 20);
         maxChars = positive(maxChars, 6_000);
+        if (semanticMaxDistance == null || semanticMaxDistance <= 0) {
+            semanticMaxDistance = 0.50;
+        }
+        semanticTopN = positive(semanticTopN, 8);
+        embeddingsPerRun = positive(embeddingsPerRun, 200);
     }
 
     public boolean isEnabled() {

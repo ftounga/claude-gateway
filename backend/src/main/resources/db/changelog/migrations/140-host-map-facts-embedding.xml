@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-174 / SF-174-03 — RECHERCHE HYBRIDE : embeddings des faits de la carte + similarite pgvector (D5).
+
+      POSTGRESQL UNIQUEMENT, sur le patron exact de 135 (atelier_messages) et 137 (resolution_memory) :
+      la colonne vector et son index sont isoles en changesets dbms="postgresql" ; H2 (tests/dev) ne recoit
+      RIEN (MARK_RAN). La colonne n'est PAS mappee en JPA : SQL natif (CAST(? AS vector), <=> cosine).
+
+      ADDITIF : colonne nullable. Sans APP_EMBEDDING_API_KEY, le chemin semantique reste eteint et la
+      colonne reste NULL : la recherche hybride se passe de ce maillon (identifiant > entite > lexical).
+
+      Dimension 1536 = text-embedding-3-small, meme fournisseur que F-162 (ADR-011).
+      Rollback : DROP COLUMN embedding (l'extension `vector` est partagee, on ne la retire pas).
+    -->
+
+    <changeSet id="140-enable-pgvector" author="claude-gateway" dbms="postgresql">
+        <sql>CREATE EXTENSION IF NOT EXISTS vector;</sql>
+    </changeSet>
+
+    <changeSet id="140-host-map-facts-embedding-column" author="claude-gateway" dbms="postgresql">
+        <sql>ALTER TABLE host_map_facts ADD COLUMN IF NOT EXISTS embedding vector(1536);</sql>
+        <rollback>
+            <sql>ALTER TABLE host_map_facts DROP COLUMN IF EXISTS embedding;</sql>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="140-host-map-facts-embedding-index" author="claude-gateway" dbms="postgresql">
+        <sql>CREATE INDEX IF NOT EXISTS host_map_facts_embedding_idx
+             ON host_map_facts USING hnsw (embedding vector_cosine_ops);</sql>
+        <rollback>
+            <sql>DROP INDEX IF EXISTS host_map_facts_embedding_idx;</sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

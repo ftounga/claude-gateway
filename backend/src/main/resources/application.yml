@@ -608,6 +608,11 @@ app:
     # Bornes du bloc de faits joint au message du tour (D6) — jamais dans le bloc système.
     max-facts: ${APP_MAP_INDEX_MAX_FACTS:20}
     max-chars: ${APP_MAP_INDEX_MAX_CHARS:6000}
+    # Maillon sémantique de la recherche hybride (D5) : même fournisseur d'embeddings que F-162
+    # (APP_EMBEDDING_API_KEY) ; éteint sans clé. Seuil exigeant : silencieux plutôt que bruyant.
+    semantic-max-distance: ${APP_MAP_INDEX_SEMANTIC_MAX_DISTANCE:0.50}
+    semantic-top-n: 8
+    embeddings-per-run: ${APP_MAP_INDEX_EMBEDDINGS_PER_RUN:200}
     worker:
       enabled: ${APP_MAP_INDEX_WORKER_ENABLED:true}
       initial-delay: PT2M
