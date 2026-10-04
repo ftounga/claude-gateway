@@ -146,6 +146,8 @@ import { TerminalEmailComponent } from './terminal-email.component';
 import { PageBlockComponent } from './page-block.component';
 import { PagePanelComponent } from './page-panel.component';
 import { TerminalActionsPanelComponent } from './terminal-actions-panel.component';
+import { TerminalAttentesBandComponent } from './terminal-attentes-band.component';
+import { TerminalActionBoard } from '../../core/models/terminal-actions.models';
 import { AtelierTerminalDemandeComponent } from './atelier-terminal-demande.component';
 import { TerminalActionsService } from '../../core/services/terminal-actions.service';
 import {
@@ -208,7 +210,7 @@ export interface SlashMenuEntry {
   imports: [
     FormsModule, ForgeBreadcrumbComponent, LiveBadgeComponent, MarkdownPipe, MatButtonModule,
     TeamsLinkBadgeComponent, NgTemplateOutlet, TerminalEmailComponent, PageBlockComponent, PagePanelComponent,
-    TerminalActionsPanelComponent, AtelierTerminalDemandeComponent,
+    TerminalActionsPanelComponent, TerminalAttentesBandComponent, AtelierTerminalDemandeComponent,
     AtelierSlashPanelComponent, AtelierSlashHelpComponent, AtelierSlashCostComponent,
     AtelierSlashContexteComponent, AtelierSlashQuotaComponent, AtelierSlashBudgetComponent,
     AtelierSlashPosteComponent, AtelierSlashSujetComponent,
@@ -620,8 +622,19 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    */
   readonly actionsOpen = signal(false);
 
-  /** Combien reste-t-il à faire ici. Zéro = pas de pastille du tout. */
+  /**
+   * Combien d'attentes ouvertes (À faire + Demandé) sur le poste de ce terminal — ou sur le terminal
+   * seul s'il est hébergé (F-175 / SF-175-04). Zéro = pas de pastille du tout.
+   */
   readonly pendingActions = signal(0);
+
+  /**
+   * **Le tableau des attentes** (F-175 / SF-175-04) : ce qui nourrit la bande au-dessus de la saisie.
+   * Relu à l'ouverture du terminal, **à chaque fin de tour** et à chaque geste du panneau — la pastille
+   * de F-154 ne se relisait qu'au changement de terminal, et une attente inscrite pendant un tour
+   * restait invisible.
+   */
+  readonly attentesBoard = signal<TerminalActionBoard | null>(null);
 
   private readonly terminalActions = inject(TerminalActionsService);
 
@@ -631,17 +644,30 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
   closeActions(): void {
     this.actionsOpen.set(false);
-    // Le panneau a pu fermer ou rouvrir des actions : la pastille suit ce qu'il a compté.
+  }
+
+  /** Le panneau a relu le tableau après un geste : la bande et la pastille suivent. */
+  onBoardChanged(board: TerminalActionBoard): void {
+    this.applyBoard(board);
+  }
+
+  private applyBoard(board: TerminalActionBoard | null): void {
+    this.attentesBoard.set(board);
+    this.pendingActions.set(board ? board.aFaire + board.demande : 0);
   }
 
   /**
-   * Relit le nombre d'actions ouvertes du terminal. Un échec laisse la pastille à zéro : mieux vaut
-   * ne rien annoncer qu'annoncer un chiffre faux.
+   * Relit le tableau des attentes du terminal. Un échec laisse la bande et la pastille éteintes :
+   * mieux vaut ne rien annoncer qu'annoncer un chiffre faux.
    */
   private loadActionCount(workspaceId: string): void {
-    this.terminalActions.list(workspaceId).subscribe({
-      next: actions => this.pendingActions.set(actions.length),
-      error: () => this.pendingActions.set(0),
+    this.terminalActions.board(workspaceId).subscribe({
+      next: board => {
+        if (this.projectId === workspaceId) {
+          this.applyBoard(board);
+        }
+      },
+      error: () => this.applyBoard(null),
     });
   }
 
@@ -689,6 +715,11 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
       // Le message de l'agent peut arriver dans la même détection de changements, après cette entrée :
       // on regarde le fil une fois les entrées posées (micro-tâche, pas de minuterie).
       void Promise.resolve().then(() => this.requestNextPrompt());
+      // F-175 / SF-175-04 : le tour a pu inscrire, faire avancer ou proposer de fermer une attente —
+      // la bande se relit à chaque fin de tour.
+      if (this.projectId) {
+        this.loadActionCount(this.projectId);
+      }
     }
   }
   get submitting(): boolean {
