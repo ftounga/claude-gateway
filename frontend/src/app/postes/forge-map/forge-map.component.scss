@@ -190,3 +190,25 @@ button.forge-map__crumb:hover { color: var(--cg-text-primary); text-decoration: 
   .forge-map__grid-head { display: none; }
   .forge-map__grid-env { display: block; }
 }
+
+// LE CHEMIN D'ACCÈS (SF-173-05) — l'état est écrit ; la couleur ne fait que le doubler.
+.forge-map__path h4 { margin: 0 0 8px; font: 600 14px Inter, sans-serif; color: var(--cg-text-primary); }
+.forge-map__hops { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+
+.forge-map__hop {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  border-left: 4px solid var(--cg-divider);
+  font-size: 13px;
+
+  &--ouvert { border-left-color: var(--cg-success); }
+  &--ferme { border-left-color: var(--cg-error); }
+  &--depart { border-left-color: var(--cg-navy); }
+}
+
+.forge-map__hop-link { border: 0; background: none; padding: 0; font: 500 13px Inter, sans-serif; color: var(--cg-text-primary); cursor: pointer; text-align: left; }
+.forge-map__hop-link:hover { color: var(--cg-accent); text-decoration: underline; }
+.forge-map__hop-label { color: var(--cg-text-secondary); }
+.forge-map__hop-status { font: 400 11px 'JetBrains Mono', monospace; color: var(--cg-text-secondary); }

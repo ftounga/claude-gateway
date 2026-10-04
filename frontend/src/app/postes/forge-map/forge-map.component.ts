@@ -23,6 +23,7 @@ import { GovernanceService } from '../../core/services/governance.service';
 import { ForgeMapCanvasComponent } from './forge-map-canvas.component';
 import { ForgeMapCardComponent } from './forge-map-card.component';
 import { EnvironmentGrid, environmentGrid } from './forge-map-grid';
+import { AccessPath, accessPath } from './forge-map-path';
 import { MapLevel, ViewNode, kindLabel, levelFor } from './forge-map-levels';
 
 /** Les vues de l'onglet Carte (D5, D6) : le plan, son équivalent en liste, et les fichiers d'avant. */
@@ -117,6 +118,13 @@ export class ForgeMapComponent {
     return level.selected?.id ?? level.frame?.id ?? null;
   });
 
+  /** « Comment j'atteins X » (SF-173-05), calculé sur le plan déjà lu. */
+  readonly path = computed<AccessPath | null>(() => {
+    const graph = this.graph();
+    const id = this.cardNodeId();
+    return graph && id ? accessPath(graph, id) : null;
+  });
+
   /** Fermer la fiche : remonter au niveau qui la contient. */
   closeCard(): void {
     const level = this.level();
@@ -197,6 +205,20 @@ export class ForgeMapComponent {
 
   fit(): void {
     this.canvas()?.fit();
+  }
+
+  /** Un tronçon dit en mots — jamais la couleur seule. */
+  hopLabel(status: string): string {
+    switch (status) {
+      case 'ouvert':
+        return 'ouvert';
+      case 'ferme':
+        return 'fermé';
+      case 'depart':
+        return 'départ';
+      default:
+        return 'inconnu';
+    }
   }
 
   /** Ce que dit un élément de la liste, en plus de son nom. */

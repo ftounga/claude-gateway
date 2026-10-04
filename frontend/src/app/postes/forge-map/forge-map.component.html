@@ -154,7 +154,29 @@
               [nodeId]="cardId"
               (navigate)="goTo($event)"
               (closed)="closeCard()"
-            ></app-forge-map-card>
+            >
+              @if (path(); as p) {
+                <!-- LE CHEMIN D'ACCÈS (SF-173-05) : tiré des relations de la carte ; l'état est celui écrit, jamais sondé. -->
+                <section mapCardPath class="forge-map__path" aria-label="Comment l'atteindre">
+                  <h4>Comment l'atteindre</h4>
+                  <ol class="forge-map__hops">
+                    @for (hop of p.hops; track $index) {
+                      <li class="forge-map__hop" [class]="'forge-map__hop forge-map__hop--' + hop.status">
+                        @if (hop.nodeId) {
+                          <button type="button" class="forge-map__hop-link" (click)="goTo(hop.nodeId)">{{ hop.label }}</button>
+                        } @else {
+                          <span class="forge-map__hop-label">{{ hop.label }}</span>
+                        }
+                        <span class="forge-map__hop-status">{{ hopLabel(hop.status) }}</span>
+                      </li>
+                    }
+                  </ol>
+                  @if (p.entryUnknown) {
+                    <p class="forge-map__hint">La carte ne dit pas encore par quel proxy, VPN ou bastion on y entre.</p>
+                  }
+                </section>
+              }
+            </app-forge-map-card>
           }
         </div>
         }
