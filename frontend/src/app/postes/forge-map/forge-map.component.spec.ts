@@ -36,8 +36,12 @@ describe('ForgeMapComponent (F-173 / SF-173-02)', () => {
   ]);
 
   function build(query: Record<string, string> = {}, response = of(graph) as ReturnType<GovernanceService['hostMapGraph']>): void {
-    governance = jasmine.createSpyObj<GovernanceService>('GovernanceService', ['hostMapGraph']);
+    governance = jasmine.createSpyObj<GovernanceService>('GovernanceService', ['hostMapGraph', 'hostMapEntity']);
     governance.hostMapGraph.and.returnValue(response);
+    governance.hostMapEntity.and.callFake((_ref: string, id: string) => of({
+      node: graph.nodes.find((n) => n.id === id) ?? mapNode(id),
+      totalFacts: 0, facts: [], relations: [], sources: [],
+    }));
     router = jasmine.createSpyObj<Router>('Router', ['navigate']);
     router.navigate.and.returnValue(Promise.resolve(true));
     params = new BehaviorSubject(convertToParamMap(query));
@@ -119,6 +123,22 @@ describe('ForgeMapComponent (F-173 / SF-173-02)', () => {
     expect(all('.forge-map__item')[0].textContent).toContain('2 pièges');
     all('.forge-map__crumb')[0].click();
     expect(router.navigate).toHaveBeenCalledWith([], jasmine.objectContaining({ queryParams: { noeud: null } }));
+  });
+
+  it('la fiche s’ouvre pour une ressource sélectionnée et pour la plateforme ouverte ; Fermer remonte (SF-173-03)', () => {
+    build({ 'vue-carte': 'liste', noeud: 'proxy' });
+    expect(el('app-forge-map-card')).not.toBeNull();
+    expect(governance.hostMapEntity).toHaveBeenCalledWith('h1', 'proxy');
+    (el('app-forge-map-card button[aria-label="Fermer la fiche"]') as HTMLButtonElement).click();
+    expect(router.navigate).toHaveBeenCalledWith([], jasmine.objectContaining({ queryParams: { noeud: null } }));
+
+    params.next(convertToParamMap({ 'vue-carte': 'liste', noeud: 'compte' }));
+    fixture.detectChanges();
+    expect(governance.hostMapEntity).toHaveBeenCalledWith('h1', 'compte');
+
+    params.next(convertToParamMap({ 'vue-carte': 'fichiers', noeud: 'compte' }));
+    fixture.detectChanges();
+    expect(el('app-forge-map-card')).toBeNull();
   });
 
   it('sur téléphone, Plan devient la liste : aucun canevas', () => {

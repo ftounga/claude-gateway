@@ -21,6 +21,7 @@ import { map, of } from 'rxjs';
 import { MapGraph } from '../../core/models/governance.models';
 import { GovernanceService } from '../../core/services/governance.service';
 import { ForgeMapCanvasComponent } from './forge-map-canvas.component';
+import { ForgeMapCardComponent } from './forge-map-card.component';
 import { MapLevel, ViewNode, kindLabel, levelFor } from './forge-map-levels';
 
 /** Les vues de l'onglet Carte (D5, D6) : le plan, son équivalent en liste, et les fichiers d'avant. */
@@ -47,7 +48,7 @@ export function mapViewFrom(value: string | null | undefined): MapView {
 @Component({
   selector: 'app-forge-map',
   standalone: true,
-  imports: [DatePipe, MatButtonModule, MatIconModule, MatProgressSpinnerModule, ForgeMapCanvasComponent],
+  imports: [DatePipe, MatButtonModule, MatIconModule, MatProgressSpinnerModule, ForgeMapCanvasComponent, ForgeMapCardComponent],
   templateUrl: './forge-map.component.html',
   styleUrl: './forge-map.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -96,6 +97,32 @@ export class ForgeMapComponent {
   });
 
   readonly kindLabel = kindLabel;
+
+  /**
+   * La ressource dont la fiche est ouverte (SF-173-03) : celle sélectionnée, sinon la plateforme dont
+   * on voit l'intérieur. Aucune en vue Fichiers.
+   */
+  readonly cardNodeId = computed<string | null>(() => {
+    const level = this.level();
+    if (!level || this.view() === 'fichiers') {
+      return null;
+    }
+    return level.selected?.id ?? level.frame?.id ?? null;
+  });
+
+  /** Fermer la fiche : remonter au niveau qui la contient. */
+  closeCard(): void {
+    const level = this.level();
+    if (!level) {
+      return;
+    }
+    const trail = level.trail;
+    if (level.selected) {
+      this.goTo(trail[trail.length - 1].focus);
+    } else {
+      this.goTo(trail.length > 1 ? trail[trail.length - 2].focus : null);
+    }
+  }
 
   constructor() {
     effect(() => {

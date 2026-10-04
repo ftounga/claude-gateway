@@ -67,40 +67,53 @@
           <p class="forge-map__hint">Aucune ressource nommée à ce niveau pour l'instant.</p>
         }
 
-        @if (view() === 'plan') {
-          <div class="forge-map__plan">
-            <app-forge-map-canvas
-              [level]="lvl"
-              [ariaLabel]="'Plan de la carte de ' + hostName() + ' — la liste équivalente est dans la vue Liste'"
-              (nodeTap)="onTap($event)"
-              (failed)="onCanvasFailed()"
-            ></app-forge-map-canvas>
-            <button mat-icon-button type="button" class="forge-map__fit" (click)="fit()"
-                    aria-label="Recadrer le plan" title="Recadrer">
-              <mat-icon>fit_screen</mat-icon>
-            </button>
-          </div>
-        } @else {
-          @if (canvasUnavailable() && requestedView() === 'plan') {
-            <p class="forge-map__hint">Le plan n'a pas pu être dessiné ici : voici la même carte en liste.</p>
-          }
-          <ul class="forge-map__list">
-            @for (item of lvl.nodes; track item.id) {
-              <li>
-                <button type="button" class="forge-map__item"
-                        [class.forge-map__item--trap]="item.traps > 0"
-                        [class.forge-map__item--stale]="item.stale"
-                        [class.forge-map__item--selected]="lvl.selected?.id === item.id"
-                        (click)="open(item)">
-                  <mat-icon aria-hidden="true">{{ item.enterable ? 'folder_open' : 'radio_button_unchecked' }}</mat-icon>
-                  <span class="forge-map__item-label">{{ item.label }}</span>
-                  <span class="forge-map__item-meta">{{ describe(item) }}</span>
-                  @if (item.enterable) { <mat-icon aria-hidden="true">chevron_right</mat-icon> }
-                </button>
-              </li>
+        <div class="forge-map__body" [class.forge-map__body--with-card]="cardNodeId() !== null">
+          <div class="forge-map__main">
+          @if (view() === 'plan') {
+            <div class="forge-map__plan">
+              <app-forge-map-canvas
+                [level]="lvl"
+                [ariaLabel]="'Plan de la carte de ' + hostName() + ' — la liste équivalente est dans la vue Liste'"
+                (nodeTap)="onTap($event)"
+                (failed)="onCanvasFailed()"
+              ></app-forge-map-canvas>
+              <button mat-icon-button type="button" class="forge-map__fit" (click)="fit()"
+                      aria-label="Recadrer le plan" title="Recadrer">
+                <mat-icon>fit_screen</mat-icon>
+              </button>
+            </div>
+          } @else {
+            @if (canvasUnavailable() && requestedView() === 'plan') {
+              <p class="forge-map__hint">Le plan n'a pas pu être dessiné ici : voici la même carte en liste.</p>
             }
-          </ul>
-        }
+            <ul class="forge-map__list">
+              @for (item of lvl.nodes; track item.id) {
+                <li>
+                  <button type="button" class="forge-map__item"
+                          [class.forge-map__item--trap]="item.traps > 0"
+                          [class.forge-map__item--stale]="item.stale"
+                          [class.forge-map__item--selected]="lvl.selected?.id === item.id"
+                          (click)="open(item)">
+                    <mat-icon aria-hidden="true">{{ item.enterable ? 'folder_open' : 'radio_button_unchecked' }}</mat-icon>
+                    <span class="forge-map__item-label">{{ item.label }}</span>
+                    <span class="forge-map__item-meta">{{ describe(item) }}</span>
+                    @if (item.enterable) { <mat-icon aria-hidden="true">chevron_right</mat-icon> }
+                  </button>
+                </li>
+              }
+            </ul>
+          }
+          </div>
+          @if (cardNodeId(); as cardId) {
+            <app-forge-map-card
+              [hostRef]="hostRef()"
+              [hostName]="hostName()"
+              [nodeId]="cardId"
+              (navigate)="goTo($event)"
+              (closed)="closeCard()"
+            ></app-forge-map-card>
+          }
+        </div>
         }
       }
       }
