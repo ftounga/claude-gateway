@@ -18,6 +18,7 @@ import fr.claudegateway.governance.map.index.HostMapIndexProperties;
 import fr.claudegateway.governance.map.index.HostMapLookup;
 import fr.claudegateway.governance.map.index.HostMapLookupJournal;
 import fr.claudegateway.governance.map.index.HostMapSearch;
+import fr.claudegateway.governance.map.index.HostMapSearchTool;
 
 /**
  * Ce que la boucle sait du client, et quand le relire (F-136 / SF-136-01, SF-136-02).
@@ -50,6 +51,13 @@ public class HostMapKnowledgeProvider implements HostKnowledgeSource {
     /** La recherche hybride sur l'index (F-174 / SF-174-03). */
     private final HostMapSearch search;
     private final HostMapIndexProperties indexProperties;
+    /** L'outil serveur {@code carte_chercher} (F-174 / SF-174-05) ; injecté par mutateur. */
+    private HostMapSearchTool searchTool;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setSearchTool(HostMapSearchTool searchTool) {
+        this.searchTool = searchTool;
+    }
 
     public HostMapKnowledgeProvider(HostMapStore store, GovernanceHostScope hostScope,
             @Qualifier("hostMapRefreshExecutor") Executor executor, Clock clock,
@@ -110,6 +118,53 @@ public class HostMapKnowledgeProvider implements HostKnowledgeSource {
             log.debug("Rappel de faits indisponible ({})", ex.getClass().getSimpleName());
             return null;
         }
+    }
+
+    @Override
+    public boolean mapSearchAvailable(UUID userId, UUID workspaceId) {
+        if (indexProperties == null || !indexProperties.isEnabled() || searchTool == null) {
+            return false;
+        }
+        GovernanceHostRef host = hostOf(userId, workspaceId);
+        // Un vrai poste, et rien d'autre : la réponse ne dépend ni du contenu de la carte ni de
+        // l'heure, elle reste donc la même d'un tour à l'autre (préfixe de cache stable).
+        return host != null && host.hostId() != null && !host.hosted();
+    }
+
+    @Override
+    public String searchMap(UUID userId, UUID workspaceId, String query, String type, String identifier) {
+        GovernanceHostRef host = hostOf(userId, workspaceId);
+        if (host == null || host.hostId() == null || host.hosted() || searchTool == null) {
+            return null;
+        }
+        LocalDate today = LocalDate.now(clock);
+        String answer = null;
+        String strategy = HostMapLookup.STRATEGY_HYBRID;
+        try {
+            answer = searchTool.run(userId, host.hostId(), query, type, identifier, today);
+        } catch (RuntimeException ex) {
+            log.debug("carte_chercher : index indisponible ({})", ex.getClass().getSimpleName());
+        }
+        if (answer == null) {
+            // Index pas encore construit pour ce poste : la recherche lexicale F-137 dans les fichiers.
+            strategy = HostMapLookup.STRATEGY_LEXICAL;
+            try {
+                String text = String.join(" ", query == null ? "" : query, identifier == null ? "" : identifier,
+                        type == null ? "" : type).strip();
+                answer = HostFactLookup.factsFor(store.filesOf(userId, host.hostId()), text, today,
+                        factMaxAgeDays);
+            } catch (RuntimeException ex) {
+                log.debug("carte_chercher : repli lexical indisponible ({})", ex.getClass().getSimpleName());
+            }
+        }
+        // On ne compte que les FAITS rendus (les lignes « Ressources » et « Liens » n'en sont pas).
+        String counted = answer;
+        if (answer != null && HostMapLookup.STRATEGY_HYBRID.equals(strategy)) {
+            int at = answer.indexOf("\nFaits :\n");
+            counted = at < 0 ? null : answer.substring(at);
+        }
+        journal.record(userId, host.hostId(), workspaceId, HostMapLookup.KIND_TOOL, strategy, counted);
+        return answer;
     }
 
     /** Le bloc de la recherche hybride, ou {@code null} pour retomber sur F-137. Ne lève jamais. */

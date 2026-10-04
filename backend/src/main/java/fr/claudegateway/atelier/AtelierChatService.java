@@ -853,7 +853,33 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     private static final java.util.Set<String> ANSWER_PLAN_TOOLS =
             java.util.Set.of("read_file", "list_files", "search_files", "grep", "glob", "explore",
-                    "set_plan", "recall", "demander");
+                    "set_plan", "recall", "demander", "carte_chercher");
+    /** Nom de l'outil serveur qui interroge la carte du poste (F-174 / SF-174-05, D8). */
+    static final String MAP_SEARCH_TOOL_NAME = "carte_chercher";
+
+    /**
+     * L'outil {@code carte_chercher} (F-174 / SF-174-05, D8). Littéral STABLE : rien de volatil n'y
+     * entre (préfixe de cache, F-134). La doctrine est dans sa description : l'interroger AVANT de
+     * fouiller la carte en {@code bash} — sans rien retirer, {@code read_file} et {@code bash} restent
+     * permis.
+     */
+    private static final AgentTool MAP_SEARCH_TOOL = new AgentTool(MAP_SEARCH_TOOL_NAME,
+            "Interroge la CARTE de ce poste (ce qui a été appris de l'infrastructure du client : comptes, "
+                    + "clusters, dépôts, forges, domaines, accès, proxy, pièges, jetons et échéances) et te "
+                    + "rend les ressources, leurs liens et les faits sourcés [fichier § section], avec les "
+                    + "pièges et les échéances marqués. Réponse immédiate, sans toucher la machine. "
+                    + "Utilise-le AVANT de fouiller les fichiers de carte en bash/grep/read_file : c'est "
+                    + "plus précis et moins coûteux. Donne une requête libre (« requete »), et/ou un type "
+                    + "de ressource (« type » : compte_aws, cluster, depot, forge, registre, domaine, hote, "
+                    + "proxy, acces, jeton, service, equipe), et/ou un identifiant exact (« identifiant » : "
+                    + "numéro de compte, ARN, nom d'hôte, groupe/projet). La carte est un pointeur : "
+                    + "revérifie sur le poste un fait critique avant de l'affirmer.",
+            Map.of("type", "object",
+                    "properties", Map.of(
+                            "requete", Map.of("type", "string"),
+                            "type", Map.of("type", "string"),
+                            "identifiant", Map.of("type", "string"))));
+
     /**
      * Consigne de mode ajoutée à la consigne système en {@link AgentTurnMode#ANSWER_PLAN}
      * (F-120 / SF-120-02). Cohérente avec la doctrine de retenue SF-120-01, mais plus forte : ici la
@@ -2793,6 +2819,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                     // d'exécution (runner/sandbox) : c'est de la recherche + relais sur nos données,
                     // jamais un moteur IA. Isolation user_id + workspace_id portée par la requête.
                     outcome = recall(userId, workspace, call, listener);
+                } else if (MAP_SEARCH_TOOL_NAME.equals(call.name())) {
+                    // F-174 / SF-174-05 : la carte du poste, interrogée sur l'index côté gateway —
+                    // aucun aller-retour poste. Isolation user_id + poste du projet portée par la source.
+                    outcome = searchMap(userId, workspace, call);
                 } else if (fr.claudegateway.radar.RadarToolCatalog.isRadarTool(call.name())) {
                     // F-104 / SF-104-01 : le registre du Radar vit dans la gateway, pas sur la machine.
                     outcome = executeRadarTool(userId, workspace, call, turnNote);
@@ -4659,6 +4689,36 @@ public class AtelierChatService implements RelayInterruptTarget {
      * résumés, repliés, ou d'avant un « Nouveau départ » — c'est ce qui rend la compaction et le reset
      * sûrs, le détail restant rappelable à la demande. Recherche + relais, jamais un moteur IA.</p>
      */
+    /**
+     * {@code carte_chercher} (F-174 / SF-174-05, D8) : interroge la carte du poste de ce projet sur
+     * l'index, côté gateway. Jamais d'exception vers la boucle : une carte muette rend un message.
+     */
+    private ToolOutcome searchMap(UUID userId, Workspace workspace, AgentToolCall call) {
+        String query = arg(call.input(), "requete");
+        String type = arg(call.input(), "type");
+        String identifier = arg(call.input(), "identifiant");
+        if (isBlank(query) && isBlank(type) && isBlank(identifier)) {
+            return ToolOutcome.error("carte_chercher : donne une requête, un type de ressource ou un "
+                    + "identifiant.");
+        }
+        try {
+            String answer = hostKnowledge.searchMap(userId, workspace.getId(), query, type, identifier);
+            if (answer == null || answer.isBlank()) {
+                return ToolOutcome.info("La carte de ce poste ne répond rien à cette recherche (elle peut "
+                        + "être incomplète, ou pas encore indexée) : vérifie sur le poste si besoin.");
+            }
+            return ToolOutcome.info(answer);
+        } catch (RuntimeException ex) {
+            log.debug("carte_chercher en échec ({})", ex.getClass().getSimpleName());
+            return ToolOutcome.error("La carte est momentanément indisponible : lis le fichier de carte "
+                    + "concerné avec read_file.");
+        }
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
     private ToolOutcome recall(UUID userId, Workspace workspace, AgentToolCall call,
             AtelierProgressListener listener) {
         String query = arg(call.input(), "query");
@@ -4832,6 +4892,9 @@ public class AtelierChatService implements RelayInterruptTarget {
             // se contentait du type générique « search »). Le repère du tour retrouvé arrive après, par
             // l'événement `recall` (onRecalled).
             case "recall" -> new AtelierProgressListener.AtelierStepEvent("recall", arg(input, "query"));
+            // F-174 / SF-174-05 : l'interrogation de la carte est une recherche, comme grep.
+            case MAP_SEARCH_TOOL_NAME -> new AtelierProgressListener.AtelierStepEvent("search",
+                    arg(input, "requete") != null ? arg(input, "requete") : arg(input, "identifiant"));
             // F-38 / SF-38-07 : la commande elle-même est l'information utile à l'écran, tronquée
             // pour qu'un one-liner de 3 000 caractères ne noie pas la liste des étapes (contrat §3).
             case "bash" -> new AtelierProgressListener.AtelierStepEvent("bash",
@@ -6815,6 +6878,11 @@ public class AtelierChatService implements RelayInterruptTarget {
                 Map.of("type", "object",
                         "properties", Map.of("query", stringProp),
                         "required", List.of("query"))));
+        // La carte du poste (F-174 / SF-174-05, D8) : interrogée côté gateway, sur l'index. Offerte
+        // seulement là où il y a un poste réel et l'index allumé — condition stable d'un tour à l'autre.
+        if (hostKnowledge.mapSearchAvailable(userId, workspace.getId())) {
+            tools.add(MAP_SEARCH_TOOL);
+        }
         // Créer un sujet à la racine (F-141 / SF-141-03) : UNIQUEMENT au terminal du poste, là où
         // l'on aiguille (SF-141-02). L'outil crée un dossier-projet sous la racine et hérite la
         // gouvernance par le chemin de création EXISTANT (WorkspaceService.openOnHost →
