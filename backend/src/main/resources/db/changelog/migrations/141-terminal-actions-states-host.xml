@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-175 / SF-175-01 — TROIS ETATS ET LA PORTEE POSTE des attentes du terminal.
+
+      ETATS : A_FAIRE -> DEMANDE -> FAIT (+ ANNULE). L'etat « demande » manquait : une demande
+      partie sans reponse restait OPEN, puis passait DONE, et l'agent recreait « obtenir la
+      reponse ». Reprise des valeurs : OPEN -> A_FAIRE, DONE -> FAIT, CANCELLED -> ANNULE.
+
+      DEMANDE porte requested_at (pose par le serveur), requested_to (a qui) et channel (par ou).
+
+      PORTEE POSTE : host_id, deduit du terminal (workspaces.host_id) a l'inscription. Un acces
+      appartient au client, pas a un terminal. Un terminal heberge (host_id nul) garde sa liste.
+      Reprise : les lignes existantes prennent le poste de leur terminal, SOUS l'isolation
+      (meme user_id). Pas de cle etrangere (meme choix que 130).
+
+      Rollback : les colonnes se retirent ; les etats se renomment en sens inverse.
+    -->
+
+    <changeSet id="141-terminal-actions-states-host" author="claude-gateway">
+        <addColumn tableName="terminal_actions">
+            <column name="host_id" type="uuid"/>
+            <column name="requested_at" type="timestamp with time zone"/>
+            <column name="requested_to" type="varchar(120)"/>
+            <column name="channel" type="varchar(60)"/>
+        </addColumn>
+
+        <update tableName="terminal_actions">
+            <column name="status" value="A_FAIRE"/>
+            <where>status = 'OPEN'</where>
+        </update>
+        <update tableName="terminal_actions">
+            <column name="status" value="FAIT"/>
+            <where>status = 'DONE'</where>
+        </update>
+        <update tableName="terminal_actions">
+            <column name="status" value="ANNULE"/>
+            <where>status = 'CANCELLED'</where>
+        </update>
+
+        <sql>
+            UPDATE terminal_actions SET host_id = (
+                SELECT w.host_id FROM workspaces w
+                WHERE w.id = terminal_actions.workspace_id
+                  AND w.user_id = terminal_actions.user_id)
+        </sql>
+
+        <createIndex tableName="terminal_actions" indexName="idx_terminal_actions_user_host">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="status"/>
+        </createIndex>
+
+        <rollback>
+            <dropIndex tableName="terminal_actions" indexName="idx_terminal_actions_user_host"/>
+            <sql>
+                UPDATE terminal_actions SET status = 'OPEN' WHERE status IN ('A_FAIRE', 'DEMANDE');
+                UPDATE terminal_actions SET status = 'DONE' WHERE status = 'FAIT';
+                UPDATE terminal_actions SET status = 'CANCELLED' WHERE status = 'ANNULE';
+            </sql>
+            <dropColumn tableName="terminal_actions" columnName="channel"/>
+            <dropColumn tableName="terminal_actions" columnName="requested_to"/>
+            <dropColumn tableName="terminal_actions" columnName="requested_at"/>
+            <dropColumn tableName="terminal_actions" columnName="host_id"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

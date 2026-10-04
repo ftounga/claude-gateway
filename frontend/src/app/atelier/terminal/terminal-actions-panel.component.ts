@@ -90,7 +90,7 @@ export function ageLabel(createdAt: string, now = Date.now()): string {
           <article class="action action--closed">
             <p class="action__what">{{ action.description }}</p>
             <div class="action__gestures">
-              <span class="action__settled">{{ action.status === 'DONE' ? 'Fait' : 'Annulée' }}</span>
+              <span class="action__settled">{{ action.status === 'FAIT' ? 'Fait' : 'Annulée' }}</span>
               <button mat-button type="button" class="action__reopen" [disabled]="busy() === action.id"
                 (click)="reopen(action)">
                 Rétablir

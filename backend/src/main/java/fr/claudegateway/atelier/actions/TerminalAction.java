@@ -55,6 +55,14 @@ public class TerminalAction {
     @Column(name = "workspace_id", nullable = false, updatable = false)
     private UUID workspaceId;
 
+    /**
+     * Le <b>poste</b> où l'attente est née (= {@code runner_hosts.id}), déduit du terminal à
+     * l'inscription (F-175 / SF-175-01). Un accès appartient au client, pas à un terminal : la liste
+     * se lit par poste. Nul pour un terminal hébergé, qui garde sa liste propre.
+     */
+    @Column(name = "host_id")
+    private UUID hostId;
+
     /** Le sujet du Radar quand le terminal en porte un, pour recoller les deux vues. */
     @Column(name = "subject_id")
     private UUID subjectId;
@@ -99,6 +107,18 @@ public class TerminalAction {
     @Column(name = "closed_at")
     private OffsetDateTime closedAt;
 
+    /** Quand la demande est partie (F-175) — posé par le serveur au passage en {@code DEMANDE}. */
+    @Column(name = "requested_at")
+    private OffsetDateTime requestedAt;
+
+    /** À qui la demande a été faite — texte libre, comme {@link #person}. */
+    @Column(name = "requested_to", length = 120)
+    private String requestedTo;
+
+    /** Par où : courriel, Teams, ticket… Texte libre court. */
+    @Column(name = "channel", length = 60)
+    private String channel;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -107,6 +127,6 @@ public class TerminalAction {
 
     /** Vrai tant que l'action attend encore quelque chose de l'utilisateur. */
     public boolean isOpen() {
-        return status == TerminalActionStatus.OPEN;
+        return status != null && status.isOpen();
     }
 }

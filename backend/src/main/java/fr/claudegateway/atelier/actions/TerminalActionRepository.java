@@ -1,5 +1,7 @@
 package fr.claudegateway.atelier.actions;
 
+import java.time.OffsetDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -10,11 +12,11 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 /**
- * Les actions d'un terminal (F-154 / SF-154-01).
+ * Les attentes des terminaux (F-154 / SF-154-01, F-175 / SF-175-01).
  *
  * <p><b>Toute</b> méthode porte {@code user_id} — et celles qui servent un écran portent aussi
- * {@code workspace_id}. Aucune méthode ne lit une action par son seul identifiant : c'est la règle
- * qui rend le projet d'un autre introuvable.</p>
+ * {@code workspace_id} ou {@code host_id}. Aucune méthode ne lit une attente par son seul
+ * identifiant : c'est la règle qui rend le projet d'un autre introuvable.</p>
  */
 public interface TerminalActionRepository extends JpaRepository<TerminalAction, UUID> {
 
@@ -30,13 +32,34 @@ public interface TerminalActionRepository extends JpaRepository<TerminalAction, 
     /** Le menu d'un terminal : les plus anciennes d'abord — l'ancienneté est le signal utile. */
     List<TerminalAction> findByUserIdAndWorkspaceIdOrderByCreatedAtAsc(UUID userId, UUID workspaceId);
 
-    List<TerminalAction> findByUserIdAndWorkspaceIdAndStatusOrderByCreatedAtAsc(
-            UUID userId, UUID workspaceId, TerminalActionStatus status);
+    List<TerminalAction> findByUserIdAndWorkspaceIdAndStatusInOrderByCreatedAtAsc(
+            UUID userId, UUID workspaceId, Collection<TerminalActionStatus> statuses);
 
-    /** Toutes les actions du compte dans un état donné : le terminal racine les regroupe. */
-    List<TerminalAction> findByUserIdAndStatusOrderByCreatedAtAsc(UUID userId, TerminalActionStatus status);
+    /** Toutes les actions du compte dans ces états : le terminal racine les regroupe. */
+    List<TerminalAction> findByUserIdAndStatusInOrderByCreatedAtAsc(
+            UUID userId, Collection<TerminalActionStatus> statuses);
 
-    int countByUserIdAndWorkspaceIdAndStatus(UUID userId, UUID workspaceId, TerminalActionStatus status);
+    int countByUserIdAndWorkspaceIdAndStatusIn(
+            UUID userId, UUID workspaceId, Collection<TerminalActionStatus> statuses);
+
+    /**
+     * Le tableau d'un <b>poste</b> (F-175 / SF-175-01) : ses attentes ouvertes, et celles fermées
+     * depuis {@code since} — tous terminaux du poste confondus, sous {@code user_id}.
+     */
+    @Query("select a from TerminalAction a where a.userId = :userId and a.hostId = :hostId "
+            + "and (a.status in :open or a.closedAt >= :since) order by a.createdAt asc")
+    List<TerminalAction> findBoardOfHost(@Param("userId") UUID userId,
+                                         @Param("hostId") UUID hostId,
+                                         @Param("open") Collection<TerminalActionStatus> open,
+                                         @Param("since") OffsetDateTime since);
+
+    /** Le tableau d'un terminal seul (hébergé, sans poste) : mêmes règles. */
+    @Query("select a from TerminalAction a where a.userId = :userId and a.workspaceId = :workspaceId "
+            + "and (a.status in :open or a.closedAt >= :since) order by a.createdAt asc")
+    List<TerminalAction> findBoardOfWorkspace(@Param("userId") UUID userId,
+                                              @Param("workspaceId") UUID workspaceId,
+                                              @Param("open") Collection<TerminalActionStatus> open,
+                                              @Param("since") OffsetDateTime since);
 
     /** Purge à la suppression d'un projet : pas de clé étrangère, donc purge explicite. */
     @Modifying

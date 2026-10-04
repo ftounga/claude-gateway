@@ -36,7 +36,8 @@ class TerminalActionQueryServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new TerminalActionQueryService(repository, workspaces);
+        service = new TerminalActionQueryService(repository, workspaces,
+                java.time.Clock.fixed(java.time.Instant.parse("2026-10-04T10:00:00Z"), java.time.ZoneOffset.UTC));
         Workspace agenor = new Workspace();
         agenor.setName("AGENOR");
         when(workspaces.findByIdAndUserId(other, userId)).thenReturn(Optional.of(agenor));
@@ -46,7 +47,7 @@ class TerminalActionQueryServiceTest {
         return TerminalAction.builder()
                 .id(UUID.randomUUID()).userId(userId).workspaceId(workspaceId)
                 .description(description).kind(TerminalActionKind.ACTION)
-                .status(TerminalActionStatus.OPEN)
+                .status(TerminalActionStatus.A_FAIRE)
                 .createdAt(OffsetDateTime.parse("2026-09-20T08:00:00Z"))
                 .updatedAt(OffsetDateTime.parse("2026-09-20T08:00:00Z"))
                 .build();
@@ -55,7 +56,7 @@ class TerminalActionQueryServiceTest {
     @Test
     @DisplayName("retire le terminal courant — il est déjà listé au-dessus — et nomme les autres")
     void excludesTheCurrentTerminalAndNamesTheOthers() {
-        when(repository.findByUserIdAndStatusOrderByCreatedAtAsc(userId, TerminalActionStatus.OPEN))
+        when(repository.findByUserIdAndStatusInOrderByCreatedAtAsc(userId, TerminalActionStatus.OPEN_STATES))
                 .thenReturn(List.of(at(current, "ici"), at(other, "Valider le RSSI")));
 
         List<TerminalActionElsewhereResponse> elsewhere =
@@ -69,7 +70,7 @@ class TerminalActionQueryServiceTest {
     @Test
     @DisplayName("ne relit le nom d'un projet qu'une fois, même pour dix actions")
     void readsEachProjectNameOnce() {
-        when(repository.findByUserIdAndStatusOrderByCreatedAtAsc(userId, TerminalActionStatus.OPEN))
+        when(repository.findByUserIdAndStatusInOrderByCreatedAtAsc(userId, TerminalActionStatus.OPEN_STATES))
                 .thenReturn(List.of(at(other, "une"), at(other, "deux"), at(other, "trois")));
 
         assertThat(service.openElsewhere(userId, current.toString())).hasSize(3);
@@ -81,7 +82,7 @@ class TerminalActionQueryServiceTest {
     void theNameIsReadUnderIsolation() {
         UUID foreign = UUID.randomUUID();
         when(workspaces.findByIdAndUserId(foreign, userId)).thenReturn(Optional.empty());
-        when(repository.findByUserIdAndStatusOrderByCreatedAtAsc(userId, TerminalActionStatus.OPEN))
+        when(repository.findByUserIdAndStatusInOrderByCreatedAtAsc(userId, TerminalActionStatus.OPEN_STATES))
                 .thenReturn(List.of(at(foreign, "orpheline")));
 
         assertThat(service.openElsewhere(userId, current.toString()))
@@ -94,7 +95,7 @@ class TerminalActionQueryServiceTest {
     @Test
     @DisplayName("un paramètre d'exclusion illisible ne fait pas 500 : il est ignoré")
     void anUnreadableExcludeIsIgnored() {
-        when(repository.findByUserIdAndStatusOrderByCreatedAtAsc(userId, TerminalActionStatus.OPEN))
+        when(repository.findByUserIdAndStatusInOrderByCreatedAtAsc(userId, TerminalActionStatus.OPEN_STATES))
                 .thenReturn(List.of(at(other, "Valider le RSSI")));
 
         assertThat(service.openElsewhere(userId, "pas-un-uuid")).hasSize(1);
@@ -108,7 +109,7 @@ class TerminalActionQueryServiceTest {
                 .range(0, TerminalActionQueryService.MAX_ELSEWHERE + 20)
                 .mapToObj(i -> at(other, "action " + i))
                 .toList();
-        when(repository.findByUserIdAndStatusOrderByCreatedAtAsc(userId, TerminalActionStatus.OPEN))
+        when(repository.findByUserIdAndStatusInOrderByCreatedAtAsc(userId, TerminalActionStatus.OPEN_STATES))
                 .thenReturn(many);
 
         assertThat(service.openElsewhere(userId, current.toString()))

@@ -14,7 +14,7 @@ import { TerminalActionsService } from '../../core/services/terminal-actions.ser
 function action(id: string, description: string, over: Partial<TerminalAction> = {}): TerminalAction {
   return {
     id, workspaceId: 'w-1', subjectId: null, description, blocks: null, person: null,
-    kind: 'ACTION', status: 'OPEN', closedReason: null, closedAt: null,
+    kind: 'ACTION', status: 'A_FAIRE', closedReason: null, closedAt: null,
     createdAt: '2026-09-20T08:00:00Z', ...over,
   };
 }
@@ -124,7 +124,7 @@ describe('Les actions à faire du terminal (F-154 / SF-154-03)', () => {
     it('« C’est fait » sort l’action de la liste et propose Rétablir ; Rétablir la remet', () => {
       const a = action('a-1', 'Demander l’accès VPN');
       build([a]);
-      service.close.and.returnValue(of({ ...a, status: 'DONE' }));
+      service.close.and.returnValue(of({ ...a, status: 'FAIT' }));
       service.reopen.and.returnValue(of(a));
 
       component.markDone(a);
@@ -142,12 +142,12 @@ describe('Les actions à faire du terminal (F-154 / SF-154-03)', () => {
     it('annuler est un droit — la parole de l’utilisateur prime', () => {
       const a = action('a-1', 'Relancer le support');
       build([a]);
-      service.cancel.and.returnValue(of({ ...a, status: 'CANCELLED' }));
+      service.cancel.and.returnValue(of({ ...a, status: 'ANNULE' }));
 
       component.cancel(a);
       fixture.detectChanges();
       expect(service.cancel).toHaveBeenCalledWith('w-1', 'a-1');
-      expect(component.closedRecently()[0].status).toBe('CANCELLED');
+      expect(component.closedRecently()[0].status).toBe('ANNULE');
     });
 
     it("un échec REMET l'écran dans l'état d'avant, et le dit — un écran qui ment est pire", () => {

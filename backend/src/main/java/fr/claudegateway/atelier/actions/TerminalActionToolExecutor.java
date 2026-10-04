@@ -132,12 +132,33 @@ public class TerminalActionToolExecutor {
                     + "ne dépend pas de ce blocage, puis dis ce qui reste suspendu à lui.";
             case ALREADY_OPEN -> "Cette action attend déjà dans le terminal : " + what
                     + ". N'en inscris pas une seconde et n'en refais pas la demande.";
+            case ALREADY_REQUESTED -> "C'est DÉJÀ DEMANDÉ : " + what + requestedSuffix(recording.action())
+                    + ". N'en inscris pas une seconde et ne redemande pas : on attend la réponse. "
+                    + "Si l'attente dure, propose une relance à l'utilisateur.";
             case REFUSED_BY_USER -> "L'utilisateur a ANNULÉ cette action : " + what
                     + ". Ne la redemande pas. Contourne le blocage, ou explique clairement ce qui "
                     + "restera impossible sans elle.";
             case ALREADY_DONE -> "Cette action a déjà été faite : " + what
                     + ". Si le blocage persiste, c'est qu'il a une autre cause — cherche-la.";
         };
+    }
+
+    /** « — demandé à Zahi le 30/09 par Teams » : ce qui évite de redemander. */
+    static String requestedSuffix(TerminalAction action) {
+        StringBuilder out = new StringBuilder();
+        if (action.getRequestedTo() != null) {
+            out.append(" — demandé à ").append(action.getRequestedTo());
+        } else {
+            out.append(" — demandé");
+        }
+        if (action.getRequestedAt() != null) {
+            out.append(" le ").append(action.getRequestedAt()
+                    .format(java.time.format.DateTimeFormatter.ofPattern("dd/MM")));
+        }
+        if (action.getChannel() != null) {
+            out.append(" par ").append(action.getChannel());
+        }
+        return out.toString();
     }
 
     private static String text(JsonNode input, String field) {
