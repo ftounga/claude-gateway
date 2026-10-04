@@ -18,6 +18,7 @@ import {
   AtelierCompactResult,
   AtelierEngineStatus,
   AtelierMessage,
+  AtelierNextPrompt,
   AtelierResume,
   AtelierStreamAction,
   AtelierStreamHandlers,
@@ -1070,6 +1071,15 @@ export class AtelierService {
    */
   getResume(id: string): Observable<AtelierResume> {
     return this.http.get<AtelierResume>(`/api/workspaces/${id}/chat/resume`);
+  }
+
+  /**
+   * La suite prédite du dernier tour (F-144 / SF-144-02) : une phrase proposée par le modèle rapide,
+   * à afficher en texte fantôme. Appelée par l'écran **à la fin d'un tour** seulement ; le serveur
+   * mémorise par message, un second appel pour le même tour ne repaie rien.
+   */
+  nextPrompt(id: string): Observable<AtelierNextPrompt> {
+    return this.http.post<AtelierNextPrompt>(`/api/workspaces/${id}/next-prompt`, null);
   }
 
   /**

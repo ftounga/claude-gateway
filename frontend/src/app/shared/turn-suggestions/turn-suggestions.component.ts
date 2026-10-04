@@ -15,7 +15,18 @@ import { TurnOutcome, TurnSuggestion, suggestionsFor } from './turn-suggestions'
 @Component({
   selector: 'app-turn-suggestions',
   template: `
-    @if (visible().length > 0) {
+    @if (predictedChip()) {
+      <div class="suggestions" role="group" aria-label="Suite suggérée">
+        <button
+          type="button"
+          class="suggestions__chip suggestions__chip--predicted"
+          (click)="pick.emit(predictedChip()!)"
+          [attr.aria-label]="'Suggestion : ' + predictedChip()"
+        >
+          Suggestion : {{ predictedChip() }}
+        </button>
+      </div>
+    } @else if (visible().length > 0) {
       <div class="suggestions" role="group" aria-label="Suites suggérées">
         @for (suggestion of visible(); track suggestion.text) {
           <button
@@ -58,6 +69,12 @@ import { TurnOutcome, TurnSuggestion, suggestionsFor } from './turn-suggestions'
       white-space: nowrap;
     }
 
+    /* La suite prédite tient en une phrase (≤ 200 car.) : elle se lit en entier, quitte à passer à
+       la ligne, plutôt que d'être coupée sur un écran de téléphone. */
+    .suggestions__chip--predicted {
+      white-space: normal;
+    }
+
     .suggestions__chip:hover,
     .suggestions__chip:focus-visible {
       border-color: var(--cg-accent);
@@ -75,9 +92,28 @@ export class TurnSuggestionsComponent {
   /** Le texte choisi, à poser dans le champ. **Jamais envoyé** par ce composant. */
   readonly pick = output<string>();
 
+  /**
+   * **La suite prédite** (F-144 / SF-144-02), ou `null`. Présente, elle a priorité : une seule
+   * suggestion visible à la fois, et les puces dérivées du relevé (SF-144-01) deviennent le repli.
+   */
+  readonly predicted = input<string | null>(null);
+
+  /**
+   * Vrai en vue étroite (pas de touche Tab) : la suite prédite s'affiche en **puce unique** qu'un
+   * toucher place dans le champ. Faux sur grand écran : elle est déjà en texte fantôme dans le champ,
+   * et rien ne s'affiche ici.
+   */
+  readonly predictedAsChip = input(false);
+
   private readonly all = computed<TurnSuggestion[]>(() => suggestionsFor(this.report()));
 
+  /** La puce de la suite prédite, en vue étroite et sur champ vide seulement. */
+  readonly predictedChip = computed<string | null>(() => {
+    const predicted = this.predicted();
+    return predicted && this.predictedAsChip() && this.draft().trim().length === 0 ? predicted : null;
+  });
+
   readonly visible = computed<TurnSuggestion[]>(() =>
-    this.draft().trim().length > 0 ? [] : this.all(),
+    this.draft().trim().length > 0 || this.predicted() ? [] : this.all(),
   );
 }

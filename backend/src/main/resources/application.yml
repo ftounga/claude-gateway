@@ -163,6 +163,11 @@ app:
     # livraison. Le battement n'est ni persisté, ni compté, ni visible (lu par `TurnHeartbeat`).
     stream:
       heartbeat: ${APP_ATELIER_STREAM_HEARTBEAT:15000}
+    # La suite prédite (F-144 / SF-144-02) : après un tour, le modèle rapide propose le prochain
+    # message, affiché en texte fantôme. Appel séparé, hors boucle de l'agent ; jetons au journal
+    # d'usage, jamais au quota. Coupe-circuit réversible sans redéploiement de code.
+    next-prompt:
+      enabled: ${APP_ATELIER_NEXT_PROMPT_ENABLED:true}
     # Recherche SÉMANTIQUE du `recall` (F-162 / SF-162-06) : embeddings des messages + similarité
     # pgvector (cosine), pour retrouver un passage PAR LE SENS. POSTGRESQL uniquement (la colonne
     # `vector` n'existe qu'en prod) ; le MOT-CLÉ (SF-162-01) reste le repli qui ne casse jamais.
