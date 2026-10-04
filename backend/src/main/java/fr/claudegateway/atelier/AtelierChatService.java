@@ -1582,6 +1582,32 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.terminalActionToolExecutor = executor;
     }
 
+    /** La liste des attentes jointe au tour (F-175 / SF-175-02) ; {@code null} pour les formes historiques. */
+    private fr.claudegateway.atelier.actions.TerminalActionTurnNote terminalActionTurnNote;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setTerminalActionTurnNote(fr.claudegateway.atelier.actions.TerminalActionTurnNote note) {
+        this.terminalActionTurnNote = note;
+    }
+
+    /**
+     * Préfixe la consigne du tour par les attentes ouvertes du poste (F-175 / SF-175-02), là où les
+     * outils d'attente sont donnés. Best-effort : un échec laisse la consigne telle quelle.
+     */
+    String withPendingActions(UUID userId, Workspace workspace, String consigne) {
+        if (terminalActionTurnNote == null || terminalActionToolExecutor == null
+                || !terminalActionToolCatalog.isOpenFor(userId, workspace)) {
+            return consigne;
+        }
+        try {
+            String note = terminalActionTurnNote.noteFor(userId, workspace);
+            return note == null || note.isEmpty() ? consigne : note + consigne;
+        } catch (RuntimeException ex) {
+            log.debug("Liste des attentes ignorée (best-effort) : {}", ex.getMessage());
+            return consigne;
+        }
+    }
+
     /**
      * Branche l'outil de rendu de diagrammes (F-142 / SF-142-06) par mutateur, comme les autres outils
      * de la gateway : sans service de rendu configuré, l'outil n'est jamais donné — on ne promet pas
@@ -2184,6 +2210,13 @@ public class AtelierChatService implements RelayInterruptTarget {
         if (!prompt.subjectContext().isEmpty()) {
             consigne = prompt.subjectContext() + consigne;
         }
+
+        // F-175 / SF-175-02 — LES ATTENTES OUVERTES DU POSTE, jointes à la CONSIGNE du tour (jamais à
+        // la consigne système : la liste change d'un tour à l'autre, le cache F-134 sauterait). Même
+        // patron que F-137/F-148/F-171 : la consigne ENVOYÉE est augmentée, le message PERSISTÉ reste
+        // la parole de l'utilisateur. Seulement là où les outils d'attente sont donnés. Vide sans
+        // attente ouverte : consigne inchangée à l'octet près. Best-effort.
+        consigne = withPendingActions(userId, workspace, consigne);
 
         List<AgentMessage> messages = buildReplayMessages(userId, workspace);
         messages.add(AgentMessage.userText(consigne));
@@ -4079,10 +4112,15 @@ public class AtelierChatService implements RelayInterruptTarget {
         // F-154 / SF-154-04 : fermer quand l'utilisateur a répondu, inscrire sinon. Les deux outils
         // sont donnés ensemble — donner de quoi inscrire sans de quoi fermer remplirait une liste
         // que rien ne viderait.
-        fr.claudegateway.atelier.actions.TerminalActionToolExecutor.Outcome outcome =
-                fr.claudegateway.atelier.actions.TerminalActionToolCatalog.CLOSE.equals(call.name())
-                        ? terminalActionToolExecutor.close(userId, workspace, call.input())
-                        : terminalActionToolExecutor.execute(userId, workspace, call.input());
+        // F-175 / SF-175-02 : close_blocker PROPOSE (l'utilisateur confirme), update_blocker fait
+        // passer À faire ↔ Demandé.
+        fr.claudegateway.atelier.actions.TerminalActionToolExecutor.Outcome outcome = switch (call.name()) {
+            case fr.claudegateway.atelier.actions.TerminalActionToolCatalog.CLOSE ->
+                    terminalActionToolExecutor.close(userId, workspace, call.input());
+            case fr.claudegateway.atelier.actions.TerminalActionToolCatalog.UPDATE ->
+                    terminalActionToolExecutor.update(userId, workspace, call.input());
+            default -> terminalActionToolExecutor.execute(userId, workspace, call.input());
+        };
         return outcome.error() ? ToolOutcome.error(outcome.content()) : ToolOutcome.info(outcome.content());
     }
 

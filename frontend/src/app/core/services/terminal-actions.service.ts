@@ -61,6 +61,18 @@ export class TerminalActionsService {
     return this.http.patch<TerminalAction>(`/api/workspaces/${workspaceId}/actions/${actionId}`, edit);
   }
 
+  /** [Confirmer] — la fermeture proposée par l'agent est validée (F-175 / SF-175-02). */
+  confirmProposal(workspaceId: string, actionId: string): Observable<TerminalAction> {
+    return this.http.post<TerminalAction>(
+      `/api/workspaces/${workspaceId}/actions/${actionId}/proposal/confirm`, {});
+  }
+
+  /** [Pas encore] — la proposition est écartée, l'attente reste ouverte. */
+  dismissProposal(workspaceId: string, actionId: string): Observable<TerminalAction> {
+    return this.http.post<TerminalAction>(
+      `/api/workspaces/${workspaceId}/actions/${actionId}/proposal/dismiss`, {});
+  }
+
   /** « Rétablir » — la fermeture s'était trompée. */
   reopen(workspaceId: string, actionId: string): Observable<TerminalAction> {
     return this.http.post<TerminalAction>(

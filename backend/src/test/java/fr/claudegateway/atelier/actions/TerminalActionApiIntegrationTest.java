@@ -352,6 +352,44 @@ class TerminalActionApiIntegrationTest {
     }
 
     @Test
+    @DisplayName("SF-175-02 : [Pas encore] écarte la proposition, [Confirmer] l'applique ; Bob : 404")
+    void proposalConfirmAndDismiss() throws Exception {
+        String actionId = createAction(aliceToken, "{\"description\":\"Obtenir l'accès VPN\"}");
+        String base = "/api/workspaces/" + workspaceId + "/actions/" + actionId;
+        propose(actionId);
+
+        mockMvc.perform(get("/api/workspaces/" + workspaceId + "/actions").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(jsonPath("$[0].proposedStatus", is("FAIT")))
+                .andExpect(jsonPath("$[0].proposedReason", is("Karim a ouvert l'accès")));
+
+        mockMvc.perform(post(base + "/proposal/confirm").contextPath("/api")
+                        .header("Authorization", "Bearer " + bobToken))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(post(base + "/proposal/dismiss").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status", is("A_FAIRE")))
+                .andExpect(jsonPath("$.proposedStatus").doesNotExist());
+
+        propose(actionId);
+        mockMvc.perform(post(base + "/proposal/confirm").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status", is("FAIT")))
+                .andExpect(jsonPath("$.closedReason", is("Karim a ouvert l'accès")));
+    }
+
+    private void propose(String actionId) {
+        TerminalAction action = actionRepository.findById(java.util.UUID.fromString(actionId)).orElseThrow();
+        action.setProposedStatus(TerminalActionStatus.FAIT);
+        action.setProposedReason("Karim a ouvert l'accès");
+        action.setProposedAt(java.time.OffsetDateTime.now());
+        actionRepository.save(action);
+    }
+
+    @Test
     @DisplayName("sans jeton, rien — la route est fermée")
     void requiresAuthentication() throws Exception {
         mockMvc.perform(get("/api/workspaces/" + workspaceId + "/actions").contextPath("/api"))

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-175 / SF-175-02 — LA FERMETURE PROPOSEE. close_blocker ne ferme plus : il PROPOSE. L'attente
+      reste ouverte tant que l'utilisateur n'a pas confirme ([Confirmer] [Pas encore]). Rien ne sort
+      de la liste sans son geste.
+
+      proposed_status : FAIT ou ANNULE (ce que l'agent propose) ; proposed_reason : la parole de
+      l'utilisateur recopiee ; proposed_at : quand. Tout nul = aucune proposition en attente.
+      Colonnes nullables : aucune donnee existante n'est touchee.
+    -->
+
+    <changeSet id="142-terminal-actions-close-proposal" author="claude-gateway">
+        <addColumn tableName="terminal_actions">
+            <column name="proposed_status" type="varchar(16)"/>
+            <column name="proposed_reason" type="varchar(300)"/>
+            <column name="proposed_at" type="timestamp with time zone"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

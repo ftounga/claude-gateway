@@ -328,6 +328,7 @@ public class TerminalActionService {
                 action.setStatus(target);
                 action.setClosedReason(cleanNote);
                 action.setClosedAt(now);
+                action.clearProposal();
             }
         }
         action.setUpdatedAt(now);
@@ -395,10 +396,150 @@ public class TerminalActionService {
         return repository.purgeUser(userId);
     }
 
+    // ---- F-175 / SF-175-02 : ce que l'agent fait de la liste ----
+
+    /**
+     * <b>Retrouve l'attente que l'agent désigne</b> — par son identifiant (lu dans la liste jointe au
+     * tour) ou par sa clé — <b>dans ce terminal ou sur son poste</b>, jamais ailleurs.
+     *
+     * <p>Par clé : ce terminal d'abord, puis le poste (une ouverte de préférence). Le compte et le
+     * terminal viennent <b>du tour</b> ; une attente d'un autre poste ou d'un autre compte est
+     * introuvable, comme si elle n'existait pas.</p>
+     */
+    java.util.Optional<TerminalAction> resolveForAgent(UUID userId, Workspace workspace,
+                                                       String key, String id) {
+        UUID hostId = workspace.getHostId();
+        if (id != null && !id.isBlank()) {
+            UUID parsed;
+            try {
+                parsed = UUID.fromString(id.strip());
+            } catch (IllegalArgumentException e) {
+                return java.util.Optional.empty();
+            }
+            return repository.findByIdAndUserId(parsed, userId)
+                    .filter(a -> a.getWorkspaceId().equals(workspace.getId())
+                            || (hostId != null && hostId.equals(a.getHostId())));
+        }
+        if (key == null || key.isBlank()) {
+            return java.util.Optional.empty();
+        }
+        String normalized = normalizeKey(key);
+        var here = repository.findByUserIdAndWorkspaceIdAndDedupKey(userId, workspace.getId(), normalized);
+        if (here.isPresent() || hostId == null) {
+            return here;
+        }
+        List<TerminalAction> onHost = repository.findByUserIdAndHostIdAndDedupKeyOrderByCreatedAtDesc(
+                userId, hostId, normalized);
+        return onHost.stream().filter(TerminalAction::isOpen).findFirst()
+                .or(() -> onHost.stream().findFirst());
+    }
+
+    /**
+     * <b>L'agent fait avancer une attente</b> entre « À faire » et « Demandé » (F-175 / SF-175-02) —
+     * typiquement après avoir envoyé la demande. Fermer n'est pas de son ressort : il le
+     * <b>propose</b> ({@link #proposeClose}).
+     */
+    @Transactional
+    public AgentChange agentUpdate(UUID userId, Workspace workspace, String key, String id,
+                                   TerminalActionStatus target, String requestedTo, String channel) {
+        if (target != TerminalActionStatus.A_FAIRE && target != TerminalActionStatus.DEMANDE) {
+            throw new InvalidTerminalActionException(
+                    "status vaut A_FAIRE ou DEMANDE. Pour fermer, propose-le avec close_blocker.");
+        }
+        var found = resolveForAgent(userId, workspace, key, id);
+        if (found.isEmpty()) {
+            return new AgentChange(null, AgentChangeOutcome.UNKNOWN);
+        }
+        TerminalAction action = found.get();
+        if (!action.isOpen()) {
+            return new AgentChange(action, AgentChangeOutcome.ALREADY_CLOSED);
+        }
+        TerminalAction changed = changeStatus(userId, action.getWorkspaceId(), action.getId(),
+                target, null, requestedTo, channel);
+        return new AgentChange(changed, AgentChangeOutcome.CHANGED);
+    }
+
+    /**
+     * <b>L'agent propose une fermeture</b> (F-175 / SF-175-02, décision D5) : l'attente reste
+     * <b>ouverte</b> ; la proposition attend le geste de l'utilisateur — [Confirmer] ou [Pas encore].
+     *
+     * @param cancelled vrai s'il propose « n'avait pas lieu d'être » plutôt que « c'est fait »
+     */
+    @Transactional
+    public AgentChange proposeClose(UUID userId, Workspace workspace, String key, String id,
+                                    String reason, boolean cancelled) {
+        String cleanReason = optional(reason, MAX_REASON,
+                "La raison tient en " + MAX_REASON + " caractères.");
+        var found = resolveForAgent(userId, workspace, key, id);
+        if (found.isEmpty()) {
+            return new AgentChange(null, AgentChangeOutcome.UNKNOWN);
+        }
+        TerminalAction action = found.get();
+        if (!action.isOpen()) {
+            return new AgentChange(action, AgentChangeOutcome.ALREADY_CLOSED);
+        }
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        action.setProposedStatus(cancelled ? TerminalActionStatus.ANNULE : TerminalActionStatus.FAIT);
+        action.setProposedReason(cleanReason);
+        action.setProposedAt(now);
+        action.setUpdatedAt(now);
+        return new AgentChange(repository.save(action), AgentChangeOutcome.PROPOSED);
+    }
+
+    /** Ce qu'un geste de l'agent sur la liste a donné, et l'attente concernée ({@code null} si inconnue). */
+    public record AgentChange(TerminalAction action, AgentChangeOutcome outcome) {
+    }
+
+    /** Les issues d'un geste de l'agent (F-175 / SF-175-02). */
+    public enum AgentChangeOutcome {
+        /** L'état a changé. */
+        CHANGED,
+        /** La fermeture est proposée ; l'attente reste ouverte jusqu'au geste de l'utilisateur. */
+        PROPOSED,
+        /** Aucune attente de ce terminal ou de son poste ne répond à cette clé / cet identifiant. */
+        UNKNOWN,
+        /** Elle est déjà fermée — rien changé. */
+        ALREADY_CLOSED
+    }
+
+    /**
+     * <b>[Confirmer]</b> — l'utilisateur valide la fermeture proposée : l'attente prend l'état
+     * proposé, avec la raison recopiée. Sans proposition en attente : sans effet.
+     */
+    @Transactional
+    public TerminalAction confirmProposal(UUID userId, UUID workspaceId, UUID actionId) {
+        TerminalAction action = require(userId, workspaceId, actionId);
+        if (!action.hasProposal() || !action.isOpen()) {
+            return action;
+        }
+        TerminalActionStatus target = action.getProposedStatus();
+        String reason = action.getProposedReason();
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        action.setStatus(target);
+        action.setClosedReason(reason);
+        action.setClosedAt(now);
+        action.clearProposal();
+        action.setUpdatedAt(now);
+        return repository.save(action);
+    }
+
+    /** <b>[Pas encore]</b> — l'utilisateur écarte la proposition : l'attente reste ouverte, telle quelle. */
+    @Transactional
+    public TerminalAction dismissProposal(UUID userId, UUID workspaceId, UUID actionId) {
+        TerminalAction action = require(userId, workspaceId, actionId);
+        if (!action.hasProposal()) {
+            return action;
+        }
+        action.clearProposal();
+        action.setUpdatedAt(OffsetDateTime.now(clock));
+        return repository.save(action);
+    }
+
     private static void reopenAs(TerminalAction action, TerminalActionStatus status) {
         action.setStatus(status);
         action.setClosedReason(null);
         action.setClosedAt(null);
+        action.clearProposal();
     }
 
     private TerminalAction settle(UUID userId, UUID workspaceId, UUID actionId,
@@ -412,6 +553,7 @@ public class TerminalActionService {
                 "La raison de fermeture tient en " + MAX_REASON + " caractères."));
         OffsetDateTime now = OffsetDateTime.now(clock);
         action.setClosedAt(now);
+        action.clearProposal();
         action.setUpdatedAt(now);
         return repository.save(action);
     }

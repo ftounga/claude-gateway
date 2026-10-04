@@ -43,6 +43,13 @@ export interface TerminalAction {
   /** La phrase qui a fermé l'action : sans elle, on ne saurait plus pourquoi elle a disparu. */
   closedReason: string | null;
   closedAt: string | null;
+  /**
+   * La fermeture **proposée** par l'agent (F-175 / SF-175-02) : l'attente reste ouverte tant que
+   * l'utilisateur n'a pas répondu [Confirmer] ou [Pas encore].
+   */
+  proposedStatus?: TerminalActionStatus | null;
+  proposedReason?: string | null;
+  proposedAt?: string | null;
   createdAt: string;
   updatedAt?: string;
 }

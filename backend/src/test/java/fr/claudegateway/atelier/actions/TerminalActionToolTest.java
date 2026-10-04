@@ -82,7 +82,7 @@ class TerminalActionToolTest {
     // --- La garde -----------------------------------------------------------------------------
 
     @Test
-    @DisplayName("sans le droit d'espace, ni outil ni guide ; avec, les deux")
+    @DisplayName("sans le droit d'espace, ni outil ni guide ; avec, les TROIS outils ensemble")
     void theToolExistsOnlyUnderItsGuard() {
         TerminalActionToolCatalog catalog = new TerminalActionToolCatalog(entitlements);
 
@@ -92,11 +92,11 @@ class TerminalActionToolTest {
 
         when(entitlements.isEntitled(userId, EntitlementSpace.FORGE)).thenReturn(true);
         assertThat(catalog.isOpenFor(userId, workspace)).isTrue();
-        // Les DEUX outils, ensemble : donner de quoi inscrire sans de quoi fermer remplirait une
-        // liste que rien ne viderait (F-154 / SF-154-04).
         assertThat(catalog.toolsFor(userId, workspace))
                 .extracting(AgentTool::name)
-                .containsExactly(TerminalActionToolCatalog.RECORD, TerminalActionToolCatalog.CLOSE);
+                .containsExactly(TerminalActionToolCatalog.RECORD, TerminalActionToolCatalog.UPDATE,
+                        TerminalActionToolCatalog.CLOSE);
+        assertThat(TerminalActionToolCatalog.isTerminalActionTool("update_blocker")).isTrue();
     }
 
     @Test
@@ -111,61 +111,109 @@ class TerminalActionToolTest {
     }
 
     @Test
-    @DisplayName("le guide dit quand NE PAS inscrire — c'est ce qui protège la liste")
+    @DisplayName("le guide dit quand NE PAS inscrire, et de lire la liste avant d'inscrire")
     void theGuideSaysWhenNotToRecord() {
         assertThat(TerminalActionToolCatalog.GUIDE)
                 .contains("dépendance HUMAINE")
                 .contains("Pas une liste de choses à faire")
-                .contains("NE REDEMANDE");
+                .contains("NE REDEMANDE")
+                .contains("REGARDE-LA AVANT D'INSCRIRE")
+                .contains("update_blocker");
     }
 
     @Test
-    @DisplayName("le guide dit aussi de FERMER quand l'utilisateur répond, et jamais sur une supposition")
-    void theGuideSaysWhenToClose() {
+    @DisplayName("SF-175-02 : le guide dit que close_blocker PROPOSE, et jamais sur une supposition")
+    void theGuideSaysCloseIsAProposal() {
         assertThat(TerminalActionToolCatalog.GUIDE)
                 .contains("close_blocker")
+                .contains("tu PROPOSES")
                 .contains("LA RAISON, C'EST SA PAROLE")
                 .contains("NE FERME JAMAIS SUR UNE SUPPOSITION")
                 .contains("cancelled=true");
     }
 
-    // --- La fermeture par la conversation (SF-154-04) ------------------------------------------
+    // --- La fermeture proposée (SF-175-02, évolution de SF-154-04) ----------------------------
 
     @Test
-    @DisplayName("ferme l'action portant la clé, et garde LA PAROLE de l'utilisateur comme raison")
-    void closesByKeyAndKeepsTheUserWords() {
+    @DisplayName("SF-175-02 : close_blocker PROPOSE — l'attente reste ouverte, la parole est gardée")
+    void closeIsAProposalThatKeepsTheActionOpen() {
         TerminalAction open = existing(TerminalActionStatus.A_FAIRE, "acces-vpn-karim");
         when(repository.findByUserIdAndWorkspaceIdAndDedupKey(userId, workspaceId, "acces-vpn-karim"))
-                .thenReturn(Optional.of(open));
-        when(repository.findByIdAndUserIdAndWorkspaceId(open.getId(), userId, workspaceId))
                 .thenReturn(Optional.of(open));
 
         TerminalActionToolExecutor.Outcome outcome = executor.close(userId, workspace, input("""
                 {"key":"acces-vpn-karim","reason":"Karim a ouvert l'accès ce matin."}"""));
 
         assertThat(outcome.error()).isFalse();
-        assertThat(open.getStatus()).isEqualTo(TerminalActionStatus.FAIT);
-        assertThat(open.getClosedReason()).isEqualTo("Karim a ouvert l'accès ce matin.");
-        assertThat(outcome.content())
-                .contains("Action close")
-                .contains("vous avez dit : « Karim a ouvert l'accès ce matin. »")
-                .contains("n'en reparle pas");
+        assertThat(open.getStatus()).isEqualTo(TerminalActionStatus.A_FAIRE); // toujours ouverte
+        assertThat(open.getProposedStatus()).isEqualTo(TerminalActionStatus.FAIT);
+        assertThat(open.getProposedReason()).isEqualTo("Karim a ouvert l'accès ce matin.");
+        assertThat(outcome.content()).contains("PROPOSÉE").contains("reste OUVERTE")
+                .contains("Ne dis pas qu'elle est fermée");
     }
 
     @Test
-    @DisplayName("« ça n'avait pas lieu d'être » annule, ce n'est PAS « c'est fait »")
-    void cancelledIsNotDone() {
+    @DisplayName("SF-175-02 : [Confirmer] applique la proposition ; [Pas encore] l'écarte")
+    void confirmAndDismiss() {
+        TerminalAction open = existing(TerminalActionStatus.DEMANDE, "acces-vpn-karim");
+        when(repository.findByUserIdAndWorkspaceIdAndDedupKey(userId, workspaceId, "acces-vpn-karim"))
+                .thenReturn(Optional.of(open));
+        when(repository.findByIdAndUserIdAndWorkspaceId(open.getId(), userId, workspaceId))
+                .thenReturn(Optional.of(open));
+
+        executor.close(userId, workspace, input("""
+                {"key":"acces-vpn-karim","reason":"On passe par le bastion.","cancelled":true}"""));
+        service.dismissProposal(userId, workspaceId, open.getId());
+        assertThat(open.hasProposal()).isFalse();
+        assertThat(open.getStatus()).isEqualTo(TerminalActionStatus.DEMANDE);
+
+        executor.close(userId, workspace, input("""
+                {"key":"acces-vpn-karim","reason":"On passe par le bastion.","cancelled":true}"""));
+        service.confirmProposal(userId, workspaceId, open.getId());
+        assertThat(open.getStatus()).isEqualTo(TerminalActionStatus.ANNULE);
+        assertThat(open.getClosedReason()).isEqualTo("On passe par le bastion.");
+        assertThat(open.hasProposal()).isFalse();
+    }
+
+    @Test
+    @DisplayName("SF-175-02 : update_blocker fait passer à « Demandé », à qui et par où")
+    void updateMarksRequested() {
         TerminalAction open = existing(TerminalActionStatus.A_FAIRE, "acces-vpn-karim");
         when(repository.findByUserIdAndWorkspaceIdAndDedupKey(userId, workspaceId, "acces-vpn-karim"))
                 .thenReturn(Optional.of(open));
         when(repository.findByIdAndUserIdAndWorkspaceId(open.getId(), userId, workspaceId))
                 .thenReturn(Optional.of(open));
 
-        TerminalActionToolExecutor.Outcome outcome = executor.close(userId, workspace, input("""
-                {"key":"acces-vpn-karim","reason":"On passe par le bastion.","cancelled":true}"""));
+        TerminalActionToolExecutor.Outcome outcome = executor.update(userId, workspace, input("""
+                {"key":"acces-vpn-karim","status":"DEMANDE","requested_to":"Karim","channel":"Teams"}"""));
 
-        assertThat(open.getStatus()).isEqualTo(TerminalActionStatus.ANNULE);
-        assertThat(outcome.content()).contains("Action annulée").contains("ne la réinscris pas");
+        assertThat(outcome.error()).isFalse();
+        assertThat(open.getStatus()).isEqualTo(TerminalActionStatus.DEMANDE);
+        assertThat(open.getRequestedTo()).isEqualTo("Karim");
+        assertThat(outcome.content()).contains("Demandé").contains("ne redemande pas");
+
+        assertThat(executor.update(userId, workspace, input("""
+                {"key":"acces-vpn-karim","status":"FAIT"}""")).error()).isTrue();
+    }
+
+    @Test
+    @DisplayName("SF-175-02 : par id, une attente d'un AUTRE poste est introuvable")
+    void anIdFromAnotherHostIsUnknown() {
+        UUID hostId = UUID.randomUUID();
+        workspace.setHostId(hostId);
+        TerminalAction foreign = existing(TerminalActionStatus.A_FAIRE, "k");
+        foreign.setWorkspaceId(UUID.randomUUID());
+        foreign.setHostId(UUID.randomUUID());
+        when(repository.findByIdAndUserId(foreign.getId(), userId)).thenReturn(Optional.of(foreign));
+
+        TerminalActionToolExecutor.Outcome outcome = executor.close(userId, workspace,
+                input("{\"id\":\"" + foreign.getId() + "\"}"));
+        assertThat(outcome.content()).contains("Aucune attente");
+        assertThat(foreign.hasProposal()).isFalse();
+
+        foreign.setHostId(hostId); // même poste : trouvée
+        executor.close(userId, workspace, input("{\"id\":\"" + foreign.getId() + "\"}"));
+        assertThat(foreign.hasProposal()).isTrue();
     }
 
     @Test
@@ -178,12 +226,12 @@ class TerminalActionToolTest {
                 {"key":"inconnue"}"""));
 
         assertThat(outcome.error()).isFalse();
-        assertThat(outcome.content()).contains("Aucune action ouverte").contains("N'insiste pas");
+        assertThat(outcome.content()).contains("Aucune attente").contains("N'insiste pas");
         verify(repository, never()).save(any());
     }
 
     @Test
-    @DisplayName("une action déjà fermée garde sa raison d'origine — rien n'est réécrit")
+    @DisplayName("une attente déjà fermée garde sa raison d'origine — rien n'est réécrit")
     void anAlreadyClosedActionKeepsItsOriginalReason() {
         TerminalAction done = existing(TerminalActionStatus.FAIT, "acces-vpn-karim");
         done.setClosedReason("la première raison");
@@ -208,11 +256,11 @@ class TerminalActionToolTest {
         TerminalActionToolExecutor.Outcome outage = executor.close(userId, workspace, input("""
                 {"key":"acces-vpn-karim"}"""));
         assertThat(outage.error()).isTrue();
-        assertThat(outage.content()).contains("n'a pas pu être fermée");
+        assertThat(outage.content()).contains("n'a pas pu être proposée");
     }
 
     @Test
-    @DisplayName("ISOLATION — la fermeture porte sur le compte et le projet DU TOUR")
+    @DisplayName("ISOLATION — la proposition porte sur le compte et le projet DU TOUR")
     void closingNeverReadsAnIdentifierFromTheInput() {
         UUID intruder = UUID.randomUUID();
         when(repository.findByUserIdAndWorkspaceIdAndDedupKey(userId, workspaceId, "k"))
@@ -221,8 +269,8 @@ class TerminalActionToolTest {
         executor.close(userId, workspace, input("""
                 {"key":"k","user_id":"%s","workspace_id":"%s"}""".formatted(intruder, UUID.randomUUID())));
 
-        verify(workspaces).requireOwned(userId, workspaceId);
         verify(repository).findByUserIdAndWorkspaceIdAndDedupKey(userId, workspaceId, "k");
+        verify(repository, never()).findByUserIdAndWorkspaceIdAndDedupKey(eq(intruder), any(), any());
     }
 
     // --- L'inscription ------------------------------------------------------------------------

@@ -112,6 +112,22 @@ public class TerminalActionController {
                 service.reopen(currentUser.requireId(), workspaceId, actionId));
     }
 
+    /** [Confirmer] — la fermeture proposée par l'agent est validée (F-175 / SF-175-02). */
+    @PostMapping("/{actionId}/proposal/confirm")
+    public TerminalActionResponse confirmProposal(@PathVariable UUID workspaceId,
+                                                  @PathVariable UUID actionId) {
+        return TerminalActionResponse.from(
+                service.confirmProposal(currentUser.requireId(), workspaceId, actionId));
+    }
+
+    /** [Pas encore] — la proposition est écartée, l'attente reste ouverte (F-175 / SF-175-02). */
+    @PostMapping("/{actionId}/proposal/dismiss")
+    public TerminalActionResponse dismissProposal(@PathVariable UUID workspaceId,
+                                                  @PathVariable UUID actionId) {
+        return TerminalActionResponse.from(
+                service.dismissProposal(currentUser.requireId(), workspaceId, actionId));
+    }
+
     private static String reasonOf(SettleRequest request) {
         return request == null ? null : request.reason();
     }
