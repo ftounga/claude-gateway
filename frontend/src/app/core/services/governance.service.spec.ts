@@ -33,6 +33,16 @@ describe('GovernanceService', () => {
     request.flush(null);
   });
 
+  it('lit le plan de la carte et la fiche d’une ressource (F-173), sans identifiant d’utilisateur', () => {
+    service.hostMapGraph('h1').subscribe();
+    service.hostMapEntity('h1', '3f9a0c1d2e4b5a69').subscribe();
+
+    const graph = http.expectOne('/api/governance/hosts/h1/map/graph');
+    expect(graph.request.method).toBe('GET');
+    graph.flush(null);
+    http.expectOne('/api/governance/hosts/h1/map/entities/3f9a0c1d2e4b5a69').flush(null);
+  });
+
   it('lit la carte du poste « Hébergé » par son mot réservé, jamais par un identifiant', () => {
     service.getMap('hosted').subscribe();
 

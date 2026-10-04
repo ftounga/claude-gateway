@@ -90,6 +90,7 @@ import {
   MapFileDialogComponent,
   MapFileDialogData,
 } from './map-file-dialog/map-file-dialog.component';
+import { ForgeMapComponent } from './forge-map/forge-map.component';
 import { ForgeRailComponent, RailRevenue } from './forge-rail/forge-rail.component';
 import { CraDialogComponent } from './cra-dialog/cra-dialog.component';
 import { eurosLabel } from '../shared/money';
@@ -204,6 +205,7 @@ const EMPTY_HOSTED: RunnerHostOverview = {
     RouterLink,
     HostPagesComponent,
     PresentationsPanelComponent,
+    ForgeMapComponent,
     ForgeRailComponent,
     ForgeProjectTileComponent,
     ForgeCostAlertComponent,

@@ -341,3 +341,99 @@ export interface HostLearning {
   longCallsPerTurn: number | null;
   facts: number;
 }
+
+// ------------------------------------------------------------ la carte vivante (F-173)
+
+/** Une ressource du plan de la carte (F-173 / SF-173-01). L'identifiant est stable et sûr dans une URL. */
+export interface MapNode {
+  id: string;
+  label: string;
+  /** `compte_aws`, `cluster`, `depot`, `forge`, `registre`, `domaine`, `hote`, `proxy`, `acces`, `jeton`, `service`, `equipe`, `url`, `ip`, `arn`, `autre`… */
+  kind: string;
+  parentId: string | null;
+  depth: number;
+  children: number;
+  domain: string | null;
+  environment: string | null;
+  state: string | null;
+  identifiers: string[];
+  facts: number;
+  traps: number;
+  observedOn: string | null;
+  stale: boolean;
+  nextDue: string | null;
+  toMap: boolean;
+}
+
+/** Un lien entre deux ressources : `dans`, `heberge`, `accede_a`, `depend_de`, `accorde`, `remplace`, `autre`. */
+export interface MapEdge {
+  id: string;
+  source: string;
+  target: string;
+  nature: string;
+}
+
+/** Une échéance datée de la carte. */
+export interface MapDeadline {
+  nodeId: string | null;
+  nodeLabel: string | null;
+  text: string;
+  dueOn: string;
+  overdue: boolean;
+  path: string;
+  heading: string | null;
+  lineNo: number;
+}
+
+/** Une chose que la carte dit encore « à cartographier ». */
+export interface MapToMap {
+  nodeId: string | null;
+  label: string | null;
+  text: string | null;
+  path: string | null;
+  heading: string | null;
+  lineNo: number | null;
+}
+
+/** Le plan de la carte d'un poste, lu dans l'index en base (F-173 / SF-173-01, D1). */
+export interface MapGraph {
+  indexed: boolean;
+  indexedAt: string | null;
+  pendingSections: number;
+  factMaxAgeDays: number;
+  totalNodes: number;
+  truncated: boolean;
+  nodes: MapNode[];
+  edges: MapEdge[];
+  deadlines: MapDeadline[];
+  toMap: MapToMap[];
+}
+
+/** Un fait de la fiche d'une ressource. */
+export interface MapCardFact {
+  path: string;
+  heading: string | null;
+  lineNo: number;
+  text: string;
+  kind: string;
+  observedOn: string | null;
+  dueOn: string | null;
+  stale: boolean;
+}
+
+/** Une relation de la fiche, vue depuis la ressource. */
+export interface MapCardRelation {
+  nature: string;
+  direction: 'out' | 'in';
+  otherId: string;
+  otherLabel: string;
+}
+
+/** La fiche d'une ressource (F-173 / SF-173-01). */
+export interface MapCard {
+  node: MapNode;
+  totalFacts: number;
+  facts: MapCardFact[];
+  relations: MapCardRelation[];
+  sources: { path: string; heading: string | null }[];
+}
