@@ -1,6 +1,6 @@
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed, fakeAsync, flushMicrotasks } from '@angular/core/testing';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
@@ -8,7 +8,10 @@ import { of, throwError } from 'rxjs';
 
 import { AtelierTerminalComponent } from './atelier-terminal.component';
 import { TerminalActionsPanelComponent, ageLabel } from './terminal-actions-panel.component';
-import { TerminalAction, TerminalActionElsewhere } from '../../core/models/terminal-actions.models';
+import {
+  TerminalAttentesBandComponent, bandSummary, oldestLabel, pendingProposals,
+} from './terminal-attentes-band.component';
+import { TerminalAction, TerminalActionBoard } from '../../core/models/terminal-actions.models';
 import { TerminalActionsService } from '../../core/services/terminal-actions.service';
 
 function action(id: string, description: string, over: Partial<TerminalAction> = {}): TerminalAction {
@@ -19,21 +22,35 @@ function action(id: string, description: string, over: Partial<TerminalAction> =
   };
 }
 
-/**
- * **Le menu des actions à faire** (F-154 / SF-154-03) : la pastille absente à zéro, la liste, les
- * gestes réversibles, et un écran qui ne ment jamais quand un appel échoue.
- */
-describe('Les actions à faire du terminal (F-154 / SF-154-03)', () => {
+function board(here: TerminalAction[], host: TerminalAction[] = [], hostId: string | null = 'h-1'): TerminalActionBoard {
+  const all = [...here, ...host];
+  return {
+    hostId, here, host,
+    aFaire: all.filter(a => a.status === 'A_FAIRE').length,
+    demande: all.filter(a => a.status === 'DEMANDE').length,
+    oldestOpenAt: all.length ? '2026-09-25T08:00:00Z' : null,
+  };
+}
 
-  describe('la pastille dans la barre', () => {
+const METHODS: (keyof TerminalActionsService)[] = [
+  'list', 'elsewhere', 'board', 'create', 'changeStatus', 'edit', 'confirmProposal',
+  'dismissProposal', 'close', 'cancel', 'reopen',
+];
+
+/**
+ * **Le fil des attentes à l'écran** (F-175 / SF-175-04, évolution de F-154 / SF-154-03) : la bande
+ * au-dessus de la saisie, relue à chaque fin de tour ; le panneau trois colonnes, ses gestes, et un
+ * écran qui ne ment jamais quand un appel échoue.
+ */
+describe('Les attentes du terminal (F-175 / SF-175-04)', () => {
+
+  describe('la bande et la pastille dans le terminal', () => {
     let fixture: ComponentFixture<AtelierTerminalComponent>;
     let service: jasmine.SpyObj<TerminalActionsService>;
 
-    function build(actions: TerminalAction[]): void {
-      service = jasmine.createSpyObj<TerminalActionsService>('TerminalActionsService',
-        ['list', 'elsewhere', 'close', 'cancel', 'reopen']);
-      service.list.and.returnValue(of(actions));
-      service.elsewhere.and.returnValue(of([]));
+    function build(b: TerminalActionBoard | 'error'): void {
+      service = jasmine.createSpyObj<TerminalActionsService>('TerminalActionsService', METHODS);
+      service.board.and.returnValue(b === 'error' ? throwError(() => new Error('réseau')) : of(b));
       TestBed.configureTestingModule({
         imports: [AtelierTerminalComponent, NoopAnimationsModule],
         providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([]),
@@ -47,41 +64,74 @@ describe('Les actions à faire du terminal (F-154 / SF-154-03)', () => {
 
     afterEach(() => TestBed.resetTestingModule());
 
-    it("n'affiche RIEN quand il n'y a rien à faire — une pastille à zéro est un bruit permanent", () => {
-      build([]);
+    it("n'affiche RIEN quand il n'y a rien en attente", () => {
+      build(board([]));
       expect(fixture.componentInstance.pendingActions()).toBe(0);
       expect(fixture.nativeElement.querySelector('.terminal-todo')).toBeNull();
+      expect(fixture.nativeElement.querySelector('.attentes-band')).toBeNull();
     });
 
-    it('annonce le nombre restant, et ouvre le panneau au clic', () => {
-      build([action('a-1', 'Demander l’accès VPN'), action('a-2', 'Relancer le support')]);
+    it('la bande annonce le poste au-dessus de la saisie, et ouvre le panneau au clic', () => {
+      build(board([action('a-1', 'Demander l’accès VPN')],
+        [action('a-2', 'Relancer Zahi', { workspaceId: 'w-2', status: 'DEMANDE' })]));
 
-      const chip: HTMLButtonElement = fixture.nativeElement.querySelector('.terminal-todo');
-      expect(chip).not.toBeNull();
-      expect(chip.textContent).toContain('2 à faire');
+      const band: HTMLButtonElement = fixture.nativeElement.querySelector('.attentes-band');
+      expect(band).not.toBeNull();
+      expect(band.textContent).toContain('1 à faire');
+      expect(band.textContent).toContain('1 demandée');
+      expect(fixture.nativeElement.querySelector('.terminal-todo').textContent).toContain('2 à faire');
 
-      chip.click();
+      band.click();
       fixture.detectChanges();
       expect(fixture.componentInstance.actionsOpen()).toBeTrue();
       expect(fixture.nativeElement.querySelector('app-terminal-actions-panel')).not.toBeNull();
     });
 
-    it("laisse la pastille à zéro si le chargement échoue — mieux vaut rien qu'un chiffre faux", () => {
-      service = jasmine.createSpyObj<TerminalActionsService>('TerminalActionsService',
-        ['list', 'elsewhere', 'close', 'cancel', 'reopen']);
-      service.list.and.returnValue(throwError(() => new Error('réseau')));
-      service.elsewhere.and.returnValue(of([]));
-      TestBed.configureTestingModule({
-        imports: [AtelierTerminalComponent, NoopAnimationsModule],
-        providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([]),
-          { provide: TerminalActionsService, useValue: service }],
-      });
-      fixture = TestBed.createComponent(AtelierTerminalComponent);
-      fixture.componentInstance.projectId = 'w-1';
+    it('le tableau est RELU à chaque fin de tour — une attente inscrite pendant le tour apparaît', fakeAsync(() => {
+      build(board([]));
+      expect(service.board).toHaveBeenCalledTimes(1);
+
+      service.board.and.returnValue(of(board([action('a-1', 'Obtenir la validation du RSSI')])));
+      fixture.componentInstance.submitting = true;
+      fixture.componentInstance.submitting = false;
+      flushMicrotasks();
       fixture.detectChanges();
 
+      expect(service.board).toHaveBeenCalledTimes(2);
+      expect(fixture.nativeElement.querySelector('.attentes-band').textContent).toContain('1 à faire');
+    }));
+
+    it("un chargement en échec n'annonce rien — mieux vaut rien qu'un chiffre faux", () => {
+      build('error');
       expect(fixture.componentInstance.pendingActions()).toBe(0);
-      expect(fixture.nativeElement.querySelector('.terminal-todo')).toBeNull();
+      expect(fixture.nativeElement.querySelector('.attentes-band')).toBeNull();
+    });
+  });
+
+  describe('le résumé de la bande', () => {
+    const now = Date.parse('2026-10-04T12:00:00Z');
+
+    it('dit à faire, demandées et la plus ancienne', () => {
+      const b = { ...board([]), aFaire: 2, demande: 4, oldestOpenAt: '2026-09-25T10:00:00Z' };
+      expect(bandSummary(b, now)).toBe('2 à faire · 4 demandées · la plus ancienne 9 j');
+      expect(bandSummary({ ...b, aFaire: 0, demande: 1 }, now)).toBe('1 demandée · la plus ancienne 9 j');
+      expect(oldestLabel('2026-10-04T08:00:00Z', now)).toBe("aujourd'hui");
+      expect(bandSummary(null)).toBe('');
+    });
+
+    it('compte les fermetures proposées encore ouvertes', () => {
+      const b = board([action('a-1', 'x', { proposedStatus: 'FAIT' }),
+        action('a-2', 'y', { proposedStatus: 'FAIT', status: 'FAIT' })]);
+      expect(pendingProposals(b)).toBe(1);
+    });
+
+    it('la bande montre « à confirmer » quand l’agent a proposé une fermeture', () => {
+      TestBed.configureTestingModule({ imports: [TerminalAttentesBandComponent] });
+      const f = TestBed.createComponent(TerminalAttentesBandComponent);
+      f.componentRef.setInput('board', board([action('a-1', 'x', { proposedStatus: 'FAIT' })]));
+      f.detectChanges();
+      expect(f.nativeElement.textContent).toContain('1 à confirmer');
+      TestBed.resetTestingModule();
     });
   });
 
@@ -91,11 +141,9 @@ describe('Les actions à faire du terminal (F-154 / SF-154-03)', () => {
     let service: jasmine.SpyObj<TerminalActionsService>;
     let snackBar: jasmine.SpyObj<MatSnackBar>;
 
-    function build(actions: TerminalAction[], elsewhere: TerminalActionElsewhere[] = []): void {
-      service = jasmine.createSpyObj<TerminalActionsService>('TerminalActionsService',
-        ['list', 'elsewhere', 'close', 'cancel', 'reopen']);
-      service.list.and.returnValue(of(actions));
-      service.elsewhere.and.returnValue(of(elsewhere));
+    function build(b: TerminalActionBoard | 'error'): void {
+      service = jasmine.createSpyObj<TerminalActionsService>('TerminalActionsService', METHODS);
+      service.board.and.returnValue(b === 'error' ? throwError(() => new Error('boom')) : of(b));
       snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
       TestBed.configureTestingModule({
         imports: [TerminalActionsPanelComponent, NoopAnimationsModule],
@@ -111,89 +159,97 @@ describe('Les actions à faire du terminal (F-154 / SF-154-03)', () => {
 
     afterEach(() => TestBed.resetTestingModule());
 
-    it('liste les actions avec ce qu’elles débloquent, qui est concerné et leur âge', () => {
-      build([action('a-1', 'Demander l’accès VPN à Karim',
-        { blocks: 'le déploiement du connecteur', person: 'Karim' })]);
+    it('trois colonnes : À faire · Demandé · Fait récemment', () => {
+      build(board([
+        action('a-1', 'Demander l’accès VPN à Karim', { blocks: 'le déploiement', person: 'Karim' }),
+        action('a-2', 'Obtenir le compte forge', { status: 'DEMANDE', requestedTo: 'Zahi', channel: 'Teams',
+          requestedAt: '2026-09-30T08:00:00Z' }),
+        action('a-3', 'Valider le budget', { status: 'FAIT', closedReason: 'Habib a signé',
+          closedAt: '2026-10-03T08:00:00Z' }),
+      ]));
 
-      const text = fixture.nativeElement.textContent;
-      expect(text).toContain('Demander l’accès VPN à Karim');
-      expect(text).toContain('bloque : le déploiement du connecteur');
-      expect(text).toContain('Karim');
+      const columns = fixture.nativeElement.querySelectorAll('.column');
+      expect(columns.length).toBe(3);
+      expect(columns[0].textContent).toContain('À faire');
+      expect(columns[0].textContent).toContain('bloque : le déploiement');
+      expect(columns[1].textContent).toContain('demandé à Zahi par Teams');
+      expect(columns[2].textContent).toContain('Habib a signé');
+      expect(columns[2].textContent).toContain('Rétablir');
     });
 
-    it('« C’est fait » sort l’action de la liste et propose Rétablir ; Rétablir la remet', () => {
+    it('« Tout le poste » montre aussi les attentes nées ailleurs, avec leur terminal', () => {
+      build(board([action('a-1', 'Ici')],
+        [action('a-9', 'Valider le RSSI', { workspaceId: 'w-2', workspaceName: 'AGENOR' })]));
+      expect(fixture.nativeElement.textContent).not.toContain('Valider le RSSI');
+
+      component.scope.set('host');
+      fixture.detectChanges();
+      expect(fixture.nativeElement.textContent).toContain('Valider le RSSI');
+      expect(fixture.nativeElement.textContent).toContain('né dans « AGENOR »');
+    });
+
+    it('« Demandé » passe par la route du terminal de l’attente, puis relit le tableau', () => {
+      const elsewhere = action('a-9', 'Valider le RSSI', { workspaceId: 'w-2', workspaceName: 'AGENOR' });
+      build(board([], [elsewhere]));
+      service.changeStatus.and.returnValue(of({ ...elsewhere, status: 'DEMANDE' }));
+
+      component.move(elsewhere, 'DEMANDE');
+
+      expect(service.changeStatus).toHaveBeenCalledWith('w-2', 'a-9', { status: 'DEMANDE' });
+      expect(service.board).toHaveBeenCalledTimes(2);
+    });
+
+    it("un échec REMET l'écran dans l'état d'avant, et le dit", () => {
       const a = action('a-1', 'Demander l’accès VPN');
-      build([a]);
-      service.close.and.returnValue(of({ ...a, status: 'FAIT' }));
-      service.reopen.and.returnValue(of(a));
+      build(board([a]));
+      service.changeStatus.and.returnValue(throwError(() => new Error('réseau')));
 
-      component.markDone(a);
-      fixture.detectChanges();
-      expect(component.actions().length).toBe(0);
-      expect(component.closedRecently().length).toBe(1);
-      expect(fixture.nativeElement.textContent).toContain('Rétablir');
-
-      component.reopen(a);
-      fixture.detectChanges();
-      expect(component.actions().length).toBe(1);
-      expect(component.closedRecently().length).toBe(0);
-    });
-
-    it('annuler est un droit — la parole de l’utilisateur prime', () => {
-      const a = action('a-1', 'Relancer le support');
-      build([a]);
-      service.cancel.and.returnValue(of({ ...a, status: 'ANNULE' }));
-
-      component.cancel(a);
-      fixture.detectChanges();
-      expect(service.cancel).toHaveBeenCalledWith('w-1', 'a-1');
-      expect(component.closedRecently()[0].status).toBe('ANNULE');
-    });
-
-    it("un échec REMET l'écran dans l'état d'avant, et le dit — un écran qui ment est pire", () => {
-      const a = action('a-1', 'Demander l’accès VPN');
-      build([a]);
-      service.close.and.returnValue(throwError(() => new Error('réseau')));
-
-      component.markDone(a);
+      component.move(a, 'FAIT');
       fixture.detectChanges();
 
-      expect(component.actions().length).toBe(1);
-      expect(component.closedRecently().length).toBe(0);
+      expect(component.columns()[0].items.length).toBe(1);
+      expect(component.columns()[2].items.length).toBe(0);
       expect(snackBar.open).toHaveBeenCalled();
     });
 
-    it('« Ailleurs » n’apparaît que s’il y en a, porte le nom du projet, et n’offre aucun geste', () => {
-      build([], [{
-        id: 'a-9', workspaceId: 'w-2', workspaceName: 'AGENOR', description: 'Valider le RSSI',
-        blocks: null, person: null, kind: 'ACTION', createdAt: '2026-09-18T08:00:00Z',
-      }]);
+    it('une fermeture proposée se confirme ou s’écarte — rien ne sort sans le geste', () => {
+      const a = action('a-1', 'Obtenir l’accès VPN',
+        { proposedStatus: 'FAIT', proposedReason: 'Karim a ouvert l’accès' });
+      build(board([a]));
+      expect(fixture.nativeElement.textContent).toContain('L\'agent pense que c\'est réglé');
+      expect(fixture.nativeElement.textContent).toContain('Karim a ouvert l’accès');
 
-      const section = fixture.nativeElement.querySelector('.elsewhere');
-      expect(section).not.toBeNull();
-      expect(section.textContent).toContain('Ailleurs (1)');
+      service.dismissProposal.and.returnValue(of({ ...a, proposedStatus: null }));
+      component.dismiss(a);
+      expect(service.dismissProposal).toHaveBeenCalledWith('w-1', 'a-1');
 
-      component.elsewhereOpen.set(true);
-      fixture.detectChanges();
-      const card = fixture.nativeElement.querySelector('.action--elsewhere');
-      expect(card.textContent).toContain('AGENOR');
-      expect(card.querySelector('button')).toBeNull(); // lecture seule
+      service.confirmProposal.and.returnValue(of({ ...a, status: 'FAIT', proposedStatus: null }));
+      component.confirm(a);
+      expect(service.confirmProposal).toHaveBeenCalledWith('w-1', 'a-1');
     });
 
-    it('le chargement en échec le dit, sans page blanche ni détail technique', () => {
-      service = jasmine.createSpyObj<TerminalActionsService>('TerminalActionsService',
-        ['list', 'elsewhere', 'close', 'cancel', 'reopen']);
-      service.list.and.returnValue(throwError(() => new Error('boom')));
-      service.elsewhere.and.returnValue(of([]));
-      TestBed.configureTestingModule({
-        imports: [TerminalActionsPanelComponent, NoopAnimationsModule],
-        providers: [provideHttpClient(), provideHttpClientTesting(),
-          { provide: TerminalActionsService, useValue: service }],
-      });
-      fixture = TestBed.createComponent(TerminalActionsPanelComponent);
-      fixture.componentRef.setInput('workspaceId', 'w-1');
-      fixture.detectChanges();
+    it('Rétablir, ajouter, éditer', () => {
+      const closed = action('a-1', 'Relancer le support', { status: 'ANNULE', closedAt: '2026-10-03T08:00:00Z' });
+      build(board([closed]));
+      service.reopen.and.returnValue(of({ ...closed, status: 'A_FAIRE' }));
+      component.reopen(closed);
+      expect(service.reopen).toHaveBeenCalledWith('w-1', 'a-1');
 
+      service.create.and.returnValue(of(action('a-2', 'Obtenir la dérogation')));
+      component.newDescription = 'Obtenir la dérogation';
+      component.add();
+      expect(service.create).toHaveBeenCalledWith('w-1', { description: 'Obtenir la dérogation', person: null });
+
+      const open = action('a-3', 'Demander');
+      service.edit.and.returnValue(of({ ...open, description: 'Demander le VPN' }));
+      component.startEdit(open);
+      component.editDescription = 'Demander le VPN';
+      component.saveEdit(open);
+      expect(service.edit).toHaveBeenCalledWith('w-1', 'a-3', { description: 'Demander le VPN' });
+    });
+
+    it('le chargement en échec le dit, sans détail technique', () => {
+      build('error');
       expect(fixture.nativeElement.textContent).toContain("n'ont pas pu être chargées");
       expect(fixture.nativeElement.textContent).not.toContain('boom');
     });
