@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-174 / SF-174-01 — LA MESURE DE DEPART : le journal des consultations de la carte.
+
+      Une ligne par consultation de la carte d'un poste PAR LA GATEWAY :
+        - TURN : les faits joints au message d'un tour (F-137, puis la recherche hybride F-174) ;
+        - TOOL : un appel de l'outil serveur carte_chercher (SF-174-05).
+      Les fouilles de la carte PAR L'AGENT (bash / read_file sur un fichier de carte) sont deja
+      dans runner_audit : on ne les recopie pas, la requete de reference les y lit.
+
+      Aucun contenu de la carte ni de la question n'est range ici : des compteurs, la strategie
+      employee et les fichiers sources. C'est ce qui permet de comparer avant / apres (SF-174-07).
+
+      ISOLATION : user_id + host_id sur chaque ligne ; purge a la suppression du compte et du poste.
+    -->
+
+    <changeSet id="138-host-map-lookups" author="claude-gateway">
+        <createTable tableName="host_map_lookups">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="host_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="workspace_id" type="uuid"/>
+            <!-- TURN | TOOL -->
+            <column name="kind" type="varchar(16)">
+                <constraints nullable="false"/>
+            </column>
+            <!-- NONE | LEXICAL | HYBRID -->
+            <column name="strategy" type="varchar(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="facts_count" type="integer" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="chars" type="integer" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="pitfalls_count" type="integer" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="deadlines_count" type="integer" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <!-- Fichiers de carte cites, separes par une virgule (borne). -->
+            <column name="sources" type="varchar(1000)"/>
+            <column name="created_at" type="timestamptz">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="host_map_lookups" indexName="idx_host_map_lookups_user_host_at">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="created_at"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

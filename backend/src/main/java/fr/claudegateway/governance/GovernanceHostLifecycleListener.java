@@ -44,6 +44,14 @@ public class GovernanceHostLifecycleListener {
         this.mapFiles = mapFiles;
     }
 
+    /** L'index de la carte (F-174, D10) : injecté par mutateur pour ne pas toucher au constructeur. */
+    private fr.claudegateway.governance.map.index.HostMapIndexPurge mapIndexPurge;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setMapIndexPurge(fr.claudegateway.governance.map.index.HostMapIndexPurge purge) {
+        this.mapIndexPurge = purge;
+    }
+
     @EventListener
     @Transactional
     public void onHostLifecycle(RunnerHostLifecycleEvent event) {
@@ -59,6 +67,10 @@ public class GovernanceHostLifecycleListener {
                     // Et la copie de travail de sa carte (F-136 / SF-136-01) : elle décrit une
                     // machine qui n'existe plus, et c'est le savoir d'un client.
                     mapFiles.deleteByUserIdAndHostId(event.userId(), event.hostId());
+                    // Et ce qui en dérive (F-174, D10) : l'index et le journal des consultations.
+                    if (mapIndexPurge != null) {
+                        mapIndexPurge.purgeHost(event.userId(), event.hostId());
+                    }
                 }
             }
         } catch (RuntimeException ex) {
