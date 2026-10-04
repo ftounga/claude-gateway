@@ -23,7 +23,7 @@ public final class HostMapFactsBlock {
     static final int MAX_FACT_CHARS = 300;
 
     static final String MORE_NOTICE =
-            "… d'autres faits de la carte répondent aussi : ouvre le fichier cité si besoin.\n";
+            "… d'autres faits de la carte répondent aussi : interroge-la avec carte_chercher plutôt que de la fouiller.\n";
 
     /** La consigne des pièges, ajoutée seulement s'il y en a un (SF-174-04). */
     static final String PITFALL_NOTICE =

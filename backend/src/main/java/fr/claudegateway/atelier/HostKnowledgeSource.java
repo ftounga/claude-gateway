@@ -63,4 +63,24 @@ public interface HostKnowledgeSource {
      * L'implémentation travaille en arrière-plan.</p>
      */
     void refreshAfterTurn(UUID userId, UUID workspaceId);
+
+    /**
+     * L'outil {@code carte_chercher} est-il offert sur ce projet ? (F-174 / SF-174-05, D8)
+     *
+     * <p><b>Stable d'un tour à l'autre</b> pour un même projet (il ne dépend que du poste et du
+     * coupe-circuit) : la liste des outils fait partie du préfixe de cache.</p>
+     */
+    default boolean mapSearchAvailable(UUID userId, UUID workspaceId) {
+        return false;
+    }
+
+    /**
+     * Interroge la carte du poste de ce projet, côté gateway, sans aller-retour vers le poste
+     * (F-174 / SF-174-05, D8).
+     *
+     * @return la réponse composée, ou {@code null} si rien n'est disponible
+     */
+    default String searchMap(UUID userId, UUID workspaceId, String query, String type, String identifier) {
+        return null;
+    }
 }
