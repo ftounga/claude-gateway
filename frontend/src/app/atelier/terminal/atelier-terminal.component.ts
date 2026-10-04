@@ -149,7 +149,7 @@ import { TerminalActionsPanelComponent } from './terminal-actions-panel.componen
 import { TerminalAttentesBandComponent } from './terminal-attentes-band.component';
 import { AttenteCardComponent } from './attente-card.component';
 import { TerminalJourneyChipComponent } from './terminal-journey-chip.component';
-import { TerminalJourneyStripComponent } from './terminal-journey-strip.component';
+import { JourneyGesture, TerminalJourneyStripComponent } from './terminal-journey-strip.component';
 import { JourneyService } from '../../core/services/journey.service';
 import { JourneyMode, SubjectJourney } from '../../core/models/journey.models';
 import { TerminalAction, TerminalActionBoard } from '../../core/models/terminal-actions.models';
@@ -729,6 +729,33 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
       error: () => {
         this.journeyBusy.set(false);
         this.snackBar.open('Le mode du sujet n\'a pas pu être changé.', 'OK', { duration: 4000 });
+      },
+    });
+  }
+
+  /**
+   * Un geste sur le parcours (F-176) : [Passer en guidé] / [Rester libre] (SF-176-02). La gateway rend
+   * le parcours à jour ; un échec le dit sans rien changer à l'écran.
+   */
+  onJourneyGesture(gesture: JourneyGesture): void {
+    const workspaceId = this.projectId;
+    if (!workspaceId) {
+      return;
+    }
+    const call = gesture === 'accept-guided'
+      ? this.journeys.acceptGuided(workspaceId)
+      : this.journeys.declineGuided(workspaceId);
+    this.journeyBusy.set(true);
+    call.subscribe({
+      next: journey => {
+        if (this.projectId === workspaceId) {
+          this.journey.set(journey);
+        }
+        this.journeyBusy.set(false);
+      },
+      error: () => {
+        this.journeyBusy.set(false);
+        this.snackBar.open('Le parcours du sujet n\'a pas pu être mis à jour.', 'OK', { duration: 4000 });
       },
     });
   }

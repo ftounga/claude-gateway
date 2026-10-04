@@ -22,6 +22,10 @@ export interface SubjectJourney {
   phase: JourneyPhase | null;
   phaseLabel: string | null;
   phaseChangedAt: string | null;
+  /** La carte [Passer en guidé] [Rester libre] qui attend un geste (SF-176-02), ou `null`. */
+  guidedProposal?: { reason: string | null; proposedAt: string } | null;
+  /** L'utilisateur a choisi de rester libre sur ce sujet (SF-176-02). */
+  guidedDeclined?: boolean;
 }
 
 /** « Libre », « Guidé · Investigation ». */

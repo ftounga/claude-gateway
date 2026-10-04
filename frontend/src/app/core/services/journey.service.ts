@@ -21,4 +21,14 @@ export class JourneyService {
   setMode(workspaceId: string, mode: JourneyMode): Observable<SubjectJourney> {
     return this.http.put<SubjectJourney>(`/api/workspaces/${workspaceId}/journey/mode`, { mode });
   }
+
+  /** [Passer en guidé] (SF-176-02). */
+  acceptGuided(workspaceId: string): Observable<SubjectJourney> {
+    return this.http.post<SubjectJourney>(`/api/workspaces/${workspaceId}/journey/guided-proposal/accept`, {});
+  }
+
+  /** [Rester libre] (SF-176-02) : la proposition ne revient pas sur ce sujet. */
+  declineGuided(workspaceId: string): Observable<SubjectJourney> {
+    return this.http.post<SubjectJourney>(`/api/workspaces/${workspaceId}/journey/guided-proposal/decline`, {});
+  }
 }

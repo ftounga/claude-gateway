@@ -4,6 +4,7 @@ import java.util.UUID;
 
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -41,6 +42,18 @@ public class SubjectJourneyController {
     public SubjectJourneyResponse setMode(@PathVariable UUID workspaceId, @RequestBody ModeRequest request) {
         return SubjectJourneyResponse.from(
                 service.setMode(currentUser.requireId(), workspaceId, request == null ? null : request.mode()));
+    }
+
+    /** [Passer en guidé] — la proposition de l'agent est acceptée (SF-176-02). */
+    @PostMapping("/guided-proposal/accept")
+    public SubjectJourneyResponse acceptGuided(@PathVariable UUID workspaceId) {
+        return SubjectJourneyResponse.from(service.acceptGuidedProposal(currentUser.requireId(), workspaceId));
+    }
+
+    /** [Rester libre] — la proposition est écartée et ne revient pas sur ce sujet (SF-176-02). */
+    @PostMapping("/guided-proposal/decline")
+    public SubjectJourneyResponse declineGuided(@PathVariable UUID workspaceId) {
+        return SubjectJourneyResponse.from(service.declineGuidedProposal(currentUser.requireId(), workspaceId));
     }
 
     /** Le mode voulu : {@code LIBRE} ou {@code GUIDE}. */

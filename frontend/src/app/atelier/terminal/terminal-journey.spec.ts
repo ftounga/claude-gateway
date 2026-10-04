@@ -63,4 +63,38 @@ describe('F-176 — le parcours du sujet', () => {
     put.flush(guided('INVESTIGATION', 'Investigation'));
     http.verify();
   });
+
+  it('SF-176-02 : la carte [Passer en guidé] [Rester libre] s’affiche en Libre et émet le geste', () => {
+    const fixture = TestBed.createComponent(TerminalJourneyStripComponent);
+    fixture.componentRef.setInput('journey', {
+      ...libre, guidedProposal: { reason: 'Incident ingress, plusieurs inconnues', proposedAt: '2026-10-05T08:00:00Z' },
+    });
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.textContent).toContain('Incident ingress, plusieurs inconnues');
+    const gestures: string[] = [];
+    fixture.componentInstance.gesture.subscribe(g => gestures.push(g));
+    (el.querySelector('.journey-card__accept') as HTMLButtonElement).click();
+    (el.querySelector('.journey-card__decline') as HTMLButtonElement).click();
+    expect(gestures).toEqual(['accept-guided', 'decline-guided']);
+  });
+
+  it('SF-176-02 : pas de carte quand le sujet est déjà guidé', () => {
+    const fixture = TestBed.createComponent(TerminalJourneyStripComponent);
+    fixture.componentRef.setInput('journey', {
+      ...guided('INVESTIGATION', 'Investigation'),
+      guidedProposal: { reason: 'x', proposedAt: '2026-10-05T08:00:00Z' },
+    });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.journey-card')).toBeNull();
+  });
+
+  it('SF-176-02 : accepter et écarter passent par la gateway', () => {
+    const service = TestBed.inject(JourneyService);
+    const http = TestBed.inject(HttpTestingController);
+    service.acceptGuided('w1').subscribe();
+    expect(http.expectOne('/api/workspaces/w1/journey/guided-proposal/accept').request.method).toBe('POST');
+    service.declineGuided('w1').subscribe();
+    expect(http.expectOne('/api/workspaces/w1/journey/guided-proposal/decline').request.method).toBe('POST');
+  });
 });

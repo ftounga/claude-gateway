@@ -853,7 +853,9 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     private static final java.util.Set<String> ANSWER_PLAN_TOOLS =
             java.util.Set.of("read_file", "list_files", "search_files", "grep", "glob", "explore",
-                    "set_plan", "recall", "demander", "carte_chercher");
+                    "set_plan", "recall", "demander", "carte_chercher",
+                    // F-176 : le parcours du sujet n'écrit rien dans le projet — il organise, comme set_plan.
+                    fr.claudegateway.atelier.journey.JourneyToolCatalog.PROPOSE_GUIDED);
     /** Nom de l'outil serveur qui interroge la carte du poste (F-174 / SF-174-05, D8). */
     static final String MAP_SEARCH_TOOL_NAME = "carte_chercher";
 
@@ -1634,8 +1636,46 @@ public class AtelierChatService implements RelayInterruptTarget {
      * Best-effort : un échec laisse la consigne telle quelle.
      */
     String withJourney(UUID userId, Workspace workspace, String consigne) {
-        String note = fr.claudegateway.atelier.journey.JourneyTurnNote.render(journeyOf(userId, workspace));
+        return withJourney(userId, workspace, consigne, false);
+    }
+
+    /**
+     * Même chose, en sachant si c'est le premier message du sujet (F-176 / SF-176-02). La qualification
+     * et la proposition en attente ne sont dites que là où les outils du parcours sont donnés — sinon
+     * l'agent lirait une consigne qu'il ne peut pas suivre.
+     */
+    String withJourney(UUID userId, Workspace workspace, String consigne, boolean firstTurn) {
+        fr.claudegateway.atelier.journey.SubjectJourney journey = journeyOf(userId, workspace);
+        boolean toolsOpen = journeyToolExecutor != null && journeyToolCatalog.isOpenFor(userId, workspace);
+        String note = toolsOpen
+                ? fr.claudegateway.atelier.journey.JourneyTurnNote.render(journey, firstTurn)
+                : (journey != null && journey.isGuided()
+                        ? fr.claudegateway.atelier.journey.JourneyTurnNote.render(journey) : "");
         return note.isEmpty() ? consigne : note + consigne;
+    }
+
+    /** Les outils du parcours et leur garde (F-176) ; {@code none()} = jamais donnés. */
+    private fr.claudegateway.atelier.journey.JourneyToolCatalog journeyToolCatalog =
+            fr.claudegateway.atelier.journey.JourneyToolCatalog.none();
+    private fr.claudegateway.atelier.journey.JourneyToolExecutor journeyToolExecutor;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setJourneyTools(fr.claudegateway.atelier.journey.JourneyToolCatalog catalog,
+            fr.claudegateway.atelier.journey.JourneyToolExecutor executor) {
+        if (catalog != null) {
+            this.journeyToolCatalog = catalog;
+        }
+        this.journeyToolExecutor = executor;
+    }
+
+    /** Exécute un outil du parcours (F-176) : le terminal et le compte sont ceux du tour. */
+    private ToolOutcome applyJourneyTool(UUID userId, Workspace workspace, AgentToolCall call) {
+        if (journeyToolExecutor == null || !journeyToolCatalog.isOpenFor(userId, workspace)) {
+            return ToolOutcome.error("Le parcours du sujet n'est pas ouvert dans ce terminal.");
+        }
+        fr.claudegateway.atelier.journey.JourneyToolExecutor.Outcome outcome =
+                journeyToolExecutor.execute(userId, workspace, call.name(), call.input());
+        return outcome.error() ? ToolOutcome.error(outcome.content()) : ToolOutcome.info(outcome.content());
     }
 
     /**
@@ -2249,9 +2289,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         consigne = withPendingActions(userId, workspace, consigne);
         // F-176 — LE PARCOURS DU SUJET, joint à la CONSIGNE du tour (jamais au système, même patron).
         // Libre : rien, consigne inchangée à l'octet près (Q4). Best-effort.
-        consigne = withJourney(userId, workspace, consigne);
 
         List<AgentMessage> messages = buildReplayMessages(userId, workspace);
+        // F-176 / SF-176-02 : aucun tour rejoué = premier message du sujet (ou nouveau départ) — l'agent
+        // y qualifie la demande. Posé APRÈS la relecture de l'historique pour le savoir.
+        consigne = withJourney(userId, workspace, consigne, messages.isEmpty());
         messages.add(AgentMessage.userText(consigne));
 
         AtelierMessage savedUserMessage = messageRepository.save(AtelierMessage.builder()
@@ -2917,6 +2959,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                         .isTerminalActionTool(call.name())) {
                     // F-154 / SF-154-02 : l'action à faire est inscrite par la gateway, dans le terminal.
                     outcome = applyRecordBlocker(userId, workspace, callId, call, listener, attentesOfTurn);
+                } else if (fr.claudegateway.atelier.journey.JourneyToolCatalog.isJourneyTool(call.name())) {
+                    // F-176 : le parcours du sujet est tenu par la gateway, jamais par la machine.
+                    outcome = applyJourneyTool(userId, workspace, call);
                 } else if (fr.claudegateway.images.ImageToolCatalog.isImageTool(call.name())) {
                     // F-142 / SF-142-04 : l'image décorative est générée par la gateway (relais fournisseur),
                     // rangée, puis déposée dans le projet — jamais un schéma d'architecture.
@@ -7029,6 +7074,10 @@ public class AtelierChatService implements RelayInterruptTarget {
         tools.addAll(officeToolCatalog.toolsFor(userId, workspace));
         // F-154 / SF-154-02 : inscrire une action que l'utilisateur SEUL peut faire, pour qu'elle
         // survive au tour. Sous la même garde d'espace que les autres outils de la gateway.
+        // F-176 : les outils du parcours du sujet, sous la même garde d'espace.
+        if (journeyToolExecutor != null) {
+            tools.addAll(journeyToolCatalog.toolsFor(userId, workspace));
+        }
         if (terminalActionToolExecutor != null) {
             tools.addAll(terminalActionToolCatalog.toolsFor(userId, workspace));
         }
@@ -7409,6 +7458,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                 && terminalActionToolCatalog.isOpenFor(userId, workspace)) {
             system.append(fr.claudegateway.atelier.actions.TerminalActionToolCatalog.GUIDE)
                     .append("\n\n");
+        }
+        // F-176 : le guide du parcours du sujet — littéral stable, seulement là où ses outils sont donnés.
+        if (journeyToolExecutor != null && journeyToolCatalog.isOpenFor(userId, workspace)) {
+            system.append(fr.claudegateway.atelier.journey.JourneyToolCatalog.GUIDE).append("\n\n");
         }
 
         // Compteurs d'amorçage : ces lectures sont journalisées en UNE ligne (F-38 / SF-38-08).
