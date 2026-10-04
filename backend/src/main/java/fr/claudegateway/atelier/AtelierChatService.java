@@ -2288,6 +2288,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         java.util.Map<String, fr.claudegateway.mail.ClientMailReceipt> emailsOfTurn = new java.util.HashMap<>();
         /** Pages publiées pendant ce tour (F-109 / SF-109-03), par appel, local au tour. */
         java.util.Map<String, fr.claudegateway.pages.PageBlock> pagesOfTurn = new java.util.HashMap<>();
+        // F-175 / SF-175-05 : les cartes d'attente du tour, par appel.
+        java.util.Map<String, fr.claudegateway.atelier.actions.AttenteBlock> attentesOfTurn = new java.util.HashMap<>();
         /** Nombre d'images décoratives générées pendant ce tour (F-142 / SF-142-04), pour la borne par tour. */
         int[] imageCountOfTurn = {0};
         // La compaction (F-117 / SF-117-01) est un appel modèle : sa consommation entre dans les
@@ -2881,7 +2883,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                 } else if (fr.claudegateway.atelier.actions.TerminalActionToolCatalog
                         .isTerminalActionTool(call.name())) {
                     // F-154 / SF-154-02 : l'action à faire est inscrite par la gateway, dans le terminal.
-                    outcome = applyRecordBlocker(userId, workspace, call);
+                    outcome = applyRecordBlocker(userId, workspace, callId, call, listener, attentesOfTurn);
                 } else if (fr.claudegateway.images.ImageToolCatalog.isImageTool(call.name())) {
                     // F-142 / SF-142-04 : l'image décorative est générée par la gateway (relais fournisseur),
                     // rangée, puis déposée dans le projet — jamais un schéma d'architecture.
@@ -2970,7 +2972,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                         // rechargement, dans tous les terminaux.
                         emailsOfTurn.get(callId),
                         // Le bloc « Page publiée » (F-109 / SF-109-03) : il survit au rechargement, partout.
-                        pagesOfTurn.get(callId)));
+                        pagesOfTurn.get(callId),
+                        // La carte d'une attente (F-175 / SF-175-05) : elle survit au rechargement.
+                        attentesOfTurn.get(callId)));
                 // F-121 / SF-121-11 — LA FILE EST CONSULTÉE ENTRE LES APPELS D'OUTILS, et plus
                 // seulement à la frontière d'itération. Une précision déposée pendant un `bash` de
                 // 90 s ou au milieu d'une rafale de cinq outils était jusqu'ici ni prise ni
@@ -4103,7 +4107,9 @@ public class AtelierChatService implements RelayInterruptTarget {
      * <p>Le projet et le compte écrits sont ceux <b>du tour</b> — {@code workspace} vient de
      * {@code requireOwned}. Aucun identifiant n'est lu dans les paramètres de l'outil.</p>
      */
-    private ToolOutcome applyRecordBlocker(UUID userId, Workspace workspace, AgentToolCall call) {
+    private ToolOutcome applyRecordBlocker(UUID userId, Workspace workspace, String callId, AgentToolCall call,
+            AtelierProgressListener listener,
+            java.util.Map<String, fr.claudegateway.atelier.actions.AttenteBlock> attentesOfTurn) {
         if (terminalActionToolExecutor == null
                 || !terminalActionToolCatalog.isOpenFor(userId, workspace)) {
             return ToolOutcome.error("Les actions à faire ne sont pas ouvertes dans ce terminal : "
@@ -4121,6 +4127,11 @@ public class AtelierChatService implements RelayInterruptTarget {
                     terminalActionToolExecutor.update(userId, workspace, call.input());
             default -> terminalActionToolExecutor.execute(userId, workspace, call.input());
         };
+        if (!outcome.error() && outcome.card() != null) {
+            // F-175 / SF-175-05 : la carte de l'attente, au fil de l'eau et dans la transcription.
+            attentesOfTurn.put(callId, outcome.card());
+            listener.onAttente(callId, outcome.card());
+        }
         return outcome.error() ? ToolOutcome.error(outcome.content()) : ToolOutcome.info(outcome.content());
     }
 

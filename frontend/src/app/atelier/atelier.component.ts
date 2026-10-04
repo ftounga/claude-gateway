@@ -132,6 +132,7 @@ import { chatStepsToBlocks } from './terminal/chat-steps';
 import { cardBlock, withCards } from './terminal/teams-block';
 import { emailBlock } from './terminal/terminal-email';
 import { pageBlock } from './terminal/page-block';
+import { attenteBlock } from './terminal/attente-card.component';
 import {
   compactionMarkerBlock,
   compactionMarkerLabel,
@@ -1790,6 +1791,18 @@ export class AtelierComponent implements OnInit, OnDestroy {
             {
               afterSteps: this.streaming()?.steps.length ?? 0,
               block: pageBlock(event.toolUseId, event.page),
+            },
+          ];
+          this.mirrorLocalSteps();
+        }),
+      // UNE CARTE D'ATTENTE (F-175 / SF-175-05) : rangée comme une carte, pour survivre au recalcul des blocs.
+      onAttente: (event) =>
+        this.zone.run(() => {
+          this.cardsOfTurn = [
+            ...this.cardsOfTurn,
+            {
+              afterSteps: this.streaming()?.steps.length ?? 0,
+              block: attenteBlock(event.toolUseId, event.attente),
             },
           ];
           this.mirrorLocalSteps();
@@ -3685,6 +3698,18 @@ export class AtelierComponent implements OnInit, OnDestroy {
             {
               afterSteps: this.streaming()?.steps.length ?? 0,
               block: pageBlock(event.toolUseId, event.page),
+            },
+          ];
+          this.mirrorLocalSteps();
+        }),
+      // UNE CARTE D'ATTENTE (F-175 / SF-175-05) : rangée comme une carte, pour survivre au recalcul des blocs.
+      onAttente: (event) =>
+        this.zone.run(() => {
+          this.cardsOfTurn = [
+            ...this.cardsOfTurn,
+            {
+              afterSteps: this.streaming()?.steps.length ?? 0,
+              block: attenteBlock(event.toolUseId, event.attente),
             },
           ];
           this.mirrorLocalSteps();

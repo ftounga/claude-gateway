@@ -833,6 +833,10 @@
               @if (block.page; as page) {
                 <app-page-block [page]="page" [readOnly]="readOnly" (open)="openPage($event)"></app-page-block>
               }
+              <!-- LA CARTE D'UNE ATTENTE (F-175 / SF-175-05) : dans tout terminal, comme la page. -->
+              @if (block.attente; as attente) {
+                <app-attente-card [attente]="attente" [live]="liveAttente(attente.actionId)" [readOnly]="readOnly" (changed)="reloadAttentes()"></app-attente-card>
+              }
             </div>
             }
             }
@@ -1050,6 +1054,9 @@
           }
           @if (block.page; as page) {
             <app-page-block [page]="page" [readOnly]="readOnly" (open)="openPage($event)"></app-page-block>
+          }
+          @if (block.attente; as attente) {
+            <app-attente-card [attente]="attente" [live]="liveAttente(attente.actionId)" [readOnly]="readOnly" (changed)="reloadAttentes()"></app-attente-card>
           }
         </div>
         }

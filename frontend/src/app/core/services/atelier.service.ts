@@ -57,6 +57,7 @@ import {
   AtelierTeamsCard,
   AtelierTerminalEmail,
   AtelierTerminalPage,
+  AtelierTerminalAttente,
   TeamsAccess,
 } from '../models/atelier.models';
 
@@ -568,6 +569,8 @@ export class AtelierService {
       email?: AtelierTerminalEmail;
       /** Page publiée par l'agent (F-109 / SF-109-03). */
       page?: AtelierTerminalPage;
+      /** Carte d'une attente (F-175 / SF-175-05). */
+      attente?: AtelierTerminalAttente;
       /** Rebranchement sur un tour en cours (F-84 / SF-84-02). */
       turnId?: string | null;
       cursor?: number;
@@ -714,6 +717,11 @@ export class AtelierService {
       // Une PAGE publiée (F-109 / SF-109-03) : le bloc « Page publiée ». Sans page, rien — pas de bloc creux.
       if (payload.page?.pageId) {
         handlers.onPage?.({ toolUseId: payload.toolUseId ?? '', page: payload.page });
+      }
+    } else if (event === 'attente') {
+      // Une CARTE D'ATTENTE (F-175 / SF-175-05). Sans attente, rien — pas de carte creuse.
+      if (payload.attente?.actionId) {
+        handlers.onAttente?.({ toolUseId: payload.toolUseId ?? '', attente: payload.attente });
       }
     } else if (event === 'email') {
       // Un COURRIEL mis en file (F-110 / SF-110-02) : le bloc « Courriel envoyé ». Sans reçu, rien.

@@ -399,6 +399,54 @@ class TerminalActionToolTest {
         assertThat(outage.content()).contains("n'a pas pu être inscrite");
     }
 
+    // --- Les cartes du fil (F-175 / SF-175-05) ------------------------------------------------
+
+    @Test
+    @DisplayName("SF-175-05 : inscrite → carte ADDED ; déjà là → ALREADY (avec la manière) ; annulée → aucune")
+    void recordingCards() {
+        when(repository.findByUserIdAndWorkspaceIdAndDedupKey(userId, workspaceId, "neuve"))
+                .thenReturn(Optional.empty());
+        TerminalActionToolExecutor.Outcome added = executor.execute(userId, workspace,
+                input("{\"description\":\"Obtenir le VPN\",\"key\":\"neuve\"}"));
+        assertThat(added.card().kind()).isEqualTo(AttenteBlock.ADDED);
+        assertThat(added.card().description()).isEqualTo("Obtenir le VPN");
+
+        TerminalAction asked = existing(TerminalActionStatus.DEMANDE, "deja");
+        when(repository.findByUserIdAndWorkspaceIdAndDedupKey(userId, workspaceId, "deja"))
+                .thenReturn(Optional.of(asked));
+        TerminalActionToolExecutor.Outcome already = executor.execute(userId, workspace,
+                input("{\"description\":\"x\",\"key\":\"deja\"}"));
+        assertThat(already.card().kind()).isEqualTo(AttenteBlock.ALREADY);
+        assertThat(already.card().match()).isEqualTo("KEY");
+        assertThat(already.card().status()).isEqualTo(TerminalActionStatus.DEMANDE);
+
+        when(repository.findByUserIdAndWorkspaceIdAndDedupKey(userId, workspaceId, "refusee"))
+                .thenReturn(Optional.of(existing(TerminalActionStatus.ANNULE, "refusee")));
+        assertThat(executor.execute(userId, workspace, input("{\"description\":\"x\",\"key\":\"refusee\"}"))
+                .card()).isNull();
+    }
+
+    @Test
+    @DisplayName("SF-175-05 : proposition → carte PROPOSED ; passage à Demandé → carte REQUESTED")
+    void proposalAndRequestCards() {
+        TerminalAction open = existing(TerminalActionStatus.A_FAIRE, "k");
+        when(repository.findByUserIdAndWorkspaceIdAndDedupKey(userId, workspaceId, "k")).thenReturn(Optional.of(open));
+        when(repository.findByIdAndUserIdAndWorkspaceId(open.getId(), userId, workspaceId))
+                .thenReturn(Optional.of(open));
+
+        TerminalActionToolExecutor.Outcome requested = executor.update(userId, workspace,
+                input("{\"key\":\"k\",\"status\":\"DEMANDE\",\"requested_to\":\"Zahi\"}"));
+        assertThat(requested.card().kind()).isEqualTo(AttenteBlock.REQUESTED);
+        assertThat(requested.card().requestedTo()).isEqualTo("Zahi");
+
+        TerminalActionToolExecutor.Outcome proposed = executor.close(userId, workspace,
+                input("{\"key\":\"k\",\"reason\":\"Zahi a créé le compte\"}"));
+        assertThat(proposed.card().kind()).isEqualTo(AttenteBlock.PROPOSED);
+        assertThat(proposed.card().proposedStatus()).isEqualTo(TerminalActionStatus.FAIT);
+        assertThat(proposed.card().proposedReason()).isEqualTo("Zahi a créé le compte");
+        assertThat(proposed.card().workspaceId()).isEqualTo(workspaceId);
+    }
+
     // --- Déjà demandé (F-175 / SF-175-03) -----------------------------------------------------
 
     @Test
