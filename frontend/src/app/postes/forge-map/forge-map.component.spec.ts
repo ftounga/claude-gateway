@@ -94,7 +94,7 @@ describe('ForgeMapComponent (F-173 / SF-173-02)', () => {
 
   it('la bascule pose la vue dans l’URL ; Plan n’encombre pas l’adresse', () => {
     build();
-    all('.forge-map__switch-option')[2].click();
+    all('.forge-map__switch-option').find((b) => b.textContent?.includes('Fichiers'))!.click();
     expect(router.navigate).toHaveBeenCalledWith([], jasmine.objectContaining({
       queryParams: { 'vue-carte': 'fichiers' }, queryParamsHandling: 'merge',
     }));
@@ -139,6 +139,22 @@ describe('ForgeMapComponent (F-173 / SF-173-02)', () => {
     params.next(convertToParamMap({ 'vue-carte': 'fichiers', noeud: 'compte' }));
     fixture.detectChanges();
     expect(el('app-forge-map-card')).toBeNull();
+  });
+
+  it('vue Grille : domaine × environnement, un clic ouvre la fiche (SF-173-04)', () => {
+    build({ 'vue-carte': 'grille' }, of(mapGraph([
+      mapNode('a', { label: 'compte prod', environment: 'production', domain: 'paiement', state: 'actif' }),
+      mapNode('b', { label: 'compte dev', environment: 'dev', domain: 'paiement' }),
+    ])));
+    const heads = all('.forge-map__grid-head').map((h) => h.textContent?.trim());
+    expect(heads).toEqual(['Domaine', 'Dev', 'Prod']);
+    expect(el('.forge-map__trail')).toBeNull();
+    const items = all('.forge-map__grid-item');
+    expect(items[1].textContent).toContain('compte prod');
+    expect(items[1].textContent).toContain('actif');
+    items[1].click();
+    expect(router.navigate).toHaveBeenCalledWith([], jasmine.objectContaining({ queryParams: { noeud: 'a' } }));
+    expect(governance.hostMapGraph).toHaveBeenCalledTimes(1);
   });
 
   it('sur téléphone, Plan devient la liste : aucun canevas', () => {

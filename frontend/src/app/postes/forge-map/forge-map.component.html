@@ -11,6 +11,10 @@
               [attr.aria-pressed]="requestedView() === 'liste'" (click)="selectView('liste')">
         <mat-icon>account_tree</mat-icon> Liste
       </button>
+      <button type="button" class="forge-map__switch-option" [class.forge-map__switch-option--active]="requestedView() === 'grille'"
+              [attr.aria-pressed]="requestedView() === 'grille'" (click)="selectView('grille')">
+        <mat-icon>grid_view</mat-icon> Grille
+      </button>
       <button type="button" class="forge-map__switch-option" [class.forge-map__switch-option--active]="requestedView() === 'fichiers'"
               [attr.aria-pressed]="requestedView() === 'fichiers'" (click)="selectView('fichiers')">
         <mat-icon>description</mat-icon> Fichiers
@@ -45,6 +49,7 @@
         </div>
       } @else {
         @if (level(); as lvl) {
+        @if (view() !== 'grille') {
         <nav class="forge-map__trail" aria-label="Fil d'Ariane de la carte">
           @for (crumb of lvl.trail; track $index; let last = $last) {
             @if (last) {
@@ -66,10 +71,48 @@
         @if (lvl.nodes.length === 0) {
           <p class="forge-map__hint">Aucune ressource nommée à ce niveau pour l'instant.</p>
         }
+        }
 
         <div class="forge-map__body" [class.forge-map__body--with-card]="cardNodeId() !== null">
           <div class="forge-map__main">
-          @if (view() === 'plan') {
+          @if (view() === 'grille') {
+            <!-- LA GRILLE DES ENVIRONNEMENTS (SF-173-04) : domaine × environnement, Sandbox → Prod. -->
+            @if (grid(); as gr) {
+              @if (gr.empty) {
+                <p class="forge-map__hint">La carte ne dit encore ni environnement ni domaine pour ses ressources.</p>
+              } @else {
+                <div class="forge-map__grid" role="table" aria-label="Ressources par domaine et environnement"
+                     [style.grid-template-columns]="'160px repeat(' + gr.columns.length + ', minmax(160px, 1fr))'">
+                  <div class="forge-map__grid-head" role="columnheader">Domaine</div>
+                  @for (col of gr.columns; track col.key) {
+                    <div class="forge-map__grid-head" role="columnheader">{{ col.label }}</div>
+                  }
+                  @for (row of gr.rows; track row.domain) {
+                    <div class="forge-map__grid-domain" role="rowheader">{{ row.domain }}</div>
+                    @for (cell of row.cells; track $index) {
+                      <div class="forge-map__grid-cell" role="cell">
+                        <span class="forge-map__grid-env">{{ gr.columns[$index].label }}</span>
+                        @for (item of cell.items; track item.node.id) {
+                          <button type="button" class="forge-map__grid-item"
+                                  [class.forge-map__grid-item--trap]="item.node.traps > 0"
+                                  [class.forge-map__grid-item--stale]="item.node.stale"
+                                  [class.forge-map__grid-item--selected]="cardNodeId() === item.node.id"
+                                  (click)="goTo(item.node.id)">
+                            <span class="forge-map__grid-name">{{ item.node.label }}</span>
+                            <span class="forge-map__grid-meta">
+                              {{ kindLabel(item.node.kind) }}@if (item.node.state) { · {{ item.node.state.replace('_', ' ') }} }@if (item.node.traps > 0) { · ⚠ {{ item.node.traps }} }@if (item.node.stale) { · périmé }
+                            </span>
+                            @if (item.role) { <span class="forge-map__grid-meta">{{ item.role }}</span> }
+                          </button>
+                        }
+                        @if (cell.more > 0) { <span class="forge-map__grid-meta">+ {{ cell.more }} autres</span> }
+                      </div>
+                    }
+                  }
+                </div>
+              }
+            }
+          } @else if (view() === 'plan') {
             <div class="forge-map__plan">
               <app-forge-map-canvas
                 [level]="lvl"

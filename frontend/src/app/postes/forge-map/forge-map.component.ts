@@ -22,17 +22,18 @@ import { MapGraph } from '../../core/models/governance.models';
 import { GovernanceService } from '../../core/services/governance.service';
 import { ForgeMapCanvasComponent } from './forge-map-canvas.component';
 import { ForgeMapCardComponent } from './forge-map-card.component';
+import { EnvironmentGrid, environmentGrid } from './forge-map-grid';
 import { MapLevel, ViewNode, kindLabel, levelFor } from './forge-map-levels';
 
 /** Les vues de l'onglet Carte (D5, D6) : le plan, son équivalent en liste, et les fichiers d'avant. */
-export type MapView = 'plan' | 'liste' | 'fichiers';
+export type MapView = 'plan' | 'liste' | 'grille' | 'fichiers';
 
 /** Sous cette largeur, le plan devient une liste (D6) : un graphe ne se manie pas au doigt. */
 export const MOBILE_QUERY = '(max-width: 767px)';
 
 /** La vue demandée par `?vue-carte=` ; Plan par défaut. */
 export function mapViewFrom(value: string | null | undefined): MapView {
-  return value === 'liste' || value === 'fichiers' ? value : 'plan';
+  return value === 'liste' || value === 'grille' || value === 'fichiers' ? value : 'plan';
 }
 
 /**
@@ -97,6 +98,12 @@ export class ForgeMapComponent {
   });
 
   readonly kindLabel = kindLabel;
+
+  /** La grille domaine × environnement (SF-173-04), calculée sur le plan déjà lu. */
+  readonly grid = computed<EnvironmentGrid | null>(() => {
+    const graph = this.graph();
+    return graph && graph.indexed && this.view() === 'grille' ? environmentGrid(graph) : null;
+  });
 
   /**
    * La ressource dont la fiche est ouverte (SF-173-03) : celle sélectionnée, sinon la plateforme dont
