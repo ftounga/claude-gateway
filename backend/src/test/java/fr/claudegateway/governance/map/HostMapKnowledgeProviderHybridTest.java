@@ -60,7 +60,7 @@ class HostMapKnowledgeProviderHybridTest {
     @DisplayName("l'index nourri répond : bloc hybride, cité fichier § section, journal HYBRID")
     void hybridWhenIndexed() {
         when(search.hasIndex(userId, hostId)).thenReturn(true);
-        when(search.search(eq(userId), eq(hostId), anyString(), eq(20))).thenReturn(found());
+        when(search.search(eq(userId), eq(hostId), anyString(), eq(20), any())).thenReturn(found());
 
         String block = provider(true).factsFor(userId, workspaceId, question);
 
@@ -75,17 +75,17 @@ class HostMapKnowledgeProviderHybridTest {
                 java.time.LocalDate.now(), 120);
 
         assertThat(provider(false).factsFor(userId, workspaceId, question)).isEqualTo(lexical);
-        verify(search, never()).search(any(), any(), anyString(), anyInt());
+        verify(search, never()).search(any(), any(), anyString(), anyInt(), any());
 
         when(search.hasIndex(userId, hostId)).thenReturn(false);
         assertThat(provider(true).factsFor(userId, workspaceId, question)).isEqualTo(lexical);
 
         when(search.hasIndex(userId, hostId)).thenReturn(true);
-        when(search.search(any(), any(), anyString(), anyInt()))
+        when(search.search(any(), any(), anyString(), anyInt(), any()))
                 .thenReturn(new HostMapSearch.Result(List.of(), List.of()));
         assertThat(provider(true).factsFor(userId, workspaceId, question)).isEqualTo(lexical);
 
-        when(search.search(any(), any(), anyString(), anyInt())).thenThrow(new IllegalStateException("db"));
+        when(search.search(any(), any(), anyString(), anyInt(), any())).thenThrow(new IllegalStateException("db"));
         assertThat(provider(true).factsFor(userId, workspaceId, question)).isEqualTo(lexical);
     }
 

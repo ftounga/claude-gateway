@@ -35,10 +35,22 @@ import fr.claudegateway.governance.map.index.HostMapFactEmbeddingStore.ScoredFac
 @Service
 public class HostMapSearch {
 
-    /** Pourquoi un fait a été retenu. L'ordre est celui de la priorité. */
+    /**
+     * Pourquoi un fait a été retenu. L'ordre est celui de la priorité : échéances proches et pièges
+     * des ressources touchées d'abord (D7, SF-174-04), puis les quatre maillons de D5.
+     */
     public enum Reason {
-        IDENTIFIER, ENTITY, SEMANTIC, LEXICAL
+        DEADLINE, PITFALL, IDENTIFIER, ENTITY, SEMANTIC, LEXICAL
     }
+
+    /** Une échéance à moins de tant de jours, sur une ressource touchée, est toujours citée (D7). */
+    public static final int DEADLINE_HORIZON_DAYS = 14;
+
+    /** Une échéance dépassée depuis moins de tant de jours reste citée : un jeton expiré bloque. */
+    public static final int DEADLINE_GRACE_DAYS = 14;
+
+    /** Pièges et échéances, au plus, pour laisser la place aux faits qui répondent. */
+    static final int MAX_PRIORITY_SHARE_DIVISOR = 2;
 
     /** Un fait retenu, et pourquoi. */
     public record Hit(HostMapFact fact, Reason reason) {
@@ -87,11 +99,28 @@ public class HostMapSearch {
      */
     @Transactional(readOnly = true)
     public Result search(UUID userId, UUID hostId, String question, int limit) {
+        return search(userId, hostId, question, limit, null);
+    }
+
+    /**
+     * Les faits qui répondent à la question, <b>pièges et échéances des ressources touchées d'abord</b>
+     * (D7, SF-174-04).
+     *
+     * @param today la date du jour ({@code null} : pas de priorité d'échéance)
+     */
+    @Transactional(readOnly = true)
+    public Result search(UUID userId, UUID hostId, String question, int limit, java.time.LocalDate today) {
         if (userId == null || hostId == null || question == null || question.isBlank() || limit <= 0) {
             return new Result(List.of(), List.of());
         }
         String lowered = question.toLowerCase(Locale.ROOT);
         Map<UUID, Hit> retained = new LinkedHashMap<>();
+        List<HostMapEntity> touched = touchedEntities(userId, hostId, lowered);
+
+        // 0. D7 : échéances proches, puis pièges, des ressources que la question touche.
+        if (!touched.isEmpty()) {
+            priorities(userId, hostId, touched, today, retained, limit);
+        }
 
         // 1. Identifiants exacts cités dans la question.
         Set<String> identifiers = new LinkedHashSet<>();
@@ -108,7 +137,6 @@ public class HostMapSearch {
         }
 
         // 2. Entités nommées : la question cite leur nom ou un de leurs identifiants.
-        List<HostMapEntity> touched = touchedEntities(userId, hostId, lowered);
         Set<String> labels = new LinkedHashSet<>();
         touched.forEach(entity -> labels.add(entity.getLabelNorm()));
         for (String label : labels) {
@@ -152,6 +180,56 @@ public class HostMapSearch {
             }
         }
         return new Result(new ArrayList<>(retained.values()), touched);
+    }
+
+    /** Échéances proches puis pièges qui concernent une ressource touchée (D7). */
+    private void priorities(UUID userId, UUID hostId, List<HostMapEntity> touched,
+            java.time.LocalDate today, Map<UUID, Hit> retained, int limit) {
+        int share = Math.max(1, limit / MAX_PRIORITY_SHARE_DIVISOR);
+        List<HostMapFact> candidates = facts.findByUserIdAndHostIdAndKindInOrderByPathAscLineNoAsc(userId,
+                hostId, List.of(HostMapFact.ECHEANCE, HostMapFact.PIEGE));
+        List<HostMapFact> deadlines = new ArrayList<>();
+        List<HostMapFact> pitfalls = new ArrayList<>();
+        for (HostMapFact fact : candidates) {
+            if (!concerns(fact, touched)) {
+                continue;
+            }
+            if (HostMapFact.ECHEANCE.equals(fact.getKind())) {
+                if (today != null && fact.getDueOn() != null
+                        && !fact.getDueOn().isAfter(today.plusDays(DEADLINE_HORIZON_DAYS))
+                        && !fact.getDueOn().isBefore(today.minusDays(DEADLINE_GRACE_DAYS))) {
+                    deadlines.add(fact);
+                }
+            } else {
+                pitfalls.add(fact);
+            }
+        }
+        deadlines.sort(java.util.Comparator.comparing(HostMapFact::getDueOn));
+        // Une échéance proche est TOUJOURS citée (D7) : elle passe avant tout, dans la borne totale.
+        add(retained, deadlines, Reason.DEADLINE, limit);
+        int room = Math.max(0, share - retained.size());
+        add(retained, pitfalls.subList(0, Math.min(pitfalls.size(), room)), Reason.PITFALL, limit);
+    }
+
+    /** Ce fait concerne-t-il une des ressources touchées (identifiant porté, ou nom cité) ? */
+    static boolean concerns(HostMapFact fact, List<HostMapEntity> touched) {
+        String text = fact.getText() == null ? "" : fact.getText().toLowerCase(Locale.ROOT);
+        String ids = fact.getIdentifiers() == null ? "" : fact.getIdentifiers();
+        for (HostMapEntity entity : touched) {
+            String label = entity.getLabelNorm();
+            if (label != null && label.length() >= MIN_LABEL_LENGTH && containsWord(text, label)) {
+                return true;
+            }
+            if (entity.getIdentifiers() != null) {
+                for (String identifier : entity.getIdentifiers().split("\n")) {
+                    if (identifier.length() >= MIN_LABEL_LENGTH
+                            && (ids.contains("\n" + identifier + "\n") || containsWord(text, identifier))) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     /** Les entités de CE poste dont la question cite le nom ou un identifiant. */
