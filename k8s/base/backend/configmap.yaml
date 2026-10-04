@@ -96,7 +96,10 @@ data:
   # 2026-09-30 (SF-39-23) : sans cette variable, le défaut code (30) devenait le nouveau goulot
   # une fois le plafond de jetons relevé à 30 M ci-dessus. Porté à 60 pour aligner les itérations
   # sur la nouvelle marge de jetons. Plafond dur du code = 100.
-  APP_ATELIER_MAX_ITERATIONS: "60"
+  # 2026-10-04 : porté de 60 à 100 (= max code) à la demande du PO — tours CloudOps denses
+  # (terraform/kubectl) qui tapaient les 60 étapes et demandaient « continue ». Sans risque
+  # justesse (autorise plus d'étapes, n'en coupe aucune). Au-delà de 100 = changement de code.
+  APP_ATELIER_MAX_ITERATIONS: "100"
   # Budget de TEMPS d'un tour (SF-118-03). Defaut code 10 min ; porte a 60 min le 2026-09-14 a la
   # demande du PO (grosses taches : page complete, config). Plafond dur 2 h. ISO-8601. INCHANGÉ.
   APP_ATELIER_TURN_BUDGET: "PT60M"
