@@ -212,3 +212,40 @@ button.forge-map__crumb:hover { color: var(--cg-text-primary); text-decoration: 
 .forge-map__hop-link:hover { color: var(--cg-accent); text-decoration: underline; }
 .forge-map__hop-label { color: var(--cg-text-secondary); }
 .forge-map__hop-status { font: 400 11px 'JetBrains Mono', monospace; color: var(--cg-text-secondary); }
+
+// LES SIGNAUX (SF-173-06)
+.forge-map__count {
+  margin-left: 4px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--cg-error);
+  color: var(--cg-surface);
+  font: 600 11px Inter, sans-serif;
+}
+
+.forge-map__summary { margin: 0; display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; color: var(--cg-text-primary); }
+.forge-map__signals { display: flex; flex-direction: column; gap: 8px; }
+.forge-map__signals h4 { margin: 8px 0 0; font: 600 14px Inter, sans-serif; color: var(--cg-text-primary); }
+.forge-map__signals-group { margin: 8px 0 0; font: 400 11px 'JetBrains Mono', monospace; text-transform: uppercase; color: var(--cg-text-secondary); }
+.forge-map__signal-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+
+.forge-map__signal {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 8px 12px;
+  border: 1px solid var(--cg-divider);
+  border-radius: 8px;
+  background: var(--cg-surface);
+}
+
+.forge-map__signal-text { font-size: 13px; color: var(--cg-text-primary); }
+.forge-map__signal-meta { display: flex; flex-wrap: wrap; gap: 8px; font: 400 11px 'JetBrains Mono', monospace; color: var(--cg-text-secondary); }
+
+.forge-map__legend { margin: 8px 0 0; display: flex; flex-wrap: wrap; gap: 16px; font-size: 12px; color: var(--cg-text-secondary); }
+.forge-map__legend > span { display: inline-flex; align-items: center; gap: 4px; }
+.forge-map__swatch { display: inline-block; width: 16px; height: 12px; border-radius: 4px; border: 2px solid var(--cg-navy); background: var(--cg-surface); }
+.forge-map__swatch--navy { background: var(--cg-navy); }
+.forge-map__swatch--trap { border-color: var(--cg-error); }
+.forge-map__swatch--stale { border-color: var(--cg-text-secondary); border-style: dashed; opacity: 0.55; }
