@@ -578,7 +578,7 @@
           }
           <!-- LA CARTE VIVANTE (F-173 / SF-173-02) : le plan, lu en base (D1) — il s'affiche aussi poste
                hors ligne. La vue Fichiers (D5) est l'écran d'avant, projeté tel quel. -->
-          <app-forge-map [hostRef]="host.id ?? 'hosted'" [hostName]="host.name">
+          <app-forge-map [hostRef]="host.id ?? 'hosted'" [hostName]="host.name" [hostId]="host.id" [online]="online(host)">
             <div forgeMapFiles>
           @if (!online(host)) {
             <!-- AUCUN APPEL n'est parti. F-98 / SF-98-05 : dire ce qu'on voit, pas la mécanique — et

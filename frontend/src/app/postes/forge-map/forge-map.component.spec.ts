@@ -5,7 +5,9 @@ import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { BehaviorSubject, of, throwError } from 'rxjs';
 
 import { MapGraph } from '../../core/models/governance.models';
+import { AtelierService } from '../../core/services/atelier.service';
 import { GovernanceService } from '../../core/services/governance.service';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { CYTOSCAPE_LOADER, elementsOf, nodeCaption } from './forge-map-canvas.component';
 import { ForgeMapComponent, mapViewFrom } from './forge-map.component';
 import { levelFor } from './forge-map-levels';
@@ -14,15 +16,18 @@ import { mapGraph, mapNode } from './forge-map.testing';
 @Component({
   standalone: true,
   imports: [ForgeMapComponent],
-  template: `<app-forge-map [hostRef]="ref()" hostName="CAGIP"><p forgeMapFiles class="files">les fichiers</p></app-forge-map>`,
+  template: `<app-forge-map [hostRef]="ref()" hostName="CAGIP" [hostId]="ref()" [online]="online()"><p forgeMapFiles class="files">les fichiers</p></app-forge-map>`,
 })
 class HostComponent {
   readonly ref = signal('h1');
+  readonly online = signal(true);
 }
 
 describe('ForgeMapComponent (F-173 / SF-173-02)', () => {
   let fixture: ComponentFixture<HostComponent>;
   let governance: jasmine.SpyObj<GovernanceService>;
+  let atelier: jasmine.SpyObj<AtelierService>;
+  let snackBar: jasmine.SpyObj<MatSnackBar>;
   let router: jasmine.SpyObj<Router>;
   let params: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
   let cyCalls: unknown[];
@@ -36,7 +41,11 @@ describe('ForgeMapComponent (F-173 / SF-173-02)', () => {
   ]);
 
   function build(query: Record<string, string> = {}, response = of(graph) as ReturnType<GovernanceService['hostMapGraph']>): void {
-    governance = jasmine.createSpyObj<GovernanceService>('GovernanceService', ['hostMapGraph', 'hostMapEntity']);
+    governance = jasmine.createSpyObj<GovernanceService>('GovernanceService', ['hostMapGraph', 'hostMapEntity', 'hostMapConsolidation']);
+    governance.hostMapConsolidation.and.returnValue(of({ indexed: true, total: 0, proposals: [] }));
+    atelier = jasmine.createSpyObj<AtelierService>('AtelierService', ['openHostTerminal']);
+    atelier.openHostTerminal.and.returnValue(of({ id: 'wt9' } as ReturnType<AtelierService['openHostTerminal']> extends import('rxjs').Observable<infer T> ? T : never));
+    snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
     governance.hostMapGraph.and.returnValue(response);
     governance.hostMapEntity.and.callFake((_ref: string, id: string) => of({
       node: graph.nodes.find((n) => n.id === id) ?? mapNode(id),
@@ -54,6 +63,8 @@ describe('ForgeMapComponent (F-173 / SF-173-02)', () => {
       imports: [HostComponent],
       providers: [
         { provide: GovernanceService, useValue: governance },
+        { provide: AtelierService, useValue: atelier },
+        { provide: MatSnackBar, useValue: snackBar },
         { provide: Router, useValue: router },
         { provide: ActivatedRoute, useValue: { queryParamMap: params, snapshot: { queryParamMap: params.value } } },
         {
@@ -204,6 +215,58 @@ describe('ForgeMapComponent (F-173 / SF-173-02)', () => {
     expect(text()).toContain('Aucune échéance datée dans la carte.');
     expect(text()).toContain("Rien n'est marqué à cartographier.");
     expect(el('.forge-map__count')).toBeNull();
+  });
+
+  it('« Demander à la Forge » ouvre le terminal du poste avec la consigne déposée, non envoyée (SF-173-07)', () => {
+    build({ 'vue-carte': 'liste', noeud: 'lzi' });
+    const button = el('.forge-map__ask button') as HTMLButtonElement;
+    expect(button.textContent).toContain('Demander à la Forge');
+    button.click();
+    expect(atelier.openHostTerminal).toHaveBeenCalledOnceWith('h1');
+    const [commands, extras] = router.navigate.calls.mostRecent().args;
+    expect(commands).toEqual(['/atelier', 'wt9']);
+    const draft = (extras?.state as Record<string, string>)['radarDraft'];
+    expect(draft).toContain('« lzi-prod »');
+    expect(draft).toContain('2 pièges');
+    expect(draft).toContain('Montre-moi les changements avant de les écrire dans la carte.');
+  });
+
+  it('terminal refusé : le dit, sans naviguer ; hors ligne : geste désactivé', () => {
+    build({ 'vue-carte': 'liste', noeud: 'lzi' });
+    atelier.openHostTerminal.and.returnValue(throwError(() => new HttpErrorResponse({ status: 403 })));
+    (el('.forge-map__ask button') as HTMLButtonElement).click();
+    expect(snackBar.open).toHaveBeenCalledWith("Le terminal de ce poste n'a pas pu être ouvert. Rien n'a été envoyé.", 'Fermer', jasmine.anything());
+    expect(router.navigate.calls.all().some((c) => (c.args[0] as unknown[])[0] === '/atelier')).toBeFalse();
+
+    fixture.componentInstance.online.set(false);
+    fixture.detectChanges();
+    expect((el('.forge-map__ask button') as HTMLButtonElement).disabled).toBeTrue();
+    expect(text()).toContain('Poste hors ligne : la Forge ne peut pas agir.');
+  });
+
+  it('vue Signaux : la consolidation n’est lue qu’une fois par poste (SF-173-07)', () => {
+    build({ 'vue-carte': 'signaux' });
+    governance.hostMapConsolidation.calls.reset();
+    // relue une seule fois par poste
+    params.next(convertToParamMap({ 'vue-carte': 'signaux', noeud: 'x' }));
+    fixture.detectChanges();
+    expect(governance.hostMapConsolidation).not.toHaveBeenCalled();
+  });
+
+  it('vue Signaux : affiche les propositions et confie leur demande telle quelle', () => {
+    build({ 'vue-carte': 'signaux' });
+    governance.hostMapConsolidation.and.returnValue(of({ indexed: true, total: 1, proposals: [{
+      kind: 'DOUBLON', path: 'acces.md', summary: 'Le même fait est écrit 2 fois.',
+      facts: [{ path: 'acces.md', heading: 'Proxy', lineNo: 3, text: 'x' }], request: 'Garde-le une seule fois.',
+    }] }));
+    fixture.componentInstance.ref.set('h2');
+    fixture.detectChanges();
+    expect(text()).toContain('La carte gagnerait à être consolidée (1)');
+    expect(text()).toContain('acces.md § Proxy · L3');
+    const ask = all('.forge-map__ask-inline').find((b) => b.textContent?.includes('consolider')) as HTMLButtonElement;
+    ask.click();
+    const extras = router.navigate.calls.mostRecent().args[1];
+    expect((extras?.state as Record<string, string>)['radarDraft']).toBe('Garde-le une seule fois.');
   });
 
   it('sur téléphone, Plan devient la liste : aucun canevas', () => {

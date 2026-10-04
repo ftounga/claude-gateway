@@ -249,3 +249,7 @@ button.forge-map__crumb:hover { color: var(--cg-text-primary); text-decoration: 
 .forge-map__swatch--navy { background: var(--cg-navy); }
 .forge-map__swatch--trap { border-color: var(--cg-error); }
 .forge-map__swatch--stale { border-color: var(--cg-text-secondary); border-style: dashed; opacity: 0.55; }
+
+// AGIR DEPUIS LA CARTE (SF-173-07)
+.forge-map__ask { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.forge-map__ask-inline { align-self: flex-start; }
