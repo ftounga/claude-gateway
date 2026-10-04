@@ -2,7 +2,10 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
-import { TerminalAction, TerminalActionElsewhere } from '../models/terminal-actions.models';
+import {
+  TerminalAction, TerminalActionBoard, TerminalActionCreate, TerminalActionEdit,
+  TerminalActionElsewhere, TerminalActionStatusChange,
+} from '../models/terminal-actions.models';
 
 /**
  * **Les actions à faire d'un terminal** (F-154). Aucun appel ne porte d'identifiant de compte : la
@@ -34,6 +37,28 @@ export class TerminalActionsService {
   cancel(workspaceId: string, actionId: string, reason?: string): Observable<TerminalAction> {
     return this.http.post<TerminalAction>(
       `/api/workspaces/${workspaceId}/actions/${actionId}/cancel`, { reason: reason ?? null });
+  }
+
+  /** Le tableau : ce terminal, puis le reste du poste, et les compteurs (F-175 / SF-175-01). */
+  board(workspaceId: string): Observable<TerminalActionBoard> {
+    return this.http.get<TerminalActionBoard>(`/api/workspaces/${workspaceId}/actions/board`);
+  }
+
+  /** Ajout à la main. */
+  create(workspaceId: string, body: TerminalActionCreate): Observable<TerminalAction> {
+    return this.http.post<TerminalAction>(`/api/workspaces/${workspaceId}/actions`, body);
+  }
+
+  /** Changement d'état : À faire ↔ Demandé → Fait / Annulé. */
+  changeStatus(workspaceId: string, actionId: string,
+               change: TerminalActionStatusChange): Observable<TerminalAction> {
+    return this.http.post<TerminalAction>(
+      `/api/workspaces/${workspaceId}/actions/${actionId}/status`, change);
+  }
+
+  /** Édition d'une attente ouverte. */
+  edit(workspaceId: string, actionId: string, edit: TerminalActionEdit): Observable<TerminalAction> {
+    return this.http.patch<TerminalAction>(`/api/workspaces/${workspaceId}/actions/${actionId}`, edit);
   }
 
   /** « Rétablir » — la fermeture s'était trompée. */

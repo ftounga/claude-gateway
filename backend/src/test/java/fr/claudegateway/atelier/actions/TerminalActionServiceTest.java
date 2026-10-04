@@ -38,13 +38,17 @@ class TerminalActionServiceTest {
 
     private final UUID userId = UUID.randomUUID();
     private final UUID workspaceId = UUID.randomUUID();
+    private final UUID hostId = UUID.randomUUID();
 
     private TerminalActionService service;
 
     @BeforeEach
     void setUp() {
         service = new TerminalActionService(repository, workspaces, clock);
-        when(workspaces.requireOwned(userId, workspaceId)).thenReturn(new Workspace());
+        Workspace terminal = new Workspace();
+        terminal.setId(workspaceId);
+        terminal.setHostId(hostId);
+        when(workspaces.requireOwned(userId, workspaceId)).thenReturn(terminal);
         when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     }
 
@@ -55,7 +59,7 @@ class TerminalActionServiceTest {
                 .workspaceId(workspaceId)
                 .description(description)
                 .kind(TerminalActionKind.ACTION)
-                .status(TerminalActionStatus.OPEN)
+                .status(TerminalActionStatus.A_FAIRE)
                 .createdAt(clock.instant().atOffset(ZoneOffset.UTC))
                 .updatedAt(clock.instant().atOffset(ZoneOffset.UTC))
                 .build();
@@ -72,7 +76,7 @@ class TerminalActionServiceTest {
         assertThat(action.getBlocks()).isEqualTo("le déploiement du connecteur");
         assertThat(action.getPerson()).isEqualTo("Karim");
         assertThat(action.getKind()).isEqualTo(TerminalActionKind.MESSAGE);
-        assertThat(action.getStatus()).isEqualTo(TerminalActionStatus.OPEN);
+        assertThat(action.getStatus()).isEqualTo(TerminalActionStatus.A_FAIRE);
         assertThat(action.getUserId()).isEqualTo(userId);
         assertThat(action.getWorkspaceId()).isEqualTo(workspaceId);
         verify(repository).save(any());
@@ -106,8 +110,8 @@ class TerminalActionServiceTest {
     @Test
     @DisplayName("au-delà de la limite d'actions ouvertes, on le dit plutôt que d'empiler")
     void refusesWhenTheListIsSaturated() {
-        when(repository.countByUserIdAndWorkspaceIdAndStatus(userId, workspaceId,
-                TerminalActionStatus.OPEN))
+        when(repository.countByUserIdAndWorkspaceIdAndStatusIn(userId, workspaceId,
+                TerminalActionStatus.OPEN_STATES))
                 .thenReturn(TerminalActionService.MAX_OPEN_PER_WORKSPACE);
 
         assertThatThrownBy(() -> service.create(userId, workspaceId, null, "encore une", null, null, null))
@@ -126,7 +130,7 @@ class TerminalActionServiceTest {
         TerminalAction closed = service.close(userId, workspaceId, action.getId(),
                 "Karim a ouvert l'accès ce matin.");
 
-        assertThat(closed.getStatus()).isEqualTo(TerminalActionStatus.DONE);
+        assertThat(closed.getStatus()).isEqualTo(TerminalActionStatus.FAIT);
         assertThat(closed.getClosedReason()).isEqualTo("Karim a ouvert l'accès ce matin.");
         assertThat(closed.getClosedAt()).isNotNull();
     }
@@ -139,10 +143,10 @@ class TerminalActionServiceTest {
                 .thenReturn(Optional.of(action));
 
         service.cancel(userId, workspaceId, action.getId(), "Plus nécessaire.");
-        assertThat(action.getStatus()).isEqualTo(TerminalActionStatus.CANCELLED);
+        assertThat(action.getStatus()).isEqualTo(TerminalActionStatus.ANNULE);
 
         TerminalAction again = service.close(userId, workspaceId, action.getId(), "tardif");
-        assertThat(again.getStatus()).isEqualTo(TerminalActionStatus.CANCELLED); // inchangée
+        assertThat(again.getStatus()).isEqualTo(TerminalActionStatus.ANNULE); // inchangée
         assertThat(again.getClosedReason()).isEqualTo("Plus nécessaire.");
     }
 
@@ -156,7 +160,7 @@ class TerminalActionServiceTest {
 
         TerminalAction reopened = service.reopen(userId, workspaceId, action.getId());
 
-        assertThat(reopened.getStatus()).isEqualTo(TerminalActionStatus.OPEN);
+        assertThat(reopened.getStatus()).isEqualTo(TerminalActionStatus.A_FAIRE);
         assertThat(reopened.getClosedReason()).isNull();
         assertThat(reopened.getClosedAt()).isNull();
     }
@@ -194,15 +198,141 @@ class TerminalActionServiceTest {
     @Test
     @DisplayName("le menu liste les plus anciennes d'abord ; la pastille compte les ouvertes")
     void listsOldestFirstAndCounts() {
-        when(repository.findByUserIdAndWorkspaceIdAndStatusOrderByCreatedAtAsc(
-                userId, workspaceId, TerminalActionStatus.OPEN))
+        when(repository.findByUserIdAndWorkspaceIdAndStatusInOrderByCreatedAtAsc(
+                userId, workspaceId, TerminalActionStatus.OPEN_STATES))
                 .thenReturn(List.of(open("la plus ancienne"), open("la suivante")));
-        when(repository.countByUserIdAndWorkspaceIdAndStatus(
-                userId, workspaceId, TerminalActionStatus.OPEN)).thenReturn(2);
+        when(repository.countByUserIdAndWorkspaceIdAndStatusIn(
+                userId, workspaceId, TerminalActionStatus.OPEN_STATES)).thenReturn(2);
 
         assertThat(service.list(userId, workspaceId, true))
                 .extracting(TerminalAction::getDescription)
                 .containsExactly("la plus ancienne", "la suivante");
         assertThat(service.countOpen(userId, workspaceId)).isEqualTo(2);
+    }
+
+    // ---- F-175 / SF-175-01 : trois états et la portée poste ----
+
+    private TerminalAction stored(String description) {
+        TerminalAction action = open(description);
+        when(repository.findByIdAndUserIdAndWorkspaceId(action.getId(), userId, workspaceId))
+                .thenReturn(Optional.of(action));
+        return action;
+    }
+
+    @Test
+    @DisplayName("SF-175-01 : une attente naît « À faire », sur le poste de son terminal")
+    void createdOnTheHostOfItsTerminal() {
+        TerminalAction action = service.create(userId, workspaceId, null, "Demander l'accès",
+                null, null, null);
+        assertThat(action.getStatus()).isEqualTo(TerminalActionStatus.A_FAIRE);
+        assertThat(action.getHostId()).isEqualTo(hostId);
+    }
+
+    @Test
+    @DisplayName("SF-175-01 : À faire → Demandé pose la date du serveur, à qui et par où")
+    void requestStampsDateRecipientAndChannel() {
+        TerminalAction action = stored("Demander le compte forge");
+        action.setPerson("Zahi");
+
+        TerminalAction requested = service.changeStatus(userId, workspaceId, action.getId(),
+                TerminalActionStatus.DEMANDE, null, null, "Teams");
+
+        assertThat(requested.getStatus()).isEqualTo(TerminalActionStatus.DEMANDE);
+        assertThat(requested.getRequestedAt()).isEqualTo(clock.instant().atOffset(ZoneOffset.UTC));
+        assertThat(requested.getRequestedTo()).isEqualTo("Zahi"); // repris de la personne
+        assertThat(requested.getChannel()).isEqualTo("Teams");
+        assertThat(requested.isOpen()).isTrue();
+    }
+
+    @Test
+    @DisplayName("SF-175-01 : Demandé → À faire garde la trace ; → Fait pose la raison ; même état = sans effet")
+    void transitionsBackAndClose() {
+        TerminalAction action = stored("Obtenir la dérogation SCP");
+        service.changeStatus(userId, workspaceId, action.getId(), TerminalActionStatus.DEMANDE,
+                null, "Habib", "courriel");
+
+        TerminalAction back = service.changeStatus(userId, workspaceId, action.getId(),
+                TerminalActionStatus.A_FAIRE, null, null, null);
+        assertThat(back.getStatus()).isEqualTo(TerminalActionStatus.A_FAIRE);
+        assertThat(back.getRequestedAt()).isNotNull();
+
+        TerminalAction done = service.changeStatus(userId, workspaceId, action.getId(),
+                TerminalActionStatus.FAIT, "Habib a signé", null, null);
+        assertThat(done.getStatus()).isEqualTo(TerminalActionStatus.FAIT);
+        assertThat(done.getClosedReason()).isEqualTo("Habib a signé");
+        assertThat(done.getClosedAt()).isNotNull();
+
+        TerminalAction again = service.changeStatus(userId, workspaceId, action.getId(),
+                TerminalActionStatus.FAIT, "autre", null, null);
+        assertThat(again.getClosedReason()).isEqualTo("Habib a signé");
+    }
+
+    @Test
+    @DisplayName("SF-175-01 : « Rétablir » rend l'état d'avant — Demandé si une demande était partie")
+    void reopenRestoresThePreviousState() {
+        TerminalAction asked = stored("Relancer Zahi");
+        service.changeStatus(userId, workspaceId, asked.getId(), TerminalActionStatus.DEMANDE,
+                null, "Zahi", null);
+        service.close(userId, workspaceId, asked.getId(), "c'est bon");
+        assertThat(service.reopen(userId, workspaceId, asked.getId()).getStatus())
+                .isEqualTo(TerminalActionStatus.DEMANDE);
+
+        TerminalAction plain = stored("Vérifier le droit");
+        service.cancel(userId, workspaceId, plain.getId(), null);
+        assertThat(service.reopen(userId, workspaceId, plain.getId()).getStatus())
+                .isEqualTo(TerminalActionStatus.A_FAIRE);
+    }
+
+    @Test
+    @DisplayName("SF-175-01 : statut absent ou bornes dépassées sont refusés")
+    void refusesMissingStatusAndOversizedFields() {
+        TerminalAction action = stored("Demander");
+        assertThatThrownBy(() -> service.changeStatus(userId, workspaceId, action.getId(),
+                null, null, null, null)).isInstanceOf(InvalidTerminalActionException.class);
+        assertThatThrownBy(() -> service.changeStatus(userId, workspaceId, action.getId(),
+                TerminalActionStatus.DEMANDE, null, null,
+                "c".repeat(TerminalActionService.MAX_CHANNEL + 1)))
+                .isInstanceOf(InvalidTerminalActionException.class);
+        assertThatThrownBy(() -> service.changeStatus(userId, workspaceId, action.getId(),
+                TerminalActionStatus.DEMANDE, null,
+                "p".repeat(TerminalActionService.MAX_REQUESTED_TO + 1), null))
+                .isInstanceOf(InvalidTerminalActionException.class);
+    }
+
+    @Test
+    @DisplayName("SF-175-01 : l'édition change ce qui est donné ; une attente fermée ne s'édite pas")
+    void editsOpenOnly() {
+        TerminalAction action = stored("Demander l'accès");
+        TerminalAction edited = service.edit(userId, workspaceId, action.getId(),
+                "Demander l'accès VPN à Karim", null, "Karim", TerminalActionKind.MESSAGE);
+        assertThat(edited.getDescription()).isEqualTo("Demander l'accès VPN à Karim");
+        assertThat(edited.getPerson()).isEqualTo("Karim");
+        assertThat(edited.getKind()).isEqualTo(TerminalActionKind.MESSAGE);
+
+        service.close(userId, workspaceId, action.getId(), null);
+        assertThatThrownBy(() -> service.edit(userId, workspaceId, action.getId(),
+                "autre", null, null, null))
+                .isInstanceOf(InvalidTerminalActionException.class)
+                .hasMessageContaining("rétablissez");
+    }
+
+    @Test
+    @DisplayName("SF-175-01 : une clé déjà « Demandé » rend ALREADY_REQUESTED")
+    void recordingAnAlreadyRequestedKey() {
+        assertThat(TerminalActionService.outcomeOf(TerminalActionStatus.DEMANDE))
+                .isEqualTo(TerminalActionService.RecordingOutcome.ALREADY_REQUESTED);
+        assertThat(TerminalActionService.outcomeOf(TerminalActionStatus.A_FAIRE))
+                .isEqualTo(TerminalActionService.RecordingOutcome.ALREADY_OPEN);
+    }
+
+    @Test
+    @DisplayName("SF-175-01 : l'état d'un terminal d'autrui reste introuvable")
+    void statusChangeOnSomeoneElsesTerminalIsNotFound() {
+        UUID intruder = UUID.randomUUID();
+        when(workspaces.requireOwned(intruder, workspaceId))
+                .thenThrow(new WorkspaceNotFoundException("Workspace introuvable"));
+        assertThatThrownBy(() -> service.changeStatus(intruder, workspaceId, UUID.randomUUID(),
+                TerminalActionStatus.FAIT, null, null, null))
+                .isInstanceOf(WorkspaceNotFoundException.class);
     }
 }

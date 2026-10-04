@@ -18,6 +18,7 @@ public record TerminalActionElsewhereResponse(
         String blocks,
         String person,
         TerminalActionKind kind,
+        TerminalActionStatus status,
         OffsetDateTime createdAt) {
 
     public static TerminalActionElsewhereResponse from(TerminalAction action, String workspaceName) {
@@ -29,6 +30,7 @@ public record TerminalActionElsewhereResponse(
                 action.getBlocks(),
                 action.getPerson(),
                 action.getKind(),
+                action.getStatus(),
                 action.getCreatedAt());
     }
 }

@@ -128,7 +128,7 @@ class TerminalActionApiIntegrationTest {
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].description", is("Demander l'accès VPN à Karim")))
                 .andExpect(jsonPath("$[0].blocks", is("le déploiement du connecteur")))
-                .andExpect(jsonPath("$[0].status", is("OPEN")));
+                .andExpect(jsonPath("$[0].status", is("A_FAIRE")));
 
         mockMvc.perform(post("/api/workspaces/" + workspaceId + "/actions/" + actionId + "/close")
                         .contextPath("/api")
@@ -136,7 +136,7 @@ class TerminalActionApiIntegrationTest {
                         .content("{\"reason\":\"Karim a ouvert l'accès ce matin.\"}")
                         .header("Authorization", "Bearer " + aliceToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status", is("DONE")))
+                .andExpect(jsonPath("$.status", is("FAIT")))
                 .andExpect(jsonPath("$.closedReason", is("Karim a ouvert l'accès ce matin.")));
 
         // Le menu ne montre plus que ce qui reste à faire ; l'historique est demandable.
@@ -159,13 +159,13 @@ class TerminalActionApiIntegrationTest {
                         .contextPath("/api")
                         .header("Authorization", "Bearer " + aliceToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status", is("CANCELLED")));
+                .andExpect(jsonPath("$.status", is("ANNULE")));
 
         mockMvc.perform(post("/api/workspaces/" + workspaceId + "/actions/" + actionId + "/reopen")
                         .contextPath("/api")
                         .header("Authorization", "Bearer " + aliceToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status", is("OPEN")));
+                .andExpect(jsonPath("$.status", is("A_FAIRE")));
     }
 
     @Test
@@ -211,6 +211,144 @@ class TerminalActionApiIntegrationTest {
                         .header("Authorization", "Bearer " + aliceToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(2)));
+    }
+
+    // ---- F-175 / SF-175-01 : trois états, portée poste ----
+
+    private void attachToHost(String workspace, java.util.UUID hostId) {
+        var entity = workspaceRepository.findById(java.util.UUID.fromString(workspace)).orElseThrow();
+        entity.setHostId(hostId);
+        workspaceRepository.save(entity);
+    }
+
+    @Test
+    @DisplayName("SF-175-01 : À faire → Demandé → À faire → Fait, et l'édition, de bout en bout")
+    void statusAndEditEndToEnd() throws Exception {
+        String actionId = createAction(aliceToken, """
+                {"description":"Demander le compte forge CAPFM","person":"Zahi"}""");
+        String base = "/api/workspaces/" + workspaceId + "/actions/" + actionId;
+
+        mockMvc.perform(post(base + "/status").contextPath("/api")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"DEMANDE\",\"channel\":\"Teams\"}")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status", is("DEMANDE")))
+                .andExpect(jsonPath("$.requestedTo", is("Zahi")))
+                .andExpect(jsonPath("$.channel", is("Teams")))
+                .andExpect(jsonPath("$.requestedAt").isNotEmpty());
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .patch(base).contextPath("/api")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"description\":\"Obtenir le compte forge CAPFM\"}")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.description", is("Obtenir le compte forge CAPFM")))
+                .andExpect(jsonPath("$.status", is("DEMANDE")));
+
+        mockMvc.perform(post(base + "/status").contextPath("/api")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"FAIT\",\"note\":\"Zahi a créé le compte\"}")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status", is("FAIT")))
+                .andExpect(jsonPath("$.closedReason", is("Zahi a créé le compte")));
+
+        // Rétablir : la demande était partie, elle revient « Demandé ».
+        mockMvc.perform(post(base + "/reopen").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(jsonPath("$.status", is("DEMANDE")));
+
+        mockMvc.perform(post(base + "/status").contextPath("/api")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"INCONNU\"}")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("SF-175-01 : le tableau montre ce terminal, puis le reste du poste, et compte le poste")
+    void boardSpansTheHost() throws Exception {
+        java.util.UUID host = java.util.UUID.randomUUID();
+        String other = createWorkspace(aliceToken);
+        String hosted = createWorkspace(aliceToken);
+        attachToHost(workspaceId, host);
+        attachToHost(other, host);
+
+        String here = createAction(aliceToken, "{\"description\":\"Ici\"}");
+        mockMvc.perform(post("/api/workspaces/" + other + "/actions").contextPath("/api")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"description\":\"Ailleurs sur le poste\"}")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.hostId", is(host.toString())));
+        mockMvc.perform(post("/api/workspaces/" + hosted + "/actions").contextPath("/api")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"description\":\"Hébergé\"}")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/workspaces/" + workspaceId + "/actions/" + here + "/status")
+                        .contextPath("/api")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"DEMANDE\"}")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/workspaces/" + workspaceId + "/actions/board").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.hostId", is(host.toString())))
+                .andExpect(jsonPath("$.here", hasSize(1)))
+                .andExpect(jsonPath("$.here[0].description", is("Ici")))
+                .andExpect(jsonPath("$.host", hasSize(1)))
+                .andExpect(jsonPath("$.host[0].description", is("Ailleurs sur le poste")))
+                .andExpect(jsonPath("$.host[0].workspaceName", is("Connecteur AGENOR")))
+                .andExpect(jsonPath("$.aFaire", is(1)))
+                .andExpect(jsonPath("$.demande", is(1)))
+                .andExpect(jsonPath("$.oldestOpenAt").isNotEmpty());
+
+        // Le terminal hébergé ne voit que sa liste.
+        mockMvc.perform(get("/api/workspaces/" + hosted + "/actions/board").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.here", hasSize(1)))
+                .andExpect(jsonPath("$.host", hasSize(0)))
+                .andExpect(jsonPath("$.aFaire", is(1)));
+    }
+
+    @Test
+    @DisplayName("SF-175-01 ISOLATION — board, état, édition d'Alice : 404 pour Bob, même poste forgé")
+    void bobCannotReachAlicesBoardOrStatus() throws Exception {
+        java.util.UUID host = java.util.UUID.randomUUID();
+        attachToHost(workspaceId, host);
+        String actionId = createAction(aliceToken, "{\"description\":\"Secret d'Alice\"}");
+
+        String bobWorkspace = createWorkspace(bobToken);
+        attachToHost(bobWorkspace, host); // même poste forgé
+        mockMvc.perform(get("/api/workspaces/" + bobWorkspace + "/actions/board").contextPath("/api")
+                        .header("Authorization", "Bearer " + bobToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.here", hasSize(0)))
+                .andExpect(jsonPath("$.host", hasSize(0)))
+                .andExpect(jsonPath("$.aFaire", is(0)));
+
+        mockMvc.perform(get("/api/workspaces/" + workspaceId + "/actions/board").contextPath("/api")
+                        .header("Authorization", "Bearer " + bobToken))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/workspaces/" + workspaceId + "/actions/" + actionId + "/status")
+                        .contextPath("/api")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"FAIT\"}")
+                        .header("Authorization", "Bearer " + bobToken))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .patch("/api/workspaces/" + workspaceId + "/actions/" + actionId)
+                        .contextPath("/api")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"description\":\"volé\"}")
+                        .header("Authorization", "Bearer " + bobToken))
+                .andExpect(status().isNotFound());
     }
 
     @Test

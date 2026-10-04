@@ -134,7 +134,7 @@ class TerminalActionToolTest {
     @Test
     @DisplayName("ferme l'action portant la clé, et garde LA PAROLE de l'utilisateur comme raison")
     void closesByKeyAndKeepsTheUserWords() {
-        TerminalAction open = existing(TerminalActionStatus.OPEN, "acces-vpn-karim");
+        TerminalAction open = existing(TerminalActionStatus.A_FAIRE, "acces-vpn-karim");
         when(repository.findByUserIdAndWorkspaceIdAndDedupKey(userId, workspaceId, "acces-vpn-karim"))
                 .thenReturn(Optional.of(open));
         when(repository.findByIdAndUserIdAndWorkspaceId(open.getId(), userId, workspaceId))
@@ -144,7 +144,7 @@ class TerminalActionToolTest {
                 {"key":"acces-vpn-karim","reason":"Karim a ouvert l'accès ce matin."}"""));
 
         assertThat(outcome.error()).isFalse();
-        assertThat(open.getStatus()).isEqualTo(TerminalActionStatus.DONE);
+        assertThat(open.getStatus()).isEqualTo(TerminalActionStatus.FAIT);
         assertThat(open.getClosedReason()).isEqualTo("Karim a ouvert l'accès ce matin.");
         assertThat(outcome.content())
                 .contains("Action close")
@@ -155,7 +155,7 @@ class TerminalActionToolTest {
     @Test
     @DisplayName("« ça n'avait pas lieu d'être » annule, ce n'est PAS « c'est fait »")
     void cancelledIsNotDone() {
-        TerminalAction open = existing(TerminalActionStatus.OPEN, "acces-vpn-karim");
+        TerminalAction open = existing(TerminalActionStatus.A_FAIRE, "acces-vpn-karim");
         when(repository.findByUserIdAndWorkspaceIdAndDedupKey(userId, workspaceId, "acces-vpn-karim"))
                 .thenReturn(Optional.of(open));
         when(repository.findByIdAndUserIdAndWorkspaceId(open.getId(), userId, workspaceId))
@@ -164,7 +164,7 @@ class TerminalActionToolTest {
         TerminalActionToolExecutor.Outcome outcome = executor.close(userId, workspace, input("""
                 {"key":"acces-vpn-karim","reason":"On passe par le bastion.","cancelled":true}"""));
 
-        assertThat(open.getStatus()).isEqualTo(TerminalActionStatus.CANCELLED);
+        assertThat(open.getStatus()).isEqualTo(TerminalActionStatus.ANNULE);
         assertThat(outcome.content()).contains("Action annulée").contains("ne la réinscris pas");
     }
 
@@ -185,7 +185,7 @@ class TerminalActionToolTest {
     @Test
     @DisplayName("une action déjà fermée garde sa raison d'origine — rien n'est réécrit")
     void anAlreadyClosedActionKeepsItsOriginalReason() {
-        TerminalAction done = existing(TerminalActionStatus.DONE, "acces-vpn-karim");
+        TerminalAction done = existing(TerminalActionStatus.FAIT, "acces-vpn-karim");
         done.setClosedReason("la première raison");
         when(repository.findByUserIdAndWorkspaceIdAndDedupKey(userId, workspaceId, "acces-vpn-karim"))
                 .thenReturn(Optional.of(done));
@@ -246,7 +246,7 @@ class TerminalActionToolTest {
         assertThat(saved.getValue().getUserId()).isEqualTo(userId);
         assertThat(saved.getValue().getWorkspaceId()).isEqualTo(workspaceId);
         assertThat(saved.getValue().getDedupKey()).isEqualTo("acces-vpn-karim");
-        assertThat(saved.getValue().getStatus()).isEqualTo(TerminalActionStatus.OPEN);
+        assertThat(saved.getValue().getStatus()).isEqualTo(TerminalActionStatus.A_FAIRE);
     }
 
     @Test
@@ -273,7 +273,7 @@ class TerminalActionToolTest {
     @DisplayName("le même blocage rappelé ne fait pas une seconde ligne")
     void theSameBlockerDoesNotMakeTwoLines() {
         when(repository.findByUserIdAndWorkspaceIdAndDedupKey(userId, workspaceId, "acces-vpn-karim"))
-                .thenReturn(Optional.of(existing(TerminalActionStatus.OPEN, "acces-vpn-karim")));
+                .thenReturn(Optional.of(existing(TerminalActionStatus.A_FAIRE, "acces-vpn-karim")));
 
         TerminalActionToolExecutor.Outcome outcome = executor.execute(userId, workspace, input("""
                 {"description":"Demander l'accès VPN à Karim","key":"acces-vpn-karim"}"""));
@@ -287,7 +287,7 @@ class TerminalActionToolTest {
     @DisplayName("une action ANNULÉE par l'utilisateur n'est jamais recréée — sa parole prime")
     void aCancelledActionIsNeverRecreated() {
         when(repository.findByUserIdAndWorkspaceIdAndDedupKey(userId, workspaceId, "acces-vpn-karim"))
-                .thenReturn(Optional.of(existing(TerminalActionStatus.CANCELLED, "acces-vpn-karim")));
+                .thenReturn(Optional.of(existing(TerminalActionStatus.ANNULE, "acces-vpn-karim")));
 
         TerminalActionToolExecutor.Outcome outcome = executor.execute(userId, workspace, input("""
                 {"description":"Demander l'accès VPN à Karim","key":"acces-vpn-karim"}"""));
@@ -301,7 +301,7 @@ class TerminalActionToolTest {
     @DisplayName("une action déjà faite le dit, et invite à chercher une autre cause")
     void anAlreadyDoneActionSaysSo() {
         when(repository.findByUserIdAndWorkspaceIdAndDedupKey(userId, workspaceId, "acces-vpn-karim"))
-                .thenReturn(Optional.of(existing(TerminalActionStatus.DONE, "acces-vpn-karim")));
+                .thenReturn(Optional.of(existing(TerminalActionStatus.FAIT, "acces-vpn-karim")));
 
         assertThat(executor.execute(userId, workspace, input("""
                 {"description":"Demander l'accès VPN à Karim","key":"acces-vpn-karim"}""")).content())
@@ -338,12 +338,12 @@ class TerminalActionToolTest {
     @Test
     @DisplayName("la liste saturée le dit ; la base en panne aussi — le tour continue dans les deux cas")
     void saturationAndOutageAreToldNotThrown() {
-        when(repository.countByUserIdAndWorkspaceIdAndStatus(userId, workspaceId,
-                TerminalActionStatus.OPEN)).thenReturn(TerminalActionService.MAX_OPEN_PER_WORKSPACE);
+        when(repository.countByUserIdAndWorkspaceIdAndStatusIn(userId, workspaceId,
+                TerminalActionStatus.OPEN_STATES)).thenReturn(TerminalActionService.MAX_OPEN_PER_WORKSPACE);
         assertThat(executor.execute(userId, workspace, input("""
                 {"description":"encore une"}""")).content()).contains("actions ouvertes");
 
-        when(repository.countByUserIdAndWorkspaceIdAndStatus(any(), any(), any()))
+        when(repository.countByUserIdAndWorkspaceIdAndStatusIn(any(), any(), any()))
                 .thenThrow(new IllegalStateException("base HS"));
         TerminalActionToolExecutor.Outcome outage = executor.execute(userId, workspace, input("""
                 {"description":"demander l'accès"}"""));
