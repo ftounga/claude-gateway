@@ -83,6 +83,13 @@ public class HostMapFile {
     @Column(name = "digest", length = 64)
     private String digest;
 
+    /**
+     * La version de ce fichier que l'index de la carte reflète (F-174 / SF-174-02) : différente de
+     * {@link #digest}, ou nulle, le fichier est à ré-indexer.
+     */
+    @Column(name = "indexed_digest", length = 64)
+    private String indexedDigest;
+
     @Column(name = "observed_at", nullable = false)
     private OffsetDateTime observedAt;
 }

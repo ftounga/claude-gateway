@@ -32,6 +32,16 @@ public interface HostMapFileRepository extends JpaRepository<HostMapFile, UUID> 
      */
     long countByUserId(UUID userId);
 
+    /**
+     * Les fichiers dont l'index de la carte est en retard (F-174 / SF-174-02) : jamais indexés, ou
+     * changés depuis. Balayage du travailleur, tous comptes confondus : chaque ré-indexation n'écrit
+     * que sous le couple {@code (user_id, host_id)} du fichier lui-même.
+     */
+    @org.springframework.data.jpa.repository.Query("SELECT f.id FROM HostMapFile f "
+            + "WHERE f.digest IS NOT NULL AND (f.indexedDigest IS NULL OR f.indexedDigest <> f.digest) "
+            + "ORDER BY f.observedAt ASC")
+    List<UUID> findStaleIndexIds(org.springframework.data.domain.Pageable page);
+
     /** Purge à la suppression d'un poste : la copie ne survit pas à la machine. */
     void deleteByUserIdAndHostId(UUID userId, UUID hostId);
 }
