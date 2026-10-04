@@ -760,6 +760,12 @@ export interface AtelierStreamHandlers {
   onPage?: (event: AtelierPageEvent) => void;
 
   /**
+   * **Une carte d'attente** (F-175 / SF-175-05) : inscrite, déjà là, demandée, ou fermeture proposée.
+   * Optionnel : un backend antérieur n'émet jamais cet événement.
+   */
+  onAttente?: (event: AtelierAttenteEvent) => void;
+
+  /**
    * Numéro d'ordre du dernier événement reçu (F-84 / SF-84-02), lu dans le champ `id:` du
    * protocole SSE. C'est le **curseur** : en se rebranchant, l'écran le renvoie et ne reçoit que
    * ce qu'il a manqué — ni doublon, ni trou.
@@ -1133,6 +1139,12 @@ export interface AtelierTerminalBlock {
   page?: AtelierTerminalPage | null;
 
   /**
+   * **La carte d'une attente** (F-175 / SF-175-05), dans tout terminal : « Ajouté à tes attentes »,
+   * « Déjà demandé », « Marqué demandé », ou « Je pense que c'est réglé » avec [Confirmer] [Pas encore].
+   */
+  attente?: AtelierTerminalAttente | null;
+
+  /**
    * **Un marqueur de flux** (F-162 / SF-162-03) : « Conversation compactée · N tours résumés » ou
    * « Détail rappelé · tour N ». Ce n'est ni une sortie de commande ni une carte — c'est une trace
    * discrète, persistante dans le fil, de ce que la passerelle a fait pour tenir le contexte. Absent
@@ -1262,6 +1274,29 @@ export interface AtelierTerminalPage {
   title: string;
   description: string | null;
   version: number;
+}
+
+/** **Une carte d'attente** telle que la porte un bloc du terminal (F-175 / SF-175-05) — un instantané. */
+export interface AtelierTerminalAttente {
+  actionId: string;
+  workspaceId: string;
+  kind: 'ADDED' | 'ALREADY' | 'REQUESTED' | 'PROPOSED' | string;
+  /** Comment une attente déjà là a été reconnue : KEY, KEY_ON_HOST, MEANING ; NONE sinon. */
+  match: string;
+  description: string;
+  status: 'A_FAIRE' | 'DEMANDE' | 'FAIT' | 'ANNULE' | string;
+  requestedTo: string | null;
+  requestedAt: string | null;
+  channel: string | null;
+  proposedStatus: 'FAIT' | 'ANNULE' | string | null;
+  proposedReason: string | null;
+  createdAt: string | null;
+}
+
+/** Charge utile de l'événement SSE `attente` (F-175 / SF-175-05). */
+export interface AtelierAttenteEvent {
+  toolUseId: string;
+  attente: AtelierTerminalAttente;
 }
 
 /** Charge utile de l'événement SSE `page` (F-109 / SF-109-03). */

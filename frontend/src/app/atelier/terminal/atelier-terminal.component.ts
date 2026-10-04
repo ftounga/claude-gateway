@@ -147,7 +147,8 @@ import { PageBlockComponent } from './page-block.component';
 import { PagePanelComponent } from './page-panel.component';
 import { TerminalActionsPanelComponent } from './terminal-actions-panel.component';
 import { TerminalAttentesBandComponent } from './terminal-attentes-band.component';
-import { TerminalActionBoard } from '../../core/models/terminal-actions.models';
+import { AttenteCardComponent } from './attente-card.component';
+import { TerminalAction, TerminalActionBoard } from '../../core/models/terminal-actions.models';
 import { AtelierTerminalDemandeComponent } from './atelier-terminal-demande.component';
 import { TerminalActionsService } from '../../core/services/terminal-actions.service';
 import {
@@ -210,7 +211,8 @@ export interface SlashMenuEntry {
   imports: [
     FormsModule, ForgeBreadcrumbComponent, LiveBadgeComponent, MarkdownPipe, MatButtonModule,
     TeamsLinkBadgeComponent, NgTemplateOutlet, TerminalEmailComponent, PageBlockComponent, PagePanelComponent,
-    TerminalActionsPanelComponent, TerminalAttentesBandComponent, AtelierTerminalDemandeComponent,
+    TerminalActionsPanelComponent, TerminalAttentesBandComponent, AttenteCardComponent,
+    AtelierTerminalDemandeComponent,
     AtelierSlashPanelComponent, AtelierSlashHelpComponent, AtelierSlashCostComponent,
     AtelierSlashContexteComponent, AtelierSlashQuotaComponent, AtelierSlashBudgetComponent,
     AtelierSlashPosteComponent, AtelierSlashSujetComponent,
@@ -644,6 +646,25 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
   closeActions(): void {
     this.actionsOpen.set(false);
+  }
+
+  /**
+   * L'état vivant d'une attente pour sa carte dans le fil (F-175 / SF-175-05) : `undefined` tant que le
+   * tableau n'est pas chargé, `null` si l'attente n'y est plus (fermée depuis longtemps, hors portée).
+   */
+  liveAttente(actionId: string): TerminalAction | null | undefined {
+    const board = this.attentesBoard();
+    if (!board) {
+      return undefined;
+    }
+    return [...board.here, ...board.host].find(a => a.id === actionId) ?? null;
+  }
+
+  /** Une carte du fil a fait un geste : la bande et les autres cartes suivent. */
+  reloadAttentes(): void {
+    if (this.projectId) {
+      this.loadActionCount(this.projectId);
+    }
   }
 
   /** Le panneau a relu le tableau après un geste : la bande et la pastille suivent. */

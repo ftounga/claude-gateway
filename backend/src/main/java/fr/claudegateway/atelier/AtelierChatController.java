@@ -663,6 +663,12 @@ public class AtelierChatController {
                     turn.publish("page", new StreamPage(toolUseId, page));
                 }
 
+                /** La carte d'une attente (F-175 / SF-175-05), au fil de l'eau. */
+                @Override
+                public void onAttente(String toolUseId, fr.claudegateway.atelier.actions.AttenteBlock attente) {
+                    turn.publish("attente", new StreamAttente(toolUseId, attente));
+                }
+
                 /**
                  * Une demande d'autorisation n'est plus seulement relayée : elle devient l'ÉTAT du
                  * tour (F-84 / SF-84-03). Un écran qui arrive après coup la trouve encore en
@@ -895,6 +901,10 @@ public class AtelierChatController {
 
     /** Une page publiée relayée au fil de l'eau (F-109 / SF-109-03), rejouée par la transcription au rechargement. */
     record StreamPage(String toolUseId, fr.claudegateway.pages.PageBlock page) {
+    }
+
+    /** La carte d'une attente relayée au fil de l'eau (F-175 / SF-175-05), rejouée par la transcription. */
+    record StreamAttente(String toolUseId, fr.claudegateway.atelier.actions.AttenteBlock attente) {
     }
 
     /**

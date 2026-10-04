@@ -66,7 +66,20 @@ public record AtelierTurnReport(List<Object> blocks, int omittedBlocks, long inp
             String output, boolean hasOutput, boolean error, boolean expanded,
             fr.claudegateway.teams.block.TeamsBlockCard card,
             fr.claudegateway.mail.ClientMailReceipt email,
-            fr.claudegateway.pages.PageBlock page) {
+            fr.claudegateway.pages.PageBlock page,
+            fr.claudegateway.atelier.actions.AttenteBlock attente) {
+
+        /**
+         * Forme d'avant F-175 : aucune carte d'attente. La carte (F-175 / SF-175-05) n'est portée que par
+         * les appels {@code record_blocker}, {@code update_blocker} et {@code close_blocker}.
+         */
+        public Block(String tool, String command, String toolUseId, String threadId, String output,
+                boolean hasOutput, boolean error, boolean expanded,
+                fr.claudegateway.teams.block.TeamsBlockCard card,
+                fr.claudegateway.mail.ClientMailReceipt email,
+                fr.claudegateway.pages.PageBlock page) {
+            this(tool, command, toolUseId, threadId, output, hasOutput, error, expanded, card, email, page, null);
+        }
 
         /**
          * Forme d'avant F-109 : aucune page. Le bloc « Page publiée » (F-109 / SF-109-03) n'est porté que par
@@ -186,7 +199,9 @@ public record AtelierTurnReport(List<Object> blocks, int omittedBlocks, long inp
                 // Le reçu d'un courriel (F-110 / SF-110-02) survit au bornage pour la même raison.
                 block.email(),
                 // La page publiée (F-109 / SF-109-03) aussi : ce n'est pas du texte.
-                block.page());
+                block.page(),
+                // La carte d'attente (F-175 / SF-175-05) aussi.
+                block.attente());
     }
 
     /**

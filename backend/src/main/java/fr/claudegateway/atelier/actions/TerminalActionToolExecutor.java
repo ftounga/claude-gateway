@@ -63,7 +63,8 @@ public class TerminalActionToolExecutor {
             TerminalActionService.AgentChange change = service.proposeClose(
                     userId, workspace, key, id, text(input, "reason"), cancelled);
             return new Outcome(proposalMessage(change, key.isEmpty() ? id : key, cancelled), false,
-                    change.action());
+                    change.action(), change.outcome() == TerminalActionService.AgentChangeOutcome.PROPOSED
+                            ? AttenteBlock.of(change.action(), AttenteBlock.PROPOSED, null) : null);
         } catch (InvalidTerminalActionException e) {
             return Outcome.error(e.getMessage());
         } catch (RuntimeException e) {
@@ -92,7 +93,10 @@ public class TerminalActionToolExecutor {
         try {
             TerminalActionService.AgentChange change = service.agentUpdate(userId, workspace, key, id,
                     status, text(input, "requested_to"), text(input, "channel"));
-            return new Outcome(updateMessage(change, key.isEmpty() ? id : key), false, change.action());
+            boolean requested = change.outcome() == TerminalActionService.AgentChangeOutcome.CHANGED
+                    && change.action().getStatus() == TerminalActionStatus.DEMANDE;
+            return new Outcome(updateMessage(change, key.isEmpty() ? id : key), false, change.action(),
+                    requested ? AttenteBlock.of(change.action(), AttenteBlock.REQUESTED, null) : null);
         } catch (InvalidTerminalActionException e) {
             return Outcome.error(e.getMessage());
         } catch (RuntimeException e) {
@@ -157,7 +161,7 @@ public class TerminalActionToolExecutor {
             TerminalActionService.Recording recording = service.record(userId, workspace.getId(), null,
                     description, text(input, "blocks"), text(input, "person"), kind,
                     text(input, "key"));
-            return new Outcome(message(recording), false, recording.action());
+            return new Outcome(message(recording), false, recording.action(), cardOf(recording));
         } catch (InvalidTerminalActionException e) {
             return Outcome.error(e.getMessage());
         } catch (RuntimeException e) {
@@ -245,10 +249,28 @@ public class TerminalActionToolExecutor {
     }
 
     /** Le résultat rendu à la boucle : le texte lu par l'agent, l'erreur, et l'action concernée. */
-    public record Outcome(String content, boolean error, TerminalAction action) {
+    public record Outcome(String content, boolean error, TerminalAction action, AttenteBlock card) {
+
+        public Outcome(String content, boolean error, TerminalAction action) {
+            this(content, error, action, null);
+        }
 
         static Outcome error(String message) {
-            return new Outcome(message, true, null);
+            return new Outcome(message, true, null, null);
         }
+    }
+
+    /**
+     * La carte du fil pour une inscription (F-175 / SF-175-05) : « Ajouté à tes attentes » quand c'est
+     * neuf, « Déjà demandé / déjà là » quand une attente ouverte a été reconnue. Rien pour une attente
+     * annulée ou faite : le texte de l'outil suffit, une carte y ferait croire à une attente vivante.
+     */
+    static AttenteBlock cardOf(TerminalActionService.Recording recording) {
+        return switch (recording.outcome()) {
+            case RECORDED -> AttenteBlock.of(recording.action(), AttenteBlock.ADDED, null);
+            case ALREADY_OPEN, ALREADY_REQUESTED ->
+                    AttenteBlock.of(recording.action(), AttenteBlock.ALREADY, recording.match().name());
+            case REFUSED_BY_USER, ALREADY_DONE -> null;
+        };
     }
 }

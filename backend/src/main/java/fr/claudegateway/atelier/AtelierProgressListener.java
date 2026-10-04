@@ -232,6 +232,17 @@ public interface AtelierProgressListener {
     }
 
     /**
+     * <b>Une carte d'attente</b> (F-175 / SF-175-05) : inscrite, déjà là, passée à « Demandé », ou fermeture
+     * proposée — admise dans tout terminal, comme la page : ce n'est pas une sortie de commande.
+     *
+     * @param toolUseId identifiant de l'appel {@code record_blocker} / {@code update_blocker} / {@code close_blocker}
+     * @param attente   l'instantané de l'attente
+     */
+    default void onAttente(String toolUseId, fr.claudegateway.atelier.actions.AttenteBlock attente) {
+        // Aucun relais : la carte reste dans la transcription du tour.
+    }
+
+    /**
      * <b>Le poste de ce projet vient de refuser un appel : il est hors ligne</b> (F-97 / SF-97-02).
      *
      * <p>Sans cet événement, un {@code runner_unavailable} ne sortait de la boucle qu'en prose, dans
