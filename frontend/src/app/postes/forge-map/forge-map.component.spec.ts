@@ -157,6 +157,23 @@ describe('ForgeMapComponent (F-173 / SF-173-02)', () => {
     expect(governance.hostMapGraph).toHaveBeenCalledTimes(1);
   });
 
+  it('la fiche dit comment atteindre la ressource ; une étape navigue (SF-173-05)', () => {
+    build({ 'vue-carte': 'liste', noeud: 'lzi' }, of(mapGraph(
+      [
+        mapNode('compte', { kind: 'compte_aws', label: 'compte prod', children: 1 }),
+        mapNode('lzi', { parentId: 'compte', depth: 1, label: 'lzi-prod', state: 'joignable' }),
+        mapNode('proxy', { kind: 'proxy', label: 'netskope' }),
+      ],
+      { edges: [{ id: 'e', source: 'proxy', target: 'compte', nature: 'accede_a' }] },
+    )));
+    const hops = all('.forge-map__hop');
+    expect(hops.map((h) => h.querySelector('button, .forge-map__hop-label')?.textContent?.trim()))
+      .toEqual(['Ce poste', 'netskope', 'compte prod', 'lzi-prod']);
+    expect(hops[3].textContent).toContain('ouvert');
+    (hops[1].querySelector('button') as HTMLButtonElement).click();
+    expect(router.navigate).toHaveBeenCalledWith([], jasmine.objectContaining({ queryParams: { noeud: 'proxy' } }));
+  });
+
   it('sur téléphone, Plan devient la liste : aucun canevas', () => {
     mobile = true;
     build();
