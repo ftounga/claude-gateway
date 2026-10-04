@@ -25,6 +25,11 @@ public final class HostMapFactsBlock {
     static final String MORE_NOTICE =
             "… d'autres faits de la carte répondent aussi : ouvre le fichier cité si besoin.\n";
 
+    /** La consigne des pièges, ajoutée seulement s'il y en a un (SF-174-04). */
+    static final String PITFALL_NOTICE =
+            "Ce qui est marqué « piège » est une erreur déjà commise ou un comportement trompeur sur ce "
+                    + "poste : tiens-en compte AVANT d'agir.\n";
+
     private HostMapFactsBlock() {
     }
 
@@ -43,24 +48,52 @@ public final class HostMapFactsBlock {
         StringBuilder body = new StringBuilder();
         boolean anyStale = false;
         boolean truncated = false;
+        boolean anyPitfall = false;
         int budget = maxChars - HostFactLookup.HEADER.length() - HostFactLookup.STALE_NOTICE.length()
-                - MORE_NOTICE.length();
+                - PITFALL_NOTICE.length() - MORE_NOTICE.length();
         for (HostMapSearch.Hit hit : hits) {
             HostMapFact fact = hit.fact();
             boolean stale = HostFactLookup.isStale(fact.getText(), today, maxAgeDays);
-            String line = line(fact, stale ? HostFactLookup.STALE_MARK : "");
+            boolean pitfall = HostMapFact.PIEGE.equals(fact.getKind());
+            String line = line(fact, marks(fact, today) + (stale ? HostFactLookup.STALE_MARK : ""));
             if (body.length() + line.length() > budget) {
                 truncated = true;
                 break;
             }
             anyStale |= stale;
+            anyPitfall |= pitfall;
             body.append(line);
         }
         if (body.length() == 0) {
             return null;
         }
-        return HostFactLookup.HEADER + (anyStale ? HostFactLookup.STALE_NOTICE : "") + body
-                + (truncated ? MORE_NOTICE : "");
+        return HostFactLookup.HEADER + (anyPitfall ? PITFALL_NOTICE : "")
+                + (anyStale ? HostFactLookup.STALE_NOTICE : "") + body + (truncated ? MORE_NOTICE : "");
+    }
+
+    /**
+     * Les marques de nature d'un fait (SF-174-04) : {@code ⟨piège⟩}, ou
+     * {@code ⟨échéance AAAA-MM-JJ — dans N j⟩} / {@code — dépassée depuis N j}.
+     */
+    public static String marks(HostMapFact fact, LocalDate today) {
+        if (HostMapFact.PIEGE.equals(fact.getKind())) {
+            return "  ⟨piège⟩";
+        }
+        if (HostMapFact.ECHEANCE.equals(fact.getKind()) && fact.getDueOn() != null) {
+            StringBuilder mark = new StringBuilder("  ⟨échéance ").append(fact.getDueOn());
+            if (today != null) {
+                long days = java.time.temporal.ChronoUnit.DAYS.between(today, fact.getDueOn());
+                if (days > 0) {
+                    mark.append(" — dans ").append(days).append(" j");
+                } else if (days == 0) {
+                    mark.append(" — aujourd'hui");
+                } else {
+                    mark.append(" — dépassée depuis ").append(-days).append(" j");
+                }
+            }
+            return mark.append('⟩').toString();
+        }
+        return "";
     }
 
     /** Une ligne du bloc : le fait, sa source, et ses marques. */

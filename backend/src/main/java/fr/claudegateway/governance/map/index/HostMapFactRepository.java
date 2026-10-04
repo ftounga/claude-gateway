@@ -22,6 +22,10 @@ public interface HostMapFactRepository extends JpaRepository<HostMapFact, UUID> 
 
     long countByUserIdAndHostId(UUID userId, UUID hostId);
 
+    /** Les faits d'une nature donnée (pièges, échéances) sur la carte de CE poste (SF-174-04). */
+    List<HostMapFact> findByUserIdAndHostIdAndKindInOrderByPathAscLineNoAsc(UUID userId, UUID hostId,
+            Collection<String> kinds);
+
     /**
      * Les faits dont la colonne d'identifiants correspond au motif, sur la carte de CE poste. Le
      * motif est bâti par {@link HostMapLikes#exactIdentifier(String)} (égalité exacte, jokers

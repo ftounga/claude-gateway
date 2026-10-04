@@ -121,8 +121,9 @@ public class HostMapKnowledgeProvider implements HostKnowledgeSource {
             if (!search.hasIndex(userId, hostId)) {
                 return null;
             }
+            // SF-174-04 (D7) : la date du jour fait passer les échéances proches en tête.
             HostMapSearch.Result result = search.search(userId, hostId, question,
-                    indexProperties.maxFacts());
+                    indexProperties.maxFacts(), today);
             if (result.isEmpty()) {
                 return null;
             }
