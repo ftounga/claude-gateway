@@ -312,6 +312,30 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   - **Aucune clé étrangère** vers `workspaces`/`runner_hosts`, même choix que `usage_turns`,
     `host_map_files` et `prompt_source_files`. Purge explicite à la suppression du compte
     (`deleteByUserId`).
+- **host_map_lookups** — **journal des consultations de la carte** par la gateway (F-174 /
+  SF-174-01, migration `138`). Une ligne par tour d'un poste à carte (`kind = TURN`) et par appel de
+  l'outil `carte_chercher` (`kind = TOOL`) : `strategy` (`NONE` / `LEXICAL` / `HYBRID`), `facts_count`,
+  `chars`, `pitfalls_count`, `deadlines_count`, `sources` (fichiers cités). **Aucun contenu** (ni
+  question, ni fait). Index `(user_id, host_id, created_at)`. Lu par la mesure avant / après
+  (`GET /admin/map-index/measure`, SF-174-07) avec `runner_audit` (fouilles de la carte par l'agent).
+- **host_map_sections / host_map_facts / host_map_entities / host_map_relations** — **l'index de la
+  carte** (F-174 / SF-174-02, migration `139` ; `host_map_facts.embedding vector(1536)` + hnsw,
+  migration `140`, PostgreSQL seulement). **Lecture dérivée** de `host_map_files` (D1 : le Markdown
+  reste la référence ; l'index se reconstruit, rien n'est écrit sur le poste). `host_map_files`
+  gagne `indexed_digest` : différent de `digest` ⇒ fichier à ré-indexer (rétro-remplissage naturel).
+  - `host_map_sections` : une par titre `##` (`path`, `heading`, `ordinal`, `fingerprint` SHA-256,
+    `status` PENDING/DONE/SKIPPED/FAILED, `attempts`, `input_tokens`, `output_tokens`, `model`,
+    `extracted_at`). Extraction **incrémentale** : seule une section dont l'empreinte change est relue.
+  - `host_map_facts` : une par ligne porteuse (`line_no`, `text` mot pour mot, `kind`
+    FAIT/PIEGE/ECHEANCE, `due_on`, `observed_on`, `identifiers` exacts encadrés de `\n`).
+  - `host_map_entities` : ressources (`kind`, `label`, `label_norm`, `identifiers`, `attributes` JSON,
+    `state`, `origin` MOTIF = motif déterministe / MODELE = lu par Claude via `AIProvider`, identifiants
+    vérifiés contre le texte).
+  - `host_map_relations` : liens par libellé (`from_label`, `to_label`, `nature`).
+  - Faits, entités, relations : **clé étrangère vers leur section, en cascade**. `user_id` + `host_id`
+    partout ; toute lecture filtre les deux ; purge nommée au compte et au poste (`HostMapIndexPurge`).
+  - Tenue asynchrone (`HostMapIndexWorker`, 60 s, bornes par passe) ; coupe-circuit
+    `APP_MAP_INDEX_ENABLED` ; modèle `APP_MAP_INDEX_MODEL` (défaut `claude-sonnet-5-5`).
 - **resolution_memory** — mémoire de résolutions « question → conclusion (+ fichiers touchés) » des
   tours **aboutis**, PAR POSTE, pour proposer une résolution déjà trouvée sur une question similaire
   (F-148 / SF-148-08, migration `128`). Append par tour abouti ; le rappel se fait par **similarité
