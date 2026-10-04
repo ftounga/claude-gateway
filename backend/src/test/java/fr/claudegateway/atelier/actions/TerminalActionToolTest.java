@@ -398,4 +398,87 @@ class TerminalActionToolTest {
         assertThat(outage.error()).isTrue();
         assertThat(outage.content()).contains("n'a pas pu être inscrite");
     }
+
+    // --- Déjà demandé (F-175 / SF-175-03) -----------------------------------------------------
+
+    @Test
+    @DisplayName("SF-175-03 : la même clé OUVERTE dans un autre terminal du poste n'est pas réinscrite")
+    void theSameKeyElsewhereOnTheHostIsRecognised() {
+        UUID hostId = UUID.randomUUID();
+        workspace.setHostId(hostId);
+        TerminalAction elsewhere = existing(TerminalActionStatus.DEMANDE, "compte-forge-capfm");
+        elsewhere.setWorkspaceId(UUID.randomUUID());
+        elsewhere.setHostId(hostId);
+        elsewhere.setRequestedTo("Zahi");
+        when(repository.findByUserIdAndWorkspaceIdAndDedupKey(userId, workspaceId, "compte-forge-capfm"))
+                .thenReturn(Optional.empty());
+        when(repository.findByUserIdAndHostIdAndDedupKeyOrderByCreatedAtDesc(userId, hostId, "compte-forge-capfm"))
+                .thenReturn(java.util.List.of(elsewhere));
+
+        TerminalActionToolExecutor.Outcome outcome = executor.execute(userId, workspace, input("""
+                {"description":"Demander le compte forge CAPFM","key":"compte-forge-capfm"}"""));
+
+        assertThat(outcome.content()).contains("DÉJÀ SUR LE POSTE").contains("DÉJÀ DEMANDÉ")
+                .contains("demandé à Zahi").contains("En attente depuis");
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("SF-175-03 : une clé FERMÉE ailleurs sur le poste n'empêche pas une nouvelle demande")
+    void aClosedKeyElsewhereDoesNotBlock() {
+        UUID hostId = UUID.randomUUID();
+        workspace.setHostId(hostId);
+        TerminalAction done = existing(TerminalActionStatus.FAIT, "k");
+        done.setWorkspaceId(UUID.randomUUID());
+        when(repository.findByUserIdAndWorkspaceIdAndDedupKey(userId, workspaceId, "k")).thenReturn(Optional.empty());
+        when(repository.findByUserIdAndHostIdAndDedupKeyOrderByCreatedAtDesc(userId, hostId, "k"))
+                .thenReturn(java.util.List.of(done));
+
+        TerminalActionToolExecutor.Outcome outcome = executor.execute(userId, workspace, input("""
+                {"description":"Refaire la demande","key":"k"}"""));
+
+        assertThat(outcome.content()).contains("Action inscrite");
+        verify(repository).save(any());
+    }
+
+    @Test
+    @DisplayName("SF-175-03 : la même demande DITE AUTREMENT (par le sens) n'est pas réinscrite")
+    void theSameRequestSaidOtherwiseIsRecognised() {
+        UUID hostId = UUID.randomUUID();
+        workspace.setHostId(hostId);
+        TerminalAction similar = existing(TerminalActionStatus.A_FAIRE, "compte-forge-capfm");
+        similar.setHostId(hostId);
+        TerminalActionSemanticDedup dedup = mock(TerminalActionSemanticDedup.class);
+        when(dedup.findSimilarOpen(userId, hostId, workspaceId, "Obtenir l'accès à la forge pour CAPFM"))
+                .thenReturn(Optional.of(new TerminalActionSemanticDedup.Match(similar.getId(), 0.08)));
+        when(repository.findByIdAndUserId(similar.getId(), userId)).thenReturn(Optional.of(similar));
+        when(repository.findByUserIdAndWorkspaceIdAndDedupKey(any(), any(), any())).thenReturn(Optional.empty());
+        when(repository.findByUserIdAndHostIdAndDedupKeyOrderByCreatedAtDesc(any(), any(), any()))
+                .thenReturn(java.util.List.of());
+        service.setSemanticDedup(dedup);
+
+        TerminalActionToolExecutor.Outcome outcome = executor.execute(userId, workspace, input("""
+                {"description":"Obtenir l'accès à la forge pour CAPFM","key":"acces-forge"}"""));
+
+        assertThat(outcome.content()).contains("QUI DIT LA MÊME CHOSE").contains("attend déjà");
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("SF-175-03 : rien de proche → inscrite, et son vecteur est demandé")
+    void nothingSimilarRecordsAndEmbeds() {
+        TerminalActionSemanticDedup dedup = mock(TerminalActionSemanticDedup.class);
+        when(dedup.findSimilarOpen(any(), any(), any(), any())).thenReturn(Optional.empty());
+        when(repository.findByUserIdAndWorkspaceIdAndDedupKey(any(), any(), any())).thenReturn(Optional.empty());
+        when(repository.save(any())).thenAnswer(invocation -> {
+            TerminalAction a = invocation.getArgument(0);
+            a.setId(UUID.randomUUID());
+            return a;
+        });
+        service.setSemanticDedup(dedup);
+
+        executor.execute(userId, workspace, input("{\"description\":\"Valider le budget avec Habib\"}"));
+
+        verify(dedup).embedAsync(any(UUID.class), eq("Valider le budget avec Habib"));
+    }
 }

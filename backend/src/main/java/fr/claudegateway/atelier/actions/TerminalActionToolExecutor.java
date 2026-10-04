@@ -171,7 +171,7 @@ public class TerminalActionToolExecutor {
     /** Ce que l'agent lit — et qui doit suffire à décider s'il en reparle ou non. */
     private static String message(TerminalActionService.Recording recording) {
         String what = "« " + recording.action().getDescription() + " »";
-        return switch (recording.outcome()) {
+        String body = switch (recording.outcome()) {
             case RECORDED -> "Action inscrite dans le terminal : " + what
                     + ". L'utilisateur la verra dans son menu. Continue ton tour : fais tout ce qui "
                     + "ne dépend pas de ce blocage, puis dis ce qui reste suspendu à lui.";
@@ -186,6 +186,37 @@ public class TerminalActionToolExecutor {
             case ALREADY_DONE -> "Cette action a déjà été faite : " + what
                     + ". Si le blocage persiste, c'est qu'il a une autre cause — cherche-la.";
         };
+        return recognition(recording) + body + waitingSince(recording);
+    }
+
+    /**
+     * F-175 / SF-175-03 — dire <b>comment</b> l'attente a été reconnue : ailleurs sur le poste, ou par
+     * le sens. Sans cela, l'agent croirait à une coïncidence de mots et réinscrirait autrement.
+     */
+    static String recognition(TerminalActionService.Recording recording) {
+        return switch (recording.match()) {
+            case KEY_ON_HOST -> "DÉJÀ SUR LE POSTE (même clé, née dans un autre terminal). Je n'en ai pas "
+                    + "inscrit d'autre. ";
+            case MEANING -> "UNE ATTENTE QUI DIT LA MÊME CHOSE existe déjà sur le poste. Je n'en ai pas "
+                    + "inscrit d'autre. ";
+            default -> "";
+        };
+    }
+
+    /** « En attente depuis 4 j. » — pour une attente reconnue encore ouverte. */
+    static String waitingSince(TerminalActionService.Recording recording) {
+        if (recording.outcome() != TerminalActionService.RecordingOutcome.ALREADY_OPEN
+                && recording.outcome() != TerminalActionService.RecordingOutcome.ALREADY_REQUESTED) {
+            return "";
+        }
+        TerminalAction action = recording.action();
+        java.time.OffsetDateTime since = action.getRequestedAt() != null
+                ? action.getRequestedAt() : action.getCreatedAt();
+        if (since == null) {
+            return "";
+        }
+        long days = java.time.Duration.between(since, java.time.OffsetDateTime.now()).toDays();
+        return days <= 0 ? " En attente depuis aujourd'hui." : " En attente depuis " + days + " j.";
     }
 
     /** « — demandé à Zahi le 30/09 par Teams » : ce qui évite de redemander. */

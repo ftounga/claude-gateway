@@ -50,6 +50,14 @@ public class TerminalActionService {
         this.clock = clock;
     }
 
+    /** Le dédoublonnage par le sens (F-175 / SF-175-03) ; absent = la clé seule juge. */
+    private TerminalActionSemanticDedup semanticDedup;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setSemanticDedup(TerminalActionSemanticDedup semanticDedup) {
+        this.semanticDedup = semanticDedup;
+    }
+
     /**
      * Inscrit une action à faire dans un terminal.
      *
@@ -89,7 +97,7 @@ public class TerminalActionService {
         }
 
         OffsetDateTime now = OffsetDateTime.now(clock);
-        return repository.save(TerminalAction.builder()
+        TerminalAction saved = repository.save(TerminalAction.builder()
                 .userId(userId)
                 .workspaceId(workspace.getId())
                 .hostId(workspace.getHostId())
@@ -103,6 +111,8 @@ public class TerminalActionService {
                 .createdAt(now)
                 .updatedAt(now)
                 .build());
+        embedAfterCommit(saved);
+        return saved;
     }
 
     /**
@@ -129,12 +139,56 @@ public class TerminalActionService {
         var existing = repository.findByUserIdAndWorkspaceIdAndDedupKey(userId, workspaceId, dedupKey);
         if (existing.isPresent()) {
             TerminalAction action = existing.get();
-            return new Recording(action, outcomeOf(action.getStatus()));
+            return new Recording(action, outcomeOf(action.getStatus()), RecordingMatch.KEY);
+        }
+
+        // F-175 / SF-175-03 — la même clé, OUVERTE, ailleurs sur le poste : un accès appartient au
+        // client, pas au terminal. Les fermées d'un autre terminal ne bloquent pas une nouvelle demande.
+        UUID hostId = workspace.getHostId();
+        if (hostId != null) {
+            var onHost = repository.findByUserIdAndHostIdAndDedupKeyOrderByCreatedAtDesc(userId, hostId, dedupKey)
+                    .stream().filter(TerminalAction::isOpen).findFirst();
+            if (onHost.isPresent()) {
+                return new Recording(onHost.get(), outcomeOf(onHost.get().getStatus()), RecordingMatch.KEY_ON_HOST);
+            }
+        }
+
+        // F-175 / SF-175-03 — la même demande DITE AUTREMENT (pgvector, seuil exigeant). Éteint sans clé.
+        if (semanticDedup != null) {
+            var similar = semanticDedup.findSimilarOpen(userId, hostId, workspaceId, cleanDescription)
+                    .flatMap(match -> repository.findByIdAndUserId(match.actionId(), userId))
+                    .filter(TerminalAction::isOpen);
+            if (similar.isPresent()) {
+                return new Recording(similar.get(), outcomeOf(similar.get().getStatus()), RecordingMatch.MEANING);
+            }
         }
 
         TerminalAction created = insert(userId, workspace, subjectId,
                 cleanDescription, blocks, person, kind, dedupKey);
-        return new Recording(created, RecordingOutcome.RECORDED);
+        return new Recording(created, RecordingOutcome.RECORDED, RecordingMatch.NONE);
+    }
+
+    /**
+     * Après la validation de la transaction, l'embedding de la nouvelle attente (F-175 / SF-175-03) :
+     * calculé avant, il viserait une ligne que la base ne montre pas encore.
+     */
+    private void embedAfterCommit(TerminalAction action) {
+        if (semanticDedup == null || action == null || action.getId() == null) {
+            return;
+        }
+        UUID id = action.getId();
+        String description = action.getDescription();
+        if (org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                    new org.springframework.transaction.support.TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            semanticDedup.embedAsync(id, description);
+                        }
+                    });
+        } else {
+            semanticDedup.embedAsync(id, description);
+        }
     }
 
     /** L'issue d'une inscription qui retombe sur une attente déjà connue, selon son état. */
@@ -165,7 +219,23 @@ public class TerminalActionService {
     }
 
     /** Ce qu'une inscription a donné, et l'action concernée. */
-    public record Recording(TerminalAction action, RecordingOutcome outcome) {
+    public record Recording(TerminalAction action, RecordingOutcome outcome, RecordingMatch match) {
+
+        public Recording(TerminalAction action, RecordingOutcome outcome) {
+            this(action, outcome, RecordingMatch.NONE);
+        }
+    }
+
+    /** Comment une inscription a reconnu une attente déjà là (F-175 / SF-175-03). */
+    public enum RecordingMatch {
+        /** Rien de reconnu : l'attente est neuve. */
+        NONE,
+        /** La même clé, dans ce terminal. */
+        KEY,
+        /** La même clé, ouverte, dans un autre terminal du poste. */
+        KEY_ON_HOST,
+        /** La même demande dite autrement (similarité sémantique). */
+        MEANING
     }
 
     /** Les issues d'une inscription (F-154 / SF-154-02, F-175 / SF-175-01). */
@@ -364,7 +434,11 @@ public class TerminalActionService {
             action.setKind(kind);
         }
         action.setUpdatedAt(OffsetDateTime.now(clock));
-        return repository.save(action);
+        TerminalAction saved = repository.save(action);
+        if (description != null) {
+            embedAfterCommit(saved); // le sens a changé : le vecteur suit (F-175 / SF-175-03)
+        }
+        return saved;
     }
 
     /**
