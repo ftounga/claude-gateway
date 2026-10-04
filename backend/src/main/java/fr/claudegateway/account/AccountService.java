@@ -72,6 +72,18 @@ public class AccountService {
      */
     private fr.claudegateway.bilan.SessionBilanRepository sessionBilanRepository;
 
+    /**
+     * L'index de la carte et le journal de ses consultations (F-174, D10), purgés à la suppression
+     * du compte. Injecté par mutateur (null pour les tests historiques).
+     */
+    private fr.claudegateway.governance.map.index.HostMapIndexPurge hostMapIndexPurge;
+
+    /** Branche la purge de l'index de la carte à la suppression du compte (F-174, D10). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setHostMapIndexPurge(fr.claudegateway.governance.map.index.HostMapIndexPurge purge) {
+        this.hostMapIndexPurge = purge;
+    }
+
     /** Branche la purge des bilans à la suppression du compte (F-155 / SF-155-04). */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setSessionBilanRepository(fr.claudegateway.bilan.SessionBilanRepository repository) {
@@ -308,6 +320,11 @@ public class AccountService {
         // La copie de travail des cartes (F-136 / SF-136-01) : c'est le savoir accumulé sur
         // l'infrastructure des clients de ce compte. Il ne lui survit pas.
         hostMapFileRepository.deleteByUserId(userId);
+        // L'index de la carte et le journal de ses consultations (F-174, D10) : dérivés de la carte,
+        // ils ne lui survivent pas.
+        if (hostMapIndexPurge != null) {
+            hostMapIndexPurge.purgeUser(userId);
+        }
         // Le cache des sources de la consigne (F-148 / SF-148-06) : copie des CLAUDE.md, STATE/PLAN et
         // skills des projets de ce compte. Il ne lui survit pas.
         promptSourceFileRepository.deleteByUserId(userId);

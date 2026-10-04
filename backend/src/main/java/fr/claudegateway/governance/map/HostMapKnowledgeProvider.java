@@ -14,6 +14,8 @@ import org.springframework.stereotype.Component;
 import fr.claudegateway.atelier.HostKnowledgeSource;
 import fr.claudegateway.governance.GovernanceHostRef;
 import fr.claudegateway.governance.GovernanceHostScope;
+import fr.claudegateway.governance.map.index.HostMapLookup;
+import fr.claudegateway.governance.map.index.HostMapLookupJournal;
 
 /**
  * Ce que la boucle sait du client, et quand le relire (F-136 / SF-136-01, SF-136-02).
@@ -41,15 +43,19 @@ public class HostMapKnowledgeProvider implements HostKnowledgeSource {
      * changer sans que personne ne l'écrive. Réglable, parce que le bon seuil dépend du client.</p>
      */
     private final int factMaxAgeDays;
+    /** Le journal des consultations (F-174 / SF-174-01) : ce qui a été joint, compté. */
+    private final HostMapLookupJournal journal;
 
     public HostMapKnowledgeProvider(HostMapStore store, GovernanceHostScope hostScope,
             @Qualifier("hostMapRefreshExecutor") Executor executor, Clock clock,
-            @Value("${app.governance.map.fact-max-age-days:120}") int factMaxAgeDays) {
+            @Value("${app.governance.map.fact-max-age-days:120}") int factMaxAgeDays,
+            HostMapLookupJournal journal) {
         this.store = store;
         this.hostScope = hostScope;
         this.executor = executor;
         this.clock = clock;
         this.factMaxAgeDays = factMaxAgeDays;
+        this.journal = journal;
     }
 
     @Override
@@ -76,8 +82,13 @@ public class HostMapKnowledgeProvider implements HostKnowledgeSource {
         try {
             // La recherche porte sur la carte DU POSTE DU TOUR, lue par (user_id, host_id) : aucun
             // fait d'un autre client ne peut être joint à cette question.
-            return HostFactLookup.factsFor(store.filesOf(userId, host.hostId()), question,
+            String block = HostFactLookup.factsFor(store.filesOf(userId, host.hostId()), question,
                     LocalDate.now(clock), factMaxAgeDays);
+            // F-174 / SF-174-01 : la mesure de départ. Chaque tour d'un poste à carte est compté,
+            // y compris quand rien n'est joint — c'est aussi ce qu'on veut voir baisser.
+            journal.record(userId, host.hostId(), workspaceId, HostMapLookup.KIND_TURN,
+                    HostMapLookup.STRATEGY_LEXICAL, block);
+            return block;
         } catch (RuntimeException ex) {
             log.debug("Rappel de faits indisponible ({})", ex.getClass().getSimpleName());
             return null;
