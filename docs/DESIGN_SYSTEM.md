@@ -855,6 +855,35 @@ neuf : les jours travaillés sont l'**inverse d'affichage** de `cumul = jours ×
 
 ---
 
+## 20 — La carte vivante (ajout F-173, 2026-10-04)
+
+> **Aucune couleur nouvelle** (cadrage F-173, D3). Tout vient de §2 ; cytoscape.js dessine sur un
+> canevas et relit les jetons `--cg-*` de la page (repli : les hex de §2).
+
+| Élément | Règle |
+|---|---|
+| Bascule *Plan · Liste · Fichiers* | segmenté, filet `--cg-divider`, rayon 8 px, option active sur `--cg-bg` en encre principale (comme le tri des tuiles §16) |
+| Ressource | fond `--cg-surface`, filet 2 px `--cg-navy`, nom en Inter 12 px `--cg-text-primary` — **toujours écrit** |
+| Ressource qui en contient d'autres | aplat `--cg-navy`, texte `--cg-surface` (on peut y entrer) |
+| Groupe par type | filet double `--cg-divider`, libellé « Comptes AWS · 42 » |
+| Piège | filet 3 px `--cg-error` **et** « ⚠ n pièges » écrit sous le nom |
+| Fait périmé (> âge de confiance F-139) | opacité 0,55, filet pointillé `--cg-text-secondary`, « périmé » écrit en vue Liste |
+| Sélection | filet 4 px `--cg-accent` — c'est un geste (§2) |
+| Cadre (niveau 2) | fond `--cg-bg`, filet `--cg-divider`, titre JetBrains Mono 11 px `--cg-text-secondary` |
+| Lien | trait 1,5 px `--cg-text-secondary`, nature écrite sur le lien (Inter 10 px) |
+
+### Règles d'emploi — non négociables
+
+- **La forme dit le type, le nom reste écrit** : plateformes en rectangle arrondi, accès / proxy /
+  hôtes / jetons en losange, équipes en ellipse, identifiants en étiquette. La couleur ne porte
+  jamais seule l'information.
+- Les **tons d'identité §9** ne qualifient pas une ressource de la carte : ils restent réservés au
+  poste (pastille de l'en-tête).
+- **Téléphone (< 768 px)** : pas de canevas, la vue Liste (mêmes niveaux, même fil d'Ariane).
+- La vue Liste est l'équivalent accessible du plan : chaque nœud y figure.
+
+---
+
 ## Logo & marque (ajout 2026-07-03)
 
 - **Logo de l'application** : `frontend/public/claude-portal-logo.png` (« Claude Portal » — bouclier hexagonal, tête + étincelle, bulle de chat, orbite). Utilisé comme **favicon** (`index.html`) et sur la **landing** (nav, hero, footer). Nom de marque affiché : **« Claude Portal »** (renommé en F-29 SF-29-01 : le terme « Proxy » faisait classer le domaine en catégorie « anonymizer » par les filtres d'entreprise).

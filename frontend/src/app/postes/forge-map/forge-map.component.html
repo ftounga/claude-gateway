@@ -1,0 +1,113 @@
+<!-- LA CARTE VIVANTE (F-173 / SF-173-02). Trois vues : le plan (défaut), son équivalent en liste (D6,
+     accessibilité), et les fichiers d'avant, inchangés (D5). Tout l'état est dans l'URL. -->
+<div class="forge-map">
+  <div class="forge-map__bar">
+    <div class="forge-map__switch" role="group" aria-label="Vue de la carte">
+      <button type="button" class="forge-map__switch-option" [class.forge-map__switch-option--active]="requestedView() === 'plan'"
+              [attr.aria-pressed]="requestedView() === 'plan'" (click)="selectView('plan')">
+        <mat-icon>hub</mat-icon> Plan
+      </button>
+      <button type="button" class="forge-map__switch-option" [class.forge-map__switch-option--active]="requestedView() === 'liste'"
+              [attr.aria-pressed]="requestedView() === 'liste'" (click)="selectView('liste')">
+        <mat-icon>account_tree</mat-icon> Liste
+      </button>
+      <button type="button" class="forge-map__switch-option" [class.forge-map__switch-option--active]="requestedView() === 'fichiers'"
+              [attr.aria-pressed]="requestedView() === 'fichiers'" (click)="selectView('fichiers')">
+        <mat-icon>description</mat-icon> Fichiers
+      </button>
+    </div>
+    @if (view() !== 'fichiers' && graph(); as g) {
+      @if (g.indexed && g.indexedAt) {
+        <span class="forge-map__fresh">Carte indexée le {{ g.indexedAt | date: 'd MMM y à HH:mm' }}</span>
+      }
+    }
+  </div>
+
+  @if (view() !== 'fichiers') {
+    @if (loading() && !graph()) {
+      <div class="forge-map__state"><mat-spinner diameter="24"></mat-spinner> Lecture du plan…</div>
+    } @else if (failed()) {
+      <div class="forge-map__state" role="alert">
+        <mat-icon>error_outline</mat-icon>
+        <span>Le plan n'a pas pu être lu.</span>
+        <button mat-stroked-button type="button" (click)="load()">Réessayer</button>
+      </div>
+    } @else {
+      @if (graph(); as g) {
+      @if (!g.indexed) {
+        <div class="forge-map__state">
+          <mat-icon>schedule</mat-icon>
+          <span>
+            La carte n'est pas encore indexée.
+            @if (g.pendingSections > 0) { {{ g.pendingSections }} section(s) en cours de lecture. }
+          </span>
+          <button mat-button type="button" (click)="selectView('fichiers')">Voir les fichiers</button>
+        </div>
+      } @else {
+        @if (level(); as lvl) {
+        <nav class="forge-map__trail" aria-label="Fil d'Ariane de la carte">
+          @for (crumb of lvl.trail; track $index; let last = $last) {
+            @if (last) {
+              <span class="forge-map__crumb forge-map__crumb--current" aria-current="location">{{ crumb.label }}</span>
+            } @else {
+              <button type="button" class="forge-map__crumb" (click)="goTo(crumb.focus)">{{ crumb.label }}</button>
+              <mat-icon class="forge-map__crumb-sep" aria-hidden="true">chevron_right</mat-icon>
+            }
+          }
+          @if (lvl.selected; as sel) {
+            <mat-icon class="forge-map__crumb-sep" aria-hidden="true">chevron_right</mat-icon>
+            <span class="forge-map__crumb forge-map__crumb--selected">{{ sel.label }}</span>
+          }
+        </nav>
+
+        @if (g.truncated) {
+          <p class="forge-map__hint">{{ g.nodes.length }} ressources affichées sur {{ g.totalNodes }}.</p>
+        }
+        @if (lvl.nodes.length === 0) {
+          <p class="forge-map__hint">Aucune ressource nommée à ce niveau pour l'instant.</p>
+        }
+
+        @if (view() === 'plan') {
+          <div class="forge-map__plan">
+            <app-forge-map-canvas
+              [level]="lvl"
+              [ariaLabel]="'Plan de la carte de ' + hostName() + ' — la liste équivalente est dans la vue Liste'"
+              (nodeTap)="onTap($event)"
+              (failed)="onCanvasFailed()"
+            ></app-forge-map-canvas>
+            <button mat-icon-button type="button" class="forge-map__fit" (click)="fit()"
+                    aria-label="Recadrer le plan" title="Recadrer">
+              <mat-icon>fit_screen</mat-icon>
+            </button>
+          </div>
+        } @else {
+          @if (canvasUnavailable() && requestedView() === 'plan') {
+            <p class="forge-map__hint">Le plan n'a pas pu être dessiné ici : voici la même carte en liste.</p>
+          }
+          <ul class="forge-map__list">
+            @for (item of lvl.nodes; track item.id) {
+              <li>
+                <button type="button" class="forge-map__item"
+                        [class.forge-map__item--trap]="item.traps > 0"
+                        [class.forge-map__item--stale]="item.stale"
+                        [class.forge-map__item--selected]="lvl.selected?.id === item.id"
+                        (click)="open(item)">
+                  <mat-icon aria-hidden="true">{{ item.enterable ? 'folder_open' : 'radio_button_unchecked' }}</mat-icon>
+                  <span class="forge-map__item-label">{{ item.label }}</span>
+                  <span class="forge-map__item-meta">{{ describe(item) }}</span>
+                  @if (item.enterable) { <mat-icon aria-hidden="true">chevron_right</mat-icon> }
+                </button>
+              </li>
+            }
+          </ul>
+        }
+        }
+      }
+      }
+    }
+  }
+
+  <div class="forge-map__files" [hidden]="view() !== 'fichiers'">
+    <ng-content select="[forgeMapFiles]"></ng-content>
+  </div>
+</div>

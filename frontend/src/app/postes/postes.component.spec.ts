@@ -231,8 +231,13 @@ describe('PostesComponent', () => {
     pagesSpy = jasmine.createSpyObj<PagesService>('PagesService', ['list']);
     pagesSpy.list.and.returnValue(of([]));
     governance = jasmine.createSpyObj<GovernanceService>('GovernanceService',
-      ['getMap', 'readMapFile', 'getIntegrite', 'getHosts', 'getLearning']);
+      ['getMap', 'readMapFile', 'getIntegrite', 'getHosts', 'getLearning', 'hostMapGraph']);
     governance.getMap.and.returnValue(of(carte));
+    // F-173 / SF-173-02 : le plan de la carte, lu en base. Non indexé par défaut dans ces tests.
+    governance.hostMapGraph.and.returnValue(of({
+      indexed: false, indexedAt: null, pendingSections: 0, factMaxAgeDays: 120, totalNodes: 0,
+      truncated: false, nodes: [], edges: [], deadlines: [], toMap: [],
+    }));
     // F-140 / SF-140-01 : la mesure d'apprentissage est lue en même temps que la carte. Sans tour
     // sur la fenêtre longue, elle ne s'affiche pas — c'est l'état par défaut de ces tests.
     governance.getLearning.and.returnValue(
@@ -2217,6 +2222,14 @@ describe('PostesComponent', () => {
       expect(text()).toContain('encore vide');
     });
 
+    it('héberge le plan de la carte (F-173 / SF-173-02), lu en base même poste hors ligne', () => {
+      setup([{ ...poste, connected: false }]);
+
+      expect((fixture.nativeElement as HTMLElement).querySelector('app-forge-map')).not.toBeNull();
+      expect(governance.hostMapGraph).toHaveBeenCalledOnceWith('h1');
+      expect(text()).toContain("La carte n'est pas encore indexée.");
+    });
+
     it('dit ce qu\'est la carte, et « Écrire dans la carte » ouvre le terminal du poste (F-98 / SF-98-05)', () => {
       setup();
       const router = TestBed.inject(Router);
@@ -2503,8 +2516,12 @@ describe('PostesComponent', () => {
     /** Construit l'écran en imposant ce que la lecture de carte répond. */
     function buildWithMap(answer: Observable<GovernanceMap>): void {
       governance = jasmine.createSpyObj<GovernanceService>('GovernanceService',
-        ['getMap', 'readMapFile', 'getIntegrite', 'getHosts', 'getLearning']);
+        ['getMap', 'readMapFile', 'getIntegrite', 'getHosts', 'getLearning', 'hostMapGraph']);
       governance.getMap.and.returnValue(answer);
+      governance.hostMapGraph.and.returnValue(of({
+        indexed: false, indexedAt: null, pendingSections: 0, factMaxAgeDays: 120, totalNodes: 0,
+        truncated: false, nodes: [], edges: [], deadlines: [], toMap: [],
+      }));
       // F-140 / SF-140-01 : lue avec la carte. Aucun tour sur la fenêtre longue ⇒ rien ne s'affiche.
       governance.getLearning.and.returnValue(of(learningAnswer));
       governance.getIntegrite.and.returnValue(of(integriteSaine));

@@ -1,0 +1,122 @@
+// LA CARTE VIVANTE (F-173 / SF-173-02) — aucune couleur nouvelle (DESIGN_SYSTEM §2, §16, §20).
+.forge-map {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.forge-map__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.forge-map__switch {
+  display: inline-flex;
+  border: 1px solid var(--cg-divider);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.forge-map__switch-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border: 0;
+  background: var(--cg-surface);
+  color: var(--cg-text-secondary);
+  font: 500 14px Inter, sans-serif;
+  cursor: pointer;
+
+  mat-icon { font-size: 16px; width: 16px; height: 16px; }
+
+  &--active {
+    background: var(--cg-bg);
+    color: var(--cg-text-primary);
+  }
+}
+
+.forge-map__fresh,
+.forge-map__hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--cg-text-secondary);
+}
+
+.forge-map__state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--cg-text-secondary);
+}
+
+.forge-map__trail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+}
+
+.forge-map__crumb {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--cg-text-secondary);
+  font: inherit;
+  cursor: pointer;
+
+  &--current { color: var(--cg-text-primary); font-weight: 600; cursor: default; }
+  &--selected { color: var(--cg-accent); font-weight: 600; cursor: default; }
+}
+
+button.forge-map__crumb:hover { color: var(--cg-text-primary); text-decoration: underline; }
+
+.forge-map__crumb-sep { font-size: 16px; width: 16px; height: 16px; color: var(--cg-text-secondary); }
+
+.forge-map__plan {
+  position: relative;
+}
+
+.forge-map__fit {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+.forge-map__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.forge-map__item {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto 24px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--cg-divider);
+  border-left: 4px solid var(--cg-navy);
+  border-radius: 8px;
+  background: var(--cg-surface);
+  color: var(--cg-text-primary);
+  font: 400 14px Inter, sans-serif;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover { background: var(--cg-bg); }
+  &--trap { border-left-color: var(--cg-error); }
+  &--stale { color: var(--cg-text-secondary); }
+  &--selected { border-color: var(--cg-accent); border-left-color: var(--cg-accent); }
+}
+
+.forge-map__item-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.forge-map__item-meta { font: 400 12px 'JetBrains Mono', monospace; color: var(--cg-text-secondary); }

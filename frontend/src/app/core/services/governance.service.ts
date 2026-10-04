@@ -13,6 +13,8 @@ import {
   HostLearning,
   HostMemoryState,
   GovernancePackage,
+  MapCard,
+  MapGraph,
   GovernanceSelection,
 } from '../models/governance.models';
 
@@ -102,6 +104,21 @@ export class GovernanceService {
    */
   getMap(hostRef: string): Observable<GovernanceMap> {
     return this.http.get<GovernanceMap>(`/api/governance/hosts/${hostRef}/map`);
+  }
+
+  /**
+   * **Le plan de la carte** (F-173 / SF-173-01) : ressources, liens, niveaux et signaux, lus dans
+   * l'index en base — jamais sur le poste (D1). Répond donc aussi poste hors ligne.
+   */
+  hostMapGraph(hostRef: string): Observable<MapGraph> {
+    return this.http.get<MapGraph>(`/api/governance/hosts/${hostRef}/map/graph`);
+  }
+
+  /** **La fiche d'une ressource** de la carte (F-173 / SF-173-01). 404 si elle n'y est pas. */
+  hostMapEntity(hostRef: string, nodeId: string): Observable<MapCard> {
+    return this.http.get<MapCard>(
+      `/api/governance/hosts/${hostRef}/map/entities/${encodeURIComponent(nodeId)}`,
+    );
   }
 
   /**

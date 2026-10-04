@@ -558,11 +558,7 @@
             }
           </p>
 
-          @if (!online(host)) {
-            <!-- AUCUN APPEL n'est parti. F-98 / SF-98-05 : dire ce qu'on voit, pas la mécanique — et
-                 plus rien à cliquer : la carte est relue d'elle-même au retour en ligne. -->
-            <p class="poste__carte-hint">Poste hors ligne : la carte sera lue à la prochaine connexion.</p>
-          } @else {
+          @if (online(host)) {
             <!-- CE QUE LA CARTE EST, ET COMMENT L'ENRICHIR (F-98 / SF-98-05) : une phrase, et le geste.
                  « Écrire dans la carte » ouvre le terminal du poste, qui s'ouvre à la racine où elle vit. -->
             <div class="poste__carte-lede">
@@ -579,6 +575,16 @@
                 Écrire dans la carte
               </button>
             </div>
+          }
+          <!-- LA CARTE VIVANTE (F-173 / SF-173-02) : le plan, lu en base (D1) — il s'affiche aussi poste
+               hors ligne. La vue Fichiers (D5) est l'écran d'avant, projeté tel quel. -->
+          <app-forge-map [hostRef]="host.id ?? 'hosted'" [hostName]="host.name">
+            <div forgeMapFiles>
+          @if (!online(host)) {
+            <!-- AUCUN APPEL n'est parti. F-98 / SF-98-05 : dire ce qu'on voit, pas la mécanique — et
+                 plus rien à cliquer : la carte est relue d'elle-même au retour en ligne. -->
+            <p class="poste__carte-hint">Poste hors ligne : la carte sera lue à la prochaine connexion.</p>
+          } @else {
             @if (hostMap(host); as map) {
               @if (!map.governed || !map.readable) {
                 <!-- Le message du serveur, REPRIS TEL QUEL : il porte déjà son action corrective. -->
@@ -644,6 +650,8 @@
               }
             }
           }
+            </div>
+          </app-forge-map>
         </section>
       }
 
