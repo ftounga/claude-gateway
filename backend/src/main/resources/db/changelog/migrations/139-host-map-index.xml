@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-174 / SF-174-02 — L'INDEX DE LA CARTE.
+
+      D1 : le texte Markdown (host_map_files.content, copie de la machine) RESTE LA REFERENCE.
+      Ces tables en sont une lecture DERIVEE, reconstructible a tout moment : les vider ne perd rien,
+      le travailleur les reconstruit depuis host_map_files.
+
+      D3 : extraction INCREMENTALE par section (titre ##). Chaque section porte l'empreinte de son
+      texte ; seule une section dont l'empreinte change est re-extraite. host_map_files.indexed_digest
+      dit quelle version du fichier l'index reflete (NULL = jamais indexe, donc retro-remplissage
+      naturel des cartes existantes).
+
+      Les faits, entites et relations pendent a leur section (cle etrangere, cascade) : une section
+      qui disparait emporte ce qu'on en avait tire, et rien d'autre.
+
+      D10 : user_id + host_id sur chaque table ; toute lecture filtre user_id ; purge nommee a la
+      suppression du compte et du poste (HostMapIndexPurge).
+    -->
+
+    <changeSet id="139-host-map-files-indexed-digest" author="claude-gateway">
+        <addColumn tableName="host_map_files">
+            <column name="indexed_digest" type="varchar(64)"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="139-host-map-sections" author="claude-gateway">
+        <createTable tableName="host_map_sections">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="path" type="varchar(500)"><constraints nullable="false"/></column>
+            <column name="heading" type="varchar(500)"/>
+            <column name="ordinal" type="integer"><constraints nullable="false"/></column>
+            <column name="fingerprint" type="varchar(64)"><constraints nullable="false"/></column>
+            <!-- PENDING | DONE | SKIPPED | FAILED : l'etat de l'extraction semantique (D2 b). -->
+            <column name="status" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="attempts" type="integer" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="input_tokens" type="integer" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="output_tokens" type="integer" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="model" type="varchar(64)"/>
+            <column name="extracted_at" type="timestamptz"/>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="host_map_sections" indexName="idx_host_map_sections_user_host_path">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="path"/>
+        </createIndex>
+        <createIndex tableName="host_map_sections" indexName="idx_host_map_sections_status">
+            <column name="status"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="139-host-map-facts" author="claude-gateway">
+        <createTable tableName="host_map_facts">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="section_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_host_map_facts_section"
+                             references="host_map_sections(id)" deleteCascade="true"/>
+            </column>
+            <column name="path" type="varchar(500)"><constraints nullable="false"/></column>
+            <column name="heading" type="varchar(500)"/>
+            <column name="line_no" type="integer"><constraints nullable="false"/></column>
+            <column name="text" type="varchar(1000000)"><constraints nullable="false"/></column>
+            <!-- FAIT | PIEGE | ECHEANCE -->
+            <column name="kind" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="due_on" type="date"/>
+            <column name="observed_on" type="date"/>
+            <!-- Identifiants exacts (D2 a), en minuscules, encadres de sauts de ligne :
+                 « \n123456789012\nlzi.cagip.fr\n » — ce qui permet une egalite exacte par LIKE. -->
+            <column name="identifiers" type="varchar(1000000)"/>
+        </createTable>
+        <createIndex tableName="host_map_facts" indexName="idx_host_map_facts_user_host">
+            <column name="user_id"/>
+            <column name="host_id"/>
+        </createIndex>
+        <createIndex tableName="host_map_facts" indexName="idx_host_map_facts_section">
+            <column name="section_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="139-host-map-entities" author="claude-gateway">
+        <createTable tableName="host_map_entities">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="section_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_host_map_entities_section"
+                             references="host_map_sections(id)" deleteCascade="true"/>
+            </column>
+            <column name="path" type="varchar(500)"><constraints nullable="false"/></column>
+            <column name="heading" type="varchar(500)"/>
+            <column name="kind" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="label" type="varchar(300)"><constraints nullable="false"/></column>
+            <column name="label_norm" type="varchar(300)"><constraints nullable="false"/></column>
+            <column name="identifiers" type="varchar(1000000)"/>
+            <!-- JSON : domaine, environnement… -->
+            <column name="attributes" type="varchar(1000000)"/>
+            <column name="state" type="varchar(32)"/>
+            <column name="observed_on" type="date"/>
+            <!-- MOTIF (couche deterministe) | MODELE (couche semantique) -->
+            <column name="origin" type="varchar(8)"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="host_map_entities" indexName="idx_host_map_entities_user_host_label">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="label_norm"/>
+        </createIndex>
+        <createIndex tableName="host_map_entities" indexName="idx_host_map_entities_section">
+            <column name="section_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="139-host-map-relations" author="claude-gateway">
+        <createTable tableName="host_map_relations">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="section_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_host_map_relations_section"
+                             references="host_map_sections(id)" deleteCascade="true"/>
+            </column>
+            <column name="path" type="varchar(500)"><constraints nullable="false"/></column>
+            <column name="from_label" type="varchar(300)"><constraints nullable="false"/></column>
+            <column name="to_label" type="varchar(300)"><constraints nullable="false"/></column>
+            <column name="nature" type="varchar(100)"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="host_map_relations" indexName="idx_host_map_relations_user_host">
+            <column name="user_id"/>
+            <column name="host_id"/>
+        </createIndex>
+        <createIndex tableName="host_map_relations" indexName="idx_host_map_relations_section">
+            <column name="section_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

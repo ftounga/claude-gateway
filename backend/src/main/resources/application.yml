@@ -592,6 +592,26 @@ app:
     max-image-bytes: ${APP_DIAGRAMS_MAX_IMAGE_BYTES:8388608}
     default-width: ${APP_DIAGRAMS_DEFAULT_WIDTH:1600}
     max-per-turn: ${APP_DIAGRAMS_MAX_PER_TURN:6}
+  # F-174 — L'INDEX DE LA CARTE (« la carte qui répond »). Le texte Markdown reste la référence (D1) :
+  # l'index en est une lecture dérivée, reconstructible. Coupe-circuit unique (D4) : `false` rend le
+  # comportement d'avant F-174 à l'identique (rappel lexical F-137, pas d'outil carte_chercher).
+  map-index:
+    enabled: ${APP_MAP_INDEX_ENABLED:true}
+    # Modèle de l'extraction sémantique (D4) : une lecture fidèle, pas un raisonnement long.
+    model: ${APP_MAP_INDEX_MODEL:claude-sonnet-5-5}
+    # Bornes d'une passe du travailleur (fichiers ré-indexés, sections soumises au modèle).
+    files-per-run: ${APP_MAP_INDEX_FILES_PER_RUN:10}
+    sections-per-run: ${APP_MAP_INDEX_SECTIONS_PER_RUN:6}
+    max-attempts: 3
+    max-section-chars: 24000
+    max-output-tokens: 8000
+    # Bornes du bloc de faits joint au message du tour (D6) — jamais dans le bloc système.
+    max-facts: ${APP_MAP_INDEX_MAX_FACTS:20}
+    max-chars: ${APP_MAP_INDEX_MAX_CHARS:6000}
+    worker:
+      enabled: ${APP_MAP_INDEX_WORKER_ENABLED:true}
+      initial-delay: PT2M
+      interval: ${APP_MAP_INDEX_WORKER_INTERVAL:PT60S}
   governance:
     # Le JUGE INDÉPENDANT (F-94 / SF-94-02) : un SECOND appel qui compare la carte du poste aux
     # notes des projets et répond à une question unique — « qu'est-ce qui est cité là et absent
@@ -963,6 +983,12 @@ app:
           cache-read: 0.50
           cache-write: 10.00
         claude-sonnet-5:
+          input: 2.00
+          output: 10.00
+          cache-read: 0.20
+          cache-write: 4.00
+        # Modèle de l'extraction de l'index de la carte (F-174, D4) : même grille que Sonnet 5.
+        claude-sonnet-5-5:
           input: 2.00
           output: 10.00
           cache-read: 0.20

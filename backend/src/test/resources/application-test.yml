@@ -46,6 +46,11 @@ app:
     # IngestionService.ingestPending()/ingest() directement (déterminisme, pas de scheduler concurrent).
     ingestion:
       enabled: false
+  # F-174 / SF-174-02 : travailleur de l'index de la carte désactivé en tests ; HostMapIndexService.runOnce()
+  # est appelé directement.
+  map-index:
+    worker:
+      enabled: false
   # F-162 / SF-162-06 : worker de backfill des embeddings du recall désactivé en tests (déterminisme,
   # pas de scheduler concurrent ; le chemin pgvector ne tourne pas en H2). Le sémantique reste de toute
   # façon éteint sans clé — les tests qui l'exercent branchent un AtelierSemanticRecall mocké.
