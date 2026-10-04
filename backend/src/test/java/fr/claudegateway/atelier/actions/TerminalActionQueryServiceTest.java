@@ -37,7 +37,8 @@ class TerminalActionQueryServiceTest {
     @BeforeEach
     void setUp() {
         service = new TerminalActionQueryService(repository, workspaces,
-                java.time.Clock.fixed(java.time.Instant.parse("2026-10-04T10:00:00Z"), java.time.ZoneOffset.UTC));
+                java.time.Clock.fixed(java.time.Instant.parse("2026-10-04T10:00:00Z"), java.time.ZoneOffset.UTC),
+                new TerminalActionFollowUp(3));
         Workspace agenor = new Workspace();
         agenor.setName("AGENOR");
         when(workspaces.findByIdAndUserId(other, userId)).thenReturn(Optional.of(agenor));

@@ -150,6 +150,11 @@ app:
     # Atelier / Claude Code Lite (F-28). Stockage `in-memory` par défaut (dev/tests, sans S3) ;
     # `s3` en cluster (bucket applicatif). Garde-fous zip-bomb : total/nb-fichiers/taille-fichier.
     storage: ${APP_ATELIER_STORAGE:in-memory}
+    # F-175 / SF-175-06 : une attente « Demandé » depuis ce nombre de jours ouvrés appelle une relance.
+    followup-days: ${APP_ATELIER_FOLLOWUP_DAYS:3}
+    # F-175 / SF-175-03 : distance cosine sous laquelle deux attentes disent la même chose.
+    actions:
+      dedup-max-distance: ${APP_ATELIER_ACTIONS_DEDUP_MAX_DISTANCE:0.20}
     bucket: ${S3_BUCKET:}
     prefix: ${APP_ATELIER_PREFIX:atelier/}
     max-total-bytes: ${APP_ATELIER_MAX_TOTAL_BYTES:52428800}

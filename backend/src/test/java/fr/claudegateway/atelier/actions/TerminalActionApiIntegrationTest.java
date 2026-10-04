@@ -390,6 +390,35 @@ class TerminalActionApiIntegrationTest {
     }
 
     @Test
+    @DisplayName("SF-175-06 : les compteurs par poste et par terminal — ceux d'Alice seulement")
+    void summaryCountsOnlyMine() throws Exception {
+        java.util.UUID host = java.util.UUID.randomUUID();
+        attachToHost(workspaceId, host);
+        createAction(aliceToken, "{\"description\":\"Une\"}");
+        createAction(aliceToken, "{\"description\":\"Deux\"}");
+        String bobWorkspace = createWorkspace(bobToken);
+        attachToHost(bobWorkspace, host);
+        mockMvc.perform(post("/api/workspaces/" + bobWorkspace + "/actions").contextPath("/api")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"description\":\"De Bob\"}")
+                        .header("Authorization", "Bearer " + bobToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/terminal-actions/summary").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.hosts", hasSize(1)))
+                .andExpect(jsonPath("$.hosts[0].id", is(host.toString())))
+                .andExpect(jsonPath("$.hosts[0].aFaire", is(2)))
+                .andExpect(jsonPath("$.terminals", hasSize(1)))
+                .andExpect(jsonPath("$.terminals[0].id", is(workspaceId)));
+        mockMvc.perform(get("/api/workspaces/" + workspaceId + "/actions/board").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(jsonPath("$.aRelancer", is(0)))
+                .andExpect(jsonPath("$.here[0].followUpDue", is(false)));
+    }
+
+    @Test
     @DisplayName("sans jeton, rien — la route est fermée")
     void requiresAuthentication() throws Exception {
         mockMvc.perform(get("/api/workspaces/" + workspaceId + "/actions").contextPath("/api"))

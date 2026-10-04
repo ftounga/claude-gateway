@@ -43,4 +43,10 @@ public class TerminalActionsController {
             @RequestParam(required = false) String exclude) {
         return queries.openElsewhere(currentUser.requireId(), exclude);
     }
+
+    /** Les compteurs par poste et par terminal (F-175 / SF-175-06) — rail de la Forge, mosaïque. */
+    @GetMapping("/summary")
+    public TerminalActionSummaryResponse summary() {
+        return queries.summary(currentUser.requireId());
+    }
 }

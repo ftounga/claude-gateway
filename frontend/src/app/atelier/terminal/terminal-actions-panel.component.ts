@@ -14,6 +14,7 @@ import {
   TerminalAction,
   TerminalActionBoard,
   TerminalActionStatus,
+  followUpDraft,
   isOpenStatus,
 } from '../../core/models/terminal-actions.models';
 import { TerminalActionsService } from '../../core/services/terminal-actions.service';
@@ -149,6 +150,7 @@ interface Column {
                       @if (action.status === 'DEMANDE') {
                         demandé{{ action.requestedTo ? ' à ' + action.requestedTo : '' }}{{ action.channel ? ' par ' + action.channel : '' }}
                         · {{ age(action.requestedAt || action.createdAt) }}
+                        @if (action.followUpDue) { · <span class="action__late">à relancer</span> }
                       } @else if (isOpen(action)) {
                         @if (action.person) { <span class="action__person">{{ action.person }}</span> · }
                         <span class="action__age">{{ age(action.createdAt) }}</span>
@@ -180,6 +182,12 @@ interface Column {
                             (click)="move(action, 'FAIT')"><mat-icon>check</mat-icon>Fait</button>
                         }
                         @case ('DEMANDE') {
+                          @if (action.followUpDue) {
+                            <button mat-flat-button type="button" class="action__followup"
+                              matTooltip="Pré-remplit la saisie — rien n'est envoyé" (click)="relancer(action)">
+                              <mat-icon>reply</mat-icon>Relancer
+                            </button>
+                          }
                           <button mat-button type="button" class="action__done" [disabled]="busy() === action.id"
                             (click)="move(action, 'FAIT')"><mat-icon>check</mat-icon>Fait</button>
                           <button mat-button type="button" class="action__redo" [disabled]="busy() === action.id"
@@ -381,6 +389,15 @@ interface Column {
       font-size: 13px;
     }
 
+    .action__late {
+      color: var(--cg-gold-ink);
+      font-weight: 600;
+    }
+
+    .action__followup {
+      --mdc-filled-button-container-color: var(--cg-accent);
+    }
+
     .action--closed .action__what {
       text-decoration: line-through;
       color: var(--cg-text-secondary);
@@ -397,6 +414,9 @@ export class TerminalActionsPanelComponent implements OnInit {
 
   /** Le tableau a changé : la bande et la pastille le relisent. */
   readonly changed = output<TerminalActionBoard>();
+
+  /** « Relancer » : le brouillon à déposer dans la zone de saisie, sans l'envoyer (F-175 / SF-175-06). */
+  readonly followUp = output<string>();
 
   private readonly service = inject(TerminalActionsService);
   private readonly snackBar = inject(MatSnackBar);
@@ -494,6 +514,11 @@ export class TerminalActionsPanelComponent implements OnInit {
   reopen(action: TerminalAction): void {
     this.apply(action, { ...action, status: action.requestedAt ? 'DEMANDE' : 'A_FAIRE' },
       this.service.reopen(action.workspaceId, action.id));
+  }
+
+  /** Dépose le brouillon de relance dans la saisie du terminal — rien n'est envoyé. */
+  relancer(action: TerminalAction): void {
+    this.followUp.emit(followUpDraft(action));
   }
 
   startEdit(action: TerminalAction): void {

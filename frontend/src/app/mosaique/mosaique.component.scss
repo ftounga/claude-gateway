@@ -186,6 +186,17 @@
   color: var(--cg-divider);
 }
 
+// F-175 / SF-175-06 : les attentes du terminal — la même encre orange que la bande du terminal.
+.mosaique__attentes {
+  flex: 0 0 auto;
+  padding: 0 var(--cg-space-1);
+  border: 1px solid var(--cg-orange-2);
+  border-radius: 4px;
+  color: var(--cg-orange-2);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .mosaique__enter {
   display: inline-flex;
   align-items: center;

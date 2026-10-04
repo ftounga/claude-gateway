@@ -53,6 +53,14 @@ public class TerminalActionTurnNote {
     private final WorkspaceRepository workspaces;
     private final Clock clock;
 
+    /** Le seuil de relance (F-175 / SF-175-06) ; absent = jamais « relance due ». */
+    private TerminalActionFollowUp followUp;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setFollowUp(TerminalActionFollowUp followUp) {
+        this.followUp = followUp;
+    }
+
     public TerminalActionTurnNote(TerminalActionRepository repository, WorkspaceRepository workspaces,
                                   Clock clock) {
         this.repository = repository;
@@ -94,9 +102,11 @@ public class TerminalActionTurnNote {
         Map<UUID, String> names = new HashMap<>();
         StringBuilder out = new StringBuilder(HEADER);
         int[] shown = {0};
-        appendGroup(out, "Ce terminal :\n", here, now, a -> null, shown);
+        java.util.function.Predicate<TerminalAction> due =
+                a -> followUp != null && followUp.isDue(a, now);
+        appendGroup(out, "Ce terminal :\n", here, now, a -> null, due, shown);
         appendGroup(out, "Ailleurs sur le poste :\n", elsewhere, now,
-                a -> names.computeIfAbsent(a.getWorkspaceId(), id -> nameOf(userId, id)), shown);
+                a -> names.computeIfAbsent(a.getWorkspaceId(), id -> nameOf(userId, id)), due, shown);
         int hidden = open.size() - shown[0];
         if (hidden > 0) {
             out.append("(… et ").append(hidden).append(" autre(s), plus ancienne(s), non montrée(s).)\n");
@@ -108,10 +118,11 @@ public class TerminalActionTurnNote {
     private static void appendGroup(StringBuilder out, String title, List<TerminalAction> group,
                                     OffsetDateTime now,
                                     java.util.function.Function<TerminalAction, String> origin,
+                                    java.util.function.Predicate<TerminalAction> due,
                                     int[] shown) {
         boolean titled = false;
         for (TerminalAction action : group) {
-            String line = line(action, now, origin.apply(action));
+            String line = line(action, now, origin.apply(action), due.test(action));
             int extra = (titled ? 0 : title.length()) + line.length();
             if (shown[0] >= MAX_LINES || out.length() + extra + FOOTER.length() + 80 > MAX_CHARS) {
                 return;
@@ -127,6 +138,11 @@ public class TerminalActionTurnNote {
 
     /** « - [DEMANDÉ le 30/09 à Zahi par Teams · depuis 4 j] key=acces-forge — Demander le compte forge » */
     static String line(TerminalAction action, OffsetDateTime now, String origin) {
+        return line(action, now, origin, false);
+    }
+
+    /** Même ligne, avec « relance due » quand la demande tarde (F-175 / SF-175-06). */
+    static String line(TerminalAction action, OffsetDateTime now, String origin, boolean followUpDue) {
         StringBuilder line = new StringBuilder("- [");
         if (action.getStatus() == TerminalActionStatus.DEMANDE) {
             line.append("DEMANDÉ");
@@ -141,6 +157,9 @@ public class TerminalActionTurnNote {
             }
             OffsetDateTime since = action.getRequestedAt() != null ? action.getRequestedAt() : action.getCreatedAt();
             line.append(" · attend depuis ").append(age(since, now));
+            if (followUpDue) {
+                line.append(" · RELANCE DUE");
+            }
         } else {
             line.append("À FAIRE · ouverte depuis ").append(age(action.getCreatedAt(), now));
             if (action.getPerson() != null) {

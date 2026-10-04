@@ -1643,6 +1643,7 @@
     <app-terminal-actions-panel
       [workspaceId]="projectId"
       (changed)="onBoardChanged($event)"
+      (followUp)="onFollowUp($event)"
       (closed)="closeActions()"
     ></app-terminal-actions-panel>
   }

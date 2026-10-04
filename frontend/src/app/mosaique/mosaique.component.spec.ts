@@ -6,6 +6,8 @@ import { provideRouter } from '@angular/router';
 
 import { LiveTerminalEntry, LiveTerminals } from '../core/models/atelier.models';
 import { MosaiqueComponent } from './mosaique.component';
+import { of } from 'rxjs';
+import { TerminalActionsService } from '../core/services/terminal-actions.service';
 
 /**
  * **La mosaïque** (F-83 / SF-83-02) : quatre vrais terminaux en même temps.
@@ -93,6 +95,9 @@ describe('MosaiqueComponent (F-83 / SF-83-02)', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         provideRouter([]),
+        // F-175 / SF-175-06 : les compteurs d'attentes, servis sans réseau (w-1 : 2 attentes).
+        { provide: TerminalActionsService, useValue: { summary: () => of({ hosts: [], terminals: [
+          { id: 'w-1', aFaire: 1, demande: 1, aRelancer: 0, oldestOpenAt: null }] }) } },
       ],
     });
     fixture = TestBed.createComponent(MosaiqueComponent);
@@ -117,6 +122,17 @@ describe('MosaiqueComponent (F-83 / SF-83-02)', () => {
 
     expect(dom().querySelectorAll('.mosaique__tile').length).toBe(4);
     expect(dom().querySelectorAll('app-atelier-terminal').length).toBe(4);
+  });
+
+  it('F-175 / SF-175-06 : une tuile dit ses attentes ouvertes ; les autres rien', async () => {
+    await setup([
+      terminal({ workspaceId: 'w-1', workspaceName: 'web' }),
+      terminal({ workspaceId: 'w-2', workspaceName: 'api' }),
+    ]);
+
+    const counters = dom().querySelectorAll('.mosaique__attentes');
+    expect(counters.length).toBe(1);
+    expect(counters[0].textContent).toContain('2 attentes');
   });
 
   it('montre le CONTENU RÉEL du flux, pas l\'aperçu du registre — c\'est toute la différence avec F-76', async () => {

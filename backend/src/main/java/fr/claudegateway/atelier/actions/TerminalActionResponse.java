@@ -31,13 +31,19 @@ public record TerminalActionResponse(
         String proposedReason,
         OffsetDateTime proposedAt,
         OffsetDateTime createdAt,
-        OffsetDateTime updatedAt) {
+        OffsetDateTime updatedAt,
+        boolean followUpDue) {
 
     public static TerminalActionResponse from(TerminalAction action) {
-        return from(action, null);
+        return from(action, null, false);
     }
 
     public static TerminalActionResponse from(TerminalAction action, String workspaceName) {
+        return from(action, workspaceName, false);
+    }
+
+    /** Avec l'indication « à relancer » (F-175 / SF-175-06), calculée par {@link TerminalActionFollowUp}. */
+    public static TerminalActionResponse from(TerminalAction action, String workspaceName, boolean followUpDue) {
         return new TerminalActionResponse(
                 action.getId(),
                 action.getWorkspaceId(),
@@ -58,6 +64,7 @@ public record TerminalActionResponse(
                 action.getProposedReason(),
                 action.getProposedAt(),
                 action.getCreatedAt(),
-                action.getUpdatedAt());
+                action.getUpdatedAt(),
+                followUpDue);
     }
 }

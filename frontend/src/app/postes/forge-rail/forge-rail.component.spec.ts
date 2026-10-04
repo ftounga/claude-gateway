@@ -53,6 +53,21 @@ describe('ForgeRailComponent', () => {
     expect(rows(root)[1].textContent).toContain('Hors ligne · vu il y a');
   });
 
+  it('F-175 / SF-175-06 : dit les attentes ouvertes du poste, et celles à relancer ; rien sans attente', () => {
+    TestBed.configureTestingModule({ imports: [ForgeRailComponent] });
+    fixture = TestBed.createComponent(ForgeRailComponent);
+    fixture.componentRef.setInput('groups', groupHosts([host('h1', 'FREE'), host('h2', 'CAGIP')],
+      (h) => h.connected, ''));
+    fixture.componentRef.setInput('attentes', {
+      h1: { id: 'h1', aFaire: 2, demande: 1, aRelancer: 1, oldestOpenAt: null },
+    });
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+
+    expect(rows(root)[0].querySelector('.forge-rail__attentes')?.textContent).toContain('3 attentes · 1 à relancer');
+    expect(rows(root)[1].querySelector('.forge-rail__attentes')).toBeNull();
+  });
+
   it('écrit la mise à jour du runner en toutes lettres, et rien quand il est à jour (F-111)', () => {
     const update = {
       status: 'AVAILABLE' as const, required: false, installedVersion: '1.0.0', installedId: '1.0.0',
