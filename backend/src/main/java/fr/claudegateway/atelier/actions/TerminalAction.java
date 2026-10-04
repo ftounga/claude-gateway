@@ -119,6 +119,21 @@ public class TerminalAction {
     @Column(name = "channel", length = 60)
     private String channel;
 
+    /**
+     * La fermeture <b>proposée</b> par l'agent (F-175 / SF-175-02) : {@code FAIT} ou {@code ANNULE}.
+     * L'attente reste ouverte tant que l'utilisateur n'a pas confirmé — rien ne sort sans son geste.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "proposed_status", length = 16)
+    private TerminalActionStatus proposedStatus;
+
+    /** La parole de l'utilisateur qui fonde la proposition, recopiée par l'agent. */
+    @Column(name = "proposed_reason", length = 300)
+    private String proposedReason;
+
+    @Column(name = "proposed_at")
+    private OffsetDateTime proposedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -128,5 +143,17 @@ public class TerminalAction {
     /** Vrai tant que l'action attend encore quelque chose de l'utilisateur. */
     public boolean isOpen() {
         return status != null && status.isOpen();
+    }
+
+    /** Vrai si une fermeture proposée par l'agent attend la confirmation de l'utilisateur. */
+    public boolean hasProposal() {
+        return proposedStatus != null;
+    }
+
+    /** Retire la proposition en attente — confirmée, écartée, ou dépassée par un geste. */
+    public void clearProposal() {
+        this.proposedStatus = null;
+        this.proposedReason = null;
+        this.proposedAt = null;
     }
 }

@@ -29,6 +29,21 @@ public interface TerminalActionRepository extends JpaRepository<TerminalAction, 
     Optional<TerminalAction> findByUserIdAndWorkspaceIdAndDedupKey(
             UUID userId, UUID workspaceId, String dedupKey);
 
+    /**
+     * Une attente du compte par son identifiant (F-175 / SF-175-02) — pour l'agent qui la désigne
+     * depuis la liste jointe au tour. L'appelant vérifie ensuite qu'elle est <b>de ce terminal ou de
+     * son poste</b> ; le {@code user_id} reste le premier verrou.
+     */
+    Optional<TerminalAction> findByIdAndUserId(UUID id, UUID userId);
+
+    /** Les attentes du poste portant cette clé, les plus récentes d'abord (F-175 / SF-175-02). */
+    List<TerminalAction> findByUserIdAndHostIdAndDedupKeyOrderByCreatedAtDesc(
+            UUID userId, UUID hostId, String dedupKey);
+
+    /** Les attentes d'un poste dans ces états (F-175 / SF-175-02 : la liste jointe au tour). */
+    List<TerminalAction> findByUserIdAndHostIdAndStatusIn(
+            UUID userId, UUID hostId, Collection<TerminalActionStatus> statuses);
+
     /** Le menu d'un terminal : les plus anciennes d'abord — l'ancienneté est le signal utile. */
     List<TerminalAction> findByUserIdAndWorkspaceIdOrderByCreatedAtAsc(UUID userId, UUID workspaceId);
 

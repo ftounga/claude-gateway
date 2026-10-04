@@ -45,51 +45,96 @@ public class TerminalActionToolExecutor {
     }
 
     /**
-     * Ferme l'action dont l'utilisateur vient de parler (F-154 / SF-154-04).
+     * <b>Propose de fermer</b> l'attente dont l'utilisateur vient de parler (F-175 / SF-175-02 —
+     * évolution de F-154 / SF-154-04, qui fermait d'autorité).
      *
-     * <p>Sans cela, la liste ne se vide jamais : elle devient un cimetière, et un cimetière ne se
-     * regarde plus.</p>
+     * <p>L'attente reste ouverte : l'utilisateur voit la proposition et répond [Confirmer] ou
+     * [Pas encore]. Rien ne sort de sa liste sans son geste.</p>
      */
     public Outcome close(UUID userId, Workspace workspace, JsonNode input) {
         String key = text(input, "key");
-        if (key.isEmpty()) {
-            return Outcome.error("key est requise : la clé de l'action à fermer, celle de "
-                    + "l'inscription.");
+        String id = text(input, "id");
+        if (key.isEmpty() && id.isEmpty()) {
+            return Outcome.error("key (ou id) est requise : celle que montre la liste des attentes.");
         }
         boolean cancelled = input != null && input.hasNonNull("cancelled")
                 && input.get("cancelled").asBoolean(false);
         try {
-            TerminalActionService.Closing closing = service.closeByKey(
-                    userId, workspace.getId(), key, text(input, "reason"), cancelled);
-            return new Outcome(closingMessage(closing, key), false, closing.action());
+            TerminalActionService.AgentChange change = service.proposeClose(
+                    userId, workspace, key, id, text(input, "reason"), cancelled);
+            return new Outcome(proposalMessage(change, key.isEmpty() ? id : key, cancelled), false,
+                    change.action());
         } catch (InvalidTerminalActionException e) {
             return Outcome.error(e.getMessage());
         } catch (RuntimeException e) {
-            log.warn("Fermeture d'une action de terminal impossible", e);
-            return Outcome.error("L'action n'a pas pu être fermée. Dis-le à l'utilisateur dans ta "
+            log.warn("Proposition de fermeture d'une attente impossible", e);
+            return Outcome.error("La fermeture n'a pas pu être proposée. Dis-le à l'utilisateur dans ta "
                     + "réponse plutôt que de réessayer.");
         }
     }
 
-    /** Ce que l'agent lit après une fermeture — et qui doit lui éviter d'en reparler. */
-    private static String closingMessage(TerminalActionService.Closing closing, String key) {
-        return switch (closing.outcome()) {
-            case CLOSED -> "Action close : « " + closing.action().getDescription() + " »"
-                    + said(closing) + " Elle a disparu de la liste de l'utilisateur ; n'en reparle pas.";
-            case CANCELLED -> "Action annulée : « " + closing.action().getDescription() + " »"
-                    + said(closing) + " Elle n'avait pas lieu d'être ; ne la réinscris pas.";
-            case ALREADY_CLOSED -> "Cette action était déjà fermée : « "
-                    + closing.action().getDescription() + " ». Rien n'a changé.";
-            case UNKNOWN -> "Aucune action ouverte ne porte la clé « " + key + " » dans ce terminal. "
-                    + "N'insiste pas : elle a peut-être été annulée par l'utilisateur.";
+    /**
+     * <b>Fait avancer une attente</b> entre « À faire » et « Demandé » (F-175 / SF-175-02) — après
+     * avoir envoyé la demande, ou quand l'utilisateur dit qu'il faut la refaire.
+     */
+    public Outcome update(UUID userId, Workspace workspace, JsonNode input) {
+        String key = text(input, "key");
+        String id = text(input, "id");
+        if (key.isEmpty() && id.isEmpty()) {
+            return Outcome.error("key (ou id) est requise : celle que montre la liste des attentes.");
+        }
+        TerminalActionStatus status;
+        try {
+            status = TerminalActionStatus.valueOf(text(input, "status").toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            return Outcome.error("status vaut A_FAIRE ou DEMANDE.");
+        }
+        try {
+            TerminalActionService.AgentChange change = service.agentUpdate(userId, workspace, key, id,
+                    status, text(input, "requested_to"), text(input, "channel"));
+            return new Outcome(updateMessage(change, key.isEmpty() ? id : key), false, change.action());
+        } catch (InvalidTerminalActionException e) {
+            return Outcome.error(e.getMessage());
+        } catch (RuntimeException e) {
+            log.warn("Mise à jour d'une attente impossible", e);
+            return Outcome.error("L'attente n'a pas pu être mise à jour. Dis-le à l'utilisateur dans ta "
+                    + "réponse plutôt que de réessayer.");
+        }
+    }
+
+    /** Ce que l'agent lit après une proposition de fermeture. */
+    private static String proposalMessage(TerminalActionService.AgentChange change, String ref,
+                                          boolean cancelled) {
+        return switch (change.outcome()) {
+            case PROPOSED -> "Fermeture PROPOSÉE à l'utilisateur" + (cancelled ? " (n'avait pas lieu d'être)" : "")
+                    + " : « " + change.action().getDescription() + " ». Elle reste OUVERTE tant qu'il n'a pas "
+                    + "confirmé ; il voit [Confirmer] [Pas encore]. Ne dis pas qu'elle est fermée.";
+            case ALREADY_CLOSED -> "Cette attente était déjà fermée : « "
+                    + change.action().getDescription() + " ». Rien n'a changé.";
+            case UNKNOWN -> unknown(ref);
+            case CHANGED -> "Rien n'a changé.";
         };
     }
 
-    /** La parole de l'utilisateur, rendue telle quelle — c'est elle qui justifie la fermeture. */
-    private static String said(TerminalActionService.Closing closing) {
-        String reason = closing.action().getClosedReason();
-        return reason == null || reason.isBlank() ? "." : " — vous avez dit : « " + reason + " ».";
+    /** Ce que l'agent lit après un changement d'état. */
+    private static String updateMessage(TerminalActionService.AgentChange change, String ref) {
+        return switch (change.outcome()) {
+            case CHANGED -> change.action().getStatus() == TerminalActionStatus.DEMANDE
+                    ? "Attente passée à « Demandé » : « " + change.action().getDescription() + " »"
+                            + requestedSuffix(change.action()) + ". On attend la réponse ; ne redemande pas."
+                    : "Attente revenue à « À faire » : « " + change.action().getDescription() + " ».";
+            case ALREADY_CLOSED -> "Cette attente est fermée : « " + change.action().getDescription()
+                    + " ». Rien n'a changé ; si le blocage revient, dis-le à l'utilisateur.";
+            case UNKNOWN -> unknown(ref);
+            case PROPOSED -> "Rien n'a changé.";
+        };
     }
+
+    private static String unknown(String ref) {
+        return "Aucune attente de ce terminal ni de son poste ne répond à « " + ref + " ». "
+                + "N'insiste pas : reprends la clé ou l'id exactement tels que la liste des attentes les montre.";
+    }
+
 
     private Outcome record(UUID userId, Workspace workspace, JsonNode input) {
         String description = text(input, "description");

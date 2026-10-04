@@ -30,35 +30,47 @@ public class TerminalActionToolCatalog {
     /** Le nom de l'outil de fermeture (F-154 / SF-154-04). */
     public static final String CLOSE = "close_blocker";
 
-    /** Le guide ajouté à la consigne quand l'outil est donné. */
-    public static final String GUIDE = "--- Actions à faire par l'utilisateur ---\n"
+    /** Le nom de l'outil de changement d'état (F-175 / SF-175-02). */
+    public static final String UPDATE = "update_blocker";
+
+    /** Le guide ajouté à la consigne quand les outils sont donnés (stable : aucun contenu volatil). */
+    public static final String GUIDE = "--- Attentes de l'utilisateur ---\n"
             + "Quand tu butes sur quelque chose que TOI tu ne peux pas faire — il faut contacter "
             + "quelqu'un, obtenir un accès, une validation, une information qui n'est nulle part —, "
-            + "appelle record_blocker. L'action apparaît dans le menu du terminal de l'utilisateur et "
+            + "appelle record_blocker. L'attente apparaît dans le terminal de l'utilisateur et "
             + "SURVIT au tour ; écrite seulement dans ta réponse, elle serait perdue.\n"
             + "QUAND : uniquement pour une dépendance HUMAINE qui bloque. Pas une liste de choses à "
             + "faire, pas tes propres étapes, pas ce que tu peux trouver ou essayer toi-même. Une "
-            + "action mal inscrite coûte plus cher qu'une action manquante : elle fait douter de la "
+            + "attente mal inscrite coûte plus cher qu'une attente manquante : elle fait douter de la "
             + "liste entière.\n"
             + "COMMENT : description à l'IMPÉRATIF et du point de vue de l'utilisateur (« Demander "
             + "l'accès VPN à Karim »), blocks = ce que ça débloque (« le déploiement du connecteur »), "
             + "person = qui est concerné, kind = MESSAGE si c'est un message à envoyer, ACTION sinon, "
             + "et key = une clé courte et STABLE du blocage (« acces-vpn-karim ») — c'est elle qui "
             + "évite dix fois la même ligne.\n"
+            + "LA LISTE TE SUIT : les attentes ouvertes du poste sont jointes à chaque message, dans le "
+            + "bloc « Attentes ouvertes ». REGARDE-LA AVANT D'INSCRIRE : si l'attente y est déjà, "
+            + "n'en crée pas une autre ; si elle est « DEMANDÉ », la demande est partie — NE REDEMANDE "
+            + "PAS, propose plutôt une relance si elle tarde. Désigne une attente par sa key, ou par son "
+            + "id quand la liste n'affiche pas de key.\n"
             + "CE QUE LE RÉSULTAT TE DIT : « inscrite » (c'est neuf), « déjà inscrite » (elle attend "
-            + "déjà — n'en reparle pas), « annulée par l'utilisateur » (il a dit non : NE REDEMANDE "
-            + "PAS, contourne ou explique ce qui restera impossible), « déjà faite ».\n"
-            + "TU CONTINUES TON TOUR : inscrire une action n'interrompt rien et n'attend rien. Fais "
+            + "déjà — n'en reparle pas), « déjà demandé » (on attend la réponse), « annulée par "
+            + "l'utilisateur » (il a dit non : NE REDEMANDE PAS, contourne ou explique ce qui restera "
+            + "impossible), « déjà faite ».\n"
+            + "QUAND LA DEMANDE PART (tu as envoyé le message, ou l'utilisateur dit qu'il l'a envoyé), "
+            + "appelle update_blocker avec status=DEMANDE, requested_to = à qui, channel = par où. "
+            + "S'il dit qu'il faut la refaire, status=A_FAIRE.\n"
+            + "TU CONTINUES TON TOUR : inscrire une attente n'interrompt rien et n'attend rien. Fais "
             + "ensuite tout ce qui ne dépend pas de ce blocage, puis dis clairement ce qui reste "
             + "suspendu à lui.\n"
             + "QUAND L'UTILISATEUR RÉPOND : s'il te dit que c'est fait, ou s'il te donne "
-            + "l'information que l'action demandait, appelle close_blocker avec la MÊME key. Sans "
-            + "cela sa liste ne se vide jamais et devient un cimetière — qu'on ne regarde plus.\n"
+            + "l'information que l'attente demandait, appelle close_blocker. Tu ne fermes pas : tu "
+            + "PROPOSES, et l'utilisateur confirme d'un geste. Ne dis jamais qu'elle est fermée.\n"
             + "LA RAISON, C'EST SA PAROLE, pas ton résumé : recopie ce qu'il a dit (« Karim a ouvert "
-            + "l'accès ce matin »). Une action fermée sur un résumé approximatif fait croire à un "
+            + "l'accès ce matin »). Une attente fermée sur un résumé approximatif fait croire à un "
             + "fait qui n'a pas été dit.\n"
             + "NE FERME JAMAIS SUR UNE SUPPOSITION. Seulement sur ce qu'il a effectivement dit. Dans "
-            + "le doute, laisse ouvert : une action qui reste est un rappel, une action fermée à tort "
+            + "le doute, laisse ouvert : une attente qui reste est un rappel, une attente fermée à tort "
             + "est une information perdue.\n"
             + "S'IL DIT QUE ÇA N'AVAIT PAS LIEU D'ÊTRE, passe cancelled=true : ce n'est pas « c'est "
             + "fait », et les confondre ferait mentir l'historique.";
@@ -77,7 +89,7 @@ public class TerminalActionToolCatalog {
 
     /** Vrai si ce nom d'outil est l'un de ceux des actions du terminal. */
     public static boolean isTerminalActionTool(String tool) {
-        return RECORD.equals(tool) || CLOSE.equals(tool);
+        return RECORD.equals(tool) || CLOSE.equals(tool) || UPDATE.equals(tool);
     }
 
     /**
@@ -108,7 +120,7 @@ public class TerminalActionToolCatalog {
      */
     public List<AgentTool> toolsFor(UUID userId, Workspace workspace) {
         return isOpenFor(userId, workspace)
-                ? List.of(definition(), closeDefinition())
+                ? List.of(definition(), updateDefinition(), closeDefinition())
                 : List.of();
     }
 
@@ -138,22 +150,51 @@ public class TerminalActionToolCatalog {
                         "required", List.of("description")));
     }
 
-    /** La définition de l'outil de fermeture (F-154 / SF-154-04). */
+    /** La définition de l'outil de fermeture — une PROPOSITION (F-175 / SF-175-02). */
     static AgentTool closeDefinition() {
         return new AgentTool(CLOSE,
-                "Ferme une action à faire quand L'UTILISATEUR A RÉPONDU : il dit que c'est fait, ou "
-                        + "il donne l'information demandée. Donne la MÊME key qu'à l'inscription, et "
-                        + "recopie SA parole dans reason. Ne ferme jamais sur une supposition.",
+                "PROPOSE de fermer une attente quand L'UTILISATEUR A RÉPONDU : il dit que c'est fait, "
+                        + "ou il donne l'information demandée. L'attente reste ouverte jusqu'à ce qu'il "
+                        + "confirme d'un geste. Désigne-la par sa key (ou son id), et recopie SA parole "
+                        + "dans reason. Ne propose jamais sur une supposition.",
                 Map.of("type", "object",
                         "properties", Map.of(
                                 "key", Map.of("type", "string",
-                                        "description", "La clé de l'action, celle qui a servi à l'inscrire."),
+                                        "description", "La clé de l'attente, telle que la liste la montre."),
+                                "id", Map.of("type", "string",
+                                        "description", "L'identifiant de l'attente, quand la liste n'affiche "
+                                                + "pas de key."),
                                 "reason", Map.of("type", "string",
                                         "description", "Ce que l'utilisateur a dit, recopié — pas ton résumé "
                                                 + "(300 caractères au plus)."),
                                 "cancelled", Map.of("type", "boolean",
-                                        "description", "Vrai s'il a dit que l'action n'avait pas lieu d'être — "
+                                        "description", "Vrai s'il a dit que l'attente n'avait pas lieu d'être — "
                                                 + "ce n'est pas « c'est fait ».")),
-                        "required", List.of("key")));
+                        "required", List.of()));
+    }
+
+    /** La définition de l'outil de changement d'état (F-175 / SF-175-02). */
+    static AgentTool updateDefinition() {
+        return new AgentTool(UPDATE,
+                "Fait passer une attente de « À faire » à « Demandé » quand la demande est partie "
+                        + "(à qui, par où), ou la remet « À faire » s'il faut la refaire. Ne ferme pas : "
+                        + "pour cela, close_blocker propose et l'utilisateur confirme.",
+                Map.of("type", "object",
+                        "properties", Map.of(
+                                "key", Map.of("type", "string",
+                                        "description", "La clé de l'attente, telle que la liste la montre."),
+                                "id", Map.of("type", "string",
+                                        "description", "L'identifiant de l'attente, quand la liste n'affiche "
+                                                + "pas de key."),
+                                "status", Map.of("type", "string",
+                                        "description", "DEMANDE quand la demande est partie, A_FAIRE s'il "
+                                                + "faut la refaire.",
+                                        "enum", List.of("A_FAIRE", "DEMANDE")),
+                                "requested_to", Map.of("type", "string",
+                                        "description", "À qui la demande a été faite (120 au plus)."),
+                                "channel", Map.of("type", "string",
+                                        "description", "Par où : courriel, Teams, ticket… (60 au plus).")),
+                        "required", List.of("status")));
     }
 }
+

@@ -27,6 +27,9 @@ public record TerminalActionResponse(
         String channel,
         String closedReason,
         OffsetDateTime closedAt,
+        TerminalActionStatus proposedStatus,
+        String proposedReason,
+        OffsetDateTime proposedAt,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt) {
 
@@ -51,6 +54,9 @@ public record TerminalActionResponse(
                 action.getChannel(),
                 action.getClosedReason(),
                 action.getClosedAt(),
+                action.getProposedStatus(),
+                action.getProposedReason(),
+                action.getProposedAt(),
                 action.getCreatedAt(),
                 action.getUpdatedAt());
     }
