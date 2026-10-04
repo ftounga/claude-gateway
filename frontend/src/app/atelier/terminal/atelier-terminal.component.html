@@ -1550,10 +1550,13 @@
           aria-autocomplete="list"
           [attr.aria-expanded]="mentionOpen()"
           [placeholder]="dictationPlaceholder()
+            ?? ghostPrompt()
             ?? (liveLimitReached
               ? 'Terminal en attente d\'une place — fermez-en un autre pour reprendre ici'
               : (submitting ? 'Précisez pendant qu\'il travaille…' : 'Décrivez la tâche à exécuter (@ pour un fichier)…'))"
           aria-label="Demande à exécuter"
+          [class.terminal-field--ghost]="ghostPrompt() !== null"
+          [attr.aria-description]="ghostPrompt() !== null ? 'Suggestion — Tab pour l\'accepter, Échap pour l\'effacer' : null"
           [disabled]="publishing || liveLimitReached"
           [ngModel]="draft"
           (ngModelChange)="onDraftInput($event, draftField)"
@@ -1610,10 +1613,15 @@
     <!-- F-144 / SF-144-01 — LA SUITE SUGGÉRÉE, dérivée du dernier tour et de rien d'autre : aucun
          appel au modèle, donc aucun jeton et aucune attente. Un clic REMPLIT le champ ; rien ne
          part sans un geste. Les puces s'effacent dès qu'on écrit. -->
+    <!-- F-144 / SF-144-02 — LA SUITE PRÉDITE a priorité : sur grand écran elle est en fantôme dans le
+         champ (rien ici) ; en vue étroite, une puce unique. Sans elle, les puces ci-dessus restent le
+         repli. -->
     <app-turn-suggestions
       [report]="lastOutcome()"
       [draft]="draft"
-      (pick)="draftChange.emit($event)"
+      [predicted]="predicted()"
+      [predictedAsChip]="isNarrow()"
+      (pick)="onSuggestionPick($event)"
     ></app-turn-suggestions>
   }
   <!-- LA PAGE OUVERTE (F-109 / SF-109-03) : un panneau à droite du terminal, un état d'écran. -->

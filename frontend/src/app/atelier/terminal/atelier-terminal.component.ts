@@ -299,6 +299,10 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   set projectId(value: string | null) {
     const previous = this.projectIdValue();
     this.projectIdValue.set(value ?? null);
+    if ((value ?? null) !== previous) {
+      // F-144 / SF-144-02 : la suite prédite appartient au terminal qui l'a demandée.
+      this.predicted.set(null);
+    }
     if (value && value !== previous) {
       this.loadActionCount(value);
     }
@@ -667,8 +671,90 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   /** Terminal Teams : son fil ramène à la Vigie (F-106 / SF-106-03). */
   private readonly teamsTerminalValue = signal(false);
 
-  /** Vrai pendant un envoi : un tour tourne. */
-  @Input() submitting = false;
+  /**
+   * Vrai pendant un envoi : un tour tourne.
+   *
+   * <p>F-144 / SF-144-02 : le passage de vrai à faux est **la fin du tour** — c'est là, et seulement
+   * là, qu'on demande la suite prédite. Au chargement d'un fil, rien n'est demandé : personne ne vient
+   * de finir un tour, il n'y a rien à payer.</p>
+   */
+  @Input()
+  set submitting(value: boolean) {
+    const wasSubmitting = this.submittingValue;
+    this.submittingValue = value === true;
+    if (this.submittingValue && !wasSubmitting) {
+      // Un nouveau tour part : la suite de l'ancien n'a plus de sens.
+      this.predicted.set(null);
+    } else if (wasSubmitting && !this.submittingValue) {
+      // Le message de l'agent peut arriver dans la même détection de changements, après cette entrée :
+      // on regarde le fil une fois les entrées posées (micro-tâche, pas de minuterie).
+      void Promise.resolve().then(() => this.requestNextPrompt());
+    }
+  }
+  get submitting(): boolean {
+    return this.submittingValue;
+  }
+  private submittingValue = false;
+
+  /**
+   * **La suite prédite** (F-144 / SF-144-02) : une phrase proposée par le modèle rapide après le tour,
+   * montrée en texte fantôme dans le champ vide (Tab ou → l'accepte, Échap l'efface). `null` : rien à
+   * proposer — les puces SF-144-01 restent le repli.
+   */
+  readonly predicted = signal<string | null>(null);
+
+  /** Le projet pour lequel la suite a été demandée : une réponse tardive d'un autre projet est ignorée. */
+  private predictedFor: string | null = null;
+
+  /** Demande la suite du tour qui vient de finir — en lecture seule ou sans réponse de l'agent, rien. */
+  private requestNextPrompt(): void {
+    const workspaceId = this.projectId;
+    if (this.readOnly || !workspaceId || this.submittingValue) {
+      return;
+    }
+    const last = this.messages[this.messages.length - 1];
+    if (!last || last.role !== 'ASSISTANT') {
+      return;
+    }
+    this.predictedFor = workspaceId;
+    this.atelier.nextPrompt(workspaceId).subscribe({
+      next: (response) => {
+        if (this.predictedFor !== workspaceId || this.projectId !== workspaceId || this.submittingValue) {
+          return;
+        }
+        const suggestion = response?.suggestion?.trim();
+        this.predicted.set(suggestion ? suggestion : null);
+        this.changeDetector.markForCheck();
+      },
+      // Échec : aucun message — les puces SF-144-01 sont le repli, et une suggestion n'est pas un dû.
+      error: () => this.predicted.set(null),
+    });
+  }
+
+  /** Le texte fantôme du champ : la suite prédite, sur champ vide et hors tour seulement. */
+  ghostPrompt(): string | null {
+    const predicted = this.predicted();
+    if (!predicted || this.submittingValue || this.draft.length > 0 || this.isNarrow()) {
+      return null;
+    }
+    return predicted;
+  }
+
+  /** Accepter la suite : elle **remplit** le champ, elle n'envoie rien. */
+  acceptPrediction(): void {
+    const predicted = this.predicted();
+    if (!predicted) {
+      return;
+    }
+    this.predicted.set(null);
+    this.draftChange.emit(predicted);
+  }
+
+  /** Une puce (prédite ou SF-144-01) a été touchée : elle remplit le champ, la suite prédite s'efface. */
+  onSuggestionPick(text: string): void {
+    this.predicted.set(null);
+    this.draftChange.emit(text);
+  }
 
   /**
    * **Réponse non reçue** (F-131 / SF-131-01) : le dernier tour a été lancé mais le transport est
@@ -1734,6 +1820,10 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    * surlignage en tête. On réévalue aussi le jeton `@…` pour l'autocomplétion (SF-121-24).
    */
   onDraftInput(value: string, field: HTMLInputElement): void {
+    // F-144 / SF-144-02 : toute frappe efface la suite prédite — elle propose, elle n'insiste pas.
+    if (value.length > 0) {
+      this.predicted.set(null);
+    }
     this.slashDismissed.set(false);
     this.slashHighlight.set(0);
     this.draftChange.emit(value);
@@ -1749,6 +1839,21 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   onComposerKeydown(event: KeyboardEvent, field: HTMLInputElement): void {
     const menu = this.slashMenu;
     if (menu.length === 0) {
+      // F-144 / SF-144-02 : la suite prédite, en fantôme dans le champ vide. Tab ou → l'acceptent
+      // (elle remplit le champ, rien ne part), Échap l'efface. Seulement si aucune liste n'est ouverte :
+      // les menus gardent la priorité du clavier.
+      if (!this.mentionOpen() && this.ghostPrompt() && field.value.length === 0) {
+        if (event.key === 'Tab' || event.key === 'ArrowRight') {
+          event.preventDefault();
+          this.acceptPrediction();
+          return;
+        }
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          this.predicted.set(null);
+          return;
+        }
+      }
       // Pas de slash-command en cours : laisser la liste d'@-mentions gérer le clavier si ouverte.
       this.onMentionKeydown(event, field);
       return;

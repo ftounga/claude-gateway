@@ -1374,6 +1374,15 @@ export interface AtelierBilanReport {
   suggestions: AtelierBilanSuggestion[];
 }
 
+/**
+ * La suite prédite (F-144 / SF-144-02) — réponse de `POST /api/workspaces/{id}/next-prompt`.
+ * `suggestion` à `null` : rien à proposer, l'écran retombe sur les puces SF-144-01.
+ */
+export interface AtelierNextPrompt {
+  suggestion: string | null;
+  messageId: string | null;
+}
+
 export interface AtelierResume {
   /** Messages que le prochain tour rejouera au fournisseur. */
   turns: number;

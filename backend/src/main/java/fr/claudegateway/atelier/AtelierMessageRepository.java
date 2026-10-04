@@ -16,6 +16,13 @@ public interface AtelierMessageRepository extends JpaRepository<AtelierMessage, 
     List<AtelierMessage> findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(UUID workspaceId, UUID userId);
 
     /**
+     * Les six derniers messages du fil, du plus récent au plus ancien (F-144 / SF-144-02) : la suite
+     * prédite n'a besoin que du dernier échange, et charger tout le fil pour le trouver serait payer
+     * des milliers de lignes pour deux. Filtrée {@code workspace_id} + {@code user_id}.
+     */
+    List<AtelierMessage> findTop6ByWorkspaceIdAndUserIdOrderByCreatedAtDesc(UUID workspaceId, UUID userId);
+
+    /**
      * Rappel à la demande (F-162 / SF-162-01) : recherche <b>mot-clé</b> dans le contenu des messages
      * du fil, du plus récent au plus ancien, bornée par {@code pageable}.
      *

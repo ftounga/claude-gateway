@@ -16,6 +16,12 @@
   min-width: 0;
 }
 
+/* F-144 / SF-144-02 — LA SUITE PRÉDITE, en texte fantôme : la couleur reste celle du placeholder
+   (déjà grisée, contrastes de charte) ; l'italique dit « proposition », pas consigne d'usage. */
+.terminal-mentions .terminal-field--ghost::placeholder {
+  font-style: italic;
+}
+
 /* La liste flottante, ancrée au-dessus du champ. Une surface détachée, discrète : ce n'est pas le
    sujet, c'est une aide à la frappe. */
 .terminal-mentions__list {
