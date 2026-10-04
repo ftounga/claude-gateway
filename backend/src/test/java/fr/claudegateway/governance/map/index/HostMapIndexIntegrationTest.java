@@ -181,8 +181,8 @@ class HostMapIndexIntegrationTest {
     @DisplayName("coupe-circuit : éteint, rien n'est indexé")
     void killSwitch() {
         HostMapIndexService off = new HostMapIndexService(
-                new HostMapIndexProperties(false, null, null, null, null, null, null, null, null),
-                files, sections, facts, null, extractor);
+                new HostMapIndexProperties(false, null, null, null, null, null, null, null, null, null, null, null),
+                files, sections, facts, null, extractor, null);
         save(alice, aliceHost, MAP, "d1");
         assertThat(off.runOnce().filesIndexed()).isZero();
         assertThat(sections.count()).isZero();

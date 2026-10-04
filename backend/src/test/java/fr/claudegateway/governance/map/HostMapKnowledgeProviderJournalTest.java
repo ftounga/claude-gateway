@@ -31,7 +31,7 @@ class HostMapKnowledgeProviderJournalTest {
     private final UUID hostId = UUID.randomUUID();
 
     private HostMapKnowledgeProvider provider() {
-        return new HostMapKnowledgeProvider(store, scope, Runnable::run, Clock.systemUTC(), 120, journal);
+        return new HostMapKnowledgeProvider(store, scope, Runnable::run, Clock.systemUTC(), 120, journal, null, null);
     }
 
     @Test

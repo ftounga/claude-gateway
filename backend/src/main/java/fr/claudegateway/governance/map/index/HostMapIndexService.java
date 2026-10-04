@@ -33,16 +33,19 @@ public class HostMapIndexService {
     private final HostMapFactRepository facts;
     private final HostMapIndexer indexer;
     private final HostMapSectionExtractor extractor;
+    /** Les embeddings des faits (SF-174-03) : éteint sans clé. */
+    private final HostMapSemantic semantic;
 
     public HostMapIndexService(HostMapIndexProperties properties, HostMapFileRepository files,
             HostMapSectionRepository sections, HostMapFactRepository facts, HostMapIndexer indexer,
-            HostMapSectionExtractor extractor) {
+            HostMapSectionExtractor extractor, HostMapSemantic semantic) {
         this.properties = properties;
         this.files = files;
         this.sections = sections;
         this.facts = facts;
         this.indexer = indexer;
         this.extractor = extractor;
+        this.semantic = semantic;
     }
 
     /** Ce qu'une passe a fait. */
@@ -93,9 +96,11 @@ public class HostMapIndexService {
         } catch (RuntimeException ex) {
             log.warn("Carte : extraction des sections en échec ({})", ex.getClass().getSimpleName());
         }
-        if (indexed > 0 || extracted > 0 || failed > 0) {
-            log.info("Carte : index tenu — fichiers={} sections_lues={} sections_en_echec={}",
-                    indexed, extracted, failed);
+        // 3. Les embeddings des faits (SF-174-03, D5) : sans clé, rien.
+        int embedded = semantic == null ? 0 : semantic.embedPending(properties.embeddingsPerRun());
+        if (indexed > 0 || extracted > 0 || failed > 0 || embedded > 0) {
+            log.info("Carte : index tenu — fichiers={} sections_lues={} sections_en_echec={} faits_vectorises={}",
+                    indexed, extracted, failed, embedded);
         }
         return new RunOutcome(indexed, extracted, failed);
     }

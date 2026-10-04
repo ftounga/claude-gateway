@@ -30,7 +30,7 @@ class HostMapSectionExtractorTest {
     private final AIProvider provider = mock(AIProvider.class);
     private final ByokKeyService byok = mock(ByokKeyService.class);
     private final HostMapIndexProperties properties =
-            new HostMapIndexProperties(null, null, null, null, null, null, null, null, null);
+            new HostMapIndexProperties(null, null, null, null, null, null, null, null, null, null, null, null);
     private final HostMapSectionExtractor extractor =
             new HostMapSectionExtractor(provider, byok, properties, new ObjectMapper());
     private final UUID userId = UUID.randomUUID();
