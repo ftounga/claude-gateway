@@ -132,3 +132,61 @@ button.forge-map__crumb:hover { color: var(--cg-text-primary); text-decoration: 
 @media (max-width: 1023px) {
   .forge-map__body--with-card { grid-template-columns: minmax(0, 1fr); }
 }
+
+// LA GRILLE (SF-173-04)
+.forge-map__grid {
+  display: grid;
+  gap: 4px;
+  overflow-x: auto;
+}
+
+.forge-map__grid-head {
+  padding: 8px;
+  font: 400 11px 'JetBrains Mono', monospace;
+  text-transform: uppercase;
+  color: var(--cg-text-secondary);
+}
+
+.forge-map__grid-domain {
+  padding: 8px;
+  font: 600 14px Inter, sans-serif;
+  color: var(--cg-text-primary);
+}
+
+.forge-map__grid-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 48px;
+  padding: 4px;
+  background: var(--cg-bg);
+  border-radius: 8px;
+}
+
+.forge-map__grid-env { display: none; font: 400 11px 'JetBrains Mono', monospace; color: var(--cg-text-secondary); }
+
+.forge-map__grid-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--cg-divider);
+  border-left: 4px solid var(--cg-navy);
+  border-radius: 8px;
+  background: var(--cg-surface);
+  text-align: left;
+  cursor: pointer;
+
+  &--trap { border-left-color: var(--cg-error); }
+  &--stale { color: var(--cg-text-secondary); }
+  &--selected { border-color: var(--cg-accent); }
+}
+
+.forge-map__grid-name { font: 500 13px Inter, sans-serif; color: var(--cg-text-primary); word-break: break-word; }
+.forge-map__grid-meta { font: 400 11px 'JetBrains Mono', monospace; color: var(--cg-text-secondary); }
+
+@media (max-width: 767px) {
+  .forge-map__grid { display: flex; flex-direction: column; }
+  .forge-map__grid-head { display: none; }
+  .forge-map__grid-env { display: block; }
+}
