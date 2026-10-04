@@ -29,8 +29,11 @@ public class JourneyToolCatalog {
     /** Proposer le mode guidé (SF-176-02). */
     public static final String PROPOSE_GUIDED = "propose_guided_mode";
 
+    /** Poser ou amender le plan structuré (SF-176-03). */
+    public static final String SET_PLAN = "set_subject_plan";
+
     /** Tous les noms d'outils du parcours. */
-    public static final Set<String> NAMES = Set.of(PROPOSE_GUIDED);
+    public static final Set<String> NAMES = Set.of(PROPOSE_GUIDED, SET_PLAN);
 
     /** Le guide ajouté à la consigne système quand les outils sont donnés (stable). */
     public static final String GUIDE = "--- Parcours du sujet (Libre / Guidé) ---\n"
@@ -46,7 +49,21 @@ public class JourneyToolCatalog {
             + "NE PROPOSE PAS pour une question ou un petit geste, ni deux fois : s'il a choisi de rester "
             + "libre, c'est réglé pour ce sujet.\n"
             + "EN ATTENDANT SON CHOIX : continue à comprendre (lecture libre), mais ne modifie rien de "
-            + "plus que ce qu'il a explicitement demandé.";
+            + "plus que ce qu'il a explicitement demandé.\n"
+            + "MODE GUIDÉ — LES PHASES : Investigation → Plan → Exécution → Vérification → Clos.\n"
+            + "INVESTIGATION : la lecture est libre. PLAN-ACTION.md commence en plan d'investigation : "
+            + "objectif, ce qu'on sait (avec preuves), hypothèses, questions ouvertes. Un input qui "
+            + "manque (une information, un accès, une validation d'une personne) devient une attente "
+            + "(record_blocker, avec une key).\n"
+            + "PLAN : pose le plan avec set_subject_plan — des étapes, chacune avec l'action (title), sa "
+            + "classe de risque (risk : LECTURE, NOTES, REVERSIBLE, EXTERNE), comment la vérifier "
+            + "(verify), comment revenir en arrière (rollback), et waits_on = la key de l'attente dont "
+            + "elle dépend. Le plan peut être PARTIEL : une inconnue est une étape qui attend son input. "
+            + "Un petit geste = un plan d'une ligne. L'utilisateur valide le plan d'un clic ; tant qu'il "
+            + "ne l'a pas fait, ne modifie rien. Garde PLAN-ACTION.md cohérent avec ce plan.\n"
+            + "EXÉCUTION : n'exécute que des étapes du plan validé. Une modification hors plan est un "
+            + "AMENDEMENT : rappelle set_subject_plan avec le plan complet modifié — il repasse par la "
+            + "validation de l'utilisateur.";
 
     private final SpaceEntitlementService entitlements;
 
@@ -86,7 +103,37 @@ public class JourneyToolCatalog {
         }
         List<AgentTool> tools = new ArrayList<>();
         tools.add(proposeGuidedDefinition());
+        tools.add(setPlanDefinition());
         return tools;
+    }
+
+    static AgentTool setPlanDefinition() {
+        Map<String, Object> step = Map.of("type", "object",
+                "properties", Map.of(
+                        "title", Map.of("type", "string",
+                                "description", "L'action de l'étape (300 caractères au plus)."),
+                        "risk", Map.of("type", "string",
+                                "description", "LECTURE, NOTES (STATE.md, PLAN-ACTION.md, notes, carte), "
+                                        + "REVERSIBLE (édition en branche, fichier local) ou EXTERNE (push, "
+                                        + "merge, apply, kubectl apply/delete, envoi, prod).",
+                                "enum", List.of("LECTURE", "NOTES", "REVERSIBLE", "EXTERNE")),
+                        "verify", Map.of("type", "string",
+                                "description", "Comment on saura qu'elle a marché."),
+                        "rollback", Map.of("type", "string",
+                                "description", "Comment revenir en arrière."),
+                        "waits_on", Map.of("type", "string",
+                                "description", "La key de l'attente (record_blocker) dont elle dépend, s'il y "
+                                        + "en a une.")),
+                "required", List.of("title", "risk"));
+        return new AgentTool(SET_PLAN,
+                "Pose (ou amende) le PLAN du sujet guidé : la liste COMPLÈTE des étapes, qui remplace la "
+                        + "précédente. L'utilisateur le valide d'un clic ; une modification d'un plan déjà "
+                        + "validé est un amendement, revalidé. Mode guidé seulement.",
+                Map.of("type", "object",
+                        "properties", Map.of(
+                                "steps", Map.of("type", "array", "items", step,
+                                        "description", "Les étapes, dans l'ordre (20 au plus).")),
+                        "required", List.of("steps")));
     }
 
     static AgentTool proposeGuidedDefinition() {

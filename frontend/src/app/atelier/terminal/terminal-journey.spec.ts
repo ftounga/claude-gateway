@@ -97,4 +97,59 @@ describe('F-176 — le parcours du sujet', () => {
     service.declineGuided('w1').subscribe();
     expect(http.expectOne('/api/workspaces/w1/journey/guided-proposal/decline').request.method).toBe('POST');
   });
+
+  it('SF-176-03 : le plan s’affiche déplié tant qu’il attend sa validation, et émet [Valider le plan]', () => {
+    const fixture = TestBed.createComponent(TerminalJourneyStripComponent);
+    fixture.componentRef.setInput('journey', {
+      ...guided('PLAN', 'Plan'),
+      plan: {
+        version: 1, validatedVersion: null, validatedAt: null, awaitingValidation: true, amendment: false,
+        waitingInputs: 1,
+        steps: [
+          { title: 'Lire les logs', risk: 'LECTURE', riskLabel: 'lecture', verify: '502 vue', rollback: null,
+            waitsOn: null, waitsOnStatus: null, status: 'A_FAIRE', evidence: null, changed: false },
+          { title: 'Obtenir le certificat', risk: 'EXTERNE', riskLabel: 'externe / irréversible', verify: null,
+            rollback: null, waitsOn: 'certificat-gino', waitsOnStatus: 'DEMANDE', status: 'A_FAIRE',
+            evidence: null, changed: false },
+        ],
+      },
+    });
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.textContent).toContain('en attente de 1 input');
+    expect(el.textContent).toContain('Attend : certificat-gino — demandé');
+    expect(el.querySelectorAll('.journey-plan__step').length).toBe(2);
+    const gestures: string[] = [];
+    fixture.componentInstance.gesture.subscribe(g => gestures.push(g));
+    (el.querySelector('.journey-plan__validate') as HTMLButtonElement).click();
+    expect(gestures).toEqual(['validate-plan']);
+  });
+
+  it('SF-176-03 : un amendement marque les étapes modifiées et se valide comme tel', () => {
+    const fixture = TestBed.createComponent(TerminalJourneyStripComponent);
+    fixture.componentRef.setInput('journey', {
+      ...guided('PLAN', 'Plan'),
+      plan: {
+        version: 2, validatedVersion: 1, validatedAt: '2026-10-05T09:00:00Z', awaitingValidation: true,
+        amendment: true, waitingInputs: 0,
+        steps: [
+          { title: 'Redémarrer', risk: 'EXTERNE', riskLabel: 'externe / irréversible', verify: null, rollback: null,
+            waitsOn: null, waitsOnStatus: null, status: 'A_FAIRE', evidence: null, changed: true },
+        ],
+      },
+    });
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('.journey-plan__changed')).not.toBeNull();
+    expect(el.querySelector('.journey-plan__validate')?.textContent).toContain('Valider l\'amendement');
+  });
+
+  it('SF-176-03 : la validation porte la version vue', () => {
+    const service = TestBed.inject(JourneyService);
+    const http = TestBed.inject(HttpTestingController);
+    service.validatePlan('w1', 3).subscribe();
+    const req = http.expectOne('/api/workspaces/w1/journey/plan/validate');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ version: 3 });
+  });
 });

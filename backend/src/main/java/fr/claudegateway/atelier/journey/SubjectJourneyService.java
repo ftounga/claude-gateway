@@ -75,7 +75,8 @@ public class SubjectJourneyService {
             throw new InvalidJourneyException("Le mode est « LIBRE » ou « GUIDE ».");
         }
         SubjectJourney journey = find(userId, workspaceId).orElseGet(() -> blank(userId, workspaceId));
-        if (journey.getMode() == mode && journey.getCreatedAt() != null) {
+        boolean reopen = mode == JourneyMode.GUIDE && journey.getPhase() == JourneyPhase.CLOS;
+        if (journey.getMode() == mode && journey.getCreatedAt() != null && !reopen) {
             return journey; // rien ne change : pas d'écriture, pas d'événement
         }
         SubjectJourney saved = applyMode(journey, mode, OffsetDateTime.now(clock));
@@ -156,6 +157,143 @@ public class SubjectJourneyService {
         SubjectJourney saved = save(journey, now);
         record(saved, SubjectJourneyEvent.GUIDED_PROPOSED, null);
         return ProposalOutcome.PROPOSED;
+    }
+
+    /** Ce que l'agent apprend en posant son plan (SF-176-03). */
+    public enum PlanOutcome {
+        /** Le plan est posé, il attend la validation de l'utilisateur. */
+        SET,
+        /** Un plan déjà validé a été modifié : c'est un amendement, à revalider. */
+        AMENDMENT,
+        /** Le sujet est en Libre : le plan structuré est celui du mode guidé. */
+        NOT_GUIDED,
+        /** Le sujet est clos. */
+        CLOSED,
+        /** Aucune étape lisible. */
+        EMPTY
+    }
+
+    /** Le résultat d'un plan posé : l'issue et la version courante. */
+    public record PlanChange(PlanOutcome outcome, int version) {
+    }
+
+    /**
+     * <b>L'agent pose (ou amende) le plan structuré du sujet</b> (SF-176-03). Le terminal est celui du
+     * tour. Le sujet passe (ou revient) en phase <b>Plan</b> : rien de ce qui modifie ne passera la
+     * porte avant que l'utilisateur ait validé cette version (Q2, Q3).
+     *
+     * <p>Une étape inchangée garde son avancement (fait, vérifié) : amender n'efface pas le travail
+     * accompli.</p>
+     */
+    @Transactional
+    public PlanChange setPlan(UUID userId, UUID workspaceId, JourneyPlan plan) {
+        SubjectJourney journey = find(userId, workspaceId).orElseGet(() -> blank(userId, workspaceId));
+        if (!journey.isGuided()) {
+            return new PlanChange(PlanOutcome.NOT_GUIDED, journey.getPlanVersion());
+        }
+        if (journey.getPhase() == JourneyPhase.CLOS) {
+            return new PlanChange(PlanOutcome.CLOSED, journey.getPlanVersion());
+        }
+        if (plan == null || plan.isEmpty()) {
+            return new PlanChange(PlanOutcome.EMPTY, journey.getPlanVersion());
+        }
+        JourneyPlan previous = JourneyPlan.fromJson(journey.getPlanJson());
+        JourneyPlan carried = carryProgress(plan, previous);
+        boolean amendment = journey.getValidatedVersion() != null;
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        journey.setPlanJson(carried.toJson());
+        journey.setPlanVersion(journey.getPlanVersion() + 1);
+        moveTo(journey, JourneyPhase.PLAN, now);
+        SubjectJourney saved = save(journey, now);
+        record(saved, amendment ? SubjectJourneyEvent.PLAN_AMENDED : SubjectJourneyEvent.PLAN_SET,
+                "v" + saved.getPlanVersion() + " · " + carried.steps().size() + " étapes");
+        return new PlanChange(amendment ? PlanOutcome.AMENDMENT : PlanOutcome.SET, saved.getPlanVersion());
+    }
+
+    /**
+     * <b>[Valider le plan]</b> (SF-176-03, décision Q3) : un clic valide le plan entier. La version
+     * validée doit être celle que l'utilisateur a sous les yeux — un plan amendé entre-temps se revalide.
+     * Le sujet passe en <b>Exécution</b>.
+     *
+     * @param version la version vue à l'écran ; {@code null} = la version courante
+     * @throws InvalidJourneyException sujet non guidé, pas en phase Plan, sans plan, ou version dépassée
+     */
+    @Transactional
+    public SubjectJourney validatePlan(UUID userId, UUID workspaceId, Integer version) {
+        workspaceService.requireOwned(userId, workspaceId); // 404 — TOUJOURS en premier
+        SubjectJourney journey = find(userId, workspaceId)
+                .orElseThrow(() -> new InvalidJourneyException("Ce sujet n'a pas de plan à valider."));
+        if (!journey.isGuided() || journey.getPhase() != JourneyPhase.PLAN) {
+            throw new InvalidJourneyException("Il n'y a pas de plan en attente de validation.");
+        }
+        if (JourneyPlan.fromJson(journey.getPlanJson()).isEmpty()) {
+            throw new InvalidJourneyException("Ce sujet n'a pas de plan à valider.");
+        }
+        if (version != null && version != journey.getPlanVersion()) {
+            throw new InvalidJourneyException("Le plan a changé depuis (version " + journey.getPlanVersion()
+                    + ") : relisez-le avant de le valider.");
+        }
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        boolean amendment = journey.getValidatedVersion() != null;
+        journey.setValidatedVersion(journey.getPlanVersion());
+        journey.setValidatedPlanJson(journey.getPlanJson());
+        journey.setPlanValidatedAt(now);
+        moveTo(journey, JourneyPhase.EXECUTION, now);
+        SubjectJourney saved = save(journey, now);
+        record(saved, SubjectJourneyEvent.PLAN_VALIDATED,
+                "v" + saved.getPlanVersion() + (amendment ? " · amendement" : ""));
+        return saved;
+    }
+
+    /** Les attentes F-175 dont dépendent les étapes ; absent = la clé seule est montrée. */
+    private fr.claudegateway.atelier.actions.TerminalActionService terminalActions;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setTerminalActions(fr.claudegateway.atelier.actions.TerminalActionService terminalActions) {
+        this.terminalActions = terminalActions;
+    }
+
+    /**
+     * <b>L'état des attentes dont dépendent les étapes</b> (SF-176-03) : clé → {@code A_FAIRE},
+     * {@code DEMANDE}, {@code FAIT}, {@code ANNULE}. Une clé sans attente n'y figure pas. Best-effort.
+     */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, String> waitsOn(UUID userId, fr.claudegateway.atelier.Workspace workspace,
+            SubjectJourney journey) {
+        java.util.Map<String, String> statuses = new java.util.LinkedHashMap<>();
+        if (terminalActions == null || journey == null || workspace == null) {
+            return statuses;
+        }
+        for (JourneyPlan.Step step : JourneyPlan.fromJson(journey.getPlanJson()).steps()) {
+            if (step.waitsOn() == null || statuses.containsKey(step.waitsOn())) {
+                continue;
+            }
+            try {
+                terminalActions.statusOfKey(userId, workspace, step.waitsOn())
+                        .ifPresent(status -> statuses.put(step.waitsOn(), status.name()));
+            } catch (RuntimeException ex) {
+                log.debug("Attente d'une étape illisible (best-effort) : {}", ex.getMessage());
+            }
+        }
+        return statuses;
+    }
+
+    /** Même lecture, depuis la route : {@code requireOwned} d'abord. */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, String> waitsOn(UUID userId, UUID workspaceId, SubjectJourney journey) {
+        return waitsOn(userId, workspaceService.requireOwned(userId, workspaceId), journey);
+    }
+
+    /** Une étape au contenu identique (même rang) garde l'avancement qu'elle avait. */
+    static JourneyPlan carryProgress(JourneyPlan next, JourneyPlan previous) {
+        JourneyPlan result = next;
+        for (int i = 0; i < next.steps().size() && i < previous.steps().size(); i++) {
+            JourneyPlan.Step before = previous.steps().get(i);
+            if (!next.changedSince(previous, i) && before.status() != JourneyPlan.StepStatus.A_FAIRE) {
+                result = result.withStep(i, before.status(), before.evidence());
+            }
+        }
+        return result;
     }
 
     /** Raison d'une proposition : une phrase. */

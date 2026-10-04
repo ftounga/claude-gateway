@@ -31,32 +31,53 @@ public class SubjectJourneyController {
         this.currentUser = currentUser;
     }
 
-    /** Le mode et la phase du sujet ; Libre s'il n'a jamais été décidé. */
+    /** Le mode, la phase et le plan du sujet ; Libre s'il n'a jamais été décidé. */
     @GetMapping
     public SubjectJourneyResponse get(@PathVariable UUID workspaceId) {
-        return SubjectJourneyResponse.from(service.get(currentUser.requireId(), workspaceId));
+        UUID userId = currentUser.requireId();
+        return respond(userId, workspaceId, service.get(userId, workspaceId));
     }
 
     /** Le menu du terminal : Libre ou Guidé (SF-176-01). */
     @PutMapping("/mode")
     public SubjectJourneyResponse setMode(@PathVariable UUID workspaceId, @RequestBody ModeRequest request) {
-        return SubjectJourneyResponse.from(
-                service.setMode(currentUser.requireId(), workspaceId, request == null ? null : request.mode()));
+        UUID userId = currentUser.requireId();
+        return respond(userId, workspaceId,
+                service.setMode(userId, workspaceId, request == null ? null : request.mode()));
     }
 
     /** [Passer en guidé] — la proposition de l'agent est acceptée (SF-176-02). */
     @PostMapping("/guided-proposal/accept")
     public SubjectJourneyResponse acceptGuided(@PathVariable UUID workspaceId) {
-        return SubjectJourneyResponse.from(service.acceptGuidedProposal(currentUser.requireId(), workspaceId));
+        UUID userId = currentUser.requireId();
+        return respond(userId, workspaceId, service.acceptGuidedProposal(userId, workspaceId));
     }
 
     /** [Rester libre] — la proposition est écartée et ne revient pas sur ce sujet (SF-176-02). */
     @PostMapping("/guided-proposal/decline")
     public SubjectJourneyResponse declineGuided(@PathVariable UUID workspaceId) {
-        return SubjectJourneyResponse.from(service.declineGuidedProposal(currentUser.requireId(), workspaceId));
+        UUID userId = currentUser.requireId();
+        return respond(userId, workspaceId, service.declineGuidedProposal(userId, workspaceId));
+    }
+
+    /** [Valider le plan] — un clic valide le plan entier, à la version vue (SF-176-03). */
+    @PostMapping("/plan/validate")
+    public SubjectJourneyResponse validatePlan(@PathVariable UUID workspaceId,
+                                               @RequestBody(required = false) ValidateRequest request) {
+        UUID userId = currentUser.requireId();
+        return respond(userId, workspaceId,
+                service.validatePlan(userId, workspaceId, request == null ? null : request.version()));
+    }
+
+    private SubjectJourneyResponse respond(UUID userId, UUID workspaceId, SubjectJourney journey) {
+        return SubjectJourneyResponse.from(journey, service.waitsOn(userId, workspaceId, journey));
     }
 
     /** Le mode voulu : {@code LIBRE} ou {@code GUIDE}. */
     public record ModeRequest(String mode) {
+    }
+
+    /** La version du plan que l'utilisateur a sous les yeux ; {@code null} = la courante. */
+    public record ValidateRequest(Integer version) {
     }
 }

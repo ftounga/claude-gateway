@@ -42,6 +42,15 @@ public class SubjectJourneyEvent {
     /** [Rester libre] (SF-176-02). */
     public static final String GUIDED_DECLINED = "GUIDED_DECLINED";
 
+    /** L'agent a posé un plan (SF-176-03). */
+    public static final String PLAN_SET = "PLAN_SET";
+
+    /** L'agent a modifié un plan déjà validé : un amendement (SF-176-03/04). */
+    public static final String PLAN_AMENDED = "PLAN_AMENDED";
+
+    /** [Valider le plan] (SF-176-03). */
+    public static final String PLAN_VALIDATED = "PLAN_VALIDATED";
+
     @Id
     @GeneratedValue
     @UuidGenerator

@@ -1,6 +1,9 @@
 package fr.claudegateway.atelier.journey;
 
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 /**
  * <b>Le parcours d'un terminal tel que l'écran le lit</b> (F-176). Jamais d'identifiant de compte.
@@ -11,6 +14,7 @@ import java.time.OffsetDateTime;
  * @param phaseChangedAt   depuis quand le sujet est dans cette phase
  * @param guidedProposal   la proposition du mode guidé qui attend un geste, ou {@code null} (SF-176-02)
  * @param guidedDeclined   vrai si l'utilisateur a choisi de rester libre sur ce sujet (SF-176-02)
+ * @param plan             le plan structuré, ou {@code null} s'il n'y en a pas (SF-176-03)
  */
 public record SubjectJourneyResponse(
         String mode,
@@ -18,13 +22,43 @@ public record SubjectJourneyResponse(
         String phaseLabel,
         OffsetDateTime phaseChangedAt,
         GuidedProposal guidedProposal,
-        boolean guidedDeclined) {
+        boolean guidedDeclined,
+        Plan plan) {
 
     /** La carte [Passer en guidé] [Rester libre] : pourquoi l'agent la propose, et depuis quand. */
     public record GuidedProposal(String reason, OffsetDateTime proposedAt) {
     }
 
+    /**
+     * Le plan structuré (SF-176-03).
+     *
+     * @param version          la version courante
+     * @param validatedVersion la dernière version validée, ou {@code null}
+     * @param validatedAt      quand
+     * @param awaitingValidation vrai si cette version attend le clic de l'utilisateur
+     * @param amendment        vrai si c'est la modification d'un plan déjà validé
+     * @param waitingInputs    nombre d'étapes qui attendent une attente encore ouverte
+     */
+    public record Plan(int version, Integer validatedVersion, OffsetDateTime validatedAt,
+                       boolean awaitingValidation, boolean amendment, int waitingInputs, List<Step> steps) {
+    }
+
+    /**
+     * Une étape telle que l'écran la montre.
+     *
+     * @param waitsOnStatus l'état de l'attente dont elle dépend ({@code A_FAIRE}, {@code DEMANDE},
+     *                      {@code FAIT}, {@code ANNULE}), ou {@code null} si aucune attente ne porte la clé
+     * @param changed       vrai si l'étape est nouvelle ou modifiée depuis le plan validé (amendement)
+     */
+    public record Step(String title, String risk, String riskLabel, String verify, String rollback,
+                       String waitsOn, String waitsOnStatus, String status, String evidence, boolean changed) {
+    }
+
     public static SubjectJourneyResponse from(SubjectJourney journey) {
+        return from(journey, Map.of());
+    }
+
+    public static SubjectJourneyResponse from(SubjectJourney journey, Map<String, String> waitsOn) {
         JourneyPhase phase = journey.getPhase();
         GuidedProposal proposal = journey.getGuidedProposedAt() == null || journey.isGuided()
                 ? null
@@ -35,6 +69,34 @@ public record SubjectJourneyResponse(
                 phase == null ? null : phase.label(),
                 journey.getPhaseChangedAt(),
                 proposal,
-                journey.getGuidedDeclinedAt() != null);
+                journey.getGuidedDeclinedAt() != null,
+                plan(journey, waitsOn == null ? Map.of() : waitsOn));
+    }
+
+    private static Plan plan(SubjectJourney journey, Map<String, String> waitsOn) {
+        JourneyPlan plan = JourneyPlan.fromJson(journey.getPlanJson());
+        if (plan.isEmpty()) {
+            return null;
+        }
+        Integer validated = journey.getValidatedVersion();
+        boolean current = validated != null && validated == journey.getPlanVersion();
+        boolean amendment = validated != null && !current;
+        JourneyPlan validatedPlan = amendment ? JourneyPlan.fromJson(journey.getValidatedPlanJson()) : null;
+        List<Step> steps = new ArrayList<>();
+        int waiting = 0;
+        for (int i = 0; i < plan.steps().size(); i++) {
+            JourneyPlan.Step s = plan.steps().get(i);
+            String status = s.waitsOn() == null ? null : waitsOn.get(s.waitsOn());
+            if (s.waitsOn() != null && s.status() == JourneyPlan.StepStatus.A_FAIRE
+                    && ("A_FAIRE".equals(status) || "DEMANDE".equals(status))) {
+                waiting++;
+            }
+            steps.add(new Step(s.title(), s.risk().name(), s.risk().label(), s.verify(), s.rollback(),
+                    s.waitsOn(), status, s.status().name(), s.evidence(),
+                    amendment && plan.changedSince(validatedPlan, i)));
+        }
+        boolean awaiting = journey.isGuided() && journey.getPhase() == JourneyPhase.PLAN && !current;
+        return new Plan(journey.getPlanVersion(), validated, journey.getPlanValidatedAt(), awaiting, amendment,
+                waiting, List.copyOf(steps));
     }
 }

@@ -65,6 +65,10 @@ class SubjectJourneyApiIntegrationTest {
     private JwtService jwtService;
     @Autowired
     private JourneyToolExecutor journeyTools;
+    @Autowired
+    private fr.claudegateway.atelier.actions.TerminalActionService terminalActions;
+    @Autowired
+    private fr.claudegateway.atelier.actions.TerminalActionRepository terminalActionRepository;
 
     private String aliceToken;
     private String bobToken;
@@ -72,6 +76,7 @@ class SubjectJourneyApiIntegrationTest {
 
     @BeforeEach
     void setUp() throws Exception {
+        terminalActionRepository.deleteAll();
         eventRepository.deleteAll();
         journeyRepository.deleteAll();
         workspaceRepository.deleteAll();
@@ -226,5 +231,93 @@ class SubjectJourneyApiIntegrationTest {
         postJourney(bobToken, "guided-proposal/accept").andExpect(status().isNotFound());
         postJourney(bobToken, "guided-proposal/decline").andExpect(status().isNotFound());
         getJourney(aliceToken).andExpect(jsonPath("$.guidedProposal.reason", is("Chantier.")));
+    }
+
+    private JourneyToolExecutor.Outcome setPlan(String stepsJson) throws Exception {
+        fr.claudegateway.atelier.Workspace ws = aliceWorkspace();
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        com.fasterxml.jackson.databind.node.ObjectNode input = mapper.createObjectNode();
+        input.set("steps", mapper.readTree(stepsJson));
+        return journeyTools.execute(ws.getUserId(), ws, JourneyToolCatalog.SET_PLAN, input);
+    }
+
+    ResultActions validate(String token, String body) throws Exception {
+        return mockMvc.perform(post("/api/workspaces/" + workspaceId + "/journey/plan/validate").contextPath("/api")
+                .contentType(MediaType.APPLICATION_JSON).content(body)
+                .header("Authorization", "Bearer " + token));
+    }
+
+    private static final String PLAN_V1 = """
+            [{"title":"Lire les logs de l'ingress","risk":"LECTURE","verify":"erreur 502 identifiée"},
+             {"title":"Obtenir le certificat de Gino","risk":"EXTERNE","waits_on":"certificat-gino"},
+             {"title":"Remplacer le certificat","risk":"EXTERNE","verify":"curl 200","rollback":"remettre l'ancien secret"}]""";
+
+    @Test
+    @DisplayName("SF-176-03 : en Libre, pas de plan structuré (erreur d'outil, rien n'est écrit)")
+    void planNeedsGuided() throws Exception {
+        JourneyToolExecutor.Outcome outcome = setPlan(PLAN_V1);
+        org.assertj.core.api.Assertions.assertThat(outcome.error()).isTrue();
+        org.assertj.core.api.Assertions.assertThat(outcome.content()).contains("mode Libre");
+        getJourney(aliceToken).andExpect(jsonPath("$.plan", nullValue()));
+    }
+
+    @Test
+    @DisplayName("SF-176-03 : plan posé → Plan, en attente ; l'attente liée est résolue ; un clic valide → Exécution")
+    void planThenValidate() throws Exception {
+        putMode(aliceToken, "GUIDE");
+        fr.claudegateway.atelier.Workspace ws = aliceWorkspace();
+        terminalActions.record(ws.getUserId(), ws.getId(), null, "Demander le certificat à Gino", null, "Gino",
+                fr.claudegateway.atelier.actions.TerminalActionKind.MESSAGE, "certificat-gino");
+
+        org.assertj.core.api.Assertions.assertThat(setPlan(PLAN_V1).content()).contains("Plan v1 posé");
+        getJourney(aliceToken)
+                .andExpect(jsonPath("$.phase", is("PLAN")))
+                .andExpect(jsonPath("$.plan.version", is(1)))
+                .andExpect(jsonPath("$.plan.awaitingValidation", is(true)))
+                .andExpect(jsonPath("$.plan.amendment", is(false)))
+                .andExpect(jsonPath("$.plan.waitingInputs", is(1)))
+                .andExpect(jsonPath("$.plan.steps[1].waitsOn", is("certificat-gino")))
+                .andExpect(jsonPath("$.plan.steps[1].waitsOnStatus", is("A_FAIRE")))
+                .andExpect(jsonPath("$.plan.steps[2].riskLabel", is("externe / irréversible")));
+
+        validate(aliceToken, "{\"version\":7}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", is("journey_invalid")));
+        validate(aliceToken, "{\"version\":1}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.phase", is("EXECUTION")))
+                .andExpect(jsonPath("$.plan.validatedVersion", is(1)))
+                .andExpect(jsonPath("$.plan.awaitingValidation", is(false)));
+        // Plus rien à valider : la phase n'est plus « Plan ».
+        validate(aliceToken, "{}").andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("SF-176-03 : un plan validé puis modifié est un amendement — étapes changées marquées, à revalider")
+    void amendment() throws Exception {
+        putMode(aliceToken, "GUIDE");
+        setPlan(PLAN_V1);
+        validate(aliceToken, "{\"version\":1}").andExpect(status().isOk());
+        org.assertj.core.api.Assertions.assertThat(setPlan("""
+                [{"title":"Lire les logs de l'ingress","risk":"LECTURE","verify":"erreur 502 identifiée"},
+                 {"title":"Redémarrer le contrôleur","risk":"EXTERNE"}]""").content()).contains("Amendement");
+        getJourney(aliceToken)
+                .andExpect(jsonPath("$.phase", is("PLAN")))
+                .andExpect(jsonPath("$.plan.version", is(2)))
+                .andExpect(jsonPath("$.plan.validatedVersion", is(1)))
+                .andExpect(jsonPath("$.plan.amendment", is(true)))
+                .andExpect(jsonPath("$.plan.awaitingValidation", is(true)))
+                .andExpect(jsonPath("$.plan.steps[0].changed", is(false)))
+                .andExpect(jsonPath("$.plan.steps[1].changed", is(true)));
+        validate(aliceToken, "{\"version\":2}").andExpect(jsonPath("$.phase", is("EXECUTION")));
+    }
+
+    @Test
+    @DisplayName("SF-176-03 ISOLATION : Bob ne peut pas valider le plan d'Alice")
+    void validateIsolation() throws Exception {
+        putMode(aliceToken, "GUIDE");
+        setPlan(PLAN_V1);
+        validate(bobToken, "{}").andExpect(status().isNotFound());
+        getJourney(aliceToken).andExpect(jsonPath("$.phase", is("PLAN")));
     }
 }

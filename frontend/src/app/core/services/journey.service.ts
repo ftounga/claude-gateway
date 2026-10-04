@@ -27,6 +27,11 @@ export class JourneyService {
     return this.http.post<SubjectJourney>(`/api/workspaces/${workspaceId}/journey/guided-proposal/accept`, {});
   }
 
+  /** [Valider le plan] (SF-176-03) : un clic valide le plan entier, à la version vue. */
+  validatePlan(workspaceId: string, version: number): Observable<SubjectJourney> {
+    return this.http.post<SubjectJourney>(`/api/workspaces/${workspaceId}/journey/plan/validate`, { version });
+  }
+
   /** [Rester libre] (SF-176-02) : la proposition ne revient pas sur ce sujet. */
   declineGuided(workspaceId: string): Observable<SubjectJourney> {
     return this.http.post<SubjectJourney>(`/api/workspaces/${workspaceId}/journey/guided-proposal/decline`, {});
