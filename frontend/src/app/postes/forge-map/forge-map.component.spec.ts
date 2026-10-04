@@ -174,6 +174,38 @@ describe('ForgeMapComponent (F-173 / SF-173-02)', () => {
     expect(router.navigate).toHaveBeenCalledWith([], jasmine.objectContaining({ queryParams: { noeud: 'proxy' } }));
   });
 
+  it('vue Signaux : échéancier groupé, à cartographier, compteur (SF-173-06)', () => {
+    const today = new Date();
+    const iso = (d: number) => {
+      const x = new Date(today.getFullYear(), today.getMonth(), today.getDate() + d);
+      return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+    };
+    const deadline = (d: number, text: string, nodeId: string | null) => ({
+      nodeId, nodeLabel: nodeId ? 'jeton GitLab' : null, text, dueOn: iso(d), overdue: d < 0,
+      path: 'acces.md', heading: 'Jetons', lineNo: 4,
+    });
+    build({ 'vue-carte': 'signaux' }, of(mapGraph([mapNode('j', { label: 'jeton GitLab', traps: 1 })], {
+      deadlines: [deadline(-2, 'certificat expiré', null), deadline(3, 'jeton à renouveler', 'j'), deadline(90, 'licence', null)],
+      toMap: [{ nodeId: null, label: null, text: '- le bastion reste à cartographier', path: 'infra.md', heading: null, lineNo: 9 }],
+    })));
+    const groups = all('.forge-map__signals-group').map((g) => g.textContent?.trim());
+    expect(groups).toEqual(['Dépassées (1)', 'Dans les 14 jours (1)', 'Plus tard (1)']);
+    expect(text()).toContain('dépassée depuis 2 j');
+    expect(text()).toContain('dans 3 j');
+    expect(text()).toContain('le bastion reste à cartographier');
+    expect(el('.forge-map__count')?.textContent?.trim()).toBe('2');
+    expect(el('.forge-map__trail')).toBeNull();
+    (el('.forge-map__signal .forge-map__hop-link') as HTMLButtonElement).click();
+    expect(router.navigate).toHaveBeenCalledWith([], jasmine.objectContaining({ queryParams: { noeud: 'j' } }));
+  });
+
+  it('vue Signaux vide : le dit', () => {
+    build({ 'vue-carte': 'signaux' });
+    expect(text()).toContain('Aucune échéance datée dans la carte.');
+    expect(text()).toContain("Rien n'est marqué à cartographier.");
+    expect(el('.forge-map__count')).toBeNull();
+  });
+
   it('sur téléphone, Plan devient la liste : aucun canevas', () => {
     mobile = true;
     build();

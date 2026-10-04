@@ -24,17 +24,26 @@ import { ForgeMapCanvasComponent } from './forge-map-canvas.component';
 import { ForgeMapCardComponent } from './forge-map-card.component';
 import { EnvironmentGrid, environmentGrid } from './forge-map-grid';
 import { AccessPath, accessPath } from './forge-map-path';
+import {
+  DeadlineGroups,
+  SignalSummary,
+  deadlineGroups,
+  dueLabel,
+  signalCount,
+  signalSummary,
+  todayKey,
+} from './forge-map-signals';
 import { MapLevel, ViewNode, kindLabel, levelFor } from './forge-map-levels';
 
 /** Les vues de l'onglet Carte (D5, D6) : le plan, son équivalent en liste, et les fichiers d'avant. */
-export type MapView = 'plan' | 'liste' | 'grille' | 'fichiers';
+export type MapView = 'plan' | 'liste' | 'grille' | 'signaux' | 'fichiers';
 
 /** Sous cette largeur, le plan devient une liste (D6) : un graphe ne se manie pas au doigt. */
 export const MOBILE_QUERY = '(max-width: 767px)';
 
 /** La vue demandée par `?vue-carte=` ; Plan par défaut. */
 export function mapViewFrom(value: string | null | undefined): MapView {
-  return value === 'liste' || value === 'grille' || value === 'fichiers' ? value : 'plan';
+  return value === 'liste' || value === 'grille' || value === 'signaux' || value === 'fichiers' ? value : 'plan';
 }
 
 /**
@@ -117,6 +126,24 @@ export class ForgeMapComponent {
     }
     return level.selected?.id ?? level.frame?.id ?? null;
   });
+
+  /** Aujourd'hui (jour local), pour les échéances (SF-173-06). */
+  readonly today = signal(todayKey());
+
+  /** Le compteur de « Signaux » : échéances dépassées ou dans les 14 jours. */
+  readonly signalCount = computed(() => signalCount(this.graph(), this.today()));
+
+  readonly deadlines = computed<DeadlineGroups | null>(() => {
+    const graph = this.graph();
+    return graph && graph.indexed ? deadlineGroups(graph.deadlines, this.today()) : null;
+  });
+
+  readonly summary = computed<SignalSummary | null>(() => {
+    const graph = this.graph();
+    return graph && graph.indexed ? signalSummary(graph, this.today()) : null;
+  });
+
+  readonly dueLabel = dueLabel;
 
   /** « Comment j'atteins X » (SF-173-05), calculé sur le plan déjà lu. */
   readonly path = computed<AccessPath | null>(() => {

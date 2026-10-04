@@ -15,6 +15,13 @@
               [attr.aria-pressed]="requestedView() === 'grille'" (click)="selectView('grille')">
         <mat-icon>grid_view</mat-icon> Grille
       </button>
+      <button type="button" class="forge-map__switch-option" [class.forge-map__switch-option--active]="requestedView() === 'signaux'"
+              [attr.aria-pressed]="requestedView() === 'signaux'" (click)="selectView('signaux')">
+        <mat-icon>notifications_active</mat-icon> Signaux
+        @if (signalCount() > 0) {
+          <span class="forge-map__count" [attr.aria-label]="signalCount() + ' échéance(s) dépassée(s) ou proche(s)'">{{ signalCount() }}</span>
+        }
+      </button>
       <button type="button" class="forge-map__switch-option" [class.forge-map__switch-option--active]="requestedView() === 'fichiers'"
               [attr.aria-pressed]="requestedView() === 'fichiers'" (click)="selectView('fichiers')">
         <mat-icon>description</mat-icon> Fichiers
@@ -49,7 +56,7 @@
         </div>
       } @else {
         @if (level(); as lvl) {
-        @if (view() !== 'grille') {
+        @if (view() !== 'grille' && view() !== 'signaux') {
         <nav class="forge-map__trail" aria-label="Fil d'Ariane de la carte">
           @for (crumb of lvl.trail; track $index; let last = $last) {
             @if (last) {
@@ -75,7 +82,69 @@
 
         <div class="forge-map__body" [class.forge-map__body--with-card]="cardNodeId() !== null">
           <div class="forge-map__main">
-          @if (view() === 'grille') {
+          @if (view() === 'signaux') {
+            <!-- LES SIGNAUX (SF-173-06) : ce qui demande attention, chaque état écrit. -->
+            @if (summary(); as s) {
+              <p class="forge-map__summary">
+                <span>⚠ {{ s.traps }} piège(s)</span>
+                <span>{{ s.stale }} ressource(s) périmée(s)</span>
+                <span>{{ s.overdue }} échéance(s) dépassée(s)</span>
+                <span>{{ s.toMap }} à cartographier</span>
+              </p>
+            }
+            @if (deadlines(); as d) {
+              <section class="forge-map__signals" aria-label="Échéancier">
+                <h4>Échéancier</h4>
+                @if (d.overdue.length + d.soon.length + d.later.length === 0) {
+                  <p class="forge-map__hint">Aucune échéance datée dans la carte.</p>
+                }
+                @for (group of [
+                  { title: 'Dépassées', items: d.overdue, tone: 'error' },
+                  { title: 'Dans les 14 jours', items: d.soon, tone: 'warning' },
+                  { title: 'Plus tard', items: d.later, tone: 'neutral' }
+                ]; track group.title) {
+                  @if (group.items.length) {
+                    <h5 class="forge-map__signals-group">{{ group.title }} ({{ group.items.length }})</h5>
+                    <ul class="forge-map__signal-list">
+                      @for (item of group.items; track item.path + item.lineNo + item.dueOn) {
+                        <li class="forge-map__signal">
+                          <span class="badge badge--{{ group.tone }}">{{ item.dueOn | date: 'd MMM y' }} · {{ dueLabel(item.days) }}</span>
+                          <span class="forge-map__signal-text">{{ item.text }}</span>
+                          <span class="forge-map__signal-meta">
+                            @if (item.nodeId && item.nodeLabel) {
+                              <button type="button" class="forge-map__hop-link" (click)="goTo(item.nodeId)">{{ item.nodeLabel }}</button>
+                            }
+                            <span>{{ item.path }}@if (item.heading) { § {{ item.heading }} } · L{{ item.lineNo }}</span>
+                          </span>
+                        </li>
+                      }
+                    </ul>
+                  }
+                }
+              </section>
+            }
+            @if (graph(); as g2) {
+              <section class="forge-map__signals" aria-label="À cartographier">
+                <h4>À cartographier ({{ g2.toMap.length }})</h4>
+                @if (g2.toMap.length === 0) {
+                  <p class="forge-map__hint">Rien n'est marqué à cartographier.</p>
+                }
+                <ul class="forge-map__signal-list">
+                  @for (item of g2.toMap; track $index) {
+                    <li class="forge-map__signal">
+                      @if (item.nodeId && item.label) {
+                        <button type="button" class="forge-map__hop-link" (click)="goTo(item.nodeId)">{{ item.label }}</button>
+                      }
+                      @if (item.text) { <span class="forge-map__signal-text">{{ item.text }}</span> }
+                      @if (item.path) {
+                        <span class="forge-map__signal-meta">{{ item.path }}@if (item.heading) { § {{ item.heading }} }@if (item.lineNo) { · L{{ item.lineNo }} }</span>
+                      }
+                    </li>
+                  }
+                </ul>
+              </section>
+            }
+          } @else if (view() === 'grille') {
             <!-- LA GRILLE DES ENVIRONNEMENTS (SF-173-04) : domaine × environnement, Sandbox → Prod. -->
             @if (grid(); as gr) {
               @if (gr.empty) {
@@ -125,6 +194,12 @@
                 <mat-icon>fit_screen</mat-icon>
               </button>
             </div>
+            <p class="forge-map__legend">
+              <span><span class="forge-map__swatch forge-map__swatch--navy"></span>contient d'autres ressources (cliquer pour entrer)</span>
+              <span><span class="forge-map__swatch forge-map__swatch--trap"></span>⚠ pièges notés</span>
+              <span><span class="forge-map__swatch forge-map__swatch--stale"></span>faits périmés</span>
+              <span>« à cartographier » écrit sous le nom</span>
+            </p>
           } @else {
             @if (canvasUnavailable() && requestedView() === 'plan') {
               <p class="forge-map__hint">Le plan n'a pas pu être dessiné ici : voici la même carte en liste.</p>
