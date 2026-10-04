@@ -855,7 +855,8 @@ public class AtelierChatService implements RelayInterruptTarget {
             java.util.Set.of("read_file", "list_files", "search_files", "grep", "glob", "explore",
                     "set_plan", "recall", "demander", "carte_chercher",
                     // F-176 : le parcours du sujet n'écrit rien dans le projet — il organise, comme set_plan.
-                    fr.claudegateway.atelier.journey.JourneyToolCatalog.PROPOSE_GUIDED);
+                    fr.claudegateway.atelier.journey.JourneyToolCatalog.PROPOSE_GUIDED,
+                    fr.claudegateway.atelier.journey.JourneyToolCatalog.SET_PLAN);
     /** Nom de l'outil serveur qui interroge la carte du poste (F-174 / SF-174-05, D8). */
     static final String MAP_SEARCH_TOOL_NAME = "carte_chercher";
 

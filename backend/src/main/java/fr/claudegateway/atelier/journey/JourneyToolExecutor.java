@@ -45,6 +45,7 @@ public class JourneyToolExecutor {
         try {
             return switch (tool) {
                 case JourneyToolCatalog.PROPOSE_GUIDED -> proposeGuided(userId, workspace, input);
+                case JourneyToolCatalog.SET_PLAN -> setPlan(userId, workspace, input);
                 default -> Outcome.error("Outil du parcours inconnu : " + tool);
             };
         } catch (InvalidJourneyException e) {
@@ -68,6 +69,24 @@ public class JourneyToolExecutor {
             case ALREADY_GUIDED -> Outcome.ok("Le sujet est déjà en mode guidé : suis le parcours.");
             case DECLINED -> Outcome.ok("L'utilisateur a choisi de RESTER LIBRE sur ce sujet : ne repropose "
                     + "pas le mode guidé, avance en libre.");
+        };
+    }
+
+    private Outcome setPlan(UUID userId, Workspace workspace, JsonNode input) {
+        JourneyPlan plan = JourneyPlan.fromToolInput(input == null ? null : input.get("steps"));
+        SubjectJourneyService.PlanChange change = service.setPlan(userId, workspace.getId(), plan);
+        return switch (change.outcome()) {
+            case SET -> Outcome.ok("Plan v" + change.version() + " posé (" + plan.steps().size() + " étapes). "
+                    + "Il attend la VALIDATION de l'utilisateur, d'un clic : présente-le en quelques lignes "
+                    + "et ne modifie rien avant qu'il l'ait validé.");
+            case AMENDMENT -> Outcome.ok("Amendement : plan v" + change.version() + " posé. Il remplace le "
+                    + "plan validé et doit être REVALIDÉ par l'utilisateur : dis-lui ce qui change et pourquoi, "
+                    + "et ne modifie rien avant sa validation.");
+            case NOT_GUIDED -> Outcome.error("Le sujet est en mode Libre : le plan structuré sert au mode "
+                    + "guidé. Utilise set_plan pour organiser ton tour, ou propose le mode guidé.");
+            case CLOSED -> Outcome.error("Le sujet est clos : rien à planifier. S'il faut reprendre, "
+                    + "l'utilisateur rouvre le sujet en mode guidé.");
+            case EMPTY -> Outcome.error("Aucune étape lisible : chaque étape a au moins un title et un risk.");
         };
     }
 

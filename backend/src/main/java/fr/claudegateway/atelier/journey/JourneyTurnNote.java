@@ -8,11 +8,16 @@ package fr.claudegateway.atelier.journey;
  * <p>En mode Libre, rien — la consigne est inchangée à l'octet près (décision Q4) — sauf deux cas
  * prévus par la décision Q1 : le <b>premier message</b> d'un sujet (qualifier la demande) et une
  * <b>proposition</b> du mode guidé qui attend le choix de l'utilisateur.</p>
+ *
+ * <p>En mode Guidé : la phase, et le plan (version, validé ou non, étapes) — borné.</p>
  */
 public final class JourneyTurnNote {
 
     private static final String HEADER = "--- Parcours du sujet ---\n";
     private static final String FOOTER = "---\n\n";
+
+    /** Bornes du plan rappelé : au-delà, le plan est compté, pas recopié. */
+    static final int MAX_CHARS = 3_000;
 
     private JourneyTurnNote() {
     }
@@ -30,7 +35,7 @@ public final class JourneyTurnNote {
      */
     public static String render(SubjectJourney journey, boolean firstTurn) {
         if (journey != null && journey.isGuided() && journey.getPhase() != null) {
-            return HEADER + "Mode GUIDÉ · phase : " + journey.getPhase().label() + ".\n" + FOOTER;
+            return HEADER + guided(journey) + FOOTER;
         }
         if (journey != null && journey.getGuidedProposedAt() != null) {
             return HEADER + "Mode LIBRE · ta proposition de passer en guidé attend le choix de "
@@ -43,5 +48,54 @@ public final class JourneyTurnNote {
                     + "petit geste ou chantier). Chantier → propose_guided_mode.\n" + FOOTER;
         }
         return "";
+    }
+
+    private static String guided(SubjectJourney journey) {
+        StringBuilder note = new StringBuilder();
+        note.append("Mode GUIDÉ · phase : ").append(journey.getPhase().label()).append(".\n");
+        JourneyPlan plan = JourneyPlan.fromJson(journey.getPlanJson());
+        if (plan.isEmpty()) {
+            if (journey.getPhase() == JourneyPhase.INVESTIGATION || journey.getPhase() == JourneyPhase.PLAN) {
+                note.append("Aucun plan : quand le diagnostic est sûr, pose-le avec set_subject_plan.\n");
+            }
+            return note.toString();
+        }
+        Integer validated = journey.getValidatedVersion();
+        boolean current = validated != null && validated == journey.getPlanVersion();
+        note.append("Plan v").append(journey.getPlanVersion());
+        if (current) {
+            note.append(" — VALIDÉ par l'utilisateur.\n");
+        } else if (validated != null) {
+            note.append(" — AMENDEMENT EN ATTENTE DE VALIDATION (v").append(validated)
+                    .append(" était validé) : ne modifie rien avant sa validation.\n");
+        } else {
+            note.append(" — EN ATTENTE DE VALIDATION : ne modifie rien avant sa validation.\n");
+        }
+        int index = 0;
+        for (JourneyPlan.Step step : plan.steps()) {
+            index++;
+            StringBuilder line = new StringBuilder();
+            line.append(index).append(". [").append(statusLabel(step.status())).append("] ")
+                    .append(step.title()).append(" · ").append(step.risk().label());
+            if (step.waitsOn() != null) {
+                line.append(" · attend : ").append(step.waitsOn());
+            }
+            line.append('\n');
+            if (note.length() + line.length() > MAX_CHARS) {
+                note.append("… et ").append(plan.steps().size() - index + 1).append(" étape(s) de plus.\n");
+                break;
+            }
+            note.append(line);
+        }
+        return note.toString();
+    }
+
+    private static String statusLabel(JourneyPlan.StepStatus status) {
+        return switch (status) {
+            case A_FAIRE -> "à faire";
+            case FAIT -> "fait";
+            case VERIFIE -> "vérifié";
+            case ECHEC -> "échec";
+        };
     }
 }
