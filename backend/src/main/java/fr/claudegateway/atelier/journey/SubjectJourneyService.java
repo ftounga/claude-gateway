@@ -78,15 +78,102 @@ public class SubjectJourneyService {
         if (journey.getMode() == mode && journey.getCreatedAt() != null) {
             return journey; // rien ne change : pas d'écriture, pas d'événement
         }
+        SubjectJourney saved = applyMode(journey, mode, OffsetDateTime.now(clock));
+        record(saved, SubjectJourneyEvent.MODE_CHANGED, "USER");
+        return saved;
+    }
+
+    /**
+     * <b>[Passer en guidé]</b> (SF-176-02) : la proposition de l'agent est acceptée — le sujet passe en
+     * Guidé (Investigation) et la carte disparaît. Sans proposition en attente : même effet que le menu.
+     */
+    @Transactional
+    public SubjectJourney acceptGuidedProposal(UUID userId, UUID workspaceId) {
+        workspaceService.requireOwned(userId, workspaceId); // 404 — TOUJOURS en premier
+        SubjectJourney journey = find(userId, workspaceId).orElseGet(() -> blank(userId, workspaceId));
+        SubjectJourney saved = applyMode(journey, JourneyMode.GUIDE, OffsetDateTime.now(clock));
+        record(saved, SubjectJourneyEvent.GUIDED_ACCEPTED, null);
+        return saved;
+    }
+
+    /**
+     * <b>[Rester libre]</b> (SF-176-02) : la proposition est écartée, et l'agent ne la refera plus sur ce
+     * sujet. Le mode ne change pas.
+     */
+    @Transactional
+    public SubjectJourney declineGuidedProposal(UUID userId, UUID workspaceId) {
+        workspaceService.requireOwned(userId, workspaceId); // 404 — TOUJOURS en premier
+        SubjectJourney journey = find(userId, workspaceId).orElseGet(() -> blank(userId, workspaceId));
         OffsetDateTime now = OffsetDateTime.now(clock);
+        journey.setGuidedProposedAt(null);
+        journey.setGuidedProposalReason(null);
+        journey.setGuidedDeclinedAt(now);
+        SubjectJourney saved = save(journey, now);
+        record(saved, SubjectJourneyEvent.GUIDED_DECLINED, null);
+        return saved;
+    }
+
+    /** Ce que l'agent apprend en proposant le mode guidé (SF-176-02). */
+    public enum ProposalOutcome {
+        /** La carte est posée. */
+        PROPOSED,
+        /** La même proposition attend déjà le choix de l'utilisateur. */
+        ALREADY_PROPOSED,
+        /** Le sujet est déjà guidé. */
+        ALREADY_GUIDED,
+        /** L'utilisateur a choisi de rester libre sur ce sujet. */
+        DECLINED
+    }
+
+    /**
+     * <b>L'agent propose le mode guidé</b> (SF-176-02). Le terminal est celui <b>du tour</b>, déjà
+     * possédé ; la lecture filtre quand même {@code user_id}.
+     *
+     * @throws InvalidJourneyException raison vide
+     */
+    @Transactional
+    public ProposalOutcome proposeGuided(UUID userId, UUID workspaceId, String reason) {
+        String cleanReason = reason == null ? "" : reason.strip();
+        if (cleanReason.isEmpty()) {
+            throw new InvalidJourneyException("reason est requise : pourquoi ce sujet est un chantier.");
+        }
+        if (cleanReason.length() > MAX_REASON) {
+            cleanReason = cleanReason.substring(0, MAX_REASON);
+        }
+        SubjectJourney journey = find(userId, workspaceId).orElseGet(() -> blank(userId, workspaceId));
+        if (journey.isGuided()) {
+            return ProposalOutcome.ALREADY_GUIDED;
+        }
+        if (journey.getGuidedDeclinedAt() != null) {
+            return ProposalOutcome.DECLINED;
+        }
+        if (journey.getGuidedProposedAt() != null) {
+            return ProposalOutcome.ALREADY_PROPOSED;
+        }
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        journey.setGuidedProposedAt(now);
+        journey.setGuidedProposalReason(cleanReason);
+        SubjectJourney saved = save(journey, now);
+        record(saved, SubjectJourneyEvent.GUIDED_PROPOSED, null);
+        return ProposalOutcome.PROPOSED;
+    }
+
+    /** Raison d'une proposition : une phrase. */
+    static final int MAX_REASON = 300;
+
+    /**
+     * Applique un mode : passer en Guidé ouvre l'Investigation si le sujet n'a jamais été guidé ou était
+     * clos ; tout choix explicite de mode efface la proposition en attente.
+     */
+    private SubjectJourney applyMode(SubjectJourney journey, JourneyMode mode, OffsetDateTime now) {
         journey.setMode(mode);
+        journey.setGuidedProposedAt(null);
+        journey.setGuidedProposalReason(null);
         if (mode == JourneyMode.GUIDE
                 && (journey.getPhase() == null || journey.getPhase() == JourneyPhase.CLOS)) {
             moveTo(journey, JourneyPhase.INVESTIGATION, now);
         }
-        SubjectJourney saved = save(journey, now);
-        record(saved, SubjectJourneyEvent.MODE_CHANGED, "USER");
-        return saved;
+        return save(journey, now);
     }
 
     // ------------------------------------------------------------------ interne

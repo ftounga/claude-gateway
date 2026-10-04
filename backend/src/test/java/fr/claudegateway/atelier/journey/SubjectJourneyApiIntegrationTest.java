@@ -4,6 +4,7 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -62,6 +63,8 @@ class SubjectJourneyApiIntegrationTest {
     private SubjectJourneyEventRepository eventRepository;
     @Autowired
     private JwtService jwtService;
+    @Autowired
+    private JourneyToolExecutor journeyTools;
 
     private String aliceToken;
     private String bobToken;
@@ -158,5 +161,70 @@ class SubjectJourneyApiIntegrationTest {
         getJourney(bobToken).andExpect(status().isNotFound());
         putMode(bobToken, "GUIDE").andExpect(status().isNotFound());
         org.assertj.core.api.Assertions.assertThat(journeyRepository.count()).isZero();
+    }
+
+    private fr.claudegateway.atelier.Workspace aliceWorkspace() {
+        return workspaceRepository.findById(java.util.UUID.fromString(workspaceId)).orElseThrow();
+    }
+
+    private JourneyToolExecutor.Outcome propose(String reason) {
+        fr.claudegateway.atelier.Workspace ws = aliceWorkspace();
+        com.fasterxml.jackson.databind.node.ObjectNode input =
+                new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
+        input.put("reason", reason);
+        return journeyTools.execute(ws.getUserId(), ws, JourneyToolCatalog.PROPOSE_GUIDED, input);
+    }
+
+    ResultActions postJourney(String token, String path) throws Exception {
+        return mockMvc.perform(post("/api/workspaces/" + workspaceId + "/journey/" + path).contextPath("/api")
+                .header("Authorization", "Bearer " + token));
+    }
+
+    @Test
+    @DisplayName("SF-176-02 : l'agent propose, la carte s'affiche, [Passer en guidé] ouvre l'Investigation")
+    void proposeThenAccept() throws Exception {
+        JourneyToolExecutor.Outcome first = propose("Incident d'ingress en prod, plusieurs inconnues.");
+        org.assertj.core.api.Assertions.assertThat(first.error()).isFalse();
+        org.assertj.core.api.Assertions.assertThat(first.content()).contains("[Passer en guidé]");
+        org.assertj.core.api.Assertions.assertThat(propose("encore").content()).contains("attend déjà");
+
+        getJourney(aliceToken)
+                .andExpect(jsonPath("$.mode", is("LIBRE")))
+                .andExpect(jsonPath("$.guidedProposal.reason", is("Incident d'ingress en prod, plusieurs inconnues.")))
+                .andExpect(jsonPath("$.guidedDeclined", is(false)));
+
+        postJourney(aliceToken, "guided-proposal/accept")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mode", is("GUIDE")))
+                .andExpect(jsonPath("$.phase", is("INVESTIGATION")))
+                .andExpect(jsonPath("$.guidedProposal", nullValue()));
+        org.assertj.core.api.Assertions.assertThat(propose("x").content()).contains("déjà en mode guidé");
+    }
+
+    @Test
+    @DisplayName("SF-176-02 : [Rester libre] écarte la carte, et l'agent ne la repropose plus")
+    void proposeThenDecline() throws Exception {
+        propose("Changement d'infra sur trois clusters.");
+        postJourney(aliceToken, "guided-proposal/decline")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mode", is("LIBRE")))
+                .andExpect(jsonPath("$.guidedProposal", nullValue()))
+                .andExpect(jsonPath("$.guidedDeclined", is(true)));
+        org.assertj.core.api.Assertions.assertThat(propose("encore").content()).contains("RESTER LIBRE");
+    }
+
+    @Test
+    @DisplayName("SF-176-02 : une proposition sans raison est un résultat d'outil en erreur, pas une exception")
+    void proposeWithoutReason() {
+        org.assertj.core.api.Assertions.assertThat(propose("  ").error()).isTrue();
+    }
+
+    @Test
+    @DisplayName("SF-176-02 ISOLATION : Bob ne peut ni accepter ni écarter la proposition d'Alice")
+    void proposalIsolation() throws Exception {
+        propose("Chantier.");
+        postJourney(bobToken, "guided-proposal/accept").andExpect(status().isNotFound());
+        postJourney(bobToken, "guided-proposal/decline").andExpect(status().isNotFound());
+        getJourney(aliceToken).andExpect(jsonPath("$.guidedProposal.reason", is("Chantier.")));
     }
 }

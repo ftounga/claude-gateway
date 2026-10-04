@@ -33,6 +33,15 @@ public class SubjectJourneyEvent {
     /** Le mode du sujet a changé ({@code detail} = qui l'a changé : USER). */
     public static final String MODE_CHANGED = "MODE_CHANGED";
 
+    /** L'agent a proposé le mode guidé (SF-176-02). */
+    public static final String GUIDED_PROPOSED = "GUIDED_PROPOSED";
+
+    /** [Passer en guidé] (SF-176-02). */
+    public static final String GUIDED_ACCEPTED = "GUIDED_ACCEPTED";
+
+    /** [Rester libre] (SF-176-02). */
+    public static final String GUIDED_DECLINED = "GUIDED_DECLINED";
+
     @Id
     @GeneratedValue
     @UuidGenerator
