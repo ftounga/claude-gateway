@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-176 — LE PARCOURS DU SUJET (investigation, plan, execution, verification).
+
+      Une ligne par terminal (workspace_id = cle) : le MODE du sujet (LIBRE par defaut, GUIDE) et sa
+      PHASE (INVESTIGATION, PLAN, EXECUTION, VERIFICATION, CLOS ; NULL tant que le sujet n'a jamais ete
+      guide). Pas de ligne = Libre : le comportement d'avant F-176, a l'octet pres.
+
+      Les colonnes servant aux sous-features suivantes sont posees ici, en une migration, pour ne pas
+      multiplier les numeros (pre-assignation de la vague) :
+        - SF-176-02 : guided_proposed_at / guided_proposal_reason / guided_declined_at (la carte
+          [Passer en guide] [Rester libre]) ;
+        - SF-176-03 : plan_json / plan_version, validated_plan_json / validated_version /
+          plan_validated_at (le plan structure et sa validation en un clic) ;
+        - SF-176-05 : diagnosis / diagnosis_evidence / diagnosis_confidence / diagnosis_proposed_at
+          (le diagnostic qui fait sortir de l'investigation), close_proposed_at.
+
+      subject_journey_events : le journal des gestes du parcours (changement de mode, porte qui
+      bloque, plan valide, retour en investigation...) - la MESURE de SF-176-06. user_id sur chaque
+      ligne ; toute lecture filtre user_id.
+
+      Isolation : user_id sur les deux tables. Les lignes suivent le terminal (cle etrangere, cascade)
+      et le compte (purge nommee). Rollback : les deux tables se retirent.
+    -->
+
+    <changeSet id="145-subject-journeys" author="claude-gateway">
+        <createTable tableName="subject_journeys">
+            <column name="workspace_id" type="uuid">
+                <constraints primaryKey="true" nullable="false"
+                             foreignKeyName="fk_subject_journeys_workspace"
+                             references="workspaces(id)" deleteCascade="true"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <!-- LIBRE | GUIDE -->
+            <column name="mode" type="varchar(16)"><constraints nullable="false"/></column>
+            <!-- INVESTIGATION | PLAN | EXECUTION | VERIFICATION | CLOS ; NULL = jamais guide -->
+            <column name="phase" type="varchar(16)"/>
+            <column name="phase_changed_at" type="timestamptz"/>
+            <column name="guided_proposed_at" type="timestamptz"/>
+            <column name="guided_proposal_reason" type="varchar(300)"/>
+            <column name="guided_declined_at" type="timestamptz"/>
+            <column name="plan_json" type="varchar(1000000)"/>
+            <column name="plan_version" type="integer" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="validated_plan_json" type="varchar(1000000)"/>
+            <column name="validated_version" type="integer"/>
+            <column name="plan_validated_at" type="timestamptz"/>
+            <column name="diagnosis" type="varchar(1000000)"/>
+            <column name="diagnosis_evidence" type="varchar(1000000)"/>
+            <!-- FAIBLE | MOYENNE | ELEVEE -->
+            <column name="diagnosis_confidence" type="varchar(16)"/>
+            <column name="diagnosis_proposed_at" type="timestamptz"/>
+            <column name="close_proposed_at" type="timestamptz"/>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="subject_journeys" indexName="idx_subject_journeys_user">
+            <column name="user_id"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="subject_journeys"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="145-subject-journey-events" author="claude-gateway">
+        <createTable tableName="subject_journey_events">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_subject_journey_events_workspace"
+                             references="workspaces(id)" deleteCascade="true"/>
+            </column>
+            <column name="type" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="mode" type="varchar(16)"/>
+            <column name="phase" type="varchar(16)"/>
+            <column name="detail" type="varchar(300)"/>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="subject_journey_events" indexName="idx_subject_journey_events_user_time">
+            <column name="user_id"/>
+            <column name="created_at"/>
+        </createIndex>
+        <createIndex tableName="subject_journey_events" indexName="idx_subject_journey_events_type_time">
+            <column name="type"/>
+            <column name="created_at"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="subject_journey_events"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

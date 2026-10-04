@@ -1608,6 +1608,36 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
     }
 
+    /** Le parcours du sujet (F-176) ; {@code null} pour les formes historiques (= Libre partout). */
+    private fr.claudegateway.atelier.journey.SubjectJourneyService journeyService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setJourneyService(fr.claudegateway.atelier.journey.SubjectJourneyService journeyService) {
+        this.journeyService = journeyService;
+    }
+
+    /** Le parcours du sujet tel que le tour le lit (F-176) ; {@code null} si illisible ou non branché. */
+    fr.claudegateway.atelier.journey.SubjectJourney journeyOf(UUID userId, Workspace workspace) {
+        if (journeyService == null || workspace == null) {
+            return null;
+        }
+        try {
+            return journeyService.forTurn(userId, workspace.getId());
+        } catch (RuntimeException ex) {
+            log.debug("Parcours du sujet illisible (best-effort) : {}", ex.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Préfixe la consigne du tour par le parcours du sujet (F-176) : rien en Libre (Q4).
+     * Best-effort : un échec laisse la consigne telle quelle.
+     */
+    String withJourney(UUID userId, Workspace workspace, String consigne) {
+        String note = fr.claudegateway.atelier.journey.JourneyTurnNote.render(journeyOf(userId, workspace));
+        return note.isEmpty() ? consigne : note + consigne;
+    }
+
     /**
      * Branche l'outil de rendu de diagrammes (F-142 / SF-142-06) par mutateur, comme les autres outils
      * de la gateway : sans service de rendu configuré, l'outil n'est jamais donné — on ne promet pas
@@ -2217,6 +2247,9 @@ public class AtelierChatService implements RelayInterruptTarget {
         // la parole de l'utilisateur. Seulement là où les outils d'attente sont donnés. Vide sans
         // attente ouverte : consigne inchangée à l'octet près. Best-effort.
         consigne = withPendingActions(userId, workspace, consigne);
+        // F-176 — LE PARCOURS DU SUJET, joint à la CONSIGNE du tour (jamais au système, même patron).
+        // Libre : rien, consigne inchangée à l'octet près (Q4). Best-effort.
+        consigne = withJourney(userId, workspace, consigne);
 
         List<AgentMessage> messages = buildReplayMessages(userId, workspace);
         messages.add(AgentMessage.userText(consigne));
