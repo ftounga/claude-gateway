@@ -402,6 +402,7 @@ public class TerminalActionService {
             }
         }
         action.setUpdatedAt(now);
+        action.setReviewPending(false); // un geste de l'utilisateur vaut vérification (SF-175-07)
         return repository.save(action);
     }
 
@@ -594,6 +595,7 @@ public class TerminalActionService {
         action.setClosedAt(now);
         action.clearProposal();
         action.setUpdatedAt(now);
+        action.setReviewPending(false);
         return repository.save(action);
     }
 
@@ -629,6 +631,7 @@ public class TerminalActionService {
         action.setClosedAt(now);
         action.clearProposal();
         action.setUpdatedAt(now);
+        action.setReviewPending(false);
         return repository.save(action);
     }
 

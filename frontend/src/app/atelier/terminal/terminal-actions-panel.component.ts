@@ -13,6 +13,7 @@ import {
   TERMINAL_ACTION_STATUS_LABELS,
   TerminalAction,
   TerminalActionBoard,
+  TerminalActionReviewItem,
   TerminalActionStatus,
   followUpDraft,
   isOpenStatus,
@@ -39,6 +40,12 @@ export function ageLabel(createdAt: string, now = Date.now()): string {
 
 /** La portée affichée : ce terminal seulement, ou tout le poste. */
 export type AttentesScope = 'here' | 'host';
+
+/** Une ligne de la reprise : l'attente héritée et l'état que l'utilisateur retient. */
+interface ReviewRow {
+  item: TerminalActionReviewItem;
+  choice: TerminalActionStatus;
+}
 
 /** Une colonne du panneau. */
 interface Column {
@@ -112,6 +119,38 @@ interface Column {
       }
 
       <div class="actions-panel__content">
+        @if (review().length && !reviewHidden()) {
+          <!-- F-175 / SF-175-07 — LA REPRISE DE L'EXISTANT : présentée une fois, rien ne change sans validation. -->
+          <section class="review" aria-label="Reprise des attentes existantes">
+            <h3 class="review__title">Reprise : {{ review().length }} attente{{ review().length > 1 ? 's' : '' }} à vérifier</h3>
+            <p class="review__lead">
+              Ces attentes datent d'avant l'état « Demandé ». Un état vous est proposé pour chacune ;
+              rien ne change sans votre validation.
+            </p>
+            @for (row of review(); track row.item.action.id) {
+              <article class="review__row">
+                <p class="review__what">{{ row.item.action.description }}</p>
+                <p class="review__where">{{ row.item.action.workspaceName }} · {{ age(row.item.action.createdAt) }}</p>
+                <div class="review__gestures">
+                  <mat-button-toggle-group class="review__choice" [value]="row.choice"
+                    (change)="choose(row.item.action.id, $event.value)" aria-label="État retenu">
+                    <mat-button-toggle value="A_FAIRE">À faire</mat-button-toggle>
+                    <mat-button-toggle value="DEMANDE">Demandé</mat-button-toggle>
+                    <mat-button-toggle value="FAIT">Fait</mat-button-toggle>
+                    <mat-button-toggle value="ANNULE">Annulé</mat-button-toggle>
+                  </mat-button-toggle-group>
+                  <button mat-button type="button" class="review__one" [disabled]="reviewBusy()"
+                    (click)="validate([row])">Valider</button>
+                </div>
+              </article>
+            }
+            <div class="review__all">
+              <button mat-flat-button type="button" class="review__validate-all" [disabled]="reviewBusy()"
+                (click)="validate(review())">Tout valider</button>
+              <button mat-button type="button" class="review__later" (click)="reviewHidden.set(true)">Plus tard</button>
+            </div>
+          </section>
+        }
         @if (failed()) {
           <p class="actions-panel__empty">Les attentes n'ont pas pu être chargées.</p>
         } @else if (loading()) {
@@ -389,6 +428,50 @@ interface Column {
       font-size: 13px;
     }
 
+    .review {
+      margin-bottom: var(--cg-space-3);
+      padding: var(--cg-space-3);
+      border: 1px solid var(--cg-accent);
+      border-radius: 8px;
+      background: var(--cg-surface-2);
+    }
+
+    .review__title {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--cg-primary);
+    }
+
+    .review__lead,
+    .review__where {
+      margin: var(--cg-space-1) 0 0;
+      font-size: 12px;
+      color: var(--cg-text-secondary);
+    }
+
+    .review__row {
+      margin-top: var(--cg-space-2);
+      padding: var(--cg-space-2);
+      border-radius: 8px;
+      background: var(--cg-surface);
+    }
+
+    .review__what {
+      margin: 0;
+      font-weight: 600;
+      overflow-wrap: anywhere;
+    }
+
+    .review__gestures,
+    .review__all {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--cg-space-2);
+      margin-top: var(--cg-space-2);
+    }
+
     .action__late {
       color: var(--cg-gold-ink);
       font-weight: 600;
@@ -458,8 +541,47 @@ export class TerminalActionsPanelComponent implements OnInit {
     ];
   });
 
+  /** La reprise de l'existant (F-175 / SF-175-07) : chaque attente et l'état retenu (proposé d'abord). */
+  readonly review = signal<ReviewRow[]>([]);
+  readonly reviewHidden = signal(false);
+  readonly reviewBusy = signal(false);
+
   ngOnInit(): void {
     this.reload();
+    this.loadReview();
+  }
+
+  private loadReview(): void {
+    this.service.review().subscribe({
+      next: items => this.review.set((items ?? []).map(item => ({ item, choice: item.suggestedStatus }))),
+      // Silencieux : la reprise est un passage unique, son échec ne doit pas masquer le tableau.
+      error: () => this.review.set([]),
+    });
+  }
+
+  /** L'utilisateur change l'état retenu pour une attente à vérifier. */
+  choose(actionId: string, status: TerminalActionStatus): void {
+    this.review.update(rows => rows.map(r => (r.item.action.id === actionId ? { ...r, choice: status } : r)));
+  }
+
+  /** Valide une ou toutes les lignes : seules les décisions envoyées changent quelque chose. */
+  validate(rows: ReviewRow[]): void {
+    if (!rows.length) {
+      return;
+    }
+    this.reviewBusy.set(true);
+    const ids = new Set(rows.map(r => r.item.action.id));
+    this.service.applyReview(rows.map(r => ({ id: r.item.action.id, status: r.choice }))).subscribe({
+      next: () => {
+        this.review.update(list => list.filter(r => !ids.has(r.item.action.id)));
+        this.reviewBusy.set(false);
+        this.reload();
+      },
+      error: () => {
+        this.reviewBusy.set(false);
+        this.snackBar.open("La reprise n'a pas pu être enregistrée.", 'Fermer', { duration: 5000 });
+      },
+    });
   }
 
   @HostListener('document:keydown.escape')

@@ -134,6 +134,14 @@ public class TerminalAction {
     @Column(name = "proposed_at")
     private OffsetDateTime proposedAt;
 
+    /**
+     * « À vérifier » (F-175 / SF-175-07) : attente héritée de F-154, dont l'état n'a jamais été dit.
+     * Montrée une fois avec un état proposé ; rien ne change sans la validation de l'utilisateur.
+     */
+    @Builder.Default
+    @Column(name = "review_pending", nullable = false)
+    private boolean reviewPending = false;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 

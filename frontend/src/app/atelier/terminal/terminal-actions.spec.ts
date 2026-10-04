@@ -11,7 +11,9 @@ import { TerminalActionsPanelComponent, ageLabel } from './terminal-actions-pane
 import {
   TerminalAttentesBandComponent, bandSummary, oldestLabel, pendingProposals,
 } from './terminal-attentes-band.component';
-import { TerminalAction, TerminalActionBoard } from '../../core/models/terminal-actions.models';
+import {
+  TerminalAction, TerminalActionBoard, TerminalActionReviewItem,
+} from '../../core/models/terminal-actions.models';
 import { TerminalActionsService } from '../../core/services/terminal-actions.service';
 
 function action(id: string, description: string, over: Partial<TerminalAction> = {}): TerminalAction {
@@ -34,8 +36,11 @@ function board(here: TerminalAction[], host: TerminalAction[] = [], hostId: stri
 
 const METHODS: (keyof TerminalActionsService)[] = [
   'list', 'elsewhere', 'board', 'create', 'changeStatus', 'edit', 'confirmProposal',
-  'dismissProposal', 'close', 'cancel', 'reopen',
+  'dismissProposal', 'close', 'cancel', 'reopen', 'review', 'applyReview',
 ];
+
+/** Les attentes héritées « à vérifier » servies par le mock (F-175 / SF-175-07) ; vide par défaut. */
+let reviewItems: TerminalActionReviewItem[] = [];
 
 /**
  * **Le fil des attentes à l'écran** (F-175 / SF-175-04, évolution de F-154 / SF-154-03) : la bande
@@ -51,6 +56,7 @@ describe('Les attentes du terminal (F-175 / SF-175-04)', () => {
     function build(b: TerminalActionBoard | 'error'): void {
       service = jasmine.createSpyObj<TerminalActionsService>('TerminalActionsService', METHODS);
       service.board.and.returnValue(b === 'error' ? throwError(() => new Error('réseau')) : of(b));
+      service.review.and.returnValue(of(reviewItems));
       TestBed.configureTestingModule({
         imports: [AtelierTerminalComponent, NoopAnimationsModule],
         providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([]),
@@ -62,7 +68,10 @@ describe('Les attentes du terminal (F-175 / SF-175-04)', () => {
       fixture.detectChanges();
     }
 
-    afterEach(() => TestBed.resetTestingModule());
+    afterEach(() => {
+      reviewItems = [];
+      TestBed.resetTestingModule();
+    });
 
     it("n'affiche RIEN quand il n'y a rien en attente", () => {
       build(board([]));
@@ -113,6 +122,23 @@ describe('Les attentes du terminal (F-175 / SF-175-04)', () => {
       expect(fixture.componentInstance.actionsOpen()).toBeFalse();
     });
 
+    it('SF-175-07 : la reprise ouvre le panneau UNE fois par session, et la bande dit « à vérifier »', fakeAsync(() => {
+      sessionStorage.removeItem('cg.attentes.reprise.vue');
+      reviewItems = [{ action: action('a-1', 'Relancer Habib'), suggestedStatus: 'DEMANDE' }];
+      build(board([action('a-1', 'Relancer Habib')]));
+      flushMicrotasks();
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.actionsOpen()).toBeTrue();
+      expect(fixture.nativeElement.querySelector('.attentes-band').textContent).toContain('1 à vérifier');
+
+      fixture.componentInstance.closeActions();
+      fixture.componentInstance.projectId = 'w-2';
+      flushMicrotasks();
+      expect(fixture.componentInstance.actionsOpen()).toBeFalse(); // pas une seconde fois
+      sessionStorage.removeItem('cg.attentes.reprise.vue');
+    }));
+
     it("un chargement en échec n'annonce rien — mieux vaut rien qu'un chiffre faux", () => {
       build('error');
       expect(fixture.componentInstance.pendingActions()).toBe(0);
@@ -158,6 +184,7 @@ describe('Les attentes du terminal (F-175 / SF-175-04)', () => {
     function build(b: TerminalActionBoard | 'error'): void {
       service = jasmine.createSpyObj<TerminalActionsService>('TerminalActionsService', METHODS);
       service.board.and.returnValue(b === 'error' ? throwError(() => new Error('boom')) : of(b));
+      service.review.and.returnValue(of(reviewItems));
       snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
       TestBed.configureTestingModule({
         imports: [TerminalActionsPanelComponent, NoopAnimationsModule],
@@ -171,7 +198,10 @@ describe('Les attentes du terminal (F-175 / SF-175-04)', () => {
       fixture.detectChanges();
     }
 
-    afterEach(() => TestBed.resetTestingModule());
+    afterEach(() => {
+      reviewItems = [];
+      TestBed.resetTestingModule();
+    });
 
     it('trois colonnes : À faire · Demandé · Fait récemment', () => {
       build(board([
@@ -278,6 +308,38 @@ describe('Les attentes du terminal (F-175 / SF-175-04)', () => {
       expect(draft).toContain('Relance Zahi au sujet de « Obtenir le compte forge »');
       expect(draft).toContain('le 30/09 par Teams');
       expect(service.changeStatus).not.toHaveBeenCalled();
+    });
+
+    it('SF-175-07 : la reprise propose un état, n’envoie que les décisions validées, et « Plus tard » la referme', () => {
+      reviewItems = [
+        { action: action('a-1', 'Relancer Habib', { workspaceName: 'agenor' }), suggestedStatus: 'DEMANDE' },
+        { action: action('a-2', 'Vérifier le droit', { workspaceName: 'cloudops-run' }), suggestedStatus: 'A_FAIRE' },
+      ];
+      build(board([]));
+      const section = fixture.nativeElement.querySelector('.review');
+      expect(section.textContent).toContain('2 attentes à vérifier');
+      expect(section.textContent).toContain('agenor');
+      expect(component.review().map(r => r.choice)).toEqual(['DEMANDE', 'A_FAIRE']);
+      expect(service.applyReview).not.toHaveBeenCalled(); // rien sans validation
+
+      service.applyReview.and.returnValue(of({ applied: 1, ignored: 0 }));
+      component.choose('a-2', 'FAIT');
+      component.validate([component.review()[1]]);
+      expect(service.applyReview).toHaveBeenCalledWith([{ id: 'a-2', status: 'FAIT' }]);
+      expect(component.review().length).toBe(1);
+
+      component.validate(component.review());
+      expect(service.applyReview).toHaveBeenCalledWith([{ id: 'a-1', status: 'DEMANDE' }]);
+      expect(component.review().length).toBe(0);
+    });
+
+    it('SF-175-07 : « Plus tard » referme la reprise sans rien changer', () => {
+      reviewItems = [{ action: action('a-1', 'Relancer Habib'), suggestedStatus: 'DEMANDE' }];
+      build(board([]));
+      (fixture.nativeElement.querySelector('.review__later') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.review')).toBeNull();
+      expect(service.applyReview).not.toHaveBeenCalled();
     });
 
     it('le chargement en échec le dit, sans détail technique', () => {

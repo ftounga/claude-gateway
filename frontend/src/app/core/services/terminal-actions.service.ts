@@ -5,6 +5,7 @@ import { Observable } from 'rxjs';
 import {
   TerminalAction, TerminalActionBoard, TerminalActionCreate, TerminalActionEdit,
   TerminalActionElsewhere, TerminalActionStatusChange, TerminalActionSummary,
+  TerminalActionReviewDecision, TerminalActionReviewItem, TerminalActionReviewResult,
 } from '../models/terminal-actions.models';
 
 /**
@@ -47,6 +48,16 @@ export class TerminalActionsService {
   /** Les compteurs par poste et par terminal (F-175 / SF-175-06) : rail de la Forge, mosaïque. */
   summary(): Observable<TerminalActionSummary> {
     return this.http.get<TerminalActionSummary>('/api/terminal-actions/summary');
+  }
+
+  /** Les attentes héritées à vérifier, avec l'état proposé (F-175 / SF-175-07). */
+  review(): Observable<TerminalActionReviewItem[]> {
+    return this.http.get<TerminalActionReviewItem[]>('/api/terminal-actions/review');
+  }
+
+  /** Les décisions de l'utilisateur sur la reprise — rien ne change sans elles. */
+  applyReview(decisions: TerminalActionReviewDecision[]): Observable<TerminalActionReviewResult> {
+    return this.http.post<TerminalActionReviewResult>('/api/terminal-actions/review', { decisions });
   }
 
   /** Ajout à la main. */

@@ -418,6 +418,63 @@ class TerminalActionApiIntegrationTest {
                 .andExpect(jsonPath("$.here[0].followUpDue", is(false)));
     }
 
+    private void markForReview(String actionId) {
+        TerminalAction action = actionRepository.findById(java.util.UUID.fromString(actionId)).orElseThrow();
+        action.setReviewPending(true);
+        actionRepository.save(action);
+    }
+
+    @Test
+    @DisplayName("SF-175-07 : la reprise propose un état, n'applique que la décision, et rien pour Bob")
+    void reviewProposesAndAppliesOnlyDecisions() throws Exception {
+        String relancer = createAction(aliceToken, "{\"description\":\"Relancer Habib pour la dérogation SCP\"}");
+        String verifier = createAction(aliceToken, "{\"description\":\"Vérifier le droit d'accès\"}");
+        String nouvelle = createAction(aliceToken, "{\"description\":\"Née après le déploiement\"}");
+        markForReview(relancer);
+        markForReview(verifier);
+
+        mockMvc.perform(get("/api/terminal-actions/review").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(2)))
+                .andExpect(jsonPath("$[0].action.id", is(relancer)))
+                .andExpect(jsonPath("$[0].action.workspaceName", is("Connecteur AGENOR")))
+                .andExpect(jsonPath("$[0].suggestedStatus", is("DEMANDE")))
+                .andExpect(jsonPath("$[1].suggestedStatus", is("A_FAIRE")))
+                // Rien n'a changé sans validation.
+                .andExpect(jsonPath("$[0].action.status", is("A_FAIRE")));
+
+        mockMvc.perform(get("/api/terminal-actions/review").contextPath("/api")
+                        .header("Authorization", "Bearer " + bobToken))
+                .andExpect(jsonPath("$", hasSize(0)));
+        mockMvc.perform(post("/api/terminal-actions/review").contextPath("/api")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"decisions\":[{\"id\":\"" + relancer + "\",\"status\":\"FAIT\"}]}")
+                        .header("Authorization", "Bearer " + bobToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.applied", is(0)))
+                .andExpect(jsonPath("$.ignored", is(1)));
+
+        mockMvc.perform(post("/api/terminal-actions/review").contextPath("/api")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"decisions\":[{\"id\":\"" + relancer + "\",\"status\":\"DEMANDE\"},"
+                                + "{\"id\":\"" + verifier + "\",\"status\":null},"
+                                + "{\"id\":\"" + nouvelle + "\",\"status\":\"FAIT\"}]}")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.applied", is(2)))
+                .andExpect(jsonPath("$.ignored", is(1)));
+
+        mockMvc.perform(get("/api/terminal-actions/review").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(jsonPath("$", hasSize(0)));
+        mockMvc.perform(get("/api/workspaces/" + workspaceId + "/actions").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(jsonPath("$[0].status", is("DEMANDE")))
+                .andExpect(jsonPath("$[1].status", is("A_FAIRE")))
+                .andExpect(jsonPath("$[2].status", is("A_FAIRE"))); // non vérifiée : jamais touchée
+    }
+
     @Test
     @DisplayName("sans jeton, rien — la route est fermée")
     void requiresAuthentication() throws Exception {
