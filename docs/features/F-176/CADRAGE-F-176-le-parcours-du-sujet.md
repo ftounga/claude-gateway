@@ -1,7 +1,6 @@
 # Cadrage — F-176 Le parcours du sujet (investigation → plan → exécution → vérification)
 
-> **Brouillon de cadrage, en attente de validation PO** (2026-10-04). Aucun développement avant
-> validation des décisions ouvertes (§6). Source de vérité produit : `docs/PROJECT.md`.
+> **Cadrage validé par le PO le 2026-10-04** (décisions Q1→Q4 tranchées, §6). Livré après F-175. Source de vérité produit : `docs/PROJECT.md`.
 
 ## 1. La question du PO
 
@@ -89,9 +88,9 @@ reste prudente : une commande non classée est traitée comme une modification.
 
 Dépend de F-175 (les attentes) pour les inputs manquants.
 
-## 6. Décisions ouvertes (à trancher par le PO)
+## 6. Décisions (tranchées par le PO le 2026-10-04)
 
-- **Q1 — Mode par défaut d'un nouveau sujet** : Libre + proposition du Guidé quand l'agent détecte un chantier (*recommandé*) / toujours demander à l'ouverture / Guidé par défaut.
-- **Q2 — Ce que la porte bloque avant validation** : toute modification hors notes (*recommandé*) / seulement l'externe et l'irréversible.
-- **Q3 — Validation** : un clic pour le plan entier, chaque amendement revalidé (*recommandé*) / en plus, un clic avant chaque étape irréversible.
-- **Q4 — Plancher du mode Libre** : inchangé (*recommandé*) / l'agent écrit un mini-plan de 3 lignes dans sa réponse avant toute action irréversible.
+- **Q1 — Mode par défaut** : **Libre**, et l'agent propose le mode Guidé par une carte *[Passer en guidé] [Rester libre]* quand il qualifie la demande de chantier.
+- **Q2 — La porte (mode Guidé)** : bloque **toute modification hors des notes du sujet** (édition en branche comprise) tant que le plan n'est pas validé ; lecture et notes restent libres.
+- **Q3 — Validation** : **un clic valide le plan entier** ; chaque amendement (modification hors plan) est montré et revalidé.
+- **Q4 — Mode Libre** : **inchangé** (garde-fous existants seulement).
