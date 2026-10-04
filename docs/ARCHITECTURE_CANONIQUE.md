@@ -378,6 +378,16 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     tant qu'il n'est pas levé. L'unicité porte sur la clé **quel que soit le statut** — c'est
     exactement ce qui empêche de recréer une action que l'utilisateur a **annulée**. `NULL` pour une
     action ajoutée à la main : plusieurs `NULL` cohabitent sans violer l'unicité.
+  - **Le fil des attentes** (F-175, migrations `141`→`144`) : états **`A_FAIRE | DEMANDE | FAIT |
+    ANNULE`** (reprise `OPEN→A_FAIRE`, `DONE→FAIT`, `CANCELLED→ANNULE`) ; `host_id (uuid, nullable)` —
+    le **poste** de naissance, déduit du terminal (lecture par poste, index `(user_id, host_id,
+    status)`) ; `requested_at (timestamptz)`, `requested_to (varchar 120)`, `channel (varchar 60)` —
+    la demande partie ; `proposed_status (varchar 16)`, `proposed_reason (varchar 300)`,
+    `proposed_at (timestamptz)` — la fermeture **proposée** par l'agent, appliquée seulement sur
+    [Confirmer] ; `embedding vector(1536)` (**PostgreSQL seulement**, `143`, non mappée JPA) — le
+    dédoublonnage par le sens ; `review_pending (boolean, NOT NULL, défaut faux)` — les attentes
+    héritées de F-154 à vérifier une fois (`144`). Isolation inchangée : `user_id` sur tout accès,
+    `host_id` toujours lu du terminal possédé, jamais du client.
   - **Pourquoi pas `radar_commitments`**, qui dit déjà tout cela (F-99) : son `subject_id` est
     **NOT NULL** — un engagement appartient à un **sujet** du Radar, et un terminal de projet n'en a
     pas toujours un. Le rendre nullable toucherait le **cœur** du Radar (extraction, relances,
