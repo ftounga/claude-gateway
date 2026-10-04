@@ -90,6 +90,17 @@ public class AccountService {
         this.sessionBilanRepository = repository;
     }
 
+    private fr.claudegateway.atelier.journey.SubjectJourneyRepository journeyRepository;
+    private fr.claudegateway.atelier.journey.SubjectJourneyEventRepository journeyEventRepository;
+
+    /** Branche la purge du parcours des sujets à la suppression du compte (F-176). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setJourneyRepositories(fr.claudegateway.atelier.journey.SubjectJourneyRepository journeys,
+            fr.claudegateway.atelier.journey.SubjectJourneyEventRepository journeyEvents) {
+        this.journeyRepository = journeys;
+        this.journeyEventRepository = journeyEvents;
+    }
+
     /** Branche la purge des actions du terminal à la suppression du compte (F-154 / SF-154-01). */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setTerminalActionRepository(
@@ -338,6 +349,14 @@ public class AccountService {
         // Pas de clé étrangère, donc purge nommée — sinon elles survivraient au compte.
         if (terminalActionRepository != null) {
             terminalActionRepository.purgeUser(userId);
+        }
+        // Le parcours des sujets (F-176) : mode, phase, plan, journal. Les lignes suivent aussi le
+        // terminal (cascade) ; la purge nommée couvre le compte.
+        if (journeyEventRepository != null) {
+            journeyEventRepository.purgeUser(userId);
+        }
+        if (journeyRepository != null) {
+            journeyRepository.purgeUser(userId);
         }
         // Les bilans de session (F-155 / SF-155-04) : ce que le compte a produit et dépensé.
         // Pas de clé étrangère, donc purge nommée.

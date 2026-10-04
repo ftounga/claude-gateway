@@ -47,6 +47,9 @@
       <!-- F-133 / SF-133-15 — LE BUDGET DE LA SEMAINE de ce client, dans la barre. Le coût de
            chaque réponse était déjà là (SF-133-02) ; ce qui manquait était le cumul et son
            plafond. Rien ne s'affiche sans budget applicable, ni hors administration. -->
+      <!-- F-176 / SF-176-01 — LE PARCOURS DU SUJET : « Libre » ou « Guidé · <phase> », et le menu
+           pour changer de mode à tout moment. Toujours visible (mobile compris) : c'est un état. -->
+      <app-terminal-journey-chip [journey]="journey()" [busy]="journeyBusy()" (modeChange)="onJourneyMode($event)"></app-terminal-journey-chip>
       <app-weekly-budget [hostId]="hostId" [compact]="true"></app-weekly-budget>
       <!-- F-143 / SF-143-01 — et ce que CE PROJET a coûté : la semaine, puis le total. -->
       <app-project-cost [projectId]="projectId" [compact]="true"></app-project-cost>
@@ -1432,6 +1435,8 @@
   @if (!readOnly) {
     <!-- F-175 / SF-175-04 — LA BANDE DES ATTENTES, au-dessus de la saisie, dès qu'il y en a une sur le
          poste. Relue à chaque fin de tour ; un clic ouvre le panneau. On ne peut plus la louper. -->
+    <!-- F-176 — LE PARCOURS GUIDÉ : les phases du sujet. Absent en mode Libre (Q4). -->
+    <app-terminal-journey-strip [journey]="journey()"></app-terminal-journey-strip>
     <app-terminal-attentes-band [board]="attentesBoard()" [toReview]="reviewPending()" (open)="openActions()"></app-terminal-attentes-band>
     <!-- F-121 / SF-121-23 — MENU DE SLASH-COMMANDS. Taper « / » ouvre la liste ; une entrée
          complète la commande dans le champ (elle n'envoie pas). Déterministe : seule une commande

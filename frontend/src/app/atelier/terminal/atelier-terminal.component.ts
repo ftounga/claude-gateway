@@ -148,6 +148,10 @@ import { PagePanelComponent } from './page-panel.component';
 import { TerminalActionsPanelComponent } from './terminal-actions-panel.component';
 import { TerminalAttentesBandComponent } from './terminal-attentes-band.component';
 import { AttenteCardComponent } from './attente-card.component';
+import { TerminalJourneyChipComponent } from './terminal-journey-chip.component';
+import { TerminalJourneyStripComponent } from './terminal-journey-strip.component';
+import { JourneyService } from '../../core/services/journey.service';
+import { JourneyMode, SubjectJourney } from '../../core/models/journey.models';
 import { TerminalAction, TerminalActionBoard } from '../../core/models/terminal-actions.models';
 import { AtelierTerminalDemandeComponent } from './atelier-terminal-demande.component';
 import { TerminalActionsService } from '../../core/services/terminal-actions.service';
@@ -212,6 +216,7 @@ export interface SlashMenuEntry {
     FormsModule, ForgeBreadcrumbComponent, LiveBadgeComponent, MarkdownPipe, MatButtonModule,
     TeamsLinkBadgeComponent, NgTemplateOutlet, TerminalEmailComponent, PageBlockComponent, PagePanelComponent,
     TerminalActionsPanelComponent, TerminalAttentesBandComponent, AttenteCardComponent,
+    TerminalJourneyChipComponent, TerminalJourneyStripComponent,
     AtelierTerminalDemandeComponent,
     AtelierSlashPanelComponent, AtelierSlashHelpComponent, AtelierSlashCostComponent,
     AtelierSlashContexteComponent, AtelierSlashQuotaComponent, AtelierSlashBudgetComponent,
@@ -309,6 +314,9 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     }
     if (value && value !== previous) {
       this.loadActionCount(value);
+      // F-176 : le parcours du sujet (mode, phase) suit le terminal ouvert.
+      this.journey.set(null);
+      this.loadJourney(value);
       // F-175 / SF-175-07 : après la pose des entrées (lecture seule comprise), la reprise de l'existant.
       void Promise.resolve().then(() => this.checkReview(true));
     }
@@ -693,6 +701,50 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     this.pendingActions.set(board ? board.aFaire + board.demande : 0);
   }
 
+  /**
+   * **Le parcours du sujet** (F-176) : Libre par défaut, ou Guidé. Relu à l'ouverture du terminal et
+   * à chaque fin de tour. `null` tant que rien n'est chargé — l'en-tête dit alors « Libre ».
+   */
+  readonly journey = signal<SubjectJourney | null>(null);
+
+  /** Un changement de mode est en cours. */
+  readonly journeyBusy = signal(false);
+
+  private readonly journeys = inject(JourneyService);
+
+  /** Le menu du terminal : Libre ou Guidé (F-176 / SF-176-01). */
+  onJourneyMode(mode: JourneyMode): void {
+    const workspaceId = this.projectId;
+    if (!workspaceId) {
+      return;
+    }
+    this.journeyBusy.set(true);
+    this.journeys.setMode(workspaceId, mode).subscribe({
+      next: journey => {
+        if (this.projectId === workspaceId) {
+          this.journey.set(journey);
+        }
+        this.journeyBusy.set(false);
+      },
+      error: () => {
+        this.journeyBusy.set(false);
+        this.snackBar.open('Le mode du sujet n\'a pas pu être changé.', 'OK', { duration: 4000 });
+      },
+    });
+  }
+
+  /** Relit le parcours ; un échec laisse l'affichage tel quel (jamais un faux « Guidé »). */
+  loadJourney(workspaceId: string): void {
+    this.journeys.get(workspaceId).subscribe({
+      next: journey => {
+        if (this.projectId === workspaceId) {
+          this.journey.set(journey);
+        }
+      },
+      error: () => undefined,
+    });
+  }
+
   /** Combien d'attentes héritées restent « à vérifier » (F-175 / SF-175-07) — la bande le dit. */
   readonly reviewPending = signal(0);
 
@@ -799,6 +851,8 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
       // la bande se relit à chaque fin de tour.
       if (this.projectId) {
         this.loadActionCount(this.projectId);
+        // F-176 : le tour a pu faire avancer le parcours (proposition, plan, phase).
+        this.loadJourney(this.projectId);
       }
     }
   }
