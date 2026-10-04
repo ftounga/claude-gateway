@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-175 / SF-175-03 — DEJA DEMANDE : l'embedding de la description d'une attente, pour reconnaitre
+      la meme demande dite autrement (« compte forge CAPFM » vs « acces a la forge pour CAPFM »).
+
+      POSTGRESQL UNIQUEMENT, sur le patron exact de 135 / 137 / 140 : changesets dbms="postgresql",
+      H2 (tests/dev) ne recoit RIEN. Colonne NON mappee en JPA : SQL natif (CAST(? AS vector), <=>).
+      ADDITIF : nullable. Sans APP_EMBEDDING_API_KEY, le chemin semantique reste eteint (seule la cle
+      normalisee dedoublonne). Pas d'index : quelques dizaines de lignes par poste, filtrees par
+      (user_id, host_id) avant le calcul de distance.
+
+      Dimension 1536 = text-embedding-3-small, meme fournisseur que F-162 / F-174.
+    -->
+
+    <changeSet id="143-terminal-actions-enable-pgvector" author="claude-gateway" dbms="postgresql">
+        <sql>CREATE EXTENSION IF NOT EXISTS vector;</sql>
+    </changeSet>
+
+    <changeSet id="143-terminal-actions-embedding-column" author="claude-gateway" dbms="postgresql">
+        <sql>ALTER TABLE terminal_actions ADD COLUMN IF NOT EXISTS embedding vector(1536);</sql>
+        <rollback>
+            <sql>ALTER TABLE terminal_actions DROP COLUMN IF EXISTS embedding;</sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
