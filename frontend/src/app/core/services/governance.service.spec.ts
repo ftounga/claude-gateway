@@ -43,6 +43,11 @@ describe('GovernanceService', () => {
     http.expectOne('/api/governance/hosts/h1/map/entities/3f9a0c1d2e4b5a69').flush(null);
   });
 
+  it('lit les propositions de consolidation de la carte (F-174 / SF-174-06, écran F-173)', () => {
+    service.hostMapConsolidation('h1').subscribe();
+    http.expectOne('/api/governance/hosts/h1/map/consolidation').flush(null);
+  });
+
   it('lit la carte du poste « Hébergé » par son mot réservé, jamais par un identifiant', () => {
     service.getMap('hosted').subscribe();
 

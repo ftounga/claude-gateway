@@ -114,8 +114,11 @@
                             @if (item.nodeId && item.nodeLabel) {
                               <button type="button" class="forge-map__hop-link" (click)="goTo(item.nodeId)">{{ item.nodeLabel }}</button>
                             }
-                            <span>{{ item.path }}@if (item.heading) { § {{ item.heading }} } · L{{ item.lineNo }}</span>
+                            <span>{{ sourceOf(item.path, item.heading, item.lineNo) }}</span>
                           </span>
+                          <button mat-button type="button" class="forge-map__ask-inline" [disabled]="!canAsk()" (click)="askDeadline(item)">
+                            <mat-icon>auto_awesome</mat-icon> Demander à la Forge
+                          </button>
                         </li>
                       }
                     </ul>
@@ -137,13 +140,45 @@
                       }
                       @if (item.text) { <span class="forge-map__signal-text">{{ item.text }}</span> }
                       @if (item.path) {
-                        <span class="forge-map__signal-meta">{{ item.path }}@if (item.heading) { § {{ item.heading }} }@if (item.lineNo) { · L{{ item.lineNo }} }</span>
+                        <span class="forge-map__signal-meta">{{ sourceOf(item.path, item.heading, item.lineNo) }}</span>
                       }
+                      <button mat-button type="button" class="forge-map__ask-inline" [disabled]="!canAsk()" (click)="askMapping(item)">
+                        <mat-icon>auto_awesome</mat-icon> Demander à la Forge
+                      </button>
                     </li>
                   }
                 </ul>
               </section>
             }
+            @if (consolidation(); as cons) {
+              @if (cons.indexed) {
+                <!-- LA CARTE SE TIENT (F-174 / SF-174-06) : proposé, jamais appliqué ; la Forge agit sous les yeux. -->
+                <section class="forge-map__signals" aria-label="Consolidation">
+                  <h4>La carte gagnerait à être consolidée ({{ cons.total }})</h4>
+                  @if (cons.proposals.length === 0) {
+                    <p class="forge-map__hint">La carte se tient : rien à consolider.</p>
+                  }
+                  <ul class="forge-map__signal-list">
+                    @for (proposal of cons.proposals; track $index) {
+                      <li class="forge-map__signal">
+                        <span class="badge badge--neutral">{{ proposal.kind.replace('_', ' ').toLowerCase() }}</span>
+                        <span class="forge-map__signal-text">{{ proposal.summary }}</span>
+                        <span class="forge-map__signal-meta">
+                          @for (fact of proposal.facts.slice(0, 3); track $index) {
+                            <span>{{ sourceOf(fact.path, fact.heading, fact.lineNo) }}</span>
+                          }
+                          @if (proposal.facts.length > 3) { <span>+ {{ proposal.facts.length - 3 }}</span> }
+                        </span>
+                        <button mat-button type="button" class="forge-map__ask-inline" [disabled]="!canAsk()" (click)="ask(proposal.request)">
+                          <mat-icon>auto_awesome</mat-icon> Demander à la Forge de consolider
+                        </button>
+                      </li>
+                    }
+                  </ul>
+                </section>
+              }
+            }
+            @if (!online()) { <p class="forge-map__hint">Poste hors ligne : la Forge ne peut pas agir.</p> }
           } @else if (view() === 'grille') {
             <!-- LA GRILLE DES ENVIRONNEMENTS (SF-173-04) : domaine × environnement, Sandbox → Prod. -->
             @if (grid(); as gr) {
@@ -230,6 +265,12 @@
               (navigate)="goTo($event)"
               (closed)="closeCard()"
             >
+              <div mapCardActions class="forge-map__ask">
+                <button mat-stroked-button type="button" [disabled]="!canAsk()" (click)="askNode(nodeById(cardId))">
+                  <mat-icon>auto_awesome</mat-icon> Demander à la Forge
+                </button>
+                @if (!online()) { <span class="forge-map__hint">Poste hors ligne : la Forge ne peut pas agir.</span> }
+              </div>
               @if (path(); as p) {
                 <!-- LE CHEMIN D'ACCÈS (SF-173-05) : tiré des relations de la carte ; l'état est celui écrit, jamais sondé. -->
                 <section mapCardPath class="forge-map__path" aria-label="Comment l'atteindre">

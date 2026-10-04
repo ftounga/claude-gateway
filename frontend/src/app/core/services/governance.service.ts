@@ -14,6 +14,7 @@ import {
   HostMemoryState,
   GovernancePackage,
   MapCard,
+  MapConsolidation,
   MapGraph,
   GovernanceSelection,
 } from '../models/governance.models';
@@ -112,6 +113,14 @@ export class GovernanceService {
    */
   hostMapGraph(hostRef: string): Observable<MapGraph> {
     return this.http.get<MapGraph>(`/api/governance/hosts/${hostRef}/map/graph`);
+  }
+
+  /**
+   * **Ce que la carte gagnerait à consolider** (F-174 / SF-174-06) — proposé, jamais appliqué ; chaque
+   * proposition porte la demande à confier à la Forge (F-173 / SF-173-07).
+   */
+  hostMapConsolidation(hostRef: string): Observable<MapConsolidation> {
+    return this.http.get<MapConsolidation>(`/api/governance/hosts/${hostRef}/map/consolidation`);
   }
 
   /** **La fiche d'une ressource** de la carte (F-173 / SF-173-01). 404 si elle n'y est pas. */

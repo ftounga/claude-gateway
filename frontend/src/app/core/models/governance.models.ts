@@ -437,3 +437,27 @@ export interface MapCard {
   relations: MapCardRelation[];
   sources: { path: string; heading: string | null }[];
 }
+
+/** Un fait cité par une proposition de consolidation (F-174 / SF-174-06). */
+export interface MapConsolidationFact {
+  path: string;
+  heading: string | null;
+  lineNo: number;
+  text: string;
+}
+
+/** Une proposition de consolidation — jamais appliquée seule ; `request` est la demande à confier à la Forge. */
+export interface MapConsolidationProposal {
+  kind: 'DOUBLON' | 'CONTRADICTION' | 'PERIME' | 'ECHEANCE_DEPASSEE' | string;
+  path: string;
+  summary: string;
+  facts: MapConsolidationFact[];
+  request: string;
+}
+
+/** Ce que la carte gagnerait à consolider (F-174 / SF-174-06). */
+export interface MapConsolidation {
+  indexed: boolean;
+  total: number;
+  proposals: MapConsolidationProposal[];
+}
