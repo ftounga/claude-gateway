@@ -23,6 +23,8 @@ import { HostBadgeComponent } from '../shared/host-badge/host-badge.component';
 import { HostTone, hostTone } from '../shared/host-identity';
 import { httpErrorMessage, humanFileSize } from '../shared/http-error.util';
 import { LiveTurnView } from './live-turn-view';
+import { TerminalActionsService } from '../core/services/terminal-actions.service';
+import { TerminalActionCount } from '../core/models/terminal-actions.models';
 
 /** Cadence de relecture du registre. Celle de la vue de supervision : une attente s'y voit vite. */
 export const MOSAIQUE_REGISTRY_MS = 5_000;
@@ -84,6 +86,7 @@ export class MosaiqueComponent implements OnInit, OnDestroy {
 
   private readonly http = inject(HttpClient);
   private readonly atelier = inject(AtelierService);
+  private readonly terminalActions = inject(TerminalActionsService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly zone = inject(NgZone);
   private readonly destroyRef = inject(DestroyRef);
@@ -150,8 +153,39 @@ export class MosaiqueComponent implements OnInit, OnDestroy {
       : null;
   });
 
+  /**
+   * **Les attentes ouvertes par terminal** (F-175 / SF-175-06) : un compteur sur l'en-tête de chaque
+   * tuile. Lu à l'ouverture et au geste « Réessayer » — pas au battement du registre : une attente ne
+   * change pas toutes les cinq secondes.
+   */
+  readonly attentesByTerminal = signal<Record<string, TerminalActionCount>>({});
+
+  /** « 2 attentes », ou `null` s'il n'y en a aucune. */
+  attentesLabel(workspaceId: string): string | null {
+    const count = this.attentesByTerminal()[workspaceId];
+    const total = count ? count.aFaire + count.demande : 0;
+    if (total <= 0) {
+      return null;
+    }
+    return total === 1 ? '1 attente' : `${total} attentes`;
+  }
+
+  private loadAttentes(): void {
+    this.terminalActions.summary().subscribe({
+      next: (summary) => {
+        const byTerminal: Record<string, TerminalActionCount> = {};
+        for (const count of summary?.terminals ?? []) {
+          byTerminal[count.id] = count;
+        }
+        this.attentesByTerminal.set(byTerminal);
+      },
+      error: () => { /* enrichissement : son absence ne change rien à la mosaïque */ },
+    });
+  }
+
   ngOnInit(): void {
     this.load();
+    this.loadAttentes();
     this.registryTimer = setInterval(() => this.load(), MOSAIQUE_REGISTRY_MS);
     this.tickTimer = setInterval(
       () => this.zone.run(() => this.views.forEach((view) => view.tick())),
@@ -169,6 +203,7 @@ export class MosaiqueComponent implements OnInit, OnDestroy {
   /** Relance une lecture du registre — le bouton « Réessayer ». */
   refresh(): void {
     this.load();
+    this.loadAttentes();
   }
 
   /**

@@ -52,6 +52,35 @@ export interface TerminalAction {
   proposedAt?: string | null;
   createdAt: string;
   updatedAt?: string;
+  /** « Demandé » depuis assez de jours ouvrés pour appeler une relance (F-175 / SF-175-06). */
+  followUpDue?: boolean;
+}
+
+/** Un compte d'attentes ouvertes, par poste ou par terminal (F-175 / SF-175-06). */
+export interface TerminalActionCount {
+  id: string;
+  aFaire: number;
+  demande: number;
+  aRelancer: number;
+  oldestOpenAt: string | null;
+}
+
+/** Les compteurs du compte (`GET /api/terminal-actions/summary`) : rail de la Forge, mosaïque. */
+export interface TerminalActionSummary {
+  hosts: TerminalActionCount[];
+  terminals: TerminalActionCount[];
+}
+
+/**
+ * Le brouillon de relance déposé dans la zone de saisie (F-175 / SF-175-06, décision D8) — **jamais
+ * envoyé** : l'agent rédige la relance quand l'utilisateur envoie, et rien ne part sans son geste.
+ */
+export function followUpDraft(action: TerminalAction): string {
+  const to = action.requestedTo || action.person;
+  const when = action.requestedAt ? ` le ${action.requestedAt.slice(8, 10)}/${action.requestedAt.slice(5, 7)}` : '';
+  const channel = action.channel ? ` par ${action.channel}` : '';
+  return `Relance${to ? ` ${to}` : ''} au sujet de « ${action.description} » (demandé${when}${channel}, `
+    + 'toujours sans réponse). Rédige-moi le message de relance.';
 }
 
 /** Une action ouverte d'un **autre** projet (`GET /api/terminal-actions`), en lecture seule. */
@@ -77,6 +106,8 @@ export interface TerminalActionBoard {
   host: TerminalAction[];
   aFaire: number;
   demande: number;
+  /** Celles « Demandé » dont la relance est due (F-175 / SF-175-06). */
+  aRelancer?: number;
   oldestOpenAt: string | null;
 }
 

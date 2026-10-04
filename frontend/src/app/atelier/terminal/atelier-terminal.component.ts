@@ -667,6 +667,16 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     }
   }
 
+  /**
+   * « Relancer » (F-175 / SF-175-06, décision D8) : le brouillon rejoint la zone de saisie, le panneau
+   * se ferme — **rien n'est envoyé**. L'envoi reste le geste de l'utilisateur.
+   */
+  onFollowUp(text: string): void {
+    this.predicted.set(null);
+    this.draftChange.emit(text);
+    this.actionsOpen.set(false);
+  }
+
   /** Le panneau a relu le tableau après un geste : la bande et la pastille suivent. */
   onBoardChanged(board: TerminalActionBoard): void {
     this.applyBoard(board);

@@ -3,6 +3,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 
 import { RunnerHostOverview } from '../../core/models/atelier.models';
+import { TerminalActionCount } from '../../core/models/terminal-actions.models';
 import { HostPresenceService } from '../../core/services/host-presence.service';
 import { HostBadgeComponent } from '../../shared/host-badge/host-badge.component';
 import { hostTone } from '../../shared/host-identity';
@@ -53,6 +54,12 @@ export class ForgeRailComponent {
    * comme {@link billing} : la Vigie ne le fournit pas.
    */
   readonly revenue = input<Record<string, RailRevenue>>({});
+
+  /**
+   * **Les attentes ouvertes par poste** (F-175 / SF-175-06), indexées par identifiant de poste. Optionnel :
+   * sans elles, rien ne change.
+   */
+  readonly attentes = input<Record<string, TerminalActionCount>>({});
 
   // ------------------------------------------------ les mots de l'espace (F-106 / SF-106-02)
   // La Vigie emploie la même colonne : seuls ses mots changent. Les défauts sont ceux de la Forge.
@@ -142,6 +149,21 @@ export class ForgeRailComponent {
       return null;
     }
     return this.revenue()[id] ?? null;
+  }
+
+  /** « 3 attentes · 1 à relancer », ou `null` s'il n'y en a aucune (F-175 / SF-175-06). */
+  attentesLabel(row: ForgeRow): string | null {
+    const id = row.host.id;
+    const count = id ? this.attentes()[id] : undefined;
+    if (!count) {
+      return null;
+    }
+    const total = count.aFaire + count.demande;
+    if (total <= 0) {
+      return null;
+    }
+    const base = total === 1 ? '1 attente' : `${total} attentes`;
+    return count.aRelancer > 0 ? `${base} · ${count.aRelancer} à relancer` : base;
   }
 
   /** Ce que la ligne dit à droite quand rien n'attend. */

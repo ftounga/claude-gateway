@@ -100,6 +100,10 @@
               }
               <span class="mosaique__project">{{ tile.projectName }}</span>
               <span class="mosaique__host">{{ hostLabel(tile) }}</span>
+              <!-- F-175 / SF-175-06 : les attentes ouvertes de ce terminal. -->
+              @if (attentesLabel(tile.workspaceId); as attentes) {
+                <span class="mosaique__attentes">{{ attentes }}</span>
+              }
               @if (tile.view.truncated()) {
                 <!-- Le tampon du tour est borné : dire le trou vaut mieux que le maquiller. -->
                 <span class="mosaique__truncated" title="Ce tour a commencé avant ce branchement">

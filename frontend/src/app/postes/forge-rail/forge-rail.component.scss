@@ -198,6 +198,25 @@
   }
 
   // F-124 / SF-124-01 : le TJM du poste, en JetBrains Mono, texte secondaire (aucune couleur nouvelle).
+  // F-175 / SF-175-06 : les attentes ouvertes du poste — encre or (§5), une icône, aucune couleur nouvelle.
+  &__attentes {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cg-space-1);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--cg-gold-ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    mat-icon {
+      font-size: 14px;
+      width: 14px;
+      height: 14px;
+    }
+  }
+
   &__tjm {
     font-family: var(--cg-font-mono);
     font-size: 12px;

@@ -101,6 +101,18 @@ describe('Les attentes du terminal (F-175 / SF-175-04)', () => {
       expect(fixture.nativeElement.querySelector('.attentes-band').textContent).toContain('1 à faire');
     }));
 
+    it('SF-175-06 : « Relancer » dépose le brouillon dans la saisie et ferme le panneau, sans envoyer', () => {
+      build(board([action('a-1', 'x')]));
+      const drafts: string[] = [];
+      fixture.componentInstance.draftChange.subscribe((d: string) => drafts.push(d));
+      fixture.componentInstance.openActions();
+
+      fixture.componentInstance.onFollowUp('Relance Zahi au sujet de « x »');
+
+      expect(drafts).toEqual(['Relance Zahi au sujet de « x »']);
+      expect(fixture.componentInstance.actionsOpen()).toBeFalse();
+    });
+
     it("un chargement en échec n'annonce rien — mieux vaut rien qu'un chiffre faux", () => {
       build('error');
       expect(fixture.componentInstance.pendingActions()).toBe(0);
@@ -115,6 +127,8 @@ describe('Les attentes du terminal (F-175 / SF-175-04)', () => {
       const b = { ...board([]), aFaire: 2, demande: 4, oldestOpenAt: '2026-09-25T10:00:00Z' };
       expect(bandSummary(b, now)).toBe('2 à faire · 4 demandées · la plus ancienne 9 j');
       expect(bandSummary({ ...b, aFaire: 0, demande: 1 }, now)).toBe('1 demandée · la plus ancienne 9 j');
+      expect(bandSummary({ ...b, aRelancer: 1 }, now))
+        .toBe('2 à faire · 4 demandées · 1 à relancer · la plus ancienne 9 j');
       expect(oldestLabel('2026-10-04T08:00:00Z', now)).toBe("aujourd'hui");
       expect(bandSummary(null)).toBe('');
     });
@@ -246,6 +260,24 @@ describe('Les attentes du terminal (F-175 / SF-175-04)', () => {
       component.editDescription = 'Demander le VPN';
       component.saveEdit(open);
       expect(service.edit).toHaveBeenCalledWith('w-1', 'a-3', { description: 'Demander le VPN' });
+    });
+
+    it('SF-175-06 : « Relancer » n’apparaît que si la relance est due, et émet un brouillon — rien n’est envoyé', () => {
+      const late = action('a-1', 'Obtenir le compte forge', { status: 'DEMANDE', requestedTo: 'Zahi',
+        channel: 'Teams', requestedAt: '2026-09-30T08:00:00Z', followUpDue: true });
+      const fresh = action('a-2', 'Obtenir la dérogation', { status: 'DEMANDE' });
+      build(board([late, fresh]));
+
+      const buttons = fixture.nativeElement.querySelectorAll('.action__followup');
+      expect(buttons.length).toBe(1);
+      expect(fixture.nativeElement.textContent).toContain('à relancer');
+
+      let draft = '';
+      component.followUp.subscribe((text: string) => (draft = text));
+      (buttons[0] as HTMLButtonElement).click();
+      expect(draft).toContain('Relance Zahi au sujet de « Obtenir le compte forge »');
+      expect(draft).toContain('le 30/09 par Teams');
+      expect(service.changeStatus).not.toHaveBeenCalled();
     });
 
     it('le chargement en échec le dit, sans détail technique', () => {

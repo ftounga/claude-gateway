@@ -20,6 +20,8 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { AtelierService } from '../core/services/atelier.service';
 import { GovernanceService } from '../core/services/governance.service';
 import { PosteBillingService } from '../core/services/poste-billing.service';
+import { TerminalActionsService } from '../core/services/terminal-actions.service';
+import { TerminalActionCount } from '../core/models/terminal-actions.models';
 import { HostPresenceService } from '../core/services/host-presence.service';
 import { VigieService } from '../core/services/vigie.service';
 import { RadarSubjectRef } from '../core/models/radar-subject.models';
@@ -235,6 +237,7 @@ export class PostesComponent implements OnInit {
   private readonly atelier = inject(AtelierService);
   private readonly governance = inject(GovernanceService);
   private readonly billing = inject(PosteBillingService);
+  private readonly terminalActions = inject(TerminalActionsService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly destroyRef = inject(DestroyRef);
@@ -530,6 +533,9 @@ export class PostesComponent implements OnInit {
   /** **Le cumul de revenu par poste** (F-124 / SF-124-02), indexé par identifiant de poste. */
   readonly revenueByHost = signal<Record<string, RailRevenue>>({});
 
+  /** **Les attentes ouvertes par poste** (F-175 / SF-175-06), indexées par identifiant de poste. */
+  readonly attentesByHost = signal<Record<string, TerminalActionCount>>({});
+
   /** **Le revenu total tous clients** (F-124 / SF-124-02), en centimes, et sa part supposée. */
   readonly revenueTotalCents = signal(0);
   readonly revenueSupposedCents = signal(0);
@@ -546,6 +552,7 @@ export class PostesComponent implements OnInit {
     this.loadTeamsAccess();
     this.loadGovernanceHosts();
     this.loadBilling();
+    this.loadAttentes();
     // F-133 / SF-133-15 : une seule lecture du budget de la semaine, partagée avec le terminal.
     // Silencieuse : sans droit de lecture, rien ne s'affiche et rien ne casse.
     this.weeklyBudget.load();
@@ -612,6 +619,7 @@ export class PostesComponent implements OnInit {
     this.integritesRead.clear();
     this.loadGovernanceHosts();
     this.loadBilling();
+    this.loadAttentes();
     this.load(this.hosts().length === 0);
   }
 
@@ -702,6 +710,23 @@ export class PostesComponent implements OnInit {
       error: () => { /* défaut applicatif conservé */ },
     });
     this.loadRevenue();
+  }
+
+  /**
+   * **Les attentes par poste** (F-175 / SF-175-06) pour le rail. Enrichissement : un échec n'efface rien
+   * et ne bloque pas la Forge.
+   */
+  private loadAttentes(): void {
+    this.terminalActions.summary().subscribe({
+      next: (summary) => {
+        const byHost: Record<string, TerminalActionCount> = {};
+        for (const count of summary?.hosts ?? []) {
+          byHost[count.id] = count;
+        }
+        this.attentesByHost.set(byHost);
+      },
+      error: () => { /* les attentes sont un enrichissement : leur absence ne casse pas la Forge */ },
+    });
   }
 
   /** **Le cumul par poste et le total** (F-124 / SF-124-02). Enrichissement : un échec n'efface rien. */

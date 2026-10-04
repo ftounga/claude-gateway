@@ -28,6 +28,9 @@ export function bandSummary(board: TerminalActionBoard | null, now = Date.now())
   if (board.demande > 0) {
     parts.push(board.demande === 1 ? '1 demandée' : `${board.demande} demandées`);
   }
+  if ((board.aRelancer ?? 0) > 0) {
+    parts.push(`${board.aRelancer} à relancer`);
+  }
   const oldest = oldestLabel(board.oldestOpenAt, now);
   if (oldest && parts.length) {
     parts.push(`la plus ancienne ${oldest}`);

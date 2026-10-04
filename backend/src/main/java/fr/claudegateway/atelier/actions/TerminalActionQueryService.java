@@ -35,13 +35,16 @@ public class TerminalActionQueryService {
     private final TerminalActionRepository repository;
     private final WorkspaceRepository workspaces;
     private final Clock clock;
+    private final TerminalActionFollowUp followUp;
 
     public TerminalActionQueryService(TerminalActionRepository repository,
                                       WorkspaceRepository workspaces,
-                                      Clock clock) {
+                                      Clock clock,
+                                      TerminalActionFollowUp followUp) {
         this.repository = repository;
         this.workspaces = workspaces;
         this.clock = clock;
+        this.followUp = followUp;
     }
 
     /**
@@ -86,13 +89,19 @@ public class TerminalActionQueryService {
         List<TerminalActionResponse> elsewhere = new ArrayList<>();
         int aFaire = 0;
         int demande = 0;
+        int aRelancer = 0;
         OffsetDateTime oldest = null;
+        OffsetDateTime now = OffsetDateTime.now(clock);
         for (TerminalAction action : all) {
             String name = names.computeIfAbsent(action.getWorkspaceId(), id -> nameOf(userId, id));
+            boolean due = followUp.isDue(action, now);
+            if (due) {
+                aRelancer++;
+            }
             if (action.getWorkspaceId().equals(workspaceId)) {
-                here.add(TerminalActionResponse.from(action, name));
+                here.add(TerminalActionResponse.from(action, name, due));
             } else if (elsewhere.size() < MAX_ELSEWHERE) {
-                elsewhere.add(TerminalActionResponse.from(action, name));
+                elsewhere.add(TerminalActionResponse.from(action, name, due));
             }
             if (action.getStatus() == TerminalActionStatus.A_FAIRE) {
                 aFaire++;
@@ -103,7 +112,47 @@ public class TerminalActionQueryService {
                 oldest = action.getCreatedAt();
             }
         }
-        return new TerminalActionBoardResponse(hostId, here, elsewhere, aFaire, demande, oldest);
+        return new TerminalActionBoardResponse(hostId, here, elsewhere, aFaire, demande, aRelancer, oldest);
+    }
+
+    /**
+     * <b>Les compteurs partout</b> (F-175 / SF-175-06) : les attentes ouvertes du compte, comptées par
+     * poste (le rail de la Forge) et par terminal (la mosaïque). Une seule lecture, sous {@code user_id}.
+     */
+    @Transactional(readOnly = true)
+    public TerminalActionSummaryResponse summary(UUID userId) {
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        Map<UUID, int[]> byHost = new java.util.LinkedHashMap<>();
+        Map<UUID, OffsetDateTime> oldestByHost = new HashMap<>();
+        Map<UUID, int[]> byWorkspace = new java.util.LinkedHashMap<>();
+        for (TerminalAction action : repository.findByUserIdAndStatusInOrderByCreatedAtAsc(
+                userId, TerminalActionStatus.OPEN_STATES)) {
+            int slot = action.getStatus() == TerminalActionStatus.A_FAIRE ? 0 : 1;
+            boolean due = followUp.isDue(action, now);
+            int[] w = byWorkspace.computeIfAbsent(action.getWorkspaceId(), id -> new int[3]);
+            w[slot]++;
+            if (due) {
+                w[2]++;
+            }
+            if (action.getHostId() != null) {
+                int[] h = byHost.computeIfAbsent(action.getHostId(), id -> new int[3]);
+                h[slot]++;
+                if (due) {
+                    h[2]++;
+                }
+                oldestByHost.merge(action.getHostId(), action.getCreatedAt(),
+                        (a, b) -> a.isBefore(b) ? a : b);
+            }
+        }
+        List<TerminalActionSummaryResponse.Count> hosts = byHost.entrySet().stream()
+                .map(e -> new TerminalActionSummaryResponse.Count(e.getKey(), e.getValue()[0], e.getValue()[1],
+                        e.getValue()[2], oldestByHost.get(e.getKey())))
+                .toList();
+        List<TerminalActionSummaryResponse.Count> terminals = byWorkspace.entrySet().stream()
+                .map(e -> new TerminalActionSummaryResponse.Count(e.getKey(), e.getValue()[0], e.getValue()[1],
+                        e.getValue()[2], null))
+                .toList();
+        return new TerminalActionSummaryResponse(hosts, terminals);
     }
 
     /** Le nom du projet, relu <b>sous l'isolation</b> — jamais par identifiant seul. */

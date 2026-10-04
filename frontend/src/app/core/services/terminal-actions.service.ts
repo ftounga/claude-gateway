@@ -4,7 +4,7 @@ import { Observable } from 'rxjs';
 
 import {
   TerminalAction, TerminalActionBoard, TerminalActionCreate, TerminalActionEdit,
-  TerminalActionElsewhere, TerminalActionStatusChange,
+  TerminalActionElsewhere, TerminalActionStatusChange, TerminalActionSummary,
 } from '../models/terminal-actions.models';
 
 /**
@@ -42,6 +42,11 @@ export class TerminalActionsService {
   /** Le tableau : ce terminal, puis le reste du poste, et les compteurs (F-175 / SF-175-01). */
   board(workspaceId: string): Observable<TerminalActionBoard> {
     return this.http.get<TerminalActionBoard>(`/api/workspaces/${workspaceId}/actions/board`);
+  }
+
+  /** Les compteurs par poste et par terminal (F-175 / SF-175-06) : rail de la Forge, mosaïque. */
+  summary(): Observable<TerminalActionSummary> {
+    return this.http.get<TerminalActionSummary>('/api/terminal-actions/summary');
   }
 
   /** Ajout à la main. */
