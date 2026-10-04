@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-175 / SF-175-07 — LA REPRISE DE L'EXISTANT. Les attentes ouvertes nees sous F-154 (un seul
+      etat « OPEN », devenu A_FAIRE en 141) n'ont jamais connu l'etat « demande » : certaines sont
+      deja parties. Elles sont marquees « a verifier » UNE fois ; l'utilisateur valide l'etat propose
+      en bloc ou une par une. RIEN n'est change sans sa validation : la colonne ne fait que dire
+      « a montrer ».
+
+      review_pending : vrai pour les attentes ouvertes presentes au deploiement ; faux pour toute
+      attente nee ensuite (defaut). Rollback : la colonne se retire.
+    -->
+
+    <changeSet id="144-terminal-actions-review" author="claude-gateway">
+        <addColumn tableName="terminal_actions">
+            <column name="review_pending" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+
+        <update tableName="terminal_actions">
+            <column name="review_pending" valueBoolean="true"/>
+            <where>status = 'A_FAIRE'</where>
+        </update>
+
+        <rollback>
+            <dropColumn tableName="terminal_actions" columnName="review_pending"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

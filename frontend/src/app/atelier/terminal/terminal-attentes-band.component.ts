@@ -67,6 +67,9 @@ export function pendingProposals(board: TerminalActionBoard | null): number {
         @if (proposals()) {
           <span class="attentes-band__confirm">{{ proposals() }} à confirmer</span>
         }
+        @if (toReview() > 0) {
+          <span class="attentes-band__confirm attentes-band__review">{{ toReview() }} à vérifier</span>
+        }
         <mat-icon class="attentes-band__chevron" aria-hidden="true">chevron_right</mat-icon>
       </button>
     }
@@ -132,6 +135,9 @@ export function pendingProposals(board: TerminalActionBoard | null): number {
 export class TerminalAttentesBandComponent {
   /** Le tableau du terminal (compteurs du poste). `null` : rien de chargé, rien d'affiché. */
   readonly board = input<TerminalActionBoard | null>(null);
+
+  /** Attentes héritées encore à vérifier (F-175 / SF-175-07). */
+  readonly toReview = input(0);
 
   /** Ouvrir le panneau. */
   readonly open = output<void>();

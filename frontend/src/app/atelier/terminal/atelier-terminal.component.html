@@ -1432,7 +1432,7 @@
   @if (!readOnly) {
     <!-- F-175 / SF-175-04 — LA BANDE DES ATTENTES, au-dessus de la saisie, dès qu'il y en a une sur le
          poste. Relue à chaque fin de tour ; un clic ouvre le panneau. On ne peut plus la louper. -->
-    <app-terminal-attentes-band [board]="attentesBoard()" (open)="openActions()"></app-terminal-attentes-band>
+    <app-terminal-attentes-band [board]="attentesBoard()" [toReview]="reviewPending()" (open)="openActions()"></app-terminal-attentes-band>
     <!-- F-121 / SF-121-23 — MENU DE SLASH-COMMANDS. Taper « / » ouvre la liste ; une entrée
          complète la commande dans le champ (elle n'envoie pas). Déterministe : seule une commande
          connue sera expansée en son prompt imposé à l'envoi. -->

@@ -56,6 +56,24 @@ export interface TerminalAction {
   followUpDue?: boolean;
 }
 
+/** Une attente héritée « à vérifier » et l'état proposé (F-175 / SF-175-07). */
+export interface TerminalActionReviewItem {
+  action: TerminalAction;
+  suggestedStatus: TerminalActionStatus;
+}
+
+/** La décision de l'utilisateur sur une attente à vérifier ; `status: null` = garder l'actuel. */
+export interface TerminalActionReviewDecision {
+  id: string;
+  status: TerminalActionStatus | null;
+}
+
+/** Ce que la reprise a appliqué. */
+export interface TerminalActionReviewResult {
+  applied: number;
+  ignored: number;
+}
+
 /** Un compte d'attentes ouvertes, par poste ou par terminal (F-175 / SF-175-06). */
 export interface TerminalActionCount {
   id: string;

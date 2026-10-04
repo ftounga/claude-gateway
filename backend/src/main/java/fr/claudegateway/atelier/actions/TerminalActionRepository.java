@@ -40,6 +40,9 @@ public interface TerminalActionRepository extends JpaRepository<TerminalAction, 
     List<TerminalAction> findByUserIdAndHostIdAndDedupKeyOrderByCreatedAtDesc(
             UUID userId, UUID hostId, String dedupKey);
 
+    /** Les attentes « à vérifier » du compte (F-175 / SF-175-07), les plus anciennes d'abord. */
+    List<TerminalAction> findByUserIdAndReviewPendingTrueOrderByCreatedAtAsc(UUID userId);
+
     /** Les attentes d'un poste dans ces états (F-175 / SF-175-02 : la liste jointe au tour). */
     List<TerminalAction> findByUserIdAndHostIdAndStatusIn(
             UUID userId, UUID hostId, Collection<TerminalActionStatus> statuses);

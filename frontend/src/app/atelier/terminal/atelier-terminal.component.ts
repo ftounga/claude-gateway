@@ -309,6 +309,8 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     }
     if (value && value !== previous) {
       this.loadActionCount(value);
+      // F-175 / SF-175-07 : après la pose des entrées (lecture seule comprise), la reprise de l'existant.
+      void Promise.resolve().then(() => this.checkReview(true));
     }
   }
   get projectId(): string | null {
@@ -646,6 +648,10 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
   closeActions(): void {
     this.actionsOpen.set(false);
+    // La reprise a pu être validée dans le panneau : la bande suit, sans rouvrir quoi que ce soit.
+    if (this.reviewPending() > 0) {
+      this.checkReview(false);
+    }
   }
 
   /**
@@ -685,6 +691,49 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   private applyBoard(board: TerminalActionBoard | null): void {
     this.attentesBoard.set(board);
     this.pendingActions.set(board ? board.aFaire + board.demande : 0);
+  }
+
+  /** Combien d'attentes héritées restent « à vérifier » (F-175 / SF-175-07) — la bande le dit. */
+  readonly reviewPending = signal(0);
+
+  /**
+   * **La reprise de l'existant** (F-175 / SF-175-07, décision D9) : s'il reste des attentes héritées à
+   * vérifier, le panneau s'ouvre **une fois par session** pour les présenter. Rien n'y change sans la
+   * validation de l'utilisateur ; « Plus tard » le referme.
+   */
+  private checkReview(autoOpen: boolean): void {
+    if (this.readOnly) {
+      return;
+    }
+    this.terminalActions.review().subscribe({
+      next: items => {
+        const count = items?.length ?? 0;
+        this.reviewPending.set(count);
+        if (autoOpen && count > 0 && !AtelierTerminalComponent.reviewShownThisSession()) {
+          AtelierTerminalComponent.markReviewShown();
+          this.actionsOpen.set(true);
+        }
+      },
+      error: () => this.reviewPending.set(0),
+    });
+  }
+
+  private static readonly REVIEW_SHOWN_KEY = 'cg.attentes.reprise.vue';
+
+  private static reviewShownThisSession(): boolean {
+    try {
+      return sessionStorage.getItem(AtelierTerminalComponent.REVIEW_SHOWN_KEY) === '1';
+    } catch {
+      return true; // stockage indisponible : ne pas rouvrir à chaque terminal
+    }
+  }
+
+  private static markReviewShown(): void {
+    try {
+      sessionStorage.setItem(AtelierTerminalComponent.REVIEW_SHOWN_KEY, '1');
+    } catch {
+      // rien : au pire, la reprise se présentera de nouveau
+    }
   }
 
   /**

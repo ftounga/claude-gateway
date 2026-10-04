@@ -26,10 +26,13 @@ import fr.claudegateway.auth.CurrentUser;
 public class TerminalActionsController {
 
     private final TerminalActionQueryService queries;
+    private final TerminalActionReviewService reviews;
     private final CurrentUser currentUser;
 
-    public TerminalActionsController(TerminalActionQueryService queries, CurrentUser currentUser) {
+    public TerminalActionsController(TerminalActionQueryService queries, TerminalActionReviewService reviews,
+                                     CurrentUser currentUser) {
         this.queries = queries;
+        this.reviews = reviews;
         this.currentUser = currentUser;
     }
 
@@ -42,6 +45,23 @@ public class TerminalActionsController {
     public List<TerminalActionElsewhereResponse> open(
             @RequestParam(required = false) String exclude) {
         return queries.openElsewhere(currentUser.requireId(), exclude);
+    }
+
+    /** Les attentes héritées « à vérifier », avec l'état proposé (F-175 / SF-175-07). */
+    @GetMapping("/review")
+    public List<TerminalActionReviewService.ReviewItem> review() {
+        return reviews.pending(currentUser.requireId());
+    }
+
+    /** Les décisions de l'utilisateur sur la reprise — en bloc ou une par une (F-175 / SF-175-07). */
+    @org.springframework.web.bind.annotation.PostMapping("/review")
+    public TerminalActionReviewService.ReviewResult applyReview(
+            @org.springframework.web.bind.annotation.RequestBody ReviewRequest request) {
+        return reviews.apply(currentUser.requireId(), request == null ? List.of() : request.decisions());
+    }
+
+    /** Le corps de {@code POST /terminal-actions/review}. */
+    public record ReviewRequest(List<TerminalActionReviewService.Decision> decisions) {
     }
 
     /** Les compteurs par poste et par terminal (F-175 / SF-175-06) — rail de la Forge, mosaïque. */
