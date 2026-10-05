@@ -84,7 +84,8 @@ class TypeInconnuVisible(unittest.TestCase):
 
         dossier = tempfile.mkdtemp()
         with Diagram("t", filename=os.path.join(dossier, "t"), outformat="png", show=False):
-            self.assertEqual(INCONNU, cloud.unknown_factory(INCONNU)("").label)
+            # SF-142-23 : le type est passé à la ligne (« aws. / managed… ») — il est toujours là, entier.
+            self.assertEqual(INCONNU, cloud.unknown_factory(INCONNU)("").label.replace("\n", ""))
 
     def test_le_repli_n_est_plus_une_icone_vide(self):
         # Garde : le PNG vide de « generic.blank » ne doit pas revenir par inadvertance. On lit le
@@ -142,6 +143,120 @@ class NonRegression(unittest.TestCase):
         })
         self.assertEqual([INCONNU], inconnus)
         self.assertGreater(pixels_proches(image, cloud.UNKNOWN_STROKE), 200)
+
+
+# ---------------------------------------------------------------------------------------------------
+# F-142 / SF-142-23 — les étiquettes à la ligne.
+#
+# Le défaut : « Bastion AL2023 », « Lambda airflow-dag-trigger » et « Route 53 », côte à côte, se
+# marchaient dessus. Ces tests coupent des libellés, puis RENDENT le cas réel et MESURENT : aucune
+# ligne au-delà de la borne, et aucune étiquette qui empiète sur sa voisine.
+# ---------------------------------------------------------------------------------------------------
+POLICES = ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+           "/usr/share/fonts/TTF/DejaVuSans.ttf")
+CAS_REEL = {
+    "title": "Cas réel", "direction": "TB",
+    "nodes": [{"id": "vpc", "type": "aws.vpc", "label": "VPC"},
+              {"id": "b", "type": "aws.ec2", "label": "Bastion AL2023"},
+              {"id": "l", "type": "aws.lambda", "label": "Lambda airflow-dag-trigger"},
+              {"id": "r", "type": "aws.route53", "label": "Route 53"}],
+    "edges": [{"from": "vpc", "to": "b"}, {"from": "vpc", "to": "l"}, {"from": "vpc", "to": "r"}],
+}
+
+
+def textes_svg(spec):
+    """Les <text> du SVG réellement produit : (x, y, taille, texte)."""
+    import html
+    import re
+
+    dossier = tempfile.mkdtemp()
+    sortie = os.path.join(dossier, "schema")
+    cloud.build(spec, sortie)
+    with open(sortie + ".svg", encoding="utf-8") as fichier:
+        svg = fichier.read()
+    motif = re.compile(r'<text[^>]*?x="([-\d.]+)" y="([-\d.]+)"[^>]*?font-size="([\d.]+)"[^>]*>([^<]*)</text>')
+    return [(float(x), float(y), float(taille), html.unescape(texte))
+            for x, y, taille, texte in motif.findall(svg)]
+
+
+def largeur(texte, taille):
+    """La largeur du texte en points : mesurée avec DejaVu Sans (la police de graphviz), sinon estimée."""
+    from PIL import ImageFont
+
+    for chemin in POLICES:
+        if os.path.exists(chemin):
+            return ImageFont.truetype(chemin, round(taille)).getlength(texte)
+    return len(texte) * taille * 0.6
+
+
+class EtiquettesALaLigne(unittest.TestCase):
+    """SF-142-23 : un libellé plus large que l'icône passe à la ligne ; un court reste intact."""
+
+    def test_un_libelle_court_est_intact(self):
+        for court in ("Route 53", "Bastion AL2023", "VPC 10.0.0.0/16", "S3"):
+            self.assertEqual(court, cloud.wrap_label(court))
+
+    def test_un_libelle_long_est_coupe_sur_ses_separateurs(self):
+        self.assertEqual("Lambda airflow-\ndag-trigger", cloud.wrap_label("Lambda airflow-dag-trigger"))
+
+    def test_aucune_ligne_ne_depasse_la_borne_et_rien_ne_se_perd(self):
+        for long_ in ("Une passerelle d'API privée régionale pour les partenaires",
+                      "lambda_ingestion_des_fichiers_clients", "VPC 10.180.165.0/24 production",
+                      "api.interne.exemple.fr/v1/clients"):
+            coupe = cloud.wrap_label(long_)
+            self.assertIn("\n", coupe, long_)
+            for ligne in coupe.split("\n"):
+                self.assertLessEqual(len(ligne), cloud.LABEL_WRAP, f"{ligne!r} dans {long_!r}")
+            # Aucun caractère perdu : on n'a inséré que des retours, ou remplacé des espaces.
+            self.assertEqual(long_.replace(" ", ""), coupe.replace("\n", "").replace(" ", ""))
+
+    def test_un_mot_insecable_plus_long_que_la_borne_reste_entier(self):
+        self.assertEqual("Service\nmanagedworkflowsforapacheairflow",
+                         cloud.wrap_label("Service managedworkflowsforapacheairflow"))
+
+    def test_un_retour_ecrit_par_l_auteur_est_respecte(self):
+        self.assertEqual("Web\nServer", cloud.wrap_label("Web\nServer"))
+
+    def test_le_cas_reel_rendu_ne_se_chevauche_plus(self):
+        textes = [t for t in textes_svg(CAS_REEL) if t[2] == 13.0]
+        lignes = [t[3] for t in textes]
+        self.assertIn("Lambda airflow-", lignes)
+        self.assertIn("dag-trigger", lignes)
+        self.assertIn("Bastion AL2023", lignes)
+        self.assertIn("Route 53", lignes)
+        for ligne in lignes:
+            self.assertLessEqual(len(ligne), cloud.LABEL_WRAP, ligne)
+        # Deux lignes sur la même hauteur ne doivent pas empiéter l'une sur l'autre.
+        for i, (x1, y1, taille1, texte1) in enumerate(textes):
+            for x2, y2, taille2, texte2 in textes[i + 1:]:
+                if abs(y1 - y2) >= taille1 or x1 == x2:
+                    continue
+                gauche, droite = sorted([(x1, texte1, taille1), (x2, texte2, taille2)])
+                fin_gauche = gauche[0] + largeur(gauche[1], gauche[2]) / 2
+                debut_droite = droite[0] - largeur(droite[1], droite[2]) / 2
+                self.assertLess(fin_gauche, debut_droite,
+                                f"« {gauche[1]} » empiète sur « {droite[1]} »")
+
+    def test_le_type_inconnu_sans_libelle_passe_aussi_a_la_ligne(self):
+        lignes = [t[3] for t in textes_svg(un_noeud(INCONNU, label=""))]
+        self.assertIn("aws.", lignes)
+        self.assertIn("managedworkflowsforapacheairflow", lignes)
+
+    def test_titres_de_cadres_et_liens_ne_sont_pas_coupes(self):
+        lignes = [t[3] for t in textes_svg({
+            "title": "T", "direction": "LR",
+            "groups": [{"id": "g", "label": "Sous-réseaux privés de production"}],
+            "nodes": [{"id": "a", "type": "aws.s3", "label": "A", "group": "g"},
+                      {"id": "b", "type": "aws.s3", "label": "B", "group": "g"}],
+            "edges": [{"from": "a", "to": "b", "label": "déclenche le DAG airflow"}],
+        })]
+        self.assertIn("Sous-réseaux privés de production", lignes)
+        self.assertIn("déclenche le DAG airflow", lignes)
+
+    def test_la_validation_porte_sur_le_libelle_brut(self):
+        long_ = "x " * (cloud.MAX_LABEL // 2 + 1)
+        with self.assertRaises(cloud.Refused):
+            textes_svg(un_noeud("aws.s3", label=long_ + "y"))
 
 
 if __name__ == "__main__":
