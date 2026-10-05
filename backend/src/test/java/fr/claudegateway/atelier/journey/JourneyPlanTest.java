@@ -90,4 +90,20 @@ class JourneyPlanTest {
         journey.setPlanVersion(2);
         assertThat(JourneyTurnNote.render(journey)).contains("AMENDEMENT EN ATTENTE DE VALIDATION");
     }
+
+    @Test
+    @DisplayName("SF-176-05 : le diagnostic et la clôture proposée sont rappelés à l'agent")
+    void turnNoteShowsDiagnosis() {
+        SubjectJourney journey = SubjectJourney.builder().userId(UUID.randomUUID()).workspaceId(UUID.randomUUID())
+                .mode(JourneyMode.GUIDE).phase(JourneyPhase.INVESTIGATION).diagnosis("Certificat expiré")
+                .diagnosisConfidence("ELEVEE").diagnosisProposedAt(java.time.OffsetDateTime.now()).build();
+        assertThat(JourneyTurnNote.render(journey)).contains("Diagnostic (confiance ELEVEE) : Certificat expiré")
+                .contains("attend la confirmation");
+        journey.setPhase(JourneyPhase.VERIFICATION);
+        journey.setCloseProposedAt(java.time.OffsetDateTime.now());
+        assertThat(JourneyTurnNote.render(journey)).contains("la clôture attend");
+        assertThat(SubjectJourneyService.confidenceOf("élevée")).isEqualTo("ELEVEE");
+        assertThat(SubjectJourneyService.confidenceOf("low")).isEqualTo("FAIBLE");
+        assertThat(SubjectJourneyService.confidenceOf(null)).isEqualTo("MOYENNE");
+    }
 }

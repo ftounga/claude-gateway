@@ -264,7 +264,7 @@ class SubjectJourneyApiIntegrationTest {
     @Test
     @DisplayName("SF-176-03 : plan posé → Plan, en attente ; l'attente liée est résolue ; un clic valide → Exécution")
     void planThenValidate() throws Exception {
-        putMode(aliceToken, "GUIDE");
+        guidedToPlan();
         fr.claudegateway.atelier.Workspace ws = aliceWorkspace();
         terminalActions.record(ws.getUserId(), ws.getId(), null, "Demander le certificat à Gino", null, "Gino",
                 fr.claudegateway.atelier.actions.TerminalActionKind.MESSAGE, "certificat-gino");
@@ -295,7 +295,7 @@ class SubjectJourneyApiIntegrationTest {
     @Test
     @DisplayName("SF-176-03 : un plan validé puis modifié est un amendement — étapes changées marquées, à revalider")
     void amendment() throws Exception {
-        putMode(aliceToken, "GUIDE");
+        guidedToPlan();
         setPlan(PLAN_V1);
         validate(aliceToken, "{\"version\":1}").andExpect(status().isOk());
         org.assertj.core.api.Assertions.assertThat(setPlan("""
@@ -315,9 +315,112 @@ class SubjectJourneyApiIntegrationTest {
     @Test
     @DisplayName("SF-176-03 ISOLATION : Bob ne peut pas valider le plan d'Alice")
     void validateIsolation() throws Exception {
-        putMode(aliceToken, "GUIDE");
+        guidedToPlan();
         setPlan(PLAN_V1);
         validate(bobToken, "{}").andExpect(status().isNotFound());
         getJourney(aliceToken).andExpect(jsonPath("$.phase", is("PLAN")));
+    }
+
+    private JourneyToolExecutor.Outcome tool(String name, String json) throws Exception {
+        fr.claudegateway.atelier.Workspace ws = aliceWorkspace();
+        com.fasterxml.jackson.databind.JsonNode input = new com.fasterxml.jackson.databind.ObjectMapper().readTree(json);
+        return journeyTools.execute(ws.getUserId(), ws, name, input);
+    }
+
+    /** Guidé, diagnostic posé et confirmé : le sujet est en Plan (SF-176-05). */
+    private void guidedToPlan() throws Exception {
+        putMode(aliceToken, "GUIDE");
+        tool(JourneyToolCatalog.SUBMIT_DIAGNOSIS, """
+                {"diagnosis":"Le certificat de l'ingress a expiré","evidence":"openssl : notAfter=2026-10-01",
+                 "confidence":"ELEVEE"}""");
+        postJourney(aliceToken, "diagnosis/confirm").andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("SF-176-05 : en Investigation, pas de plan sans diagnostic ; [Planifier] ouvre le Plan")
+    void diagnosisGatesThePlan() throws Exception {
+        putMode(aliceToken, "GUIDE");
+        org.assertj.core.api.Assertions.assertThat(setPlan(PLAN_V1).content()).contains("pose d'abord ton diagnostic");
+        org.assertj.core.api.Assertions.assertThat(tool(JourneyToolCatalog.SUBMIT_DIAGNOSIS,
+                "{\"diagnosis\":\"x\",\"evidence\":\"\"}").error()).isTrue();
+        tool(JourneyToolCatalog.SUBMIT_DIAGNOSIS, """
+                {"diagnosis":"Le certificat a expiré","evidence":"openssl notAfter","confidence":"élevée"}""");
+        getJourney(aliceToken)
+                .andExpect(jsonPath("$.phase", is("INVESTIGATION")))
+                .andExpect(jsonPath("$.diagnosis.text", is("Le certificat a expiré")))
+                .andExpect(jsonPath("$.diagnosis.confidence", is("ELEVEE")))
+                .andExpect(jsonPath("$.diagnosis.pending", is(true)));
+        postJourney(aliceToken, "diagnosis/dismiss").andExpect(jsonPath("$.diagnosis.pending", is(false)))
+                .andExpect(jsonPath("$.phase", is("INVESTIGATION")));
+        postJourney(aliceToken, "diagnosis/confirm").andExpect(status().isBadRequest());
+        tool(JourneyToolCatalog.SUBMIT_DIAGNOSIS, """
+                {"diagnosis":"Le certificat a expiré","evidence":"openssl notAfter","confidence":"ELEVEE"}""");
+        postJourney(aliceToken, "diagnosis/confirm").andExpect(jsonPath("$.phase", is("PLAN")));
+        org.assertj.core.api.Assertions.assertThat(setPlan(PLAN_V1).content()).contains("Plan v1 posé");
+    }
+
+    @Test
+    @DisplayName("SF-176-05 : exécuter, vérifier avec preuve, puis la clôture est proposée et confirmée")
+    void executeVerifyClose() throws Exception {
+        guidedToPlan();
+        setPlan("""
+                [{"title":"Remplacer le certificat","risk":"EXTERNE","verify":"curl 200"},
+                 {"title":"Noter la date d'expiration","risk":"NOTES"}]""");
+        org.assertj.core.api.Assertions.assertThat(
+                tool(JourneyToolCatalog.UPDATE_STEP, "{\"step\":1,\"status\":\"FAIT\"}").error()).isTrue();
+        validate(aliceToken, "{\"version\":1}").andExpect(jsonPath("$.phase", is("EXECUTION")));
+
+        tool(JourneyToolCatalog.UPDATE_STEP, "{\"step\":1,\"status\":\"FAIT\"}");
+        org.assertj.core.api.Assertions.assertThat(
+                tool(JourneyToolCatalog.UPDATE_STEP, "{\"step\":2,\"status\":\"FAIT\"}").content())
+                .contains("VÉRIFICATION");
+        getJourney(aliceToken).andExpect(jsonPath("$.phase", is("VERIFICATION")))
+                .andExpect(jsonPath("$.plan.awaitingValidation", is(false)));
+        org.assertj.core.api.Assertions.assertThat(
+                tool(JourneyToolCatalog.UPDATE_STEP, "{\"step\":1,\"status\":\"VERIFIE\"}").error())
+                .as("une vérification se prouve").isTrue();
+        tool(JourneyToolCatalog.UPDATE_STEP, "{\"step\":1,\"status\":\"VERIFIE\",\"evidence\":\"curl → 200\"}");
+        org.assertj.core.api.Assertions.assertThat(tool(JourneyToolCatalog.UPDATE_STEP,
+                "{\"step\":2,\"status\":\"VERIFIE\",\"evidence\":\"STATE.md à jour\"}").content())
+                .contains("clore");
+        getJourney(aliceToken).andExpect(jsonPath("$.closeProposed", is(true)))
+                .andExpect(jsonPath("$.plan.steps[0].evidence", is("curl → 200")))
+                .andExpect(jsonPath("$.plan.steps[0].status", is("VERIFIE")));
+        postJourney(aliceToken, "close").andExpect(jsonPath("$.phase", is("CLOS")))
+                .andExpect(jsonPath("$.closeProposed", is(false)));
+        // Le menu « Guidé » rouvre un sujet clos en Investigation.
+        putMode(aliceToken, "GUIDE").andExpect(jsonPath("$.phase", is("INVESTIGATION")));
+    }
+
+    @Test
+    @DisplayName("SF-176-05 : une vérification rouge → retour en Investigation, plan gardé, porte refermée")
+    void reopen() throws Exception {
+        guidedToPlan();
+        setPlan("[{\"title\":\"Remplacer le certificat\",\"risk\":\"EXTERNE\"}]");
+        validate(aliceToken, "{}");
+        tool(JourneyToolCatalog.UPDATE_STEP, "{\"step\":1,\"status\":\"FAIT\"}");
+        org.assertj.core.api.Assertions.assertThat(tool(JourneyToolCatalog.UPDATE_STEP,
+                "{\"step\":1,\"status\":\"ECHEC\",\"evidence\":\"curl → 502\"}").content()).contains("ÉCHEC");
+        org.assertj.core.api.Assertions.assertThat(tool(JourneyToolCatalog.REOPEN, "{\"reason\":\"\"}").error()).isTrue();
+        org.assertj.core.api.Assertions.assertThat(
+                tool(JourneyToolCatalog.REOPEN, "{\"reason\":\"le 502 vient du backend\"}").content())
+                .contains("Retour en INVESTIGATION");
+        getJourney(aliceToken).andExpect(jsonPath("$.phase", is("INVESTIGATION")))
+                .andExpect(jsonPath("$.plan.version", is(1)));
+        org.assertj.core.api.Assertions.assertThat(
+                eventRepository.countByUserIdAndWorkspaceIdAndType(aliceWorkspace().getUserId(),
+                        aliceWorkspace().getId(), SubjectJourneyEvent.REOPENED)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("SF-176-05 ISOLATION : Bob ne confirme ni le diagnostic ni la clôture d'Alice")
+    void transitionsIsolation() throws Exception {
+        putMode(aliceToken, "GUIDE");
+        tool(JourneyToolCatalog.SUBMIT_DIAGNOSIS, "{\"diagnosis\":\"x\",\"evidence\":\"y\"}");
+        postJourney(bobToken, "diagnosis/confirm").andExpect(status().isNotFound());
+        postJourney(bobToken, "diagnosis/dismiss").andExpect(status().isNotFound());
+        postJourney(bobToken, "close").andExpect(status().isNotFound());
+        postJourney(bobToken, "close/dismiss").andExpect(status().isNotFound());
+        getJourney(aliceToken).andExpect(jsonPath("$.diagnosis.pending", is(true)));
     }
 }

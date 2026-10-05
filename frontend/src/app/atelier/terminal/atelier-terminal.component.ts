@@ -743,11 +743,21 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
       return;
     }
     const plan = this.journey()?.plan;
-    const call = gesture === 'accept-guided'
-      ? this.journeys.acceptGuided(workspaceId)
-      : gesture === 'validate-plan' && plan
-        ? this.journeys.validatePlan(workspaceId, plan.version)
-        : this.journeys.declineGuided(workspaceId);
+    let call;
+    switch (gesture) {
+      case 'accept-guided': call = this.journeys.acceptGuided(workspaceId); break;
+      case 'decline-guided': call = this.journeys.declineGuided(workspaceId); break;
+      case 'confirm-diagnosis': call = this.journeys.confirmDiagnosis(workspaceId); break;
+      case 'dismiss-diagnosis': call = this.journeys.dismissDiagnosis(workspaceId); break;
+      case 'close': call = this.journeys.close(workspaceId); break;
+      case 'dismiss-close': call = this.journeys.dismissClose(workspaceId); break;
+      case 'validate-plan':
+        if (!plan) {
+          return;
+        }
+        call = this.journeys.validatePlan(workspaceId, plan.version);
+        break;
+    }
     this.journeyBusy.set(true);
     call.subscribe({
       next: journey => {

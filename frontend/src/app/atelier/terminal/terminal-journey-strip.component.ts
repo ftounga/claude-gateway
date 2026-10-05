@@ -3,11 +3,12 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 
 import {
-  JOURNEY_PHASES, SubjectJourney, stepStatusLabel, waitsOnLabel,
+  JOURNEY_PHASES, SubjectJourney, confidenceLabel, stepStatusLabel, waitsOnLabel,
 } from '../../core/models/journey.models';
 
 /** Un geste de l'utilisateur sur le parcours, rendu au terminal qui appelle la gateway. */
-export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan';
+export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan'
+  | 'confirm-diagnosis' | 'dismiss-diagnosis' | 'close' | 'dismiss-close';
 
 /**
  * **Le parcours du sujet, au-dessus de la saisie** (F-176) :
@@ -54,6 +55,33 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
             </li>
           }
         </ol>
+        @if (pendingDiagnosis(); as d) {
+          <div class="journey-decision" role="region" aria-label="Diagnostic prêt à planifier">
+            <div class="journey-decision__body">
+              <strong>Prêt à planifier</strong> — confiance {{ confidence(d.confidence) }}
+              <span class="journey-decision__text">{{ d.text }}</span>
+              @if (d.evidence) {
+                <span class="journey-decision__hint">Preuves : {{ d.evidence }}</span>
+              }
+            </div>
+            <div class="journey-card__actions">
+              <button mat-flat-button type="button" class="journey-decision__confirm" [disabled]="busy()" (click)="gesture.emit('confirm-diagnosis')">Planifier</button>
+              <button mat-button type="button" class="journey-decision__dismiss" [disabled]="busy()" (click)="gesture.emit('dismiss-diagnosis')">Continuer l'investigation</button>
+            </div>
+          </div>
+        }
+        @if (closeProposed()) {
+          <div class="journey-decision" role="region" aria-label="Clôture proposée">
+            <div class="journey-decision__body">
+              <strong>Toutes les vérifications sont vertes.</strong>
+              <span class="journey-decision__hint">Le sujet peut être clos ; il pourra être rouvert en mode guidé.</span>
+            </div>
+            <div class="journey-card__actions">
+              <button mat-flat-button type="button" class="journey-decision__close" [disabled]="busy()" (click)="gesture.emit('close')">Clore le sujet</button>
+              <button mat-button type="button" class="journey-decision__later" [disabled]="busy()" (click)="gesture.emit('dismiss-close')">Pas encore</button>
+            </div>
+          </div>
+        }
         @if (gateClosed()) {
           <span class="journey-gate">
             <mat-icon class="journey-gate__icon" aria-hidden="true">lock</mat-icon>
@@ -191,6 +219,30 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
     .journey-step--current {
       color: var(--cg-orange-2);
       font-weight: 600;
+    }
+
+    .journey-decision {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--cg-space-2) var(--cg-space-3);
+      margin-top: var(--cg-space-2);
+      padding: var(--cg-space-2);
+      border: 1px solid var(--cg-orange-2);
+      border-radius: 8px;
+    }
+
+    .journey-decision__body {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      min-width: 12rem;
+      gap: 2px;
+    }
+
+    .journey-decision__hint {
+      color: var(--cg-text-secondary);
+      font-size: 12px;
     }
 
     .journey-gate {
@@ -362,6 +414,19 @@ export class TerminalJourneyStripComponent {
 
   togglePlan(): void {
     this.planToggled.set(!this.planOpen());
+  }
+
+  /** Le diagnostic qui attend « Planifier » (SF-176-05). */
+  readonly pendingDiagnosis = computed(() => {
+    const j = this.journey();
+    return this.guided() && j?.phase === 'INVESTIGATION' && j.diagnosis?.pending ? j.diagnosis : null;
+  });
+
+  /** La clôture proposée (SF-176-05). */
+  readonly closeProposed = computed(() => this.guided() && !!this.journey()?.closeProposed);
+
+  confidence(value: string): string {
+    return confidenceLabel(value);
   }
 
   statusLabel(status: string): string {
