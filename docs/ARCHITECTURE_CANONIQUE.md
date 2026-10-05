@@ -409,6 +409,31 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     aurait le même nombre de segments que `/workspaces/{id}/actions` et serait lu comme un projet
     nommé « actions ».
 
+- **subject_journeys** / **subject_journey_events** — **le parcours du sujet d'un terminal** (F-176,
+  migration `145`) : mode **Libre** (défaut) ou **Guidé** — Investigation → Plan → Exécution →
+  Vérification → Clos — avec une **porte** tenue par le harnais devant toute modification.
+  - `subject_journeys` : `workspace_id (uuid, PK, FK workspaces ON DELETE CASCADE)`,
+    `user_id (uuid, NOT NULL)`, `mode (varchar 16, NOT NULL : LIBRE | GUIDE)`,
+    `phase (varchar 16 : INVESTIGATION | PLAN | EXECUTION | VERIFICATION | CLOS, NULL = jamais guidé)`,
+    `phase_changed_at`, `guided_proposed_at`, `guided_proposal_reason (varchar 300)`,
+    `guided_declined_at` — la carte [Passer en guidé] [Rester libre] ; `plan_json`, `plan_version
+    (int, NOT NULL, défaut 0)`, `validated_plan_json`, `validated_version`, `plan_validated_at` — le
+    plan structuré et sa validation en un clic ; `diagnosis`, `diagnosis_evidence`,
+    `diagnosis_confidence (FAIBLE | MOYENNE | ELEVEE)`, `diagnosis_proposed_at`, `close_proposed_at`
+    — les transitions ; `created_at`, `updated_at`. Index `(user_id)`. **Pas de ligne = Libre** : la
+    lecture n'écrit jamais.
+  - `subject_journey_events` : `id (uuid)`, `user_id`, `workspace_id (FK workspaces ON DELETE
+    CASCADE)`, `type (varchar 32)`, `mode`, `phase`, `detail (varchar 300)`, `created_at` — le journal
+    des gestes (mesure `GET /admin/journeys/measure`). **Jamais la commande** dans `detail` (un refus
+    de la porte n'y écrit que la classe et l'outil). Index `(user_id, created_at)`, `(type, created_at)`.
+  - Colonnes longues en `varchar(1000000)` (convention H2/PostgreSQL du dépôt).
+  - **Isolation** : `requireOwned` d'abord sur toute route `/workspaces/{id}/journey/**` ; lectures
+    sous `(user_id, workspace_id)` ; les outils de l'agent écrivent sur le terminal **du tour**. Purge :
+    cascade au terminal, purge nommée au compte (`purgeUser`).
+  - **La porte** (`JourneyGate`, `JourneyRiskClassifier`) n'a pas de table : elle lit le parcours au
+    moment de l'appel d'outil. Lecture et notes du sujet libres ; toute autre modification seulement en
+    Exécution sur la version validée du plan. Mode Libre : aucune porte.
+
 - **session_bilans** — **le bilan d'une session, gardé comme artefact** (F-155 / SF-155-04,
   migration `132`). Un bilan qui n'existe que dans une réponse HTTP est un bilan qu'on ne relit
   jamais et qu'on ne peut pas **comparer** — or comparer est tout l'intérêt (« le cache est remonté
