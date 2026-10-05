@@ -71,9 +71,15 @@ class HostMapMeasureIntegrationTest {
                 .content("x").digest("d").facts(1).observedAt(OffsetDateTime.now()).build());
     }
 
+    @Autowired private org.springframework.jdbc.core.JdbcTemplate jdbc;
+
     private void dig(UUID userId, String tool, String target, OffsetDateTime at) {
-        audits.save(RunnerAudit.builder().userId(userId).hostId(host).callId(UUID.randomUUID().toString())
-                .tool(tool).target(target).outcome("OK").createdAt(at).build());
+        RunnerAudit saved = audits.save(RunnerAudit.builder().userId(userId).hostId(host)
+                .callId(UUID.randomUUID().toString()).tool(tool).target(target).outcome("OK").createdAt(at).build());
+        // `created_at` est posé par @CreationTimestamp (l'horloge du test) : on le recale sur la date voulue,
+        // sinon le test dépend du jour où il tourne (il a cassé le 2026-10-05, jour du pivot).
+        jdbc.update("update runner_audit set created_at = ? where id = ?",
+                java.sql.Timestamp.from(at.toInstant()), saved.getId());
     }
 
     private void turn(UUID userId, String strategy, int facts, OffsetDateTime at) {
