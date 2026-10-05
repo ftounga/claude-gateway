@@ -63,7 +63,13 @@ public class JourneyToolCatalog {
             + "ne l'a pas fait, ne modifie rien. Garde PLAN-ACTION.md cohérent avec ce plan.\n"
             + "EXÉCUTION : n'exécute que des étapes du plan validé. Une modification hors plan est un "
             + "AMENDEMENT : rappelle set_subject_plan avec le plan complet modifié — il repasse par la "
-            + "validation de l'utilisateur.";
+            + "validation de l'utilisateur.\n"
+            + "LA PORTE : en mode guidé, le harnais REFUSE toute modification hors des notes du sujet "
+            + "(édition de fichier, commande qui écrit, push, apply, envoi…) tant que le plan n'est pas "
+            + "validé ; la lecture et les notes (STATE.md, PLAN-ACTION.md, notes/, carte/) restent libres. "
+            + "Une commande que la porte ne reconnaît pas comme une lecture est traitée comme une "
+            + "modification : pour investiguer, préfère des commandes de lecture simples. Un refus de la "
+            + "porte n'est pas une panne : ne cherche pas de contournement, dis où en est le plan.";
 
     private final SpaceEntitlementService entitlements;
 

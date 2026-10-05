@@ -1655,6 +1655,30 @@ public class AtelierChatService implements RelayInterruptTarget {
         return note.isEmpty() ? consigne : note + consigne;
     }
 
+    /**
+     * <b>La porte du parcours guidé</b> (F-176 / SF-176-04) : le motif du refus, ou {@code null} si
+     * l'appel passe. La classe de risque est calculée d'abord — une lecture ou une note ne lit même pas
+     * le parcours. Un refus est journalisé (mesure SF-176-06), sans la commande (elle peut porter un
+     * secret) : la classe et le nom de l'outil seulement.
+     */
+    String journeyGateRefusal(UUID userId, Workspace workspace, AgentToolCall call) {
+        if (journeyService == null || call == null) {
+            return null;
+        }
+        fr.claudegateway.atelier.journey.JourneyPlan.Risk risk =
+                fr.claudegateway.atelier.journey.JourneyRiskClassifier.classify(call.name(), call.input());
+        if (risk == null || risk == fr.claudegateway.atelier.journey.JourneyPlan.Risk.LECTURE
+                || risk == fr.claudegateway.atelier.journey.JourneyPlan.Risk.NOTES) {
+            return null;
+        }
+        fr.claudegateway.atelier.journey.SubjectJourney journey = journeyOf(userId, workspace);
+        String refusal = fr.claudegateway.atelier.journey.JourneyGate.refusal(journey, risk);
+        if (refusal != null) {
+            journeyService.recordGateBlocked(journey, risk, call.name());
+        }
+        return refusal;
+    }
+
     /** Les outils du parcours et leur garde (F-176) ; {@code none()} = jamais donnés. */
     private fr.claudegateway.atelier.journey.JourneyToolCatalog journeyToolCatalog =
             fr.claudegateway.atelier.journey.JourneyToolCatalog.none();
@@ -2841,8 +2865,14 @@ public class AtelierChatService implements RelayInterruptTarget {
                 // refusé ici — rien n'est écrit, aucun aller-retour runner. Le repli sûr (index muet,
                 // fichier neuf, garde désactivée) laisse passer.
                 String freshnessRefusal = freshnessGuard(userId, workspace, freshness, call);
+                // F-176 / SF-176-04 : LA PORTE DU PARCOURS GUIDÉ, tenue par le harnais AVANT toute
+                // émission. En Guidé, une modification hors des notes du sujet n'est permise qu'en
+                // Exécution sur le plan validé. En Libre : null, rien ne change (Q4).
+                String journeyRefusal = freshnessRefusal == null ? journeyGateRefusal(userId, workspace, call) : null;
                 if (freshnessRefusal != null) {
                     outcome = ToolOutcome.error(freshnessRefusal);
+                } else if (journeyRefusal != null) {
+                    outcome = ToolOutcome.error(journeyRefusal);
                 } else if ("exit_plan_mode".equals(call.name())) {
                     // F-121 / SF-121-10 — ExitPlanMode piloté par le modèle : il soumet son plan à
                     // l'approbation de l'utilisateur. Le plan est normalisé, rendu à l'écran, et le tour

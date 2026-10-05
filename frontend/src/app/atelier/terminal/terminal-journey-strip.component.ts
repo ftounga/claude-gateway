@@ -54,6 +54,12 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
             </li>
           }
         </ol>
+        @if (gateClosed()) {
+          <span class="journey-gate">
+            <mat-icon class="journey-gate__icon" aria-hidden="true">lock</mat-icon>
+            Lecture et notes libres · les modifications attendent un plan validé
+          </span>
+        }
         @if (waitingInputs() > 0) {
           <span class="journey-waiting">en attente de {{ waitingInputs() }} input{{ waitingInputs() > 1 ? 's' : '' }}</span>
         }
@@ -185,6 +191,21 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
     .journey-step--current {
       color: var(--cg-orange-2);
       font-weight: 600;
+    }
+
+    .journey-gate {
+      display: flex;
+      align-items: center;
+      gap: var(--cg-space-1);
+      margin-top: var(--cg-space-1);
+      color: var(--cg-text-secondary);
+      font-size: 12px;
+    }
+
+    .journey-gate__icon {
+      font-size: 14px;
+      width: 14px;
+      height: 14px;
     }
 
     .journey-waiting {
@@ -320,6 +341,20 @@ export class TerminalJourneyStripComponent {
   readonly plan = computed(() => (this.guided() ? this.journey()?.plan ?? null : null));
 
   readonly waitingInputs = computed(() => this.plan()?.waitingInputs ?? 0);
+
+  /**
+   * La porte est fermée (SF-176-04) : en Guidé, hors Exécution sur le plan validé, seules la lecture et
+   * les notes passent. On le dit, pour qu'un refus de l'agent ne passe pas pour une panne.
+   */
+  readonly gateClosed = computed(() => {
+    const j = this.journey();
+    if (!this.guided() || !j) {
+      return false;
+    }
+    const p = j.plan;
+    const planCurrent = !!p && p.validatedVersion !== null && p.validatedVersion === p.version;
+    return !(j.phase === 'EXECUTION' && planCurrent) && j.phase !== 'CLOS';
+  });
 
   /** Le plan est déplié tant qu'il attend une validation ; replié sinon (l'utilisateur peut l'ouvrir). */
   private readonly planToggled = signal<boolean | null>(null);
