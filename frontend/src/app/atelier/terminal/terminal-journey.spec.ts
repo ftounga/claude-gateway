@@ -152,4 +152,19 @@ describe('F-176 — le parcours du sujet', () => {
     expect(req.request.method).toBe('POST');
     expect(req.request.body).toEqual({ version: 3 });
   });
+
+  it('SF-176-04 : la porte fermée est dite en Investigation, et levée en Exécution sur le plan validé', () => {
+    const fixture = TestBed.createComponent(TerminalJourneyStripComponent);
+    fixture.componentRef.setInput('journey', guided('INVESTIGATION', 'Investigation'));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.journey-gate')).not.toBeNull();
+
+    fixture.componentRef.setInput('journey', {
+      ...guided('EXECUTION', 'Exécution'),
+      plan: { version: 1, validatedVersion: 1, validatedAt: null, awaitingValidation: false, amendment: false,
+        waitingInputs: 0, steps: [] },
+    });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.journey-gate')).toBeNull();
+  });
 });

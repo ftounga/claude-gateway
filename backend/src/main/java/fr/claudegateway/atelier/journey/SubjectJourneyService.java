@@ -159,6 +159,18 @@ public class SubjectJourneyService {
         return ProposalOutcome.PROPOSED;
     }
 
+    /**
+     * Journalise un refus de la porte (SF-176-04) : la classe et l'outil, jamais la commande.
+     * Best-effort.
+     */
+    @Transactional
+    public void recordGateBlocked(SubjectJourney journey, JourneyPlan.Risk risk, String tool) {
+        if (journey == null) {
+            return;
+        }
+        record(journey, SubjectJourneyEvent.GATE_BLOCKED, (risk == null ? "?" : risk.name()) + " · " + tool);
+    }
+
     /** Ce que l'agent apprend en posant son plan (SF-176-03). */
     public enum PlanOutcome {
         /** Le plan est posé, il attend la validation de l'utilisateur. */

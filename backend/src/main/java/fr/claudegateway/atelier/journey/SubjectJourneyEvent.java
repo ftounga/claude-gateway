@@ -51,6 +51,9 @@ public class SubjectJourneyEvent {
     /** [Valider le plan] (SF-176-03). */
     public static final String PLAN_VALIDATED = "PLAN_VALIDATED";
 
+    /** La porte a refusé une modification ({@code detail} = classe · outil, jamais la commande) (SF-176-04). */
+    public static final String GATE_BLOCKED = "GATE_BLOCKED";
+
     @Id
     @GeneratedValue
     @UuidGenerator
