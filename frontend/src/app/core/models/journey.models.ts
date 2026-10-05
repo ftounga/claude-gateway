@@ -28,6 +28,28 @@ export interface SubjectJourney {
   guidedDeclined?: boolean;
   /** Le plan structuré du sujet guidé (SF-176-03), ou `null`. */
   plan?: JourneyPlan | null;
+  /** Le diagnostic posé en fin d'investigation (SF-176-05), ou `null`. */
+  diagnosis?: JourneyDiagnosis | null;
+  /** Toutes les étapes vérifiées : la clôture attend un geste (SF-176-05). */
+  closeProposed?: boolean;
+}
+
+/** Le diagnostic (SF-176-05). */
+export interface JourneyDiagnosis {
+  text: string;
+  evidence: string | null;
+  confidence: 'FAIBLE' | 'MOYENNE' | 'ELEVEE' | string;
+  /** « Prêt à planifier » attend le geste de l'utilisateur. */
+  pending: boolean;
+}
+
+/** « faible », « moyenne », « élevée ». */
+export function confidenceLabel(confidence: string | null | undefined): string {
+  switch (confidence) {
+    case 'FAIBLE': return 'faible';
+    case 'ELEVEE': return 'élevée';
+    default: return 'moyenne';
+  }
 }
 
 /** La classe de risque d'une étape. */

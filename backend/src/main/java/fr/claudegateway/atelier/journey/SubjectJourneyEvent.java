@@ -54,6 +54,27 @@ public class SubjectJourneyEvent {
     /** La porte a refusé une modification ({@code detail} = classe · outil, jamais la commande) (SF-176-04). */
     public static final String GATE_BLOCKED = "GATE_BLOCKED";
 
+    /** Diagnostic posé ({@code detail} = confiance) (SF-176-05). */
+    public static final String DIAGNOSIS_PROPOSED = "DIAGNOSIS_PROPOSED";
+
+    /** [Planifier] (SF-176-05). */
+    public static final String DIAGNOSIS_CONFIRMED = "DIAGNOSIS_CONFIRMED";
+
+    /** [Continuer l'investigation] (SF-176-05). */
+    public static final String DIAGNOSIS_DISMISSED = "DIAGNOSIS_DISMISSED";
+
+    /** Une étape a avancé ({@code detail} = rang · état) (SF-176-05). */
+    public static final String STEP_UPDATED = "STEP_UPDATED";
+
+    /** Retour en Investigation ({@code detail} = la raison) (SF-176-05). */
+    public static final String REOPENED = "REOPENED";
+
+    /** Toutes les étapes vérifiées : clôture proposée (SF-176-05). */
+    public static final String CLOSE_PROPOSED = "CLOSE_PROPOSED";
+
+    /** [Clore le sujet] (SF-176-05). */
+    public static final String CLOSED = "CLOSED";
+
     @Id
     @GeneratedValue
     @UuidGenerator

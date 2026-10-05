@@ -32,6 +32,26 @@ export class JourneyService {
     return this.http.post<SubjectJourney>(`/api/workspaces/${workspaceId}/journey/plan/validate`, { version });
   }
 
+  /** [Planifier] (SF-176-05) : le diagnostic est accepté, le sujet passe en Plan. */
+  confirmDiagnosis(workspaceId: string): Observable<SubjectJourney> {
+    return this.http.post<SubjectJourney>(`/api/workspaces/${workspaceId}/journey/diagnosis/confirm`, {});
+  }
+
+  /** [Continuer l'investigation] (SF-176-05). */
+  dismissDiagnosis(workspaceId: string): Observable<SubjectJourney> {
+    return this.http.post<SubjectJourney>(`/api/workspaces/${workspaceId}/journey/diagnosis/dismiss`, {});
+  }
+
+  /** [Clore le sujet] (SF-176-05). */
+  close(workspaceId: string): Observable<SubjectJourney> {
+    return this.http.post<SubjectJourney>(`/api/workspaces/${workspaceId}/journey/close`, {});
+  }
+
+  /** [Pas encore] — la clôture proposée est écartée (SF-176-05). */
+  dismissClose(workspaceId: string): Observable<SubjectJourney> {
+    return this.http.post<SubjectJourney>(`/api/workspaces/${workspaceId}/journey/close/dismiss`, {});
+  }
+
   /** [Rester libre] (SF-176-02) : la proposition ne revient pas sur ce sujet. */
   declineGuided(workspaceId: string): Observable<SubjectJourney> {
     return this.http.post<SubjectJourney>(`/api/workspaces/${workspaceId}/journey/guided-proposal/decline`, {});

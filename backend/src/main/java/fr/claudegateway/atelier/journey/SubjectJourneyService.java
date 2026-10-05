@@ -182,7 +182,230 @@ public class SubjectJourneyService {
         /** Le sujet est clos. */
         CLOSED,
         /** Aucune étape lisible. */
-        EMPTY
+        EMPTY,
+        /** Le sujet est en Investigation : diagnostic d'abord, confirmé par l'utilisateur (SF-176-05). */
+        NEEDS_DIAGNOSIS
+    }
+
+    // ------------------------------------------------------------------ SF-176-05 : les transitions
+
+    /** Ce que l'agent apprend en posant son diagnostic. */
+    public enum DiagnosisOutcome { PROPOSED, NOT_INVESTIGATING, NOT_GUIDED }
+
+    /**
+     * <b>L'agent pose son diagnostic</b> (SF-176-05) : ce qu'il a compris, ses preuves, son niveau de
+     * confiance. L'utilisateur voit « Prêt à planifier » [Planifier] [Continuer l'investigation].
+     *
+     * @throws InvalidJourneyException diagnostic ou preuves vides
+     */
+    @Transactional
+    public DiagnosisOutcome submitDiagnosis(UUID userId, UUID workspaceId, String diagnosis, String evidence,
+            String confidence) {
+        SubjectJourney journey = find(userId, workspaceId).orElseGet(() -> blank(userId, workspaceId));
+        if (!journey.isGuided()) {
+            return DiagnosisOutcome.NOT_GUIDED;
+        }
+        if (journey.getPhase() != JourneyPhase.INVESTIGATION) {
+            return DiagnosisOutcome.NOT_INVESTIGATING;
+        }
+        String cleanDiagnosis = JourneyPlan.bound(diagnosis, MAX_DIAGNOSIS);
+        String cleanEvidence = JourneyPlan.bound(evidence, MAX_DIAGNOSIS);
+        if (cleanDiagnosis == null || cleanEvidence == null) {
+            throw new InvalidJourneyException("Le diagnostic et ses preuves sont requis : ce que tu as compris, "
+                    + "et ce qui le montre.");
+        }
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        journey.setDiagnosis(cleanDiagnosis);
+        journey.setDiagnosisEvidence(cleanEvidence);
+        journey.setDiagnosisConfidence(confidenceOf(confidence));
+        journey.setDiagnosisProposedAt(now);
+        SubjectJourney saved = save(journey, now);
+        record(saved, SubjectJourneyEvent.DIAGNOSIS_PROPOSED, saved.getDiagnosisConfidence());
+        return DiagnosisOutcome.PROPOSED;
+    }
+
+    /** [Planifier] : le diagnostic est accepté, le sujet passe en Plan (SF-176-05). */
+    @Transactional
+    public SubjectJourney confirmDiagnosis(UUID userId, UUID workspaceId) {
+        workspaceService.requireOwned(userId, workspaceId); // 404 — TOUJOURS en premier
+        SubjectJourney journey = requireGuided(userId, workspaceId);
+        if (journey.getPhase() != JourneyPhase.INVESTIGATION || journey.getDiagnosisProposedAt() == null) {
+            throw new InvalidJourneyException("Aucun diagnostic n'attend de confirmation.");
+        }
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        journey.setDiagnosisProposedAt(null);
+        moveTo(journey, JourneyPhase.PLAN, now);
+        SubjectJourney saved = save(journey, now);
+        record(saved, SubjectJourneyEvent.DIAGNOSIS_CONFIRMED, saved.getDiagnosisConfidence());
+        return saved;
+    }
+
+    /** [Continuer l'investigation] : le diagnostic reste lisible, le sujet reste en Investigation. */
+    @Transactional
+    public SubjectJourney dismissDiagnosis(UUID userId, UUID workspaceId) {
+        workspaceService.requireOwned(userId, workspaceId); // 404 — TOUJOURS en premier
+        SubjectJourney journey = requireGuided(userId, workspaceId);
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        journey.setDiagnosisProposedAt(null);
+        SubjectJourney saved = save(journey, now);
+        record(saved, SubjectJourneyEvent.DIAGNOSIS_DISMISSED, null);
+        return saved;
+    }
+
+    /** Ce que l'agent apprend en faisant avancer une étape. */
+    public enum StepOutcome { UPDATED, TO_VERIFICATION, ALL_VERIFIED, FAILED, NOT_EXECUTING, NO_SUCH_STEP,
+        NOT_GUIDED }
+
+    /** Le résultat d'une étape avancée : l'issue et le plan à jour. */
+    public record StepChange(StepOutcome outcome, JourneyPlan plan) {
+    }
+
+    /**
+     * <b>L'agent fait avancer une étape</b> (SF-176-05) : {@code FAIT} après l'avoir exécutée,
+     * {@code VERIFIE} ou {@code ECHEC} après l'avoir vérifiée comme le plan le dit — preuves à l'appui.
+     *
+     * <p>Quand plus aucune étape n'est « à faire », le sujet passe en <b>Vérification</b> (les étapes qui
+     * attendent un input le gardent en Exécution). Quand toutes sont vérifiées, la clôture est
+     * <b>proposée</b> à l'utilisateur.</p>
+     *
+     * @param stepNumber le rang de l'étape, à partir de 1
+     * @throws InvalidJourneyException état inconnu, ou vérification sans preuve
+     */
+    @Transactional
+    public StepChange updateStep(UUID userId, UUID workspaceId, int stepNumber, String rawStatus,
+            String evidence) {
+        SubjectJourney journey = find(userId, workspaceId).orElseGet(() -> blank(userId, workspaceId));
+        JourneyPlan plan = JourneyPlan.fromJson(journey.getPlanJson());
+        if (!journey.isGuided()) {
+            return new StepChange(StepOutcome.NOT_GUIDED, plan);
+        }
+        boolean validatedCurrent = journey.getValidatedVersion() != null
+                && journey.getValidatedVersion() == journey.getPlanVersion();
+        if (!validatedCurrent || (journey.getPhase() != JourneyPhase.EXECUTION
+                && journey.getPhase() != JourneyPhase.VERIFICATION)) {
+            return new StepChange(StepOutcome.NOT_EXECUTING, plan);
+        }
+        if (stepNumber < 1 || stepNumber > plan.steps().size()) {
+            return new StepChange(StepOutcome.NO_SUCH_STEP, plan);
+        }
+        JourneyPlan.StepStatus status = parseStepStatus(rawStatus);
+        String cleanEvidence = JourneyPlan.bound(evidence, JourneyPlan.MAX_EVIDENCE);
+        if (status != JourneyPlan.StepStatus.FAIT && cleanEvidence == null) {
+            throw new InvalidJourneyException("Une vérification se prouve : evidence est requise (ce que tu as "
+                    + "observé, la commande et son résultat).");
+        }
+        JourneyPlan updated = plan.withStep(stepNumber - 1, status, cleanEvidence);
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        journey.setPlanJson(updated.toJson());
+        // Le plan validé suit l'avancement : l'avancement n'est pas un amendement.
+        journey.setValidatedPlanJson(updated.toJson());
+        StepOutcome outcome = StepOutcome.UPDATED;
+        if (status == JourneyPlan.StepStatus.ECHEC) {
+            outcome = StepOutcome.FAILED;
+        } else if (updated.steps().stream().allMatch(s -> s.status() == JourneyPlan.StepStatus.VERIFIE)) {
+            if (journey.getPhase() != JourneyPhase.VERIFICATION) {
+                moveTo(journey, JourneyPhase.VERIFICATION, now);
+            }
+            journey.setCloseProposedAt(now);
+            outcome = StepOutcome.ALL_VERIFIED;
+        } else if (journey.getPhase() == JourneyPhase.EXECUTION && updated.steps().stream()
+                .noneMatch(s -> s.status() == JourneyPlan.StepStatus.A_FAIRE)) {
+            moveTo(journey, JourneyPhase.VERIFICATION, now);
+            outcome = StepOutcome.TO_VERIFICATION;
+        }
+        SubjectJourney saved = save(journey, now);
+        record(saved, SubjectJourneyEvent.STEP_UPDATED, stepNumber + " · " + status.name());
+        if (outcome == StepOutcome.ALL_VERIFIED) {
+            record(saved, SubjectJourneyEvent.CLOSE_PROPOSED, null);
+        }
+        return new StepChange(outcome, updated);
+    }
+
+    /**
+     * <b>Retour en Investigation</b> (SF-176-05) : une découverte contredit le diagnostic, ou une
+     * vérification a échoué. Le plan (et sa dernière version validée) est gardé ; la porte se referme.
+     *
+     * @throws InvalidJourneyException raison vide
+     */
+    @Transactional
+    public boolean reopenInvestigation(UUID userId, UUID workspaceId, String reason) {
+        String cleanReason = JourneyPlan.bound(reason, MAX_REASON);
+        if (cleanReason == null) {
+            throw new InvalidJourneyException("reason est requise : ce qui contredit le diagnostic.");
+        }
+        SubjectJourney journey = find(userId, workspaceId).orElseGet(() -> blank(userId, workspaceId));
+        if (!journey.isGuided() || journey.getPhase() == null || journey.getPhase() == JourneyPhase.CLOS) {
+            return false;
+        }
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        journey.setDiagnosisProposedAt(null);
+        journey.setCloseProposedAt(null);
+        moveTo(journey, JourneyPhase.INVESTIGATION, now);
+        SubjectJourney saved = save(journey, now);
+        record(saved, SubjectJourneyEvent.REOPENED, cleanReason);
+        return true;
+    }
+
+    /** [Clore le sujet] (SF-176-05) : le sujet guidé est clos ; la porte reste fermée. */
+    @Transactional
+    public SubjectJourney close(UUID userId, UUID workspaceId) {
+        workspaceService.requireOwned(userId, workspaceId); // 404 — TOUJOURS en premier
+        SubjectJourney journey = requireGuided(userId, workspaceId);
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        journey.setCloseProposedAt(null);
+        journey.setDiagnosisProposedAt(null);
+        moveTo(journey, JourneyPhase.CLOS, now);
+        SubjectJourney saved = save(journey, now);
+        record(saved, SubjectJourneyEvent.CLOSED, null);
+        return saved;
+    }
+
+    /** [Pas encore] : la proposition de clôture est écartée (SF-176-05). */
+    @Transactional
+    public SubjectJourney dismissClose(UUID userId, UUID workspaceId) {
+        workspaceService.requireOwned(userId, workspaceId); // 404 — TOUJOURS en premier
+        SubjectJourney journey = requireGuided(userId, workspaceId);
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        journey.setCloseProposedAt(null);
+        return save(journey, now);
+    }
+
+    private SubjectJourney requireGuided(UUID userId, UUID workspaceId) {
+        SubjectJourney journey = find(userId, workspaceId)
+                .orElseThrow(() -> new InvalidJourneyException("Ce sujet n'est pas en mode guidé."));
+        if (!journey.isGuided() || journey.getPhase() == null) {
+            throw new InvalidJourneyException("Ce sujet n'est pas en mode guidé.");
+        }
+        return journey;
+    }
+
+    static final int MAX_DIAGNOSIS = 2_000;
+
+    /** FAIBLE, MOYENNE ou ELEVEE ; une confiance illisible vaut MOYENNE. */
+    static String confidenceOf(String raw) {
+        if (raw == null) {
+            return "MOYENNE";
+        }
+        String v = java.text.Normalizer.normalize(raw.strip().toUpperCase(java.util.Locale.ROOT),
+                java.text.Normalizer.Form.NFD).replaceAll("\\p{M}+", "");
+        if (v.startsWith("FAIB") || v.equals("LOW")) {
+            return "FAIBLE";
+        }
+        if (v.startsWith("ELEV") || v.equals("HIGH") || v.startsWith("HAUT")) {
+            return "ELEVEE";
+        }
+        return "MOYENNE";
+    }
+
+    private static JourneyPlan.StepStatus parseStepStatus(String raw) {
+        String v = raw == null ? "" : java.text.Normalizer.normalize(raw.strip().toUpperCase(java.util.Locale.ROOT),
+                java.text.Normalizer.Form.NFD).replaceAll("\\p{M}+", "");
+        return switch (v) {
+            case "FAIT", "DONE" -> JourneyPlan.StepStatus.FAIT;
+            case "VERIFIE", "VERIFIED", "OK" -> JourneyPlan.StepStatus.VERIFIE;
+            case "ECHEC", "FAILED", "KO" -> JourneyPlan.StepStatus.ECHEC;
+            default -> throw new InvalidJourneyException("status est FAIT, VERIFIE ou ECHEC.");
+        };
     }
 
     /** Le résultat d'un plan posé : l'issue et la version courante. */
@@ -205,6 +428,10 @@ public class SubjectJourneyService {
         }
         if (journey.getPhase() == JourneyPhase.CLOS) {
             return new PlanChange(PlanOutcome.CLOSED, journey.getPlanVersion());
+        }
+        // SF-176-05 : on sort de l'Investigation par un diagnostic que l'utilisateur confirme.
+        if (journey.getPhase() == JourneyPhase.INVESTIGATION) {
+            return new PlanChange(PlanOutcome.NEEDS_DIAGNOSIS, journey.getPlanVersion());
         }
         if (plan == null || plan.isEmpty()) {
             return new PlanChange(PlanOutcome.EMPTY, journey.getPlanVersion());

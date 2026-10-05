@@ -46,6 +46,9 @@ public class JourneyToolExecutor {
             return switch (tool) {
                 case JourneyToolCatalog.PROPOSE_GUIDED -> proposeGuided(userId, workspace, input);
                 case JourneyToolCatalog.SET_PLAN -> setPlan(userId, workspace, input);
+                case JourneyToolCatalog.SUBMIT_DIAGNOSIS -> submitDiagnosis(userId, workspace, input);
+                case JourneyToolCatalog.UPDATE_STEP -> updateStep(userId, workspace, input);
+                case JourneyToolCatalog.REOPEN -> reopen(userId, workspace, input);
                 default -> Outcome.error("Outil du parcours inconnu : " + tool);
             };
         } catch (InvalidJourneyException e) {
@@ -87,7 +90,51 @@ public class JourneyToolExecutor {
             case CLOSED -> Outcome.error("Le sujet est clos : rien à planifier. S'il faut reprendre, "
                     + "l'utilisateur rouvre le sujet en mode guidé.");
             case EMPTY -> Outcome.error("Aucune étape lisible : chaque étape a au moins un title et un risk.");
+            case NEEDS_DIAGNOSIS -> Outcome.error("Le sujet est en Investigation : pose d'abord ton diagnostic "
+                    + "(submit_diagnosis, avec tes preuves et ta confiance). L'utilisateur confirme le passage "
+                    + "au plan ; ensuite seulement, set_subject_plan.");
         };
+    }
+
+    private Outcome submitDiagnosis(UUID userId, Workspace workspace, JsonNode input) {
+        SubjectJourneyService.DiagnosisOutcome outcome = service.submitDiagnosis(userId, workspace.getId(),
+                text(input, "diagnosis"), text(input, "evidence"), text(input, "confidence"));
+        return switch (outcome) {
+            case PROPOSED -> Outcome.ok("Diagnostic posé. L'utilisateur voit « Prêt à planifier » : [Planifier] "
+                    + "[Continuer l'investigation]. Résume-lui le diagnostic et tes preuves en quelques lignes, "
+                    + "et attends son choix avant de poser le plan.");
+            case NOT_INVESTIGATING -> Outcome.error("Le sujet n'est pas en Investigation : le diagnostic est déjà "
+                    + "posé. S'il est contredit, utilise reopen_investigation.");
+            case NOT_GUIDED -> Outcome.error("Le sujet est en mode Libre : le diagnostic sert au mode guidé.");
+        };
+    }
+
+    private Outcome updateStep(UUID userId, Workspace workspace, JsonNode input) {
+        int step = input == null ? 0 : input.path("step").asInt(0);
+        SubjectJourneyService.StepChange change = service.updateStep(userId, workspace.getId(), step,
+                text(input, "status"), text(input, "evidence"));
+        return switch (change.outcome()) {
+            case UPDATED -> Outcome.ok("Étape " + step + " à jour.");
+            case TO_VERIFICATION -> Outcome.ok("Étape " + step + " à jour. Plus aucune étape à exécuter : le sujet "
+                    + "passe en VÉRIFICATION. Vérifie chaque étape comme le plan le dit, preuves à l'appui ; on ne "
+                    + "modifie plus.");
+            case ALL_VERIFIED -> Outcome.ok("Toutes les étapes sont vérifiées. L'utilisateur voit la proposition "
+                    + "de clore le sujet : résume-lui ce qui a été fait et vérifié.");
+            case FAILED -> Outcome.ok("Étape " + step + " en ÉCHEC. Ne force pas : si la cause est comprise, "
+                    + "amende le plan (set_subject_plan) ; sinon reopen_investigation.");
+            case NOT_EXECUTING -> Outcome.error("Aucun plan validé en cours d'exécution : rien à faire avancer.");
+            case NO_SUCH_STEP -> Outcome.error("Il n'y a pas d'étape " + step + " dans le plan (numérotées à "
+                    + "partir de 1).");
+            case NOT_GUIDED -> Outcome.error("Le sujet est en mode Libre.");
+        };
+    }
+
+    private Outcome reopen(UUID userId, Workspace workspace, JsonNode input) {
+        boolean reopened = service.reopenInvestigation(userId, workspace.getId(), text(input, "reason"));
+        return reopened
+                ? Outcome.ok("Retour en INVESTIGATION. Le plan est gardé ; rien ne se modifie avant un nouveau "
+                        + "diagnostic et un plan validé. Dis à l'utilisateur ce qui a contredit le diagnostic.")
+                : Outcome.error("Le sujet n'est pas en mode guidé (ou il est clos) : rien à rouvrir.");
     }
 
     static String text(JsonNode input, String field) {

@@ -23,7 +23,18 @@ public record SubjectJourneyResponse(
         OffsetDateTime phaseChangedAt,
         GuidedProposal guidedProposal,
         boolean guidedDeclined,
-        Plan plan) {
+        Plan plan,
+        Diagnosis diagnosis,
+        boolean closeProposed) {
+
+    /**
+     * Le diagnostic posé en fin d'investigation (SF-176-05).
+     *
+     * @param confidence {@code FAIBLE}, {@code MOYENNE} ou {@code ELEVEE}
+     * @param pending    vrai si « Prêt à planifier » attend le geste de l'utilisateur
+     */
+    public record Diagnosis(String text, String evidence, String confidence, boolean pending) {
+    }
 
     /** La carte [Passer en guidé] [Rester libre] : pourquoi l'agent la propose, et depuis quand. */
     public record GuidedProposal(String reason, OffsetDateTime proposedAt) {
@@ -70,7 +81,14 @@ public record SubjectJourneyResponse(
                 journey.getPhaseChangedAt(),
                 proposal,
                 journey.getGuidedDeclinedAt() != null,
-                plan(journey, waitsOn == null ? Map.of() : waitsOn));
+                plan(journey, waitsOn == null ? Map.of() : waitsOn),
+                journey.getDiagnosis() == null ? null
+                        : new Diagnosis(journey.getDiagnosis(), journey.getDiagnosisEvidence(),
+                                journey.getDiagnosisConfidence(),
+                                journey.isGuided() && journey.getPhase() == JourneyPhase.INVESTIGATION
+                                        && journey.getDiagnosisProposedAt() != null),
+                journey.isGuided() && journey.getPhase() != JourneyPhase.CLOS
+                        && journey.getCloseProposedAt() != null);
     }
 
     private static Plan plan(SubjectJourney journey, Map<String, String> waitsOn) {

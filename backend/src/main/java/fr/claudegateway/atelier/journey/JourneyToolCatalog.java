@@ -32,8 +32,17 @@ public class JourneyToolCatalog {
     /** Poser ou amender le plan structuré (SF-176-03). */
     public static final String SET_PLAN = "set_subject_plan";
 
+    /** Poser le diagnostic qui fait sortir de l'Investigation (SF-176-05). */
+    public static final String SUBMIT_DIAGNOSIS = "submit_diagnosis";
+
+    /** Faire avancer une étape du plan : fait, vérifié, échec (SF-176-05). */
+    public static final String UPDATE_STEP = "update_plan_step";
+
+    /** Revenir en Investigation (SF-176-05). */
+    public static final String REOPEN = "reopen_investigation";
+
     /** Tous les noms d'outils du parcours. */
-    public static final Set<String> NAMES = Set.of(PROPOSE_GUIDED, SET_PLAN);
+    public static final Set<String> NAMES = Set.of(PROPOSE_GUIDED, SET_PLAN, SUBMIT_DIAGNOSIS, UPDATE_STEP, REOPEN);
 
     /** Le guide ajouté à la consigne système quand les outils sont donnés (stable). */
     public static final String GUIDE = "--- Parcours du sujet (Libre / Guidé) ---\n"
@@ -54,7 +63,10 @@ public class JourneyToolCatalog {
             + "INVESTIGATION : la lecture est libre. PLAN-ACTION.md commence en plan d'investigation : "
             + "objectif, ce qu'on sait (avec preuves), hypothèses, questions ouvertes. Un input qui "
             + "manque (une information, un accès, une validation d'une personne) devient une attente "
-            + "(record_blocker, avec une key).\n"
+            + "(record_blocker, avec une key). Pour EN SORTIR, appelle submit_diagnosis : ce que tu as "
+            + "compris, les PREUVES (ce que tu as lu ou observé), et ta confiance (FAIBLE, MOYENNE, "
+            + "ELEVEE). Seulement quand il ne reste plus d'inconnue bloquante, ou qu'elle est isolée dans "
+            + "une étape qui attend son input. L'utilisateur confirme le passage au plan.\n"
             + "PLAN : pose le plan avec set_subject_plan — des étapes, chacune avec l'action (title), sa "
             + "classe de risque (risk : LECTURE, NOTES, REVERSIBLE, EXTERNE), comment la vérifier "
             + "(verify), comment revenir en arrière (rollback), et waits_on = la key de l'attente dont "
@@ -63,7 +75,12 @@ public class JourneyToolCatalog {
             + "ne l'a pas fait, ne modifie rien. Garde PLAN-ACTION.md cohérent avec ce plan.\n"
             + "EXÉCUTION : n'exécute que des étapes du plan validé. Une modification hors plan est un "
             + "AMENDEMENT : rappelle set_subject_plan avec le plan complet modifié — il repasse par la "
-            + "validation de l'utilisateur.\n"
+            + "validation de l'utilisateur. Après chaque étape exécutée : update_plan_step status=FAIT.\n"
+            + "VÉRIFICATION : vérifie chaque étape COMME LE PLAN LE DIT, puis update_plan_step "
+            + "status=VERIFIE ou ECHEC avec evidence = ce que tu as observé (commande et résultat). Jamais "
+            + "VERIFIE sans preuve. Une vérification rouge, ou une découverte qui contredit le "
+            + "diagnostic : reopen_investigation (le plan est gardé) ou un amendement. Toutes vertes : "
+            + "l'utilisateur voit la proposition de clore.\n"
             + "LA PORTE : en mode guidé, le harnais REFUSE toute modification hors des notes du sujet "
             + "(édition de fichier, commande qui écrit, push, apply, envoi…) tant que le plan n'est pas "
             + "validé ; la lecture et les notes (STATE.md, PLAN-ACTION.md, notes/, carte/) restent libres. "
@@ -110,6 +127,9 @@ public class JourneyToolCatalog {
         List<AgentTool> tools = new ArrayList<>();
         tools.add(proposeGuidedDefinition());
         tools.add(setPlanDefinition());
+        tools.add(submitDiagnosisDefinition());
+        tools.add(updateStepDefinition());
+        tools.add(reopenDefinition());
         return tools;
     }
 
@@ -140,6 +160,50 @@ public class JourneyToolCatalog {
                                 "steps", Map.of("type", "array", "items", step,
                                         "description", "Les étapes, dans l'ordre (20 au plus).")),
                         "required", List.of("steps")));
+    }
+
+    static AgentTool submitDiagnosisDefinition() {
+        return new AgentTool(SUBMIT_DIAGNOSIS,
+                "Pose le DIAGNOSTIC du sujet guidé pour sortir de l'Investigation : ce que tu as compris, "
+                        + "les preuves, ta confiance. L'utilisateur confirme le passage au plan.",
+                Map.of("type", "object",
+                        "properties", Map.of(
+                                "diagnosis", Map.of("type", "string",
+                                        "description", "Ce que tu as compris : la cause, et comment la traiter."),
+                                "evidence", Map.of("type", "string",
+                                        "description", "Les preuves : ce que tu as lu ou observé (fichiers, "
+                                                + "commandes et leurs résultats)."),
+                                "confidence", Map.of("type", "string",
+                                        "description", "Ta confiance dans ce diagnostic.",
+                                        "enum", List.of("FAIBLE", "MOYENNE", "ELEVEE"))),
+                        "required", List.of("diagnosis", "evidence", "confidence")));
+    }
+
+    static AgentTool updateStepDefinition() {
+        return new AgentTool(UPDATE_STEP,
+                "Fait avancer une étape du plan validé : FAIT après l'avoir exécutée, VERIFIE ou ECHEC "
+                        + "après l'avoir vérifiée comme le plan le dit — avec la preuve.",
+                Map.of("type", "object",
+                        "properties", Map.of(
+                                "step", Map.of("type", "integer",
+                                        "description", "Le numéro de l'étape, à partir de 1."),
+                                "status", Map.of("type", "string",
+                                        "enum", List.of("FAIT", "VERIFIE", "ECHEC")),
+                                "evidence", Map.of("type", "string",
+                                        "description", "Ce que tu as observé (requis pour VERIFIE et ECHEC).")),
+                        "required", List.of("step", "status")));
+    }
+
+    static AgentTool reopenDefinition() {
+        return new AgentTool(REOPEN,
+                "Ramène le sujet guidé en Investigation quand une découverte contredit le diagnostic ou "
+                        + "qu'une vérification échoue. Le plan est gardé ; les modifications attendent un "
+                        + "nouveau plan validé.",
+                Map.of("type", "object",
+                        "properties", Map.of(
+                                "reason", Map.of("type", "string",
+                                        "description", "Ce qui contredit le diagnostic (300 caractères au plus).")),
+                        "required", List.of("reason")));
     }
 
     static AgentTool proposeGuidedDefinition() {

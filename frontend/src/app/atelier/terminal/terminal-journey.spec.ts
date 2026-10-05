@@ -167,4 +167,47 @@ describe('F-176 — le parcours du sujet', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.journey-gate')).toBeNull();
   });
+
+  it('SF-176-05 : « Prêt à planifier » montre le diagnostic et émet [Planifier] / [Continuer]', () => {
+    const fixture = TestBed.createComponent(TerminalJourneyStripComponent);
+    fixture.componentRef.setInput('journey', {
+      ...guided('INVESTIGATION', 'Investigation'),
+      diagnosis: { text: 'Le certificat a expiré', evidence: 'openssl notAfter', confidence: 'ELEVEE', pending: true },
+    });
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.textContent).toContain('confiance élevée');
+    expect(el.textContent).toContain('Le certificat a expiré');
+    const gestures: string[] = [];
+    fixture.componentInstance.gesture.subscribe(g => gestures.push(g));
+    (el.querySelector('.journey-decision__confirm') as HTMLButtonElement).click();
+    (el.querySelector('.journey-decision__dismiss') as HTMLButtonElement).click();
+    expect(gestures).toEqual(['confirm-diagnosis', 'dismiss-diagnosis']);
+  });
+
+  it('SF-176-05 : la clôture proposée émet [Clore le sujet] / [Pas encore]', () => {
+    const fixture = TestBed.createComponent(TerminalJourneyStripComponent);
+    fixture.componentRef.setInput('journey', { ...guided('VERIFICATION', 'Vérification'), closeProposed: true });
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    const gestures: string[] = [];
+    fixture.componentInstance.gesture.subscribe(g => gestures.push(g));
+    (el.querySelector('.journey-decision__close') as HTMLButtonElement).click();
+    (el.querySelector('.journey-decision__later') as HTMLButtonElement).click();
+    expect(gestures).toEqual(['close', 'dismiss-close']);
+  });
+
+  it('SF-176-05 : les transitions passent par la gateway', () => {
+    const service = TestBed.inject(JourneyService);
+    const http = TestBed.inject(HttpTestingController);
+    service.confirmDiagnosis('w1').subscribe();
+    http.expectOne('/api/workspaces/w1/journey/diagnosis/confirm');
+    service.dismissDiagnosis('w1').subscribe();
+    http.expectOne('/api/workspaces/w1/journey/diagnosis/dismiss');
+    service.close('w1').subscribe();
+    http.expectOne('/api/workspaces/w1/journey/close');
+    service.dismissClose('w1').subscribe();
+    http.expectOne('/api/workspaces/w1/journey/close/dismiss');
+    http.verify();
+  });
 });

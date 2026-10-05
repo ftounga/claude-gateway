@@ -53,10 +53,26 @@ public final class JourneyTurnNote {
     private static String guided(SubjectJourney journey) {
         StringBuilder note = new StringBuilder();
         note.append("Mode GUIDÉ · phase : ").append(journey.getPhase().label()).append(".\n");
+        if (journey.getDiagnosis() != null) {
+            String diagnosis = journey.getDiagnosis();
+            if (diagnosis.length() > 500) {
+                diagnosis = diagnosis.substring(0, 500) + "…";
+            }
+            note.append("Diagnostic (confiance ").append(journey.getDiagnosisConfidence()).append(") : ")
+                    .append(diagnosis.replace('\n', ' ')).append('\n');
+            if (journey.getPhase() == JourneyPhase.INVESTIGATION && journey.getDiagnosisProposedAt() != null) {
+                note.append("Ton diagnostic attend la confirmation de l'utilisateur (« Prêt à planifier »).\n");
+            }
+        }
+        if (journey.getCloseProposedAt() != null && journey.getPhase() != JourneyPhase.CLOS) {
+            note.append("Toutes les étapes sont vérifiées : la clôture attend la confirmation de l'utilisateur.\n");
+        }
         JourneyPlan plan = JourneyPlan.fromJson(journey.getPlanJson());
         if (plan.isEmpty()) {
-            if (journey.getPhase() == JourneyPhase.INVESTIGATION || journey.getPhase() == JourneyPhase.PLAN) {
-                note.append("Aucun plan : quand le diagnostic est sûr, pose-le avec set_subject_plan.\n");
+            if (journey.getPhase() == JourneyPhase.INVESTIGATION) {
+                note.append("Aucun plan : quand le diagnostic est sûr, pose-le avec submit_diagnosis.\n");
+            } else if (journey.getPhase() == JourneyPhase.PLAN) {
+                note.append("Aucun plan : pose-le avec set_subject_plan.\n");
             }
             return note.toString();
         }

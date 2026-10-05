@@ -69,6 +69,34 @@ public class SubjectJourneyController {
                 service.validatePlan(userId, workspaceId, request == null ? null : request.version()));
     }
 
+    /** [Planifier] — le diagnostic est accepté, le sujet passe en Plan (SF-176-05). */
+    @PostMapping("/diagnosis/confirm")
+    public SubjectJourneyResponse confirmDiagnosis(@PathVariable UUID workspaceId) {
+        UUID userId = currentUser.requireId();
+        return respond(userId, workspaceId, service.confirmDiagnosis(userId, workspaceId));
+    }
+
+    /** [Continuer l'investigation] (SF-176-05). */
+    @PostMapping("/diagnosis/dismiss")
+    public SubjectJourneyResponse dismissDiagnosis(@PathVariable UUID workspaceId) {
+        UUID userId = currentUser.requireId();
+        return respond(userId, workspaceId, service.dismissDiagnosis(userId, workspaceId));
+    }
+
+    /** [Clore le sujet] (SF-176-05). */
+    @PostMapping("/close")
+    public SubjectJourneyResponse close(@PathVariable UUID workspaceId) {
+        UUID userId = currentUser.requireId();
+        return respond(userId, workspaceId, service.close(userId, workspaceId));
+    }
+
+    /** [Pas encore] — la proposition de clôture est écartée (SF-176-05). */
+    @PostMapping("/close/dismiss")
+    public SubjectJourneyResponse dismissClose(@PathVariable UUID workspaceId) {
+        UUID userId = currentUser.requireId();
+        return respond(userId, workspaceId, service.dismissClose(userId, workspaceId));
+    }
+
     private SubjectJourneyResponse respond(UUID userId, UUID workspaceId, SubjectJourney journey) {
         return SubjectJourneyResponse.from(journey, service.waitsOn(userId, workspaceId, journey));
     }
