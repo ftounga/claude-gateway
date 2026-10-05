@@ -340,7 +340,7 @@ def unknown_component(label):
 def unknown_factory(kind):
     """Sans étiquette, la forme porte le type demandé : une forme muette ne vaut guère mieux qu'un trou."""
     def make(label):
-        return unknown_component(label or kind)
+        return unknown_component(label or wrap_label(kind))
     return make
 
 
@@ -349,6 +349,59 @@ def label_of(raw, what):
     if len(text) > MAX_LABEL:
         raise Refused(f"{what} trop long ({len(text)} caractères, maximum {MAX_LABEL}).")
     return text
+
+
+# ---------------------------------------------------------------------------------------------------
+# LES ÉTIQUETTES À LA LIGNE (F-142 / SF-142-23)
+#
+# Défaut constaté sur un rendu réel : « Bastion AL2023 », « Lambda airflow-dag-trigger » et
+# « Route 53 », côte à côte, se marchaient dessus. Un nœud à icône a une taille FIXE (1,4 pouce) :
+# graphviz espace les icônes, pas leurs étiquettes. Rien ne bornait la largeur d'un libellé, donc un
+# libellé plus large que l'icône débordait chez le voisin.
+#
+# Le remède borne la LIGNE, pas le libellé : au-delà de LABEL_WRAP caractères, on passe à la ligne.
+#   * On coupe d'abord sur les ESPACES ; un mot trop long se coupe ensuite APRÈS un séparateur
+#     (« - », « _ », « . », « / »), qui reste en fin de ligne : « airflow-dag-trigger » devient
+#     « airflow- / dag-trigger », et l'identifiant se relit sans ambiguïté.
+#   * Un fragment SANS séparateur plus long que la borne reste ENTIER : couper « managedworkflows… »
+#     au milieu fabriquerait un mot qui n'existe pas. Ce cas est rare (MAX_LABEL borne déjà le total),
+#     et une ligne un peu longue vaut mieux qu'un nom illisible.
+#   * Un retour à la ligne déjà écrit par l'auteur est respecté.
+#   * 16 caractères à 13 pt font ~110 pt, sous l'écart entre deux icônes voisines (~122 pt) : deux
+#     voisins à la borne ne se touchent pas.
+#
+# Seuls les NŒUDS sont concernés (icônes et formes de repli). Les titres de cadres s'étalent le long
+# du cadre, qui s'élargit pour eux : ils ne débordent sur personne. Les étiquettes de liens sont
+# placées par graphviz, qui leur réserve leur place : les couper changerait la mise en page sans rien
+# corriger.
+#
+# La validation (MAX_LABEL) porte sur le libellé BRUT : couper ne doit ni ouvrir ni fermer un refus.
+# ---------------------------------------------------------------------------------------------------
+LABEL_WRAP = 16
+_FRAGMENT = re.compile(r"[^-_./]+[-_./]*|[-_./]+")
+
+
+def wrap_label(text, width=LABEL_WRAP):
+    """Le libellé, coupé en lignes d'au plus `width` caractères (sauf fragment insécable plus long)."""
+    lines = []
+    for paragraph in str(text).split("\n"):
+        pieces = []
+        for word in paragraph.split():
+            if len(word) <= width:
+                pieces.append((word, True))
+                continue
+            for index, fragment in enumerate(_FRAGMENT.findall(word)):
+                pieces.append((fragment, index == 0))
+        current = ""
+        for fragment, spaced in pieces:
+            candidate = current + (" " if spaced and current else "") + fragment
+            if current and len(candidate) > width:
+                lines.append(current)
+                current = fragment
+            else:
+                current = candidate
+        lines.append(current)
+    return "\n".join(lines).strip("\n")
 
 
 # ---------------------------------------------------------------------------------------------------
@@ -512,8 +565,9 @@ def build(spec, output, outformat="svg"):
     def place(group_id):
         """Les nœuds du cadre, puis ses cadres fils : l'imbrication est portée par la récursion."""
         for node in by_group.get(group_id, []):
+            # F-142 / SF-142-23 : le libellé est validé BRUT, puis passé à la ligne.
             created[str(node.get("id"))] = classes[str(node["type"]).lower()](
-                label_of(node.get("label"), "Le nom d'un nœud"))
+                wrap_label(label_of(node.get("label"), "Le nom d'un nœud")))
         for child in children.get(group_id, []):
             if child in populated:
                 with Cluster(labels.get(child, child)):
