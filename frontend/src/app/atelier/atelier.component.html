@@ -185,6 +185,9 @@
     (filesSelected)="onFilesSelected($event)"
     (depositCancel)="cancelDeposit()"
     (depositRemove)="onDepositRemove($event)"
+    (openSubject)="openHandoff($event)"
+    [handoffFromName]="handoffOriginLabel()"
+    (handoffReturn)="returnFromHandoff()"
   ></app-atelier-terminal>
 } @else {
 <div class="atelier-layout">

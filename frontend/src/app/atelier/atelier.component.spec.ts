@@ -181,6 +181,103 @@ describe('AtelierComponent', () => {
     fixture.detectChanges();
   }
 
+  // F-179 / SF-179-02 — le « go » ouvre le sujet, la phrase déposée, jamais envoyée.
+  describe('passation vers un sujet (F-179 / SF-179-02)', () => {
+    const subject: WorkspaceSummary = {
+      id: 's1', name: 'data-platform', createdAt: '2026-10-06T00:00:00Z', source: 'LOCAL', gitRepo: null,
+    } as WorkspaceSummary;
+    const handoff = { workspaceId: 's1', name: 'data-platform', phrase: 'Reprends data-platform : lis le plan.' };
+
+    function goTurn(): jasmine.Spy {
+      service.streamChat.and.callFake((_id, _message, handlers) => {
+        handlers.onHandoff?.({ toolUseId: 'tu-1', handoff });
+        handlers.onDone({ reply: 'Je t\'ouvre le sujet.', actions: [], messageId: 'm1' });
+        return Promise.resolve();
+      });
+      return spyOn(TestBed.inject(Router), 'navigate').and.returnValue(Promise.resolve(true));
+    }
+
+    it('en fin du tour lancé ici, ouvre le sujet avec la phrase dans la saisie, sans l\'envoyer', () => {
+      setup();
+      component.selectWorkspace(summary);
+      component.engine.set('LOCAL_MACHINE');
+      service.listWorkspaces.and.returnValue(of([summary, subject]));
+      const navigate = goTurn();
+
+      component.draft.set('go');
+      component.send();
+
+      expect(component.activeWorkspaceId()).toBe('s1');
+      expect(component.draft()).toBe(handoff.phrase);
+      expect(service.streamChat).toHaveBeenCalledTimes(1);
+      expect(navigate).toHaveBeenCalledWith(['/atelier', 's1']);
+      expect(component.handoffOriginLabel()).toBe('projet');
+    });
+
+    it('n\'ouvre rien si l\'utilisateur a commencé à taper : la carte reste', () => {
+      setup();
+      component.selectWorkspace(summary);
+      component.engine.set('LOCAL_MACHINE');
+      service.listWorkspaces.and.returnValue(of([summary, subject]));
+      service.streamChat.and.callFake((_id, _message, handlers) => {
+        handlers.onHandoff?.({ toolUseId: 'tu-1', handoff });
+        component.draft.set('attends');
+        handlers.onDone({ reply: 'ok', actions: [], messageId: 'm1' });
+        return Promise.resolve();
+      });
+
+      component.draft.set('go');
+      component.send();
+
+      expect(component.activeWorkspaceId()).toBe('w1');
+      expect(component.draft()).toBe('attends');
+    });
+
+    it('un tour rebranché (non lancé ici) ne navigue pas', () => {
+      setup();
+      service.attachTurn.and.callFake((_id, _cursor, given) => {
+        given.onHandoff?.({ toolUseId: 'tu-1', handoff });
+        given.onDone({ reply: 'ok', actions: [], messageId: 'm1' });
+        return new AbortController();
+      });
+      service.listWorkspaces.and.returnValue(of([summary, subject]));
+
+      component.selectWorkspace(summary);
+
+      expect(component.activeWorkspaceId()).toBe('w1');
+      expect(component.draft()).toBe('');
+    });
+
+    it('[Revenir] rend le terminal d\'origine et retire la phrase non touchée', () => {
+      setup();
+      component.selectWorkspace(summary);
+      component.engine.set('LOCAL_MACHINE');
+      service.listWorkspaces.and.returnValue(of([summary, subject]));
+      const navigate = goTurn();
+      component.draft.set('go');
+      component.send();
+
+      component.returnFromHandoff();
+
+      expect(component.activeWorkspaceId()).toBe('w1');
+      expect(component.draft()).toBe('');
+      expect(component.handoffOriginLabel()).toBeNull();
+      expect(navigate).toHaveBeenCalledWith(['/atelier', 'w1']);
+    });
+
+    it('un sujet absent de la liste (pas à moi) n\'est pas ouvert', () => {
+      setup();
+      component.selectWorkspace(summary);
+      service.listWorkspaces.and.returnValue(of([summary]));
+      spyOn(TestBed.inject(Router), 'navigate').and.returnValue(Promise.resolve(true));
+
+      component.openHandoff(handoff);
+
+      expect(component.activeWorkspaceId()).toBe('w1');
+      expect(snackBar.open).toHaveBeenCalled();
+    });
+  });
+
   // F-115 / SF-115-02 — dépôt de fichiers depuis le terminal (le conteneur fait l'appel).
   describe('dépôt de fichiers (F-115 / SF-115-02)', () => {
     it('dépose les fichiers choisis et pousse un bloc « fichier déposé » dans le fil', () => {

@@ -58,6 +58,7 @@ import {
   AtelierTerminalEmail,
   AtelierTerminalPage,
   AtelierTerminalAttente,
+  AtelierSubjectHandoff,
   TeamsAccess,
 } from '../models/atelier.models';
 
@@ -573,6 +574,8 @@ export class AtelierService {
       page?: AtelierTerminalPage;
       /** Carte d'une attente (F-175 / SF-175-05). */
       attente?: AtelierTerminalAttente;
+      /** Bloc de passation vers un sujet (F-179 / SF-179-01). */
+      handoff?: AtelierSubjectHandoff;
       /** Rebranchement sur un tour en cours (F-84 / SF-84-02). */
       turnId?: string | null;
       cursor?: number;
@@ -724,6 +727,11 @@ export class AtelierService {
       // Une PAGE publiée (F-109 / SF-109-03) : le bloc « Page publiée ». Sans page, rien — pas de bloc creux.
       if (payload.page?.pageId) {
         handlers.onPage?.({ toolUseId: payload.toolUseId ?? '', page: payload.page });
+      }
+    } else if (event === 'handoff') {
+      // Le BLOC DE PASSATION (F-179 / SF-179-02). Sans sujet, rien — pas de carte creuse.
+      if (payload.handoff?.workspaceId) {
+        handlers.onHandoff?.({ toolUseId: payload.toolUseId ?? '', handoff: payload.handoff });
       }
     } else if (event === 'attente') {
       // Une CARTE D'ATTENTE (F-175 / SF-175-05). Sans attente, rien — pas de carte creuse.

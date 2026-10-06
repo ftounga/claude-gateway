@@ -95,6 +95,7 @@ import {
   AtelierRunnerRecommendation,
   AtelierMessage,
   AtelierTerminalBlock,
+  AtelierSubjectHandoff,
   AtelierRole,
   AtelierStreamAction,
   AtelierStreamDone,
@@ -133,6 +134,7 @@ import { cardBlock, withCards } from './terminal/teams-block';
 import { emailBlock } from './terminal/terminal-email';
 import { pageBlock } from './terminal/page-block';
 import { attenteBlock } from './terminal/attente-card.component';
+import { handoffBlock } from './terminal/handoff-card.component';
 import {
   compactionMarkerBlock,
   compactionMarkerLabel,
@@ -429,6 +431,22 @@ export class AtelierComponent implements OnInit, OnDestroy {
 
   /** Saisie du composer (liaison bidirectionnelle simple, façon Claude Code). */
   readonly draft = signal('');
+
+  /**
+   * **D'où vient le sujet ouvert** (F-179 / SF-179-02) : le terminal du poste qui a passé la main. Le
+   * bandeau « Ouvert depuis le Terminal du poste · [Revenir] » en dépend. `null` hors passation — et
+   * jamais restauré au rechargement : c'est un état d'écran, pas une donnée.
+   */
+  readonly handoffOrigin = signal<{ fromId: string; fromName: string; targetId: string; phrase: string } | null>(null);
+
+  /** Le nom du terminal d'origine, tant que le sujet ouvert est celui de la passation ; `null` sinon. */
+  readonly handoffOriginLabel = computed(() => {
+    const origin = this.handoffOrigin();
+    if (!origin || origin.targetId !== this.activeWorkspaceId()) {
+      return null;
+    }
+    return origin.fromName || 'le Terminal du poste';
+  });
 
   /**
    * Mode du tour « Réponse/Plan » vs « Agir » (F-120 / SF-120-02), à l'image du plan mode de Claude
@@ -802,7 +820,103 @@ export class AtelierComponent implements OnInit, OnDestroy {
         this.filesExplorerPath.set(params.get('path'));
       }
     });
+    // F-179 / SF-179-02 : `/atelier/A` → `/atelier/B` RÉUTILISE cet écran (même route) — `ngOnInit` ne
+    // repasse pas. La passation et le bouton « précédent » changent l'adresse : l'écran suit. La
+    // première émission est l'adresse d'ouverture, déjà lue par l'instantané.
+    let firstParams = true;
+    this.paramsSubscription = this.route.paramMap?.subscribe((params) => {
+      if (firstParams) {
+        firstParams = false;
+        return;
+      }
+      this.followRouteWorkspace(params.get('id'));
+    }) ?? null;
     this.loadWorkspaces();
+  }
+
+  /** Abonnement à l'adresse (F-179 / SF-179-02), relâché en quittant l'écran. */
+  private paramsSubscription: Subscription | null = null;
+
+  /**
+   * L'adresse désigne un autre terminal que celui affiché (passation, « précédent ») : on l'ouvre s'il est
+   * dans la liste — donc possédé —, sinon on relit la liste et la demande est honorée comme à l'ouverture.
+   */
+  private followRouteWorkspace(id: string | null): void {
+    if (!id || id === this.activeWorkspaceId()) {
+      return;
+    }
+    const found = this.workspaces().find((w) => w.id === id);
+    if (found) {
+      this.selectWorkspace(found);
+      return;
+    }
+    this.requestedWorkspaceId = id;
+    this.loadWorkspaces();
+  }
+
+  /**
+   * **Le « go » ouvre le sujet** (F-179 / SF-179-02, D2 + D4) : en fin d'un tour LANCÉ ICI par
+   * l'utilisateur, si l'agent a posé une passation, l'écran ouvre le sujet avec la phrase déposée. Jamais
+   * si l'utilisateur regarde ailleurs (autre terminal, onglet caché), a commencé à taper, ou si un tour
+   * tourne encore : la carte [Ouvrir le sujet] reste alors dans le fil.
+   */
+  private followHandoff(id: string, handoff: AtelierSubjectHandoff | null): void {
+    if (!handoff || this.activeWorkspaceId() !== id || this.submitting()
+        || this.draft().trim().length > 0
+        || (typeof document !== 'undefined' && document.visibilityState === 'hidden')) {
+      return;
+    }
+    this.openHandoff(handoff);
+  }
+
+  /**
+   * Ouvre le sujet d'une passation (F-179 / SF-179-02) : la liste est relue (le sujet vient souvent
+   * d'être créé), le terminal du sujet s'affiche, la phrase est **déposée** dans la saisie — jamais
+   * envoyée —, et l'adresse suit (rechargement, « précédent »). La phrase ne voyage pas dans l'adresse
+   * ni dans l'état de navigation : un rechargement ne la redépose pas.
+   */
+  openHandoff(handoff: AtelierSubjectHandoff): void {
+    if (this.submitting()) {
+      // Jamais de navigation pendant un tour (D4) : la carte reste, le geste se refera.
+      this.notifyError('Un tour est en cours : le sujet s\'ouvrira une fois le tour fini.');
+      return;
+    }
+    const fromId = this.activeWorkspaceId();
+    const fromName = this.activeName();
+    this.atelier.listWorkspaces().subscribe({
+      next: (list) => {
+        this.workspaces.set(list);
+        const target = list.find((w) => w.id === handoff.workspaceId);
+        if (!target) {
+          this.notifyError('Sujet introuvable.');
+          return;
+        }
+        this.selectWorkspace(target);
+        this.draft.set(handoff.phrase);
+        this.handoffOrigin.set(fromId && fromId !== target.id
+          ? { fromId, fromName, targetId: target.id, phrase: handoff.phrase }
+          : null);
+        void this.router.navigate(['/atelier', target.id]);
+      },
+      error: () => this.notifyError('Impossible d\'ouvrir le sujet.'),
+    });
+  }
+
+  /** « Revenir » (F-179 / SF-179-02) : retour au terminal du poste ; une phrase non touchée est retirée. */
+  returnFromHandoff(): void {
+    const origin = this.handoffOrigin();
+    if (!origin) {
+      return;
+    }
+    if (this.draft() === origin.phrase) {
+      this.draft.set('');
+    }
+    this.handoffOrigin.set(null);
+    const found = this.workspaces().find((w) => w.id === origin.fromId);
+    if (found) {
+      this.selectWorkspace(found);
+    }
+    void this.router.navigate(['/atelier', origin.fromId]);
   }
 
   /**
@@ -1353,6 +1467,10 @@ export class AtelierComponent implements OnInit, OnDestroy {
     if (this.activeWorkspaceId() === workspace.id) {
       return;
     }
+    // F-179 / SF-179-02 : le bandeau « Ouvert depuis le Terminal du poste » ne suit pas ailleurs.
+    if (this.handoffOrigin()?.targetId !== workspace.id) {
+      this.handoffOrigin.set(null);
+    }
     this.activeWorkspaceId.set(workspace.id);
     this.messages.set([]);
     // F-131 / SF-131-01 : le filet « réponse non reçue » et la dernière requête appartiennent au
@@ -1681,6 +1799,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
     let joined = false;
     // Un tour de suite est parti : la demande de départ est persistée, une erreur ne la retire plus.
     let followedUp = false;
+    // F-179 / SF-179-02 : la passation posée par CE tour, lancé ici — suivie en fin de tour.
+    let handoffOfTurn: AtelierSubjectHandoff | null = null;
     const steerHandlers = this.steerHandlers();
 
     const handlers: AtelierStreamHandlers = {
@@ -1795,6 +1915,19 @@ export class AtelierComponent implements OnInit, OnDestroy {
           ];
           this.mirrorLocalSteps();
         }),
+      // LA PASSATION (F-179 / SF-179-02) : la carte, et le sujet à ouvrir en fin de tour.
+      onHandoff: (event) =>
+        this.zone.run(() => {
+          handoffOfTurn = event.handoff;
+          this.cardsOfTurn = [
+            ...this.cardsOfTurn,
+            {
+              afterSteps: this.streaming()?.steps.length ?? 0,
+              block: handoffBlock(event.toolUseId, event.handoff),
+            },
+          ];
+          this.mirrorLocalSteps();
+        }),
       // UNE CARTE D'ATTENTE (F-175 / SF-175-05) : rangée comme une carte, pour survivre au recalcul des blocs.
       onAttente: (event) =>
         this.zone.run(() => {
@@ -1862,6 +1995,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
             this.openFile(openPath);
           }
           this.flushDeferredPrecisions(id);
+          // F-179 / SF-179-02 : le « go » a posé une passation — le sujet s'ouvre, la phrase déposée.
+          this.followHandoff(id, handoffOfTurn);
         }),
       onError: (code, reason) =>
         this.zone.run(() => {
@@ -3707,6 +3842,18 @@ export class AtelierComponent implements OnInit, OnDestroy {
           ];
           this.mirrorLocalSteps();
         }),
+      // LA PASSATION (F-179 / SF-179-02) : rebranché, l'écran n'a pas lancé ce tour — la carte seule.
+      onHandoff: (event) =>
+        this.zone.run(() => {
+          this.cardsOfTurn = [
+            ...this.cardsOfTurn,
+            {
+              afterSteps: this.streaming()?.steps.length ?? 0,
+              block: handoffBlock(event.toolUseId, event.handoff),
+            },
+          ];
+          this.mirrorLocalSteps();
+        }),
       // UNE CARTE D'ATTENTE (F-175 / SF-175-05) : rangée comme une carte, pour survivre au recalcul des blocs.
       onAttente: (event) =>
         this.zone.run(() => {
@@ -3762,6 +3909,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
 
   /** Quitter l'écran ne doit laisser tourner ni le chronomètre, ni le sondage du statut runner. */
   ngOnDestroy(): void {
+    this.paramsSubscription?.unsubscribe();
     // Quitter l'écran rend la place : un terminal qui n'est plus affiché n'est plus vivant, et
     // le hors-périmètre de F-70 est explicite — aucun agent ne travaille onglet fermé.
     this.liveTerminals.stop();

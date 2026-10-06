@@ -4,6 +4,7 @@ import { AtelierService, TURN_STREAM_PROBE_MS } from '../core/services/atelier.s
 import {
   AtelierStreamAction,
   AtelierStreamHandlers,
+  AtelierSubjectHandoff,
   AtelierTurnFollower,
 } from '../core/models/atelier.models';
 import {
@@ -88,6 +89,12 @@ export class LiveTurnView {
 
   /** Vrai quand le rejeu a commencé après un trou : on le dit plutôt que de le maquiller. */
   readonly truncated = signal(false);
+
+  /**
+   * La **passation** posée par le dernier tour suivi (F-179 / SF-179-02), ou `null` : la tuile offre
+   * « Ouvrir <sujet> », en plein écran. Elle survit à la fin du tour, pas au tour suivant.
+   */
+  readonly handoff = signal<AtelierSubjectHandoff | null>(null);
 
   constructor(
     readonly workspaceId: string,
@@ -185,6 +192,7 @@ export class LiveTurnView {
           this.markHeard();
           this.steps = [];
           this.truncated.set(false);
+          this.handoff.set(null);
           this.startedAt = state.startedAt > 0 ? state.startedAt : Date.now();
           this.stream.set({ status: 'running', blocks: [], text: '', tokens: null, plan: [] });
           this.tick();
@@ -197,6 +205,7 @@ export class LiveTurnView {
           this.rest();
         }),
       onTruncated: () => this.zone.run(() => this.truncated.set(true)),
+      onHandoff: (event) => this.zone.run(() => this.handoff.set(event.handoff)),
       onAction: (action) =>
         this.zone.run(() => {
           this.steps = [...this.steps, action];

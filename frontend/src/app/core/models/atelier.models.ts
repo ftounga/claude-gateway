@@ -766,6 +766,12 @@ export interface AtelierStreamHandlers {
   onAttente?: (event: AtelierAttenteEvent) => void;
 
   /**
+   * **Le bloc de passation** (F-179 / SF-179-02) : le terminal du poste désigne le sujet à ouvrir et la
+   * phrase à déposer dans sa saisie. Optionnel : un backend antérieur n'émet jamais cet événement.
+   */
+  onHandoff?: (event: AtelierHandoffEvent) => void;
+
+  /**
    * Numéro d'ordre du dernier événement reçu (F-84 / SF-84-02), lu dans le champ `id:` du
    * protocole SSE. C'est le **curseur** : en se rebranchant, l'écran le renvoie et ne reçoit que
    * ce qu'il a manqué — ni doublon, ni trou.
@@ -1150,6 +1156,12 @@ export interface AtelierTerminalBlock {
   attente?: AtelierTerminalAttente | null;
 
   /**
+   * **Le bloc de passation** (F-179 / SF-179-01/02), au terminal du poste : le sujet à ouvrir et sa
+   * phrase de démarrage — la carte [Ouvrir le sujet].
+   */
+  handoff?: AtelierSubjectHandoff | null;
+
+  /**
    * **Un marqueur de flux** (F-162 / SF-162-03) : « Conversation compactée · N tours résumés » ou
    * « Détail rappelé · tour N ». Ce n'est ni une sortie de commande ni une carte — c'est une trace
    * discrète, persistante dans le fil, de ce que la passerelle a fait pour tenir le contexte. Absent
@@ -1299,6 +1311,22 @@ export interface AtelierTerminalAttente {
 }
 
 /** Charge utile de l'événement SSE `attente` (F-175 / SF-175-05). */
+/** **Le bloc de passation** vers un sujet du poste (F-179 / SF-179-01). */
+export interface AtelierSubjectHandoff {
+  /** Le sujet (projet du même poste) à ouvrir. */
+  workspaceId: string;
+  /** Son nom affiché. */
+  name: string;
+  /** La phrase de démarrage, déposée dans la saisie — jamais envoyée. */
+  phrase: string;
+}
+
+/** Charge utile de l'événement SSE `handoff` (F-179 / SF-179-01). */
+export interface AtelierHandoffEvent {
+  toolUseId: string;
+  handoff: AtelierSubjectHandoff;
+}
+
 export interface AtelierAttenteEvent {
   toolUseId: string;
   attente: AtelierTerminalAttente;

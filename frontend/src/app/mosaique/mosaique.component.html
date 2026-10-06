@@ -117,6 +117,19 @@
             </button>
             <!-- LE SEUL AUTRE GESTE D'UNE TUILE : entrer. Écrire — et autoriser — se fait dans le
                  terminal entier, devant son flux entier. -->
+            <!-- F-179 / SF-179-02 : la passation posée par ce terminal — le sujet s'ouvre en plein écran,
+                 la phrase déposée dans sa saisie (état de navigation, repris une fois, jamais envoyé). -->
+            @if (tile.view.handoff(); as handoff) {
+              <a
+                class="mosaique__enter mosaique__handoff"
+                [routerLink]="['/atelier', handoff.workspaceId]"
+                [state]="handoffState(handoff)"
+                [attr.aria-label]="'Ouvrir le sujet ' + handoff.name"
+              >
+                Ouvrir {{ handoff.name }}
+                <mat-icon aria-hidden="true">forward</mat-icon>
+              </a>
+            }
             <a
               class="mosaique__enter"
               [routerLink]="['/atelier', tile.workspaceId]"

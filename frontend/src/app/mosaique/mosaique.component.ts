@@ -15,6 +15,8 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { RouterLink } from '@angular/router';
+import { RADAR_DRAFT_STATE } from '../shared/radar-draft';
+import { AtelierSubjectHandoff } from '../core/models/atelier.models';
 
 import { AtelierTerminalComponent } from '../atelier/terminal/atelier-terminal.component';
 import { AtelierService } from '../core/services/atelier.service';
@@ -161,6 +163,14 @@ export class MosaiqueComponent implements OnInit, OnDestroy {
   readonly attentesByTerminal = signal<Record<string, TerminalActionCount>>({});
 
   /** « 2 attentes », ou `null` s'il n'y en a aucune. */
+  /**
+   * L'état de navigation d'une passation (F-179 / SF-179-02) : la phrase voyage par l'état, jamais par
+   * l'adresse, et le terminal du sujet la reprend une fois dans sa saisie — sans l'envoyer.
+   */
+  handoffState(handoff: AtelierSubjectHandoff): Record<string, string> {
+    return { [RADAR_DRAFT_STATE]: handoff.phrase };
+  }
+
   attentesLabel(workspaceId: string): string | null {
     const count = this.attentesByTerminal()[workspaceId];
     const total = count ? count.aFaire + count.demande : 0;
