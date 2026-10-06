@@ -150,6 +150,7 @@ import { TerminalActionsPanelComponent } from './terminal-actions-panel.componen
 import { TerminalAttentesBandComponent } from './terminal-attentes-band.component';
 import { AttenteCardComponent } from './attente-card.component';
 import { HandoffCardComponent, HandoffOriginComponent } from './handoff-card.component';
+import { ProposalCardComponent } from './proposal-card.component';
 import { TerminalJourneyChipComponent } from './terminal-journey-chip.component';
 import { TerminalJourneyChantiersComponent } from './terminal-journey-chantiers.component';
 import { TerminalHandComponent } from './terminal-hand.component';
@@ -221,7 +222,7 @@ export interface SlashMenuEntry {
     FormsModule, ForgeBreadcrumbComponent, LiveBadgeComponent, MarkdownPipe, MatButtonModule,
     TeamsLinkBadgeComponent, NgTemplateOutlet, TerminalEmailComponent, PageBlockComponent, PagePanelComponent,
     TerminalActionsPanelComponent, TerminalAttentesBandComponent, AttenteCardComponent,
-    HandoffCardComponent, HandoffOriginComponent,
+    HandoffCardComponent, HandoffOriginComponent, ProposalCardComponent,
     TerminalJourneyChipComponent, TerminalJourneyStripComponent, TerminalJourneyChantiersComponent,
     TerminalHandComponent,
     AtelierTerminalDemandeComponent,
@@ -693,6 +694,15 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    * « Relancer » (F-175 / SF-175-06, décision D8) : le brouillon rejoint la zone de saisie, le panneau
    * se ferme — **rien n'est envoyé**. L'envoi reste le geste de l'utilisateur.
    */
+  /**
+   * [Modifier] sur une carte de proposition (F-177 / SF-177-02) : une amorce rejoint la saisie, rien
+   * n'est envoyé — l'utilisateur dit ce qu'il veut changer, l'agent repropose.
+   */
+  onProposalModify(name: string): void {
+    const prefix = `Modifie la proposition « ${name} » : `;
+    this.draftChange.emit(this.draft ? `${prefix}${this.draft}` : prefix);
+  }
+
   onFollowUp(text: string): void {
     this.predicted.set(null);
     this.draftChange.emit(text);

@@ -68,7 +68,23 @@ public record AtelierTurnReport(List<Object> blocks, int omittedBlocks, long inp
             fr.claudegateway.mail.ClientMailReceipt email,
             fr.claudegateway.pages.PageBlock page,
             fr.claudegateway.atelier.actions.AttenteBlock attente,
-            SubjectHandoff handoff) {
+            SubjectHandoff handoff,
+            fr.claudegateway.atelier.proposal.GovernanceProposalBlock proposal) {
+
+        /**
+         * Forme d'avant F-177 : aucune carte de proposition de gouvernance. La carte (F-177 / SF-177-02)
+         * n'est portée que par l'appel {@code gouvernance_proposer}.
+         */
+        public Block(String tool, String command, String toolUseId, String threadId, String output,
+                boolean hasOutput, boolean error, boolean expanded,
+                fr.claudegateway.teams.block.TeamsBlockCard card,
+                fr.claudegateway.mail.ClientMailReceipt email,
+                fr.claudegateway.pages.PageBlock page,
+                fr.claudegateway.atelier.actions.AttenteBlock attente,
+                SubjectHandoff handoff) {
+            this(tool, command, toolUseId, threadId, output, hasOutput, error, expanded, card, email, page,
+                    attente, handoff, null);
+        }
 
         /**
          * Forme d'avant F-179 : aucun bloc de passation. Le bloc (F-179 / SF-179-01) n'est porté que par
@@ -218,7 +234,9 @@ public record AtelierTurnReport(List<Object> blocks, int omittedBlocks, long inp
                 // La carte d'attente (F-175 / SF-175-05) aussi.
                 block.attente(),
                 // Le bloc de passation (F-179 / SF-179-01) aussi : la carte [Ouvrir le sujet] en dépend.
-                block.handoff());
+                block.handoff(),
+                // La carte de proposition (F-177 / SF-177-02) aussi : [Appliquer] en dépend.
+                block.proposal());
     }
 
     /**

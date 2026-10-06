@@ -890,6 +890,30 @@ public class AtelierChatService implements RelayInterruptTarget {
     static final String MAP_SEARCH_TOOL_NAME = "carte_chercher";
     /** Nom de l'outil de passation vers un sujet (F-179 / SF-179-01), au terminal du poste seulement. */
     static final String OPEN_SUBJECT_TOOL_NAME = "ouvrir_sujet";
+    /** Nom de l'outil qui propose une règle, un skill ou un gabarit (F-177 / SF-177-02). */
+    static final String GOVERNANCE_PROPOSE_TOOL_NAME = "gouvernance_proposer";
+
+    /**
+     * Doctrine de la gouvernance pilotée du terminal (F-177 / SF-177-02, décision D4). Littéral STABLE,
+     * injecté là où l'outil est offert : cache F-134 préservé.
+     */
+    static final String GOVERNANCE_PROPOSAL_DOCTRINE =
+            "GOUVERNANCE DU CLIENT (règles, skills, gabarits) :\n"
+                    + "- Toute demande de règle durable (« mets dans la gouvernance que… », « à partir de "
+                    + "maintenant, toujours… »), de skill ou de gabarit passe par gouvernance_proposer : "
+                    + "type REGLE (section de GOUVERNANCE.md), SKILL (.claude/skills/<nom>.md) ou GABARIT "
+                    + "(.claude/gabarits/<nom>.md) ; portee POSTE (vaut pour tout le poste) ou SUJET "
+                    + "(ce sujet seulement).\n"
+                    + "- L'outil N'ÉCRIT RIEN : il pose une carte avec le diff, l'utilisateur clique "
+                    + "[Appliquer]. N'écris jamais toi-même GOUVERNANCE.md ni un fichier sous .claude/skills/ "
+                    + "avec write_file. Après la proposition, termine en une ligne (« Proposition posée : "
+                    + "clique Appliquer »), sans recopier le contenu.\n"
+                    + "- Une fois appliquée, une règle s'applique à chaque tour (GOUVERNANCE.md du poste "
+                    + "puis du sujet, injectés dans la consigne).\n\n";
+    /** Rappel joint à un write_file hors circuit (F-177 / SF-177-02, D4). */
+    static final String GOVERNANCE_WRITE_REMINDER =
+            "\n\nRappel : GOUVERNANCE.md et les skills se modifient par gouvernance_proposer (carte "
+                    + "validée par l'utilisateur), pas par write_file. Pour la suite, passe par la proposition.";
 
     /**
      * L'outil {@code carte_chercher} (F-174 / SF-174-05, D8). Littéral STABLE : rien de volatil n'y
@@ -1644,6 +1668,14 @@ public class AtelierChatService implements RelayInterruptTarget {
 
     /** Le parcours du sujet (F-176) ; {@code null} pour les formes historiques (= Libre partout). */
     private fr.claudegateway.atelier.journey.SubjectJourneyService journeyService;
+
+    /** Les propositions de gouvernance (F-177 / SF-177-02) ; {@code null} = outil non offert. */
+    private fr.claudegateway.atelier.proposal.GovernanceProposalService governanceProposals;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setGovernanceProposals(fr.claudegateway.atelier.proposal.GovernanceProposalService proposals) {
+        this.governanceProposals = proposals;
+    }
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setJourneyService(fr.claudegateway.atelier.journey.SubjectJourneyService journeyService) {
@@ -2427,6 +2459,9 @@ public class AtelierChatService implements RelayInterruptTarget {
         java.util.Map<String, fr.claudegateway.atelier.actions.AttenteBlock> attentesOfTurn = new java.util.HashMap<>();
         // F-179 / SF-179-01 : le bloc de passation vers un sujet, par appel ouvrir_sujet.
         java.util.Map<String, SubjectHandoff> handoffsOfTurn = new java.util.HashMap<>();
+        // F-177 / SF-177-02 : la carte de proposition de gouvernance, par appel gouvernance_proposer.
+        java.util.Map<String, fr.claudegateway.atelier.proposal.GovernanceProposalBlock> proposalsOfTurn =
+                new java.util.HashMap<>();
         /** Nombre d'images décoratives générées pendant ce tour (F-142 / SF-142-04), pour la borne par tour. */
         int[] imageCountOfTurn = {0};
         // La compaction (F-117 / SF-117-01) est un appel modèle : sa consommation entre dans les
@@ -3030,6 +3065,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                 } else if (OPEN_SUBJECT_TOOL_NAME.equals(call.name())) {
                     // F-179 / SF-179-01 : la passation vers un sujet, résolue par la gateway (user_id + poste).
                     outcome = applyOpenSubject(userId, workspace, callId, call, listener, handoffsOfTurn);
+                } else if (GOVERNANCE_PROPOSE_TOOL_NAME.equals(call.name())) {
+                    // F-177 / SF-177-02 : la proposition est rangée par la gateway ; rien n'est écrit.
+                    outcome = applyGovernanceProposal(userId, workspace, callId, call, listener, proposalsOfTurn);
                 } else if (fr.claudegateway.atelier.journey.JourneyToolCatalog.isJourneyTool(call.name())) {
                     // F-176 : le parcours du sujet est tenu par la gateway, jamais par la machine.
                     outcome = applyJourneyTool(userId, workspace, call);
@@ -3072,6 +3110,11 @@ public class AtelierChatService implements RelayInterruptTarget {
                 // jamais un refus (la garde dure, elle, a déjà tranché AVANT l'émission, plus haut).
                 if (!outcome.isError()) {
                     modelContent = withFreshnessNote(freshness, call, modelContent);
+                }
+                // F-177 / SF-177-02 (D4) : un write_file direct sur GOUVERNANCE.md ou sous .claude/skills/
+                // n'est pas refusé, mais rappelle le circuit de la proposition.
+                if (governanceProposals != null && isGovernanceWrite(call)) {
+                    modelContent = (modelContent == null ? "" : modelContent) + GOVERNANCE_WRITE_REMINDER;
                 }
                 if (workspace.isTeamsTerminal()
                         && fr.claudegateway.teams.block.TeamsReadFailure.isReadingTool(call.name())) {
@@ -3125,7 +3168,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                         // La carte d'une attente (F-175 / SF-175-05) : elle survit au rechargement.
                         attentesOfTurn.get(callId),
                         // Le bloc de passation (F-179 / SF-179-01) : la carte [Ouvrir le sujet] y survit.
-                        handoffsOfTurn.get(callId)));
+                        handoffsOfTurn.get(callId),
+                        // La carte de proposition (F-177 / SF-177-02) : [Appliquer] y survit.
+                        proposalsOfTurn.get(callId)));
                 // F-121 / SF-121-11 — LA FILE EST CONSULTÉE ENTRE LES APPELS D'OUTILS, et plus
                 // seulement à la frontière d'itération. Une précision déposée pendant un `bash` de
                 // 90 s ou au milieu d'une rafale de cinq outils était jusqu'ici ni prise ni
@@ -4312,6 +4357,44 @@ public class AtelierChatService implements RelayInterruptTarget {
      * exige le même {@code host_id} ; par nom, {@link WorkspaceService#listByHost} filtre les deux. Un
      * terminal de poste ou Teams n'est jamais un sujet.</p>
      */
+    private ToolOutcome applyGovernanceProposal(UUID userId, Workspace workspace, String callId,
+            AgentToolCall call, AtelierProgressListener listener,
+            java.util.Map<String, fr.claudegateway.atelier.proposal.GovernanceProposalBlock> proposalsOfTurn) {
+        if (governanceProposals == null || workspace.isTeamsTerminal()) {
+            return ToolOutcome.error("gouvernance_proposer n'est pas ouvert ici.");
+        }
+        try {
+            fr.claudegateway.atelier.proposal.GovernanceProposalBlock block = governanceProposals.propose(userId,
+                    workspace, arg(call.input(), "type"), arg(call.input(), "portee"), arg(call.input(), "nom"),
+                    arg(call.input(), "contenu"), arg(call.input(), "raison"));
+            proposalsOfTurn.put(callId, block);
+            listener.onGovernanceProposal(callId, block);
+            return ToolOutcome.info("Proposition posée (" + block.type() + ", portée " + block.scope() + ", "
+                    + block.path() + ") : rien n'est écrit tant que l'utilisateur n'a pas cliqué [Appliquer]. "
+                    + "Termine ton tour en une ligne, sans recopier le contenu.");
+        } catch (fr.claudegateway.atelier.proposal.InvalidProposalException
+                | fr.claudegateway.atelier.proposal.ProposalUnreachableException ex) {
+            return ToolOutcome.error(ex.getMessage());
+        }
+    }
+
+    /** Un write_file vers GOUVERNANCE.md ou sous .claude/skills/ (F-177 / SF-177-02, D4). */
+    boolean isGovernanceWrite(AgentToolCall call) {
+        if (call == null || !"write_file".equals(call.name())) {
+            return false;
+        }
+        String path = arg(call.input(), "path");
+        if (path == null) {
+            return false;
+        }
+        String normalized = path.strip().replace('\\', '/');
+        while (normalized.startsWith("./")) {
+            normalized = normalized.substring(2);
+        }
+        return normalized.equals("GOUVERNANCE.md") || normalized.endsWith("/GOUVERNANCE.md")
+                || normalized.startsWith(".claude/skills/") || normalized.contains("/.claude/skills/");
+    }
+
     private ToolOutcome applyOpenSubject(UUID userId, Workspace workspace, String callId, AgentToolCall call,
             AtelierProgressListener listener, java.util.Map<String, SubjectHandoff> handoffsOfTurn) {
         if (!workspace.isHostTerminal() || workspace.getHostId() == null) {
@@ -5669,6 +5752,10 @@ public class AtelierChatService implements RelayInterruptTarget {
         // pas le bloc du tour.
         if (OPEN_SUBJECT_TOOL_NAME.equals(call.name())) {
             return ToolOutcome.error("ouvrir_sujet n'est pas ouvert ici. Donne la phrase de démarrage en clair.");
+        }
+        // La proposition de gouvernance (F-177 / SF-177-02) est traitée par la boucle (carte du tour).
+        if (GOVERNANCE_PROPOSE_TOOL_NAME.equals(call.name())) {
+            return ToolOutcome.error("gouvernance_proposer n'est pas ouvert ici.");
         }
         // Reclasser un fait (F-141 / SF-141-04) : écriture des cartes du poste par la gateway, jamais
         // par le runner « brut ». Traité ici, avant le routage par cible.
@@ -7257,6 +7344,29 @@ public class AtelierChatService implements RelayInterruptTarget {
                                             + "(ex. « data-platform »).")),
                             "required", List.of("name"))));
         }
+        // Proposer une règle, un skill ou un gabarit (F-177 / SF-177-02) : partout sauf au terminal Teams.
+        // Stable pour un workspace donné (la liste des outils fait partie du préfixe de cache).
+        if (governanceProposals != null && !workspace.isTeamsTerminal()) {
+            tools.add(new AgentTool(GOVERNANCE_PROPOSE_TOOL_NAME,
+                    "Propose une règle durable, un skill ou un gabarit pour la gouvernance du client. N'ÉCRIT "
+                            + "RIEN : pose une carte avec le diff ; l'utilisateur valide d'un clic [Appliquer]. "
+                            + "REGLE = section « ## <nom> » de GOUVERNANCE.md ; SKILL = .claude/skills/<nom>.md "
+                            + "(mode d'emploi complet) ; GABARIT = .claude/gabarits/<nom>.md. portee POSTE = "
+                            + "racine du poste (vaut dans tous ses sujets) ; SUJET = ce sujet seulement.",
+                    Map.of("type", "object",
+                            "properties", Map.of(
+                                    "type", Map.of("type", "string", "enum", List.of("REGLE", "SKILL", "GABARIT")),
+                                    "portee", Map.of("type", "string", "enum", List.of("POSTE", "SUJET")),
+                                    "nom", Map.of("type", "string",
+                                            "description", "Titre de la règle, ou nom du skill/gabarit "
+                                                    + "(ex. « ticket-jira »)."),
+                                    "contenu", Map.of("type", "string",
+                                            "description", "Texte de la règle, ou contenu complet du "
+                                                    + "skill/gabarit (markdown)."),
+                                    "raison", Map.of("type", "string",
+                                            "description", "Pourquoi, en une phrase (montrée à l'utilisateur).")),
+                            "required", List.of("type", "portee", "nom", "contenu"))));
+        }
         // Ouvrir le sujet d'un « go » (F-179 / SF-179-01) : UNIQUEMENT au terminal du poste, là où l'on
         // aiguille. Pose le bloc de passation ; l'écran ouvre le sujet avec la phrase déposée, non envoyée.
         if (workspace.isHostTerminal()) {
@@ -7625,6 +7735,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         // (cache F-134 préservé). Absent en SANDBOX/Teams (préfixe plus court).
         if (workspace.isRunnerTarget()) {
             system.append(DURABLE_KNOWLEDGE_DOCTRINE);
+        }
+        // F-177 / SF-177-02 (D4) : la gouvernance du client se propose, ne s'écrit pas en douce — là où
+        // l'outil gouvernance_proposer est offert (condition stable par workspace : cache F-134 préservé).
+        if (governanceProposals != null && !workspace.isTeamsTerminal()) {
+            system.append(GOVERNANCE_PROPOSAL_DOCTRINE);
         }
 
         // Aiguillage à la racine (F-141 / SF-141-02) : UNIQUEMENT au terminal du poste, là où la

@@ -102,6 +102,15 @@ public class AccountService {
     }
 
     /** Branche la purge du parcours des sujets à la suppression du compte (F-176). */
+    /** Les propositions de gouvernance (F-177 / SF-177-02) : purge nommée du compte. */
+    private fr.claudegateway.atelier.proposal.GovernanceProposalRepository governanceProposalRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setGovernanceProposalRepository(
+            fr.claudegateway.atelier.proposal.GovernanceProposalRepository proposals) {
+        this.governanceProposalRepository = proposals;
+    }
+
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setJourneyRepositories(fr.claudegateway.atelier.journey.SubjectJourneyRepository journeys,
             fr.claudegateway.atelier.journey.SubjectJourneyEventRepository journeyEvents) {
@@ -362,6 +371,10 @@ public class AccountService {
         // terminal (cascade) ; la purge nommée couvre le compte.
         if (journeyEventRepository != null) {
             journeyEventRepository.purgeUser(userId);
+        }
+        // Les propositions de gouvernance (F-177 / SF-177-02) : elles suivent aussi le terminal.
+        if (governanceProposalRepository != null) {
+            governanceProposalRepository.purgeUser(userId);
         }
         if (journeyChantierRepository != null) {
             journeyChantierRepository.purgeUser(userId);
