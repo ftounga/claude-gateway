@@ -54,6 +54,25 @@ public interface AtelierMessageRepository extends JpaRepository<AtelierMessage, 
             java.util.Collection<UUID> ids);
 
     /**
+     * Rappel <b>à portée poste</b> (F-178 / SF-178-01) : même recherche mot-clé que
+     * {@link #searchByContent}, mais sur un <b>ensemble</b> de fils — le terminal du poste et les sujets
+     * de CE poste, tels que résolus par l'appelant depuis le terminal possédé. Toujours filtrée
+     * {@code user_id} : un id de workspace d'autrui glissé dans l'ensemble ne remonte rien.
+     */
+    @Query("select m from AtelierMessage m where m.workspaceId in :workspaceIds and m.userId = :userId "
+            + "and lower(m.content) like :term order by m.createdAt desc")
+    List<AtelierMessage> searchByContentInWorkspaces(
+            @Param("workspaceIds") java.util.Collection<UUID> workspaceIds,
+            @Param("userId") UUID userId, @Param("term") String term, Pageable pageable);
+
+    /**
+     * Relecture <b>isolée</b> du chemin sémantique à portée poste (F-178 / SF-178-01) : filtrée
+     * {@code user_id} ET {@code workspace_id} dans l'ensemble des fils du poste (défense en profondeur).
+     */
+    List<AtelierMessage> findByUserIdAndWorkspaceIdInAndIdIn(UUID userId,
+            java.util.Collection<UUID> workspaceIds, java.util.Collection<UUID> ids);
+
+    /**
      * Numéro de tour d'un extrait (F-162 / SF-162-01) : nombre de messages d'un rôle donné (typiquement
      * {@code USER}) jusqu'à un instant inclus, dans le fil. Filtrée {@code workspace_id} + {@code user_id}
      * comme toutes les lectures de cette table. Sert à étiqueter chaque extrait « tour N ».

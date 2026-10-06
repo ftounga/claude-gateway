@@ -52,4 +52,14 @@ public interface AtelierSemanticRecall {
      * déclenche le repli mot-clé côté appelant.
      */
     List<UUID> search(UUID userId, UUID workspaceId, String query, int topN);
+
+    /**
+     * Rappel <b>à portée poste</b> (F-178 / SF-178-01) : comme {@link #search}, sur un ensemble de fils
+     * (le terminal du poste et ses sujets), <b>toujours filtré {@code user_id}</b>. Par défaut : vide
+     * (repli mot-clé) — une implémentation sans cette capacité ne casse rien.
+     */
+    default List<UUID> searchAcross(UUID userId, java.util.Collection<UUID> workspaceIds, String query,
+            int topN) {
+        return List.of();
+    }
 }

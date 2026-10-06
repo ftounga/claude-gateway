@@ -58,6 +58,37 @@ public class AtelierMessageEmbeddingStore {
                 userId, workspaceId, toVectorLiteral(queryEmbedding), topN);
     }
 
+    /** Borne du nombre de fils d'une recherche à portée poste (F-178 / SF-178-01). */
+    static final int MAX_WORKSPACES = 200;
+
+    /**
+     * Recherche des plus proches voisins <b>à portée poste</b> (F-178 / SF-178-01) : sur un ensemble de
+     * fils (terminal du poste + sujets du poste, résolus par l'appelant), <b>toujours filtrée
+     * {@code user_id}</b>. Ensemble borné à {@link #MAX_WORKSPACES}. Ids du plus proche au plus lointain.
+     */
+    public List<UUID> searchSimilarAcross(UUID userId, java.util.Collection<UUID> workspaceIds,
+            float[] queryEmbedding, int topN) {
+        if (userId == null || workspaceIds == null || workspaceIds.isEmpty() || queryEmbedding == null
+                || topN <= 0) {
+            return List.of();
+        }
+        List<UUID> ids = workspaceIds.stream().filter(java.util.Objects::nonNull).distinct()
+                .limit(MAX_WORKSPACES).toList();
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        String placeholders = String.join(",", java.util.Collections.nCopies(ids.size(), "?"));
+        String sql = "SELECT id FROM atelier_messages "
+                + "WHERE user_id = ? AND workspace_id IN (" + placeholders + ") AND embedding IS NOT NULL "
+                + "ORDER BY embedding <=> CAST(? AS vector) ASC LIMIT ?";
+        List<Object> args = new java.util.ArrayList<>();
+        args.add(userId);
+        args.addAll(ids);
+        args.add(toVectorLiteral(queryEmbedding));
+        args.add(topN);
+        return jdbcTemplate.query(sql, (rs, rowNum) -> rs.getObject("id", UUID.class), args.toArray());
+    }
+
     /**
      * Un lot de messages <b>sans embedding</b>, du plus récent au plus ancien, borné (F-162 / SF-162-06,
      * backfill). Balayage global (tous tenants) : embeddre un message écrit sur SA propre ligne ne croise

@@ -158,4 +158,33 @@ class AtelierRecallRepositoryTest {
 
         assertThat(turns).isEqualTo(2);
     }
+
+    @Test
+    @DisplayName("F-178 / SF-178-01 : portée poste — les fils de l'ensemble, jamais un autre user ni un fil hors ensemble")
+    void hostScopeIsIsolatedByUserAndWorkspaceSet() {
+        OffsetDateTime now = OffsetDateTime.parse("2026-09-30T10:00:00Z");
+        UUID aliceOtherHostWs = workspace(aliceId, "alice-autre-poste");
+        message(aliceWs1, aliceId, "USER", "jeton Atlantis dans le coffre", now);
+        message(aliceWs2, aliceId, "ASSISTANT", "Atlantis : rotation tous les 90 jours", now.plusMinutes(1));
+        // Même user, mais un fil HORS de l'ensemble (un autre poste) : exclu.
+        message(aliceOtherHostWs, aliceId, "USER", "Atlantis sur l'autre poste", now);
+        // Même ensemble de fils, mais un AUTRE utilisateur : exclu par user_id.
+        message(aliceWs1, bobId, "USER", "Atlantis de Bob", now);
+
+        var hits = messageRepository.searchByContentInWorkspaces(
+                java.util.List.of(aliceWs1, aliceWs2), aliceId, "%atlantis%", FIVE);
+
+        assertThat(hits).extracting(AtelierMessage::getContent)
+                .containsExactly("Atlantis : rotation tous les 90 jours", "jeton Atlantis dans le coffre");
+
+        AtelierMessage bob = messageRepository.save(AtelierMessage.builder()
+                .workspaceId(aliceWs1).userId(bobId).role("USER").content("Bob").build());
+        AtelierMessage outside = messageRepository.save(AtelierMessage.builder()
+                .workspaceId(aliceOtherHostWs).userId(aliceId).role("USER").content("hors poste").build());
+        AtelierMessage mine = messageRepository.save(AtelierMessage.builder()
+                .workspaceId(aliceWs2).userId(aliceId).role("USER").content("à moi").build());
+        assertThat(messageRepository.findByUserIdAndWorkspaceIdInAndIdIn(aliceId,
+                java.util.List.of(aliceWs1, aliceWs2), java.util.List.of(bob.getId(), outside.getId(), mine.getId())))
+                .extracting(AtelierMessage::getId).containsExactly(mine.getId());
+    }
 }

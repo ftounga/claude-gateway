@@ -128,6 +128,16 @@ public class AtelierChatService implements RelayInterruptTarget {
      * {@code @ConfigurationProperties} : y toucher rouvrirait le piège des constructeurs du record.
      */
     private static final int RECALL_EXTRACT_CHARS = 600;
+    /** Paramètre de portée du {@code recall}, déclaré au terminal du poste seulement (F-178 / SF-178-01). */
+    static final String RECALL_SCOPE_ARG = "portee";
+    /** Portée par défaut : le fil courant. */
+    static final String RECALL_SCOPE_THREAD = "fil";
+    /** Portée poste : le terminal du poste et tous ses sujets (F-178 / SF-178-01, D1). */
+    static final String RECALL_SCOPE_HOST = "poste";
+    /** Complément FIXE de la description du recall au terminal du poste (F-178 / SF-178-01). */
+    static final String RECALL_HOST_SCOPE_NOTE = " Ici, au terminal du poste, `portee: \"poste\"` cherche "
+            + "dans les conversations de TOUS les sujets de ce poste (une décision prise dans un sujet, un "
+            + "nom, une date) ; chaque extrait porte alors [sujet · date · rôle] : cite-les.";
     /** Agrégat de sortie de commande conservé et rendu au modèle (contrat §5), en octets. */
     private static final int MAX_BASH_OUTPUT_BYTES = 131_072;
     static final String INTERRUPTED_REPLY = "J'ai arrêté le travail en cours à ta demande.";
@@ -5242,6 +5252,13 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
         String needle = query.trim();
 
+        // F-178 / SF-178-01 (D1) : portée « poste », au terminal du poste SEULEMENT. Ailleurs, le
+        // paramètre n'est pas déclaré ; s'il est envoyé malgré tout, il est ignoré (le fil, jamais plus).
+        if (RECALL_SCOPE_HOST.equalsIgnoreCase(String.valueOf(arg(call.input(), RECALL_SCOPE_ARG)).strip())
+                && workspace.isHostTerminal() && workspace.getHostId() != null) {
+            return recallHost(userId, workspace, needle, listener);
+        }
+
         // F-162 / SF-162-06 : d'abord le SÉMANTIQUE (par le sens), s'il est actif — « adressage réseau »
         // retrouve « VPC CIDR » sans le mot exact. Isolé user + workspace, relecture re-filtrée (défense
         // en profondeur). Repli mot-clé si éteint, en échec, ou 0 résultat (un message pas encore embeddé
@@ -5260,6 +5277,92 @@ public class AtelierChatService implements RelayInterruptTarget {
                     "Aucun extrait trouvé pour « " + needle + " » dans l'historique de ce fil.");
         }
         return formatRecall(matches, needle, false, workspace, userId, listener);
+    }
+
+    /**
+     * {@code recall} à portée <b>poste</b> (F-178 / SF-178-01, D1) : cherche dans le terminal du poste et
+     * dans les sujets de <b>ce</b> poste, du <b>même</b> utilisateur.
+     *
+     * <p><b>Isolation</b> : l'ensemble des fils est résolu ici, depuis le terminal <b>possédé</b>
+     * ({@code requireOwned} en tête du tour) — {@code listByHost(userId, hostId)} filtre déjà
+     * {@code user_id} et {@code host_id} ; les requêtes refiltrent {@code user_id} ; la relecture
+     * sémantique refiltre {@code user_id} + ensemble de fils. Le terminal Teams n'en fait pas partie (il a
+     * son propre volet). Aucun identifiant venu du modèle n'intervient.</p>
+     */
+    private ToolOutcome recallHost(UUID userId, Workspace workspace, String needle,
+            AtelierProgressListener listener) {
+        java.util.Map<UUID, String> names = new java.util.LinkedHashMap<>();
+        names.put(workspace.getId(), "terminal du poste");
+        for (Workspace subject : workspaceService.listByHost(userId, workspace.getHostId())) {
+            if (userId.equals(subject.getUserId()) && workspace.getHostId().equals(subject.getHostId())) {
+                names.put(subject.getId(), subject.getName());
+            }
+        }
+        java.util.Set<UUID> scope = names.keySet();
+        List<AtelierMessage> matches = null;
+        boolean semantic = false;
+        if (semanticRecall.isEnabled()) {
+            try {
+                List<UUID> ids = semanticRecall.searchAcross(userId, scope, needle, RECALL_MAX_EXTRACTS);
+                if (ids != null && !ids.isEmpty()) {
+                    java.util.Map<UUID, AtelierMessage> byId = new java.util.HashMap<>();
+                    for (AtelierMessage m : messageRepository.findByUserIdAndWorkspaceIdInAndIdIn(userId, scope,
+                            ids)) {
+                        byId.put(m.getId(), m);
+                    }
+                    List<AtelierMessage> ordered = new java.util.ArrayList<>();
+                    for (UUID id : ids) {
+                        if (byId.containsKey(id)) {
+                            ordered.add(byId.get(id));
+                        }
+                    }
+                    if (!ordered.isEmpty()) {
+                        matches = ordered;
+                        semantic = true;
+                    }
+                }
+            } catch (RuntimeException ex) {
+                log.debug("Rappel sémantique (poste) indisponible, repli mot-clé : {}",
+                        ex.getClass().getSimpleName());
+            }
+        }
+        if (matches == null) {
+            String term = "%" + needle.toLowerCase(java.util.Locale.ROOT) + "%";
+            matches = messageRepository.searchByContentInWorkspaces(scope, userId, term,
+                    org.springframework.data.domain.PageRequest.of(0, RECALL_MAX_EXTRACTS));
+        }
+        int searched = names.size() - 1; // les sujets, hors terminal du poste
+        if (matches == null || matches.isEmpty()) {
+            return ToolOutcome.info("Aucun extrait trouvé pour « " + needle + " » dans les conversations du "
+                    + "poste (" + searched + (searched > 1 ? " sujets" : " sujet") + " et le terminal du poste).");
+        }
+        StringBuilder out = new StringBuilder();
+        out.append(matches.size()).append(matches.size() > 1 ? " extraits trouvés" : " extrait trouvé")
+                .append(semantic ? " par le sens" : "")
+                .append(" pour « ").append(needle).append(" » dans les conversations du poste (")
+                .append(searched).append(searched > 1 ? " sujets" : " sujet")
+                .append(" et le terminal du poste)")
+                .append(semantic ? ", du plus proche au plus lointain :\n" : ", du plus récent au plus ancien :\n");
+        List<String> where = new java.util.ArrayList<>();
+        for (AtelierMessage message : matches) {
+            String subject = names.getOrDefault(message.getWorkspaceId(), "?");
+            if (!where.contains(subject)) {
+                where.add(subject);
+            }
+            String who = "USER".equals(message.getRole()) ? "utilisateur" : "assistant";
+            out.append("\n[").append(subject).append(" · ")
+                    .append(message.getCreatedAt() == null ? "?" : message.getCreatedAt().toLocalDate())
+                    .append(" · ").append(who).append("] ")
+                    .append(recallExtract(message.getContent(), needle)).append('\n');
+        }
+        // Visibilité (SF-162-03, réutilisée) : « Détail rappelé · poste (N sujets) · data-platform, lzi ».
+        try {
+            listener.onRecalled("poste (" + searched + (searched > 1 ? " sujets" : " sujet") + ") · "
+                    + String.join(", ", where));
+        } catch (RuntimeException ex) {
+            log.debug("Signal de rappel (poste) ignoré : {}", ex.getClass().getSimpleName());
+        }
+        return ToolOutcome.info(out.toString().strip());
     }
 
     /**
@@ -7397,9 +7500,17 @@ public class AtelierChatService implements RelayInterruptTarget {
                         + "disponible (une reformulation retrouve le passage même sans le mot exact) et "
                         + "retombe sinon sur le mot-clé : tu peux donc décrire ce que tu cherches en "
                         + "langage naturel, ou donner un terme précis. Il ne lit ni les fichiers ni le web "
-                        + "— pour cela, utilise read_file, grep ou explore.",
+                        + "— pour cela, utilise read_file, grep ou explore."
+                        // F-178 / SF-178-01 (D1) : au terminal du poste SEULEMENT, la portée « poste »
+                        // (texte fixe : condition stable par workspace, cache F-134 préservé).
+                        + (workspace.isHostTerminal() ? RECALL_HOST_SCOPE_NOTE : ""),
                 Map.of("type", "object",
-                        "properties", Map.of("query", stringProp),
+                        "properties", workspace.isHostTerminal()
+                                ? Map.of("query", stringProp, RECALL_SCOPE_ARG, Map.of("type", "string",
+                                        "enum", List.of(RECALL_SCOPE_THREAD, RECALL_SCOPE_HOST),
+                                        "description", "« fil » (défaut) : cette conversation ; « poste » : "
+                                                + "les conversations de TOUS les sujets de ce poste."))
+                                : Map.of("query", stringProp),
                         "required", List.of("query"))));
         // La carte du poste (F-174 / SF-174-05, D8) : interrogée côté gateway, sur l'index. Offerte
         // seulement là où il y a un poste réel et l'index allumé — condition stable d'un tour à l'autre.
