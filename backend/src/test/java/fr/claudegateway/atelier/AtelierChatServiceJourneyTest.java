@@ -138,6 +138,34 @@ class AtelierChatServiceJourneyTest {
     }
 
     @Test
+    @DisplayName("SF-176-07 : un refus dû à un programme inconnu est marqué « inconnu », jamais la commande")
+    void unknownProgramIsMeasured() {
+        journey(JourneyMode.GUIDE, JourneyPhase.PLAN, null, 1);
+        agentProvider.enqueueToolCall("bash", "command", "outil-maison --secret=abc");
+        agentProvider.enqueueFinal("J'attends.");
+
+        service.chatStreaming(userId, workspaceId, "fais", listener);
+
+        assertThat(agentProvider.messageSnapshots.get(1))
+                .contains("Ce terminal est en mode Guidé, phase Plan : cette action attend la validation du plan.");
+        verify(journeyService).recordGateBlocked(any(),
+                eq(fr.claudegateway.atelier.journey.JourneyPlan.Risk.REVERSIBLE), eq("bash · inconnu"));
+    }
+
+    @Test
+    @DisplayName("SF-176-07 : un sujet clos est revenu en Libre — aws sso login et terraform apply passent")
+    void closedSubjectHasNoGate() {
+        journey(JourneyMode.LIBRE, JourneyPhase.CLOS, 1, 1);
+        agentProvider.enqueueToolCall("bash", "command", "terraform apply -auto-approve");
+        agentProvider.enqueueFinal("Fait.");
+
+        service.chatStreaming(userId, workspaceId, "applique", listener);
+
+        assertThat(agentProvider.messageSnapshots.get(1)).doesNotContain("PORTE DU PARCOURS GUIDÉ");
+        verify(journeyService, never()).recordGateBlocked(any(), any(), any());
+    }
+
+    @Test
     @DisplayName("SF-176-04 : en Libre, la porte n'existe pas (Q4) — rien n'est refusé ni journalisé")
     void libreHasNoGate() {
         journey(JourneyMode.LIBRE, null, null, 0);

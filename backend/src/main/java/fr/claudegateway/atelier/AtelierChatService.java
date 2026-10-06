@@ -1677,7 +1677,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         fr.claudegateway.atelier.journey.SubjectJourney journey = journeyOf(userId, workspace);
         String refusal = fr.claudegateway.atelier.journey.JourneyGate.refusal(journey, risk);
         if (refusal != null) {
-            journeyService.recordGateBlocked(journey, risk, call.name());
+            // SF-176-07 (D4) : un refus dû à un programme inconnu est marqué, jamais la commande.
+            boolean unknown = "bash".equals(call.name()) && call.input() != null
+                    && fr.claudegateway.atelier.journey.JourneyRiskClassifier.hasUnknownProgram(
+                            call.input().path("command").asText(null));
+            journeyService.recordGateBlocked(journey, risk, unknown ? call.name() + " · inconnu" : call.name());
         }
         return refusal;
     }

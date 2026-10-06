@@ -85,7 +85,7 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
         @if (gateClosed()) {
           <span class="journey-gate">
             <mat-icon class="journey-gate__icon" aria-hidden="true">lock</mat-icon>
-            Lecture et notes libres · les modifications attendent un plan validé
+            {{ gateText() }}
           </span>
         }
         @if (waitingInputs() > 0) {
@@ -403,9 +403,20 @@ export class TerminalJourneyStripComponent {
     if (!this.guided() || !j) {
       return false;
     }
+    if (j.gateClosed !== undefined) {
+      return j.gateClosed; // SF-176-07 : une seule source, la gateway
+    }
     const p = j.plan;
     const planCurrent = !!p && p.validatedVersion !== null && p.validatedVersion === p.version;
     return !(j.phase === 'EXECUTION' && planCurrent) && j.phase !== 'CLOS';
+  });
+
+  /** Le message exact du refus (SF-176-07, D5), suivi de ce qui reste libre. */
+  readonly gateText = computed(() => {
+    const message = this.journey()?.gateMessage;
+    return message
+      ? `${message} Lecture et notes restent libres.`
+      : 'Lecture et notes libres · les modifications attendent un plan validé';
   });
 
   /** Le plan est déplié tant qu'il attend une validation ; replié sinon (l'utilisateur peut l'ouvrir). */

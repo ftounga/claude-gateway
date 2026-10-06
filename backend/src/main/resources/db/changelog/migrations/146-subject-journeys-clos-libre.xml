@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-176 / SF-176-07 — LA PORTE S'OUVRE A LA CLOTURE (decision D1/D2 de la rouverture du 2026-10-06).
+
+      Clore un chantier guide ramene desormais le terminal en LIBRE. Les lignes closes avant ce
+      changement sont restees en GUIDE + CLOS : la porte refusait toute modification indefiniment
+      (11 refus mesures en prod). Reprise : GUIDE + CLOS -> LIBRE. La phase CLOS est gardee (historique,
+      mesure). Donnees seulement, aucun changement de schema.
+
+      Rollback : no-op volontaire (on ne referme pas une porte que le PO a demande d'ouvrir).
+    -->
+
+    <changeSet id="146-subject-journeys-clos-libre" author="claude-gateway">
+        <update tableName="subject_journeys">
+            <column name="mode" value="LIBRE"/>
+            <where>mode = 'GUIDE' AND phase = 'CLOS'</where>
+        </update>
+        <rollback/>
+    </changeSet>
+</databaseChangeLog>

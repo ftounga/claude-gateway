@@ -9,7 +9,9 @@ package fr.claudegateway.atelier.journey;
  * permise qu'en phase <b>Exécution</b>, sur la version <b>validée</b> du plan. Un amendement non
  * revalidé ferme la porte jusqu'au clic de l'utilisateur.</p>
  *
- * <p>En mode <b>Libre</b> : la porte n'existe pas (Q4) — les garde-fous existants seuls s'appliquent.</p>
+ * <p>En mode <b>Libre</b> : la porte n'existe pas (Q4) — les garde-fous existants seuls s'appliquent.
+ * Un sujet <b>clos</b> est revenu en Libre (SF-176-07, D1/D2) : la porte ne s'applique qu'en Guidé
+ * <b>actif</b> (Investigation → Vérification).</p>
  */
 public final class JourneyGate {
 
@@ -23,16 +25,13 @@ public final class JourneyGate {
      * @param risk    la classe de l'appel ({@code null} = non soumis à la porte)
      */
     public static String refusal(SubjectJourney journey, JourneyPlan.Risk risk) {
-        if (journey == null || !journey.isGuided() || journey.getPhase() == null || risk == null
-                || risk == JourneyPlan.Risk.LECTURE || risk == JourneyPlan.Risk.NOTES) {
+        if (risk == null || risk == JourneyPlan.Risk.LECTURE || risk == JourneyPlan.Risk.NOTES
+                || !isClosed(journey)) {
             return null;
         }
+        String head = message(journey) + " (PORTE DU PARCOURS GUIDÉ — cette action, " + risk.label()
+                + ", n'a pas été exécutée.) ";
         Integer validated = journey.getValidatedVersion();
-        boolean planCurrent = validated != null && validated == journey.getPlanVersion();
-        if (journey.getPhase() == JourneyPhase.EXECUTION && planCurrent) {
-            return null;
-        }
-        String head = "PORTE DU PARCOURS GUIDÉ — cette action (" + risk.label() + ") n'a pas été exécutée. ";
         return head + switch (journey.getPhase()) {
             case INVESTIGATION -> "Phase Investigation : la lecture et les notes du sujet (STATE.md, "
                     + "PLAN-ACTION.md) sont libres, mais rien ne se modifie avant un plan validé. Poursuis "
@@ -47,8 +46,33 @@ public final class JourneyGate {
                     + "set_subject_plan, il repassera par la validation de l'utilisateur.";
             case VERIFICATION -> "Phase Vérification : on vérifie, on ne modifie plus. Si une correction "
                     + "est nécessaire, amende le plan (set_subject_plan) ou reviens en investigation.";
-            case CLOS -> "Le sujet est clos : rien ne se modifie plus. S'il faut reprendre, l'utilisateur "
-                    + "rouvre le sujet en mode guidé.";
+            case CLOS -> ""; // jamais atteint : un sujet clos n'a plus de porte (SF-176-07)
         };
+    }
+
+    /**
+     * <b>La porte est-elle fermée aux modifications ?</b> (SF-176-07, D2/D5) — la seule source du verrou,
+     * lue par la boucle <i>et</i> par l'écran. Fermée en Guidé actif hors Exécution sur le plan validé.
+     */
+    public static boolean isClosed(SubjectJourney journey) {
+        if (journey == null || !journey.isGuided() || journey.getPhase() == null
+                || journey.getPhase() == JourneyPhase.CLOS) {
+            return false;
+        }
+        Integer validated = journey.getValidatedVersion();
+        boolean planCurrent = validated != null && validated == journey.getPlanVersion();
+        return !(journey.getPhase() == JourneyPhase.EXECUTION && planCurrent);
+    }
+
+    /**
+     * Le message exact du refus (D5), ou {@code null} si la porte est ouverte : « Ce terminal est en mode
+     * Guidé, phase X : cette action attend la validation du plan. »
+     */
+    public static String message(SubjectJourney journey) {
+        if (!isClosed(journey)) {
+            return null;
+        }
+        return "Ce terminal est en mode Guidé, phase " + journey.getPhase().label()
+                + " : cette action attend la validation du plan.";
     }
 }

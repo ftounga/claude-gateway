@@ -346,18 +346,24 @@ public class SubjectJourneyService {
         return true;
     }
 
-    /** [Clore le sujet] (SF-176-05) : le sujet guidé est clos ; la porte reste fermée. */
+    /**
+     * [Clore le sujet] (SF-176-05) : le chantier guidé est clos <b>et le terminal revient en Libre</b>
+     * (SF-176-07, D1) — la porte s'ouvre, le plan clos reste consultable.
+     */
     @Transactional
     public SubjectJourney close(UUID userId, UUID workspaceId) {
         workspaceService.requireOwned(userId, workspaceId); // 404 — TOUJOURS en premier
         SubjectJourney journey = requireGuided(userId, workspaceId);
+        if (journey.getPhase() == JourneyPhase.CLOS) {
+            throw new InvalidJourneyException("Ce sujet n'est pas en mode guidé.");
+        }
         OffsetDateTime now = OffsetDateTime.now(clock);
         journey.setCloseProposedAt(null);
         journey.setDiagnosisProposedAt(null);
         moveTo(journey, JourneyPhase.CLOS, now);
-        SubjectJourney saved = save(journey, now);
-        record(saved, SubjectJourneyEvent.CLOSED, null);
-        return saved;
+        record(journey, SubjectJourneyEvent.CLOSED, null); // journalisé en Guidé (mesure SF-176-06)
+        journey.setMode(JourneyMode.LIBRE);
+        return save(journey, now);
     }
 
     /** [Pas encore] : la proposition de clôture est écartée (SF-176-05). */

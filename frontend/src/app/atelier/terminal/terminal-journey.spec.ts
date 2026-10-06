@@ -168,6 +168,19 @@ describe('F-176 — le parcours du sujet', () => {
     expect(fixture.nativeElement.querySelector('.journey-gate')).toBeNull();
   });
 
+  it('SF-176-07 : le verrou suit la gateway (gateClosed) et dit le message exact', () => {
+    const fixture = TestBed.createComponent(TerminalJourneyStripComponent);
+    const message = 'Ce terminal est en mode Guidé, phase Plan : cette action attend la validation du plan.';
+    fixture.componentRef.setInput('journey', { ...guided('PLAN', 'Plan'), gateClosed: true, gateMessage: message });
+    fixture.detectChanges();
+    const gate = fixture.nativeElement.querySelector('.journey-gate');
+    expect(gate.textContent).toContain(message);
+
+    fixture.componentRef.setInput('journey', { ...guided('INVESTIGATION', 'Investigation'), gateClosed: false });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.journey-gate')).toBeNull();
+  });
+
   it('SF-176-05 : « Prêt à planifier » montre le diagnostic et émet [Planifier] / [Continuer]', () => {
     const fixture = TestBed.createComponent(TerminalJourneyStripComponent);
     fixture.componentRef.setInput('journey', {

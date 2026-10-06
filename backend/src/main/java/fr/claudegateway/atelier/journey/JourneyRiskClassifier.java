@@ -52,7 +52,14 @@ public final class JourneyRiskClassifier {
             "true", "false", "basename", "dirname", "realpath", "readlink", "column", "nl", "xxd", "od",
             "strings", "zcat", "cd", "sleep", "openssl", "getent", "nproc", "lscpu", "ip", "ifconfig",
             "curl", "git", "kubectl", "helm", "terraform", "aws", "az", "gcloud", "docker", "npm", "unzip",
-            "tar", "mvn", "gradle", "java", "node", "python", "python3", "gh", "systemctl", "journalctl");
+            "tar", "mvn", "gradle", "java", "node", "python", "python3", "gh", "systemctl", "journalctl",
+            // SF-176-07 (D4) : préfixes de shell sans effet hors du processus, lecteurs compressés.
+            "export", "unset", "set", "zgrep", "zegrep", "zless", "bzcat", "xzcat");
+
+    /** Programmes traités par une règle dédiée (les autres inconnus sont des modifications par prudence). */
+    private static final Set<String> RULED_PROGRAMS = Set.of("rm", "rmdir", "shred", "dd", "mkfs", "ssh", "scp",
+            "rsync", "sftp", "sendmail", "mail", "mutt", "reboot", "shutdown", "kill", "pkill", "killall", "oc",
+            "tofu", "terragrunt", "podman", "glab");
 
     /** Redirection vers un fichier (hors /dev/null et duplication de descripteur). */
     private static final Pattern REDIRECT = Pattern.compile("(?<![0-9&])>>?\\s*(?!&|/dev/null)\\S"
@@ -120,7 +127,8 @@ public final class JourneyRiskClassifier {
     /**
      * La classe d'une commande shell : {@code LECTURE} si <b>chaque</b> segment est une lecture
      * reconnue ; {@code EXTERNE} si un segment touche un système externe ou détruit ; {@code REVERSIBLE}
-     * sinon (prudence).
+     * sinon (prudence). L'<b>authentification du poste</b> ({@code aws sso login}, {@code az login}…)
+     * n'est jamais une modification : {@code NOTES} si rien d'autre ne modifie (SF-176-07, D3).
      */
     public static JourneyPlan.Risk classifyCommand(String command) {
         if (command == null || command.isBlank()) {
@@ -129,6 +137,7 @@ public final class JourneyRiskClassifier {
         String unquoted = unquoted(command);
         boolean external = PIPE_TO_SHELL.matcher(unquoted).find();
         boolean modifies = REDIRECT.matcher(unquoted).find() || command.contains("$(") || command.contains("`");
+        boolean auth = false;
         for (String segment : segments(command)) {
             List<String> words = words(segment);
             if (words.isEmpty()) {
@@ -139,12 +148,44 @@ public final class JourneyRiskClassifier {
                 external = true;
             } else if (verdict == Verdict.MODIFY) {
                 modifies = true;
+            } else if (verdict == Verdict.AUTH) {
+                auth = true;
             }
         }
         if (external) {
             return JourneyPlan.Risk.EXTERNE;
         }
-        return modifies ? JourneyPlan.Risk.REVERSIBLE : JourneyPlan.Risk.LECTURE;
+        if (modifies) {
+            return JourneyPlan.Risk.REVERSIBLE;
+        }
+        return auth ? JourneyPlan.Risk.NOTES : JourneyPlan.Risk.LECTURE;
+    }
+
+    /**
+     * Vrai si un segment de la commande lance un programme que la classification ne connaît pas — la
+     * prudence en a fait une modification (mesure des refus « inconnu », SF-176-07 D4).
+     */
+    public static boolean hasUnknownProgram(String command) {
+        if (command == null || command.isBlank()) {
+            return false;
+        }
+        for (String segment : segments(command)) {
+            String program = program(stripPrefixes(words(segment)));
+            if (program != null && !READ_COMMANDS.contains(program) && !RULED_PROGRAMS.contains(program)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Le nom du programme (sans chemin), ou {@code null}. */
+    private static String program(List<String> w) {
+        if (w.isEmpty()) {
+            return null;
+        }
+        String program = w.get(0);
+        int slash = program.lastIndexOf('/');
+        return slash >= 0 ? program.substring(slash + 1) : program;
     }
 
     /** Un flux redirigé vers un interpréteur : n'importe quoi peut s'exécuter. */
@@ -199,9 +240,10 @@ public final class JourneyRiskClassifier {
         return out;
     }
 
-    private enum Verdict { READ, MODIFY, EXTERNAL }
+    private enum Verdict { READ, MODIFY, EXTERNAL, AUTH }
 
-    private static Verdict segment(List<String> raw) {
+    /** Retire les préfixes neutres : affectations d'environnement, sudo, timeout N, nice, command, exec. */
+    private static List<String> stripPrefixes(List<String> raw) {
         List<String> w = new ArrayList<>(raw);
         // Préfixes neutres : affectations d'environnement, sudo, timeout N, nice, command, exec.
         while (!w.isEmpty()) {
@@ -218,15 +260,44 @@ public final class JourneyRiskClassifier {
                 break;
             }
         }
+        return w;
+    }
+
+    /**
+     * L'authentification du poste (SF-176-07, D3) : se connecter, changer de compte, de projet ou de
+     * contexte — jamais une modification du système ciblé.
+     */
+    static boolean isWorkstationAuth(String program, List<String> args) {
+        List<String> plain = args.stream().filter(a -> !a.startsWith("-")).toList();
+        String a0 = plain.isEmpty() ? "" : plain.get(0);
+        String a1 = plain.size() > 1 ? plain.get(1) : "";
+        String a2 = plain.size() > 2 ? plain.get(2) : "";
+        return switch (program) {
+            case "aws" -> a0.equals("sso") && (a1.equals("login") || a1.equals("logout"))
+                    || a0.equals("configure") && a1.equals("sso");
+            case "az" -> a0.equals("login") || a0.equals("logout") || a0.equals("account") && a1.equals("set");
+            case "gcloud" -> a0.equals("auth") && (a1.equals("login") || a1.equals("revoke")
+                    || a1.equals("application-default") && a2.equals("login"))
+                    || a0.equals("config") && a1.equals("set");
+            case "gh", "glab" -> a0.equals("auth")
+                    && Set.of("login", "logout", "refresh", "switch", "setup-git").contains(a1);
+            case "kubectl", "oc" -> a0.equals("config") && (a1.equals("use-context")
+                    || a1.equals("set-context") && args.contains("--current"))
+                    || program.equals("oc") && (a0.equals("login") || a0.equals("project"));
+            default -> false;
+        };
+    }
+
+    private static Verdict segment(List<String> raw) {
+        List<String> w = stripPrefixes(raw);
         if (w.isEmpty()) {
             return Verdict.READ;
         }
-        String program = w.get(0);
-        int slash = program.lastIndexOf('/');
-        if (slash >= 0) {
-            program = program.substring(slash + 1);
-        }
+        String program = program(w);
         List<String> args = w.subList(1, w.size());
+        if (isWorkstationAuth(program, args)) {
+            return Verdict.AUTH;
+        }
         return switch (program) {
             case "rm", "rmdir", "shred", "dd", "mkfs", "ssh", "scp", "rsync", "sftp", "sendmail", "mail",
                  "mutt", "reboot", "shutdown", "kill", "pkill", "killall" -> Verdict.EXTERNAL;
