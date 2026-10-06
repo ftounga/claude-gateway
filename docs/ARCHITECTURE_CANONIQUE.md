@@ -431,8 +431,19 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     sous `(user_id, workspace_id)` ; les outils de l'agent écrivent sur le terminal **du tour**. Purge :
     cascade au terminal, purge nommée au compte (`purgeUser`).
   - **La porte** (`JourneyGate`, `JourneyRiskClassifier`) n'a pas de table : elle lit le parcours au
-    moment de l'appel d'outil. Lecture et notes du sujet libres ; toute autre modification seulement en
-    Exécution sur la version validée du plan. Mode Libre : aucune porte.
+    moment de l'appel d'outil. Lecture, notes du sujet **et authentification du poste** (`aws sso login`,
+    `az login`…, SF-176-07) libres ; toute autre modification seulement en Exécution sur la version
+    validée du plan. Mode Libre : aucune porte. **Clore ramène en Libre** (migration `146`, SF-176-07).
+  - **Chantiers** (SF-176-11, migration `147`) : `subject_journeys` porte le chantier courant
+    (`chantier_number int NOT NULL défaut 0`, `chantier_title varchar 200`, `chantier_opened_at`) ;
+    passer en Guidé après une clôture ouvre le chantier suivant (plan et diagnostic remis à zéro).
+- **subject_journey_chantiers** — **les chantiers clos d'un sujet** (F-176 / SF-176-11, migration
+  `147`) : `id (uuid)`, `user_id (NOT NULL)`, `workspace_id (FK workspaces ON DELETE CASCADE)`,
+  `number (int)`, `title (varchar 200)`, `opened_at`, `closed_at (NOT NULL)`, `diagnosis`,
+  `diagnosis_confidence`, `plan_json` (plan validé final), `plan_version`. Index
+  `(user_id, workspace_id, number)`. Écrite à la clôture (idempotente par numéro), lue par
+  `GET /workspaces/{id}/journey/chantiers` après `requireOwned`, sous `(user_id, workspace_id)`. Purge :
+  cascade au terminal, purge nommée au compte.
 
 - **session_bilans** — **le bilan d'une session, gardé comme artefact** (F-155 / SF-155-04,
   migration `132`). Un bilan qui n'existe que dans une réponse HTTP est un bilan qu'on ne relit
