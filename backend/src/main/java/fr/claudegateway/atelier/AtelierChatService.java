@@ -892,6 +892,13 @@ public class AtelierChatService implements RelayInterruptTarget {
     static final String OPEN_SUBJECT_TOOL_NAME = "ouvrir_sujet";
     /** Nom de l'outil qui propose une règle, un skill ou un gabarit (F-177 / SF-177-02). */
     static final String GOVERNANCE_PROPOSE_TOOL_NAME = "gouvernance_proposer";
+    /** Nom de l'outil qui charge un skill du client par son nom (F-177 / SF-177-03). */
+    static final String SKILL_TOOL_NAME = "skill";
+    /** Ouverture du skill invoqué par {@code /nom} (F-177 / SF-177-03), joint à la consigne du tour. */
+    static final String INVOKED_SKILL_HEADER = "--- Skill invoqué par l'utilisateur : /";
+    /** Fermeture du skill invoqué. */
+    static final String INVOKED_SKILL_FOOTER = "--- Fin du skill invoqué ---\n"
+            + "Applique ce skill à la demande ci-dessous (le texte après /nom).\n\n";
 
     /**
      * Doctrine de la gouvernance pilotée du terminal (F-177 / SF-177-02, décision D4). Littéral STABLE,
@@ -1669,6 +1676,74 @@ public class AtelierChatService implements RelayInterruptTarget {
     /** Le parcours du sujet (F-176) ; {@code null} pour les formes historiques (= Libre partout). */
     private fr.claudegateway.atelier.journey.SubjectJourneyService journeyService;
 
+    /** Le catalogue de skills du client (F-177 / SF-177-03) ; {@code null} = ni outil ni invocation. */
+    private fr.claudegateway.atelier.skills.SkillCatalogService skillCatalog;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setSkillCatalog(fr.claudegateway.atelier.skills.SkillCatalogService skillCatalog) {
+        this.skillCatalog = skillCatalog;
+    }
+
+    /**
+     * {@code /nom texte} (F-177 / SF-177-03, D5) : si {@code nom} est un skill du sujet ou du poste, son
+     * contenu est joint à la CONSIGNE du tour — de façon déterministe, sans dépendre du modèle. Jamais à
+     * la consigne système (cache F-134). Le message persisté reste la parole de l'utilisateur.
+     * Best-effort : un skill introuvable laisse le message partir tel quel.
+     */
+    String withInvokedSkill(UUID userId, Workspace workspace, String userText, String consigne) {
+        if (skillCatalog == null || workspace.isTeamsTerminal()) {
+            return consigne;
+        }
+        try {
+            java.util.Optional<fr.claudegateway.atelier.skills.SkillCatalogService.Invocation> invocation =
+                    fr.claudegateway.atelier.skills.SkillCatalogService.invocationOf(userText);
+            if (invocation.isEmpty()) {
+                return consigne;
+            }
+            return skillCatalog.load(userId, workspace, invocation.get().name())
+                    .map(loaded -> INVOKED_SKILL_HEADER + loaded.entry().name() + " ("
+                            + loaded.entry().path() + ", " + loaded.entry().origin().toLowerCase(java.util.Locale.ROOT)
+                            + ") ---\n" + loaded.content().strip() + "\n" + INVOKED_SKILL_FOOTER + consigne)
+                    .orElse(consigne);
+        } catch (RuntimeException ex) {
+            log.debug("Skill invoqué ignoré (best-effort) : {}", ex.getClass().getSimpleName());
+            return consigne;
+        }
+    }
+
+    /** L'outil {@code skill(nom)} (F-177 / SF-177-03) : le contenu du skill, ou le catalogue. */
+    private ToolOutcome applySkillTool(UUID userId, Workspace workspace, AgentToolCall call) {
+        if (skillCatalog == null || workspace.isTeamsTerminal()) {
+            return ToolOutcome.error("skill n'est pas ouvert ici.");
+        }
+        String name = arg(call.input(), "nom");
+        if (name != null && !name.isBlank()) {
+            java.util.Optional<fr.claudegateway.atelier.skills.SkillCatalogService.LoadedSkill> loaded =
+                    skillCatalog.load(userId, workspace, name.strip().replaceFirst("^/", ""));
+            if (loaded.isPresent()) {
+                return ToolOutcome.info("Skill /" + loaded.get().entry().name() + " (" + loaded.get().entry().path()
+                        + ", " + loaded.get().entry().origin().toLowerCase(java.util.Locale.ROOT) + ") :\n\n"
+                        + loaded.get().content());
+            }
+        }
+        List<fr.claudegateway.atelier.skills.SkillEntry> catalog = skillCatalog.catalog(userId, workspace);
+        if (catalog.isEmpty()) {
+            return ToolOutcome.info("Aucun skill dans ce sujet ni sur ce poste. Pour en créer un, utilise "
+                    + "gouvernance_proposer (type SKILL).");
+        }
+        StringBuilder list = new StringBuilder(name == null || name.isBlank() ? "Skills disponibles :\n"
+                : "Aucun skill « " + name.strip() + " ». Skills disponibles :\n");
+        for (fr.claudegateway.atelier.skills.SkillEntry entry : catalog) {
+            list.append("- ").append(entry.name()).append(" (").append(entry.origin().toLowerCase(java.util.Locale.ROOT))
+                    .append(")");
+            if (!entry.description().isEmpty()) {
+                list.append(" : ").append(entry.description());
+            }
+            list.append('\n');
+        }
+        return ToolOutcome.info(list.toString());
+    }
+
     /** Les propositions de gouvernance (F-177 / SF-177-02) ; {@code null} = outil non offert. */
     private fr.claudegateway.atelier.proposal.GovernanceProposalService governanceProposals;
 
@@ -2323,6 +2398,9 @@ public class AtelierChatService implements RelayInterruptTarget {
         // changent à chaque tour, et invalideraient le cache du préfixe à chaque demande (F-134).
         // Même patron que F-115 / SF-115-03 : la consigne ENVOYÉE est augmentée, le message
         // PERSISTÉ reste la parole de l'utilisateur. Best-effort : un échec ne casse pas le tour.
+        // F-177 / SF-177-03 — /nom-du-skill : le skill invoqué rejoint la consigne, de façon déterministe.
+        consigne = withInvokedSkill(userId, workspace, userText, consigne);
+
         try {
             String knownFacts = hostKnowledge.factsFor(userId, workspaceId, userText);
             if (knownFacts != null && !knownFacts.isBlank()) {
@@ -3065,6 +3143,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                 } else if (OPEN_SUBJECT_TOOL_NAME.equals(call.name())) {
                     // F-179 / SF-179-01 : la passation vers un sujet, résolue par la gateway (user_id + poste).
                     outcome = applyOpenSubject(userId, workspace, callId, call, listener, handoffsOfTurn);
+                } else if (SKILL_TOOL_NAME.equals(call.name())) {
+                    // F-177 / SF-177-03 : le skill est lu par la gateway (sujet puis poste), jamais deviné.
+                    outcome = applySkillTool(userId, workspace, call);
                 } else if (GOVERNANCE_PROPOSE_TOOL_NAME.equals(call.name())) {
                     // F-177 / SF-177-02 : la proposition est rangée par la gateway ; rien n'est écrit.
                     outcome = applyGovernanceProposal(userId, workspace, callId, call, listener, proposalsOfTurn);
@@ -7343,6 +7424,18 @@ public class AtelierChatService implements RelayInterruptTarget {
                                     "description", "Nom du dossier du sujet, sous la racine du poste "
                                             + "(ex. « data-platform »).")),
                             "required", List.of("name"))));
+        }
+        // Charger un skill du client par son nom (F-177 / SF-177-03) : partout sauf au terminal Teams.
+        if (skillCatalog != null && !workspace.isTeamsTerminal()) {
+            tools.add(new AgentTool(SKILL_TOOL_NAME,
+                    "Charge le mode d'emploi complet d'un skill du client (celui du sujet, sinon celui du "
+                            + "poste) par son nom ; sans nom (ou nom inconnu), rend la liste des skills "
+                            + "disponibles. Utilise-le au moment où un skill sert, plutôt que de deviner son contenu.",
+                    Map.of("type", "object",
+                            "properties", Map.of(
+                                    "nom", Map.of("type", "string",
+                                            "description", "Nom du skill (ex. « ticket-jira »), sans le /.")),
+                            "required", List.of())));
         }
         // Proposer une règle, un skill ou un gabarit (F-177 / SF-177-02) : partout sauf au terminal Teams.
         // Stable pour un workspace donné (la liste des outils fait partie du préfixe de cache).

@@ -151,6 +151,7 @@ import { TerminalAttentesBandComponent } from './terminal-attentes-band.componen
 import { AttenteCardComponent } from './attente-card.component';
 import { HandoffCardComponent, HandoffOriginComponent } from './handoff-card.component';
 import { ProposalCardComponent } from './proposal-card.component';
+import { SkillCatalogService, SkillEntry, skillSuggestions } from '../../core/services/skill-catalog.service';
 import { TerminalJourneyChipComponent } from './terminal-journey-chip.component';
 import { TerminalJourneyChantiersComponent } from './terminal-journey-chantiers.component';
 import { TerminalHandComponent } from './terminal-hand.component';
@@ -200,7 +201,7 @@ export interface SlashMenuEntry {
   readonly name: string;
   readonly title: string;
   readonly description: string;
-  readonly family: 'macro' | 'panel';
+  readonly family: 'macro' | 'panel' | 'skill';
   /** Uniquement pour la famille `panel` : la commande attend-elle un argument ? */
   readonly takesArgument?: boolean;
 }
@@ -326,6 +327,8 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
       this.journey.set(null);
       this.chantiersOpen.set(false);
       this.loadJourney(value);
+      // F-177 / SF-177-03 : les skills du sujet et du poste, pour l'autocomplétion du `/`.
+      this.loadSkills(value);
       // F-175 / SF-175-07 : après la pose des entrées (lecture seule comprise), la reprise de l'existant.
       void Promise.resolve().then(() => this.checkReview(true));
     }
@@ -2074,6 +2077,23 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    * JAMAIS l'historique envoyé au modèle. Purement éphémères (non persistés).
    */
   readonly slashPanels = signal<SlashPanel[]>([]);
+
+  /** F-177 / SF-177-03 : les skills du sujet et du poste, proposés au bout du `/`. */
+  readonly skillCatalog = signal<SkillEntry[]>([]);
+  private readonly skillCatalogService = inject(SkillCatalogService);
+
+  /** Charge le catalogue de skills du terminal ; une panne laisse le menu sans skills (jamais d'erreur). */
+  private loadSkills(workspaceId: string): void {
+    this.skillCatalog.set([]);
+    this.skillCatalogService.list(workspaceId).subscribe({
+      next: (skills) => {
+        if (this.projectId === workspaceId) {
+          this.skillCatalog.set(skills ?? []);
+        }
+      },
+      error: () => undefined,
+    });
+  }
   /** Compteur d'identifiants locaux pour les panneaux (unicité du `track` sans dépendre de l'horloge). */
   private slashPanelSeq = 0;
 
@@ -2099,7 +2119,18 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
       description: command.description,
       family: 'macro',
     }));
-    return [...panels, ...macros];
+    // F-177 / SF-177-03 : les SKILLS du sujet et du poste, après les commandes — un nom déjà pris par une
+    // commande ou une macro reste à la commande (elle est interceptée avant l'envoi).
+    const taken = new Set([...panels, ...macros].map((entry) => entry.name));
+    const skills: SlashMenuEntry[] = skillSuggestions(this.draft, this.skillCatalog())
+      .filter((skill) => !taken.has(skill.name))
+      .map((skill) => ({
+        name: skill.name,
+        title: `/${skill.name}`,
+        description: `${skill.description ? skill.description + ' · ' : ''}skill du ${skill.origin === 'POSTE' ? 'poste' : 'sujet'}`,
+        family: 'skill',
+      }));
+    return [...panels, ...macros, ...skills];
   }
 
   /** Vrai quand le menu de slash-commands est ouvert. */

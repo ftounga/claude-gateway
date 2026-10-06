@@ -142,7 +142,7 @@ public class SkillCatalogService {
     }
 
     /** Le nom d'un skill d'après son chemin, ou {@code null} si ce n'est pas un skill. */
-    static String nameOf(String rawPath) {
+    public static String nameOf(String rawPath) {
         if (rawPath == null) {
             return null;
         }
