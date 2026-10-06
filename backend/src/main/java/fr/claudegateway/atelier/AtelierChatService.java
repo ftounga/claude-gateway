@@ -765,12 +765,18 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "- Le poste ROUTE, il n'EXÉCUTE pas le travail d'un sujet. Dès qu'un sujet <X> vient "
                     + "d'être créé (create_subject) ou retenu à la racine, TERMINE par une PASSATION "
                     + "visible : le NOM du sujet, « rouvre le terminal dans le sujet <X> », et une PHRASE "
-                    + "DE DÉMARRAGE prête à coller qui résume l'intention (« Reprends LDIC-223 : active le "
+                    + "DE DÉMARRAGE autonome qui résume l'intention (« Reprends LDIC-223 : active le "
                     + "Terraform State sur GitLab CAPFM — commence par lire le repo GitOps »).\n"
                     + "- Présente cette passation avec l'outil « demander » quand c'est possible : options "
                     + "« Ouvrir le sujet <X> » (recommended) / « Plus tard », la phrase de démarrage donnée "
                     + "dans le corps. Sans « demander » (personne au clavier), émets la passation EN "
                     + "CLAIR — jamais en silence.\n"
+                    + "- Après le « go » de l'utilisateur (ou le choix « Ouvrir le sujet <X> »), mets à "
+                    + "jour les fichiers du sujet (STATE.md, PLAN-ACTION.md) puis APPELLE ouvrir_sujet "
+                    + "(sujet = l'id rendu par create_subject, ou son nom ; phrase = la phrase de "
+                    + "démarrage) : l'écran ouvre le sujet avec la phrase déposée dans la saisie, non "
+                    + "envoyée — ne demande pas de la copier-coller. Si l'outil échoue, redonne la phrase "
+                    + "EN CLAIR.\n"
                     + "- GARDE-FOU anti-poursuite : si, APRÈS cette création/ce rattachement, on te demande "
                     + "d'AVANCER le travail substantiel de <X> au poste (lire/écrire ses fichiers, lancer "
                     + "son build/déploiement, dérouler son PLAN-ACTION.md), NE L'EXÉCUTE PAS ici : redirige "
@@ -862,6 +868,8 @@ public class AtelierChatService implements RelayInterruptTarget {
                     fr.claudegateway.atelier.journey.JourneyToolCatalog.REOPEN);
     /** Nom de l'outil serveur qui interroge la carte du poste (F-174 / SF-174-05, D8). */
     static final String MAP_SEARCH_TOOL_NAME = "carte_chercher";
+    /** Nom de l'outil de passation vers un sujet (F-179 / SF-179-01), au terminal du poste seulement. */
+    static final String OPEN_SUBJECT_TOOL_NAME = "ouvrir_sujet";
 
     /**
      * L'outil {@code carte_chercher} (F-174 / SF-174-05, D8). Littéral STABLE : rien de volatil n'y
@@ -2397,6 +2405,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         java.util.Map<String, fr.claudegateway.pages.PageBlock> pagesOfTurn = new java.util.HashMap<>();
         // F-175 / SF-175-05 : les cartes d'attente du tour, par appel.
         java.util.Map<String, fr.claudegateway.atelier.actions.AttenteBlock> attentesOfTurn = new java.util.HashMap<>();
+        // F-179 / SF-179-01 : le bloc de passation vers un sujet, par appel ouvrir_sujet.
+        java.util.Map<String, SubjectHandoff> handoffsOfTurn = new java.util.HashMap<>();
         /** Nombre d'images décoratives générées pendant ce tour (F-142 / SF-142-04), pour la borne par tour. */
         int[] imageCountOfTurn = {0};
         // La compaction (F-117 / SF-117-01) est un appel modèle : sa consommation entre dans les
@@ -2997,6 +3007,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                         .isTerminalActionTool(call.name())) {
                     // F-154 / SF-154-02 : l'action à faire est inscrite par la gateway, dans le terminal.
                     outcome = applyRecordBlocker(userId, workspace, callId, call, listener, attentesOfTurn);
+                } else if (OPEN_SUBJECT_TOOL_NAME.equals(call.name())) {
+                    // F-179 / SF-179-01 : la passation vers un sujet, résolue par la gateway (user_id + poste).
+                    outcome = applyOpenSubject(userId, workspace, callId, call, listener, handoffsOfTurn);
                 } else if (fr.claudegateway.atelier.journey.JourneyToolCatalog.isJourneyTool(call.name())) {
                     // F-176 : le parcours du sujet est tenu par la gateway, jamais par la machine.
                     outcome = applyJourneyTool(userId, workspace, call);
@@ -3090,7 +3103,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                         // Le bloc « Page publiée » (F-109 / SF-109-03) : il survit au rechargement, partout.
                         pagesOfTurn.get(callId),
                         // La carte d'une attente (F-175 / SF-175-05) : elle survit au rechargement.
-                        attentesOfTurn.get(callId)));
+                        attentesOfTurn.get(callId),
+                        // Le bloc de passation (F-179 / SF-179-01) : la carte [Ouvrir le sujet] y survit.
+                        handoffsOfTurn.get(callId)));
                 // F-121 / SF-121-11 — LA FILE EST CONSULTÉE ENTRE LES APPELS D'OUTILS, et plus
                 // seulement à la frontière d'itération. Une précision déposée pendant un `bash` de
                 // 90 s ou au milieu d'une rafale de cinq outils était jusqu'ici ni prise ni
@@ -4264,6 +4279,112 @@ public class AtelierChatService implements RelayInterruptTarget {
      * <p>Le projet et le compte écrits sont ceux <b>du tour</b> — {@code workspace} vient de
      * {@code requireOwned}. Aucun identifiant n'est lu dans les paramètres de l'outil.</p>
      */
+    /**
+     * Exécute {@code ouvrir_sujet} (F-179 / SF-179-01) : résout le sujet <b>du poste de ce terminal</b>,
+     * puis pose le bloc de passation (relais {@code onHandoff} + transcription). Rien n'est envoyé au
+     * sujet : l'écran y dépose la phrase, l'utilisateur valide.
+     *
+     * <p><b>Isolation</b> : le poste est celui du terminal déjà possédé ({@code workspace} vient de
+     * {@code requireOwned}). Par id, {@link WorkspaceService#requireOwned} filtre {@code user_id} et l'on
+     * exige le même {@code host_id} ; par nom, {@link WorkspaceService#listByHost} filtre les deux. Un
+     * terminal de poste ou Teams n'est jamais un sujet.</p>
+     */
+    private ToolOutcome applyOpenSubject(UUID userId, Workspace workspace, String callId, AgentToolCall call,
+            AtelierProgressListener listener, java.util.Map<String, SubjectHandoff> handoffsOfTurn) {
+        if (!workspace.isHostTerminal() || workspace.getHostId() == null) {
+            return ToolOutcome.error("ouvrir_sujet n'existe qu'au terminal du poste (la racine). "
+                    + "Donne la phrase de démarrage en clair.");
+        }
+        String target = arg(call.input(), "sujet");
+        String phrase = arg(call.input(), "phrase");
+        if (target == null || target.isBlank() || phrase == null || phrase.isBlank()) {
+            return ToolOutcome.error("Donne le sujet (« sujet » : son id ou son nom) et la phrase de "
+                    + "démarrage (« phrase »), puis reprends.");
+        }
+        phrase = phrase.strip();
+        if (phrase.length() > SubjectHandoff.MAX_PHRASE_CHARS) {
+            return ToolOutcome.error("Phrase de démarrage trop longue (" + SubjectHandoff.MAX_PHRASE_CHARS
+                    + " caractères au plus) : resserre-la, puis reprends.");
+        }
+        UUID hostId = workspace.getHostId();
+        Workspace subject;
+        try {
+            subject = resolveSubjectOfHost(userId, hostId, target.strip());
+        } catch (IllegalArgumentException ex) {
+            return ToolOutcome.error(ex.getMessage());
+        }
+        SubjectHandoff handoff = new SubjectHandoff(subject.getId(), subject.getName(), phrase);
+        handoffsOfTurn.put(callId, handoff);
+        listener.onHandoff(callId, handoff);
+        return ToolOutcome.info("Passation posée vers le sujet « " + subject.getName() + " » : l'écran "
+                + "ouvrira son terminal avec la phrase déposée dans la saisie, sans l'envoyer. Termine ton "
+                + "tour en une ligne, sans répéter la phrase.");
+    }
+
+    /**
+     * Le sujet visé, parmi les projets de CE poste et de CE compte (F-179 / SF-179-01).
+     *
+     * @throws IllegalArgumentException avec le message rendu à l'agent si rien ne correspond, ou plusieurs
+     */
+    private Workspace resolveSubjectOfHost(UUID userId, UUID hostId, String target) {
+        UUID asId = null;
+        try {
+            asId = UUID.fromString(target);
+        } catch (IllegalArgumentException notAnId) {
+            // Pas un id : on cherche par nom.
+        }
+        if (asId != null) {
+            Workspace byId;
+            try {
+                byId = workspaceService.requireOwned(userId, asId);
+            } catch (WorkspaceNotFoundException ex) {
+                throw new IllegalArgumentException("Aucun sujet de ce poste ne porte cet id. Donne son nom, "
+                        + "ou réponds avec la phrase en clair.");
+            }
+            if (!hostId.equals(byId.getHostId()) || byId.isHostTerminal() || byId.isTeamsTerminal()) {
+                throw new IllegalArgumentException("Ce n'est pas un sujet de ce poste : on ne passe la main "
+                        + "qu'à un sujet du poste de ce terminal.");
+            }
+            return byId;
+        }
+        String wanted = subjectKey(target);
+        List<Workspace> subjects = workspaceService.listByHost(userId, hostId);
+        List<Workspace> matches = subjects.stream()
+                .filter(w -> wanted.equals(subjectKey(w.getName()))
+                        || wanted.equals(subjectKey(w.getProjectPath())))
+                .toList();
+        if (matches.size() == 1) {
+            return matches.get(0);
+        }
+        if (matches.size() > 1) {
+            throw new IllegalArgumentException("Plusieurs sujets s'appellent « " + target + " » : donne l'id "
+                    + "du sujet, puis reprends.");
+        }
+        String known = subjects.stream().map(Workspace::getName).filter(java.util.Objects::nonNull)
+                .limit(12).collect(java.util.stream.Collectors.joining(", "));
+        throw new IllegalArgumentException("Aucun sujet « " + target + " » sur ce poste"
+                + (known.isEmpty() ? "." : " (sujets connus : " + known + ").")
+                + " Crée-le avec create_subject, ou donne le bon nom.");
+    }
+
+    /** Clé de comparaison d'un nom ou d'un chemin de sujet : casse ignorée, « / » de bord retirés. */
+    private static String subjectKey(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String key = raw.strip().replace('\\', '/');
+        while (key.startsWith("./")) {
+            key = key.substring(2);
+        }
+        while (key.endsWith("/")) {
+            key = key.substring(0, key.length() - 1);
+        }
+        while (key.startsWith("/")) {
+            key = key.substring(1);
+        }
+        return key.toLowerCase(java.util.Locale.ROOT);
+    }
+
     private ToolOutcome applyRecordBlocker(UUID userId, Workspace workspace, String callId, AgentToolCall call,
             AtelierProgressListener listener,
             java.util.Map<String, fr.claudegateway.atelier.actions.AttenteBlock> attentesOfTurn) {
@@ -5304,7 +5425,7 @@ public class AtelierChatService implements RelayInterruptTarget {
             // Le dépôt de gouvernance est un effet de bord silencieux du chemin de création (F-75) :
             // il s'est déclenché sur la validation de la transaction, sans rien à narrer ici.
             return ToolOutcome.info("Sujet « " + created.getName() + " » créé sous la racine du poste ("
-                    + path + "), avec sa gouvernance héritée (STATE.md, PLAN-ACTION.md, skills) si le "
+                    + path + ", id : " + created.getId() + "), avec sa gouvernance héritée (STATE.md, PLAN-ACTION.md, skills) si le "
                     + "poste est gouverné. Dépose maintenant l'information dans « " + path
                     + " » avec write_file.");
         } catch (fr.claudegateway.runner.host.HostProjectExistsException ex) {
@@ -5520,6 +5641,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         // routage par cible, comme set_plan et les blocs de présentation.
         if ("create_subject".equals(call.name())) {
             return executeCreateSubject(userId, workspace, call);
+        }
+        // La passation (F-179 / SF-179-01) est traitée par la boucle, jamais ici : ce chemin ne porte
+        // pas le bloc du tour.
+        if (OPEN_SUBJECT_TOOL_NAME.equals(call.name())) {
+            return ToolOutcome.error("ouvrir_sujet n'est pas ouvert ici. Donne la phrase de démarrage en clair.");
         }
         // Reclasser un fait (F-141 / SF-141-04) : écriture des cartes du poste par la gateway, jamais
         // par le runner « brut ». Traité ici, avant le routage par cible.
@@ -7107,6 +7233,26 @@ public class AtelierChatService implements RelayInterruptTarget {
                                     "description", "Nom du dossier du sujet, sous la racine du poste "
                                             + "(ex. « data-platform »).")),
                             "required", List.of("name"))));
+        }
+        // Ouvrir le sujet d'un « go » (F-179 / SF-179-01) : UNIQUEMENT au terminal du poste, là où l'on
+        // aiguille. Pose le bloc de passation ; l'écran ouvre le sujet avec la phrase déposée, non envoyée.
+        if (workspace.isHostTerminal()) {
+            tools.add(new AgentTool(OPEN_SUBJECT_TOOL_NAME,
+                    "Passe la main à un sujet du poste APRÈS le « go » de l'utilisateur : l'écran ouvrira "
+                            + "le terminal de ce sujet avec ta phrase de démarrage DÉPOSÉE dans la saisie "
+                            + "(jamais envoyée — l'utilisateur valide). Mets d'abord à jour les fichiers du "
+                            + "sujet (STATE.md, PLAN-ACTION.md). `sujet` : l'id rendu par create_subject, ou "
+                            + "le nom du dossier du sujet. `phrase` : la phrase de démarrage, courte et "
+                            + "autonome (le sujet ne voit pas cette conversation).",
+                    Map.of("type", "object",
+                            "properties", Map.of(
+                                    "sujet", Map.of("type", "string",
+                                            "description", "Id du sujet (rendu par create_subject) ou nom "
+                                                    + "de son dossier sous la racine du poste."),
+                                    "phrase", Map.of("type", "string",
+                                            "description", "Phrase de démarrage déposée dans la saisie "
+                                                    + "du sujet.")),
+                            "required", List.of("sujet", "phrase"))));
         }
         // Reclasser un fait mal rangé (F-141 / SF-141-04) : au terminal du poste, déplacer une entrée
         // durable d'un sujet vers un autre (ou racine↔projet) en UN geste, avec trace. Réutilise
