@@ -291,6 +291,26 @@ public class AtelierChatService implements RelayInterruptTarget {
      * lisible, la section n'existe pas du tout.</p>
      */
     static final String PROJECT_CONVENTIONS_HEADER = "--- Conventions du projet (CLAUDE.md) ---\n";
+    /**
+     * Ouverture des <b>règles du client portées par le poste</b> — le {@code GOUVERNANCE.md} de la
+     * racine du poste (F-177 / SF-177-01, décision D1). Au même rang que {@code CLAUDE.md} : injecté à
+     * chaque tour, dans tout le poste. Encadré comme lui (deux bornes ou aucune).
+     */
+    static final String HOST_GOVERNANCE_HEADER =
+            "--- Règles du client — poste (GOUVERNANCE.md à la racine du poste) : elles valent à chaque "
+                    + "tour, dans tout le poste ---\n";
+    /** Borne de fin des règles du poste — voir {@link #HOST_GOVERNANCE_HEADER}. */
+    static final String HOST_GOVERNANCE_FOOTER = "--- Fin des règles du poste (GOUVERNANCE.md) ---\n\n";
+    /** Ouverture des règles du client propres au <b>sujet</b> — son {@code GOUVERNANCE.md} (F-177 / SF-177-01). */
+    static final String SUBJECT_GOVERNANCE_HEADER =
+            "--- Règles du client — sujet (GOUVERNANCE.md du sujet) : elles complètent celles du poste ---\n";
+    /** Borne de fin des règles du sujet — voir {@link #SUBJECT_GOVERNANCE_HEADER}. */
+    static final String SUBJECT_GOVERNANCE_FOOTER = "--- Fin des règles du sujet (GOUVERNANCE.md) ---\n\n";
+    /** Borne par fichier {@code GOUVERNANCE.md} injecté (F-177 / SF-177-01) : au-delà, la coupe se dit. */
+    static final int GOVERNANCE_FILE_MAX_CHARS = 8_000;
+    /** Ce qui remplace la fin coupée d'un {@code GOUVERNANCE.md} trop long. */
+    static final String GOVERNANCE_FILE_TRUNCATION =
+            "\n… (règles tronquées : ouvre GOUVERNANCE.md pour la suite)\n";
     /** Borne de fin des conventions du projet — voir {@link #PROJECT_CONVENTIONS_HEADER}. */
     static final String PROJECT_CONVENTIONS_FOOTER =
             "--- Fin des conventions du projet (CLAUDE.md) ---\n\n";
@@ -3244,6 +3264,9 @@ public class AtelierChatService implements RelayInterruptTarget {
         // CLAUDE.md + STATE/PLAN (mêmes chemins que ci-dessus), skills bornés au catalogue annoncé.
         java.util.List<String> promptCoreFiles = new ArrayList<>();
         promptCoreFiles.add("CLAUDE.md");
+        // F-177 / SF-177-01 : le GOUVERNANCE.md du projet (celui du poste au terminal du poste) est une
+        // source de la consigne au même titre que CLAUDE.md.
+        promptCoreFiles.add(fr.claudegateway.atelier.promptsource.PromptSourceStore.GOVERNANCE_FILE);
         promptCoreFiles.addAll(SUBJECT_STATE_FILES);
         promptSource.refreshAfterTurn(userId, workspace, promptCoreFiles,
                 AtelierChatService::isSkillPath, MAX_SKILLS_ANNOUNCED);
@@ -7729,6 +7752,28 @@ public class AtelierChatService implements RelayInterruptTarget {
                     .append(PROJECT_CONVENTIONS_FOOTER);
         }
 
+        // F-177 / SF-177-01 (D1) — LES RÈGLES DU CLIENT : le GOUVERNANCE.md du POSTE (racine), puis celui
+        // du SUJET, au même rang que CLAUDE.md (hiérarchie poste → sujet, comme Claude Code). Bornés,
+        // encadrés, relus comme les autres sources (cache prompt_source_files sur cible RUNNER). Le
+        // contenu ne change qu'à une modification du fichier : préfixe stable, cache F-134 préservé.
+        java.util.Optional<String> hostRules = hostGovernanceFile(userId, workspace, usePromptCache);
+        if (hostRules.isPresent() && !hostRules.get().isBlank()) {
+            reads++;
+            chars += hostRules.get().length();
+            system.append(HOST_GOVERNANCE_HEADER).append(boundGovernance(hostRules.get())).append("\n\n")
+                    .append(HOST_GOVERNANCE_FOOTER);
+        }
+        if (!workspace.isHostTerminal()) {
+            java.util.Optional<String> subjectRules = promptFile(userId, workspace,
+                    fr.claudegateway.atelier.promptsource.PromptSourceStore.GOVERNANCE_FILE, usePromptCache);
+            if (subjectRules.isPresent() && !subjectRules.get().isBlank()) {
+                reads++;
+                chars += subjectRules.get().length();
+                system.append(SUBJECT_GOVERNANCE_HEADER).append(boundGovernance(subjectRules.get()))
+                        .append("\n\n").append(SUBJECT_GOVERNANCE_FOOTER);
+            }
+        }
+
         // Les règles de gouvernance viennent APRÈS les conventions du projet et AVANT les skills
         // (arbitrage C1) : ce que l'utilisateur a écrit pour ce projet précis reste ce qu'on lit en
         // premier ; un paquet le complète, il ne le remplace pas.
@@ -7932,6 +7977,47 @@ public class AtelierChatService implements RelayInterruptTarget {
             log.warn("Sommaire de carte ignoré pour ce tour ({})", ex.getClass().getSimpleName());
             return null;
         }
+    }
+
+    /**
+     * Le {@code GOUVERNANCE.md} de la <b>racine du poste</b> de ce projet (F-177 / SF-177-01), ou vide.
+     *
+     * <p>Au terminal du poste, c'est son propre fichier. Dans un sujet d'un poste, il est lu à la racine
+     * (cible sans chemin de projet), ou servi depuis le cache sous un chemin réservé. Ailleurs (projet
+     * hébergé), il n'y a pas de poste : vide. <b>Repli passant</b> : jamais d'exception.</p>
+     */
+    private java.util.Optional<String> hostGovernanceFile(UUID userId, Workspace workspace,
+            boolean usePromptCache) {
+        if (workspace.isHostTerminal()) {
+            return promptFile(userId, workspace,
+                    fr.claudegateway.atelier.promptsource.PromptSourceStore.GOVERNANCE_FILE, usePromptCache);
+        }
+        if (!workspace.isRunnerTarget()
+                || !fr.claudegateway.atelier.promptsource.PromptSourceStore.isSubjectOfHost(workspace)) {
+            return java.util.Optional.empty();
+        }
+        if (usePromptCache) {
+            return promptSource.read(userId, workspace,
+                    fr.claudegateway.atelier.promptsource.PromptSourceStore.HOST_GOVERNANCE_PATH);
+        }
+        try {
+            RunnerCallResult result = runnerToolGateway.readFile(
+                    new fr.claudegateway.runner.channel.RunnerTarget(workspace.getHostId(), workspace.getId(), ""),
+                    UUID.randomUUID().toString(),
+                    fr.claudegateway.atelier.promptsource.PromptSourceStore.GOVERNANCE_FILE);
+            return result != null && result.ok() ? java.util.Optional.ofNullable(result.content())
+                    : java.util.Optional.empty();
+        } catch (RuntimeException ex) {
+            return java.util.Optional.empty();
+        }
+    }
+
+    /** Borne un {@code GOUVERNANCE.md} injecté, en disant la coupe (F-177 / SF-177-01). */
+    static String boundGovernance(String content) {
+        String body = content.strip();
+        return body.length() > GOVERNANCE_FILE_MAX_CHARS
+                ? body.substring(0, GOVERNANCE_FILE_MAX_CHARS) + GOVERNANCE_FILE_TRUNCATION
+                : body;
     }
 
     private String governanceRules(UUID userId, UUID workspaceId) {
