@@ -36,6 +36,29 @@ export interface SubjectJourney {
   gateClosed?: boolean;
   /** Le message exact du refus, ou `null` si la porte est ouverte (SF-176-07). */
   gateMessage?: string | null;
+  /** Le chantier courant (SF-176-11), `null` si le sujet n'a jamais été guidé. */
+  chantier?: JourneyChantier | null;
+  /** Combien de chantiers clos ce sujet porte (SF-176-11). */
+  closedChantiers?: number;
+}
+
+/** Le chantier courant d'un sujet (SF-176-11). */
+export interface JourneyChantier {
+  number: number;
+  title: string | null;
+  openedAt: string | null;
+}
+
+/** Un chantier clos, consultable depuis l'en-tête (SF-176-11). */
+export interface ClosedChantier {
+  number: number;
+  title: string | null;
+  openedAt: string | null;
+  closedAt: string;
+  diagnosis: string | null;
+  diagnosisConfidence: string | null;
+  planVersion: number | null;
+  plan: JourneyPlanStep[];
 }
 
 /** Le diagnostic (SF-176-05). */

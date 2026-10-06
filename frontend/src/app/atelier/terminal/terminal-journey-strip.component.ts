@@ -26,7 +26,7 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
       <section class="journey-card" role="region" aria-label="Proposition de passer en mode guidé">
         <mat-icon class="journey-card__icon" aria-hidden="true">route</mat-icon>
         <div class="journey-card__body">
-          <strong>Ce sujet ressemble à un chantier.</strong>
+          <strong>{{ (journey()?.closedChantiers ?? 0) > 0 ? 'Cette demande ouvre un nouveau chantier.' : 'Ce sujet ressemble à un chantier.' }}</strong>
           @if (p.reason) {
             <span class="journey-card__reason">{{ p.reason }}</span>
           }

@@ -31,6 +31,15 @@ import { JourneyMode, SubjectJourney, journeyLabel } from '../../core/models/jou
       {{ label() }}
     </button>
     <mat-menu #journeyMenu="matMenu" class="journey-menu">
+      @if (chantier(); as c) {
+        <div class="journey-menu__chantier" mat-menu-item disabled>
+          <mat-icon>flag</mat-icon>
+          <span class="journey-menu__text">
+            <strong>Chantier {{ c.number }}{{ c.title ? ' — ' + c.title : '' }}</strong>
+            <small>{{ guided() ? 'en cours' : 'clos — passer en Guidé ouvre un nouveau chantier' }}</small>
+          </span>
+        </div>
+      }
       <button mat-menu-item type="button" class="journey-menu__libre" (click)="choose('LIBRE')">
         <mat-icon>{{ guided() ? 'radio_button_unchecked' : 'radio_button_checked' }}</mat-icon>
         <span class="journey-menu__text">
@@ -42,9 +51,15 @@ import { JourneyMode, SubjectJourney, journeyLabel } from '../../core/models/jou
         <mat-icon>{{ guided() ? 'radio_button_checked' : 'radio_button_unchecked' }}</mat-icon>
         <span class="journey-menu__text">
           <strong>Guidé</strong>
-          <small>Chantier, incident, changement d'infra : on comprend, on planifie, puis on agit.</small>
+          <small>{{ closedCount() > 0 && !guided() ? 'Ouvre un nouveau chantier : on comprend, on planifie, puis on agit.' : 'Chantier, incident, changement d\'infra : on comprend, on planifie, puis on agit.' }}</small>
         </span>
       </button>
+      @if (closedCount() > 0) {
+        <button mat-menu-item type="button" class="journey-menu__chantiers" (click)="showChantiers.emit()">
+          <mat-icon>inventory_2</mat-icon>
+          <span>Chantiers clos : {{ closedCount() }} — voir</span>
+        </button>
+      }
     </mat-menu>
   `,
   styles: `
@@ -84,6 +99,12 @@ export class TerminalJourneyChipComponent {
 
   /** Le mode choisi dans le menu (rien n'est émis si c'est déjà le mode courant). */
   readonly modeChange = output<JourneyMode>();
+
+  /** « Chantiers clos : N — voir » (SF-176-11). */
+  readonly showChantiers = output<void>();
+
+  readonly chantier = computed(() => this.journey()?.chantier ?? null);
+  readonly closedCount = computed(() => this.journey()?.closedChantiers ?? 0);
 
   readonly guided = computed(() => this.journey()?.mode === 'GUIDE');
   readonly label = computed(() => journeyLabel(this.journey()));

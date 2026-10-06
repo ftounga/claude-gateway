@@ -99,6 +99,19 @@ public class SubjectJourney {
     @Column(name = "close_proposed_at")
     private OffsetDateTime closeProposedAt;
 
+    /**
+     * Le numéro du chantier courant (SF-176-11) : 0 tant que le sujet n'a jamais été guidé, puis 1, 2…
+     * — un nouveau chantier s'ouvre à chaque passage en Guidé après une clôture.
+     */
+    @Column(name = "chantier_number", nullable = false)
+    private int chantierNumber;
+
+    @Column(name = "chantier_title", length = 200)
+    private String chantierTitle;
+
+    @Column(name = "chantier_opened_at")
+    private OffsetDateTime chantierOpenedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 

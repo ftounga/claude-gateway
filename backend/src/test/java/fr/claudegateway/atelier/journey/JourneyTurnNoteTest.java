@@ -23,6 +23,16 @@ class JourneyTurnNoteTest {
     }
 
     @Test
+    @DisplayName("SF-176-11 : en Libre après un chantier clos, une ligne invite à proposer un NOUVEAU chantier")
+    void closedChantierInvitesNext() {
+        SubjectJourney closed = journey(JourneyMode.LIBRE, JourneyPhase.CLOS);
+        closed.setChantierNumber(2);
+        assertThat(JourneyTurnNote.render(closed)).contains("chantier 2 clos").contains("propose_guided_mode");
+        closed.setGuidedDeclinedAt(java.time.OffsetDateTime.now());
+        assertThat(JourneyTurnNote.render(closed)).isEmpty();
+    }
+
+    @Test
     @DisplayName("Guidé : le mode et la phase, dans un bloc daté de rien (pas de volatil inutile)")
     void guidedSaysPhase() {
         String note = JourneyTurnNote.render(journey(JourneyMode.GUIDE, JourneyPhase.INVESTIGATION));

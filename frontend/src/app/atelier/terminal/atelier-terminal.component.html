@@ -49,7 +49,7 @@
            plafond. Rien ne s'affiche sans budget applicable, ni hors administration. -->
       <!-- F-176 / SF-176-01 — LE PARCOURS DU SUJET : « Libre » ou « Guidé · <phase> », et le menu
            pour changer de mode à tout moment. Toujours visible (mobile compris) : c'est un état. -->
-      <app-terminal-journey-chip [journey]="journey()" [busy]="journeyBusy()" (modeChange)="onJourneyMode($event)"></app-terminal-journey-chip>
+      <app-terminal-journey-chip [journey]="journey()" [busy]="journeyBusy()" (modeChange)="onJourneyMode($event)" (showChantiers)="onShowChantiers()"></app-terminal-journey-chip>
       <app-weekly-budget [hostId]="hostId" [compact]="true"></app-weekly-budget>
       <!-- F-143 / SF-143-01 — et ce que CE PROJET a coûté : la semaine, puis le total. -->
       <app-project-cost [projectId]="projectId" [compact]="true"></app-project-cost>
@@ -1437,6 +1437,9 @@
          poste. Relue à chaque fin de tour ; un clic ouvre le panneau. On ne peut plus la louper. -->
     <!-- F-176 — LE PARCOURS DU SUJET : en Guidé, les phases ; en Libre, rien, sauf la carte
          [Passer en guidé] [Rester libre] quand l'agent a qualifié la demande de chantier (SF-176-02). -->
+    @if (chantiersOpen()) {
+      <app-terminal-journey-chantiers [chantiers]="chantiersList()" [loading]="chantiersLoading()" (closed)="chantiersOpen.set(false)"></app-terminal-journey-chantiers>
+    }
     <app-terminal-journey-strip [journey]="journey()" [busy]="journeyBusy() || submitting" (gesture)="onJourneyGesture($event)"></app-terminal-journey-strip>
     <app-terminal-attentes-band [board]="attentesBoard()" [toReview]="reviewPending()" (open)="openActions()"></app-terminal-attentes-band>
     <!-- F-121 / SF-121-23 — MENU DE SLASH-COMMANDS. Taper « / » ouvre la liste ; une entrée

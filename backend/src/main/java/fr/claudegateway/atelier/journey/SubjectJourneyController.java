@@ -42,8 +42,17 @@ public class SubjectJourneyController {
     @PutMapping("/mode")
     public SubjectJourneyResponse setMode(@PathVariable UUID workspaceId, @RequestBody ModeRequest request) {
         UUID userId = currentUser.requireId();
-        return respond(userId, workspaceId,
-                service.setMode(userId, workspaceId, request == null ? null : request.mode()));
+        return respond(userId, workspaceId, service.setMode(userId, workspaceId,
+                request == null ? null : request.mode(), request == null ? null : request.title()));
+    }
+
+    /** Les chantiers clos du sujet, le plus récent d'abord (SF-176-11). */
+    @GetMapping("/chantiers")
+    public java.util.List<SubjectJourneyResponse.ClosedChantier> chantiers(@PathVariable UUID workspaceId) {
+        UUID userId = currentUser.requireId();
+        return service.closedChantiers(userId, workspaceId).stream()
+                .map(SubjectJourneyResponse.ClosedChantier::from)
+                .toList();
     }
 
     /** [Passer en guidé] — la proposition de l'agent est acceptée (SF-176-02). */
@@ -98,11 +107,15 @@ public class SubjectJourneyController {
     }
 
     private SubjectJourneyResponse respond(UUID userId, UUID workspaceId, SubjectJourney journey) {
-        return SubjectJourneyResponse.from(journey, service.waitsOn(userId, workspaceId, journey));
+        return SubjectJourneyResponse.from(journey, service.waitsOn(userId, workspaceId, journey),
+                service.closedChantierCount(userId, workspaceId));
     }
 
-    /** Le mode voulu : {@code LIBRE} ou {@code GUIDE}. */
-    public record ModeRequest(String mode) {
+    /**
+     * Le mode voulu : {@code LIBRE} ou {@code GUIDE} ; {@code title} titre le chantier qui s'ouvre
+     * (facultatif, SF-176-11).
+     */
+    public record ModeRequest(String mode, String title) {
     }
 
     /** La version du plan que l'utilisateur a sous les yeux ; {@code null} = la courante. */

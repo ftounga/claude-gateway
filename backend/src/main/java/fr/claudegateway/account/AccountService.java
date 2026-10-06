@@ -92,6 +92,14 @@ public class AccountService {
 
     private fr.claudegateway.atelier.journey.SubjectJourneyRepository journeyRepository;
     private fr.claudegateway.atelier.journey.SubjectJourneyEventRepository journeyEventRepository;
+    private fr.claudegateway.atelier.journey.SubjectJourneyChantierRepository journeyChantierRepository;
+
+    /** Branche la purge des chantiers clos à la suppression du compte (F-176 / SF-176-11). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setJourneyChantierRepository(
+            fr.claudegateway.atelier.journey.SubjectJourneyChantierRepository chantiers) {
+        this.journeyChantierRepository = chantiers;
+    }
 
     /** Branche la purge du parcours des sujets à la suppression du compte (F-176). */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -354,6 +362,9 @@ public class AccountService {
         // terminal (cascade) ; la purge nommée couvre le compte.
         if (journeyEventRepository != null) {
             journeyEventRepository.purgeUser(userId);
+        }
+        if (journeyChantierRepository != null) {
+            journeyChantierRepository.purgeUser(userId);
         }
         if (journeyRepository != null) {
             journeyRepository.purgeUser(userId);

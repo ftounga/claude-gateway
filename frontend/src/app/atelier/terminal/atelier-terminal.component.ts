@@ -149,9 +149,10 @@ import { TerminalActionsPanelComponent } from './terminal-actions-panel.componen
 import { TerminalAttentesBandComponent } from './terminal-attentes-band.component';
 import { AttenteCardComponent } from './attente-card.component';
 import { TerminalJourneyChipComponent } from './terminal-journey-chip.component';
+import { TerminalJourneyChantiersComponent } from './terminal-journey-chantiers.component';
 import { JourneyGesture, TerminalJourneyStripComponent } from './terminal-journey-strip.component';
 import { JourneyService } from '../../core/services/journey.service';
-import { JourneyMode, SubjectJourney, journeyResumeMessage } from '../../core/models/journey.models';
+import { ClosedChantier, JourneyMode, SubjectJourney, journeyResumeMessage } from '../../core/models/journey.models';
 import { TerminalAction, TerminalActionBoard } from '../../core/models/terminal-actions.models';
 import { AtelierTerminalDemandeComponent } from './atelier-terminal-demande.component';
 import { TerminalActionsService } from '../../core/services/terminal-actions.service';
@@ -216,7 +217,7 @@ export interface SlashMenuEntry {
     FormsModule, ForgeBreadcrumbComponent, LiveBadgeComponent, MarkdownPipe, MatButtonModule,
     TeamsLinkBadgeComponent, NgTemplateOutlet, TerminalEmailComponent, PageBlockComponent, PagePanelComponent,
     TerminalActionsPanelComponent, TerminalAttentesBandComponent, AttenteCardComponent,
-    TerminalJourneyChipComponent, TerminalJourneyStripComponent,
+    TerminalJourneyChipComponent, TerminalJourneyStripComponent, TerminalJourneyChantiersComponent,
     AtelierTerminalDemandeComponent,
     AtelierSlashPanelComponent, AtelierSlashHelpComponent, AtelierSlashCostComponent,
     AtelierSlashContexteComponent, AtelierSlashQuotaComponent, AtelierSlashBudgetComponent,
@@ -316,6 +317,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
       this.loadActionCount(value);
       // F-176 : le parcours du sujet (mode, phase) suit le terminal ouvert.
       this.journey.set(null);
+      this.chantiersOpen.set(false);
       this.loadJourney(value);
       // F-175 / SF-175-07 : après la pose des entrées (lecture seule comprise), la reprise de l'existant.
       void Promise.resolve().then(() => this.checkReview(true));
@@ -790,6 +792,34 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     const draft = (this.draft ?? '').trim();
     this.draftChange.emit(draft.length > 0 ? `${message}\n\n${draft}` : message);
     this.send.emit();
+  }
+
+  /** La liste des chantiers clos est ouverte (F-176 / SF-176-11). */
+  readonly chantiersOpen = signal(false);
+  readonly chantiersList = signal<ClosedChantier[]>([]);
+  readonly chantiersLoading = signal(false);
+
+  /** « Chantiers clos : N — voir » (F-176 / SF-176-11) : la liste se lit à la demande. */
+  onShowChantiers(): void {
+    const workspaceId = this.projectId;
+    if (!workspaceId) {
+      return;
+    }
+    this.chantiersOpen.set(true);
+    this.chantiersLoading.set(true);
+    this.journeys.chantiers(workspaceId).subscribe({
+      next: list => {
+        if (this.projectId === workspaceId) {
+          this.chantiersList.set(list);
+        }
+        this.chantiersLoading.set(false);
+      },
+      error: () => {
+        this.chantiersLoading.set(false);
+        this.chantiersOpen.set(false);
+        this.snackBar.open('Les chantiers clos n\'ont pas pu être lus.', 'OK', { duration: 4000 });
+      },
+    });
   }
 
   /** Relit le parcours ; un échec laisse l'affichage tel quel (jamais un faux « Guidé »). */
