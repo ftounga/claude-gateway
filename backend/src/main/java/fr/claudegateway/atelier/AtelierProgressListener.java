@@ -107,9 +107,16 @@ public interface AtelierProgressListener {
      * Résolution d'une question (F-164 / SF-164-01).
      *
      * @param callId identifiant de la question tranchée
-     * @param status {@code answered}, {@code timeout}, {@code interrupted} ou {@code failed}
+     * @param status   {@code answered}, {@code timeout}, {@code interrupted} ou {@code failed}
+     * @param defaults au {@code timeout} seulement (F-164 / SF-164-06) : les décisions prises par
+     *                 défaut, en lignes lisibles (« intitulé : option » / « intitulé : sans réponse ») ;
+     *                 vide sinon, jamais {@code null}
      */
-    record AtelierQuestionResolved(String callId, String status) {
+    record AtelierQuestionResolved(String callId, String status, java.util.List<String> defaults) {
+
+        public AtelierQuestionResolved {
+            defaults = defaults == null ? java.util.List.of() : java.util.List.copyOf(defaults);
+        }
     }
 
     /**

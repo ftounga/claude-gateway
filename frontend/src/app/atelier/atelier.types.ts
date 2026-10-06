@@ -178,6 +178,11 @@ export interface AtelierPendingQuestion {
   deadline: number | null;
   /** Durée totale annoncée, en millisecondes ; `null` quand elle n'est pas connue. */
   timeoutMs: number | null;
+  /**
+   * Choix retenus par défaut quand la question a expiré (F-164 / SF-164-06) : lignes lisibles
+   * relayées par `question_resolved`. Absent hors expiration ou d'un backend antérieur.
+   */
+  defaults?: string[];
 }
 
 /**

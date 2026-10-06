@@ -556,6 +556,8 @@ export class AtelierService {
       questions?: AtelierQuestion[];
       /** Statut de résolution d'une question (F-164 / SF-164-02) : `answered`, `timeout`, … */
       status?: string;
+      /** Choix retenus par défaut au timeout d'une question (F-164 / SF-164-06), additif. */
+      defaults?: unknown;
       tokens?: number;
       inputTokens?: number;
       outputTokens?: number;
@@ -684,9 +686,14 @@ export class AtelierService {
         });
       }
     } else if (event === 'question_resolved') {
+      // F-164 / SF-164-06 : `defaults` (additif) n'est retenu que s'il est une liste de chaînes non vide.
+      const defaults = Array.isArray(payload.defaults)
+        ? payload.defaults.filter((line): line is string => typeof line === 'string' && line.trim() !== '')
+        : [];
       handlers.onQuestionResolved?.({
         callId: payload.callId ?? '',
         status: typeof payload.status === 'string' ? payload.status : 'answered',
+        ...(defaults.length > 0 ? { defaults } : {}),
       });
     } else if (event === 'progress') {
       // Consommation cumulée du tour (F-39 / SF-39-15). Additif : un backend antérieur ne l'émet

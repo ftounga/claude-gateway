@@ -54,6 +54,35 @@ public record AtelierQuestionForm(List<Question> questions) {
     }
 
     /**
+     * Ce que l'on retient pour une question restée sans réponse (F-164 / SF-164-06).
+     *
+     * @param header intitulé court de la question
+     * @param label  libellé de l'option recommandée, ou {@code null} si la question n'en porte aucune
+     */
+    public record DefaultDecision(String header, String label) {
+
+        /** Ligne lisible « intitulé : option » ou « intitulé : sans réponse ». */
+        public String line() {
+            return header + " : " + (label == null ? "sans réponse" : label);
+        }
+    }
+
+    /**
+     * Décisions par défaut du lot quand l'utilisateur n'a pas répondu (F-164 / SF-164-06) : pour chaque
+     * question, son option {@code recommended} si elle en porte une, sinon rien — on n'invente jamais
+     * une option.
+     */
+    public List<DefaultDecision> defaultDecisions() {
+        return questions.stream()
+                .map(q -> new DefaultDecision(q.header(), q.options().stream()
+                        .filter(Option::recommended)
+                        .map(Option::label)
+                        .findFirst()
+                        .orElse(null)))
+                .toList();
+    }
+
+    /**
      * Valide l'input de l'outil {@code demander} et en construit le lot.
      *
      * @throws AtelierQuestionRejectedException si le lot est absent, vide, trop grand, ou mal formé

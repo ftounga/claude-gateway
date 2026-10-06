@@ -211,6 +211,21 @@
   white-space: pre-wrap;
 }
 
+/* F-164 / SF-164-06 : choix retenus par défaut au timeout (mêmes jetons que le récapitulatif). */
+.terminal-demande-defaults {
+  white-space: normal;
+}
+
+.terminal-demande-defaults-title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.terminal-demande-defaults-list {
+  margin: var(--cg-space-1) 0 0;
+  padding-left: var(--cg-space-4);
+}
+
 .terminal-demande-ro-question {
   margin: var(--cg-space-2) 0 0;
   font-size: 13px;

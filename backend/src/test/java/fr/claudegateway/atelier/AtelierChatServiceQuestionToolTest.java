@@ -59,6 +59,7 @@ class AtelierChatServiceQuestionToolTest {
     private StubAiAgentProvider agentProvider;
     private AtelierChatService service;
     private Listener listener;
+    private RunnerConfirmationGate gate;
     private final UUID userId = UUID.randomUUID();
     private final UUID workspaceId = UUID.randomUUID();
     private final UUID hostId = UUID.randomUUID();
@@ -67,11 +68,12 @@ class AtelierChatServiceQuestionToolTest {
     void setUp() {
         agentProvider = new StubAiAgentProvider();
         listener = new Listener();
+        gate = new RunnerConfirmationGate(300L);
         service = new AtelierChatService(workspaceService, messageRepository, (AiAgentProvider) agentProvider,
                 byokKeyService, quotaService,
                 new fr.claudegateway.atelier.git.GitWorkspaceService(workspaceService, gitTokenService,
                         gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
-                runnerToolGateway, runnerCallDispatcher, new RunnerConfirmationGate(500L), runnerAuditService,
+                runnerToolGateway, runnerCallDispatcher, gate, runnerAuditService,
                 fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(), runnerHostService,
                 new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null, null, true),
                 AtelierCheckpointRunner.none(), ProjectRulesSource.NONE, TeamsToolCatalog.none(), null,
@@ -256,10 +258,94 @@ class AtelierChatServiceQuestionToolTest {
         org.mockito.Mockito.verify(push, org.mockito.Mockito.never()).notifyQuestionAsked(any(), any());
     }
 
+    private static final String RECO_BATCH = "{\"questions\":["
+            + "{\"header\":\"Base\",\"question\":\"Quelle base ?\",\"options\":[{\"label\":\"Postgres\",\"recommended\":true},{\"label\":\"H2\"}]},"
+            + "{\"header\":\"Nom\",\"question\":\"Quel nom ?\",\"options\":[{\"label\":\"alpha\"},{\"label\":\"beta\"}]}]}";
+
+    @Test
+    @DisplayName("SF-164-06 — timeout : l'option recommandée est retenue par défaut et FLAGUÉE au modèle (non-erreur)")
+    void timeoutDecidesByDefaultOnTheRecommendedOption() {
+        terminal();
+        listener.silent = true;
+        agentProvider.enqueueToolCallWithObject("demander", RECO_BATCH);
+        agentProvider.enqueueFinal("Je pars sur Postgres, décidé par défaut.");
+
+        service.chatStreaming(userId, workspaceId, "configure le projet", listener);
+
+        assertThat(snapshots())
+                .contains("n'a PAS répondu")
+                .contains("Décidé par défaut, faute de réponse")
+                .contains("Base → Postgres")
+                .contains("NE L'EXÉCUTE PAS sur ce défaut")
+                .doesNotContain("Aucune réponse dans le délai imparti");
+        assertThat(listener.resolved).singleElement().satisfies(r -> {
+            assertThat(r.status()).isEqualTo("timeout");
+            assertThat(r.defaults()).containsExactly("Base : Postgres", "Nom : sans réponse");
+        });
+    }
+
+    @Test
+    @DisplayName("SF-164-06 — timeout : une question sans option recommandée est signalée sans réponse, rien n'est inventé")
+    void timeoutWithoutRecommendedOptionInventsNothing() {
+        terminal();
+        listener.silent = true;
+        agentProvider.enqueueToolCallWithObject("demander",
+                "{\"questions\":[{\"header\":\"Nom\",\"question\":\"Quel nom ?\","
+                        + "\"options\":[{\"label\":\"alpha\"},{\"label\":\"beta\"}]}]}");
+        agentProvider.enqueueFinal("Je laisse le nom en suspens.");
+
+        service.chatStreaming(userId, workspaceId, "nomme le module", listener);
+
+        assertThat(snapshots())
+                .contains("Aucune option recommandée : rien n'a pu être décidé par défaut")
+                .contains("Nom → sans réponse")
+                .doesNotContain("Nom → alpha");
+        assertThat(listener.resolved.get(0).defaults()).containsExactly("Nom : sans réponse");
+    }
+
+    @Test
+    @DisplayName("SF-164-06 — interruption : inchangée, aucune décision par défaut")
+    void interruptionStaysWithoutDefault() {
+        terminal();
+        listener.interrupt = true;
+        agentProvider.enqueueToolCallWithObject("demander", RECO_BATCH);
+        agentProvider.enqueueFinal("Arrêté.");
+
+        service.chatStreaming(userId, workspaceId, "configure le projet", listener);
+
+        assertThat(listener.resolved).isNotEmpty();
+        assertThat(listener.resolved.get(0).status()).isEqualTo("interrupted");
+        assertThat(listener.resolved.get(0).defaults()).isEmpty();
+        assertThat(snapshots()).doesNotContain("Décidé par défaut");
+    }
+
+    @Test
+    @DisplayName("SF-164-06 — réponse reçue : aucune décision par défaut sur la résolution")
+    void answeredCarriesNoDefaults() {
+        terminal();
+        agentProvider.enqueueToolCallWithObject("demander", RECO_BATCH);
+        agentProvider.enqueueFinal("Merci.");
+
+        service.chatStreaming(userId, workspaceId, "configure le projet", listener);
+
+        assertThat(listener.resolved).singleElement().satisfies(r -> {
+            assertThat(r.status()).isEqualTo("answered");
+            assertThat(r.defaults()).isEmpty();
+        });
+    }
+
     private final class Listener implements AtelierProgressListener {
 
         private final List<AtelierQuestionRequest> requests = new ArrayList<>();
+        private final List<AtelierQuestionResolved> resolved = new ArrayList<>();
         private boolean freeTextOnly;
+        private boolean silent;
+        private boolean interrupt;
+
+        @Override
+        public void onQuestionResolved(AtelierQuestionResolved resolution) {
+            resolved.add(resolution);
+        }
 
         @Override
         public void onAction(AtelierStepEvent step) {
@@ -274,6 +360,13 @@ class AtelierChatServiceQuestionToolTest {
         @Override
         public void onQuestion(AtelierQuestionRequest request) {
             requests.add(request);
+            if (silent) {
+                return;
+            }
+            if (interrupt) {
+                gate.cancelWorkspace(workspaceId);
+                return;
+            }
             List<AtelierAnswerEntry> entries = request.form().questions().stream()
                     .map(q -> freeTextOnly
                             ? new AtelierAnswerEntry(q.header(), List.of(), "ma réponse libre")

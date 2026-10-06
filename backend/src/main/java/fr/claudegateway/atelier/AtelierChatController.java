@@ -703,7 +703,8 @@ public class AtelierChatController {
                 @Override
                 public void onQuestionResolved(AtelierQuestionResolved resolved) {
                     turn.publishQuestionResolved(
-                            new StreamQuestionResolved(resolved.callId(), resolved.status()),
+                            new StreamQuestionResolved(resolved.callId(), resolved.status(),
+                                    resolved.defaults().isEmpty() ? null : resolved.defaults()),
                             resolved.callId());
                 }
 
@@ -917,7 +918,12 @@ public class AtelierChatController {
     }
 
     /** La résolution d'une question (F-164 / SF-164-01) : {@code answered}/{@code timeout}/… — l'écran retire l'invite. */
-    record StreamQuestionResolved(String callId, String status) {
+    /**
+     * Résolution d'une question relayée à l'écran. {@code defaults} (F-164 / SF-164-06, additif) n'est
+     * émis qu'au timeout : les choix retenus par défaut, à afficher sur la carte.
+     */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    record StreamQuestionResolved(String callId, String status, java.util.List<String> defaults) {
     }
 
     /** Un courriel mis en file (F-110 / SF-110-02), même {@code toolUseId} que son bloc de transcription. */
