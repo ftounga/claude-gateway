@@ -250,6 +250,17 @@ public interface AtelierProgressListener {
     }
 
     /**
+     * <b>Le bloc de passation</b> (F-179 / SF-179-01) : le terminal du poste désigne le sujet à ouvrir et
+     * sa phrase de démarrage. L'écran en fait, en fin de tour, l'ouverture du sujet ou une carte.
+     *
+     * @param toolUseId identifiant de l'appel {@code ouvrir_sujet}
+     * @param handoff   le sujet résolu et la phrase
+     */
+    default void onHandoff(String toolUseId, SubjectHandoff handoff) {
+        // Aucun relais : le bloc reste dans la transcription du tour.
+    }
+
+    /**
      * <b>Le poste de ce projet vient de refuser un appel : il est hors ligne</b> (F-97 / SF-97-02).
      *
      * <p>Sans cet événement, un {@code runner_unavailable} ne sortait de la boucle qu'en prose, dans

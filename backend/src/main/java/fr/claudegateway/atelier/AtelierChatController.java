@@ -669,6 +669,12 @@ public class AtelierChatController {
                     turn.publish("attente", new StreamAttente(toolUseId, attente));
                 }
 
+                /** Le bloc de passation vers un sujet (F-179 / SF-179-01), au fil de l'eau. */
+                @Override
+                public void onHandoff(String toolUseId, SubjectHandoff handoff) {
+                    turn.publish("handoff", new StreamHandoff(toolUseId, handoff));
+                }
+
                 /**
                  * Une demande d'autorisation n'est plus seulement relayée : elle devient l'ÉTAT du
                  * tour (F-84 / SF-84-03). Un écran qui arrive après coup la trouve encore en
@@ -906,6 +912,10 @@ public class AtelierChatController {
 
     /** La carte d'une attente relayée au fil de l'eau (F-175 / SF-175-05), rejouée par la transcription. */
     record StreamAttente(String toolUseId, fr.claudegateway.atelier.actions.AttenteBlock attente) {
+    }
+
+    /** Le bloc de passation relayé au fil de l'eau (F-179 / SF-179-01), rejoué par la transcription. */
+    record StreamHandoff(String toolUseId, SubjectHandoff handoff) {
     }
 
     /**

@@ -67,7 +67,22 @@ public record AtelierTurnReport(List<Object> blocks, int omittedBlocks, long inp
             fr.claudegateway.teams.block.TeamsBlockCard card,
             fr.claudegateway.mail.ClientMailReceipt email,
             fr.claudegateway.pages.PageBlock page,
-            fr.claudegateway.atelier.actions.AttenteBlock attente) {
+            fr.claudegateway.atelier.actions.AttenteBlock attente,
+            SubjectHandoff handoff) {
+
+        /**
+         * Forme d'avant F-179 : aucun bloc de passation. Le bloc (F-179 / SF-179-01) n'est porté que par
+         * l'appel {@code ouvrir_sujet} du terminal du poste.
+         */
+        public Block(String tool, String command, String toolUseId, String threadId, String output,
+                boolean hasOutput, boolean error, boolean expanded,
+                fr.claudegateway.teams.block.TeamsBlockCard card,
+                fr.claudegateway.mail.ClientMailReceipt email,
+                fr.claudegateway.pages.PageBlock page,
+                fr.claudegateway.atelier.actions.AttenteBlock attente) {
+            this(tool, command, toolUseId, threadId, output, hasOutput, error, expanded, card, email, page,
+                    attente, null);
+        }
 
         /**
          * Forme d'avant F-175 : aucune carte d'attente. La carte (F-175 / SF-175-05) n'est portée que par
@@ -201,7 +216,9 @@ public record AtelierTurnReport(List<Object> blocks, int omittedBlocks, long inp
                 // La page publiée (F-109 / SF-109-03) aussi : ce n'est pas du texte.
                 block.page(),
                 // La carte d'attente (F-175 / SF-175-05) aussi.
-                block.attente());
+                block.attente(),
+                // Le bloc de passation (F-179 / SF-179-01) aussi : la carte [Ouvrir le sujet] en dépend.
+                block.handoff());
     }
 
     /**
