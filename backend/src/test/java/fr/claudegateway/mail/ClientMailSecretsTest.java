@@ -2,6 +2,7 @@ package fr.claudegateway.mail;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -24,7 +25,10 @@ class ClientMailSecretsTest {
             "Authorization: Bearer abcdefghijklmnop0123 | un jeton d'authentification",
             "mot de passe : Hunter2024! | un mot de passe",
             "password=SuperSecret99 | un mot de passe",
-            "MDP: azerty123 | un mot de passe"})
+            "MDP: azerty123 | un mot de passe",
+            "mdp : `P@ssw0rd` | un mot de passe",
+            "token = \"abc123def\" | un mot de passe",
+            "Token:KeyCrt puis password=Hunter2024! | un mot de passe"})
     void detectsManifestSecrets(String text, String label) {
         assertThat(ClientMailSecrets.find(text.replace("\\n", "\n"))).contains(label);
     }
@@ -38,5 +42,41 @@ class ClientMailSecretsTest {
             "sk-court"})
     void leavesOrdinaryProseAlone(String text) {
         assertThat(ClientMailSecrets.find(text)).isEmpty();
+    }
+
+    /**
+     * Un <b>nom</b> de paramètre, un masque ou un gabarit n'est pas un secret (SF-110-07) : {@code Token:KeyCrt}
+     * a fait refuser en prod une demande de rotation qui ne contenait aucune valeur.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "Token:KeyCrt",
+            "Token:`KeyCrt`",
+            "secret: machineKey, à faire tourner",
+            "Le compte sa — mot de passe : réinitialisé par l'exploitation.",
+            "client_secret=client_secret_name",
+            "password: ********",
+            "password=${DB_PASSWORD}",
+            "api_key=<votre-clé>",
+            "mdp = %APP_PASSWORD%",
+            "token: xxxxxxxx"})
+    void aParameterNameAMaskOrATemplateIsNotASecret(String text) {
+        assertThat(ClientMailSecrets.find(text)).isEmpty();
+    }
+
+    @Test
+    void aRotationRequestThatOnlyNamesItsSecretsIsLeftAlone() {
+        String draft = """
+                Bonjour Jimmy,
+
+                Merci de faire tourner les secrets suivants avant le 16/10 :
+                - Token:KeyCrt (SAGAH 4-011)
+                - le mot de passe du compte `sa` (mot de passe : réinitialisé côté base)
+                - secret: machineKey dans le web.config
+                - password: ******** (valeur dans le coffre)
+
+                Aucun mot de passe n'est joint à ce message.
+                """;
+        assertThat(ClientMailSecrets.find(draft)).isEmpty();
     }
 }

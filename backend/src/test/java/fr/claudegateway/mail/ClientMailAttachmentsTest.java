@@ -202,6 +202,20 @@ class ClientMailAttachmentsTest {
     }
 
     @Test
+    void aTextAttachmentThatOnlyNamesSecretsIsAttached() throws Exception {
+        // Le cas de prod (SF-110-07) : une demande de rotation nomme ses secrets sans en contenir la valeur.
+        byte[] content = "Rotation à demander :\n- Token:KeyCrt\n- secret: machineKey\n- mot de passe du compte sa\n"
+                .getBytes(StandardCharsets.UTF_8);
+        when(runner.readFileBytes(any(), anyString(), eq("rotation-secrets.md"), anyLong(), anyInt()))
+                .thenReturn(chunk(content, content.length, false));
+
+        ClientMailAttachments.Collected collected = collect("[{\"path\":\"rotation-secrets.md\"}]");
+
+        assertThat(collected.refusal()).isNull();
+        assertThat(collected.attachments()).hasSize(1);
+    }
+
+    @Test
     void aBinaryIsNotInspectedBeyondItsName() {
         byte[] binary = "password=Hunter2024!\u0000".getBytes(StandardCharsets.UTF_8);
         assertThat(ClientMailAttachments.asText(binary)).isEmpty();

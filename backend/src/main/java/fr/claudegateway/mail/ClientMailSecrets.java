@@ -2,6 +2,7 @@ package fr.claudegateway.mail;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -30,9 +31,25 @@ public final class ClientMailSecrets {
             new Rule("un jeton JWT", Pattern.compile(
                     "\\beyJ[A-Za-z0-9_-]{10,}\\.eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}")),
             new Rule("un jeton d'authentification", Pattern.compile(
-                    "(?i)\\bauthorization\\s*:\\s*(?:bearer|basic)\\s+[A-Za-z0-9._~+/=-]{16,}")),
-            new Rule("un mot de passe", Pattern.compile(
-                    "(?i)\\b(?:password|passwd|pwd|mot de passe|mdp|secret|api[_ -]?key|token)\\s*[:=]\\s*\\S{6,}")));
+                    "(?i)\\bauthorization\\s*:\\s*(?:bearer|basic)\\s+[A-Za-z0-9._~+/=-]{16,}")));
+
+    /**
+     * Libellé de la règle générique : un mot-clé de secret affecté d'une <b>valeur</b> (SF-110-07).
+     */
+    static final String PASSWORD_LABEL = "un mot de passe";
+
+    /** {@code mot-clé [:=] candidat} ; le candidat n'est un secret que s'il passe {@link #isSecretValue}. */
+    private static final Pattern ASSIGNMENT = Pattern.compile(
+            "(?i)\\b(?:password|passwd|pwd|mot de passe|mdp|secret|api[_ -]?key|token)\\s*[:=]\\s*(\\S{6,})");
+
+    /** Encadrement retiré du candidat avant examen : guillemets, accents graves, parenthèses, ponctuation. */
+    private static final Pattern FRAME = Pattern.compile("^[\"'`«»()\\[\\]{},;.!?]+|[\"'`«»()\\[\\]{},;.!?]+$");
+
+    /** Un <b>nom</b> (paramètre, mot) : des lettres seules, éventuellement séparées par {@code _ . -}. */
+    private static final Pattern NAME = Pattern.compile("\\p{L}+(?:[_.-]\\p{L}+)*");
+
+    /** Un <b>masque</b> ({@code ********}, {@code xxxxxx}) : rien qui puisse être une valeur. */
+    private static final Pattern MASK = Pattern.compile("[*•xX._-]+");
 
     private ClientMailSecrets() {
     }
@@ -52,6 +69,34 @@ public final class ClientMailSecrets {
                 return Optional.of(rule.label());
             }
         }
+        // Chaque occurrence est examinée : un nom de paramètre plus haut ne doit pas masquer une vraie valeur
+        // plus bas.
+        Matcher assignment = ASSIGNMENT.matcher(text);
+        while (assignment.find()) {
+            if (isSecretValue(assignment.group(1))) {
+                return Optional.of(PASSWORD_LABEL);
+            }
+        }
         return Optional.empty();
+    }
+
+    /**
+     * Ce qui suit {@code password:} est-il une <b>valeur</b> de secret, ou seulement un nom, un masque, un gabarit
+     * (F-110 / SF-110-07) ?
+     *
+     * <p>Pourquoi : la règle ne regardait que la longueur, et {@code Token:KeyCrt} — un <b>nom</b> de paramètre
+     * dans une demande de rotation — a fait refuser un courriel légitime en prod. Un document qui parle de secrets
+     * en nomme forcément. Limite assumée : un mot de passe fait de lettres seules n'est plus reconnu ici, car rien
+     * dans sa forme ne le distingue d'un nom.</p>
+     */
+    static boolean isSecretValue(String candidate) {
+        String value = FRAME.matcher(candidate).replaceAll("");
+        if (value.length() < 6) {
+            return false;
+        }
+        if (value.startsWith("${") || value.startsWith("{{") || value.startsWith("<") || value.startsWith("%")) {
+            return false;
+        }
+        return !NAME.matcher(value).matches() && !MASK.matcher(value).matches();
     }
 }
