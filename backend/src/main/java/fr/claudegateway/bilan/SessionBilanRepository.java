@@ -20,6 +20,9 @@ public interface SessionBilanRepository extends JpaRepository<SessionBilan, UUID
 
     Optional<SessionBilan> findByIdAndUserId(UUID id, UUID userId);
 
+    /** Le dernier bilan d'un projet (F-178 / SF-178-02, {@code sujets_etat}) — toujours sous {@code user_id}. */
+    Optional<SessionBilan> findFirstByUserIdAndWorkspaceIdOrderByCreatedAtDesc(UUID userId, UUID workspaceId);
+
     List<SessionBilan> findByUserIdOrderByCreatedAtDesc(UUID userId, Pageable pageable);
 
     /** Purge à la suppression du compte — pas de clé étrangère, donc purge nommée. */

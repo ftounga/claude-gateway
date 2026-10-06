@@ -66,6 +66,15 @@ public interface AtelierMessageRepository extends JpaRepository<AtelierMessage, 
             @Param("userId") UUID userId, @Param("term") String term, Pageable pageable);
 
     /**
+     * Dernière activité de chaque fil d'un ensemble (F-178 / SF-178-02, {@code sujets_etat}) : lignes
+     * {@code [workspaceId, max(createdAt)]}, toujours filtrées {@code user_id}.
+     */
+    @Query("select m.workspaceId, max(m.createdAt) from AtelierMessage m where m.workspaceId in :workspaceIds "
+            + "and m.userId = :userId group by m.workspaceId")
+    List<Object[]> lastActivityByWorkspace(@Param("workspaceIds") java.util.Collection<UUID> workspaceIds,
+            @Param("userId") UUID userId);
+
+    /**
      * Relecture <b>isolée</b> du chemin sémantique à portée poste (F-178 / SF-178-01) : filtrée
      * {@code user_id} ET {@code workspace_id} dans l'ensemble des fils du poste (défense en profondeur).
      */
