@@ -1609,6 +1609,8 @@
         {{ submitting && steerable ? 'Préciser' : 'Envoyer' }}
       </button>
     </form>
+    <!-- F-176 / SF-176-10 — À QUI LA MAIN : une seule règle visible, sous la saisie. -->
+    <app-terminal-hand [hand]="hand" (reveal)="revealHand($event)"></app-terminal-hand>
     <!-- F-146 / SF-146-01 — LES TEXTES COLLÉS, repliés en références. Ce qu'on voit est ce qui
          part : retirer une puce retire sa référence du champ, et son texte ne sera pas envoyé. -->
     @if (pastes().length > 0) {

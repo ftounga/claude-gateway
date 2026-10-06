@@ -150,6 +150,8 @@ import { TerminalAttentesBandComponent } from './terminal-attentes-band.componen
 import { AttenteCardComponent } from './attente-card.component';
 import { TerminalJourneyChipComponent } from './terminal-journey-chip.component';
 import { TerminalJourneyChantiersComponent } from './terminal-journey-chantiers.component';
+import { TerminalHandComponent } from './terminal-hand.component';
+import { Hand, HandTarget, handOf } from './terminal-hand';
 import { JourneyGesture, TerminalJourneyStripComponent } from './terminal-journey-strip.component';
 import { JourneyService } from '../../core/services/journey.service';
 import { ClosedChantier, JourneyMode, SubjectJourney, journeyResumeMessage } from '../../core/models/journey.models';
@@ -218,6 +220,7 @@ export interface SlashMenuEntry {
     TeamsLinkBadgeComponent, NgTemplateOutlet, TerminalEmailComponent, PageBlockComponent, PagePanelComponent,
     TerminalActionsPanelComponent, TerminalAttentesBandComponent, AttenteCardComponent,
     TerminalJourneyChipComponent, TerminalJourneyStripComponent, TerminalJourneyChantiersComponent,
+    TerminalHandComponent,
     AtelierTerminalDemandeComponent,
     AtelierSlashPanelComponent, AtelierSlashHelpComponent, AtelierSlashCostComponent,
     AtelierSlashContexteComponent, AtelierSlashQuotaComponent, AtelierSlashBudgetComponent,
@@ -792,6 +795,32 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     const draft = (this.draft ?? '').trim();
     this.draftChange.emit(draft.length > 0 ? `${message}\n\n${draft}` : message);
     this.send.emit();
+  }
+
+  /**
+   * **À qui la main** (F-176 / SF-176-10, D7), sous la saisie — dérivé de l'état du terminal : une
+   * autorisation, une question ou un geste du parcours en attente ; sinon un tour en cours ; sinon vous.
+   */
+  get hand(): Hand {
+    return handOf({
+      submitting: this.submittingValue,
+      pendingConfirmation: this.pendingConfirmation,
+      pendingQuestion: this.pendingQuestion,
+      journey: this.journey(),
+    });
+  }
+
+  private readonly hostElement = inject(ElementRef<HTMLElement>);
+
+  /** Ramène en vue ce que l'agent attend (l'ancre « ↑ » de l'indicateur). */
+  revealHand(target: HandTarget): void {
+    if (target === 'ask') {
+      this.revealPendingAsk();
+      return;
+    }
+    const selector = target === 'question' ? 'app-atelier-terminal-demande' : 'app-terminal-journey-strip';
+    const element = (this.hostElement.nativeElement as HTMLElement).querySelector(selector);
+    element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   /** La liste des chantiers clos est ouverte (F-176 / SF-176-11). */
