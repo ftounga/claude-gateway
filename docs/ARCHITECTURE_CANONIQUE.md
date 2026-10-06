@@ -409,6 +409,15 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     aurait le même nombre de segments que `/workspaces/{id}/actions` et serait lu comme un projet
     nommé « actions ».
 
+- **governance_proposals** — **les propositions de gouvernance faites par l'agent** (F-177 / SF-177-02,
+  migration `148`) : `id (uuid)`, `user_id (uuid)`, `workspace_id (uuid, FK workspaces ON DELETE
+  CASCADE)`, `host_id (uuid, null)`, `type (REGLE|SKILL|GABARIT)`, `scope (POSTE|SUJET)`, `name`,
+  `path`, `reason`, `content` (contenu complet à écrire), `diff_json`, `base_digest` (empreinte du
+  fichier à la proposition, `ABSENT` sinon), `status (PENDING|APPLIED|REFUSED)`, `applied_digest`,
+  `created_at`, `decided_at`. Index `(user_id, workspace_id)`. **Rien ne s'écrit à la proposition** :
+  seul [Appliquer] écrit (via le runner), et refuse si le fichier a changé depuis. Isolation `user_id`
+  + `requireOwned` ; purge nommée à la suppression du compte.
+
 - **subject_journeys** / **subject_journey_events** — **le parcours du sujet d'un terminal** (F-176,
   migration `145`) : mode **Libre** (défaut) ou **Guidé** — Investigation → Plan → Exécution →
   Vérification → Clos — avec une **porte** tenue par le harnais devant toute modification.
