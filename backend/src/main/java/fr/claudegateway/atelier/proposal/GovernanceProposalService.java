@@ -325,7 +325,7 @@ public class GovernanceProposalService {
     /** Cible de lecture/écriture : racine du poste ({@code POSTE}) ou dossier du projet ({@code SUJET}). */
     private static RunnerTarget targetOf(Workspace workspace, String scope, boolean outsideTurn) {
         if (POSTE.equals(scope)) {
-            return new RunnerTarget(workspace.getHostId(), outsideTurn ? null : workspace.getId(), "");
+            return new RunnerTarget(workspace.getHostId(), workspace.getId(), "");
         }
         return RunnerTargets.of(workspace);
     }
