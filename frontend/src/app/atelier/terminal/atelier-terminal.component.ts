@@ -151,7 +151,7 @@ import { AttenteCardComponent } from './attente-card.component';
 import { TerminalJourneyChipComponent } from './terminal-journey-chip.component';
 import { JourneyGesture, TerminalJourneyStripComponent } from './terminal-journey-strip.component';
 import { JourneyService } from '../../core/services/journey.service';
-import { JourneyMode, SubjectJourney } from '../../core/models/journey.models';
+import { JourneyMode, SubjectJourney, journeyResumeMessage } from '../../core/models/journey.models';
 import { TerminalAction, TerminalActionBoard } from '../../core/models/terminal-actions.models';
 import { AtelierTerminalDemandeComponent } from './atelier-terminal-demande.component';
 import { TerminalActionsService } from '../../core/services/terminal-actions.service';
@@ -742,7 +742,8 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     if (!workspaceId) {
       return;
     }
-    const plan = this.journey()?.plan;
+    const before = this.journey();
+    const plan = before?.plan;
     let call;
     switch (gesture) {
       case 'accept-guided': call = this.journeys.acceptGuided(workspaceId); break;
@@ -752,6 +753,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
       case 'close': call = this.journeys.close(workspaceId); break;
       case 'dismiss-close': call = this.journeys.dismissClose(workspaceId); break;
       case 'validate-plan':
+      case 'validate-plan-only':
         if (!plan) {
           return;
         }
@@ -763,6 +765,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
       next: journey => {
         if (this.projectId === workspaceId) {
           this.journey.set(journey);
+          this.resumeAfterGesture(gesture, before);
         }
         this.journeyBusy.set(false);
       },
@@ -771,6 +774,22 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
         this.snackBar.open('Le parcours du sujet n\'a pas pu être mis à jour.', 'OK', { duration: 4000 });
       },
     });
+  }
+
+  /**
+   * **Un clic = la décision ET la reprise** (F-176 / SF-176-09, décision D6). Le geste est enregistré
+   * par la gateway ; s'il fait avancer le travail, un tour démarre aussitôt par le chemin d'envoi
+   * normal, avec un message visible dans le fil (« ✓ Plan v2 validé — exécution lancée. »). Un brouillon
+   * en cours part avec lui, rien n'est perdu. Jamais pendant un tour, en lecture seule ou au plafond.
+   */
+  private resumeAfterGesture(gesture: JourneyGesture, before: SubjectJourney | null): void {
+    const message = journeyResumeMessage(gesture, before);
+    if (!message || this.readOnly || this.submittingValue || this.liveLimitReached) {
+      return;
+    }
+    const draft = (this.draft ?? '').trim();
+    this.draftChange.emit(draft.length > 0 ? `${message}\n\n${draft}` : message);
+    this.send.emit();
   }
 
   /** Relit le parcours ; un échec laisse l'affichage tel quel (jamais un faux « Guidé »). */

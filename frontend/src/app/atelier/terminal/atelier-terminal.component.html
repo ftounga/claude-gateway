@@ -1437,7 +1437,7 @@
          poste. Relue à chaque fin de tour ; un clic ouvre le panneau. On ne peut plus la louper. -->
     <!-- F-176 — LE PARCOURS DU SUJET : en Guidé, les phases ; en Libre, rien, sauf la carte
          [Passer en guidé] [Rester libre] quand l'agent a qualifié la demande de chantier (SF-176-02). -->
-    <app-terminal-journey-strip [journey]="journey()" [busy]="journeyBusy()" (gesture)="onJourneyGesture($event)"></app-terminal-journey-strip>
+    <app-terminal-journey-strip [journey]="journey()" [busy]="journeyBusy() || submitting" (gesture)="onJourneyGesture($event)"></app-terminal-journey-strip>
     <app-terminal-attentes-band [board]="attentesBoard()" [toReview]="reviewPending()" (open)="openActions()"></app-terminal-attentes-band>
     <!-- F-121 / SF-121-23 — MENU DE SLASH-COMMANDS. Taper « / » ouvre la liste ; une entrée
          complète la commande dans le champ (elle n'envoie pas). Déterministe : seule une commande
