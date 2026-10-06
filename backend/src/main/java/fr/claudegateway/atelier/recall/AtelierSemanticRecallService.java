@@ -89,6 +89,26 @@ public class AtelierSemanticRecallService implements AtelierSemanticRecall {
         }
     }
 
+    @Override
+    public List<UUID> searchAcross(UUID userId, java.util.Collection<UUID> workspaceIds, String query,
+            int topN) {
+        if (!isEnabled() || userId == null || workspaceIds == null || workspaceIds.isEmpty()
+                || query == null || query.isBlank() || topN <= 0) {
+            return List.of();
+        }
+        try {
+            List<float[]> vectors = embeddingProvider.embed(List.of(truncate(query)));
+            if (vectors.isEmpty()) {
+                return List.of();
+            }
+            return store.searchSimilarAcross(userId, workspaceIds, vectors.get(0), topN);
+        } catch (RuntimeException ex) {
+            log.debug("Recherche sémantique (poste) indisponible, repli mot-clé ({})",
+                    ex.getClass().getSimpleName());
+            return List.of();
+        }
+    }
+
     private static String truncate(String text) {
         String flat = text.strip();
         return flat.length() > RecallSemanticProperties.MAX_EMBED_CHARS
