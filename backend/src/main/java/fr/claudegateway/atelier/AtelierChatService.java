@@ -3952,6 +3952,13 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     private RunnerConfirmationGate.AnswerOutcome askQuestion(UUID userId, UUID workspaceId, String callId,
             AtelierQuestionForm form, AtelierProgressListener listener) {
+        // F-164 / SF-164-05 — Le tour est suspendu sur une question : pousse « Une question vous
+        // attend » aux appareils du propriétaire, comme pour une autorisation (best-effort, jamais
+        // bloquant, inactif sans push configuré). Une seule notification par appel, quel que soit le
+        // nombre de questions du lot ; aucun contenu de question dans la charge.
+        if (pushNotificationService != null) {
+            pushNotificationService.notifyQuestionAsked(userId, workspaceId);
+        }
         RunnerConfirmationGate.AnswerOutcome outcome = confirmationGate.awaitAnswer(userId, workspaceId,
                 callId, () -> listener.onQuestion(new AtelierProgressListener.AtelierQuestionRequest(
                         callId, form, confirmationGate.timeoutMs())));

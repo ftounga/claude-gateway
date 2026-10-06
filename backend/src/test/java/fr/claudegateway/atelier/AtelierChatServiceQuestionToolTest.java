@@ -209,6 +209,53 @@ class AtelierChatServiceQuestionToolTest {
         assertThat(snapshots()).contains("au moins une question");
     }
 
+    @Test
+    @DisplayName("SF-164-05 — demander pousse « une question vous attend » une seule fois par appel, même pour un lot")
+    void demanderPushesOneNotificationPerCall() {
+        terminal();
+        fr.claudegateway.push.PushNotificationService push =
+                org.mockito.Mockito.mock(fr.claudegateway.push.PushNotificationService.class);
+        service.setPushNotificationService(push);
+        agentProvider.enqueueToolCallWithObject("demander",
+                "{\"questions\":[{\"question\":\"A ou B ?\",\"options\":[{\"label\":\"A\"},{\"label\":\"B\"}]},"
+                        + "{\"question\":\"C ou D ?\",\"options\":[{\"label\":\"C\"},{\"label\":\"D\"}]}]}");
+        agentProvider.enqueueFinal("Merci.");
+
+        service.chatStreaming(userId, workspaceId, "aide-moi à choisir", listener);
+
+        org.mockito.Mockito.verify(push, org.mockito.Mockito.times(1)).notifyQuestionAsked(userId, workspaceId);
+    }
+
+    @Test
+    @DisplayName("SF-164-05 — un autre outil (set_plan) ne pousse pas « une question vous attend »")
+    void otherToolsDoNotPushTheQuestionNotification() {
+        terminal();
+        fr.claudegateway.push.PushNotificationService push =
+                org.mockito.Mockito.mock(fr.claudegateway.push.PushNotificationService.class);
+        service.setPushNotificationService(push);
+        agentProvider.enqueueToolCallWithObject("set_plan", "{\"steps\":[{\"title\":\"Étape 1\",\"status\":\"active\"}]}");
+        agentProvider.enqueueFinal("En cours.");
+
+        service.chatStreaming(userId, workspaceId, "corrige le bug", listener);
+
+        org.mockito.Mockito.verify(push, org.mockito.Mockito.never()).notifyQuestionAsked(any(), any());
+    }
+
+    @Test
+    @DisplayName("SF-164-05 — un lot invalide (rejeté avant l'attente) ne pousse rien ; sans émetteur, pas d'erreur")
+    void anInvalidBatchDoesNotPushAndNullEmitterIsSafe() {
+        terminal();
+        fr.claudegateway.push.PushNotificationService push =
+                org.mockito.Mockito.mock(fr.claudegateway.push.PushNotificationService.class);
+        service.setPushNotificationService(push);
+        agentProvider.enqueueToolCallWithObject("demander", "{\"questions\":[]}");
+        agentProvider.enqueueFinal("Bon, je décide.");
+
+        service.chatStreaming(userId, workspaceId, "demande vide", listener);
+
+        org.mockito.Mockito.verify(push, org.mockito.Mockito.never()).notifyQuestionAsked(any(), any());
+    }
+
     private final class Listener implements AtelierProgressListener {
 
         private final List<AtelierQuestionRequest> requests = new ArrayList<>();

@@ -68,6 +68,15 @@ public class PushNotificationService {
                 "Ouvrez l'application pour autoriser ou refuser.");
     }
 
+    /**
+     * L'agent pose une question structurée (outil {@code demander}, F-164 / SF-164-05) et attend la
+     * réponse : notifie « Une question vous attend ». Comme pour l'autorisation, la charge reste
+     * <b>neutre</b> (D4) — aucun contenu de la question ne quitte l'application.
+     */
+    public void notifyQuestionAsked(UUID userId, UUID workspaceId) {
+        emit(userId, workspaceId, "Une question vous attend", "Ouvrez l'application pour répondre.");
+    }
+
     private void emit(UUID userId, UUID workspaceId, String title, String body) {
         if (userId == null || !transport.isEnabled()) {
             return;
