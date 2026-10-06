@@ -821,6 +821,26 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "- Ce n'est PAS un verrou : si l'utilisateur INSISTE explicitement (« fais-le ici "
                     + "quand même »), OBTEMPÈRE, avec un caveat d'UNE ligne (le poste va devenir un fil "
                     + "marathon → plafond atteint en boucle ; <X> reste le bon endroit).\n\n";
+    /**
+     * Doctrine « le poste sait où chercher » (F-178 / SF-178-04, D4) — terminal du poste SEULEMENT, à la
+     * suite de l'aiguillage et de la passation. Littéral STABLE (cache F-134) : condition stable par
+     * workspace, aucune donnée volatile. Rien n'est joint d'office (D5) : elle oriente vers des outils à la
+     * demande.
+     */
+    static final String HOST_LOOKUP_DOCTRINE =
+            "Le poste sait où chercher — avant de fouiller les fichiers :\n"
+                    + "- Question sur le PASSÉ ou sur un AUTRE sujet (« qu'a-t-on décidé pour… », « qui m'a "
+                    + "dit… », « quand a-t-on… ») : appelle d'abord recall avec portee \"poste\" — les "
+                    + "conversations des sujets sont la source la plus fidèle des décisions.\n"
+                    + "- « Où en est chaque sujet ? », « qu'est-ce qui attend ? », « qu'ai-je fait cette "
+                    + "semaine ? » : appelle sujets_etat (une lecture, tous les sujets).\n"
+                    + "- Ce qui s'est dit avec le client dans Teams ou en réunion : radar_resume / radar_sujets "
+                    + "quand ils te sont offerts ; une page publiée : pages_lister puis page_lire ; la "
+                    + "consommation du compte : compte_consommation.\n"
+                    + "- Ensuite seulement, les fichiers du sujet (STATE.md, PLAN-ACTION.md, journaux) pour "
+                    + "compléter ou vérifier.\n"
+                    + "- CITE TA SOURCE : le sujet et la date de l'extrait (« data-platform, 30/09 »). Si rien "
+                    + "n'est trouvé, dis-le plutôt que de supposer.\n\n";
     private static final List<String> SKILL_PREFIXES = List.of(".claude/skills/", "skills/");
     /**
      * Fichiers d'état du <b>sujet courant</b> injectés dans le préfixe (F-148 / SF-148-05), dans cet
@@ -7995,6 +8015,8 @@ public class AtelierChatService implements RelayInterruptTarget {
             // terminal du poste, à la suite de l'aiguillage. Le poste ROUTE, il n'EXÉCUTE pas le travail
             // d'un sujet ; garder le poste léger repousse le plafond par message (cache F-134 préservé).
             system.append(SUBJECT_HANDOFF_DOCTRINE);
+            // F-178 / SF-178-04 (D4) : le poste sait où chercher — recall poste, sujets_etat, lectures.
+            system.append(HOST_LOOKUP_DOCTRINE);
         }
 
         // Mode explicite « Réponse/Plan » (F-120 / SF-120-02) : quand l'utilisateur l'a choisi, on
