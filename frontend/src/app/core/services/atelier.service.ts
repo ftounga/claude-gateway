@@ -59,6 +59,7 @@ import {
   AtelierTerminalPage,
   AtelierTerminalAttente,
   AtelierSubjectHandoff,
+  AtelierGovernanceProposal,
   TeamsAccess,
 } from '../models/atelier.models';
 
@@ -576,6 +577,8 @@ export class AtelierService {
       attente?: AtelierTerminalAttente;
       /** Bloc de passation vers un sujet (F-179 / SF-179-01). */
       handoff?: AtelierSubjectHandoff;
+      /** Carte de proposition de gouvernance (F-177 / SF-177-02). */
+      proposal?: AtelierGovernanceProposal;
       /** Rebranchement sur un tour en cours (F-84 / SF-84-02). */
       turnId?: string | null;
       cursor?: number;
@@ -727,6 +730,11 @@ export class AtelierService {
       // Une PAGE publiée (F-109 / SF-109-03) : le bloc « Page publiée ». Sans page, rien — pas de bloc creux.
       if (payload.page?.pageId) {
         handlers.onPage?.({ toolUseId: payload.toolUseId ?? '', page: payload.page });
+      }
+    } else if (event === 'proposal') {
+      // LA PROPOSITION DE GOUVERNANCE (F-177 / SF-177-02). Sans identifiant, rien — pas de carte creuse.
+      if (payload.proposal?.proposalId) {
+        handlers.onProposal?.({ toolUseId: payload.toolUseId ?? '', proposal: payload.proposal });
       }
     } else if (event === 'handoff') {
       // Le BLOC DE PASSATION (F-179 / SF-179-02). Sans sujet, rien — pas de carte creuse.

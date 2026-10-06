@@ -261,6 +261,18 @@ public interface AtelierProgressListener {
     }
 
     /**
+     * <b>Une proposition de gouvernance</b> (F-177 / SF-177-02) : l'agent propose une règle, un skill
+     * ou un gabarit ; l'écran pose la carte diff [Appliquer] [Modifier] [Refuser]. Rien n'est écrit.
+     *
+     * @param toolUseId identifiant de l'appel {@code gouvernance_proposer}
+     * @param proposal  la carte
+     */
+    default void onGovernanceProposal(String toolUseId,
+            fr.claudegateway.atelier.proposal.GovernanceProposalBlock proposal) {
+        // Aucun relais : la carte reste dans la transcription du tour.
+    }
+
+    /**
      * <b>Le poste de ce projet vient de refuser un appel : il est hors ligne</b> (F-97 / SF-97-02).
      *
      * <p>Sans cet événement, un {@code runner_unavailable} ne sortait de la boucle qu'en prose, dans

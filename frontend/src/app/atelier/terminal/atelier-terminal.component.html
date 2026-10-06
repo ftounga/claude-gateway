@@ -849,6 +849,10 @@
               @if (block.handoff; as handoff) {
                 <app-handoff-card [handoff]="handoff" [readOnly]="readOnly" (open)="openSubject.emit($event)"></app-handoff-card>
               }
+              <!-- LA PROPOSITION DE GOUVERNANCE (F-177 / SF-177-02) : le diff, [Appliquer] [Modifier] [Refuser]. -->
+              @if (block.proposal; as proposal) {
+                <app-proposal-card [proposal]="proposal" [workspaceId]="projectId" [readOnly]="readOnly" (modify)="onProposalModify($event)"></app-proposal-card>
+              }
             </div>
             }
             }
@@ -1072,6 +1076,9 @@
           }
           @if (block.handoff; as handoff) {
             <app-handoff-card [handoff]="handoff" [readOnly]="readOnly" (open)="openSubject.emit($event)"></app-handoff-card>
+          }
+          @if (block.proposal; as proposal) {
+            <app-proposal-card [proposal]="proposal" [workspaceId]="projectId" [readOnly]="readOnly" (modify)="onProposalModify($event)"></app-proposal-card>
           }
         </div>
         }

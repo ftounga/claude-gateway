@@ -675,6 +675,13 @@ public class AtelierChatController {
                     turn.publish("handoff", new StreamHandoff(toolUseId, handoff));
                 }
 
+                /** La carte de proposition de gouvernance (F-177 / SF-177-02), au fil de l'eau. */
+                @Override
+                public void onGovernanceProposal(String toolUseId,
+                        fr.claudegateway.atelier.proposal.GovernanceProposalBlock proposal) {
+                    turn.publish("proposal", new StreamProposal(toolUseId, proposal));
+                }
+
                 /**
                  * Une demande d'autorisation n'est plus seulement relayée : elle devient l'ÉTAT du
                  * tour (F-84 / SF-84-03). Un écran qui arrive après coup la trouve encore en
@@ -916,6 +923,10 @@ public class AtelierChatController {
 
     /** Le bloc de passation relayé au fil de l'eau (F-179 / SF-179-01), rejoué par la transcription. */
     record StreamHandoff(String toolUseId, SubjectHandoff handoff) {
+    }
+
+    /** La carte de proposition de gouvernance relayée au fil de l'eau (F-177 / SF-177-02). */
+    record StreamProposal(String toolUseId, fr.claudegateway.atelier.proposal.GovernanceProposalBlock proposal) {
     }
 
     /**

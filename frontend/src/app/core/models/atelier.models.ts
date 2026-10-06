@@ -772,6 +772,12 @@ export interface AtelierStreamHandlers {
   onHandoff?: (event: AtelierHandoffEvent) => void;
 
   /**
+   * **Une proposition de gouvernance** (F-177 / SF-177-02) : l'agent propose une règle, un skill ou un
+   * gabarit ; la carte diff [Appliquer] [Modifier] [Refuser]. Optionnel : un backend antérieur ne l'émet pas.
+   */
+  onProposal?: (event: AtelierProposalEvent) => void;
+
+  /**
    * Numéro d'ordre du dernier événement reçu (F-84 / SF-84-02), lu dans le champ `id:` du
    * protocole SSE. C'est le **curseur** : en se rebranchant, l'écran le renvoie et ne reçoit que
    * ce qu'il a manqué — ni doublon, ni trou.
@@ -1161,6 +1167,9 @@ export interface AtelierTerminalBlock {
    */
   handoff?: AtelierSubjectHandoff | null;
 
+  /** **La carte de proposition de gouvernance** (F-177 / SF-177-02) : [Appliquer] [Modifier] [Refuser]. */
+  proposal?: AtelierGovernanceProposal | null;
+
   /**
    * **Un marqueur de flux** (F-162 / SF-162-03) : « Conversation compactée · N tours résumés » ou
    * « Détail rappelé · tour N ». Ce n'est ni une sortie de commande ni une carte — c'est une trace
@@ -1319,6 +1328,43 @@ export interface AtelierSubjectHandoff {
   name: string;
   /** La phrase de démarrage, déposée dans la saisie — jamais envoyée. */
   phrase: string;
+}
+
+/** Une ligne du diff d'une proposition de gouvernance (F-177 / SF-177-02). */
+export interface AtelierProposalDiffLine {
+  kind: 'ADD' | 'DEL' | 'CTX';
+  text: string;
+}
+
+/** **La carte de proposition de gouvernance** (F-177 / SF-177-02) — rien n'est écrit avant [Appliquer]. */
+export interface AtelierGovernanceProposal {
+  proposalId: string;
+  type: 'REGLE' | 'SKILL' | 'GABARIT';
+  scope: 'POSTE' | 'SUJET';
+  name: string;
+  path: string;
+  reason?: string | null;
+  creates: boolean;
+  diff: AtelierProposalDiffLine[];
+  omittedLines: number;
+}
+
+/** Le statut relu d'une proposition (F-177 / SF-177-02). */
+export interface AtelierGovernanceProposalView {
+  id: string;
+  status: 'PENDING' | 'APPLIED' | 'REFUSED';
+  type: string;
+  scope: string;
+  name: string;
+  path: string;
+  createdAt?: string | null;
+  decidedAt?: string | null;
+}
+
+/** Charge utile de l'événement SSE `proposal` (F-177 / SF-177-02). */
+export interface AtelierProposalEvent {
+  toolUseId: string;
+  proposal: AtelierGovernanceProposal;
 }
 
 /** Charge utile de l'événement SSE `handoff` (F-179 / SF-179-01). */

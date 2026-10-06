@@ -135,6 +135,7 @@ import { emailBlock } from './terminal/terminal-email';
 import { pageBlock } from './terminal/page-block';
 import { attenteBlock } from './terminal/attente-card.component';
 import { handoffBlock } from './terminal/handoff-card.component';
+import { proposalBlock } from './terminal/proposal-card.component';
 import {
   compactionMarkerBlock,
   compactionMarkerLabel,
@@ -1911,6 +1912,18 @@ export class AtelierComponent implements OnInit, OnDestroy {
             {
               afterSteps: this.streaming()?.steps.length ?? 0,
               block: pageBlock(event.toolUseId, event.page),
+            },
+          ];
+          this.mirrorLocalSteps();
+        }),
+      // LA PROPOSITION DE GOUVERNANCE (F-177 / SF-177-02) : rangée comme une carte.
+      onProposal: (event) =>
+        this.zone.run(() => {
+          this.cardsOfTurn = [
+            ...this.cardsOfTurn,
+            {
+              afterSteps: this.streaming()?.steps.length ?? 0,
+              block: proposalBlock(event.toolUseId, event.proposal),
             },
           ];
           this.mirrorLocalSteps();
@@ -3838,6 +3851,18 @@ export class AtelierComponent implements OnInit, OnDestroy {
             {
               afterSteps: this.streaming()?.steps.length ?? 0,
               block: pageBlock(event.toolUseId, event.page),
+            },
+          ];
+          this.mirrorLocalSteps();
+        }),
+      // LA PROPOSITION DE GOUVERNANCE (F-177 / SF-177-02) : rangée comme une carte.
+      onProposal: (event) =>
+        this.zone.run(() => {
+          this.cardsOfTurn = [
+            ...this.cardsOfTurn,
+            {
+              afterSteps: this.streaming()?.steps.length ?? 0,
+              block: proposalBlock(event.toolUseId, event.proposal),
             },
           ];
           this.mirrorLocalSteps();
