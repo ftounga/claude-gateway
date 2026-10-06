@@ -268,8 +268,8 @@ class AtelierChatServiceHostTerminalTest {
     @Mock private fr.claudegateway.atelier.poste.SubjectsStateService subjectsState;
 
     private void wirePosteTools() {
-        fr.claudegateway.atelier.poste.PosteToolCatalog catalog = new fr.claudegateway.atelier.poste.PosteToolCatalog();
-        service.setPosteTools(catalog, new fr.claudegateway.atelier.poste.PosteToolExecutor(catalog, subjectsState));
+        fr.claudegateway.atelier.poste.PosteToolCatalog catalog = new fr.claudegateway.atelier.poste.PosteToolCatalog(null);
+        service.setPosteTools(catalog, new fr.claudegateway.atelier.poste.PosteToolExecutor(catalog, subjectsState, null));
     }
 
     private boolean declares(Workspace workspace, String tool) {
