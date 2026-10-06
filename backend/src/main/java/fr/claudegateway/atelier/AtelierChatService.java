@@ -897,7 +897,12 @@ public class AtelierChatService implements RelayInterruptTarget {
                     fr.claudegateway.atelier.journey.JourneyToolCatalog.UPDATE_STEP,
                     fr.claudegateway.atelier.journey.JourneyToolCatalog.REOPEN,
                     // F-178 : les lectures du terminal du poste ne modifient rien.
-                    fr.claudegateway.atelier.poste.PosteToolCatalog.SUBJECTS_STATE);
+                    fr.claudegateway.atelier.poste.PosteToolCatalog.SUBJECTS_STATE,
+                    fr.claudegateway.atelier.poste.PosteToolCatalog.RADAR_RESUME,
+                    fr.claudegateway.atelier.poste.PosteToolCatalog.RADAR_SUJETS,
+                    fr.claudegateway.atelier.poste.PosteToolCatalog.PAGES_LISTER,
+                    fr.claudegateway.atelier.poste.PosteToolCatalog.PAGE_LIRE,
+                    fr.claudegateway.atelier.poste.PosteToolCatalog.COMPTE_CONSOMMATION);
     /** Nom de l'outil serveur qui interroge la carte du poste (F-174 / SF-174-05, D8). */
     static final String MAP_SEARCH_TOOL_NAME = "carte_chercher";
     /** Nom de l'outil de passation vers un sujet (F-179 / SF-179-01), au terminal du poste seulement. */
@@ -6518,6 +6523,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + (arg(input, "subject") == null ? "(sans objet)" : arg(input, "subject").strip()),
                     AUDIT_TARGET_CHARS);
             default -> {
+                // F-178 : les lectures du poste se tracent par leur nom seul (ni identifiant ni contenu).
+                if (fr.claudegateway.atelier.poste.PosteToolCatalog.isPosteTool(call.name())) {
+                    yield null;
+                }
                 // F-104 / SF-104-03 : un appel Radar se lit en clair, sans identifiant ni contenu de message.
                 if (fr.claudegateway.radar.RadarToolCatalog.isRadarTool(call.name())) {
                     yield shorten(fr.claudegateway.radar.RadarToolCatalog.stepTarget(call.name(), input),
