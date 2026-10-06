@@ -1045,6 +1045,11 @@ export interface AtelierQuestionRequest {
 export interface AtelierQuestionResolved {
   callId: string;
   status: string;
+  /**
+   * Au `timeout` seulement (F-164 / SF-164-06, additif) : les choix retenus par défaut, en lignes
+   * lisibles (« intitulé : option » / « intitulé : sans réponse »). Absent d'un backend antérieur.
+   */
+  defaults?: string[];
 }
 
 /** Une entrée de réponse à une question du lot (F-164 / SF-164-02). */

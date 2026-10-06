@@ -24,10 +24,22 @@
         }}</mat-icon>
         {{
           q.status === 'expired'
-            ? 'Délai écoulé'
+            ? (q.defaults?.length ? 'Délai écoulé — décidé par défaut' : 'Délai écoulé')
             : (q.answeredHere ? 'Répondu' : 'Répondu sur un autre appareil')
         }}
       </p>
+      <!-- F-164 / SF-164-06 : sans réponse, l'agent a retenu l'option recommandée — c'est DIT ici,
+           pour que l'utilisateur puisse corriger. -->
+      @if (q.status === 'expired' && q.defaults?.length) {
+        <div class="terminal-demande-recap terminal-demande-defaults">
+          <p class="terminal-demande-defaults-title">Décidé par défaut, faute de réponse :</p>
+          <ul class="terminal-demande-defaults-list">
+            @for (line of q.defaults; track $index) {
+              <li>{{ line }}</li>
+            }
+          </ul>
+        </div>
+      }
       @if (q.status === 'answered' && q.answeredHere && q.chosenSummary) {
         <p class="terminal-demande-recap">{{ q.chosenSummary }}</p>
       }

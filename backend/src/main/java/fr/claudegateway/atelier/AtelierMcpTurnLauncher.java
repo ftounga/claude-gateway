@@ -196,8 +196,12 @@ public class AtelierMcpTurnLauncher {
 
             @Override
             public void onQuestionResolved(AtelierQuestionResolved resolved) {
-                turn.publishQuestionResolved(Map.of("callId", resolved.callId(),
-                        "status", resolved.status()), resolved.callId());
+                // F-164 / SF-164-06 : `defaults` (additif) n'est émis qu'au timeout.
+                Map<String, Object> payload = resolved.defaults().isEmpty()
+                        ? Map.of("callId", resolved.callId(), "status", resolved.status())
+                        : Map.of("callId", resolved.callId(), "status", resolved.status(),
+                                "defaults", resolved.defaults());
+                turn.publishQuestionResolved(payload, resolved.callId());
             }
 
             @Override

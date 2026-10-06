@@ -3935,15 +3935,45 @@ public class AtelierChatService implements RelayInterruptTarget {
         if (outcome.answered()) {
             return ToolOutcome.info(outcome.content());
         }
-        // Pas de réponse : le silence ne vaut pas réponse. Le motif est rendu au modèle pour qu'il
-        // poursuive autrement plutôt que de rester bloqué. (La décision-par-défaut sur l'option
-        // recommandée en cas de timeout ou de vague autonome viendra en SF-164-03.)
+        // Pas de réponse. Au TIMEOUT (F-164 / SF-164-06), on décide par défaut sur l'option
+        // recommandée et on le FLAGUE au modèle ; l'interruption, elle, ne vaut aucun défaut.
         return switch (outcome.status()) {
-            case TIMEOUT -> ToolOutcome.error(
-                    "Aucune réponse dans le délai imparti. Reprends sans la réponse, ou reformule.");
+            case TIMEOUT -> ToolOutcome.info(defaultDecisionReport(form.defaultDecisions()));
             case INTERRUPTED -> ToolOutcome.error("Le tour a été interrompu avant la réponse.");
             default -> ToolOutcome.error("La question n'a pas pu aboutir. Poursuis autrement.");
         };
+    }
+
+    /**
+     * Compte rendu rendu au modèle quand la question a expiré sans réponse (F-164 / SF-164-06) : les
+     * options recommandées sont retenues <b>par défaut</b>, et c'est dit explicitement — ce ne sont pas
+     * des réponses de l'utilisateur. Cohérent avec {@link #DECIDE_BY_DEFAULT_DOCTRINE} (F-167) : un défaut
+     * ne suffit jamais pour l'irréversible ou le sensible. Le texte vit dans le résultat d'outil, jamais
+     * dans la consigne système (préfixe stable, F-171).
+     */
+    static String defaultDecisionReport(java.util.List<AtelierQuestionForm.DefaultDecision> decisions) {
+        StringBuilder report = new StringBuilder(
+                "L'utilisateur n'a PAS répondu dans le délai imparti : aucune de ces réponses ne vient de lui.\n");
+        boolean anyDefault = decisions.stream().anyMatch(d -> d.label() != null);
+        if (anyDefault) {
+            report.append("Décidé par défaut, faute de réponse (option recommandée) :\n");
+        } else {
+            report.append("Aucune option recommandée : rien n'a pu être décidé par défaut.\n");
+        }
+        for (AtelierQuestionForm.DefaultDecision decision : decisions) {
+            report.append("- ").append(decision.header()).append(" → ")
+                    .append(decision.label() == null
+                            ? "sans réponse (aucune option recommandée)"
+                            : decision.label())
+                    .append('\n');
+        }
+        report.append("Signale-le EXPLICITEMENT dans ta réponse (« décidé par défaut, faute de réponse : … »), "
+                + "pour que l'utilisateur puisse corriger. Garde-fou : si un choix par défaut porte sur une "
+                + "action IRRÉVERSIBLE ou SENSIBLE (ouvrir une MR/PR, déployer en prod, supprimer, envoyer à "
+                + "l'extérieur, dépenser, sécurité ou permissions), NE L'EXÉCUTE PAS sur ce défaut : arrête-toi "
+                + "là et indique que la décision attend l'utilisateur. Pour une question sans réponse, ne "
+                + "décide toi-même que si le choix est petit et réversible ; sinon laisse-la en suspens.");
+        return report.toString();
     }
 
     /**
@@ -3962,8 +3992,12 @@ public class AtelierChatService implements RelayInterruptTarget {
         RunnerConfirmationGate.AnswerOutcome outcome = confirmationGate.awaitAnswer(userId, workspaceId,
                 callId, () -> listener.onQuestion(new AtelierProgressListener.AtelierQuestionRequest(
                         callId, form, confirmationGate.timeoutMs())));
+        // F-164 / SF-164-06 : au timeout, l'écran affiche les choix retenus par défaut.
+        java.util.List<String> defaults = outcome.status() == RunnerConfirmationGate.AnswerOutcome.Status.TIMEOUT
+                ? form.defaultDecisions().stream().map(AtelierQuestionForm.DefaultDecision::line).toList()
+                : java.util.List.of();
         listener.onQuestionResolved(new AtelierProgressListener.AtelierQuestionResolved(
-                callId, outcome.status().name().toLowerCase(java.util.Locale.ROOT)));
+                callId, outcome.status().name().toLowerCase(java.util.Locale.ROOT), defaults));
         return outcome;
     }
 

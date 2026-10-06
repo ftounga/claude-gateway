@@ -203,6 +203,17 @@ describe('AtelierTerminalDemandeComponent (F-164 / SF-164-02)', () => {
   it('délai écoulé : état terminal explicite', () => {
     setPending(pendingOf({ status: 'expired' }));
     expect(dom().textContent).toContain('Délai écoulé');
+    expect(dom().textContent).not.toContain('décidé par défaut');
+    expect(dom().querySelector('.terminal-demande-defaults')).toBeNull();
+  });
+
+  it('délai écoulé avec défauts : montre les choix décidés par défaut (SF-164-06)', () => {
+    setPending(pendingOf({ status: 'expired', defaults: ['Périmètre : Deux', 'Nom : sans réponse'] }));
+    expect(dom().textContent).toContain('Délai écoulé — décidé par défaut');
+    const items = Array.from(dom().querySelectorAll('.terminal-demande-defaults li'))
+      .map((li) => li.textContent?.trim());
+    expect(items).toEqual(['Périmètre : Deux', 'Nom : sans réponse']);
+    expect(dom().querySelector('input')).toBeNull();
   });
 
   it('en lecture seule : signale la question sans aucun contrôle (F-83)', () => {

@@ -2578,14 +2578,19 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.stopQuestionCountdown();
     if (pending) {
       const expired = resolved.status === 'timeout';
+      // F-164 / SF-164-06 : au timeout, l'agent a retenu l'option recommandée — on le montre.
+      const defaults = expired ? (resolved.defaults ?? []) : [];
       this.pendingQuestion.set({
         ...pending,
         status: expired ? 'expired' : 'answered',
         answering: false,
+        ...(defaults.length > 0 ? { defaults } : {}),
       });
       if (expired) {
         this.snackBar.open(
-          "Personne n'a répondu à la question dans le délai : le tour a repris sans réponse.",
+          defaults.length > 0
+            ? "Personne n'a répondu à la question dans le délai : le tour a repris sur l'option recommandée, décidée par défaut."
+            : "Personne n'a répondu à la question dans le délai : le tour a repris sans réponse.",
           'Fermer',
           { duration: 8000 },
         );

@@ -100,4 +100,19 @@ class AtelierQuestionFormTest {
                 """)))
                 .isInstanceOf(AtelierQuestionRejectedException.class);
     }
+
+    @Test
+    void defaultDecisionsKeepTheRecommendedOptionAndNeverInventOne() throws Exception {
+        AtelierQuestionForm form = AtelierQuestionForm.from(json("""
+                {"questions":[
+                  {"header":"Base","question":"Quelle base ?","options":[{"label":"H2"},{"label":"Postgres","recommended":true}]},
+                  {"header":"Nom","question":"Quel nom ?","options":[{"label":"alpha"},{"label":"beta"}]}]}
+                """));
+
+        assertThat(form.defaultDecisions()).containsExactly(
+                new AtelierQuestionForm.DefaultDecision("Base", "Postgres"),
+                new AtelierQuestionForm.DefaultDecision("Nom", null));
+        assertThat(form.defaultDecisions()).extracting(AtelierQuestionForm.DefaultDecision::line)
+                .containsExactly("Base : Postgres", "Nom : sans réponse");
+    }
 }

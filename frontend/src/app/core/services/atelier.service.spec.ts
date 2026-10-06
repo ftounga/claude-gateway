@@ -998,6 +998,26 @@ describe('AtelierService', () => {
     expect(resolved).toEqual([{ callId: 'c1', status: 'answered' }]);
   });
 
+  it('question_resolved au timeout relaie les choix décidés par défaut (F-164 / SF-164-06)', () => {
+    const dispatch = (service as unknown as {
+      dispatchSseEvent: (raw: string, handlers: object) => void;
+    }).dispatchSseEvent.bind(service);
+    const resolved: unknown[] = [];
+    const handlers = {
+      onAction: () => undefined, onText: () => undefined, onDone: () => undefined, onError: () => undefined,
+      onQuestionResolved: (r: unknown) => resolved.push(r),
+    };
+
+    dispatch('event:question_resolved\ndata:{"callId":"c1","status":"timeout",'
+      + '"defaults":["Base : Postgres",42,"","Nom : sans réponse"]}', handlers);
+    dispatch('event:question_resolved\ndata:{"callId":"c2","status":"timeout"}', handlers);
+
+    expect(resolved).toEqual([
+      { callId: 'c1', status: 'timeout', defaults: ['Base : Postgres', 'Nom : sans réponse'] },
+      { callId: 'c2', status: 'timeout' },
+    ]);
+  });
+
   it('n\'émet aucune question sans lot (question_request vide ignoré)', () => {
     const dispatch = (service as unknown as {
       dispatchSseEvent: (raw: string, handlers: object) => void;
