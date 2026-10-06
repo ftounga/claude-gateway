@@ -395,8 +395,35 @@ class SubjectJourneyApiIntegrationTest {
                 .andExpect(jsonPath("$.mode", is("LIBRE")))
                 .andExpect(jsonPath("$.gateClosed", is(false)));
         postJourney(aliceToken, "close").andExpect(status().isBadRequest());
-        // Le menu « Guidé » rouvre un sujet clos en Investigation.
-        putMode(aliceToken, "GUIDE").andExpect(jsonPath("$.phase", is("INVESTIGATION")));
+        getJourney(aliceToken).andExpect(jsonPath("$.closedChantiers", is(1)))
+                .andExpect(jsonPath("$.chantier.number", is(1)));
+        // SF-176-11 : le menu « Guidé » ouvre un NOUVEAU chantier — Investigation, plan et diagnostic neufs.
+        mockMvc.perform(put("/api/workspaces/" + workspaceId + "/journey/mode").contextPath("/api")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"mode\":\"GUIDE\",\"title\":\"Migration du DNS\"}")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(jsonPath("$.phase", is("INVESTIGATION")))
+                .andExpect(jsonPath("$.chantier.number", is(2)))
+                .andExpect(jsonPath("$.chantier.title", is("Migration du DNS")))
+                .andExpect(jsonPath("$.plan").doesNotExist())
+                .andExpect(jsonPath("$.diagnosis").doesNotExist())
+                .andExpect(jsonPath("$.closedChantiers", is(1)));
+        // L'ancien chantier reste consultable : titre, dates, plan validé final.
+        mockMvc.perform(get("/api/workspaces/" + workspaceId + "/journey/chantiers").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()", is(1)))
+                .andExpect(jsonPath("$[0].number", is(1)))
+                .andExpect(jsonPath("$[0].closedAt").exists())
+                .andExpect(jsonPath("$[0].plan[0].title", is("Remplacer le certificat")))
+                .andExpect(jsonPath("$[0].plan[0].status", is("VERIFIE")));
+        // ISOLATION : Bob ne lit pas les chantiers d'Alice.
+        mockMvc.perform(get("/api/workspaces/" + workspaceId + "/journey/chantiers").contextPath("/api")
+                        .header("Authorization", "Bearer " + bobToken))
+                .andExpect(status().isNotFound());
+        // Repasser par Libre au milieu d'un chantier ne l'efface pas.
+        putMode(aliceToken, "LIBRE");
+        putMode(aliceToken, "GUIDE").andExpect(jsonPath("$.chantier.number", is(2)));
     }
 
     @Test

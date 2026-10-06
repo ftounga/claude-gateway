@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-176 / SF-176-11 — PLUSIEURS CHANTIERS PAR SUJET (decision D9 de la rouverture du 2026-10-06).
+
+      Un sujet (un terminal) porte une SUITE de chantiers, un seul actif a la fois. Le chantier actif
+      vit dans subject_journeys (numero, titre, ouverture) ; a la cloture, il est ARCHIVE dans
+      subject_journey_chantiers (titre, dates, diagnostic, plan valide final), consultable depuis
+      l'en-tete. Repasser en Guide apres une cloture ouvre un NOUVEAU chantier (plan et diagnostic
+      remis a zero).
+
+      Reprise : un parcours deja guide devient le chantier n 1 (ouvert a sa creation). Un chantier
+      clos avant cette migration est archive paresseusement a l'ouverture du suivant (pas de
+      generation d'UUID en SQL, portable H2 / PostgreSQL).
+
+      Isolation : user_id sur chaque ligne, toute lecture filtre (user_id, workspace_id) apres
+      requireOwned. Cascade sur le terminal, purge nommee sur le compte.
+      Rollback : la table et les colonnes se retirent.
+    -->
+
+    <changeSet id="147-subject-journeys-chantier-columns" author="claude-gateway">
+        <addColumn tableName="subject_journeys">
+            <column name="chantier_number" type="integer" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="chantier_title" type="varchar(200)"/>
+            <column name="chantier_opened_at" type="timestamptz"/>
+        </addColumn>
+        <update tableName="subject_journeys">
+            <column name="chantier_number" valueNumeric="1"/>
+            <where>phase IS NOT NULL</where>
+        </update>
+        <update tableName="subject_journeys">
+            <column name="chantier_opened_at" valueComputed="created_at"/>
+            <where>phase IS NOT NULL</where>
+        </update>
+        <rollback>
+            <dropColumn tableName="subject_journeys" columnName="chantier_opened_at"/>
+            <dropColumn tableName="subject_journeys" columnName="chantier_title"/>
+            <dropColumn tableName="subject_journeys" columnName="chantier_number"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="147-subject-journey-chantiers" author="claude-gateway">
+        <createTable tableName="subject_journey_chantiers">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_subject_journey_chantiers_workspace"
+                             references="workspaces(id)" deleteCascade="true"/>
+            </column>
+            <column name="number" type="integer"><constraints nullable="false"/></column>
+            <column name="title" type="varchar(200)"/>
+            <column name="opened_at" type="timestamptz"/>
+            <column name="closed_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="diagnosis" type="varchar(1000000)"/>
+            <column name="diagnosis_confidence" type="varchar(16)"/>
+            <column name="plan_json" type="varchar(1000000)"/>
+            <column name="plan_version" type="integer"/>
+        </createTable>
+        <createIndex tableName="subject_journey_chantiers" indexName="idx_subject_journey_chantiers_owner">
+            <column name="user_id"/>
+            <column name="workspace_id"/>
+            <column name="number"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="subject_journey_chantiers"/>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>

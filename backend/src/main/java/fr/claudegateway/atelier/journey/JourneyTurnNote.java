@@ -43,6 +43,12 @@ public final class JourneyTurnNote {
                     + FOOTER;
         }
         boolean declined = journey != null && journey.getGuidedDeclinedAt() != null;
+        if (journey != null && !declined && journey.getPhase() == JourneyPhase.CLOS && journey.getChantierNumber() > 0) {
+            // SF-176-11 : le chantier précédent est clos ; un chantier distinct en ouvre un nouveau.
+            return HEADER + "Mode LIBRE · chantier " + journey.getChantierNumber() + " clos. Si la demande "
+                    + "ouvre un chantier distinct, propose_guided_mode (un nouveau chantier, plan neuf).\n"
+                    + FOOTER;
+        }
         if (firstTurn && !declined) {
             return HEADER + "Mode LIBRE · premier message de ce sujet : qualifie la demande (question, "
                     + "petit geste ou chantier). Chantier → propose_guided_mode.\n" + FOOTER;

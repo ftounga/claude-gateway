@@ -29,7 +29,39 @@ public record SubjectJourneyResponse(
         Diagnosis diagnosis,
         boolean closeProposed,
         boolean gateClosed,
-        String gateMessage) {
+        String gateMessage,
+        Chantier chantier,
+        long closedChantiers) {
+
+    /**
+     * Le chantier courant du sujet (SF-176-11), ou {@code null} si le sujet n'a jamais été guidé.
+     *
+     * @param number   1, 2… — un nouveau chantier à chaque passage en Guidé après une clôture
+     * @param title    son titre
+     * @param openedAt quand il a été ouvert
+     */
+    public record Chantier(int number, String title, OffsetDateTime openedAt) {
+    }
+
+    /**
+     * Un chantier clos, tel que la liste de l'en-tête le montre (SF-176-11).
+     *
+     * @param plan les étapes du plan validé final (lecture seule)
+     */
+    public record ClosedChantier(int number, String title, OffsetDateTime openedAt, OffsetDateTime closedAt,
+                                 String diagnosis, String diagnosisConfidence, Integer planVersion,
+                                 List<Step> plan) {
+
+        public static ClosedChantier from(SubjectJourneyChantier c) {
+            List<Step> steps = new ArrayList<>();
+            for (JourneyPlan.Step s : JourneyPlan.fromJson(c.getPlanJson()).steps()) {
+                steps.add(new Step(s.title(), s.risk().name(), s.risk().label(), s.verify(), s.rollback(),
+                        s.waitsOn(), null, s.status().name(), s.evidence(), false));
+            }
+            return new ClosedChantier(c.getNumber(), c.getTitle(), c.getOpenedAt(), c.getClosedAt(),
+                    c.getDiagnosis(), c.getDiagnosisConfidence(), c.getPlanVersion(), List.copyOf(steps));
+        }
+    }
 
     /**
      * Le diagnostic posé en fin d'investigation (SF-176-05).
@@ -74,6 +106,11 @@ public record SubjectJourneyResponse(
     }
 
     public static SubjectJourneyResponse from(SubjectJourney journey, Map<String, String> waitsOn) {
+        return from(journey, waitsOn, 0);
+    }
+
+    public static SubjectJourneyResponse from(SubjectJourney journey, Map<String, String> waitsOn,
+                                              long closedChantiers) {
         JourneyPhase phase = journey.getPhase();
         GuidedProposal proposal = journey.getGuidedProposedAt() == null || journey.isGuided()
                 ? null
@@ -94,7 +131,11 @@ public record SubjectJourneyResponse(
                 journey.isGuided() && journey.getPhase() != JourneyPhase.CLOS
                         && journey.getCloseProposedAt() != null,
                 JourneyGate.isClosed(journey),
-                JourneyGate.message(journey));
+                JourneyGate.message(journey),
+                journey.getChantierNumber() <= 0 ? null
+                        : new Chantier(journey.getChantierNumber(), journey.getChantierTitle(),
+                                journey.getChantierOpenedAt()),
+                closedChantiers);
     }
 
     private static Plan plan(SubjectJourney journey, Map<String, String> waitsOn) {

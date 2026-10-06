@@ -69,6 +69,15 @@ public class SubjectJourneyService {
      */
     @Transactional
     public SubjectJourney setMode(UUID userId, UUID workspaceId, String rawMode) {
+        return setMode(userId, workspaceId, rawMode, null);
+    }
+
+    /**
+     * Même geste, avec le <b>titre</b> du chantier qui s'ouvre (SF-176-11) — ignoré si le passage en
+     * Guidé reprend un chantier en cours.
+     */
+    @Transactional
+    public SubjectJourney setMode(UUID userId, UUID workspaceId, String rawMode, String title) {
         workspaceService.requireOwned(userId, workspaceId); // 404 — TOUJOURS en premier
         JourneyMode mode = JourneyMode.parse(rawMode);
         if (mode == null) {
@@ -79,7 +88,7 @@ public class SubjectJourneyService {
         if (journey.getMode() == mode && journey.getCreatedAt() != null && !reopen) {
             return journey; // rien ne change : pas d'écriture, pas d'événement
         }
-        SubjectJourney saved = applyMode(journey, mode, OffsetDateTime.now(clock));
+        SubjectJourney saved = applyMode(journey, mode, OffsetDateTime.now(clock), title);
         record(saved, SubjectJourneyEvent.MODE_CHANGED, "USER");
         return saved;
     }
@@ -92,7 +101,9 @@ public class SubjectJourneyService {
     public SubjectJourney acceptGuidedProposal(UUID userId, UUID workspaceId) {
         workspaceService.requireOwned(userId, workspaceId); // 404 — TOUJOURS en premier
         SubjectJourney journey = find(userId, workspaceId).orElseGet(() -> blank(userId, workspaceId));
-        SubjectJourney saved = applyMode(journey, JourneyMode.GUIDE, OffsetDateTime.now(clock));
+        // SF-176-11 : la raison de la proposition titre le chantier qui s'ouvre.
+        String title = journey.getGuidedProposalReason();
+        SubjectJourney saved = applyMode(journey, JourneyMode.GUIDE, OffsetDateTime.now(clock), title);
         record(saved, SubjectJourneyEvent.GUIDED_ACCEPTED, null);
         return saved;
     }
@@ -362,7 +373,10 @@ public class SubjectJourneyService {
         journey.setDiagnosisProposedAt(null);
         moveTo(journey, JourneyPhase.CLOS, now);
         record(journey, SubjectJourneyEvent.CLOSED, null); // journalisé en Guidé (mesure SF-176-06)
+        archive(journey, now); // SF-176-11 : le chantier clos reste consultable
         journey.setMode(JourneyMode.LIBRE);
+        // SF-176-11 : un chantier clos rouvre la question — l'agent pourra proposer le suivant.
+        journey.setGuidedDeclinedAt(null);
         return save(journey, now);
     }
 
@@ -545,18 +559,102 @@ public class SubjectJourneyService {
     static final int MAX_REASON = 300;
 
     /**
-     * Applique un mode : passer en Guidé ouvre l'Investigation si le sujet n'a jamais été guidé ou était
-     * clos ; tout choix explicite de mode efface la proposition en attente.
+     * Applique un mode : passer en Guidé <b>ouvre un chantier</b> si le sujet n'a jamais été guidé ou si
+     * le précédent est clos (SF-176-11) ; tout choix explicite de mode efface la proposition en attente.
      */
-    private SubjectJourney applyMode(SubjectJourney journey, JourneyMode mode, OffsetDateTime now) {
+    private SubjectJourney applyMode(SubjectJourney journey, JourneyMode mode, OffsetDateTime now, String title) {
         journey.setMode(mode);
         journey.setGuidedProposedAt(null);
         journey.setGuidedProposalReason(null);
         if (mode == JourneyMode.GUIDE
                 && (journey.getPhase() == null || journey.getPhase() == JourneyPhase.CLOS)) {
-            moveTo(journey, JourneyPhase.INVESTIGATION, now);
+            openChantier(journey, title, now);
         }
         return save(journey, now);
+    }
+
+    // ------------------------------------------------------------------ SF-176-11 : les chantiers
+
+    /** Titre d'un chantier : une phrase. */
+    static final int MAX_TITLE = 200;
+
+    /** Les chantiers clos du sujet ; absent = archivage désactivé (formes historiques, tests). */
+    private SubjectJourneyChantierRepository chantiers;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setChantiers(SubjectJourneyChantierRepository chantiers) {
+        this.chantiers = chantiers;
+    }
+
+    /**
+     * <b>Ouvre un nouveau chantier</b> (SF-176-11, D9) : numéro suivant, titre, Investigation, plan et
+     * diagnostic <b>remis à zéro</b> — un nouveau chantier n'hérite jamais du plan de l'ancien. Un chantier
+     * clos avant l'archivage (reprise) est archivé ici, avant d'être effacé.
+     */
+    void openChantier(SubjectJourney journey, String title, OffsetDateTime now) {
+        if (journey.getPhase() == JourneyPhase.CLOS) {
+            archive(journey, journey.getPhaseChangedAt() == null ? now : journey.getPhaseChangedAt());
+        }
+        int number = journey.getChantierNumber() + 1;
+        String cleanTitle = JourneyPlan.bound(title, MAX_TITLE);
+        journey.setChantierNumber(number);
+        journey.setChantierTitle(cleanTitle == null ? "Chantier " + number : cleanTitle.replace('\n', ' '));
+        journey.setChantierOpenedAt(now);
+        journey.setPlanJson(null);
+        journey.setPlanVersion(0);
+        journey.setValidatedPlanJson(null);
+        journey.setValidatedVersion(null);
+        journey.setPlanValidatedAt(null);
+        journey.setDiagnosis(null);
+        journey.setDiagnosisEvidence(null);
+        journey.setDiagnosisConfidence(null);
+        journey.setDiagnosisProposedAt(null);
+        journey.setCloseProposedAt(null);
+        moveTo(journey, JourneyPhase.INVESTIGATION, now);
+    }
+
+    /**
+     * Archive le chantier courant (titre, dates, diagnostic, plan validé final). Idempotent : un numéro
+     * déjà archivé ne l'est pas deux fois.
+     */
+    void archive(SubjectJourney journey, OffsetDateTime closedAt) {
+        if (chantiers == null) {
+            return;
+        }
+        int number = Math.max(1, journey.getChantierNumber());
+        if (journey.getChantierNumber() == 0) {
+            journey.setChantierNumber(1); // parcours antérieur aux chantiers : c'était le premier
+        }
+        if (chantiers.existsByUserIdAndWorkspaceIdAndNumber(journey.getUserId(), journey.getWorkspaceId(), number)) {
+            return;
+        }
+        boolean validated = journey.getValidatedPlanJson() != null;
+        chantiers.save(SubjectJourneyChantier.builder()
+                .userId(journey.getUserId())
+                .workspaceId(journey.getWorkspaceId())
+                .number(number)
+                .title(journey.getChantierTitle() == null ? "Chantier " + number : journey.getChantierTitle())
+                .openedAt(journey.getChantierOpenedAt() == null ? journey.getCreatedAt() : journey.getChantierOpenedAt())
+                .closedAt(closedAt)
+                .diagnosis(journey.getDiagnosis())
+                .diagnosisConfidence(journey.getDiagnosisConfidence())
+                .planJson(validated ? journey.getValidatedPlanJson() : journey.getPlanJson())
+                .planVersion(validated ? journey.getValidatedVersion() : journey.getPlanVersion())
+                .build());
+    }
+
+    /** Les chantiers clos du sujet, le plus récent d'abord. 404 sur un terminal d'autrui. */
+    @Transactional(readOnly = true)
+    public java.util.List<SubjectJourneyChantier> closedChantiers(UUID userId, UUID workspaceId) {
+        workspaceService.requireOwned(userId, workspaceId); // 404 — TOUJOURS en premier
+        return chantiers == null ? java.util.List.of()
+                : chantiers.findByUserIdAndWorkspaceIdOrderByNumberDesc(userId, workspaceId);
+    }
+
+    /** Combien de chantiers clos (l'en-tête dit « Chantiers : N — voir »). Lecture déjà possédée. */
+    @Transactional(readOnly = true)
+    public long closedChantierCount(UUID userId, UUID workspaceId) {
+        return chantiers == null ? 0 : chantiers.countByUserIdAndWorkspaceId(userId, workspaceId);
     }
 
     // ------------------------------------------------------------------ interne

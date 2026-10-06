@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
-import { JourneyMode, SubjectJourney } from '../models/journey.models';
+import { ClosedChantier, JourneyMode, SubjectJourney } from '../models/journey.models';
 
 /**
  * **Le parcours du sujet d'un terminal** (F-176). Aucun appel ne porte d'identifiant de compte : la
@@ -17,9 +17,18 @@ export class JourneyService {
     return this.http.get<SubjectJourney>(`/api/workspaces/${workspaceId}/journey`);
   }
 
-  /** Le menu du terminal : Libre ou Guidé (SF-176-01). */
-  setMode(workspaceId: string, mode: JourneyMode): Observable<SubjectJourney> {
-    return this.http.put<SubjectJourney>(`/api/workspaces/${workspaceId}/journey/mode`, { mode });
+  /**
+   * Le menu du terminal : Libre ou Guidé (SF-176-01). `title` titre le chantier qui s'ouvre
+   * (SF-176-11, facultatif).
+   */
+  setMode(workspaceId: string, mode: JourneyMode, title?: string): Observable<SubjectJourney> {
+    return this.http.put<SubjectJourney>(`/api/workspaces/${workspaceId}/journey/mode`,
+      title ? { mode, title } : { mode });
+  }
+
+  /** Les chantiers clos du sujet, le plus récent d'abord (SF-176-11). */
+  chantiers(workspaceId: string): Observable<ClosedChantier[]> {
+    return this.http.get<ClosedChantier[]>(`/api/workspaces/${workspaceId}/journey/chantiers`);
   }
 
   /** [Passer en guidé] (SF-176-02). */
