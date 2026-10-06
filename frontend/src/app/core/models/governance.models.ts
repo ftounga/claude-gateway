@@ -461,3 +461,48 @@ export interface MapConsolidation {
   total: number;
   proposals: MapConsolidationProposal[];
 }
+
+
+// ------------------------------------------------ F-177 / SF-177-04 — ce qui s'applique vraiment
+
+/** Un `GOUVERNANCE.md` : présent (avec extrait), absent, ou non lisible. */
+export interface GovernanceRulesFile {
+  state: 'PRESENT' | 'ABSENT' | 'INJOIGNABLE' | 'INCONNU' | 'SANS_MACHINE';
+  excerpt: string | null;
+  truncated: boolean;
+}
+
+export interface GovernanceSubjectRules {
+  workspaceId: string;
+  name: string;
+  rules: GovernanceRulesFile;
+}
+
+export interface GovernanceSkillView {
+  name: string;
+  path: string;
+  origin: 'POSTE' | 'SUJET';
+  subjectName: string | null;
+  source: 'PAQUET' | 'CLIENT';
+  packageName: string | null;
+}
+
+export interface GovernancePackageLag {
+  packageId: string;
+  name: string;
+  packageVersion: number;
+  filesMinVersion: number | null;
+  filesMaxVersion: number | null;
+  depositedFiles: number;
+  state: 'A_JOUR' | 'EN_RETARD' | 'JAMAIS_DEPOSE';
+  message: string;
+}
+
+/** **Ce qui s'applique vraiment** sur un poste (F-177 / SF-177-04). */
+export interface GovernanceEffective {
+  hostRef: string;
+  hostRules: GovernanceRulesFile;
+  subjects: GovernanceSubjectRules[];
+  skills: GovernanceSkillView[];
+  packages: GovernancePackageLag[];
+}

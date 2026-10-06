@@ -162,6 +162,9 @@
             </ul>
           }
 
+          <!-- CE QUI S'APPLIQUE VRAIMENT (F-177 / SF-177-04) : règles du client, skills, retards de dépôt. -->
+          <app-governance-effective [hostRef]="state.ref" (changed)="refreshHostFromChild()"></app-governance-effective>
+
           @if (state.available.length > 0) {
             <p class="gouvernance__meta">Retenus, pas encore actifs ici :</p>
             <div class="gouvernance__available">
