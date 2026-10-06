@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 
 import {
   GovernanceDepositPlan,
+  GovernanceEffective,
   GovernanceFileComparison,
   GovernanceHost,
   GovernanceHostSummary,
@@ -65,6 +66,11 @@ export class GovernanceService {
    */
   rememberHost(hostRef: string): Observable<HostMemoryState> {
     return this.http.post<HostMemoryState>(`/api/governance/hosts/${hostRef}/memory`, {});
+  }
+
+  /** **Ce qui s'applique vraiment** sur ce poste (F-177 / SF-177-04) : règles, skills, retards de dépôt. */
+  getEffective(hostRef: string): Observable<GovernanceEffective> {
+    return this.http.get<GovernanceEffective>(`/api/governance/hosts/${hostRef}/effective`);
   }
 
   /** Ce qui s'applique à ce poste, ce qui pourrait s'y appliquer, et les dossiers concernés. */

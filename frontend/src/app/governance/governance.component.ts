@@ -33,6 +33,7 @@ import {
   DepositPreviewDialogComponent,
 } from './deposit-preview-dialog/deposit-preview-dialog.component';
 import { DeactivateDialogComponent } from './deactivate-dialog/deactivate-dialog.component';
+import { GovernanceEffectiveComponent } from './effective/governance-effective.component';
 
 /** Ce qui empêche l'écran d'exister — distinct d'un simple échec de geste. */
 export type GovernanceError = 'none' | 'network' | 'forbidden';
@@ -62,6 +63,7 @@ export type GovernanceError = 'none' | 'network' | 'forbidden';
 @Component({
   selector: 'app-governance',
   imports: [
+    GovernanceEffectiveComponent,
     RouterLink,
     MatButtonModule,
     MatCardModule,
@@ -396,6 +398,11 @@ export class GovernanceComponent implements OnInit {
         this.hostLoading.set(false);
       },
     });
+  }
+
+  /** Un geste de « Ce qui s'applique vraiment » a redéposé un paquet : l'état du poste se relit. */
+  refreshHostFromChild(): void {
+    this.refreshHost();
   }
 
   private refreshHost(): void {

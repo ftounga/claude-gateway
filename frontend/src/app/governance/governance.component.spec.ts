@@ -109,6 +109,7 @@ describe('GovernanceComponent', () => {
       'activate',
       'apply',
       'deactivate',
+      'getEffective',
     ]);
     dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
 
@@ -116,6 +117,10 @@ describe('GovernanceComponent', () => {
     governance.getSelection.and.returnValue(of(selection));
     governance.getHosts.and.returnValue(of(hosts));
     governance.getHost.and.returnValue(of(emptyHost));
+    // F-177 / SF-177-04 : « ce qui s'applique vraiment », vide ici.
+    governance.getEffective.and.returnValue(
+      of({ hostRef: 'h', hostRules: { state: 'ABSENT', excerpt: null, truncated: false }, subjects: [], skills: [], packages: [] }),
+    );
     governance.preview.and.returnValue(of(plan));
     governance.activate.and.returnValue(of(emptyHost));
     governance.select.and.returnValue(of(selection));
