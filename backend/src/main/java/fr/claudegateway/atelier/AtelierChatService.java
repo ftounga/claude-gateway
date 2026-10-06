@@ -895,7 +895,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                     fr.claudegateway.atelier.journey.JourneyToolCatalog.SET_PLAN,
                     fr.claudegateway.atelier.journey.JourneyToolCatalog.SUBMIT_DIAGNOSIS,
                     fr.claudegateway.atelier.journey.JourneyToolCatalog.UPDATE_STEP,
-                    fr.claudegateway.atelier.journey.JourneyToolCatalog.REOPEN);
+                    fr.claudegateway.atelier.journey.JourneyToolCatalog.REOPEN,
+                    // F-178 : les lectures du terminal du poste ne modifient rien.
+                    fr.claudegateway.atelier.poste.PosteToolCatalog.SUBJECTS_STATE);
     /** Nom de l'outil serveur qui interroge la carte du poste (F-174 / SF-174-05, D8). */
     static final String MAP_SEARCH_TOOL_NAME = "carte_chercher";
     /** Nom de l'outil de passation vers un sujet (F-179 / SF-179-01), au terminal du poste seulement. */
@@ -1843,6 +1845,27 @@ public class AtelierChatService implements RelayInterruptTarget {
             this.journeyToolCatalog = catalog;
         }
         this.journeyToolExecutor = executor;
+    }
+
+    /** Les lectures du terminal du poste (F-178) ; catalogue vide pour les formes historiques. */
+    private fr.claudegateway.atelier.poste.PosteToolCatalog posteToolCatalog;
+    private fr.claudegateway.atelier.poste.PosteToolExecutor posteToolExecutor;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setPosteTools(fr.claudegateway.atelier.poste.PosteToolCatalog catalog,
+            fr.claudegateway.atelier.poste.PosteToolExecutor executor) {
+        this.posteToolCatalog = catalog;
+        this.posteToolExecutor = executor;
+    }
+
+    /** Exécute une lecture du terminal du poste (F-178) : le terminal et le compte sont ceux du tour. */
+    private ToolOutcome applyPosteTool(UUID userId, Workspace workspace, AgentToolCall call) {
+        if (posteToolExecutor == null) {
+            return ToolOutcome.error("Cet outil n'existe qu'au terminal du poste : réponds sans lui.");
+        }
+        fr.claudegateway.atelier.poste.PosteToolExecutor.Outcome outcome =
+                posteToolExecutor.execute(userId, workspace, call.name(), call.input());
+        return outcome.error() ? ToolOutcome.error(outcome.content()) : ToolOutcome.info(outcome.content());
     }
 
     /** Exécute un outil du parcours (F-176) : le terminal et le compte sont ceux du tour. */
@@ -3124,6 +3147,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                     // F-174 / SF-174-05 : la carte du poste, interrogée sur l'index côté gateway —
                     // aucun aller-retour poste. Isolation user_id + poste du projet portée par la source.
                     outcome = searchMap(userId, workspace, call);
+                } else if (fr.claudegateway.atelier.poste.PosteToolCatalog.isPosteTool(call.name())) {
+                    // F-178 : les lectures du terminal du poste, côté gateway, AVANT le volet Radar (dont
+                    // le préfixe radar_ couvrirait les lectures Radar du poste). Garde réévaluée.
+                    outcome = applyPosteTool(userId, workspace, call);
                 } else if (fr.claudegateway.radar.RadarToolCatalog.isRadarTool(call.name())) {
                     // F-104 / SF-104-01 : le registre du Radar vit dans la gateway, pas sur la machine.
                     outcome = executeRadarTool(userId, workspace, call, turnNote);
@@ -7609,6 +7636,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                                     "to", stringProp,
                                     "entry", stringProp),
                             "required", List.of("from", "to", "entry"))));
+        }
+        // F-178 : les lectures du terminal du poste (état des sujets…), au terminal du poste seulement.
+        if (posteToolCatalog != null) {
+            tools.addAll(posteToolCatalog.toolsFor(userId, workspace));
         }
         // Le volet Teams, en dernier : ce qui précède est la panoplie de tout terminal, ce qui suit
         // n'existe que là où Teams a été payé ET où l'on est dans SON terminal (F-89 / SF-89-01).

@@ -13,6 +13,9 @@ public interface SubjectJourneyRepository extends JpaRepository<SubjectJourney, 
 
     Optional<SubjectJourney> findByUserIdAndWorkspaceId(UUID userId, UUID workspaceId);
 
+    /** Les parcours de plusieurs sujets d'un même utilisateur (F-178 / SF-178-02, {@code sujets_etat}). */
+    java.util.List<SubjectJourney> findByUserIdAndWorkspaceIdIn(UUID userId, java.util.Collection<UUID> workspaceIds);
+
     /** Purge à la suppression du compte. */
     @Modifying
     @Query("delete from SubjectJourney j where j.userId = :userId")

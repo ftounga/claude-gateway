@@ -46,10 +46,12 @@ import fr.claudegateway.teams.TeamsToolCatalog;
  * un paramètre {@code portee} ; en portée « poste », la recherche couvre le terminal du poste et les sujets
  * de CE poste, du MÊME utilisateur, et chaque extrait est étiqueté {@code [sujet · date · rôle]}. Dans un
  * sujet, le paramètre n'existe pas et un appel qui l'enverrait reste borné au fil.
+ *
+ * <p>Et ses lectures (SF-178-02+) : {@code sujets_etat} n'est déclaré et exécuté qu'au terminal du poste.</p>
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-class AtelierChatServiceRecallHostTest {
+class AtelierChatServiceHostTerminalTest {
 
     @Mock private WorkspaceService workspaceService;
     @Mock private AtelierMessageRepository messageRepository;
@@ -259,5 +261,53 @@ class AtelierChatServiceRecallHostTest {
                 any(Pageable.class));
         assertThat(String.join("\n", agentProvider.messageSnapshots))
                 .contains("[lzi · 2026-09-20 · utilisateur]").contains("par le sens");
+    }
+
+    // ---------------------------------------------------------------- SF-178-02 : sujets_etat
+
+    @Mock private fr.claudegateway.atelier.poste.SubjectsStateService subjectsState;
+
+    private void wirePosteTools() {
+        fr.claudegateway.atelier.poste.PosteToolCatalog catalog = new fr.claudegateway.atelier.poste.PosteToolCatalog();
+        service.setPosteTools(catalog, new fr.claudegateway.atelier.poste.PosteToolExecutor(catalog, subjectsState));
+    }
+
+    private boolean declares(Workspace workspace, String tool) {
+        return service.buildTools(userId, workspace).stream().anyMatch(t -> tool.equals(t.name()));
+    }
+
+    @Test
+    @DisplayName("SF-178-02 : sujets_etat déclaré au terminal du poste seulement")
+    void subjectsStateDeclaredOnlyAtHostTerminal() {
+        wirePosteTools();
+        assertThat(declares(hostTerminal(), "sujets_etat")).isTrue();
+        assertThat(declares(plainSubject(), "sujets_etat")).isFalse();
+    }
+
+    @Test
+    @DisplayName("SF-178-02 : sujets_etat lit l'état du poste du terminal possédé et le rend au modèle")
+    void subjectsStateExecutesForTheOwnedHost() {
+        wirePosteTools();
+        hostTerminal();
+        when(subjectsState.describe(userId, hostId)).thenReturn("## data-platform\n- Parcours : Guidé");
+        agentProvider.enqueueToolCall("sujets_etat");
+        agentProvider.enqueueFinal("Voilà.");
+        service.chatStreaming(userId, workspaceId, "où en est chaque sujet ?", new Captor());
+
+        verify(subjectsState).describe(userId, hostId);
+        assertThat(String.join("\n", agentProvider.messageSnapshots)).contains("## data-platform");
+    }
+
+    @Test
+    @DisplayName("SF-178-02 : appelé dans un sujet malgré tout, sujets_etat est refusé, rien n'est lu")
+    void subjectsStateRefusedInASubject() {
+        wirePosteTools();
+        plainSubject();
+        agentProvider.enqueueToolCall("sujets_etat");
+        agentProvider.enqueueFinal("Ok.");
+        service.chatStreaming(userId, workspaceId, "où en est chaque sujet ?", new Captor());
+
+        verify(subjectsState, never()).describe(any(), any());
+        assertThat(String.join("\n", agentProvider.messageSnapshots)).contains("terminal du poste");
     }
 }

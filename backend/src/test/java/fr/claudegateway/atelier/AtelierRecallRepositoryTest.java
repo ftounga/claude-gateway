@@ -187,4 +187,20 @@ class AtelierRecallRepositoryTest {
                 java.util.List.of(aliceWs1, aliceWs2), java.util.List.of(bob.getId(), outside.getId(), mine.getId())))
                 .extracting(AtelierMessage::getId).containsExactly(mine.getId());
     }
+
+    @Test
+    @DisplayName("F-178 / SF-178-02 : dernière activité par fil, filtrée user_id")
+    void lastActivityByWorkspaceIsIsolated() {
+        OffsetDateTime t = OffsetDateTime.parse("2026-10-01T10:00:00Z");
+        message(aliceWs1, aliceId, "USER", "a", t);
+        message(aliceWs1, aliceId, "ASSISTANT", "b", t.plusHours(2));
+        // Plus récent, mais d'un AUTRE utilisateur : ne doit pas compter.
+        message(aliceWs1, bobId, "USER", "bob", t.plusDays(3));
+
+        var rows = messageRepository.lastActivityByWorkspace(java.util.List.of(aliceWs1, aliceWs2), aliceId);
+
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0)[0]).isEqualTo(aliceWs1);
+        assertThat(((OffsetDateTime) rows.get(0)[1]).toInstant()).isEqualTo(t.plusHours(2).toInstant());
+    }
 }
