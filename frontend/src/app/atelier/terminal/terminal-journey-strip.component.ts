@@ -38,6 +38,39 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
         </div>
       </section>
     }
+    @if (closedLine(); as closed) {
+      <section class="journey-closed" aria-label="Chantier clos">
+        <div class="journey-closed__line">
+          <mat-icon class="journey-closed__icon" aria-hidden="true">task_alt</mat-icon>
+          <span class="journey-closed__text">Chantier clos{{ closed.date ? ' le ' + closed.date : '' }}</span>
+          @if (closed.plan) {
+            <span aria-hidden="true">·</span>
+            <button type="button" class="journey-closed__toggle" [attr.aria-expanded]="closedPlanOpen()" (click)="closedPlanOpen.set(!closedPlanOpen())">
+              {{ closedPlanOpen() ? 'masquer le plan' : 'voir le plan' }}
+            </button>
+          }
+          <button type="button" class="journey-closed__dismiss" aria-label="Masquer cette ligne" (click)="dismissClosed()">
+            <mat-icon aria-hidden="true">close</mat-icon>
+          </button>
+        </div>
+        @if (closedPlanOpen() && closed.plan; as p) {
+          <ol class="journey-plan__steps">
+            @for (step of p.steps; track $index) {
+              <li class="journey-plan__step">
+                <div class="journey-plan__line">
+                  <span class="journey-plan__status" [attr.data-status]="step.status">{{ statusLabel(step.status) }}</span>
+                  <span class="journey-plan__title">{{ step.title }}</span>
+                  <span class="journey-plan__risk" [attr.data-risk]="step.risk">{{ step.riskLabel }}</span>
+                </div>
+                @if (step.evidence) {
+                  <div class="journey-plan__detail">Preuve : {{ step.evidence }}</div>
+                }
+              </li>
+            }
+          </ol>
+        }
+      </section>
+    }
     @if (guided()) {
       <section class="journey-strip" aria-label="Parcours guidé du sujet">
         <ol class="journey-steps">
@@ -151,7 +184,8 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
     }
 
     .journey-strip,
-    .journey-card {
+    .journey-card,
+    .journey-closed {
       margin: 0 0 var(--cg-space-2);
       padding: var(--cg-space-1) var(--cg-space-3);
       border: 1px solid var(--cg-divider);
@@ -165,6 +199,49 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
       align-items: center;
       gap: var(--cg-space-2) var(--cg-space-3);
       border-color: var(--cg-orange-2);
+    }
+
+    .journey-closed {
+      color: var(--cg-text-secondary);
+    }
+
+    .journey-closed__line {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--cg-space-1) var(--cg-space-2);
+    }
+
+    .journey-closed__icon {
+      color: var(--cg-success);
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+    }
+
+    .journey-closed__toggle,
+    .journey-closed__dismiss {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .journey-closed__toggle {
+      text-decoration: underline;
+    }
+
+    .journey-closed__dismiss {
+      display: inline-flex;
+      margin-left: auto;
+    }
+
+    .journey-closed__dismiss mat-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
     }
 
     .journey-card__icon {
@@ -378,10 +455,44 @@ export class TerminalJourneyStripComponent {
 
   readonly phases = JOURNEY_PHASES;
 
+  /** La bande des phases n'est rendue qu'en Guidé **actif** (SF-176-08, D8) — jamais sur un chantier clos. */
   readonly guided = computed(() => {
     const j = this.journey();
-    return !!j && j.mode === 'GUIDE' && !!j.phase;
+    return !!j && j.mode === 'GUIDE' && !!j.phase && j.phase !== 'CLOS';
   });
+
+  /** Les lignes « chantier clos » masquées par l'utilisateur (clé = date de clôture). */
+  private readonly dismissedClosed = signal<string | null>(readDismissed());
+
+  /**
+   * **Le chantier clos, replié en une ligne** (SF-176-08, D8) : « Chantier clos le … · voir le plan »,
+   * masquable. Rien si le sujet n'a jamais été clos, ou si la ligne a été masquée.
+   */
+  readonly closedLine = computed(() => {
+    const j = this.journey();
+    if (!j || j.mode === 'GUIDE' || j.phase !== 'CLOS') {
+      return null;
+    }
+    const key = j.phaseChangedAt ?? 'clos';
+    if (this.dismissedClosed() === key) {
+      return null;
+    }
+    return { date: closedDate(j.phaseChangedAt), plan: j.plan && j.plan.steps.length > 0 ? j.plan : null };
+  });
+
+  readonly closedPlanOpen = signal(false);
+
+  /** Masque la ligne du chantier clos (mémorisé dans ce navigateur, best-effort). */
+  dismissClosed(): void {
+    const key = this.journey()?.phaseChangedAt ?? 'clos';
+    this.dismissedClosed.set(key);
+    this.closedPlanOpen.set(false);
+    try {
+      localStorage.setItem(DISMISSED_KEY, key);
+    } catch {
+      // stockage indisponible : masqué pour cette session seulement
+    }
+  }
 
   /** La proposition du mode guidé qui attend un geste — seulement en Libre. */
   readonly proposal = computed(() => {
@@ -452,4 +563,23 @@ export class TerminalJourneyStripComponent {
     const phase = this.journey()?.phase;
     return phase ? JOURNEY_PHASES.findIndex(p => p.phase === phase) : -1;
   });
+}
+
+const DISMISSED_KEY = 'cg.journey.closedDismissed';
+
+function readDismissed(): string | null {
+  try {
+    return localStorage.getItem(DISMISSED_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** « 06/10/2026 », ou `null` si la date est illisible. */
+function closedDate(iso: string | null): string | null {
+  if (!iso) {
+    return null;
+  }
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? null : d.toLocaleDateString('fr-FR');
 }

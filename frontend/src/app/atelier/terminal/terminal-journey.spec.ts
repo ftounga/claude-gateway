@@ -181,6 +181,37 @@ describe('F-176 — le parcours du sujet', () => {
     expect(fixture.nativeElement.querySelector('.journey-gate')).toBeNull();
   });
 
+  it('SF-176-08 : après clôture, plus de bande des phases — une ligne repliée, plan consultable, masquable', () => {
+    try { localStorage.removeItem('cg.journey.closedDismissed'); } catch { /* ignoré */ }
+    const fixture = TestBed.createComponent(TerminalJourneyStripComponent);
+    fixture.componentRef.setInput('journey', {
+      mode: 'LIBRE', phase: 'CLOS', phaseLabel: 'Clos', phaseChangedAt: '2026-10-06T08:00:00Z',
+      plan: { version: 2, validatedVersion: 2, validatedAt: null, awaitingValidation: false, amendment: false,
+        waitingInputs: 0, steps: [{ title: 'Remplacer le certificat', risk: 'EXTERNE', riskLabel: 'externe',
+          verify: null, rollback: null, waitsOn: null, waitsOnStatus: null, status: 'VERIFIE', evidence: 'curl 200',
+          changed: false }] },
+    } as SubjectJourney);
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('.journey-strip')).toBeNull();
+    expect(el.querySelector('.journey-closed')?.textContent).toContain('Chantier clos le');
+    expect(el.textContent).not.toContain('Remplacer le certificat');
+    (el.querySelector('.journey-closed__toggle') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.textContent).toContain('Remplacer le certificat');
+    (el.querySelector('.journey-closed__dismiss') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.querySelector('.journey-closed')).toBeNull();
+    try { localStorage.removeItem('cg.journey.closedDismissed'); } catch { /* ignoré */ }
+  });
+
+  it('SF-176-08 : un reste GUIDE + CLOS ne rend pas la bande des phases', () => {
+    const fixture = TestBed.createComponent(TerminalJourneyStripComponent);
+    fixture.componentRef.setInput('journey', guided('CLOS', 'Clos'));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.journey-strip')).toBeNull();
+  });
+
   it('SF-176-05 : « Prêt à planifier » montre le diagnostic et émet [Planifier] / [Continuer]', () => {
     const fixture = TestBed.createComponent(TerminalJourneyStripComponent);
     fixture.componentRef.setInput('journey', {
