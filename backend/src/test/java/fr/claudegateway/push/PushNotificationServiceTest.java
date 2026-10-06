@@ -83,6 +83,36 @@ class PushNotificationServiceTest {
     }
 
     @Test
+    void questionAskedSendsANeutralTitleAndBodyWithTheTerminalDeepLink() {
+        when(transport.isEnabled()).thenReturn(true);
+        when(repository.findByUserId(userId)).thenReturn(List.of(sub("https://push/a")));
+        when(transport.send(any(), any())).thenReturn(Result.DELIVERED);
+
+        service.notifyQuestionAsked(userId, workspaceId);
+
+        ArgumentCaptor<String> payload = ArgumentCaptor.forClass(String.class);
+        verify(transport, timeout(2000)).send(any(), payload.capture());
+        assertThat(payload.getValue())
+                .contains("Une question vous attend")
+                .contains("Ouvrez l'application pour répondre.")
+                .contains("/atelier/" + workspaceId)
+                .contains("openWindow");
+    }
+
+    @Test
+    void questionAskedIsSilentWithoutTransportOrUser() throws InterruptedException {
+        when(transport.isEnabled()).thenReturn(false);
+        service.notifyQuestionAsked(userId, workspaceId);
+
+        when(transport.isEnabled()).thenReturn(true);
+        service.notifyQuestionAsked(null, workspaceId);
+
+        Thread.sleep(200);
+        verify(repository, never()).findByUserId(any());
+        verify(transport, never()).send(any(), any());
+    }
+
+    @Test
     void aDeadEndpointIsPurged() {
         when(transport.isEnabled()).thenReturn(true);
         PushSubscription alive = sub("https://push/alive");
