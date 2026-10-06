@@ -94,6 +94,7 @@ import {
   AtelierTeamsLine,
   AtelierTeamsMoment,
   AtelierTerminalBlock,
+  AtelierSubjectHandoff,
   AtelierFluxMarker,
   GitPullRequestResult,
   GitPushResult,
@@ -148,6 +149,7 @@ import { PagePanelComponent } from './page-panel.component';
 import { TerminalActionsPanelComponent } from './terminal-actions-panel.component';
 import { TerminalAttentesBandComponent } from './terminal-attentes-band.component';
 import { AttenteCardComponent } from './attente-card.component';
+import { HandoffCardComponent, HandoffOriginComponent } from './handoff-card.component';
 import { TerminalJourneyChipComponent } from './terminal-journey-chip.component';
 import { TerminalJourneyChantiersComponent } from './terminal-journey-chantiers.component';
 import { TerminalHandComponent } from './terminal-hand.component';
@@ -219,6 +221,7 @@ export interface SlashMenuEntry {
     FormsModule, ForgeBreadcrumbComponent, LiveBadgeComponent, MarkdownPipe, MatButtonModule,
     TeamsLinkBadgeComponent, NgTemplateOutlet, TerminalEmailComponent, PageBlockComponent, PagePanelComponent,
     TerminalActionsPanelComponent, TerminalAttentesBandComponent, AttenteCardComponent,
+    HandoffCardComponent, HandoffOriginComponent,
     TerminalJourneyChipComponent, TerminalJourneyStripComponent, TerminalJourneyChantiersComponent,
     TerminalHandComponent,
     AtelierTerminalDemandeComponent,
@@ -1272,6 +1275,12 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    * suppression n'est inventé — comportement documenté dans la mini-spec).
    */
   @Output() depositRemove = new EventEmitter<string>();
+  /** [Ouvrir le sujet] sur une carte de passation (F-179 / SF-179-02) : l'écran ouvre le sujet. */
+  @Output() openSubject = new EventEmitter<AtelierSubjectHandoff>();
+  /** Le terminal d'où vient ce sujet (F-179 / SF-179-02), ou `null` : la bande « Ouvert depuis… ». */
+  @Input() handoffFromName: string | null = null;
+  /** « Revenir » au terminal d'origine (F-179 / SF-179-02). */
+  @Output() handoffReturn = new EventEmitter<void>();
 
   /**
    * Nom court d'une pièce jointe (dernier segment du chemin), pour une puce compacte. Le chemin

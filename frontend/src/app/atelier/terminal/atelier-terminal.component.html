@@ -312,6 +312,11 @@
         }
       </span>
     </header>
+    <!-- D'OÙ VIENT CE SUJET (F-179 / SF-179-02) : ouvert par la passation du terminal du poste. La phrase
+         attend dans la saisie, rien n'est parti ; un geste pour revenir. -->
+    @if (handoffFromName) {
+      <app-handoff-origin [fromName]="handoffFromName" (back)="handoffReturn.emit()"></app-handoff-origin>
+    }
   }
 
   <!-- UN TERMINAL TEAMS SANS DROIT LE DIT (F-89 / SF-89-04). Constat du 2026-09-13 : sans droit,
@@ -840,6 +845,10 @@
               @if (block.attente; as attente) {
                 <app-attente-card [attente]="attente" [live]="liveAttente(attente.actionId)" [readOnly]="readOnly" (changed)="reloadAttentes()"></app-attente-card>
               }
+              <!-- LA PASSATION VERS UN SUJET (F-179 / SF-179-02) : [Ouvrir le sujet], la phrase déposée non envoyée. -->
+              @if (block.handoff; as handoff) {
+                <app-handoff-card [handoff]="handoff" [readOnly]="readOnly" (open)="openSubject.emit($event)"></app-handoff-card>
+              }
             </div>
             }
             }
@@ -1060,6 +1069,9 @@
           }
           @if (block.attente; as attente) {
             <app-attente-card [attente]="attente" [live]="liveAttente(attente.actionId)" [readOnly]="readOnly" (changed)="reloadAttentes()"></app-attente-card>
+          }
+          @if (block.handoff; as handoff) {
+            <app-handoff-card [handoff]="handoff" [readOnly]="readOnly" (open)="openSubject.emit($event)"></app-handoff-card>
           }
         </div>
         }
