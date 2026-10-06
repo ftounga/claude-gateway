@@ -84,6 +84,20 @@ public class PromptSourceStore {
      */
     public static final String ENV_PATH = "/__prompt_source_env__";
 
+    /**
+     * Chemin réservé où se range le {@code GOUVERNANCE.md} de la <b>racine du poste</b>, vu depuis un
+     * <b>sujet</b> (F-177 / SF-177-01, décision D1). Le fichier vit au-dessus du dossier du sujet : il
+     * ne peut pas se ranger sous son chemin relatif ({@code GOUVERNANCE.md} désigne déjà celui du
+     * sujet). Un chemin absolu ne peut entrer en collision avec aucun fichier relatif réel.
+     */
+    public static final String HOST_GOVERNANCE_PATH = "/__host_governance__";
+
+    /** Nom du fichier de règles du client, au poste comme au sujet (F-177 / SF-177-01). */
+    public static final String GOVERNANCE_FILE = "GOUVERNANCE.md";
+
+    /** Code exact du runner pour un fichier absent : la seule issue qui retire une copie rangée. */
+    static final String NOT_FOUND = "not_found";
+
     /** Sentinelle rangée quand le répertoire n'est pas un dépôt git : n'interroge plus git ensuite. */
     static final String ENV_NO_GIT = "Dépôt git : non";
 
@@ -195,9 +209,92 @@ public class PromptSourceStore {
             }
         }
 
+        // 2 bis) F-177 / SF-177-01 — le GOUVERNANCE.md de la RACINE DU POSTE, vu depuis un sujet : lu à la
+        //    racine (chemin de projet vide), rangé sous un chemin réservé. Seul un « absent » exact retire
+        //    la copie : une règle supprimée ne doit pas continuer de s'appliquer ; une machine muette, si.
+        refreshHostGovernance(userId, workspace);
+
         // 3) L'instantané d'environnement git, figé (write-once) : capturé une seule fois, servi stable
         //    ensuite pour ne pas casser le préfixe (F-134). Voir ENV_PATH.
         captureEnvSnapshot(userId, workspace, target);
+    }
+
+    /**
+     * Relit le {@code GOUVERNANCE.md} de la racine du poste pour un <b>sujet</b> (F-177 / SF-177-01).
+     * Sans effet au terminal du poste (son propre {@code GOUVERNANCE.md} <i>est</i> celui de la racine,
+     * déjà relu comme fichier cœur). Ne lève jamais.
+     */
+    public void refreshHostGovernance(UUID userId, Workspace workspace) {
+        if (!isSubjectOfHost(workspace)) {
+            return;
+        }
+        try {
+            RunnerTarget root = new RunnerTarget(workspace.getHostId(), workspace.getId(), "");
+            RunnerCallResult read = runnerToolGateway.readFile(root, UUID.randomUUID().toString(),
+                    GOVERNANCE_FILE);
+            if (read == null) {
+                return;
+            }
+            if (read.ok()) {
+                store(userId, workspace, HOST_GOVERNANCE_PATH, read.content() == null ? "" : read.content());
+            } else if (NOT_FOUND.equals(read.errorCode())) {
+                files.findByUserIdAndWorkspaceIdAndPath(userId, workspace.getId(), HOST_GOVERNANCE_PATH)
+                        .ifPresent(files::delete);
+            }
+        } catch (RuntimeException ex) {
+            log.debug("Règles du poste non relues ({})", ex.getClass().getSimpleName());
+        }
+    }
+
+    /**
+     * Vrai si ce projet est un <b>sujet</b> sous la racine d'un poste : rattaché à une machine, avec un
+     * chemin de projet non vide, et pas le terminal du poste (dont la racine est le dossier même).
+     */
+    public static boolean isSubjectOfHost(Workspace workspace) {
+        if (workspace == null || workspace.getHostId() == null || workspace.isHostTerminal()) {
+            return false;
+        }
+        String projectPath = workspace.getProjectPath();
+        return projectPath != null && !projectPath.isBlank();
+    }
+
+    /**
+     * Range directement le {@code GOUVERNANCE.md} de la racine du poste pour <b>tous</b> les projets
+     * amorcés de ce poste (F-177 / SF-177-02) : une règle appliquée depuis un terminal doit valoir au
+     * tour suivant de <b>n'importe quel</b> sujet du poste, sans attendre que chacun se rafraîchisse.
+     * Le terminal du poste reçoit le contenu sous son propre chemin ({@code GOUVERNANCE.md}).
+     */
+    @Transactional
+    public void putHostGovernance(UUID userId, List<Workspace> workspacesOfHost, String content) {
+        if (userId == null || workspacesOfHost == null || content == null) {
+            return;
+        }
+        for (Workspace workspace : workspacesOfHost) {
+            if (workspace == null || workspace.getId() == null || !userId.equals(workspace.getUserId())
+                    || !isPrimed(userId, workspace.getId())) {
+                continue; // Un projet non amorcé relit en direct : rien à préparer pour lui.
+            }
+            if (workspace.isHostTerminal()) {
+                store(userId, workspace, GOVERNANCE_FILE, content);
+            } else if (isSubjectOfHost(workspace)) {
+                store(userId, workspace, HOST_GOVERNANCE_PATH, content);
+            }
+        }
+    }
+
+    /**
+     * Range directement un fichier d'un projet amorcé (F-177 / SF-177-02) — après une écriture validée
+     * par l'utilisateur, pour que le tour suivant la voie sans attendre le rafraîchissement post-tour.
+     * Sans effet sur un projet non amorcé ou d'un autre utilisateur.
+     */
+    @Transactional
+    public void putFile(UUID userId, Workspace workspace, String path, String content) {
+        if (userId == null || workspace == null || workspace.getId() == null || path == null
+                || content == null || !userId.equals(workspace.getUserId())
+                || !isPrimed(userId, workspace.getId())) {
+            return;
+        }
+        store(userId, workspace, path, content);
     }
 
     /**

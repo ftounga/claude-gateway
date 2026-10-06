@@ -250,7 +250,8 @@ class AtelierChatServiceRunnerGuardTest {
                 reads.capture(), anyLong());
         // CLAUDE.md + STATE.md + PLAN.md + listage + 2 skills. Les deux fichiers de sujet sont lus à
         // l'amorçage depuis F-148 (cache des sources de la consigne) ; l'attente était restée à 4.
-        assertThat(reads.getValue()).isEqualTo(6);
+        // F-177 / SF-177-01 : + GOUVERNANCE.md du sujet, source de la consigne au même rang que CLAUDE.md.
+        assertThat(reads.getValue()).isEqualTo(7);
         // Et surtout : aucune ligne d'appel pour ces lectures d'amorçage.
         verify(auditService, never()).recordCall(any(), any(), anyString(), anyString(), any(), any());
     }
