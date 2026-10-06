@@ -7,7 +7,7 @@ import {
 } from '../../core/models/journey.models';
 
 /** Un geste de l'utilisateur sur le parcours, rendu au terminal qui appelle la gateway. */
-export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan'
+export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan' | 'validate-plan-only'
   | 'confirm-diagnosis' | 'dismiss-diagnosis' | 'close' | 'dismiss-close';
 
 /**
@@ -33,7 +33,7 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
           <span class="journey-card__hint">En mode guidé : on comprend, on planifie, vous validez le plan, puis on agit.</span>
         </div>
         <div class="journey-card__actions">
-          <button mat-flat-button type="button" class="journey-card__accept" [disabled]="busy()" (click)="gesture.emit('accept-guided')">Passer en guidé</button>
+          <button mat-flat-button type="button" class="journey-card__accept" [disabled]="busy()" (click)="gesture.emit('accept-guided')">Passer en guidé et continuer</button>
           <button mat-button type="button" class="journey-card__decline" [disabled]="busy()" (click)="gesture.emit('decline-guided')">Rester libre</button>
         </div>
       </section>
@@ -98,7 +98,7 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
               }
             </div>
             <div class="journey-card__actions">
-              <button mat-flat-button type="button" class="journey-decision__confirm" [disabled]="busy()" (click)="gesture.emit('confirm-diagnosis')">Planifier</button>
+              <button mat-flat-button type="button" class="journey-decision__confirm" [disabled]="busy()" (click)="gesture.emit('confirm-diagnosis')">Planifier et continuer</button>
               <button mat-button type="button" class="journey-decision__dismiss" [disabled]="busy()" (click)="gesture.emit('dismiss-diagnosis')">Continuer l'investigation</button>
             </div>
           </div>
@@ -107,10 +107,10 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
           <div class="journey-decision" role="region" aria-label="Clôture proposée">
             <div class="journey-decision__body">
               <strong>Toutes les vérifications sont vertes.</strong>
-              <span class="journey-decision__hint">Le sujet peut être clos ; il pourra être rouvert en mode guidé.</span>
+              <span class="journey-decision__hint">Clore ramène le terminal en Libre ; un nouveau chantier pourra être ouvert en mode guidé.</span>
             </div>
             <div class="journey-card__actions">
-              <button mat-flat-button type="button" class="journey-decision__close" [disabled]="busy()" (click)="gesture.emit('close')">Clore le sujet</button>
+              <button mat-flat-button type="button" class="journey-decision__close" [disabled]="busy()" (click)="gesture.emit('close')">Clore le chantier</button>
               <button mat-button type="button" class="journey-decision__later" [disabled]="busy()" (click)="gesture.emit('dismiss-close')">Pas encore</button>
             </div>
           </div>
@@ -168,9 +168,12 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
                 <span class="journey-plan__hint">
                   {{ p.amendment ? 'Le plan validé a été modifié : rien ne change chez vous avant votre validation.' : 'Rien ne sera modifié avant votre validation.' }}
                 </span>
-                <button mat-flat-button type="button" class="journey-plan__validate" [disabled]="busy()" (click)="gesture.emit('validate-plan')">
-                  {{ p.amendment ? 'Valider l\'amendement' : 'Valider le plan' }}
-                </button>
+                <span class="journey-card__actions">
+                  <button mat-flat-button type="button" class="journey-plan__validate" [disabled]="busy()" (click)="gesture.emit('validate-plan')">
+                    {{ p.amendment ? 'Valider l\'amendement et reprendre' : 'Valider le plan et lancer' }}
+                  </button>
+                  <button mat-button type="button" class="journey-plan__validate-only" [disabled]="busy()" (click)="gesture.emit('validate-plan-only')">Valider sans lancer</button>
+                </span>
               </div>
             }
           </div>

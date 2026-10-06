@@ -118,3 +118,30 @@ export function journeyLabel(journey: SubjectJourney | null): string {
   }
   return journey.phaseLabel ? `Guidé · ${journey.phaseLabel}` : 'Guidé';
 }
+
+/**
+ * **Un clic = la décision ET la reprise** (F-176 / SF-176-09, décision D6) : le message visible qui
+ * relance l'agent après un geste, ou `null` si le geste ne relance rien ([Rester libre], [Pas encore],
+ * [Valider sans lancer]). `before` est le parcours vu au moment du clic.
+ */
+export function journeyResumeMessage(gesture: string, before: SubjectJourney | null): string | null {
+  switch (gesture) {
+    case 'accept-guided':
+      return '✓ Mode guidé — investigation lancée.';
+    case 'confirm-diagnosis':
+      return '✓ Diagnostic confirmé — planification lancée.';
+    case 'dismiss-diagnosis':
+      return '↻ Investigation poursuivie.';
+    case 'validate-plan': {
+      const plan = before?.plan;
+      const version = plan ? ` v${plan.version}` : '';
+      return plan?.amendment
+        ? `✓ Amendement${version} validé — exécution reprise.`
+        : `✓ Plan${version} validé — exécution lancée.`;
+    }
+    case 'close':
+      return '✓ Chantier clos.';
+    default:
+      return null;
+  }
+}
