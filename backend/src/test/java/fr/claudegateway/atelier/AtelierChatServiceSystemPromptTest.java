@@ -810,6 +810,21 @@ class AtelierChatServiceSystemPromptTest {
         assertThat(runner).contains("Dis où tu ranges un fait durable");
     }
 
+    // ------------------------------------------- F-178 / SF-178-04 : le poste sait où chercher
+
+    @Test
+    void theHostLookupDoctrineIsPresentOnlyAtTheHostTerminal() {
+        String host = systemPromptOfHostTerminal();
+        assertThat(host).contains(AtelierChatService.HOST_LOOKUP_DOCTRINE);
+        assertThat(host).contains("portee \"poste\"").contains("sujets_etat").contains("CITE TA SOURCE");
+    }
+
+    @Test
+    void theHostLookupDoctrineIsAbsentInASubject() {
+        String runner = systemPromptOfRunnerProjectDeclaring(null);
+        assertThat(runner).doesNotContain("Le poste sait où chercher");
+    }
+
     @Test
     void theSubjectRoutingDoctrineIsAbsentOnAHostedProject() {
         when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
