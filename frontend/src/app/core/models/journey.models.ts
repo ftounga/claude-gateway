@@ -32,6 +32,10 @@ export interface SubjectJourney {
   diagnosis?: JourneyDiagnosis | null;
   /** Toutes les étapes vérifiées : la clôture attend un geste (SF-176-05). */
   closeProposed?: boolean;
+  /** La porte refuse les modifications — calculée par la gateway, comme dans la boucle (SF-176-07). */
+  gateClosed?: boolean;
+  /** Le message exact du refus, ou `null` si la porte est ouverte (SF-176-07). */
+  gateMessage?: string | null;
 }
 
 /** Le diagnostic (SF-176-05). */

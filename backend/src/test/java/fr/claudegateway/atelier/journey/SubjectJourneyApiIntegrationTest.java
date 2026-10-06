@@ -366,6 +366,9 @@ class SubjectJourneyApiIntegrationTest {
         setPlan("""
                 [{"title":"Remplacer le certificat","risk":"EXTERNE","verify":"curl 200"},
                  {"title":"Noter la date d'expiration","risk":"NOTES"}]""");
+        getJourney(aliceToken).andExpect(jsonPath("$.gateClosed", is(true)))
+                .andExpect(jsonPath("$.gateMessage",
+                        is("Ce terminal est en mode Guidé, phase Plan : cette action attend la validation du plan.")));
         org.assertj.core.api.Assertions.assertThat(
                 tool(JourneyToolCatalog.UPDATE_STEP, "{\"step\":1,\"status\":\"FAIT\"}").error()).isTrue();
         validate(aliceToken, "{\"version\":1}").andExpect(jsonPath("$.phase", is("EXECUTION")));
@@ -387,7 +390,11 @@ class SubjectJourneyApiIntegrationTest {
                 .andExpect(jsonPath("$.plan.steps[0].evidence", is("curl → 200")))
                 .andExpect(jsonPath("$.plan.steps[0].status", is("VERIFIE")));
         postJourney(aliceToken, "close").andExpect(jsonPath("$.phase", is("CLOS")))
-                .andExpect(jsonPath("$.closeProposed", is(false)));
+                .andExpect(jsonPath("$.closeProposed", is(false)))
+                // SF-176-07 : clore ramène en Libre, la porte s'ouvre.
+                .andExpect(jsonPath("$.mode", is("LIBRE")))
+                .andExpect(jsonPath("$.gateClosed", is(false)));
+        postJourney(aliceToken, "close").andExpect(status().isBadRequest());
         // Le menu « Guidé » rouvre un sujet clos en Investigation.
         putMode(aliceToken, "GUIDE").andExpect(jsonPath("$.phase", is("INVESTIGATION")));
     }

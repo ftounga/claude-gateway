@@ -121,6 +121,52 @@ class JourneyRiskClassifierTest {
         assertThat(JourneyGate.refusal(guided, Risk.REVERSIBLE)).contains("Vérification");
 
         guided.setPhase(JourneyPhase.CLOS);
-        assertThat(JourneyGate.refusal(guided, Risk.REVERSIBLE)).contains("clos");
+        assertThat(JourneyGate.refusal(guided, Risk.REVERSIBLE)).as("SF-176-07 : clos = porte ouverte").isNull();
+        assertThat(JourneyGate.isClosed(guided)).isFalse();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "aws sso login", "aws sso login --profile prod", "aws sso logout", "aws configure sso",
+        "az login", "az account set --subscription x", "gcloud auth login", "gcloud auth application-default login",
+        "gcloud config set project p", "gh auth login", "glab auth login", "kubectl config use-context prod",
+        "oc login https://api:6443", "AWS_PROFILE=prod aws sso login && aws sts get-caller-identity"
+    })
+    @DisplayName("SF-176-07 (D3) : l'authentification du poste n'est jamais une modification")
+    void workstationAuth(String command) {
+        assertThat(JourneyRiskClassifier.classifyCommand(command)).as(command).isEqualTo(Risk.NOTES);
+    }
+
+    @Test
+    @DisplayName("SF-176-07 (D3) : auth + modification garde la classe de la modification")
+    void authThenApply() {
+        assertThat(JourneyRiskClassifier.classifyCommand("aws sso login && terraform apply")).isEqualTo(Risk.EXTERNE);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "export AWS_PROFILE=prod && aws logs tail /aws/eks --since 1h", "set -o pipefail; kubectl get pods",
+        "zgrep ERROR app.log.gz", "unset KUBECONFIG; kubectl -n x logs api --tail=100"
+    })
+    @DisplayName("SF-176-07 (D4) : les lectures évidentes restent des lectures")
+    void evidentReads(String command) {
+        assertThat(JourneyRiskClassifier.classifyCommand(command)).as(command).isEqualTo(Risk.LECTURE);
+    }
+
+    @Test
+    @DisplayName("SF-176-07 (D4/D5) : programme inconnu repéré ; message exact ; verrou = une seule source")
+    void unknownAndMessage() {
+        assertThat(JourneyRiskClassifier.hasUnknownProgram("outil-maison --x")).isTrue();
+        assertThat(JourneyRiskClassifier.hasUnknownProgram("kubectl apply -f x && rm -rf y")).isFalse();
+        SubjectJourney plan = SubjectJourney.builder().userId(UUID.randomUUID()).workspaceId(UUID.randomUUID())
+                .mode(JourneyMode.GUIDE).phase(JourneyPhase.PLAN).planVersion(1).build();
+        assertThat(JourneyGate.isClosed(plan)).isTrue();
+        assertThat(JourneyGate.message(plan))
+                .isEqualTo("Ce terminal est en mode Guidé, phase Plan : cette action attend la validation du plan.");
+        assertThat(JourneyGate.refusal(plan, Risk.EXTERNE)).startsWith(JourneyGate.message(plan));
+        assertThat(JourneyGate.refusal(plan, Risk.NOTES)).isNull();
+        plan.setMode(JourneyMode.LIBRE);
+        assertThat(JourneyGate.isClosed(plan)).isFalse();
+        assertThat(JourneyGate.message(plan)).isNull();
     }
 }

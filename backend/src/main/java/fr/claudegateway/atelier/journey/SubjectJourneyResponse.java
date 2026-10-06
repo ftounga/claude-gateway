@@ -15,6 +15,8 @@ import java.util.Map;
  * @param guidedProposal   la proposition du mode guidé qui attend un geste, ou {@code null} (SF-176-02)
  * @param guidedDeclined   vrai si l'utilisateur a choisi de rester libre sur ce sujet (SF-176-02)
  * @param plan             le plan structuré, ou {@code null} s'il n'y en a pas (SF-176-03)
+ * @param gateClosed       la porte refuse les modifications (SF-176-07) — même calcul que la boucle
+ * @param gateMessage      le message exact du refus, ou {@code null} si la porte est ouverte
  */
 public record SubjectJourneyResponse(
         String mode,
@@ -25,7 +27,9 @@ public record SubjectJourneyResponse(
         boolean guidedDeclined,
         Plan plan,
         Diagnosis diagnosis,
-        boolean closeProposed) {
+        boolean closeProposed,
+        boolean gateClosed,
+        String gateMessage) {
 
     /**
      * Le diagnostic posé en fin d'investigation (SF-176-05).
@@ -88,7 +92,9 @@ public record SubjectJourneyResponse(
                                 journey.isGuided() && journey.getPhase() == JourneyPhase.INVESTIGATION
                                         && journey.getDiagnosisProposedAt() != null),
                 journey.isGuided() && journey.getPhase() != JourneyPhase.CLOS
-                        && journey.getCloseProposedAt() != null);
+                        && journey.getCloseProposedAt() != null,
+                JourneyGate.isClosed(journey),
+                JourneyGate.message(journey));
     }
 
     private static Plan plan(SubjectJourney journey, Map<String, String> waitsOn) {
