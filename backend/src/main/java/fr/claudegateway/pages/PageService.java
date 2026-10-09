@@ -184,6 +184,22 @@ public class PageService {
     }
 
     /**
+     * Toutes les pièces jointes d'une version d'une page du compte, nom → octets (F-184 / SF-184-02) :
+     * elles entrent dans le lot imprimé en PDF. Bornées au propriétaire, comme {@link #attachment}.
+     *
+     * @throws PageNotFoundException si la page ou la version n'existe pas pour ce compte
+     */
+    @Transactional(readOnly = true)
+    public Map<String, byte[]> attachments(UUID userId, UUID pageId, Integer version) {
+        int wanted = requireVersion(userId, pageId, version);
+        Map<String, byte[]> out = new LinkedHashMap<>();
+        for (String name : store.attachmentNames(userId, pageId, wanted)) {
+            store.attachment(userId, pageId, wanted, name).ifPresent(bytes -> out.put(name, bytes));
+        }
+        return out;
+    }
+
+    /**
      * La version voulue d'une page du compte : la courante par défaut, sinon celle demandée si elle est
      * conservée (SF-109-04).
      */
@@ -274,7 +290,7 @@ public class PageService {
     }
 
     /** {@code titre-de-la-page} : lisible, sans caractère qu'un système de fichiers refuserait. */
-    static String slug(String title) {
+    public static String slug(String title) {
         String slug = java.text.Normalizer.normalize(title == null ? "" : title, java.text.Normalizer.Form.NFD)
                 .replaceAll("\\p{M}", "")
                 .toLowerCase(java.util.Locale.ROOT)

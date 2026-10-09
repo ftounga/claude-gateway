@@ -8,6 +8,7 @@ import java.util.UUID;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,6 +23,7 @@ import fr.claudegateway.auth.CurrentUser;
 import fr.claudegateway.pages.dto.PageResponse;
 import fr.claudegateway.pages.dto.PageVersionResponse;
 import fr.claudegateway.pages.dto.RenamePageRequest;
+import fr.claudegateway.pages.pdf.PagePdfService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
@@ -39,11 +41,14 @@ public class PageController {
     private final PageService pageService;
     private final PageViewTicketService tickets;
     private final CurrentUser currentUser;
+    private final PagePdfService pagePdfService;
 
-    public PageController(PageService pageService, PageViewTicketService tickets, CurrentUser currentUser) {
+    public PageController(PageService pageService, PageViewTicketService tickets, CurrentUser currentUser,
+            PagePdfService pagePdfService) {
         this.pageService = pageService;
         this.tickets = tickets;
         this.currentUser = currentUser;
+        this.pagePdfService = pagePdfService;
     }
 
     /** Les pages du compte à un lieu, chacune avec l'adresse de lecture de sa version courante. */
@@ -131,6 +136,27 @@ public class PageController {
                     .build());
         }
         return new ResponseEntity<>(content.content(), headers, HttpStatus.OK);
+    }
+
+    /**
+     * Le PDF d'une version d'une page du compte (F-184 / SF-184-02) : A4, thème clair, même charte —
+     * imprimé par le service de rendu à partir du lot que la gateway assemble. Les ressources que le
+     * moteur n'a pas trouvées sont relayées dans {@code X-Cg-Missing-Resources}.
+     *
+     * @param version version voulue (courante par défaut)
+     */
+    @GetMapping("/{id}/pdf")
+    public ResponseEntity<byte[]> pdf(@PathVariable UUID id, @RequestParam(required = false) Integer version) {
+        PagePdfService.PagePdf printed = pagePdfService.print(currentUser.requireId(), id, version);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_PDF);
+        headers.setContentDisposition(ContentDisposition.attachment()
+                .filename(printed.fileName(), java.nio.charset.StandardCharsets.UTF_8).build());
+        headers.setCacheControl("private, no-store");
+        if (!printed.missing().isBlank()) {
+            headers.set("X-Cg-Missing-Resources", printed.missing());
+        }
+        return new ResponseEntity<>(printed.pdf(), headers, HttpStatus.OK);
     }
 
     /** L'adresse de lecture d'un ticket, sous le chemin de contexte ({@code /api}). */

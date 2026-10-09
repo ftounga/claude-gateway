@@ -532,7 +532,11 @@ async function printLot(table) {
           }
           return request.abort("blockedbyclient");
         }
-        return request.respond({ status: 200, contentType: hit.contentType, body: hit.body });
+        // CORS ouvert : une police servie « depuis » fonts.gstatic.com est une requête d'une AUTRE
+        // origine que la page ; sans cet en-tête (que Google envoie), chromium la refuse et retombe sur
+        // une police système — la charte serait perdue.
+        return request.respond({ status: 200, contentType: hit.contentType, body: hit.body,
+          headers: { "Access-Control-Allow-Origin": "*" } });
       });
       await page.goto(pdf.PAGE_URL, { waitUntil: "networkidle0", timeout: PDF_TIMEOUT_MS });
       await page.addStyleTag({ content: pdf.PRINT_CSS });

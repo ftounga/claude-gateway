@@ -146,6 +146,9 @@ app:
     max-attachments: ${APP_PAGES_MAX_ATTACHMENTS:20}
     # Durée du ticket de lecture d'une page dans l'écran (iframe) : court, il ne sert qu'à l'ouvrir.
     ticket-ttl: ${APP_PAGES_TICKET_TTL:PT10M}
+    # F-184 : délai de l'impression d'une page en PDF par le service de rendu (app.diagrams.base-url).
+    pdf:
+      timeout: ${APP_PAGES_PDF_TIMEOUT:PT60S}
   atelier:
     # Atelier / Claude Code Lite (F-28). Stockage `in-memory` par défaut (dev/tests, sans S3) ;
     # `s3` en cluster (bucket applicatif). Garde-fous zip-bomb : total/nb-fichiers/taille-fichier.
