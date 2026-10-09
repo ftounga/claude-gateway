@@ -7,6 +7,7 @@ import { Subscription } from 'rxjs';
 
 import { PageSummary } from '../../core/models/pages.models';
 import { PagesService } from '../../core/services/pages.service';
+import { PagePdfDownloadService } from '../../shared/pages/page-pdf-download.service';
 import { PageFrameComponent } from '../../shared/pages/page-frame.component';
 import { PageShareDialogComponent, PageShareDialogData } from '../../shared/pages/page-share-dialog.component';
 import { pageViewerPath } from './page-block';
@@ -30,6 +31,11 @@ import { pageViewerPath } from './page-block';
           <button mat-icon-button type="button" class="page-panel__share" matTooltip="Partager"
             aria-label="Partager la page" (click)="share(page.id, page.title)">
             <mat-icon>share</mat-icon>
+          </button>
+          <!-- F-184 / SF-184-03 : le PDF de la page, A4 clair, même charte. -->
+          <button mat-icon-button type="button" class="page-panel__pdf" matTooltip="Télécharger en PDF"
+            aria-label="Télécharger la page en PDF" [disabled]="pdf.isBusy(page.id)" (click)="pdf.download(page.id)">
+            <mat-icon>picture_as_pdf</mat-icon>
           </button>
         }
         <button mat-icon-button type="button" class="page-panel__fullscreen" matTooltip="Plein écran"
@@ -123,6 +129,7 @@ import { pageViewerPath } from './page-block';
 })
 export class PagePanelComponent {
   private readonly pages = inject(PagesService);
+  readonly pdf = inject(PagePdfDownloadService);
   private readonly dialog = inject(MatDialog);
 
   readonly pageId = input.required<string>();

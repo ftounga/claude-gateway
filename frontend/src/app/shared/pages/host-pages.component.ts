@@ -16,6 +16,7 @@ import { PagesService } from '../../core/services/pages.service';
 import { PageFrameComponent } from './page-frame.component';
 import { PageVersionsDialogComponent, PageVersionsDialogData } from './page-versions-dialog.component';
 import { PageShareDialogComponent, PageShareDialogData } from './page-share-dialog.component';
+import { PagePdfDownloadService } from './page-pdf-download.service';
 
 /** Cartes par page de la grille. */
 export const HOST_PAGES_PAGE_SIZE = 12;
@@ -68,6 +69,10 @@ export const HOST_PAGES_PAGE_SIZE = 12;
                 </button>
                 <button mat-menu-item type="button" class="host-pages__download" (click)="download(page)">
                   <mat-icon>download</mat-icon>Télécharger le fichier HTML
+                </button>
+                <button mat-menu-item type="button" class="host-pages__pdf" [disabled]="pdf.isBusy(page.id)"
+                  (click)="pdf.download(page.id)">
+                  <mat-icon>picture_as_pdf</mat-icon>Télécharger en PDF
                 </button>
                 <button mat-menu-item type="button" class="host-pages__delete" (click)="remove(page)">
                   <mat-icon>delete</mat-icon>Supprimer
@@ -156,6 +161,7 @@ export const HOST_PAGES_PAGE_SIZE = 12;
 })
 export class HostPagesComponent {
   private readonly service = inject(PagesService);
+  readonly pdf = inject(PagePdfDownloadService);
   private readonly files = inject(ExportService);
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
