@@ -101,4 +101,30 @@ class PagePdfServiceTest {
         assertThat(service.print(user, pageId, null).pdf()).isNotEmpty();
         verify(renderer).print(anyString(), eq(List.of()));
     }
+
+    @Test
+    @DisplayName("SF-184-04 CA5 — un second appel identique sert le cache : une seule impression")
+    void secondCallIsServedFromTheCache() {
+        page("<h1>x</h1>", Map.of());
+        when(pages.requireVersion(user, pageId, null)).thenReturn(3);
+        PageService.PageContent content = pages.html(user, pageId, null);
+        when(pages.html(user, pageId, 3)).thenReturn(content);
+
+        PagePdfService.PagePdf first = service.pdf(user, pageId, null);
+        PagePdfService.PagePdf second = service.pdf(user, pageId, null);
+
+        assertThat(second).isSameAs(first);
+        assertThat(first.title()).isEqualTo("Compte rendu — octobre");
+        assertThat(first.version()).isEqualTo(3);
+        verify(renderer, org.mockito.Mockito.times(1)).print(anyString(), any());
+    }
+
+    @Test
+    @DisplayName("SF-184-04 — isolation : la version est vérifiée AVANT le cache (page d'autrui → 404)")
+    void isolationBeforeCache() {
+        when(pages.requireVersion(user, pageId, null)).thenThrow(new fr.claudegateway.pages.PageNotFoundException());
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.pdf(user, pageId, null))
+                .isInstanceOf(fr.claudegateway.pages.PageNotFoundException.class);
+        verify(renderer, org.mockito.Mockito.never()).print(anyString(), any());
+    }
 }

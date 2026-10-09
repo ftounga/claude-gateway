@@ -73,12 +73,12 @@ class PageToolCatalogTest {
         PageToolCatalog catalog = new PageToolCatalog(entitlements);
 
         assertThat(catalog.toolsFor(userId, terminal(WorkspaceExecutionTarget.RUNNER, false)))
-                .extracting(AgentTool::name).containsExactly(PageToolCatalog.PUBLISH);
+                .extracting(AgentTool::name).containsExactly(PageToolCatalog.PUBLISH, PageToolCatalog.PDF);
         assertThat(catalog.toolsFor(userId, terminal(WorkspaceExecutionTarget.RUNNER, true)))
-                .extracting(AgentTool::name).containsExactly(PageToolCatalog.PUBLISH);
+                .extracting(AgentTool::name).containsExactly(PageToolCatalog.PUBLISH, PageToolCatalog.PDF);
         // SF-109-06 : d'office aussi sur un projet hébergé.
         assertThat(catalog.toolsFor(userId, terminal(WorkspaceExecutionTarget.SANDBOX, false)))
-                .extracting(AgentTool::name).containsExactly(PageToolCatalog.PUBLISH);
+                .extracting(AgentTool::name).containsExactly(PageToolCatalog.PUBLISH, PageToolCatalog.PDF);
     }
 
     @Test

@@ -1300,6 +1300,11 @@ export interface AtelierTerminalPage {
   title: string;
   description: string | null;
   version: number;
+  /**
+   * F-184 / SF-184-04 : vrai pour le bloc « PDF prêt » (outil `page_pdf`) — le bloc porte alors le bouton
+   * « Télécharger le PDF ». Absent ou faux pour une publication (rétrocompatible).
+   */
+  pdf?: boolean;
 }
 
 /** **Une carte d'attente** telle que la porte un bloc du terminal (F-175 / SF-175-05) — un instantané. */

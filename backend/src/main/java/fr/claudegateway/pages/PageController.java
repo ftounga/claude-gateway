@@ -147,7 +147,7 @@ public class PageController {
      */
     @GetMapping("/{id}/pdf")
     public ResponseEntity<byte[]> pdf(@PathVariable UUID id, @RequestParam(required = false) Integer version) {
-        PagePdfService.PagePdf printed = pagePdfService.print(currentUser.requireId(), id, version);
+        PagePdfService.PagePdf printed = pagePdfService.pdf(currentUser.requireId(), id, version);
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_PDF);
         headers.setContentDisposition(ContentDisposition.attachment()

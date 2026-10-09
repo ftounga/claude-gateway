@@ -39,6 +39,8 @@ public class PagePdfService {
     private final PageService pageService;
     private final PagePdfRenderer renderer;
     private final ExternalResourceFetcher fetcher;
+    private final PagePdfCache cache = new PagePdfCache(PagePdfCache.TTL, PagePdfCache.MAX_ENTRIES,
+            PagePdfCache.MAX_BYTES, java.time.Clock.systemUTC());
 
     public PagePdfService(PageService pageService, PagePdfRenderer renderer, ExternalResourceFetcher fetcher) {
         this.pageService = pageService;
@@ -46,8 +48,26 @@ public class PagePdfService {
         this.fetcher = fetcher;
     }
 
-    /** Le PDF produit, avec le nom de fichier à proposer. */
-    public record PagePdf(byte[] pdf, String fileName, String missing) {
+    /** Le PDF produit, avec le nom de fichier à proposer, le titre et la version imprimée. */
+    public record PagePdf(byte[] pdf, String fileName, String missing, String title, int version) {
+    }
+
+    /**
+     * Le PDF d'une version d'une page du compte, <b>depuis le cache court</b> s'il vient d'être imprimé
+     * (F-184 / SF-184-04 : l'agent imprime, l'utilisateur télécharge aussitôt — sans seconde impression).
+     * La version est résolue <b>avant</b> la clé : une nouvelle version n'est jamais servie depuis l'ancienne.
+     *
+     * @param version version voulue, ou {@code null} / {@code 0} pour la courante
+     */
+    public PagePdf pdf(UUID userId, UUID pageId, Integer version) {
+        // Isolation d'abord : la page d'un autre compte lève PageNotFoundException, cache jamais lu.
+        int resolved = pageService.requireVersion(userId, pageId, version);
+        String key = userId + "/" + pageId + "/" + resolved;
+        return cache.get(key).orElseGet(() -> {
+            PagePdf printed = print(userId, pageId, resolved);
+            cache.put(key, printed);
+            return printed;
+        });
     }
 
     /**
@@ -86,7 +106,7 @@ public class PagePdfService {
         }
         PagePdfRenderer.Printed printed = renderer.print(html, lot.resources);
         String fileName = PageService.slug(content.page().getTitle()) + "-v" + content.version() + ".pdf";
-        return new PagePdf(printed.pdf(), fileName, printed.missing());
+        return new PagePdf(printed.pdf(), fileName, printed.missing(), content.page().getTitle(), content.version());
     }
 
     /** L'adresse d'une pièce jointe dans le moteur : son nom, résolu sur l'origine virtuelle. */

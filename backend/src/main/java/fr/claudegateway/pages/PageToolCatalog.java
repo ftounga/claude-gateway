@@ -37,6 +37,8 @@ public class PageToolCatalog {
 
     /** Le nom de l'outil. */
     public static final String PUBLISH = "page_publish";
+    /** F-184 / SF-184-04 : le PDF d'une page publiée, à la demande. */
+    public static final String PDF = "page_pdf";
 
     /** Le guide de conception ajouté à la consigne quand l'outil est donné. */
     public static final String DESIGN_GUIDE = "--- Pages (documents graphiques) ---\n"
@@ -101,7 +103,11 @@ public class PageToolCatalog {
             + "diagramme (l'IA d'images invente les icônes) : reste au diagramme-as-code ci-dessus.\n"
             + "Jamais de transcription brute de réunion dans une page : des extraits courts, sourcés.\n"
             + "Pour modifier une page déjà publiée, republie avec son page_id : c'est une nouvelle version, pas "
-            + "une nouvelle page.";
+            + "une nouvelle page.\n"
+            + "PDF : quand l'utilisateur veut un PDF (« fais-moi le PDF », « en PDF pour l'envoyer »), appelle "
+            + "page_pdf avec le page_id — A4, thème clair, même charte, imprimé par l'application ; il le "
+            + "télécharge depuis le bloc « PDF prêt ». Si la page n'existe pas encore, publie-la d'abord. "
+            + "N'installe jamais de convertisseur sur la machine pour cela.";
 
     private final SpaceEntitlementService entitlements;
 
@@ -115,9 +121,14 @@ public class PageToolCatalog {
         return new PageToolCatalog(null);
     }
 
-    /** Vrai si ce nom d'outil est celui des pages. */
+    /** Vrai si ce nom d'outil est celui de la publication des pages. */
     public static boolean isPageTool(String tool) {
         return PUBLISH.equals(tool);
+    }
+
+    /** Vrai si ce nom d'outil est celui du PDF d'une page (F-184 / SF-184-04). */
+    public static boolean isPdfTool(String tool) {
+        return PDF.equals(tool);
     }
 
     /** L'espace où se range une page publiée depuis ce terminal. */
@@ -146,7 +157,22 @@ public class PageToolCatalog {
 
     /** L'outil à donner à l'agent pour ce tour, ou <b>la liste vide</b>. */
     public List<AgentTool> toolsFor(UUID userId, Workspace workspace) {
-        return isOpenFor(userId, workspace) ? List.of(definition()) : List.of();
+        return isOpenFor(userId, workspace) ? List.of(definition(), pdfDefinition()) : List.of();
+    }
+
+    /** La définition de {@code page_pdf} (F-184 / SF-184-04). */
+    static AgentTool pdfDefinition() {
+        return new AgentTool(PDF,
+                "Imprime une page DÉJÀ publiée en PDF (A4, thème clair, même charte) ; l'utilisateur le "
+                        + "télécharge depuis le bloc « PDF prêt ». Rien n'est publié ni modifié. Dit ce qui n'a "
+                        + "pas pu être inclus.",
+                Map.of("type", "object",
+                        "properties", Map.of(
+                                "page_id", Map.of("type", "string",
+                                        "description", "Identifiant de la page publiée (rendu par page_publish)."),
+                                "version", Map.of("type", "integer",
+                                        "description", "Version voulue ; la courante si absente.")),
+                        "required", List.of("page_id")));
     }
 
     /** La définition de l'outil (schéma d'entrée). */
