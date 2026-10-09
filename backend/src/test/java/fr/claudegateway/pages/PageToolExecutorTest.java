@@ -45,6 +45,7 @@ class PageToolExecutorTest {
     private RunnerAuditService audit;
     private WorkspaceService workspaceService;
     private PageToolExecutor executor;
+    private fr.claudegateway.pages.pdf.PagePdfService pagePdfService;
     private Workspace workspace;
     private RunnerTarget target;
 
@@ -54,7 +55,8 @@ class PageToolExecutorTest {
         runner = mock(RunnerToolGateway.class);
         audit = mock(RunnerAuditService.class);
         workspaceService = mock(WorkspaceService.class);
-        executor = new PageToolExecutor(pageService, runner, audit, workspaceService, PageLimits.defaults());
+        pagePdfService = mock(fr.claudegateway.pages.pdf.PagePdfService.class);
+        executor = new PageToolExecutor(pageService, runner, audit, workspaceService, PageLimits.defaults(), pagePdfService);
         workspace = new Workspace();
         workspace.setId(UUID.randomUUID());
         workspace.setUserId(userId);
@@ -356,5 +358,65 @@ class PageToolExecutorTest {
 
         assertThat(outcome.error()).isFalse();
         verify(pageService).publish(any(), any(), any(), any(), any(), any());
+    }
+
+    // --- F-184 / SF-184-04 : page_pdf -------------------------------------------------------------------
+
+    @Test
+    @DisplayName("SF-184-04 CA2 — page_pdf : PDF prêt, bloc pdf=true, retour non-erreur")
+    void pdfNominal() {
+        UUID page = UUID.randomUUID();
+        when(pagePdfService.pdf(userId, page, null)).thenReturn(new fr.claudegateway.pages.pdf.PagePdfService.PagePdf(
+                new byte[4096], "radar-v2.pdf", "", "Radar", 2));
+
+        PageToolExecutor.PdfOutcome outcome = executor.pdf(userId,
+                new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode().put("page_id", page.toString()));
+
+        assertThat(outcome.error()).isFalse();
+        assertThat(outcome.content()).contains("PDF prêt").contains("« Radar » v2").doesNotContain("NON inclus");
+        assertThat(outcome.block().pdf()).isTrue();
+        assertThat(outcome.block().pageId()).isEqualTo(page);
+        assertThat(outcome.block().version()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("SF-184-04 CA3 — ressources manquantes : dites à l'agent ; version transmise")
+    void pdfMissing() {
+        UUID page = UUID.randomUUID();
+        when(pagePdfService.pdf(userId, page, 3)).thenReturn(new fr.claudegateway.pages.pdf.PagePdfService.PagePdf(
+                new byte[10], "radar-v3.pdf", "https://cdn.jsdelivr.net/npm/x.js", "Radar", 3));
+
+        PageToolExecutor.PdfOutcome outcome = executor.pdf(userId, new com.fasterxml.jackson.databind.ObjectMapper()
+                .createObjectNode().put("page_id", page.toString()).put("version", 3));
+
+        assertThat(outcome.content()).contains("NON inclus").contains("https://cdn.jsdelivr.net/npm/x.js");
+    }
+
+    @Test
+    @DisplayName("SF-184-04 — page_id invalide, page d'autrui, moteur indisponible ou refus : erreur, aucun bloc")
+    void pdfErrors() {
+        com.fasterxml.jackson.databind.ObjectMapper json = new com.fasterxml.jackson.databind.ObjectMapper();
+        assertThat(executor.pdf(userId, json.createObjectNode().put("page_id", "pas-un-uuid")).content())
+                .contains("publie-la d'abord");
+        assertThat(executor.pdf(userId, null).error()).isTrue();
+
+        UUID other = UUID.randomUUID();
+        when(pagePdfService.pdf(userId, other, null)).thenThrow(new PageNotFoundException());
+        PageToolExecutor.PdfOutcome notFound = executor.pdf(userId, json.createObjectNode().put("page_id", other.toString()));
+        assertThat(notFound.error()).isTrue();
+        assertThat(notFound.content()).contains("introuvable");
+        assertThat(notFound.block()).isNull();
+
+        UUID down = UUID.randomUUID();
+        when(pagePdfService.pdf(userId, down, null))
+                .thenThrow(new fr.claudegateway.pages.pdf.PagePdfUnavailableException("x"));
+        assertThat(executor.pdf(userId, json.createObjectNode().put("page_id", down.toString())).content())
+                .contains("réessayer");
+
+        UUID refused = UUID.randomUUID();
+        when(pagePdfService.pdf(userId, refused, null))
+                .thenThrow(new fr.claudegateway.pages.pdf.PagePdfRejectedException("Page trop lourde"));
+        assertThat(executor.pdf(userId, json.createObjectNode().put("page_id", refused.toString())).content())
+                .contains("Page trop lourde");
     }
 }

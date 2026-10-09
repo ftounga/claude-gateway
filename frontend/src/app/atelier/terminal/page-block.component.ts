@@ -6,6 +6,7 @@ import { Subscription } from 'rxjs';
 import { AtelierTerminalPage } from '../../core/models/atelier.models';
 import { PagesService } from '../../core/services/pages.service';
 import { PageFrameComponent } from '../../shared/pages/page-frame.component';
+import { PagePdfDownloadService } from '../../shared/pages/page-pdf-download.service';
 import { pageHeadline, pageViewerPath } from './page-block';
 
 /**
@@ -30,7 +31,7 @@ import { pageHeadline, pageViewerPath } from './page-block';
       </div>
       <div class="page-block__body">
         <p class="page-block__title">
-          <mat-icon class="page-block__icon" aria-hidden="true">web</mat-icon>
+          <mat-icon class="page-block__icon" aria-hidden="true">{{ page().pdf ? 'picture_as_pdf' : 'web' }}</mat-icon>
           <span>{{ headline() }}</span>
         </p>
         <p class="page-block__meta">Version {{ page().version }} · privée</p>
@@ -39,10 +40,25 @@ import { pageHeadline, pageViewerPath } from './page-block';
         }
         @if (!readOnly()) {
           <div class="page-block__actions">
-            <button mat-flat-button color="primary" type="button" class="page-block__open" (click)="open.emit(page().pageId)">
-              <mat-icon>vertical_split</mat-icon>
-              Ouvrir
-            </button>
+            @if (page().pdf) {
+              <!-- F-184 / SF-184-04 : le PDF que l'agent vient d'imprimer (servi depuis le cache court). -->
+              <button mat-flat-button color="primary" type="button" class="page-block__pdf"
+                [disabled]="pdf.isBusy(page().pageId)" (click)="pdf.download(page().pageId, page().version)">
+                <mat-icon>download</mat-icon>
+                Télécharger le PDF
+              </button>
+            }
+            @if (page().pdf) {
+              <button mat-stroked-button type="button" class="page-block__open" (click)="open.emit(page().pageId)">
+                <mat-icon>vertical_split</mat-icon>
+                Ouvrir
+              </button>
+            } @else {
+              <button mat-flat-button color="primary" type="button" class="page-block__open" (click)="open.emit(page().pageId)">
+                <mat-icon>vertical_split</mat-icon>
+                Ouvrir
+              </button>
+            }
             <button mat-stroked-button type="button" class="page-block__fullscreen" (click)="fullscreen()">
               <mat-icon>open_in_new</mat-icon>
               Plein écran
@@ -139,6 +155,7 @@ import { pageHeadline, pageViewerPath } from './page-block';
 })
 export class PageBlockComponent {
   private readonly pages = inject(PagesService);
+  readonly pdf = inject(PagePdfDownloadService);
 
   readonly page = input.required<AtelierTerminalPage>();
   readonly readOnly = input(false);

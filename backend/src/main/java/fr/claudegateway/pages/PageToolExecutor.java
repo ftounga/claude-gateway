@@ -69,14 +69,67 @@ public class PageToolExecutor {
     private final RunnerAuditService runnerAuditService;
     private final WorkspaceService workspaceService;
     private final PageLimits pageLimits;
+    private final fr.claudegateway.pages.pdf.PagePdfService pagePdfService;
 
     public PageToolExecutor(PageService pageService, RunnerToolGateway runnerToolGateway,
-            RunnerAuditService runnerAuditService, WorkspaceService workspaceService, PageLimits pageLimits) {
+            RunnerAuditService runnerAuditService, WorkspaceService workspaceService, PageLimits pageLimits,
+            fr.claudegateway.pages.pdf.PagePdfService pagePdfService) {
         this.pageService = pageService;
         this.runnerToolGateway = runnerToolGateway;
         this.runnerAuditService = runnerAuditService;
         this.workspaceService = workspaceService;
         this.pageLimits = pageLimits;
+        this.pagePdfService = pagePdfService;
+    }
+
+    /**
+     * Imprime en PDF une page publiée du compte (F-184 / SF-184-04). Lecture privée : rien n'est publié
+     * ni rangé, d'où l'absence d'accord d'un clic. Le PDF reste dans le cache court : le téléchargement
+     * qui suit ne réimprime pas.
+     *
+     * @param userId propriétaire du terminal (celui du tour, jamais un paramètre client)
+     * @param input  {@code page_id} (requis), {@code version} (optionnelle)
+     */
+    public PdfOutcome pdf(UUID userId, JsonNode input) {
+        UUID pageId;
+        try {
+            pageId = UUID.fromString(text(input, "page_id"));
+        } catch (IllegalArgumentException e) {
+            return PdfOutcome.error("Donne le page_id d'une page publiée (publie-la d'abord avec page_publish).");
+        }
+        Integer version = input != null && input.path("version").canConvertToInt() && input.path("version").asInt() > 0
+                ? input.path("version").asInt() : null;
+        if (pagePdfService == null) {
+            return PdfOutcome.error("Le PDF n'est pas disponible sur cette installation.");
+        }
+        try {
+            fr.claudegateway.pages.pdf.PagePdfService.PagePdf printed = pagePdfService.pdf(userId, pageId, version);
+            String content = "PDF prêt (A4, thème clair) : « " + printed.title() + " » v" + printed.version()
+                    + ", " + Math.max(1, printed.pdf().length / 1024) + " Ko. L'utilisateur le télécharge depuis "
+                    + "le bloc « PDF prêt ».";
+            if (!printed.missing().isBlank()) {
+                content += " Éléments NON inclus (dis-le à l'utilisateur) : " + printed.missing();
+            }
+            return new PdfOutcome(content, false, PageBlock.pdfOf(pageId, printed.title(), printed.version()));
+        } catch (PageNotFoundException e) {
+            return PdfOutcome.error("Page introuvable dans ce compte.");
+        } catch (fr.claudegateway.pages.pdf.PagePdfUnavailableException e) {
+            return PdfOutcome.error("Le PDF n'a pas pu être produit pour le moment ; propose de réessayer.");
+        } catch (fr.claudegateway.pages.pdf.PagePdfRejectedException e) {
+            return PdfOutcome.error("Le PDF a été refusé : " + e.getMessage());
+        }
+    }
+
+    /**
+     * L'issue de {@code page_pdf}.
+     *
+     * @param block le bloc « PDF prêt », ou {@code null} en cas d'échec
+     */
+    public record PdfOutcome(String content, boolean error, PageBlock block) {
+
+        static PdfOutcome error(String message) {
+            return new PdfOutcome(message, true, null);
+        }
     }
 
     /**

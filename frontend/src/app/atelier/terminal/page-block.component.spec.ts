@@ -67,6 +67,26 @@ describe('PageBlockComponent et PagePanelComponent', () => {
     expect(open).toHaveBeenCalledWith('/pages/p-1', '_blank', 'noopener');
   });
 
+  it('bloc « PDF prêt » (F-184 / SF-184-04) : titre, bouton Télécharger le PDF de CETTE version', () => {
+    pages.get.and.returnValue(of(summary));
+    const pdf = TestBed.inject(PagePdfDownloadService) as jasmine.SpyObj<PagePdfDownloadService>;
+    const fixture = TestBed.createComponent(PageBlockComponent);
+    fixture.componentRef.setInput('page', { ...page, pdf: true });
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+
+    expect(root.textContent).toContain('PDF prêt — Maquette de la Forge');
+    expect(pageBlock('tu_2', { ...page, pdf: true }).tool).toBe('page_pdf');
+    (root.querySelector('.page-block__pdf') as HTMLButtonElement).click();
+    expect(pdf.download).toHaveBeenCalledOnceWith('p-1', 2);
+  });
+
+  it('un bloc de publication n’a PAS de bouton PDF (rendu inchangé)', () => {
+    pages.get.and.returnValue(of(summary));
+    const { root } = block();
+    expect(root.querySelector('.page-block__pdf')).toBeNull();
+  });
+
   it('en lecture seule : la vignette, sans aucun bouton', () => {
     pages.get.and.returnValue(of(summary));
     const { root } = block(true);

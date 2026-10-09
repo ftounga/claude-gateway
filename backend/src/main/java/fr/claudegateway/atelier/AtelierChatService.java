@@ -3182,6 +3182,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                 } else if (fr.claudegateway.mail.ClientMailTool.isEmailTool(call.name())) {
                     // F-110 / SF-110-02 : le courriel part de la gateway, jamais de la machine, sans confirmation.
                     outcome = executeEmailTool(userId, workspace, callId, call, listener, emailsOfTurn);
+                } else if (fr.claudegateway.pages.PageToolCatalog.isPdfTool(call.name())) {
+                    // F-184 / SF-184-04 : le PDF d'une page, imprimé par la gateway ; bloc « PDF prêt ».
+                    outcome = applyPagePdf(userId, workspace, callId, call, listener, pagesOfTurn);
                 } else if (fr.claudegateway.pages.PageToolCatalog.isPageTool(call.name())) {
                     // F-109 : la page est rangée par la gateway ; son bloc est admis dans tout terminal.
                     outcome = applyPagePublish(userId, workspace, callId, call, listener, pagesOfTurn);
@@ -4370,6 +4373,26 @@ public class AtelierChatService implements RelayInterruptTarget {
             pagesOfTurn.put(callId, block);
             listener.onPage(callId, block);
         }
+        return ToolOutcome.info(outcome.content());
+    }
+
+    /**
+     * <b>Le PDF d'une page</b> (F-184 / SF-184-04) : même garde que la publication, mais <b>pas d'accord
+     * d'un clic</b> — rien n'est publié ni rangé, c'est une lecture privée de la page de l'utilisateur.
+     * Le bloc « PDF prêt » porte le bouton de téléchargement ; le PDF attend dans le cache court.
+     */
+    private ToolOutcome applyPagePdf(UUID userId, Workspace workspace, String callId, AgentToolCall call,
+            AtelierProgressListener listener,
+            java.util.Map<String, fr.claudegateway.pages.PageBlock> pagesOfTurn) {
+        if (pageToolExecutor == null || !pageToolCatalog.isOpenFor(userId, workspace)) {
+            return ToolOutcome.error("Les pages ne sont pas ouvertes dans ce terminal. Réponds en clair.");
+        }
+        fr.claudegateway.pages.PageToolExecutor.PdfOutcome outcome = pageToolExecutor.pdf(userId, call.input());
+        if (outcome.error()) {
+            return ToolOutcome.error(outcome.content());
+        }
+        pagesOfTurn.put(callId, outcome.block());
+        listener.onPage(callId, outcome.block());
         return ToolOutcome.info(outcome.content());
     }
 
@@ -6005,7 +6028,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
         // Les pages (F-109 / SF-109-02) : rangées par la gateway, pas écrites par le runner — qui ne
         // sert qu'à relire un fichier du poste, depuis l'exécuteur.
-        if (fr.claudegateway.pages.PageToolCatalog.isPageTool(call.name())) {
+        if (fr.claudegateway.pages.PageToolCatalog.isPageTool(call.name())
+                || fr.claudegateway.pages.PageToolCatalog.isPdfTool(call.name())) {
             // Traité par la boucle (F-109 / SF-109-03), jamais ici : ce chemin ne porte pas le bloc du tour.
             return ToolOutcome.error("La publication de pages n'est pas ouverte ici. Réponds en clair.");
         }
@@ -6555,6 +6579,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                 // F-109 / SF-109-02 : une page se lit par son titre, jamais par son contenu.
                 if (fr.claudegateway.pages.PageToolCatalog.isPageTool(call.name())) {
                     yield shorten(fr.claudegateway.pages.PageToolExecutor.auditTarget(input), AUDIT_TARGET_CHARS);
+                }
+                // F-184 / SF-184-04 : un PDF se lit par l'identifiant de la page, jamais par son contenu.
+                if (fr.claudegateway.pages.PageToolCatalog.isPdfTool(call.name())) {
+                    yield shorten("PDF de la page " + input.path("page_id").asText(""), AUDIT_TARGET_CHARS);
                 }
                 // F-142 / SF-142-04 : une génération d'image se lit par sa description, jamais l'image.
                 if (fr.claudegateway.images.ImageToolCatalog.isImageTool(call.name())) {

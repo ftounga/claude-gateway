@@ -259,9 +259,47 @@ class AtelierChatServicePageToolTest {
     }
 
     @Test
+    @DisplayName("SF-184-04 CA2 — page_pdf : bloc « PDF prêt » (pdf=true), SANS accord d'un clic, persisté")
+    void pagePdfEmitsAPdfBlockWithoutPermission() throws Exception {
+        terminal(WorkspaceExecutionTarget.RUNNER, false);
+        UUID page = UUID.randomUUID();
+        when(executor.pdf(eq(userId), any())).thenReturn(new PageToolExecutor.PdfOutcome(
+                "PDF prêt (A4, thème clair).", false, fr.claudegateway.pages.PageBlock.pdfOf(page, "Radar", 2)));
+        agentProvider.enqueueToolCallWithObject(PageToolCatalog.PDF, "{\"page_id\":\"" + page + "\"}");
+        agentProvider.enqueueFinal("Le PDF est prêt.");
+
+        service.chatStreaming(userId, workspaceId, "fais-moi le PDF", listener);
+
+        assertThat(listener.requests).isEmpty();
+        assertThat(listener.pages).hasSize(1);
+        assertThat(listener.pages.get(0).pdf()).isTrue();
+        assertThat(listener.pages.get(0).pageId()).isEqualTo(page);
+        verify(executor, never()).execute(any(), any(), anyString(), any());
+        org.mockito.ArgumentCaptor<AtelierMessage> saved = org.mockito.ArgumentCaptor.forClass(AtelierMessage.class);
+        verify(messageRepository, org.mockito.Mockito.atLeastOnce()).save(saved.capture());
+        String json = saved.getAllValues().stream().map(AtelierMessage::getTerminalJson)
+                .filter(java.util.Objects::nonNull).reduce("", String::concat);
+        assertThat(json).contains("\"pdf\":true");
+    }
+
+    @Test
+    @DisplayName("SF-184-04 — page_pdf en échec : erreur à l'agent, aucun bloc")
+    void pagePdfFailureEmitsNothing() {
+        terminal(WorkspaceExecutionTarget.RUNNER, false);
+        when(executor.pdf(eq(userId), any())).thenReturn(
+                new PageToolExecutor.PdfOutcome("Page introuvable dans ce compte.", true, null));
+        agentProvider.enqueueToolCallWithObject(PageToolCatalog.PDF, "{\"page_id\":\"" + UUID.randomUUID() + "\"}");
+        agentProvider.enqueueFinal("Introuvable.");
+
+        service.chatStreaming(userId, workspaceId, "fais-moi le PDF", listener);
+
+        assertThat(listener.pages).isEmpty();
+    }
+
+    @Test
     @DisplayName("SF-109-03 CA2 — le bornage d'une transcription conserve la page")
     void boundingKeepsThePage() throws Exception {
-        fr.claudegateway.pages.PageBlock page = new fr.claudegateway.pages.PageBlock(UUID.randomUUID(), "T", null, 1);
+        fr.claudegateway.pages.PageBlock page = new fr.claudegateway.pages.PageBlock(UUID.randomUUID(), "T", null, 1, false);
         AtelierTurnReport.Block block = new AtelierTurnReport.Block(PageToolCatalog.PUBLISH, "T", "c", null,
                 "x".repeat(AtelierTurnReport.MAX_BLOCK_OUTPUT_CHARS + 10), true, false, false, null, null, page);
 
