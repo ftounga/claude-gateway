@@ -4221,7 +4221,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
         RunnerConfirmationGate.AnswerOutcome outcome = confirmationGate.awaitAnswer(userId, workspaceId,
                 callId, () -> listener.onQuestion(new AtelierProgressListener.AtelierQuestionRequest(
-                        callId, form, confirmationGate.timeoutMs())));
+                        callId, form, confirmationGate.questionTimeoutMs())));
         // F-164 / SF-164-06 : au timeout, l'écran affiche les choix retenus par défaut.
         java.util.List<String> defaults = outcome.status() == RunnerConfirmationGate.AnswerOutcome.Status.TIMEOUT
                 ? form.defaultDecisions().stream().map(AtelierQuestionForm.DefaultDecision::line).toList()

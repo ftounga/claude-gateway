@@ -68,7 +68,7 @@ class AtelierChatServiceQuestionToolTest {
     void setUp() {
         agentProvider = new StubAiAgentProvider();
         listener = new Listener();
-        gate = new RunnerConfirmationGate(300L);
+        gate = new RunnerConfirmationGate(250L, 300L); // SF-164-07 : délais distincts
         service = new AtelierChatService(workspaceService, messageRepository, (AiAgentProvider) agentProvider,
                 byokKeyService, quotaService,
                 new fr.claudegateway.atelier.git.GitWorkspaceService(workspaceService, gitTokenService,
@@ -138,6 +138,8 @@ class AtelierChatServiceQuestionToolTest {
         service.chatStreaming(userId, workspaceId, "aide-moi à choisir", listener);
 
         assertThat(listener.requests).hasSize(1);
+        // SF-164-07 : la carte annonce le délai propre aux questions, pas celui des autorisations.
+        assertThat(listener.requests.get(0).timeoutMs()).isEqualTo(gate.questionTimeoutMs()).isEqualTo(300L);
         // La réponse composée est renvoyée au modèle au tour suivant.
         assertThat(snapshots()).contains("Réponses de l'utilisateur").contains("A");
     }

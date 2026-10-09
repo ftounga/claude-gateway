@@ -112,24 +112,37 @@
         </fieldset>
       }
 
-      @if (countdown) {
-        <p class="terminal-demande-countdown">
-          <mat-icon class="terminal-demande-countdown-icon" aria-hidden="true">timer</mat-icon>
-          {{ countdown }}
-        </p>
-      }
+      <!-- SF-164-07 : barre d'action COLLANTE en bas du fil — le bouton n'est jamais hors de l'écran,
+           et elle dit ce qui manque au lieu d'un bouton grisé muet. -->
+      <div class="terminal-demande-bar">
+        @if (countdown) {
+          <p class="terminal-demande-countdown">
+            <mat-icon class="terminal-demande-countdown-icon" aria-hidden="true">timer</mat-icon>
+            {{ countdown }}
+          </p>
+        }
+        @if (unanswered.length > 0) {
+          <p class="terminal-demande-missing" role="status">
+            {{ unanswered.length }} question{{ unanswered.length > 1 ? 's' : '' }} sur
+            {{ q.questions.length }} sans réponse
+            <button type="button" class="terminal-demande-goto" (click)="goToFirstUnanswered()">
+              Aller à la première
+            </button>
+          </p>
+        }
 
-      <div class="terminal-demande-actions">
-        <button
-          mat-flat-button
-          color="primary"
-          type="button"
-          class="terminal-demande-send"
-          [disabled]="!canSend"
-          (click)="send()"
-        >
-          Répondre et continuer
-        </button>
+        <div class="terminal-demande-actions">
+          <button
+            mat-flat-button
+            color="primary"
+            type="button"
+            class="terminal-demande-send"
+            [disabled]="!canSend"
+            (click)="send()"
+          >
+            Répondre et continuer
+          </button>
+        </div>
       </div>
     </div>
   }

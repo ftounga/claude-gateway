@@ -120,7 +120,7 @@ class AtelierChatServiceCommandCheckpointTest {
     @BeforeEach
     void setUp() {
         agentProvider = new StubAiAgentProvider();
-        gate = new RunnerConfirmationGate(200L);
+        gate = new RunnerConfirmationGate(200L, 200L);
         listener = new RecordingListener();
         when(byokKeyService.resolveActiveApiKey(userId)).thenReturn(Optional.empty());
         when(quotaService.currentUsage(userId)).thenReturn(

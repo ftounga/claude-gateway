@@ -46,21 +46,21 @@ class RunnerConfirmationGateTest {
     @Test
     void theGateAnnouncesTheDelayItWaits() {
         // F-47 / SF-47-02 : le délai est dit à l'écran, jamais codé en dur côté client.
-        assertThat(new RunnerConfirmationGate(45_000L).timeoutMs()).isEqualTo(45_000L);
+        assertThat(new RunnerConfirmationGate(45_000L, 45_000L).timeoutMs()).isEqualTo(45_000L);
     }
 
     @Test
     void anUnusableDelayFallsBackOnTheDefaultOne() {
         // Non-régression : un réglage à zéro ou négatif ne doit pas rendre la porte passante.
-        assertThat(new RunnerConfirmationGate(0L).timeoutMs())
+        assertThat(new RunnerConfirmationGate(0L, 0L).timeoutMs())
                 .isEqualTo(RunnerConfirmationGate.DEFAULT_TIMEOUT_MS);
-        assertThat(new RunnerConfirmationGate(-1L).timeoutMs())
+        assertThat(new RunnerConfirmationGate(-1L, -1L).timeoutMs())
                 .isEqualTo(RunnerConfirmationGate.DEFAULT_TIMEOUT_MS);
     }
 
     @Test
     void anExplicitAllowAuthorises() throws Exception {
-        RunnerConfirmationGate gate = new RunnerConfirmationGate(5_000L);
+        RunnerConfirmationGate gate = new RunnerConfirmationGate(5_000L, 5_000L);
         Future<Outcome> pending = awaitAsync(gate, "toolu_1");
 
         gate.resolve(userId, workspaceId, "toolu_1", true, null);
@@ -72,7 +72,7 @@ class RunnerConfirmationGateTest {
 
     @Test
     void aDenialCarriesItsReasonToTheModel() throws Exception {
-        RunnerConfirmationGate gate = new RunnerConfirmationGate(5_000L);
+        RunnerConfirmationGate gate = new RunnerConfirmationGate(5_000L, 5_000L);
         Future<Outcome> pending = awaitAsync(gate, "toolu_2");
 
         gate.resolve(userId, workspaceId, "toolu_2", false, "  trop risqué  ");
@@ -85,7 +85,7 @@ class RunnerConfirmationGateTest {
 
     @Test
     void silenceRefusesRatherThanAuthorises() {
-        RunnerConfirmationGate gate = new RunnerConfirmationGate(120L);
+        RunnerConfirmationGate gate = new RunnerConfirmationGate(120L, 120L);
 
         Outcome outcome = gate.await(userId, workspaceId, "toolu_3", () -> { });
 
@@ -98,7 +98,7 @@ class RunnerConfirmationGateTest {
 
     @Test
     void answeringAnUnknownRequestIsRefused() {
-        RunnerConfirmationGate gate = new RunnerConfirmationGate(5_000L);
+        RunnerConfirmationGate gate = new RunnerConfirmationGate(5_000L, 5_000L);
 
         assertThatThrownBy(() -> gate.resolve(userId, workspaceId, "inconnu", true, null))
                 .isInstanceOf(NoPendingConfirmationException.class);
@@ -106,7 +106,7 @@ class RunnerConfirmationGateTest {
 
     @Test
     void anotherUserCannotAuthoriseMyCommand() throws Exception {
-        RunnerConfirmationGate gate = new RunnerConfirmationGate(400L);
+        RunnerConfirmationGate gate = new RunnerConfirmationGate(400L, 400L);
         Future<Outcome> pending = awaitAsync(gate, "toolu_4");
 
         assertThatThrownBy(
@@ -121,7 +121,7 @@ class RunnerConfirmationGateTest {
 
     @Test
     void interruptingTheTurnReleasesPendingRequestsAsRefusals() throws Exception {
-        RunnerConfirmationGate gate = new RunnerConfirmationGate(10_000L);
+        RunnerConfirmationGate gate = new RunnerConfirmationGate(10_000L, 10_000L);
         Future<Outcome> pending = awaitAsync(gate, "toolu_5");
 
         assertThat(gate.cancelWorkspace(workspaceId)).isEqualTo(1);
@@ -131,7 +131,7 @@ class RunnerConfirmationGateTest {
 
     @Test
     void interruptingAnotherWorkspaceReleasesNothing() throws Exception {
-        RunnerConfirmationGate gate = new RunnerConfirmationGate(400L);
+        RunnerConfirmationGate gate = new RunnerConfirmationGate(400L, 400L);
         Future<Outcome> pending = awaitAsync(gate, "toolu_6");
 
         assertThat(gate.cancelWorkspace(UUID.randomUUID())).isZero();
@@ -158,8 +158,30 @@ class RunnerConfirmationGateTest {
     }
 
     @Test
+    void aQuestionHasItsOwnDelayDistinctFromAnAuthorisation() {
+        // F-164 / SF-164-07 : 2 minutes pour autoriser une commande, 10 minutes pour une carte de questions.
+        RunnerConfirmationGate gate = new RunnerConfirmationGate(120_000L, 600_000L);
+        assertThat(gate.timeoutMs()).isEqualTo(120_000L);
+        assertThat(gate.questionTimeoutMs()).isEqualTo(600_000L);
+        assertThat(new RunnerConfirmationGate(120_000L, 0L).questionTimeoutMs())
+                .isEqualTo(RunnerConfirmationGate.DEFAULT_QUESTION_TIMEOUT_MS);
+        assertThat(new RunnerConfirmationGate(120_000L, -1L).questionTimeoutMs())
+                .isEqualTo(RunnerConfirmationGate.DEFAULT_QUESTION_TIMEOUT_MS);
+    }
+
+    @Test
+    void aQuestionWaitsOnTheQuestionDelayNotTheAuthorisationOne() throws Exception {
+        // Délai d'autorisation minuscule, délai de question long : la question attend encore.
+        RunnerConfirmationGate gate = new RunnerConfirmationGate(50L, 5_000L);
+        Future<AnswerOutcome> pending = awaitAnswerAsync(gate, "q_long");
+        Thread.sleep(300L);
+        gate.answerQuestions(userId, workspaceId, "q_long", "Option B");
+        assertThat(pending.get(2, TimeUnit.SECONDS).status()).isEqualTo(AnswerOutcome.Status.ANSWERED);
+    }
+
+    @Test
     void aQuestionCarriesTheUsersReplyBack() throws Exception {
-        RunnerConfirmationGate gate = new RunnerConfirmationGate(5_000L);
+        RunnerConfirmationGate gate = new RunnerConfirmationGate(5_000L, 5_000L);
         Future<AnswerOutcome> pending = awaitAnswerAsync(gate, "q_1");
 
         gate.answerQuestions(userId, workspaceId, "q_1", "Option A");
@@ -172,7 +194,7 @@ class RunnerConfirmationGateTest {
 
     @Test
     void silenceOnAQuestionTimesOutRatherThanAnswering() {
-        RunnerConfirmationGate gate = new RunnerConfirmationGate(120L);
+        RunnerConfirmationGate gate = new RunnerConfirmationGate(120L, 120L);
 
         AnswerOutcome outcome = gate.awaitAnswer(userId, workspaceId, "q_2", () -> { });
 
@@ -187,7 +209,7 @@ class RunnerConfirmationGateTest {
     void aQuestionCanBePausedAndResumedSeveralTimesInATurn() throws Exception {
         // EXIGENCE PO : l'outil est appelable plusieurs fois dans un même tour. La porte doit donc
         // supporter N pauses successives — une par callId, chacune tranchée à son tour.
-        RunnerConfirmationGate gate = new RunnerConfirmationGate(5_000L);
+        RunnerConfirmationGate gate = new RunnerConfirmationGate(5_000L, 5_000L);
 
         Future<AnswerOutcome> first = awaitAnswerAsync(gate, "q_a");
         gate.answerQuestions(userId, workspaceId, "q_a", "réponse A");
@@ -200,7 +222,7 @@ class RunnerConfirmationGateTest {
 
     @Test
     void aQuestionAlreadyPendingIsNotOverwritten() throws Exception {
-        RunnerConfirmationGate gate = new RunnerConfirmationGate(5_000L);
+        RunnerConfirmationGate gate = new RunnerConfirmationGate(5_000L, 5_000L);
         awaitAnswerAsync(gate, "q_dup");
 
         // Un second awaitAnswer sur le même identifiant échoue plutôt que d'écraser la question en cours.
@@ -210,7 +232,7 @@ class RunnerConfirmationGateTest {
 
     @Test
     void anotherUserCannotAnswerMyQuestion() throws Exception {
-        RunnerConfirmationGate gate = new RunnerConfirmationGate(400L);
+        RunnerConfirmationGate gate = new RunnerConfirmationGate(400L, 400L);
         Future<AnswerOutcome> pending = awaitAnswerAsync(gate, "q_iso");
 
         assertThatThrownBy(
@@ -228,7 +250,7 @@ class RunnerConfirmationGateTest {
     void aQuestionAndAConfirmationNeverCrossResolve() throws Exception {
         // Le discriminant de genre : répondre « comme une autorisation » à une question (et l'inverse)
         // ne tranche jamais — la reprise reste sûre.
-        RunnerConfirmationGate gate = new RunnerConfirmationGate(400L);
+        RunnerConfirmationGate gate = new RunnerConfirmationGate(400L, 400L);
         Future<AnswerOutcome> question = awaitAnswerAsync(gate, "mixte");
         assertThatThrownBy(() -> gate.resolve(userId, workspaceId, "mixte", true, null))
                 .isInstanceOf(NoPendingConfirmationException.class);
@@ -242,7 +264,7 @@ class RunnerConfirmationGateTest {
 
     @Test
     void interruptingTheTurnReleasesAPendingQuestionAsInterrupted() throws Exception {
-        RunnerConfirmationGate gate = new RunnerConfirmationGate(10_000L);
+        RunnerConfirmationGate gate = new RunnerConfirmationGate(10_000L, 10_000L);
         Future<AnswerOutcome> pending = awaitAnswerAsync(gate, "q_int");
 
         assertThat(gate.cancelWorkspace(workspaceId)).isEqualTo(1);

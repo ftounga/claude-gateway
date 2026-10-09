@@ -2,10 +2,12 @@ import { CommonModule } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
   EventEmitter,
   Input,
   Output,
   SimpleChanges,
+  inject,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -27,6 +29,11 @@ import { AtelierPendingQuestion } from '../atelier.types';
  * {@code multiSelect}, avec l'option **recommandée** repérée, et **toujours** un champ libre
  * « Autre / tape ta réponse ». Le bouton Envoyer n'est actif que lorsque **chaque** question porte au
  * moins un choix ou un texte libre — le contrat backend exige une réponse par question.</p>
+ *
+ * <p><b>Toujours envoyable (SF-164-07)</b> : l'option recommandée est cochée d'avance, et la barre
+ * d'action (collante en bas du fil) dit combien de questions restent sans réponse et mène à la
+ * première. Sans cela, sur une carte de plusieurs questions, le bouton restait grisé hors de l'écran
+ * et la question expirait alors que l'utilisateur avait commencé à répondre.</p>
  */
 @Component({
   selector: 'app-atelier-terminal-demande',
@@ -37,6 +44,8 @@ import { AtelierPendingQuestion } from '../atelier.types';
   styleUrl: './atelier-terminal-demande.component.scss',
 })
 export class AtelierTerminalDemandeComponent {
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+
   /** La question en attente, ou {@code null} : rien à rendre. Fournie par le parent (état du tour). */
   @Input() pending: AtelierPendingQuestion | null = null;
 
@@ -69,8 +78,12 @@ export class AtelierTerminalDemandeComponent {
     if (callId !== this.initializedCallId) {
       this.initializedCallId = callId;
       const count = this.pending?.questions.length ?? 0;
-      this.single = Array.from({ length: count }, () => '');
-      this.multi = Array.from({ length: count }, () => new Set<string>());
+      // SF-164-07 : l'option recommandée est cochée d'avance — l'utilisateur valide ou change.
+      const questions = this.pending?.questions ?? [];
+      this.single = Array.from({ length: count }, (_, i) =>
+        questions[i]?.multiSelect ? '' : (questions[i]?.options.find((o) => o.recommended)?.label ?? ''));
+      this.multi = Array.from({ length: count }, (_, i) => new Set<string>(
+        questions[i]?.multiSelect ? questions[i].options.filter((o) => o.recommended).map((o) => o.label) : []));
       this.free = Array.from({ length: count }, () => '');
     }
   }
@@ -121,6 +134,25 @@ export class AtelierTerminalDemandeComponent {
       : (this.single[index] ?? '').length > 0;
     const other = (this.free[index] ?? '').trim().length > 0;
     return chosen || other;
+  }
+
+  /** Indices des questions encore sans réponse, dans l'ordre de la carte (SF-164-07). */
+  get unanswered(): number[] {
+    return (this.pending?.questions ?? []).map((_, i) => i).filter((i) => !this.hasAnswer(i));
+  }
+
+  /** Fait défiler jusqu'à la première question sans réponse et y place le focus (SF-164-07). */
+  goToFirstUnanswered(): void {
+    const index = this.unanswered[0];
+    if (index === undefined) {
+      return;
+    }
+    const fieldset = this.host.nativeElement.querySelectorAll<HTMLElement>('.terminal-demande-question')[index];
+    if (!fieldset) {
+      return;
+    }
+    fieldset.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    fieldset.querySelector<HTMLElement>('input, textarea')?.focus({ preventScroll: true });
   }
 
   /**

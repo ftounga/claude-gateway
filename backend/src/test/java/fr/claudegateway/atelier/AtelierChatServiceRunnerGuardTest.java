@@ -76,7 +76,7 @@ class AtelierChatServiceRunnerGuardTest {
     @BeforeEach
     void setUp() {
         agentProvider = new StubAiAgentProvider();
-        gate = new RunnerConfirmationGate(200L); // Silence = refus rapide, pour les tests d'échéance.
+        gate = new RunnerConfirmationGate(200L, 200L); // Silence = refus rapide, pour les tests d'échéance.
         listener = new RecordingListener();
         service = new AtelierChatService(workspaceService, messageRepository,
                 (AiAgentProvider) agentProvider, byokKeyService, quotaService,

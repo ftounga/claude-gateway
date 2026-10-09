@@ -49,6 +49,24 @@ describe('AtelierTerminalDemandeComponent (F-164 / SF-164-02)', () => {
     };
   }
 
+  /** Une question SANS option recommandée : rien n'est pré-coché (SF-164-07). */
+  function withoutRecommended(overrides: Partial<AtelierPendingQuestion> = {}): AtelierPendingQuestion {
+    return pendingOf({
+      questions: [
+        {
+          header: 'Périmètre',
+          question: 'Combien de subfeatures ?',
+          multiSelect: false,
+          options: [
+            { label: 'Une', description: 'Tout en une', recommended: false },
+            { label: 'Deux', description: 'Découper', recommended: false },
+          ],
+        },
+      ],
+      ...overrides,
+    });
+  }
+
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [AtelierTerminalDemandeComponent],
@@ -102,7 +120,7 @@ describe('AtelierTerminalDemandeComponent (F-164 / SF-164-02)', () => {
   });
 
   it('Envoyer est désactivé tant qu’aucune réponse, actif dès un choix (CA5)', () => {
-    setPending(pendingOf());
+    setPending(withoutRecommended());
     const send = dom().querySelector('button.terminal-demande-send') as HTMLButtonElement;
     expect(send.disabled).toBeTrue();
 
@@ -112,7 +130,7 @@ describe('AtelierTerminalDemandeComponent (F-164 / SF-164-02)', () => {
   });
 
   it('un texte libre seul suffit à activer Envoyer et à composer la réponse (CA4/CA5)', () => {
-    setPending(pendingOf());
+    setPending(withoutRecommended());
     let emitted: AtelierAnswerRequest | undefined;
     component.answer.subscribe((a) => (emitted = a));
 
@@ -175,11 +193,11 @@ describe('AtelierTerminalDemandeComponent (F-164 / SF-164-02)', () => {
   });
 
   it('réarme les choix quand une NOUVELLE question arrive (pauses répétées)', () => {
-    setPending(pendingOf());
+    setPending(withoutRecommended());
     component.setSingle(0, 'Deux');
     expect(component.single[0]).toBe('Deux');
 
-    setPending(pendingOf({ callId: 'call-2' }));
+    setPending(withoutRecommended({ callId: 'call-2' }));
     expect(component.single[0]).toBe('');
   });
 
@@ -233,7 +251,7 @@ describe('AtelierTerminalDemandeComponent (F-164 / SF-164-02)', () => {
   });
 
   it('n’émet rien tant que la réponse est incomplète', () => {
-    setPending(pendingOf());
+    setPending(withoutRecommended());
     const spy = jasmine.createSpy('answer');
     component.answer.subscribe(spy);
     component.send();
@@ -245,5 +263,93 @@ describe('AtelierTerminalDemandeComponent (F-164 / SF-164-02)', () => {
     expect(dom().querySelector('fieldset.terminal-demande-question legend')).toBeTruthy();
     const textarea = dom().querySelector('textarea.terminal-demande-other-input');
     expect(textarea?.getAttribute('aria-label')).toBe('Autre réponse à la question');
+  });
+
+  describe('toujours envoyable (SF-164-07)', () => {
+    function lot(): AtelierPendingQuestion {
+      return pendingOf({
+        callId: 'lot-reco',
+        questions: [
+          {
+            header: 'Q1', question: 'A ?', multiSelect: false,
+            options: [
+              { label: 'a1', description: '', recommended: false },
+              { label: 'a2', description: '', recommended: true },
+            ],
+          },
+          {
+            header: 'Q2', question: 'B ?', multiSelect: true,
+            options: [
+              { label: 'b1', description: '', recommended: true },
+              { label: 'b2', description: '', recommended: false },
+              { label: 'b3', description: '', recommended: true },
+            ],
+          },
+          {
+            header: 'Q3', question: 'C ?', multiSelect: false,
+            options: [{ label: 'c1', description: '', recommended: false }],
+          },
+        ],
+      });
+    }
+
+    it('coche d’avance l’option recommandée (radio) et les recommandées (cases) — CA1', () => {
+      setPending(lot());
+      expect(component.single[0]).toBe('a2');
+      expect(Array.from(component.multi[1])).toEqual(['b1', 'b3']);
+      expect(component.single[2]).toBe('');
+      const radio = dom().querySelector('input[type="radio"][value="a2"]') as HTMLInputElement;
+      expect(radio.checked).toBeTrue();
+    });
+
+    it('Envoyer est actif d’emblée quand chaque question a une recommandée — CA1', () => {
+      setPending(pendingOf());
+      const send = dom().querySelector('button.terminal-demande-send') as HTMLButtonElement;
+      expect(send.disabled).toBeFalse();
+      let emitted: AtelierAnswerRequest | undefined;
+      component.answer.subscribe((a) => (emitted = a));
+      component.send();
+      expect(emitted).toEqual({ callId: 'call-1', answers: [{ header: 'Périmètre', selected: ['Deux'] }] });
+    });
+
+    it('la même question rejouée garde les choix en cours — CA2', () => {
+      setPending(lot());
+      component.setSingle(0, 'a1');
+      setPending({ ...lot() });
+      expect(component.single[0]).toBe('a1');
+    });
+
+    it('dit combien de questions restent sans réponse, bouton grisé — CA3', () => {
+      setPending(lot());
+      const missing = dom().querySelector('.terminal-demande-missing');
+      expect(missing?.textContent?.replace(/\s+/g, ' ')).toContain('1 question sur 3 sans réponse');
+      expect((dom().querySelector('button.terminal-demande-send') as HTMLButtonElement).disabled).toBeTrue();
+
+      component.setSingle(2, 'c1');
+      fixture.detectChanges();
+      expect(dom().querySelector('.terminal-demande-missing')).toBeNull();
+      expect((dom().querySelector('button.terminal-demande-send') as HTMLButtonElement).disabled).toBeFalse();
+    });
+
+    it('« Aller à la première » fait défiler jusqu’à la question manquante et y met le focus — CA4', () => {
+      setPending(lot());
+      const fieldsets = dom().querySelectorAll<HTMLElement>('fieldset.terminal-demande-question');
+      const scroll = spyOn(fieldsets[2], 'scrollIntoView');
+      const input = fieldsets[2].querySelector('input') as HTMLInputElement;
+      const focus = spyOn(input, 'focus');
+
+      (dom().querySelector('button.terminal-demande-goto') as HTMLButtonElement).click();
+
+      expect(scroll).toHaveBeenCalled();
+      expect(focus).toHaveBeenCalled();
+    });
+
+    it('la barre d’action porte le compte à rebours et le bouton — CA5', () => {
+      component.countdown = 'Il reste 9 min pour répondre';
+      setPending(lot());
+      const bar = dom().querySelector('.terminal-demande-bar');
+      expect(bar?.querySelector('.terminal-demande-countdown')).toBeTruthy();
+      expect(bar?.querySelector('button.terminal-demande-send')).toBeTruthy();
+    });
   });
 });
