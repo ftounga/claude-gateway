@@ -8,6 +8,7 @@ import { Subscription } from 'rxjs';
 
 import { PageSummary } from '../core/models/pages.models';
 import { PagesService } from '../core/services/pages.service';
+import { PagePdfDownloadService } from '../shared/pages/page-pdf-download.service';
 import { PageFrameComponent } from '../shared/pages/page-frame.component';
 import { PageShareDialogComponent, PageShareDialogData } from '../shared/pages/page-share-dialog.component';
 
@@ -35,6 +36,12 @@ import { PageShareDialogComponent, PageShareDialogData } from '../shared/pages/p
           <button mat-stroked-button type="button" class="page-viewer__share" (click)="share(page)">
             <mat-icon>share</mat-icon>
             Partager
+          </button>
+          <!-- F-184 / SF-184-03 : le PDF de la version AFFICHÉE. -->
+          <button mat-stroked-button type="button" class="page-viewer__pdf" [disabled]="pdf.isBusy(page.id)"
+            (click)="pdf.download(page.id, version())">
+            <mat-icon>picture_as_pdf</mat-icon>
+            PDF
           </button>
         </header>
         <app-page-frame class="page-viewer__frame" [url]="page.viewUrl" [pageTitle]="page.title"></app-page-frame>
@@ -101,6 +108,7 @@ import { PageShareDialogComponent, PageShareDialogData } from '../shared/pages/p
 })
 export class PageViewerComponent {
   private readonly pages = inject(PagesService);
+  readonly pdf = inject(PagePdfDownloadService);
   private readonly dialog = inject(MatDialog);
 
   readonly summary = signal<PageSummary | null>(null);

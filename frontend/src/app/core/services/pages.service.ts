@@ -83,4 +83,16 @@ export class PagesService {
     }
     return this.http.get(`/api/pages/${pageId}/content`, { params, responseType: 'blob', observe: 'response' });
   }
+
+  /**
+   * Le PDF d'une version (courante par défaut) — A4, thème clair, même charte (F-184). L'en-tête
+   * `X-Cg-Missing-Resources` dit ce que le moteur n'a pas pu inclure.
+   */
+  pdf(pageId: string, version?: number | null): Observable<HttpResponse<Blob>> {
+    let params = new HttpParams();
+    if (version) {
+      params = params.set('version', String(version));
+    }
+    return this.http.get(`/api/pages/${pageId}/pdf`, { params, responseType: 'blob', observe: 'response' });
+  }
 }

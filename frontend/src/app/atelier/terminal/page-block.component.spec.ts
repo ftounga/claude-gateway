@@ -5,6 +5,7 @@ import { of, throwError } from 'rxjs';
 
 import { AtelierTerminalPage } from '../../core/models/atelier.models';
 import { PageSummary } from '../../core/models/pages.models';
+import { PagePdfDownloadService } from '../../shared/pages/page-pdf-download.service';
 import { PagesService } from '../../core/services/pages.service';
 import { PageBlockComponent } from './page-block.component';
 import { PagePanelComponent } from './page-panel.component';
@@ -25,7 +26,10 @@ describe('PageBlockComponent et PagePanelComponent', () => {
     pages = jasmine.createSpyObj<PagesService>('PagesService', ['get']);
     TestBed.configureTestingModule({
       imports: [PageBlockComponent, PagePanelComponent, NoopAnimationsModule],
-      providers: [{ provide: PagesService, useValue: pages }],
+      providers: [
+        { provide: PagesService, useValue: pages },
+        { provide: PagePdfDownloadService, useValue: jasmine.createSpyObj<PagePdfDownloadService>('PagePdfDownloadService', { download: undefined, isBusy: false }) },
+      ],
     });
   });
 

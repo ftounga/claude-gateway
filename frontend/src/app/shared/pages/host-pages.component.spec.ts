@@ -12,6 +12,7 @@ import { ExportService } from '../../core/services/export.service';
 import { PagesService } from '../../core/services/pages.service';
 import { HOST_PAGES_PAGE_SIZE, HostPagesComponent } from './host-pages.component';
 import { PageVersionsDialogComponent, sizeLabel } from './page-versions-dialog.component';
+import { PagePdfDownloadService } from './page-pdf-download.service';
 import { PageShareDialogComponent } from './page-share-dialog.component';
 
 /** L'onglet Pages d'un poste ou d'un client (F-109 / SF-109-04). */
@@ -142,6 +143,20 @@ describe('HostPagesComponent', () => {
     // F-109 / SF-109-05 : Partager ouvre le dialogue de partage.
     fixture.componentInstance.share(page('p1', 'Maquette'));
     expect(dialog.open.calls.mostRecent().args[0]).toBe(PageShareDialogComponent);
+  });
+
+  it('Télécharger en PDF : une entrée du menu, la version courante (F-184 / SF-184-03)', () => {
+    build();
+    const pdf = TestBed.inject(PagePdfDownloadService);
+    const download = spyOn(pdf, 'download');
+    fixture.detectChanges();
+
+    (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.host-pages__menu')!.click();
+    fixture.detectChanges();
+    document.querySelector<HTMLButtonElement>('.host-pages__pdf')!.click();
+
+    expect(download).toHaveBeenCalledTimes(1);
+    expect(download.calls.mostRecent().args).toEqual(['p1']);
   });
 
   it('la taille lisible des versions', () => {
