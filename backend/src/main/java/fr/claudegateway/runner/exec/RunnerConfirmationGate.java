@@ -37,15 +37,24 @@ public class RunnerConfirmationGate {
     /** Délai par défaut d'attente d'une décision (ms). Au-delà : refus. */
     public static final long DEFAULT_TIMEOUT_MS = 120_000L;
 
+    /**
+     * Délai par défaut d'attente d'une réponse à une <b>question</b> (ms) — F-164 / SF-164-07. Plus
+     * long qu'une autorisation : une carte de plusieurs questions demande de lire et de choisir.
+     */
+    public static final long DEFAULT_QUESTION_TIMEOUT_MS = 600_000L;
+
     private static final Logger log = LoggerFactory.getLogger(RunnerConfirmationGate.class);
     private static final int MAX_REASON_CHARS = 500;
 
     private final Map<String, Pending> pending = new ConcurrentHashMap<>();
     private final long timeoutMs;
+    private final long questionTimeoutMs;
 
     public RunnerConfirmationGate(
-            @Value("${app.runner.confirmation.timeout-ms:120000}") long timeoutMs) {
+            @Value("${app.runner.confirmation.timeout-ms:120000}") long timeoutMs,
+            @Value("${app.runner.question.timeout-ms:600000}") long questionTimeoutMs) {
         this.timeoutMs = timeoutMs > 0 ? timeoutMs : DEFAULT_TIMEOUT_MS;
+        this.questionTimeoutMs = questionTimeoutMs > 0 ? questionTimeoutMs : DEFAULT_QUESTION_TIMEOUT_MS;
     }
 
     /**
@@ -57,6 +66,15 @@ public class RunnerConfirmationGate {
      */
     public long timeoutMs() {
         return timeoutMs;
+    }
+
+    /**
+     * Délai au bout duquel une <b>question</b> sans réponse expire, en millisecondes (F-164 /
+     * SF-164-07). Distinct de {@link #timeoutMs()} : 2 minutes suffisent pour autoriser une commande,
+     * pas pour lire et trancher une carte de plusieurs questions.
+     */
+    public long questionTimeoutMs() {
+        return questionTimeoutMs;
     }
 
     /**
@@ -133,8 +151,9 @@ public class RunnerConfirmationGate {
 
     /**
      * Enregistre une <b>question structurée</b> posée à l'utilisateur puis <b>attend</b> sa réponse
-     * (F-164 / SF-164-01). Même primitive que {@link #await} — même isolation, même délai, même
-     * annulation à l'interruption — mais le payload attendu est une <b>réponse</b>, pas un allow/deny.
+     * (F-164 / SF-164-01). Même primitive que {@link #await} — même isolation, même annulation à
+     * l'interruption — mais son propre délai ({@link #questionTimeoutMs()}, SF-164-07) et un payload
+     * attendu qui est une <b>réponse</b>, pas un allow/deny.
      *
      * <p><b>Pauses répétées dans un même tour</b> : l'entrée est indexée par {@code callId} et retirée
      * à la fin ({@code finally}). La boucle traite ses appels d'outil en série ; chaque
@@ -152,9 +171,9 @@ public class RunnerConfirmationGate {
         }
         try {
             log.info("Question posée (workspace={}, call={}) : réponse attendue sous {} ms",
-                    workspaceId, callId, timeoutMs);
+                    workspaceId, callId, questionTimeoutMs);
             onRegistered.run();
-            return (AnswerOutcome) entry.future().get(timeoutMs, TimeUnit.MILLISECONDS);
+            return (AnswerOutcome) entry.future().get(questionTimeoutMs, TimeUnit.MILLISECONDS);
         } catch (TimeoutException ex) {
             log.info("Aucune réponse à la question dans le délai (workspace={})", workspaceId);
             return AnswerOutcome.timedOut();

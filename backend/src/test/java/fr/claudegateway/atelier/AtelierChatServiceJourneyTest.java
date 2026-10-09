@@ -85,7 +85,7 @@ class AtelierChatServiceJourneyTest {
                 byokKeyService, quotaService,
                 new fr.claudegateway.atelier.git.GitWorkspaceService(workspaceService, gitTokenService,
                         gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
-                runnerToolGateway, runnerCallDispatcher, new RunnerConfirmationGate(200L), runnerAuditService,
+                runnerToolGateway, runnerCallDispatcher, new RunnerConfirmationGate(200L, 200L), runnerAuditService,
                 fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(), runnerHostService,
                 new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null, null, true),
                 AtelierCheckpointRunner.none(), ProjectRulesSource.NONE, TeamsToolCatalog.none(), null,
