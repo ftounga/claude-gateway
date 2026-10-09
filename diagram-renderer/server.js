@@ -14,6 +14,7 @@ const { mkdtemp, writeFile, readFile, rm } = require("node:fs/promises");
 const { tmpdir } = require("node:os");
 const path = require("node:path");
 const drawio = require("./drawio.js");
+const pdf = require("./pdf.js");
 
 /** Bornes — les mêmes que celles annoncées côté gateway, pour que le refus soit cohérent des deux côtés. */
 const MAX_CODE_CHARS = 20000;
@@ -471,6 +472,125 @@ async function renderCloudRequest(payload, res) {
   }
 }
 
+/**
+ * Le PDF d'une page (F-184 / SF-184-01) : chromium piloté par puppeteer-core — pas la ligne de
+ * commande `--print-to-pdf`, qui ne sait ni INTERCEPTER les requêtes (servir le lot, rester hors
+ * ligne) ni ATTENDRE la fin du rendu Mermaid.
+ */
+const PDF_TIMEOUT_MS = 45000;
+const PDF_MERMAID_WAIT_MS = 5000;
+/** Deux impressions de front : un chromium complet par impression, la mémoire du conteneur est bornée. */
+const PDF_CONCURRENCY = 2;
+let pdfRunning = 0;
+const pdfQueue = [];
+
+async function withPdfSlot(task) {
+  if (pdfRunning >= PDF_CONCURRENCY) {
+    await new Promise((resolve) => pdfQueue.push(resolve));
+  }
+  pdfRunning++;
+  try {
+    return await task();
+  } finally {
+    pdfRunning--;
+    const next = pdfQueue.shift();
+    if (next) {
+      next();
+    }
+  }
+}
+
+/** Imprime le lot. Renvoie `{ buffer, missing }`. Le chromium est TOUJOURS fermé, même en échec. */
+async function printLot(table) {
+  // Chargé à la demande : les autres routes ne dépendent pas de puppeteer-core.
+  const puppeteer = require("puppeteer-core");
+  const dir = await mkdtemp(path.join(tmpdir(), "cg-pdf-"));
+  const browser = await puppeteer.launch({
+    executablePath: CHROME,
+    headless: true,
+    userDataDir: path.join(dir, "profil"),
+    args: ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"],
+  });
+  const missing = [];
+  let timer;
+  try {
+    const work = (async () => {
+      const page = await browser.newPage();
+      await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
+      await page.setViewport({ width: 900, height: 1200 });
+      await page.setRequestInterception(true);
+      page.on("request", (request) => {
+        const url = request.url();
+        if (url.startsWith("data:") || url.startsWith("blob:")) {
+          return request.continue();
+        }
+        const hit = pdf.lookup(table, url);
+        if (!hit) {
+          // L'icône d'onglet que chromium demande de lui-même n'est pas une ressource de la page.
+          if (url !== pdf.ORIGIN + "/favicon.ico") {
+            missing.push(url);
+          }
+          return request.abort("blockedbyclient");
+        }
+        return request.respond({ status: 200, contentType: hit.contentType, body: hit.body });
+      });
+      await page.goto(pdf.PAGE_URL, { waitUntil: "networkidle0", timeout: PDF_TIMEOUT_MS });
+      await page.addStyleTag({ content: pdf.PRINT_CSS });
+      await page.evaluate(() => document.fonts.ready.then(() => true));
+      // Mermaid : le runtime de la gateway (PageMermaidRuntime) REMPLACE chaque bloc `.mermaid` par
+      // son rendu (`.cg-mermaid`) ou son repli. Plus de `.mermaid` = rendu fini ; au-delà du délai, on
+      // imprime ce qui est là.
+      await page.waitForFunction(
+        () => !document.querySelector("pre.mermaid, div.mermaid"),
+        { timeout: PDF_MERMAID_WAIT_MS }).catch(() => undefined);
+      const buffer = await page.pdf({ ...pdf.PDF_OPTIONS, timeout: PDF_TIMEOUT_MS });
+      return Buffer.from(buffer);
+    })();
+    const deadline = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new pdf.LotError(504, "Impression trop longue (45 s).")), PDF_TIMEOUT_MS);
+    });
+    const buffer = await Promise.race([work, deadline]);
+    return { buffer, missing };
+  } finally {
+    clearTimeout(timer);
+    await browser.close().catch(() => undefined);
+    await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+async function printPdf(req, res) {
+  let payload;
+  try {
+    payload = JSON.parse(await readBody(req, pdf.MAX_BODY_BYTES));
+  } catch (e) {
+    return e.message === "corps trop volumineux"
+      ? fail(res, 413, "Lot trop volumineux (32 Mo au plus).")
+      : fail(res, 400, "Corps JSON invalide.");
+  }
+  let table;
+  try {
+    table = pdf.parseLot(payload);
+  } catch (e) {
+    return fail(res, e.status || 400, e.message);
+  }
+  try {
+    const { buffer, missing } = await withPdfSlot(() => printLot(table));
+    if (buffer.length > pdf.MAX_PDF_BYTES) {
+      return fail(res, 413, "PDF trop lourd : " + buffer.length + " octets (20 Mo au plus).");
+    }
+    const headers = { "Content-Type": "application/pdf", "Content-Length": buffer.length };
+    if (missing.length > 0) {
+      // Ce qui manquait se DIT : la gateway le relaie, l'utilisateur sait pourquoi un bloc est vide.
+      headers["X-Cg-Missing-Resources"] = pdf.missingHeader(missing);
+    }
+    res.writeHead(200, headers);
+    res.end(buffer);
+  } catch (e) {
+    const status = e.status || (e.name === "TimeoutError" ? 504 : 422);
+    return fail(res, status, (e.message || "Le PDF n'a pas pu être produit.").slice(0, 500));
+  }
+}
+
 const server = http.createServer((req, res) => {
   if (req.method === "GET" && req.url === "/health") {
     return send(res, 200, JSON.stringify({ status: "UP" }), "application/json; charset=utf-8");
@@ -481,11 +601,14 @@ const server = http.createServer((req, res) => {
   if (req.method === "POST" && req.url === "/document") {
     return office(req, res).catch((e) => fail(res, 500, "Erreur interne : " + e.message));
   }
+  if (req.method === "POST" && req.url === "/pdf") {
+    return printPdf(req, res).catch((e) => fail(res, 500, "Erreur interne : " + e.message));
+  }
   if (req.method === "POST" && req.url === "/render") {
     return render(req, res).catch((e) => fail(res, 500, "Erreur interne : " + e.message));
   }
   return fail(res, 404, "Rien ici.");
 });
 
-server.requestTimeout = DECK_TIMEOUT_MS + 10000;
+server.requestTimeout = Math.max(DECK_TIMEOUT_MS, 2 * PDF_TIMEOUT_MS) + 10000;
 server.listen(PORT, () => console.log("diagram-renderer a l'ecoute sur " + PORT));
