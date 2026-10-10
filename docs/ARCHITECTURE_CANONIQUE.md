@@ -1230,6 +1230,13 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     `user_notifications`.
   - Endpoints **`GET/PUT /notifications/preferences`** (JWT, 400 lisible) ; purge à la suppression du
     compte.
+
+- **notification_digests** — le **verrou du récapitulatif quotidien** des attentes à relancer
+  (F-185 / SF-185-07, migration `152`). Une ligne `(user_id, digest_day)` (clé primaire composite,
+  `created_at`) par compte et par jour où « Des attentes sont à relancer » est parti. Les deux pods
+  lancent la tâche planifiée (jours ouvrés, 9 h Paris) ; seule l'insertion gagnante émet. Rétention
+  30 jours purgée par le worker ; purge à la suppression du compte. La lecture des attentes
+  « Demandé » est transverse (tâche de fond) mais chaque émission porte le `user_id` de l'attente.
   - **Émetteur** branché sur les **deux transitions de tour de F-84** (fin de `chatStreaming`,
     `askPermission`) : charge **neutre** (aucun contenu de tour, nom de projet ou commande — le détail
     n'apparaît qu'après ouverture authentifiée), émission **asynchrone** (jamais bloquante pour le

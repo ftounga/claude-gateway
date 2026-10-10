@@ -81,6 +81,12 @@ management:
         readiness:
           include: readinessState,db
 app:
+  notifications:
+    digest:
+      # F-185 / SF-185-07 — Récapitulatif quotidien des attentes à relancer : chaque jour ouvré à 9 h,
+      # heure de Paris. Les deux pods le lancent ; la clé (user_id, digest_day) n'en laisse partir qu'un.
+      enabled: ${APP_NOTIFICATIONS_DIGEST_ENABLED:true}
+      cron: ${APP_NOTIFICATIONS_DIGEST_CRON:0 0 9 * * MON-FRI}
   shutdown:
     # F-84 / SF-84-08 — Combien de temps l'arrêt attend la fin des tours d'agent encore en cours
     # sur ce pod, avant de les abandonner. Le tour vit dans le processus du pod (ADR-016) : un

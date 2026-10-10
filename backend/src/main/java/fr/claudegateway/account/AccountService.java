@@ -250,6 +250,15 @@ public class AccountService {
         this.notificationPreferenceRepository = notificationPreferenceRepository;
     }
 
+    /** Récapitulatifs envoyés (F-185 / SF-185-07) : même doctrine, {@code null} = rien à effacer. */
+    private fr.claudegateway.notifications.NotificationDigestWriter notificationDigestWriter;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setNotificationDigestWriter(
+            fr.claudegateway.notifications.NotificationDigestWriter notificationDigestWriter) {
+        this.notificationDigestWriter = notificationDigestWriter;
+    }
+
     /**
      * Les pièces jointes des courriels en attente (F-110 / SF-110-03), même doctrine que les pages : {@code null}
      * (tests unitaires historiques) = rien à effacer.
@@ -421,6 +430,9 @@ public class AccountService {
         }
         if (notificationPreferenceRepository != null) {
             notificationPreferenceRepository.deleteById(userId);
+        }
+        if (notificationDigestWriter != null) {
+            notificationDigestWriter.deleteByUserId(userId);
         }
         // Domaine documentaire (F-05/F-06) et Atelier (F-28), ajoutés par SF-11-03. Ces données
         // survivaient au compte : documents OCR (texte extrait et réponse brute du fournisseur

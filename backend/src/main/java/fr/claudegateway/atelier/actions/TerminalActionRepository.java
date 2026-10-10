@@ -53,6 +53,12 @@ public interface TerminalActionRepository extends JpaRepository<TerminalAction, 
     List<TerminalAction> findByUserIdAndWorkspaceIdAndStatusInOrderByCreatedAtAsc(
             UUID userId, UUID workspaceId, Collection<TerminalActionStatus> statuses);
 
+    /**
+     * Toutes les attentes dans cet état, <b>tous comptes</b> (F-185 / SF-185-07). Réservé au
+     * récapitulatif quotidien : chaque émission reste rattachée au {@code user_id} de la ligne.
+     */
+    List<TerminalAction> findByStatus(TerminalActionStatus status);
+
     /** Toutes les actions du compte dans ces états : le terminal racine les regroupe. */
     List<TerminalAction> findByUserIdAndStatusInOrderByCreatedAtAsc(
             UUID userId, Collection<TerminalActionStatus> statuses);

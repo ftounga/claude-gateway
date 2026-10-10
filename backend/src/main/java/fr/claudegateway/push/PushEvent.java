@@ -42,7 +42,10 @@ public enum PushEvent {
 
     /** Le poste ne répond plus : le tour a été arrêté. */
     MACHINE_LOST("Votre poste ne répond plus",
-            "Le travail a été arrêté : vérifiez que le poste est allumé et connecté.");
+            "Le travail a été arrêté : vérifiez que le poste est allumé et connecté."),
+
+    /** Récapitulatif quotidien (SF-185-07) : des attentes « Demandé » sont à relancer (F-175). */
+    ATTENTES_TO_FOLLOW_UP("Des attentes sont à relancer", "Ouvrez la Forge pour les voir.");
 
     private final String title;
     private final String body;
