@@ -205,6 +205,78 @@ class RunnerConfirmationGateTest {
                 .isInstanceOf(NoPendingConfirmationException.class);
     }
 
+    // ------------------------------------------------ F-185 / SF-185-05 : le rappel
+
+    @Test
+    void anUnansweredQuestionIsRemindedOnceBeforeItsDeadlineWhichDoesNotMove() {
+        RunnerConfirmationGate gate = new RunnerConfirmationGate(5_000L, 400L).withReminderLead(150L);
+        java.util.concurrent.atomic.AtomicInteger reminders = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicLong remindedAfter = new java.util.concurrent.atomic.AtomicLong();
+        long start = System.nanoTime();
+
+        AnswerOutcome outcome = gate.awaitAnswer(userId, workspaceId, "q_r", () -> { }, () -> {
+            reminders.incrementAndGet();
+            remindedAfter.set(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
+        });
+        long total = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+
+        assertThat(outcome.status()).isEqualTo(AnswerOutcome.Status.TIMEOUT);
+        assertThat(reminders.get()).isEqualTo(1);
+        assertThat(remindedAfter.get()).isBetween(230L, 390L);
+        // Le délai total reste celui configuré : le rappel ne prolonge rien.
+        assertThat(total).isBetween(390L, 900L);
+    }
+
+    @Test
+    void anAnswerBeforeTheReminderPreventsIt() throws Exception {
+        RunnerConfirmationGate gate = new RunnerConfirmationGate(5_000L, 2_000L).withReminderLead(500L);
+        java.util.concurrent.atomic.AtomicInteger reminders = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.CountDownLatch registered = new java.util.concurrent.CountDownLatch(1);
+        Future<AnswerOutcome> pending = java.util.concurrent.Executors.newSingleThreadExecutor().submit(
+                () -> gate.awaitAnswer(userId, workspaceId, "q_early", registered::countDown, reminders::incrementAndGet));
+        registered.await(2, TimeUnit.SECONDS);
+
+        gate.answerQuestions(userId, workspaceId, "q_early", "tout de suite");
+
+        assertThat(pending.get(2, TimeUnit.SECONDS).content()).isEqualTo("tout de suite");
+        assertThat(reminders.get()).isZero();
+    }
+
+    @Test
+    void anAnswerAfterTheReminderIsTaken() throws Exception {
+        RunnerConfirmationGate gate = new RunnerConfirmationGate(5_000L, 1_500L).withReminderLead(1_300L);
+        java.util.concurrent.CountDownLatch reminded = new java.util.concurrent.CountDownLatch(1);
+        Future<AnswerOutcome> pending = java.util.concurrent.Executors.newSingleThreadExecutor().submit(
+                () -> gate.awaitAnswer(userId, workspaceId, "q_late", () -> { }, reminded::countDown));
+
+        assertThat(reminded.await(2, TimeUnit.SECONDS)).isTrue();
+        gate.answerQuestions(userId, workspaceId, "q_late", "après le rappel");
+
+        assertThat(pending.get(2, TimeUnit.SECONDS).content()).isEqualTo("après le rappel");
+    }
+
+    @Test
+    void aDelayNoLongerThanTheLeadHasNoReminder() {
+        RunnerConfirmationGate gate = new RunnerConfirmationGate(5_000L, 150L).withReminderLead(200L);
+        java.util.concurrent.atomic.AtomicInteger reminders = new java.util.concurrent.atomic.AtomicInteger();
+
+        AnswerOutcome outcome = gate.awaitAnswer(userId, workspaceId, "q_short", () -> { }, reminders::incrementAndGet);
+
+        assertThat(outcome.status()).isEqualTo(AnswerOutcome.Status.TIMEOUT);
+        assertThat(reminders.get()).isZero();
+    }
+
+    @Test
+    void aFailingReminderDoesNotChangeTheWait() {
+        RunnerConfirmationGate gate = new RunnerConfirmationGate(5_000L, 300L).withReminderLead(100L);
+
+        AnswerOutcome outcome = gate.awaitAnswer(userId, workspaceId, "q_fail", () -> { }, () -> {
+            throw new IllegalStateException("push");
+        });
+
+        assertThat(outcome.status()).isEqualTo(AnswerOutcome.Status.TIMEOUT);
+    }
+
     @Test
     void aQuestionCanBePausedAndResumedSeveralTimesInATurn() throws Exception {
         // EXIGENCE PO : l'outil est appelable plusieurs fois dans un même tour. La porte doit donc

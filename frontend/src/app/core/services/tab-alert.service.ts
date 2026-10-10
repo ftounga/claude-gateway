@@ -45,6 +45,16 @@ export class TabAlertService {
     this.raise('Autorisation demandée');
   }
 
+  /** L'agent pose une question (F-185 / SF-185-05) : « Question en attente ». */
+  signalQuestionAsked(): void {
+    this.raise('Question en attente');
+  }
+
+  /** Le tour s'achève sur un plan soumis (F-185 / SF-185-05) : « Plan à approuver ». */
+  signalPlanAwaiting(): void {
+    this.raise('Plan à approuver');
+  }
+
   /**
    * Lève le signal in-tab, mais UNIQUEMENT si l'onglet est caché : au premier plan, l'utilisateur
    * voit déjà la réponse ou l'invite d'autorisation à l'écran — un signal serait du bruit.

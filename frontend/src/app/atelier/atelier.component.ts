@@ -1980,7 +1980,12 @@ export class AtelierComponent implements OnInit, OnDestroy {
           this.interrupting.set(false);
           // F-153 / SF-153-01 — Le tour s'achève : si l'onglet est caché, l'onglet s'allume
           // (« Réponse prête »). Un « tour de suite » (followUp) est déjà reparti ci-dessus.
-          this.tabAlert.signalTurnDone();
+          // F-185 / SF-185-05 : un plan soumis n'est pas « une réponse prête » — il attend un accord.
+          if (done.planSubmitted === true) {
+            this.tabAlert.signalPlanAwaiting();
+          } else {
+            this.tabAlert.signalTurnDone();
+          }
           // F-121 / SF-121-10 : le modèle a-t-il soumis un plan à approbation (exit_plan_mode) ? Si
           // oui, l'écran proposera « Approuver & exécuter ». On retient aussi le dernier plan pour
           // l'afficher au repos, une fois le tour refermé.
@@ -2707,8 +2712,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
     });
     this.startQuestionCountdown();
     // F-153 / SF-153-01 : le silence vaut expiration. Si l'onglet est caché, on l'allume pour ne pas
-    // laisser la question expirer sans la voir (même geste que la demande d'autorisation).
-    this.tabAlert.signalAwaitingAuthorization();
+    // laisser la question expirer sans la voir. F-185 / SF-185-05 : avec son vrai nom.
+    this.tabAlert.signalQuestionAsked();
     this.nudgeRender();
   }
 

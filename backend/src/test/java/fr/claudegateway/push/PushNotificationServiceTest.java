@@ -214,6 +214,20 @@ class PushNotificationServiceTest {
     }
 
     @Test
+    void theQuestionReminderIsSentEvenWhenTheTerminalIsWatched() {
+        // F-185 / SF-185-05 : le dernier filet avant une décision par défaut passe toujours.
+        deliverable();
+        when(watch.watching(userId, workspaceId)).thenReturn(true);
+
+        service.notify(userId, workspaceId, PushEvent.QUESTION_REMINDER);
+
+        ArgumentCaptor<String> payload = ArgumentCaptor.forClass(String.class);
+        verify(transport, timeout(2000)).send(any(), payload.capture());
+        assertThat(payload.getValue()).contains("Une question attend toujours");
+        verify(journal).record(userId, workspaceId, PushEvent.QUESTION_REMINDER, false);
+    }
+
+    @Test
     void anUnwatchedTerminalIsNotifiedAndThePresenceIsAskedForThisAccountAndThisTerminal() {
         deliverable();
         when(watch.watching(userId, workspaceId)).thenReturn(false);

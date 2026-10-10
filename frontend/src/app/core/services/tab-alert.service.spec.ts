@@ -75,6 +75,18 @@ describe('TabAlertService', () => {
     expect(doc.title).toContain('Autorisation demandée');
   });
 
+  it('F-185 / SF-185-05 — écrit « Question en attente » et « Plan à approuver » (onglet caché)', () => {
+    doc.hidden = true;
+    build();
+
+    service.signalQuestionAsked();
+    expect(doc.title).toContain('Question en attente');
+
+    service.signalPlanAwaiting();
+    expect(doc.title).toContain('Plan à approuver');
+    expect(doc.title).not.toContain('Question en attente');
+  });
+
   it('ne fait RIEN quand l\'onglet est au premier plan', () => {
     doc.hidden = false;
     build();

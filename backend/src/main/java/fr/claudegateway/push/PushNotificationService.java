@@ -110,7 +110,7 @@ public class PushNotificationService {
             if (duplicate(userId, workspaceId, event)) {
                 return;
             }
-            boolean watched = watched(userId, workspaceId);
+            boolean watched = !event.alwaysDelivered() && watched(userId, workspaceId);
             record(userId, workspaceId, event, watched);
             if (watched || !transport.isEnabled()) {
                 return;
