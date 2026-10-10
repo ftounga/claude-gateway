@@ -1,9 +1,12 @@
 package fr.claudegateway.push;
 
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -40,12 +43,22 @@ public class PushNotificationService {
     private final WebPushTransport transport;
     private final ObjectMapper objectMapper;
     private final ExecutorService executor;
+    private final TerminalWatch watch;
+    private final Clock clock;
+
+    /** F-185 / SF-185-03 : le même événement, pour le même terminal, n'est pas renvoyé dans ce délai. */
+    static final Duration DEDUP_WINDOW = Duration.ofSeconds(30);
+
+    /** Dernier envoi par (compte, terminal, événement) — mémoire du pod : un tour vit sur un seul pod. */
+    private final Map<String, Instant> lastSent = new ConcurrentHashMap<>();
 
     public PushNotificationService(PushSubscriptionRepository repository,
-            WebPushTransport transport, ObjectMapper objectMapper) {
+            WebPushTransport transport, ObjectMapper objectMapper, TerminalWatch watch, Clock clock) {
         this.repository = repository;
         this.transport = transport;
         this.objectMapper = objectMapper;
+        this.watch = watch == null ? TerminalWatch.NONE : watch;
+        this.clock = clock == null ? Clock.systemUTC() : clock;
         ThreadFactory daemon = runnable -> {
             Thread t = new Thread(runnable, "web-push-emitter");
             t.setDaemon(true);
@@ -90,6 +103,9 @@ public class PushNotificationService {
 
     private void deliver(UUID userId, UUID workspaceId, PushEvent event) {
         try {
+            if (watched(userId, workspaceId) || duplicate(userId, workspaceId, event)) {
+                return;
+            }
             List<PushSubscription> subscriptions = repository.findByUserId(userId);
             if (subscriptions.isEmpty()) {
                 return;
@@ -106,6 +122,38 @@ public class PushNotificationService {
             // L'émission est best-effort : jamais fatale. Aucune donnée sensible dans le log.
             log.warn("Émission Web Push interrompue : {}", e.getMessage());
         }
+    }
+
+    /**
+     * D7 de F-153 (F-185 / SF-185-03) : le terminal est sous les yeux de l'utilisateur, l'écran
+     * suffit. Une lecture en échec ne fait rien taire : mieux vaut un doublon qu'un silence.
+     */
+    private boolean watched(UUID userId, UUID workspaceId) {
+        if (workspaceId == null) {
+            return false;
+        }
+        try {
+            return watch.watching(userId, workspaceId);
+        } catch (RuntimeException e) {
+            log.warn("Présence illisible, notification envoyée : {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /** Anti-doublon : le même événement pour le même terminal, déjà envoyé il y a moins de 30 s. */
+    private boolean duplicate(UUID userId, UUID workspaceId, PushEvent event) {
+        Instant now = clock.instant();
+        String key = userId + ":" + workspaceId + ":" + event.name();
+        Instant previous = lastSent.get(key);
+        if (previous != null && previous.plus(DEDUP_WINDOW).isAfter(now)) {
+            return true;
+        }
+        lastSent.put(key, now);
+        // Borne la mémoire : on oublie ce qui est sorti de la fenêtre.
+        if (lastSent.size() > 1_000) {
+            lastSent.values().removeIf(at -> at.plus(DEDUP_WINDOW).isBefore(now));
+        }
+        return false;
     }
 
     /**

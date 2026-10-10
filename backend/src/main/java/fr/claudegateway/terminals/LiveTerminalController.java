@@ -56,7 +56,7 @@ public class LiveTerminalController {
                 ? new TerminalPreview(TerminalActivity.parse(request.activity()),
                         request.activityDetail(), request.previewLines(), null)
                 : null;
-        return liveTerminals.claim(currentUser.requireId(), id, request.sessionId(), preview);
+        return liveTerminals.claim(currentUser.requireId(), id, request.sessionId(), preview, request.watched());
     }
 
     /**

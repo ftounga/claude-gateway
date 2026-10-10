@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-185 / SF-185-03 - D7 ENFIN TENUE : PAS DE PUSH SI LE TERMINAL EST REGARDE.
+
+      watched_at : dernier battement de coeur ou l'onglet etait REGARDE (visible, au focus, avec une
+      interaction recente). NULL = pas regarde. L'emetteur Web Push ne notifie pas un terminal regarde
+      depuis moins de 45 s. Lu TOUJOURS avec user_id ET workspace_id.
+
+      Colonne facultative : un ecran anterieur ne l'ecrit pas, et la notification part comme avant.
+    -->
+
+    <changeSet id="149-live-terminals-watched" author="claude-gateway">
+        <addColumn tableName="live_terminals">
+            <column name="watched_at" type="timestamp with time zone"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="live_terminals" columnName="watched_at"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

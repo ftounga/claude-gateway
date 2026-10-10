@@ -23,6 +23,21 @@ const SESSION_KEY = 'cg.terminal.session';
  */
 export const PREVIEW_MIN_INTERVAL_MS = 5_000;
 
+/** Sans interaction depuis ce délai, un onglet visible n'est plus « regardé » (F-185 / SF-185-03). */
+export const WATCH_IDLE_MS = 120_000;
+
+/**
+ * **L'onglet est-il regardé ?** (F-185 / SF-185-03, D7 de F-153) : visible, au focus, et touché
+ * depuis moins de deux minutes. Un écran resté allumé devant une chaise vide n'est pas regardé —
+ * le téléphone doit alors sonner.
+ */
+export function isWatched(visible: boolean, focused: boolean, lastInteractionAt: number, now = Date.now()): boolean {
+  return visible && focused && now - lastInteractionAt < WATCH_IDLE_MS;
+}
+
+/** Ce qui compte pour une interaction : le geste, pas le simple passage de la souris. */
+const INTERACTION_EVENTS = ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll'] as const;
+
 /**
  * **Le registre des terminaux vivants, vu de l'écran** (F-70 / SF-70-01).
  *
@@ -63,6 +78,12 @@ export class LiveTerminalService {
   /** Envoi différé d'un aperçu trop rapproché du précédent. Annulé à l'arrêt. */
   private previewTimer: ReturnType<typeof setTimeout> | null = null;
 
+  /** Dernière interaction de l'utilisateur avec la page (F-185 / SF-185-03). */
+  private lastInteractionAt = Date.now();
+
+  /** Le « regardé » emporté par le dernier battement, pour ne réémettre que sur un changement. */
+  private sentWatched: boolean | null = null;
+
   private readonly state = signal<LiveTerminals | null>(null);
   private readonly holding = signal(false);
   private readonly refused = signal(false);
@@ -81,6 +102,32 @@ export class LiveTerminalService {
 
   /** Nombre de terminaux vivants, ce compte-ci inclus. */
   readonly liveCount = computed(() => this.state()?.live ?? 0);
+
+  constructor() {
+    if (typeof document === 'undefined') {
+      return;
+    }
+    const touched = () => {
+      this.lastInteractionAt = Date.now();
+      // Revenir devant un terminal resté ouvert : on le dit tout de suite, pas au battement suivant.
+      this.watchChanged();
+    };
+    for (const type of INTERACTION_EVENTS) {
+      document.addEventListener(type, touched, { capture: true, passive: true });
+    }
+    // Partir (onglet caché, fenêtre quittée) se dit aussitôt : les notifications reprennent.
+    document.addEventListener('visibilitychange', () => this.watchChanged());
+    window.addEventListener('focus', () => this.watchChanged());
+    window.addEventListener('blur', () => this.watchChanged());
+  }
+
+  /** L'onglet est-il regardé, à l'instant ? */
+  watched(): boolean {
+    if (typeof document === 'undefined') {
+      return false;
+    }
+    return isWatched(document.visibilityState === 'visible', document.hasFocus(), this.lastInteractionAt);
+  }
 
   /**
    * Ouvre une place pour ce projet et la tient jusqu'à {@link stop}. Rejouer l'appel sur un autre
@@ -115,6 +162,7 @@ export class LiveTerminalService {
     this.sentPreview = null;
     this.lastPreviewSentAt = 0;
     this.workspaceId = null;
+    this.sentWatched = null;
     this.holding.set(false);
     this.refused.set(false);
     if (!workspaceId) {
@@ -181,11 +229,20 @@ export class LiveTerminalService {
 
   // ------------------------------------------------------------------ interne
 
+  /** Le « regardé » a changé depuis le dernier battement : un battement part tout de suite. */
+  private watchChanged(): void {
+    if (this.workspaceId && this.sentWatched !== null && this.watched() !== this.sentWatched) {
+      this.beat();
+    }
+  }
+
   private beat(): void {
     const workspaceId = this.workspaceId;
     if (!workspaceId) {
       return;
     }
+    const watched = this.watched();
+    this.sentWatched = watched;
     const preview = this.preview;
     if (preview) {
       // Le battement EMPORTE le dernier relevé connu : même sans changement d'activité, l'aperçu
@@ -196,6 +253,8 @@ export class LiveTerminalService {
     this.http
       .post<LiveTerminals>(`/api/workspaces/${workspaceId}/terminal/live`, {
         sessionId: this.sessionId,
+        // F-185 / SF-185-03 : un terminal regardé ne fait pas sonner le téléphone.
+        watched,
         ...(preview
           ? {
               activity: preview.activity,

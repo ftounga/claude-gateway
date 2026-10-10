@@ -55,7 +55,7 @@ import fr.claudegateway.terminals.dto.TerminalPreview;
  * écriture, et chaque lecture du registre filtre sur {@code user_id}.</p>
  */
 @Service
-public class LiveTerminalService {
+public class LiveTerminalService implements fr.claudegateway.push.TerminalWatch {
 
     /**
      * Plafond dur, non contournable par la configuration (décision PO). Une valeur plus haute ne
@@ -221,6 +221,34 @@ public class LiveTerminalService {
             throw new LiveTerminalLimitReachedException(limit);
         }
         return describe(claimed.getUserId(), cutoff);
+    }
+
+    /**
+     * Prend ou renouvelle la place, puis pose ou efface le « regardé » de l'onglet (F-185 /
+     * SF-185-03). {@code watched} nul — écran antérieur — ne change rien.
+     */
+    @Transactional
+    public LiveTerminalsResponse claim(UUID userId, UUID workspaceId, String sessionId,
+            TerminalPreview preview, Boolean watched) {
+        LiveTerminalsResponse response = claim(userId, workspaceId, sessionId, preview);
+        if (watched != null) {
+            repository.markWatched(userId, sessionId, watched ? OffsetDateTime.now() : null);
+        }
+        return response;
+    }
+
+    /** Fraîcheur du « regardé » : un battement toutes les 30 s, plus une marge. */
+    static final Duration WATCH_FRESHNESS = Duration.ofSeconds(45);
+
+    /** D7 de F-153 : ce terminal de ce compte a-t-il été regardé il y a moins de 45 s ? */
+    @Override
+    @Transactional(readOnly = true)
+    public boolean watching(UUID userId, UUID workspaceId) {
+        if (userId == null || workspaceId == null) {
+            return false;
+        }
+        return repository.existsByUserIdAndWorkspaceIdAndWatchedAtAfter(userId, workspaceId,
+                OffsetDateTime.now().minus(WATCH_FRESHNESS));
     }
 
     /**

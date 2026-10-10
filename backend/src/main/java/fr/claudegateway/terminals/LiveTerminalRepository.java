@@ -73,6 +73,18 @@ public interface LiveTerminalRepository extends JpaRepository<LiveTerminal, UUID
             @Param("activityDetail") String activityDetail,
             @Param("previewLines") String previewLines);
 
+    /**
+     * Pose ou efface le « regardé » de cet onglet (F-185 / SF-185-03). Écrit <b>après</b> la prise
+     * de place : le plafond de F-70 n'a rien à en savoir.
+     */
+    @Modifying
+    @Query("update LiveTerminal t set t.watchedAt = :at where t.userId = :userId and t.sessionId = :sessionId")
+    int markWatched(@Param("userId") UUID userId, @Param("sessionId") String sessionId,
+            @Param("at") OffsetDateTime at);
+
+    /** Ce terminal de ce compte est-il regardé depuis {@code since} ? Toujours par user_id ET workspace_id. */
+    boolean existsByUserIdAndWorkspaceIdAndWatchedAtAfter(UUID userId, UUID workspaceId, OffsetDateTime since);
+
     /** Libération explicite : un onglet ne peut libérer que sa propre place. */
     void deleteByUserIdAndSessionId(UUID userId, String sessionId);
 
