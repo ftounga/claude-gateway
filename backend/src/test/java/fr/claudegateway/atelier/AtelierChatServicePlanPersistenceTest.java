@@ -126,6 +126,25 @@ class AtelierChatServicePlanPersistenceTest {
     }
 
     @Test
+    void aSubmittedPlanNotifiesPlanAwaitingInsteadOfTurnDone() {
+        // F-185 / SF-185-02 : un plan soumis n'est pas « une réponse prête » — rien n'avance sans accord.
+        stubSandbox();
+        fr.claudegateway.push.PushNotificationService push =
+                org.mockito.Mockito.mock(fr.claudegateway.push.PushNotificationService.class);
+        service.setPushNotificationService(push);
+        agentProvider.enqueueToolCallWithObject("exit_plan_mode",
+                "{\"steps\":[{\"title\":\"Générer le backend\",\"status\":\"pending\"}]}");
+        agentProvider.enqueueFinal("Voici mon plan.");
+
+        service.chatStreaming(userId, workspaceId, "que ferais-tu ?", AgentTurnMode.ANSWER_PLAN,
+                new RecordingListener());
+
+        org.mockito.Mockito.verify(push).notify(userId, workspaceId, fr.claudegateway.push.PushEvent.PLAN_AWAITING);
+        org.mockito.Mockito.verify(push, org.mockito.Mockito.never()).notify(userId, workspaceId,
+                fr.claudegateway.push.PushEvent.TURN_DONE);
+    }
+
+    @Test
     void exitPlanModeWithoutStepsIsNotASubmission() {
         stubSandbox();
         agentProvider.enqueueToolCallWithObject("exit_plan_mode", "{\"steps\":[]}");

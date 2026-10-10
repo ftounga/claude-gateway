@@ -113,6 +113,45 @@ class PushNotificationServiceTest {
     }
 
     @Test
+    void everyEventCarriesItsNeutralTitleItsCodeAndATagPerTerminal() throws Exception {
+        // F-185 / SF-185-02 : le catalogue complet, charge neutre, code d'événement et tag par terminal.
+        ObjectMapper mapper = new ObjectMapper();
+        for (PushEvent event : PushEvent.values()) {
+            com.fasterxml.jackson.databind.JsonNode notification =
+                    mapper.readTree(service.buildPayload(event, workspaceId)).get("notification");
+            assertThat(notification.get("title").asText()).isEqualTo(event.title());
+            assertThat(notification.get("body").asText()).isEqualTo(event.body());
+            assertThat(notification.get("tag").asText()).isEqualTo("cg-" + workspaceId);
+            assertThat(notification.get("data").get("event").asText()).isEqualTo(event.name());
+            assertThat(notification.get("data").get("url").asText()).isEqualTo("/atelier/" + workspaceId);
+            // Neutre : aucun identifiant de compte ne voyage.
+            assertThat(notification.toString()).doesNotContain(userId.toString());
+        }
+    }
+
+    @Test
+    void notifySendsTheCatalogEventToTheOwnersDevicesOnly() {
+        when(transport.isEnabled()).thenReturn(true);
+        when(repository.findByUserId(userId)).thenReturn(List.of(sub("https://push/a")));
+        when(transport.send(any(), any())).thenReturn(Result.DELIVERED);
+
+        service.notify(userId, workspaceId, PushEvent.PLAN_AWAITING);
+
+        ArgumentCaptor<String> payload = ArgumentCaptor.forClass(String.class);
+        verify(transport, timeout(2000)).send(any(), payload.capture());
+        assertThat(payload.getValue()).contains("Un plan attend votre accord").contains("PLAN_AWAITING");
+        verify(repository).findByUserId(userId);
+    }
+
+    @Test
+    void aNullEventIsIgnored() throws InterruptedException {
+        when(transport.isEnabled()).thenReturn(true);
+        service.notify(userId, workspaceId, null);
+        Thread.sleep(100);
+        verify(transport, never()).send(any(), any());
+    }
+
+    @Test
     void aDeadEndpointIsPurged() {
         when(transport.isEnabled()).thenReturn(true);
         PushSubscription alive = sub("https://push/alive");
