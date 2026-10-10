@@ -50,6 +50,20 @@ public class RunnerConfirmationGate {
     private final long timeoutMs;
     private final long questionTimeoutMs;
 
+    /** F-185 / SF-185-05 : avance du rappel d'une question sans réponse, avant son échéance. */
+    public static final long REMINDER_LEAD_MS = 120_000L;
+
+    private volatile long reminderLeadMs = REMINDER_LEAD_MS;
+
+    /**
+     * Règle l'avance du rappel (tests à délais courts). Rend la porte, pour chaîner après le
+     * constructeur — un second constructeur casserait le contexte Spring.
+     */
+    public RunnerConfirmationGate withReminderLead(long leadMs) {
+        this.reminderLeadMs = Math.max(0L, leadMs);
+        return this;
+    }
+
     public RunnerConfirmationGate(
             @Value("${app.runner.confirmation.timeout-ms:120000}") long timeoutMs,
             @Value("${app.runner.question.timeout-ms:600000}") long questionTimeoutMs) {
@@ -163,6 +177,16 @@ public class RunnerConfirmationGate {
      * @return la réponse, jamais {@code null} ({@link AnswerOutcome.Status#TIMEOUT} en cas de silence)
      */
     public AnswerOutcome awaitAnswer(UUID userId, UUID workspaceId, String callId, Runnable onRegistered) {
+        return awaitAnswer(userId, workspaceId, callId, onRegistered, null);
+    }
+
+    /**
+     * Attend la réponse, avec un <b>rappel</b> (F-185 / SF-185-05) : si rien n'est venu à « délai −
+     * avance », {@code onReminder} est appelé une fois, puis l'attente se poursuit jusqu'au même
+     * délai total. Sans rappel ({@code null}) ou si le délai ne dépasse pas l'avance : une seule attente.
+     */
+    public AnswerOutcome awaitAnswer(UUID userId, UUID workspaceId, String callId, Runnable onRegistered,
+            Runnable onReminder) {
         Pending entry = new Pending(userId, workspaceId, Kind.QUESTION,
                 new CompletableFuture<>(), AnswerOutcome.interrupted());
         if (pending.putIfAbsent(callId, entry) != null) {
@@ -173,6 +197,21 @@ public class RunnerConfirmationGate {
             log.info("Question posée (workspace={}, call={}) : réponse attendue sous {} ms",
                     workspaceId, callId, questionTimeoutMs);
             onRegistered.run();
+            long lead = reminderLeadMs;
+            if (onReminder != null && lead > 0 && questionTimeoutMs > lead) {
+                try {
+                    return (AnswerOutcome) entry.future().get(questionTimeoutMs - lead, TimeUnit.MILLISECONDS);
+                } catch (TimeoutException ex) {
+                    log.info("Question toujours sans réponse (workspace={}) : rappel", workspaceId);
+                    try {
+                        onReminder.run();
+                    } catch (RuntimeException reminderFailure) {
+                        // Le rappel est best-effort : il ne change jamais l'attente.
+                        log.warn("Rappel de question impossible : {}", reminderFailure.getMessage());
+                    }
+                    return (AnswerOutcome) entry.future().get(lead, TimeUnit.MILLISECONDS);
+                }
+            }
             return (AnswerOutcome) entry.future().get(questionTimeoutMs, TimeUnit.MILLISECONDS);
         } catch (TimeoutException ex) {
             log.info("Aucune réponse à la question dans le délai (workspace={})", workspaceId);

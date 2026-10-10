@@ -4235,9 +4235,13 @@ public class AtelierChatService implements RelayInterruptTarget {
         if (pushNotificationService != null) {
             pushNotificationService.notifyQuestionAsked(userId, workspaceId);
         }
+        // F-185 / SF-185-05 : deux minutes avant l'échéance, un rappel si personne n'a répondu.
+        Runnable reminder = pushNotificationService == null ? null
+                : () -> pushNotificationService.notify(userId, workspaceId,
+                        fr.claudegateway.push.PushEvent.QUESTION_REMINDER);
         RunnerConfirmationGate.AnswerOutcome outcome = confirmationGate.awaitAnswer(userId, workspaceId,
                 callId, () -> listener.onQuestion(new AtelierProgressListener.AtelierQuestionRequest(
-                        callId, form, confirmationGate.questionTimeoutMs())));
+                        callId, form, confirmationGate.questionTimeoutMs())), reminder);
         // F-164 / SF-164-06 : au timeout, l'écran affiche les choix retenus par défaut.
         java.util.List<String> defaults = outcome.status() == RunnerConfirmationGate.AnswerOutcome.Status.TIMEOUT
                 ? form.defaultDecisions().stream().map(AtelierQuestionForm.DefaultDecision::line).toList()

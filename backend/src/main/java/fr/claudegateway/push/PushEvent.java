@@ -20,6 +20,13 @@ public enum PushEvent {
     /** L'agent pose une question structurée (outil {@code demander}). */
     QUESTION_ASKED("Une question vous attend", "Ouvrez l'application pour répondre."),
 
+    /**
+     * Une question attend toujours, deux minutes avant son échéance (SF-185-05) : le dernier filet
+     * avant une décision prise par défaut. Toujours émis, même terminal regardé.
+     */
+    QUESTION_REMINDER("Une question attend toujours",
+            "Sans réponse dans 2 minutes, l'agent décidera par défaut.", true),
+
     /** L'agent a soumis son plan ({@code exit_plan_mode}) : rien n'avance sans votre accord. */
     PLAN_AWAITING("Un plan attend votre accord", "Ouvrez l'application pour l'approuver ou le corriger."),
 
@@ -39,10 +46,21 @@ public enum PushEvent {
 
     private final String title;
     private final String body;
+    private final boolean alwaysDelivered;
 
     PushEvent(String title, String body) {
+        this(title, body, false);
+    }
+
+    PushEvent(String title, String body, boolean alwaysDelivered) {
         this.title = title;
         this.body = body;
+        this.alwaysDelivered = alwaysDelivered;
+    }
+
+    /** Émis même si le terminal est regardé (D7 ne s'applique pas). */
+    public boolean alwaysDelivered() {
+        return alwaysDelivered;
     }
 
     public String title() {

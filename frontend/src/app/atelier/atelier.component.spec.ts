@@ -14,6 +14,7 @@ import { Subject, of, throwError } from 'rxjs';
 
 import { MAX_UPLOAD_BYTES } from '../shared/http-error.util';
 
+import { TabAlertService } from '../core/services/tab-alert.service';
 import { AtelierComponent, delayLabel, toThreadItem } from './atelier.component';
 import { AtelierThreadItem } from './atelier.types';
 import { AtelierService } from '../core/services/atelier.service';
@@ -180,6 +181,37 @@ describe('AtelierComponent', () => {
     component = fixture.componentInstance;
     fixture.detectChanges();
   }
+
+  // F-185 / SF-185-05 — l'onglet dit ce qui attend : un plan soumis n'est pas « une réponse prête ».
+  describe('alerte d\'onglet en fin de tour (F-185 / SF-185-05)', () => {
+    function finish(planSubmitted: boolean): { plan: jasmine.Spy; done: jasmine.Spy } {
+      setup();
+      component.selectWorkspace(summary);
+      component.engine.set('LOCAL_MACHINE');
+      const tabAlert = TestBed.inject(TabAlertService);
+      const plan = spyOn(tabAlert, 'signalPlanAwaiting');
+      const done = spyOn(tabAlert, 'signalTurnDone');
+      service.streamChat.and.callFake((_id, _message, handlers) => {
+        handlers.onDone({ reply: 'Voilà.', actions: [], messageId: 'm1', planSubmitted });
+        return Promise.resolve();
+      });
+      component.draft.set('fais-le');
+      component.send();
+      return { plan, done };
+    }
+
+    it('plan soumis → « Plan à approuver »', () => {
+      const { plan, done } = finish(true);
+      expect(plan).toHaveBeenCalled();
+      expect(done).not.toHaveBeenCalled();
+    });
+
+    it('tour ordinaire → « Réponse prête »', () => {
+      const { plan, done } = finish(false);
+      expect(done).toHaveBeenCalled();
+      expect(plan).not.toHaveBeenCalled();
+    });
+  });
 
   // F-179 / SF-179-02 — le « go » ouvre le sujet, la phrase déposée, jamais envoyée.
   describe('passation vers un sujet (F-179 / SF-179-02)', () => {

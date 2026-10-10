@@ -68,7 +68,7 @@ class AtelierChatServiceQuestionToolTest {
     void setUp() {
         agentProvider = new StubAiAgentProvider();
         listener = new Listener();
-        gate = new RunnerConfirmationGate(250L, 300L); // SF-164-07 : délais distincts
+        gate = new RunnerConfirmationGate(250L, 300L).withReminderLead(100L); // SF-164-07 : délais distincts ; SF-185-05 : rappel
         service = new AtelierChatService(workspaceService, messageRepository, (AiAgentProvider) agentProvider,
                 byokKeyService, quotaService,
                 new fr.claudegateway.atelier.git.GitWorkspaceService(workspaceService, gitTokenService,
@@ -295,6 +295,23 @@ class AtelierChatServiceQuestionToolTest {
                 org.mockito.ArgumentMatchers.eq(fr.claudegateway.push.PushEvent.TURN_DONE));
         // Le relevé n'a rien retiré à l'écouteur d'origine.
         assertThat(listener.resolved).singleElement().satisfies(r -> assertThat(r.status()).isEqualTo("timeout"));
+    }
+
+    @Test
+    @DisplayName("SF-185-05 — une question laissée sans réponse est rappelée une fois avant l'échéance")
+    void anUnansweredQuestionIsRemindedOnce() {
+        terminal();
+        fr.claudegateway.push.PushNotificationService push =
+                org.mockito.Mockito.mock(fr.claudegateway.push.PushNotificationService.class);
+        service.setPushNotificationService(push);
+        listener.silent = true;
+        agentProvider.enqueueToolCallWithObject("demander", RECO_BATCH);
+        agentProvider.enqueueFinal("Décidé par défaut.");
+
+        service.chatStreaming(userId, workspaceId, "configure", listener);
+
+        org.mockito.Mockito.verify(push, org.mockito.Mockito.times(1)).notify(userId, workspaceId,
+                fr.claudegateway.push.PushEvent.QUESTION_REMINDER);
     }
 
     @Test
