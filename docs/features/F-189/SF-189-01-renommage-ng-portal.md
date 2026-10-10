@@ -12,7 +12,7 @@
 
 ## Statut
 
-`in-review`
+`done`
 
 ## Date de création
 
