@@ -1,8 +1,10 @@
+import { NEVER } from 'rxjs';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { signal } from '@angular/core';
 
 import { NotificationsSettingsComponent } from './notifications-settings.component';
+import { NotificationPreferencesService } from '../../core/services/notification-preferences.service';
 import { PushActivationService, PushActivationResult } from '../../core/services/push-activation.service';
 
 describe('NotificationsSettingsComponent', () => {
@@ -28,6 +30,8 @@ describe('NotificationsSettingsComponent', () => {
       providers: [
         provideNoopAnimations(),
         { provide: PushActivationService, useValue: push },
+        // F-185 / SF-185-06 : les préférences ne sont pas l'objet de ces tests.
+        { provide: NotificationPreferencesService, useValue: { get: () => NEVER, save: () => NEVER } },
       ],
     });
     fixture = TestBed.createComponent(NotificationsSettingsComponent);

@@ -241,6 +241,15 @@ public class AccountService {
         this.userNotificationRepository = userNotificationRepository;
     }
 
+    /** Préférences de notification (F-185 / SF-185-06) : même doctrine, {@code null} = rien à effacer. */
+    private fr.claudegateway.notifications.NotificationPreferenceRepository notificationPreferenceRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setNotificationPreferenceRepository(
+            fr.claudegateway.notifications.NotificationPreferenceRepository notificationPreferenceRepository) {
+        this.notificationPreferenceRepository = notificationPreferenceRepository;
+    }
+
     /**
      * Les pièces jointes des courriels en attente (F-110 / SF-110-03), même doctrine que les pages : {@code null}
      * (tests unitaires historiques) = rien à effacer.
@@ -409,6 +418,9 @@ public class AccountService {
         // Centre de notifications (F-185 / SF-185-04) : il nomme les terminaux du compte.
         if (userNotificationRepository != null) {
             userNotificationRepository.deleteByUserId(userId);
+        }
+        if (notificationPreferenceRepository != null) {
+            notificationPreferenceRepository.deleteById(userId);
         }
         // Domaine documentaire (F-05/F-06) et Atelier (F-28), ajoutés par SF-11-03. Ces données
         // survivaient au compte : documents OCR (texte extrait et réponse brute du fournisseur

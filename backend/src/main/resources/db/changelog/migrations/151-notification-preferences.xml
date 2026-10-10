@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-185 / SF-185-06 - PREFERENCES ET HEURES CALMES : ce qui fait sonner les appareils d'un compte.
+
+      UNE LIGNE PAR COMPTE (cle user_id) ; absente = valeurs par defaut (tout sonne). muted_events =
+      codes PushEvent separes par des virgules. Heures calmes HH:MM dans time_zone (IANA). Les
+      evenements critiques (autorisation, question, rappel) ne sont jamais coupes (D5) : la regle vit
+      dans le code, pas en base. Purge explicite a la suppression du compte.
+    -->
+
+    <changeSet id="151-notification-preferences" author="claude-gateway">
+        <createTable tableName="notification_preferences">
+            <column name="user_id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="muted_events" type="varchar(1000)"/>
+            <column name="quiet_from" type="varchar(5)"/>
+            <column name="quiet_to" type="varchar(5)"/>
+            <column name="time_zone" type="varchar(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <rollback>
+            <dropTable tableName="notification_preferences"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

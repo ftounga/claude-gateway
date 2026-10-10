@@ -5,6 +5,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { PushActivationService } from '../../core/services/push-activation.service';
+import { NotificationPreferencesComponent } from '../notification-preferences/notification-preferences.component';
 
 /**
  * Carte « Notifications » des paramètres (F-153 / SF-153-03) : active ou désactive les notifications
@@ -16,7 +17,7 @@ import { PushActivationService } from '../../core/services/push-activation.servi
  */
 @Component({
   selector: 'app-notifications-settings',
-  imports: [MatCardModule, MatButtonModule, MatIconModule],
+  imports: [MatCardModule, MatButtonModule, MatIconModule, NotificationPreferencesComponent],
   templateUrl: './notifications-settings.component.html',
   styleUrl: './notifications-settings.component.scss',
 })

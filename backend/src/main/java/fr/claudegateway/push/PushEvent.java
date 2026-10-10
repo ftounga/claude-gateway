@@ -58,6 +58,14 @@ public enum PushEvent {
         this.alwaysDelivered = alwaysDelivered;
     }
 
+    /**
+     * <b>Critique</b> (D5 de F-185) : ce qui coûte une décision — autorisation, question, rappel. Jamais
+     * mis en sourdine, jamais coupé par les heures calmes.
+     */
+    public boolean critical() {
+        return this == AUTHORIZATION_REQUESTED || this == QUESTION_ASKED || this == QUESTION_REMINDER;
+    }
+
     /** Émis même si le terminal est regardé (D7 ne s'applique pas). */
     public boolean alwaysDelivered() {
         return alwaysDelivered;
