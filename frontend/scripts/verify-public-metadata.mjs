@@ -34,7 +34,7 @@ const failures = [];
 const check = (ok, message) => { if (!ok) failures.push(message); };
 
 // ---- index.html ----
-check(/<title>Claude Portal —/.test(html), 'index.html : <title> « Claude Portal » absent');
+check(/<title>NG Portal —/.test(html), 'index.html : <title> « NG Portal » absent');
 
 const description = html.match(/<meta name="description" content="([^"]+)"/);
 check(!!description, 'index.html : meta description absente');

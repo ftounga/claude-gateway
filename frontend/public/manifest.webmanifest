@@ -1,6 +1,6 @@
 {
-  "name": "Claude Portal",
-  "short_name": "Claude Portal",
+  "name": "NG Portal",
+  "short_name": "NG Portal",
   "description": "Passerelle professionnelle vers Claude : piloter ses terminaux à distance, en mission.",
   "lang": "fr",
   "start_url": "/",

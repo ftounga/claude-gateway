@@ -17,7 +17,7 @@ data:
     <meta charset="utf-8">
     <title>NG-CONSULTING — Conception et développement de logiciels</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="NG-CONSULTING conçoit, développe et exploite des logiciels et outils informatiques pour les entreprises. Solutions : Claude Portal, AI LegalCase, NG Acquisitions. Éditeur de Claude Portal, passerelle professionnelle vers l'assistant Claude.">
+    <meta name="description" content="NG-CONSULTING conçoit, développe et exploite des logiciels et outils informatiques pour les entreprises. Solutions : NG Portal, AI LegalCase, NG Acquisitions. Éditeur de NG Portal, passerelle professionnelle vers l'assistant Claude.">
     <meta name="author" content="NG-CONSULTING">
     <meta name="robots" content="index, follow">
     <link rel="canonical" href="https://www.ng-itconsulting.com/">
@@ -25,7 +25,7 @@ data:
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="NG-CONSULTING">
     <meta property="og:title" content="NG-CONSULTING — Conception et développement de logiciels">
-    <meta property="og:description" content="Société de conception, développement et exploitation de logiciels. Claude Portal, AI LegalCase et NG Acquisitions.">
+    <meta property="og:description" content="Société de conception, développement et exploitation de logiciels. NG Portal, AI LegalCase et NG Acquisitions.">
     <meta property="og:url" content="https://www.ng-itconsulting.com/">
     <meta property="og:locale" content="fr_FR">
 
@@ -145,10 +145,10 @@ data:
         </p>
 
         <div class="card">
-          <span class="tag">CLAUDE PORTAL — LOGICIEL ÉDITÉ</span>
+          <span class="tag">NG PORTAL — LOGICIEL ÉDITÉ</span>
           <h3>La passerelle professionnelle vers l'assistant Claude</h3>
           <p style="color:var(--text);margin-bottom:16px">
-            Claude Portal donne aux consultants et aux indépendants un accès authentifié et sécurisé
+            NG Portal donne aux consultants et aux indépendants un accès authentifié et sécurisé
             à l'assistant conversationnel Claude d'Anthropic, depuis leur navigateur, sans
             installation et sans exposer leurs clés d'interface de programmation. Chaque compte est
             nominatif et cloisonné&nbsp;: conversations, documents et consommation sont propres à
@@ -159,7 +159,7 @@ data:
             professionnels, un atelier permettant de travailler sur ses projets, la gestion des accès
             et le suivi de consommation.
           </p>
-          <a class="btn" href="https://portal.ng-itconsulting.com/">Accéder à Claude Portal</a>
+          <a class="btn" href="https://portal.ng-itconsulting.com/">Accéder à NG Portal</a>
         </div>
 
         <div class="card" style="margin-top:24px">

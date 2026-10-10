@@ -55,7 +55,7 @@ export const LEGAL_HOST: LegalHost = {
 };
 
 /** Nom commercial du service, distinct de la raison sociale de l'éditeur. */
-export const SERVICE_NAME = 'Claude Portal';
+export const SERVICE_NAME = 'NG Portal';
 
 /** Date de dernière mise à jour des documents légaux, affichée en pied de page. */
 export const LEGAL_LAST_UPDATE = '23 août 2026';

@@ -78,7 +78,7 @@ public class HelpChatService {
      */
     private static String buildSystemPrompt(String documentation) {
         return """
-                Tu es l'assistant d'aide de Claude Portal. Tu aides les personnes qui utilisent le \
+                Tu es l'assistant d'aide de NG Portal. Tu aides les personnes qui utilisent le \
                 produit : installer et connecter une machine, comprendre un message d'erreur, \
                 retrouver un écran, comprendre son abonnement.
 

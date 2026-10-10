@@ -86,12 +86,12 @@ describe('LandingComponent', () => {
       (fixture.nativeElement as HTMLElement).querySelectorAll('img'),
     ).map((img) => img.getAttribute('src'));
     expect(logos.length).toBeGreaterThan(0);
-    logos.forEach((src) => expect(src).toBe('claude-portal-logo.png'));
+    logos.forEach((src) => expect(src).toBe('ng-portal-logo.png'));
   });
 
-  it('affiche le nom de marque « Claude Portal »', () => {
+  it('affiche le nom de marque « NG Portal »', () => {
     setup(false);
     const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
-    expect(text).toContain('Claude Portal');
+    expect(text).toContain('NG Portal');
   });
 });

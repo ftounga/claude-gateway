@@ -24,7 +24,7 @@ class ClientMailNeverNamesTheToolTest {
 
     /** Les formes sous lesquelles le nom de l'outil pourrait revenir. */
     private static final List<String> FORBIDDEN =
-            List.of("claude-gateway", "claude gateway", "claude portal", "claudegateway");
+            List.of("claude-gateway", "claude gateway", "claude portal", "ng portal", "ng-portal", "claudegateway");
 
     private static void assertNeutral(String what, String text) {
         String lowered = text.toLowerCase(Locale.ROOT);

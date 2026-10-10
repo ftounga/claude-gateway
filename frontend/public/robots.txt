@@ -1,4 +1,4 @@
-# Claude Portal — portal.ng-itconsulting.com
+# NG Portal — portal.ng-itconsulting.com
 # Passerelle professionnelle vers Claude, à accès authentifié.
 # Les pages publiques sont indexables ; les espaces authentifiés ne le sont pas.
 # Note : ce fichier exprime une intention d'indexation, ce n'est pas un
