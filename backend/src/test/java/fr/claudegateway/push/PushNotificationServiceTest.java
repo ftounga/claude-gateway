@@ -32,6 +32,36 @@ class PushNotificationServiceTest {
     private PushSubscriptionRepository repository;
     private WebPushTransport transport;
     private PushNotificationService service;
+    private TerminalWatch watch;
+    private MutableClock clock;
+
+    /** Horloge réglable : la fenêtre anti-doublon se teste sans attendre. */
+    static final class MutableClock extends java.time.Clock {
+        private java.time.Instant now;
+
+        MutableClock(java.time.Instant now) {
+            this.now = now;
+        }
+
+        void advance(java.time.Duration by) {
+            now = now.plus(by);
+        }
+
+        @Override
+        public java.time.ZoneId getZone() {
+            return java.time.ZoneOffset.UTC;
+        }
+
+        @Override
+        public java.time.Clock withZone(java.time.ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public java.time.Instant instant() {
+            return now;
+        }
+    }
 
     private final UUID userId = UUID.randomUUID();
     private final UUID workspaceId = UUID.randomUUID();
@@ -40,7 +70,9 @@ class PushNotificationServiceTest {
     void setUp() {
         repository = org.mockito.Mockito.mock(PushSubscriptionRepository.class);
         transport = org.mockito.Mockito.mock(WebPushTransport.class);
-        service = new PushNotificationService(repository, transport, new ObjectMapper());
+        watch = org.mockito.Mockito.mock(TerminalWatch.class);
+        clock = new MutableClock(java.time.Instant.parse("2026-10-10T12:00:00Z"));
+        service = new PushNotificationService(repository, transport, new ObjectMapper(), watch, clock);
     }
 
     @AfterEach
@@ -149,6 +181,76 @@ class PushNotificationServiceTest {
         service.notify(userId, workspaceId, null);
         Thread.sleep(100);
         verify(transport, never()).send(any(), any());
+    }
+
+    // ------------------------------------------------ F-185 / SF-185-03 : D7 enfin tenue
+
+    private void deliverable() {
+        when(transport.isEnabled()).thenReturn(true);
+        when(repository.findByUserId(userId)).thenReturn(List.of(sub("https://push/a")));
+        when(transport.send(any(), any())).thenReturn(Result.DELIVERED);
+    }
+
+    @Test
+    void aWatchedTerminalIsNotNotified() throws InterruptedException {
+        deliverable();
+        when(watch.watching(userId, workspaceId)).thenReturn(true);
+
+        service.notify(userId, workspaceId, PushEvent.TURN_DONE);
+
+        verify(watch, timeout(2000)).watching(userId, workspaceId);
+        Thread.sleep(100);
+        verify(transport, never()).send(any(), any());
+    }
+
+    @Test
+    void anUnwatchedTerminalIsNotifiedAndThePresenceIsAskedForThisAccountAndThisTerminal() {
+        deliverable();
+        when(watch.watching(userId, workspaceId)).thenReturn(false);
+
+        service.notify(userId, workspaceId, PushEvent.TURN_DONE);
+
+        verify(transport, timeout(2000)).send(any(), any());
+        verify(watch).watching(userId, workspaceId);
+    }
+
+    @Test
+    void anUnreadablePresenceDoesNotSilenceTheNotification() {
+        deliverable();
+        when(watch.watching(userId, workspaceId)).thenThrow(new IllegalStateException("base"));
+
+        service.notify(userId, workspaceId, PushEvent.QUESTION_ASKED);
+
+        verify(transport, timeout(2000)).send(any(), any());
+    }
+
+    @Test
+    void theSameEventForTheSameTerminalIsSentOnceWithinThirtySeconds() throws InterruptedException {
+        deliverable();
+
+        service.notify(userId, workspaceId, PushEvent.QUESTION_ASKED);
+        service.notify(userId, workspaceId, PushEvent.QUESTION_ASKED);
+        verify(transport, timeout(2000).times(1)).send(any(), any());
+        Thread.sleep(100);
+        verify(transport, times(1)).send(any(), any());
+
+        // Un autre événement passe ; le même, après la fenêtre, aussi.
+        service.notify(userId, workspaceId, PushEvent.TURN_DONE);
+        verify(transport, timeout(2000).times(2)).send(any(), any());
+        clock.advance(PushNotificationService.DEDUP_WINDOW.plusSeconds(1));
+        service.notify(userId, workspaceId, PushEvent.QUESTION_ASKED);
+        verify(transport, timeout(2000).times(3)).send(any(), any());
+    }
+
+    @Test
+    void anotherTerminalIsNotADuplicate() {
+        deliverable();
+        UUID other = UUID.randomUUID();
+
+        service.notify(userId, workspaceId, PushEvent.TURN_DONE);
+        service.notify(userId, other, PushEvent.TURN_DONE);
+
+        verify(transport, timeout(2000).times(2)).send(any(), any());
     }
 
     @Test

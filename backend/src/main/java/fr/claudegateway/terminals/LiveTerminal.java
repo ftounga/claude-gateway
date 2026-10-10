@@ -113,4 +113,12 @@ public class LiveTerminal {
      */
     @Column(name = "activity_at")
     private OffsetDateTime activityAt;
+
+    /**
+     * Dernier battement où l'onglet était <b>regardé</b> — visible, au focus, avec une interaction
+     * récente (F-185 / SF-185-03). {@code null} : pas regardé. L'émetteur Web Push se tait pour un
+     * terminal regardé depuis moins de 45 s (D7 de F-153).
+     */
+    @Column(name = "watched_at")
+    private OffsetDateTime watchedAt;
 }

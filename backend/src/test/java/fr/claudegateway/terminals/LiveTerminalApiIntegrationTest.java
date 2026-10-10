@@ -58,6 +58,7 @@ class LiveTerminalApiIntegrationTest {
     @Autowired private RunnerHostRepository hostRepository;
     @Autowired private LiveTerminalRepository liveTerminalRepository;
     @Autowired private JwtService jwtService;
+    @Autowired private LiveTerminalService liveTerminalService;
 
     private String aliceToken;
     private String bobToken;
@@ -119,6 +120,51 @@ class LiveTerminalApiIntegrationTest {
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON).content(body(sessionId)))
                 .andExpect(status().isOk());
+    }
+
+    // ------------------------------------------------------------------ F-185 / SF-185-03
+
+    private void beat(String token, UUID workspaceId, String sessionId, String watched) throws Exception {
+        String json = watched == null ? body(sessionId)
+                : "{\"sessionId\":\"" + sessionId + "\",\"watched\":" + watched + "}";
+        mockMvc.perform(post(claimUrl(workspaceId)).contextPath("/api")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content(json))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void aWatchedBeatMarksTheTerminalWatchedAnUnwatchedOneClearsItAndSilenceChangesNothing() throws Exception {
+        beat(aliceToken, aliceProject.getId(), "tab-w", "true");
+        assertThat(liveTerminalService.watching(aliceId, aliceProject.getId())).isTrue();
+
+        // Un écran antérieur (pas de champ) ne change rien.
+        beat(aliceToken, aliceProject.getId(), "tab-w", null);
+        assertThat(liveTerminalService.watching(aliceId, aliceProject.getId())).isTrue();
+
+        beat(aliceToken, aliceProject.getId(), "tab-w", "false");
+        assertThat(liveTerminalService.watching(aliceId, aliceProject.getId())).isFalse();
+    }
+
+    @Test
+    void theWatchIsReadForThisAccountAndThisTerminalOnly() throws Exception {
+        beat(aliceToken, aliceProject.getId(), "tab-a", "true");
+        beat(bobToken, bobProject.getId(), "tab-b", "true");
+
+        // Un autre terminal du même compte n'est pas regardé.
+        assertThat(liveTerminalService.watching(aliceId, aliceOtherProject.getId())).isFalse();
+        // Le terminal de Bob regardé ne vaut rien pour Alice, même interrogé sur son identifiant.
+        assertThat(liveTerminalService.watching(aliceId, bobProject.getId())).isFalse();
+    }
+
+    @Test
+    void anOldWatchIsNoLongerAWatch() throws Exception {
+        beat(aliceToken, aliceProject.getId(), "tab-old", "true");
+        LiveTerminal place = liveTerminalRepository.findByUserIdAndSessionId(aliceId, "tab-old").orElseThrow();
+        place.setWatchedAt(OffsetDateTime.now().minus(LiveTerminalService.WATCH_FRESHNESS).minusSeconds(1));
+        liveTerminalRepository.save(place);
+
+        assertThat(liveTerminalService.watching(aliceId, aliceProject.getId())).isFalse();
     }
 
     // ------------------------------------------------------------------ cas nominal

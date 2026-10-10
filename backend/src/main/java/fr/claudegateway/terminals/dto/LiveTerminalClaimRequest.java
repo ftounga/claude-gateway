@@ -50,7 +50,11 @@ public record LiveTerminalClaimRequest(
 
         String activityDetail,
 
-        List<String> previewLines) {
+        List<String> previewLines,
+
+        // F-185 / SF-185-03 : l'onglet est-il regardé (visible, au focus, interaction récente) ?
+        // Absent (écran antérieur) : rien ne change.
+        Boolean watched) {
 
     /** Vrai si l'appel porte un aperçu — sinon la fiche garde le sien, elle ne l'oublie pas. */
     public boolean hasPreview() {

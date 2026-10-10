@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 
-import { LiveTerminalService } from './live-terminal.service';
+import { LiveTerminalService, WATCH_IDLE_MS, isWatched } from './live-terminal.service';
 import { LiveTerminals } from '../models/atelier.models';
 
 /**
@@ -68,7 +68,7 @@ describe('LiveTerminalService', () => {
   it("n'emporte aucun identifiant d'utilisateur : l'isolation vient du jeton", () => {
     service.start(workspaceId);
     const request = http.expectOne(`/api/workspaces/${workspaceId}/terminal/live`);
-    expect(Object.keys(request.request.body)).toEqual(['sessionId']);
+    expect(Object.keys(request.request.body)).toEqual(['sessionId', 'watched']);
     request.flush(registry);
   });
 
@@ -233,6 +233,47 @@ describe('LiveTerminalService', () => {
       const request = http.expectOne('/api/workspaces/w-2/terminal/live');
       expect(request.request.body.activity).toBeUndefined();
       request.flush(registry);
+    });
+  });
+
+  describe('le terminal regardé (F-185 / SF-185-03)', () => {
+    it('regardé seulement si visible, au focus et touché récemment', () => {
+      const now = 1_000_000;
+      expect(isWatched(true, true, now - 1_000, now)).toBeTrue();
+      expect(isWatched(false, true, now - 1_000, now)).toBeFalse();
+      expect(isWatched(true, false, now - 1_000, now)).toBeFalse();
+      expect(isWatched(true, true, now - WATCH_IDLE_MS, now)).toBeFalse();
+    });
+
+    it('le battement emporte le « regardé » de l\'onglet', () => {
+      spyOn(service, 'watched').and.returnValue(true);
+      service.start(workspaceId);
+      const request = http.expectOne(`/api/workspaces/${workspaceId}/terminal/live`);
+      expect(request.request.body.watched).toBeTrue();
+      request.flush(registry);
+    });
+
+    it('quitter l\'onglet envoie aussitôt un battement « pas regardé »', () => {
+      const watched = spyOn(service, 'watched').and.returnValue(true);
+      service.start(workspaceId);
+      http.expectOne(`/api/workspaces/${workspaceId}/terminal/live`).flush(registry);
+
+      watched.and.returnValue(false);
+      document.dispatchEvent(new Event('visibilitychange'));
+
+      const left = http.expectOne(`/api/workspaces/${workspaceId}/terminal/live`);
+      expect(left.request.body.watched).toBeFalse();
+      left.flush(registry);
+    });
+
+    it('sans changement, aucun battement de plus', () => {
+      spyOn(service, 'watched').and.returnValue(true);
+      service.start(workspaceId);
+      http.expectOne(`/api/workspaces/${workspaceId}/terminal/live`).flush(registry);
+
+      document.dispatchEvent(new Event('visibilitychange'));
+
+      http.expectNone(`/api/workspaces/${workspaceId}/terminal/live`);
     });
   });
 });
