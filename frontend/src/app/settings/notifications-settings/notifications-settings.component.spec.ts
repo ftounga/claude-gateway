@@ -12,14 +12,16 @@ describe('NotificationsSettingsComponent', () => {
     enabled: ReturnType<typeof signal<boolean>>;
     enable: jasmine.Spy;
     disable: jasmine.Spy;
+    permission: jasmine.Spy;
   };
 
-  function build(supported: boolean, enabled: boolean): void {
+  function build(supported: boolean, enabled: boolean, permission: NotificationPermission = 'default'): void {
     push = {
       supported,
       enabled: signal(enabled),
       enable: jasmine.createSpy('enable').and.resolveTo('enabled' as PushActivationResult),
       disable: jasmine.createSpy('disable').and.resolveTo(undefined),
+      permission: jasmine.createSpy('permission').and.returnValue(permission),
     };
     TestBed.configureTestingModule({
       imports: [NotificationsSettingsComponent],
@@ -66,5 +68,12 @@ describe('NotificationsSettingsComponent', () => {
       .querySelector('button') as HTMLButtonElement;
     button.click();
     expect(push.disable).toHaveBeenCalled();
+  });
+
+  it('dit que le navigateur bloque, sans bouton « Activer », quand la permission est refusée', () => {
+    build(true, false, 'denied');
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('bloque les notifications');
+    expect(text).not.toContain('Activer les notifications');
   });
 });

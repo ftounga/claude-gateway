@@ -1461,6 +1461,9 @@
     }
     <app-terminal-journey-strip [journey]="journey()" [busy]="journeyBusy() || submitting" (gesture)="onJourneyGesture($event)"></app-terminal-journey-strip>
     <app-terminal-attentes-band [board]="attentesBoard()" [toReview]="reviewPending()" (open)="openActions()"></app-terminal-attentes-band>
+    <!-- F-185 / SF-185-01 — L'INVITATION AUX NOTIFICATIONS, là où on les attend : tant que cet appareil
+         n'est pas abonné. Un tour long rappelle l'invitation mise en sommeil. -->
+    <app-terminal-push-invite [running]="submitting"></app-terminal-push-invite>
     <!-- F-121 / SF-121-23 — MENU DE SLASH-COMMANDS. Taper « / » ouvre la liste ; une entrée
          complète la commande dans le champ (elle n'envoie pas). Déterministe : seule une commande
          connue sera expansée en son prompt imposé à l'envoi. -->
