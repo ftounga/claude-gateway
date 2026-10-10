@@ -2941,6 +2941,24 @@ public class AtelierChatService implements RelayInterruptTarget {
                     backgroundText = spokenText;
                 }
             }
+            // F-188 / SF-188-01 — PAUSE DU FOURNISSEUR (`pause_turn`) : un tour long d'outils serveur
+            // (recherche web) a été suspendu. Ce n'est pas une fin : on rejoue CE message assistant
+            // tel quel (raisonnement, recherches et résultats, texte) et on rappelle le modèle, qui
+            // reprend là où il s'était arrêté. Chaque reprise compte comme une étape : le plafond
+            // d'étapes reste la borne.
+            if (turn.paused() && turn.toolCalls().isEmpty()) {
+                List<AgentContentBlock> pausedBlocks = new ArrayList<>(turn.reasoning());
+                if (turn.text() != null && !turn.text().isBlank()) {
+                    pausedBlocks.add(new AgentContentBlock.Text(turn.text()));
+                }
+                if (!pausedBlocks.isEmpty()) {
+                    if (!textAlreadyStreamed && spokenText != null && !spokenText.isBlank()) {
+                        listener.onText(spokenText);
+                    }
+                    messages.add(AgentMessage.assistant(pausedBlocks));
+                    continue;
+                }
+            }
             if (turn.finished() || turn.toolCalls().isEmpty()) {
                 finalText = turn.text();
                 // Second point d'accroche (F-50 / SF-50-02) : le modèle croit avoir fini, un

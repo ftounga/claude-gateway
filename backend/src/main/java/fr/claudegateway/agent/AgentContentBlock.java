@@ -14,7 +14,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 public sealed interface AgentContentBlock
         permits AgentContentBlock.Text, AgentContentBlock.ToolUse, AgentContentBlock.ToolResult,
         AgentContentBlock.Reasoning, AgentContentBlock.RedactedReasoning, AgentContentBlock.Image,
-        AgentContentBlock.Document {
+        AgentContentBlock.Document, AgentContentBlock.ServerTool {
 
     /** Texte simple (message utilisateur ou assistant). */
     record Text(String text) implements AgentContentBlock {
@@ -91,5 +91,15 @@ public sealed interface AgentContentBlock
      * @param data charge opaque, réémise sans interprétation
      */
     record RedactedReasoning(String data) implements AgentContentBlock {
+    }
+
+    /**
+     * Un bloc d'<b>outil serveur</b> du fournisseur (F-188 / SF-188-01) — {@code server_tool_use},
+     * {@code web_search_tool_result}, {@code web_fetch_tool_result}… — gardé en <b>JSON brut</b> et
+     * rejoué à l'identique dans le tour : c'est la preuve de ce que l'agent vient de lire. Le jeter
+     * entre deux étapes lui faisait croire qu'il n'avait rien vérifié, d'où des recherches en boucle.
+     * Jamais persisté entre deux messages, comme le raisonnement.
+     */
+    record ServerTool(JsonNode raw) implements AgentContentBlock {
     }
 }

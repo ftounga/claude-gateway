@@ -158,6 +158,11 @@ public class StubAiAgentProvider implements AiAgentProvider {
                 null, List.of(), narration));
     }
 
+    /** Empile un tour tel quel (F-188 / SF-188-01 : blocs d'outils serveur, pause du fournisseur). */
+    public void enqueueTurn(AgentTurn turn) {
+        script.add(turn);
+    }
+
     /**
      * Empile un tour « appel d'outil » précédé de <b>blocs de raisonnement signés</b> (F-39 /
      * SF-39-10) : c'est la forme que rend le fournisseur quand le raisonnement est actif, et celle
