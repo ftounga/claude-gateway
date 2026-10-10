@@ -267,3 +267,9 @@ code, pre { font-family: var(--cg-font-mono); }
     max-width: 100%;
   }
 }
+
+// F-185 / SF-185-04 — le menu de la cloche : le panneau vit dans l'overlay, hors du composant.
+.bell-menu.mat-mdc-menu-panel {
+  width: min(380px, calc(100vw - 32px));
+  max-width: min(380px, calc(100vw - 32px));
+}

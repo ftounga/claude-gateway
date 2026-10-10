@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-185 / SF-185-04 - LE CENTRE DE NOTIFICATIONS : chaque chose qui a attendu l'utilisateur
+      (reponse prete, autorisation, question, plan, validation, delai ecoule, arret, poste perdu).
+
+      SCELLE PAR user_id : toute lecture et toute ecriture filtrent (user_id). Le sujet (nom du
+      terminal) est copie ici pour l'affichage DANS l'application authentifiee ; il ne part jamais
+      dans la charge push (D1).
+
+      PAS DE CLE ETRANGERE (meme choix que push_subscriptions) : la purge a la suppression du compte
+      est explicite. Retention : 30 jours, purgee a l'inscription.
+    -->
+
+    <changeSet id="150-user-notifications" author="claude-gateway">
+        <createTable tableName="user_notifications">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="workspace_id" type="uuid"/>
+            <column name="event" type="varchar(40)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="subject" type="varchar(200)"/>
+            <column name="created_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+            <column name="read_at" type="timestamp with time zone"/>
+        </createTable>
+
+        <createIndex tableName="user_notifications" indexName="idx_user_notifications_user_created">
+            <column name="user_id"/>
+            <column name="created_at" descending="true"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable tableName="user_notifications"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

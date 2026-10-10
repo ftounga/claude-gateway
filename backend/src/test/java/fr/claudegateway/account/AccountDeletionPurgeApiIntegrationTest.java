@@ -55,6 +55,8 @@ class AccountDeletionPurgeApiIntegrationTest {
     private ChunkRepository chunkRepository;
     @Autowired
     private JwtService jwtService;
+    @Autowired
+    private fr.claudegateway.notifications.UserNotificationRepository userNotificationRepository;
 
     private User owner;
     private String ownerJwt;
@@ -85,6 +87,10 @@ class AccountDeletionPurgeApiIntegrationTest {
                 .as("aucun embedding du compte supprimé")
                 .noneMatch(c -> c.getUserId().equals(owner.getId()));
 
+        // F-185 / SF-185-04 : le centre de notifications ne survit pas au compte.
+        assertThat(userNotificationRepository.countByUserIdAndReadAtIsNull(owner.getId())).isZero();
+        assertThat(userNotificationRepository.countByUserIdAndReadAtIsNull(other.getId())).isEqualTo(1);
+
         // L'autre utilisateur garde tout : la purge est filtrée sur user_id.
         assertThat(workspaceRepository.findByUserIdOrderByCreatedAtDesc(other.getId())).hasSize(1);
         assertThat(documentRepository.findByUserIdOrderByCreatedAtDesc(other.getId())).hasSize(1);
@@ -104,6 +110,9 @@ class AccountDeletionPurgeApiIntegrationTest {
                 .userId(userId).filename("note.pdf").mediaType("application/pdf").sizeBytes(12L)
                 .status(DocumentStatus.INDEXED).ocrMode(OcrMode.SYNC)
                 .createdAt(OffsetDateTime.now()).updatedAt(OffsetDateTime.now()).build());
+        userNotificationRepository.save(fr.claudegateway.notifications.UserNotification.builder()
+                .userId(userId).workspaceId(workspace.getId()).event("TURN_DONE").subject("projet")
+                .createdAt(OffsetDateTime.now()).build());
         chunkRepository.save(Chunk.builder()
                 .documentId(document.getId()).userId(userId).chunkIndex(0).text("extrait")
                 .createdAt(OffsetDateTime.now()).build());
