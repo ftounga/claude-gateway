@@ -1,3 +1,4 @@
+import { NEVER } from 'rxjs';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
@@ -14,6 +15,7 @@ import { AccountExport } from '../core/models/account.models';
 import { ApiKeyStatus } from '../core/models/api-key.models';
 import { GitTokenStatus } from '../core/models/git-token.models';
 import { UserProfile } from '../core/models/auth.models';
+import { NotificationPreferencesService } from '../core/services/notification-preferences.service';
 import { PushActivationService } from '../core/services/push-activation.service';
 import { signal } from '@angular/core';
 
@@ -119,6 +121,8 @@ describe('SettingsComponent', () => {
         { provide: MatDialog, useValue: dialog },
         // F-153 / SF-153-03 : la page rend désormais la carte Notifications. On bouchonne le
         // service de push (non supporté ici) pour ne dépendre ni du service worker ni de HttpClient.
+        // F-185 / SF-185-06 : les préférences ne sont pas l'objet de ces tests.
+        { provide: NotificationPreferencesService, useValue: { get: () => NEVER, save: () => NEVER } },
         {
           provide: PushActivationService,
           useValue: {

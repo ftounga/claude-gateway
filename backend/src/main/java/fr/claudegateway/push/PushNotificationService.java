@@ -45,6 +45,7 @@ public class PushNotificationService {
     private final ExecutorService executor;
     private final TerminalWatch watch;
     private final NotificationJournal journal;
+    private final PushPreferences preferences;
     private final Clock clock;
 
     /** F-185 / SF-185-03 : le même événement, pour le même terminal, n'est pas renvoyé dans ce délai. */
@@ -55,12 +56,13 @@ public class PushNotificationService {
 
     public PushNotificationService(PushSubscriptionRepository repository,
             WebPushTransport transport, ObjectMapper objectMapper, TerminalWatch watch,
-            NotificationJournal journal, Clock clock) {
+            NotificationJournal journal, PushPreferences preferences, Clock clock) {
         this.repository = repository;
         this.transport = transport;
         this.objectMapper = objectMapper;
         this.watch = watch == null ? TerminalWatch.NONE : watch;
         this.journal = journal == null ? NotificationJournal.NONE : journal;
+        this.preferences = preferences == null ? PushPreferences.ALL : preferences;
         this.clock = clock == null ? Clock.systemUTC() : clock;
         ThreadFactory daemon = runnable -> {
             Thread t = new Thread(runnable, "web-push-emitter");
@@ -112,7 +114,7 @@ public class PushNotificationService {
             }
             boolean watched = !event.alwaysDelivered() && watched(userId, workspaceId);
             record(userId, workspaceId, event, watched);
-            if (watched || !transport.isEnabled()) {
+            if (watched || !transport.isEnabled() || !allowed(userId, event)) {
                 return;
             }
             List<PushSubscription> subscriptions = repository.findByUserId(userId);
@@ -146,6 +148,22 @@ public class PushNotificationService {
         } catch (RuntimeException e) {
             log.warn("Présence illisible, notification envoyée : {}", e.getMessage());
             return false;
+        }
+    }
+
+    /**
+     * Préférences du compte (SF-185-06) : sourdine et heures calmes. Les critiques passent toujours ;
+     * une lecture en échec laisse passer (mieux vaut un doublon qu'un silence).
+     */
+    private boolean allowed(UUID userId, PushEvent event) {
+        if (event.critical()) {
+            return true;
+        }
+        try {
+            return preferences.allowsPush(userId, event);
+        } catch (RuntimeException e) {
+            log.warn("Préférences illisibles, notification envoyée : {}", e.getMessage());
+            return true;
         }
     }
 

@@ -57,6 +57,8 @@ class AccountDeletionPurgeApiIntegrationTest {
     private JwtService jwtService;
     @Autowired
     private fr.claudegateway.notifications.UserNotificationRepository userNotificationRepository;
+    @Autowired
+    private fr.claudegateway.notifications.NotificationPreferenceRepository notificationPreferenceRepository;
 
     private User owner;
     private String ownerJwt;
@@ -90,6 +92,9 @@ class AccountDeletionPurgeApiIntegrationTest {
         // F-185 / SF-185-04 : le centre de notifications ne survit pas au compte.
         assertThat(userNotificationRepository.countByUserIdAndReadAtIsNull(owner.getId())).isZero();
         assertThat(userNotificationRepository.countByUserIdAndReadAtIsNull(other.getId())).isEqualTo(1);
+        // F-185 / SF-185-06 : ni ses préférences.
+        assertThat(notificationPreferenceRepository.findById(owner.getId())).isEmpty();
+        assertThat(notificationPreferenceRepository.findById(other.getId())).isPresent();
 
         // L'autre utilisateur garde tout : la purge est filtrée sur user_id.
         assertThat(workspaceRepository.findByUserIdOrderByCreatedAtDesc(other.getId())).hasSize(1);
@@ -113,6 +118,8 @@ class AccountDeletionPurgeApiIntegrationTest {
         userNotificationRepository.save(fr.claudegateway.notifications.UserNotification.builder()
                 .userId(userId).workspaceId(workspace.getId()).event("TURN_DONE").subject("projet")
                 .createdAt(OffsetDateTime.now()).build());
+        notificationPreferenceRepository.save(fr.claudegateway.notifications.NotificationPreference.builder()
+                .userId(userId).timeZone("Europe/Paris").updatedAt(OffsetDateTime.now()).build());
         chunkRepository.save(Chunk.builder()
                 .documentId(document.getId()).userId(userId).chunkIndex(0).text("extrait")
                 .createdAt(OffsetDateTime.now()).build());

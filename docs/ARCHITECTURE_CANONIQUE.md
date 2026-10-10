@@ -1219,6 +1219,17 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     suppression du compte (`AccountService`).
   - Endpoints **`GET /notifications`** (30 dernières + non-lus), **`POST /notifications/{id}/read`**
     (404 pour la ligne d'autrui), **`POST /notifications/read-all`** (JWT).
+
+- **notification_preferences** — les **préférences de notification** d'un compte (F-185 / SF-185-06,
+  migration `151`). Une ligne par compte (clé `user_id`), absente = tout sonne.
+  - `notification_preferences` : `user_id (uuid, PK)`, `muted_events (varchar 1000)` (codes `PushEvent`
+    séparés par des virgules), `quiet_from`, `quiet_to` (`HH:MM`), `time_zone (varchar 64, NOT NULL)`,
+    `updated_at`.
+  - Règle **D5** dans le code, pas en base : autorisation, question et rappel ne sont **jamais** coupés.
+    Un événement coupé ou en heures calmes ne fait pas sonner les appareils mais **reste** dans
+    `user_notifications`.
+  - Endpoints **`GET/PUT /notifications/preferences`** (JWT, 400 lisible) ; purge à la suppression du
+    compte.
   - **Émetteur** branché sur les **deux transitions de tour de F-84** (fin de `chatStreaming`,
     `askPermission`) : charge **neutre** (aucun contenu de tour, nom de projet ou commande — le détail
     n'apparaît qu'après ouverture authentifiée), émission **asynchrone** (jamais bloquante pour le

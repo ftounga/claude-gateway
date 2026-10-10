@@ -34,6 +34,7 @@ class PushNotificationServiceTest {
     private PushNotificationService service;
     private TerminalWatch watch;
     private NotificationJournal journal;
+    private PushPreferences preferences;
     private MutableClock clock;
 
     /** Horloge réglable : la fenêtre anti-doublon se teste sans attendre. */
@@ -74,7 +75,10 @@ class PushNotificationServiceTest {
         watch = org.mockito.Mockito.mock(TerminalWatch.class);
         clock = new MutableClock(java.time.Instant.parse("2026-10-10T12:00:00Z"));
         journal = org.mockito.Mockito.mock(NotificationJournal.class);
-        service = new PushNotificationService(repository, transport, new ObjectMapper(), watch, journal, clock);
+        preferences = org.mockito.Mockito.mock(PushPreferences.class);
+        when(preferences.allowsPush(any(), any())).thenReturn(true);
+        service = new PushNotificationService(repository, transport, new ObjectMapper(), watch, journal,
+                preferences, clock);
     }
 
     @AfterEach
@@ -317,6 +321,42 @@ class PushNotificationServiceTest {
         deliverable();
         org.mockito.Mockito.doThrow(new IllegalStateException("base")).when(journal)
                 .record(any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
+
+        service.notify(userId, workspaceId, PushEvent.TURN_DONE);
+
+        verify(transport, timeout(2000)).send(any(), any());
+    }
+
+    // ------------------------------------------------ F-185 / SF-185-06 : préférences
+
+    @Test
+    void aMutedEventDoesNotRingButIsStillJournaled() throws InterruptedException {
+        deliverable();
+        when(preferences.allowsPush(userId, PushEvent.TURN_DONE)).thenReturn(false);
+
+        service.notify(userId, workspaceId, PushEvent.TURN_DONE);
+
+        verify(journal, timeout(2000)).record(userId, workspaceId, PushEvent.TURN_DONE, false);
+        Thread.sleep(100);
+        verify(transport, never()).send(any(), any());
+    }
+
+    @Test
+    void aCriticalEventRingsWhateverThePreferences() {
+        deliverable();
+        when(preferences.allowsPush(any(), any())).thenReturn(false);
+
+        service.notify(userId, workspaceId, PushEvent.AUTHORIZATION_REQUESTED);
+
+        verify(transport, timeout(2000)).send(any(), any());
+        // La règle D5 vit dans l'émetteur : on ne demande même pas.
+        verify(preferences, never()).allowsPush(userId, PushEvent.AUTHORIZATION_REQUESTED);
+    }
+
+    @Test
+    void unreadablePreferencesLetThePushThrough() {
+        deliverable();
+        when(preferences.allowsPush(any(), any())).thenThrow(new IllegalStateException("base"));
 
         service.notify(userId, workspaceId, PushEvent.TURN_DONE);
 
