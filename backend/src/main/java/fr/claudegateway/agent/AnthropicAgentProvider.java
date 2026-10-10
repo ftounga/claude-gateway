@@ -746,7 +746,10 @@ public class AnthropicAgentProvider implements AiAgentProvider {
             // Chaque bloc `tool_use` reçoit son `input` reconstitué depuis le JSON accumulé.
             for (int i = 0; i < blocks.size(); i++) {
                 ObjectNode block = blocks.get(i);
-                if ("tool_use".equals(block.path("type").asText(""))) {
+                String blockType = block.path("type").asText("");
+                // F-188 / SF-188-01 : l'appel d'outil serveur reçoit aussi son `input` en deltas.
+                if ("tool_use".equals(blockType)
+                        || ("server_tool_use".equals(blockType) && toolInputJson.get(i).length() > 0)) {
                     block.set("input", parseToolInput(toolInputJson.get(i)));
                 }
             }
@@ -976,8 +979,11 @@ public class AnthropicAgentProvider implements AiAgentProvider {
             }
             // Un message sans contenu — une consigne d'effort — ne peut pas porter de marqueur :
             // il n'a aucun bloc où le poser, et le fournisseur le refuserait.
+            // F-188 / SF-188-01 : jamais de marqueur sur un bloc d'outil serveur (rejoué à l'identique) ;
+            // un message qui finit par l'un d'eux — la reprise d'une pause — n'en porte pas.
             boolean marked = (i == messages.size() - 1 || i == intermediate)
-                    && !message.content().isEmpty();
+                    && !message.content().isEmpty()
+                    && !(message.content().get(message.content().size() - 1) instanceof AgentContentBlock.ServerTool);
             List<Map<String, Object>> blocks = new ArrayList<>(message.content().size());
             for (int j = 0; j < message.content().size(); j++) {
                 Map<String, Object> block = toApiBlock(message.content().get(j));
@@ -991,7 +997,17 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         return apiMessages;
     }
 
-    /** Copie d'un bloc portant le marqueur de cache. Le bloc d'origine reste immuable. */
+    /**
+     * Bloc d'outil serveur (F-188 / SF-188-01) : {@code server_tool_use} et tout résultat
+     * {@code *_tool_result} rendu par le fournisseur (recherche web, lecture web, exécution de code…).
+     * Le {@code tool_result} de NOS outils n'apparaît jamais dans une réponse : il est exclu.
+     */
+    static boolean isServerToolBlock(String type) {
+        return "server_tool_use".equals(type)
+                || (type.endsWith("_tool_result") && !"tool_result".equals(type));
+    }
+
+        /** Copie d'un bloc portant le marqueur de cache. Le bloc d'origine reste immuable. */
     private static Map<String, Object> cached(Map<String, Object> block) {
         Map<String, Object> marked = new HashMap<>(block);
         marked.put("cache_control", CACHE_CONTROL);
@@ -1016,6 +1032,10 @@ public class AnthropicAgentProvider implements AiAgentProvider {
             }
             case AgentContentBlock.RedactedReasoning redacted -> Map.of(
                     "type", "redacted_thinking", "data", redacted.data() == null ? "" : redacted.data());
+            // F-188 / SF-188-01 : rejoué octet pour octet — le fournisseur relit ses propres blocs
+            // (contenu chiffré des résultats compris) ; un bloc retouché serait refusé.
+            case AgentContentBlock.ServerTool server -> MAPPER.convertValue(server.raw(),
+                    new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() { });
             // Média « vu » par le fournisseur (SF-121-15) : bloc `image`/`document` à source Base64.
             // Apparaît surtout imbriqué dans un tool_result, mais reste mappable seul (exhaustivité).
             case AgentContentBlock.Image image -> Map.of(
@@ -1105,6 +1125,12 @@ public class AnthropicAgentProvider implements AiAgentProvider {
                 }
             } else if ("redacted_thinking".equals(type)) {
                 reasoning.add(new AgentContentBlock.RedactedReasoning(block.path("data").asText("")));
+            } else if (isServerToolBlock(type)) {
+                // F-188 / SF-188-01 : la recherche ou la lecture web que le fournisseur a faite pour
+                // nous, et son résultat. Gardés À L'IDENTIQUE, dans l'ordre, avec le raisonnement :
+                // c'est la preuve de ce que l'agent vient de lire. Les jeter lui faisait conclure,
+                // à l'étape suivante, qu'il n'avait rien vérifié — et tout recommencer.
+                reasoning.add(new AgentContentBlock.ServerTool(block.deepCopy()));
             } else if ("tool_use".equals(type)) {
                 JsonNode input = block.path("input");
                 toolCalls.add(new AgentToolCall(
@@ -1114,7 +1140,10 @@ public class AnthropicAgentProvider implements AiAgentProvider {
             }
         }
         String stopReason = response.path("stop_reason").asText("");
-        boolean finished = !"tool_use".equals(stopReason);
+        // F-188 / SF-188-01 : `pause_turn` — le fournisseur a suspendu un tour long d'outils serveur.
+        // Ce n'est PAS une fin : la boucle rejoue ce message assistant tel quel pour qu'il reprenne.
+        boolean paused = "pause_turn".equals(stopReason);
+        boolean finished = !"tool_use".equals(stopReason) && !paused;
         // « Coupé au plafond » n'est pas « terminé » (SF-28-18) : le fournisseur n'attend plus rien de
         // nous, mais sa réponse s'arrête au milieu — souvent avant même le bloc `tool_use` annoncé par
         // la phrase qui précède. La distinguer ici est le seul endroit où l'information existe.
@@ -1141,7 +1170,7 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         int webSearches = usage.path("server_tool_use").path("web_search_requests").asInt(0);
         return new AgentTurn(text.toString(), toolCalls, finished, inputTokens, outputTokens, truncated,
                 reasoning, cacheRead, cacheCreation, webSearches, false, null, servedModel,
-                reading.parts(), narration.toString(), droppedThinkingBlocks(response, requestedModel));
+                reading.parts(), narration.toString(), droppedThinkingBlocks(response, requestedModel), paused);
     }
 
     /**

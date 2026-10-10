@@ -488,4 +488,63 @@ class AtelierChatServiceReasoningTest {
                 .noneMatch(block -> block instanceof AgentContentBlock.Reasoning
                         || block instanceof AgentContentBlock.RedactedReasoning);
     }
+
+    // ------------------------------------------------- F-188 / SF-188-01 : preuves web gardées
+
+    private static com.fasterxml.jackson.databind.JsonNode json(String raw) {
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().readTree(raw);
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static final AgentContentBlock.ServerTool SEARCH = new AgentContentBlock.ServerTool(json(
+            "{\"type\":\"server_tool_use\",\"id\":\"srvtoolu_1\",\"name\":\"web_search\",\"input\":{\"query\":\"eks\"}}"));
+    private static final AgentContentBlock.ServerTool RESULT = new AgentContentBlock.ServerTool(json(
+            "{\"type\":\"web_search_tool_result\",\"tool_use_id\":\"srvtoolu_1\","
+                    + "\"content\":[{\"type\":\"web_search_result\",\"encrypted_content\":\"ENC-PREUVE\"}]}"));
+
+    private static fr.claudegateway.agent.AgentTurn turnWith(List<AgentContentBlock> replay, String text,
+            List<fr.claudegateway.agent.AgentToolCall> calls, boolean finished, boolean paused) {
+        return new fr.claudegateway.agent.AgentTurn(text, calls, finished, 5, 5, false, replay, 0, 0, 1,
+                false, null, null, List.of(), "", 0, paused);
+    }
+
+    @Test
+    void theWebEvidenceOfAStepIsReplayedOnTheNextStep() {
+        com.fasterxml.jackson.databind.node.ObjectNode input =
+                new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode().put("path", "notes.txt");
+        agentProvider.enqueueTurn(turnWith(List.of(new AgentContentBlock.Reasoning("", "sig-1"), SEARCH, RESULT),
+                "J'ai vérifié en ligne.", List.of(new fr.claudegateway.agent.AgentToolCall("tool_1", "read_file", input)),
+                false, false));
+        agentProvider.enqueueFinal("Vérifié : fin du support le 26 novembre.");
+
+        service.chat(userId, workspaceId, "vérifie le calendrier EKS");
+
+        AgentMessage assistant = agentProvider.lastRequest.messages().stream()
+                .filter(message -> "assistant".equals(message.role()))
+                .reduce((first, second) -> second).orElseThrow();
+        // La preuve est rejouée, à sa place, à l'identique : le modèle la voit encore.
+        assertThat(assistant.content()).containsSubsequence(
+                new AgentContentBlock.Reasoning("", "sig-1"), SEARCH, RESULT);
+        // Jamais persistée entre deux messages.
+        assertThat(saved).noneMatch(m -> String.valueOf(m.getContent()).contains("ENC-PREUVE"));
+    }
+
+    @Test
+    void aPausedTurnIsResumedRatherThanEnded() {
+        agentProvider.enqueueTurn(turnWith(List.of(SEARCH, RESULT), "", List.of(), false, true));
+        agentProvider.enqueueFinal("Réponse après la reprise.");
+
+        service.chat(userId, workspaceId, "cherche en ligne");
+
+        // La reprise part avec le message assistant EN DERNIER, sans message utilisateur après.
+        List<AgentMessage> sent = agentProvider.lastRequest.messages().stream()
+                .filter(m -> !m.isEffortDirective()).toList();
+        AgentMessage last = sent.get(sent.size() - 1);
+        assertThat(last.role()).isEqualTo("assistant");
+        assertThat(last.content()).containsExactly(SEARCH, RESULT);
+        assertThat(lastSavedAssistant().getContent()).contains("Réponse après la reprise.");
+    }
 }

@@ -1865,4 +1865,130 @@ class AnthropicAgentProviderTest {
         assertThat(result.path("content").isTextual()).isTrue();
         assertThat(result.path("content").asText()).isEqualTo("contenu texte");
     }
+
+    // ------------------------------------------------- F-188 / SF-188-01 : preuves web gardées
+
+    private static final String WEB_CONTENT = """
+            [{"type": "thinking", "thinking": "je cherche", "signature": "sig-1"},
+             {"type": "server_tool_use", "id": "srvtoolu_1", "name": "web_search",
+              "input": {"query": "calendrier EKS 1.31"}},
+             {"type": "web_search_tool_result", "tool_use_id": "srvtoolu_1",
+              "content": [{"type": "web_search_result", "url": "https://docs.aws.amazon.com/eks",
+                           "title": "EKS", "encrypted_content": "ENC123", "page_age": "2026"}]},
+             {"type": "text", "text": "La fin du support standard est le 26 novembre."},
+             {"type": "tool_use", "id": "tu_1", "name": "bash", "input": {"command": "ls"}}]""";
+
+    @Test
+    void keepsServerToolBlocksInOrderWithTheReasoning() {
+        build(null);
+        respondWith("tool_use", WEB_CONTENT);
+
+        AgentTurn turn = call();
+
+        assertThat(turn.reasoning()).hasSize(3);
+        assertThat(turn.reasoning().get(0)).isInstanceOf(AgentContentBlock.Reasoning.class);
+        AgentContentBlock.ServerTool use = (AgentContentBlock.ServerTool) turn.reasoning().get(1);
+        AgentContentBlock.ServerTool result = (AgentContentBlock.ServerTool) turn.reasoning().get(2);
+        assertThat(use.raw().path("type").asText()).isEqualTo("server_tool_use");
+        assertThat(result.raw().path("content").get(0).path("encrypted_content").asText()).isEqualTo("ENC123");
+        assertThat(turn.toolCalls()).singleElement().satisfies(c -> assertThat(c.name()).isEqualTo("bash"));
+        assertThat(turn.paused()).isFalse();
+        server.verify();
+    }
+
+    @Test
+    void replaysServerToolBlocksVerbatimOnTheNextCall() {
+        build(null);
+        respondWith("tool_use", WEB_CONTENT);
+        AgentTurn first = call();
+
+        List<AgentContentBlock> assistant = new ArrayList<>(first.reasoning());
+        assistant.add(new AgentContentBlock.Text(first.text()));
+        first.toolCalls().forEach(c -> assistant.add(new AgentContentBlock.ToolUse(c.id(), c.name(), c.input())));
+        server.reset();
+        server.expect(requestTo(URL))
+                .andExpect(jsonPath("$.messages[1].role").value("assistant"))
+                .andExpect(jsonPath("$.messages[1].content[1].type").value("server_tool_use"))
+                .andExpect(jsonPath("$.messages[1].content[1].input.query").value("calendrier EKS 1.31"))
+                .andExpect(jsonPath("$.messages[1].content[2].type").value("web_search_tool_result"))
+                .andExpect(jsonPath("$.messages[1].content[2].content[0].encrypted_content").value("ENC123"))
+                .andExpect(jsonPath("$.messages[1].content[2].cache_control").doesNotExist())
+                .andRespond(withSuccess("""
+                        {"content": [{"type": "text", "text": "fini"}], "stop_reason": "end_turn",
+                         "usage": {"input_tokens": 10, "output_tokens": 2}}""", MediaType.APPLICATION_JSON));
+
+        provider.nextTurn(new AgentTurnRequest("claude-model", "consigne", List.of(
+                AgentMessage.userText("bonjour"),
+                AgentMessage.assistant(assistant),
+                AgentMessage.toolResults(List.of(new AgentContentBlock.ToolResult("tu_1", "ok", false)))),
+                List.of(), null));
+
+        server.verify();
+    }
+
+    @Test
+    void aPauseIsNotTheEndOfTheTurn() {
+        build(null);
+        respondWith("pause_turn", """
+                [{"type": "server_tool_use", "id": "srvtoolu_2", "name": "web_search", "input": {"query": "x"}}]""");
+
+        AgentTurn turn = call();
+
+        assertThat(turn.paused()).isTrue();
+        assertThat(turn.finished()).isFalse();
+        assertThat(turn.toolCalls()).isEmpty();
+        assertThat(turn.reasoning()).singleElement().isInstanceOf(AgentContentBlock.ServerTool.class);
+    }
+
+    @Test
+    void serverBlocksBeforeAFallbackAreDropped() {
+        build(null);
+        respondWith("end_turn", """
+                [{"type": "server_tool_use", "id": "srvtoolu_3", "name": "web_search", "input": {"query": "x"}},
+                 {"type": "fallback", "from": {"model": "a"}, "to": {"model": "b"}},
+                 {"type": "text", "text": "réponse du modèle de repli"}]""");
+
+        AgentTurn turn = call();
+
+        assertThat(turn.reasoning()).isEmpty();
+        assertThat(turn.text()).isEqualTo("réponse du modèle de repli");
+    }
+
+    @Test
+    void aStreamedServerToolUseGetsItsInput() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        String sse = String.join("\n",
+                "data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":1}}}",
+                "",
+                "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":"
+                        + "{\"type\":\"server_tool_use\",\"id\":\"srvtoolu_4\",\"name\":\"web_search\",\"input\":{}}}",
+                "",
+                "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":"
+                        + "{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"query\\\": \\\"eks\\\"}\"}}",
+                "",
+                "data: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":"
+                        + "{\"type\":\"web_search_tool_result\",\"tool_use_id\":\"srvtoolu_4\",\"content\":[]}}",
+                "",
+                "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"pause_turn\"},"
+                        + "\"usage\":{\"output_tokens\":1}}",
+                "",
+                "data: {\"type\":\"message_stop\"}",
+                "");
+        server.expect(requestTo(URL)).andRespond(withSuccess(sse, MediaType.TEXT_EVENT_STREAM));
+
+        AgentTurn turn = streamWith("claude-opus-5-5", null, List.of(AgentMessage.userText("bonjour")));
+
+        assertThat(turn.paused()).isTrue();
+        assertThat(turn.reasoning()).hasSize(2);
+        assertThat(((AgentContentBlock.ServerTool) turn.reasoning().get(0)).raw().path("input").path("query").asText())
+                .isEqualTo("eks");
+    }
+
+    @Test
+    void ourOwnToolResultIsNotAServerBlock() {
+        assertThat(AnthropicAgentProvider.isServerToolBlock("tool_result")).isFalse();
+        assertThat(AnthropicAgentProvider.isServerToolBlock("web_fetch_tool_result")).isTrue();
+        assertThat(AnthropicAgentProvider.isServerToolBlock("server_tool_use")).isTrue();
+        assertThat(AnthropicAgentProvider.isServerToolBlock("tool_use")).isFalse();
+    }
 }

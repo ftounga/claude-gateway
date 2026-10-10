@@ -57,7 +57,21 @@ public record AgentTurn(String text, List<AgentToolCall> toolCalls, boolean fini
         int inputTokens, int outputTokens, boolean truncated, List<AgentContentBlock> reasoning,
         int cacheReadTokens, int cacheWriteTokens, int webSearchRequests, boolean refused,
         String refusalCategory, String servedModel, List<ModelUsage> usageByModel, String narration,
-        int droppedThinkingBlocks) {
+        int droppedThinkingBlocks, boolean paused) {
+
+    /**
+     * Forme sans pause (F-188 / SF-188-01 additif) : {@code paused} vrai seulement quand le
+     * fournisseur a suspendu un tour long d'outils serveur ({@code stop_reason=pause_turn}).
+     */
+    public AgentTurn(String text, List<AgentToolCall> toolCalls, boolean finished,
+            int inputTokens, int outputTokens, boolean truncated, List<AgentContentBlock> reasoning,
+            int cacheReadTokens, int cacheWriteTokens, int webSearchRequests, boolean refused,
+            String refusalCategory, String servedModel, List<ModelUsage> usageByModel, String narration,
+            int droppedThinkingBlocks) {
+        this(text, toolCalls, finished, inputTokens, outputTokens, truncated, reasoning,
+                cacheReadTokens, cacheWriteTokens, webSearchRequests, refused, refusalCategory,
+                servedModel, usageByModel, narration, droppedThinkingBlocks, false);
+    }
 
     /** Forme sans compte de blocs de raisonnement perdus. */
     public AgentTurn(String text, List<AgentToolCall> toolCalls, boolean finished,
