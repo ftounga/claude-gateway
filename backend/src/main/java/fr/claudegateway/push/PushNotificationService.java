@@ -56,7 +56,7 @@ public class PushNotificationService {
 
     /** Un tour s'est terminé : notifie « Une réponse est prête » (si le push est configuré). */
     public void notifyTurnDone(UUID userId, UUID workspaceId) {
-        emit(userId, workspaceId, "Une réponse est prête", "Votre tâche est terminée.");
+        notify(userId, workspaceId, PushEvent.TURN_DONE);
     }
 
     /**
@@ -64,8 +64,7 @@ public class PushNotificationService {
      * <b>critique</b> — le silence vaut refus (timeoutMs), c'est celle qui justifie le push.
      */
     public void notifyAuthorizationRequested(UUID userId, UUID workspaceId) {
-        emit(userId, workspaceId, "Une autorisation est demandée",
-                "Ouvrez l'application pour autoriser ou refuser.");
+        notify(userId, workspaceId, PushEvent.AUTHORIZATION_REQUESTED);
     }
 
     /**
@@ -74,24 +73,28 @@ public class PushNotificationService {
      * <b>neutre</b> (D4) — aucun contenu de la question ne quitte l'application.
      */
     public void notifyQuestionAsked(UUID userId, UUID workspaceId) {
-        emit(userId, workspaceId, "Une question vous attend", "Ouvrez l'application pour répondre.");
+        notify(userId, workspaceId, PushEvent.QUESTION_ASKED);
     }
 
-    private void emit(UUID userId, UUID workspaceId, String title, String body) {
-        if (userId == null || !transport.isEnabled()) {
+    /**
+     * Notifie un événement du catalogue (F-185 / SF-185-02) aux appareils du propriétaire —
+     * best-effort, jamais bloquant ; inactif si le push n'est pas configuré.
+     */
+    public void notify(UUID userId, UUID workspaceId, PushEvent event) {
+        if (userId == null || event == null || !transport.isEnabled()) {
             return;
         }
         // Tout part sur l'exécuteur dédié : le fil du tour n'attend ni la base ni le réseau.
-        executor.execute(() -> deliver(userId, workspaceId, title, body));
+        executor.execute(() -> deliver(userId, workspaceId, event));
     }
 
-    private void deliver(UUID userId, UUID workspaceId, String title, String body) {
+    private void deliver(UUID userId, UUID workspaceId, PushEvent event) {
         try {
             List<PushSubscription> subscriptions = repository.findByUserId(userId);
             if (subscriptions.isEmpty()) {
                 return;
             }
-            String payload = buildPayload(title, body, workspaceId);
+            String payload = buildPayload(event, workspaceId);
             for (PushSubscription subscription : subscriptions) {
                 WebPushTransport.Result result = transport.send(subscription, payload);
                 if (result == WebPushTransport.Result.EXPIRED) {
@@ -111,24 +114,34 @@ public class PushNotificationService {
      * l'application fermée, et un {@code data.onActionClick} qui ouvre le bon terminal au clic
      * (SF-153-03). Le titre et le corps sont génériques, l'{@code url} porte un identifiant de
      * terminal <b>opaque</b> — jamais un nom de projet ni une commande (D4).
+     *
+     * <p>F-185 / SF-185-02 : {@code data.event} porte le code de l'événement ; le {@code tag} par
+     * terminal fait qu'une notification <b>remplace</b> la précédente du même terminal au lieu de
+     * s'empiler.</p>
      */
-    private String buildPayload(String title, String body, UUID workspaceId) {
+    String buildPayload(PushEvent event, UUID workspaceId) {
         String url = workspaceId != null ? "/atelier/" + workspaceId : "/forge";
-        // Format ngsw : { notification: { title, body, icon, data: { url, onActionClick } } }.
+        String tag = "cg-" + (workspaceId != null ? workspaceId : "forge");
+        // Format ngsw : { notification: { title, body, icon, tag, data: { url, event, onActionClick } } }.
         Map<String, Object> notification = Map.of(
-                "title", title,
-                "body", body,
+                "title", event.title(),
+                "body", event.body(),
                 "icon", "/icons/icon-192.png",
+                "tag", tag,
+                "renotify", true,
                 "data", Map.of(
                         "url", url,
+                        "event", event.name(),
                         "onActionClick", Map.of(
                                 "default", Map.of("operation", "openWindow", "url", url))));
         try {
             return objectMapper.writeValueAsString(Map.of("notification", notification));
         } catch (Exception e) {
-            // Repli sans dépendance JSON : les valeurs sont des littéraux + un UUID (rien à échapper).
-            return "{\"notification\":{\"title\":\"" + title + "\",\"body\":\"" + body
-                    + "\",\"icon\":\"/icons/icon-192.png\",\"data\":{\"url\":\"" + url
+            // Repli sans dépendance JSON : les valeurs sont des littéraux + un UUID (rien à échapper
+            // hormis l'apostrophe, qui n'en demande pas en JSON).
+            return "{\"notification\":{\"title\":\"" + event.title() + "\",\"body\":\"" + event.body()
+                    + "\",\"icon\":\"/icons/icon-192.png\",\"tag\":\"" + tag
+                    + "\",\"renotify\":true,\"data\":{\"url\":\"" + url + "\",\"event\":\"" + event.name()
                     + "\",\"onActionClick\":{\"default\":{\"operation\":\"openWindow\",\"url\":\""
                     + url + "\"}}}}}";
         }

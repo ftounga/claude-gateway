@@ -2153,9 +2153,8 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     public AtelierChatResult chatStreaming(UUID userId, UUID workspaceId, String rawMessage,
             AtelierProgressListener listener) {
-        AtelierChatResult result = runLoop(userId, workspaceId, rawMessage, AgentTurnMode.ACT, listener);
-        notifyTurnDone(userId, workspaceId);
-        return result;
+        return notifyingOutcome(userId, workspaceId, listener,
+                signals -> runLoop(userId, workspaceId, rawMessage, AgentTurnMode.ACT, signals));
     }
 
     /**
@@ -2174,9 +2173,8 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     public AtelierChatResult chatStreaming(UUID userId, UUID workspaceId, String rawMessage,
             AgentTurnMode mode, AtelierProgressListener listener, boolean force) {
-        AtelierChatResult result = runLoop(userId, workspaceId, rawMessage, mode, listener, force);
-        notifyTurnDone(userId, workspaceId);
-        return result;
+        return notifyingOutcome(userId, workspaceId, listener,
+                signals -> runLoop(userId, workspaceId, rawMessage, mode, signals, force));
     }
 
     /**
@@ -2188,20 +2186,35 @@ public class AtelierChatService implements RelayInterruptTarget {
     public AtelierChatResult chatStreaming(UUID userId, UUID workspaceId, String rawMessage,
             AgentTurnMode mode, AtelierProgressListener listener, boolean force,
             java.util.List<UUID> attachedDepositIds) {
-        AtelierChatResult result = runLoop(userId, workspaceId, rawMessage, mode, listener, force,
-                attachedDepositIds);
-        notifyTurnDone(userId, workspaceId);
-        return result;
+        return notifyingOutcome(userId, workspaceId, listener,
+                signals -> runLoop(userId, workspaceId, rawMessage, mode, signals, force, attachedDepositIds));
     }
 
     /**
-     * F-153 / SF-153-02 — Le tour s'achève : pousse « Une réponse est prête » aux appareils du
-     * propriétaire (best-effort, jamais bloquant ; inactif si le push n'est pas configuré). Appelé
-     * seulement au retour <b>normal</b> de {@code runLoop} : une erreur n'est pas une réponse prête.
+     * F-153 / SF-153-02, F-185 / SF-185-02 — Le tour streamé s'achève : pousse aux appareils du
+     * propriétaire <b>ce qui l'attend réellement</b> (réponse prête, plan à approuver, validation,
+     * délai écoulé, travail arrêté, poste perdu), une seule notification par tour. Le relevé
+     * {@link TurnSignals} enveloppe l'écouteur sans rien changer à ce qu'il reçoit. Une exception
+     * sortie de la boucle notifie « Le travail s'est arrêté », puis poursuit sa route. Best-effort,
+     * jamais bloquant ; inactif si le push n'est pas configuré.
      */
-    private void notifyTurnDone(UUID userId, UUID workspaceId) {
-        if (pushNotificationService != null) {
-            pushNotificationService.notifyTurnDone(userId, workspaceId);
+    private AtelierChatResult notifyingOutcome(UUID userId, UUID workspaceId, AtelierProgressListener listener,
+            java.util.function.Function<AtelierProgressListener, AtelierChatResult> turn) {
+        TurnSignals signals = new TurnSignals(listener);
+        AtelierChatResult result;
+        try {
+            result = turn.apply(signals);
+        } catch (RuntimeException e) {
+            notifyEvent(userId, workspaceId, fr.claudegateway.push.PushEvent.WORK_STOPPED);
+            throw e;
+        }
+        notifyEvent(userId, workspaceId, TurnOutcomes.classify(result, signals));
+        return result;
+    }
+
+    private void notifyEvent(UUID userId, UUID workspaceId, fr.claudegateway.push.PushEvent event) {
+        if (pushNotificationService != null && event != null) {
+            pushNotificationService.notify(userId, workspaceId, event);
         }
     }
 

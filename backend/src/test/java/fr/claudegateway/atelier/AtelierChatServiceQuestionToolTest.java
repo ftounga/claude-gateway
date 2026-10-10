@@ -260,6 +260,58 @@ class AtelierChatServiceQuestionToolTest {
         org.mockito.Mockito.verify(push, org.mockito.Mockito.never()).notifyQuestionAsked(any(), any());
     }
 
+    // ------------------------------------------------ F-185 / SF-185-02 : la fin de tour notifiée
+
+    @Test
+    @DisplayName("SF-185-02 — un tour ordinaire notifie « Une réponse est prête »")
+    void anOrdinaryTurnNotifiesTurnDone() {
+        terminal();
+        fr.claudegateway.push.PushNotificationService push =
+                org.mockito.Mockito.mock(fr.claudegateway.push.PushNotificationService.class);
+        service.setPushNotificationService(push);
+        agentProvider.enqueueFinal("Fait.");
+
+        service.chatStreaming(userId, workspaceId, "fais-le", listener);
+
+        org.mockito.Mockito.verify(push).notify(userId, workspaceId, fr.claudegateway.push.PushEvent.TURN_DONE);
+    }
+
+    @Test
+    @DisplayName("SF-185-02 — une question restée sans réponse notifie « L'agent a continué sans vous », une seule fois")
+    void aTimedOutQuestionNotifiesContinuedWithoutYou() {
+        terminal();
+        fr.claudegateway.push.PushNotificationService push =
+                org.mockito.Mockito.mock(fr.claudegateway.push.PushNotificationService.class);
+        service.setPushNotificationService(push);
+        listener.silent = true;
+        agentProvider.enqueueToolCallWithObject("demander", RECO_BATCH);
+        agentProvider.enqueueFinal("Décidé par défaut.");
+
+        service.chatStreaming(userId, workspaceId, "configure", listener);
+
+        org.mockito.Mockito.verify(push).notify(userId, workspaceId,
+                fr.claudegateway.push.PushEvent.CONTINUED_WITHOUT_YOU);
+        org.mockito.Mockito.verify(push, org.mockito.Mockito.never()).notify(any(), any(),
+                org.mockito.ArgumentMatchers.eq(fr.claudegateway.push.PushEvent.TURN_DONE));
+        // Le relevé n'a rien retiré à l'écouteur d'origine.
+        assertThat(listener.resolved).singleElement().satisfies(r -> assertThat(r.status()).isEqualTo("timeout"));
+    }
+
+    @Test
+    @DisplayName("SF-185-02 — une exception dans la boucle notifie « Le travail s'est arrêté » puis remonte")
+    void anExceptionNotifiesWorkStoppedAndPropagates() {
+        fr.claudegateway.push.PushNotificationService push =
+                org.mockito.Mockito.mock(fr.claudegateway.push.PushNotificationService.class);
+        service.setPushNotificationService(push);
+        when(workspaceService.requireOwned(userId, workspaceId)).thenThrow(new IllegalStateException("boom"));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                () -> service.chatStreaming(userId, workspaceId, "fais-le", listener))
+                .isInstanceOf(IllegalStateException.class).hasMessage("boom");
+
+        org.mockito.Mockito.verify(push).notify(userId, workspaceId, fr.claudegateway.push.PushEvent.WORK_STOPPED);
+    }
+
     private static final String RECO_BATCH = "{\"questions\":["
             + "{\"header\":\"Base\",\"question\":\"Quelle base ?\",\"options\":[{\"label\":\"Postgres\",\"recommended\":true},{\"label\":\"H2\"}]},"
             + "{\"header\":\"Nom\",\"question\":\"Quel nom ?\",\"options\":[{\"label\":\"alpha\"},{\"label\":\"beta\"}]}]}";
