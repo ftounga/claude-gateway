@@ -126,6 +126,7 @@ describe('SettingsComponent', () => {
             enabled: signal(false),
             enable: () => Promise.resolve('unsupported'),
             disable: () => Promise.resolve(),
+            permission: () => 'default',
           },
         },
       ],

@@ -27,6 +27,8 @@ export class NotificationsSettingsComponent {
   protected readonly supported = this.push.supported;
   protected readonly enabled = this.push.enabled;
   protected readonly busy = signal(false);
+  /** F-185 / SF-185-01 : le navigateur bloque ce site — « Activer » échouerait sans rien demander. */
+  protected readonly blocked = signal(this.push.permission() === 'denied');
 
   protected async activate(): Promise<void> {
     this.busy.set(true);
@@ -40,6 +42,7 @@ export class NotificationsSettingsComponent {
           this.notify('Les notifications ne sont pas configurées sur le serveur.');
           break;
         case 'denied':
+          this.blocked.set(this.push.permission() === 'denied');
           this.notify('Permission refusée : activez les notifications dans votre navigateur.');
           break;
         case 'unsupported':

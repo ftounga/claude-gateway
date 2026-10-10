@@ -22,12 +22,14 @@ export type PushActivationResult =
  */
 @Injectable({ providedIn: 'root' })
 export class PushActivationService {
-  private readonly swPush = inject(SwPush);
+  // Facultatif (F-185 / SF-185-01) : le terminal propose désormais l'activation ; là où aucun
+  // service worker n'est fourni (tests, environnement sans ngsw), le push est simplement « non supporté ».
+  private readonly swPush = inject(SwPush, { optional: true });
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
 
   /** Vrai si le navigateur/appareil supporte le push (service worker enregistré). */
-  readonly supported = this.swPush.isEnabled;
+  readonly supported = this.swPush?.isEnabled ?? false;
 
   private readonly enabledState = signal(false);
   /** Vrai quand un abonnement actif existe pour cet appareil. */
@@ -36,7 +38,7 @@ export class PushActivationService {
   private lastEndpoint: string | null = null;
 
   constructor() {
-    if (!this.swPush.isEnabled) {
+    if (!this.swPush?.isEnabled) {
       return;
     }
     // Reflète l'état d'abonnement réel de cet appareil.
@@ -59,7 +61,7 @@ export class PushActivationService {
    * enregistre l'abonnement côté gateway (scellé `user_id`). Ne jette pas : rend un résultat lisible.
    */
   async enable(): Promise<PushActivationResult> {
-    if (!this.swPush.isEnabled) {
+    if (!this.swPush?.isEnabled) {
       return 'unsupported';
     }
     const key = await this.fetchVapidPublicKey();
@@ -85,11 +87,19 @@ export class PushActivationService {
     }
   }
 
+  /**
+   * La permission du navigateur pour ce site (F-185 / SF-185-01) : `denied` veut dire qu'un clic sur
+   * « Activer » échouerait sans même demander. `default` quand l'API est absente.
+   */
+  permission(): NotificationPermission {
+    return typeof Notification === 'undefined' ? 'default' : Notification.permission;
+  }
+
   /** Désactive les notifications : désabonne l'appareil et retire l'abonnement côté gateway. */
   async disable(): Promise<void> {
     const endpoint = this.lastEndpoint;
     try {
-      await this.swPush.unsubscribe();
+      await this.swPush?.unsubscribe();
     } catch {
       // Déjà désabonné côté navigateur : on retire quand même la ligne côté gateway.
     }
