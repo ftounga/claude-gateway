@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-185 / SF-185-07 - RECAPITULATIF QUOTIDIEN DES ATTENTES A RELANCER.
+
+      Une ligne par compte et par jour ou le recapitulatif est parti. La CLE PRIMAIRE (user_id,
+      digest_day) est le verrou : les deux pods lancent la tache, une seule insertion reussit, une
+      seule notification part. Retention 30 jours (purgee par le worker) ; purge a la suppression du
+      compte.
+    -->
+
+    <changeSet id="152-notification-digests" author="claude-gateway">
+        <createTable tableName="notification_digests">
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="digest_day" type="date">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addPrimaryKey tableName="notification_digests" columnNames="user_id, digest_day"
+                constraintName="pk_notification_digests"/>
+        <rollback>
+            <dropTable tableName="notification_digests"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
