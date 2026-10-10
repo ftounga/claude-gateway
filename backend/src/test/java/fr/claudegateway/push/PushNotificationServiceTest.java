@@ -33,6 +33,7 @@ class PushNotificationServiceTest {
     private WebPushTransport transport;
     private PushNotificationService service;
     private TerminalWatch watch;
+    private NotificationJournal journal;
     private MutableClock clock;
 
     /** Horloge réglable : la fenêtre anti-doublon se teste sans attendre. */
@@ -72,7 +73,8 @@ class PushNotificationServiceTest {
         transport = org.mockito.Mockito.mock(WebPushTransport.class);
         watch = org.mockito.Mockito.mock(TerminalWatch.class);
         clock = new MutableClock(java.time.Instant.parse("2026-10-10T12:00:00Z"));
-        service = new PushNotificationService(repository, transport, new ObjectMapper(), watch, clock);
+        journal = org.mockito.Mockito.mock(NotificationJournal.class);
+        service = new PushNotificationService(repository, transport, new ObjectMapper(), watch, journal, clock);
     }
 
     @AfterEach
@@ -132,16 +134,24 @@ class PushNotificationServiceTest {
     }
 
     @Test
-    void questionAskedIsSilentWithoutTransportOrUser() throws InterruptedException {
+    void questionAskedIsSilentWithoutTransport() throws InterruptedException {
         when(transport.isEnabled()).thenReturn(false);
         service.notifyQuestionAsked(userId, workspaceId);
 
+        Thread.sleep(200);
+        verify(repository, never()).findByUserId(any());
+        verify(transport, never()).send(any(), any());
+    }
+
+    @Test
+    void questionAskedIsSilentWithoutUser() throws InterruptedException {
         when(transport.isEnabled()).thenReturn(true);
         service.notifyQuestionAsked(null, workspaceId);
 
         Thread.sleep(200);
         verify(repository, never()).findByUserId(any());
         verify(transport, never()).send(any(), any());
+        verify(journal, never()).record(any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
     }
 
     @Test
@@ -251,6 +261,52 @@ class PushNotificationServiceTest {
         service.notify(userId, other, PushEvent.TURN_DONE);
 
         verify(transport, timeout(2000).times(2)).send(any(), any());
+    }
+
+    // ------------------------------------------------ F-185 / SF-185-04 : le centre de notifications
+
+    @Test
+    void theEventIsJournaledEvenWithoutPushConfigured() throws InterruptedException {
+        when(transport.isEnabled()).thenReturn(false);
+
+        service.notify(userId, workspaceId, PushEvent.TURN_DONE);
+
+        verify(journal, timeout(2000)).record(userId, workspaceId, PushEvent.TURN_DONE, false);
+        Thread.sleep(100);
+        verify(transport, never()).send(any(), any());
+    }
+
+    @Test
+    void aWatchedTerminalIsJournaledAsAlreadySeen() {
+        deliverable();
+        when(watch.watching(userId, workspaceId)).thenReturn(true);
+
+        service.notify(userId, workspaceId, PushEvent.PLAN_AWAITING);
+
+        verify(journal, timeout(2000)).record(userId, workspaceId, PushEvent.PLAN_AWAITING, true);
+    }
+
+    @Test
+    void aDuplicateIsNotJournaledTwice() throws InterruptedException {
+        deliverable();
+
+        service.notify(userId, workspaceId, PushEvent.TURN_DONE);
+        service.notify(userId, workspaceId, PushEvent.TURN_DONE);
+
+        verify(journal, timeout(2000)).record(userId, workspaceId, PushEvent.TURN_DONE, false);
+        Thread.sleep(100);
+        verify(journal, times(1)).record(any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
+    }
+
+    @Test
+    void aFailingJournalNeverStopsThePush() {
+        deliverable();
+        org.mockito.Mockito.doThrow(new IllegalStateException("base")).when(journal)
+                .record(any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
+
+        service.notify(userId, workspaceId, PushEvent.TURN_DONE);
+
+        verify(transport, timeout(2000)).send(any(), any());
     }
 
     @Test

@@ -11,6 +11,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { AuthService } from '../../core/services/auth.service';
 import { HelpChatWidgetComponent } from '../../help/help-chat-widget/help-chat-widget.component';
 import { QuotaAlertBannerComponent } from '../quota-alert-banner/quota-alert-banner.component';
+import { NotificationBellComponent } from '../notification-bell/notification-bell.component';
 import { spaceLinks } from '../../shared/space-links';
 
 /**
@@ -40,6 +41,7 @@ import { spaceLinks } from '../../shared/space-links';
     MatTooltipModule,
     QuotaAlertBannerComponent,
     HelpChatWidgetComponent,
+    NotificationBellComponent,
   ],
   templateUrl: './shell.component.html',
   styleUrl: './shell.component.scss',

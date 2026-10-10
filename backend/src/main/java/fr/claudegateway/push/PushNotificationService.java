@@ -44,6 +44,7 @@ public class PushNotificationService {
     private final ObjectMapper objectMapper;
     private final ExecutorService executor;
     private final TerminalWatch watch;
+    private final NotificationJournal journal;
     private final Clock clock;
 
     /** F-185 / SF-185-03 : le même événement, pour le même terminal, n'est pas renvoyé dans ce délai. */
@@ -53,11 +54,13 @@ public class PushNotificationService {
     private final Map<String, Instant> lastSent = new ConcurrentHashMap<>();
 
     public PushNotificationService(PushSubscriptionRepository repository,
-            WebPushTransport transport, ObjectMapper objectMapper, TerminalWatch watch, Clock clock) {
+            WebPushTransport transport, ObjectMapper objectMapper, TerminalWatch watch,
+            NotificationJournal journal, Clock clock) {
         this.repository = repository;
         this.transport = transport;
         this.objectMapper = objectMapper;
         this.watch = watch == null ? TerminalWatch.NONE : watch;
+        this.journal = journal == null ? NotificationJournal.NONE : journal;
         this.clock = clock == null ? Clock.systemUTC() : clock;
         ThreadFactory daemon = runnable -> {
             Thread t = new Thread(runnable, "web-push-emitter");
@@ -94,16 +97,22 @@ public class PushNotificationService {
      * best-effort, jamais bloquant ; inactif si le push n'est pas configuré.
      */
     public void notify(UUID userId, UUID workspaceId, PushEvent event) {
-        if (userId == null || event == null || !transport.isEnabled()) {
+        if (userId == null || event == null) {
             return;
         }
+        // F-185 / SF-185-04 : même sans push configuré, l'événement va au centre de notifications.
         // Tout part sur l'exécuteur dédié : le fil du tour n'attend ni la base ni le réseau.
         executor.execute(() -> deliver(userId, workspaceId, event));
     }
 
     private void deliver(UUID userId, UUID workspaceId, PushEvent event) {
         try {
-            if (watched(userId, workspaceId) || duplicate(userId, workspaceId, event)) {
+            if (duplicate(userId, workspaceId, event)) {
+                return;
+            }
+            boolean watched = watched(userId, workspaceId);
+            record(userId, workspaceId, event, watched);
+            if (watched || !transport.isEnabled()) {
                 return;
             }
             List<PushSubscription> subscriptions = repository.findByUserId(userId);
@@ -137,6 +146,15 @@ public class PushNotificationService {
         } catch (RuntimeException e) {
             log.warn("Présence illisible, notification envoyée : {}", e.getMessage());
             return false;
+        }
+    }
+
+    /** Le centre de notifications (SF-185-04) ; un échec n'empêche jamais le push. */
+    private void record(UUID userId, UUID workspaceId, PushEvent event, boolean watched) {
+        try {
+            journal.record(userId, workspaceId, event, watched);
+        } catch (RuntimeException e) {
+            log.warn("Centre de notifications : inscription impossible : {}", e.getMessage());
         }
     }
 

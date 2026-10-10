@@ -100,9 +100,10 @@ describe('VersionUpdateBannerComponent', () => {
     build();
     expect(swUpdate.checkForUpdate).toHaveBeenCalledTimes(1);
 
+    // Posée explicitement : la visibilité réelle du navigateur de test dépend de l'ordre des specs.
+    spyOnProperty(document, 'visibilityState', 'get').and.returnValue('visible');
     document.dispatchEvent(new Event('visibilitychange'));
 
-    // document.visibilityState vaut 'visible' dans le navigateur de test (onglet actif).
     expect(swUpdate.checkForUpdate).toHaveBeenCalledTimes(2);
   });
 

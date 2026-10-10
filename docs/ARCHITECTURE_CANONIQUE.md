@@ -1203,6 +1203,22 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     purgé à l'émission (`deleteByEndpoint`).
   - Endpoints **`POST/DELETE /push/subscriptions`** (s'abonner / se désabonner) et
     **`GET /push/vapid-public-key`** (JWT) ; l'identité vient **toujours** du jeton, jamais du corps.
+
+- **user_notifications** — le **centre de notifications** (F-185 / SF-185-04, migration `150`). Une
+  ligne = une chose qui a attendu l'utilisateur (réponse prête, autorisation, question, plan à
+  approuver, validation, délai écoulé, travail arrêté, poste perdu — catalogue `PushEvent`), inscrite
+  par l'émetteur **même sans appareil abonné**. Lue par la cloche de la coquille authentifiée.
+  - `user_notifications` : `id (uuid)`, `user_id (uuid, NOT NULL)`, `workspace_id (uuid)`,
+    `event (varchar 40, NOT NULL)`, `subject (varchar 200)`, `created_at`, `read_at`. Index
+    `(user_id, created_at desc)`.
+  - **Scellé par `user_id`** : lecture, marquage et purge portent le compte ; le `subject` (nom du
+    terminal, lu par `findByIdAndUserId`) ne sert qu'à l'affichage **dans l'application** — jamais
+    dans une charge push (D1 de F-185). Un terminal regardé (`live_terminals.watched_at`, SF-185-03)
+    donne une ligne **déjà lue**.
+  - **Aucune clé étrangère** ; rétention **30 jours** purgée à l'inscription ; purge explicite à la
+    suppression du compte (`AccountService`).
+  - Endpoints **`GET /notifications`** (30 dernières + non-lus), **`POST /notifications/{id}/read`**
+    (404 pour la ligne d'autrui), **`POST /notifications/read-all`** (JWT).
   - **Émetteur** branché sur les **deux transitions de tour de F-84** (fin de `chatStreaming`,
     `askPermission`) : charge **neutre** (aucun contenu de tour, nom de projet ou commande — le détail
     n'apparaît qu'après ouverture authentifiée), émission **asynchrone** (jamais bloquante pour le

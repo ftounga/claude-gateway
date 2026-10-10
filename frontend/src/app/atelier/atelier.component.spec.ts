@@ -188,6 +188,10 @@ describe('AtelierComponent', () => {
     } as WorkspaceSummary;
     const handoff = { workspaceId: 's1', name: 'data-platform', phrase: 'Reprends data-platform : lis le plan.' };
 
+    // La passation ne s'ouvre que si l'onglet est regardé : on le pose explicitement, la visibilité
+    // réelle du navigateur de test dépend de l'ordre des specs (un onglet ouvert ailleurs la cache).
+    beforeEach(() => spyOnProperty(document, 'visibilityState', 'get').and.returnValue('visible'));
+
     function goTurn(): jasmine.Spy {
       service.streamChat.and.callFake((_id, _message, handlers) => {
         handlers.onHandoff?.({ toolUseId: 'tu-1', handoff });
