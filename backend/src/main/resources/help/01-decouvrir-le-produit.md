@@ -1,6 +1,6 @@
-# Découvrir Claude Portal
+# Découvrir NG Portal
 
-Claude Portal est une **passerelle** vers Claude. Elle donne accès au modèle depuis un poste où
+NG Portal est une **passerelle** vers Claude. Elle donne accès au modèle depuis un poste où
 l'accès direct est bloqué, elle garde l'historique des conversations, elle mesure la consommation et
 elle facture. Elle n'est **pas** un moteur d'intelligence artificielle : elle relaie les demandes au
 fournisseur et rend sa réponse.

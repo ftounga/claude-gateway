@@ -22,7 +22,7 @@ class FakeLink {
 
 class FakeDoc {
   hidden = true;
-  title = 'Claude Portal';
+  title = 'NG Portal';
   link: FakeLink | null = new FakeLink();
   visibilityHandler: (() => void) | null = null;
 
@@ -62,7 +62,7 @@ describe('TabAlertService', () => {
     service.signalTurnDone();
 
     expect(doc.title).toContain('Réponse prête');
-    expect(doc.title).toContain('Claude Portal');
+    expect(doc.title).toContain('NG Portal');
     expect(doc.link!.getAttribute('href')).toContain('data:image/svg+xml');
   });
 
@@ -94,7 +94,7 @@ describe('TabAlertService', () => {
     service.signalTurnDone();
     service.signalAwaitingAuthorization();
 
-    expect(doc.title).toBe('Claude Portal');
+    expect(doc.title).toBe('NG Portal');
     expect(doc.link!.getAttribute('href')).toBe('/original.png');
   });
 
@@ -105,7 +105,7 @@ describe('TabAlertService', () => {
 
     service.clear();
 
-    expect(doc.title).toBe('Claude Portal');
+    expect(doc.title).toBe('NG Portal');
     expect(doc.link!.getAttribute('href')).toBe('/original.png');
   });
 
@@ -117,7 +117,7 @@ describe('TabAlertService', () => {
 
     doc.becomeVisible();
 
-    expect(doc.title).toBe('Claude Portal');
+    expect(doc.title).toBe('NG Portal');
     expect(doc.link!.getAttribute('href')).toBe('/original.png');
   });
 
@@ -130,7 +130,7 @@ describe('TabAlertService', () => {
     expect(doc.title).toContain('Réponse prête');
 
     service.clear();
-    expect(doc.title).toBe('Claude Portal');
+    expect(doc.title).toBe('NG Portal');
   });
 
   it('clear() est sans effet si aucun signal n\'a été levé', () => {
@@ -139,7 +139,7 @@ describe('TabAlertService', () => {
 
     service.clear();
 
-    expect(doc.title).toBe('Claude Portal');
+    expect(doc.title).toBe('NG Portal');
     expect(doc.link!.getAttribute('href')).toBe('/original.png');
   });
 });

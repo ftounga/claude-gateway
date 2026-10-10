@@ -18,7 +18,7 @@ class HelpDocumentLoaderTest {
         assertThat(loader.documentation()).isNotBlank();
         // Les sujets des deux jours de mise en service doivent tous être couverts.
         assertThat(loader.documentation())
-                .contains("Découvrir Claude Portal")
+                .contains("Découvrir NG Portal")
                 .contains("Télécharger le runner")
                 .contains("Java : de quelle version ai-je besoin")
                 .contains("Proxy, réseau et pare-feu")
@@ -33,7 +33,7 @@ class HelpDocumentLoaderTest {
     void concateneLesDocumentsDansLOrdreDeLeursNoms() {
         String documentation = new HelpDocumentLoader().documentation();
 
-        assertThat(documentation.indexOf("Découvrir Claude Portal"))
+        assertThat(documentation.indexOf("Découvrir NG Portal"))
                 .isLessThan(documentation.indexOf("Télécharger le runner"));
         assertThat(documentation.indexOf("Télécharger le runner"))
                 .isLessThan(documentation.indexOf("Messages d'erreur et dépannage"));

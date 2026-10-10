@@ -5,7 +5,7 @@
  * Pourquoi un second document. La page partagée retire déjà le logo et pose son propre titre, mais
  * elle le fait **en JavaScript**, donc après chargement. Or Teams, Outlook et Slack composent leur
  * aperçu de lien à partir des métadonnées du HTML **sans exécuter le JavaScript** : le client voyait
- * « Claude Portal — passerelle professionnelle vers Claude » et le logo, dans le fil de discussion,
+ * « NG Portal — passerelle professionnelle vers Claude » et le logo, dans le fil de discussion,
  * avant même d'avoir cliqué.
  *
  * Ce document est **dérivé d'`index.html` au moment du build**, et non maintenu à part : l'index
@@ -42,7 +42,7 @@ const neutralFallback =
   '</div>';
 html = html.replace(/<div class="app-fallback">[\s\S]*?<\/div>/g, neutralFallback);
 
-const leftovers = ['claude-portal', 'Claude Portal', 'claude-gateway'].filter((word) =>
+const leftovers = ['claude-portal', 'Claude Portal', 'ng-portal', 'NG Portal', 'claude-gateway'].filter((word) =>
   html.includes(word),
 );
 if (leftovers.length > 0) {
