@@ -910,6 +910,8 @@ public class AtelierChatService implements RelayInterruptTarget {
     private static final java.util.Set<String> ANSWER_PLAN_TOOLS =
             java.util.Set.of("read_file", "list_files", "search_files", "grep", "glob", "explore",
                     "set_plan", "recall", "demander", "carte_chercher",
+                    fr.claudegateway.atelier.video.VideoToolCatalog.IMAGES,
+                    fr.claudegateway.atelier.video.VideoToolCatalog.STATUS,
                     // F-176 : le parcours du sujet n'écrit rien dans le projet — il organise, comme set_plan.
                     fr.claudegateway.atelier.journey.JourneyToolCatalog.PROPOSE_GUIDED,
                     fr.claudegateway.atelier.journey.JourneyToolCatalog.SET_PLAN,
@@ -6502,6 +6504,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                     requiredArg(input, "bash_id"));
             case "kill_shell" -> runnerToolGateway.killShell(target, callId,
                     requiredArg(input, "shell_id"));
+            // F-190 / SF-190-01 : regarder une vidéo. Le runner extrait ; la gateway relaie.
+            case fr.claudegateway.atelier.video.VideoToolCatalog.IMAGES,
+                    fr.claudegateway.atelier.video.VideoToolCatalog.STATUS ->
+                    runnerToolGateway.video(target, callId, call.name(), input);
             // Le volet Teams (F-88 / SF-88-03) : un seul relais pour les huit outils, parce qu'ils
             // partagent le même contrat — des paramètres que SEUL le runner sait interpréter, et une
             // enveloppe JSON en retour. La gateway relaie ; elle ne réinterprète ni la période, ni
@@ -7410,6 +7416,19 @@ public class AtelierChatService implements RelayInterruptTarget {
     }
 
     /**
+     * Vrai si le poste de ce workspace sait extraire les images d'une vidéo (F-190 / SF-190-01) :
+     * cible RUNNER et capacité {@code video} annoncée. Même règle que {@code bash_background} — un
+     * runner ancien ne l'annonce pas, et les outils ne sont pas déclarés.
+     */
+    private boolean supportsVideo(Workspace workspace) {
+        if (!workspace.isRunnerTarget() || workspace.getHostId() == null) {
+            return false;
+        }
+        java.util.Set<String> caps = runnerHostService.declaredCapabilities(workspace.getHostId());
+        return caps != null && caps.contains(fr.claudegateway.atelier.video.VideoToolCatalog.CAPABILITY);
+    }
+
+    /**
      * Vrai si le poste de ce workspace sait lancer des commandes <b>en arrière-plan</b>
      * (F-121 / SF-121-07) : cible RUNNER <b>et</b> capacité {@code bash_background} annoncée par le
      * runner. Une propriété stable du poste, lue au même endroit que le shell/OS déclarés — elle
@@ -7458,6 +7477,11 @@ public class AtelierChatService implements RelayInterruptTarget {
                 bashDesc.append(" Pour un serveur de dev ou un build long qui ne doit pas bloquer le "
                         + "tour, passe run_in_background à true : la commande démarre détachée et tu "
                         + "reçois un identifiant à relire avec bash_output et à arrêter avec kill_shell.");
+            }
+            // F-190 / SF-190-01 : regarder une vidéo — déclaré seulement si le runner annonce la
+            // capacité `video` (un runner ancien ne l'annonce pas). Propriété STABLE du poste.
+            if (supportsVideo(workspace)) {
+                tools.addAll(fr.claudegateway.atelier.video.VideoToolCatalog.tools());
             }
             tools.add(new AgentTool("bash", bashDesc.toString(),
                     Map.of("type", "object", "properties", bashProps, "required", List.of("command"))));

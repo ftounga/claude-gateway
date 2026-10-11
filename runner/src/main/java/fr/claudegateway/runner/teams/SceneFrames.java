@@ -82,11 +82,40 @@ public final class SceneFrames {
         }
         Path ffmpeg = toolchain.require(LocalTool.ffmpeg());
         double effective = threshold > 0d && threshold < 1d ? threshold : SCENE_THRESHOLD;
+        return run(command(ffmpeg, video, outputDir, effective), outputDir, 0d);
+    }
+
+    /**
+     * <b>Le zoom</b> (F-190 / SF-190-01, D3) : une image toutes les {@code everySeconds} secondes
+     * entre {@code fromSeconds} et {@code toSeconds}. Une démo d'outil défile souvent dans un même
+     * plan — le seuil de changement de plan n'y voit rien, le zoom le rattrape.
+     *
+     * <p>L'horodatage reste <b>absolu</b> : {@code ffmpeg} date à partir de l'instant de recherche
+     * ({@code -ss}), on y rajoute donc {@code fromSeconds}. Mêmes règles que les plans : rien de
+     * partiel ne survit, une image non datée est écartée et nommée.</p>
+     *
+     * @throws ToolchainUnavailableException quand {@code ffmpeg} n'est ni là ni rapatriable
+     * @throws SceneExtractionException      quand la vidéo est absente ou qu'{@code ffmpeg} échoue
+     */
+    public Extraction extractEvery(Path video, Path outputDir, double fromSeconds,
+            double toSeconds, double everySeconds) {
+        if (video == null || !Files.isRegularFile(video)) {
+            throw new SceneExtractionException("not_found",
+                    "Je ne trouve pas de fichier vidéo à « "
+                            + (video == null ? "(chemin vide)" : video) + " ».",
+                    "Vérifiez le chemin, ou donnez-le en absolu.");
+        }
+        Path ffmpeg = toolchain.require(LocalTool.ffmpeg());
+        return run(intervalCommand(ffmpeg, video, outputDir, fromSeconds, toSeconds, everySeconds),
+                outputDir, fromSeconds);
+    }
+
+    private Extraction run(List<String> command, Path outputDir, double offset) {
         try {
             Files.createDirectories(outputDir);
             clear(outputDir);
-            ProcessRunner.ProcessResult result = processes.run(
-                    command(ffmpeg, video, outputDir, effective), outputDir, EXTRACTION_TIMEOUT_MS);
+            ProcessRunner.ProcessResult result =
+                    processes.run(command, outputDir, EXTRACTION_TIMEOUT_MS);
             if (!result.succeeded()) {
                 // A3 : rien de partiel ne survit.
                 clear(outputDir);
@@ -100,7 +129,11 @@ public final class SceneFrames {
                                         + "partielle donnerait un compte rendu plausible et faux.",
                         result.tail());
             }
-            return pair(outputDir, timestamps(result));
+            List<Double> times = new ArrayList<>();
+            for (double time : timestamps(result)) {
+                times.add(time + offset);
+            }
+            return pair(outputDir, times);
         } catch (IOException e) {
             throw new SceneExtractionException("extraction_failed",
                     "Le dossier de travail de l'extraction n'a pas pu être préparé.",
@@ -130,6 +163,28 @@ public final class SceneFrames {
                 "-vf", "select='gt(scene," + format(threshold) + ")',showinfo,"
                         + "scale=w='min(" + MAX_WIDTH + ",iw)':h=-2",
                 // Une image par changement de plan, et pas une cadence régulière recalculée.
+                "-vsync", "vfr",
+                "-q:v", "4",
+                outputDir.resolve(FRAME_PREFIX + "%05d.jpg").toAbsolutePath().toString());
+    }
+
+    /**
+     * La ligne de commande du zoom. {@code -ss}/{@code -to} AVANT {@code -i} : la recherche est
+     * rapide (par images clés) et l'horloge repart de zéro à {@code -ss} — d'où le décalage rajouté
+     * par {@link #extractEvery}.
+     */
+    static List<String> intervalCommand(Path ffmpeg, Path video, Path outputDir,
+            double fromSeconds, double toSeconds, double everySeconds) {
+        return List.of(
+                ffmpeg.toAbsolutePath().toString(),
+                "-hide_banner",
+                "-nostdin",
+                "-y",
+                "-ss", format(fromSeconds),
+                "-to", format(toSeconds),
+                "-i", video.toAbsolutePath().toString(),
+                "-vf", "fps=1/" + format(everySeconds) + ",showinfo,"
+                        + "scale=w='min(" + MAX_WIDTH + ",iw)':h=-2",
                 "-vsync", "vfr",
                 "-q:v", "4",
                 outputDir.resolve(FRAME_PREFIX + "%05d.jpg").toAbsolutePath().toString());

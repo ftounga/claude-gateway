@@ -60,6 +60,11 @@ public final class ProjectScopes implements ToolScopes {
      * projet du tour suivant. Monté seulement si l'exécution de commandes est autorisée sur ce poste.
      */
     private final BackgroundShells background;
+    /**
+     * Regarder une vidéo (F-190 / SF-190-01) — un seul worker par machine, lié à chaque projet
+     * au moment d'en construire l'aiguillage. {@code null} tant que rien n'est monté.
+     */
+    private volatile fr.claudegateway.runner.video.VideoTools video;
 
     /** Portée sans volet Teams : chemins historiques et tests. */
     public ProjectScopes(Path hostRoot, boolean allowBash, ShellElection shell, Console console) {
@@ -88,6 +93,16 @@ public final class ProjectScopes implements ToolScopes {
         // Le registre de fond n'est monté que là où bash est autorisé : inutile ailleurs, et son
         // absence fait retomber run_in_background en synchrone (retro-compat).
         this.background = allowBash ? new BackgroundShells() : null;
+    }
+
+    /**
+     * Monte les outils vidéo (F-190 / SF-190-01). À appeler au montage, avant le premier tour :
+     * un aiguillage déjà construit ne les verrait pas.
+     */
+    public ProjectScopes withVideo(fr.claudegateway.runner.video.VideoTools tools) {
+        this.video = tools;
+        byProject.clear();
+        return this;
     }
 
     /** Racine canonique du poste — jamais celle d'un projet. */
@@ -122,7 +137,8 @@ public final class ProjectScopes implements ToolScopes {
         // le dossier du projet donne le dépôt git dont on tire le worktree.
         WorktreeTool worktree = new WorktreeTool(hostRoot, folder, git);
         ToolRouter router = new ToolRouter(new FileTools(paths),
-                new BashTool(paths, allowBash, shell, background), teams, worktree);
+                new BashTool(paths, allowBash, shell, background), teams, worktree,
+                video == null ? null : video.bind(paths));
         ToolRouter raced = byProject.putIfAbsent(relative, router);
         return raced == null ? router : raced;
     }

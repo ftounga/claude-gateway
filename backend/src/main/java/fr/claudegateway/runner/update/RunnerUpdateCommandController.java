@@ -30,6 +30,7 @@ import fr.claudegateway.user.UserRole;
 public class RunnerUpdateCommandController {
 
     /** Corps de la demande : {@code force} relance une mise à jour active sans attendre le calme. */
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
     public record RunnerUpdateRequest(Boolean force) {
     }
 

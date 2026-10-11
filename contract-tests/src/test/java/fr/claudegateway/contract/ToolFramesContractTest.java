@@ -186,7 +186,7 @@ class ToolFramesContractTest {
         RunnerCallDispatcher gateway = new RunnerCallDispatcher(registry,
                 ContractMappers.gateway(), (hostId, declared) -> {
                 }, (hostId, declared) -> {
-                }, new ServedRunnerVersion("", ""), 2_000L);
+                }, new ServedRunnerVersion("", ""), ContractLiveness.alwaysAlive(), 2_000L);
 
         sender = new FrameSender(new Console());
         runner = new ToolDispatcher(scopes, capacites, ShellElection.elect(), sender, new Console());

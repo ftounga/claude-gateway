@@ -78,7 +78,8 @@ public final class ToolStack {
                 : fr.claudegateway.runner.teams.TeamsTools.disabled(
                         "Le volet Teams est désactivé sur cette machine (--no-teams).");
         ProjectScopes scopes =
-                new ProjectScopes(config.hostRoot(), config.allowBash(), shell, console, teams);
+                new ProjectScopes(config.hostRoot(), config.allowBash(), shell, console, teams)
+                        .withVideo(video(config, console));
 
         // Ce bloc annonce ce que RunnerMain ne peut pas connaître : la racine du poste et
         // l'interpréteur élu. Il ne dit RIEN de l'exécution de commandes (SF-38-26, D1) — cet état
@@ -105,6 +106,24 @@ public final class ToolStack {
 
         return new ToolStack(
                 new ToolDispatcher(scopes, scopes.capabilities(), shell, sender, console));
+    }
+
+    /**
+     * <b>Regarder une vidéo</b> (F-190 / SF-190-01) : monté sur toute machine, Teams ou pas. Rien
+     * ne se télécharge ici — {@code ffmpeg} n'est cherché qu'à la première extraction, dans le même
+     * cache que F-90.
+     */
+    private static fr.claudegateway.runner.video.VideoTools video(RunnerConfig config,
+            Console console) {
+        fr.claudegateway.runner.teams.ProcessRunner processes =
+                fr.claudegateway.runner.teams.ProcessRunner.real();
+        fr.claudegateway.runner.teams.LocalToolchain toolchain =
+                new fr.claudegateway.runner.teams.LocalToolchain(
+                        new fr.claudegateway.runner.teams.TeamsWorkFolder(config.hostRoot()),
+                        processes, console::info);
+        return new fr.claudegateway.runner.video.VideoTools(
+                new fr.claudegateway.runner.video.VideoFramesWorker(
+                        new fr.claudegateway.runner.teams.SceneFrames(toolchain, processes)));
     }
 
     /**

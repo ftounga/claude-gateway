@@ -100,7 +100,7 @@ class ReadyFrameContractTest {
         RunnerCallDispatcher gateway = new RunnerCallDispatcher(registry,
                 ContractMappers.gateway(), (hostId, declared) -> {
                 }, (hostId, declared) -> retenue.set(declared),
-                new ServedRunnerVersion("", ""), 50L);
+                new ServedRunnerVersion("", ""), ContractLiveness.alwaysAlive(), 50L);
 
         gateway.onFrame(IDENTITY, "ready",
                 ContractMappers.gateway().readTree(readyFrame(List.of("files"))));
@@ -179,6 +179,6 @@ class ReadyFrameContractTest {
         // expirer, et l'attente inutile n'apprend rien.
         return new RunnerCallDispatcher(registry, ContractMappers.gateway(), recorder,
                 (hostId, declared) -> {
-                }, new ServedRunnerVersion("", ""), 50L);
+                }, new ServedRunnerVersion("", ""), ContractLiveness.alwaysAlive(), 50L);
     }
 }

@@ -647,6 +647,11 @@ public class RunnerCallDispatcher implements org.springframework.context.Applica
         if ("bash".equals(tool)) {
             return "bash";
         }
+        // F-190 / SF-190-01 : les outils vidéo exigent la capacité `video` — un runner ancien est
+        // refusé ici, localement, au lieu de l'être au bout du fil.
+        if (tool != null && tool.startsWith(fr.claudegateway.atelier.video.VideoToolCatalog.PREFIX)) {
+            return fr.claudegateway.atelier.video.VideoToolCatalog.CAPABILITY;
+        }
         return tool != null && tool.startsWith("teams_") ? "teams" : "files";
     }
 
