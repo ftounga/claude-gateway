@@ -1,0 +1,284 @@
+<title>Cap et Plume</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+<style>
+/* Maquette sur la peau réelle du terminal NG Portal (charte DESIGN_SYSTEM.md) : un seul monde, sombre. */
+:root {
+  color-scheme: dark;
+  --page: #0F1A28;
+  --term: #1A3A5C;      /* --cg-primary */
+  --panel: #141D33;     /* --cg-navy-2 */
+  --ink: #FFFFFF;
+  --ink-2: #E0E4EA;     /* --cg-divider */
+  --muted: #9FB0C4;
+  --rule: rgba(224,228,234,.14);
+  --gold: #C9973A;      /* --cg-accent */
+  --orange: #F0954F;    /* --cg-orange-2 */
+  --ok: #27AE60;
+  --wait: #F9A825;
+  --f-body: 'Inter', -apple-system, 'Segoe UI', sans-serif;
+  --f-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --f-head: 'Space Grotesk', 'Inter', sans-serif;
+}
+* { box-sizing: border-box; }
+body { background: var(--page); color: var(--ink); font-family: var(--f-body); padding-inline: 16px; padding-block: 32px 64px; }
+.wrap { max-width: 1080px; margin: 0 auto; display: grid; gap: 44px; }
+header.intro h1 { font-family: var(--f-head); font-size: 28px; margin: 0 0 8px; }
+header.intro p { color: var(--ink-2); max-width: 70ch; line-height: 1.55; margin: 0; }
+.part { font-family: var(--f-head); font-size: 22px; margin: 8px 0 0; padding-top: 20px; border-top: 1px solid var(--rule); }
+.part small { display: block; font-family: var(--f-body); font-size: 13px; color: var(--muted); font-weight: 400; margin-top: 4px; }
+.board { display: grid; gap: 12px; }
+.board > h2 { font-family: var(--f-head); font-size: 16px; margin: 0; color: var(--gold); }
+.board > p.why { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; max-width: 74ch; }
+.grid2 { display: grid; grid-template-columns: minmax(0,1fr) 290px; gap: 24px; align-items: start; }
+@media (max-width: 860px) { .grid2 { grid-template-columns: minmax(0,1fr); } }
+
+.term { background: var(--term); border-radius: 10px; overflow: hidden; border: 1px solid var(--rule); min-width: 0; }
+.term-bar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--panel); font-size: 13px; color: var(--ink-2); flex-wrap: wrap; }
+.term-bar b { color: var(--ink); }
+.live { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.live i { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+.spacer { flex: 1; }
+.flux { padding: 20px 20px 4px; display: grid; gap: 12px; font-size: 14px; line-height: 1.55; }
+.q { justify-self: end; background: var(--panel); padding: 10px 14px; border-radius: 10px; max-width: 80%; }
+.a { color: var(--ink-2); display: grid; gap: 6px; }
+.a ul { margin: 0; padding-left: 18px; }
+.a code, .mono { font-family: var(--f-mono); font-size: 12.5px; color: var(--orange); }
+.meta { font-family: var(--f-mono); font-size: 11.5px; color: var(--muted); }
+
+/* --- CAP --- */
+.cap { margin: 4px 20px 8px; border: 1px solid rgba(201,151,58,.35); border-radius: 12px; background: var(--panel); overflow: hidden; }
+.cap-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--rule); }
+.cap-head h3 { margin: 0; font: 600 14px var(--f-head); }
+.cap-head .src { font-size: 11.5px; color: var(--muted); }
+.cap-head button { margin-left: auto; background: none; border: 0; color: var(--muted); font: 12px var(--f-body); cursor: pointer; padding: 4px 6px; border-radius: 6px; }
+.cap-head button:hover { color: var(--ink); }
+.opts { display: grid; }
+.opt { display: grid; grid-template-columns: 28px minmax(0,1fr) auto; gap: 12px; align-items: start; padding: 12px 14px; border: 0; border-bottom: 1px solid var(--rule); background: none; color: inherit; text-align: left; cursor: pointer; font: inherit; width: 100%; }
+.opt:hover, .opt.sel { background: rgba(201,151,58,.08); }
+.opt.sel { box-shadow: inset 3px 0 0 var(--gold); }
+.opt:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+.key { width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; background: rgba(255,255,255,.07); border: 1px solid var(--rule); font: 600 12px var(--f-mono); color: var(--ink); }
+.opt .body { display: grid; gap: 3px; min-width: 0; }
+.opt .title { font-weight: 600; font-size: 14px; }
+.opt .why { font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+.tag { font: 500 11px var(--f-mono); padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.tag.verif { color: #5FD08F; background: rgba(39,174,96,.14); }
+.tag.suite { color: var(--gold); background: rgba(201,151,58,.14); }
+.tag.livrer { color: var(--orange); background: rgba(240,149,79,.14); }
+.tag.risque { color: var(--wait); background: rgba(249,168,37,.14); }
+.opt.other { grid-template-columns: 28px minmax(0,1fr); cursor: default; }
+.opt.other input { width: 100%; background: rgba(255,255,255,.04); border: 1px solid var(--rule); border-radius: 8px; padding: 8px 10px; color: var(--ink); font: 13px var(--f-body); }
+.opt.other input::placeholder { color: var(--muted); }
+.cap-foot { display: flex; gap: 16px; padding: 8px 14px; font-size: 11.5px; color: var(--muted); flex-wrap: wrap; }
+.cap-foot kbd { font: 11px var(--f-mono); padding: 1px 5px; border-radius: 4px; border: 1px solid var(--rule); color: var(--ink-2); }
+
+/* --- Saisie --- */
+.composer { margin: 8px 16px 16px; background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; }
+.composer.filled { border-color: rgba(201,151,58,.5); }
+.c-text { padding: 10px 12px 4px; font-size: 14px; line-height: 1.55; color: var(--ink); min-height: 40px; white-space: pre-wrap; }
+.c-text.ph { color: var(--muted); }
+.c-tools { display: flex; align-items: center; gap: 8px; padding: 6px 8px 8px 12px; flex-wrap: wrap; }
+.c-tools .ic { color: var(--muted); font-size: 15px; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 6px; }
+.btn { border: 0; border-radius: 8px; padding: 6px 12px; font: 600 13px var(--f-body); cursor: pointer; }
+.btn.send { background: var(--orange); color: #1A1206; margin-left: auto; }
+.btn.ghost { background: none; color: var(--ink-2); border: 1px solid var(--rule); }
+.btn.plume { background: rgba(201,151,58,.14); color: var(--gold); display: inline-flex; align-items: center; gap: 6px; }
+.btn.plume:hover { background: rgba(201,151,58,.22); }
+.btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.btn[disabled] { opacity: .5; cursor: default; }
+.badge-p { font: 500 11px var(--f-mono); color: var(--gold); padding: 2px 8px; border-radius: 999px; background: rgba(201,151,58,.12); }
+
+/* --- PLUME : analyse --- */
+.analyse { margin: 8px 16px 0; padding: 12px 14px; border-radius: 10px; background: var(--panel); border: 1px dashed rgba(201,151,58,.45); display: grid; gap: 8px; font-size: 13px; }
+.analyse h4 { margin: 0; font: 600 13px var(--f-head); color: var(--gold); }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-family: var(--f-mono); font-size: 12px; color: var(--muted); }
+.steps li.done { color: var(--ink-2); }
+.steps li.done::before { content: '✓ '; color: #5FD08F; }
+.steps li.run::before { content: '◌ '; color: var(--gold); }
+.steps li.todo::before { content: '· '; }
+
+/* --- PLUME : prompt enrichi --- */
+.rich { padding: 12px 12px 6px; display: grid; gap: 10px; font-size: 13.5px; line-height: 1.5; }
+.sec b { display: block; font: 600 11px var(--f-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--gold); margin-bottom: 2px; }
+.sec ul { margin: 0; padding-left: 18px; color: var(--ink-2); }
+.sec p { margin: 0; color: var(--ink-2); }
+.ask { background: rgba(249,168,37,.10); border: 1px solid rgba(249,168,37,.35); color: var(--ink); border-radius: 4px; padding: 0 4px; }
+.orig { margin: 0 12px; padding: 6px 10px; border-left: 2px solid var(--rule); font-size: 12px; color: var(--muted); }
+
+.notes { display: grid; gap: 10px; font-size: 13px; line-height: 1.5; color: var(--ink-2); }
+.note { border-left: 2px solid var(--rule); padding-left: 12px; }
+.note b { color: var(--ink); display: block; margin-bottom: 2px; }
+.rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; }
+.rule { background: var(--panel); border-radius: 10px; padding: 14px 16px; font-size: 13px; line-height: 1.5; color: var(--ink-2); }
+.rule h3 { margin: 0 0 6px; font-size: 14px; color: var(--ink); font-family: var(--f-head); }
+.narrow { max-width: 400px; }
+@media (max-width: 560px) { .opt { grid-template-columns: 24px minmax(0,1fr); } .opt .tag { grid-column: 2; justify-self: start; } }
+@media (prefers-reduced-motion: no-preference) { .steps li.run { animation: blink 1.2s ease-in-out infinite; } @keyframes blink { 50% { opacity: .45; } } }
+</style>
+
+<div class="wrap">
+  <header class="intro">
+    <h1>Cap et Plume</h1>
+    <p>Maquettes pour validation, sur la peau réelle du terminal. Les données sont des exemples. Les planches sont cliquables : choisissez une option de Cap, ou cliquez sur « Enrichir » pour voir Plume travailler.</p>
+  </header>
+
+  <h2 class="part">Cap · « Et maintenant ? »<small>L'agent qui vient de travailler propose lui-même la suite, à la fin de sa réponse. Remplace le texte fantôme et les puces actuels.</small></h2>
+
+  <section class="board">
+    <h2>1 · Fin de tour : les options apparaissent sous la réponse</h2>
+    <p class="why">De 2 à 4 options, chacune avec une ligne « pourquoi » qui cite ce que l'agent a vu. Une étiquette dit la nature du geste. Un clic ou une touche 1, 2, 3 remplit la saisie, et rien ne part sans vous.</p>
+    <div class="grid2">
+      <div class="term">
+        <div class="term-bar"><b>CAPFM · migration API</b><span class="live"><i></i>connecté</span><span class="spacer"></span><span>Opus 5.5</span></div>
+        <div class="flux">
+          <div class="q">Corrige le test d'intégration qui casse sur la pagination, puis relance la suite.</div>
+          <div class="a">
+            <span>C'est corrigé. Le curseur de pagination était recalculé après le tri, d'où un doublon en page 2.</span>
+            <ul>
+              <li><code>ExportService.java:142</code> calcule le curseur avant le tri</li>
+              <li>Suite d'intégration : 214 tests, 0 échec</li>
+              <li>Non vérifié : l'export CSV utilise le même curseur</li>
+            </ul>
+            <span class="meta">3 min 12 · 6 étapes</span>
+          </div>
+        </div>
+        <div class="cap" id="cap1">
+          <div class="cap-head"><h3>Et maintenant ?</h3><span class="src">proposé par l'agent, d'après ce tour</span><button type="button" data-hide>Masquer</button></div>
+          <div class="opts" id="opts1"></div>
+          <div class="cap-foot"><span><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> choisir</span><span><kbd>Échap</kbd> masquer</span><span>Rien n'est envoyé sans vous</span></div>
+        </div>
+        <div class="composer" id="comp1"><div class="c-text ph" id="ctext1">Écrire à l'agent…</div>
+          <div class="c-tools"><span class="ic">📎</span><span class="ic">🎙</span><button class="btn plume" type="button">✨ Enrichir</button><button class="btn send" type="button">Envoyer</button></div></div>
+      </div>
+      <div class="notes">
+        <div class="note"><b>D'où viennent les options</b>Du modèle principal, dans la même réponse. Il a vu le travail, le plan, <span class="mono">STATE.md</span>, les échecs. Pas un second modèle qui devine.</div>
+        <div class="note"><b>Le « pourquoi »</b>Chaque option s'appuie sur un fait du tour (« non vérifié : l'export CSV »). Une option sans motif n'est pas affichée.</div>
+        <div class="note"><b>Étiquettes</b>Vérifier · Continuer · Livrer · Risque. Quatre mots, toujours les mêmes, pour lire vite.</div>
+        <div class="note"><b>Coût</b>Quelques lignes en fin de réponse. L'appel séparé d'aujourd'hui disparaît.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="board">
+    <h2>2 · Quand Cap ne s'affiche pas</h2>
+    <div class="rules">
+      <div class="rule"><h3>L'agent vous pose une question</h3>La carte de question (F-164) suffit. Deux panneaux qui demandent quelque chose en même temps, c'est un de trop.</div>
+      <div class="rule"><h3>Le tour a échoué ou a été coupé</h3>Le terminal affiche déjà « Reprendre ». Cap n'ajoute rien.</div>
+      <div class="rule"><h3>Vous commencez à écrire</h3>Le panneau se replie sur une ligne « 3 suites proposées ». Il ne vous gêne pas.</div>
+      <div class="rule"><h3>Réponse simple, sans suite évidente</h3>L'agent peut ne rien proposer. Pas de suggestion de remplissage.</div>
+    </div>
+  </section>
+
+  <h2 class="part">Plume · « Enrichir »<small>Un bouton toujours présent. Vous tapez une phrase courte, Plume l'enrichit à partir du contexte, et vous relisez avant d'envoyer.</small></h2>
+
+  <section class="board">
+    <h2>3 · Avant, pendant, après</h2>
+    <p class="why">Cliquez sur « Enrichir ». Plume lit le contexte du sujet, puis remplace votre phrase par une demande structurée. Ce qu'il suppose est surligné « à confirmer ». « Revenir à mon texte » annule.</p>
+    <div class="grid2">
+      <div class="term">
+        <div class="term-bar"><b>CAPFM · migration API</b><span class="live"><i></i>connecté</span><span class="spacer"></span><span>Opus 5.5</span></div>
+        <div class="flux"><div class="meta">… fil du sujet au-dessus …</div></div>
+        <div id="plume-zone"></div>
+        <div class="composer" id="comp2">
+          <div id="ctext2"></div>
+          <div class="c-tools" id="ctools2"></div>
+        </div>
+      </div>
+      <div class="notes">
+        <div class="note"><b>Ce que Plume lit</b>Le fil récent du sujet, <span class="mono">STATE.md</span>, la carte du projet, les attentes ouvertes. Les mêmes sources que l'agent.</div>
+        <div class="note"><b>Ce qu'il n'a pas le droit de faire</b>Inventer. Un fichier, une contrainte ou un chiffre qu'il ne trouve pas dans le contexte est marqué « à confirmer ».</div>
+        <div class="note"><b>Votre phrase reste visible</b>Rappelée en tête, pour juger si l'enrichissement a bien compris.</div>
+        <div class="note"><b>Coût</b>Un appel, seulement quand vous cliquez. Le bouton est grisé quand la saisie est vide.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="board">
+    <h2>4 · Sur téléphone</h2>
+    <p class="why">Mêmes panneaux, les options passent sur deux lignes et l'étiquette descend sous le titre.</p>
+    <div class="term narrow">
+      <div class="term-bar"><b>CAPFM</b><span class="live"><i></i>connecté</span></div>
+      <div class="cap"><div class="cap-head"><h3>Et maintenant ?</h3><button type="button">Masquer</button></div><div class="opts" id="opts3"></div></div>
+      <div class="composer"><div class="c-text ph">Écrire à l'agent…</div><div class="c-tools"><span class="ic">🎙</span><button class="btn plume" type="button">✨ Enrichir</button><button class="btn send" type="button">Envoyer</button></div></div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  var options = [
+    { tag: 'verif', label: 'Vérifier', title: "Vérifier l'export CSV, qui utilise le même curseur",
+      why: "Non vérifié dans ce tour : CsvExporter appelle le même calcul de curseur.",
+      prompt: "Vérifie que l'export CSV n'a pas le même doublon en page 2 : il utilise le même calcul de curseur que ExportService. Ajoute un test s'il manque." },
+    { tag: 'suite', label: 'Continuer', title: "Passer à l'étape 4 du plan : le filtrage par date",
+      why: "Plan du sujet : étapes 1 à 3 faites, l'étape 4 est la prochaine.",
+      prompt: "Passe à l'étape 4 du plan : le filtrage par date sur l'export. Reprends les conventions de l'étape 3." },
+    { tag: 'livrer', label: 'Livrer', title: 'Committer et ouvrir la PR du correctif',
+      why: '214 tests verts, un seul fichier modifié : le correctif est isolé.',
+      prompt: 'Committe le correctif de pagination sur une branche dédiée et ouvre la PR, avec la cause en une phrase dans la description.' }
+  ];
+  function optsHtml(compact) {
+    return options.map(function (o, i) {
+      return '<button class="opt" type="button" data-i="' + i + '"><span class="key">' + (i + 1) + '</span>'
+        + '<span class="body"><span class="title">' + o.title + '</span>' + (compact ? '' : '<span class="why">' + o.why + '</span>') + '</span>'
+        + '<span class="tag ' + o.tag + '">' + o.label + '</span></button>';
+    }).join('') + (compact ? '' : '<div class="opt other"><span class="key">…</span><input id="cap-other" type="text" placeholder="Autre chose : tapez votre suite"></div>');
+  }
+  var opts1 = document.getElementById('opts1');
+  opts1.innerHTML = optsHtml(false);
+  document.getElementById('opts3').innerHTML = optsHtml(true);
+  var ctext1 = document.getElementById('ctext1'), comp1 = document.getElementById('comp1');
+  function choose(i) {
+    opts1.querySelectorAll('.opt').forEach(function (b) { b.classList.toggle('sel', b.getAttribute('data-i') === String(i)); });
+    ctext1.textContent = options[i].prompt; ctext1.classList.remove('ph'); comp1.classList.add('filled');
+  }
+  opts1.addEventListener('click', function (e) { var b = e.target.closest('.opt[data-i]'); if (b) choose(+b.getAttribute('data-i')); });
+  document.addEventListener('keydown', function (e) {
+    if (e.target.tagName === 'INPUT') return;
+    if (['1','2','3'].indexOf(e.key) >= 0) choose(+e.key - 1);
+  });
+  document.querySelector('#cap1 [data-hide]').addEventListener('click', function () {
+    var c = document.getElementById('cap1');
+    c.innerHTML = '<div class="cap-head"><h3>3 suites proposées</h3><button type="button" id="cap-show">Afficher</button></div>';
+    document.getElementById('cap-show').addEventListener('click', function () { location.reload(); });
+  });
+
+  // ---- PLUME ----
+  var zone = document.getElementById('plume-zone'), ctext2 = document.getElementById('ctext2'), tools = document.getElementById('ctools2'), comp2 = document.getElementById('comp2');
+  var mine = 'ajoute la pagination sur l’export';
+  function stateBefore() {
+    zone.innerHTML = ''; comp2.classList.remove('filled');
+    ctext2.innerHTML = '<div class="c-text">' + mine + '</div>';
+    tools.innerHTML = '<span class="ic">📎</span><span class="ic">🎙</span><button class="btn plume" type="button" id="go">✨ Enrichir</button><button class="btn send" type="button">Envoyer</button>';
+    document.getElementById('go').addEventListener('click', stateRun);
+  }
+  function stateRun() {
+    var steps = ['Fil récent du sujet (12 échanges)', 'STATE.md du projet', 'Carte du projet : 3 fichiers liés à l’export', 'Rédaction de la demande'];
+    var n = 0;
+    tools.innerHTML = '<span class="ic">📎</span><span class="ic">🎙</span><button class="btn plume" type="button" disabled>✨ Enrichissement…</button><button class="btn send" type="button" disabled>Envoyer</button>';
+    function draw() {
+      zone.innerHTML = '<div class="analyse" role="status"><h4>Plume lit le contexte</h4><ul class="steps">'
+        + steps.map(function (s, i) { return '<li class="' + (i < n ? 'done' : i === n ? 'run' : 'todo') + '">' + s + '</li>'; }).join('') + '</ul></div>';
+    }
+    draw();
+    var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var t = setInterval(function () { n++; draw(); if (n >= steps.length) { clearInterval(t); stateAfter(); } }, reduce ? 150 : 650);
+  }
+  function stateAfter() {
+    zone.innerHTML = '';
+    comp2.classList.add('filled');
+    ctext2.innerHTML = '<div class="orig">Votre texte : « ' + mine + ' »</div><div class="rich">'
+      + '<div class="sec"><b>Objectif</b><p>Paginer l’export des dossiers (<span class="mono">GET /api/exports</span>), aujourd’hui renvoyé en un seul bloc.</p></div>'
+      + '<div class="sec"><b>Contexte</b><ul><li>Le correctif du curseur (<span class="mono">ExportService.java:142</span>) vient d’être fait dans ce sujet.</li><li>Les autres listes du projet paginent par curseur, pas par numéro de page.</li></ul></div>'
+      + '<div class="sec"><b>Fichiers concernés</b><ul><li><span class="mono">ExportService.java</span>, <span class="mono">ExportController.java</span></li><li><span class="mono">export-list.component.ts</span> (écran)</li></ul></div>'
+      + '<div class="sec"><b>Contraintes</b><ul><li>Même convention de curseur que les autres listes.</li><li>Taille de page : <span class="ask">50 (à confirmer)</span></li></ul></div>'
+      + '<div class="sec"><b>Critère de fin</b><p>Tests d’intégration verts, <span class="ask">l’export CSV inclus ? (à confirmer)</span></p></div>'
+      + '</div>';
+    tools.innerHTML = '<span class="badge-p">enrichi par Plume</span><button class="btn ghost" type="button" id="back">Revenir à mon texte</button><button class="btn send" type="button">Envoyer</button>';
+    document.getElementById('back').addEventListener('click', stateBefore);
+  }
+  stateBefore();
+})();
+</script>

@@ -1,0 +1,279 @@
+<title>Fil des tâches</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+<style>
+/* Maquette sur la peau réelle du terminal NG Portal (charte DESIGN_SYSTEM.md) : un seul monde, sombre. */
+:root {
+  color-scheme: dark;
+  --page: #0F1A28;          /* fond de planche, autour des maquettes */
+  --term: #1A3A5C;          /* --cg-primary : fond du terminal */
+  --panel: #141D33;         /* --cg-navy-2 : surfaces posées sur le terminal */
+  --ink: #FFFFFF;           /* --cg-surface : texte principal sur navy */
+  --ink-2: #E0E4EA;         /* --cg-divider : texte secondaire sur navy */
+  --muted: #9FB0C4;         /* ardoise éclaircie pour l'AA sur navy */
+  --rule: rgba(224,228,234,.14);
+  --gold: #C9973A;          /* --cg-accent : progression, état actif */
+  --orange: #F0954F;        /* --cg-orange-2 : gestes */
+  --ok: #27AE60;            /* --cg-success */
+  --wait: #F9A825;          /* §12 « En attente » */
+  --f-body: 'Inter', -apple-system, 'Segoe UI', sans-serif;
+  --f-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --f-head: 'Space Grotesk', 'Inter', sans-serif;
+}
+* { box-sizing: border-box; }
+body { background: var(--page); color: var(--ink); font-family: var(--f-body); padding-inline: 16px; padding-block: 32px 64px; }
+.wrap { max-width: 1080px; margin: 0 auto; display: grid; gap: 40px; }
+header.intro h1 { font-family: var(--f-head); font-size: 28px; margin: 0 0 8px; text-wrap: balance; }
+header.intro p { color: var(--ink-2); max-width: 68ch; line-height: 1.55; margin: 0; }
+.board { display: grid; gap: 12px; }
+.board > h2 { font-family: var(--f-head); font-size: 16px; letter-spacing: .02em; margin: 0; color: var(--gold); }
+.board > p.why { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; max-width: 72ch; }
+.grid2 { display: grid; grid-template-columns: minmax(0,1fr) 300px; gap: 24px; align-items: start; }
+@media (max-width: 860px) { .grid2 { grid-template-columns: minmax(0,1fr); } }
+
+/* --- Le terminal --- */
+.term { background: var(--term); border-radius: 10px; overflow: hidden; border: 1px solid var(--rule); min-width: 0; }
+.term-bar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--panel); font-size: 13px; color: var(--ink-2); flex-wrap: wrap; }
+.term-bar b { color: var(--ink); font-weight: 600; }
+.live { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.live i { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); display: inline-block; }
+.spacer { flex: 1; }
+.flux { padding: 20px 20px 8px; display: grid; gap: 12px; font-size: 14px; line-height: 1.55; min-height: 120px; }
+.q { justify-self: end; background: var(--panel); padding: 10px 14px; border-radius: 10px; max-width: 80%; }
+.a { color: var(--ink-2); }
+.a code { font-family: var(--f-mono); font-size: 12.5px; color: var(--orange); }
+.liveline { font-family: var(--f-mono); font-size: 12px; color: var(--muted); }
+
+/* --- LE FIL --- */
+.fil { margin: 8px 16px 0; background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
+.fil-head { width: 100%; display: flex; align-items: center; gap: 10px; padding: 9px 12px; background: none; border: 0; color: var(--ink); font: 500 13px var(--f-body); cursor: pointer; text-align: left; }
+.fil-head:focus-visible, .row:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+.fil-head .count { display: inline-flex; gap: 10px; flex-wrap: wrap; }
+.pill { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; padding: 2px 8px; border-radius: 999px; background: rgba(201,151,58,.14); color: var(--gold); font-variant-numeric: tabular-nums; }
+.pill.ok { background: rgba(39,174,96,.16); color: #5FD08F; }
+.pill.wait { background: rgba(249,168,37,.16); color: var(--wait); }
+.pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.chev { margin-left: auto; color: var(--muted); transition: transform .2s; font-size: 12px; }
+.fil[data-open="true"] .chev { transform: rotate(180deg); }
+.mini { display: flex; gap: 4px; margin-left: 4px; }
+.mini span { width: 28px; height: 4px; border-radius: 2px; background: rgba(224,228,234,.15); overflow: hidden; position: relative; }
+.mini span b { position: absolute; inset: 0 auto 0 0; background: var(--gold); border-radius: 2px; }
+.mini span.ok b { background: var(--ok); }
+.mini span.wait b { background: var(--wait); }
+.fil[data-open="true"] .mini { display: none; }
+.rows { display: none; border-top: 1px solid var(--rule); }
+.fil[data-open="true"] .rows { display: block; }
+
+.row { display: grid; grid-template-columns: 150px minmax(0,1fr) 170px 64px; gap: 14px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--rule); cursor: pointer; font-size: 13px; }
+.row:last-child { border-bottom: 0; }
+.row:hover { background: rgba(255,255,255,.03); }
+.row.here { box-shadow: inset 3px 0 0 var(--gold); }
+.subj { display: grid; gap: 1px; min-width: 0; }
+.subj b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.subj small { color: var(--muted); font-size: 11px; }
+.task { min-width: 0; display: grid; gap: 6px; }
+.task .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink-2); }
+.bar { height: 6px; border-radius: 3px; background: rgba(224,228,234,.12); overflow: hidden; position: relative; }
+.bar b { position: absolute; inset: 0 auto 0 0; border-radius: 3px; background: var(--gold); transition: width .6s ease; }
+.bar.ok b { background: var(--ok); }
+.bar.wait b { background: var(--wait); }
+.bar.indet b { width: 30%; animation: slide 1.6s ease-in-out infinite; }
+@keyframes slide { 0% { left: -30%; } 100% { left: 100%; } }
+.state { display: flex; align-items: center; gap: 8px; font-family: var(--f-mono); font-size: 11.5px; color: var(--muted); min-width: 0; }
+.state .tool { color: var(--ink-2); padding: 1px 6px; border-radius: 4px; background: rgba(255,255,255,.06); white-space: nowrap; }
+.state .ok { color: #5FD08F; }
+.state .wait { color: var(--wait); }
+.time { font-family: var(--f-mono); font-size: 12px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.subs { grid-column: 2 / -1; display: grid; gap: 4px; margin-top: -4px; }
+.sub { display: grid; grid-template-columns: 14px minmax(0,1fr) 90px 50px; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
+.sub .bar { height: 4px; }
+.sub em { font-style: normal; font-family: var(--f-mono); font-size: 11px; text-align: right; }
+@media (max-width: 640px) {
+  .row { grid-template-columns: minmax(0,1fr) auto; gap: 6px 10px; }
+  .row .task { grid-column: 1 / -1; grid-row: 2; }
+  .row .state { grid-column: 1 / -1; grid-row: 3; }
+  .row .time { grid-column: 2; grid-row: 1; }
+  .subs { grid-column: 1 / -1; }
+  .sub { grid-template-columns: 14px minmax(0,1fr) 46px; }
+  .sub .bar { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .bar.indet b { animation: none; left: 0; width: 100%; opacity: .5; } .bar b { transition: none; } }
+
+/* --- La saisie --- */
+.composer { margin: 8px 16px 16px; display: flex; align-items: center; gap: 10px; background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: 10px 12px; color: var(--muted); font-size: 14px; }
+.composer .ph { flex: 1; min-width: 0; }
+.composer .send { color: var(--orange); font-weight: 600; font-size: 13px; }
+
+/* --- Notes --- */
+.notes { display: grid; gap: 10px; font-size: 13px; line-height: 1.5; color: var(--ink-2); }
+.note { border-left: 2px solid var(--rule); padding-left: 12px; }
+.note b { color: var(--ink); display: block; margin-bottom: 2px; font-size: 13px; }
+.rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.rule { background: var(--panel); border-radius: 10px; padding: 14px 16px; font-size: 13px; line-height: 1.5; color: var(--ink-2); }
+.rule h3 { margin: 0 0 6px; font-size: 14px; color: var(--ink); font-family: var(--f-head); }
+.toast { display: inline-flex; align-items: center; gap: 10px; background: var(--panel); border: 1px solid rgba(39,174,96,.4); border-radius: 10px; padding: 10px 14px; font-size: 13px; }
+.toast .ck { color: #5FD08F; font-weight: 700; }
+.toast a { color: var(--orange); text-decoration: none; font-weight: 600; }
+.narrow { max-width: 400px; }
+</style>
+
+<div class="wrap">
+  <header class="intro">
+    <h1>Le fil des tâches</h1>
+    <p>Maquette pour validation. Depuis n'importe quel terminal (un sujet ou la racine du poste), une bande au-dessus de la saisie montre tout ce qui tourne sur le poste. Repliée par défaut, absente quand rien ne tourne. Les données sont des exemples. Cliquez sur la bande pour la déplier.</p>
+  </header>
+
+  <!-- PLANCHE 1 -->
+  <section class="board">
+    <h2>1 · Repliée (état par défaut)</h2>
+    <p class="why">Une seule ligne : combien de tâches tournent, combien attendent une décision, combien viennent de finir. Les mini-barres donnent la progression d'un coup d'œil sans déplier.</p>
+    <div class="grid2">
+      <div class="term">
+        <div class="term-bar"><b>CAPFM · migration API</b><span class="live"><i></i>connecté</span><span class="spacer"></span><span>Opus 5.5</span></div>
+        <div class="flux">
+          <div class="q">Corrige le test d'intégration qui casse sur la pagination, puis relance la suite.</div>
+          <div class="liveline">▸ Commande · étape 3 sur 5 · 1 min 52</div>
+        </div>
+        <div class="fil" data-open="false" id="fil-a">
+          <button class="fil-head" type="button" aria-expanded="false" aria-controls="rows-a">
+            <span class="count">
+              <span class="pill"><span class="dot"></span>3 en cours</span>
+              <span class="pill wait"><span class="dot"></span>1 attend votre accord</span>
+              <span class="pill ok">✓ 1 terminée</span>
+            </span>
+            <span class="mini" aria-hidden="true"><span><b style="width:60%"></b></span><span><b style="width:50%"></b></span><span class="wait"><b style="width:40%"></b></span><span class="ok"><b style="width:100%"></b></span></span>
+            <span class="chev" aria-hidden="true">▲</span>
+          </button>
+          <div class="rows" id="rows-a"></div>
+        </div>
+        <div class="composer"><span class="ph">Écrire à l'agent…</span><span class="send">Envoyer</span></div>
+      </div>
+      <div class="notes">
+        <div class="note"><b>Place</b>Juste au-dessus de la saisie, sous les bandes existantes. Elle ne s'ajoute pas quand rien ne tourne.</div>
+        <div class="note"><b>Ce qui compte d'abord</b>« Attend votre accord » passe avant tout en ambre (§12 de la charte) : c'est l'état qui a déjà échappé douze heures (F-47).</div>
+        <div class="note"><b>Coût</b>Aucun appel au modèle. La bande lit les tours déjà en cours, comme la mosaïque.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PLANCHE 2 -->
+  <section class="board">
+    <h2>2 · Dépliée</h2>
+    <p class="why">Une ligne par tâche : sujet, demande, barre de progression (étapes du plan faites sur prévues, ou barre animée sans plan), outil en cours, durée. Les sous-agents sont listés sous leur tâche. Un clic ouvre le sujet.</p>
+    <div class="grid2">
+      <div class="term">
+        <div class="term-bar"><b>Racine du poste</b><span class="live"><i></i>connecté</span><span class="spacer"></span><span>Opus 5.5</span></div>
+        <div class="flux">
+          <div class="q">Fais-moi le point sur mes engagements de la semaine.</div>
+          <div class="a">Voici ce qui reste ouvert… <code>STATE.md</code> est à jour.</div>
+        </div>
+        <div class="fil" data-open="true" id="fil-b">
+          <button class="fil-head" type="button" aria-expanded="true" aria-controls="rows-b">
+            <span class="count">
+              <span class="pill"><span class="dot"></span>3 en cours</span>
+              <span class="pill wait"><span class="dot"></span>1 attend votre accord</span>
+              <span class="pill ok">✓ 1 terminée</span>
+            </span>
+            <span class="mini" aria-hidden="true"></span>
+            <span class="chev" aria-hidden="true">▲</span>
+          </button>
+          <div class="rows" id="rows-b"></div>
+        </div>
+        <div class="composer"><span class="ph">Écrire à l'agent…</span><span class="send">Envoyer</span></div>
+      </div>
+      <div class="notes">
+        <div class="note"><b>Ordre des lignes</b>1. ce qui attend une décision · 2. ce qui tourne, du plus ancien au plus récent · 3. ce qui vient de finir.</div>
+        <div class="note"><b>Le sujet courant</b>Repéré par un filet or à gauche, pour savoir ce qui se passe « ici ».</div>
+        <div class="note"><b>Terminée</b>La ligne passe au vert avec ✓ et reste visible 10 minutes, puis disparaît.</div>
+        <div class="note"><b>Interrompre</b>Pas depuis la bande : on ouvre le sujet. Un geste destructeur reste à côté de ce qu'il arrête.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PLANCHE 3 -->
+  <section class="board">
+    <h2>3 · Fin d'une tâche, vous êtes ailleurs</h2>
+    <p class="why">Si vous travaillez dans un autre sujet, un bandeau discret annonce la fin. Le son est une option, coupée par défaut.</p>
+    <div class="toast" role="status"><span class="ck">✓</span><span><b>LDIC-223</b> · « Préparer la note de cadrage » est terminé · 2 min 05</span><a href="#planche3">Ouvrir</a></div>
+  </section>
+
+  <!-- PLANCHE 4 -->
+  <section class="board">
+    <h2>4 · Sur téléphone</h2>
+    <p class="why">Même bande, les lignes passent sur trois niveaux. Les barres de sous-agents disparaissent, leur nom et leur durée restent.</p>
+    <div class="term narrow">
+      <div class="term-bar"><b>SCP</b><span class="live"><i></i>connecté</span></div>
+      <div class="fil" data-open="true" id="fil-c">
+        <button class="fil-head" type="button" aria-expanded="true" aria-controls="rows-c">
+          <span class="count"><span class="pill"><span class="dot"></span>3 en cours</span><span class="pill wait"><span class="dot"></span>1 accord</span></span>
+          <span class="mini" aria-hidden="true"></span>
+          <span class="chev" aria-hidden="true">▲</span>
+        </button>
+        <div class="rows" id="rows-c"></div>
+      </div>
+      <div class="composer"><span class="ph">Écrire à l'agent…</span><span class="send">Envoyer</span></div>
+    </div>
+  </section>
+
+  <!-- RÈGLES -->
+  <section class="board">
+    <h2>Règles proposées</h2>
+    <div class="rules">
+      <div class="rule"><h3>Active par défaut</h3>Pas de réglage à trouver. La bande n'existe que lorsqu'au moins une tâche tourne ou vient de finir.</div>
+      <div class="rule"><h3>Son coupé par défaut</h3>Activable dans les préférences de notification. Il ne joue que si vous n'êtes pas sur le sujet qui finit.</div>
+      <div class="rule"><h3>Portée : le poste</h3>Tous les sujets et la racine d'un même poste. Pas les autres postes, pour ne pas mêler les clients.</div>
+      <div class="rule"><h3>Charte</h3>Or pour la progression, ambre pour « attend votre accord », vert pour terminé. Aucune couleur nouvelle.</div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  var tasks = [
+    { subj: 'SCP', sub: 'sujet', task: 'Pousser la branche et ouvrir la PR', state: 'wait', label: 'attend votre accord · git push', pct: 40, time: '3 min 40' },
+    { subj: 'Racine du poste', sub: 'racine', task: 'Synthèse du matin : courriels et Teams', state: 'run', tool: 'Lecture', step: '2 / 4', pct: 50, time: '0 min 42' },
+    { subj: 'CAPFM', sub: 'sujet · ici', here: true, task: "Corriger le test d'intégration (pagination)", state: 'run', tool: 'Commande', step: '3 / 5', pct: 60, time: '1 min 52',
+      subs: [ { name: 'Explorer les appels paginés', pct: 100, done: true, time: '0 min 31' }, { name: 'Lire les journaux du dernier échec', pct: 55, time: '0 min 48' } ] },
+    { subj: 'Note DSI', sub: 'sujet', task: 'Rédiger la fiche « Pour votre DSI »', state: 'run', tool: 'Écriture', indet: true, time: '4 min 10' },
+    { subj: 'LDIC-223', sub: 'sujet', task: 'Préparer la note de cadrage', state: 'ok', pct: 100, time: '2 min 05' }
+  ];
+  function row(t, mark) {
+    var cls = t.state === 'ok' ? ' ok' : t.state === 'wait' ? ' wait' : '';
+    var bar = '<div class="bar' + cls + (t.indet ? ' indet' : '') + '"><b style="width:' + (t.indet ? 30 : t.pct) + '%"></b></div>';
+    var st = t.state === 'ok' ? '<span class="ok">✓ terminée</span>'
+           : t.state === 'wait' ? '<span class="wait">● ' + t.label + '</span>'
+           : '<span class="tool">' + t.tool + '</span>' + (t.step ? '<span>étape ' + t.step + '</span>' : '<span>sans plan</span>');
+    var subs = '';
+    if (t.subs) {
+      subs = '<div class="subs">' + t.subs.map(function (s) {
+        return '<div class="sub"><span>' + (s.done ? '✓' : '↳') + '</span><span>' + s.name + '</span><div class="bar' + (s.done ? ' ok' : '') + '"><b style="width:' + s.pct + '%"></b></div><em>' + s.time + '</em></div>';
+      }).join('') + '</div>';
+    }
+    return '<div class="row' + (t.here ? ' here' : '') + '" tabindex="0" role="link" aria-label="Ouvrir le sujet ' + t.subj + '">'
+      + '<div class="subj"><b>' + t.subj + '</b><small>' + t.sub + '</small></div>'
+      + '<div class="task"><span class="t">' + t.task + '</span>' + bar + '</div>'
+      + '<div class="state">' + st + '</div>'
+      + '<div class="time">' + t.time + '</div>' + subs + '</div>';
+  }
+  ['a', 'b', 'c'].forEach(function (k) {
+    var rows = document.getElementById('rows-' + k);
+    rows.innerHTML = tasks.map(row).join('');
+    var fil = document.getElementById('fil-' + k);
+    var head = fil.querySelector('.fil-head');
+    head.addEventListener('click', function () {
+      var open = fil.getAttribute('data-open') !== 'true';
+      fil.setAttribute('data-open', String(open));
+      head.setAttribute('aria-expanded', String(open));
+    });
+  });
+  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    setInterval(function () {
+      document.querySelectorAll('.row:not(.here) .bar:not(.ok):not(.wait):not(.indet) b, .row.here > .task .bar b').forEach(function (b) {
+        var w = parseFloat(b.style.width) || 0;
+        b.style.width = (w >= 95 ? 20 : w + 3) + '%';
+      });
+    }, 1200);
+  }
+})();
+</script>
