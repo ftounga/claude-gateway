@@ -668,6 +668,23 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse("no_live_turn", ex.getMessage()));
     }
 
+    @ExceptionHandler(fr.claudegateway.atelier.InvalidThreadHandoffException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidThreadHandoff(
+            fr.claudegateway.atelier.InvalidThreadHandoffException ex) {
+        // F-117 / SF-117-09 : jamais le texte soumis dans le journal (il peut porter du code client).
+        log.debug("Correction de passation refusee : texte non conforme");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("invalid_handoff", ex.getMessage()));
+    }
+
+    @ExceptionHandler(fr.claudegateway.atelier.ThreadHandoffConflictException.class)
+    public ResponseEntity<ErrorResponse> handleThreadHandoffConflict(
+            fr.claudegateway.atelier.ThreadHandoffConflictException ex) {
+        log.debug("Correction de passation refusee : {}", ex.getCode());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse(ex.getCode(), ex.getMessage()));
+    }
+
     @ExceptionHandler(fr.claudegateway.atelier.StorageExecutionClosedException.class)
     public ResponseEntity<ErrorResponse> handleStorageExecutionClosed(
             fr.claudegateway.atelier.StorageExecutionClosedException ex) {
