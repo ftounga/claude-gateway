@@ -1,5 +1,10 @@
 # Mini-spec — F-117 / SF-117-03 Le nouveau départ visible, et suggéré
 
+> **Retirée en partie le 2026-10-11 par SF-117-10** (`SF-117-10-retrait-bandeau-40-tours.md`) : le
+> **bandeau de suggestion** (« Cette conversation est longue — l'alléger ? », seuil `LONG_THREAD_TURNS = 40`)
+> est supprimé — la compaction automatique allège le fil au bon moment. Le bouton d'en-tête
+> **« Nouveau départ »** reste, libellé « repartir à blanc pour changer de sujet ».
+
 ## Identifiant
 
 `F-117 / SF-117-03`
@@ -10,7 +15,7 @@
 
 ## Statut
 
-`ready`
+`done` — bandeau retiré par SF-117-10
 
 ## Date de création
 

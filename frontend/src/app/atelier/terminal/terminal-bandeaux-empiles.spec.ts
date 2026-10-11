@@ -69,17 +69,8 @@ describe('AtelierTerminalComponent — bandeaux empilés sur mobile (F-158 / SF-
     return css.replace(/\s+/g, ' ');
   }
 
-  it('sous 819 px, le bandeau de compaction empile ses boutons sous le texte (pleine largeur)', () => {
-    const css = mobileMediaCss();
-    // Le conteneur autorise le passage à la ligne…
-    expect(css).toMatch(/terminal-compaction-hint[^}]*flex-wrap:\s*wrap/);
-    // …et la rangée d'actions prend toute la largeur → elle saute SOUS le texte.
-    expect(css).toMatch(/terminal-compaction-hint-actions[^}]*flex:\s*1\s+1\s+100%/);
-  });
-
-  it('sous 819 px, les boutons du bandeau de compaction restent tactiles (>= 44 px)', () => {
-    const css = mobileMediaCss();
-    expect(css).toMatch(/terminal-compaction-hint-actions[^}]*button[^}]*min-height:\s*44px/);
+  it('le bandeau « conversation longue » n\'a plus de règle mobile (retiré, F-117 / SF-117-10)', () => {
+    expect(mobileMediaCss()).not.toMatch(/terminal-compaction-hint/);
   });
 
   it('sous 819 px, la proposition de runner empile aussi ses actions (pleine largeur, >= 44 px)', () => {
