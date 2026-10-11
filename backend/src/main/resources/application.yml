@@ -177,6 +177,13 @@ app:
     # livraison. Le battement n'est ni persisté, ni compté, ni visible (lu par `TurnHeartbeat`).
     stream:
       heartbeat: ${APP_ATELIER_STREAM_HEARTBEAT:15000}
+    # Plume (F-193 / SF-193-01) : « ✨ Enrichir » transforme une phrase courte en demande structurée,
+    # sur geste de l'utilisateur, via `AIProvider`. Appel séparé, hors boucle ; jetons au journal
+    # d'usage. `model` vide ⇒ le modèle de la boucle (`app.atelier.model`) : justesse avant coût.
+    # Coupe-circuit réversible sans livraison (faux ⇒ la route répond 503, aucun appel).
+    enrich:
+      enabled: ${APP_ATELIER_ENRICH_ENABLED:true}
+      model: ${APP_ATELIER_ENRICH_MODEL:}
     # Recherche SÉMANTIQUE du `recall` (F-162 / SF-162-06) : embeddings des messages + similarité
     # pgvector (cosine), pour retrouver un passage PAR LE SENS. POSTGRESQL uniquement (la colonne
     # `vector` n'existe qu'en prod) ; le MOT-CLÉ (SF-162-01) reste le repli qui ne casse jamais.
