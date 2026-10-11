@@ -5641,6 +5641,11 @@ public class AtelierChatService implements RelayInterruptTarget {
             // F-150 / SF-150-02 : une sous-tâche `task` peut durer — sa consigne part à l'écran AVANT.
             case "task" -> new AtelierProgressListener.AtelierStepEvent("task",
                     shorten(arg(input, "prompt"), STEP_COMMAND_CHARS));
+            // F-190 / SF-190-05 : la vidéo dit ce qu'elle fait — mode, fichier, son — dès le départ.
+            case fr.claudegateway.atelier.video.VideoToolCatalog.IMAGES ->
+                    new AtelierProgressListener.AtelierStepEvent("video", videoStep(input));
+            case fr.claudegateway.atelier.video.VideoToolCatalog.STATUS ->
+                    new AtelierProgressListener.AtelierStepEvent("video", "suivi de l'extraction");
             // Le plan a son propre affichage (SF-39-13) : une étape de plus le dirait deux fois.
             case "set_plan" -> null;
             // Le plan soumis a son propre affichage (SF-121-10, comme set_plan) : pas d'étape en double.
@@ -5653,6 +5658,32 @@ public class AtelierChatService implements RelayInterruptTarget {
                     ? null
                     : new AtelierProgressListener.AtelierStepEvent(call.name(), auditTarget(call));
         };
+    }
+
+    /**
+     * L'étiquette d'une extraction vidéo (F-190 / SF-190-05) : le mode (plans ou zoom), le fichier,
+     * et le son s'il est demandé — ce que l'utilisateur doit lire pour savoir ce qui se passe.
+     */
+    String videoStep(JsonNode input) {
+        String path = arg(input, "path");
+        String file = path == null || path.isBlank() ? "(vidéo non précisée)"
+                : path.substring(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1);
+        String mode = arg(input, "mode");
+        String what;
+        if (mode == null || mode.isBlank() || "plans".equalsIgnoreCase(mode)) {
+            what = "extraction des plans";
+        } else if ("intervalle".equalsIgnoreCase(mode) || "interval".equalsIgnoreCase(mode)) {
+            String from = arg(input, "from");
+            String to = arg(input, "to");
+            String every = arg(input, "every_seconds");
+            what = "zoom " + (from == null ? "?" : from) + " → " + (to == null ? "?" : to)
+                    + ", toutes les " + (every == null ? "5" : every) + " s";
+        } else {
+            what = "extraction (" + mode + ")";
+        }
+        boolean sound = (arg(input, "transcript") != null && !arg(input, "transcript").isBlank())
+                || input != null && input.path("transcribe").asBoolean(false);
+        return shorten(what + (sound ? " + son" : "") + " · " + file, STEP_COMMAND_CHARS);
     }
 
     /** Tronque un texte à {@code max} caractères, sans marqueur : c'est une étiquette, pas un contenu. */
