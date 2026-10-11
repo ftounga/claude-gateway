@@ -101,16 +101,33 @@ public final class VideoTools {
                     ? seconds(input, "every_seconds") : DEFAULT_EVERY_SECONDS;
             checkInterval(from, to, every);
         }
+        // SF-190-03 : le son. Une transcription fournie est vérifiée AVANT de démarrer ; elle
+        // l'emporte sur `transcribe`.
+        Path transcript = null;
+        String rawTranscript = text(input, "transcript");
+        if (!rawTranscript.isBlank()) {
+            PathResolver.Resolved resolvedTranscript = paths.resolve(rawTranscript);
+            transcript = resolvedTranscript.path();
+            if (!Files.isRegularFile(transcript)) {
+                throw new ToolException("not_found", "Je ne trouve pas la transcription « "
+                        + resolvedTranscript.display() + " ».");
+            }
+        }
+        boolean transcribe = transcript == null && bool(input, "transcribe");
+        String sound = transcript != null ? "|t=" + identity(transcript)
+                : transcribe ? "|whisper" : "";
         String videoKey = identity(video);
         Path baseDir = paths.root().resolve(VIDEO_DIR).resolve(slug(video) + "-"
                 + videoKey.substring(0, 8));
         Path dir = mode == VideoFramesWorker.Mode.PLANS ? baseDir
                 : baseDir.resolve("zoom-" + whole(from) + "-" + whole(to) + "-" + whole(every));
-        String id = mode == VideoFramesWorker.Mode.PLANS ? videoKey
-                : hash(videoKey + "|" + from + "|" + to + "|" + every);
+        String id = mode == VideoFramesWorker.Mode.PLANS
+                ? (sound.isEmpty() ? videoKey : hash(videoKey + sound))
+                : hash(videoKey + "|" + from + "|" + to + "|" + every + sound);
 
         VideoJob job = worker.startOrResume(new VideoFramesWorker.Request(id, video, dir, mode,
-                        from, to, every, bool(input, "restart"), paths::relativize),
+                        from, to, every, bool(input, "restart"), paths::relativize, transcript,
+                        transcribe),
                 message -> context.stream("stdout", message + System.lineSeparator()));
         return ToolOutcome.ok(render(job, true));
     }
@@ -186,6 +203,7 @@ public final class VideoTools {
                             out.append("  case ").append(cell.index()).append(" · ")
                                     .append(cell.at()).append(" · ").append(cell.framePath())
                                     .append('\n');
+                            said(out, cell.said());
                         }
                     }
                     out.append("Pour voir un passage de plus près : video_images en mode "
@@ -196,9 +214,13 @@ public final class VideoTools {
                             + "ouverte.\n");
                     for (VideoJob.Frame frame : frames) {
                         out.append(frame.at()).append("  ").append(frame.path()).append('\n');
+                        said(out, frame.said());
                     }
                     out.append("Pour voir un passage de plus près : video_images en mode "
                             + "« intervalle » avec from, to et every_seconds.\n");
+                }
+                if (!job.transcript().isBlank()) {
+                    out.append("Transcription complète : ").append(job.transcript()).append('\n');
                 }
                 for (String gap : job.gaps()) {
                     out.append("Manque : ").append(gap).append('\n');
@@ -219,6 +241,13 @@ public final class VideoTools {
                     : "Toujours en cours : redemande video_images_status dans un moment.\n");
         }
         return out.toString();
+    }
+
+    /** Ce qui se disait pendant l'image (SF-190-03), sous sa ligne ; rien si rien n'a été dit. */
+    private static void said(StringBuilder out, String said) {
+        if (said != null && !said.isBlank()) {
+            out.append("      dit : « ").append(said).append(" »\n");
+        }
     }
 
     // ------------------------------------------------------------------ entrées

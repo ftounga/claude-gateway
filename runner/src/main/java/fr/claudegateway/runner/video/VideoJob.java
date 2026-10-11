@@ -33,6 +33,7 @@ public final class VideoJob {
         EXTRACTION("Extraction des images"),
         TRI("Tri des images"),
         PLANCHES("Composition des planches"),
+        SON("Lecture du son"),
         TERMINE("Terminé"),
         ECHOUE("Échec");
 
@@ -52,7 +53,15 @@ public final class VideoJob {
     }
 
     /** Une image retenue : son instant dans la vidéo et son chemin, tel que {@code read_file} le lit. */
-    public record Frame(double offsetSeconds, String path) {
+    public record Frame(double offsetSeconds, String path, String said) {
+
+        public Frame(double offsetSeconds, String path) {
+            this(offsetSeconds, path, "");
+        }
+
+        public Frame {
+            said = said == null ? "" : said;
+        }
 
         public String at() {
             return clock(offsetSeconds);
@@ -60,7 +69,15 @@ public final class VideoJob {
     }
 
     /** Une case de planche : son numéro (1 à 16), son instant, l'image en pleine taille. */
-    public record Cell(int index, double offsetSeconds, String framePath) {
+    public record Cell(int index, double offsetSeconds, String framePath, String said) {
+
+        public Cell(int index, double offsetSeconds, String framePath) {
+            this(index, offsetSeconds, framePath, "");
+        }
+
+        public Cell {
+            said = said == null ? "" : said;
+        }
 
         public String at() {
             return clock(offsetSeconds);
@@ -86,6 +103,7 @@ public final class VideoJob {
     private final List<Frame> frames = new ArrayList<>();
     private final List<String> gaps = new ArrayList<>();
     private final List<Sheet> sheets = new ArrayList<>();
+    private String transcript = "";
     private String failure = "";
     private String remedy = "";
 
@@ -136,6 +154,11 @@ public final class VideoJob {
         return List.copyOf(gaps);
     }
 
+    /** Chemin de la transcription complète (fournie ou produite), ou vide. */
+    public synchronized String transcript() {
+        return transcript;
+    }
+
     public synchronized String failure() {
         return failure;
     }
@@ -163,6 +186,33 @@ public final class VideoJob {
         this.sheets.clear();
         this.sheets.addAll(composed);
         this.gaps.addAll(missing);
+    }
+
+    /**
+     * Le son aligné (SF-190-03) : ce qui se disait pendant chaque image, par chemin d'image.
+     */
+    synchronized void heard(java.util.Map<String, String> saidByFrame, String transcriptPath,
+            List<String> missing) {
+        this.transcript = transcriptPath == null ? "" : transcriptPath;
+        List<Frame> withSound = new ArrayList<>();
+        for (Frame frame : frames) {
+            withSound.add(new Frame(frame.offsetSeconds(), frame.path(),
+                    saidByFrame.getOrDefault(frame.path(), "")));
+        }
+        frames.clear();
+        frames.addAll(withSound);
+        List<Sheet> sheetsWithSound = new ArrayList<>();
+        for (Sheet sheet : sheets) {
+            List<Cell> cells = new ArrayList<>();
+            for (Cell cell : sheet.cells()) {
+                cells.add(new Cell(cell.index(), cell.offsetSeconds(), cell.framePath(),
+                        saidByFrame.getOrDefault(cell.framePath(), "")));
+            }
+            sheetsWithSound.add(new Sheet(sheet.path(), cells));
+        }
+        sheets.clear();
+        sheets.addAll(sheetsWithSound);
+        gaps.addAll(missing);
     }
 
     synchronized void failed(String why, String how) {
@@ -197,7 +247,8 @@ public final class VideoJob {
         root.put("examined", examined);
         ArrayNode list = root.putArray("frames");
         for (Frame frame : frames) {
-            list.addObject().put("offsetSeconds", frame.offsetSeconds()).put("path", frame.path());
+            list.addObject().put("offsetSeconds", frame.offsetSeconds()).put("path", frame.path())
+                    .put("said", frame.said());
         }
         ArrayNode planches = root.putArray("sheets");
         for (Sheet sheet : sheets) {
@@ -205,11 +256,13 @@ public final class VideoJob {
             ArrayNode cellNodes = node.putArray("cells");
             for (Cell cell : sheet.cells()) {
                 cellNodes.addObject().put("index", cell.index())
-                        .put("offsetSeconds", cell.offsetSeconds()).put("framePath", cell.framePath());
+                        .put("offsetSeconds", cell.offsetSeconds()).put("framePath", cell.framePath())
+                        .put("said", cell.said());
             }
         }
         ArrayNode missing = root.putArray("gaps");
         gaps.forEach(missing::add);
+        root.put("transcript", transcript);
         root.put("failure", failure);
         root.put("remedy", remedy);
         try {
@@ -242,19 +295,21 @@ public final class VideoJob {
             job.examined = root.path("examined").asInt();
             for (JsonNode frame : root.path("frames")) {
                 job.frames.add(new Frame(frame.path("offsetSeconds").asDouble(),
-                        frame.path("path").asText()));
+                        frame.path("path").asText(), frame.path("said").asText("")));
             }
             for (JsonNode sheet : root.path("sheets")) {
                 List<Cell> cells = new ArrayList<>();
                 for (JsonNode cell : sheet.path("cells")) {
                     cells.add(new Cell(cell.path("index").asInt(),
-                            cell.path("offsetSeconds").asDouble(), cell.path("framePath").asText()));
+                            cell.path("offsetSeconds").asDouble(), cell.path("framePath").asText(),
+                            cell.path("said").asText("")));
                 }
                 job.sheets.add(new Sheet(sheet.path("path").asText(), cells));
             }
             for (JsonNode gap : root.path("gaps")) {
                 job.gaps.add(gap.asText());
             }
+            job.transcript = root.path("transcript").asText("");
             job.failure = root.path("failure").asText("");
             job.remedy = root.path("remedy").asText("");
             Phase stored = parsePhase(root.path("phase").asText());

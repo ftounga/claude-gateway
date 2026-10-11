@@ -162,6 +162,8 @@ class AtelierChatServiceVideoToolsTest {
         AgentTool status = service.buildTools(userId, workspace).stream()
                 .filter(t -> t.name().equals("video_images_status")).findFirst().orElseThrow();
         assertThat(status.description()).contains("PLANCHES CONTACT").contains("Ouvre d'abord les planches");
+        // SF-190-03 : le son à côté de l'image.
+        assertThat(images.inputSchema().toString()).contains("transcript").contains("transcribe");
     }
 
     @Test

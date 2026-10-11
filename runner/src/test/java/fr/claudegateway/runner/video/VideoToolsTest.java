@@ -274,6 +274,151 @@ class VideoToolsTest {
         assertEquals(42.5d, VideoTools.seconds(input("t", "42,5"), "t"));
     }
 
+    @Test
+    void une_transcription_fournie_pose_ce_qui_se_disait_a_cote_de_chaque_image() throws IOException {
+        deposit("demo.mp4");
+        Files.writeString(home.resolve(".atelier/entrees/demo.vtt"), """
+                WEBVTT
+
+                00:00:01.000 --> 00:00:02.000
+                <v Avant>Je parle avant la première image.</v>
+
+                00:00:12.000 --> 00:00:14.000
+                <v Mickaël>Voici le board principal.</v>
+
+                00:00:20.000 --> 00:00:22.000
+                <v Mickaël>Avec ses cinq groupes.</v>
+
+                00:05:06.000 --> 00:05:08.000
+                <v Francky>Et Alarm for Tech ?</v>
+                """);
+        VideoTools tools = tools(VideoFixtures.frames(home, writing(2, 10.0, 305.0)), inline());
+        ObjectNode request = input("path", ".atelier/entrees/demo.mp4");
+        request.put("transcript", ".atelier/entrees/demo.vtt");
+
+        String status = statusOf(tools, ok(tools.execute(VideoTools.IMAGES, request,
+                ToolContext.none(), paths())));
+
+        assertTrue(status.contains("dit : « Mickaël : Voici le board principal. / Mickaël : Avec ses cinq groupes. »"),
+                status);
+        assertTrue(status.contains("dit : « Francky : Et Alarm for Tech ? »"), status);
+        assertTrue(status.contains("1 réplique avant la première image"), status);
+        assertTrue(status.contains("Transcription complète : .atelier/entrees/demo.vtt"), status);
+    }
+
+    @Test
+    void une_transcription_sans_horodatage_laisse_les_images_et_nomme_le_manque() throws IOException {
+        deposit("demo.mp4");
+        Files.writeString(home.resolve(".atelier/entrees/notes.txt"), "Rien de daté.");
+        VideoTools tools = tools(VideoFixtures.frames(home, writing(1, 4.0)), inline());
+        ObjectNode request = input("path", ".atelier/entrees/demo.mp4");
+        request.put("transcript", ".atelier/entrees/notes.txt");
+
+        String status = statusOf(tools, ok(tools.execute(VideoTools.IMAGES, request,
+                ToolContext.none(), paths())));
+
+        assertTrue(status.contains("étape : Terminé"), status);
+        assertTrue(status.contains("sans horodatage lisible"), status);
+        assertFalse(status.contains("dit : "), status);
+    }
+
+    @Test
+    void transcrire_sur_le_poste_aligne_le_texte_produit() throws IOException {
+        deposit("demo.mp4");
+        VideoTranscriber fake = (video, dir) -> {
+            try {
+                Path readable = Files.writeString(dir.resolve("transcript.txt"), "texte complet");
+                return new VideoTranscriber.Transcribed(
+                        List.of(new TimedTranscript.Line(5.0, "", "Bienvenue dans Monday.")), readable);
+            } catch (IOException e) {
+                throw new java.io.UncheckedIOException(e);
+            }
+        };
+        VideoTools tools = new VideoTools(new VideoFramesWorker(
+                VideoFixtures.frames(home, writing(1, 2.0)), fake, inline()));
+        ObjectNode request = input("path", ".atelier/entrees/demo.mp4");
+        request.put("transcribe", true);
+
+        String status = statusOf(tools, ok(tools.execute(VideoTools.IMAGES, request,
+                ToolContext.none(), paths())));
+
+        assertTrue(status.contains("dit : « Bienvenue dans Monday. »"), status);
+        assertTrue(status.contains("Transcription complète : .atelier/video/"), status);
+    }
+
+    @Test
+    void un_transcripteur_indisponible_laisse_les_images_et_donne_le_remede() throws IOException {
+        deposit("demo.mp4");
+        VideoTranscriber missing = (video, dir) -> {
+            throw new VideoTranscriber.Unavailable("whisper.cpp introuvable", "brew install whisper-cpp");
+        };
+        VideoTools tools = new VideoTools(new VideoFramesWorker(
+                VideoFixtures.frames(home, writing(1, 2.0)), missing, inline()));
+        ObjectNode request = input("path", ".atelier/entrees/demo.mp4");
+        request.put("transcribe", true);
+
+        String status = statusOf(tools, ok(tools.execute(VideoTools.IMAGES, request,
+                ToolContext.none(), paths())));
+
+        assertTrue(status.contains("étape : Terminé"), status);
+        assertTrue(status.contains("whisper.cpp introuvable — brew install whisper-cpp"), status);
+    }
+
+    @Test
+    void changer_la_source_du_son_refait_le_travail() throws IOException {
+        deposit("demo.mp4");
+        Files.writeString(home.resolve(".atelier/entrees/demo.vtt"), "WEBVTT\n");
+        AtomicInteger runs = new AtomicInteger();
+        ProcessRunner ffmpeg = (command, dir, timeout) -> {
+            runs.incrementAndGet();
+            VideoFixtures.writeDistinctFrames(Path.of(command.get(command.size() - 1)).getParent(), 1);
+            return result(1.0);
+        };
+        VideoTools tools = tools(VideoFixtures.frames(home, ffmpeg), inline());
+        ObjectNode silent = input("path", ".atelier/entrees/demo.mp4");
+        ObjectNode withSound = input("path", ".atelier/entrees/demo.mp4");
+        withSound.put("transcript", ".atelier/entrees/demo.vtt");
+
+        String first = ok(tools.execute(VideoTools.IMAGES, silent, ToolContext.none(), paths()));
+        String second = ok(tools.execute(VideoTools.IMAGES, withSound, ToolContext.none(), paths()));
+        ok(tools.execute(VideoTools.IMAGES, withSound, ToolContext.none(), paths()));
+
+        assertFalse(jobId(first).equals(jobId(second)), "une autre source de son, un autre travail");
+        assertEquals(2, runs.get(), "la même demande avec le son est reprise, pas refaite");
+    }
+
+    @Test
+    void le_son_aligne_survit_au_redemarrage_du_runner() throws IOException {
+        deposit("demo.mp4");
+        Files.writeString(home.resolve(".atelier/entrees/demo.vtt"),
+                "WEBVTT\n\n00:00:03.000 --> 00:00:04.000\n<v Mickaël>Le board RH.</v>\n");
+        ProcessRunner ffmpeg = writing(1, 1.0);
+        ObjectNode request = input("path", ".atelier/entrees/demo.mp4");
+        request.put("transcript", ".atelier/entrees/demo.vtt");
+        String jobId = jobId(ok(tools(VideoFixtures.frames(home, ffmpeg), inline())
+                .execute(VideoTools.IMAGES, request, ToolContext.none(), paths())));
+
+        String status = ok(tools(VideoFixtures.frames(home, ffmpeg), inline())
+                .execute(VideoTools.STATUS, input("job_id", jobId), ToolContext.none(), paths()));
+
+        assertTrue(status.contains("dit : « Mickaël : Le board RH. »"), status);
+        assertTrue(status.contains("Transcription complète : "), status);
+    }
+
+    @Test
+    void une_transcription_introuvable_est_refusee_avant_de_demarrer() throws IOException {
+        deposit("demo.mp4");
+        VideoTools tools = tools(VideoFixtures.frames(home, writing(0)), inline());
+        ObjectNode request = input("path", ".atelier/entrees/demo.mp4");
+        request.put("transcript", "absente.vtt");
+
+        ToolOutcome outcome = tools.execute(VideoTools.IMAGES, request, ToolContext.none(), paths());
+
+        assertFalse(outcome.ok());
+        assertTrue(outcome.errorMessage().contains("Je ne trouve pas la transcription"),
+                outcome.errorMessage());
+    }
+
     // ------------------------------------------------------------------ outillage
 
     private Path deposit(String name) throws IOException {

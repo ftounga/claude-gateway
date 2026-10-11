@@ -19,7 +19,7 @@ import java.util.zip.ZipFile;
  * {@code teams_meeting_recording} ; il ne quitte pas la machine, et rien de secret n'en sort : on ne
  * lit qu'un fichier local.</p>
  */
-final class DocxText {
+public final class DocxText {
 
     /** Au-delà, le texte rendu est tronqué (et le résultat le dit). */
     static final int MAX_TEXT_CHARS = 500_000;
@@ -45,6 +45,20 @@ final class DocxText {
             text = text.substring(0, MAX_TEXT_CHARS);
         }
         return new Extracted(text, paragraphs, truncated);
+    }
+
+    /**
+     * Le texte d'un {@code .docx}, un paragraphe par ligne — pour qui n'a besoin que du texte
+     * (F-190 / SF-190-03 : une transcription Teams exportée).
+     *
+     * @throws java.io.IOException si le fichier n'est pas un {@code .docx} lisible
+     */
+    public static String plainText(Path file) throws java.io.IOException {
+        try {
+            return read(file).text();
+        } catch (NotADocx e) {
+            throw new java.io.IOException(e.getMessage(), e);
+        }
     }
 
     private static String documentXml(Path file) throws NotADocx {

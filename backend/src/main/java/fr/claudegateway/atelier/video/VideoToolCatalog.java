@@ -44,7 +44,9 @@ public final class VideoToolCatalog {
                                 + "(plusieurs minutes pour une heure de vidéo) : l'outil rend la main "
                                 + "tout de suite avec un job_id, suis avec video_images_status. ffmpeg "
                                 + "est rapatrié tout seul au premier usage : n'abandonne pas parce "
-                                + "qu'il manque sur la machine. La vidéo ne quitte jamais le poste.",
+                                + "qu'il manque sur la machine. Donne « transcript » si une "
+                                + "transcription existe (sinon « transcribe ») : chaque image vient "
+                                + "alors avec ce qui se disait. La vidéo ne quitte jamais le poste.",
                         Map.of("type", "object",
                                 "properties", Map.of(
                                         "path", Map.of("type", "string", "description",
@@ -55,6 +57,16 @@ public final class VideoToolCatalog {
                                         "from", text,
                                         "to", text,
                                         "every_seconds", Map.of("type", "integer"),
+                                        // SF-190-03 : le son à côté de l'image.
+                                        "transcript", Map.of("type", "string", "description",
+                                                "Transcription sur le poste (.vtt, .srt, .docx "
+                                                        + "Teams, .txt horodaté) : chaque image "
+                                                        + "reçoit ce qui se disait pendant qu'elle "
+                                                        + "était à l'écran."),
+                                        "transcribe", Map.of("type", "boolean", "description",
+                                                "true pour transcrire la vidéo sur le poste "
+                                                        + "quand tu n'as pas de transcription "
+                                                        + "(plus long ; sans locuteurs)."),
                                         "restart", Map.of("type", "boolean", "description",
                                                 "true pour refaire une extraction déjà faite ; "
                                                         + "sinon la même demande rend le résultat "
