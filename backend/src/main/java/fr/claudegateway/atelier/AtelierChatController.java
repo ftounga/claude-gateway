@@ -975,7 +975,8 @@ public class AtelierChatController {
      */
     record StreamDone(String reply, List<AtelierAction> actions, UUID messageId, long inputTokens,
             long outputTokens, long activeSeconds, boolean budgetReached, boolean followUp,
-            String costEur, boolean planSubmitted) {
+            String costEur, boolean planSubmitted,
+            List<fr.claudegateway.atelier.nextsteps.NextStep> nextSteps) {
 
         /**
          * <b>Le flux est le chemin nominal de l'écran</b> : c'est ici, et pas seulement dans la
@@ -988,7 +989,9 @@ public class AtelierChatController {
         static StreamDone of(AtelierChatResult result, boolean followUp, String costEur) {
             return new StreamDone(result.reply(), result.actions(), result.messageId(),
                     result.inputTokens(), result.outputTokens(), result.activeSeconds(),
-                    result.budgetReached(), followUp, costEur, result.planSubmitted());
+                    result.budgetReached(), followUp, costEur, result.planSubmitted(),
+                    // F-192 / SF-192-01 (additif) : les suites proposées par l'agent — « Et maintenant ? ».
+                    result.nextSteps());
         }
     }
 

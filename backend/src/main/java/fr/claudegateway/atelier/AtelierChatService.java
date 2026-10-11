@@ -669,6 +669,32 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "systématique de tout. Ne transforme pas chaque tour en audit complet : prouve ce "
                     + "que tu avances et ce que tu allais déléguer, pas l'univers.\n\n";
     /**
+     * Les suites proposées — « Et maintenant ? » (F-192 / SF-192-01). L'agent qui vient de travailler
+     * a vu le tour : c'est lui, dans la même réponse, qui propose la suite — pas un second modèle qui
+     * devine (retrait de F-144). Le bloc vient <b>après</b> la réponse complète, borné (4 options), et
+     * n'est jamais affiché brut : la passerelle l'extrait ({@code NextStepsBlock}) avant persistance.
+     *
+     * <p>Littéral <b>stable</b>, sur toutes les cibles : cache de prompt préservé (F-134). Justesse avant
+     * coût : la consigne interdit que le bloc remplace ou abrège la réponse.</p>
+     */
+    static final String NEXT_STEPS_DOCTRINE =
+            "Propose la suite — « Et maintenant ? » :\n"
+                    + "- Quand une suite a du sens, termine ta réponse (APRÈS la réponse complète, "
+                    + "jamais à sa place ni en l'abrégeant) par un bloc de 2 à 4 options, sur ses "
+                    + "propres lignes, au format JSON exact :\n"
+                    + "  <<suites>>\n"
+                    + "  [{\"titre\":\"…\",\"pourquoi\":\"…\",\"etiquette\":\"Vérifier\",\"demande\":\"…\"}]\n"
+                    + "  <</suites>>\n"
+                    + "- titre : court (moins de 80 caractères). pourquoi : UN fait précis de ce tour "
+                    + "qui fonde l'option (« non vérifié : l'export CSV », « étape 4 du plan ») — une "
+                    + "option sans motif est interdite. etiquette : Vérifier, Continuer, Livrer ou "
+                    + "Risque. demande : le texte complet que l'utilisateur enverrait, autonome et "
+                    + "précis.\n"
+                    + "- Aucun bloc si aucune suite n'est évidente, si tu poses une question à "
+                    + "l'utilisateur, ou si le tour est inachevé : pas de suggestion de remplissage.\n"
+                    + "- Une seule fois par réponse, toujours en dernier, et n'en parle jamais dans le "
+                    + "texte : le bloc est mis en forme pour l'utilisateur, pas expliqué.\n\n";
+    /**
      * Annonce de destination + demande si ambigu (F-141 / SF-141-01, cadrage §4.3 et §2). Ajouté au
      * rôle sur les <b>deux</b> cibles, à la suite des doctrines de carte. La nuance clé du cadrage :
      * la <b>plomberie</b> de fin de tour (marqueurs, comptabilité de promotion/dette) reste invisible
@@ -3472,7 +3498,14 @@ public class AtelierChatService implements RelayInterruptTarget {
         // blocage) ; on le retire ici, AVANT persistance et renvoi, pour qu'il ne se retrouve jamais
         // dans le fil. Le strip d'abord, le repli ensuite : une réponse réduite au seul marqueur ne
         // doit pas persister vide (contrat SF-28-18).
-        String reply = nonEmptyReply(stripTurnMetadata(finalText));
+        // F-192 / SF-192-01 : le bloc « Et maintenant ? » parle au produit — retiré du texte AVANT
+        // persistance, toujours, même illisible. Un tour interrompu ou coupé au plafond ne propose rien :
+        // le terminal propose déjà « Reprendre ».
+        fr.claudegateway.atelier.nextsteps.NextStepsBlock.Extraction nextStepsExtraction =
+                fr.claudegateway.atelier.nextsteps.NextStepsBlock.extract(finalText);
+        List<fr.claudegateway.atelier.nextsteps.NextStep> nextSteps = interrupted || spendCapReached
+                ? List.of() : nextStepsExtraction.steps();
+        String reply = nonEmptyReply(stripTurnMetadata(nextStepsExtraction.text()));
         long activeSeconds = Math.max(0L, (System.currentTimeMillis() - startedAt) / 1000L);
         // Relevé du tour rangé dans la colonne d'affichage existante (F-39 / SF-39-15, D-L8-6) :
         // sans lui, le coût du tour et le motif de son arrêt disparaîtraient au rechargement — et
@@ -3498,7 +3531,8 @@ public class AtelierChatService implements RelayInterruptTarget {
                 .workspaceId(workspaceId).userId(userId).role("ASSISTANT")
                 .content(reply)
                 .toolTrace(new AtelierToolTrace(List.copyOf(trace)).toJson())
-                .terminalJson(report.toJson())
+                .terminalJson(fr.claudegateway.atelier.nextsteps.NextStepsBlock.attachTo(report.toJson(),
+                        nextSteps))
                 .build());
         // F-162 / SF-162-06 : embed la réponse de l'assistant pour le rappel sémantique — asynchrone,
         // best-effort (NONE par défaut ⇒ ne fait rien).
@@ -3561,7 +3595,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         threadStateStore.persist(userId, workspaceId, modeToPersist, planJson);
 
         return new AtelierChatResult(reply, actions, assistant.getId(), inputTokens, outputTokens,
-                activeSeconds, spendCapReached, costUsd, reusedPercent, planSubmitted.get());
+                activeSeconds, spendCapReached, costUsd, reusedPercent, planSubmitted.get(), nextSteps);
     }
 
     /**
@@ -8242,6 +8276,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         // Littéral stable, strictement additif : cache de prompt préservé (F-134).
         system.append(VERIFY_BEFORE_CONCLUDE_DOCTRINE);
 
+        // Les suites proposées (F-192 / SF-192-01) : sur TOUTES les cibles, juste après « vérifier avant
+        // de conclure ». L'agent principal propose lui-même la suite en fin de réponse, dans un bloc
+        // balisé extrait par la passerelle. Littéral stable, strictement additif : cache F-134 préservé.
+        system.append(NEXT_STEPS_DOCTRINE);
+
         // Annonce de destination + demande si ambigu (F-141 / SF-141-01) : sur les DEUX cibles, à la
         // suite des doctrines de carte. Prolonge la carte silencieuse (SF-125-01) sans la casser : la
         // plomberie reste tue, mais la destination d'un fait durable devient visible et validable — le
@@ -8800,7 +8839,21 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     public record AtelierChatResult(String reply, List<AtelierAction> actions, UUID messageId,
             long inputTokens, long outputTokens, long activeSeconds, boolean budgetReached,
-            java.math.BigDecimal costUsd, Integer reusedPercent, boolean planSubmitted) {
+            java.math.BigDecimal costUsd, Integer reusedPercent, boolean planSubmitted,
+            List<fr.claudegateway.atelier.nextsteps.NextStep> nextSteps) {
+
+        /** Suites jamais nulles : un appelant qui n'en a pas reçoit une liste vide. */
+        public AtelierChatResult {
+            nextSteps = nextSteps == null ? List.of() : List.copyOf(nextSteps);
+        }
+
+        /** Forme sans suites (F-192 / SF-192-01 additif), conservée pour les appelants. */
+        public AtelierChatResult(String reply, List<AtelierAction> actions, UUID messageId,
+                long inputTokens, long outputTokens, long activeSeconds, boolean budgetReached,
+                java.math.BigDecimal costUsd, Integer reusedPercent, boolean planSubmitted) {
+            this(reply, actions, messageId, inputTokens, outputTokens, activeSeconds, budgetReached,
+                    costUsd, reusedPercent, planSubmitted, List.of());
+        }
 
         /** Forme historique, conservée pour les appelants (et les tests) qui l'attendent. */
         public AtelierChatResult(String reply, List<AtelierAction> actions, UUID messageId) {

@@ -623,6 +623,44 @@ class AtelierChatServiceSystemPromptTest {
         assertThat(firstDoctrine).isEqualTo(secondDoctrine);
     }
 
+    // ------------------------------------------- F-192 / SF-192-01 : les suites proposées
+
+    @Test
+    void theNextStepsDoctrineIsPresentOnceOnASandboxProjectAndOnARunnerProject() {
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+        String marker = "Propose la suite — « Et maintenant ? »";
+
+        String sandbox = systemPrompt();
+        String runner = systemPromptOfRunnerProjectDeclaring(null);
+
+        for (String system : List.of(sandbox, runner)) {
+            assertThat(system).contains(marker);
+            assertThat(system.indexOf(marker)).isEqualTo(system.lastIndexOf(marker));
+            assertThat(system).contains("<<suites>>").contains("<</suites>>");
+            assertThat(system).contains("APRÈS la réponse complète");
+            assertThat(system).contains("une option sans motif est interdite");
+            // Placée juste après « vérifier avant de conclure ».
+            assertThat(system.indexOf(marker))
+                    .isGreaterThan(system.indexOf("Vérifier avant de conclure — prouve tout état factuel"));
+        }
+    }
+
+    @Test
+    void theNextStepsDoctrineIsByteStableBetweenTwoBuilds() {
+        String first = systemPromptOfRunnerProjectDeclaring(null);
+        String second = systemPromptOfRunnerProjectDeclaring(null);
+
+        String marker = "Propose la suite — « Et maintenant ? »";
+        String firstDoctrine = first.substring(first.indexOf(marker),
+                first.indexOf("\n\n", first.indexOf(marker)));
+        String secondDoctrine = second.substring(second.indexOf(marker),
+                second.indexOf("\n\n", second.indexOf(marker)));
+        assertThat(firstDoctrine).isEqualTo(secondDoctrine);
+        assertThat(firstDoctrine).isEqualTo(AtelierChatService.NEXT_STEPS_DOCTRINE.strip());
+    }
+
     // ------------------------------------------- F-141 / SF-141-01 : annonce de destination + demande si ambigu
 
     @Test
