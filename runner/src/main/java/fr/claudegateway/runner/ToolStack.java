@@ -123,7 +123,9 @@ public final class ToolStack {
                         processes, console::info);
         return new fr.claudegateway.runner.video.VideoTools(
                 new fr.claudegateway.runner.video.VideoFramesWorker(
-                        new fr.claudegateway.runner.teams.SceneFrames(toolchain, processes)));
+                        new fr.claudegateway.runner.teams.SceneFrames(toolchain, processes),
+                        // SF-190-03 : transcrire sur le poste quand on n'a pas de transcription.
+                        fr.claudegateway.runner.video.VideoTranscriber.local(toolchain, processes)));
     }
 
     /**
