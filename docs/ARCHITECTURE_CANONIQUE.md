@@ -1242,6 +1242,7 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     n'apparaît qu'après ouverture authentifiée), émission **asynchrone** (jamais bloquante pour le
     tour). Transport **VAPID** provider-agnostique (ne passe **pas** par `AIProvider`), **inactif** tant
     que VAPID n'est pas configuré (repli : le signal in-tab SF-153-01).
+- **atelier_turn_measures** — la **mesure par tour** d'agent (F-188 / SF-188-03) : `user_id`, `workspace_id`, `host_id`, `model`, `occurred_at`, `duration_ms`, `iterations`, `stop_cause`, contexte maximal et cumulé par passe, réécriture du cache (1re passe, puis suivantes), totaux de tokens, recherches web, refus et attentes « poste occupé ». **Des nombres seulement, aucun contenu.** Rétention de 180 jours (purge quotidienne) ; purge à la suppression du compte. Requêtes de lecture : `docs/ops/mesure-par-tour.md`.
 
 - **runner_pairing_codes / runner_tokens** — identité du runner (F-38 / SF-38-01, migration `047` ;
   clef passée de `workspace_id` à `host_id` par F-48 / SF-48-01, migration `064`).
