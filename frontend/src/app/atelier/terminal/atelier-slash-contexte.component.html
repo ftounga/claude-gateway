@@ -47,6 +47,10 @@
           <li class="ctx-fact">
             <span class="ctx-fact__label">Résumé ancré</span>
             <span class="ctx-fact__value">{{ context.hasAnchoredSummary ? 'Présent' : 'Aucun' }}</span>
+            <!-- F-117 / SF-117-09 : le résumé ancré n'est plus une boîte noire — on peut le lire. -->
+            @if (context.hasAnchoredSummary) {
+              <button type="button" class="ctx-link" (click)="openHandoff.emit()">Voir la passation</button>
+            }
           </li>
           <li class="ctx-fact">
             <span class="ctx-fact__label">Compaction</span>

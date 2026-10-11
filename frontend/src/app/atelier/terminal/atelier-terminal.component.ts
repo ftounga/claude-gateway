@@ -56,6 +56,7 @@ import {
   SlashPanel,
   SlashPanelCommand,
   ThreadCostBudget,
+  ThreadHandoff,
   buildPanel,
   findPanelCommand,
   panelCommandSuggestions,
@@ -65,6 +66,7 @@ import { AtelierSlashPanelComponent } from './atelier-slash-panel.component';
 import { AtelierSlashHelpComponent } from './atelier-slash-help.component';
 import { AtelierSlashCostComponent } from './atelier-slash-cost.component';
 import { AtelierSlashContexteComponent } from './atelier-slash-contexte.component';
+import { AtelierSlashPassationComponent } from './atelier-slash-passation.component';
 import { AtelierSlashQuotaComponent } from './atelier-slash-quota.component';
 import { AtelierSlashBudgetComponent } from './atelier-slash-budget.component';
 import { AtelierSlashPosteComponent } from './atelier-slash-poste.component';
@@ -231,7 +233,7 @@ export interface SlashMenuEntry {
     AtelierSlashPanelComponent, AtelierSlashHelpComponent, AtelierSlashCostComponent,
     AtelierSlashContexteComponent, AtelierSlashQuotaComponent, AtelierSlashBudgetComponent,
     AtelierSlashPosteComponent, AtelierSlashSujetComponent,
-    AtelierSlashRecallComponent, AtelierSlashActionComponent,
+    AtelierSlashRecallComponent, AtelierSlashActionComponent, AtelierSlashPassationComponent,
     MatButtonToggleModule, MatIconModule, MatMenuModule, MatProgressBarModule, MatProgressSpinnerModule,
     MatTooltipModule, RouterLink,
     WeeklyBudgetComponent, ProjectCostComponent, TurnSuggestionsComponent, DictationButtonComponent,
@@ -2263,6 +2265,10 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     if (command.panelKind === 'context') {
       this.loadContextPanel(id);
     }
+    // F-117 / SF-117-09 : `/passation` est une VUE — un GET de lecture de la passation, jamais un tour.
+    if (command.panelKind === 'handoff') {
+      this.loadHandoffPanel(id);
+    }
     // F-165 / SF-165-04 : `/quota` est une VUE — un GET de lecture (`/api/usage`, isolé user_id).
     if (command.panelKind === 'quota') {
       this.loadQuotaPanel(id);
@@ -2343,6 +2349,50 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     this.atelierContext.contextSummary(workspaceId).subscribe({
       next: (context) => this.patchPanel(id, { contextState: 'ready', context }),
       error: () => this.patchPanel(id, { contextState: 'error' }),
+    });
+  }
+
+  /**
+   * F-117 / SF-117-09 — « Voir la passation » depuis le panneau `/contexte` ou un marqueur de compaction :
+   * ouvre le panneau de la passation SANS toucher au brouillon (ce n'est pas une commande tapée), puis
+   * l'amène en vue — le panneau naît en bas du fil, loin du marqueur cliqué.
+   */
+  openHandoffPanel(): void {
+    const command = findPanelCommand('passation');
+    if (!command) {
+      return;
+    }
+    const id = `slash-${this.slashPanelSeq++}`;
+    this.slashPanels.update((panels) => [...panels, buildPanel(command, '', id)]);
+    this.loadHandoffPanel(id);
+    setTimeout(() => {
+      const panels = (this.hostElement.nativeElement as HTMLElement)
+        .querySelectorAll<HTMLElement>('app-atelier-slash-panel');
+      panels[panels.length - 1]?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
+  /** F-117 / SF-117-09 — la passation vient d'être corrigée : le panneau montre le texte enregistré. */
+  onHandoffSaved(panelId: string, handoff: ThreadHandoff): void {
+    this.patchPanel(panelId, { handoffState: 'ready', handoff });
+  }
+
+  /**
+   * F-117 / SF-117-09 — charge la passation pour son panneau : `loading` → `ready`/`none`/`error`.
+   * LECTURE seule (`GET .../chat/handoff`, isolé `requireOwned`) : aucun tour modèle.
+   */
+  private loadHandoffPanel(id: string): void {
+    const workspaceId = this.projectId;
+    if (!workspaceId) {
+      this.patchPanel(id, { handoffState: 'error' });
+      return;
+    }
+    this.atelierContext.handoff(workspaceId).subscribe({
+      next: (handoff) =>
+        this.patchPanel(id, handoff?.summary
+          ? { handoffState: 'ready', handoff }
+          : { handoffState: 'none' }),
+      error: () => this.patchPanel(id, { handoffState: 'error' }),
     });
   }
 

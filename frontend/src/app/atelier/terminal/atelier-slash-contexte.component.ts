@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
 import { ContextPanelState, ThreadContextSummary } from './slash-panel-commands';
@@ -27,6 +27,9 @@ export class AtelierSlashContexteComponent {
 
   /** L'état mémoire du fil, présent en état `ready`. */
   @Input() context: ThreadContextSummary | null = null;
+
+  /** F-117 / SF-117-09 : « Voir la passation » — le terminal ouvre le panneau de la passation. */
+  @Output() readonly openHandoff = new EventEmitter<void>();
 
   /** Largeur de la jauge de remplissage, bornée à 100 % (jamais de débordement visuel). */
   get fillWidth(): number {

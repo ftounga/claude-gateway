@@ -116,6 +116,25 @@
   color: var(--cg-surface);
 }
 
+/* F-117 / SF-117-09 : lien « Voir la passation » — un lien d'action, cible ≥ 44 px. */
+.ctx-link {
+  align-self: flex-start;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--cg-orange-2);
+  text-decoration: underline;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--cg-orange-2);
+    outline-offset: 2px;
+  }
+}
+
 /* Sous 819 px (SF-158) : rien ne déborde ; les faits passent sur une colonne. */
 @media (max-width: 819px) {
   .ctx-facts {

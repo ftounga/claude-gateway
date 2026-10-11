@@ -1,5 +1,7 @@
 import {
+  HANDOFF_SECTIONS,
   SLASH_PANEL_COMMANDS,
+  handoffLooksSectioned,
   buildHelpEntries,
   buildPanel,
   findPanelCommand,
@@ -232,5 +234,26 @@ describe('slash-panel-commands (F-165 / SF-165-01)', () => {
       '/compacter', '/nouveau', '/rappel', '/aide',
     ]));
     expect(entries.length).toBe(SLASH_PANEL_COMMANDS.length);
+  });
+
+  // -------------------------------------------- F-117 / SF-117-09 : /passation (vue de la passation)
+  it('inscrit /passation au registre comme une VUE (panelKind « handoff »)', () => {
+    const passation = findPanelCommand('passation');
+    expect(passation?.kind).toBe('view');
+    expect(passation?.panelKind).toBe('handoff');
+    expect(passation?.takesArgument).toBe(false);
+  });
+
+  it('construit le panneau /passation en état de chargement', () => {
+    const panel = buildPanel(findPanelCommand('passation')!, '', 'slash-9');
+    expect(panel.handoffState).toBe('loading');
+    expect(panel.title).toBe('La passation');
+  });
+
+  it('reconnaît le gabarit des cinq rubriques, dans l\'ordre', () => {
+    const ok = HANDOFF_SECTIONS.join('\nx\n');
+    expect(handoffLooksSectioned(ok)).toBeTrue();
+    expect(handoffLooksSectioned(ok.replace('## Fichiers', '## Autre'))).toBeFalse();
+    expect(handoffLooksSectioned([...HANDOFF_SECTIONS].reverse().join('\n'))).toBeFalse();
   });
 });

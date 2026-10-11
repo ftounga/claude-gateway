@@ -1,0 +1,116 @@
+/* ------------------------------------------------------------------ F-117 / SF-117-09
+   LE CORPS DU PANNEAU « La passation ». Rendu dans le cadre SOMBRE du panneau (SF-165-01) : jetons
+   `--cg-*` uniquement, AUCUNE couleur ni police hors charte. Cibles ≥ 44 px (SF-158). */
+
+.pass-note {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  margin: 0;
+  min-height: 44px;
+  font-size: 13px;
+  color: var(--cg-text-secondary);
+}
+
+.pass-note--error {
+  color: var(--cg-orange-2);
+}
+
+.pass-hint {
+  margin: 0 0 var(--cg-space-2);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--cg-text-secondary);
+}
+
+/* Le Markdown rendu (inséré par [innerHTML]) : titres de rubrique sobres, texte lisible. */
+.pass-body {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--cg-surface);
+  overflow-wrap: anywhere;
+
+  ::ng-deep h2 {
+    margin: var(--cg-space-3) 0 var(--cg-space-1);
+    font-family: var(--cg-font-heading);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--cg-orange-2);
+  }
+
+  ::ng-deep h2:first-child {
+    margin-top: 0;
+  }
+
+  ::ng-deep p,
+  ::ng-deep ul,
+  ::ng-deep ol {
+    margin: 0 0 var(--cg-space-2);
+  }
+
+  ::ng-deep code {
+    font-family: var(--cg-font-mono);
+    font-size: 12px;
+  }
+}
+
+.pass-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cg-space-2);
+  margin-top: var(--cg-space-3);
+
+  button {
+    min-height: 44px;
+  }
+}
+
+.pass-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cg-space-1);
+}
+
+.pass-editor__label {
+  font-size: 12px;
+  color: var(--cg-text-secondary);
+}
+
+.pass-editor__input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: var(--cg-space-2);
+  border: 1px solid var(--cg-navy-2);
+  border-radius: 4px;
+  background: var(--cg-primary);
+  color: var(--cg-surface);
+  font-family: var(--cg-font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+
+  &:focus-visible {
+    outline: 2px solid var(--cg-orange-2);
+    outline-offset: 1px;
+  }
+}
+
+.pass-counter {
+  margin: var(--cg-space-1) 0 0;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--cg-text-secondary);
+
+  &.is-error {
+    color: var(--cg-orange-2);
+  }
+}
+
+.pass-error {
+  margin: var(--cg-space-1) 0 0;
+  font-size: 12px;
+  color: var(--cg-orange-2);
+}
