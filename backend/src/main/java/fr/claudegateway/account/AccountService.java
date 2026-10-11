@@ -241,6 +241,14 @@ public class AccountService {
         this.userNotificationRepository = userNotificationRepository;
     }
 
+    /** Mesures de tour (F-188 / SF-188-03) : même doctrine, {@code null} = rien à effacer. */
+    private fr.claudegateway.atelier.measure.TurnMeasureWriter turnMeasureWriter;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setTurnMeasureWriter(fr.claudegateway.atelier.measure.TurnMeasureWriter turnMeasureWriter) {
+        this.turnMeasureWriter = turnMeasureWriter;
+    }
+
     /** Préférences de notification (F-185 / SF-185-06) : même doctrine, {@code null} = rien à effacer. */
     private fr.claudegateway.notifications.NotificationPreferenceRepository notificationPreferenceRepository;
 
@@ -427,6 +435,9 @@ public class AccountService {
         // Centre de notifications (F-185 / SF-185-04) : il nomme les terminaux du compte.
         if (userNotificationRepository != null) {
             userNotificationRepository.deleteByUserId(userId);
+        }
+        if (turnMeasureWriter != null) {
+            turnMeasureWriter.deleteByUserId(userId);
         }
         if (notificationPreferenceRepository != null) {
             notificationPreferenceRepository.deleteById(userId);

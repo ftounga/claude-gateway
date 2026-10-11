@@ -2411,6 +2411,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         // La marque de mutation ne survit jamais au message (F-148 / SF-148-07) : chaque tour part
         // « non muté », si bien que le 1er glob du tour peut être servi par l'index.
         mutatedTurns.remove(turnKey(userId, workspaceId));
+        turnRunnerCounters.remove(turnKey(userId, workspaceId)); // F-188 / SF-188-03
         long startedAt = System.currentTimeMillis();
         long deadline = startedAt + turnBudgetMs;
         String userText = rawMessage.trim();
@@ -2647,6 +2648,12 @@ public class AtelierChatService implements RelayInterruptTarget {
         final String[] effortInEffect = {reasoning.effort()};
         /** Plus grosse itération observée dans ce tour : majorant de la suivante (D-L8-2). */
         long largestIterationTokens = 0L;
+        // F-188 / SF-188-03 : la forme du tour, passe principale par passe principale.
+        int measuredPasses = 0;
+        long maxContextTokens = 0L;
+        long totalContextTokens = 0L;
+        long firstPassCacheWrite = 0L;
+        long laterCacheWrite = 0L;
         boolean interrupted = false;
         boolean spendCapReached = false;
         // Arrêt sur refus du fournisseur (F-172 / SF-172-01), pour le journal de fin de tour.
@@ -2899,6 +2906,14 @@ public class AtelierChatService implements RelayInterruptTarget {
             collectOtherModelShares(turn, model, otherModelShares, lastServedModel);
             largestIterationTokens =
                     Math.max(largestIterationTokens, (long) turn.inputTokens() + turn.outputTokens());
+            maxContextTokens = Math.max(maxContextTokens, turn.inputTokens());
+            totalContextTokens += turn.inputTokens();
+            if (measuredPasses == 0) {
+                firstPassCacheWrite = turn.cacheWriteTokens();
+            } else {
+                laterCacheWrite += turn.cacheWriteTokens();
+            }
+            measuredPasses++;
             // Consommation relayée au fil de l'eau : c'est ce qui fait apparaître les tokens dans la
             // ligne vivante du terminal (acquis §4 n°5), jusqu'ici muette sur la boucle maison.
             listener.onProgress((long) inputTokens + outputTokens);
@@ -3439,6 +3454,19 @@ public class AtelierChatService implements RelayInterruptTarget {
                 iterationsUsed, Math.max(0L, (System.currentTimeMillis() - startedAt) / 1000L),
                 inputTokens + outputTokens,
                 refusalStop ? "refus du fournisseur" : stopCause(interrupted, spendCapReached, finalText));
+        // F-188 / SF-188-03 : la même fin de tour, en base — des nombres, jamais de contenu.
+        int[] runnerCounts = turnRunnerCounters.remove(turnKey(userId, workspaceId));
+        if (turnMeasureWriter != null) {
+            turnMeasureWriter.write(new fr.claudegateway.atelier.measure.TurnMeasure(userId,
+                    workspaceId, workspace.getHostId(), model, java.time.Instant.now(),
+                    Math.max(0L, System.currentTimeMillis() - startedAt), iterationsUsed,
+                    refusalStop ? "refus du fournisseur"
+                            : stopCause(interrupted, spendCapReached, finalText),
+                    maxContextTokens, totalContextTokens, firstPassCacheWrite, laterCacheWrite,
+                    inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens,
+                    webSearchRequests, runnerCounts == null ? 0 : runnerCounts[0],
+                    runnerCounts == null ? 0 : runnerCounts[1]));
+        }
         // F-125 / SF-125-01 : le marqueur de fin de tour parle au produit, pas au lecteur. Les
         // contrôles de fin de tour l'ont déjà lu sur `finalText` (plus haut, et en rejeu sur un
         // blocage) ; on le retire ici, AVANT persistance et renvoi, pour qu'il ne se retrouve jamais
@@ -6235,6 +6263,9 @@ public class AtelierChatService implements RelayInterruptTarget {
         if (result == null) {
             return ToolOutcome.error("Outil inconnu : " + tool);
         }
+        if (!result.ok() && "denied".equals(result.errorCode())) {
+            countRunner(userId, workspaceId, 0); // F-188 / SF-188-03 : refus rendu au modèle
+        }
         runnerAuditService.recordCall(userId, runnerTarget, callId, tool, target, result);
         noteMachine(userId, workspaceId, result);
         // F-148 / SF-148-07 : dès que ce tour a muté le projet, `glob` ne sera plus servi par l'index
@@ -6441,6 +6472,26 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     public static final String RUNNER_BUSY_MESSAGE = "Une commande est déjà en cours sur ce runner.";
 
+    /**
+     * <b>La mesure par tour</b> (F-188 / SF-188-03) : écrivain facultatif — absent (tests de la
+     * boucle), rien n'est mesuré et le tour est celui d'avant. Branché par setter : un second
+     * constructeur casserait le contexte Spring.
+     */
+    private fr.claudegateway.atelier.measure.TurnMeasureWriter turnMeasureWriter;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setTurnMeasureWriter(fr.claudegateway.atelier.measure.TurnMeasureWriter writer) {
+        this.turnMeasureWriter = writer;
+    }
+
+    /** Compteurs du poste pour le tour en cours : [refus rendus au modèle, attentes « occupé »]. */
+    private final java.util.Map<String, int[]> turnRunnerCounters =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    private void countRunner(UUID userId, UUID workspaceId, int index) {
+        turnRunnerCounters.computeIfAbsent(turnKey(userId, workspaceId), key -> new int[2])[index]++;
+    }
+
     /** Réglage de l'attente d'un poste occupé — exposé pour les tests (F-188 / SF-188-02). */
     void setRunnerBusyWait(long waitMs, long pollMs) {
         this.runnerBusyWaitMs = waitMs;
@@ -6533,6 +6584,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                 listener.onOutput("(le poste termine une commande précédente — j'attends qu'il se "
                         + "libère)\n");
                 announced = true;
+                countRunner(userId, workspaceId, 1);
             }
             try {
                 Thread.sleep(poll);

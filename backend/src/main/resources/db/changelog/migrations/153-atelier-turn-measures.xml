@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-188 / SF-188-03 - LA MESURE PAR TOUR.
+
+      Une ligne par tour d'agent : etapes, motif d'arret, contexte par passe, reecritures du cache,
+      refus et attentes du poste. Des NOMBRES seulement - aucun texte, aucune commande. Sert a
+      prouver les leviers suivants de F-188 avant d'y toucher (justesse avant cout). Retention
+      180 jours (purge quotidienne) ; purge a la suppression du compte.
+    -->
+
+    <changeSet id="153-atelier-turn-measures" author="claude-gateway">
+        <createTable tableName="atelier_turn_measures">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="workspace_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="host_id" type="uuid"/>
+            <column name="model" type="varchar(64)"/>
+            <column name="occurred_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+            <column name="duration_ms" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="iterations" type="int">
+                <constraints nullable="false"/>
+            </column>
+            <column name="stop_cause" type="varchar(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="max_context_tokens" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="total_context_tokens" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="first_pass_cache_write" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="later_cache_write" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="input_tokens" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="output_tokens" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="cache_read_tokens" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="cache_write_tokens" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="web_search_requests" type="int">
+                <constraints nullable="false"/>
+            </column>
+            <column name="runner_refusals" type="int">
+                <constraints nullable="false"/>
+            </column>
+            <column name="runner_busy_waits" type="int">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="atelier_turn_measures" indexName="idx_turn_measures_occurred_at">
+            <column name="occurred_at"/>
+        </createIndex>
+        <createIndex tableName="atelier_turn_measures" indexName="idx_turn_measures_user_occurred">
+            <column name="user_id"/>
+            <column name="occurred_at"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="atelier_turn_measures"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
