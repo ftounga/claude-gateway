@@ -6422,6 +6422,31 @@ public class AtelierChatService implements RelayInterruptTarget {
     @org.springframework.beans.factory.annotation.Value("${app.atelier.runner-retry-backoff-ms:250}")
     private long runnerRetryBackoffMs;
 
+    /**
+     * <b>Poste occupé</b> (F-188 / SF-188-02) : attente totale, en millisecondes, avant de rendre au
+     * modèle qu'une commande précédente tourne encore ({@code app.atelier.runner-busy-wait-ms}, défaut
+     * 60 s ; {@code 0} désactive l'attente — coupe-circuit).
+     */
+    @org.springframework.beans.factory.annotation.Value("${app.atelier.runner-busy-wait-ms:60000}")
+    private long runnerBusyWaitMs;
+
+    /** Pas entre deux essais pendant l'attente d'un poste occupé ({@code app.atelier.runner-busy-poll-ms}). */
+    @org.springframework.beans.factory.annotation.Value("${app.atelier.runner-busy-poll-ms:3000}")
+    private long runnerBusyPollMs;
+
+    /**
+     * Le texte exact du runner quand il refuse une commande parce qu'une autre tourne encore
+     * ({@code BashTool.BUSY_MESSAGE}). Un test de contrat garantit qu'il ne dérive pas : c'est lui, et
+     * non un code dédié, qui permet de traiter les runners déjà installés sans mise à jour.
+     */
+    public static final String RUNNER_BUSY_MESSAGE = "Une commande est déjà en cours sur ce runner.";
+
+    /** Réglage de l'attente d'un poste occupé — exposé pour les tests (F-188 / SF-188-02). */
+    void setRunnerBusyWait(long waitMs, long pollMs) {
+        this.runnerBusyWaitMs = waitMs;
+        this.runnerBusyPollMs = pollMs;
+    }
+
     /** Réglage du réessai — exposé pour les tests (F-121 / SF-121-04). */
     void setRunnerRetry(int retries, long backoffMs) {
         this.runnerRetries = retries;
@@ -6469,7 +6494,73 @@ public class AtelierChatService implements RelayInterruptTarget {
                     attempts, workspaceId, call.name());
             return retriedTag(result);
         }
+        if (isRunnerBusy(call, result)) {
+            return waitWhileBusy(userId, workspaceId, target, callId, call, listener, deadline, result);
+        }
         return result;
+    }
+
+    /**
+     * Vrai si le runner a refusé ce {@code bash} parce qu'une commande précédente tourne encore
+     * (F-188 / SF-188-02). Typiquement : sa réponse a été perdue en route ({@code runner_protocol_error})
+     * mais elle s'exécute toujours sur le poste — et l'agent, qui ne le sait pas, relançait en boucle.
+     */
+    static boolean isRunnerBusy(AgentToolCall call, RunnerCallResult result) {
+        return result != null && !result.ok() && "bash".equals(call.name())
+                && "denied".equals(result.errorCode())
+                && result.errorMessage() != null
+                && result.errorMessage().strip().startsWith(RUNNER_BUSY_MESSAGE);
+    }
+
+    /**
+     * <b>Attendre au lieu de refuser</b> (F-188 / SF-188-02) : réessaie la même commande à pas
+     * réguliers jusqu'à ce que le poste se libère, dans la borne configurée, le budget du tour et
+     * l'interruption. L'autorisation déjà donnée vaut : c'est le même appel. Toujours occupé à la
+     * borne : un message qui explique, au lieu d'un refus que l'agent relancerait à l'identique.
+     */
+    private RunnerCallResult waitWhileBusy(UUID userId, UUID workspaceId, RunnerTarget target,
+            String callId, AgentToolCall call, AtelierProgressListener listener, long deadline,
+            RunnerCallResult busy) {
+        long started = System.currentTimeMillis();
+        long poll = Math.max(1L, runnerBusyPollMs);
+        RunnerCallResult result = busy;
+        boolean announced = false;
+        while (runnerBusyWaitMs > 0
+                && System.currentTimeMillis() - started + poll <= runnerBusyWaitMs
+                && deadline - System.currentTimeMillis() > poll
+                && !interruptedTurns.contains(turnKey(userId, workspaceId))) {
+            if (!announced) {
+                listener.onOutput("(le poste termine une commande précédente — j'attends qu'il se "
+                        + "libère)\n");
+                announced = true;
+            }
+            try {
+                Thread.sleep(poll);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+            RunnerCallResult retried = callRunnerOnce(target, callId, call, listener, deadline);
+            if (retried == null) {
+                return null;
+            }
+            result = retried;
+            if (!isRunnerBusy(call, result)) {
+                log.info("Poste libéré après {} ms d'attente (workspace={})",
+                        System.currentTimeMillis() - started, workspaceId);
+                return result;
+            }
+        }
+        long waited = System.currentTimeMillis() - started;
+        log.info("Poste toujours occupé après {} ms d'attente (workspace={})", waited, workspaceId);
+        return new RunnerCallResult(false, result.content(), result.truncated(), result.exitCode(),
+                result.durationMs(), result.bytes(), result.errorCode(),
+                "Une commande précédente tourne encore sur le poste (sa réponse a pu être perdue en "
+                        + "route). J'ai attendu " + Math.round(waited / 1000d) + " s sans qu'il se "
+                        + "libère. Ne relance pas la même commande à l'identique : attends, vérifie "
+                        + "son effet autrement (fichier produit, processus), ou lance les commandes "
+                        + "longues avec run_in_background.",
+                result.streamed(), result.streamTruncated());
     }
 
     /** Un appel runner, argument manquant compris (tracé comme une tentative, jamais lancé sans être vu). */
