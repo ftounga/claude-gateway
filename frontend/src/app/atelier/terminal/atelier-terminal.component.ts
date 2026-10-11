@@ -35,6 +35,9 @@ import { WeeklyBudgetService } from '../../core/services/weekly-budget.service';
 import { ProjectCostComponent } from '../../shared/project-cost/project-cost.component';
 import { ProjectCostService } from '../../core/services/project-cost.service';
 import { TerminalNextStepsComponent } from './terminal-next-steps.component';
+import { PlumeView, TerminalPlumeComponent } from './terminal-plume.component';
+import { PlumeService } from '../../core/services/plume.service';
+import { HttpErrorResponse } from '@angular/common/http';
 import { AtelierNextStep } from '../../core/models/atelier.models';
 import {
   DictationButtonComponent,
@@ -206,6 +209,21 @@ export interface SlashMenuEntry {
 }
 
 /**
+ * Le message d'un échec de Plume (F-193 / SF-193-02) : celui du serveur s'il en donne un, sinon une
+ * phrase qui rassure sur l'essentiel — le texte saisi n'a pas bougé.
+ */
+export function plumeErrorMessage(failure: HttpErrorResponse | null | undefined): string {
+  const serverMessage = failure?.error && typeof failure.error === 'object' ? failure.error.error : null;
+  if (typeof serverMessage === 'string' && serverMessage.trim().length > 0) {
+    return serverMessage;
+  }
+  if (failure?.status === 503) {
+    return 'Plume est indisponible pour le moment. Votre texte est intact.';
+  }
+  return "L'enrichissement a échoué. Votre texte est intact, réessayez.";
+}
+
+/**
  * Vue **terminal immersive** du mode Terminal de l'Atelier (F-30 SF-30-07).
  *
  * <p>Occupe tout l'écran de l'Atelier : ni liste de projets, ni bulles de conversation — un flux
@@ -233,7 +251,7 @@ export interface SlashMenuEntry {
     MatButtonToggleModule, MatIconModule, MatMenuModule, MatProgressBarModule, MatProgressSpinnerModule,
     MatTooltipModule, RouterLink,
     WeeklyBudgetComponent, ProjectCostComponent, DictationButtonComponent,
-    TerminalNextStepsComponent,
+    TerminalNextStepsComponent, TerminalPlumeComponent,
   ],
   templateUrl: './atelier-terminal.component.html',
   // DEUX FEUILLES, ET C'EST DÉLIBÉRÉ (F-83 / SF-83-02) : la peau « lecture seule » vit à part.
@@ -285,6 +303,9 @@ export interface SlashMenuEntry {
     // aucune spécificité, et la feuille mobile doit rester celle qui gagne sous 819 px
     // (`flex-direction: column` + `align-items: stretch`, empilement au pouce de SF-158-13).
     './atelier-terminal-ask.component.scss',
+    // F-193 / SF-193-02 : le bouton « ✨ Enrichir » et la zone multiligne de Plume, à part pour la
+    // même raison de budget de build (12 ko). Avant la feuille mobile, qui doit rester la dernière.
+    './atelier-terminal-plume.component.scss',
     // QUATORZE FEUILLES (F-151 / SF-151-03) : le confort au doigt de la barre du terminal (barre
     // d'en-tête et actions qui passent à la ligne sous 819 px, boutons de décision au pouce) vit à
     // part, pour la même raison de budget de build (12 ko) de la feuille principale.
@@ -317,6 +338,10 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   set projectId(value: string | null) {
     const previous = this.projectIdValue();
     this.projectIdValue.set(value ?? null);
+    if (value !== previous) {
+      // F-193 : Plume appartient au terminal ouvert ; changer de terminal le referme.
+      this.closePlume();
+    }
     if (value && value !== previous) {
       this.loadActionCount(value);
       // F-176 : le parcours du sujet (mode, phase) suit le terminal ouvert.
@@ -487,6 +512,94 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
   /** Le champ de saisie, pour lui rendre la main après le choix d'une suite (F-192). */
   @ViewChild('draftField') private draftFieldRef?: ElementRef<HTMLInputElement>;
+
+  // ------------------------------------------------------------------ Plume (F-193 / SF-193-02)
+
+  private readonly plumeService = inject(PlumeService);
+  /** Ce que Plume montre au-dessus de la saisie ; `null` = rien. */
+  readonly plume = signal<PlumeView | null>(null);
+  /** Le texte d'origine, restauré à l'identique par « Revenir à mon texte ». */
+  private plumeOriginal = '';
+  /** Le terminal de l'enrichissement en cours : une réponse arrivée après un changement est ignorée. */
+  private plumeFor: string | null = null;
+
+  /** Vrai pendant l'appel d'enrichissement. */
+  plumeRunning(): boolean {
+    return this.plume()?.phase === 'running';
+  }
+
+  /** La demande enrichie est dans la saisie (zone multiligne), tant qu'elle n'est pas vidée. */
+  plumeEnriched(): boolean {
+    return this.plume()?.phase === 'enriched' && this.draft.length > 0;
+  }
+
+  /**
+   * « ✨ Enrichir » : la phrase saisie part au serveur, la demande structurée revient dans la saisie.
+   * Rien n'est envoyé à l'agent ; en cas d'échec, le brouillon n'est jamais touché.
+   */
+  enrichDraft(): void {
+    const text = this.draft;
+    const workspaceId = this.projectId;
+    if (!workspaceId || text.trim().length === 0 || this.plumeRunning() || this.readOnly) {
+      return;
+    }
+    this.plumeOriginal = this.plume()?.phase === 'enriched' ? this.plumeOriginal : text;
+    this.plumeFor = workspaceId;
+    this.plume.set({ phase: 'running' });
+    this.plumeService.enrich(workspaceId, text).subscribe({
+      next: (response) => {
+        if (this.plumeFor !== workspaceId || this.plume()?.phase !== 'running') {
+          return; // Terminal changé ou panneau fermé entre-temps : on ne réécrit rien.
+        }
+        this.plume.set({
+          phase: 'enriched',
+          original: this.plumeOriginal,
+          toConfirm: response.toConfirm ?? [],
+          sources: response.sources ?? [],
+        });
+        this.draftChange.emit(response.enrichedPrompt);
+        queueMicrotask(() => this.draftAreaRef?.nativeElement.focus());
+      },
+      error: (failure: HttpErrorResponse) => {
+        if (this.plumeFor !== workspaceId || this.plume()?.phase !== 'running') {
+          return;
+        }
+        this.plume.set({ phase: 'error', message: plumeErrorMessage(failure) });
+      },
+    });
+  }
+
+  /** « Revenir à mon texte » : l'original, à l'identique. */
+  restorePlume(): void {
+    this.draftChange.emit(this.plumeOriginal);
+    this.closePlume();
+    this.focusDraft();
+  }
+
+  /** Referme Plume sans toucher au brouillon. */
+  closePlume(): void {
+    this.plume.set(null);
+    this.plumeFor = null;
+  }
+
+  /** Frappe dans la demande enrichie ; la vider entièrement referme Plume. */
+  onPlumeInput(value: string): void {
+    this.draftChange.emit(value);
+    if (value.length === 0) {
+      this.closePlume();
+    }
+  }
+
+  /** Dans la zone multiligne : Entrée va à la ligne, Ctrl/⌘ + Entrée envoie. */
+  onPlumeKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault();
+      this.submit();
+    }
+  }
+
+  /** La zone multiligne de la demande enrichie. */
+  @ViewChild('draftArea') private draftAreaRef?: ElementRef<HTMLTextAreaElement>;
 
   /**
    * Moteur qui anime ce terminal (F-39 / SF-39-08). **Affiché, jamais choisi** : la pastille dit où
@@ -2429,6 +2542,8 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
       }
       this.slashDismissed.set(false);
       this.slashHighlight.set(0);
+      // F-193 : la demande part — Plume a fini son office.
+      this.closePlume();
       this.send.emit();
     }
   }

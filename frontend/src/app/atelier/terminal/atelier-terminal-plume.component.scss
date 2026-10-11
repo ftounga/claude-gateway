@@ -1,0 +1,39 @@
+/* PLUME DANS LA SAISIE (F-193 / SF-193-02).
+
+   Le bouton « ✨ Enrichir », toujours présent, et la zone multiligne de la demande enrichie.
+   Feuille à part comme les précédentes : le budget de 12 ko de la feuille principale du terminal
+   fait ÉCHOUER le build. Aucune couleur nouvelle : l'or de la charte (`--cg-accent`). */
+
+.terminal-plume-btn {
+  flex: 0 0 auto;
+  color: var(--cg-accent);
+  background: color-mix(in srgb, var(--cg-accent) 14%, transparent);
+  border-radius: 8px;
+
+  &:hover:not([disabled]) {
+    background: color-mix(in srgb, var(--cg-accent) 22%, transparent);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--cg-accent);
+    outline-offset: 2px;
+  }
+}
+
+/* La demande enrichie prend toute la ligne du composer : elle se relit, elle se corrige. */
+.terminal-input--plume {
+  flex-wrap: wrap;
+  align-items: flex-start;
+  border-color: color-mix(in srgb, var(--cg-accent) 55%, transparent);
+}
+
+.terminal-field--plume {
+  flex: 1 1 100%;
+  order: -1;
+  min-height: 160px;
+  max-height: 50vh;
+  padding: 8px 4px;
+  resize: vertical;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
