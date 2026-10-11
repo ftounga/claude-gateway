@@ -39,4 +39,22 @@ describe('AtelierContextService (F-165 / SF-165-03)', () => {
 
     expect(received).toEqual(payload);
   });
+
+  // F-117 / SF-117-09 : la passation — un GET pour la lire, un PUT pour la corriger.
+  it('lit la passation par un GET sur le projet', () => {
+    let received: { summary: string | null; length: number } | undefined;
+    service.handoff('w1').subscribe((h) => (received = h));
+    const req = http.expectOne('/api/workspaces/w1/chat/handoff');
+    expect(req.request.method).toBe('GET');
+    req.flush({ summary: '## Objectif', length: 11 });
+    expect(received?.summary).toBe('## Objectif');
+  });
+
+  it('corrige la passation par un PUT portant le texte', () => {
+    service.correctHandoff('w1', 'texte').subscribe();
+    const req = http.expectOne('/api/workspaces/w1/chat/handoff');
+    expect(req.request.method).toBe('PUT');
+    expect(req.request.body).toEqual({ summary: 'texte' });
+    req.flush({ summary: 'texte', length: 5 });
+  });
 });

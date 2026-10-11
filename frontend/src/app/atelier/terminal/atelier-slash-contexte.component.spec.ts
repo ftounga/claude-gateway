@@ -71,4 +71,24 @@ describe('AtelierSlashContexteComponent (F-165 / SF-165-03)', () => {
     expect(text).toContain('Aucun');
     expect(text).toContain('Mot-clé seul');
   });
+
+  // F-117 / SF-117-09 : le résumé ancré n'est plus une boîte noire.
+  it('propose « Voir la passation » quand un résumé ancré existe, et l\'émet au clic', () => {
+    component.state = 'ready';
+    component.context = summary;
+    fixture.detectChanges();
+    let opened = false;
+    component.openHandoff.subscribe(() => (opened = true));
+    const link = fixture.nativeElement.querySelector('.ctx-link') as HTMLButtonElement;
+    expect(link?.textContent).toContain('Voir la passation');
+    link.click();
+    expect(opened).toBeTrue();
+  });
+
+  it('ne propose aucun lien sans résumé ancré', () => {
+    component.state = 'ready';
+    component.context = { ...summary, hasAnchoredSummary: false };
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.ctx-link')).toBeNull();
+  });
 });

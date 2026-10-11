@@ -435,6 +435,9 @@
     <p class="terminal-flux-marker" [attr.data-kind]="marker.kind" role="status">
       <mat-icon class="terminal-flux-marker-icon" aria-hidden="true">{{ fluxMarkerIcon(marker) }}</mat-icon>
       <span class="terminal-flux-marker-text">{{ marker.label }}</span>
+      @if (marker.kind === 'compaction') {
+        <button type="button" class="terminal-flux-marker-link" (click)="openHandoffPanel()">Voir la passation</button>
+      }
     </p>
   }
 
@@ -773,6 +776,10 @@
               <p class="terminal-flux-marker" [attr.data-kind]="marker.kind" role="status">
                 <mat-icon class="terminal-flux-marker-icon" aria-hidden="true">{{ fluxMarkerIcon(marker) }}</mat-icon>
                 <span class="terminal-flux-marker-text">{{ marker.label }}</span>
+                @if (marker.kind === 'compaction') {
+                  <!-- F-117 / SF-117-09 : la passation écrite par cette compaction, lisible. -->
+                  <button type="button" class="terminal-flux-marker-link" (click)="openHandoffPanel()">Voir la passation</button>
+                }
               </p>
             } @else {
               <!-- Le `as group` n'est admis que sur un `@if` : on imbrique l'exploration ici, une
@@ -1328,6 +1335,17 @@
             <app-atelier-slash-contexte
               [state]="panel.contextState ?? 'loading'"
               [context]="panel.context ?? null"
+              (openHandoff)="openHandoffPanel()"
+            />
+          }
+          @case ('handoff') {
+            <!-- F-117 / SF-117-09 : la passation, lisible et corrigeable (lecture seule = consultation). -->
+            <app-atelier-slash-passation
+              [state]="panel.handoffState ?? 'loading'"
+              [handoff]="panel.handoff ?? null"
+              [workspaceId]="projectId"
+              [readOnly]="readOnly"
+              (saved)="onHandoffSaved(panel.id, $event)"
             />
           }
           @case ('quota') {

@@ -804,6 +804,50 @@ describe('AtelierTerminalComponent', () => {
     expect(fixture.nativeElement.querySelector('app-atelier-slash-contexte')).not.toBeNull();
   });
 
+  // ------------------------------------ F-117 / SF-117-09 : voir la passation (lecture, aucun tour)
+
+  it('« Voir la passation » ouvre le panneau de la passation sans toucher au brouillon ni lancer de tour', () => {
+    const http = TestBed.inject(HttpTestingController);
+    let sent = 0;
+    let draftChanged = 0;
+    component.send.subscribe(() => (sent += 1));
+    component.draftChange.subscribe(() => (draftChanged += 1));
+    component.projectId = 'w1';
+
+    component.openHandoffPanel();
+    fixture.detectChanges();
+
+    expect(sent).toBe(0);
+    expect(draftChanged).toBe(0);
+    expect(component.slashPanels()[0].panelKind).toBe('handoff');
+    const req = http.expectOne('/api/workspaces/w1/chat/handoff');
+    expect(req.request.method).toBe('GET');
+    req.flush({ summary: '## Objectif\nx', length: 13 });
+    fixture.detectChanges();
+
+    expect(component.slashPanels()[0].handoffState).toBe('ready');
+    expect(fixture.nativeElement.querySelector('app-atelier-slash-passation')).not.toBeNull();
+  });
+
+  it('sans résumé, le panneau de la passation dit qu\'il n\'y en a pas encore', () => {
+    const http = TestBed.inject(HttpTestingController);
+    component.projectId = 'w1';
+
+    component.draft = '/passation';
+    component.submit();
+    http.expectOne('/api/workspaces/w1/chat/handoff').flush({ summary: null, length: 0 });
+
+    expect(component.slashPanels()[0].handoffState).toBe('none');
+  });
+
+  it('le marqueur de compaction propose « Voir la passation »', () => {
+    component.compactionMarker = { kind: 'compaction', label: 'Conversation compactée · 4 tours résumés' };
+    fixture.detectChanges();
+
+    const link = fixture.nativeElement.querySelector('.terminal-flux-marker-link') as HTMLButtonElement;
+    expect(link?.textContent).toContain('Voir la passation');
+  });
+
   it('/contexte sans projet connu bascule en échec, sans aucun tour ni appel', () => {
     const http = TestBed.inject(HttpTestingController);
     let sent = 0;

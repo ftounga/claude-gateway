@@ -1,0 +1,81 @@
+<!-- F-117 / SF-117-09 — Corps du panneau « La passation » : le résumé de compaction que Claude relira au
+     prochain tour. Lecture (Markdown) et correction (PUT, aucun tour modèle). -->
+@switch (state) {
+  @case ('loading') {
+    <p class="pass-note">
+      <mat-spinner diameter="18" strokeWidth="2" aria-hidden="true"></mat-spinner>
+      Lecture de la passation…
+    </p>
+  }
+  @case ('error') {
+    <p class="pass-note pass-note--error">
+      Passation indisponible pour l'instant. Réessayez dans un instant — cela ne coûte aucun tour.
+    </p>
+  }
+  @case ('none') {
+    <p class="pass-note">
+      Pas encore de passation : elle s'écrit d'elle-même à la première compaction de la conversation.
+    </p>
+  }
+  @default {
+    @if (handoff?.summary; as summary) {
+      @if (!editing()) {
+        <p class="pass-hint">
+          Ce que Claude relit en tête du prochain tour, à la place des vieux tours résumés.
+        </p>
+        <div class="pass-body" [innerHTML]="summary | markdown"></div>
+        @if (!readOnly) {
+          <div class="pass-actions">
+            <button mat-stroked-button type="button" class="pass-edit" (click)="startEdit()">
+              <mat-icon aria-hidden="true">edit</mat-icon>
+              Corriger
+            </button>
+          </div>
+        }
+      } @else {
+        <label class="pass-editor">
+          <span class="pass-editor__label">
+            Corrigez librement, en gardant les cinq rubriques dans l'ordre.
+          </span>
+          <textarea
+            class="pass-editor__input"
+            rows="14"
+            autocomplete="off"
+            spellcheck="true"
+            [ngModel]="draft()"
+            (ngModelChange)="draft.set($event)"
+            [disabled]="saving()"
+            aria-label="Texte de la passation"
+          ></textarea>
+        </label>
+        <p class="pass-counter" [class.is-error]="draftTooLong">
+          {{ count(draft().trim().length) }} / {{ count(maxLength) }} caractères
+        </p>
+        @if (draftEmpty) {
+          <p class="pass-error" role="alert">La passation ne peut pas être vide.</p>
+        } @else if (draftOffTemplate) {
+          <p class="pass-error" role="alert">
+            Gardez les cinq rubriques, dans l'ordre : {{ sections.join(' · ') }}.
+          </p>
+        } @else if (draftTooLong) {
+          <p class="pass-error" role="alert">La passation est trop longue.</p>
+        }
+        <div class="pass-actions">
+          <button
+            mat-flat-button
+            color="primary"
+            type="button"
+            class="pass-save"
+            [disabled]="!canSave"
+            (click)="save()"
+          >
+            Enregistrer
+          </button>
+          <button mat-button type="button" class="pass-cancel" [disabled]="saving()" (click)="cancelEdit()">
+            Annuler
+          </button>
+        </div>
+      }
+    }
+  }
+}

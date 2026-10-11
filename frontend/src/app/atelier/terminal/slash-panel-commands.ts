@@ -86,6 +86,15 @@ export const SLASH_PANEL_COMMANDS: readonly SlashPanelCommand[] = [
     panelKind: 'context',
   },
   {
+    name: 'passation',
+    title: '/passation',
+    description: 'La passation : le résumé que Claude relit au prochain tour (lisible, corrigeable)',
+    kind: 'view',
+    takesArgument: false,
+    icon: 'assignment',
+    panelKind: 'handoff',
+  },
+  {
     name: 'quota',
     title: '/quota',
     description: 'Consommation de tokens du plan : utilisé, restant, reset',
@@ -292,6 +301,46 @@ export interface ThreadCostBudget {
 export type ContextPanelState = 'loading' | 'ready' | 'error';
 
 /**
+ * État du panneau **passation** (F-117 / SF-117-09) : `none` quand le fil n'a pas encore de résumé de
+ * compaction (aucune passation à montrer).
+ */
+export type HandoffPanelState = 'loading' | 'ready' | 'none' | 'error';
+
+/**
+ * **La passation du fil** (F-117 / SF-117-09) — reflet du DTO backend `ThreadHandoffResponse` : le
+ * résumé de compaction tel qu'il sera réinjecté au prochain tour (`null` s'il n'y en a pas).
+ */
+export interface ThreadHandoff {
+  readonly summary: string | null;
+  readonly length: number;
+}
+
+/** Longueur maximale d'une passation corrigée (miroir de `AtelierThreadHandoffService.MAX_LENGTH`). */
+export const HANDOFF_MAX_LENGTH = 40000;
+
+/** Les cinq rubriques du gabarit, dans l'ordre (miroir de `AtelierCompactionService.SUMMARY_SECTIONS`). */
+export const HANDOFF_SECTIONS: readonly string[] = [
+  '## Objectif',
+  '## Fichiers',
+  '## Décisions et faits établis',
+  '## État courant',
+  '## Prochaines étapes',
+];
+
+/** Vrai si le texte porte les cinq rubriques du gabarit, dans l'ordre (même règle que le serveur). */
+export function handoffLooksSectioned(text: string): boolean {
+  let cursor = 0;
+  for (const section of HANDOFF_SECTIONS) {
+    const found = text.indexOf(section, cursor);
+    if (found < 0) {
+      return false;
+    }
+    cursor = found + section.length;
+  }
+  return true;
+}
+
+/**
  * L'**état mémoire du fil courant** (F-165 / SF-165-03) tel que le panneau `/contexte` le rend. Reflet
  * exact du DTO backend `ThreadContextSummaryResponse` : des volumes, des drapeaux et un seuil, **jamais**
  * un contenu (on sait que le fil a un résumé ancré, jamais le résumé lui-même).
@@ -443,6 +492,10 @@ export interface SlashPanel {
   readonly contextState?: ContextPanelState;
   /** L'état mémoire du fil, présent pour `panelKind === 'context'` en état `ready`. */
   readonly context?: ThreadContextSummary;
+  /** État de la lecture, pour `panelKind === 'handoff'` : `loading` → `ready`/`none`/`error`. */
+  readonly handoffState?: HandoffPanelState;
+  /** La passation du fil, présente pour `panelKind === 'handoff'` en état `ready`. */
+  readonly handoff?: ThreadHandoff;
   /** État de la lecture, pour `panelKind === 'quota'` : `loading` → `ready`/`error`. */
   readonly quotaState?: QuotaPanelState;
   /** La consommation du plan, présente pour `panelKind === 'quota'` en état `ready`. */
@@ -498,6 +551,10 @@ export function buildPanel(command: SlashPanelCommand, arg: string, id: string):
     // Même règle : la donnée arrive d'un GET de lecture (jamais du modèle). *Vérifier sa mémoire ne
     // doit rien coûter.*
     return { ...base, title: 'État mémoire du fil', contextState: 'loading' };
+  }
+  if (command.panelKind === 'handoff') {
+    // F-117 / SF-117-09 : la passation arrive d'un GET de lecture (jamais du modèle).
+    return { ...base, title: 'La passation', handoffState: 'loading' };
   }
   if (command.panelKind === 'quota') {
     // La donnée arrive d'un GET de lecture (`/api/usage`, jamais le modèle) : chargement d'abord.
