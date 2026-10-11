@@ -151,6 +151,7 @@ import { PagePanelComponent } from './page-panel.component';
 import { TerminalActionsPanelComponent } from './terminal-actions-panel.component';
 import { TerminalAttentesBandComponent } from './terminal-attentes-band.component';
 import { TerminalPushInviteComponent } from './terminal-push-invite.component';
+import { TerminalFilComponent } from './terminal-fil.component';
 import { AttenteCardComponent } from './attente-card.component';
 import { HandoffCardComponent, HandoffOriginComponent } from './handoff-card.component';
 import { ProposalCardComponent } from './proposal-card.component';
@@ -217,7 +218,7 @@ export interface SlashMenuEntry {
   imports: [
     FormsModule, ForgeBreadcrumbComponent, LiveBadgeComponent, MarkdownPipe, MatButtonModule,
     TeamsLinkBadgeComponent, NgTemplateOutlet, TerminalEmailComponent, PageBlockComponent, PagePanelComponent,
-    TerminalActionsPanelComponent, TerminalAttentesBandComponent, TerminalPushInviteComponent, AttenteCardComponent,
+    TerminalActionsPanelComponent, TerminalAttentesBandComponent, TerminalPushInviteComponent, TerminalFilComponent, AttenteCardComponent,
     HandoffCardComponent, HandoffOriginComponent, ProposalCardComponent,
     TerminalJourneyChipComponent, TerminalJourneyStripComponent, TerminalJourneyChantiersComponent,
     TerminalHandComponent,
