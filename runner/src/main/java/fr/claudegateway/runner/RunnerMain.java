@@ -121,6 +121,9 @@ public final class RunnerMain {
         // Plus de ligne « Proxy d'entreprise détecté » ici : la route est désormais dite dans le bloc
         // de transparence ci-dessus, avec son adresse expurgée et la variable qui l'a décidée.
         HttpClient httpClient = buildHttpClient(proxyResolver, trust);
+        // F-190 / SF-190-06 : CE client sert aussi aux rapatriements (ffmpeg, whisper) et aux
+        // remontées vers la gateway — proxy et racine d'entreprise compris.
+        RunnerHttp.use(httpClient);
 
         // Contrôle de vol (SF-38-25) : la gateway est-elle joignable depuis CE terminal ? La question
         // se pose avant l'appairage, parce que sa réponse n'a rien de métier — et qu'un échec réseau

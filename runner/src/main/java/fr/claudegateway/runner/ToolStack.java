@@ -151,7 +151,7 @@ public final class ToolStack {
                 ? fr.claudegateway.runner.teams.MomentUploader.unavailable(
                         "ce poste n'a pas de jeton runner : aucune image ne peut remonter")
                 : fr.claudegateway.runner.teams.MomentUploader.over(
-                        java.net.http.HttpClient.newHttpClient(), config.gatewayBaseUrl(), token);
+                        RunnerHttp.client(), config.gatewayBaseUrl(), token);
         return new fr.claudegateway.runner.teams.MomentsWorker(
                 new fr.claudegateway.runner.teams.MomentsJobStore(folder),
                 new fr.claudegateway.runner.teams.SceneFrames(toolchain, processes), uploader);
@@ -169,7 +169,7 @@ public final class ToolStack {
                 ? fr.claudegateway.runner.teams.MeetingAudioUploader.unavailable(
                         "ce poste n'a pas de jeton runner : l'audio ne peut pas remonter")
                 : fr.claudegateway.runner.teams.MeetingAudioUploader.over(
-                        java.net.http.HttpClient.newHttpClient(), config.gatewayBaseUrl(), token);
+                        RunnerHttp.client(), config.gatewayBaseUrl(), token);
     }
 
     /**
@@ -184,7 +184,7 @@ public final class ToolStack {
                 ? fr.claudegateway.runner.teams.LocalTranscriptUploader.unavailable(
                         "ce poste n'a pas de jeton runner : le texte ne peut pas remonter")
                 : fr.claudegateway.runner.teams.LocalTranscriptUploader.over(
-                        java.net.http.HttpClient.newHttpClient(), config.gatewayBaseUrl(), token);
+                        RunnerHttp.client(), config.gatewayBaseUrl(), token);
     }
 
     /** <b>La remontée des images clés d'une réunion</b> (F-128 / SF-128-03), par le jeton du poste. */
@@ -196,7 +196,7 @@ public final class ToolStack {
                 ? fr.claudegateway.runner.teams.MeetingImageUploader.unavailable(
                         "ce poste n'a pas de jeton runner : les images ne peuvent pas remonter")
                 : fr.claudegateway.runner.teams.MeetingImageUploader.over(
-                        java.net.http.HttpClient.newHttpClient(), config.gatewayBaseUrl(), token);
+                        RunnerHttp.client(), config.gatewayBaseUrl(), token);
     }
 
     /**
@@ -207,7 +207,7 @@ public final class ToolStack {
         String token = new TokenStore(config.hostRoot(),
                 java.nio.file.Path.of(System.getProperty("user.home", "."))).load()
                 .map(StoredToken::token).orElse("");
-        return fr.claudegateway.runner.teams.RadarUplink.over(java.net.http.HttpClient.newHttpClient(),
+        return fr.claudegateway.runner.teams.RadarUplink.over(RunnerHttp.client(),
                 config.gatewayBaseUrl(), token);
     }
 
