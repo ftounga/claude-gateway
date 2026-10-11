@@ -100,4 +100,52 @@ class LiveTurnRegistryTest {
                 .as("un projet n'exécute qu'un tour à la fois : le précédent est fermé, pas ajouté")
                 .isEqualTo(1);
     }
+
+    // ------------------------------------------------ F-191 / SF-191-01 : le fil des tâches
+
+    @Test
+    void lesResumesSontCeuxDeLUtilisateurSeulement() {
+        registry.openOrSteer(ALICE, PROJET, "corrige le build");
+        registry.openOrSteer(BOB, UUID.randomUUID(), "autre chose");
+
+        assertThat(registry.summariesOf(ALICE))
+                .singleElement()
+                .satisfies(s -> {
+                    assertThat(s.workspaceId()).isEqualTo(PROJET);
+                    assertThat(s.demand()).isEqualTo("corrige le build");
+                    assertThat(s.state()).isEqualTo("running");
+                });
+    }
+
+    @Test
+    void unTourFiniResteVisibleDixMinutesPuisDisparait() {
+        LiveTurn turn = registry.openOrSteer(ALICE, PROJET, "demande").turn();
+        registry.close(turn);
+
+        long now = System.currentTimeMillis();
+        assertThat(registry.summariesOf(ALICE, now))
+                .singleElement()
+                .satisfies(s -> assertThat(s.state()).isEqualTo("done"));
+        assertThat(registry.summariesOf(ALICE, now + LiveTurnRegistry.FINISHED_RETENTION_MS + 60_000L))
+                .isEmpty();
+        assertThat(registry.summariesOf(BOB, now)).isEmpty();
+    }
+
+    @Test
+    void clore_deux_fois_ne_retient_le_tour_quune_fois() {
+        LiveTurn turn = registry.openOrSteer(ALICE, PROJET, "demande").turn();
+        registry.close(turn);
+        registry.close(turn);
+
+        assertThat(registry.summariesOf(ALICE)).hasSize(1);
+    }
+
+    @Test
+    void lesToursFinisRetenusSontBornes() {
+        for (int i = 0; i < LiveTurnRegistry.MAX_FINISHED_PER_USER + 5; i++) {
+            registry.close(registry.openOrSteer(ALICE, UUID.randomUUID(), "d" + i).turn());
+        }
+
+        assertThat(registry.summariesOf(ALICE)).hasSize(LiveTurnRegistry.MAX_FINISHED_PER_USER);
+    }
 }

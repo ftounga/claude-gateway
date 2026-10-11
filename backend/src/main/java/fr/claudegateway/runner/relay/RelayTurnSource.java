@@ -25,6 +25,7 @@ import fr.claudegateway.atelier.live.PendingApproval;
 import fr.claudegateway.atelier.live.RemoteTurnSource;
 import fr.claudegateway.atelier.live.SteerReceipt;
 import fr.claudegateway.atelier.live.TurnSubscriber;
+import fr.claudegateway.atelier.live.TurnSummary;
 
 /**
  * Le tour d'un pod voisin, lu depuis <b>ce</b> pod (F-84 / SF-84-02).
@@ -47,6 +48,7 @@ public class RelayTurnSource implements RemoteTurnSource {
     static final String OWNER_PATH = "/api/internal/atelier/turn-owner";
     static final String STREAM_PATH = "/api/internal/atelier/turn-stream";
     static final String STEER_PATH = "/api/internal/atelier/steer";
+    static final String USER_TURNS_PATH = "/api/internal/atelier/user-turns";
 
     private static final Logger log = LoggerFactory.getLogger(RelayTurnSource.class);
 
@@ -138,6 +140,49 @@ public class RelayTurnSource implements RemoteTurnSource {
         String steerId = answer.get().path("steerId").asText(null);
         return Optional.of(new SteerReceipt(status, steerId,
                 parseUuid(answer.get().path("turnId").asText(null))));
+    }
+
+    /**
+     * Les résumés des tours de cet utilisateur chez <b>chaque</b> pair (F-191 / SF-191-01) : un appel par
+     * pair, jamais à soi-même. Un pair injoignable est ignoré — la bande montre ce qu'on sait, sans
+     * rien inventer.
+     */
+    @Override
+    public List<TurnSummary> remoteSummariesOf(UUID userId) {
+        if (!properties.isEnabled() || userId == null) {
+            return List.of();
+        }
+        List<String> peers;
+        try {
+            peers = peerResolver.peerBaseUrls();
+        } catch (RuntimeException ex) {
+            log.debug("Résolution des pairs impossible pour la bande des tâches");
+            return List.of();
+        }
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("userId", userId.toString());
+        List<TurnSummary> out = new java.util.ArrayList<>();
+        for (String peer : peers) {
+            if (peer == null || peer.isBlank() || peer.equals(properties.selfBaseUrl())) {
+                continue;
+            }
+            Optional<JsonNode> answer = peerClient.post(peer, USER_TURNS_PATH, body.toString());
+            if (answer.isEmpty() || !answer.get().path("turns").isArray()) {
+                continue;
+            }
+            for (JsonNode node : answer.get().path("turns")) {
+                try {
+                    TurnSummary summary = objectMapper.treeToValue(node, TurnSummary.class);
+                    // Défense en profondeur : un résumé d'autrui n'entre jamais.
+                    if (summary != null && userId.equals(summary.userId())) {
+                        out.add(summary);
+                    }
+                } catch (IOException | RuntimeException ex) {
+                    log.debug("Résumé de tour relayé illisible : ignoré");
+                }
+            }
+        }
+        return out;
     }
 
     // ------------------------------------------------------------------ interne

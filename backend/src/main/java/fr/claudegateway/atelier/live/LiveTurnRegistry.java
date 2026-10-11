@@ -34,7 +34,14 @@ public class LiveTurnRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(LiveTurnRegistry.class);
 
+    /** Combien de temps un tour fini reste visible dans la bande des tâches (F-191 / SF-191-01). */
+    static final long FINISHED_RETENTION_MS = 10 * 60_000L;
+    /** Combien de tours finis on retient par utilisateur, sur ce pod. */
+    static final int MAX_FINISHED_PER_USER = 20;
+
     private final Map<String, LiveTurn> turns = new ConcurrentHashMap<>();
+    /** Les tours finis récemment, par utilisateur (F-191 / SF-191-01) — en mémoire, comme les vivants. */
+    private final Map<UUID, java.util.Deque<TurnSummary>> finished = new ConcurrentHashMap<>();
     private final ObjectMapper objectMapper;
 
     public LiveTurnRegistry(ObjectMapper objectMapper) {
@@ -74,7 +81,9 @@ public class LiveTurnRegistry {
                 return new Entry(current, receipt);
             }
         }
-        return new Entry(open(userId, workspaceId), null);
+        LiveTurn opened = open(userId, workspaceId);
+        opened.digest().demand(message);
+        return new Entry(opened, null);
     }
 
     /** Ouvre un tour pour ce projet, en fermant celui qui tournait encore. */
@@ -130,7 +139,54 @@ public class LiveTurnRegistry {
             return;
         }
         turns.remove(key(turn.userId(), turn.workspaceId()), turn);
+        boolean wasLive = turn.live();
         turn.finish();
+        if (wasLive) {
+            remember(turn.summary(), System.currentTimeMillis());
+        }
+    }
+
+    /**
+     * Les résumés des tours <b>de cet utilisateur</b> sur ce pod (F-191 / SF-191-01) : les vivants, et
+     * les finis depuis moins de {@link #FINISHED_RETENTION_MS}. Isolation à la source, comme
+     * {@link #liveTurnsOf} ; la portée « poste » est appliquée par l'appelant.
+     */
+    public java.util.List<TurnSummary> summariesOf(UUID userId) {
+        return summariesOf(userId, System.currentTimeMillis());
+    }
+
+    java.util.List<TurnSummary> summariesOf(UUID userId, long nowMs) {
+        if (userId == null) {
+            return java.util.List.of();
+        }
+        java.util.List<TurnSummary> out = new java.util.ArrayList<>();
+        for (LiveTurn turn : liveTurnsOf(userId)) {
+            out.add(turn.summary());
+        }
+        java.util.Deque<TurnSummary> recent = finished.get(userId);
+        if (recent != null) {
+            synchronized (recent) {
+                recent.removeIf(s -> s.endedAt() == null || nowMs - s.endedAt() > FINISHED_RETENTION_MS);
+                out.addAll(recent);
+            }
+        }
+        return out;
+    }
+
+    /** Retient un tour fini pour la bande des tâches, borné par utilisateur. */
+    void remember(TurnSummary summary, long nowMs) {
+        if (summary == null || summary.userId() == null || summary.endedAt() == null) {
+            return;
+        }
+        java.util.Deque<TurnSummary> recent =
+                finished.computeIfAbsent(summary.userId(), k -> new java.util.ArrayDeque<>());
+        synchronized (recent) {
+            recent.removeIf(s -> s.endedAt() == null || nowMs - s.endedAt() > FINISHED_RETENTION_MS);
+            recent.addFirst(summary);
+            while (recent.size() > MAX_FINISHED_PER_USER) {
+                recent.removeLast();
+            }
+        }
     }
 
     /**

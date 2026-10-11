@@ -124,6 +124,9 @@ public final class LiveTurn {
     private long droppedThrough;
     private int bufferedChars;
     private boolean finished;
+    /** Le résumé du tour pour la bande des tâches (F-191 / SF-191-01). */
+    private final TurnDigest digest = new TurnDigest();
+    private long endedAtMs;
 
     LiveTurn(UUID userId, UUID workspaceId, ObjectMapper objectMapper) {
         this.userId = userId;
@@ -208,6 +211,7 @@ public final class LiveTurn {
             if (json == null) {
                 return lastSeq;
             }
+            observe(name, json);
             TurnEvent event = new TurnEvent(++lastSeq, name, json);
             buffer.addLast(event);
             bufferedChars += event.weight();
@@ -566,6 +570,7 @@ public final class LiveTurn {
                 return;
             }
             finished = true;
+            endedAtMs = System.currentTimeMillis();
             toFinish = List.copyOf(subscribers);
             subscribers.clear();
         } finally {
@@ -573,6 +578,58 @@ public final class LiveTurn {
         }
         for (TurnSubscriber subscriber : toFinish) {
             subscriber.finish();
+        }
+    }
+
+    // ------------------------------------------------ F-191 / SF-191-01 : le résumé du tour
+
+    /** Le résumé du tour : on y confie la demande à l'ouverture. */
+    public TurnDigest digest() {
+        return digest;
+    }
+
+    /**
+     * L'instantané du résumé, tel que la bande des tâches le montre. Un tour vivant qui attend une
+     * autorisation ou une réponse est {@code waiting} ; fini, il porte son issue.
+     */
+    public TurnSummary summary() {
+        boolean done;
+        long ended;
+        boolean pendingNow;
+        String pendingKind = null;
+        lock.lock();
+        try {
+            done = finished;
+            ended = endedAtMs;
+            pendingNow = !finished && ((pendingApproval != null && pendingApproval.stillOpen())
+                    || (pendingQuestion != null && pendingQuestion.stillOpen()));
+            if (pendingNow) {
+                pendingKind = pendingApproval != null && pendingApproval.stillOpen() ? "approval" : "question";
+            }
+        } finally {
+            lock.unlock();
+        }
+        String waiting = done ? null : (digest.waiting() != null ? digest.waiting() : pendingKind);
+        String state;
+        if (done) {
+            state = digest.outcome() == null ? "done" : digest.outcome();
+        } else {
+            state = waiting != null ? TurnSummary.WAITING : TurnSummary.RUNNING;
+        }
+        return new TurnSummary(turnId, userId, workspaceId, state, waiting, digest.demand(), startedAtMs,
+                done ? ended : null, digest.planDone(), digest.planTotal(), digest.planStep(),
+                done ? null : digest.tool(), digest.subagents(done));
+    }
+
+    /** Nourrit le résumé : seuls les événements suivis sont relus — jamais une cause d'échec. */
+    private void observe(String name, String json) {
+        if (!TurnDigest.watches(name)) {
+            return;
+        }
+        try {
+            digest.observe(name, objectMapper.readTree(json), System.currentTimeMillis());
+        } catch (JsonProcessingException | RuntimeException ex) {
+            // Charge utile illisible : le résumé reste tel quel, le tour continue.
         }
     }
 

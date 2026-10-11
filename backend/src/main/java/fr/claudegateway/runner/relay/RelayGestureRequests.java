@@ -90,6 +90,15 @@ final class RelayGestureRequests {
         }
     }
 
+    /** Les tours d'un utilisateur sur ce pod, pour la bande des tâches (F-191 / SF-191-01). */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record UserTurnsRequest(UUID userId) {
+
+        boolean isValid() {
+            return userId != null;
+        }
+    }
+
     /** Interruption d'un tour d'atelier (contrat §6, clef {@code userId:workspaceId}). */
     @JsonIgnoreProperties(ignoreUnknown = true)
     record InterruptRequest(UUID userId, UUID workspaceId, String reason) {

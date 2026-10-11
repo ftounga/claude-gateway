@@ -227,6 +227,36 @@ class AtelierTurnRelayApiIntegrationTest {
 
     // ------------------------------------------------------------------ outillage
 
+    // ------------------------------------------------ F-191 / SF-191-01 : le fil des tâches
+
+    @Test
+    void lesToursDunUtilisateurSontRendusAuPairSansCeuxDAutrui() {
+        UUID user = UUID.randomUUID();
+        UUID other = UUID.randomUUID();
+        LiveTurn mine = liveTurns.openOrSteer(user, UUID.randomUUID(), "corrige le build").turn();
+        LiveTurn theirs = liveTurns.openOrSteer(other, UUID.randomUUID(), "demande confidentielle").turn();
+        try {
+            ResponseEntity<String> response = post(relayPort(), "/api/internal/atelier/user-turns", SECRET,
+                    "{\"userId\":\"" + user + "\"}");
+
+            assertThat(response.getStatusCode().value()).isEqualTo(200);
+            assertThat(response.getBody()).contains(mine.turnId().toString())
+                    .contains("corrige le build")
+                    .doesNotContain(theirs.turnId().toString())
+                    .doesNotContain("demande confidentielle");
+        } finally {
+            liveTurns.close(mine);
+            liveTurns.close(theirs);
+        }
+    }
+
+    @Test
+    void lesToursDunUtilisateurSansIdentifiantSontRefuses() {
+        ResponseEntity<String> response = post(relayPort(), "/api/internal/atelier/user-turns", SECRET, "{}");
+
+        assertThat(response.getStatusCode().value()).isEqualTo(400);
+    }
+
     private int relayPort() {
         return relayConnector.relayPort();
     }
