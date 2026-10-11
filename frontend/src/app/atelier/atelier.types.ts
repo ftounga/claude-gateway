@@ -8,6 +8,7 @@ import {
   AtelierTerminalBlock,
   AtelierQuestion,
   DepositedFileRef,
+  AtelierNextStep,
 } from '../core/models/atelier.models';
 import { AtelierFileDiffView } from './terminal/terminal-diff';
 
@@ -73,6 +74,11 @@ export interface AtelierThreadItem {
    * rechargement depuis le transcript persistant (`message.files`, SF-169-02). Absent sinon.
    */
   files?: DepositedFileRef[];
+  /**
+   * Les suites proposées par l'agent à la fin de ce tour (F-192 / SF-192-02) — « Et maintenant ? ».
+   * Posées au `done` et au rechargement ; absentes sinon.
+   */
+  nextSteps?: AtelierNextStep[];
 }
 
 /** Où en est une précision envoyée pendant un tour (F-84 / SF-84-06). */

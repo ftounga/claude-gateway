@@ -377,6 +377,23 @@ describe('AtelierService', () => {
     expect(amount).toBe('1,61 €');
   });
 
+  it('streamChat transmet les suites proposées par l\'agent (F-192 / SF-192-02)', async () => {
+    fakeSseFetch([
+      'event:done\ndata:{"reply":"ok","actions":[],"messageId":"m1","nextSteps":'
+        + '[{"title":"PR","why":"Tests verts","label":"LIVRER","request":"Ouvre la PR."}]}',
+    ]);
+    let steps: unknown;
+
+    await service.streamChat('w1', 'go', {
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: (done) => (steps = done.nextSteps),
+      onError: () => undefined,
+    });
+
+    expect(steps).toEqual([{ title: 'PR', why: 'Tests verts', label: 'LIVRER', request: 'Ouvre la PR.' }]);
+  });
+
   it('streamChat laisse le montant absent quand la passerelle n\'en envoie pas (F-133 / SF-133-10)', async () => {
     // Le cas de tout utilisateur non administrateur : rien à afficher, et rien d'inventé.
     fakeSseFetch(['event:done\ndata:{"reply":"ok","actions":[],"messageId":"m1"}']);

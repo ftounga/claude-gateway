@@ -495,6 +495,8 @@ export interface AtelierPersistedTranscript {
    * relevé relu que pour l'**administrateur** ; il est absent des relevés d'avant F-133.
    */
   costEur?: string;
+  /** Les suites proposées par l'agent (F-192 / SF-192-01), relues au rechargement. */
+  nextSteps?: AtelierNextStep[];
 }
 
 /**
@@ -606,6 +608,25 @@ export interface AtelierStreamDone {
    * l'écran propose alors « Approuver & exécuter ». Absent/faux ⇒ aucun plan en attente.
    */
   planSubmitted?: boolean;
+  /**
+   * Les suites proposées par l'agent en fin de réponse (F-192 / SF-192-01) — « Et maintenant ? ».
+   * Absent (backend antérieur) ou vide ⇒ aucun panneau.
+   */
+  nextSteps?: AtelierNextStep[];
+}
+
+/** Nature d'une suite proposée (F-192) : quatre mots, toujours les mêmes, pour lire vite. */
+export type AtelierNextStepLabel = 'VERIFIER' | 'CONTINUER' | 'LIVRER' | 'RISQUE';
+
+/**
+ * Une suite proposée par l'agent principal à la fin de sa réponse (F-192 / SF-192-01) : un titre, le
+ * fait du tour qui la fonde, sa nature, et la demande complète qui ira dans la saisie — sans envoi.
+ */
+export interface AtelierNextStep {
+  title: string;
+  why: string;
+  label: AtelierNextStepLabel;
+  request: string;
 }
 
 /** L'envoi est devenu une précision du tour qui tournait déjà (F-84 / SF-84-06). */

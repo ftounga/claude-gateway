@@ -35,7 +35,9 @@ export interface EssentialSplit {
  * - Essentiel vide (après trim) → `{ essential: null, … }` : pas de bloc vide.
  */
 export function splitEssential(content: string | null | undefined): EssentialSplit {
-  const text = content ?? '';
+  // F-192 / SF-192-02 : le bloc « Et maintenant ? » parle au produit — jamais rendu, même pendant le
+  // flux (la passerelle le retire de la réponse persistée, mais le texte vivant le porte encore).
+  const text = stripNextSteps(content ?? '');
   const open = text.match(OPEN_MARKER);
   if (!open || open.index === undefined) {
     return { essential: null, detail: text };
@@ -56,4 +58,35 @@ export function splitEssential(content: string | null | undefined): EssentialSpl
   const afterClose = afterOpen.slice(close.index + close[0].length);
   const detail = [beforeOpen.trim(), afterClose.trim()].filter((part) => part.length > 0).join('\n\n');
   return essential ? { essential, detail } : { essential: null, detail };
+}
+
+/** Ouverture du bloc de suites (F-192), tolérante : `<<suites>>`, `<< Suites >>`… */
+const NEXT_STEPS_OPEN = /<<\s*suites\s*>>/i;
+/** Fermeture, idem : `<</suites>>`. */
+const NEXT_STEPS_CLOSE = /<<\s*\/\s*suites\s*>>/i;
+
+/**
+ * Retire les blocs `<<suites>> … <</suites>>` (F-192 / SF-192-02) d'un texte d'agent. Une ouverture
+ * sans fermeture (flux en cours) retire tout ce qui la suit. Sans bloc, le texte revient tel quel.
+ */
+export function stripNextSteps(content: string): string {
+  let rest = content;
+  let kept = '';
+  let removed = false;
+  for (;;) {
+    const open = rest.match(NEXT_STEPS_OPEN);
+    if (!open || open.index === undefined) {
+      break;
+    }
+    removed = true;
+    kept += rest.slice(0, open.index);
+    const after = rest.slice(open.index + open[0].length);
+    const close = after.match(NEXT_STEPS_CLOSE);
+    if (!close || close.index === undefined) {
+      rest = '';
+      break;
+    }
+    rest = after.slice(close.index + close[0].length);
+  }
+  return removed ? (kept + rest).replace(/\n{3,}/g, '\n\n').trim() : content;
 }

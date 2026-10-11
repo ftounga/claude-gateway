@@ -61,6 +61,7 @@ import {
   AtelierSubjectHandoff,
   AtelierGovernanceProposal,
   TeamsAccess,
+  AtelierNextStep,
 } from '../models/atelier.models';
 
 /**
@@ -596,6 +597,8 @@ export class AtelierService {
       costEur?: string;
       /** Le modèle a soumis un plan à approbation ce tour (F-121 / SF-121-10). */
       planSubmitted?: boolean;
+      // F-192 / SF-192-02 : les suites proposées par l'agent (événement done).
+      nextSteps?: AtelierNextStep[];
       /** Compaction du fil (F-162 / SF-162-03) : en cours, et nombre de tours résumés à la fin. */
       running?: boolean;
       summarizedTurns?: number;
@@ -770,6 +773,8 @@ export class AtelierService {
         costEur: payload.costEur,
         // F-121 / SF-121-10 : le modèle a soumis un plan à approbation ce tour.
         planSubmitted: payload.planSubmitted === true,
+        // F-192 / SF-192-02 : les suites proposées par l'agent — recopiées, sinon jetées en silence.
+        ...(Array.isArray(payload.nextSteps) ? { nextSteps: payload.nextSteps } : {}),
       });
     } else if (event === 'steered') {
       // F-84 / SF-84-06 : l'envoi est devenu une précision du tour qui tournait déjà.
