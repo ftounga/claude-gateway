@@ -113,6 +113,14 @@ public final class VideoFramesWorker {
             job.harvested(harvest.examined(), kept, gaps);
             say(progress, harvest.describe());
 
+            // SF-190-02 : les planches contact — survoler avant d'ouvrir en grand.
+            if (!harvest.frames().isEmpty()) {
+                step(job, VideoJob.Phase.PLANCHES, progress);
+                ContactSheets.Result sheets = ContactSheets.compose(harvest.frames(),
+                        request.dir(), request.display());
+                job.composed(sheets.sheets(), sheets.gaps());
+            }
+
             job.phase(VideoJob.Phase.TERMINE);
             job.save();
             say(progress, job.describe());

@@ -58,12 +58,17 @@ class VideoToolsTest {
                 ToolContext.none(), paths()));
 
         assertTrue(listed.contains("étape : Terminé"), listed);
-        assertTrue(listed.contains("00:00:12  .atelier/video/demo-monday-"), listed);
+        assertTrue(listed.contains("Planche 1 : .atelier/video/demo-monday-"), listed);
+        assertTrue(listed.contains("case 1 · 00:00:12 · .atelier/video/demo-monday-"), listed);
+        assertTrue(listed.indexOf("Planche 1") < listed.indexOf("case 1"), "les planches d'abord");
         assertTrue(listed.contains("00:05:05"), listed);
         assertTrue(listed.contains("00:30:02"), listed);
         assertTrue(listed.contains("read_file"), "l'agent doit savoir comment les voir");
-        String firstPath = listed.lines().filter(line -> line.startsWith("00:00:12"))
-                .findFirst().orElseThrow().substring(10);
+        String firstPath = listed.lines().filter(line -> line.contains("case 1 · "))
+                .findFirst().orElseThrow().split(" · ")[2].strip();
+        String sheetPath = listed.lines().filter(line -> line.startsWith("Planche 1 : "))
+                .findFirst().orElseThrow().substring("Planche 1 : ".length()).strip();
+        assertTrue(Files.isRegularFile(home.resolve(sheetPath)), "la planche existe : " + sheetPath);
         assertTrue(Files.isRegularFile(home.resolve(firstPath)),
                 "le chemin rendu est celui que read_file lira : " + firstPath);
         assertTrue(Files.exists(video), "la vidéo reste où elle est");
@@ -91,7 +96,7 @@ class VideoToolsTest {
 
         assertTrue(status.contains("1 image retenue sur 3"), status);
         try (var files = Files.walk(home.resolve(".atelier/video"))) {
-            assertEquals(1, files.filter(path -> path.getFileName().toString().endsWith(".jpg"))
+            assertEquals(1, files.filter(path -> path.getFileName().toString().startsWith("frame-"))
                     .count(), "les doublons ne restent pas sur le disque");
         }
     }
@@ -113,8 +118,8 @@ class VideoToolsTest {
         String status = statusOf(tools, ok(tools.execute(VideoTools.IMAGES, request,
                 ToolContext.none(), paths())));
 
-        assertTrue(status.contains("00:12:30  "), status);
-        assertTrue(status.contains("00:12:35  "), status);
+        assertTrue(status.contains(" · 00:12:30 · "), status);
+        assertTrue(status.contains(" · 00:12:35 · "), status);
         assertTrue(status.contains("/zoom-750-760-5/"), status);
         List<String> command = calls.get(0);
         assertEquals("750.000", command.get(command.indexOf("-ss") + 1));
@@ -176,7 +181,8 @@ class VideoToolsTest {
                 ToolContext.none(), paths()));
 
         assertTrue(status.contains("étape : Terminé"), status);
-        assertTrue(status.contains("00:00:09"), status);
+        assertTrue(status.contains("case 2 · 00:00:09 · "), status);
+        assertTrue(status.contains("Planche 1 : "), "les planches survivent au redémarrage : " + status);
     }
 
     @Test

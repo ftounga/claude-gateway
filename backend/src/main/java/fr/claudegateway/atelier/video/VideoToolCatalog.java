@@ -62,8 +62,11 @@ public final class VideoToolCatalog {
                                 "required", List.of("path"))),
                 new AgentTool(STATUS,
                         "Où en est une extraction d'images lancée par video_images et, quand elle est "
-                                + "TERMINÉE, la liste des images : instant HH:MM:SS et chemin à ouvrir "
-                                + "avec read_file. Tant qu'elle n'est pas terminée, ne conclus RIEN sur "
+                                + "TERMINÉE, les PLANCHES CONTACT (16 vignettes horodatées par image) "
+                                + "puis, case par case, l'instant HH:MM:SS et l'image en pleine taille. "
+                                + "Ouvre d'abord les planches avec read_file pour survoler la vidéo, "
+                                + "puis seulement les images en pleine taille dont tu as besoin pour "
+                                + "lire un détail. Tant qu'elle n'est pas terminée, ne conclus RIEN sur "
                                 + "le contenu visuel. Si elle échoue, répète à l'utilisateur l'échec et "
                                 + "le remède tels quels.",
                         Map.of("type", "object",
