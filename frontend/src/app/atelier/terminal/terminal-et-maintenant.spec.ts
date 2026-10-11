@@ -1,4 +1,4 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed, fakeAsync, flushMicrotasks } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
@@ -105,4 +105,20 @@ describe('AtelierTerminalComponent — Et maintenant ? (F-192 / SF-192-02)', () 
     component.messages = [...thread(), { id: 'u-2', role: 'USER', content: 'suite', actions: [] }];
     expect(component.nextStepsOfTurn()).toEqual([]);
   });
+
+  // F-192 / SF-192-03 — la suite prédite de F-144 est retirée.
+  it('la fin d’un tour n’appelle plus aucune suite prédite, et la saisie garde son texte fixe', fakeAsync(() => {
+    fixture.detectChanges();
+    component.submitting = true;
+    component.messages = thread();
+    component.submitting = false;
+    flushMicrotasks();
+    fixture.detectChanges();
+
+    expect(http.match((r) => r.url.includes('next-prompt')).length).toBe(0);
+    const field = (fixture.nativeElement as HTMLElement).querySelector('.terminal-field') as HTMLInputElement;
+    expect(field.placeholder).toBe('Décrivez la tâche à exécuter (@ pour un fichier)…');
+    expect(field.classList).not.toContain('terminal-field--ghost');
+    expect((fixture.nativeElement as HTMLElement).querySelector('app-turn-suggestions')).toBeNull();
+  }));
 });
