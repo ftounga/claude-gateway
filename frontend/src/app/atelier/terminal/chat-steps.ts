@@ -60,6 +60,9 @@ function stepCommand(step: AtelierStreamAction): string {
     // ajouté par le gabarit ; l'en-tête, lui, porte la consigne.
     case 'task':
       return step.path ? `sous-tâche « ${step.path} »` : 'sous-tâche';
+    // F-190 / SF-190-05 : regarder une vidéo — le mode, le fichier, le son, dits en clair.
+    case 'video':
+      return step.path ? `vidéo · ${step.path}` : 'vidéo';
     default:
       // F-104 / SF-104-03 : un outil Radar sans cible se dit « Radar », jamais par son nom technique.
       if (step.type.startsWith('radar_')) {

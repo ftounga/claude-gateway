@@ -98,4 +98,17 @@ describe('chatStepsToBlocks (F-39 SF-39-08)', () => {
     expect(blocks[1].command).toBe('Radar');
     expect(blocks[1].tool).toBe('radar_close_subject');
   });
+
+  it('F-190 / SF-190-05 : une étape vidéo dit le mode, le fichier et le son', () => {
+    const blocks = chatStepsToBlocks([
+      { type: 'video', path: 'extraction des plans + son · Demo Monday.mp4' },
+      { type: 'video', path: "suivi de l'extraction" },
+      { type: 'video' },
+    ]);
+
+    expect(blocks[0].tool).toBe('video');
+    expect(blocks[0].command).toBe('vidéo · extraction des plans + son · Demo Monday.mp4');
+    expect(blocks[1].command).toBe("vidéo · suivi de l'extraction");
+    expect(blocks[2].command).toBe('vidéo');
+  });
 });

@@ -188,4 +188,49 @@ class AtelierChatServiceVideoToolsTest {
         assertThat(input.getValue().path("path").asText()).isEqualTo(".atelier/entrees/demo.mp4");
         assertThat(lastToolResultText()).contains("frame-00001.jpg");
     }
+
+    // --------------------------------------------------------------- SF-190-05 : le suivi à l'écran
+
+    @Test
+    void theVideoStepSaysModeFileAndSound() {
+        com.fasterxml.jackson.databind.ObjectMapper json = new com.fasterxml.jackson.databind.ObjectMapper();
+        assertThat(service.videoStep(json.createObjectNode().put("path", ".atelier/entrees/Demo Monday.mp4")))
+                .isEqualTo("extraction des plans · Demo Monday.mp4");
+        assertThat(service.videoStep(json.createObjectNode().put("path", "C:\\dev\\demo.mov")
+                .put("mode", "intervalle").put("from", "00:12:30").put("to", "00:14:00")
+                .put("every_seconds", 5).put("transcript", "demo.vtt")))
+                .isEqualTo("zoom 00:12:30 → 00:14:00, toutes les 5 s + son · demo.mov");
+        assertThat(service.videoStep(json.createObjectNode().put("transcribe", true)))
+                .isEqualTo("extraction des plans + son · (vidéo non précisée)");
+    }
+
+    @Test
+    void videoCallsEmitTheirStepsBeforeRunning() {
+        runnerWorkspace();
+        videoSupported(true);
+        when(runnerToolGateway.video(eq(runnerTarget), anyString(), anyString(), any()))
+                .thenReturn(ok("job_id : 0123456789abcdef"));
+        agentProvider.enqueueToolCallWithObject("video_images",
+                "{\"path\":\".atelier/entrees/demo.mp4\"}");
+        agentProvider.enqueueToolCallWithObject("video_images_status",
+                "{\"job_id\":\"0123456789abcdef\"}");
+        agentProvider.enqueueFinal("Vu.");
+        java.util.List<AtelierProgressListener.AtelierStepEvent> steps = new java.util.ArrayList<>();
+
+        service.chatStreaming(userId, workspaceId, "regarde", new AtelierProgressListener() {
+            @Override
+            public void onAction(AtelierStepEvent step) {
+                steps.add(step);
+            }
+
+            @Override
+            public void onText(String text) {
+            }
+        });
+
+        assertThat(steps).extracting(AtelierProgressListener.AtelierStepEvent::type)
+                .contains("video");
+        assertThat(steps).extracting(AtelierProgressListener.AtelierStepEvent::path)
+                .contains("extraction des plans · demo.mp4", "suivi de l'extraction");
+    }
 }
