@@ -683,6 +683,53 @@ class AtelierChatServiceTest {
     }
 
     @Test
+    void theNextStepsBlockIsStrippedFromTheReplyAndCarriedByTheResultAndTheReport() {
+        // F-192 / SF-192-01 : le bloc « Et maintenant ? » n'est jamais montré brut ; ses suites
+        // voyagent avec le résultat (événement done) et sont rangées dans le relevé du message.
+        stubHappyPath();
+        agentProvider.enqueueFinal("C'est corrigé.\n\n<<suites>>\n"
+                + "[{\"titre\":\"Vérifier l'export CSV\",\"pourquoi\":\"Non vérifié ce tour\","
+                + "\"etiquette\":\"Vérifier\",\"demande\":\"Vérifie l'export CSV.\"},"
+                + "{\"titre\":\"Ouvrir la PR\",\"pourquoi\":\"214 tests verts\","
+                + "\"etiquette\":\"Livrer\",\"demande\":\"Ouvre la PR.\"}]\n<</suites>>");
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "corrige");
+
+        assertThat(result.reply()).isEqualTo("C'est corrigé.");
+        assertThat(result.nextSteps()).extracting(fr.claudegateway.atelier.nextsteps.NextStep::title)
+                .containsExactly("Vérifier l'export CSV", "Ouvrir la PR");
+        ArgumentCaptor<AtelierMessage> saved = ArgumentCaptor.forClass(AtelierMessage.class);
+        verify(messageRepository, atLeastOnce()).save(saved.capture());
+        AtelierMessage assistant = saved.getAllValues().stream()
+                .filter(m -> "ASSISTANT".equals(m.getRole())).reduce((x, y) -> y).orElseThrow();
+        assertThat(assistant.getContent()).isEqualTo("C'est corrigé.").doesNotContain("suites");
+        assertThat(assistant.getTerminalJson()).contains("\"nextSteps\"").contains("\"VERIFIER\"")
+                .contains("Ouvre la PR.");
+    }
+
+    @Test
+    void aReplyWithoutNextStepsBlockIsUnchangedAndCarriesNoSteps() {
+        stubHappyPath();
+        agentProvider.enqueueFinal("Réponse simple.");
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "question");
+
+        assertThat(result.reply()).isEqualTo("Réponse simple.");
+        assertThat(result.nextSteps()).isEmpty();
+    }
+
+    @Test
+    void aMalformedNextStepsBlockIsStrippedAndGivesNoSteps() {
+        stubHappyPath();
+        agentProvider.enqueueFinal("Fait.\n<<suites>>\n[{pas du json\n<</suites>>");
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "fais");
+
+        assertThat(result.reply()).isEqualTo("Fait.");
+        assertThat(result.nextSteps()).isEmpty();
+    }
+
+    @Test
     void aTurnWhoseOnlyTextIsAMarkerStrippedToBlankTriggersTheSynthesis() {
         // SF-125-07 : « vide après strip » — un tour dont le seul texte est le marqueur fin-de-tour
         // (retiré par stripTurnMetadata, SF-125-01) est traité comme sans texte → synthèse forcée.
