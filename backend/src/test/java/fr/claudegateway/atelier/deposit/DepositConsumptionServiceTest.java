@@ -62,6 +62,44 @@ class DepositConsumptionServiceTest {
         assertThat(saved.getValue()).allSatisfy(file -> assertThat(file.getConsumedAt()).isNotNull());
     }
 
+    // ----------------------------------------------- F-190 / SF-190-04 : regarder une vidéo
+
+    @Test
+    void uneVideoDeposeeDitCommentLaRegarder() {
+        when(repository.findByUserIdAndWorkspaceIdAndConsumedAtIsNullOrderByCreatedAtAsc(userId, workspaceId))
+                .thenReturn(List.of(deposit(".atelier/entrees/Demo Monday-Meeting Recording.mp4")));
+
+        String note = service().consumeForTurn(userId, workspaceId);
+
+        assertThat(note).contains("Demo Monday-Meeting Recording.mp4 (vidéo : read_file ne la lit pas")
+                .contains("video_images puis video_images_status")
+                .contains("ffmpeg est rapatrié tout seul")
+                .doesNotContain("transcript");
+    }
+
+    @Test
+    void uneTranscriptionDeposeeAvecLaVideoSeDonneAVideoImages() {
+        when(repository.findByUserIdAndWorkspaceIdAndConsumedAtIsNullOrderByCreatedAtAsc(userId, workspaceId))
+                .thenReturn(List.of(deposit(".atelier/entrees/Demo.MOV"), deposit(".atelier/entrees/Demo Monday.docx")));
+
+        String note = service().consumeForTurn(userId, workspaceId);
+
+        assertThat(note).contains("Demo.MOV (vidéo :").contains("passe-la en « transcript » à video_images");
+        assertThat(note).doesNotContain("Demo Monday.docx (vidéo");
+    }
+
+    @Test
+    void sansVideoLaNoticeEstCelleDAvantMotPourMot() {
+        when(repository.findByUserIdAndWorkspaceIdAndConsumedAtIsNullOrderByCreatedAtAsc(userId, workspaceId))
+                .thenReturn(List.of(deposit("entrees/capture.png"), deposit(".atelier/entrees/notes.txt")));
+
+        String note = service().consumeForTurn(userId, workspaceId);
+
+        assertThat(note).isEqualTo("Fichiers déposés dans ce terminal depuis le dernier tour "
+                + "(lis-les avec read_file si tu en as besoin ; le contenu n'est pas inclus ici) :\n"
+                + "- entrees/capture.png\n- .atelier/entrees/notes.txt");
+    }
+
     @Test
     void rendNullEtNeSauvegardeRienSansDepot() {
         when(repository.findByUserIdAndWorkspaceIdAndConsumedAtIsNullOrderByCreatedAtAsc(userId, workspaceId))

@@ -107,7 +107,8 @@ public final class VideoFramesWorker {
             step(job, VideoJob.Phase.OUTILLAGE, progress);
             step(job, VideoJob.Phase.EXTRACTION, progress);
             SceneFrames.Extraction extraction = request.mode() == Mode.PLANS
-                    ? frames.extract(request.video(), request.dir(), SceneFrames.SCENE_THRESHOLD)
+                    ? frames.extractWithOpening(request.video(), request.dir(),
+                            SceneFrames.SCENE_THRESHOLD)
                     : frames.extractEvery(request.video(), request.dir(), request.fromSeconds(),
                             request.toSeconds(), request.everySeconds());
 

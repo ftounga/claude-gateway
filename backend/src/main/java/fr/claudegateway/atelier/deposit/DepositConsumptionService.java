@@ -136,11 +136,47 @@ public class DepositConsumptionService {
 
     private static String note(List<AtelierDepositedFile> files) {
         String list = files.stream()
-                .map(file -> "- " + file.getPath())
+                .map(file -> "- " + file.getPath() + (isVideo(file.getPath()) ? VIDEO_HINT : ""))
                 .collect(Collectors.joining("\n"));
-        return "Fichiers déposés dans ce terminal depuis le dernier tour "
+        String note = "Fichiers déposés dans ce terminal depuis le dernier tour "
                 + "(lis-les avec read_file si tu en as besoin ; le contenu n'est pas inclus ici) :\n"
                 + list;
+        // F-190 / SF-190-04 : une transcription déposée avec la vidéo se donne à video_images.
+        boolean video = files.stream().anyMatch(file -> isVideo(file.getPath()));
+        boolean transcript = files.stream().anyMatch(file -> isTranscript(file.getPath()));
+        return video && transcript ? note + TRANSCRIPT_HINT : note;
+    }
+
+    /**
+     * F-190 / SF-190-04 — <b>l'agent sait qu'il peut regarder</b>. Sans cette ligne, il cherchait
+     * {@code ffmpeg}, ne le trouvait pas et concluait qu'il ne pouvait pas voir la vidéo (poste
+     * EDENRED, 2026-10-11). La ligne vit dans la notice du MESSAGE, jamais dans la consigne système :
+     * elle dépend du dépôt (règle du préfixe stable).
+     */
+    static final String VIDEO_HINT = " (vidéo : read_file ne la lit pas — regarde-la avec "
+            + "video_images puis video_images_status ; ffmpeg est rapatrié tout seul)";
+    static final String TRANSCRIPT_HINT = "\nUne transcription a été déposée avec la vidéo : passe-la "
+            + "en « transcript » à video_images pour avoir, à côté de chaque image, ce qui se disait.";
+
+    private static final java.util.Set<String> VIDEO_EXTENSIONS =
+            java.util.Set.of(".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi");
+    private static final java.util.Set<String> TRANSCRIPT_EXTENSIONS =
+            java.util.Set.of(".vtt", ".srt", ".docx", ".txt");
+
+    static boolean isVideo(String path) {
+        return VIDEO_EXTENSIONS.contains(extension(path));
+    }
+
+    static boolean isTranscript(String path) {
+        return TRANSCRIPT_EXTENSIONS.contains(extension(path));
+    }
+
+    private static String extension(String path) {
+        if (path == null) {
+            return "";
+        }
+        int dot = path.lastIndexOf('.');
+        return dot < 0 ? "" : path.substring(dot).toLowerCase(java.util.Locale.ROOT);
     }
 
     /**

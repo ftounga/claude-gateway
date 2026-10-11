@@ -86,6 +86,25 @@ public final class SceneFrames {
     }
 
     /**
+     * Les changements de plan <b>et le premier écran</b> (F-190 / SF-190-04). Le premier plan n'est
+     * précédé d'aucun changement : le seuil seul ne le retient jamais — l'écran d'ouverture d'une
+     * démo, souvent celui qui situe tout le reste, manquait. Réservé à la vidéo quelconque : le
+     * volet Teams garde son comportement.
+     */
+    public Extraction extractWithOpening(Path video, Path outputDir, double threshold) {
+        if (video == null || !Files.isRegularFile(video)) {
+            throw new SceneExtractionException("not_found",
+                    "Je ne trouve pas de fichier vidéo à « "
+                            + (video == null ? "(chemin vide)" : video) + " ».",
+                    "Vérifiez le chemin, ou donnez-le en absolu.");
+        }
+        Path ffmpeg = toolchain.require(LocalTool.ffmpeg());
+        double effective = threshold > 0d && threshold < 1d ? threshold : SCENE_THRESHOLD;
+        return run(command(ffmpeg, video, outputDir, "eq(n,0)+gt(scene," + format(effective) + ")"),
+                outputDir, 0d);
+    }
+
+    /**
      * <b>Le zoom</b> (F-190 / SF-190-01, D3) : une image toutes les {@code everySeconds} secondes
      * entre {@code fromSeconds} et {@code toSeconds}. Une démo d'outil défile souvent dans un même
      * plan — le seuil de changement de plan n'y voit rien, le zoom le rattrape.
@@ -152,6 +171,11 @@ public final class SceneFrames {
      * (leçon de SF-38-23).
      */
     static List<String> command(Path ffmpeg, Path video, Path outputDir, double threshold) {
+        return command(ffmpeg, video, outputDir, "gt(scene," + format(threshold) + ")");
+    }
+
+    /** La même commande, avec l'expression de sélection donnée (entre apostrophes pour ffmpeg). */
+    private static List<String> command(Path ffmpeg, Path video, Path outputDir, String selection) {
         return List.of(
                 ffmpeg.toAbsolutePath().toString(),
                 "-hide_banner",
@@ -160,7 +184,7 @@ public final class SceneFrames {
                 "-nostdin",
                 "-y",
                 "-i", video.toAbsolutePath().toString(),
-                "-vf", "select='gt(scene," + format(threshold) + ")',showinfo,"
+                "-vf", "select='" + selection + "',showinfo,"
                         + "scale=w='min(" + MAX_WIDTH + ",iw)':h=-2",
                 // Une image par changement de plan, et pas une cadence régulière recalculée.
                 "-vsync", "vfr",
