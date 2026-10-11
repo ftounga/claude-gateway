@@ -418,10 +418,9 @@ public final class LocalToolchain {
             if (!"https".equalsIgnoreCase(uri.getScheme())) {
                 throw new IOException("adresse non HTTPS refusée");
             }
-            HttpClient client = HttpClient.newBuilder()
-                    .followRedirects(HttpClient.Redirect.NORMAL)
-                    .connectTimeout(Duration.ofSeconds(30))
-                    .build();
+            // F-190 / SF-190-06 : le client du runner — proxy d'entreprise et racine Zscaler
+            // compris. Un client nu échouait en « PKIX path building failed » derrière Zscaler.
+            HttpClient client = fr.claudegateway.runner.RunnerHttp.client();
             HttpRequest request = HttpRequest.newBuilder(uri)
                     .timeout(Duration.ofMillis(DOWNLOAD_TIMEOUT_MS))
                     .GET()
