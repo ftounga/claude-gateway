@@ -191,6 +191,20 @@ public class AtelierRelayController {
     }
 
     /**
+     * Les résumés des tours de cet utilisateur <b>sur ce pod</b> (F-191 / SF-191-01) : vivants et finis
+     * récemment, pour la bande des tâches d'un écran servi par un pair. Le {@code userId} est un
+     * critère rejoué (le registre filtre à la source), jamais une authentification.
+     */
+    @PostMapping(value = "/user-turns", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Map<String, Object>> userTurns(
+            @RequestBody(required = false) RelayGestureRequests.UserTurnsRequest request) {
+        if (request == null || !request.isValid()) {
+            return ResponseEntity.badRequest().build();
+        }
+        return ResponseEntity.ok(Map.of("turns", liveTurns.summariesOf(request.userId())));
+    }
+
+    /**
      * Le <b>flux</b> du tour que ce pod exécute, rendu en NDJSON à un pod pair (F-84 / SF-84-02) :
      * le rejeu depuis le curseur, puis le direct, puis la ligne de fin.
      *

@@ -27,6 +27,8 @@ class RelayTurnSourceTest {
 
         assertThat(source.findRemoteTurn(USER, PROJET)).isEmpty();
         assertThat(source.streamRemoteTurn(USER, PROJET, 0L, new NeverCalled())).isFalse();
+        // F-191 / SF-191-01 : aucun résumé inventé.
+        assertThat(source.remoteSummariesOf(USER)).isEmpty();
     }
 
     @Test
@@ -42,6 +44,8 @@ class RelayTurnSourceTest {
 
         assertThat(source.findRemoteTurn(USER, PROJET)).isEmpty();
         assertThat(source.streamRemoteTurn(USER, PROJET, 0L, new NeverCalled())).isFalse();
+        // F-191 / SF-191-01 : aucun résumé inventé.
+        assertThat(source.remoteSummariesOf(USER)).isEmpty();
     }
 
     /** Un spectateur qui ne doit jamais rien recevoir : le recevoir serait l'anomalie. */

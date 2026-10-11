@@ -116,6 +116,8 @@ public class AtelierAgentController {
     private void relay(SseEmitter emitter, UUID userId, UUID workspaceId, String message,
             boolean allowed, boolean enabled) {
         LiveTurn turn = liveTurns.open(userId, workspaceId);
+        // La demande, pour la bande des tâches du poste (F-191 / SF-191-01).
+        turn.digest().demand(message);
         turn.attach(new SseTurnSubscriber(emitter), LiveTurn.FROM_START);
         try {
             if (!allowed) {

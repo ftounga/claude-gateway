@@ -50,6 +50,12 @@ public interface WorkspaceRepository extends JpaRepository<Workspace, UUID> {
      */
     List<Workspace> findByUserIdAndHostIdIsNull(UUID userId);
 
+    /**
+     * <b>Tous</b> les terminaux d'un poste (F-191 / SF-191-01), isolation {@code user_id} : les sujets,
+     * la racine et le terminal Teams — la bande des tâches montre tout ce qui tourne sur le poste.
+     */
+    List<Workspace> findByUserIdAndHostId(UUID userId, UUID hostId);
+
     /** Purge à la suppression du compte (SF-11-03), après effacement des fichiers du stockage. */
     void deleteByUserId(UUID userId);
 

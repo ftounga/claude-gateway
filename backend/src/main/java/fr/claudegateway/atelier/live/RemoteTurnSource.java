@@ -46,6 +46,14 @@ public interface RemoteTurnSource {
     }
 
     /**
+     * Les résumés des tours <b>de cet utilisateur</b> détenus par les pairs (F-191 / SF-191-01) : vivants
+     * et finis récemment. Par défaut, aucun pair : liste vide, l'appelant montre ce pod seul.
+     */
+    default java.util.List<TurnSummary> remoteSummariesOf(UUID userId) {
+        return java.util.List.of();
+    }
+
+    /**
      * L'état d'un tour vivant chez un pair.
      *
      * @param turnId      identifiant du tour, tel que le pod propriétaire l'a créé
