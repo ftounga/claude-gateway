@@ -1355,6 +1355,18 @@
       </app-atelier-slash-panel>
     }
 
+    <!-- F-192 / SF-192-02 — « ET MAINTENANT ? » : les suites proposées par l'agent, sous sa dernière
+         réponse. Un clic ou une touche 1-4 REMPLIT la saisie ; rien ne part sans un geste. -->
+    @if (nextStepsOfTurn().length > 0) {
+      <app-terminal-next-steps
+        [steps]="nextStepsOfTurn()"
+        [draft]="draft"
+        [turnKey]="lastTurnId()"
+        (pick)="onNextStepPick($event)"
+        (other)="focusDraft()"
+      ></app-terminal-next-steps>
+    }
+
     <!-- QUESTION STRUCTURÉE (F-164 / SF-164-02) : le rendu de l'outil `demander`. Vit dans le flux, à
          côté de l'invite d'autorisation dont elle partage le mécanisme de pause (SF-164-01). La carte
          gère la saisie et émet la réponse composée, que le parent poste sur `/chat/answer`. -->

@@ -36,6 +36,8 @@ import { ProjectCostComponent } from '../../shared/project-cost/project-cost.com
 import { ProjectCostService } from '../../core/services/project-cost.service';
 import { TurnOutcome } from '../../shared/turn-suggestions/turn-suggestions';
 import { TurnSuggestionsComponent } from '../../shared/turn-suggestions/turn-suggestions.component';
+import { TerminalNextStepsComponent } from './terminal-next-steps.component';
+import { AtelierNextStep } from '../../core/models/atelier.models';
 import {
   DictationButtonComponent,
   DictationState,
@@ -174,6 +176,9 @@ import {
   omittedLabel,
 } from './terminal-diff';
 
+/** Aucune suite — une seule référence, stable d'une détection de changements à l'autre. */
+const NO_NEXT_STEPS: AtelierNextStep[] = [];
+
 /**
  * **Commande de reprise d'un poste appairé** (F-82 / SF-82-05), telle que l'en-tête du terminal la
  * propose quand la machine est connue mais éteinte.
@@ -230,6 +235,7 @@ export interface SlashMenuEntry {
     MatButtonToggleModule, MatIconModule, MatMenuModule, MatProgressBarModule, MatProgressSpinnerModule,
     MatTooltipModule, RouterLink,
     WeeklyBudgetComponent, ProjectCostComponent, TurnSuggestionsComponent, DictationButtonComponent,
+    TerminalNextStepsComponent,
   ],
   templateUrl: './atelier-terminal.component.html',
   // DEUX FEUILLES, ET C'EST DÉLIBÉRÉ (F-83 / SF-83-02) : la peau « lecture seule » vit à part.
@@ -473,6 +479,44 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   planMark(status: string): string {
     return switch_(status);
   }
+
+  /**
+   * **« Et maintenant ? »** (F-192 / SF-192-02) : les suites proposées par l'agent à la fin du DERNIER
+   * élément du fil, s'il est une réponse de l'agent. Rien en lecture seule, pendant un tour, avec une
+   * question en attente (la carte F-164 suffit), ni après un tour interrompu ou coupé au plafond (le
+   * terminal propose déjà de reprendre).
+   */
+  nextStepsOfTurn(): AtelierNextStep[] {
+    if (this.readOnly || this.submittingValue || this.streaming || this.pendingQuestion) {
+      return NO_NEXT_STEPS;
+    }
+    const last = this.messages[this.messages.length - 1];
+    if (!last || last.role !== 'ASSISTANT' || last.interrupted || last.budgetReached) {
+      return NO_NEXT_STEPS;
+    }
+    return last.nextSteps ?? NO_NEXT_STEPS;
+  }
+
+  /** L'identité du dernier tour : un nouveau tour rouvre le panneau des suites. */
+  lastTurnId(): string | null {
+    const last = this.messages[this.messages.length - 1];
+    return last ? last.id : null;
+  }
+
+  /** Une suite choisie : elle **remplit** la saisie et lui donne la main — elle n'envoie rien. */
+  onNextStepPick(request: string): void {
+    this.predicted.set(null);
+    this.draftChange.emit(request);
+    this.focusDraft();
+  }
+
+  /** « Autre chose : tapez votre suite » : la main à la saisie. */
+  focusDraft(): void {
+    queueMicrotask(() => this.draftFieldRef?.nativeElement.focus());
+  }
+
+  /** Le champ de saisie, pour lui rendre la main après le choix d'une suite (F-192). */
+  @ViewChild('draftField') private draftFieldRef?: ElementRef<HTMLInputElement>;
 
   /**
    * Moteur qui anime ce terminal (F-39 / SF-39-08). **Affiché, jamais choisi** : la pastille dit où

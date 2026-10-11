@@ -2330,6 +2330,19 @@ describe('AtelierComponent', () => {
     expect(item.cost!.tokens).toBe(1_200);
   });
 
+  it('restitue les suites proposées par l\'agent au rechargement (F-192 / SF-192-02)', () => {
+    const nextSteps = [{ title: 'PR', why: 'Tests verts', label: 'LIVRER' as const, request: 'Ouvre la PR.' }];
+    const item = toThreadItem({
+      id: 'm1',
+      role: 'ASSISTANT',
+      content: 'Fait.',
+      createdAt: '2026-10-11T00:00:00Z',
+      terminal: { blocks: [], omittedBlocks: 0, inputTokens: 10, outputTokens: 2, activeSeconds: 1, nextSteps },
+    });
+
+    expect(item.nextSteps).toEqual(nextSteps);
+  });
+
   it('un tour du mode Assistant reste sans transcription (non-régression F-30)', () => {
     const item = toThreadItem({
       id: 'm1',

@@ -2156,6 +2156,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
         // conservé, et l'écran le dit — un arrêt au milieu sans explication serait le pire
         // des deux mondes.
         budgetReached: done.budgetReached === true,
+        // F-192 / SF-192-02 : les suites proposées par l'agent, sous la réponse.
+        ...(done.nextSteps && done.nextSteps.length > 0 ? { nextSteps: done.nextSteps } : {}),
       },
     ]);
   }
@@ -4275,6 +4277,10 @@ export function toThreadItem(message: AtelierMessage): AtelierThreadItem {
   // Même raison pour le plafond de dépense (F-36 SF-36-04) : sans cela, la mention disparaîtrait au
   // rechargement et l'utilisateur relirait un tour d'apparence normale, arrêté sans motif.
   item.budgetReached = stored.budgetReached === true;
+  // F-192 / SF-192-02 : les suites proposées par l'agent survivent au rechargement.
+  if (Array.isArray(stored.nextSteps) && stored.nextSteps.length > 0) {
+    item.nextSteps = stored.nextSteps;
+  }
   // Les modifications vivent hors des blocs (F-37 SF-37-02) : un tour peut n'avoir lancé aucune
   // commande visible et avoir pourtant réécrit des fichiers.
   const diffs = toDiffViews(stored.diffs);

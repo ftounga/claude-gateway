@@ -1,4 +1,4 @@
-import { splitEssential } from './essential';
+import { splitEssential, stripNextSteps } from './essential';
 
 /**
  * Découpage « L'essentiel » / « Le détail » (F-126 / SF-126-01). Fonction pure, testée sans TestBed.
@@ -59,5 +59,23 @@ describe('splitEssential', () => {
   it('gère null et undefined', () => {
     expect(splitEssential(null)).toEqual({ essential: null, detail: '' });
     expect(splitEssential(undefined)).toEqual({ essential: null, detail: '' });
+  });
+
+  // F-192 / SF-192-02 — le bloc « Et maintenant ? » n'est jamais rendu.
+  describe('stripNextSteps', () => {
+    it('retire un bloc fermé', () => {
+      expect(stripNextSteps('Fait.\n\n<<suites>>\n[{}]\n<</suites>>')).toBe('Fait.');
+    });
+    it('retire tout ce qui suit une ouverture sans fermeture (flux en cours)', () => {
+      expect(stripNextSteps('Fait.\n<<suites>>\n[{"titre":"x')).toBe('Fait.');
+    });
+    it('rend le texte tel quel sans bloc', () => {
+      expect(stripNextSteps('Rien\n\n\nici')).toBe('Rien\n\n\nici');
+    });
+    it('splitEssential ne montre jamais le bloc', () => {
+      const split = splitEssential('<<essentiel>>Oui.<</essentiel>>\nDétail.\n<<suites>>[1]<</suites>>');
+      expect(split.essential).toBe('Oui.');
+      expect(split.detail).toBe('Détail.');
+    });
   });
 });
