@@ -20,6 +20,8 @@ public final class ToolRouter implements ToolExecutor {
     private final BashTool bash;
     private final fr.claudegateway.runner.teams.TeamsTools teams;
     private final WorktreeTool worktree;
+    /** Regarder une vidéo (F-190 / SF-190-01), ou {@code null} : l'appel est alors refusé. */
+    private final fr.claudegateway.runner.video.VideoTools.Bound video;
 
     public ToolRouter(FileTools files, BashTool bash) {
         this(files, bash, null, null);
@@ -39,6 +41,17 @@ public final class ToolRouter implements ToolExecutor {
      */
     public ToolRouter(FileTools files, BashTool bash,
             fr.claudegateway.runner.teams.TeamsTools teams, WorktreeTool worktree) {
+        this(files, bash, teams, worktree, null);
+    }
+
+    /**
+     * @param video outils vidéo liés au projet (F-190 / SF-190-01), ou {@code null} : la capacité
+     *              {@code video} n'est alors pas annoncée et la gateway ne les déclare pas
+     */
+    public ToolRouter(FileTools files, BashTool bash,
+            fr.claudegateway.runner.teams.TeamsTools teams, WorktreeTool worktree,
+            fr.claudegateway.runner.video.VideoTools.Bound video) {
+        this.video = video;
         this.files = files;
         this.bash = bash;
         this.teams = teams;
@@ -60,6 +73,13 @@ public final class ToolRouter implements ToolExecutor {
         }
         if ("kill_shell".equals(tool)) {
             return bash.killOf(input);
+        }
+        // Regarder une vidéo (F-190 / SF-190-01) : indépendant du volet Teams.
+        if (fr.claudegateway.runner.video.VideoTools.handles(tool)) {
+            return video == null
+                    ? ToolOutcome.error("unsupported_tool",
+                            "Ce runner ne sait pas extraire les images d'une vidéo : " + tool)
+                    : video.execute(tool, input, context);
         }
         // Worktrees isolés de `task` (F-150 / SF-150-01). Un runner sans ce montage — ou un runner
         // antérieur — n'entre pas ici : l'appel file au `unsupported_tool` de FileTools, ce qui est
@@ -91,6 +111,10 @@ public final class ToolRouter implements ToolExecutor {
         // gateway sait d'avance que ce poste ne lira pas Teams, et l'écran le dit sans appeler.
         if (teams != null && teams.enabled()) {
             capabilities.add(fr.claudegateway.runner.teams.TeamsTools.CAPABILITY);
+        }
+        // F-190 / SF-190-01 : annoncée dès que les outils vidéo sont montés, Teams ou pas.
+        if (video != null) {
+            capabilities.add(fr.claudegateway.runner.video.VideoTools.CAPABILITY);
         }
         return List.copyOf(capabilities);
     }

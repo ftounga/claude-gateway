@@ -97,6 +97,10 @@ public class RunnerToolGateway {
     public static final long DEPOSIT_TIMEOUT_MS = 60_000L;
     private static final int MAX_PATH_CHARS = 4_096;
     private static final int MAX_QUERY_CHARS = 1_024;
+    /** Délai des outils vidéo : ils rendent la main dès le démarrage du travail (F-190). */
+    public static final long VIDEO_TOOL_TIMEOUT_MS = 20_000L;
+    /** Même borne que le {@code PathResolver} du runner. */
+    private static final int MAX_VIDEO_PATH_CHARS = 4_096;
 
     /**
      * Délai du cycle de vie d'un worktree (F-150 / SF-150-01) : un {@code git worktree add} recopie
@@ -358,6 +362,36 @@ public class RunnerToolGateway {
             payload.put("workspace_id", String.valueOf(target.workspaceId()));
         }
         return router.call(target, callId, tool, payload, teamsTimeoutFor(tool));
+    }
+
+    /**
+     * <b>Regarder une vidéo</b> (F-190 / SF-190-01) : relaie {@code video_images} et
+     * {@code video_images_status}. Les deux rendent la main tout de suite (le travail tourne sur le
+     * poste), d'où le délai court. Seuls les scalaires voyagent ; un chemin garde sa longueur réelle
+     * (borne de {@code PathResolver}), le reste est borné comme une requête.
+     */
+    public RunnerCallResult video(RunnerTarget target, String callId, String tool,
+            com.fasterxml.jackson.databind.JsonNode input) {
+        if (!fr.claudegateway.atelier.video.VideoToolCatalog.isVideoTool(tool)) {
+            return invalid("Outil vidéo inconnu.");
+        }
+        ObjectNode payload = objectMapper.createObjectNode();
+        if (input != null && input.isObject()) {
+            input.fields().forEachRemaining(field -> {
+                com.fasterxml.jackson.databind.JsonNode value = field.getValue();
+                if (value == null || value.isNull()) {
+                    return;
+                }
+                if (value.isTextual()) {
+                    int max = "path".equals(field.getKey()) ? MAX_VIDEO_PATH_CHARS : MAX_QUERY_CHARS;
+                    String text = value.asText();
+                    payload.put(field.getKey(), text.length() > max ? text.substring(0, max) : text);
+                } else if (value.isNumber() || value.isBoolean()) {
+                    payload.set(field.getKey(), value);
+                }
+            });
+        }
+        return router.call(target, callId, tool, payload, VIDEO_TOOL_TIMEOUT_MS);
     }
 
     /**

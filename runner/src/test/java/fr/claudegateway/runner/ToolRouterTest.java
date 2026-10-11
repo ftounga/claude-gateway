@@ -93,6 +93,33 @@ class ToolRouterTest {
         assertEquals("unsupported_tool", outcome.errorCode());
     }
 
+    @Test
+    void annonceLaCapaciteVideoSansTeamsEtAiguilleSesOutils() throws IOException {
+        // F-190 / SF-190-01 : les outils vidéo sont montés, Teams ou pas.
+        PathResolver guard = new PathResolver(root);
+        fr.claudegateway.runner.video.VideoTools video = new fr.claudegateway.runner.video.VideoTools(
+                new fr.claudegateway.runner.video.VideoFramesWorker(
+                        fr.claudegateway.runner.teams.VideoFixtures.frames(root,
+                                (command, dir, timeout) -> new fr.claudegateway.runner.teams
+                                        .ProcessRunner.ProcessResult(0, List.of(), List.of(), false))));
+        ToolRouter router = new ToolRouter(new FileTools(guard),
+                new BashTool(guard, false, ShellElection.elect()), null, null, video.bind(guard));
+
+        assertEquals(List.of("files", "video"), router.capabilities());
+        ToolOutcome outcome = router.execute("video_images_status",
+                MAPPER.createObjectNode().put("job_id", "inconnu"), ToolContext.none());
+        assertFalse(outcome.ok());
+        assertTrue(outcome.errorMessage().contains("Relance video_images"), outcome.errorMessage());
+    }
+
+    @Test
+    void refuseLesOutilsVideoQuandIlsNeSontPasMontes() {
+        ToolOutcome outcome = router(false).execute("video_images",
+                MAPPER.createObjectNode().put("path", "demo.mp4"), ToolContext.none());
+        assertFalse(outcome.ok());
+        assertTrue(outcome.errorMessage().contains("ne sait pas extraire"), outcome.errorMessage());
+    }
+
     private ToolRouter router(boolean allowBash) {
         PathResolver guard = new PathResolver(root);
         return new ToolRouter(new FileTools(guard), new BashTool(guard, allowBash, ShellElection.elect()));
