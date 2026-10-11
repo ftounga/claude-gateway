@@ -159,6 +159,9 @@ class AtelierChatServiceVideoToolsTest {
                 .filter(t -> t.name().equals("video_images")).findFirst().orElseThrow();
         assertThat(images.description()).contains("read_file").contains("rapatrié tout seul")
                 .contains("video_images_status");
+        AgentTool status = service.buildTools(userId, workspace).stream()
+                .filter(t -> t.name().equals("video_images_status")).findFirst().orElseThrow();
+        assertThat(status.description()).contains("PLANCHES CONTACT").contains("Ouvre d'abord les planches");
     }
 
     @Test

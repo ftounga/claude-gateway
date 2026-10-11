@@ -166,11 +166,30 @@ public final class VideoTools {
         switch (job.phase()) {
             case TERMINE -> {
                 List<VideoJob.Frame> frames = job.frames();
+                List<VideoJob.Sheet> sheets = job.sheets();
                 out.append(job.describe()).append('\n');
                 if (frames.isEmpty()) {
                     out.append("Aucune image retenue. Pour une démo qui défile dans un même écran, "
                             + "relance video_images en mode « intervalle » (from, to, "
                             + "every_seconds).\n");
+                } else if (!sheets.isEmpty()) {
+                    // SF-190-02 : les planches d'abord — 16 vignettes pour le prix d'une image.
+                    out.append("Ouvre d'abord les PLANCHES avec read_file (16 vignettes "
+                            + "horodatées chacune, environ 1 800 tokens), puis seulement les images "
+                            + "en pleine taille dont tu as besoin pour lire un détail. Ne décris "
+                            + "jamais ce que tu n'as pas ouvert.\n");
+                    int number = 1;
+                    for (VideoJob.Sheet sheet : sheets) {
+                        out.append("Planche ").append(number++).append(" : ").append(sheet.path())
+                                .append('\n');
+                        for (VideoJob.Cell cell : sheet.cells()) {
+                            out.append("  case ").append(cell.index()).append(" · ")
+                                    .append(cell.at()).append(" · ").append(cell.framePath())
+                                    .append('\n');
+                        }
+                    }
+                    out.append("Pour voir un passage de plus près : video_images en mode "
+                            + "« intervalle » avec from, to et every_seconds.\n");
                 } else {
                     out.append("Ouvre les images avec read_file pour les VOIR (chacune se paie : "
                             + "environ 1 200 tokens). Ne décris jamais une image que tu n'as pas "

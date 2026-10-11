@@ -32,6 +32,7 @@ public final class VideoJob {
         OUTILLAGE("Préparation de ffmpeg"),
         EXTRACTION("Extraction des images"),
         TRI("Tri des images"),
+        PLANCHES("Composition des planches"),
         TERMINE("Terminé"),
         ECHOUE("Échec");
 
@@ -58,6 +59,22 @@ public final class VideoJob {
         }
     }
 
+    /** Une case de planche : son numéro (1 à 16), son instant, l'image en pleine taille. */
+    public record Cell(int index, double offsetSeconds, String framePath) {
+
+        public String at() {
+            return clock(offsetSeconds);
+        }
+    }
+
+    /** Une planche contact (SF-190-02) et ses cases, dans l'ordre de lecture. */
+    public record Sheet(String path, List<Cell> cells) {
+
+        public Sheet {
+            cells = cells == null ? List.of() : List.copyOf(cells);
+        }
+    }
+
     private final String id;
     private final String video;
     private final String mode;
@@ -68,6 +85,7 @@ public final class VideoJob {
     private int examined;
     private final List<Frame> frames = new ArrayList<>();
     private final List<String> gaps = new ArrayList<>();
+    private final List<Sheet> sheets = new ArrayList<>();
     private String failure = "";
     private String remedy = "";
 
@@ -110,6 +128,10 @@ public final class VideoJob {
         return List.copyOf(frames);
     }
 
+    public synchronized List<Sheet> sheets() {
+        return List.copyOf(sheets);
+    }
+
     public synchronized List<String> gaps() {
         return List.copyOf(gaps);
     }
@@ -134,6 +156,12 @@ public final class VideoJob {
         this.frames.clear();
         this.frames.addAll(kept);
         this.gaps.clear();
+        this.gaps.addAll(missing);
+    }
+
+    synchronized void composed(List<Sheet> composed, List<String> missing) {
+        this.sheets.clear();
+        this.sheets.addAll(composed);
         this.gaps.addAll(missing);
     }
 
@@ -171,6 +199,15 @@ public final class VideoJob {
         for (Frame frame : frames) {
             list.addObject().put("offsetSeconds", frame.offsetSeconds()).put("path", frame.path());
         }
+        ArrayNode planches = root.putArray("sheets");
+        for (Sheet sheet : sheets) {
+            ObjectNode node = planches.addObject().put("path", sheet.path());
+            ArrayNode cellNodes = node.putArray("cells");
+            for (Cell cell : sheet.cells()) {
+                cellNodes.addObject().put("index", cell.index())
+                        .put("offsetSeconds", cell.offsetSeconds()).put("framePath", cell.framePath());
+            }
+        }
         ArrayNode missing = root.putArray("gaps");
         gaps.forEach(missing::add);
         root.put("failure", failure);
@@ -206,6 +243,14 @@ public final class VideoJob {
             for (JsonNode frame : root.path("frames")) {
                 job.frames.add(new Frame(frame.path("offsetSeconds").asDouble(),
                         frame.path("path").asText()));
+            }
+            for (JsonNode sheet : root.path("sheets")) {
+                List<Cell> cells = new ArrayList<>();
+                for (JsonNode cell : sheet.path("cells")) {
+                    cells.add(new Cell(cell.path("index").asInt(),
+                            cell.path("offsetSeconds").asDouble(), cell.path("framePath").asText()));
+                }
+                job.sheets.add(new Sheet(sheet.path("path").asText(), cells));
             }
             for (JsonNode gap : root.path("gaps")) {
                 job.gaps.add(gap.asText());
