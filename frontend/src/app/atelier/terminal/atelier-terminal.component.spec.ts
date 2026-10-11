@@ -7,6 +7,8 @@ import {
   fakeAsync,
   tick,
 } from '@angular/core/testing';
+import { MatTooltip } from '@angular/material/tooltip';
+import { By } from '@angular/platform-browser';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
 
@@ -514,16 +516,6 @@ describe('AtelierTerminalComponent', () => {
     expect(restarted).toBe(1);
   });
 
-  it('suggère un nouveau départ au-delà du seuil de taille de fil, pas en dessous', () => {
-    component.threadTurns = 5;
-    fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('.terminal-compaction-hint')).toBeNull();
-
-    component.threadTurns = 60;
-    fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('.terminal-compaction-hint')).not.toBeNull();
-  });
-
   // -------------------------------------------- compacter maintenant (F-162 / SF-162-04)
 
   it('émet compactNow depuis l\'action « Compacter maintenant », distincte de « Nouveau départ »', () => {
@@ -560,36 +552,20 @@ describe('AtelierTerminalComponent', () => {
     expect(marker.textContent).toContain('Conversation compactée · 5 tours résumés');
   });
 
-  it('propose DEUX issues (Compacter + Nouveau départ) dans le bandeau de suggestion', () => {
-    component.threadTurns = 60;
-    fixture.detectChanges();
+  // ---------------------------- F-117 / SF-117-10 : plus de bandeau « conversation longue » (40 tours)
 
-    const hint = fixture.nativeElement.querySelector('.terminal-compaction-hint') as HTMLElement;
-    expect(hint).not.toBeNull();
-    expect(hint.querySelector('.terminal-compaction-hint-compact')).not.toBeNull();
-    expect(hint.querySelector('.terminal-compaction-hint-restart')).not.toBeNull();
-  });
-
-  it('la suggestion est fermable (« Plus tard ») et ne bloque rien', () => {
-    component.threadTurns = 60;
-    fixture.detectChanges();
-    const later = Array.from(
-      fixture.nativeElement.querySelectorAll('.terminal-compaction-hint-actions button'),
-    ).find((b) => (b as HTMLElement).textContent?.includes('Plus tard')) as HTMLButtonElement;
-
-    later.click();
-    fixture.detectChanges();
-
-    expect(fixture.nativeElement.querySelector('.terminal-compaction-hint')).toBeNull();
-    // L'invite d'envoi reste disponible : la suggestion n'a rien bloqué.
-    expect(fixture.nativeElement.querySelector('.terminal-input, textarea, input')).not.toBeNull();
-  });
-
-  it('n\'affiche pas la suggestion en lecture seule', () => {
-    component.readOnly = true;
-    component.threadTurns = 60;
+  it('n\'affiche plus aucun bandeau « conversation longue », même sur un fil très long', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.terminal-compaction-hint')).toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('Cette conversation est longue');
+  });
+
+  it('« Nouveau départ » se présente comme le geste pour repartir à blanc et changer de sujet', () => {
+    fixture.detectChanges();
+    const restart = fixture.debugElement.query(By.css('.terminal-restart'));
+    expect(restart).not.toBeNull();
+    expect(restart.injector.get(MatTooltip).message).toContain('Repartir à blanc pour changer de sujet');
+    expect(fixture.nativeElement.querySelector('.terminal-compact')).not.toBeNull();
   });
 
   it('n\'émet pas send sur une saisie vide, ni pendant un envoi', () => {

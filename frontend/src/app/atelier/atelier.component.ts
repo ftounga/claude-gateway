@@ -1599,7 +1599,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
             kind: 'compaction',
             label: compactionMarkerLabel(result.summarizedTurns),
           });
-          // La taille du fil rejouable a baissé : la reprise le reflète (le bandeau de suggestion suit).
+          // La taille du fil rejouable a baissé : la reprise le reflète.
           this.loadResumeState(id);
         } else {
           this.snackBar.open('Rien à compacter : la conversation est déjà légère.', 'Fermer', {
