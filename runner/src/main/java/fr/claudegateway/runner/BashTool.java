@@ -117,6 +117,13 @@ public final class BashTool {
     }
 
     /**
+     * Refus d'une commande parce qu'une autre tourne encore. La gateway reconnaît CE texte pour
+     * attendre que le poste se libère (F-188 / SF-188-02) : il ne doit pas changer sans elle — un
+     * test de contrat les compare.
+     */
+    public static final String BUSY_MESSAGE = "Une commande est déjà en cours sur ce runner.";
+
+    /**
      * Exécute la commande décrite par {@code input} et diffuse sa sortie via {@code context}.
      * Ne lève jamais : toute erreur devient un {@link ToolOutcome} porteur d'un code du contrat (§4).
      */
@@ -142,7 +149,7 @@ public final class BashTool {
         }
         if (!slot.tryAcquire()) {
             // Pas d'exécution concurrente non bornée : un seul processus à la fois par runner.
-            return ToolOutcome.error("denied", "Une commande est déjà en cours sur ce runner.");
+            return ToolOutcome.error("denied", BUSY_MESSAGE);
         }
         try {
             return execute(command, workingDirectory, context);
