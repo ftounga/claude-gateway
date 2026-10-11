@@ -5,11 +5,14 @@ import { Subscription } from 'rxjs';
 
 import { FilSubAgent, FilTask, PosteTurns } from '../../core/models/terminal-fil.models';
 import { TerminalFilService } from '../../core/services/terminal-fil.service';
+import { FinishSoundService } from '../../core/services/finish-sound.service';
 
 /** Relecture après chaque réponse, onglet visible. */
 export const FIL_POLL_MS = 5_000;
 /** Onglet caché : on attend plus longtemps, sans appel. */
 export const FIL_HIDDEN_POLL_MS = 15_000;
+/** Le bandeau de fin s'efface seul après ce délai. */
+export const FIL_BANNER_MS = 30_000;
 /** Mini-barres de l'en-tête replié. */
 const MAX_MINI_BARS = 6;
 
@@ -96,6 +99,36 @@ export function stateLabel(task: FilTask): string {
   }
 }
 
+/** Le verbe du bandeau de fin. */
+export function finishVerb(task: FilTask): string {
+  switch (task.state) {
+    case 'failed':
+      return "s'est arrêté";
+    case 'interrupted':
+      return 'a été interrompu';
+    default:
+      return 'est terminé';
+  }
+}
+
+/**
+ * Les tâches qui viennent de finir **ailleurs** : finies, pas encore connues comme finies, et pas celle
+ * du terminal courant. `known` est complété au passage.
+ */
+export function newlyFinished(tasks: FilTask[], known: Set<string>): FilTask[] {
+  const fresh: FilTask[] = [];
+  for (const t of tasks) {
+    if (!isFinished(t) || known.has(t.turnId)) {
+      continue;
+    }
+    known.add(t.turnId);
+    if (!t.here) {
+      fresh.push(t);
+    }
+  }
+  return fresh;
+}
+
 function isFinished(task: FilTask): boolean {
   return task.state === 'done' || task.state === 'failed' || task.state === 'interrupted';
 }
@@ -111,6 +144,14 @@ function isFinished(task: FilTask): boolean {
 @Component({
   selector: 'app-terminal-fil',
   template: `
+    @if (banner(); as b) {
+      <div class="fin" role="status">
+        <span class="fin__ck" [class.fin__ck--ko]="b.state !== 'done'" aria-hidden="true">{{ b.state === 'done' ? '✓' : '!' }}</span>
+        <span class="fin__text"><b>{{ b.workspaceName }}</b> · « {{ b.demand || '…' }} » {{ verb(b) }} · {{ duration(b) }}</span>
+        <button type="button" class="fin__open" (click)="openFinished(b)">Ouvrir</button>
+        <button type="button" class="fin__close" aria-label="Fermer" (click)="closeBanner()">✕</button>
+      </div>
+    }
     @if (tasks().length) {
       <section class="fil" [attr.data-open]="open()" aria-label="Tâches en cours du poste">
         <button type="button" class="fil__head" (click)="toggle()" [attr.aria-expanded]="open()">
@@ -184,6 +225,19 @@ function isFinished(task: FilTask): boolean {
   `,
   styles: `
     :host { display: block; }
+    .fin {
+      display: flex; align-items: center; gap: 8px; margin: 0 0 8px; padding: 8px 12px;
+      background: var(--cg-navy-2); border: 1px solid color-mix(in srgb, var(--cg-success) 40%, transparent);
+      border-radius: 8px; color: #fff; font: 13px 'Inter', sans-serif;
+    }
+    .fin__ck { color: #5FD08F; font-weight: 700; }
+    .fin__ck--ko { color: #F9A825; }
+    .fin__text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--cg-divider); }
+    .fin__text b { color: #fff; font-weight: 600; }
+    .fin__open, .fin__close { background: none; border: 0; cursor: pointer; font: inherit; padding: 0 4px; }
+    .fin__open { color: var(--cg-orange-2, #F0954F); font-weight: 600; }
+    .fin__close { color: #9FB0C4; }
+    .fin__open:focus-visible, .fin__close:focus-visible { outline: 2px solid var(--cg-accent); outline-offset: 2px; }
     .fil {
       margin: 0 0 8px;
       background: var(--cg-navy-2);
@@ -267,6 +321,7 @@ export class TerminalFilComponent {
 
   private readonly service = inject(TerminalFilService);
   private readonly router = inject(Router);
+  private readonly sound = inject(FinishSoundService);
 
   readonly tasks = signal<FilTask[]>([]);
   readonly open = signal(false);
@@ -274,6 +329,12 @@ export class TerminalFilComponent {
   private readonly serverTime = signal(0);
   readonly counts = computed(() => filCounts(this.tasks()));
   readonly miniBars = computed(() => this.tasks().slice(0, MAX_MINI_BARS));
+  /** La dernière tâche finie ailleurs, annoncée par le bandeau (F-191 / SF-191-03). */
+  readonly banner = signal<FilTask | null>(null);
+  /** Tours déjà connus comme finis : on n'annonce une fin qu'une fois. */
+  private readonly knownFinished = new Set<string>();
+  private firstRead = true;
+  private bannerTimer?: ReturnType<typeof setTimeout>;
 
   private pending?: Subscription;
   private timer?: ReturnType<typeof setTimeout>;
@@ -296,6 +357,23 @@ export class TerminalFilComponent {
       return;
     }
     void this.router.navigate(['/atelier', task.workspaceId]);
+  }
+
+  openFinished(task: FilTask): void {
+    this.closeBanner();
+    void this.router.navigate(['/atelier', task.workspaceId]);
+  }
+
+  closeBanner(): void {
+    this.banner.set(null);
+    if (this.bannerTimer !== undefined) {
+      clearTimeout(this.bannerTimer);
+      this.bannerTimer = undefined;
+    }
+  }
+
+  verb(task: FilTask): string {
+    return finishVerb(task);
   }
 
   finished(task: FilTask): boolean {
@@ -324,6 +402,9 @@ export class TerminalFilComponent {
     this.stopped = false;
     this.tasks.set([]);
     this.open.set(false);
+    this.closeBanner();
+    this.knownFinished.clear();
+    this.firstRead = true;
     if (id) {
       this.fetch(id);
     }
@@ -333,7 +414,9 @@ export class TerminalFilComponent {
     this.pending = this.service.turns(id).subscribe({
       next: (res: PosteTurns) => {
         this.serverTime.set(res?.serverTime ?? Date.now());
-        this.tasks.set(Array.isArray(res?.turns) ? res.turns : []);
+        const turns = Array.isArray(res?.turns) ? res.turns : [];
+        this.tasks.set(turns);
+        this.announce(turns);
         this.schedule(id);
       },
       error: (err: unknown) => {
@@ -346,6 +429,25 @@ export class TerminalFilComponent {
         this.schedule(id);
       },
     });
+  }
+
+  /** Bandeau et son pour ce qui vient de finir ailleurs ; la première lecture ne dit rien. */
+  private announce(turns: FilTask[]): void {
+    const fresh = newlyFinished(turns, this.knownFinished);
+    if (this.firstRead) {
+      this.firstRead = false;
+      return;
+    }
+    if (!fresh.length) {
+      return;
+    }
+    this.closeBanner();
+    this.banner.set(fresh[0]);
+    this.bannerTimer = setTimeout(() => {
+      this.bannerTimer = undefined;
+      this.banner.set(null);
+    }, FIL_BANNER_MS);
+    this.sound.playIfEnabled();
   }
 
   private schedule(id: string): void {
@@ -370,6 +472,10 @@ export class TerminalFilComponent {
     if (this.timer !== undefined) {
       clearTimeout(this.timer);
       this.timer = undefined;
+    }
+    if (this.bannerTimer !== undefined) {
+      clearTimeout(this.bannerTimer);
+      this.bannerTimer = undefined;
     }
   }
 }

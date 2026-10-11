@@ -4,8 +4,12 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { Router, provideRouter } from '@angular/router';
 
 import { FilTask, PosteTurns } from '../../core/models/terminal-fil.models';
+import { FinishSoundService } from '../../core/services/finish-sound.service';
 import {
+  FIL_BANNER_MS,
   FIL_POLL_MS,
+  finishVerb,
+  newlyFinished,
   TerminalFilComponent,
   barPercent,
   durationLabel,
@@ -36,6 +40,20 @@ function task(over: Partial<FilTask> = {}): FilTask {
 }
 
 describe('Le fil des tâches — fonctions (F-191 / SF-191-02)', () => {
+  it("ne retient comme nouvelles fins que les tâches finies, inconnues, et pas d'ici", () => {
+    const known = new Set<string>(['deja']);
+    const fresh = newlyFinished([
+      task({ turnId: 'deja', state: 'done' }),
+      task({ turnId: 'encours' }),
+      task({ turnId: 'ici', state: 'done', here: true }),
+      task({ turnId: 'neuve', state: 'done' }),
+    ], known);
+
+    expect(fresh.map((t) => t.turnId)).toEqual(['neuve']);
+    expect(known.has('ici')).toBeTrue();
+    expect(finishVerb(task({ state: 'done' }))).toBe('est terminé');
+  });
+
   it('compte attente, en cours et terminées', () => {
     expect(filCounts([
       task({ state: 'waiting' }), task(), task(), task({ state: 'done' }), task({ state: 'failed' }),
@@ -77,11 +95,14 @@ describe('TerminalFilComponent (F-191 / SF-191-02)', () => {
   let http: HttpTestingController;
   let router: Router;
   let visibility: jasmine.Spy;
+  let sound: { playIfEnabled: jasmine.Spy };
 
   function build(id: string | null = 'w1'): void {
+    sound = { playIfEnabled: jasmine.createSpy('playIfEnabled') };
     TestBed.configureTestingModule({
       imports: [TerminalFilComponent],
-      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([]),
+        { provide: FinishSoundService, useValue: sound }],
     });
     http = TestBed.inject(HttpTestingController);
     router = TestBed.inject(Router);
@@ -228,6 +249,77 @@ describe('TerminalFilComponent (F-191 / SF-191-02)', () => {
     visibility.and.returnValue('visible');
     tick(15_000);
     answer([]);
+    fixture.destroy();
+  }));
+
+  // ------------------------------------------------ SF-191-03 : bandeau de fin et son
+
+  it("une tâche d'un autre sujet qui finit : bandeau et son", fakeAsync(() => {
+    build();
+    answer([task({ turnId: 't1', workspaceName: 'SCP', demand: 'migre la base' })]);
+    expect(el().querySelector('.fin')).toBeNull();
+
+    tick(FIL_POLL_MS);
+    answer([task({ turnId: 't1', workspaceName: 'SCP', demand: 'migre la base', state: 'done', endedAt: 1_060_000 })]);
+
+    const fin = el().querySelector('.fin') as HTMLElement;
+    expect(fin).not.toBeNull();
+    expect(fin.textContent).toContain('SCP');
+    expect(fin.textContent).toContain('migre la base');
+    expect(fin.textContent).toContain('est terminé');
+    expect(fin.textContent).toContain('1 min');
+    expect(sound.playIfEnabled).toHaveBeenCalledTimes(1);
+
+    (fin.querySelector('.fin__open') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(router.navigate).toHaveBeenCalledWith(['/atelier', 'w2']);
+    expect(el().querySelector('.fin')).toBeNull();
+    fixture.destroy();
+  }));
+
+  it("la première lecture n'annonce rien ; une fin n'est annoncée qu'une fois", fakeAsync(() => {
+    build();
+    answer([task({ turnId: 'old', state: 'done', endedAt: 1_100_000 })]);
+    expect(el().querySelector('.fin')).toBeNull();
+
+    tick(FIL_POLL_MS);
+    answer([task({ turnId: 'old', state: 'done', endedAt: 1_100_000 }),
+      task({ turnId: 'vite', state: 'failed', endedAt: 1_110_000 })]);
+    expect(el().querySelector('.fin')?.textContent).toContain("s'est arrêté");
+
+    (el().querySelector('.fin__close') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    tick(FIL_POLL_MS);
+    answer([task({ turnId: 'vite', state: 'failed', endedAt: 1_110_000 })]);
+    expect(el().querySelector('.fin')).toBeNull();
+    expect(sound.playIfEnabled).toHaveBeenCalledTimes(1);
+    fixture.destroy();
+  }));
+
+  it("la fin de la tâche d'ici ne dit rien", fakeAsync(() => {
+    build();
+    answer([task({ turnId: 't', here: true, workspaceId: 'w1' })]);
+    tick(FIL_POLL_MS);
+    answer([task({ turnId: 't', here: true, workspaceId: 'w1', state: 'done', endedAt: 1_100_000 })]);
+
+    expect(el().querySelector('.fin')).toBeNull();
+    expect(sound.playIfEnabled).not.toHaveBeenCalled();
+    fixture.destroy();
+  }));
+
+  it("le bandeau s'efface seul après 30 s", fakeAsync(() => {
+    build();
+    answer([task({ turnId: 'a' })]);
+    tick(FIL_POLL_MS);
+    answer([task({ turnId: 'a', state: 'interrupted', endedAt: 1_100_000 })]);
+    expect(el().querySelector('.fin')?.textContent).toContain('a été interrompu');
+
+    tick(FIL_POLL_MS);
+    answer([task({ turnId: 'a', state: 'interrupted', endedAt: 1_100_000 })]);
+    expect(el().querySelector('.fin')).not.toBeNull();
+    tick(FIL_BANNER_MS - FIL_POLL_MS);
+    fixture.detectChanges();
+    expect(el().querySelector('.fin')).toBeNull();
     fixture.destroy();
   }));
 });
