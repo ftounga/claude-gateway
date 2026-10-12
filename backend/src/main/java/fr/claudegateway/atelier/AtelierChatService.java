@@ -715,6 +715,14 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "option sans motif est interdite. etiquette : Vérifier, Continuer, Livrer ou "
                     + "Risque. demande : le texte complet que l'utilisateur enverrait, autonome et "
                     + "précis.\n"
+                    + "- Mode GUIDÉ (la note « Parcours du sujet » donne le plan) : ajoute à chaque "
+                    + "option \"etape\" = le numéro de l'étape du plan qu'elle fait avancer ou débloque, "
+                    + "ou null si elle va au-delà du plan (approfondissement). Le chantier d'abord : tant "
+                    + "qu'il n'est pas clos, propose d'abord la prochaine étape à faire et ce qui la "
+                    + "débloque ; au plus UN approfondissement, en dernier. Une fois le chantier clos, "
+                    + "les approfondissements sont libres, et une option peut proposer d'ouvrir un "
+                    + "nouveau chantier si un besoin distinct apparaît. Hors mode guidé, pas de "
+                    + "champ \"etape\".\n"
                     + "- Aucun bloc si aucune suite n'est évidente, si tu poses une question à "
                     + "l'utilisateur, ou si le tour est inachevé : pas de suggestion de remplissage.\n"
                     + "- Une seule fois par réponse, toujours en dernier, et n'en parle jamais dans le "
@@ -3606,8 +3614,15 @@ public class AtelierChatService implements RelayInterruptTarget {
         // le terminal propose déjà « Reprendre ».
         fr.claudegateway.atelier.nextsteps.NextStepsBlock.Extraction nextStepsExtraction =
                 fr.claudegateway.atelier.nextsteps.NextStepsBlock.extract(finalText);
-        List<fr.claudegateway.atelier.nextsteps.NextStep> nextSteps = interrupted || spendCapReached
-                ? List.of() : nextStepsExtraction.steps();
+        // F-196 / SF-196-01 : en chantier guidé ouvert, la gateway rattache chaque suite au plan RÉEL
+        // (relu maintenant : le plan a pu avancer pendant le tour), met les étapes d'abord et garde au
+        // plus un approfondissement. Hors chantier ouvert (Libre, Clos) : suites inchangées.
+        fr.claudegateway.atelier.nextsteps.ChantierAnchor.Anchored anchoredSteps = interrupted || spendCapReached
+                || nextStepsExtraction.steps().isEmpty()
+                ? new fr.claudegateway.atelier.nextsteps.ChantierAnchor.Anchored(List.of(), null)
+                : fr.claudegateway.atelier.nextsteps.ChantierAnchor.apply(nextStepsExtraction.steps(),
+                        journeyOf(userId, workspace));
+        List<fr.claudegateway.atelier.nextsteps.NextStep> nextSteps = anchoredSteps.steps();
         String reply = nonEmptyReply(stripTurnMetadata(nextStepsExtraction.text()));
         long activeSeconds = Math.max(0L, (System.currentTimeMillis() - startedAt) / 1000L);
         // Relevé du tour rangé dans la colonne d'affichage existante (F-39 / SF-39-15, D-L8-6) :
@@ -3635,7 +3650,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                 .content(reply)
                 .toolTrace(new AtelierToolTrace(List.copyOf(trace)).toJson())
                 .terminalJson(fr.claudegateway.atelier.nextsteps.NextStepsBlock.attachTo(report.toJson(),
-                        nextSteps))
+                        nextSteps, anchoredSteps.chantier()))
                 .build());
         // F-162 / SF-162-06 : embed la réponse de l'assistant pour le rappel sémantique — asynchrone,
         // best-effort (NONE par défaut ⇒ ne fait rien).
@@ -3698,7 +3713,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         threadStateStore.persist(userId, workspaceId, modeToPersist, planJson);
 
         return new AtelierChatResult(reply, actions, assistant.getId(), inputTokens, outputTokens,
-                activeSeconds, spendCapReached, costUsd, reusedPercent, planSubmitted.get(), nextSteps);
+                activeSeconds, spendCapReached, costUsd, reusedPercent, planSubmitted.get(), nextSteps,
+                anchoredSteps.chantier());
     }
 
     /**
@@ -9411,11 +9427,21 @@ public class AtelierChatService implements RelayInterruptTarget {
     public record AtelierChatResult(String reply, List<AtelierAction> actions, UUID messageId,
             long inputTokens, long outputTokens, long activeSeconds, boolean budgetReached,
             java.math.BigDecimal costUsd, Integer reusedPercent, boolean planSubmitted,
-            List<fr.claudegateway.atelier.nextsteps.NextStep> nextSteps) {
+            List<fr.claudegateway.atelier.nextsteps.NextStep> nextSteps,
+            fr.claudegateway.atelier.nextsteps.ChantierAnchor.Progress nextStepsChantier) {
 
         /** Suites jamais nulles : un appelant qui n'en a pas reçoit une liste vide. */
         public AtelierChatResult {
             nextSteps = nextSteps == null ? List.of() : List.copyOf(nextSteps);
+        }
+
+        /** Forme sans avancement de chantier (F-196 / SF-196-01 additif), conservée pour les appelants. */
+        public AtelierChatResult(String reply, List<AtelierAction> actions, UUID messageId,
+                long inputTokens, long outputTokens, long activeSeconds, boolean budgetReached,
+                java.math.BigDecimal costUsd, Integer reusedPercent, boolean planSubmitted,
+                List<fr.claudegateway.atelier.nextsteps.NextStep> nextSteps) {
+            this(reply, actions, messageId, inputTokens, outputTokens, activeSeconds, budgetReached,
+                    costUsd, reusedPercent, planSubmitted, nextSteps, null);
         }
 
         /** Forme sans suites (F-192 / SF-192-01 additif), conservée pour les appelants. */

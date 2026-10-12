@@ -216,4 +216,51 @@ class AtelierChatServiceJourneyTest {
                 .contains("Parcours du sujet (Libre / Guidé)");
         assertThat(agentProvider.toolNamesSeen).contains(JourneyToolCatalog.PROPOSE_GUIDED, JourneyToolCatalog.SET_PLAN);
     }
+
+    private static final String CAP_BLOCK = "Fait.\n<<suites>>\n["
+            + "{\"titre\":\"Rétention KMS\",\"pourquoi\":\"vu\",\"etiquette\":\"Risque\",\"demande\":\"KMS.\",\"etape\":null},"
+            + "{\"titre\":\"Export SIEM\",\"pourquoi\":\"vu\",\"etiquette\":\"Continuer\",\"demande\":\"SIEM.\"},"
+            + "{\"titre\":\"Policy NAP\",\"pourquoi\":\"étape 2 à faire\",\"etiquette\":\"Continuer\",\"demande\":\"NAP.\",\"etape\":2}"
+            + "]\n<</suites>>";
+
+    @Test
+    @DisplayName("SF-196-01 : chantier guidé ouvert — l'étape d'abord, un seul approfondissement, avancement exposé")
+    void nextStepsAreAnchoredToTheOpenChantier() {
+        when(journeyService.forTurn(userId, workspaceId)).thenReturn(SubjectJourney.builder()
+                .userId(userId).workspaceId(workspaceId).mode(JourneyMode.GUIDE).phase(JourneyPhase.EXECUTION)
+                .validatedVersion(1).planVersion(1).chantierNumber(1)
+                .planJson("[{\"title\":\"Diagnostiquer\",\"status\":\"VERIFIE\"},"
+                        + "{\"title\":\"Appliquer la policy NAP V12\",\"status\":\"A_FAIRE\"}]")
+                .build());
+        agentProvider.enqueueFinal(CAP_BLOCK);
+
+        AtelierChatService.AtelierChatResult result = service.chatStreaming(userId, workspaceId, "suite", listener);
+
+        assertThat(result.nextSteps()).extracting(fr.claudegateway.atelier.nextsteps.NextStep::title)
+                .containsExactly("Policy NAP", "Rétention KMS");
+        assertThat(result.nextSteps().get(0).stepTitle()).isEqualTo("Appliquer la policy NAP V12");
+        assertThat(result.nextSteps().get(1).scope())
+                .isEqualTo(fr.claudegateway.atelier.nextsteps.NextStep.Scope.APPROFONDISSEMENT);
+        assertThat(result.nextStepsChantier())
+                .isEqualTo(new fr.claudegateway.atelier.nextsteps.ChantierAnchor.Progress(1, 1, 2));
+        org.mockito.ArgumentCaptor<AtelierMessage> saved = org.mockito.ArgumentCaptor.forClass(AtelierMessage.class);
+        verify(messageRepository, org.mockito.Mockito.atLeastOnce()).save(saved.capture());
+        AtelierMessage assistant = saved.getAllValues().stream()
+                .filter(m -> "ASSISTANT".equals(m.getRole())).reduce((x, y) -> y).orElseThrow();
+        assertThat(assistant.getTerminalJson()).contains("\"nextStepsChantier\"").contains("\"APPROFONDISSEMENT\"");
+    }
+
+    @Test
+    @DisplayName("SF-196-01 : mode Libre — suites inchangées, aucun rattachement")
+    void libreNextStepsAreNotAnchored() {
+        journey(JourneyMode.LIBRE, null, null, 0);
+        agentProvider.enqueueFinal(CAP_BLOCK);
+
+        AtelierChatService.AtelierChatResult result = service.chatStreaming(userId, workspaceId, "suite", listener);
+
+        assertThat(result.nextSteps()).extracting(fr.claudegateway.atelier.nextsteps.NextStep::title)
+                .containsExactly("Rétention KMS", "Export SIEM", "Policy NAP");
+        assertThat(result.nextSteps()).allSatisfy(s -> assertThat(s.scope()).isNull());
+        assertThat(result.nextStepsChantier()).isNull();
+    }
 }
