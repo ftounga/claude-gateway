@@ -362,6 +362,10 @@
               </button>
               <mat-divider></mat-divider>
             }
+            <button mat-menu-item type="button" class="poste__reconnect" (click)="reconnectHost(host)">
+              <mat-icon>key</mat-icon>
+              <span>Réappairer ce poste…</span>
+            </button>
             <button mat-menu-item type="button" (click)="killHost(host)">
               <mat-icon>power_settings_new</mat-icon>
               <span>Couper la liaison…</span>

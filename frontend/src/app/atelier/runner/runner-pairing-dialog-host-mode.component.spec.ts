@@ -296,4 +296,74 @@ describe('RunnerPairingDialogComponent — mode poste (F-72 SF-72-02)', () => {
       expect(navigate).toHaveBeenCalledWith(['/billing'], { fragment: 'code-acces' });
     });
   });
+
+  // ------------------------------------ réappairer un poste existant (F-194 / SF-194-02)
+
+  /**
+   * **Le geste du 12/10** : le jeton d'EDENRED a expiré, et le seul moyen d'obtenir un code était de
+   * créer un faux client. Ouvert depuis la carte du poste, le dialogue réappaire CE poste.
+   */
+  describe('réappairage (F-194 / SF-194-02)', () => {
+    const REPAIR: RunnerPairingDialogData = { hostId: 'h1', hostName: 'EDENRED' };
+
+    it('se reconnaît au poste fourni, sans projet', () => {
+      setupHostMode(REPAIR);
+
+      expect(component.hostMode).toBeTrue();
+      expect(component.reconnectMode).toBeTrue();
+      expect(component.hostId()).toBe('h1');
+    });
+
+    it('nomme le poste dans le titre et tient l\'étape 2 pour faite', () => {
+      setupHostMode(REPAIR);
+
+      expect(text()).toContain('Réappairer « EDENRED »');
+      expect(component.stepDone('host')).toBeTrue();
+      expect(component.stepSummary('host')).toBe('Poste « EDENRED ».');
+    });
+
+    it('ne demande aucun nom et ne crée aucun poste', () => {
+      setupHostMode(REPAIR);
+      component.toggleStep('host');
+      fixture.detectChanges();
+
+      expect(text()).not.toContain('Nom du client ou de la machine');
+      expect(text()).not.toContain('Créer le poste');
+      component.newHostName.set('toto');
+      component.createHost();
+      expect(service.createRunnerHost).not.toHaveBeenCalled();
+    });
+
+    it('génère le code pour CE poste', () => {
+      setupHostMode(REPAIR);
+      service.createHostPairingCode.and.returnValue(of({
+        code: 'AB12CD', expiresAt: new Date(Date.now() + 300_000).toISOString(),
+      }));
+
+      component.generateCode();
+
+      expect(service.createHostPairingCode).toHaveBeenCalledOnceWith('h1');
+      expect(component.pairingCode()?.code).toBe('AB12CD');
+    });
+
+    it("relève l'état du poste dès l'ouverture", () => {
+      setupHostMode(REPAIR);
+
+      expect(service.getHostRunnerStatus).toHaveBeenCalledWith('h1');
+      expect(service.getRunnerStatus).not.toHaveBeenCalled();
+    });
+
+    it("ne dit pas qu'aucun projet n'existe une fois la machine revenue", () => {
+      setupHostMode(REPAIR);
+      service.getHostRunnerStatus.and.returnValue(of({
+        connected: true, lastSeenAt: '2026-10-12T12:00:00Z',
+      }));
+      // Le relevé suivant voit la machine.
+      (component as unknown as { readRunnerStatus(): void }).readRunnerStatus();
+      fixture.detectChanges();
+
+      expect(component.runnerConnected()).toBeTrue();
+      expect(text()).not.toContain("Aucun projet n'existe encore");
+    });
+  });
 });

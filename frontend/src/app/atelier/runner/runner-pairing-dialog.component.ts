@@ -47,8 +47,13 @@ export interface RunnerPairingDialogData {
    */
   workspaceId?: string | null;
   workspaceName?: string | null;
-  /** Poste déjà rattaché au projet, ou `null`/absent. */
+  /**
+   * Poste déjà rattaché au projet, ou `null`/absent. En mode poste, sa présence fait du dialogue un
+   * <b>réappairage</b> de ce poste (F-194 / SF-194-02) : aucun poste n'est créé.
+   */
   hostId?: string | null;
+  /** Nom du poste réappairé (F-194 / SF-194-02), affiché tant que la liste des postes n'est pas lue. */
+  hostName?: string | null;
   /** Chemin du projet sous la racine du poste, ou `null`/absent. */
   projectPath?: string | null;
   /**
@@ -485,6 +490,15 @@ export class RunnerPairingDialogComponent implements OnDestroy {
     this.hostId.set(this.data.hostId ?? null);
     this.projectPath.set(this.data.projectPath ?? null);
     this.selectedHostId.set(this.data.hostId ?? NEW_HOST);
+    if (this.reconnectMode) {
+      // Le poste existe : on le connaît par son nom, sans relire la liste (F-194 / SF-194-02).
+      this.hosts.set([{
+        id: this.data.hostId!,
+        name: this.data.hostName ?? '',
+        connected: false,
+        createdAt: '',
+      }]);
+    }
     // Mode POSTE (F-72 / SF-72-02) : il n'y a ni projet à ranger, ni poste à choisir — on en crée
     // un. Relever la liste des postes n'aurait rien à en faire, et l'explorateur de dossiers non
     // plus : la machine n'est pas encore là pour lister.
@@ -500,7 +514,7 @@ export class RunnerPairingDialogComponent implements OnDestroy {
     // appairée. L'information existait déjà côté gateway ; il suffisait de la relever.
     // En mode poste, il n'y a rien à relever tant que le poste n'est pas créé : le minuteur
     // démarrera à ce moment-là (battre à vide serait du bruit, pas de la surveillance).
-    if (!this.hostMode) {
+    if (!this.hostMode || this.reconnectMode) {
       this.startStatusPoll();
     }
   }
@@ -525,7 +539,7 @@ export class RunnerPairingDialogComponent implements OnDestroy {
    * une machine. Le parcours enchaîne directement sur le code d'appairage.</p>
    */
   createHost(): void {
-    if (!this.canCreateHost()) {
+    if (this.reconnectMode || !this.canCreateHost()) {
       return;
     }
     this.attaching.set(true);
@@ -758,6 +772,13 @@ export class RunnerPairingDialogComponent implements OnDestroy {
    * pourrait contredire les données, l'absence non.</p>
    */
   readonly hostMode = this.data.workspaceId == null;
+
+  /**
+   * <b>Réappairage</b> d'un poste existant (F-194 / SF-194-02) : mode poste ouvert depuis la carte
+   * d'un poste. Pas de nom à saisir, pas de poste à créer — seulement un nouveau code pour CE poste.
+   * Sans lui, le seul moyen d'obtenir un code après un jeton expiré était de créer un faux client.
+   */
+  readonly reconnectMode = this.hostMode && this.data.hostId != null;
 
   /** Nom du projet mis en service, ou `null` en mode poste — il n'y en a pas encore. */
   readonly workspaceName = this.data.workspaceName ?? null;
@@ -1316,7 +1337,10 @@ export class RunnerPairingDialogComponent implements OnDestroy {
     const host = this.attachedHost();
     if (this.hostMode) {
       // Mode poste : il n'y a pas de projet à situer — seulement une machine, nommée.
-      return host === null ? '' : `Poste « ${host.name} » créé.`;
+      if (host === null) {
+        return '';
+      }
+      return this.reconnectMode ? `Poste « ${host.name} ».` : `Poste « ${host.name} » créé.`;
     }
     if (host === null) {
       return this.hostId() === null ? '' : 'Projet rattaché à un poste.';
