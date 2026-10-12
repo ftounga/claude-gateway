@@ -1735,6 +1735,29 @@ describe('PostesComponent', () => {
     expect(config.data).toEqual({});
   });
 
+  it('réappaire un poste existant depuis sa carte, sans en créer (F-194 / SF-194-02)', () => {
+    setup();
+    const host = component.hosts().find((h) => h.id !== null)!;
+
+    component.reconnectHost(host);
+
+    expect(dialog.open).toHaveBeenCalledTimes(1);
+    const config = dialog.open.calls.mostRecent().args[1] as { data?: Record<string, unknown> };
+    // Le poste, sans projet : le dialogue reste en mode poste, mais sur CE poste.
+    expect(config.data).toEqual({ hostId: host.id, hostName: host.name });
+  });
+
+  it('propose « Réappairer ce poste… » dans le menu de la carte', () => {
+    setup();
+    const trigger = (fixture.nativeElement as HTMLElement)
+      .querySelector('.poste__menu-trigger') as HTMLButtonElement;
+
+    trigger.click();
+    fixture.detectChanges();
+
+    expect(document.body.textContent).toContain('Réappairer ce poste');
+  });
+
   it('relit la vue à la fermeture du parcours', () => {
     setup();
     service.runnerHostsOverview.calls.reset();

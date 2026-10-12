@@ -881,6 +881,26 @@ export class PostesComponent implements OnInit {
   }
 
   /**
+   * **Réappairer un poste existant** (F-194 / SF-194-02) : un nouveau code pour CE poste, quand son
+   * jeton a expiré ou que la machine a changé. Le dialogue s'ouvre en mode poste sur l'identifiant
+   * fourni — aucun poste n'est créé. Avant, il fallait créer un faux client pour obtenir un code.
+   */
+  reconnectHost(host: RunnerHostOverview): void {
+    if (host.id === null) {
+      return;
+    }
+    this.dialog
+      .open(RunnerPairingDialogComponent, {
+        data: { hostId: host.id, hostName: host.name } satisfies RunnerPairingDialogData,
+        width: RunnerPairingDialogComponent.DIALOG_WIDTH,
+        maxWidth: '95vw',
+        autoFocus: false,
+      })
+      .afterClosed()
+      .subscribe(() => this.load(false));
+  }
+
+  /**
    * **Poste virtuel « Hébergé »** (F-71 / SF-71-03) : les projets sans machine — dépôt GitHub,
    * archive importée — que l'accueil, organisé par postes, n'avait nulle part où ranger.
    *

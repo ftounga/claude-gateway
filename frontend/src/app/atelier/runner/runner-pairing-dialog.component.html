@@ -1,4 +1,10 @@
-<h2 mat-dialog-title>{{ hostMode ? 'Connecter un poste' : 'Connecter une machine' }}</h2>
+<h2 mat-dialog-title>
+  @if (reconnectMode) {
+    Réappairer « {{ attachedHost()?.name }} »
+  } @else {
+    {{ hostMode ? 'Connecter un poste' : 'Connecter une machine' }}
+  }
+</h2>
 <mat-dialog-content>
   <!-- La conclusion (F-45 / SF-45-05, D6). Elle REMPLACE le parcours : c'est la seule information
        attendue depuis le début, et elle vivait jusqu'ici en bas de l'étape 4, invisible sur un
@@ -31,7 +37,7 @@
           La machine reste connectée tant que le runner tourne. Vous pouvez fermer cette fenêtre :
           il n'y a pas de nouvel appairage à faire au prochain lancement.
         </p>
-        @if (hostMode) {
+        @if (hostMode && !reconnectMode) {
           <!-- LA SUITE, DITE (F-72 / SF-72-02). Sans cette phrase, l'écran se referme sur une
                machine connectée et AUCUN projet — ce qui est l'état juste, mais que rien ne dit.
                C'est précisément là que le parcours d'avant faisait perdre le fil. -->
@@ -48,7 +54,10 @@
       Le runner tourne sur votre machine et ouvre lui-même la connexion vers cette passerelle : aucun
       port à ouvrir <strong>en entrée</strong> — il lui faut en revanche une <strong>sortie
       HTTPS</strong>, que l'étape 1 vérifie. Il s'affiche en clair et s'arrête au <code>Ctrl-C</code>.
-      @if (hostMode) {
+      @if (reconnectMode) {
+        Vous réappairez un poste <strong>existant</strong> : un nouveau code, ses projets restent tels
+        quels.
+      } @else if (hostMode) {
         Vous connectez une <strong>machine</strong> : les projets viendront ensuite, depuis sa carte.
       } @else {
         Projet appairé : <strong>{{ workspaceName }}</strong>.
@@ -397,7 +406,7 @@
         </span>
         <span class="pairing-step-head-text">
           <span class="pairing-step-title">
-            {{ hostMode ? 'Nommer le client' : 'Choisir le poste' }}
+            {{ reconnectMode ? 'Le poste' : hostMode ? 'Nommer le client' : 'Choisir le poste' }}
           </span>
           @if (stepSummary('host'); as summary) {
             <span class="pairing-step-summary">{{ summary }}</span>
@@ -409,7 +418,17 @@
       </button>
     </h3>
 
-    @if (isOpen('host') && hostMode) {
+    @if (isOpen('host') && reconnectMode) {
+      <!-- RÉAPPAIRAGE (F-194 / SF-194-02) : le poste existe, rien à nommer ni à créer. -->
+      <div class="pairing-step-body">
+        <p class="pairing-hint">
+          Le poste <strong>« {{ attachedHost()?.name }} »</strong> existe déjà : on lui génère un
+          nouveau code. Ses projets et son nom ne changent pas.
+        </p>
+      </div>
+    }
+
+    @if (isOpen('host') && hostMode && !reconnectMode) {
       <!-- MODE POSTE (F-72 / SF-72-02) : une seule question, le nom. Ni liste de postes, ni
            explorateur, ni rattachement — il n'y a pas de projet à ranger. C'est l'inversion que
            F-72 apporte : on branche une machine, les projets viendront de sa carte. -->
