@@ -2465,6 +2465,9 @@ public class AtelierChatService implements RelayInterruptTarget {
         turnRunnerCounters.remove(turnKey(userId, workspaceId)); // F-188 / SF-188-03
         long startedAt = System.currentTimeMillis();
         long deadline = startedAt + turnBudgetMs;
+        // F-195 / SF-195-05 : le plafond d'étapes du tour, prolongé (comme `deadline`) par chaque
+        // interjection prise en compte, sans jamais dépasser le plafond absolu.
+        int iterationCap = maxIterations;
         String userText = rawMessage.trim();
 
         // Compaction automatique du fil (F-117 / SF-117-01), AVANT de bâtir la requête : si le texte
@@ -2731,6 +2734,10 @@ public class AtelierChatService implements RelayInterruptTarget {
          * arrivé en route ne se voit pas refuser sa délégation parce que le premier a tout consommé.
          */
         int requestsInTurn = 1;
+        /** Les demandes de ce tour, dans l'ordre (F-195 / SF-195-05) : pour dire laquelle n'a pas abouti. */
+        List<String> requestsOfTurn = new ArrayList<>(List.of(userText));
+        /** Le tour s'est arrêté sur son budget de temps ou d'étapes (F-195 / SF-195-05). */
+        boolean budgetExhausted = false;
         /**
          * Fins de tour refusées dans ce message (F-50 / SF-50-02). Bornées : un contrôle qui bloque
          * quoi qu'il arrive ferait payer à l'utilisateur le prix d'une règle mal écrite.
@@ -2792,7 +2799,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         AtelierFileFreshness freshness = new AtelierFileFreshness(fileStateHints);
         seedFreshnessFromHistory(freshness, messages);
 
-        for (int iteration = 0; iteration < maxIterations; iteration++) {
+        for (int iteration = 0; iteration < iterationCap; iteration++) {
             iterationsUsed = iteration + 1;
             if (interruptedTurns.remove(turnKey(userId, workspaceId))) {
                 finalText = INTERRUPTED_REPLY;
@@ -2817,6 +2824,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                 // Frontière sûre : on s'arrête ici plutôt que de laisser tourner des commandes
                 // derrière un flux SSE déjà expiré.
                 finalText = BUDGET_REACHED_REPLY;
+                budgetExhausted = true;
                 break;
             }
             // Plafond de consommation du message (F-39 / SF-39-15). On renonce AVANT l'appel qui
@@ -2844,6 +2852,10 @@ public class AtelierChatService implements RelayInterruptTarget {
             if (frontierInterjections != null) {
                 messages.add(AgentMessage.userText(frontierInterjections));
                 requestsInTurn++;
+                // F-195 / SF-195-05 : une demande de plus, un budget de plus (borné).
+                requestsOfTurn.add(frontierInterjections);
+                deadline = extendedDeadline(deadline, startedAt);
+                iterationCap = extendedIterationCap(iterationCap);
             }
             // Streaming mot à mot (F-116 / SF-116-01) : quand le flux est actif, le texte défile dans
             // la ligne vivante DÈS le premier delta, au lieu d'attendre la fin du tour (~100 % de
@@ -3488,6 +3500,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                 if (betweenCalls != null) {
                     interjectionsBetweenCalls.add(betweenCalls);
                     requestsInTurn++;
+                    requestsOfTurn.add(betweenCalls);
+                    deadline = extendedDeadline(deadline, startedAt);
+                    iterationCap = extendedIterationCap(iterationCap);
                 }
             }
             // Après TOUS les `tool_result` : le fournisseur exige que les résultats d'outils ouvrent
@@ -3515,11 +3530,17 @@ public class AtelierChatService implements RelayInterruptTarget {
                 interrupted = true;
                 break;
             }
-            if (iteration == maxIterations - 1) {
+            if (iteration == iterationCap - 1) {
                 finalText = (spokenText == null || spokenText.isBlank())
                         ? "J'ai atteint la limite d'étapes pour ce message ; relance-moi pour continuer."
                         : spokenText;
+                budgetExhausted = true;
             }
+        }
+        // F-195 / SF-195-05 : arrêté sur son budget alors que plusieurs demandes sont arrivées — on dit
+        // lesquelles, pour que celle qui n'a pas abouti ne disparaisse pas sans trace.
+        if (budgetExhausted && requestsOfTurn.size() > 1) {
+            finalText = finalText + unfinishedRequestsNote(requestsOfTurn);
         }
         // Le constat sur la machine ne survit pas au tour (F-93 / SF-93-04).
         machineOfTurn.remove(turnKey(userId, workspaceId));
@@ -3908,7 +3929,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         if (spendCapReached) {
             return "plafond de consommation";
         }
-        if (BUDGET_REACHED_REPLY.equals(finalText)) {
+        if (finalText != null && finalText.startsWith(BUDGET_REACHED_REPLY)) {
             return "budget de temps";
         }
         if (TRUNCATED_REPLY.equals(finalText)) {
@@ -5266,6 +5287,68 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "s'exécutent aussi en parallèle — chacune dans son worktree et sur sa branche, sans "
                     + "rien écraser : groupe-les. Des sujets qui dépendent l'un de l'autre s'enchaînent sur "
                     + "des tours successifs.";
+
+    /**
+     * <b>Budget par sujet</b> (F-195 / SF-195-05) : temps ajouté au tour par chaque interjection prise en
+     * compte ({@code app.atelier.interjection-extra-ms}, défaut 10 min ; {@code 0} = rien n'est ajouté,
+     * le comportement d'avant — coupe-circuit), borné à deux fois le budget de tour.
+     */
+    @org.springframework.beans.factory.annotation.Value("${app.atelier.interjection-extra-ms:600000}")
+    private long interjectionExtraMs;
+
+    /**
+     * Étapes ajoutées par interjection ({@code app.atelier.interjection-extra-steps}, défaut 15 ;
+     * {@code 0} = rien), bornées à deux fois le plafond d'étapes (F-195 / SF-195-05).
+     */
+    @org.springframework.beans.factory.annotation.Value("${app.atelier.interjection-extra-steps:15}")
+    private int interjectionExtraSteps;
+
+    /** Réglage du budget par sujet — exposé pour les tests (F-195 / SF-195-05). */
+    void setInterjectionExtension(long extraMs, int extraSteps) {
+        this.interjectionExtraMs = extraMs;
+        this.interjectionExtraSteps = extraSteps;
+    }
+
+    /** L'échéance prolongée d'une interjection, jamais au-delà de deux budgets de tour (SF-195-05). */
+    private long extendedDeadline(long deadline, long startedAt) {
+        if (interjectionExtraMs <= 0) {
+            return deadline;
+        }
+        return Math.max(deadline, Math.min(startedAt + 2 * turnBudgetMs, deadline + interjectionExtraMs));
+    }
+
+    /** Le plafond d'étapes prolongé d'une interjection, jamais au-delà du double (SF-195-05). */
+    private int extendedIterationCap(int cap) {
+        if (interjectionExtraSteps <= 0) {
+            return cap;
+        }
+        return Math.max(cap, Math.min(2 * maxIterations, cap + interjectionExtraSteps));
+    }
+
+    /** Longueur maximale d'une demande rappelée dans la note d'arrêt (SF-195-05). */
+    private static final int REQUEST_NOTE_MAX_CHARS = 120;
+
+    /**
+     * La note jointe à un arrêt sur budget quand le tour portait plusieurs demandes (F-195 / SF-195-05) :
+     * chacune, dans l'ordre, pour que l'utilisateur sache quoi relancer. La gateway ne devine pas
+     * laquelle a abouti — elle les nomme toutes et laisse la réponse dire où le travail en est.
+     */
+    static String unfinishedRequestsNote(List<String> requests) {
+        StringBuilder note = new StringBuilder("\n\nCe message portait ")
+                .append(requests.size()).append(" demandes ; le travail s'est arrêté avant d'en rendre "
+                        + "compte entièrement. Relance celles qui n'ont pas abouti :");
+        int index = 1;
+        for (String request : requests) {
+            String plain = request == null ? "" : request
+                    .replaceAll("\\[Interjection de l'utilisateur — [^\\]]*\\] ", "")
+                    .replaceAll("\\s+", " ").strip();
+            if (plain.length() > REQUEST_NOTE_MAX_CHARS) {
+                plain = plain.substring(0, REQUEST_NOTE_MAX_CHARS - 1) + "…";
+            }
+            note.append("\n").append(index++).append(") ").append(plain);
+        }
+        return note.toString();
+    }
 
     /** Réglage des sous-tâches parallèles — exposé pour les tests (F-195 / SF-195-04). */
     void setTaskParallelism(int taskParallelism) {
