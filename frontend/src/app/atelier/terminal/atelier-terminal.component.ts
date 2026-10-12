@@ -165,7 +165,9 @@ import { TerminalHandComponent } from './terminal-hand.component';
 import { Hand, HandTarget, handOf } from './terminal-hand';
 import { JourneyGesture, TerminalJourneyStripComponent } from './terminal-journey-strip.component';
 import { JourneyService } from '../../core/services/journey.service';
-import { ClosedChantier, JourneyMode, SubjectJourney, journeyResumeMessage } from '../../core/models/journey.models';
+import {
+  ChantierResolution, ClosedChantier, JourneyMode, SubjectJourney, chantierResolution, journeyResumeMessage,
+} from '../../core/models/journey.models';
 import { TerminalAction, TerminalActionBoard } from '../../core/models/terminal-actions.models';
 import { AtelierTerminalDemandeComponent } from './atelier-terminal-demande.component';
 import { TerminalActionsService } from '../../core/services/terminal-actions.service';
@@ -508,6 +510,26 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     }
     const last = this.messages[this.messages.length - 1];
     return last?.nextStepsChantier ?? null;
+  }
+
+  /**
+   * La marque de résolution du chantier en tête d'un message utilisateur (F-196 / SF-196-03), rendue
+   * en séparateur dans le fil ; `null` pour un message ordinaire.
+   */
+  resolutionOf(message: AtelierThreadItem): ChantierResolution | null {
+    return message.role === 'USER' ? chantierResolution(message.content) : null;
+  }
+
+  /** La bulle « Votre question » est-elle rendue ? Non pour une marque de résolution seule. */
+  showsQuestion(message: AtelierThreadItem): boolean {
+    const resolution = this.resolutionOf(message);
+    return !resolution || resolution.rest.length > 0 || (message.files?.length ?? 0) > 0;
+  }
+
+  /** Le texte de la bulle : le message, ou — après une marque de résolution — le brouillon parti avec elle. */
+  questionText(message: AtelierThreadItem): string {
+    const resolution = this.resolutionOf(message);
+    return resolution ? resolution.rest : message.content;
   }
 
   /** L'identité du dernier tour : un nouveau tour rouvre le panneau des suites. */

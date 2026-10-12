@@ -189,3 +189,27 @@
     }
   }
 }
+
+/* F-196 / SF-196-03 — LE CHANTIER RÉSOLU, MARQUÉ DANS LE FIL : un filet pleine largeur de part et
+   d'autre du texte. L'encre est celle du fil (héritée) — AA sur la Forge sombre comme sur le papier
+   Teams, AUCUNE couleur nouvelle ; les filets sont cette même encre, atténuée. */
+.terminal-resolution {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-3);
+  margin: var(--cg-space-4) 0 var(--cg-space-2);
+  color: inherit;
+  font: 600 13px 'Inter', sans-serif;
+
+  &::before,
+  &::after {
+    content: '';
+    flex: 1 1 0;
+    border-top: 1px solid color-mix(in srgb, currentColor 40%, transparent);
+  }
+}
+
+.terminal-resolution__label {
+  flex: 0 1 auto;
+  text-align: center;
+}
