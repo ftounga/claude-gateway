@@ -65,6 +65,11 @@ public final class ProjectScopes implements ToolScopes {
      * au moment d'en construire l'aiguillage. {@code null} tant que rien n'est monté.
      */
     private volatile fr.claudegateway.runner.video.VideoTools video;
+    /**
+     * Commandes simultanées par projet (F-195 / SF-195-02), lues une fois dans l'environnement
+     * ({@code CLAUDE_RUNNER_BASH_CONCURRENCY}, défaut {@value BashTool#DEFAULT_CONCURRENCY}).
+     */
+    private final int bashConcurrency = BashTool.resolveConcurrency(System.getenv());
 
     /** Portée sans volet Teams : chemins historiques et tests. */
     public ProjectScopes(Path hostRoot, boolean allowBash, ShellElection shell, Console console) {
@@ -137,7 +142,7 @@ public final class ProjectScopes implements ToolScopes {
         // le dossier du projet donne le dépôt git dont on tire le worktree.
         WorktreeTool worktree = new WorktreeTool(hostRoot, folder, git);
         ToolRouter router = new ToolRouter(new FileTools(paths),
-                new BashTool(paths, allowBash, shell, background), teams, worktree,
+                new BashTool(paths, allowBash, shell, background, bashConcurrency), teams, worktree,
                 video == null ? null : video.bind(paths));
         ToolRouter raced = byProject.putIfAbsent(relative, router);
         return raced == null ? router : raced;

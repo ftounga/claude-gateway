@@ -22,8 +22,11 @@ import com.fasterxml.jackson.databind.JsonNode;
  *   <li><b>Opt-out machine</b> : sous {@code --no-bash}, l'outil répond {@code unsupported_tool}
  *       et rien n'est exécuté. La capacité n'est alors même pas annoncée à la gateway (contrat §2.1),
  *       qui refuse donc l'appel avant émission — mais le refus qui fait foi est celui d'ici.</li>
- *   <li><b>Une commande à la fois</b> : un sémaphore à un jeton. La boucle tool-use est séquentielle,
- *       la limite ne coûte rien, et elle interdit qu'un enchaînement inattendu lance N processus.</li>
+ *   <li><b>N commandes à la fois, pas plus</b> (F-195 / SF-195-02) : un sémaphore à N jetons
+ *       ({@value #DEFAULT_CONCURRENCY} par défaut, réglable par {@code CLAUDE_RUNNER_BASH_CONCURRENCY},
+ *       borné à {@value #MAX_CONCURRENCY}). Avant F-195 il n'en avait qu'un : la gateway ne pouvait
+ *       rien paralléliser. Au-delà de N, le refus {@link #BUSY_MESSAGE} est inchangé (contrat F-188).
+ *       Chaque appel a son propre {@link ToolContext} : les sorties ne se mélangent pas.</li>
  *   <li><b>Bornes</b> : sortie diffusée plafonnée, délai armé par l'aiguilleur, processus
  *       {@code destroyForcibly} dès que l'appel est abandonné.</li>
  * </ol>
@@ -68,7 +71,9 @@ public final class BashTool {
     private final PathResolver paths;
     private final boolean enabled;
     private final ShellElection shell;
-    private final Semaphore slot = new Semaphore(1);
+    private final Semaphore slot;
+    /** Nombre de commandes de premier plan simultanées accepté (F-195 / SF-195-02). */
+    private final int concurrency;
     /**
      * Registre des commandes de fond (F-121 / SF-121-07), partagé par la machine, ou {@code null} quand
      * ce montage n'offre pas l'arrière-plan (tests, chemins historiques) : {@code run_in_background} est
@@ -91,10 +96,51 @@ public final class BashTool {
      *                  de la machine ; {@code null} = pas d'arrière-plan sur ce montage
      */
     public BashTool(PathResolver paths, boolean enabled, ShellElection shell, BackgroundShells background) {
+        this(paths, enabled, shell, background, DEFAULT_CONCURRENCY);
+    }
+
+    /**
+     * @param concurrency commandes de premier plan simultanées acceptées (F-195 / SF-195-02), ramené
+     *                    dans [1, {@value #MAX_CONCURRENCY}]
+     */
+    public BashTool(PathResolver paths, boolean enabled, ShellElection shell, BackgroundShells background,
+            int concurrency) {
+        this.concurrency = Math.max(1, Math.min(MAX_CONCURRENCY, concurrency));
+        this.slot = new Semaphore(this.concurrency);
         this.paths = paths;
         this.enabled = enabled;
         this.shell = shell;
         this.background = background;
+    }
+
+    /** Défaut de commandes simultanées (F-195 / SF-195-02). */
+    public static final int DEFAULT_CONCURRENCY = 4;
+    /** Plafond absolu de commandes simultanées, quel que soit le réglage (F-195 / SF-195-02). */
+    public static final int MAX_CONCURRENCY = 16;
+    /** Variable d'environnement qui règle le nombre de commandes simultanées (F-195 / SF-195-02). */
+    public static final String CONCURRENCY_ENV = "CLAUDE_RUNNER_BASH_CONCURRENCY";
+    /** Préfixe de la capacité annoncée : {@code bash_parallel_<N>} (F-195 / SF-195-02). */
+    public static final String PARALLEL_CAPABILITY_PREFIX = "bash_parallel_";
+
+    /**
+     * Réglage lu dans l'environnement : un entier ramené dans [1, {@value #MAX_CONCURRENCY}] ; absent
+     * ou illisible ⇒ {@value #DEFAULT_CONCURRENCY}. Ne lève jamais.
+     */
+    public static int resolveConcurrency(java.util.Map<String, String> env) {
+        String raw = env == null ? null : env.get(CONCURRENCY_ENV);
+        if (raw == null || raw.isBlank()) {
+            return DEFAULT_CONCURRENCY;
+        }
+        try {
+            return Math.max(1, Math.min(MAX_CONCURRENCY, Integer.parseInt(raw.strip())));
+        } catch (NumberFormatException e) {
+            return DEFAULT_CONCURRENCY;
+        }
+    }
+
+    /** Commandes de premier plan simultanées acceptées par ce montage (F-195 / SF-195-02). */
+    public int concurrency() {
+        return concurrency;
     }
 
     /** Vrai si cette machine autorise l'exécution de commandes (capacité {@code bash} annoncée). */
@@ -148,7 +194,7 @@ public final class BashTool {
             return startInBackground(command, workingDirectory);
         }
         if (!slot.tryAcquire()) {
-            // Pas d'exécution concurrente non bornée : un seul processus à la fois par runner.
+            // Pas d'exécution concurrente non bornée : N processus au plus (F-195 / SF-195-02).
             return ToolOutcome.error("denied", BUSY_MESSAGE);
         }
         try {

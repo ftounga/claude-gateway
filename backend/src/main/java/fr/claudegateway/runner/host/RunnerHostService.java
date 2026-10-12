@@ -294,6 +294,43 @@ public class RunnerHostService implements RunnerShellRecorder, RunnerVersionReco
                 .orElseGet(java.util.Set::of);
     }
 
+    /** Préfixe de la capacité « N commandes à la fois » annoncée par le runner (F-195 / SF-195-02). */
+    public static final String BASH_PARALLEL_PREFIX = "bash_parallel_";
+    /** Plafond côté gateway, quoi que déclare le client (F-195 / SF-195-02) — miroir du runner. */
+    public static final int MAX_BASH_CONCURRENCY = 16;
+
+    /**
+     * Nombre de commandes {@code bash} que le poste {@code hostId} accepte à la fois (F-195 /
+     * SF-195-02), lu dans la capacité {@code bash_parallel_<N>}. Un runner antérieur ne l'annonce
+     * pas : {@code 1}, exactement le comportement d'avant.
+     */
+    @Transactional(readOnly = true)
+    public int bashConcurrency(UUID hostId) {
+        return bashConcurrencyOf(declaredCapabilities(hostId));
+    }
+
+    /**
+     * Lecture pure de la capacité {@code bash_parallel_<N>} ; absente, illisible ou nulle ⇒ {@code 1},
+     * bornée à {@link #MAX_BASH_CONCURRENCY} — la valeur vient d'un client.
+     */
+    public static int bashConcurrencyOf(java.util.Set<String> capabilities) {
+        if (capabilities == null) {
+            return 1;
+        }
+        int best = 1;
+        for (String cap : capabilities) {
+            if (cap != null && cap.startsWith(BASH_PARALLEL_PREFIX)) {
+                try {
+                    int n = Integer.parseInt(cap.substring(BASH_PARALLEL_PREFIX.length()));
+                    best = Math.max(best, Math.min(MAX_BASH_CONCURRENCY, n));
+                } catch (NumberFormatException e) {
+                    // Forme inattendue : écartée, jamais devinée.
+                }
+            }
+        }
+        return best;
+    }
+
     /**
      * Système d'exploitation déclaré par le runner de ce poste à l'appairage (F-121 / SF-121-21), ou
      * {@code null} — poste inconnu ou runner qui n'a rien déclaré. Sert le bloc « Environnement » de la
