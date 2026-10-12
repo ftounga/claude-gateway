@@ -1,6 +1,6 @@
 import { Component, ElementRef, HostListener, computed, effect, inject, input, output, signal } from '@angular/core';
 
-import { AtelierNextStep, AtelierNextStepLabel } from '../../core/models/atelier.models';
+import { AtelierNextStep, AtelierNextStepLabel, AtelierNextStepsChantier } from '../../core/models/atelier.models';
 
 /** Options affichées au plus — et touches 1 à 4. */
 export const MAX_NEXT_STEPS = 4;
@@ -20,6 +20,28 @@ export function nextStepLabel(label: string | null | undefined): string {
 /** La classe de couleur de l'étiquette. */
 export function nextStepTone(label: string | null | undefined): string {
   return label && label in LABELS ? label.toLowerCase() : 'continuer';
+}
+
+/**
+ * L'étiquette de rattachement d'une suite au chantier (F-196 / SF-196-02), ou `null` hors chantier
+ * ouvert : « Étape N · titre » pour une étape du plan, « Hors plan · approfondissement » sinon.
+ */
+export function nextStepScopeLabel(step: AtelierNextStep, chantierOpen: boolean): string | null {
+  if (!chantierOpen || !step.scope) {
+    return null;
+  }
+  if (step.scope === 'APPROFONDISSEMENT') {
+    return 'Hors plan · approfondissement';
+  }
+  if (step.scope === 'CHANTIER' && step.stepIndex) {
+    return step.stepTitle ? `Étape ${step.stepIndex} · ${step.stepTitle}` : `Étape ${step.stepIndex}`;
+  }
+  return null;
+}
+
+/** « il reste 7 étapes » / « il reste 1 étape ». */
+export function remainingStepsText(remaining: number): string {
+  return `Le chantier n'est pas terminé : il reste ${remaining} étape${remaining > 1 ? 's' : ''}`;
 }
 
 /** Une cible où l'on écrit : une touche y tapée appartient au champ, pas au panneau. */
@@ -68,6 +90,9 @@ export function composeNextSteps(requests: string[]): string {
           <header class="cap__head">
             <h3 class="cap__title">Et maintenant ?</h3>
             <span class="cap__src">proposé par l'agent, d'après ce tour</span>
+            @if (chantier(); as c) {
+              <span class="cap__chantier">Chantier : {{ c.done }}/{{ c.total }} étape{{ c.total > 1 ? 's' : '' }}</span>
+            }
             @if (checked().length > 0) {
               <span class="cap__checked">{{ checked().length }} cochée{{ checked().length > 1 ? 's' : '' }}</span>
             }
@@ -89,6 +114,9 @@ export function composeNextSteps(requests: string[]): string {
                 </span>
                 <span class="body">
                   <span class="t">{{ step.title }}</span>
+                  @if (scopeLabel(step); as scope) {
+                    <span class="scope" [attr.data-scope]="step.scope">{{ scope }}</span>
+                  }
                   <span class="why">{{ step.why }}</span>
                 </span>
                 <span class="tag" [attr.data-tone]="tone(step.label)">{{ label(step.label) }}</span>
@@ -99,6 +127,9 @@ export function composeNextSteps(requests: string[]): string {
               <span class="body"><span class="why">Autre chose : tapez votre suite</span></span>
             </button>
           </div>
+          @if (remainingWarning(); as warning) {
+            <p class="cap__warn" role="status">{{ warning }}</p>
+          }
           <footer class="cap__foot">
             <span><kbd>1</kbd>–<kbd>{{ shown().length }}</kbd> cocher (plusieurs possibles)</span>
             @if (checked().length > 0) {
@@ -126,6 +157,17 @@ export function composeNextSteps(requests: string[]): string {
     .cap__title { margin: 0; font: 600 14px 'Inter', sans-serif; }
     .cap__src { font-size: 12px; color: #9FB0C4; }
     .cap__checked { font-size: 12px; color: var(--cg-accent); }
+    .cap__chantier { font: 500 12px 'Inter', sans-serif; color: var(--cg-divider); }
+    .scope {
+      justify-self: start; font: 500 12px 'Inter', sans-serif; padding: 0 8px; border-radius: 4px;
+      color: #9FB0C4; border: 1px solid color-mix(in srgb, var(--cg-divider) 30%, transparent);
+      max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .scope[data-scope='APPROFONDISSEMENT'] { color: #F9A825; border-color: #F9A825; }
+    .cap__warn {
+      margin: 0; padding: 8px 12px; font-size: 12px; color: #F9A825;
+      border-bottom: 1px solid color-mix(in srgb, var(--cg-divider) 14%, transparent);
+    }
     .cap__toggle {
       margin-left: auto; background: none; border: 0; color: #9FB0C4; cursor: pointer;
       font: 12px 'Inter', sans-serif; padding: 4px 8px; border-radius: 4px;
@@ -176,6 +218,11 @@ export class TerminalNextStepsComponent {
 
   /** Les suites du dernier tour ; vide ⇒ rien n'est rendu. */
   readonly steps = input<AtelierNextStep[]>([]);
+  /**
+   * L'avancement du chantier guidé ouvert (F-196 / SF-196-02) ; `null` ⇒ panneau F-192 inchangé
+   * (aucune étiquette de rattachement, aucun avertissement).
+   */
+  readonly chantier = input<AtelierNextStepsChantier | null>(null);
   /** La saisie courante : non vide ⇒ le panneau se replie. */
   readonly draft = input<string>('');
   /** Identité du tour (id du message) : un nouveau tour rouvre le panneau. */
@@ -197,6 +244,20 @@ export class TerminalNextStepsComponent {
     return this.hidden() || (draft.length > 0 && draft !== (this.written() ?? '').trim());
   });
 
+  /**
+   * Une suite « Hors plan » cochée alors que le chantier est ouvert : on le dit, sans rien empêcher
+   * (F-196, décision 3).
+   */
+  readonly remainingWarning = computed(() => {
+    const c = this.chantier();
+    if (!c) {
+      return null;
+    }
+    const remaining = c.total - c.done;
+    const deepening = this.checked().some((i) => this.shown()[i]?.scope === 'APPROFONDISSEMENT');
+    return deepening && remaining > 0 ? remainingStepsText(remaining) : null;
+  });
+
   constructor() {
     // Un nouveau tour : panneau rouvert, rien de sélectionné.
     effect(() => {
@@ -209,6 +270,10 @@ export class TerminalNextStepsComponent {
 
   label(value: string): string {
     return nextStepLabel(value);
+  }
+
+  scopeLabel(step: AtelierNextStep): string | null {
+    return nextStepScopeLabel(step, this.chantier() !== null);
   }
 
   tone(value: string): string {

@@ -38,7 +38,7 @@ import { TerminalNextStepsComponent } from './terminal-next-steps.component';
 import { PlumeView, TerminalPlumeComponent } from './terminal-plume.component';
 import { PlumeService } from '../../core/services/plume.service';
 import { HttpErrorResponse } from '@angular/common/http';
-import { AtelierNextStep } from '../../core/models/atelier.models';
+import { AtelierNextStep, AtelierNextStepsChantier } from '../../core/models/atelier.models';
 import {
   DictationButtonComponent,
   DictationState,
@@ -491,6 +491,23 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
       return NO_NEXT_STEPS;
     }
     return last.nextSteps ?? NO_NEXT_STEPS;
+  }
+
+  /**
+   * L'avancement du chantier guidé ouvert qui accompagne les suites (F-196 / SF-196-02), ou `null`.
+   * Le parcours **en direct** prime : un sujet repassé en Libre ou clos depuis n'affiche plus rien
+   * du chantier, même si la dernière réponse le portait.
+   */
+  nextStepsChantierOfTurn(): AtelierNextStepsChantier | null {
+    if (this.nextStepsOfTurn().length === 0) {
+      return null;
+    }
+    const live = this.journey();
+    if (live && (live.mode !== 'GUIDE' || live.phase === 'CLOS')) {
+      return null;
+    }
+    const last = this.messages[this.messages.length - 1];
+    return last?.nextStepsChantier ?? null;
   }
 
   /** L'identité du dernier tour : un nouveau tour rouvre le panneau des suites. */

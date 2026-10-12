@@ -394,6 +394,24 @@ describe('AtelierService', () => {
     expect(steps).toEqual([{ title: 'PR', why: 'Tests verts', label: 'LIVRER', request: 'Ouvre la PR.' }]);
   });
 
+  it('streamChat transmet l\'avancement du chantier avec les suites (F-196 / SF-196-02)', async () => {
+    fakeSseFetch([
+      'event:done\ndata:{"reply":"ok","actions":[],"messageId":"m1","nextSteps":'
+        + '[{"title":"NAP","why":"Étape 2","label":"CONTINUER","request":"NAP.","scope":"CHANTIER","stepIndex":2}],'
+        + '"nextStepsChantier":{"number":1,"done":3,"total":10}}',
+    ]);
+    let chantier: unknown;
+
+    await service.streamChat('w1', 'go', {
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: (done) => (chantier = done.nextStepsChantier),
+      onError: () => undefined,
+    });
+
+    expect(chantier).toEqual({ number: 1, done: 3, total: 10 });
+  });
+
   it('streamChat laisse le montant absent quand la passerelle n\'en envoie pas (F-133 / SF-133-10)', async () => {
     // Le cas de tout utilisateur non administrateur : rien à afficher, et rien d'inventé.
     fakeSseFetch(['event:done\ndata:{"reply":"ok","actions":[],"messageId":"m1"}']);

@@ -2158,6 +2158,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
         budgetReached: done.budgetReached === true,
         // F-192 / SF-192-02 : les suites proposées par l'agent, sous la réponse.
         ...(done.nextSteps && done.nextSteps.length > 0 ? { nextSteps: done.nextSteps } : {}),
+        // F-196 / SF-196-02 : l'avancement du chantier guidé ouvert, avec les suites.
+        ...(done.nextStepsChantier ? { nextStepsChantier: done.nextStepsChantier } : {}),
       },
     ]);
   }
@@ -4280,6 +4282,10 @@ export function toThreadItem(message: AtelierMessage): AtelierThreadItem {
   // F-192 / SF-192-02 : les suites proposées par l'agent survivent au rechargement.
   if (Array.isArray(stored.nextSteps) && stored.nextSteps.length > 0) {
     item.nextSteps = stored.nextSteps;
+  }
+  // F-196 / SF-196-02 : l'avancement du chantier survit lui aussi au rechargement.
+  if (stored.nextStepsChantier) {
+    item.nextStepsChantier = stored.nextStepsChantier;
   }
   // Les modifications vivent hors des blocs (F-37 SF-37-02) : un tour peut n'avoir lancé aucune
   // commande visible et avoir pourtant réécrit des fichiers.

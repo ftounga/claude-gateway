@@ -61,6 +61,7 @@ import {
   AtelierGovernanceProposal,
   TeamsAccess,
   AtelierNextStep,
+  AtelierNextStepsChantier,
 } from '../models/atelier.models';
 
 /**
@@ -598,6 +599,8 @@ export class AtelierService {
       planSubmitted?: boolean;
       // F-192 / SF-192-02 : les suites proposées par l'agent (événement done).
       nextSteps?: AtelierNextStep[];
+      // F-196 / SF-196-02 : l'avancement du chantier guidé ouvert (événement done).
+      nextStepsChantier?: AtelierNextStepsChantier | null;
       /** Compaction du fil (F-162 / SF-162-03) : en cours, et nombre de tours résumés à la fin. */
       running?: boolean;
       summarizedTurns?: number;
@@ -774,6 +777,8 @@ export class AtelierService {
         planSubmitted: payload.planSubmitted === true,
         // F-192 / SF-192-02 : les suites proposées par l'agent — recopiées, sinon jetées en silence.
         ...(Array.isArray(payload.nextSteps) ? { nextSteps: payload.nextSteps } : {}),
+        // F-196 / SF-196-02 : l'avancement du chantier — recopié lui aussi, sinon jeté en silence.
+        ...(payload.nextStepsChantier ? { nextStepsChantier: payload.nextStepsChantier } : {}),
       });
     } else if (event === 'steered') {
       // F-84 / SF-84-06 : l'envoi est devenu une précision du tour qui tournait déjà.

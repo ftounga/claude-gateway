@@ -9,6 +9,7 @@ import {
   AtelierQuestion,
   DepositedFileRef,
   AtelierNextStep,
+  AtelierNextStepsChantier,
 } from '../core/models/atelier.models';
 import { AtelierFileDiffView } from './terminal/terminal-diff';
 
@@ -79,6 +80,8 @@ export interface AtelierThreadItem {
    * Posées au `done` et au rechargement ; absentes sinon.
    */
   nextSteps?: AtelierNextStep[];
+  /** L'avancement du chantier guidé ouvert au moment de ces suites (F-196 / SF-196-02). */
+  nextStepsChantier?: AtelierNextStepsChantier;
 }
 
 /** Où en est une précision envoyée pendant un tour (F-84 / SF-84-06). */
