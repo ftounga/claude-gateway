@@ -3155,11 +3155,33 @@ public class AtelierChatService implements RelayInterruptTarget {
             java.util.Map<AgentToolCall, ExplorationOutcome> delegatedReads =
                     readDelegationsConcurrently(userId, workspace, model, apiKey, deadline, readDelegations);
             delegations += readDelegations.size();
-            for (AgentToolCall call : turn.toolCalls()) {
+            // F-195 / SF-195-03 : les LECTURES groupées d'une même réponse partent ENSEMBLE. Une suite
+            // d'appels consécutifs sûrs en concurrence (outils de lecture, bash classé lecture seule,
+            // sans invite d'autorisation) est exécutée d'un bloc dès qu'on l'atteint ; tout appel qui
+            // écrit (ou demanderait une autorisation) reste séquentiel et sert de BARRIÈRE : rien de ce
+            // qui le suit ne part avant lui. Les résultats sont ensuite rattachés dans l'ordre des appels
+            // par la boucle ci-dessous — journal, transcription, gardes et interjections inchangés.
+            List<AgentToolCall> callsOfTurn = turn.toolCalls();
+            java.util.Map<AgentToolCall, ParallelRun> parallelRuns = new java.util.IdentityHashMap<>();
+            int bashSlots = parallelTools >= 2 && workspace.isRunnerTarget()
+                    && !workspace.isTeamsTerminal() && countParallelCandidates(callsOfTurn) >= 2
+                    ? hostBashSlots(workspace) : 1;
+            for (int callIndex = 0; callIndex < callsOfTurn.size(); callIndex++) {
+                AgentToolCall call = callsOfTurn.get(callIndex);
+                if (!parallelRuns.containsKey(call)) {
+                    List<AgentToolCall> group =
+                            parallelGroupFrom(userId, workspace, callsOfTurn, callIndex, bashSlots);
+                    if (group.size() >= 2) {
+                        parallelRuns.putAll(runInParallel(userId, workspace, group, deadline,
+                                planOfTurn, cardsOfTurn));
+                    }
+                }
+                ParallelRun parallel = parallelRuns.get(call);
                 // Identifiant de corrélation unique de l'appel (contrat de messages runner §1) : celui
                 // du fournisseur, ou un UUID généré s'il manque — et le MÊME partout (bloc tool_use,
                 // bloc tool_result, trame runner), sans quoi la réponse ne se rattacherait à rien.
-                String callId = correlationId(call);
+                // Un appel déjà exécuté en parallèle garde l'identifiant sous lequel il est parti.
+                String callId = parallel != null ? parallel.callId() : correlationId(call);
                 assistantBlocks.add(new AgentContentBlock.ToolUse(callId, call.name(), call.input()));
                 // Intention d'étape relayée avant exécution (émise même si l'outil échoue ensuite).
                 AtelierProgressListener.AtelierStepEvent step = stepFor(call);
@@ -3320,6 +3342,13 @@ public class AtelierChatService implements RelayInterruptTarget {
                     // F-142 / SF-142-04 : l'image décorative est générée par la gateway (relais fournisseur),
                     // rangée, puis déposée dans le projet — jamais un schéma d'architecture.
                     outcome = applyImageGenerate(userId, workspace, callId, call, listener, imageCountOfTurn);
+                } else if (parallel != null) {
+                    // F-195 / SF-195-03 : déjà exécuté avec les lectures voisines. La sortie captée est
+                    // relayée ICI, dans l'ordre des appels, après l'intention d'étape — l'écran voit
+                    // chaque commande avec SA sortie, jamais deux sorties entremêlées.
+                    parallel.chunks().forEach(listener::onOutput);
+                    parallel.offlineHosts().forEach(listener::onRunnerOffline);
+                    outcome = parallel.outcome();
                 } else {
                     outcome = executeTool(userId, workspace, callId, call, listener, deadline,
                             planOfTurn, cardsOfTurn);
@@ -6555,6 +6584,201 @@ public class AtelierChatService implements RelayInterruptTarget {
     void setRunnerBusyWait(long waitMs, long pollMs) {
         this.runnerBusyWaitMs = waitMs;
         this.runnerBusyPollMs = pollMs;
+    }
+
+    /**
+     * <b>Appels groupés en parallèle</b> (F-195 / SF-195-03) : nombre maximal d'appels de lecture
+     * d'une même réponse exécutés ensemble ({@code app.atelier.parallel-tools}, défaut 4 ; {@code 0}
+     * ou {@code 1} = tout séquentiel, le comportement d'avant — coupe-circuit).
+     */
+    @org.springframework.beans.factory.annotation.Value("${app.atelier.parallel-tools:4}")
+    private int parallelTools;
+
+    /** Réglage des appels groupés — exposé pour les tests (F-195 / SF-195-03). */
+    void setParallelTools(int parallelTools) {
+        this.parallelTools = parallelTools;
+    }
+
+    /**
+     * Un appel exécuté en parallèle (F-195 / SF-195-03) : son identifiant de corrélation, son issue, et
+     * ce qu'il a voulu dire à l'écran pendant qu'il tournait — rejoué dans l'ordre par la boucle.
+     */
+    record ParallelRun(String callId, ToolOutcome outcome, List<String> chunks,
+            List<java.util.UUID> offlineHosts) {
+    }
+
+    /**
+     * Vrai si l'appel peut partir <b>en même temps</b> que ses voisins (F-195 / SF-195-03), à la
+     * manière de Claude Code : un outil de lecture ({@link #READ_ONLY_TOOLS}) ou un {@code bash} de
+     * premier plan que le classificateur existant ({@code JourneyRiskClassifier}, prudent : l'inconnu
+     * est une modification) range en <b>lecture</b> — et, dans les deux cas, sans invite
+     * d'autorisation (jamais deux invites surgies ensemble). Tout le reste est une barrière.
+     */
+    private boolean isParallelSafe(UUID userId, Workspace workspace, AgentToolCall call) {
+        String tool = call.name();
+        boolean read = READ_ONLY_TOOLS.contains(tool);
+        boolean readBash = "bash".equals(tool) && call.input() != null
+                && !call.input().path("run_in_background").asBoolean(false)
+                && arg(call.input(), "command") != null && !arg(call.input(), "command").isBlank()
+                && fr.claudegateway.atelier.journey.JourneyRiskClassifier.classifyCommand(
+                        arg(call.input(), "command")) == fr.claudegateway.atelier.journey.JourneyPlan.Risk.LECTURE;
+        if (!read && !readBash) {
+            return false;
+        }
+        PermissionEffect effect = resolveEffect(userId, workspace, tool, call);
+        if (effect == PermissionEffect.DENY) {
+            return false; // le chemin séquentiel rend le refus, tracé, comme avant
+        }
+        return effect != PermissionEffect.ASK || blanketAllowedTurns.contains(turnKey(userId, workspace.getId()));
+    }
+
+    /** Nombre d'appels de la réponse candidats au parallèle — évite de lire le poste pour rien. */
+    private static int countParallelCandidates(List<AgentToolCall> calls) {
+        int count = 0;
+        for (AgentToolCall call : calls) {
+            String tool = call.name();
+            if (READ_ONLY_TOOLS.contains(tool) || "bash".equals(tool)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /** Commandes {@code bash} que le poste accepte à la fois (SF-195-02) ; 1 pour un vieux runner. */
+    private int hostBashSlots(Workspace workspace) {
+        if (runnerHostService == null || workspace.getHostId() == null) {
+            return 1;
+        }
+        try {
+            return Math.max(1, runnerHostService.bashConcurrency(workspace.getHostId()));
+        } catch (RuntimeException ex) {
+            return 1; // lecture impossible : prudence, une commande à la fois
+        }
+    }
+
+    /**
+     * La suite d'appels <b>consécutifs</b> sûrs en concurrence qui commence à {@code from} (F-195 /
+     * SF-195-03), bornée à {@link #parallelTools} appels et à {@code bashSlots} commandes {@code bash}.
+     * Vide si le parallèle est coupé, hors poste, ou dans un terminal Teams (ses verrous de lecture
+     * s'évaluent appel après appel).
+     */
+    private List<AgentToolCall> parallelGroupFrom(UUID userId, Workspace workspace, List<AgentToolCall> calls,
+            int from, int bashSlots) {
+        if (parallelTools < 2 || !workspace.isRunnerTarget() || workspace.isTeamsTerminal()) {
+            return List.of();
+        }
+        List<AgentToolCall> group = new ArrayList<>();
+        int bash = 0;
+        for (int i = from; i < calls.size() && group.size() < parallelTools; i++) {
+            AgentToolCall call = calls.get(i);
+            if (!isParallelSafe(userId, workspace, call)) {
+                break;
+            }
+            if ("bash".equals(call.name())) {
+                if (bash >= bashSlots) {
+                    break;
+                }
+                bash++;
+            }
+            group.add(call);
+        }
+        return group;
+    }
+
+    /**
+     * Exécute ensemble un groupe d'appels sûrs (F-195 / SF-195-03), via un pool borné. Chaque appel
+     * passe par le chemin ordinaire ({@link #executeTool} : point de contrôle, politique, audit, réessai,
+     * attente « occupé ») avec une écoute <b>tampon</b> : sa sortie est gardée pour être rejouée dans
+     * l'ordre par la boucle. La panne d'un appel est SON résultat d'outil, jamais celle des autres.
+     */
+    private java.util.Map<AgentToolCall, ParallelRun> runInParallel(UUID userId, Workspace workspace,
+            List<AgentToolCall> group, long deadline,
+            java.util.concurrent.atomic.AtomicReference<AtelierPlan> planOfTurn,
+            java.util.Map<String, fr.claudegateway.teams.block.TeamsBlockCard> cardsOfTurn) {
+        java.util.Map<AgentToolCall, ParallelRun> runs = new java.util.IdentityHashMap<>();
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(
+                Math.min(parallelTools, group.size()), parallelThreadFactory());
+        try {
+            List<String> ids = new ArrayList<>(group.size());
+            List<BufferingListener> buffers = new ArrayList<>(group.size());
+            List<java.util.concurrent.Future<ToolOutcome>> futures = new ArrayList<>(group.size());
+            for (AgentToolCall call : group) {
+                String id = correlationId(call);
+                BufferingListener buffer = new BufferingListener();
+                ids.add(id);
+                buffers.add(buffer);
+                futures.add(pool.submit(() -> executeTool(userId, workspace, id, call, buffer, deadline,
+                        planOfTurn, cardsOfTurn)));
+            }
+            for (int i = 0; i < group.size(); i++) {
+                ToolOutcome outcome;
+                try {
+                    outcome = futures.get(i).get();
+                } catch (java.util.concurrent.ExecutionException ex) {
+                    outcome = ToolOutcome.error("L'appel a échoué ; relance-le seul.");
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    outcome = ToolOutcome.error("L'appel a été interrompu.");
+                }
+                runs.put(group.get(i), new ParallelRun(ids.get(i), outcome, buffers.get(i).chunks(),
+                        buffers.get(i).offlineHosts()));
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+        log.debug("Appels groupés exécutés en parallèle (workspace={}, nombre={})", workspace.getId(),
+                group.size());
+        return runs;
+    }
+
+    /** Threads des appels groupés : nommés (diagnostic) et démons (n'empêchent pas l'arrêt). */
+    private static java.util.concurrent.ThreadFactory parallelThreadFactory() {
+        java.util.concurrent.atomic.AtomicInteger seq = new java.util.concurrent.atomic.AtomicInteger();
+        return runnable -> {
+            Thread thread = new Thread(runnable, "atelier-parallel-" + seq.incrementAndGet());
+            thread.setDaemon(true);
+            return thread;
+        };
+    }
+
+    /**
+     * Écoute tampon d'un appel exécuté en parallèle (F-195 / SF-195-03) : garde la sortie et les
+     * annonces « poste hors ligne », que la boucle rejoue ensuite dans l'ordre des appels. Rien d'autre
+     * n'est émis par ces outils (pas d'invite : les appels qui en demanderaient ne sont pas groupés).
+     */
+    private static final class BufferingListener implements AtelierProgressListener {
+        private final List<String> chunks = new ArrayList<>();
+        private final List<java.util.UUID> offline = new ArrayList<>();
+
+        @Override
+        public void onAction(AtelierStepEvent step) {
+            // L'intention d'étape est émise par la boucle, dans l'ordre.
+        }
+
+        @Override
+        public void onText(String text) {
+            // Aucun texte de modèle ici.
+        }
+
+        @Override
+        public synchronized void onOutput(String chunk) {
+            if (chunk != null) {
+                chunks.add(chunk);
+            }
+        }
+
+        @Override
+        public synchronized void onRunnerOffline(java.util.UUID hostId) {
+            offline.add(hostId);
+        }
+
+        synchronized List<String> chunks() {
+            return List.copyOf(chunks);
+        }
+
+        synchronized List<java.util.UUID> offlineHosts() {
+            return List.copyOf(offline);
+        }
     }
 
     /** Réglage du réessai — exposé pour les tests (F-121 / SF-121-04). */
