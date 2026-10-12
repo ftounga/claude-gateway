@@ -100,6 +100,9 @@ public final class ToolRouter implements ToolExecutor {
         capabilities.add("files");
         if (bash.enabled()) {
             capabilities.add("bash");
+            // F-195 / SF-195-02 : combien de commandes ce poste accepte à la fois. Sans cette annonce
+            // (runner ancien), la gateway compte 1 et n'envoie rien en parallèle.
+            capabilities.add(BashTool.PARALLEL_CAPABILITY_PREFIX + bash.concurrency());
         }
         // F-121 / SF-121-07 : l'arrière-plan (run_in_background + bash_output/kill_shell) n'est annoncé
         // que si l'exécution est autorisée ET qu'un registre est monté. Sans cette annonce, la gateway

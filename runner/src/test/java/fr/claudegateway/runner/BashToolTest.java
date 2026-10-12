@@ -207,8 +207,8 @@ class BashToolTest {
     }
 
     @Test
-    void refuseUneSecondeCommandeSimultanee() throws Exception {
-        BashTool tool = enabled();
+    void refuseUneSecondeCommandeSimultaneeQuandLaBorneEstUn() throws Exception {
+        BashTool tool = new BashTool(new PathResolver(root), true, POSIX_SHELL, null, 1);
         CountDownLatch started = new CountDownLatch(1);
         Thread first = new Thread(() -> {
             started.countDown();
@@ -222,8 +222,67 @@ class BashToolTest {
 
         assertFalse(refused.ok());
         assertEquals("denied", refused.errorCode());
+        assertEquals(BashTool.BUSY_MESSAGE, refused.errorMessage());
         first.interrupt();
         first.join(10_000);
+    }
+
+    @Test
+    void accepteNCommandesSimultaneesPuisRefuseLaSuivante() throws Exception {
+        // F-195 / SF-195-02 : borne à 2 — deux commandes tournent ensemble, la 3e reçoit le refus
+        // « occupé » inchangé (contrat F-188), et chaque appel garde SA sortie.
+        BashTool tool = new BashTool(new PathResolver(root), true, POSIX_SHELL, null, 2);
+        RecordingContext firstOut = new RecordingContext();
+        RecordingContext secondOut = new RecordingContext();
+        CountDownLatch started = new CountDownLatch(2);
+        AtomicReference<ToolOutcome> firstResult = new AtomicReference<>();
+        AtomicReference<ToolOutcome> secondResult = new AtomicReference<>();
+        Thread first = new Thread(() -> {
+            started.countDown();
+            firstResult.set(tool.run(command("echo premier; sleep 1"), firstOut));
+        });
+        Thread second = new Thread(() -> {
+            started.countDown();
+            secondResult.set(tool.run(command("echo second; sleep 1"), secondOut));
+        });
+        long begin = System.nanoTime();
+        first.start();
+        second.start();
+        assertTrue(started.await(5, TimeUnit.SECONDS));
+        Thread.sleep(300);
+
+        ToolOutcome refused = tool.run(command("echo x"), new RecordingContext());
+        first.join(10_000);
+        second.join(10_000);
+        long elapsedMs = (System.nanoTime() - begin) / 1_000_000;
+
+        assertEquals("denied", refused.errorCode());
+        assertEquals(BashTool.BUSY_MESSAGE, refused.errorMessage());
+        assertTrue(firstResult.get().ok());
+        assertTrue(secondResult.get().ok());
+        assertTrue(elapsedMs < 1_900, "les deux commandes ont tourné ensemble : " + elapsedMs + " ms");
+        assertEquals("premier\n", firstOut.text("stdout"));
+        assertEquals("second\n", secondOut.text("stdout"));
+    }
+
+    @Test
+    void laBorneSeLitDansLEnvironnementEtResteBornee() {
+        assertEquals(BashTool.DEFAULT_CONCURRENCY, BashTool.resolveConcurrency(java.util.Map.of()));
+        assertEquals(BashTool.DEFAULT_CONCURRENCY, BashTool.resolveConcurrency(null));
+        assertEquals(2, BashTool.resolveConcurrency(java.util.Map.of(BashTool.CONCURRENCY_ENV, " 2 ")));
+        assertEquals(1, BashTool.resolveConcurrency(java.util.Map.of(BashTool.CONCURRENCY_ENV, "0")));
+        assertEquals(BashTool.MAX_CONCURRENCY,
+                BashTool.resolveConcurrency(java.util.Map.of(BashTool.CONCURRENCY_ENV, "999")));
+        assertEquals(BashTool.DEFAULT_CONCURRENCY,
+                BashTool.resolveConcurrency(java.util.Map.of(BashTool.CONCURRENCY_ENV, "beaucoup")));
+        assertEquals(4, enabled().concurrency());
+        assertEquals(1, new BashTool(new PathResolver(root), true, POSIX_SHELL, null, -3).concurrency());
+    }
+
+    @Test
+    void leMessageOccupeEstCeluiQueLaGatewayReconnait() {
+        // Contrat F-188 / SF-188-02 : la gateway compare CE texte (AtelierChatService.RUNNER_BUSY_MESSAGE).
+        assertEquals("Une commande est déjà en cours sur ce runner.", BashTool.BUSY_MESSAGE);
     }
 
     @Test

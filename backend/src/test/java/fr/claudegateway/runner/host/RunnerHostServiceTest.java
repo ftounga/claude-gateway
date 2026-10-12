@@ -250,6 +250,23 @@ class RunnerHostServiceTest {
     }
 
     @Test
+    void readsHowManyCommandsTheRunnerAcceptsAtOnce() {
+        // F-195 / SF-195-02 : la capacité bash_parallel_<N> dit la borne ; un runner ancien vaut 1.
+        RunnerHost host = new RunnerHost();
+        host.setRunnerCapabilities("files,bash,bash_parallel_4,bash_background");
+        when(repository.findById(hostId)).thenReturn(Optional.of(host));
+
+        assertThat(service().bashConcurrency(hostId)).isEqualTo(4);
+        assertThat(service().bashConcurrency(null)).isEqualTo(1);
+        assertThat(RunnerHostService.bashConcurrencyOf(java.util.Set.of("files", "bash"))).isEqualTo(1);
+        assertThat(RunnerHostService.bashConcurrencyOf(java.util.Set.of("bash_parallel_x"))).isEqualTo(1);
+        assertThat(RunnerHostService.bashConcurrencyOf(java.util.Set.of("bash_parallel_0"))).isEqualTo(1);
+        assertThat(RunnerHostService.bashConcurrencyOf(java.util.Set.of("bash_parallel_999")))
+                .isEqualTo(RunnerHostService.MAX_BASH_CONCURRENCY);
+        assertThat(RunnerHostService.bashConcurrencyOf(null)).isEqualTo(1);
+    }
+
+    @Test
     void recordsTheDeclaredInterpreterOnTheMachine() {
         RunnerHost host = new RunnerHost();
         when(repository.findById(hostId)).thenReturn(Optional.of(host));
