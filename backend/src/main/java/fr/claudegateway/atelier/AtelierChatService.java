@@ -2726,6 +2726,12 @@ public class AtelierChatService implements RelayInterruptTarget {
         /** Explorations déjà déléguées dans ce message (F-39 / SF-39-14). */
         int delegations = 0;
         /**
+         * Demandes reçues dans ce tour (F-195 / SF-195-04) : la première, plus chaque lot
+         * d'interjections pris en compte. Le plafond de délégations vaut PAR demande — un sujet
+         * arrivé en route ne se voit pas refuser sa délégation parce que le premier a tout consommé.
+         */
+        int requestsInTurn = 1;
+        /**
          * Fins de tour refusées dans ce message (F-50 / SF-50-02). Bornées : un contrôle qui bloque
          * quoi qu'il arrive ferait payer à l'utilisateur le prix d'une règle mal écrite.
          */
@@ -2837,6 +2843,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                     iteration + 1);
             if (frontierInterjections != null) {
                 messages.add(AgentMessage.userText(frontierInterjections));
+                requestsInTurn++;
             }
             // Streaming mot à mot (F-116 / SF-116-01) : quand le flux est actif, le texte défile dans
             // la ligne vivante DÈS le premier delta, au lieu d'attendre la fin du tour (~100 % de
@@ -3148,7 +3155,7 @@ public class AtelierChatService implements RelayInterruptTarget {
             List<AgentToolCall> readDelegations = new ArrayList<>();
             for (AgentToolCall call : turn.toolCalls()) {
                 if (isReadDelegation(workspace, call)
-                        && delegations + readDelegations.size() < maxDelegations) {
+                        && delegations + readDelegations.size() < maxDelegations * requestsInTurn) {
                     readDelegations.add(call);
                 }
             }
@@ -3163,6 +3170,9 @@ public class AtelierChatService implements RelayInterruptTarget {
             // par la boucle ci-dessous — journal, transcription, gardes et interjections inchangés.
             List<AgentToolCall> callsOfTurn = turn.toolCalls();
             java.util.Map<AgentToolCall, ParallelRun> parallelRuns = new java.util.IdentityHashMap<>();
+            // F-195 / SF-195-04 : les sous-tâches ÉCRIVAINES consécutives d'une même réponse tournent
+            // ensemble (chacune dans son worktree), bornées par `task-parallelism`.
+            java.util.Map<AgentToolCall, ParallelTask> parallelTasks = new java.util.IdentityHashMap<>();
             int bashSlots = parallelTools >= 2 && workspace.isRunnerTarget()
                     && !workspace.isTeamsTerminal() && countParallelCandidates(callsOfTurn) >= 2
                     ? hostBashSlots(workspace) : 1;
@@ -3176,12 +3186,24 @@ public class AtelierChatService implements RelayInterruptTarget {
                                 planOfTurn, cardsOfTurn));
                     }
                 }
+                if ("task".equals(call.name()) && !isReadOnlyTask(call) && !parallelTasks.containsKey(call)
+                        && taskParallelism >= 2 && workspace.isRunnerTarget()) {
+                    List<AgentToolCall> writers = writerTaskGroupFrom(callsOfTurn, callIndex,
+                            maxDelegations * requestsInTurn - delegations);
+                    if (writers.size() >= 2) {
+                        delegations += writers.size();
+                        parallelTasks.putAll(runTasksInParallel(userId, workspace, writers, model, apiKey,
+                                listener, deadline));
+                    }
+                }
                 ParallelRun parallel = parallelRuns.get(call);
+                ParallelTask parallelTask = parallelTasks.get(call);
                 // Identifiant de corrélation unique de l'appel (contrat de messages runner §1) : celui
                 // du fournisseur, ou un UUID généré s'il manque — et le MÊME partout (bloc tool_use,
                 // bloc tool_result, trame runner), sans quoi la réponse ne se rattacherait à rien.
                 // Un appel déjà exécuté en parallèle garde l'identifiant sous lequel il est parti.
-                String callId = parallel != null ? parallel.callId() : correlationId(call);
+                String callId = parallel != null ? parallel.callId()
+                        : parallelTask != null ? parallelTask.callId() : correlationId(call);
                 assistantBlocks.add(new AgentContentBlock.ToolUse(callId, call.name(), call.input()));
                 // Intention d'étape relayée avant exécution (émise même si l'outil échoue ensuite).
                 AtelierProgressListener.AtelierStepEvent step = stepFor(call);
@@ -3226,7 +3248,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                     ExplorationOutcome explored = delegatedReads.get(call);
                     if (explored == null) {
                         outcome = ToolOutcome.error("Limite de délégations atteinte pour ce message ("
-                                + maxDelegations + ") : poursuis toi-même.");
+                                + maxDelegations * requestsInTurn + ") : poursuis toi-même.");
                     } else {
                         inputTokens += explored.inputTokens();
                         outputTokens += explored.outputTokens();
@@ -3259,13 +3281,18 @@ public class AtelierChatService implements RelayInterruptTarget {
                     // parallélisent pas — hors du pré-passage parallèle des délégations en lecture).
                     // La sous-boucle crée un worktree isolé, y agit, rend sa synthèse, et le worktree
                     // est TOUJOURS démonté (D9). Son coût est imputé au tour (D4), comme `explore`.
-                    if (delegations >= maxDelegations) {
+                    if (parallelTask == null && delegations >= maxDelegations * requestsInTurn) {
                         outcome = ToolOutcome.error("Limite de délégations atteinte pour ce message ("
-                                + maxDelegations + ") : poursuis toi-même.");
+                                + maxDelegations * requestsInTurn + ") : poursuis toi-même.");
                     } else {
-                        delegations++;
-                        TaskOutcome done =
-                                task(userId, workspace, callId, call, model, apiKey, listener, deadline);
+                        TaskOutcome done;
+                        if (parallelTask != null) {
+                            // F-195 / SF-195-04 : déjà menée avec ses voisines (et déjà comptée).
+                            done = parallelTask.outcome();
+                        } else {
+                            delegations++;
+                            done = task(userId, workspace, callId, call, model, apiKey, listener, deadline);
+                        }
                         inputTokens += done.inputTokens();
                         outputTokens += done.outputTokens();
                         cacheReadTokens += done.cacheReadTokens();
@@ -3460,6 +3487,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                         takeAndRecordSteers(listener, userId, workspaceId, iteration + 2);
                 if (betweenCalls != null) {
                     interjectionsBetweenCalls.add(betweenCalls);
+                    requestsInTurn++;
                 }
             }
             // Après TOUS les `tool_result` : le fournisseur exige que les résultats d'outils ouvrent
@@ -5164,13 +5192,21 @@ public class AtelierChatService implements RelayInterruptTarget {
         RunnerTarget projectTarget = RunnerTargets.of(workspace);
         // 1. Matérialiser le worktree isolé côté runner (SF-150-01). Un refus (pas git, runner ancien)
         //    est relayé tel quel : le message guide l'utilisateur, rien n'est laissé derrière.
-        RunnerCallResult created = runnerToolGateway.worktreeCreate(projectTarget, callId, taskId);
+        // F-195 / SF-195-04 : création, restitution et démontage passent un par un (verrou du projet) —
+        // deux `git worktree add` simultanés sur le même dépôt se disputent ses verrous ; les sous-boucles,
+        // elles, tournent en parallèle.
+        RunnerCallResult created;
+        synchronized (worktreeLock(userId, workspace.getId())) {
+            created = runnerToolGateway.worktreeCreate(projectTarget, callId, taskId);
+        }
         if (!created.ok()) {
             return new TaskOutcome(ToolOutcome.error(taskWorktreeRefusal(created)), 0, 0, 0, 0);
         }
         String worktreePath = worktreePathFrom(created.content());
         if (worktreePath == null || worktreePath.isBlank()) {
-            safeRemoveWorktree(projectTarget, callId, taskId);
+            synchronized (worktreeLock(userId, workspace.getId())) {
+                safeRemoveWorktree(projectTarget, callId, taskId);
+            }
             return new TaskOutcome(ToolOutcome.error(
                     "Le worktree n'a pas pu être préparé pour la sous-tâche."), 0, 0, 0, 0);
         }
@@ -5196,7 +5232,11 @@ public class AtelierChatService implements RelayInterruptTarget {
             // la référence (branche + diff résumé) DANS la synthèse. La branche reste dans le dépôt
             // après démontage ; la reprise (merge/cherry-pick) est un acte explicite ultérieur, jamais
             // un merge aveugle dans un arbre potentiellement sale.
-            String synthesis = result.answer() + taskRestitution(projectTarget, callId, taskId);
+            String restitution;
+            synchronized (worktreeLock(userId, workspace.getId())) {
+                restitution = taskRestitution(projectTarget, callId, taskId);
+            }
+            String synthesis = result.answer() + restitution;
             return new TaskOutcome(ToolOutcome.info(synthesis),
                     result.inputTokens(), result.outputTokens(),
                     result.cacheReadTokens(), result.cacheWriteTokens());
@@ -5205,7 +5245,192 @@ public class AtelierChatService implements RelayInterruptTarget {
                     "La sous-tâche a échoué ; poursuis toi-même."), 0, 0, 0, 0);
         } finally {
             // Nettoyage GARANTI (D9), y compris sur échec/interruption : « le tour vit dans le flux ».
-            safeRemoveWorktree(projectTarget, callId, taskId);
+            synchronized (worktreeLock(userId, workspace.getId())) {
+                safeRemoveWorktree(projectTarget, callId, taskId);
+            }
+        }
+    }
+
+    /**
+     * <b>Sous-tâches écrivaines en parallèle</b> (F-195 / SF-195-04) : nombre maximal de {@code task}
+     * écrivains d'une même réponse menés ensemble, chacun dans son worktree
+     * ({@code app.atelier.task-parallelism}, défaut 3 ; {@code 0}/{@code 1} = l'une après l'autre,
+     * le comportement d'avant — coupe-circuit).
+     */
+    @org.springframework.beans.factory.annotation.Value("${app.atelier.task-parallelism:3}")
+    private int taskParallelism;
+
+    /** Doctrine de groupement des sous-tâches écrivaines, quand elles tournent en parallèle (F-195 / SF-195-04). */
+    static final String TASK_WRITERS_PARALLEL =
+            "Plusieurs sous-tâches qui ÉCRIVENT sur des sujets INDÉPENDANTS, émises dans le MÊME tour, "
+                    + "s'exécutent aussi en parallèle — chacune dans son worktree et sur sa branche, sans "
+                    + "rien écraser : groupe-les. Des sujets qui dépendent l'un de l'autre s'enchaînent sur "
+                    + "des tours successifs.";
+
+    /** Réglage des sous-tâches parallèles — exposé pour les tests (F-195 / SF-195-04). */
+    void setTaskParallelism(int taskParallelism) {
+        this.taskParallelism = taskParallelism;
+    }
+
+    /** Verrous par projet : gestes git du worktree, puis invites d'autorisation (F-195 / SF-195-04). */
+    private final java.util.Map<String, Object> worktreeLocks = new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.Map<String, Object> promptLocks = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private Object worktreeLock(UUID userId, UUID workspaceId) {
+        return worktreeLocks.computeIfAbsent(turnKey(userId, workspaceId), key -> new Object());
+    }
+
+    private Object promptLock(UUID userId, UUID workspaceId) {
+        return promptLocks.computeIfAbsent(turnKey(userId, workspaceId), key -> new Object());
+    }
+
+    /** Une sous-tâche écrivaine menée en parallèle : l'identifiant sous lequel elle est partie, son issue. */
+    private record ParallelTask(String callId, TaskOutcome outcome) {
+    }
+
+    /**
+     * Les sous-tâches ÉCRIVAINES consécutives qui commencent à {@code from} (F-195 / SF-195-04), bornées
+     * à {@link #taskParallelism} et au reste du plafond de délégations ({@code budget}).
+     */
+    private List<AgentToolCall> writerTaskGroupFrom(List<AgentToolCall> calls, int from, int budget) {
+        List<AgentToolCall> group = new ArrayList<>();
+        for (int i = from; i < calls.size() && group.size() < Math.min(taskParallelism, budget); i++) {
+            AgentToolCall call = calls.get(i);
+            if (!"task".equals(call.name()) || isReadOnlyTask(call)) {
+                break;
+            }
+            group.add(call);
+        }
+        return group;
+    }
+
+    /**
+     * Mène ensemble des sous-tâches écrivaines (F-195 / SF-195-04). Chacune a SON worktree et SA branche :
+     * aucune n'écrit dans la copie de travail réelle, donc aucune n'écrase l'autre. Les issues reviennent
+     * dans l'ordre d'émission ; deux sous-tâches qui ont touché les mêmes fichiers le disent dans la
+     * synthèse de la seconde (réconciliation explicite, jamais un écrasement). L'écran reçoit les
+     * invites (une à la fois) ; les sorties de commandes, entremêlées sinon, ne sont pas diffusées — la
+     * synthèse de chacune l'est, dans l'ordre, par la boucle.
+     */
+    private java.util.Map<AgentToolCall, ParallelTask> runTasksInParallel(UUID userId, Workspace workspace,
+            List<AgentToolCall> group, String model, String apiKey, AtelierProgressListener listener,
+            long deadline) {
+        java.util.Map<AgentToolCall, ParallelTask> done = new java.util.IdentityHashMap<>();
+        AtelierProgressListener shared = new PromptOnlyListener(listener);
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(
+                Math.min(taskParallelism, group.size()), taskThreadFactory());
+        try {
+            List<String> ids = new ArrayList<>(group.size());
+            List<java.util.concurrent.Future<TaskOutcome>> futures = new ArrayList<>(group.size());
+            for (AgentToolCall call : group) {
+                String id = correlationId(call);
+                ids.add(id);
+                futures.add(pool.submit(() -> task(userId, workspace, id, call, model, apiKey, shared, deadline)));
+            }
+            List<java.util.Set<String>> touched = new ArrayList<>(group.size());
+            for (int i = 0; i < group.size(); i++) {
+                TaskOutcome outcome;
+                try {
+                    outcome = futures.get(i).get();
+                } catch (java.util.concurrent.ExecutionException ex) {
+                    outcome = new TaskOutcome(ToolOutcome.error("La sous-tâche a échoué ; poursuis toi-même."),
+                            0, 0, 0, 0);
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    outcome = new TaskOutcome(ToolOutcome.error("La sous-tâche a été interrompue."), 0, 0, 0, 0);
+                }
+                java.util.Set<String> files = touchedFiles(outcome.outcome().content());
+                java.util.Set<String> overlap = new java.util.TreeSet<>();
+                for (java.util.Set<String> earlier : touched) {
+                    for (String file : files) {
+                        if (earlier.contains(file)) {
+                            overlap.add(file);
+                        }
+                    }
+                }
+                touched.add(files);
+                if (!overlap.isEmpty() && !outcome.outcome().isError()) {
+                    outcome = new TaskOutcome(ToolOutcome.info(outcome.outcome().content()
+                            + "\n\nAttention : une autre sous-tâche de ce tour a aussi modifié "
+                            + String.join(", ", overlap)
+                            + ". Les branches sont séparées : réconcilie-les avant de les intégrer, rien n'a été "
+                            + "écrasé."), outcome.inputTokens(), outcome.outputTokens(),
+                            outcome.cacheReadTokens(), outcome.cacheWriteTokens());
+                }
+                done.put(group.get(i), new ParallelTask(ids.get(i), outcome));
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+        log.info("Sous-tâches écrivaines menées en parallèle (workspace={}, nombre={})", workspace.getId(),
+                group.size());
+        return done;
+    }
+
+    /** Ligne d'un résumé {@code git diff --stat} : {@code  chemin | 3 ++-}. */
+    private static final java.util.regex.Pattern DIFF_STAT_LINE =
+            java.util.regex.Pattern.compile("^\\s*(\\S.*?)\\s+\\|\\s+(\\d+|Bin)");
+
+    /** Les fichiers listés par le résumé de diff joint à une synthèse de sous-tâche (SF-150-05). */
+    static java.util.Set<String> touchedFiles(String synthesis) {
+        java.util.Set<String> files = new java.util.LinkedHashSet<>();
+        if (synthesis == null) {
+            return files;
+        }
+        for (String line : synthesis.split("\\R")) {
+            java.util.regex.Matcher matcher = DIFF_STAT_LINE.matcher(line);
+            if (matcher.find()) {
+                files.add(matcher.group(1).strip());
+            }
+        }
+        return files;
+    }
+
+    /** Threads des sous-tâches parallèles : nommés (diagnostic) et démons. */
+    private static java.util.concurrent.ThreadFactory taskThreadFactory() {
+        java.util.concurrent.atomic.AtomicInteger seq = new java.util.concurrent.atomic.AtomicInteger();
+        return runnable -> {
+            Thread thread = new Thread(runnable, "atelier-task-" + seq.incrementAndGet());
+            thread.setDaemon(true);
+            return thread;
+        };
+    }
+
+    /**
+     * Écoute partagée par des sous-tâches parallèles (F-195 / SF-195-04) : elle relaie ce que
+     * l'utilisateur doit voir pour décider — les invites d'autorisation et le poste hors ligne —,
+     * sérialisé, et tait les sorties de commandes qui, venues de plusieurs sous-tâches, s'entremêleraient.
+     */
+    private static final class PromptOnlyListener implements AtelierProgressListener {
+        private final AtelierProgressListener delegate;
+
+        PromptOnlyListener(AtelierProgressListener delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public void onAction(AtelierStepEvent step) {
+            // Émis par la boucle principale, pas par une sous-tâche.
+        }
+
+        @Override
+        public void onText(String text) {
+            // Aucun texte de la sous-boucle n'est relayé : sa synthèse l'est, par la boucle.
+        }
+
+        @Override
+        public synchronized void onConfirmRequest(AtelierConfirmRequest request) {
+            delegate.onConfirmRequest(request);
+        }
+
+        @Override
+        public synchronized void onConfirmResolved(AtelierConfirmResolved resolved) {
+            delegate.onConfirmResolved(resolved);
+        }
+
+        @Override
+        public synchronized void onRunnerOffline(java.util.UUID hostId) {
+            delegate.onRunnerOffline(hostId);
         }
     }
 
@@ -6492,9 +6717,14 @@ public class AtelierChatService implements RelayInterruptTarget {
         if (pushNotificationService != null) {
             pushNotificationService.notifyAuthorizationRequested(userId, workspaceId);
         }
-        RunnerConfirmationGate.Outcome outcome = confirmationGate.await(userId, workspaceId, callId,
-                () -> listener.onConfirmRequest(new AtelierProgressListener.AtelierConfirmRequest(
-                        callId, tool, detail, confirmationGate.timeoutMs(), offersAlwaysAllow(tool))));
+        // F-195 / SF-195-04 : des sous-tâches parallèles peuvent demander une autorisation en même
+        // temps ; l'écran n'en montre qu'une à la fois — elles se succèdent (verrou du projet).
+        RunnerConfirmationGate.Outcome outcome;
+        synchronized (promptLock(userId, workspaceId)) {
+            outcome = confirmationGate.await(userId, workspaceId, callId,
+                    () -> listener.onConfirmRequest(new AtelierProgressListener.AtelierConfirmRequest(
+                            callId, tool, detail, confirmationGate.timeoutMs(), offersAlwaysAllow(tool))));
+        }
         // F-121 / SF-121-02 : « toujours autoriser cette commande » a été coché — on écrit une règle
         // persistante (pour bash, sur le premier mot de la commande ; sinon sur l'outil entier). Le
         // detail porte la commande pour bash (c'est la cible d'audit), il sert de source au préfixe.
@@ -8027,8 +8257,12 @@ public class AtelierChatService implements RelayInterruptTarget {
                             + "outils de lecture, ne crée aucun worktree, et plusieurs sous-tâches en "
                             + "lecture seule émises dans le MÊME tour s'exécutent EN PARALLÈLE. Groupe "
                             + "donc systématiquement les sous-tâches en lecture seule INDÉPENDANTES "
-                            + "dans un même tour, avec tes appels explore. Une sous-tâche qui ÉCRIT ne "
-                            + "se groupe jamais : les mutations s'exécutent l'une après l'autre.",
+                            + "dans un même tour, avec tes appels explore. "
+                            // F-195 / SF-195-04 : condition STABLE (réglage), cache F-134 préservé.
+                            + (taskParallelism >= 2
+                                    ? TASK_WRITERS_PARALLEL
+                                    : "Une sous-tâche qui ÉCRIT ne se groupe jamais : les mutations "
+                                            + "s'exécutent l'une après l'autre."),
                     Map.of("type", "object",
                             "properties", Map.of("prompt", stringProp, "path", stringProp,
                                     "read_only", Map.of("type", "boolean")),
