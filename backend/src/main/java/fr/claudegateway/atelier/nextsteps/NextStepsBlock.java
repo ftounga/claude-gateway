@@ -36,6 +36,8 @@ public final class NextStepsBlock {
 
     /** Champ du relevé {@code terminal_json} qui porte les suites. */
     public static final String REPORT_FIELD = "nextSteps";
+    /** Champ du relevé {@code terminal_json} qui porte l'avancement du chantier (F-196 / SF-196-01). */
+    public static final String CHANTIER_FIELD = "nextStepsChantier";
 
     private static final Pattern OPEN = Pattern.compile("<<\\s*suites\\s*>>", Pattern.CASE_INSENSITIVE);
     private static final Pattern CLOSE = Pattern.compile("<<\\s*/\\s*suites\\s*>>", Pattern.CASE_INSENSITIVE);
@@ -137,7 +139,33 @@ public final class NextStepsBlock {
                 || request.length() > MAX_REQUEST_CHARS) {
             return null;
         }
-        return new NextStep(truncate(title, MAX_TITLE_CHARS), truncate(why, MAX_WHY_CHARS), label, request);
+        return NextStep.proposed(truncate(title, MAX_TITLE_CHARS), truncate(why, MAX_WHY_CHARS), label, request,
+                proposedStep(node));
+    }
+
+    private static final Pattern FIRST_INT = Pattern.compile("\\d{1,3}");
+
+    /**
+     * Le numéro d'étape proposé par le modèle (F-196 / SF-196-01) : entier, ou texte qui en contient un
+     * (« 3 », « étape 3 »). Absent, nul, ≤ 0 ou illisible ⇒ {@code null}. Jamais cru tel quel : la
+     * gateway le vérifie contre le plan réel ({@link ChantierAnchor}).
+     */
+    static Integer proposedStep(JsonNode node) {
+        for (String name : new String[] {"etape", "étape", "step"}) {
+            JsonNode value = node.get(name);
+            if (value == null || value.isNull()) {
+                continue;
+            }
+            Integer n = null;
+            if (value.isIntegralNumber()) {
+                n = value.canConvertToInt() ? value.intValue() : null;
+            } else if (value.isTextual()) {
+                Matcher m = FIRST_INT.matcher(value.asText());
+                n = m.find() ? Integer.valueOf(m.group()) : null;
+            }
+            return n != null && n > 0 ? n : null;
+        }
+        return null;
     }
 
     private static String text(JsonNode node, String... names) {
@@ -175,6 +203,14 @@ public final class NextStepsBlock {
      * tel quel : un défaut d'affichage ne doit jamais faire perdre le tour.
      */
     public static String attachTo(String reportJson, List<NextStep> steps) {
+        return attachTo(reportJson, steps, null);
+    }
+
+    /**
+     * Même chose, avec l'avancement du chantier guidé ouvert (F-196 / SF-196-01), rangé sous
+     * {@link #CHANTIER_FIELD} — absent hors chantier ouvert ou sans suite.
+     */
+    public static String attachTo(String reportJson, List<NextStep> steps, ChantierAnchor.Progress chantier) {
         if (steps == null || steps.isEmpty()) {
             return reportJson;
         }
@@ -195,6 +231,9 @@ public final class NextStepsBlock {
         ArrayNode array = report.putArray(REPORT_FIELD);
         for (NextStep step : steps) {
             array.add(MAPPER.valueToTree(step));
+        }
+        if (chantier != null) {
+            report.set(CHANTIER_FIELD, MAPPER.valueToTree(chantier));
         }
         try {
             return MAPPER.writeValueAsString(report);

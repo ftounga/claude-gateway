@@ -641,6 +641,9 @@ class AtelierChatServiceSystemPromptTest {
             assertThat(system).contains("<<suites>>").contains("<</suites>>");
             assertThat(system).contains("APRÈS la réponse complète");
             assertThat(system).contains("une option sans motif est interdite");
+            // F-196 / SF-196-01 : la règle du rattachement est générale, donc stable ; le plan reste
+            // dans la note de tour.
+            assertThat(system).contains("\"etape\"").contains("au plus UN approfondissement, en dernier");
             // Placée juste après « vérifier avant de conclure ».
             assertThat(system.indexOf(marker))
                     .isGreaterThan(system.indexOf("Vérifier avant de conclure — prouve tout état factuel"));
