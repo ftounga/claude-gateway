@@ -163,8 +163,38 @@ export function journeyResumeMessage(gesture: string, before: SubjectJourney | n
         : `✓ Plan${version} validé — exécution lancée.`;
     }
     case 'close':
-      return '✓ Chantier clos.';
+      // F-196 / SF-196-03 : le message de clôture est la trace persistée de la résolution — rendu en
+      // séparateur dans le fil, ici et à l'historique.
+      return chantierResolvedMessage(before?.chantier?.number ?? null);
     default:
       return null;
   }
+}
+
+/** Le texte du séparateur de résolution (F-196 / SF-196-03). */
+export function chantierResolvedMessage(number: number | null): string {
+  const label = number ? `Chantier ${number}` : 'Chantier';
+  return `✓ ${label} résolu — ce qui suit va au-delà du besoin de départ`;
+}
+
+/** Une marque de résolution en tête de message, et ce qui la suit (un brouillon parti avec elle). */
+export interface ChantierResolution {
+  label: string;
+  rest: string;
+}
+
+const RESOLUTION_MARK = /^✓ Chantier( \d+)? (résolu|clos)(?![\p{L}\p{N}])/u;
+
+/**
+ * Reconnaît la marque de résolution d'un chantier en **première ligne** d'un message utilisateur
+ * (F-196 / SF-196-03) — y compris l'ancienne « ✓ Chantier clos. » d'avant F-196 —, ou `null`.
+ */
+export function chantierResolution(content: string | null | undefined): ChantierResolution | null {
+  const text = (content ?? '').replace(/^\s+/, '');
+  const newline = text.indexOf('\n');
+  const first = (newline < 0 ? text : text.slice(0, newline)).trim();
+  if (!RESOLUTION_MARK.test(first)) {
+    return null;
+  }
+  return { label: first, rest: newline < 0 ? '' : text.slice(newline + 1).trim() };
 }

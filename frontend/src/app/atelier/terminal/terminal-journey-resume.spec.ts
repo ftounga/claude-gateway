@@ -55,7 +55,10 @@ describe('F-176 / SF-176-09 — un clic fait avancer', () => {
     expect(journeyResumeMessage('validate-plan', planPhase())).toBe('✓ Plan v2 validé — exécution lancée.');
     expect(journeyResumeMessage('validate-plan', planPhase(true))).toBe('✓ Amendement v2 validé — exécution reprise.');
     expect(journeyResumeMessage('confirm-diagnosis', null)).toContain('Diagnostic confirmé');
-    expect(journeyResumeMessage('close', null)).toBe('✓ Chantier clos.');
+    // F-196 / SF-196-03 : la clôture laisse la marque de résolution dans le fil.
+    expect(journeyResumeMessage('close', null)).toBe('✓ Chantier résolu — ce qui suit va au-delà du besoin de départ');
+    expect(journeyResumeMessage('close', { ...planPhase(), chantier: { number: 2, title: 'WAF', openedAt: null } }))
+      .toBe('✓ Chantier 2 résolu — ce qui suit va au-delà du besoin de départ');
     expect(journeyResumeMessage('validate-plan-only', null)).toBeNull();
     expect(journeyResumeMessage('decline-guided', null)).toBeNull();
     expect(journeyResumeMessage('dismiss-close', null)).toBeNull();

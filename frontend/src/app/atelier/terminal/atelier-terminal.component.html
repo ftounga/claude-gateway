@@ -685,6 +685,16 @@
 
     @for (message of displayedMessages; track message.id) {
       @if (message.role === 'USER') {
+        <!-- F-196 / SF-196-03 — LA RÉSOLUTION DU CHANTIER, MARQUÉE DANS LE FIL : le message de clôture
+             (persisté, donc rejoué à l'historique au bon endroit) est rendu en séparateur, pas en bulle.
+             Encre du terminal héritée : aucune couleur nouvelle, AA sur les deux peaux. -->
+        @if (resolutionOf(message); as resolution) {
+          <div class="terminal-resolution" role="separator" [attr.aria-label]="resolution.label"
+               [attr.id]="showsQuestion(message) ? null : questionAnchorId(message)">
+            <span class="terminal-resolution__label">{{ resolution.label }}</span>
+          </div>
+        }
+        @if (showsQuestion(message)) {
         <!-- LA QUESTION DE L'UTILISATEUR, REPÉRABLE (F-126 / SF-126-02) : bloc distinct, badge « Q<n> »
              et libellé « Votre question ». L'`id` est l'ancre vers laquelle le rail fait sauter. On
              garde `terminal-prompt-line` pour l'héritage de couleur (dont la peau Teams, §15). -->
@@ -692,7 +702,7 @@
           <span class="terminal-qbadge" aria-hidden="true">Q{{ questionNumber(message) }}</span>
           <span class="terminal-qbody">
             <span class="terminal-qmeta">Votre question</span>
-            <span class="terminal-request">{{ message.content }}</span>
+            <span class="terminal-request">{{ questionText(message) }}</span>
             <!-- LES PIÈCES JOINTES DANS LA BULLE (F-169 / SF-169-03) : nom court + taille, DANS la
                  scrollback → elles défilent avec le fil. En lecture (pas de croix) : ces puces
                  rappellent ce qui est parti, le composer (SF-169-01) gère ce qui va partir. -->
@@ -730,6 +740,7 @@
             }
           </span>
         </div>
+        }
       } @else {
         @if (message.terminal && message.terminal.length > 0) {
           @for (block of message.terminal; track $index) {
