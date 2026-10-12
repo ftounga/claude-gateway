@@ -236,8 +236,9 @@ public class AtelierChatService implements RelayInterruptTarget {
      * plomberie ») et hors de tout crochet de fin de tour.
      */
     static final String SYNTHESIS_PROMPT =
-            "Le tour s'achève. Réponds maintenant, directement, à la dernière demande de "
-                    + "l'utilisateur, en t'appuyant sur ce que tu viens de faire/observer. Pas de "
+            "Le tour s'achève. Réponds maintenant, directement, à TOUTES les demandes de ce tour "
+                    + "(la première comme les précisions et interjections reçues en cours de route), "
+                    + "sujet par sujet, en t'appuyant sur ce que tu viens de faire/observer. Pas de "
                     + "plomberie.";
     static final String BUDGET_REACHED_REPLY =
             "Le temps imparti à ce message est écoulé ; relance-moi pour continuer.";
@@ -423,8 +424,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "- MODIFIER un fichier existant : `edit_file` pour un passage, `multi_edit` pour "
                     + "plusieurs passages du MÊME fichier (une seule écriture, tout ou rien). "
                     + "`write_file` seulement pour créer un fichier ou en réécrire l'intégralité.\n"
-                    + "- GROUPE dans le MÊME tour les appels indépendants : ils partent ensemble au "
-                    + "lieu de s'étaler sur des tours successifs.\n";
+                    + "- GROUPE dans le MÊME tour les appels indépendants au lieu de les étaler sur "
+                    + "des tours successifs : les lectures partent ensemble, les écritures "
+                    + "s'exécutent dans l'ordre où tu les émets.\n";
     /** Ligne {@code explore} de la section « Choix des outils » — déclarée si la délégation est ouverte. */
     private static final String TOOL_CHOICE_EXPLORE =
             "- LIRE ET COMPRENDRE beaucoup de fichiers dont tu n'as pas besoin de garder le détail : "
@@ -444,7 +446,30 @@ public class AtelierChatService implements RelayInterruptTarget {
             "- ÉCRIRE ou EXÉCUTER une sous-tâche isolée et autonome (un lot de modifications cadré, un "
                     + "refactor à l'écart) : `task` — elle travaille dans un worktree git à part, sans "
                     + "toucher ta copie de travail, et seule sa synthèse revient. Quand le travail n'a "
-                    + "pas besoin d'être isolé, agis TOI-MÊME ici, dans la boucle principale.\n";
+                    + "pas besoin d'être isolé, agis TOI-MÊME ici, dans la boucle principale. Mais "
+                    + "plusieurs sujets INDÉPENDANTS qui écrivent : un `task` par sujet, émis dans le "
+                    + "MÊME tour, plutôt que de les traiter l'un après l'autre toi-même.\n";
+    /**
+     * Plusieurs sujets à la fois (F-195 / SF-195-01) : sur <b>toutes</b> les cibles, section « Méthode
+     * de travail ». Mesuré en prod : 14 appels chevauchants sur 5 074 en 14 jours — rien ne disait au
+     * modèle de décomposer une demande à plusieurs sujets, ni qu'une interjection s'<b>ajoute</b> au
+     * travail en cours (il la lisait comme la nouvelle consigne et abandonnait le premier sujet).
+     * Comportement cible = Claude Code. Littéral <b>stable</b> : cache F-134 préservé.
+     */
+    static final String MULTI_SUBJECT_DOCTRINE =
+            "Plusieurs sujets à la fois — non négociable :\n"
+                    + "- Quand une demande porte sur PLUSIEURS sujets, décompose-la. Sujets "
+                    + "INDÉPENDANTS : traite-les en parallèle — une délégation par sujet (`explore` pour "
+                    + "lire, `task` pour écrire, quand ces outils te sont proposés), toutes émises dans "
+                    + "le MÊME tour. Sujets DÉPENDANTS (l'un a besoin du résultat de l'autre) : dans "
+                    + "l'ordre.\n"
+                    + "- Un message « [Interjection de l'utilisateur — …] » reçu en cours de travail "
+                    + "S'AJOUTE à la demande en cours, il ne la remplace pas : poursuis ce que tu "
+                    + "faisais ; si le nouveau sujet est indépendant, délègue-le en parallèle, sinon "
+                    + "traite-le ensuite. Seule une consigne explicite (« arrête », « laisse tomber », "
+                    + "« à la place ») remplace le travail en cours.\n"
+                    + "- Ta réponse finale couvre TOUTES les demandes du tour, sujet par sujet — la "
+                    + "première comme celles arrivées en route. Un sujet non abouti est dit comme tel.\n\n";
     /**
      * Silence de la tenue de carte (F-125 / SF-125-01, cadrage §2) : ajouté au rôle sur les
      * <b>deux</b> cibles, aux côtés de la discipline (SF-119-02), de la doctrine (SF-120-01) et du
@@ -8221,6 +8246,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         // La discipline dit COMMENT vérifier quand on agit ; la doctrine dit QUAND agir : une question
         // reçoit une réponse, pas une mutation non demandée.
         system.append(RESTRAINT_DOCTRINE);
+
+        // Plusieurs sujets à la fois (F-195 / SF-195-01) : sur TOUTES les cibles, dans la section
+        // « Méthode de travail », juste après la retenue — décomposer, paralléliser l'indépendant, et
+        // une interjection s'AJOUTE au lieu de remplacer. Littéral stable : cache F-134 préservé.
+        system.append(MULTI_SUBJECT_DOCTRINE);
 
         // Style de réponse (F-121 / SF-121-03) : sur les DEUX cibles, en tête du préfixe stable, aux
         // côtés de la discipline (SF-119-02) et de la doctrine (SF-120-01) — la concision orientée
