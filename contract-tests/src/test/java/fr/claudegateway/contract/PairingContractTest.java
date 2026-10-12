@@ -83,7 +83,8 @@ class PairingContractTest {
         PairResponse emise = new PairResponse(
                 "rnr_" + UUID.randomUUID().toString().replace("-", ""),
                 UUID.randomUUID(),
-                OffsetDateTime.now().plusDays(30).truncatedTo(ChronoUnit.MILLIS));
+                OffsetDateTime.now().plusDays(30).truncatedTo(ChronoUnit.MILLIS),
+                "EDENRED", "infra");
         responseBody.set(ContractMappers.gateway().writeValueAsBytes(emise));
 
         // RÉCEPTEUR : le client d'appairage réel du runner, avec son propre mapper.
@@ -101,13 +102,19 @@ class PairingContractTest {
                 .as("l'expiration doit traverser, et au même instant : une date sérialisée en "
                         + "nombre de secondes ne se relit pas en OffsetDateTime")
                 .isEqualTo(emise.expiresAt());
+        assertThat(recue.hostName())
+                .as("F-194 / SF-194-03 : le runner nomme le poste auquel le code l'a rattaché")
+                .isEqualTo("EDENRED");
+        assertThat(recue.previousRootName())
+                .as("F-194 / SF-194-03 : la racine remplacée traverse, pour l'avertissement")
+                .isEqualTo("infra");
     }
 
     @Test
     @DisplayName("ce que le runner déclare à l'appairage est lu entièrement par la gateway")
     void laRequeteDAppairageTraverse() throws Exception {
         responseBody.set(ContractMappers.gateway().writeValueAsBytes(new PairResponse(
-                "rnr_jeton", UUID.randomUUID(), OffsetDateTime.now().plusDays(1))));
+                "rnr_jeton", UUID.randomUUID(), OffsetDateTime.now().plusDays(1), null, null)));
 
         // ÉMETTEUR : le client réel du runner déclare tout ce qu'il sait déclarer.
         new PairingClient(HttpClient.newHttpClient())
@@ -135,7 +142,7 @@ class PairingContractTest {
     @DisplayName("un runner qui ne déclare rien reste appairable")
     void unRunnerQuiNeDeclareRienResteAppairable() throws Exception {
         responseBody.set(ContractMappers.gateway().writeValueAsBytes(new PairResponse(
-                "rnr_jeton", UUID.randomUUID(), OffsetDateTime.now().plusDays(1))));
+                "rnr_jeton", UUID.randomUUID(), OffsetDateTime.now().plusDays(1), null, null)));
 
         new PairingClient(HttpClient.newHttpClient()).pair(pairUrl, "MM11NN22", null);
 
@@ -155,7 +162,7 @@ class PairingContractTest {
     @DisplayName("un champ AJOUTÉ par une gateway plus récente ne paralyse pas un runner déployé")
     void unChampAjouteNeCassePasLeRunner() throws Exception {
         PairResponse emise = new PairResponse("rnr_jeton", UUID.randomUUID(),
-                OffsetDateTime.now().plusDays(1).truncatedTo(ChronoUnit.MILLIS));
+                OffsetDateTime.now().plusDays(1).truncatedTo(ChronoUnit.MILLIS), null, null);
 
         // Le seul endroit du module où un nom de champ est écrit à la main, et c'est assumé : on ne
         // peut pas simuler une gateway PLUS RÉCENTE sans écrire le champ qu'elle ajouterait. Il est

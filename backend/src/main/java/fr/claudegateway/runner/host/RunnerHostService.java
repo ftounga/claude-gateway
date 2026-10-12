@@ -167,10 +167,15 @@ public class RunnerHostService implements RunnerShellRecorder, RunnerVersionReco
      *
      * <p>La <b>racine</b> est réduite à son dernier segment : l'arborescence de la machine de
      * l'utilisateur n'a aucune raison d'entrer dans la base.</p>
+     *
+     * @return l'ancienne racine <b>remplacée</b> par une racine différente, ou {@code null} — racine
+     *     inchangée, jamais déclarée, ou non déclarée cette fois (F-194 / SF-194-03). C'est le signe
+     *     qu'une autre machine prend la place de celle du poste : le runner l'affiche.
      */
     @Transactional
-    public void recordDeclaration(UUID hostId, String rootName, String os, boolean elevated) {
-        repository.findById(hostId).ifPresent(host -> {
+    public String recordDeclaration(UUID hostId, String rootName, String os, boolean elevated) {
+        return repository.findById(hostId).map(host -> {
+            String previous = host.getRootName();
             String segment = lastSegment(rootName);
             if (segment != null) {
                 host.setRootName(segment);
@@ -181,7 +186,10 @@ public class RunnerHostService implements RunnerShellRecorder, RunnerVersionReco
             }
             host.setElevated(elevated);
             host.setLastSeenAt(OffsetDateTime.now());
-        });
+            boolean replaced = segment != null && previous != null && !previous.isBlank()
+                    && !previous.equals(segment);
+            return replaced ? previous : null;
+        }).orElse(null);
     }
 
     /**

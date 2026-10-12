@@ -174,6 +174,48 @@ class RunnerPairingApiIntegrationTest {
                 .andExpect(jsonPath("$.error").value("pairing_invalid"));
     }
 
+    // ---------- Le poste nommé (F-194 / SF-194-03) ----------
+
+    private static String pairBodyWithRoot(String code, String root) {
+        return "{\"code\":\"" + code + "\",\"label\":\"poste-client\",\"rootName\":\"" + root + "\"}";
+    }
+
+    @Test
+    void pairingNamesTheHostAndSaysNothingOnAFirstPairing() throws Exception {
+        String code = generatePairingCode();
+        mockMvc.perform(post("/api/runner/pair").contextPath("/api")
+                        .contentType(MediaType.APPLICATION_JSON).content(pairBodyWithRoot(code, "/home/a/dev")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.hostName").value("Poste"))
+                .andExpect(jsonPath("$.previousRootName").doesNotExist());
+    }
+
+    @Test
+    void pairingFromAMachineWithAnotherRootReportsTheReplacedRoot() throws Exception {
+        // Le 2026-10-12 : la machine EDENRED (racine « dev ») appairée avec le code de FREE (« infra »).
+        adminHost.setRootName("infra");
+        hostRepository.save(adminHost);
+        String code = generatePairingCode();
+
+        mockMvc.perform(post("/api/runner/pair").contextPath("/api")
+                        .contentType(MediaType.APPLICATION_JSON).content(pairBodyWithRoot(code, "/home/a/dev")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.hostName").value("Poste"))
+                .andExpect(jsonPath("$.previousRootName").value("infra"));
+    }
+
+    @Test
+    void repairingTheSameMachineReportsNoReplacement() throws Exception {
+        adminHost.setRootName("dev");
+        hostRepository.save(adminHost);
+        String code = generatePairingCode();
+
+        mockMvc.perform(post("/api/runner/pair").contextPath("/api")
+                        .contentType(MediaType.APPLICATION_JSON).content(pairBodyWithRoot(code, "/home/a/dev")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.previousRootName").doesNotExist());
+    }
+
     @Test
     void unknownCodeIsUnauthorized() throws Exception {
         mockMvc.perform(post("/api/runner/pair").contextPath("/api")

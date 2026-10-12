@@ -79,8 +79,9 @@ public class RunnerPairingService {
 
         RunnerTokenService.IssuedToken issued =
                 tokenService.issue(code.getUserId(), code.getHostId(), label);
-        hostService.recordDeclaration(code.getHostId(), rootName, os, elevated);
-        return new PairedRunner(issued.clearToken(), code.getHostId(), issued.token().getExpiresAt());
+        String previousRootName = hostService.recordDeclaration(code.getHostId(), rootName, os, elevated);
+        return new PairedRunner(issued.clearToken(), code.getHostId(), issued.token().getExpiresAt(),
+                hostService.hostName(code.getHostId()), previousRootName);
     }
 
     private static String normalizeCode(String code) {
@@ -91,7 +92,12 @@ public class RunnerPairingService {
     public record PairingCode(String code, OffsetDateTime expiresAt) {
     }
 
-    /** Résultat d'appairage : jeton en clair (éphémère), poste et expiration du jeton. */
-    public record PairedRunner(String token, UUID hostId, OffsetDateTime expiresAt) {
+    /**
+     * Résultat d'appairage : jeton en clair (éphémère), poste et expiration du jeton. Depuis
+     * F-194 / SF-194-03, aussi le <b>nom</b> du poste et, quand une machine de racine différente
+     * prend sa place, l'ancienne racine — pour que le runner dise à quel poste il s'est rattaché.
+     */
+    public record PairedRunner(String token, UUID hostId, OffsetDateTime expiresAt, String hostName,
+            String previousRootName) {
     }
 }

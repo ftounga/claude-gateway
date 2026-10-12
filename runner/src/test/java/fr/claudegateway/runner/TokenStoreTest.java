@@ -88,4 +88,16 @@ class TokenStoreTest {
             assertTrue(perms.contains(PosixFilePermission.OWNER_READ));
         }
     }
+
+    @Test
+    void keepsTheHostNameButNeverThePairingWarning(@org.junit.jupiter.api.io.TempDir Path dir) {
+        // F-194 / SF-194-03 : le nom du poste se redit à chaque reprise ; l'avertissement, une fois.
+        TokenStore store = new TokenStore(dir.resolve("ws"), dir.resolve("home"));
+        store.save(new StoredToken("t", UUID.randomUUID(), OffsetDateTime.now().plusDays(30),
+                "EDENRED", "infra"));
+
+        StoredToken loaded = store.load().orElseThrow();
+        assertEquals("EDENRED", loaded.hostName());
+        assertEquals(null, loaded.previousRootName());
+    }
 }

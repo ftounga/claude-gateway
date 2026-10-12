@@ -186,6 +186,36 @@ class RunnerHostServiceTest {
     }
 
     @Test
+    void reportsTheRootReplacedByAnotherMachine() {
+        // F-194 / SF-194-03 : une autre machine prend la place de celle du poste.
+        RunnerHost host = new RunnerHost();
+        host.setRootName("infra");
+        when(repository.findById(hostId)).thenReturn(Optional.of(host));
+
+        assertThat(service().recordDeclaration(hostId, "/home/francky/dev", "linux", false))
+                .isEqualTo("infra");
+        assertThat(host.getRootName()).isEqualTo("dev");
+    }
+
+    @Test
+    void reportsNoReplacementForTheSameRootANewRootOrNoDeclaration() {
+        RunnerHost same = new RunnerHost();
+        same.setRootName("dev");
+        when(repository.findById(hostId)).thenReturn(Optional.of(same));
+        assertThat(service().recordDeclaration(hostId, "/home/francky/dev", "linux", false)).isNull();
+
+        RunnerHost fresh = new RunnerHost();
+        when(repository.findById(hostId)).thenReturn(Optional.of(fresh));
+        assertThat(service().recordDeclaration(hostId, "/home/francky/dev", "linux", false)).isNull();
+
+        RunnerHost undeclared = new RunnerHost();
+        undeclared.setRootName("infra");
+        when(repository.findById(hostId)).thenReturn(Optional.of(undeclared));
+        assertThat(service().recordDeclaration(hostId, null, null, false)).isNull();
+        assertThat(undeclared.getRootName()).isEqualTo("infra");
+    }
+
+    @Test
     void recordsElevationEvenWhenNoRootWasDeclared() {
         // Un runner peut tourner en root sans avoir déclaré son dossier — et c'est justement le cas
         // où l'information compte le plus.

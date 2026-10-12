@@ -29,6 +29,7 @@ public class RunnerPairController {
     public PairResponse pair(@Valid @RequestBody PairRequest request) {
         PairedRunner paired = pairingService.redeem(request.code(), request.label(), request.rootName(),
                 request.os(), Boolean.TRUE.equals(request.elevated()));
-        return new PairResponse(paired.token(), paired.hostId(), paired.expiresAt());
+        return new PairResponse(paired.token(), paired.hostId(), paired.expiresAt(),
+                paired.hostName(), paired.previousRootName());
     }
 }
