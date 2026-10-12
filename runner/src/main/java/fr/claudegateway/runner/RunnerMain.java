@@ -217,7 +217,9 @@ public final class RunnerMain {
             if (config.pairingCode() != null) {
                 console.info("Réappairage avec le code fourni…");
                 try {
-                    String fresh = pairAndStore(config, tokenStore, httpClient, home);
+                    String fresh = new TokenAcquisition(console).obtain(Optional.empty(), true,
+                            tokenStore.tokenFile(), () -> pairAndStore(config, tokenStore, httpClient, home))
+                            .orElseThrow().token();
                     runSession(fresh, config, console, httpClient, connection, fallbackPolicy, polling,
                             shuttingDown, journal);
                     return transportVerdict(console, journal, shuttingDown);
@@ -332,22 +334,21 @@ public final class RunnerMain {
 
     private String obtainToken(RunnerConfig config, TokenStore tokenStore, HttpClient httpClient,
             Path home) {
-        Optional<StoredToken> stored = tokenStore.load();
-        if (stored.isPresent()) {
-            console.info("Jeton runner réutilisé (" + tokenStore.tokenFile() + ").");
-            return stored.get().token();
-        }
-        if (config.pairingCode() == null) {
+        // F-194 / SF-194-03 : un code fourni l'emporte sur le jeton stocké, sauf s'il est refusé.
+        Optional<StoredToken> chosen = new TokenAcquisition(console).obtain(tokenStore.load(),
+                config.pairingCode() != null, tokenStore.tokenFile(),
+                () -> pairAndStore(config, tokenStore, httpClient, home));
+        if (chosen.isEmpty()) {
             // Expiré et « jamais appairé ici » n'appellent pas le même geste : le message les
             // distingue (F-46 / SF-46-01). Et dans les deux cas il DIT ce qui manque — aucun code
             // n'est redemandé en silence, aucun appairage n'est tenté sans code (D3).
             throw new RunnerConfig.ConfigException(ResumeMessages.cannotResume(
                     tokenStore.tokenFile(), tokenStore.expiredAt().orElse(null)));
         }
-        return pairAndStore(config, tokenStore, httpClient, home);
+        return chosen.get().token();
     }
 
-    private String pairAndStore(RunnerConfig config, TokenStore tokenStore, HttpClient httpClient,
+    private StoredToken pairAndStore(RunnerConfig config, TokenStore tokenStore, HttpClient httpClient,
             Path home) {
         console.info("Appairage auprès de " + config.pairUrl() + "…");
         PairingClient client = new PairingClient(httpClient);
@@ -358,7 +359,7 @@ public final class RunnerMain {
         tokenStore.save(token);
         console.info("Appairage réussi — jeton stocké dans " + tokenStore.tokenFile() + ".");
         rememberSession(config, home);
-        return token.token();
+        return token;
     }
 
     /**

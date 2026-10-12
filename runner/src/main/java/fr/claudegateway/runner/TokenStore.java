@@ -91,7 +91,7 @@ public final class TokenStore {
             Path dir = tokenFile.getParent();
             Files.createDirectories(dir);
             restrictDir(dir);
-            mapper.writerWithDefaultPrettyPrinter().writeValue(tokenFile.toFile(), token);
+            mapper.writerWithDefaultPrettyPrinter().writeValue(tokenFile.toFile(), token.forStorage());
             restrictFile(tokenFile);
         } catch (IOException e) {
             throw new RunnerException("Impossible d'écrire le jeton runner : " + tokenFile, e);
