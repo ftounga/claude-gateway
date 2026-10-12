@@ -82,7 +82,7 @@ describe('AtelierTerminalComponent — Et maintenant ? (F-192 / SF-192-02)', () 
     fixture.detectChanges();
     (panel()?.querySelectorAll('.opt')[1] as HTMLButtonElement).click();
 
-    expect(drafts[drafts.length - 1]).toMatch(/^Enchaîne ces suites, dans l'ordre : 1\) .+ ; 2\) Ouvre la PR\.$/);
+    expect(drafts[drafts.length - 1]).toMatch(/^Traite ces suites — en parallèle celles qui sont indépendantes : 1\) .+ ; 2\) Ouvre la PR\.$/);
     expect(sent).toBe(0);
   });
 

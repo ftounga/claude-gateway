@@ -1635,6 +1635,70 @@ class AtelierChatServiceSystemPromptTest {
                 .isEqualTo(toolChoiceSectionOf(systemPrompt()));
     }
 
+    // ------------------------------------------------ F-195 / SF-195-01 : plusieurs sujets à la fois
+
+    @Test
+    @DisplayName("SF-195-01 : la doctrine « plusieurs sujets » est présente en SANDBOX, dans la méthode")
+    void theMultiSubjectDoctrineIsPresentOnASandboxProject() {
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+
+        String system = systemPrompt();
+
+        assertThat(system).contains(AtelierChatService.MULTI_SUBJECT_DOCTRINE);
+        assertThat(system.indexOf(AtelierChatService.MULTI_SUBJECT_DOCTRINE))
+                .isGreaterThan(system.indexOf(AtelierChatService.SECTION_METHOD))
+                .isLessThan(system.indexOf(AtelierChatService.SECTION_STYLE));
+    }
+
+    @Test
+    @DisplayName("SF-195-01 : sur le poste, la doctrine dit paralléliser l'indépendant et qu'une interjection s'ajoute")
+    void theMultiSubjectDoctrineIsPresentOnARunnerProject() {
+        String system = systemPromptOfRunnerProjectDeclaring("posix");
+
+        assertThat(system).contains(AtelierChatService.MULTI_SUBJECT_DOCTRINE);
+        assertThat(AtelierChatService.MULTI_SUBJECT_DOCTRINE)
+                .contains("INDÉPENDANTS : traite-les en parallèle")
+                .contains("le MÊME tour")
+                .contains("S'AJOUTE à la demande en cours, il ne la remplace pas")
+                .contains("« à la place »")
+                .contains("TOUTES les demandes du tour");
+        // L'étiquette citée est bien celle que le moteur pose sur une interjection.
+        assertThat(AtelierChatService.MULTI_SUBJECT_DOCTRINE)
+                .contains(AtelierChatService.INTERJECTION_LABEL.strip());
+    }
+
+    @Test
+    @DisplayName("SF-195-01 : la doctrine est byte-stable entre deux constructions (cache F-134)")
+    void theMultiSubjectDoctrineIsByteStableBetweenTwoBuilds() {
+        String first = systemPromptOfRunnerProjectDeclaring("posix");
+        String second = systemPromptOfRunnerProjectDeclaring("posix");
+        String marker = "Plusieurs sujets à la fois — non négociable";
+        String a = first.substring(first.indexOf(marker), first.indexOf("\n\n", first.indexOf(marker)));
+        String b = second.substring(second.indexOf(marker), second.indexOf("\n\n", second.indexOf(marker)));
+        assertThat(a).isEqualTo(b);
+    }
+
+    @Test
+    @DisplayName("SF-195-01 : la synthèse forcée répond à TOUTES les demandes, pas à la dernière")
+    void theSynthesisPromptCoversEveryRequest() {
+        // La doctrine et la passe de synthèse disent la même chose : aucune ne privilégie la dernière.
+        assertThat(systemPromptOfRunnerProjectDeclaring("posix")).contains("TOUTES les demandes du tour");
+        assertThat(AtelierChatService.SYNTHESIS_PROMPT)
+                .contains("TOUTES les demandes de ce tour")
+                .doesNotContain("la dernière demande");
+    }
+
+    @Test
+    @DisplayName("SF-195-01 : « Choix des outils » — un task par sujet indépendant, groupement honnête")
+    void toolChoiceSectionEncouragesOneTaskPerIndependentSubject() {
+        String choice = toolChoiceSectionOf(systemPromptOfRunnerProjectDeclaring("posix"));
+
+        assertThat(choice).contains("un `task` par sujet");
+        assertThat(choice).contains("les lectures partent ensemble, les écritures s'exécutent dans l'ordre");
+    }
+
     /** La section « Choix des outils » extraite du prompt, de sa bannière à la ligne vide qui la clôt. */
     private static String toolChoiceSectionOf(String system) {
         int start = system.indexOf(AtelierChatService.SECTION_TOOLS);

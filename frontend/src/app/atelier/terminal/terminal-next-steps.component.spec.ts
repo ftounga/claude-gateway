@@ -57,7 +57,7 @@ describe('TerminalNextStepsComponent', () => {
     fixture.detectChanges();
     key('1');
     const text = picked[picked.length - 1];
-    expect(text).toBe("Enchaîne ces suites, dans l'ordre : 1) Vérifie l'export CSV. ; 2) Ouvre la PR.");
+    expect(text).toBe("Traite ces suites — en parallèle celles qui sont indépendantes : 1) Vérifie l'export CSV. ; 2) Ouvre la PR.");
     fixture.componentRef.setInput('draft', text);
     fixture.detectChanges();
     expect(root().querySelector('.cap--folded')).toBeNull();

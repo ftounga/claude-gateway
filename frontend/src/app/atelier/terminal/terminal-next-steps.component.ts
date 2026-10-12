@@ -34,13 +34,14 @@ function isEditable(target: EventTarget | null): boolean {
 
 /**
  * La saisie composée des suites cochées (SF-192-04) : une seule demande, telle quelle ; plusieurs,
- * enchaînées dans l'ordre d'affichage — sur une ligne, le champ de saisie étant mono-ligne.
+ * en une seule demande qui les fait traiter en parallèle quand elles sont indépendantes (F-195 /
+ * SF-195-01), dans l'ordre d'affichage — sur une ligne, le champ de saisie étant mono-ligne.
  */
 export function composeNextSteps(requests: string[]): string {
   if (requests.length <= 1) {
     return requests[0] ?? '';
   }
-  return "Enchaîne ces suites, dans l'ordre : " + requests.map((r, i) => `${i + 1}) ${r.trim()}`).join(' ; ');
+  return 'Traite ces suites — en parallèle celles qui sont indépendantes : ' + requests.map((r, i) => `${i + 1}) ${r.trim()}`).join(' ; ');
 }
 
 /**
