@@ -59,7 +59,11 @@ public class RunnerToken {
     @Column(name = "label", length = 100)
     private String label;
 
-    @Column(name = "expires_at", nullable = false, updatable = false)
+    /**
+     * Échéance. Glissante depuis F-194 / SF-194-01 : chaque signe de vie d'un jeton encore valide la
+     * repousse ({@link RunnerHeartbeatService#touch}).
+     */
+    @Column(name = "expires_at", nullable = false)
     private OffsetDateTime expiresAt;
 
     /** Renseigné à la révocation. Un jeton révoqué n'authentifie plus. */
