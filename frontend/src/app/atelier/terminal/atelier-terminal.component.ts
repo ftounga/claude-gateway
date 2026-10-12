@@ -499,10 +499,12 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     return last ? last.id : null;
   }
 
-  /** Une suite choisie : elle **remplit** la saisie et lui donne la main — elle n'envoie rien. */
+  /**
+   * Les suites cochées : leur enchaînement **remplit** la saisie — rien n'est envoyé. Le focus reste
+   * au panneau pour pouvoir en cocher d'autres au clavier (SF-192-04).
+   */
   onNextStepPick(request: string): void {
     this.draftChange.emit(request);
-    this.focusDraft();
   }
 
   /** « Autre chose : tapez votre suite » : la main à la saisie. */

@@ -74,6 +74,18 @@ describe('AtelierTerminalComponent — Et maintenant ? (F-192 / SF-192-02)', () 
     expect(sent).toBe(0);
   });
 
+  it('deux coches remplissent la saisie de leur enchaînement, sans rien envoyer', () => {
+    component.messages = thread();
+    fixture.detectChanges();
+
+    (panel()?.querySelectorAll('.opt')[0] as HTMLButtonElement).click();
+    fixture.detectChanges();
+    (panel()?.querySelectorAll('.opt')[1] as HTMLButtonElement).click();
+
+    expect(drafts[drafts.length - 1]).toMatch(/^Enchaîne ces suites, dans l'ordre : 1\) .+ ; 2\) Ouvre la PR\.$/);
+    expect(sent).toBe(0);
+  });
+
   it('absent en lecture seule', () => {
     component.readOnly = true;
     component.messages = thread();

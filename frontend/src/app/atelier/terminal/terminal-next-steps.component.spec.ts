@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { AtelierNextStep } from '../../core/models/atelier.models';
-import { TerminalNextStepsComponent, nextStepLabel, nextStepTone } from './terminal-next-steps.component';
+import { TerminalNextStepsComponent, composeNextSteps, nextStepLabel, nextStepTone } from './terminal-next-steps.component';
 
 /** F-192 / SF-192-02 — le panneau « Et maintenant ? ». */
 describe('TerminalNextStepsComponent', () => {
@@ -43,18 +43,51 @@ describe('TerminalNextStepsComponent', () => {
     expect(root().textContent).toContain("Rien n'est envoyé sans vous");
   });
 
-  it('un clic émet la demande de l’option et la marque', () => {
+  it('un clic coche l’option et émet sa demande telle quelle', () => {
     (root().querySelectorAll('.opt')[1] as HTMLButtonElement).click();
     fixture.detectChanges();
     expect(picked).toEqual(["Passe à l'étape 4."]);
     expect(root().querySelectorAll('.opt')[1].classList).toContain('opt--sel');
+    expect(root().querySelectorAll('.opt')[1].getAttribute('aria-checked')).toBe('true');
   });
 
-  it('les touches 1 à N choisissent, hors champ de saisie', () => {
+  it('plusieurs coches enchaînent les demandes dans l’ordre d’affichage, panneau ouvert', () => {
+    key('3');
+    fixture.componentRef.setInput('draft', picked[picked.length - 1]);
+    fixture.detectChanges();
+    key('1');
+    const text = picked[picked.length - 1];
+    expect(text).toBe("Enchaîne ces suites, dans l'ordre : 1) Vérifie l'export CSV. ; 2) Ouvre la PR.");
+    fixture.componentRef.setInput('draft', text);
+    fixture.detectChanges();
+    expect(root().querySelector('.cap--folded')).toBeNull();
+    expect(root().querySelector('.cap__checked')?.textContent).toContain('2 cochées');
+    expect(root().querySelectorAll('[aria-checked="true"]').length).toBe(2);
+  });
+
+  it('décocher la dernière vide la saisie', () => {
+    key('2');
+    key('2');
+    expect(picked).toEqual(["Passe à l'étape 4.", '']);
+    expect(component.checked()).toEqual([]);
+  });
+
+  it('les touches 1 à N cochent, hors champ de saisie', () => {
     key('3');
     expect(picked).toEqual(['Ouvre la PR.']);
     key('4'); // au-delà du nombre d'options : ignorée
     expect(picked.length).toBe(1);
+  });
+
+  it('Entrée après une coche donne la main à la saisie', () => {
+    let other = 0;
+    component.other.subscribe(() => other++);
+    key('Enter');
+    expect(other).toBe(0);
+    key('1');
+    key('Enter');
+    expect(other).toBe(1);
+    expect(component.checked()).toEqual([0]);
   });
 
   it('une touche tapée dans un champ lui appartient', () => {
@@ -84,11 +117,20 @@ describe('TerminalNextStepsComponent', () => {
     expect(picked).toEqual([]);
   });
 
-  it('un nouveau tour rouvre le panneau', () => {
+  it('un texte tapé par l’utilisateur replie le panneau, même après une coche', () => {
+    key('1');
+    fixture.componentRef.setInput('draft', "Vérifie l'export CSV. et le PDF");
+    fixture.detectChanges();
+    expect(root().querySelector('.cap--folded')).not.toBeNull();
+  });
+
+  it('un nouveau tour rouvre le panneau et remet les coches à zéro', () => {
+    key('1');
     component.hide();
     fixture.componentRef.setInput('turnKey', 'm2');
     fixture.detectChanges();
     expect(root().querySelector('.cap--folded')).toBeNull();
+    expect(component.checked()).toEqual([]);
   });
 
   it('sans suite, rien n’est rendu', () => {
@@ -109,5 +151,10 @@ describe('TerminalNextStepsComponent', () => {
     expect(nextStepLabel('AUTRE')).toBe('Continuer');
     expect(nextStepTone('AUTRE')).toBe('continuer');
     expect(nextStepTone('VERIFIER')).toBe('verifier');
+  });
+
+  it('compose : rien ⇒ vide, une ⇒ telle quelle', () => {
+    expect(composeNextSteps([])).toBe('');
+    expect(composeNextSteps(['Ouvre la PR.'])).toBe('Ouvre la PR.');
   });
 });

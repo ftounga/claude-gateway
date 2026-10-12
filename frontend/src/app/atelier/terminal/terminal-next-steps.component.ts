@@ -33,10 +33,23 @@ function isEditable(target: EventTarget | null): boolean {
 }
 
 /**
+ * La saisie composée des suites cochées (SF-192-04) : une seule demande, telle quelle ; plusieurs,
+ * enchaînées dans l'ordre d'affichage — sur une ligne, le champ de saisie étant mono-ligne.
+ */
+export function composeNextSteps(requests: string[]): string {
+  if (requests.length <= 1) {
+    return requests[0] ?? '';
+  }
+  return "Enchaîne ces suites, dans l'ordre : " + requests.map((r, i) => `${i + 1}) ${r.trim()}`).join(' ; ');
+}
+
+/**
  * **« Et maintenant ? »** (F-192 / SF-192-02) — les suites proposées par l'agent principal, à la fin
- * de sa réponse. Un clic ou une touche 1-4 **remplit** la saisie : rien ne part sans un geste.
+ * de sa réponse. Un clic ou une touche 1-4 **coche** une suite (SF-192-04 : plusieurs à la fois) et
+ * **remplit** la saisie de leur enchaînement : rien ne part sans un geste.
  *
- * <p>Se replie sur une ligne « N suites proposées » dès qu'on écrit, ou sur « Masquer » / Échap.
+ * <p>Reste ouvert tant que la saisie vaut le texte qu'il a posé ; se replie sur une ligne
+ * « N suites proposées » dès qu'on écrit autre chose, ou sur « Masquer » / Échap.
  * Le panneau n'émet aucune requête : tout ce qu'il montre est arrivé avec la réponse.</p>
  */
 @Component({
@@ -54,6 +67,9 @@ function isEditable(target: EventTarget | null): boolean {
           <header class="cap__head">
             <h3 class="cap__title">Et maintenant ?</h3>
             <span class="cap__src">proposé par l'agent, d'après ce tour</span>
+            @if (checked().length > 0) {
+              <span class="cap__checked">{{ checked().length }} cochée{{ checked().length > 1 ? 's' : '' }}</span>
+            }
             <button type="button" class="cap__toggle" (click)="hide()">Masquer</button>
           </header>
           <div class="cap__opts">
@@ -61,11 +77,15 @@ function isEditable(target: EventTarget | null): boolean {
               <button
                 type="button"
                 class="opt"
-                [class.opt--sel]="selected() === i"
+                role="checkbox"
+                [class.opt--sel]="isChecked(i)"
+                [attr.aria-checked]="isChecked(i)"
                 [attr.aria-label]="'Option ' + (i + 1) + ' : ' + step.title"
-                (click)="choose(i)"
+                (click)="toggle(i)"
               >
-                <span class="key" aria-hidden="true">{{ i + 1 }}</span>
+                <span class="key" aria-hidden="true">
+                  <span class="box" [class.box--on]="isChecked(i)">@if (isChecked(i)) {✓}</span>{{ i + 1 }}
+                </span>
                 <span class="body">
                   <span class="t">{{ step.title }}</span>
                   <span class="why">{{ step.why }}</span>
@@ -79,7 +99,10 @@ function isEditable(target: EventTarget | null): boolean {
             </button>
           </div>
           <footer class="cap__foot">
-            <span><kbd>1</kbd>–<kbd>{{ shown().length }}</kbd> choisir</span>
+            <span><kbd>1</kbd>–<kbd>{{ shown().length }}</kbd> cocher (plusieurs possibles)</span>
+            @if (checked().length > 0) {
+              <span><kbd>Entrée</kbd> aller à la saisie</span>
+            }
             <span><kbd>Échap</kbd> masquer</span>
             <span>Rien n'est envoyé sans vous</span>
           </footer>
@@ -101,6 +124,7 @@ function isEditable(target: EventTarget | null): boolean {
     }
     .cap__title { margin: 0; font: 600 14px 'Inter', sans-serif; }
     .cap__src { font-size: 12px; color: #9FB0C4; }
+    .cap__checked { font-size: 12px; color: var(--cg-accent); }
     .cap__toggle {
       margin-left: auto; background: none; border: 0; color: #9FB0C4; cursor: pointer;
       font: 12px 'Inter', sans-serif; padding: 4px 8px; border-radius: 4px;
@@ -117,10 +141,16 @@ function isEditable(target: EventTarget | null): boolean {
     .opt--other { grid-template-columns: 28px minmax(0, 1fr); }
     .opt:focus-visible, .cap__toggle:focus-visible { outline: 2px solid var(--cg-accent); outline-offset: -2px; }
     .key {
-      width: 24px; height: 24px; border-radius: 4px; display: grid; place-items: center;
+      width: 24px; height: 24px; border-radius: 4px; display: grid; place-items: center; position: relative;
       background: rgba(255, 255, 255, .07); border: 1px solid color-mix(in srgb, var(--cg-divider) 14%, transparent);
       font: 600 12px 'JetBrains Mono', monospace;
     }
+    .box {
+      position: absolute; top: -6px; left: -6px; width: 14px; height: 14px; border-radius: 3px;
+      display: grid; place-items: center; font-size: 10px; line-height: 1; color: var(--cg-navy-2);
+      background: var(--cg-navy-2); border: 1px solid var(--cg-divider);
+    }
+    .box--on { background: var(--cg-accent); border-color: var(--cg-accent); }
     .body { display: grid; gap: 4px; min-width: 0; }
     .t { font-weight: 600; font-size: 14px; }
     .why { font-size: 12px; color: #9FB0C4; line-height: 1.45; }
@@ -150,22 +180,29 @@ export class TerminalNextStepsComponent {
   /** Identité du tour (id du message) : un nouveau tour rouvre le panneau. */
   readonly turnKey = input<string | null>(null);
 
-  /** Une option choisie : sa demande, à poser dans la saisie — sans envoi. */
+  /** Les options cochées : leur enchaînement, à poser dans la saisie — sans envoi (vide ⇒ tout décoché). */
   readonly pick = output<string>();
-  /** « Autre chose » : donner la main à la saisie. */
+  /** « Autre chose », ou Entrée après avoir coché : donner la main à la saisie. */
   readonly other = output<void>();
 
   readonly shown = computed(() => (this.steps() ?? []).slice(0, MAX_NEXT_STEPS));
   readonly hidden = signal(false);
-  readonly selected = signal<number | null>(null);
-  readonly collapsed = computed(() => this.hidden() || (this.draft() ?? '').trim().length > 0);
+  /** Les index cochés, dans l'ordre d'affichage. */
+  readonly checked = signal<number[]>([]);
+  /** Le dernier texte posé dans la saisie par le panneau : tant qu'elle le vaut, il reste ouvert. */
+  private readonly written = signal<string | null>(null);
+  readonly collapsed = computed(() => {
+    const draft = (this.draft() ?? '').trim();
+    return this.hidden() || (draft.length > 0 && draft !== (this.written() ?? '').trim());
+  });
 
   constructor() {
     // Un nouveau tour : panneau rouvert, rien de sélectionné.
     effect(() => {
       this.turnKey();
       this.hidden.set(false);
-      this.selected.set(null);
+      this.checked.set([]);
+      this.written.set(null);
     });
   }
 
@@ -177,13 +214,22 @@ export class TerminalNextStepsComponent {
     return nextStepTone(value);
   }
 
-  choose(index: number): void {
-    const step = this.shown()[index];
-    if (!step) {
+  isChecked(index: number): boolean {
+    return this.checked().includes(index);
+  }
+
+  /** Coche ou décoche une suite, puis pose l'enchaînement des cochées dans la saisie. */
+  toggle(index: number): void {
+    if (!this.shown()[index]) {
       return;
     }
-    this.selected.set(index);
-    this.pick.emit(step.request);
+    const next = this.isChecked(index)
+      ? this.checked().filter((i) => i !== index)
+      : [...this.checked(), index].sort((a, b) => a - b);
+    this.checked.set(next);
+    const text = composeNextSteps(next.map((i) => this.shown()[i].request));
+    this.written.set(text);
+    this.pick.emit(text);
   }
 
   hide(): void {
@@ -204,6 +250,12 @@ export class TerminalNextStepsComponent {
         || isEditable(event.target) || !this.focusIsHere()) {
       return;
     }
+    // Entrée après avoir coché : la main à la saisie (pour relire puis envoyer) — et non une coche de plus.
+    if (event.key === 'Enter' && this.checked().length > 0) {
+      event.preventDefault();
+      this.other.emit();
+      return;
+    }
     if (event.key === 'Escape') {
       event.preventDefault();
       this.hide();
@@ -212,7 +264,7 @@ export class TerminalNextStepsComponent {
     const index = Number.parseInt(event.key, 10) - 1;
     if (Number.isInteger(index) && index >= 0 && index < this.shown().length && event.key.length === 1) {
       event.preventDefault();
-      this.choose(index);
+      this.toggle(index);
     }
   }
 
