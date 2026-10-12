@@ -497,6 +497,8 @@ export interface AtelierPersistedTranscript {
   costEur?: string;
   /** Les suites proposées par l'agent (F-192 / SF-192-01), relues au rechargement. */
   nextSteps?: AtelierNextStep[];
+  /** L'avancement du chantier guidé ouvert au moment des suites (F-196 / SF-196-01), sinon absent. */
+  nextStepsChantier?: AtelierNextStepsChantier | null;
 }
 
 /**
@@ -613,6 +615,8 @@ export interface AtelierStreamDone {
    * Absent (backend antérieur) ou vide ⇒ aucun panneau.
    */
   nextSteps?: AtelierNextStep[];
+  /** L'avancement du chantier guidé ouvert (F-196 / SF-196-01) ; absent/`null` hors chantier ouvert. */
+  nextStepsChantier?: AtelierNextStepsChantier | null;
 }
 
 /** Nature d'une suite proposée (F-192) : quatre mots, toujours les mêmes, pour lire vite. */
@@ -627,6 +631,25 @@ export interface AtelierNextStep {
   why: string;
   label: AtelierNextStepLabel;
   request: string;
+  /**
+   * Rattachement validé par la gateway (F-196 / SF-196-01), en chantier guidé ouvert seulement :
+   * une étape du plan, ou un approfondissement hors plan. Absent en Libre.
+   */
+  scope?: AtelierNextStepScope;
+  /** Numéro (1…) de l'étape du plan réel, pour une suite `CHANTIER`. */
+  stepIndex?: number;
+  /** Titre court de cette étape, lu dans le plan réel. */
+  stepTitle?: string;
+}
+
+/** Rattachement d'une suite au chantier (F-196). */
+export type AtelierNextStepScope = 'CHANTIER' | 'APPROFONDISSEMENT';
+
+/** L'avancement du chantier guidé ouvert (F-196 / SF-196-01) : étapes faites ou vérifiées / total. */
+export interface AtelierNextStepsChantier {
+  number: number;
+  done: number;
+  total: number;
 }
 
 /** L'envoi est devenu une précision du tour qui tournait déjà (F-84 / SF-84-06). */

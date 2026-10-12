@@ -1,7 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { AtelierNextStep } from '../../core/models/atelier.models';
-import { TerminalNextStepsComponent, composeNextSteps, nextStepLabel, nextStepTone } from './terminal-next-steps.component';
+import { AtelierNextStep, AtelierNextStepsChantier } from '../../core/models/atelier.models';
+import {
+  TerminalNextStepsComponent, composeNextSteps, nextStepLabel, nextStepScopeLabel, nextStepTone, remainingStepsText,
+} from './terminal-next-steps.component';
 
 /** F-192 / SF-192-02 — le panneau « Et maintenant ? ». */
 describe('TerminalNextStepsComponent', () => {
@@ -156,5 +158,75 @@ describe('TerminalNextStepsComponent', () => {
   it('compose : rien ⇒ vide, une ⇒ telle quelle', () => {
     expect(composeNextSteps([])).toBe('');
     expect(composeNextSteps(['Ouvre la PR.'])).toBe('Ouvre la PR.');
+  });
+});
+
+/** F-196 / SF-196-02 — le panneau au service du chantier. */
+describe('TerminalNextStepsComponent — chantier guidé', () => {
+  const anchored: AtelierNextStep[] = [
+    {
+      title: 'Policy NAP', why: 'Étape 2 à faire', label: 'CONTINUER', request: 'Applique la policy NAP.',
+      scope: 'CHANTIER', stepIndex: 2, stepTitle: 'Appliquer la policy NAP V12',
+    },
+    { title: 'Rétention KMS', why: 'Vu dans les logs', label: 'RISQUE', request: 'Regarde KMS.', scope: 'APPROFONDISSEMENT' },
+  ];
+
+  let fixture: ComponentFixture<TerminalNextStepsComponent>;
+  let picked: string[];
+
+  const root = (): HTMLElement => fixture.nativeElement as HTMLElement;
+  const options = (): NodeListOf<HTMLButtonElement> => root().querySelectorAll('.opt:not(.opt--other)');
+
+  function render(chantier: AtelierNextStepsChantier | null, steps: AtelierNextStep[] = anchored): void {
+    TestBed.configureTestingModule({ imports: [TerminalNextStepsComponent] });
+    fixture = TestBed.createComponent(TerminalNextStepsComponent);
+    picked = [];
+    fixture.componentInstance.pick.subscribe((request) => picked.push(request));
+    fixture.componentRef.setInput('steps', steps);
+    fixture.componentRef.setInput('chantier', chantier);
+    fixture.componentRef.setInput('turnKey', 'm1');
+    fixture.detectChanges();
+  }
+
+  it('montre l’avancement et l’étape de chaque suite', () => {
+    render({ number: 1, done: 3, total: 10 });
+    expect(root().querySelector('.cap__chantier')?.textContent).toContain('Chantier : 3/10 étapes');
+    expect(options()[0].querySelector('.scope')?.textContent).toContain('Étape 2 · Appliquer la policy NAP V12');
+    const deep = options()[1].querySelector('.scope');
+    expect(deep?.textContent).toContain('Hors plan · approfondissement');
+    expect(deep?.getAttribute('data-scope')).toBe('APPROFONDISSEMENT');
+  });
+
+  it('cocher un approfondissement prévient sans rien empêcher', () => {
+    render({ number: 1, done: 3, total: 10 });
+    expect(root().querySelector('.cap__warn')).toBeNull();
+    options()[1].click();
+    fixture.detectChanges();
+    expect(picked).toEqual(['Regarde KMS.']);
+    const warn = root().querySelector('.cap__warn');
+    expect(warn?.textContent).toContain("Le chantier n'est pas terminé : il reste 7 étapes");
+    expect(warn?.getAttribute('role')).toBe('status');
+  });
+
+  it('cocher une étape du plan ne prévient pas', () => {
+    render({ number: 1, done: 3, total: 10 });
+    options()[0].click();
+    fixture.detectChanges();
+    expect(root().querySelector('.cap__warn')).toBeNull();
+  });
+
+  it('sans avancement (Libre, clos) : aucune étiquette, aucun en-tête, aucun avertissement', () => {
+    render(null);
+    expect(root().querySelector('.cap__chantier')).toBeNull();
+    expect(root().querySelector('.scope')).toBeNull();
+    options()[1].click();
+    fixture.detectChanges();
+    expect(root().querySelector('.cap__warn')).toBeNull();
+  });
+
+  it('dit l’étape sans titre et accorde le singulier', () => {
+    expect(nextStepScopeLabel({ ...anchored[0], stepTitle: undefined }, true)).toBe('Étape 2');
+    expect(nextStepScopeLabel(anchored[0], false)).toBeNull();
+    expect(remainingStepsText(1)).toBe("Le chantier n'est pas terminé : il reste 1 étape");
   });
 });

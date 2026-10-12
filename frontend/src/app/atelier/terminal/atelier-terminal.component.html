@@ -1360,6 +1360,7 @@
     @if (nextStepsOfTurn().length > 0) {
       <app-terminal-next-steps
         [steps]="nextStepsOfTurn()"
+        [chantier]="nextStepsChantierOfTurn()"
         [draft]="draft"
         [turnKey]="lastTurnId()"
         (pick)="onNextStepPick($event)"
