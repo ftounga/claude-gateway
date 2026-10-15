@@ -1497,6 +1497,9 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.loadHistory(workspace.id);
     this.loadResumeState(workspace.id);
     this.refreshTree(workspace.id);
+    // F-198 / SF-198-02 : si le rebranchement dit « rien ne tourne », le fil est relu une fois — un
+    // tour fini entre la lecture de l'historique et le rebranchement n'est pas perdu (voir `onIdle`).
+    this.reloadOnIdleFor = workspace.id;
     // Un tour peut très bien être EN COURS sur ce projet, lancé avant l'ouverture de cet écran
     // (F-84 / SF-84-02) : on s'y rebranche plutôt que de faire comme s'il n'existait pas.
     this.reattachTurn(workspace.id);
@@ -3554,7 +3557,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
    */
   private reattachTurn(id: string): void {
     this.detachTurn();
-    const handlers = this.attachHandlers(id, this.openTurnGate());
+    // F-198 / SF-198-01 : un rebranchement n'écrit que dans le sujet qui l'a ouvert.
+    const handlers = this.forThisSubject(this.attachHandlers(id, this.openTurnGate()));
     this.turnAttach = this.atelier.attachTurn(id, 0, handlers);
     // Même sonde qu'à l'envoi (F-84 / SF-84-04) : l'aparté `attached` — ou `idle` — part tout de
     // suite. S'il n'arrive pas, le rebranchement est retenu : on l'abandonne pour des fenêtres.
@@ -3603,6 +3607,28 @@ export class AtelierComponent implements OnInit, OnDestroy {
     }
     this.turnCursor = seq;
     return true;
+  }
+
+  /**
+   * Sujet dont le fil doit être relu au premier `idle` du rebranchement (F-198 / SF-198-02), ou
+   * `null`. Posé à l'ouverture d'un sujet, consommé une fois.
+   */
+  private reloadOnIdleFor: string | null = null;
+
+  /**
+   * Retour sur un sujet (F-198 / SF-198-02) : `idle` prouve que rien ne tourne plus. L'historique
+   * lu à l'ouverture a pu partir AVANT la fin d'un tour achevé pendant l'absence ; on le relit une
+   * fois, avec l'arborescence, pour que l'écran soit l'état serveur — sans F5.
+   */
+  private reloadAfterIdle(id: string): void {
+    if (this.reloadOnIdleFor !== id || !this.isDisplayed(id)) {
+      return;
+    }
+    this.reloadOnIdleFor = null;
+    this.zone.run(() => {
+      this.loadHistory(id);
+      this.refreshTree(id);
+    });
   }
 
   /** Le flux passe : la sonde se tait. `started` dit en plus que la demande est prise en main. */
@@ -3831,6 +3857,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
           if (generation !== this.turnGeneration) {
             return;
           }
+          // F-198 / SF-198-02 : un tour vivant — c'est sa fin (`done`) qui relira le fil.
+          this.reloadOnIdleFor = null;
           this.markTurnHeard(false);
           this.submitting.set(true);
           this.streaming.set({ steps: [], text: '' });
@@ -3858,6 +3886,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
         if (generation === this.turnGeneration) {
           this.turnHeard = true;
           this.clearStreamProbe();
+          this.reloadAfterIdle(id);
         }
       },
       onStarted: () => this.zone.run(() => this.markTurnHeard(true)),

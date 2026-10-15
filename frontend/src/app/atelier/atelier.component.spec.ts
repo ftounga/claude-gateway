@@ -1125,6 +1125,106 @@ describe('AtelierComponent', () => {
     });
   });
 
+  // F-198 / SF-198-02 — revenir sur un sujet : l'écran est l'état serveur, sans F5.
+  describe('revenir sur un sujet (F-198 / SF-198-02)', () => {
+    const other: WorkspaceSummary = {
+      id: 'w9', name: 'autre', createdAt: '2026-10-16T00:00:00Z', source: 'ARCHIVE', gitRepo: null,
+    };
+    const msg = (id: string, content: string): AtelierMessage =>
+      ({ id, role: 'ASSISTANT', content, createdAt: '2026-10-16T00:00:00Z' }) as AtelierMessage;
+
+    /** Capture les handlers de chaque rebranchement, par sujet. */
+    function captureAttaches(): Map<string, AtelierStreamHandlers[]> {
+      const byId = new Map<string, AtelierStreamHandlers[]>();
+      service.attachTurn.and.callFake((id, _cursor, given) => {
+        byId.set(id, [...(byId.get(id) ?? []), given]);
+        return new AbortController();
+      });
+      return byId;
+    }
+
+    const historyCalls = (id: string): number =>
+      service.getHistory.calls.allArgs().filter(([given]) => given === id).length;
+
+    it('va-et-vient A↔B pendant un tour de A : B au repos, retour sur A rattaché au tour vivant', () => {
+      setup();
+      const attaches = captureAttaches();
+      service.getHistory.and.callFake((id: string) =>
+        of([msg(`${id}-1`, id === 'w1' ? 'fil de A' : 'fil de B')]));
+
+      component.selectWorkspace(summary);
+      attaches.get('w1')![0].onAttached?.({ turnId: 't1', cursor: 3, startedAt: Date.now() - 5_000 });
+      expect(component.submitting()).toBeTrue();
+
+      component.selectWorkspace(other);
+      attaches.get('w9')![0].onIdle?.();
+      expect(component.submitting()).toBeFalse();
+      expect(component.execStreaming()).toBeNull();
+      expect(component.messages().map((m) => m.content)).toEqual(['fil de B']);
+
+      component.selectWorkspace(summary);
+      const back = attaches.get('w1')![1];
+      expect(service.attachTurn.calls.mostRecent().args.slice(0, 2)).toEqual(['w1', 0]);
+      back.onAttached?.({ turnId: 't1', cursor: 3, startedAt: Date.now() - 20_000 });
+      expect(component.submitting()).toBeTrue();
+      expect(component.messages().map((m) => m.content)).toEqual(['fil de A']);
+
+      service.getHistory.and.returnValue(of([msg('w1-1', 'fil de A'), msg('w1-2', 'réponse de A')]));
+      back.onDone({ reply: 'réponse de A', actions: [], messageId: 'w1-2' });
+
+      expect(component.submitting()).toBeFalse();
+      expect(component.messages().map((m) => m.content)).toEqual(['fil de A', 'réponse de A']);
+    });
+
+    it('le tour de A s\'est fini pendant l\'absence : au retour, le fil est relu une fois', () => {
+      setup();
+      const attaches = captureAttaches();
+      component.selectWorkspace(summary);
+      component.selectWorkspace(other);
+      // L'historique lu à l'ouverture précède la fin du tour : il est encore sans la réponse.
+      service.getHistory.and.returnValue(of([msg('a1', 'question')]));
+      component.selectWorkspace(summary);
+      expect(component.messages().map((m) => m.content)).toEqual(['question']);
+      const before = historyCalls('w1');
+
+      service.getHistory.and.returnValue(of([msg('a1', 'question'), msg('a2', 'réponse finie')]));
+      attaches.get('w1')![1].onIdle?.();
+
+      expect(historyCalls('w1')).toBe(before + 1);
+      expect(component.messages().map((m) => m.content)).toEqual(['question', 'réponse finie']);
+
+      attaches.get('w1')![1].onIdle?.();
+      expect(historyCalls('w1')).withContext('une seule relecture par ouverture').toBe(before + 1);
+    });
+
+    it('l\'idle du rebranchement de A, arrivé après B, ne relit ni n\'écrit rien', () => {
+      setup();
+      const attaches = captureAttaches();
+      component.selectWorkspace(summary);
+      service.getHistory.and.returnValue(of([msg('b1', 'fil de B')]));
+      component.selectWorkspace(other);
+      const before = historyCalls('w1');
+
+      attaches.get('w1')![0].onIdle?.();
+
+      expect(historyCalls('w1')).toBe(before);
+      expect(component.messages().map((m) => m.content)).toEqual(['fil de B']);
+    });
+
+    it('un tour vivant au retour : pas de relecture sur idle, c\'est sa fin qui relit le fil', () => {
+      setup();
+      const attaches = captureAttaches();
+      component.selectWorkspace(summary);
+      const handlers = attaches.get('w1')![0];
+      handlers.onAttached?.({ turnId: 't1', cursor: 1, startedAt: Date.now() });
+      const before = historyCalls('w1');
+
+      handlers.onIdle?.();
+
+      expect(historyCalls('w1')).toBe(before);
+    });
+  });
+
   describe('aperçu vivant (F-76)', () => {
     it('dit qu’il attend une autorisation, dès qu’il l’affiche', () => {
       setup();
