@@ -346,6 +346,8 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     if (value !== previous) {
       // F-193 : Plume appartient au terminal ouvert ; changer de terminal le referme.
       this.closePlume();
+      // F-198 / SF-198-01 : l'historique révélé l'était pour le terminal quitté ; le suivant repart replié.
+      this.historyRevealed.set(false);
     }
     if (value && value !== previous) {
       this.loadActionCount(value);

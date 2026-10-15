@@ -99,6 +99,7 @@ import {
   AtelierRole,
   AtelierStreamAction,
   AtelierStreamDone,
+  AtelierAgentStreamHandlers,
   AtelierStreamHandlers,
   AtelierSteerQueued,
   AtelierTurnFollower,
@@ -144,6 +145,7 @@ import {
 import { derivePreview } from './terminal/terminal-preview';
 import { SessionBilanPanelComponent } from './terminal/session-bilan-panel.component';
 import { RADAR_DRAFT_STATE, radarDraftFrom } from '../shared/radar-draft';
+import { guardHandlers } from './displayed-subject';
 
 // Les types et constantes du fil vivent dans `atelier.types` (F-30 SF-30-07) : la vue terminal les
 // consomme aussi, et les garder ici créerait une dépendance circulaire. Réexportés pour compatibilité.
@@ -1473,6 +1475,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
       this.handoffOrigin.set(null);
     }
     this.activeWorkspaceId.set(workspace.id);
+    // F-198 / SF-198-01 : tout ce qui était vivant à l'écran appartenait au sujet quitté.
+    this.resetTurnState();
     this.messages.set([]);
     // F-131 / SF-131-01 : le filet « réponse non reçue » et la dernière requête appartiennent au
     // projet quitté — les garder proposerait de rejouer une demande d'un autre client.
@@ -1500,12 +1504,61 @@ export class AtelierComponent implements OnInit, OnDestroy {
 
   private loadHistory(id: string): void {
     this.atelier.getHistory(id).subscribe({
-      next: (history) =>
+      next: (history) => {
+        // F-198 / SF-198-01 : la réponse d'un sujet quitté n'écrit jamais dans le sujet affiché.
+        if (!this.isDisplayed(id)) {
+          return;
+        }
         // Les tours Terminal restituent leur transcription (F-30 SF-30-09) : sans elle, recharger la
         // page vidait l'écran alors que la sandbox, elle, gardait son état.
-        this.messages.set(history.map((m) => toThreadItem(m))),
-      error: () => this.notifyError("Impossible de charger l'historique de conversation."),
+        this.messages.set(history.map((m) => toThreadItem(m)));
+      },
+      error: () => {
+        if (this.isDisplayed(id)) {
+          this.notifyError("Impossible de charger l'historique de conversation.");
+        }
+      },
     });
+  }
+
+  /** Vrai si `id` est le sujet affiché (F-198 / SF-198-01) : la garde de toute réponse asynchrone. */
+  private isDisplayed(id: string): boolean {
+    return this.activeWorkspaceId() === id;
+  }
+
+  /**
+   * Époque d'affichage (F-198 / SF-198-01) : incrémentée à chaque changement de sujet. Un flux
+   * d'émission lancé avant n'a plus le droit d'écrire à l'écran — voir {@link guardHandlers}.
+   */
+  private displayEpoch = 0;
+
+  /** Enveloppe les rappels d'un flux lancé maintenant : muets dès que le sujet affiché change. */
+  private forThisSubject<T extends object>(handlers: T): T {
+    const epoch = this.displayEpoch;
+    return guardHandlers(handlers, () => epoch === this.displayEpoch);
+  }
+
+  /**
+   * Remet à zéro tout l'état de tour (F-198 / SF-198-01). Appelé au changement de sujet : le
+   * spinner, le chrono, la ligne vivante, une autorisation ou une question en attente, les blocs du
+   * tour, les précisions différées, l'invite de plan… appartenaient tous au sujet quitté. Le tour de
+   * ce sujet, lui, continue côté serveur : rien n'est interrompu ni abandonné là-bas.
+   */
+  private resetTurnState(): void {
+    this.displayEpoch += 1;
+    this.detachTurn();
+    this.submitting.set(false);
+    this.interrupting.set(false);
+    this.replaying.set(false);
+    this.endTurnDisplay();
+    this.execElapsedSeconds.set(0);
+    this.cardsOfTurn = [];
+    this.deferredPrecisions = [];
+    this.planAwaitingApproval.set(false);
+    this.carriedPlan.set([]);
+    this.compactingNow.set(false);
+    this.compactionMarker.set(null);
+    this.bilanReport.set(null);
   }
 
   /**
@@ -1515,6 +1568,10 @@ export class AtelierComponent implements OnInit, OnDestroy {
   private loadResumeState(id: string): void {
     this.atelier.getResume(id).subscribe({
       next: (resume) => {
+        // F-198 / SF-198-01 : la reprise d'un sujet quitté ne s'applique pas au sujet affiché.
+        if (!this.isDisplayed(id)) {
+          return;
+        }
         this.resumeTurns.set(resume.turns);
         this.resumeLastMessageAt.set(resume.lastMessageAt);
         this.resumeChoice.set(resume.prompt === 'IDLE');
@@ -1528,7 +1585,11 @@ export class AtelierComponent implements OnInit, OnDestroy {
         this.carriedPlan.set(resume.plan ?? []);
         this.planAwaitingApproval.set(false);
       },
-      error: () => this.resumeChoice.set(false),
+      error: () => {
+        if (this.isDisplayed(id)) {
+          this.resumeChoice.set(false);
+        }
+      },
     });
   }
 
@@ -1624,13 +1685,21 @@ export class AtelierComponent implements OnInit, OnDestroy {
   private refreshTree(id: string): void {
     this.atelier.getWorkspace(id).subscribe({
       next: (detail) => {
+        // F-198 / SF-198-01 : l'arborescence d'un sujet quitté ne remplace pas celle du sujet affiché.
+        if (!this.isDisplayed(id)) {
+          return;
+        }
         this.tree.set(detail.files);
         this.activeDetail.set(detail);
         this.loadEngine(detail);
         // Le statut runner n'a de sens qu'en cible RUNNER : le sondage suit la cible du projet.
         this.syncRunnerPolling();
       },
-      error: () => this.notifyError("Impossible de charger l'arborescence du projet."),
+      error: () => {
+        if (this.isDisplayed(id)) {
+          this.notifyError("Impossible de charger l'arborescence du projet.");
+        }
+      },
     });
   }
 
@@ -1804,7 +1873,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
     let handoffOfTurn: AtelierSubjectHandoff | null = null;
     const steerHandlers = this.steerHandlers();
 
-    const handlers: AtelierStreamHandlers = {
+    // F-198 / SF-198-01 : muets dès que l'utilisateur change de sujet — le tour continue là-bas.
+    const handlers: AtelierStreamHandlers = this.forThisSubject<AtelierStreamHandlers>({
       acceptSeq: (seq) => this.acceptTurnSeq(generation, seq),
       ...steerHandlers,
       onSteered: (steered) =>
@@ -2049,7 +2119,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
       // flux retenu n'a rien livré. Sans ce filet (F-131), l'écran restait en spinner ; désormais
       // il bascule sur « réponse non reçue — Rejouer ? ».
       onIdle: () => this.zone.run(() => this.showUnanswered(generation)),
-    };
+    });
     // F-169 / SF-169-02 : les dépôts joints à CE message (première demande du tour) partent avec la
     // requête ; le backend les associe exactement à ce message. Une précision (steer) n'en porte pas.
     void this.atelier.streamChat(id, content, handlers, this.mode(), force, attachments.ids);
@@ -3290,7 +3360,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.execStreaming.set({ status: '', blocks: [], text: '', tokens: null, plan: [] });
     this.startExecTimer();
 
-    void this.atelier.streamAgent(id, content, {
+    // F-198 / SF-198-01 : la session du sujet quitté n'écrit plus dans le sujet affiché.
+    void this.atelier.streamAgent(id, content, this.forThisSubject<AtelierAgentStreamHandlers>({
       onStatus: (state) =>
         this.zone.run(() => {
           this.execStreaming.update((current) => (current ? { ...current, status: state } : current));
@@ -3369,7 +3440,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
           this.messages.update((current) => current.filter((m) => m.id !== userItem.id));
           this.notifyError(this.mapAgentError(code));
         }),
-    });
+    }));
   }
 
   /** Traduit un code d'erreur du flux Terminal en message utilisateur lisible (SF-28-11). */

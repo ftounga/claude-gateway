@@ -3206,4 +3206,15 @@ describe('AtelierTerminalComponent', () => {
       expect(line).not.toContain('étape');
     });
   });
+
+  // F-198 / SF-198-01 : l'historique révélé appartient au terminal ouvert.
+  it('changer de terminal replie l\'historique révélé du précédent', () => {
+    component.projectId = 'w1';
+    component.toggleHistory();
+    expect(component.historyRevealed()).toBeTrue();
+
+    component.projectId = 'w2';
+
+    expect(component.historyRevealed()).toBeFalse();
+  });
 });
