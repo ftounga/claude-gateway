@@ -36,6 +36,7 @@ import { ProjectCostComponent } from '../../shared/project-cost/project-cost.com
 import { ProjectCostService } from '../../core/services/project-cost.service';
 import { TerminalNextStepsComponent } from './terminal-next-steps.component';
 import { PlumeView, TerminalPlumeComponent } from './terminal-plume.component';
+import { TerminalBarTier, terminalBarTier } from './terminal-bar-tier';
 import { PlumeService } from '../../core/services/plume.service';
 import { HttpErrorResponse } from '@angular/common/http';
 import { AtelierNextStep, AtelierNextStepsChantier } from '../../core/models/atelier.models';
@@ -311,6 +312,9 @@ export function plumeErrorMessage(failure: HttpErrorResponse | null | undefined)
     // F-193 / SF-193-02 : le bouton « ✨ Enrichir » et la zone multiligne de Plume, à part pour la
     // même raison de budget de build (12 ko). Avant la feuille mobile, qui doit rester la dernière.
     './atelier-terminal-plume.component.scss',
+    // F-200 / SF-200-01 : l'en-tête à paliers sur écran de portable (fil sur une ligne, rien ne se
+    // chevauche), à part pour la même raison de budget de build. Avant la feuille mobile.
+    './atelier-terminal-header.component.scss',
     // QUATORZE FEUILLES (F-151 / SF-151-03) : le confort au doigt de la barre du terminal (barre
     // d'en-tête et actions qui passent à la ligne sous 819 px, boutons de décision au pouce) vit à
     // part, pour la même raison de budget de build (12 ko) de la feuille principale.
@@ -2022,8 +2026,33 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
       : null;
   }
 
+  // ------------------------------------------------- F-200 / SF-200-01 : en-tête à paliers
+  /**
+   * **Largeur réelle de l'en-tête** (F-200 / SF-200-01), relevée par un `ResizeObserver` sur l'hôte —
+   * pas la fenêtre : le terminal peut vivre dans une grille. 0 = inconnue (rendu complet historique).
+   * Un signal, pour que les tests posent une largeur sans layout.
+   */
+  readonly barWidth = signal(0);
+
+  /** Palier de l'en-tête : complet, compact (actions secondaires sous ⋯) ou téléphone. */
+  readonly barTier = computed<TerminalBarTier>(() => terminalBarTier(this.barWidth(), this.isNarrow()));
+
+  private readonly barResize: ResizeObserver | null =
+    typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver((entries) => this.onBarResize(entries[entries.length - 1]?.contentRect.width ?? 0));
+
+  /** Relevé du `ResizeObserver` : seul le PALIER compte — pas de rendu à chaque pixel. */
+  onBarResize(width: number): void {
+    if (terminalBarTier(width, false) !== terminalBarTier(this.barWidth(), false)) {
+      this.barWidth.set(width);
+      this.changeDetector.markForCheck();
+    }
+  }
+
   constructor() {
     this.narrowQuery?.addEventListener('change', this.onNarrowChange);
+    this.barResize?.observe(this.hostElement.nativeElement);
   }
 
   /** Image courante du spinner ; seule la ligne vivante la lit. */
@@ -2048,6 +2077,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     this.stopSpinner();
     this.releaseClock();
     this.narrowQuery?.removeEventListener('change', this.onNarrowChange);
+    this.barResize?.disconnect();
   }
 
   private startSpinner(): void {

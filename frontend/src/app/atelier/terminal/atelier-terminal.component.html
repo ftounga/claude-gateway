@@ -28,20 +28,20 @@
        actions — tout cela sert à AGIR, et on n'agit pas depuis une tuile. -->
   @if (!readOnly) {
     <!-- En-tête : identité du projet + actions. Rien d'autre ne subsiste de l'écran Atelier. -->
-    <header class="terminal-bar">
+    <header class="terminal-bar" [class.terminal-bar--compact]="barTier() === 'compact' || barTier() === 'tight'" [class.terminal-bar--tight]="barTier() === 'tight'">
       <!-- OÙ L'ON EST, et CHEZ QUI (F-68 / SF-68-01) — « Forge › CAGIP › mon-projet ».
            La barre disait déjà le poste puis le projet ; le fil d'Ariane ajoute l'ancêtre qui
            manquait depuis que l'onglet « Postes » a disparu, et rend les niveaux cliquables. Rien
            n'est retiré : le niveau du poste EST la pastille d'identité de SF-49-03 (initiales sur la
            couleur dérivée du nom, nom écrit à côté), et l'état de mission de F-60 la suit toujours,
            toujours seulement quand il n'est pas « En cours ». -->
-      <app-forge-breadcrumb class="terminal-crumbs" [crumbs]="crumbs()" [root]="teamsTerminal ? 'vigie' : 'forge'"></app-forge-breadcrumb>
+      <app-forge-breadcrumb class="terminal-crumbs forge-crumbs--one-line" [crumbs]="crumbs()" [root]="teamsTerminal ? 'vigie' : 'forge'"></app-forge-breadcrumb>
       <!-- Dossier de la machine (F-38 / SF-38-16) : dit OÙ le travail a lieu, une fois le runner
            appairé. Rien n'est affiché tant qu'aucune machine ne l'a déclaré. -->
       @if (localFolder) {
         <span class="terminal-folder" [title]="'Dossier sur votre machine : ' + localFolder">
           <mat-icon>folder</mat-icon>
-          {{ localFolder }}
+          <span class="terminal-bar-label">{{ localFolder }}</span>
         </span>
       }
       <!-- F-133 / SF-133-15 — LE BUDGET DE LA SEMAINE de ce client, dans la barre. Le coût de
@@ -60,9 +60,10 @@
         [class.badge--success]="engine === 'LOCAL_MACHINE' && runnerStatus?.connected === true"
         [class.badge--error]="engine === 'LOCAL_MACHINE' && runnerStatus !== null && runnerStatus.connected === false"
         [class.badge--neutral]="engine !== 'LOCAL_MACHINE' || runnerStatus === null"
+        [attr.title]="engineLabel()"
       >
         <mat-icon class="engine-chip-icon">{{ engineIcon() }}</mat-icon>
-        {{ engineLabel() }}
+        <span class="terminal-bar-label">{{ engineLabel() }}</span>
       </span>
       <!-- SIGNE DE VIE (F-70 / SF-70-01) : une pastille ET le mot « connecté ». Le MÊME signe se
            retrouve sur la carte du poste — c'est la décision du PO, et c'est ce qui permet de voir
@@ -110,7 +111,10 @@
              Sur mobile (isNarrow), ces mêmes actions sont déplacées dans le menu ⋯ ci-dessous :
              aucune n'est supprimée, chacune est seulement déplacée. Le bandeau desktop reste rendu
              tel quel dès que isNarrow() est faux (≥ 820 px, et Karma 1440 px). -->
-        @if (!isNarrow()) {
+        <!-- PALIERS (F-200 / SF-200-01) : le bandeau complet n'est rendu que si l'en-tête a la place
+             (`barTier()`, largeur RÉELLE de l'en-tête). Sinon : palier compact (actions primaires en
+             clair, secondaires sous ⋯) ou téléphone (tout sous ⋯, F-158). -->
+        @if (barTier() === 'full') {
         @if (instructionsPath) {
           <!-- Instructions du projet (F-34 / SF-34-02) : l'agent les suit depuis l'ouverture de la
                session ; le dire ici évite de croire à un comportement inexpliqué. -->
@@ -124,43 +128,7 @@
             {{ instructionsPath }}
           </button>
         }
-        <!-- LES ACTIONS À FAIRE (F-154 / SF-154-03) : ce que l'utilisateur doit faire, LUI, pour
-             qu'un tour bloqué reprenne. ABSENTE À ZÉRO — une pastille à zéro est un bruit permanent
-             qui apprend à ne plus la regarder. -->
-        @if (pendingActions() > 0) {
-          <button
-            mat-button
-            type="button"
-            class="terminal-todo"
-            matTooltip="Ce que vous devez faire pour débloquer le travail"
-            [attr.aria-label]="pendingActions() + ' action(s) à faire'"
-            (click)="openActions()"
-          >
-            <mat-icon>pan_tool</mat-icon>
-            {{ pendingActions() }} à faire
-          </button>
-        }
-        <!-- Validation avant exécution (F-33 / SF-33-01) : le réglage vit ici, seul écran où l'agent
-             exécute réellement. L'icône dit l'état d'un coup d'œil. -->
-        <button
-          mat-button
-          type="button"
-          class="terminal-guard"
-          [class.active]="askBeforeBash"
-          [disabled]="togglingConfirmation"
-          [attr.aria-pressed]="askBeforeBash"
-          [matTooltip]="askBeforeBash
-            ? 'Chaque commande demande votre accord. Désactiver : ne plus jamais demander sur ce projet — l\'audit continue de tout consigner.'
-            : 'Ce projet ne demande plus d\'accord avant d\'exécuter. Activer : redemander à chaque commande.'"
-          (click)="toggleAskBeforeBash.emit()"
-        >
-          <mat-icon>{{ askBeforeBash ? 'shield' : 'security' }}</mat-icon>
-          @if (askBeforeBash) {
-            Validation activée
-          } @else {
-            Valider les commandes
-          }
-        </button>
+        <ng-container [ngTemplateOutlet]="barPrimaryActions"></ng-container>
         <button mat-button type="button" (click)="openFiles.emit()">
           <mat-icon>folder</mat-icon>
           Fichiers
@@ -221,6 +189,12 @@
           Quitter
         </button>
         } @else {
+          @if (barTier() !== 'narrow') {
+            <!-- PALIER COMPACT (F-200 / SF-200-01) : écran de portable. Restent en clair les actions
+                 qui DÉBLOQUENT ou PROTÈGENT le travail — « N à faire » et la Validation (Interrompre
+                 est déjà rendu plus haut pendant un run) ; tout le reste passe sous ⋯. -->
+            <ng-container [ngTemplateOutlet]="barPrimaryActions"></ng-container>
+          }
           <!-- MOBILE (< 820 px) — MENU ⋯ (F-158 / SF-158-12). Les actions secondaires du bandeau
                desktop, regroupées derrière un seul bouton pour dégager la barre : chaque entrée émet
                EXACTEMENT le même @Output que son bouton desktop. Aucune action n'est perdue. Le fil
@@ -242,27 +216,30 @@
                 <span>{{ instructionsPath }}</span>
               </button>
             }
-            @if (pendingActions() > 0) {
-              <button mat-menu-item type="button" (click)="openActions()">
-                <mat-icon>pan_tool</mat-icon>
-                <span>{{ pendingActions() }} à faire</span>
+            <!-- Au palier compact, « à faire » et la Validation sont déjà en clair dans la barre. -->
+            @if (barTier() === 'narrow') {
+              @if (pendingActions() > 0) {
+                <button mat-menu-item type="button" (click)="openActions()">
+                  <mat-icon>pan_tool</mat-icon>
+                  <span>{{ pendingActions() }} à faire</span>
+                </button>
+              }
+              <button
+                mat-menu-item
+                type="button"
+                class="terminal-guard"
+                [class.active]="askBeforeBash"
+                [disabled]="togglingConfirmation"
+                [attr.aria-pressed]="askBeforeBash"
+                [matTooltip]="askBeforeBash
+                  ? 'Chaque commande demande votre accord. Désactiver : ne plus jamais demander sur ce projet — l\'audit continue de tout consigner.'
+                  : 'Ce projet ne demande plus d\'accord avant d\'exécuter. Activer : redemander à chaque commande.'"
+                (click)="toggleAskBeforeBash.emit()"
+              >
+                <mat-icon>{{ askBeforeBash ? 'shield' : 'security' }}</mat-icon>
+                <span>{{ askBeforeBash ? 'Validation activée' : 'Valider les commandes' }}</span>
               </button>
             }
-            <button
-              mat-menu-item
-              type="button"
-              class="terminal-guard"
-              [class.active]="askBeforeBash"
-              [disabled]="togglingConfirmation"
-              [attr.aria-pressed]="askBeforeBash"
-              [matTooltip]="askBeforeBash
-                ? 'Chaque commande demande votre accord. Désactiver : ne plus jamais demander sur ce projet — l\'audit continue de tout consigner.'
-                : 'Ce projet ne demande plus d\'accord avant d\'exécuter. Activer : redemander à chaque commande.'"
-              (click)="toggleAskBeforeBash.emit()"
-            >
-              <mat-icon>{{ askBeforeBash ? 'shield' : 'security' }}</mat-icon>
-              <span>{{ askBeforeBash ? 'Validation activée' : 'Valider les commandes' }}</span>
-            </button>
             <button mat-menu-item type="button" (click)="openFiles.emit()">
               <mat-icon>folder</mat-icon>
               <span>Fichiers</span>
@@ -314,6 +291,49 @@
         }
       </span>
     </header>
+    <!-- ACTIONS PRIMAIRES DE LA BARRE (F-200 / SF-200-01) : écrites une fois, rendues au palier
+         complet comme au palier compact. -->
+    <ng-template #barPrimaryActions>
+        <!-- LES ACTIONS À FAIRE (F-154 / SF-154-03) : ce que l'utilisateur doit faire, LUI, pour
+             qu'un tour bloqué reprenne. ABSENTE À ZÉRO — une pastille à zéro est un bruit permanent
+             qui apprend à ne plus la regarder. -->
+        @if (pendingActions() > 0) {
+          <button
+            mat-button
+            type="button"
+            class="terminal-todo"
+            matTooltip="Ce que vous devez faire pour débloquer le travail"
+            [attr.aria-label]="pendingActions() + ' action(s) à faire'"
+            (click)="openActions()"
+          >
+            <mat-icon>pan_tool</mat-icon>
+            {{ pendingActions() }}<span class="terminal-bar-label"> à faire</span>
+          </button>
+        }
+        <!-- Validation avant exécution (F-33 / SF-33-01) : le réglage vit ici, seul écran où l'agent
+             exécute réellement. L'icône dit l'état d'un coup d'œil. -->
+        <button
+          mat-button
+          type="button"
+          class="terminal-guard"
+          [class.active]="askBeforeBash"
+          [disabled]="togglingConfirmation"
+          [attr.aria-pressed]="askBeforeBash"
+          [attr.aria-label]="askBeforeBash ? 'Validation activée' : 'Valider les commandes'"
+          [matTooltip]="askBeforeBash
+            ? 'Chaque commande demande votre accord. Désactiver : ne plus jamais demander sur ce projet — l\'audit continue de tout consigner.'
+            : 'Ce projet ne demande plus d\'accord avant d\'exécuter. Activer : redemander à chaque commande.'"
+          (click)="toggleAskBeforeBash.emit()"
+        >
+          <mat-icon>{{ askBeforeBash ? 'shield' : 'security' }}</mat-icon>
+          <!-- Au palier serré (F-200), le libellé s'efface : l'icône dit l'état, le nom accessible reste. -->
+          @if (askBeforeBash) {
+            <span class="terminal-bar-label">Validation activée</span>
+          } @else {
+            <span class="terminal-bar-label">Valider les commandes</span>
+          }
+        </button>
+    </ng-template>
     <!-- D'OÙ VIENT CE SUJET (F-179 / SF-179-02) : ouvert par la passation du terminal du poste. La phrase
          attend dans la saisie, rien n'est parti ; un geste pour revenir. -->
     @if (handoffFromName) {

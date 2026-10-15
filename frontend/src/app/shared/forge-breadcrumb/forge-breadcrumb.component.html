@@ -8,6 +8,7 @@
       class="forge-crumb"
       [class.forge-crumb--current]="last"
       [class.forge-crumb--host]="!!crumb.hostName"
+      [attr.title]="crumb.hostName ? null : crumb.label"
       [routerLink]="crumb.link"
       [fragment]="crumb.fragment ?? undefined"
       [queryParams]="crumb.queryParams ?? undefined"

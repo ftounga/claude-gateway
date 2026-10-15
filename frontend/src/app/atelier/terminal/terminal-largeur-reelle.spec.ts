@@ -6,6 +6,7 @@ import { provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 
 import { AtelierTerminalComponent } from './atelier-terminal.component';
+import { TERMINAL_BAR_FULL_MIN } from './terminal-bar-tier';
 import { MailService } from '../../core/services/mail.service';
 import { PagesService } from '../../core/services/pages.service';
 
@@ -202,6 +203,11 @@ describe('AtelierTerminalComponent — largeur réelle (F-158 / SF-158-10)', () 
       expect(fixture.componentInstance.isNarrow())
         .withContext('la fenêtre Karma (1440 px) doit être en mode desktop')
         .toBe(false);
+      // F-200 / SF-200-01 : le bandeau COMPLET dépend désormais de la largeur réelle de l'en-tête
+      // (paliers). On pose un en-tête de grand écran — sous ce seuil, voir
+      // `terminal-en-tete-paliers.spec.ts` (paliers compact / serré, menu ⋯ des actions secondaires).
+      host.style.width = `${TERMINAL_BAR_FULL_MIN}px`;
+      fixture.componentInstance.barWidth.set(TERMINAL_BAR_FULL_MIN);
       fixture.detectChanges();
       expect(host.querySelector('.terminal-overflow'))
         .withContext('aucun bouton ⋯ ne doit être rendu en desktop')
