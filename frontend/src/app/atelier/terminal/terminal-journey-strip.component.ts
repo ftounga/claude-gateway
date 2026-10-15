@@ -166,11 +166,11 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
             @if (p.awaitingValidation) {
               <div class="journey-plan__actions">
                 <span class="journey-plan__hint">
-                  {{ p.amendment ? 'Le plan validé a été modifié : rien ne change chez vous avant votre validation.' : 'Rien ne sera modifié avant votre validation.' }}
+                  {{ validationHint() }}
                 </span>
                 <span class="journey-card__actions">
                   <button mat-flat-button type="button" class="journey-plan__validate" [disabled]="busy()" (click)="gesture.emit('validate-plan')">
-                    {{ p.amendment ? 'Valider l\'amendement et reprendre' : 'Valider le plan et lancer' }}
+                    {{ validateLabel() }}
                   </button>
                   <button mat-button type="button" class="journey-plan__validate-only" [disabled]="busy()" (click)="gesture.emit('validate-plan-only')">Valider sans lancer</button>
                 </span>
@@ -507,6 +507,19 @@ export class TerminalJourneyStripComponent {
   readonly plan = computed(() => (this.guided() ? this.journey()?.plan ?? null : null));
 
   readonly waitingInputs = computed(() => this.plan()?.waitingInputs ?? 0);
+
+  /**
+   * Libellés de validation du plan (F-197) : tenus en TS, jamais en littéral dans le template inline
+   * — un `\'` y est cuit en `'` par JavaScript et Angular rendait l'interpolation brute.
+   */
+  readonly validationHint = computed(() =>
+    this.plan()?.amendment
+      ? 'Le plan validé a été modifié : rien ne change chez vous avant votre validation.'
+      : 'Rien ne sera modifié avant votre validation.',
+  );
+  readonly validateLabel = computed(() =>
+    this.plan()?.amendment ? "Valider l'amendement et reprendre" : 'Valider le plan et lancer',
+  );
 
   /**
    * La porte est fermée (SF-176-04) : en Guidé, hors Exécution sur le plan validé, seules la lecture et
