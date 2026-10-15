@@ -102,6 +102,19 @@ public class RoutineRunService {
                 PageRequest.of(0, HISTORY)).stream().map(RoutineRunView::of).toList();
     }
 
+    /**
+     * Dépense de la routine depuis le 1er du mois, <b>dans son fuseau</b> (SF-183-03) : la somme des
+     * coûts de ses exécutions — y compris celle qui tourne (son coût est écrit à la fin).
+     */
+    @Transactional(readOnly = true)
+    public BigDecimal monthSpent(SubjectRoutine routine, OffsetDateTime now) {
+        java.time.ZoneId zone = RoutineSlots.parseZone(routine.getTimeZone()).orElse(java.time.ZoneId.of("Europe/Paris"));
+        OffsetDateTime from = now.atZoneSameInstant(zone).toLocalDate().withDayOfMonth(1).atStartOfDay(zone)
+                .toOffsetDateTime();
+        BigDecimal spent = runs.spentSince(routine.getId(), routine.getUserId(), from);
+        return spent == null ? BigDecimal.ZERO : spent;
+    }
+
     /** La dernière exécution d'une routine, ou {@code null}. */
     @Transactional(readOnly = true)
     public RoutineRunView last(UUID userId, UUID routineId) {

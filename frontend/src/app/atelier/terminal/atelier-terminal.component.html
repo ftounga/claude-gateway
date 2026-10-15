@@ -1316,6 +1316,8 @@
               [cost]="panel.cost ?? null"
               [budget]="costBudget()"
             />
+            <!-- F-183 / SF-183-03 — LES ROUTINES DANS /cout : budget par exécution, dépensé du mois. -->
+            <app-atelier-slash-cost-routines [workspaceId]="projectId" />
           }
           @case ('context') {
             <app-atelier-slash-contexte

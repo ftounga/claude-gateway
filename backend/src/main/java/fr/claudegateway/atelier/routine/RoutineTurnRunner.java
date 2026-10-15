@@ -110,7 +110,7 @@ public class RoutineTurnRunner {
     void runLoop(LiveTurn turn, SubjectRoutine routine, RoutineRun run) {
         Outcome outcome = new Outcome(RoutineRunStatus.FAILED, BigDecimal.ZERO, "internal_error");
         try {
-            outcome = execute(turn, routine);
+            outcome = execute(turn, routine, run.getCapUsd());
         } finally {
             liveTurns.close(turn);
             runs.finish(run.getId(), outcome.status(), outcome.costUsd(), outcome.errorCode());
@@ -119,8 +119,14 @@ public class RoutineTurnRunner {
         }
     }
 
-    /** Le cœur : les tours de la routine (le premier, puis les tours de suite des précisions). */
-    Outcome execute(LiveTurn turn, SubjectRoutine routine) {
+    /**
+     * Le cœur : les tours de la routine (le premier, puis les tours de suite des précisions). Chaque tour
+     * est armé du <b>reste</b> du budget de l'exécution (SF-183-03) ; budget épuisé ⇒ pas de tour de
+     * suite. Le plafond coupe, il ne change ni le modèle ni le raisonnement.
+     *
+     * @param capUsd budget en dollars de l'exécution, ou {@code null} (aucun plafond en dollars)
+     */
+    Outcome execute(LiveTurn turn, SubjectRoutine routine, BigDecimal capUsd) {
         UUID userId = routine.getUserId();
         UUID workspaceId = routine.getWorkspaceId();
         BigDecimal spent = BigDecimal.ZERO;
@@ -132,6 +138,9 @@ public class RoutineTurnRunner {
             AtelierProgressListener listener = headless.headlessListener(turn, () -> machineLost.set(true));
             String demand = demandOf(routine);
             for (;;) {
+                if (capUsd != null) {
+                    chatService.capSpend(userId, workspaceId, capUsd.subtract(spent));
+                }
                 AtelierChatResult result = chatService.chatStreaming(userId, workspaceId, demand, listener);
                 spent = spent.add(result.costUsd() == null ? BigDecimal.ZERO : result.costUsd());
                 incomplete = incomplete || result.budgetReached();
@@ -142,6 +151,14 @@ public class RoutineTurnRunner {
                     turn.publishSteersDropped(turn.sealAndDrain(), "interrupted");
                     turn.publish("done", done(result, false));
                     return new Outcome(RoutineRunStatus.INTERRUPTED, spent, null);
+                }
+                if (capUsd != null && capUsd.subtract(spent).signum() <= 0) {
+                    // Budget de l'exécution épuisé : aucune précision ne rouvre de tour (elles sont dites
+                    // abandonnées), l'exécution est INCOMPLETE.
+                    turn.publishSteersDropped(turn.sealAndDrain(), "budget");
+                    turn.publish("done", done(result, false));
+                    return new Outcome(machineLost.get() ? RoutineRunStatus.FAILED : RoutineRunStatus.INCOMPLETE,
+                            spent, machineLost.get() ? "runner_offline" : null);
                 }
                 Optional<LiveTurn.Steer> followUp = turn.pollFollowUpOrSeal();
                 turn.publish("done", done(result, followUp.isPresent()));
@@ -170,6 +187,8 @@ public class RoutineTurnRunner {
         } catch (RuntimeException ex) {
             log.warn("Échec inattendu d'une routine ({})", ex.getClass().getSimpleName());
             return fail(turn, spent, "internal_error");
+        } finally {
+            chatService.releaseSpendCap(userId, workspaceId);
         }
     }
 

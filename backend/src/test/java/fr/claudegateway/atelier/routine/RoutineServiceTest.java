@@ -99,6 +99,18 @@ class RoutineServiceTest {
     }
 
     @Test
+    void monthlyBudgetDefaultsAndBounds() {
+        RoutineView view = service.create(userId, workspaceId, weekdays());
+        assertThat(view.monthlyBudgetUsd()).isEqualByComparingTo("100.00");
+        assertThatThrownBy(() -> service.create(userId, workspaceId, new RoutineRequest("n", "x", "DAILY", null,
+                "08:00", null, null, null, new BigDecimal("0.50")))).isInstanceOf(InvalidRoutineException.class);
+        assertThatThrownBy(() -> service.create(userId, workspaceId, new RoutineRequest("n", "x", "DAILY", null,
+                "08:00", null, null, null, new BigDecimal("2000.01")))).isInstanceOf(InvalidRoutineException.class);
+        assertThatThrownBy(() -> service.create(userId, workspaceId, new RoutineRequest("n", "x", "DAILY", null,
+                "08:00", null, new BigDecimal("10"), null, new BigDecimal("5")))).isInstanceOf(InvalidRoutineException.class);
+    }
+
+    @Test
     void weeklyKeepsTheDayOthersDropIt() {
         RoutineView weekly = service.create(userId, workspaceId, new RoutineRequest("Semaine", "CR", "weekly", 5,
                 "17:00", null, null, null));

@@ -56,7 +56,7 @@ class RoutineTurnRunnerTest {
                 .cadence(RoutineCadence.WEEKDAYS).runTime("08:00").timeZone("Europe/Paris")
                 .maxRunUsd(new BigDecimal("5.00")).origin(RoutineOrigin.USER).build();
         when(runs.open(any(), any(), any(), any(), any())).thenAnswer(inv -> RoutineRun.builder()
-                .id(UUID.randomUUID()).status(RoutineRunStatus.RUNNING).build());
+                .id(UUID.randomUUID()).status(RoutineRunStatus.RUNNING).capUsd(inv.getArgument(4)).build());
     }
 
     private static AtelierChatResult result(String reply, boolean budgetReached, String cost) {
@@ -79,6 +79,30 @@ class RoutineTurnRunnerTest {
         verify(runs).finish(any(), eq(RoutineRunStatus.DONE), eq(new BigDecimal("0.84")), eq(null));
         verify(chat).chatStreaming(eq(userId), eq(workspaceId), eq(RoutineTurnRunner.demandOf(routine)), any());
         assertThat(liveTurns.find(userId, workspaceId)).isEmpty();
+    }
+
+    @Test
+    void eachTurnIsArmedWithWhatIsLeftThenReleased() {
+        when(chat.chatStreaming(any(), any(), anyString(), any())).thenReturn(result("ok", false, "0.84"));
+        runner.launch(runner.prepare(routine).orElseThrow(), routine, RoutineTrigger.SCHEDULED, null,
+                new BigDecimal("5.00"));
+        verify(chat).capSpend(userId, workspaceId, new BigDecimal("5.00"));
+        verify(chat).releaseSpendCap(userId, workspaceId);
+    }
+
+    @Test
+    void noFollowUpOnceTheBudgetIsSpent() {
+        when(runs.open(any(), any(), any(), any(), any())).thenAnswer(inv -> RoutineRun.builder()
+                .id(UUID.randomUUID()).status(RoutineRunStatus.RUNNING).capUsd(new BigDecimal("1.00")).build());
+        when(chat.chatStreaming(any(), any(), anyString(), any())).thenAnswer(inv -> {
+            // Une précision arrive pendant le tour : elle ne rouvrira pas de tour, le budget est épuisé.
+            liveTurns.find(userId, workspaceId).orElseThrow().offerSteer("et aussi ceci");
+            return result("coupé", true, "1.02");
+        });
+        runner.launch(runner.prepare(routine).orElseThrow(), routine, RoutineTrigger.SCHEDULED, null,
+                new BigDecimal("1.00"));
+        verify(chat, org.mockito.Mockito.times(1)).chatStreaming(any(), any(), anyString(), any());
+        verify(runs).finish(any(), eq(RoutineRunStatus.INCOMPLETE), eq(new BigDecimal("1.02")), eq(null));
     }
 
     @Test

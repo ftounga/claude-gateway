@@ -132,6 +132,14 @@ public class RoutinePlanner {
             recordMissedOnce(routine, due);
             return false; // poste hors ligne : rattrapage à la reconnexion
         }
+        boolean missed = routine.getMissedSlotAt() != null && routine.getMissedSlotAt().isEqual(due);
+        RoutineTrigger trigger = missed || now.isAfter(due.plus(catchUpGrace))
+                ? RoutineTrigger.CATCH_UP : RoutineTrigger.SCHEDULED;
+        BigDecimal cap = capFor(routine, now);
+        if (cap.signum() <= 0) {
+            skipForBudget(routine, due, trigger);
+            return false; // budget du mois épuisé : le créneau est consommé, rien ne part
+        }
         if (liveTurns.find(routine.getUserId(), routine.getWorkspaceId()).isPresent()) {
             return false; // l'utilisateur travaille : on réessaie à la minute suivante
         }
@@ -144,16 +152,35 @@ public class RoutinePlanner {
             runner.abandon(turn.get()); // un autre pod a pris ce créneau
             return false;
         }
-        boolean missed = routine.getMissedSlotAt() != null && routine.getMissedSlotAt().isEqual(due);
-        RoutineTrigger trigger = missed || now.isAfter(due.plus(catchUpGrace))
-                ? RoutineTrigger.CATCH_UP : RoutineTrigger.SCHEDULED;
-        runner.launch(turn.get(), routine, trigger, due, capFor(routine));
+        runner.launch(turn.get(), routine, trigger, due, cap);
         return true;
     }
 
-    /** Plafond en dollars de l'exécution (SF-183-03 l'affine par le budget du mois). */
-    BigDecimal capFor(SubjectRoutine routine) {
-        return routine.getMaxRunUsd();
+    /**
+     * Plafond en dollars de l'exécution (SF-183-03, D3) : le budget par exécution, borné par ce qui reste
+     * du budget du mois. Nul ou négatif ⇒ le mois est épuisé.
+     */
+    BigDecimal capFor(SubjectRoutine routine, OffsetDateTime now) {
+        BigDecimal perRun = routine.getMaxRunUsd() == null ? RoutineService.DEFAULT_MAX_RUN_USD : routine.getMaxRunUsd();
+        BigDecimal monthly = routine.getMonthlyBudgetUsd() == null
+                ? RoutineService.DEFAULT_MONTHLY_BUDGET_USD : routine.getMonthlyBudgetUsd();
+        BigDecimal left = monthly.subtract(runs.monthSpent(routine, now));
+        return perRun.min(left).setScale(2, java.math.RoundingMode.DOWN);
+    }
+
+    /** Budget du mois épuisé : le créneau est consommé (une seule ligne) et rien ne part. */
+    private void skipForBudget(SubjectRoutine routine, OffsetDateTime due, RoutineTrigger trigger) {
+        transactions.executeWithoutResult(status -> {
+            if (routines.claimSlot(routine.getId(), due) == 1) {
+                runs.recordClosed(routine, trigger, due, RoutineRunStatus.SKIPPED_BUDGET, "monthly_budget");
+                onSkipped(routine);
+            }
+        });
+    }
+
+    /** Point d'extension : une exécution n'est pas partie, budget du mois épuisé (SF-183-04 y notifie). */
+    void onSkipped(SubjectRoutine routine) {
+        // SF-183-03 : rien de plus que la ligne SKIPPED_BUDGET.
     }
 
     /** Note le créneau manqué — une seule ligne par créneau, quel que soit le nombre de passages. */
@@ -188,6 +215,11 @@ public class RoutinePlanner {
             throw new RoutineUnsupportedException(
                     "Une routine tourne sur le poste d'un sujet : ce terminal ne peut pas en porter.");
         }
+        BigDecimal cap = capFor(routine, OffsetDateTime.now(clock));
+        if (cap.signum() <= 0) {
+            throw new RoutineConflictException("routine_budget_exhausted",
+                    "Le budget du mois de cette routine est atteint.");
+        }
         if (!liveness.isAlive(userId, workspace.getHostId())) {
             throw new RoutineConflictException("routine_host_offline",
                     "Le poste est hors ligne : la routine ne peut pas tourner maintenant.");
@@ -198,6 +230,6 @@ public class RoutinePlanner {
             throw new RoutineConflictException("routine_busy",
                     "Un tour tourne déjà dans ce sujet : réessayez quand il sera fini.");
         }
-        return RoutineRunView.of(runner.launch(turn.get(), routine, RoutineTrigger.MANUAL, null, capFor(routine)));
+        return RoutineRunView.of(runner.launch(turn.get(), routine, RoutineTrigger.MANUAL, null, cap));
     }
 }

@@ -78,6 +78,11 @@ public class SubjectRoutine {
     @Column(name = "max_run_usd", nullable = false, precision = 10, scale = 2)
     private BigDecimal maxRunUsd;
 
+    /** Budget mensuel en dollars (SF-183-03, D3). */
+    @Builder.Default
+    @Column(name = "monthly_budget_usd", nullable = false, precision = 10, scale = 2)
+    private BigDecimal monthlyBudgetUsd = RoutineService.DEFAULT_MONTHLY_BUDGET_USD;
+
     @Builder.Default
     @Column(name = "active", nullable = false)
     private boolean active = true;

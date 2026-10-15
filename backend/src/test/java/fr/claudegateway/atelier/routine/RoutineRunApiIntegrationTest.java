@@ -146,6 +146,22 @@ class RoutineRunApiIntegrationTest {
     }
 
     @Test
+    void monthSpentIsVisibleAndAnExhaustedMonthRefusesARun() throws Exception {
+        RoutineRun run = runService.open(routine, RoutineTrigger.SCHEDULED, null, UUID.randomUUID(),
+                new BigDecimal("5.00"));
+        runService.finish(run.getId(), RoutineRunStatus.DONE, new BigDecimal("3.42"), null);
+        mockMvc.perform(as(get("/api/workspaces/" + subject.getId() + "/routines"), aliceToken))
+                .andExpect(jsonPath("$[0].monthlyBudgetUsd").value(100.0))
+                .andExpect(jsonPath("$[0].monthSpentUsd").value(3.42));
+
+        RoutineRun big = runService.open(routine, RoutineTrigger.SCHEDULED, null, UUID.randomUUID(), null);
+        runService.finish(big.getId(), RoutineRunStatus.DONE, new BigDecimal("96.58"), null);
+        mockMvc.perform(as(post(base() + "/run"), aliceToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("routine_budget_exhausted"));
+    }
+
+    @Test
     void runNowRefusesWhenTheHostIsOffline() throws Exception {
         // Aucun battement de runner : le poste est hors ligne.
         mockMvc.perform(as(post(base() + "/run"), aliceToken))
