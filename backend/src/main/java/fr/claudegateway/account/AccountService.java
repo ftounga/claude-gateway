@@ -118,6 +118,14 @@ public class AccountService {
         this.journeyEventRepository = journeyEvents;
     }
 
+    /** Les routines des sujets (F-183 / SF-183-01) ; purge nommée à la suppression du compte. */
+    private fr.claudegateway.atelier.routine.SubjectRoutineRepository subjectRoutineRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setSubjectRoutineRepository(fr.claudegateway.atelier.routine.SubjectRoutineRepository repository) {
+        this.subjectRoutineRepository = repository;
+    }
+
     /** Branche la purge des actions du terminal à la suppression du compte (F-154 / SF-154-01). */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setTerminalActionRepository(
@@ -402,6 +410,11 @@ public class AccountService {
         // Pas de clé étrangère, donc purge nommée — sinon elles survivraient au compte.
         if (terminalActionRepository != null) {
             terminalActionRepository.purgeUser(userId);
+        }
+        // Les routines des sujets (F-183) : elles suivent aussi le sujet (cascade) ; la purge nommée
+        // couvre le compte.
+        if (subjectRoutineRepository != null) {
+            subjectRoutineRepository.purgeUser(userId);
         }
         // Le parcours des sujets (F-176) : mode, phase, plan, journal. Les lignes suivent aussi le
         // terminal (cascade) ; la purge nommée couvre le compte.

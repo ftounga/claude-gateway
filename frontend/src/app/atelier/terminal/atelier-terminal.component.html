@@ -647,6 +647,15 @@
     }
 
     <div class="terminal-thread">
+    <!-- F-183 — LES ROUTINES EN TÊTE DU FIL : la carte de validation d'une routine proposée par l'agent
+         (SF-183-01) et le compte rendu des exécutions (SF-183-04). Absente quand rien n'est à montrer. -->
+    <app-terminal-routines-band
+      [workspaceId]="projectId"
+      [refresh]="routinesTick()"
+      [readOnly]="readOnly"
+      (openPanel)="openRoutinesPanel()"
+      (changed)="onRoutinesChanged()"
+    ></app-terminal-routines-band>
     @if (messages.length === 0 && !streaming) {
       @if (readOnly) {
         <!-- LA LECTURE SEULE NE PEUT RIEN INVITER À FAIRE (F-83 / SF-83-01) : il n'y a pas d'invite
@@ -1347,6 +1356,14 @@
               [name]="projectName"
               [host]="hostName"
               [engine]="engine"
+            />
+          }
+          @case ('routines') {
+            <!-- F-183 / SF-183-01 — LES ROUTINES DU SUJET : déclarer, modifier, valider. Aucun tour. -->
+            <app-atelier-slash-routines
+              [workspaceId]="projectId"
+              [readOnly]="readOnly"
+              (changed)="onRoutinesChanged()"
             />
           }
           @case ('compact') {

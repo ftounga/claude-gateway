@@ -1919,6 +1919,30 @@ public class AtelierChatService implements RelayInterruptTarget {
         return refusal;
     }
 
+    /**
+     * L'outil qui propose une routine du sujet (F-183 / SF-183-01) — par mutateur, comme les autres
+     * outils de la gateway : sans exécuteur (formes historiques / tests), l'outil n'est jamais donné.
+     */
+    private fr.claudegateway.atelier.routine.RoutineToolCatalog routineToolCatalog;
+    private fr.claudegateway.atelier.routine.RoutineToolExecutor routineToolExecutor;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setRoutineTools(fr.claudegateway.atelier.routine.RoutineToolCatalog catalog,
+            fr.claudegateway.atelier.routine.RoutineToolExecutor executor) {
+        this.routineToolCatalog = catalog;
+        this.routineToolExecutor = executor;
+    }
+
+    /** Exécute l'outil de proposition de routine (F-183) : le terminal et le compte sont ceux du tour. */
+    private ToolOutcome applyRoutineTool(UUID userId, Workspace workspace, AgentToolCall call) {
+        if (routineToolExecutor == null) {
+            return ToolOutcome.error("Les routines ne sont pas disponibles dans ce terminal : réponds sans elles.");
+        }
+        fr.claudegateway.atelier.routine.RoutineToolExecutor.Outcome outcome =
+                routineToolExecutor.execute(userId, workspace, call.name(), call.input());
+        return outcome.error() ? ToolOutcome.error(outcome.content()) : ToolOutcome.info(outcome.content());
+    }
+
     /** Les outils du parcours et leur garde (F-176) ; {@code none()} = jamais donnés. */
     private fr.claudegateway.atelier.journey.JourneyToolCatalog journeyToolCatalog =
             fr.claudegateway.atelier.journey.JourneyToolCatalog.none();
@@ -3385,6 +3409,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                 } else if (fr.claudegateway.atelier.journey.JourneyToolCatalog.isJourneyTool(call.name())) {
                     // F-176 : le parcours du sujet est tenu par la gateway, jamais par la machine.
                     outcome = applyJourneyTool(userId, workspace, call);
+                } else if (fr.claudegateway.atelier.routine.RoutineToolCatalog.isRoutineTool(call.name())) {
+                    // F-183 / SF-183-01 : la proposition de routine est rangée par la gateway, inactive.
+                    outcome = applyRoutineTool(userId, workspace, call);
                 } else if (fr.claudegateway.images.ImageToolCatalog.isImageTool(call.name())) {
                     // F-142 / SF-142-04 : l'image décorative est générée par la gateway (relais fournisseur),
                     // rangée, puis déposée dans le projet — jamais un schéma d'architecture.
@@ -8579,6 +8606,10 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
         if (terminalActionToolExecutor != null) {
             tools.addAll(terminalActionToolCatalog.toolsFor(userId, workspace));
+        }
+        // F-183 / SF-183-01 : proposer une routine, dans le terminal d'un sujet sur poste seulement.
+        if (routineToolExecutor != null && routineToolCatalog != null) {
+            tools.addAll(routineToolCatalog.toolsFor(userId, workspace));
         }
         return List.copyOf(tools);
     }
