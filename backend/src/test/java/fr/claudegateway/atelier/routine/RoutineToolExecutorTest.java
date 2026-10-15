@@ -53,7 +53,7 @@ class RoutineToolExecutorTest {
         Workspace ws = subject();
         when(service.propose(eq(userId), eq(ws), any())).thenReturn(new RoutineView(UUID.randomUUID(), ws.getId(),
                 "CR semaine", "x", "WEEKLY", 5, "17:00", "Europe/Paris", new BigDecimal("3.00"), false, true,
-                "AGENT", null, null, null));
+                "AGENT", null, null, null, null));
         ObjectNode input = mapper.createObjectNode().put("nom", "CR semaine").put("consigne", "prépare le CR")
                 .put("rythme", "hebdo").put("jour", "vendredi").put("heure", "17:00").put("budget_usd", 3);
         RoutineToolExecutor.Outcome outcome = executor.execute(userId, ws, RoutineToolCatalog.PROPOSE, input);

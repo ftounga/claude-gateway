@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import fr.claudegateway.atelier.routine.RoutineDtos.RoutineRequest;
+import fr.claudegateway.atelier.routine.RoutineDtos.RoutineRunView;
 import fr.claudegateway.atelier.routine.RoutineDtos.RoutineView;
 import fr.claudegateway.auth.CurrentUser;
 
@@ -28,10 +29,12 @@ import fr.claudegateway.auth.CurrentUser;
 public class RoutineController {
 
     private final RoutineService service;
+    private final RoutinePlanner planner;
     private final CurrentUser currentUser;
 
-    public RoutineController(RoutineService service, CurrentUser currentUser) {
+    public RoutineController(RoutineService service, RoutinePlanner planner, CurrentUser currentUser) {
         this.service = service;
+        this.planner = planner;
         this.currentUser = currentUser;
     }
 
@@ -56,6 +59,19 @@ public class RoutineController {
     public ResponseEntity<Void> delete(@PathVariable UUID workspaceId, @PathVariable UUID routineId) {
         service.delete(currentUser.requireId(), workspaceId, routineId);
         return ResponseEntity.noContent().build();
+    }
+
+    /** « Lancer maintenant » (SF-183-02) : 202, l'exécution part en tâche de fond. */
+    @PostMapping("/{routineId}/run")
+    public ResponseEntity<RoutineRunView> run(@PathVariable UUID workspaceId, @PathVariable UUID routineId) {
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+                .body(planner.runNow(currentUser.requireId(), workspaceId, routineId));
+    }
+
+    /** L'historique d'une routine (SF-183-02). */
+    @GetMapping("/{routineId}/runs")
+    public List<RoutineRunView> runs(@PathVariable UUID workspaceId, @PathVariable UUID routineId) {
+        return service.history(currentUser.requireId(), workspaceId, routineId);
     }
 
     @PostMapping("/{routineId}/accept")

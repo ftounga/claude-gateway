@@ -30,13 +30,18 @@ public final class RoutineDtos {
      * Une routine, telle que l'écran la montre.
      *
      * @param nextRunAt prochain créneau ({@code null} si en pause ou en proposition)
+     * @param lastRun   dernière exécution (SF-183-02), ou {@code null}
      */
     public record RoutineView(UUID id, UUID workspaceId, String name, String instruction, String cadence,
             Integer dayOfWeek, String runTime, String timeZone, BigDecimal maxRunUsd, boolean active,
             boolean proposed, String origin, OffsetDateTime nextRunAt, OffsetDateTime createdAt,
-            OffsetDateTime updatedAt) {
+            OffsetDateTime updatedAt, RoutineRunView lastRun) {
 
         static RoutineView of(SubjectRoutine routine, OffsetDateTime now) {
+            return of(routine, now, null);
+        }
+
+        static RoutineView of(SubjectRoutine routine, OffsetDateTime now, RoutineRunView lastRun) {
             OffsetDateTime next = routine.isScheduled()
                     ? RoutineSlots.nextSlot(routine, now).orElse(null)
                     : null;
@@ -44,7 +49,25 @@ public final class RoutineDtos {
                     routine.getInstruction(), routine.getCadence().name(), routine.getDayOfWeek(),
                     routine.getRunTime(), routine.getTimeZone(), routine.getMaxRunUsd(), routine.isActive(),
                     routine.isProposed(), routine.getOrigin().name(), next, routine.getCreatedAt(),
-                    routine.getUpdatedAt());
+                    routine.getUpdatedAt(), lastRun);
+        }
+    }
+
+    /**
+     * Une exécution de routine (F-183 / SF-183-02) : des instants, un statut, un coût — aucun contenu.
+     *
+     * @param trigger {@code SCHEDULED} | {@code CATCH_UP} | {@code MANUAL}
+     * @param status  {@code RUNNING} | {@code DONE} | {@code INCOMPLETE} | {@code FAILED} |
+     *                {@code INTERRUPTED} | {@code MISSED_OFFLINE} | {@code SKIPPED_BUDGET}
+     */
+    public record RoutineRunView(UUID id, UUID routineId, OffsetDateTime slotAt, String trigger, String status,
+            OffsetDateTime startedAt, OffsetDateTime finishedAt, BigDecimal costUsd, BigDecimal capUsd,
+            String errorCode, String summary) {
+
+        static RoutineRunView of(RoutineRun run) {
+            return new RoutineRunView(run.getId(), run.getRoutineId(), run.getSlotAt(), run.getTrigger().name(),
+                    run.getStatus().name(), run.getStartedAt(), run.getFinishedAt(), run.getCostUsd(),
+                    run.getCapUsd(), run.getErrorCode(), run.getSummary());
         }
     }
 }

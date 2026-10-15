@@ -48,11 +48,18 @@ public class RoutineService {
     private final WorkspaceService workspaceService;
     private final SubjectRoutineRepository routines;
     private final Clock clock;
+    /** Le journal des exécutions (SF-183-02) ; absent des formes historiques / tests unitaires. */
+    private RoutineRunService runs;
 
     public RoutineService(WorkspaceService workspaceService, SubjectRoutineRepository routines, Clock clock) {
         this.workspaceService = workspaceService;
         this.routines = routines;
         this.clock = clock;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setRunService(RoutineRunService runs) {
+        this.runs = runs;
     }
 
     /** Les routines du sujet, dans l'ordre de leur déclaration. */
@@ -61,7 +68,8 @@ public class RoutineService {
         workspaceService.requireOwned(userId, workspaceId);
         OffsetDateTime now = OffsetDateTime.now(clock);
         return routines.findByUserIdAndWorkspaceIdOrderByCreatedAtAsc(userId, workspaceId).stream()
-                .map(routine -> RoutineView.of(routine, now))
+                .map(routine -> RoutineView.of(routine, now,
+                        runs == null ? null : runs.last(userId, routine.getId())))
                 .toList();
     }
 
@@ -132,6 +140,14 @@ public class RoutineService {
         return save(routine, true);
     }
 
+    /** L'historique d'une routine (SF-183-02) : ses 20 dernières exécutions. */
+    @Transactional(readOnly = true)
+    public List<RoutineDtos.RoutineRunView> history(UUID userId, UUID workspaceId, UUID routineId) {
+        workspaceService.requireOwned(userId, workspaceId);
+        require(userId, workspaceId, routineId);
+        return runs == null ? List.of() : runs.history(userId, workspaceId, routineId);
+    }
+
     /** La routine de ce propriétaire et de ce sujet, ou 404. */
     public SubjectRoutine require(UUID userId, UUID workspaceId, UUID routineId) {
         return routines.findByIdAndUserIdAndWorkspaceId(routineId, userId, workspaceId)
@@ -171,7 +187,9 @@ public class RoutineService {
             routine.setCreatedAt(now);
         }
         routine.setUpdatedAt(now);
-        return RoutineView.of(routines.save(routine), now);
+        SubjectRoutine saved = routines.save(routine);
+        return RoutineView.of(saved, now,
+                runs == null || saved.getId() == null ? null : runs.last(saved.getUserId(), saved.getId()));
     }
 
     private static String scheduleKey(SubjectRoutine routine) {

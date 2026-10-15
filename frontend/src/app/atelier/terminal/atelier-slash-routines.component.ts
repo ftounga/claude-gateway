@@ -12,7 +12,8 @@ import { Observable } from 'rxjs';
 
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../chat/confirm-dialog/confirm-dialog.component';
 import {
-  ROUTINE_DAYS, Routine, RoutineCadence, RoutineRequest, browserTimeZone, cadenceLabel, shortDateTime, usd,
+  ROUTINE_DAYS, Routine, RoutineCadence, RoutineRequest, RoutineRun, browserTimeZone, cadenceLabel, runStatusLabel,
+  shortDateTime, usd,
 } from '../../core/models/routine.models';
 import { RoutineService } from '../../core/services/routine.service';
 
@@ -125,6 +126,23 @@ export function requestOf(draft: RoutineDraft): RoutineRequest {
                 }
               </p>
               <p class="routine__instruction">{{ routine.instruction }}</p>
+              @if (routine.lastRun; as last) {
+                <p class="routine__last">
+                  Dernier passage {{ when(last.startedAt) }} · {{ runLabel(last) }}
+                  @if (last.costUsd) {
+                    · {{ money(last.costUsd) }}
+                  }
+                </p>
+              }
+              @if (historyOf() === routine.id) {
+                <ul class="routine__history" aria-label="Historique des exécutions">
+                  @for (run of history(); track run.id) {
+                    <li>{{ when(run.startedAt) }} · {{ runLabel(run) }}@if (run.costUsd) { · {{ money(run.costUsd) }}}</li>
+                  } @empty {
+                    <li>Aucune exécution pour l'instant.</li>
+                  }
+                </ul>
+              }
               @if (!readOnly()) {
                 <div class="routine__gestures">
                   @if (routine.proposed) {
@@ -132,6 +150,10 @@ export function requestOf(draft: RoutineDraft): RoutineRequest {
                     <button mat-stroked-button type="button" class="routine__secondary" [disabled]="busy()" (click)="edit(routine)">Modifier</button>
                     <button mat-button type="button" class="routine__secondary" [disabled]="busy()" (click)="remove(routine, true)">Refuser</button>
                   } @else {
+                    <button mat-flat-button type="button" class="routine__primary" [disabled]="busy()" (click)="runNow(routine)">Lancer maintenant</button>
+                    <button mat-stroked-button type="button" class="routine__secondary" [disabled]="busy()" (click)="toggleHistory(routine)">
+                      {{ historyOf() === routine.id ? 'Masquer l’historique' : 'Historique' }}
+                    </button>
                     <button mat-stroked-button type="button" class="routine__secondary" [disabled]="busy()" (click)="edit(routine)">Modifier</button>
                     <button mat-stroked-button type="button" class="routine__secondary" [disabled]="busy()" (click)="toggle(routine)">
                       {{ routine.active ? 'Mettre en pause' : 'Activer' }}
@@ -202,6 +224,9 @@ export function requestOf(draft: RoutineDraft): RoutineRequest {
             </button>
           }
         }
+        @if (notice()) {
+          <p class="routines-note routines-note--ok" role="status">{{ notice() }}</p>
+        }
         @if (failure()) {
           <p class="routines-note routines-note--error" role="alert">{{ failure() }}</p>
         }
@@ -231,6 +256,12 @@ export function requestOf(draft: RoutineDraft): RoutineRequest {
     .routine__when, .routine__instruction { margin: var(--cg-space-1) 0 0; font-size: 13px; overflow-wrap: anywhere; }
     .routine__when { font-variant-numeric: tabular-nums; color: var(--cg-text-secondary); }
     .routine__instruction { white-space: pre-wrap; }
+    .routine__last { margin: var(--cg-space-1) 0 0; font-size: 12px; color: var(--cg-text-secondary); }
+    .routine__history {
+      margin: var(--cg-space-1) 0 0; padding-left: var(--cg-space-4); font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+    .routines-note--ok { color: inherit; }
     .routine__gestures, .routine-form__gestures {
       display: flex; flex-wrap: wrap; gap: var(--cg-space-2); margin-top: var(--cg-space-2);
     }
@@ -267,6 +298,8 @@ export class AtelierSlashRoutinesComponent {
   readonly readOnly = input(false);
   /** Une routine a changé : la bande au-dessus du fil se relit. */
   readonly changed = output<void>();
+  /** Une routine vient d'être lancée : le terminal se rebranche sur son tour (F-84). */
+  readonly started = output<void>();
 
   readonly state = signal<'loading' | 'ready' | 'error'>('loading');
   readonly routines = signal<Routine[]>([]);
@@ -275,6 +308,11 @@ export class AtelierSlashRoutinesComponent {
   readonly busy = signal(false);
   readonly errors = signal<string[]>([]);
   readonly failure = signal<string | null>(null);
+  /** Message d'accusé (« La routine est partie… »). */
+  readonly notice = signal<string | null>(null);
+  /** La routine dont l'historique est déplié. */
+  readonly historyOf = signal<string | null>(null);
+  readonly history = signal<RoutineRun[]>([]);
   readonly days = ROUTINE_DAYS;
   draft: RoutineDraft = emptyDraft();
 
@@ -319,6 +357,40 @@ export class AtelierSlashRoutinesComponent {
 
   when(iso: string | null): string {
     return shortDateTime(iso);
+  }
+
+  runLabel(run: RoutineRun): string {
+    return runStatusLabel(run);
+  }
+
+  /** « Lancer maintenant » : la routine part sans attendre son heure (poste en ligne, sujet libre). */
+  runNow(routine: Routine): void {
+    const workspaceId = this.workspaceId();
+    if (!workspaceId) {
+      return;
+    }
+    this.run(this.service.runNow(workspaceId, routine.id), () => {
+      this.notice.set(`« ${routine.name} » est partie : le tour se déroule dans ce terminal.`);
+      this.started.emit();
+    });
+  }
+
+  /** Déplie ou replie l'historique d'une routine. */
+  toggleHistory(routine: Routine): void {
+    const workspaceId = this.workspaceId();
+    if (!workspaceId) {
+      return;
+    }
+    if (this.historyOf() === routine.id) {
+      this.historyOf.set(null);
+      return;
+    }
+    this.historyOf.set(routine.id);
+    this.history.set([]);
+    this.service.history(workspaceId, routine.id).subscribe({
+      next: (runs) => this.history.set(runs),
+      error: () => this.history.set([]),
+    });
   }
 
   startCreate(): void {
@@ -392,6 +464,7 @@ export class AtelierSlashRoutinesComponent {
   private run(call: Observable<unknown>, after?: () => void): void {
     this.busy.set(true);
     this.failure.set(null);
+    this.notice.set(null);
     call.subscribe({
       next: () => {
         this.busy.set(false);

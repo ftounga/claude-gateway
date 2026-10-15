@@ -1364,6 +1364,7 @@
               [workspaceId]="projectId"
               [readOnly]="readOnly"
               (changed)="onRoutinesChanged()"
+              (started)="routineStarted.emit()"
             />
           }
           @case ('compact') {

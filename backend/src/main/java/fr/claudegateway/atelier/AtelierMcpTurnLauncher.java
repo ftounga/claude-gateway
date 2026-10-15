@@ -96,7 +96,7 @@ public class AtelierMcpTurnLauncher {
             // Origine MCP dans le fil (cadrage §6.6) : visible par tout spectateur du tour.
             turn.publish("text", Map.of("text",
                     "_Tour lancé depuis " + originLabel + " (MCP)._\n"));
-            AtelierProgressListener listener = mcpListener(turn);
+            AtelierProgressListener listener = mcpListener(turn, () -> { });
             String demand = message;
             for (;;) {
                 AtelierChatResult result = chatService.chatStreaming(userId, workspaceId, demand, listener);
@@ -136,7 +136,16 @@ public class AtelierMcpTurnLauncher {
         }
     }
 
-    private AtelierProgressListener mcpListener(LiveTurn turn) {
+    /**
+     * L'écouteur d'un tour <b>sans navigateur</b> (F-183 / SF-183-02) : chaque étape va au tour vivant,
+     * exactement comme pour MCP. {@code onMachineLost} est appelé quand le poste cesse de répondre — le
+     * lanceur d'une routine en fait un échec dit, pas une fin normale.
+     */
+    public AtelierProgressListener headlessListener(LiveTurn turn, Runnable onMachineLost) {
+        return mcpListener(turn, onMachineLost == null ? () -> { } : onMachineLost);
+    }
+
+    private AtelierProgressListener mcpListener(LiveTurn turn, Runnable onMachineLost) {
         return new AtelierProgressListener() {
             @Override
             public void onAction(AtelierStepEvent step) {
@@ -206,6 +215,7 @@ public class AtelierMcpTurnLauncher {
 
             @Override
             public void onRunnerOffline(UUID hostId) {
+                onMachineLost.run();
                 turn.publish("runner_offline", Map.of(
                         "hostId", hostId.toString(), "at", System.currentTimeMillis()));
             }

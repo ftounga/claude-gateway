@@ -1311,6 +1311,8 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    * contexte en résumant les vieux tours **et garde le résumé**, contrairement au « Nouveau départ ».
    */
   @Output() compactNow = new EventEmitter<void>();
+  /** F-183 / SF-183-02 — une routine vient d'être lancée ici : le parent se rebranche sur son tour. */
+  @Output() routineStarted = new EventEmitter<void>();
   @Output() resetSandbox = new EventEmitter<void>();
   @Output() openFiles = new EventEmitter<void>();
   @Output() publish = new EventEmitter<void>();

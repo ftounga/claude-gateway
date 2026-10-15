@@ -94,6 +94,10 @@ public class SubjectRoutine {
     @Column(name = "last_slot_at")
     private OffsetDateTime lastSlotAt;
 
+    /** Le créneau déjà noté manqué, poste hors ligne (SF-183-02) : une seule ligne par créneau. */
+    @Column(name = "missed_slot_at")
+    private OffsetDateTime missedSlotAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
