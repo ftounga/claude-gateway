@@ -13,6 +13,7 @@ import { HelpChatWidgetComponent } from '../../help/help-chat-widget/help-chat-w
 import { QuotaAlertBannerComponent } from '../quota-alert-banner/quota-alert-banner.component';
 import { NotificationBellComponent } from '../notification-bell/notification-bell.component';
 import { spaceLinks } from '../../shared/space-links';
+import { PushActivationService } from '../../core/services/push-activation.service';
 
 /**
  * Coquille applicative (F-19) : barre de navigation persistante enveloppant les pages authentifiées.
@@ -49,6 +50,7 @@ import { spaceLinks } from '../../shared/space-links';
 export class ShellComponent {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
+  private readonly pushActivation = inject(PushActivationService);
 
   /** Affiche l'entrée « Administration » uniquement pour un utilisateur ADMIN (F-20). */
   protected readonly isAdmin = this.auth.isAdmin;
@@ -61,6 +63,9 @@ export class ShellComponent {
   protected readonly menuOpen = signal(false);
 
   constructor() {
+    // F-204 / SF-204-01 — notifications actives par défaut : permission déjà accordée ⇒ cet appareil
+    // est (ré)abonné sans aucune UI. Aucun effet sinon (la demande se fait sur le premier envoi).
+    void this.pushActivation.ensureSubscribed();
     // Toute navigation terminée referme le menu : ouvrir un lien, c'est vouloir la page, pas
     // rester sur le panneau. On écoute l'URL déjà exposée plutôt que de recâbler le routeur.
     effect(() => {

@@ -17,6 +17,7 @@ import { HostPresenceService } from '../../core/services/host-presence.service';
 import { AtelierThreadItem } from '../atelier.types';
 import { AtelierTerminalBlock } from '../../core/models/atelier.models';
 import { AtelierFileDiffView } from './terminal-diff';
+import { PushActivationService } from '../../core/services/push-activation.service';
 
 /**
  * Vue terminal immersive (F-30 SF-30-07) : composant de présentation. On vérifie le rendu des lignes
@@ -584,6 +585,21 @@ describe('AtelierTerminalComponent', () => {
     component.submitting = false;
     component.submit();
     expect(sent).toBe(1);
+  });
+
+  it('F-204 : sans bannière, la demande de notifications se greffe sur l\'envoi, pas sur une saisie vide', () => {
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('app-terminal-push-invite')).toBeNull();
+    const push = TestBed.inject(PushActivationService);
+    const ask = spyOn(push, 'askOnceOnGesture');
+
+    component.draft = '   ';
+    component.submit();
+    expect(ask).not.toHaveBeenCalled();
+
+    component.draft = 'lance les tests';
+    component.submit();
+    expect(ask).toHaveBeenCalledTimes(1);
   });
 
   // ------------------------------------ F-121 / SF-121-23 : slash-commands dans le composer
