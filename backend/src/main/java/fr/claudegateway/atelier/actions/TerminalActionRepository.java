@@ -59,6 +59,13 @@ public interface TerminalActionRepository extends JpaRepository<TerminalAction, 
      */
     List<TerminalAction> findByStatus(TerminalActionStatus status);
 
+    /**
+     * Attentes d'un terminal créées ou modifiées dans une fenêtre (F-183 / SF-183-04) : la matière de la
+     * ligne « 3 attentes mises à jour » d'une routine. Un compte, sous {@code user_id} + {@code workspace_id}.
+     */
+    long countByUserIdAndWorkspaceIdAndUpdatedAtBetween(UUID userId, UUID workspaceId,
+            java.time.OffsetDateTime from, java.time.OffsetDateTime to);
+
     /** Toutes les actions du compte dans ces états : le terminal racine les regroupe. */
     List<TerminalAction> findByUserIdAndStatusInOrderByCreatedAtAsc(
             UUID userId, Collection<TerminalActionStatus> statuses);

@@ -76,7 +76,7 @@ class RoutineTurnRunnerTest {
         when(chat.chatStreaming(eq(userId), eq(workspaceId), anyString(), any())).thenReturn(result("CR prêt", false, "0.84"));
         LiveTurn turn = runner.prepare(routine).orElseThrow();
         runner.launch(turn, routine, RoutineTrigger.SCHEDULED, null, new BigDecimal("5.00"));
-        verify(runs).finish(any(), eq(RoutineRunStatus.DONE), eq(new BigDecimal("0.84")), eq(null));
+        verify(runs).finish(any(), eq(RoutineRunStatus.DONE), eq(new BigDecimal("0.84")), eq(null), eq("Point du matin"));
         verify(chat).chatStreaming(eq(userId), eq(workspaceId), eq(RoutineTurnRunner.demandOf(routine)), any());
         assertThat(liveTurns.find(userId, workspaceId)).isEmpty();
     }
@@ -102,21 +102,44 @@ class RoutineTurnRunnerTest {
         runner.launch(runner.prepare(routine).orElseThrow(), routine, RoutineTrigger.SCHEDULED, null,
                 new BigDecimal("1.00"));
         verify(chat, org.mockito.Mockito.times(1)).chatStreaming(any(), any(), anyString(), any());
-        verify(runs).finish(any(), eq(RoutineRunStatus.INCOMPLETE), eq(new BigDecimal("1.02")), eq(null));
+        verify(runs).finish(any(), eq(RoutineRunStatus.INCOMPLETE), eq(new BigDecimal("1.02")), eq(null), any());
     }
 
     @Test
     void aCappedRunIsIncomplete() {
         when(chat.chatStreaming(any(), any(), anyString(), any())).thenReturn(result("coupé", true, "5.10"));
         runner.launch(runner.prepare(routine).orElseThrow(), routine, RoutineTrigger.SCHEDULED, null, null);
-        verify(runs).finish(any(), eq(RoutineRunStatus.INCOMPLETE), eq(new BigDecimal("5.10")), eq(null));
+        verify(runs).finish(any(), eq(RoutineRunStatus.INCOMPLETE), eq(new BigDecimal("5.10")), eq(null), any());
     }
 
     @Test
     void quotaExhaustedFailsWithACode() {
         when(chat.chatStreaming(any(), any(), anyString(), any())).thenThrow(new QuotaExceededException("épuisé"));
         runner.launch(runner.prepare(routine).orElseThrow(), routine, RoutineTrigger.SCHEDULED, null, null);
-        verify(runs).finish(any(), eq(RoutineRunStatus.FAILED), eq(BigDecimal.ZERO), eq("quota_exceeded"));
+        verify(runs).finish(any(), eq(RoutineRunStatus.FAILED), eq(BigDecimal.ZERO), eq("quota_exceeded"), any());
+    }
+
+    @Test
+    void oneNotificationPerRunTheGenericOneIsMuted() {
+        RoutineNotifier notifier = mock(RoutineNotifier.class);
+        runner.setNotifier(notifier);
+        when(chat.chatStreaming(any(), any(), anyString(), any())).thenReturn(result("ok", false, "0.84"));
+        runner.launch(runner.prepare(routine).orElseThrow(), routine, RoutineTrigger.SCHEDULED, null, null);
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(chat, notifier);
+        order.verify(chat).muteOutcomePush(userId, workspaceId);
+        order.verify(chat).chatStreaming(any(), any(), anyString(), any());
+        order.verify(chat).unmuteOutcomePush(userId, workspaceId);
+        order.verify(notifier).notify(routine, RoutineRunStatus.DONE);
+    }
+
+    @Test
+    void aStoppedRunNotifiesStopped() {
+        RoutineNotifier notifier = mock(RoutineNotifier.class);
+        runner.setNotifier(notifier);
+        when(chat.chatStreaming(any(), any(), anyString(), any())).thenThrow(new QuotaExceededException("x"));
+        runner.launch(runner.prepare(routine).orElseThrow(), routine, RoutineTrigger.SCHEDULED, null, null);
+        verify(notifier).notify(routine, RoutineRunStatus.FAILED);
+        verify(chat).unmuteOutcomePush(userId, workspaceId);
     }
 
     @Test

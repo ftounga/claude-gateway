@@ -128,6 +128,17 @@ class RoutinePlannerTest {
     }
 
     @Test
+    void aMissedSlotIsNotifiedOnce() {
+        RoutineNotifier notifier = mock(RoutineNotifier.class);
+        planner.setNotifier(notifier);
+        when(liveness.isAlive(userId, hostId)).thenReturn(false);
+        when(routines.markMissed(routine.getId(), MONDAY_SLOT)).thenReturn(1).thenReturn(0);
+        planner.plan(routine, MONDAY);
+        planner.plan(routine, MONDAY.plusMinutes(1));
+        verify(notifier, times(1)).notify(routine, RoutineRunStatus.MISSED_OFFLINE);
+    }
+
+    @Test
     void reconnectionCatchesUpOnceAsCatchUp() {
         routine.setMissedSlotAt(MONDAY_SLOT);
         OffsetDateTime later = OffsetDateTime.parse("2026-10-19T11:00:00+02:00");

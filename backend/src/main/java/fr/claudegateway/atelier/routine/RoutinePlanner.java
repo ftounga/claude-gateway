@@ -78,6 +78,14 @@ public class RoutinePlanner {
         this.staleAfter = staleAfter;
     }
 
+    /** La notification d'une exécution manquée ou non lancée (SF-183-04). */
+    private RoutineNotifier notifier;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setNotifier(RoutineNotifier notifier) {
+        this.notifier = notifier;
+    }
+
     /** Un passage, maintenant. */
     public int runOnce() {
         return runOnce(OffsetDateTime.now(clock));
@@ -180,7 +188,9 @@ public class RoutinePlanner {
 
     /** Point d'extension : une exécution n'est pas partie, budget du mois épuisé (SF-183-04 y notifie). */
     void onSkipped(SubjectRoutine routine) {
-        // SF-183-03 : rien de plus que la ligne SKIPPED_BUDGET.
+        if (notifier != null) {
+            notifier.notify(routine, RoutineRunStatus.SKIPPED_BUDGET);
+        }
     }
 
     /** Note le créneau manqué — une seule ligne par créneau, quel que soit le nombre de passages. */
@@ -196,7 +206,9 @@ public class RoutinePlanner {
 
     /** Point d'extension : un créneau vient d'être noté manqué (SF-183-04 y notifie). */
     void onMissed(SubjectRoutine routine) {
-        // SF-183-02 : rien de plus que la ligne MISSED_OFFLINE.
+        if (notifier != null) {
+            notifier.notify(routine, RoutineRunStatus.MISSED_OFFLINE);
+        }
     }
 
     /**

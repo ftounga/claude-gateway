@@ -142,6 +142,23 @@ public class RoutineService {
         return save(routine, true);
     }
 
+    /** Les comptes rendus non lus du sujet (SF-183-04). */
+    @Transactional(readOnly = true)
+    public List<RoutineDtos.RoutineRunView> unseen(UUID userId, UUID workspaceId) {
+        workspaceService.requireOwned(userId, workspaceId);
+        return runs == null ? List.of() : runs.unseen(userId, workspaceId);
+    }
+
+    /** Ferme une ligne de compte rendu (SF-183-04). */
+    @Transactional
+    public void acknowledge(UUID userId, UUID workspaceId, UUID runId) {
+        workspaceService.requireOwned(userId, workspaceId);
+        if (runs == null) {
+            throw new RoutineNotFoundException();
+        }
+        runs.acknowledge(userId, workspaceId, runId);
+    }
+
     /** L'historique d'une routine (SF-183-02) : ses 20 dernières exécutions. */
     @Transactional(readOnly = true)
     public List<RoutineDtos.RoutineRunView> history(UUID userId, UUID workspaceId, UUID routineId) {

@@ -46,6 +46,16 @@ export class RoutineService {
     return this.http.get<RoutineRun[]>(`${this.base(workspaceId)}/${routineId}/runs`);
   }
 
+  /** Les comptes rendus non lus du sujet, pour la bande en tête du fil (SF-183-04). */
+  unseen(workspaceId: string): Observable<RoutineRun[]> {
+    return this.http.get<RoutineRun[]>(`${this.base(workspaceId)}/runs/unseen`);
+  }
+
+  /** Ferme une ligne de compte rendu (SF-183-04). */
+  acknowledge(workspaceId: string, runId: string): Observable<void> {
+    return this.http.post<void>(`${this.base(workspaceId)}/runs/${runId}/ack`, {});
+  }
+
   /** Valide une proposition de l'agent. */
   accept(workspaceId: string, routineId: string): Observable<Routine> {
     return this.http.post<Routine>(`${this.base(workspaceId)}/${routineId}/accept`, {});

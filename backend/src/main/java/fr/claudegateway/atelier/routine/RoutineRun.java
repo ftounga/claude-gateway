@@ -87,4 +87,12 @@ public class RoutineRun {
     /** La ligne de compte rendu (SF-183-04). */
     @Column(name = "summary", length = 300)
     private String summary;
+
+    /** Attentes du sujet créées ou modifiées pendant l'exécution (SF-183-04) ; un compte, aucun contenu. */
+    @Column(name = "attentes_updated")
+    private Integer attentesUpdated;
+
+    /** La ligne en tête du fil a été fermée par l'utilisateur (SF-183-04). */
+    @Column(name = "acknowledged_at")
+    private OffsetDateTime acknowledgedAt;
 }

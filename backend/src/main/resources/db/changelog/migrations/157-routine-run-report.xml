@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-183 / SF-183-04 - ELLE REND COMPTE.
+
+      attentes_updated : nombre d'attentes du sujet creees ou modifiees pendant l'execution (compte, pas
+      de contenu) - la matiere de la ligne « Routine du matin - 3 attentes mises a jour ».
+      acknowledged_at : l'utilisateur a vu la ligne en tete du fil et l'a fermee ; elle ne revient pas.
+      Rollback : les deux colonnes se retirent.
+    -->
+
+    <changeSet id="157-routine-run-report" author="claude-gateway">
+        <addColumn tableName="routine_runs">
+            <column name="attentes_updated" type="int"/>
+            <column name="acknowledged_at" type="timestamptz"/>
+        </addColumn>
+        <createIndex tableName="routine_runs" indexName="idx_routine_runs_user_workspace">
+            <column name="user_id"/>
+            <column name="workspace_id"/>
+        </createIndex>
+        <rollback>
+            <dropIndex tableName="routine_runs" indexName="idx_routine_runs_user_workspace"/>
+            <dropColumn tableName="routine_runs" columnName="acknowledged_at"/>
+            <dropColumn tableName="routine_runs" columnName="attentes_updated"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
