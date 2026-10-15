@@ -76,6 +76,8 @@ import { AtelierSlashPosteComponent } from './atelier-slash-poste.component';
 import { AtelierSlashSujetComponent } from './atelier-slash-sujet.component';
 import { AtelierSlashRecallComponent } from './atelier-slash-recall.component';
 import { AtelierSlashActionComponent } from './atelier-slash-action.component';
+import { AtelierSlashRoutinesComponent } from './atelier-slash-routines.component';
+import { TerminalRoutinesBandComponent } from './terminal-routines-band.component';
 import { AtelierCostService } from '../../core/services/atelier-cost.service';
 import { AtelierContextService } from '../../core/services/atelier-context.service';
 import { UsageService } from '../../core/services/usage.service';
@@ -250,6 +252,7 @@ export function plumeErrorMessage(failure: HttpErrorResponse | null | undefined)
     AtelierSlashContexteComponent, AtelierSlashQuotaComponent, AtelierSlashBudgetComponent,
     AtelierSlashPosteComponent, AtelierSlashSujetComponent,
     AtelierSlashRecallComponent, AtelierSlashActionComponent, AtelierSlashPassationComponent,
+    AtelierSlashRoutinesComponent, TerminalRoutinesBandComponent,
     MatButtonToggleModule, MatIconModule, MatMenuModule, MatProgressBarModule, MatProgressSpinnerModule,
     MatTooltipModule, RouterLink,
     WeeklyBudgetComponent, ProjectCostComponent, DictationButtonComponent,
@@ -818,6 +821,27 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     this.actionsOpen.set(true);
   }
 
+  /**
+   * F-183 — le compteur qui fait relire la bande des routines (proposition validée, routine changée,
+   * fin de tour : une routine a pu tourner ou l'agent en proposer une).
+   */
+  readonly routinesTick = signal(0);
+
+  /** F-183 / SF-183-01 — une routine a changé (panneau ou carte) : la bande se relit. */
+  onRoutinesChanged(): void {
+    this.routinesTick.update((tick) => tick + 1);
+  }
+
+  /** F-183 / SF-183-01 — [Modifier] sur la carte : ouvre le panneau `/routines` dans le fil. */
+  openRoutinesPanel(): void {
+    const command = findPanelCommand('routines');
+    if (command) {
+      // Sans passer par le composer : le brouillon de l'utilisateur reste intact.
+      const id = `slash-${this.slashPanelSeq++}`;
+      this.slashPanels.update((panels) => [...panels, buildPanel(command, '', id)]);
+    }
+  }
+
   closeActions(): void {
     this.actionsOpen.set(false);
     // La reprise a pu être validée dans le panneau : la bande suit, sans rouvrir quoi que ce soit.
@@ -1131,6 +1155,8 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
         this.loadActionCount(this.projectId);
         // F-176 : le tour a pu faire avancer le parcours (proposition, plan, phase).
         this.loadJourney(this.projectId);
+        // F-183 : l'agent a pu proposer une routine — la carte en tête du fil se relit.
+        this.routinesTick.update((tick) => tick + 1);
       }
     }
   }

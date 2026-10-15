@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-183 / SF-183-01 - LES ROUTINES DU SUJET : DECLARER UNE ROUTINE.
+
+      Une ligne par routine : un travail recurrent qu'un sujet (projet sur poste) execute sans ecran.
+      Rythme ferme (DAILY | WEEKDAYS | WEEKLY + day_of_week), heure HH:mm dans le fuseau du poste,
+      budget en dollars par execution. Une routine proposee par l'agent (origin AGENT) est inactive
+      tant que l'utilisateur ne l'a pas validee (proposed = true).
+
+      last_slot_at : dernier creneau consomme. Pose sur le creneau du a la creation, pour qu'une
+      routine ne parte jamais pour un creneau d'avant sa declaration ; sert de verrou entre pods
+      (SF-183-02).
+
+      Isolation : user_id sur chaque ligne ; toute lecture filtre user_id + workspace_id. Les lignes
+      suivent le sujet (cle etrangere, cascade) et le compte (purge nommee).
+      Rollback : la table se retire.
+    -->
+
+    <changeSet id="154-subject-routines" author="claude-gateway">
+        <createTable tableName="subject_routines">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_subject_routines_workspace"
+                             references="workspaces(id)" deleteCascade="true"/>
+            </column>
+            <column name="name" type="varchar(80)"><constraints nullable="false"/></column>
+            <column name="instruction" type="varchar(4000)"><constraints nullable="false"/></column>
+            <!-- DAILY | WEEKDAYS | WEEKLY -->
+            <column name="cadence" type="varchar(16)"><constraints nullable="false"/></column>
+            <!-- 1 = lundi ... 7 = dimanche, seulement pour WEEKLY -->
+            <column name="day_of_week" type="int"/>
+            <column name="run_time" type="varchar(5)"><constraints nullable="false"/></column>
+            <column name="time_zone" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="max_run_usd" type="numeric(10,2)"><constraints nullable="false"/></column>
+            <column name="active" type="boolean" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="proposed" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <!-- USER | AGENT -->
+            <column name="origin" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="last_slot_at" type="timestamptz"/>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="subject_routines" indexName="idx_subject_routines_user_workspace">
+            <column name="user_id"/>
+            <column name="workspace_id"/>
+        </createIndex>
+        <createIndex tableName="subject_routines" indexName="idx_subject_routines_active">
+            <column name="active"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="subject_routines"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

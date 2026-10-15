@@ -131,6 +131,15 @@ export const SLASH_PANEL_COMMANDS: readonly SlashPanelCommand[] = [
     panelKind: 'sujet',
   },
   {
+    name: 'routines',
+    title: '/routines',
+    description: 'Les routines du sujet : travail programmé, exécuté sans écran sur le poste',
+    kind: 'action',
+    takesArgument: false,
+    icon: 'event_repeat',
+    panelKind: 'routines',
+  },
+  {
     name: 'compacter',
     title: '/compacter',
     description: 'Compaction douce : résume les vieux tours, garde la mémoire',
