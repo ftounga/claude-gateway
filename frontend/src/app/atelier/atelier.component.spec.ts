@@ -1007,6 +1007,124 @@ describe('AtelierComponent', () => {
     });
   });
 
+  // F-198 / SF-198-01 — changer de sujet sans rafraîchir : l'état affiché est celui du sujet ouvert.
+  describe('changer de sujet (F-198 / SF-198-01)', () => {
+    const other: WorkspaceSummary = {
+      id: 'w9', name: 'autre', createdAt: '2026-10-16T00:00:00Z', source: 'ARCHIVE', gitRepo: null,
+    };
+    const otherDetail: WorkspaceDetail = { ...detail, id: 'w9', name: 'autre', files: ['b.txt'] };
+    const msg = (id: string, content: string): AtelierMessage =>
+      ({ id, role: 'ASSISTANT', content, createdAt: '2026-10-16T00:00:00Z' }) as AtelierMessage;
+
+    /** A en plein tour (boucle maison) : spinner, chrono, ligne vivante, autorisation en attente. */
+    function turnRunningOnA(): AtelierStreamHandlers {
+      setup();
+      component.selectWorkspace(summary);
+      component.engine.set('LOCAL_MACHINE');
+      let handlers: AtelierStreamHandlers | undefined;
+      service.streamChat.and.callFake((_id, _message, given) => {
+        handlers = given;
+        return new Promise<void>(() => undefined);
+      });
+      component.draft.set('lance les tests');
+      component.send();
+      handlers!.onConfirmRequest?.({ toolUseId: 'c1', tool: 'bash', detail: 'npm test' });
+      expect(component.submitting()).toBeTrue();
+      expect(component.pendingConfirmation()).not.toBeNull();
+      return handlers!;
+    }
+
+    it('B au repos : ni spinner, ni ligne vivante, ni invite héritée de A', () => {
+      turnRunningOnA();
+
+      component.selectWorkspace(other);
+
+      expect(component.submitting()).toBeFalse();
+      expect(component.interrupting()).toBeFalse();
+      expect(component.execStreaming()).toBeNull();
+      expect(component.streaming()).toBeNull();
+      expect(component.pendingConfirmation()).toBeNull();
+      expect(component.pendingQuestion()).toBeNull();
+      expect(component.execElapsedSeconds()).toBe(0);
+      expect(component.planAwaitingApproval()).toBeFalse();
+    });
+
+    it('la fin du tour de A, arrivée pendant B, n\'écrit rien dans le fil de B', () => {
+      const handlersOfA = turnRunningOnA();
+      service.getHistory.and.returnValue(of([msg('b1', 'fil de B')]));
+      component.selectWorkspace(other);
+
+      handlersOfA.onDone({ reply: 'réponse de A', actions: [], messageId: 'mA' });
+
+      expect(component.messages().map((m) => m.content)).toEqual(['fil de B']);
+      expect(component.submitting()).toBeFalse();
+    });
+
+    it('une erreur du flux de A, arrivée pendant B, ne s\'affiche pas dans B', () => {
+      const handlersOfA = turnRunningOnA();
+      service.getHistory.and.returnValue(of([msg('b1', 'fil de B')]));
+      component.selectWorkspace(other);
+      snackBar.open.calls.reset();
+
+      handlersOfA.onError('request_failed');
+      handlersOfA.onClosed?.();
+
+      expect(snackBar.open).not.toHaveBeenCalled();
+      expect(component.messages().map((m) => m.content)).toEqual(['fil de B']);
+      expect(service.followTurnInWindows).not.toHaveBeenCalled();
+    });
+
+    it('réponses dans le désordre : celles de A, arrivées après B, n\'écrasent pas B', () => {
+      setup();
+      const historyA = new Subject<AtelierMessage[]>();
+      const detailA = new Subject<WorkspaceDetail>();
+      service.getHistory.and.callFake((id: string) =>
+        id === 'w1' ? historyA.asObservable() : of([msg('b1', 'fil de B')]));
+      service.getWorkspace.and.callFake((id: string) =>
+        id === 'w1' ? detailA.asObservable() : of(otherDetail));
+
+      component.selectWorkspace(summary);
+      component.selectWorkspace(other);
+      historyA.next([msg('a1', 'fil de A')]);
+      historyA.complete();
+      detailA.next(detail);
+      detailA.complete();
+
+      expect(component.messages().map((m) => m.content)).toEqual(['fil de B']);
+      expect(component.tree()).toEqual(['b.txt']);
+      expect(component.activeDetail()?.id).toBe('w9');
+    });
+
+    it('une erreur de chargement de A, arrivée après B, reste muette', () => {
+      setup();
+      const historyA = new Subject<AtelierMessage[]>();
+      service.getHistory.and.callFake((id: string) =>
+        id === 'w1' ? historyA.asObservable() : of([]));
+      component.selectWorkspace(summary);
+      component.selectWorkspace(other);
+      snackBar.open.calls.reset();
+
+      historyA.error(new Error('boom'));
+
+      expect(snackBar.open).not.toHaveBeenCalled();
+    });
+
+    it('B peut lancer son propre tour pendant que A tourne encore', () => {
+      turnRunningOnA();
+      component.selectWorkspace(other);
+      component.engine.set('LOCAL_MACHINE');
+      service.streamChat.calls.reset();
+      service.streamChat.and.returnValue(new Promise<void>(() => undefined));
+
+      component.draft.set('question pour B');
+      component.send();
+
+      expect(service.streamChat).toHaveBeenCalledTimes(1);
+      expect(service.streamChat.calls.mostRecent().args[0]).toBe('w9');
+      expect(component.submitting()).toBeTrue();
+    });
+  });
+
   describe('aperçu vivant (F-76)', () => {
     it('dit qu’il attend une autorisation, dès qu’il l’affiche', () => {
       setup();
