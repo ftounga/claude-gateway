@@ -51,7 +51,7 @@ import { JourneyMode, SubjectJourney, journeyLabel } from '../../core/models/jou
         <mat-icon>{{ guided() ? 'radio_button_checked' : 'radio_button_unchecked' }}</mat-icon>
         <span class="journey-menu__text">
           <strong>Guidé</strong>
-          <small>{{ closedCount() > 0 && !guided() ? 'Ouvre un nouveau chantier : on comprend, on planifie, puis on agit.' : 'Chantier, incident, changement d\'infra : on comprend, on planifie, puis on agit.' }}</small>
+          <small>{{ guideHint() }}</small>
         </span>
       </button>
       @if (closedCount() > 0) {
@@ -108,6 +108,13 @@ export class TerminalJourneyChipComponent {
 
   readonly guided = computed(() => this.journey()?.mode === 'GUIDE');
   readonly label = computed(() => journeyLabel(this.journey()));
+
+  /** Aide de l'entrée « Guidé » (F-197) : tenue en TS, pas d'apostrophe échappée dans le template inline. */
+  readonly guideHint = computed(() =>
+    this.closedCount() > 0 && !this.guided()
+      ? 'Ouvre un nouveau chantier : on comprend, on planifie, puis on agit.'
+      : "Chantier, incident, changement d'infra : on comprend, on planifie, puis on agit.",
+  );
 
   choose(mode: JourneyMode): void {
     const current: JourneyMode = this.guided() ? 'GUIDE' : 'LIBRE';

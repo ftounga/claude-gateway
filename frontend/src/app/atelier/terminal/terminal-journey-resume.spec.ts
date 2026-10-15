@@ -102,5 +102,7 @@ describe('F-176 / SF-176-09 — un clic fait avancer', () => {
     strip.componentRef.setInput('journey', planPhase(true));
     strip.detectChanges();
     expect(el.querySelector('.journey-plan__validate')?.textContent).toContain('Valider l\'amendement et reprendre');
+    expect(el.querySelector('.journey-plan__validate')?.textContent).not.toContain('{{');
+    expect(el.textContent).not.toContain('{{');
   });
 });

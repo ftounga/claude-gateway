@@ -142,6 +142,31 @@ describe('F-176 — le parcours du sujet', () => {
     const el: HTMLElement = fixture.nativeElement;
     expect(el.querySelector('.journey-plan__changed')).not.toBeNull();
     expect(el.querySelector('.journey-plan__validate')?.textContent).toContain('Valider l\'amendement');
+    // F-197 : l'interpolation est évaluée, jamais rendue brute.
+    expect(el.querySelector('.journey-plan__validate')?.textContent?.trim()).toBe('Valider l\'amendement et reprendre');
+    expect(el.querySelector('.journey-plan__hint')?.textContent?.trim())
+      .toBe('Le plan validé a été modifié : rien ne change chez vous avant votre validation.');
+    expect(el.textContent).not.toContain('{{');
+  });
+
+  it('F-197 : le menu de la pastille rend l\'aide « Guidé » évaluée, sans accolades brutes', () => {
+    const fixture = TestBed.createComponent(TerminalJourneyChipComponent);
+    fixture.componentRef.setInput('journey', libre);
+    fixture.detectChanges();
+    expect(fixture.componentInstance.guideHint())
+      .toBe('Chantier, incident, changement d\'infra : on comprend, on planifie, puis on agit.');
+    fixture.componentRef.setInput('journey', { ...libre, closedChantiers: 1 });
+    fixture.detectChanges();
+    expect(fixture.componentInstance.guideHint()).toBe('Ouvre un nouveau chantier : on comprend, on planifie, puis on agit.');
+
+    fixture.componentRef.setInput('journey', libre);
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('.journey-chip') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const menu = document.querySelector('.journey-menu__guide');
+    expect(menu?.textContent).toContain('Chantier, incident, changement d\'infra');
+    expect(menu?.textContent).not.toContain('{{');
+    expect(fixture.nativeElement.textContent).not.toContain('{{');
   });
 
   it('SF-176-03 : la validation porte la version vue', () => {
