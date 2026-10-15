@@ -86,6 +86,23 @@ public class LiveTurnRegistry {
         return new Entry(opened, null);
     }
 
+    /**
+     * <b>Ouvre un tour seulement si le projet est libre</b> (F-183 / SF-183-02) — pour un tour lancé
+     * sans humain (une routine) : jamais il ne remplace le tour de l'utilisateur, jamais il ne s'y glisse
+     * en précision. Atomique, comme {@link #openOrSteer}.
+     *
+     * @return le tour ouvert, ou vide si un tour vivant tient déjà ce projet sur ce pod
+     */
+    public synchronized Optional<LiveTurn> openIfIdle(UUID userId, UUID workspaceId, String message) {
+        LiveTurn current = turns.get(key(userId, workspaceId));
+        if (current != null && current.live()) {
+            return Optional.empty();
+        }
+        LiveTurn opened = open(userId, workspaceId);
+        opened.digest().demand(message);
+        return Optional.of(opened);
+    }
+
     /** Ouvre un tour pour ce projet, en fermant celui qui tournait encore. */
     public synchronized LiveTurn open(UUID userId, UUID workspaceId) {
         LiveTurn turn = new LiveTurn(userId, workspaceId, objectMapper);

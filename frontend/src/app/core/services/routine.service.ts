@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
-import { Routine, RoutineRequest } from '../models/routine.models';
+import { Routine, RoutineRequest, RoutineRun } from '../models/routine.models';
 
 /**
  * **Les routines d'un sujet** (F-183). Aucun appel ne porte d'identifiant de compte : la gateway part
@@ -34,6 +34,16 @@ export class RoutineService {
   /** Supprime une routine — et refuse ainsi une proposition de l'agent. */
   remove(workspaceId: string, routineId: string): Observable<void> {
     return this.http.delete<void>(`${this.base(workspaceId)}/${routineId}`);
+  }
+
+  /** « Lancer maintenant » (SF-183-02) : l'exécution part en tâche de fond. */
+  runNow(workspaceId: string, routineId: string): Observable<RoutineRun> {
+    return this.http.post<RoutineRun>(`${this.base(workspaceId)}/${routineId}/run`, {});
+  }
+
+  /** Les 20 dernières exécutions d'une routine (SF-183-02). */
+  history(workspaceId: string, routineId: string): Observable<RoutineRun[]> {
+    return this.http.get<RoutineRun[]>(`${this.base(workspaceId)}/${routineId}/runs`);
   }
 
   /** Valide une proposition de l'agent. */

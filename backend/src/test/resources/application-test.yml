@@ -28,6 +28,10 @@ app:
   ocr:
     polling:
       enabled: false
+  # F-183 / SF-183-02 : planificateur des routines désactivé en tests ; RoutinePlanner.runOnce() est appelé
+  # directement.
+  routines:
+    enabled: false
   radar:
     # F-100 : planificateur de la synchro du soir désactivé en tests ; RadarSyncPlanner.runOnce() est
     # appelé directement.

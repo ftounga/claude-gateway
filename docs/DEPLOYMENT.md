@@ -73,6 +73,24 @@ la présence des **trois** images sous le tag du commit.
 > long que 300 s reste perdu. Si un tour long est connu (démonstration, session client), prévenir
 > le PO et le laisser choisir le moment.
 
+### Les routines en cours (F-183 / SF-183-02, décision D5)
+
+Une **routine du sujet** tourne sans humain, à heure fixe (souvent 8 h, jours ouvrés) : personne n'est
+devant l'écran pour voir le rollout la tuer. Avant `kubectl apply`, en plus de la vérification
+`runner_audit` habituelle, **consulter les routines en cours** (lecture seule) :
+
+```sql
+SELECT r.id, r.workspace_id, r.trigger_kind, r.started_at, now() - r.started_at AS depuis
+FROM routine_runs r
+WHERE r.status = 'RUNNING' AND r.finished_at IS NULL
+ORDER BY r.started_at;
+```
+
+Une ligne ⇒ une routine tourne : attendre sa fin (ou prévenir le PO). Les exécutions orphelines
+(pod mort) sont closes automatiquement après `app.routines.stale-after` (3 h) : la requête ne reste
+pas « occupée » pour toujours. Le script `deploy2.sh` (hors dépôt) n'est pas modifié par F-183 ; c'est
+à lui d'ajouter cette requête à côté de celle de `runner_audit`.
+
 > **Conséquence sur la durée** : un rollout backend prend désormais plusieurs minutes de plus
 > (drainage + remplacement un par un). Les `rollout status --timeout=10m` de l'étape 5 restent
 > suffisants.

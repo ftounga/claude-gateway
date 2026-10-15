@@ -6,7 +6,7 @@ import { of, throwError } from 'rxjs';
 import {
   AtelierSlashRoutinesComponent, draftErrors, draftOf, emptyDraft, requestOf,
 } from './atelier-slash-routines.component';
-import { Routine, cadenceLabel, usd } from '../../core/models/routine.models';
+import { Routine, RoutineRun, cadenceLabel, runStatusLabel, usd } from '../../core/models/routine.models';
 import { RoutineService } from '../../core/services/routine.service';
 import { SLASH_PANEL_COMMANDS, findPanelCommand } from './slash-panel-commands';
 
@@ -37,6 +37,9 @@ describe('Le panneau /routines (F-183 / SF-183-01)', () => {
       expect(cadenceLabel(routine({ cadence: 'WEEKLY', dayOfWeek: 5, runTime: '17:00' })))
         .toBe('Chaque vendredi à 17:00');
       expect(usd(2.5)).toBe('2,50 $');
+      expect(runStatusLabel({ status: 'DONE', trigger: 'CATCH_UP', errorCode: null })).toBe('Rattrapée');
+      expect(runStatusLabel({ status: 'FAILED', trigger: 'SCHEDULED', errorCode: 'quota_exceeded' }))
+        .toBe('Échec (quota_exceeded)');
     });
 
     it('valide le brouillon comme la gateway', () => {
@@ -72,7 +75,7 @@ describe('Le panneau /routines (F-183 / SF-183-01)', () => {
 
     beforeEach(() => {
       service = jasmine.createSpyObj<RoutineService>('RoutineService',
-        ['list', 'create', 'update', 'remove', 'accept']);
+        ['list', 'create', 'update', 'remove', 'accept', 'runNow', 'history']);
       dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
       TestBed.configureTestingModule({
         imports: [AtelierSlashRoutinesComponent, NoopAnimationsModule],
@@ -141,6 +144,47 @@ describe('Le panneau /routines (F-183 / SF-183-01)', () => {
       fixture.componentInstance.toggle(fixture.componentInstance.routines()[0]);
       expect(service.update).toHaveBeenCalledWith('w-1', 'r-1', { active: false });
       expect(fixture.componentInstance.failure()).toBe('Refusé.');
+    });
+
+    it('montre le dernier passage en clair (SF-183-02)', () => {
+      create([routine({ lastRun: {
+        id: 'x', routineId: 'r-1', slotAt: null, trigger: 'SCHEDULED', status: 'MISSED_OFFLINE',
+        startedAt: '2026-10-19T06:00:00Z', finishedAt: '2026-10-19T06:00:00Z', costUsd: 0, capUsd: null,
+        errorCode: 'host_offline', summary: null,
+      } })]);
+      expect((fixture.nativeElement as HTMLElement).textContent).toContain('Manquée — poste hors ligne');
+    });
+
+    it('« Lancer maintenant » lance et prévient le terminal (SF-183-02)', () => {
+      create([routine()]);
+      service.runNow.and.returnValue(of({
+        id: 'run-1', routineId: 'r-1', slotAt: null, trigger: 'MANUAL', status: 'RUNNING',
+        startedAt: '2026-10-19T06:00:00Z', finishedAt: null, costUsd: null, capUsd: 5, errorCode: null, summary: null,
+      } as RoutineRun));
+      let started = 0;
+      fixture.componentInstance.started.subscribe(() => started++);
+      fixture.componentInstance.runNow(fixture.componentInstance.routines()[0]);
+      expect(service.runNow).toHaveBeenCalledWith('w-1', 'r-1');
+      expect(started).toBe(1);
+      expect(fixture.componentInstance.notice()).toContain('est partie');
+    });
+
+    it('« Lancer maintenant » refusé : le message de la gateway', () => {
+      create([routine()]);
+      service.runNow.and.returnValue(throwError(() => ({ error: { message: 'Le poste est hors ligne.' } })));
+      fixture.componentInstance.runNow(fixture.componentInstance.routines()[0]);
+      expect(fixture.componentInstance.failure()).toBe('Le poste est hors ligne.');
+    });
+
+    it('déplie l’historique', () => {
+      create([routine()]);
+      service.history.and.returnValue(of([]));
+      fixture.componentInstance.toggleHistory(fixture.componentInstance.routines()[0]);
+      fixture.detectChanges();
+      expect(service.history).toHaveBeenCalledWith('w-1', 'r-1');
+      expect((fixture.nativeElement as HTMLElement).textContent).toContain('Aucune exécution');
+      fixture.componentInstance.toggleHistory(fixture.componentInstance.routines()[0]);
+      expect(fixture.componentInstance.historyOf()).toBeNull();
     });
 
     it('lecture seule : aucun geste', () => {

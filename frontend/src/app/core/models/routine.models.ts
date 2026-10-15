@@ -37,6 +37,47 @@ export interface Routine {
   nextRunAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Dernière exécution (SF-183-02), absente si la routine n'a jamais tourné. */
+  lastRun?: RoutineRun | null;
+}
+
+/** L'état d'une exécution (SF-183-02). */
+export type RoutineRunStatus =
+  | 'RUNNING' | 'DONE' | 'INCOMPLETE' | 'FAILED' | 'INTERRUPTED' | 'MISSED_OFFLINE' | 'SKIPPED_BUDGET';
+
+/** Une exécution de routine : des instants, un statut, un coût — aucun contenu. */
+export interface RoutineRun {
+  id: string;
+  routineId: string;
+  slotAt: string | null;
+  trigger: 'SCHEDULED' | 'CATCH_UP' | 'MANUAL';
+  status: RoutineRunStatus;
+  startedAt: string;
+  finishedAt: string | null;
+  costUsd: number | null;
+  capUsd: number | null;
+  errorCode: string | null;
+  summary: string | null;
+}
+
+/** Le statut d'une exécution en clair. */
+export function runStatusLabel(run: Pick<RoutineRun, 'status' | 'trigger' | 'errorCode'>): string {
+  switch (run.status) {
+    case 'RUNNING':
+      return 'En cours';
+    case 'DONE':
+      return run.trigger === 'CATCH_UP' ? 'Rattrapée' : 'Terminée';
+    case 'INCOMPLETE':
+      return 'Incomplète — budget atteint';
+    case 'INTERRUPTED':
+      return 'Interrompue';
+    case 'MISSED_OFFLINE':
+      return 'Manquée — poste hors ligne';
+    case 'SKIPPED_BUDGET':
+      return 'Non lancée — budget du mois atteint';
+    case 'FAILED':
+      return run.errorCode ? `Échec (${run.errorCode})` : 'Échec';
+  }
 }
 
 /** Les jours, 1 = lundi … 7 = dimanche. */

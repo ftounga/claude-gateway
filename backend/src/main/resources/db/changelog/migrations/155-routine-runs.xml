@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-183 / SF-183-02 - LES ROUTINES TOURNENT SEULES : LE JOURNAL DES EXECUTIONS.
+
+      Une ligne par execution (ou par creneau manque) d'une routine. status = RUNNING tant que le tour
+      tourne (started_at pose, finished_at nul) : c'est ce que la verification avant deploiement (D5)
+      interroge - un rollout tue le tour en cours.
+
+        SELECT r.id, r.workspace_id, r.trigger_kind, r.started_at, now() - r.started_at AS depuis
+        FROM routine_runs r WHERE r.status = 'RUNNING' AND r.finished_at IS NULL ORDER BY r.started_at;
+
+      trigger_kind : SCHEDULED | CATCH_UP | MANUAL.
+      status  : RUNNING | DONE | INCOMPLETE | FAILED | INTERRUPTED | MISSED_OFFLINE | SKIPPED_BUDGET.
+      Aucun contenu de tour ici : des instants, un statut, un cout, un code d'erreur.
+
+      subject_routines.missed_slot_at : le creneau deja note manque (une seule ligne MISSED_OFFLINE par
+      creneau) - et le signe que le prochain depart est un rattrapage.
+
+      Isolation : user_id + workspace_id sur chaque ligne ; cascade sur la routine et sur le sujet.
+      Rollback : la table et la colonne se retirent.
+    -->
+
+    <changeSet id="155-routine-runs" author="claude-gateway">
+        <createTable tableName="routine_runs">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="routine_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_routine_runs_routine"
+                             references="subject_routines(id)" deleteCascade="true"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_routine_runs_workspace"
+                             references="workspaces(id)" deleteCascade="true"/>
+            </column>
+            <column name="slot_at" type="timestamptz"/>
+            <column name="trigger_kind" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="started_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="finished_at" type="timestamptz"/>
+            <column name="cost_usd" type="numeric(12,6)"/>
+            <column name="cap_usd" type="numeric(10,2)"/>
+            <column name="turn_id" type="uuid"/>
+            <column name="error_code" type="varchar(40)"/>
+            <column name="summary" type="varchar(300)"/>
+        </createTable>
+        <createIndex tableName="routine_runs" indexName="idx_routine_runs_status_started">
+            <column name="status"/>
+            <column name="started_at"/>
+        </createIndex>
+        <createIndex tableName="routine_runs" indexName="idx_routine_runs_routine_started">
+            <column name="routine_id"/>
+            <column name="started_at"/>
+        </createIndex>
+        <addColumn tableName="subject_routines">
+            <column name="missed_slot_at" type="timestamptz"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="subject_routines" columnName="missed_slot_at"/>
+            <dropTable tableName="routine_runs"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

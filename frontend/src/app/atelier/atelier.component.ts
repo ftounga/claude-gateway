@@ -1585,6 +1585,17 @@ export class AtelierComponent implements OnInit, OnDestroy {
    * du « Nouveau départ » ({@link restartThread}), qui repart à blanc. Au succès (N>0), un marqueur
    * « Conversation compactée · N tours résumés » reste affiché ; rien à compacter (N=0) le dit sans erreur.
    */
+  /**
+   * F-183 / SF-183-02 — « Lancer maintenant » : la routine a ouvert un tour vivant sur ce sujet ; l'écran
+   * s'y rebranche comme à l'ouverture d'un sujet dont un tour tourne déjà (F-84 / SF-84-02).
+   */
+  onRoutineStarted(): void {
+    const id = this.activeWorkspaceId();
+    if (id) {
+      this.reattachTurn(id);
+    }
+  }
+
   compactNow(): void {
     const id = this.activeWorkspaceId();
     if (!id || this.compactingNow()) {

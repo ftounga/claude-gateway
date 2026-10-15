@@ -26,6 +26,10 @@ describe('RoutineService (F-183)', () => {
     http.expectOne({ method: 'PUT', url: '/api/workspaces/w-1/routines/r-1' }).flush({});
     service.remove('w-1', 'r-1').subscribe();
     http.expectOne({ method: 'DELETE', url: '/api/workspaces/w-1/routines/r-1' }).flush(null);
+    service.runNow('w-1', 'r-1').subscribe();
+    http.expectOne({ method: 'POST', url: '/api/workspaces/w-1/routines/r-1/run' }).flush({});
+    service.history('w-1', 'r-1').subscribe();
+    http.expectOne({ method: 'GET', url: '/api/workspaces/w-1/routines/r-1/runs' }).flush([]);
     service.accept('w-1', 'r-1').subscribe();
     http.expectOne({ method: 'POST', url: '/api/workspaces/w-1/routines/r-1/accept' }).flush({});
   });
