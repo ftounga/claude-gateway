@@ -16,6 +16,8 @@ export interface RoutineRequest {
   timeZone?: string;
   maxRunUsd?: number;
   active?: boolean;
+  /** Budget mensuel en dollars (SF-183-03), 1 … 2 000 $. */
+  monthlyBudgetUsd?: number;
 }
 
 /** Une routine telle que l'écran la montre. */
@@ -39,6 +41,19 @@ export interface Routine {
   updatedAt: string;
   /** Dernière exécution (SF-183-02), absente si la routine n'a jamais tourné. */
   lastRun?: RoutineRun | null;
+  /** Budget mensuel en dollars (SF-183-03). */
+  monthlyBudgetUsd?: number;
+  /** Dépensé depuis le 1er du mois, dans le fuseau de la routine (SF-183-03). */
+  monthSpentUsd?: number;
+}
+
+/** Part du budget du mois consommée, bornée à 100 % (barre). */
+export function monthPercent(routine: Pick<Routine, 'monthlyBudgetUsd' | 'monthSpentUsd'>): number {
+  const budget = routine.monthlyBudgetUsd ?? 0;
+  if (budget <= 0) {
+    return 0;
+  }
+  return Math.min(100, Math.round(((routine.monthSpentUsd ?? 0) / budget) * 100));
 }
 
 /** L'état d'une exécution (SF-183-02). */

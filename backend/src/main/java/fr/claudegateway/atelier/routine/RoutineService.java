@@ -44,6 +44,9 @@ public class RoutineService {
     public static final BigDecimal MIN_MAX_RUN_USD = new BigDecimal("0.10");
     public static final BigDecimal MAX_MAX_RUN_USD = new BigDecimal("50.00");
     public static final String DEFAULT_TIME_ZONE = "Europe/Paris";
+    public static final BigDecimal DEFAULT_MONTHLY_BUDGET_USD = new BigDecimal("100.00");
+    public static final BigDecimal MIN_MONTHLY_BUDGET_USD = new BigDecimal("1.00");
+    public static final BigDecimal MAX_MONTHLY_BUDGET_USD = new BigDecimal("2000.00");
 
     private final WorkspaceService workspaceService;
     private final SubjectRoutineRepository routines;
@@ -68,8 +71,7 @@ public class RoutineService {
         workspaceService.requireOwned(userId, workspaceId);
         OffsetDateTime now = OffsetDateTime.now(clock);
         return routines.findByUserIdAndWorkspaceIdOrderByCreatedAtAsc(userId, workspaceId).stream()
-                .map(routine -> RoutineView.of(routine, now,
-                        runs == null ? null : runs.last(userId, routine.getId())))
+                .map(routine -> view(routine, now))
                 .toList();
     }
 
@@ -187,9 +189,16 @@ public class RoutineService {
             routine.setCreatedAt(now);
         }
         routine.setUpdatedAt(now);
-        SubjectRoutine saved = routines.save(routine);
-        return RoutineView.of(saved, now,
-                runs == null || saved.getId() == null ? null : runs.last(saved.getUserId(), saved.getId()));
+        return view(routines.save(routine), now);
+    }
+
+    /** La vue d'une routine : dernière exécution et dépense du mois quand le journal est branché. */
+    private RoutineView view(SubjectRoutine routine, OffsetDateTime now) {
+        if (runs == null || routine.getId() == null) {
+            return RoutineView.of(routine, now);
+        }
+        return RoutineView.of(routine, now, runs.last(routine.getUserId(), routine.getId()),
+                runs.monthSpent(routine, now));
     }
 
     private static String scheduleKey(SubjectRoutine routine) {
@@ -243,6 +252,18 @@ public class RoutineService {
                 throw new InvalidRoutineException("Le budget par exécution va de 0,10 $ à 50,00 $.");
             }
             routine.setMaxRunUsd(amount.setScale(2, RoundingMode.HALF_UP));
+        }
+        if (request.monthlyBudgetUsd() != null || creating) {
+            BigDecimal monthly = request.monthlyBudgetUsd() == null
+                    ? DEFAULT_MONTHLY_BUDGET_USD : request.monthlyBudgetUsd();
+            if (monthly.compareTo(MIN_MONTHLY_BUDGET_USD) < 0 || monthly.compareTo(MAX_MONTHLY_BUDGET_USD) > 0) {
+                throw new InvalidRoutineException("Le budget mensuel va de 1,00 $ à 2 000,00 $.");
+            }
+            routine.setMonthlyBudgetUsd(monthly.setScale(2, RoundingMode.HALF_UP));
+        }
+        if (routine.getMonthlyBudgetUsd() != null && routine.getMaxRunUsd() != null
+                && routine.getMonthlyBudgetUsd().compareTo(routine.getMaxRunUsd()) < 0) {
+            throw new InvalidRoutineException("Le budget mensuel ne peut pas être inférieur au budget par exécution.");
         }
         if (request.active() != null) {
             routine.setActive(request.active());

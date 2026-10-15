@@ -22,6 +22,12 @@ public interface RoutineRunRepository extends JpaRepository<RoutineRun, UUID> {
 
     Optional<RoutineRun> findByIdAndUserIdAndWorkspaceId(UUID id, UUID userId, UUID workspaceId);
 
+    /** Dépense d'une routine depuis un instant (SF-183-03) — la routine a été relue sous son propriétaire. */
+    @Query("select coalesce(sum(r.costUsd), 0) from RoutineRun r where r.routineId = :routineId "
+            + "and r.userId = :userId and r.startedAt >= :from")
+    java.math.BigDecimal spentSince(@Param("routineId") UUID routineId, @Param("userId") UUID userId,
+            @Param("from") OffsetDateTime from);
+
     /** Les exécutions en cours depuis avant cette limite : un pod mort ne les finira jamais. */
     @Query("select r from RoutineRun r where r.status = fr.claudegateway.atelier.routine.RoutineRunStatus.RUNNING "
             + "and r.startedAt < :before")
