@@ -21,9 +21,16 @@ public final class RoutineDtos {
      * @param timeZone    fuseau IANA du poste ({@code Europe/Paris} si absent)
      * @param maxRunUsd   budget par exécution, 0,10 … 50,00 $ (5,00 $ si absent)
      * @param active      programmée ou en pause ({@code true} si absent)
+     * @param monthlyBudgetUsd budget mensuel, 1 … 2 000 $ (100 $ si absent) — SF-183-03
      */
     public record RoutineRequest(String name, String instruction, String cadence, Integer dayOfWeek,
-            String runTime, String timeZone, BigDecimal maxRunUsd, Boolean active) {
+            String runTime, String timeZone, BigDecimal maxRunUsd, Boolean active, BigDecimal monthlyBudgetUsd) {
+
+        /** Forme sans budget mensuel (SF-183-01), conservée pour les appelants. */
+        public RoutineRequest(String name, String instruction, String cadence, Integer dayOfWeek,
+                String runTime, String timeZone, BigDecimal maxRunUsd, Boolean active) {
+            this(name, instruction, cadence, dayOfWeek, runTime, timeZone, maxRunUsd, active, null);
+        }
     }
 
     /**
@@ -31,17 +38,30 @@ public final class RoutineDtos {
      *
      * @param nextRunAt prochain créneau ({@code null} si en pause ou en proposition)
      * @param lastRun   dernière exécution (SF-183-02), ou {@code null}
+     * @param monthlyBudgetUsd budget du mois (SF-183-03)
+     * @param monthSpentUsd    dépensé depuis le 1er du mois, fuseau de la routine (SF-183-03)
      */
     public record RoutineView(UUID id, UUID workspaceId, String name, String instruction, String cadence,
             Integer dayOfWeek, String runTime, String timeZone, BigDecimal maxRunUsd, boolean active,
             boolean proposed, String origin, OffsetDateTime nextRunAt, OffsetDateTime createdAt,
-            OffsetDateTime updatedAt, RoutineRunView lastRun) {
+            OffsetDateTime updatedAt, RoutineRunView lastRun, BigDecimal monthlyBudgetUsd,
+            BigDecimal monthSpentUsd) {
 
-        static RoutineView of(SubjectRoutine routine, OffsetDateTime now) {
-            return of(routine, now, null);
+        /** Forme sans budget mensuel (SF-183-02), conservée pour les appelants. */
+        public RoutineView(UUID id, UUID workspaceId, String name, String instruction, String cadence,
+                Integer dayOfWeek, String runTime, String timeZone, BigDecimal maxRunUsd, boolean active,
+                boolean proposed, String origin, OffsetDateTime nextRunAt, OffsetDateTime createdAt,
+                OffsetDateTime updatedAt, RoutineRunView lastRun) {
+            this(id, workspaceId, name, instruction, cadence, dayOfWeek, runTime, timeZone, maxRunUsd, active,
+                    proposed, origin, nextRunAt, createdAt, updatedAt, lastRun, null, null);
         }
 
-        static RoutineView of(SubjectRoutine routine, OffsetDateTime now, RoutineRunView lastRun) {
+        static RoutineView of(SubjectRoutine routine, OffsetDateTime now) {
+            return of(routine, now, null, BigDecimal.ZERO);
+        }
+
+        static RoutineView of(SubjectRoutine routine, OffsetDateTime now, RoutineRunView lastRun,
+                BigDecimal monthSpentUsd) {
             OffsetDateTime next = routine.isScheduled()
                     ? RoutineSlots.nextSlot(routine, now).orElse(null)
                     : null;
@@ -49,7 +69,8 @@ public final class RoutineDtos {
                     routine.getInstruction(), routine.getCadence().name(), routine.getDayOfWeek(),
                     routine.getRunTime(), routine.getTimeZone(), routine.getMaxRunUsd(), routine.isActive(),
                     routine.isProposed(), routine.getOrigin().name(), next, routine.getCreatedAt(),
-                    routine.getUpdatedAt(), lastRun);
+                    routine.getUpdatedAt(), lastRun, routine.getMonthlyBudgetUsd(),
+                    monthSpentUsd == null ? BigDecimal.ZERO : monthSpentUsd);
         }
     }
 

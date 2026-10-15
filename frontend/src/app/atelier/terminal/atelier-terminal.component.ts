@@ -78,6 +78,7 @@ import { AtelierSlashSujetComponent } from './atelier-slash-sujet.component';
 import { AtelierSlashRecallComponent } from './atelier-slash-recall.component';
 import { AtelierSlashActionComponent } from './atelier-slash-action.component';
 import { AtelierSlashRoutinesComponent } from './atelier-slash-routines.component';
+import { AtelierSlashCostRoutinesComponent } from './atelier-slash-cost-routines.component';
 import { TerminalRoutinesBandComponent } from './terminal-routines-band.component';
 import { AtelierCostService } from '../../core/services/atelier-cost.service';
 import { AtelierContextService } from '../../core/services/atelier-context.service';
@@ -253,7 +254,7 @@ export function plumeErrorMessage(failure: HttpErrorResponse | null | undefined)
     AtelierSlashContexteComponent, AtelierSlashQuotaComponent, AtelierSlashBudgetComponent,
     AtelierSlashPosteComponent, AtelierSlashSujetComponent,
     AtelierSlashRecallComponent, AtelierSlashActionComponent, AtelierSlashPassationComponent,
-    AtelierSlashRoutinesComponent, TerminalRoutinesBandComponent,
+    AtelierSlashRoutinesComponent, TerminalRoutinesBandComponent, AtelierSlashCostRoutinesComponent,
     MatButtonToggleModule, MatIconModule, MatMenuModule, MatProgressBarModule, MatProgressSpinnerModule,
     MatTooltipModule, RouterLink,
     WeeklyBudgetComponent, ProjectCostComponent, DictationButtonComponent,

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-183 / SF-183-03 - ELLE RESTE DANS SON BUDGET : LE BUDGET MENSUEL D'UNE ROUTINE.
+
+      Un tour sans humain est un risque de cout : en plus du budget par execution (max_run_usd), chaque
+      routine porte un budget mensuel en dollars. La depense du mois se lit dans routine_runs.cost_usd
+      depuis le 1er du mois (fuseau de la routine) : rien d'autre a tenir a jour.
+      Defaut 100 $ pour les routines existantes.
+      Rollback : la colonne se retire.
+    -->
+
+    <changeSet id="156-routine-monthly-budget" author="claude-gateway">
+        <addColumn tableName="subject_routines">
+            <column name="monthly_budget_usd" type="numeric(10,2)" defaultValueNumeric="100.00">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="subject_routines" columnName="monthly_budget_usd"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

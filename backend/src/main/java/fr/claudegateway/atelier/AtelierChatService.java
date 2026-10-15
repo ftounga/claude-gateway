@@ -2734,6 +2734,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         final String[] effortInEffect = {reasoning.effort()};
         /** Plus grosse itération observée dans ce tour : majorant de la suivante (D-L8-2). */
         long largestIterationTokens = 0L;
+        // F-183 / SF-183-03 : le plafond en DOLLARS d'un tour armé par son lanceur (une routine, sans
+        // humain). Absent pour un tour au clavier : rien ne change. Il coupe, il ne dégrade jamais.
+        final AtelierSpendCap spendCap = spendCaps.get(turnKey(userId, workspaceId));
+        /** Itération la plus chère observée, en dollars : majorant de la suivante (même règle D-L8-2). */
+        java.math.BigDecimal largestIterationUsd = java.math.BigDecimal.ZERO;
         // F-188 / SF-188-03 : la forme du tour, passe principale par passe principale.
         int measuredPasses = 0;
         long maxContextTokens = 0L;
@@ -2866,6 +2871,16 @@ public class AtelierChatService implements RelayInterruptTarget {
             // itération n'est jamais refusée (D-L8-3).
             if (turnBudget.exceededBy((long) inputTokens + outputTokens, largestIterationTokens)) {
                 finalText = SPEND_CAP_REPLY;
+                spendCapReached = true;
+                break;
+            }
+            // F-183 / SF-183-03 : le budget en dollars d'une exécution de routine — même frontière, même
+            // projection, première itération toujours permise. Coupe nette : le tour est INCOMPLET, le
+            // travail fait est conservé. Un chiffrage en échec ne coupe rien (le plafond de tokens reste).
+            if (spendCap != null && spendCap.exceededBy(
+                    spentUsd(inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, webSearchRequests),
+                    largestIterationUsd)) {
+                finalText = spendCap.reply();
                 spendCapReached = true;
                 break;
             }
@@ -3009,6 +3024,13 @@ public class AtelierChatService implements RelayInterruptTarget {
             largestIterationTokens =
                     Math.max(largestIterationTokens, (long) turn.inputTokens() + turn.outputTokens());
             maxContextTokens = Math.max(maxContextTokens, turn.inputTokens());
+            if (spendCap != null) {
+                java.math.BigDecimal iterationUsd = spentUsd(turn.inputTokens(), turn.outputTokens(),
+                        turn.cacheReadTokens(), turn.cacheWriteTokens(), turn.webSearchRequests());
+                if (iterationUsd != null && iterationUsd.compareTo(largestIterationUsd) > 0) {
+                    largestIterationUsd = iterationUsd;
+                }
+            }
             totalContextTokens += turn.inputTokens();
             if (measuredPasses == 0) {
                 firstPassCacheWrite = turn.cacheWriteTokens();
@@ -6926,6 +6948,46 @@ public class AtelierChatService implements RelayInterruptTarget {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setTurnMeasureWriter(fr.claudegateway.atelier.measure.TurnMeasureWriter writer) {
         this.turnMeasureWriter = writer;
+    }
+
+    /**
+     * Les plafonds en dollars des tours armés (F-183 / SF-183-03), par clé de tour {@code (userId,
+     * workspaceId)} — comme {@code interruptedTurns}. Armé par le lanceur d'une routine avant
+     * {@link #chatStreaming}, désarmé après ; un tour au clavier n'en a jamais.
+     */
+    private final java.util.Map<String, AtelierSpendCap> spendCaps = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * Arme le plafond en dollars du prochain tour de ce projet (F-183 / SF-183-03). {@code null}
+     * désarme.
+     */
+    public void capSpend(UUID userId, UUID workspaceId, java.math.BigDecimal capUsd) {
+        if (capUsd == null) {
+            releaseSpendCap(userId, workspaceId);
+            return;
+        }
+        spendCaps.put(turnKey(userId, workspaceId), new AtelierSpendCap(capUsd));
+    }
+
+    /** Désarme le plafond en dollars de ce projet (F-183 / SF-183-03). */
+    public void releaseSpendCap(UUID userId, UUID workspaceId) {
+        spendCaps.remove(turnKey(userId, workspaceId));
+    }
+
+    /**
+     * Dépense en dollars d'un volume de tokens, au tarif du modèle (F-183 / SF-183-03) — le même calcul
+     * que le relevé du tour. {@code null} si le chiffrage échoue : on ne coupe pas sur un chiffre inconnu.
+     */
+    private java.math.BigDecimal spentUsd(long inputTokens, long outputTokens, long cacheReadTokens,
+            long cacheWriteTokens, long webSearchRequests) {
+        try {
+            return quotaService.costOf(
+                    new TurnTokens(Math.max(0L, inputTokens - cacheReadTokens - cacheWriteTokens), outputTokens,
+                            cacheReadTokens, cacheWriteTokens),
+                    new TurnExtras(webSearchRequests, 0L), model);
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     /** Compteurs du poste pour le tour en cours : [refus rendus au modèle, attentes « occupé »]. */

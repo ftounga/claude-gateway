@@ -90,6 +90,7 @@ class RoutinePlannerTest {
         when(runner.prepare(routine)).thenReturn(Optional.of(preparedTurn));
         when(routines.claimSlot(routine.getId(), MONDAY_SLOT)).thenReturn(1);
         when(routines.findByActiveTrueAndProposedFalseOrderByIdAsc(any())).thenReturn(List.of(routine));
+        when(runs.monthSpent(any(), any())).thenReturn(BigDecimal.ZERO);
         when(runner.launch(any(), any(), any(), any(), any())).thenReturn(RoutineRun.builder()
                 .trigger(RoutineTrigger.MANUAL).status(RoutineRunStatus.RUNNING).build());
     }
@@ -172,6 +173,31 @@ class RoutinePlannerTest {
     void lateStartBeyondGraceIsACatchUp() {
         assertThat(planner.plan(routine, MONDAY.plusMinutes(15))).isTrue();
         verify(runner).launch(any(), any(), eq(RoutineTrigger.CATCH_UP), eq(MONDAY_SLOT), any());
+    }
+
+    @Test
+    void monthlyBudgetExhaustedSkipsTheSlotOnce() {
+        when(runs.monthSpent(any(), any())).thenReturn(new BigDecimal("100.00"));
+        assertThat(planner.plan(routine, MONDAY)).isFalse();
+        verify(runs).recordClosed(routine, RoutineTrigger.SCHEDULED, MONDAY_SLOT, RoutineRunStatus.SKIPPED_BUDGET,
+                "monthly_budget");
+        verify(runner, never()).prepare(any());
+    }
+
+    @Test
+    void theCapIsWhatIsLeftOfTheMonthWhenLessThanThePerRunBudget() {
+        when(runs.monthSpent(any(), any())).thenReturn(new BigDecimal("98.80"));
+        assertThat(planner.plan(routine, MONDAY)).isTrue();
+        verify(runner).launch(preparedTurn, routine, RoutineTrigger.SCHEDULED, MONDAY_SLOT, new BigDecimal("1.20"));
+    }
+
+    @Test
+    void runNowRefusesWhenTheMonthIsExhausted() {
+        when(routines.findByIdAndUserIdAndWorkspaceId(routine.getId(), userId, workspaceId))
+                .thenReturn(Optional.of(routine));
+        when(runs.monthSpent(any(), any())).thenReturn(new BigDecimal("100.00"));
+        assertThatThrownBy(() -> planner.runNow(userId, workspaceId, routine.getId()))
+                .extracting(e -> ((RoutineConflictException) e).code()).isEqualTo("routine_budget_exhausted");
     }
 
     @Test
