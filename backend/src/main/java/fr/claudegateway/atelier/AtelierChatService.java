@@ -2298,9 +2298,27 @@ public class AtelierChatService implements RelayInterruptTarget {
     }
 
     private void notifyEvent(UUID userId, UUID workspaceId, fr.claudegateway.push.PushEvent event) {
-        if (pushNotificationService != null && event != null) {
+        if (pushNotificationService != null && event != null
+                && !mutedOutcomeTurns.contains(turnKey(userId, workspaceId))) {
             pushNotificationService.notify(userId, workspaceId, event);
         }
+    }
+
+    /**
+     * Les tours dont la <b>notification de fin</b> est tue (F-183 / SF-183-04) : ceux d'une routine, qui
+     * notifie elle-même une fois par exécution (« Une routine a rendu compte »). Les notifications en cours
+     * de tour (autorisation, question) ne passent pas par ici et restent émises.
+     */
+    private final java.util.Set<String> mutedOutcomeTurns = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /** Tait la notification de fin des tours de ce projet jusqu'à {@link #unmuteOutcomePush} (F-183). */
+    public void muteOutcomePush(UUID userId, UUID workspaceId) {
+        mutedOutcomeTurns.add(turnKey(userId, workspaceId));
+    }
+
+    /** Rend la notification de fin des tours de ce projet (F-183 / SF-183-04). */
+    public void unmuteOutcomePush(UUID userId, UUID workspaceId) {
+        mutedOutcomeTurns.remove(turnKey(userId, workspaceId));
     }
 
     /**

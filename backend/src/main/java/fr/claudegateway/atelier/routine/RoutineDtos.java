@@ -83,12 +83,19 @@ public final class RoutineDtos {
      */
     public record RoutineRunView(UUID id, UUID routineId, OffsetDateTime slotAt, String trigger, String status,
             OffsetDateTime startedAt, OffsetDateTime finishedAt, BigDecimal costUsd, BigDecimal capUsd,
-            String errorCode, String summary) {
+            String errorCode, String summary, Integer attentesUpdated, String routineName,
+            OffsetDateTime acknowledgedAt) {
 
         static RoutineRunView of(RoutineRun run) {
+            return of(run, null);
+        }
+
+        /** Avec le nom de la routine (SF-183-04 : la bande en tête du fil). */
+        static RoutineRunView of(RoutineRun run, String routineName) {
             return new RoutineRunView(run.getId(), run.getRoutineId(), run.getSlotAt(), run.getTrigger().name(),
                     run.getStatus().name(), run.getStartedAt(), run.getFinishedAt(), run.getCostUsd(),
-                    run.getCapUsd(), run.getErrorCode(), run.getSummary());
+                    run.getCapUsd(), run.getErrorCode(), run.getSummary(), run.getAttentesUpdated(), routineName,
+                    run.getAcknowledgedAt());
         }
     }
 }

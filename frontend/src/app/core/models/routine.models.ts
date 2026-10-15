@@ -73,6 +73,51 @@ export interface RoutineRun {
   capUsd: number | null;
   errorCode: string | null;
   summary: string | null;
+  /** Attentes créées ou modifiées pendant l'exécution (SF-183-04). */
+  attentesUpdated?: number | null;
+  /** Nom de la routine (bande en tête du fil, SF-183-04). */
+  routineName?: string | null;
+  /** Ligne fermée par l'utilisateur (SF-183-04). */
+  acknowledgedAt?: string | null;
+}
+
+/** « il y a 2 h », « il y a 5 min », « à l'instant ». */
+export function ago(iso: string | null | undefined, now = Date.now()): string {
+  if (!iso) {
+    return '';
+  }
+  const at = Date.parse(iso);
+  if (Number.isNaN(at)) {
+    return '';
+  }
+  const minutes = Math.floor(Math.max(0, now - at) / 60_000);
+  if (minutes < 1) {
+    return 'à l’instant';
+  }
+  if (minutes < 60) {
+    return `il y a ${minutes} min`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `il y a ${hours} h`;
+  }
+  const days = Math.floor(hours / 24);
+  return days === 1 ? 'hier' : `il y a ${days} j`;
+}
+
+/** L'icône d'une exécution close. */
+export function runIcon(status: RoutineRunStatus): string {
+  switch (status) {
+    case 'DONE':
+      return 'task_alt';
+    case 'MISSED_OFFLINE':
+      return 'cloud_off';
+    case 'SKIPPED_BUDGET':
+    case 'INCOMPLETE':
+      return 'savings';
+    default:
+      return 'error_outline';
+  }
 }
 
 /** Le statut d'une exécution en clair. */

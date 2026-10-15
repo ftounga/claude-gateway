@@ -161,6 +161,40 @@ class RoutineRunApiIntegrationTest {
                 .andExpect(jsonPath("$.error").value("routine_budget_exhausted"));
     }
 
+    @Autowired private fr.claudegateway.atelier.actions.TerminalActionRepository actionRepository;
+
+    @Test
+    void theRunReportsTheAttentesItUpdatedAndTheBandShowsItUntilAcknowledged() throws Exception {
+        RoutineRun run = runService.open(routine, RoutineTrigger.SCHEDULED, null, UUID.randomUUID(), null);
+        OffsetDateTime now = OffsetDateTime.now();
+        for (int i = 0; i < 3; i++) {
+            actionRepository.save(fr.claudegateway.atelier.actions.TerminalAction.builder().userId(alice.getId())
+                    .workspaceId(subject.getId()).description("Relancer " + i)
+                    .kind(fr.claudegateway.atelier.actions.TerminalActionKind.ACTION)
+                    .status(fr.claudegateway.atelier.actions.TerminalActionStatus.A_FAIRE)
+                    .createdAt(now).updatedAt(now).build());
+        }
+        runService.finish(run.getId(), RoutineRunStatus.DONE, new BigDecimal("0.84"), null, "Routine du matin");
+        assertThat(runRepository.findById(run.getId()).orElseThrow().getSummary())
+                .isEqualTo("Routine du matin — 3 attentes mises à jour");
+
+        String unseen = "/api/workspaces/" + subject.getId() + "/routines/runs/unseen";
+        mockMvc.perform(as(get(unseen), aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].summary").value("Routine du matin — 3 attentes mises à jour"))
+                .andExpect(jsonPath("$[0].attentesUpdated").value(3))
+                .andExpect(jsonPath("$[0].routineName").value("Point du matin"));
+        // Un autre utilisateur : 404 sur la lecture comme sur l'acquittement.
+        mockMvc.perform(as(get(unseen), bobToken)).andExpect(status().isNotFound());
+        String ack = "/api/workspaces/" + subject.getId() + "/routines/runs/" + run.getId() + "/ack";
+        mockMvc.perform(as(post(ack), bobToken)).andExpect(status().isNotFound());
+
+        mockMvc.perform(as(post(ack), aliceToken)).andExpect(status().isNoContent());
+        mockMvc.perform(as(post(ack), aliceToken)).andExpect(status().isNoContent());
+        mockMvc.perform(as(get(unseen), aliceToken)).andExpect(jsonPath("$.length()").value(0));
+    }
+
     @Test
     void runNowRefusesWhenTheHostIsOffline() throws Exception {
         // Aucun battement de runner : le poste est hors ligne.

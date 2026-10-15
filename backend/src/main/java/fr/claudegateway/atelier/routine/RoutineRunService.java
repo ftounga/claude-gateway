@@ -30,12 +30,26 @@ public class RoutineRunService {
 
     private static final Logger log = LoggerFactory.getLogger(RoutineRunService.class);
 
+    /** Lignes au plus dans la bande en tête du fil (SF-183-04). */
+    public static final int UNSEEN = 5;
+
     private final RoutineRunRepository runs;
     private final Clock clock;
+    /** Les attentes du sujet (F-154), pour compter ce qu'une exécution a mis à jour (SF-183-04). */
+    private fr.claudegateway.atelier.actions.TerminalActionRepository actions;
+    /** Les routines, pour nommer une exécution dans la bande (SF-183-04). */
+    private SubjectRoutineRepository routines;
 
     public RoutineRunService(RoutineRunRepository runs, Clock clock) {
         this.runs = runs;
         this.clock = clock;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setReportSources(fr.claudegateway.atelier.actions.TerminalActionRepository actions,
+            SubjectRoutineRepository routines) {
+        this.actions = actions;
+        this.routines = routines;
     }
 
     /** Ouvre une exécution : {@code RUNNING}, {@code started_at} maintenant. */
@@ -55,21 +69,73 @@ public class RoutineRunService {
         OffsetDateTime now = OffsetDateTime.now(clock);
         return runs.save(RoutineRun.builder().routineId(routine.getId()).userId(routine.getUserId())
                 .workspaceId(routine.getWorkspaceId()).trigger(trigger).slotAt(slot).status(status)
-                .startedAt(now).finishedAt(now).costUsd(BigDecimal.ZERO).errorCode(errorCode).build());
+                .startedAt(now).finishedAt(now).costUsd(BigDecimal.ZERO).errorCode(errorCode)
+                .summary(RoutineReport.summary(routine.getName(), status, null)).build());
     }
 
     /** Clôt une exécution. Une exécution déjà close n'est pas réécrite. */
     @Transactional
     public RoutineRun finish(UUID runId, RoutineRunStatus status, BigDecimal costUsd, String errorCode) {
+        return finish(runId, status, costUsd, errorCode, null);
+    }
+
+    /**
+     * Clôt une exécution et écrit son compte rendu (SF-183-04) : les attentes du sujet créées ou modifiées
+     * pendant l'exécution, et la ligne « Nom — 3 attentes mises à jour ». Un comptage en échec ne fait pas
+     * échouer la clôture : la ligne dit alors « terminée ».
+     */
+    @Transactional
+    public RoutineRun finish(UUID runId, RoutineRunStatus status, BigDecimal costUsd, String errorCode,
+            String routineName) {
         RoutineRun run = runs.findById(runId).orElse(null);
         if (run == null || run.getStatus().finished()) {
             return run;
         }
+        OffsetDateTime now = OffsetDateTime.now(clock);
         run.setStatus(status);
-        run.setFinishedAt(OffsetDateTime.now(clock));
+        run.setFinishedAt(now);
         run.setCostUsd(costUsd == null ? BigDecimal.ZERO : costUsd);
         run.setErrorCode(errorCode);
+        Integer attentes = countAttentes(run, now);
+        run.setAttentesUpdated(attentes);
+        run.setSummary(RoutineReport.summary(routineName, status, attentes));
         return runs.save(run);
+    }
+
+    private Integer countAttentes(RoutineRun run, OffsetDateTime now) {
+        if (actions == null) {
+            return null;
+        }
+        try {
+            return (int) actions.countByUserIdAndWorkspaceIdAndUpdatedAtBetween(run.getUserId(),
+                    run.getWorkspaceId(), run.getStartedAt(), now);
+        } catch (RuntimeException e) {
+            log.warn("Compte des attentes d'une routine impossible : {}", e.getClass().getSimpleName());
+            return null;
+        }
+    }
+
+    /** Les exécutions closes non acquittées du sujet (SF-183-04), nommées. Le sujet a été relu possédé. */
+    @Transactional(readOnly = true)
+    public List<RoutineRunView> unseen(UUID userId, UUID workspaceId) {
+        List<RoutineRun> rows = runs.findUnseen(userId, workspaceId, PageRequest.of(0, UNSEEN));
+        java.util.Map<UUID, String> names = new java.util.HashMap<>();
+        if (routines != null) {
+            routines.findByUserIdAndWorkspaceIdOrderByCreatedAtAsc(userId, workspaceId)
+                    .forEach(r -> names.put(r.getId(), r.getName()));
+        }
+        return rows.stream().map(run -> RoutineRunView.of(run, names.get(run.getRoutineId()))).toList();
+    }
+
+    /** Acquitte une ligne de la bande (SF-183-04) ; idempotent. 404 si l'exécution n'est pas à ce sujet. */
+    @Transactional
+    public void acknowledge(UUID userId, UUID workspaceId, UUID runId) {
+        RoutineRun run = runs.findByIdAndUserIdAndWorkspaceId(runId, userId, workspaceId)
+                .orElseThrow(RoutineExceptions.RoutineNotFoundException::new);
+        if (run.getAcknowledgedAt() == null) {
+            run.setAcknowledgedAt(OffsetDateTime.now(clock));
+            runs.save(run);
+        }
     }
 
     /**

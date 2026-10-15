@@ -38,6 +38,19 @@ public class RoutineController {
         this.currentUser = currentUser;
     }
 
+    /** Les comptes rendus non lus du sujet, pour la bande en tête du fil (SF-183-04). */
+    @GetMapping("/runs/unseen")
+    public List<RoutineRunView> unseen(@PathVariable UUID workspaceId) {
+        return service.unseen(currentUser.requireId(), workspaceId);
+    }
+
+    /** Ferme une ligne de la bande (SF-183-04) ; idempotent. */
+    @PostMapping("/runs/{runId}/ack")
+    public ResponseEntity<Void> acknowledge(@PathVariable UUID workspaceId, @PathVariable UUID runId) {
+        service.acknowledge(currentUser.requireId(), workspaceId, runId);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping
     public List<RoutineView> list(@PathVariable UUID workspaceId) {
         return service.list(currentUser.requireId(), workspaceId);

@@ -835,6 +835,19 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     this.routinesTick.update((tick) => tick + 1);
   }
 
+  /**
+   * F-183 / SF-183-04 — [Voir] sur une ligne de compte rendu : amène la DERNIÈRE demande de cette routine
+   * (« Routine « Nom » (exécution automatique…) ») dans le champ de vision — le compte rendu, c'est la
+   * réponse qui la suit.
+   */
+  revealRoutine(name: string): void {
+    const marker = `Routine « ${name} »`;
+    const prompts = Array.from(
+      (this.hostElement.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.terminal-question'),
+    ).filter((element) => (element.textContent ?? '').includes(marker));
+    prompts[prompts.length - 1]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
   /** F-183 / SF-183-01 — [Modifier] sur la carte : ouvre le panneau `/routines` dans le fil. */
   openRoutinesPanel(): void {
     const command = findPanelCommand('routines');

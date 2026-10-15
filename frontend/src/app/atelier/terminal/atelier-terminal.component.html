@@ -655,6 +655,7 @@
       [readOnly]="readOnly"
       (openPanel)="openRoutinesPanel()"
       (changed)="onRoutinesChanged()"
+      (reveal)="revealRoutine($event)"
     ></app-terminal-routines-band>
     @if (messages.length === 0 && !streaming) {
       @if (readOnly) {

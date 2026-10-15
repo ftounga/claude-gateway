@@ -22,6 +22,12 @@ public interface RoutineRunRepository extends JpaRepository<RoutineRun, UUID> {
 
     Optional<RoutineRun> findByIdAndUserIdAndWorkspaceId(UUID id, UUID userId, UUID workspaceId);
 
+    /** Les exécutions closes et non acquittées d'un sujet, les plus récentes d'abord (SF-183-04). */
+    @Query("select r from RoutineRun r where r.userId = :userId and r.workspaceId = :workspaceId "
+            + "and r.finishedAt is not null and r.acknowledgedAt is null order by r.startedAt desc")
+    List<RoutineRun> findUnseen(@Param("userId") UUID userId, @Param("workspaceId") UUID workspaceId,
+            Pageable page);
+
     /** Dépense d'une routine depuis un instant (SF-183-03) — la routine a été relue sous son propriétaire. */
     @Query("select coalesce(sum(r.costUsd), 0) from RoutineRun r where r.routineId = :routineId "
             + "and r.userId = :userId and r.startedAt >= :from")

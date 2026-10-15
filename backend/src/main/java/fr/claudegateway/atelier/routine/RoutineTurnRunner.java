@@ -62,6 +62,20 @@ public class RoutineTurnRunner {
         this.runs = runs;
     }
 
+    /** La notification de fin d'exécution (SF-183-04) ; absente des tests unitaires historiques. */
+    private RoutineNotifier notifier;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setNotifier(RoutineNotifier notifier) {
+        this.notifier = notifier;
+    }
+
+    private void notifyOutcome(SubjectRoutine routine, RoutineRunStatus status) {
+        if (notifier != null) {
+            notifier.notify(routine, status);
+        }
+    }
+
     /** La demande envoyée au modèle : le nom de la routine, puis sa consigne telle quelle. */
     public static String demandOf(SubjectRoutine routine) {
         return "Routine « " + routine.getName() + " » (exécution automatique, sans écran ouvert) :\n\n"
@@ -97,7 +111,8 @@ public class RoutineTurnRunner {
             executor.execute(() -> runLoop(turn, routine, run));
         } catch (RejectedExecutionException e) {
             liveTurns.close(turn);
-            runs.finish(run.getId(), RoutineRunStatus.FAILED, BigDecimal.ZERO, "executor_busy");
+            runs.finish(run.getId(), RoutineRunStatus.FAILED, BigDecimal.ZERO, "executor_busy", routine.getName());
+            notifyOutcome(routine, RoutineRunStatus.FAILED);
         }
         return run;
     }
@@ -113,7 +128,9 @@ public class RoutineTurnRunner {
             outcome = execute(turn, routine, run.getCapUsd());
         } finally {
             liveTurns.close(turn);
-            runs.finish(run.getId(), outcome.status(), outcome.costUsd(), outcome.errorCode());
+            runs.finish(run.getId(), outcome.status(), outcome.costUsd(), outcome.errorCode(), routine.getName());
+            // SF-183-04 : UNE notification par exécution — celle de la routine (la fin de tour générique est tue).
+            notifyOutcome(routine, outcome.status());
             log.info("Routine exécutée (routine={}, workspace={}, tour={}, issue={})", routine.getId(),
                     routine.getWorkspaceId(), turn.turnId(), outcome.status());
         }
@@ -132,6 +149,8 @@ public class RoutineTurnRunner {
         BigDecimal spent = BigDecimal.ZERO;
         AtomicBoolean machineLost = new AtomicBoolean(false);
         boolean incomplete = false;
+        // SF-183-04 : la routine notifie elle-même son issue ; la notification de fin de tour est tue.
+        chatService.muteOutcomePush(userId, workspaceId);
         try {
             turn.publish("started", Map.of("turnId", turn.turnId().toString(), "startedAt", turn.startedAtMs()));
             turn.publish("text", Map.of("text", "_Routine « " + routine.getName() + " » — exécution automatique._\n"));
@@ -189,6 +208,7 @@ public class RoutineTurnRunner {
             return fail(turn, spent, "internal_error");
         } finally {
             chatService.releaseSpendCap(userId, workspaceId);
+            chatService.unmuteOutcomePush(userId, workspaceId);
         }
     }
 

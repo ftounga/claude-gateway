@@ -45,7 +45,20 @@ public enum PushEvent {
             "Le travail a été arrêté : vérifiez que le poste est allumé et connecté."),
 
     /** Récapitulatif quotidien (SF-185-07) : des attentes « Demandé » sont à relancer (F-175). */
-    ATTENTES_TO_FOLLOW_UP("Des attentes sont à relancer", "Ouvrez la Forge pour les voir.");
+    ATTENTES_TO_FOLLOW_UP("Des attentes sont à relancer", "Ouvrez la Forge pour les voir."),
+
+    /**
+     * Une routine du sujet a tourné et rendu compte (F-183 / SF-183-04). Émise même terminal regardé : une
+     * routine n'est pas un tour que l'on suit des yeux.
+     */
+    ROUTINE_DONE("Une routine a rendu compte", "Ouvrez le sujet pour lire son compte rendu.", true),
+
+    /** Une routine s'est arrêtée sans aboutir : budget atteint, échec, interruption (F-183 / SF-183-04). */
+    ROUTINE_STOPPED("Une routine s'est arrêtée", "Ouvrez le sujet pour voir pourquoi.", true),
+
+    /** Une routine n'a pas pu tourner : le poste était hors ligne (F-183 / SF-183-04). */
+    ROUTINE_MISSED("Une routine n'a pas pu tourner",
+            "Le poste était hors ligne : elle repartira à sa reconnexion.", true);
 
     private final String title;
     private final String body;

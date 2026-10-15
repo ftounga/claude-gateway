@@ -145,6 +145,27 @@ class AtelierChatServiceSpendCapTest {
     }
 
     @Test
+    void aMutedTurnDoesNotSendTheGenericEndNotification() {
+        fr.claudegateway.push.PushNotificationService push =
+                org.mockito.Mockito.mock(fr.claudegateway.push.PushNotificationService.class);
+        service.setPushNotificationService(push);
+        agentProvider.enqueueFinal("Voilà.");
+        service.chatStreaming(userId, workspaceId, "x", AtelierProgressListener.NOOP);
+        org.mockito.Mockito.verify(push).notify(userId, workspaceId, fr.claudegateway.push.PushEvent.TURN_DONE);
+
+        org.mockito.Mockito.clearInvocations(push);
+        service.muteOutcomePush(userId, workspaceId);
+        agentProvider.enqueueFinal("Voilà.");
+        service.chatStreaming(userId, workspaceId, "x", AtelierProgressListener.NOOP);
+        org.mockito.Mockito.verifyNoInteractions(push);
+
+        service.unmuteOutcomePush(userId, workspaceId);
+        agentProvider.enqueueFinal("Voilà.");
+        service.chatStreaming(userId, workspaceId, "x", AtelierProgressListener.NOOP);
+        org.mockito.Mockito.verify(push).notify(userId, workspaceId, fr.claudegateway.push.PushEvent.TURN_DONE);
+    }
+
+    @Test
     void releasedCapNoLongerApplies() {
         service.capSpend(userId, workspaceId, new BigDecimal("0.15"));
         service.releaseSpendCap(userId, workspaceId);
