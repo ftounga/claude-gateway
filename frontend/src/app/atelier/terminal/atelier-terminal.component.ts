@@ -155,7 +155,7 @@ import { PageBlockComponent } from './page-block.component';
 import { PagePanelComponent } from './page-panel.component';
 import { TerminalActionsPanelComponent } from './terminal-actions-panel.component';
 import { TerminalAttentesBandComponent } from './terminal-attentes-band.component';
-import { TerminalPushInviteComponent } from './terminal-push-invite.component';
+import { PushActivationService } from '../../core/services/push-activation.service';
 import { TerminalFilComponent } from './terminal-fil.component';
 import { AttenteCardComponent } from './attente-card.component';
 import { HandoffCardComponent, HandoffOriginComponent } from './handoff-card.component';
@@ -243,7 +243,7 @@ export function plumeErrorMessage(failure: HttpErrorResponse | null | undefined)
   imports: [
     FormsModule, ForgeBreadcrumbComponent, LiveBadgeComponent, MarkdownPipe, MatButtonModule,
     TeamsLinkBadgeComponent, NgTemplateOutlet, TerminalEmailComponent, PageBlockComponent, PagePanelComponent,
-    TerminalActionsPanelComponent, TerminalAttentesBandComponent, TerminalPushInviteComponent, TerminalFilComponent, AttenteCardComponent,
+    TerminalActionsPanelComponent, TerminalAttentesBandComponent, TerminalFilComponent, AttenteCardComponent,
     HandoffCardComponent, HandoffOriginComponent, ProposalCardComponent,
     TerminalJourneyChipComponent, TerminalJourneyStripComponent, TerminalJourneyChantiersComponent,
     TerminalHandComponent,
@@ -1987,6 +1987,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
   private readonly changeDetector = inject(ChangeDetectorRef);
   private readonly snackBar = inject(MatSnackBar);
+  private readonly pushActivation = inject(PushActivationService);
   /** Horloge des libellés datés (F-97 / SF-97-02), partagée avec la Forge. */
   private readonly presence = inject(HostPresenceService);
   private readonly releaseClock = this.presence.watchClock();
@@ -2589,6 +2590,9 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     // Pendant un tour, envoyer PRÉCISE (F-84 / SF-84-06) — le parent en décide. Sans précision
     // possible (bac à sable hébergé), un envoi pendant un tour reste refusé.
     if (!this.submitting || this.steerable) {
+      // F-204 / SF-204-01 — notifications actives par défaut : la demande du navigateur, s'il faut
+      // la faire, se greffe UNE fois sur ce geste (exigé par le navigateur), sans bannière.
+      this.pushActivation.askOnceOnGesture();
       // F-146 / SF-146-01 : les références encore présentes reprennent leur texte intégral. Celles
       // que l'utilisateur a effacées ne sont PAS réinjectées — rien ne part qu'il n'ait sous les
       // yeux. Le brouillon est réécrit avant l'émission, car c'est lui que le parent envoie.
