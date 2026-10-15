@@ -1,0 +1,82 @@
+/* L'EN-TÊTE DU TERMINAL SUR UN ÉCRAN DE PORTABLE (F-200 / SF-200-01) — feuille à part, comme les
+   précédentes : la feuille principale est au budget de build de 12 ko (angular.json).
+
+   Le TRI des actions (bandeau complet / actions secondaires sous ⋯) est fait par le composant,
+   selon la largeur RÉELLE de l'en-tête (`barTier()`). Cette feuille garantit le reste, à tout
+   palier au-dessus du point de rupture téléphone : JAMAIS de chevauchement, JAMAIS de débordement.
+     - seul le fil d'Ariane rétrécit (il prend la place libre, s'ellipse sur une ligne) ; les pastilles et les
+       boutons gardent leur taille — un bouton écrasé chevauchait son voisin ;
+     - le dossier de la machine s'ellipse lui aussi (chemin complet dans l'infobulle) ;
+     - filet de sécurité : si un contenu imprévu ne tient toujours pas, la barre passe à la ligne
+       plutôt que de superposer.
+   Aucune couleur nouvelle. Sous 819 px, la feuille mobile (F-151 / F-158) reste seule maître. */
+@media (min-width: 820px) {
+  .terminal-bar {
+    min-width: 0;
+    flex-wrap: wrap;
+    row-gap: var(--cg-space-1);
+  }
+
+  .terminal-bar > * {
+    flex-shrink: 0;
+  }
+
+  .terminal-bar > .terminal-crumbs {
+    /* Base nulle : la barre ne passe jamais à la ligne À CAUSE du fil ; il prend ensuite la place
+       libre, jusqu'à sa largeur naturelle, et s'ellipse en deçà. */
+    flex: 1 1 0;
+    min-width: 8rem;
+    max-width: max-content;
+    overflow: hidden;
+  }
+
+  .terminal-bar > .terminal-folder {
+    flex: 0 1 auto;
+    max-width: 14rem;
+  }
+
+  .terminal-bar-actions {
+    flex-wrap: nowrap;
+    margin-left: auto;
+  }
+
+  /* PALIER COMPACT : la barre se resserre (espacements de la charte, multiples de 4 px) et le
+     dossier ne garde que son icône (chemin dans l'infobulle). */
+  .terminal-bar--compact {
+    gap: var(--cg-space-2);
+  }
+
+  /* La pastille de moteur peut dire « ma machine — en ligne · vu il y a 12 s » : elle s'ellipse
+     (texte complet dans l'infobulle). L'icône et la couleur portent déjà l'état. */
+  .terminal-bar--compact .engine-chip {
+    max-width: 11rem;
+  }
+
+  .terminal-bar--compact .engine-chip .terminal-bar-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .terminal-bar--compact .terminal-folder,
+  .terminal-bar--compact .engine-chip,
+  .terminal-bar--compact .terminal-live {
+    margin-left: 0;
+  }
+
+  .terminal-bar--compact .terminal-folder .terminal-bar-label {
+    display: none;
+  }
+
+  /* PALIER SERRÉ : les pastilles d'état et les actions primaires ne gardent que leur icône. L'état
+     reste dit par l'icône et la couleur de la charte ; le libellé, par l'infobulle et le nom
+     accessible. « N à faire » garde son nombre. */
+  .terminal-bar--tight .terminal-bar-label {
+    display: none;
+  }
+
+  .terminal-bar--tight .terminal-guard,
+  .terminal-bar--tight .terminal-todo {
+    min-width: 0;
+  }
+}

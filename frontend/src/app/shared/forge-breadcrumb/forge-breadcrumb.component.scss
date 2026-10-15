@@ -73,3 +73,24 @@
   display: inline-flex;
   align-items: center;
 }
+
+/* FIL SUR UNE LIGNE (F-200 / SF-200-01) — modificateur posé par l'hôte (la barre du terminal) :
+   resserré, le fil passait à la ligne et ses niveaux débordaient sur les pastilles voisines. Ici il
+   reste sur une ligne : le libellé du projet s'ellipse, la pastille du client et l'état de mission
+   gardent leur dessin, et ce qui ne tient pas est rogné, jamais superposé. */
+:host(.forge-crumbs--one-line) {
+  overflow: hidden;
+}
+
+:host(.forge-crumbs--one-line) .forge-crumbs {
+  flex-wrap: nowrap;
+}
+
+:host(.forge-crumbs--one-line) .forge-crumbs > * {
+  flex-shrink: 0;
+}
+
+/* Seul le niveau COURANT (le projet) cède : « Forge » et le client restent lisibles. */
+:host(.forge-crumbs--one-line) .forge-crumbs > .forge-crumb--current:not(.forge-crumb--host) {
+  flex-shrink: 1;
+}
