@@ -1867,4 +1867,9 @@ export interface TerminalDepositNotice {
   depositId?: string;
   /** Taille du dépôt en octets (F-169 / SF-169-02), pour rendre la pièce jointe dans la bulle. */
   size?: number;
+  /**
+   * Marqueur posé dans la saisie à l'endroit du curseur (F-201 / SF-201-02) : `[Image #1]`,
+   * `[Vidéo #1]`, `[Fichier #1]`. Absent pour une puce d'échec / annulée.
+   */
+  marker?: string;
 }

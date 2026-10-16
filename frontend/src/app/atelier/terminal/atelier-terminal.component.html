@@ -1572,13 +1572,16 @@
               } @else if (notice.cancelled) {
                 <span class="terminal-attachment__text">Dépôt annulé</span>
               } @else {
+                @if (notice.marker) {
+                  <span class="terminal-attachment__marker">{{ notice.marker }}</span>
+                }
                 <span class="terminal-attachment__name" [title]="notice.path">{{ shortName(notice.path) }}</span>
                 <span class="terminal-attachment__size">{{ notice.sizeLabel }}</span>
               }
               <button
                 type="button"
                 class="terminal-attachment__remove"
-                (click)="depositRemove.emit(notice.id)"
+                (click)="removeAttachment(notice)"
                 [attr.aria-label]="'Retirer ' + (notice.error || notice.cancelled ? 'cette pièce' : shortName(notice.path))"
               >
                 ×
