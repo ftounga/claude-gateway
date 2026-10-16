@@ -140,7 +140,7 @@ public final class NextStepsBlock {
             return null;
         }
         return NextStep.proposed(truncate(title, MAX_TITLE_CHARS), truncate(why, MAX_WHY_CHARS), label, request,
-                proposedStep(node));
+                proposedStep(node), proposedChantier(node));
     }
 
     private static final Pattern FIRST_INT = Pattern.compile("\\d{1,3}");
@@ -151,7 +151,19 @@ public final class NextStepsBlock {
      * gateway le vérifie contre le plan réel ({@link ChantierAnchor}).
      */
     static Integer proposedStep(JsonNode node) {
-        for (String name : new String[] {"etape", "étape", "step"}) {
+        return proposedNumber(node, "etape", "étape", "step");
+    }
+
+    /**
+     * Le numéro de chantier proposé par le modèle (F-206 / SF-206-03), même lecture que l'étape. Jamais
+     * cru tel quel : la gateway le vérifie contre les chantiers ouverts ({@link ChantierAnchor}).
+     */
+    static Integer proposedChantier(JsonNode node) {
+        return proposedNumber(node, "chantier");
+    }
+
+    private static Integer proposedNumber(JsonNode node, String... names) {
+        for (String name : names) {
             JsonNode value = node.get(name);
             if (value == null || value.isNull()) {
                 continue;
