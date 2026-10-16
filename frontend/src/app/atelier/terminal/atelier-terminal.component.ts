@@ -167,6 +167,7 @@ import { TerminalFilComponent } from './terminal-fil.component';
 import { AttenteCardComponent } from './attente-card.component';
 import { HandoffCardComponent, HandoffOriginComponent } from './handoff-card.component';
 import { ProposalCardComponent } from './proposal-card.component';
+import { BesoinCardComponent } from './besoin-card.component';
 import { SkillCatalogService, SkillEntry, skillSuggestions } from '../../core/services/skill-catalog.service';
 import { TerminalJourneyChipComponent } from './terminal-journey-chip.component';
 import { TerminalJourneyChantiersComponent } from './terminal-journey-chantiers.component';
@@ -252,7 +253,7 @@ export function plumeErrorMessage(failure: HttpErrorResponse | null | undefined)
     TeamsLinkBadgeComponent, NgTemplateOutlet, TerminalEmailComponent, PageBlockComponent, PagePanelComponent,
     TerminalActionsPanelComponent, TerminalAttentesBandComponent, TerminalMorningBandComponent, TerminalFilComponent,
     AttenteCardComponent,
-    HandoffCardComponent, HandoffOriginComponent, ProposalCardComponent,
+    HandoffCardComponent, HandoffOriginComponent, ProposalCardComponent, BesoinCardComponent,
     TerminalJourneyChipComponent, TerminalJourneyStripComponent, TerminalJourneyChantiersComponent,
     TerminalHandComponent,
     AtelierTerminalDemandeComponent,

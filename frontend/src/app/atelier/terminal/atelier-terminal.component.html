@@ -867,6 +867,10 @@
               @if (block.proposal; as proposal) {
                 <app-proposal-card [proposal]="proposal" [workspaceId]="projectId" [readOnly]="readOnly" (modify)="onProposalModify($event)"></app-proposal-card>
               }
+              <!-- LE BESOIN DE L'APPLICATION (F-205 / SF-205-02) : [Enregistrer] [Non]. -->
+              @if (block.besoin; as besoin) {
+                <app-besoin-card [besoin]="besoin" [workspaceId]="projectId" [readOnly]="readOnly"></app-besoin-card>
+              }
             </div>
             }
             }
@@ -1093,6 +1097,9 @@
           }
           @if (block.proposal; as proposal) {
             <app-proposal-card [proposal]="proposal" [workspaceId]="projectId" [readOnly]="readOnly" (modify)="onProposalModify($event)"></app-proposal-card>
+          }
+          @if (block.besoin; as besoin) {
+            <app-besoin-card [besoin]="besoin" [workspaceId]="projectId" [readOnly]="readOnly"></app-besoin-card>
           }
         </div>
         }

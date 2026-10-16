@@ -14,6 +14,7 @@ import { AdminCostService } from './cost/admin-cost.service';
 import { AdminBilansService } from './bilans/admin-bilans.service';
 import { AdminDiagnosticService } from './diagnostic/admin-diagnostic.service';
 import { AdminUsageService } from './admin-usage.service';
+import { AppRequestService } from '../core/services/app-request.service';
 
 describe('AdminComponent', () => {
   let fixture: ComponentFixture<AdminComponent>;
@@ -104,6 +105,10 @@ describe('AdminComponent', () => {
     const diagnosticSpy = jasmine.createSpyObj<AdminDiagnosticService>('AdminDiagnosticService',
       ['run']);
 
+    // F-205 / SF-205-02 : la section Besoins, doublée elle aussi (elle a son propre spec).
+    const besoinsSpy = jasmine.createSpyObj<AppRequestService>('AppRequestService', ['list']);
+    besoinsSpy.list.and.returnValue(of([]));
+
     await TestBed.configureTestingModule({
       imports: [AdminComponent],
       providers: [
@@ -117,6 +122,7 @@ describe('AdminComponent', () => {
         // autres, son service est doublé — sinon il réclamerait un HttpClient que ce test n'a pas.
         { provide: AdminBilansService, useValue: bilansSpy },
         { provide: AdminDiagnosticService, useValue: diagnosticSpy },
+        { provide: AppRequestService, useValue: besoinsSpy },
       ],
     }).compileComponents();
 
