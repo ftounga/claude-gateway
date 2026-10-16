@@ -72,13 +72,18 @@ public class JourneyToolExecutor {
             case ALREADY_GUIDED -> Outcome.ok("Le sujet est déjà en mode guidé : suis le parcours.");
             case DECLINED -> Outcome.ok("L'utilisateur a choisi de RESTER LIBRE sur ce sujet : ne repropose "
                     + "pas le mode guidé, avance en libre.");
+            case PROPOSED_NEW_CHANTIER -> Outcome.ok("Proposition affichée à l'utilisateur : [Ouvrir le chantier] "
+                    + "[Pas maintenant]. S'il accepte, un chantier DE PLUS s'ouvre (Investigation, plan neuf) et "
+                    + "prend le focus ; les chantiers ouverts restent ouverts, intacts. En attendant, continue le "
+                    + "chantier en cours et dis-lui en une phrase pourquoi c'est un chantier distinct.");
         };
     }
 
     private Outcome setPlan(UUID userId, Workspace workspace, JsonNode input) {
         JourneyPlan plan = JourneyPlan.fromToolInput(input == null ? null : input.get("steps"));
-        SubjectJourneyService.PlanChange change = service.setPlan(userId, workspace.getId(), plan);
-        return switch (change.outcome()) {
+        Integer chantier = chantier(input);
+        SubjectJourneyService.PlanChange change = service.setPlan(userId, workspace.getId(), chantier, plan);
+        return prefixed(chantier, switch (change.outcome()) {
             case SET -> Outcome.ok("Plan v" + change.version() + " posé (" + plan.steps().size() + " étapes). "
                     + "Il attend la VALIDATION de l'utilisateur, d'un clic : présente-le en quelques lignes "
                     + "et ne modifie rien avant qu'il l'ait validé.");
@@ -93,27 +98,29 @@ public class JourneyToolExecutor {
             case NEEDS_DIAGNOSIS -> Outcome.error("Le sujet est en Investigation : pose d'abord ton diagnostic "
                     + "(submit_diagnosis, avec tes preuves et ta confiance). L'utilisateur confirme le passage "
                     + "au plan ; ensuite seulement, set_subject_plan.");
-        };
+        });
     }
 
     private Outcome submitDiagnosis(UUID userId, Workspace workspace, JsonNode input) {
+        Integer chantier = chantier(input);
         SubjectJourneyService.DiagnosisOutcome outcome = service.submitDiagnosis(userId, workspace.getId(),
-                text(input, "diagnosis"), text(input, "evidence"), text(input, "confidence"));
-        return switch (outcome) {
+                chantier, text(input, "diagnosis"), text(input, "evidence"), text(input, "confidence"));
+        return prefixed(chantier, switch (outcome) {
             case PROPOSED -> Outcome.ok("Diagnostic posé. L'utilisateur voit « Prêt à planifier » : [Planifier] "
                     + "[Continuer l'investigation]. Résume-lui le diagnostic et tes preuves en quelques lignes, "
                     + "et attends son choix avant de poser le plan.");
             case NOT_INVESTIGATING -> Outcome.error("Le sujet n'est pas en Investigation : le diagnostic est déjà "
                     + "posé. S'il est contredit, utilise reopen_investigation.");
             case NOT_GUIDED -> Outcome.error("Le sujet est en mode Libre : le diagnostic sert au mode guidé.");
-        };
+        });
     }
 
     private Outcome updateStep(UUID userId, Workspace workspace, JsonNode input) {
         int step = input == null ? 0 : input.path("step").asInt(0);
-        SubjectJourneyService.StepChange change = service.updateStep(userId, workspace.getId(), step,
+        Integer chantier = chantier(input);
+        SubjectJourneyService.StepChange change = service.updateStep(userId, workspace.getId(), chantier, step,
                 text(input, "status"), text(input, "evidence"));
-        return switch (change.outcome()) {
+        return prefixed(chantier, switch (change.outcome()) {
             case UPDATED -> Outcome.ok("Étape " + step + " à jour.");
             case TO_VERIFICATION -> Outcome.ok("Étape " + step + " à jour. Plus aucune étape à exécuter : le sujet "
                     + "passe en VÉRIFICATION. Vérifie chaque étape comme le plan le dit, preuves à l'appui ; on ne "
@@ -126,15 +133,43 @@ public class JourneyToolExecutor {
             case NO_SUCH_STEP -> Outcome.error("Il n'y a pas d'étape " + step + " dans le plan (numérotées à "
                     + "partir de 1).");
             case NOT_GUIDED -> Outcome.error("Le sujet est en mode Libre.");
-        };
+        });
     }
 
     private Outcome reopen(UUID userId, Workspace workspace, JsonNode input) {
-        boolean reopened = service.reopenInvestigation(userId, workspace.getId(), text(input, "reason"));
-        return reopened
+        Integer chantier = chantier(input);
+        boolean reopened = service.reopenInvestigation(userId, workspace.getId(), chantier, text(input, "reason"));
+        return prefixed(chantier, reopened
                 ? Outcome.ok("Retour en INVESTIGATION. Le plan est gardé ; rien ne se modifie avant un nouveau "
                         + "diagnostic et un plan validé. Dis à l'utilisateur ce qui a contredit le diagnostic.")
-                : Outcome.error("Le sujet n'est pas en mode guidé (ou il est clos) : rien à rouvrir.");
+                : Outcome.error("Le sujet n'est pas en mode guidé (ou il est clos) : rien à rouvrir."));
+    }
+
+    /**
+     * Le chantier visé (F-206) : un entier ≥ 1, ou {@code null} = le focus. Un numéro, jamais un
+     * identifiant : il est relatif au terminal du tour.
+     */
+    static Integer chantier(JsonNode input) {
+        if (input == null || !input.hasNonNull("chantier")) {
+            return null;
+        }
+        JsonNode value = input.get("chantier");
+        int n = value.isNumber() ? value.asInt(0) : value.isTextual() ? parse(value.asText()) : 0;
+        return n >= 1 ? n : null;
+    }
+
+    private static int parse(String raw) {
+        try {
+            return Integer.parseInt(raw.replaceAll("[^0-9]", ""));
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /** Le résultat cite le chantier visé quand il est donné. */
+    private static Outcome prefixed(Integer chantier, Outcome outcome) {
+        return chantier == null ? outcome : new Outcome("Chantier " + chantier + " : " + outcome.content(),
+                outcome.error());
     }
 
     static String text(JsonNode input, String field) {

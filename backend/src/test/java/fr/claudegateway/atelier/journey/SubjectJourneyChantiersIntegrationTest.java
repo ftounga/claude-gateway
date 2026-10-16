@@ -67,6 +67,8 @@ class SubjectJourneyChantiersIntegrationTest {
     private SubjectJourneyService service;
     @Autowired
     private JwtService jwtService;
+    @Autowired
+    private JourneyToolExecutor journeyTools;
 
     private String aliceToken;
     private String bobToken;
@@ -295,5 +297,64 @@ class SubjectJourneyChantiersIntegrationTest {
                 .andExpect(jsonPath("$.chantier.number", is(2)));
         assertThat(chantierRepository.findByUserIdAndWorkspaceIdAndStatusOrderByNumberAsc(aliceId, ws(),
                 SubjectJourneyChantier.OPEN)).hasSize(2);
+    }
+
+    private JourneyToolExecutor.Outcome tool(String name, String json) throws Exception {
+        fr.claudegateway.atelier.Workspace w = workspaceRepository.findById(ws()).orElseThrow();
+        return journeyTools.execute(w.getUserId(), w, name,
+                new com.fasterxml.jackson.databind.ObjectMapper().readTree(json));
+    }
+
+    @Test
+    @DisplayName("SF-206-02 : outils avec chantier, proposition d'un chantier de plus, porte agrégée")
+    void toolsAndAggregatedGate() throws Exception {
+        chantierOneExecuting();
+        // Sujet guidé : propose_guided_mode propose un chantier DE PLUS (carte), sans rien ouvrir.
+        JourneyToolExecutor.Outcome proposed = tool(JourneyToolCatalog.PROPOSE_GUIDED,
+                "{\"reason\":\"Migration DNS, distincte de l'incident\"}");
+        assertThat(proposed.error()).isFalse();
+        assertThat(proposed.content()).contains("[Ouvrir le chantier]");
+        assertThat(tool(JourneyToolCatalog.PROPOSE_GUIDED, "{\"reason\":\"encore\"}").content())
+                .contains("attend déjà");
+        getJourney(aliceToken).andExpect(jsonPath("$.guidedProposal.newChantier", is(true)))
+                .andExpect(jsonPath("$.chantiers.length()", is(1)));
+        post(aliceToken, "guided-proposal/accept", null)
+                .andExpect(jsonPath("$.chantier.number", is(2)))
+                .andExpect(jsonPath("$.chantier.title", is("Migration DNS, distincte de l'incident")))
+                .andExpect(jsonPath("$.chantiers.length()", is(2)))
+                .andExpect(jsonPath("$.guidedProposal").doesNotExist())
+                // Porte agrégée : le chantier 1 est en Exécution validé ⇒ ouverte, même si le focus investigue.
+                .andExpect(jsonPath("$.gateClosed", is(false)));
+        // Le focus 2 n'a pas de plan validé ; le chantier 1 avance par son numéro.
+        assertThat(tool(JourneyToolCatalog.UPDATE_STEP, "{\"step\":1,\"status\":\"FAIT\"}").error()).isTrue();
+        JourneyToolExecutor.Outcome step = tool(JourneyToolCatalog.UPDATE_STEP,
+                "{\"chantier\":1,\"step\":1,\"status\":\"FAIT\"}");
+        assertThat(step.error()).isFalse();
+        assertThat(step.content()).startsWith("Chantier 1 : ").contains("VÉRIFICATION");
+        // Plus aucun chantier en Exécution ⇒ porte fermée, message qui les nomme.
+        getJourney(aliceToken).andExpect(jsonPath("$.gateClosed", is(true)))
+                .andExpect(jsonPath("$.gateMessage", is("Ce terminal est en mode Guidé : aucun de ses chantiers "
+                        + "ouverts n'est en Exécution sur un plan validé (Chantier 1 · Vérification, Chantier 2 · "
+                        + "Investigation) : cette action attend la validation d'un plan.")));
+        assertThat(tool(JourneyToolCatalog.SUBMIT_DIAGNOSIS,
+                "{\"chantier\":9,\"diagnosis\":\"x\",\"evidence\":\"y\"}").content())
+                .isEqualTo("Le chantier 9 n'est pas ouvert.");
+        assertThat(tool(JourneyToolCatalog.SUBMIT_DIAGNOSIS,
+                "{\"diagnosis\":\"zone\",\"evidence\":\"dig\",\"confidence\":\"ELEVEE\"}").error()).isFalse();
+        assertThat(tool(JourneyToolCatalog.REOPEN, "{\"chantier\":1,\"reason\":\"502 persiste\"}").content())
+                .startsWith("Chantier 1 : Retour en INVESTIGATION");
+        getJourney(aliceToken).andExpect(jsonPath("$.chantiers[0].phase", is("INVESTIGATION")))
+                .andExpect(jsonPath("$.chantiers[1].diagnosisPending", is(true)));
+    }
+
+    @Test
+    @DisplayName("SF-206-02 : « Pas maintenant » sur un chantier de plus ne bloque pas les propositions suivantes")
+    void declineAlongside() throws Exception {
+        chantierOneExecuting();
+        tool(JourneyToolCatalog.PROPOSE_GUIDED, "{\"reason\":\"DNS\"}");
+        post(aliceToken, "guided-proposal/decline", null).andExpect(jsonPath("$.guidedDeclined", is(false)))
+                .andExpect(jsonPath("$.mode", is("GUIDE")));
+        assertThat(tool(JourneyToolCatalog.PROPOSE_GUIDED, "{\"reason\":\"DNS bis\"}").content())
+                .contains("[Ouvrir le chantier]");
     }
 }

@@ -55,11 +55,14 @@ public class JourneyToolCatalog {
             + "lever avant d'agir). Si c'est un chantier, appelle propose_guided_mode avec la raison en "
             + "une phrase : l'utilisateur voit [Passer en guidé] [Rester libre] et choisit. Fais-le aussi "
             + "plus tard si une demande simple devient un chantier.\n"
-            + "PLUSIEURS CHANTIERS : un sujet vaste porte une suite de chantiers, un seul actif à la fois. "
-            + "Clore un chantier ramène le terminal en Libre ; si une demande ouvre ensuite un chantier "
-            + "distinct, propose_guided_mode à nouveau — passer en Guidé ouvre un NOUVEAU chantier (plan "
-            + "et diagnostic neufs). Dans PLAN-ACTION.md, une section par chantier (« ## Chantier N — "
-            + "titre ») : n'efface pas celles des chantiers clos.\n"
+            + "PLUSIEURS CHANTIERS : un sujet vaste porte plusieurs chantiers, qui peuvent être OUVERTS EN "
+            + "MÊME TEMPS — chacun son diagnostic, son plan, sa phase. L'un est au FOCUS (celui que "
+            + "l'utilisateur regarde) : set_subject_plan, submit_diagnosis, update_plan_step et "
+            + "reopen_investigation le visent par défaut ; passe chantier: N pour agir sur un autre. Si une "
+            + "demande relève d'un chantier distinct, propose_guided_mode — même en mode guidé : accepter "
+            + "ouvre un NOUVEAU chantier (plan et diagnostic neufs) sans clore les autres. Clore le dernier "
+            + "chantier ouvert ramène le terminal en Libre. Dans PLAN-ACTION.md, une section par chantier "
+            + "(« ## Chantier N — titre ») : n'efface pas celles des autres.\n"
             + "NE PROPOSE PAS pour une question ou un petit geste, ni deux fois : s'il a choisi de rester "
             + "libre, c'est réglé pour ce sujet.\n"
             + "EN ATTENDANT SON CHOIX : continue à comprendre (lecture libre), mais ne modifie rien de "
@@ -91,7 +94,15 @@ public class JourneyToolCatalog {
             + "validé ; la lecture et les notes (STATE.md, PLAN-ACTION.md, notes/, carte/) restent libres. "
             + "Une commande que la porte ne reconnaît pas comme une lecture est traitée comme une "
             + "modification : pour investiguer, préfère des commandes de lecture simples. Un refus de la "
-            + "porte n'est pas une panne : ne cherche pas de contournement, dis où en est le plan.";
+            + "porte n'est pas une panne : ne cherche pas de contournement, dis où en est le plan. Avec "
+            + "plusieurs chantiers ouverts, la porte s'ouvre dès qu'UN chantier est en Exécution sur son plan "
+            + "validé : n'exécute pour autant que des étapes du plan validé du chantier que la modification "
+            + "sert ; un chantier encore en Investigation ou en Plan ne se modifie pas.";
+
+    /** Le paramètre {@code chantier} des outils du parcours (F-206) — littéral stable. */
+    static final Map<String, Object> CHANTIER_PARAM = Map.of("type", "integer",
+            "description", "Le numéro du chantier visé, s'il n'est pas le chantier au focus (F-206). Absent = "
+                    + "le focus.");
 
     private final SpaceEntitlementService entitlements;
 
@@ -163,7 +174,8 @@ public class JourneyToolCatalog {
                 Map.of("type", "object",
                         "properties", Map.of(
                                 "steps", Map.of("type", "array", "items", step,
-                                        "description", "Les étapes, dans l'ordre (20 au plus).")),
+                                        "description", "Les étapes, dans l'ordre (20 au plus)."),
+                                "chantier", CHANTIER_PARAM),
                         "required", List.of("steps")));
     }
 
@@ -180,7 +192,8 @@ public class JourneyToolCatalog {
                                                 + "commandes et leurs résultats)."),
                                 "confidence", Map.of("type", "string",
                                         "description", "Ta confiance dans ce diagnostic.",
-                                        "enum", List.of("FAIBLE", "MOYENNE", "ELEVEE"))),
+                                        "enum", List.of("FAIBLE", "MOYENNE", "ELEVEE")),
+                                "chantier", CHANTIER_PARAM),
                         "required", List.of("diagnosis", "evidence", "confidence")));
     }
 
@@ -195,7 +208,8 @@ public class JourneyToolCatalog {
                                 "status", Map.of("type", "string",
                                         "enum", List.of("FAIT", "VERIFIE", "ECHEC")),
                                 "evidence", Map.of("type", "string",
-                                        "description", "Ce que tu as observé (requis pour VERIFIE et ECHEC).")),
+                                        "description", "Ce que tu as observé (requis pour VERIFIE et ECHEC)."),
+                                "chantier", CHANTIER_PARAM),
                         "required", List.of("step", "status")));
     }
 
@@ -207,7 +221,8 @@ public class JourneyToolCatalog {
                 Map.of("type", "object",
                         "properties", Map.of(
                                 "reason", Map.of("type", "string",
-                                        "description", "Ce qui contredit le diagnostic (300 caractères au plus).")),
+                                        "description", "Ce qui contredit le diagnostic (300 caractères au plus)."),
+                                "chantier", CHANTIER_PARAM),
                         "required", List.of("reason")));
     }
 
@@ -216,7 +231,9 @@ public class JourneyToolCatalog {
                 "Propose à l'utilisateur de passer ce sujet en mode GUIDÉ (investigation, plan validé, "
                         + "exécution, vérification) quand la demande est un CHANTIER : incident, changement "
                         + "d'infra, plusieurs étapes ou inconnues à lever avant d'agir. Il voit [Passer en "
-                        + "guidé] [Rester libre] et choisit. Jamais pour une question ou un petit geste.",
+                        + "guidé] [Rester libre] et choisit. Sur un sujet déjà guidé : propose un chantier DE "
+                        + "PLUS, distinct (les chantiers ouverts restent ouverts). Jamais pour une question ou "
+                        + "un petit geste.",
                 Map.of("type", "object",
                         "properties", Map.of(
                                 "reason", Map.of("type", "string",

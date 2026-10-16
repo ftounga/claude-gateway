@@ -147,7 +147,9 @@ public class SubjectJourneyService {
         /** Le sujet est déjà guidé. */
         ALREADY_GUIDED,
         /** L'utilisateur a choisi de rester libre sur ce sujet. */
-        DECLINED
+        DECLINED,
+        /** Sujet déjà guidé : la carte propose un chantier DE PLUS, sans clore les autres (F-206). */
+        PROPOSED_NEW_CHANTIER
     }
 
     /**
@@ -167,7 +169,19 @@ public class SubjectJourneyService {
         }
         SubjectJourney journey = find(userId, workspaceId).orElseGet(() -> blank(userId, workspaceId));
         if (journey.isGuided()) {
-            return ProposalOutcome.ALREADY_GUIDED;
+            if (!journey.hasOpenFocus()) {
+                return ProposalOutcome.ALREADY_GUIDED;
+            }
+            // F-206 : un chantier distinct sur un sujet guidé — proposé, jamais ouvert sans le geste.
+            if (journey.getGuidedProposedAt() != null) {
+                return ProposalOutcome.ALREADY_PROPOSED;
+            }
+            OffsetDateTime now = OffsetDateTime.now(clock);
+            journey.setGuidedProposedAt(now);
+            journey.setGuidedProposalReason(cleanReason);
+            SubjectJourney saved = save(journey, now);
+            record(saved, SubjectJourneyEvent.GUIDED_PROPOSED, "chantier de plus");
+            return ProposalOutcome.PROPOSED_NEW_CHANTIER;
         }
         if (journey.getGuidedDeclinedAt() != null) {
             return ProposalOutcome.DECLINED;

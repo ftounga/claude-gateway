@@ -203,7 +203,8 @@ class SubjectJourneyApiIntegrationTest {
                 .andExpect(jsonPath("$.mode", is("GUIDE")))
                 .andExpect(jsonPath("$.phase", is("INVESTIGATION")))
                 .andExpect(jsonPath("$.guidedProposal", nullValue()));
-        org.assertj.core.api.Assertions.assertThat(propose("x").content()).contains("déjà en mode guidé");
+        // F-206 : sur un sujet guidé, la proposition est celle d'un chantier DE PLUS (les autres restent ouverts).
+        org.assertj.core.api.Assertions.assertThat(propose("x").content()).contains("[Ouvrir le chantier]");
     }
 
     @Test
