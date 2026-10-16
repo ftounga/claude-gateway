@@ -5,6 +5,7 @@ import { Router, provideRouter } from '@angular/router';
 
 import { FilTask, PosteTurns } from '../../core/models/terminal-fil.models';
 import { FinishSoundService } from '../../core/services/finish-sound.service';
+import { CurrentClientService } from '../../core/services/current-client.service';
 import {
   FIL_BANNER_MS,
   FIL_POLL_MS,
@@ -200,6 +201,43 @@ describe('TerminalFilComponent (F-191 / SF-191-02)', () => {
     expect(router.navigate).toHaveBeenCalledWith(['/atelier', 'w9']);
   });
 
+  // ------------------------------------------------ F-199 / SF-199-02 : un seul chemin d'ouverture
+
+  it('ouvrir une tâche bascule le client courant sur le poste de la bande, puis navigue', () => {
+    build();
+    const current = TestBed.inject(CurrentClientService);
+    current.set('h-autre');
+    let refAtNavigation: string | null = null;
+    (router.navigate as jasmine.Spy).and.callFake(() => {
+      refAtNavigation = current.ref();
+      return Promise.resolve(true);
+    });
+    answer([task({ here: true, workspaceId: 'w1' }), task({ workspaceId: 'w9' })]);
+    (el().querySelector('.fil__head') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    el().querySelectorAll<HTMLButtonElement>('.row')[1].click();
+
+    expect(router.navigate).toHaveBeenCalledWith(['/atelier', 'w9']);
+    expect(refAtNavigation as string | null).toBe('h1');
+    expect(current.ref()).toBe('h1');
+  });
+
+  it('bande d\'un terminal sans poste : le client courant devient « Hébergé »', () => {
+    build();
+    const current = TestBed.inject(CurrentClientService);
+    const body: PosteTurns = { hostId: null, serverTime: 1_120_000, turns: [task({ workspaceId: 'w9' })] };
+    http.expectOne('/api/workspaces/w1/fil').flush(body);
+    fixture.detectChanges();
+    (el().querySelector('.fil__head') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    el().querySelectorAll<HTMLButtonElement>('.row')[0].click();
+
+    expect(current.ref()).toBe('heberge');
+    expect(router.navigate).toHaveBeenCalledWith(['/atelier', 'w9']);
+  });
+
   it('relit 5 s après la réponse, jamais avant', fakeAsync(() => {
     build();
     answer([task()]);
@@ -273,6 +311,8 @@ describe('TerminalFilComponent (F-191 / SF-191-02)', () => {
     (fin.querySelector('.fin__open') as HTMLButtonElement).click();
     fixture.detectChanges();
     expect(router.navigate).toHaveBeenCalledWith(['/atelier', 'w2']);
+    // F-199 / SF-199-02 : le bandeau passe par le même chemin que la ligne.
+    expect(TestBed.inject(CurrentClientService).ref()).toBe('h1');
     expect(el().querySelector('.fin')).toBeNull();
     fixture.destroy();
   }));
