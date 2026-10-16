@@ -99,6 +99,19 @@ final class AtelierTask {
     static Result run(AiAgentProvider provider, String model, String apiKey, String prompt,
             String scope, List<AgentTool> tools, boolean readOnly, Executor executor,
             java.util.function.BooleanSupplier stop, AgentReasoning reasoning) {
+        return run(provider, model, apiKey, prompt, scope, tools, readOnly, null, executor, stop, reasoning);
+    }
+
+    /**
+     * Variante avec une consigne fournie (F-182 / SF-182-02) : celle d'un <b>agent nommé</b>, déjà encadrée
+     * de ses contraintes réelles ; {@code null} ⇒ la consigne générique ({@link #SYSTEM} ou
+     * {@link #SYSTEM_READ_ONLY}).
+     */
+    static Result run(AiAgentProvider provider, String model, String apiKey, String prompt,
+            String scope, List<AgentTool> tools, boolean readOnly, String system, Executor executor,
+            java.util.function.BooleanSupplier stop, AgentReasoning reasoning) {
+        String effectiveSystem = system != null && !system.isBlank() ? system
+                : readOnly ? SYSTEM_READ_ONLY : SYSTEM;
         List<AgentMessage> messages = new ArrayList<>();
         messages.add(AgentMessage.userText(scope == null || scope.isBlank()
                 ? prompt
@@ -116,7 +129,7 @@ final class AtelierTask {
                 break;
             }
             AgentTurn turn = provider.nextTurn(
-                    new AgentTurnRequest(model, readOnly ? SYSTEM_READ_ONLY : SYSTEM, messages, tools, apiKey,
+                    new AgentTurnRequest(model, effectiveSystem, messages, tools, apiKey,
                             reasoning == null ? AgentReasoning.none() : reasoning));
             inputTokens += turn.inputTokens();
             outputTokens += turn.outputTokens();
