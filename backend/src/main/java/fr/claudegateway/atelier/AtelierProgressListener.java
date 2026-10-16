@@ -273,6 +273,18 @@ public interface AtelierProgressListener {
     }
 
     /**
+     * <b>Un besoin de l'application à enregistrer</b> (F-205 / SF-205-01) : l'agent a reconnu un bug ou
+     * une évolution de l'application ; l'écran pose la carte [Enregistrer] [Non]. Rien n'entre au registre
+     * avant le clic.
+     *
+     * @param toolUseId identifiant de l'appel {@code signaler_besoin}
+     * @param besoin    la carte
+     */
+    default void onAppRequest(String toolUseId, fr.claudegateway.atelier.besoin.AppRequestBlock besoin) {
+        // Aucun relais : la carte reste dans la transcription du tour.
+    }
+
+    /**
      * <b>Le poste de ce projet vient de refuser un appel : il est hors ligne</b> (F-97 / SF-97-02).
      *
      * <p>Sans cet événement, un {@code runner_unavailable} ne sortait de la boucle qu'en prose, dans

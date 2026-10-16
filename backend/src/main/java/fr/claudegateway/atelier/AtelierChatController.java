@@ -682,6 +682,13 @@ public class AtelierChatController {
                     turn.publish("proposal", new StreamProposal(toolUseId, proposal));
                 }
 
+                /** La carte « Enregistrer ce besoin ? » (F-205 / SF-205-01), au fil de l'eau. */
+                @Override
+                public void onAppRequest(String toolUseId,
+                        fr.claudegateway.atelier.besoin.AppRequestBlock besoin) {
+                    turn.publish("besoin", new StreamAppRequest(toolUseId, besoin));
+                }
+
                 /**
                  * Une demande d'autorisation n'est plus seulement relayée : elle devient l'ÉTAT du
                  * tour (F-84 / SF-84-03). Un écran qui arrive après coup la trouve encore en
@@ -927,6 +934,10 @@ public class AtelierChatController {
 
     /** La carte de proposition de gouvernance relayée au fil de l'eau (F-177 / SF-177-02). */
     record StreamProposal(String toolUseId, fr.claudegateway.atelier.proposal.GovernanceProposalBlock proposal) {
+    }
+
+    /** La carte « Enregistrer ce besoin ? » relayée au fil de l'eau (F-205 / SF-205-01). */
+    record StreamAppRequest(String toolUseId, fr.claudegateway.atelier.besoin.AppRequestBlock besoin) {
     }
 
     /**

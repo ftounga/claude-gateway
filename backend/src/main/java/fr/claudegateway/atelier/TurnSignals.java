@@ -152,6 +152,14 @@ final class TurnSignals implements AtelierProgressListener {
     }
 
     @Override
+    public void onAppRequest(String toolUseId, fr.claudegateway.atelier.besoin.AppRequestBlock besoin) {
+        if (besoin != null) {
+            validationAwaiting = true;
+        }
+        delegate.onAppRequest(toolUseId, besoin);
+    }
+
+    @Override
     public void onRunnerOffline(UUID hostId) {
         machineLost = true;
         delegate.onRunnerOffline(hostId);

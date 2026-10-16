@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-205 / SF-205-01 - LE REGISTRE DES BESOINS DE L'APPLICATION.
+
+      Une ligne par besoin (bug ou evolution DE L'APPLICATION) signale depuis un terminal par l'outil
+      signaler_besoin. PROPOSE tant que l'utilisateur n'a pas clique [Enregistrer] ; EN_ATTENTE ensuite,
+      puis CADRE / REJETE / LIVRE au fil du traitement (feature_ref = la feature qui le porte).
+
+      Les pieces sont des fichiers deposes dans le terminal, COPIES dans le stockage de la gateway
+      (cle besoins/{id}/{n}-{nom}) : sur un poste, les octets restent sinon sur la machine.
+
+      Isolation : user_id sur chaque ligne (besoins ET pieces) ; toute lecture filtre user_id.
+      workspace_id sans cle etrangere : un besoin de l'application survit a la suppression du terminal.
+      Purge nommee a la suppression du compte. Rollback : les tables se retirent.
+    -->
+
+    <changeSet id="163-app-requests" author="claude-gateway">
+        <createTable tableName="app_requests">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="message_id" type="uuid"/>
+            <!-- BUG | EVOLUTION -->
+            <column name="kind" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="title" type="varchar(200)"><constraints nullable="false"/></column>
+            <column name="description" type="varchar(8000)"><constraints nullable="false"/></column>
+            <column name="reformulation" type="varchar(8000)"/>
+            <column name="observed_context" type="varchar(8000)"/>
+            <!-- PROPOSE | EN_ATTENTE | CADRE | REJETE | LIVRE -->
+            <column name="status" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="feature_ref" type="varchar(16)"/>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="recorded_at" type="timestamptz"/>
+        </createTable>
+        <createIndex tableName="app_requests" indexName="idx_app_requests_user_status">
+            <column name="user_id"/>
+            <column name="status"/>
+        </createIndex>
+
+        <createTable tableName="app_request_attachments">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="request_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_app_request_attachments_request"
+                             references="app_requests(id)" deleteCascade="true"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="seq" type="int"><constraints nullable="false"/></column>
+            <column name="name" type="varchar(255)"><constraints nullable="false"/></column>
+            <column name="content_type" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="size_bytes" type="bigint"><constraints nullable="false"/></column>
+            <!-- chemin du depot dans le terminal (entrees/... ou .atelier/entrees/...) -->
+            <column name="source_path" type="varchar(1024)"><constraints nullable="false"/></column>
+            <column name="storage_key" type="varchar(1024)"/>
+            <!-- null tant que PROPOSE ; PENDING | COPIED | FAILED ensuite -->
+            <column name="copy_status" type="varchar(16)"/>
+            <column name="copy_error" type="varchar(500)"/>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="app_request_attachments" indexName="idx_app_request_attachments_request">
+            <column name="request_id"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="app_request_attachments"/>
+            <dropTable tableName="app_requests"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
