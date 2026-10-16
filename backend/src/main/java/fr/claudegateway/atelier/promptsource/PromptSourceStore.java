@@ -95,6 +95,23 @@ public class PromptSourceStore {
     /** Nom du fichier de règles du client, au poste comme au sujet (F-177 / SF-177-01). */
     public static final String GOVERNANCE_FILE = "GOUVERNANCE.md";
 
+    /**
+     * Dossier des <b>agents nommés</b> (F-182 / SF-182-01), relatif à la racine d'un sujet ou du poste.
+     * Un agent est un fichier {@code .claude/agents/<nom>.md}, sans sous-dossier.
+     */
+    public static final String AGENTS_DIR = ".claude/agents/";
+
+    /** Plafond d'agents rangés par origine (sujet, poste) : au-delà, le catalogue n'est plus lisible. */
+    public static final int MAX_AGENT_FILES = 20;
+
+    /**
+     * Chemin réservé de l'<b>index des agents de la racine du poste</b> (F-182 / SF-182-01) : une ligne par
+     * agent ({@code .claude/agents/<nom>.md}). Le contenu de chacun se range sous
+     * {@code HOST_AGENTS_PATH + "/" + chemin}. Barre oblique en tête : aucune collision avec un vrai fichier
+     * relatif. Ligne absente = jamais relu (on lit alors en direct) ; contenu vide = aucun agent.
+     */
+    public static final String HOST_AGENTS_PATH = "/__host_agents__";
+
     /** Code exact du runner pour un fichier absent : la seule issue qui retire une copie rangée. */
     static final String NOT_FOUND = "not_found";
 
@@ -188,10 +205,14 @@ public class PromptSourceStore {
             log.debug("Arborescence non rafraîchie ({})", ex.getClass().getSimpleName());
         }
 
-        // 2) Les fichiers cœur, puis les skills du catalogue (bornés).
+        // 2) Les fichiers cœur, puis les skills du catalogue (bornés), puis les agents nommés du sujet
+        //    (F-182 / SF-182-01, bornés) — au terminal du poste, ceux de la racine passent par 2 ter.
         List<String> paths = new ArrayList<>(coreFiles == null ? List.of() : coreFiles);
         if (skillPathFilter != null && maxSkills > 0) {
             tree.stream().filter(skillPathFilter).limit(maxSkills).forEach(paths::add);
+        }
+        if (!workspace.isHostTerminal()) {
+            tree.stream().filter(PromptSourceStore::isAgentPath).limit(MAX_AGENT_FILES).forEach(paths::add);
         }
         for (String path : paths) {
             if (path == null || path.isBlank()) {
@@ -213,6 +234,10 @@ public class PromptSourceStore {
         //    racine (chemin de projet vide), rangé sous un chemin réservé. Seul un « absent » exact retire
         //    la copie : une règle supprimée ne doit pas continuer de s'appliquer ; une machine muette, si.
         refreshHostGovernance(userId, workspace);
+
+        // 2 ter) F-182 / SF-182-01 — les agents nommés de la RACINE DU POSTE : index + contenus, rangés sous
+        //    un chemin réservé, pour que le catalogue ne coûte aucun aller-retour au tour suivant.
+        refreshHostAgents(userId, workspace);
 
         // 3) L'instantané d'environnement git, figé (write-once) : capturé une seule fois, servi stable
         //    ensuite pour ne pas casser le préfixe (F-134). Voir ENV_PATH.
@@ -244,6 +269,100 @@ public class PromptSourceStore {
         } catch (RuntimeException ex) {
             log.debug("Règles du poste non relues ({})", ex.getClass().getSimpleName());
         }
+    }
+
+    /**
+     * Relit les <b>agents nommés de la racine du poste</b> (F-182 / SF-182-01) et range leur index et leur
+     * contenu sous {@link #HOST_AGENTS_PATH}. Un dossier absent (code exact {@code not_found}) vide l'index :
+     * un agent supprimé ne doit plus être proposé. Une machine muette ne touche à rien. Ne lève jamais ;
+     * aucun contenu n'est journalisé.
+     */
+    public void refreshHostAgents(UUID userId, Workspace workspace) {
+        if (userId == null || workspace == null || workspace.getHostId() == null || workspace.getId() == null
+                || !workspace.isRunnerTarget()) {
+            return;
+        }
+        try {
+            RunnerTarget agentsDir = new RunnerTarget(workspace.getHostId(), workspace.getId(),
+                    AGENTS_DIR.substring(0, AGENTS_DIR.length() - 1));
+            RunnerCallResult listed = runnerToolGateway.listFiles(agentsDir, UUID.randomUUID().toString());
+            if (listed == null) {
+                return;
+            }
+            if (!listed.ok()) {
+                if (NOT_FOUND.equals(listed.errorCode())) {
+                    store(userId, workspace, HOST_AGENTS_PATH, "");
+                }
+                return;
+            }
+            List<String> index = new ArrayList<>();
+            String content = listed.content() == null ? "" : listed.content();
+            for (String line : content.split("\n")) {
+                String path = AGENTS_DIR + relative(line);
+                if (isAgentPath(path) && index.size() < MAX_AGENT_FILES) {
+                    index.add(path);
+                }
+            }
+            RunnerTarget root = new RunnerTarget(workspace.getHostId(), workspace.getId(), "");
+            List<String> kept = new ArrayList<>();
+            for (String path : index) {
+                RunnerCallResult read = runnerToolGateway.readFile(root, UUID.randomUUID().toString(), path);
+                if (read != null && read.ok()) {
+                    store(userId, workspace, HOST_AGENTS_PATH + "/" + path,
+                            read.content() == null ? "" : read.content());
+                    kept.add(path);
+                } else if (read != null && !NOT_FOUND.equals(read.errorCode())
+                        && read(userId, workspace.getId(), HOST_AGENTS_PATH + "/" + path).isPresent()) {
+                    kept.add(path); // Illisible maintenant : la copie précédente continue de servir.
+                }
+            }
+            store(userId, workspace, HOST_AGENTS_PATH, String.join("\n", kept));
+        } catch (RuntimeException ex) {
+            log.debug("Agents du poste non relus ({})", ex.getClass().getSimpleName());
+        }
+    }
+
+    /**
+     * L'index rangé des agents de la racine du poste (F-182 / SF-182-01), ou vide s'il n'a jamais été relu
+     * (l'appelant lit alors en direct). Une liste vide signifie « aucun agent ».
+     */
+    @Transactional(readOnly = true)
+    public Optional<List<String>> hostAgentPaths(UUID userId, UUID workspaceId) {
+        return read(userId, workspaceId, HOST_AGENTS_PATH)
+                .map(content -> content.isBlank() ? List.<String>of()
+                        : content.lines().map(String::strip).filter(PromptSourceStore::isAgentPath).toList());
+    }
+
+    /** Le contenu rangé d'un agent de la racine du poste (F-182 / SF-182-01), ou vide. */
+    @Transactional(readOnly = true)
+    public Optional<String> readHostAgent(UUID userId, UUID workspaceId, String path) {
+        return read(userId, workspaceId, HOST_AGENTS_PATH + "/" + path);
+    }
+
+    /**
+     * Vrai si {@code path} désigne un agent nommé : {@code .claude/agents/<nom>.md}, sans sous-dossier
+     * (F-182 / SF-182-01).
+     */
+    public static boolean isAgentPath(String path) {
+        if (path == null) {
+            return false;
+        }
+        String normalized = relative(path);
+        if (!normalized.startsWith(AGENTS_DIR)) {
+            return false;
+        }
+        String rest = normalized.substring(AGENTS_DIR.length());
+        return rest.length() > 3 && !rest.contains("/")
+                && rest.toLowerCase(java.util.Locale.ROOT).endsWith(".md");
+    }
+
+    /** Un chemin de listage normalisé : barres obliques, sans {@code ./} de tête ni blancs. */
+    private static String relative(String raw) {
+        String normalized = raw == null ? "" : raw.strip().replace('\\', '/');
+        while (normalized.startsWith("./")) {
+            normalized = normalized.substring(2);
+        }
+        return normalized;
     }
 
     /**

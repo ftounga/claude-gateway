@@ -72,15 +72,21 @@ class PromptSourceStoreTest {
     @Test
     @DisplayName("range l'arborescence, les fichiers cœur et les skills, chacun avec son empreinte")
     void storesTreeCoreFilesAndSkills() {
-        when(runner.listFiles(any(RunnerTarget.class), any()))
-                .thenReturn(ok("CLAUDE.md\n.claude/skills/foo.md\nsrc/App.java"));
+        when(runner.listFiles(any(RunnerTarget.class), any())).thenAnswer(inv -> {
+            RunnerTarget target = inv.getArgument(0);
+            // F-182 / SF-182-01 : le dossier d'agents de la racine n'existe pas sur ce poste.
+            return ".claude/agents".equals(target.safeProjectPath())
+                    ? RunnerCallResult.backendError("not_found", "absent")
+                    : ok("CLAUDE.md\n.claude/skills/foo.md\nsrc/App.java");
+        });
         when(runner.readFile(any(RunnerTarget.class), any(), any()))
                 .thenAnswer(inv -> ok("contenu de " + inv.getArgument(2)));
 
         store.refresh(userId, runnerWorkspace(), CORE, IS_SKILL, 15);
 
-        // Arborescence + CLAUDE.md + STATE.md + PLAN-ACTION.md + le skill = 5 lignes rangées.
-        verify(files, times(5)).save(any());
+        // Arborescence + CLAUDE.md + STATE.md + PLAN-ACTION.md + le skill = 5 lignes rangées, + l'index
+        // (vide) des agents du poste (F-182 / SF-182-01) = 6.
+        verify(files, times(6)).save(any());
         verify(runner).readFile(any(RunnerTarget.class), any(), eq("CLAUDE.md"));
         verify(runner).readFile(any(RunnerTarget.class), any(), eq(".claude/skills/foo.md"));
         // src/App.java n'est pas un skill : jamais rangé.
@@ -117,7 +123,8 @@ class PromptSourceStoreTest {
         store.refresh(userId, runnerWorkspace(), CORE, IS_SKILL, 15);
         store.refresh(userId, runnerWorkspace(), CORE, IS_SKILL, 15);
 
-        verify(runner, times(1)).listFiles(any(RunnerTarget.class), any());
+        // Un seul rafraîchissement : l'arborescence + le dossier d'agents du poste (F-182 / SF-182-01).
+        verify(runner, times(2)).listFiles(any(RunnerTarget.class), any());
     }
 
     @Test
@@ -234,6 +241,73 @@ class PromptSourceStoreTest {
         store.refresh(userId, runnerWorkspace(), CORE, IS_SKILL, 15);
 
         verify(files, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("F-182 : range les agents du sujet, et l'index + les contenus des agents du poste")
+    void storesSubjectAgentsAndTheHostAgentIndex() {
+        Workspace subject = Workspace.builder().id(workspaceId).userId(userId).name("sujet").hostId(hostId)
+                .projectPath("data").executionTarget(WorkspaceExecutionTarget.RUNNER).build();
+        when(runner.listFiles(any(RunnerTarget.class), any())).thenAnswer(inv -> {
+            RunnerTarget target = inv.getArgument(0);
+            return ".claude/agents".equals(target.safeProjectPath())
+                    ? ok("relecteur.md\nREADME.txt\nsous/x.md")
+                    : ok(".claude/agents/testeur.md\nsrc/App.java");
+        });
+        when(runner.readFile(any(RunnerTarget.class), any(), any()))
+                .thenAnswer(inv -> ok("contenu de " + inv.getArgument(2)));
+
+        store.refresh(userId, subject, List.of(), IS_SKILL, 15);
+
+        ArgumentCaptor<PromptSourceFile> saved = ArgumentCaptor.forClass(PromptSourceFile.class);
+        verify(files, org.mockito.Mockito.atLeastOnce()).save(saved.capture());
+        List<String> paths = saved.getAllValues().stream().map(PromptSourceFile::getPath).toList();
+        assertThat(paths).contains(".claude/agents/testeur.md",
+                PromptSourceStore.HOST_AGENTS_PATH + "/.claude/agents/relecteur.md",
+                PromptSourceStore.HOST_AGENTS_PATH);
+        PromptSourceFile index = saved.getAllValues().stream()
+                .filter(file -> PromptSourceStore.HOST_AGENTS_PATH.equals(file.getPath())).findFirst().orElseThrow();
+        assertThat(index.getContent()).isEqualTo(".claude/agents/relecteur.md");
+    }
+
+    @Test
+    @DisplayName("F-182 : un dossier d'agents absent vide l'index ; une machine muette n'y touche pas")
+    void aMissingAgentFolderEmptiesTheIndexButASilentMachineDoesNot() {
+        when(runner.listFiles(any(RunnerTarget.class), any()))
+                .thenReturn(RunnerCallResult.backendError("not_found", "absent"));
+        store.refreshHostAgents(userId, runnerWorkspace());
+        ArgumentCaptor<PromptSourceFile> saved = ArgumentCaptor.forClass(PromptSourceFile.class);
+        verify(files).save(saved.capture());
+        assertThat(saved.getValue().getPath()).isEqualTo(PromptSourceStore.HOST_AGENTS_PATH);
+        assertThat(saved.getValue().getContent()).isEmpty();
+
+        PromptSourceFileRepository otherFiles = mock(PromptSourceFileRepository.class);
+        PromptSourceStore other = new PromptSourceStore(runner, otherFiles);
+        when(runner.listFiles(any(RunnerTarget.class), any())).thenReturn(unreachable());
+        other.refreshHostAgents(userId, runnerWorkspace());
+        verify(otherFiles, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("F-182 : l'index rangé se relit ; jamais relu = vide (lecture en direct)")
+    void hostAgentIndexIsReadBack() {
+        when(files.findByUserIdAndWorkspaceIdAndPath(userId, workspaceId, PromptSourceStore.HOST_AGENTS_PATH))
+                .thenReturn(Optional.of(PromptSourceFile.builder().path(PromptSourceStore.HOST_AGENTS_PATH)
+                        .content(".claude/agents/a.md\n.claude/agents/b.md").build()));
+
+        assertThat(store.hostAgentPaths(userId, workspaceId)).contains(
+                List.of(".claude/agents/a.md", ".claude/agents/b.md"));
+        assertThat(store.hostAgentPaths(userId, UUID.randomUUID())).isEmpty();
+    }
+
+    @Test
+    @DisplayName("F-182 : un agent est un .md à plat sous .claude/agents/")
+    void agentPaths() {
+        assertThat(PromptSourceStore.isAgentPath(".claude/agents/relecteur.md")).isTrue();
+        assertThat(PromptSourceStore.isAgentPath("./.claude/agents/relecteur.md")).isTrue();
+        assertThat(PromptSourceStore.isAgentPath(".claude/agents/sous/x.md")).isFalse();
+        assertThat(PromptSourceStore.isAgentPath(".claude/agents/x.txt")).isFalse();
+        assertThat(PromptSourceStore.isAgentPath(".claude/skills/x.md")).isFalse();
     }
 
     private static String digestOf(String content) {

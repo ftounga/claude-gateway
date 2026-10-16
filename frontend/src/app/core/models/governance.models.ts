@@ -498,6 +498,23 @@ export interface GovernancePackageLag {
   message: string;
 }
 
+/** Un agent nommé (F-182 / SF-182-01) — jamais sa consigne. */
+export interface GovernanceAgentView {
+  name: string;
+  path: string;
+  origin: 'POSTE' | 'SUJET';
+  subjectName: string | null;
+  source: 'PAQUET' | 'CLIENT';
+  packageName: string | null;
+  description: string;
+  access: 'LECTURE' | 'ECRITURE';
+  /** Modèle écrit et justifié ; `null` = modèle de la Forge (D3). */
+  model: string | null;
+  warnings: string[];
+  errors: string[];
+  usable: boolean;
+}
+
 /** **Ce qui s'applique vraiment** sur un poste (F-177 / SF-177-04). */
 export interface GovernanceEffective {
   hostRef: string;
@@ -505,4 +522,6 @@ export interface GovernanceEffective {
   subjects: GovernanceSubjectRules[];
   skills: GovernanceSkillView[];
   packages: GovernancePackageLag[];
+  /** F-182 / SF-182-01 : les agents nommés, poste puis sujets (absent d'un serveur antérieur). */
+  agents?: GovernanceAgentView[];
 }
