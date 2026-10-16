@@ -22,11 +22,20 @@ import fr.claudegateway.auth.CurrentUser;
 public class InterlocuteurController {
 
     private final InterlocuteurService service;
+    private final InterlocuteurBoardService board;
     private final CurrentUser currentUser;
 
-    public InterlocuteurController(InterlocuteurService service, CurrentUser currentUser) {
+    public InterlocuteurController(InterlocuteurService service, InterlocuteurBoardService board,
+                                   CurrentUser currentUser) {
         this.service = service;
+        this.board = board;
         this.currentUser = currentUser;
+    }
+
+    /** Qui bloque quoi, depuis quand, et combien de temps chacun met à répondre (F-180 / SF-180-05). */
+    @GetMapping("/board")
+    public InterlocuteurBoardService.Board board(@PathVariable UUID workspaceId) {
+        return board.board(currentUser.requireId(), workspaceId);
     }
 
     @GetMapping

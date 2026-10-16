@@ -294,6 +294,73 @@ export interface Interlocuteur {
   openCount: number;
 }
 
+/** Une personne et ce qu'on attend d'elle (`GET …/interlocuteurs/board`, F-180 / SF-180-05). */
+export interface InterlocuteurBoardRow {
+  interlocuteurId: string | null;
+  name: string;
+  role: string | null;
+  openCount: number;
+  demandeCount: number;
+  oldestOpenAt: string;
+  subjects: string[];
+  /** Délai moyen demande → réponse, en jours ; `null` sans réponse mesurée. */
+  avgResponseDays: number | null;
+  responseCount: number;
+  avgByCategorie: Partial<Record<TerminalActionCategorie, number>>;
+  open: TerminalAction[];
+}
+
+/** La mesure par nature, sur le poste (D7). */
+export interface InterlocuteurBoardCategorie {
+  categorie: TerminalActionCategorie;
+  avgResponseDays: number | null;
+  responseCount: number;
+  openCount: number;
+}
+
+export interface InterlocuteurBoard {
+  people: InterlocuteurBoardRow[];
+  byCategorie: InterlocuteurBoardCategorie[];
+}
+
+/** « 4 j », « 1,5 j », « moins d'un jour ». */
+export function daysLabel(days: number | null): string {
+  if (days === null || days === undefined) {
+    return '';
+  }
+  if (days < 1) {
+    return "moins d'un jour";
+  }
+  const rounded = Math.round(days * 10) / 10;
+  return `${String(rounded).replace('.', ',')} j`;
+}
+
+/** Au-delà, la relance groupée dit « et N autres » plutôt que de tout lister. */
+export const GROUPED_FOLLOW_UP_MAX = 30;
+
+/**
+ * **Le brouillon de relance groupée** (F-180 / SF-180-05, décision D5) : **un** texte pour toutes les
+ * attentes ouvertes d'une personne, déposé dans la saisie — **jamais envoyé** sans le geste de l'utilisateur.
+ * `viaEmail` : l'agent est prié de me l'envoyer par courriel (F-110) pour que je le transfère.
+ */
+export function groupedFollowUpDraft(row: Pick<InterlocuteurBoardRow, 'name' | 'open'>, viaEmail = false,
+                                     now = Date.now()): string {
+  const shown = row.open.slice(0, GROUPED_FOLLOW_UP_MAX);
+  const lines = shown.map(a => {
+    const since = a.requestedAt || a.createdAt;
+    const days = Math.max(0, Math.floor((now - Date.parse(since)) / 86_400_000));
+    const asked = a.status === 'DEMANDE' ? `demandé il y a ${days} j` : `en attente depuis ${days} j`;
+    return `- ${a.description} (${asked}${a.blocks ? ` ; débloque : ${a.blocks}` : ''})`;
+  });
+  const more = row.open.length > shown.length ? `\n- … et ${row.open.length - shown.length} autre(s)` : '';
+  const ask = viaEmail
+    ? 'Rédige UN seul message de relance groupé, courtois et précis, et envoie-le-moi par courriel '
+      + '(email_me) pour que je le transfère moi-même.'
+    : 'Rédige-moi UN seul message de relance groupé, courtois et précis, que je relirai avant de l\'envoyer.';
+  return `Relance groupée pour ${row.name} — ${row.open.length} attente${row.open.length > 1 ? 's' : ''} :\n`
+    + `${lines.join('\n')}${more}\n${ask}`;
+}
+
 /** Une modification d'interlocuteur : un champ absent ne change pas. */
 export interface InterlocuteurUpdate {
   displayName?: string;
@@ -336,4 +403,22 @@ export interface TerminalActionDuplicate {
   keep: TerminalAction;
   duplicate: TerminalAction;
   reason: TerminalActionDuplicateReason;
+}
+
+/** Depuis quand l'action attend — l'ancienneté est le signal qui fait agir. */
+export function ageLabel(createdAt: string, now = Date.now()): string {
+  const started = Date.parse(createdAt);
+  if (Number.isNaN(started)) {
+    return '';
+  }
+  const minutes = Math.max(0, Math.round((now - started) / 60000));
+  if (minutes < 60) {
+    return minutes <= 1 ? "à l'instant" : `il y a ${minutes} min`;
+  }
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) {
+    return `il y a ${hours} h`;
+  }
+  const days = Math.round(hours / 24);
+  return days === 1 ? 'hier' : `il y a ${days} jours`;
 }

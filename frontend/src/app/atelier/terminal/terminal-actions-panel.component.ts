@@ -12,6 +12,7 @@ import { Observable } from 'rxjs';
 
 import {
   AccesProposal,
+  ageLabel,
   CATEGORIES,
   CATEGORIE_LABELS,
   DUPLICATE_REASON_LABELS,
@@ -34,23 +35,8 @@ import { TerminalActionsService } from '../../core/services/terminal-actions.ser
 import { TerminalPeopleViewComponent } from './terminal-people-view.component';
 import { TerminalAccesViewComponent } from './terminal-acces-view.component';
 
-/** Depuis quand l'action attend — l'ancienneté est le signal qui fait agir. */
-export function ageLabel(createdAt: string, now = Date.now()): string {
-  const started = Date.parse(createdAt);
-  if (Number.isNaN(started)) {
-    return '';
-  }
-  const minutes = Math.max(0, Math.round((now - started) / 60000));
-  if (minutes < 60) {
-    return minutes <= 1 ? "à l'instant" : `il y a ${minutes} min`;
-  }
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) {
-    return `il y a ${hours} h`;
-  }
-  const days = Math.round(hours / 24);
-  return days === 1 ? 'hier' : `il y a ${days} jours`;
-}
+/** Depuis quand l'action attend — défini avec les modèles (F-180 : partagé par les vues). */
+export { ageLabel } from '../../core/models/terminal-actions.models';
 
 /** La portée affichée : ce terminal seulement, ou tout le poste. */
 export type AttentesScope = 'here' | 'host';
@@ -114,9 +100,7 @@ interface Column {
         <mat-button-toggle-group class="actions-panel__view" [value]="view()"
           (change)="view.set($event.value)" aria-label="Vue">
           <mat-button-toggle value="columns">Attentes</mat-button-toggle>
-          @if (hasHost()) {
-            <mat-button-toggle value="people">Personnes</mat-button-toggle>
-          }
+          <mat-button-toggle value="people">Personnes</mat-button-toggle>
           <mat-button-toggle value="acces">Accès</mat-button-toggle>
         </mat-button-toggle-group>
         @if (hasHost() && view() === 'columns') {
@@ -168,7 +152,7 @@ interface Column {
 
       <div class="actions-panel__content">
         @if (view() === 'people') {
-          <app-terminal-people-view [workspaceId]="workspaceId()" (changed)="reload()"></app-terminal-people-view>
+          <app-terminal-people-view [workspaceId]="workspaceId()" (changed)="reload()" (followUp)="followUp.emit($event)"></app-terminal-people-view>
         } @else if (view() === 'acces') {
           <app-terminal-acces-view [workspaceId]="workspaceId()"></app-terminal-acces-view>
         } @else {

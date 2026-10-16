@@ -2,6 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { By } from '@angular/platform-browser';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { of, throwError } from 'rxjs';
 
@@ -132,6 +133,19 @@ describe('Le panneau des attentes (F-180)', () => {
       component.view.set('acces');
       fixture.detectChanges();
       expect(fixture.nativeElement.querySelector('app-terminal-acces-view')).not.toBeNull();
+    });
+  });
+
+  describe('SF-180-05 : la relance groupée passe par le panneau', () => {
+    it('le brouillon de la vue Personnes ressort du panneau tel quel (le terminal le dépose, sans envoyer)', () => {
+      build(f180Board([f180Action('a-1', 'x')]));
+      const drafts: string[] = [];
+      component.followUp.subscribe(d => drafts.push(d));
+      component.view.set('people');
+      fixture.detectChanges();
+      const people = fixture.debugElement.query(By.css('app-terminal-people-view'));
+      people.triggerEventHandler('followUp', 'Relance groupée pour Rémi — 2 attentes');
+      expect(drafts).toEqual(['Relance groupée pour Rémi — 2 attentes']);
     });
   });
 
