@@ -8,9 +8,12 @@ export type PlumeView =
 
 /** Les étapes de l'analyse, dans l'ordre où le serveur lit — les mêmes sources que l'agent. */
 export const PLUME_STEPS = [
-  'Fil récent du sujet',
+  'Passation du fil',
+  'Plan du chantier',
   'STATE.md du sujet',
   'Carte du poste',
+  'Fichiers touchés récemment',
+  'Fil récent du sujet',
   'Rédaction de la demande',
 ] as const;
 

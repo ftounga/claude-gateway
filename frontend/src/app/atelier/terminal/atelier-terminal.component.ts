@@ -586,6 +586,15 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   }
 
   /**
+   * La saisie est multiligne (F-202 / SF-202-02) : tant que Plume est ouvert sur une demande enrichie,
+   * **ou** tant que le brouillon contient un retour à la ligne — refermer le panneau ne doit pas rendre
+   * un champ d'une ligne qui effacerait les retours d'un prompt rédigé.
+   */
+  multilineDraft(): boolean {
+    return this.plumeEnriched() || (this.draft ?? '').includes('\n');
+  }
+
+  /**
    * « ✨ Enrichir » : la phrase saisie part au serveur, la demande structurée revient dans la saisie.
    * Rien n'est envoyé à l'agent ; en cas d'échec, le brouillon n'est jamais touché.
    */

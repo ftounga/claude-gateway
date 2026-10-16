@@ -30,8 +30,8 @@
 .terminal-field--plume {
   flex: 1 1 100%;
   order: -1;
-  min-height: 160px;
-  max-height: 50vh;
+  min-height: 220px; /* F-202 : un prompt rédigé, plusieurs sections */
+  max-height: 60vh;
   padding: 8px 4px;
   resize: vertical;
   line-height: 1.5;

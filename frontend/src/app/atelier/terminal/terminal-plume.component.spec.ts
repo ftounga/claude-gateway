@@ -20,7 +20,7 @@ describe('TerminalPlumeComponent (F-193 / SF-193-02)', () => {
   it('pendant l’analyse : les sources lues, en statut', () => {
     const el = render({ phase: 'running' });
     expect(el.querySelector('[role="status"]')?.textContent).toContain('Plume lit le contexte');
-    expect(el.querySelectorAll('.plume__step').length).toBe(4);
+    expect(el.querySelectorAll('.plume__step').length).toBe(7); // F-202 : passation, plan, fichiers touchés en plus
     expect(el.textContent).toContain('STATE.md du sujet');
   });
 

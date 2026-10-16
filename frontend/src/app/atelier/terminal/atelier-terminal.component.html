@@ -1539,7 +1539,7 @@
     }
     <form
       class="terminal-input"
-      [class.terminal-input--plume]="plumeEnriched()"
+      [class.terminal-input--plume]="multilineDraft()"
       [class.terminal-input--recording]="dictationState() === 'recording'"
       [class.terminal-input--transcribing]="dictationState() === 'transcribing'"
       (ngSubmit)="submit()"
@@ -1639,14 +1639,15 @@
            passe par `onComposerKeydown` : menu de slash-commands prioritaire (SF-121-23), puis la
            liste d'@-mentions. -->
       <!-- F-193 / SF-193-02 — LA DEMANDE ENRICHIE est multiligne : un champ d'une ligne en
-           retirerait les retours. Entrée va à la ligne, Ctrl/⌘ + Entrée envoie. -->
-      @if (plumeEnriched()) {
+           retirerait les retours. Entrée va à la ligne, Ctrl/⌘ + Entrée envoie. F-202 / SF-202-02 :
+           la zone reste multiligne tant que le texte l'est, même panneau Plume refermé. -->
+      @if (multilineDraft()) {
         <textarea
           #draftArea
           class="terminal-field terminal-field--plume"
           name="draftPlume"
-          rows="8"
-          aria-label="Demande enrichie, à relire avant l'envoi"
+          rows="12"
+          [attr.aria-label]="plumeEnriched() ? 'Demande enrichie, à relire avant l\'envoi' : 'Demande à exécuter'"
           [disabled]="publishing || liveLimitReached"
           [ngModel]="draft"
           (ngModelChange)="onPlumeInput($event)"
