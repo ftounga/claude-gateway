@@ -1030,6 +1030,15 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "dans le terminal (captures, photos, vidéos).\n"
                     + "- L'outil N'ENREGISTRE RIEN : il pose une carte [Enregistrer] [Non]. Ensuite, termine "
                     + "en une ligne. Un bug du projet de l'utilisateur ne passe jamais par cet outil.\n\n";
+    /**
+     * Phrase FIXE ajoutée aux descriptions d'{@code explore} et de {@code task} (F-182 / SF-182-02, D2) :
+     * le paramètre {@code agent}. Aucun nom d'agent n'y entre — le catalogue voyage dans le message — :
+     * le préfixe reste byte-stable (cache F-134).
+     */
+    static final String NAMED_AGENT_PARAM_NOTE = " Paramètre agent (facultatif) : le nom d'un agent nommé "
+            + "du catalogue annoncé dans le message — sa consigne, ses outils et son modèle remplacent ceux "
+            + "par défaut ; les contraintes d'exécution restent les mêmes.";
+
     /** Nom de l'outil qui charge un skill du client par son nom (F-177 / SF-177-03). */
     static final String SKILL_TOOL_NAME = "skill";
     /** Ouverture du skill invoqué par {@code /nom} (F-177 / SF-177-03), joint à la consigne du tour. */
@@ -1829,7 +1838,9 @@ public class AtelierChatService implements RelayInterruptTarget {
      * Best-effort : un skill introuvable laisse le message partir tel quel.
      */
     String withInvokedSkill(UUID userId, Workspace workspace, String userText, String consigne) {
-        if (skillCatalog == null || workspace.isTeamsTerminal()) {
+        if (skillCatalog == null || workspace.isTeamsTerminal()
+                // F-182 / SF-182-02 : `/agent` est réservé — jamais chargé comme un skill.
+                || fr.claudegateway.atelier.agents.NamedAgentPrompts.invocationOf(userText).isPresent()) {
             return consigne;
         }
         try {
@@ -1880,6 +1891,114 @@ public class AtelierChatService implements RelayInterruptTarget {
             list.append('\n');
         }
         return ToolOutcome.info(list.toString());
+    }
+
+    /** Les agents nommés (F-182 / SF-182-02) ; {@code null} = ni annonce, ni délégation nommée. */
+    private fr.claudegateway.atelier.agents.NamedAgentCatalogService namedAgents;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setNamedAgents(fr.claudegateway.atelier.agents.NamedAgentCatalogService namedAgents) {
+        this.namedAgents = namedAgents;
+    }
+
+    /**
+     * {@code /agent <nom> demande} (F-182 / SF-182-02) : joint à la CONSIGNE du tour un bloc déterministe
+     * qui demande de déléguer à l'agent nommé (ou dit pourquoi ce n'est pas possible). Jamais à la consigne
+     * système (cache F-134). Le message persisté reste la parole de l'utilisateur. Best-effort.
+     */
+    String withInvokedAgent(UUID userId, Workspace workspace, String userText, String consigne) {
+        if (workspace.isTeamsTerminal()) {
+            return consigne;
+        }
+        java.util.Optional<fr.claudegateway.atelier.agents.NamedAgentPrompts.Invocation> invocation =
+                fr.claudegateway.atelier.agents.NamedAgentPrompts.invocationOf(userText);
+        if (invocation.isEmpty()) {
+            return consigne;
+        }
+        try {
+            List<fr.claudegateway.atelier.agents.NamedAgent> catalog = namedAgents == null ? List.of()
+                    : namedAgents.catalog(userId, workspace);
+            String name = invocation.get().name();
+            java.util.Optional<fr.claudegateway.atelier.agents.NamedAgent> agent = catalog.stream()
+                    .filter(candidate -> candidate.name().equals(name)).findFirst();
+            boolean delegationOpen = maxDelegations > 0 && namedAgents != null;
+            boolean taskOpen = delegationOpen && workspace.isRunnerTarget();
+            return fr.claudegateway.atelier.agents.NamedAgentPrompts.invocationBlock(agent, invocation.get(),
+                    catalog, delegationOpen, taskOpen) + consigne;
+        } catch (RuntimeException ex) {
+            log.debug("Agent invoqué ignoré (best-effort) : {}", ex.getClass().getSimpleName());
+            return consigne;
+        }
+    }
+
+    /**
+     * Ce qu'une délégation nommée reçoit (F-182 / SF-182-02, D2/D3) : la consigne encadrée, les outils
+     * retenus, le modèle — ou l'erreur qui empêche de lancer quoi que ce soit.
+     */
+    private record NamedDelegation(String system, List<AgentTool> tools, java.util.Set<String> allowed,
+            String model, String error) {
+
+        static NamedDelegation failed(String error) {
+            return new NamedDelegation(null, List.of(), java.util.Set.of(), null, error);
+        }
+    }
+
+    /** Le nom d'agent d'un appel {@code explore}/{@code task}, ou {@code null}. */
+    private static String agentOf(AgentToolCall call) {
+        if (call.input() == null) {
+            return null;
+        }
+        String name = call.input().path("agent").asText(null);
+        return name == null || name.isBlank() ? null : name.strip();
+    }
+
+    /**
+     * Résout un agent nommé pour une délégation : introuvable ou inutilisable → erreur, rien ne tourne ;
+     * sinon sa consigne (encadrée des contraintes réelles), ses outils ∩ la panoplie de base (∩ lecture hors
+     * {@code task} écrivain), et son modèle — celui de la Forge par défaut (D3).
+     */
+    private NamedDelegation namedDelegation(UUID userId, Workspace workspace, String rawName,
+            fr.claudegateway.atelier.agents.NamedAgentPrompts.Mode mode, List<AgentTool> base, String mainModel) {
+        if (namedAgents == null) {
+            return NamedDelegation.failed("Les agents nommés ne sont pas disponibles ici : délègue sans agent.");
+        }
+        String name = rawName.replaceFirst("^/", "").toLowerCase(java.util.Locale.ROOT);
+        List<fr.claudegateway.atelier.agents.NamedAgent> catalog;
+        try {
+            catalog = namedAgents.catalog(userId, workspace);
+        } catch (RuntimeException ex) {
+            catalog = List.of();
+        }
+        java.util.Optional<fr.claudegateway.atelier.agents.NamedAgent> found = catalog.stream()
+                .filter(agent -> agent.name().equals(name)).findFirst();
+        if (found.isEmpty()) {
+            List<String> names = catalog.stream().filter(fr.claudegateway.atelier.agents.NamedAgent::usable)
+                    .map(fr.claudegateway.atelier.agents.NamedAgent::name).toList();
+            return NamedDelegation.failed("Agent nommé « " + shorten(name, 64) + " » introuvable. "
+                    + (names.isEmpty() ? "Aucun agent nommé n'est déclaré ici (.claude/agents/<nom>.md)."
+                            : "Agents disponibles : " + String.join(", ", names) + "."));
+        }
+        fr.claudegateway.atelier.agents.NamedAgent agent = found.get();
+        if (!agent.usable()) {
+            return NamedDelegation.failed("L'agent nommé « " + agent.name() + " » est inutilisable : "
+                    + String.join(" ", agent.errors()));
+        }
+        java.util.Set<String> allowed = new java.util.LinkedHashSet<>(agent.tools());
+        if (mode != fr.claudegateway.atelier.agents.NamedAgentPrompts.Mode.TASK) {
+            allowed.retainAll(READ_ONLY_TOOLS);
+        }
+        List<AgentTool> tools = base.stream().filter(tool -> allowed.contains(tool.name())).toList();
+        if (tools.isEmpty()) {
+            return NamedDelegation.failed("L'agent nommé « " + agent.name() + " » n'a aucun outil utilisable "
+                    + (mode == fr.claudegateway.atelier.agents.NamedAgentPrompts.Mode.TASK ? "ici."
+                            : "en lecture : délègue-le par task."));
+        }
+        java.util.Set<String> kept = tools.stream().map(AgentTool::name)
+                .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
+        log.info("Délégation à un agent nommé (workspace={}, agent={}, mode={})", workspace.getId(), agent.name(),
+                mode);
+        return new NamedDelegation(fr.claudegateway.atelier.agents.NamedAgentPrompts.system(agent, mode,
+                List.copyOf(kept)), tools, kept, agent.model() != null ? agent.model() : mainModel, null);
     }
 
     /** Les propositions de gouvernance (F-177 / SF-177-02) ; {@code null} = outil non offert. */
@@ -2643,6 +2762,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         // PERSISTÉ reste la parole de l'utilisateur. Best-effort : un échec ne casse pas le tour.
         // F-177 / SF-177-03 — /nom-du-skill : le skill invoqué rejoint la consigne, de façon déterministe.
         consigne = withInvokedSkill(userId, workspace, userText, consigne);
+        // F-182 / SF-182-02 — /agent <nom> : la délégation demandée rejoint la consigne, de façon déterministe.
+        consigne = withInvokedAgent(userId, workspace, userText, consigne);
 
         try {
             String knownFacts = hostKnowledge.factsFor(userId, workspaceId, userText);
@@ -5278,11 +5399,27 @@ public class AtelierChatService implements RelayInterruptTarget {
         String scope = call.input().path("path").asText(null);
         List<AgentTool> readTools = explorationTools();
         String subModel = (taskModel == null || taskModel.isBlank()) ? model : taskModel;
+        // F-182 / SF-182-02 : un agent nommé apporte sa consigne, ses outils (∩ lecture) et son modèle.
+        String system = null;
+        java.util.Set<String> allowed = READ_ONLY_TOOLS;
+        String agentName = agentOf(call);
+        if (agentName != null) {
+            NamedDelegation named = namedDelegation(userId, workspace, agentName,
+                    fr.claudegateway.atelier.agents.NamedAgentPrompts.Mode.TASK_READ_ONLY, readTools, model);
+            if (named.error() != null) {
+                return new ExplorationOutcome(ToolOutcome.error(named.error()), 0, 0, 0, 0);
+            }
+            system = named.system();
+            readTools = named.tools();
+            allowed = named.allowed();
+            subModel = named.model();
+        }
+        java.util.Set<String> permitted = allowed;
         try {
             AtelierTask.Result result = AtelierTask.run(agentProvider, subModel, apiKey, prompt.trim(),
-                    scope, readTools, true,
+                    scope, readTools, true, system,
                     subCall -> {
-                        ToolOutcome sub = READ_ONLY_TOOLS.contains(subCall.name())
+                        ToolOutcome sub = permitted.contains(subCall.name()) && READ_ONLY_TOOLS.contains(subCall.name())
                                 ? executeTool(userId, workspace, UUID.randomUUID().toString(), subCall,
                                         // Sous concurrence, l'écoute de progression n'est pas partagée :
                                         // la synthèse est relayée après jointure, sur le thread du tour.
@@ -5343,17 +5480,32 @@ public class AtelierChatService implements RelayInterruptTarget {
         // (SF-39-20, D1) : elle est la même sur les deux cibles, et n'y perd rien quand la panoplie
         // principale change.
         List<AgentTool> readTools = explorationTools();
+        // F-182 / SF-182-02 : un agent nommé apporte sa consigne, ses outils (∩ lecture) et son modèle — celui
+        // de la Forge par défaut (D3), pas le modèle d'exploration —, avec le raisonnement de la boucle.
+        String agentName = agentOf(call);
+        NamedDelegation named = null;
+        if (agentName != null) {
+            named = namedDelegation(userId, workspace, agentName,
+                    fr.claudegateway.atelier.agents.NamedAgentPrompts.Mode.EXPLORE, readTools, model);
+            if (named.error() != null) {
+                return new ExplorationOutcome(ToolOutcome.error(named.error()), 0, 0, 0, 0);
+            }
+            readTools = named.tools();
+        }
+        java.util.Set<String> permitted = named == null ? READ_ONLY_TOOLS : named.allowed();
         // F-149 / SF-149-03 : la sous-boucle tourne sur le modèle d'exploration (Sonnet en prod), là
         // où se concentre la lecture lourde déléguée — repli SÛR sur le modèle principal si non
         // configuré. `model` (le principal) est passé jusqu'ici : la boucle principale n'est jamais
         // affectée. Aucun couplage direct à un modèle : `subModel` est une chaîne remise à
         // `AiAgentProvider` (Provider Independence).
-        String subModel = (exploreModel == null || exploreModel.isBlank()) ? model : exploreModel;
+        String subModel = named != null ? named.model()
+                : (exploreModel == null || exploreModel.isBlank()) ? model : exploreModel;
         try {
             AtelierExploration.Result result = AtelierExploration.run(agentProvider, subModel, apiKey,
-                    question.trim(), scope, readTools,
+                    question.trim(), scope, readTools, named == null ? null : named.system(),
                     subCall -> {
-                        ToolOutcome outcome = READ_ONLY_TOOLS.contains(subCall.name())
+                        ToolOutcome outcome = permitted.contains(subCall.name())
+                                && READ_ONLY_TOOLS.contains(subCall.name())
                                 ? executeTool(userId, workspace, UUID.randomUUID().toString(), subCall,
                                         AtelierProgressListener.NOOP, deadline,
                                         new java.util.concurrent.atomic.AtomicReference<>(AtelierPlan.EMPTY),
@@ -5366,8 +5518,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                     () -> interruptedTurns.contains(turnKey(userId, workspace.getId()))
                             || System.currentTimeMillis() >= deadline,
                     // F-119 / SF-119-01 : la sous-boucle investigue avec un raisonnement adaptatif
-                    // (effort configurable non nul), plus jamais AgentReasoning.none().
-                    exploreReasoning);
+                    // (effort configurable non nul), plus jamais AgentReasoning.none(). Un agent nommé
+                    // (F-182) raisonne comme la boucle principale : justesse avant coût.
+                    named != null ? reasoning : exploreReasoning);
             return new ExplorationOutcome(ToolOutcome.info(result.answer()),
                     result.inputTokens(), result.outputTokens(),
                     result.cacheReadTokens(), result.cacheWriteTokens());
@@ -5406,6 +5559,17 @@ public class AtelierChatService implements RelayInterruptTarget {
                     "Consigne (`prompt`) requise pour déléguer une sous-tâche."), 0, 0, 0, 0);
         }
         String scope = call.input().path("path").asText(null);
+        // F-182 / SF-182-02 : un agent nommé apporte sa consigne, ses outils et son modèle. Résolu AVANT le
+        // worktree : un agent introuvable ne laisse rien derrière lui. L'isolation worktree est conservée (D2).
+        String agentName = agentOf(call);
+        NamedDelegation named = null;
+        if (agentName != null) {
+            named = namedDelegation(userId, workspace, agentName,
+                    fr.claudegateway.atelier.agents.NamedAgentPrompts.Mode.TASK, taskTools(), model);
+            if (named.error() != null) {
+                return new TaskOutcome(ToolOutcome.error(named.error()), 0, 0, 0, 0);
+            }
+        }
         String taskId = newTaskId();
         RunnerTarget projectTarget = RunnerTargets.of(workspace);
         // 1. Matérialiser le worktree isolé côté runner (SF-150-01). Un refus (pas git, runner ancien)
@@ -5431,12 +5595,21 @@ public class AtelierChatService implements RelayInterruptTarget {
         // F-150 / SF-150-04 : la sous-boucle `task` tourne sur son modèle configurable
         // (app.atelier.task-model), avec repli SÛR sur le modèle principal si non réglé. Le modèle
         // voyage comme une chaîne via AiAgentProvider (Provider Independence) — aucun couplage direct.
-        String subModel = (taskModel == null || taskModel.isBlank()) ? model : taskModel;
-        List<AgentTool> tools = taskTools();
+        String subModel = named != null ? named.model()
+                : (taskModel == null || taskModel.isBlank()) ? model : taskModel;
+        List<AgentTool> tools = named != null ? named.tools() : taskTools();
+        java.util.Set<String> permitted = named == null ? null : named.allowed();
+        String agentLabel = named == null ? null : agentName;
         try {
             AtelierTask.Result result = AtelierTask.run(agentProvider, subModel, apiKey, prompt.trim(),
-                    scope, tools, false,
+                    scope, tools, false, named == null ? null : named.system(),
                     subCall -> {
+                        // F-182 / SF-182-02 — double verrou : un outil hors de la liste de l'agent nommé
+                        // n'atteint jamais le poste.
+                        if (permitted != null && !permitted.contains(subCall.name())) {
+                            return new AtelierTask.ExecutedTool("Outil « " + subCall.name()
+                                    + " » : il n'est pas autorisé à l'agent " + agentLabel + ".", true);
+                        }
                         // Chaque outil de la sous-boucle s'exécute SUR LE RUNNER, avec le worktree
                         // comme projet — la porte de confirmation/audit/permissions vient avec.
                         ToolOutcome sub = executeToolOnRunner(userId, workspace,
@@ -6258,10 +6431,10 @@ public class AtelierChatService implements RelayInterruptTarget {
             // F-84 / SF-84-04 : une délégation peut durer des minutes — la question part à l'écran
             // AVANT, sans quoi le terminal reste muet tout du long.
             case "explore" -> new AtelierProgressListener.AtelierStepEvent("explore",
-                    shorten(arg(input, "question"), STEP_COMMAND_CHARS));
+                    shorten(delegationLabel(input, "question"), STEP_COMMAND_CHARS));
             // F-150 / SF-150-02 : une sous-tâche `task` peut durer — sa consigne part à l'écran AVANT.
             case "task" -> new AtelierProgressListener.AtelierStepEvent("task",
-                    shorten(arg(input, "prompt"), STEP_COMMAND_CHARS));
+                    shorten(delegationLabel(input, "prompt"), STEP_COMMAND_CHARS));
             // F-190 / SF-190-05 : la vidéo dit ce qu'elle fait — mode, fichier, son — dès le départ.
             case fr.claudegateway.atelier.video.VideoToolCatalog.IMAGES ->
                     new AtelierProgressListener.AtelierStepEvent("video", videoStep(input));
@@ -7591,10 +7764,20 @@ public class AtelierChatService implements RelayInterruptTarget {
     private String transcriptCommand(AgentToolCall call) {
         JsonNode input = call.input();
         return switch (call.name()) {
-            case "explore" -> shorten(arg(input, "question"), STEP_COMMAND_CHARS);
-            case "task" -> shorten(arg(input, "prompt"), STEP_COMMAND_CHARS);
+            case "explore" -> shorten(delegationLabel(input, "question"), STEP_COMMAND_CHARS);
+            case "task" -> shorten(delegationLabel(input, "prompt"), STEP_COMMAND_CHARS);
             default -> auditTarget(call);
         };
+    }
+
+    /** La consigne d'une délégation, préfixée de l'agent nommé s'il y en a un (F-182 / SF-182-02). */
+    private String delegationLabel(JsonNode input, String key) {
+        String text = arg(input, key);
+        String agent = arg(input, "agent");
+        if (agent == null || agent.isBlank()) {
+            return text;
+        }
+        return "agent " + agent.strip() + " — " + (text == null ? "" : text);
     }
 
     String auditTarget(AgentToolCall call) {
@@ -8542,9 +8725,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                             + "ensemble. Ne les étale JAMAIS sur des tours séparés quand rien ne les "
                             + "relie : c'est la première cause de tours inutiles. SEULE exception : une "
                             + "exploration qui a besoin du résultat d'une autre ne se groupe pas — "
-                            + "enchaîne-la au tour suivant, une fois la première réponse reçue.",
+                            + "enchaîne-la au tour suivant, une fois la première réponse reçue."
+                            + NAMED_AGENT_PARAM_NOTE,
                     Map.of("type", "object",
-                            "properties", Map.of("question", stringProp, "path", stringProp),
+                            "properties", Map.of("question", stringProp, "path", stringProp, "agent", stringProp),
                             "required", List.of("question"))));
         }
         // La sous-tâche `task` (F-150 / SF-150-02) : le pendant ÉCRIVAIN d'`explore`. Déclarée
@@ -8586,10 +8770,11 @@ public class AtelierChatService implements RelayInterruptTarget {
                             + (taskParallelism >= 2
                                     ? TASK_WRITERS_PARALLEL
                                     : "Une sous-tâche qui ÉCRIT ne se groupe jamais : les mutations "
-                                            + "s'exécutent l'une après l'autre."),
+                                            + "s'exécutent l'une après l'autre.")
+                            + NAMED_AGENT_PARAM_NOTE,
                     Map.of("type", "object",
                             "properties", Map.of("prompt", stringProp, "path", stringProp,
-                                    "read_only", Map.of("type", "boolean")),
+                                    "read_only", Map.of("type", "boolean"), "agent", stringProp),
                             "required", List.of("prompt"))));
         }
         // Le plan est déclaré sur les DEUX cibles : c'est un outil d'organisation, pas d'exécution
@@ -9387,6 +9572,17 @@ public class AtelierChatService implements RelayInterruptTarget {
                         .append(" autre(s) skill(s) non listé(s).\n");
             }
             subjectCtx.append("Ouvre un skill avec read_file au moment où il sert ; ne suppose pas son contenu.\n\n");
+        }
+        // F-182 / SF-182-02 (D1) — LES AGENTS NOMMÉS, annoncés comme les skills : dans le MESSAGE (jamais la
+        // consigne système, cache F-134), plafonnés, seulement là où la délégation est ouverte. Servis par le
+        // cache de consigne sur un runner amorcé. Vide sans agent : message inchangé à l'octet près.
+        if (namedAgents != null && maxDelegations > 0 && !workspace.isTeamsTerminal()) {
+            try {
+                subjectCtx.append(fr.claudegateway.atelier.agents.NamedAgentPrompts.catalog(
+                        namedAgents.catalog(userId, workspace)));
+            } catch (RuntimeException ex) {
+                log.debug("Agents nommés non annoncés ({})", ex.getClass().getSimpleName());
+            }
         }
         // F-142 / SF-142-10 — L'OUTIL PRIME SUR UNE RECETTE PÉRIMÉE DU POSTE.
         //

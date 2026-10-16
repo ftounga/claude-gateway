@@ -169,6 +169,14 @@ import { HandoffCardComponent, HandoffOriginComponent } from './handoff-card.com
 import { ProposalCardComponent } from './proposal-card.component';
 import { BesoinCardComponent } from './besoin-card.component';
 import { SkillCatalogService, SkillEntry, skillSuggestions } from '../../core/services/skill-catalog.service';
+import {
+  AGENT_COMMAND,
+  NamedAgentCatalogService,
+  NamedAgentEntry,
+  agentCommandSuggested,
+  agentMenuDescription,
+  agentSuggestions,
+} from '../../core/services/named-agent-catalog.service';
 import { TerminalJourneyChipComponent } from './terminal-journey-chip.component';
 import { TerminalJourneyChantiersComponent } from './terminal-journey-chantiers.component';
 import { TerminalHandComponent } from './terminal-hand.component';
@@ -215,7 +223,7 @@ export interface SlashMenuEntry {
   readonly name: string;
   readonly title: string;
   readonly description: string;
-  readonly family: 'macro' | 'panel' | 'skill';
+  readonly family: 'macro' | 'panel' | 'skill' | 'agent';
   /** Uniquement pour la famille `panel` : la commande attend-elle un argument ? */
   readonly takesArgument?: boolean;
 }
@@ -370,6 +378,8 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
       this.loadJourney(value);
       // F-177 / SF-177-03 : les skills du sujet et du poste, pour l'autocomplétion du `/`.
       this.loadSkills(value);
+      // F-182 / SF-182-02 : les agents nommés, pour l'autocomplétion de `/agent <nom>`.
+      this.loadAgents(value);
       // F-175 / SF-175-07 : après la pose des entrées (lecture seule comprise), la reprise de l'existant.
       void Promise.resolve().then(() => this.checkReview(true));
     }
@@ -2321,6 +2331,23 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
       error: () => undefined,
     });
   }
+  /** F-182 / SF-182-02 : les agents nommés du sujet et du poste, proposés après `/agent `. */
+  readonly agentCatalog = signal<NamedAgentEntry[]>([]);
+  private readonly agentCatalogService = inject(NamedAgentCatalogService);
+
+  /** Charge les agents nommés du terminal ; une panne laisse le menu sans agents (jamais d'erreur). */
+  private loadAgents(workspaceId: string): void {
+    this.agentCatalog.set([]);
+    this.agentCatalogService.list(workspaceId).subscribe({
+      next: (agents) => {
+        if (this.projectId === workspaceId) {
+          this.agentCatalog.set(agents ?? []);
+        }
+      },
+      error: () => undefined,
+    });
+  }
+
   /** Compteur d'identifiants locaux pour les panneaux (unicité du `track` sans dépendre de l'horloge). */
   private slashPanelSeq = 0;
 
@@ -2349,6 +2376,8 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     // F-177 / SF-177-03 : les SKILLS du sujet et du poste, après les commandes — un nom déjà pris par une
     // commande ou une macro reste à la commande (elle est interceptée avant l'envoi).
     const taken = new Set([...panels, ...macros].map((entry) => entry.name));
+    // F-182 / SF-182-02 : `/agent` est réservé à la délégation — jamais un skill homonyme.
+    taken.add(AGENT_COMMAND);
     const skills: SlashMenuEntry[] = skillSuggestions(this.draft, this.skillCatalog())
       .filter((skill) => !taken.has(skill.name))
       .map((skill) => ({
@@ -2357,7 +2386,25 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
         description: `${skill.description ? skill.description + ' · ' : ''}skill du ${skill.origin === 'POSTE' ? 'poste' : 'sujet'}`,
         family: 'skill',
       }));
-    return [...panels, ...macros, ...skills];
+    // F-182 / SF-182-02 : la commande `/agent`, puis — une fois `/agent ` tapé — les agents utilisables.
+    const agents: SlashMenuEntry[] = [];
+    if (agentCommandSuggested(this.draft, this.agentCatalog())) {
+      agents.push({
+        name: AGENT_COMMAND,
+        title: '/agent <nom>',
+        description: 'Délègue la demande à un agent nommé (sa consigne, ses outils)',
+        family: 'agent',
+      });
+    }
+    for (const agent of agentSuggestions(this.draft, this.agentCatalog())) {
+      agents.push({
+        name: `${AGENT_COMMAND} ${agent.name}`,
+        title: `/agent ${agent.name}`,
+        description: agentMenuDescription(agent),
+        family: 'agent',
+      });
+    }
+    return [...panels, ...macros, ...skills, ...agents];
   }
 
   /** Vrai quand le menu de slash-commands est ouvert. */
@@ -2443,6 +2490,10 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
       }
     }
     this.draftChange.emit(`/${entry.name} `);
+    // F-182 / SF-182-02 : `/agent ` rouvre aussitôt le menu sur la liste des agents.
+    if (entry.family === 'agent' && entry.name === AGENT_COMMAND) {
+      this.slashDismissed.set(false);
+    }
   }
 
   /**

@@ -70,6 +70,17 @@ class AtelierExploration {
     static Result run(AiAgentProvider provider, String model, String apiKey, String question,
             String scope, List<AgentTool> readTools, ToolExecutor executor,
             java.util.function.BooleanSupplier stop, AgentReasoning reasoning) {
+        return run(provider, model, apiKey, question, scope, readTools, null, executor, stop, reasoning);
+    }
+
+    /**
+     * Variante avec une consigne fournie (F-182 / SF-182-02) : celle d'un <b>agent nommé</b>, déjà encadrée
+     * de ses contraintes réelles ; {@code null} ⇒ la consigne générique {@link #SYSTEM}.
+     */
+    static Result run(AiAgentProvider provider, String model, String apiKey, String question,
+            String scope, List<AgentTool> readTools, String system, ToolExecutor executor,
+            java.util.function.BooleanSupplier stop, AgentReasoning reasoning) {
+        String effectiveSystem = system == null || system.isBlank() ? SYSTEM : system;
         List<AgentMessage> messages = new ArrayList<>();
         messages.add(AgentMessage.userText(scope == null || scope.isBlank()
                 ? question
@@ -88,7 +99,7 @@ class AtelierExploration {
                 break;
             }
             AgentTurn turn = provider.nextTurn(
-                    new AgentTurnRequest(model, SYSTEM, messages, readTools, apiKey,
+                    new AgentTurnRequest(model, effectiveSystem, messages, readTools, apiKey,
                             reasoning == null ? AgentReasoning.none() : reasoning));
             inputTokens += turn.inputTokens();
             outputTokens += turn.outputTokens();
