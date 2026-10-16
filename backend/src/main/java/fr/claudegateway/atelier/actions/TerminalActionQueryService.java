@@ -89,6 +89,7 @@ public class TerminalActionQueryService {
         Map<UUID, List<String>> stepTitles = new HashMap<>();
         indexBlockedSteps(userId, all, stepIndex, stepTitles);
         Map<UUID, String> subjectNames = subjectNamesOf(userId, hostId, all);
+        Map<UUID, String> interlocuteurNames = interlocuteurNamesOf(userId, hostId, all);
         List<TerminalActionResponse> here = new ArrayList<>();
         List<TerminalActionResponse> elsewhere = new ArrayList<>();
         int aFaire = 0;
@@ -108,7 +109,9 @@ public class TerminalActionQueryService {
             }
             TerminalActionResponse response = TerminalActionResponse.from(action, name, due).withContext(
                     action.getSubjectId() == null ? null : subjectNames.get(action.getSubjectId()),
-                    blockedStepOf(action, name, stepIndex, stepTitles));
+                    blockedStepOf(action, name, stepIndex, stepTitles))
+                    .withInterlocuteur(action.getInterlocuteurId() == null ? null
+                            : interlocuteurNames.get(action.getInterlocuteurId()));
             if (action.getWorkspaceId().equals(workspaceId)) {
                 here.add(response);
             } else if (elsewhere.size() < MAX_ELSEWHERE) {
@@ -188,6 +191,27 @@ public class TerminalActionQueryService {
         List<String> stepTitles = titles.getOrDefault(action.getWorkspaceId(), List.of());
         String title = rank[0] - 1 < stepTitles.size() ? stepTitles.get(rank[0] - 1) : null;
         return new TerminalActionResponse.BlockedStep(rank[0], title, terminalName);
+    }
+
+    /** Les interlocuteurs normalisés (F-180 / SF-180-03) ; absent = pas de nom normalisé montré. */
+    private InterlocuteurService interlocuteurs;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setInterlocuteurs(InterlocuteurService interlocuteurs) {
+        this.interlocuteurs = interlocuteurs;
+    }
+
+    private Map<UUID, String> interlocuteurNamesOf(UUID userId, UUID hostId, List<TerminalAction> all) {
+        if (interlocuteurs == null || hostId == null) {
+            return Map.of();
+        }
+        java.util.Set<UUID> ids = new java.util.HashSet<>();
+        all.forEach(a -> {
+            if (a.getInterlocuteurId() != null) {
+                ids.add(a.getInterlocuteurId());
+            }
+        });
+        return interlocuteurs.namesOf(userId, hostId, ids);
     }
 
     private Map<UUID, String> subjectNamesOf(UUID userId, UUID hostId, List<TerminalAction> all) {

@@ -64,6 +64,9 @@ export interface TerminalAction {
   subjectName?: string | null;
   /** L'étape du plan F-176 que l'attente bloque (tableau). */
   blockedStep?: TerminalActionBlockedStep | null;
+  /** L'interlocuteur normalisé du poste (F-180 / SF-180-03). */
+  interlocuteurId?: string | null;
+  interlocuteurName?: string | null;
 }
 
 /** La nature d'une attente (F-180 / SF-180-02, D1). */
@@ -225,6 +228,42 @@ export interface TerminalActionCreate {
   kind?: TerminalActionKind;
   categorie?: TerminalActionCategorie | null;
   qui?: TerminalActionQui | null;
+}
+
+/** Un interlocuteur du poste (`GET /api/workspaces/{id}/interlocuteurs`, F-180 / SF-180-03). */
+export interface Interlocuteur {
+  id: string;
+  displayName: string;
+  role: string | null;
+  team: string | null;
+  radarPersonId: string | null;
+  radarName: string | null;
+  variants: string[];
+  openCount: number;
+}
+
+/** Une modification d'interlocuteur : un champ absent ne change pas. */
+export interface InterlocuteurUpdate {
+  displayName?: string;
+  role?: string;
+  team?: string;
+  radarPersonId?: string;
+}
+
+/** Pourquoi deux interlocuteurs semblent être la même personne. */
+export type InterlocuteurMergeReason = 'PREFIX' | 'INITIALS' | 'TYPO';
+
+export const INTERLOCUTEUR_MERGE_LABELS: Record<InterlocuteurMergeReason, string> = {
+  PREFIX: 'un nom prolonge l’autre',
+  INITIALS: 'mêmes initiales',
+  TYPO: 'à une lettre près',
+};
+
+/** Une fusion proposée : rien sans le geste de l'utilisateur. */
+export interface InterlocuteurMergeSuggestion {
+  keep: Interlocuteur;
+  merge: Interlocuteur;
+  reason: InterlocuteurMergeReason;
 }
 
 /** Pourquoi deux attentes semblent en double (F-180 / SF-180-01). */

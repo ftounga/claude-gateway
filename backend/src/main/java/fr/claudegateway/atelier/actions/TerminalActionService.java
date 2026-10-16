@@ -66,6 +66,30 @@ public class TerminalActionService {
         this.subjectResolver = subjectResolver;
     }
 
+    /** Les interlocuteurs normalisés du poste (F-180 / SF-180-03) ; absent = texte libre seul. */
+    private InterlocuteurService interlocuteurs;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setInterlocuteurs(InterlocuteurService interlocuteurs) {
+        this.interlocuteurs = interlocuteurs;
+    }
+
+    /**
+     * Rattache l'attente à l'interlocuteur du poste qui porte son nom — celui à qui la demande a été faite,
+     * à défaut la personne concernée (F-180 / SF-180-03). Sans poste ou sans nom : rien.
+     */
+    private void linkInterlocuteur(TerminalAction action) {
+        if (interlocuteurs == null || action.getHostId() == null) {
+            return;
+        }
+        String name = action.getRequestedTo() != null ? action.getRequestedTo() : action.getPerson();
+        if (name == null || name.isBlank()) {
+            return;
+        }
+        interlocuteurs.resolve(action.getUserId(), action.getHostId(), name)
+                .ifPresent(i -> action.setInterlocuteurId(i.getId()));
+    }
+
     /** La nature et « qui doit agir » d'une attente (F-180 / SF-180-02, D1) — chacun nul = non dit. */
     public record Qualification(TerminalActionCategorie categorie, TerminalActionQui qui) {
         public static final Qualification NONE = new Qualification(null, null);
@@ -132,7 +156,7 @@ public class TerminalActionService {
             subjectId = subjectResolver.subjectOf(userId, workspace).orElse(null);
         }
         Qualification q = qualification == null ? Qualification.NONE : qualification;
-        TerminalAction saved = repository.save(TerminalAction.builder()
+        TerminalAction built = TerminalAction.builder()
                 .userId(userId)
                 .workspaceId(workspace.getId())
                 .hostId(workspace.getHostId())
@@ -147,7 +171,9 @@ public class TerminalActionService {
                 .dedupKey(dedupKey)
                 .createdAt(now)
                 .updatedAt(now)
-                .build());
+                .build();
+        linkInterlocuteur(built);
+        TerminalAction saved = repository.save(built);
         embedAfterCommit(saved);
         return saved;
     }
@@ -485,6 +511,7 @@ public class TerminalActionService {
                 if (cleanChannel != null) {
                     action.setChannel(cleanChannel);
                 }
+                linkInterlocuteur(action); // F-180 / SF-180-03 : à qui la demande est partie
             }
             case FAIT, ANNULE -> {
                 if (action.getStatus() == target) {
@@ -533,6 +560,7 @@ public class TerminalActionService {
         if (person != null) {
             action.setPerson(optional(person, MAX_PERSON,
                     "Le nom de la personne tient en " + MAX_PERSON + " caractères."));
+            linkInterlocuteur(action); // F-180 / SF-180-03
         }
         if (kind != null) {
             action.setKind(kind);

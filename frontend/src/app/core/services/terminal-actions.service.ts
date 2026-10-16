@@ -7,6 +7,7 @@ import {
   TerminalActionElsewhere, TerminalActionStatusChange, TerminalActionSummary,
   TerminalActionReviewDecision, TerminalActionReviewItem, TerminalActionReviewResult,
   TerminalActionDuplicate, TerminalActionQualifyDecision, TerminalActionQualifyItem,
+  Interlocuteur, InterlocuteurMergeSuggestion, InterlocuteurUpdate,
 } from '../models/terminal-actions.models';
 
 /**
@@ -94,6 +95,28 @@ export class TerminalActionsService {
   reopen(workspaceId: string, actionId: string): Observable<TerminalAction> {
     return this.http.post<TerminalAction>(
       `/api/workspaces/${workspaceId}/actions/${actionId}/reopen`, {});
+  }
+
+  /** Les interlocuteurs du poste du terminal (F-180 / SF-180-03). */
+  interlocuteurs(workspaceId: string): Observable<Interlocuteur[]> {
+    return this.http.get<Interlocuteur[]>(`/api/workspaces/${workspaceId}/interlocuteurs`);
+  }
+
+  updateInterlocuteur(workspaceId: string, id: string, update: InterlocuteurUpdate): Observable<Interlocuteur> {
+    return this.http.patch<Interlocuteur>(`/api/workspaces/${workspaceId}/interlocuteurs/${id}`, update);
+  }
+
+  interlocuteurSuggestions(workspaceId: string): Observable<InterlocuteurMergeSuggestion[]> {
+    return this.http.get<InterlocuteurMergeSuggestion[]>(
+      `/api/workspaces/${workspaceId}/interlocuteurs/merge-suggestions`);
+  }
+
+  mergeInterlocuteur(workspaceId: string, id: string, intoId: string): Observable<Interlocuteur> {
+    return this.http.post<Interlocuteur>(`/api/workspaces/${workspaceId}/interlocuteurs/${id}/merge`, { intoId });
+  }
+
+  distinctInterlocuteurs(workspaceId: string, id: string, otherId: string): Observable<void> {
+    return this.http.post<void>(`/api/workspaces/${workspaceId}/interlocuteurs/${id}/distinct`, { otherId });
   }
 
   /** Les attentes ouvertes sans nature, avec la proposition (F-180 / SF-180-02). */
