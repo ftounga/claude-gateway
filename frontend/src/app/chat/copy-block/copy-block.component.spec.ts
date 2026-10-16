@@ -84,5 +84,93 @@ describe('CopyBlockComponent', () => {
     expect(component.iconFor('code')).toBe('code');
     expect(component.iconFor('doc')).toBe('description');
     expect(component.iconFor('mail')).toBe('mail_outline');
+    expect(component.iconFor('message')).toBe('chat_bubble_outline');
+  });
+
+  // ------------------------------------------- F-203 / SF-203-02 : encart message
+
+  const mail = block({
+    type: 'mail',
+    language: 'mail',
+    title: 'E-mail',
+    content: 'Objet : Point projet\n\nBonjour **Alice**,\n\n- un\n- deux',
+  });
+
+  it('présente l’objet à part et ne le mêle pas au corps', () => {
+    fixture.componentRef.setInput('block', mail);
+    fixture.detectChanges();
+    const host: HTMLElement = fixture.nativeElement;
+
+    expect(host.querySelector('.copy-block-subject-text')?.textContent).toContain('Point projet');
+    expect(host.querySelector('.copy-block-rich')?.textContent).not.toContain('Objet');
+    expect(host.querySelector('.copy-block-rich strong')?.textContent).toBe('Alice');
+  });
+
+  it('copie le corps en HTML propre (sans class/style/id) + texte brut, et affiche « Copié »', async () => {
+    fixture.componentRef.setInput('block', mail);
+    fixture.detectChanges();
+    let written: ClipboardItem | null = null;
+    const write = jasmine.createSpy('write').and.callFake((items: ClipboardItem[]) => {
+      written = items[0];
+      return Promise.resolve();
+    });
+    stubClipboard({ write, writeText: jasmine.createSpy('writeText') });
+    spyOn(snackBar, 'open');
+
+    component.copy();
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(write).toHaveBeenCalled();
+    const item = written as unknown as ClipboardItem;
+    const html = await (await item.getType('text/html')).text();
+    const plain = await (await item.getType('text/plain')).text();
+    expect(html).toContain('<strong>Alice</strong>');
+    expect(html).toContain('<li>');
+    expect(html).not.toMatch(/\s(class|style|id)=/);
+    expect(html).not.toContain('Objet');
+    expect(plain).toBe('Bonjour **Alice**,\n\n- un\n- deux');
+    expect(component.copied()).toBeTrue();
+    expect((fixture.nativeElement as HTMLElement).querySelector('.copy-button')?.textContent).toContain('Copié');
+  });
+
+  it('se replie sur le texte brut du corps si la copie riche est refusée', async () => {
+    fixture.componentRef.setInput('block', mail);
+    fixture.detectChanges();
+    const writeText = jasmine.createSpy('writeText').and.returnValue(Promise.resolve());
+    stubClipboard({ write: () => Promise.reject(new Error('refusé')), writeText });
+    spyOn(snackBar, 'open');
+
+    component.copy();
+    await new Promise((resolve) => setTimeout(resolve));
+
+    expect(writeText).toHaveBeenCalledWith('Bonjour **Alice**,\n\n- un\n- deux');
+  });
+
+  it('copie l’objet seul en texte brut', async () => {
+    fixture.componentRef.setInput('block', mail);
+    fixture.detectChanges();
+    const writeText = jasmine.createSpy('writeText').and.returnValue(Promise.resolve());
+    stubClipboard({ writeText });
+    spyOn(snackBar, 'open');
+
+    component.copySubject();
+    await Promise.resolve();
+
+    expect(writeText).toHaveBeenCalledWith('Point projet');
+  });
+
+  it('un bloc de code n’a jamais d’objet extrait', () => {
+    fixture.componentRef.setInput('block', block({ content: 'Objet : x\ncode' }));
+    fixture.detectChanges();
+    expect(component.parts().subject).toBeNull();
+    expect((fixture.nativeElement as HTMLElement).querySelector('.copy-block-subject')).toBeNull();
+  });
+
+  it('porte la peau sombre sur l’hôte quand tone = dark', () => {
+    fixture.componentRef.setInput('tone', 'dark');
+    fixture.detectChanges();
+    expect((fixture.nativeElement as HTMLElement).classList).toContain('copy-block-host--dark');
   });
 });

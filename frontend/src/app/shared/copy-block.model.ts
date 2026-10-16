@@ -7,7 +7,8 @@
  */
 
 /** Nature d'un bloc copiable, déduite du token de langage du bloc Markdown. */
-export type CopyBlockType = 'code' | 'doc' | 'mail';
+/** `message` (F-203) : message de messagerie ou de ticket à envoyer tel quel (Teams, Slack, Jira…). */
+export type CopyBlockType = 'code' | 'doc' | 'mail' | 'message';
 
 /** Bloc de contenu généré, extrait d'un message assistant, présenté avec un bouton « Copier ». */
 export interface CopyBlock {

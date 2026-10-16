@@ -141,6 +141,9 @@ import {
   subAgentQuestion,
 } from './sub-agents';
 import { splitEssential } from './essential';
+import { CopyBlockComponent } from '../../chat/copy-block/copy-block.component';
+import { MessageBlocksPipe } from '../../shared/message-blocks.pipe';
+import { hasBlockSegment } from '../../shared/message-segments';
 import {
   cardAsText,
   cardOf,
@@ -260,6 +263,7 @@ export function plumeErrorMessage(failure: HttpErrorResponse | null | undefined)
     MatTooltipModule, RouterLink,
     WeeklyBudgetComponent, ProjectCostComponent, DictationButtonComponent,
     TerminalNextStepsComponent, TerminalPlumeComponent,
+    CopyBlockComponent, MessageBlocksPipe,
   ],
   templateUrl: './atelier-terminal.component.html',
   // DEUX FEUILLES, ET C'EST DÉLIBÉRÉ (F-83 / SF-83-02) : la peau « lecture seule » vit à part.
@@ -2788,6 +2792,8 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    * d'avant F-126 (repli gracieux).
    */
   splitEssential = splitEssential;
+  /** F-203 / SF-203-02 : la réponse porte-t-elle un bloc « message à envoyer » (encart copiable) ? */
+  hasBlockSegment = hasBlockSegment;
 
   /**
    * Numérotation des fils, mémorisée **par tableau de blocs** (F-35 SF-35-03). Le gabarit interroge
