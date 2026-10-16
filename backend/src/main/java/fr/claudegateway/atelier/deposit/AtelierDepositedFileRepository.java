@@ -47,6 +47,12 @@ public interface AtelierDepositedFileRepository extends JpaRepository<AtelierDep
     List<String> findPathsByUserIdAndWorkspaceId(@Param("userId") UUID userId,
             @Param("workspaceId") UUID workspaceId);
 
+    /**
+     * <b>Tous</b> les dépôts d'un projet possédé, consommés ou non (F-205 / SF-205-01) : les seuls
+     * fichiers qu'un besoin peut joindre. Filtre d'isolation {@code (user_id, workspace_id)}.
+     */
+    List<AtelierDepositedFile> findByUserIdAndWorkspaceIdOrderByCreatedAtAsc(UUID userId, UUID workspaceId);
+
     /** Purge des dépôts d'un projet (suppression de projet / de compte). */
     void deleteByWorkspaceId(UUID workspaceId);
 

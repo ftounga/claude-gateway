@@ -69,7 +69,24 @@ public record AtelierTurnReport(List<Object> blocks, int omittedBlocks, long inp
             fr.claudegateway.pages.PageBlock page,
             fr.claudegateway.atelier.actions.AttenteBlock attente,
             SubjectHandoff handoff,
-            fr.claudegateway.atelier.proposal.GovernanceProposalBlock proposal) {
+            fr.claudegateway.atelier.proposal.GovernanceProposalBlock proposal,
+            fr.claudegateway.atelier.besoin.AppRequestBlock besoin) {
+
+        /**
+         * Forme d'avant F-205 : aucune carte « Enregistrer ce besoin ? ». La carte (F-205 / SF-205-01)
+         * n'est portée que par l'appel {@code signaler_besoin}.
+         */
+        public Block(String tool, String command, String toolUseId, String threadId, String output,
+                boolean hasOutput, boolean error, boolean expanded,
+                fr.claudegateway.teams.block.TeamsBlockCard card,
+                fr.claudegateway.mail.ClientMailReceipt email,
+                fr.claudegateway.pages.PageBlock page,
+                fr.claudegateway.atelier.actions.AttenteBlock attente,
+                SubjectHandoff handoff,
+                fr.claudegateway.atelier.proposal.GovernanceProposalBlock proposal) {
+            this(tool, command, toolUseId, threadId, output, hasOutput, error, expanded, card, email, page,
+                    attente, handoff, proposal, null);
+        }
 
         /**
          * Forme d'avant F-177 : aucune carte de proposition de gouvernance. La carte (F-177 / SF-177-02)
@@ -236,7 +253,9 @@ public record AtelierTurnReport(List<Object> blocks, int omittedBlocks, long inp
                 // Le bloc de passation (F-179 / SF-179-01) aussi : la carte [Ouvrir le sujet] en dépend.
                 block.handoff(),
                 // La carte de proposition (F-177 / SF-177-02) aussi : [Appliquer] en dépend.
-                block.proposal());
+                block.proposal(),
+                // La carte « Enregistrer ce besoin ? » (F-205 / SF-205-01) aussi.
+                block.besoin());
     }
 
     /**

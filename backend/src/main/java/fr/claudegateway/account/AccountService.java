@@ -101,6 +101,14 @@ public class AccountService {
         this.journeyChantierRepository = chantiers;
     }
 
+    /** Le registre des besoins (F-205 / SF-205-01) : pièces copiées et lignes, purge nommée du compte. */
+    private fr.claudegateway.atelier.besoin.AppRequestService appRequestService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setAppRequestService(fr.claudegateway.atelier.besoin.AppRequestService appRequests) {
+        this.appRequestService = appRequests;
+    }
+
     /** Branche la purge du parcours des sujets à la suppression du compte (F-176). */
     /** Les propositions de gouvernance (F-177 / SF-177-02) : purge nommée du compte. */
     private fr.claudegateway.atelier.proposal.GovernanceProposalRepository governanceProposalRepository;
@@ -436,6 +444,10 @@ public class AccountService {
         // Les propositions de gouvernance (F-177 / SF-177-02) : elles suivent aussi le terminal.
         if (governanceProposalRepository != null) {
             governanceProposalRepository.purgeUser(userId);
+        }
+        // Le registre des besoins (F-205 / SF-205-01) : sans clé étrangère vers le terminal, purge nommée.
+        if (appRequestService != null) {
+            appRequestService.purgeUser(userId);
         }
         if (journeyChantierRepository != null) {
             journeyChantierRepository.purgeUser(userId);

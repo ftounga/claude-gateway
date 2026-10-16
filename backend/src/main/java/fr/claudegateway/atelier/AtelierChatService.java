@@ -1013,6 +1013,23 @@ public class AtelierChatService implements RelayInterruptTarget {
     static final String OPEN_SUBJECT_TOOL_NAME = "ouvrir_sujet";
     /** Nom de l'outil qui propose une règle, un skill ou un gabarit (F-177 / SF-177-02). */
     static final String GOVERNANCE_PROPOSE_TOOL_NAME = "gouvernance_proposer";
+    /** Nom de l'outil qui propose d'enregistrer un besoin de l'application (F-205 / SF-205-01). */
+    static final String APP_REQUEST_TOOL_NAME = "signaler_besoin";
+    /**
+     * Doctrine du registre des besoins (F-205 / SF-205-01). Littéral STABLE, injecté là où l'outil est
+     * offert (administrateur, hors Teams) : cache F-134 préservé.
+     */
+    static final String APP_REQUEST_DOCTRINE =
+            "REGISTRE DES BESOINS DE L'APPLICATION :\n"
+                    + "- Quand l'utilisateur décrit un défaut ou un manque DE L'APPLICATION elle-même (ce "
+                    + "terminal, la Forge, un écran, l'agent, le runner) — pas de son projet —, propose de "
+                    + "l'enregistrer avec signaler_besoin : type BUG (ça ne marche pas comme prévu) ou EVOLUTION "
+                    + "(ça manque).\n"
+                    + "- description = ses mots, tels quels ; reformulation = ta compréhension ; contexte = "
+                    + "ce qui a été observé (écran, étapes, message) ; pieces = les fichiers qu'il a déposés "
+                    + "dans le terminal (captures, photos, vidéos).\n"
+                    + "- L'outil N'ENREGISTRE RIEN : il pose une carte [Enregistrer] [Non]. Ensuite, termine "
+                    + "en une ligne. Un bug du projet de l'utilisateur ne passe jamais par cet outil.\n\n";
     /** Nom de l'outil qui charge un skill du client par son nom (F-177 / SF-177-03). */
     static final String SKILL_TOOL_NAME = "skill";
     /** Ouverture du skill invoqué par {@code /nom} (F-177 / SF-177-03), joint à la consigne du tour. */
@@ -1871,6 +1888,31 @@ public class AtelierChatService implements RelayInterruptTarget {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setGovernanceProposals(fr.claudegateway.atelier.proposal.GovernanceProposalService proposals) {
         this.governanceProposals = proposals;
+    }
+
+    /** Le registre des besoins (F-205 / SF-205-01) ; {@code null} = outil non offert. */
+    private fr.claudegateway.atelier.besoin.AppRequestService appRequests;
+    /** Qui est administrateur, lu en base (F-205 : l'outil est réservé à l'administrateur). */
+    private fr.claudegateway.billing.AdministratorEntitlement administratorEntitlement;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setAppRequests(fr.claudegateway.atelier.besoin.AppRequestService appRequests) {
+        this.appRequests = appRequests;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setAdministratorEntitlement(fr.claudegateway.billing.AdministratorEntitlement entitlement) {
+        this.administratorEntitlement = entitlement;
+    }
+
+    /**
+     * L'outil {@code signaler_besoin} est-il offert (F-205 / SF-205-01) ? Administrateur, hors terminal
+     * Teams. Stable pour un couple (utilisateur, terminal) : la liste des outils et la consigne font
+     * partie du préfixe de cache.
+     */
+    boolean appRequestsOffered(UUID userId, Workspace workspace) {
+        return appRequests != null && administratorEntitlement != null && !workspace.isTeamsTerminal()
+                && administratorEntitlement.isAdministrator(userId);
     }
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -2741,6 +2783,9 @@ public class AtelierChatService implements RelayInterruptTarget {
         // F-177 / SF-177-02 : la carte de proposition de gouvernance, par appel gouvernance_proposer.
         java.util.Map<String, fr.claudegateway.atelier.proposal.GovernanceProposalBlock> proposalsOfTurn =
                 new java.util.HashMap<>();
+        // F-205 / SF-205-01 : la carte « Enregistrer ce besoin ? », par appel signaler_besoin.
+        java.util.Map<String, fr.claudegateway.atelier.besoin.AppRequestBlock> appRequestsOfTurn =
+                new java.util.HashMap<>();
         /** Nombre d'images décoratives générées pendant ce tour (F-142 / SF-142-04), pour la borne par tour. */
         int[] imageCountOfTurn = {0};
         // La compaction (F-117 / SF-117-01) est un appel modèle : sa consommation entre dans les
@@ -3469,6 +3514,11 @@ public class AtelierChatService implements RelayInterruptTarget {
                 } else if (GOVERNANCE_PROPOSE_TOOL_NAME.equals(call.name())) {
                     // F-177 / SF-177-02 : la proposition est rangée par la gateway ; rien n'est écrit.
                     outcome = applyGovernanceProposal(userId, workspace, callId, call, listener, proposalsOfTurn);
+                } else if (APP_REQUEST_TOOL_NAME.equals(call.name())) {
+                    // F-205 / SF-205-01 : le besoin est rangé PROPOSE par la gateway ; rien n'entre au registre.
+                    outcome = applyAppRequest(userId, workspace,
+                            savedUserMessage != null ? savedUserMessage.getId() : null, callId, call, listener,
+                            appRequestsOfTurn);
                 } else if (fr.claudegateway.atelier.journey.JourneyToolCatalog.isJourneyTool(call.name())) {
                     // F-176 : le parcours du sujet est tenu par la gateway, jamais par la machine.
                     outcome = applyJourneyTool(userId, workspace, call);
@@ -3581,7 +3631,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                         // Le bloc de passation (F-179 / SF-179-01) : la carte [Ouvrir le sujet] y survit.
                         handoffsOfTurn.get(callId),
                         // La carte de proposition (F-177 / SF-177-02) : [Appliquer] y survit.
-                        proposalsOfTurn.get(callId)));
+                        proposalsOfTurn.get(callId),
+                        // La carte « Enregistrer ce besoin ? » (F-205 / SF-205-01) : [Enregistrer] y survit.
+                        appRequestsOfTurn.get(callId)));
                 // F-121 / SF-121-11 — LA FILE EST CONSULTÉE ENTRE LES APPELS D'OUTILS, et plus
                 // seulement à la frontière d'itération. Une précision déposée pendant un `bash` de
                 // 90 s ou au milieu d'une rafale de cinq outils était jusqu'ici ni prise ni
@@ -4850,6 +4902,45 @@ public class AtelierChatService implements RelayInterruptTarget {
                 | fr.claudegateway.atelier.proposal.ProposalUnreachableException ex) {
             return ToolOutcome.error(ex.getMessage());
         }
+    }
+
+    /**
+     * Exécute {@code signaler_besoin} (F-205 / SF-205-01) : range le besoin {@code PROPOSE}, pose la carte
+     * (relais {@code onAppRequest} + transcription). Rien n'entre au registre avant [Enregistrer].
+     */
+    private ToolOutcome applyAppRequest(UUID userId, Workspace workspace, UUID messageId, String callId,
+            AgentToolCall call, AtelierProgressListener listener,
+            java.util.Map<String, fr.claudegateway.atelier.besoin.AppRequestBlock> appRequestsOfTurn) {
+        if (!appRequestsOffered(userId, workspace)) {
+            return ToolOutcome.error(APP_REQUEST_TOOL_NAME + " n'est pas ouvert ici.");
+        }
+        try {
+            fr.claudegateway.atelier.besoin.AppRequestBlock block = appRequests.propose(userId, workspace,
+                    messageId, arg(call.input(), "type"), arg(call.input(), "titre"),
+                    arg(call.input(), "description"), arg(call.input(), "reformulation"),
+                    arg(call.input(), "contexte"), stringList(call.input(), "pieces"));
+            appRequestsOfTurn.put(callId, block);
+            listener.onAppRequest(callId, block);
+            return ToolOutcome.info("Carte posée (" + block.kind() + ", « " + block.title() + " », "
+                    + block.attachments().size() + " pièce(s)) : rien n'est enregistré tant que l'utilisateur "
+                    + "n'a pas cliqué [Enregistrer]. Termine ton tour en une ligne.");
+        } catch (fr.claudegateway.atelier.besoin.AppRequestInvalidException ex) {
+            return ToolOutcome.error(ex.getMessage());
+        }
+    }
+
+    /** Les chaînes d'un tableau JSON d'entrée d'outil ; absent ou mal formé ⇒ liste vide. */
+    private static List<String> stringList(JsonNode input, String name) {
+        if (input == null || !input.has(name) || !input.get(name).isArray()) {
+            return List.of();
+        }
+        List<String> out = new java.util.ArrayList<>();
+        input.get(name).forEach(node -> {
+            if (node.isTextual()) {
+                out.add(node.asText());
+            }
+        });
+        return out;
     }
 
     /** Un write_file vers GOUVERNANCE.md ou sous .claude/skills/ (F-177 / SF-177-02, D4). */
@@ -6613,6 +6704,10 @@ public class AtelierChatService implements RelayInterruptTarget {
         // La proposition de gouvernance (F-177 / SF-177-02) est traitée par la boucle (carte du tour).
         if (GOVERNANCE_PROPOSE_TOOL_NAME.equals(call.name())) {
             return ToolOutcome.error("gouvernance_proposer n'est pas ouvert ici.");
+        }
+        // Le registre des besoins (F-205 / SF-205-01) est traité par la boucle (carte du tour).
+        if (APP_REQUEST_TOOL_NAME.equals(call.name())) {
+            return ToolOutcome.error(APP_REQUEST_TOOL_NAME + " n'est pas ouvert ici.");
         }
         // Reclasser un fait (F-141 / SF-141-04) : écriture des cartes du poste par la gateway, jamais
         // par le runner « brut ». Traité ici, avant le routage par cible.
@@ -8634,6 +8729,31 @@ public class AtelierChatService implements RelayInterruptTarget {
                                             "description", "Pourquoi, en une phrase (montrée à l'utilisateur).")),
                             "required", List.of("type", "portee", "nom", "contenu"))));
         }
+        // Signaler un besoin de l'application (F-205 / SF-205-01) : administrateur, hors terminal Teams.
+        // Stable pour un couple (utilisateur, terminal) : préfixe de cache préservé.
+        if (appRequestsOffered(userId, workspace)) {
+            tools.add(new AgentTool(APP_REQUEST_TOOL_NAME,
+                    "Propose d'enregistrer un bug ou une évolution DE L'APPLICATION elle-même (pas du projet "
+                            + "de l'utilisateur) au registre des besoins. N'ENREGISTRE RIEN : pose une carte "
+                            + "[Enregistrer] [Non] ; au clic, le besoin et ses pièces sont rangés pour être "
+                            + "cadrés plus tard.",
+                    Map.of("type", "object",
+                            "properties", Map.of(
+                                    "type", Map.of("type", "string", "enum", List.of("BUG", "EVOLUTION")),
+                                    "titre", Map.of("type", "string",
+                                            "description", "Titre court (200 caractères au plus)."),
+                                    "description", Map.of("type", "string",
+                                            "description", "Les mots de l'utilisateur, tels quels."),
+                                    "reformulation", Map.of("type", "string",
+                                            "description", "Ta reformulation du besoin, précise et vérifiable."),
+                                    "contexte", Map.of("type", "string",
+                                            "description", "Ce qui a été observé : écran, étapes, message "
+                                                    + "d'erreur, poste."),
+                                    "pieces", Map.of("type", "array", "items", Map.of("type", "string"),
+                                            "description", "Chemins des fichiers déposés dans ce terminal "
+                                                    + "(captures, photos, vidéos), 10 au plus.")),
+                            "required", List.of("type", "titre", "description"))));
+        }
         // Ouvrir le sujet d'un « go » (F-179 / SF-179-01) : UNIQUEMENT au terminal du poste, là où l'on
         // aiguille. Pose le bloc de passation ; l'écran ouvre le sujet avec la phrase déposée, non envoyée.
         if (workspace.isHostTerminal()) {
@@ -9032,6 +9152,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         // l'outil gouvernance_proposer est offert (condition stable par workspace : cache F-134 préservé).
         if (governanceProposals != null && !workspace.isTeamsTerminal()) {
             system.append(GOVERNANCE_PROPOSAL_DOCTRINE);
+        }
+        // F-205 / SF-205-01 : le registre des besoins, là où signaler_besoin est offert (administrateur,
+        // hors Teams — condition stable par couple utilisateur/terminal : cache F-134 préservé).
+        if (appRequestsOffered(userId, workspace)) {
+            system.append(APP_REQUEST_DOCTRINE);
         }
 
         // Aiguillage à la racine (F-141 / SF-141-02) : UNIQUEMENT au terminal du poste, là où la
