@@ -70,12 +70,42 @@
   ul, ol { margin: 0 0 var(--cg-space-2); padding-left: var(--cg-space-4); }
 }
 
-// ---- Refonte mobile pro (F-160 / SF-160-01) ----
-// Sous 819 px, le bloc de code prend le look sombre de charte de la maquette validée : fond
-// --cg-navy-2, en-tête --cg-navy, encre claire --cg-divider. AUCUNE couleur nouvelle (jetons --cg-*,
-// filets dérivés par color-mix). Le contenu défile DANS le bloc (`.copy-block-content` porte déjà
-// `overflow-x: auto`) — jamais la page. Le desktop (>= 820 px) reste strictement inchangé.
-@media (max-width: 819px) {
+
+// Objet d'un e-mail (F-203 / SF-203-02) : une ligne à part, copiée séparément du corps.
+.copy-block-subject {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-1) var(--cg-space-3);
+  border-bottom: 1px solid var(--cg-divider);
+  font-size: 14px;
+}
+
+.copy-block-subject-label {
+  flex: none;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--cg-text-secondary);
+}
+
+.copy-block-subject-text {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  color: var(--cg-text-primary);
+  word-break: break-word;
+}
+
+.copy-subject-button {
+  flex: none;
+}
+
+// ---- Peau sombre (F-160 / SF-160-01, étendue par F-203 / SF-203-02) ----
+// Sous 819 px (maquette mobile validée) ET dans le terminal de l'Atelier (tone="dark"), le bloc
+// prend la peau sombre de charte : fond --cg-navy-2, en-tête --cg-navy, encre claire --cg-divider.
+// AUCUNE couleur nouvelle (jetons --cg-*, filets dérivés par color-mix). Le desktop clair (>= 820 px,
+// tone par défaut) reste strictement inchangé.
+@mixin dark-skin {
   .copy-block {
     background: var(--cg-navy-2);
     border-color: color-mix(in srgb, var(--cg-divider) 16%, transparent);
@@ -108,4 +138,21 @@
     background: var(--cg-navy-2);
     color: var(--cg-divider);
   }
+
+  .copy-block-subject {
+    border-bottom-color: color-mix(in srgb, var(--cg-divider) 16%, transparent);
+  }
+
+  .copy-block-subject-text,
+  .copy-subject-button {
+    color: var(--cg-divider);
+  }
+}
+
+@media (max-width: 819px) {
+  @include dark-skin;
+}
+
+:host(.copy-block-host--dark) {
+  @include dark-skin;
 }

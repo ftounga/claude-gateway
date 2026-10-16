@@ -12,13 +12,30 @@
       matTooltip="Copier le bloc"
       aria-label="Copier le bloc"
     >
-      <mat-icon>content_copy</mat-icon>
-      Copier
+      <mat-icon>{{ copied() ? 'check' : 'content_copy' }}</mat-icon>
+      {{ copied() ? 'Copié' : 'Copier' }}
     </button>
   </header>
+  @if (parts().subject; as subject) {
+    <!-- Objet d'un e-mail (F-203) : présenté à part, copié séparément, jamais mêlé au corps. -->
+    <div class="copy-block-subject">
+      <span class="copy-block-subject-label">Objet</span>
+      <span class="copy-block-subject-text">{{ subject }}</span>
+      <button
+        mat-icon-button
+        type="button"
+        class="copy-subject-button"
+        (click)="copySubject()"
+        matTooltip="Copier l'objet"
+        aria-label="Copier l'objet"
+      >
+        <mat-icon>content_copy</mat-icon>
+      </button>
+    </div>
+  }
   @if (isRich()) {
-    <!-- Document / e-mail : rendu formaté (gras, italique, listes) — la copie préserve la mise en forme. -->
-    <div class="copy-block-rich markdown-body" [innerHTML]="block().content | markdown"></div>
+    <!-- Document / e-mail / message : rendu formaté (gras, italique, listes) — la copie préserve la mise en forme. -->
+    <div class="copy-block-rich markdown-body" [innerHTML]="parts().body | markdown"></div>
   } @else {
     <!-- Code : source brute, monospace. -->
     <pre class="copy-block-content"><code>{{ block().content }}</code></pre>

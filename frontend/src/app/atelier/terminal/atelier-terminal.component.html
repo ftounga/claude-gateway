@@ -885,16 +885,16 @@
           @if (parts.essential) {
             <div class="terminal-essential">
               <span class="terminal-essential-label">L'essentiel</span>
-              <div class="terminal-agent terminal-essential-body" [innerHTML]="parts.essential | markdown"></div>
+              <ng-container *ngTemplateOutlet="agentText; context: { $implicit: parts.essential, essential: true }"></ng-container>
             </div>
             @if (parts.detail) {
               <div class="terminal-detail">
                 <span class="terminal-detail-label">Le détail</span>
-                <div class="terminal-agent" [innerHTML]="parts.detail | markdown"></div>
+                <ng-container *ngTemplateOutlet="agentText; context: { $implicit: parts.detail, essential: false }"></ng-container>
               </div>
             }
           } @else {
-            <p class="terminal-agent" [innerHTML]="parts.detail | markdown"></p>
+            <ng-container *ngTemplateOutlet="agentText; context: { $implicit: parts.detail, essential: false }"></ng-container>
           }
         }
         @if (message.interrupted) {
@@ -1108,16 +1108,16 @@
         @if (liveParts.essential) {
           <div class="terminal-essential">
             <span class="terminal-essential-label">L'essentiel</span>
-            <div class="terminal-agent terminal-essential-body" [innerHTML]="liveParts.essential | markdown"></div>
+            <ng-container *ngTemplateOutlet="agentText; context: { $implicit: liveParts.essential, essential: true }"></ng-container>
           </div>
           @if (liveParts.detail) {
             <div class="terminal-detail">
               <span class="terminal-detail-label">Le détail</span>
-              <div class="terminal-agent" [innerHTML]="liveParts.detail | markdown"></div>
+              <ng-container *ngTemplateOutlet="agentText; context: { $implicit: liveParts.detail, essential: false }"></ng-container>
             </div>
           }
         } @else {
-          <p class="terminal-agent" [innerHTML]="liveParts.detail | markdown"></p>
+          <ng-container *ngTemplateOutlet="agentText; context: { $implicit: liveParts.detail, essential: false }"></ng-container>
         }
       }
 
@@ -1968,4 +1968,25 @@
       }
     </ul>
   </div>
+</ng-template>
+
+<!--
+  TEXTE DE L'AGENT (F-203 / SF-203-02). Sans bloc « message à envoyer », rendu strictement identique
+  à l'existant : un conteneur .terminal-agent rendu par le pipe markdown (DOMPurify). Avec un bloc
+  ```mail / ```message clos : prose / encart copiable (app-copy-block, F-26) / prose, dans l'ordre
+  d'origine. Le code et les autres blocs restent dans la prose, rendus comme avant.
+-->
+<ng-template #agentText let-text let-essential="essential">
+  @let segments = text | messageBlocks;
+  @if (!hasBlockSegment(segments)) {
+    <div class="terminal-agent" [class.terminal-essential-body]="essential" [innerHTML]="text | markdown"></div>
+  } @else {
+    @for (segment of segments; track $index) {
+      @if (segment.kind === 'prose') {
+        <div class="terminal-agent" [class.terminal-essential-body]="essential" [innerHTML]="segment.text | markdown"></div>
+      } @else {
+        <app-copy-block class="terminal-message-block" tone="dark" [block]="segment.block"></app-copy-block>
+      }
+    }
+  }
 </ng-template>

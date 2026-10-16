@@ -1,5 +1,11 @@
 import { BlockSegment } from './copy-block.model';
-import { copyBlockTypeFromLanguage, splitMessageSegments } from './message-segments';
+import {
+  copyBlockTypeFromLanguage,
+  hasBlockSegment,
+  splitMessageBlocks,
+  splitMessageSegments,
+  splitSubject,
+} from './message-segments';
 
 /** Renvoie les blocs copiables des segments (filtre la prose). */
 function blocks(content: string): BlockSegment['block'][] {
@@ -80,5 +86,56 @@ describe('splitMessageSegments', () => {
     expect(block.language).toBeNull();
     expect(block.type).toBe('code');
     expect(block.title).toBe('Code');
+  });
+});
+
+describe('F-203 — blocs « message à envoyer »', () => {
+  it('classe message/teams/slack comme message', () => {
+    expect(copyBlockTypeFromLanguage('message')).toBe('message');
+    expect(copyBlockTypeFromLanguage('Teams')).toBe('message');
+    expect(copyBlockTypeFromLanguage('slack')).toBe('message');
+  });
+
+  it('splitMessageBlocks ne garde que les blocs mail / message ; le code reste dans la prose', () => {
+    const content = 'Avant\n```ts\nconst a = 1;\n```\nMilieu\n```mail\nBonjour\n```\nAprès\n```message\nSalut\n```';
+    const segments = splitMessageBlocks(content);
+    expect(segments.map((s) => s.kind)).toEqual(['prose', 'block', 'prose', 'block']);
+    expect(segments[0].kind === 'prose' && segments[0].text).toContain('```ts\nconst a = 1;\n```');
+    expect(segments[1].kind === 'block' && segments[1].block.type).toBe('mail');
+    expect(segments[3].kind === 'block' && segments[3].block.title).toBe('Message');
+    expect(hasBlockSegment(segments)).toBeTrue();
+  });
+
+  it('splitMessageBlocks sans bloc message : un seul segment prose identique', () => {
+    const content = 'Texte\n```bash\nls\n```';
+    const segments = splitMessageBlocks(content);
+    expect(segments).toEqual([{ kind: 'prose', text: content }]);
+    expect(hasBlockSegment(segments)).toBeFalse();
+  });
+
+  it('splitMessageSegments reste inchangé (tous les blocs)', () => {
+    const segments = splitMessageSegments('```ts\nx\n```\n```mail\ny\n```');
+    expect(segments.map((s) => s.kind)).toEqual(['block', 'block']);
+  });
+
+  it('splitSubject extrait « Objet : » et retire les lignes vides qui suivent', () => {
+    expect(splitSubject('Objet : Point projet\n\nBonjour,\nMerci')).toEqual({
+      subject: 'Point projet',
+      body: 'Bonjour,\nMerci',
+    });
+  });
+
+  it('splitSubject accepte « Subject: » et le gras', () => {
+    expect(splitSubject('Subject: Hello\nBody').subject).toBe('Hello');
+    expect(splitSubject('**Objet :** Relance devis\n\nCorps').subject).toBe('Relance devis');
+    expect(splitSubject('**Objet : Relance devis**\n\nCorps').subject).toBe('Relance devis');
+  });
+
+  it('splitSubject sans objet renvoie le contenu inchangé', () => {
+    expect(splitSubject('Bonjour,\nObjet : pas en tête')).toEqual({
+      subject: null,
+      body: 'Bonjour,\nObjet : pas en tête',
+    });
+    expect(splitSubject('Objet :\nCorps').subject).toBeNull();
   });
 });
