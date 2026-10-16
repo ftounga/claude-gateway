@@ -1,8 +1,14 @@
 package fr.claudegateway.atelier.deposit;
 
+import java.time.Clock;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -33,6 +39,9 @@ public class WorkspaceDepositService {
     /** Dossier de dépôt d'un workspace hébergé (le préfixe {@code entrees/} est ajouté par le service). */
     static final String RUNNER_DEPOSIT_DIR = ".atelier/entrees/";
 
+    /** Fuseau des noms horodatés des captures (F-201 / SF-201-01) : l'heure que voit l'utilisateur. */
+    static final ZoneId CAPTURE_ZONE = ZoneId.of("Europe/Paris");
+
     private final WorkspaceService workspaceService;
     private final RunnerToolGateway runnerToolGateway;
     private final RunnerLiveness runnerLiveness;
@@ -42,6 +51,7 @@ public class WorkspaceDepositService {
     private final long maxRunnerBytes;
     private final int maxFiles;
     private final int chunkBytes;
+    private final Clock clock;
 
     public WorkspaceDepositService(WorkspaceService workspaceService,
             RunnerToolGateway runnerToolGateway, RunnerLiveness runnerLiveness,
@@ -49,7 +59,8 @@ public class WorkspaceDepositService {
             @Value("${app.atelier.deposit.max-hosted-bytes:8388608}") long maxHostedBytes,
             @Value("${app.atelier.deposit.max-runner-bytes:104857600}") long maxRunnerBytes,
             @Value("${app.atelier.deposit.max-files:20}") int maxFiles,
-            @Value("${app.atelier.deposit.chunk-bytes:262144}") int chunkBytes) {
+            @Value("${app.atelier.deposit.chunk-bytes:262144}") int chunkBytes,
+            Clock clock) {
         this.workspaceService = workspaceService;
         this.runnerToolGateway = runnerToolGateway;
         this.runnerLiveness = runnerLiveness;
@@ -58,6 +69,7 @@ public class WorkspaceDepositService {
         this.maxRunnerBytes = maxRunnerBytes;
         this.maxFiles = maxFiles;
         this.chunkBytes = chunkBytes;
+        this.clock = clock;
     }
 
     /** Un fichier reçu (nom brut du client, type de média, octets). */
@@ -83,9 +95,16 @@ public class WorkspaceDepositService {
         Workspace workspace = workspaceService.requireOwned(userId, workspaceId);
         boolean runner = workspace.isRunnerTarget();
 
+        // F-201 / SF-201-01 : jamais d'écrasement. Les noms déjà pris (dépôts de ce terminal, fichiers
+        // hébergés sous entrees/, et ceux de ce lot) écartent tout nom en double ; une capture générique
+        // (« image.png ») reçoit un nom horodaté.
+        Set<String> taken = takenNames(userId, workspaceId, runner);
+        LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), CAPTURE_ZONE);
         List<DepositResponse.DepositedFile> results = new ArrayList<>();
         for (IncomingFile file : files) {
-            String name = DepositFileName.sanitize(file.originalName());
+            String name = DepositNameAllocator.allocate(
+                    DepositFileName.sanitize(file.originalName()), taken, now);
+            taken.add(name.toLowerCase(Locale.ROOT));
             byte[] bytes = file.bytes() == null ? new byte[0] : file.bytes();
             String path = runner
                     ? depositToRunner(workspace, name, bytes)
@@ -95,6 +114,23 @@ public class WorkspaceDepositService {
                     runner ? "RUNNER" : "HOSTED"));
         }
         return new DepositResponse(results);
+    }
+
+    /** Noms déjà pris dans le dossier de dépôt de ce terminal, en minuscules (isolation user + workspace). */
+    private Set<String> takenNames(UUID userId, UUID workspaceId, boolean runner) {
+        String dir = runner ? RUNNER_DEPOSIT_DIR : "entrees/";
+        Set<String> taken = new HashSet<>();
+        for (String path : depositedFileRepository.findPathsByUserIdAndWorkspaceId(userId, workspaceId)) {
+            if (path != null && path.startsWith(dir)) {
+                taken.add(path.substring(dir.length()).toLowerCase(Locale.ROOT));
+            }
+        }
+        if (!runner) {
+            for (String name : workspaceService.depositedHostedNames(userId, workspaceId)) {
+                taken.add(name.toLowerCase(Locale.ROOT));
+            }
+        }
+        return taken;
     }
 
     private String depositToHosted(UUID userId, UUID workspaceId, String name, byte[] bytes,
