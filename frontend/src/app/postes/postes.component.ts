@@ -1,4 +1,4 @@
-import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, computed, effect, inject, signal, untracked } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { map } from 'rxjs';
@@ -106,6 +106,7 @@ import {
   groupHosts,
   hostRef,
 } from './forge-fleet';
+import { CurrentClientService } from '../core/services/current-client.service';
 import {
   FORGE_PROJECT_SORTS,
   ForgeProjectSort,
@@ -240,6 +241,8 @@ export class PostesComponent implements OnInit {
   private readonly terminalActions = inject(TerminalActionsService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+  /** Le client courant (F-199 / SF-199-01) : `/forge` sans référence l'ouvre ; `/forge/<ref>` le fixe. */
+  private readonly currentClient = inject(CurrentClientService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialog = inject(MatDialog);
@@ -471,7 +474,24 @@ export class PostesComponent implements OnInit {
     if (wanted && hosts.some((host) => hostRef(host) === wanted)) {
       return wanted;
     }
+    // F-199 / SF-199-01 : sans référence, la Forge rouvre le client courant — celui du terminal qu'on
+    // vient de quitter —, pas le poste par défaut. Un client courant inconnu de la flotte est ignoré.
+    const current = this.currentClient.ref();
+    if (current && hosts.some((host) => hostRef(host) === current)) {
+      return current;
+    }
     return defaultHostRef(hosts, (host) => this.online(host));
+  });
+
+  /** `/forge/<ref>` d'un poste connu : ce client devient le client courant (F-199 / SF-199-01). */
+  private readonly currentClientSync = effect(() => {
+    const wanted = this.routeHostRef();
+    const known = !!wanted && this.fleetHosts().some((host) => hostRef(host) === wanted);
+    untracked(() => {
+      if (known) {
+        this.currentClient.set(wanted);
+      }
+    });
   });
 
   /**

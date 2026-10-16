@@ -20,4 +20,19 @@ describe('space-links', () => {
     expect(spaceLinks('/forge/h1')).toEqual({ forge: ['/forge', 'h1'], vigie: ['/vigie', 'h1'] });
     expect(spaceLinks('/chat')).toEqual({ forge: ['/forge'], vigie: ['/vigie'] });
   });
+
+  it("à défaut de client dans l'adresse, porte le client courant (F-199 / SF-199-01)", () => {
+    expect(spaceLinks('/atelier/w1', 'h2')).toEqual({ forge: ['/forge', 'h2'], vigie: ['/vigie', 'h2'] });
+    expect(spaceLinks('/chat', 'h2')).toEqual({ forge: ['/forge', 'h2'], vigie: ['/vigie', 'h2'] });
+  });
+
+  it("le client de l'adresse prime sur le client courant", () => {
+    expect(spaceLinks('/forge/h1', 'h2')).toEqual({ forge: ['/forge', 'h1'], vigie: ['/vigie', 'h1'] });
+  });
+
+  it("« Hébergé » n'est porté que vers la Forge", () => {
+    expect(spaceLinks('/atelier/w1', 'heberge')).toEqual({ forge: ['/forge', 'heberge'], vigie: ['/vigie'] });
+    expect(spaceLinks('/atelier/w1', '  ')).toEqual({ forge: ['/forge'], vigie: ['/vigie'] });
+    expect(spaceLinks('/atelier/w1', null)).toEqual({ forge: ['/forge'], vigie: ['/vigie'] });
+  });
 });

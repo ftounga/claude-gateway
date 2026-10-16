@@ -21,10 +21,24 @@ export function openClientRef(url: string | null | undefined): string | null {
   return NOT_A_CLIENT.has(ref) ? null : ref;
 }
 
-/** Les adresses des entrées Forge et Vigie, portant le client ouvert quand il y en a un. */
-export function spaceLinks(url: string | null | undefined): { forge: string[]; vigie: string[] } {
-  const ref = openClientRef(url);
-  return ref === null
-    ? { forge: ['/forge'], vigie: ['/vigie'] }
-    : { forge: ['/forge', ref], vigie: ['/vigie', ref] };
+/**
+ * Les adresses des entrées Forge et Vigie, portant le client ouvert quand il y en a un.
+ *
+ * <p>F-199 / SF-199-01 : à défaut de client dans l'adresse (`/atelier/<id>`, `/chat`…), le **client
+ * courant** — celui du dernier terminal ouvert — est porté. Le client de l'adresse prime toujours.
+ * « Hébergé » n'existe que dans la Forge : il n'est jamais porté vers la Vigie.</p>
+ */
+export function spaceLinks(
+  url: string | null | undefined,
+  currentClient: string | null = null,
+): { forge: string[]; vigie: string[] } {
+  const current = (currentClient ?? '').trim();
+  const ref = openClientRef(url) ?? (current.length ? current : null);
+  if (ref === null) {
+    return { forge: ['/forge'], vigie: ['/vigie'] };
+  }
+  return {
+    forge: ['/forge', ref],
+    vigie: NOT_A_CLIENT.has(ref) ? ['/vigie'] : ['/vigie', ref],
+  };
 }

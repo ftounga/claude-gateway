@@ -9,6 +9,7 @@ import { signal } from '@angular/core';
 
 import { ShellComponent } from './shell.component';
 import { AuthService } from '../../core/services/auth.service';
+import { CurrentClientService } from '../../core/services/current-client.service';
 import { QuotaAlertService } from '../../core/services/quota-alert.service';
 import { QuotaAlertView } from '../../core/models/quota-alert.models';
 
@@ -195,6 +196,27 @@ describe('ShellComponent', () => {
     arriveAt('/chat');
     expect(href('.app-nav__forge')).toBe('/forge');
     expect(href('.app-nav__vigie')).toBe('/vigie');
+  });
+
+  // ---- F-199 / SF-199-01 : sur un terminal, la Forge suit le client courant ----
+
+  it('sur un terminal, le lien Forge mène au client du terminal ouvert, pas au poste par défaut', () => {
+    const href = (selector: string) => ((fixture.nativeElement as HTMLElement)
+      .querySelector(selector) as HTMLAnchorElement).getAttribute('href');
+    const current = TestBed.inject(CurrentClientService);
+
+    arriveAt('/atelier/w1');
+    expect(href('.app-nav__forge')).toBe('/forge');
+
+    current.set('h-edenred');
+    arriveAt('/atelier/w2');
+    expect(href('.app-nav__forge')).toBe('/forge/h-edenred');
+    expect(href('.app-nav__vigie')).toBe('/vigie/h-edenred');
+
+    // L'adresse prime : dans la Forge sur un autre client, c'est lui qui est porté.
+    arriveAt('/forge/h1');
+    expect(href('.app-nav__vigie')).toBe('/vigie/h1');
+    current.clear();
   });
 
   // ---- F-151 / SF-151-01 : la navigation se replie derrière un hamburger sous 819 px ----

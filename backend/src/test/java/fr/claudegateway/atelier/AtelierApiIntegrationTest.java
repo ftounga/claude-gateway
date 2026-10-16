@@ -691,6 +691,39 @@ class AtelierApiIntegrationTest {
                 .andExpect(jsonPath("$[0].hostMissionStatus", is("PENDING")));
     }
 
+    /** F-199 / SF-199-01 : le résumé porte l'identifiant du poste — le « client courant » de l'écran. */
+    @Test
+    void workspaceListCarriesItsHostId() throws Exception {
+        String hostId = JsonPath.read(mockMvc.perform(post("/api/runner-hosts").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Poste EDENRED\"}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString(), "$.id");
+        String id = createWorkspace(aliceToken, Map.of("README.md", "hello"));
+        mockMvc.perform(put("/api/workspaces/" + id + "/host").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"hostId\":\"" + hostId + "\",\"projectPath\":\"web\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/workspaces").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.id == '" + id + "')].hostId", hasItem(hostId)));
+    }
+
+    /** F-199 / SF-199-01 : un projet sans poste n'a pas de client — ni identifiant, ni nom. */
+    @Test
+    void workspaceListLeavesHostIdNullWhenNotAttached() throws Exception {
+        createWorkspace(aliceToken, Map.of("README.md", "hello"));
+
+        mockMvc.perform(get("/api/workspaces").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].hostId").doesNotExist());
+    }
+
     /** Un projet sans machine ne porte aucun état de mission — et surtout pas « inconnu ». */
     @Test
     void workspaceListLeavesMissionStatusNullWhenNotAttached() throws Exception {

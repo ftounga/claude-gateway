@@ -54,6 +54,13 @@ export interface WorkspaceSummary {
    */
   hostName?: string | null;
   /**
+   * **Identifiant du poste** de ce projet (F-199 / SF-199-01), servi seulement pour un poste de
+   * l'utilisateur ; `null` pour un projet sans poste (Hébergé). C'est le « client courant » de
+   * l'écran dès l'ouverture du terminal, sans attendre le détail. Champ **additif** : absent
+   * (`undefined`) d'un backend antérieur ⇒ repli sur le détail et l'état runner.
+   */
+  hostId?: string | null;
+  /**
    * **État de mission** du poste sur lequel ce projet vit (F-60 / SF-60-02), ou `null`/absent quand
    * le projet n'est rattaché à aucune machine.
    *

@@ -148,6 +148,8 @@ import { derivePreview } from './terminal/terminal-preview';
 import { SessionBilanPanelComponent } from './terminal/session-bilan-panel.component';
 import { RADAR_DRAFT_STATE, radarDraftFrom } from '../shared/radar-draft';
 import { guardHandlers } from './displayed-subject';
+import { currentClientRefOf } from './current-client-ref';
+import { CurrentClientService } from '../core/services/current-client.service';
 
 // Les types et constantes du fil vivent dans `atelier.types` (F-30 SF-30-07) : la vue terminal les
 // consomme aussi, et les garder ici créerait une dépendance circulaire. Réexportés pour compatibilité.
@@ -256,6 +258,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
   private readonly apiKeyService = inject(ApiKeyService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+  /** Le client courant de toute l'application (F-199 / SF-199-01), que le terminal ouvert impose. */
+  private readonly currentClient = inject(CurrentClientService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly zone = inject(NgZone);
   private readonly appRef = inject(ApplicationRef);
@@ -531,7 +535,35 @@ export class AtelierComponent implements OnInit, OnDestroy {
    * projet, avec l'état runner en repli — exactement la même source que le coupe-circuit.
    */
   readonly activeHostId = computed<string | null>(() =>
-    this.activeDetail()?.hostId ?? this.runnerStatus()?.hostId ?? null);
+    this.activeSummary()?.hostId ?? this.activeDetail()?.hostId ?? this.runnerStatus()?.hostId ?? null);
+
+  /** Le résumé du terminal ouvert, tel que la liste le sert. */
+  private readonly activeSummary = computed<WorkspaceSummary | null>(() => {
+    const id = this.activeWorkspaceId();
+    return id ? this.workspaces().find((w) => w.id === id) ?? null : null;
+  });
+
+  /**
+   * **Le client courant suit le terminal ouvert** (F-199 / SF-199-01) : le lien « Forge » de la barre,
+   * le fil d'Ariane et l'accueil de la Forge ouvrent le client de ce terminal, plus le poste par défaut.
+   *
+   * <p>Ouvrir le terminal d'un autre client <b>bascule</b> le contexte : l'ancien client n'est jamais
+   * conservé — remplacé dès que le nouveau est connu, effacé tant qu'il ne l'est pas. Un terminal sans
+   * poste (résumé servi avec `hostId: null`) est chez « Hébergé ».</p>
+   */
+  private readonly currentClientSync = effect(() => {
+    const ref = currentClientRefOf(this.activeWorkspaceId(), this.activeSummary(), this.activeHostId());
+    untracked(() => {
+      if (ref === undefined) {
+        return;
+      }
+      if (ref === null) {
+        this.currentClient.clear();
+      } else {
+        this.currentClient.set(ref);
+      }
+    });
+  });
 
   /**
    * **État de mission** du poste du projet ouvert (F-60 / SF-60-02), *à montrer* — c'est-à-dire
