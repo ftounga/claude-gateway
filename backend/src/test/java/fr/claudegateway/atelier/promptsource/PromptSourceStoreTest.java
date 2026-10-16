@@ -301,6 +301,36 @@ class PromptSourceStoreTest {
     }
 
     @Test
+    @DisplayName("F-182 / SF-182-03 : un agent validé rejoint l'arborescence et l'index du poste, s'il existe")
+    void validatedAgentsJoinTheTreeAndTheHostIndex() {
+        Workspace ws = runnerWorkspace();
+        when(files.existsByUserIdAndWorkspaceId(userId, workspaceId)).thenReturn(true);
+        when(files.findByUserIdAndWorkspaceIdAndPath(userId, workspaceId, "/__prompt_source_tree__"))
+                .thenReturn(Optional.of(PromptSourceFile.builder().content("README.md").build()));
+        when(files.findByUserIdAndWorkspaceIdAndPath(userId, workspaceId, PromptSourceStore.HOST_AGENTS_PATH))
+                .thenReturn(Optional.of(PromptSourceFile.builder().content(".claude/agents/a.md").build()));
+
+        store.putSubjectAgent(userId, ws, ".claude/agents/relecteur.md", "Relis.");
+        store.putHostAgent(userId, List.of(ws), ".claude/agents/testeur.md", "Teste.");
+
+        ArgumentCaptor<PromptSourceFile> saved = ArgumentCaptor.forClass(PromptSourceFile.class);
+        verify(files, org.mockito.Mockito.atLeastOnce()).save(saved.capture());
+        assertThat(saved.getAllValues()).extracting(PromptSourceFile::getContent)
+                .contains("Relis.", "README.md\n.claude/agents/relecteur.md", "Teste.",
+                        ".claude/agents/a.md\n.claude/agents/testeur.md");
+    }
+
+    @Test
+    @DisplayName("F-182 / SF-182-03 : sans index du poste, rien n'est rangé (le catalogue relit en direct)")
+    void withoutAHostIndexNothingIsStored() {
+        when(files.existsByUserIdAndWorkspaceId(userId, workspaceId)).thenReturn(true);
+
+        store.putHostAgent(userId, List.of(runnerWorkspace()), ".claude/agents/testeur.md", "Teste.");
+
+        verify(files, never()).save(any());
+    }
+
+    @Test
     @DisplayName("F-182 : un agent est un .md à plat sous .claude/agents/")
     void agentPaths() {
         assertThat(PromptSourceStore.isAgentPath(".claude/agents/relecteur.md")).isTrue();

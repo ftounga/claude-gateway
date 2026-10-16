@@ -108,14 +108,45 @@ class GovernancePackageSeederTest {
                         "donnees.md", "exploitation.md", "GOUVERNANCE.md", "PLAN-ACTION.md",
                         "STATE.md", ".claude/skills/explique.md", ".claude/skills/plan-dashboard.md",
                         // F-129 / SF-129-01 : la skill pptx rejoint le paquet.
-                        ".claude/skills/pptx.md");
+                        ".claude/skills/pptx.md",
+                        // F-182 / SF-182-03 : les trois agents nommés.
+                        ".claude/agents/relecteur.md", ".claude/agents/testeur.md",
+                        ".claude/agents/auditeur-infra.md");
         assertThat(written).extracting(GovernancePackageFile::getKind)
                 .containsExactly(GovernanceFileKind.MAP, GovernanceFileKind.MAP,
                         GovernanceFileKind.MAP, GovernanceFileKind.MAP, GovernanceFileKind.MAP,
                         GovernanceFileKind.MAP, GovernanceFileKind.TEMPLATE,
                         GovernanceFileKind.TEMPLATE, GovernanceFileKind.TEMPLATE,
                         GovernanceFileKind.SKILL, GovernanceFileKind.SKILL,
-                        GovernanceFileKind.SKILL);
+                        GovernanceFileKind.SKILL, GovernanceFileKind.AGENT, GovernanceFileKind.AGENT,
+                        GovernanceFileKind.AGENT);
+    }
+
+    @Test
+    @DisplayName("F-182 : les trois agents nommés sont utilisables, sans modèle fixé, et l'auditeur n'applique rien")
+    void theThreeNamedAgentsAreUsableAndUseTheForgeModel() {
+        when(packages.findBySlug(GovernancePackageSeeder.SLUG)).thenReturn(Optional.empty());
+
+        seeder(fullRegistry, true).seed();
+
+        java.util.Map<String, fr.claudegateway.atelier.agents.NamedAgent> agents = new java.util.LinkedHashMap<>();
+        for (GovernancePackageFile file : captureFiles()) {
+            if (file.getKind() == GovernanceFileKind.AGENT) {
+                String name = fr.claudegateway.atelier.agents.NamedAgentCatalogService.nameOf(file.getPath());
+                agents.put(name, fr.claudegateway.atelier.agents.NamedAgentParser.parse(name, file.getPath(),
+                        "SUJET", file.getContent()));
+            }
+        }
+        assertThat(agents).containsOnlyKeys("relecteur", "testeur", "auditeur-infra");
+        assertThat(agents.values()).allSatisfy(agent -> {
+            assertThat(agent.usable()).isTrue();
+            assertThat(agent.model()).isNull();
+            assertThat(agent.warnings()).isEmpty();
+        });
+        assertThat(agents.get("relecteur").access()).isEqualTo("LECTURE");
+        assertThat(agents.get("testeur").access()).isEqualTo("ECRITURE");
+        assertThat(agents.get("auditeur-infra").tools()).contains("bash").doesNotContain("write_file", "edit_file");
+        assertThat(agents.get("auditeur-infra").instructions()).contains("Jamais `apply`").contains("destroy");
     }
 
     @Test

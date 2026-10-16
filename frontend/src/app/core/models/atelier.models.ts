@@ -1407,7 +1407,7 @@ export interface AtelierProposalDiffLine {
 /** **La carte de proposition de gouvernance** (F-177 / SF-177-02) — rien n'est écrit avant [Appliquer]. */
 export interface AtelierGovernanceProposal {
   proposalId: string;
-  type: 'REGLE' | 'SKILL' | 'GABARIT';
+  type: 'REGLE' | 'SKILL' | 'GABARIT' | 'AGENT';
   scope: 'POSTE' | 'SUJET';
   name: string;
   path: string;

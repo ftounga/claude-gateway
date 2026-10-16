@@ -1058,6 +1058,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "type REGLE (section de GOUVERNANCE.md), SKILL (.claude/skills/<nom>.md) ou GABARIT "
                     + "(.claude/gabarits/<nom>.md) ; portee POSTE (vaut pour tout le poste) ou SUJET "
                     + "(ce sujet seulement).\n"
+                    + "- Un AGENT NOMMÉ (« crée-moi un agent relecteur… ») passe aussi par gouvernance_proposer, "
+                    + "type AGENT (.claude/agents/<nom>.md) : entête description, outils (lecture, ecriture ou "
+                    + "liste), modele seulement avec une justification ; puis sa consigne.\n"
                     + "- L'outil N'ÉCRIT RIEN : il pose une carte avec le diff, l'utilisateur clique "
                     + "[Appliquer]. N'écris jamais toi-même GOUVERNANCE.md ni un fichier sous .claude/skills/ "
                     + "avec write_file. Après la proposition, termine en une ligne (« Proposition posée : "
@@ -5016,9 +5019,18 @@ public class AtelierChatService implements RelayInterruptTarget {
                     arg(call.input(), "contenu"), arg(call.input(), "raison"));
             proposalsOfTurn.put(callId, block);
             listener.onGovernanceProposal(callId, block);
+            // F-182 / SF-182-03 : ce qui sera ignoré dans un agent (modèle non justifié, outil inconnu) est dit.
+            String warnings = "";
+            if (fr.claudegateway.atelier.proposal.GovernanceProposalService.AGENT.equals(block.type())) {
+                List<String> ignored = fr.claudegateway.atelier.agents.NamedAgentParser.parse(block.name(),
+                        block.path(), block.scope(), arg(call.input(), "contenu")).warnings();
+                if (!ignored.isEmpty()) {
+                    warnings = " Avertissements : " + String.join(" ", ignored);
+                }
+            }
             return ToolOutcome.info("Proposition posée (" + block.type() + ", portée " + block.scope() + ", "
                     + block.path() + ") : rien n'est écrit tant que l'utilisateur n'a pas cliqué [Appliquer]. "
-                    + "Termine ton tour en une ligne, sans recopier le contenu.");
+                    + "Termine ton tour en une ligne, sans recopier le contenu." + warnings);
         } catch (fr.claudegateway.atelier.proposal.InvalidProposalException
                 | fr.claudegateway.atelier.proposal.ProposalUnreachableException ex) {
             return ToolOutcome.error(ex.getMessage());
@@ -5078,7 +5090,9 @@ public class AtelierChatService implements RelayInterruptTarget {
             normalized = normalized.substring(2);
         }
         return normalized.equals("GOUVERNANCE.md") || normalized.endsWith("/GOUVERNANCE.md")
-                || normalized.startsWith(".claude/skills/") || normalized.contains("/.claude/skills/");
+                || normalized.startsWith(".claude/skills/") || normalized.contains("/.claude/skills/")
+                // F-182 / SF-182-03 : un agent nommé se crée par proposition, comme un skill.
+                || normalized.startsWith(".claude/agents/") || normalized.contains("/.claude/agents/");
     }
 
     private ToolOutcome applyOpenSubject(UUID userId, Workspace workspace, String callId, AgentToolCall call,
@@ -8898,18 +8912,21 @@ public class AtelierChatService implements RelayInterruptTarget {
                     "Propose une règle durable, un skill ou un gabarit pour la gouvernance du client. N'ÉCRIT "
                             + "RIEN : pose une carte avec le diff ; l'utilisateur valide d'un clic [Appliquer]. "
                             + "REGLE = section « ## <nom> » de GOUVERNANCE.md ; SKILL = .claude/skills/<nom>.md "
-                            + "(mode d'emploi complet) ; GABARIT = .claude/gabarits/<nom>.md. portee POSTE = "
+                            + "(mode d'emploi complet) ; GABARIT = .claude/gabarits/<nom>.md ; AGENT = "
+                            + ".claude/agents/<nom>.md (agent nommé : entête description/outils/modele, puis sa "
+                            + "consigne). portee POSTE = "
                             + "racine du poste (vaut dans tous ses sujets) ; SUJET = ce sujet seulement.",
                     Map.of("type", "object",
                             "properties", Map.of(
-                                    "type", Map.of("type", "string", "enum", List.of("REGLE", "SKILL", "GABARIT")),
+                                    "type", Map.of("type", "string", "enum",
+                                            List.of("REGLE", "SKILL", "GABARIT", "AGENT")),
                                     "portee", Map.of("type", "string", "enum", List.of("POSTE", "SUJET")),
                                     "nom", Map.of("type", "string",
-                                            "description", "Titre de la règle, ou nom du skill/gabarit "
+                                            "description", "Titre de la règle, ou nom du skill/gabarit/agent "
                                                     + "(ex. « ticket-jira »)."),
                                     "contenu", Map.of("type", "string",
                                             "description", "Texte de la règle, ou contenu complet du "
-                                                    + "skill/gabarit (markdown)."),
+                                                    + "skill/gabarit/agent (markdown)."),
                                     "raison", Map.of("type", "string",
                                             "description", "Pourquoi, en une phrase (montrée à l'utilisateur).")),
                             "required", List.of("type", "portee", "nom", "contenu"))));

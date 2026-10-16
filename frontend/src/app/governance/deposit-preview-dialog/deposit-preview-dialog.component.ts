@@ -11,6 +11,7 @@ import {
   GovernanceDepositPlan,
   GovernanceFile,
   GovernanceFileComparison,
+  fileKindLabel,
 } from '../../core/models/governance.models';
 import { GovernanceFileViewerComponent } from '../file-viewer/governance-file-viewer.component';
 
@@ -70,6 +71,8 @@ export interface FileOutcome {
 })
 export class DepositPreviewDialogComponent {
   readonly data = inject<DepositPreviewData>(MAT_DIALOG_DATA);
+  /** F-182 / SF-182-03 : skill, gabarit ou agent, en un mot. */
+  readonly kindLabel = fileKindLabel;
   private readonly dialogRef = inject(MatDialogRef<DepositPreviewDialogComponent, boolean>);
   private readonly governance = inject(GovernanceService);
 

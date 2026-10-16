@@ -119,7 +119,7 @@
               <span class="preview__file-body">
                 <code>{{ outcome.file.path }}</code>
                 <span class="preview__verdict">
-                  {{ outcome.file.kind === 'SKILL' ? 'skill' : 'gabarit' }} —
+                  {{ kindLabel(outcome.file.kind) }} —
                   {{ outcomeLabel(outcome) }}
                 </span>
               </span>

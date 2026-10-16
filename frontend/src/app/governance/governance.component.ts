@@ -22,6 +22,7 @@ import {
   GovernanceHostSummary,
   GovernancePackage,
   GovernanceSelection,
+  fileKindLabel,
 } from '../core/models/governance.models';
 import {
   FORGE_ACCESS_BILLING_ROUTE,
@@ -82,6 +83,8 @@ export type GovernanceError = 'none' | 'network' | 'forbidden';
   styleUrl: './governance.component.scss',
 })
 export class GovernanceComponent implements OnInit {
+  /** F-182 / SF-182-03 : skill, gabarit ou agent, en un mot. */
+  readonly kindLabel = fileKindLabel;
   private readonly governance = inject(GovernanceService);
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);

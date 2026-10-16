@@ -152,6 +152,55 @@ class GovernanceProposalServiceTest {
     }
 
     @Test
+    void anAgentGetsItsFileAndALeastPrivilegeHeader() {
+        Workspace ws = subject();
+
+        GovernanceProposalBlock block = service.propose(userId, ws, "agent", "SUJET", "Relecteur Java",
+                "Relis le diff et classe tes constats.", "Relire avant une MR");
+
+        assertThat(block.type()).isEqualTo("AGENT");
+        assertThat(block.path()).isEqualTo(".claude/agents/relecteur-java.md");
+        assertThat(rows.get(block.proposalId()).getContent()).startsWith(
+                "---\nname: relecteur-java\ndescription: Relire avant une MR\noutils: lecture\n---\n\nRelis le diff");
+        verify(gateway, never()).writeFile(any(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void anUnusableAgentIsRefusedWithItsReason() {
+        Workspace ws = subject();
+
+        assertThatThrownBy(() -> service.propose(userId, ws, "AGENT", "SUJET", "vide",
+                "---\noutils: teleporter\n---\nFais.", null))
+                .isInstanceOf(InvalidProposalException.class)
+                .hasMessageContaining("Agent invalide").hasMessageContaining("Aucun outil reconnu");
+    }
+
+    @Test
+    void applyingAHostAgentRefreshesTheHostAgentIndexEverywhere() {
+        Workspace ws = subject();
+        when(workspaceService.listByHost(userId, hostId)).thenReturn(List.of(ws));
+        when(workspaceService.findHostTerminal(userId, hostId)).thenReturn(Optional.empty());
+        UUID id = service.propose(userId, ws, "AGENT", "POSTE", "testeur", "---\noutils: ecriture\n---\nTeste.", null)
+                .proposalId();
+
+        service.apply(userId, ws.getId(), id);
+
+        assertThat(files.get("|.claude/agents/testeur.md")).contains("Teste.");
+        verify(promptSourceStore).putHostAgent(eq(userId), eq(new ArrayList<>(List.of(ws))),
+                eq(".claude/agents/testeur.md"), anyString());
+    }
+
+    @Test
+    void applyingASubjectAgentRefreshesTheSubjectCache() {
+        Workspace ws = subject();
+        UUID id = service.propose(userId, ws, "AGENT", "SUJET", "relecteur", "Relis.", null).proposalId();
+
+        service.apply(userId, ws.getId(), id);
+
+        verify(promptSourceStore).putSubjectAgent(eq(userId), eq(ws), eq(".claude/agents/relecteur.md"), anyString());
+    }
+
+    @Test
     void aSkillGetsItsFileAndFrontMatter() {
         Workspace ws = subject();
 
@@ -177,7 +226,8 @@ class GovernanceProposalServiceTest {
         hosted.setUserId(userId);
         assertThatThrownBy(() -> service.propose(userId, hosted, "REGLE", "POSTE", "x", "y", null))
                 .isInstanceOf(InvalidProposalException.class);
-        assertThatThrownBy(() -> service.propose(userId, hosted, "AGENT", "SUJET", "x", "y", null))
+        // F-182 / SF-182-03 : AGENT est désormais un type valide ; un type inconnu reste refusé.
+        assertThatThrownBy(() -> service.propose(userId, hosted, "WORKFLOW", "SUJET", "x", "y", null))
                 .isInstanceOf(InvalidProposalException.class);
     }
 

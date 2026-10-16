@@ -23,6 +23,12 @@ public enum GovernanceFileKind {
     TEMPLATE,
 
     /**
+     * Un <b>agent nommé</b> (F-182 / SF-182-03), déposé sous {@code .claude/agents/} dans chaque projet,
+     * comme un skill : le catalogue d'agents le lit au tour suivant (sa consigne, ses outils, son modèle).
+     */
+    AGENT,
+
+    /**
      * Un fichier de <b>carte</b> (F-92), déposé à la <b>racine du poste</b> — jamais dans un projet.
      *
      * <p>C'est la pièce qui manquait : le produit savait porter le <b>travail</b>, pas le

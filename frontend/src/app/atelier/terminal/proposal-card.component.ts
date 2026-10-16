@@ -33,6 +33,8 @@ export function proposalKindLabel(type: string): string {
       return 'Skill';
     case 'GABARIT':
       return 'Gabarit';
+    case 'AGENT':
+      return 'Agent';
     default:
       return 'Règle';
   }
