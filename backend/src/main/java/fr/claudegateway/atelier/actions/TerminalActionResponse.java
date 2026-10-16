@@ -39,7 +39,26 @@ public record TerminalActionResponse(
         BlockedStep blockedStep,
         UUID mergedIntoId,
         UUID interlocuteurId,
-        String interlocuteurName) {
+        String interlocuteurName,
+        java.time.LocalDate dueAt,
+        String dueState) {
+
+    /** Le jour de référence de l'échéance : Paris, comme le récapitulatif de 9 h. */
+    static final java.time.ZoneId ZONE = java.time.ZoneId.of("Europe/Paris");
+
+    /**
+     * L'état de l'échéance d'une attente <b>ouverte</b> (F-180 / SF-180-06) : {@code NONE}, {@code LATER},
+     * {@code TODAY}, {@code OVERDUE}. Une attente fermée n'a plus d'échéance qui compte : {@code NONE}.
+     */
+    public static String dueStateOf(TerminalAction action, java.time.LocalDate today) {
+        if (action.getDueAt() == null || !action.isOpen()) {
+            return "NONE";
+        }
+        if (action.getDueAt().isBefore(today)) {
+            return "OVERDUE";
+        }
+        return action.getDueAt().isEqual(today) ? "TODAY" : "LATER";
+    }
 
     /**
      * L'étape du plan F-176 que cette attente bloque (F-180 / SF-180-02, D3) : « bloque : étape 3
@@ -53,7 +72,7 @@ public record TerminalActionResponse(
         return new TerminalActionResponse(id, workspaceId, workspaceName, hostId, subjectId, description, blocks,
                 person, kind, status, requestedAt, requestedTo, channel, closedReason, closedAt, proposedStatus,
                 proposedReason, proposedAt, createdAt, updatedAt, followUpDue, categorie, qui, subject, step,
-                mergedIntoId, interlocuteurId, interlocuteurName);
+                mergedIntoId, interlocuteurId, interlocuteurName, dueAt, dueState);
     }
 
     /** La même attente, avec le nom de son interlocuteur normalisé (F-180 / SF-180-03). */
@@ -61,7 +80,7 @@ public record TerminalActionResponse(
         return new TerminalActionResponse(id, workspaceId, workspaceName, hostId, subjectId, description, blocks,
                 person, kind, status, requestedAt, requestedTo, channel, closedReason, closedAt, proposedStatus,
                 proposedReason, proposedAt, createdAt, updatedAt, followUpDue, categorie, qui, subjectName,
-                blockedStep, mergedIntoId, interlocuteurId, name);
+                blockedStep, mergedIntoId, interlocuteurId, name, dueAt, dueState);
     }
 
     public static TerminalActionResponse from(TerminalAction action) {
@@ -102,6 +121,8 @@ public record TerminalActionResponse(
                 null,
                 action.getMergedIntoId(),
                 action.getInterlocuteurId(),
-                null);
+                null,
+                action.getDueAt(),
+                dueStateOf(action, java.time.LocalDate.now(ZONE)));
     }
 }

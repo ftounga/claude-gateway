@@ -136,6 +136,19 @@ describe('Le panneau des attentes (F-180)', () => {
     });
   });
 
+  describe('SF-180-06 : l’échéance', () => {
+    it('la carte porte la pastille d’échéance ; l’ajout transmet la date', () => {
+      build(f180Board([f180Action('a-1', 'Valider', { dueAt: '2026-10-15', dueState: 'OVERDUE' })]), s =>
+        s.create.and.returnValue(of(f180Action('n-1', 'x'))));
+      const tag: HTMLElement = fixture.nativeElement.querySelector('.tag--late');
+      expect(tag.textContent).toContain('échéance dépassée (15/10)');
+      component.newDescription = 'Signer';
+      component.newDue = '2026-10-23';
+      component.add();
+      expect(service.create).toHaveBeenCalledWith('w-1', jasmine.objectContaining({ dueAt: '2026-10-23' }));
+    });
+  });
+
   describe('SF-180-05 : la relance groupée passe par le panneau', () => {
     it('le brouillon de la vue Personnes ressort du panneau tel quel (le terminal le dépose, sans envoyer)', () => {
       build(f180Board([f180Action('a-1', 'x')]));

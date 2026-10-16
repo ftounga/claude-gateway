@@ -26,6 +26,7 @@ import {
   TerminalActionQualifyItem,
   TerminalActionQui,
   blockedStepLabel,
+  dueLabel,
   TerminalActionReviewItem,
   TerminalActionStatus,
   followUpDraft,
@@ -134,6 +135,10 @@ interface Column {
               <mat-option [value]="null">—</mat-option>
               @for (c of categories; track c) { <mat-option [value]="c">{{ categorieLabel(c) }}</mat-option> }
             </mat-select>
+          </mat-form-field>
+          <mat-form-field appearance="outline" class="actions-panel__field actions-panel__field--small">
+            <mat-label>Échéance (facultative)</mat-label>
+            <input matInput type="date" name="dueAt" [(ngModel)]="newDue">
           </mat-form-field>
           <mat-form-field appearance="outline" class="actions-panel__field actions-panel__field--small">
             <mat-label>Qui agit</mat-label>
@@ -290,8 +295,11 @@ interface Column {
                     } @else {
                       <p class="action__what">{{ action.description }}</p>
                     }
-                    @if (action.categorie || action.qui) {
+                    @if (action.categorie || action.qui || dueText(action)) {
                       <p class="action__tags">
+                        @if (dueText(action)) {
+                          <span class="tag" [class.tag--late]="action.dueState === 'OVERDUE' || action.dueState === 'TODAY'">{{ dueText(action) }}</span>
+                        }
                         @if (action.categorie) { <span class="tag">{{ categorieLabel(action.categorie) }}</span> }
                         @if (action.qui) {
                           <span class="tag" [class.tag--moi]="action.qui === 'MOI'">{{ quiLabel(action.qui) }}</span>
@@ -621,6 +629,12 @@ interface Column {
       font-size: 12px;
     }
 
+    .tag--late {
+      background: var(--cg-gold-ink);
+      color: var(--cg-surface);
+      font-weight: 600;
+    }
+
     .tag--moi {
       background: var(--cg-orange-2);
       color: var(--cg-navy);
@@ -740,6 +754,12 @@ export class TerminalActionsPanelComponent implements OnInit {
   readonly quis = QUIS;
   newCategorie: TerminalActionCategorie | null = null;
   newQui: TerminalActionQui | null = null;
+  /** L'échéance saisie à l'ajout, `aaaa-mm-jj` (F-180 / SF-180-06). */
+  newDue = '';
+
+  dueText(action: TerminalAction): string {
+    return dueLabel(action);
+  }
   readonly qualifyRows = signal<QualifyRow[]>([]);
   readonly qualifyHidden = signal(false);
   readonly qualifyBusy = signal(false);
@@ -987,6 +1007,7 @@ export class TerminalActionsPanelComponent implements OnInit {
     this.busy.set('new');
     this.service.create(this.workspaceId(), {
       description, person: this.newPerson.trim() || null, categorie: this.newCategorie, qui: this.newQui,
+      dueAt: this.newDue || null,
     })
       .subscribe({
         next: created => {
@@ -995,6 +1016,7 @@ export class TerminalActionsPanelComponent implements OnInit {
           this.newPerson = '';
           this.newCategorie = null;
           this.newQui = null;
+          this.newDue = '';
           this.adding.set(false);
           this.busy.set(null);
           this.reload();

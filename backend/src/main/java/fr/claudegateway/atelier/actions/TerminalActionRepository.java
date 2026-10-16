@@ -92,6 +92,13 @@ public interface TerminalActionRepository extends JpaRepository<TerminalAction, 
                                               @Param("open") Collection<TerminalActionStatus> open,
                                               @Param("since") OffsetDateTime since);
 
+    /**
+     * Les attentes ouvertes dont l'échéance est atteinte, <b>tous comptes</b> (F-180 / SF-180-06) — réservé au
+     * récapitulatif de 9 h : chaque émission reste rattachée au {@code user_id} de la ligne.
+     */
+    List<TerminalAction> findByStatusInAndDueAtLessThanEqual(Collection<TerminalActionStatus> statuses,
+                                                             java.time.LocalDate day);
+
     /** Les attentes d'un compte rattachées à un interlocuteur (F-180 / SF-180-03 / SF-180-05). */
     List<TerminalAction> findByUserIdAndInterlocuteurId(UUID userId, UUID interlocuteurId);
 

@@ -97,8 +97,12 @@ public class TerminalActionToolExecutor {
             return Outcome.error(e.getMessage());
         }
         try {
+            java.time.LocalDate due = TerminalActionService.parseDue(text(input, "due_date"));
             TerminalActionService.AgentChange change = service.agentUpdate(userId, workspace, key, id,
                     status, text(input, "requested_to"), text(input, "channel"), qualification);
+            if (due != null && change.outcome() == TerminalActionService.AgentChangeOutcome.CHANGED) {
+                service.applyDue(change.action(), due); // F-180 / SF-180-06
+            }
             boolean requested = change.outcome() == TerminalActionService.AgentChangeOutcome.CHANGED
                     && change.action().getStatus() == TerminalActionStatus.DEMANDE;
             return new Outcome(updateMessage(change, key.isEmpty() ? id : key), false, change.action(),
@@ -170,9 +174,13 @@ public class TerminalActionToolExecutor {
         }
 
         try {
+            java.time.LocalDate due = TerminalActionService.parseDue(text(input, "due_date"));
             TerminalActionService.Recording recording = service.record(userId, workspace.getId(), null,
                     description, text(input, "blocks"), text(input, "person"), kind,
                     text(input, "key"), qualification);
+            if (due != null && recording.action() != null && recording.action().isOpen()) {
+                service.applyDue(recording.action(), due); // F-180 / SF-180-06
+            }
             return new Outcome(message(recording), false, recording.action(), cardOf(recording));
         } catch (InvalidTerminalActionException e) {
             return Outcome.error(e.getMessage());

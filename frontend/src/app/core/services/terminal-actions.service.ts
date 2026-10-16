@@ -8,7 +8,7 @@ import {
   TerminalActionReviewDecision, TerminalActionReviewItem, TerminalActionReviewResult,
   TerminalActionDuplicate, TerminalActionQualifyDecision, TerminalActionQualifyItem,
   Interlocuteur, InterlocuteurMergeSuggestion, InterlocuteurUpdate,
-  AccesObtenu, AccesProposal, AccesRequest, InterlocuteurBoard,
+  AccesObtenu, AccesProposal, AccesRequest, InterlocuteurBoard, MorningPoint,
 } from '../models/terminal-actions.models';
 
 /**
@@ -123,6 +123,11 @@ export class TerminalActionsService {
   /** « Pas besoin » : l'attente n'est plus proposée. */
   dismissAccesProposal(workspaceId: string, actionId: string): Observable<void> {
     return this.http.post<void>(`/api/workspaces/${workspaceId}/acces/proposals/${actionId}/dismiss`, {});
+  }
+
+  /** Le point du matin : relances dues, échéances, accès qui expirent (F-180 / SF-180-06). */
+  morning(workspaceId: string): Observable<MorningPoint> {
+    return this.http.get<MorningPoint>(`/api/workspaces/${workspaceId}/actions/morning`);
   }
 
   /** Qui bloque quoi, depuis quand, et les délais de réponse (F-180 / SF-180-05). */

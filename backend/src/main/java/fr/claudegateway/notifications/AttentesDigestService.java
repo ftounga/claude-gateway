@@ -36,6 +36,16 @@ public class AttentesDigestService {
     /** Le jour du récapitulatif se compte à l'heure de Paris, comme la planification. */
     static final ZoneId ZONE = ZoneId.of("Europe/Paris");
     static final int RETENTION_DAYS = 30;
+    /** Un accès qui expire dans ces jours (avant ou après aujourd'hui) est signalé (F-180 / SF-180-06). */
+    static final int EXPIRY_WINDOW_DAYS = 7;
+
+    /** Le registre des accès (F-180 / SF-180-06) ; absent = seules relances et échéances. */
+    private fr.claudegateway.atelier.actions.AccesObtenuRepository acces;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setAcces(fr.claudegateway.atelier.actions.AccesObtenuRepository acces) {
+        this.acces = acces;
+    }
 
     private final TerminalActionRepository actions;
     private final TerminalActionFollowUp followUp;
@@ -62,11 +72,31 @@ public class AttentesDigestService {
                 due.add(action.getUserId());
             }
         }
+        // F-180 / SF-180-06 : une échéance atteinte, un accès qui arrive à terme — le point du matin.
+        Set<UUID> morning = new LinkedHashSet<>();
+        for (TerminalAction action : actions.findByStatusInAndDueAtLessThanEqual(
+                TerminalActionStatus.OPEN_STATES, today)) {
+            if (action.getUserId() != null) {
+                morning.add(action.getUserId());
+            }
+        }
+        if (acces != null) {
+            for (fr.claudegateway.atelier.actions.AccesObtenu entry : acces.findByExpiresAtBetween(
+                    today.minusDays(EXPIRY_WINDOW_DAYS), today.plusDays(EXPIRY_WINDOW_DAYS))) {
+                if (entry.getUserId() != null) {
+                    morning.add(entry.getUserId());
+                }
+            }
+        }
+        Set<UUID> everyone = new LinkedHashSet<>(due);
+        everyone.addAll(morning);
         int sent = 0;
-        for (UUID userId : due) {
+        for (UUID userId : everyone) {
             try {
                 if (digests.claim(userId, today, now)) {
-                    push.notify(userId, null, PushEvent.ATTENTES_TO_FOLLOW_UP);
+                    // Une seule notification par jour : elle dit le cas dominant.
+                    push.notify(userId, null, morning.contains(userId)
+                            ? PushEvent.ATTENTES_POINT_DU_MATIN : PushEvent.ATTENTES_TO_FOLLOW_UP);
                     sent++;
                 }
             } catch (RuntimeException e) {

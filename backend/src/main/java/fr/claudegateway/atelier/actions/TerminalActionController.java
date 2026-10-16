@@ -28,15 +28,18 @@ public class TerminalActionController {
     private final TerminalActionService service;
     private final TerminalActionQueryService queries;
     private final TerminalActionDuplicateService duplicates;
+    private final TerminalActionMorningService morning;
     private final CurrentUser currentUser;
 
     public TerminalActionController(TerminalActionService service,
                                     TerminalActionQueryService queries,
                                     TerminalActionDuplicateService duplicates,
+                                    TerminalActionMorningService morning,
                                     CurrentUser currentUser) {
         this.service = service;
         this.queries = queries;
         this.duplicates = duplicates;
+        this.morning = morning;
         this.currentUser = currentUser;
     }
 
@@ -89,7 +92,8 @@ public class TerminalActionController {
                 request.blocks(),
                 request.person(),
                 request.kind(),
-                new TerminalActionService.Qualification(request.categorie(), request.qui())));
+                new TerminalActionService.Qualification(request.categorie(), request.qui()),
+                request.dueAt()));
     }
 
     /** Édition d'une attente ouverte : seuls les champs donnés changent (F-175 / SF-175-01). */
@@ -100,7 +104,14 @@ public class TerminalActionController {
         return TerminalActionResponse.from(service.edit(
                 currentUser.requireId(), workspaceId, actionId,
                 request.description(), request.blocks(), request.person(), request.kind(),
-                new TerminalActionService.Qualification(request.categorie(), request.qui())));
+                new TerminalActionService.Qualification(request.categorie(), request.qui()),
+                request.dueAt()));
+    }
+
+    /** Le point du matin : relances dues, échéances, accès qui expirent (F-180 / SF-180-06). */
+    @GetMapping("/morning")
+    public TerminalActionMorningService.MorningPoint morning(@PathVariable UUID workspaceId) {
+        return morning.morning(currentUser.requireId(), workspaceId);
     }
 
     /** Changement d'état : À faire ↔ Demandé → Fait / Annulé (F-175 / SF-175-01). */
@@ -162,13 +173,15 @@ public class TerminalActionController {
     /** Une action ajoutée à la main. */
     public record CreateRequest(UUID subjectId, String description, String blocks,
                                 String person, TerminalActionKind kind,
-                                TerminalActionCategorie categorie, TerminalActionQui qui) {
+                                TerminalActionCategorie categorie, TerminalActionQui qui,
+                                java.time.LocalDate dueAt) {
     }
 
     /** Une édition : {@code null} = inchangé ; chaîne vide = effacé (sauf la description). */
     public record EditRequest(String description, String blocks, String person,
                               TerminalActionKind kind,
-                              TerminalActionCategorie categorie, TerminalActionQui qui) {
+                              TerminalActionCategorie categorie, TerminalActionQui qui,
+                              String dueAt) {
     }
 
     /** Un changement d'état ; {@code note} est la raison d'une fermeture. */

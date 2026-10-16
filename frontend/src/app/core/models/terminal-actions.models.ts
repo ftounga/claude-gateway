@@ -67,6 +67,72 @@ export interface TerminalAction {
   /** L'interlocuteur normalisé du poste (F-180 / SF-180-03). */
   interlocuteurId?: string | null;
   interlocuteurName?: string | null;
+  /** L'échéance facultative, `aaaa-mm-jj` (F-180 / SF-180-06). */
+  dueAt?: string | null;
+  /** NONE · LATER · TODAY · OVERDUE (attente ouverte seulement). */
+  dueState?: 'NONE' | 'LATER' | 'TODAY' | 'OVERDUE' | null;
+}
+
+/** Un accès qui arrive à terme, dans le point du matin. */
+export interface MorningExpiringAcces {
+  id: string;
+  system: string;
+  account: string | null;
+  expiresAt: string;
+  expired: boolean;
+}
+
+/** Le point du matin (`GET …/actions/morning`, F-180 / SF-180-06). */
+export interface MorningPoint {
+  followUps: TerminalAction[];
+  dueToday: TerminalAction[];
+  overdue: TerminalAction[];
+  accesExpiring: MorningExpiringAcces[];
+}
+
+/** Vrai s'il n'y a rien à dire ce matin. */
+export function isMorningEmpty(point: MorningPoint | null): boolean {
+  return !point || (!point.followUps.length && !point.dueToday.length && !point.overdue.length
+    && !point.accesExpiring.length);
+}
+
+/** « 2 relances dues · 1 échéance dépassée · VPN expire dans 4 j » (F-180 / SF-180-06). */
+export function morningSummary(point: MorningPoint | null, now = new Date()): string {
+  if (!point) {
+    return '';
+  }
+  const parts: string[] = [];
+  const plural = (n: number, one: string, many: string) => (n === 1 ? `1 ${one}` : `${n} ${many}`);
+  if (point.followUps.length) {
+    parts.push(plural(point.followUps.length, 'relance due', 'relances dues'));
+  }
+  if (point.overdue.length) {
+    parts.push(plural(point.overdue.length, 'échéance dépassée', 'échéances dépassées'));
+  }
+  if (point.dueToday.length) {
+    parts.push(plural(point.dueToday.length, "échéance aujourd'hui", "échéances aujourd'hui"));
+  }
+  for (const a of point.accesExpiring.slice(0, 2)) {
+    const label = expiryLabel(a.expiresAt, now);
+    parts.push(`${a.system} ${label === 'expiré' ? 'a expiré' : label}`);
+  }
+  if (point.accesExpiring.length > 2) {
+    parts.push(`${point.accesExpiring.length - 2} autre(s) accès à renouveler`);
+  }
+  return parts.join(' · ');
+}
+
+/** « échéance 20/10 », « échéance dépassée (15/10) », « échéance aujourd'hui » — vide sans échéance. */
+export function dueLabel(action: Pick<TerminalAction, 'dueAt' | 'dueState'>): string {
+  if (!action.dueAt || !action.dueState || action.dueState === 'NONE') {
+    return '';
+  }
+  const day = `${action.dueAt.slice(8, 10)}/${action.dueAt.slice(5, 7)}`;
+  switch (action.dueState) {
+    case 'OVERDUE': return `échéance dépassée (${day})`;
+    case 'TODAY': return "échéance aujourd'hui";
+    default: return `échéance ${day}`;
+  }
 }
 
 /** La nature d'une attente (F-180 / SF-180-02, D1). */
@@ -218,6 +284,8 @@ export interface TerminalActionEdit {
   kind?: TerminalActionKind;
   categorie?: TerminalActionCategorie;
   qui?: TerminalActionQui;
+  /** `aaaa-mm-jj` ; chaîne vide = effacée (F-180 / SF-180-06). */
+  dueAt?: string;
 }
 
 /** Un ajout à la main (`POST …/actions`). */
@@ -228,6 +296,8 @@ export interface TerminalActionCreate {
   kind?: TerminalActionKind;
   categorie?: TerminalActionCategorie | null;
   qui?: TerminalActionQui | null;
+  /** `aaaa-mm-jj`, facultative (F-180 / SF-180-06). */
+  dueAt?: string | null;
 }
 
 /** Un accès obtenu (`GET /api/workspaces/{id}/acces`, F-180 / SF-180-04) — jamais un secret. */

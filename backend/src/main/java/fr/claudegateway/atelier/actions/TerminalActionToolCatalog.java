@@ -153,7 +153,8 @@ public class TerminalActionToolCatalog {
                                         "description", "Clé courte et STABLE du blocage (« acces-vpn-karim ») : "
                                                 + "elle évite d'inscrire dix fois la même action."),
                                 "categorie", CATEGORIE_PROPERTY,
-                                "qui", QUI_PROPERTY),
+                                "qui", QUI_PROPERTY,
+                                "due_date", DUE_PROPERTY),
                         "required", List.of("description")));
     }
 
@@ -162,6 +163,10 @@ public class TerminalActionToolCatalog {
             "description", "La nature : ACCES (compte, droit, jeton, VPN, flux), VALIDATION, INFO, "
                     + "TRANSMISSION (fichier, document), INCIDENT.",
             "enum", List.of("ACCES", "VALIDATION", "INFO", "TRANSMISSION", "INCIDENT"));
+
+    /** L'échéance facultative (F-180 / SF-180-06). */
+    static final Map<String, Object> DUE_PROPERTY = Map.of("type", "string",
+            "description", "Échéance facultative, AAAA-MM-JJ — seulement si une date a été dite (« d'ici vendredi »).");
 
     /** Qui doit agir (F-180 / SF-180-02). */
     static final Map<String, Object> QUI_PROPERTY = Map.of("type", "string",
@@ -214,7 +219,8 @@ public class TerminalActionToolCatalog {
                                 "channel", Map.of("type", "string",
                                         "description", "Par où : courriel, Teams, ticket… (60 au plus)."),
                                 "categorie", CATEGORIE_PROPERTY,
-                                "qui", QUI_PROPERTY),
+                                "qui", QUI_PROPERTY,
+                                "due_date", DUE_PROPERTY),
                         "required", List.of("status")));
     }
 }

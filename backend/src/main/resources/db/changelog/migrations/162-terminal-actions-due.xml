@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-180 / SF-180-06 - ECHEANCES ET RAPPELS (decision D6).
+
+      due_at : l'echeance facultative d'une attente (date). Nulle par defaut ; le point du matin et le
+      recapitulatif de 9 h la lisent. ADDITIF, nullable. Rollback : la colonne se retire.
+    -->
+
+    <changeSet id="162-terminal-actions-due" author="claude-gateway">
+        <addColumn tableName="terminal_actions">
+            <column name="due_at" type="date"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="terminal_actions" columnName="due_at"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
