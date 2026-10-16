@@ -3,7 +3,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 
 import {
-  JOURNEY_PHASES, SubjectJourney, confidenceLabel, stepStatusLabel, waitsOnLabel,
+  JOURNEY_PHASES, OpenChantier, SubjectJourney, chantierAwaitsUser, confidenceLabel, stepStatusLabel, waitsOnLabel,
 } from '../../core/models/journey.models';
 
 /** Un geste de l'utilisateur sur le parcours, rendu au terminal qui appelle la gateway. */
@@ -26,15 +26,15 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
       <section class="journey-card" role="region" aria-label="Proposition de passer en mode guidé">
         <mat-icon class="journey-card__icon" aria-hidden="true">route</mat-icon>
         <div class="journey-card__body">
-          <strong>{{ (journey()?.closedChantiers ?? 0) > 0 ? 'Cette demande ouvre un nouveau chantier.' : 'Ce sujet ressemble à un chantier.' }}</strong>
+          <strong>{{ proposalTitle() }}</strong>
           @if (p.reason) {
             <span class="journey-card__reason">{{ p.reason }}</span>
           }
-          <span class="journey-card__hint">En mode guidé : on comprend, on planifie, vous validez le plan, puis on agit.</span>
+          <span class="journey-card__hint">{{ proposalHint() }}</span>
         </div>
         <div class="journey-card__actions">
-          <button mat-flat-button type="button" class="journey-card__accept" [disabled]="busy()" (click)="gesture.emit('accept-guided')">Passer en guidé et continuer</button>
-          <button mat-button type="button" class="journey-card__decline" [disabled]="busy()" (click)="gesture.emit('decline-guided')">Rester libre</button>
+          <button mat-flat-button type="button" class="journey-card__accept" [disabled]="busy()" (click)="gesture.emit('accept-guided')">{{ p.newChantier ? 'Ouvrir ce chantier et continuer' : 'Passer en guidé et continuer' }}</button>
+          <button mat-button type="button" class="journey-card__decline" [disabled]="busy()" (click)="gesture.emit('decline-guided')">{{ p.newChantier ? 'Pas maintenant' : 'Rester libre' }}</button>
         </div>
       </section>
     }
@@ -73,6 +73,26 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
     }
     @if (guided()) {
       <section class="journey-strip" aria-label="Parcours guidé du sujet">
+        @if (openChantiers().length > 1) {
+          <div class="journey-chantiers" role="group" aria-label="Chantiers ouverts du sujet">
+            @for (c of openChantiers(); track c.number) {
+              <button
+                type="button"
+                class="journey-chantier"
+                [class.journey-chantier--focus]="c.focus"
+                [attr.aria-pressed]="c.focus"
+                [attr.title]="c.title"
+                [disabled]="busy() && !c.focus"
+                (click)="selectChantier(c)"
+              >
+                {{ chantierLabel(c) }}
+                @if (awaitsUser(c) && !c.focus) {
+                  <span class="journey-chantier__await">à vous</span>
+                }
+              </button>
+            }
+          </div>
+        }
         <ol class="journey-steps">
           @for (step of phases; track step.phase; let i = $index) {
             <li
@@ -91,7 +111,7 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
         @if (pendingDiagnosis(); as d) {
           <div class="journey-decision" role="region" aria-label="Diagnostic prêt à planifier">
             <div class="journey-decision__body">
-              <strong>Prêt à planifier</strong> — confiance {{ confidence(d.confidence) }}
+              <strong>Prêt à planifier{{ chantierTag() }}</strong> — confiance {{ confidence(d.confidence) }}
               <span class="journey-decision__text">{{ d.text }}</span>
               @if (d.evidence) {
                 <span class="journey-decision__hint">Preuves : {{ d.evidence }}</span>
@@ -106,8 +126,8 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
         @if (closeProposed()) {
           <div class="journey-decision" role="region" aria-label="Clôture proposée">
             <div class="journey-decision__body">
-              <strong>Toutes les vérifications sont vertes.</strong>
-              <span class="journey-decision__hint">Clore ramène le terminal en Libre ; un nouveau chantier pourra être ouvert en mode guidé.</span>
+              <strong>{{ closeTitle() }}</strong>
+              <span class="journey-decision__hint">{{ closeHint() }}</span>
             </div>
             <div class="journey-card__actions">
               <button mat-flat-button type="button" class="journey-decision__close" [disabled]="busy()" (click)="gesture.emit('close')">Clore le chantier</button>
@@ -128,7 +148,7 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
           <div class="journey-plan">
             <button type="button" class="journey-plan__toggle" [attr.aria-expanded]="planOpen()" (click)="togglePlan()">
               <mat-icon aria-hidden="true">{{ planOpen() ? 'expand_less' : 'expand_more' }}</mat-icon>
-              Plan v{{ p.version }} · {{ p.steps.length }} étape{{ p.steps.length > 1 ? 's' : '' }}
+              {{ planPrefix() }}Plan v{{ p.version }} · {{ p.steps.length }} étape{{ p.steps.length > 1 ? 's' : '' }}
               @if (p.awaitingValidation) {
                 <span class="journey-plan__await">{{ p.amendment ? 'amendement à valider' : 'à valider' }}</span>
               } @else if (p.validatedVersion) {
@@ -440,6 +460,43 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
       font-size: 12px;
     }
 
+    .journey-chantiers {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--cg-space-1) var(--cg-space-2);
+      margin: var(--cg-space-1) 0;
+    }
+
+    .journey-chantier {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--cg-space-1);
+      padding: 0 var(--cg-space-2);
+      min-height: 28px;
+      background: none;
+      border: 1px solid var(--cg-divider);
+      border-radius: 4px;
+      color: var(--cg-text-secondary);
+      font: 500 12px 'Inter', sans-serif;
+      cursor: pointer;
+    }
+
+    .journey-chantier--focus {
+      border-color: var(--cg-orange-2);
+      color: var(--cg-orange-2);
+      cursor: default;
+    }
+
+    .journey-chantier:focus-visible {
+      outline: 2px solid var(--cg-orange-2);
+      outline-offset: 2px;
+    }
+
+    .journey-chantier__await {
+      color: var(--cg-orange-2);
+      font-size: 12px;
+    }
+
     .journey-step__icon {
       font-size: 16px;
       width: 16px;
@@ -455,6 +512,68 @@ export class TerminalJourneyStripComponent {
 
   /** Le geste de l'utilisateur ; le terminal appelle la gateway. */
   readonly gesture = output<JourneyGesture>();
+
+  /** [Chantier N] : basculer le focus sur un autre chantier ouvert (F-206). */
+  readonly switchChantier = output<number>();
+
+  /** Les chantiers ouverts du sujet (F-206) — des onglets dès qu'il y en a deux. */
+  readonly openChantiers = computed<OpenChantier[]>(() => (this.guided() ? this.journey()?.chantiers ?? [] : []));
+
+  /** Plusieurs chantiers ouverts : les cartes disent de quel chantier elles parlent (F-206). */
+  private readonly several = computed(() => this.openChantiers().length > 1);
+
+  /** « · Chantier N » sur les cartes dès qu'il y a plusieurs chantiers ouverts (F-206). */
+  readonly chantierTag = computed(() => {
+    const n = this.journey()?.chantier?.number;
+    return this.several() && n ? ` · Chantier ${n}` : '';
+  });
+
+  readonly planPrefix = computed(() => {
+    const n = this.journey()?.chantier?.number;
+    return this.several() && n ? `Chantier ${n} · ` : '';
+  });
+
+  readonly closeTitle = computed(() => {
+    const n = this.journey()?.chantier?.number;
+    return this.several() && n
+      ? `Chantier ${n} : toutes les vérifications sont vertes.`
+      : 'Toutes les vérifications sont vertes.';
+  });
+
+  readonly closeHint = computed(() =>
+    this.several()
+      ? 'Clore ce chantier : les autres chantiers ouverts restent ouverts.'
+      : 'Clore ramène le terminal en Libre ; un nouveau chantier pourra être ouvert en mode guidé.',
+  );
+
+  readonly proposalTitle = computed(() => {
+    const j = this.journey();
+    if (j?.guidedProposal?.newChantier) {
+      return 'Cette demande ouvre un chantier de plus.';
+    }
+    return (j?.closedChantiers ?? 0) > 0 ? 'Cette demande ouvre un nouveau chantier.' : 'Ce sujet ressemble à un chantier.';
+  });
+
+  readonly proposalHint = computed(() =>
+    this.journey()?.guidedProposal?.newChantier
+      ? 'Les chantiers ouverts restent ouverts : on comprend, on planifie, vous validez le plan, puis on agit.'
+      : 'En mode guidé : on comprend, on planifie, vous validez le plan, puis on agit.',
+  );
+
+  /** « Chantier 2 · Plan ». */
+  chantierLabel(c: OpenChantier): string {
+    return c.phaseLabel ? `Chantier ${c.number} · ${c.phaseLabel}` : `Chantier ${c.number}`;
+  }
+
+  awaitsUser(c: OpenChantier): boolean {
+    return chantierAwaitsUser(c);
+  }
+
+  selectChantier(c: OpenChantier): void {
+    if (!c.focus) {
+      this.switchChantier.emit(c.number);
+    }
+  }
 
   readonly phases = JOURNEY_PHASES;
 
@@ -497,10 +616,13 @@ export class TerminalJourneyStripComponent {
     }
   }
 
-  /** La proposition du mode guidé qui attend un geste — seulement en Libre. */
+  /**
+   * La proposition du mode guidé qui attend un geste — en Libre, ou (F-206) celle d'un chantier de
+   * plus sur un sujet déjà guidé.
+   */
   readonly proposal = computed(() => {
     const j = this.journey();
-    return j && j.mode !== 'GUIDE' ? j.guidedProposal ?? null : null;
+    return j && (j.mode !== 'GUIDE' || j.guidedProposal?.newChantier) ? j.guidedProposal ?? null : null;
   });
 
   /** Le plan du sujet guidé, s'il y en a un. */
