@@ -113,6 +113,56 @@ public class TerminalActionSemanticDedup {
         }
     }
 
+    /**
+     * <b>Le rattrapage de toutes les attentes sans vecteur</b> (F-180 / SF-180-01, D8) — ouvertes et
+     * fermées : le dédoublonnage compare aussi aux « Fait » récents (SF-180-04). Par lots de
+     * {@code batch}, au plus {@code max}. Idempotent : seules les lignes sans vecteur sont lues. Chaque
+     * vecteur est rangé sur <b>sa</b> ligne. Rend le nombre de vecteurs rangés ; 0 si éteint ou en panne.
+     */
+    public int backfillAll(int batch, int max) {
+        if (!isEnabled() || batch <= 0 || max <= 0) {
+            return 0;
+        }
+        int stored = 0;
+        try {
+            List<TerminalActionEmbeddingStore.Unembedded> missing = store.findAllUnembedded(max);
+            for (int from = 0; from < missing.size(); from += batch) {
+                List<TerminalActionEmbeddingStore.Unembedded> slice =
+                        missing.subList(from, Math.min(missing.size(), from + batch));
+                List<String> texts = new ArrayList<>(slice.size());
+                for (TerminalActionEmbeddingStore.Unembedded row : slice) {
+                    texts.add(truncate(row.description() == null ? "" : row.description()));
+                }
+                List<float[]> vectors = embeddingProvider.embed(texts);
+                for (int i = 0; i < Math.min(vectors.size(), slice.size()); i++) {
+                    store.store(slice.get(i).id(), vectors.get(i));
+                    stored++;
+                }
+            }
+        } catch (RuntimeException ex) {
+            log.debug("Rattrapage des embeddings d'attentes interrompu ({})", ex.getClass().getSimpleName());
+        }
+        return stored;
+    }
+
+    /**
+     * Les paires d'attentes ouvertes du périmètre qui disent la même chose, sous {@code maxDistance}
+     * (F-180 / SF-180-01) — pour <b>proposer</b> une fusion. Vide si éteint ou en panne.
+     */
+    public List<TerminalActionEmbeddingStore.Pair> closePairs(UUID userId, UUID hostId, UUID workspaceId,
+                                                              double maxDistance, int limit) {
+        if (!isEnabled() || userId == null) {
+            return List.of();
+        }
+        try {
+            catchUp(userId, hostId, workspaceId);
+            return store.closeOpenPairs(userId, hostId, workspaceId, maxDistance, limit);
+        } catch (RuntimeException ex) {
+            log.debug("Paires d'attentes proches indisponibles ({})", ex.getClass().getSimpleName());
+            return List.of();
+        }
+    }
+
     /** Rattrape (en un seul appel) les attentes ouvertes du périmètre restées sans vecteur. */
     private void catchUp(UUID userId, UUID hostId, UUID workspaceId) {
         List<TerminalActionEmbeddingStore.Unembedded> missing =

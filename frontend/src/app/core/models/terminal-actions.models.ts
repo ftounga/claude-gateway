@@ -25,6 +25,8 @@ export function isOpenStatus(status: TerminalActionStatus): boolean {
 /** Une attente (`GET /api/workspaces/{id}/actions`, et le tableau). */
 export interface TerminalAction {
   id: string;
+  /** L'attente gardée quand celle-ci a été fusionnée (F-180 / SF-180-01). */
+  mergedIntoId?: string | null;
   workspaceId: string;
   /** Le nom du terminal d'origine — rempli dans le tableau du poste seulement. */
   workspaceName?: string | null;
@@ -152,4 +154,24 @@ export interface TerminalActionCreate {
   blocks?: string | null;
   person?: string | null;
   kind?: TerminalActionKind;
+}
+
+/** Pourquoi deux attentes semblent en double (F-180 / SF-180-01). */
+export type TerminalActionDuplicateReason = 'KEY' | 'WORDS' | 'MEANING';
+
+/** Les libellés des raisons d'un doublon. */
+export const DUPLICATE_REASON_LABELS: Record<TerminalActionDuplicateReason, string> = {
+  KEY: 'même clé',
+  WORDS: 'mêmes mots',
+  MEANING: 'même sens',
+};
+
+/**
+ * Une paire de doublons probables (`GET …/actions/duplicates`, F-180 / SF-180-01) : la plus ancienne
+ * est gardée, la plus récente serait fusionnée — **rien sans le geste de l'utilisateur**.
+ */
+export interface TerminalActionDuplicate {
+  keep: TerminalAction;
+  duplicate: TerminalAction;
+  reason: TerminalActionDuplicateReason;
 }

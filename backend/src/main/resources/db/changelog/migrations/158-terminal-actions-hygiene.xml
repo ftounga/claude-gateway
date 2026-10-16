@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-180 / SF-180-01 - REMISE EN ORDRE (decision D8). Par du code livre, jamais par une ecriture
+      manuelle en prod.
+
+      1. Purge des « a verifier » : les attentes encore marquees review_pending depuis la reprise de
+         F-175 (SF-175-07) quittent ce marqueur. Leur ETAT N'EST PAS TOUCHE (elles restent A_FAIRE /
+         DEMANDE telles quelles) : seule la question « a verifier » cesse d'etre posee. Idempotent.
+      2. Fusion proposee des doublons : merged_into_id (l'attente gardee) et duplicate_dismissed_at
+         (« ce n'est pas pareil » : la paire n'est plus proposee). ADDITIF, nullable.
+
+      Rollback : les deux colonnes se retirent ; le marqueur purge ne se restaure pas (information
+      « a verifier » perimee, sans valeur a restaurer).
+    -->
+
+    <changeSet id="158-terminal-actions-review-purge" author="claude-gateway">
+        <update tableName="terminal_actions">
+            <column name="review_pending" valueBoolean="false"/>
+            <where>review_pending = true</where>
+        </update>
+        <rollback/>
+    </changeSet>
+
+    <changeSet id="158-terminal-actions-duplicates" author="claude-gateway">
+        <addColumn tableName="terminal_actions">
+            <column name="merged_into_id" type="uuid"/>
+            <column name="duplicate_dismissed_at" type="timestamptz"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="terminal_actions" columnName="duplicate_dismissed_at"/>
+            <dropColumn tableName="terminal_actions" columnName="merged_into_id"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

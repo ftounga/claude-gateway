@@ -10,9 +10,11 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { Observable } from 'rxjs';
 
 import {
+  DUPLICATE_REASON_LABELS,
   TERMINAL_ACTION_STATUS_LABELS,
   TerminalAction,
   TerminalActionBoard,
+  TerminalActionDuplicate,
   TerminalActionReviewItem,
   TerminalActionStatus,
   followUpDraft,
@@ -149,6 +151,25 @@ interface Column {
                 (click)="validate(review())">Tout valider</button>
               <button mat-button type="button" class="review__later" (click)="reviewHidden.set(true)">Plus tard</button>
             </div>
+          </section>
+        }
+        @if (duplicates().length) {
+          <!-- F-180 / SF-180-01 — LES DOUBLONS PROBABLES : proposés, jamais fusionnés sans geste. -->
+          <section class="dups" aria-label="Doublons probables">
+            <h3 class="dups__title">Doublons probables ({{ duplicates().length }})</h3>
+            @for (pair of duplicates(); track pair.duplicate.id) {
+              <article class="dups__row">
+                <p class="dups__keep">Garder : {{ pair.keep.description }}</p>
+                <p class="dups__dup">Fusionner : {{ pair.duplicate.description }}
+                  <span class="dups__reason">· {{ reasonLabel(pair) }}</span></p>
+                <div class="action__gestures">
+                  <button mat-flat-button type="button" class="dups__merge" [disabled]="busy() === pair.duplicate.id"
+                    (click)="mergePair(pair)">Fusionner</button>
+                  <button mat-button type="button" class="dups__dismiss" [disabled]="busy() === pair.duplicate.id"
+                    (click)="notDuplicate(pair)">Ce n'est pas pareil</button>
+                </div>
+              </article>
+            }
           </section>
         }
         @if (failed()) {
@@ -481,6 +502,44 @@ interface Column {
       --mdc-filled-button-container-color: var(--cg-accent);
     }
 
+    .dups {
+      margin-bottom: var(--cg-space-3);
+      padding: var(--cg-space-3);
+      border: 1px dashed var(--cg-accent);
+      border-radius: 8px;
+      background: var(--cg-surface-2);
+    }
+
+    .dups__title {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--cg-primary);
+    }
+
+    .dups__row {
+      margin-top: var(--cg-space-2);
+      padding: var(--cg-space-2);
+      border-radius: 8px;
+      background: var(--cg-surface);
+    }
+
+    .dups__keep,
+    .dups__dup {
+      margin: 0;
+      font-size: 13px;
+      overflow-wrap: anywhere;
+    }
+
+    .dups__keep {
+      font-weight: 600;
+    }
+
+    .dups__reason {
+      color: var(--cg-text-secondary);
+      font-size: 12px;
+    }
+
     .action--closed .action__what {
       text-decoration: line-through;
       color: var(--cg-text-secondary);
@@ -546,9 +605,50 @@ export class TerminalActionsPanelComponent implements OnInit {
   readonly reviewHidden = signal(false);
   readonly reviewBusy = signal(false);
 
+  /** Les doublons probables du poste (F-180 / SF-180-01). */
+  readonly duplicates = signal<TerminalActionDuplicate[]>([]);
+
   ngOnInit(): void {
     this.reload();
     this.loadReview();
+  }
+
+  private loadDuplicates(): void {
+    this.service.duplicates(this.workspaceId()).subscribe({
+      next: pairs => this.duplicates.set(pairs ?? []),
+      // Silencieux : une proposition de fusion est un plus, son échec ne masque pas le tableau.
+      error: () => this.duplicates.set([]),
+    });
+  }
+
+  reasonLabel(pair: TerminalActionDuplicate): string {
+    return DUPLICATE_REASON_LABELS[pair.reason] ?? '';
+  }
+
+  /** [Fusionner] : la paire disparaît tout de suite ; un échec la remet et le dit. */
+  mergePair(pair: TerminalActionDuplicate): void {
+    this.settlePair(pair, this.service.merge(pair.duplicate.workspaceId, pair.duplicate.id, pair.keep.id));
+  }
+
+  /** [Ce n'est pas pareil] : la paire n'est plus proposée. */
+  notDuplicate(pair: TerminalActionDuplicate): void {
+    this.settlePair(pair, this.service.notDuplicate(pair.duplicate.workspaceId, pair.duplicate.id));
+  }
+
+  private settlePair(pair: TerminalActionDuplicate, call: Observable<TerminalAction>): void {
+    const before = this.duplicates();
+    this.busy.set(pair.duplicate.id);
+    this.duplicates.set(before.filter(p => p.duplicate.id !== pair.duplicate.id));
+    call.subscribe({
+      next: () => {
+        this.busy.set(null);
+        this.reload();
+      },
+      error: () => {
+        this.duplicates.set(before);
+        this.fail();
+      },
+    });
   }
 
   private loadReview(): void {
@@ -609,6 +709,7 @@ export class TerminalActionsPanelComponent implements OnInit {
         this.loading.set(false);
         this.failed.set(false);
         this.changed.emit(board);
+        this.loadDuplicates();
       },
       error: () => {
         this.failed.set(true);

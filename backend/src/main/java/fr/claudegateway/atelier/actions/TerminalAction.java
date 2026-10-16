@@ -142,6 +142,17 @@ public class TerminalAction {
     @Column(name = "review_pending", nullable = false)
     private boolean reviewPending = false;
 
+    /**
+     * L'attente gardée quand celle-ci a été <b>fusionnée</b> dans une autre (F-180 / SF-180-01) : elle
+     * passe alors « Annulé », avec la raison « Fusionnée avec … ».
+     */
+    @Column(name = "merged_into_id")
+    private UUID mergedIntoId;
+
+    /** « Ce n'est pas pareil » (F-180 / SF-180-01) : l'attente n'est plus proposée comme doublon. */
+    @Column(name = "duplicate_dismissed_at")
+    private OffsetDateTime duplicateDismissedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
