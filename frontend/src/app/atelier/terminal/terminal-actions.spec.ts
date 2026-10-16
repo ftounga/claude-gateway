@@ -278,7 +278,7 @@ describe('Les attentes du terminal (F-175 / SF-175-04)', () => {
       service.create.and.returnValue(of(action('a-2', 'Obtenir la dérogation')));
       component.newDescription = 'Obtenir la dérogation';
       component.add();
-      expect(service.create).toHaveBeenCalledWith('w-1', { description: 'Obtenir la dérogation', person: null });
+      expect(service.create).toHaveBeenCalledWith('w-1', { description: 'Obtenir la dérogation', person: null, categorie: null, qui: null });
 
       const open = action('a-3', 'Demander');
       service.edit.and.returnValue(of({ ...open, description: 'Demander le VPN' }));

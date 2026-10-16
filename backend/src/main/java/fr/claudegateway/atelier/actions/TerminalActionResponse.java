@@ -32,7 +32,27 @@ public record TerminalActionResponse(
         OffsetDateTime proposedAt,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt,
-        boolean followUpDue) {
+        boolean followUpDue,
+        TerminalActionCategorie categorie,
+        TerminalActionQui qui,
+        String subjectName,
+        BlockedStep blockedStep,
+        UUID mergedIntoId) {
+
+    /**
+     * L'étape du plan F-176 que cette attente bloque (F-180 / SF-180-02, D3) : « bloque : étape 3
+     * « Déployer » de data-platform ». Calculée à la lecture — le plan peut changer.
+     */
+    public record BlockedStep(int number, String title, String terminal) {
+    }
+
+    /** La même attente, avec son sujet et l'étape qu'elle bloque (tableau). */
+    public TerminalActionResponse withContext(String subject, BlockedStep step) {
+        return new TerminalActionResponse(id, workspaceId, workspaceName, hostId, subjectId, description, blocks,
+                person, kind, status, requestedAt, requestedTo, channel, closedReason, closedAt, proposedStatus,
+                proposedReason, proposedAt, createdAt, updatedAt, followUpDue, categorie, qui, subject, step,
+                mergedIntoId);
+    }
 
     public static TerminalActionResponse from(TerminalAction action) {
         return from(action, null, false);
@@ -65,6 +85,11 @@ public record TerminalActionResponse(
                 action.getProposedAt(),
                 action.getCreatedAt(),
                 action.getUpdatedAt(),
-                followUpDue);
+                followUpDue,
+                action.getCategorie(),
+                action.getQui(),
+                null,
+                null,
+                action.getMergedIntoId());
     }
 }

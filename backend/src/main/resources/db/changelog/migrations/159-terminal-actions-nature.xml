@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-180 / SF-180-02 - NATURE ET « QUI DOIT AGIR » (decision D1).
+
+      categorie : ACCES, VALIDATION, INFO, TRANSMISSION, INCIDENT ; qui : MOI, CLIENT, TIERS. ADDITIF,
+      nullable : les attentes existantes restent sans nature jusqu'a la reprise VALIDEE par l'utilisateur
+      (heuristique proposee a l'ecran, rien n'est ecrit sans son geste). Rollback : les colonnes se retirent.
+    -->
+
+    <changeSet id="159-terminal-actions-nature" author="claude-gateway">
+        <addColumn tableName="terminal_actions">
+            <column name="categorie" type="varchar(16)"/>
+            <column name="qui" type="varchar(8)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="terminal_actions" columnName="qui"/>
+            <dropColumn tableName="terminal_actions" columnName="categorie"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

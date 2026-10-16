@@ -32,7 +32,17 @@ public record AttenteBlock(
         String channel,
         TerminalActionStatus proposedStatus,
         String proposedReason,
-        String createdAt) {
+        String createdAt,
+        TerminalActionCategorie categorie,
+        TerminalActionQui qui) {
+
+    /** La forme d'avant F-180 (sans nature ni « qui »). */
+    public AttenteBlock(UUID actionId, UUID workspaceId, String kind, String match, String description,
+                        TerminalActionStatus status, String requestedTo, String requestedAt, String channel,
+                        TerminalActionStatus proposedStatus, String proposedReason, String createdAt) {
+        this(actionId, workspaceId, kind, match, description, status, requestedTo, requestedAt, channel,
+                proposedStatus, proposedReason, createdAt, null, null);
+    }
 
     public static final String ADDED = "ADDED";
     public static final String ALREADY = "ALREADY";
@@ -47,7 +57,8 @@ public record AttenteBlock(
         return new AttenteBlock(action.getId(), action.getWorkspaceId(), kind,
                 match == null ? "NONE" : match, action.getDescription(), action.getStatus(),
                 action.getRequestedTo(), iso(action.getRequestedAt()), action.getChannel(),
-                action.getProposedStatus(), action.getProposedReason(), iso(action.getCreatedAt()));
+                action.getProposedStatus(), action.getProposedReason(), iso(action.getCreatedAt()),
+                action.getCategorie(), action.getQui());
     }
 
     /**

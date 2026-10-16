@@ -31,6 +31,10 @@ export function bandSummary(board: TerminalActionBoard | null, now = Date.now())
   if ((board.aRelancer ?? 0) > 0) {
     parts.push(`${board.aRelancer} à relancer`);
   }
+  // F-180 / SF-180-02 : un geste à soi n'attend personne — le dire à part.
+  if ((board.moi ?? 0) > 0) {
+    parts.push(board.moi === 1 ? '1 geste à toi' : `${board.moi} gestes à toi`);
+  }
   const oldest = oldestLabel(board.oldestOpenAt, now);
   if (oldest && parts.length) {
     parts.push(`la plus ancienne ${oldest}`);

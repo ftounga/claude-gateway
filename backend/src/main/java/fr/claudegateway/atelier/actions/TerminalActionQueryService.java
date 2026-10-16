@@ -85,11 +85,16 @@ public class TerminalActionQueryService {
 
         Map<UUID, String> names = new HashMap<>();
         names.put(workspaceId, workspace.getName());
+        Map<UUID, Map<String, int[]>> stepIndex = new HashMap<>();
+        Map<UUID, List<String>> stepTitles = new HashMap<>();
+        indexBlockedSteps(userId, all, stepIndex, stepTitles);
+        Map<UUID, String> subjectNames = subjectNamesOf(userId, hostId, all);
         List<TerminalActionResponse> here = new ArrayList<>();
         List<TerminalActionResponse> elsewhere = new ArrayList<>();
         int aFaire = 0;
         int demande = 0;
         int aRelancer = 0;
+        int moi = 0;
         OffsetDateTime oldest = null;
         OffsetDateTime now = OffsetDateTime.now(clock);
         for (TerminalAction action : all) {
@@ -98,10 +103,16 @@ public class TerminalActionQueryService {
             if (due) {
                 aRelancer++;
             }
+            if (action.isOpen() && action.getQui() == TerminalActionQui.MOI) {
+                moi++;
+            }
+            TerminalActionResponse response = TerminalActionResponse.from(action, name, due).withContext(
+                    action.getSubjectId() == null ? null : subjectNames.get(action.getSubjectId()),
+                    blockedStepOf(action, name, stepIndex, stepTitles));
             if (action.getWorkspaceId().equals(workspaceId)) {
-                here.add(TerminalActionResponse.from(action, name, due));
+                here.add(response);
             } else if (elsewhere.size() < MAX_ELSEWHERE) {
-                elsewhere.add(TerminalActionResponse.from(action, name, due));
+                elsewhere.add(response);
             }
             if (action.getStatus() == TerminalActionStatus.A_FAIRE) {
                 aFaire++;
@@ -112,7 +123,84 @@ public class TerminalActionQueryService {
                 oldest = action.getCreatedAt();
             }
         }
-        return new TerminalActionBoardResponse(hostId, here, elsewhere, aFaire, demande, aRelancer, oldest);
+        return new TerminalActionBoardResponse(hostId, here, elsewhere, aFaire, demande, aRelancer, oldest, moi);
+    }
+
+    /** Les plans F-176 des terminaux du tableau (F-180 / SF-180-02) ; absent = pas d'étape montrée. */
+    private fr.claudegateway.atelier.journey.SubjectJourneyRepository journeys;
+
+    /** Les noms des sujets du Radar (F-180 / SF-180-02) ; absent = pas de nom montré. */
+    private TerminalActionSubjectResolver subjects;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setJourneys(fr.claudegateway.atelier.journey.SubjectJourneyRepository journeys) {
+        this.journeys = journeys;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setSubjects(TerminalActionSubjectResolver subjects) {
+        this.subjects = subjects;
+    }
+
+    /**
+     * Pour chaque terminal du tableau, les étapes de son plan qui attendent une clé : clé normalisée →
+     * rang (1…). Lecture sous {@code user_id}. Best-effort : un plan illisible ne montre rien.
+     */
+    private void indexBlockedSteps(UUID userId, List<TerminalAction> all, Map<UUID, Map<String, int[]>> index,
+                                   Map<UUID, List<String>> titles) {
+        if (journeys == null || all.isEmpty()) {
+            return;
+        }
+        try {
+            java.util.Set<UUID> ids = new java.util.HashSet<>();
+            all.forEach(a -> ids.add(a.getWorkspaceId()));
+            for (var journey : journeys.findByUserIdAndWorkspaceIdIn(userId, ids)) {
+                var steps = fr.claudegateway.atelier.journey.JourneyPlan.fromJson(journey.getPlanJson()).steps();
+                Map<String, int[]> byKey = new HashMap<>();
+                List<String> stepTitles = new ArrayList<>();
+                for (int i = 0; i < steps.size(); i++) {
+                    stepTitles.add(steps.get(i).title());
+                    String waits = steps.get(i).waitsOn();
+                    if (waits != null && !waits.isBlank()) {
+                        byKey.putIfAbsent(TerminalActionService.normalizeKey(waits), new int[] {i + 1});
+                    }
+                }
+                index.put(journey.getWorkspaceId(), byKey);
+                titles.put(journey.getWorkspaceId(), stepTitles);
+            }
+        } catch (RuntimeException e) {
+            index.clear();
+        }
+    }
+
+    /** L'étape de SON terminal que l'attente bloque, s'il y en a une. */
+    static TerminalActionResponse.BlockedStep blockedStepOf(TerminalAction action, String terminalName,
+                                                            Map<UUID, Map<String, int[]>> index,
+                                                            Map<UUID, List<String>> titles) {
+        if (action.getDedupKey() == null) {
+            return null;
+        }
+        Map<String, int[]> byKey = index.get(action.getWorkspaceId());
+        int[] rank = byKey == null ? null : byKey.get(action.getDedupKey());
+        if (rank == null) {
+            return null;
+        }
+        List<String> stepTitles = titles.getOrDefault(action.getWorkspaceId(), List.of());
+        String title = rank[0] - 1 < stepTitles.size() ? stepTitles.get(rank[0] - 1) : null;
+        return new TerminalActionResponse.BlockedStep(rank[0], title, terminalName);
+    }
+
+    private Map<UUID, String> subjectNamesOf(UUID userId, UUID hostId, List<TerminalAction> all) {
+        if (subjects == null || hostId == null) {
+            return Map.of();
+        }
+        java.util.Set<UUID> ids = new java.util.HashSet<>();
+        all.forEach(a -> {
+            if (a.getSubjectId() != null) {
+                ids.add(a.getSubjectId());
+            }
+        });
+        return subjects.namesOf(userId, hostId, ids);
     }
 
     /**

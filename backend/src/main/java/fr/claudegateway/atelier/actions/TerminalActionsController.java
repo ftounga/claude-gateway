@@ -27,12 +27,14 @@ public class TerminalActionsController {
 
     private final TerminalActionQueryService queries;
     private final TerminalActionReviewService reviews;
+    private final TerminalActionQualifier qualifier;
     private final CurrentUser currentUser;
 
     public TerminalActionsController(TerminalActionQueryService queries, TerminalActionReviewService reviews,
-                                     CurrentUser currentUser) {
+                                     TerminalActionQualifier qualifier, CurrentUser currentUser) {
         this.queries = queries;
         this.reviews = reviews;
+        this.qualifier = qualifier;
         this.currentUser = currentUser;
     }
 
@@ -62,6 +64,23 @@ public class TerminalActionsController {
 
     /** Le corps de {@code POST /terminal-actions/review}. */
     public record ReviewRequest(List<TerminalActionReviewService.Decision> decisions) {
+    }
+
+    /** Les attentes ouvertes sans nature, avec la nature et le « qui » proposés (F-180 / SF-180-02). */
+    @GetMapping("/qualify")
+    public List<TerminalActionQualifier.QualifyItem> qualify() {
+        return qualifier.pending(currentUser.requireId());
+    }
+
+    /** Les natures validées par l'utilisateur — rien ne change sans elles (F-180 / SF-180-02). */
+    @org.springframework.web.bind.annotation.PostMapping("/qualify")
+    public TerminalActionReviewService.ReviewResult applyQualify(
+            @org.springframework.web.bind.annotation.RequestBody QualifyRequest request) {
+        return qualifier.apply(currentUser.requireId(), request == null ? List.of() : request.decisions());
+    }
+
+    /** Le corps de {@code POST /terminal-actions/qualify}. */
+    public record QualifyRequest(List<TerminalActionQualifier.Decision> decisions) {
     }
 
     /** Les compteurs par poste et par terminal (F-175 / SF-175-06) — rail de la Forge, mosaïque. */

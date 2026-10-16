@@ -4,7 +4,9 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { AtelierTerminalAttente, AtelierTerminalBlock } from '../../core/models/atelier.models';
-import { TerminalAction } from '../../core/models/terminal-actions.models';
+import {
+  CATEGORIE_LABELS, QUI_LABELS, TerminalAction, TerminalActionCategorie, TerminalActionQui,
+} from '../../core/models/terminal-actions.models';
 import { TerminalActionsService } from '../../core/services/terminal-actions.service';
 
 /**
@@ -69,6 +71,18 @@ export function attenteDetail(a: AtelierTerminalAttente): string {
   return '';
 }
 
+/** « Accès · client » — la nature et qui agit (F-180 / SF-180-02) ; vide sur les cartes d'avant. */
+export function attenteNature(a: AtelierTerminalAttente): string {
+  const parts: string[] = [];
+  if (a.categorie && a.categorie in CATEGORIE_LABELS) {
+    parts.push(CATEGORIE_LABELS[a.categorie as TerminalActionCategorie]);
+  }
+  if (a.qui && a.qui in QUI_LABELS) {
+    parts.push(a.qui === 'MOI' ? 'geste à toi' : QUI_LABELS[a.qui as TerminalActionQui]);
+  }
+  return parts.join(' · ');
+}
+
 /**
  * **La carte d'une attente dans le fil** (F-175 / SF-175-05, décision D7) : à l'inscription, à la
  * reconnaissance d'un doublon, au passage à « Demandé », et à la **proposition de fermeture**
@@ -88,6 +102,9 @@ export function attenteDetail(a: AtelierTerminalAttente): string {
       <div class="attente-card__body">
         <p class="attente-card__headline">{{ headline() }}</p>
         <p class="attente-card__what">« {{ attente().description }} »</p>
+        @if (nature()) {
+          <p class="attente-card__detail attente-card__nature">{{ nature() }}</p>
+        }
         @if (detail()) {
           <p class="attente-card__detail">{{ detail() }}</p>
         }
@@ -187,6 +204,7 @@ export class AttenteCardComponent {
 
   readonly headline = computed(() => attenteHeadline(this.attente()));
   readonly detail = computed(() => attenteDetail(this.attente()));
+  readonly nature = computed(() => attenteNature(this.attente()));
   readonly icon = computed(() => {
     switch (this.attente().kind) {
       case 'PROPOSED': return 'task_alt';
