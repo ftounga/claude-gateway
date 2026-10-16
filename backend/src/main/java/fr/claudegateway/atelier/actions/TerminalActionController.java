@@ -88,7 +88,8 @@ public class TerminalActionController {
                 request.description(),
                 request.blocks(),
                 request.person(),
-                request.kind()));
+                request.kind(),
+                new TerminalActionService.Qualification(request.categorie(), request.qui())));
     }
 
     /** Édition d'une attente ouverte : seuls les champs donnés changent (F-175 / SF-175-01). */
@@ -98,7 +99,8 @@ public class TerminalActionController {
                                        @RequestBody EditRequest request) {
         return TerminalActionResponse.from(service.edit(
                 currentUser.requireId(), workspaceId, actionId,
-                request.description(), request.blocks(), request.person(), request.kind()));
+                request.description(), request.blocks(), request.person(), request.kind(),
+                new TerminalActionService.Qualification(request.categorie(), request.qui())));
     }
 
     /** Changement d'état : À faire ↔ Demandé → Fait / Annulé (F-175 / SF-175-01). */
@@ -159,12 +161,14 @@ public class TerminalActionController {
 
     /** Une action ajoutée à la main. */
     public record CreateRequest(UUID subjectId, String description, String blocks,
-                                String person, TerminalActionKind kind) {
+                                String person, TerminalActionKind kind,
+                                TerminalActionCategorie categorie, TerminalActionQui qui) {
     }
 
     /** Une édition : {@code null} = inchangé ; chaîne vide = effacé (sauf la description). */
     public record EditRequest(String description, String blocks, String person,
-                              TerminalActionKind kind) {
+                              TerminalActionKind kind,
+                              TerminalActionCategorie categorie, TerminalActionQui qui) {
     }
 
     /** Un changement d'état ; {@code note} est la raison d'une fermeture. */

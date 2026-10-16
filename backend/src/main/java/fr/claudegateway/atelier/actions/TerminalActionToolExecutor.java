@@ -90,9 +90,15 @@ public class TerminalActionToolExecutor {
         } catch (IllegalArgumentException e) {
             return Outcome.error("status vaut A_FAIRE ou DEMANDE.");
         }
+        TerminalActionService.Qualification qualification;
+        try {
+            qualification = TerminalActionService.Qualification.parse(text(input, "categorie"), text(input, "qui"));
+        } catch (InvalidTerminalActionException e) {
+            return Outcome.error(e.getMessage());
+        }
         try {
             TerminalActionService.AgentChange change = service.agentUpdate(userId, workspace, key, id,
-                    status, text(input, "requested_to"), text(input, "channel"));
+                    status, text(input, "requested_to"), text(input, "channel"), qualification);
             boolean requested = change.outcome() == TerminalActionService.AgentChangeOutcome.CHANGED
                     && change.action().getStatus() == TerminalActionStatus.DEMANDE;
             return new Outcome(updateMessage(change, key.isEmpty() ? id : key), false, change.action(),
@@ -156,11 +162,17 @@ public class TerminalActionToolExecutor {
         } catch (IllegalArgumentException e) {
             return Outcome.error("kind vaut ACTION ou MESSAGE.");
         }
+        TerminalActionService.Qualification qualification;
+        try {
+            qualification = TerminalActionService.Qualification.parse(text(input, "categorie"), text(input, "qui"));
+        } catch (InvalidTerminalActionException e) {
+            return Outcome.error(e.getMessage());
+        }
 
         try {
             TerminalActionService.Recording recording = service.record(userId, workspace.getId(), null,
                     description, text(input, "blocks"), text(input, "person"), kind,
-                    text(input, "key"));
+                    text(input, "key"), qualification);
             return new Outcome(message(recording), false, recording.action(), cardOf(recording));
         } catch (InvalidTerminalActionException e) {
             return Outcome.error(e.getMessage());

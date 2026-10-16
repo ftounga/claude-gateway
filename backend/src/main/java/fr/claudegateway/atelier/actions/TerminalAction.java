@@ -97,6 +97,16 @@ public class TerminalAction {
     @Column(name = "status", nullable = false, length = 16)
     private TerminalActionStatus status;
 
+    /** La nature de l'attente (F-180 / SF-180-02) ; nulle tant que personne ne l'a dite. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "categorie", length = 16)
+    private TerminalActionCategorie categorie;
+
+    /** Qui doit agir (F-180 / SF-180-02) ; nul tant que personne ne l'a dit. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "qui", length = 8)
+    private TerminalActionQui qui;
+
     /**
      * La phrase qui a fermé l'action. Sans elle, on ne saurait plus <b>pourquoi</b> elle a disparu
      * de la liste — et une action qui disparaît sans raison est une action qu'on refait.

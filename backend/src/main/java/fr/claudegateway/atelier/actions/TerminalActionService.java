@@ -58,6 +58,28 @@ public class TerminalActionService {
         this.semanticDedup = semanticDedup;
     }
 
+    /** Le sujet du terminal (F-180 / SF-180-02) ; absent = {@code subject_id} reste celui donné. */
+    private TerminalActionSubjectResolver subjectResolver;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setSubjectResolver(TerminalActionSubjectResolver subjectResolver) {
+        this.subjectResolver = subjectResolver;
+    }
+
+    /** La nature et « qui doit agir » d'une attente (F-180 / SF-180-02, D1) — chacun nul = non dit. */
+    public record Qualification(TerminalActionCategorie categorie, TerminalActionQui qui) {
+        public static final Qualification NONE = new Qualification(null, null);
+
+        /** Lu de deux textes (outil, requête) ; une valeur inconnue est une erreur lisible. */
+        public static Qualification parse(String categorie, String qui) {
+            return new Qualification(TerminalActionCategorie.parse(categorie), TerminalActionQui.parse(qui));
+        }
+
+        boolean isEmpty() {
+            return categorie == null && qui == null;
+        }
+    }
+
     /**
      * Inscrit une action à faire dans un terminal.
      *
@@ -67,8 +89,16 @@ public class TerminalActionService {
     public TerminalAction create(UUID userId, UUID workspaceId, UUID subjectId,
                                  String description, String blocks, String person,
                                  TerminalActionKind kind) {
+        return create(userId, workspaceId, subjectId, description, blocks, person, kind, Qualification.NONE);
+    }
+
+    /** Même chose, avec la nature et « qui doit agir » (F-180 / SF-180-02). */
+    @Transactional
+    public TerminalAction create(UUID userId, UUID workspaceId, UUID subjectId,
+                                 String description, String blocks, String person,
+                                 TerminalActionKind kind, Qualification qualification) {
         Workspace workspace = workspaceService.requireOwned(userId, workspaceId); // 404 — TOUJOURS en premier
-        return insert(userId, workspace, subjectId, description, blocks, person, kind, null);
+        return insert(userId, workspace, subjectId, description, blocks, person, kind, null, qualification);
     }
 
     /**
@@ -80,7 +110,7 @@ public class TerminalActionService {
      */
     private TerminalAction insert(UUID userId, Workspace workspace, UUID subjectId,
                                   String description, String blocks, String person,
-                                  TerminalActionKind kind, String dedupKey) {
+                                  TerminalActionKind kind, String dedupKey, Qualification qualification) {
         String cleanDescription = required(description, MAX_DESCRIPTION,
                 "L'action doit dire ce qu'il faut faire.");
         String cleanBlocks = optional(blocks, MAX_BLOCKS,
@@ -97,6 +127,11 @@ public class TerminalActionService {
         }
 
         OffsetDateTime now = OffsetDateTime.now(clock);
+        if (subjectId == null && subjectResolver != null) {
+            // F-180 / SF-180-02 (D3) : le sujet unique lié au terminal, sinon nul.
+            subjectId = subjectResolver.subjectOf(userId, workspace).orElse(null);
+        }
+        Qualification q = qualification == null ? Qualification.NONE : qualification;
         TerminalAction saved = repository.save(TerminalAction.builder()
                 .userId(userId)
                 .workspaceId(workspace.getId())
@@ -107,6 +142,8 @@ public class TerminalActionService {
                 .person(cleanPerson)
                 .kind(kind == null ? TerminalActionKind.ACTION : kind)
                 .status(TerminalActionStatus.A_FAIRE)
+                .categorie(q.categorie())
+                .qui(q.qui())
                 .dedupKey(dedupKey)
                 .createdAt(now)
                 .updatedAt(now)
@@ -130,6 +167,14 @@ public class TerminalActionService {
     public Recording record(UUID userId, UUID workspaceId, UUID subjectId,
                             String description, String blocks, String person,
                             TerminalActionKind kind, String key) {
+        return record(userId, workspaceId, subjectId, description, blocks, person, kind, key, Qualification.NONE);
+    }
+
+    /** Même chose, avec la nature et « qui doit agir » proposés par l'agent (F-180 / SF-180-02). */
+    @Transactional
+    public Recording record(UUID userId, UUID workspaceId, UUID subjectId,
+                            String description, String blocks, String person,
+                            TerminalActionKind kind, String key, Qualification qualification) {
         Workspace workspace = workspaceService.requireOwned(userId, workspaceId); // 404 — TOUJOURS en premier
 
         String cleanDescription = required(description, MAX_DESCRIPTION,
@@ -138,7 +183,7 @@ public class TerminalActionService {
 
         var existing = repository.findByUserIdAndWorkspaceIdAndDedupKey(userId, workspaceId, dedupKey);
         if (existing.isPresent()) {
-            TerminalAction action = existing.get();
+            TerminalAction action = fillQualification(existing.get(), qualification);
             return new Recording(action, outcomeOf(action.getStatus()), RecordingMatch.KEY);
         }
 
@@ -149,7 +194,8 @@ public class TerminalActionService {
             var onHost = repository.findByUserIdAndHostIdAndDedupKeyOrderByCreatedAtDesc(userId, hostId, dedupKey)
                     .stream().filter(TerminalAction::isOpen).findFirst();
             if (onHost.isPresent()) {
-                return new Recording(onHost.get(), outcomeOf(onHost.get().getStatus()), RecordingMatch.KEY_ON_HOST);
+                return new Recording(fillQualification(onHost.get(), qualification),
+                        outcomeOf(onHost.get().getStatus()), RecordingMatch.KEY_ON_HOST);
             }
         }
 
@@ -159,13 +205,38 @@ public class TerminalActionService {
                     .flatMap(match -> repository.findByIdAndUserId(match.actionId(), userId))
                     .filter(TerminalAction::isOpen);
             if (similar.isPresent()) {
-                return new Recording(similar.get(), outcomeOf(similar.get().getStatus()), RecordingMatch.MEANING);
+                return new Recording(fillQualification(similar.get(), qualification),
+                        outcomeOf(similar.get().getStatus()), RecordingMatch.MEANING);
             }
         }
 
         TerminalAction created = insert(userId, workspace, subjectId,
-                cleanDescription, blocks, person, kind, dedupKey);
+                cleanDescription, blocks, person, kind, dedupKey, qualification);
         return new Recording(created, RecordingOutcome.RECORDED, RecordingMatch.NONE);
+    }
+
+    /**
+     * Une attente reconnue <b>ouverte</b> sans nature prend celle que l'agent vient de dire
+     * (F-180 / SF-180-02) — jamais ne remplace une nature déjà dite.
+     */
+    private TerminalAction fillQualification(TerminalAction action, Qualification qualification) {
+        if (qualification == null || qualification.isEmpty() || !action.isOpen()) {
+            return action;
+        }
+        boolean changed = false;
+        if (action.getCategorie() == null && qualification.categorie() != null) {
+            action.setCategorie(qualification.categorie());
+            changed = true;
+        }
+        if (action.getQui() == null && qualification.qui() != null) {
+            action.setQui(qualification.qui());
+            changed = true;
+        }
+        if (!changed) {
+            return action;
+        }
+        action.setUpdatedAt(OffsetDateTime.now(clock));
+        return repository.save(action);
     }
 
     /**
@@ -438,6 +509,14 @@ public class TerminalActionService {
     public TerminalAction edit(UUID userId, UUID workspaceId, UUID actionId,
                                String description, String blocks, String person,
                                TerminalActionKind kind) {
+        return edit(userId, workspaceId, actionId, description, blocks, person, kind, Qualification.NONE);
+    }
+
+    /** Même chose ; une nature ou un « qui » donné remplace l'actuel (F-180 / SF-180-02). */
+    @Transactional
+    public TerminalAction edit(UUID userId, UUID workspaceId, UUID actionId,
+                               String description, String blocks, String person,
+                               TerminalActionKind kind, Qualification qualification) {
         TerminalAction action = require(userId, workspaceId, actionId);
         if (!action.isOpen()) {
             throw new InvalidTerminalActionException(
@@ -457,6 +536,12 @@ public class TerminalActionService {
         }
         if (kind != null) {
             action.setKind(kind);
+        }
+        if (qualification != null && qualification.categorie() != null) {
+            action.setCategorie(qualification.categorie());
+        }
+        if (qualification != null && qualification.qui() != null) {
+            action.setQui(qualification.qui());
         }
         action.setUpdatedAt(OffsetDateTime.now(clock));
         TerminalAction saved = repository.save(action);
@@ -541,6 +626,14 @@ public class TerminalActionService {
     @Transactional
     public AgentChange agentUpdate(UUID userId, Workspace workspace, String key, String id,
                                    TerminalActionStatus target, String requestedTo, String channel) {
+        return agentUpdate(userId, workspace, key, id, target, requestedTo, channel, Qualification.NONE);
+    }
+
+    /** Même chose ; la nature et « qui » donnés par l'agent sont posés (F-180 / SF-180-02). */
+    @Transactional
+    public AgentChange agentUpdate(UUID userId, Workspace workspace, String key, String id,
+                                   TerminalActionStatus target, String requestedTo, String channel,
+                                   Qualification qualification) {
         if (target != TerminalActionStatus.A_FAIRE && target != TerminalActionStatus.DEMANDE) {
             throw new InvalidTerminalActionException(
                     "status vaut A_FAIRE ou DEMANDE. Pour fermer, propose-le avec close_blocker.");
@@ -555,6 +648,15 @@ public class TerminalActionService {
         }
         TerminalAction changed = changeStatus(userId, action.getWorkspaceId(), action.getId(),
                 target, null, requestedTo, channel);
+        if (qualification != null && !qualification.isEmpty()) {
+            if (qualification.categorie() != null) {
+                changed.setCategorie(qualification.categorie());
+            }
+            if (qualification.qui() != null) {
+                changed.setQui(qualification.qui());
+            }
+            changed = repository.save(changed);
+        }
         return new AgentChange(changed, AgentChangeOutcome.CHANGED);
     }
 

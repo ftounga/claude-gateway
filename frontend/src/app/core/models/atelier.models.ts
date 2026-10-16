@@ -1366,6 +1366,9 @@ export interface AtelierTerminalAttente {
   proposedStatus: 'FAIT' | 'ANNULE' | string | null;
   proposedReason: string | null;
   createdAt: string | null;
+  /** La nature et qui doit agir (F-180 / SF-180-02) ; absents sur les cartes d'avant. */
+  categorie?: string | null;
+  qui?: string | null;
 }
 
 /** Charge utile de l'événement SSE `attente` (F-175 / SF-175-05). */

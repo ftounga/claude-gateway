@@ -5,16 +5,25 @@ import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
+import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Observable } from 'rxjs';
 
 import {
+  CATEGORIES,
+  CATEGORIE_LABELS,
   DUPLICATE_REASON_LABELS,
+  QUIS,
+  QUI_LABELS,
   TERMINAL_ACTION_STATUS_LABELS,
   TerminalAction,
   TerminalActionBoard,
+  TerminalActionCategorie,
   TerminalActionDuplicate,
+  TerminalActionQualifyItem,
+  TerminalActionQui,
+  blockedStepLabel,
   TerminalActionReviewItem,
   TerminalActionStatus,
   followUpDraft,
@@ -49,6 +58,13 @@ interface ReviewRow {
   choice: TerminalActionStatus;
 }
 
+/** Une ligne de la reprise des natures (F-180 / SF-180-02) : la proposition et ce que l'utilisateur retient. */
+interface QualifyRow {
+  item: TerminalActionQualifyItem;
+  categorie: TerminalActionCategorie;
+  qui: TerminalActionQui;
+}
+
 /** Une colonne du panneau. */
 interface Column {
   key: 'todo' | 'asked' | 'done';
@@ -73,7 +89,7 @@ interface Column {
   selector: 'app-terminal-actions-panel',
   imports: [
     FormsModule, MatButtonModule, MatButtonToggleModule, MatFormFieldModule, MatIconModule,
-    MatInputModule, MatTooltipModule,
+    MatInputModule, MatSelectModule, MatTooltipModule,
   ],
   template: `
     <aside class="actions-panel" role="complementary" aria-label="Attentes">
@@ -111,6 +127,20 @@ interface Column {
           <mat-form-field appearance="outline" class="actions-panel__field">
             <mat-label>Qui (facultatif)</mat-label>
             <input matInput name="person" [(ngModel)]="newPerson" maxlength="120">
+          </mat-form-field>
+          <mat-form-field appearance="outline" class="actions-panel__field actions-panel__field--small">
+            <mat-label>Nature</mat-label>
+            <mat-select name="categorie" [(ngModel)]="newCategorie">
+              <mat-option [value]="null">—</mat-option>
+              @for (c of categories; track c) { <mat-option [value]="c">{{ categorieLabel(c) }}</mat-option> }
+            </mat-select>
+          </mat-form-field>
+          <mat-form-field appearance="outline" class="actions-panel__field actions-panel__field--small">
+            <mat-label>Qui agit</mat-label>
+            <mat-select name="qui" [(ngModel)]="newQui">
+              <mat-option [value]="null">—</mat-option>
+              @for (q of quis; track q) { <mat-option [value]="q">{{ quiLabel(q) }}</mat-option> }
+            </mat-select>
           </mat-form-field>
           <div class="actions-panel__form-gestures">
             <button mat-flat-button type="submit" class="actions-panel__save"
@@ -150,6 +180,39 @@ interface Column {
               <button mat-flat-button type="button" class="review__validate-all" [disabled]="reviewBusy()"
                 (click)="validate(review())">Tout valider</button>
               <button mat-button type="button" class="review__later" (click)="reviewHidden.set(true)">Plus tard</button>
+            </div>
+          </section>
+        }
+        @if (qualifyRows().length && !qualifyHidden()) {
+          <!-- F-180 / SF-180-02 — LA REPRISE DES NATURES : devinées, jamais écrites sans validation. -->
+          <section class="review qualify" aria-label="Nature des attentes">
+            <h3 class="review__title">Nature : {{ qualifyRows().length }} attente{{ qualifyRows().length > 1 ? 's' : '' }} à qualifier</h3>
+            <p class="review__lead">Une nature et « qui agit » vous sont proposés ; rien n'est écrit sans votre validation.</p>
+            @for (row of qualifyRows(); track row.item.action.id) {
+              <article class="review__row">
+                <p class="review__what">{{ row.item.action.description }}</p>
+                <div class="review__gestures">
+                  <mat-form-field appearance="outline" class="actions-panel__field--small">
+                    <mat-label>Nature</mat-label>
+                    <mat-select [value]="row.categorie" (selectionChange)="chooseNature(row.item.action.id, $event.value, row.qui)">
+                      @for (c of categories; track c) { <mat-option [value]="c">{{ categorieLabel(c) }}</mat-option> }
+                    </mat-select>
+                  </mat-form-field>
+                  <mat-form-field appearance="outline" class="actions-panel__field--small">
+                    <mat-label>Qui agit</mat-label>
+                    <mat-select [value]="row.qui" (selectionChange)="chooseNature(row.item.action.id, row.categorie, $event.value)">
+                      @for (q of quis; track q) { <mat-option [value]="q">{{ quiLabel(q) }}</mat-option> }
+                    </mat-select>
+                  </mat-form-field>
+                  <button mat-button type="button" class="qualify__one" [disabled]="qualifyBusy()"
+                    (click)="validateNature([row])">Valider</button>
+                </div>
+              </article>
+            }
+            <div class="review__all">
+              <button mat-flat-button type="button" class="qualify__all" [disabled]="qualifyBusy()"
+                (click)="validateNature(qualifyRows())">Tout valider</button>
+              <button mat-button type="button" (click)="qualifyHidden.set(true)">Plus tard</button>
             </div>
           </section>
         }
@@ -203,8 +266,19 @@ interface Column {
                     } @else {
                       <p class="action__what">{{ action.description }}</p>
                     }
+                    @if (action.categorie || action.qui) {
+                      <p class="action__tags">
+                        @if (action.categorie) { <span class="tag">{{ categorieLabel(action.categorie) }}</span> }
+                        @if (action.qui) {
+                          <span class="tag" [class.tag--moi]="action.qui === 'MOI'">{{ quiLabel(action.qui) }}</span>
+                        }
+                      </p>
+                    }
                     @if (action.blocks) {
                       <p class="action__blocks">↳ bloque : {{ action.blocks }}</p>
+                    }
+                    @if (blockedLabel(action)) {
+                      <p class="action__blocks action__step">↳ bloque : {{ blockedLabel(action) }}</p>
                     }
                     <p class="action__meta">
                       @if (action.status === 'DEMANDE') {
@@ -502,6 +576,32 @@ interface Column {
       --mdc-filled-button-container-color: var(--cg-accent);
     }
 
+    .actions-panel__field--small {
+      flex: 0 1 160px;
+      min-width: 140px;
+    }
+
+    .action__tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--cg-space-1);
+      margin: var(--cg-space-1) 0 0;
+    }
+
+    .tag {
+      padding: 0 var(--cg-space-2);
+      border-radius: 12px;
+      background: var(--cg-surface-2);
+      color: var(--cg-text-secondary);
+      font-size: 12px;
+    }
+
+    .tag--moi {
+      background: var(--cg-orange-2);
+      color: var(--cg-navy);
+      font-weight: 600;
+    }
+
     .dups {
       margin-bottom: var(--cg-space-3);
       padding: var(--cg-space-3);
@@ -608,9 +708,66 @@ export class TerminalActionsPanelComponent implements OnInit {
   /** Les doublons probables du poste (F-180 / SF-180-01). */
   readonly duplicates = signal<TerminalActionDuplicate[]>([]);
 
+  /** F-180 / SF-180-02 : les natures et « qui agit ». */
+  readonly categories = CATEGORIES;
+  readonly quis = QUIS;
+  newCategorie: TerminalActionCategorie | null = null;
+  newQui: TerminalActionQui | null = null;
+  readonly qualifyRows = signal<QualifyRow[]>([]);
+  readonly qualifyHidden = signal(false);
+  readonly qualifyBusy = signal(false);
+
   ngOnInit(): void {
     this.reload();
     this.loadReview();
+    this.loadQualify();
+  }
+
+  categorieLabel(c: TerminalActionCategorie): string {
+    return CATEGORIE_LABELS[c] ?? c;
+  }
+
+  quiLabel(q: TerminalActionQui): string {
+    return QUI_LABELS[q] ?? q;
+  }
+
+  blockedLabel(action: TerminalAction): string {
+    return blockedStepLabel(action);
+  }
+
+  private loadQualify(): void {
+    this.service.qualify().subscribe({
+      next: items => this.qualifyRows.set((items ?? []).map(item => ({
+        item, categorie: item.suggestedCategorie, qui: item.suggestedQui,
+      }))),
+      error: () => this.qualifyRows.set([]),
+    });
+  }
+
+  /** L'utilisateur change la nature ou « qui » retenus pour une attente. */
+  chooseNature(actionId: string, categorie: TerminalActionCategorie, qui: TerminalActionQui): void {
+    this.qualifyRows.update(rows => rows.map(r => (r.item.action.id === actionId ? { ...r, categorie, qui } : r)));
+  }
+
+  /** Valide une ou toutes les natures : seules celles envoyées sont écrites. */
+  validateNature(rows: QualifyRow[]): void {
+    if (!rows.length) {
+      return;
+    }
+    this.qualifyBusy.set(true);
+    const ids = new Set(rows.map(r => r.item.action.id));
+    this.service.applyQualify(rows.map(r => ({ id: r.item.action.id, categorie: r.categorie, qui: r.qui })))
+      .subscribe({
+        next: () => {
+          this.qualifyRows.update(list => list.filter(r => !ids.has(r.item.action.id)));
+          this.qualifyBusy.set(false);
+          this.reload();
+        },
+        error: () => {
+          this.qualifyBusy.set(false);
+          this.snackBar.open("La nature n'a pas pu être enregistrée.", 'Fermer', { duration: 5000 });
+        },
+      });
   }
 
   private loadDuplicates(): void {
@@ -765,12 +922,16 @@ export class TerminalActionsPanelComponent implements OnInit {
       return;
     }
     this.busy.set('new');
-    this.service.create(this.workspaceId(), { description, person: this.newPerson.trim() || null })
+    this.service.create(this.workspaceId(), {
+      description, person: this.newPerson.trim() || null, categorie: this.newCategorie, qui: this.newQui,
+    })
       .subscribe({
         next: created => {
           this.patchBoard(b => ({ ...b, here: [...b.here, { ...created, workspaceName: null }] }));
           this.newDescription = '';
           this.newPerson = '';
+          this.newCategorie = null;
+          this.newQui = null;
           this.adding.set(false);
           this.busy.set(null);
           this.reload();

@@ -56,6 +56,71 @@ export interface TerminalAction {
   updatedAt?: string;
   /** « Demandé » depuis assez de jours ouvrés pour appeler une relance (F-175 / SF-175-06). */
   followUpDue?: boolean;
+  /** La nature (F-180 / SF-180-02) ; nulle tant que personne ne l'a dite. */
+  categorie?: TerminalActionCategorie | null;
+  /** Qui doit agir (F-180 / SF-180-02). */
+  qui?: TerminalActionQui | null;
+  /** Le nom du sujet du Radar (tableau). */
+  subjectName?: string | null;
+  /** L'étape du plan F-176 que l'attente bloque (tableau). */
+  blockedStep?: TerminalActionBlockedStep | null;
+}
+
+/** La nature d'une attente (F-180 / SF-180-02, D1). */
+export type TerminalActionCategorie = 'ACCES' | 'VALIDATION' | 'INFO' | 'TRANSMISSION' | 'INCIDENT';
+
+/** Qui doit agir (F-180 / SF-180-02, D1). */
+export type TerminalActionQui = 'MOI' | 'CLIENT' | 'TIERS';
+
+export const CATEGORIE_LABELS: Record<TerminalActionCategorie, string> = {
+  ACCES: 'Accès',
+  VALIDATION: 'Validation',
+  INFO: 'Info',
+  TRANSMISSION: 'Transmission',
+  INCIDENT: 'Incident',
+};
+
+export const QUI_LABELS: Record<TerminalActionQui, string> = {
+  MOI: 'à toi',
+  CLIENT: 'client',
+  TIERS: 'tiers',
+};
+
+export const CATEGORIES: TerminalActionCategorie[] = ['ACCES', 'VALIDATION', 'INFO', 'TRANSMISSION', 'INCIDENT'];
+export const QUIS: TerminalActionQui[] = ['MOI', 'CLIENT', 'TIERS'];
+
+/** L'étape bloquée : « bloque : étape 3 « Déployer » de data-platform ». */
+export interface TerminalActionBlockedStep {
+  number: number;
+  title: string | null;
+  terminal: string | null;
+}
+
+/** La ligne « bloque : étape … » d'une attente, ou vide. */
+export function blockedStepLabel(action: Pick<TerminalAction, 'blockedStep' | 'subjectName'>): string {
+  const step = action.blockedStep;
+  const parts: string[] = [];
+  if (step) {
+    parts.push(`étape ${step.number}${step.title ? ` « ${step.title} »` : ''}${step.terminal ? ` de ${step.terminal}` : ''}`);
+  }
+  if (action.subjectName) {
+    parts.push(`sujet ${action.subjectName}`);
+  }
+  return parts.join(' · ');
+}
+
+/** Une attente sans nature et la proposition (`GET /api/terminal-actions/qualify`). */
+export interface TerminalActionQualifyItem {
+  action: TerminalAction;
+  suggestedCategorie: TerminalActionCategorie;
+  suggestedQui: TerminalActionQui;
+}
+
+/** La nature retenue par l'utilisateur. */
+export interface TerminalActionQualifyDecision {
+  id: string;
+  categorie: TerminalActionCategorie | null;
+  qui: TerminalActionQui | null;
 }
 
 /** Une attente héritée « à vérifier » et l'état proposé (F-175 / SF-175-07). */
@@ -129,6 +194,8 @@ export interface TerminalActionBoard {
   /** Celles « Demandé » dont la relance est due (F-175 / SF-175-06). */
   aRelancer?: number;
   oldestOpenAt: string | null;
+  /** Les gestes « à toi » ouverts (F-180 / SF-180-02). */
+  moi?: number;
 }
 
 /** Un changement d'état (`POST …/actions/{id}/status`). */
@@ -146,6 +213,8 @@ export interface TerminalActionEdit {
   blocks?: string;
   person?: string;
   kind?: TerminalActionKind;
+  categorie?: TerminalActionCategorie;
+  qui?: TerminalActionQui;
 }
 
 /** Un ajout à la main (`POST …/actions`). */
@@ -154,6 +223,8 @@ export interface TerminalActionCreate {
   blocks?: string | null;
   person?: string | null;
   kind?: TerminalActionKind;
+  categorie?: TerminalActionCategorie | null;
+  qui?: TerminalActionQui | null;
 }
 
 /** Pourquoi deux attentes semblent en double (F-180 / SF-180-01). */

@@ -13,6 +13,8 @@ import java.util.UUID;
  * @param aFaire       nombre d'attentes « À faire » du poste (ou du terminal seul s'il est hébergé)
  * @param demande      nombre d'attentes « Demandé », même portée
  * @param aRelancer    nombre d'attentes « Demandé » dont la relance est due (F-175 / SF-175-06)
+ * @param moi          nombre d'attentes ouvertes dont l'utilisateur est l'acteur — gestes « à toi »
+ *                     (F-180 / SF-180-02)
  * @param oldestOpenAt la naissance de la plus ancienne attente ouverte, même portée — {@code null} s'il
  *                     n'y en a aucune
  */
@@ -23,5 +25,13 @@ public record TerminalActionBoardResponse(
         int aFaire,
         int demande,
         int aRelancer,
-        OffsetDateTime oldestOpenAt) {
+        OffsetDateTime oldestOpenAt,
+        int moi) {
+
+    /** La forme d'avant F-180 : sans le compte des gestes « à toi ». */
+    public TerminalActionBoardResponse(UUID hostId, List<TerminalActionResponse> here,
+                                       List<TerminalActionResponse> host, int aFaire, int demande,
+                                       int aRelancer, OffsetDateTime oldestOpenAt) {
+        this(hostId, here, host, aFaire, demande, aRelancer, oldestOpenAt, 0);
+    }
 }

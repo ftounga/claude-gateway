@@ -6,6 +6,8 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { of, throwError } from 'rxjs';
 
 import { TerminalActionsPanelComponent } from './terminal-actions-panel.component';
+import { bandSummary } from './terminal-attentes-band.component';
+import { attenteNature } from './attente-card.component';
 import {
   TerminalAction, TerminalActionBoard, TerminalActionDuplicate,
 } from '../../core/models/terminal-actions.models';
@@ -97,6 +99,56 @@ describe('Le panneau des attentes (F-180)', () => {
       fixture.detectChanges();
       expect(component.duplicates().length).toBe(1);
       expect(snackBar.open).toHaveBeenCalled();
+    });
+  });
+
+  describe('SF-180-02 : nature, qui agit, étape bloquée', () => {
+    it('la carte porte sa nature, « à toi », et l’étape qu’elle bloque', () => {
+      build(f180Board([f180Action('a-1', 'Se reconnecter en SSO', {
+        categorie: 'ACCES', qui: 'MOI',
+        blockedStep: { number: 3, title: 'Déployer', terminal: 'data-platform' },
+      })]));
+      const card: HTMLElement = fixture.nativeElement.querySelector('.action');
+      expect(card.textContent).toContain('Accès');
+      expect(card.querySelector('.tag--moi')?.textContent).toContain('à toi');
+      expect(card.querySelector('.action__step')?.textContent)
+        .toContain('bloque : étape 3 « Déployer » de data-platform');
+    });
+
+    it('la reprise propose une nature et ne l’écrit qu’à la validation', () => {
+      const item = { action: f180Action('a-1', 'Demander le VPN'), suggestedCategorie: 'ACCES' as const,
+        suggestedQui: 'CLIENT' as const };
+      build(f180Board([item.action]), s => {
+        s.qualify.and.returnValue(of([item]));
+        s.applyQualify.and.returnValue(of({ applied: 1, ignored: 0 }));
+      });
+      expect(fixture.nativeElement.querySelector('.qualify').textContent).toContain('1 attente à qualifier');
+      expect(service.applyQualify).not.toHaveBeenCalled();
+
+      component.chooseNature('a-1', 'VALIDATION', 'TIERS');
+      component.validateNature(component.qualifyRows());
+      fixture.detectChanges();
+      expect(service.applyQualify).toHaveBeenCalledWith([{ id: 'a-1', categorie: 'VALIDATION', qui: 'TIERS' }]);
+      expect(fixture.nativeElement.querySelector('.qualify')).toBeNull();
+    });
+
+    it('la bande dit les gestes à toi ; la carte du fil dit la nature', () => {
+      const b = { ...f180Board([f180Action('a-1', 'x')]), moi: 2 };
+      expect(bandSummary(b)).toContain('2 gestes à toi');
+      expect(attenteNature({ actionId: 'a', workspaceId: 'w', kind: 'ADDED', match: 'NONE', description: 'x',
+        status: 'A_FAIRE', requestedTo: null, requestedAt: null, channel: null, proposedStatus: null,
+        proposedReason: null, createdAt: null, categorie: 'ACCES', qui: 'MOI' })).toBe('Accès · geste à toi');
+    });
+
+    it('l’ajout à la main transmet la nature et qui agit', () => {
+      build(f180Board([]), s => s.create.and.returnValue(of(f180Action('n-1', 'x'))));
+      component.newDescription = 'Obtenir la signature';
+      component.newCategorie = 'VALIDATION';
+      component.newQui = 'CLIENT';
+      component.add();
+      expect(service.create).toHaveBeenCalledWith('w-1', jasmine.objectContaining({
+        categorie: 'VALIDATION', qui: 'CLIENT',
+      }));
     });
   });
 });

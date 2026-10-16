@@ -48,6 +48,11 @@ public class TerminalActionToolCatalog {
             + "person = qui est concerné, kind = MESSAGE si c'est un message à envoyer, ACTION sinon, "
             + "et key = une clé courte et STABLE du blocage (« acces-vpn-karim ») — c'est elle qui "
             + "évite dix fois la même ligne.\n"
+            + "NATURE ET QUI AGIT : donne categorie (ACCES = compte, droit, jeton, VPN, flux ; VALIDATION ; "
+            + "INFO ; TRANSMISSION = un fichier, un document ; INCIDENT) et qui (MOI = un geste que "
+            + "l'utilisateur fait LUI-MÊME, sans attendre personne : se reconnecter en SSO, redémarrer le "
+            + "runner ; CLIENT = quelqu'un chez le client ; TIERS = éditeur, fournisseur, support). Ne "
+            + "confonds pas un geste à lui avec une attente envers autrui.\n"
             + "LA LISTE TE SUIT : les attentes ouvertes du poste sont jointes à chaque message, dans le "
             + "bloc « Attentes ouvertes ». REGARDE-LA AVANT D'INSCRIRE : si l'attente y est déjà, "
             + "n'en crée pas une autre ; si elle est « DEMANDÉ », la demande est partie — NE REDEMANDE "
@@ -146,9 +151,23 @@ public class TerminalActionToolCatalog {
                                         "enum", List.of("ACTION", "MESSAGE")),
                                 "key", Map.of("type", "string",
                                         "description", "Clé courte et STABLE du blocage (« acces-vpn-karim ») : "
-                                                + "elle évite d'inscrire dix fois la même action.")),
+                                                + "elle évite d'inscrire dix fois la même action."),
+                                "categorie", CATEGORIE_PROPERTY,
+                                "qui", QUI_PROPERTY),
                         "required", List.of("description")));
     }
+
+    /** La nature d'une attente (F-180 / SF-180-02). */
+    static final Map<String, Object> CATEGORIE_PROPERTY = Map.of("type", "string",
+            "description", "La nature : ACCES (compte, droit, jeton, VPN, flux), VALIDATION, INFO, "
+                    + "TRANSMISSION (fichier, document), INCIDENT.",
+            "enum", List.of("ACCES", "VALIDATION", "INFO", "TRANSMISSION", "INCIDENT"));
+
+    /** Qui doit agir (F-180 / SF-180-02). */
+    static final Map<String, Object> QUI_PROPERTY = Map.of("type", "string",
+            "description", "Qui doit agir : MOI (un geste que l'utilisateur fait lui-même : SSO, redémarrer "
+                    + "le runner), CLIENT (quelqu'un chez le client), TIERS (éditeur, fournisseur, support).",
+            "enum", List.of("MOI", "CLIENT", "TIERS"));
 
     /** La définition de l'outil de fermeture — une PROPOSITION (F-175 / SF-175-02). */
     static AgentTool closeDefinition() {
@@ -193,7 +212,9 @@ public class TerminalActionToolCatalog {
                                 "requested_to", Map.of("type", "string",
                                         "description", "À qui la demande a été faite (120 au plus)."),
                                 "channel", Map.of("type", "string",
-                                        "description", "Par où : courriel, Teams, ticket… (60 au plus).")),
+                                        "description", "Par où : courriel, Teams, ticket… (60 au plus)."),
+                                "categorie", CATEGORIE_PROPERTY,
+                                "qui", QUI_PROPERTY),
                         "required", List.of("status")));
     }
 }

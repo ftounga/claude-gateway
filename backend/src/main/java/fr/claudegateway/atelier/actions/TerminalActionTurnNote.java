@@ -144,6 +144,14 @@ public class TerminalActionTurnNote {
     /** Même ligne, avec « relance due » quand la demande tarde (F-175 / SF-175-06). */
     static String line(TerminalAction action, OffsetDateTime now, String origin, boolean followUpDue) {
         StringBuilder line = new StringBuilder("- [");
+        // F-180 / SF-180-02 : la nature et qui doit agir, en tête — « MOI » dit un geste, pas une attente.
+        if (action.getCategorie() != null) {
+            line.append(action.getCategorie().name()).append(" · ");
+        }
+        if (action.getQui() != null) {
+            line.append(action.getQui() == TerminalActionQui.MOI ? "GESTE À TOI" : action.getQui().name())
+                    .append(" · ");
+        }
         if (action.getStatus() == TerminalActionStatus.DEMANDE) {
             line.append("DEMANDÉ");
             if (action.getRequestedAt() != null) {
