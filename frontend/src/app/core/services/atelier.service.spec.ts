@@ -54,6 +54,24 @@ describe('AtelierService', () => {
     expect(pages).toEqual([{ toolUseId: 'tu_1', page: { pageId: 'p-1', title: 'Maquette', description: null, version: 2 } }]);
   });
 
+  // F-205 / SF-205-02 — la carte « Enregistrer ce besoin ? » arrive par l'événement SSE `besoin`.
+  it("relaie l'événement besoin, et ignore un événement sans identifiant", () => {
+    const dispatch = (service as unknown as {
+      dispatchSseEvent: (raw: string, handlers: object) => void;
+    }).dispatchSseEvent.bind(service);
+    const besoins: unknown[] = [];
+    const handlers = {
+      onAction: () => undefined, onText: () => undefined, onDone: () => undefined, onError: () => undefined,
+      onAppRequest: (event: unknown) => besoins.push(event),
+    };
+
+    dispatch('event: besoin\ndata: {"toolUseId":"tu_1","besoin":{"requestId":"r-1","kind":"BUG","title":"Gel","description":"ça gèle","attachments":[]}}', handlers);
+    dispatch('event: besoin\ndata: {"toolUseId":"tu_2","besoin":{}}', handlers);
+
+    expect(besoins).toEqual([{ toolUseId: 'tu_1',
+      besoin: { requestId: 'r-1', kind: 'BUG', title: 'Gel', description: 'ça gèle', attachments: [] } }]);
+  });
+
   // F-162 / SF-162-03 — la compaction et le recall deviennent visibles via des événements SSE.
   it('route les événements compaction (démarrée/terminée) et recall vers leurs handlers', () => {
     const dispatch = (service as unknown as {

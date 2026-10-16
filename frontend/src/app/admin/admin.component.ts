@@ -11,6 +11,7 @@ import { AdminUser } from './admin.models';
 import { AccessCodesComponent } from './access-codes/access-codes.component';
 import { AdminCostComponent } from './cost/admin-cost.component';
 import { AdminDiagnosticComponent } from './diagnostic/admin-diagnostic.component';
+import { AdminBesoinsComponent } from './besoins/admin-besoins.component';
 import { AdminBilansComponent } from './bilans/admin-bilans.component';
 import { AdminUsageComponent } from './usage/admin-usage.component';
 import { GovernancePackagesComponent } from './governance-packages/governance-packages.component';
@@ -44,6 +45,7 @@ import { GovernancePackagesComponent } from './governance-packages/governance-pa
     AdminUsageComponent,
     AdminBilansComponent,
     AdminDiagnosticComponent,
+    AdminBesoinsComponent,
   ],
   templateUrl: './admin.component.html',
   styleUrl: './admin.component.scss',

@@ -60,6 +60,7 @@ import {
   AtelierTerminalAttente,
   AtelierSubjectHandoff,
   AtelierGovernanceProposal,
+  AtelierAppRequest,
   TeamsAccess,
   AtelierNextStep,
   AtelierNextStepsChantier,
@@ -584,6 +585,8 @@ export class AtelierService {
       handoff?: AtelierSubjectHandoff;
       /** Carte de proposition de gouvernance (F-177 / SF-177-02). */
       proposal?: AtelierGovernanceProposal;
+      /** Carte « Enregistrer ce besoin ? » (F-205 / SF-205-02). */
+      besoin?: AtelierAppRequest;
       /** Rebranchement sur un tour en cours (F-84 / SF-84-02). */
       turnId?: string | null;
       cursor?: number;
@@ -744,6 +747,11 @@ export class AtelierService {
       // LA PROPOSITION DE GOUVERNANCE (F-177 / SF-177-02). Sans identifiant, rien — pas de carte creuse.
       if (payload.proposal?.proposalId) {
         handlers.onProposal?.({ toolUseId: payload.toolUseId ?? '', proposal: payload.proposal });
+      }
+    } else if (event === 'besoin') {
+      // LA CARTE « ENREGISTRER CE BESOIN ? » (F-205 / SF-205-02). Sans identifiant, rien — pas de carte creuse.
+      if (payload.besoin?.requestId) {
+        handlers.onAppRequest?.({ toolUseId: payload.toolUseId ?? '', besoin: payload.besoin });
       }
     } else if (event === 'handoff') {
       // Le BLOC DE PASSATION (F-179 / SF-179-02). Sans sujet, rien — pas de carte creuse.

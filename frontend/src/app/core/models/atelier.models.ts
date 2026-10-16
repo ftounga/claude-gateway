@@ -822,6 +822,12 @@ export interface AtelierStreamHandlers {
   onProposal?: (event: AtelierProposalEvent) => void;
 
   /**
+   * **Un besoin de l'application à enregistrer** (F-205 / SF-205-02) : la carte [Enregistrer] [Non].
+   * Optionnel : un backend antérieur ne l'émet pas.
+   */
+  onAppRequest?: (event: AtelierAppRequestEvent) => void;
+
+  /**
    * Numéro d'ordre du dernier événement reçu (F-84 / SF-84-02), lu dans le champ `id:` du
    * protocole SSE. C'est le **curseur** : en se rebranchant, l'écran le renvoie et ne reçoit que
    * ce qu'il a manqué — ni doublon, ni trou.
@@ -1214,6 +1220,9 @@ export interface AtelierTerminalBlock {
   /** **La carte de proposition de gouvernance** (F-177 / SF-177-02) : [Appliquer] [Modifier] [Refuser]. */
   proposal?: AtelierGovernanceProposal | null;
 
+  /** **La carte « Enregistrer ce besoin ? »** (F-205 / SF-205-02) : [Enregistrer] [Non]. */
+  besoin?: AtelierAppRequest | null;
+
   /**
    * **Un marqueur de flux** (F-162 / SF-162-03) : « Conversation compactée · N tours résumés » ou
    * « Détail rappelé · tour N ». Ce n'est ni une sortie de commande ni une carte — c'est une trace
@@ -1411,6 +1420,62 @@ export interface AtelierGovernanceProposalView {
   path: string;
   createdAt?: string | null;
   decidedAt?: string | null;
+}
+
+/** Une pièce d'un besoin telle que la carte la montre (F-205 / SF-205-01). */
+export interface AtelierAppRequestPiece {
+  position: number;
+  name: string;
+  contentType: string;
+  size: number;
+}
+
+/** **La carte « Enregistrer ce besoin ? »** (F-205 / SF-205-01) — rien n'entre au registre avant le clic. */
+export interface AtelierAppRequest {
+  requestId: string;
+  kind: 'BUG' | 'EVOLUTION';
+  title: string;
+  description: string;
+  reformulation?: string | null;
+  observedContext?: string | null;
+  attachments: AtelierAppRequestPiece[];
+}
+
+/** Statut d'un besoin (F-205 / SF-205-01). */
+export type AppRequestStatus = 'PROPOSE' | 'EN_ATTENTE' | 'CADRE' | 'REJETE' | 'LIVRE';
+
+/** Une pièce d'un besoin et l'état de sa copie (F-205 / SF-205-01). */
+export interface AppRequestAttachmentView {
+  position: number;
+  name: string;
+  contentType: string;
+  size: number;
+  copyStatus: 'PENDING' | 'COPIED' | 'FAILED' | null;
+  copyError?: string | null;
+}
+
+/** Un besoin relu (carte du fil, section Besoins) — F-205 / SF-205-01. */
+export interface AppRequestView {
+  id: string;
+  workspaceId: string;
+  messageId?: string | null;
+  kind: 'BUG' | 'EVOLUTION';
+  title: string;
+  description: string;
+  reformulation?: string | null;
+  observedContext?: string | null;
+  status: AppRequestStatus;
+  featureRef?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  recordedAt?: string | null;
+  attachments: AppRequestAttachmentView[];
+}
+
+/** Charge utile de l'événement SSE `besoin` (F-205 / SF-205-01). */
+export interface AtelierAppRequestEvent {
+  toolUseId: string;
+  besoin: AtelierAppRequest;
 }
 
 /** Charge utile de l'événement SSE `proposal` (F-177 / SF-177-02). */
