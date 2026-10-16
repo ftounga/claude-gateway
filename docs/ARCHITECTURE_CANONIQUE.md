@@ -446,13 +446,18 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   - **Chantiers** (SF-176-11, migration `147`) : `subject_journeys` porte le chantier courant
     (`chantier_number int NOT NULL défaut 0`, `chantier_title varchar 200`, `chantier_opened_at`) ;
     passer en Guidé après une clôture ouvre le chantier suivant (plan et diagnostic remis à zéro).
-- **subject_journey_chantiers** — **les chantiers clos d'un sujet** (F-176 / SF-176-11, migration
-  `147`) : `id (uuid)`, `user_id (NOT NULL)`, `workspace_id (FK workspaces ON DELETE CASCADE)`,
-  `number (int)`, `title (varchar 200)`, `opened_at`, `closed_at (NOT NULL)`, `diagnosis`,
-  `diagnosis_confidence`, `plan_json` (plan validé final), `plan_version`. Index
-  `(user_id, workspace_id, number)`. Écrite à la clôture (idempotente par numéro), lue par
-  `GET /workspaces/{id}/journey/chantiers` après `requireOwned`, sous `(user_id, workspace_id)`. Purge :
-  cascade au terminal, purge nommée au compte.
+- **subject_journey_chantiers** — **les chantiers d'un sujet, clos et ouverts** (F-176 / SF-176-11,
+  migration `147` ; F-206, migration `164`) : `id (uuid)`, `user_id (NOT NULL)`, `workspace_id (FK
+  workspaces ON DELETE CASCADE)`, `number (int)`, `title (varchar 200)`, `opened_at`, `closed_at`
+  (nullable depuis F-206 : `null` tant que le chantier est ouvert), `status` (`OPEN` | `CLOSED`, défaut
+  `CLOSED`), `phase`, `phase_changed_at`, `plan_json` (clos : plan validé final ; ouvert : plan courant),
+  `plan_version`, `validated_plan_json`, `validated_version`, `plan_validated_at`, `diagnosis`,
+  `diagnosis_evidence`, `diagnosis_confidence`, `diagnosis_proposed_at`, `close_proposed_at`,
+  `updated_at`. Index `(user_id, workspace_id, number)` ; unicité `(workspace_id, number)` (posée sous
+  précondition). F-206 : plusieurs chantiers OUVERTS par sujet ; le chantier en **focus** a sa copie de
+  travail dans `subject_journeys` (`chantier_number` = focus), recopiée dans sa ligne `OPEN` à chaque
+  écriture. Lue par `GET /workspaces/{id}/journey` (`chantiers[]`) et `…/journey/chantiers` (clos) après
+  `requireOwned`, sous `(user_id, workspace_id)`. Purge : cascade au terminal, purge nommée au compte.
 
 - **session_bilans** — **le bilan d'une session, gardé comme artefact** (F-155 / SF-155-04,
   migration `132`). Un bilan qui n'existe que dans une réponse HTTP est un bilan qu'on ne relit
