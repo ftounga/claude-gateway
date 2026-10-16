@@ -9,8 +9,10 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { Observable } from 'rxjs';
 
 import {
-  INTERLOCUTEUR_MERGE_LABELS, Interlocuteur, InterlocuteurMergeSuggestion,
+  CATEGORIE_LABELS, INTERLOCUTEUR_MERGE_LABELS, Interlocuteur, InterlocuteurBoard, InterlocuteurBoardRow,
+  InterlocuteurMergeSuggestion, TerminalActionCategorie, ageLabel, daysLabel, groupedFollowUpDraft,
 } from '../../core/models/terminal-actions.models';
+
 import { TerminalActionsService } from '../../core/services/terminal-actions.service';
 
 /**
@@ -24,6 +26,62 @@ import { TerminalActionsService } from '../../core/services/terminal-actions.ser
   selector: 'app-terminal-people-view',
   imports: [FormsModule, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatTooltipModule],
   template: `
+    @if (board()?.byCategorie?.length) {
+      <!-- F-180 / SF-180-05 (D7) — où ça coince : le délai moyen demande → réponse par nature. -->
+      <p class="people__measure" aria-label="Délai de réponse par nature">
+        @for (c of board()!.byCategorie; track c.categorie) {
+          <span class="people__chip">{{ categorieLabel(c.categorie) }} :
+            {{ c.avgResponseDays !== null ? days(c.avgResponseDays) : '—' }}
+            <span class="people__muted-inline">({{ c.openCount }} ouverte{{ c.openCount > 1 ? 's' : '' }})</span></span>
+        }
+      </p>
+    }
+
+    @if (board()?.people?.length) {
+      <!-- F-180 / SF-180-05 (D5) — QUI BLOQUE QUOI : relancer une fois par personne, jamais sans geste. -->
+      <section class="board" aria-label="Attentes par personne">
+        <h3 class="people__title">Qui bloque quoi</h3>
+        @for (row of board()!.people; track row.interlocuteurId ?? row.name) {
+          <article class="board__row">
+            <div class="person__head">
+              <p class="person__name">{{ row.name }}@if (row.role) { <span class="people__muted-inline"> · {{ row.role }}</span> }</p>
+              <span class="person__count">{{ row.openCount }} attente{{ row.openCount > 1 ? 's' : '' }}</span>
+            </div>
+            <p class="people__muted">
+              la plus ancienne {{ age(row.oldestOpenAt) }}
+              @if (row.subjects.length) { · bloque {{ row.subjects.join(', ') }} }
+            </p>
+            <p class="people__muted board__delay">
+              @if (row.avgResponseDays !== null) {
+                {{ firstName(row.name) }} répond en {{ days(row.avgResponseDays) }} en moyenne
+                ({{ row.responseCount }} réponse{{ row.responseCount > 1 ? 's' : '' }} mesurée{{ row.responseCount > 1 ? 's' : '' }})
+              } @else {
+                pas encore de réponse mesurée
+              }
+            </p>
+            <div class="people__gestures">
+              <button mat-flat-button type="button" class="board__followup"
+                matTooltip="Dépose un brouillon groupé dans la saisie — rien n'est envoyé"
+                (click)="relancer(row, false)"><mat-icon>reply_all</mat-icon>Relancer {{ firstName(row.name) }} ({{ row.openCount }})</button>
+              <button mat-button type="button" class="board__email"
+                matTooltip="Le brouillon demande à l'agent de vous l'envoyer par courriel, à transférer"
+                (click)="relancer(row, true)">Par courriel à moi</button>
+              <button mat-button type="button" class="board__toggle" (click)="toggle(row)">
+                {{ isExpanded(row) ? 'Masquer' : 'Voir les attentes' }}
+              </button>
+            </div>
+            @if (isExpanded(row)) {
+              <ul class="board__list">
+                @for (a of row.open; track a.id) {
+                  <li>{{ a.description }} <span class="people__muted-inline">· {{ age(a.requestedAt || a.createdAt) }}{{ a.workspaceName ? ' · ' + a.workspaceName : '' }}</span></li>
+                }
+              </ul>
+            }
+          </article>
+        }
+      </section>
+    }
+
     @if (suggestions().length) {
       <section class="people-merge" aria-label="Fusions proposées">
         <h3 class="people__title">Même personne ? ({{ suggestions().length }})</h3>
@@ -43,8 +101,11 @@ import { TerminalActionsService } from '../../core/services/terminal-actions.ser
     }
     @if (failed()) {
       <p class="people__muted">Les interlocuteurs n'ont pas pu être chargés.</p>
-    } @else if (!people().length) {
+    } @else if (!people().length && !board()?.people?.length) {
       <p class="people__muted">Aucun interlocuteur sur ce poste pour l'instant : ils naissent des attentes qui nomment quelqu'un.</p>
+    }
+    @if (people().length) {
+      <h3 class="people__title people__directory">Annuaire du poste</h3>
     }
     @for (p of people(); track p.id) {
       <article class="person">
@@ -104,6 +165,53 @@ import { TerminalActionsService } from '../../core/services/terminal-actions.ser
       align-items: center;
       gap: var(--cg-space-1);
       margin-top: var(--cg-space-1);
+    }
+
+    .people__measure {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--cg-space-1);
+      margin: 0 0 var(--cg-space-2);
+    }
+
+    .people__chip {
+      padding: 0 var(--cg-space-2);
+      border-radius: 12px;
+      background: var(--cg-surface-2);
+      font-size: 12px;
+    }
+
+    .people__muted-inline {
+      color: var(--cg-text-secondary);
+      font-size: 12px;
+      font-weight: 400;
+    }
+
+    .people__directory {
+      margin-top: var(--cg-space-3);
+      margin-bottom: var(--cg-space-2);
+    }
+
+    .board {
+      margin-bottom: var(--cg-space-3);
+    }
+
+    .board__row {
+      margin-top: var(--cg-space-2);
+      padding: var(--cg-space-2);
+      border: 1px solid var(--cg-orange-2);
+      border-radius: 8px;
+      background: var(--cg-surface);
+    }
+
+    .board__followup {
+      --mdc-filled-button-container-color: var(--cg-accent);
+    }
+
+    .board__list {
+      margin: var(--cg-space-1) 0 0;
+      padding-left: var(--cg-space-4);
+      font-size: 13px;
     }
 
     .people-merge {
@@ -178,6 +286,13 @@ export class TerminalPeopleViewComponent implements OnInit {
   /** Les interlocuteurs ont changé (fusion) : le tableau se relit. */
   readonly changed = output<void>();
 
+  /** La relance groupée : le brouillon à déposer dans la saisie, **jamais envoyé** (F-180 / SF-180-05). */
+  readonly followUp = output<string>();
+
+  /** Qui bloque quoi (F-180 / SF-180-05). */
+  readonly board = signal<InterlocuteurBoard | null>(null);
+  private readonly expanded = signal<Set<string>>(new Set());
+
   private readonly service = inject(TerminalActionsService);
   private readonly snackBar = inject(MatSnackBar);
 
@@ -203,10 +318,52 @@ export class TerminalPeopleViewComponent implements OnInit {
       },
       error: () => this.failed.set(true),
     });
+    this.service.interlocuteurBoard(this.workspaceId()).subscribe({
+      next: b => this.board.set(b ?? null),
+      error: () => this.board.set(null),
+    });
     this.service.interlocuteurSuggestions(this.workspaceId()).subscribe({
       next: list => this.suggestions.set(list ?? []),
       error: () => this.suggestions.set([]),
     });
+  }
+
+  /** [Relancer Rémi (5)] : un seul brouillon groupé, déposé dans la saisie — rien n'est envoyé. */
+  relancer(row: InterlocuteurBoardRow, viaEmail: boolean): void {
+    this.followUp.emit(groupedFollowUpDraft(row, viaEmail));
+  }
+
+  toggle(row: InterlocuteurBoardRow): void {
+    const key = row.interlocuteurId ?? row.name;
+    this.expanded.update(set => {
+      const next = new Set(set);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }
+
+  isExpanded(row: InterlocuteurBoardRow): boolean {
+    return this.expanded().has(row.interlocuteurId ?? row.name);
+  }
+
+  firstName(name: string): string {
+    return name.split(' ')[0] || name;
+  }
+
+  days(value: number | null): string {
+    return daysLabel(value);
+  }
+
+  age(at: string): string {
+    return ageLabel(at);
+  }
+
+  categorieLabel(c: TerminalActionCategorie): string {
+    return CATEGORIE_LABELS[c] ?? c;
   }
 
   roleLine(p: Interlocuteur): string {

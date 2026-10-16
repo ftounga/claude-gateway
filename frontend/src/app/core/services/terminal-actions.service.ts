@@ -8,7 +8,7 @@ import {
   TerminalActionReviewDecision, TerminalActionReviewItem, TerminalActionReviewResult,
   TerminalActionDuplicate, TerminalActionQualifyDecision, TerminalActionQualifyItem,
   Interlocuteur, InterlocuteurMergeSuggestion, InterlocuteurUpdate,
-  AccesObtenu, AccesProposal, AccesRequest,
+  AccesObtenu, AccesProposal, AccesRequest, InterlocuteurBoard,
 } from '../models/terminal-actions.models';
 
 /**
@@ -123,6 +123,11 @@ export class TerminalActionsService {
   /** « Pas besoin » : l'attente n'est plus proposée. */
   dismissAccesProposal(workspaceId: string, actionId: string): Observable<void> {
     return this.http.post<void>(`/api/workspaces/${workspaceId}/acces/proposals/${actionId}/dismiss`, {});
+  }
+
+  /** Qui bloque quoi, depuis quand, et les délais de réponse (F-180 / SF-180-05). */
+  interlocuteurBoard(workspaceId: string): Observable<InterlocuteurBoard> {
+    return this.http.get<InterlocuteurBoard>(`/api/workspaces/${workspaceId}/interlocuteurs/board`);
   }
 
   /** Les interlocuteurs du poste du terminal (F-180 / SF-180-03). */
