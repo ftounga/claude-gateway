@@ -13,9 +13,31 @@ import java.util.UUID;
  * @param subjects les sujets et leur {@code GOUVERNANCE.md} (tel que lu au dernier tour)
  * @param skills   les skills, poste puis sujets
  * @param packages les paquets activés et leur état de dépôt
+ * @param agents   les agents nommés (F-182 / SF-182-01), poste puis sujets, avec leur validation
  */
 public record GovernanceEffectiveView(String hostRef, RulesFile hostRules, List<SubjectRules> subjects,
-        List<SkillView> skills, List<PackageLag> packages) {
+        List<SkillView> skills, List<PackageLag> packages, List<AgentView> agents) {
+
+    /**
+     * Un agent nommé (F-182 / SF-182-01) — jamais sa consigne.
+     *
+     * @param name        nom, à taper après {@code /agent}
+     * @param path        son fichier
+     * @param origin      {@code POSTE} | {@code SUJET}
+     * @param subjectName le sujet, pour un agent de sujet
+     * @param source      {@code PAQUET} | {@code CLIENT}
+     * @param packageName le paquet d'origine, le cas échéant
+     * @param description ce qu'il fait
+     * @param access      {@code LECTURE} | {@code ECRITURE}
+     * @param model       modèle écrit et justifié, ou {@code null} = modèle de la Forge
+     * @param warnings    ce qui a été ignoré
+     * @param errors      ce qui le rend inutilisable
+     * @param usable      vrai si délégable
+     */
+    public record AgentView(String name, String path, String origin, String subjectName, String source,
+            String packageName, String description, String access, String model, List<String> warnings,
+            List<String> errors, boolean usable) {
+    }
 
     /**
      * Un {@code GOUVERNANCE.md}.

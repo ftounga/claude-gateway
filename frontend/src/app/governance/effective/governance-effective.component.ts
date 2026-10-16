@@ -6,6 +6,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 import {
+  GovernanceAgentView,
   GovernanceEffective,
   GovernancePackageLag,
   GovernanceRulesFile,
@@ -26,6 +27,13 @@ export function rulesStateLabel(rules: GovernanceRulesFile): string {
     default:
       return 'Pas encore lu (aucun tour récent)';
   }
+}
+
+/** Ce qu'un agent nommé peut faire et sur quel modèle il tourne, en toutes lettres (F-182 / SF-182-01). */
+export function agentCapabilityLabel(agent: GovernanceAgentView): string {
+  const access = agent.access === 'ECRITURE' ? 'lit, écrit et exécute' : 'lecture seule';
+  const model = agent.model ? `modèle ${agent.model}` : 'modèle de la Forge';
+  return `${access} · ${model}`;
 }
 
 /**
@@ -101,8 +109,41 @@ export function rulesStateLabel(rules: GovernanceRulesFile): string {
             }
           </ul>
         }
+        <!-- F-182 / SF-182-01 : les agents nommés, avec ce qui les rend inutilisables en clair. -->
+        <h4 class="effective__subtitle">Agents nommés ({{ agents().length }})</h4>
+        @if (agents().length === 0) {
+          <p class="effective__muted">
+            Aucun agent nommé. Un agent se déclare dans <code>.claude/agents/&lt;nom&gt;.md</code> (poste ou sujet).
+          </p>
+        } @else {
+          <ul class="effective__skills effective__agents">
+            @for (agent of agents(); track agent.origin + agent.path + (agent.subjectName ?? '')) {
+              <li [class.effective__agent--unusable]="!agent.usable">
+                <code>/agent {{ agent.name }}</code>
+                <span class="effective__muted">
+                  · {{ agent.origin === 'POSTE' ? 'poste' : agent.subjectName }}
+                  · {{ agent.source === 'PAQUET' ? 'paquet ' + (agent.packageName ?? '') : 'client' }}
+                  · {{ capability(agent) }}
+                </span>
+                @if (agent.description) {
+                  <span class="effective__agent-description">{{ agent.description }}</span>
+                }
+                @for (error of agent.errors; track error) {
+                  <span class="effective__agent-problem effective__agent-problem--error">
+                    <mat-icon aria-hidden="true">error</mat-icon>{{ error }}
+                  </span>
+                }
+                @for (warning of agent.warnings; track warning) {
+                  <span class="effective__agent-problem">
+                    <mat-icon aria-hidden="true">warning</mat-icon>{{ warning }}
+                  </span>
+                }
+              </li>
+            }
+          </ul>
+        }
         <p class="effective__muted effective__note">
-          Les règles et skills des sujets sont ceux lus au dernier tour de chaque sujet.
+          Les règles, skills et agents des sujets sont ceux lus au dernier tour de chaque sujet.
         </p>
         @if (lateCount() > 0) {
           <p class="effective__sr" role="status">{{ lateCount() }} paquet(s) à remettre à jour.</p>
@@ -194,6 +235,39 @@ export function rulesStateLabel(rules: GovernanceRulesFile): string {
       margin-top: var(--cg-space-2);
     }
 
+    .effective__agents li {
+      display: flex;
+      flex-direction: column;
+      gap: var(--cg-space-1);
+    }
+
+    .effective__agent-description {
+      font-size: 13px;
+    }
+
+    .effective__agent-problem {
+      display: flex;
+      align-items: center;
+      gap: var(--cg-space-1);
+      font-size: 13px;
+      color: var(--cg-text-secondary);
+    }
+
+    .effective__agent-problem mat-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+      color: var(--cg-orange-2);
+    }
+
+    .effective__agent-problem--error mat-icon {
+      color: var(--cg-error);
+    }
+
+    .effective__agent--unusable code {
+      text-decoration: line-through;
+    }
+
     .effective__sr {
       position: absolute;
       width: 1px;
@@ -216,8 +290,11 @@ export class GovernanceEffectiveComponent {
   readonly error = signal<string | null>(null);
   readonly busy = signal<string | null>(null);
   readonly lateCount = computed(() => (this.view()?.packages ?? []).filter((p) => p.state !== 'A_JOUR').length);
+  /** F-182 / SF-182-01 : les agents nommés (vide pour un serveur antérieur). */
+  readonly agents = computed(() => this.view()?.agents ?? []);
 
   readonly label = rulesStateLabel;
+  readonly capability = agentCapabilityLabel;
 
   constructor() {
     effect(() => this.load(this.hostRef()));

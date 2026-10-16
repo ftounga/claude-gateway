@@ -14,10 +14,14 @@ import org.springframework.stereotype.Service;
 
 import fr.claudegateway.atelier.Workspace;
 import fr.claudegateway.atelier.WorkspaceService;
+import fr.claudegateway.atelier.agents.NamedAgent;
+import fr.claudegateway.atelier.agents.NamedAgentCatalogService;
+import fr.claudegateway.atelier.agents.NamedAgentParser;
 import fr.claudegateway.atelier.promptsource.PromptSourceStore;
 import fr.claudegateway.atelier.skills.SkillCatalogService;
 import fr.claudegateway.atelier.skills.SkillEntry;
 import fr.claudegateway.governance.dto.GovernanceEffectiveView;
+import fr.claudegateway.governance.dto.GovernanceEffectiveView.AgentView;
 import fr.claudegateway.governance.dto.GovernanceEffectiveView.PackageLag;
 import fr.claudegateway.governance.dto.GovernanceEffectiveView.RulesFile;
 import fr.claudegateway.governance.dto.GovernanceEffectiveView.SkillView;
@@ -51,6 +55,7 @@ public class GovernanceEffectiveService {
     private final WorkspaceService workspaceService;
     private PromptSourceStore promptSourceStore;
     private SkillCatalogService skillCatalog;
+    private NamedAgentCatalogService agentCatalog;
 
     public GovernanceEffectiveService(GovernanceHostScope hostScope, GovernanceHostFiles hostFiles,
             GovernanceActivationRepository activations, GovernanceDepositedFileRepository deposited,
@@ -71,6 +76,11 @@ public class GovernanceEffectiveService {
     @Autowired(required = false)
     public void setSkillCatalog(SkillCatalogService skillCatalog) {
         this.skillCatalog = skillCatalog;
+    }
+
+    @Autowired(required = false)
+    public void setAgentCatalog(NamedAgentCatalogService agentCatalog) {
+        this.agentCatalog = agentCatalog;
     }
 
     /** La vue d'un poste <b>déjà vérifié possédé</b>. */
@@ -102,6 +112,7 @@ public class GovernanceEffectiveService {
         // 3) Les sujets : leurs règles et leurs skills, tels que la consigne les a lus (cache).
         List<SubjectRules> subjects = new ArrayList<>();
         List<SkillView> skills = new ArrayList<>();
+        List<AgentView> agents = new ArrayList<>();
         List<Workspace> projects = hostScope.projectsOf(userId, host);
         for (Workspace project : projects) {
             subjects.add(new SubjectRules(project.getId(), project.getName(), cachedRules(userId, project)));
@@ -111,6 +122,16 @@ public class GovernanceEffectiveService {
                     String pkgName = packageOfPath.get(path);
                     skills.add(new SkillView(name, path, SkillEntry.SUJET, project.getName(),
                             pkgName == null ? "CLIENT" : "PAQUET", pkgName));
+                }
+                // F-182 / SF-182-01 : les agents nommés du sujet, tels que rangés au dernier tour (cache) —
+                // aucun aller-retour par sujet ; validés comme au moment d'une délégation.
+                String agentName = NamedAgentCatalogService.nameOf(path);
+                if (agentName != null) {
+                    Optional<String> content = cachedFile(userId, project, path);
+                    if (content.isPresent()) {
+                        agents.add(agentView(NamedAgentParser.parse(agentName, path, NamedAgent.SUJET,
+                                content.get()), project.getName(), packageOfPath.get(path)));
+                    }
                 }
             }
         }
@@ -132,8 +153,44 @@ public class GovernanceEffectiveService {
                 }
             }
         }
+
+        // 5) Les agents nommés du poste (F-182 / SF-182-01) : ceux de la racine, via le terminal du poste.
+        if (!host.hosted() && agentCatalog != null) {
+            Optional<Workspace> terminal = workspaceService.findHostTerminal(userId, host.hostId());
+            if (terminal.isPresent()) {
+                try {
+                    List<AgentView> hostAgents = new ArrayList<>();
+                    for (NamedAgent agent : agentCatalog.catalog(userId, terminal.get())) {
+                        if (NamedAgent.POSTE.equals(agent.origin())) {
+                            hostAgents.add(agentView(agent, null, packageOfPath.get(agent.path())));
+                        }
+                    }
+                    agents.addAll(0, hostAgents);
+                } catch (RuntimeException ex) {
+                    log.debug("Agents du poste non lus ({})", ex.getClass().getSimpleName());
+                }
+            }
+        }
         return new GovernanceEffectiveView(host.ref(), hostRules, List.copyOf(subjects), List.copyOf(skills),
-                List.copyOf(packages));
+                List.copyOf(packages), List.copyOf(agents));
+    }
+
+    /** La vue d'un agent, sans sa consigne. */
+    static AgentView agentView(NamedAgent agent, String subjectName, String packageName) {
+        return new AgentView(agent.name(), agent.path(), agent.origin(), subjectName,
+                packageName == null ? "CLIENT" : "PAQUET", packageName, agent.description(), agent.access(),
+                agent.model(), agent.warnings(), agent.errors(), agent.usable());
+    }
+
+    private Optional<String> cachedFile(UUID userId, Workspace project, String path) {
+        if (promptSourceStore == null) {
+            return Optional.empty();
+        }
+        try {
+            return promptSourceStore.read(userId, project.getId(), path);
+        } catch (RuntimeException ex) {
+            return Optional.empty();
+        }
     }
 
     /** L'état de dépôt d'un paquet d'après les empreintes laissées sur le poste. */
