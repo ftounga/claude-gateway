@@ -131,6 +131,7 @@ import {
 } from '../shared/kill-host-dialog/kill-host-dialog.component';
 import { killHostSuccessMessage } from '../shared/kill-host-dialog/kill-host-messages';
 import { chatStepsToBlocks } from './terminal/chat-steps';
+import { emptyCounters, insertAtCaret, MediaCounters, mediaKindOf, nextMarker } from './terminal/media-markers';
 import { cardBlock, withCards } from './terminal/teams-block';
 import { emailBlock } from './terminal/terminal-email';
 import { pageBlock } from './terminal/page-block';
@@ -377,6 +378,13 @@ export class AtelierComponent implements OnInit, OnDestroy {
   readonly depositProgress = signal<number | null>(null);
   readonly depositNotices = signal<TerminalDepositNotice[]>([]);
   private depositSub: Subscription | null = null;
+  /**
+   * F-201 / SF-201-02 — numérotation des marqueurs `[Image #N]` du brouillon en cours : monotone par
+   * type, remise à zéro à l'envoi (jamais après un retrait, sinon deux pièces porteraient le même n°).
+   */
+  private mediaCounters: MediaCounters = emptyCounters();
+  /** Position du curseur au moment du collage / glisser / choix : là où les marqueurs se posent. */
+  private mediaCaret: number | null = null;
 
   /**
    * Reprise du fil (F-39 / SF-39-04, décision D5). Le fil reprend **sans rien demander** : ce signal
@@ -1763,6 +1771,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
         // l'affichage ne change RIEN à la consommation des fichiers au tour suivant.
         this.steer(id, content);
         this.depositNotices.set([]);
+        this.mediaCounters = emptyCounters();
+        this.mediaCaret = null;
       }
       return;
     }
@@ -1772,6 +1782,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.draft.set('');
     // F-169 / SF-169-01 : le message part → purge des puces (voir ci-dessus, aucune régression backend).
     this.depositNotices.set([]);
+    this.mediaCounters = emptyCounters();
+    this.mediaCaret = null;
     this.startTurn(id, content, false, attachments);
   }
 
@@ -3014,8 +3026,14 @@ export class AtelierComponent implements OnInit, OnDestroy {
         if (event.type === HttpEventType.UploadProgress && event.total) {
           this.depositProgress.set(Math.round((event.loaded / event.total) * 100));
         } else if (event.type === HttpEventType.Response && event.body) {
+          const markers: string[] = [];
           for (const file of event.body.files) {
+            // F-201 / SF-201-02 : chaque pièce reçoit son marqueur, posé au curseur (voir plus bas).
+            const next = nextMarker(this.mediaCounters, mediaKindOf(file.path));
+            this.mediaCounters = next.counters;
+            markers.push(next.marker);
             this.pushDepositNotice({
+              marker: next.marker,
               id: this.depositNoticeId(),
               path: file.path,
               sizeLabel: humanFileSize(file.size),
@@ -3025,6 +3043,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
               size: file.size,
             });
           }
+          this.insertMediaMarkers(markers);
           this.finishDeposit();
         }
       },
@@ -3047,6 +3066,25 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.depositSub = null;
     this.pushDepositNotice({ id: this.depositNoticeId(), cancelled: true });
     this.finishDeposit();
+  }
+
+  /**
+   * F-201 / SF-201-02 — Le terminal signale où était le curseur au moment du collage / glisser /
+   * choix de fichier : les marqueurs s'y poseront au retour du dépôt.
+   */
+  onFilesCaret(caret: number): void {
+    this.mediaCaret = caret;
+  }
+
+  /** Pose les marqueurs des pièces déposées à la position mémorisée du curseur (à défaut, en fin). */
+  private insertMediaMarkers(markers: string[]): void {
+    if (markers.length === 0) {
+      return;
+    }
+    const result = insertAtCaret(this.draft(), this.mediaCaret, markers.join(' '));
+    this.draft.set(result.draft);
+    // Un second dépôt sans nouveau signal du terminal se pose juste après le précédent.
+    this.mediaCaret = result.caret;
   }
 
   private finishDeposit(): void {

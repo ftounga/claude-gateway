@@ -52,6 +52,7 @@ import {
   removeReference,
   shouldFold,
 } from './pasted-text';
+import { insertAtCaret, removeMarker, translateMarkers, vanishedMarkers } from './media-markers';
 import {
   expandSlashCommand,
   slashSuggestions,
@@ -1412,6 +1413,11 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
   /** Fichiers choisis par glisser, coller ou trombone : le parent les dépose (D1, présentation seule). */
   @Output() filesSelected = new EventEmitter<File[]>();
+  /**
+   * F-201 / SF-201-02 — Position du curseur dans la saisie au moment du collage / glisser / choix,
+   * émise juste AVANT {@link filesSelected} : le parent y posera les marqueurs `[Image #N]`.
+   */
+  @Output() filesCaret = new EventEmitter<number>();
   /** Annulation du dépôt en cours. */
   @Output() depositCancel = new EventEmitter<void>();
   /**
@@ -1488,7 +1494,50 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     this.dragging.set(false);
     const files = this.extractFiles(event.dataTransfer);
     if (files.length > 0) {
-      this.filesSelected.emit(files);
+      this.emitFiles(files);
+    }
+  }
+
+  /** Émet la position du curseur puis les fichiers (F-201 / SF-201-02 : marqueurs au curseur). */
+  private emitFiles(files: File[]): void {
+    this.filesCaret.emit(this.caretSelection().start);
+    this.filesSelected.emit(files);
+  }
+
+  /**
+   * Sélection courante du champ de saisie. Un champ sans focus garde sa dernière sélection ; sans
+   * champ (rendu partiel, tests), on vise la fin du brouillon.
+   */
+  private caretSelection(): { start: number; end: number } {
+    const field = this.draftFieldRef?.nativeElement;
+    const length = (this.draft ?? '').length;
+    const start = field?.selectionStart ?? length;
+    const end = field?.selectionEnd ?? start;
+    // Le champ peut être en retard sur le brouillon (valeur posée par le parent) : on borne.
+    return { start: Math.min(start, length), end: Math.min(Math.max(end, start), length) };
+  }
+
+  /**
+   * F-201 / SF-201-02 — Retire une pièce jointe ET son marqueur du champ : ce qu'on voit est ce qui part.
+   */
+  removeAttachment(notice: TerminalDepositNotice): void {
+    if (notice.marker && (this.draft ?? '').includes(notice.marker)) {
+      this.draftChange.emit(removeMarker(this.draft, notice.marker));
+    }
+    this.depositRemove.emit(notice.id);
+  }
+
+  /**
+   * F-201 / SF-201-02 — L'utilisateur a effacé un marqueur à la main : la pièce correspondante est
+   * retirée (pièce jointe comme texte collé). Le champ fait foi.
+   */
+  private pruneVanishedMarkers(value: string): void {
+    for (const notice of vanishedMarkers(value, this.depositNotices)) {
+      this.depositRemove.emit(notice.id);
+    }
+    const kept = this.pastes().filter((paste) => (value ?? '').includes(referenceOf(paste.index)));
+    if (kept.length !== this.pastes().length) {
+      this.pastes.set(kept);
     }
   }
 
@@ -1501,7 +1550,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     const files = this.extractFiles(event.clipboardData);
     if (files.length > 0) {
       event.preventDefault();
-      this.filesSelected.emit(files);
+      this.emitFiles(files);
       return;
     }
     // F-146 / SF-146-01 — UN LONG TEXTE COLLÉ NE NOIE PAS LA SAISIE. Le champ tient sur une ligne :
@@ -1515,10 +1564,32 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
       return;
     }
     event.preventDefault();
-    const index = this.pastes().length + 1;
+    // F-201 / SF-201-02 : numérotation monotone (jamais `length + 1`, qui redonnait un numéro encore
+    // porté après un retrait) et référence posée AU CURSEUR, à la place de la sélection.
+    const index = ++this.pasteCounter;
     this.pastes.update((all) => [...all, { index, text, lines: countLines(text) }]);
-    const reference = referenceOf(index);
-    this.draftChange.emit(this.draft ? `${this.draft} ${reference}` : reference);
+    const selection = this.caretSelection();
+    const result = insertAtCaret(this.draft, selection.start, referenceOf(index), selection.end);
+    this.draftChange.emit(result.draft);
+    this.placeCaret(result.caret);
+  }
+
+  /** Dernier numéro de texte collé attribué dans ce brouillon (remis à zéro à l'envoi). */
+  private pasteCounter = 0;
+
+  /** Repose le curseur après une insertion, une fois la nouvelle valeur reflétée dans le champ. */
+  private placeCaret(caret: number): void {
+    const field = this.draftFieldRef?.nativeElement;
+    if (!field) {
+      return;
+    }
+    setTimeout(() => {
+      try {
+        field.setSelectionRange(caret, caret);
+      } catch {
+        // Champ non encore mis à jour : sans gravité, le texte est en place.
+      }
+    });
   }
 
   /**
@@ -1688,7 +1759,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     const input = event.target as HTMLInputElement;
     const files = input.files ? Array.from(input.files) : [];
     if (files.length > 0) {
-      this.filesSelected.emit(files);
+      this.emitFiles(files);
     }
     // Réinitialise pour qu'un même fichier redéposé redéclenche l'événement.
     input.value = '';
@@ -2296,6 +2367,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     this.slashDismissed.set(false);
     this.slashHighlight.set(0);
     this.draftChange.emit(value);
+    this.pruneVanishedMarkers(value);
     this.refreshMentionOnInput(value, field);
   }
 
@@ -2650,6 +2722,10 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
         outgoing = expand(this.draft, pastes);
         this.pastes.set([]);
       }
+      this.pasteCounter = 0;
+      // F-201 / SF-201-02 : chaque marqueur `[Image #N]` encore présent devient une référence explicite
+      // au fichier déposé, À SA PLACE dans le texte. Un marqueur effacé n'est pas réinjecté.
+      outgoing = translateMarkers(outgoing, this.depositNotices);
       // F-121 / SF-121-23 : une slash-command CONNUE est expansée de façon déterministe en son
       // prompt imposé (arguments libres ajoutés en contexte). Une commande inconnue part littérale.
       const commandExpansion = expandSlashCommand(outgoing);

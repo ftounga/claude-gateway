@@ -4,6 +4,7 @@ import { Observable, tap } from 'rxjs';
 
 import { AuthService } from './auth.service';
 import { HostPresenceService } from './host-presence.service';
+import { depositFileName } from './deposit-file-name';
 import {
   AtelierAgentStreamAction,
   AtelierFileDiff,
@@ -233,8 +234,11 @@ export class AtelierService {
    */
   deposit(id: string, files: File[]): Observable<HttpEvent<DepositResponse>> {
     const form = new FormData();
+    // F-201 / SF-201-02 : une capture collée s'appelle toujours « image.png » ; on l'envoie sous un
+    // nom horodaté (le serveur reste la source de vérité de l'unicité, SF-201-01).
+    const now = new Date();
     for (const file of files) {
-      form.append('files', file, file.name || 'fichier');
+      form.append('files', file, depositFileName(file.name, now));
     }
     return this.http.post<DepositResponse>(`/api/workspaces/${id}/deposit`, form, {
       observe: 'events',

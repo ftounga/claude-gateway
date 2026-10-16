@@ -337,6 +337,35 @@ describe('AtelierComponent', () => {
       expect(notices[0].size).toBe(2_411_000);
     });
 
+    // F-201 / SF-201-02 — les marqueurs se posent au curseur, numérotés par type, remis à zéro à l'envoi.
+    it('pose les marqueurs [Image #N] au curseur signalé par le terminal', () => {
+      setup();
+      component.activeWorkspaceId.set('w1');
+      service.deposit.and.returnValue(of({
+        type: HttpEventType.Response,
+        body: { files: [
+          { id: 'd1', path: '.atelier/entrees/capture-a.png', size: 10, target: 'RUNNER' },
+          { id: 'd2', path: '.atelier/entrees/capture-b.png', size: 10, target: 'RUNNER' },
+          { id: 'd3', path: '.atelier/entrees/notes.pdf', size: 10, target: 'RUNNER' },
+        ] },
+      } as HttpEvent<DepositResponse>));
+      component.draft.set('compare avec la maquette');
+
+      component.onFilesCaret(7);
+      component.onFilesSelected([new File(['x'], 'image.png')]);
+
+      expect(component.draft()).toBe('compare [Image #1] [Image #2] [Fichier #1] avec la maquette');
+      expect(component.depositNotices().map((n) => n.marker)).toEqual(['[Image #1]', '[Image #2]', '[Fichier #1]']);
+
+      // Un second dépôt continue la numérotation, juste après les marqueurs précédents.
+      service.deposit.and.returnValue(of({
+        type: HttpEventType.Response,
+        body: { files: [{ id: 'd4', path: '.atelier/entrees/capture-c.png', size: 10, target: 'RUNNER' }] },
+      } as HttpEvent<DepositResponse>));
+      component.onFilesSelected([new File(['x'], 'image.png')]);
+      expect(component.draft()).toBe('compare [Image #1] [Image #2] [Fichier #1] [Image #3] avec la maquette');
+    });
+
     // F-169 / SF-169-03 — les pièces jointes partent AVEC le message et s'affichent dans sa bulle.
     it('joint les réfs des puces au message et les pose dans la bulle (send)', () => {
       setup();

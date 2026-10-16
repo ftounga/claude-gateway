@@ -99,6 +99,13 @@
     color: var(--cg-accent);
   }
 
+  // F-201 / SF-201-02 : le marqueur `[Image #N]` posé dans la saisie, rappelé sur la puce.
+  &__marker {
+    flex: 0 0 auto;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
   &__name {
     overflow: hidden;
     text-overflow: ellipsis;
