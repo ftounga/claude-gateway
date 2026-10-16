@@ -664,6 +664,65 @@ class AtelierChatServiceSystemPromptTest {
         assertThat(firstDoctrine).isEqualTo(AtelierChatService.NEXT_STEPS_DOCTRINE.strip());
     }
 
+    // ------------------------------------------- F-203 / SF-203-01 : bloc message à copier
+
+    private static final String MESSAGE_BLOCK_MARKER = "Messages à envoyer — un bloc à copier";
+
+    @Test
+    void theMessageBlockDoctrineIsPresentOnceOnASandboxProjectAndOnARunnerProject() {
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+
+        String sandbox = systemPrompt();
+        String runner = systemPromptOfRunnerProjectDeclaring(null);
+
+        for (String system : List.of(sandbox, runner)) {
+            assertThat(system).contains(MESSAGE_BLOCK_MARKER);
+            assertThat(system.indexOf(MESSAGE_BLOCK_MARKER)).isEqualTo(system.lastIndexOf(MESSAGE_BLOCK_MARKER));
+            assertThat(system).contains("```mail").contains("```message");
+            assertThat(system).contains("Un bloc par message");
+            assertThat(system).contains("« Objet : … »");
+            assertThat(system).contains("Le bloc ne contient que ce qui part");
+            // Placée juste après « Propose la suite ».
+            assertThat(system.indexOf(MESSAGE_BLOCK_MARKER))
+                    .isGreaterThan(system.indexOf("Propose la suite — « Et maintenant ? »"));
+        }
+    }
+
+    @Test
+    void theMessageBlockDoctrineIsAbsentOnTheTeamsTerminal() {
+        Workspace teams = new Workspace();
+        teams.setId(workspaceId);
+        teams.setUserId(userId);
+        teams.setSource(WorkspaceSource.ARCHIVE);
+        teams.setExecutionTarget(WorkspaceExecutionTarget.RUNNER);
+        teams.setHostId(hostId);
+        teams.setTeamsTerminal(true);
+        when(workspaceService.requireOwned(userId, workspaceId)).thenReturn(teams);
+        lenient().when(runnerToolGateway.listFiles(any(), any())).thenReturn(runnerOk(""));
+        lenient().when(runnerToolGateway.readFile(any(), any(), any())).thenReturn(runnerOk("conventions"));
+
+        String system = systemPrompt();
+
+        assertThat(system).doesNotContain(MESSAGE_BLOCK_MARKER);
+        // Non-régression : les autres doctrines universelles restent.
+        assertThat(system).contains("Propose la suite — « Et maintenant ? »");
+    }
+
+    @Test
+    void theMessageBlockDoctrineIsByteStableBetweenTwoBuilds() {
+        String first = systemPromptOfRunnerProjectDeclaring(null);
+        String second = systemPromptOfRunnerProjectDeclaring(null);
+
+        String firstDoctrine = first.substring(first.indexOf(MESSAGE_BLOCK_MARKER),
+                first.indexOf("\n\n", first.indexOf(MESSAGE_BLOCK_MARKER)));
+        String secondDoctrine = second.substring(second.indexOf(MESSAGE_BLOCK_MARKER),
+                second.indexOf("\n\n", second.indexOf(MESSAGE_BLOCK_MARKER)));
+        assertThat(firstDoctrine).isEqualTo(secondDoctrine);
+        assertThat(firstDoctrine).isEqualTo(AtelierChatService.MESSAGE_BLOCK_DOCTRINE.strip());
+    }
+
     // ------------------------------------------- F-141 / SF-141-01 : annonce de destination + demande si ambigu
 
     @Test

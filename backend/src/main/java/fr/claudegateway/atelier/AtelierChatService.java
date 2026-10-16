@@ -728,6 +728,29 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "- Une seule fois par réponse, toujours en dernier, et n'en parle jamais dans le "
                     + "texte : le bloc est mis en forme pour l'utilisateur, pas expliqué.\n\n";
     /**
+     * Bloc message (F-203 / SF-203-01). Tout mail ou message à envoyer tel quel (Teams, Slack, Jira…)
+     * est rendu dans un bloc balisé {@code ```mail} / {@code ```message}, que le terminal présente dans
+     * un encart avec « Copier » en texte riche (SF-203-02) : l'utilisateur colle dans Outlook ou Teams
+     * sans sélectionner le texte, mise en forme comprise.
+     *
+     * <p>Littéral <b>stable</b>, injecté à un point fixe sur toutes les cibles sauf le terminal Teams
+     * (condition stable par workspace) : cache de prompt préservé (F-134). Strictement additif : la
+     * consigne ne change que l'emballage du message, jamais son fond.</p>
+     */
+    static final String MESSAGE_BLOCK_DOCTRINE =
+            "Messages à envoyer — un bloc à copier :\n"
+                    + "- Quand tu rédiges un mail, un message Teams ou Slack, un commentaire Jira ou "
+                    + "toute réponse que l'utilisateur enverra TEL QUEL, mets ce texte dans un bloc "
+                    + "balisé : ```mail pour un courriel, ```message pour une messagerie ou un ticket. "
+                    + "Le terminal l'affiche dans un encart avec un bouton Copier qui garde la mise en "
+                    + "forme.\n"
+                    + "- Un bloc par message ; pour un mail, l'objet éventuel en première ligne : "
+                    + "« Objet : … », puis une ligne vide, puis le corps.\n"
+                    + "- Corps en Markdown simple (gras, italique, listes, liens) : pas de titre #, pas "
+                    + "de tableau, pas de bloc de code dans le bloc.\n"
+                    + "- Le bloc ne contient que ce qui part : tes explications, choix ou variantes "
+                    + "restent hors du bloc. Pas de bloc pour un texte qui n'est pas à envoyer.\n\n";
+    /**
      * Annonce de destination + demande si ambigu (F-141 / SF-141-01, cadrage §4.3 et §2). Ajouté au
      * rôle sur les <b>deux</b> cibles, à la suite des doctrines de carte. La nuance clé du cadrage :
      * la <b>plomberie</b> de fin de tour (marqueurs, comptabilité de promotion/dette) reste invisible
@@ -8978,6 +9001,13 @@ public class AtelierChatService implements RelayInterruptTarget {
         // de conclure ». L'agent principal propose lui-même la suite en fin de réponse, dans un bloc
         // balisé extrait par la passerelle. Littéral stable, strictement additif : cache F-134 préservé.
         system.append(NEXT_STEPS_DOCTRINE);
+
+        // Bloc message (F-203 / SF-203-01) : juste après les suites, sur toutes les cibles SAUF le
+        // terminal Teams (sa réponse part dans Teams, où une balise s'afficherait brute). Condition
+        // stable par workspace, littéral stable : cache F-134 préservé.
+        if (!workspace.isTeamsTerminal()) {
+            system.append(MESSAGE_BLOCK_DOCTRINE);
+        }
 
         // Annonce de destination + demande si ambigu (F-141 / SF-141-01) : sur les DEUX cibles, à la
         // suite des doctrines de carte. Prolonge la carte silencieuse (SF-125-01) sans la casser : la
