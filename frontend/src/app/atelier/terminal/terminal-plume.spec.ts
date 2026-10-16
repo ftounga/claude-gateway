@@ -166,6 +166,44 @@ describe('AtelierTerminalComponent — Plume (F-193 / SF-193-02)', () => {
     expect(drafts).toEqual([]);
   });
 
+  it('F-202 : refermer le panneau garde la zone multiligne et le texte à l’identique', fakeAsync(() => {
+    component.draft = 'pagine';
+    fixture.detectChanges();
+    button().click();
+    const prompt = '## Objectif\nPaginer l’export.\n\n## Points à confirmer\n- Taille 50';
+    http.expectOne(URL).flush({ enrichedPrompt: prompt, toConfirm: ['Taille 50'], sources: [] });
+    fixture.detectChanges();
+    flushMicrotasks();
+
+    component.closePlume();
+    fixture.detectChanges();
+
+    expect(component.plume()).toBeNull();
+    expect(component.multilineDraft()).toBeTrue();
+    const area = el().querySelector('textarea.terminal-field--plume') as HTMLTextAreaElement;
+    expect(area).toBeTruthy();
+    expect(area.getAttribute('aria-label')).toBe('Demande à exécuter');
+    expect(component.draft).toBe(prompt);
+    expect(el().querySelector('input.terminal-field')).toBeNull();
+  }));
+
+  it('F-202 : un brouillon d’une ligne garde le champ d’origine ; un brouillon multiligne, la zone', () => {
+    component.draft = 'une ligne';
+    fixture.detectChanges();
+    expect(component.multilineDraft()).toBeFalse();
+    expect(el().querySelector('input.terminal-field')).toBeTruthy();
+
+    component.draft = 'ligne 1\nligne 2';
+    fixture.detectChanges();
+    expect(component.multilineDraft()).toBeTrue();
+    expect(el().querySelector('textarea.terminal-field--plume')).toBeTruthy();
+  });
+
+  it('F-202 : la troncature signalée par le serveur est relayée telle quelle', () => {
+    const message = 'La demande enrichie dépassait la longueur prévue. Votre texte est intact : réessayez avec une demande plus ciblée.';
+    expect(plumeErrorMessage(new HttpErrorResponse({ status: 502, error: { error: message } }))).toBe(message);
+  });
+
   it('message d’erreur : celui du serveur, sinon une phrase rassurante', () => {
     expect(plumeErrorMessage(new HttpErrorResponse({ status: 400, error: { error: 'Trop long.' } }))).toBe('Trop long.');
     expect(plumeErrorMessage(new HttpErrorResponse({ status: 0 }))).toContain('Votre texte est intact');
