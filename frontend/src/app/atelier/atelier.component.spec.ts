@@ -15,6 +15,7 @@ import { Subject, of, throwError } from 'rxjs';
 import { MAX_UPLOAD_BYTES } from '../shared/http-error.util';
 
 import { TabAlertService } from '../core/services/tab-alert.service';
+import { CurrentClientService } from '../core/services/current-client.service';
 import { AtelierComponent, delayLabel, toThreadItem } from './atelier.component';
 import { AtelierThreadItem } from './atelier.types';
 import { AtelierService } from '../core/services/atelier.service';
@@ -1394,6 +1395,43 @@ describe('AtelierComponent', () => {
 
     expect(root.querySelector('.host-badge')).toBeNull();
     expect(root.textContent).not.toContain('Aucun poste');
+  });
+
+  // ---------------------------------- le client courant suit le terminal ouvert (F-199 / SF-199-01)
+
+  it('ouvrir le terminal d\'un client en fait le client courant, et le fil d\'Ariane y mène aussitôt', () => {
+    setup();
+    const current = TestBed.inject(CurrentClientService);
+    const cagip: WorkspaceSummary = { ...summary, hostName: 'CAGIP', hostId: 'h-cagip' };
+    const edenred: WorkspaceSummary = { ...summary, id: 'w2', name: 'api', hostName: 'EDENRED', hostId: 'h-edenred' };
+    component.workspaces.set([cagip, edenred]);
+
+    component.selectWorkspace(cagip);
+    fixture.detectChanges();
+    expect(current.ref()).toBe('h-cagip');
+
+    component.selectWorkspace(edenred);
+    fixture.detectChanges();
+    // Sans attendre le détail du projet : le résumé suffit.
+    expect(component.activeHostId()).toBe('h-edenred');
+    expect(current.ref()).toBe('h-edenred');
+  });
+
+  it('un terminal sans poste met « Hébergé » en client courant ; un poste encore inconnu efface l\'ancien', () => {
+    setup();
+    const current = TestBed.inject(CurrentClientService);
+    current.set('h-cagip');
+    const heberge: WorkspaceSummary = { ...summary, hostName: null, hostId: null };
+    const ancien: WorkspaceSummary = { ...summary, id: 'w3', name: 'ancien', hostName: 'FREE' };
+    component.workspaces.set([heberge, ancien]);
+
+    component.selectWorkspace(heberge);
+    fixture.detectChanges();
+    expect(current.ref()).toBe('heberge');
+
+    component.selectWorkspace(ancien);
+    fixture.detectChanges();
+    expect(current.ref()).toBeNull();
   });
 
   it('donne au terminal le poste du projet ouvert', () => {

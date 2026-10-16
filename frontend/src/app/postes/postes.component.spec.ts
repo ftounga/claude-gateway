@@ -13,6 +13,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { ForgeMemoryNoticeComponent } from '../shared/forge-memory-notice/forge-memory-notice.component';
 import { POSTES_REFRESH_MS, PostesComponent } from './postes.component';
 import { AtelierService } from '../core/services/atelier.service';
+import { CurrentClientService } from '../core/services/current-client.service';
 import { GovernanceService } from '../core/services/governance.service';
 import { PosteBillingService } from '../core/services/poste-billing.service';
 import { HostPresenceService } from '../core/services/host-presence.service';
@@ -854,6 +855,37 @@ describe('PostesComponent', () => {
       openHost('supprime');
 
       expect(component.selectedRef()).toBe('h1');
+    });
+
+    it('/forge rouvre le client courant — celui du terminal quitté — plutôt que le poste par défaut (F-199)', () => {
+      setup([poste, bercy]);
+      TestBed.inject(CurrentClientService).set('h2');
+      fixture.detectChanges();
+
+      expect(component.selectedRef()).toBe('h2');
+      expect(component.selectedHost().id).toBe('h2');
+    });
+
+    it('/forge : un client courant inconnu de la flotte est ignoré (F-199)', () => {
+      setup([poste, bercy]);
+      TestBed.inject(CurrentClientService).set('supprime');
+      fixture.detectChanges();
+
+      expect(component.selectedRef()).toBe('h1');
+    });
+
+    it('/forge/<id> d\'un poste connu en fait le client courant ; un inconnu ne le touche pas (F-199)', () => {
+      setup([poste, bercy]);
+      const current = TestBed.inject(CurrentClientService);
+
+      openHost('h2');
+      expect(current.ref()).toBe('h2');
+
+      openHost('supprime');
+      expect(current.ref()).toBe('h2');
+
+      openHost('heberge');
+      expect(current.ref()).toBe('heberge');
     });
 
     it('/forge ouvre d\'abord le poste où une autorisation attend', () => {

@@ -14,6 +14,7 @@ import { QuotaAlertBannerComponent } from '../quota-alert-banner/quota-alert-ban
 import { NotificationBellComponent } from '../notification-bell/notification-bell.component';
 import { spaceLinks } from '../../shared/space-links';
 import { PushActivationService } from '../../core/services/push-activation.service';
+import { CurrentClientService } from '../../core/services/current-client.service';
 
 /**
  * Coquille applicative (F-19) : barre de navigation persistante enveloppant les pages authentifiées.
@@ -51,6 +52,8 @@ export class ShellComponent {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly pushActivation = inject(PushActivationService);
+  /** Le client du dernier terminal ouvert (F-199 / SF-199-01) : porté quand l'adresse n'en dit aucun. */
+  private readonly currentClient = inject(CurrentClientService);
 
   /** Affiche l'entrée « Administration » uniquement pour un utilisateur ADMIN (F-20). */
   protected readonly isAdmin = this.auth.isAdmin;
@@ -124,7 +127,7 @@ export class ShellComponent {
    * **Les passerelles** (F-106 / SF-106-04) : les entrées Forge et Vigie portent le client ouvert,
    * pour qu'on change d'espace sans le perdre.
    */
-  protected readonly spaceLinks = computed(() => spaceLinks(this.currentUrl()));
+  protected readonly spaceLinks = computed(() => spaceLinks(this.currentUrl(), this.currentClient.ref()));
 
   /** Déconnexion : purge la session serveur puis redirige vers /login (best-effort en cas d'échec réseau). */
   logout(): void {

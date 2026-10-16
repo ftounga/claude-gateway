@@ -155,6 +155,7 @@ public class AtelierController {
                     fr.claudegateway.runner.host.RunnerHost host =
                             workspace.getHostId() == null ? null : hosts.get(workspace.getHostId());
                     return WorkspaceSummaryResponse.from(workspace,
+                            host == null ? null : host.getId(),
                             host == null ? null : host.getName(),
                             host == null ? null : host.getMissionStatus());
                 })

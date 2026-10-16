@@ -38,11 +38,11 @@ import fr.claudegateway.runner.host.HostMissionStatus;
 public record WorkspaceSummaryResponse(
         UUID id, String name, OffsetDateTime createdAt, WorkspaceSource source, String gitRepo,
         WorkspaceExecutionTarget executionTarget, String hostName,
-        HostMissionStatus hostMissionStatus, boolean hostTerminal, boolean teamsTerminal) {
+        HostMissionStatus hostMissionStatus, boolean hostTerminal, boolean teamsTerminal, UUID hostId) {
 
     /** Résumé d'un projet dont on ne cherche pas à nommer le poste. */
     public static WorkspaceSummaryResponse from(Workspace workspace) {
-        return from(workspace, null, null);
+        return from(workspace, null, null, null);
     }
 
     /**
@@ -57,12 +57,22 @@ public record WorkspaceSummaryResponse(
      */
     public static WorkspaceSummaryResponse from(Workspace workspace, String hostName,
             HostMissionStatus hostMissionStatus) {
+        return from(workspace, null, hostName, hostMissionStatus);
+    }
+
+    /**
+     * Résumé portant aussi l'identifiant du poste (F-199 / SF-199-01) : le « client courant » de
+     * l'écran se déduit du terminal ouvert dès la liste, sans attendre le détail. Il n'est donné que
+     * pour un poste <b>résolu chez l'appelant</b> — même règle que {@code hostName}.
+     */
+    public static WorkspaceSummaryResponse from(Workspace workspace, UUID hostId, String hostName,
+            HostMissionStatus hostMissionStatus) {
         String fullName = workspace.getGitOwner() == null || workspace.getGitRepo() == null
                 ? null
                 : workspace.getGitOwner() + "/" + workspace.getGitRepo();
         return new WorkspaceSummaryResponse(workspace.getId(), workspace.getName(),
                 workspace.getCreatedAt(), workspace.sourceOrDefault(), fullName,
                 workspace.executionTargetOrDefault(), hostName, hostMissionStatus,
-                workspace.isHostTerminal(), workspace.isTeamsTerminal());
+                workspace.isHostTerminal(), workspace.isTeamsTerminal(), hostId);
     }
 }
