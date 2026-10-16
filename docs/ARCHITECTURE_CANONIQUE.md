@@ -1258,6 +1258,21 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   Index `(status, started_at)` : la vérification avant déploiement (D5) lit les lignes `RUNNING`
   (requête dans `docs/DEPLOYMENT.md`) ; les orphelines sont closes après 3 h. La dépense du mois
   d'une routine est la somme de `cost_usd` depuis le 1er (fuseau de la routine).
+- **interlocuteurs** — **les interlocuteurs d'un poste** (F-180 / SF-180-03, migration `160`) : une
+  personne dont on attend quelque chose, normalisée. `id`, `user_id`, `host_id` (NOT NULL — un terminal
+  hébergé garde le texte libre), `display_name (120)`, `normalized_name (120)` (unique par `user_id` +
+  `host_id`), `variants` (graphies reconnues, une par ligne, 20 au plus), `role`, `team`, `radar_person_id`
+  (lien `radar_people` du même poste), `distinct_from` (« deux personnes »), `created_at`, `updated_at`.
+  `terminal_actions.interlocuteur_id` y renvoie (résolution à l'inscription, reprise idempotente au
+  démarrage). Toute lecture filtre `user_id` + `host_id` ; purge à la suppression du compte.
+- **acces_obtenus** — **le registre des accès** (F-180 / SF-180-04, migration `161`) : ce qui a été obtenu,
+  pour ne plus le redemander. `id`, `user_id`, `host_id` (nul pour un terminal hébergé : la portée est alors
+  `workspace_id`), `workspace_id`, `system (120)`, `normalized_system`, `account (120)`, `obtained_at`,
+  `granted_by (120)`, `interlocuteur_id`, `expires_at`, `subject_id`, `action_id`, `note (300)`, `created_at`,
+  `updated_at`. **Aucun secret** : `AccesSecretGuard` refuse tout mot de passe ou jeton avant écriture. Joint
+  **compact** au message du tour (jamais à la consigne système). Purge : compte, terminal hébergé supprimé.
+- **terminal_actions** (évolutions F-180) : `merged_into_id`, `duplicate_dismissed_at` (158), `categorie`,
+  `qui` (159), `interlocuteur_id` (160), `registry_dismissed_at` (161), `due_at` (162).
 
 - **atelier_turn_measures** — la **mesure par tour** d'agent (F-188 / SF-188-03) : `user_id`, `workspace_id`, `host_id`, `model`, `occurred_at`, `duration_ms`, `iterations`, `stop_cause`, contexte maximal et cumulé par passe, réécriture du cache (1re passe, puis suivantes), totaux de tokens, recherches web, refus et attentes « poste occupé ». **Des nombres seulement, aucun contenu.** Rétention de 180 jours (purge quotidienne) ; purge à la suppression du compte. Requêtes de lecture : `docs/ops/mesure-par-tour.md`.
 
