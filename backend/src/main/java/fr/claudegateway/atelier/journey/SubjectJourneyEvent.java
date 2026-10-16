@@ -75,6 +75,12 @@ public class SubjectJourneyEvent {
     /** [Clore le sujet] (SF-176-05). */
     public static final String CLOSED = "CLOSED";
 
+    /** Un chantier de plus est ouvert à côté des autres (F-206). */
+    public static final String CHANTIER_OPENED = "CHANTIER_OPENED";
+
+    /** Le focus passe sur un autre chantier ouvert (F-206). */
+    public static final String CHANTIER_FOCUSED = "CHANTIER_FOCUSED";
+
     @Id
     @GeneratedValue
     @UuidGenerator

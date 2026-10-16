@@ -46,7 +46,7 @@ public class SubjectJourneyService {
     @Transactional(readOnly = true)
     public SubjectJourney get(UUID userId, UUID workspaceId) {
         workspaceService.requireOwned(userId, workspaceId); // 404 — TOUJOURS en premier
-        return find(userId, workspaceId).orElseGet(() -> blank(userId, workspaceId));
+        return withOpenChantiers(find(userId, workspaceId).orElseGet(() -> blank(userId, workspaceId)));
     }
 
     /**
@@ -55,7 +55,7 @@ public class SubjectJourneyService {
      */
     @Transactional(readOnly = true)
     public SubjectJourney forTurn(UUID userId, UUID workspaceId) {
-        return find(userId, workspaceId).orElseGet(() -> blank(userId, workspaceId));
+        return withOpenChantiers(find(userId, workspaceId).orElseGet(() -> blank(userId, workspaceId)));
     }
 
     /**
@@ -103,9 +103,19 @@ public class SubjectJourneyService {
         SubjectJourney journey = find(userId, workspaceId).orElseGet(() -> blank(userId, workspaceId));
         // SF-176-11 : la raison de la proposition titre le chantier qui s'ouvre.
         String title = journey.getGuidedProposalReason();
-        SubjectJourney saved = applyMode(journey, JourneyMode.GUIDE, OffsetDateTime.now(clock), title);
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        SubjectJourney saved;
+        if (journey.isGuided() && journey.hasOpenFocus()) {
+            // F-206 : déjà guidé — la proposition ouvre un chantier DE PLUS, sans clore les autres.
+            journey.setGuidedProposedAt(null);
+            journey.setGuidedProposalReason(null);
+            openChantier(journey, title, now);
+            saved = save(journey, now);
+        } else {
+            saved = applyMode(journey, JourneyMode.GUIDE, now, title);
+        }
         record(saved, SubjectJourneyEvent.GUIDED_ACCEPTED, null);
-        return saved;
+        return withOpenChantiers(saved);
     }
 
     /**
@@ -119,7 +129,10 @@ public class SubjectJourneyService {
         OffsetDateTime now = OffsetDateTime.now(clock);
         journey.setGuidedProposedAt(null);
         journey.setGuidedProposalReason(null);
-        journey.setGuidedDeclinedAt(now);
+        if (!journey.isGuided()) {
+            // F-206 : écarter un chantier DE PLUS (sujet déjà guidé) ne ferme pas la porte aux suivants.
+            journey.setGuidedDeclinedAt(now);
+        }
         SubjectJourney saved = save(journey, now);
         record(saved, SubjectJourneyEvent.GUIDED_DECLINED, null);
         return saved;
@@ -212,7 +225,14 @@ public class SubjectJourneyService {
     @Transactional
     public DiagnosisOutcome submitDiagnosis(UUID userId, UUID workspaceId, String diagnosis, String evidence,
             String confidence) {
-        SubjectJourney journey = find(userId, workspaceId).orElseGet(() -> blank(userId, workspaceId));
+        return submitDiagnosis(userId, workspaceId, null, diagnosis, evidence, confidence);
+    }
+
+    /** Même geste, sur le chantier ouvert {@code chantier} ({@code null} = le focus) — F-206. */
+    @Transactional
+    public DiagnosisOutcome submitDiagnosis(UUID userId, UUID workspaceId, Integer chantier, String diagnosis,
+            String evidence, String confidence) {
+        SubjectJourney journey = target(userId, workspaceId, chantier);
         if (!journey.isGuided()) {
             return DiagnosisOutcome.NOT_GUIDED;
         }
@@ -238,8 +258,14 @@ public class SubjectJourneyService {
     /** [Planifier] : le diagnostic est accepté, le sujet passe en Plan (SF-176-05). */
     @Transactional
     public SubjectJourney confirmDiagnosis(UUID userId, UUID workspaceId) {
+        return confirmDiagnosis(userId, workspaceId, null);
+    }
+
+    /** [Planifier] sur le chantier ouvert {@code chantier} ({@code null} = le focus) — F-206. Rend le focus. */
+    @Transactional
+    public SubjectJourney confirmDiagnosis(UUID userId, UUID workspaceId, Integer chantier) {
         workspaceService.requireOwned(userId, workspaceId); // 404 — TOUJOURS en premier
-        SubjectJourney journey = requireGuided(userId, workspaceId);
+        SubjectJourney journey = requireGuided(userId, workspaceId, chantier);
         if (journey.getPhase() != JourneyPhase.INVESTIGATION || journey.getDiagnosisProposedAt() == null) {
             throw new InvalidJourneyException("Aucun diagnostic n'attend de confirmation.");
         }
@@ -248,19 +274,25 @@ public class SubjectJourneyService {
         moveTo(journey, JourneyPhase.PLAN, now);
         SubjectJourney saved = save(journey, now);
         record(saved, SubjectJourneyEvent.DIAGNOSIS_CONFIRMED, saved.getDiagnosisConfidence());
-        return saved;
+        return focusAfter(saved, userId, workspaceId);
     }
 
     /** [Continuer l'investigation] : le diagnostic reste lisible, le sujet reste en Investigation. */
     @Transactional
     public SubjectJourney dismissDiagnosis(UUID userId, UUID workspaceId) {
+        return dismissDiagnosis(userId, workspaceId, null);
+    }
+
+    /** [Continuer l'investigation] sur le chantier {@code chantier} ({@code null} = le focus) — F-206. */
+    @Transactional
+    public SubjectJourney dismissDiagnosis(UUID userId, UUID workspaceId, Integer chantier) {
         workspaceService.requireOwned(userId, workspaceId); // 404 — TOUJOURS en premier
-        SubjectJourney journey = requireGuided(userId, workspaceId);
+        SubjectJourney journey = requireGuided(userId, workspaceId, chantier);
         OffsetDateTime now = OffsetDateTime.now(clock);
         journey.setDiagnosisProposedAt(null);
         SubjectJourney saved = save(journey, now);
         record(saved, SubjectJourneyEvent.DIAGNOSIS_DISMISSED, null);
-        return saved;
+        return focusAfter(saved, userId, workspaceId);
     }
 
     /** Ce que l'agent apprend en faisant avancer une étape. */
@@ -285,7 +317,14 @@ public class SubjectJourneyService {
     @Transactional
     public StepChange updateStep(UUID userId, UUID workspaceId, int stepNumber, String rawStatus,
             String evidence) {
-        SubjectJourney journey = find(userId, workspaceId).orElseGet(() -> blank(userId, workspaceId));
+        return updateStep(userId, workspaceId, null, stepNumber, rawStatus, evidence);
+    }
+
+    /** Même geste, sur le chantier ouvert {@code chantier} ({@code null} = le focus) — F-206. */
+    @Transactional
+    public StepChange updateStep(UUID userId, UUID workspaceId, Integer chantier, int stepNumber, String rawStatus,
+            String evidence) {
+        SubjectJourney journey = target(userId, workspaceId, chantier);
         JourneyPlan plan = JourneyPlan.fromJson(journey.getPlanJson());
         if (!journey.isGuided()) {
             return new StepChange(StepOutcome.NOT_GUIDED, plan);
@@ -340,11 +379,17 @@ public class SubjectJourneyService {
      */
     @Transactional
     public boolean reopenInvestigation(UUID userId, UUID workspaceId, String reason) {
+        return reopenInvestigation(userId, workspaceId, null, reason);
+    }
+
+    /** Même geste, sur le chantier ouvert {@code chantier} ({@code null} = le focus) — F-206. */
+    @Transactional
+    public boolean reopenInvestigation(UUID userId, UUID workspaceId, Integer chantier, String reason) {
         String cleanReason = JourneyPlan.bound(reason, MAX_REASON);
         if (cleanReason == null) {
             throw new InvalidJourneyException("reason est requise : ce qui contredit le diagnostic.");
         }
-        SubjectJourney journey = find(userId, workspaceId).orElseGet(() -> blank(userId, workspaceId));
+        SubjectJourney journey = target(userId, workspaceId, chantier);
         if (!journey.isGuided() || journey.getPhase() == null || journey.getPhase() == JourneyPhase.CLOS) {
             return false;
         }
@@ -363,8 +408,19 @@ public class SubjectJourneyService {
      */
     @Transactional
     public SubjectJourney close(UUID userId, UUID workspaceId) {
+        return close(userId, workspaceId, null);
+    }
+
+    /**
+     * [Clore] le chantier ouvert {@code chantier} ({@code null} = le focus) — F-206. Clore un chantier
+     * qui n'est pas le focus ne change rien au focus. Clore le focus alors que d'autres chantiers restent
+     * ouverts met le plus récent d'entre eux au focus, et le sujet <b>reste guidé</b> ; clore le dernier
+     * ramène le terminal en Libre (SF-176-07). Rend le focus.
+     */
+    @Transactional
+    public SubjectJourney close(UUID userId, UUID workspaceId, Integer chantier) {
         workspaceService.requireOwned(userId, workspaceId); // 404 — TOUJOURS en premier
-        SubjectJourney journey = requireGuided(userId, workspaceId);
+        SubjectJourney journey = requireGuided(userId, workspaceId, chantier);
         if (journey.getPhase() == JourneyPhase.CLOS) {
             throw new InvalidJourneyException("Ce sujet n'est pas en mode guidé.");
         }
@@ -374,6 +430,15 @@ public class SubjectJourneyService {
         moveTo(journey, JourneyPhase.CLOS, now);
         record(journey, SubjectJourneyEvent.CLOSED, null); // journalisé en Guidé (mesure SF-176-06)
         archive(journey, now); // SF-176-11 : le chantier clos reste consultable
+        if (journey.getParkedRow() != null) {
+            return focusAfter(journey, userId, workspaceId); // F-206 : le focus n'a pas bougé
+        }
+        java.util.List<SubjectJourneyChantier> stillOpen = openRows(journey);
+        if (!stillOpen.isEmpty()) {
+            // F-206 : d'autres chantiers restent ouverts — le plus récent prend le focus, on reste guidé.
+            loadFocus(journey, stillOpen.get(stillOpen.size() - 1));
+            return withOpenChantiers(save(journey, now));
+        }
         journey.setMode(JourneyMode.LIBRE);
         // SF-176-11 : un chantier clos rouvre la question — l'agent pourra proposer le suivant.
         journey.setGuidedDeclinedAt(null);
@@ -383,17 +448,22 @@ public class SubjectJourneyService {
     /** [Pas encore] : la proposition de clôture est écartée (SF-176-05). */
     @Transactional
     public SubjectJourney dismissClose(UUID userId, UUID workspaceId) {
-        workspaceService.requireOwned(userId, workspaceId); // 404 — TOUJOURS en premier
-        SubjectJourney journey = requireGuided(userId, workspaceId);
-        OffsetDateTime now = OffsetDateTime.now(clock);
-        journey.setCloseProposedAt(null);
-        return save(journey, now);
+        return dismissClose(userId, workspaceId, null);
     }
 
-    private SubjectJourney requireGuided(UUID userId, UUID workspaceId) {
-        SubjectJourney journey = find(userId, workspaceId)
-                .orElseThrow(() -> new InvalidJourneyException("Ce sujet n'est pas en mode guidé."));
-        if (!journey.isGuided() || journey.getPhase() == null) {
+    /** [Pas encore] sur le chantier {@code chantier} ({@code null} = le focus) — F-206. Rend le focus. */
+    @Transactional
+    public SubjectJourney dismissClose(UUID userId, UUID workspaceId, Integer chantier) {
+        workspaceService.requireOwned(userId, workspaceId); // 404 — TOUJOURS en premier
+        SubjectJourney journey = requireGuided(userId, workspaceId, chantier);
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        journey.setCloseProposedAt(null);
+        return focusAfter(save(journey, now), userId, workspaceId);
+    }
+
+    private SubjectJourney requireGuided(UUID userId, UUID workspaceId, Integer chantier) {
+        SubjectJourney journey = target(userId, workspaceId, chantier);
+        if (journey.getCreatedAt() == null || !journey.isGuided() || journey.getPhase() == null) {
             throw new InvalidJourneyException("Ce sujet n'est pas en mode guidé.");
         }
         return journey;
@@ -442,7 +512,13 @@ public class SubjectJourneyService {
      */
     @Transactional
     public PlanChange setPlan(UUID userId, UUID workspaceId, JourneyPlan plan) {
-        SubjectJourney journey = find(userId, workspaceId).orElseGet(() -> blank(userId, workspaceId));
+        return setPlan(userId, workspaceId, null, plan);
+    }
+
+    /** Même geste, sur le chantier ouvert {@code chantier} ({@code null} = le focus) — F-206. */
+    @Transactional
+    public PlanChange setPlan(UUID userId, UUID workspaceId, Integer chantier, JourneyPlan plan) {
+        SubjectJourney journey = target(userId, workspaceId, chantier);
         if (!journey.isGuided()) {
             return new PlanChange(PlanOutcome.NOT_GUIDED, journey.getPlanVersion());
         }
@@ -479,9 +555,17 @@ public class SubjectJourneyService {
      */
     @Transactional
     public SubjectJourney validatePlan(UUID userId, UUID workspaceId, Integer version) {
+        return validatePlan(userId, workspaceId, null, version);
+    }
+
+    /** [Valider le plan] du chantier ouvert {@code chantier} ({@code null} = le focus) — F-206. Rend le focus. */
+    @Transactional
+    public SubjectJourney validatePlan(UUID userId, UUID workspaceId, Integer chantier, Integer version) {
         workspaceService.requireOwned(userId, workspaceId); // 404 — TOUJOURS en premier
-        SubjectJourney journey = find(userId, workspaceId)
-                .orElseThrow(() -> new InvalidJourneyException("Ce sujet n'a pas de plan à valider."));
+        SubjectJourney journey = target(userId, workspaceId, chantier);
+        if (journey.getCreatedAt() == null) {
+            throw new InvalidJourneyException("Ce sujet n'a pas de plan à valider.");
+        }
         if (!journey.isGuided() || journey.getPhase() != JourneyPhase.PLAN) {
             throw new InvalidJourneyException("Il n'y a pas de plan en attente de validation.");
         }
@@ -501,7 +585,7 @@ public class SubjectJourneyService {
         SubjectJourney saved = save(journey, now);
         record(saved, SubjectJourneyEvent.PLAN_VALIDATED,
                 "v" + saved.getPlanVersion() + (amendment ? " · amendement" : ""));
-        return saved;
+        return focusAfter(saved, userId, workspaceId);
     }
 
     /** Les attentes F-175 dont dépendent les étapes ; absent = la clé seule est montrée. */
@@ -594,8 +678,12 @@ public class SubjectJourneyService {
     void openChantier(SubjectJourney journey, String title, OffsetDateTime now) {
         if (journey.getPhase() == JourneyPhase.CLOS) {
             archive(journey, journey.getPhaseChangedAt() == null ? now : journey.getPhaseChangedAt());
+        } else if (journey.hasOpenFocus()) {
+            mirror(journey, now); // F-206 : le chantier courant reste OUVERT, intact, à côté du nouveau
         }
-        int number = journey.getChantierNumber() + 1;
+        int highest = chantiers == null || journey.getCreatedAt() == null ? 0
+                : chantiers.maxNumber(journey.getUserId(), journey.getWorkspaceId());
+        int number = Math.max(journey.getChantierNumber(), highest) + 1;
         String cleanTitle = JourneyPlan.bound(title, MAX_TITLE);
         journey.setChantierNumber(number);
         journey.setChantierTitle(cleanTitle == null ? "Chantier " + number : cleanTitle.replace('\n', ' '));
@@ -625,22 +713,28 @@ public class SubjectJourneyService {
         if (journey.getChantierNumber() == 0) {
             journey.setChantierNumber(1); // parcours antérieur aux chantiers : c'était le premier
         }
-        if (chantiers.existsByUserIdAndWorkspaceIdAndNumber(journey.getUserId(), journey.getWorkspaceId(), number)) {
-            return;
+        SubjectJourneyChantier row = journey.getParkedRow() != null ? journey.getParkedRow()
+                : chantiers.findFirstByUserIdAndWorkspaceIdAndNumber(journey.getUserId(), journey.getWorkspaceId(),
+                        number).orElse(null);
+        if (row != null && !row.isOpen()) {
+            return; // déjà archivé
+        }
+        if (row == null) {
+            row = SubjectJourneyChantier.builder()
+                    .userId(journey.getUserId())
+                    .workspaceId(journey.getWorkspaceId())
+                    .number(number)
+                    .build();
         }
         boolean validated = journey.getValidatedPlanJson() != null;
-        chantiers.save(SubjectJourneyChantier.builder()
-                .userId(journey.getUserId())
-                .workspaceId(journey.getWorkspaceId())
-                .number(number)
-                .title(journey.getChantierTitle() == null ? "Chantier " + number : journey.getChantierTitle())
-                .openedAt(journey.getChantierOpenedAt() == null ? journey.getCreatedAt() : journey.getChantierOpenedAt())
-                .closedAt(closedAt)
-                .diagnosis(journey.getDiagnosis())
-                .diagnosisConfidence(journey.getDiagnosisConfidence())
-                .planJson(validated ? journey.getValidatedPlanJson() : journey.getPlanJson())
-                .planVersion(validated ? journey.getValidatedVersion() : journey.getPlanVersion())
-                .build());
+        writeBack(journey, row, closedAt);
+        row.setStatus(SubjectJourneyChantier.CLOSED);
+        row.setTitle(journey.getChantierTitle() == null ? "Chantier " + number : journey.getChantierTitle());
+        row.setOpenedAt(journey.getChantierOpenedAt() == null ? journey.getCreatedAt() : journey.getChantierOpenedAt());
+        row.setClosedAt(closedAt);
+        row.setPlanJson(validated ? journey.getValidatedPlanJson() : journey.getPlanJson());
+        row.setPlanVersion(validated ? journey.getValidatedVersion() : journey.getPlanVersion());
+        chantiers.save(row);
     }
 
     /** Les chantiers clos du sujet, le plus récent d'abord. 404 sur un terminal d'autrui. */
@@ -648,14 +742,212 @@ public class SubjectJourneyService {
     public java.util.List<SubjectJourneyChantier> closedChantiers(UUID userId, UUID workspaceId) {
         workspaceService.requireOwned(userId, workspaceId); // 404 — TOUJOURS en premier
         return chantiers == null ? java.util.List.of()
-                : chantiers.findByUserIdAndWorkspaceIdOrderByNumberDesc(userId, workspaceId);
+                : chantiers.findByUserIdAndWorkspaceIdAndStatusOrderByNumberDesc(userId, workspaceId,
+                        SubjectJourneyChantier.CLOSED);
     }
 
     /** Combien de chantiers clos (l'en-tête dit « Chantiers : N — voir »). Lecture déjà possédée. */
     @Transactional(readOnly = true)
     public long closedChantierCount(UUID userId, UUID workspaceId) {
-        return chantiers == null ? 0 : chantiers.countByUserIdAndWorkspaceId(userId, workspaceId);
+        return chantiers == null ? 0
+                : chantiers.countByUserIdAndWorkspaceIdAndStatus(userId, workspaceId, SubjectJourneyChantier.CLOSED);
     }
+
+    // ------------------------------------------------------------------ F-206 : plusieurs chantiers ouverts
+
+    /**
+     * <b>Ouvre un chantier de plus</b>, à côté des autres (F-206) — le geste de l'utilisateur. Le sujet
+     * doit déjà être guidé avec un chantier ouvert (le premier s'ouvre depuis le menu). Le nouveau
+     * chantier prend le focus ; les autres restent ouverts, intacts.
+     *
+     * @throws InvalidJourneyException sujet non guidé
+     */
+    @Transactional
+    public SubjectJourney openAlongside(UUID userId, UUID workspaceId, String title) {
+        workspaceService.requireOwned(userId, workspaceId); // 404 — TOUJOURS en premier
+        SubjectJourney journey = find(userId, workspaceId).orElse(null);
+        if (journey == null || !journey.isGuided() || !journey.hasOpenFocus()) {
+            throw new InvalidJourneyException("Passez d'abord le sujet en mode guidé : le premier chantier "
+                    + "s'ouvre depuis le menu.");
+        }
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        openChantier(journey, title, now);
+        SubjectJourney saved = save(journey, now);
+        record(saved, SubjectJourneyEvent.CHANTIER_OPENED, "chantier " + saved.getChantierNumber());
+        return withOpenChantiers(saved);
+    }
+
+    /**
+     * <b>Bascule</b> le focus sur le chantier ouvert {@code chantier} (F-206) : son état est rechargé tel
+     * quel ; le chantier quitté reste ouvert, intact. Sans effet sur le focus courant.
+     *
+     * @throws InvalidJourneyException le chantier n'est pas ouvert
+     */
+    @Transactional
+    public SubjectJourney focus(UUID userId, UUID workspaceId, int chantier) {
+        workspaceService.requireOwned(userId, workspaceId); // 404 — TOUJOURS en premier
+        SubjectJourney journey = find(userId, workspaceId).orElse(null);
+        if (journey != null && journey.hasOpenFocus() && journey.getChantierNumber() == chantier) {
+            return withOpenChantiers(journey);
+        }
+        SubjectJourneyChantier row = journey == null ? null : openRow(journey, chantier);
+        if (row == null) {
+            throw notOpen(chantier);
+        }
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        if (journey.hasOpenFocus()) {
+            mirror(journey, now); // le chantier quitté reste ouvert, à jour
+        }
+        loadFocus(journey, row);
+        SubjectJourney saved = save(journey, now);
+        record(saved, SubjectJourneyEvent.CHANTIER_FOCUSED, "chantier " + chantier);
+        return withOpenChantiers(saved);
+    }
+
+    /**
+     * Le parcours, avec la liste de ses <b>autres</b> chantiers ouverts (F-206) — ce que la porte, la note
+     * du tour, le Cap et l'écran lisent. Lecture déjà possédée.
+     */
+    public SubjectJourney withOpenChantiers(SubjectJourney journey) {
+        if (journey == null || journey.getParkedRow() != null) {
+            return journey;
+        }
+        journey.setOtherOpenChantiers(journey.getCreatedAt() == null ? java.util.List.of()
+                : java.util.List.copyOf(openRows(journey)));
+        return journey;
+    }
+
+    /** Les chantiers ouverts autres que le focus, par numéro croissant. */
+    private java.util.List<SubjectJourneyChantier> openRows(SubjectJourney journey) {
+        if (chantiers == null) {
+            return java.util.List.of();
+        }
+        java.util.List<SubjectJourneyChantier> rows = new java.util.ArrayList<>();
+        for (SubjectJourneyChantier row : chantiers.findByUserIdAndWorkspaceIdAndStatusOrderByNumberAsc(
+                journey.getUserId(), journey.getWorkspaceId(), SubjectJourneyChantier.OPEN)) {
+            if (row.getNumber() != journey.getChantierNumber()) {
+                rows.add(row);
+            }
+        }
+        return rows;
+    }
+
+    private SubjectJourneyChantier openRow(SubjectJourney journey, int number) {
+        if (chantiers == null) {
+            return null;
+        }
+        return chantiers.findFirstByUserIdAndWorkspaceIdAndNumber(journey.getUserId(), journey.getWorkspaceId(), number)
+                .filter(SubjectJourneyChantier::isOpen)
+                .orElse(null);
+    }
+
+    private static InvalidJourneyException notOpen(int number) {
+        return new InvalidJourneyException("Le chantier " + number + " n'est pas ouvert.");
+    }
+
+    /**
+     * Le chantier visé par un geste (F-206) : le focus ({@code chantier} absent ou égal au focus), ou une
+     * <b>vue de travail</b> d'un autre chantier ouvert — même mode que le sujet, enregistrée dans sa propre
+     * ligne, jamais comme parcours.
+     *
+     * @throws InvalidJourneyException le chantier n'est pas ouvert
+     */
+    SubjectJourney target(UUID userId, UUID workspaceId, Integer chantier) {
+        SubjectJourney journey = find(userId, workspaceId).orElseGet(() -> blank(userId, workspaceId));
+        if (chantier == null || chantier == journey.getChantierNumber()) {
+            return journey;
+        }
+        SubjectJourneyChantier row = journey.getCreatedAt() == null ? null : openRow(journey, chantier);
+        if (row == null) {
+            throw notOpen(chantier);
+        }
+        SubjectJourney view = SubjectJourney.builder()
+                .workspaceId(journey.getWorkspaceId())
+                .userId(journey.getUserId())
+                .mode(journey.getMode())
+                .createdAt(journey.getCreatedAt())
+                .updatedAt(journey.getUpdatedAt())
+                .build();
+        copyInto(row, view);
+        view.setParkedRow(row);
+        return view;
+    }
+
+    /** Le focus à rendre après un geste : lui-même, ou relu si le geste visait un autre chantier. */
+    private SubjectJourney focusAfter(SubjectJourney target, UUID userId, UUID workspaceId) {
+        SubjectJourney focus = target.getParkedRow() == null ? target
+                : find(userId, workspaceId).orElseGet(() -> blank(userId, workspaceId));
+        return withOpenChantiers(focus);
+    }
+
+    /** Met un chantier ouvert au focus : le parcours en devient la copie de travail. */
+    private static void loadFocus(SubjectJourney journey, SubjectJourneyChantier row) {
+        copyInto(row, journey);
+    }
+
+    private static void copyInto(SubjectJourneyChantier row, SubjectJourney journey) {
+        journey.setChantierNumber(row.getNumber());
+        journey.setChantierTitle(row.getTitle());
+        journey.setChantierOpenedAt(row.getOpenedAt());
+        journey.setPhase(row.getPhase());
+        journey.setPhaseChangedAt(row.getPhaseChangedAt());
+        journey.setPlanJson(row.getPlanJson());
+        journey.setPlanVersion(row.getPlanVersion() == null ? 0 : row.getPlanVersion());
+        journey.setValidatedPlanJson(row.getValidatedPlanJson());
+        journey.setValidatedVersion(row.getValidatedVersion());
+        journey.setPlanValidatedAt(row.getPlanValidatedAt());
+        journey.setDiagnosis(row.getDiagnosis());
+        journey.setDiagnosisEvidence(row.getDiagnosisEvidence());
+        journey.setDiagnosisConfidence(row.getDiagnosisConfidence());
+        journey.setDiagnosisProposedAt(row.getDiagnosisProposedAt());
+        journey.setCloseProposedAt(row.getCloseProposedAt());
+    }
+
+    /** Recopie l'état d'un chantier (focus ou vue) dans sa ligne ; le statut n'y est jamais touché. */
+    private static void writeBack(SubjectJourney journey, SubjectJourneyChantier row, OffsetDateTime now) {
+        row.setTitle(journey.getChantierTitle());
+        row.setOpenedAt(journey.getChantierOpenedAt());
+        row.setPhase(journey.getPhase());
+        row.setPhaseChangedAt(journey.getPhaseChangedAt());
+        row.setPlanJson(journey.getPlanJson());
+        row.setPlanVersion(journey.getPlanVersion());
+        row.setValidatedPlanJson(journey.getValidatedPlanJson());
+        row.setValidatedVersion(journey.getValidatedVersion());
+        row.setPlanValidatedAt(journey.getPlanValidatedAt());
+        row.setDiagnosis(journey.getDiagnosis());
+        row.setDiagnosisEvidence(journey.getDiagnosisEvidence());
+        row.setDiagnosisConfidence(journey.getDiagnosisConfidence());
+        row.setDiagnosisProposedAt(journey.getDiagnosisProposedAt());
+        row.setCloseProposedAt(journey.getCloseProposedAt());
+        row.setUpdatedAt(now);
+    }
+
+    /**
+     * Recopie le chantier en focus, ouvert, dans sa ligne {@code OPEN} (F-206) — créée à la première
+     * écriture (reprise des parcours d'avant F-206). Une archive close n'est jamais rouverte ici.
+     */
+    void mirror(SubjectJourney journey, OffsetDateTime now) {
+        if (chantiers == null || journey.getParkedRow() != null || journey.getChantierNumber() <= 0
+                || !journey.hasOpenFocus()) {
+            return;
+        }
+        SubjectJourneyChantier row = chantiers.findFirstByUserIdAndWorkspaceIdAndNumber(journey.getUserId(),
+                journey.getWorkspaceId(), journey.getChantierNumber()).orElse(null);
+        if (row != null && !row.isOpen()) {
+            return;
+        }
+        if (row == null) {
+            row = SubjectJourneyChantier.builder()
+                    .userId(journey.getUserId())
+                    .workspaceId(journey.getWorkspaceId())
+                    .number(journey.getChantierNumber())
+                    .status(SubjectJourneyChantier.OPEN)
+                    .build();
+        }
+        writeBack(journey, row, now);
+        chantiers.save(row);
+    }
+
 
     // ------------------------------------------------------------------ interne
 
@@ -679,11 +971,20 @@ public class SubjectJourneyService {
     }
 
     SubjectJourney save(SubjectJourney journey, OffsetDateTime now) {
+        if (journey.getParkedRow() != null) {
+            // F-206 : la vue d'un chantier qui n'est pas le focus s'enregistre dans SA ligne, jamais
+            // comme parcours (même clé que le focus : ce serait l'écraser).
+            writeBack(journey, journey.getParkedRow(), now);
+            chantiers.save(journey.getParkedRow());
+            return journey;
+        }
         if (journey.getCreatedAt() == null) {
             journey.setCreatedAt(now);
         }
         journey.setUpdatedAt(now);
-        return repository.save(journey);
+        SubjectJourney saved = repository.save(journey);
+        mirror(saved, now);
+        return saved;
     }
 
     /**

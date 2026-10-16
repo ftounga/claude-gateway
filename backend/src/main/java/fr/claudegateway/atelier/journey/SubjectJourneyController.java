@@ -106,9 +106,69 @@ public class SubjectJourneyController {
         return respond(userId, workspaceId, service.dismissClose(userId, workspaceId));
     }
 
+    // ------------------------------------------------------------------ F-206 : chantiers ouverts
+
+    /** Ouvre un chantier de plus, à côté des autres ; il prend le focus (F-206). */
+    @PostMapping("/chantiers")
+    public SubjectJourneyResponse openChantier(@PathVariable UUID workspaceId,
+                                               @RequestBody(required = false) OpenRequest request) {
+        UUID userId = currentUser.requireId();
+        return respond(userId, workspaceId,
+                service.openAlongside(userId, workspaceId, request == null ? null : request.title()));
+    }
+
+    /** [Basculer sur le chantier N] (F-206). */
+    @PostMapping("/chantiers/{number}/focus")
+    public SubjectJourneyResponse focus(@PathVariable UUID workspaceId, @PathVariable int number) {
+        UUID userId = currentUser.requireId();
+        return respond(userId, workspaceId, service.focus(userId, workspaceId, number));
+    }
+
+    /** [Valider le plan] du chantier N, à la version vue (F-206). */
+    @PostMapping("/chantiers/{number}/plan/validate")
+    public SubjectJourneyResponse validateChantierPlan(@PathVariable UUID workspaceId, @PathVariable int number,
+                                                       @RequestBody(required = false) ValidateRequest request) {
+        UUID userId = currentUser.requireId();
+        return respond(userId, workspaceId, service.validatePlan(userId, workspaceId, number,
+                request == null ? null : request.version()));
+    }
+
+    /** [Planifier] sur le chantier N (F-206). */
+    @PostMapping("/chantiers/{number}/diagnosis/confirm")
+    public SubjectJourneyResponse confirmChantierDiagnosis(@PathVariable UUID workspaceId, @PathVariable int number) {
+        UUID userId = currentUser.requireId();
+        return respond(userId, workspaceId, service.confirmDiagnosis(userId, workspaceId, number));
+    }
+
+    /** [Continuer l'investigation] sur le chantier N (F-206). */
+    @PostMapping("/chantiers/{number}/diagnosis/dismiss")
+    public SubjectJourneyResponse dismissChantierDiagnosis(@PathVariable UUID workspaceId, @PathVariable int number) {
+        UUID userId = currentUser.requireId();
+        return respond(userId, workspaceId, service.dismissDiagnosis(userId, workspaceId, number));
+    }
+
+    /** [Clore] le chantier N (F-206). */
+    @PostMapping("/chantiers/{number}/close")
+    public SubjectJourneyResponse closeChantier(@PathVariable UUID workspaceId, @PathVariable int number) {
+        UUID userId = currentUser.requireId();
+        return respond(userId, workspaceId, service.close(userId, workspaceId, number));
+    }
+
+    /** [Pas encore] sur le chantier N (F-206). */
+    @PostMapping("/chantiers/{number}/close/dismiss")
+    public SubjectJourneyResponse dismissChantierClose(@PathVariable UUID workspaceId, @PathVariable int number) {
+        UUID userId = currentUser.requireId();
+        return respond(userId, workspaceId, service.dismissClose(userId, workspaceId, number));
+    }
+
     private SubjectJourneyResponse respond(UUID userId, UUID workspaceId, SubjectJourney journey) {
-        return SubjectJourneyResponse.from(journey, service.waitsOn(userId, workspaceId, journey),
+        SubjectJourney decorated = service.withOpenChantiers(journey);
+        return SubjectJourneyResponse.from(decorated, service.waitsOn(userId, workspaceId, decorated),
                 service.closedChantierCount(userId, workspaceId));
+    }
+
+    /** Le titre du chantier qui s'ouvre (facultatif, F-206). */
+    public record OpenRequest(String title) {
     }
 
     /**
