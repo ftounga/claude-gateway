@@ -155,4 +155,79 @@ class ChantierAnchorTest {
 
         assertThat(steps).extracting(NextStep::proposedStep).containsExactly(4, 7, null, null);
     }
+
+    // ------------------------------------------------------------------ F-206 / SF-206-03
+
+    private static NextStep step(String title, Integer proposedStep, Integer proposedChantier) {
+        return NextStep.proposed(title, "fait du tour", Label.CONTINUER, "Fais " + title + ".", proposedStep,
+                proposedChantier);
+    }
+
+    /** Focus = chantier 2 (plan de 10) ; chantier 1 ouvert, plan de 2 étapes (1 faite). */
+    private static SubjectJourney twoChantiers(String focusPlan) {
+        SubjectJourney j = journey(JourneyMode.GUIDE, JourneyPhase.EXECUTION, focusPlan);
+        j.setOtherOpenChantiers(List.of(fr.claudegateway.atelier.journey.SubjectJourneyChantier.builder()
+                .number(1).status("OPEN").phase(JourneyPhase.EXECUTION)
+                .planJson("[{\"title\":\"Remplacer le certificat\",\"risk\":\"EXTERNE\",\"status\":\"FAIT\"},"
+                        + "{\"title\":\"Vérifier l'ingress\",\"risk\":\"LECTURE\"}]")
+                .build()));
+        return j;
+    }
+
+    @Test
+    void aStepOfAnotherOpenChantierIsAnchoredToThatChantier() {
+        ChantierAnchor.Anchored result = ChantierAnchor.apply(List.of(
+                        step("KMS", null, null), step("Ingress", 2, 1), step("Focus", 4, null),
+                        step("Cert", null, 1), step("Inconnu", 1, 7)),
+                twoChantiers(plan()));
+
+        assertThat(result.steps()).extracting(NextStep::title).containsExactly("Focus", "Ingress", "Cert", "KMS");
+        NextStep focus = result.steps().get(0);
+        assertThat(focus.chantier()).isEqualTo(2);
+        assertThat(focus.stepIndex()).isEqualTo(4);
+        NextStep other = result.steps().get(1);
+        assertThat(other.scope()).isEqualTo(Scope.CHANTIER);
+        assertThat(other.chantier()).isEqualTo(1);
+        assertThat(other.stepIndex()).isEqualTo(2);
+        assertThat(other.stepTitle()).isEqualTo("Vérifier l'ingress");
+        NextStep noStep = result.steps().get(2);
+        assertThat(noStep.scope()).isEqualTo(Scope.CHANTIER);
+        assertThat(noStep.chantier()).isEqualTo(1);
+        assertThat(noStep.stepIndex()).isNull();
+        // « Inconnu » (chantier 7) et « KMS » sont hors plan : un seul approfondissement est gardé.
+        assertThat(result.steps().get(3).scope()).isEqualTo(Scope.APPROFONDISSEMENT);
+        assertThat(result.steps().get(3).chantier()).isNull();
+        assertThat(result.chantier()).isEqualTo(new ChantierAnchor.Progress(2, 3, 10,
+                List.of(new ChantierAnchor.Progress(1, 1, 2))));
+    }
+
+    @Test
+    void aFocusWithoutPlanStillAnchorsTheOtherChantier() {
+        ChantierAnchor.Anchored result = ChantierAnchor.apply(List.of(step("Ingress", 1, 1), step("KMS", 3, null)),
+                twoChantiers(null));
+        assertThat(result.steps()).extracting(NextStep::scope).containsExactly(Scope.CHANTIER, Scope.APPROFONDISSEMENT);
+        assertThat(result.chantier()).isEqualTo(new ChantierAnchor.Progress(2, 0, 0,
+                List.of(new ChantierAnchor.Progress(1, 1, 2))));
+    }
+
+    @Test
+    void theProposedChantierIsReadFromTheBlockAndSerialized() throws Exception {
+        String raw = "Ok.\n<<suites>>\n[" + String.join(",",
+                "{\"titre\":\"A\",\"pourquoi\":\"p\",\"etiquette\":\"Continuer\",\"demande\":\"a\",\"etape\":1,\"chantier\":1}",
+                "{\"titre\":\"B\",\"pourquoi\":\"p\",\"etiquette\":\"Continuer\",\"demande\":\"b\",\"chantier\":\"chantier 3\"}",
+                "{\"titre\":\"C\",\"pourquoi\":\"p\",\"etiquette\":\"Continuer\",\"demande\":\"c\",\"chantier\":\"deux\"}")
+                + "]\n<</suites>>";
+        List<NextStep> steps = NextStepsBlock.extract(raw).steps();
+        assertThat(steps).extracting(NextStep::proposedChantier).containsExactly(1, 3, null);
+        assertThat(MAPPER.valueToTree(steps.get(0)).has("proposedChantier")).isFalse();
+
+        NextStep anchored = ChantierAnchor.apply(steps, twoChantiers(plan())).steps().get(0);
+        JsonNode json = MAPPER.valueToTree(anchored);
+        assertThat(json.get("chantier").asInt()).isEqualTo(1);
+        assertThat(json.get("stepTitle").asText()).isEqualTo("Remplacer le certificat");
+        // Un chantier seul : pas de champ « others » (forme F-196 inchangée).
+        ChantierAnchor.Anchored single = ChantierAnchor.apply(List.of(step("Étape 4", 4)),
+                journey(JourneyMode.GUIDE, JourneyPhase.EXECUTION, plan()));
+        assertThat(MAPPER.valueToTree(single.chantier()).has("others")).isFalse();
+    }
 }
