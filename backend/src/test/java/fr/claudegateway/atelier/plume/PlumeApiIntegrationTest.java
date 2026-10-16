@@ -81,8 +81,8 @@ class PlumeApiIntegrationTest {
         when(plumeProperties.isEnabled()).thenReturn(true);
         when(aiProvider.complete(any())).thenAnswer(invocation -> {
             requests.add(invocation.getArgument(0));
-            return new ChatCompletionResult("{\"objectif\":\"Paginer l'export\",\"contraintes\":"
-                    + "[\"Taille 50 (à confirmer)\"],\"a_confirmer\":[\"Taille 50\"]}", "claude-opus-5", 900, 80, 0, 0);
+            return new ChatCompletionResult("## Objectif\nPaginer l'export.\n\n## Points à confirmer\n- Taille 50",
+                    "claude-opus-5", 900, 80, 0, 0);
         });
     }
 
@@ -118,7 +118,7 @@ class PlumeApiIntegrationTest {
         enrich(mine.getId(), aliceToken, "ajoute la pagination")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.enrichedPrompt").value(
-                        "Objectif : Paginer l'export\nContraintes :\n- Taille 50 (à confirmer)"))
+                        "## Objectif\nPaginer l'export.\n\n## Points à confirmer\n- Taille 50"))
                 .andExpect(jsonPath("$.toConfirm[0]").value("Taille 50"))
                 .andExpect(jsonPath("$.sources[0]").value("Fil récent du sujet (2 messages)"));
 
@@ -167,5 +167,20 @@ class PlumeApiIntegrationTest {
         when(plumeProperties.isEnabled()).thenReturn(true);
         when(aiProvider.complete(any())).thenThrow(new AIProviderException("amont"));
         enrich(mine.getId(), aliceToken, "x").andExpect(status().isBadGateway());
+    }
+
+    @Test
+    @DisplayName("F-202 : tronqué deux fois — 502 au message dédié, deux appels, jamais un fragment")
+    void truncatedTwice() throws Exception {
+        Workspace mine = workspace(alice);
+        when(aiProvider.complete(any())).thenAnswer(invocation -> {
+            requests.add(invocation.getArgument(0));
+            return new ChatCompletionResult("## Objectif\nPagi", "claude-opus-5", 900, 6_000, 0, 0, true);
+        });
+        requests.clear(); // le ré-stubbage a invoqué l'ancienne réponse avec un argument nul
+        enrich(mine.getId(), aliceToken, "x").andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("longueur prévue")));
+        assertThat(requests).extracting(ChatCompletionRequest::maxTokens)
+                .containsExactly(PlumeService.MAX_TOKENS, PlumeService.RETRY_MAX_TOKENS);
     }
 }

@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -29,13 +30,36 @@ import fr.claudegateway.atelier.HostKnowledgeSource;
 import fr.claudegateway.atelier.Workspace;
 import fr.claudegateway.atelier.WorkspaceNotFoundException;
 import fr.claudegateway.atelier.WorkspaceService;
+import fr.claudegateway.atelier.journey.JourneyMode;
+import fr.claudegateway.atelier.journey.JourneyPhase;
+import fr.claudegateway.atelier.journey.SubjectJourney;
+import fr.claudegateway.atelier.journey.SubjectJourneyService;
+import fr.claudegateway.atelier.resolution.ResolutionMemoryEntry;
+import fr.claudegateway.atelier.resolution.ResolutionMemoryRepository;
 import fr.claudegateway.byok.ByokKeyService;
 import fr.claudegateway.governance.GovernanceProjectFiles;
 import fr.claudegateway.quota.ProviderCostCalculator;
 import fr.claudegateway.quota.UsageLedgerService;
 
-/** F-193 / SF-193-01 — Plume : matière bornée, composition, repli, coupe-circuit. */
+/** F-193, refondue par F-202 / SF-202-01 — Plume : sortie Markdown, troncature, matière enrichie. */
 class PlumeServiceTest {
+
+    private static final String MARKDOWN = """
+            ```markdown
+            ## Objectif
+            Ajoute la pagination à l'export.
+
+            ## Contexte établi
+            Le curseur vient d'être corrigé dans ExportService.java.
+
+            ## Ce qu'il faut faire
+            1. Relis ExportService.java.
+            2. Pagine par 50 lignes (à confirmer).
+
+            ## Points à confirmer
+            - Taille de page : 50
+            - Tri par date
+            ```""";
 
     private final UUID userId = UUID.randomUUID();
     private final UUID workspaceId = UUID.randomUUID();
@@ -44,6 +68,8 @@ class PlumeServiceTest {
     private AtelierMessageRepository messages;
     private GovernanceProjectFiles projectFiles;
     private HostKnowledgeSource knowledge;
+    private SubjectJourneyService journeys;
+    private ResolutionMemoryRepository resolutions;
     private AIProvider aiProvider;
     private ByokKeyService byok;
     private UsageLedgerService ledger;
@@ -56,6 +82,8 @@ class PlumeServiceTest {
         messages = mock(AtelierMessageRepository.class);
         projectFiles = mock(GovernanceProjectFiles.class);
         knowledge = mock(HostKnowledgeSource.class);
+        journeys = mock(SubjectJourneyService.class);
+        resolutions = mock(ResolutionMemoryRepository.class);
         aiProvider = mock(AIProvider.class);
         byok = mock(ByokKeyService.class);
         ledger = mock(UsageLedgerService.class);
@@ -64,71 +92,96 @@ class PlumeServiceTest {
         workspace = Workspace.builder().id(workspaceId).userId(userId).name("export-api").build();
         when(workspaceService.requireOwned(userId, workspaceId)).thenReturn(workspace);
         when(byok.resolveActiveApiKey(userId)).thenReturn(Optional.empty());
-        when(messages.findTop6ByWorkspaceIdAndUserIdOrderByCreatedAtDesc(workspaceId, userId)).thenReturn(List.of());
+        when(messages.findTop12ByWorkspaceIdAndUserIdOrderByCreatedAtDesc(workspaceId, userId)).thenReturn(List.of());
         when(projectFiles.read(eq(userId), eq(workspace), eq("STATE.md"))).thenReturn(Optional.empty());
+        when(journeys.forTurn(userId, workspaceId)).thenReturn(SubjectJourney.builder().mode(JourneyMode.LIBRE).build());
+        when(resolutions.findTop5ByUserIdAndWorkspaceIdOrderByCreatedAtDesc(userId, workspaceId)).thenReturn(List.of());
     }
 
     @SuppressWarnings("unchecked")
     private PlumeService service(PlumeProperties properties) {
         ObjectProvider<HostKnowledgeSource> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable(any(java.util.function.Supplier.class))).thenReturn(knowledge);
-        return new PlumeService(workspaceService, messages, projectFiles, provider, aiProvider, byok, ledger,
-                mock(ProviderCostCalculator.class), properties, atelierProperties);
+        return new PlumeService(workspaceService, messages, projectFiles, provider, journeys, resolutions,
+                aiProvider, byok, ledger, mock(ProviderCostCalculator.class), properties, atelierProperties);
     }
 
     private static AtelierMessage message(String role, String content) {
         return AtelierMessage.builder().role(role).content(content).build();
     }
 
+    private static ChatCompletionResult result(String content, boolean truncated) {
+        return new ChatCompletionResult(content, "m", 900, 120, 0, 0, truncated);
+    }
+
     @Test
-    @DisplayName("nominal : matière complète, sections composées, à confirmer, sources, journal d'usage")
+    @DisplayName("nominal : Markdown restitué tel quel, à confirmer lus dans leur section, sources, usage")
     void nominal() {
-        when(messages.findTop6ByWorkspaceIdAndUserIdOrderByCreatedAtDesc(workspaceId, userId)).thenReturn(List.of(
+        when(messages.findTop12ByWorkspaceIdAndUserIdOrderByCreatedAtDesc(workspaceId, userId)).thenReturn(List.of(
                 message("ASSISTANT", "J'ai corrigé le curseur dans ExportService.java"),
                 message("USER", "corrige le doublon page 2")));
         when(projectFiles.read(userId, workspace, "STATE.md")).thenReturn(Optional.of("- [x] curseur corrigé"));
         when(knowledge.outlineFor(userId, workspaceId)).thenReturn("Projet export : Spring + Angular");
-        when(aiProvider.complete(any())).thenReturn(new ChatCompletionResult("""
-                ```json
-                {"objectif":"Paginer l'export","contexte":["Le curseur vient d'être corrigé"],
-                 "fichiers":["ExportService.java"],"contraintes":["Taille de page : 50 (à confirmer)"],
-                 "critere_de_fin":"Tests verts","a_confirmer":["Taille de page : 50"]}
-                ```""", "modele-boucle", 900, 120, 0, 0));
+        when(aiProvider.complete(any())).thenReturn(result(MARKDOWN, false));
 
         EnrichPromptResponse response = service(new PlumeProperties(true, null))
                 .enrich(userId, workspaceId, "ajoute la pagination sur l'export");
 
-        assertThat(response.enrichedPrompt()).isEqualTo("""
-                Objectif : Paginer l'export
-                Contexte :
-                - Le curseur vient d'être corrigé
-                Fichiers concernés :
-                - ExportService.java
-                Contraintes :
-                - Taille de page : 50 (à confirmer)
-                Critère de fin : Tests verts""");
-        assertThat(response.toConfirm()).containsExactly("Taille de page : 50");
-        assertThat(response.sources()).containsExactly("Fil récent du sujet (2 messages)", "STATE.md du sujet",
-                "Carte du poste");
+        assertThat(response.enrichedPrompt()).startsWith("## Objectif\nAjoute la pagination")
+                .contains("\n\n## Contexte établi\n", "1. Relis ExportService.java.")
+                .doesNotContain("```", "{");
+        assertThat(response.toConfirm()).containsExactly("Taille de page : 50", "Tri par date");
+        assertThat(response.sources()).containsExactly("STATE.md du sujet", "Carte du poste",
+                "Fil récent du sujet (2 messages)");
 
         ArgumentCaptor<ChatCompletionRequest> captor = ArgumentCaptor.forClass(ChatCompletionRequest.class);
         verify(aiProvider).complete(captor.capture());
         ChatCompletionRequest request = captor.getValue();
         assertThat(request.model()).isEqualTo("modele-boucle");
         assertThat(request.system()).isEqualTo(PlumeService.CONSIGNE);
-        assertThat(request.maxTokens()).isEqualTo(PlumeService.MAX_TOKENS);
+        assertThat(request.cacheSystem()).isTrue();
+        assertThat(request.maxTokens()).isEqualTo(PlumeService.MAX_TOKENS).isGreaterThanOrEqualTo(4_000);
         String material = request.messages().get(0).content();
         assertThat(material).contains("ajoute la pagination", "ExportService.java", "curseur corrigé",
                 "Spring + Angular", "export-api");
-        // Ordre chronologique : la demande avant la réponse.
         assertThat(material.indexOf("corrige le doublon")).isLessThan(material.indexOf("J'ai corrigé"));
         verify(ledger).recordTurn(eq(userId), eq(workspaceId), any(), any(), any(), any());
     }
 
     @Test
+    @DisplayName("consigne stable : Markdown exigé, JSON proscrit, aucune donnée volatile")
+    void stableInstruction() {
+        assertThat(PlumeService.CONSIGNE).contains("## Objectif", "## Points à confirmer", "jamais de JSON",
+                "N'INVENTE RIEN", "(à confirmer)");
+        assertThat(PlumeService.CONSIGNE).doesNotContain("{\"objectif\"");
+    }
+
+    @Test
+    @DisplayName("tronqué : un nouvel essai au plafond supérieur, les deux appels journalisés")
+    void truncatedThenComplete() {
+        when(aiProvider.complete(any())).thenReturn(result("## Objectif\nPagin", true), result(MARKDOWN, false));
+        EnrichPromptResponse response = service(new PlumeProperties(true, null)).enrich(userId, workspaceId, "x");
+        assertThat(response.enrichedPrompt()).contains("## Points à confirmer");
+        ArgumentCaptor<ChatCompletionRequest> captor = ArgumentCaptor.forClass(ChatCompletionRequest.class);
+        verify(aiProvider, times(2)).complete(captor.capture());
+        assertThat(captor.getAllValues()).extracting(ChatCompletionRequest::maxTokens)
+                .containsExactly(PlumeService.MAX_TOKENS, PlumeService.RETRY_MAX_TOKENS);
+        verify(ledger, times(2)).recordTurn(eq(userId), eq(workspaceId), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("tronqué deux fois : erreur claire, jamais un fragment")
+    void truncatedTwice() {
+        when(aiProvider.complete(any())).thenReturn(result("## Objectif\nPa", true));
+        assertThatThrownBy(() -> service(new PlumeProperties(true, null)).enrich(userId, workspaceId, "x"))
+                .isInstanceOf(PlumeTruncatedException.class);
+        verify(aiProvider, times(2)).complete(any());
+    }
+
+    @Test
     @DisplayName("modèle propre : le réglage l'emporte sur celui de la boucle")
     void ownModel() {
-        when(aiProvider.complete(any())).thenReturn(new ChatCompletionResult("{\"objectif\":\"x\"}", "m", 1, 1, 0, 0));
+        when(aiProvider.complete(any())).thenReturn(result("## Objectif\nx", false));
         service(new PlumeProperties(true, "modele-plume")).enrich(userId, workspaceId, "x");
         ArgumentCaptor<ChatCompletionRequest> captor = ArgumentCaptor.forClass(ChatCompletionRequest.class);
         verify(aiProvider).complete(captor.capture());
@@ -138,21 +191,50 @@ class PlumeServiceTest {
     }
 
     @Test
-    @DisplayName("sans fil, sans STATE.md, sans carte : seule la phrase part, aucune source")
-    void bareMaterial() {
-        when(aiProvider.complete(any())).thenReturn(new ChatCompletionResult("{\"objectif\":\"Faire X\"}", "m", 1, 1, 0, 0));
-        EnrichPromptResponse response = service(new PlumeProperties(true, null)).enrich(userId, workspaceId, "fais X");
-        assertThat(response.sources()).isEmpty();
-        assertThat(response.enrichedPrompt()).isEqualTo("Objectif : Faire X");
-        assertThat(response.toConfirm()).isEmpty();
+    @DisplayName("matière enrichie : passation, chantier guidé, fichiers touchés distincts et bornés")
+    void richMaterial() {
+        workspace.setChatThreadSummary("Décidé : pagination par curseur.");
+        when(journeys.forTurn(userId, workspaceId)).thenReturn(SubjectJourney.builder().mode(JourneyMode.GUIDE)
+                .phase(JourneyPhase.EXECUTION).chantierTitle("Pagination export").diagnosis("Doublon en page 2")
+                .planJson("[{\"title\":\"Écrire le test\",\"risk\":\"LECTURE\",\"status\":\"FAIT\"}]")
+                .build());
+        StringBuilder many = new StringBuilder("A.java\nB.java\n");
+        for (int i = 0; i < 40; i++) {
+            many.append("f").append(i).append(".ts\n");
+        }
+        when(resolutions.findTop5ByUserIdAndWorkspaceIdOrderByCreatedAtDesc(userId, workspaceId)).thenReturn(List.of(
+                ResolutionMemoryEntry.builder().files("A.java\nB.java").build(),
+                ResolutionMemoryEntry.builder().files(many.toString()).build(),
+                ResolutionMemoryEntry.builder().files(null).build()));
+
+        PlumeService.Material material = service(new PlumeProperties(true, null)).gather(userId, workspace, "z");
+
+        assertThat(material.text()).contains("Décidé : pagination par curseur.", "Chantier : Pagination export",
+                "Phase : Exécution", "Diagnostic : Doublon en page 2", "1. [fait] Écrire le test", "- A.java\n");
+        assertThat(material.text().split("- A\\.java", -1)).hasSize(2); // distinct
+        assertThat(material.text().lines().filter(l -> l.startsWith("- ")).count())
+                .isEqualTo(PlumeService.MAX_FILES);
+        assertThat(material.sources()).containsExactly("Passation du fil", "Plan du chantier",
+                "Fichiers touchés récemment");
     }
 
     @Test
-    @DisplayName("STATE.md et carte en panne : ignorés, l'enrichissement part quand même")
+    @DisplayName("mode Libre : aucun plan dans la matière")
+    void freeModeHasNoPlan() {
+        PlumeService.Material material = service(new PlumeProperties(true, null)).gather(userId, workspace, "z");
+        assertThat(material.text()).doesNotContain("CHANTIER");
+        assertThat(material.sources()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("sources annexes en panne : ignorées, l'enrichissement part quand même")
     void sourcesFailing() {
         when(projectFiles.read(userId, workspace, "STATE.md")).thenThrow(new IllegalStateException("runner"));
         when(knowledge.outlineFor(userId, workspaceId)).thenThrow(new IllegalStateException("magasin"));
-        when(aiProvider.complete(any())).thenReturn(new ChatCompletionResult("{\"objectif\":\"Y\"}", "m", 1, 1, 0, 0));
+        when(journeys.forTurn(userId, workspaceId)).thenThrow(new IllegalStateException("parcours"));
+        when(resolutions.findTop5ByUserIdAndWorkspaceIdOrderByCreatedAtDesc(userId, workspaceId))
+                .thenThrow(new IllegalStateException("mémoire"));
+        when(aiProvider.complete(any())).thenReturn(result("## Objectif\nY", false));
         EnrichPromptResponse response = service(new PlumeProperties(true, null)).enrich(userId, workspaceId, "y");
         assertThat(response.sources()).isEmpty();
     }
@@ -167,52 +249,52 @@ class PlumeServiceTest {
         assertThatThrownBy(() -> service(new PlumeProperties(true, null)).enrich(userId, other, "x"))
                 .isInstanceOf(WorkspaceNotFoundException.class);
         verify(aiProvider, never()).complete(any());
+        verify(resolutions, never()).findTop5ByUserIdAndWorkspaceIdOrderByCreatedAtDesc(any(), any());
     }
 
     @Test
-    @DisplayName("matière bornée : messages, STATE.md, titre tronqués")
-    void bounded() {
-        String huge = "a".repeat(10_000);
-        when(messages.findTop6ByWorkspaceIdAndUserIdOrderByCreatedAtDesc(workspaceId, userId))
-                .thenReturn(List.of(message("ASSISTANT", huge + "FIN"), message("USER", "DEBUT" + huge)));
-        when(projectFiles.read(userId, workspace, "STATE.md")).thenReturn(Optional.of(huge));
+    @DisplayName("fil : début ET fin des réponses de l'agent, retours à la ligne gardés, budget global")
+    void threadBounded() {
+        String agent = "ESSENTIEL : tout est vert.\nDétail" + "a".repeat(10_000) + "FIN";
+        when(messages.findTop12ByWorkspaceIdAndUserIdOrderByCreatedAtDesc(workspaceId, userId))
+                .thenReturn(List.of(message("ASSISTANT", agent), message("USER", "DEBUT" + "b".repeat(10_000))));
         PlumeService.Material material = service(new PlumeProperties(true, null)).gather(userId, workspace, "z");
-        assertThat(material.text()).contains("FIN", "DEBUT");
-        assertThat(material.text().length()).isLessThan(1_500 * 2 + 4_000 + 1_000);
-        assertThat(material.sources()).containsExactly("Fil récent du sujet (2 messages)", "STATE.md du sujet");
+        assertThat(material.text()).contains("ESSENTIEL : tout est vert.\nDétail", "FIN", "DEBUT", "[…]");
+        assertThat(material.text().length()).isLessThan(PlumeService.MAX_USER_MESSAGE_CHARS
+                + PlumeService.MAX_AGENT_HEAD_CHARS + PlumeService.MAX_AGENT_TAIL_CHARS + 1_000);
+
+        // Budget : douze longues réponses ne passent pas toutes, les plus récentes d'abord.
+        List<AtelierMessage> twelve = new java.util.ArrayList<>();
+        for (int i = 0; i < 12; i++) {
+            twelve.add(message("ASSISTANT", "R" + i + "x".repeat(5_000)));
+        }
+        when(messages.findTop12ByWorkspaceIdAndUserIdOrderByCreatedAtDesc(workspaceId, userId)).thenReturn(twelve);
+        PlumeService.Material bounded = service(new PlumeProperties(true, null)).gather(userId, workspace, "z");
+        assertThat(bounded.text()).contains("R0x").doesNotContain("R11x");
+        assertThat(bounded.text().length()).isLessThan(PlumeService.MAX_THREAD_CHARS + 1_000);
     }
 
     @Test
-    @DisplayName("sortie vide : exception ; texte non JSON : repli brut et lignes « à confirmer »")
+    @DisplayName("sortie vide ou JSON : exception ; sans section, repli sur les lignes « à confirmer »")
     void fallbacks() {
-        assertThatThrownBy(() -> PlumeService.parse("   ", "x")).isInstanceOf(PlumeEmptyOutputException.class);
-        assertThatThrownBy(() -> PlumeService.parse(null, "x")).isInstanceOf(PlumeEmptyOutputException.class);
-        PlumeService.Enrichment raw = PlumeService.parse("Objectif : paginer\n- Taille 50 (à confirmer)", "x");
+        assertThatThrownBy(() -> PlumeService.parse("   ")).isInstanceOf(PlumeEmptyOutputException.class);
+        assertThatThrownBy(() -> PlumeService.parse(null)).isInstanceOf(PlumeEmptyOutputException.class);
+        assertThatThrownBy(() -> PlumeService.parse("```json\n{\"objectif\":\"x\"}\n```"))
+                .isInstanceOf(PlumeEmptyOutputException.class);
+        PlumeService.Enrichment raw = PlumeService.parse("Objectif : paginer\n- Taille 50 (à confirmer)");
         assertThat(raw.prompt()).isEqualTo("Objectif : paginer\n- Taille 50 (à confirmer)");
         assertThat(raw.toConfirm()).containsExactly("Taille 50 (à confirmer)");
     }
 
     @Test
-    @DisplayName("JSON : objectif absent ⇒ texte d'origine ; à confirmer déduit des lignes ; bornes des listes")
-    void jsonEdges() {
-        PlumeService.Enrichment e = PlumeService.parse(
-                "Voici : {\"contraintes\":[\"Délai 2 j (à confirmer)\",\"\"],\"fichiers\":\"A.java\"} fin",
-                "  ma phrase ");
-        assertThat(e.prompt()).isEqualTo("""
-                Objectif : ma phrase
-                Fichiers concernés :
-                - A.java
-                Contraintes :
-                - Délai 2 j (à confirmer)""");
-        assertThat(e.toConfirm()).containsExactly("Délai 2 j (à confirmer)");
-
-        StringBuilder many = new StringBuilder("{\"contexte\":[");
-        for (int i = 0; i < 20; i++) {
-            many.append(i == 0 ? "" : ",").append("\"c").append(i).append("\\nsuite\"");
+    @DisplayName("section « Points à confirmer » : puces et numéros, bornée, s'arrête au titre suivant")
+    void toConfirmSection() {
+        StringBuilder text = new StringBuilder("## Objectif\nX\n## Points à confirmer\n");
+        for (int i = 0; i < 15; i++) {
+            text.append(i % 2 == 0 ? "- p" : (i + 1) + ". p").append(i).append('\n');
         }
-        many.append("]}");
-        PlumeService.Enrichment bounded = PlumeService.parse(many.toString(), "o");
-        assertThat(bounded.prompt().lines().filter(l -> l.startsWith("- "))).hasSize(PlumeService.MAX_ITEMS);
-        assertThat(bounded.prompt()).contains("- c0 suite");
+        text.append("## Autre\n- pas ici\n");
+        List<String> items = PlumeService.toConfirmSection(text.toString());
+        assertThat(items).hasSize(PlumeService.MAX_TO_CONFIRM).startsWith("p0", "p1").doesNotContain("pas ici");
     }
 }

@@ -67,4 +67,17 @@ class AnthropicProviderTest {
                 new ProviderFileUpload("doc.pdf", "application/pdf", new byte[] {1, 2, 3})))
                 .isInstanceOf(AIProviderUnavailableException.class);
     }
+
+    @Test
+    void stopReasonMaxTokensIsReportedAsTruncated() {
+        // F-202 / SF-202-01 : le signal Anthropic devient un drapeau neutre.
+        List<AnthropicResponse.ContentBlock> blocks = List.of(new AnthropicResponse.ContentBlock("text", "fragm"));
+        AnthropicResponse.Usage usage = new AnthropicResponse.Usage(10, 20, 0, 0);
+        org.assertj.core.api.Assertions.assertThat(AnthropicProvider.toResult(
+                new AnthropicResponse("m", blocks, usage, "max_tokens"), "m").truncated()).isTrue();
+        org.assertj.core.api.Assertions.assertThat(AnthropicProvider.toResult(
+                new AnthropicResponse("m", blocks, usage, "end_turn"), "m").truncated()).isFalse();
+        org.assertj.core.api.Assertions.assertThat(AnthropicProvider.toResult(
+                new AnthropicResponse("m", blocks, usage, null), "m").truncated()).isFalse();
+    }
 }
