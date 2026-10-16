@@ -8,6 +8,7 @@ import {
   TerminalActionReviewDecision, TerminalActionReviewItem, TerminalActionReviewResult,
   TerminalActionDuplicate, TerminalActionQualifyDecision, TerminalActionQualifyItem,
   Interlocuteur, InterlocuteurMergeSuggestion, InterlocuteurUpdate,
+  AccesObtenu, AccesProposal, AccesRequest,
 } from '../models/terminal-actions.models';
 
 /**
@@ -95,6 +96,33 @@ export class TerminalActionsService {
   reopen(workspaceId: string, actionId: string): Observable<TerminalAction> {
     return this.http.post<TerminalAction>(
       `/api/workspaces/${workspaceId}/actions/${actionId}/reopen`, {});
+  }
+
+  /** Le registre des accès du poste (F-180 / SF-180-04). */
+  acces(workspaceId: string): Observable<AccesObtenu[]> {
+    return this.http.get<AccesObtenu[]>(`/api/workspaces/${workspaceId}/acces`);
+  }
+
+  addAcces(workspaceId: string, body: AccesRequest): Observable<AccesObtenu> {
+    return this.http.post<AccesObtenu>(`/api/workspaces/${workspaceId}/acces`, body);
+  }
+
+  updateAcces(workspaceId: string, id: string, body: AccesRequest): Observable<AccesObtenu> {
+    return this.http.patch<AccesObtenu>(`/api/workspaces/${workspaceId}/acces/${id}`, body);
+  }
+
+  deleteAcces(workspaceId: string, id: string): Observable<void> {
+    return this.http.delete<void>(`/api/workspaces/${workspaceId}/acces/${id}`);
+  }
+
+  /** Les attentes ACCES faites à proposer au registre. */
+  accesProposals(workspaceId: string): Observable<AccesProposal[]> {
+    return this.http.get<AccesProposal[]>(`/api/workspaces/${workspaceId}/acces/proposals`);
+  }
+
+  /** « Pas besoin » : l'attente n'est plus proposée. */
+  dismissAccesProposal(workspaceId: string, actionId: string): Observable<void> {
+    return this.http.post<void>(`/api/workspaces/${workspaceId}/acces/proposals/${actionId}/dismiss`, {});
   }
 
   /** Les interlocuteurs du poste du terminal (F-180 / SF-180-03). */

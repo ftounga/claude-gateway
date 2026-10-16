@@ -61,6 +61,26 @@ public class TerminalActionTurnNote {
         this.followUp = followUp;
     }
 
+    /** Le registre des accès (F-180 / SF-180-04) ; absent = rien de plus dans le message. */
+    private AccesRegistryService registry;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setRegistry(AccesRegistryService registry) {
+        this.registry = registry;
+    }
+
+    /** Le registre compact, ou la chaîne vide. Best-effort : un échec n'ôte rien d'autre au tour. */
+    private String registryBlock(UUID userId, Workspace workspace) {
+        if (registry == null) {
+            return "";
+        }
+        try {
+            return registry.turnBlock(userId, workspace);
+        } catch (RuntimeException e) {
+            return "";
+        }
+    }
+
     public TerminalActionTurnNote(TerminalActionRepository repository, WorkspaceRepository workspaces,
                                   Clock clock) {
         this.repository = repository;
@@ -86,8 +106,9 @@ public class TerminalActionTurnNote {
                         workspace.getId(), TerminalActionStatus.OPEN_STATES)
                 : repository.findByUserIdAndHostIdAndStatusIn(userId, workspace.getHostId(),
                         TerminalActionStatus.OPEN_STATES);
+        String acces = registryBlock(userId, workspace);
         if (open.isEmpty()) {
-            return "";
+            return acces; // F-180 / SF-180-04 : le registre voyage même sans attente ouverte
         }
 
         Comparator<TerminalAction> recentFirst =
@@ -111,7 +132,7 @@ public class TerminalActionTurnNote {
         if (hidden > 0) {
             out.append("(… et ").append(hidden).append(" autre(s), plus ancienne(s), non montrée(s).)\n");
         }
-        return out.append(FOOTER).toString();
+        return out.append(FOOTER).append(acces).toString();
     }
 
     /** Un groupe sous son titre, tant que les bornes le permettent ; le titre seulement s'il a une ligne. */

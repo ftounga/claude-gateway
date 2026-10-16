@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-180 / SF-180-04 - LE REGISTRE DES ACCES (decision D4).
+
+      Ce qui a ete obtenu : systeme, compte/profil, quand, par qui, jusqu'a quand. AUCUN SECRET : le code
+      refuse tout mot de passe / jeton avant ecriture (AccesSecretGuard). Isolation user_id + host_id
+      (host_id nul pour un terminal heberge : la portee est alors workspace_id), comme terminal_actions.
+      terminal_actions.registry_dismissed_at : « pas besoin », la proposition ne revient pas.
+      Pas de FK : purge nommee (compte, terminal heberge supprime). Rollback : colonne puis table retirees.
+    -->
+
+    <changeSet id="161-acces-obtenus" author="claude-gateway">
+        <createTable tableName="acces_obtenus">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"/>
+            <column name="workspace_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="system" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="normalized_system" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="account" type="varchar(120)"/>
+            <column name="obtained_at" type="date"><constraints nullable="false"/></column>
+            <column name="granted_by" type="varchar(120)"/>
+            <column name="interlocuteur_id" type="uuid"/>
+            <column name="expires_at" type="date"/>
+            <column name="subject_id" type="uuid"/>
+            <column name="action_id" type="uuid"/>
+            <column name="note" type="varchar(300)"/>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="acces_obtenus" indexName="idx_acces_obtenus_scope">
+            <column name="user_id"/>
+            <column name="host_id"/>
+        </createIndex>
+        <addColumn tableName="terminal_actions">
+            <column name="registry_dismissed_at" type="timestamptz"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="terminal_actions" columnName="registry_dismissed_at"/>
+            <dropTable tableName="acces_obtenus"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

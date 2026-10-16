@@ -255,24 +255,24 @@ public class InterlocuteurService {
         }
         target.setUpdatedAt(OffsetDateTime.now(clock));
         actions.repointInterlocuteur(userId, source.getId(), target.getId());
-        if (mergeListener != null) {
-            mergeListener.onMerge(userId, source.getId(), target.getId());
+        if (events != null) {
+            // Le registre des accès (SF-180-04) suit : événement plutôt qu'une dépendance croisée.
+            events.publishEvent(new InterlocuteurMerged(userId, source.getId(), target.getId()));
         }
         repository.delete(source);
         repository.save(target);
         return view(target, 0, radarNames(userId, workspace.getHostId()));
     }
 
-    /** Ce qui suit une fusion d'interlocuteurs ailleurs (le registre des accès, SF-180-04). */
-    public interface MergeListener {
-        void onMerge(UUID userId, UUID from, UUID into);
+    /** Une fusion d'interlocuteurs : ce qui les référence ailleurs suit (le registre des accès, SF-180-04). */
+    public record InterlocuteurMerged(UUID userId, UUID from, UUID into) {
     }
 
-    private MergeListener mergeListener;
+    private org.springframework.context.ApplicationEventPublisher events;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
-    public void setMergeListener(MergeListener mergeListener) {
-        this.mergeListener = mergeListener;
+    public void setEvents(org.springframework.context.ApplicationEventPublisher events) {
+        this.events = events;
     }
 
     /** <b>[Ce sont deux personnes]</b> : la paire n'est plus proposée. */

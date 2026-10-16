@@ -115,6 +115,14 @@ public class WorkspaceService {
         this.terminalActionRepository = repository;
     }
 
+    /** Purge du registre des accès d'un terminal hébergé (F-180 / SF-180-04) ; null = formes historiques. */
+    private fr.claudegateway.atelier.actions.AttentesAccountPurge attentesPurge;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setAttentesPurge(fr.claudegateway.atelier.actions.AttentesAccountPurge purge) {
+        this.attentesPurge = purge;
+    }
+
     /**
      * Annonce la création d'un projet (F-51 / SF-51-03).
      *
@@ -660,6 +668,10 @@ public class WorkspaceService {
         // de terminal où la traiter.
         if (terminalActionRepository != null) {
             terminalActionRepository.purgeWorkspace(userId, id);
+        }
+        // F-180 / SF-180-04 : le registre d'un terminal hébergé n'a plus de portée sans lui.
+        if (attentesPurge != null) {
+            attentesPurge.purgeHostedWorkspace(userId, id);
         }
         workspaceRepository.delete(workspace);
     }

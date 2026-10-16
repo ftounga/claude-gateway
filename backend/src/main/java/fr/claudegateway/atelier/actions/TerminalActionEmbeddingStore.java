@@ -58,6 +58,22 @@ public class TerminalActionEmbeddingStore {
                 literal, userId, hostId != null ? hostId : workspaceId, literal, topN);
     }
 
+    /** Les attentes FAITES depuis {@code since} du périmètre les plus proches (F-180 / SF-180-04). */
+    public List<Scored> searchRecentDone(UUID userId, UUID hostId, UUID workspaceId, float[] query,
+                                         java.time.OffsetDateTime since) {
+        if (userId == null || query == null || since == null || (hostId == null && workspaceId == null)) {
+            return List.of();
+        }
+        String literal = toVectorLiteral(query);
+        String scope = hostId != null ? "host_id = ?" : "workspace_id = ?";
+        String sql = "SELECT id, embedding <=> CAST(? AS vector) AS distance FROM terminal_actions "
+                + "WHERE user_id = ? AND " + scope + " AND status = 'FAIT' AND closed_at >= ? "
+                + "AND embedding IS NOT NULL ORDER BY embedding <=> CAST(? AS vector) ASC LIMIT 1";
+        return jdbcTemplate.query(sql,
+                (rs, rowNum) -> new Scored(rs.getObject("id", UUID.class), rs.getDouble("distance")),
+                literal, userId, hostId != null ? hostId : workspaceId, since, literal);
+    }
+
     /** Les attentes ouvertes du périmètre encore sans embedding (rattrapage borné). */
     public List<Unembedded> findOpenUnembedded(UUID userId, UUID hostId, UUID workspaceId, int limit) {
         if (userId == null || limit <= 0 || (hostId == null && workspaceId == null)) {

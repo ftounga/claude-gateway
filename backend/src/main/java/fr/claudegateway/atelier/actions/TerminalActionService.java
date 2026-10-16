@@ -66,6 +66,17 @@ public class TerminalActionService {
         this.subjectResolver = subjectResolver;
     }
 
+    /** Une attente faite depuis moins de ce nombre de jours compte comme « déjà obtenu » (F-180 / SF-180-04). */
+    static final int RECENT_DONE_DAYS = 30;
+
+    /** Le registre des accès (F-180 / SF-180-04) ; absent = pas de comparaison au registre. */
+    private AccesRegistryService registry;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setRegistry(AccesRegistryService registry) {
+        this.registry = registry;
+    }
+
     /** Les interlocuteurs normalisés du poste (F-180 / SF-180-03) ; absent = texte libre seul. */
     private InterlocuteurService interlocuteurs;
 
@@ -236,6 +247,37 @@ public class TerminalActionService {
             }
         }
 
+        // F-180 / SF-180-04 — DÉJÀ OBTENU : l'accès est au registre (non expiré). Seulement pour un accès,
+        // ou une attente dont la nature n'est pas dite : une validation ne se compare pas à un accès.
+        TerminalActionCategorie categorie = qualification == null ? null : qualification.categorie();
+        if (registry != null && (categorie == null || categorie == TerminalActionCategorie.ACCES)) {
+            var obtained = registry.findObtained(userId, workspace, cleanDescription);
+            if (obtained.isPresent()) {
+                return new Recording(null, RecordingOutcome.ALREADY_OBTAINED, RecordingMatch.NONE, obtained.get());
+            }
+        }
+
+        // F-180 / SF-180-04 — la même clé, FAITE récemment, ailleurs sur le poste : déjà obtenu.
+        OffsetDateTime recent = OffsetDateTime.now(clock).minusDays(RECENT_DONE_DAYS);
+        if (hostId != null) {
+            var doneOnHost = repository.findByUserIdAndHostIdAndDedupKeyOrderByCreatedAtDesc(userId, hostId, dedupKey)
+                    .stream()
+                    .filter(a -> a.getStatus() == TerminalActionStatus.FAIT && a.getClosedAt() != null
+                            && !a.getClosedAt().isBefore(recent))
+                    .findFirst();
+            if (doneOnHost.isPresent()) {
+                return new Recording(doneOnHost.get(), RecordingOutcome.ALREADY_DONE, RecordingMatch.KEY_ON_HOST);
+            }
+        }
+        if (semanticDedup != null) {
+            var similarDone = semanticDedup.findSimilarRecentDone(userId, hostId, workspaceId, cleanDescription, recent)
+                    .flatMap(match -> repository.findByIdAndUserId(match.actionId(), userId))
+                    .filter(a -> a.getStatus() == TerminalActionStatus.FAIT);
+            if (similarDone.isPresent()) {
+                return new Recording(similarDone.get(), RecordingOutcome.ALREADY_DONE, RecordingMatch.MEANING);
+            }
+        }
+
         TerminalAction created = insert(userId, workspace, subjectId,
                 cleanDescription, blocks, person, kind, dedupKey, qualification);
         return new Recording(created, RecordingOutcome.RECORDED, RecordingMatch.NONE);
@@ -316,10 +358,14 @@ public class TerminalActionService {
     }
 
     /** Ce qu'une inscription a donné, et l'action concernée. */
-    public record Recording(TerminalAction action, RecordingOutcome outcome, RecordingMatch match) {
+    public record Recording(TerminalAction action, RecordingOutcome outcome, RecordingMatch match, AccesObtenu acces) {
+
+        public Recording(TerminalAction action, RecordingOutcome outcome, RecordingMatch match) {
+            this(action, outcome, match, null);
+        }
 
         public Recording(TerminalAction action, RecordingOutcome outcome) {
-            this(action, outcome, RecordingMatch.NONE);
+            this(action, outcome, RecordingMatch.NONE, null);
         }
     }
 
@@ -346,7 +392,9 @@ public class TerminalActionService {
         /** L'utilisateur avait annulé. On ne recrée pas — sa parole prime. */
         REFUSED_BY_USER,
         /** C'est déjà réglé. */
-        ALREADY_DONE
+        ALREADY_DONE,
+        /** L'accès est au registre, non expiré (F-180 / SF-180-04) : rien n'est inscrit. */
+        ALREADY_OBTAINED
     }
 
     /**

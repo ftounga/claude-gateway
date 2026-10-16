@@ -11,6 +11,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { Observable } from 'rxjs';
 
 import {
+  AccesProposal,
   CATEGORIES,
   CATEGORIE_LABELS,
   DUPLICATE_REASON_LABELS,
@@ -31,6 +32,7 @@ import {
 } from '../../core/models/terminal-actions.models';
 import { TerminalActionsService } from '../../core/services/terminal-actions.service';
 import { TerminalPeopleViewComponent } from './terminal-people-view.component';
+import { TerminalAccesViewComponent } from './terminal-acces-view.component';
 
 /** Depuis quand l'action attend — l'ancienneté est le signal qui fait agir. */
 export function ageLabel(createdAt: string, now = Date.now()): string {
@@ -54,7 +56,7 @@ export function ageLabel(createdAt: string, now = Date.now()): string {
 export type AttentesScope = 'here' | 'host';
 
 /** La vue du panneau (F-180) : les colonnes d'attentes, ou les personnes. */
-export type AttentesView = 'columns' | 'people';
+export type AttentesView = 'columns' | 'people' | 'acces';
 
 /** Une ligne de la reprise : l'attente héritée et l'état que l'utilisateur retient. */
 interface ReviewRow {
@@ -94,6 +96,7 @@ interface Column {
   imports: [
     FormsModule, MatButtonModule, MatButtonToggleModule, MatFormFieldModule, MatIconModule,
     MatInputModule, MatSelectModule, MatTooltipModule, TerminalPeopleViewComponent,
+    TerminalAccesViewComponent,
   ],
   template: `
     <aside class="actions-panel" role="complementary" aria-label="Attentes">
@@ -107,14 +110,15 @@ interface Column {
       </header>
 
       <div class="actions-panel__tools">
-        @if (hasHost()) {
-          <!-- F-180 : la vue — les colonnes, ou les personnes. -->
-          <mat-button-toggle-group class="actions-panel__view" [value]="view()"
-            (change)="view.set($event.value)" aria-label="Vue">
-            <mat-button-toggle value="columns">Attentes</mat-button-toggle>
+        <!-- F-180 : la vue — les attentes, les personnes (poste), le registre des accès. -->
+        <mat-button-toggle-group class="actions-panel__view" [value]="view()"
+          (change)="view.set($event.value)" aria-label="Vue">
+          <mat-button-toggle value="columns">Attentes</mat-button-toggle>
+          @if (hasHost()) {
             <mat-button-toggle value="people">Personnes</mat-button-toggle>
-          </mat-button-toggle-group>
-        }
+          }
+          <mat-button-toggle value="acces">Accès</mat-button-toggle>
+        </mat-button-toggle-group>
         @if (hasHost() && view() === 'columns') {
           <mat-button-toggle-group class="actions-panel__scope" [value]="scope()"
             (change)="scope.set($event.value)" aria-label="Portée">
@@ -165,7 +169,28 @@ interface Column {
       <div class="actions-panel__content">
         @if (view() === 'people') {
           <app-terminal-people-view [workspaceId]="workspaceId()" (changed)="reload()"></app-terminal-people-view>
+        } @else if (view() === 'acces') {
+          <app-terminal-acces-view [workspaceId]="workspaceId()"></app-terminal-acces-view>
         } @else {
+        @if (accesProposals().length) {
+          <!-- F-180 / SF-180-04 — « AJOUTER AU REGISTRE ? » : un accès obtenu ne disparaît plus en « Fait ». -->
+          <section class="review registry" aria-label="Ajouter au registre">
+            <h3 class="review__title">Ajouter au registre ? ({{ accesProposals().length }})</h3>
+            <p class="review__lead">Ces accès ont été obtenus. Au registre, l'agent ne les redemandera plus — sans aucun secret.</p>
+            @for (p of accesProposals(); track p.action.id) {
+              <article class="review__row">
+                <p class="review__what">{{ p.system }}</p>
+                <p class="review__where">obtenu le {{ p.obtainedAt.slice(8, 10) }}/{{ p.obtainedAt.slice(5, 7) }}{{ p.grantedBy ? ' par ' + p.grantedBy : '' }}</p>
+                <div class="review__gestures">
+                  <button mat-flat-button type="button" class="registry__add" [disabled]="busy() === p.action.id"
+                    (click)="addToRegistry(p)">Ajouter</button>
+                  <button mat-button type="button" class="registry__dismiss" [disabled]="busy() === p.action.id"
+                    (click)="dismissRegistry(p)">Pas besoin</button>
+                </div>
+              </article>
+            }
+          </section>
+        }
         @if (review().length && !reviewHidden()) {
           <!-- F-175 / SF-175-07 — LA REPRISE DE L'EXISTANT : présentée une fois, rien ne change sans validation. -->
           <section class="review" aria-label="Reprise des attentes existantes">
@@ -788,6 +813,41 @@ export class TerminalActionsPanelComponent implements OnInit {
       });
   }
 
+  /** Les accès obtenus à proposer au registre (F-180 / SF-180-04). */
+  readonly accesProposals = signal<AccesProposal[]>([]);
+
+  private loadAccesProposals(): void {
+    this.service.accesProposals(this.workspaceId()).subscribe({
+      next: list => this.accesProposals.set(list ?? []),
+      error: () => this.accesProposals.set([]),
+    });
+  }
+
+  /** [Ajouter] : l'accès entre au registre avec ce que l'attente en dit. */
+  addToRegistry(p: AccesProposal): void {
+    this.settleProposal(p, this.service.addAcces(this.workspaceId(), {
+      actionId: p.action.id, system: p.system, grantedBy: p.grantedBy, obtainedAt: p.obtainedAt,
+    }));
+  }
+
+  /** [Pas besoin] : la proposition ne revient pas. */
+  dismissRegistry(p: AccesProposal): void {
+    this.settleProposal(p, this.service.dismissAccesProposal(this.workspaceId(), p.action.id));
+  }
+
+  private settleProposal(p: AccesProposal, call: Observable<unknown>): void {
+    const before = this.accesProposals();
+    this.busy.set(p.action.id);
+    this.accesProposals.set(before.filter(x => x.action.id !== p.action.id));
+    call.subscribe({
+      next: () => this.busy.set(null),
+      error: () => {
+        this.accesProposals.set(before);
+        this.fail();
+      },
+    });
+  }
+
   private loadDuplicates(): void {
     this.service.duplicates(this.workspaceId()).subscribe({
       next: pairs => this.duplicates.set(pairs ?? []),
@@ -885,6 +945,7 @@ export class TerminalActionsPanelComponent implements OnInit {
         this.failed.set(false);
         this.changed.emit(board);
         this.loadDuplicates();
+        this.loadAccesProposals();
       },
       error: () => {
         this.failed.set(true);
