@@ -1271,6 +1271,8 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   `granted_by (120)`, `interlocuteur_id`, `expires_at`, `subject_id`, `action_id`, `note (300)`, `created_at`,
   `updated_at`. **Aucun secret** : `AccesSecretGuard` refuse tout mot de passe ou jeton avant écriture. Joint
   **compact** au message du tour (jamais à la consigne système). Purge : compte, terminal hébergé supprimé.
+- **app_requests** — **le registre des besoins de l'application** (F-205 / SF-205-01, migration `163`) : un bug ou une évolution de l'application signalé depuis un terminal (outil `signaler_besoin`, administrateur). `id`, `user_id`, `workspace_id` (sans clé étrangère : le besoin survit au terminal), `message_id`, `kind` (`BUG | EVOLUTION`), `title (200)`, `description (8000)` (les mots de l'utilisateur), `reformulation`, `observed_context`, `status` (`PROPOSE | EN_ATTENTE | CADRE | REJETE | LIVRE`), `feature_ref` (`F-123`), `created_at`, `updated_at`, `recorded_at`. Lecture : `id + user_id (+ workspace_id)` ; routes `/api/admin/app-requests` ; purge du compte.
+- **app_request_attachments** — **les pièces d'un besoin** (F-205 / SF-205-01, migration `163`) : `id`, `request_id` (cascade), `user_id`, `seq`, `name`, `content_type`, `size_bytes`, `source_path` (dépôt du terminal), `storage_key` (`besoins/{id}/{n}-{nom}` dans le stockage objet de la gateway), `copy_status` (`PENDING | COPIED | FAILED`), `copy_error`, `created_at`. Copie asynchrone au clic [Enregistrer] ; objets effacés avec le compte.
 - **terminal_actions** (évolutions F-180) : `merged_into_id`, `duplicate_dismissed_at` (158), `categorie`,
   `qui` (159), `interlocuteur_id` (160), `registry_dismissed_at` (161), `due_at` (162).
 
