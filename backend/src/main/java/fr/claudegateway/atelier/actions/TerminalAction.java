@@ -167,6 +167,10 @@ public class TerminalAction {
     @Column(name = "duplicate_dismissed_at")
     private OffsetDateTime duplicateDismissedAt;
 
+    /** L'échéance facultative (F-180 / SF-180-06) : le point du matin et le rappel de 9 h la lisent. */
+    @Column(name = "due_at")
+    private java.time.LocalDate dueAt;
+
     /** « Pas besoin » (F-180 / SF-180-04) : cette attente ACCES faite n'est plus proposée au registre. */
     @Column(name = "registry_dismissed_at")
     private OffsetDateTime registryDismissedAt;

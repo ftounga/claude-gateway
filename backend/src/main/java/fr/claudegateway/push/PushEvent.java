@@ -48,6 +48,13 @@ public enum PushEvent {
     ATTENTES_TO_FOLLOW_UP("Des attentes sont à relancer", "Ouvrez la Forge pour les voir."),
 
     /**
+     * Le point du matin (F-180 / SF-180-06) : une échéance est atteinte ou un accès du registre arrive à
+     * terme (avec ou sans relance due). Corps neutre : aucun nom d'accès ni de sujet ne quitte l'application.
+     */
+    ATTENTES_POINT_DU_MATIN("Votre point du matin sur les attentes",
+            "Une échéance ou un accès arrive à terme : ouvrez la Forge."),
+
+    /**
      * Une routine du sujet a tourné et rendu compte (F-183 / SF-183-04). Émise même terminal regardé : une
      * routine n'est pas un tour que l'on suit des yeux.
      */

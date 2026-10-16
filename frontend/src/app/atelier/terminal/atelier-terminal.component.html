@@ -1509,6 +1509,8 @@
       <app-terminal-journey-chantiers [chantiers]="chantiersList()" [loading]="chantiersLoading()" (closed)="chantiersOpen.set(false)"></app-terminal-journey-chantiers>
     }
     <app-terminal-journey-strip [journey]="journey()" [busy]="journeyBusy() || submitting" (gesture)="onJourneyGesture($event)"></app-terminal-journey-strip>
+    <!-- F-180 / SF-180-06 — LE POINT DU MATIN : relances dues, échéances, accès qui arrivent à terme. -->
+    <app-terminal-morning-band [workspaceId]="projectId" [board]="attentesBoard()" (open)="openActions()"></app-terminal-morning-band>
     <app-terminal-attentes-band [board]="attentesBoard()" [toReview]="reviewPending()" (open)="openActions()"></app-terminal-attentes-band>
     <!-- F-191 / SF-191-02 — LE FIL DES TÂCHES : tout ce qui tourne sur le poste (sujets et racine),
          repliée par défaut, absente quand rien ne tourne. Un clic ouvre le sujet. -->

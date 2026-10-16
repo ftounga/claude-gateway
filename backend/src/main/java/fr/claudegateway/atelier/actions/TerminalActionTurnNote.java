@@ -198,6 +198,13 @@ public class TerminalActionTurnNote {
         if (origin != null) {
             line.append(" · née dans « ").append(origin).append(" »");
         }
+        // F-180 / SF-180-06 : l'échéance, dépassée ou non.
+        if (action.getDueAt() != null) {
+            java.time.LocalDate today = now.atZoneSameInstant(TerminalActionResponse.ZONE).toLocalDate();
+            line.append(action.getDueAt().isBefore(today)
+                    ? " · ÉCHÉANCE DÉPASSÉE (" + action.getDueAt().format(DAY) + ")"
+                    : " · échéance " + action.getDueAt().format(DAY));
+        }
         if (action.hasProposal()) {
             line.append(" · fermeture proposée, en attente de confirmation");
         }

@@ -161,6 +161,7 @@ import { PageBlockComponent } from './page-block.component';
 import { PagePanelComponent } from './page-panel.component';
 import { TerminalActionsPanelComponent } from './terminal-actions-panel.component';
 import { TerminalAttentesBandComponent } from './terminal-attentes-band.component';
+import { TerminalMorningBandComponent } from './terminal-morning-band.component';
 import { PushActivationService } from '../../core/services/push-activation.service';
 import { TerminalFilComponent } from './terminal-fil.component';
 import { AttenteCardComponent } from './attente-card.component';
@@ -249,7 +250,8 @@ export function plumeErrorMessage(failure: HttpErrorResponse | null | undefined)
   imports: [
     FormsModule, ForgeBreadcrumbComponent, LiveBadgeComponent, MarkdownPipe, MatButtonModule,
     TeamsLinkBadgeComponent, NgTemplateOutlet, TerminalEmailComponent, PageBlockComponent, PagePanelComponent,
-    TerminalActionsPanelComponent, TerminalAttentesBandComponent, TerminalFilComponent, AttenteCardComponent,
+    TerminalActionsPanelComponent, TerminalAttentesBandComponent, TerminalMorningBandComponent, TerminalFilComponent,
+    AttenteCardComponent,
     HandoffCardComponent, HandoffOriginComponent, ProposalCardComponent,
     TerminalJourneyChipComponent, TerminalJourneyStripComponent, TerminalJourneyChantiersComponent,
     TerminalHandComponent,

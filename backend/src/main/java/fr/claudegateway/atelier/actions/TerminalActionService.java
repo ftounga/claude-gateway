@@ -644,6 +644,62 @@ public class TerminalActionService {
         return repository.save(action);
     }
 
+    // ---- F-180 / SF-180-06 : l'échéance ----
+
+    /**
+     * L'échéance donnée en texte ISO ({@code AAAA-MM-JJ}) : {@code null} si vide ; erreur lisible si
+     * illisible. Sert à l'édition (la chaîne vide efface) et à l'outil de l'agent.
+     */
+    static java.time.LocalDate parseDue(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return java.time.LocalDate.parse(raw.strip());
+        } catch (java.time.format.DateTimeParseException e) {
+            throw new InvalidTerminalActionException("L'échéance s'écrit AAAA-MM-JJ.");
+        }
+    }
+
+    /** L'ajout à la main avec son échéance (F-180 / SF-180-06), dans une seule transaction. */
+    @Transactional
+    public TerminalAction create(UUID userId, UUID workspaceId, UUID subjectId, String description, String blocks,
+                                 String person, TerminalActionKind kind, Qualification qualification,
+                                 java.time.LocalDate due) {
+        TerminalAction created = create(userId, workspaceId, subjectId, description, blocks, person, kind, qualification);
+        return due == null ? created : applyDue(created, due);
+    }
+
+    /**
+     * L'édition avec l'échéance en texte (F-180 / SF-180-06) : {@code null} = inchangée, chaîne vide =
+     * effacée, sinon {@code AAAA-MM-JJ}.
+     */
+    @Transactional
+    public TerminalAction edit(UUID userId, UUID workspaceId, UUID actionId, String description, String blocks,
+                               String person, TerminalActionKind kind, Qualification qualification, String dueRaw) {
+        java.time.LocalDate due = dueRaw == null ? null : parseDue(dueRaw);
+        TerminalAction edited = edit(userId, workspaceId, actionId, description, blocks, person, kind, qualification);
+        return dueRaw == null ? edited : applyDue(edited, due);
+    }
+
+    /** Pose (ou efface, {@code null}) l'échéance d'une attente de ce terminal ou de son poste. */
+    @Transactional
+    public TerminalAction setDue(UUID userId, UUID workspaceId, UUID actionId, java.time.LocalDate due) {
+        TerminalAction action = require(userId, workspaceId, actionId);
+        return applyDue(action, due);
+    }
+
+    /** L'échéance posée sur une attente déjà résolue sous l'isolation (agent, création). */
+    @Transactional
+    TerminalAction applyDue(TerminalAction action, java.time.LocalDate due) {
+        if (action == null || java.util.Objects.equals(action.getDueAt(), due)) {
+            return action;
+        }
+        action.setDueAt(due);
+        action.setUpdatedAt(OffsetDateTime.now(clock));
+        return repository.save(action);
+    }
+
     /** Purge des actions d'un projet supprimé. */
     @Transactional
     public int purgeWorkspace(UUID userId, UUID workspaceId) {
