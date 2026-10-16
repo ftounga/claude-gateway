@@ -230,6 +230,58 @@ export interface TerminalActionCreate {
   qui?: TerminalActionQui | null;
 }
 
+/** Un accès obtenu (`GET /api/workspaces/{id}/acces`, F-180 / SF-180-04) — jamais un secret. */
+export interface AccesObtenu {
+  id: string;
+  system: string;
+  account: string | null;
+  /** Date ISO `aaaa-mm-jj`. */
+  obtainedAt: string;
+  grantedBy: string | null;
+  interlocuteurId: string | null;
+  expiresAt: string | null;
+  expired: boolean;
+  subjectId: string | null;
+  actionId: string | null;
+  note: string | null;
+  workspaceId: string;
+}
+
+/** Un ajout ou une modification du registre ; un champ absent ne change pas. */
+export interface AccesRequest {
+  actionId?: string | null;
+  system?: string;
+  account?: string | null;
+  obtainedAt?: string | null;
+  grantedBy?: string | null;
+  expiresAt?: string | null;
+  note?: string | null;
+}
+
+/** Une attente ACCES faite, proposée au registre. */
+export interface AccesProposal {
+  action: TerminalAction;
+  system: string;
+  grantedBy: string | null;
+  obtainedAt: string;
+}
+
+/** « expire dans 12 j », « expiré », ou vide — à partir de dates ISO. */
+export function expiryLabel(expiresAt: string | null, now = new Date()): string {
+  if (!expiresAt) {
+    return '';
+  }
+  const end = Date.parse(`${expiresAt}T23:59:59`);
+  if (Number.isNaN(end)) {
+    return '';
+  }
+  const days = Math.floor((end - now.getTime()) / 86_400_000);
+  if (days < 0) {
+    return 'expiré';
+  }
+  return days === 0 ? "expire aujourd'hui" : `expire dans ${days} j`;
+}
+
 /** Un interlocuteur du poste (`GET /api/workspaces/{id}/interlocuteurs`, F-180 / SF-180-03). */
 export interface Interlocuteur {
   id: string;

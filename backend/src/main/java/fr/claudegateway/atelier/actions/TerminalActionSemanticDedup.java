@@ -91,6 +91,30 @@ public class TerminalActionSemanticDedup {
         }
     }
 
+    /**
+     * L'attente <b>faite depuis {@code since}</b> du périmètre qui dit la même chose (F-180 / SF-180-04) :
+     * « déjà obtenu ». Même seuil exigeant ; vide si éteint ou en panne.
+     */
+    public Optional<Match> findSimilarRecentDone(UUID userId, UUID hostId, UUID workspaceId, String description,
+                                                 java.time.OffsetDateTime since) {
+        if (!isEnabled() || userId == null || description == null || description.isBlank() || since == null) {
+            return Optional.empty();
+        }
+        try {
+            List<float[]> vectors = embeddingProvider.embed(List.of(truncate(description)));
+            if (vectors.isEmpty()) {
+                return Optional.empty();
+            }
+            return store.searchRecentDone(userId, hostId, workspaceId, vectors.get(0), since).stream()
+                    .filter(s -> s.distance() <= maxDistance)
+                    .findFirst()
+                    .map(s -> new Match(s.id(), s.distance()));
+        } catch (RuntimeException ex) {
+            log.debug("Dédoublonnage des faits récents indisponible ({})", ex.getClass().getSimpleName());
+            return Optional.empty();
+        }
+    }
+
     /** Planifie l'embedding d'une attente fraîchement inscrite. Best-effort, jamais bloquant. */
     public void embedAsync(UUID actionId, String description) {
         if (!isEnabled() || actionId == null || description == null || description.isBlank()) {

@@ -186,6 +186,9 @@ public class TerminalActionToolExecutor {
 
     /** Ce que l'agent lit — et qui doit suffire à décider s'il en reparle ou non. */
     private static String message(TerminalActionService.Recording recording) {
+        if (recording.outcome() == TerminalActionService.RecordingOutcome.ALREADY_OBTAINED) {
+            return obtainedMessage(recording.acces());
+        }
         String what = "« " + recording.action().getDescription() + " »";
         String body = switch (recording.outcome()) {
             case RECORDED -> "Action inscrite dans le terminal : " + what
@@ -199,8 +202,9 @@ public class TerminalActionToolExecutor {
             case REFUSED_BY_USER -> "L'utilisateur a ANNULÉ cette action : " + what
                     + ". Ne la redemande pas. Contourne le blocage, ou explique clairement ce qui "
                     + "restera impossible sans elle.";
-            case ALREADY_DONE -> "Cette action a déjà été faite : " + what
+            case ALREADY_DONE -> "Cette action a déjà été faite" + doneOn(recording.action()) + " : " + what
                     + ". Si le blocage persiste, c'est qu'il a une autre cause — cherche-la.";
+            case ALREADY_OBTAINED -> obtainedMessage(recording.acces());
         };
         return recognition(recording) + body + waitingSince(recording);
     }
@@ -217,6 +221,40 @@ public class TerminalActionToolExecutor {
                     + "inscrit d'autre. ";
             default -> "";
         };
+    }
+
+    /** « (déjà obtenu le 02/10) » — la date de fermeture d'une attente faite (F-180 / SF-180-04). */
+    static String doneOn(TerminalAction action) {
+        if (action == null || action.getClosedAt() == null) {
+            return "";
+        }
+        return " (déjà obtenu le " + action.getClosedAt()
+                .format(java.time.format.DateTimeFormatter.ofPattern("dd/MM")) + ")";
+    }
+
+    /**
+     * Ce que l'agent lit quand l'accès est au registre (F-180 / SF-180-04) : rien n'est inscrit. Le registre
+     * ne contient aucun secret — l'agent n'y trouvera jamais de quoi s'authentifier, seulement que c'est acquis.
+     */
+    static String obtainedMessage(AccesObtenu acces) {
+        if (acces == null) {
+            return "Cet accès est déjà au registre. Je n'ai rien inscrit.";
+        }
+        var day = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
+        StringBuilder out = new StringBuilder("DÉJÀ OBTENU le ").append(acces.getObtainedAt().format(day));
+        if (acces.getExpiresAt() != null) {
+            out.append(" (expire le ").append(acces.getExpiresAt().format(day)).append(")");
+        }
+        out.append(" : « ").append(acces.getSystem());
+        if (acces.getAccount() != null) {
+            out.append(" · compte ").append(acces.getAccount());
+        }
+        out.append(" »");
+        if (acces.getGrantedBy() != null) {
+            out.append(", donné par ").append(acces.getGrantedBy());
+        }
+        return out.append(". Je n'ai PAS inscrit d'attente : ne le redemande pas. Si c'est un AUTRE accès (autre "
+                + "environnement, autre compte), dis-le précisément dans la description.").toString();
     }
 
     /** « En attente depuis 4 j. » — pour une attente reconnue encore ouverte. */
@@ -282,7 +320,7 @@ public class TerminalActionToolExecutor {
             case RECORDED -> AttenteBlock.of(recording.action(), AttenteBlock.ADDED, null);
             case ALREADY_OPEN, ALREADY_REQUESTED ->
                     AttenteBlock.of(recording.action(), AttenteBlock.ALREADY, recording.match().name());
-            case REFUSED_BY_USER, ALREADY_DONE -> null;
+            case REFUSED_BY_USER, ALREADY_DONE, ALREADY_OBTAINED -> null;
         };
     }
 }

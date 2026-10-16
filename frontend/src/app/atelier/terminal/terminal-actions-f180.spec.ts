@@ -9,7 +9,7 @@ import { TerminalActionsPanelComponent } from './terminal-actions-panel.componen
 import { bandSummary } from './terminal-attentes-band.component';
 import { attenteNature } from './attente-card.component';
 import {
-  TerminalAction, TerminalActionBoard, TerminalActionDuplicate,
+  AccesObtenu, TerminalAction, TerminalActionBoard, TerminalActionDuplicate,
 } from '../../core/models/terminal-actions.models';
 import { TerminalActionsService } from '../../core/services/terminal-actions.service';
 import { mockTerminalActionsService } from '../../core/services/terminal-actions.service.testing';
@@ -99,6 +99,39 @@ describe('Le panneau des attentes (F-180)', () => {
       fixture.detectChanges();
       expect(component.duplicates().length).toBe(1);
       expect(snackBar.open).toHaveBeenCalled();
+    });
+  });
+
+  describe('SF-180-04 : le registre des accès', () => {
+    const done = f180Action('a-1', 'Demander l’accès VPN à Karim', { status: 'FAIT', categorie: 'ACCES' });
+    const proposal = { action: done, system: 'VPN', grantedBy: 'Karim', obtainedAt: '2026-10-14' };
+
+    it('« Ajouter au registre ? » propose l’accès obtenu ; [Ajouter] l’envoie avec son attente', () => {
+      build(f180Board([done]), s => {
+        s.accesProposals.and.returnValue(of([proposal]));
+        s.addAcces.and.returnValue(of({ id: 'r-1', system: 'VPN' } as unknown as AccesObtenu));
+      });
+      const section: HTMLElement = fixture.nativeElement.querySelector('.registry');
+      expect(section.textContent).toContain('Ajouter au registre ? (1)');
+      expect(section.textContent).toContain('obtenu le 14/10 par Karim');
+      component.addToRegistry(proposal);
+      fixture.detectChanges();
+      expect(service.addAcces).toHaveBeenCalledWith('w-1', {
+        actionId: 'a-1', system: 'VPN', grantedBy: 'Karim', obtainedAt: '2026-10-14',
+      });
+      expect(fixture.nativeElement.querySelector('.registry')).toBeNull();
+    });
+
+    it('[Pas besoin] : la proposition disparaît ; la vue Accès s’ouvre depuis le panneau', () => {
+      build(f180Board([done]), s => {
+        s.accesProposals.and.returnValue(of([proposal]));
+        s.dismissAccesProposal.and.returnValue(of(undefined));
+      });
+      component.dismissRegistry(proposal);
+      expect(service.dismissAccesProposal).toHaveBeenCalledWith('w-1', 'a-1');
+      component.view.set('acces');
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('app-terminal-acces-view')).not.toBeNull();
     });
   });
 

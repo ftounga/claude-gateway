@@ -167,6 +167,10 @@ public class TerminalAction {
     @Column(name = "duplicate_dismissed_at")
     private OffsetDateTime duplicateDismissedAt;
 
+    /** « Pas besoin » (F-180 / SF-180-04) : cette attente ACCES faite n'est plus proposée au registre. */
+    @Column(name = "registry_dismissed_at")
+    private OffsetDateTime registryDismissedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 

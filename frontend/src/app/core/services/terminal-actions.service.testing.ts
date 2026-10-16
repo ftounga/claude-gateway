@@ -16,5 +16,7 @@ export function mockTerminalActionsService(): jasmine.SpyObj<TerminalActionsServ
   service.qualify.and.returnValue(of([]));
   service.interlocuteurs.and.returnValue(of([]));
   service.interlocuteurSuggestions.and.returnValue(of([]));
+  service.acces.and.returnValue(of([]));
+  service.accesProposals.and.returnValue(of([]));
   return service;
 }
