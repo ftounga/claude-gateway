@@ -61,6 +61,17 @@ export class JourneyService {
     return this.http.post<SubjectJourney>(`/api/workspaces/${workspaceId}/journey/close/dismiss`, {});
   }
 
+  /** [Basculer sur le chantier N] (F-206) : le chantier ouvert `number` passe au focus. */
+  focus(workspaceId: string, number: number): Observable<SubjectJourney> {
+    return this.http.post<SubjectJourney>(`/api/workspaces/${workspaceId}/journey/chantiers/${number}/focus`, {});
+  }
+
+  /** Ouvre un chantier de plus, à côté des autres ; il prend le focus (F-206). */
+  openChantier(workspaceId: string, title?: string): Observable<SubjectJourney> {
+    return this.http.post<SubjectJourney>(`/api/workspaces/${workspaceId}/journey/chantiers`,
+      title ? { title } : {});
+  }
+
   /** [Rester libre] (SF-176-02) : la proposition ne revient pas sur ce sujet. */
   declineGuided(workspaceId: string): Observable<SubjectJourney> {
     return this.http.post<SubjectJourney>(`/api/workspaces/${workspaceId}/journey/guided-proposal/decline`, {});

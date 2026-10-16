@@ -184,7 +184,7 @@ import { Hand, HandTarget, handOf } from './terminal-hand';
 import { JourneyGesture, TerminalJourneyStripComponent } from './terminal-journey-strip.component';
 import { JourneyService } from '../../core/services/journey.service';
 import {
-  ChantierResolution, ClosedChantier, JourneyMode, SubjectJourney, chantierResolution, journeyResumeMessage,
+  ChantierResolution, ClosedChantier, JourneyMode, SubjectJourney, chantierResolution, focusChantierNumber, journeyResumeMessage,
 } from '../../core/models/journey.models';
 import { TerminalAction, TerminalActionBoard } from '../../core/models/terminal-actions.models';
 import { AtelierTerminalDemandeComponent } from './atelier-terminal-demande.component';
@@ -1009,6 +1009,35 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
         if (this.projectId === workspaceId) {
           this.journey.set(journey);
           this.resumeAfterGesture(gesture, before);
+        }
+        this.journeyBusy.set(false);
+      },
+      error: () => {
+        this.journeyBusy.set(false);
+        this.snackBar.open('Le parcours du sujet n\'a pas pu être mis à jour.', 'OK', { duration: 4000 });
+      },
+    });
+  }
+
+  /** Le chantier au focus du parcours en direct (F-206), ou `null`. */
+  focusChantier(): number | null {
+    return focusChantierNumber(this.journey());
+  }
+
+  /**
+   * **[Basculer sur le chantier N]** (F-206 / SF-206-04) — depuis la bande du parcours ou une suite.
+   * Un geste de lecture du parcours : il ne relance aucun tour et reste permis pendant un tour.
+   */
+  onSwitchChantier(number: number): void {
+    const workspaceId = this.projectId;
+    if (!workspaceId || number === this.focusChantier()) {
+      return;
+    }
+    this.journeyBusy.set(true);
+    this.journeys.focus(workspaceId, number).subscribe({
+      next: journey => {
+        if (this.projectId === workspaceId) {
+          this.journey.set(journey);
         }
         this.journeyBusy.set(false);
       },

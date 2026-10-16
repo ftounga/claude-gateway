@@ -26,17 +26,47 @@ export function nextStepTone(label: string | null | undefined): string {
  * L'étiquette de rattachement d'une suite au chantier (F-196 / SF-196-02), ou `null` hors chantier
  * ouvert : « Étape N · titre » pour une étape du plan, « Hors plan · approfondissement » sinon.
  */
-export function nextStepScopeLabel(step: AtelierNextStep, chantierOpen: boolean): string | null {
+export function nextStepScopeLabel(step: AtelierNextStep, chantierOpen: boolean, focus: number | null = null): string | null {
   if (!chantierOpen || !step.scope) {
     return null;
   }
   if (step.scope === 'APPROFONDISSEMENT') {
     return 'Hors plan · approfondissement';
   }
+  // F-206 / SF-206-04 : une suite d'un AUTRE chantier ouvert que le focus le dit.
+  const other = nextStepOtherChantier(step, chantierOpen, focus);
+  if (other !== null) {
+    const step_ = step.stepIndex ? ` · Étape ${step.stepIndex}` : '';
+    const title = step.stepIndex && step.stepTitle ? ` · ${step.stepTitle}` : '';
+    return `Chantier ${other}${step_}${title}`;
+  }
   if (step.scope === 'CHANTIER' && step.stepIndex) {
     return step.stepTitle ? `Étape ${step.stepIndex} · ${step.stepTitle}` : `Étape ${step.stepIndex}`;
   }
   return null;
+}
+
+/**
+ * Le chantier ouvert, autre que le focus, auquel une suite se rattache (F-206 / SF-206-04) — celui sur
+ * lequel « Basculer » mène —, ou `null` (suite du focus, approfondissement, hors chantier).
+ */
+export function nextStepOtherChantier(step: AtelierNextStep, chantierOpen: boolean, focus: number | null): number | null {
+  if (!chantierOpen || step.scope !== 'CHANTIER' || !step.chantier || focus === null) {
+    return null;
+  }
+  return step.chantier !== focus ? step.chantier : null;
+}
+
+/** « Chantier : 3/10 étapes », ou, avec plusieurs chantiers, « Chantier 2 : 3/10 · Chantier 1 : 1/2 ». */
+export function chantierProgressText(c: AtelierNextStepsChantier, focus: number | null = null): string {
+  const others = c.others ?? [];
+  if (others.length === 0) {
+    return `Chantier : ${c.done}/${c.total} étape${c.total > 1 ? 's' : ''}`;
+  }
+  const all = [c, ...others];
+  const first = focus ?? c.number;
+  all.sort((a, b) => (a.number === first ? -1 : b.number === first ? 1 : a.number - b.number));
+  return all.filter((x) => x.total > 0).map((x) => `Chantier ${x.number} : ${x.done}/${x.total}`).join(' · ');
 }
 
 /** « il reste 7 étapes » / « il reste 1 étape ». */
@@ -91,7 +121,7 @@ export function composeNextSteps(requests: string[]): string {
             <h3 class="cap__title">Et maintenant ?</h3>
             <span class="cap__src">proposé par l'agent, d'après ce tour</span>
             @if (chantier(); as c) {
-              <span class="cap__chantier">Chantier : {{ c.done }}/{{ c.total }} étape{{ c.total > 1 ? 's' : '' }}</span>
+              <span class="cap__chantier">{{ progressText(c) }}</span>
             }
             @if (checked().length > 0) {
               <span class="cap__checked">{{ checked().length }} cochée{{ checked().length > 1 ? 's' : '' }}</span>
@@ -121,6 +151,9 @@ export function composeNextSteps(requests: string[]): string {
                 </span>
                 <span class="tag" [attr.data-tone]="tone(step.label)">{{ label(step.label) }}</span>
               </button>
+              @if (otherChantier(step); as n) {
+                <button type="button" class="switch" (click)="switchChantier.emit(n)">Basculer sur le chantier {{ n }}</button>
+              }
             }
             <button type="button" class="opt opt--other" (click)="other.emit()">
               <span class="key" aria-hidden="true">…</span>
@@ -202,6 +235,13 @@ export function composeNextSteps(requests: string[]): string {
     .tag[data-tone='continuer'] { color: var(--cg-accent); background: color-mix(in srgb, var(--cg-accent) 14%, transparent); }
     .tag[data-tone='livrer'] { color: var(--cg-orange-2); background: color-mix(in srgb, var(--cg-orange-2) 14%, transparent); }
     .tag[data-tone='risque'] { color: #F9A825; background: color-mix(in srgb, #F9A825 14%, transparent); }
+    .switch {
+      justify-self: start; margin: -8px 0 8px 52px; padding: 4px 8px; background: none; cursor: pointer;
+      border: 1px solid color-mix(in srgb, var(--cg-accent) 35%, transparent); border-radius: 4px;
+      color: var(--cg-accent); font: 500 12px 'Inter', sans-serif;
+    }
+    .switch:hover { background: color-mix(in srgb, var(--cg-accent) 8%, transparent); }
+    .switch:focus-visible { outline: 2px solid var(--cg-accent); outline-offset: 2px; }
     .cap__foot { display: flex; gap: 16px; flex-wrap: wrap; padding: 8px 12px; font-size: 12px; color: #9FB0C4; }
     kbd {
       font: 11px 'JetBrains Mono', monospace; padding: 0 4px; border-radius: 4px;
@@ -223,6 +263,11 @@ export class TerminalNextStepsComponent {
    * (aucune étiquette de rattachement, aucun avertissement).
    */
   readonly chantier = input<AtelierNextStepsChantier | null>(null);
+  /**
+   * Le chantier au focus du parcours en direct (F-206 / SF-206-04) ; `null` ⇒ celui de la réponse.
+   * Après une bascule, les libellés suivent sans nouveau tour.
+   */
+  readonly focus = input<number | null>(null);
   /** La saisie courante : non vide ⇒ le panneau se replie. */
   readonly draft = input<string>('');
   /** Identité du tour (id du message) : un nouveau tour rouvre le panneau. */
@@ -232,6 +277,11 @@ export class TerminalNextStepsComponent {
   readonly pick = output<string>();
   /** « Autre chose », ou Entrée après avoir coché : donner la main à la saisie. */
   readonly other = output<void>();
+  /** [Basculer sur le chantier N] (F-206 / SF-206-04). */
+  readonly switchChantier = output<number>();
+
+  /** Le focus retenu : le parcours en direct, sinon celui de la réponse. */
+  private readonly focusNumber = computed(() => this.focus() ?? this.chantier()?.number ?? null);
 
   readonly shown = computed(() => (this.steps() ?? []).slice(0, MAX_NEXT_STEPS));
   readonly hidden = signal(false);
@@ -273,7 +323,15 @@ export class TerminalNextStepsComponent {
   }
 
   scopeLabel(step: AtelierNextStep): string | null {
-    return nextStepScopeLabel(step, this.chantier() !== null);
+    return nextStepScopeLabel(step, this.chantier() !== null, this.focusNumber());
+  }
+
+  otherChantier(step: AtelierNextStep): number | null {
+    return nextStepOtherChantier(step, this.chantier() !== null, this.focusNumber());
+  }
+
+  progressText(c: AtelierNextStepsChantier): string {
+    return chantierProgressText(c, this.focusNumber());
   }
 
   tone(value: string): string {

@@ -645,6 +645,8 @@ export interface AtelierNextStep {
   scope?: AtelierNextStepScope;
   /** Numéro (1…) de l'étape du plan réel, pour une suite `CHANTIER`. */
   stepIndex?: number;
+  /** Le chantier ouvert de rattachement (F-206 / SF-206-03) : le focus ou un autre. */
+  chantier?: number;
   /** Titre court de cette étape, lu dans le plan réel. */
   stepTitle?: string;
 }
@@ -657,6 +659,8 @@ export interface AtelierNextStepsChantier {
   number: number;
   done: number;
   total: number;
+  /** L'avancement des autres chantiers ouverts portant un plan (F-206 / SF-206-03), sinon absent. */
+  others?: AtelierNextStepsChantier[] | null;
 }
 
 /** L'envoi est devenu une précision du tour qui tournait déjà (F-84 / SF-84-06). */

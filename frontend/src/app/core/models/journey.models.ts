@@ -23,7 +23,7 @@ export interface SubjectJourney {
   phaseLabel: string | null;
   phaseChangedAt: string | null;
   /** La carte [Passer en guidé] [Rester libre] qui attend un geste (SF-176-02), ou `null`. */
-  guidedProposal?: { reason: string | null; proposedAt: string } | null;
+  guidedProposal?: { reason: string | null; proposedAt: string; newChantier?: boolean } | null;
   /** L'utilisateur a choisi de rester libre sur ce sujet (SF-176-02). */
   guidedDeclined?: boolean;
   /** Le plan structuré du sujet guidé (SF-176-03), ou `null`. */
@@ -40,6 +40,41 @@ export interface SubjectJourney {
   chantier?: JourneyChantier | null;
   /** Combien de chantiers clos ce sujet porte (SF-176-11). */
   closedChantiers?: number;
+  /** Les chantiers OUVERTS du sujet, focus compris, par numéro croissant (F-206). */
+  chantiers?: OpenChantier[];
+}
+
+/** Un chantier ouvert du sujet (F-206) : la bande en montre un onglet dès qu'il y en a deux. */
+export interface OpenChantier {
+  number: number;
+  title: string | null;
+  openedAt: string | null;
+  phase: JourneyPhase | null;
+  phaseLabel: string | null;
+  /** Le chantier affiché, celui que visent les gestes. */
+  focus: boolean;
+  planVersion: number;
+  validatedVersion: number | null;
+  awaitingValidation: boolean;
+  diagnosisPending: boolean;
+  closeProposed: boolean;
+  /** En Exécution sur son plan validé : il ouvre la porte des modifications. */
+  executing: boolean;
+  done: number;
+  total: number;
+}
+
+/** Vrai si un chantier ouvert attend un geste de l'utilisateur (F-206). */
+export function chantierAwaitsUser(c: OpenChantier): boolean {
+  return c.awaitingValidation || c.diagnosisPending || c.closeProposed;
+}
+
+/** Le chantier au focus du parcours en direct, ou `null` (F-206). */
+export function focusChantierNumber(journey: SubjectJourney | null | undefined): number | null {
+  if (!journey || journey.mode !== 'GUIDE' || !journey.phase || journey.phase === 'CLOS') {
+    return null;
+  }
+  return journey.chantier?.number ?? null;
 }
 
 /** Le chantier courant d'un sujet (SF-176-11). */
@@ -150,7 +185,10 @@ export function journeyLabel(journey: SubjectJourney | null): string {
 export function journeyResumeMessage(gesture: string, before: SubjectJourney | null): string | null {
   switch (gesture) {
     case 'accept-guided':
-      return '✓ Mode guidé — investigation lancée.';
+      // F-206 : sur un sujet déjà guidé, la proposition ouvrait un chantier de plus.
+      return before?.guidedProposal?.newChantier
+        ? '✓ Nouveau chantier ouvert — investigation lancée.'
+        : '✓ Mode guidé — investigation lancée.';
     case 'confirm-diagnosis':
       return '✓ Diagnostic confirmé — planification lancée.';
     case 'dismiss-diagnosis':

@@ -230,3 +230,59 @@ describe('TerminalNextStepsComponent — chantier guidé', () => {
     expect(remainingStepsText(1)).toBe("Le chantier n'est pas terminé : il reste 1 étape");
   });
 });
+
+/** F-206 / SF-206-04 — une suite d'un autre chantier ouvert : son libellé, et « Basculer ». */
+describe('TerminalNextStepsComponent — plusieurs chantiers ouverts', () => {
+  const steps: AtelierNextStep[] = [
+    {
+      title: 'Étape 4', why: 'à faire', label: 'CONTINUER', request: 'Fais 4.',
+      scope: 'CHANTIER', stepIndex: 4, stepTitle: 'Déléguer la zone', chantier: 2,
+    },
+    {
+      title: 'Ingress', why: 'cert expiré', label: 'VERIFIER', request: 'Vérifie l’ingress.',
+      scope: 'CHANTIER', stepIndex: 2, stepTitle: 'Vérifier l’ingress', chantier: 1,
+    },
+    { title: 'Certificat', why: 'lié', label: 'CONTINUER', request: 'Cert.', scope: 'CHANTIER', chantier: 1 },
+  ];
+  const progress: AtelierNextStepsChantier = { number: 2, done: 3, total: 10, others: [{ number: 1, done: 1, total: 2 }] };
+
+  let fixture: ComponentFixture<TerminalNextStepsComponent>;
+  const root = (): HTMLElement => fixture.nativeElement as HTMLElement;
+
+  function render(focus: number | null): number[] {
+    TestBed.configureTestingModule({ imports: [TerminalNextStepsComponent] });
+    fixture = TestBed.createComponent(TerminalNextStepsComponent);
+    const switched: number[] = [];
+    fixture.componentInstance.switchChantier.subscribe((n) => switched.push(n));
+    fixture.componentRef.setInput('steps', steps);
+    fixture.componentRef.setInput('chantier', progress);
+    fixture.componentRef.setInput('focus', focus);
+    fixture.componentRef.setInput('turnKey', 'm1');
+    fixture.detectChanges();
+    return switched;
+  }
+
+  it('dit « Chantier N · Étape M » et propose de basculer, pas pour le focus', () => {
+    const switched = render(null);
+    const options = root().querySelectorAll('.opt:not(.opt--other)');
+    expect(options.length).toBe(3);
+    expect(options[0].querySelector('.scope')?.textContent?.trim()).toBe('Étape 4 · Déléguer la zone');
+    expect(options[1].querySelector('.scope')?.textContent?.trim()).toBe('Chantier 1 · Étape 2 · Vérifier l’ingress');
+    expect(options[2].querySelector('.scope')?.textContent?.trim()).toBe('Chantier 1');
+    const buttons = root().querySelectorAll('.switch') as NodeListOf<HTMLButtonElement>;
+    expect(buttons.length).toBe(2);
+    expect(buttons[0].textContent).toContain('Basculer sur le chantier 1');
+    buttons[0].click();
+    expect(switched).toEqual([1]);
+    expect(root().querySelector('.cap__chantier')?.textContent).toContain('Chantier 2 : 3/10 · Chantier 1 : 1/2');
+  });
+
+  it('après une bascule, le focus en direct inverse les libellés', () => {
+    render(1);
+    const options = root().querySelectorAll('.opt:not(.opt--other)');
+    expect(options[0].querySelector('.scope')?.textContent?.trim()).toBe('Chantier 2 · Étape 4 · Déléguer la zone');
+    expect(options[1].querySelector('.scope')?.textContent?.trim()).toBe('Étape 2 · Vérifier l’ingress');
+    expect(root().querySelectorAll('.switch').length).toBe(1);
+    expect(root().querySelector('.cap__chantier')?.textContent).toContain('Chantier 1 : 1/2 · Chantier 2 : 3/10');
+  });
+});
