@@ -3,14 +3,14 @@ import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ApplicationRef } from '@angular/core';
 import { ComponentFixture, TestBed, discardPeriodicTasks, fakeAsync, flush, tick } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
-import { ActivatedRoute, ParamMap, Router, provideRouter } from '@angular/router';
+import { ActivatedRoute, ParamMap, Router, convertToParamMap, provideRouter } from '@angular/router';
 import {
   KillHostDialogComponent,
   KillHostDialogData,
 } from '../shared/kill-host-dialog/kill-host-dialog.component';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { Subject, of, throwError } from 'rxjs';
+import { BehaviorSubject, Subject, of, throwError } from 'rxjs';
 
 import { MAX_UPLOAD_BYTES } from '../shared/http-error.util';
 
@@ -4735,8 +4735,11 @@ describe('AtelierComponent', () => {
 describe('AtelierComponent — projet demandé par l\'URL (F-30 SF-30-10)', () => {
   let service: jasmine.SpyObj<AtelierService>;
   let snackBar: jasmine.SpyObj<MatSnackBar>;
+  /** L'adresse qui change après l'ouverture (F-179 / F-199) : passation, « précédent », clic du Fil. */
+  let params$: BehaviorSubject<ParamMap>;
 
   function setupWithUrl(id: string | null, mode: string | null) {
+    params$ = new BehaviorSubject<ParamMap>(convertToParamMap(id ? { id } : {}));
     service = jasmine.createSpyObj<AtelierService>('AtelierService', [
       'createWorkspace', 'listWorkspaces', 'getWorkspace',
       'getEngine', 'getFile', 'writeFile',
@@ -4800,6 +4803,7 @@ describe('AtelierComponent — projet demandé par l\'URL (F-30 SF-30-10)', () =
             },
             // Panneau d'explorateur piloté par `?vue=` (F-39 / SF-39-18) : aucun ici.
             queryParamMap: of({ get: () => null } as unknown as ParamMap),
+            paramMap: params$,
           },
         },
       ],
@@ -4815,6 +4819,28 @@ describe('AtelierComponent — projet demandé par l\'URL (F-30 SF-30-10)', () =
     expect(fixture.componentInstance.activeWorkspaceId()).toBe('w1');
     // F-39 / SF-39-08 : un projet ouvert EST un terminal, sans qu'aucun mode ne soit demandé.
     expect(fixture.nativeElement.querySelector('app-atelier-terminal')).not.toBeNull();
+  });
+
+  it('clic du Fil pendant un tour (F-199 / SF-199-02) : l\'adresse change, B s\'affiche, rien de A ne reste', () => {
+    const fixture = setupWithUrl('w1', null);
+    const component = fixture.componentInstance;
+    const other: WorkspaceSummary = {
+      id: 'w9', name: 'autre', createdAt: '2026-10-16T00:00:00Z', source: 'ARCHIVE', gitRepo: null,
+      hostId: 'h-edenred', hostName: 'EDENRED',
+    };
+    component.workspaces.set([...component.workspaces(), other]);
+    component.engine.set('LOCAL_MACHINE');
+    service.streamChat.and.callFake(() => new Promise<void>(() => undefined));
+    component.draft.set('lance les tests');
+    component.send();
+    expect(component.submitting()).toBeTrue();
+
+    params$.next(convertToParamMap({ id: 'w9' }));
+    fixture.detectChanges();
+
+    expect(component.activeWorkspaceId()).toBe('w9');
+    expect(component.submitting()).toBeFalse();
+    expect(TestBed.inject(CurrentClientService).ref()).toBe('h-edenred');
   });
 
   it('accepte et ignore ?mode=terminal des liens antérieurs (F-30 SF-30-10)', () => {

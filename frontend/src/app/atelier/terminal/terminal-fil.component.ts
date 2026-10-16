@@ -6,6 +6,8 @@ import { Subscription } from 'rxjs';
 import { FilSubAgent, FilTask, PosteTurns } from '../../core/models/terminal-fil.models';
 import { TerminalFilService } from '../../core/services/terminal-fil.service';
 import { FinishSoundService } from '../../core/services/finish-sound.service';
+import { CurrentClientService } from '../../core/services/current-client.service';
+import { HOSTED_REF } from '../../postes/forge-fleet';
 
 /** Relecture après chaque réponse, onglet visible. */
 export const FIL_POLL_MS = 5_000;
@@ -322,6 +324,12 @@ export class TerminalFilComponent {
   private readonly service = inject(TerminalFilService);
   private readonly router = inject(Router);
   private readonly sound = inject(FinishSoundService);
+  private readonly currentClient = inject(CurrentClientService);
+  /**
+   * Le poste de la bande, tel que la dernière lecture l'a servi (`null` = Hébergé), `undefined` tant
+   * qu'aucune lecture n'est arrivée. La bande est mono-poste : c'est le client de toutes ses tâches.
+   */
+  private posteRef: string | null | undefined = undefined;
 
   readonly tasks = signal<FilTask[]>([]);
   readonly open = signal(false);
@@ -356,11 +364,24 @@ export class TerminalFilComponent {
     if (task.here) {
       return;
     }
-    void this.router.navigate(['/atelier', task.workspaceId]);
+    this.goTo(task);
   }
 
   openFinished(task: FilTask): void {
     this.closeBanner();
+    this.goTo(task);
+  }
+
+  /**
+   * **Le seul chemin d'ouverture** (F-199 / SF-199-02) — ligne et bandeau de fin : le client courant
+   * bascule sur le poste de la tâche, puis l'adresse change ; l'écran la suit (`followRouteWorkspace`)
+   * et remet l'état de tour à zéro (F-198). Aucune garde de tour : le tour en cours continue côté
+   * serveur (F-84), il n'est ni interrompu ni perdu.
+   */
+  private goTo(task: FilTask): void {
+    if (this.posteRef !== undefined) {
+      this.currentClient.set(this.posteRef ?? HOSTED_REF);
+    }
     void this.router.navigate(['/atelier', task.workspaceId]);
   }
 
@@ -405,6 +426,7 @@ export class TerminalFilComponent {
     this.closeBanner();
     this.knownFinished.clear();
     this.firstRead = true;
+    this.posteRef = undefined;
     if (id) {
       this.fetch(id);
     }
@@ -414,6 +436,7 @@ export class TerminalFilComponent {
     this.pending = this.service.turns(id).subscribe({
       next: (res: PosteTurns) => {
         this.serverTime.set(res?.serverTime ?? Date.now());
+        this.posteRef = res?.hostId ?? null;
         const turns = Array.isArray(res?.turns) ? res.turns : [];
         this.tasks.set(turns);
         this.announce(turns);
