@@ -5,6 +5,8 @@ import java.util.UUID;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
@@ -15,8 +17,11 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * <b>Un chantier clos du sujet</b> (F-176 / SF-176-11, décision D9) : son titre, ses dates, son
- * diagnostic et le plan validé final — archivé à la clôture, consultable depuis l'en-tête.
+ * <b>Un chantier du sujet</b> (F-176 / SF-176-11, décision D9 ; F-206) : son titre, ses dates, son
+ * diagnostic et son plan. Clos ({@code CLOSED}) : archivé à la clôture avec le plan validé final,
+ * consultable depuis l'en-tête. Ouvert ({@code OPEN}, F-206) : son état complet (phase, plan courant et
+ * validé, diagnostic, propositions) — plusieurs chantiers d'un même sujet avancent en parallèle ; celui en
+ * focus a sa copie de travail dans {@link SubjectJourney}.
  *
  * <p><b>Isolation.</b> {@code user_id} sur chaque ligne ; toute lecture filtre
  * {@code (user_id, workspace_id)} après {@code requireOwned}.</p>
@@ -50,8 +55,41 @@ public class SubjectJourneyChantier {
     @Column(name = "opened_at")
     private OffsetDateTime openedAt;
 
-    @Column(name = "closed_at", nullable = false)
+    /** {@code null} tant que le chantier est ouvert (F-206). */
+    @Column(name = "closed_at")
     private OffsetDateTime closedAt;
+
+    /** {@code OPEN} ou {@code CLOSED} (F-206). */
+    @Column(name = "status", nullable = false, length = 8)
+    private String status;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "phase", length = 16)
+    private JourneyPhase phase;
+
+    @Column(name = "phase_changed_at")
+    private OffsetDateTime phaseChangedAt;
+
+    @Column(name = "validated_plan_json", length = 1000000)
+    private String validatedPlanJson;
+
+    @Column(name = "validated_version")
+    private Integer validatedVersion;
+
+    @Column(name = "plan_validated_at")
+    private OffsetDateTime planValidatedAt;
+
+    @Column(name = "diagnosis_evidence", length = 1000000)
+    private String diagnosisEvidence;
+
+    @Column(name = "diagnosis_proposed_at")
+    private OffsetDateTime diagnosisProposedAt;
+
+    @Column(name = "close_proposed_at")
+    private OffsetDateTime closeProposedAt;
+
+    @Column(name = "updated_at")
+    private OffsetDateTime updatedAt;
 
     @Column(name = "diagnosis", length = 1000000)
     private String diagnosis;
@@ -59,10 +97,20 @@ public class SubjectJourneyChantier {
     @Column(name = "diagnosis_confidence", length = 16)
     private String diagnosisConfidence;
 
-    /** Le plan validé final (ou, à défaut, le dernier plan posé), JSON. */
+    /** Clos : le plan validé final (ou, à défaut, le dernier plan posé). Ouvert : le plan courant. JSON. */
     @Column(name = "plan_json", length = 1000000)
     private String planJson;
 
     @Column(name = "plan_version")
     private Integer planVersion;
+
+    /** Statut d'un chantier ouvert (F-206). */
+    public static final String OPEN = "OPEN";
+    /** Statut d'un chantier clos. */
+    public static final String CLOSED = "CLOSED";
+
+    /** Vrai si le chantier est ouvert (F-206). */
+    public boolean isOpen() {
+        return OPEN.equals(status);
+    }
 }

@@ -17,6 +17,8 @@ import java.util.Map;
  * @param plan             le plan structuré, ou {@code null} s'il n'y en a pas (SF-176-03)
  * @param gateClosed       la porte refuse les modifications (SF-176-07) — même calcul que la boucle
  * @param gateMessage      le message exact du refus, ou {@code null} si la porte est ouverte
+ * @param chantier         le chantier en FOCUS (F-206), ou {@code null} si le sujet n'a jamais été guidé
+ * @param chantiers        les chantiers OUVERTS du sujet, focus compris, par numéro croissant (F-206)
  */
 public record SubjectJourneyResponse(
         String mode,
@@ -31,7 +33,64 @@ public record SubjectJourneyResponse(
         boolean gateClosed,
         String gateMessage,
         Chantier chantier,
-        long closedChantiers) {
+        long closedChantiers,
+        List<OpenChantier> chantiers) {
+
+    /**
+     * Un chantier ouvert du sujet (F-206), tel que la bande du parcours le montre.
+     *
+     * @param focus              vrai pour le chantier affiché (celui que visent les gestes sans numéro)
+     * @param awaitingValidation son plan attend le clic de l'utilisateur
+     * @param diagnosisPending   « Prêt à planifier » attend le geste de l'utilisateur
+     * @param closeProposed      la clôture est proposée
+     * @param executing          en Exécution sur son plan validé — il ouvre la porte (SF-206-02)
+     * @param done               étapes faites ou vérifiées
+     * @param total              étapes du plan
+     */
+    public record OpenChantier(int number, String title, OffsetDateTime openedAt, String phase, String phaseLabel,
+                               boolean focus, int planVersion, Integer validatedVersion,
+                               boolean awaitingValidation, boolean diagnosisPending, boolean closeProposed,
+                               boolean executing, int done, int total) {
+
+        static OpenChantier of(int number, String title, OffsetDateTime openedAt, JourneyPhase phase, boolean focus,
+                               int planVersion, Integer validatedVersion, String planJson,
+                               OffsetDateTime diagnosisProposedAt, OffsetDateTime closeProposedAt) {
+            boolean current = validatedVersion != null && validatedVersion == planVersion;
+            JourneyPlan plan = JourneyPlan.fromJson(planJson);
+            int done = 0;
+            for (JourneyPlan.Step s : plan.steps()) {
+                if (s.status() == JourneyPlan.StepStatus.FAIT || s.status() == JourneyPlan.StepStatus.VERIFIE) {
+                    done++;
+                }
+            }
+            return new OpenChantier(number, title, openedAt,
+                    phase == null ? null : phase.name(), phase == null ? null : phase.label(), focus,
+                    planVersion, validatedVersion,
+                    phase == JourneyPhase.PLAN && !plan.isEmpty() && !current,
+                    phase == JourneyPhase.INVESTIGATION && diagnosisProposedAt != null,
+                    closeProposedAt != null,
+                    phase == JourneyPhase.EXECUTION && current,
+                    done, plan.steps().size());
+        }
+    }
+
+    /** Les chantiers ouverts du sujet, focus compris, par numéro croissant (F-206). */
+    static List<OpenChantier> openChantiers(SubjectJourney journey) {
+        List<OpenChantier> open = new ArrayList<>();
+        if (journey.hasOpenFocus()) {
+            open.add(OpenChantier.of(Math.max(1, journey.getChantierNumber()), journey.getChantierTitle(),
+                    journey.getChantierOpenedAt(), journey.getPhase(), true, journey.getPlanVersion(),
+                    journey.getValidatedVersion(), journey.getPlanJson(), journey.getDiagnosisProposedAt(),
+                    journey.getCloseProposedAt()));
+        }
+        for (SubjectJourneyChantier c : journey.getOtherOpenChantiers()) {
+            open.add(OpenChantier.of(c.getNumber(), c.getTitle(), c.getOpenedAt(), c.getPhase(), false,
+                    c.getPlanVersion() == null ? 0 : c.getPlanVersion(), c.getValidatedVersion(), c.getPlanJson(),
+                    c.getDiagnosisProposedAt(), c.getCloseProposedAt()));
+        }
+        open.sort(java.util.Comparator.comparingInt(OpenChantier::number));
+        return List.copyOf(open);
+    }
 
     /**
      * Le chantier courant du sujet (SF-176-11), ou {@code null} si le sujet n'a jamais été guidé.
@@ -72,8 +131,12 @@ public record SubjectJourneyResponse(
     public record Diagnosis(String text, String evidence, String confidence, boolean pending) {
     }
 
-    /** La carte [Passer en guidé] [Rester libre] : pourquoi l'agent la propose, et depuis quand. */
-    public record GuidedProposal(String reason, OffsetDateTime proposedAt) {
+    /**
+     * La carte [Passer en guidé] [Rester libre] : pourquoi l'agent la propose, et depuis quand.
+     *
+     * @param newChantier vrai si le sujet est déjà guidé : accepter ouvre un chantier DE PLUS (F-206)
+     */
+    public record GuidedProposal(String reason, OffsetDateTime proposedAt, boolean newChantier) {
     }
 
     /**
@@ -112,9 +175,11 @@ public record SubjectJourneyResponse(
     public static SubjectJourneyResponse from(SubjectJourney journey, Map<String, String> waitsOn,
                                               long closedChantiers) {
         JourneyPhase phase = journey.getPhase();
-        GuidedProposal proposal = journey.getGuidedProposedAt() == null || journey.isGuided()
+        // F-206 : sujet déjà guidé avec un chantier ouvert ⇒ la proposition est celle d'un chantier de plus.
+        boolean alongside = journey.isGuided() && journey.hasOpenFocus();
+        GuidedProposal proposal = journey.getGuidedProposedAt() == null || (journey.isGuided() && !alongside)
                 ? null
-                : new GuidedProposal(journey.getGuidedProposalReason(), journey.getGuidedProposedAt());
+                : new GuidedProposal(journey.getGuidedProposalReason(), journey.getGuidedProposedAt(), alongside);
         return new SubjectJourneyResponse(
                 journey.getMode() == null ? JourneyMode.LIBRE.name() : journey.getMode().name(),
                 phase == null ? null : phase.name(),
@@ -135,7 +200,8 @@ public record SubjectJourneyResponse(
                 journey.getChantierNumber() <= 0 ? null
                         : new Chantier(journey.getChantierNumber(), journey.getChantierTitle(),
                                 journey.getChantierOpenedAt()),
-                closedChantiers);
+                closedChantiers,
+                openChantiers(journey));
     }
 
     private static Plan plan(SubjectJourney journey, Map<String, String> waitsOn) {

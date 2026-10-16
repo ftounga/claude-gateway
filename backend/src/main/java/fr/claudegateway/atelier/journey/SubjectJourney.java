@@ -9,6 +9,7 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -117,6 +118,31 @@ public class SubjectJourney {
 
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
+
+    /**
+     * Les <b>autres</b> chantiers ouverts du sujet (F-206) — hors focus, par numéro croissant. Jamais
+     * persisté ici : lu dans {@code subject_journey_chantiers} par le service, pour que la porte, la note
+     * du tour, le Cap et l'écran voient tous les chantiers ouverts sans relire la base.
+     */
+    @Transient
+    private java.util.List<SubjectJourneyChantier> otherOpenChantiers;
+
+    /**
+     * La ligne du chantier que cet objet représente quand il n'est <b>pas</b> le focus (F-206) : une vue
+     * de travail, jamais enregistrée comme parcours. {@code null} pour le parcours lui-même.
+     */
+    @Transient
+    private SubjectJourneyChantier parkedRow;
+
+    /** Les autres chantiers ouverts (jamais {@code null}). */
+    public java.util.List<SubjectJourneyChantier> getOtherOpenChantiers() {
+        return otherOpenChantiers == null ? java.util.List.of() : otherOpenChantiers;
+    }
+
+    /** Vrai si le chantier en focus est ouvert : mode guidé, phase posée et non close (F-206). */
+    public boolean hasOpenFocus() {
+        return phase != null && phase != JourneyPhase.CLOS;
+    }
 
     /** Vrai si le sujet est en mode guidé. */
     public boolean isGuided() {

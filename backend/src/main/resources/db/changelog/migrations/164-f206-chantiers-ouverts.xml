@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-206 / SF-206-01 — PLUSIEURS CHANTIERS OUVERTS DANS UN MEME SUJET (demande PO du 2026-10-15).
+
+      subject_journey_chantiers ne porte plus seulement les archives : elle porte l'etat de CHAQUE
+      chantier (status OPEN | CLOSED, phase, plan courant et valide, diagnostic, propositions).
+      subject_journeys garde le mode, la proposition du mode guide et le chantier en FOCUS
+      (chantier_number), dont elle reste la copie de travail, recopiee dans sa ligne OPEN a chaque
+      ecriture.
+
+      Reprise : les lignes existantes sont des archives -> status CLOSED (valeur par defaut). La ligne
+      courante d'un sujet guide ouvert EST son chantier ouvert en focus ; sa ligne OPEN est ecrite a la
+      premiere ecriture (pas de generation d'UUID en SQL, portable H2 / PostgreSQL, comme 147).
+
+      closed_at devient nullable : un chantier ouvert n'a pas de date de cloture.
+      Unicite (workspace_id, number) : posee seulement si les donnees la respectent deja (precondition,
+      MARK_RAN sinon — jamais de demarrage casse en prod).
+
+      Isolation : inchangee (user_id sur chaque ligne, lecture sous (user_id, workspace_id)).
+      Rollback : colonnes retirees, contrainte retiree ; closed_at reste nullable (sans risque).
+    -->
+
+    <changeSet id="f206-subject-journey-chantiers-state" author="claude-gateway">
+        <addColumn tableName="subject_journey_chantiers">
+            <column name="status" type="varchar(8)" defaultValue="CLOSED">
+                <constraints nullable="false"/>
+            </column>
+            <column name="phase" type="varchar(16)"/>
+            <column name="phase_changed_at" type="timestamptz"/>
+            <column name="validated_plan_json" type="varchar(1000000)"/>
+            <column name="validated_version" type="integer"/>
+            <column name="plan_validated_at" type="timestamptz"/>
+            <column name="diagnosis_evidence" type="varchar(1000000)"/>
+            <column name="diagnosis_proposed_at" type="timestamptz"/>
+            <column name="close_proposed_at" type="timestamptz"/>
+            <column name="updated_at" type="timestamptz"/>
+        </addColumn>
+        <dropNotNullConstraint tableName="subject_journey_chantiers" columnName="closed_at"
+                               columnDataType="timestamptz"/>
+        <rollback>
+            <dropColumn tableName="subject_journey_chantiers" columnName="updated_at"/>
+            <dropColumn tableName="subject_journey_chantiers" columnName="close_proposed_at"/>
+            <dropColumn tableName="subject_journey_chantiers" columnName="diagnosis_proposed_at"/>
+            <dropColumn tableName="subject_journey_chantiers" columnName="diagnosis_evidence"/>
+            <dropColumn tableName="subject_journey_chantiers" columnName="plan_validated_at"/>
+            <dropColumn tableName="subject_journey_chantiers" columnName="validated_version"/>
+            <dropColumn tableName="subject_journey_chantiers" columnName="validated_plan_json"/>
+            <dropColumn tableName="subject_journey_chantiers" columnName="phase_changed_at"/>
+            <dropColumn tableName="subject_journey_chantiers" columnName="phase"/>
+            <dropColumn tableName="subject_journey_chantiers" columnName="status"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="f206-subject-journey-chantiers-unique" author="claude-gateway">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM (SELECT workspace_id, number FROM subject_journey_chantiers
+                GROUP BY workspace_id, number HAVING COUNT(*) &gt; 1) d
+            </sqlCheck>
+        </preConditions>
+        <addUniqueConstraint tableName="subject_journey_chantiers" columnNames="workspace_id, number"
+                             constraintName="uq_subject_journey_chantiers_number"/>
+        <rollback>
+            <dropUniqueConstraint tableName="subject_journey_chantiers"
+                                  constraintName="uq_subject_journey_chantiers_number"/>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>
