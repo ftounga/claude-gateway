@@ -37,7 +37,9 @@ public record TerminalActionResponse(
         TerminalActionQui qui,
         String subjectName,
         BlockedStep blockedStep,
-        UUID mergedIntoId) {
+        UUID mergedIntoId,
+        UUID interlocuteurId,
+        String interlocuteurName) {
 
     /**
      * L'étape du plan F-176 que cette attente bloque (F-180 / SF-180-02, D3) : « bloque : étape 3
@@ -51,7 +53,15 @@ public record TerminalActionResponse(
         return new TerminalActionResponse(id, workspaceId, workspaceName, hostId, subjectId, description, blocks,
                 person, kind, status, requestedAt, requestedTo, channel, closedReason, closedAt, proposedStatus,
                 proposedReason, proposedAt, createdAt, updatedAt, followUpDue, categorie, qui, subject, step,
-                mergedIntoId);
+                mergedIntoId, interlocuteurId, interlocuteurName);
+    }
+
+    /** La même attente, avec le nom de son interlocuteur normalisé (F-180 / SF-180-03). */
+    public TerminalActionResponse withInterlocuteur(String name) {
+        return new TerminalActionResponse(id, workspaceId, workspaceName, hostId, subjectId, description, blocks,
+                person, kind, status, requestedAt, requestedTo, channel, closedReason, closedAt, proposedStatus,
+                proposedReason, proposedAt, createdAt, updatedAt, followUpDue, categorie, qui, subjectName,
+                blockedStep, mergedIntoId, interlocuteurId, name);
     }
 
     public static TerminalActionResponse from(TerminalAction action) {
@@ -90,6 +100,8 @@ public record TerminalActionResponse(
                 action.getQui(),
                 null,
                 null,
-                action.getMergedIntoId());
+                action.getMergedIntoId(),
+                action.getInterlocuteurId(),
+                null);
     }
 }

@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-180 / SF-180-03 - LES INTERLOCUTEURS (decision D2).
+
+      Un interlocuteur par personne ET PAR POSTE : isolation user_id + host_id (host_id NOT NULL, un
+      terminal heberge garde le texte libre). normalized_name unique dans le perimetre ; variants = formes
+      normalisees reconnues (une par ligne) ; distinct_from = identifiants declares « deux personnes ».
+      terminal_actions.interlocuteur_id : nullable, rattachement fait par le code (resolution a
+      l'inscription, reprise idempotente au demarrage). Pas de FK : purge explicite, comme terminal_actions.
+      Rollback : la colonne puis la table se retirent.
+    -->
+
+    <changeSet id="160-interlocuteurs" author="claude-gateway">
+        <createTable tableName="interlocuteurs">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="display_name" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="normalized_name" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="variants" type="varchar(2600)"/>
+            <column name="role" type="varchar(120)"/>
+            <column name="team" type="varchar(120)"/>
+            <column name="radar_person_id" type="uuid"/>
+            <column name="distinct_from" type="varchar(2000)"/>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="interlocuteurs" constraintName="uq_interlocuteurs_scope_name"
+                             columnNames="user_id, host_id, normalized_name"/>
+        <addColumn tableName="terminal_actions">
+            <column name="interlocuteur_id" type="uuid"/>
+        </addColumn>
+        <createIndex tableName="terminal_actions" indexName="idx_terminal_actions_interlocuteur">
+            <column name="user_id"/>
+            <column name="interlocuteur_id"/>
+        </createIndex>
+        <rollback>
+            <dropIndex tableName="terminal_actions" indexName="idx_terminal_actions_interlocuteur"/>
+            <dropColumn tableName="terminal_actions" columnName="interlocuteur_id"/>
+            <dropTable tableName="interlocuteurs"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

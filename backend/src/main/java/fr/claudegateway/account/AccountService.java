@@ -126,6 +126,14 @@ public class AccountService {
         this.subjectRoutineRepository = repository;
     }
 
+    /** Purge des interlocuteurs et du registre des accès (F-180) ; absente = formes historiques. */
+    private fr.claudegateway.atelier.actions.AttentesAccountPurge attentesPurge;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setAttentesPurge(fr.claudegateway.atelier.actions.AttentesAccountPurge purge) {
+        this.attentesPurge = purge;
+    }
+
     /** Branche la purge des actions du terminal à la suppression du compte (F-154 / SF-154-01). */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setTerminalActionRepository(
@@ -410,6 +418,10 @@ public class AccountService {
         // Pas de clé étrangère, donc purge nommée — sinon elles survivraient au compte.
         if (terminalActionRepository != null) {
             terminalActionRepository.purgeUser(userId);
+        }
+        // Les interlocuteurs et le registre des accès (F-180) : données du compte, purge nommée.
+        if (attentesPurge != null) {
+            attentesPurge.purgeUser(userId);
         }
         // Les routines des sujets (F-183) : elles suivent aussi le sujet (cascade) ; la purge nommée
         // couvre le compte.

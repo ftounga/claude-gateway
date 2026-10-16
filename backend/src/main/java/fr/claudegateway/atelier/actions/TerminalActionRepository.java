@@ -92,6 +92,23 @@ public interface TerminalActionRepository extends JpaRepository<TerminalAction, 
                                               @Param("open") Collection<TerminalActionStatus> open,
                                               @Param("since") OffsetDateTime since);
 
+    /** Les attentes d'un compte rattachées à un interlocuteur (F-180 / SF-180-03 / SF-180-05). */
+    List<TerminalAction> findByUserIdAndInterlocuteurId(UUID userId, UUID interlocuteurId);
+
+    /** Les attentes d'un poste sans interlocuteur mais avec une personne — la reprise (F-180 / SF-180-03). */
+    @Query("select a from TerminalAction a where a.hostId is not null and a.interlocuteurId is null "
+            + "and (a.person is not null or a.requestedTo is not null) order by a.createdAt asc")
+    List<TerminalAction> findUnlinkedWithPerson(org.springframework.data.domain.Pageable page);
+
+    /** Les attentes d'un poste, tous états (F-180 / SF-180-05 : délais par personne). */
+    List<TerminalAction> findByUserIdAndHostId(UUID userId, UUID hostId);
+
+    /** Reporte les attentes d'un interlocuteur fusionné sur celui qu'on garde (F-180 / SF-180-03). */
+    @Modifying
+    @Query("update TerminalAction a set a.interlocuteurId = :into where a.userId = :userId "
+            + "and a.interlocuteurId = :from")
+    int repointInterlocuteur(@Param("userId") UUID userId, @Param("from") UUID from, @Param("into") UUID into);
+
     /** Purge à la suppression d'un projet : pas de clé étrangère, donc purge explicite. */
     @Modifying
     @Query("delete from TerminalAction a where a.userId = :userId and a.workspaceId = :workspaceId")

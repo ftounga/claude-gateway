@@ -30,6 +30,7 @@ import {
   isOpenStatus,
 } from '../../core/models/terminal-actions.models';
 import { TerminalActionsService } from '../../core/services/terminal-actions.service';
+import { TerminalPeopleViewComponent } from './terminal-people-view.component';
 
 /** Depuis quand l'action attend — l'ancienneté est le signal qui fait agir. */
 export function ageLabel(createdAt: string, now = Date.now()): string {
@@ -51,6 +52,9 @@ export function ageLabel(createdAt: string, now = Date.now()): string {
 
 /** La portée affichée : ce terminal seulement, ou tout le poste. */
 export type AttentesScope = 'here' | 'host';
+
+/** La vue du panneau (F-180) : les colonnes d'attentes, ou les personnes. */
+export type AttentesView = 'columns' | 'people';
 
 /** Une ligne de la reprise : l'attente héritée et l'état que l'utilisateur retient. */
 interface ReviewRow {
@@ -89,7 +93,7 @@ interface Column {
   selector: 'app-terminal-actions-panel',
   imports: [
     FormsModule, MatButtonModule, MatButtonToggleModule, MatFormFieldModule, MatIconModule,
-    MatInputModule, MatSelectModule, MatTooltipModule,
+    MatInputModule, MatSelectModule, MatTooltipModule, TerminalPeopleViewComponent,
   ],
   template: `
     <aside class="actions-panel" role="complementary" aria-label="Attentes">
@@ -104,6 +108,14 @@ interface Column {
 
       <div class="actions-panel__tools">
         @if (hasHost()) {
+          <!-- F-180 : la vue — les colonnes, ou les personnes. -->
+          <mat-button-toggle-group class="actions-panel__view" [value]="view()"
+            (change)="view.set($event.value)" aria-label="Vue">
+            <mat-button-toggle value="columns">Attentes</mat-button-toggle>
+            <mat-button-toggle value="people">Personnes</mat-button-toggle>
+          </mat-button-toggle-group>
+        }
+        @if (hasHost() && view() === 'columns') {
           <mat-button-toggle-group class="actions-panel__scope" [value]="scope()"
             (change)="scope.set($event.value)" aria-label="Portée">
             <mat-button-toggle value="here">Ce terminal</mat-button-toggle>
@@ -151,6 +163,9 @@ interface Column {
       }
 
       <div class="actions-panel__content">
+        @if (view() === 'people') {
+          <app-terminal-people-view [workspaceId]="workspaceId()" (changed)="reload()"></app-terminal-people-view>
+        } @else {
         @if (review().length && !reviewHidden()) {
           <!-- F-175 / SF-175-07 — LA REPRISE DE L'EXISTANT : présentée une fois, rien ne change sans validation. -->
           <section class="review" aria-label="Reprise des attentes existantes">
@@ -286,7 +301,7 @@ interface Column {
                         · {{ age(action.requestedAt || action.createdAt) }}
                         @if (action.followUpDue) { · <span class="action__late">à relancer</span> }
                       } @else if (isOpen(action)) {
-                        @if (action.person) { <span class="action__person">{{ action.person }}</span> · }
+                        @if (action.interlocuteurName || action.person) { <span class="action__person">{{ action.interlocuteurName || action.person }}</span> · }
                         <span class="action__age">{{ age(action.createdAt) }}</span>
                       } @else {
                         {{ label(action.status) }}{{ action.closedReason ? ' — « ' + action.closedReason + ' »' : '' }}
@@ -345,6 +360,7 @@ interface Column {
               </section>
             }
           </div>
+        }
         }
       </div>
     </aside>
@@ -665,6 +681,8 @@ export class TerminalActionsPanelComponent implements OnInit {
 
   readonly board = signal<TerminalActionBoard | null>(null);
   readonly scope = signal<AttentesScope>('here');
+  /** La vue : les colonnes d'attentes, ou les personnes (F-180 / SF-180-03). */
+  readonly view = signal<AttentesView>('columns');
   readonly loading = signal(true);
   readonly failed = signal(false);
   readonly busy = signal<string | null>(null);

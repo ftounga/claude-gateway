@@ -102,6 +102,18 @@ describe('Le panneau des attentes (F-180)', () => {
     });
   });
 
+  describe('SF-180-03 : la vue Personnes', () => {
+    it('le panneau d’un poste bascule sur les personnes ; la carte montre le nom normalisé', () => {
+      build(f180Board([f180Action('a-1', 'Demander le VPN', { person: 'remi', interlocuteurName: 'Rémi Dupont' })]));
+      expect(fixture.nativeElement.querySelector('.action__person').textContent).toContain('Rémi Dupont');
+      component.view.set('people');
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('app-terminal-people-view')).not.toBeNull();
+      expect(fixture.nativeElement.querySelector('.columns')).toBeNull();
+      expect(service.interlocuteurs).toHaveBeenCalledWith('w-1');
+    });
+  });
+
   describe('SF-180-02 : nature, qui agit, étape bloquée', () => {
     it('la carte porte sa nature, « à toi », et l’étape qu’elle bloque', () => {
       build(f180Board([f180Action('a-1', 'Se reconnecter en SSO', {

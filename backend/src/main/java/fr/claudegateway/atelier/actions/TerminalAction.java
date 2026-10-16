@@ -67,6 +67,10 @@ public class TerminalAction {
     @Column(name = "subject_id")
     private UUID subjectId;
 
+    /** L'interlocuteur normalisé du poste (F-180 / SF-180-03) ; nul pour un terminal hébergé. */
+    @Column(name = "interlocuteur_id")
+    private UUID interlocuteurId;
+
     /** Ce qu'il faut faire, à l'impératif, du point de vue de l'utilisateur. */
     @Column(name = "description", nullable = false, length = 300)
     private String description;
