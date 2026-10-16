@@ -165,6 +165,39 @@ class AtelierChatServiceGovernanceProposalTest {
         verify(proposals, never()).propose(any(), any(), any(), any(), any(), any(), any());
     }
 
+    /** F-182 / SF-182-03 — un agent se propose (type AGENT) ; ce qui sera ignoré est dit à l'agent. */
+    @Test
+    void anAgentProposalCarriesItsWarnings() {
+        UUID proposalId = UUID.randomUUID();
+        String content = "---\nmodele: claude-haiku-5\n---\nRelis.";
+        when(proposals.propose(eq(userId), eq(workspace), eq("AGENT"), eq("SUJET"), eq("relecteur"), eq(content),
+                any())).thenReturn(new GovernanceProposalBlock(proposalId, "AGENT", "SUJET", "relecteur",
+                        ".claude/agents/relecteur.md", null, true, List.of(), 0));
+        agentProvider.enqueueToolCall(AtelierChatService.GOVERNANCE_PROPOSE_TOOL_NAME, "type", "AGENT",
+                "portee", "SUJET", "nom", "relecteur", "contenu", content);
+        agentProvider.enqueueFinal("Proposition posée.");
+
+        service.chatStreaming(userId, workspaceId, "crée un agent relecteur", listener);
+
+        assertThat(relayed).extracting(GovernanceProposalBlock::proposalId).containsExactly(proposalId);
+        assertThat(String.valueOf(agentProvider.lastRequest.messages())).contains("Avertissements")
+                .contains("justification");
+        assertThat(agentProvider.lastRequest.tools()).filteredOn(t -> t.name()
+                .equals(AtelierChatService.GOVERNANCE_PROPOSE_TOOL_NAME)).first()
+                .satisfies(tool -> assertThat(String.valueOf(tool.inputSchema())).contains("AGENT"));
+    }
+
+    @Test
+    void aDirectWriteToAnAgentFileGetsTheReminder() {
+        when(workspaceService.readFile(any(), any(), anyString())).thenThrow(new RuntimeException("absent"));
+        agentProvider.enqueueToolCall("write_file", "path", ".claude/agents/relecteur.md", "content", "x");
+        agentProvider.enqueueFinal("fait");
+
+        service.chatStreaming(userId, workspaceId, "crée un agent", listener);
+
+        assertThat(String.valueOf(agentProvider.lastRequest.messages())).contains("passe par la proposition");
+    }
+
     @SuppressWarnings("unused")
     private static RunnerCallResult ok(String content) {
         return new RunnerCallResult(true, content, false, null, 5L, null, null, null, "", false);

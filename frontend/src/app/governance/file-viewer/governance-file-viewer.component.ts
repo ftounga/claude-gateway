@@ -7,6 +7,7 @@ import { MatTabsModule } from '@angular/material/tabs';
 import {
   GovernanceFileComparison,
   GovernanceProjectFile,
+  fileKindLabel,
 } from '../../core/models/governance.models';
 import { DiffLine, isUnchanged, lineDiff } from '../../shared/line-diff';
 
@@ -34,6 +35,8 @@ import { DiffLine, isUnchanged, lineDiff } from '../../shared/line-diff';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class GovernanceFileViewerComponent {
+  /** F-182 / SF-182-03 : skill, gabarit ou agent, en un mot. */
+  readonly kindLabel = fileKindLabel;
   private readonly comparison = signal<GovernanceFileComparison | null>(null);
 
   /** Le fichier ouvert, tel que la gateway le rend. Nul tant que rien n'est ouvert. */

@@ -258,7 +258,7 @@
                     <li>
                       <code>{{ file.path }}</code>
                       <span class="gouvernance__meta">
-                        {{ file.kind === 'SKILL' ? 'skill' : 'gabarit' }}
+                        {{ kindLabel(file.kind) }}
                       </span>
                     </li>
                   }

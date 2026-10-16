@@ -15,7 +15,7 @@
   <div class="viewer">
     <header class="viewer__header">
       <code>{{ file.path }}</code>
-      <span class="viewer__kind">{{ file.kind === 'SKILL' ? 'skill' : 'gabarit' }}</span>
+      <span class="viewer__kind">{{ kindLabel(file.kind) }}</span>
     </header>
 
     @if (file.truncated) {

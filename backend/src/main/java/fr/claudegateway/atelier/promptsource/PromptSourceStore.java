@@ -402,6 +402,51 @@ public class PromptSourceStore {
     }
 
     /**
+     * Range un <b>agent du poste</b> validé (F-182 / SF-182-03) pour tous les projets amorcés du poste : son
+     * contenu, et son chemin dans l'index des agents du poste — seulement là où l'index existe déjà (sinon le
+     * catalogue relit en direct, et un index partiel masquerait les autres agents).
+     */
+    @Transactional
+    public void putHostAgent(UUID userId, List<Workspace> workspacesOfHost, String path, String content) {
+        if (userId == null || workspacesOfHost == null || !isAgentPath(path) || content == null) {
+            return;
+        }
+        for (Workspace workspace : workspacesOfHost) {
+            if (workspace == null || workspace.getId() == null || !userId.equals(workspace.getUserId())
+                    || !isPrimed(userId, workspace.getId())) {
+                continue;
+            }
+            Optional<String> index = read(userId, workspace.getId(), HOST_AGENTS_PATH);
+            if (index.isEmpty()) {
+                continue;
+            }
+            store(userId, workspace, HOST_AGENTS_PATH + "/" + path, content);
+            if (index.get().lines().map(String::strip).noneMatch(path::equals)) {
+                store(userId, workspace, HOST_AGENTS_PATH, index.get().isBlank() ? path : index.get() + "\n" + path);
+            }
+        }
+    }
+
+    /**
+     * Range un <b>agent du sujet</b> validé (F-182 / SF-182-03) : son contenu, et son chemin dans
+     * l'arborescence rangée, pour que le catalogue le voie au tour suivant. Sans effet hors projet amorcé.
+     */
+    @Transactional
+    public void putSubjectAgent(UUID userId, Workspace workspace, String path, String content) {
+        if (userId == null || workspace == null || workspace.getId() == null || !isAgentPath(path)
+                || content == null || !userId.equals(workspace.getUserId()) || !isPrimed(userId, workspace.getId())) {
+            return;
+        }
+        store(userId, workspace, path, content);
+        List<String> tree = tree(userId, workspace.getId());
+        if (tree.stream().map(String::strip).noneMatch(path::equals)) {
+            List<String> grown = new ArrayList<>(tree);
+            grown.add(path);
+            store(userId, workspace, TREE_PATH, String.join("\n", grown));
+        }
+    }
+
+    /**
      * Range directement un fichier d'un projet amorcé (F-177 / SF-177-02) — après une écriture validée
      * par l'utilisateur, pour que le tour suivant la voie sans attendre le rafraîchissement post-tour.
      * Sans effet sur un projet non amorcé ou d'un autre utilisateur.

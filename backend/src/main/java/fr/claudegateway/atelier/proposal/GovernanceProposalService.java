@@ -51,6 +51,8 @@ public class GovernanceProposalService {
     public static final String REGLE = "REGLE";
     public static final String SKILL = "SKILL";
     public static final String GABARIT = "GABARIT";
+    /** Un agent nommé (F-182 / SF-182-03) : {@code .claude/agents/<nom>.md}. */
+    public static final String AGENT = "AGENT";
     public static final String POSTE = "POSTE";
     public static final String SUJET = "SUJET";
 
@@ -60,6 +62,8 @@ public class GovernanceProposalService {
     public static final String SKILLS_DIR = ".claude/skills/";
     /** Dossier des gabarits. */
     public static final String TEMPLATES_DIR = ".claude/gabarits/";
+    /** Dossier des agents nommés (F-182 / SF-182-03), le même que celui du catalogue d'agents. */
+    public static final String AGENTS_DIR = PromptSourceStore.AGENTS_DIR;
 
     static final int MAX_NAME_CHARS = 120;
     static final int MAX_SLUG_CHARS = 60;
@@ -106,8 +110,8 @@ public class GovernanceProposalService {
             String rawName, String rawContent, String rawReason) {
         String type = upper(rawType);
         String scope = upper(rawScope);
-        if (!List.of(REGLE, SKILL, GABARIT).contains(type)) {
-            throw new InvalidProposalException("type doit valoir REGLE, SKILL ou GABARIT.");
+        if (!List.of(REGLE, SKILL, GABARIT, AGENT).contains(type)) {
+            throw new InvalidProposalException("type doit valoir REGLE, SKILL, GABARIT ou AGENT.");
         }
         if (!List.of(POSTE, SUJET).contains(scope)) {
             throw new InvalidProposalException("portee doit valoir POSTE ou SUJET.");
@@ -118,7 +122,8 @@ public class GovernanceProposalService {
         }
         String content = rawContent == null ? "" : rawContent.strip();
         if (content.isEmpty()) {
-            throw new InvalidProposalException("contenu obligatoire : le texte de la règle, du skill ou du gabarit.");
+            throw new InvalidProposalException(
+                    "contenu obligatoire : le texte de la règle, du skill, du gabarit ou de l'agent.");
         }
         int max = REGLE.equals(type) ? MAX_RULE_CHARS : MAX_FILE_CHARS;
         if (content.length() > max) {
@@ -142,6 +147,14 @@ public class GovernanceProposalService {
             after = upsertRule(before, name, content, diff);
         } else {
             after = withFrontMatter(type, name, content, reason);
+            if (AGENT.equals(type)) {
+                // F-182 / SF-182-03 : un agent inutilisable ne mérite pas une carte — le motif revient à l'agent.
+                fr.claudegateway.atelier.agents.NamedAgent agent = fr.claudegateway.atelier.agents.NamedAgentParser
+                        .parse(slug(name), path, scope, after);
+                if (!agent.usable()) {
+                    throw new InvalidProposalException("Agent invalide : " + String.join(" ", agent.errors()));
+                }
+            }
             if (before != null) {
                 before.lines().forEach(line -> diff.add(new GovernanceProposalBlock.DiffLine("DEL", line)));
             }
@@ -245,7 +258,8 @@ public class GovernanceProposalService {
         if (slug.isEmpty()) {
             return null;
         }
-        return (SKILL.equals(type) ? SKILLS_DIR : TEMPLATES_DIR) + slug + ".md";
+        String dir = SKILL.equals(type) ? SKILLS_DIR : AGENT.equals(type) ? AGENTS_DIR : TEMPLATES_DIR;
+        return dir + slug + ".md";
     }
 
     /** {@code « Ticket Jira ! »} → {@code ticket-jira}. */
@@ -308,10 +322,13 @@ public class GovernanceProposalService {
         return out.toString();
     }
 
-    /** Un skill sans en-tête reçoit {@code name}/{@code description}, lus par le catalogue de la consigne. */
+    /**
+     * Un skill sans en-tête reçoit {@code name}/{@code description}, lus par le catalogue de la consigne ; un
+     * agent (F-182 / SF-182-03) reçoit en plus {@code outils: lecture} — le moindre privilège.
+     */
     static String withFrontMatter(String type, String name, String content, String reason) {
         String body = content.strip() + "\n";
-        if (!SKILL.equals(type) || body.startsWith("---")) {
+        if (!(SKILL.equals(type) || AGENT.equals(type)) || body.startsWith("---")) {
             return body;
         }
         String description = (reason == null || reason.isBlank() ? name : reason).lines().findFirst()
@@ -319,7 +336,8 @@ public class GovernanceProposalService {
         if (description.length() > 200) {
             description = description.substring(0, 200);
         }
-        return "---\nname: " + slug(name) + "\ndescription: " + description + "\n---\n\n" + body;
+        return "---\nname: " + slug(name) + "\ndescription: " + description
+                + (AGENT.equals(type) ? "\noutils: lecture" : "") + "\n---\n\n" + body;
     }
 
     /** Cible de lecture/écriture : racine du poste ({@code POSTE}) ou dossier du projet ({@code SUJET}). */
@@ -377,7 +395,16 @@ public class GovernanceProposalService {
             return;
         }
         try {
-            if (POSTE.equals(proposal.getScope()) && RULES_FILE.equals(proposal.getPath())) {
+            if (AGENT.equals(proposal.getType())) {
+                // F-182 / SF-182-03 : l'agent validé est connu du catalogue dès le tour suivant.
+                if (POSTE.equals(proposal.getScope())) {
+                    List<Workspace> ofHost = new ArrayList<>(workspaceService.listByHost(userId, workspace.getHostId()));
+                    workspaceService.findHostTerminal(userId, workspace.getHostId()).ifPresent(ofHost::add);
+                    promptSourceStore.putHostAgent(userId, ofHost, proposal.getPath(), proposal.getContent());
+                } else {
+                    promptSourceStore.putSubjectAgent(userId, workspace, proposal.getPath(), proposal.getContent());
+                }
+            } else if (POSTE.equals(proposal.getScope()) && RULES_FILE.equals(proposal.getPath())) {
                 List<Workspace> ofHost = new ArrayList<>(workspaceService.listByHost(userId, workspace.getHostId()));
                 workspaceService.findHostTerminal(userId, workspace.getHostId()).ifPresent(ofHost::add);
                 promptSourceStore.putHostGovernance(userId, ofHost, proposal.getContent());

@@ -114,5 +114,7 @@ describe('ProposalCardComponent (F-177 / SF-177-02)', () => {
     expect(proposalBlock('t-1', proposal).proposal).toBe(proposal);
     expect(proposalKindLabel('SKILL')).toBe('Skill');
     expect(proposalKindLabel('GABARIT')).toBe('Gabarit');
+    // F-182 / SF-182-03 : un agent nommé se propose comme un skill.
+    expect(proposalKindLabel('AGENT')).toBe('Agent');
   });
 });
