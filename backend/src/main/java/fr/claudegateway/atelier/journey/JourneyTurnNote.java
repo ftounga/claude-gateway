@@ -35,7 +35,10 @@ public final class JourneyTurnNote {
      */
     public static String render(SubjectJourney journey, boolean firstTurn) {
         if (journey != null && journey.isGuided() && journey.getPhase() != null) {
-            return HEADER + guided(journey) + FOOTER;
+            if (journey.getOtherOpenChantiers().isEmpty()) {
+                return HEADER + guided(journey) + proposalPending(journey) + FOOTER;
+            }
+            return HEADER + several(journey) + FOOTER;
         }
         if (journey != null && journey.getGuidedProposedAt() != null) {
             return HEADER + "Mode LIBRE · ta proposition de passer en guidé attend le choix de "
@@ -54,6 +57,77 @@ public final class JourneyTurnNote {
                     + "petit geste ou chantier). Chantier → propose_guided_mode.\n" + FOOTER;
         }
         return "";
+    }
+
+    /** Résumés d'autres chantiers rappelés au plus ; au-delà, comptés. */
+    static final int MAX_OTHERS = 6;
+
+    /** Titre d'un chantier résumé, au plus. */
+    static final int MAX_TITLE = 80;
+
+    /** F-206 : une proposition de chantier de plus attend le choix de l'utilisateur. */
+    private static String proposalPending(SubjectJourney journey) {
+        return journey.getGuidedProposedAt() == null ? ""
+                : "Ta proposition d'ouvrir un chantier de plus attend le choix de l'utilisateur : n'en reparle pas.\n";
+    }
+
+    /**
+     * F-206 : plusieurs chantiers ouverts — le focus détaillé d'abord, les autres résumés d'une ligne.
+     */
+    private static String several(SubjectJourney journey) {
+        StringBuilder note = new StringBuilder();
+        java.util.List<SubjectJourneyChantier> others = journey.getOtherOpenChantiers();
+        note.append("Chantiers ouverts : ").append(others.size() + 1).append(". Focus = Chantier ")
+                .append(journey.getChantierNumber()).append(" : les outils du parcours le visent par défaut ; ")
+                .append("chantier: N pour en viser un autre.\n");
+        note.append("== Chantier ").append(journey.getChantierNumber()).append(" (focus) — ")
+                .append(title(journey.getChantierTitle(), journey.getChantierNumber())).append(" ==\n");
+        note.append(guided(journey));
+        int shown = 0;
+        for (SubjectJourneyChantier other : others) {
+            if (shown == MAX_OTHERS) {
+                note.append("… et ").append(others.size() - shown).append(" autre(s) chantier(s) ouvert(s).\n");
+                break;
+            }
+            note.append(summary(other));
+            shown++;
+        }
+        note.append(proposalPending(journey));
+        return note.toString();
+    }
+
+    private static String summary(SubjectJourneyChantier c) {
+        StringBuilder line = new StringBuilder("== Chantier ").append(c.getNumber()).append(" — ")
+                .append(title(c.getTitle(), c.getNumber())).append(" · ")
+                .append(c.getPhase() == null ? "?" : c.getPhase().label());
+        JourneyPlan plan = JourneyPlan.fromJson(c.getPlanJson());
+        int version = c.getPlanVersion() == null ? 0 : c.getPlanVersion();
+        boolean current = c.getValidatedVersion() != null && c.getValidatedVersion() == version;
+        if (!plan.isEmpty()) {
+            int done = 0;
+            for (JourneyPlan.Step s : plan.steps()) {
+                if (s.status() == JourneyPlan.StepStatus.FAIT || s.status() == JourneyPlan.StepStatus.VERIFIE) {
+                    done++;
+                }
+            }
+            line.append(" · plan v").append(version).append(current ? " validé" : " en attente de validation")
+                    .append(" · ").append(done).append('/').append(plan.steps().size()).append(" étapes");
+        }
+        if (c.getPhase() == JourneyPhase.INVESTIGATION && c.getDiagnosisProposedAt() != null) {
+            line.append(" · diagnostic en attente de confirmation");
+        }
+        if (c.getCloseProposedAt() != null) {
+            line.append(" · clôture proposée");
+        }
+        return line.append(" ==\n").toString();
+    }
+
+    private static String title(String title, int number) {
+        if (title == null || title.isBlank()) {
+            return "Chantier " + number;
+        }
+        String flat = title.replace('\n', ' ').strip();
+        return flat.length() <= MAX_TITLE ? flat : flat.substring(0, MAX_TITLE - 1).strip() + "…";
     }
 
     private static String guided(SubjectJourney journey) {

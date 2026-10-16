@@ -31,6 +31,14 @@ public final class JourneyGate {
         }
         String head = message(journey) + " (PORTE DU PARCOURS GUIDÉ — cette action, " + risk.label()
                 + ", n'a pas été exécutée.) ";
+        if (!journey.hasOpenFocus()) {
+            return head; // jamais atteint : un focus clos n'a plus d'autre chantier ouvert (F-206)
+        }
+        if (!journey.getOtherOpenChantiers().isEmpty()) {
+            // F-206 : plusieurs chantiers — aucun n'est en Exécution sur un plan validé.
+            head += "Une modification passe dès qu'UN chantier ouvert est en Exécution sur son plan validé. "
+                    + "Chantier " + journey.getChantierNumber() + " (focus) : ";
+        }
         Integer validated = journey.getValidatedVersion();
         return head + switch (journey.getPhase()) {
             case INVESTIGATION -> "Phase Investigation : la lecture et les notes du sujet (STATE.md, "
@@ -55,13 +63,31 @@ public final class JourneyGate {
      * lue par la boucle <i>et</i> par l'écran. Fermée en Guidé actif hors Exécution sur le plan validé.
      */
     public static boolean isClosed(SubjectJourney journey) {
-        if (journey == null || !journey.isGuided() || journey.getPhase() == null
-                || journey.getPhase() == JourneyPhase.CLOS) {
+        if (journey == null || !journey.isGuided()) {
             return false;
         }
-        Integer validated = journey.getValidatedVersion();
-        boolean planCurrent = validated != null && validated == journey.getPlanVersion();
-        return !(journey.getPhase() == JourneyPhase.EXECUTION && planCurrent);
+        // F-206 (décision PO) : la porte AGRÈGE les chantiers ouverts — elle s'ouvre dès qu'UN d'entre eux
+        // (focus ou autre) est en Exécution sur sa version validée courante.
+        boolean anyOpen = false;
+        if (journey.hasOpenFocus()) {
+            anyOpen = true;
+            if (executing(journey.getPhase(), journey.getPlanVersion(), journey.getValidatedVersion())) {
+                return false;
+            }
+        }
+        for (SubjectJourneyChantier other : journey.getOtherOpenChantiers()) {
+            anyOpen = true;
+            if (executing(other.getPhase(), other.getPlanVersion() == null ? 0 : other.getPlanVersion(),
+                    other.getValidatedVersion())) {
+                return false;
+            }
+        }
+        return anyOpen;
+    }
+
+    /** Vrai si un chantier est en Exécution sur sa version validée courante. */
+    static boolean executing(JourneyPhase phase, int planVersion, Integer validatedVersion) {
+        return phase == JourneyPhase.EXECUTION && validatedVersion != null && validatedVersion == planVersion;
     }
 
     /**
@@ -72,7 +98,22 @@ public final class JourneyGate {
         if (!isClosed(journey)) {
             return null;
         }
-        return "Ce terminal est en mode Guidé, phase " + journey.getPhase().label()
-                + " : cette action attend la validation du plan.";
+        if (journey.getOtherOpenChantiers().isEmpty() && journey.hasOpenFocus()) {
+            return "Ce terminal est en mode Guidé, phase " + journey.getPhase().label()
+                    + " : cette action attend la validation du plan.";
+        }
+        // F-206 : plusieurs chantiers ouverts — le message les nomme, par numéro croissant.
+        java.util.TreeMap<Integer, String> phases = new java.util.TreeMap<>();
+        if (journey.hasOpenFocus()) {
+            phases.put(journey.getChantierNumber(), journey.getPhase().label());
+        }
+        for (SubjectJourneyChantier other : journey.getOtherOpenChantiers()) {
+            phases.put(other.getNumber(), other.getPhase() == null ? "?" : other.getPhase().label());
+        }
+        StringBuilder list = new StringBuilder();
+        phases.forEach((n, label) -> list.append(list.isEmpty() ? "" : ", ").append("Chantier ").append(n)
+                .append(" · ").append(label));
+        return "Ce terminal est en mode Guidé : aucun de ses chantiers ouverts n'est en Exécution sur un plan "
+                + "validé (" + list + ") : cette action attend la validation d'un plan.";
     }
 }

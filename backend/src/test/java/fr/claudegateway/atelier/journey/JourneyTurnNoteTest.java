@@ -42,6 +42,38 @@ class JourneyTurnNoteTest {
     }
 
     @Test
+    @DisplayName("F-206 : plusieurs chantiers ouverts — focus détaillé d'abord, les autres résumés, borné")
+    void severalChantiers() {
+        SubjectJourney j = journey(JourneyMode.GUIDE, JourneyPhase.INVESTIGATION);
+        j.setChantierNumber(2);
+        j.setChantierTitle("Migration DNS");
+        assertThat(JourneyTurnNote.render(j)).doesNotContain("Chantiers ouverts").doesNotContain("==");
+        java.util.List<SubjectJourneyChantier> others = new java.util.ArrayList<>();
+        others.add(SubjectJourneyChantier.builder().number(1).title("Ingress").status("OPEN")
+                .phase(JourneyPhase.EXECUTION).planVersion(1).validatedVersion(1)
+                .planJson("[{\"title\":\"a\",\"risk\":\"REVERSIBLE\",\"status\":\"FAIT\"},"
+                        + "{\"title\":\"b\",\"risk\":\"REVERSIBLE\"}]")
+                .build());
+        for (int n = 3; n <= 10; n++) {
+            others.add(SubjectJourneyChantier.builder().number(n).status("OPEN").phase(JourneyPhase.PLAN).build());
+        }
+        j.setOtherOpenChantiers(others);
+        String note = JourneyTurnNote.render(j);
+        assertThat(note).startsWith("--- Parcours du sujet ---\n")
+                .contains("Chantiers ouverts : 10. Focus = Chantier 2")
+                .contains("== Chantier 2 (focus) — Migration DNS ==\nMode GUIDÉ · phase : Investigation.")
+                .contains("== Chantier 1 — Ingress · Exécution")
+                .contains("== Chantier 1 — Ingress · Exécution · plan v1 validé · 1/2 étapes ==")
+                .contains("== Chantier 7 — Chantier 7 · Plan ==")
+                .doesNotContain("Chantier 8 —")
+                .contains("… et 3 autre(s) chantier(s) ouvert(s).")
+                .endsWith("---\n\n");
+        assertThat(note.indexOf("Chantier 2 (focus)")).isLessThan(note.indexOf("Chantier 1 —"));
+        j.setGuidedProposedAt(java.time.OffsetDateTime.now());
+        assertThat(JourneyTurnNote.render(j)).contains("chantier de plus attend le choix");
+    }
+
+    @Test
     @DisplayName("le mode se lit avec ou sans accent")
     void parseMode() {
         assertThat(JourneyMode.parse("guidé")).isEqualTo(JourneyMode.GUIDE);
