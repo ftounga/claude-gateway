@@ -6,6 +6,7 @@ import {
   TerminalAction, TerminalActionBoard, TerminalActionCreate, TerminalActionEdit,
   TerminalActionElsewhere, TerminalActionStatusChange, TerminalActionSummary,
   TerminalActionReviewDecision, TerminalActionReviewItem, TerminalActionReviewResult,
+  TerminalActionDuplicate,
 } from '../models/terminal-actions.models';
 
 /**
@@ -93,5 +94,22 @@ export class TerminalActionsService {
   reopen(workspaceId: string, actionId: string): Observable<TerminalAction> {
     return this.http.post<TerminalAction>(
       `/api/workspaces/${workspaceId}/actions/${actionId}/reopen`, {});
+  }
+
+  /** Les doublons probables du poste, proposés à la fusion (F-180 / SF-180-01). */
+  duplicates(workspaceId: string): Observable<TerminalActionDuplicate[]> {
+    return this.http.get<TerminalActionDuplicate[]>(`/api/workspaces/${workspaceId}/actions/duplicates`);
+  }
+
+  /** [Fusionner] — l'attente passe « Annulé », fusionnée dans `intoId`. */
+  merge(workspaceId: string, actionId: string, intoId: string): Observable<TerminalAction> {
+    return this.http.post<TerminalAction>(
+      `/api/workspaces/${workspaceId}/actions/${actionId}/merge`, { intoId });
+  }
+
+  /** [Ce n'est pas pareil] — l'attente n'est plus proposée comme doublon. */
+  notDuplicate(workspaceId: string, actionId: string): Observable<TerminalAction> {
+    return this.http.post<TerminalAction>(
+      `/api/workspaces/${workspaceId}/actions/${actionId}/not-duplicate`, {});
   }
 }

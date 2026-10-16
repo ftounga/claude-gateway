@@ -27,14 +27,39 @@ public class TerminalActionController {
 
     private final TerminalActionService service;
     private final TerminalActionQueryService queries;
+    private final TerminalActionDuplicateService duplicates;
     private final CurrentUser currentUser;
 
     public TerminalActionController(TerminalActionService service,
                                     TerminalActionQueryService queries,
+                                    TerminalActionDuplicateService duplicates,
                                     CurrentUser currentUser) {
         this.service = service;
         this.queries = queries;
+        this.duplicates = duplicates;
         this.currentUser = currentUser;
+    }
+
+    /** Les doublons probables du poste, proposés à la fusion (F-180 / SF-180-01). */
+    @GetMapping("/duplicates")
+    public List<TerminalActionDuplicateService.DuplicatePair> duplicates(@PathVariable UUID workspaceId) {
+        return duplicates.duplicates(currentUser.requireId(), workspaceId);
+    }
+
+    /** [Fusionner] — l'attente passe « Annulé », fusionnée dans {@code intoId} (F-180 / SF-180-01). */
+    @PostMapping("/{actionId}/merge")
+    public TerminalActionResponse merge(@PathVariable UUID workspaceId,
+                                        @PathVariable UUID actionId,
+                                        @RequestBody MergeRequest request) {
+        return TerminalActionResponse.from(duplicates.merge(currentUser.requireId(), workspaceId, actionId,
+                request == null ? null : request.intoId()));
+    }
+
+    /** [Ce n'est pas pareil] — l'attente n'est plus proposée comme doublon (F-180 / SF-180-01). */
+    @PostMapping("/{actionId}/not-duplicate")
+    public TerminalActionResponse notDuplicate(@PathVariable UUID workspaceId,
+                                               @PathVariable UUID actionId) {
+        return TerminalActionResponse.from(duplicates.dismiss(currentUser.requireId(), workspaceId, actionId));
     }
 
     /** Le menu du terminal. {@code openOnly=false} montre aussi ce qui a été fermé. */
@@ -145,6 +170,10 @@ public class TerminalActionController {
     /** Un changement d'état ; {@code note} est la raison d'une fermeture. */
     public record StatusRequest(TerminalActionStatus status, String note,
                                 String requestedTo, String channel) {
+    }
+
+    /** Le corps d'une fusion : l'attente gardée. */
+    public record MergeRequest(UUID intoId) {
     }
 
     /** La phrase qui ferme ou annule. Facultative : l'utilisateur n'a rien à justifier. */

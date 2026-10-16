@@ -15,6 +15,7 @@ import {
   TerminalAction, TerminalActionBoard, TerminalActionReviewItem,
 } from '../../core/models/terminal-actions.models';
 import { TerminalActionsService } from '../../core/services/terminal-actions.service';
+import { mockTerminalActionsService } from '../../core/services/terminal-actions.service.testing';
 
 function action(id: string, description: string, over: Partial<TerminalAction> = {}): TerminalAction {
   return {
@@ -34,11 +35,6 @@ function board(here: TerminalAction[], host: TerminalAction[] = [], hostId: stri
   };
 }
 
-const METHODS: (keyof TerminalActionsService)[] = [
-  'list', 'elsewhere', 'board', 'create', 'changeStatus', 'edit', 'confirmProposal',
-  'dismissProposal', 'close', 'cancel', 'reopen', 'review', 'applyReview',
-];
-
 /** Les attentes héritées « à vérifier » servies par le mock (F-175 / SF-175-07) ; vide par défaut. */
 let reviewItems: TerminalActionReviewItem[] = [];
 
@@ -54,7 +50,7 @@ describe('Les attentes du terminal (F-175 / SF-175-04)', () => {
     let service: jasmine.SpyObj<TerminalActionsService>;
 
     function build(b: TerminalActionBoard | 'error'): void {
-      service = jasmine.createSpyObj<TerminalActionsService>('TerminalActionsService', METHODS);
+      service = mockTerminalActionsService();
       service.board.and.returnValue(b === 'error' ? throwError(() => new Error('réseau')) : of(b));
       service.review.and.returnValue(of(reviewItems));
       TestBed.configureTestingModule({
@@ -182,7 +178,7 @@ describe('Les attentes du terminal (F-175 / SF-175-04)', () => {
     let snackBar: jasmine.SpyObj<MatSnackBar>;
 
     function build(b: TerminalActionBoard | 'error'): void {
-      service = jasmine.createSpyObj<TerminalActionsService>('TerminalActionsService', METHODS);
+      service = mockTerminalActionsService();
       service.board.and.returnValue(b === 'error' ? throwError(() => new Error('boom')) : of(b));
       service.review.and.returnValue(of(reviewItems));
       snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
