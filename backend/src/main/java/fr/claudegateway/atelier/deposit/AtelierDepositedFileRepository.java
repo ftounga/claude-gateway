@@ -5,6 +5,8 @@ import java.util.List;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 /**
  * Accès aux fichiers déposés (F-115). Toute lecture est filtrée par le couple d'isolation
@@ -35,6 +37,15 @@ public interface AtelierDepositedFileRepository extends JpaRepository<AtelierDep
      */
     List<AtelierDepositedFile> findByUserIdAndWorkspaceIdAndMessageIdInOrderByCreatedAtAsc(
             UUID userId, UUID workspaceId, Collection<UUID> messageIds);
+
+    /**
+     * Chemins de <b>tous</b> les dépôts d'un projet possédé, consommés ou non (F-201 / SF-201-01) :
+     * ce sont les noms déjà pris, qu'un nouveau dépôt ne doit jamais écraser. Filtre d'isolation
+     * {@code (user_id, workspace_id)}.
+     */
+    @Query("select d.path from AtelierDepositedFile d where d.userId = :userId and d.workspaceId = :workspaceId")
+    List<String> findPathsByUserIdAndWorkspaceId(@Param("userId") UUID userId,
+            @Param("workspaceId") UUID workspaceId);
 
     /** Purge des dépôts d'un projet (suppression de projet / de compte). */
     void deleteByWorkspaceId(UUID workspaceId);

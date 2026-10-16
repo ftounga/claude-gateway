@@ -504,6 +504,24 @@ public class WorkspaceService {
      *
      * @return le chemin relatif déposé ({@code entrees/<nom>}), tel que l'agent le lira
      */
+    /**
+     * Noms des fichiers présents sous {@code entrees/} d'un workspace hébergé possédé (F-201 /
+     * SF-201-01) : un nouveau dépôt ne doit jamais les écraser. Isolation d'abord ; un projet-machine
+     * n'a rien dans le stockage objet, la liste est alors vide.
+     */
+    public List<String> depositedHostedNames(UUID userId, UUID id) {
+        requireOwned(userId, id);
+        String prefix = prefixOf(userId, id) + "entrees/";
+        List<String> names = new ArrayList<>();
+        for (String key : storage.listKeys(prefix)) {
+            String rest = key.substring(prefix.length());
+            if (!rest.isEmpty() && rest.indexOf('/') < 0) {
+                names.add(rest);
+            }
+        }
+        return names;
+    }
+
     @Transactional
     public String depositHostedFile(UUID userId, UUID id, String sanitizedName, byte[] bytes,
             String contentType) {

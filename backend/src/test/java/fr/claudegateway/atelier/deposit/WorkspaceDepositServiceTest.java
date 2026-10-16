@@ -46,6 +46,11 @@ class WorkspaceDepositServiceTest {
     @Mock
     private AtelierDepositedFileRepository depositedFileRepository;
 
+    /** 2026-10-16 08:05:09 UTC = 10:05:09 à Paris : le nom horodaté d'une capture. */
+    private static final java.time.Clock CLOCK = java.time.Clock.fixed(
+            java.time.Instant.parse("2026-10-16T08:05:09Z"), java.time.ZoneOffset.UTC);
+    private static final String STAMP = "capture-20261016-100509";
+
     private final UUID userId = UUID.randomUUID();
     private final UUID workspaceId = UUID.randomUUID();
     private final UUID hostId = UUID.randomUUID();
@@ -69,7 +74,7 @@ class WorkspaceDepositServiceTest {
     /** chunk-bytes = 4 pour observer le découpage sur un petit fichier. */
     private WorkspaceDepositService service() {
         return new WorkspaceDepositService(workspaceService, runnerToolGateway, runnerLiveness,
-                depositedFileRepository, 8_388_608L, 104_857_600L, 20, 4);
+                depositedFileRepository, 8_388_608L, 104_857_600L, 20, 4, CLOCK);
     }
 
     private Workspace hosted() {
@@ -221,5 +226,76 @@ class WorkspaceDepositServiceTest {
         assertThatThrownBy(() -> service().deposit(userId, workspaceId, List.of(file("x.bin", new byte[] {1}))))
                 .isInstanceOf(WorkspaceDepositException.class)
                 .satisfies(e -> assertThat(((WorkspaceDepositException) e).code()).isEqualTo("runner_offline"));
+    }
+
+    // ------------------------------------------------- F-201 / SF-201-01 : jamais d'écrasement
+
+    @Test
+    void deuxCapturesHebergeesNeSEcrasentPas() {
+        when(workspaceService.requireOwned(userId, workspaceId)).thenReturn(hosted());
+        when(workspaceService.depositHostedFile(eq(userId), eq(workspaceId), anyString(), any(), anyString()))
+                .thenAnswer(inv -> "entrees/" + inv.getArgument(2));
+        // Le premier collage est déjà là (base des dépôts + stockage).
+        when(depositedFileRepository.findPathsByUserIdAndWorkspaceId(userId, workspaceId))
+                .thenReturn(List.of("entrees/" + STAMP + ".png"));
+        when(workspaceService.depositedHostedNames(userId, workspaceId)).thenReturn(List.of(STAMP + ".png"));
+
+        DepositResponse response = service().deposit(userId, workspaceId,
+                List.of(file("image.png", new byte[] {1})));
+
+        assertThat(response.files().get(0).path()).isEqualTo("entrees/" + STAMP + "-2.png");
+        verify(workspaceService, never()).depositHostedFile(eq(userId), eq(workspaceId), eq("image.png"),
+                any(), anyString());
+    }
+
+    @Test
+    void unFichierHebergeEcritParLAgentCompteCommePris() {
+        when(workspaceService.requireOwned(userId, workspaceId)).thenReturn(hosted());
+        when(workspaceService.depositHostedFile(eq(userId), eq(workspaceId), anyString(), any(), anyString()))
+                .thenAnswer(inv -> "entrees/" + inv.getArgument(2));
+        when(workspaceService.depositedHostedNames(userId, workspaceId)).thenReturn(List.of("notes.md"));
+
+        DepositResponse response = service().deposit(userId, workspaceId,
+                List.of(file("notes.md", new byte[] {1})));
+
+        assertThat(response.files().get(0).path()).isEqualTo("entrees/notes-2.md");
+    }
+
+    @Test
+    void unLotDeTroisCapturesSurLePosteDonneTroisCheminsDistincts() {
+        when(workspaceService.requireOwned(userId, workspaceId)).thenReturn(runnerTarget());
+        when(runnerLiveness.isAlive(userId, hostId)).thenReturn(true);
+        when(runnerToolGateway.writeFileBytes(any(), anyString(), anyString(), anyString(), anyLong()))
+                .thenReturn(ok());
+
+        DepositResponse response = service().deposit(userId, workspaceId, List.of(
+                file("image.png", new byte[] {1}),
+                file("image.png", new byte[] {2}),
+                file("image.png", new byte[] {3})));
+
+        assertThat(response.files()).extracting(DepositResponse.DepositedFile::path).containsExactly(
+                ".atelier/entrees/" + STAMP + ".png",
+                ".atelier/entrees/" + STAMP + "-2.png",
+                ".atelier/entrees/" + STAMP + "-3.png");
+        // Le poste ne liste pas le stockage objet : seule la base des dépôts compte.
+        verify(workspaceService, never()).depositedHostedNames(any(), any());
+    }
+
+    @Test
+    void unNomLibreDejaDeposeRecoitUnSuffixe() {
+        when(workspaceService.requireOwned(userId, workspaceId)).thenReturn(runnerTarget());
+        when(runnerLiveness.isAlive(userId, hostId)).thenReturn(true);
+        when(runnerToolGateway.writeFileBytes(any(), anyString(), anyString(), anyString(), anyLong()))
+                .thenReturn(ok());
+        when(depositedFileRepository.findPathsByUserIdAndWorkspaceId(userId, workspaceId))
+                .thenReturn(List.of(".atelier/entrees/Rapport.pdf", "entrees/autre.pdf"));
+
+        DepositResponse response = service().deposit(userId, workspaceId,
+                List.of(file("rapport.pdf", new byte[] {1}), file("autre.pdf", new byte[] {1})));
+
+        assertThat(response.files()).extracting(DepositResponse.DepositedFile::path).containsExactly(
+                ".atelier/entrees/rapport-2.pdf", ".atelier/entrees/autre.pdf");
+        // Isolation : seuls les dépôts de CE couple (utilisateur, terminal) sont consultés.
+        verify(depositedFileRepository).findPathsByUserIdAndWorkspaceId(userId, workspaceId);
     }
 }
