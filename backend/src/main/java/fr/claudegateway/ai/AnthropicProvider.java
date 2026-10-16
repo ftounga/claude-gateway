@@ -315,7 +315,7 @@ public class AnthropicProvider implements AIProvider {
         return blocks;
     }
 
-    private ChatCompletionResult toResult(AnthropicResponse response, String requestedModel) {
+    static ChatCompletionResult toResult(AnthropicResponse response, String requestedModel) {
         if (response == null || response.content() == null || response.content().isEmpty()) {
             throw new AIProviderException("Réponse vide du fournisseur IA.");
         }
@@ -336,6 +336,11 @@ public class AnthropicProvider implements AIProvider {
         int input = (response.usage() != null ? response.usage().inputTokens() : 0)
                 + cacheRead + cacheWrite;
         int output = response.usage() != null ? response.usage().outputTokens() : 0;
-        return new ChatCompletionResult(text, model, input, output, cacheRead, cacheWrite);
+        // F-202 / SF-202-01 : le signal de troncature, traduit en drapeau neutre pour le métier.
+        boolean truncated = MAX_TOKENS_STOP.equals(response.stopReason());
+        return new ChatCompletionResult(text, model, input, output, cacheRead, cacheWrite, truncated);
     }
+
+    /** {@code stop_reason} d'une sortie arrêtée au plafond de jetons (F-202 / SF-202-01). */
+    static final String MAX_TOKENS_STOP = "max_tokens";
 }

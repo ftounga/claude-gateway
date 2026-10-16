@@ -30,6 +30,12 @@ public interface ResolutionMemoryRepository extends JpaRepository<ResolutionMemo
      */
     Optional<ResolutionMemoryEntry> findByIdAndUserIdAndHostId(UUID id, UUID userId, UUID hostId);
 
+    /**
+     * Les dernières résolutions d'un <b>terminal</b> (F-202 / SF-202-01) : Plume y lit les fichiers
+     * touchés récemment. Filtrée {@code user_id} + {@code workspace_id}, bornée à cinq lignes.
+     */
+    List<ResolutionMemoryEntry> findTop5ByUserIdAndWorkspaceIdOrderByCreatedAtDesc(UUID userId, UUID workspaceId);
+
     /** Purge à la suppression du compte : la mémoire ne survit pas à son propriétaire. */
     void deleteByUserId(UUID userId);
 

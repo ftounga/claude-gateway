@@ -13,7 +13,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 record AnthropicResponse(
         String model,
         List<ContentBlock> content,
-        Usage usage) {
+        Usage usage,
+        @JsonProperty("stop_reason") String stopReason) {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     record ContentBlock(String type, String text) {

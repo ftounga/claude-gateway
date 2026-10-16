@@ -12,9 +12,19 @@ package fr.claudegateway.ai;
  *                         de {@code cache_control} — le décompte est alors strictement celui
  *                         d'avant
  * @param cacheWriteTokens part de {@code inputTokens} écrite dans le cache, au tarif majoré
+ * @param truncated        vrai si le fournisseur a arrêté la sortie parce que le plafond de jetons
+ *                         était atteint (F-202 / SF-202-01) : la réponse est un <b>fragment</b>.
+ *                         Provider-neutre — chaque fournisseur traduit son propre signal (Anthropic :
+ *                         {@code stop_reason = max_tokens})
  */
 public record ChatCompletionResult(String content, String model, int inputTokens, int outputTokens,
-        int cacheReadTokens, int cacheWriteTokens) {
+        int cacheReadTokens, int cacheWriteTokens, boolean truncated) {
+
+    /** Forme sans signal de troncature — conservée pour les appelants qui l'attendent. */
+    public ChatCompletionResult(String content, String model, int inputTokens, int outputTokens,
+            int cacheReadTokens, int cacheWriteTokens) {
+        this(content, model, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, false);
+    }
 
     /** Forme sans ventilation de cache — conservée pour les appelants qui l'attendent. */
     public ChatCompletionResult(String content, String model, int inputTokens, int outputTokens) {

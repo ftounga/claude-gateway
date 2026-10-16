@@ -23,6 +23,13 @@ public interface AtelierMessageRepository extends JpaRepository<AtelierMessage, 
     List<AtelierMessage> findTop6ByWorkspaceIdAndUserIdOrderByCreatedAtDesc(UUID workspaceId, UUID userId);
 
     /**
+     * Les douze derniers messages du fil, du plus récent au plus ancien (F-202 / SF-202-01) : la matière
+     * de Plume, bornée par le nombre ici et par un budget de caractères au service. Filtrée
+     * {@code workspace_id} + {@code user_id}.
+     */
+    List<AtelierMessage> findTop12ByWorkspaceIdAndUserIdOrderByCreatedAtDesc(UUID workspaceId, UUID userId);
+
+    /**
      * Rappel à la demande (F-162 / SF-162-01) : recherche <b>mot-clé</b> dans le contenu des messages
      * du fil, du plus récent au plus ancien, bornée par {@code pageable}.
      *

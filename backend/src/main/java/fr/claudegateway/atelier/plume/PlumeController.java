@@ -55,6 +55,11 @@ public class PlumeController {
         } catch (PlumeDisabledException ex) {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                     .body(Map.of("error", "Plume est désactivé sur cette installation."));
+        } catch (PlumeTruncatedException ex) {
+            log.warn("Enrichissement tronqué deux fois ({})", ex.getClass().getSimpleName());
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(Map.of("error",
+                    "La demande enrichie dépassait la longueur prévue. Votre texte est intact : "
+                            + "réessayez avec une demande plus ciblée."));
         } catch (PlumeEmptyOutputException | AIProviderException ex) {
             // Le message du fournisseur n'est pas relayé : il peut porter des détails d'appel.
             log.warn("Enrichissement indisponible ({})", ex.getClass().getSimpleName());
