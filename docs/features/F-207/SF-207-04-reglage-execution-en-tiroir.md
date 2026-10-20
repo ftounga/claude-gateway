@@ -1,7 +1,7 @@
 # Mini-spec — [F-207 / SF-207-04] Réglage d'exécution dans un tiroir d'en-tête
 
 ## Identifiant
-`F-207 / SF-207-04` — Feature parente `F-207` — Statut `ready` — Créée 2026-10-21
+`F-207 / SF-207-04` — Feature parente `F-207` — Statut `done` — Créée 2026-10-21
 Branche : `feat/SF-207-04-execution-en-tiroir` — indépendante.
 
 ## Objectif

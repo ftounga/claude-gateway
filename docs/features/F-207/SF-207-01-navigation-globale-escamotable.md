@@ -1,7 +1,7 @@
 # Mini-spec — [F-207 / SF-207-01] Navigation globale escamotable sur les écrans de travail
 
 ## Identifiant
-`F-207 / SF-207-01` — Feature parente `F-207` (Regagner l'espace de travail) — Statut `ready` — Créée 2026-10-21
+`F-207 / SF-207-01` — Feature parente `F-207` (Regagner l'espace de travail) — Statut `done` — Créée 2026-10-21
 Branche : `feat/SF-207-01-navigation-escamotable` — aucune dépendance.
 
 ## Objectif
