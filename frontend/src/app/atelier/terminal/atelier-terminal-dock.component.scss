@@ -1,0 +1,171 @@
+/* F-207 / SF-207-03 — LA BARRE D'ÉTAT DU BAS DU TERMINAL, et le mode dans la saisie.
+   Feuille à part, comme les précédentes : la feuille principale est au budget de build.
+   Aucune couleur nouvelle : encre du terminal (`--cg-divider`), accent des attentes (`--cg-orange-2`),
+   fonds de la charte (`--cg-primary`, `--cg-navy-2`). */
+
+/* Le tiroir pend AU-DESSUS de la barre, par-dessus le fil : ouvrir ne fait rien sauter. */
+.terminal-dock {
+  position: relative;
+}
+
+.terminal-dock__drawer {
+  position: absolute;
+  bottom: 100%;
+  left: var(--cg-space-2);
+  right: var(--cg-space-2);
+  z-index: 15;
+  max-height: 60vh;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: var(--cg-space-2) var(--cg-space-2) 0;
+  border: 1px solid color-mix(in srgb, var(--cg-divider) 22%, transparent);
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+  background: var(--cg-primary);
+  box-shadow: 0 -14px 32px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(8px);
+  transition: opacity 160ms ease, transform 160ms ease, visibility 0s linear 160ms;
+}
+
+.terminal-dock--open .terminal-dock__drawer {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: opacity 160ms ease, transform 160ms ease, visibility 0s;
+}
+
+.terminal-dock__drawer .terminal-plan--carried {
+  margin: 0 0 var(--cg-space-2);
+}
+
+/* La barre : une rangée de puces, fine. */
+.terminal-dock__bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 30px;
+  padding: 2px var(--cg-space-2) 2px var(--cg-space-3);
+  border-top: 1px solid var(--cg-navy-2);
+  box-sizing: border-box;
+}
+
+.terminal-dock__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  height: 22px;
+  padding: 0 9px 0 7px;
+  border: 1px solid color-mix(in srgb, var(--cg-divider) 35%, transparent);
+  border-radius: 11px;
+  background: transparent;
+  color: var(--cg-divider);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+
+  &:hover,
+  &:focus-visible {
+    border-color: var(--cg-divider);
+    background: color-mix(in srgb, var(--cg-surface) 8%, transparent);
+    outline: none;
+  }
+}
+
+.terminal-dock__chip-icon {
+  font-size: 15px;
+  width: 15px;
+  height: 15px;
+}
+
+.terminal-dock__chip-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.terminal-dock__chip--warn,
+.terminal-dock__chip--await {
+  border-color: var(--cg-orange-2);
+  color: var(--cg-orange-2);
+}
+
+.terminal-dock__await {
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--cg-orange-2);
+  color: var(--cg-navy);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.terminal-dock__spacer {
+  flex: 1 1 auto;
+}
+
+.terminal-dock__menu {
+  --mdc-icon-button-state-layer-size: 26px;
+  --mat-icon-button-state-layer-size: 26px;
+  width: 26px;
+  height: 26px;
+  padding: 4px;
+  line-height: 18px;
+  color: var(--cg-divider);
+  --mat-icon-button-icon-color: var(--cg-divider);
+
+  mat-icon {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+  }
+}
+
+/* LE MODE DANS LA SAISIE (desktop) : icônes seules, hauteur de la ligne de saisie. */
+@media (min-width: 820px) {
+  .terminal-mode--inline {
+    padding: 0;
+    border-top: none;
+    --mat-standard-button-toggle-height: 32px;
+
+    .terminal-mode-label,
+    .terminal-mode-text {
+      display: none;
+    }
+  }
+}
+
+/* Téléphone : le mode prend sa propre rangée, sous la saisie. */
+@media (max-width: 819px) {
+  .terminal-mode--inline {
+    flex: 1 1 100%;
+    order: 10;
+    padding: var(--cg-space-1) 0 0;
+    border-top: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .terminal-dock__drawer,
+  .terminal-dock--open .terminal-dock__drawer {
+    transition: none;
+  }
+}
+
+/* Peau Teams « Papier » (§15). */
+.terminal-view--teams {
+  .terminal-dock__drawer {
+    background: var(--cg-terminal-teams-bar);
+    box-shadow: 0 -14px 32px rgba(15, 23, 42, 0.14);
+  }
+
+  .terminal-dock__chip,
+  .terminal-dock__menu {
+    color: var(--cg-terminal-teams-muted);
+    --mat-icon-button-icon-color: var(--cg-terminal-teams-muted);
+  }
+}

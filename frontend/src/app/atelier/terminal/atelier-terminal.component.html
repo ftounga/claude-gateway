@@ -1515,48 +1515,7 @@
     Plan REPORTÉ (F-121 / SF-121-10) : le dernier plan encore actif du fil, restauré à l'ouverture du
     projet et affiché AU REPOS (aucun tour en cours). Pendant un tour, c'est `live.plan` qui parle.
   -->
-  @if (!streaming && !readOnly && carriedPlan.length > 0) {
-    <ol class="terminal-plan terminal-plan--carried" aria-label="Plan de travail reporté">
-      @for (step of carriedPlan; track step.title) {
-        <li class="terminal-plan-step" [attr.data-status]="step.status">
-          <span class="terminal-plan-mark" aria-hidden="true">{{ planMark(step.status) }}</span>
-          <span class="terminal-plan-title">{{ step.title }}</span>
-        </li>
-      }
-    </ol>
-  }
 
-  @if (!readOnly) {
-    <div class="terminal-mode">
-      <span class="terminal-mode-label">Mode</span>
-      <mat-button-toggle-group
-        class="terminal-mode-toggle"
-        aria-label="Mode du tour : répondre ou proposer un plan, ou agir"
-        [value]="mode"
-        (change)="modeChange.emit($event.value)"
-      >
-        <mat-button-toggle value="ANSWER_PLAN">
-          <mat-icon>forum</mat-icon>
-          Réponse/Plan
-        </mat-button-toggle>
-        <mat-button-toggle value="ACT">
-          <mat-icon>bolt</mat-icon>
-          Agir
-        </mat-button-toggle>
-      </mat-button-toggle-group>
-      @if (mode === 'ANSWER_PLAN' || planAwaitingApproval) {
-        <button
-          mat-button
-          type="button"
-          class="terminal-mode-exec"
-          [class.terminal-mode-exec--approve]="planAwaitingApproval"
-          (click)="switchToAct.emit()"
-        >
-          {{ planAwaitingApproval ? 'Approuver & exécuter' : 'Passer à l\'exécution' }}
-        </button>
-      }
-    </div>
-  }
 
   <!-- F-169 / SF-169-01 — Les pièces jointes ne sont PLUS rendues ici, en bande figée au-dessus de la
        saisie (elles s'y empilaient sans jamais être purgées et masquaient le flux). Elles vivent
@@ -1574,10 +1533,98 @@
     @if (chantiersOpen()) {
       <app-terminal-journey-chantiers [chantiers]="chantiersList()" [loading]="chantiersLoading()" (closed)="chantiersOpen.set(false)"></app-terminal-journey-chantiers>
     }
-    <app-terminal-journey-strip [journey]="journey()" [busy]="journeyBusy() || submitting" (gesture)="onJourneyGesture($event)" (switchChantier)="onSwitchChantier($event)"></app-terminal-journey-strip>
-    <!-- F-180 / SF-180-06 — LE POINT DU MATIN : relances dues, échéances, accès qui arrivent à terme. -->
-    <app-terminal-morning-band [workspaceId]="projectId" [board]="attentesBoard()" (open)="openActions()"></app-terminal-morning-band>
-    <app-terminal-attentes-band [board]="attentesBoard()" [toReview]="reviewPending()" (open)="openActions()"></app-terminal-attentes-band>
+    <!-- F-207 / SF-207-03 — UNE SEULE BARRE D'ÉTAT. Parcours guidé, plan reporté, point du matin et attentes
+         ne s'empilent plus au-dessus de la saisie : une rangée de puces les résume, et leur contenu
+         d'origine, inchangé, s'ouvre dans un tiroir PAR-DESSUS le fil (survol, focus, clic). Une
+         DÉCISION attendue par le parcours ne se cache jamais : elle reste dans le flux, puce « à vous ».
+         Chaque puce peut être retirée (préférence par appareil). Le fil des tâches, lui, reste affiché. -->
+    @if (journeyAwaitsGesture()) {
+      <div class="terminal-dock__decision">
+        <app-terminal-journey-strip [journey]="journey()" [busy]="journeyBusy() || submitting" (gesture)="onJourneyGesture($event)" (switchChantier)="onSwitchChantier($event)"></app-terminal-journey-strip>
+      </div>
+    }
+    <div
+        class="terminal-dock"
+        [class.terminal-dock--open]="dockOpen() && dockChips().length > 0"
+        (mouseenter)="openDock()"
+        (mouseleave)="closeDockSoon()"
+        (focusin)="openDock()"
+        (focusout)="onDockFocusOut($event)"
+        (keydown.escape)="closeDockNow()"
+      >
+        <div class="terminal-dock__drawer" id="terminal-dock-drawer">
+          @if (!journeyAwaitsGesture() && dockShows('chantier')) {
+            <app-terminal-journey-strip [journey]="journey()" [busy]="journeyBusy() || submitting" (gesture)="onJourneyGesture($event)" (switchChantier)="onSwitchChantier($event)"></app-terminal-journey-strip>
+          }
+          @if (dockShows('plan') && !streaming && carriedPlan.length > 0) {
+            <!-- Plan REPORTÉ (F-121 / SF-121-10) : le dernier plan encore actif du fil, au repos. -->
+            <ol class="terminal-plan terminal-plan--carried" aria-label="Plan de travail reporté">
+              @for (step of carriedPlan; track step.title) {
+                <li class="terminal-plan-step" [attr.data-status]="step.status">
+                  <span class="terminal-plan-mark" aria-hidden="true">{{ planMark(step.status) }}</span>
+                  <span class="terminal-plan-title">{{ step.title }}</span>
+                </li>
+              }
+            </ol>
+          }
+          <!-- F-180 / SF-180-06 — LE POINT DU MATIN : relances dues, échéances, accès qui arrivent à terme. -->
+          @if (dockShows('matin')) {
+            <app-terminal-morning-band [workspaceId]="projectId" [board]="attentesBoard()" (open)="openActions()"></app-terminal-morning-band>
+          }
+          @if (dockShows('attentes')) {
+            <app-terminal-attentes-band [board]="attentesBoard()" [toReview]="reviewPending()" (open)="openActions()"></app-terminal-attentes-band>
+          }
+        </div>
+        @if (dockBarVisible()) {
+        <div class="terminal-dock__bar" role="toolbar" aria-label="État du sujet">
+          @for (chip of dockChips(); track chip.key) {
+            <button
+              type="button"
+              class="terminal-dock__chip"
+              [attr.data-kind]="chip.key"
+              [class.terminal-dock__chip--await]="chip.await"
+              [class.terminal-dock__chip--warn]="chip.warn"
+              aria-controls="terminal-dock-drawer"
+              [attr.aria-expanded]="dockOpen()"
+              (click)="toggleDock()"
+            >
+              <mat-icon class="terminal-dock__chip-icon" aria-hidden="true">{{ chip.icon }}</mat-icon>
+              <span class="terminal-dock__chip-label">{{ chip.label }}</span>
+              @if (chip.await) {
+                <span class="terminal-dock__await">à vous</span>
+              }
+            </button>
+          }
+          <span class="terminal-dock__spacer"></span>
+          <button
+            mat-icon-button
+            type="button"
+            class="terminal-dock__menu"
+            [matMenuTriggerFor]="dockMenu"
+            matTooltip="Choisir ce qu'affiche la barre d'état"
+            aria-label="Choisir ce qu'affiche la barre d'état"
+          >
+            <mat-icon>tune</mat-icon>
+          </button>
+        </div>
+        }
+      </div>
+      <mat-menu #dockMenu="matMenu" class="terminal-dock-menu">
+        <p class="terminal-dock-menu__title">Afficher dans la barre</p>
+        @for (item of dockItems; track item.key) {
+          <button
+            mat-menu-item
+            type="button"
+            role="menuitemcheckbox"
+            class="terminal-dock-menu__item"
+            [attr.aria-checked]="!dockHidden().has(item.key)"
+            (click)="$event.stopPropagation(); toggleDockItem(item.key)"
+          >
+            <mat-icon>{{ dockHidden().has(item.key) ? 'check_box_outline_blank' : 'check_box' }}</mat-icon>
+            <span>{{ item.label }}</span>
+          </button>
+        }
+      </mat-menu>
     <!-- F-191 / SF-191-02 — LE FIL DES TÂCHES : tout ce qui tourne sur le poste (sujets et racine),
          repliée par défaut, absente quand rien ne tourne. Un clic ouvre le sujet. -->
     <app-terminal-fil [workspaceId]="projectId"></app-terminal-fil>
@@ -1763,6 +1810,38 @@
         }
       </span>
       }
+      <!-- F-207 / SF-207-03 — LE MODE DANS LA SAISIE : il quitte sa ligne. Icônes seules en desktop (libellé en
+             infobulle et nom accessible), rangée pleine largeur sur téléphone. -->
+        <div class="terminal-mode terminal-mode--inline">
+        <span class="terminal-mode-label">Mode</span>
+        <mat-button-toggle-group
+          class="terminal-mode-toggle"
+          hideSingleSelectionIndicator
+          aria-label="Mode du tour : répondre ou proposer un plan, ou agir"
+          [value]="mode"
+          (change)="modeChange.emit($event.value)"
+        >
+          <mat-button-toggle value="ANSWER_PLAN" aria-label="Réponse/Plan" matTooltip="Réponse/Plan : répondre ou proposer un plan, sans agir">
+            <mat-icon>forum</mat-icon>
+            <span class="terminal-mode-text">Réponse/Plan</span>
+          </mat-button-toggle>
+          <mat-button-toggle value="ACT" aria-label="Agir" matTooltip="Agir : exécuter">
+            <mat-icon>bolt</mat-icon>
+            <span class="terminal-mode-text">Agir</span>
+          </mat-button-toggle>
+        </mat-button-toggle-group>
+        @if (mode === 'ANSWER_PLAN' || planAwaitingApproval) {
+          <button
+            mat-button
+            type="button"
+            class="terminal-mode-exec"
+            [class.terminal-mode-exec--approve]="planAwaitingApproval"
+            (click)="switchToAct.emit()"
+          >
+            {{ planAwaitingApproval ? 'Approuver & exécuter' : 'Passer à l\'exécution' }}
+          </button>
+        }
+      </div>
       <!-- F-193 / SF-193-02 — « ✨ Enrichir », toujours présent ; grisé si la saisie est vide. -->
       <button
         mat-button
