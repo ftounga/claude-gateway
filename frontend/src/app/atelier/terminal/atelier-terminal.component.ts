@@ -1,4 +1,5 @@
 import {
+  viewChild,
   AfterViewChecked,
   ChangeDetectorRef,
   Component,
@@ -162,6 +163,9 @@ import { PagePanelComponent } from './page-panel.component';
 import { TerminalActionsPanelComponent } from './terminal-actions-panel.component';
 import { TerminalAttentesBandComponent } from './terminal-attentes-band.component';
 import { TerminalMorningBandComponent } from './terminal-morning-band.component';
+import {
+  DOCK_ITEMS, DockChip, DockKey, attentesChip, journeyAwaitsGesture, journeyChip, planChip, readDockHidden, writeDockHidden,
+} from './terminal-dock';
 import { PushActivationService } from '../../core/services/push-activation.service';
 import { TerminalFilComponent } from './terminal-fil.component';
 import { AttenteCardComponent } from './attente-card.component';
@@ -312,6 +316,7 @@ export function plumeErrorMessage(failure: HttpErrorResponse | null | undefined)
     // HUIT FEUILLES (F-126 / SF-126-02) : les questions repérables et leur rail « Vos questions »
     // vivent à part, pour la même raison de budget de build.
     './atelier-terminal-questions.component.scss',
+    './atelier-terminal-dock.component.scss',
     // NEUF FEUILLES (F-146 / SF-146-01) : les textes collés repliés vivent à part, pour la même
     // raison que les quatre précédentes — le budget de 12 ko de la feuille principale, dont le
     // dépassement fait ÉCHOUER le build (constaté ici : 12,53 ko).
@@ -2225,6 +2230,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   ngOnDestroy(): void {
     this.clearQrailTimer();
     this.clearTopDrawerTimer();
+    this.clearDockTimer();
     this.stopSpinner();
     this.releaseClock();
     this.narrowQuery?.removeEventListener('change', this.onNarrowChange);
@@ -3022,6 +3028,103 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    * dans le document entier : plusieurs terminaux peuvent coexister), puis on l'amène en tête du
    * conteneur de défilement.
    */
+  // ---------------------------------------------------- barre d'état du bas (F-207 / SF-207-03)
+
+  readonly dockItems = DOCK_ITEMS;
+  /** Les puces retirées par l'utilisateur (préférence par appareil). */
+  readonly dockHidden = signal<Set<DockKey>>(readDockHidden());
+  /** Le tiroir de la barre d'état est-il ouvert ? */
+  readonly dockOpen = signal(false);
+  private dockTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Le point du matin calcule lui-même s'il a quelque chose à dire : on le lui demande. */
+  private readonly morningBand = viewChild(TerminalMorningBandComponent);
+
+  /** Le parcours attend une décision : elle reste dans le flux, jamais repliée. */
+  journeyAwaitsGesture(): boolean {
+    return journeyAwaitsGesture(this.journey());
+  }
+
+  /** La puce est-elle affichée (non retirée par l'utilisateur) ? */
+  dockShows(key: DockKey): boolean {
+    return !this.dockHidden().has(key);
+  }
+
+  /** Tout ce qui pourrait avoir une puce, retirée ou non : la barre existe pour qu'on puisse la régler. */
+  private dockCandidates(): DockChip[] {
+    const chips: (DockChip | null)[] = [
+      journeyChip(this.journey()),
+      planChip(this.carriedPlan, this.streaming !== null),
+      this.morningBand()?.visible()
+        ? { key: 'matin', icon: 'wb_sunny', label: 'Point du matin', await: false, warn: false }
+        : null,
+      attentesChip(this.attentesBoard(), this.reviewPending()),
+    ];
+    return chips.filter((chip): chip is DockChip => chip !== null);
+  }
+
+  /** Les puces de la barre : une décision attendue s'y montre même si la puce a été retirée. */
+  dockChips(): DockChip[] {
+    return this.dockCandidates().filter((chip) => this.dockShows(chip.key) || chip.await);
+  }
+
+  /**
+   * La barre existe dès qu'une puce pourrait s'y montrer, même retirée : c'est là qu'on la remet.
+   * Le tiroir, lui, est toujours rendu (vide, il ne prend aucune place) — c'est ce qui permet au point
+   * du matin, qui lit sa propre source, de dire s'il a quelque chose.
+   */
+  dockBarVisible(): boolean {
+    return this.dockCandidates().length > 0;
+  }
+
+  toggleDockItem(key: DockKey): void {
+    const next = new Set(this.dockHidden());
+    if (next.has(key)) {
+      next.delete(key);
+    } else {
+      next.add(key);
+    }
+    this.dockHidden.set(next);
+    writeDockHidden(next);
+  }
+
+  openDock(): void {
+    this.clearDockTimer();
+    this.dockOpen.set(true);
+  }
+
+  toggleDock(): void {
+    this.clearDockTimer();
+    this.dockOpen.update((open) => !open);
+  }
+
+  closeDockSoon(): void {
+    this.clearDockTimer();
+    this.dockTimer = setTimeout(() => {
+      this.dockTimer = null;
+      this.dockOpen.set(false);
+    }, QRAIL_HIDE_DELAY_MS);
+  }
+
+  closeDockNow(): void {
+    this.clearDockTimer();
+    this.dockOpen.set(false);
+  }
+
+  onDockFocusOut(event: FocusEvent): void {
+    const next = event.relatedTarget as Node | null;
+    if (next && (event.currentTarget as HTMLElement | null)?.contains(next)) {
+      return;
+    }
+    this.closeDockSoon();
+  }
+
+  private clearDockTimer(): void {
+    if (this.dockTimer !== null) {
+      clearTimeout(this.dockTimer);
+      this.dockTimer = null;
+    }
+  }
+
   /** Le tiroir d'en-tête (cible d'exécution, poste connecté) est-il ouvert (F-207 / SF-207-04) ? */
   readonly topDrawerOpen = signal(false);
   private topDrawerTimer: ReturnType<typeof setTimeout> | null = null;
