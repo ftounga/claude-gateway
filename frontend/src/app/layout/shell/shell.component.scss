@@ -2,6 +2,9 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
+  // F-207 / SF-207-01 — Hauteur que la barre prend dans le flux. Les écrans qui se calent sur la
+  // fenêtre (`calc(100vh - …)`) la lisent : quand la barre se replie, ils récupèrent ses 64 px.
+  --cg-shell-bar-h: 64px;
 }
 
 .app-bar {
@@ -86,6 +89,120 @@
   min-height: 0;
   overflow: auto;
   background: var(--cg-bg);
+}
+
+// F-207 / SF-207-01 — LA PUNAISE (écrans de travail) : couchée quand la barre se replie, droite et
+// orange quand elle est épinglée.
+.app-pin {
+  color: var(--cg-text-secondary);
+  --mat-icon-button-icon-color: var(--cg-text-secondary);
+
+  mat-icon {
+    color: inherit;
+    transform: rotate(45deg);
+    transition: transform 160ms ease;
+  }
+
+  &--on {
+    color: var(--cg-accent);
+    --mat-icon-button-icon-color: var(--cg-accent);
+
+    mat-icon {
+      transform: none;
+    }
+  }
+}
+
+// La lisière n'existe que ≥ 820 px ; le téléphone garde sa barre et son hamburger (F-151).
+.app-lip {
+  display: none;
+}
+
+/* F-207 / SF-207-01 — ÉCRAN DE TRAVAIL, barre non épinglée (≥ 820 px) : la barre sort du flux et se
+   range au-dessus de l'écran ; une lisière transparente de 8 px, en haut, la rappelle au survol. Elle
+   glisse alors PAR-DESSUS le contenu : le terminal ne bouge pas d'un pixel. */
+@media (min-width: 820px) {
+  :host(.shell--autohide) {
+    --cg-shell-bar-h: 0px;
+  }
+
+  .app-lip {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 8px;
+    z-index: 29;
+
+    &--hidden {
+      pointer-events: none;
+    }
+  }
+
+  // La poignée : un petit onglet clair qui pend du haut de l'écran, discret au repos.
+  .app-lip__handle {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 12px;
+    padding: 0;
+    border: 1px solid var(--cg-divider);
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    background: var(--cg-surface);
+    color: var(--cg-text-secondary);
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.12);
+    opacity: 0.55;
+    cursor: pointer;
+    transition: opacity 160ms ease, height 160ms ease;
+
+    mat-icon {
+      font-size: 14px;
+      width: 14px;
+      height: 14px;
+      line-height: 14px;
+    }
+
+    &:focus-visible {
+      opacity: 1;
+      outline: 2px solid var(--cg-accent);
+      outline-offset: 1px;
+    }
+  }
+
+  .app-lip:hover .app-lip__handle {
+    opacity: 1;
+    height: 16px;
+  }
+
+  .app-bar--autohide {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 30;
+    transform: translateY(calc(-100% - 8px));
+    transition: transform 180ms ease, box-shadow 180ms ease;
+    box-shadow: none;
+  }
+
+  .app-bar--autohide.app-bar--revealed {
+    transform: none;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-bar--autohide,
+  .app-lip__handle,
+  .app-pin mat-icon {
+    transition: none;
+  }
 }
 
 // F-151 / SF-151-01 — Voile de fermeture du menu replié (sous 819 px seulement).

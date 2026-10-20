@@ -1,7 +1,8 @@
 // Écran Atelier (F-28, Claude Code Lite) — design system claude-gateway (variables --cg-*).
 :host {
   display: block;
-  height: calc(100vh - 64px);
+  // F-207 / SF-207-01 — la barre globale repliée rend sa hauteur (`--cg-shell-bar-h`, posée par la coquille).
+  height: calc(100vh - var(--cg-shell-bar-h, 64px));
 }
 
 .atelier-layout {

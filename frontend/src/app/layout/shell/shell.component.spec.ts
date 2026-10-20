@@ -1,4 +1,4 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { NavigationEnd, provideRouter, Router } from '@angular/router';
@@ -7,7 +7,7 @@ import { of, Subject } from 'rxjs';
 
 import { signal } from '@angular/core';
 
-import { ShellComponent } from './shell.component';
+import { NAV_HIDE_DELAY_MS, NAV_PINNED_KEY, ShellComponent, isWorkspaceScreen } from './shell.component';
 import { AuthService } from '../../core/services/auth.service';
 import { CurrentClientService } from '../../core/services/current-client.service';
 import { QuotaAlertService } from '../../core/services/quota-alert.service';
@@ -32,6 +32,7 @@ describe('ShellComponent', () => {
   };
 
   beforeEach(async () => {
+    localStorage.removeItem(NAV_PINNED_KEY);
     authSpy = jasmine.createSpyObj<AuthService>('AuthService', ['logout'], {
       isAdmin: signal(false),
     });
@@ -358,5 +359,129 @@ describe('ShellComponent', () => {
     const brand = (fixture.nativeElement as HTMLElement).querySelector('.brand');
     expect(brand?.textContent?.trim()).toBe('NG Portal');
     expect((fixture.nativeElement as HTMLElement).innerHTML).not.toMatch(/proxy/i);
+  });
+
+  // ---- F-207 / SF-207-01 : la barre se replie en lisière sur les écrans de travail ----
+  describe('navigation escamotable (F-207 / SF-207-01)', () => {
+    const shell = () => fixture.nativeElement as HTMLElement;
+    const bar = () => shell().querySelector('mat-toolbar.app-bar') as HTMLElement;
+    const lip = () => shell().querySelector('.app-lip') as HTMLElement | null;
+
+    afterEach(() => localStorage.removeItem(NAV_PINNED_KEY));
+
+    it('reconnaît les écrans de travail : terminal et mosaïque, rien d’autre (CA1)', () => {
+      expect(isWorkspaceScreen('/atelier/abc')).toBeTrue();
+      expect(isWorkspaceScreen('/atelier/abc?x=1')).toBeTrue();
+      expect(isWorkspaceScreen('/atelier/abc#q3')).toBeTrue();
+      expect(isWorkspaceScreen('/forge/mosaique')).toBeTrue();
+      expect(isWorkspaceScreen('/atelier')).toBeFalse();
+      expect(isWorkspaceScreen('/atelier/abc/fichiers')).toBeFalse();
+      expect(isWorkspaceScreen('/chat')).toBeFalse();
+      expect(isWorkspaceScreen('/forge')).toBeFalse();
+      expect(isWorkspaceScreen('/vigie/x')).toBeFalse();
+      expect(isWorkspaceScreen(null)).toBeFalse();
+    });
+
+    it('replie la barre sur un terminal, la garde fixe ailleurs (CA2, CA7)', () => {
+      arriveAt('/chat');
+      expect(shell().classList).not.toContain('shell--autohide');
+      expect(lip()).toBeNull();
+      expect(bar().classList).not.toContain('app-bar--autohide');
+
+      arriveAt('/atelier/w1');
+      expect(fixture.debugElement.nativeElement.classList).toContain('shell--autohide');
+      expect(lip()).not.toBeNull();
+      expect(bar().classList).toContain('app-bar--autohide');
+      expect(bar().classList).not.toContain('app-bar--revealed');
+
+      arriveAt('/gouvernance');
+      expect(lip()).toBeNull();
+      expect(bar().classList).not.toContain('app-bar--autohide');
+    });
+
+    it('déploie la barre au survol de la lisière et la replie après le délai (CA3, CA4)', fakeAsync(() => {
+      arriveAt('/atelier/w1');
+      lip()!.dispatchEvent(new MouseEvent('mouseenter'));
+      fixture.detectChanges();
+      expect(bar().classList).toContain('app-bar--revealed');
+
+      // La souris passe de la lisière à la barre : pas de repli.
+      lip()!.dispatchEvent(new MouseEvent('mouseleave'));
+      bar().dispatchEvent(new MouseEvent('mouseenter'));
+      tick(NAV_HIDE_DELAY_MS + 50);
+      fixture.detectChanges();
+      expect(bar().classList).toContain('app-bar--revealed');
+
+      bar().dispatchEvent(new MouseEvent('mouseleave'));
+      tick(NAV_HIDE_DELAY_MS - 50);
+      fixture.detectChanges();
+      expect(bar().classList).toContain('app-bar--revealed');
+      tick(100);
+      fixture.detectChanges();
+      expect(bar().classList).not.toContain('app-bar--revealed');
+    }));
+
+    it('replie tout de suite à la touche Échap (CA4)', () => {
+      arriveAt('/atelier/w1');
+      lip()!.dispatchEvent(new MouseEvent('mouseenter'));
+      fixture.detectChanges();
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      fixture.detectChanges();
+      expect(bar().classList).not.toContain('app-bar--revealed');
+    });
+
+    it('déploie la barre au focus clavier de la poignée (CA5)', () => {
+      arriveAt('/atelier/w1');
+      const handle = shell().querySelector('.app-lip__handle') as HTMLButtonElement;
+      expect(handle.getAttribute('aria-label')).toBe('Afficher la navigation');
+      handle.dispatchEvent(new FocusEvent('focus'));
+      fixture.detectChanges();
+      expect(bar().classList).toContain('app-bar--revealed');
+      expect(handle.getAttribute('aria-expanded')).toBe('true');
+      // Les liens restent les mêmes éléments, atteignables.
+      expect(bar().querySelectorAll('.app-nav a').length).toBe(7);
+    });
+
+    it('la punaise remet la barre dans le flux et s’en souvient (CA6)', () => {
+      arriveAt('/atelier/w1');
+      const pin = shell().querySelector('.app-pin') as HTMLButtonElement;
+      expect(pin.getAttribute('aria-pressed')).toBe('false');
+      pin.click();
+      fixture.detectChanges();
+      expect(lip()).toBeNull();
+      expect(bar().classList).not.toContain('app-bar--autohide');
+      expect(localStorage.getItem(NAV_PINNED_KEY)).toBe('1');
+
+      // Rechargement : la préférence est relue.
+      const again = TestBed.createComponent(ShellComponent);
+      (router.events as unknown as Subject<NavigationEnd>).next(new NavigationEnd(2, '/atelier/w1', '/atelier/w1'));
+      again.detectChanges();
+      expect((again.nativeElement as HTMLElement).querySelector('.app-lip')).toBeNull();
+
+      pin.click();
+      fixture.detectChanges();
+      expect(localStorage.getItem(NAV_PINNED_KEY)).toBeNull();
+      expect(lip()).not.toBeNull();
+    });
+
+    it('sans stockage local, la punaise fonctionne sans erreur (CA6)', () => {
+      spyOn(localStorage, 'getItem').and.throwError('bloqué');
+      spyOn(localStorage, 'setItem').and.throwError('bloqué');
+      const blind = TestBed.createComponent(ShellComponent);
+      (router.events as unknown as Subject<NavigationEnd>).next(new NavigationEnd(3, '/atelier/w1', '/atelier/w1'));
+      blind.detectChanges();
+      const el = blind.nativeElement as HTMLElement;
+      expect(el.querySelector('.app-lip')).not.toBeNull();
+      expect(() => {
+        (el.querySelector('.app-pin') as HTMLButtonElement).click();
+        blind.detectChanges();
+      }).not.toThrow();
+      expect(el.querySelector('.app-lip')).toBeNull();
+    });
+
+    it('la punaise n’existe pas hors écran de travail', () => {
+      arriveAt('/chat');
+      expect(shell().querySelector('.app-pin')).toBeNull();
+    });
   });
 });

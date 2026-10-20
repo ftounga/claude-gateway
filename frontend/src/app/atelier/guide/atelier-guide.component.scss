@@ -10,12 +10,12 @@
 
 .guide {
   position: fixed;
-  top: calc(64px + var(--cg-space-3));
+  top: calc(var(--cg-shell-bar-h, 64px) + var(--cg-space-3));
   right: var(--cg-space-4);
   z-index: 950;
   width: 320px;
   max-width: calc(100vw - 2 * var(--cg-space-4));
-  max-height: calc(100vh - 64px - 2 * var(--cg-space-4));
+  max-height: calc(100vh - var(--cg-shell-bar-h, 64px) - 2 * var(--cg-space-4));
   overflow-y: auto;
   padding: var(--cg-space-3);
   border: 1px solid var(--cg-divider);
