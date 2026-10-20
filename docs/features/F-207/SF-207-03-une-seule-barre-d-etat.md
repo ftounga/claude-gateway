@@ -1,7 +1,7 @@
 # Mini-spec — [F-207 / SF-207-03] Une seule barre d'état en bas du terminal
 
 ## Identifiant
-`F-207 / SF-207-03` — Feature parente `F-207` — Statut `ready` — Créée 2026-10-21
+`F-207 / SF-207-03` — Feature parente `F-207` — Statut `done` — Créée 2026-10-21
 Branche : `feat/SF-207-03-barre-d-etat` — indépendante.
 
 ## Objectif

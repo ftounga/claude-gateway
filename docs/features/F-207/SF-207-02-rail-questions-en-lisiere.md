@@ -1,7 +1,7 @@
 # Mini-spec — [F-207 / SF-207-02] Rail « Vos questions » en lisière
 
 ## Identifiant
-`F-207 / SF-207-02` — Feature parente `F-207` — Statut `ready` — Créée 2026-10-21
+`F-207 / SF-207-02` — Feature parente `F-207` — Statut `done` — Créée 2026-10-21
 Branche : `feat/SF-207-02-questions-en-lisiere` — dépend de rien (indépendante de SF-207-01).
 
 ## Objectif
