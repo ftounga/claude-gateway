@@ -28,7 +28,7 @@
        actions — tout cela sert à AGIR, et on n'agit pas depuis une tuile. -->
   @if (!readOnly) {
     <!-- En-tête : identité du projet + actions. Rien d'autre ne subsiste de l'écran Atelier. -->
-    <header class="terminal-bar" [class.terminal-bar--compact]="barTier() === 'compact' || barTier() === 'tight'" [class.terminal-bar--tight]="barTier() === 'tight'">
+    <header class="terminal-bar" (mouseenter)="onBarEnter()" (mouseleave)="closeTopDrawerSoon()" [class.terminal-bar--compact]="barTier() === 'compact' || barTier() === 'tight'" [class.terminal-bar--tight]="barTier() === 'tight'">
       <!-- OÙ L'ON EST, et CHEZ QUI (F-68 / SF-68-01) — « Forge › CAGIP › mon-projet ».
            La barre disait déjà le poste puis le projet ; le fil d'Ariane ajoute l'ancêtre qui
            manquait depuis que l'onglet « Postes » a disparu, et rend les niveaux cliquables. Rien
@@ -55,16 +55,21 @@
       <app-project-cost [projectId]="projectId" [compact]="true"></app-project-cost>
       <!-- Pastille de moteur (F-39 / SF-39-08, D1) : dit **où le code s'exécute**, jamais un nom de
            mode. C'est tout ce qui reste, à l'écran, des anciens « Assistant » et « Terminal ». -->
-      <span
+      <!-- F-207 / SF-207-04 — la pastille ouvre aussi le tiroir du réglage d'exécution. -->
+      <button
+        type="button"
         class="badge engine-chip"
+        aria-controls="terminal-topdrawer"
+        [attr.aria-expanded]="topDrawerShown()"
         [class.badge--success]="engine === 'LOCAL_MACHINE' && runnerStatus?.connected === true"
         [class.badge--error]="engine === 'LOCAL_MACHINE' && runnerStatus !== null && runnerStatus.connected === false"
         [class.badge--neutral]="engine !== 'LOCAL_MACHINE' || runnerStatus === null"
-        [attr.title]="engineLabel()"
+        [attr.title]="engineLabel() + ' — réglage d\'exécution'"
+        (click)="toggleTopDrawer()"
       >
         <mat-icon class="engine-chip-icon">{{ engineIcon() }}</mat-icon>
         <span class="terminal-bar-label">{{ engineLabel() }}</span>
-      </span>
+      </button>
       <!-- SIGNE DE VIE (F-70 / SF-70-01) : une pastille ET le mot « connecté ». Le MÊME signe se
            retrouve sur la carte du poste — c'est la décision du PO, et c'est ce qui permet de voir
            d'un coup d'œil lesquels de ses terminaux vivent. Aucune couleur nouvelle : la pastille
@@ -432,62 +437,81 @@
        en page rendrait appairage, journal d'audit et coupe-circuit inatteignables — une régression
        des acquis F-38 rappelés au §4 du cadrage. -->
   <!-- Réglage d'exécution : un geste, donc absent de la lecture seule (F-83 / SF-83-01). -->
+  <!-- F-207 / SF-207-04 — LE TIROIR D'EN-TÊTE (≥ 820 px) : la cible d'exécution et, quand tout va bien,
+       la ligne « poste connecté » ne prennent plus de hauteur. Ils s'ouvrent sous l'en-tête, PAR-DESSUS
+       le fil, au survol de l'en-tête, au clic sur la pastille moteur ou au focus. Un poste en
+       difficulté reste affiché dans le flux (c'est une alerte qui appelle un geste). -->
   @if (!readOnly) {
-    <div class="terminal-target">
-      <span class="terminal-target-label">Où s'exécutent les outils</span>
-      <mat-button-toggle-group
-        class="terminal-target-toggle"
-        aria-label="Cible d'exécution des outils"
-        [value]="executionTarget"
-        [disabled]="switchingTarget || submitting"
-        (change)="executionTargetChange.emit($event.value)"
-      >
-        <mat-button-toggle value="SANDBOX">
-          <mat-icon>cloud</mat-icon>
-          Bac à sable hébergé
-        </mat-button-toggle>
-        <mat-button-toggle value="RUNNER">
-          <mat-icon>dns</mat-icon>
-          Ma machine
-        </mat-button-toggle>
-      </mat-button-toggle-group>
+    <div
+      class="terminal-topdrawer"
+      [class.terminal-topdrawer--open]="topDrawerShown()"
+      (mouseenter)="openTopDrawer()"
+      (mouseleave)="closeTopDrawerSoon()"
+      (focusin)="openTopDrawer()"
+      (focusout)="onTopDrawerFocusOut($event)"
+      (keydown.escape)="closeTopDrawerNow()"
+    >
+      <div class="terminal-topdrawer__panel" id="terminal-topdrawer">
+        <div class="terminal-target">
+          <span class="terminal-target-label">Où s'exécutent les outils</span>
+          <mat-button-toggle-group
+            class="terminal-target-toggle"
+            aria-label="Cible d'exécution des outils"
+            [value]="executionTarget"
+            [disabled]="switchingTarget || submitting"
+            (change)="executionTargetChange.emit($event.value)"
+          >
+            <mat-button-toggle value="SANDBOX">
+              <mat-icon>cloud</mat-icon>
+              Bac à sable hébergé
+            </mat-button-toggle>
+            <mat-button-toggle value="RUNNER">
+              <mat-icon>dns</mat-icon>
+              Ma machine
+            </mat-button-toggle>
+          </mat-button-toggle-group>
 
-      @if (runnerTarget) {
-        <button
-          mat-icon-button
-          type="button"
-          class="terminal-runner-refresh"
-          matTooltip="Actualiser l'état du runner. État relevé toutes les 15 s, et non en temps réel : la passerelle considère un runner connecté tant que son dernier signe de vie date de moins de 90 s."
-          aria-label="Actualiser l'état du runner"
-          (click)="refreshRunner.emit()"
-        >
-          <mat-icon>refresh</mat-icon>
-        </button>
-        <!-- Journal d'activité (F-38 / SF-38-08) : ce qui a été lu, écrit et exécuté. -->
-        <button
-          mat-icon-button
-          type="button"
-          class="terminal-runner-audit"
-          matTooltip="Journal d'activité de la machine"
-          aria-label="Journal d'activité de la machine"
-          (click)="openRunnerAudit.emit()"
-        >
-          <mat-icon>history</mat-icon>
-        </button>
-        <!-- Coupe-circuit (F-38 / SF-38-08) : le bouton qu'on cherche quand ça se passe mal. -->
-        <button
-          mat-icon-button
-          type="button"
-          class="terminal-runner-kill"
-          color="warn"
-          matTooltip="Couper la liaison avec la machine"
-          aria-label="Couper la liaison avec la machine"
-          [disabled]="killingRunner"
-          (click)="killRunner.emit()"
-        >
-          <mat-icon>power_settings_new</mat-icon>
-        </button>
-      }
+          @if (runnerTarget) {
+            <button
+              mat-icon-button
+              type="button"
+              class="terminal-runner-refresh"
+              matTooltip="Actualiser l'état du runner. État relevé toutes les 15 s, et non en temps réel : la passerelle considère un runner connecté tant que son dernier signe de vie date de moins de 90 s."
+              aria-label="Actualiser l'état du runner"
+              (click)="refreshRunner.emit()"
+            >
+              <mat-icon>refresh</mat-icon>
+            </button>
+            <!-- Journal d'activité (F-38 / SF-38-08) : ce qui a été lu, écrit et exécuté. -->
+            <button
+              mat-icon-button
+              type="button"
+              class="terminal-runner-audit"
+              matTooltip="Journal d'activité de la machine"
+              aria-label="Journal d'activité de la machine"
+              (click)="openRunnerAudit.emit()"
+            >
+              <mat-icon>history</mat-icon>
+            </button>
+            <!-- Coupe-circuit (F-38 / SF-38-08) : le bouton qu'on cherche quand ça se passe mal. -->
+            <button
+              mat-icon-button
+              type="button"
+              class="terminal-runner-kill"
+              color="warn"
+              matTooltip="Couper la liaison avec la machine"
+              aria-label="Couper la liaison avec la machine"
+              [disabled]="killingRunner"
+              (click)="killRunner.emit()"
+            >
+              <mat-icon>power_settings_new</mat-icon>
+            </button>
+          }
+        </div>
+        @if (runnerTarget && hostNominal()) {
+          <ng-container *ngTemplateOutlet="hostStateRow"></ng-container>
+        }
+      </div>
     </div>
   }
 
@@ -499,7 +523,10 @@
        Restent donc trois choses : QUI (le poste), DANS QUEL ÉTAT, et QUOI FAIRE. Un projet
        hébergé (F-71) n'a ni machine ni reprise : il n'obtient ni commande, ni lien vers une carte
        de poste qui n'existe pas. -->
-  @if (runnerTarget && !readOnly) {
+  @if (runnerTarget && !readOnly && !hostNominal()) {
+    <ng-container *ngTemplateOutlet="hostStateRow"></ng-container>
+  }
+  <ng-template #hostStateRow>
     <div class="terminal-host-state" role="status">
       <mat-icon class="terminal-host-state-icon" aria-hidden="true">
         {{ hostKnown() ? 'dns' : 'cloud_off' }}
@@ -548,7 +575,7 @@
         </a>
       }
     </div>
-  }
+  </ng-template>
 
   <!-- Proposition du runner (F-39 / SF-39-09, décision D6) : elle ne tombe qu'au moment où le bac à
        sable devient réellement la limite, et elle dit le **bénéfice**, pas la fonctionnalité
