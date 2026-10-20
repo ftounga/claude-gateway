@@ -215,6 +215,9 @@ export const QRAIL_EDGE_MAX = 12;
 /** F-207 — délai avant de replier un tiroir quand la souris le quitte (pas de clignotement au frôlement). */
 export const QRAIL_HIDE_DELAY_MS = 350;
 
+/** F-207 / SF-207-04 — délai d'intention avant d'ouvrir le tiroir au survol de l'en-tête. */
+export const TOP_DRAWER_INTENT_MS = 250;
+
 export const RUNNER_RESUME_COMMAND = 'java -jar claude-runner.jar';
 
 /** Ce que dit la barre d'un terminal Teams, à côté du client (F-89 / SF-89-07). */
@@ -2221,6 +2224,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
   ngOnDestroy(): void {
     this.clearQrailTimer();
+    this.clearTopDrawerTimer();
     this.stopSpinner();
     this.releaseClock();
     this.narrowQuery?.removeEventListener('change', this.onNarrowChange);
@@ -3018,6 +3022,70 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    * dans le document entier : plusieurs terminaux peuvent coexister), puis on l'amène en tête du
    * conteneur de défilement.
    */
+  /** Le tiroir d'en-tête (cible d'exécution, poste connecté) est-il ouvert (F-207 / SF-207-04) ? */
+  readonly topDrawerOpen = signal(false);
+  private topDrawerTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Ouvert par un geste, ou d'office pendant une bascule de cible (on la voit aboutir). */
+  topDrawerShown(): boolean {
+    return this.topDrawerOpen() || this.switchingTarget;
+  }
+
+  /**
+   * La ligne d'état du poste est NOMINALE (poste connu, runner connecté) : elle peut se ranger dans le
+   * tiroir. Sinon c'est une alerte (inconnu, déconnecté, reprise) et elle reste dans le flux.
+   */
+  hostNominal(): boolean {
+    return this.hostKnown() && this.runnerStatus?.connected === true;
+  }
+
+  /** La souris entre dans l'en-tête : ouvrir après un court délai d'intention (on peut juste passer). */
+  onBarEnter(): void {
+    this.clearTopDrawerTimer();
+    this.topDrawerTimer = setTimeout(() => {
+      this.topDrawerTimer = null;
+      this.topDrawerOpen.set(true);
+    }, TOP_DRAWER_INTENT_MS);
+  }
+
+  openTopDrawer(): void {
+    this.clearTopDrawerTimer();
+    this.topDrawerOpen.set(true);
+  }
+
+  toggleTopDrawer(): void {
+    this.clearTopDrawerTimer();
+    this.topDrawerOpen.update((open) => !open);
+  }
+
+  closeTopDrawerSoon(): void {
+    this.clearTopDrawerTimer();
+    this.topDrawerTimer = setTimeout(() => {
+      this.topDrawerTimer = null;
+      this.topDrawerOpen.set(false);
+    }, QRAIL_HIDE_DELAY_MS);
+  }
+
+  closeTopDrawerNow(): void {
+    this.clearTopDrawerTimer();
+    this.topDrawerOpen.set(false);
+  }
+
+  onTopDrawerFocusOut(event: FocusEvent): void {
+    const next = event.relatedTarget as Node | null;
+    if (next && (event.currentTarget as HTMLElement | null)?.contains(next)) {
+      return;
+    }
+    this.closeTopDrawerSoon();
+  }
+
+  private clearTopDrawerTimer(): void {
+    if (this.topDrawerTimer !== null) {
+      clearTimeout(this.topDrawerTimer);
+      this.topDrawerTimer = null;
+    }
+  }
+
   /** Le rail « Vos questions » est-il déployé par-dessus le fil (F-207 / SF-207-02) ? */
   readonly qrailOpen = signal(false);
   /** Hauteur max du rail ouvert : la partie visible du fil, pour qu'il ne soit jamais coupé. */

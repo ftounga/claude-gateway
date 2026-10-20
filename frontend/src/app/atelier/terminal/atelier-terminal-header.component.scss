@@ -80,3 +80,69 @@
     min-width: 0;
   }
 }
+
+/* F-207 / SF-207-04 — LE TIROIR D'EN-TÊTE. La pastille moteur devient un bouton (elle ouvre le tiroir) :
+   on efface les styles natifs du bouton, la pastille garde sa charte `badge`. */
+button.engine-chip {
+  border: none;
+  font: inherit;
+  font-family: var(--cg-font-mono);
+  font-size: 11px;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--cg-accent);
+    outline-offset: 2px;
+  }
+}
+
+/* Sous 820 px, le tiroir est un simple bloc dans le flux : rendu téléphone inchangé. */
+@media (min-width: 820px) {
+  /* Hauteur nulle dans le flux : le panneau pend sous l'en-tête, PAR-DESSUS le fil. */
+  .terminal-topdrawer {
+    position: relative;
+    height: 0;
+    z-index: 20;
+  }
+
+  .terminal-topdrawer__panel {
+    position: absolute;
+    top: 0;
+    left: var(--cg-space-2);
+    right: var(--cg-space-2);
+    border: 1px solid color-mix(in srgb, var(--cg-divider) 22%, transparent);
+    border-top: none;
+    border-radius: 0 0 12px 12px;
+    background: var(--cg-primary);
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.35);
+    overflow: hidden;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-8px);
+    transition: opacity 160ms ease, transform 160ms ease, visibility 0s linear 160ms;
+
+    .terminal-host-state:last-child {
+      border-bottom: none;
+    }
+  }
+
+  .terminal-topdrawer--open .terminal-topdrawer__panel {
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+    transition: opacity 160ms ease, transform 160ms ease, visibility 0s;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .terminal-topdrawer__panel,
+  .terminal-topdrawer--open .terminal-topdrawer__panel {
+    transition: none;
+  }
+}
+
+/* Peau Teams « Papier » (§15) : le tiroir prend le bandeau de la peau, pas le bleu de la Forge. */
+.terminal-view--teams .terminal-topdrawer__panel {
+  background: var(--cg-terminal-teams-bar);
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.16);
+}
