@@ -153,7 +153,7 @@ describe('AtelierTerminalComponent — rail « Vos questions » en tête (F-158 
     );
   });
 
-  it('DESKTOP (1440 px) : le rail reste à DROITE du fil, grille à deux pistes dont 232px — rendu inchangé', () => {
+  it('DESKTOP (1440 px) : le rail reste à DROITE du fil, grille à deux pistes dont la lisière de 32px (F-207 / SF-207-02)', () => {
     renderRailed();
     // Aucune iframe : la fenêtre Karma (1440 px) n'active pas la feuille mobile → rendu desktop.
     const sb = host.querySelector('.terminal-scrollback') as HTMLElement;
@@ -162,7 +162,7 @@ describe('AtelierTerminalComponent — rail « Vos questions » en tête (F-158 
 
     const tracks = getComputedStyle(sb).gridTemplateColumns.trim().split(/\s+/);
     expect(tracks.length).withContext('desktop : deux pistes (fil + rail)').toBe(2);
-    expect(tracks[1]).withContext('desktop : seconde piste (rail) = 232px').toBe('232px');
+    expect(tracks[1]).withContext('desktop : seconde piste (lisière) = 32px').toBe('32px');
 
     // Malgré l'ordre DOM [rail, fil], `order: 1` repousse le rail en 2ᵉ piste : il est à DROITE du fil.
     expect(rail.getBoundingClientRect().left)

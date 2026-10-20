@@ -209,6 +209,12 @@ const NO_NEXT_STEPS: AtelierNextStep[] = [];
  * d'ici — le dialogue d'appairage, lui, sait quel paquet a été retenu et propose son lanceur
  * propre ; le terminal, non. L'écran dit donc d'où la lancer plutôt que de fabriquer un chemin.</p>
  */
+/** F-207 / SF-207-02 — pastilles montrées par la lisière du rail « Vos questions », au plus. */
+export const QRAIL_EDGE_MAX = 12;
+
+/** F-207 — délai avant de replier un tiroir quand la souris le quitte (pas de clignotement au frôlement). */
+export const QRAIL_HIDE_DELAY_MS = 350;
+
 export const RUNNER_RESUME_COMMAND = 'java -jar claude-runner.jar';
 
 /** Ce que dit la barre d'un terminal Teams, à côté du client (F-89 / SF-89-07). */
@@ -2214,6 +2220,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.clearQrailTimer();
     this.stopSpinner();
     this.releaseClock();
     this.narrowQuery?.removeEventListener('change', this.onNarrowChange);
@@ -3011,6 +3018,58 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    * dans le document entier : plusieurs terminaux peuvent coexister), puis on l'amène en tête du
    * conteneur de défilement.
    */
+  /** Le rail « Vos questions » est-il déployé par-dessus le fil (F-207 / SF-207-02) ? */
+  readonly qrailOpen = signal(false);
+  /** Hauteur max du rail ouvert : la partie visible du fil, pour qu'il ne soit jamais coupé. */
+  readonly qrailMax = signal<string | null>(null);
+  private qrailTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Les pastilles de la lisière : les 12 dernières questions, au plus. */
+  qrailEdgeQuestions(): { number: number; content: string; anchorId: string }[] {
+    return this.userQuestions.slice(-QRAIL_EDGE_MAX);
+  }
+
+  /** Combien de questions plus anciennes la lisière ne montre pas (« +N »), 0 sinon. */
+  qrailHiddenCount(): number {
+    return Math.max(0, this.userQuestions.length - QRAIL_EDGE_MAX);
+  }
+
+  openQrail(): void {
+    this.clearQrailTimer();
+    const visible = this.scrollback?.nativeElement?.clientHeight ?? 0;
+    this.qrailMax.set(visible > 0 ? `${Math.max(160, visible - 16)}px` : null);
+    this.qrailOpen.set(true);
+  }
+
+  /** Repli différé : la souris qui frôle la lisière ne fait pas clignoter le rail. */
+  closeQrailSoon(): void {
+    this.clearQrailTimer();
+    this.qrailTimer = setTimeout(() => {
+      this.qrailTimer = null;
+      this.qrailOpen.set(false);
+    }, QRAIL_HIDE_DELAY_MS);
+  }
+
+  closeQrailNow(): void {
+    this.clearQrailTimer();
+    this.qrailOpen.set(false);
+  }
+
+  onQrailFocusOut(event: FocusEvent): void {
+    const next = event.relatedTarget as Node | null;
+    if (next && (event.currentTarget as HTMLElement | null)?.contains(next)) {
+      return;
+    }
+    this.closeQrailSoon();
+  }
+
+  private clearQrailTimer(): void {
+    if (this.qrailTimer !== null) {
+      clearTimeout(this.qrailTimer);
+      this.qrailTimer = null;
+    }
+  }
+
   scrollToQuestion(anchorId: string): void {
     const container = this.scrollback?.nativeElement;
     const target = container?.querySelector<HTMLElement>(`[id="${anchorId}"]`);
