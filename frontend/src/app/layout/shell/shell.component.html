@@ -1,4 +1,38 @@
-<mat-toolbar class="app-bar">
+<!-- F-207 / SF-207-01 — LA LISIÈRE : sur un écran de travail (terminal, mosaïque), la barre se replie
+     et rend ses 64 px au contenu. Survoler le haut de l'écran, ou donner le focus à la poignée, la fait
+     glisser PAR-DESSUS le contenu (rien ne bouge dessous). Sans effet sous 820 px (CSS). -->
+@if (navAutoHide()) {
+  <div
+    class="app-lip"
+    [class.app-lip--hidden]="navRevealed()"
+    (mouseenter)="onNavEnter()"
+    (mouseleave)="onNavLeave()"
+  >
+    <button
+      type="button"
+      class="app-lip__handle"
+      aria-label="Afficher la navigation"
+      aria-controls="app-bar"
+      [attr.aria-expanded]="navRevealed()"
+      (focus)="onNavFocusIn()"
+      (blur)="onNavFocusOut($event)"
+      (click)="onNavEnter()"
+    >
+      <mat-icon aria-hidden="true">expand_more</mat-icon>
+    </button>
+  </div>
+}
+
+<mat-toolbar
+  id="app-bar"
+  class="app-bar"
+  [class.app-bar--autohide]="navAutoHide()"
+  [class.app-bar--revealed]="navRevealed()"
+  (mouseenter)="navAutoHide() && onNavEnter()"
+  (mouseleave)="navAutoHide() && onNavLeave()"
+  (focusin)="navAutoHide() && onNavFocusIn()"
+  (focusout)="navAutoHide() && onNavFocusOut($event)"
+>
   <!-- F-151 / SF-151-01 — Bouton hamburger : masqué ≥ 820 px, il déploie sous 819 px le panneau
        des 7 liens (mêmes liens, un seul jeu). Cible tactile conforme (mat-icon-button = 48 px). -->
   <button
@@ -62,6 +96,23 @@
   <!-- F-185 / SF-185-04 — LA CLOCHE : ce qui vous a attendu, avec le nom du sujet (dans l'app
        seulement, D1). Avant le menu Compte ; aucune route ajoutée. -->
   <app-notification-bell></app-notification-bell>
+
+  <!-- F-207 / SF-207-01 — LA PUNAISE, sur les écrans de travail seulement : garder la barre affichée
+       (elle revient dans le flux) ou la replier en lisière. Préférence mémorisée sur cet appareil. -->
+  @if (workspaceScreen()) {
+    <button
+      mat-icon-button
+      type="button"
+      class="app-pin"
+      [class.app-pin--on]="navPinned()"
+      [attr.aria-pressed]="navPinned()"
+      [attr.aria-label]="navPinned() ? 'Replier la barre de navigation' : 'Garder la barre de navigation affichée'"
+      [matTooltip]="navPinned() ? 'Replier la barre (elle reviendra au survol du haut de l’écran)' : 'Garder la barre affichée'"
+      (click)="togglePin()"
+    >
+      <mat-icon>push_pin</mat-icon>
+    </button>
+  }
 
   <button
     mat-icon-button
