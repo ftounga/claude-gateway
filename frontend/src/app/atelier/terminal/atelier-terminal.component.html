@@ -649,20 +649,50 @@
          seulement quand au moins une question a été posée. Sur mobile (≤ 819 px) il est en tête par
          l'ordre DOM ; en desktop il reprend la 2ᵉ piste (à droite) via `order: 1` (CSS). -->
     @if (!readOnly && userQuestions.length > 0) {
-      <aside class="terminal-qrail" aria-label="Vos questions">
-        <p class="terminal-qrail__title">Vos questions</p>
-        <nav>
-          @for (question of userQuestions; track question.anchorId) {
+      <!-- F-207 / SF-207-02 — LE RAIL EN LISIÈRE (≥ 820 px) : 32 px de numéros au lieu de 232 px de
+           colonne ; le rail complet s'ouvre au survol ou au focus, PAR-DESSUS le fil (sa largeur ne
+           bouge pas). Sous 820 px, la lisière disparaît et le panneau reprend sa place en tête. -->
+      <aside
+        class="terminal-qrail"
+        [class.terminal-qrail--open]="qrailOpen()"
+        [style.--qrail-max]="qrailMax()"
+        aria-label="Vos questions"
+        (mouseenter)="openQrail()"
+        (mouseleave)="closeQrailSoon()"
+        (focusin)="openQrail()"
+        (focusout)="onQrailFocusOut($event)"
+        (keydown.escape)="closeQrailNow()"
+      >
+        <div class="terminal-qrail__edge" aria-hidden="true">
+          <mat-icon class="terminal-qrail__edge-icon">format_list_numbered</mat-icon>
+          @if (qrailHiddenCount(); as more) {
+            <span class="terminal-qrail__more">+{{ more }}</span>
+          }
+          @for (question of qrailEdgeQuestions(); track question.anchorId) {
             <button
               type="button"
-              class="terminal-qrail__item"
+              tabindex="-1"
+              class="terminal-qrail__n terminal-qrail__edge-n"
+              [attr.title]="question.content"
               (click)="scrollToQuestion(question.anchorId)"
-            >
-              <span class="terminal-qrail__n" aria-hidden="true">{{ question.number }}</span>
-              <span class="terminal-qrail__label">{{ question.content }}</span>
-            </button>
+            >{{ question.number }}</button>
           }
-        </nav>
+        </div>
+        <div class="terminal-qrail__panel">
+          <p class="terminal-qrail__title">Vos questions</p>
+          <nav>
+            @for (question of userQuestions; track question.anchorId) {
+              <button
+                type="button"
+                class="terminal-qrail__item"
+                (click)="scrollToQuestion(question.anchorId)"
+              >
+                <span class="terminal-qrail__n" aria-hidden="true">{{ question.number }}</span>
+                <span class="terminal-qrail__label">{{ question.content }}</span>
+              </button>
+            }
+          </nav>
+        </div>
       </aside>
     }
 

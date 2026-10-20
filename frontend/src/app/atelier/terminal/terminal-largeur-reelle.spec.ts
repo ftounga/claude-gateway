@@ -543,19 +543,19 @@ describe('AtelierTerminalComponent — largeur réelle (F-158 / SF-158-10)', () 
       }
     });
 
-    it('DESKTOP (1440 px, sans la feuille mobile) : la grille railed garde ses deux pistes (…232px)', () => {
+    it('DESKTOP (1440 px, sans la feuille mobile) : la grille railed garde ses deux pistes (…32px, lisière F-207)', () => {
       // Aucun applyTerminalMobileRules() : à 1440 px les règles @media 819px ne s'appliquent pas →
-      // le desktop garde `grid-template-columns: minmax(0, 1fr) 232px`. Garde-fou de non-régression.
+      // le desktop garde `grid-template-columns: minmax(0, 1fr) 32px` (lisière F-207 / SF-207-02). Garde-fou de non-régression.
       renderRailedWideTurn();
       const scrollback = host.querySelector('.terminal-scrollback') as HTMLElement;
       expect(scrollback.classList.contains('terminal-scrollback--railed')).toBe(true);
       const tracks = getComputedStyle(scrollback).gridTemplateColumns.trim().split(/\s+/);
       expect(tracks.length)
-        .withContext('le desktop doit garder DEUX pistes (fil + rail 232px), pas une seule')
+        .withContext('le desktop doit garder DEUX pistes (fil + lisière 32px), pas une seule')
         .toBe(2);
       expect(tracks[1])
-        .withContext('la seconde piste (le rail) doit rester 232px en desktop')
-        .toBe('232px');
+        .withContext('la seconde piste (la lisière) doit faire 32px en desktop')
+        .toBe('32px');
     });
   });
 

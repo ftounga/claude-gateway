@@ -16,7 +16,8 @@
        par le gabarit), pour ne rien changer aux terminaux sans question ni à la lecture seule. --- */
 .terminal-scrollback--railed {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 232px;
+  /* F-207 / SF-207-02 — 32 px de lisière au lieu d'une colonne de 232 px : le rail s'ouvre par-dessus. */
+  grid-template-columns: minmax(0, 1fr) 32px;
   gap: var(--cg-space-3);
   align-items: start;
 }
@@ -47,6 +48,24 @@
   .terminal-scrollback--railed .terminal-qrail {
     position: static;
     order: 0;
+  }
+
+  /* Téléphone : pas de lisière, le panneau reprend sa place en tête du fil, toujours visible. */
+  .terminal-qrail__edge {
+    display: none;
+  }
+
+  .terminal-qrail__panel {
+    position: static;
+    width: auto;
+    max-height: none;
+    padding: 0;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    opacity: 1;
+    visibility: visible;
+    transform: none;
   }
 }
 
@@ -102,6 +121,76 @@
   position: sticky;
   top: 0;
   align-self: start;
+  z-index: 5;
+}
+
+/* F-207 / SF-207-02 — LA LISIÈRE : une colonne de pastilles numérotées, discrète au repos. */
+.terminal-qrail__edge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: var(--cg-space-1) 0;
+  border-radius: 10px;
+  opacity: 0.7;
+  transition: opacity 160ms ease;
+}
+
+.terminal-qrail:hover .terminal-qrail__edge {
+  opacity: 1;
+}
+
+.terminal-qrail__edge-icon {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+  color: var(--cg-divider);
+}
+
+.terminal-qrail__more {
+  font-family: var(--cg-font-mono);
+  font-size: 10px;
+  color: var(--cg-divider);
+}
+
+button.terminal-qrail__edge-n {
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+/* LE PANNEAU : le rail complet, glissé depuis la droite PAR-DESSUS le fil. Fermé, il ne capte rien. */
+.terminal-qrail__panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 280px;
+  max-height: var(--qrail-max, min(60vh, 520px));
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: var(--cg-space-3) var(--cg-space-2);
+  border: 1px solid color-mix(in srgb, var(--cg-divider) 25%, transparent);
+  border-radius: 12px;
+  background: var(--cg-navy-2);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(12px);
+  transition: opacity 160ms ease, transform 160ms ease, visibility 0s linear 160ms;
+}
+
+.terminal-qrail--open .terminal-qrail__panel {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: opacity 160ms ease, transform 160ms ease, visibility 0s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .terminal-qrail__panel,
+  .terminal-qrail--open .terminal-qrail__panel {
+    transition: none;
+  }
 }
 
 .terminal-qrail__title {
@@ -178,6 +267,17 @@
   }
 
   .terminal-qrail__title {
+    color: var(--cg-terminal-teams-muted);
+  }
+
+  /* Le panneau ouvert, sur le papier : la carte de la peau, pas le bleu nuit de la Forge. */
+  .terminal-qrail__panel {
+    background: var(--cg-terminal-teams-card);
+    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
+  }
+
+  .terminal-qrail__edge-icon,
+  .terminal-qrail__more {
     color: var(--cg-terminal-teams-muted);
   }
 
