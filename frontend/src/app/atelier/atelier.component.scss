@@ -5,6 +5,17 @@
   height: calc(100vh - var(--cg-shell-bar-h, 64px));
 }
 
+// F-207 / SF-207-06 — GARDE-FOU : rien ne déborde de l'écran en largeur. Quelques pixels de trop
+// rendaient `main` défilable ; le recalage en bas du terminal (`scrollIntoView`) le faisait alors
+// défiler à chaque ligne, et tout le terminal tremblait. `clip`, et non `hidden` : il ne crée pas de
+// conteneur défilable, `scrollIntoView` ne peut pas le faire bouger. Posé ICI, hors du terminal :
+// les tests de largeur du terminal (F-158) continuent de voir un vrai débordement. Desktop seulement.
+@media (min-width: 820px) {
+  :host {
+    overflow-x: clip;
+  }
+}
+
 .atelier-layout {
   display: grid;
   grid-template-columns: 280px 1fr;
