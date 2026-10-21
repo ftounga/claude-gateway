@@ -1,4 +1,4 @@
-import { Component, HostListener, OnDestroy, computed, effect, inject, signal } from '@angular/core';
+import { Component, HostListener, OnDestroy, computed, effect, inject, signal, viewChild } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { filter, map } from 'rxjs/operators';
@@ -174,6 +174,14 @@ export class ShellComponent implements OnDestroy {
     // Le focus part dans un menu (Compte, cloche) : la barre reste là le temps qu'il est ouvert.
     this.navHover.set(true);
     this.onNavLeave();
+  }
+
+  /** F-207 / SF-207-05 — Le widget d'aide, piloté depuis la barre sur les écrans de travail. */
+  protected readonly helpWidget = viewChild(HelpChatWidgetComponent);
+
+  /** Ouvre ou ferme le panneau d'aide depuis le bouton de la barre. */
+  protected toggleHelp(): void {
+    this.helpWidget()?.togglePanel();
   }
 
   /** Épingle ou replie la barre sur les écrans de travail. */

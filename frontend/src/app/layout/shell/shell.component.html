@@ -93,6 +93,22 @@
 
   <span class="spacer"></span>
 
+  <!-- F-207 / SF-207-05 — L'AIDE, rangée dans la barre sur les écrans de travail : la bulle flottante
+       recouvrait le bouton Envoyer. Masqué sous 820 px, où la bulle reste (CSS). -->
+  @if (workspaceScreen()) {
+    <button
+      mat-icon-button
+      type="button"
+      class="app-help"
+      aria-label="Aide"
+      matTooltip="Aide"
+      [attr.aria-expanded]="helpWidget()?.panelOpen() ?? false"
+      (click)="toggleHelp()"
+    >
+      <mat-icon>help_outline</mat-icon>
+    </button>
+  }
+
   <!-- F-185 / SF-185-04 — LA CLOCHE : ce qui vous a attendu, avec le nom du sujet (dans l'app
        seulement, D1). Avant le menu Compte ; aucune route ajoutée. -->
   <app-notification-bell></app-notification-bell>
@@ -165,4 +181,4 @@
   <router-outlet></router-outlet>
 </main>
 
-<app-help-chat-widget></app-help-chat-widget>
+<app-help-chat-widget [docked]="workspaceScreen()"></app-help-chat-widget>

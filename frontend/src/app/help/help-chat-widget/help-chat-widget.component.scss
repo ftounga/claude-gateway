@@ -168,3 +168,24 @@
     bottom: calc(112px + env(safe-area-inset-bottom));
   }
 }
+
+// --- Rangée dans la barre sur les écrans de travail (F-207 / SF-207-05) ------------------------------
+//
+// En bas à droite, la bulle recouvrait le bouton Envoyer du terminal. Sur un écran de travail, la
+// barre globale porte le bouton d'aide : la bulle disparaît et le panneau s'ouvre en haut à droite,
+// sous la barre, loin du composeur. Sous 820 px, rien ne change (la règle ci-dessus s'applique).
+@media (min-width: 820px) {
+  .help-widget--docked {
+    // Sous la barre quand elle est affichée, en haut de l'écran quand elle est repliée (SF-207-01).
+    top: calc(var(--cg-shell-bar-h, 64px) + var(--cg-space-2));
+    bottom: auto;
+
+    .help-widget__bubble {
+      display: none;
+    }
+
+    .help-panel {
+      max-height: min(560px, calc(100vh - var(--cg-shell-bar-h, 64px) - 32px));
+    }
+  }
+}

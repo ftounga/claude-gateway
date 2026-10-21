@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, input, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -56,6 +56,13 @@ export const HELP_FALLBACK_ERROR =
 })
 export class HelpChatWidgetComponent {
   private readonly helpService = inject(HelpService);
+
+  /**
+   * F-207 / SF-207-05 — Rangée dans la barre : sur un écran de travail, la bulle flottante recouvrait
+   * le bouton Envoyer du terminal. La coquille passe alors `docked` : à partir de 820 px, la bulle
+   * disparaît (la barre porte le bouton d'aide) et le panneau s'ouvre en haut à droite.
+   */
+  readonly docked = input(false);
 
   readonly maxLength = HELP_MAX_LENGTH;
   readonly suggestions = HELP_SUGGESTIONS;
