@@ -1,4 +1,4 @@
-<div class="help-widget">
+<div class="help-widget" [class.help-widget--docked]="docked()">
   @if (panelOpen()) {
     <section class="help-panel mat-elevation-z4" aria-label="Aide produit">
       <header class="help-panel__header">

@@ -91,6 +91,18 @@
   background: var(--cg-bg);
 }
 
+// F-207 / SF-207-05 — L'AIDE dans la barre (écrans de travail) ; sous 820 px, la bulle flottante reste.
+.app-help {
+  color: var(--cg-text-secondary);
+  --mat-icon-button-icon-color: var(--cg-text-secondary);
+}
+
+@media (max-width: 819px) {
+  .app-help {
+    display: none;
+  }
+}
+
 // F-207 / SF-207-01 — LA PUNAISE (écrans de travail) : couchée quand la barre se replie, droite et
 // orange quand elle est épinglée.
 .app-pin {

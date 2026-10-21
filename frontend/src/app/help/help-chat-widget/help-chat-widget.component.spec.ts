@@ -30,6 +30,14 @@ describe('HelpChatWidgetComponent', () => {
     fixture.detectChanges();
   });
 
+  it('rangé (docked), il le signale par sa classe — la feuille de style masque la bulle ≥ 820 px (SF-207-05)', () => {
+    const root = () => (fixture.nativeElement as HTMLElement).querySelector('.help-widget')!;
+    expect(root().classList).not.toContain('help-widget--docked');
+    fixture.componentRef.setInput('docked', true);
+    fixture.detectChanges();
+    expect(root().classList).toContain('help-widget--docked');
+  });
+
   it('ouvre puis referme le panneau', () => {
     expect(component.panelOpen()).toBeFalse();
 

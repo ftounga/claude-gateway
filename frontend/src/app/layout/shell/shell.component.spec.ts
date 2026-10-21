@@ -6,6 +6,8 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { of, Subject } from 'rxjs';
 
 import { signal } from '@angular/core';
+import { By } from '@angular/platform-browser';
+import { HelpChatWidgetComponent } from '../../help/help-chat-widget/help-chat-widget.component';
 
 import { NAV_HIDE_DELAY_MS, NAV_PINNED_KEY, ShellComponent, isWorkspaceScreen } from './shell.component';
 import { AuthService } from '../../core/services/auth.service';
@@ -482,6 +484,35 @@ describe('ShellComponent', () => {
     it('la punaise n’existe pas hors écran de travail', () => {
       arriveAt('/chat');
       expect(shell().querySelector('.app-pin')).toBeNull();
+    });
+  });
+
+  describe('aide rangée dans la barre (F-207 / SF-207-05)', () => {
+    const shell = () => fixture.nativeElement as HTMLElement;
+    const widget = () => fixture.debugElement.query(By.directive(HelpChatWidgetComponent)).componentInstance as HelpChatWidgetComponent;
+
+    it('sur un terminal, la barre porte le bouton d’aide et le widget est rangé (CA1, CA2)', () => {
+      arriveAt('/atelier/w1');
+      const help = shell().querySelector('.app-help') as HTMLButtonElement;
+      expect(help).not.toBeNull();
+      expect(shell().querySelector('.help-widget')!.classList).toContain('help-widget--docked');
+      expect(help.getAttribute('aria-expanded')).toBe('false');
+
+      help.click();
+      fixture.detectChanges();
+      expect(widget().panelOpen()).toBeTrue();
+      expect(help.getAttribute('aria-expanded')).toBe('true');
+
+      help.click();
+      fixture.detectChanges();
+      expect(widget().panelOpen()).toBeFalse();
+    });
+
+    it('ailleurs, ni bouton dans la barre ni widget rangé : la bulle reste (CA3)', () => {
+      arriveAt('/chat');
+      expect(shell().querySelector('.app-help')).toBeNull();
+      expect(shell().querySelector('.help-widget')!.classList).not.toContain('help-widget--docked');
+      expect(shell().querySelector('.help-widget__bubble')).not.toBeNull();
     });
   });
 });
