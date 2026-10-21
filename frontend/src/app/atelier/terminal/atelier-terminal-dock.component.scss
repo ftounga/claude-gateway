@@ -47,7 +47,9 @@
   flex-wrap: wrap;
   gap: 6px;
   min-height: 30px;
-  padding: 2px var(--cg-space-2) 2px var(--cg-space-3);
+  /* SF-207-06 : 16 px à droite — la zone tactile du bouton ⚙ (48 px autour de ses 26 px) dépassait
+     de 3 px avec 8 px, ce qui rendait la page défilable et faisait trembler le terminal. */
+  padding: 2px var(--cg-space-3);
   border-top: 1px solid var(--cg-navy-2);
   box-sizing: border-box;
 }

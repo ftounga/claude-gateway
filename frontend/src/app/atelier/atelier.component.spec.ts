@@ -184,6 +184,13 @@ describe('AtelierComponent', () => {
   }
 
   // F-185 / SF-185-05 — l'onglet dit ce qui attend : un plan soumis n'est pas « une réponse prête ».
+  it('coupe tout débordement horizontal sur desktop : la page ne devient jamais défilable (F-207 / SF-207-06)', () => {
+    // Karma tourne à 1440 px (≥ 820) : le garde-fou s'applique. `clip`, pas `hidden` — pas de conteneur défilable.
+    setup();
+    fixture.detectChanges();
+    expect(getComputedStyle(fixture.nativeElement as HTMLElement).overflowX).toBe('clip');
+  });
+
   describe('alerte d\'onglet en fin de tour (F-185 / SF-185-05)', () => {
     function finish(planSubmitted: boolean): { plan: jasmine.Spy; done: jasmine.Spy } {
       setup();

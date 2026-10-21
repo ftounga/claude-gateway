@@ -115,6 +115,17 @@ describe('AtelierTerminalComponent — barre d’état du bas (F-207 / SF-207-03
     expect(getComputedStyle(drawer()).position).toBe('absolute');
   });
 
+  it('rien ne déborde à droite : la zone tactile du réglage tient dans la barre (SF-207-06)', () => {
+    c.journey.set(guided());
+    c.attentesBoard.set(board());
+    fixture.detectChanges();
+    const barRight = bar()!.getBoundingClientRect().right;
+    const target = bar()!.querySelector('.terminal-dock__menu .mat-mdc-button-touch-target') as HTMLElement;
+    expect(target).not.toBeNull();
+    expect(target.getBoundingClientRect().right).toBeLessThanOrEqual(barRight);
+    expect(bar()!.scrollWidth).toBeLessThanOrEqual(bar()!.clientWidth);
+  });
+
   it('survol → tiroir ouvert par-dessus, la hauteur du fil ne bouge pas ; repli différé (CA2)', fakeAsync(() => {
     c.journey.set(guided());
     fixture.detectChanges();
