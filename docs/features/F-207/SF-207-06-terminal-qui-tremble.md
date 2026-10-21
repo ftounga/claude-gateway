@@ -16,27 +16,27 @@ Le terminal ne tremble plus pendant le travail : plus rien ne déborde en largeu
 
 ## Comportement nominal
 - La barre d'état garde 16 px de marge à droite. La zone tactile du bouton ⚙ tient dans l'écran, et le bouton reste à 26 px.
-- Garde-fou : la racine du terminal (`.terminal-view`) coupe tout débordement **horizontal** (`overflow-x: clip`). `clip` ne crée pas de conteneur défilable, donc `scrollIntoView` ne peut pas le faire défiler. La hauteur n'est pas touchée : le défilement vertical sur téléphone (la fenêtre) reste inchangé.
+- Garde-fou : l'écran Atelier (`:host` d'`AtelierComponent`, ≥ 820 px) coupe tout débordement **horizontal** (`overflow-x: clip`). `clip` ne crée pas de conteneur défilable, donc `scrollIntoView` ne peut pas le faire défiler. Il est posé **hors** du terminal : sur `.terminal-view`, il rendait tautologiques les tests de largeur F-158, qui doivent voir un vrai débordement (essai fait, test « sanity » tombé). Téléphone inchangé.
 
 ## Cas d'erreur
 | Situation | Comportement attendu |
 |---|---|
-| Un futur élément du terminal dépasse en largeur | coupé par la racine du terminal ; `main` ne devient pas défilable |
+| Un futur élément du terminal dépasse en largeur | coupé par l'écran Atelier ; `main` ne devient pas défilable (vérifié en injectant un élément qui dépasse de 60 px) |
 | Tiroirs, rail des questions, menus | inchangés : tiroirs internes au terminal, menus dans l'overlay CDK |
 
 ## Critères d'acceptation
 - [ ] CA1 À 1366 × 768, barres de défilement visibles, tour en cours : `main.app-content` garde `scrollWidth ≤ clientWidth` et ne change pas de taille.
 - [ ] CA2 La zone tactile du bouton ⚙ ne dépasse pas le bord droit du terminal.
-- [ ] CA3 `.terminal-view` porte `overflow-x: clip` (calculé).
+- [ ] CA3 L'écran Atelier porte `overflow-x: clip` (calculé, ≥ 820 px).
 - [ ] CA4 Non-régression : suite frontend verte, `ng build` vert, rendu visuel inchangé (capture).
 
 ## Plan de test
-- Spec `terminal-barre-etat.spec.ts` : la zone tactile du menu ne dépasse pas la barre (CA2) ; `.terminal-view` en `overflow-x: clip` (CA3).
+- Spec `terminal-barre-etat.spec.ts` : la zone tactile du menu ne dépasse pas la barre (CA2). Spec `atelier.component.spec.ts` : `overflow-x: clip` (CA3).
 - Banc headless avec barres de défilement réelles, avant/après correctif (CA1).
 - Isolation utilisateur : sans objet.
 
 ## Impacts
-- Composants : `atelier-terminal-dock.component.scss`, `atelier-terminal.component.scss`, spec.
+- Composants : `atelier-terminal-dock.component.scss`, `atelier.component.scss`, deux specs.
 - Aucun endpoint, aucune donnée, aucune route. Design system : espacement `--cg-space-3` de l'échelle.
 
 ## Hors périmètre
