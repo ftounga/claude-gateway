@@ -55,6 +55,16 @@ public class SubjectJourneyController {
                 .toList();
     }
 
+    /** Les versions du plan du chantier N, avec ce qui a changé de l'une à l'autre (F-208 / SF-208-02). */
+    @GetMapping("/chantiers/{number}/versions")
+    public java.util.List<SubjectJourneyResponse.PlanVersion> versions(@PathVariable UUID workspaceId,
+                                                                      @PathVariable int number) {
+        UUID userId = currentUser.requireId();
+        return service.planVersions(userId, workspaceId, number).stream()
+                .map(SubjectJourneyResponse.PlanVersion::from)
+                .toList();
+    }
+
     /** [Passer en guidé] — la proposition de l'agent est acceptée (SF-176-02). */
     @PostMapping("/guided-proposal/accept")
     public SubjectJourneyResponse acceptGuided(@PathVariable UUID workspaceId) {

@@ -375,6 +375,72 @@ public record JourneyPlan(List<Step> steps) {
         return new JourneyPlan(List.copyOf(copy));
     }
 
+    /**
+     * Les dépendances <b>déclarées</b> ({@code depends_on}) de l'étape {@code index} qui ne sont pas encore
+     * faites ou vérifiées — rangs à partir de 1 (F-208). Vide sans déclaration.
+     */
+    public List<Integer> pendingDeclared(int index) {
+        List<Integer> pending = new ArrayList<>();
+        for (int rank : steps.get(index).dependsOn()) {
+            if (rank >= 1 && rank <= steps.size() && !steps.get(rank - 1).isDone()) {
+                pending.add(rank);
+            }
+        }
+        return List.copyOf(pending);
+    }
+
+    /**
+     * Ce qui bloque l'étape {@code index} côté plan (F-208) : ses dépendances déclarées non faites ; sans
+     * déclaration, la règle historique — l'étape précédente la plus proche qui n'est pas faite (elle attend
+     * elle-même les précédentes). Rangs à partir de 1.
+     */
+    public List<Integer> blockingSteps(int index) {
+        if (!steps.get(index).dependsOn().isEmpty()) {
+            return pendingDeclared(index);
+        }
+        for (int i = index - 1; i >= 0; i--) {
+            if (!steps.get(i).isDone()) {
+                return List.of(i + 1);
+            }
+        }
+        return List.of();
+    }
+
+    /** Ce qui a changé d'une version du plan à la suivante (F-208), apparié par titre. */
+    public record Changes(List<String> added, List<String> removed, List<String> modified) {
+    }
+
+    /**
+     * Les étapes ajoutées, retirées et modifiées de {@code previous} à {@code next} (F-208 / SF-208-02).
+     * Appariement par titre ; « modifiée » = même titre, contenu différent (risque, vérification, retour
+     * arrière, attente, dépendances). L'avancement n'est pas un changement.
+     */
+    public static Changes changes(JourneyPlan previous, JourneyPlan next) {
+        List<String> added = new ArrayList<>();
+        List<String> modified = new ArrayList<>();
+        List<Step> before = previous == null ? List.of() : new ArrayList<>(previous.steps());
+        List<Step> remaining = new ArrayList<>(before);
+        for (Step step : next.steps()) {
+            Step match = null;
+            for (Step candidate : remaining) {
+                if (candidate.title().equals(step.title())) {
+                    match = candidate;
+                    break;
+                }
+            }
+            if (match == null) {
+                added.add(step.title());
+            } else {
+                remaining.remove(match);
+                if (!Objects.equals(match.content(), step.content())) {
+                    modified.add(step.title());
+                }
+            }
+        }
+        List<String> removed = remaining.stream().map(Step::title).toList();
+        return new Changes(List.copyOf(added), List.copyOf(removed), List.copyOf(modified));
+    }
+
     private static String text(JsonNode node, String... names) {
         if (node == null) {
             return null;

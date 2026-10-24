@@ -186,4 +186,25 @@ class JourneyPlanTest {
         assertThat(SubjectJourneyService.confidenceOf("low")).isEqualTo("FAIBLE");
         assertThat(SubjectJourneyService.confidenceOf(null)).isEqualTo("MOYENNE");
     }
+
+    @Test
+    @DisplayName("SF-208-02 : ce qui bloque une étape (déclaré ou règle historique) et ce qui change d'une version à l'autre")
+    void blockingAndChanges() throws Exception {
+        JourneyPlan plan = JourneyPlan.fromToolInput(json("""
+                [{"title":"A","risk":"LECTURE"},{"title":"B","risk":"LECTURE"},
+                 {"title":"C","risk":"NOTES","depends_on":[1]},{"title":"D","risk":"NOTES"}]"""))
+                .withStep(0, JourneyPlan.StepStatus.FAIT, null);
+        assertThat(plan.blockingSteps(0)).isEmpty();
+        assertThat(plan.blockingSteps(1)).isEmpty();
+        assertThat(plan.blockingSteps(2)).isEmpty();
+        assertThat(plan.blockingSteps(3)).containsExactly(3);
+        assertThat(plan.pendingDeclared(3)).isEmpty();
+        JourneyPlan next = JourneyPlan.fromToolInput(json("""
+                [{"title":"A","risk":"LECTURE"},{"title":"C","risk":"EXTERNE"},{"title":"E","risk":"NOTES"}]"""));
+        JourneyPlan.Changes changes = JourneyPlan.changes(plan, next);
+        assertThat(changes.added()).containsExactly("E");
+        assertThat(changes.removed()).containsExactly("B", "D");
+        assertThat(changes.modified()).containsExactly("C");
+        assertThat(JourneyPlan.changes(null, next).added()).containsExactly("A", "C", "E");
+    }
 }

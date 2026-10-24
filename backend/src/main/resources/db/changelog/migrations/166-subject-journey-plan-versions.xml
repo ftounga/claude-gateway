@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-208 / SF-208-02 — L'HISTORIQUE DES VERSIONS DU PLAN D'UN CHANTIER (demande PO du 2026-10-24).
+
+      Jusqu'ici, seuls le plan courant et le dernier plan valide existaient : un amendement ecrasait
+      le precedent. Chaque set_subject_plan accepte ecrit desormais une ligne (chantier, version, plan)
+      ; l'ecran en deduit « ce qui a change » d'une version a l'autre (calcule cote serveur).
+
+      Reprise : aucune — l'historique commence a la premiere version posee apres le deploiement.
+      Isolation : user_id sur chaque ligne, toute lecture filtre (user_id, workspace_id) apres
+      requireOwned. Cascade sur le terminal, purge nommee sur le compte.
+      Rollback : la table se retire.
+    -->
+
+    <changeSet id="166-subject-journey-plan-versions" author="claude-gateway">
+        <createTable tableName="subject_journey_plan_versions">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_subject_journey_plan_versions_workspace"
+                             references="workspaces(id)" deleteCascade="true"/>
+            </column>
+            <column name="chantier_number" type="integer"><constraints nullable="false"/></column>
+            <column name="version" type="integer"><constraints nullable="false"/></column>
+            <column name="plan_json" type="varchar(1000000)"/>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="subject_journey_plan_versions" indexName="idx_subject_journey_plan_versions_owner">
+            <column name="user_id"/>
+            <column name="workspace_id"/>
+            <column name="chantier_number"/>
+            <column name="version"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="subject_journey_plan_versions"/>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>

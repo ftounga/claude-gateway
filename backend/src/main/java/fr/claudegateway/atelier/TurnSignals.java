@@ -165,6 +165,11 @@ final class TurnSignals implements AtelierProgressListener {
     }
 
     @Override
+    public void onJourney(String tool, Integer chantier) {
+        delegate.onJourney(tool, chantier);
+    }
+
+    @Override
     public void onRunnerOffline(UUID hostId) {
         machineLost = true;
         delegate.onRunnerOffline(hostId);

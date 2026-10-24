@@ -101,6 +101,15 @@ public class AccountService {
         this.journeyChantierRepository = chantiers;
     }
 
+    private fr.claudegateway.atelier.journey.SubjectJourneyPlanVersionRepository journeyPlanVersionRepository;
+
+    /** Branche la purge des versions du plan à la suppression du compte (F-208 / SF-208-02). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setJourneyPlanVersionRepository(
+            fr.claudegateway.atelier.journey.SubjectJourneyPlanVersionRepository versions) {
+        this.journeyPlanVersionRepository = versions;
+    }
+
     /** Le registre des besoins (F-205 / SF-205-01) : pièces copiées et lignes, purge nommée du compte. */
     private fr.claudegateway.atelier.besoin.AppRequestService appRequestService;
 
@@ -451,6 +460,10 @@ public class AccountService {
         }
         if (journeyChantierRepository != null) {
             journeyChantierRepository.purgeUser(userId);
+        }
+        // Les versions du plan des chantiers (F-208 / SF-208-02) : elles suivent aussi le terminal.
+        if (journeyPlanVersionRepository != null) {
+            journeyPlanVersionRepository.purgeUser(userId);
         }
         if (journeyRepository != null) {
             journeyRepository.purgeUser(userId);

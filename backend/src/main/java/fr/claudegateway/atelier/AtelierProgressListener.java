@@ -297,6 +297,18 @@ public interface AtelierProgressListener {
     }
 
     /**
+     * <b>Le parcours du sujet vient de changer</b> (F-208 / SF-208-02) : un outil du parcours (plan,
+     * étape, sous-étapes, diagnostic…) a été appliqué sans erreur. Aucun contenu : l'écran relit le
+     * parcours, pendant le tour.
+     *
+     * @param tool     l'outil appliqué
+     * @param chantier le chantier visé, ou {@code null} = le focus
+     */
+    default void onJourney(String tool, Integer chantier) {
+        // Aucun relais : mode synchrone.
+    }
+
+    /**
      * <b>Le poste de ce projet vient de refuser un appel : il est hors ligne</b> (F-97 / SF-97-02).
      *
      * <p>Sans cet événement, un {@code runner_unavailable} ne sortait de la boucle qu'en prose, dans

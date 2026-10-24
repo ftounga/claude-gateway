@@ -217,6 +217,38 @@ class AtelierChatServiceJourneyTest {
         assertThat(agentProvider.toolNamesSeen).contains(JourneyToolCatalog.PROPOSE_GUIDED, JourneyToolCatalog.SET_PLAN);
     }
 
+    @Test
+    @DisplayName("SF-208-02 : un outil du parcours appliqué émet « journey » pendant le tour ; un refus n'émet rien")
+    void journeyEventAfterSuccessfulTool() {
+        journey(JourneyMode.GUIDE, JourneyPhase.EXECUTION, 1, 1);
+        when(journeyService.reopenInvestigation(eq(userId), eq(workspaceId), eq(2), eq("502 persiste")))
+                .thenReturn(true);
+        when(journeyService.reopenInvestigation(eq(userId), eq(workspaceId), eq(null), eq("rien")))
+                .thenReturn(false);
+        List<String> events = new java.util.ArrayList<>();
+        AtelierProgressListener recording = new AtelierProgressListener() {
+            @Override
+            public void onAction(AtelierStepEvent step) {
+            }
+
+            @Override
+            public void onText(String text) {
+            }
+
+            @Override
+            public void onJourney(String tool, Integer chantier) {
+                events.add(tool + "@" + chantier);
+            }
+        };
+        agentProvider.enqueueToolCall(JourneyToolCatalog.REOPEN, "reason", "502 persiste", "chantier", "2");
+        agentProvider.enqueueToolCall(JourneyToolCatalog.REOPEN, "reason", "rien");
+        agentProvider.enqueueFinal("Retour en investigation.");
+
+        service.chatStreaming(userId, workspaceId, "ça ne marche pas", recording);
+
+        assertThat(events).containsExactly(JourneyToolCatalog.REOPEN + "@2");
+    }
+
     private static final String CAP_BLOCK = "Fait.\n<<suites>>\n["
             + "{\"titre\":\"Rétention KMS\",\"pourquoi\":\"vu\",\"etiquette\":\"Risque\",\"demande\":\"KMS.\",\"etape\":null},"
             + "{\"titre\":\"Export SIEM\",\"pourquoi\":\"vu\",\"etiquette\":\"Continuer\",\"demande\":\"SIEM.\"},"
