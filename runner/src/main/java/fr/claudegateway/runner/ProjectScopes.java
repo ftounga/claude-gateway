@@ -65,6 +65,8 @@ public final class ProjectScopes implements ToolScopes {
      * au moment d'en construire l'aiguillage. {@code null} tant que rien n'est monté.
      */
     private volatile fr.claudegateway.runner.video.VideoTools video;
+    /** Rendre une vidéo (F-215 / SF-215-02), ou {@code null} tant que rien n'est monté. */
+    private volatile fr.claudegateway.runner.video.render.RenderTools render;
     /**
      * Commandes simultanées par projet (F-195 / SF-195-02), lues une fois dans l'environnement
      * ({@code CLAUDE_RUNNER_BASH_CONCURRENCY}, défaut {@value BashTool#DEFAULT_CONCURRENCY}).
@@ -110,6 +112,16 @@ public final class ProjectScopes implements ToolScopes {
         return this;
     }
 
+    /**
+     * Monte le rendu vidéo (F-215 / SF-215-02). Comme {@link #withVideo}, avant le premier tour ; la capacité
+     * n'est annoncée que si l'exécution de commandes est autorisée sur ce poste.
+     */
+    public ProjectScopes withRender(fr.claudegateway.runner.video.render.RenderTools tools) {
+        this.render = tools;
+        byProject.clear();
+        return this;
+    }
+
     /** Racine canonique du poste — jamais celle d'un projet. */
     public Path hostRoot() {
         return hostRoot;
@@ -143,7 +155,7 @@ public final class ProjectScopes implements ToolScopes {
         WorktreeTool worktree = new WorktreeTool(hostRoot, folder, git);
         ToolRouter router = new ToolRouter(new FileTools(paths),
                 new BashTool(paths, allowBash, shell, background, bashConcurrency), teams, worktree,
-                video == null ? null : video.bind(paths));
+                video == null ? null : video.bind(paths), render == null ? null : render.bind(paths));
         ToolRouter raced = byProject.putIfAbsent(relative, router);
         return raced == null ? router : raced;
     }

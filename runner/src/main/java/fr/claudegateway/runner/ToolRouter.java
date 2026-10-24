@@ -22,6 +22,8 @@ public final class ToolRouter implements ToolExecutor {
     private final WorktreeTool worktree;
     /** Regarder une vidéo (F-190 / SF-190-01), ou {@code null} : l'appel est alors refusé. */
     private final fr.claudegateway.runner.video.VideoTools.Bound video;
+    /** Rendre une vidéo (F-215 / SF-215-02), ou {@code null} : l'appel est alors refusé. */
+    private final fr.claudegateway.runner.video.render.RenderTools.Bound render;
 
     public ToolRouter(FileTools files, BashTool bash) {
         this(files, bash, null, null);
@@ -51,6 +53,18 @@ public final class ToolRouter implements ToolExecutor {
     public ToolRouter(FileTools files, BashTool bash,
             fr.claudegateway.runner.teams.TeamsTools teams, WorktreeTool worktree,
             fr.claudegateway.runner.video.VideoTools.Bound video) {
+        this(files, bash, teams, worktree, video, null);
+    }
+
+    /**
+     * @param render rendu vidéo lié au projet (F-215 / SF-215-02), ou {@code null} : la capacité
+     *               {@code video_render} n'est alors pas annoncée
+     */
+    public ToolRouter(FileTools files, BashTool bash,
+            fr.claudegateway.runner.teams.TeamsTools teams, WorktreeTool worktree,
+            fr.claudegateway.runner.video.VideoTools.Bound video,
+            fr.claudegateway.runner.video.render.RenderTools.Bound render) {
+        this.render = render;
         this.video = video;
         this.files = files;
         this.bash = bash;
@@ -73,6 +87,19 @@ public final class ToolRouter implements ToolExecutor {
         }
         if ("kill_shell".equals(tool)) {
             return bash.killOf(input);
+        }
+        // Rendre une vidéo (F-215 / SF-215-02) : il lance des programmes — refusé si l'exécution de
+        // commandes est interdite sur ce poste, comme bash.
+        if (fr.claudegateway.runner.video.render.RenderTools.handles(tool)) {
+            if (render == null) {
+                return ToolOutcome.error("unsupported_tool",
+                        "Ce runner ne sait pas rendre de vidéo : mettez-le à jour (" + tool + ").");
+            }
+            if (!bash.enabled()) {
+                return ToolOutcome.error("unsupported_tool",
+                        "L'exécution de commandes est désactivée sur ce poste : le rendu vidéo aussi.");
+            }
+            return render.execute(tool, input, context);
         }
         // Regarder une vidéo (F-190 / SF-190-01) : indépendant du volet Teams.
         if (fr.claudegateway.runner.video.VideoTools.handles(tool)) {
@@ -125,6 +152,10 @@ public final class ToolRouter implements ToolExecutor {
         // F-190 / SF-190-01 : annoncée dès que les outils vidéo sont montés, Teams ou pas.
         if (video != null) {
             capabilities.add(fr.claudegateway.runner.video.VideoTools.CAPABILITY);
+        }
+        // F-215 / SF-215-02 : le rendu lance des programmes — annoncé seulement si bash est autorisé.
+        if (render != null && bash.enabled()) {
+            capabilities.add(fr.claudegateway.runner.video.render.RenderTools.CAPABILITY);
         }
         return List.copyOf(capabilities);
     }

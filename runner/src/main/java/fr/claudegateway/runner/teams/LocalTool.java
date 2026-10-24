@@ -134,6 +134,32 @@ public record LocalTool(String name, List<String> executables, String purpose,
     }
 
     /**
+     * <b>{@code ffprobe}</b> (F-215 / SF-215-02) : le compagnon d'{@code ffmpeg} qu'exige le rendu
+     * HyperFrames. Mêmes archives que {@link #ffmpeg()} sous Windows et Linux (elles le contiennent) ;
+     * macOS a son archive propre chez le même distributeur. Adresses en dur, comme pour ffmpeg.
+     */
+    public static LocalTool ffprobe() {
+        return new LocalTool("ffprobe", List.of("ffprobe"),
+                "lire la durée et les pistes des médias d'une vidéo à rendre",
+                Map.of(
+                        OperatingSystem.WINDOWS,
+                        "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
+                        OperatingSystem.MACOS,
+                        "https://evermeet.cx/ffmpeg/getrelease/ffprobe/zip",
+                        OperatingSystem.LINUX,
+                        "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"),
+                Map.of(
+                        OperatingSystem.WINDOWS, Archive.ZIP,
+                        OperatingSystem.MACOS, Archive.ZIP,
+                        OperatingSystem.LINUX, Archive.TAR_XZ),
+                Map.of(
+                        OperatingSystem.WINDOWS, "winget install Gyan.FFmpeg",
+                        OperatingSystem.MACOS, "brew install ffmpeg",
+                        OperatingSystem.LINUX,
+                        "sudo apt install ffmpeg   (ou : sudo dnf install ffmpeg)"));
+    }
+
+    /**
      * <b>Le moteur de transcription</b> (F-91 / SF-91-03) — celui qui tourne <b>sur la machine</b>.
      *
      * <h2>Pourquoi celui-ci, et pas un service</h2>

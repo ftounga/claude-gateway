@@ -120,6 +120,31 @@ class ToolRouterTest {
         assertTrue(outcome.errorMessage().contains("ne sait pas extraire"), outcome.errorMessage());
     }
 
+    @Test
+    void leRenduVideoNEstAnnonceQueSiLesCommandesSontAutorisees() {
+        // F-215 / SF-215-02 : le rendu lance des programmes — il suit l'autorisation de bash.
+        PathResolver guard = new PathResolver(root);
+        fr.claudegateway.runner.video.render.RenderTools render = new fr.claudegateway.runner.video.render.RenderTools(
+                null, null);
+        ToolRouter allowed = new ToolRouter(new FileTools(guard), new BashTool(guard, true, ShellElection.elect()),
+                null, null, null, render.bind(guard));
+        assertTrue(allowed.capabilities().contains("video_render"), allowed.capabilities().toString());
+        ToolOutcome unknown = allowed.execute("video_render_status",
+                MAPPER.createObjectNode().put("job_id", "0123456789ab"), ToolContext.none());
+        assertTrue(unknown.errorMessage().contains("Relance video_render"), unknown.errorMessage());
+
+        ToolRouter forbidden = new ToolRouter(new FileTools(guard), new BashTool(guard, false, ShellElection.elect()),
+                null, null, null, render.bind(guard));
+        assertFalse(forbidden.capabilities().contains("video_render"));
+        ToolOutcome refused = forbidden.execute("video_render",
+                MAPPER.createObjectNode().put("dossier", "x"), ToolContext.none());
+        assertFalse(refused.ok());
+        assertTrue(refused.errorMessage().contains("désactivée"), refused.errorMessage());
+
+        ToolOutcome old = router(true).execute("video_render", MAPPER.createObjectNode(), ToolContext.none());
+        assertTrue(old.errorMessage().contains("mettez-le à jour"), old.errorMessage());
+    }
+
     private ToolRouter router(boolean allowBash) {
         PathResolver guard = new PathResolver(root);
         return new ToolRouter(new FileTools(guard), new BashTool(guard, allowBash, ShellElection.elect()));

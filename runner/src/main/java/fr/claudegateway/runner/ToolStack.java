@@ -79,7 +79,8 @@ public final class ToolStack {
                         "Le volet Teams est désactivé sur cette machine (--no-teams).");
         ProjectScopes scopes =
                 new ProjectScopes(config.hostRoot(), config.allowBash(), shell, console, teams)
-                        .withVideo(video(config, console));
+                        .withVideo(video(config, console))
+                        .withRender(render(config, console));
 
         // Ce bloc annonce ce que RunnerMain ne peut pas connaître : la racine du poste et
         // l'interpréteur élu. Il ne dit RIEN de l'exécution de commandes (SF-38-26, D1) — cet état
@@ -126,6 +127,42 @@ public final class ToolStack {
                         new fr.claudegateway.runner.teams.SceneFrames(toolchain, processes),
                         // SF-190-03 : transcrire sur le poste quand on n'a pas de transcription.
                         fr.claudegateway.runner.video.VideoTranscriber.local(toolchain, processes)));
+    }
+
+    /**
+     * <b>Rendre une vidéo</b> (F-215 / SF-215-02) : monté sur toute machine ; rien ne se télécharge ici — Node,
+     * hyperframes, Chrome et ffmpeg ne sont cherchés qu'au premier rendu, dans le dossier d'outils du runner.
+     */
+    private static fr.claudegateway.runner.video.render.RenderTools render(RunnerConfig config,
+            Console console) {
+        fr.claudegateway.runner.teams.TeamsWorkFolder folder =
+                new fr.claudegateway.runner.teams.TeamsWorkFolder(config.hostRoot());
+        fr.claudegateway.runner.teams.LocalToolchain toolchain =
+                new fr.claudegateway.runner.teams.LocalToolchain(folder,
+                        fr.claudegateway.runner.teams.ProcessRunner.real(), console::info);
+        fr.claudegateway.runner.video.render.RenderToolchain.Media media =
+                new fr.claudegateway.runner.video.render.RenderToolchain.Media() {
+                    @Override
+                    public java.nio.file.Path ffmpeg() {
+                        return toolchain.require(fr.claudegateway.runner.teams.LocalTool.ffmpeg());
+                    }
+
+                    @Override
+                    public java.nio.file.Path ffprobe() {
+                        return toolchain.require(fr.claudegateway.runner.teams.LocalTool.ffprobe());
+                    }
+                };
+        fr.claudegateway.runner.video.render.RenderProcesses processes =
+                fr.claudegateway.runner.video.render.RenderProcesses.real();
+        return new fr.claudegateway.runner.video.render.RenderTools(
+                new fr.claudegateway.runner.video.render.RenderToolchain(folder.toolsDir(),
+                        OperatingSystem.current(), System.getProperty("os.arch"), processes,
+                        fr.claudegateway.runner.teams.LocalToolchain.httpDownloader(),
+                        fr.claudegateway.runner.teams.LocalToolchain::lookupOnPath, media,
+                        system -> fr.claudegateway.runner.teams.ChromePaths.executable(system, System::getenv,
+                                java.nio.file.Files::isRegularFile),
+                        System.getenv("PATH")),
+                processes);
     }
 
     /**
