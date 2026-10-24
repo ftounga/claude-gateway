@@ -119,6 +119,8 @@ import {
   AtelierAnswerRequest,
   TerminalDepositNotice,
   WorkspaceExecutionTarget,
+  AtelierProofBlock,
+  AtelierProofCapture,
 } from '../../core/models/atelier.models';
 import { HostPresenceService, presenceLabel } from '../../core/services/host-presence.service';
 import {
@@ -147,7 +149,7 @@ import {
 import { splitEssential } from './essential';
 import { CopyBlockComponent } from '../../chat/copy-block/copy-block.component';
 import { MessageBlocksPipe } from '../../shared/message-blocks.pipe';
-import { hasBlockSegment, messageBlockIndex } from '../../shared/message-segments';
+import { hasBlockSegment, messageBlockIndex, splitMessageBlocks } from '../../shared/message-segments';
 import { CopyBlock } from '../../shared/copy-block.model';
 import { MessageSendsService } from '../../core/services/message-sends.service';
 import { MessageSend } from '../../core/models/message-sends.models';
@@ -178,6 +180,7 @@ import { AttenteCardComponent } from './attente-card.component';
 import { HandoffCardComponent, HandoffOriginComponent } from './handoff-card.component';
 import { ProposalCardComponent } from './proposal-card.component';
 import { BesoinCardComponent } from './besoin-card.component';
+import { ProofCapturesComponent } from './proof-captures.component';
 import { SkillCatalogService, SkillEntry, skillSuggestions } from '../../core/services/skill-catalog.service';
 import {
   AGENT_COMMAND,
@@ -282,7 +285,7 @@ export function plumeErrorMessage(failure: HttpErrorResponse | null | undefined)
     TeamsLinkBadgeComponent, NgTemplateOutlet, TerminalEmailComponent, PageBlockComponent, PagePanelComponent,
     TerminalActionsPanelComponent, TerminalAttentesBandComponent, TerminalMorningBandComponent, TerminalFilComponent,
     AttenteCardComponent,
-    HandoffCardComponent, HandoffOriginComponent, ProposalCardComponent, BesoinCardComponent,
+    HandoffCardComponent, HandoffOriginComponent, ProposalCardComponent, BesoinCardComponent, ProofCapturesComponent,
     TerminalJourneyChipComponent, TerminalJourneyStripComponent, TerminalJourneyChantiersComponent,
     TerminalChantiersBoardComponent,
     TerminalHandComponent,
@@ -3050,6 +3053,61 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    * Le rang de l'encart dans la réponse **complète** — même rendu dans « L'essentiel », « Le détail »
    * ou une carte par question —, ou -1 s'il ne se marque pas (flux en direct, message non persisté).
    */
+  /**
+   * **Les captures jointes à un encart** (F-212 / SF-212-04, usage cible) : celles que la balise désigne
+   * (```message preuves=<id1>,<id2>), cherchées dans tout le fil ; à défaut de référence dans la réponse,
+   * celles du tour s’affichent sous son DERNIER encart. `null` : rien à joindre.
+   */
+  attachedProof(message: AtelierThreadItem | null | undefined, block: CopyBlock): AtelierProofBlock | null {
+    if (block.preuves && block.preuves.length > 0) {
+      const found: { capture: AtelierProofCapture; proof: AtelierProofBlock }[] = [];
+      for (const id of block.preuves) {
+        for (const item of this.messages) {
+          for (const terminalBlock of item.terminal ?? []) {
+            const capture = terminalBlock.proof?.captures.find((candidate) => candidate.id === id);
+            if (capture && terminalBlock.proof) {
+              found.push({ capture, proof: terminalBlock.proof });
+            }
+          }
+        }
+      }
+      if (found.length === 0) {
+        return null;
+      }
+      const proofs = [...new Set(found.map((entry) => entry.proof))];
+      return {
+        ...proofs[0],
+        title: proofs.map((proof) => proof.title).join(' · '),
+        captures: found.map((entry) => entry.capture),
+        commands: proofs.flatMap((proof) => proof.commands),
+      };
+    }
+    if (!message) {
+      return null;
+    }
+    const proofs = (message.terminal ?? [])
+      .map((terminalBlock) => terminalBlock.proof)
+      .filter((proof): proof is AtelierProofBlock => !!proof && proof.captures.length > 0);
+    if (proofs.length === 0) {
+      return null;
+    }
+    const encarts = splitMessageBlocks(message.content)
+      .filter((segment) => segment.kind === 'block')
+      .map((segment) => (segment as { block: CopyBlock }).block);
+    if (encarts.some((candidate) => (candidate.preuves?.length ?? 0) > 0)) {
+      return null;
+    }
+    if (messageBlockIndex(message.content, block) !== encarts.length - 1) {
+      return null;
+    }
+    return {
+      ...proofs[0],
+      title: proofs.map((proof) => proof.title).join(' · '),
+      captures: proofs.flatMap((proof) => proof.captures),
+      commands: proofs.flatMap((proof) => proof.commands),
+    };
+  }
+
   sendIndexOf(message: AtelierThreadItem | null | undefined, block: CopyBlock): number {
     if (!message || !AtelierTerminalComponent.PERSISTED_ID.test(message.id ?? '')) {
       return -1;

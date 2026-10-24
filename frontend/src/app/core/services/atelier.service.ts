@@ -63,6 +63,7 @@ import {
   AtelierSubjectHandoff,
   AtelierGovernanceProposal,
   AtelierAppRequest,
+  AtelierProofBlock,
   TeamsAccess,
   AtelierNextStep,
   AtelierNextStepsChantier,
@@ -590,6 +591,7 @@ export class AtelierService {
       proposal?: AtelierGovernanceProposal;
       /** Carte « Enregistrer ce besoin ? » (F-205 / SF-205-02). */
       besoin?: AtelierAppRequest;
+      proof?: AtelierProofBlock;
       /** La question à laquelle une étape est rattachée (F-210 / SF-210-01). */
       question?: unknown;
       /** Rebranchement sur un tour en cours (F-84 / SF-84-02). */
@@ -758,6 +760,11 @@ export class AtelierService {
       // Une PAGE publiée (F-109 / SF-109-03) : le bloc « Page publiée ». Sans page, rien — pas de bloc creux.
       if (payload.page?.pageId) {
         handlers.onPage?.({ toolUseId: payload.toolUseId ?? '', page: payload.page });
+      }
+    } else if (event === 'proof') {
+      // LES CAPTURES DE PREUVE (F-212 / SF-212-03). Sans image, rien — pas de bloc creux.
+      if (Array.isArray(payload.proof?.captures) && payload.proof.captures.length > 0) {
+        handlers.onProof?.({ toolUseId: payload.toolUseId ?? '', proof: payload.proof });
       }
     } else if (event === 'proposal') {
       // LA PROPOSITION DE GOUVERNANCE (F-177 / SF-177-02). Sans identifiant, rien — pas de carte creuse.

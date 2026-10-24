@@ -54,6 +54,24 @@ describe('AtelierService', () => {
     expect(pages).toEqual([{ toolUseId: 'tu_1', page: { pageId: 'p-1', title: 'Maquette', description: null, version: 2 } }]);
   });
 
+  // F-212 / SF-212-04 — les captures de preuve arrivent par l'événement SSE `proof`.
+  it("relaie l'événement proof, et ignore un bloc sans image", () => {
+    const dispatch = (service as unknown as {
+      dispatchSseEvent: (raw: string, handlers: object) => void;
+    }).dispatchSseEvent.bind(service);
+    const proofs: unknown[] = [];
+    const handlers = {
+      onAction: () => undefined, onText: () => undefined, onDone: () => undefined, onError: () => undefined,
+      onProof: (event: unknown) => proofs.push(event),
+    };
+
+    dispatch('event: proof\ndata: {"toolUseId":"tu_1","proof":{"title":"OK","captures":[{"id":"c1","width":800,"height":400}],"commands":[]}}', handlers);
+    dispatch('event: proof\ndata: {"toolUseId":"tu_2","proof":{"title":"vide","captures":[]}}', handlers);
+
+    expect(proofs.length).toBe(1);
+    expect((proofs[0] as { toolUseId: string }).toolUseId).toBe('tu_1');
+  });
+
   // F-210 / SF-210-03 — les questions du tour (SSE `questions`) et le rattachement d'une étape (`question`).
   it("relaie les questions du tour et la question d'une étape, et ignore un instantané illisible", () => {
     const dispatch = (service as unknown as {

@@ -93,6 +93,20 @@ function attenteOf(info: string): string | null {
   return match ? match[1] : null;
 }
 
+/** Attribut `preuves=<id1>,<id2>` de la balise (F-212) : identifiants hexadécimaux des captures. */
+const PREUVES_ATTRIBUTE = /(?:^|\s)preuves\s*=\s*"?([^\s"]+)"?/i;
+
+export function preuvesOf(info: string): string[] {
+  const match = PREUVES_ATTRIBUTE.exec(info);
+  if (!match) {
+    return [];
+  }
+  return match[1]
+    .split(',')
+    .map((id) => id.trim().toLowerCase())
+    .filter((id) => /^[0-9a-f]{32}$/.test(id));
+}
+
 /**
  * Sépare les en-têtes d'un message (F-203, F-211) — « Objet : … » et « À : … », chacun une fois, dans
  * n'importe quel ordre, en tête — du corps. Sans en-tête, le corps est le contenu inchangé. Les
@@ -185,6 +199,10 @@ function splitSegments(
     const attente = attenteOf(info);
     if (attente) {
       block.attente = attente;
+    }
+    const preuves = preuvesOf(info);
+    if (preuves.length > 0) {
+      block.preuves = preuves;
     }
     segments.push({ kind: 'block', block });
 
