@@ -152,6 +152,16 @@ describe('F-211 — balise à attributs, destinataire, rang de l’encart', () =
     expect(block.attente).toBe('acces-forge');
   });
 
+  it('F-212 : preuves= est lu (identifiants valides seulement), à côté de attente=, jamais affiché', () => {
+    const id1 = 'a'.repeat(32);
+    const id2 = '0123456789abcdef0123456789ABCDEF';
+    const segments = splitMessageBlocks('```message attente=acces preuves=' + id1 + ',' + id2 + ',../x\nC’est fait.\n```');
+    const block = (segments[0] as { block: { preuves?: string[]; attente?: string; title: string } }).block;
+    expect(block.preuves).toEqual([id1, id2.toLowerCase()]);
+    expect(block.attente).toBe('acces');
+    expect(block.title).not.toContain('preuves');
+  });
+
   it('un bloc sans attribut n’a pas de clé d’attente', () => {
     const block = (splitMessageBlocks('```message\nSalut\n```')[0] as BlockSegment).block;
     expect(block.attente).toBeUndefined();

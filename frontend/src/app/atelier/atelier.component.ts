@@ -140,6 +140,7 @@ import { attenteBlock } from './terminal/attente-card.component';
 import { handoffBlock } from './terminal/handoff-card.component';
 import { proposalBlock } from './terminal/proposal-card.component';
 import { besoinBlock } from './terminal/besoin-card.component';
+import { proofBlock } from './terminal/proof-captures.component';
 import {
   compactionMarkerBlock,
   compactionMarkerLabel,
@@ -2059,6 +2060,18 @@ export class AtelierComponent implements OnInit, OnDestroy {
             {
               afterSteps: this.streaming()?.steps.length ?? 0,
               block: proposalBlock(event.toolUseId, event.proposal),
+            },
+          ];
+          this.mirrorLocalSteps();
+        }),
+      // LES CAPTURES DE PREUVE (F-212 / SF-212-04) : rangées comme une carte.
+      onProof: (event) =>
+        this.zone.run(() => {
+          this.cardsOfTurn = [
+            ...this.cardsOfTurn,
+            {
+              afterSteps: this.streaming()?.steps.length ?? 0,
+              block: proofBlock(event.toolUseId, event.proof),
             },
           ];
           this.mirrorLocalSteps();
@@ -4080,6 +4093,18 @@ export class AtelierComponent implements OnInit, OnDestroy {
             {
               afterSteps: this.streaming()?.steps.length ?? 0,
               block: proposalBlock(event.toolUseId, event.proposal),
+            },
+          ];
+          this.mirrorLocalSteps();
+        }),
+      // LES CAPTURES DE PREUVE (F-212 / SF-212-04) : rangées comme une carte.
+      onProof: (event) =>
+        this.zone.run(() => {
+          this.cardsOfTurn = [
+            ...this.cardsOfTurn,
+            {
+              afterSteps: this.streaming()?.steps.length ?? 0,
+              block: proofBlock(event.toolUseId, event.proof),
             },
           ];
           this.mirrorLocalSteps();

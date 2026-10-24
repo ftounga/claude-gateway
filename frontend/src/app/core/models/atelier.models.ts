@@ -897,6 +897,12 @@ export interface AtelierStreamHandlers {
   onAppRequest?: (event: AtelierAppRequestEvent) => void;
 
   /**
+   * **Des captures de preuve** (F-212 / SF-212-03) : le bloc de vignettes. Optionnel : un backend antérieur
+   * ne l'émet pas.
+   */
+  onProof?: (event: AtelierProofEvent) => void;
+
+  /**
    * **Les questions du tour** (F-210 / SF-210-01) : l'instantané complet, à chaque découpage ou changement
    * d'état, puis à la clôture (avec les réponses, SF-210-02). Optionnel : un backend antérieur ne l'émet pas.
    */
@@ -1301,6 +1307,12 @@ export interface AtelierTerminalBlock {
   besoin?: AtelierAppRequest | null;
 
   /**
+   * **Les captures de preuve** (F-212 / SF-212-03/04) : vignettes des fenêtres de terminal rendues depuis
+   * la sortie réelle du poste, avec les relevés des commandes (affichés sous les vignettes).
+   */
+  proof?: AtelierProofBlock | null;
+
+  /**
    * **Un marqueur de flux** (F-162 / SF-162-03) : « Conversation compactée · N tours résumés » ou
    * « Détail rappelé · tour N ». Ce n'est ni une sortie de commande ni une carte — c'est une trace
    * discrète, persistante dans le fil, de ce que la passerelle a fait pour tenir le contexte. Absent
@@ -1568,6 +1580,41 @@ export interface AppRequestComplementView {
 }
 
 /** Charge utile de l'événement SSE `besoin` (F-205 / SF-205-01). */
+/** Une image de capture de preuve (F-212) : servie par `GET /api/workspaces/{id}/proofs/{id}`. */
+export interface AtelierProofCapture {
+  id: string;
+  width: number | null;
+  height: number | null;
+}
+
+/** Une commande d'une session de preuve (F-212) : relevés du poste. */
+export interface AtelierProofCommand {
+  command: string;
+  /** `done`, `interrupted` (le shell s'est arrêté) ou `not_run`. */
+  status: string;
+  exitCode: number | null;
+  durationMs: number | null;
+  startedAt: string | null;
+  truncated: boolean;
+}
+
+/** **Le bloc « Captures de preuve »** (F-212 / SF-212-03). */
+export interface AtelierProofBlock {
+  title: string;
+  step: string | null;
+  host: string | null;
+  os: string | null;
+  shell: string | null;
+  captures: AtelierProofCapture[];
+  commands: AtelierProofCommand[];
+}
+
+/** Captures de preuve relayées au fil de l'eau (F-212 / SF-212-03). */
+export interface AtelierProofEvent {
+  toolUseId: string;
+  proof: AtelierProofBlock;
+}
+
 export interface AtelierAppRequestEvent {
   toolUseId: string;
   besoin: AtelierAppRequest;

@@ -934,6 +934,10 @@
               @if (block.besoin; as besoin) {
                 <app-besoin-card [besoin]="besoin" [workspaceId]="projectId" [readOnly]="readOnly"></app-besoin-card>
               }
+              <!-- LES CAPTURES DE PREUVE (F-212 / SF-212-04) : vignettes, zoom, Copier l'image, Télécharger. -->
+              @if (block.proof; as proof) {
+                <app-proof-captures [proof]="proof" [workspaceId]="projectId"></app-proof-captures>
+              }
             </div>
             }
             }
@@ -1234,6 +1238,9 @@
           }
           @if (block.besoin; as besoin) {
             <app-besoin-card [besoin]="besoin" [workspaceId]="projectId" [readOnly]="readOnly"></app-besoin-card>
+          }
+          @if (block.proof; as proof) {
+            <app-proof-captures [proof]="proof" [workspaceId]="projectId"></app-proof-captures>
           }
         </div>
         }
@@ -2251,6 +2258,11 @@
           (markSent)="onMarkSent(message, sendIndex)"
           (cancelSent)="onCancelSent(message, sendIndex)"
         ></app-copy-block>
+        <!-- F-212 / SF-212-04 : les captures jointes à l'encart qu'elles prouvent, avec « Copier le message
+             avec les captures ». Les captures restent aussi dans leur bloc du fil. -->
+        @if (attachedProof(message, segment.block); as attached) {
+          <app-proof-captures [proof]="attached" [workspaceId]="projectId" [message]="segment.block"></app-proof-captures>
+        }
       }
     }
   }
