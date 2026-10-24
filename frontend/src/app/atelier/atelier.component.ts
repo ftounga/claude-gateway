@@ -150,6 +150,8 @@ import {
 import { derivePreview } from './terminal/terminal-preview';
 import { SessionBilanPanelComponent } from './terminal/session-bilan-panel.component';
 import { RADAR_DRAFT_STATE, radarDraftFrom } from '../shared/radar-draft';
+import { TerminalDraftBridge } from '../shared/videos/terminal-draft-bridge';
+import { draftWithMessage } from '../shared/videos/video-review';
 import { guardHandlers } from './displayed-subject';
 import { currentClientRefOf } from './current-client-ref';
 import { CurrentClientService } from '../core/services/current-client.service';
@@ -264,6 +266,9 @@ export class AtelierComponent implements OnInit, OnDestroy {
   /** Le client courant de toute l'application (F-199 / SF-199-01), que le terminal ouvert impose. */
   private readonly currentClient = inject(CurrentClientService);
   private readonly snackBar = inject(MatSnackBar);
+  /** F-214 / SF-214-02 : la galerie (autre onglet) propose les retours d'une vidéo à la saisie de ce terminal. */
+  private readonly draftBridge = inject(TerminalDraftBridge);
+  private stopDraftBridge: (() => void) | null = null;
   private readonly zone = inject(NgZone);
   private readonly appRef = inject(ApplicationRef);
   private readonly dialog = inject(MatDialog);
@@ -850,6 +855,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
     // mais un lien déjà partagé doit continuer d'ouvrir le bon projet.
     this.requestedWorkspaceId = this.route.snapshot.paramMap.get('id');
     this.takeRadarDraft();
+    this.listenVideoFeedback();
     // Panneau demandé par l'URL (F-39 / SF-39-18) : `?vue=fichiers`, éventuellement `&path=…`.
     // L'état vit dans un paramètre de REQUÊTE, pas dans la route — c'est ce qui permet au bouton
     // « précédent » de refermer le panneau sans détruire le terminal.
@@ -984,6 +990,24 @@ export class AtelierComponent implements OnInit, OnDestroy {
     const rest: Record<string, unknown> = { ...(history.state as Record<string, unknown>) };
     delete rest[RADAR_DRAFT_STATE];
     history.replaceState(rest, '');
+  }
+
+  /**
+   * **Les retours d'une vidéo, envoyés depuis la galerie** (F-214 / SF-214-02) : un autre onglet propose le
+   * message ; s'il vise le sujet affiché, il rejoint la saisie — **sans être envoyé** (patron Cap / Plume) — et
+   * l'onglet de la galerie le sait. Un brouillon en cours est gardé sous le message.
+   */
+  private listenVideoFeedback(): void {
+    this.stopDraftBridge?.();
+    this.stopDraftBridge = this.draftBridge.listen((workspaceId, text) => {
+      if (!workspaceId || workspaceId !== this.activeWorkspaceId()) {
+        return false;
+      }
+      this.draft.set(draftWithMessage(text, this.draft()));
+      this.snackBar.open('Retours de la galerie placés dans la saisie : relisez, puis envoyez.', 'OK',
+        { duration: 5000 });
+      return true;
+    });
   }
 
   /** Projet réclamé par l'URL, honoré une fois la liste chargée (ou ignoré s'il n'existe pas). */
@@ -4236,6 +4260,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
   /** Quitter l'écran ne doit laisser tourner ni le chronomètre, ni le sondage du statut runner. */
   ngOnDestroy(): void {
     this.paramsSubscription?.unsubscribe();
+    this.stopDraftBridge?.();
     // Quitter l'écran rend la place : un terminal qui n'est plus affiché n'est plus vivant, et
     // le hors-périmètre de F-70 est explicite — aucun agent ne travaille onglet fermé.
     this.liveTerminals.stop();

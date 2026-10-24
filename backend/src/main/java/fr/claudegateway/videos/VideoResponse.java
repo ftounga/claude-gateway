@@ -8,14 +8,14 @@ import java.util.UUID;
  * <b>Une vidéo telle que l'écran la lit</b> (F-213 / SF-213-01) : ses métadonnées, la version servie, ses
  * chapitres, et les adresses de lecture par ticket — jamais le JWT dans une URL.
  */
-public record VideoResponse(UUID id, String kind, String title, String description, UUID seriesId,
+public record VideoResponse(UUID id, UUID workspaceId, String kind, String title, String description, UUID seriesId,
         String seriesTitle, Integer episode, int currentVersion, int version, Integer durationS, String mime,
         long sizeBytes, String label, List<VideoChapter> chapters, String mediaUrl, String posterUrl,
         String downloadUrl, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
 
     /** Assemble la réponse d'une version servie. */
     public static VideoResponse of(Video video, VideoVersion version, VideoSeries series, String mediaBase) {
-        return new VideoResponse(video.getId(), video.getKind().name(), video.getTitle(), video.getDescription(),
+        return new VideoResponse(video.getId(), video.getWorkspaceId(), video.getKind().name(), video.getTitle(), video.getDescription(),
                 video.getSeriesId(), series == null ? null : series.getTitle(), video.getEpisode(),
                 video.getCurrentVersion(), version.getVersion(), video.getDurationS(), version.getMime(),
                 version.getSizeBytes(), version.getLabel(), VideoChapter.fromJson(version.getChaptersJson()),

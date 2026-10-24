@@ -40,7 +40,9 @@ describe('VideoBlockComponent, AudioBlockComponent et VideoPlayerComponent', () 
   let videos: jasmine.SpyObj<VideosService>;
 
   beforeEach(() => {
-    videos = jasmine.createSpyObj<VideosService>('VideosService', ['get']);
+    videos = jasmine.createSpyObj<VideosService>('VideosService', ['get', 'comments', 'versions']);
+    videos.comments.and.returnValue(of([]));
+    videos.versions.and.returnValue(of([]));
     TestBed.configureTestingModule({
       imports: [VideoBlockComponent, AudioBlockComponent, VideoPlayerComponent, NoopAnimationsModule],
       providers: [{ provide: VideosService, useValue: videos }],

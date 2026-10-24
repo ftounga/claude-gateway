@@ -52,6 +52,7 @@ class VideoApiIntegrationTest {
     private String bobToken;
     private UUID aliceVideo;
     private byte[] content;
+    private UUID workspaceId;
 
     @BeforeEach
     void setUp() {
@@ -62,6 +63,7 @@ class VideoApiIntegrationTest {
         aliceToken = jwtService.generateToken(alice);
         bobToken = jwtService.generateToken(bob);
         Workspace workspace = VideoTestSupport.runnerWorkspace(workspaceRepository, alice.getId());
+        workspaceId = workspace.getId();
         content = VideoTestSupport.mp4(10_000);
         aliceVideo = VideoTestSupport.publish(videoService, store,
                 new VideoPlace(alice.getId(), workspace.getId(), workspace.getHostId()), "Cours EKS", content,
@@ -84,6 +86,7 @@ class VideoApiIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.title").value("Cours EKS"))
                 .andExpect(jsonPath("$.kind").value("VIDEO"))
+                .andExpect(jsonPath("$.workspaceId").value(workspaceId.toString()))
                 .andExpect(jsonPath("$.seriesTitle").value("Série EKS"))
                 .andExpect(jsonPath("$.episode").value(1))
                 .andExpect(jsonPath("$.durationS").value(42))

@@ -1,4 +1,4 @@
-import { Component, DestroyRef, effect, inject, input, signal, untracked } from '@angular/core';
+import { Component, DestroyRef, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { Subscription } from 'rxjs';
@@ -6,7 +6,7 @@ import { Subscription } from 'rxjs';
 import { AtelierTerminalVideo } from '../../core/models/atelier.models';
 import { VideoSummary } from '../../core/models/videos.models';
 import { VideosService } from '../../core/services/videos.service';
-import { VideoPlayerComponent } from '../../shared/videos/video-player.component';
+import { VideoReviewComponent, VideoReviewSend } from '../../shared/videos/video-review.component';
 import { formatClock, videoGalleryPath, videoHeadline } from './video-block';
 
 /**
@@ -20,7 +20,7 @@ import { formatClock, videoGalleryPath, videoHeadline } from './video-block';
  */
 @Component({
   selector: 'app-video-block',
-  imports: [MatButtonModule, MatIconModule, VideoPlayerComponent],
+  imports: [MatButtonModule, MatIconModule, VideoReviewComponent],
   template: `
     <article class="video-block" [attr.aria-label]="headline()">
       <p class="video-block__title">
@@ -33,7 +33,7 @@ import { formatClock, videoGalleryPath, videoHeadline } from './video-block';
       }
       @if (!readOnly()) {
         @if (summary(); as loaded) {
-          <app-video-player [video]="loaded"></app-video-player>
+          <app-video-review [video]="loaded" (sendToTerminal)="sendToTerminal.emit($event)"></app-video-review>
           @if (workspaceId()) {
             <div class="video-block__actions">
               <button mat-stroked-button type="button" class="video-block__gallery" (click)="openGallery()">
@@ -116,6 +116,12 @@ export class VideoBlockComponent {
   readonly readOnly = input(false);
   /** Le sujet du terminal : *Ouvrir dans la galerie* mène à ses vidéos (SF-213-03). */
   readonly workspaceId = input<string | null>(null);
+
+  /**
+   * « Envoyer à l'agent » (F-214 / SF-214-02) : le message composé des retours à la seconde, que le terminal
+   * place dans sa saisie — sans l'envoyer.
+   */
+  readonly sendToTerminal = output<VideoReviewSend>();
 
   readonly summary = signal<VideoSummary | null>(null);
   readonly unavailable = signal(false);

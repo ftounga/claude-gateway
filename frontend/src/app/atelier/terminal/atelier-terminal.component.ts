@@ -182,6 +182,8 @@ import { ProposalCardComponent } from './proposal-card.component';
 import { BesoinCardComponent } from './besoin-card.component';
 import { ProofCapturesComponent } from './proof-captures.component';
 import { VideoBlockComponent } from './video-block.component';
+import { VideoReviewSend } from '../../shared/videos/video-review.component';
+import { draftWithMessage } from '../../shared/videos/video-review';
 import { AudioBlockComponent } from './audio-block.component';
 import { SkillCatalogService, SkillEntry, skillSuggestions } from '../../core/services/skill-catalog.service';
 import {
@@ -665,6 +667,20 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   onQuestionRequest(request: string): void {
     this.draftChange.emit(request);
     this.send.emit();
+  }
+
+  /**
+   * **« Envoyer à l'agent » d'un lecteur vidéo** (F-214 / SF-214-02) : le message des retours à la seconde
+   * rejoint la saisie, **rien n'est envoyé** — patron Cap (F-192) et Plume (F-193), l'utilisateur garde la
+   * main. Un brouillon déjà tapé est gardé sous le message.
+   */
+  onVideoFeedback(event: VideoReviewSend): void {
+    if (this.readOnly) {
+      return;
+    }
+    this.draftChange.emit(draftWithMessage(event.message, this.draft));
+    setTimeout(() => (this.draftAreaRef?.nativeElement ?? this.draftFieldRef?.nativeElement)?.focus());
+    this.snackBar.open('Retours placés dans la saisie : relisez, puis envoyez.', 'OK', { duration: 4000 });
   }
 
   /** « Autre chose : tapez votre suite » : la main à la saisie. */
