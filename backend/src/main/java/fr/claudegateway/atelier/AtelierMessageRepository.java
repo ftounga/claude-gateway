@@ -125,6 +125,13 @@ public interface AtelierMessageRepository extends JpaRepository<AtelierMessage, 
     long countByWorkspaceIdAndUserIdAndCreatedAtLessThan(UUID workspaceId, UUID userId,
             java.time.OffsetDateTime foldedAt);
 
+    /**
+     * Le dernier message d'un rôle dans le fil (F-211 / SF-211-01) : le dernier message utilisateur
+     * borne « depuis ton dernier tour ». Filtrée {@code workspace_id} + {@code user_id}.
+     */
+    java.util.Optional<AtelierMessage> findFirstByWorkspaceIdAndUserIdAndRoleOrderByCreatedAtDesc(
+            UUID workspaceId, UUID userId, String role);
+
     /** Purge à la suppression du compte (SF-11-03). */
     void deleteByUserId(UUID userId);
 

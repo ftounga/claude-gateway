@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-211 / SF-211-01 — MESSAGE ENVOYE D'UN CLIC (demande PO du 2026-10-24).
+
+      Un encart mail/message d'une reponse d'agent est marque « envoye » par l'utilisateur. Repere
+      stable : (message_id, block_index), rang du bloc mail/message dans le message persiste. Si le
+      bloc sert une attente (balise attente=<key>), l'etat d'avant de l'attente est garde pour
+      « Annuler ».
+
+      Reprise : aucune. Isolation : user_id sur chaque ligne, toute lecture filtre (user_id,
+      workspace_id) apres requireOwned. Cascade sur le terminal et sur le message.
+      Rollback : la table se retire.
+    -->
+
+    <changeSet id="167-message-block-sends" author="claude-gateway">
+        <createTable tableName="message_block_sends">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_message_block_sends_workspace"
+                             references="workspaces(id)" deleteCascade="true"/>
+            </column>
+            <column name="message_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_message_block_sends_message"
+                             references="atelier_messages(id)" deleteCascade="true"/>
+            </column>
+            <column name="block_index" type="integer"><constraints nullable="false"/></column>
+            <column name="kind" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="subject" type="varchar(300)"/>
+            <column name="recipient" type="varchar(120)"/>
+            <column name="excerpt" type="varchar(120)"/>
+            <column name="attente_key" type="varchar(200)"/>
+            <column name="attente_action_id" type="uuid"/>
+            <column name="attente_prev_status" type="varchar(16)"/>
+            <column name="attente_prev_requested_at" type="timestamptz"/>
+            <column name="attente_prev_requested_to" type="varchar(120)"/>
+            <column name="attente_prev_channel" type="varchar(60)"/>
+            <column name="attente_marked_at" type="timestamptz"/>
+            <column name="sent_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="cancelled_at" type="timestamptz"/>
+        </createTable>
+        <addUniqueConstraint tableName="message_block_sends" constraintName="uq_message_block_sends_block"
+                             columnNames="user_id, message_id, block_index"/>
+        <createIndex tableName="message_block_sends" indexName="idx_message_block_sends_owner">
+            <column name="user_id"/>
+            <column name="workspace_id"/>
+            <column name="sent_at"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="message_block_sends"/>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>

@@ -792,6 +792,86 @@ public class TerminalActionService {
         return new AgentChange(changed, AgentChangeOutcome.CHANGED);
     }
 
+    // ---- F-211 / SF-211-01 : un message marqué envoyé fait partir la demande ----
+
+    /**
+     * Ce qu'un « Marquer envoyé » a changé sur une attente, pour pouvoir l'annuler : l'état d'avant et
+     * l'instant de la modification (l'attente n'est restaurée que si elle n'a pas bougé depuis).
+     */
+    public record RequestMark(UUID actionId, String key, TerminalActionStatus previousStatus,
+                              OffsetDateTime previousRequestedAt, String previousRequestedTo,
+                              String previousChannel, OffsetDateTime markedAt) {
+    }
+
+    /**
+     * <b>L'utilisateur a marqué envoyé un message qui sert l'attente {@code key}</b> (F-211 / SF-211-01) :
+     * l'attente ouverte passe {@code DEMANDE}, résolue comme l'agent la résout (ce terminal, puis son
+     * poste). Vide si la clé est inconnue ou l'attente fermée — un geste n'échoue jamais pour si peu.
+     */
+    @Transactional
+    public java.util.Optional<RequestMark> markRequestedByKey(UUID userId, Workspace workspace, String key,
+                                                              String requestedTo, String channel) {
+        if (userId == null || workspace == null || key == null || key.isBlank()) {
+            return java.util.Optional.empty();
+        }
+        var found = resolveForAgent(userId, workspace, key, null);
+        if (found.isEmpty() || !found.get().isOpen()) {
+            return java.util.Optional.empty();
+        }
+        TerminalAction action = found.get();
+        TerminalActionStatus previousStatus = action.getStatus();
+        OffsetDateTime previousAt = action.getRequestedAt();
+        String previousTo = action.getRequestedTo();
+        String previousChannel = action.getChannel();
+        TerminalAction changed = changeStatus(userId, action.getWorkspaceId(), action.getId(),
+                TerminalActionStatus.DEMANDE, null,
+                truncate(requestedTo, MAX_REQUESTED_TO), truncate(channel, MAX_CHANNEL));
+        return java.util.Optional.of(new RequestMark(changed.getId(), changed.getDedupKey(), previousStatus,
+                previousAt, previousTo, previousChannel, changed.getUpdatedAt()));
+    }
+
+    /**
+     * <b>Annule le passage à « Demandé »</b> d'un « Marquer envoyé » (F-211 / SF-211-01) — seulement si
+     * l'attente n'a pas bougé entre-temps (toujours {@code DEMANDE}, même {@code updated_at}). Lecture
+     * sous {@code user_id}. Vrai si l'attente a été remise dans son état d'avant.
+     */
+    @Transactional
+    public boolean undoRequestMark(UUID userId, RequestMark mark) {
+        if (userId == null || mark == null || mark.actionId() == null || mark.markedAt() == null) {
+            return false;
+        }
+        var found = repository.findByIdAndUserId(mark.actionId(), userId);
+        if (found.isEmpty()) {
+            return false;
+        }
+        TerminalAction action = found.get();
+        if (action.getStatus() != TerminalActionStatus.DEMANDE || action.getUpdatedAt() == null
+                || !sameInstant(action.getUpdatedAt(), mark.markedAt())) {
+            return false;
+        }
+        action.setStatus(mark.previousStatus() == null ? TerminalActionStatus.A_FAIRE : mark.previousStatus());
+        action.setRequestedAt(mark.previousRequestedAt());
+        action.setRequestedTo(mark.previousRequestedTo());
+        action.setChannel(mark.previousChannel());
+        action.setUpdatedAt(OffsetDateTime.now(clock));
+        repository.save(action);
+        return true;
+    }
+
+    /** Deux instants égaux à la milliseconde : la base tronque, la mémoire non. */
+    private static boolean sameInstant(OffsetDateTime a, OffsetDateTime b) {
+        return a.toInstant().truncatedTo(java.time.temporal.ChronoUnit.MILLIS)
+                .equals(b.toInstant().truncatedTo(java.time.temporal.ChronoUnit.MILLIS));
+    }
+
+    private static String truncate(String value, int max) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String stripped = value.strip();
+        return stripped.length() > max ? stripped.substring(0, max) : stripped;
+    }
+
     /**
      * <b>L'agent propose une fermeture</b> (F-175 / SF-175-02, décision D5) : l'attente reste
      * <b>ouverte</b> ; la proposition attend le geste de l'utilisateur — [Confirmer] ou [Pas encore].

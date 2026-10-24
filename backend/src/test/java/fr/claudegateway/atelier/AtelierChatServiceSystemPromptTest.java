@@ -722,6 +722,9 @@ class AtelierChatServiceSystemPromptTest {
                 second.indexOf("\n\n", second.indexOf(MESSAGE_BLOCK_MARKER)));
         assertThat(firstDoctrine).isEqualTo(secondDoctrine);
         assertThat(firstDoctrine).isEqualTo(AtelierChatService.MESSAGE_BLOCK_DOCTRINE.strip());
+        // F-211 / SF-211-01 : la balise d'attente et le destinataire, et plus de confirmation redemandée.
+        assertThat(firstDoctrine).contains("```mail attente=<key>").contains("« À : … »")
+                .contains("ne redemande pas");
     }
 
     // ------------------------------------------- F-141 / SF-141-01 : annonce de destination + demande si ambigu
