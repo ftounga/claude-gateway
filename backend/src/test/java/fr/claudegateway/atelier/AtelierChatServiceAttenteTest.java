@@ -67,6 +67,7 @@ class AtelierChatServiceAttenteTest {
     @Mock private PageToolExecutor pageExecutor;
     @Mock private TerminalActionToolExecutor actionExecutor;
     @Mock private TerminalActionTurnNote turnNote;
+    @Mock private fr.claudegateway.atelier.sends.MessageBlockSendService sends;
 
     private StubAiAgentProvider agentProvider;
     private AtelierChatService service;
@@ -88,6 +89,7 @@ class AtelierChatServiceAttenteTest {
                 RadarToolCatalog.none(), null, new PageToolCatalog(entitlements), pageExecutor);
         service.setTerminalActionTool(new TerminalActionToolCatalog(entitlements), actionExecutor);
         service.setTerminalActionTurnNote(turnNote);
+        service.setMessageBlockSends(sends);
 
         when(entitlements.isEntitled(userId, EntitlementSpace.FORGE)).thenReturn(true);
         when(byokKeyService.resolveActiveApiKey(userId)).thenReturn(Optional.empty());
@@ -177,5 +179,36 @@ class AtelierChatServiceAttenteTest {
         String json = new AtelierTurnReport(10, 10, 1, false, false, AtelierPlan.EMPTY, List.of(block)).toJson();
 
         assertThat(json).contains("début tronqué").contains("\"kind\":\"PROPOSED\"");
+    }
+
+    @Test
+    @DisplayName("SF-211-01 : les messages marqués envoyés partent dans le MESSAGE du tour, jamais dans le système")
+    void theSentMessagesGoInTheMessage() {
+        when(sends.noteFor(eq(userId), any())).thenReturn(
+                "--- Messages marqués envoyés par l'utilisateur depuis ton dernier tour ---\n- « Accès forge » (mail)\n");
+        agentProvider.enqueueFinal("ok");
+
+        service.chatStreaming(userId, workspaceId, "et maintenant ?", listener);
+
+        assertThat(agentProvider.messageSnapshots.get(0)).contains("Messages marqués envoyés")
+                .contains("« Accès forge »");
+        assertThat(agentProvider.lastRequest.system()).doesNotContain("« Accès forge »");
+    }
+
+    @Test
+    @DisplayName("SF-211-01 : pas de note sur le terminal Teams, et un échec de la note ne casse pas le tour")
+    void noNoteOnTeamsAndBestEffort() {
+        Workspace teams = new Workspace();
+        teams.setId(workspaceId);
+        teams.setUserId(userId);
+        teams.setTeamsTerminal(true);
+        when(sends.noteFor(eq(userId), any())).thenReturn("--- Messages marqués envoyés ---\n");
+        assertThat(service.withSentMessages(userId, teams, "consigne")).isEqualTo("consigne");
+
+        Workspace project = new Workspace();
+        project.setId(workspaceId);
+        project.setUserId(userId);
+        when(sends.noteFor(eq(userId), any())).thenThrow(new IllegalStateException("base"));
+        assertThat(service.withSentMessages(userId, project, "consigne")).isEqualTo("consigne");
     }
 }

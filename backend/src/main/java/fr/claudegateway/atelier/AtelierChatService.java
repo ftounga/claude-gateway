@@ -784,7 +784,16 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "- Corps en Markdown simple (gras, italique, listes, liens) : pas de titre #, pas "
                     + "de tableau, pas de bloc de code dans le bloc.\n"
                     + "- Le bloc ne contient que ce qui part : tes explications, choix ou variantes "
-                    + "restent hors du bloc. Pas de bloc pour un texte qui n'est pas à envoyer.\n\n";
+                    + "restent hors du bloc. Pas de bloc pour un texte qui n'est pas à envoyer.\n"
+                    // F-211 / SF-211-01 : le lien avec l'attente et le destinataire, tous deux facultatifs.
+                    + "- Si le message sert une attente ouverte (liste « Attentes ouvertes »), ajoute sa clé "
+                    + "à la balise : ```mail attente=<key> (ou ```message attente=<key>). Si tu connais le "
+                    + "destinataire, mets en tête du bloc une ligne « À : … » (avant l'objet). Quand "
+                    + "l'utilisateur clique « Marquer envoyé » sur l'encart, l'attente passe « demandé » "
+                    + "d'elle-même.\n"
+                    + "- Les messages marqués envoyés te sont signalés au tour suivant : ne redemande pas à "
+                    + "l'utilisateur s'il les a envoyés, et ne repasse pas toi-même leur attente à "
+                    + "« demandé ».\n\n";
     /**
      * Annonce de destination + demande si ambigu (F-141 / SF-141-01, cadrage §4.3 et §2). Ajouté au
      * rôle sur les <b>deux</b> cibles, à la suite des doctrines de carte. La nuance clé du cadrage :
@@ -1867,6 +1876,32 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
     }
 
+    /** Les messages marqués envoyés (F-211 / SF-211-01) ; {@code null} pour les formes historiques. */
+    private fr.claudegateway.atelier.sends.MessageBlockSendService messageBlockSends;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setMessageBlockSends(fr.claudegateway.atelier.sends.MessageBlockSendService sends) {
+        this.messageBlockSends = sends;
+    }
+
+    /**
+     * Préfixe la consigne du tour par les messages que l'utilisateur a marqués envoyés depuis son
+     * dernier message (F-211 / SF-211-01) — sauf sur le terminal Teams, où l'encart n'existe pas.
+     * Best-effort : un échec laisse la consigne telle quelle.
+     */
+    String withSentMessages(UUID userId, Workspace workspace, String consigne) {
+        if (messageBlockSends == null || workspace == null || workspace.isTeamsTerminal()) {
+            return consigne;
+        }
+        try {
+            String note = messageBlockSends.noteFor(userId, workspace);
+            return note == null || note.isEmpty() ? consigne : note + consigne;
+        } catch (RuntimeException ex) {
+            log.debug("Messages envoyés ignorés (best-effort) : {}", ex.getMessage());
+            return consigne;
+        }
+    }
+
     /** Le parcours du sujet (F-176) ; {@code null} pour les formes historiques (= Libre partout). */
     private fr.claudegateway.atelier.journey.SubjectJourneyService journeyService;
 
@@ -2886,6 +2921,9 @@ public class AtelierChatService implements RelayInterruptTarget {
         // la parole de l'utilisateur. Seulement là où les outils d'attente sont donnés. Vide sans
         // attente ouverte : consigne inchangée à l'octet près. Best-effort.
         consigne = withPendingActions(userId, workspace, consigne);
+        // F-211 / SF-211-01 — LES MESSAGES MARQUÉS ENVOYÉS depuis le dernier tour, joints à la CONSIGNE
+        // du tour (jamais au système, même patron). Vide sans envoi : consigne inchangée. Best-effort.
+        consigne = withSentMessages(userId, workspace, consigne);
         // F-176 — LE PARCOURS DU SUJET, joint à la CONSIGNE du tour (jamais au système, même patron).
         // Libre : rien, consigne inchangée à l'octet près (Q4). Best-effort.
 
