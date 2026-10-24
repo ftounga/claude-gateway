@@ -103,7 +103,8 @@ class AtelierChatServiceTeamsToolsTest {
         when(teamsAccess.hasAccess(userId)).thenReturn(false);
 
         assertThat(toolNames(terminal(true)))
-                .containsExactly("read_file", "write_file", "edit_file", "multi_edit", "grep", "glob", "bash", "explore", "task", "set_plan", "demander", "recall");
+                .containsExactly("read_file", "write_file", "edit_file", "multi_edit", "grep", "glob", "bash", "explore", "task", "set_plan", "demander", "recall",
+                        "decouper_demande", "suivre_question");
     }
 
     @Test
@@ -113,7 +114,8 @@ class AtelierChatServiceTeamsToolsTest {
 
         assertThat(toolNames(terminal(false)))
                 .noneMatch(name -> name.startsWith(TeamsToolCatalog.PREFIX))
-                .containsExactly("read_file", "write_file", "edit_file", "multi_edit", "grep", "glob", "bash", "explore", "task", "set_plan", "demander", "recall");
+                .containsExactly("read_file", "write_file", "edit_file", "multi_edit", "grep", "glob", "bash", "explore", "task", "set_plan", "demander", "recall",
+                        "decouper_demande", "suivre_question");
     }
 
     // ------------------------------------------------- F-89 / SF-89-04 : un terminal sans droit le dit
@@ -155,7 +157,8 @@ class AtelierChatServiceTeamsToolsTest {
                 .thenReturn(false);
 
         assertThat(toolNames(terminal(true)))
-                .containsExactly("read_file", "write_file", "edit_file", "multi_edit", "grep", "glob", "bash", "explore", "task", "set_plan", "demander", "recall");
+                .containsExactly("read_file", "write_file", "edit_file", "multi_edit", "grep", "glob", "bash", "explore", "task", "set_plan", "demander", "recall",
+                        "decouper_demande", "suivre_question");
     }
 
     @Test

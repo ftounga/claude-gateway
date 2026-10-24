@@ -689,6 +689,14 @@ public class AtelierChatController {
                     turn.publish("besoin", new StreamAppRequest(toolUseId, besoin));
                 }
 
+                /** Les questions du tour (F-210 / SF-210-01) : l'instantané complet, au fil de l'eau. */
+                @Override
+                public void onQuestions(fr.claudegateway.atelier.questions.TurnQuestions.Snapshot snapshot) {
+                    if (snapshot != null) {
+                        turn.publish("questions", snapshot);
+                    }
+                }
+
                 /**
                  * Une demande d'autorisation n'est plus seulement relayée : elle devient l'ÉTAT du
                  * tour (F-84 / SF-84-03). Un écran qui arrive après coup la trouve encore en

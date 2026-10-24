@@ -75,7 +75,9 @@ public final class JourneyRiskClassifier {
         if (tool == null) {
             return null;
         }
-        if (READ_TOOLS.contains(tool)) {
+        if (READ_TOOLS.contains(tool)
+                || fr.claudegateway.atelier.questions.QuestionToolCatalog.isQuestionTool(tool)) {
+            // F-210 / SF-210-01 : découper / suivre les questions ne touche rien — une lecture.
             return JourneyPlan.Risk.LECTURE;
         }
         if (FILE_WRITES.contains(tool)) {

@@ -15,8 +15,20 @@ public interface AtelierProgressListener {
      *
      * @param type type d'action : {@code read}, {@code write}, {@code list} ou {@code search}
      * @param path chemin concerné (ou terme recherché) ; {@code null} pour {@code list}
+     * @param question la question du tour à laquelle l'étape est rattachée (F-210 / SF-210-01), ou
+     *                 {@code null} hors découpage
      */
-    record AtelierStepEvent(String type, String path) {
+    record AtelierStepEvent(String type, String path, Integer question) {
+
+        /** Forme d'avant F-210 : l'étape n'est rattachée à aucune question. */
+        public AtelierStepEvent(String type, String path) {
+            this(type, path, null);
+        }
+
+        /** La même étape, rattachée à la question {@code id} du tour (F-210 / SF-210-01). */
+        public AtelierStepEvent withQuestion(Integer id) {
+            return id == null ? this : new AtelierStepEvent(type, path, id);
+        }
     }
 
     /** Notifie une action fichier (émise même si l'outil échoue ensuite : l'intention compte). */
@@ -329,6 +341,15 @@ public interface AtelierProgressListener {
      * l'étape {@code step} (à partir de 1).
      */
     default void onSteerApplied(AtelierSteer steer, int step) {
+        // Aucun relais : mode synchrone.
+    }
+
+    /**
+     * <b>Les questions du tour</b> (F-210 / SF-210-01) : l'instantané complet, à chaque découpage ou
+     * changement d'état, puis une dernière fois à la clôture. Par défaut neutre : l'instantané est de
+     * toute façon rangé dans le relevé du message.
+     */
+    default void onQuestions(fr.claudegateway.atelier.questions.TurnQuestions.Snapshot snapshot) {
         // Aucun relais : mode synchrone.
     }
 

@@ -175,6 +175,14 @@ public class AtelierMcpTurnLauncher {
             }
 
             @Override
+            public void onQuestions(fr.claudegateway.atelier.questions.TurnQuestions.Snapshot snapshot) {
+                // F-210 / SF-210-01 : un écran rebranché sur ce tour voit aussi ses questions.
+                if (snapshot != null) {
+                    turn.publish("questions", snapshot);
+                }
+            }
+
+            @Override
             public void onConfirmRequest(AtelierConfirmRequest request) {
                 // La demande devient l'ÉTAT du tour (F-84 / SF-84-03) : elle est LISTÉE par MCP,
                 // jamais accordée (garde §6.1).

@@ -98,7 +98,8 @@ class AtelierChatServiceModeTest {
         Workspace runner = bareWorkspace(WorkspaceExecutionTarget.RUNNER);
         assertThat(names(service.buildTools(userId, runner, AgentTurnMode.ACT)))
                 .containsExactly("read_file", "write_file", "edit_file", "multi_edit", "grep", "glob",
-                        "bash", "explore", "task", "set_plan", "demander", "recall");
+                        "bash", "explore", "task", "set_plan", "demander", "recall",
+                        "decouper_demande", "suivre_question");
     }
 
     @Test
@@ -108,7 +109,7 @@ class AtelierChatServiceModeTest {
         List<String> tools = names(service.buildTools(userId, runner, AgentTurnMode.ANSWER_PLAN));
         // grep/glob (F-121 / SF-121-01) sont de la lecture : ils survivent au mode Réponse/Plan.
         // exit_plan_mode (F-121 / SF-121-10) s'y ajoute : c'est le geste de soumission du plan.
-        assertThat(tools).containsExactly("read_file", "grep", "glob", "explore", "set_plan", "demander", "recall", "exit_plan_mode");
+        assertThat(tools).containsExactly("read_file", "grep", "glob", "explore", "set_plan", "demander", "recall", "decouper_demande", "suivre_question", "exit_plan_mode");
         assertThat(tools).doesNotContain("write_file", "edit_file", "multi_edit", "bash");
     }
 
@@ -133,7 +134,8 @@ class AtelierChatServiceModeTest {
         Workspace sandbox = bareWorkspace(WorkspaceExecutionTarget.SANDBOX);
         assertThat(names(service.buildTools(userId, sandbox, AgentTurnMode.ACT)))
                 .containsExactly("list_files", "read_file", "write_file", "edit_file", "multi_edit",
-                        "search_files", "grep", "glob", "explore", "set_plan", "demander", "recall");
+                        "search_files", "grep", "glob", "explore", "set_plan", "demander", "recall",
+                        "decouper_demande", "suivre_question");
     }
 
     @Test
@@ -143,7 +145,7 @@ class AtelierChatServiceModeTest {
         // La lecture/exploration de SANDBOX (list_files, search_files) survit ; write/edit non.
         // exit_plan_mode (F-121 / SF-121-10) s'y ajoute : le geste de soumission du plan.
         assertThat(tools).containsExactly("list_files", "read_file", "search_files", "grep", "glob",
-                "explore", "set_plan", "demander", "recall", "exit_plan_mode");
+                "explore", "set_plan", "demander", "recall", "decouper_demande", "suivre_question", "exit_plan_mode");
         assertThat(tools).doesNotContain("write_file", "edit_file", "multi_edit");
     }
 
