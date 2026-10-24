@@ -29,6 +29,12 @@ class VideoRenderToolsContractTest {
         assertThat(VideoRenderToolCatalog.STATUS).isEqualTo(RenderTools.STATUS);
         assertThat(RenderTools.handles(VideoRenderToolCatalog.RENDER)).isTrue();
         assertThat(RenderTools.handles(VideoRenderToolCatalog.STATUS)).isTrue();
+        // F-215 / SF-215-03 : la relecture avant publication.
+        assertThat(VideoRenderToolCatalog.CHECK).isEqualTo(RenderTools.CHECK);
+        assertThat(RenderTools.handles(VideoRenderToolCatalog.CHECK)).isTrue();
+        assertThat(VideoRenderToolCatalog.isRenderTool(RenderTools.CHECK)).isTrue();
+        assertThat(VideoToolCatalog.isVideoTool(VideoRenderToolCatalog.CHECK)).isFalse();
+        assertThat(VideoTools.handles(RenderTools.CHECK)).isFalse();
     }
 
     @Test

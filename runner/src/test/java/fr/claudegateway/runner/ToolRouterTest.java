@@ -140,6 +140,12 @@ class ToolRouterTest {
                 MAPPER.createObjectNode().put("dossier", "x"), ToolContext.none());
         assertFalse(refused.ok());
         assertTrue(refused.errorMessage().contains("désactivée"), refused.errorMessage());
+        // F-215 / SF-215-03 : la relecture suit la même porte.
+        ToolOutcome refusedCheck = forbidden.execute("video_render_check",
+                MAPPER.createObjectNode().put("dossier", "x").put("instants", "1"), ToolContext.none());
+        assertTrue(refusedCheck.errorMessage().contains("désactivée"), refusedCheck.errorMessage());
+        ToolOutcome checkInvalid = allowed.execute("video_render_check", MAPPER.createObjectNode(), ToolContext.none());
+        assertTrue(checkInvalid.errorMessage().contains("dossier"), checkInvalid.errorMessage());
 
         ToolOutcome old = router(true).execute("video_render", MAPPER.createObjectNode(), ToolContext.none());
         assertTrue(old.errorMessage().contains("mettez-le à jour"), old.errorMessage());

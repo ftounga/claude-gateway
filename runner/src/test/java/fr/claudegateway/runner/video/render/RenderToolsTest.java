@@ -301,7 +301,155 @@ class RenderToolsTest {
         assertEquals(-1, RenderToolchain.parseMajor("command not found"));
     }
 
+    // ------------------------------------------------------------------ SF-215-03 : GSAP et relecture
+
+    private ObjectNode check(String instants) {
+        return MAPPER.createObjectNode().put("dossier", "cours").put("instants", instants);
+    }
+
+    @Test
+    void gsapIsInstalledWithTheChainAndCopiedIntoTheCompositionBeforeRendering() {
+        RenderTools tools = tools();
+
+        ToolOutcome started = tools.execute(RenderTools.RENDER, input(), ToolContext.none(), paths);
+
+        assertTrue(started.ok(), started.errorMessage());
+        assertTrue(processes.ran.stream().anyMatch(c -> c.contains("gsap@3.13.0")), "gsap épinglé");
+        assertTrue(Files.isRegularFile(project.resolve("cours/briques/gsap.min.js")));
+    }
+
+    @Test
+    void aPosteWithHyperframesAlreadyInstalledOnlyAddsGsap() throws IOException {
+        Path hf = Files.createDirectories(toolsDir.resolve("hyperframes-0.8.193/node_modules/hyperframes/bin"));
+        Files.writeString(hf.resolve("hyperframes.mjs"), "");
+        Files.writeString(hf.getParent().resolve("package.json"), "{\"version\":\"0.8.193\"}");
+        RenderTools tools = tools();
+
+        tools.execute(RenderTools.RENDER, input(), ToolContext.none(), paths);
+
+        assertFalse(processes.ran.stream().anyMatch(c -> c.contains("hyperframes@0.8.193")));
+        assertTrue(processes.ran.stream().anyMatch(c -> c.contains("gsap@3.13.0")));
+    }
+
+    @Test
+    void checkLintsThenSnapshotsAndListsTheImagesToLookAt() {
+        RenderTools tools = tools();
+
+        ToolOutcome outcome = tools.execute(RenderTools.CHECK, check("3, 10.5"), ToolContext.none(), paths);
+
+        assertTrue(outcome.ok(), outcome.errorMessage());
+        String text = outcome.content();
+        assertTrue(text.contains("LINT : OK"), text);
+        assertTrue(text.contains("1 warning"), text);
+        assertTrue(text.contains("- cours/relecture/frame-00-at-3s.png\n- cours/relecture/frame-01-at-10.50s.png"), text);
+        assertFalse(text.contains("contact-sheet"), text);
+        assertTrue(text.contains("read_file"), text);
+        List<String> snapshot = processes.ran.stream().filter(c -> c.contains("snapshot")).findFirst().orElseThrow();
+        assertTrue(snapshot.containsAll(List.of("--at", "3,10.50", "--no-end", "--describe", "false", "-o")), snapshot.toString());
+        assertEquals("", processes.lintEnv.get("GEMINI_API_KEY"), "aucune analyse d'image confiée à un tiers");
+        assertTrue(Files.isRegularFile(project.resolve("cours/briques/gsap.min.js")), "gsap copié avant le contrôle");
+    }
+
+    @Test
+    void lintErrorsAreSaidAndColorsStripped() {
+        processes.lintFails = true;
+        RenderTools tools = tools();
+
+        String text = tools.execute(RenderTools.CHECK, check("2"), ToolContext.none(), paths).content();
+
+        assertTrue(text.contains("LINT : ERREURS"), text);
+        assertTrue(text.contains("✗ error audio-missing-id"), text);
+        assertFalse(text.contains("\u001B["), text);
+    }
+
+    @Test
+    void failedSnapshotAnnouncesNoImage() {
+        processes.snapshotFails = true;
+        RenderTools tools = tools();
+
+        String text = tools.execute(RenderTools.CHECK, check("2"), ToolContext.none(), paths).content();
+
+        assertTrue(text.contains("IMAGES : échec de la capture"), text);
+        assertTrue(text.contains("Timed out"), text);
+        assertFalse(text.contains(".png"), text);
+    }
+
+    @Test
+    void checkRefusesBadInputs() throws IOException {
+        RenderTools tools = tools();
+        Files.createDirectories(project.resolve("vide"));
+
+        assertEquals("invalid_input", tools.execute(RenderTools.CHECK, check(""), ToolContext.none(), paths).errorCode());
+        assertEquals("invalid_input", tools.execute(RenderTools.CHECK, check("abc"), ToolContext.none(), paths).errorCode());
+        assertEquals("invalid_input", tools.execute(RenderTools.CHECK, check("-1"), ToolContext.none(), paths).errorCode());
+        assertEquals("invalid_input", tools.execute(RenderTools.CHECK, check("1,2,3,4,5,6,7,8,9,10,11,12,13"),
+                ToolContext.none(), paths).errorCode());
+        assertEquals("invalid_input", tools.execute(RenderTools.CHECK,
+                MAPPER.createObjectNode().put("instants", "2"), ToolContext.none(), paths).errorCode());
+        assertEquals("not_found", tools.execute(RenderTools.CHECK,
+                MAPPER.createObjectNode().put("dossier", "vide").put("instants", "2"), ToolContext.none(), paths)
+                .errorCode());
+        assertTrue(processes.ran.isEmpty(), "rien n'est lancé sur une demande invalide");
+    }
+
+    @Test
+    void checkWithABrokenChainSaysWhatAndTheRemedy() {
+        processes.npmFails = true;
+        RenderTools tools = tools();
+
+        ToolOutcome outcome = tools.execute(RenderTools.CHECK, check("2"), ToolContext.none(), paths);
+
+        assertFalse(outcome.ok());
+        assertTrue(outcome.errorMessage().contains("Installation de hyperframes 0.8.193 impossible"), outcome.errorMessage());
+        assertTrue(outcome.errorMessage().contains("Remède"), outcome.errorMessage());
+    }
+
+    @Test
+    void checkDuringAFirstLongPreparationAsksToRetry() {
+        RenderToolchain toolchain = new RenderToolchain(toolsDir, OperatingSystem.LINUX, "amd64", processes,
+                (url, into) -> 0, name -> null, null, os -> Optional.empty(), "/usr/bin");
+        // Un exécuteur qui ne lance jamais rien : la préparation « dure ».
+        RenderTools tools = new RenderTools(toolchain, processes, new NeverExecutor());
+        tools.prepareWaitMs = 50L;
+
+        ToolOutcome outcome = tools.execute(RenderTools.CHECK, check("2"), ToolContext.none(), paths);
+
+        assertTrue(outcome.ok(), outcome.errorMessage());
+        assertTrue(outcome.content().contains("Relance video_render_check"), outcome.content());
+    }
+
     // ------------------------------------------------------------------ fakes
+
+    /** N'exécute jamais rien : une préparation qui ne finit pas dans le délai. */
+    static final class NeverExecutor extends AbstractExecutorService {
+        @Override
+        public void execute(Runnable command) {
+        }
+
+        @Override
+        public void shutdown() {
+        }
+
+        @Override
+        public List<Runnable> shutdownNow() {
+            return List.of();
+        }
+
+        @Override
+        public boolean isShutdown() {
+            return false;
+        }
+
+        @Override
+        public boolean isTerminated() {
+            return false;
+        }
+
+        @Override
+        public boolean awaitTermination(long timeout, TimeUnit unit) {
+            return true;
+        }
+    }
 
     /** Exécute la tâche dans le fil de l'appel : le test lit l'état juste après. */
     static final class DirectExecutor extends AbstractExecutorService {
@@ -345,6 +493,9 @@ class RenderToolsTest {
         boolean browserFails;
         boolean completeOnLaunch = true;
         boolean alive = true;
+        boolean lintFails;
+        boolean snapshotFails;
+        Map<String, String> lintEnv;
 
         @Override
         public Result run(List<String> command, Path workingDir, Map<String, String> env, long timeoutMs)
@@ -371,6 +522,13 @@ class RenderToolsTest {
                     return new Result(1, List.of("npm error code E403", "npm error 403 Forbidden"), false);
                 }
                 Path prefix = Path.of(command.get(command.indexOf("--prefix") + 1));
+                if (command.contains("gsap@3.13.0")) {
+                    Path gsap = Files.createDirectories(prefix.resolve("node_modules/gsap/dist"));
+                    Files.writeString(gsap.resolve("gsap.min.js"), "/* GSAP 3.13.0 */");
+                    Files.writeString(prefix.resolve("node_modules/gsap/package.json"),
+                            "{\"name\":\"gsap\",\"version\":\"3.13.0\"}");
+                    return new Result(0, List.of(), false);
+                }
                 Path pkg = Files.createDirectories(prefix.resolve("node_modules/hyperframes/bin"));
                 Files.writeString(pkg.resolve("hyperframes.mjs"), "");
                 Files.writeString(prefix.resolve("node_modules/hyperframes/package.json"),
@@ -379,6 +537,22 @@ class RenderToolsTest {
             }
             if (command.contains("browser")) {
                 return browserFails ? new Result(1, List.of("download blocked"), false) : new Result(0, List.of(), false);
+            }
+            if (command.contains("lint")) {
+                lintEnv = new HashMap<>(env);
+                return lintFails
+                        ? new Result(1, List.of("\u001B[31m✗ error\u001B[0m audio-missing-id: <audio> sans id", ""), false)
+                        : new Result(0, List.of("✓ 0 error, 1 warning"), false);
+            }
+            if (command.contains("snapshot")) {
+                if (!snapshotFails) {
+                    Path out = Files.createDirectories(Path.of(command.get(command.indexOf("-o") + 1)));
+                    Files.writeString(out.resolve("frame-01-at-10.50s.png"), "png");
+                    Files.writeString(out.resolve("frame-00-at-3s.png"), "png");
+                    Files.writeString(out.resolve("contact-sheet-1.jpg"), "jpg");
+                }
+                return snapshotFails ? new Result(1, List.of("Timed out waiting for runtime"), false)
+                        : new Result(0, List.of(), false);
             }
             return new Result(0, List.of(), false);
         }

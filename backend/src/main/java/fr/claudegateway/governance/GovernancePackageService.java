@@ -373,13 +373,13 @@ public class GovernancePackageService {
     private static GovernanceFileKind parseKind(String raw) {
         String kind = trimToNull(raw);
         if (kind == null) {
-            throw new InvalidGovernancePackageException("Genre de fichier absent (SKILL, TEMPLATE ou AGENT).");
+            throw new InvalidGovernancePackageException("Genre de fichier absent (SKILL, TEMPLATE, AGENT ou GUIDE).");
         }
         try {
             return GovernanceFileKind.valueOf(kind.toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException ex) {
             throw new InvalidGovernancePackageException(
-                    "Genre de fichier inconnu : « " + kind + " » (attendu SKILL, TEMPLATE ou AGENT).");
+                    "Genre de fichier inconnu : « " + kind + " » (attendu SKILL, TEMPLATE, AGENT ou GUIDE).");
         }
     }
 

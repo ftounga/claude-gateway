@@ -21,15 +21,17 @@ public final class VideoRenderToolCatalog {
     public static final String CAPABILITY = "video_render";
     public static final String RENDER = "video_render";
     public static final String STATUS = "video_render_status";
+    /** F-215 / SF-215-03 : la relecture avant publication (lint + images clés), sur le poste. */
+    public static final String CHECK = "video_render_check";
 
     private VideoRenderToolCatalog() {
     }
 
     public static boolean isRenderTool(String name) {
-        return RENDER.equals(name) || STATUS.equals(name);
+        return RENDER.equals(name) || STATUS.equals(name) || CHECK.equals(name);
     }
 
-    /** Les deux outils, toujours dans le même ordre : ils font partie du préfixe caché du poste. */
+    /** Les outils, toujours dans le même ordre : ils font partie du préfixe caché du poste. */
     public static List<AgentTool> tools() {
         Map<String, Object> text = Map.of("type", "string");
         return List.of(
@@ -60,6 +62,20 @@ public final class VideoRenderToolCatalog {
                                 + "video_publier). En échec : la cause et le remède, à répéter tels quels.",
                         Map.of("type", "object",
                                 "properties", Map.of("job_id", text),
-                                "required", List.of("job_id"))));
+                                "required", List.of("job_id"))),
+                new AgentTool(CHECK,
+                        "Relecture d'une composition HyperFrames AVANT tout rendu et toute publication : lance "
+                                + "hyperframes lint puis capture une image à chaque instant demandé (dans "
+                                + "<dossier>/relecture/). Rend le verdict du lint et la liste des images : ouvre "
+                                + "chacune avec read_file et REGARDE-la (lisibilité, chevauchements, textes coupés). "
+                                + "Copie aussi GSAP dans <dossier>/briques/ s'il manque.",
+                        Map.of("type", "object",
+                                "properties", Map.of(
+                                        "dossier", Map.of("type", "string", "description",
+                                                "Dossier de la composition (contient index.html)."),
+                                        "instants", Map.of("type", "string", "description",
+                                                "1 à 12 instants clés en secondes, séparés par des virgules, ex. "
+                                                        + "3,10.5,18 (un par plan, quand tout est affiché).")),
+                                "required", List.of("dossier", "instants"))));
     }
 }

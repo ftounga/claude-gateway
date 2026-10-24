@@ -29,6 +29,14 @@ public enum GovernanceFileKind {
     AGENT,
 
     /**
+     * Un <b>guide de savoir-faire</b> (F-215 / SF-215-03), déposé sous {@code .claude/guides/} dans chaque projet,
+     * sur le modèle d'{@link #AGENT}. À la différence d'un skill, un guide n'est <b>jamais annoncé</b> dans la
+     * consigne système : il est lu <b>à la demande</b>, quand le travail le réclame (ex. « cours vidéo »), pour ne
+     * rien ajouter au préfixe stable. Une ligne fixe de la doctrine d'outils dit seulement qu'il existe.
+     */
+    GUIDE,
+
+    /**
      * Un fichier de <b>carte</b> (F-92), déposé à la <b>racine du poste</b> — jamais dans un projet.
      *
      * <p>C'est la pièce qui manquait : le produit savait porter le <b>travail</b>, pas le

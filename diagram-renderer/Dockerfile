@@ -35,10 +35,13 @@ WORKDIR /app
 # F-184 / SF-184-01 : puppeteer-core (sans navigateur téléchargé) pilote le chromium du système pour
 # imprimer une page en PDF en interceptant chaque requête — le service reste hors ligne.
 RUN npm install --omit=dev --no-audit --no-fund puppeteer-core@25.13.0
-COPY server.js drawio.js pdf.js terminal.js puppeteer.json cloud.py deck.py office.py check_catalog.py ./
+COPY server.js drawio.js pdf.js terminal.js icons.js puppeteer.json cloud.py deck.py office.py check_catalog.py ./
 # Le catalogue d'icônes est vérifié AU BUILD : une entrée qui ne désigne aucune classe réelle ferait
 # échouer le premier schéma d'un client, et pas la construction de l'image. On le refuse ici.
-RUN python3 check_catalog.py && chown -R renderer:renderer /app
+# F-215 / SF-215-03 : la route /icons (cours vidéo) lit les PNG de la même lib — vérifiée elle aussi au build.
+RUN python3 check_catalog.py \
+    && node -e "const i=require('./icons.js');if(i.search('aws balancer').length===0)process.exit(1)" \
+    && chown -R renderer:renderer /app
 
 USER renderer
 EXPOSE 8080

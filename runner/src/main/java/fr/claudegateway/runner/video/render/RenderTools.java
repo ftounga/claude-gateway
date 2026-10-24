@@ -38,9 +38,22 @@ public final class RenderTools {
     public static final String CAPABILITY = "video_render";
     public static final String RENDER = "video_render";
     public static final String STATUS = "video_render_status";
+    /** F-215 / SF-215-03 : la relecture avant publication — {@code hyperframes lint} puis images clés. */
+    public static final String CHECK = "video_render_check";
 
     /** Dossier des travaux de rendu, sous le projet. */
     static final String RENDER_DIR = ".atelier/rendu";
+    /** Images de relecture, sous le dossier de la composition (remplacées à chaque relecture). */
+    static final String REVIEW_DIR = "relecture";
+    /** GSAP copié dans la composition, que la composition charge en local. */
+    static final String GSAP_COPY = "briques/gsap.min.js";
+    static final int MAX_INSTANTS = 12;
+    static final double MAX_INSTANT_S = 7_200d;
+    static final long PREPARE_WAIT_MS = 45_000L;
+    static final long LINT_TIMEOUT_MS = 90_000L;
+    static final long SNAPSHOT_TIMEOUT_MS = 240_000L;
+    static final int MAX_LINT_LINES = 60;
+    private static final java.util.regex.Pattern ANSI = java.util.regex.Pattern.compile("\u001B\\[[0-9;?]*[A-Za-z]");
     static final Set<String> QUALITIES = Set.of("draft", "looks", "delivery");
     static final Set<Integer> FPS = Set.of(24, 25, 30, 60);
     static final int MAX_WORKERS = 8;
@@ -50,6 +63,10 @@ public final class RenderTools {
     private final ExecutorService background;
     private final Map<String, RenderJob> jobs = new ConcurrentHashMap<>();
     private final Map<String, String> runningByOutput = new ConcurrentHashMap<>();
+    /** La préparation lancée par une relecture, partagée par les relances (une seule à la fois). */
+    private volatile java.util.concurrent.CompletableFuture<RenderToolchain.Prepared> preparing;
+    /** Attente maximale de la préparation par une relecture (abaissée par les tests). */
+    long prepareWaitMs = PREPARE_WAIT_MS;
 
     public RenderTools(RenderToolchain toolchain, RenderProcesses processes) {
         this(toolchain, processes, Executors.newCachedThreadPool(runnable -> {
@@ -66,7 +83,7 @@ public final class RenderTools {
     }
 
     public static boolean handles(String tool) {
-        return RENDER.equals(tool) || STATUS.equals(tool);
+        return RENDER.equals(tool) || STATUS.equals(tool) || CHECK.equals(tool);
     }
 
     /** Ces outils liés au dossier d'un projet. */
@@ -76,6 +93,9 @@ public final class RenderTools {
 
     public ToolOutcome execute(String tool, JsonNode input, ToolContext context, PathResolver paths) {
         try {
+            if (CHECK.equals(tool)) {
+                return check(input, paths);
+            }
             return RENDER.equals(tool) ? start(input, paths) : status(input, paths);
         } catch (ToolException e) {
             return ToolOutcome.error(e);
@@ -186,6 +206,10 @@ public final class RenderTools {
                 job.save();
                 return;
             }
+            String gsapNote = ensureGsap(prepared, project);
+            if (!gsapNote.isEmpty()) {
+                note(job, gsapNote);
+            }
             Files.createDirectories(output.toAbsolutePath().getParent());
             // Une sortie d'un rendu précédent fausserait le constat « vidéo produite ».
             Files.deleteIfExists(output);
@@ -244,6 +268,199 @@ public final class RenderTools {
             runningByOutput.remove(job.outputPath().toString(), id);
         }
         return ToolOutcome.ok(render(job));
+    }
+
+    // ------------------------------------------------------------------ video_render_check (SF-215-03)
+
+    /**
+     * La relecture avant publication : {@code hyperframes lint}, puis {@code hyperframes snapshot} aux instants
+     * demandés, images rangées sous {@code <dossier>/relecture/}. Synchrone et borné. Aucune analyse d'image n'est
+     * confiée à un tiers ({@code --describe false}) : c'est l'agent qui REGARDE les images.
+     */
+    private ToolOutcome check(JsonNode input, PathResolver paths) {
+        String rawDir = text(input, "dossier");
+        if (rawDir.isEmpty()) {
+            throw new ToolException("invalid_input", "Donne le dossier de la composition (paramètre « dossier »).");
+        }
+        List<String> instants = instants(input);
+        PathResolver.Resolved resolved = paths.resolve(rawDir);
+        Path project = resolved.path();
+        if (!Files.isDirectory(project) || !Files.isRegularFile(project.resolve("index.html"))) {
+            throw new ToolException("not_found", "Je ne trouve pas de composition (index.html) dans « "
+                    + resolved.display() + " ».");
+        }
+        RenderToolchain.Prepared prepared;
+        try {
+            prepared = preparedWithin(prepareWaitMs);
+        } catch (RenderFailure failure) {
+            return ToolOutcome.error("exec_failed", failure.getMessage() + " Remède : " + failure.remedy()
+                    + " Répète l'échec et le remède tels quels à l'utilisateur.");
+        }
+        if (prepared == null) {
+            return ToolOutcome.ok("Préparation de la chaîne vidéo en cours sur ce poste (premier usage : Node, "
+                    + "hyperframes, GSAP, Chrome). Relance video_render_check dans une minute.");
+        }
+        StringBuilder out = new StringBuilder();
+        String gsapNote = ensureGsap(prepared, project);
+        if (!gsapNote.isEmpty()) {
+            out.append(gsapNote).append('\n');
+        }
+        Map<String, String> env = new HashMap<>(prepared.env());
+        env.put("NO_COLOR", "1");
+        env.put("FORCE_COLOR", "0");
+        env.put("GEMINI_API_KEY", "");
+
+        // 1. lint
+        RenderProcesses.Result lint;
+        try {
+            lint = processes.run(List.of(prepared.node().toString(), prepared.hyperframes().toString(), "lint",
+                    project.toString()), project, env, LINT_TIMEOUT_MS);
+        } catch (IOException e) {
+            return ToolOutcome.error("exec_failed", "hyperframes lint n'a pas pu être lancé (" + e.getMessage()
+                    + "). Si l'exécution est bloquée par la politique du poste, je ne la contourne pas.");
+        }
+        boolean lintOk = lint.succeeded();
+        out.append("LINT : ").append(lint.timedOut() ? "DÉLAI DÉPASSÉ" : lintOk ? "OK" : "ERREURS — corrige-les avant "
+                + "tout rendu").append('\n');
+        String lintText = clean(lint.output(), MAX_LINT_LINES);
+        if (!lintText.isEmpty()) {
+            out.append(lintText).append('\n');
+        }
+
+        // 2. images clés
+        Path review = project.resolve(REVIEW_DIR);
+        RenderProcesses.Result snapshot;
+        try {
+            snapshot = processes.run(List.of(prepared.node().toString(), prepared.hyperframes().toString(),
+                    "snapshot", project.toString(), "--at", String.join(",", instants), "--no-end", "--describe",
+                    "false", "-o", review.toString()), project, env, SNAPSHOT_TIMEOUT_MS);
+        } catch (IOException e) {
+            out.append("IMAGES : hyperframes snapshot n'a pas pu être lancé (").append(e.getMessage()).append(").");
+            return ToolOutcome.ok(out.toString().strip());
+        }
+        List<String> images = images(review, paths);
+        if (!snapshot.succeeded() || images.isEmpty()) {
+            out.append("IMAGES : échec de la capture").append(snapshot.timedOut() ? " (délai dépassé)" : "")
+                    .append('\n').append(clean(snapshot.output(), 15));
+            return ToolOutcome.ok(out.toString().strip());
+        }
+        out.append("IMAGES (").append(images.size()).append(") — ouvre CHACUNE avec read_file et REGARDE-la : texte "
+                + "lisible (≥ 20 px), rien qui se chevauche ni ne sort du cadre, aucun texte coupé, notions techniques "
+                + "bien affichées. Corrige puis relance video_render_check avant video_render :\n");
+        images.forEach(image -> out.append("- ").append(image).append('\n'));
+        return ToolOutcome.ok(out.toString().strip());
+    }
+
+    /** Les instants demandés, en secondes : « 3,10.5,18 » (ou un nombre seul), 1 à 12, chacun borné. */
+    static List<String> instants(JsonNode input) {
+        String raw = text(input, "instants");
+        List<String> out = new ArrayList<>();
+        for (String part : raw.split("[,;\\s]+")) {
+            if (part.isBlank()) {
+                continue;
+            }
+            double value;
+            try {
+                value = Double.parseDouble(part.replace(',', '.'));
+            } catch (NumberFormatException e) {
+                throw new ToolException("invalid_input", "instants : des secondes séparées par des virgules, "
+                        + "ex. « 3,10.5,18 ».");
+            }
+            if (value < 0 || value > MAX_INSTANT_S || Double.isNaN(value)) {
+                throw new ToolException("invalid_input", "instants : entre 0 et " + (int) MAX_INSTANT_S + " s.");
+            }
+            out.add(value == Math.rint(value) ? String.valueOf((long) value)
+                    : String.format(Locale.ROOT, "%.2f", value));
+        }
+        if (out.isEmpty() || out.size() > MAX_INSTANTS) {
+            throw new ToolException("invalid_input", "instants : de 1 à " + MAX_INSTANTS + " instants clés, "
+                    + "ex. « 3,10.5,18 » (un par plan, au moment où tout est affiché).");
+        }
+        return out;
+    }
+
+    /**
+     * La chaîne prête, en l'attendant au plus {@code waitMs} : la préparation (téléchargements au premier usage)
+     * continue en arrière-plan au-delà, et une relance la retrouve.
+     *
+     * @return {@code null} si elle n'est pas prête dans le délai
+     * @throws RenderFailure ce qui manque, et le remède
+     */
+    RenderToolchain.Prepared preparedWithin(long waitMs) {
+        RenderToolchain.Prepared ready = toolchain.ready();
+        if (ready != null) {
+            return ready;
+        }
+        java.util.concurrent.CompletableFuture<RenderToolchain.Prepared> future;
+        synchronized (this) {
+            future = preparing;
+            if (future == null || (future.isDone() && future.isCompletedExceptionally())) {
+                future = java.util.concurrent.CompletableFuture.supplyAsync(() -> toolchain.prepare(null), background);
+                preparing = future;
+            }
+        }
+        try {
+            return future.get(waitMs, java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (java.util.concurrent.TimeoutException e) {
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        } catch (java.util.concurrent.ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof RenderFailure failure) {
+                throw failure;
+            }
+            throw new RenderFailure("Préparation de la chaîne vidéo impossible (" + (cause == null ? "?"
+                    : cause.getMessage()) + ").", "Relancez video_render(verifier_seulement: true) pour le détail.");
+        }
+    }
+
+    /**
+     * Copie le GSAP épinglé dans {@code <dossier>/briques/gsap.min.js} s'il n'y est pas (la composition le charge en
+     * local). Rend une note seulement en cas d'échec — l'absence se verrait au lint.
+     */
+    static String ensureGsap(RenderToolchain.Prepared prepared, Path project) {
+        if (prepared.gsap() == null || project == null) {
+            return "";
+        }
+        Path target = project.resolve(GSAP_COPY);
+        if (Files.isRegularFile(target)) {
+            return "";
+        }
+        try {
+            Files.createDirectories(target.getParent());
+            Files.copy(prepared.gsap(), target);
+            return "";
+        } catch (IOException e) {
+            return "GSAP non copié dans " + GSAP_COPY + " (" + e.getMessage() + ").";
+        }
+    }
+
+    /** Les PNG de relecture, triés, en chemins relatifs au projet. */
+    private static List<String> images(Path review, PathResolver paths) {
+        if (!Files.isDirectory(review)) {
+            return List.of();
+        }
+        try (java.util.stream.Stream<Path> files = Files.list(review)) {
+            return files.filter(p -> p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".png"))
+                    .sorted().map(paths::relativize).toList();
+        } catch (IOException e) {
+            return List.of();
+        }
+    }
+
+    /** La sortie d'une commande, sans couleurs, sans lignes vides, bornée aux dernières lignes. */
+    static String clean(List<String> lines, int max) {
+        List<String> kept = new ArrayList<>();
+        for (String line : lines) {
+            String plain = ANSI.matcher(line).replaceAll("").stripTrailing();
+            if (!plain.isBlank()) {
+                kept.add(plain);
+            }
+        }
+        List<String> tail = kept.size() > max ? kept.subList(kept.size() - max, kept.size()) : kept;
+        return String.join("\n", tail);
     }
 
     // ------------------------------------------------------------------ rendu du texte
