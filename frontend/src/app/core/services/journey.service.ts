@@ -1,8 +1,8 @@
 import { HttpClient } from '@angular/common/http';
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { Observable } from 'rxjs';
 
-import { ClosedChantier, JourneyMode, SubjectJourney } from '../models/journey.models';
+import { ClosedChantier, JourneyMode, JourneyPlanVersion, SubjectJourney } from '../models/journey.models';
 
 /**
  * **Le parcours du sujet d'un terminal** (F-176). Aucun appel ne porte d'identifiant de compte : la
@@ -11,6 +11,22 @@ import { ClosedChantier, JourneyMode, SubjectJourney } from '../models/journey.m
 @Injectable({ providedIn: 'root' })
 export class JourneyService {
   private readonly http = inject(HttpClient);
+
+  /**
+   * **Le parcours a changé pendant un tour** (F-208 / SF-208-02) : l'événement SSE `journey` incrémente ce
+   * compteur ; le terminal qui tourne relit son parcours. Aucun contenu ne transite par lui.
+   */
+  readonly liveChanges = signal(0);
+
+  /** Signale un changement du parcours reçu du flux du tour (F-208). */
+  markChanged(): void {
+    this.liveChanges.update((n) => n + 1);
+  }
+
+  /** Les versions du plan du chantier N, avec ce qui a changé (F-208 / SF-208-02). */
+  versions(workspaceId: string, number: number): Observable<JourneyPlanVersion[]> {
+    return this.http.get<JourneyPlanVersion[]>(`/api/workspaces/${workspaceId}/journey/chantiers/${number}/versions`);
+  }
 
   /** Le mode et la phase du sujet ; Libre s'il n'a jamais été décidé. */
   get(workspaceId: string): Observable<SubjectJourney> {

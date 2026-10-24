@@ -4,6 +4,7 @@ import { Observable, tap } from 'rxjs';
 
 import { AuthService } from './auth.service';
 import { HostPresenceService } from './host-presence.service';
+import { JourneyService } from './journey.service';
 import { depositFileName } from './deposit-file-name';
 import {
   AtelierAgentStreamAction,
@@ -127,6 +128,7 @@ export class AtelierService {
   private readonly auth = inject(AuthService);
   /** État des postes partagé par tout l'écran (F-97 / SF-97-02) : tout refus y est écrit. */
   private readonly presence = inject(HostPresenceService);
+  private readonly journeys = inject(JourneyService);
 
   /** Crée un workspace à partir d'une archive `.zip` (multipart, champ `file`, `name` optionnel). */
   createWorkspace(file: File, name?: string): Observable<WorkspaceDetail> {
@@ -832,6 +834,10 @@ export class AtelierService {
       handlers.onTruncated?.(
         typeof payload.droppedThrough === 'number' ? payload.droppedThrough : 0,
       );
+    } else if (event === 'journey') {
+      // F-208 / SF-208-02 : un outil du parcours vient d'être appliqué — le terminal qui tourne relit son
+      // parcours (tableau des chantiers, bande, barre) sans attendre la fin du tour.
+      this.journeys.markChanged();
     } else if (event === 'runner_offline') {
       // F-97 / SF-97-02 : le poste du projet vient de refuser un appel. Écrit dans l'état PARTAGÉ,
       // pas seulement dans ce flux : la Forge, l'en-tête du projet et une tuile suivent sans

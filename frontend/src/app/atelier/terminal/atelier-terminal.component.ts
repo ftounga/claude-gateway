@@ -11,8 +11,10 @@ import {
   Output,
   ViewChild,
   computed,
+  effect,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -183,12 +185,14 @@ import {
 } from '../../core/services/named-agent-catalog.service';
 import { TerminalJourneyChipComponent } from './terminal-journey-chip.component';
 import { TerminalJourneyChantiersComponent } from './terminal-journey-chantiers.component';
+import { TerminalChantiersBoardComponent } from './terminal-chantiers-board.component';
 import { TerminalHandComponent } from './terminal-hand.component';
 import { Hand, HandTarget, handOf } from './terminal-hand';
 import { JourneyGesture, TerminalJourneyStripComponent } from './terminal-journey-strip.component';
 import { JourneyService } from '../../core/services/journey.service';
 import {
-  ChantierResolution, ClosedChantier, JourneyMode, SubjectJourney, chantierResolution, focusChantierNumber, journeyResumeMessage,
+  ChantierResolution, ClosedChantier, JourneyMode, SubjectJourney, chantierResolution, chantiersGestures,
+  focusChantierNumber, journeyResumeMessage,
 } from '../../core/models/journey.models';
 import { TerminalAction, TerminalActionBoard } from '../../core/models/terminal-actions.models';
 import { AtelierTerminalDemandeComponent } from './atelier-terminal-demande.component';
@@ -276,6 +280,7 @@ export function plumeErrorMessage(failure: HttpErrorResponse | null | undefined)
     AttenteCardComponent,
     HandoffCardComponent, HandoffOriginComponent, ProposalCardComponent, BesoinCardComponent,
     TerminalJourneyChipComponent, TerminalJourneyStripComponent, TerminalJourneyChantiersComponent,
+    TerminalChantiersBoardComponent,
     TerminalHandComponent,
     AtelierTerminalDemandeComponent,
     AtelierSlashPanelComponent, AtelierSlashHelpComponent, AtelierSlashCostComponent,
@@ -389,6 +394,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
       // F-176 : le parcours du sujet (mode, phase) suit le terminal ouvert.
       this.journey.set(null);
       this.chantiersOpen.set(false);
+      this.boardOpen.set(false);
       this.loadJourney(value);
       // F-177 / SF-177-03 : les skills du sujet et du poste, pour l'autocomplétion du `/`.
       this.loadSkills(value);
@@ -968,6 +974,46 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   readonly journeyBusy = signal(false);
 
   private readonly journeys = inject(JourneyService);
+
+  /**
+   * **Le parcours en direct** (F-208 / SF-208-03) : l'événement SSE `journey` signale qu'un outil du parcours
+   * vient d'être appliqué ; le terminal QUI TOURNE relit son parcours sans attendre la fin du tour — la
+   * bande, la barre et le tableau des chantiers suivent.
+   */
+  private readonly liveJourney = effect(() => {
+    if (this.journeys.liveChanges() === 0) {
+      return;
+    }
+    untracked(() => {
+      if (this.projectId && this.submittingValue) {
+        this.loadJourney(this.projectId);
+      }
+    });
+  });
+
+  /** **Le tableau des chantiers** (F-208 / SF-208-03) : l'overlay est ouvert. */
+  readonly boardOpen = signal(false);
+
+  /** Un chantier au moins est ouvert : le bouton « Chantiers » existe. */
+  readonly hasOpenChantiers = computed(() => (this.journey()?.chantiers?.length ?? 0) > 0);
+
+  /** Le badge du bouton : les gestes attendus sur tous les chantiers ouverts. */
+  readonly chantiersBadge = computed(() => chantiersGestures(this.journey()));
+
+  openBoard(): void {
+    this.boardOpen.set(true);
+  }
+
+  closeBoard(): void {
+    this.boardOpen.set(false);
+  }
+
+  /** Le libellé accessible du bouton « Chantiers ». */
+  boardButtonLabel(): string {
+    const n = this.chantiersBadge();
+    return n > 0 ? `Tableau des chantiers — ${n} geste${n > 1 ? 's' : ''} attendu${n > 1 ? 's' : ''}`
+      : 'Tableau des chantiers';
+  }
 
   /** Le menu du terminal : Libre ou Guidé (F-176 / SF-176-01). */
   onJourneyMode(mode: JourneyMode): void {
