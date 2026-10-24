@@ -64,6 +64,8 @@ import {
   AtelierGovernanceProposal,
   AtelierAppRequest,
   AtelierProofBlock,
+  AtelierTerminalAudio,
+  AtelierTerminalVideo,
   TeamsAccess,
   AtelierNextStep,
   AtelierNextStepsChantier,
@@ -592,6 +594,9 @@ export class AtelierService {
       /** Carte « Enregistrer ce besoin ? » (F-205 / SF-205-02). */
       besoin?: AtelierAppRequest;
       proof?: AtelierProofBlock;
+      /** Vidéo et sons publiés (F-213 / SF-213-01). */
+      video?: AtelierTerminalVideo;
+      audio?: AtelierTerminalAudio;
       /** La question à laquelle une étape est rattachée (F-210 / SF-210-01). */
       question?: unknown;
       /** Rebranchement sur un tour en cours (F-84 / SF-84-02). */
@@ -765,6 +770,16 @@ export class AtelierService {
       // LES CAPTURES DE PREUVE (F-212 / SF-212-03). Sans image, rien — pas de bloc creux.
       if (Array.isArray(payload.proof?.captures) && payload.proof.captures.length > 0) {
         handlers.onProof?.({ toolUseId: payload.toolUseId ?? '', proof: payload.proof });
+      }
+    } else if (event === 'video') {
+      // UNE VIDÉO PUBLIÉE (F-213 / SF-213-01). Sans identifiant, rien — pas de bloc creux.
+      if (payload.video?.videoId) {
+        handlers.onVideo?.({ toolUseId: payload.toolUseId ?? '', video: payload.video });
+      }
+    } else if (event === 'audio') {
+      // DES SONS PUBLIÉS (F-213 / SF-213-01). Sans piste, rien — pas de bloc creux.
+      if (Array.isArray(payload.audio?.tracks) && payload.audio.tracks.length > 0) {
+        handlers.onAudio?.({ toolUseId: payload.toolUseId ?? '', audio: payload.audio });
       }
     } else if (event === 'proposal') {
       // LA PROPOSITION DE GOUVERNANCE (F-177 / SF-177-02). Sans identifiant, rien — pas de carte creuse.
