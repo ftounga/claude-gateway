@@ -5,6 +5,7 @@ import {
   AtelierAgentStreamAction,
   AtelierPlanStep,
   AtelierStreamAction,
+  AtelierTurnQuestions,
   AtelierTerminalBlock,
   AtelierQuestion,
   DepositedFileRef,
@@ -82,6 +83,11 @@ export interface AtelierThreadItem {
   nextSteps?: AtelierNextStep[];
   /** L'avancement du chantier guidé ouvert au moment de ces suites (F-196 / SF-196-02). */
   nextStepsChantier?: AtelierNextStepsChantier;
+  /**
+   * Les questions du tour quand l'agent l'a découpé (F-210 / SF-210-03), et leurs réponses (SF-210-02) :
+   * posées au `done` et au rechargement ; absentes sans découpage.
+   */
+  questions?: AtelierTurnQuestions;
 }
 
 /** Où en est une précision envoyée pendant un tour (F-84 / SF-84-06). */
@@ -233,4 +239,10 @@ export interface AtelierExecStreamingItem {
    * pour rester dans le flux. Optionnel : absent vaut « pas de compaction ».
    */
   compacting?: boolean;
+
+  /**
+   * Les questions du tour découpé (F-210 / SF-210-03) : l'instantané reçu, qui remplace le précédent.
+   * Optionnel : absent sans découpage.
+   */
+  questions?: AtelierTurnQuestions;
 }

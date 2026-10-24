@@ -939,6 +939,17 @@
             }
           }
         }
+        <!-- DEUX QUESTIONS, DEUX FILS (F-210 / SF-210-03) : le bandeau de découpage reste sur la réponse ;
+             « Fusionner » / « Séparer » seulement sous la dernière réponse. -->
+        @if (message.questions; as turnQuestions) {
+          <app-terminal-question-tracks
+            [questions]="turnQuestions"
+            [blocks]="message.terminal ?? []"
+            [readOnly]="readOnly || !isLastAssistantMessage(message)"
+            [disabled]="submitting && !steerable"
+            (request)="onQuestionRequest($event)"
+          ></app-terminal-question-tracks>
+        }
         @if (message.content) {
           <!--
             Commentaire de l'agent rendu en Markdown (SF-30-12) : le modèle répond en Markdown, et
@@ -1078,6 +1089,17 @@
             <span class="terminal-compaction-bar-fill"></span>
           </span>
         </div>
+      }
+      <!-- UNE PISTE PAR QUESTION, PENDANT LE TOUR (F-210 / SF-210-03). -->
+      @if (live.questions; as turnQuestions) {
+        <app-terminal-question-tracks
+          [questions]="turnQuestions"
+          [blocks]="live.blocks"
+          [live]="true"
+          [readOnly]="readOnly"
+          [disabled]="submitting && !steerable"
+          (request)="onQuestionRequest($event)"
+        ></app-terminal-question-tracks>
       }
       @for (block of live.blocks; track $index) {
         <!-- LOT D'EXPLORATIONS PARALLÈLES, AU FIL DE L'EAU (F-150 / SF-150-06) : mêmes règles qu'en

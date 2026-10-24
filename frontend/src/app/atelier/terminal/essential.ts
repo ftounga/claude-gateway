@@ -37,7 +37,8 @@ export interface EssentialSplit {
 export function splitEssential(content: string | null | undefined): EssentialSplit {
   // F-192 / SF-192-02 : le bloc « Et maintenant ? » parle au produit — jamais rendu, même pendant le
   // flux (la passerelle le retire de la réponse persistée, mais le texte vivant le porte encore).
-  const text = stripNextSteps(content ?? '');
+  // F-210 / SF-210-03 : les blocs `<<question id="N">>` d'une réponse découpée ne sont jamais montrés bruts.
+  const text = neutralizeQuestionMarkers(stripNextSteps(content ?? ''));
   const open = text.match(OPEN_MARKER);
   if (!open || open.index === undefined) {
     return { essential: null, detail: text };
@@ -89,4 +90,34 @@ export function stripNextSteps(content: string): string {
     rest = after.slice(close.index + close[0].length);
   }
   return removed ? (kept + rest).replace(/\n{3,}/g, '\n\n').trim() : content;
+}
+
+/** Ouverture d'un bloc de réponse par question (F-210), tolérante : `<<question id="1">>`, `<< Question 2 >>`… */
+const QUESTION_OPEN = /<<\s*question\s+(?:id\s*=\s*)?["']?(\d+)["']?\s*>>/gi;
+/** Fermeture : `<</question>>`. */
+const QUESTION_CLOSE = /<<\s*\/\s*question\s*>>/gi;
+/** Un marqueur de question encore incomplet en fin de flux (`<<quest`, `<</questi`…). */
+const QUESTION_PARTIAL = /<<\s*\/?\s*q[a-z]*[^>]*>?$/i;
+const ESSENTIAL_ALL = /<<\s*\/?\s*essentiel\s*>>/gi;
+
+/**
+ * Neutralise les marqueurs de question d'une réponse découpée (F-210 / SF-210-03) : chaque ouverture devient
+ * « **N.** », la fermeture disparaît, et les marqueurs d'essentiel internes sont retirés (une réponse à
+ * plusieurs questions n'a pas UN essentiel). Même rendu que le texte persisté par la gateway (SF-210-02).
+ * Sans marqueur de question, le texte revient tel quel.
+ */
+export function neutralizeQuestionMarkers(content: string): string {
+  const hasOpen = new RegExp(QUESTION_OPEN.source, 'i').test(content);
+  const partial = QUESTION_PARTIAL.test(content);
+  if (!hasOpen && !partial) {
+    return content;
+  }
+  let text = content.replace(QUESTION_PARTIAL, '');
+  if (hasOpen) {
+    text = text
+      .replace(QUESTION_OPEN, (_m, id: string) => `\n\n**${id}.**\n\n`)
+      .replace(QUESTION_CLOSE, '')
+      .replace(ESSENTIAL_ALL, '');
+  }
+  return text.replace(/\n{3,}/g, '\n\n').trim();
 }

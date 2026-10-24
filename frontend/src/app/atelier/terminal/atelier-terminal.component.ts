@@ -38,6 +38,7 @@ import { WeeklyBudgetService } from '../../core/services/weekly-budget.service';
 import { ProjectCostComponent } from '../../shared/project-cost/project-cost.component';
 import { ProjectCostService } from '../../core/services/project-cost.service';
 import { TerminalNextStepsComponent } from './terminal-next-steps.component';
+import { TerminalQuestionTracksComponent } from './terminal-question-tracks.component';
 import { PlumeView, TerminalPlumeComponent } from './terminal-plume.component';
 import { TerminalBarTier, terminalBarTier } from './terminal-bar-tier';
 import { PlumeService } from '../../core/services/plume.service';
@@ -291,7 +292,7 @@ export function plumeErrorMessage(failure: HttpErrorResponse | null | undefined)
     MatButtonToggleModule, MatIconModule, MatMenuModule, MatProgressBarModule, MatProgressSpinnerModule,
     MatTooltipModule, RouterLink,
     WeeklyBudgetComponent, ProjectCostComponent, DictationButtonComponent,
-    TerminalNextStepsComponent, TerminalPlumeComponent,
+    TerminalNextStepsComponent, TerminalPlumeComponent, TerminalQuestionTracksComponent,
     CopyBlockComponent, MessageBlocksPipe,
   ],
   templateUrl: './atelier-terminal.component.html',
@@ -592,6 +593,15 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    */
   onNextStepPick(request: string): void {
     this.draftChange.emit(request);
+  }
+
+  /**
+   * « Fusionner » / « Séparer » (F-210 / SF-210-03) : la demande est posée dans la saisie PUIS envoyée par le
+   * chemin normal — pendant un tour, elle devient une précision. Visible, jamais silencieuse.
+   */
+  onQuestionRequest(request: string): void {
+    this.draftChange.emit(request);
+    this.send.emit();
   }
 
   /** « Autre chose : tapez votre suite » : la main à la saisie. */

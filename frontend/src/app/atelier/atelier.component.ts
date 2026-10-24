@@ -74,6 +74,7 @@ import {
 } from '../chat/library-picker/library-picker-dialog.component';
 import { ApiKeyService } from '../core/services/api-key.service';
 import { AtelierService, TURN_STREAM_PROBE_MS } from '../core/services/atelier.service';
+import { normalizeTurnQuestions } from '../core/services/turn-questions';
 import { AtelierGuideService } from '../core/services/atelier-guide.service';
 import { HostPresenceService } from '../core/services/host-presence.service';
 import { LiveTerminalService } from '../core/services/live-terminal.service';
@@ -1969,6 +1970,11 @@ export class AtelierComponent implements OnInit, OnDestroy {
           );
           this.mirrorLocalSteps();
         }),
+      // F-210 / SF-210-03 : les questions du tour découpé — l'instantané remplace le précédent.
+      onQuestions: (questions) =>
+        this.zone.run(() =>
+          this.execStreaming.update((current) => (current ? { ...current, questions } : current)),
+        ),
       onText: (text) =>
         this.zone.run(() => {
           this.streaming.update((current) =>
@@ -2271,6 +2277,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
     // La transcription est reprise dans le tour final : sans cela, tout ce qui a défilé
     // pendant le tour disparaîtrait de l'écran (acquis F-30 SF-30-02).
     const transcript = this.execStreaming()?.blocks ?? [];
+    // F-210 / SF-210-03 : les questions du tour restent sur la réponse.
+    const questionsOfTurn = this.execStreaming()?.questions;
     // La durée est relevée par le backend (F-39 / SF-39-15) ; le chronomètre d'écran sert de
     // repli quand le champ manque — un backend antérieur ne l'émet pas.
     const elapsed = done.activeSeconds ?? this.execElapsedSeconds();
@@ -2301,6 +2309,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
         ...(done.nextSteps && done.nextSteps.length > 0 ? { nextSteps: done.nextSteps } : {}),
         // F-196 / SF-196-02 : l'avancement du chantier guidé ouvert, avec les suites.
         ...(done.nextStepsChantier ? { nextStepsChantier: done.nextStepsChantier } : {}),
+        ...(questionsOfTurn ? { questions: questionsOfTurn } : {}),
       },
     ]);
   }
@@ -3988,6 +3997,11 @@ export class AtelierComponent implements OnInit, OnDestroy {
           );
           this.mirrorLocalSteps();
         }),
+      // F-210 / SF-210-03 : les questions du tour découpé — l'instantané remplace le précédent.
+      onQuestions: (questions) =>
+        this.zone.run(() =>
+          this.execStreaming.update((current) => (current ? { ...current, questions } : current)),
+        ),
       onText: (text) =>
         this.zone.run(() => {
           this.streaming.update((current) =>
@@ -4492,6 +4506,11 @@ export function toThreadItem(message: AtelierMessage): AtelierThreadItem {
   // F-196 / SF-196-02 : l'avancement du chantier survit lui aussi au rechargement.
   if (stored.nextStepsChantier) {
     item.nextStepsChantier = stored.nextStepsChantier;
+  }
+  // F-210 / SF-210-03 : les questions d'un tour découpé, et leurs réponses, survivent au rechargement.
+  const questions = normalizeTurnQuestions(stored.questions, stored.answers);
+  if (questions) {
+    item.questions = questions;
   }
   // Les modifications vivent hors des blocs (F-37 SF-37-02) : un tour peut n'avoir lancé aucune
   // commande visible et avoir pourtant réécrit des fichiers.

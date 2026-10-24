@@ -506,6 +506,10 @@ export interface AtelierPersistedTranscript {
   nextSteps?: AtelierNextStep[];
   /** L'avancement du chantier guidé ouvert au moment des suites (F-196 / SF-196-01), sinon absent. */
   nextStepsChantier?: AtelierNextStepsChantier | null;
+  /** Les questions d'un tour découpé (F-210 / SF-210-01), lues par `normalizeTurnQuestions`. */
+  questions?: unknown;
+  /** Les réponses par question (F-210 / SF-210-02). */
+  answers?: unknown;
 }
 
 /**
@@ -581,6 +585,41 @@ export interface AtelierStreamAction {
    * Absente pour toute étape autre que `bash`.
    */
   output?: string;
+  /** La question du tour à laquelle l'étape est rattachée (F-210 / SF-210-01) ; absente hors découpage. */
+  question?: number;
+}
+
+/** L'état d'une question d'un tour découpé (F-210 / SF-210-01). */
+export type AtelierTurnQuestionState = 'EN_COURS' | 'EN_ATTENTE' | 'TERMINEE' | 'NON_ABOUTIE';
+
+/** Une question annoncée par l'agent (`decouper_demande`), telle que la gateway la relaie. */
+export interface AtelierTurnQuestion {
+  id: number;
+  libelle: string;
+  dependsOn: number | null;
+  state: AtelierTurnQuestionState;
+  /** Les appels d'outils rattachés à la question (identifiants de la transcription persistée). */
+  toolUseIds: string[];
+}
+
+/** La réponse à une question (F-210 / SF-210-02), rendue en carte par SF-210-04. */
+export interface AtelierQuestionAnswer {
+  id: number;
+  libelle: string;
+  status: AtelierTurnQuestionState;
+  essential: string | null;
+  body: string;
+  nextSteps: AtelierNextStep[];
+  chantier: AtelierNextStepsChantier | null;
+}
+
+/** Les questions d'un tour (SSE `questions`, `terminal_json.questions` / `answers`). */
+export interface AtelierTurnQuestions {
+  questions: AtelierTurnQuestion[];
+  /** Une seule réponse attendue : la seconde remplace la première, ou en dépend fortement. */
+  fusion: { raison: string } | null;
+  /** Les réponses par question (dernier instantané, SF-210-02) ; absentes pendant le tour. */
+  answers?: AtelierQuestionAnswer[];
 }
 
 /** Métadonnées de fin de flux d'atelier (événement SSE `done`, SF-28-05). */
@@ -837,6 +876,12 @@ export interface AtelierStreamHandlers {
    * Optionnel : un backend antérieur ne l'émet pas.
    */
   onAppRequest?: (event: AtelierAppRequestEvent) => void;
+
+  /**
+   * **Les questions du tour** (F-210 / SF-210-01) : l'instantané complet, à chaque découpage ou changement
+   * d'état, puis à la clôture (avec les réponses, SF-210-02). Optionnel : un backend antérieur ne l'émet pas.
+   */
+  onQuestions?: (questions: AtelierTurnQuestions) => void;
 
   /**
    * Numéro d'ordre du dernier événement reçu (F-84 / SF-84-02), lu dans le champ `id:` du
@@ -1186,6 +1231,8 @@ export interface AtelierTerminalBlock {
   tool: string;
   command?: string;
   toolUseId: string | null;
+  /** La question du tour à laquelle le bloc vivant est rattaché (F-210 / SF-210-03). */
+  question?: number;
   /**
    * Fil d'exécution dont vient le bloc (F-35 / SF-35-03) : sert à distinguer une sous-tâche du
    * travail principal. Chaîne **opaque** — jamais affichée telle quelle, elle n'a aucun sens pour
