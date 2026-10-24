@@ -652,6 +652,10 @@ public class RunnerCallDispatcher implements org.springframework.context.Applica
         if (tool != null && tool.startsWith(fr.claudegateway.atelier.video.VideoToolCatalog.PREFIX)) {
             return fr.claudegateway.atelier.video.VideoToolCatalog.CAPABILITY;
         }
+        // F-212 / SF-212-03 : la session de preuve exige la capacité `proof` (runner à jour).
+        if (fr.claudegateway.atelier.proof.ProofToolCatalog.RUNNER_TOOL.equals(tool)) {
+            return fr.claudegateway.atelier.proof.ProofToolCatalog.CAPABILITY;
+        }
         return tool != null && tool.startsWith("teams_") ? "teams" : "files";
     }
 

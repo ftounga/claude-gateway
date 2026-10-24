@@ -128,6 +128,11 @@ final class TurnSignals implements AtelierProgressListener {
     }
 
     @Override
+    public void onProof(String toolUseId, fr.claudegateway.atelier.proof.ProofBlock proof) {
+        delegate.onProof(toolUseId, proof);
+    }
+
+    @Override
     public void onAttente(String toolUseId, AttenteBlock attente) {
         if (attente != null && AttenteBlock.PROPOSED.equals(attente.kind())) {
             validationAwaiting = true;

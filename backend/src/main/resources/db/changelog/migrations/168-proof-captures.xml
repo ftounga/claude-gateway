@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-212 / SF-212-03 — LES CAPTURES DE PREUVE (demande PO du 2026-10-24).
+
+      Une ligne par IMAGE (une fenetre de terminal ; une session n'est decoupee que si elle est trop
+      haute). L'image vit dans le stockage objet sous preuves/{user_id}/{workspace_id}/{id}.png : la
+      cle est reconstruite depuis l'utilisateur authentifie, jamais lue d'un parametre client.
+      commands_json : les commandes de la session et leurs releves (code, duree, heure, dossier),
+      affiches SOUS la vignette — jamais dans l'image (amendement PO).
+
+      Isolation : user_id sur chaque ligne ; toute lecture filtre (id, user_id, workspace_id) apres
+      requireOwned. Cascade sur le terminal (les images partent avec lui, WorkspaceService.delete).
+      Rollback : la table se retire.
+    -->
+
+    <changeSet id="168-proof-captures" author="claude-gateway">
+        <createTable tableName="proof_captures">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_proof_captures_workspace"
+                             references="workspaces(id)" deleteCascade="true"/>
+            </column>
+            <column name="call_id" type="varchar(128)"/>
+            <column name="title" type="varchar(300)"/>
+            <column name="step" type="varchar(120)"/>
+            <column name="position" type="integer"><constraints nullable="false"/></column>
+            <column name="host" type="varchar(256)"/>
+            <column name="os" type="varchar(16)"/>
+            <column name="shell" type="varchar(32)"/>
+            <column name="width" type="integer"/>
+            <column name="height" type="integer"/>
+            <column name="commands_json" type="varchar(200000)"/>
+            <column name="storage_key" type="varchar(512)"><constraints nullable="false"/></column>
+            <column name="captured_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="proof_captures" indexName="idx_proof_captures_owner">
+            <column name="user_id"/>
+            <column name="workspace_id"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="proof_captures"/>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>

@@ -169,4 +169,18 @@ class JourneyRiskClassifierTest {
         assertThat(JourneyGate.isClosed(plan)).isFalse();
         assertThat(JourneyGate.message(plan)).isNull();
     }
+
+    @Test
+    @DisplayName("F-212 : une session de preuve vaut sa commande la plus risquée ; vide = modification")
+    void proofSessionTakesTheRiskiestCommand() {
+        ObjectMapper mapper = new ObjectMapper();
+        ObjectNode reads = mapper.createObjectNode();
+        reads.putArray("commandes").add("ls").add("git status");
+        assertThat(JourneyRiskClassifier.classify("capturer_preuves", reads)).isEqualTo(Risk.LECTURE);
+        ObjectNode external = mapper.createObjectNode();
+        external.putArray("commandes").add("ls").add("kubectl apply -f x.yaml");
+        assertThat(JourneyRiskClassifier.classify("capturer_preuves", external)).isEqualTo(Risk.EXTERNE);
+        assertThat(JourneyRiskClassifier.classify("capturer_preuves", mapper.createObjectNode()))
+                .isEqualTo(Risk.REVERSIBLE);
+    }
 }
