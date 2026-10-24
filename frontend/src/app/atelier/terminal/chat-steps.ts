@@ -29,6 +29,8 @@ export function chatStepsToBlocks(steps: AtelierStreamAction[]): AtelierTerminal
     hasOutput: step.output !== undefined,
     error: false,
     expanded: false,
+    // F-210 / SF-210-03 : la piste de la question à laquelle l'étape est rattachée.
+    ...(typeof step.question === 'number' ? { question: step.question } : {}),
   }));
 }
 

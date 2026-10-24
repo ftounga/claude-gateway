@@ -1,4 +1,4 @@
-import { splitEssential, stripNextSteps } from './essential';
+import { neutralizeQuestionMarkers, splitEssential, stripNextSteps } from './essential';
 
 /**
  * Découpage « L'essentiel » / « Le détail » (F-126 / SF-126-01). Fonction pure, testée sans TestBed.
@@ -77,5 +77,28 @@ describe('splitEssential', () => {
       expect(split.essential).toBe('Oui.');
       expect(split.detail).toBe('Détail.');
     });
+  });
+});
+
+describe('neutralizeQuestionMarkers (F-210 / SF-210-03)', () => {
+  it('ne montre jamais un marqueur de question brut, et retire les essentiels internes', () => {
+    const { essential, detail } = splitEssential(
+      '<<question id="1">>\n<<essentiel>>\nOui.\n<</essentiel>>\nDétail 1\n<</question>>\n'
+        + '<<question id="2">>\n<<essentiel>>\nNon.\n<</essentiel>>\n<</question>>',
+    );
+    expect(essential).toBeNull();
+    expect(detail).not.toContain('<<');
+    expect(detail).toContain('**1.**');
+    expect(detail).toContain('**2.**');
+    expect(detail).toContain('Oui.');
+  });
+
+  it('retire un marqueur encore incomplet en fin de flux', () => {
+    expect(neutralizeQuestionMarkers('Texte\n<<quest')).toBe('Texte');
+    expect(neutralizeQuestionMarkers('Texte\n<<question id="2">')).toBe('Texte');
+  });
+
+  it('laisse un texte sans marqueur intact', () => {
+    expect(neutralizeQuestionMarkers('Rien à voir << ici >> !')).toBe('Rien à voir << ici >> !');
   });
 });

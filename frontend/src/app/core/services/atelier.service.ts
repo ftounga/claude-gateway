@@ -5,6 +5,7 @@ import { Observable, tap } from 'rxjs';
 import { AuthService } from './auth.service';
 import { HostPresenceService } from './host-presence.service';
 import { depositFileName } from './deposit-file-name';
+import { normalizeTurnQuestions } from './turn-questions';
 import {
   AtelierAgentStreamAction,
   AtelierFileDiff,
@@ -587,6 +588,8 @@ export class AtelierService {
       proposal?: AtelierGovernanceProposal;
       /** Carte « Enregistrer ce besoin ? » (F-205 / SF-205-02). */
       besoin?: AtelierAppRequest;
+      /** La question à laquelle une étape est rattachée (F-210 / SF-210-01). */
+      question?: unknown;
       /** Rebranchement sur un tour en cours (F-84 / SF-84-02). */
       turnId?: string | null;
       cursor?: number;
@@ -626,7 +629,18 @@ export class AtelierService {
         startedAt: typeof payload.startedAt === 'number' ? payload.startedAt : 0,
       });
     } else if (event === 'action') {
-      handlers.onAction({ type: payload.type ?? 'read', path: payload.path });
+      // F-210 / SF-210-01 : `question` (additif) rattache l'étape à une question du tour découpé.
+      handlers.onAction({
+        type: payload.type ?? 'read',
+        path: payload.path,
+        ...(typeof payload.question === 'number' ? { question: payload.question } : {}),
+      });
+    } else if (event === 'questions') {
+      // F-210 / SF-210-01 : les questions du tour. Un instantané illisible est ignoré — pas de piste creuse.
+      const questions = normalizeTurnQuestions(payload);
+      if (questions) {
+        handlers.onQuestions?.(questions);
+      }
     } else if (event === 'output') {
       // Sortie d'une commande exécutée sur la machine connectée (F-38 / SF-38-07). Additif : un
       // backend antérieur ne l'émet pas, et un appelant qui ne s'y abonne pas l'ignore.
