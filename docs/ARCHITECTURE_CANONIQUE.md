@@ -504,6 +504,13 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   HMAC lié à vidéo + version + compte). Purge : objets et lignes par `WorkspaceService.delete` ; objets du
   compte par `AccountService`.
 
+- **speech_preferences** — **la voix off par défaut d'un compte** (F-215 / SF-215-01, migration `170`).
+  `user_id (PK)`, `voice (≤ 32, liste blanche du fournisseur)`, `instructions (≤ 1 000, consignes de ton,
+  null = D2)`, `updated_at`. Absente = `onyx` + consignes de formateur (D2). Lue par l'outil `voix_off`
+  (appel > préférence > D2) ; routes `GET /speech/voices`, `PUT|DELETE /speech/preference` sous le
+  `user_id` du jeton. Aucun audio n'est stocké côté gateway (mp3 et `.mots.json` déposés sur le poste).
+  Purge : `AccountService`.
+
 - **session_bilans** — **le bilan d'une session, gardé comme artefact** (F-155 / SF-155-04,
   migration `132`). Un bilan qui n'existe que dans une réponse HTTP est un bilan qu'on ne relit
   jamais et qu'on ne peut pas **comparer** — or comparer est tout l'intérêt (« le cache est remonté
