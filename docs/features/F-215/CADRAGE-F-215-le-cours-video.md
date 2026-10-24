@@ -28,6 +28,13 @@ Aucun gabarit de vidéo, aucun prompt de contenu par défaut. L'agent reçoit un
 7. **Exactitude des faits** (risque n°1 sur 20 min) : chaque affirmation technique de la narration doit être **sourcée** (fait de carte, page, fichier du repo, CR) ; une **fiche des sources** par épisode accompagne la vidéo (affichée sous le lecteur) ; ce qui n'est pas vérifié est soit retiré, soit dit comme hypothèse et listé « à confirmer ». Aucune adresse, port ou nom inventé : une valeur inconnue s'affiche comme générique (`10.180.171.x`) — règle appliquée dans l'essai.
 8. **Plume pour la vidéo** (extension de F-193) : quand la demande vise une vidéo, « ✨ Enrichir » la structure en **cahier de réalisation** à partir du contexte du sujet : public et niveau, objectif pédagogique, format (vidéo unique ou série) et durée, **chapitres proposés depuis les sources réellement disponibles**, notions qui doivent apparaître à l'écran, sources à utiliser, style/charte, voix, « à confirmer » surlignés. Rien n'est envoyé sans geste (comportement F-193 inchangé).
 
+## Amendement PO du 2026-10-24 — « Je veux pouvoir changer de voix » (prioritaire)
+1. **Au fil de la demande** : « avec une voix féminine », « prends la voix 3 », « plus dynamique » ⇒ l'agent choisit la voix et adapte les consignes de ton en conséquence ; « fais-moi écouter des voix » ⇒ auditions à tout moment (pas seulement en début de série).
+2. **Voix par défaut choisie par l'utilisateur** : préférence persistée par compte (Paramètres › Vidéos : liste des voix du fournisseur, bouton ▶ pour écouter un échantillon fixe, consignes de ton modifiables) ; à défaut, « onyx » + consignes de D2. `voix_off` sans voix explicite lit cette préférence. Changer la préférence n'altère aucune vidéo existante.
+3. **Par série** : la voix est fixée pour toute la série (cohérence entre épisodes) et modifiable pour la série entière.
+4. **Changer la voix d'une vidéo déjà faite** : « refais-la avec une autre voix » ⇒ nouvelle narration + nouvel horodatage des mots, animations recalées, publiée comme **nouvelle version** (`video_publier(remplace)`, F-213) — l'ancienne reste consultable.
+5. Rattachement : points 1, 2 et 4 dans **SF-215-01** (préférence + écran Paramètres compris), point 3 dans **SF-215-04**.
+
 ## Préoccupations transversales
 - **Plans / limites** : nouvel usage payant (voix) ⇒ compté au journal d'usage comme Plume ; quota hébergé appliqué aux tours de fabrication comme à tout tour.
 - **Contexte tenant** : `voix_off` écrit dans le dossier du sujet du poste de l'utilisateur seulement ; usage rattaché à `user_id`.
