@@ -299,6 +299,15 @@ public class AccountService {
         this.notificationPreferenceRepository = notificationPreferenceRepository;
     }
 
+    /** Voix par défaut (F-215 / SF-215-01) : même doctrine, {@code null} = rien à effacer. */
+    private fr.claudegateway.speech.SpeechPreferenceRepository speechPreferenceRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setSpeechPreferenceRepository(
+            fr.claudegateway.speech.SpeechPreferenceRepository speechPreferenceRepository) {
+        this.speechPreferenceRepository = speechPreferenceRepository;
+    }
+
     /** Récapitulatifs envoyés (F-185 / SF-185-07) : même doctrine, {@code null} = rien à effacer. */
     private fr.claudegateway.notifications.NotificationDigestWriter notificationDigestWriter;
 
@@ -499,6 +508,9 @@ public class AccountService {
         }
         if (notificationPreferenceRepository != null) {
             notificationPreferenceRepository.deleteById(userId);
+        }
+        if (speechPreferenceRepository != null && speechPreferenceRepository.existsById(userId)) {
+            speechPreferenceRepository.deleteById(userId);
         }
         if (notificationDigestWriter != null) {
             notificationDigestWriter.deleteByUserId(userId);

@@ -23,7 +23,33 @@ public interface TranscriptionProvider {
      */
     Transcript transcribe(byte[] audio, String contentType, String languageHint);
 
+    /**
+     * Transcrit l'audio <b>mot par mot</b>, chaque mot avec son instant de début et de fin
+     * (F-215 / SF-215-01 : caler les animations d'une vidéo sur la voix off).
+     *
+     * <p>Méthode par défaut : un fournisseur qui ne sait pas horodater les mots le dit par
+     * {@link UnsupportedOperationException} — l'appelant continue sans horodatage.</p>
+     *
+     * @throws TranscriptionProviderUnavailableException si le service n'est pas configuré (aucun appel émis)
+     * @throws TranscriptionProviderException            si l'appel au service échoue
+     */
+    default WordTranscript transcribeWords(byte[] audio, String contentType, String languageHint) {
+        throw new UnsupportedOperationException("Horodatage par mot non pris en charge par ce fournisseur.");
+    }
+
     /** Un transcript relu du service : le texte (horodaté si possible) et la langue détectée. */
     record Transcript(String text, String language) {
+    }
+
+    /** Un mot horodaté, en secondes depuis le début de l'audio. */
+    record TimedWord(String word, double start, double end) {
+    }
+
+    /** Une transcription mot par mot : les mots dans l'ordre, la durée totale (secondes), la langue. */
+    record WordTranscript(java.util.List<TimedWord> words, double durationSeconds, String language) {
+
+        public WordTranscript {
+            words = words == null ? java.util.List.of() : java.util.List.copyOf(words);
+        }
     }
 }

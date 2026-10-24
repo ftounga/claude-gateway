@@ -2258,6 +2258,26 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.videoToolExecutor = executor;
     }
 
+    /**
+     * La voix off (F-215 / SF-215-01) — par mutateur : absente (formes historiques / tests), l'outil n'est
+     * jamais donné.
+     */
+    private fr.claudegateway.speech.SpeechToolCatalog speechToolCatalog =
+            fr.claudegateway.speech.SpeechToolCatalog.none();
+    private fr.claudegateway.speech.SpeechToolExecutor speechToolExecutor;
+    private fr.claudegateway.speech.SpeechProperties speechProperties;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setSpeechTools(fr.claudegateway.speech.SpeechToolCatalog catalog,
+            fr.claudegateway.speech.SpeechToolExecutor executor,
+            fr.claudegateway.speech.SpeechProperties properties) {
+        if (catalog != null) {
+            this.speechToolCatalog = catalog;
+        }
+        this.speechToolExecutor = executor;
+        this.speechProperties = properties;
+    }
+
     /** Les outils du parcours et leur garde (F-176) ; {@code none()} = jamais donnés. */
     private fr.claudegateway.atelier.journey.JourneyToolCatalog journeyToolCatalog =
             fr.claudegateway.atelier.journey.JourneyToolCatalog.none();
@@ -3048,6 +3068,8 @@ public class AtelierChatService implements RelayInterruptTarget {
                 new java.util.HashMap<>();
         /** Nombre d'images décoratives générées pendant ce tour (F-142 / SF-142-04), pour la borne par tour. */
         int[] imageCountOfTurn = {0};
+        // F-215 / SF-215-01 : nombre d'appels voix_off pendant ce tour, pour la borne par tour.
+        int[] speechCountOfTurn = {0};
         // La compaction (F-117 / SF-117-01) est un appel modèle : sa consommation entre dans les
         // compteurs du tour dès le départ, pour passer par le décompte d'usage existant
         // (`recordUsage`) sans chemin de quota séparé ni double comptage.
@@ -3747,6 +3769,11 @@ public class AtelierChatService implements RelayInterruptTarget {
                     // son bloc est admis dans tout terminal.
                     outcome = applyVideoPublish(userId, workspace, callId, call, listener, videosOfTurn,
                             audiosOfTurn);
+                } else if (fr.claudegateway.speech.SpeechToolCatalog.isSpeechTool(call.name())) {
+                    // F-215 / SF-215-01 : la voix off est synthétisée par la gateway (relais fournisseur),
+                    // déposée sur le poste avec ses mots horodatés ; les auditions publient un bloc audio.
+                    outcome = applyVoiceOff(userId, workspace, callId, call, listener, audiosOfTurn,
+                            speechCountOfTurn);
                 } else if ("recall".equals(call.name())) {
                     // F-162 / SF-162-01 : rappel à la demande. Recherche dans NOTRE historique de
                     // conversation (atelier_messages), côté gateway, indépendamment de la cible
@@ -5091,6 +5118,50 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
         pagesOfTurn.put(callId, outcome.block());
         listener.onPage(callId, outcome.block());
+        return ToolOutcome.info(outcome.content());
+    }
+
+    /**
+     * <b>La voix off</b> (F-215 / SF-215-01). Second verrou de garde ici (l'outil n'est pas déclaré hors garde),
+     * borne par tour, puis <b>l'accord d'un clic</b> (service payant) : refus ou délai, rien n'est produit. Les
+     * auditions publient un bloc audio dans le fil, couvert par le même accord.
+     */
+    private ToolOutcome applyVoiceOff(UUID userId, Workspace workspace, String callId, AgentToolCall call,
+            AtelierProgressListener listener,
+            java.util.Map<String, fr.claudegateway.videos.AudioBlock> audiosOfTurn, int[] speechCountOfTurn) {
+        if (speechToolExecutor == null || !speechToolCatalog.isOpenFor(userId, workspace)) {
+            return ToolOutcome.error("La voix off n'est pas ouverte dans ce terminal. Poursuis sans voix.");
+        }
+        int cap = speechProperties == null ? 20 : speechProperties.maxPerTurn();
+        if (speechCountOfTurn[0] >= cap) {
+            return ToolOutcome.error("Limite de voix off atteinte pour ce message (" + cap + ") : poursuis au "
+                    + "message suivant.");
+        }
+        String target = fr.claudegateway.speech.SpeechToolExecutor.auditTarget(call.input());
+        if (!blanketAllowedTurns.contains(turnKey(userId, workspace.getId()))) {
+            boolean auditions = call.input() != null && call.input().path("auditions").asBoolean(false);
+            RunnerConfirmationGate.Outcome decision = askPermission(userId, workspace.getId(), callId,
+                    call.name(), (auditions ? "Faire écouter des voix sur « " : "Produire la voix off « ")
+                            + (target == null ? "sans texte" : target) + " » — service payant", listener);
+            if (!decision.decision().allows()) {
+                if (decision.decision() == RunnerConfirmationGate.Decision.TIMEOUT) {
+                    return ToolOutcome.error("Voix off refusée : aucune autorisation n'a été donnée dans le délai imparti.");
+                }
+                return ToolOutcome.error(decision.reason() == null || decision.reason().isBlank()
+                        ? "Voix off refusée par l'utilisateur."
+                        : "Voix off refusée par l'utilisateur. Motif : " + decision.reason());
+            }
+        }
+        speechCountOfTurn[0]++;
+        fr.claudegateway.speech.SpeechToolExecutor.Outcome outcome =
+                speechToolExecutor.execute(userId, workspace, callId, call.input());
+        if (outcome.error()) {
+            return ToolOutcome.error(outcome.content());
+        }
+        if (outcome.auditions() != null) {
+            audiosOfTurn.put(callId, outcome.auditions());
+            listener.onAudio(callId, outcome.auditions());
+        }
         return ToolOutcome.info(outcome.content());
     }
 
@@ -7321,6 +7392,10 @@ public class AtelierChatService implements RelayInterruptTarget {
         if (fr.claudegateway.videos.VideoToolCatalog.isVideoTool(call.name())) {
             return ToolOutcome.error("La publication de vidéos n'est pas ouverte ici. Réponds en clair.");
         }
+        // F-215 / SF-215-01 : la voix off est traitée par la boucle (garde + borne + accord).
+        if (fr.claudegateway.speech.SpeechToolCatalog.isSpeechTool(call.name())) {
+            return ToolOutcome.error("La voix off n'est pas ouverte ici. Poursuis sans voix.");
+        }
         if (workspace.isRunnerTarget()) {
             return executeToolOnRunner(userId, workspace, callId, call, listener, deadline);
         }
@@ -8251,6 +8326,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                 // F-213 / SF-213-01 : une vidéo se lit par son titre, jamais par son contenu.
                 if (fr.claudegateway.videos.VideoToolCatalog.isVideoTool(call.name())) {
                     yield shorten(fr.claudegateway.videos.VideoToolExecutor.auditTarget(input), AUDIT_TARGET_CHARS);
+                }
+                // F-215 / SF-215-01 : une voix off se lit par le début de son texte, jamais par l'audio.
+                if (fr.claudegateway.speech.SpeechToolCatalog.isSpeechTool(call.name())) {
+                    yield shorten(fr.claudegateway.speech.SpeechToolExecutor.auditTarget(input), AUDIT_TARGET_CHARS);
                 }
                 if (fr.claudegateway.teams.TeamsToolCatalog.isCapture(call.name())) {
                     yield shorten(teamsCaptureAuditTarget(call), AUDIT_TARGET_CHARS);
@@ -9441,6 +9520,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         tools.addAll(pageToolCatalog.toolsFor(userId, workspace));
         // F-213 / SF-213-01 : video_publier et audio_publier, même garde d'espace que les pages, cible poste.
         tools.addAll(videoToolCatalog.toolsFor(userId, workspace));
+        // F-215 / SF-215-01 : voix_off, même garde que video_publier + coupe-circuit de la voix.
+        tools.addAll(speechToolCatalog.toolsFor(userId, workspace));
         // F-129 / SF-129-02 : l'outil presentation_publish, sous la même garde d'espace que les pages.
         tools.addAll(presentationToolCatalog.toolsFor(userId, workspace));
         // F-142 / SF-142-04 : l'outil de génération d'images décoratives, sous la même garde d'espace.

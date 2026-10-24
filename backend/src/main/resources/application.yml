@@ -589,6 +589,21 @@ app:
     max-account-images: ${APP_IMAGE_MAX_ACCOUNT_IMAGES:500}
     # Coût enregistré par image (EUR) — journalisé sur la ligne generated_images.
     cost-eur-per-image: ${APP_IMAGE_COST_EUR_PER_IMAGE:0.04}
+  speech:
+    # VOIX OFF (F-215 / SF-215-01) : synthèse vocale relayée (OpenAI gpt-4o-mini-tts) derrière SpeechProvider,
+    # outil voix_off (mp3 + mots horodatés) et Paramètres › Vidéos. AUCUN NOUVEAU SECRET : la clé est celle
+    # d'OpenAI déjà fournie au STT / à la dictée (APP_STT_API_KEY) ; APP_SPEECH_API_KEY ne sert qu'à la
+    # remplacer. Sans clé => outil non déclaré, routes 503. COUPE-CIRCUIT : APP_ATELIER_SPEECH_ENABLED=false.
+    enabled: ${APP_ATELIER_SPEECH_ENABLED:true}
+    base-url: ${APP_SPEECH_BASE_URL:https://api.openai.com/v1}
+    api-key: ${APP_SPEECH_API_KEY:${APP_STT_API_KEY:}}
+    model: ${APP_SPEECH_MODEL:gpt-4o-mini-tts}
+    timeout: ${APP_SPEECH_TIMEOUT:PT120S}
+    max-text-chars: ${APP_SPEECH_MAX_TEXT_CHARS:4000}
+    max-per-turn: ${APP_SPEECH_MAX_PER_TURN:20}
+    # Tarifs du journal d'usage (USD) : synthèse par 1 000 caractères, transcription des mots par minute.
+    cost-usd-per-thousand-chars: ${APP_SPEECH_COST_USD_PER_1K_CHARS:0.015}
+    transcription-cost-usd-per-minute: ${APP_SPEECH_TRANSCRIPTION_COST_USD_PER_MIN:0.006}
   # F-153 / SF-153-02 — WEB PUSH (notifications, app fermée / téléphone verrouillé).
   # ÉTEINT PAR DÉFAUT (DRAPEAU FORT) : tant que les clés VAPID ne sont pas fournies par
   # l'environnement (secrets backend APP_PUSH_VAPID_PUBLIC / APP_PUSH_VAPID_PRIVATE), aucune

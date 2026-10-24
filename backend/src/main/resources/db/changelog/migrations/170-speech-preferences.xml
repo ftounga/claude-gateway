@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-215 / SF-215-01 - VOIX PAR DEFAUT DU COMPTE (amendement PO « je veux pouvoir changer de voix »).
+
+      UNE LIGNE PAR COMPTE (cle user_id) ; absente = reglages D2 (onyx + consignes de formateur). voice =
+      un nom de la liste blanche du fournisseur ; instructions = consignes de ton, facultatives. Changer la
+      preference n'altere aucune video existante. Purge explicite a la suppression du compte.
+      (168 reserve a F-212.)
+    -->
+
+    <changeSet id="170-speech-preferences" author="claude-gateway">
+        <createTable tableName="speech_preferences">
+            <column name="user_id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="voice" type="varchar(32)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="instructions" type="varchar(1000)"/>
+            <column name="updated_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <rollback>
+            <dropTable tableName="speech_preferences"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
