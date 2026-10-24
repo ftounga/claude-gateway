@@ -812,6 +812,15 @@
         </section>
       }
 
+      @case ('videos') {
+        <!-- LES VIDÉOS DU POSTE (F-213 / SF-213-03) : publiées depuis ses sujets ; séries rangées sous leur titre. -->
+        <section class="poste__panel poste__videos" role="tabpanel">
+          @if (host.id; as hostId) {
+            <app-video-gallery [hostId]="hostId"></app-video-gallery>
+          }
+        </section>
+      }
+
       @case ('presentations') {
         <!-- LES PRÉSENTATIONS DU POSTE (F-129 / SF-129-02) : .pptx capturés depuis ses projets. -->
         <section class="poste__panel poste__presentations" role="tabpanel">

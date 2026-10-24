@@ -58,6 +58,12 @@ export function mediaSourceWithPreview(mediaUrl: string, durationS: number | nul
   return `${mediaUrl}#t=${Math.max(0.1, Math.round(durationS * 0.1 * 10) / 10)}`;
 }
 
+/** L'adresse de la galerie Vidéos d'un sujet, ouverte sur une vidéo (F-213 / SF-213-03). */
+export function videoGalleryPath(workspaceId: string, videoId?: string | null): string {
+  const base = `/atelier/${encodeURIComponent(workspaceId)}/videos`;
+  return videoId ? `${base}?video=${encodeURIComponent(videoId)}` : base;
+}
+
 /** Le bloc de transcription d'une vidéo reçue au fil de l'eau (rangé comme une carte). */
 export function videoBlock(toolUseId: string, video: AtelierTerminalVideo): AtelierTerminalBlock {
   return {

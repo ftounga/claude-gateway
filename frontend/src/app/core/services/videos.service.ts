@@ -2,7 +2,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
-import { VideoSummary } from '../models/videos.models';
+import { VideoGallery, VideoGalleryPlace, VideoSummary } from '../models/videos.models';
 
 /**
  * **Les vidéos** (F-213). Aucun appel ne porte d'identifiant de compte : la gateway part du JWT et ne rend que
@@ -16,5 +16,27 @@ export class VideosService {
   get(videoId: string, version?: number | null): Observable<VideoSummary> {
     const params = version ? new HttpParams().set('version', String(version)) : undefined;
     return this.http.get<VideoSummary>(`/api/videos/${videoId}`, { params });
+  }
+
+  /** La galerie d'un sujet ou d'un poste (F-213 / SF-213-03) : séries et vidéos seules, jamais les sons. */
+  gallery(place: VideoGalleryPlace): Observable<VideoGallery> {
+    const params: Record<string, string> =
+      'workspaceId' in place ? { workspaceId: place.workspaceId } : { hostId: place.hostId };
+    return this.http.get<VideoGallery>('/api/videos', { params });
+  }
+
+  /** Supprime une vidéo, ses versions et ses objets. */
+  remove(videoId: string): Observable<void> {
+    return this.http.delete<void>(`/api/videos/${videoId}`);
+  }
+
+  /** Supprime une série et tous ses épisodes. */
+  removeSeries(seriesId: string): Observable<void> {
+    return this.http.delete<void>(`/api/video-series/${seriesId}`);
+  }
+
+  /** La durée lue par le navigateur corrige celle annoncée par l'agent. */
+  reportDuration(videoId: string, durationS: number): Observable<void> {
+    return this.http.put<void>(`/api/videos/${videoId}/duration`, { durationS });
   }
 }
