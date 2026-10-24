@@ -950,7 +950,56 @@
             (request)="onQuestionRequest($event)"
           ></app-terminal-question-tracks>
         }
-        @if (message.content) {
+        <!-- UNE CARTE PAR QUESTION (F-210 / SF-210-04) : quand la réponse porte `answers`, chaque question a sa
+             carte — essentiel, détail, badge du chantier, « Non aboutie », et SES suites (composant F-209). Le
+             texte lisible du message n'est alors pas rendu en double. Sans `answers` : rendu habituel. -->
+        @if (answerCards(message); as cards) {
+          @for (answer of cards; track answer.id) {
+            <section class="terminal-answer-card" [attr.data-status]="answer.status" [attr.aria-label]="'Question ' + answer.id + ' : ' + answer.libelle">
+              <header class="terminal-answer-head">
+                <span class="terminal-answer-num">Q{{ answer.id }}</span>
+                <span class="terminal-answer-title">{{ answer.libelle }}</span>
+                <span class="terminal-answer-badge" [class.terminal-answer-badge--off]="!answer.chantier">{{ answerBadge(answer) }}</span>
+                @if (answer.status === 'NON_ABOUTIE') {
+                  <span class="terminal-answer-undone">Non aboutie</span>
+                }
+              </header>
+              @if (answer.essential) {
+                <div class="terminal-essential">
+                  <span class="terminal-essential-label">L'essentiel</span>
+                  <ng-container *ngTemplateOutlet="agentText; context: { $implicit: answer.essential, essential: true }"></ng-container>
+                </div>
+              }
+              @if (answer.body) {
+                <div class="terminal-detail">
+                  @if (answer.essential) {
+                    <span class="terminal-detail-label">Le détail</span>
+                  }
+                  <ng-container *ngTemplateOutlet="agentText; context: { $implicit: answer.body, essential: false }"></ng-container>
+                </div>
+              }
+              @if (!answer.essential && !answer.body) {
+                <p class="terminal-answer-empty">Cette question n'a pas abouti dans ce tour.</p>
+              }
+              @if (answerStepsOf(message, answer); as steps) {
+                @if (steps.length > 0) {
+                  <app-terminal-next-steps
+                    [steps]="steps"
+                    [chantier]="answerChantierOf(answer)"
+                    [focus]="focusChantier()"
+                    [draft]="draft"
+                    [turnKey]="message.id + '-q' + answer.id"
+                    [globalKeys]="isFirstCardWithSteps(message, answer)"
+                    (pick)="onNextStepPick($event)"
+                    (other)="focusDraft()"
+                    (switchChantier)="onSwitchChantier($event)"
+                    (launch)="onBoardRequest($event)"
+                  ></app-terminal-next-steps>
+                }
+              }
+            </section>
+          }
+        } @else if (message.content) {
           <!--
             Commentaire de l'agent rendu en Markdown (SF-30-12) : le modèle répond en Markdown, et
             l'interpolation brute affichait les ** et les ## à l'écran. Le pipe assainit par DOMPurify

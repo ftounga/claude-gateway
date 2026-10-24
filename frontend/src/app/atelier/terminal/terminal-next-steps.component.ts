@@ -459,6 +459,11 @@ export class TerminalNextStepsComponent {
   readonly draft = input<string>('');
   /** Identité du tour (id du message) : un nouveau tour rouvre le panneau. */
   readonly turnKey = input<string | null>(null);
+  /**
+   * Les touches 1-N répondent sans focus dans le panneau (F-210 / SF-210-04) : faux pour les panneaux
+   * des cartes suivantes d'une réponse découpée — sinon une touche cocherait dans toutes les cartes.
+   */
+  readonly globalKeys = input<boolean>(true);
 
   /** Les options cochées : leur enchaînement, à poser dans la saisie — sans envoi (vide ⇒ tout décoché). */
   readonly pick = output<string>();
@@ -675,10 +680,13 @@ export class TerminalNextStepsComponent {
   /** Le focus est-il dans le terminal qui porte ce panneau (ou nulle part) ? */
   private focusIsHere(): boolean {
     const active = document.activeElement;
+    const element = this.host.nativeElement as HTMLElement;
+    if (!this.globalKeys()) {
+      return !!active && element.contains(active);
+    }
     if (!active || active === document.body) {
       return true;
     }
-    const element = this.host.nativeElement as HTMLElement;
     const terminal = element.closest('app-atelier-terminal') ?? element;
     return terminal.contains(active);
   }

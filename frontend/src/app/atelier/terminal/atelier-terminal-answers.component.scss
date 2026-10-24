@@ -1,0 +1,95 @@
+/* ------------------------------------------------------------------ F-210 / SF-210-04
+   UNE CARTE PAR QUESTION. Feuille à part : la feuille principale est au budget de build (12 ko).
+   Jetons de charte du terminal sombre uniquement — aucune couleur ni police nouvelle (mêmes voiles
+   `color-mix` de l'accent que le bloc essentiel ; l'ambre #F9A825 est celui du panneau des suites). */
+.terminal-answer-card {
+  margin: var(--cg-space-2) 0 var(--cg-space-3);
+  padding: var(--cg-space-2) var(--cg-space-3);
+  border: 1px solid color-mix(in srgb, var(--cg-divider) 18%, transparent);
+  border-radius: 12px;
+}
+
+.terminal-answer-card[data-status='NON_ABOUTIE'] {
+  border-color: color-mix(in srgb, #F9A825 45%, transparent);
+}
+
+.terminal-answer-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--cg-space-1) var(--cg-space-2);
+  margin-bottom: var(--cg-space-1);
+}
+
+.terminal-answer-num {
+  padding: 0 6px;
+  border-radius: 4px;
+  font: 600 12px 'JetBrains Mono', monospace;
+  color: var(--cg-surface);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.terminal-answer-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+  color: var(--cg-surface);
+}
+
+.terminal-answer-badge,
+.terminal-answer-undone {
+  padding: 0 8px;
+  border-radius: 999px;
+  font: 500 11px 'JetBrains Mono', monospace;
+  white-space: nowrap;
+}
+
+.terminal-answer-badge {
+  color: var(--cg-accent);
+  background: color-mix(in srgb, var(--cg-accent) 14%, transparent);
+}
+
+.terminal-answer-badge--off {
+  color: var(--cg-divider);
+  background: color-mix(in srgb, var(--cg-divider) 12%, transparent);
+}
+
+.terminal-answer-undone {
+  color: #F9A825;
+  background: color-mix(in srgb, #F9A825 14%, transparent);
+}
+
+.terminal-answer-empty {
+  margin: var(--cg-space-1) 0;
+  font-size: 13px;
+  color: var(--cg-divider);
+}
+
+/* Reprise sur le papier du terminal Teams (§15) : encres de la peau Teams, aucune couleur nouvelle. */
+.terminal-view--teams {
+  .terminal-answer-card {
+    border-color: var(--cg-terminal-teams-rule);
+  }
+
+  .terminal-answer-card[data-status='NON_ABOUTIE'],
+  .terminal-answer-undone {
+    border-color: var(--cg-terminal-teams-warn);
+    color: var(--cg-terminal-teams-warn);
+    background: color-mix(in srgb, var(--cg-terminal-teams-warn) 10%, transparent);
+  }
+
+  .terminal-answer-card[data-status='NON_ABOUTIE'] {
+    background: none;
+  }
+
+  .terminal-answer-num,
+  .terminal-answer-title {
+    color: var(--cg-terminal-teams-title);
+  }
+
+  .terminal-answer-badge,
+  .terminal-answer-badge--off,
+  .terminal-answer-empty {
+    color: var(--cg-terminal-teams-muted);
+  }
+}
