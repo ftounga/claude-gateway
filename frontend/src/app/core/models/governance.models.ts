@@ -11,15 +11,20 @@
  * Depuis F-92, le genre décide **où** le fichier se pose : `SKILL` et `TEMPLATE` dans **chaque
  * projet** du poste, `MAP` **une seule fois, à la racine du poste** — là où vit la carte.
  */
-export type GovernanceFileKind = 'SKILL' | 'TEMPLATE' | 'MAP' | 'AGENT';
+export type GovernanceFileKind = 'SKILL' | 'TEMPLATE' | 'MAP' | 'AGENT' | 'GUIDE';
 
-/** Le genre d'un fichier déposé, en un mot (F-182 / SF-182-03 : `AGENT` → « agent »). */
+/**
+ * Le genre d'un fichier déposé, en un mot (F-182 / SF-182-03 : `AGENT` → « agent » ; F-215 / SF-215-03 :
+ * `GUIDE` → « guide », un savoir-faire lu à la demande).
+ */
 export function fileKindLabel(kind: GovernanceFileKind): string {
   switch (kind) {
     case 'SKILL':
       return 'skill';
     case 'AGENT':
       return 'agent';
+    case 'GUIDE':
+      return 'guide';
     case 'MAP':
       return 'carte';
     default:
