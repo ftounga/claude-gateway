@@ -204,6 +204,47 @@ public final class BashTool {
         }
     }
 
+    /**
+     * <b>Captures de preuve</b> (F-212 / SF-212-01) : exécute les commandes de {@code input.commands}
+     * à la suite dans un même shell et rend leur relevé (voir {@link ProofRun}). Mêmes gardes que
+     * {@link #run} : opt-out machine, dossier de départ vérifié, un jeton du sémaphore pour toute la
+     * session (elle compte pour une commande de premier plan). Ne lève jamais.
+     */
+    public ToolOutcome proofRun(JsonNode input, ToolContext context) {
+        if (!enabled) {
+            return ToolOutcome.error("unsupported_tool",
+                    "L'exécution de commandes n'est pas activée sur ce runner.");
+        }
+        List<String> commands;
+        Path workingDirectory;
+        try {
+            commands = ProofRun.commands(input);
+            workingDirectory = resolveWorkingDirectory(input);
+        } catch (ToolException e) {
+            return ToolOutcome.error(e);
+        }
+        if (!slot.tryAcquire()) {
+            return ToolOutcome.error("denied", BUSY_MESSAGE);
+        }
+        try {
+            return ProofRun.execute(shell, proofHost(), workingDirectory, commands, context);
+        } finally {
+            slot.release();
+        }
+    }
+
+    /** Le poste vu par les captures, relevé une fois (le nom d'hôte peut coûter une résolution). */
+    private volatile ProofHost proofHost;
+
+    private ProofHost proofHost() {
+        ProofHost host = proofHost;
+        if (host == null) {
+            host = ProofHost.detect(shell);
+            proofHost = host;
+        }
+        return host;
+    }
+
     // ------------------------------------------------------------------ arrière-plan
 
     /**

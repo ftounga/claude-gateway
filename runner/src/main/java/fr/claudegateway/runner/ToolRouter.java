@@ -87,6 +87,10 @@ public final class ToolRouter implements ToolExecutor {
         if (WorktreeTool.handles(tool) && worktree != null) {
             return worktree.execute(tool, input, context);
         }
+        // Captures de preuve (F-212 / SF-212-01) : une session de commandes dans un même shell.
+        if (ProofRun.TOOL.equals(tool)) {
+            return bash.proofRun(input, context);
+        }
         return "bash".equals(tool) ? bash.run(input, context) : files.execute(tool, input, context);
     }
 
@@ -103,6 +107,9 @@ public final class ToolRouter implements ToolExecutor {
             // F-195 / SF-195-02 : combien de commandes ce poste accepte à la fois. Sans cette annonce
             // (runner ancien), la gateway compte 1 et n'envoie rien en parallèle.
             capabilities.add(BashTool.PARALLEL_CAPABILITY_PREFIX + bash.concurrency());
+            // F-212 / SF-212-01 : sessions de preuve (proof_run). Sans cette annonce (runner ancien),
+            // la gateway répond « mettez à jour le poste » au lieu d'émettre l'appel.
+            capabilities.add(ProofRun.CAPABILITY);
         }
         // F-121 / SF-121-07 : l'arrière-plan (run_in_background + bash_output/kill_shell) n'est annoncé
         // que si l'exécution est autorisée ET qu'un registre est monté. Sans cette annonce, la gateway

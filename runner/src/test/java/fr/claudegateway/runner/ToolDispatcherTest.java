@@ -279,7 +279,7 @@ class ToolDispatcherTest {
                 new Console())) {
             JsonNode ready = MAPPER.readTree(withBash.readyFrame("1.2.3"));
 
-            assertEquals(3, ready.path("capabilities").size());
+            assertEquals(4, ready.path("capabilities").size());
             assertEquals("files", ready.path("capabilities").get(0).asText());
             assertEquals("bash", ready.path("capabilities").get(1).asText());
             // F-195 / SF-195-02 : la borne de commandes simultanées voyage avec bash.
