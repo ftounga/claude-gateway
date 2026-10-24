@@ -480,6 +480,16 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   workspace_id)`. Alimente la note de tour « Messages marqués envoyés » (consigne du tour, jamais le
   système). Purge : cascade au terminal et au message.
 
+- **proof_captures** — **les captures de preuve** (F-212 / SF-212-03, migration `168`) : `id (uuid)`,
+  `user_id (NOT NULL)`, `workspace_id (FK workspaces ON DELETE CASCADE)`, `call_id` (appel
+  `capturer_preuves`), `title (≤ 300)`, `step (≤ 120)`, `position` (rang de l'image dans la session),
+  `host`, `os`, `shell`, `width`, `height`, `commands_json` (relevés des commandes : code, durée, heure,
+  statut — affichés sous la vignette, jamais dans l'image), `storage_key`, `captured_at`. Une ligne par
+  IMAGE (une fenêtre de terminal rendue par `diagram-renderer /terminal-shot` depuis la sortie brute du
+  poste, secrets masqués). Image dans le stockage objet sous `preuves/{user_id}/{workspace_id}/{id}.png`
+  (clé reconstruite). Route `GET /workspaces/{id}/proofs/{captureId}` après `requireOwned`, sous
+  `(id, user_id, workspace_id)`. Purge : cascade au terminal ; préfixe effacé par `WorkspaceService.delete`.
+
 - **session_bilans** — **le bilan d'une session, gardé comme artefact** (F-155 / SF-155-04,
   migration `132`). Un bilan qui n'existe que dans une réponse HTTP est un bilan qu'on ne relit
   jamais et qu'on ne peut pas **comparer** — or comparer est tout l'intérêt (« le cache est remonté
