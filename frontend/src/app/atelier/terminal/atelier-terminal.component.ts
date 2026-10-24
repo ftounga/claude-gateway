@@ -43,7 +43,7 @@ import { PlumeView, TerminalPlumeComponent } from './terminal-plume.component';
 import { TerminalBarTier, terminalBarTier } from './terminal-bar-tier';
 import { PlumeService } from '../../core/services/plume.service';
 import { HttpErrorResponse } from '@angular/common/http';
-import { AtelierNextStep, AtelierNextStepsChantier } from '../../core/models/atelier.models';
+import { AtelierNextStep, AtelierNextStepsChantier, AtelierQuestionAnswer } from '../../core/models/atelier.models';
 import {
   DictationButtonComponent,
   DictationState,
@@ -319,6 +319,8 @@ export function plumeErrorMessage(failure: HttpErrorResponse | null | undefined)
     // SEPT FEUILLES (F-126 / SF-126-01) : la mise en avant de la réponse essentielle vit à part,
     // la feuille principale étant au plafond de build de 12 ko (angular.json).
     './atelier-terminal-essential.component.scss',
+    // F-210 / SF-210-04 : une carte par question, feuille à part (budget de la feuille principale).
+    './atelier-terminal-answers.component.scss',
     // HUIT FEUILLES (F-126 / SF-126-02) : les questions repérables et leur rail « Vos questions »
     // vivent à part, pour la même raison de budget de build.
     './atelier-terminal-questions.component.scss',
@@ -541,7 +543,58 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     if (!last || last.role !== 'ASSISTANT' || last.interrupted || last.budgetReached) {
       return NO_NEXT_STEPS;
     }
+    // F-210 / SF-210-04 : une réponse découpée porte ses suites dans chaque carte, pas en panneau global.
+    if (this.answerCards(last)) {
+      return NO_NEXT_STEPS;
+    }
     return last.nextSteps ?? NO_NEXT_STEPS;
+  }
+
+  /** Les réponses par question d'un message (F-210 / SF-210-04), ou `null` : rendu habituel. */
+  answerCards(message: AtelierThreadItem): AtelierQuestionAnswer[] | null {
+    const answers = message.role === 'ASSISTANT' ? message.questions?.answers : undefined;
+    return answers && answers.length > 0 ? answers : null;
+  }
+
+  /**
+   * Le badge d'une carte (F-210 / SF-210-04) : « Ch.4 · étape 3/14 » quand une suite est rattachée à une étape
+   * du chantier, « Ch.4 · 2/14 » sinon, « Hors chantier » sans chantier ouvert.
+   */
+  answerBadge(answer: AtelierQuestionAnswer): string {
+    const chantier = answer.chantier;
+    if (!chantier) {
+      return 'Hors chantier';
+    }
+    const anchored = answer.nextSteps.find((step) => step.scope === 'CHANTIER' && !!step.stepIndex
+      && (!step.chantier || step.chantier === chantier.number));
+    return anchored
+      ? `Ch.${chantier.number} · étape ${anchored.stepIndex}/${chantier.total}`
+      : `Ch.${chantier.number} · ${chantier.done}/${chantier.total}`;
+  }
+
+  /** Les suites d'une carte : mêmes règles que « Et maintenant ? » — seulement sous la dernière réponse. */
+  answerStepsOf(message: AtelierThreadItem, answer: AtelierQuestionAnswer): AtelierNextStep[] {
+    if (this.readOnly || this.submittingValue || this.streaming || this.pendingQuestion
+        || message.interrupted || message.budgetReached || !this.isLastAssistantMessage(message)) {
+      return NO_NEXT_STEPS;
+    }
+    const last = this.messages[this.messages.length - 1];
+    return last === message ? answer.nextSteps : NO_NEXT_STEPS;
+  }
+
+  /** L'avancement du chantier d'une carte ; le parcours en direct prime (comme `nextStepsChantierOfTurn`). */
+  answerChantierOf(answer: AtelierQuestionAnswer): AtelierNextStepsChantier | null {
+    const live = this.journey();
+    if (live && (live.mode !== 'GUIDE' || live.phase === 'CLOS')) {
+      return null;
+    }
+    return answer.chantier;
+  }
+
+  /** Seul le premier panneau de suites d'une réponse découpée répond aux touches sans focus. */
+  isFirstCardWithSteps(message: AtelierThreadItem, answer: AtelierQuestionAnswer): boolean {
+    const first = (this.answerCards(message) ?? []).find((a) => this.answerStepsOf(message, a).length > 0);
+    return first?.id === answer.id;
   }
 
   /**
