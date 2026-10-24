@@ -731,6 +731,33 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "- Une seule fois par réponse, toujours en dernier, et n'en parle jamais dans le "
                     + "texte : le bloc est mis en forme pour l'utilisateur, pas expliqué.\n\n";
     /**
+     * <b>Plusieurs questions, plusieurs réponses</b> (F-210 / SF-210-02). Quand l'agent a annoncé au moins
+     * deux demandes distinctes ({@code decouper_demande}) sans les fusionner, sa réponse finale est une
+     * suite de blocs {@code <<question id="N">>}, chacun avec SON essentiel et SES suites — l'exception,
+     * dite, à « une seule fois par réponse ». Le bloc de suites n'est pas redéfini : il renvoie à
+     * {@link #NEXT_STEPS_DOCTRINE}. N'affaiblit ni {@link #MULTI_SUBJECT_DOCTRINE} ni
+     * {@code ESSENTIAL_ANSWER_DOCTRINE}. Littéral <b>stable</b>, toutes cibles : cache F-134 préservé.
+     */
+    static final String QUESTION_ANSWER_DOCTRINE =
+            "Plusieurs demandes, plusieurs réponses :\n"
+                    + "- Quand le message (ou une interjection) contient AU MOINS DEUX demandes distinctes, "
+                    + "annonce-les avec decouper_demande dans ta première réponse, avec tes premiers outils, "
+                    + "et fais avancer chacune avec suivre_question. Une demande unique, même longue ou en "
+                    + "plusieurs étapes : ni découpage, ni suivi. Le découpage ne change rien à ta façon de "
+                    + "travailler : toutes les demandes restent traitées, comme dit plus haut.\n"
+                    + "- Si la seconde remplace la première ou en dépend très fortement, passe fusion avec la "
+                    + "raison : tu réponds alors normalement, en une seule réponse.\n"
+                    + "- Sinon, ta réponse finale est une suite de blocs, un par question annoncée, dans "
+                    + "l'ordre, chacun sur ses propres lignes :\n"
+                    + "  <<question id=\"1\">>\n"
+                    + "  … l'essentiel de CETTE question (balisé comme dit plus haut), son détail, puis, si une "
+                    + "suite a du sens, son propre bloc de suites au format décrit plus haut …\n"
+                    + "  <</question>>\n"
+                    + "- Dans ce cas seulement, l'essentiel et le bloc de suites s'emploient une fois PAR "
+                    + "QUESTION au lieu d'une fois par réponse ; toutes les autres consignes valent pour "
+                    + "chaque bloc. Une question non aboutie a quand même son bloc, qui le dit. N'écris rien "
+                    + "hors des blocs et n'en parle jamais dans le texte.\n\n";
+    /**
      * Bloc message (F-203 / SF-203-01). Tout mail ou message à envoyer tel quel (Teams, Slack, Jira…)
      * est rendu dans un bloc balisé {@code ```mail} / {@code ```message}, que le terminal présente dans
      * un encart avec « Copier » en texte riche (SF-203-02) : l'utilisateur colle dans Outlook ou Teams
@@ -3940,10 +3967,25 @@ public class AtelierChatService implements RelayInterruptTarget {
         // abouties — puis relayées une dernière fois et rangées dans le relevé.
         questionsOfTurn.close(!interrupted && !spendCapReached && !budgetExhausted && !refusalStop);
         fr.claudegateway.atelier.questions.TurnQuestions.Snapshot questionsSnapshot = questionsOfTurn.snapshot();
+        // F-210 / SF-210-02 : une réponse par question — chaque bloc <<question>> lu, ses suites rattachées
+        // au chantier comme les suites globales (pas de suites pour un tour interrompu ou coupé au plafond).
+        // Une question annoncée sans bloc, quand d'autres en ont, devient non aboutie.
         if (questionsSnapshot != null) {
+            boolean anchorSteps = !interrupted && !spendCapReached;
+            fr.claudegateway.atelier.journey.SubjectJourney journeyAtEnd = anchorSteps
+                    && questionsSnapshot.fusion() == null ? journeyOf(userId, workspace) : null;
+            List<fr.claudegateway.atelier.questions.QuestionAnswers.Answer> answers =
+                    fr.claudegateway.atelier.questions.QuestionAnswers.parse(finalText, questionsSnapshot,
+                            anchorSteps ? steps -> fr.claudegateway.atelier.nextsteps.ChantierAnchor.apply(steps,
+                                    journeyAtEnd) : null);
+            questionsOfTurn.markUnanswered(fr.claudegateway.atelier.questions.QuestionAnswers.unanswered(answers));
+            questionsSnapshot = questionsOfTurn.snapshot().withAnswers(answers);
             listener.onQuestions(questionsSnapshot);
         }
-        String reply = nonEmptyReply(stripTurnMetadata(nextStepsExtraction.text()));
+        // F-210 / SF-210-02 : aucun marqueur de question n'est persisté — le texte reste lisible partout
+        // (écran d'avant F-210, historique rejoué au modèle, terminal Teams).
+        String reply = nonEmptyReply(stripTurnMetadata(fr.claudegateway.atelier.questions.QuestionAnswers
+                .readable(nextStepsExtraction.text(), questionsSnapshot)));
         long activeSeconds = Math.max(0L, (System.currentTimeMillis() - startedAt) / 1000L);
         // Relevé du tour rangé dans la colonne d'affichage existante (F-39 / SF-39-15, D-L8-6) :
         // sans lui, le coût du tour et le motif de son arrêt disparaîtraient au rechargement — et
@@ -9405,6 +9447,10 @@ public class AtelierChatService implements RelayInterruptTarget {
         // de conclure ». L'agent principal propose lui-même la suite en fin de réponse, dans un bloc
         // balisé extrait par la passerelle. Littéral stable, strictement additif : cache F-134 préservé.
         system.append(NEXT_STEPS_DOCTRINE);
+
+        // Plusieurs demandes, plusieurs réponses (F-210 / SF-210-02) : juste après les suites, sur toutes
+        // les cibles — le format par question renvoie au bloc de suites ci-dessus. Littéral stable.
+        system.append(QUESTION_ANSWER_DOCTRINE);
 
         // Bloc message (F-203 / SF-203-01) : juste après les suites, sur toutes les cibles SAUF le
         // terminal Teams (sa réponse part dans Teams, où une balise s'afficherait brute). Condition

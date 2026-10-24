@@ -196,4 +196,43 @@ class AtelierChatServiceQuestionsTest {
         assertThat(agentProvider.messageSnapshots.get(agentProvider.messageSnapshots.size() - 1))
                 .contains("deux demandes distinctes");
     }
+
+    @Test
+    void aSplitAnswerIsReadPerQuestionAndThePersistedTextHasNoMarker() throws Exception {
+        agentProvider.enqueueTurn(new AgentTurn("", List.of(
+                call("c1", QuestionToolCatalog.SPLIT, "{\"questions\":[{\"id\":1,\"libelle\":\"Lire A\"},"
+                        + "{\"id\":2,\"libelle\":\"Lire B\"}]}"),
+                call("c2", "read_file", "{\"path\":\"a.txt\"}")), false, 5, 5));
+        agentProvider.enqueueFinal("<<question id=\"1\">>\n<<essentiel>>\nA dit oui.\n<</essentiel>>\nDétail A.\n"
+                + "<<suites>>\n[{\"titre\":\"Relire A\",\"pourquoi\":\"lu en partie\",\"etiquette\":\"Vérifier\","
+                + "\"demande\":\"Relis A en entier\"}]\n<</suites>>\n<</question>>\n"
+                + "<<question id=\"2\">>\n<<essentiel>>\nB dit non.\n<</essentiel>>\n<</question>>");
+
+        AtelierChatService.AtelierChatResult result =
+                service.chatStreaming(userId, workspaceId, "lis A, et aussi B", listener);
+
+        assertThat(result.reply()).doesNotContain("<<question").doesNotContain("<</question>>")
+                .contains("A dit oui.").contains("B dit non.");
+        TurnQuestions.Snapshot last = snapshots.get(snapshots.size() - 1);
+        assertThat(last.answers()).hasSize(2);
+        assertThat(last.answers().get(0).nextSteps()).extracting(n -> n.title()).containsExactly("Relire A");
+        JsonNode report = savedAssistantReport();
+        assertThat(report.path("answers")).hasSize(2);
+        assertThat(report.path("answers").get(1).path("essential").asText()).isEqualTo("B dit non.");
+        assertThat(report.path("questions").has("answers")).isFalse();
+    }
+
+    @Test
+    void theDoctrineFollowsTheSuitesAndKeepsTheOthersIntact() {
+        agentProvider.enqueueFinal("ok");
+        service.chat(userId, workspaceId, "bonjour");
+        String system = agentProvider.lastRequest.system();
+
+        assertThat(system).contains(AtelierChatService.QUESTION_ANSWER_DOCTRINE)
+                .contains(AtelierChatService.MULTI_SUBJECT_DOCTRINE)
+                .contains(AtelierChatService.NEXT_STEPS_DOCTRINE);
+        assertThat(system.indexOf(AtelierChatService.QUESTION_ANSWER_DOCTRINE))
+                .isGreaterThan(system.indexOf(AtelierChatService.NEXT_STEPS_DOCTRINE));
+        assertThat(AtelierChatService.QUESTION_ANSWER_DOCTRINE).contains("AU MOINS DEUX demandes distinctes");
+    }
 }
