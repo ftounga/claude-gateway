@@ -1003,6 +1003,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                     fr.claudegateway.atelier.journey.JourneyToolCatalog.SUBMIT_DIAGNOSIS,
                     fr.claudegateway.atelier.journey.JourneyToolCatalog.UPDATE_STEP,
                     fr.claudegateway.atelier.journey.JourneyToolCatalog.REOPEN,
+                    fr.claudegateway.atelier.journey.JourneyToolCatalog.UPDATE_SUB_STEPS,
                     // F-178 : les lectures du terminal du poste ne modifient rien.
                     fr.claudegateway.atelier.poste.PosteToolCatalog.SUBJECTS_STATE,
                     fr.claudegateway.atelier.poste.PosteToolCatalog.RADAR_RESUME,

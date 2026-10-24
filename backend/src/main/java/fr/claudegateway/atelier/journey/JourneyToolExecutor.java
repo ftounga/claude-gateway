@@ -49,6 +49,7 @@ public class JourneyToolExecutor {
                 case JourneyToolCatalog.SUBMIT_DIAGNOSIS -> submitDiagnosis(userId, workspace, input);
                 case JourneyToolCatalog.UPDATE_STEP -> updateStep(userId, workspace, input);
                 case JourneyToolCatalog.REOPEN -> reopen(userId, workspace, input);
+                case JourneyToolCatalog.UPDATE_SUB_STEPS -> updateSubSteps(userId, workspace, input);
                 default -> Outcome.error("Outil du parcours inconnu : " + tool);
             };
         } catch (InvalidJourneyException e) {
@@ -133,6 +134,27 @@ public class JourneyToolExecutor {
             case NO_SUCH_STEP -> Outcome.error("Il n'y a pas d'étape " + step + " dans le plan (numérotées à "
                     + "partir de 1).");
             case NOT_GUIDED -> Outcome.error("Le sujet est en mode Libre.");
+        });
+    }
+
+    private Outcome updateSubSteps(UUID userId, Workspace workspace, JsonNode input) {
+        int step = input == null ? 0 : input.path("step").asInt(0);
+        Integer chantier = chantier(input);
+        java.util.List<JourneyPlan.SubStep> subSteps =
+                JourneyPlan.subStepsFromToolInput(input == null ? null : input.get("sub_steps"));
+        SubjectJourneyService.StepChange change = service.updateSubSteps(userId, workspace.getId(), chantier, step,
+                subSteps);
+        return prefixed(chantier, switch (change.outcome()) {
+            case NOT_EXECUTING -> Outcome.error("Aucun plan validé en cours d'exécution : rien à détailler.");
+            case NO_SUCH_STEP -> Outcome.error("Il n'y a pas d'étape " + step + " dans le plan (numérotées à "
+                    + "partir de 1).");
+            case NOT_GUIDED -> Outcome.error("Le sujet est en mode Libre.");
+            default -> {
+                JourneyPlan.Step s = change.plan().steps().get(step - 1);
+                yield Outcome.ok("Étape " + step + " : " + s.subStepsDone() + "/" + s.subSteps().size()
+                        + " sous-étape(s) faite(s). Quand l'étape entière est exécutée : update_plan_step "
+                        + "status=FAIT.");
+            }
         });
     }
 
