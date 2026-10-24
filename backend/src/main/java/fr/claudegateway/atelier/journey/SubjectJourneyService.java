@@ -386,6 +386,41 @@ public class SubjectJourneyService {
     }
 
     /**
+     * <b>L'agent détaille une étape en sous-étapes</b> (F-208 / SF-208-01) : la liste reçue
+     * <b>remplace</b> la précédente (idempotent). Mêmes gardes qu'une étape avancée ; l'avancement n'est
+     * pas un amendement — plan courant et plan validé sont réécrits ensemble.
+     *
+     * @param stepNumber le rang de l'étape, à partir de 1
+     */
+    @Transactional
+    public StepChange updateSubSteps(UUID userId, UUID workspaceId, Integer chantier, int stepNumber,
+            java.util.List<JourneyPlan.SubStep> subSteps) {
+        SubjectJourney journey = target(userId, workspaceId, chantier);
+        JourneyPlan plan = JourneyPlan.fromJson(journey.getPlanJson());
+        if (!journey.isGuided()) {
+            return new StepChange(StepOutcome.NOT_GUIDED, plan);
+        }
+        boolean validatedCurrent = journey.getValidatedVersion() != null
+                && journey.getValidatedVersion() == journey.getPlanVersion();
+        if (!validatedCurrent || (journey.getPhase() != JourneyPhase.EXECUTION
+                && journey.getPhase() != JourneyPhase.VERIFICATION)) {
+            return new StepChange(StepOutcome.NOT_EXECUTING, plan);
+        }
+        if (stepNumber < 1 || stepNumber > plan.steps().size()) {
+            return new StepChange(StepOutcome.NO_SUCH_STEP, plan);
+        }
+        JourneyPlan updated = plan.withSubSteps(stepNumber - 1, subSteps);
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        journey.setPlanJson(updated.toJson());
+        journey.setValidatedPlanJson(updated.toJson());
+        SubjectJourney saved = save(journey, now);
+        JourneyPlan.Step step = updated.steps().get(stepNumber - 1);
+        record(saved, SubjectJourneyEvent.SUB_STEPS_UPDATED,
+                stepNumber + " · " + step.subStepsDone() + "/" + step.subSteps().size());
+        return new StepChange(StepOutcome.UPDATED, updated);
+    }
+
+    /**
      * <b>Retour en Investigation</b> (SF-176-05) : une découverte contredit le diagnostic, ou une
      * vérification a échoué. Le plan (et sa dernière version validée) est gardé ; la porte se referme.
      *
@@ -641,12 +676,24 @@ public class SubjectJourneyService {
         return waitsOn(userId, workspaceService.requireOwned(userId, workspaceId), journey);
     }
 
-    /** Une étape au contenu identique (même rang) garde l'avancement qu'elle avait. */
+    /**
+     * Une étape au contenu identique (même rang) garde l'avancement qu'elle avait. F-208 : à rang et titre
+     * égaux, les dépendances et les sous-étapes de l'ancienne étape sont reportées si le nouveau plan n'en
+     * donne pas — amender n'efface ni la structure ni le travail détaillé.
+     */
     static JourneyPlan carryProgress(JourneyPlan next, JourneyPlan previous) {
         JourneyPlan result = next;
         for (int i = 0; i < next.steps().size() && i < previous.steps().size(); i++) {
             JourneyPlan.Step before = previous.steps().get(i);
-            if (!next.changedSince(previous, i) && before.status() != JourneyPlan.StepStatus.A_FAIRE) {
+            JourneyPlan.Step now = result.steps().get(i);
+            boolean sameTitle = java.util.Objects.equals(before.title(), now.title());
+            if (sameTitle && now.dependsOn().isEmpty() && !before.dependsOn().isEmpty()) {
+                result = result.withDependsOn(i, before.dependsOn());
+            }
+            if (sameTitle && now.subSteps().isEmpty() && !before.subSteps().isEmpty()) {
+                result = result.withSubSteps(i, before.subSteps());
+            }
+            if (!result.changedSince(previous, i) && before.status() != JourneyPlan.StepStatus.A_FAIRE) {
                 result = result.withStep(i, before.status(), before.evidence());
             }
         }

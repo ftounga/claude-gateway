@@ -171,10 +171,17 @@ public final class JourneyTurnNote {
         for (JourneyPlan.Step step : plan.steps()) {
             index++;
             StringBuilder line = new StringBuilder();
-            line.append(index).append(". [").append(statusLabel(step.status())).append("] ")
-                    .append(step.title()).append(" · ").append(step.risk().label());
+            line.append(index).append(". [").append(step.inProgress() ? "en cours" : statusLabel(step.status()))
+                    .append("] ").append(step.title()).append(" · ").append(step.risk().label());
             if (step.waitsOn() != null) {
                 line.append(" · attend : ").append(step.waitsOn());
+            }
+            if (!step.dependsOn().isEmpty()) {
+                line.append(" · après ").append(step.dependsOn().stream().map(String::valueOf)
+                        .collect(java.util.stream.Collectors.joining(", ")));
+            }
+            if (!step.subSteps().isEmpty()) {
+                line.append(" · sous-étapes ").append(step.subStepsDone()).append('/').append(step.subSteps().size());
             }
             line.append('\n');
             if (note.length() + line.length() > MAX_CHARS) {

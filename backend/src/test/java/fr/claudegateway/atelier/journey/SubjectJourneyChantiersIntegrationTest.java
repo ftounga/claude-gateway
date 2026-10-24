@@ -357,4 +357,41 @@ class SubjectJourneyChantiersIntegrationTest {
         assertThat(tool(JourneyToolCatalog.PROPOSE_GUIDED, "{\"reason\":\"DNS bis\"}").content())
                 .contains("[Ouvrir le chantier]");
     }
+
+    @Test
+    @DisplayName("SF-208-01 : update_sub_steps détaille une étape (focus et chantier: N) ; 41 étapes refusées")
+    void subStepsTool() throws Exception {
+        chantierOneExecuting();
+        JourneyToolExecutor.Outcome out = tool(JourneyToolCatalog.UPDATE_SUB_STEPS,
+                "{\"step\":1,\"sub_steps\":[{\"title\":\"Générer la CSR\",\"done\":true,\"evidence\":\"csr ok\"},"
+                        + "{\"title\":\"Installer\",\"done\":false}]}");
+        assertThat(out.error()).isFalse();
+        assertThat(out.content()).contains("1/2 sous-étape(s)");
+        SubjectJourney focus = journeyRepository.findByUserIdAndWorkspaceId(aliceId, ws()).orElseThrow();
+        assertThat(JourneyPlan.fromJson(focus.getPlanJson()).steps().get(0).inProgress()).isTrue();
+        assertThat(JourneyPlan.fromJson(focus.getValidatedPlanJson()).steps().get(0).subSteps()).hasSize(2);
+        // Idempotent : la même liste remplace la précédente.
+        tool(JourneyToolCatalog.UPDATE_SUB_STEPS, "{\"step\":1,\"sub_steps\":[{\"title\":\"Tout\",\"done\":false}]}");
+        focus = journeyRepository.findByUserIdAndWorkspaceId(aliceId, ws()).orElseThrow();
+        assertThat(JourneyPlan.fromJson(focus.getPlanJson()).steps().get(0).subSteps()).hasSize(1);
+        assertThat(tool(JourneyToolCatalog.UPDATE_SUB_STEPS, "{\"step\":4,\"sub_steps\":[]}").content())
+                .contains("pas d'étape 4");
+        // Un autre chantier ouvert, visé par son numéro ; le focus 2 n'exécute rien.
+        post(aliceToken, "chantiers", "{\"title\":\"DNS\"}");
+        assertThat(tool(JourneyToolCatalog.UPDATE_SUB_STEPS,
+                "{\"step\":1,\"sub_steps\":[{\"title\":\"x\",\"done\":true}]}").error()).isTrue();
+        assertThat(tool(JourneyToolCatalog.UPDATE_SUB_STEPS,
+                "{\"chantier\":1,\"step\":1,\"sub_steps\":[{\"title\":\"x\",\"done\":true}]}").content())
+                .startsWith("Chantier 1 : Étape 1 : 1/1");
+        // Plus de 40 étapes : refus explicite, rien d'écrit.
+        StringBuilder many = new StringBuilder("{\"chantier\":1,\"steps\":[");
+        for (int i = 0; i < 41; i++) {
+            many.append(i == 0 ? "" : ",").append("{\"title\":\"e").append(i).append("\",\"risk\":\"NOTES\"}");
+        }
+        JourneyToolExecutor.Outcome refused = tool(JourneyToolCatalog.SET_PLAN, many.append("]}").toString());
+        assertThat(refused.error()).isTrue();
+        assertThat(refused.content()).contains("41 étapes : 40 au plus");
+        assertThat(chantierRepository.findFirstByUserIdAndWorkspaceIdAndNumber(aliceId, ws(), 1).orElseThrow()
+                .getPlanVersion()).isEqualTo(1);
+    }
 }

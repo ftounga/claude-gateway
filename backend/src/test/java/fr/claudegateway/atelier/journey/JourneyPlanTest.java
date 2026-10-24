@@ -33,17 +33,97 @@ class JourneyPlanTest {
         assertThat(plan.steps().get(2).risk()).isEqualTo(JourneyPlan.Risk.EXTERNE);
     }
 
-    @Test
-    @DisplayName("au-delà de 20 étapes, le plan est tronqué ; un tableau absent donne le plan vide")
-    void bounds() throws Exception {
+    private static String steps(int n) {
         StringBuilder raw = new StringBuilder("[");
-        for (int i = 0; i < 25; i++) {
+        for (int i = 0; i < n; i++) {
             raw.append(i == 0 ? "" : ",").append("{\"title\":\"étape ").append(i).append("\",\"risk\":\"NOTES\"}");
         }
-        assertThat(JourneyPlan.fromToolInput(json(raw.append("]").toString())).steps())
-                .hasSize(JourneyPlan.MAX_STEPS);
+        return raw.append("]").toString();
+    }
+
+    @Test
+    @DisplayName("SF-208-01 : 40 étapes passent en entier ; 41 sont REFUSÉES avec un message, jamais tronquées")
+    void bounds() throws Exception {
+        assertThat(JourneyPlan.fromToolInput(json(steps(40))).steps()).hasSize(JourneyPlan.MAX_STEPS).hasSize(40);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> JourneyPlan.fromToolInput(json(steps(41))))
+                .isInstanceOf(InvalidJourneyException.class)
+                .hasMessageContaining("41 étapes : 40 au plus")
+                .hasMessageContaining("update_sub_steps");
         assertThat(JourneyPlan.fromToolInput(null).isEmpty()).isTrue();
         assertThat(JourneyPlan.fromToolInput(json("{}")).isEmpty()).isTrue();
+    }
+
+    @Test
+    @DisplayName("SF-208-01 : depends_on validé (antérieures seulement), trié, sans doublon, relu à l'identique")
+    void dependsOn() throws Exception {
+        JourneyPlan plan = JourneyPlan.fromToolInput(json("""
+                [{"title":"A","risk":"LECTURE"},{"title":"B","risk":"LECTURE"},
+                 {"title":"C","risk":"EXTERNE","depends_on":[2,1,2]},{"title":"D","risk":"NOTES","depends_on":"1, 3"}]"""));
+        assertThat(plan.steps().get(2).dependsOn()).containsExactly(1, 2);
+        assertThat(plan.steps().get(3).dependsOn()).containsExactly(1, 3);
+        assertThat(plan.steps().get(0).dependsOn()).isEmpty();
+        assertThat(JourneyPlan.fromJson(plan.toJson())).isEqualTo(plan);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> JourneyPlan.fromToolInput(json("""
+                [{"title":"A","risk":"LECTURE"},{"title":"B","risk":"LECTURE","depends_on":[2]}]""")))
+                .isInstanceOf(InvalidJourneyException.class)
+                .hasMessageContaining("Étape 2 : depends_on cite « 2 »").hasMessageContaining("(1 à 1)");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> JourneyPlan.fromToolInput(json("""
+                [{"title":"A","risk":"LECTURE","depends_on":[0]}]""")))
+                .hasMessageContaining("la première étape ne dépend d'aucune autre");
+    }
+
+    @Test
+    @DisplayName("SF-208-01 : sous-étapes bornées ; « en cours » dérivé ; un plan d'avant F-208 se réécrit à l'octet")
+    void subSteps() throws Exception {
+        java.util.List<JourneyPlan.SubStep> subs = JourneyPlan.subStepsFromToolInput(json("""
+                [{"title":"Sauvegarder","done":true,"evidence":"dump ok"},{"done":true},{"title":"Restaurer","done":false}]"""));
+        assertThat(subs).hasSize(2);
+        JourneyPlan plan = JourneyPlan.fromToolInput(json("[{\"title\":\"A\",\"risk\":\"REVERSIBLE\"}]"))
+                .withSubSteps(0, subs);
+        assertThat(plan.steps().get(0).inProgress()).isTrue();
+        assertThat(plan.steps().get(0).subStepsDone()).isEqualTo(1);
+        assertThat(JourneyPlan.fromJson(plan.toJson())).isEqualTo(plan);
+        assertThat(plan.withStep(0, JourneyPlan.StepStatus.FAIT, null).steps().get(0).inProgress()).isFalse();
+        assertThat(plan.withStep(0, JourneyPlan.StepStatus.FAIT, null).steps().get(0).subSteps()).hasSize(2);
+        StringBuilder many = new StringBuilder("[");
+        for (int i = 0; i < 13; i++) {
+            many.append(i == 0 ? "" : ",").append("{\"title\":\"s").append(i).append("\",\"done\":false}");
+        }
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> JourneyPlan.subStepsFromToolInput(
+                json(many.append("]").toString()))).hasMessageContaining("12 sous-étapes au plus");
+        String legacy = "[{\"title\":\"A\",\"risk\":\"LECTURE\",\"verify\":null,\"rollback\":null,"
+                + "\"waitsOn\":null,\"status\":\"FAIT\",\"evidence\":null}]";
+        assertThat(JourneyPlan.fromJson(legacy).toJson()).isEqualTo(legacy);
+    }
+
+    @Test
+    @DisplayName("SF-208-01 : un amendement garde dépendances et sous-étapes d'une étape au même titre et rang")
+    void amendmentCarriesStructure() throws Exception {
+        JourneyPlan v1 = JourneyPlan.fromToolInput(json("""
+                [{"title":"A","risk":"LECTURE"},{"title":"B","risk":"REVERSIBLE","depends_on":[1]}]"""))
+                .withStep(1, JourneyPlan.StepStatus.FAIT, null)
+                .withSubSteps(1, java.util.List.of(new JourneyPlan.SubStep("b1", true, "ok")));
+        JourneyPlan v2 = JourneyPlan.fromToolInput(json("""
+                [{"title":"A","risk":"LECTURE"},{"title":"B","risk":"REVERSIBLE"},{"title":"C","risk":"NOTES"}]"""));
+        JourneyPlan carried = SubjectJourneyService.carryProgress(v2, v1);
+        assertThat(carried.steps().get(1).dependsOn()).containsExactly(1);
+        assertThat(carried.steps().get(1).subSteps()).hasSize(1);
+        assertThat(carried.steps().get(1).status()).isEqualTo(JourneyPlan.StepStatus.FAIT);
+        assertThat(carried.changedSince(v1, 1)).isFalse();
+    }
+
+    @Test
+    @DisplayName("SF-208-01 : la note de tour dit « en cours », « après 1 » et « sous-étapes 1/2 »")
+    void turnNoteShowsStructure() throws Exception {
+        JourneyPlan plan = JourneyPlan.fromToolInput(json("""
+                [{"title":"Lire","risk":"LECTURE"},{"title":"Migrer","risk":"REVERSIBLE","depends_on":[1]}]"""))
+                .withSubSteps(1, java.util.List.of(new JourneyPlan.SubStep("dump", true, "ok"),
+                        new JourneyPlan.SubStep("restore", false, null)));
+        SubjectJourney journey = SubjectJourney.builder().userId(UUID.randomUUID()).workspaceId(UUID.randomUUID())
+                .mode(JourneyMode.GUIDE).phase(JourneyPhase.EXECUTION).planJson(plan.toJson()).planVersion(1)
+                .validatedVersion(1).build();
+        assertThat(JourneyTurnNote.render(journey))
+                .contains("2. [en cours] Migrer · modification réversible · après 1 · sous-étapes 1/2");
     }
 
     @Test

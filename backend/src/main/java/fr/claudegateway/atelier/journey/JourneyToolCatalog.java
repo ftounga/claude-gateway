@@ -41,8 +41,12 @@ public class JourneyToolCatalog {
     /** Revenir en Investigation (SF-176-05). */
     public static final String REOPEN = "reopen_investigation";
 
+    /** Détailler une étape en sous-étapes cochées (F-208 / SF-208-01). */
+    public static final String UPDATE_SUB_STEPS = "update_sub_steps";
+
     /** Tous les noms d'outils du parcours. */
-    public static final Set<String> NAMES = Set.of(PROPOSE_GUIDED, SET_PLAN, SUBMIT_DIAGNOSIS, UPDATE_STEP, REOPEN);
+    public static final Set<String> NAMES = Set.of(PROPOSE_GUIDED, SET_PLAN, SUBMIT_DIAGNOSIS, UPDATE_STEP, REOPEN,
+            UPDATE_SUB_STEPS);
 
     /** Le guide ajouté à la consigne système quand les outils sont donnés (stable). */
     public static final String GUIDE = "--- Parcours du sujet (Libre / Guidé) ---\n"
@@ -78,12 +82,16 @@ public class JourneyToolCatalog {
             + "PLAN : pose le plan avec set_subject_plan — des étapes, chacune avec l'action (title), sa "
             + "classe de risque (risk : LECTURE, NOTES, REVERSIBLE, EXTERNE), comment la vérifier "
             + "(verify), comment revenir en arrière (rollback), et waits_on = la key de l'attente dont "
-            + "elle dépend. Le plan peut être PARTIEL : une inconnue est une étape qui attend son input. "
+            + "elle dépend ; depends_on = les numéros des étapes ANTÉRIEURES dont elle dépend vraiment (absent = "
+            + "les étapes précédentes) — déclare-les quand des étapes sont indépendantes. 40 étapes au plus : "
+            + "au-delà, regroupe. Le plan peut être PARTIEL : une inconnue est une étape qui attend son input. "
             + "Un petit geste = un plan d'une ligne. L'utilisateur valide le plan d'un clic ; tant qu'il "
             + "ne l'a pas fait, ne modifie rien. Garde PLAN-ACTION.md cohérent avec ce plan.\n"
             + "EXÉCUTION : n'exécute que des étapes du plan validé. Une modification hors plan est un "
             + "AMENDEMENT : rappelle set_subject_plan avec le plan complet modifié — il repasse par la "
-            + "validation de l'utilisateur. Après chaque étape exécutée : update_plan_step status=FAIT.\n"
+            + "validation de l'utilisateur. Après chaque étape exécutée : update_plan_step status=FAIT. Une "
+            + "étape longue se détaille avec update_sub_steps (la liste complète de ses sous-étapes, cochées "
+            + "au fur et à mesure, preuve à l'appui) : l'utilisateur suit ainsi l'avancement dans l'étape.\n"
             + "VÉRIFICATION : vérifie chaque étape COMME LE PLAN LE DIT, puis update_plan_step "
             + "status=VERIFIE ou ECHEC avec evidence = ce que tu as observé (commande et résultat). Jamais "
             + "VERIFIE sans preuve. Une vérification rouge, ou une découverte qui contredit le "
@@ -146,6 +154,7 @@ public class JourneyToolCatalog {
         tools.add(submitDiagnosisDefinition());
         tools.add(updateStepDefinition());
         tools.add(reopenDefinition());
+        tools.add(updateSubStepsDefinition());
         return tools;
     }
 
@@ -165,7 +174,10 @@ public class JourneyToolCatalog {
                                 "description", "Comment revenir en arrière."),
                         "waits_on", Map.of("type", "string",
                                 "description", "La key de l'attente (record_blocker) dont elle dépend, s'il y "
-                                        + "en a une.")),
+                                        + "en a une."),
+                        "depends_on", Map.of("type", "array", "items", Map.of("type", "integer"),
+                                "description", "Les numéros (à partir de 1) des étapes ANTÉRIEURES dont elle "
+                                        + "dépend. Absent = les étapes précédentes.")),
                 "required", List.of("title", "risk"));
         return new AgentTool(SET_PLAN,
                 "Pose (ou amende) le PLAN du sujet guidé : la liste COMPLÈTE des étapes, qui remplace la "
@@ -174,7 +186,7 @@ public class JourneyToolCatalog {
                 Map.of("type", "object",
                         "properties", Map.of(
                                 "steps", Map.of("type", "array", "items", step,
-                                        "description", "Les étapes, dans l'ordre (20 au plus)."),
+                                        "description", "Les étapes, dans l'ordre (40 au plus)."),
                                 "chantier", CHANTIER_PARAM),
                         "required", List.of("steps")));
     }
@@ -211,6 +223,29 @@ public class JourneyToolCatalog {
                                         "description", "Ce que tu as observé (requis pour VERIFIE et ECHEC)."),
                                 "chantier", CHANTIER_PARAM),
                         "required", List.of("step", "status")));
+    }
+
+    static AgentTool updateSubStepsDefinition() {
+        Map<String, Object> subStep = Map.of("type", "object",
+                "properties", Map.of(
+                        "title", Map.of("type", "string",
+                                "description", "La sous-étape (200 caractères au plus)."),
+                        "done", Map.of("type", "boolean", "description", "Faite ou non."),
+                        "evidence", Map.of("type", "string",
+                                "description", "Ce que tu as observé, si elle est faite.")),
+                "required", List.of("title", "done"));
+        return new AgentTool(UPDATE_SUB_STEPS,
+                "Détaille une étape du plan validé en SOUS-ÉTAPES cochées : la liste COMPLÈTE, qui remplace la "
+                        + "précédente (12 au plus). Ce n'est pas un amendement : l'étape reste la même, "
+                        + "l'utilisateur voit où tu en es dedans.",
+                Map.of("type", "object",
+                        "properties", Map.of(
+                                "step", Map.of("type", "integer",
+                                        "description", "Le numéro de l'étape, à partir de 1."),
+                                "sub_steps", Map.of("type", "array", "items", subStep,
+                                        "description", "Les sous-étapes, dans l'ordre."),
+                                "chantier", CHANTIER_PARAM),
+                        "required", List.of("step", "sub_steps")));
     }
 
     static AgentTool reopenDefinition() {
