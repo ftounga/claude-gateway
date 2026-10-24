@@ -1,7 +1,7 @@
 # Mini-spec — F-215 / SF-215-03 Savoir-faire « cours vidéo », briques graphiques et relecture
 
 ## Identifiant
-`F-215 / SF-215-03` — Feature parente : F-215 « Le cours vidéo libre (court et long) » — Statut : `in-review` — 2026-10-25
+`F-215 / SF-215-03` — Feature parente : F-215 « Le cours vidéo libre (court et long) » — Statut : `done` — 2026-10-25 (PR #1273, #1274)
 Branche : `feat/SF-215-03-savoir-faire-cours-video`
 
 ## Objectif
