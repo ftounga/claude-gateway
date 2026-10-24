@@ -68,7 +68,20 @@ public final class TurnQuestions {
 
     /** L'instantané complet des questions du tour. */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Snapshot(List<QuestionView> questions, Fusion fusion) {
+    public record Snapshot(List<QuestionView> questions, Fusion fusion,
+            @com.fasterxml.jackson.annotation.JsonInclude(
+                    com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+            List<QuestionAnswers.Answer> answers) {
+
+        /** Sans réponses (SF-210-01). */
+        public Snapshot(List<QuestionView> questions, Fusion fusion) {
+            this(questions, fusion, null);
+        }
+
+        /** Le même instantané, avec les réponses par question (F-210 / SF-210-02) ; vide = aucune. */
+        public Snapshot withAnswers(List<QuestionAnswers.Answer> list) {
+            return list == null || list.isEmpty() ? this : new Snapshot(questions, fusion, List.copyOf(list));
+        }
     }
 
     private static final class Question {
@@ -255,6 +268,19 @@ public final class TurnQuestions {
         }
     }
 
+    /**
+     * Les questions annoncées restées sans bloc de réponse alors que d'autres en ont un (F-210 /
+     * SF-210-02) : elles ne disparaissent pas, elles sont {@code NON_ABOUTIE}.
+     */
+    public void markUnanswered(List<Integer> ids) {
+        for (Integer id : ids) {
+            Question question = questions.get(id);
+            if (question != null) {
+                question.state = State.NON_ABOUTIE;
+            }
+        }
+    }
+
     /** L'instantané, ou {@code null} sans découpage. */
     public Snapshot snapshot() {
         if (!isSplit()) {
@@ -290,7 +316,11 @@ public final class TurnQuestions {
                 return reportJson;
             }
         }
-        report.set(REPORT_FIELD, MAPPER.valueToTree(snapshot));
+        report.set(REPORT_FIELD, MAPPER.valueToTree(new Snapshot(snapshot.questions(), snapshot.fusion())));
+        if (snapshot.answers() != null && !snapshot.answers().isEmpty()) {
+            // F-210 / SF-210-02 : les réponses par question, à part — `terminal_json.answers`.
+            report.set(QuestionAnswers.REPORT_FIELD, MAPPER.valueToTree(snapshot.answers()));
+        }
         try {
             return MAPPER.writeValueAsString(report);
         } catch (JsonProcessingException ex) {
