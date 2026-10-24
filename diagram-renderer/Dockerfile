@@ -20,11 +20,22 @@ RUN apk add --no-cache chromium ttf-freefont font-noto font-noto-emoji \
         python-docx==1.1.2 openpyxl==3.1.5 \
     && adduser -D -u 10001 renderer
 
+# F-212 / SF-212-02 : les polices des terminaux imités par les captures de preuve — Ubuntu Mono
+# (GNOME Terminal, licence Ubuntu Font) et Cascadia Mono (Windows Terminal, OFL), dans leurs versions
+# Nerd Font (même dessin, glyphes en plus). Seules les variantes Mono Regular/Bold sont gardées.
+# macOS : Menlo dérive de DejaVu Sans Mono, déjà installée (ttf-dejavu).
+RUN apk add --no-cache fontconfig font-ubuntu-mono-nerd font-cascadia-code-nerd \
+    && find /usr/share/fonts/ubuntu-mono-nerd -type f ! -name 'UbuntuMonoNerdFontMono-Regular.ttf' \
+        ! -name 'UbuntuMonoNerdFontMono-Bold.ttf' -delete \
+    && find /usr/share/fonts/cascadia-code-nerd -type f ! -name 'CaskaydiaCoveNerdFontMono-Regular.ttf' \
+        ! -name 'CaskaydiaCoveNerdFontMono-Bold.ttf' -delete \
+    && fc-cache -f
+
 WORKDIR /app
 # F-184 / SF-184-01 : puppeteer-core (sans navigateur téléchargé) pilote le chromium du système pour
 # imprimer une page en PDF en interceptant chaque requête — le service reste hors ligne.
 RUN npm install --omit=dev --no-audit --no-fund puppeteer-core@25.13.0
-COPY server.js drawio.js pdf.js puppeteer.json cloud.py deck.py office.py check_catalog.py ./
+COPY server.js drawio.js pdf.js terminal.js puppeteer.json cloud.py deck.py office.py check_catalog.py ./
 # Le catalogue d'icônes est vérifié AU BUILD : une entrée qui ne désigne aucune classe réelle ferait
 # échouer le premier schéma d'un client, et pas la construction de l'image. On le refuse ici.
 RUN python3 check_catalog.py && chown -R renderer:renderer /app
