@@ -949,7 +949,8 @@
               }
               <!-- UNE VIDÉO / DES SONS PUBLIÉS (F-213 / SF-213-02) : lecteur sur place, chapitres, vitesse. -->
               @if (block.video; as video) {
-                <app-video-block [video]="video" [readOnly]="readOnly" [workspaceId]="projectId"></app-video-block>
+                <app-video-block [video]="video" [readOnly]="readOnly" [workspaceId]="projectId"
+                (sendToTerminal)="onVideoFeedback($event)"></app-video-block>
               }
               @if (block.audio; as audio) {
                 <app-audio-block [audio]="audio" [readOnly]="readOnly"></app-audio-block>
@@ -1259,7 +1260,8 @@
             <app-proof-captures [proof]="proof" [workspaceId]="projectId"></app-proof-captures>
           }
           @if (block.video; as video) {
-            <app-video-block [video]="video" [readOnly]="readOnly" [workspaceId]="projectId"></app-video-block>
+            <app-video-block [video]="video" [readOnly]="readOnly" [workspaceId]="projectId"
+                (sendToTerminal)="onVideoFeedback($event)"></app-video-block>
           }
           @if (block.audio; as audio) {
             <app-audio-block [audio]="audio" [readOnly]="readOnly"></app-audio-block>

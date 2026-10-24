@@ -6,6 +6,9 @@ import { of } from 'rxjs';
 
 import { VideoGallery, VideoGalleryItem, VideoSummary } from '../../core/models/videos.models';
 import { VideosService } from '../../core/services/videos.service';
+import { Router } from '@angular/router';
+
+import { TerminalDraftBridge } from './terminal-draft-bridge';
 import { VideoGalleryComponent } from './video-gallery.component';
 import { clearPosition, readPosition, savePosition } from './video-resume';
 
@@ -44,7 +47,9 @@ describe('VideoGalleryComponent', () => {
       clearPosition(id, 1);
     }
     videos = jasmine.createSpyObj<VideosService>('VideosService',
-      ['gallery', 'get', 'remove', 'removeSeries', 'reportDuration']);
+      ['gallery', 'get', 'remove', 'removeSeries', 'reportDuration', 'comments', 'versions']);
+    videos.comments.and.returnValue(of([]));
+    videos.versions.and.returnValue(of([]));
     videos.gallery.and.returnValue(of(gallery));
     videos.get.and.callFake((id: string) => of(summary(id)));
     videos.remove.and.returnValue(of(undefined));
@@ -163,6 +168,27 @@ describe('VideoGalleryComponent', () => {
     ((fixture.nativeElement as HTMLElement).querySelector('.gallery__delete-series') as HTMLButtonElement).click();
     expect(videos.removeSeries).toHaveBeenCalledWith('s-1');
   });
+
+  it('F-214 : « Envoyer à l\'agent » passe par l\'onglet du terminal ; sans terminal ouvert, l\'ouvre avec le brouillon',
+    async () => {
+      const bridge = TestBed.inject(TerminalDraftBridge);
+      const router = TestBed.inject(Router);
+      const navigate = spyOn(router, 'navigate').and.returnValue(Promise.resolve(true));
+      const fixture = create({ hostId: 'h-1' });
+      const offer = spyOn(bridge, 'offer').and.returnValue(Promise.resolve(true));
+
+      fixture.componentInstance.onSendToTerminal({ message: 'Retours…', workspaceId: 'w-9', videoId: 'v-1' });
+      await fixture.whenStable();
+      expect(offer).toHaveBeenCalledWith('w-9', 'Retours…');
+      expect(navigate).not.toHaveBeenCalled();
+      expect(snack.open).toHaveBeenCalledWith(jasmine.stringContaining('saisie du terminal'), 'OK', jasmine.any(Object));
+
+      offer.and.returnValue(Promise.resolve(false));
+      fixture.componentInstance.onSendToTerminal({ message: 'Retours…', workspaceId: 'w-9', videoId: 'v-1' });
+      await fixture.whenStable();
+      await Promise.resolve();
+      expect(navigate).toHaveBeenCalledWith(['/atelier', 'w-9'], { state: { radarDraft: 'Retours…' } });
+    });
 });
 
 describe('video-resume', () => {

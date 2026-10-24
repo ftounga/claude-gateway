@@ -12,6 +12,8 @@ export interface VideoChapter {
  */
 export interface VideoSummary {
   id: string;
+  /** Le sujet de la vidéo (F-214 : « Envoyer à l'agent » depuis la galerie d'un poste). */
+  workspaceId?: string | null;
   kind: 'VIDEO' | 'AUDIO';
   title: string;
   description: string | null;
@@ -65,3 +67,38 @@ export interface VideoGallery {
 
 /** Le lieu d'une galerie : un sujet, ou tout un poste. */
 export type VideoGalleryPlace = { workspaceId: string } | { hostId: string };
+
+/** Une version conservée d'une vidéo (`GET /videos/{id}/versions`). */
+export interface VideoVersionInfo {
+  version: number;
+  sizeBytes: number;
+  mime: string;
+  poster: boolean;
+  createdAt: string;
+}
+
+/** Le statut d'un retour à la seconde (F-214). */
+export type VideoCommentStatus = 'OUVERT' | 'ENVOYE' | 'TRAITE' | 'REJETE';
+
+/** Un retour à la seconde, attaché à un instant (ou une plage) d'une version (F-214 / SF-214-01). */
+export interface VideoComment {
+  id: string;
+  videoId: string;
+  version: number;
+  tStartMs: number;
+  tEndMs: number | null;
+  frame: number;
+  endFrame: number | null;
+  text: string;
+  status: VideoCommentStatus;
+  resolution: string | null;
+  resolvedVersion: number | null;
+  sentAt: string | null;
+  createdAt: string;
+}
+
+/** Ce que rend `POST /videos/{id}/comments/send` : le message à placer dans la saisie, les retours envoyés. */
+export interface VideoCommentsSent {
+  message: string;
+  comments: VideoComment[];
+}

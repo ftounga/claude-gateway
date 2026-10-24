@@ -4,6 +4,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../chat/confirm-dialog/confirm-dialog.component';
@@ -16,7 +17,9 @@ import {
 } from '../../core/models/videos.models';
 import { VideosService } from '../../core/services/videos.service';
 import { formatClock } from '../../atelier/terminal/video-block';
-import { VideoPlayerComponent } from './video-player.component';
+import { RADAR_DRAFT_MAX_CHARS, RADAR_DRAFT_STATE } from '../radar-draft';
+import { TerminalDraftBridge } from './terminal-draft-bridge';
+import { VideoReviewComponent, VideoReviewSend } from './video-review.component';
 import { clearPosition, readPosition, savePosition } from './video-resume';
 
 /** Ce qui est ouvert : une série (et l'épisode lu), ou une vidéo seule. */
@@ -36,7 +39,7 @@ const SAVE_EVERY_MS = 5000;
  */
 @Component({
   selector: 'app-video-gallery',
-  imports: [MatButtonModule, MatIconModule, MatProgressSpinnerModule, VideoPlayerComponent],
+  imports: [MatButtonModule, MatIconModule, MatProgressSpinnerModule, VideoReviewComponent],
   template: `
     <section class="gallery" aria-label="Vidéos">
       @if (loading()) {
@@ -61,14 +64,15 @@ const SAVE_EVERY_MS = 5000;
                 <p class="gallery__description">{{ description }}</p>
               }
               @if (summary(); as loaded) {
-                <app-video-player
+                <app-video-review
                   [video]="loaded"
                   [startAt]="startAt()"
                   [autoplay]="autoplay()"
                   (progress)="onProgress($event)"
                   (ended)="onEnded()"
                   (durationRead)="onDuration($event)"
-                ></app-video-player>
+                  (sendToTerminal)="onSendToTerminal($event)"
+                ></app-video-review>
               } @else if (playerError()) {
                 <p class="gallery__state">{{ playerError() }}</p>
               }
@@ -320,6 +324,8 @@ export class VideoGalleryComponent {
   private readonly videos = inject(VideosService);
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
+  private readonly router = inject(Router);
+  private readonly draftBridge = inject(TerminalDraftBridge);
 
   /** Le sujet dont on montre les vidéos (écran Vidéos du sujet). */
   readonly workspaceId = input<string | null>(null);
@@ -464,6 +470,44 @@ export class VideoGalleryComponent {
     }
     open.item.durationS = Math.round(seconds);
     this.videos.reportDuration(open.item.id, seconds).subscribe({ error: () => undefined });
+  }
+
+  /**
+   * **« Envoyer à l'agent » depuis la galerie** (F-214 / SF-214-02) : le terminal du sujet vit dans un autre
+   * onglet — le message lui est proposé et rejoint sa saisie, sans être envoyé. Aucun terminal ouvert sur ce
+   * sujet : la galerie ouvre le terminal, le message dans l'état de navigation (jamais dans l'adresse).
+   */
+  onSendToTerminal(event: VideoReviewSend): void {
+    const workspaceId = event.workspaceId ?? this.workspaceId();
+    if (!workspaceId) {
+      this.copyInstead(event.message);
+      return;
+    }
+    void this.draftBridge.offer(workspaceId, event.message).then((taken) => {
+      if (taken) {
+        this.snackBar.open('Retours placés dans la saisie du terminal (autre onglet) : relisez, puis envoyez.', 'OK',
+          { duration: 5000 });
+        return;
+      }
+      if (event.message.length > RADAR_DRAFT_MAX_CHARS) {
+        this.copyInstead(event.message);
+        return;
+      }
+      void this.router.navigate(['/atelier', workspaceId], { state: { [RADAR_DRAFT_STATE]: event.message } });
+    });
+  }
+
+  /** Repli : le message part dans le presse-papiers, à coller dans le terminal. */
+  private copyInstead(message: string): void {
+    const clipboard = typeof navigator !== 'undefined' ? navigator.clipboard : undefined;
+    if (!clipboard?.writeText) {
+      this.snackBar.open('Ouvrez le terminal du sujet : les retours sont marqués envoyés.', 'OK', { duration: 6000 });
+      return;
+    }
+    clipboard.writeText(message).then(
+      () => this.snackBar.open('Retours copiés : collez-les dans le terminal du sujet.', 'OK', { duration: 6000 }),
+      () => this.snackBar.open('Copie impossible dans ce navigateur.', 'OK', { duration: 5000 }),
+    );
   }
 
   confirmDelete(item: VideoGalleryItem): void {

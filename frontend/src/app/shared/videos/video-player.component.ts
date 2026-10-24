@@ -195,6 +195,8 @@ export class VideoPlayerComponent {
   readonly speeds = VIDEO_SPEEDS;
   readonly speed = signal(1);
   readonly current = signal(-1);
+  /** La durée lue dans le conteneur, en secondes (F-214 : place des marqueurs). */
+  readonly duration = signal<number | null>(null);
 
   private readonly media = viewChild.required<ElementRef<HTMLVideoElement>>('media');
   private readonly frame = viewChild.required<ElementRef<HTMLElement>>('frame');
@@ -226,11 +228,31 @@ export class VideoPlayerComponent {
     this.media().nativeElement.playbackRate = speed;
   }
 
-  /** Un chapitre cliqué : la lecture saute à son début et reprend. */
-  seek(seconds: number): void {
+  /** Un chapitre cliqué : la lecture saute à son début et reprend (ou reste en pause si `play` est faux). */
+  seek(seconds: number, play = true): void {
     const element = this.media().nativeElement;
     element.currentTime = seconds;
-    void element.play?.()?.catch(() => undefined);
+    if (play) {
+      void element.play?.()?.catch(() => undefined);
+    } else {
+      element.pause?.();
+    }
+  }
+
+  /** Met la lecture en pause (F-214 : commenter un instant). */
+  pause(): void {
+    this.media().nativeElement.pause?.();
+  }
+
+  /** L'instant courant, en secondes. */
+  currentSeconds(): number {
+    const time = this.media().nativeElement.currentTime;
+    return Number.isFinite(time) ? time : 0;
+  }
+
+  /** Donne le focus au lecteur (raccourcis clavier). */
+  focus(): void {
+    this.media().nativeElement.focus?.();
   }
 
   fullscreen(): void {
@@ -250,6 +272,7 @@ export class VideoPlayerComponent {
       element.currentTime = start;
     }
     if (Number.isFinite(element.duration) && element.duration > 0) {
+      this.duration.set(element.duration);
       this.durationRead.emit(element.duration);
     }
     if (this.autoplay()) {
