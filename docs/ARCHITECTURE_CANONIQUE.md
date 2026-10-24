@@ -468,6 +468,18 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   côté serveur) après `requireOwned`, sous `(user_id, workspace_id)`. Purge : cascade au terminal, purge
   nommée au compte.
 
+- **message_block_sends** — **les encarts mail/message marqués envoyés** (F-211 / SF-211-01, migration
+  `167`) : `id (uuid)`, `user_id (NOT NULL)`, `workspace_id (FK workspaces ON DELETE CASCADE)`,
+  `message_id (FK atelier_messages ON DELETE CASCADE)`, `block_index (int)` — rang du bloc mail/message
+  dans la réponse persistée, vérifié côté serveur —, `kind (MAIL|MESSAGE)`, `subject (≤ 300)`,
+  `recipient (≤ 120)`, `excerpt (≤ 120)`, `attente_key` et l'instantané de l'attente d'avant
+  (`attente_action_id`, `attente_prev_status`, `attente_prev_requested_at|to`, `attente_prev_channel`,
+  `attente_marked_at`) pour « Annuler », `sent_at`, `cancelled_at`. Unique `(user_id, message_id,
+  block_index)`. Routes `GET /workspaces/{id}/messages/sends`, `POST|DELETE
+  /workspaces/{id}/messages/{messageId}/sends/{index}` après `requireOwned`, sous `(user_id,
+  workspace_id)`. Alimente la note de tour « Messages marqués envoyés » (consigne du tour, jamais le
+  système). Purge : cascade au terminal et au message.
+
 - **session_bilans** — **le bilan d'une session, gardé comme artefact** (F-155 / SF-155-04,
   migration `132`). Un bilan qui n'existe que dans une réponse HTTP est un bilan qu'on ne relit
   jamais et qu'on ne peut pas **comparer** — or comparer est tout l'intérêt (« le cache est remonté
