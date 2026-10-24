@@ -1938,6 +1938,9 @@
     <app-terminal-chantiers-board
       [journey]="journey()"
       [workspaceId]="projectId"
+      [canSend]="!readOnly && !liveLimitReached"
+      (request)="onBoardRequest($event)"
+      (focus)="onSwitchChantier($event)"
       (closed)="closeBoard()"
     ></app-terminal-chantiers-board>
   }

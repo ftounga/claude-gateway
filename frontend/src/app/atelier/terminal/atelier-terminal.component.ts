@@ -1018,6 +1018,26 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     this.boardOpen.set(false);
   }
 
+  /**
+   * **Une demande du tableau des chantiers** (F-208 / SF-208-04) — « Faire cette étape », « Relancer
+   * l'attente » : posée dans la saisie puis envoyée par le chemin normal, donc **visible dans le fil** ;
+   * pendant un tour, elle devient une précision (F-195). Un brouillon en cours part avec elle. L'overlay se
+   * ferme pour montrer la demande partie.
+   */
+  onBoardRequest(text: string): void {
+    if (this.readOnly || this.liveLimitReached) {
+      return;
+    }
+    if (this.submittingValue && !this.steerable) {
+      this.snackBar.open('Un tour est en cours : attendez sa fin pour lancer cette étape.', 'OK', { duration: 4000 });
+      return;
+    }
+    const draft = (this.draft ?? '').trim();
+    this.draftChange.emit(draft.length > 0 ? `${text}\n\n${draft}` : text);
+    this.send.emit();
+    this.boardOpen.set(false);
+  }
+
   /** Le libellé accessible du bouton « Chantiers ». */
   boardButtonLabel(): string {
     const n = this.chantiersBadge();
