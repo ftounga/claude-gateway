@@ -101,6 +101,80 @@ public class HttpTranscriptionProvider implements TranscriptionProvider {
         }
     }
 
+    /** Seuls les modèles Whisper rendent l'horodatage par mot (F-215 / SF-215-01). */
+    static final String WORDS_MODEL = "whisper-1";
+
+    /**
+     * <b>Mode mots</b> (F-215 / SF-215-01) : {@code verbose_json} + {@code timestamp_granularities[]=word}.
+     * Le modèle est forcé sur {@value #WORDS_MODEL} — {@code gpt-4o-transcribe} ne rend pas de mots
+     * horodatés ; le modèle configuré (dictée, réunions) n'est pas touché.
+     */
+    @Override
+    public WordTranscript transcribeWords(byte[] audio, String contentType, String languageHint) {
+        if (!properties.isConfigured()) {
+            throw new TranscriptionProviderUnavailableException(
+                    "STT non configuré : aucun service de transcription n'est paramétré.");
+        }
+        if (audio == null || audio.length == 0) {
+            throw new TranscriptionProviderException("Audio vide : rien à transcrire.");
+        }
+        if (audio.length > properties.maxAudioBytes()) {
+            throw new TranscriptionProviderException("Audio trop volumineux pour le service STT ("
+                    + audio.length + " octets, max " + properties.maxAudioBytes() + ").");
+        }
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        body.add("file", new NamedAudio(audio, filename(contentType)));
+        body.add("model", WORDS_MODEL);
+        body.add("response_format", "verbose_json");
+        body.add("timestamp_granularities[]", "word");
+        String language = languageHint != null && !languageHint.isBlank()
+                ? languageHint : properties.language();
+        if (language != null && !language.isBlank()) {
+            body.add("language", language);
+        }
+        try {
+            WordsResponse response = restClient.post()
+                    .uri(properties.baseUrl().stripTrailing().replaceAll("/+$", "") + "/audio/transcriptions")
+                    .header("Authorization", "Bearer " + properties.apiKey())
+                    .contentType(MediaType.MULTIPART_FORM_DATA)
+                    .body(body)
+                    .retrieve()
+                    .onStatus(HttpStatusCode::isError, (request, resp) -> {
+                        throw new TranscriptionProviderException(
+                                "Le service STT a répondu une erreur (" + resp.getStatusCode().value() + ").");
+                    })
+                    .body(WordsResponse.class);
+            if (response == null) {
+                throw new TranscriptionProviderException("Réponse vide du service STT.");
+            }
+            return toWords(response);
+        } catch (TranscriptionProviderException e) {
+            throw e;
+        } catch (RestClientException e) {
+            log.warn("Appel au service STT (mots) en échec (modèle={})", WORDS_MODEL);
+            throw new TranscriptionProviderException("Échec de l'appel au service de transcription.", e);
+        }
+    }
+
+    /** Les mots relus, dans l'ordre ; un mot vide est écarté, un instant manquant ou inversé est borné. */
+    static WordTranscript toWords(WordsResponse response) {
+        List<TimedWord> words = new java.util.ArrayList<>();
+        if (response.words() != null) {
+            for (WhisperWord w : response.words()) {
+                String text = w.word() == null ? "" : w.word().strip();
+                if (text.isEmpty()) {
+                    continue;
+                }
+                double start = w.start() == null ? 0d : Math.max(0d, w.start());
+                double end = w.end() == null ? start : Math.max(start, w.end());
+                words.add(new TimedWord(text, start, end));
+            }
+        }
+        double duration = response.duration() != null ? response.duration()
+                : words.isEmpty() ? 0d : words.get(words.size() - 1).end();
+        return new WordTranscript(words, duration, response.language());
+    }
+
     /**
      * Le {@code response_format} adapté au modèle OpenAI. Seuls les modèles <b>Whisper</b> acceptent
      * {@code verbose_json} (segments horodatés) ; {@code gpt-4o-transcribe} / {@code gpt-4o-mini-transcribe}
@@ -169,6 +243,14 @@ public class HttpTranscriptionProvider implements TranscriptionProvider {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     private record WhisperResponse(String text, String language, List<WhisperSegment> segments) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record WordsResponse(String text, String language, Double duration, List<WhisperWord> words) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record WhisperWord(String word, Double start, Double end) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
