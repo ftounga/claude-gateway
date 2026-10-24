@@ -385,12 +385,12 @@ public final class LocalToolchain {
 
     /** Rapatriement d'une archive, isolé pour être éprouvable sans réseau. */
     @FunctionalInterface
-    interface Downloader {
+    public interface Downloader {
         /** @return le nombre d'octets écrits dans {@code into} */
         long fetch(String url, Path into) throws IOException;
     }
 
-    static Path lookupOnPath(String executableName) {
+    public static Path lookupOnPath(String executableName) {
         String path = System.getenv("PATH");
         if (path == null || path.isBlank()) {
             return null;
@@ -412,7 +412,7 @@ public final class LocalToolchain {
     }
 
     /** Le rapatriement réel : HTTPS uniquement, borné en taille. */
-    static Downloader httpDownloader() {
+    public static Downloader httpDownloader() {
         return (url, into) -> {
             URI uri = URI.create(url);
             if (!"https".equalsIgnoreCase(uri.getScheme())) {

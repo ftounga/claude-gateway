@@ -372,7 +372,9 @@ public class RunnerToolGateway {
      */
     public RunnerCallResult video(RunnerTarget target, String callId, String tool,
             com.fasterxml.jackson.databind.JsonNode input) {
-        if (!fr.claudegateway.atelier.video.VideoToolCatalog.isVideoTool(tool)) {
+        if (!fr.claudegateway.atelier.video.VideoToolCatalog.isVideoTool(tool)
+                // F-215 / SF-215-02 : le rendu partage ce relais (scalaires seulement, rend la main tout de suite).
+                && !fr.claudegateway.atelier.video.VideoRenderToolCatalog.isRenderTool(tool)) {
             return invalid("Outil vidéo inconnu.");
         }
         ObjectNode payload = objectMapper.createObjectNode();
@@ -383,7 +385,8 @@ public class RunnerToolGateway {
                     return;
                 }
                 if (value.isTextual()) {
-                    int max = "path".equals(field.getKey()) ? MAX_VIDEO_PATH_CHARS : MAX_QUERY_CHARS;
+                    int max = java.util.Set.of("path", "dossier", "sortie", "composition").contains(field.getKey())
+                            ? MAX_VIDEO_PATH_CHARS : MAX_QUERY_CHARS;
                     String text = value.asText();
                     payload.put(field.getKey(), text.length() > max ? text.substring(0, max) : text);
                 } else if (value.isNumber() || value.isBoolean()) {

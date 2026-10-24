@@ -6917,6 +6917,13 @@ public class AtelierChatService implements RelayInterruptTarget {
                     new AtelierProgressListener.AtelierStepEvent("video", videoStep(input));
             case fr.claudegateway.atelier.video.VideoToolCatalog.STATUS ->
                     new AtelierProgressListener.AtelierStepEvent("video", "suivi de l'extraction");
+            // F-215 / SF-215-02 : le rendu dit ce qu'il rend dès le départ.
+            case fr.claudegateway.atelier.video.VideoRenderToolCatalog.RENDER ->
+                    new AtelierProgressListener.AtelierStepEvent("video", shorten(
+                            input.path("verifier_seulement").asBoolean(false) ? "préparation du rendu vidéo"
+                                    : "rendu vidéo : " + arg(input, "dossier"), STEP_COMMAND_CHARS));
+            case fr.claudegateway.atelier.video.VideoRenderToolCatalog.STATUS ->
+                    new AtelierProgressListener.AtelierStepEvent("video", "suivi du rendu");
             // F-212 / SF-212-03 : la session de preuve se montre comme une commande, avec son titre.
             case fr.claudegateway.atelier.proof.ProofToolCatalog.TOOL ->
                     new AtelierProgressListener.AtelierStepEvent("bash",
@@ -7592,7 +7599,9 @@ public class AtelierChatService implements RelayInterruptTarget {
      * (l'agent édite le projet), et un clic par écriture pousserait à chercher un contournement.</p>
      */
     private static boolean requiresConfirmation(String tool, Workspace workspace) {
-        return "bash".equals(tool) && workspace.isAgentAskBeforeBash();
+        // F-215 / SF-215-02 : video_render lance des programmes sur le poste — même porte que bash.
+        return ("bash".equals(tool) || fr.claudegateway.atelier.video.VideoRenderToolCatalog.RENDER.equals(tool))
+                && workspace.isAgentAskBeforeBash();
     }
 
     /**
@@ -8190,7 +8199,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                     requiredArg(input, "shell_id"));
             // F-190 / SF-190-01 : regarder une vidéo. Le runner extrait ; la gateway relaie.
             case fr.claudegateway.atelier.video.VideoToolCatalog.IMAGES,
-                    fr.claudegateway.atelier.video.VideoToolCatalog.STATUS ->
+                    fr.claudegateway.atelier.video.VideoToolCatalog.STATUS,
+                    // F-215 / SF-215-02 : rendre une vidéo. Le runner prépare et rend ; la gateway relaie.
+                    fr.claudegateway.atelier.video.VideoRenderToolCatalog.RENDER,
+                    fr.claudegateway.atelier.video.VideoRenderToolCatalog.STATUS ->
                     runnerToolGateway.video(target, callId, call.name(), input);
             // Le volet Teams (F-88 / SF-88-03) : un seul relais pour les huit outils, parce qu'ils
             // partagent le même contrat — des paramètres que SEUL le runner sait interpréter, et une
@@ -9130,6 +9142,15 @@ public class AtelierChatService implements RelayInterruptTarget {
         return caps != null && caps.contains(fr.claudegateway.atelier.video.VideoToolCatalog.CAPABILITY);
     }
 
+    /** Vrai si le poste de ce workspace (cible RUNNER) annonce cette capacité (F-215 / SF-215-02). */
+    private boolean supportsCapability(Workspace workspace, String capability) {
+        if (!workspace.isRunnerTarget() || workspace.getHostId() == null) {
+            return false;
+        }
+        java.util.Set<String> caps = runnerHostService.declaredCapabilities(workspace.getHostId());
+        return caps != null && caps.contains(capability);
+    }
+
     /**
      * Vrai si le poste de ce workspace sait lancer des commandes <b>en arrière-plan</b>
      * (F-121 / SF-121-07) : cible RUNNER <b>et</b> capacité {@code bash_background} annoncée par le
@@ -9184,6 +9205,11 @@ public class AtelierChatService implements RelayInterruptTarget {
             // capacité `video` (un runner ancien ne l'annonce pas). Propriété STABLE du poste.
             if (supportsVideo(workspace)) {
                 tools.addAll(fr.claudegateway.atelier.video.VideoToolCatalog.tools());
+            }
+            // F-215 / SF-215-02 : rendre une vidéo — déclaré seulement si le runner annonce la capacité
+            // `video_render` (runner à jour ET commandes autorisées sur le poste). Propriété STABLE du poste.
+            if (supportsCapability(workspace, fr.claudegateway.atelier.video.VideoRenderToolCatalog.CAPABILITY)) {
+                tools.addAll(fr.claudegateway.atelier.video.VideoRenderToolCatalog.tools());
             }
             // F-212 / SF-212-03 : les captures de preuve, sur tout poste hors terminal Teams. Déclaré
             // même pour un runner ancien (propriété stable : préfixe caché intact) — l'appel dit alors
