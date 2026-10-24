@@ -62,6 +62,8 @@ export interface OpenChantier {
   executing: boolean;
   done: number;
   total: number;
+  /** Le plan détaillé du chantier (F-208), `null` sans plan — absent d'une gateway antérieure. */
+  plan?: JourneyPlan | null;
 }
 
 /** Vrai si un chantier ouvert attend un geste de l'utilisateur (F-206). */
@@ -132,6 +134,103 @@ export interface JourneyPlanStep {
   evidence: string | null;
   /** Nouvelle ou modifiée depuis le plan validé (amendement). */
   changed: boolean;
+  /** Les rangs (à partir de 1) des étapes antérieures dont elle dépend, déclarés (F-208). */
+  dependsOn?: number[];
+  /** Rien ne la bloque : dépendances faites, attente non ouverte (F-208). */
+  unlocked?: boolean;
+  /** Ce qui la bloque, lisible : « étape 3 », « attente cert-gino » (F-208). */
+  blockedBy?: string[];
+  /** À faire, mais au moins une sous-étape faite (F-208). */
+  inProgress?: boolean;
+  /** Ses sous-étapes cochées (F-208). */
+  subSteps?: JourneySubStep[];
+}
+
+/** Une sous-étape (F-208). */
+export interface JourneySubStep {
+  title: string;
+  done: boolean;
+  evidence: string | null;
+}
+
+/** Une version du plan d'un chantier et ce qui a changé depuis la précédente (F-208 / SF-208-02). */
+export interface JourneyPlanVersion {
+  version: number;
+  createdAt: string;
+  stepCount: number;
+  added: string[];
+  removed: string[];
+  modified: string[];
+}
+
+/** L'état affiché d'une étape (F-208) — « en cours » et « bloquée » sont dérivés. */
+export type StepState = 'verified' | 'done' | 'failed' | 'progress' | 'blocked' | 'todo';
+
+export function stepState(step: JourneyPlanStep): StepState {
+  switch (step.status) {
+    case 'VERIFIE': return 'verified';
+    case 'FAIT': return 'done';
+    case 'ECHEC': return 'failed';
+  }
+  if (step.inProgress) {
+    return 'progress';
+  }
+  return step.unlocked === false ? 'blocked' : 'todo';
+}
+
+/** Libellé d'un état affiché. */
+export function stepStateLabel(state: StepState): string {
+  switch (state) {
+    case 'verified': return 'vérifiée';
+    case 'done': return 'faite';
+    case 'failed': return 'échec';
+    case 'progress': return 'en cours';
+    case 'blocked': return 'bloquée';
+    default: return 'à faire';
+  }
+}
+
+/** L'icône Material d'un état affiché. */
+export function stepStateIcon(state: StepState): string {
+  switch (state) {
+    case 'verified': return 'verified';
+    case 'done': return 'check_circle';
+    case 'failed': return 'error';
+    case 'progress': return 'timelapse';
+    case 'blocked': return 'lock';
+    default: return 'radio_button_unchecked';
+  }
+}
+
+/**
+ * L'étape « en cours » d'un plan (F-208) : la première entamée, sinon la première à faire et débloquée,
+ * sinon la première à faire ; `-1` si tout est fait.
+ */
+export function currentStepIndex(plan: JourneyPlan | null | undefined): number {
+  const steps = plan?.steps ?? [];
+  const started = steps.findIndex((s) => stepState(s) === 'progress');
+  if (started >= 0) {
+    return started;
+  }
+  const ready = steps.findIndex((s) => stepState(s) === 'todo');
+  if (ready >= 0) {
+    return ready;
+  }
+  return steps.findIndex((s) => s.status === 'A_FAIRE' || s.status === 'ECHEC');
+}
+
+/**
+ * Combien de gestes un chantier ouvert attend de l'utilisateur (F-208) : plan à valider, diagnostic à
+ * confirmer, clôture proposée, étapes qui attendent une attente ouverte.
+ */
+export function chantierGestures(c: OpenChantier): number {
+  return (c.awaitingValidation ? 1 : 0) + (c.diagnosisPending ? 1 : 0) + (c.closeProposed ? 1 : 0)
+    + (c.plan?.waitingInputs ?? 0);
+}
+
+/** Le badge du tableau des chantiers : les gestes attendus sur tous les chantiers ouverts (F-208). */
+export function chantiersGestures(journey: SubjectJourney | null | undefined): number {
+  return (journey?.chantiers ?? []).reduce((sum, c) => sum + chantierGestures(c), 0);
 }
 
 /** Le plan structuré (SF-176-03). */

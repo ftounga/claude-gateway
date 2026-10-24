@@ -245,6 +245,12 @@
                 <span>{{ askBeforeBash ? 'Validation activée' : 'Valider les commandes' }}</span>
               </button>
             }
+            @if (hasOpenChantiers()) {
+              <button mat-menu-item type="button" class="terminal-board-entry" (click)="openBoard()">
+                <mat-icon>view_kanban</mat-icon>
+                <span>Tableau des chantiers</span>
+              </button>
+            }
             <button mat-menu-item type="button" (click)="openFiles.emit()">
               <mat-icon>folder</mat-icon>
               <span>Fichiers</span>
@@ -1595,6 +1601,23 @@
               }
             </button>
           }
+          <!-- F-208 / SF-208-03 — LE TABLEAU DES CHANTIERS : un overlay, badge = gestes attendus. -->
+          @if (hasOpenChantiers()) {
+            <button
+              type="button"
+              class="terminal-dock__chip terminal-dock__board"
+              [class.terminal-dock__chip--await]="chantiersBadge() > 0"
+              aria-haspopup="dialog"
+              [attr.aria-label]="boardButtonLabel()"
+              (click)="openBoard()"
+            >
+              <mat-icon class="terminal-dock__chip-icon" aria-hidden="true">view_kanban</mat-icon>
+              <span class="terminal-dock__chip-label">Chantiers</span>
+              @if (chantiersBadge() > 0) {
+                <span class="terminal-dock__await terminal-dock__board-badge">{{ chantiersBadge() }}</span>
+              }
+            </button>
+          }
           <span class="terminal-dock__spacer"></span>
           <button
             mat-icon-button
@@ -1887,6 +1910,14 @@
   <!-- LA PAGE OUVERTE (F-109 / SF-109-03) : un panneau à droite du terminal, un état d'écran. -->
   @if (openedPageId(); as pageId) {
     <app-page-panel [pageId]="pageId" (closed)="closePage()"></app-page-panel>
+  }
+  <!-- LE TABLEAU DES CHANTIERS (F-208 / SF-208-03) : un overlay, relu en direct avec le parcours. -->
+  @if (boardOpen()) {
+    <app-terminal-chantiers-board
+      [journey]="journey()"
+      [workspaceId]="projectId"
+      (closed)="closeBoard()"
+    ></app-terminal-chantiers-board>
   }
   <!-- LES ACTIONS À FAIRE (F-154 / SF-154-03) : même patron de panneau, même état d'écran. -->
   @if (actionsOpen() && projectId) {
