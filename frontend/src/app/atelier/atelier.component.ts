@@ -141,6 +141,7 @@ import { handoffBlock } from './terminal/handoff-card.component';
 import { proposalBlock } from './terminal/proposal-card.component';
 import { besoinBlock } from './terminal/besoin-card.component';
 import { proofBlock } from './terminal/proof-captures.component';
+import { audioBlock, videoBlock } from './terminal/video-block';
 import {
   compactionMarkerBlock,
   compactionMarkerLabel,
@@ -2072,6 +2073,29 @@ export class AtelierComponent implements OnInit, OnDestroy {
             {
               afterSteps: this.streaming()?.steps.length ?? 0,
               block: proofBlock(event.toolUseId, event.proof),
+            },
+          ];
+          this.mirrorLocalSteps();
+        }),
+      // UNE VIDÉO / DES SONS PUBLIÉS (F-213 / SF-213-02) : rangés comme une carte.
+      onVideo: (event) =>
+        this.zone.run(() => {
+          this.cardsOfTurn = [
+            ...this.cardsOfTurn,
+            {
+              afterSteps: this.streaming()?.steps.length ?? 0,
+              block: videoBlock(event.toolUseId, event.video),
+            },
+          ];
+          this.mirrorLocalSteps();
+        }),
+      onAudio: (event) =>
+        this.zone.run(() => {
+          this.cardsOfTurn = [
+            ...this.cardsOfTurn,
+            {
+              afterSteps: this.streaming()?.steps.length ?? 0,
+              block: audioBlock(event.toolUseId, event.audio),
             },
           ];
           this.mirrorLocalSteps();
@@ -4105,6 +4129,29 @@ export class AtelierComponent implements OnInit, OnDestroy {
             {
               afterSteps: this.streaming()?.steps.length ?? 0,
               block: proofBlock(event.toolUseId, event.proof),
+            },
+          ];
+          this.mirrorLocalSteps();
+        }),
+      // UNE VIDÉO / DES SONS PUBLIÉS (F-213 / SF-213-02) : rangés comme une carte.
+      onVideo: (event) =>
+        this.zone.run(() => {
+          this.cardsOfTurn = [
+            ...this.cardsOfTurn,
+            {
+              afterSteps: this.streaming()?.steps.length ?? 0,
+              block: videoBlock(event.toolUseId, event.video),
+            },
+          ];
+          this.mirrorLocalSteps();
+        }),
+      onAudio: (event) =>
+        this.zone.run(() => {
+          this.cardsOfTurn = [
+            ...this.cardsOfTurn,
+            {
+              afterSteps: this.streaming()?.steps.length ?? 0,
+              block: audioBlock(event.toolUseId, event.audio),
             },
           ];
           this.mirrorLocalSteps();

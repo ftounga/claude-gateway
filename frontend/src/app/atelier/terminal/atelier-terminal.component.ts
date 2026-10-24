@@ -181,6 +181,8 @@ import { HandoffCardComponent, HandoffOriginComponent } from './handoff-card.com
 import { ProposalCardComponent } from './proposal-card.component';
 import { BesoinCardComponent } from './besoin-card.component';
 import { ProofCapturesComponent } from './proof-captures.component';
+import { VideoBlockComponent } from './video-block.component';
+import { AudioBlockComponent } from './audio-block.component';
 import { SkillCatalogService, SkillEntry, skillSuggestions } from '../../core/services/skill-catalog.service';
 import {
   AGENT_COMMAND,
@@ -285,7 +287,7 @@ export function plumeErrorMessage(failure: HttpErrorResponse | null | undefined)
     TeamsLinkBadgeComponent, NgTemplateOutlet, TerminalEmailComponent, PageBlockComponent, PagePanelComponent,
     TerminalActionsPanelComponent, TerminalAttentesBandComponent, TerminalMorningBandComponent, TerminalFilComponent,
     AttenteCardComponent,
-    HandoffCardComponent, HandoffOriginComponent, ProposalCardComponent, BesoinCardComponent, ProofCapturesComponent,
+    HandoffCardComponent, HandoffOriginComponent, ProposalCardComponent, BesoinCardComponent, ProofCapturesComponent, VideoBlockComponent, AudioBlockComponent,
     TerminalJourneyChipComponent, TerminalJourneyStripComponent, TerminalJourneyChantiersComponent,
     TerminalChantiersBoardComponent,
     TerminalHandComponent,

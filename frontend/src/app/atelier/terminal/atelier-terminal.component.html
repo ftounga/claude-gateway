@@ -938,6 +938,13 @@
               @if (block.proof; as proof) {
                 <app-proof-captures [proof]="proof" [workspaceId]="projectId"></app-proof-captures>
               }
+              <!-- UNE VIDÉO / DES SONS PUBLIÉS (F-213 / SF-213-02) : lecteur sur place, chapitres, vitesse. -->
+              @if (block.video; as video) {
+                <app-video-block [video]="video" [readOnly]="readOnly"></app-video-block>
+              }
+              @if (block.audio; as audio) {
+                <app-audio-block [audio]="audio" [readOnly]="readOnly"></app-audio-block>
+              }
             </div>
             }
             }
@@ -1241,6 +1248,12 @@
           }
           @if (block.proof; as proof) {
             <app-proof-captures [proof]="proof" [workspaceId]="projectId"></app-proof-captures>
+          }
+          @if (block.video; as video) {
+            <app-video-block [video]="video" [readOnly]="readOnly"></app-video-block>
+          }
+          @if (block.audio; as audio) {
+            <app-audio-block [audio]="audio" [readOnly]="readOnly"></app-audio-block>
           }
         </div>
         }

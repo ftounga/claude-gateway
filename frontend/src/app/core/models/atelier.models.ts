@@ -902,6 +902,12 @@ export interface AtelierStreamHandlers {
    */
   onProof?: (event: AtelierProofEvent) => void;
 
+  /** **Une vidéo publiée** (F-213 / SF-213-01). Optionnel : un backend antérieur ne l'émet pas. */
+  onVideo?: (event: AtelierVideoEvent) => void;
+
+  /** **Des sons publiés** (F-213 / SF-213-01). Optionnel : un backend antérieur ne l'émet pas. */
+  onAudio?: (event: AtelierAudioEvent) => void;
+
   /**
    * **Les questions du tour** (F-210 / SF-210-01) : l'instantané complet, à chaque découpage ou changement
    * d'état, puis à la clôture (avec les réponses, SF-210-02). Optionnel : un backend antérieur ne l'émet pas.
@@ -1312,6 +1318,12 @@ export interface AtelierTerminalBlock {
    */
   proof?: AtelierProofBlock | null;
 
+  /** **Une vidéo publiée par l'agent** (F-213 / SF-213-01/02) : lecteur, chapitres cliquables. */
+  video?: AtelierTerminalVideo | null;
+
+  /** **Des sons publiés par l'agent** (F-213 / SF-213-01/02) : lecteurs compacts empilés. */
+  audio?: AtelierTerminalAudio | null;
+
   /**
    * **Un marqueur de flux** (F-162 / SF-162-03) : « Conversation compactée · N tours résumés » ou
    * « Détail rappelé · tour N ». Ce n'est ni une sortie de commande ni une carte — c'est une trace
@@ -1607,6 +1619,52 @@ export interface AtelierProofBlock {
   shell: string | null;
   captures: AtelierProofCapture[];
   commands: AtelierProofCommand[];
+}
+
+/** Un chapitre d'une vidéo (F-213) : `t` en secondes. */
+export interface AtelierVideoChapter {
+  t: number;
+  titre: string;
+}
+
+/** **Le bloc « vidéo »** (F-213 / SF-213-01) — jamais les octets ni une adresse : l'écran relit `GET /videos/{id}`. */
+export interface AtelierTerminalVideo {
+  videoId: string;
+  title: string;
+  description: string | null;
+  version: number;
+  durationS: number | null;
+  chapters: AtelierVideoChapter[];
+  seriesId: string | null;
+  seriesTitle: string | null;
+  episode: number | null;
+  poster: boolean;
+}
+
+/** Une piste du bloc « audio » (F-213). */
+export interface AtelierTerminalAudioTrack {
+  audioId: string;
+  label: string;
+  version: number;
+  mime: string;
+}
+
+/** **Le bloc « audio »** (F-213 / SF-213-01) : lecteurs compacts empilés, un libellé par piste. */
+export interface AtelierTerminalAudio {
+  title: string | null;
+  tracks: AtelierTerminalAudioTrack[];
+}
+
+/** Vidéo publiée relayée au fil de l'eau (F-213 / SF-213-01). */
+export interface AtelierVideoEvent {
+  toolUseId: string;
+  video: AtelierTerminalVideo;
+}
+
+/** Sons publiés relayés au fil de l'eau (F-213 / SF-213-01). */
+export interface AtelierAudioEvent {
+  toolUseId: string;
+  audio: AtelierTerminalAudio;
 }
 
 /** Captures de preuve relayées au fil de l'eau (F-212 / SF-212-03). */

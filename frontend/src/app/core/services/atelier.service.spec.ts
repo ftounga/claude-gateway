@@ -72,6 +72,30 @@ describe('AtelierService', () => {
     expect((proofs[0] as { toolUseId: string }).toolUseId).toBe('tu_1');
   });
 
+  // F-213 / SF-213-02 — la vidéo et les sons publiés arrivent par les événements SSE `video` et `audio`.
+  it("relaie les événements video et audio, et ignore un bloc creux", () => {
+    const dispatch = (service as unknown as {
+      dispatchSseEvent: (raw: string, handlers: object) => void;
+    }).dispatchSseEvent.bind(service);
+    const videos: unknown[] = [];
+    const audios: unknown[] = [];
+    const handlers = {
+      onAction: () => undefined, onText: () => undefined, onDone: () => undefined, onError: () => undefined,
+      onVideo: (event: unknown) => videos.push(event),
+      onAudio: (event: unknown) => audios.push(event),
+    };
+
+    dispatch('event: video\ndata: {"toolUseId":"tu_1","video":{"videoId":"v-1","title":"Cours","version":1,"chapters":[]}}', handlers);
+    dispatch('event: video\ndata: {"toolUseId":"tu_2"}', handlers);
+    dispatch('event: audio\ndata: {"toolUseId":"tu_3","audio":{"title":null,"tracks":[{"audioId":"a-1","label":"Voix 1","version":1,"mime":"audio/mpeg"}]}}', handlers);
+    dispatch('event: audio\ndata: {"toolUseId":"tu_4","audio":{"tracks":[]}}', handlers);
+
+    expect(videos.length).toBe(1);
+    expect((videos[0] as { toolUseId: string }).toolUseId).toBe('tu_1');
+    expect(audios.length).toBe(1);
+    expect((audios[0] as { toolUseId: string }).toolUseId).toBe('tu_3');
+  });
+
   // F-210 / SF-210-03 — les questions du tour (SSE `questions`) et le rattachement d'une étape (`question`).
   it("relaie les questions du tour et la question d'une étape, et ignore un instantané illisible", () => {
     const dispatch = (service as unknown as {
