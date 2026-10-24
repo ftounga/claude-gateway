@@ -18,6 +18,7 @@ Ce document dit comment **Claude Code** récupère ces besoins, les cadre et les
 | `CADRE` | Claude Code / PO | cadré : `featureRef` = la feature créée (`F-123`) |
 | `REJETE` | clic [Non] ou PO | écarté |
 | `LIVRE` | Claude Code / PO | la feature qui le porte est en prod |
+| `JOINT` | clic [Ajouter au besoin] | **complément** d'un besoin (SF-205-04) : il se lit dans `complements[]` de son besoin, jamais à part |
 
 ## 1. Par l'API (voie normale)
 
@@ -52,6 +53,12 @@ Ce que rend un besoin : `kind` (`BUG`|`EVOLUTION`), `title`, `description` (**le
 quels** — c'est la source), `reformulation` (l'interprétation de l'agent, à vérifier), `observedContext`,
 `status`, `featureRef`, dates, `attachments[]` (`position`, `name`, `contentType`, `size`, `copyStatus`
 `PENDING|COPIED|FAILED`, `copyError`).
+
+**Compléments (SF-205-04)** : un besoin rend aussi `complements[]` — ce que le PO a ajouté ensuite, du plus
+ancien au plus récent (`id`, `description`, `reformulation` à jour, `observedContext`, `attachments[]`). Lire
+**les mots d'origine puis chaque complément** : la dernière reformulation est la compréhension d'ensemble la
+plus récente. Les pièces d'un complément se lisent par **son** id : `…/app-requests/<idComplément>/attachments/<n>`.
+Un complément ajouté à un besoin `CADRE` ou `LIVRE` le remet `EN_ATTENTE` : à relire, sa `featureRef` est conservée.
 
 Erreurs : `400 app_request_invalid` (statut inconnu, `featureRef` hors `F-123`), `404 app_request_not_found`,
 `409 app_request_conflict` (besoin pas encore enregistré), `403` (non-administrateur).
