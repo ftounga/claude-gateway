@@ -133,4 +133,17 @@ describe('AtelierTerminalComponent — Et maintenant ? (F-192 / SF-192-02)', () 
     expect(field.classList).not.toContain('terminal-field--ghost');
     expect((fixture.nativeElement as HTMLElement).querySelector('app-turn-suggestions')).toBeNull();
   }));
+
+  it('F-209 / SF-209-02 : « Lancer » envoie UNE demande visible par le chemin d’envoi', () => {
+    const withPrereq: AtelierNextStep[] = [{
+      title: 'Basculer', why: 'étape 6', label: 'CONTINUER', request: 'Bascule.', scope: 'CHANTIER',
+      stepIndex: 6, chantier: 4, column: 'CHANTIER',
+      prerequisites: [{ step: 4, title: 'Migrer', risk: 'REVERSIBLE', level: 1 }],
+    }];
+    component.messages = thread({ nextSteps: withPrereq, nextStepsChantier: { number: 4, done: 1, total: 6 } });
+    fixture.detectChanges();
+    (panel()!.querySelector('.pre__launch') as HTMLButtonElement).click();
+    expect(drafts).toEqual(['Chantier 4 — d’abord les prérequis, dans cet ordre — 1) étape 4 « Migrer ». Puis : Bascule.']);
+    expect(sent).toBe(1);
+  });
 });

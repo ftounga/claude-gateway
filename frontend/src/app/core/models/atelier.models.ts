@@ -688,6 +688,23 @@ export interface AtelierNextStep {
   chantier?: number;
   /** Titre court de cette étape, lu dans le plan réel. */
   stepTitle?: string;
+  /** La colonne (F-209) quand un chantier est ouvert : « Chantier » ou « Hors chantier ». Absent sinon. */
+  column?: 'CHANTIER' | 'HORS';
+  /** Ce qui bloque l'étape visée (F-209) : « étape 3 », « attente cert-gino ». */
+  blockedBy?: string[];
+  /** Les prérequis de l'étape visée, calculés depuis le plan, par niveau (F-209). */
+  prerequisites?: AtelierNextStepPrerequisite[];
+}
+
+/**
+ * Un prérequis d'une suite (F-209) : une étape du plan non faite dont l'étape visée dépend. Même niveau ⇒
+ * en parallèle ; niveaux croissants ⇒ dans l'ordre. Deux étapes EXTERNE ne partagent jamais un niveau.
+ */
+export interface AtelierNextStepPrerequisite {
+  step: number;
+  title: string;
+  risk: string;
+  level: number;
 }
 
 /** Rattachement d'une suite au chantier (F-196). */
@@ -700,6 +717,8 @@ export interface AtelierNextStepsChantier {
   total: number;
   /** L'avancement des autres chantiers ouverts portant un plan (F-206 / SF-206-03), sinon absent. */
   others?: AtelierNextStepsChantier[] | null;
+  /** Le titre du chantier (F-209 : en-tête « Chantier N — titre »), sinon absent. */
+  title?: string | null;
 }
 
 /** L'envoi est devenu une précision du tour qui tournait déjà (F-84 / SF-84-06). */
