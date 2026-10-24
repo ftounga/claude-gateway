@@ -1450,10 +1450,12 @@ export interface AtelierAppRequest {
   reformulation?: string | null;
   observedContext?: string | null;
   attachments: AtelierAppRequestPiece[];
+  /** F-205 / SF-205-04 : la carte propose un **complément** de ce besoin (`title` est alors le sien). */
+  amendsRequestId?: string | null;
 }
 
-/** Statut d'un besoin (F-205 / SF-205-01). */
-export type AppRequestStatus = 'PROPOSE' | 'EN_ATTENTE' | 'CADRE' | 'REJETE' | 'LIVRE';
+/** Statut d'un besoin (F-205 / SF-205-01) ; `JOINT` = complément ajouté à son besoin (SF-205-04). */
+export type AppRequestStatus = 'PROPOSE' | 'EN_ATTENTE' | 'CADRE' | 'REJETE' | 'LIVRE' | 'JOINT';
 
 /** Une pièce d'un besoin et l'état de sa copie (F-205 / SF-205-01). */
 export interface AppRequestAttachmentView {
@@ -1479,6 +1481,22 @@ export interface AppRequestView {
   featureRef?: string | null;
   createdAt: string;
   updatedAt: string;
+  recordedAt?: string | null;
+  attachments: AppRequestAttachmentView[];
+  /** F-205 / SF-205-04 : le besoin d'origine quand celui-ci est un complément. */
+  amendsRequestId?: string | null;
+  /** F-205 / SF-205-04 : les compléments joints, du plus ancien au plus récent. */
+  complements?: AppRequestComplementView[];
+}
+
+/** Un complément joint à un besoin (F-205 / SF-205-04) ; ses pièces se lisent par son `id`. */
+export interface AppRequestComplementView {
+  id: string;
+  workspaceId: string;
+  description: string;
+  reformulation?: string | null;
+  observedContext?: string | null;
+  createdAt: string;
   recordedAt?: string | null;
   attachments: AppRequestAttachmentView[];
 }

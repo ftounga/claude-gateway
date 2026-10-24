@@ -38,6 +38,8 @@ public class AppRequest {
     public static final String CADRE = "CADRE";
     public static final String REJETE = "REJETE";
     public static final String LIVRE = "LIVRE";
+    /** Un complément ajouté à son besoin d'origine (F-205 / SF-205-04). */
+    public static final String JOINT = "JOINT";
 
     @Id
     @GeneratedValue
@@ -89,4 +91,11 @@ public class AppRequest {
 
     @Column(name = "recorded_at")
     private OffsetDateTime recordedAt;
+
+    /**
+     * Le besoin d'origine quand cette ligne est un <b>complément</b> (F-205 / SF-205-04), sinon
+     * {@code null}. Les mots d'origine ne sont jamais réécrits : on ajoute.
+     */
+    @Column(name = "amends_request_id", updatable = false)
+    private UUID amendsRequestId;
 }

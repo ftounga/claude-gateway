@@ -186,4 +186,47 @@ class AppRequestApiIntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error", is("app_request_invalid")));
     }
+
+    @Test
+    @DisplayName("SF-205-04 : un complément s'ajoute au besoin cadré, le rouvre, et se lit sous lui")
+    void aComplementIsJoinedUnderItsOrigin() throws Exception {
+        UUID origin = propose();
+        service.record(adminId, workspace.getId(), origin);
+        service.update(adminId, origin, "CADRE", "F-210");
+
+        UUID complement = service.propose(adminId, workspace, null, null, null, "et aussi quand je glisse un pdf",
+                "gel au collage ET au glisser-déposer", null, List.of("entrees/capture.png"), "terminal se fige")
+                .requestId();
+        mockMvc.perform(post(base(complement) + "/record").header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status", is("JOINT")))
+                .andExpect(jsonPath("$.amendsRequestId", is(origin.toString())));
+        awaitCopy(complement);
+
+        mockMvc.perform(get("/admin/app-requests/" + origin).header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status", is("EN_ATTENTE")))
+                .andExpect(jsonPath("$.featureRef", is("F-210")))
+                .andExpect(jsonPath("$.complements[0].id", is(complement.toString())))
+                .andExpect(jsonPath("$.complements[0].description", is("et aussi quand je glisse un pdf")))
+                .andExpect(jsonPath("$.complements[0].attachments[0].copyStatus", is("COPIED")));
+
+        mockMvc.perform(get("/admin/app-requests").header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.id == '" + complement + "')]").isEmpty())
+                .andExpect(jsonPath("$[?(@.id == '" + origin + "')].complements[0].id").value(
+                        org.hamcrest.Matchers.hasItem(complement.toString())));
+
+        mockMvc.perform(get("/admin/app-requests/" + complement + "/attachments/1")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk());
+
+        // Un autre compte ne peut pas compléter ce besoin : il n'existe pas pour lui.
+        UUID bob = userRepository.findAll().stream().filter(u -> u.getEmail().startsWith("bob-besoins-"))
+                .reduce((a, b) -> b).orElseThrow().getId();
+        Workspace bobs = workspaceRepository.save(Workspace.builder().userId(bob).name("bob-forge")
+                .source(WorkspaceSource.ARCHIVE).build());
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.propose(bob, bobs, null, null, null,
+                "x", null, null, null, origin.toString())).isInstanceOf(AppRequestInvalidException.class);
+    }
 }

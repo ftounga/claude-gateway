@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-205 / SF-205-04 - COMPLETER UN BESOIN DEJA SIGNALE.
+
+      Un complement est une ligne app_requests comme une autre (les mots du PO, une reformulation, des
+      pieces), rattachee a son besoin d'origine par amends_request_id. PROPOSE tant que la carte n'est
+      pas decidee ; JOINT apres [Ajouter au besoin] ; REJETE apres [Non]. Les mots d'origine ne sont
+      jamais reecrits. Sans cle etrangere, comme workspace_id : la purge par user_id emporte tout.
+      Rollback : la colonne se retire.
+    -->
+
+    <changeSet id="165-app-request-complements" author="claude-gateway">
+        <addColumn tableName="app_requests">
+            <column name="amends_request_id" type="uuid"/>
+        </addColumn>
+        <createIndex tableName="app_requests" indexName="idx_app_requests_amends">
+            <column name="amends_request_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

@@ -191,10 +191,12 @@ class AppRequestServiceTest {
 
     @Test
     void theListFiltersByStatusAndRefusesAnUnknownOne() {
-        when(requests.findByUserIdAndStatusInOrderByCreatedAtDesc(any(), any())).thenReturn(List.of());
+        when(requests.findByUserIdAndAmendsRequestIdIsNullAndStatusInOrderByCreatedAtDesc(any(), any()))
+                .thenReturn(List.of());
 
         assertThat(service.list(userId, "EN_ATTENTE")).isEmpty();
-        verify(requests).findByUserIdAndStatusInOrderByCreatedAtDesc(userId, java.util.Set.of("EN_ATTENTE"));
+        verify(requests).findByUserIdAndAmendsRequestIdIsNullAndStatusInOrderByCreatedAtDesc(userId,
+                java.util.Set.of("EN_ATTENTE"));
         assertThatThrownBy(() -> service.list(userId, "OUVERT")).isInstanceOf(AppRequestInvalidException.class);
     }
 
@@ -204,5 +206,135 @@ class AppRequestServiceTest {
         assertThat(AppRequestService.contentTypeOf("a.mov")).isEqualTo("video/quicktime");
         assertThat(AppRequestService.contentTypeOf("page.html")).isEqualTo("application/octet-stream");
         assertThat(AppRequestService.contentTypeOf("sans-extension")).isEqualTo("application/octet-stream");
+    }
+
+    // ------------------------------------------------------------------ F-205 / SF-205-04 : compléter
+
+    private AppRequest recorded(String title, String status) {
+        AppRequest r = proposed();
+        r.setKind("EVOLUTION");
+        r.setTitle(title);
+        r.setStatus(status);
+        when(requests.findByIdAndUserId(r.getId(), userId)).thenReturn(Optional.of(r));
+        return r;
+    }
+
+    private void known(AppRequest... all) {
+        when(requests.findByUserIdAndAmendsRequestIdIsNullAndStatusInOrderByCreatedAtDesc(any(), any()))
+                .thenReturn(List.of(all));
+    }
+
+    @Test
+    void aComplementByIdInheritsKindAndTitleAndIsProposedAttached() {
+        AppRequest origin = recorded("Panneau visuel des chantiers", AppRequest.EN_ATTENTE);
+
+        AppRequestBlock block = service.propose(userId, workspace, null, null, null, "et l'avancement détaillé",
+                "panneau + sous-étapes", null, List.of("capture.png"), origin.getId().toString());
+
+        assertThat(block.amendsRequestId()).isEqualTo(origin.getId());
+        assertThat(block.kind()).isEqualTo("EVOLUTION");
+        assertThat(block.title()).isEqualTo("Panneau visuel des chantiers");
+        assertThat(block.description()).isEqualTo("et l'avancement détaillé");
+        assertThat(block.attachments()).hasSize(1);
+    }
+
+    @Test
+    void aComplementByTitleFragmentIsResolvedAndAmbiguityOrAbsenceListsCandidates() {
+        AppRequest panel = recorded("Panneau visuel des chantiers", AppRequest.EN_ATTENTE);
+        AppRequest bubble = recorded("Bulle d'aide qui cache Envoyer", AppRequest.CADRE);
+        known(panel, bubble);
+
+        assertThat(service.propose(userId, workspace, null, null, null, "d", null, null, null, "panneau visuel")
+                .amendsRequestId()).isEqualTo(panel.getId());
+
+        AppRequest other = recorded("Panneau des attentes", AppRequest.EN_ATTENTE);
+        known(panel, bubble, other);
+        assertThatThrownBy(() -> service.propose(userId, workspace, null, null, null, "d", null, null, null,
+                "panneau")).isInstanceOf(AppRequestInvalidException.class)
+                .hasMessageContaining("plusieurs").hasMessageContaining(panel.getId().toString())
+                .hasMessageContaining(other.getId().toString());
+
+        assertThatThrownBy(() -> service.propose(userId, workspace, null, null, null, "d", null, null, null,
+                "inexistant")).isInstanceOf(AppRequestInvalidException.class)
+                .hasMessageContaining("aucun besoin").hasMessageContaining(bubble.getId().toString());
+    }
+
+    @Test
+    void aComplementOfAComplementClimbsToTheOriginAndRejectedOrUnrecordedOriginsAreRefused() {
+        AppRequest origin = recorded("Origine", AppRequest.EN_ATTENTE);
+        AppRequest complement = recorded("Origine", AppRequest.JOINT);
+        complement.setAmendsRequestId(origin.getId());
+        assertThat(service.propose(userId, workspace, null, null, null, "d", null, null, null,
+                complement.getId().toString()).amendsRequestId()).isEqualTo(origin.getId());
+
+        AppRequest rejected = recorded("Rejeté", AppRequest.REJETE);
+        assertThatThrownBy(() -> service.propose(userId, workspace, null, null, null, "d", null, null, null,
+                rejected.getId().toString())).isInstanceOf(AppRequestInvalidException.class)
+                .hasMessageContaining("rejeté");
+        AppRequest unrecorded = recorded("Pas encore", AppRequest.PROPOSE);
+        assertThatThrownBy(() -> service.propose(userId, workspace, null, null, null, "d", null, null, null,
+                unrecorded.getId().toString())).isInstanceOf(AppRequestInvalidException.class)
+                .hasMessageContaining("Enregistrer");
+    }
+
+    @Test
+    void anotherAccountsRequestCannotBeCompleted() {
+        AppRequest theirs = proposed();
+        theirs.setStatus(AppRequest.EN_ATTENTE);
+        // Le dépôt n'est consulté que sous user_id : rien n'est trouvé pour ce compte.
+        when(requests.findByIdAndUserId(theirs.getId(), userId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.propose(userId, workspace, null, null, null, "d", null, null, null,
+                theirs.getId().toString())).isInstanceOf(AppRequestInvalidException.class)
+                .hasMessageContaining("aucun besoin");
+    }
+
+    @Test
+    void joiningAComplementTouchesTheOriginAndReopensAFramedOne() {
+        AppRequest origin = recorded("Origine", AppRequest.CADRE);
+        origin.setFeatureRef("F-210");
+        OffsetDateTime before = origin.getUpdatedAt();
+        AppRequest complement = proposed();
+        complement.setAmendsRequestId(origin.getId());
+        when(requests.findByIdAndUserIdAndWorkspaceId(complement.getId(), userId, workspaceId))
+                .thenReturn(Optional.of(complement));
+
+        AppRequestView view = service.record(userId, workspaceId, complement.getId());
+
+        assertThat(view.status()).isEqualTo(AppRequest.JOINT);
+        assertThat(view.amendsRequestId()).isEqualTo(origin.getId());
+        assertThat(origin.getStatus()).isEqualTo(AppRequest.EN_ATTENTE);
+        assertThat(origin.getFeatureRef()).isEqualTo("F-210");
+        assertThat(origin.getUpdatedAt()).isAfterOrEqualTo(before);
+        verify(requests).save(origin);
+    }
+
+    @Test
+    void dismissingAComplementLeavesTheOriginAlone() {
+        AppRequest origin = recorded("Origine", AppRequest.EN_ATTENTE);
+        AppRequest complement = proposed();
+        complement.setAmendsRequestId(origin.getId());
+        when(requests.findByIdAndUserIdAndWorkspaceId(complement.getId(), userId, workspaceId))
+                .thenReturn(Optional.of(complement));
+
+        assertThat(service.dismiss(userId, workspaceId, complement.getId()).status()).isEqualTo(AppRequest.REJETE);
+        verify(requests, never()).save(origin);
+    }
+
+    @Test
+    void theDetailCarriesJoinedComplementsAndTheAdministratorCannotPatchAComplement() {
+        AppRequest origin = recorded("Origine", AppRequest.EN_ATTENTE);
+        AppRequest complement = recorded("Origine", AppRequest.JOINT);
+        complement.setAmendsRequestId(origin.getId());
+        complement.setDescription("et aussi ceci");
+        when(requests.findByUserIdAndAmendsRequestIdInAndStatusOrderByCreatedAtAsc(userId, List.of(origin.getId()),
+                AppRequest.JOINT)).thenReturn(List.of(complement));
+
+        AppRequestView view = service.detail(userId, origin.getId());
+
+        assertThat(view.complements()).extracting(AppRequestView.ComplementView::description)
+                .containsExactly("et aussi ceci");
+        assertThatThrownBy(() -> service.update(userId, complement.getId(), "CADRE", null))
+                .isInstanceOf(AppRequestConflictException.class).hasMessageContaining("complément");
     }
 }

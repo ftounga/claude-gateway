@@ -39,10 +39,14 @@ type CardState = 'loading' | AppRequestStatus;
   selector: 'app-besoin-card',
   imports: [MatButtonModule, MatIconModule],
   template: `
-    <div class="besoin-card" role="group" [attr.aria-label]="'Besoin de l’application : ' + besoin().title">
+    <div class="besoin-card" role="group" [attr.aria-label]="(complement() ? 'Compléter le besoin : ' : 'Besoin de l’application : ') + besoin().title">
       <mat-icon class="besoin-card__icon" aria-hidden="true">{{ besoin().kind === 'BUG' ? 'bug_report' : 'lightbulb' }}</mat-icon>
       <div class="besoin-card__body">
-        <p class="besoin-card__headline">{{ kind() }} de l’application · {{ besoin().title }}</p>
+        @if (complement()) {
+          <p class="besoin-card__headline">Compléter le besoin · {{ besoin().title }}</p>
+        } @else {
+          <p class="besoin-card__headline">{{ kind() }} de l’application · {{ besoin().title }}</p>
+        }
         <blockquote class="besoin-card__words">{{ besoin().description }}</blockquote>
         @if (besoin().reformulation) {
           <p class="besoin-card__line"><span class="besoin-card__label">Compris :</span> {{ besoin().reformulation }}</p>
@@ -59,13 +63,16 @@ type CardState = 'loading' | AppRequestStatus;
         }
         @switch (state()) {
           @case ('REJETE') {
-            <p class="besoin-card__status">Écarté — rien n’a été enregistré.</p>
+            <p class="besoin-card__status">{{ complement() ? 'Écarté — le besoin d’origine est inchangé.' : 'Écarté — rien n’a été enregistré.' }}</p>
+          }
+          @case ('JOINT') {
+            <p class="besoin-card__status besoin-card__status--recorded">Ajouté au besoin d’origine.</p>
           }
           @case ('PROPOSE') {
             @if (!readOnly()) {
               <div class="besoin-card__gestures">
                 <button mat-flat-button type="button" class="besoin-card__record" [disabled]="busy()" (click)="record()">
-                  Enregistrer
+                  {{ complement() ? 'Ajouter au besoin' : 'Enregistrer' }}
                 </button>
                 <button mat-button type="button" [disabled]="busy()" (click)="dismiss()">Non</button>
               </div>
@@ -199,6 +206,8 @@ export class BesoinCardComponent {
   readonly busy = signal(false);
   readonly error = signal<string | null>(null);
   readonly kind = computed(() => appRequestKindLabel(this.besoin().kind));
+  /** F-205 / SF-205-04 : la carte propose un complément d'un besoin déjà enregistré. */
+  readonly complement = computed(() => !!this.besoin().amendsRequestId);
 
   constructor() {
     // Le statut change après le tour : il se relit, il ne se fige pas dans la transcription.

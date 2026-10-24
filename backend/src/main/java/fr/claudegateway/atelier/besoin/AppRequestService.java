@@ -46,7 +46,12 @@ public class AppRequestService {
     static final Set<String> ADMIN_STATUSES = Set.of(AppRequest.EN_ATTENTE, AppRequest.CADRE, AppRequest.REJETE,
             AppRequest.LIVRE);
     static final Set<String> ALL_STATUSES = Set.of(AppRequest.PROPOSE, AppRequest.EN_ATTENTE, AppRequest.CADRE,
-            AppRequest.REJETE, AppRequest.LIVRE);
+            AppRequest.REJETE, AppRequest.LIVRE, AppRequest.JOINT);
+    /** Statuts d'un besoin d'origine qu'on peut compléter (F-205 / SF-205-04) : enregistré, non rejeté. */
+    static final Set<String> COMPLETABLE_STATUSES = Set.of(AppRequest.EN_ATTENTE, AppRequest.CADRE,
+            AppRequest.LIVRE);
+    /** Candidats montrés à l'agent quand {@code complete} ne désigne rien (ou trop de choses). */
+    static final int MAX_CANDIDATES = 5;
 
     private final AppRequestRepository requests;
     private final AppRequestAttachmentRepository attachments;
@@ -77,13 +82,38 @@ public class AppRequestService {
     public AppRequestBlock propose(UUID userId, Workspace workspace, UUID messageId, String rawKind,
             String rawTitle, String rawDescription, String rawReformulation, String rawContext,
             List<String> rawPieces) {
-        String kind = rawKind == null ? "" : rawKind.strip().toUpperCase(Locale.ROOT);
-        if (!AppRequest.BUG.equals(kind) && !AppRequest.EVOLUTION.equals(kind)) {
-            throw new AppRequestInvalidException("type doit valoir BUG ou EVOLUTION.");
-        }
-        String title = strip(rawTitle);
-        if (title.isEmpty() || title.length() > MAX_TITLE_CHARS) {
-            throw new AppRequestInvalidException("titre obligatoire, " + MAX_TITLE_CHARS + " caractères au plus.");
+        return propose(userId, workspace, messageId, rawKind, rawTitle, rawDescription, rawReformulation,
+                rawContext, rawPieces, null);
+    }
+
+    /**
+     * Range un besoin — ou, avec {@code rawComplete}, un <b>complément</b> d'un besoin déjà enregistré
+     * (F-205 / SF-205-04) — au statut {@code PROPOSE} et rend sa carte. Un complément hérite du type et
+     * du titre de son besoin d'origine ; ses mots ne remplacent jamais ceux d'origine.
+     *
+     * @param rawComplete identifiant, titre ou fragment de titre du besoin à compléter ; {@code null} ou
+     *                    vide = nouveau besoin
+     */
+    @Transactional
+    public AppRequestBlock propose(UUID userId, Workspace workspace, UUID messageId, String rawKind,
+            String rawTitle, String rawDescription, String rawReformulation, String rawContext,
+            List<String> rawPieces, String rawComplete) {
+        AppRequest origin = strip(rawComplete).isEmpty() ? null : resolveOrigin(userId, strip(rawComplete));
+        String kind;
+        String title;
+        if (origin != null) {
+            kind = origin.getKind();
+            title = origin.getTitle();
+        } else {
+            kind = rawKind == null ? "" : rawKind.strip().toUpperCase(Locale.ROOT);
+            if (!AppRequest.BUG.equals(kind) && !AppRequest.EVOLUTION.equals(kind)) {
+                throw new AppRequestInvalidException("type doit valoir BUG ou EVOLUTION.");
+            }
+            title = strip(rawTitle);
+            if (title.isEmpty() || title.length() > MAX_TITLE_CHARS) {
+                throw new AppRequestInvalidException("titre obligatoire, " + MAX_TITLE_CHARS
+                        + " caractères au plus.");
+            }
         }
         String description = strip(rawDescription);
         if (description.isEmpty()) {
@@ -101,6 +131,7 @@ public class AppRequestService {
                 .kind(kind).title(title).description(description)
                 .reformulation(optional(rawReformulation)).observedContext(optional(rawContext))
                 .status(AppRequest.PROPOSE).createdAt(now).updatedAt(now)
+                .amendsRequestId(origin == null ? null : origin.getId())
                 .build());
         List<AppRequestBlock.Piece> shown = new ArrayList<>();
         int seq = 1;
@@ -115,7 +146,69 @@ public class AppRequestService {
             seq++;
         }
         return new AppRequestBlock(saved.getId(), kind, title, description, saved.getReformulation(),
-                saved.getObservedContext(), List.copyOf(shown));
+                saved.getObservedContext(), List.copyOf(shown), saved.getAmendsRequestId());
+    }
+
+    /**
+     * Le besoin d'origine désigné par {@code complete} (F-205 / SF-205-04) : par identifiant, sinon par
+     * titre exact, sinon par fragment unique — toujours parmi les besoins de {@code userId}. Un
+     * complément désigné remonte à son origine.
+     *
+     * @throws AppRequestInvalidException rien, ou plusieurs besoins, ou un besoin non complétable — avec
+     *                                    de quoi réessayer (titres et identifiants)
+     */
+    private AppRequest resolveOrigin(UUID userId, String ref) {
+        AppRequest found = null;
+        UUID id = parseUuid(ref);
+        if (id != null) {
+            found = requests.findByIdAndUserId(id, userId).orElse(null);
+            if (found != null && found.getAmendsRequestId() != null) {
+                found = requests.findByIdAndUserId(found.getAmendsRequestId(), userId).orElse(null);
+            }
+        } else {
+            List<AppRequest> all = requests.findByUserIdAndAmendsRequestIdIsNullAndStatusInOrderByCreatedAtDesc(
+                    userId, ALL_STATUSES);
+            String wanted = ref.toLowerCase(Locale.ROOT);
+            List<AppRequest> exact = all.stream()
+                    .filter(r -> r.getTitle().strip().toLowerCase(Locale.ROOT).equals(wanted)).toList();
+            List<AppRequest> matches = !exact.isEmpty() ? exact : all.stream()
+                    .filter(r -> r.getTitle().toLowerCase(Locale.ROOT).contains(wanted)).toList();
+            List<AppRequest> live = matches.stream().filter(r -> !AppRequest.REJETE.equals(r.getStatus())).toList();
+            if (live.size() > 1) {
+                throw new AppRequestInvalidException("complete : « " + ref + " » désigne plusieurs besoins — "
+                        + "passe l'identifiant. Candidats : " + candidates(live) + ".");
+            }
+            found = live.size() == 1 ? live.get(0) : matches.isEmpty() ? null : matches.get(0);
+        }
+        if (found == null) {
+            List<AppRequest> recent = requests.findByUserIdAndAmendsRequestIdIsNullAndStatusInOrderByCreatedAtDesc(
+                    userId, COMPLETABLE_STATUSES);
+            throw new AppRequestInvalidException("complete : aucun besoin ne correspond à « " + ref + " ». "
+                    + (recent.isEmpty() ? "Aucun besoin enregistré : signale un nouveau besoin (sans complete)."
+                            : "Besoins récents : " + candidates(recent) + "."));
+        }
+        if (AppRequest.REJETE.equals(found.getStatus())) {
+            throw new AppRequestInvalidException("complete : le besoin « " + found.getTitle()
+                    + " » a été rejeté — signale un nouveau besoin (sans complete).");
+        }
+        if (AppRequest.PROPOSE.equals(found.getStatus())) {
+            throw new AppRequestInvalidException("complete : le besoin « " + found.getTitle()
+                    + " » n'est pas encore enregistré — fais d'abord cliquer [Enregistrer] sur sa carte.");
+        }
+        return found;
+    }
+
+    private static String candidates(List<AppRequest> list) {
+        return list.stream().limit(MAX_CANDIDATES).map(r -> "« " + r.getTitle() + " » (" + r.getId() + ")")
+                .collect(Collectors.joining(", "));
+    }
+
+    private static UUID parseUuid(String raw) {
+        try {
+            return UUID.fromString(raw);
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
     }
 
     /**
@@ -183,7 +276,10 @@ public class AppRequestService {
         AppRequest request = requireInWorkspace(userId, workspaceId, requestId);
         requireProposed(request);
         OffsetDateTime now = OffsetDateTime.now();
-        request.setStatus(AppRequest.EN_ATTENTE);
+        if (request.getAmendsRequestId() != null) {
+            joinOrigin(userId, request, now);
+        }
+        request.setStatus(request.getAmendsRequestId() != null ? AppRequest.JOINT : AppRequest.EN_ATTENTE);
         request.setRecordedAt(now);
         request.setUpdatedAt(now);
         requests.save(request);
@@ -196,6 +292,25 @@ public class AppRequestService {
             afterCommit(() -> copier.copyAsync(userId, requestId));
         }
         return AppRequestView.of(request, pieces);
+    }
+
+    /**
+     * [Ajouter au besoin] (F-205 / SF-205-04) : le besoin d'origine avance sa date, et revient
+     * {@code EN_ATTENTE} s'il était cadré ou livré — un complément doit être relu ; sa référence de
+     * feature est conservée.
+     */
+    private void joinOrigin(UUID userId, AppRequest complement, OffsetDateTime now) {
+        AppRequest origin = requests.findByIdAndUserId(complement.getAmendsRequestId(), userId)
+                .orElseThrow(() -> new AppRequestNotFoundException("Besoin d'origine introuvable."));
+        if (!COMPLETABLE_STATUSES.contains(origin.getStatus())) {
+            throw new AppRequestConflictException("Le besoin d'origine « " + origin.getTitle()
+                    + " » ne peut plus être complété (" + origin.getStatus() + ").");
+        }
+        if (AppRequest.CADRE.equals(origin.getStatus()) || AppRequest.LIVRE.equals(origin.getStatus())) {
+            origin.setStatus(AppRequest.EN_ATTENTE);
+        }
+        origin.setUpdatedAt(now);
+        requests.save(origin);
     }
 
     /** [Non] : le besoin est écarté, rien n'est copié. */
@@ -229,19 +344,39 @@ public class AppRequestService {
             }
             statuses = Set.of(status);
         }
-        List<AppRequest> found = requests.findByUserIdAndStatusInOrderByCreatedAtDesc(userId, statuses);
+        List<AppRequest> found = requests.findByUserIdAndAmendsRequestIdIsNullAndStatusInOrderByCreatedAtDesc(
+                userId, statuses);
         if (found.isEmpty()) {
             return List.of();
         }
-        Map<UUID, List<AppRequestAttachment>> byRequest = attachments
-                .findByRequestIdInAndUserIdOrderBySeqAsc(found.stream().map(AppRequest::getId).toList(), userId)
-                .stream().collect(Collectors.groupingBy(AppRequestAttachment::getRequestId));
-        return found.stream().map(r -> AppRequestView.of(r, byRequest.getOrDefault(r.getId(), List.of()))).toList();
+        return withComplements(userId, found);
     }
 
     @Transactional(readOnly = true)
     public AppRequestView detail(UUID userId, UUID requestId) {
-        return view(require(userId, requestId));
+        AppRequest request = require(userId, requestId);
+        if (request.getAmendsRequestId() != null) {
+            return view(request);
+        }
+        return withComplements(userId, List.of(request)).get(0);
+    }
+
+    /** Les besoins, leurs pièces et leurs compléments joints (avec leurs pièces), en trois lectures. */
+    private List<AppRequestView> withComplements(UUID userId, List<AppRequest> found) {
+        List<UUID> ids = found.stream().map(AppRequest::getId).toList();
+        Map<UUID, List<AppRequest>> complementsOf = requests
+                .findByUserIdAndAmendsRequestIdInAndStatusOrderByCreatedAtAsc(userId, ids, AppRequest.JOINT)
+                .stream().collect(Collectors.groupingBy(AppRequest::getAmendsRequestId));
+        List<UUID> allIds = new ArrayList<>(ids);
+        complementsOf.values().forEach(list -> list.forEach(c -> allIds.add(c.getId())));
+        Map<UUID, List<AppRequestAttachment>> byRequest = attachments
+                .findByRequestIdInAndUserIdOrderBySeqAsc(allIds, userId)
+                .stream().collect(Collectors.groupingBy(AppRequestAttachment::getRequestId));
+        return found.stream().map(r -> AppRequestView.of(r, byRequest.getOrDefault(r.getId(), List.of()),
+                complementsOf.getOrDefault(r.getId(), List.of()).stream()
+                        .map(c -> AppRequestView.ComplementView.of(c, byRequest.getOrDefault(c.getId(), List.of())))
+                        .toList()))
+                .toList();
     }
 
     /**
@@ -251,6 +386,10 @@ public class AppRequestService {
     @Transactional
     public AppRequestView update(UUID userId, UUID requestId, String rawStatus, String rawFeatureRef) {
         AppRequest request = require(userId, requestId);
+        if (request.getAmendsRequestId() != null) {
+            throw new AppRequestConflictException("C'est un complément : agis sur son besoin d'origine ("
+                    + request.getAmendsRequestId() + ").");
+        }
         if (AppRequest.PROPOSE.equals(request.getStatus())) {
             throw new AppRequestConflictException("Ce besoin n'a pas encore été enregistré depuis le terminal.");
         }
@@ -273,7 +412,7 @@ public class AppRequestService {
         }
         request.setUpdatedAt(OffsetDateTime.now());
         requests.save(request);
-        return view(request);
+        return withComplements(userId, List.of(request)).get(0);
     }
 
     /** Une pièce copiée et ses octets. */
