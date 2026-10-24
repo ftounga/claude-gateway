@@ -52,9 +52,12 @@ public class VideoToolExecutor {
     private final VideoLimits limits;
     private final RunnerToolGateway runnerToolGateway;
     private final RunnerAuditService runnerAuditService;
+    private final VideoCommentService commentService;
 
     public VideoToolExecutor(VideoService videoService, VideoStore store, VideoLimits limits,
-            RunnerToolGateway runnerToolGateway, RunnerAuditService runnerAuditService) {
+            RunnerToolGateway runnerToolGateway, RunnerAuditService runnerAuditService,
+            VideoCommentService commentService) {
+        this.commentService = commentService;
         this.videoService = videoService;
         this.store = store;
         this.limits = limits;
@@ -86,11 +89,19 @@ public class VideoToolExecutor {
         }
         UUID replaceId;
         List<VideoChapter> chapters;
+        List<VideoCommentService.Resolution> resolutions;
         try {
             replaceId = optionalUuid(input, "remplace");
             chapters = VideoChapter.parse(input == null ? null : input.get("chapitres"));
+            // F-214 / SF-214-01 : validé AVANT le transfert — refuser après une minute de rapatriement serait
+            // du temps perdu.
+            resolutions = VideoCommentService.parseResolutions(input == null ? null : input.get("retours_traites"));
         } catch (VideoRejectedException e) {
             return VideoOutcome.error(e.getMessage());
+        }
+        if (!resolutions.isEmpty() && replaceId == null) {
+            return VideoOutcome.error("retours_traites accompagne une nouvelle version : donne aussi remplace "
+                    + "(le video_id de la vidéo corrigée).");
         }
         Integer episode = optionalInt(input, "episode");
         Integer duration = optionalInt(input, "duree_s");
@@ -134,18 +145,52 @@ public class VideoToolExecutor {
             VideoService.PublishedVideo published = videoService.commit(transfer.prepared(), transfer.size(), posterKey,
                     poster == null ? null : posterMime);
             Video video = published.video();
+            String retours = "";
+            if (!resolutions.isEmpty()) {
+                try {
+                    retours = commentService.resolve(userId, video.getId(), published.version().getVersion(),
+                            resolutions).summary();
+                } catch (RuntimeException e) {
+                    log.warn("Clôture des retours non appliquée : {}", e.getClass().getSimpleName());
+                    retours = " Les statuts des retours n'ont pas pu être mis à jour ; signale-le à l'utilisateur.";
+                }
+            }
             String inSeries = published.series() == null ? ""
                     : " Série « " + published.series().getTitle() + " », épisode " + video.getEpisode() + ".";
             return new VideoOutcome("Vidéo publiée : « " + video.getTitle() + " » — version "
                     + published.version().getVersion() + ". video_id : " + video.getId() + "." + inSeries
                     + " L'utilisateur la regarde dans le fil et dans la galerie Vidéos du sujet ; pour la corriger, "
-                    + "republie avec remplace=" + video.getId() + ".", false, VideoBlock.of(published));
+                    + "republie avec remplace=" + video.getId() + "." + retours, false, VideoBlock.of(published));
         } catch (RuntimeException e) {
             store.delete(transfer.prepared().mediaKey());
             store.delete(posterKey);
             log.warn("Publication d'une vidéo annulée à l'inscription : {}", e.getClass().getSimpleName());
             return VideoOutcome.error(e instanceof VideoRejectedException ? e.getMessage()
                     : "La vidéo n'a pas pu être rangée ; réessaie.");
+        }
+    }
+
+    // ------------------------------------------------------------------ video_retours (F-214)
+
+    /**
+     * Lit les retours à la seconde d'une vidéo du compte. Lecture seule, sans accord : une vidéo d'un autre
+     * compte est inconnue.
+     */
+    public VideoOutcome readComments(UUID userId, JsonNode input) {
+        UUID videoId;
+        try {
+            videoId = optionalUuid(input, "video");
+        } catch (VideoRejectedException e) {
+            return VideoOutcome.error("video doit être un video_id rendu par video_publier.");
+        }
+        if (videoId == null) {
+            return VideoOutcome.error("Donne video : le video_id de la vidéo.");
+        }
+        Integer version = optionalInt(input, "version");
+        try {
+            return new VideoOutcome(commentService.describeForAgent(userId, videoId, version), false, null);
+        } catch (VideoNotFoundException e) {
+            return VideoOutcome.error("Vidéo inconnue : aucune vidéo de ce compte ne porte cet identifiant.");
         }
     }
 

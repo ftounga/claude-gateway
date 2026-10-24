@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-214 / SF-214-01 — LES RETOURS A LA SECONDE (demande PO du 2026-10-24).
+
+      Un retour est attache a un instant (ou une plage) d'une version d'une video : texte, image (30 i/s),
+      statut OUVERT | ENVOYE | TRAITE | REJETE, motif et version de resolution poses par l'agent a la
+      republication. Le numero 168 est reserve a F-212.
+
+      Isolation : user_id sur chaque ligne, toute lecture filtre (id, user_id) et la video possedee. Cascade
+      sur le compte et sur la video (suppression galerie, sujet).
+      Rollback : la table se retire.
+    -->
+
+    <changeSet id="171-video-comments" author="claude-gateway">
+        <createTable tableName="video_comments">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_video_comments_user"
+                             references="users(id)" deleteCascade="true"/>
+            </column>
+            <column name="video_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_video_comments_video"
+                             references="videos(id)" deleteCascade="true"/>
+            </column>
+            <column name="version" type="integer"><constraints nullable="false"/></column>
+            <column name="t_start_ms" type="bigint"><constraints nullable="false"/></column>
+            <column name="t_end_ms" type="bigint"/>
+            <column name="frame" type="integer"><constraints nullable="false"/></column>
+            <column name="text" type="varchar(1000)"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(10)"><constraints nullable="false"/></column>
+            <column name="resolution" type="varchar(300)"/>
+            <column name="resolved_version" type="integer"/>
+            <column name="sent_at" type="timestamp with time zone"/>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="video_comments" indexName="idx_video_comments_owner">
+            <column name="user_id"/>
+            <column name="video_id"/>
+        </createIndex>
+        <createIndex tableName="video_comments" indexName="idx_video_comments_video">
+            <column name="video_id"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable tableName="video_comments"/>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>

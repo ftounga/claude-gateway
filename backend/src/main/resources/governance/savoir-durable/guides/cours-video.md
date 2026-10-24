@@ -102,6 +102,9 @@ Règles de lisibilité :
 2. Vérifie le résultat : `video_images` sur 3 à 5 instants du mp4 (son compris : durée attendue).
 3. `video_publier(path, titre, description, chapitres: [{t, titre}…])` — les chapitres reprennent les débuts des
    `.clip`. Une nouvelle voix ou une correction = nouvelle version (`remplace: <video_id>`).
+4. Retours à la seconde de l'utilisateur : `video_retours(video)` les liste (instant, image, texte) ; regarde
+   chaque instant (`video_images`), corrige, puis republie avec `remplace` et
+   `retours_traites: [{id, statut: traite|rejete, motif}]` — un retour écarté se motive.
 
 ## Pièges connus
 

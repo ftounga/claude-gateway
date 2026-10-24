@@ -1041,6 +1041,8 @@ public class AtelierChatService implements RelayInterruptTarget {
                     "set_plan", "recall", "demander", "carte_chercher",
                     fr.claudegateway.atelier.video.VideoToolCatalog.IMAGES,
                     fr.claudegateway.atelier.video.VideoToolCatalog.STATUS,
+                    // F-214 / SF-214-01 : lire les retours à la seconde d'une vidéo, en lecture seule.
+                    fr.claudegateway.videos.VideoToolCatalog.RETOURS,
                     // F-176 : le parcours du sujet n'écrit rien dans le projet — il organise, comme set_plan.
                     fr.claudegateway.atelier.journey.JourneyToolCatalog.PROPOSE_GUIDED,
                     fr.claudegateway.atelier.journey.JourneyToolCatalog.SET_PLAN,
@@ -3775,6 +3777,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                     // F-212 / SF-212-03 : les captures de preuve — chaque commande passe la porte et
                     // l'invite comme un bash, puis une seule session sur le poste, rendue en images.
                     outcome = applyProofCapture(userId, workspace, callId, call, listener, deadline, proofsOfTurn);
+                } else if (fr.claudegateway.videos.VideoToolCatalog.isRetoursTool(call.name())) {
+                    // F-214 / SF-214-01 : les retours à la seconde, lus par la gateway (lecture seule, user_id).
+                    outcome = applyVideoRetours(userId, workspace, call);
                 } else if (fr.claudegateway.videos.VideoToolCatalog.isVideoTool(call.name())) {
                     // F-213 / SF-213-01 : la vidéo (ou le son) est rapatriée du poste et rangée par la gateway ;
                     // son bloc est admis dans tout terminal.
@@ -5177,6 +5182,19 @@ public class AtelierChatService implements RelayInterruptTarget {
             listener.onAudio(callId, outcome.auditions());
         }
         return ToolOutcome.info(outcome.content());
+    }
+
+    /**
+     * <b>Lire les retours à la seconde</b> (F-214 / SF-214-01) : même garde que {@code video_publier}, lecture
+     * seule, sans accord ; la vidéo d'un autre compte est inconnue.
+     */
+    private ToolOutcome applyVideoRetours(UUID userId, Workspace workspace, AgentToolCall call) {
+        if (videoToolExecutor == null || !videoToolCatalog.isOpenFor(userId, workspace)) {
+            return ToolOutcome.error("Les vidéos ne sont pas ouvertes dans ce terminal. Réponds en clair.");
+        }
+        fr.claudegateway.videos.VideoToolExecutor.VideoOutcome outcome =
+                videoToolExecutor.readComments(userId, call.input());
+        return outcome.error() ? ToolOutcome.error(outcome.content()) : ToolOutcome.info(outcome.content());
     }
 
     /**
@@ -7434,7 +7452,8 @@ public class AtelierChatService implements RelayInterruptTarget {
             return ToolOutcome.error("La génération d'images n'est pas ouverte ici. Réponds en clair.");
         }
         // F-213 / SF-213-01 : la publication de vidéos est traitée par la boucle (garde + accord + bloc).
-        if (fr.claudegateway.videos.VideoToolCatalog.isVideoTool(call.name())) {
+        if (fr.claudegateway.videos.VideoToolCatalog.isVideoTool(call.name())
+                || fr.claudegateway.videos.VideoToolCatalog.isRetoursTool(call.name())) {
             return ToolOutcome.error("La publication de vidéos n'est pas ouverte ici. Réponds en clair.");
         }
         // F-215 / SF-215-01 : la voix off est traitée par la boucle (garde + borne + accord).
