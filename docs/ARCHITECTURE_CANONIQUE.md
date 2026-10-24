@@ -490,6 +490,20 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   (clé reconstruite). Route `GET /workspaces/{id}/proofs/{captureId}` après `requireOwned`, sous
   `(id, user_id, workspace_id)`. Purge : cascade au terminal ; préfixe effacé par `WorkspaceService.delete`.
 
+- **video_series / videos / video_versions** — **les vidéos et les sons publiés par l'agent** (F-213 /
+  SF-213-01, migration `169`). `video_series` : `id`, `user_id (FK users CASCADE)`, `workspace_id (FK
+  workspaces CASCADE)`, `host_id`, `title (≤ 120)`, `description (≤ 300)`, dates. `videos` : `id`,
+  `user_id`, `workspace_id` (mêmes FK), `host_id`, `kind (VIDEO | AUDIO — un son n'entre jamais en
+  galerie)`, `series_id (FK video_series CASCADE, null)`, `episode`, `title`, `description`,
+  `current_version`, `duration_s`, dates. `video_versions` : `id`, `video_id (FK CASCADE)`, `user_id`,
+  `version` (unique par vidéo, 5 conservées), `storage_key`, `size_bytes`, `mime`, `chapters_json`,
+  `poster_key`, `poster_mime`, `label` (libellé de piste), `created_at`. Octets sous
+  `videos/{user_id}/{video_id}/v{n}/` (envoi multipart, lecture par plage). Plafond 5 Go par compte
+  (somme de `size_bytes`, ADMIN exempté, D1). Routes : `GET /videos/{id}` (+`/versions`,
+  `/versions/{n}/media` avec `Range`) sous `(id, user_id)` ; `GET /video-media/{ticket}` sans JWT (ticket
+  HMAC lié à vidéo + version + compte). Purge : objets et lignes par `WorkspaceService.delete` ; objets du
+  compte par `AccountService`.
+
 - **session_bilans** — **le bilan d'une session, gardé comme artefact** (F-155 / SF-155-04,
   migration `132`). Un bilan qui n'existe que dans une réponse HTTP est un bilan qu'on ne relit
   jamais et qu'on ne peut pas **comparer** — or comparer est tout l'intérêt (« le cache est remonté
