@@ -1004,6 +1004,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                     fr.claudegateway.atelier.journey.JourneyToolCatalog.UPDATE_STEP,
                     fr.claudegateway.atelier.journey.JourneyToolCatalog.REOPEN,
                     fr.claudegateway.atelier.journey.JourneyToolCatalog.UPDATE_SUB_STEPS,
+                    // F-210 : découper et suivre les questions n'écrit rien — c'est de l'organisation.
+                    fr.claudegateway.atelier.questions.QuestionToolCatalog.SPLIT,
+                    fr.claudegateway.atelier.questions.QuestionToolCatalog.TRACK,
                     // F-178 : les lectures du terminal du poste ne modifient rien.
                     fr.claudegateway.atelier.poste.PosteToolCatalog.SUBJECTS_STATE,
                     fr.claudegateway.atelier.poste.PosteToolCatalog.RADAR_RESUME,
@@ -2992,6 +2995,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         int requestsInTurn = 1;
         /** Les demandes de ce tour, dans l'ordre (F-195 / SF-195-05) : pour dire laquelle n'a pas abouti. */
         List<String> requestsOfTurn = new ArrayList<>(List.of(userText));
+        /** Les questions annoncées par l'agent dans ce tour (F-210 / SF-210-01) ; vide sans découpage. */
+        fr.claudegateway.atelier.questions.TurnQuestions questionsOfTurn =
+                new fr.claudegateway.atelier.questions.TurnQuestions();
+        /** Étapes rendues au budget parce qu'elles n'ont porté que des outils de questions (borné). */
+        int questionStepsRefunded = 0;
         /** Le tour s'est arrêté sur son budget de temps ou d'étapes (F-195 / SF-195-05). */
         boolean budgetExhausted = false;
         /**
@@ -3493,7 +3501,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                 // Intention d'étape relayée avant exécution (émise même si l'outil échoue ensuite).
                 AtelierProgressListener.AtelierStepEvent step = stepFor(call);
                 if (step != null) {
-                    listener.onAction(step);
+                    // F-210 / SF-210-01 : l'étape est rattachée à la question en cours, s'il y en a une.
+                    listener.onAction(questionsOfTurn.isSplit()
+                            ? step.withQuestion(questionsOfTurn.attach(callId)) : step);
                 }
                 ToolOutcome outcome;
                 // F-121 / SF-121-19 : garde de fraîcheur AVANT toute émission. Une édition à l'aveugle
@@ -3509,6 +3519,15 @@ public class AtelierChatService implements RelayInterruptTarget {
                     outcome = ToolOutcome.error(freshnessRefusal);
                 } else if (journeyRefusal != null) {
                     outcome = ToolOutcome.error(journeyRefusal);
+                } else if (fr.claudegateway.atelier.questions.QuestionToolCatalog.isQuestionTool(call.name())) {
+                    // F-210 / SF-210-01 : découper / suivre les questions — l'état du tour, côté gateway,
+                    // sans effet de bord ; l'écran reçoit l'instantané complet.
+                    fr.claudegateway.atelier.questions.TurnQuestions.Outcome asked =
+                            questionsOfTurn.apply(call.name(), call.input());
+                    if (!asked.error()) {
+                        listener.onQuestions(questionsOfTurn.snapshot());
+                    }
+                    outcome = asked.error() ? ToolOutcome.error(asked.content()) : ToolOutcome.info(asked.content());
                 } else if ("exit_plan_mode".equals(call.name())) {
                     // F-121 / SF-121-10 — ExitPlanMode piloté par le modèle : il soumet son plan à
                     // l'approbation de l'utilisateur. Le plan est normalisé, rendu à l'écran, et le tour
@@ -3747,26 +3766,29 @@ public class AtelierChatService implements RelayInterruptTarget {
                 // Transcription du tour (SF-39-17) : ce que l'écran relit après un rechargement.
                 // Elle ne l'était pas, et une coupure de connexion effaçait tout ce qui s'était
                 // passé — l'acquis §4 n°7 de F-30 ne valait pas pour le moteur qui exécute.
-                transcript.add(new AtelierTurnReport.Block(call.name(), transcriptCommand(call), callId,
-                        null, outcome.content() == null ? "" : outcome.content(),
-                        outcome.content() != null, outcome.isError(), false,
-                        // Le BLOC RICHE (F-89 / SF-89-02), s'il y en a un : c'est ce qui fait
-                        // qu'une carte de réunion survit au rechargement, comme le reste du fil.
-                        // `null` partout ailleurs — donc dans tout terminal de projet.
-                        cardsOfTurn.get(callId),
-                        // Le reçu d'un courriel (F-110 / SF-110-02) : le bloc « Courriel envoyé » survit au
-                        // rechargement, dans tous les terminaux.
-                        emailsOfTurn.get(callId),
-                        // Le bloc « Page publiée » (F-109 / SF-109-03) : il survit au rechargement, partout.
-                        pagesOfTurn.get(callId),
-                        // La carte d'une attente (F-175 / SF-175-05) : elle survit au rechargement.
-                        attentesOfTurn.get(callId),
-                        // Le bloc de passation (F-179 / SF-179-01) : la carte [Ouvrir le sujet] y survit.
-                        handoffsOfTurn.get(callId),
-                        // La carte de proposition (F-177 / SF-177-02) : [Appliquer] y survit.
-                        proposalsOfTurn.get(callId),
-                        // La carte « Enregistrer ce besoin ? » (F-205 / SF-205-01) : [Enregistrer] y survit.
-                        appRequestsOfTurn.get(callId)));
+                // F-210 / SF-210-01 : les outils de questions n'ont pas de bloc — leur état a son relevé.
+                if (!fr.claudegateway.atelier.questions.QuestionToolCatalog.isQuestionTool(call.name())) {
+                    transcript.add(new AtelierTurnReport.Block(call.name(), transcriptCommand(call), callId,
+                            null, outcome.content() == null ? "" : outcome.content(),
+                            outcome.content() != null, outcome.isError(), false,
+                            // Le BLOC RICHE (F-89 / SF-89-02), s'il y en a un : c'est ce qui fait
+                            // qu'une carte de réunion survit au rechargement, comme le reste du fil.
+                            // `null` partout ailleurs — donc dans tout terminal de projet.
+                            cardsOfTurn.get(callId),
+                            // Le reçu d'un courriel (F-110 / SF-110-02) : le bloc « Courriel envoyé » survit au
+                            // rechargement, dans tous les terminaux.
+                            emailsOfTurn.get(callId),
+                            // Le bloc « Page publiée » (F-109 / SF-109-03) : il survit au rechargement, partout.
+                            pagesOfTurn.get(callId),
+                            // La carte d'une attente (F-175 / SF-175-05) : elle survit au rechargement.
+                            attentesOfTurn.get(callId),
+                            // Le bloc de passation (F-179 / SF-179-01) : la carte [Ouvrir le sujet] y survit.
+                            handoffsOfTurn.get(callId),
+                            // La carte de proposition (F-177 / SF-177-02) : [Appliquer] y survit.
+                            proposalsOfTurn.get(callId),
+                            // La carte « Enregistrer ce besoin ? » (F-205 / SF-205-01) : [Enregistrer] y survit.
+                            appRequestsOfTurn.get(callId)));
+                }
                 // F-121 / SF-121-11 — LA FILE EST CONSULTÉE ENTRE LES APPELS D'OUTILS, et plus
                 // seulement à la frontière d'itération. Une précision déposée pendant un `bash` de
                 // 90 s ou au milieu d'une rafale de cinq outils était jusqu'ici ni prise ni
@@ -3805,6 +3827,13 @@ public class AtelierChatService implements RelayInterruptTarget {
             // Le tour suivant remonte à l'effort normal si ce tour a rencontré une difficulté
             // (F-119 / SF-119-01) : c'est là — après un résultat d'outil — qu'il faut réfléchir le plus.
             escalateNextTurn = signalThisTurn;
+            // F-210 / SF-210-01 : une étape qui n'a porté QUE des outils de questions (état du tour, sans
+            // travail) est rendue au budget d'étapes — au plus deux fois par tour.
+            if (questionStepsRefunded < 2 && !callsOfTurn.isEmpty() && callsOfTurn.stream().allMatch(
+                    c -> fr.claudegateway.atelier.questions.QuestionToolCatalog.isQuestionTool(c.name()))) {
+                questionStepsRefunded++;
+                iterationCap++;
+            }
 
             if (interruptedTurns.remove(turnKey(userId, workspaceId))) {
                 // Interruption arrivée pendant les outils de ce tour : on s'arrête sans rappeler le
@@ -3898,6 +3927,13 @@ public class AtelierChatService implements RelayInterruptTarget {
                 : fr.claudegateway.atelier.nextsteps.ChantierAnchor.apply(nextStepsExtraction.steps(),
                         journeyOf(userId, workspace));
         List<fr.claudegateway.atelier.nextsteps.NextStep> nextSteps = anchoredSteps.steps();
+        // F-210 / SF-210-01 : les questions du tour sont closes — abouties si le tour l'est, sinon non
+        // abouties — puis relayées une dernière fois et rangées dans le relevé.
+        questionsOfTurn.close(!interrupted && !spendCapReached && !budgetExhausted && !refusalStop);
+        fr.claudegateway.atelier.questions.TurnQuestions.Snapshot questionsSnapshot = questionsOfTurn.snapshot();
+        if (questionsSnapshot != null) {
+            listener.onQuestions(questionsSnapshot);
+        }
         String reply = nonEmptyReply(stripTurnMetadata(nextStepsExtraction.text()));
         long activeSeconds = Math.max(0L, (System.currentTimeMillis() - startedAt) / 1000L);
         // Relevé du tour rangé dans la colonne d'affichage existante (F-39 / SF-39-15, D-L8-6) :
@@ -3924,8 +3960,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                 .workspaceId(workspaceId).userId(userId).role("ASSISTANT")
                 .content(reply)
                 .toolTrace(new AtelierToolTrace(List.copyOf(trace)).toJson())
-                .terminalJson(fr.claudegateway.atelier.nextsteps.NextStepsBlock.attachTo(report.toJson(),
-                        nextSteps, anchoredSteps.chantier()))
+                .terminalJson(fr.claudegateway.atelier.questions.TurnQuestions.attachTo(
+                        fr.claudegateway.atelier.nextsteps.NextStepsBlock.attachTo(report.toJson(),
+                                nextSteps, anchoredSteps.chantier()), questionsSnapshot))
                 .build());
         // F-162 / SF-162-06 : embed la réponse de l'assistant pour le rappel sémantique — asynchrone,
         // best-effort (NONE par défaut ⇒ ne fait rien).
@@ -6477,6 +6514,9 @@ public class AtelierChatService implements RelayInterruptTarget {
             case "exit_plan_mode" -> null;
             // La question a son propre événement (F-164 / SF-164-01, onQuestion) : pas d'étape en double.
             case "demander" -> null;
+            // Les questions du tour ont leur propre événement (F-210 / SF-210-01, onQuestions).
+            case fr.claudegateway.atelier.questions.QuestionToolCatalog.SPLIT,
+                    fr.claudegateway.atelier.questions.QuestionToolCatalog.TRACK -> null;
             // Tout autre outil (volet Teams, outils à venir) se montre quand il COMMENCE, avec sa
             // cible d'audit — ce qu'on a demandé, jamais ce qui est revenu (F-88 / SF-88-03, D2).
             default -> call.name() == null || call.name().isBlank()
@@ -7429,6 +7469,14 @@ public class AtelierChatService implements RelayInterruptTarget {
         int bash = 0;
         for (int i = from; i < calls.size() && group.size() < parallelTools; i++) {
             AgentToolCall call = calls.get(i);
+            // F-210 / SF-210-01 : un outil de questions (état du tour, sans effet) ne coupe pas un groupe
+            // de lectures ; il est traité dans l'ordre par la boucle, entre ses voisines.
+            if (fr.claudegateway.atelier.questions.QuestionToolCatalog.isQuestionTool(call.name())) {
+                if (group.isEmpty()) {
+                    return List.of();
+                }
+                continue;
+            }
             if (!isParallelSafe(userId, workspace, call)) {
                 break;
             }
@@ -9058,6 +9106,9 @@ public class AtelierChatService implements RelayInterruptTarget {
         if (routineToolExecutor != null && routineToolCatalog != null) {
             tools.addAll(routineToolCatalog.toolsFor(userId, workspace));
         }
+        // F-210 / SF-210-01 : découper un message en questions et en suivre l'avancement — dans tout
+        // terminal, sans garde (rien n'est écrit). Définitions littérales stables, en dernier.
+        tools.addAll(fr.claudegateway.atelier.questions.QuestionToolCatalog.tools());
         return List.copyOf(tools);
     }
 

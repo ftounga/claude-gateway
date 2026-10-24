@@ -160,6 +160,11 @@ final class TurnSignals implements AtelierProgressListener {
     }
 
     @Override
+    public void onQuestions(fr.claudegateway.atelier.questions.TurnQuestions.Snapshot snapshot) {
+        delegate.onQuestions(snapshot);
+    }
+
+    @Override
     public void onRunnerOffline(UUID hostId) {
         machineLost = true;
         delegate.onRunnerOffline(hostId);
