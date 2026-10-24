@@ -111,7 +111,9 @@ class GovernancePackageSeederTest {
                         ".claude/skills/pptx.md",
                         // F-182 / SF-182-03 : les trois agents nommés.
                         ".claude/agents/relecteur.md", ".claude/agents/testeur.md",
-                        ".claude/agents/auditeur-infra.md");
+                        ".claude/agents/auditeur-infra.md",
+                        // F-215 / SF-215-03 : le guide « cours vidéo », lu à la demande.
+                        ".claude/guides/cours-video.md");
         assertThat(written).extracting(GovernancePackageFile::getKind)
                 .containsExactly(GovernanceFileKind.MAP, GovernanceFileKind.MAP,
                         GovernanceFileKind.MAP, GovernanceFileKind.MAP, GovernanceFileKind.MAP,
@@ -119,7 +121,33 @@ class GovernancePackageSeederTest {
                         GovernanceFileKind.TEMPLATE, GovernanceFileKind.TEMPLATE,
                         GovernanceFileKind.SKILL, GovernanceFileKind.SKILL,
                         GovernanceFileKind.SKILL, GovernanceFileKind.AGENT, GovernanceFileKind.AGENT,
-                        GovernanceFileKind.AGENT);
+                        GovernanceFileKind.AGENT, GovernanceFileKind.GUIDE);
+    }
+
+    @Test
+    @DisplayName("F-215 : le guide « cours vidéo » porte la chaîne, les règles de lisibilité et les pièges connus")
+    void theVideoCourseGuideCarriesTheMethodRulesAndPitfalls() {
+        when(packages.findBySlug(GovernancePackageSeeder.SLUG)).thenReturn(Optional.empty());
+
+        seeder(fullRegistry, true).seed();
+
+        GovernancePackageFile guide = captureFiles().stream()
+                .filter(file -> ".claude/guides/cours-video.md".equals(file.getPath()))
+                .findFirst().orElseThrow();
+        assertThat(guide.getKind()).isEqualTo(GovernanceFileKind.GUIDE);
+        assertThat(guide.getContent())
+                // la chaîne
+                .contains("voix_off").contains(".mots.json").contains("data-composition-id")
+                .contains("data-start").contains("window.__timelines").contains("video_render_check")
+                .contains("read_file").contains("video_render").contains("video_publier")
+                // les règles
+                .contains("≥ 20 px").containsIgnoringCase("une idée par plan").contains("CIDR")
+                .contains("ports").contains("DNS").contains("10.180.171.x").containsIgnoringCase("inventé")
+                // les pièges
+                .contains("sans `id`").containsIgnoringCase("muette").contains("<span>")
+                // la charte par défaut (D1) et son remplacement
+                .contains("navy").contains("theme.css");
+        assertThat(guide.getContent().length()).isLessThan(GovernancePackageFile.MAX_CONTENT_LENGTH);
     }
 
     @Test

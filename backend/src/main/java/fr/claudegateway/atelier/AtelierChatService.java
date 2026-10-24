@@ -2278,6 +2278,17 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.speechProperties = properties;
     }
 
+    /**
+     * Les briques des cours vidéo (F-215 / SF-215-03) — par mutateur : absent (formes historiques / tests), l'outil
+     * {@code video_briques} n'est jamais donné.
+     */
+    private fr.claudegateway.atelier.video.VideoKitToolExecutor videoKitToolExecutor;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setVideoKitTool(fr.claudegateway.atelier.video.VideoKitToolExecutor executor) {
+        this.videoKitToolExecutor = executor;
+    }
+
     /** Les outils du parcours et leur garde (F-176) ; {@code none()} = jamais donnés. */
     private fr.claudegateway.atelier.journey.JourneyToolCatalog journeyToolCatalog =
             fr.claudegateway.atelier.journey.JourneyToolCatalog.none();
@@ -3813,6 +3824,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                 } else if (fr.claudegateway.diagrams.DiagramToolCatalog.isDiagramTool(call.name())) {
                     // F-142 / SF-142-06 : la gateway rend le diagramme et le dépose dans le projet.
                     outcome = applyDiagramRender(userId, workspace, callId, call);
+                } else if (fr.claudegateway.atelier.video.VideoKitToolCatalog.isKitTool(call.name())) {
+                    // F-215 / SF-215-03 : la gateway dépose guide, briques et icônes dans le sujet du poste.
+                    outcome = applyVideoKit(userId, workspace, callId, call);
                 } else if (fr.claudegateway.atelier.actions.TerminalActionToolCatalog
                         .isTerminalActionTool(call.name())) {
                     // F-154 / SF-154-02 : l'action à faire est inscrite par la gateway, dans le terminal.
@@ -5693,6 +5707,22 @@ public class AtelierChatService implements RelayInterruptTarget {
         return outcome.error() ? ToolOutcome.error(outcome.content()) : ToolOutcome.info(outcome.content());
     }
 
+    /**
+     * <b>Les briques du cours vidéo</b> (F-215 / SF-215-03). Second verrou ici (l'outil n'est déclaré que sur un poste
+     * qui annonce {@code video_render}) ; gratuit et sans porte : il écrit des fichiers dans le sujet, comme
+     * {@code write_file}.
+     */
+    private ToolOutcome applyVideoKit(UUID userId, Workspace workspace, String callId, AgentToolCall call) {
+        if (videoKitToolExecutor == null || !workspace.isRunnerTarget()
+                || !supportsCapability(workspace, fr.claudegateway.atelier.video.VideoRenderToolCatalog.CAPABILITY)) {
+            return ToolOutcome.error("Les briques vidéo demandent un poste à jour qui sait rendre une vidéo : mettez "
+                    + "le poste à jour, ou poursuis sans.");
+        }
+        fr.claudegateway.atelier.video.VideoKitToolExecutor.Outcome outcome =
+                videoKitToolExecutor.execute(userId, workspace, callId, call.input());
+        return outcome.error() ? ToolOutcome.error(outcome.content()) : ToolOutcome.info(outcome.content());
+    }
+
     private ToolOutcome applyImageGenerate(UUID userId, Workspace workspace, String callId,
             AgentToolCall call, AtelierProgressListener listener, int[] imageCountOfTurn) {
         if (imageToolExecutor == null || !imageToolCatalog.isOpenFor(userId, workspace)) {
@@ -6924,6 +6954,14 @@ public class AtelierChatService implements RelayInterruptTarget {
                                     : "rendu vidéo : " + arg(input, "dossier"), STEP_COMMAND_CHARS));
             case fr.claudegateway.atelier.video.VideoRenderToolCatalog.STATUS ->
                     new AtelierProgressListener.AtelierStepEvent("video", "suivi du rendu");
+            // F-215 / SF-215-03 : la relecture et les briques disent ce qu'elles font dès le départ.
+            case fr.claudegateway.atelier.video.VideoRenderToolCatalog.CHECK ->
+                    new AtelierProgressListener.AtelierStepEvent("video", shorten(
+                            "relecture vidéo : " + arg(input, "dossier"), STEP_COMMAND_CHARS));
+            case fr.claudegateway.atelier.video.VideoKitToolCatalog.TOOL ->
+                    new AtelierProgressListener.AtelierStepEvent("video", shorten(
+                            input.hasNonNull("dossier") ? "briques vidéo : " + arg(input, "dossier")
+                                    : "recherche d'icônes : " + arg(input, "chercher"), STEP_COMMAND_CHARS));
             // F-212 / SF-212-03 : la session de preuve se montre comme une commande, avec son titre.
             case fr.claudegateway.atelier.proof.ProofToolCatalog.TOOL ->
                     new AtelierProgressListener.AtelierStepEvent("bash",
@@ -7403,6 +7441,10 @@ public class AtelierChatService implements RelayInterruptTarget {
         if (fr.claudegateway.speech.SpeechToolCatalog.isSpeechTool(call.name())) {
             return ToolOutcome.error("La voix off n'est pas ouverte ici. Poursuis sans voix.");
         }
+        // F-215 / SF-215-03 : les briques vidéo sont déposées par la boucle, jamais relayées telles quelles.
+        if (fr.claudegateway.atelier.video.VideoKitToolCatalog.isKitTool(call.name())) {
+            return ToolOutcome.error("Les briques vidéo ne sont pas ouvertes ici. Poursuis sans.");
+        }
         if (workspace.isRunnerTarget()) {
             return executeToolOnRunner(userId, workspace, callId, call, listener, deadline);
         }
@@ -7600,7 +7642,9 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     private static boolean requiresConfirmation(String tool, Workspace workspace) {
         // F-215 / SF-215-02 : video_render lance des programmes sur le poste — même porte que bash.
-        return ("bash".equals(tool) || fr.claudegateway.atelier.video.VideoRenderToolCatalog.RENDER.equals(tool))
+        // F-215 / SF-215-03 : video_render_check aussi (Node, Chrome).
+        return ("bash".equals(tool) || fr.claudegateway.atelier.video.VideoRenderToolCatalog.RENDER.equals(tool)
+                || fr.claudegateway.atelier.video.VideoRenderToolCatalog.CHECK.equals(tool))
                 && workspace.isAgentAskBeforeBash();
     }
 
@@ -8202,7 +8246,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                     fr.claudegateway.atelier.video.VideoToolCatalog.STATUS,
                     // F-215 / SF-215-02 : rendre une vidéo. Le runner prépare et rend ; la gateway relaie.
                     fr.claudegateway.atelier.video.VideoRenderToolCatalog.RENDER,
-                    fr.claudegateway.atelier.video.VideoRenderToolCatalog.STATUS ->
+                    fr.claudegateway.atelier.video.VideoRenderToolCatalog.STATUS,
+                    // F-215 / SF-215-03 : la relecture (lint + images), même relais.
+                    fr.claudegateway.atelier.video.VideoRenderToolCatalog.CHECK ->
                     runnerToolGateway.video(target, callId, call.name(), input);
             // Le volet Teams (F-88 / SF-88-03) : un seul relais pour les huit outils, parce qu'ils
             // partagent le même contrat — des paramètres que SEUL le runner sait interpréter, et une
@@ -9210,6 +9256,10 @@ public class AtelierChatService implements RelayInterruptTarget {
             // `video_render` (runner à jour ET commandes autorisées sur le poste). Propriété STABLE du poste.
             if (supportsCapability(workspace, fr.claudegateway.atelier.video.VideoRenderToolCatalog.CAPABILITY)) {
                 tools.addAll(fr.claudegateway.atelier.video.VideoRenderToolCatalog.tools());
+                // F-215 / SF-215-03 : les briques du cours vidéo (guide, charte, icônes), même garde stable.
+                if (videoKitToolExecutor != null) {
+                    tools.add(fr.claudegateway.atelier.video.VideoKitToolCatalog.tool());
+                }
             }
             // F-212 / SF-212-03 : les captures de preuve, sur tout poste hors terminal Teams. Déclaré
             // même pour un runner ancien (propriété stable : préfixe caché intact) — l'appel dit alors
@@ -9969,6 +10019,12 @@ public class AtelierChatService implements RelayInterruptTarget {
         // quoi l'agent le traiterait avec la parcimonie due à generate_image et éviterait de dessiner.
         if (diagramToolCatalog.isOpenFor(userId, workspace)) {
             system.append(fr.claudegateway.diagrams.DiagramToolCatalog.GUIDE).append("\n\n");
+        }
+        // F-215 / SF-215-03 : UNE ligne fixe qui dit que le guide « cours vidéo » existe — le guide, lui, se lit à
+        // la demande (jamais dans le préfixe). Même garde stable que l'outil video_briques.
+        if (videoKitToolExecutor != null && workspace.isRunnerTarget()
+                && supportsCapability(workspace, fr.claudegateway.atelier.video.VideoRenderToolCatalog.CAPABILITY)) {
+            system.append(fr.claudegateway.atelier.video.VideoKitToolCatalog.DOCTRINE).append("\n\n");
         }
         // F-129 / SF-129-05 : le guide de la construction de deck, sous la même garde que l'outil.
         if (deckToolCatalog.isOpenFor(userId, workspace)) {

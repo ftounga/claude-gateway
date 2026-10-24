@@ -1,0 +1,122 @@
+/*
+ * Briques des cours vidéo — charte (F-215 / SF-215-03). Point de départ, pas un gabarit : compose librement.
+ * Charte de l'application par défaut (navy / orange / crème). Pour d'autres couleurs, redéfinis les jetons
+ * dans un theme.css chargé APRÈS ce fichier ; ne modifie pas ce fichier (re-déposé par video_briques).
+ * Aucune police distante : tout doit se rendre hors ligne.
+ */
+:root {
+  --bg: #0B1020; --bg2: #141D33; --panel: #13223a; --line: #2b3d5c;
+  --text: #f6efe4; --muted: #9fb0c8;
+  --orange: #E07B39; --orange-2: #F0954F; --accent-text: #ffcf99;
+  --green: #3ecf8e; --red: #ff5d5d; --blue: #5aa9ff; --violet: #a78bfa;
+  --font: Inter, sans-serif;
+  --mono: "JetBrains Mono", monospace;
+}
+/* Thème clair : <div id="root" class="scene clair" …> */
+.clair {
+  --bg: #F5F6FA; --bg2: #FFFFFF; --panel: #FFFFFF; --line: #CBD5E1;
+  --text: #0F172A; --muted: #64748B; --accent-text: #B45309;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 1920px; height: 1080px; background: var(--bg); overflow: hidden; }
+
+/* La scène : 1920×1080, marge utile de 56 px. */
+.scene {
+  position: relative; width: 1920px; height: 1080px; overflow: hidden;
+  background: radial-gradient(1200px 700px at 70% 20%, color-mix(in srgb, var(--bg2) 85%, var(--blue) 15%) 0%, transparent 60%),
+              radial-gradient(900px 600px at 10% 90%, var(--bg2) 0%, transparent 60%), var(--bg);
+  font-family: var(--font); color: var(--text);
+}
+.grid { position: absolute; inset: 0; background-size: 48px 48px;
+  background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px); }
+.clip { position: absolute; inset: 0; }
+.mono { font-family: var(--mono); }
+
+/* En-tête de chapitre + barre de progression (zone réservée : 0–110 px). */
+.hdr { position: absolute; left: 56px; right: 56px; top: 34px; height: 56px; display: flex; align-items: center; gap: 18px; z-index: 20; }
+.hdr .tag { font-size: 20px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--orange); }
+.hdr .sep { width: 1px; height: 26px; background: var(--line); }
+.hdr .chap { font-size: 24px; font-weight: 600; position: relative; height: 30px; min-width: 900px; }
+.hdr .chap span { position: absolute; left: 0; top: 0; opacity: 0; white-space: nowrap; }
+.prog { position: absolute; left: 56px; right: 56px; top: 96px; height: 4px; background: var(--line); border-radius: 3px; z-index: 20; }
+.prog i { display: block; height: 100%; width: 100%; border-radius: 3px; transform-origin: left; transform: scaleX(0);
+  background: linear-gradient(90deg, var(--orange), var(--orange-2)); }
+
+/* Sous-titres calés (zone réservée : 940–1040 px). Le texte est TOUJOURS dans un <span> (piège du flex). */
+.captions { position: absolute; left: 50%; bottom: 46px; transform: translateX(-50%); width: 1500px; height: 96px; z-index: 30; }
+.captions div { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center;
+  font-size: 31px; line-height: 1.35; font-weight: 500; opacity: 0; text-shadow: 0 2px 12px rgba(0,0,0,.6); }
+.captions div b { color: var(--accent-text); font-weight: 700; }
+
+/* Titre d'ouverture. */
+.title { position: absolute; left: 0; right: 0; top: 250px; text-align: center; opacity: 0; }
+.title h1 { font-size: 96px; font-weight: 800; letter-spacing: -.02em; }
+.title h1 em { font-style: normal; color: var(--orange); }
+.title p { margin-top: 18px; font-size: 36px; color: var(--muted); font-weight: 500; }
+
+/* Icône officielle + libellé (+ sous-libellé : IP, rôle). */
+.ico { position: absolute; display: flex; flex-direction: column; align-items: center; gap: 10px; opacity: 0; }
+.ico img { width: 110px; height: 110px; object-fit: contain; filter: drop-shadow(0 8px 18px rgba(0,0,0,.45)); }
+.ico .lb { font-size: 24px; font-weight: 600; white-space: nowrap; }
+.ico .sub { font-size: 20px; color: var(--muted); white-space: nowrap; margin-top: -6px; }
+
+/* Zone / sous-réseau / VPC / VNet : cadre pointillé titré (CIDR dans le titre). */
+.zone { position: absolute; border: 2px dashed var(--line); border-radius: 22px; opacity: 0; }
+.zone .zt { position: absolute; left: 20px; top: -17px; background: var(--bg); padding: 0 12px; font-size: 20px; font-weight: 700;
+  letter-spacing: .04em; color: var(--muted); white-space: nowrap; }
+.zone.ok { border-color: color-mix(in srgb, var(--green) 55%, transparent); } .zone.ok .zt { color: var(--green); }
+.zone.ko { border-color: color-mix(in srgb, var(--red) 50%, transparent); } .zone.ko .zt { color: #ff9b9b; }
+
+/* Étiquette (AZ, port, rôle). */
+.chip { position: absolute; opacity: 0; padding: 10px 18px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line);
+  font-size: 22px; font-weight: 600; white-space: nowrap; }
+
+/* Paquet qui circule (centré sur son point : translate -50 %). */
+.pkt { position: absolute; left: 0; top: 0; opacity: 0; padding: 9px 16px; border-radius: 999px; background: var(--orange); color: #1b1206;
+  font-weight: 800; font-size: 21px; white-space: nowrap; transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--orange) 18%, transparent), 0 0 34px color-mix(in srgb, var(--orange) 65%, transparent); }
+.pkt.green { background: var(--green); box-shadow: 0 0 0 6px rgba(62,207,142,.18), 0 0 34px rgba(62,207,142,.6); }
+.pkt.red { background: var(--red); box-shadow: 0 0 34px rgba(255,93,93,.8); }
+
+/* Badge de résultat. */
+.badge { position: absolute; opacity: 0; padding: 10px 18px; border-radius: 12px; font-weight: 700; font-size: 22px; white-space: nowrap; }
+.badge.ok { background: rgba(62,207,142,.14); color: var(--green); border: 1px solid rgba(62,207,142,.5); }
+.badge.ko { background: rgba(255,93,93,.12); color: #ff8f8f; border: 1px solid rgba(255,93,93,.5); }
+.badge.info { background: rgba(90,169,255,.12); color: #9fcbff; border: 1px solid rgba(90,169,255,.45); }
+
+/* Flèches qui se dessinent : <svg class="wires"><path id="w1" class="w or" d="M330 400 L560 400" pathLength="1"/></svg> */
+svg.wires { position: absolute; inset: 0; width: 1920px; height: 1080px; overflow: visible; pointer-events: none; }
+svg.wires .w { fill: none; stroke: #7f95b8; stroke-width: 4; stroke-linecap: round; }
+svg.wires .w.or { stroke: var(--orange); } svg.wires .w.gr { stroke: var(--green); }
+svg.wires .w.rd { stroke: var(--red); } svg.wires .w.bl { stroke: var(--blue); }
+svg.wires .w.dash { stroke-dasharray: 10 12; }
+svg.wires text { font-family: var(--mono); font-size: 21px; font-weight: 700; fill: var(--text); }
+
+/* Table de routage (ou de règles : NSG, security group, listener). */
+.rt { position: absolute; opacity: 0; width: 560px; border-radius: 16px; background: var(--panel); border: 1px solid var(--line); overflow: hidden;
+  box-shadow: 0 18px 40px rgba(0,0,0,.4); }
+.rt .h { display: flex; align-items: center; gap: 12px; padding: 14px 18px; background: var(--bg2); font-weight: 700; font-size: 22px; }
+.rt .h img { width: 36px; height: 36px; }
+.rt .r { display: grid; grid-template-columns: 250px 1fr; padding: 14px 18px; border-top: 1px solid var(--line); font-size: 21px; }
+.rt .r .d { font-family: var(--mono); font-weight: 700; }
+.rt .r.hl { background: rgba(62,207,142,.12); }
+.rt .r.miss { color: #ff9b9b; background: rgba(255,93,93,.10); opacity: 0; }
+
+/* Requête DNS tapée : <div class="dnsq" id="q"><span class="k">Requête DNS</span><span class="typed" id="qt">api.exemple.interne ?</span></div> */
+.dnsq { position: absolute; opacity: 0; padding: 16px 22px; border-radius: 16px; background: var(--panel); border: 1px solid #3a5a8a;
+  font-family: var(--mono); font-size: 24px; font-weight: 700; white-space: nowrap; }
+.dnsq .k { color: var(--muted); font-family: var(--font); font-weight: 600; font-size: 20px; display: block; margin-bottom: 6px; }
+.dnsq .typed { display: inline-block; overflow: hidden; white-space: nowrap; vertical-align: bottom; width: 0; }
+
+/* Carte de résumé. */
+.card { position: absolute; opacity: 0; width: 520px; min-height: 300px; border-radius: 24px; background: linear-gradient(180deg, var(--bg2), var(--panel));
+  border: 1px solid var(--line); padding: 34px; }
+.card .n { font-size: 22px; font-weight: 800; color: var(--orange); letter-spacing: .06em; }
+.card .t { font-size: 34px; font-weight: 800; margin-top: 14px; line-height: 1.2; }
+.card .d { font-size: 22px; color: var(--muted); margin-top: 14px; line-height: 1.4; }
+
+.bigx { position: absolute; opacity: 0; font-size: 150px; font-weight: 900; color: var(--red); text-shadow: 0 0 40px rgba(255,93,93,.6); }
+.end { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; opacity: 0; background: var(--bg); }
+.end h2 { font-size: 64px; font-weight: 800; } .end p { font-size: 28px; color: var(--muted); margin-top: 16px; }

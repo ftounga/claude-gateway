@@ -16,6 +16,7 @@ const path = require("node:path");
 const drawio = require("./drawio.js");
 const pdf = require("./pdf.js");
 const terminal = require("./terminal.js");
+const icons = require("./icons.js");
 
 /** Bornes — les mêmes que celles annoncées côté gateway, pour que le refus soit cohérent des deux côtés. */
 const MAX_CODE_CHARS = 20000;
@@ -676,7 +677,29 @@ async function terminalShot(req, res) {
   }
 }
 
+// ------------------------------------------------------------------ icônes des cours vidéo (F-215)
+
+/** Recherche (`chercher`) ou lecture (`noms`) d'icônes officielles de la lib diagrams (F-215 / SF-215-03). */
+async function iconsRoute(req, res) {
+  let payload;
+  try {
+    payload = JSON.parse(await readBody(req, icons.MAX_BODY_BYTES));
+  } catch (e) {
+    return e.message === "corps trop volumineux"
+      ? fail(res, 413, "Demande trop volumineuse.")
+      : fail(res, 400, "Corps JSON invalide.");
+  }
+  try {
+    return send(res, 200, JSON.stringify(icons.handle(payload)), "application/json; charset=utf-8");
+  } catch (e) {
+    return fail(res, e.status || 500, (e.message || "Icônes indisponibles.").slice(0, 300));
+  }
+}
+
 const server = http.createServer((req, res) => {
+  if (req.method === "POST" && req.url === "/icons") {
+    return iconsRoute(req, res).catch((e) => fail(res, 500, "Erreur interne : " + e.message));
+  }
   if (req.method === "GET" && req.url === "/health") {
     return send(res, 200, JSON.stringify({ status: "UP" }), "application/json; charset=utf-8");
   }

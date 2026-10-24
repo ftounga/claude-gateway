@@ -99,6 +99,12 @@ public class GovernancePackageSeeder {
             CommitSansTraceLlmControl.ID, JugeFinDeTourControl.ID, PromotionDetteBloquanteControl.ID,
             IntegritePosteControl.ID, JugeIndependantControl.ID);
 
+    /** Le guide « cours vidéo » (F-215 / SF-215-03) : ressource du paquet et chemin de dépôt dans le projet. */
+    public static final String GUIDE_COURS_VIDEO_RESOURCE = "guides/cours-video.md";
+    public static final String GUIDE_COURS_VIDEO_PATH = ".claude/guides/cours-video.md";
+    /** Le chemin de classe complet du guide, pour qui le dépose hors gouvernance (video_briques). */
+    public static final String GUIDE_COURS_VIDEO_CLASSPATH = "governance/" + SLUG + "/" + GUIDE_COURS_VIDEO_RESOURCE;
+
     /** Un fichier apporté : sa ressource, son chemin dans le projet, son genre. */
     private record SeededFile(String resource, String path, GovernanceFileKind kind) {
     }
@@ -139,7 +145,10 @@ public class GovernancePackageSeeder {
             new SeededFile("agents/relecteur.md", ".claude/agents/relecteur.md", GovernanceFileKind.AGENT),
             new SeededFile("agents/testeur.md", ".claude/agents/testeur.md", GovernanceFileKind.AGENT),
             new SeededFile("agents/auditeur-infra.md", ".claude/agents/auditeur-infra.md",
-                    GovernanceFileKind.AGENT));
+                    GovernanceFileKind.AGENT),
+            // F-215 / SF-215-03 : le savoir-faire « cours vidéo », lu À LA DEMANDE (genre GUIDE : jamais annoncé
+            // dans la consigne système). Même ressource que celle que video_briques dépose (VideoKitToolExecutor).
+            new SeededFile(GUIDE_COURS_VIDEO_RESOURCE, GUIDE_COURS_VIDEO_PATH, GovernanceFileKind.GUIDE));
 
     private final GovernancePackageRepository packages;
     private final GovernancePackageFileRepository files;

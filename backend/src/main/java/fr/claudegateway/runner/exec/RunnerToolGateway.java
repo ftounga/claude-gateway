@@ -99,6 +99,11 @@ public class RunnerToolGateway {
     private static final int MAX_QUERY_CHARS = 1_024;
     /** Délai des outils vidéo : ils rendent la main dès le démarrage du travail (F-190). */
     public static final long VIDEO_TOOL_TIMEOUT_MS = 20_000L;
+    /**
+     * Délai de la relecture {@code video_render_check} (F-215 / SF-215-03) : synchrone et bornée côté runner
+     * (préparation 45 s + lint 90 s + images 240 s) — la gateway attend un peu plus.
+     */
+    public static final long VIDEO_CHECK_TIMEOUT_MS = 420_000L;
     /** Même borne que le {@code PathResolver} du runner. */
     private static final int MAX_VIDEO_PATH_CHARS = 4_096;
 
@@ -394,7 +399,9 @@ public class RunnerToolGateway {
                 }
             });
         }
-        return router.call(target, callId, tool, payload, VIDEO_TOOL_TIMEOUT_MS);
+        return router.call(target, callId, tool, payload,
+                fr.claudegateway.atelier.video.VideoRenderToolCatalog.CHECK.equals(tool) ? VIDEO_CHECK_TIMEOUT_MS
+                        : VIDEO_TOOL_TIMEOUT_MS);
     }
 
     /**
