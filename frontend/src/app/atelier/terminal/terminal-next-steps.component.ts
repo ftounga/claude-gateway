@@ -1,9 +1,73 @@
+import { NgTemplateOutlet } from '@angular/common';
 import { Component, ElementRef, HostListener, computed, effect, inject, input, output, signal } from '@angular/core';
 
-import { AtelierNextStep, AtelierNextStepLabel, AtelierNextStepsChantier } from '../../core/models/atelier.models';
+import {
+  AtelierNextStep, AtelierNextStepLabel, AtelierNextStepPrerequisite, AtelierNextStepsChantier,
+} from '../../core/models/atelier.models';
 
-/** Options affichées au plus — et touches 1 à 4. */
+/** Options affichées au plus sans chantier ouvert — et touches 1 à 4. */
 export const MAX_NEXT_STEPS = 4;
+
+/** Options affichées au plus en deux colonnes (F-209) : 4 « Chantier » + 3 « Hors chantier » — touches 1 à 7. */
+export const MAX_NEXT_STEPS_COLUMNS = 7;
+
+/** Les prérequis d'une suite, groupés par niveau (F-209) : un groupe = en parallèle ; les groupes, dans l'ordre. */
+export function prerequisiteGroups(step: AtelierNextStep): AtelierNextStepPrerequisite[][] {
+  const byLevel = new Map<number, AtelierNextStepPrerequisite[]>();
+  for (const p of step.prerequisites ?? []) {
+    byLevel.set(p.level, [...(byLevel.get(p.level) ?? []), p]);
+  }
+  return [...byLevel.entries()].sort((a, b) => a[0] - b[0]).map((e) => e[1]);
+}
+
+/**
+ * **« Lancer »** (F-209 / SF-209-02) : UNE demande visible — les prérequis cochés, les parallèles ensemble
+ * et les séquentiels dans l'ordre, puis l'option. Sans prérequis coché : la demande de l'option, telle quelle.
+ * Sur une ligne (la saisie est mono-ligne).
+ */
+export function composeLaunch(step: AtelierNextStep, checkedSteps: number[]): string {
+  const keep = new Set(checkedSteps);
+  const groups = prerequisiteGroups(step)
+    .map((g) => g.filter((p) => keep.has(p.step)))
+    .filter((g) => g.length > 0);
+  if (groups.length === 0) {
+    return step.request;
+  }
+  const parts = groups.map((g, k) => `${k + 1}) ${g.length > 1 ? 'en parallèle : ' : ''}`
+    + g.map((p) => `étape ${p.step} « ${p.title} »`).join(', '));
+  const chantier = step.chantier ? `Chantier ${step.chantier} — ` : '';
+  return `${chantier}d’abord les prérequis, dans cet ordre — ${parts.join(' ; ')}. Puis : ${step.request.trim()}`;
+}
+
+/** « Ch.4 · étape 4/14 » (F-209), ou `null` pour une suite sans chantier. */
+export function nextStepBadge(step: AtelierNextStep, chantier: AtelierNextStepsChantier | null): string | null {
+  if (!chantier || step.scope !== 'CHANTIER' || !step.chantier) {
+    return null;
+  }
+  const progress = [chantier, ...(chantier.others ?? [])].find((c) => c.number === step.chantier);
+  if (!step.stepIndex) {
+    return `Ch.${step.chantier}`;
+  }
+  return progress && progress.total > 0
+    ? `Ch.${step.chantier} · étape ${step.stepIndex}/${progress.total}`
+    : `Ch.${step.chantier} · étape ${step.stepIndex}`;
+}
+
+/** « bloquée : après l’étape 3 · attente cert-gino » (F-209), ou `null`. */
+export function nextStepBlockedText(step: AtelierNextStep): string | null {
+  const blocked = step.blockedBy ?? [];
+  if (blocked.length === 0) {
+    return null;
+  }
+  const steps = blocked.filter((b) => b.startsWith('étape ')).map((b) => b.slice('étape '.length));
+  const waits = blocked.filter((b) => !b.startsWith('étape '));
+  const parts: string[] = [];
+  if (steps.length) {
+    parts.push(`après ${steps.length > 1 ? 'les étapes' : 'l’étape'} ${steps.join(', ')}`);
+  }
+  parts.push(...waits);
+  return `bloquée : ${parts.join(' · ')}`;
+}
 
 /** L'étiquette, dite en français. Inconnue ⇒ « Continuer ». */
 const LABELS: Record<AtelierNextStepLabel, string> = {
@@ -108,6 +172,7 @@ export function composeNextSteps(requests: string[]): string {
 @Component({
   selector: 'app-terminal-next-steps',
   standalone: true,
+  imports: [NgTemplateOutlet],
   template: `
     @if (shown().length > 0) {
       @if (collapsed()) {
@@ -128,38 +193,49 @@ export function composeNextSteps(requests: string[]): string {
             }
             <button type="button" class="cap__toggle" (click)="hide()">Masquer</button>
           </header>
-          <div class="cap__opts">
-            @for (step of shown(); track $index; let i = $index) {
-              <button
-                type="button"
-                class="opt"
-                role="checkbox"
-                [class.opt--sel]="isChecked(i)"
-                [attr.aria-checked]="isChecked(i)"
-                [attr.aria-label]="'Option ' + (i + 1) + ' : ' + step.title"
-                (click)="toggle(i)"
-              >
-                <span class="key" aria-hidden="true">
-                  <span class="box" [class.box--on]="isChecked(i)">@if (isChecked(i)) {✓}</span>{{ i + 1 }}
-                </span>
-                <span class="body">
-                  <span class="t">{{ step.title }}</span>
-                  @if (scopeLabel(step); as scope) {
-                    <span class="scope" [attr.data-scope]="step.scope">{{ scope }}</span>
+          @if (columns()) {
+            <!-- F-209 / SF-209-02 : chantier ouvert — à gauche ce qui fait avancer le chantier, à droite le reste. -->
+            <div class="cap__cols">
+              <div class="cap__col cap__col--chantier" role="group" [attr.aria-label]="chantierHeading()">
+                <div class="col__head">
+                  <span class="col__title">{{ chantierHeading() }}</span>
+                  @if (chantier(); as c) {
+                    @if (c.total > 0) {
+                      <span class="col__bar" aria-hidden="true"><span class="col__fill" [style.width.%]="percent(c)"></span></span>
+                      <span class="col__count">{{ c.done }}/{{ c.total }} faites</span>
+                    }
                   }
-                  <span class="why">{{ step.why }}</span>
-                </span>
-                <span class="tag" [attr.data-tone]="tone(step.label)">{{ label(step.label) }}</span>
-              </button>
-              @if (otherChantier(step); as n) {
-                <button type="button" class="switch" (click)="switchChantier.emit(n)">Basculer sur le chantier {{ n }}</button>
+                </div>
+                @for (item of left(); track item.index) {
+                  <ng-container [ngTemplateOutlet]="option" [ngTemplateOutletContext]="{ $implicit: item.step, i: item.index }" />
+                }
+              </div>
+              @if (right().length > 0) {
+                <div class="cap__col cap__col--hors" role="group" aria-label="Hors chantier">
+                  <div class="col__head"><span class="col__title">Hors chantier</span></div>
+                  @for (item of right(); track item.index) {
+                    <ng-container [ngTemplateOutlet]="option" [ngTemplateOutletContext]="{ $implicit: item.step, i: item.index }" />
+                  }
+                </div>
               }
-            }
-            <button type="button" class="opt opt--other" (click)="other.emit()">
-              <span class="key" aria-hidden="true">…</span>
-              <span class="body"><span class="why">Autre chose : tapez votre suite</span></span>
-            </button>
-          </div>
+            </div>
+            <div class="cap__opts">
+              <button type="button" class="opt opt--other" (click)="other.emit()">
+                <span class="key" aria-hidden="true">…</span>
+                <span class="body"><span class="why">Autre chose : tapez votre suite</span></span>
+              </button>
+            </div>
+          } @else {
+            <div class="cap__opts">
+              @for (step of shown(); track $index; let i = $index) {
+                <ng-container [ngTemplateOutlet]="option" [ngTemplateOutletContext]="{ $implicit: step, i: i }" />
+              }
+              <button type="button" class="opt opt--other" (click)="other.emit()">
+                <span class="key" aria-hidden="true">…</span>
+                <span class="body"><span class="why">Autre chose : tapez votre suite</span></span>
+              </button>
+            </div>
+          }
           @if (remainingWarning(); as warning) {
             <p class="cap__warn" role="status">{{ warning }}</p>
           }
@@ -174,6 +250,70 @@ export function composeNextSteps(requests: string[]): string {
         </section>
       }
     }
+    <ng-template #option let-step let-i="i">
+      <button
+        type="button"
+        class="opt"
+        role="checkbox"
+        [class.opt--sel]="isChecked(i)"
+        [attr.aria-checked]="isChecked(i)"
+        [attr.aria-label]="'Option ' + (i + 1) + ' : ' + step.title"
+        (click)="toggle(i)"
+      >
+        <span class="key" aria-hidden="true">
+          <span class="box" [class.box--on]="isChecked(i)">@if (isChecked(i)) {✓}</span>{{ i + 1 }}
+        </span>
+        <span class="body">
+          <span class="t">{{ step.title }}</span>
+          @if (badge(step); as b) {
+            <span class="badge">{{ b }}</span>
+          }
+          @if (scopeLabel(step); as scope) {
+            <span class="scope" [attr.data-scope]="step.scope">{{ scope }}</span>
+          }
+          @if (blockedText(step); as blocked) {
+            <span class="blocked">{{ blocked }}</span>
+          }
+          <span class="why">{{ step.why }}</span>
+        </span>
+        <span class="tag" [attr.data-tone]="tone(step.label)">{{ label(step.label) }}</span>
+      </button>
+      @if (otherChantier(step); as n) {
+        <button type="button" class="switch" (click)="switchChantier.emit(n)">Basculer sur le chantier {{ n }}</button>
+      }
+      @if (step.prerequisites?.length) {
+        <div class="pre" role="group" [attr.aria-label]="'Prérequis de l’option ' + (i + 1)">
+          <span class="pre__head">{{ prerequisiteHeading(step) }}</span>
+          <ol class="pre__groups">
+            @for (group of groups(step); track $index; let g = $index) {
+              <li class="pre__group">
+                @if (groups(step).length > 1) {
+                  <span class="pre__lvl">{{ g + 1 }}</span>
+                }
+                @for (p of group; track p.step) {
+                  <label class="pre__item" [class.pre__item--ext]="p.risk === 'EXTERNE'">
+                    <input type="checkbox" [checked]="isPrereqChecked(i, step, p)" (change)="togglePrereq(i, step, p)" />
+                    <span>étape {{ p.step }} · {{ p.title }}</span>
+                    @if (p.risk === 'EXTERNE') {
+                      <span class="pre__ext">externe</span>
+                    }
+                  </label>
+                }
+              </li>
+            }
+          </ol>
+          @if (confirmingLaunch() === i) {
+            <div class="pre__confirm" role="alertdialog" aria-label="Confirmer une étape externe">
+              <span>{{ externalWarning }}</span>
+              <button type="button" class="pre__yes" (click)="confirmLaunch(i, step)">Confirmer</button>
+              <button type="button" class="pre__no" (click)="confirmingLaunch.set(null)">Annuler</button>
+            </div>
+          } @else {
+            <button type="button" class="pre__launch" (click)="askLaunch(i, step)">Lancer</button>
+          }
+        </div>
+      }
+    </ng-template>
   `,
   styles: `
     :host { display: block; }
@@ -242,10 +382,57 @@ export function composeNextSteps(requests: string[]): string {
     }
     .switch:hover { background: color-mix(in srgb, var(--cg-accent) 8%, transparent); }
     .switch:focus-visible { outline: 2px solid var(--cg-accent); outline-offset: 2px; }
+    .cap__cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .cap__cols:has(> .cap__col:only-child) { grid-template-columns: minmax(0, 1fr); }
+    .cap__col { display: grid; align-content: start; min-width: 0; }
+    .cap__col--hors { border-left: 1px solid color-mix(in srgb, var(--cg-divider) 14%, transparent); }
+    .col__head {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 12px;
+      border-bottom: 1px solid color-mix(in srgb, var(--cg-divider) 14%, transparent);
+    }
+    .col__title { font: 600 12px 'Inter', sans-serif; color: var(--cg-divider); min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .col__bar {
+      flex: 0 0 64px; height: 4px; border-radius: 2px; overflow: hidden;
+      background: color-mix(in srgb, var(--cg-divider) 20%, transparent);
+    }
+    .col__fill { display: block; height: 100%; background: var(--cg-accent); }
+    .col__count { font: 500 12px 'Inter', sans-serif; color: #9FB0C4; }
+    .badge {
+      justify-self: start; font: 500 11px 'JetBrains Mono', monospace; padding: 0 8px; border-radius: 4px;
+      color: var(--cg-accent); border: 1px solid color-mix(in srgb, var(--cg-accent) 35%, transparent);
+    }
+    .blocked { font-size: 12px; color: #F9A825; }
+    .pre {
+      display: grid; gap: 4px; margin: -4px 12px 8px 52px; padding: 8px;
+      border: 1px solid color-mix(in srgb, var(--cg-divider) 14%, transparent); border-radius: 8px; font-size: 12px;
+    }
+    .pre__head { color: #9FB0C4; }
+    .pre__groups { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+    .pre__group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+    .pre__lvl {
+      width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center;
+      font: 600 11px 'JetBrains Mono', monospace; color: var(--cg-navy-2); background: var(--cg-divider);
+    }
+    .pre__item { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+    .pre__item input { accent-color: var(--cg-accent); }
+    .pre__ext { color: #F9A825; font: 500 11px 'JetBrains Mono', monospace; }
+    .pre__launch, .pre__yes, .pre__no {
+      justify-self: start; padding: 4px 12px; border-radius: 4px; cursor: pointer; font: 600 12px 'Inter', sans-serif;
+      background: var(--cg-accent); color: var(--cg-navy-2); border: 1px solid var(--cg-accent);
+    }
+    .pre__no { background: none; color: var(--cg-divider); border-color: color-mix(in srgb, var(--cg-divider) 30%, transparent); }
+    .pre__confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: #F9A825; }
+    .pre__launch:focus-visible, .pre__yes:focus-visible, .pre__no:focus-visible { outline: 2px solid var(--cg-accent); outline-offset: 2px; }
     .cap__foot { display: flex; gap: 16px; flex-wrap: wrap; padding: 8px 12px; font-size: 12px; color: #9FB0C4; }
     kbd {
       font: 11px 'JetBrains Mono', monospace; padding: 0 4px; border-radius: 4px;
       border: 1px solid color-mix(in srgb, var(--cg-divider) 14%, transparent); color: var(--cg-divider);
+    }
+    @media (max-width: 819px) {
+      /* F-209 : sur téléphone, les colonnes s'empilent — Chantier en premier. */
+      .cap__cols { grid-template-columns: minmax(0, 1fr); }
+      .cap__col--hors { border-left: 0; border-top: 1px solid color-mix(in srgb, var(--cg-divider) 14%, transparent); }
+      .pre { margin-left: 12px; }
     }
     @media (max-width: 600px) {
       .opt { grid-template-columns: 28px minmax(0, 1fr); }
@@ -283,7 +470,40 @@ export class TerminalNextStepsComponent {
   /** Le focus retenu : le parcours en direct, sinon celui de la réponse. */
   private readonly focusNumber = computed(() => this.focus() ?? this.chantier()?.number ?? null);
 
-  readonly shown = computed(() => (this.steps() ?? []).slice(0, MAX_NEXT_STEPS));
+  /** Deux colonnes (F-209) : la gateway a rangé au moins une suite dans une colonne. */
+  readonly columns = computed(() => (this.steps() ?? []).some((s) => !!s.column));
+
+  readonly shown = computed(() => (this.steps() ?? [])
+    .slice(0, this.columns() ? MAX_NEXT_STEPS_COLUMNS : MAX_NEXT_STEPS));
+
+  /** Colonne « Chantier » (F-209) : les suites rangées à gauche, avec leur numéro de touche. */
+  readonly left = computed(() => this.shown().map((step, index) => ({ step, index }))
+    .filter((x) => x.step.column === 'CHANTIER'));
+
+  /** Colonne « Hors chantier » (F-209) : tout le reste. */
+  readonly right = computed(() => this.shown().map((step, index) => ({ step, index }))
+    .filter((x) => x.step.column !== 'CHANTIER'));
+
+  /** « Chantier 4 — Migration » (F-209). */
+  readonly chantierHeading = computed(() => {
+    const c = this.chantier();
+    const n = this.focusNumber() ?? c?.number ?? null;
+    if (!n) {
+      return 'Chantier';
+    }
+    const title = c && c.number === n ? c.title : null;
+    return title ? `Chantier ${n} — ${title}` : `Chantier ${n}`;
+  });
+
+  readonly externalWarning = 'Ce lancement comprend une étape externe (push, envoi, production…). Confirmer ?';
+
+  /** Les prérequis décochés ou cochés à la main : `option:étape` → coché (F-209). */
+  private readonly prereqChoice = signal<Record<string, boolean>>({});
+  /** L'option dont le lancement attend la confirmation d'une étape externe (F-209). */
+  readonly confirmingLaunch = signal<number | null>(null);
+
+  /** « Lancer » (F-209) : une demande visible, envoyée dans le fil (précision pendant un tour). */
+  readonly launch = output<string>();
   readonly hidden = signal(false);
   /** Les index cochés, dans l'ordre d'affichage. */
   readonly checked = signal<number[]>([]);
@@ -315,7 +535,63 @@ export class TerminalNextStepsComponent {
       this.hidden.set(false);
       this.checked.set([]);
       this.written.set(null);
+      this.prereqChoice.set({});
+      this.confirmingLaunch.set(null);
     });
+  }
+
+  badge(step: AtelierNextStep): string | null {
+    return this.columns() ? nextStepBadge(step, this.chantier()) : null;
+  }
+
+  blockedText(step: AtelierNextStep): string | null {
+    return nextStepBlockedText(step);
+  }
+
+  percent(c: AtelierNextStepsChantier): number {
+    return c.total > 0 ? Math.round((100 * c.done) / c.total) : 0;
+  }
+
+  groups(step: AtelierNextStep): AtelierNextStepPrerequisite[][] {
+    return prerequisiteGroups(step);
+  }
+
+  prerequisiteHeading(step: AtelierNextStep): string {
+    return this.groups(step).length > 1 ? 'Avant, dans l’ordre :' : 'Avant, en parallèle :';
+  }
+
+  /** Coché par défaut, sauf une étape EXTERNE (jamais pré-cochée). */
+  isPrereqChecked(option: number, step: AtelierNextStep, p: AtelierNextStepPrerequisite): boolean {
+    const explicit = this.prereqChoice()[`${option}:${p.step}`];
+    return explicit ?? p.risk !== 'EXTERNE';
+  }
+
+  togglePrereq(option: number, step: AtelierNextStep, p: AtelierNextStepPrerequisite): void {
+    const next = !this.isPrereqChecked(option, step, p);
+    this.prereqChoice.update((m) => ({ ...m, [`${option}:${p.step}`]: next }));
+    this.confirmingLaunch.set(null);
+  }
+
+  private checkedPrereqs(option: number, step: AtelierNextStep): AtelierNextStepPrerequisite[] {
+    return (step.prerequisites ?? []).filter((p) => this.isPrereqChecked(option, step, p));
+  }
+
+  /** « Lancer » : une étape externe cochée exige une confirmation explicite. */
+  askLaunch(option: number, step: AtelierNextStep): void {
+    if (this.checkedPrereqs(option, step).some((p) => p.risk === 'EXTERNE')) {
+      this.confirmingLaunch.set(option);
+      return;
+    }
+    this.doLaunch(option, step);
+  }
+
+  confirmLaunch(option: number, step: AtelierNextStep): void {
+    this.confirmingLaunch.set(null);
+    this.doLaunch(option, step);
+  }
+
+  private doLaunch(option: number, step: AtelierNextStep): void {
+    this.launch.emit(composeLaunch(step, this.checkedPrereqs(option, step).map((p) => p.step)));
   }
 
   label(value: string): string {
@@ -323,6 +599,10 @@ export class TerminalNextStepsComponent {
   }
 
   scopeLabel(step: AtelierNextStep): string | null {
+    // F-209 : en colonnes, le badge « Ch.4 · étape 4/14 » dit déjà le rattachement — reste le titre de l'étape.
+    if (this.columns() && step.scope === 'CHANTIER' && !this.otherChantier(step)) {
+      return step.stepTitle ?? null;
+    }
     return nextStepScopeLabel(step, this.chantier() !== null, this.focusNumber());
   }
 
