@@ -251,6 +251,14 @@ public class AccountService {
         this.pageService = pageService;
     }
 
+    /** Les vidéos (F-213 / SF-213-01), par mutateur comme les pages : {@code null} = rien à effacer. */
+    private fr.claudegateway.videos.VideoService videoService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setVideoService(fr.claudegateway.videos.VideoService videoService) {
+        this.videoService = videoService;
+    }
+
     /**
      * Abonnements Web Push (F-153 / SF-153-02). Injectés par mutateur, comme les pages : {@code null}
      * (tests unitaires historiques construits par constructeur) = aucun abonnement à effacer.
@@ -527,6 +535,10 @@ public class AccountService {
         // de client ; leurs lignes tombent en cascade avec le compte.
         if (pageService != null) {
             pageService.purgeUser(userId);
+        }
+        // Les vidéos et les sons (F-213 / SF-213-01) : leurs objets ; les lignes tombent en cascade avec le compte.
+        if (videoService != null) {
+            videoService.purgeUser(userId);
         }
         // Les pièces jointes des courriels encore en file (F-110 / SF-110-03) : des documents du client ; les
         // lignes `client_emails` tombent en cascade avec le compte.

@@ -81,6 +81,9 @@ public class SecurityConfig {
                         // se lit sans compte ; sa bibliothèque aussi. Liste close d'un seul fichier
                         // statique, aucun paramètre utilisateur, aucune donnée de compte.
                         .requestMatchers(HttpMethod.GET, "/pages/lib/**").permitAll()
+                        // F-213 / SF-213-01 : la lecture d'une vidéo par ticket signé (un <video src> ne
+                        // porte pas d'en-tête). Le ticket désigne UNE vidéo, UNE version, UN compte ; GET seul.
+                        .requestMatchers(HttpMethod.GET, "/video-media/**").permitAll()
                         .requestMatchers("/hello").permitAll()
                         .requestMatchers("/h2-console/**").permitAll()
                         .anyRequest().authenticated())

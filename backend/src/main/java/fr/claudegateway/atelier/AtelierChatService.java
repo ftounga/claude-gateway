@@ -2241,6 +2241,23 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.proofCaptureService = service;
     }
 
+    /**
+     * Les vidéos et les sons publiés depuis le poste (F-213 / SF-213-01) — par mutateur : absents (formes
+     * historiques / tests), les outils ne sont jamais donnés.
+     */
+    private fr.claudegateway.videos.VideoToolCatalog videoToolCatalog =
+            fr.claudegateway.videos.VideoToolCatalog.none();
+    private fr.claudegateway.videos.VideoToolExecutor videoToolExecutor;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setVideoTools(fr.claudegateway.videos.VideoToolCatalog catalog,
+            fr.claudegateway.videos.VideoToolExecutor executor) {
+        if (catalog != null) {
+            this.videoToolCatalog = catalog;
+        }
+        this.videoToolExecutor = executor;
+    }
+
     /** Les outils du parcours et leur garde (F-176) ; {@code none()} = jamais donnés. */
     private fr.claudegateway.atelier.journey.JourneyToolCatalog journeyToolCatalog =
             fr.claudegateway.atelier.journey.JourneyToolCatalog.none();
@@ -3016,6 +3033,9 @@ public class AtelierChatService implements RelayInterruptTarget {
         java.util.Map<String, fr.claudegateway.pages.PageBlock> pagesOfTurn = new java.util.HashMap<>();
         // F-212 / SF-212-03 : les captures de preuve du tour, par appel — elles survivent au rechargement.
         java.util.Map<String, fr.claudegateway.atelier.proof.ProofBlock> proofsOfTurn = new java.util.HashMap<>();
+        // F-213 / SF-213-01 : les vidéos et les sons publiés pendant le tour, par appel.
+        java.util.Map<String, fr.claudegateway.videos.VideoBlock> videosOfTurn = new java.util.HashMap<>();
+        java.util.Map<String, fr.claudegateway.videos.AudioBlock> audiosOfTurn = new java.util.HashMap<>();
         // F-175 / SF-175-05 : les cartes d'attente du tour, par appel.
         java.util.Map<String, fr.claudegateway.atelier.actions.AttenteBlock> attentesOfTurn = new java.util.HashMap<>();
         // F-179 / SF-179-01 : le bloc de passation vers un sujet, par appel ouvrir_sujet.
@@ -3722,6 +3742,11 @@ public class AtelierChatService implements RelayInterruptTarget {
                     // F-212 / SF-212-03 : les captures de preuve — chaque commande passe la porte et
                     // l'invite comme un bash, puis une seule session sur le poste, rendue en images.
                     outcome = applyProofCapture(userId, workspace, callId, call, listener, deadline, proofsOfTurn);
+                } else if (fr.claudegateway.videos.VideoToolCatalog.isVideoTool(call.name())) {
+                    // F-213 / SF-213-01 : la vidéo (ou le son) est rapatriée du poste et rangée par la gateway ;
+                    // son bloc est admis dans tout terminal.
+                    outcome = applyVideoPublish(userId, workspace, callId, call, listener, videosOfTurn,
+                            audiosOfTurn);
                 } else if ("recall".equals(call.name())) {
                     // F-162 / SF-162-01 : rappel à la demande. Recherche dans NOTRE historique de
                     // conversation (atelier_messages), côté gateway, indépendamment de la cible
@@ -3906,7 +3931,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                             // La carte « Enregistrer ce besoin ? » (F-205 / SF-205-01) : [Enregistrer] y survit.
                             appRequestsOfTurn.get(callId),
                             // Les captures de preuve (F-212 / SF-212-03) : vignettes et relevés y survivent.
-                            proofsOfTurn.get(callId)));
+                            proofsOfTurn.get(callId),
+                            // Les blocs vidéo et audio (F-213 / SF-213-01) : le lecteur y survit.
+                            videosOfTurn.get(callId),
+                            audiosOfTurn.get(callId)));
                 }
                 // F-121 / SF-121-11 — LA FILE EST CONSULTÉE ENTRE LES APPELS D'OUTILS, et plus
                 // seulement à la frontière d'itération. Une précision déposée pendant un `bash` de
@@ -5063,6 +5091,57 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
         pagesOfTurn.put(callId, outcome.block());
         listener.onPage(callId, outcome.block());
+        return ToolOutcome.info(outcome.content());
+    }
+
+    /**
+     * <b>Publier une vidéo ou des sons</b> (F-213 / SF-213-01). Second verrou de garde ici (l'outil n'est pas
+     * déclaré hors garde), puis <b>l'accord d'un clic</b>, comme une page : refus ou délai, rien n'est rangé.
+     */
+    private ToolOutcome applyVideoPublish(UUID userId, Workspace workspace, String callId, AgentToolCall call,
+            AtelierProgressListener listener,
+            java.util.Map<String, fr.claudegateway.videos.VideoBlock> videosOfTurn,
+            java.util.Map<String, fr.claudegateway.videos.AudioBlock> audiosOfTurn) {
+        if (videoToolExecutor == null || !videoToolCatalog.isOpenFor(userId, workspace)) {
+            return ToolOutcome.error("La publication de vidéos n'est pas ouverte dans ce terminal. Réponds en clair.");
+        }
+        boolean audio = fr.claudegateway.videos.VideoToolCatalog.AUDIO.equals(call.name());
+        String target = fr.claudegateway.videos.VideoToolExecutor.auditTarget(call.input());
+        if (!blanketAllowedTurns.contains(turnKey(userId, workspace.getId()))) {
+            RunnerConfirmationGate.Outcome decision = askPermission(userId, workspace.getId(), callId,
+                    call.name(), (audio ? "Publier les sons « " : "Publier la vidéo « ")
+                            + (target == null ? "sans titre" : target) + " » — privée, visible par vous seul",
+                    listener);
+            if (!decision.decision().allows()) {
+                if (decision.decision() == RunnerConfirmationGate.Decision.TIMEOUT) {
+                    return ToolOutcome.error("Publication refusée : aucune autorisation n'a été donnée dans le délai imparti.");
+                }
+                return ToolOutcome.error(decision.reason() == null || decision.reason().isBlank()
+                        ? "Publication refusée par l'utilisateur."
+                        : "Publication refusée par l'utilisateur. Motif : " + decision.reason());
+            }
+        }
+        if (audio) {
+            fr.claudegateway.videos.VideoToolExecutor.AudioOutcome outcome =
+                    videoToolExecutor.publishAudio(userId, workspace, callId, call.input());
+            if (outcome.error()) {
+                return ToolOutcome.error(outcome.content());
+            }
+            if (outcome.block() != null) {
+                audiosOfTurn.put(callId, outcome.block());
+                listener.onAudio(callId, outcome.block());
+            }
+            return ToolOutcome.info(outcome.content());
+        }
+        fr.claudegateway.videos.VideoToolExecutor.VideoOutcome outcome =
+                videoToolExecutor.publishVideo(userId, workspace, callId, call.input());
+        if (outcome.error()) {
+            return ToolOutcome.error(outcome.content());
+        }
+        if (outcome.block() != null) {
+            videosOfTurn.put(callId, outcome.block());
+            listener.onVideo(callId, outcome.block());
+        }
         return ToolOutcome.info(outcome.content());
     }
 
@@ -7238,6 +7317,10 @@ public class AtelierChatService implements RelayInterruptTarget {
         if (fr.claudegateway.images.ImageToolCatalog.isImageTool(call.name())) {
             return ToolOutcome.error("La génération d'images n'est pas ouverte ici. Réponds en clair.");
         }
+        // F-213 / SF-213-01 : la publication de vidéos est traitée par la boucle (garde + accord + bloc).
+        if (fr.claudegateway.videos.VideoToolCatalog.isVideoTool(call.name())) {
+            return ToolOutcome.error("La publication de vidéos n'est pas ouverte ici. Réponds en clair.");
+        }
         if (workspace.isRunnerTarget()) {
             return executeToolOnRunner(userId, workspace, callId, call, listener, deadline);
         }
@@ -8164,6 +8247,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                 // F-142 / SF-142-04 : une génération d'image se lit par sa description, jamais l'image.
                 if (fr.claudegateway.images.ImageToolCatalog.isImageTool(call.name())) {
                     yield shorten(fr.claudegateway.images.ImageToolExecutor.auditTarget(input), AUDIT_TARGET_CHARS);
+                }
+                // F-213 / SF-213-01 : une vidéo se lit par son titre, jamais par son contenu.
+                if (fr.claudegateway.videos.VideoToolCatalog.isVideoTool(call.name())) {
+                    yield shorten(fr.claudegateway.videos.VideoToolExecutor.auditTarget(input), AUDIT_TARGET_CHARS);
                 }
                 if (fr.claudegateway.teams.TeamsToolCatalog.isCapture(call.name())) {
                     yield shorten(teamsCaptureAuditTarget(call), AUDIT_TARGET_CHARS);
@@ -9352,6 +9439,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         // Les pages (F-109 / SF-109-02) : sur un poste, avec le droit de l'espace du terminal. La règle vit
         // dans PageToolCatalog, à un seul endroit.
         tools.addAll(pageToolCatalog.toolsFor(userId, workspace));
+        // F-213 / SF-213-01 : video_publier et audio_publier, même garde d'espace que les pages, cible poste.
+        tools.addAll(videoToolCatalog.toolsFor(userId, workspace));
         // F-129 / SF-129-02 : l'outil presentation_publish, sous la même garde d'espace que les pages.
         tools.addAll(presentationToolCatalog.toolsFor(userId, workspace));
         // F-142 / SF-142-04 : l'outil de génération d'images décoratives, sous la même garde d'espace.

@@ -123,6 +123,14 @@ public class WorkspaceService {
         this.attentesPurge = purge;
     }
 
+    /** Les vidéos du sujet (F-213 / SF-213-01), effacées avec lui ; null = formes historiques. */
+    private fr.claudegateway.videos.VideoService videoService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setVideoService(fr.claudegateway.videos.VideoService videoService) {
+        this.videoService = videoService;
+    }
+
     /**
      * Annonce la création d'un projet (F-51 / SF-51-03).
      *
@@ -653,6 +661,11 @@ public class WorkspaceService {
         // Les CAPTURES DE PREUVE (F-212 / SF-212-03) : elles s'en vont avec le terminal, hors du
         // préfixe des fichiers de projet ; leurs lignes suivent par cascade sur workspace_id.
         storage.deletePrefix(fr.claudegateway.atelier.proof.ProofCaptureService.prefixOf(userId, id));
+        // F-213 / SF-213-01 : les vidéos et séries du sujet, objets puis lignes. Un effacement incomplet lève
+        // et annule la suppression (F-79), comme les fichiers du projet.
+        if (videoService != null) {
+            videoService.deleteWorkspace(userId, id);
+        }
         atelierMessageRepository.deleteByWorkspaceId(id);
         // Plus aucune activation de gouvernance à purger ici : depuis F-75, elles vivent sur le
         // POSTE, et supprimer un dossier ne doit surtout pas éteindre la gouvernance de la machine.

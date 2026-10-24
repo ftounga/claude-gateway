@@ -1,0 +1,382 @@
+package fr.claudegateway.videos;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import fr.claudegateway.billing.AdministratorEntitlement;
+
+/**
+ * <b>Ranger une vidéo</b> (F-213 / SF-213-01) : la préparer (contrôles, plafonds, quota), puis l'inscrire une
+ * fois ses octets envoyés — toujours pour son propriétaire.
+ *
+ * <h2>Deux temps, et pourquoi</h2>
+ *
+ * <p>Une vidéo de 300 Mo met une minute à remonter du poste. {@link #prepare} décide <b>avant</b> tout
+ * transfert (taille connue dès la première tranche) ; {@link #commit} inscrit les lignes en une transaction
+ * courte, une fois l'objet envoyé. Aucune connexion de base n'est tenue pendant le transfert.</p>
+ *
+ * <h2>L'isolation</h2>
+ *
+ * <p>Toute lecture passe par {@code findByIdAndUserId} : la vidéo d'un autre compte est <b>introuvable</b>,
+ * indiscernable d'une vidéo qui n'existe pas — la remplacer aussi.</p>
+ */
+@Service
+public class VideoService {
+
+    /** Longueur maximale d'un titre. */
+    public static final int MAX_TITLE_CHARS = 120;
+    /** Longueur maximale d'une description. */
+    public static final int MAX_DESCRIPTION_CHARS = 300;
+    /** Longueur maximale d'un libellé de piste. */
+    public static final int MAX_LABEL_CHARS = 80;
+    /** Rang maximal d'un épisode. */
+    public static final int MAX_EPISODE = 999;
+
+    private final VideoRepository videos;
+    private final VideoVersionRepository versions;
+    private final VideoSeriesRepository series;
+    private final VideoStore store;
+    private final VideoLimits limits;
+    private final AdministratorEntitlement administrators;
+    private final TransactionTemplate transactions;
+
+    public VideoService(VideoRepository videos, VideoVersionRepository versions, VideoSeriesRepository series,
+            VideoStore store, VideoLimits limits, AdministratorEntitlement administrators,
+            PlatformTransactionManager transactionManager) {
+        this.videos = videos;
+        this.versions = versions;
+        this.series = series;
+        this.store = store;
+        this.limits = limits;
+        this.administrators = administrators;
+        this.transactions = new TransactionTemplate(transactionManager);
+    }
+
+    // ------------------------------------------------------------------ publication
+
+    /**
+     * Ce qu'on publie.
+     *
+     * @param place       lieu (propriétaire compris)
+     * @param type        type de média admis
+     * @param replaceId   vidéo à remplacer (nouvelle version), ou {@code null}
+     * @param title       titre
+     * @param description description, facultative
+     * @param chapters    chapitres validés
+     * @param seriesRef   série (identifiant ou titre), facultative
+     * @param episode     rang dans la série, facultatif
+     * @param durationS   durée annoncée, facultative
+     * @param label       libellé de piste audio, facultatif
+     */
+    public record PublishRequest(VideoPlace place, VideoMediaTypes.MediaType type, UUID replaceId, String title,
+            String description, List<VideoChapter> chapters, String seriesRef, Integer episode, Integer durationS,
+            String label) {
+    }
+
+    /**
+     * Une publication décidée, prête à recevoir ses octets.
+     *
+     * @param request    la demande nettoyée
+     * @param videoId    identifiant de la vidéo (nouvelle ou remplacée)
+     * @param isNew      vrai pour une nouvelle vidéo
+     * @param version    version à créer
+     * @param mediaKey   clé de l'objet média
+     * @param purged     versions qui seront purgées
+     */
+    public record Prepared(PublishRequest request, UUID videoId, boolean isNew, int version, String mediaKey,
+            List<VideoVersion> purged) {
+    }
+
+    /**
+     * Prépare une publication : nettoie, contrôle les plafonds et le quota du compte (D1), résout la vidéo
+     * remplacée. Rien n'est écrit.
+     *
+     * @param sizeBytes   taille du média (connue à la première tranche)
+     * @param posterBytes taille de la couverture, {@code 0} sans couverture
+     * @throws VideoRejectedException si une contrainte n'est pas tenue (message pour l'agent)
+     */
+    @Transactional(readOnly = true)
+    public Prepared prepare(PublishRequest request, long sizeBytes, long posterBytes) {
+        VideoKind kind = request.type().kind();
+        PublishRequest clean = new PublishRequest(request.place(), request.type(), request.replaceId(),
+                cleanTitle(request.title()), cleanDescription(request.description()),
+                request.chapters() == null ? List.of() : request.chapters(), blankToNull(request.seriesRef()),
+                request.episode(), request.durationS() == null || request.durationS() <= 0 ? null : request.durationS(),
+                cleanLabel(request.label()));
+        if (clean.episode() != null && (clean.episode() < 1 || clean.episode() > MAX_EPISODE)) {
+            throw new VideoRejectedException("episode est un rang de 1 à " + MAX_EPISODE + ".");
+        }
+        if (kind == VideoKind.AUDIO && (clean.seriesRef() != null || clean.episode() != null)) {
+            throw new VideoRejectedException("Un son ne se range pas dans une série.");
+        }
+        long max = limits.maxBytes(kind);
+        if (sizeBytes > max) {
+            throw new VideoRejectedException((kind == VideoKind.AUDIO ? "Son trop volumineux : " : "Vidéo trop volumineuse : ")
+                    + megabytes(max) + " Mo au plus. Réduis la résolution ou le débit, ou découpe en épisodes.");
+        }
+        if (sizeBytes <= 0) {
+            throw new VideoRejectedException("Le fichier est vide.");
+        }
+        if (posterBytes > limits.maxPosterBytes()) {
+            throw new VideoRejectedException("Couverture trop volumineuse : " + megabytes(limits.maxPosterBytes())
+                    + " Mo au plus.");
+        }
+        UUID userId = clean.place().userId();
+        if (clean.seriesRef() != null) {
+            resolveSeriesRef(userId, clean.place().workspaceId(), null, clean.seriesRef(), false);
+        }
+
+        UUID videoId;
+        boolean isNew;
+        List<VideoVersion> kept;
+        if (clean.replaceId() == null) {
+            videoId = UUID.randomUUID();
+            isNew = true;
+            kept = List.of();
+        } else {
+            Video existing = videos.findByIdAndUserId(clean.replaceId(), userId)
+                    .filter(video -> video.getKind() == kind)
+                    .orElseThrow(() -> new VideoRejectedException("remplace inconnu : aucune "
+                            + (kind == VideoKind.AUDIO ? "piste" : "vidéo")
+                            + " de ce compte ne porte cet identifiant. Omets remplace pour en publier une nouvelle."));
+            videoId = existing.getId();
+            isNew = false;
+            kept = versions.findByVideoIdAndUserIdOrderByVersionAsc(videoId, userId);
+        }
+        int overflow = Math.max(0, kept.size() + 1 - limits.maxVersions());
+        List<VideoVersion> purged = List.copyOf(kept.subList(0, Math.min(overflow, kept.size())));
+        long freed = purged.stream().mapToLong(VideoVersion::getSizeBytes).sum();
+        if (!administrators.isAdministrator(userId)) {
+            long used = versions.sumSizeBytesByUserId(userId);
+            if (used - freed + sizeBytes + posterBytes > limits.maxAccountBytes()) {
+                throw new VideoRejectedException("Stockage vidéo plein : " + gigabytes(used) + " Go utilisés sur "
+                        + gigabytes(limits.maxAccountBytes()) + " Go. Supprime des vidéos depuis la galerie, ou "
+                        + "allège celle-ci.");
+            }
+        }
+        int version = kept.isEmpty() ? 1 : kept.get(kept.size() - 1).getVersion() + 1;
+        return new Prepared(clean, videoId, isNew, version,
+                VideoStore.mediaKey(userId, videoId, version, clean.type()), purged);
+    }
+
+    /**
+     * Inscrit une publication dont les octets sont rangés : la série (créée au besoin), la vidéo, la version ;
+     * purge les versions au-delà de la borne.
+     *
+     * @param sizeBytes  taille réellement envoyée
+     * @param posterKey  clé de la couverture rangée, ou {@code null}
+     * @param posterMime type de la couverture, ou {@code null}
+     */
+    public PublishedVideo commit(Prepared prepared, long sizeBytes, String posterKey, String posterMime) {
+        PublishedVideo published = transactions.execute(status -> doCommit(prepared, sizeBytes, posterKey, posterMime));
+        UUID userId = prepared.request().place().userId();
+        for (VideoVersion old : prepared.purged()) {
+            store.deleteVersion(userId, prepared.videoId(), old.getVersion());
+        }
+        return published;
+    }
+
+    private PublishedVideo doCommit(Prepared prepared, long sizeBytes, String posterKey, String posterMime) {
+        PublishRequest request = prepared.request();
+        UUID userId = request.place().userId();
+        Video video;
+        if (prepared.isNew()) {
+            video = Video.builder().id(prepared.videoId()).userId(userId).workspaceId(request.place().workspaceId())
+                    .hostId(request.place().hostId()).kind(request.type().kind()).build();
+        } else {
+            video = videos.findByIdAndUserId(prepared.videoId(), userId).orElseThrow(VideoNotFoundException::new);
+        }
+        VideoSeries inSeries = null;
+        if (request.seriesRef() != null) {
+            inSeries = resolveSeriesRef(userId, request.place().workspaceId(), request.place().hostId(), request.seriesRef(), true);
+            boolean sameSeries = inSeries.getId().equals(video.getSeriesId());
+            Integer episode = request.episode() != null ? request.episode()
+                    : sameSeries && video.getEpisode() != null ? video.getEpisode()
+                    : videos.maxEpisode(userId, inSeries.getId()) + 1;
+            video.setSeriesId(inSeries.getId());
+            video.setEpisode(Math.min(episode, MAX_EPISODE));
+        } else if (request.episode() != null && video.getSeriesId() != null) {
+            video.setEpisode(request.episode());
+        } else if (video.getSeriesId() != null) {
+            inSeries = series.findByIdAndUserId(video.getSeriesId(), userId).orElse(null);
+        }
+        if (inSeries == null && video.getSeriesId() != null) {
+            inSeries = series.findByIdAndUserId(video.getSeriesId(), userId).orElse(null);
+        }
+        video.setTitle(request.title());
+        if (request.description() != null || prepared.isNew()) {
+            video.setDescription(request.description());
+        }
+        if (request.durationS() != null) {
+            video.setDurationS(request.durationS());
+        }
+        video.setCurrentVersion(prepared.version());
+        Video saved = videos.saveAndFlush(video);
+        VideoVersion created = versions.save(VideoVersion.builder().id(UUID.randomUUID()).videoId(saved.getId())
+                .userId(userId).version(prepared.version()).storageKey(prepared.mediaKey()).sizeBytes(sizeBytes)
+                .mime(request.type().mime()).chaptersJson(VideoChapter.toJson(request.chapters()))
+                .posterKey(posterKey).posterMime(posterMime).label(request.label()).build());
+        for (VideoVersion old : prepared.purged()) {
+            versions.deleteById(old.getId());
+        }
+        return new PublishedVideo(saved, created, inSeries);
+    }
+
+    /**
+     * La série d'une référence : un identifiant du compte, sinon un titre cherché dans le sujet (casse
+     * ignorée) ; créée si {@code create} et introuvable.
+     */
+    private VideoSeries resolveSeriesRef(UUID userId, UUID workspaceId, UUID hostId, String ref, boolean create) {
+        try {
+            UUID id = UUID.fromString(ref.strip());
+            return series.findByIdAndUserId(id, userId)
+                    .orElseThrow(() -> new VideoRejectedException("serie inconnue : aucune série de ce compte ne "
+                            + "porte cet identifiant. Donne plutôt son titre."));
+        } catch (IllegalArgumentException notAnId) {
+            String title = cleanSeriesTitle(ref);
+            Optional<VideoSeries> found = series.findByUserIdAndWorkspaceId(userId, workspaceId).stream()
+                    .filter(s -> s.getTitle().toLowerCase(Locale.ROOT).equals(title.toLowerCase(Locale.ROOT)))
+                    .findFirst();
+            if (found.isPresent() || !create) {
+                return found.orElse(null);
+            }
+            return series.saveAndFlush(VideoSeries.builder().id(UUID.randomUUID()).userId(userId)
+                    .workspaceId(workspaceId).hostId(hostId).title(title).build());
+        }
+    }
+
+    // ------------------------------------------------------------------ lecture
+
+    /** La vidéo, si elle appartient au compte. */
+    @Transactional(readOnly = true)
+    public Video require(UUID userId, UUID videoId) {
+        return videos.findByIdAndUserId(videoId, userId).orElseThrow(VideoNotFoundException::new);
+    }
+
+    /** Une version conservée (la courante si {@code version} est nul ou ≤ 0). */
+    @Transactional(readOnly = true)
+    public VideoVersion requireVersion(UUID userId, UUID videoId, Integer version) {
+        Video video = require(userId, videoId);
+        int wanted = version == null || version <= 0 ? video.getCurrentVersion() : version;
+        return versions.findByVideoIdAndUserIdAndVersion(video.getId(), userId, wanted)
+                .orElseThrow(VideoNotFoundException::new);
+    }
+
+    /** Les versions conservées, la plus récente d'abord. */
+    @Transactional(readOnly = true)
+    public List<VideoVersion> versions(UUID userId, UUID videoId) {
+        Video video = require(userId, videoId);
+        List<VideoVersion> all = new ArrayList<>(versions.findByVideoIdAndUserIdOrderByVersionAsc(video.getId(), userId));
+        Collections.reverse(all);
+        return List.copyOf(all);
+    }
+
+    /** La série, si elle appartient au compte. */
+    @Transactional(readOnly = true)
+    public Optional<VideoSeries> series(UUID userId, UUID seriesId) {
+        return seriesId == null ? Optional.empty() : series.findByIdAndUserId(seriesId, userId);
+    }
+
+    /** Le stockage vidéo + audio utilisé par le compte. */
+    @Transactional(readOnly = true)
+    public long usedBytes(UUID userId) {
+        return versions.sumSizeBytesByUserId(userId);
+    }
+
+    // ------------------------------------------------------------------ effacement
+
+    /**
+     * Efface les vidéos et séries d'un sujet : objets puis lignes. Appelé à la suppression du sujet ; un
+     * stockage qui n'efface pas tout lève, et la suppression du sujet est annulée (F-79).
+     */
+    @Transactional
+    public void deleteWorkspace(UUID userId, UUID workspaceId) {
+        List<Video> placed = videos.findByUserIdAndWorkspaceId(userId, workspaceId);
+        for (Video video : placed) {
+            store.deleteVideo(userId, video.getId());
+        }
+        videos.deleteAll(placed);
+        series.deleteAll(series.findByUserIdAndWorkspaceId(userId, workspaceId));
+    }
+
+    /** Efface les objets de toutes les vidéos d'un compte ; les lignes tombent avec le compte. */
+    public void purgeUser(UUID userId) {
+        store.deleteAccount(userId);
+    }
+
+    // ------------------------------------------------------------------ nettoyage
+
+    static String cleanTitle(String title) {
+        String clean = title == null ? "" : title.replaceAll("\\s+", " ").strip();
+        if (clean.isEmpty()) {
+            throw new VideoRejectedException("Une vidéo a besoin d'un titre court et distinctif (titre).");
+        }
+        if (clean.length() > MAX_TITLE_CHARS) {
+            throw new VideoRejectedException("Titre trop long : " + MAX_TITLE_CHARS + " caractères au plus.");
+        }
+        return clean;
+    }
+
+    private static String cleanSeriesTitle(String title) {
+        String clean = title == null ? "" : title.replaceAll("\\s+", " ").strip();
+        if (clean.isEmpty() || clean.length() > MAX_TITLE_CHARS) {
+            throw new VideoRejectedException("Titre de série vide ou trop long (" + MAX_TITLE_CHARS
+                    + " caractères au plus).");
+        }
+        return clean;
+    }
+
+    private static String cleanDescription(String description) {
+        if (description == null || description.isBlank()) {
+            return null;
+        }
+        String clean = description.replaceAll("\\s+", " ").strip();
+        if (clean.length() > MAX_DESCRIPTION_CHARS) {
+            throw new VideoRejectedException("Description trop longue : " + MAX_DESCRIPTION_CHARS
+                    + " caractères au plus.");
+        }
+        return clean;
+    }
+
+    private static String cleanLabel(String label) {
+        if (label == null || label.isBlank()) {
+            return null;
+        }
+        String clean = label.replaceAll("\\s+", " ").strip();
+        if (clean.length() > MAX_LABEL_CHARS) {
+            throw new VideoRejectedException("Libellé de piste trop long : " + MAX_LABEL_CHARS + " caractères au plus.");
+        }
+        return clean;
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.strip();
+    }
+
+    private static long megabytes(long bytes) {
+        return bytes / (1024 * 1024);
+    }
+
+    private static String gigabytes(long bytes) {
+        return String.format(Locale.FRANCE, "%.1f", bytes / (1024.0 * 1024 * 1024));
+    }
+
+    /**
+     * Une vidéo publiée.
+     *
+     * @param video   la vidéo, à jour
+     * @param version la version créée
+     * @param series  sa série, ou {@code null}
+     */
+    public record PublishedVideo(Video video, VideoVersion version, VideoSeries series) {
+    }
+}

@@ -133,6 +133,16 @@ final class TurnSignals implements AtelierProgressListener {
     }
 
     @Override
+    public void onVideo(String toolUseId, fr.claudegateway.videos.VideoBlock video) {
+        delegate.onVideo(toolUseId, video);
+    }
+
+    @Override
+    public void onAudio(String toolUseId, fr.claudegateway.videos.AudioBlock audio) {
+        delegate.onAudio(toolUseId, audio);
+    }
+
+    @Override
     public void onAttente(String toolUseId, AttenteBlock attente) {
         if (attente != null && AttenteBlock.PROPOSED.equals(attente.kind())) {
             validationAwaiting = true;

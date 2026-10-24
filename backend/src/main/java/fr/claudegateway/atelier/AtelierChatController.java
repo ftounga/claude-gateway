@@ -669,6 +669,18 @@ public class AtelierChatController {
                     turn.publish("proof", new StreamProof(toolUseId, proof));
                 }
 
+                /** La vidéo publiée (F-213 / SF-213-01), au fil de l'eau. */
+                @Override
+                public void onVideo(String toolUseId, fr.claudegateway.videos.VideoBlock video) {
+                    turn.publish("video", new StreamVideo(toolUseId, video));
+                }
+
+                /** Les sons publiés (F-213 / SF-213-01), au fil de l'eau. */
+                @Override
+                public void onAudio(String toolUseId, fr.claudegateway.videos.AudioBlock audio) {
+                    turn.publish("audio", new StreamAudio(toolUseId, audio));
+                }
+
                 /** La carte d'une attente (F-175 / SF-175-05), au fil de l'eau. */
                 @Override
                 public void onAttente(String toolUseId, fr.claudegateway.atelier.actions.AttenteBlock attente) {
@@ -949,6 +961,14 @@ public class AtelierChatController {
 
     /** Les captures de preuve relayées au fil de l'eau (F-212 / SF-212-03), rejouées par la transcription. */
     record StreamProof(String toolUseId, fr.claudegateway.atelier.proof.ProofBlock proof) {
+    }
+
+    /** La vidéo publiée relayée au fil de l'eau (F-213 / SF-213-01), rejouée par la transcription. */
+    record StreamVideo(String toolUseId, fr.claudegateway.videos.VideoBlock video) {
+    }
+
+    /** Les sons publiés relayés au fil de l'eau (F-213 / SF-213-01), rejoués par la transcription. */
+    record StreamAudio(String toolUseId, fr.claudegateway.videos.AudioBlock audio) {
     }
 
     /** La carte d'une attente relayée au fil de l'eau (F-175 / SF-175-05), rejouée par la transcription. */

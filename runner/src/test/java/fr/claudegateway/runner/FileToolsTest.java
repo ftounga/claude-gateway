@@ -371,6 +371,29 @@ class FileToolsTest {
     }
 
     @Test
+    void readFileBytesAccepteUneVideoAuDelaDeDixMo() throws IOException {
+        // F-213 / SF-213-01 : un média (mp4…) se lit jusqu'à 300 Mo ; un .zip de la même taille reste refusé.
+        byte[] big = new byte[(int) FileTools.MAX_BYTES_FILE + 1];
+        big[big.length - 1] = 7;
+        Files.write(root.resolve("cours.mp4"), big);
+
+        ToolOutcome outcome = tools.execute("read_file_bytes", bytesInput("cours.mp4", big.length - 1, 1024));
+
+        assertTrue(outcome.ok());
+        assertEquals(big.length, outcome.bytes());
+        org.junit.jupiter.api.Assertions.assertArrayEquals(new byte[] {7},
+                java.util.Base64.getDecoder().decode(outcome.content()));
+    }
+
+    @Test
+    void readFileBytesReconnaitLesExtensionsMedia() {
+        assertTrue(FileTools.isMedia(Path.of("a/b/Cours.MP4")));
+        assertTrue(FileTools.isMedia(Path.of("voix.m4a")));
+        assertFalse(FileTools.isMedia(Path.of("archive.zip")));
+        assertFalse(FileTools.isMedia(Path.of("sans-extension")));
+    }
+
+    @Test
     void readFileBytesBorneOffsetEtLength() throws IOException {
         Files.write(root.resolve("a.bin"), new byte[] {1, 2, 3});
         Files.createDirectories(root.resolve("dossier"));
