@@ -504,6 +504,15 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   HMAC lié à vidéo + version + compte). Purge : objets et lignes par `WorkspaceService.delete` ; objets du
   compte par `AccountService`.
 
+- **video_comments** — **les retours à la seconde** (F-214 / SF-214-01, migration `171`). `id`,
+  `user_id (FK users CASCADE)`, `video_id (FK videos CASCADE)`, `version` (version regardée), `t_start_ms`,
+  `t_end_ms (null = instant)`, `frame` (image à 30 i/s), `text (≤ 1 000)`, `status (OUVERT | ENVOYE | TRAITE |
+  REJETE)`, `resolution (motif ≤ 300)`, `resolved_version`, `sent_at`, dates. Routes `GET|POST
+  /videos/{id}/comments`, `PATCH|DELETE /videos/{id}/comments/{cid}`, `POST /videos/{id}/comments/send`
+  (message structuré, `OUVERT → ENVOYE`) sous `(id, user_id, video_id)` après la vidéo possédée. L'écran ne fait
+  que rouvrir ; l'agent clôt (`TRAITE | REJETE`) via `video_publier(remplace, retours_traites)`. Outil
+  `video_retours` en lecture seule. Purge : cascade sur la vidéo et le compte.
+
 - **speech_preferences** — **la voix off par défaut d'un compte** (F-215 / SF-215-01, migration `170`).
   `user_id (PK)`, `voice (≤ 32, liste blanche du fournisseur)`, `instructions (≤ 1 000, consignes de ton,
   null = D2)`, `updated_at`. Absente = `onyx` + consignes de formateur (D2). Lue par l'outil `voix_off`

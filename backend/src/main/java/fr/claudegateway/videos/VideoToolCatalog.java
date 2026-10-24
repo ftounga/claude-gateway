@@ -30,6 +30,8 @@ public class VideoToolCatalog {
     public static final String VIDEO = "video_publier";
     /** Publier un ou plusieurs sons du poste. */
     public static final String AUDIO = "audio_publier";
+    /** Lire les retours à la seconde d'une vidéo (F-214 / SF-214-01), en lecture seule. */
+    public static final String RETOURS = "video_retours";
 
     private final SpaceEntitlementService entitlements;
 
@@ -66,9 +68,31 @@ public class VideoToolCatalog {
         }
     }
 
+    /** Vrai si ce nom d'outil est la lecture des retours à la seconde (F-214). */
+    public static boolean isRetoursTool(String tool) {
+        return RETOURS.equals(tool);
+    }
+
     /** Les outils à donner à l'agent pour ce tour, ou la liste vide. */
     public List<AgentTool> toolsFor(UUID userId, Workspace workspace) {
-        return isOpenFor(userId, workspace) ? List.of(videoDefinition(), audioDefinition()) : List.of();
+        return isOpenFor(userId, workspace)
+                ? List.of(videoDefinition(), audioDefinition(), retoursDefinition())
+                : List.of();
+    }
+
+    /** F-214 / SF-214-01 : la lecture des retours à la seconde — texte fixe (préfixe stable). */
+    static AgentTool retoursDefinition() {
+        return new AgentTool(RETOURS,
+                "Lit les RETOURS À LA SECONDE que l'utilisateur a posés sur une vidéo publiée : identifiant, "
+                        + "version, instant (mm:ss et image à 30 i/s), statut (OUVERT, ENVOYE, TRAITE, REJETE), "
+                        + "texte. Regarde chaque instant (video_images au temps donné) avant de corriger, puis "
+                        + "republie avec video_publier(remplace, retours_traites). Lecture seule.",
+                Map.of("type", "object",
+                        "properties", Map.of(
+                                "video", Map.of("type", "string", "description", "video_id de la vidéo."),
+                                "version", Map.of("type", "integer",
+                                        "description", "Seulement les retours posés sur cette version ; toutes sinon.")),
+                        "required", List.of("video")));
     }
 
     static AgentTool videoDefinition() {
@@ -77,6 +101,12 @@ public class VideoToolCatalog {
                         "t", Map.of("type", "number", "description", "Début du chapitre, en secondes."),
                         "titre", Map.of("type", "string", "description", "Titre du chapitre.")),
                 "required", List.of("t", "titre"));
+        Map<String, Object> resolved = Map.of("type", "object",
+                "properties", Map.of(
+                        "id", Map.of("type", "string", "description", "Identifiant du retour (video_retours)."),
+                        "statut", Map.of("type", "string", "enum", List.of("traite", "rejete")),
+                        "motif", Map.of("type", "string", "description", "Pourquoi, surtout pour un rejet (300 caractères au plus).")),
+                "required", List.of("id", "statut"));
         return new AgentTool(VIDEO,
                 "Publie une VIDÉO de la machine (.mp4 ou .webm, 300 Mo au plus) que l'utilisateur regarde dans "
                         + "l'application : dans le fil, puis dans la galerie Vidéos du sujet (privée, à lui seul). "
@@ -96,7 +126,10 @@ public class VideoToolCatalog {
                                 "remplace", Map.of("type", "string", "description", "video_id d'une vidéo déjà publiée : nouvelle version."),
                                 "couverture", Map.of("type", "string",
                                         "description", "Image de couverture sur la machine (png, jpg, webp ; 2 Mo au plus)."),
-                                "duree_s", Map.of("type", "integer", "description", "Durée en secondes, si connue.")),
+                                "duree_s", Map.of("type", "integer", "description", "Durée en secondes, si connue."),
+                                "retours_traites", Map.of("type", "array", "items", resolved,
+                                        "description", "Avec remplace : pour chaque retour à la seconde corrigé "
+                                                + "(traite) ou écarté (rejete + motif).")),
                         "required", List.of("path", "titre")));
     }
 
