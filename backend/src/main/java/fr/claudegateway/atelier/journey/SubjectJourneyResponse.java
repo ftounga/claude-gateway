@@ -18,7 +18,8 @@ import java.util.Map;
  * @param gateClosed       la porte refuse les modifications (SF-176-07) — même calcul que la boucle
  * @param gateMessage      le message exact du refus, ou {@code null} si la porte est ouverte
  * @param chantier         le chantier en FOCUS (F-206), ou {@code null} si le sujet n'a jamais été guidé
- * @param chantiers        les chantiers OUVERTS du sujet, focus compris, par numéro croissant (F-206)
+ * @param chantiers        les chantiers OUVERTS du sujet, focus compris, par numéro croissant (F-206),
+ *                         chacun avec son plan détaillé (F-208)
  */
 public record SubjectJourneyResponse(
         String mode,
@@ -46,15 +47,17 @@ public record SubjectJourneyResponse(
      * @param executing          en Exécution sur son plan validé — il ouvre la porte (SF-206-02)
      * @param done               étapes faites ou vérifiées
      * @param total              étapes du plan
+     * @param plan               le plan détaillé du chantier (F-208), ou {@code null} sans plan
      */
     public record OpenChantier(int number, String title, OffsetDateTime openedAt, String phase, String phaseLabel,
                                boolean focus, int planVersion, Integer validatedVersion,
                                boolean awaitingValidation, boolean diagnosisPending, boolean closeProposed,
-                               boolean executing, int done, int total) {
+                               boolean executing, int done, int total, Plan plan) {
 
         static OpenChantier of(int number, String title, OffsetDateTime openedAt, JourneyPhase phase, boolean focus,
                                int planVersion, Integer validatedVersion, String planJson,
-                               OffsetDateTime diagnosisProposedAt, OffsetDateTime closeProposedAt) {
+                               OffsetDateTime diagnosisProposedAt, OffsetDateTime closeProposedAt,
+                               String validatedPlanJson, OffsetDateTime validatedAt, Map<String, String> waitsOn) {
             boolean current = validatedVersion != null && validatedVersion == planVersion;
             JourneyPlan plan = JourneyPlan.fromJson(planJson);
             int done = 0;
@@ -70,23 +73,27 @@ public record SubjectJourneyResponse(
                     phase == JourneyPhase.INVESTIGATION && diagnosisProposedAt != null,
                     closeProposedAt != null,
                     phase == JourneyPhase.EXECUTION && current,
-                    done, plan.steps().size());
+                    done, plan.steps().size(),
+                    SubjectJourneyResponse.plan(planJson, planVersion, validatedVersion, validatedAt,
+                            validatedPlanJson, phase, true, waitsOn));
         }
     }
 
-    /** Les chantiers ouverts du sujet, focus compris, par numéro croissant (F-206). */
-    static List<OpenChantier> openChantiers(SubjectJourney journey) {
+    /** Les chantiers ouverts du sujet, focus compris, par numéro croissant (F-206), plan détaillé (F-208). */
+    static List<OpenChantier> openChantiers(SubjectJourney journey, Map<String, String> waitsOn) {
         List<OpenChantier> open = new ArrayList<>();
         if (journey.hasOpenFocus()) {
             open.add(OpenChantier.of(Math.max(1, journey.getChantierNumber()), journey.getChantierTitle(),
                     journey.getChantierOpenedAt(), journey.getPhase(), true, journey.getPlanVersion(),
                     journey.getValidatedVersion(), journey.getPlanJson(), journey.getDiagnosisProposedAt(),
-                    journey.getCloseProposedAt()));
+                    journey.getCloseProposedAt(), journey.getValidatedPlanJson(), journey.getPlanValidatedAt(),
+                    waitsOn));
         }
         for (SubjectJourneyChantier c : journey.getOtherOpenChantiers()) {
             open.add(OpenChantier.of(c.getNumber(), c.getTitle(), c.getOpenedAt(), c.getPhase(), false,
                     c.getPlanVersion() == null ? 0 : c.getPlanVersion(), c.getValidatedVersion(), c.getPlanJson(),
-                    c.getDiagnosisProposedAt(), c.getCloseProposedAt()));
+                    c.getDiagnosisProposedAt(), c.getCloseProposedAt(), c.getValidatedPlanJson(),
+                    c.getPlanValidatedAt(), waitsOn));
         }
         open.sort(java.util.Comparator.comparingInt(OpenChantier::number));
         return List.copyOf(open);
@@ -113,9 +120,9 @@ public record SubjectJourneyResponse(
 
         public static ClosedChantier from(SubjectJourneyChantier c) {
             List<Step> steps = new ArrayList<>();
-            for (JourneyPlan.Step s : JourneyPlan.fromJson(c.getPlanJson()).steps()) {
-                steps.add(new Step(s.title(), s.risk().name(), s.risk().label(), s.verify(), s.rollback(),
-                        s.waitsOn(), null, s.status().name(), s.evidence(), false));
+            JourneyPlan plan = JourneyPlan.fromJson(c.getPlanJson());
+            for (int i = 0; i < plan.steps().size(); i++) {
+                steps.add(Step.of(plan, i, null, false));
             }
             return new ClosedChantier(c.getNumber(), c.getTitle(), c.getOpenedAt(), c.getClosedAt(),
                     c.getDiagnosis(), c.getDiagnosisConfidence(), c.getPlanVersion(), List.copyOf(steps));
@@ -159,9 +166,58 @@ public record SubjectJourneyResponse(
      * @param waitsOnStatus l'état de l'attente dont elle dépend ({@code A_FAIRE}, {@code DEMANDE},
      *                      {@code FAIT}, {@code ANNULE}), ou {@code null} si aucune attente ne porte la clé
      * @param changed       vrai si l'étape est nouvelle ou modifiée depuis le plan validé (amendement)
+     * @param dependsOn     les rangs des étapes antérieures dont elle dépend, déclarés (F-208)
+     * @param unlocked      rien ne la bloque : dépendances faites, attente non ouverte (F-208)
+     * @param blockedBy     ce qui la bloque, lisible : « étape 3 », « attente cert-gino » (F-208)
+     * @param inProgress    à faire, mais au moins une sous-étape faite (F-208)
+     * @param subSteps      ses sous-étapes cochées (F-208)
      */
     public record Step(String title, String risk, String riskLabel, String verify, String rollback,
-                       String waitsOn, String waitsOnStatus, String status, String evidence, boolean changed) {
+                       String waitsOn, String waitsOnStatus, String status, String evidence, boolean changed,
+                       List<Integer> dependsOn, boolean unlocked, List<String> blockedBy, boolean inProgress,
+                       List<SubStep> subSteps) {
+
+        /** L'étape {@code index} du plan, avec l'état de son attente ({@code null} = inconnu). */
+        static Step of(JourneyPlan plan, int index, String waitsOnStatus, boolean changed) {
+            JourneyPlan.Step s = plan.steps().get(index);
+            List<String> blockedBy = new ArrayList<>();
+            for (int rank : plan.blockingSteps(index)) {
+                blockedBy.add("étape " + rank);
+            }
+            if (s.waitsOn() != null && isOpenWait(waitsOnStatus)) {
+                blockedBy.add("attente " + s.waitsOn());
+            }
+            List<SubStep> subs = s.subSteps().stream()
+                    .map(sub -> new SubStep(sub.title(), sub.done(), sub.evidence())).toList();
+            return new Step(s.title(), s.risk().name(), s.risk().label(), s.verify(), s.rollback(),
+                    s.waitsOn(), waitsOnStatus, s.status().name(), s.evidence(), changed, s.dependsOn(),
+                    blockedBy.isEmpty(), List.copyOf(blockedBy), s.inProgress(), subs);
+        }
+    }
+
+    /** Une sous-étape (F-208). */
+    public record SubStep(String title, boolean done, String evidence) {
+    }
+
+    /** Une attente encore ouverte : à demander ou demandée. */
+    static boolean isOpenWait(String status) {
+        return "A_FAIRE".equals(status) || "DEMANDE".equals(status);
+    }
+
+    /**
+     * Une version du plan d'un chantier (F-208 / SF-208-02) et ce qui a changé depuis la précédente.
+     *
+     * @param added    titres des étapes ajoutées (toutes, pour la première version)
+     * @param removed  titres des étapes retirées
+     * @param modified titres des étapes au contenu modifié
+     */
+    public record PlanVersion(int version, OffsetDateTime createdAt, int stepCount, List<String> added,
+                              List<String> removed, List<String> modified) {
+
+        static PlanVersion from(SubjectJourneyService.PlanVersionView view) {
+            return new PlanVersion(view.row().getVersion(), view.row().getCreatedAt(), view.plan().steps().size(),
+                    view.changes().added(), view.changes().removed(), view.changes().modified());
+        }
     }
 
     public static SubjectJourneyResponse from(SubjectJourney journey) {
@@ -201,33 +257,36 @@ public record SubjectJourneyResponse(
                         : new Chantier(journey.getChantierNumber(), journey.getChantierTitle(),
                                 journey.getChantierOpenedAt()),
                 closedChantiers,
-                openChantiers(journey));
+                openChantiers(journey, waitsOn == null ? Map.of() : waitsOn));
     }
 
     private static Plan plan(SubjectJourney journey, Map<String, String> waitsOn) {
-        JourneyPlan plan = JourneyPlan.fromJson(journey.getPlanJson());
+        return plan(journey.getPlanJson(), journey.getPlanVersion(), journey.getValidatedVersion(),
+                journey.getPlanValidatedAt(), journey.getValidatedPlanJson(), journey.getPhase(), journey.isGuided(),
+                waitsOn);
+    }
+
+    /** Le plan tel que l'écran le lit — focus ou autre chantier ouvert (F-208) ; {@code null} sans plan. */
+    static Plan plan(String planJson, int planVersion, Integer validated, OffsetDateTime validatedAt,
+                     String validatedPlanJson, JourneyPhase phase, boolean guided, Map<String, String> waitsOn) {
+        JourneyPlan plan = JourneyPlan.fromJson(planJson);
         if (plan.isEmpty()) {
             return null;
         }
-        Integer validated = journey.getValidatedVersion();
-        boolean current = validated != null && validated == journey.getPlanVersion();
+        boolean current = validated != null && validated == planVersion;
         boolean amendment = validated != null && !current;
-        JourneyPlan validatedPlan = amendment ? JourneyPlan.fromJson(journey.getValidatedPlanJson()) : null;
+        JourneyPlan validatedPlan = amendment ? JourneyPlan.fromJson(validatedPlanJson) : null;
         List<Step> steps = new ArrayList<>();
         int waiting = 0;
         for (int i = 0; i < plan.steps().size(); i++) {
             JourneyPlan.Step s = plan.steps().get(i);
             String status = s.waitsOn() == null ? null : waitsOn.get(s.waitsOn());
-            if (s.waitsOn() != null && s.status() == JourneyPlan.StepStatus.A_FAIRE
-                    && ("A_FAIRE".equals(status) || "DEMANDE".equals(status))) {
+            if (s.waitsOn() != null && s.status() == JourneyPlan.StepStatus.A_FAIRE && isOpenWait(status)) {
                 waiting++;
             }
-            steps.add(new Step(s.title(), s.risk().name(), s.risk().label(), s.verify(), s.rollback(),
-                    s.waitsOn(), status, s.status().name(), s.evidence(),
-                    amendment && plan.changedSince(validatedPlan, i)));
+            steps.add(Step.of(plan, i, status, amendment && plan.changedSince(validatedPlan, i)));
         }
-        boolean awaiting = journey.isGuided() && journey.getPhase() == JourneyPhase.PLAN && !current;
-        return new Plan(journey.getPlanVersion(), validated, journey.getPlanValidatedAt(), awaiting, amendment,
-                waiting, List.copyOf(steps));
+        boolean awaiting = guided && phase == JourneyPhase.PLAN && !current;
+        return new Plan(planVersion, validated, validatedAt, awaiting, amendment, waiting, List.copyOf(steps));
     }
 }

@@ -171,7 +171,7 @@ public class JourneyToolExecutor {
      * Le chantier visé (F-206) : un entier ≥ 1, ou {@code null} = le focus. Un numéro, jamais un
      * identifiant : il est relatif au terminal du tour.
      */
-    static Integer chantier(JsonNode input) {
+    public static Integer chantier(JsonNode input) {
         if (input == null || !input.hasNonNull("chantier")) {
             return null;
         }

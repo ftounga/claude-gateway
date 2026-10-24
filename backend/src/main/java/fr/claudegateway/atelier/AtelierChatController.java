@@ -682,6 +682,15 @@ public class AtelierChatController {
                     turn.publish("proposal", new StreamProposal(toolUseId, proposal));
                 }
 
+                /**
+                 * Le parcours du sujet a changé (F-208 / SF-208-02) : l'écran relit le tableau des chantiers
+                 * pendant le tour. Aucun contenu dans l'événement.
+                 */
+                @Override
+                public void onJourney(String tool, Integer chantier) {
+                    turn.publish("journey", new StreamJourney(tool, chantier));
+                }
+
                 /** La carte « Enregistrer ce besoin ? » (F-205 / SF-205-01), au fil de l'eau. */
                 @Override
                 public void onAppRequest(String toolUseId,
@@ -1050,6 +1059,10 @@ public class AtelierChatController {
     }
 
     /** Le poste du projet a refusé un appel (F-97 / SF-97-02) ; {@code at} en ms, heure serveur. */
+    /** Le parcours du sujet a changé (F-208 / SF-208-02) : l'outil appliqué et le chantier visé. */
+    record StreamJourney(String tool, Integer chantier) {
+    }
+
     record StreamRunnerOffline(String hostId, long at) {
     }
 

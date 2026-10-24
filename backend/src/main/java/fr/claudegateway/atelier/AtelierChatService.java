@@ -3674,6 +3674,15 @@ public class AtelierChatService implements RelayInterruptTarget {
                 } else if (fr.claudegateway.atelier.journey.JourneyToolCatalog.isJourneyTool(call.name())) {
                     // F-176 : le parcours du sujet est tenu par la gateway, jamais par la machine.
                     outcome = applyJourneyTool(userId, workspace, call);
+                    if (!outcome.isError()) {
+                        // F-208 / SF-208-02 : l'écran relit le parcours PENDANT le tour.
+                        try {
+                            listener.onJourney(call.name(),
+                                    fr.claudegateway.atelier.journey.JourneyToolExecutor.chantier(call.input()));
+                        } catch (RuntimeException ex) {
+                            log.debug("Relais du parcours ignoré : {}", ex.getMessage());
+                        }
+                    }
                 } else if (fr.claudegateway.atelier.routine.RoutineToolCatalog.isRoutineTool(call.name())) {
                     // F-183 / SF-183-01 : la proposition de routine est rangée par la gateway, inactive.
                     outcome = applyRoutineTool(userId, workspace, call);

@@ -589,6 +589,7 @@ public class SubjectJourneyService {
         journey.setPlanVersion(journey.getPlanVersion() + 1);
         moveTo(journey, JourneyPhase.PLAN, now);
         SubjectJourney saved = save(journey, now);
+        recordVersion(saved, carried, now);
         record(saved, amendment ? SubjectJourneyEvent.PLAN_AMENDED : SubjectJourneyEvent.PLAN_SET,
                 "v" + saved.getPlanVersion() + " · " + carried.steps().size() + " étapes");
         return new PlanChange(amendment ? PlanOutcome.AMENDMENT : PlanOutcome.SET, saved.getPlanVersion());
@@ -656,7 +657,13 @@ public class SubjectJourneyService {
         if (terminalActions == null || journey == null || workspace == null) {
             return statuses;
         }
-        for (JourneyPlan.Step step : JourneyPlan.fromJson(journey.getPlanJson()).steps()) {
+        // F-208 : les attentes de TOUS les chantiers ouverts — le tableau détaille chacun d'eux.
+        java.util.List<JourneyPlan.Step> steps = new java.util.ArrayList<>(
+                JourneyPlan.fromJson(journey.getPlanJson()).steps());
+        for (SubjectJourneyChantier other : journey.getOtherOpenChantiers()) {
+            steps.addAll(JourneyPlan.fromJson(other.getPlanJson()).steps());
+        }
+        for (JourneyPlan.Step step : steps) {
             if (step.waitsOn() == null || statuses.containsKey(step.waitsOn())) {
                 continue;
             }
@@ -812,6 +819,65 @@ public class SubjectJourneyService {
     public long closedChantierCount(UUID userId, UUID workspaceId) {
         return chantiers == null ? 0
                 : chantiers.countByUserIdAndWorkspaceIdAndStatus(userId, workspaceId, SubjectJourneyChantier.CLOSED);
+    }
+
+    // ------------------------------------------------------------------ F-208 : l'historique des versions
+
+    /** L'historique des versions du plan ; absent = pas d'historique (formes historiques, tests). */
+    private SubjectJourneyPlanVersionRepository planVersions;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setPlanVersions(SubjectJourneyPlanVersionRepository planVersions) {
+        this.planVersions = planVersions;
+    }
+
+    /** Une version du plan, avec ce qui a changé depuis la précédente. */
+    public record PlanVersionView(SubjectJourneyPlanVersion row, JourneyPlan plan, JourneyPlan.Changes changes) {
+    }
+
+    /**
+     * Écrit la version posée dans l'historique (F-208 / SF-208-02). <b>Best-effort</b> : un historique qui
+     * casse ne casse pas le plan qu'il raconte.
+     */
+    private void recordVersion(SubjectJourney journey, JourneyPlan plan, OffsetDateTime now) {
+        if (planVersions == null) {
+            return;
+        }
+        try {
+            planVersions.save(SubjectJourneyPlanVersion.builder()
+                    .userId(journey.getUserId())
+                    .workspaceId(journey.getWorkspaceId())
+                    .chantierNumber(Math.max(1, journey.getChantierNumber()))
+                    .version(journey.getPlanVersion())
+                    .planJson(plan.toJson())
+                    .createdAt(now)
+                    .build());
+        } catch (RuntimeException ex) {
+            log.debug("Historique du plan ignoré (best-effort) : {}", ex.getMessage());
+        }
+    }
+
+    /**
+     * Les versions du plan du chantier {@code chantier}, de la plus ancienne à la plus récente, chacune avec
+     * ce qui a changé depuis la précédente (F-208 / SF-208-02). 404 sur un terminal d'autrui. Vide pour un
+     * chantier sans historique (plans posés avant F-208).
+     */
+    @Transactional(readOnly = true)
+    public java.util.List<PlanVersionView> planVersions(UUID userId, UUID workspaceId, int chantier) {
+        workspaceService.requireOwned(userId, workspaceId); // 404 — TOUJOURS en premier
+        if (planVersions == null) {
+            return java.util.List.of();
+        }
+        java.util.List<PlanVersionView> views = new java.util.ArrayList<>();
+        JourneyPlan previous = null;
+        for (SubjectJourneyPlanVersion row : planVersions
+                .findByUserIdAndWorkspaceIdAndChantierNumberOrderByVersionAscCreatedAtAsc(userId, workspaceId,
+                        chantier)) {
+            JourneyPlan plan = JourneyPlan.fromJson(row.getPlanJson());
+            views.add(new PlanVersionView(row, plan, JourneyPlan.changes(previous, plan)));
+            previous = plan;
+        }
+        return java.util.List.copyOf(views);
     }
 
     // ------------------------------------------------------------------ F-206 : plusieurs chantiers ouverts

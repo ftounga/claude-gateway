@@ -394,4 +394,80 @@ class SubjectJourneyChantiersIntegrationTest {
         assertThat(chantierRepository.findFirstByUserIdAndWorkspaceIdAndNumber(aliceId, ws(), 1).orElseThrow()
                 .getPlanVersion()).isEqualTo(1);
     }
+
+    private static JourneyPlan planJson(String json) {
+        try {
+            return JourneyPlan.fromToolInput(new com.fasterxml.jackson.databind.ObjectMapper().readTree(json));
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    @Test
+    @DisplayName("SF-208-02 : chaque plan posé est une version ; la route dit ce qui a changé ; Bob reçoit 404")
+    void planVersions() throws Exception {
+        chantierOneExecuting(); // v1 : « Remplacer le certificat »
+        service.setPlan(aliceId, ws(), planJson("[{\"title\":\"Remplacer le certificat\",\"risk\":\"EXTERNE\"},"
+                + "{\"title\":\"Purger le cache\",\"risk\":\"REVERSIBLE\"}]"));
+        service.setPlan(aliceId, ws(), planJson("[{\"title\":\"Purger le cache\",\"risk\":\"REVERSIBLE\"}]"));
+        mockMvc.perform(get("/api/workspaces/" + workspaceId + "/journey/chantiers/1/versions").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()", is(3)))
+                .andExpect(jsonPath("$[0].version", is(1)))
+                .andExpect(jsonPath("$[0].added[0]", is("Remplacer le certificat")))
+                .andExpect(jsonPath("$[1].version", is(2)))
+                .andExpect(jsonPath("$[1].stepCount", is(2)))
+                .andExpect(jsonPath("$[1].added[0]", is("Purger le cache")))
+                .andExpect(jsonPath("$[1].modified[0]", is("Remplacer le certificat")))
+                .andExpect(jsonPath("$[2].removed[0]", is("Remplacer le certificat")))
+                .andExpect(jsonPath("$[2].added.length()", is(0)));
+        mockMvc.perform(get("/api/workspaces/" + workspaceId + "/journey/chantiers/1/versions").contextPath("/api")
+                        .header("Authorization", "Bearer " + bobToken))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/workspaces/" + workspaceId + "/journey/chantiers/7/versions").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()", is(0)));
+    }
+
+    @Test
+    @DisplayName("SF-208-02 : GET /journey détaille le plan de CHAQUE chantier ouvert, débloqué ou bloqué et par quoi")
+    void allOpenChantiersDetailed() throws Exception {
+        mockMvc.perform(put("/api/workspaces/" + workspaceId + "/journey/mode").contextPath("/api")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"mode\":\"GUIDE\",\"title\":\"Ingress\"}")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk());
+        service.submitDiagnosis(aliceId, ws(), "cert expiré", "openssl", "ELEVEE");
+        service.confirmDiagnosis(aliceId, ws());
+        service.setPlan(aliceId, ws(), planJson("[{\"title\":\"Lire\",\"risk\":\"LECTURE\"},"
+                + "{\"title\":\"Sauvegarder\",\"risk\":\"REVERSIBLE\"},"
+                + "{\"title\":\"Basculer\",\"risk\":\"EXTERNE\",\"depends_on\":[1]}]"));
+        service.validatePlan(aliceId, ws(), null);
+        tool(JourneyToolCatalog.UPDATE_STEP, "{\"step\":1,\"status\":\"FAIT\"}");
+        tool(JourneyToolCatalog.UPDATE_SUB_STEPS, "{\"step\":2,\"sub_steps\":[{\"title\":\"dump\",\"done\":true}]}");
+        post(aliceToken, "chantiers", "{\"title\":\"DNS\"}");
+        getJourney(aliceToken)
+                .andExpect(jsonPath("$.chantier.number", is(2)))
+                .andExpect(jsonPath("$.chantiers[0].focus", is(false)))
+                .andExpect(jsonPath("$.chantiers[0].plan.steps.length()", is(3)))
+                .andExpect(jsonPath("$.chantiers[0].plan.steps[0].status", is("FAIT")))
+                .andExpect(jsonPath("$.chantiers[0].plan.steps[1].unlocked", is(true)))
+                .andExpect(jsonPath("$.chantiers[0].plan.steps[1].inProgress", is(true)))
+                .andExpect(jsonPath("$.chantiers[0].plan.steps[1].subSteps[0].title", is("dump")))
+                // Dépendance déclarée faite : débloquée, même si l'étape 2 n'est pas finie.
+                .andExpect(jsonPath("$.chantiers[0].plan.steps[2].dependsOn[0]", is(1)))
+                .andExpect(jsonPath("$.chantiers[0].plan.steps[2].unlocked", is(true)))
+                .andExpect(jsonPath("$.chantiers[1].focus", is(true)))
+                .andExpect(jsonPath("$.chantiers[1].plan").doesNotExist());
+        // Sans dépendance déclarée : l'étape précédente non faite bloque.
+        service.setPlan(aliceId, ws(), 1, planJson("[{\"title\":\"Lire\",\"risk\":\"LECTURE\"},"
+                + "{\"title\":\"Sauvegarder\",\"risk\":\"REVERSIBLE\"},"
+                + "{\"title\":\"Basculer\",\"risk\":\"EXTERNE\",\"depends_on\":[2]},"
+                + "{\"title\":\"Annoncer\",\"risk\":\"EXTERNE\"}]"));
+        getJourney(aliceToken)
+                .andExpect(jsonPath("$.chantiers[0].plan.awaitingValidation", is(true)))
+                .andExpect(jsonPath("$.chantiers[0].plan.steps[2].unlocked", is(false)))
+                .andExpect(jsonPath("$.chantiers[0].plan.steps[2].blockedBy[0]", is("étape 2")))
+                .andExpect(jsonPath("$.chantiers[0].plan.steps[3].blockedBy[0]", is("étape 3")));
+    }
 }
