@@ -4,6 +4,37 @@
       <mat-icon>{{ iconFor(block().type) }}</mat-icon>
       {{ block().title }}
     </span>
+    @if (isMessage() && sentAt() && sentLabel(); as label) {
+      <!-- Envoi marqué (F-211) : l'état, et « Annuler » sauf en lecture seule. -->
+      <span class="copy-block-sent" role="status">
+        <mat-icon aria-hidden="true">check_circle</mat-icon>
+        Envoyé · {{ label }}
+      </span>
+      @if (!sendReadOnly()) {
+        <button
+          mat-button
+          type="button"
+          class="copy-block-sent-cancel"
+          [disabled]="sendBusy()"
+          (click)="cancelSent.emit()"
+          aria-label="Annuler : ce message n'est pas envoyé"
+        >Annuler</button>
+      }
+    } @else if (isMessage() && sendable() && !sendReadOnly()) {
+      <!-- « Marquer envoyé » (F-211) : un geste, sans tour ; l'agent l'apprend au tour suivant. -->
+      <button
+        mat-button
+        type="button"
+        class="copy-block-mark-sent"
+        [disabled]="sendBusy()"
+        (click)="markSent.emit()"
+        matTooltip="Je l'ai envoyé : l'agent le saura au prochain tour"
+        aria-label="Marquer ce message comme envoyé"
+      >
+        <mat-icon>done</mat-icon>
+        Marquer envoyé
+      </button>
+    }
     <button
       mat-button
       type="button"
@@ -16,6 +47,13 @@
       {{ copied() ? 'Copié' : 'Copier' }}
     </button>
   </header>
+  @if (parts().recipient; as recipient) {
+    <!-- Destinataire (F-211) : présenté à part, jamais copié avec le corps. -->
+    <div class="copy-block-subject copy-block-recipient">
+      <span class="copy-block-subject-label">À</span>
+      <span class="copy-block-subject-text">{{ recipient }}</span>
+    </div>
+  }
   @if (parts().subject; as subject) {
     <!-- Objet d'un e-mail (F-203) : présenté à part, copié séparément, jamais mêlé au corps. -->
     <div class="copy-block-subject">

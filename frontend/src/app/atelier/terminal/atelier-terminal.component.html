@@ -967,7 +967,7 @@
               @if (answer.essential) {
                 <div class="terminal-essential">
                   <span class="terminal-essential-label">L'essentiel</span>
-                  <ng-container *ngTemplateOutlet="agentText; context: { $implicit: answer.essential, essential: true }"></ng-container>
+                  <ng-container *ngTemplateOutlet="agentText; context: { $implicit: answer.essential, essential: true, message: message }"></ng-container>
                 </div>
               }
               @if (answer.body) {
@@ -975,7 +975,7 @@
                   @if (answer.essential) {
                     <span class="terminal-detail-label">Le détail</span>
                   }
-                  <ng-container *ngTemplateOutlet="agentText; context: { $implicit: answer.body, essential: false }"></ng-container>
+                  <ng-container *ngTemplateOutlet="agentText; context: { $implicit: answer.body, essential: false, message: message }"></ng-container>
                 </div>
               }
               @if (!answer.essential && !answer.body) {
@@ -1012,16 +1012,16 @@
           @if (parts.essential) {
             <div class="terminal-essential">
               <span class="terminal-essential-label">L'essentiel</span>
-              <ng-container *ngTemplateOutlet="agentText; context: { $implicit: parts.essential, essential: true }"></ng-container>
+              <ng-container *ngTemplateOutlet="agentText; context: { $implicit: parts.essential, essential: true, message: message }"></ng-container>
             </div>
             @if (parts.detail) {
               <div class="terminal-detail">
                 <span class="terminal-detail-label">Le détail</span>
-                <ng-container *ngTemplateOutlet="agentText; context: { $implicit: parts.detail, essential: false }"></ng-container>
+                <ng-container *ngTemplateOutlet="agentText; context: { $implicit: parts.detail, essential: false, message: message }"></ng-container>
               </div>
             }
           } @else {
-            <ng-container *ngTemplateOutlet="agentText; context: { $implicit: parts.detail, essential: false }"></ng-container>
+            <ng-container *ngTemplateOutlet="agentText; context: { $implicit: parts.detail, essential: false, message: message }"></ng-container>
           }
         }
         @if (message.interrupted) {
@@ -2229,7 +2229,7 @@
   ```mail / ```message clos : prose / encart copiable (app-copy-block, F-26) / prose, dans l'ordre
   d'origine. Le code et les autres blocs restent dans la prose, rendus comme avant.
 -->
-<ng-template #agentText let-text let-essential="essential">
+<ng-template #agentText let-text let-essential="essential" let-message="message">
   @let segments = text | messageBlocks;
   @if (!hasBlockSegment(segments)) {
     <div class="terminal-agent" [class.terminal-essential-body]="essential" [innerHTML]="text | markdown"></div>
@@ -2238,7 +2238,19 @@
       @if (segment.kind === 'prose') {
         <div class="terminal-agent" [class.terminal-essential-body]="essential" [innerHTML]="segment.text | markdown"></div>
       } @else {
-        <app-copy-block class="terminal-message-block" tone="dark" [block]="segment.block"></app-copy-block>
+        <!-- F-211 / SF-211-02 : « Marquer envoyé » sur l'encart d'une réponse persistée (pas en direct). -->
+        @let sendIndex = sendIndexOf(message, segment.block);
+        <app-copy-block
+          class="terminal-message-block"
+          tone="dark"
+          [block]="segment.block"
+          [sendable]="sendIndex >= 0"
+          [sentAt]="sentAtOf(message, sendIndex)"
+          [sendBusy]="isSending(message, sendIndex)"
+          [sendReadOnly]="readOnly"
+          (markSent)="onMarkSent(message, sendIndex)"
+          (cancelSent)="onCancelSent(message, sendIndex)"
+        ></app-copy-block>
       }
     }
   }

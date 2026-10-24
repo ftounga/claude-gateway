@@ -1,5 +1,7 @@
 import { BlockSegment } from './copy-block.model';
 import {
+  messageBlockIndex,
+  splitHeaders,
   copyBlockTypeFromLanguage,
   hasBlockSegment,
   splitMessageBlocks,
@@ -139,3 +141,39 @@ describe('F-203 — blocs « message à envoyer »', () => {
     expect(splitSubject('Objet :\nCorps').subject).toBeNull();
   });
 });
+
+describe('F-211 — balise à attributs, destinataire, rang de l’encart', () => {
+  it('le premier jeton de la balise donne le type ; attente= est lu, jamais affiché', () => {
+    const segments = splitMessageBlocks('Voici :\n```mail attente=acces-forge\nObjet : Accès\n\nBonjour\n```');
+    const block = (segments.find((s) => s.kind === 'block') as BlockSegment).block;
+    expect(block.type).toBe('mail');
+    expect(block.language).toBe('mail');
+    expect(block.title).toBe('E-mail');
+    expect(block.attente).toBe('acces-forge');
+  });
+
+  it('un bloc sans attribut n’a pas de clé d’attente', () => {
+    const block = (splitMessageBlocks('```message\nSalut\n```')[0] as BlockSegment).block;
+    expect(block.attente).toBeUndefined();
+  });
+
+  it('splitHeaders lit « À : » et « Objet : » dans les deux ordres', () => {
+    expect(splitHeaders('À : Zahi\nObjet : Compte forge\n\nBonjour')).toEqual({
+      subject: 'Compte forge', recipient: 'Zahi', body: 'Bonjour',
+    });
+    expect(splitHeaders('**Objet :** VPN\n**À :** Léa\nCorps')).toEqual({
+      subject: 'VPN', recipient: 'Léa', body: 'Corps',
+    });
+    expect(splitSubject('À : Zahi\n\nBonjour')).toEqual({ subject: null, body: 'Bonjour' });
+  });
+
+  it('messageBlockIndex retrouve le rang dans le message complet, -1 sinon', () => {
+    const full = '<<essentiel>>\n```mail\nA\n```\n<</essentiel>>\n```bash\nls\n```\n```message\nB\n```';
+    const detail = splitMessageBlocks('```message\nB\n```');
+    const block = (detail[0] as BlockSegment).block;
+    expect(messageBlockIndex(full, block)).toBe(1);
+    expect(messageBlockIndex(full, { ...block, content: 'C' })).toBe(-1);
+    expect(messageBlockIndex(null, block)).toBe(-1);
+  });
+});
+
