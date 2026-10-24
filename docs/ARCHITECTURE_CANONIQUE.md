@@ -459,6 +459,15 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   écriture. Lue par `GET /workspaces/{id}/journey` (`chantiers[]`) et `…/journey/chantiers` (clos) après
   `requireOwned`, sous `(user_id, workspace_id)`. Purge : cascade au terminal, purge nommée au compte.
 
+- **subject_journey_plan_versions** — **l'historique des versions du plan d'un chantier** (F-208 /
+  SF-208-02, migration `166`) : `id (uuid)`, `user_id (NOT NULL)`, `workspace_id (FK workspaces ON DELETE
+  CASCADE)`, `chantier_number (int)`, `version (int)`, `plan_json` (le plan posé, avec `dependsOn` et
+  `subSteps` depuis F-208), `created_at`. Une ligne par `set_subject_plan` accepté, jamais modifiée.
+  Index `(user_id, workspace_id, chantier_number, version)`. Lue par
+  `GET /workspaces/{id}/journey/chantiers/{n}/versions` (ce qui a changé d'une version à l'autre, calculé
+  côté serveur) après `requireOwned`, sous `(user_id, workspace_id)`. Purge : cascade au terminal, purge
+  nommée au compte.
+
 - **session_bilans** — **le bilan d'une session, gardé comme artefact** (F-155 / SF-155-04,
   migration `132`). Un bilan qui n'existe que dans une réponse HTTP est un bilan qu'on ne relit
   jamais et qu'on ne peut pas **comparer** — or comparer est tout l'intérêt (« le cache est remonté
