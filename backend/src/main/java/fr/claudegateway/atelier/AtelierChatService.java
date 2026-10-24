@@ -705,7 +705,8 @@ public class AtelierChatService implements RelayInterruptTarget {
     static final String NEXT_STEPS_DOCTRINE =
             "Propose la suite — « Et maintenant ? » :\n"
                     + "- Quand une suite a du sens, termine ta réponse (APRÈS la réponse complète, "
-                    + "jamais à sa place ni en l'abrégeant) par un bloc de 2 à 4 options, sur ses "
+                    + "jamais à sa place ni en l'abrégeant) par un bloc d'options (2 à 4 ; en mode guidé, "
+                    + "voir les deux colonnes ci-dessous), sur ses "
                     + "propres lignes, au format JSON exact :\n"
                     + "  <<suites>>\n"
                     + "  [{\"titre\":\"…\",\"pourquoi\":\"…\",\"etiquette\":\"Vérifier\",\"demande\":\"…\"}]\n"
@@ -717,14 +718,18 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "précis.\n"
                     + "- Mode GUIDÉ (la note « Parcours du sujet » donne le plan) : ajoute à chaque "
                     + "option \"etape\" = le numéro de l'étape du plan qu'elle fait avancer ou débloque, "
-                    + "ou null si elle va au-delà du plan (approfondissement). Plusieurs chantiers "
-                    + "ouverts : si l'option relève d'un AUTRE chantier que le focus, ajoute \"chantier\" = "
-                    + "son numéro (\"etape\" = l'étape de SON plan) — elle n'est pas un approfondissement. "
-                    + "Le chantier d'abord : tant "
-                    + "qu'il n'est pas clos, propose d'abord la prochaine étape à faire et ce qui la "
-                    + "débloque ; au plus UN approfondissement, en dernier. Une fois le chantier clos, "
-                    + "les approfondissements sont libres, et une option peut proposer d'ouvrir un "
-                    + "nouveau chantier si un besoin distinct apparaît. Hors mode guidé, pas de "
+                    + "ou null si elle va au-delà du plan. Plusieurs chantiers ouverts : si l'option relève "
+                    + "d'un AUTRE chantier que le focus, ajoute \"chantier\" = son numéro (\"etape\" = "
+                    + "l'étape de SON plan). Tant que le chantier est ouvert, les options s'affichent en DEUX "
+                    + "COLONNES : « Chantier » = 2 à 4 options qui font avancer le chantier au focus, chacune "
+                    + "avec son \"etape\" — la prochaine étape débloquée, ce qui débloque une étape en "
+                    + "attente (relance), la vérification de ce qui vient d'être fait ; une étape bloquée "
+                    + "n'est pas « à faire » : propose ce qui la débloque. « Hors chantier » = 0 à 3 options "
+                    + "(\"etape\" null) : un message ou un mail utile hors du plan, un approfondissement, au "
+                    + "plus UNE option d'un autre chantier ouvert — ne les sacrifie pas au chantier. Tant "
+                    + "qu'une étape reste à faire, la colonne Chantier n'est jamais vide. 7 options au plus "
+                    + "en tout. Une fois le chantier clos, une option peut proposer d'ouvrir un nouveau "
+                    + "chantier si un besoin distinct apparaît. Hors mode guidé : 2 à 4 options, pas de "
                     + "champ \"etape\".\n"
                     + "- Aucun bloc si aucune suite n'est évidente, si tu poses une question à "
                     + "l'utilisateur, ou si le tour est inachevé : pas de suggestion de remplissage.\n"
@@ -2091,6 +2096,24 @@ public class AtelierChatService implements RelayInterruptTarget {
         } catch (RuntimeException ex) {
             log.debug("Parcours du sujet illisible (best-effort) : {}", ex.getMessage());
             return null;
+        }
+    }
+
+    /**
+     * L'état des attentes dont dépendent les étapes des chantiers ouverts (F-209) : une étape dont l'attente
+     * est ouverte est bloquée. Best-effort : illisible ⇒ vide (seules les dépendances du plan bloquent).
+     */
+    java.util.Map<String, String> waitsOf(UUID userId, Workspace workspace,
+            fr.claudegateway.atelier.journey.SubjectJourney journey) {
+        if (journeyService == null || workspace == null || journey == null || !journey.isGuided()) {
+            return java.util.Map.of();
+        }
+        try {
+            java.util.Map<String, String> waits = journeyService.waitsOn(userId, workspace, journey);
+            return waits == null ? java.util.Map.of() : waits;
+        } catch (RuntimeException ex) {
+            log.debug("Attentes des étapes illisibles (best-effort) : {}", ex.getMessage());
+            return java.util.Map.of();
         }
     }
 
@@ -3957,11 +3980,16 @@ public class AtelierChatService implements RelayInterruptTarget {
         // F-196 / SF-196-01 : en chantier guidé ouvert, la gateway rattache chaque suite au plan RÉEL
         // (relu maintenant : le plan a pu avancer pendant le tour), met les étapes d'abord et garde au
         // plus un approfondissement. Hors chantier ouvert (Libre, Clos) : suites inchangées.
-        fr.claudegateway.atelier.nextsteps.ChantierAnchor.Anchored anchoredSteps = interrupted || spendCapReached
-                || nextStepsExtraction.steps().isEmpty()
-                ? new fr.claudegateway.atelier.nextsteps.ChantierAnchor.Anchored(List.of(), null)
-                : fr.claudegateway.atelier.nextsteps.ChantierAnchor.apply(nextStepsExtraction.steps(),
-                        journeyOf(userId, workspace));
+        // F-209 / SF-209-01 : deux colonnes (Chantier / Hors chantier), plafonds séparés ; une étape dont
+        // l'attente est ouverte est bloquée — l'état des attentes est lu une fois, best-effort.
+        fr.claudegateway.atelier.nextsteps.ChantierAnchor.Anchored anchoredSteps;
+        if (interrupted || spendCapReached || nextStepsExtraction.steps().isEmpty()) {
+            anchoredSteps = new fr.claudegateway.atelier.nextsteps.ChantierAnchor.Anchored(List.of(), null);
+        } else {
+            fr.claudegateway.atelier.journey.SubjectJourney journeyForSteps = journeyOf(userId, workspace);
+            anchoredSteps = fr.claudegateway.atelier.nextsteps.ChantierAnchor.apply(nextStepsExtraction.steps(),
+                    journeyForSteps, waitsOf(userId, workspace, journeyForSteps));
+        }
         List<fr.claudegateway.atelier.nextsteps.NextStep> nextSteps = anchoredSteps.steps();
         // F-210 / SF-210-01 : les questions du tour sont closes — abouties si le tour l'est, sinon non
         // abouties — puis relayées une dernière fois et rangées dans le relevé.
@@ -3974,10 +4002,11 @@ public class AtelierChatService implements RelayInterruptTarget {
             boolean anchorSteps = !interrupted && !spendCapReached;
             fr.claudegateway.atelier.journey.SubjectJourney journeyAtEnd = anchorSteps
                     && questionsSnapshot.fusion() == null ? journeyOf(userId, workspace) : null;
+            java.util.Map<String, String> waitsAtEnd = waitsOf(userId, workspace, journeyAtEnd);
             List<fr.claudegateway.atelier.questions.QuestionAnswers.Answer> answers =
                     fr.claudegateway.atelier.questions.QuestionAnswers.parse(finalText, questionsSnapshot,
                             anchorSteps ? steps -> fr.claudegateway.atelier.nextsteps.ChantierAnchor.apply(steps,
-                                    journeyAtEnd) : null);
+                                    journeyAtEnd, waitsAtEnd) : null);
             questionsOfTurn.markUnanswered(fr.claudegateway.atelier.questions.QuestionAnswers.unanswered(answers));
             questionsSnapshot = questionsOfTurn.snapshot().withAnswers(answers);
             listener.onQuestions(questionsSnapshot);

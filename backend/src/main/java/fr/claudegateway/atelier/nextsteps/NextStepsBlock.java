@@ -25,8 +25,11 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  */
 public final class NextStepsBlock {
 
-    /** Options retenues au plus. */
-    public static final int MAX_STEPS = 4;
+    /**
+     * Options lues au plus (F-209) : 4 en chantier + 3 hors chantier. Les plafonds par colonne — et le
+     * plafond de 4 sans chantier ouvert — sont appliqués par {@link ChantierAnchor}.
+     */
+    public static final int MAX_STEPS = 7;
     /** Titre au plus, au-delà tronqué. */
     public static final int MAX_TITLE_CHARS = 80;
     /** Motif au plus, au-delà tronqué. */
