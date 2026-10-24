@@ -643,7 +643,8 @@ class AtelierChatServiceSystemPromptTest {
             assertThat(system).contains("une option sans motif est interdite");
             // F-196 / SF-196-01 : la règle du rattachement est générale, donc stable ; le plan reste
             // dans la note de tour.
-            assertThat(system).contains("\"etape\"").contains("au plus UN approfondissement, en dernier");
+            assertThat(system).contains("\"etape\"").contains("DEUX COLONNES")
+                    .contains("« Hors chantier » = 0 à 3 options").contains("la colonne Chantier n'est jamais vide");
             // Placée juste après « vérifier avant de conclure ».
             assertThat(system.indexOf(marker))
                     .isGreaterThan(system.indexOf("Vérifier avant de conclure — prouve tout état factuel"));

@@ -77,13 +77,17 @@ class NextStepsBlockTest {
     }
 
     @Test
-    void atMostFourStepsAreKept() {
+    void atMostSevenStepsAreRead() {
+        // F-209 : 4 en chantier + 3 hors chantier ; le plafond de 4 sans chantier est appliqué au rattachement.
         String raw = block(option("1", "m", "Continuer", "a"), option("2", "m", "Continuer", "b"),
                 option("3", "m", "Continuer", "c"), option("4", "m", "Continuer", "d"),
-                option("5", "m", "Continuer", "e"));
+                option("5", "m", "Continuer", "e"), option("6", "m", "Continuer", "f"),
+                option("7", "m", "Continuer", "g"), option("8", "m", "Continuer", "h"));
 
         assertThat(NextStepsBlock.extract(raw).steps()).extracting(NextStep::title)
-                .containsExactly("1", "2", "3", "4");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7");
+        assertThat(ChantierAnchor.apply(NextStepsBlock.extract(raw).steps(), null).steps())
+                .extracting(NextStep::title).containsExactly("1", "2", "3", "4");
     }
 
     @Test

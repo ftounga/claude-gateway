@@ -256,7 +256,7 @@ class AtelierChatServiceJourneyTest {
             + "]\n<</suites>>";
 
     @Test
-    @DisplayName("SF-196-01 : chantier guidé ouvert — l'étape d'abord, un seul approfondissement, avancement exposé")
+    @DisplayName("SF-196-01 / SF-209-01 : chantier guidé ouvert — l'étape à gauche, le hors-plan à droite, avancement exposé")
     void nextStepsAreAnchoredToTheOpenChantier() {
         when(journeyService.forTurn(userId, workspaceId)).thenReturn(SubjectJourney.builder()
                 .userId(userId).workspaceId(workspaceId).mode(JourneyMode.GUIDE).phase(JourneyPhase.EXECUTION)
@@ -269,7 +269,11 @@ class AtelierChatServiceJourneyTest {
         AtelierChatService.AtelierChatResult result = service.chatStreaming(userId, workspaceId, "suite", listener);
 
         assertThat(result.nextSteps()).extracting(fr.claudegateway.atelier.nextsteps.NextStep::title)
-                .containsExactly("Policy NAP", "Rétention KMS");
+                .containsExactly("Policy NAP", "Rétention KMS", "Export SIEM");
+        assertThat(result.nextSteps()).extracting(fr.claudegateway.atelier.nextsteps.NextStep::column)
+                .containsExactly(fr.claudegateway.atelier.nextsteps.NextStep.Column.CHANTIER,
+                        fr.claudegateway.atelier.nextsteps.NextStep.Column.HORS,
+                        fr.claudegateway.atelier.nextsteps.NextStep.Column.HORS);
         assertThat(result.nextSteps().get(0).stepTitle()).isEqualTo("Appliquer la policy NAP V12");
         assertThat(result.nextSteps().get(1).scope())
                 .isEqualTo(fr.claudegateway.atelier.nextsteps.NextStep.Scope.APPROFONDISSEMENT);
