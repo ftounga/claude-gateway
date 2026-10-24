@@ -2,7 +2,7 @@
 
 ## Identifiant
 `F-210 / SF-210-04` — feature parente `F-210` *Deux questions, deux fils*. Branche prévue :
-`feat/SF-210-04-carte-par-question`. Statut : `in-progress` (livrée après F-209, dont elle réutilise le
+`feat/SF-210-04-carte-par-question`. Statut : `done` (livrée après F-209, dont elle réutilise le
 composant de suites en deux colonnes). Date : 2026-10-24.
 
 ## Objectif
