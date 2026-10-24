@@ -1,4 +1,5 @@
 import { Component, DestroyRef, effect, inject, input, signal, untracked } from '@angular/core';
+import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { Subscription } from 'rxjs';
 
@@ -6,7 +7,7 @@ import { AtelierTerminalVideo } from '../../core/models/atelier.models';
 import { VideoSummary } from '../../core/models/videos.models';
 import { VideosService } from '../../core/services/videos.service';
 import { VideoPlayerComponent } from '../../shared/videos/video-player.component';
-import { formatClock, videoHeadline } from './video-block';
+import { formatClock, videoGalleryPath, videoHeadline } from './video-block';
 
 /**
  * **Le bloc « vidéo »** d'un terminal (F-213 / SF-213-02) : le titre, la série, puis le lecteur sur place —
@@ -19,7 +20,7 @@ import { formatClock, videoHeadline } from './video-block';
  */
 @Component({
   selector: 'app-video-block',
-  imports: [MatIconModule, VideoPlayerComponent],
+  imports: [MatButtonModule, MatIconModule, VideoPlayerComponent],
   template: `
     <article class="video-block" [attr.aria-label]="headline()">
       <p class="video-block__title">
@@ -33,6 +34,14 @@ import { formatClock, videoHeadline } from './video-block';
       @if (!readOnly()) {
         @if (summary(); as loaded) {
           <app-video-player [video]="loaded"></app-video-player>
+          @if (workspaceId()) {
+            <div class="video-block__actions">
+              <button mat-stroked-button type="button" class="video-block__gallery" (click)="openGallery()">
+                <mat-icon>video_library</mat-icon>
+                Ouvrir dans la galerie
+              </button>
+            </div>
+          }
         } @else if (unavailable()) {
           <p class="video-block__unavailable">Vidéo indisponible (supprimée depuis, ou illisible).</p>
         }
@@ -86,6 +95,13 @@ import { formatClock, videoHeadline } from './video-block';
       font-size: 14px;
     }
 
+    .video-block__actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--cg-space-2);
+      margin-top: var(--cg-space-2);
+    }
+
     .video-block__unavailable {
       margin: 0;
       font-size: 12px;
@@ -98,6 +114,8 @@ export class VideoBlockComponent {
 
   readonly video = input.required<AtelierTerminalVideo>();
   readonly readOnly = input(false);
+  /** Le sujet du terminal : *Ouvrir dans la galerie* mène à ses vidéos (SF-213-03). */
+  readonly workspaceId = input<string | null>(null);
 
   readonly summary = signal<VideoSummary | null>(null);
   readonly unavailable = signal(false);
@@ -119,6 +137,14 @@ export class VideoBlockComponent {
 
   headline(): string {
     return videoHeadline(this.video());
+  }
+
+  /** *Ouvrir dans la galerie* : un nouvel onglet — le tour vit dans le flux du terminal, le quitter le tuerait. */
+  openGallery(): void {
+    const workspaceId = this.workspaceId();
+    if (workspaceId) {
+      window.open(videoGalleryPath(workspaceId, this.video().videoId), '_blank', 'noopener');
+    }
   }
 
   /** « Série Cours EKS · version 2 · 2:34 · privée ». */

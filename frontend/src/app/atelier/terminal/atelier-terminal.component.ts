@@ -917,6 +917,16 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     this.openedPageId.set(pageId);
   }
 
+  /**
+   * **La galerie Vidéos du sujet** (F-213 / SF-213-03), dans un nouvel onglet : le tour vit dans le flux du
+   * terminal, le quitter le tuerait.
+   */
+  openVideos(): void {
+    if (this.projectId) {
+      window.open(`/atelier/${encodeURIComponent(this.projectId)}/videos`, '_blank', 'noopener');
+    }
+  }
+
   closePage(): void {
     this.openedPageId.set(null);
   }

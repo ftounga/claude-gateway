@@ -23,7 +23,7 @@ describe('forge-tabs', () => {
 
   it('les onglets d\'une machine (dont Présentations), Projets seul pour « Hébergé »', () => {
     expect(tabsFor(machine))
-      .toEqual(['projets', 'carte', 'gouvernance', 'activite', 'pages', 'presentations']);
+      .toEqual(['projets', 'carte', 'gouvernance', 'activite', 'pages', 'videos', 'presentations']);
     expect(tabsFor(hosted)).toEqual(['projets']);
   });
 

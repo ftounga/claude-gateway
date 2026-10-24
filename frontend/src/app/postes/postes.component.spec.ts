@@ -1038,7 +1038,7 @@ describe('PostesComponent', () => {
     it('propose les onglets d\'une machine (dont Présentations), et Projets seul à « Hébergé »', () => {
       setup();
       expect(tabs().map((node) => node.getAttribute('data-tab')))
-        .toEqual(['projets', 'carte', 'gouvernance', 'activite', 'pages', 'presentations']);
+        .toEqual(['projets', 'carte', 'gouvernance', 'activite', 'pages', 'videos', 'presentations']);
 
       openHost('heberge');
       expect(tabs().map((node) => node.getAttribute('data-tab'))).toEqual(['projets']);

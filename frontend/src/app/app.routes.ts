@@ -252,6 +252,12 @@ export const routes: Routes = [
           import('./atelier/files/atelier-files.component').then((m) => m.AtelierFilesComponent),
       },
       {
+        // F-213 / SF-213-03 — l'écran Vidéos d'un sujet (galerie, séries). Même parent que les fichiers.
+        path: 'atelier/:id/videos',
+        loadComponent: () =>
+          import('./videos/video-gallery-page.component').then((m) => m.VideoGalleryPageComponent),
+      },
+      {
         path: 'documents',
         loadComponent: () =>
           import('./documents/documents.component').then((m) => m.DocumentsComponent),

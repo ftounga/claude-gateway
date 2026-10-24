@@ -105,6 +105,19 @@ describe('VideoBlockComponent, AudioBlockComponent et VideoPlayerComponent', () 
     expect(element.playbackRate).toBe(2);
   });
 
+  it('« Ouvrir dans la galerie » ouvre l\'écran Vidéos du sujet dans un nouvel onglet (SF-213-03)', () => {
+    videos.get.and.returnValue(of(summaryOf()));
+    const opened = spyOn(window, 'open').and.returnValue(null);
+    const fixture = TestBed.createComponent(VideoBlockComponent);
+    fixture.componentRef.setInput('video', video);
+    fixture.componentRef.setInput('workspaceId', 'w-1');
+    fixture.detectChanges();
+
+    ((fixture.nativeElement as HTMLElement).querySelector('.video-block__gallery') as HTMLButtonElement).click();
+
+    expect(opened).toHaveBeenCalledWith('/atelier/w-1/videos?video=v-1', '_blank', 'noopener');
+  });
+
   it('une vidéo supprimée le dit ; en lecture seule, ni lecteur ni appel', () => {
     videos.get.and.returnValue(throwError(() => new HttpErrorResponse({ status: 404 })));
     const fixture = TestBed.createComponent(VideoBlockComponent);

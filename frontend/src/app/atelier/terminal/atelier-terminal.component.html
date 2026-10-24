@@ -138,6 +138,11 @@
           <mat-icon>folder</mat-icon>
           Fichiers
         </button>
+        <!-- F-213 / SF-213-03 : la galerie Vidéos du sujet, dans un nouvel onglet (le tour vit dans ce flux). -->
+        <button mat-button type="button" class="terminal-videos" (click)="openVideos()">
+          <mat-icon>video_library</mat-icon>
+          Vidéos
+        </button>
         @if (gitProject) {
           <!-- Publication sur une branche dédiée (F-31 / SF-31-04) : sans elle, le travail
                disparaîtrait à la réinitialisation de l'environnement. -->
@@ -254,6 +259,10 @@
             <button mat-menu-item type="button" (click)="openFiles.emit()">
               <mat-icon>folder</mat-icon>
               <span>Fichiers</span>
+            </button>
+            <button mat-menu-item type="button" class="terminal-videos" (click)="openVideos()">
+              <mat-icon>video_library</mat-icon>
+              <span>Vidéos</span>
             </button>
             @if (gitProject) {
               <button
@@ -940,7 +949,7 @@
               }
               <!-- UNE VIDÉO / DES SONS PUBLIÉS (F-213 / SF-213-02) : lecteur sur place, chapitres, vitesse. -->
               @if (block.video; as video) {
-                <app-video-block [video]="video" [readOnly]="readOnly"></app-video-block>
+                <app-video-block [video]="video" [readOnly]="readOnly" [workspaceId]="projectId"></app-video-block>
               }
               @if (block.audio; as audio) {
                 <app-audio-block [audio]="audio" [readOnly]="readOnly"></app-audio-block>
@@ -1250,7 +1259,7 @@
             <app-proof-captures [proof]="proof" [workspaceId]="projectId"></app-proof-captures>
           }
           @if (block.video; as video) {
-            <app-video-block [video]="video" [readOnly]="readOnly"></app-video-block>
+            <app-video-block [video]="video" [readOnly]="readOnly" [workspaceId]="projectId"></app-video-block>
           }
           @if (block.audio; as audio) {
             <app-audio-block [audio]="audio" [readOnly]="readOnly"></app-audio-block>

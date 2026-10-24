@@ -292,6 +292,126 @@ public class VideoService {
         return versions.sumSizeBytesByUserId(userId);
     }
 
+    // ------------------------------------------------------------------ galerie (SF-213-03)
+
+    /**
+     * La galerie d'un sujet ou d'un poste du compte : les séries (épisodes dans l'ordre) et les vidéos seules —
+     * jamais les sons. Un sujet ou un poste d'un autre compte rend une galerie vide (filtre {@code user_id}).
+     *
+     * @param workspaceId sujet, ou {@code null}
+     * @param hostId      poste, ou {@code null} (l'un des deux est requis)
+     */
+    @Transactional(readOnly = true)
+    public Gallery gallery(UUID userId, UUID workspaceId, UUID hostId) {
+        if (workspaceId == null && hostId == null) {
+            throw new VideoRejectedException("Précise workspaceId (un sujet) ou hostId (un poste).");
+        }
+        List<Video> placed = workspaceId != null
+                ? videos.findByUserIdAndWorkspaceIdAndKindOrderByCreatedAtDesc(userId, workspaceId, VideoKind.VIDEO)
+                : videos.findByUserIdAndHostIdAndKindOrderByCreatedAtDesc(userId, hostId, VideoKind.VIDEO);
+        java.util.Map<UUID, VideoVersion> current = new java.util.HashMap<>();
+        for (Video video : placed) {
+            versions.findByVideoIdAndUserIdAndVersion(video.getId(), userId, video.getCurrentVersion())
+                    .ifPresent(version -> current.put(video.getId(), version));
+        }
+        java.util.Map<UUID, List<Video>> bySeries = new java.util.LinkedHashMap<>();
+        List<Video> standalone = new ArrayList<>();
+        for (Video video : placed) {
+            if (video.getSeriesId() == null) {
+                standalone.add(video);
+            } else {
+                bySeries.computeIfAbsent(video.getSeriesId(), id -> new ArrayList<>()).add(video);
+            }
+        }
+        List<SeriesEntry> entries = new ArrayList<>();
+        for (java.util.Map.Entry<UUID, List<Video>> entry : bySeries.entrySet()) {
+            Optional<VideoSeries> found = series.findByIdAndUserId(entry.getKey(), userId);
+            if (found.isEmpty()) {
+                standalone.addAll(entry.getValue());
+                continue;
+            }
+            List<Video> episodes = new ArrayList<>(entry.getValue());
+            episodes.sort(java.util.Comparator
+                    .comparing((Video v) -> v.getEpisode() == null ? Integer.MAX_VALUE : v.getEpisode())
+                    .thenComparing(Video::getCreatedAt, java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())));
+            entries.add(new SeriesEntry(found.get(), List.copyOf(episodes)));
+        }
+        return new Gallery(List.copyOf(entries), List.copyOf(standalone), java.util.Map.copyOf(current));
+    }
+
+    /**
+     * Supprime une vidéo du compte : ses objets, puis sa ligne (versions en cascade). Une série devenue vide part
+     * avec elle.
+     */
+    @Transactional
+    public void delete(UUID userId, UUID videoId) {
+        Video video = require(userId, videoId);
+        videos.delete(video);
+        videos.flush();
+        // Les objets après les lignes : un stockage qui n'efface pas tout lève, et la suppression est annulée
+        // — la vidéo reste listée, rien n'est perdu en silence (F-79).
+        store.deleteVideo(userId, video.getId());
+        if (video.getSeriesId() != null
+                && videos.findByUserIdAndSeriesIdOrderByEpisodeAscCreatedAtAsc(userId, video.getSeriesId()).isEmpty()) {
+            series.findByIdAndUserId(video.getSeriesId(), userId).ifPresent(series::delete);
+        }
+    }
+
+    /** Supprime une série du compte et tous ses épisodes (objets compris). */
+    @Transactional
+    public void deleteSeries(UUID userId, UUID seriesId) {
+        VideoSeries found = series.findByIdAndUserId(seriesId, userId).orElseThrow(VideoNotFoundException::new);
+        List<Video> episodes = videos.findByUserIdAndSeriesIdOrderByEpisodeAscCreatedAtAsc(userId, seriesId);
+        videos.deleteAll(episodes);
+        videos.flush();
+        series.delete(found);
+        series.flush();
+        for (Video video : episodes) {
+            store.deleteVideo(userId, video.getId());
+        }
+    }
+
+    /** Durée maximale admise (24 h). */
+    public static final int MAX_DURATION_S = 24 * 3600;
+
+    /**
+     * La durée lue par le navigateur (métadonnées du conteneur) corrige celle annoncée par l'agent, si elle en
+     * diffère de plus d'une seconde.
+     */
+    @Transactional
+    public Video setDuration(UUID userId, UUID videoId, double seconds) {
+        if (!(seconds >= 1) || seconds > MAX_DURATION_S) {
+            throw new VideoRejectedException("Durée invalide : de 1 s à 24 h.");
+        }
+        Video video = require(userId, videoId);
+        int rounded = (int) Math.round(seconds);
+        if (video.getDurationS() == null || Math.abs(video.getDurationS() - rounded) > 1) {
+            video.setDurationS(rounded);
+            return videos.saveAndFlush(video);
+        }
+        return video;
+    }
+
+    /**
+     * Une série et ses épisodes, dans l'ordre.
+     *
+     * @param series   la série
+     * @param episodes ses vidéos, par rang
+     */
+    public record SeriesEntry(VideoSeries series, List<Video> episodes) {
+    }
+
+    /**
+     * La galerie d'un lieu.
+     *
+     * @param series     les séries, de la plus récente à la plus ancienne
+     * @param standalone les vidéos hors série
+     * @param current    la version courante de chaque vidéo, par identifiant
+     */
+    public record Gallery(List<SeriesEntry> series, List<Video> standalone,
+            java.util.Map<UUID, VideoVersion> current) {
+    }
+
     // ------------------------------------------------------------------ effacement
 
     /**
