@@ -27,9 +27,9 @@
 - **Navigation / routing** : nouvel onglet Vidéos du sujet + route de la vue poste ; vérifier les routes du terminal et des pages existantes (aucun guard modifié).
 - **Plans / limites** : stockage des vidéos compté ? → **D1** ci-dessous.
 
-## Questions à trancher par le PO
-- **D1** — Plafond de stockage par compte (proposé : 5 Go, l'ADMIN exempté comme ailleurs) ou aucun en V1 ?
-- **D2** — Partage par lien (comme `page_shares`) : hors V1 (proposé) ou dès V1 ?
+## Arbitrages PO (2026-10-24 : « prends tes propositions »)
+- **D1** — Plafond de stockage vidéo + audio : **5 Go par compte**, rôle ADMIN exempté (règle « l'admin a tout ») ; dépassement ⇒ `video_publier` refuse avec un message clair (taille utilisée / plafond).
+- **D2** — Partage par lien : **hors V1**.
 
 ## Découpage
 | SF | Objet | Risque |

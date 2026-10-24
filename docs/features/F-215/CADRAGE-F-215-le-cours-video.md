@@ -33,10 +33,10 @@ Aucun gabarit de vidéo, aucun prompt de contenu par défaut. L'agent reçoit un
 - **Contexte tenant** : `voix_off` écrit dans le dossier du sujet du poste de l'utilisateur seulement ; usage rattaché à `user_id`.
 - Aucune préoccupation auth / navigation (pas d'écran nouveau : lecteur et galerie = F-213).
 
-## Questions à trancher par le PO
-- **D1** — Charte par défaut des vidéos : celle de l'application (navy/orange/crème, comme l'essai) ou une charte par client/poste (couleurs du client) ?
-- **D2** — Voix par défaut (proposé : voix « onyx », consignes « formateur posé » de l'essai ; auditions à la première vidéo d'une série).
-- **D3** — Seuil au-delà duquel l'agent propose une série plutôt qu'une vidéo unique (proposé : > 3 min ou > 4 notions majeures).
+## Arbitrages PO (2026-10-24 : « prends tes propositions »)
+- **D1** — Charte : **celle de l'application par défaut** (navy/orange/crème, comme l'essai) ; une demande explicite (« aux couleurs du client ») la remplace pour la vidéo ou la série.
+- **D2** — Voix par défaut : **« onyx »**, consignes « formateur technique français, voix posée, claire et chaleureuse, rythme pédagogique » ; **auditions proposées à la première vidéo d'une série** (et sur demande).
+- **D3** — L'agent **propose une série** plutôt qu'une vidéo unique au-delà de **3 minutes estimées ou de 4 notions majeures** ; le PO peut toujours imposer l'un ou l'autre.
 
 ## Découpage
 | SF | Objet | Risque |
