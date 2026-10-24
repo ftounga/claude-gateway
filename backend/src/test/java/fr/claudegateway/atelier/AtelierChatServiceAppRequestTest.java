@@ -161,9 +161,9 @@ class AtelierChatServiceAppRequestTest {
     void theCardIsRelayedAndKeptInTheTranscript() {
         UUID requestId = UUID.randomUUID();
         when(appRequests.propose(eq(userId), eq(workspace), any(), eq("BUG"), eq("Le terminal se fige"),
-                eq("le terminal se fige quand je colle une image"), any(), any(), any()))
+                eq("le terminal se fige quand je colle une image"), any(), any(), any(), any()))
                 .thenReturn(new AppRequestBlock(requestId, "BUG", "Le terminal se fige",
-                        "le terminal se fige quand je colle une image", null, null, List.of()));
+                        "le terminal se fige quand je colle une image", null, null, List.of(), null));
         agentProvider.enqueueToolCall(AtelierChatService.APP_REQUEST_TOOL_NAME, "type", "BUG",
                 "titre", "Le terminal se fige", "description", "le terminal se fige quand je colle une image");
         agentProvider.enqueueFinal("Carte posée.");
@@ -183,7 +183,25 @@ class AtelierChatServiceAppRequestTest {
 
         service.chatStreaming(userId, workspaceId, "bug", listener);
 
-        verify(appRequests, never()).propose(any(), any(), any(), any(), any(), any(), any(), any(), any());
+        verify(appRequests, never()).propose(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
         assertThat(relayed).isEmpty();
+    }
+
+    @Test
+    void completePassesThroughAndTheComplementCardIsRelayed() {
+        UUID origin = UUID.randomUUID();
+        UUID complementId = UUID.randomUUID();
+        when(appRequests.propose(eq(userId), eq(workspace), any(), any(), any(), eq("et l'avancement"), any(),
+                any(), any(), eq("Panneau visuel")))
+                .thenReturn(new AppRequestBlock(complementId, "EVOLUTION", "Panneau visuel des chantiers",
+                        "et l'avancement", null, null, List.of(), origin));
+        agentProvider.enqueueToolCall(AtelierChatService.APP_REQUEST_TOOL_NAME, "description", "et l'avancement",
+                "complete", "Panneau visuel");
+        agentProvider.enqueueFinal("Carte posée.");
+
+        service.chatStreaming(userId, workspaceId, "ajoute l'avancement au panneau", listener);
+
+        assertThat(relayed).extracting(AppRequestBlock::amendsRequestId).containsExactly(origin);
+        assertThat(AtelierChatService.APP_REQUEST_DOCTRINE).contains("complete").contains("D'EMBLÉE");
     }
 }

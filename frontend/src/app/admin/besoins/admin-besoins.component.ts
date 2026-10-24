@@ -75,7 +75,7 @@ const FEATURE_REF = /^F-\d{1,4}$/i;
               <span class="besoin__kind">{{ kind(item.kind) }}</span>
               <span class="besoin__title">{{ item.title }}</span>
               <span class="besoin__meta">
-                {{ status(item.status) }}@if (item.featureRef) { · {{ item.featureRef }} } · {{ item.createdAt | date: 'short' }}
+                {{ status(item.status) }}@if (item.featureRef) { · {{ item.featureRef }} }@if (item.complements?.length) { · {{ item.complements!.length }} complément{{ item.complements!.length > 1 ? 's' : '' }} } · {{ item.createdAt | date: 'short' }}
               </span>
             </button>
 
@@ -117,6 +117,51 @@ const FEATURE_REF = /^F-\d{1,4}$/i;
                       </li>
                     }
                   </ul>
+                }
+
+                <!-- F-205 / SF-205-04 — LES COMPLÉMENTS, dans l'ordre : ce que le PO a ajouté ensuite. Les
+                     mots d'origine, plus haut, ne sont jamais réécrits. -->
+                @if (item.complements?.length) {
+                  <h3 class="besoin__subtitle">Compléments ({{ item.complements!.length }})</h3>
+                  <ol class="besoin__complements">
+                    @for (c of item.complements!; track c.id) {
+                      <li class="complement">
+                        <p class="besoins__note">{{ (c.recordedAt || c.createdAt) | date: 'short' }}</p>
+                        <blockquote class="besoin__words">{{ c.description }}</blockquote>
+                        @if (c.reformulation) {
+                          <p class="besoin__text"><strong>Reformulation à jour :</strong> {{ c.reformulation }}</p>
+                        }
+                        @if (c.observedContext) {
+                          <p class="besoin__text"><strong>Observé :</strong> {{ c.observedContext }}</p>
+                        }
+                        @if (c.attachments.length) {
+                          <ul class="besoin__pieces">
+                            @for (piece of c.attachments; track piece.position) {
+                              <li class="piece">
+                                <span class="piece__name">{{ piece.name }} <span class="besoins__note">{{ size(piece.size) }}</span></span>
+                                @switch (piece.copyStatus) {
+                                  @case ('COPIED') {
+                                    @if (previews()[key(c, piece)]; as url) {
+                                      <img class="piece__preview" [src]="url" [alt]="piece.name" />
+                                    }
+                                    <button mat-button type="button" (click)="open(c, piece)">
+                                      <mat-icon>open_in_new</mat-icon> Ouvrir
+                                    </button>
+                                  }
+                                  @case ('FAILED') {
+                                    <span class="piece__failed">Copie échouée : {{ piece.copyError || 'motif inconnu' }}</span>
+                                  }
+                                  @default {
+                                    <span class="besoins__note">En copie…</span>
+                                  }
+                                }
+                              </li>
+                            }
+                          </ul>
+                        }
+                      </li>
+                    }
+                  </ol>
                 }
 
                 <div class="besoin__edit">
@@ -212,6 +257,19 @@ const FEATURE_REF = /^F-\d{1,4}$/i;
       font-size: 13px;
       font-weight: 600;
       color: var(--cg-text-secondary);
+    }
+
+    .besoin__complements {
+      margin: 0;
+      padding-left: var(--cg-space-3);
+    }
+
+    .complement {
+      margin-bottom: var(--cg-space-2);
+    }
+
+    .complement > .besoins__note {
+      margin: 0 0 var(--cg-space-1);
     }
 
     .besoin__words {
@@ -318,13 +376,17 @@ export class AdminBesoinsComponent implements OnInit, OnDestroy {
     this.openId.set(item.id);
     this.draftStatus = item.status === 'PROPOSE' ? 'EN_ATTENTE' : item.status;
     this.draftFeature = item.featureRef ?? '';
-    for (const piece of item.attachments) {
-      if (piece.copyStatus === 'COPIED' && piece.contentType.startsWith('image/')
-          && !this.previews()[this.key(item, piece)]) {
-        this.requests.attachment(item.id, piece.position).subscribe({
-          next: (blob) => this.previews.update((all) => ({ ...all, [this.key(item, piece)]: URL.createObjectURL(blob) })),
-          error: () => undefined,
-        });
+    // Les pièces du besoin, puis celles de ses compléments (lues par l'id du complément).
+    const owners: { id: string; attachments: AppRequestAttachmentView[] }[] = [item, ...(item.complements ?? [])];
+    for (const owner of owners) {
+      for (const piece of owner.attachments) {
+        if (piece.copyStatus === 'COPIED' && piece.contentType.startsWith('image/')
+            && !this.previews()[this.key(owner, piece)]) {
+          this.requests.attachment(owner.id, piece.position).subscribe({
+            next: (blob) => this.previews.update((all) => ({ ...all, [this.key(owner, piece)]: URL.createObjectURL(blob) })),
+            error: () => undefined,
+          });
+        }
       }
     }
   }
@@ -353,7 +415,7 @@ export class AdminBesoinsComponent implements OnInit, OnDestroy {
   }
 
   /** Ouvre la pièce dans un nouvel onglet (lue avec l'authentification, puis servie en URL d'objet). */
-  open(item: AppRequestView, piece: AppRequestAttachmentView): void {
+  open(item: { id: string }, piece: AppRequestAttachmentView): void {
     this.requests.attachment(item.id, piece.position).subscribe({
       next: (blob) => {
         const url = URL.createObjectURL(blob);
@@ -370,7 +432,7 @@ export class AdminBesoinsComponent implements OnInit, OnDestroy {
     });
   }
 
-  key(item: AppRequestView, piece: AppRequestAttachmentView): string {
+  key(item: { id: string }, piece: AppRequestAttachmentView): string {
     return `${item.id}/${piece.position}`;
   }
 

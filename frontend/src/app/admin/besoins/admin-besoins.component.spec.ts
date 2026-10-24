@@ -78,6 +78,31 @@ describe('AdminBesoinsComponent (F-205 / SF-205-02)', () => {
     expect(el().querySelector('img.piece__preview')).not.toBeNull();
   });
 
+  it('montre les compléments joints sous le besoin, dans l’ordre, avec leurs pièces lues par leur id (SF-205-04)', () => {
+    service.list.and.returnValue(of([item({
+      attachments: [],
+      complements: [
+        { id: 'c-1', workspaceId: 'ws-1', description: 'et quand je glisse un pdf', reformulation: 'gel au collage et au glisser',
+          createdAt: '2026-10-17T10:00:00Z', recordedAt: '2026-10-17T10:01:00Z',
+          attachments: [{ position: 1, name: 'pdf.png', contentType: 'image/png', size: 10, copyStatus: 'COPIED' }] },
+        { id: 'c-2', workspaceId: 'ws-1', description: 'et au démarrage aussi',
+          createdAt: '2026-10-18T10:00:00Z', attachments: [] },
+      ],
+    })]));
+    component.load();
+    fixture.detectChanges();
+    expect(el().querySelector('.besoin__meta')!.textContent).toContain('2 compléments');
+
+    (el().querySelector('.besoin__head') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const complements = Array.from(el().querySelectorAll('.complement')).map((li) => li.textContent ?? '');
+    expect(complements.length).toBe(2);
+    expect(complements[0]).toContain('et quand je glisse un pdf');
+    expect(complements[0]).toContain('Reformulation à jour : gel au collage et au glisser');
+    expect(complements[1]).toContain('et au démarrage aussi');
+    expect(service.attachment).toHaveBeenCalledOnceWith('c-1', 1);
+  });
+
   it('pose le statut et la feature', () => {
     service.update.and.returnValue(of(item({ status: 'CADRE', featureRef: 'F-210' })));
     component.toggle(component.items()[0]);

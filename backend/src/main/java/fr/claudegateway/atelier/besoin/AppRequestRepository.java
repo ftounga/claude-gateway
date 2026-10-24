@@ -19,6 +19,14 @@ public interface AppRequestRepository extends JpaRepository<AppRequest, UUID> {
 
     List<AppRequest> findByUserIdAndStatusInOrderByCreatedAtDesc(UUID userId, Collection<String> statuses);
 
+    /** Les besoins d'origine (hors compléments) d'un compte, dans ces statuts (F-205 / SF-205-04). */
+    List<AppRequest> findByUserIdAndAmendsRequestIdIsNullAndStatusInOrderByCreatedAtDesc(UUID userId,
+            Collection<String> statuses);
+
+    /** Les compléments joints de ces besoins, du plus ancien au plus récent (F-205 / SF-205-04). */
+    List<AppRequest> findByUserIdAndAmendsRequestIdInAndStatusOrderByCreatedAtAsc(UUID userId,
+            Collection<UUID> amendsRequestIds, String status);
+
     /** Identifiants des besoins d'un compte : les préfixes de stockage à effacer avec lui. */
     @Query("select r.id from AppRequest r where r.userId = :userId")
     List<UUID> findIdsByUserId(@Param("userId") UUID userId);

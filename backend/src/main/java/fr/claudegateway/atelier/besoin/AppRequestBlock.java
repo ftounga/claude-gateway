@@ -17,10 +17,12 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
  * @param reformulation   la reformulation de l'agent
  * @param observedContext ce qui a été observé
  * @param attachments     les pièces jointes (métadonnées)
+ * @param amendsRequestId le besoin d'origine quand la carte propose un <b>complément</b>
+ *                        (F-205 / SF-205-04), sinon {@code null} ; {@code title} est alors le sien
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record AppRequestBlock(UUID requestId, String kind, String title, String description,
-        String reformulation, String observedContext, List<Piece> attachments) {
+        String reformulation, String observedContext, List<Piece> attachments, UUID amendsRequestId) {
 
     /**
      * Une pièce telle que la carte la montre.

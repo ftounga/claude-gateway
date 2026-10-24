@@ -121,4 +121,24 @@ describe('BesoinCardComponent (F-205 / SF-205-02)', () => {
     expect(block.tool).toBe('signaler_besoin');
     expect(block.toolUseId).toBe('t-1');
   });
+
+  it('un complément s’annonce comme tel : « Compléter le besoin », [Ajouter au besoin], puis « Ajouté » (SF-205-04)', () => {
+    service.get.and.returnValue(of(view('PROPOSE')));
+    fixture = TestBed.createComponent(BesoinCardComponent);
+    fixture.componentRef.setInput('besoin', { ...besoin, kind: 'EVOLUTION', amendsRequestId: 'r-0' });
+    fixture.componentRef.setInput('workspaceId', 'ws-1');
+    fixture.detectChanges();
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.textContent).toContain('Compléter le besoin · Le terminal se fige');
+    expect(el.querySelector('.besoin-card')!.getAttribute('aria-label')).toContain('Compléter le besoin');
+    const record = buttons(el).find((b) => b.textContent?.includes('Ajouter au besoin'))!;
+    expect(record).toBeDefined();
+
+    service.record.and.returnValue(of(view('JOINT')));
+    record.click();
+    fixture.detectChanges();
+    expect(service.record).toHaveBeenCalledWith('ws-1', 'r-1');
+    expect(el.textContent).toContain('Ajouté au besoin d’origine.');
+  });
 });

@@ -70,6 +70,7 @@ export function appRequestStatusLabel(status: string): string {
     case 'CADRE': return 'Cadré';
     case 'REJETE': return 'Rejeté';
     case 'LIVRE': return 'Livré';
+    case 'JOINT': return 'Ajouté au besoin';
     default: return status;
   }
 }

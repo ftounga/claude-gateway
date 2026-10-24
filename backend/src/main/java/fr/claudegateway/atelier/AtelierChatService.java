@@ -1031,7 +1031,12 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "- description = ses mots, tels quels ; reformulation = ta compréhension ; contexte = "
                     + "ce qui a été observé (écran, étapes, message) ; pieces = les fichiers qu'il a déposés "
                     + "dans le terminal (captures, photos, vidéos).\n"
-                    + "- L'outil N'ENREGISTRE RIEN : il pose une carte [Enregistrer] [Non]. Ensuite, termine "
+                    + "- Pour COMPLÉTER ou CORRIGER un besoin déjà signalé (il ajoute, précise, change d'avis), "
+                    + "rappelle signaler_besoin avec complete = son identifiant ou son titre : description = "
+                    + "ses nouveaux mots, tels quels ; reformulation = ta compréhension À JOUR de l'ensemble. "
+                    + "Un sujet vraiment distinct = un nouveau besoin.\n"
+                    + "- Pose la carte D'EMBLÉE, sans demander la permission : la carte EST la question. "
+                    + "L'outil N'ENREGISTRE RIEN : il pose une carte [Enregistrer] [Non]. Ensuite, termine "
                     + "en une ligne. Un bug du projet de l'utilisateur ne passe jamais par cet outil.\n\n";
     /**
      * Phrase FIXE ajoutée aux descriptions d'{@code explore} et de {@code task} (F-182 / SF-182-02, D2) :
@@ -5054,12 +5059,20 @@ public class AtelierChatService implements RelayInterruptTarget {
             fr.claudegateway.atelier.besoin.AppRequestBlock block = appRequests.propose(userId, workspace,
                     messageId, arg(call.input(), "type"), arg(call.input(), "titre"),
                     arg(call.input(), "description"), arg(call.input(), "reformulation"),
-                    arg(call.input(), "contexte"), stringList(call.input(), "pieces"));
+                    arg(call.input(), "contexte"), stringList(call.input(), "pieces"),
+                    arg(call.input(), "complete"));
             appRequestsOfTurn.put(callId, block);
             listener.onAppRequest(callId, block);
+            if (block.amendsRequestId() != null) {
+                return ToolOutcome.info("Carte posée : complément du besoin « " + block.title() + " » ("
+                        + block.amendsRequestId() + "), " + block.attachments().size() + " pièce(s). Rien "
+                        + "n'est ajouté tant que l'utilisateur n'a pas cliqué [Ajouter au besoin]. Termine ton "
+                        + "tour en une ligne.");
+            }
             return ToolOutcome.info("Carte posée (" + block.kind() + ", « " + block.title() + " », "
-                    + block.attachments().size() + " pièce(s)) : rien n'est enregistré tant que l'utilisateur "
-                    + "n'a pas cliqué [Enregistrer]. Termine ton tour en une ligne.");
+                    + block.attachments().size() + " pièce(s), id " + block.requestId() + ") : rien n'est "
+                    + "enregistré tant que l'utilisateur n'a pas cliqué [Enregistrer]. Termine ton tour en une "
+                    + "ligne.");
         } catch (fr.claudegateway.atelier.besoin.AppRequestInvalidException ex) {
             return ToolOutcome.error(ex.getMessage());
         }
@@ -8939,9 +8952,10 @@ public class AtelierChatService implements RelayInterruptTarget {
         if (appRequestsOffered(userId, workspace)) {
             tools.add(new AgentTool(APP_REQUEST_TOOL_NAME,
                     "Propose d'enregistrer un bug ou une évolution DE L'APPLICATION elle-même (pas du projet "
-                            + "de l'utilisateur) au registre des besoins. N'ENREGISTRE RIEN : pose une carte "
-                            + "[Enregistrer] [Non] ; au clic, le besoin et ses pièces sont rangés pour être "
-                            + "cadrés plus tard.",
+                            + "de l'utilisateur) au registre des besoins — ou, avec complete, de COMPLÉTER un "
+                            + "besoin déjà enregistré. N'ENREGISTRE RIEN : pose une carte [Enregistrer] [Non] ; "
+                            + "au clic, le besoin (ou le complément) et ses pièces sont rangés pour être cadrés "
+                            + "plus tard.",
                     Map.of("type", "object",
                             "properties", Map.of(
                                     "type", Map.of("type", "string", "enum", List.of("BUG", "EVOLUTION")),
@@ -8956,8 +8970,12 @@ public class AtelierChatService implements RelayInterruptTarget {
                                                     + "d'erreur, poste."),
                                     "pieces", Map.of("type", "array", "items", Map.of("type", "string"),
                                             "description", "Chemins des fichiers déposés dans ce terminal "
-                                                    + "(captures, photos, vidéos), 10 au plus.")),
-                            "required", List.of("type", "titre", "description"))));
+                                                    + "(captures, photos, vidéos), 10 au plus."),
+                                    "complete", Map.of("type", "string",
+                                            "description", "Pour compléter un besoin déjà enregistré : son "
+                                                    + "identifiant, ou son titre. type et titre sont alors "
+                                                    + "hérités (facultatifs).")),
+                            "required", List.of("description"))));
         }
         // Ouvrir le sujet d'un « go » (F-179 / SF-179-01) : UNIQUEMENT au terminal du poste, là où l'on
         // aiguille. Pose le bloc de passation ; l'écran ouvre le sujet avec la phrase déposée, non envoyée.
