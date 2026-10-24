@@ -251,6 +251,17 @@ public interface AtelierProgressListener {
     }
 
     /**
+     * <b>Des captures de preuve viennent d'être rangées</b> (F-212 / SF-212-03) : le bloc « Captures de
+     * preuve » (vignettes), admis dans tout terminal de poste.
+     *
+     * @param toolUseId identifiant de l'appel {@code capturer_preuves}
+     * @param proof     les captures et les relevés de la session — jamais les octets des images
+     */
+    default void onProof(String toolUseId, fr.claudegateway.atelier.proof.ProofBlock proof) {
+        // Aucun relais : le bloc reste dans la transcription du tour.
+    }
+
+    /**
      * <b>Une carte d'attente</b> (F-175 / SF-175-05) : inscrite, déjà là, passée à « Demandé », ou fermeture
      * proposée — admise dans tout terminal, comme la page : ce n'est pas une sortie de commande.
      *

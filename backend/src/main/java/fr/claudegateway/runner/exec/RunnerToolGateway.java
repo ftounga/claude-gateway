@@ -468,6 +468,36 @@ public class RunnerToolGateway {
     }
 
     /**
+     * <b>Session de preuve</b> (F-212 / SF-212-03) : relaie {@code proof_run} — 1 à 8 commandes exécutées à
+     * la suite dans un même shell du poste. La porte et l'invite ont tranché AVANT, commande par commande
+     * (comme {@code bash}) ; ici on borne et on émet. Le relevé revient en {@code content} (JSON).
+     *
+     * @param timeoutMs délai de toute la session, clampé dans {@code [1 000 ; 600 000]} ms
+     */
+    public RunnerCallResult proof(RunnerTarget target, String callId, java.util.List<String> commands,
+            long timeoutMs) {
+        if (commands == null || commands.isEmpty()
+                || commands.size() > fr.claudegateway.atelier.proof.ProofToolCatalog.MAX_COMMANDS) {
+            return invalid("Il faut 1 à " + fr.claudegateway.atelier.proof.ProofToolCatalog.MAX_COMMANDS
+                    + " commandes.");
+        }
+        ObjectNode input = objectMapper.createObjectNode();
+        com.fasterxml.jackson.databind.node.ArrayNode list = input.putArray("commands");
+        for (String command : commands) {
+            if (command == null || command.isBlank() || command.indexOf('\0') >= 0) {
+                return invalid("Chaque commande doit être un texte non vide.");
+            }
+            if (command.length() > MAX_COMMAND_CHARS) {
+                return invalid("Commande trop longue (" + MAX_COMMAND_CHARS + " caractères au plus).");
+            }
+            list.add(command);
+        }
+        long effective = Math.max(MIN_BASH_TIMEOUT_MS, Math.min(MAX_BASH_TIMEOUT_MS, timeoutMs));
+        return router.call(target, callId, fr.claudegateway.atelier.proof.ProofToolCatalog.RUNNER_TOOL, input,
+                effective);
+    }
+
+    /**
      * Lance une commande <b>en arrière-plan</b> (F-121 / SF-121-07) : la machine la détache et rend la
      * main tout de suite, avec un identifiant à relire par {@link #bashOutput} et arrêter par
      * {@link #killShell}. Le délai est court par construction — le runner ne fait qu'enregistrer le

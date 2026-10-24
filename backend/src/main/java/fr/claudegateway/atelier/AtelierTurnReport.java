@@ -70,7 +70,25 @@ public record AtelierTurnReport(List<Object> blocks, int omittedBlocks, long inp
             fr.claudegateway.atelier.actions.AttenteBlock attente,
             SubjectHandoff handoff,
             fr.claudegateway.atelier.proposal.GovernanceProposalBlock proposal,
-            fr.claudegateway.atelier.besoin.AppRequestBlock besoin) {
+            fr.claudegateway.atelier.besoin.AppRequestBlock besoin,
+            fr.claudegateway.atelier.proof.ProofBlock proof) {
+
+        /**
+         * Forme d'avant F-212 : aucune capture de preuve. Le bloc (F-212 / SF-212-03) n'est porté que par
+         * l'appel {@code capturer_preuves} ; un relevé ancien (sans le champ) se relit tel quel.
+         */
+        public Block(String tool, String command, String toolUseId, String threadId, String output,
+                boolean hasOutput, boolean error, boolean expanded,
+                fr.claudegateway.teams.block.TeamsBlockCard card,
+                fr.claudegateway.mail.ClientMailReceipt email,
+                fr.claudegateway.pages.PageBlock page,
+                fr.claudegateway.atelier.actions.AttenteBlock attente,
+                SubjectHandoff handoff,
+                fr.claudegateway.atelier.proposal.GovernanceProposalBlock proposal,
+                fr.claudegateway.atelier.besoin.AppRequestBlock besoin) {
+            this(tool, command, toolUseId, threadId, output, hasOutput, error, expanded, card, email, page,
+                    attente, handoff, proposal, besoin, null);
+        }
 
         /**
          * Forme d'avant F-205 : aucune carte « Enregistrer ce besoin ? ». La carte (F-205 / SF-205-01)
@@ -255,7 +273,9 @@ public record AtelierTurnReport(List<Object> blocks, int omittedBlocks, long inp
                 // La carte de proposition (F-177 / SF-177-02) aussi : [Appliquer] en dépend.
                 block.proposal(),
                 // La carte « Enregistrer ce besoin ? » (F-205 / SF-205-01) aussi.
-                block.besoin());
+                block.besoin(),
+                // Les captures de preuve (F-212 / SF-212-03) aussi : ce ne sont pas du texte.
+                block.proof());
     }
 
     /**

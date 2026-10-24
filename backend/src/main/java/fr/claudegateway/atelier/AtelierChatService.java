@@ -793,7 +793,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "d'elle-même.\n"
                     + "- Les messages marqués envoyés te sont signalés au tour suivant : ne redemande pas à "
                     + "l'utilisateur s'il les a envoyés, et ne repasse pas toi-même leur attente à "
-                    + "« demandé ».\n\n";
+                    + "« demandé ».\n"
+                    // F-212 / SF-212-03 : les captures de preuve jointes à l'encart qu'elles prouvent.
+                    + "- Si des captures de preuve (capturer_preuves) prouvent ce message, ajoute leurs "
+                    + "identifiants à la balise : ```message preuves=<id1>,<id2> (avec attente= au besoin).\n\n";
     /**
      * Annonce de destination + demande si ambigu (F-141 / SF-141-01, cadrage §4.3 et §2). Ajouté au
      * rôle sur les <b>deux</b> cibles, à la suite des doctrines de carte. La nuance clé du cadrage :
@@ -2227,6 +2230,17 @@ public class AtelierChatService implements RelayInterruptTarget {
         return outcome.error() ? ToolOutcome.error(outcome.content()) : ToolOutcome.info(outcome.content());
     }
 
+    /**
+     * Les captures de preuve (F-212 / SF-212-03) — par mutateur, comme les autres outils de la gateway :
+     * absent (formes historiques / tests), l'outil n'est jamais donné.
+     */
+    private fr.claudegateway.atelier.proof.ProofCaptureService proofCaptureService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setProofCaptureService(fr.claudegateway.atelier.proof.ProofCaptureService service) {
+        this.proofCaptureService = service;
+    }
+
     /** Les outils du parcours et leur garde (F-176) ; {@code none()} = jamais donnés. */
     private fr.claudegateway.atelier.journey.JourneyToolCatalog journeyToolCatalog =
             fr.claudegateway.atelier.journey.JourneyToolCatalog.none();
@@ -3000,6 +3014,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         java.util.Map<String, fr.claudegateway.mail.ClientMailReceipt> emailsOfTurn = new java.util.HashMap<>();
         /** Pages publiées pendant ce tour (F-109 / SF-109-03), par appel, local au tour. */
         java.util.Map<String, fr.claudegateway.pages.PageBlock> pagesOfTurn = new java.util.HashMap<>();
+        // F-212 / SF-212-03 : les captures de preuve du tour, par appel — elles survivent au rechargement.
+        java.util.Map<String, fr.claudegateway.atelier.proof.ProofBlock> proofsOfTurn = new java.util.HashMap<>();
         // F-175 / SF-175-05 : les cartes d'attente du tour, par appel.
         java.util.Map<String, fr.claudegateway.atelier.actions.AttenteBlock> attentesOfTurn = new java.util.HashMap<>();
         // F-179 / SF-179-01 : le bloc de passation vers un sujet, par appel ouvrir_sujet.
@@ -3702,6 +3718,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                             listener.onOutput(taskSynthesis);
                         }
                     }
+                } else if (fr.claudegateway.atelier.proof.ProofToolCatalog.isProofTool(call.name())) {
+                    // F-212 / SF-212-03 : les captures de preuve — chaque commande passe la porte et
+                    // l'invite comme un bash, puis une seule session sur le poste, rendue en images.
+                    outcome = applyProofCapture(userId, workspace, callId, call, listener, deadline, proofsOfTurn);
                 } else if ("recall".equals(call.name())) {
                     // F-162 / SF-162-01 : rappel à la demande. Recherche dans NOTRE historique de
                     // conversation (atelier_messages), côté gateway, indépendamment de la cible
@@ -3884,7 +3904,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                             // La carte de proposition (F-177 / SF-177-02) : [Appliquer] y survit.
                             proposalsOfTurn.get(callId),
                             // La carte « Enregistrer ce besoin ? » (F-205 / SF-205-01) : [Enregistrer] y survit.
-                            appRequestsOfTurn.get(callId)));
+                            appRequestsOfTurn.get(callId),
+                            // Les captures de preuve (F-212 / SF-212-03) : vignettes et relevés y survivent.
+                            proofsOfTurn.get(callId)));
                 }
                 // F-121 / SF-121-11 — LA FILE EST CONSULTÉE ENTRE LES APPELS D'OUTILS, et plus
                 // seulement à la frontière d'itération. Une précision déposée pendant un `bash` de
@@ -5042,6 +5064,125 @@ public class AtelierChatService implements RelayInterruptTarget {
         pagesOfTurn.put(callId, outcome.block());
         listener.onPage(callId, outcome.block());
         return ToolOutcome.info(outcome.content());
+    }
+
+    /**
+     * <b>Les captures de preuve</b> (F-212 / SF-212-03) : rejoue 1 à 8 commandes à la suite dans un même
+     * shell du poste ({@code proof_run}) et range leur rendu en images.
+     *
+     * <p><b>Aucune commande ne contourne la porte</b> : la porte du parcours a classé l'appel par sa
+     * commande la plus risquée (avant cette méthode) ; ici, CHAQUE commande passe, comme un {@code bash},
+     * par le point d'accroche de gouvernance, la politique allow/ask/deny et l'invite d'autorisation
+     * (sauf « tout autoriser pour ce message »). Une seule refusée, et rien n'est exécuté. Chaque
+     * commande est tracée au journal du poste comme un {@code bash}.</p>
+     */
+    private ToolOutcome applyProofCapture(UUID userId, Workspace workspace, String callId, AgentToolCall call,
+            AtelierProgressListener listener, long deadline,
+            java.util.Map<String, fr.claudegateway.atelier.proof.ProofBlock> proofsOfTurn) {
+        if (!workspace.isRunnerTarget() || workspace.getHostId() == null || workspace.isTeamsTerminal()) {
+            return ToolOutcome.error(fr.claudegateway.atelier.proof.ProofToolCatalog.HOSTED_MESSAGE);
+        }
+        if (proofCaptureService == null) {
+            return ToolOutcome.error("Les captures de preuve ne sont pas disponibles ici. Prouve par bash.");
+        }
+        java.util.Set<String> caps = runnerHostService.declaredCapabilities(workspace.getHostId());
+        if (caps == null || !caps.contains(fr.claudegateway.atelier.proof.ProofToolCatalog.CAPABILITY)) {
+            return ToolOutcome.error(fr.claudegateway.atelier.proof.ProofToolCatalog.UPDATE_RUNNER_MESSAGE);
+        }
+        JsonNode input = call.input();
+        JsonNode list = input == null ? null : input.get("commandes");
+        List<String> commands = new ArrayList<>();
+        if (list != null && list.isArray()) {
+            for (JsonNode item : list) {
+                if (item != null && item.isTextual() && !item.asText().isBlank()) {
+                    commands.add(item.asText().strip());
+                }
+            }
+        }
+        if (commands.isEmpty() || commands.size() > fr.claudegateway.atelier.proof.ProofToolCatalog.MAX_COMMANDS) {
+            return ToolOutcome.error("Donne 1 à " + fr.claudegateway.atelier.proof.ProofToolCatalog.MAX_COMMANDS
+                    + " commandes non vides dans « commandes ».");
+        }
+        UUID workspaceId = workspace.getId();
+        RunnerTarget runnerTarget = RunnerTargets.of(workspace);
+        boolean blanket = blanketAllowedTurns.contains(turnKey(userId, workspaceId));
+        for (int i = 0; i < commands.size(); i++) {
+            String subId = callId + "-" + (i + 1);
+            AgentToolCall bashCall = new AgentToolCall(subId, "bash",
+                    TASK_MAPPER.createObjectNode().put("command", commands.get(i)));
+            String target = auditTarget(bashCall);
+            ToolOutcome refused = applyCommandCheckpoint(userId, workspaceId, runnerTarget, subId, bashCall, target);
+            if (refused != null) {
+                return ToolOutcome.error("Commande " + (i + 1) + " refusée, aucune n'a été exécutée : "
+                        + refused.content());
+            }
+            PermissionEffect effect = resolveEffect(userId, workspace, "bash", bashCall);
+            if (effect == PermissionEffect.DENY) {
+                runnerAuditService.recordDenied(userId, runnerTarget, subId, "bash", target, RunnerAuditOutcome.DENIED);
+                return ToolOutcome.error("Commande " + (i + 1) + " : " + denyRuleMessage("bash")
+                        + " Aucune commande n'a été exécutée.");
+            }
+            if (effect == PermissionEffect.ASK && !blanket) {
+                RunnerConfirmationGate.Outcome decision =
+                        askPermission(userId, workspaceId, subId, "bash", target, listener);
+                if (!decision.decision().allows()) {
+                    runnerAuditService.recordDenied(userId, runnerTarget, subId, "bash", target,
+                            decision.decision() == RunnerConfirmationGate.Decision.TIMEOUT
+                                    ? RunnerAuditOutcome.TIMEOUT
+                                    : RunnerAuditOutcome.DENIED);
+                    return ToolOutcome.error("Commande " + (i + 1) + " : " + deniedMessage(decision)
+                            + " Aucune commande n'a été exécutée.");
+                }
+                // « Tout autoriser pour ce message » a pu être choisi pendant cette invite.
+                blanket = blanketAllowedTurns.contains(turnKey(userId, workspaceId));
+            }
+        }
+        long remaining = Math.max(RunnerToolGateway.MIN_BASH_TIMEOUT_MS, deadline - System.currentTimeMillis());
+        RunnerCallResult result = runnerToolGateway.proof(runnerTarget, callId, commands,
+                Math.min(RunnerToolGateway.MAX_BASH_TIMEOUT_MS, remaining));
+        markTurnMutation(userId, workspaceId, "bash", result);
+        noteMachine(userId, workspaceId, result);
+        if (!result.ok()) {
+            runnerAuditService.recordCall(userId, runnerTarget, callId, "bash",
+                    shorten(String.join(" ; ", commands), AUDIT_TARGET_CHARS), result);
+            if (RunnerErrorCodes.RUNNER_UNAVAILABLE.equals(result.errorCode())) {
+                listener.onRunnerOffline(runnerTarget.hostId());
+            }
+            if (RunnerErrorCodes.UNSUPPORTED_TOOL.equals(result.errorCode())) {
+                return ToolOutcome.error(fr.claudegateway.atelier.proof.ProofToolCatalog.UPDATE_RUNNER_MESSAGE);
+            }
+            return ToolOutcome.error(inconclusiveNote(result));
+        }
+        auditProofCommands(userId, runnerTarget, callId, commands, result.content());
+        fr.claudegateway.atelier.proof.ProofCaptureService.Result captured = proofCaptureService.capture(
+                userId, workspaceId, callId, arg(input, "titre"), arg(input, "etape"), result.content());
+        if (captured.block() != null) {
+            proofsOfTurn.put(callId, captured.block());
+            listener.onProof(callId, captured.block());
+        }
+        return ToolOutcome.info(captured.modelText());
+    }
+
+    /** Une ligne de journal par commande de la session, comme un {@code bash} (code et durée relevés). */
+    private void auditProofCommands(UUID userId, RunnerTarget runnerTarget, String callId, List<String> commands,
+            String report) {
+        JsonNode parsed;
+        try {
+            parsed = TASK_MAPPER.readTree(report == null ? "" : report).path("commands");
+        } catch (java.io.IOException | RuntimeException e) {
+            parsed = TASK_MAPPER.createArrayNode();
+        }
+        for (int i = 0; i < commands.size(); i++) {
+            JsonNode entry = parsed.path(i);
+            if ("not_run".equals(entry.path("status").asText(""))) {
+                continue;
+            }
+            Integer exit = entry.hasNonNull("exitCode") ? entry.path("exitCode").asInt() : null;
+            runnerAuditService.recordCall(userId, runnerTarget, callId + "-" + (i + 1), "bash",
+                    shorten(commands.get(i), AUDIT_TARGET_CHARS),
+                    new RunnerCallResult(true, "", false, exit, entry.path("durationMs").asLong(0L), null,
+                            null, null, "", false));
+        }
     }
 
     /**
@@ -6626,6 +6767,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                     new AtelierProgressListener.AtelierStepEvent("video", videoStep(input));
             case fr.claudegateway.atelier.video.VideoToolCatalog.STATUS ->
                     new AtelierProgressListener.AtelierStepEvent("video", "suivi de l'extraction");
+            // F-212 / SF-212-03 : la session de preuve se montre comme une commande, avec son titre.
+            case fr.claudegateway.atelier.proof.ProofToolCatalog.TOOL ->
+                    new AtelierProgressListener.AtelierStepEvent("bash",
+                            shorten("captures de preuve : " + arg(input, "titre"), STEP_COMMAND_CHARS));
             // Le plan a son propre affichage (SF-39-13) : une étape de plus le dirait deux fois.
             case "set_plan" -> null;
             // Le plan soumis a son propre affichage (SF-121-10, comme set_plan) : pas d'étape en double.
@@ -8873,6 +9018,12 @@ public class AtelierChatService implements RelayInterruptTarget {
             // capacité `video` (un runner ancien ne l'annonce pas). Propriété STABLE du poste.
             if (supportsVideo(workspace)) {
                 tools.addAll(fr.claudegateway.atelier.video.VideoToolCatalog.tools());
+            }
+            // F-212 / SF-212-03 : les captures de preuve, sur tout poste hors terminal Teams. Déclaré
+            // même pour un runner ancien (propriété stable : préfixe caché intact) — l'appel dit alors
+            // « mettez à jour le poste ».
+            if (proofCaptureService != null && !workspace.isTeamsTerminal()) {
+                tools.add(fr.claudegateway.atelier.proof.ProofToolCatalog.tool());
             }
             tools.add(new AgentTool("bash", bashDesc.toString(),
                     Map.of("type", "object", "properties", bashProps, "required", List.of("command"))));

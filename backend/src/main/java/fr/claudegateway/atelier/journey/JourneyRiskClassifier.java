@@ -86,6 +86,11 @@ public final class JourneyRiskClassifier {
         if ("bash".equals(tool)) {
             return classifyCommand(text(input, "command"));
         }
+        // F-212 / SF-212-03 : une session de preuve vaut sa commande la plus risquée — la même porte que
+        // si chacune passait en bash (une liste vide ou illisible est traitée en modification, prudence).
+        if (fr.claudegateway.atelier.proof.ProofToolCatalog.isProofTool(tool)) {
+            return classifyCommands(input == null ? null : input.get("commandes"));
+        }
         if ("task".equals(tool)) {
             // Une sous-tâche en lecture seule est une lecture ; une sous-tâche écrivaine édite (en branche).
             boolean readOnly = input != null && input.path("read_only").asBoolean(false);
@@ -102,6 +107,22 @@ public final class JourneyRiskClassifier {
             return JourneyPlan.Risk.REVERSIBLE;
         }
         return null;
+    }
+
+    /** La classe la plus risquée d'une liste de commandes ; vide ou illisible ⇒ modification réversible. */
+    static JourneyPlan.Risk classifyCommands(JsonNode commands) {
+        if (commands == null || !commands.isArray() || commands.isEmpty()) {
+            return JourneyPlan.Risk.REVERSIBLE;
+        }
+        JourneyPlan.Risk worst = JourneyPlan.Risk.LECTURE;
+        for (JsonNode command : commands) {
+            JourneyPlan.Risk risk = command != null && command.isTextual()
+                    ? classifyCommand(command.asText()) : JourneyPlan.Risk.REVERSIBLE;
+            if (risk != null && risk.ordinal() > worst.ordinal()) {
+                worst = risk;
+            }
+        }
+        return worst;
     }
 
     /** Vrai si le chemin désigne une note du sujet (STATE.md, PLAN-ACTION.md, notes/, carte/…). */

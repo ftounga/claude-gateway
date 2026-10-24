@@ -650,6 +650,9 @@ public class WorkspaceService {
         // sur un projet ordinaire, qui n'en a aucune.
         storage.deletePrefix(
                 fr.claudegateway.teams.block.TeamsMomentImageService.prefixOf(userId, id));
+        // Les CAPTURES DE PREUVE (F-212 / SF-212-03) : elles s'en vont avec le terminal, hors du
+        // préfixe des fichiers de projet ; leurs lignes suivent par cascade sur workspace_id.
+        storage.deletePrefix(fr.claudegateway.atelier.proof.ProofCaptureService.prefixOf(userId, id));
         atelierMessageRepository.deleteByWorkspaceId(id);
         // Plus aucune activation de gouvernance à purger ici : depuis F-75, elles vivent sur le
         // POSTE, et supprimer un dossier ne doit surtout pas éteindre la gouvernance de la machine.
