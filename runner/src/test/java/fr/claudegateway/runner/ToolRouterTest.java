@@ -25,7 +25,7 @@ class ToolRouterTest {
     @Test
     void annonceBashUniquementQuandLaMachineLaAutorise() {
         assertEquals(List.of("files"), router(false).capabilities());
-        assertEquals(List.of("files", "bash", "bash_parallel_4"), router(true).capabilities());
+        assertEquals(List.of("files", "bash", "bash_parallel_4", "proof"), router(true).capabilities());
     }
 
     @Test
@@ -34,9 +34,9 @@ class ToolRouterTest {
         PathResolver guard = new PathResolver(root);
         ToolRouter withBackground = new ToolRouter(new FileTools(guard),
                 new BashTool(guard, true, ShellElection.elect(), new BackgroundShells()));
-        assertEquals(List.of("files", "bash", "bash_parallel_4", "bash_background"), withBackground.capabilities());
+        assertEquals(List.of("files", "bash", "bash_parallel_4", "proof", "bash_background"), withBackground.capabilities());
         // Sans registre : pas d'arrière-plan annoncé (retro-compat).
-        assertEquals(List.of("files", "bash", "bash_parallel_4"), router(true).capabilities());
+        assertEquals(List.of("files", "bash", "bash_parallel_4", "proof"), router(true).capabilities());
     }
 
     @Test

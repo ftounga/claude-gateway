@@ -32,9 +32,9 @@ class TeamsRoutingTest {
     @Test
     @DisplayName("La capacité « teams » n'est annoncée que si la machine l'autorise")
     void the_teams_capability_is_declared_only_when_allowed() {
-        assertEquals(List.of("files", "bash", "bash_parallel_4"), router(null).capabilities());
-        assertEquals(List.of("files", "bash", "bash_parallel_4", "teams"), router(activeTools()).capabilities());
-        assertEquals(List.of("files", "bash", "bash_parallel_4"),
+        assertEquals(List.of("files", "bash", "bash_parallel_4", "proof"), router(null).capabilities());
+        assertEquals(List.of("files", "bash", "bash_parallel_4", "proof", "teams"), router(activeTools()).capabilities());
+        assertEquals(List.of("files", "bash", "bash_parallel_4", "proof"),
                 router(TeamsTools.disabled("--no-teams")).capabilities());
     }
 

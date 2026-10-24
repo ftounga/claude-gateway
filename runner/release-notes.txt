@@ -1,6 +1,7 @@
 # F-111 / SF-111-03 — Ce qu'apporte la version construite, en quelques lignes (10 au plus, 200 caractères).
 # Lu par runner/build-tools/SignRunnerUpdate.java, écrit dans le manifeste, affiché par la Forge à côté
 # de « Mise à jour disponible ». À réécrire à chaque version qui change quelque chose de visible.
+Captures de preuve : l'agent peut rejouer des commandes de vérification à la suite, dans un même shell, pour en tirer des captures du terminal.
 Téléchargements (ffmpeg, whisper) et remontées derrière un proxy d'entreprise / Zscaler : même confiance que la connexion à la gateway.
 Regarder une vidéo : l'agent extrait sur ce poste les images d'une vidéo pour les voir (ffmpeg rapatrié au premier usage).
 La vidéo ne quitte jamais le poste ; seules les images que l'agent ouvre partent chez le fournisseur.
