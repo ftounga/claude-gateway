@@ -17,6 +17,7 @@ import { GitTokenStatus } from '../core/models/git-token.models';
 import { UserProfile } from '../core/models/auth.models';
 import { NotificationPreferencesService } from '../core/services/notification-preferences.service';
 import { PushActivationService } from '../core/services/push-activation.service';
+import { SpeechService } from '../core/services/speech.service';
 import { signal } from '@angular/core';
 
 describe('SettingsComponent', () => {
@@ -123,6 +124,8 @@ describe('SettingsComponent', () => {
         // service de push (non supporté ici) pour ne dépendre ni du service worker ni de HttpClient.
         // F-185 / SF-185-06 : les préférences ne sont pas l'objet de ces tests.
         { provide: NotificationPreferencesService, useValue: { get: () => NEVER, save: () => NEVER } },
+        // F-215 / SF-215-01 : la carte Vidéos (voix off) n'est pas l'objet de ces tests.
+        { provide: SpeechService, useValue: { voices: () => NEVER } },
         {
           provide: PushActivationService,
           useValue: {
