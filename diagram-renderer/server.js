@@ -15,6 +15,7 @@ const { tmpdir } = require("node:os");
 const path = require("node:path");
 const drawio = require("./drawio.js");
 const pdf = require("./pdf.js");
+const terminal = require("./terminal.js");
 
 /** Bornes — les mêmes que celles annoncées côté gateway, pour que le refus soit cohérent des deux côtés. */
 const MAX_CODE_CHARS = 20000;
@@ -595,6 +596,86 @@ async function printPdf(req, res) {
   }
 }
 
+// ------------------------------------------------------------------ captures de preuve (F-212)
+
+const SHOT_TIMEOUT_MS = 30000;
+/** Échelle 2 : nette une fois collée dans Teams ou un mail, sur un écran haute densité. */
+const SHOT_SCALE = 2;
+/** Marge gardée autour de la fenêtre : l'ombre, comme une capture de fenêtre réelle. */
+const SHOT_MARGIN = 24;
+
+/**
+ * Photographie chaque fenêtre de la page (F-212 / SF-212-02). Hors ligne : toute requête est refusée,
+ * les polices sont celles du conteneur. Le chromium est TOUJOURS fermé.
+ */
+async function shootTerminal(html) {
+  const puppeteer = require("puppeteer-core");
+  const dir = await mkdtemp(path.join(tmpdir(), "cg-shot-"));
+  const browser = await puppeteer.launch({
+    executablePath: CHROME,
+    headless: true,
+    userDataDir: path.join(dir, "profil"),
+    args: ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage", "--font-render-hinting=none"],
+  });
+  let timer;
+  try {
+    const work = (async () => {
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1800, height: 1200, deviceScaleFactor: SHOT_SCALE });
+      await page.setRequestInterception(true);
+      page.on("request", (request) => (request.url().startsWith("data:")
+        ? request.continue() : request.abort("blockedbyclient")));
+      await page.setContent(html, { waitUntil: "load", timeout: SHOT_TIMEOUT_MS });
+      await page.evaluate(() => document.fonts.ready.then(() => true));
+      const shots = [];
+      for (const element of await page.$$("[data-shot]")) {
+        const box = await element.boundingBox();
+        const clip = {
+          x: Math.max(0, box.x - SHOT_MARGIN), y: Math.max(0, box.y - SHOT_MARGIN),
+          width: box.width + 2 * SHOT_MARGIN, height: box.height + 2 * SHOT_MARGIN,
+        };
+        const png = await page.screenshot({ type: "png", clip, omitBackground: true, captureBeyondViewport: true });
+        shots.push({ png: Buffer.from(png).toString("base64"),
+          width: Math.round(clip.width * SHOT_SCALE), height: Math.round(clip.height * SHOT_SCALE) });
+      }
+      return shots;
+    })();
+    const deadline = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new terminal.ShotError(504, "Capture trop longue (30 s).")), SHOT_TIMEOUT_MS);
+    });
+    return await Promise.race([work, deadline]);
+  } finally {
+    clearTimeout(timer);
+    await browser.close().catch(() => undefined);
+    await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+async function terminalShot(req, res) {
+  let payload;
+  try {
+    payload = JSON.parse(await readBody(req, terminal.MAX_BODY_BYTES));
+  } catch (e) {
+    return e.message === "corps trop volumineux"
+      ? fail(res, 413, "Relevé trop volumineux (2 Mo au plus).")
+      : fail(res, 400, "Corps JSON invalide.");
+  }
+  let page;
+  try {
+    page = terminal.renderHtml(terminal.parseSession(payload));
+  } catch (e) {
+    return fail(res, e.status || 400, e.message);
+  }
+  try {
+    const images = await withPdfSlot(() => shootTerminal(page.html));
+    return send(res, 200, JSON.stringify({ kind: page.kind, cols: page.cols, images }),
+      "application/json; charset=utf-8");
+  } catch (e) {
+    const status = e.status || (e.name === "TimeoutError" ? 504 : 422);
+    return fail(res, status, (e.message || "La capture n'a pas pu être produite.").slice(0, 500));
+  }
+}
+
 const server = http.createServer((req, res) => {
   if (req.method === "GET" && req.url === "/health") {
     return send(res, 200, JSON.stringify({ status: "UP" }), "application/json; charset=utf-8");
@@ -607,6 +688,9 @@ const server = http.createServer((req, res) => {
   }
   if (req.method === "POST" && req.url === "/pdf") {
     return printPdf(req, res).catch((e) => fail(res, 500, "Erreur interne : " + e.message));
+  }
+  if (req.method === "POST" && req.url === "/terminal-shot") {
+    return terminalShot(req, res).catch((e) => fail(res, 500, "Erreur interne : " + e.message));
   }
   if (req.method === "POST" && req.url === "/render") {
     return render(req, res).catch((e) => fail(res, 500, "Erreur interne : " + e.message));
