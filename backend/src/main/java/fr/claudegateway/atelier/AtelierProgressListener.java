@@ -262,6 +262,26 @@ public interface AtelierProgressListener {
     }
 
     /**
+     * <b>Une vidéo vient d'être publiée</b> (F-213 / SF-213-01) : le bloc « vidéo », admis dans tout terminal.
+     *
+     * @param toolUseId identifiant de l'appel {@code video_publier}
+     * @param video     la vidéo rangée — jamais les octets
+     */
+    default void onVideo(String toolUseId, fr.claudegateway.videos.VideoBlock video) {
+        // Aucun relais : le bloc reste dans la transcription du tour.
+    }
+
+    /**
+     * <b>Des sons viennent d'être publiés</b> (F-213 / SF-213-01) : le bloc « audio » (lecteurs empilés).
+     *
+     * @param toolUseId identifiant de l'appel {@code audio_publier}
+     * @param audio     les pistes rangées — jamais les octets
+     */
+    default void onAudio(String toolUseId, fr.claudegateway.videos.AudioBlock audio) {
+        // Aucun relais : le bloc reste dans la transcription du tour.
+    }
+
+    /**
      * <b>Une carte d'attente</b> (F-175 / SF-175-05) : inscrite, déjà là, passée à « Demandé », ou fermeture
      * proposée — admise dans tout terminal, comme la page : ce n'est pas une sortie de commande.
      *

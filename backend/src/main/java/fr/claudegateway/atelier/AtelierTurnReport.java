@@ -71,7 +71,27 @@ public record AtelierTurnReport(List<Object> blocks, int omittedBlocks, long inp
             SubjectHandoff handoff,
             fr.claudegateway.atelier.proposal.GovernanceProposalBlock proposal,
             fr.claudegateway.atelier.besoin.AppRequestBlock besoin,
-            fr.claudegateway.atelier.proof.ProofBlock proof) {
+            fr.claudegateway.atelier.proof.ProofBlock proof,
+            fr.claudegateway.videos.VideoBlock video,
+            fr.claudegateway.videos.AudioBlock audio) {
+
+        /**
+         * Forme d'avant F-213 : ni vidéo ni son. Les blocs (F-213 / SF-213-01) ne sont portés que par les appels
+         * {@code video_publier} et {@code audio_publier} ; un relevé ancien (sans ces champs) se relit tel quel.
+         */
+        public Block(String tool, String command, String toolUseId, String threadId, String output,
+                boolean hasOutput, boolean error, boolean expanded,
+                fr.claudegateway.teams.block.TeamsBlockCard card,
+                fr.claudegateway.mail.ClientMailReceipt email,
+                fr.claudegateway.pages.PageBlock page,
+                fr.claudegateway.atelier.actions.AttenteBlock attente,
+                SubjectHandoff handoff,
+                fr.claudegateway.atelier.proposal.GovernanceProposalBlock proposal,
+                fr.claudegateway.atelier.besoin.AppRequestBlock besoin,
+                fr.claudegateway.atelier.proof.ProofBlock proof) {
+            this(tool, command, toolUseId, threadId, output, hasOutput, error, expanded, card, email, page,
+                    attente, handoff, proposal, besoin, proof, null, null);
+        }
 
         /**
          * Forme d'avant F-212 : aucune capture de preuve. Le bloc (F-212 / SF-212-03) n'est porté que par
@@ -275,7 +295,10 @@ public record AtelierTurnReport(List<Object> blocks, int omittedBlocks, long inp
                 // La carte « Enregistrer ce besoin ? » (F-205 / SF-205-01) aussi.
                 block.besoin(),
                 // Les captures de preuve (F-212 / SF-212-03) aussi : ce ne sont pas du texte.
-                block.proof());
+                block.proof(),
+                // Les blocs vidéo et audio (F-213 / SF-213-01) aussi.
+                block.video(),
+                block.audio());
     }
 
     /**

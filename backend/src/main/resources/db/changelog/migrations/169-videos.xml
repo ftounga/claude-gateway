@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-213 / SF-213-01 — LES VIDEOS (demande PO du 2026-10-24).
+
+      Une video (ou un son) produit sur le poste est rangee en S3 (videos/{userId}/{videoId}/v{n}/) et
+      versionnee. Une serie range des videos sous un titre, dans l'ordre des episodes. Le numero 168 est
+      reserve a F-212 (livre en parallele).
+
+      Isolation : user_id sur chaque ligne, toute lecture filtre (id, user_id). Cascade sur le compte et
+      sur le terminal (les objets S3 sont effaces par le service, avant les lignes).
+      Rollback : les trois tables se retirent.
+    -->
+
+    <changeSet id="169-videos" author="claude-gateway">
+        <createTable tableName="video_series">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_video_series_user"
+                             references="users(id)" deleteCascade="true"/>
+            </column>
+            <column name="workspace_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_video_series_workspace"
+                             references="workspaces(id)" deleteCascade="true"/>
+            </column>
+            <column name="host_id" type="uuid"/>
+            <column name="title" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="description" type="varchar(300)"/>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="video_series" indexName="idx_video_series_workspace">
+            <column name="user_id"/>
+            <column name="workspace_id"/>
+        </createIndex>
+
+        <createTable tableName="videos">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_videos_user"
+                             references="users(id)" deleteCascade="true"/>
+            </column>
+            <column name="workspace_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_videos_workspace"
+                             references="workspaces(id)" deleteCascade="true"/>
+            </column>
+            <column name="host_id" type="uuid"/>
+            <column name="kind" type="varchar(8)"><constraints nullable="false"/></column>
+            <column name="series_id" type="uuid">
+                <constraints nullable="true" foreignKeyName="fk_videos_series"
+                             references="video_series(id)" deleteCascade="true"/>
+            </column>
+            <column name="episode" type="integer"/>
+            <column name="title" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="description" type="varchar(300)"/>
+            <column name="current_version" type="integer"><constraints nullable="false"/></column>
+            <column name="duration_s" type="integer"/>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="videos" indexName="idx_videos_workspace">
+            <column name="user_id"/>
+            <column name="workspace_id"/>
+        </createIndex>
+        <createIndex tableName="videos" indexName="idx_videos_host">
+            <column name="user_id"/>
+            <column name="host_id"/>
+        </createIndex>
+        <createIndex tableName="videos" indexName="idx_videos_series">
+            <column name="series_id"/>
+        </createIndex>
+
+        <createTable tableName="video_versions">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="video_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_video_versions_video"
+                             references="videos(id)" deleteCascade="true"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="version" type="integer"><constraints nullable="false"/></column>
+            <column name="storage_key" type="varchar(300)"><constraints nullable="false"/></column>
+            <column name="size_bytes" type="bigint"><constraints nullable="false"/></column>
+            <column name="mime" type="varchar(40)"><constraints nullable="false"/></column>
+            <column name="chapters_json" type="varchar(16000)"/>
+            <column name="poster_key" type="varchar(300)"/>
+            <column name="poster_mime" type="varchar(40)"/>
+            <column name="label" type="varchar(80)"/>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="video_versions" constraintName="uq_video_versions_version"
+                             columnNames="video_id, version"/>
+        <createIndex tableName="video_versions" indexName="idx_video_versions_owner">
+            <column name="user_id"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable tableName="video_versions"/>
+            <dropTable tableName="videos"/>
+            <dropTable tableName="video_series"/>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>

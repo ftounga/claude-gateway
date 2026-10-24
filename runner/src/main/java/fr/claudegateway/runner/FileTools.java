@@ -72,6 +72,16 @@ public final class FileTools implements ToolExecutor {
     static final long MAX_BYTES_FILE = 10L * 1024 * 1024;
 
     /**
+     * Plafond d'un <b>média</b> lu par {@code read_file_bytes} (F-213 / SF-213-01) : une vidéo publiée dans
+     * l'application pèse jusqu'à 300 Mo. Réservé aux extensions de {@link #MEDIA_EXTENSIONS} ; tout autre fichier
+     * garde {@link #MAX_BYTES_FILE}.
+     */
+    static final long MAX_BYTES_MEDIA_FILE = 300L * 1024 * 1024;
+
+    /** Les extensions qui ouvrent {@link #MAX_BYTES_MEDIA_FILE}. */
+    static final java.util.Set<String> MEDIA_EXTENSIONS = java.util.Set.of("mp4", "webm", "mp3", "wav", "m4a");
+
+    /**
      * Tranche maximale de {@code read_file_bytes} : ses octets encodés en Base64 (× 4/3) tiennent dans la borne
      * du champ {@code content} (512 Kio), donc dans la trame de 1 Mio.
      */
@@ -166,9 +176,11 @@ public final class FileTools implements ToolExecutor {
         Path path = resolved.path();
         requireExistingFile(resolved);
         long size = Files.size(path);
-        if (size > MAX_BYTES_FILE) {
-            throw new ToolException("too_large",
-                    "Fichier trop volumineux pour une pièce jointe (10 Mo au plus) : " + resolved.display());
+        long cap = isMedia(path) ? MAX_BYTES_MEDIA_FILE : MAX_BYTES_FILE;
+        if (size > cap) {
+            throw new ToolException("too_large", isMedia(path)
+                    ? "Média trop volumineux (300 Mo au plus) : " + resolved.display()
+                    : "Fichier trop volumineux pour une pièce jointe (10 Mo au plus) : " + resolved.display());
         }
         if (offset > size) {
             throw new ToolException("invalid_input", "offset au-delà de la fin du fichier : " + resolved.display());
@@ -604,6 +616,13 @@ public final class FileTools implements ToolExecutor {
             // de la machine, pas du runner.
             throw new ToolException("io_error", "Lecture impossible : " + display);
         }
+    }
+
+    /** Vrai si le fichier porte une extension de média (F-213 / SF-213-01). */
+    static boolean isMedia(Path path) {
+        String name = path.getFileName() == null ? "" : path.getFileName().toString();
+        int dot = name.lastIndexOf('.');
+        return dot >= 0 && MEDIA_EXTENSIONS.contains(name.substring(dot + 1).toLowerCase(java.util.Locale.ROOT));
     }
 
     private static void checkNotInterrupted() {

@@ -83,6 +83,117 @@ public class S3WorkspaceStorage implements WorkspaceStorage {
                 RequestBody.fromBytes(content));
     }
 
+    /**
+     * Taille d'une part multipart (F-213 / SF-213-01) : au-dessus du minimum S3 (5 Mio), et assez petite
+     * pour qu'un envoi de 300 Mo ne tienne jamais plus de 8 Mio en mémoire.
+     */
+    static final int MULTIPART_PART_BYTES = 8 * 1024 * 1024;
+
+    /**
+     * Envoi multipart (F-213 / SF-213-01) : les morceaux s'accumulent jusqu'à une part, envoyée aussitôt.
+     * Un objet plus petit qu'une part part d'un seul {@code PutObject}. {@link Upload#abort()} annule
+     * l'envoi côté S3 (aucune part orpheline facturée).
+     */
+    @Override
+    public Upload openUpload(String key, String contentType) {
+        return new Upload() {
+            private final java.io.ByteArrayOutputStream part = new java.io.ByteArrayOutputStream();
+            private final List<software.amazon.awssdk.services.s3.model.CompletedPart> parts = new ArrayList<>();
+            private String uploadId;
+            private boolean closed;
+
+            @Override
+            public void write(byte[] chunk) {
+                part.write(chunk, 0, chunk.length);
+                if (part.size() >= MULTIPART_PART_BYTES) {
+                    flushPart();
+                }
+            }
+
+            private void flushPart() {
+                if (uploadId == null) {
+                    uploadId = s3Client.createMultipartUpload(
+                            software.amazon.awssdk.services.s3.model.CreateMultipartUploadRequest.builder()
+                                    .bucket(bucket).key(key).contentType(contentType).build())
+                            .uploadId();
+                }
+                int number = parts.size() + 1;
+                String etag = s3Client.uploadPart(
+                        software.amazon.awssdk.services.s3.model.UploadPartRequest.builder().bucket(bucket)
+                                .key(key).uploadId(uploadId).partNumber(number).build(),
+                        RequestBody.fromBytes(part.toByteArray())).eTag();
+                parts.add(software.amazon.awssdk.services.s3.model.CompletedPart.builder()
+                        .partNumber(number).eTag(etag).build());
+                part.reset();
+            }
+
+            @Override
+            public void complete() {
+                if (closed) {
+                    return;
+                }
+                closed = true;
+                if (uploadId == null) {
+                    putFile(key, part.toByteArray(), contentType);
+                    return;
+                }
+                if (part.size() > 0) {
+                    flushPart();
+                }
+                s3Client.completeMultipartUpload(
+                        software.amazon.awssdk.services.s3.model.CompleteMultipartUploadRequest.builder()
+                                .bucket(bucket).key(key).uploadId(uploadId)
+                                .multipartUpload(software.amazon.awssdk.services.s3.model.CompletedMultipartUpload
+                                        .builder().parts(parts).build())
+                                .build());
+            }
+
+            @Override
+            public void abort() {
+                if (closed) {
+                    return;
+                }
+                closed = true;
+                part.reset();
+                if (uploadId != null) {
+                    try {
+                        s3Client.abortMultipartUpload(
+                                software.amazon.awssdk.services.s3.model.AbortMultipartUploadRequest.builder()
+                                        .bucket(bucket).key(key).uploadId(uploadId).build());
+                    } catch (SdkException ex) {
+                        log.warn("Annulation d'un envoi multipart impossible : {}", ex.getClass().getSimpleName());
+                    }
+                }
+            }
+        };
+    }
+
+    @Override
+    public java.util.OptionalLong size(String key) {
+        try {
+            Long length = s3Client.headObject(software.amazon.awssdk.services.s3.model.HeadObjectRequest.builder()
+                    .bucket(bucket).key(key).build()).contentLength();
+            return length == null ? java.util.OptionalLong.empty() : java.util.OptionalLong.of(length);
+        } catch (NoSuchKeyException ex) {
+            return java.util.OptionalLong.empty();
+        } catch (software.amazon.awssdk.services.s3.model.S3Exception ex) {
+            if (ex.statusCode() == 404) {
+                return java.util.OptionalLong.empty();
+            }
+            throw ex;
+        }
+    }
+
+    @Override
+    public Optional<java.io.InputStream> openRange(String key, long start, long endInclusive) {
+        try {
+            return Optional.of(s3Client.getObject(GetObjectRequest.builder().bucket(bucket).key(key)
+                    .range("bytes=" + Math.max(0, start) + "-" + Math.max(start, endInclusive)).build()));
+        } catch (NoSuchKeyException ex) {
+            return Optional.empty();
+        }
+    }
+
     @Override
     public Optional<byte[]> getFile(String key) {
         try {
