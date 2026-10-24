@@ -104,4 +104,48 @@ describe('AtelierTerminalComponent — tableau des chantiers (F-208 / SF-208-03)
     reloads[0].flush(guided([open(1, { total: 3, done: 1 })]));
     expect(c.journey()?.chantiers?.[0].done).toBe(1);
   });
+
+  it('SF-208-04 : une demande de l’overlay part par le chemin d’envoi, brouillon conservé, overlay fermé', () => {
+    const drafts: string[] = [];
+    let sends = 0;
+    c.draftChange.subscribe((d: string) => drafts.push(d));
+    c.send.subscribe(() => sends++);
+    c.draft = 'et vérifie les logs';
+    c.boardOpen.set(true);
+    c.onBoardRequest('Chantier 1 — fais l’étape 2 : Purger');
+    expect(drafts).toEqual(['Chantier 1 — fais l’étape 2 : Purger\n\net vérifie les logs']);
+    expect(sends).toBe(1);
+    expect(c.boardOpen()).toBeFalse();
+  });
+
+  it('SF-208-04 : pendant un tour, précision si possible ; sinon refus, rien ne part', () => {
+    let sends = 0;
+    c.send.subscribe(() => sends++);
+    c.submitting = true;
+    c.steerable = true;
+    c.onBoardRequest('Chantier 1 — fais l’étape 2 : Purger');
+    expect(sends).toBe(1);
+    c.steerable = false;
+    c.onBoardRequest('Chantier 1 — fais l’étape 2 : Purger');
+    expect(sends).toBe(1);
+    c.readOnly = true;
+    c.submitting = false;
+    c.onBoardRequest('x');
+    expect(sends).toBe(1);
+  });
+
+  it('SF-208-04 : « Mettre au focus » depuis l’overlay appelle la route du chantier visé', () => {
+    const http = TestBed.inject(HttpTestingController);
+    c.projectId = 'w1';
+    c.journey.set(guided([open(1), open(2)]));
+    c.boardOpen.set(true);
+    fixture.detectChanges();
+    (host.querySelectorAll('.board__tab')[1] as HTMLButtonElement).click();
+    fixture.detectChanges();
+    (host.querySelector('.board__focus-btn') as HTMLButtonElement).click();
+    const req = http.expectOne('/api/workspaces/w1/journey/chantiers/2/focus');
+    expect(req.request.method).toBe('POST');
+    req.flush(guided([open(1, { focus: false }), open(2, { focus: true })]));
+    expect(c.boardOpen()).toBeTrue();
+  });
 });

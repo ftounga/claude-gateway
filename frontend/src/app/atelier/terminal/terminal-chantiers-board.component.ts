@@ -1,4 +1,4 @@
-import { Component, HostListener, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
+import { Component, ElementRef, HostListener, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -78,6 +78,12 @@ const RING = 2 * Math.PI * 18;
                 <h3 class="board__chantier-title">Chantier {{ c.number }}{{ c.title ? ' — ' + c.title : '' }}</h3>
                 <p class="board__count"><strong>{{ c.done }}/{{ c.total }}</strong> étapes faites · {{ planLabel(c) }}</p>
               </div>
+              @if (!c.focus) {
+                <button mat-stroked-button type="button" class="board__focus-btn" (click)="focus.emit(c.number)">
+                  <mat-icon>center_focus_strong</mat-icon>
+                  Mettre au focus
+                </button>
+              }
             </div>
 
             <ol class="board__phases" aria-label="Phases">
@@ -116,6 +122,39 @@ const RING = 2 * Math.PI * 18;
                         <span class="board__changed">modifiée</span>
                       }
                     </p>
+                    @if (hasActions(c, step)) {
+                      <div class="board__actions">
+                        @if (canSend() && doable(step)) {
+                          <button mat-stroked-button type="button" class="board__do"
+                            [disabled]="!!doBlockedReason(c, step)" (click)="askDo(c, i, step)">
+                            <mat-icon>play_arrow</mat-icon>
+                            Faire cette étape
+                          </button>
+                          @if (doBlockedReason(c, step); as reason) {
+                            <span class="board__reason">{{ reason }}</span>
+                          }
+                        }
+                        @if (canSend() && waitOpen(step)) {
+                          <button mat-button type="button" class="board__remind" (click)="remind(c, i, step)">
+                            <mat-icon>notifications_active</mat-icon>
+                            Relancer l’attente
+                          </button>
+                        }
+                        @if (hasProof(step)) {
+                          <button mat-button type="button" class="board__see-proof" (click)="seeProof(c, i)">
+                            <mat-icon>fact_check</mat-icon>
+                            Voir la preuve
+                          </button>
+                        }
+                      </div>
+                      @if (confirming() === key(c, i)) {
+                        <div class="board__confirm" role="alertdialog" aria-label="Confirmer une étape externe">
+                          <span>{{ externalWarning }}</span>
+                          <button mat-flat-button color="primary" type="button" class="board__confirm-yes" (click)="confirmDo(c, i, step)">Confirmer</button>
+                          <button mat-button type="button" class="board__confirm-no" (click)="confirming.set(null)">Annuler</button>
+                        </div>
+                      }
+                    }
                     @if (isOpen(c, i)) {
                       <div class="board__detail">
                         @if (step.subSteps?.length) {
@@ -125,7 +164,7 @@ const RING = 2 * Math.PI * 18;
                                 <mat-icon class="board__sub-icon" aria-hidden="true">{{ sub.done ? 'check_box' : 'check_box_outline_blank' }}</mat-icon>
                                 <span>{{ sub.title }}</span>
                                 @if (sub.evidence) {
-                                  <span class="board__evidence">— {{ sub.evidence }}</span>
+                                  <span class="board__evidence" [class.board__proof--shown]="proofShown() === key(c, i)">— {{ sub.evidence }}</span>
                                 }
                               </li>
                             }
@@ -138,7 +177,9 @@ const RING = 2 * Math.PI * 18;
                           <p class="board__line"><span class="board__label">Retour arrière</span> {{ step.rollback }}</p>
                         }
                         @if (step.evidence) {
-                          <p class="board__line board__proof"><span class="board__label">Preuve</span> {{ step.evidence }}</p>
+                          <p class="board__line board__proof" [class.board__proof--shown]="proofShown() === key(c, i)">
+                            <span class="board__label">Preuve</span> {{ step.evidence }}
+                          </p>
                         }
                         @if (!step.subSteps?.length && !step.verify && !step.rollback && !step.evidence) {
                           <p class="board__line board__muted">Pas de détail pour cette étape.</p>
@@ -584,6 +625,40 @@ const RING = 2 * Math.PI * 18;
       font-size: 13px;
     }
 
+    .board__focus-btn {
+      margin-left: auto;
+    }
+
+    .board__actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--cg-space-1) var(--cg-space-2);
+      margin: var(--cg-space-1) 0 0 calc(20px + var(--cg-space-2));
+    }
+
+    .board__reason {
+      font-size: 12px;
+      color: var(--cg-text-secondary);
+    }
+
+    .board__confirm {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--cg-space-2);
+      margin: var(--cg-space-2) 0 0 calc(20px + var(--cg-space-2));
+      padding: var(--cg-space-2) var(--cg-space-3);
+      border: 1px solid var(--cg-error);
+      border-radius: 8px;
+    }
+
+    .board__proof--shown {
+      outline: 2px solid var(--cg-accent);
+      outline-offset: 2px;
+      border-radius: 4px;
+    }
+
     .board__diff--added {
       color: var(--cg-success);
     }
@@ -603,12 +678,26 @@ export class TerminalChantiersBoardComponent {
   /** Le terminal (pour l'historique). */
   readonly workspaceId = input<string | null>(null);
 
+  /** Le terminal peut envoyer une demande (ni lecture seule, ni plafond atteint). */
+  readonly canSend = input(true);
+
   readonly closed = output<void>();
+  /** Une demande visible à envoyer dans le fil (F-208 / SF-208-04). */
+  readonly request = output<string>();
+  /** [Mettre au focus] le chantier N (F-208 / SF-208-04). */
+  readonly focus = output<number>();
 
   private readonly journeys = inject(JourneyService);
+  private readonly host = inject(ElementRef<HTMLElement>);
 
   readonly phases = JOURNEY_PHASES;
   readonly historyError = 'L’historique n’a pas pu être lu.';
+  readonly externalWarning = 'Cette étape agit hors du poste (push, envoi, production…). Confirmer ?';
+
+  /** L'étape externe dont la confirmation est ouverte : `numéro:rang`. */
+  readonly confirming = signal<string | null>(null);
+  /** L'étape dont la preuve vient d'être demandée : `numéro:rang`. */
+  readonly proofShown = signal<string | null>(null);
   readonly historyEmpty = 'L’historique est conservé à partir de la prochaine version du plan.';
 
   /** L'onglet choisi ; `null` = le chantier au focus. */
@@ -728,6 +817,75 @@ export class TerminalChantiersBoardComponent {
     const key = `${c.number}:${index}`;
     const next = !this.isOpen(c, index);
     this.manual.update((m) => ({ ...m, [key]: next }));
+  }
+
+  key(c: OpenChantier, index: number): string {
+    return `${c.number}:${index}`;
+  }
+
+  /** Une étape qu'on peut lancer : à faire ou en échec. */
+  doable(step: JourneyPlanStep): boolean {
+    return step.status === 'A_FAIRE' || step.status === 'ECHEC';
+  }
+
+  waitOpen(step: JourneyPlanStep): boolean {
+    return !!step.waitsOn && (step.waitsOnStatus === 'A_FAIRE' || step.waitsOnStatus === 'DEMANDE');
+  }
+
+  hasProof(step: JourneyPlanStep): boolean {
+    return !!step.evidence || (step.subSteps ?? []).some((s) => !!s.evidence);
+  }
+
+  hasActions(c: OpenChantier, step: JourneyPlanStep): boolean {
+    return (this.canSend() && (this.doable(step) || this.waitOpen(step))) || this.hasProof(step);
+  }
+
+  /** Pourquoi « Faire cette étape » est inactif, ou `null` s'il est actif. */
+  doBlockedReason(c: OpenChantier, step: JourneyPlanStep): string | null {
+    if (!c.executing) {
+      return c.plan?.awaitingValidation ? 'plan à valider d’abord' : 'le chantier n’est pas en exécution';
+    }
+    if (step.unlocked === false) {
+      return `bloquée : ${this.blockedText(step) ?? 'dépendances à faire'}`;
+    }
+    return null;
+  }
+
+  /** [Faire cette étape] : une étape EXTERNE passe d'abord par une confirmation explicite. */
+  askDo(c: OpenChantier, index: number, step: JourneyPlanStep): void {
+    if (this.doBlockedReason(c, step)) {
+      return;
+    }
+    if (step.risk === 'EXTERNE') {
+      this.confirming.set(this.key(c, index));
+      return;
+    }
+    this.sendDo(c, index, step);
+  }
+
+  confirmDo(c: OpenChantier, index: number, step: JourneyPlanStep): void {
+    this.confirming.set(null);
+    this.sendDo(c, index, step);
+  }
+
+  private sendDo(c: OpenChantier, index: number, step: JourneyPlanStep): void {
+    this.request.emit(`Chantier ${c.number} — fais l’étape ${index + 1} : ${step.title}`);
+  }
+
+  /** [Relancer l'attente] : la demande de relance, visible dans le fil. */
+  remind(c: OpenChantier, index: number, step: JourneyPlanStep): void {
+    this.request.emit(`Chantier ${c.number} — relance l’attente « ${step.waitsOn} » dont dépend l’étape ${index + 1} : ${step.title}`);
+  }
+
+  /** [Voir la preuve] : l'étape se déplie et sa preuve est surlignée, amenée en vue. */
+  seeProof(c: OpenChantier, index: number): void {
+    const key = this.key(c, index);
+    this.manual.update((m) => ({ ...m, [key]: true }));
+    this.proofShown.set(key);
+    queueMicrotask(() => {
+      const el = this.host.nativeElement.querySelector('.board__proof--shown') as HTMLElement | null;
+      el?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    });
   }
 
   toggleHistory(): void {

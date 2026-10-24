@@ -181,4 +181,88 @@ describe('F-208 / SF-208-03 — le tableau des chantiers', () => {
     atelier.dispatchSseEvent('event: journey\ndata: {"tool":"update_plan_step","chantier":null}', {});
     expect(journeys.liveChanges()).toBe(1);
   });
+
+  describe('SF-208-04 — les boutons', () => {
+    const EXEC = plan([
+      step('Lire', { status: 'VERIFIE', evidence: 'cat ok' }),
+      step('Purger le cache'),
+      step('Pousser en prod', { risk: 'EXTERNE', riskLabel: 'externe', waitsOn: 'feu-vert', waitsOnStatus: 'DEMANDE' }),
+      step('Annoncer', { unlocked: false, blockedBy: ['étape 3'] }),
+    ]);
+
+    const actions = (el: HTMLElement, i: number) =>
+      el.querySelectorAll<HTMLElement>('.board__step')[i];
+
+    it('« Faire cette étape » envoie la demande visible ; bloquée ⇒ désactivée avec la raison', () => {
+      const fixture = mount(journey([chantier(2, { focus: true, plan: EXEC })]));
+      const el: HTMLElement = fixture.nativeElement;
+      const sent: string[] = [];
+      fixture.componentInstance.request.subscribe((r) => sent.push(r));
+      expect(actions(el, 0).querySelector('.board__do')).toBeNull();
+      (actions(el, 1).querySelector('.board__do') as HTMLButtonElement).click();
+      expect(sent).toEqual(['Chantier 2 — fais l’étape 2 : Purger le cache']);
+      const blocked = actions(el, 3).querySelector('.board__do') as HTMLButtonElement;
+      expect(blocked.disabled).toBeTrue();
+      expect(actions(el, 3).querySelector('.board__reason')?.textContent).toContain('bloquée : après l’étape 3');
+    });
+
+    it('plan non validé : « Faire cette étape » inactif, « plan à valider d’abord »', () => {
+      const fixture = mount(journey([chantier(2, {
+        focus: true, executing: false, plan: { ...EXEC, awaitingValidation: true },
+      })]));
+      const el: HTMLElement = fixture.nativeElement;
+      expect((actions(el, 1).querySelector('.board__do') as HTMLButtonElement).disabled).toBeTrue();
+      expect(actions(el, 1).querySelector('.board__reason')?.textContent).toContain('plan à valider d’abord');
+    });
+
+    it('étape EXTERNE : confirmation explicite ; Annuler n’envoie rien, Confirmer envoie', () => {
+      const fixture = mount(journey([chantier(2, { focus: true, plan: EXEC })]));
+      const el: HTMLElement = fixture.nativeElement;
+      const sent: string[] = [];
+      fixture.componentInstance.request.subscribe((r) => sent.push(r));
+      (actions(el, 2).querySelector('.board__do') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      expect(sent).toEqual([]);
+      expect(actions(el, 2).querySelector('.board__confirm')?.textContent).toContain('hors du poste');
+      (actions(el, 2).querySelector('.board__confirm-no') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      expect(actions(el, 2).querySelector('.board__confirm')).toBeNull();
+      expect(sent).toEqual([]);
+      (actions(el, 2).querySelector('.board__do') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      (actions(el, 2).querySelector('.board__confirm-yes') as HTMLButtonElement).click();
+      expect(sent).toEqual(['Chantier 2 — fais l’étape 3 : Pousser en prod']);
+    });
+
+    it('« Relancer l’attente », « Voir la preuve », « Mettre au focus »', () => {
+      const fixture = mount(journey([chantier(1, { focus: true }), chantier(2, { plan: EXEC })]));
+      const el: HTMLElement = fixture.nativeElement;
+      const sent: string[] = [];
+      const focused: number[] = [];
+      fixture.componentInstance.request.subscribe((r) => sent.push(r));
+      fixture.componentInstance.focus.subscribe((n) => focused.push(n));
+      expect(el.querySelector('.board__focus-btn')).toBeNull();
+      (el.querySelectorAll('.board__tab')[1] as HTMLButtonElement).click();
+      fixture.detectChanges();
+      (el.querySelector('.board__focus-btn') as HTMLButtonElement).click();
+      expect(focused).toEqual([2]);
+      (actions(el, 2).querySelector('.board__remind') as HTMLButtonElement).click();
+      expect(sent).toEqual(['Chantier 2 — relance l’attente « feu-vert » dont dépend l’étape 3 : Pousser en prod']);
+      expect(actions(el, 0).querySelector('.board__detail')).toBeNull();
+      (actions(el, 0).querySelector('.board__see-proof') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      expect(actions(el, 0).querySelector('.board__proof--shown')?.textContent).toContain('cat ok');
+    });
+
+    it('sans droit d’envoi (lecture seule) : ni « Faire » ni « Relancer »', () => {
+      const fixture = TestBed.createComponent(TerminalChantiersBoardComponent);
+      fixture.componentRef.setInput('journey', journey([chantier(2, { focus: true, plan: EXEC })]));
+      fixture.componentRef.setInput('canSend', false);
+      fixture.detectChanges();
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.querySelector('.board__do')).toBeNull();
+      expect(el.querySelector('.board__remind')).toBeNull();
+      expect(el.querySelector('.board__see-proof')).not.toBeNull();
+    });
+  });
 });
