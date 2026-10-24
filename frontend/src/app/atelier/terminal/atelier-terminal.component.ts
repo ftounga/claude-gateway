@@ -147,7 +147,10 @@ import {
 import { splitEssential } from './essential';
 import { CopyBlockComponent } from '../../chat/copy-block/copy-block.component';
 import { MessageBlocksPipe } from '../../shared/message-blocks.pipe';
-import { hasBlockSegment } from '../../shared/message-segments';
+import { hasBlockSegment, messageBlockIndex } from '../../shared/message-segments';
+import { CopyBlock } from '../../shared/copy-block.model';
+import { MessageSendsService } from '../../core/services/message-sends.service';
+import { MessageSend } from '../../core/models/message-sends.models';
 import {
   cardAsText,
   cardOf,
@@ -403,6 +406,8 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
       this.loadSkills(value);
       // F-182 / SF-182-02 : les agents nommés, pour l'autocomplétion de `/agent <nom>`.
       this.loadAgents(value);
+      // F-211 / SF-211-02 : les encarts déjà marqués envoyés.
+      this.loadSentBlocks(value);
       // F-175 / SF-175-07 : après la pose des entrées (lecture seule comprise), la reprise de l'existant.
       void Promise.resolve().then(() => this.checkReview(true));
     }
@@ -3023,6 +3028,136 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   splitEssential = splitEssential;
   /** F-203 / SF-203-02 : la réponse porte-t-elle un bloc « message à envoyer » (encart copiable) ? */
   hasBlockSegment = hasBlockSegment;
+
+  // ---- F-211 / SF-211-02 : « Marquer envoyé » sur un encart mail/message ----
+
+  private readonly messageSends = inject(MessageSendsService);
+
+  /** Les envois marqués du terminal ouvert, par « messageId#rang ». */
+  readonly sentBlocks = signal<Record<string, MessageSend>>({});
+
+  /** Les encarts dont l'appel est en cours (« messageId#rang »). */
+  readonly sendingBlocks = signal<ReadonlySet<string>>(new Set());
+
+  private static sendKey(messageId: string, index: number): string {
+    return `${messageId}#${index}`;
+  }
+
+  /** Un identifiant de message persisté (UUID) : seuls ceux-là se marquent envoyés. */
+  private static readonly PERSISTED_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  /**
+   * Le rang de l'encart dans la réponse **complète** — même rendu dans « L'essentiel », « Le détail »
+   * ou une carte par question —, ou -1 s'il ne se marque pas (flux en direct, message non persisté).
+   */
+  sendIndexOf(message: AtelierThreadItem | null | undefined, block: CopyBlock): number {
+    if (!message || !AtelierTerminalComponent.PERSISTED_ID.test(message.id ?? '')) {
+      return -1;
+    }
+    return messageBlockIndex(message.content, block);
+  }
+
+  /** L'instant de l'envoi marqué, ou `null`. */
+  sentAtOf(message: AtelierThreadItem | null | undefined, index: number): string | null {
+    if (!message || index < 0) {
+      return null;
+    }
+    return this.sentBlocks()[AtelierTerminalComponent.sendKey(message.id, index)]?.sentAt ?? null;
+  }
+
+  isSending(message: AtelierThreadItem | null | undefined, index: number): boolean {
+    return !!message && index >= 0
+      && this.sendingBlocks().has(AtelierTerminalComponent.sendKey(message.id, index));
+  }
+
+  /** Relit les envois marqués du terminal ouvert (à son ouverture : l'état survit au rechargement). */
+  private loadSentBlocks(workspaceId: string): void {
+    this.sentBlocks.set({});
+    this.messageSends.list(workspaceId).subscribe({
+      next: (sends) => {
+        if (this.projectId !== workspaceId) {
+          return;
+        }
+        const byKey: Record<string, MessageSend> = {};
+        for (const send of sends ?? []) {
+          byKey[AtelierTerminalComponent.sendKey(send.messageId, send.blockIndex)] = send;
+        }
+        this.sentBlocks.set(byKey);
+      },
+      error: () => {
+        // Best-effort : sans l'état, l'encart propose simplement « Marquer envoyé ».
+      },
+    });
+  }
+
+  /** [Marquer envoyé] — aucun tour n'est lancé ; l'agent l'apprendra au tour suivant. */
+  onMarkSent(message: AtelierThreadItem, index: number): void {
+    const workspaceId = this.projectId;
+    if (!workspaceId || index < 0 || this.readOnly) {
+      return;
+    }
+    const key = AtelierTerminalComponent.sendKey(message.id, index);
+    this.setSending(key, true);
+    this.messageSends.mark(workspaceId, message.id, index).subscribe({
+      next: (send) => {
+        this.setSending(key, false);
+        if (this.projectId !== workspaceId) {
+          return;
+        }
+        this.sentBlocks.update((current) => ({ ...current, [key]: send }));
+        if (send.attenteKey) {
+          this.loadActionCount(workspaceId); // l'attente liée est passée « Demandé »
+        }
+      },
+      error: () => {
+        this.setSending(key, false);
+        this.snackBar.open('Impossible de marquer ce message comme envoyé.', 'OK', { duration: 4000 });
+      },
+    });
+  }
+
+  /** [Annuler] l'envoi marqué ; l'attente liée revient comme avant si elle n'a pas bougé. */
+  onCancelSent(message: AtelierThreadItem, index: number): void {
+    const workspaceId = this.projectId;
+    if (!workspaceId || index < 0 || this.readOnly) {
+      return;
+    }
+    const key = AtelierTerminalComponent.sendKey(message.id, index);
+    const hadAttente = !!this.sentBlocks()[key]?.attenteKey;
+    this.setSending(key, true);
+    this.messageSends.cancel(workspaceId, message.id, index).subscribe({
+      next: () => {
+        this.setSending(key, false);
+        if (this.projectId !== workspaceId) {
+          return;
+        }
+        this.sentBlocks.update((current) => {
+          const next = { ...current };
+          delete next[key];
+          return next;
+        });
+        if (hadAttente) {
+          this.loadActionCount(workspaceId);
+        }
+      },
+      error: () => {
+        this.setSending(key, false);
+        this.snackBar.open('Impossible d\'annuler.', 'OK', { duration: 4000 });
+      },
+    });
+  }
+
+  private setSending(key: string, on: boolean): void {
+    this.sendingBlocks.update((current) => {
+      const next = new Set(current);
+      if (on) {
+        next.add(key);
+      } else {
+        next.delete(key);
+      }
+      return next;
+    });
+  }
 
   /**
    * Numérotation des fils, mémorisée **par tableau de blocs** (F-35 SF-35-03). Le gabarit interroge

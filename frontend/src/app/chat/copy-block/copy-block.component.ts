@@ -1,4 +1,4 @@
-import { Component, OnDestroy, computed, inject, input, signal } from '@angular/core';
+import { Component, OnDestroy, computed, inject, input, output, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSnackBar } from '@angular/material/snack-bar';
@@ -6,7 +6,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { CopyBlock } from '../../shared/copy-block.model';
 import { MarkdownPipe, renderMarkdown } from '../../shared/markdown.pipe';
-import { isMessageBlockType, splitSubject } from '../../shared/message-segments';
+import { isMessageBlockType, splitHeaders } from '../../shared/message-segments';
 
 /** Attributs de présentation retirés du HTML copié (F-203) : Outlook / Teams reçoivent des balises simples. */
 const PRESENTATION_ATTRIBUTES = ['class', 'style', 'id'];
@@ -57,6 +57,41 @@ export class CopyBlockComponent implements OnDestroy {
    */
   readonly tone = input<'light' | 'dark'>('light');
 
+  /**
+   * « Marquer envoyé » (F-211) : vrai quand l'encart désigne un bloc d'une réponse persistée — le
+   * parent sait alors le repérer. Faux (défaut) : aucun bouton, rendu F-26 / F-203 inchangé.
+   */
+  readonly sendable = input(false);
+
+  /** Instant de l'envoi marqué (ISO), ou `null` s'il n'est pas marqué (F-211). */
+  readonly sentAt = input<string | null>(null);
+
+  /** Vrai pendant l'appel au serveur : les gestes d'envoi sont désactivés (F-211). */
+  readonly sendBusy = input(false);
+
+  /** Lecture seule (F-211) : l'état « Envoyé » se lit, sans bouton ni « Annuler ». */
+  readonly sendReadOnly = input(false);
+
+  /** [Marquer envoyé] (F-211). */
+  readonly markSent = output<void>();
+
+  /** [Annuler] l'envoi marqué (F-211). */
+  readonly cancelSent = output<void>();
+
+  /** « 24/10 17:42 » — l'heure locale de l'envoi marqué. */
+  readonly sentLabel = computed(() => {
+    const at = this.sentAt();
+    if (!at) {
+      return null;
+    }
+    const date = new Date(at);
+    if (Number.isNaN(date.getTime())) {
+      return null;
+    }
+    const pad = (value: number) => String(value).padStart(2, '0');
+    return `${pad(date.getDate())}/${pad(date.getMonth() + 1)} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  });
+
   /** Vrai pendant 2 s après une copie réussie : le bouton affiche « Copié ». */
   readonly copied = signal(false);
   private copiedTimer: ReturnType<typeof setTimeout> | null = null;
@@ -68,9 +103,14 @@ export class CopyBlockComponent implements OnDestroy {
   readonly parts = computed(() => {
     const block = this.block();
     return isMessageBlockType(block.type)
-      ? splitSubject(block.content)
-      : { subject: null, body: block.content };
+      ? splitHeaders(block.content)
+      : { subject: null, recipient: null, body: block.content };
   });
+
+  /** Vrai pour un encart mail/message : seuls ceux-là se marquent envoyés (F-211). */
+  isMessage(): boolean {
+    return isMessageBlockType(this.block().type);
+  }
 
   /** Icône Material par type de bloc. */
   private static readonly TYPE_ICONS = {

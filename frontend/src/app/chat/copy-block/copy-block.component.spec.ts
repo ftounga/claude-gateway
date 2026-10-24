@@ -173,4 +173,79 @@ describe('CopyBlockComponent', () => {
     fixture.detectChanges();
     expect((fixture.nativeElement as HTMLElement).classList).toContain('copy-block-host--dark');
   });
+
+  describe('« Marquer envoyé » (F-211 / SF-211-02)', () => {
+    const mail = block({ type: 'mail', language: 'mail', title: 'E-mail', content: 'À : Zahi\nObjet : Accès\n\nBonjour' });
+
+    function host(): HTMLElement {
+      return fixture.nativeElement as HTMLElement;
+    }
+
+    it('sans `sendable`, aucun bouton (rendu F-203 inchangé)', () => {
+      fixture.componentRef.setInput('block', mail);
+      fixture.detectChanges();
+      expect(host().querySelector('.copy-block-mark-sent')).toBeNull();
+      expect(host().querySelector('.copy-block-sent')).toBeNull();
+    });
+
+    it('un bloc de code ne se marque jamais envoyé', () => {
+      fixture.componentRef.setInput('sendable', true);
+      fixture.detectChanges();
+      expect(host().querySelector('.copy-block-mark-sent')).toBeNull();
+    });
+
+    it('montre « Marquer envoyé » et émet au clic', () => {
+      fixture.componentRef.setInput('block', mail);
+      fixture.componentRef.setInput('sendable', true);
+      fixture.detectChanges();
+      const emitted = jasmine.createSpy('markSent');
+      component.markSent.subscribe(emitted);
+      const button = host().querySelector<HTMLButtonElement>('.copy-block-mark-sent');
+      expect(button?.textContent).toContain('Marquer envoyé');
+      button?.click();
+      expect(emitted).toHaveBeenCalled();
+    });
+
+    it('envoyé : « Envoyé · jj/MM HH:mm » et « Annuler » qui émet', () => {
+      fixture.componentRef.setInput('block', mail);
+      fixture.componentRef.setInput('sendable', true);
+      fixture.componentRef.setInput('sentAt', new Date(2026, 9, 24, 17, 42).toISOString());
+      fixture.detectChanges();
+      expect(host().querySelector('.copy-block-sent')?.textContent).toContain('Envoyé · 24/10 17:42');
+      expect(host().querySelector('.copy-block-mark-sent')).toBeNull();
+      const cancelled = jasmine.createSpy('cancelSent');
+      component.cancelSent.subscribe(cancelled);
+      host().querySelector<HTMLButtonElement>('.copy-block-sent-cancel')?.click();
+      expect(cancelled).toHaveBeenCalled();
+    });
+
+    it('lecture seule : l’état se lit, sans bouton ni « Annuler »', () => {
+      fixture.componentRef.setInput('block', mail);
+      fixture.componentRef.setInput('sendable', true);
+      fixture.componentRef.setInput('sendReadOnly', true);
+      fixture.detectChanges();
+      expect(host().querySelector('.copy-block-mark-sent')).toBeNull();
+      fixture.componentRef.setInput('sentAt', new Date().toISOString());
+      fixture.detectChanges();
+      expect(host().querySelector('.copy-block-sent')).not.toBeNull();
+      expect(host().querySelector('.copy-block-sent-cancel')).toBeNull();
+    });
+
+    it('pendant l’appel, le bouton est désactivé', () => {
+      fixture.componentRef.setInput('block', mail);
+      fixture.componentRef.setInput('sendable', true);
+      fixture.componentRef.setInput('sendBusy', true);
+      fixture.detectChanges();
+      expect(host().querySelector<HTMLButtonElement>('.copy-block-mark-sent')?.disabled).toBeTrue();
+    });
+
+    it('« À : » est présenté à part et n’est pas dans le corps', () => {
+      fixture.componentRef.setInput('block', mail);
+      fixture.detectChanges();
+      expect(host().querySelector('.copy-block-recipient .copy-block-subject-text')?.textContent).toContain('Zahi');
+      expect(component.parts().body).toBe('Bonjour');
+      expect(host().querySelector('.copy-block-rich')?.textContent).not.toContain('Zahi');
+    });
+  });
 });
+

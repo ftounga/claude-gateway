@@ -20,6 +20,8 @@ export interface CopyBlock {
   title: string;
   /** Contenu brut (non interprété) du bloc. */
   content: string;
+  /** Clé de l'attente que ce message sert (F-211, balise ```mail attente=<clé>), si l'agent l'a donnée. */
+  attente?: string;
 }
 
 /** Segment de prose (texte hors bloc) d'un message, rendu en Markdown assaini. */

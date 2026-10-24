@@ -1,4 +1,4 @@
-import { CopyBlock, CopyBlockType, MessageSegment } from './copy-block.model';
+import { BlockSegment, CopyBlock, CopyBlockType, MessageSegment } from './copy-block.model';
 
 /**
  * Fence Markdown ouvert par ``` (≥ 3 backticks), un token de langage optionnel, du contenu, puis
@@ -82,26 +82,72 @@ export function hasBlockSegment(segments: readonly MessageSegment[]): boolean {
 /** Ligne d'objet en tête d'un message : « Objet : … » ou « Subject: … », gras toléré. */
 const SUBJECT_LINE = /^\s*(?:\*\*|__)?\s*(?:objet|subject)\s*(?:\*\*|__)?\s*:\s*(?:\*\*|__)?(.*?)(?:\*\*|__)?\s*$/i;
 
+/** Ligne de destinataire en tête d'un message (F-211) : « À : … », « To: … », gras toléré. */
+const RECIPIENT_LINE = /^\s*(?:\*\*|__)?\s*(?:à|a|to|destinataires?)\s*(?:\*\*|__)?\s*:\s*(?:\*\*|__)?(.*?)(?:\*\*|__)?\s*$/i;
+
+/** Attribut `attente=<clé>` de la balise (F-211), guillemets tolérés. */
+const ATTENTE_ATTRIBUTE = /(?:^|\s)attente\s*=\s*"?([^\s"]+)"?/i;
+
+function attenteOf(info: string): string | null {
+  const match = ATTENTE_ATTRIBUTE.exec(info);
+  return match ? match[1] : null;
+}
+
 /**
- * Sépare l'objet éventuel (première ligne non vide « Objet : … ») du corps d'un message (F-203).
- * Sans objet, le corps est le contenu inchangé. Les lignes vides qui suivent l'objet sont retirées.
+ * Sépare les en-têtes d'un message (F-203, F-211) — « Objet : … » et « À : … », chacun une fois, dans
+ * n'importe quel ordre, en tête — du corps. Sans en-tête, le corps est le contenu inchangé. Les
+ * lignes vides qui suivent les en-têtes sont retirées. Même règle que le serveur (`MessageBlocks`).
+ */
+export function splitHeaders(content: string): { subject: string | null; recipient: string | null; body: string } {
+  const lines = content.split('\n');
+  let subject: string | null = null;
+  let recipient: string | null = null;
+  let index = 0;
+  while (index < lines.length) {
+    const line = lines[index];
+    if (line.trim().length === 0) {
+      index++;
+      continue;
+    }
+    const subjectMatch: RegExpExecArray | null = subject === null ? SUBJECT_LINE.exec(line) : null;
+    if (subjectMatch && subjectMatch[1].trim().length > 0) {
+      subject = subjectMatch[1].trim();
+      index++;
+      continue;
+    }
+    const recipientMatch: RegExpExecArray | null = recipient === null ? RECIPIENT_LINE.exec(line) : null;
+    if (recipientMatch && recipientMatch[1].trim().length > 0) {
+      recipient = recipientMatch[1].trim();
+      index++;
+      continue;
+    }
+    break;
+  }
+  if (subject === null && recipient === null) {
+    return { subject: null, recipient: null, body: content };
+  }
+  return { subject, recipient, body: lines.slice(index).join('\n') };
+}
+
+/**
+ * Sépare l'objet éventuel (« Objet : … » en tête) du corps d'un message (F-203). Une ligne « À : … »
+ * (F-211) est aussi retirée du corps. Sans en-tête, le corps est le contenu inchangé.
  */
 export function splitSubject(content: string): { subject: string | null; body: string } {
-  const lines = content.split('\n');
-  const first = lines.findIndex((line) => line.trim().length > 0);
-  if (first < 0) {
-    return { subject: null, body: content };
-  }
-  const match = SUBJECT_LINE.exec(lines[first]);
-  const subject = match ? match[1].trim() : '';
-  if (!match || subject.length === 0) {
-    return { subject: null, body: content };
-  }
-  let start = first + 1;
-  while (start < lines.length && lines[start].trim().length === 0) {
-    start++;
-  }
-  return { subject, body: lines.slice(start).join('\n') };
+  const { subject, body } = splitHeaders(content);
+  return { subject, body };
+}
+
+/**
+ * Le rang d'un encart parmi les blocs mail/message du message **complet** (F-211) — le repère que
+ * le serveur vérifie. L'encart peut être rendu dans un fragment (« L'essentiel », « Le détail », une
+ * carte par question) : on le retrouve par son type et son contenu. -1 s'il est introuvable.
+ */
+export function messageBlockIndex(fullContent: string | null | undefined, block: CopyBlock): number {
+  const blocks = splitMessageBlocks(fullContent)
+    .filter((segment): segment is BlockSegment => segment.kind === 'block')
+    .map((segment) => segment.block);
+  return blocks.findIndex((candidate) => candidate.type === block.type && candidate.content === block.content);
 }
 
 function splitSegments(
@@ -122,8 +168,11 @@ function splitSegments(
     if (blockContent.trim().length === 0) {
       continue;
     }
-    const rawLanguage = (match[3] ?? '').trim();
-    const language = rawLanguage.length > 0 ? rawLanguage : null;
+    // F-211 : seul le PREMIER jeton de la balise dit le type ; la suite porte des attributs
+    // (```mail attente=acces-forge) qui ne s'affichent jamais.
+    const info = (match[3] ?? '').trim();
+    const firstToken = info.split(/\s+/)[0] ?? '';
+    const language = firstToken.length > 0 ? firstToken : null;
     const type = copyBlockTypeFromLanguage(language);
     // Bloc non retenu par le découpage (ex. code dans le terminal) → il reste dans la prose.
     if (!accept(type)) {
@@ -133,6 +182,10 @@ function splitSegments(
     pushProse(segments, source.slice(proseStart, fenceStart));
 
     const block: CopyBlock = { type, language, title: buildTitle(type, language), content: blockContent };
+    const attente = attenteOf(info);
+    if (attente) {
+      block.attente = attente;
+    }
     segments.push({ kind: 'block', block });
 
     proseStart = match.index + match[0].length;
