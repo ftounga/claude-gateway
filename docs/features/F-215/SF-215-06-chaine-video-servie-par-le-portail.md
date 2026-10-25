@@ -1,7 +1,7 @@
 # Mini-spec — F-215 / SF-215-06 Chaîne vidéo servie par le portail
 
 ## Identifiant
-`F-215 / SF-215-06` — Feature parente : F-215 « Le cours vidéo libre (court et long) » — Statut : `in-progress` — 2026-10-25
+`F-215 / SF-215-06` — Feature parente : F-215 « Le cours vidéo libre (court et long) » — Statut : `in-review` — 2026-10-25
 Branche : `feat/SF-215-06-chaine-video-portail`
 
 ## Objectif
@@ -48,7 +48,8 @@ Sur le poste du PO (CA-GIP, proxy d'entreprise, macOS), `video_render_check` a �
 | Node du paquet refusé à l'exécution (AppLocker, noexec) | ÉCHEC « politique du poste, je ne la contourne pas » ; aucune autre tentative |
 | Aucun Chrome ni Edge | ÉCHEC « aucun Chrome ni Edge trouvé (chemins cherchés) » + remède (portail logiciel de l'entreprise, ou `CLAUDE_TEAMS_CHROME_PATH`) |
 | Route gateway : jeton absent/refusé | `401` générique `{"error": …}` |
-| Route gateway : version mal formée, plateforme inconnue, objet absent | `404` `video_toolchain_unavailable` |
+| Route gateway : version mal formée, version non publiée, plateforme sans paquet | `404` `video_toolchain_unavailable` |
+| Route gateway : plateforme hors des quatre | `403` (route non déclarée de la chaîne runner, comme toute route runner inconnue) |
 | Route gateway : plage hors fichier | `416` + `Content-Range: bytes */<taille>` |
 
 ## Critères d'acceptation

@@ -38,7 +38,9 @@ public final class VideoRenderToolCatalog {
                 new AgentTool(RENDER,
                         "Rend en MP4, sur le poste, une composition HyperFrames (page HTML animée) : prépare "
                                 + "d'abord tout seul la chaîne au premier usage (Node 22, hyperframes 0.8.193, "
-                                + "Chrome sans écran, ffmpeg — n'abandonne pas parce qu'ils manquent), puis lance "
+                                + "GSAP et ffmpeg récupérés depuis le portail, jamais sur internet ; Chrome ou Edge "
+                                + "du poste — n'abandonne pas parce qu'ils manquent, ne propose ni brew ni "
+                                + "nodejs.org), puis lance "
                                 + "le rendu EN ARRIÈRE-PLAN : l'outil rend la main tout de suite avec un job_id, "
                                 + "suis avec video_render_status. verifier_seulement: true prépare la chaîne sans "
                                 + "rendre. Sur un poste verrouillé, l'échec dit quoi demander : répète-le, ne "

@@ -112,16 +112,20 @@ public final class ToolStack {
     /**
      * <b>Regarder une vidéo</b> (F-190 / SF-190-01) : monté sur toute machine, Teams ou pas. Rien
      * ne se télécharge ici — {@code ffmpeg} n'est cherché qu'à la première extraction, dans le même
-     * cache que F-90.
+     * cache que F-90 ; depuis F-215 / SF-215-06, la chaîne vidéo du portail passe AVANT toute source
+     * internet (gyan.dev, evermeet.cx, johnvansickle.com ne restent qu'en repli).
      */
     private static fr.claudegateway.runner.video.VideoTools video(RunnerConfig config,
             Console console) {
         fr.claudegateway.runner.teams.ProcessRunner processes =
                 fr.claudegateway.runner.teams.ProcessRunner.real();
+        fr.claudegateway.runner.teams.TeamsWorkFolder folder =
+                new fr.claudegateway.runner.teams.TeamsWorkFolder(config.hostRoot());
         fr.claudegateway.runner.teams.LocalToolchain toolchain =
-                new fr.claudegateway.runner.teams.LocalToolchain(
-                        new fr.claudegateway.runner.teams.TeamsWorkFolder(config.hostRoot()),
-                        processes, console::info);
+                new fr.claudegateway.runner.teams.LocalToolchain(folder, processes, console::info)
+                        .withPortal(portalMedia(videoBundle(config, folder.toolsDir(),
+                                embeddedSignature(),
+                                storedToken(config))));
         return new fr.claudegateway.runner.video.VideoTools(
                 new fr.claudegateway.runner.video.VideoFramesWorker(
                         new fr.claudegateway.runner.teams.SceneFrames(toolchain, processes),
@@ -130,16 +134,30 @@ public final class ToolStack {
     }
 
     /**
-     * <b>Rendre une vidéo</b> (F-215 / SF-215-02) : monté sur toute machine ; rien ne se télécharge ici — Node,
-     * hyperframes, Chrome et ffmpeg ne sont cherchés qu'au premier rendu, dans le dossier d'outils du runner.
+     * <b>Rendre une vidéo</b> (F-215 / SF-215-02, SF-215-06) : monté sur toute machine ; rien ne se télécharge ici.
+     * Au premier rendu, la chaîne (Node 22, hyperframes, GSAP, ffmpeg) vient du PORTAIL — jamais d'internet — et le
+     * navigateur est le Chrome ou l'Edge du poste.
      */
     private static fr.claudegateway.runner.video.render.RenderTools render(RunnerConfig config,
             Console console) {
+        return render(config, embeddedSignature(),
+                storedToken(config));
+    }
+
+    /**
+     * Le montage du rendu, la vérification de signature et le jeton injectés : la clé embarquée et le jeton du poste
+     * en production ; une clé et un jeton d'essai pour la preuve réelle hors ligne ({@code VideoToolchainLiveTest}).
+     */
+    static fr.claudegateway.runner.video.render.RenderTools render(RunnerConfig config,
+            java.util.function.BiPredicate<byte[], String> signatureCheck,
+            java.util.function.Supplier<String> token) {
         fr.claudegateway.runner.teams.TeamsWorkFolder folder =
                 new fr.claudegateway.runner.teams.TeamsWorkFolder(config.hostRoot());
+        // Ni rapatriement ni portail ici : ffmpeg du poste n'est retenu que s'il est DÉJÀ là ; sinon c'est
+        // celui de la chaîne du portail.
         fr.claudegateway.runner.teams.LocalToolchain toolchain =
                 new fr.claudegateway.runner.teams.LocalToolchain(folder,
-                        fr.claudegateway.runner.teams.ProcessRunner.real(), console::info);
+                        fr.claudegateway.runner.teams.ProcessRunner.real(), message -> { });
         fr.claudegateway.runner.video.render.RenderToolchain.Media media =
                 new fr.claudegateway.runner.video.render.RenderToolchain.Media() {
                     @Override
@@ -151,18 +169,72 @@ public final class ToolStack {
                     public java.nio.file.Path ffprobe() {
                         return toolchain.require(fr.claudegateway.runner.teams.LocalTool.ffprobe());
                     }
+
+                    @Override
+                    public boolean presentWithoutDownload() {
+                        return toolchain.availableWithoutDownload(fr.claudegateway.runner.teams.LocalTool.ffmpeg())
+                                && toolchain.availableWithoutDownload(
+                                        fr.claudegateway.runner.teams.LocalTool.ffprobe());
+                    }
                 };
         fr.claudegateway.runner.video.render.RenderProcesses processes =
                 fr.claudegateway.runner.video.render.RenderProcesses.real();
         return new fr.claudegateway.runner.video.render.RenderTools(
                 new fr.claudegateway.runner.video.render.RenderToolchain(folder.toolsDir(),
-                        OperatingSystem.current(), System.getProperty("os.arch"), processes,
-                        fr.claudegateway.runner.teams.LocalToolchain.httpDownloader(),
+                        OperatingSystem.current(), processes,
+                        videoBundle(config, folder.toolsDir(), signatureCheck, token),
                         fr.claudegateway.runner.teams.LocalToolchain::lookupOnPath, media,
                         system -> fr.claudegateway.runner.teams.ChromePaths.executable(system, System::getenv,
                                 java.nio.file.Files::isRegularFile),
                         System.getenv("PATH")),
                 processes);
+    }
+
+    /**
+     * La chaîne vidéo du portail (F-215 / SF-215-06) : par le client réseau du runner (proxy d'entreprise, racine
+     * Zscaler), authentifiée par le jeton du poste, lu au moment de servir (un poste apparié après le démarrage
+     * en profite).
+     */
+    private static fr.claudegateway.runner.video.render.VideoToolchainBundle videoBundle(RunnerConfig config,
+            java.nio.file.Path toolsDir, java.util.function.BiPredicate<byte[], String> signatureCheck,
+            java.util.function.Supplier<String> token) {
+        return new fr.claudegateway.runner.video.render.VideoToolchainBundle(toolsDir, OperatingSystem.current(),
+                System.getProperty("os.arch"), config.gatewayBaseUrl(), token, RunnerHttp::client, signatureCheck);
+    }
+
+    /** ffmpeg et ffprobe pris dans la chaîne vidéo du portail (F-190 profite de SF-215-06). */
+    private static fr.claudegateway.runner.teams.LocalToolchain.PortalSource portalMedia(
+            fr.claudegateway.runner.video.render.VideoToolchainBundle bundle) {
+        return (tool, say) -> {
+            boolean ffmpeg = "ffmpeg".equals(tool.name());
+            if ((!ffmpeg && !"ffprobe".equals(tool.name())) || !bundle.supported()) {
+                return java.util.Optional.empty();
+            }
+            fr.claudegateway.runner.video.render.VideoToolchainBundle.Installed installed =
+                    bundle.installed().orElseGet(() -> bundle.ensure(say));
+            return java.util.Optional.of(ffmpeg ? installed.ffmpeg() : installed.ffprobe());
+        };
+    }
+
+    /**
+     * La signature du manifeste vérifiée avec la clé F-111 embarquée — chargée au moment de vérifier, jamais au
+     * montage : une clé illisible refuse le paquet, elle n'empêche pas le runner de démarrer.
+     */
+    private static java.util.function.BiPredicate<byte[], String> embeddedSignature() {
+        return (bytes, signature) -> {
+            try {
+                return fr.claudegateway.runner.update.UpdateVerifier.embedded().signatureValid(bytes, signature);
+            } catch (IllegalStateException e) {
+                return false;
+            }
+        };
+    }
+
+    /** Le jeton du poste, relu à chaque demande. */
+    private static java.util.function.Supplier<String> storedToken(RunnerConfig config) {
+        return () -> new TokenStore(config.hostRoot(),
+                java.nio.file.Path.of(System.getProperty("user.home", "."))).load()
+                .map(StoredToken::token).orElse("");
     }
 
     /**

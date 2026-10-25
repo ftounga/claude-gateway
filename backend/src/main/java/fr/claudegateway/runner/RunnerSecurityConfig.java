@@ -116,6 +116,16 @@ public class RunnerSecurityConfig {
                         // (RunnerVigieReadinessController), rien dans le SecurityContext (D9).
                         // Déclarée explicitement, jamais par joker sur `/runner/vigie/**`.
                         .requestMatchers(HttpMethod.POST, "/runner/vigie/readiness").permitAll()
+                        // Chaîne vidéo servie par le portail (F-215 / SF-215-06) : manifeste, signature et
+                        // paquets. Jeton X-Runner-Token vérifié PAR LE CONTRÔLEUR (VideoToolchainController),
+                        // rien dans le SecurityContext (D9). Déclarées une par une : le seul joker est la
+                        // version ; les quatre plateformes sont nommées, jamais `/runner/toolchain/**`.
+                        .requestMatchers(HttpMethod.GET, "/runner/toolchain/video/*/manifest").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/runner/toolchain/video/*/signature").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/runner/toolchain/video/*/darwin-arm64").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/runner/toolchain/video/*/darwin-x64").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/runner/toolchain/video/*/linux-x64").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/runner/toolchain/video/*/win-x64").permitAll()
                         .anyRequest().denyAll());
         return http.build();
     }

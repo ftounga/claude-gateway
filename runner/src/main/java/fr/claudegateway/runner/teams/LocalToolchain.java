@@ -77,6 +77,17 @@ public final class LocalToolchain {
     private final Consumer<String> say;
     private final Map<String, Path> resolved = new ConcurrentHashMap<>();
     private final PathLookup pathLookup;
+    private volatile PortalSource portal;
+
+    /**
+     * <b>La chaîne vidéo du portail</b> comme source, avant tout téléchargement internet (F-215 / SF-215-06) : ffmpeg et
+     * ffprobe y sont, signés et vérifiés, servis par la gateway que ce runner joint déjà. La source internet ne reste
+     * qu'en repli, si le portail ne peut pas les fournir.
+     */
+    public LocalToolchain withPortal(PortalSource source) {
+        this.portal = source;
+        return this;
+    }
 
     public LocalToolchain(TeamsWorkFolder folder, ProcessRunner processes, Consumer<String> say) {
         this(folder, OperatingSystem.current(), processes, httpDownloader(), say,
@@ -111,8 +122,27 @@ public final class LocalToolchain {
         if (found == null) {
             found = alreadyDownloaded(tool);
         }
+        String portalFailure = null;
+        if (found == null && portal != null) {
+            // F-215 / SF-215-06 : la chaîne vidéo du portail AVANT toute source internet.
+            try {
+                found = portal.provide(tool, say).orElse(null);
+            } catch (RuntimeException e) {
+                portalFailure = reason(e);
+                say.accept("Le portail n'a pas pu fournir « " + tool.name() + " » (" + portalFailure
+                        + ") : je tente la source publique.");
+            }
+        }
         if (found == null) {
-            found = download(tool);
+            try {
+                found = download(tool);
+            } catch (ToolchainUnavailableException e) {
+                if (portalFailure == null) {
+                    throw e;
+                }
+                throw new ToolchainUnavailableException(e.getMessage() + " Le portail n'a pas pu le fournir non plus ("
+                        + portalFailure + ").", e.remedy(), e);
+            }
         }
         if (!tool.isData()) {
             verify(tool, found);
@@ -381,6 +411,16 @@ public final class LocalToolchain {
     @FunctionalInterface
     interface PathLookup {
         Path find(String executableName);
+    }
+
+    /** Une source d'outils servie par le portail (F-215 / SF-215-06). */
+    @FunctionalInterface
+    public interface PortalSource {
+        /**
+         * @return l'outil, prêt (récupéré depuis le portail s'il le faut), ou vide s'il n'en fait pas partie
+         * @throws RuntimeException si le portail n'a pas pu le fournir (la cause est dite, puis repli)
+         */
+        java.util.Optional<Path> provide(LocalTool tool, Consumer<String> say);
     }
 
     /** Rapatriement d'une archive, isolé pour être éprouvable sans réseau. */

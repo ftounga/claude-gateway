@@ -34,7 +34,7 @@ public final class RenderJob {
     /** Les étapes, dans l'ordre. Le libellé est ce que l'agent et l'utilisateur lisent. */
     public enum Phase {
         PREPARATION("Préparation de la chaîne (Node 22, hyperframes " + RenderToolchain.HYPERFRAMES_VERSION
-                + ", Chrome sans écran, ffmpeg)"),
+                + ", GSAP, ffmpeg depuis le portail ; Chrome ou Edge du poste)"),
         RENDU("Rendu en cours"),
         TERMINE("Terminé"),
         ECHOUE("Échec");

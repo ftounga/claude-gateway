@@ -157,6 +157,70 @@ class LocalToolchainTest {
                 "aucun binaire d'outil embarqué dans le jar du runner");
     }
 
+    // ------------------------------------------------------------------ F-215 / SF-215-06 : le portail d'abord
+
+    @Test
+    void la_chaine_video_du_portail_passe_avant_toute_source_internet() throws IOException {
+        Path fromPortal = Files.createFile(home.resolve("ffmpeg-portail"));
+        fromPortal.toFile().setExecutable(true);
+        Downloads downloads = new Downloads().writing(zipContaining("ffmpeg"));
+        LocalToolchain toolchain = toolchain(OperatingSystem.MACOS,
+                new FakeProcesses().answering(command -> FakeProcesses.version("ffmpeg")),
+                downloads, name -> null)
+                .withPortal((tool, say) -> java.util.Optional.of(fromPortal));
+
+        assertEquals(fromPortal, toolchain.require(LocalTool.ffmpeg()));
+        assertEquals(0, downloads.attempts, "ni gyan, ni evermeet, ni johnvansickle");
+    }
+
+    @Test
+    void le_path_du_poste_reste_prefere_au_portail() throws IOException {
+        Path installed = Files.createFile(home.resolve("ffmpeg"));
+        installed.toFile().setExecutable(true);
+        List<String> asked = new ArrayList<>();
+        LocalToolchain toolchain = toolchain(OperatingSystem.LINUX,
+                new FakeProcesses().answering(command -> FakeProcesses.version("ffmpeg")),
+                new Downloads(), name -> installed)
+                .withPortal((tool, say) -> {
+                    asked.add(tool.name());
+                    return java.util.Optional.empty();
+                });
+
+        assertEquals(installed, toolchain.require(LocalTool.ffmpeg()));
+        assertTrue(asked.isEmpty(), "le portail n'est pas sollicité quand le poste a l'outil");
+    }
+
+    @Test
+    void si_le_portail_echoue_la_cause_est_dite_puis_repli_internet() {
+        Downloads downloads = new Downloads().writing(zipContaining("ffmpeg"));
+        LocalToolchain toolchain = toolchain(OperatingSystem.MACOS,
+                new FakeProcesses().answering(command -> FakeProcesses.version("ffmpeg")),
+                downloads, name -> null)
+                .withPortal((tool, say) -> {
+                    throw new IllegalStateException("HTTP 404 : chaîne vidéo non publiée");
+                });
+
+        toolchain.require(LocalTool.ffmpeg());
+
+        assertEquals(1, downloads.attempts, "repli sur la source publique");
+        assertTrue(said.get(0).contains("Le portail n'a pas pu fournir"), said.toString());
+        assertTrue(said.get(0).contains("HTTP 404"), said.toString());
+    }
+
+    @Test
+    void portail_et_internet_en_echec_le_refus_nomme_les_deux() {
+        LocalToolchain toolchain = toolchain(OperatingSystem.MACOS, new FakeProcesses(), new Downloads().broken(),
+                name -> null)
+                .withPortal((tool, say) -> {
+                    throw new IllegalStateException("portail injoignable");
+                });
+
+        ToolchainUnavailableException refusal = assertThrows(ToolchainUnavailableException.class,
+                () -> toolchain.require(LocalTool.ffmpeg()));
+
+        assertTrue(refusal.getMessage().contains("portail injoignable"), refusal.getMessage());
+    }
+
     private LocalToolchain toolchain(OperatingSystem os, ProcessRunner processes,
             Downloads downloads, LocalToolchain.PathLookup lookup) {
         return new LocalToolchain(new TeamsWorkFolder(home), os, processes, downloads, said::add,

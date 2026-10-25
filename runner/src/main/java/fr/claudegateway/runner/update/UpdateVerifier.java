@@ -91,7 +91,11 @@ public final class UpdateVerifier {
         return build;
     }
 
-    private boolean signatureValid(byte[] jar, String signatureBase64) {
+    /**
+     * La signature Ed25519 d'octets quelconques, vérifiée avec la clé de ce vérificateur. Réutilisée par la chaîne
+     * vidéo servie par le portail (F-215 / SF-215-06) pour son manifeste : même clé, même garantie.
+     */
+    public boolean signatureValid(byte[] jar, String signatureBase64) {
         if (signatureBase64 == null || signatureBase64.isBlank()) {
             return false;
         }
