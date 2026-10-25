@@ -65,6 +65,79 @@ class AtelierAgentControllerTest {
         when(currentUser.requireId()).thenReturn(USER);
     }
 
+    // ------------------------------------------------------------------ F-217 / SF-217-01 (D3)
+
+    private org.springframework.test.web.servlet.MvcResult runHosted(
+            fr.claudegateway.push.PushNotificationService push) throws Exception {
+        AtelierAgentController controller = new AtelierAgentController(
+                sessionService, access, props(true), currentUser, Runnable::run,
+                new fr.claudegateway.atelier.live.LiveTurnRegistry(new com.fasterxml.jackson.databind.ObjectMapper()));
+        controller.setPushNotificationService(push);
+        return MockMvcBuilders.standaloneSetup(controller).build()
+                .perform(post("/workspaces/" + WORKSPACE + "/agent/stream")
+                        .contentType(MediaType.APPLICATION_JSON).accept(MediaType.TEXT_EVENT_STREAM)
+                        .content("{\"message\":\"go\"}"))
+                .andExpect(request().asyncStarted()).andReturn();
+    }
+
+    @Test
+    void theHostedTerminalNotifiesTheAuthorizationRequestAndTheEndOfTheRun() throws Exception {
+        // CA6 : l'accord demandé et la fin du run hébergé sonnent comme sur le poste.
+        when(access.hasAccess()).thenReturn(true);
+        when(sessionService.runTaskStreaming(eq(USER), eq(WORKSPACE), any(), any())).thenAnswer(inv -> {
+            AtelierAgentListener listener = inv.getArgument(3);
+            listener.onConfirmationRequest("bash", "c-1", "rm -rf build");
+            return new AtelierSessionResult("Terminé.", List.of());
+        });
+        fr.claudegateway.push.PushNotificationService push =
+                Mockito.mock(fr.claudegateway.push.PushNotificationService.class);
+
+        String body = runHosted(push).getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+
+        org.assertj.core.api.Assertions.assertThat(body).contains("event:confirm_request").contains("event:done");
+        verify(push).notify(USER, WORKSPACE, fr.claudegateway.push.PushEvent.AUTHORIZATION_REQUESTED);
+        verify(push).notify(USER, WORKSPACE, fr.claudegateway.push.PushEvent.TURN_DONE);
+    }
+
+    @Test
+    void anUnexpectedFailureOfTheHostedRunNotifiesWorkStopped() throws Exception {
+        when(access.hasAccess()).thenReturn(true);
+        when(sessionService.runTaskStreaming(eq(USER), eq(WORKSPACE), any(), any()))
+                .thenThrow(new IllegalStateException("boom"));
+        fr.claudegateway.push.PushNotificationService push =
+                Mockito.mock(fr.claudegateway.push.PushNotificationService.class);
+
+        runHosted(push);
+
+        verify(push).notify(USER, WORKSPACE, fr.claudegateway.push.PushEvent.WORK_STOPPED);
+        verify(push, never()).notify(USER, WORKSPACE, fr.claudegateway.push.PushEvent.TURN_DONE);
+    }
+
+    @Test
+    void aFailingPushNeverBreaksTheHostedRun() throws Exception {
+        when(access.hasAccess()).thenReturn(true);
+        when(sessionService.runTaskStreaming(eq(USER), eq(WORKSPACE), any(), any()))
+                .thenReturn(new AtelierSessionResult("Terminé.", List.of()));
+        fr.claudegateway.push.PushNotificationService push =
+                Mockito.mock(fr.claudegateway.push.PushNotificationService.class);
+        Mockito.doThrow(new IllegalStateException("push down")).when(push).notify(any(), any(), any());
+
+        String body = runHosted(push).getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+
+        org.assertj.core.api.Assertions.assertThat(body).contains("event:done").doesNotContain("internal_error");
+    }
+
+    @Test
+    void withoutPushServiceTheHostedRunIsUnchanged() throws Exception {
+        when(access.hasAccess()).thenReturn(true);
+        when(sessionService.runTaskStreaming(eq(USER), eq(WORKSPACE), any(), any()))
+                .thenReturn(new AtelierSessionResult("Terminé.", List.of()));
+
+        String body = runHosted(null).getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+
+        org.assertj.core.api.Assertions.assertThat(body).contains("event:done");
+    }
+
     @Test
     void streamRelaysAgentThenDoneAsSse() throws Exception {
         when(access.hasAccess()).thenReturn(true);

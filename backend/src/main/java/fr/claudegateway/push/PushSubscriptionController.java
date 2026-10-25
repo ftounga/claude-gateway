@@ -1,5 +1,7 @@
 package fr.claudegateway.push;
 
+import java.util.UUID;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -12,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import fr.claudegateway.auth.CurrentUser;
 import fr.claudegateway.push.dto.PushSubscribeRequest;
+import fr.claudegateway.push.dto.PushTestResponse;
 import fr.claudegateway.push.dto.PushUnsubscribeRequest;
 import fr.claudegateway.push.dto.VapidPublicKeyResponse;
 import jakarta.validation.Valid;
@@ -29,10 +32,13 @@ public class PushSubscriptionController {
 
     private final PushSubscriptionService subscriptions;
     private final CurrentUser currentUser;
+    private final PushNotificationService notifications;
 
-    public PushSubscriptionController(PushSubscriptionService subscriptions, CurrentUser currentUser) {
+    public PushSubscriptionController(PushSubscriptionService subscriptions, CurrentUser currentUser,
+            PushNotificationService notifications) {
         this.subscriptions = subscriptions;
         this.currentUser = currentUser;
+        this.notifications = notifications;
     }
 
     /** Abonne (ou ré-abonne) l'appareil courant du propriétaire. */
@@ -48,6 +54,17 @@ public class PushSubscriptionController {
     public ResponseEntity<Void> unsubscribe(@Valid @RequestBody PushUnsubscribeRequest request) {
         subscriptions.unsubscribe(currentUser.requireId(), request.endpoint());
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * « Tester le son » (F-217 / SF-217-01, D4) : envoie une notification de test aux <b>seuls appareils du
+     * compte courant</b> et dit combien sont visés. L'envoi est asynchrone : la réponse n'attend pas le réseau.
+     */
+    @PostMapping("/test")
+    public PushTestResponse test() {
+        UUID userId = currentUser.requireId();
+        int devices = notifications.sendTest(userId);
+        return new PushTestResponse(notifications.configured(), devices);
     }
 
     /** La clé publique VAPID (jamais la privée) ; {@code null} si le push n'est pas configuré. */

@@ -86,6 +86,30 @@ public class AtelierAgentController {
         this.liveTurns = liveTurns;
     }
 
+    /** F-217 / SF-217-01 (D3) — l'émetteur Web Push ; absent (tests, contexte sans push), rien ne sonne. */
+    private fr.claudegateway.push.PushNotificationService pushNotificationService;
+
+    /**
+     * Injection <b>facultative</b> par setter (jamais un second constructeur : il casserait le contexte
+     * Spring) : le terminal hébergé notifie l'accord demandé et la fin du run, comme le poste.
+     */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setPushNotificationService(fr.claudegateway.push.PushNotificationService pushNotificationService) {
+        this.pushNotificationService = pushNotificationService;
+    }
+
+    /** Best-effort : une notification ne casse jamais le run. */
+    private void push(UUID userId, UUID workspaceId, fr.claudegateway.push.PushEvent event) {
+        if (pushNotificationService == null) {
+            return;
+        }
+        try {
+            pushNotificationService.notify(userId, workspaceId, event);
+        } catch (RuntimeException e) {
+            log.warn("Notification du terminal hébergé impossible : {}", e.getMessage());
+        }
+    }
+
     /**
      * Lance un run d'exécution Phase 2 et relaie les étapes en SSE. Événements émis : {@code agent}
      * (texte), {@code action} (outil), {@code status} (état), {@code done} (réponse + fichiers), et
@@ -177,6 +201,8 @@ public class AtelierAgentController {
                 public void onConfirmationRequest(String tool, String confirmationId, String detail) {
                     turn.publish("confirm_request",
                             new StreamConfirmRequest(confirmationId, tool, detail));
+                    // F-217 / SF-217-01 (D3) : l'accord demandé sur le terminal hébergé sonne aussi.
+                    push(userId, workspaceId, fr.claudegateway.push.PushEvent.AUTHORIZATION_REQUESTED);
                 }
 
                 @Override
@@ -189,6 +215,8 @@ public class AtelierAgentController {
             turn.publish("done", new StreamDone(result.reply(), result.changedFiles(),
                     result.inputTokens(), result.outputTokens(), result.activeSeconds(),
                     result.interrupted(), result.budgetReached(), result.diffs()));
+            // F-217 / SF-217-01 (D3) : la fin du run hébergé notifie comme celle d'un tour du poste.
+            push(userId, workspaceId, fr.claudegateway.push.PushEvent.TURN_DONE);
         } catch (WorkspaceNotFoundException ex) {
             turn.publish("error", new StreamError("workspace_not_found"));
         } catch (QuotaExceededException ex) {
@@ -214,6 +242,7 @@ public class AtelierAgentController {
         } catch (RuntimeException ex) {
             log.warn("Échec inattendu du run d'exécution de l'atelier");
             turn.publish("error", new StreamError("internal_error"));
+            push(userId, workspaceId, fr.claudegateway.push.PushEvent.WORK_STOPPED);
         } finally {
             liveTurns.close(turn);
         }

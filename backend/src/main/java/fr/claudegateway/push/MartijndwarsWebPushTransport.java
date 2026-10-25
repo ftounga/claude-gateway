@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 
 import nl.martijndwars.webpush.Notification;
 import nl.martijndwars.webpush.PushService;
+import nl.martijndwars.webpush.Urgency;
 
 /**
  * Transport Web Push réel (F-153 / SF-153-02) : signe (VAPID / ES256) et chiffre (RFC 8291,
@@ -42,12 +43,13 @@ public final class MartijndwarsWebPushTransport implements WebPushTransport {
 
     @Override
     public Result send(PushSubscription subscription, String payloadJson) {
+        return send(subscription, payloadJson, PushDelivery.DEFAULT);
+    }
+
+    @Override
+    public Result send(PushSubscription subscription, String payloadJson, PushDelivery delivery) {
         try {
-            Notification notification = new Notification(
-                    subscription.getEndpoint(),
-                    subscription.getP256dh(),
-                    subscription.getAuth(),
-                    payloadJson.getBytes(StandardCharsets.UTF_8));
+            Notification notification = notification(subscription, payloadJson, delivery);
             int status = pushService.send(notification).getStatusLine().getStatusCode();
             if (status == 404 || status == 410) {
                 return Result.EXPIRED;
@@ -63,5 +65,23 @@ public final class MartijndwarsWebPushTransport implements WebPushTransport {
             log.warn("Échec d'émission Web Push : {}", e.getMessage());
             return Result.FAILED;
         }
+    }
+
+    /**
+     * La notification chiffrable, avec les en-têtes {@code Urgency} et {@code TTL} (F-217 / SF-217-01, D2) :
+     * sans eux, la bibliothèque n'envoie aucune urgence (« normal », différable en veille) et garde la
+     * charge 28 jours.
+     */
+    static Notification notification(PushSubscription subscription, String payloadJson, PushDelivery delivery)
+            throws Exception {
+        PushDelivery effective = delivery == null ? PushDelivery.DEFAULT : delivery;
+        return Notification.builder()
+                .endpoint(subscription.getEndpoint())
+                .userPublicKey(subscription.getP256dh())
+                .userAuth(subscription.getAuth())
+                .payload(payloadJson.getBytes(StandardCharsets.UTF_8))
+                .urgency(Urgency.valueOf(effective.urgency().name()))
+                .ttl(effective.ttlSeconds())
+                .build();
     }
 }
