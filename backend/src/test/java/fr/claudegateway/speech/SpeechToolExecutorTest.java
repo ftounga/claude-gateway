@@ -34,6 +34,8 @@ import fr.claudegateway.teams.meeting.stt.TranscriptionProvider.TimedWord;
 import fr.claudegateway.teams.meeting.stt.TranscriptionProvider.WordTranscript;
 import fr.claudegateway.teams.meeting.stt.TranscriptionProviderException;
 import fr.claudegateway.videos.AudioBlock;
+import fr.claudegateway.videos.VideoSeries;
+import fr.claudegateway.videos.VideoService;
 import fr.claudegateway.videos.VideoToolExecutor;
 
 /** L'outil {@code voix_off} (F-215 / SF-215-01) : fournisseur, poste et transcription simulés. */
@@ -46,6 +48,7 @@ class SpeechToolExecutorTest {
     private final SpeechPreferenceRepository repository = mock(SpeechPreferenceRepository.class);
     private final SpeechUsage usage = mock(SpeechUsage.class);
     private final VideoToolExecutor videos = mock(VideoToolExecutor.class);
+    private final VideoService videoService = mock(VideoService.class);
     private final SpeechProperties properties = OpenAiSpeechProviderTest.props("https://api.openai.com/v1", "sk", true);
     private final UUID userId = UUID.randomUUID();
     private Workspace workspace;
@@ -56,7 +59,7 @@ class SpeechToolExecutorTest {
         workspace = Workspace.builder().id(UUID.randomUUID()).userId(userId).name("cours").hostId(UUID.randomUUID())
                 .projectPath("").executionTarget(WorkspaceExecutionTarget.RUNNER).build();
         executor = new SpeechToolExecutor(provider, transcription, deposit,
-                new SpeechPreferenceService(repository, properties), usage, properties, videos, mapper);
+                new SpeechPreferenceService(repository, properties), usage, properties, videos, videoService, mapper);
         when(provider.synthesize(anyString(), anyString(), anyString()))
                 .thenReturn(new SpeechProvider.SpeechAudio(new byte[] {1, 2, 3}, "audio/mpeg"));
         when(deposit.deposit(any(), any(), anyString(), anyString(), any(), anyString(), anyString()))
@@ -107,6 +110,43 @@ class SpeechToolExecutorTest {
     }
 
     @Test
+    @DisplayName("SF-215-04 : voix_off(serie) applique la voix de la série ; la voix explicite l'emporte")
+    void seriesVoiceApplies() {
+        when(transcription.transcribeWords(any(), anyString(), any())).thenThrow(new UnsupportedOperationException());
+        VideoSeries series = VideoSeries.builder().id(UUID.randomUUID()).userId(userId).workspaceId(workspace.getId())
+                .title("EKS de A à Z").voice("nova").voiceInstructions("posée").build();
+        when(videoService.findSeries(userId, workspace.getId(), "EKS de A à Z")).thenReturn(Optional.of(series));
+
+        SpeechToolExecutor.Outcome outcome = executor.execute(userId, workspace, "c1",
+                input("Bonjour").put("serie", "EKS de A à Z"));
+        verify(provider).synthesize("Bonjour", "nova", "posée");
+        assertThat(outcome.content()).contains("Voix de la série « EKS de A à Z » appliquée");
+
+        executor.execute(userId, workspace, "c2", input("Salut").put("serie", "EKS de A à Z").put("voix", "ash"));
+        verify(provider).synthesize(eq("Salut"), eq("ash"), anyString());
+    }
+
+    @Test
+    @DisplayName("SF-215-04 : série inconnue ou sans voix ⇒ préférence appliquée, et c'est dit")
+    void unknownSeriesFallsBack() {
+        when(transcription.transcribeWords(any(), anyString(), any())).thenThrow(new UnsupportedOperationException());
+        when(videoService.findSeries(any(), any(), anyString())).thenReturn(Optional.empty());
+
+        SpeechToolExecutor.Outcome outcome = executor.execute(userId, workspace, "c1",
+                input("Bonjour").put("serie", "Inconnue"));
+
+        assertThat(outcome.error()).isFalse();
+        verify(provider).synthesize("Bonjour", "onyx", SpeechVoices.DEFAULT_INSTRUCTIONS);
+        assertThat(outcome.content()).contains("inconnue dans ce sujet");
+
+        VideoSeries silent = VideoSeries.builder().id(UUID.randomUUID()).userId(userId).workspaceId(workspace.getId())
+                .title("Muette").build();
+        when(videoService.findSeries(userId, workspace.getId(), "Muette")).thenReturn(Optional.of(silent));
+        assertThat(executor.execute(userId, workspace, "c2", input("Re").put("serie", "Muette")).content())
+                .contains("pas encore de voix");
+    }
+
+    @Test
     @DisplayName("Transcription en échec : mp3 déposé, résultat NON bloquant, pas de .mots.json")
     void transcriptionFailureIsNotBlocking() {
         when(transcription.transcribeWords(any(), anyString(), any()))
@@ -154,7 +194,7 @@ class SpeechToolExecutorTest {
 
         SpeechProperties off = OpenAiSpeechProviderTest.props("https://api.openai.com/v1", "sk", false);
         SpeechToolExecutor disabled = new SpeechToolExecutor(provider, transcription, deposit,
-                new SpeechPreferenceService(repository, off), usage, off, videos, mapper);
+                new SpeechPreferenceService(repository, off), usage, off, videos, videoService, mapper);
         assertThat(disabled.execute(userId, workspace, "c", input("x")).content()).contains("non configurée");
     }
 

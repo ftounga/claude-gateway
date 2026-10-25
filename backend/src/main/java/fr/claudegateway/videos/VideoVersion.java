@@ -51,6 +51,10 @@ public class VideoVersion {
     @Column(name = "chapters_json", length = 16000)
     private String chaptersJson;
 
+    /** La fiche des sources (F-215 / SF-215-04), en JSON, ou {@code null}. */
+    @Column(name = "sources_json", length = 16000)
+    private String sourcesJson;
+
     @Column(name = "poster_key", length = 300)
     private String posterKey;
 

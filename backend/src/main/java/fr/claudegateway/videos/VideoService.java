@@ -76,11 +76,27 @@ public class VideoService {
      * @param episode     rang dans la série, facultatif
      * @param durationS   durée annoncée, facultative
      * @param label       libellé de piste audio, facultatif
+     * @param sources     fiche des sources validée (F-215 / SF-215-04), liste vide sinon
+     * @param voice       voix à fixer pour la série (SF-215-04), facultative
+     * @param voiceInstructions consignes de ton de la série, facultatives
      */
     public record PublishRequest(VideoPlace place, VideoMediaTypes.MediaType type, UUID replaceId, String title,
             String description, List<VideoChapter> chapters, String seriesRef, Integer episode, Integer durationS,
-            String label) {
+            String label, List<VideoSource> sources, String voice, String voiceInstructions) {
+
+        /** La forme historique (F-213) : sans fiche des sources ni voix de série. */
+        public PublishRequest(VideoPlace place, VideoMediaTypes.MediaType type, UUID replaceId, String title,
+                String description, List<VideoChapter> chapters, String seriesRef, Integer episode, Integer durationS,
+                String label) {
+            this(place, type, replaceId, title, description, chapters, seriesRef, episode, durationS, label,
+                    List.of(), null, null);
+        }
     }
+
+    /** Longueur maximale des consignes de ton d'une série. */
+    public static final int MAX_VOICE_INSTRUCTIONS_CHARS = 1_000;
+
+    private static final java.util.regex.Pattern VOICE = java.util.regex.Pattern.compile("[a-z0-9_-]{1,32}");
 
     /**
      * Une publication décidée, prête à recevoir ses octets.
@@ -111,7 +127,8 @@ public class VideoService {
                 cleanTitle(request.title()), cleanDescription(request.description()),
                 request.chapters() == null ? List.of() : request.chapters(), blankToNull(request.seriesRef()),
                 request.episode(), request.durationS() == null || request.durationS() <= 0 ? null : request.durationS(),
-                cleanLabel(request.label()));
+                cleanLabel(request.label()), request.sources() == null ? List.of() : request.sources(),
+                cleanVoice(request.voice()), cleanVoiceInstructions(request.voiceInstructions()));
         if (clean.episode() != null && (clean.episode() < 1 || clean.episode() > MAX_EPISODE)) {
             throw new VideoRejectedException("episode est un rang de 1 à " + MAX_EPISODE + ".");
         }
@@ -129,6 +146,9 @@ public class VideoService {
         if (posterBytes > limits.maxPosterBytes()) {
             throw new VideoRejectedException("Couverture trop volumineuse : " + megabytes(limits.maxPosterBytes())
                     + " Mo au plus.");
+        }
+        if (kind == VideoKind.AUDIO && !clean.sources().isEmpty()) {
+            throw new VideoRejectedException("Un son ne porte pas de fiche des sources.");
         }
         UUID userId = clean.place().userId();
         if (clean.seriesRef() != null) {
@@ -151,6 +171,11 @@ public class VideoService {
             videoId = existing.getId();
             isNew = false;
             kept = versions.findByVideoIdAndUserIdOrderByVersionAsc(videoId, userId);
+        }
+        if ((clean.voice() != null || clean.voiceInstructions() != null) && clean.seriesRef() == null
+                && (isNew || videos.findByIdAndUserId(videoId, userId).map(Video::getSeriesId).isEmpty())) {
+            throw new VideoRejectedException("voix et consignes_voix fixent la voix d'une SÉRIE : donne aussi serie "
+                    + "(ou publie une nouvelle version d'un épisode déjà rangé dans une série).");
         }
         int overflow = Math.max(0, kept.size() + 1 - limits.maxVersions());
         List<VideoVersion> purged = List.copyOf(kept.subList(0, Math.min(overflow, kept.size())));
@@ -212,6 +237,16 @@ public class VideoService {
         if (inSeries == null && video.getSeriesId() != null) {
             inSeries = series.findByIdAndUserId(video.getSeriesId(), userId).orElse(null);
         }
+        if (inSeries != null && (request.voice() != null || request.voiceInstructions() != null)) {
+            // SF-215-04 : la voix est fixée pour toute la série, et modifiable pour la série entière.
+            if (request.voice() != null) {
+                inSeries.setVoice(request.voice());
+            }
+            if (request.voiceInstructions() != null) {
+                inSeries.setVoiceInstructions(request.voiceInstructions());
+            }
+            inSeries = series.saveAndFlush(inSeries);
+        }
         video.setTitle(request.title());
         if (request.description() != null || prepared.isNew()) {
             video.setDescription(request.description());
@@ -224,6 +259,7 @@ public class VideoService {
         VideoVersion created = versions.save(VideoVersion.builder().id(UUID.randomUUID()).videoId(saved.getId())
                 .userId(userId).version(prepared.version()).storageKey(prepared.mediaKey()).sizeBytes(sizeBytes)
                 .mime(request.type().mime()).chaptersJson(VideoChapter.toJson(request.chapters()))
+                .sourcesJson(VideoSource.toJson(request.sources()))
                 .posterKey(posterKey).posterMime(posterMime).label(request.label()).build());
         for (VideoVersion old : prepared.purged()) {
             versions.deleteById(old.getId());
@@ -284,6 +320,24 @@ public class VideoService {
     @Transactional(readOnly = true)
     public Optional<VideoSeries> series(UUID userId, UUID seriesId) {
         return seriesId == null ? Optional.empty() : series.findByIdAndUserId(seriesId, userId);
+    }
+
+    /**
+     * La série d'une référence (identifiant ou titre) dans un sujet du compte, sans jamais la créer
+     * (F-215 / SF-215-04 : {@code voix_off(serie)}). Une série d'un autre compte ou d'un autre sujet est
+     * introuvable.
+     */
+    @Transactional(readOnly = true)
+    public Optional<VideoSeries> findSeries(UUID userId, UUID workspaceId, String ref) {
+        if (userId == null || workspaceId == null || ref == null || ref.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.ofNullable(resolveSeriesRef(userId, workspaceId, null, ref, false))
+                    .filter(found -> workspaceId.equals(found.getWorkspaceId()));
+        } catch (VideoRejectedException e) {
+            return Optional.empty();
+        }
     }
 
     /** Le stockage vidéo + audio utilisé par le compte. */
@@ -474,6 +528,29 @@ public class VideoService {
         String clean = label.replaceAll("\\s+", " ").strip();
         if (clean.length() > MAX_LABEL_CHARS) {
             throw new VideoRejectedException("Libellé de piste trop long : " + MAX_LABEL_CHARS + " caractères au plus.");
+        }
+        return clean;
+    }
+
+    private static String cleanVoice(String voice) {
+        if (voice == null || voice.isBlank()) {
+            return null;
+        }
+        String clean = voice.strip().toLowerCase(Locale.ROOT);
+        if (!VOICE.matcher(clean).matches()) {
+            throw new VideoRejectedException("voix invalide : un nom de voix du fournisseur (ex. onyx).");
+        }
+        return clean;
+    }
+
+    private static String cleanVoiceInstructions(String instructions) {
+        if (instructions == null || instructions.isBlank()) {
+            return null;
+        }
+        String clean = instructions.strip();
+        if (clean.length() > MAX_VOICE_INSTRUCTIONS_CHARS) {
+            throw new VideoRejectedException("consignes_voix trop longues : " + MAX_VOICE_INSTRUCTIONS_CHARS
+                    + " caractères au plus.");
         }
         return clean;
     }

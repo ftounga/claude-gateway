@@ -146,7 +146,12 @@ class GovernancePackageSeederTest {
                 // les pièges
                 .contains("sans `id`").containsIgnoringCase("muette").contains("<span>")
                 // la charte par défaut (D1) et son remplacement
-                .contains("navy").contains("theme.css");
+                .contains("navy").contains("theme.css")
+                // SF-215-04 : le format long (série, plan validé, chantier, voix commune, fiche des sources)
+                .contains("Format long").contains("3 min estimées ou de 4 notions majeures")
+                .contains("5 à 15 épisodes de 1 à 3 min").contains("`demander`").contains("set_plan")
+                .contains("première vidéo d'une série").contains("voix_off(serie")
+                .contains("sous-agent `task`").contains("fiche des sources").contains("a_confirmer");
         assertThat(guide.getContent().length()).isLessThan(GovernancePackageFile.MAX_CONTENT_LENGTH);
     }
 

@@ -110,6 +110,37 @@ class VideoToolPublishIntegrationTest {
     }
 
     @Test
+    @DisplayName("SF-215-04 : fiche des sources rangée et résumée, voix de série fixée ; fiche invalide refusée avant transfert")
+    void sourcesAndSeriesVoice() {
+        serve("ep1.mp4", VideoTestSupport.mp4(2_000));
+        ObjectNode input = video("ep1.mp4", "Le réseau").put("serie", "Cours EKS").put("voix", "nova");
+        ArrayNode sources = input.putArray("sources");
+        sources.addObject().put("affirmation", "Le VPC est en 10.180.0.0/16").put("source", "carte : vpc-prod");
+        sources.addObject().put("affirmation", "L'ALB écoute sur 443").put("a_confirmer", true);
+
+        VideoToolExecutor.VideoOutcome outcome = executor.publishVideo(alice.getId(), workspace, "c1", input);
+
+        assertThat(outcome.error()).as(outcome.content()).isFalse();
+        assertThat(outcome.content()).contains("Fiche des sources : 2 lignes, dont 1 à confirmer")
+                .contains("Voix de la série : nova");
+        assertThat(VideoSource.fromJson(videoService.requireVersion(alice.getId(), outcome.block().videoId(), null)
+                .getSourcesJson())).hasSize(2);
+
+        serve("ep2.mp4", VideoTestSupport.mp4(2_000));
+        VideoToolExecutor.VideoOutcome bare = executor.publishVideo(alice.getId(), workspace, "c2",
+                video("ep2.mp4", "Les nœuds"));
+        assertThat(bare.content()).contains("Aucune fiche des sources jointe");
+
+        ObjectNode bad = video("ep3.mp4", "Faux");
+        bad.putArray("sources").addObject().put("affirmation", "port 8443");
+        VideoToolExecutor.VideoOutcome refused = executor.publishVideo(alice.getId(), workspace, "c3", bad);
+        assertThat(refused.error()).isTrue();
+        assertThat(refused.content()).contains("n'a pas de source");
+        org.mockito.Mockito.verify(runner, org.mockito.Mockito.never()).readFileBytes(
+                org.mockito.ArgumentMatchers.any(), anyString(), eq("ep3.mp4"), anyLong(), anyInt());
+    }
+
+    @Test
     @DisplayName("remplace : nouvelle version de la même vidéo, chapitres de la v2")
     void replaceCreatesNewVersion() {
         serve("v1.mp4", VideoTestSupport.mp4(2_000));

@@ -90,12 +90,15 @@ public class VideoToolExecutor {
         UUID replaceId;
         List<VideoChapter> chapters;
         List<VideoCommentService.Resolution> resolutions;
+        List<VideoSource> sources;
         try {
             replaceId = optionalUuid(input, "remplace");
             chapters = VideoChapter.parse(input == null ? null : input.get("chapitres"));
             // F-214 / SF-214-01 : validé AVANT le transfert — refuser après une minute de rapatriement serait
             // du temps perdu.
             resolutions = VideoCommentService.parseResolutions(input == null ? null : input.get("retours_traites"));
+            // F-215 / SF-215-04 : la fiche des sources, validée elle aussi avant le transfert.
+            sources = VideoSource.parse(input == null ? null : input.get("sources"));
         } catch (VideoRejectedException e) {
             return VideoOutcome.error(e.getMessage());
         }
@@ -129,7 +132,7 @@ public class VideoToolExecutor {
         VideoPlace place = new VideoPlace(userId, workspace.getId(), workspace.getHostId());
         VideoService.PublishRequest request = new VideoService.PublishRequest(place, type, replaceId,
                 text(input, "titre"), text(input, "description"), chapters, text(input, "serie"), episode, duration,
-                null);
+                null, sources, text(input, "voix"), text(input, "consignes_voix"));
         Transfer transfer = transfer(userId, target, callId, VideoToolCatalog.VIDEO, path, request,
                 poster == null ? 0 : poster.length);
         if (transfer.error() != null) {
@@ -156,11 +159,23 @@ public class VideoToolExecutor {
                 }
             }
             String inSeries = published.series() == null ? ""
-                    : " Série « " + published.series().getTitle() + " », épisode " + video.getEpisode() + ".";
+                    : " Série « " + published.series().getTitle() + " », épisode " + video.getEpisode() + "."
+                            + (published.series().getVoice() == null ? ""
+                                    : " Voix de la série : " + published.series().getVoice()
+                                            + " (voix_off avec serie la réutilise).");
+            String sheet = sources.isEmpty()
+                    ? " Aucune fiche des sources jointe : republie avec sources (chaque affirmation technique et sa "
+                            + "source, ou a_confirmer) si la vidéo affirme des faits techniques."
+                    : " Fiche des sources : " + sources.size() + " ligne" + (sources.size() > 1 ? "s" : "")
+                            + (VideoSource.toConfirmCount(sources) == 0 ? ""
+                                    : ", dont " + VideoSource.toConfirmCount(sources) + " à confirmer (dis-le à "
+                                            + "l'utilisateur)")
+                            + ".";
             return new VideoOutcome("Vidéo publiée : « " + video.getTitle() + " » — version "
                     + published.version().getVersion() + ". video_id : " + video.getId() + "." + inSeries
                     + " L'utilisateur la regarde dans le fil et dans la galerie Vidéos du sujet ; pour la corriger, "
-                    + "republie avec remplace=" + video.getId() + "." + retours, false, VideoBlock.of(published));
+                    + "republie avec remplace=" + video.getId() + "." + sheet + retours, false,
+                    VideoBlock.of(published));
         } catch (RuntimeException e) {
             store.delete(transfer.prepared().mediaKey());
             store.delete(posterKey);

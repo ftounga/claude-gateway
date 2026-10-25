@@ -75,7 +75,8 @@ public class SpeechToolCatalog {
                         + "demande (« voix féminine », « plus dynamique », « la voix 3 »). auditions: true lit UNE "
                         + "phrase avec 3 à 4 voix et les publie à l'écoute ; propose ensuite le choix par une "
                         + "question. Refaire une vidéo avec une autre voix : nouvelle voix_off, animations "
-                        + "recalées, puis video_publier avec remplace. L'utilisateur confirme d'un clic ; payant.",
+                        + "recalées, puis video_publier avec remplace. serie : reprend la voix fixée pour la série. "
+                        + "L'utilisateur confirme d'un clic ; payant.",
                 Map.of("type", "object",
                         "properties", Map.of(
                                 "texte", Map.of("type", "string", "description",
@@ -88,7 +89,10 @@ public class SpeechToolCatalog {
                                 "auditions", Map.of("type", "boolean", "description",
                                         "true : la même phrase lue par plusieurs voix, publiées à l'écoute."),
                                 "voix_auditions", Map.of("type", "array", "items", voice, "minItems", 2,
-                                        "maxItems", 4, "description", "Les voix des auditions (défaut : 4 voix).")),
+                                        "maxItems", 4, "description", "Les voix des auditions (défaut : 4 voix)."),
+                                "serie", Map.of("type", "string", "description",
+                                        "Titre (ou identifiant) de la série : sans voix explicite, sa voix "
+                                                + "s'applique.")),
                         "required", List.of("texte")));
     }
 }
