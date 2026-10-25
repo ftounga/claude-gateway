@@ -1,7 +1,7 @@
 # Mini-spec — F-215 / SF-215-04 Format long : une série d'épisodes, fiche des sources, voix de série
 
 ## Identifiant
-`F-215 / SF-215-04` — Feature parente : F-215 « Le cours vidéo libre (court et long) » — Statut : `in-progress` — 2026-10-25
+`F-215 / SF-215-04` — Feature parente : F-215 « Le cours vidéo libre (court et long) » — Statut : `done` — 2026-10-25 (PR #1280, #1281)
 Branches : `feat/SF-215-04-format-long-serie` (backend), `feat/SF-215-04-fiche-sources-ecran` (frontend)
 
 ## Objectif
@@ -56,14 +56,14 @@ la **voix est fixée pour toute la série** (amendement PO, point 3).
 | version sans fiche | `sources: []`, rien affiché | 200 |
 
 ## Critères d'acceptation
-- [ ] CA1 — Le guide porte la section « Format long » : seuil D3, plan 5–15 × 1–3 min validé par `demander` avant
+- [x] CA1 — Le guide porte la section « Format long » : seuil D3, plan 5–15 × 1–3 min validé par `demander` avant
   fabrication, charte et voix communes, auditions à la 1re vidéo de série, un épisode = une composition (sous-agent
   `task` possible), `set_plan` une étape par épisode, fiche des sources ; la consigne système n'en contient rien.
-- [ ] CA2 — `video_publier(sources)` range la fiche par version ; validation (bornes, source ou à confirmer).
-- [ ] CA3 — `video_publier(serie, voix, consignes_voix)` fixe/modifie la voix de la série ; refus hors série.
-- [ ] CA4 — `voix_off(serie)` applique la voix de la série sans voix explicite ; explicite prime ; série inconnue ⇒ préférence.
-- [ ] CA5 — `GET /videos/{id}` rend `sources` et `seriesVoice` ; isolation 404 croisée.
-- [ ] CA6 — Le lecteur affiche la fiche des sources (repliable, « à confirmer » surligné), rien sans fiche.
+- [x] CA2 — `video_publier(sources)` range la fiche par version ; validation (bornes, source ou à confirmer).
+- [x] CA3 — `video_publier(serie, voix, consignes_voix)` fixe/modifie la voix de la série ; refus hors série.
+- [x] CA4 — `voix_off(serie)` applique la voix de la série sans voix explicite ; explicite prime ; série inconnue ⇒ préférence.
+- [x] CA5 — `GET /videos/{id}` rend `sources` et `seriesVoice` ; isolation 404 croisée.
+- [x] CA6 — Le lecteur affiche la fiche des sources (repliable, « à confirmer » surligné), rien sans fiche.
 
 ## Contraintes de validation
 | Champ | Obligatoire | Format |
