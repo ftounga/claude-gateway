@@ -55,6 +55,7 @@ class PlumeApiIntegrationTest {
     @Autowired private WorkspaceRepository workspaceRepository;
     @Autowired private AtelierMessageRepository messageRepository;
     @Autowired private JwtService jwtService;
+    @Autowired private fr.claudegateway.videos.VideoSeriesRepository seriesRepository;
 
     @MockitoBean private AIProvider aiProvider;
     @MockitoBean private QuotaService quotaService;
@@ -126,6 +127,30 @@ class PlumeApiIntegrationTest {
         assertThat(requests.get(0).messages().get(0).content())
                 .contains("ajoute la pagination", "Corrige le curseur", "ExportService.java");
         verifyNoInteractions(quotaService);
+    }
+
+    @Test
+    @DisplayName("SF-215-05 : demande de vidéo — cahier de réalisation, mode video, séries du compte seulement")
+    void videoMode() throws Exception {
+        Workspace mine = workspace(alice);
+        Workspace bobs = workspace(bob);
+        seriesRepository.save(fr.claudegateway.videos.VideoSeries.builder().id(UUID.randomUUID())
+                .userId(alice.getId()).workspaceId(mine.getId()).title("Cours export").voice("nova").build());
+        seriesRepository.save(fr.claudegateway.videos.VideoSeries.builder().id(UUID.randomUUID())
+                .userId(bob.getId()).workspaceId(bobs.getId()).title("Série secrète de Bob").build());
+
+        enrich(mine.getId(), aliceToken, "fais une vidéo qui explique l'export")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mode").value("video"))
+                .andExpect(jsonPath("$.sources").value(org.hamcrest.Matchers.hasItem("Séries vidéo du sujet")));
+
+        assertThat(requests).hasSize(1);
+        assertThat(requests.get(0).system()).isEqualTo(PlumeService.CONSIGNE_VIDEO);
+        assertThat(requests.get(0).messages().get(0).content())
+                .contains("Cours export — 0 épisode, voix fixée : nova").doesNotContain("Série secrète de Bob");
+
+        enrich(mine.getId(), aliceToken, "ajoute la pagination").andExpect(jsonPath("$.mode").value("prompt"));
+        assertThat(requests.get(1).system()).isEqualTo(PlumeService.CONSIGNE);
     }
 
     @Test

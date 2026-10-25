@@ -16,4 +16,7 @@ public interface PageRepository extends JpaRepository<Page, UUID> {
 
     /** Les pages d'un lieu (poste ou client, espace), la plus récemment modifiée d'abord (SF-109-04). */
     List<Page> findByUserIdAndHostIdAndSpaceOrderByUpdatedAtDesc(UUID userId, UUID hostId, PageSpace space);
+
+    /** Les 20 pages les plus récentes d'un sujet (F-215 / SF-215-05 : sources d'un cahier de réalisation). */
+    List<Page> findTop20ByUserIdAndWorkspaceIdOrderByUpdatedAtDesc(UUID userId, UUID workspaceId);
 }
