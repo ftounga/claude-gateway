@@ -10,6 +10,8 @@ export interface EnrichPromptResponse {
   toConfirm: string[];
   /** Ce qui a été lu pour enrichir, en toutes lettres. */
   sources: string[];
+  /** F-215 / SF-215-05 : `video` pour un cahier de réalisation, `prompt` sinon (absent : ancien serveur). */
+  mode?: 'video' | 'prompt';
 }
 
 /**
