@@ -27,12 +27,12 @@ import fr.claudegateway.runner.OperatingSystem;
 import fr.claudegateway.runner.PathResolver;
 import fr.claudegateway.runner.ToolContext;
 import fr.claudegateway.runner.ToolOutcome;
-import fr.claudegateway.runner.teams.LocalToolchain;
 import fr.claudegateway.runner.teams.ToolchainUnavailableException;
 
 /**
- * Rendre une vidéo sur le poste (F-215 / SF-215-02) : processus, téléchargements et PATH simulés — rien n'est
- * lancé ni téléchargé pour de vrai.
+ * Rendre une vidéo sur le poste (F-215 / SF-215-02, SF-215-06) : processus et PATH simulés ; le portail est une adresse
+ * morte (le téléchargement réel du paquet est éprouvé par {@code VideoToolchainBundleTest}, et la chaîne entière,
+ * hors ligne, par {@code VideoToolchainLiveTest}).
  */
 class RenderToolsTest {
 
@@ -43,11 +43,9 @@ class RenderToolsTest {
     private Path project;
     private Path toolsDir;
     private Path systemNode;
+    private Path chrome;
     private final FakeProcesses processes = new FakeProcesses();
-    private final List<String> downloads = new ArrayList<>();
-    private boolean downloadFails;
     private boolean nodeOnPath = true;
-    private boolean npmOnPath = true;
     private Optional<Path> systemChrome = Optional.empty();
     private boolean ffmpegMissing;
     private PathResolver paths;
@@ -58,20 +56,49 @@ class RenderToolsTest {
         toolsDir = temp.resolve("tools");
         systemNode = Files.createDirectories(temp.resolve("sys/bin")).resolve("node");
         Files.writeString(systemNode, "");
+        chrome = Files.writeString(Files.createDirectories(temp.resolve("opt/google/chrome")).resolve("chrome"), "");
+        systemChrome = Optional.of(chrome);
         Path cours = Files.createDirectories(project.resolve("cours"));
         Files.writeString(cours.resolve("index.html"), "<html></html>");
         paths = new PathResolver(project);
+        installBundle();
+    }
+
+    private void removeBundle() {
+        try (java.util.stream.Stream<Path> walk = Files.walk(toolsDir)) {
+            walk.sorted(java.util.Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** Le paquet du portail déjà en place dans le dossier d'outils (marqueur compris). */
+    private Path installBundle() throws IOException {
+        Path home = toolsDir.resolve("video-toolchain-" + VideoToolchainBundle.VERSION);
+        for (String file : List.of("node/bin/node", "hyperframes/node_modules/hyperframes/bin/hyperframes.mjs",
+                "hyperframes/node_modules/gsap/dist/gsap.min.js", "ffmpeg/ffmpeg", "ffmpeg/ffprobe")) {
+            Path path = home.resolve(file);
+            Files.createDirectories(path.getParent());
+            Files.writeString(path, file.endsWith("gsap.min.js") ? "/* GSAP 3.13.0 */" : "");
+        }
+        Files.writeString(home.resolve(".complete"), "sha256\n");
+        return home;
+    }
+
+    /** hyperframes (et GSAP) installés par une version précédente du runner. */
+    private void installLegacyHyperframes(boolean withGsap) throws IOException {
+        Path dir = toolsDir.resolve("hyperframes-0.8.193/node_modules");
+        Path hf = Files.createDirectories(dir.resolve("hyperframes/bin"));
+        Files.writeString(hf.resolve("hyperframes.mjs"), "");
+        Files.writeString(dir.resolve("hyperframes/package.json"), "{\"version\":\"0.8.193\"}");
+        if (withGsap) {
+            Path gsap = Files.createDirectories(dir.resolve("gsap/dist"));
+            Files.writeString(gsap.resolve("gsap.min.js"), "/* GSAP 3.13.0 */");
+            Files.writeString(dir.resolve("gsap/package.json"), "{\"version\":\"3.13.0\"}");
+        }
     }
 
     private RenderTools tools() {
-        LocalToolchain.Downloader downloader = (url, into) -> {
-            downloads.add(url);
-            if (downloadFails) {
-                throw new IOException("connexion refusée par le proxy");
-            }
-            Files.writeString(into, "archive");
-            return 7;
-        };
         RenderToolchain.Media media = new RenderToolchain.Media() {
             @Override
             public Path ffmpeg() {
@@ -85,11 +112,19 @@ class RenderToolsTest {
             public Path ffprobe() {
                 return Path.of("/usr/bin/ffprobe");
             }
+
+            @Override
+            public boolean presentWithoutDownload() {
+                return !ffmpegMissing;
+            }
         };
-        RenderToolchain toolchain = new RenderToolchain(toolsDir, OperatingSystem.LINUX, "amd64", processes, downloader,
+        // Le portail : une adresse morte. Un test qui n'installe pas le paquet prouve ainsi qu'il n'en a pas besoin,
+        // ou voit l'échec nommé du portail injoignable.
+        VideoToolchainBundle bundle = new VideoToolchainBundle(toolsDir, OperatingSystem.LINUX, "amd64",
+                "http://127.0.0.1:1/api", () -> "jeton", java.net.http.HttpClient::newHttpClient, (m, s) -> true);
+        RenderToolchain toolchain = new RenderToolchain(toolsDir, OperatingSystem.LINUX, processes, bundle,
                 name -> switch (name) {
                     case "node" -> nodeOnPath ? systemNode : null;
-                    case "npm" -> npmOnPath ? Path.of("/usr/bin/npm") : null;
                     default -> null;
                 }, media, os -> systemChrome, "/usr/bin");
         return new RenderTools(toolchain, processes, new DirectExecutor());
@@ -112,66 +147,91 @@ class RenderToolsTest {
         return tools.execute(RenderTools.STATUS, MAPPER.createObjectNode().put("job_id", id), ToolContext.none(), paths);
     }
 
+    /** Aucune commande n'installe, ne télécharge un navigateur, ni ne joint internet (SF-215-06). */
+    private void assertNothingFetched() {
+        assertFalse(processes.ran.stream().anyMatch(c -> c.contains("install") || c.contains("ensure")
+                || c.stream().anyMatch(a -> a.contains("npm") || a.contains("nodejs.org"))), processes.ran.toString());
+    }
+
     @Test
-    void nominalPrepareThenDetachedRenderThenDone() {
+    void nominalPrepareFromThePortalBundleThenDetachedRenderThenDone() throws IOException {
+        Path home = installBundle();
         RenderTools tools = tools();
 
         ToolOutcome started = tools.execute(RenderTools.RENDER, input().put("fps", 30), ToolContext.none(), paths);
 
         assertTrue(started.ok(), started.errorMessage());
         List<String> launch = processes.launched.get(0);
-        assertEquals(systemNode.toString(), launch.get(0));
+        assertEquals(home.resolve("node/bin/node").toString(), launch.get(0));
         assertTrue(launch.get(1).endsWith("hyperframes.mjs"));
         assertEquals("render", launch.get(2));
         assertTrue(launch.containsAll(List.of("-o", "--quality", "looks", "--fps", "30")), launch.toString());
         assertTrue(launch.contains(project.resolve("cours/renders/cours.mp4").toString()), launch.toString());
         Map<String, String> env = processes.launchedEnv.get(0);
         assertEquals("1", env.get("HYPERFRAMES_RENDER_DETACHED"));
-        assertEquals("1", env.get("HYPERFRAMES_NO_TELEMETRY"));
-        assertEquals("/usr/bin/ffmpeg", env.get("HYPERFRAMES_FFMPEG_PATH"));
-        assertEquals("/usr/bin/ffprobe", env.get("HYPERFRAMES_FFPROBE_PATH"));
-        assertTrue(processes.ran.stream().anyMatch(c -> c.contains("hyperframes@0.8.193")), "npm install épinglé");
-        assertTrue(processes.ran.stream().anyMatch(c -> c.containsAll(List.of("browser", "ensure"))));
-        assertTrue(downloads.isEmpty(), "Node 22 du PATH réutilisé, rien rapatrié");
+        assertEquals(home.resolve("ffmpeg/ffmpeg").toString(), env.get("HYPERFRAMES_FFMPEG_PATH"));
+        assertEquals(home.resolve("ffmpeg/ffprobe").toString(), env.get("HYPERFRAMES_FFPROBE_PATH"));
+        assertEquals(chrome.toString(), env.get("HYPERFRAMES_BROWSER_PATH"), "le Chrome du poste");
+        assertNothingFetched();
 
         String id = jobId(started);
         processes.alive = false;
         ToolOutcome done = status(tools, id);
         assertTrue(done.content().contains("étape : Terminé"), done.content());
         assertTrue(done.content().contains("video_publier"), done.content());
+        assertTrue(done.content().contains("chaîne vidéo du portail"), done.content());
     }
 
     @Test
-    void oldNodeOnPathTriggersPinnedDownload() {
-        processes.systemNodeVersion = "v18.19.0";
+    void hyperframesNeverPhonesHome() throws IOException {
+        installBundle();
+        RenderTools tools = tools();
+
+        tools.execute(RenderTools.RENDER, input(), ToolContext.none(), paths);
+
+        Map<String, String> env = processes.launchedEnv.get(0);
+        for (String name : List.of("HYPERFRAMES_NO_TELEMETRY", "DO_NOT_TRACK", "HYPERFRAMES_NO_UPDATE_CHECK",
+                "HYPERFRAMES_NO_AUTO_INSTALL", "HYPERFRAMES_SKIP_SKILLS", "HYPERFRAMES_NO_OPTIONAL_INSTALL")) {
+            assertEquals("1", env.get(name), name);
+        }
+    }
+
+    @Test
+    void node22AndHyperframesAlreadyOnThePosteAreUsedWithoutAnyDownload() throws IOException {
+        removeBundle();
+        installLegacyHyperframes(true);
         RenderTools tools = tools();
 
         ToolOutcome started = tools.execute(RenderTools.RENDER, input(), ToolContext.none(), paths);
 
         assertTrue(started.ok(), started.errorMessage());
-        assertEquals(List.of("https://nodejs.org/dist/v22.22.1/node-v22.22.1-linux-x64.tar.xz"), downloads);
-        assertEquals(toolsDir.resolve("node-v22.22.1/bin/node").toString(),
-                processes.launched.get(0).get(0));
+        assertEquals(systemNode.toString(), processes.launched.get(0).get(0), "Node 22 du PATH");
+        assertEquals("/usr/bin/ffmpeg", processes.launchedEnv.get(0).get("HYPERFRAMES_FFMPEG_PATH"));
+        assertNothingFetched();
     }
 
     @Test
-    void downloadFailureIsNamedWithRemedy() {
-        nodeOnPath = false;
-        downloadFails = true;
+    void oldNodeOnPathFallsToThePortalAndAnUnreachablePortalIsNamedWithoutBrewNorNodejs() throws IOException {
+        removeBundle();
+        installLegacyHyperframes(true);
+        processes.systemNodeVersion = "v18.19.0";
         RenderTools tools = tools();
 
         String id = jobId(tools.execute(RenderTools.RENDER, input(), ToolContext.none(), paths));
         String text = status(tools, id).content();
 
         assertTrue(text.contains("étape : Échec"), text);
-        assertTrue(text.contains("rapatriement depuis nodejs.org a échoué"), text);
-        assertTrue(text.contains("remède : Installez Node.js 22 LTS"), text);
+        assertTrue(text.contains("Le portail n'a pas pu être joint"), text);
+        assertFalse(text.contains("brew") || text.contains("nodejs.org"), text);
         assertTrue(processes.launched.isEmpty());
+        assertNothingFetched();
+        String log = Files.readString(project.resolve(".atelier/rendu/" + id + "/render.log"));
+        assertTrue(log.contains("Node 18 trouvé sur ce poste"), log);
     }
 
     @Test
-    void refusedExecutionIsThePostePolicyAndNothingElseIsTried() {
-        nodeOnPath = false;
+    void refusedExecutionIsThePostePolicyAndNothingElseIsTried() throws IOException {
+        installBundle();
         processes.managedNodeRefused = true;
         RenderTools tools = tools();
 
@@ -180,48 +240,39 @@ class RenderToolsTest {
 
         assertTrue(text.contains("politique du poste, je ne la contourne pas"), text);
         assertTrue(text.contains("support"), text);
-        assertFalse(processes.ran.stream().anyMatch(c -> c.contains("install")), "aucune autre tentative");
+        assertFalse(text.contains("brew"), text);
+        assertNothingFetched();
         assertTrue(processes.launched.isEmpty());
     }
 
     @Test
-    void npmRefusedIsNamedWithRemedy() {
-        processes.npmFails = true;
-        RenderTools tools = tools();
-
-        String id = jobId(tools.execute(RenderTools.RENDER, input(), ToolContext.none(), paths));
-        String text = status(tools, id).content();
-
-        assertTrue(text.contains("Installation de hyperframes 0.8.193 impossible"), text);
-        assertTrue(text.contains("403 Forbidden"), text);
-        assertTrue(text.contains("registre npm"), text);
-    }
-
-    @Test
-    void browserFallsBackToInstalledChromeOrFailsClearly() {
-        processes.browserFails = true;
-        RenderTools failing = tools();
-        String failed = status(failing, jobId(failing.execute(RenderTools.RENDER, input(), ToolContext.none(), paths)))
+    void withoutChromeNorEdgeTheFailureIsActionable() throws IOException {
+        installBundle();
+        systemChrome = Optional.empty();
+        RenderTools none = tools();
+        String failed = status(none, jobId(none.execute(RenderTools.RENDER, input(), ToolContext.none(), paths)))
                 .content();
-        assertTrue(failed.contains("Chrome sans écran indisponible"), failed);
+        assertTrue(failed.contains("Aucun Chrome ni Edge trouvé"), failed);
+        assertTrue(failed.contains("CLAUDE_TEAMS_CHROME_PATH"), failed);
+        assertNothingFetched();
 
-        systemChrome = Optional.of(Path.of("/usr/bin/google-chrome"));
-        RenderTools fallback = tools();
-        ToolOutcome started = fallback.execute(RenderTools.RENDER, input().put("sortie", "out/autre"),
-                ToolContext.none(), paths);
-        assertTrue(started.ok(), started.errorMessage());
-        assertEquals("/usr/bin/google-chrome", processes.launchedEnv.get(0).get("HYPERFRAMES_BROWSER_PATH"));
-        assertTrue(processes.launched.get(0).contains(project.resolve("out/autre.mp4").toString()));
+        systemChrome = Optional.of(temp.resolve("absent/chrome"));
+        RenderTools wrong = tools();
+        String wrongPath = status(wrong, jobId(wrong.execute(RenderTools.RENDER, input().put("sortie", "out/autre"),
+                ToolContext.none(), paths))).content();
+        assertTrue(wrongPath.contains("introuvable"), wrongPath);
     }
 
     @Test
-    void ffmpegMissingIsNamed() {
+    void withoutFfmpegOnThePosteTheLocalChainIsNotRetainedAndThePortalIsAsked() throws IOException {
+        removeBundle();
+        installLegacyHyperframes(true);
         ffmpegMissing = true;
         RenderTools tools = tools();
         String text = status(tools, jobId(tools.execute(RenderTools.RENDER, input(), ToolContext.none(), paths)))
                 .content();
-        assertTrue(text.contains("ffmpeg indisponible"), text);
-        assertTrue(text.contains("sudo apt install ffmpeg"), text);
+        assertTrue(text.contains("portail"), text);
+        assertFalse(text.contains("sudo apt install ffmpeg"), text);
     }
 
     @Test
@@ -261,7 +312,8 @@ class RenderToolsTest {
         RenderTools tools = tools();
         String id = jobId(tools.execute(RenderTools.RENDER, input(), ToolContext.none(), paths));
         Path log = project.resolve(".atelier/rendu/" + id + "/render.log");
-        Files.writeString(log, "capture 12%\rcapture 37%\r", java.nio.file.StandardOpenOption.APPEND);
+        Files.writeString(log, "capture 12%\rcapture 37%\r", java.nio.file.StandardOpenOption.CREATE,
+                java.nio.file.StandardOpenOption.APPEND);
 
         String running = status(tools, id).content();
         assertTrue(running.contains("avancement : 37 %"), running);
@@ -308,27 +360,27 @@ class RenderToolsTest {
     }
 
     @Test
-    void gsapIsInstalledWithTheChainAndCopiedIntoTheCompositionBeforeRendering() {
+    void gsapOfTheChainIsCopiedIntoTheCompositionBeforeRendering() {
         RenderTools tools = tools();
 
         ToolOutcome started = tools.execute(RenderTools.RENDER, input(), ToolContext.none(), paths);
 
         assertTrue(started.ok(), started.errorMessage());
-        assertTrue(processes.ran.stream().anyMatch(c -> c.contains("gsap@3.13.0")), "gsap épinglé");
         assertTrue(Files.isRegularFile(project.resolve("cours/briques/gsap.min.js")));
+        assertNothingFetched();
     }
 
     @Test
-    void aPosteWithHyperframesAlreadyInstalledOnlyAddsGsap() throws IOException {
-        Path hf = Files.createDirectories(toolsDir.resolve("hyperframes-0.8.193/node_modules/hyperframes/bin"));
-        Files.writeString(hf.resolve("hyperframes.mjs"), "");
-        Files.writeString(hf.getParent().resolve("package.json"), "{\"version\":\"0.8.193\"}");
+    void aPreviousHyperframesWithoutGsapIsNotEnoughAndThePortalIsAsked() throws IOException {
+        removeBundle();
+        installLegacyHyperframes(false);
         RenderTools tools = tools();
 
-        tools.execute(RenderTools.RENDER, input(), ToolContext.none(), paths);
+        String text = status(tools, jobId(tools.execute(RenderTools.RENDER, input(), ToolContext.none(), paths)))
+                .content();
 
-        assertFalse(processes.ran.stream().anyMatch(c -> c.contains("hyperframes@0.8.193")));
-        assertTrue(processes.ran.stream().anyMatch(c -> c.contains("gsap@3.13.0")));
+        assertTrue(text.contains("portail"), text);
+        assertNothingFetched();
     }
 
     @Test
@@ -394,20 +446,24 @@ class RenderToolsTest {
 
     @Test
     void checkWithABrokenChainSaysWhatAndTheRemedy() {
-        processes.npmFails = true;
+        removeBundle();
         RenderTools tools = tools();
 
         ToolOutcome outcome = tools.execute(RenderTools.CHECK, check("2"), ToolContext.none(), paths);
 
         assertFalse(outcome.ok());
-        assertTrue(outcome.errorMessage().contains("Installation de hyperframes 0.8.193 impossible"), outcome.errorMessage());
+        assertTrue(outcome.errorMessage().contains("Le portail n'a pas pu être joint"), outcome.errorMessage());
         assertTrue(outcome.errorMessage().contains("Remède"), outcome.errorMessage());
+        assertFalse(outcome.errorMessage().contains("brew"), outcome.errorMessage());
     }
 
     @Test
     void checkDuringAFirstLongPreparationAsksToRetry() {
-        RenderToolchain toolchain = new RenderToolchain(toolsDir, OperatingSystem.LINUX, "amd64", processes,
-                (url, into) -> 0, name -> null, null, os -> Optional.empty(), "/usr/bin");
+        removeBundle();
+        VideoToolchainBundle bundle = new VideoToolchainBundle(toolsDir, OperatingSystem.LINUX, "amd64",
+                "http://127.0.0.1:1/api", () -> "jeton", java.net.http.HttpClient::newHttpClient, (m, s) -> true);
+        RenderToolchain toolchain = new RenderToolchain(toolsDir, OperatingSystem.LINUX, processes, bundle,
+                name -> null, null, os -> Optional.empty(), "/usr/bin");
         // Un exécuteur qui ne lance jamais rien : la préparation « dure ».
         RenderTools tools = new RenderTools(toolchain, processes, new NeverExecutor());
         tools.prepareWaitMs = 50L;
@@ -416,6 +472,7 @@ class RenderToolsTest {
 
         assertTrue(outcome.ok(), outcome.errorMessage());
         assertTrue(outcome.content().contains("Relance video_render_check"), outcome.content());
+        assertTrue(outcome.content().contains("depuis le portail"), outcome.content());
     }
 
     // ------------------------------------------------------------------ fakes

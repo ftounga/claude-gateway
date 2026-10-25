@@ -1,6 +1,7 @@
 # F-111 / SF-111-03 — Ce qu'apporte la version construite, en quelques lignes (10 au plus, 200 caractères).
 # Lu par runner/build-tools/SignRunnerUpdate.java, écrit dans le manifeste, affiché par la Forge à côté
 # de « Mise à jour disponible ». À réécrire à chaque version qui change quelque chose de visible.
+Vidéo derrière un proxy : Node 22, hyperframes, GSAP et ffmpeg viennent du portail (paquet signé), rendu avec le Chrome ou l'Edge du poste ; rien n'est pris sur internet.
 Relire une vidéo avant de la publier : contrôle de la composition et images clés que l'agent regarde ; GSAP installé avec la chaîne.
 Rendre une vidéo : l'agent prépare la chaîne (Node 22, hyperframes 0.8.193, Chrome, ffmpeg) au premier usage et rend en arrière-plan ; rien n'est contourné sur un poste verrouillé.
 Publier une vidéo : une vidéo ou un son produit sur ce poste (300 Mo au plus) se publie dans l'application, après votre accord d'un clic.

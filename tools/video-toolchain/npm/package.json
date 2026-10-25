@@ -1,0 +1,11 @@
+{
+  "name": "claude-gateway-video-toolchain",
+  "version": "0.8.193-r1",
+  "private": true,
+  "description": "F-215 / SF-215-06 : dépendances JavaScript du paquet de la chaîne vidéo (versions épinglées, verrouillées par package-lock.json).",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "gsap": "3.13.0",
+    "hyperframes": "0.8.193"
+  }
+}

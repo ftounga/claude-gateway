@@ -297,8 +297,11 @@ public final class RenderTools {
                     + " Répète l'échec et le remède tels quels à l'utilisateur.");
         }
         if (prepared == null) {
-            return ToolOutcome.ok("Préparation de la chaîne vidéo en cours sur ce poste (premier usage : Node, "
-                    + "hyperframes, GSAP, Chrome). Relance video_render_check dans une minute.");
+            String progress = toolchain.progress();
+            return ToolOutcome.ok("Préparation de la chaîne vidéo en cours sur ce poste (premier usage : je récupère "
+                    + "Node 22, hyperframes, GSAP et ffmpeg depuis le portail, une seule fois"
+                    + (progress.isEmpty() ? "" : " — " + progress) + "). Relance video_render_check dans une "
+                    + "minute.");
         }
         StringBuilder out = new StringBuilder();
         String gsapNote = ensureGsap(prepared, project);

@@ -1,0 +1,4 @@
+# Téléchargements amont et paquets fabriqués : jamais versionnés (centaines de Mo).
+.cache/
+work/
+out/
