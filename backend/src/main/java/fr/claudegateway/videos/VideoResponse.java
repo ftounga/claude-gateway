@@ -6,12 +6,14 @@ import java.util.UUID;
 
 /**
  * <b>Une vidéo telle que l'écran la lit</b> (F-213 / SF-213-01) : ses métadonnées, la version servie, ses
- * chapitres, et les adresses de lecture par ticket — jamais le JWT dans une URL.
+ * chapitres, sa fiche des sources (F-215 / SF-215-04), et les adresses de lecture par ticket — jamais le JWT
+ * dans une URL.
  */
 public record VideoResponse(UUID id, UUID workspaceId, String kind, String title, String description, UUID seriesId,
         String seriesTitle, Integer episode, int currentVersion, int version, Integer durationS, String mime,
         long sizeBytes, String label, List<VideoChapter> chapters, String mediaUrl, String posterUrl,
-        String downloadUrl, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
+        String downloadUrl, OffsetDateTime createdAt, OffsetDateTime updatedAt, List<VideoSource> sources,
+        String seriesVoice) {
 
     /** Assemble la réponse d'une version servie. */
     public static VideoResponse of(Video video, VideoVersion version, VideoSeries series, String mediaBase) {
@@ -20,7 +22,8 @@ public record VideoResponse(UUID id, UUID workspaceId, String kind, String title
                 video.getCurrentVersion(), version.getVersion(), video.getDurationS(), version.getMime(),
                 version.getSizeBytes(), version.getLabel(), VideoChapter.fromJson(version.getChaptersJson()),
                 mediaBase, version.getPosterKey() == null ? null : mediaBase + "/poster", mediaBase + "?download=1",
-                video.getCreatedAt(), video.getUpdatedAt());
+                video.getCreatedAt(), video.getUpdatedAt(), VideoSource.fromJson(version.getSourcesJson()),
+                series == null ? null : series.getVoice());
     }
 
     /** Une version conservée, pour la liste des versions. */

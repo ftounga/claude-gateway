@@ -22,11 +22,12 @@
 ## 1. Faits d'abord
 
 - Extrais des sources la liste des **faits** que la vidéo affirmera : ressources, CIDR, ports, noms DNS,
-  protocoles, flux, décisions et leur date. Note d'où vient chacun.
+  protocoles, flux, décisions et leur date. Note d'où vient chacun (fait de carte, page, `fichier:ligne`,
+  compte rendu) : c'est la **fiche des sources**, publiée avec la vidéo (§ 6).
 - **Jamais d'adresse, de port ou de nom inventé.** Une valeur inconnue s'affiche **générique** (`10.180.171.x`,
   `<nom-du-service>`), ou se dit comme hypothèse « à confirmer ». Ce qui n'est pas sourcé est retiré.
-- Une vidéo unique dure 1 à 3 min. Au-delà (ou au-delà de 4 notions majeures), propose plutôt une série
-  d'épisodes et fais valider le plan avant de fabriquer.
+- Une vidéo unique dure 1 à 3 min. Au-delà de **3 min estimées ou de 4 notions majeures**, propose plutôt une
+  **série** d'épisodes (§ 7) et fais valider le plan avant de fabriquer.
 
 ## 2. Narration par chapitre
 
@@ -100,11 +101,47 @@ Règles de lisibilité :
 1. `video_render(dossier, qualite: "looks")` (rend la main tout de suite), puis `video_render_status(job_id)`
    jusqu'à « Terminé ». Un rendu long continue même si le tour se termine.
 2. Vérifie le résultat : `video_images` sur 3 à 5 instants du mp4 (son compris : durée attendue).
-3. `video_publier(path, titre, description, chapitres: [{t, titre}…])` — les chapitres reprennent les débuts des
-   `.clip`. Une nouvelle voix ou une correction = nouvelle version (`remplace: <video_id>`).
+3. `video_publier(path, titre, description, chapitres: [{t, titre}…], sources: [{affirmation, source}…])` — les
+   chapitres reprennent les débuts des `.clip` ; la **fiche des sources** (affichée sous le lecteur) reprend
+   chaque affirmation technique de la narration et sa source ; ce qui n'est pas vérifié est retiré de la
+   narration ou listé `a_confirmer: true` (et tu le dis à l'utilisateur). Une nouvelle voix ou une correction =
+   nouvelle version (`remplace: <video_id>`), avec sa propre fiche.
 4. Retours à la seconde de l'utilisateur : `video_retours(video)` les liste (instant, image, texte) ; regarde
    chaque instant (`video_images`), corrige, puis republie avec `remplace` et
    `retours_traites: [{id, statut: traite|rejete, motif}]` — un retour écarté se motive.
+
+## 7. Format long : une série d'épisodes
+
+Quand le sujet est large (« explique-moi toute l'architecture… », « un cours de 15 à 20 minutes ») ou dépasse
+**3 min estimées ou 4 notions majeures**, propose une **série** plutôt qu'un seul fichier. L'utilisateur peut
+toujours imposer une vidéo unique ou une série.
+
+1. **Plan d'abord, rien fabriqué avant son accord.** Sommaire de **5 à 15 épisodes de 1 à 3 min** ; pour chacun :
+   titre, objectif (ce que l'on sait à la fin), notions affichées, **sources** qui le fondent (réellement
+   disponibles : carte, pages, dépôt, comptes rendus — sinon dis ce qui manque). Ajoute la durée totale et le
+   **coût estimé** (repère mesuré : 2 à 4 $ de fabrication + ~0,06 $ de voix par épisode de 2 à 3 min). Fais
+   valider par une **question structurée** (`demander` : « Je lance la série » / « Je modifie le plan » /
+   « Une seule vidéo »).
+2. **Suivi comme un chantier** : `set_plan` avec **une étape par épisode** (« Ép. 3 — Le réseau : fabriqué,
+   relu, publié ») ; mets l'étape à jour à chaque épisode publié. L'utilisateur suit l'avancement dans le
+   tableau des chantiers.
+3. **Charte commune, fixée une fois** : un dossier de série (`<sujet>/video/<serie>/`), un `theme.css` à sa racine
+   (charte de l'application par défaut, ou celle demandée) chargé par tous les épisodes ; même en-tête, mêmes
+   sous-titres, même rythme.
+4. **Voix commune** : à la **première vidéo d'une série**, propose des **auditions** (`voix_off(auditions: true)`,
+   puis le choix par `demander`) ; publie le premier épisode avec `video_publier(serie, voix: <choisie>)` — la
+   voix est alors **fixée pour toute la série** ; pour les suivants, `voix_off(serie: "<titre>")` la reprend.
+   Changer la voix de toute la série : refaire la voix de chaque épisode, recaler, republier chacun avec
+   `remplace`, et `voix: <nouvelle>`.
+5. **Un épisode = une composition** (`<serie>/ep01-<nom>/`, `ep02-…`), fabriquée, **relue** (§ 5) et rendue
+   **séparément**, puis publiée avec `serie: "<titre>"`, `episode: <n>` et sa **fiche des sources**. Pour aller
+   plus vite, délègue un épisode par sous-agent `task` (worktree isolé ; un agent nommé si le poste en a un
+   adapté) avec dans la consigne : le plan validé, l'objectif et les sources de l'épisode, la charte, la voix
+   et ce guide ; seule la synthèse remonte — vérifie chaque épisode rendu (images, son) avant de le publier.
+6. **Corrections par épisode** : un retour à la seconde (`video_retours`) se corrige sur **son** épisode
+   (`remplace`), sans refaire les autres.
+7. **Exactitude sur la durée** (risque n° 1 d'un long format) : chaque épisode a sa fiche des sources ; un fait
+   non vérifié est retiré ou dit comme hypothèse et listé « à confirmer » ; aucune adresse, port ou nom inventé.
 
 ## Pièges connus
 
@@ -115,3 +152,4 @@ Règles de lisibilité :
 | objet visible avant sa phrase | instant estimé | reprendre l'instant dans `.mots.json` |
 | texte coupé, chevauchement | vu seulement sur image | `video_render_check` + `read_file` |
 | adresse « plausible » à l'écran | valeur inventée | générique `x.x.x.x` ou « à confirmer » |
+| voix qui change d'un épisode à l'autre | voix non fixée pour la série | `video_publier(serie, voix)` puis `voix_off(serie)` |

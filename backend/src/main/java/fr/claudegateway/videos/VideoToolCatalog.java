@@ -107,29 +107,45 @@ public class VideoToolCatalog {
                         "statut", Map.of("type", "string", "enum", List.of("traite", "rejete")),
                         "motif", Map.of("type", "string", "description", "Pourquoi, surtout pour un rejet (300 caractères au plus).")),
                 "required", List.of("id", "statut"));
+        Map<String, Object> source = Map.of("type", "object",
+                "properties", Map.of(
+                        "affirmation", Map.of("type", "string", "description", "Ce que la vidéo affirme (300 caractères au plus)."),
+                        "source", Map.of("type", "string",
+                                "description", "D'où cela vient : fait de carte, page, fichier:ligne, compte rendu."),
+                        "a_confirmer", Map.of("type", "boolean", "description", "true si ce n'est pas vérifié.")),
+                "required", List.of("affirmation"));
         return new AgentTool(VIDEO,
                 "Publie une VIDÉO de la machine (.mp4 ou .webm, 300 Mo au plus) que l'utilisateur regarde dans "
                         + "l'application : dans le fil, puis dans la galerie Vidéos du sujet (privée, à lui seul). "
                         + "chapitres : instants cliquables sous le lecteur. serie + episode : range la vidéo dans "
                         + "une série (tutoriel en plusieurs vidéos, sous un même titre). remplace : publie une "
-                        + "nouvelle version d'une vidéo déjà publiée (son video_id). L'utilisateur confirme d'un clic.",
+                        + "nouvelle version d'une vidéo déjà publiée (son video_id). sources : la fiche des sources, "
+                        + "affichée sous le lecteur. voix : fixe la voix de toute la série. L'utilisateur confirme "
+                        + "d'un clic.",
                 Map.of("type", "object",
-                        "properties", Map.of(
-                                "path", Map.of("type", "string", "description", "Chemin du fichier vidéo sur la machine."),
-                                "titre", Map.of("type", "string", "description", "Titre court et distinctif (120 caractères au plus)."),
-                                "description", Map.of("type", "string", "description", "Une phrase (300 caractères au plus)."),
-                                "chapitres", Map.of("type", "array", "items", chapter,
-                                        "description", "Chapitres dans l'ordre (60 au plus)."),
-                                "serie", Map.of("type", "string",
-                                        "description", "Titre (ou identifiant) de la série ; créée si elle n'existe pas dans ce sujet."),
-                                "episode", Map.of("type", "integer", "description", "Rang dans la série ; le suivant si absent."),
-                                "remplace", Map.of("type", "string", "description", "video_id d'une vidéo déjà publiée : nouvelle version."),
-                                "couverture", Map.of("type", "string",
-                                        "description", "Image de couverture sur la machine (png, jpg, webp ; 2 Mo au plus)."),
-                                "duree_s", Map.of("type", "integer", "description", "Durée en secondes, si connue."),
-                                "retours_traites", Map.of("type", "array", "items", resolved,
+                        "properties", Map.ofEntries(
+                                Map.entry("path", Map.of("type", "string", "description", "Chemin du fichier vidéo sur la machine.")),
+                                Map.entry("titre", Map.of("type", "string", "description", "Titre court et distinctif (120 caractères au plus).")),
+                                Map.entry("description", Map.of("type", "string", "description", "Une phrase (300 caractères au plus).")),
+                                Map.entry("chapitres", Map.of("type", "array", "items", chapter,
+                                        "description", "Chapitres dans l'ordre (60 au plus).")),
+                                Map.entry("serie", Map.of("type", "string",
+                                        "description", "Titre (ou identifiant) de la série ; créée si elle n'existe pas dans ce sujet.")),
+                                Map.entry("episode", Map.of("type", "integer", "description", "Rang dans la série ; le suivant si absent.")),
+                                Map.entry("remplace", Map.of("type", "string", "description", "video_id d'une vidéo déjà publiée : nouvelle version.")),
+                                Map.entry("couverture", Map.of("type", "string",
+                                        "description", "Image de couverture sur la machine (png, jpg, webp ; 2 Mo au plus).")),
+                                Map.entry("duree_s", Map.of("type", "integer", "description", "Durée en secondes, si connue.")),
+                                Map.entry("retours_traites", Map.of("type", "array", "items", resolved,
                                         "description", "Avec remplace : pour chaque retour à la seconde corrigé "
                                                 + "(traite) ou écarté (rejete + motif).")),
+                                Map.entry("sources", Map.of("type", "array", "items", source,
+                                        "description", "Fiche des sources : chaque affirmation technique et sa source "
+                                                + "(80 au plus) ; le non-vérifié en a_confirmer.")),
+                                Map.entry("voix", Map.of("type", "string",
+                                        "description", "Avec serie : la voix de la narration, fixée pour toute la série.")),
+                                Map.entry("consignes_voix", Map.of("type", "string",
+                                        "description", "Avec serie : les consignes de ton de la série."))),
                         "required", List.of("path", "titre")));
     }
 

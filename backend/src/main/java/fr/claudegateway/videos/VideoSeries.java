@@ -45,6 +45,14 @@ public class VideoSeries {
     @Column(name = "description", length = 300)
     private String description;
 
+    /** La voix fixée pour toute la série (F-215 / SF-215-04), ou {@code null}. */
+    @Column(name = "voice", length = 32)
+    private String voice;
+
+    /** Les consignes de ton de la série, ou {@code null}. */
+    @Column(name = "voice_instructions", length = 1000)
+    private String voiceInstructions;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;

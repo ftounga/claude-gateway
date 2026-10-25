@@ -21,6 +21,8 @@ import fr.claudegateway.teams.meeting.stt.TranscriptionProvider;
 import fr.claudegateway.teams.meeting.stt.TranscriptionProvider.TimedWord;
 import fr.claudegateway.teams.meeting.stt.TranscriptionProvider.WordTranscript;
 import fr.claudegateway.videos.AudioBlock;
+import fr.claudegateway.videos.VideoService;
+import fr.claudegateway.videos.VideoSeries;
 import fr.claudegateway.videos.VideoToolExecutor;
 
 /**
@@ -47,11 +49,14 @@ public class SpeechToolExecutor {
     private final SpeechUsage usage;
     private final SpeechProperties properties;
     private final VideoToolExecutor videoToolExecutor;
+    private final VideoService videoService;
     private final ObjectMapper mapper;
 
     public SpeechToolExecutor(SpeechProvider provider, TranscriptionProvider transcription,
             ProjectFileDeposit deposit, SpeechPreferenceService preferences, SpeechUsage usage,
-            SpeechProperties properties, VideoToolExecutor videoToolExecutor, ObjectMapper mapper) {
+            SpeechProperties properties, VideoToolExecutor videoToolExecutor, VideoService videoService,
+            ObjectMapper mapper) {
+        this.videoService = videoService;
         this.provider = provider;
         this.transcription = transcription;
         this.deposit = deposit;
@@ -88,15 +93,59 @@ public class SpeechToolExecutor {
             return Outcome.error("consignes trop longues (" + properties.maxInstructionsChars()
                     + " caractères au plus).");
         }
+        boolean auditions = input != null && input.path("auditions").asBoolean(false);
+        // F-215 / SF-215-04 : la voix d'une série vaut pour tous ses épisodes — explicite > série > préférence.
+        String seriesRef = text(input, "serie");
+        String seriesNote = "";
+        if (!auditions && !seriesRef.isEmpty() && requestedVoice.isEmpty()) {
+            SeriesVoice fixed = seriesVoice(userId, workspace, seriesRef);
+            seriesNote = fixed.note();
+            if (fixed.voice() != null) {
+                requestedVoice = fixed.voice();
+                if (requestedInstructions.isEmpty() && fixed.instructions() != null) {
+                    requestedInstructions = fixed.instructions();
+                }
+            }
+        }
         SpeechPreferenceService.Resolved resolved = preferences.resolve(userId, requestedVoice, requestedInstructions);
-        if (input != null && input.path("auditions").asBoolean(false)) {
+        if (auditions) {
             return auditions(userId, workspace, callId, input, text, resolved.instructions());
         }
         if (text.length() > properties.maxTextChars()) {
             return Outcome.error("texte trop long (" + text.length() + " caractères, " + properties.maxTextChars()
                     + " au plus) : découpe la narration par chapitre, un appel par chapitre.");
         }
-        return narrate(userId, workspace, callId, input, text, resolved);
+        Outcome narrated = narrate(userId, workspace, callId, input, text, resolved);
+        return seriesNote.isEmpty() || narrated.error() ? narrated
+                : new Outcome(narrated.content() + "\n" + seriesNote, false, narrated.auditions());
+    }
+
+    /** La voix fixée d'une série du sujet, et ce qu'il faut en dire à l'agent. */
+    private SeriesVoice seriesVoice(UUID userId, Workspace workspace, String ref) {
+        VideoSeries series;
+        try {
+            series = videoService.findSeries(userId, workspace.getId(), ref).orElse(null);
+        } catch (RuntimeException e) {
+            series = null;
+        }
+        if (series == null) {
+            return new SeriesVoice(null, null, "Série « " + ref + " » inconnue dans ce sujet : voix par défaut "
+                    + "appliquée. Fixe la voix de la série par video_publier(serie, voix) au premier épisode.");
+        }
+        String voice = series.getVoice();
+        if (voice == null) {
+            return new SeriesVoice(null, null, "La série « " + series.getTitle() + " » n'a pas encore de voix "
+                    + "fixée : voix par défaut appliquée. Fixe-la par video_publier(serie, voix).");
+        }
+        if (!properties.allows(voice)) {
+            return new SeriesVoice(null, null, "La voix de la série (« " + voice + " ») n'est plus proposée : voix "
+                    + "par défaut appliquée ; propose d'en choisir une autre pour toute la série.");
+        }
+        return new SeriesVoice(voice, series.getVoiceInstructions(),
+                "Voix de la série « " + series.getTitle() + " » appliquée.");
+    }
+
+    private record SeriesVoice(String voice, String instructions, String note) {
     }
 
     // ------------------------------------------------------------------ narration

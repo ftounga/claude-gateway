@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-215 / SF-215-04 — LE FORMAT LONG (serie d'episodes).
+
+      - video_versions.sources_json : la fiche des sources d'une version (chaque affirmation technique et sa
+        source, ou "a confirmer"), affichee sous le lecteur. Par version : une correction peut changer les faits.
+      - video_series.voice / voice_instructions : la voix fixee pour toute la serie (amendement PO, point 3),
+        relue par voix_off(serie).
+      Colonnes nullables, aucune donnee existante touchee. Le numero 168 est reserve a F-212.
+      Rollback : les trois colonnes se retirent.
+    -->
+
+    <changeSet id="172-video-sources-series-voice" author="claude-gateway">
+        <addColumn tableName="video_versions">
+            <column name="sources_json" type="varchar(16000)"/>
+        </addColumn>
+        <addColumn tableName="video_series">
+            <column name="voice" type="varchar(32)"/>
+            <column name="voice_instructions" type="varchar(1000)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="video_versions" columnName="sources_json"/>
+            <dropColumn tableName="video_series" columnName="voice_instructions"/>
+            <dropColumn tableName="video_series" columnName="voice"/>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>
