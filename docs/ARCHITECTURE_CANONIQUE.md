@@ -497,7 +497,10 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   galerie)`, `series_id (FK video_series CASCADE, null)`, `episode`, `title`, `description`,
   `current_version`, `duration_s`, dates. `video_versions` : `id`, `video_id (FK CASCADE)`, `user_id`,
   `version` (unique par vidéo, 5 conservées), `storage_key`, `size_bytes`, `mime`, `chapters_json`,
-  `poster_key`, `poster_mime`, `label` (libellé de piste), `created_at`. Octets sous
+  `poster_key`, `poster_mime`, `label` (libellé de piste), `sources_json (≤ 16 000, null — fiche des sources
+  de la version, F-215 / SF-215-04)`, `created_at`. Migration `172` ajoute aussi à `video_series` : `voice
+  (≤ 32, null)` et `voice_instructions (≤ 1 000, null)` — voix fixée pour la série (`voix_off` : explicite >
+  série > préférence). Octets sous
   `videos/{user_id}/{video_id}/v{n}/` (envoi multipart, lecture par plage). Plafond 5 Go par compte
   (somme de `size_bytes`, ADMIN exempté, D1). Routes : `GET /videos/{id}` (+`/versions`,
   `/versions/{n}/media` avec `Range`) sous `(id, user_id)` ; `GET /video-media/{ticket}` sans JWT (ticket
