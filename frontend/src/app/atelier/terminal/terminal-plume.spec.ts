@@ -93,6 +93,29 @@ describe('AtelierTerminalComponent — Plume (F-193 / SF-193-02)', () => {
     expect(sent).toBe(0);
   }));
 
+  it('F-215 / SF-215-05 : une demande de vidéo revient en cahier de réalisation, rien n’est envoyé sans geste', fakeAsync(() => {
+    component.draft = 'fais une vidéo sur le réseau EKS';
+    fixture.detectChanges();
+    button().click();
+    fixture.detectChanges();
+    expect(el().querySelector('app-terminal-plume')?.textContent).toContain('Pages et vidéos du sujet');
+
+    http.expectOne(URL).flush({
+      enrichedPrompt: '## Public et niveau\nIngénieurs (à confirmer)',
+      toConfirm: ['Public : ingénieurs'],
+      sources: ['Pages publiées', 'Voix par défaut'],
+      mode: 'video',
+    });
+    fixture.detectChanges();
+    flushMicrotasks();
+
+    const panel = el().querySelector('app-terminal-plume')?.textContent ?? '';
+    expect(panel).toContain('cahier de réalisation');
+    expect(panel).toContain('Public : ingénieurs');
+    expect(drafts).toEqual(['## Public et niveau\nIngénieurs (à confirmer)']);
+    expect(sent).toBe(0);
+  }));
+
   it('« Revenir à mon texte » restaure exactement l’original et referme Plume', fakeAsync(() => {
     component.draft = '  ma phrase  ';
     fixture.detectChanges();

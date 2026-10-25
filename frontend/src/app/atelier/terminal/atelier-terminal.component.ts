@@ -39,7 +39,7 @@ import { ProjectCostComponent } from '../../shared/project-cost/project-cost.com
 import { ProjectCostService } from '../../core/services/project-cost.service';
 import { TerminalNextStepsComponent } from './terminal-next-steps.component';
 import { TerminalQuestionTracksComponent } from './terminal-question-tracks.component';
-import { PlumeView, TerminalPlumeComponent } from './terminal-plume.component';
+import { PlumeView, TerminalPlumeComponent, looksLikeVideoRequest } from './terminal-plume.component';
 import { TerminalBarTier, terminalBarTier } from './terminal-bar-tier';
 import { PlumeService } from '../../core/services/plume.service';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -732,7 +732,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     }
     this.plumeOriginal = this.plume()?.phase === 'enriched' ? this.plumeOriginal : text;
     this.plumeFor = workspaceId;
-    this.plume.set({ phase: 'running' });
+    this.plume.set({ phase: 'running', video: looksLikeVideoRequest(text) });
     this.plumeService.enrich(workspaceId, text).subscribe({
       next: (response) => {
         if (this.plumeFor !== workspaceId || this.plume()?.phase !== 'running') {
@@ -743,6 +743,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
           original: this.plumeOriginal,
           toConfirm: response.toConfirm ?? [],
           sources: response.sources ?? [],
+          video: response.mode === 'video',
         });
         this.draftChange.emit(response.enrichedPrompt);
         queueMicrotask(() => this.draftAreaRef?.nativeElement.focus());

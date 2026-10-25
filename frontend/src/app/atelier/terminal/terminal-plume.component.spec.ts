@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { PlumeView, TerminalPlumeComponent } from './terminal-plume.component';
+import { PLUME_VIDEO_STEP, PlumeView, TerminalPlumeComponent, looksLikeVideoRequest } from './terminal-plume.component';
 
 /** Le panneau de Plume (F-193 / SF-193-02) : trois phases, deux gestes, aucune requête. */
 describe('TerminalPlumeComponent (F-193 / SF-193-02)', () => {
@@ -42,6 +42,24 @@ describe('TerminalPlumeComponent (F-193 / SF-193-02)', () => {
     const el = render({ phase: 'enriched', original: 'x', toConfirm: [], sources: [] });
     expect(el.querySelector('.plume__ask')).toBeNull();
     expect(el.querySelector('.plume__src')).toBeNull();
+  });
+
+  it('F-215 / SF-215-05 : une demande de vidéo — étape « Pages et vidéos du sujet », badge « cahier de réalisation »', () => {
+    let el = render({ phase: 'running', video: true });
+    const steps = Array.from(el.querySelectorAll('.plume__step')).map((s) => s.textContent?.trim());
+    expect(steps.length).toBe(8);
+    expect(steps[6]).toBe(PLUME_VIDEO_STEP);
+    expect(steps[7]).toBe('Rédaction de la demande');
+
+    el = render({ phase: 'enriched', original: 'une vidéo sur EKS', toConfirm: ['Public'], sources: ['Pages publiées'], video: true });
+    expect(el.querySelector('.plume__badge')?.textContent).toContain('cahier de réalisation');
+    expect(el.querySelectorAll('.plume__chip').length).toBe(1);
+  });
+
+  it('F-215 / SF-215-05 : indice d’affichage d’une demande de vidéo (accents, casse)', () => {
+    expect(looksLikeVideoRequest('Fais-moi une VIDÉO sur le réseau')).toBeTrue();
+    expect(looksLikeVideoRequest('un cours animé sur Azure')).toBeTrue();
+    expect(looksLikeVideoRequest('ajoute la pagination')).toBeFalse();
   });
 
   it('erreur : le message, en alerte, et « Fermer »', () => {

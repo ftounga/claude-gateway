@@ -2,8 +2,8 @@ import { Component, input, output } from '@angular/core';
 
 /** Ce que Plume montre au-dessus de la saisie (F-193 / SF-193-02). */
 export type PlumeView =
-  | { phase: 'running' }
-  | { phase: 'enriched'; original: string; toConfirm: string[]; sources: string[] }
+  | { phase: 'running'; video?: boolean }
+  | { phase: 'enriched'; original: string; toConfirm: string[]; sources: string[]; video?: boolean }
   | { phase: 'error'; message: string };
 
 /** Les étapes de l'analyse, dans l'ordre où le serveur lit — les mêmes sources que l'agent. */
@@ -16,6 +16,19 @@ export const PLUME_STEPS = [
   'Fil récent du sujet',
   'Rédaction de la demande',
 ] as const;
+
+/** F-215 / SF-215-05 : l'étape de plus quand la demande vise une vidéo (cahier de réalisation). */
+export const PLUME_VIDEO_STEP = 'Pages et vidéos du sujet';
+
+/**
+ * La phrase vise-t-elle une vidéo ? Indice d'affichage seulement (l'étape de l'analyse) : le serveur décide
+ * (`mode` de la réponse), selon la même idée.
+ */
+export function looksLikeVideoRequest(text: string): boolean {
+  const plain = (text ?? '').normalize('NFD').replace(/\p{M}+/gu, '').toLowerCase();
+  return /\b(videos?|voix[ -]off|motion[ -]design|screencasts?|(cours|tutoriels?|explications?) animee?s?|series? d'episodes)\b/
+    .test(plain.replace(/’/g, "'"));
+}
 
 /**
  * **Plume** (F-193 / SF-193-02) — le panneau au-dessus de la saisie : l'analyse pendant
@@ -34,7 +47,7 @@ export const PLUME_STEPS = [
         <div class="plume plume--run" role="status" aria-live="polite">
           <h4 class="plume__title">Plume lit le contexte</h4>
           <ul class="plume__steps">
-            @for (step of steps; track step; let i = $index) {
+            @for (step of runningSteps(); track step; let i = $index) {
               <li class="plume__step" [style.--i]="i">{{ step }}</li>
             }
           </ul>
@@ -44,7 +57,7 @@ export const PLUME_STEPS = [
         @if (enriched(); as e) {
           <section class="plume" aria-label="Demande enrichie par Plume">
             <header class="plume__head">
-              <span class="plume__badge">enrichi par Plume</span>
+              <span class="plume__badge">{{ e.video ? 'cahier de réalisation' : 'enrichi par Plume' }}</span>
               @if (e.sources.length > 0) {
                 <span class="plume__src">Lu : {{ e.sources.join(' · ') }}</span>
               }
@@ -120,7 +133,14 @@ export class TerminalPlumeComponent {
   readonly restore = output<void>();
   readonly dismiss = output<void>();
 
-  protected readonly steps = PLUME_STEPS;
+  /** Les étapes de l'analyse ; pour une vidéo, les pages et vidéos du sujet avant la rédaction. */
+  protected runningSteps(): readonly string[] {
+    const v = this.view();
+    if (v.phase !== 'running' || !v.video) {
+      return PLUME_STEPS;
+    }
+    return [...PLUME_STEPS.slice(0, -1), PLUME_VIDEO_STEP, PLUME_STEPS[PLUME_STEPS.length - 1]];
+  }
 
   protected enriched(): Extract<PlumeView, { phase: 'enriched' }> | null {
     const v = this.view();
