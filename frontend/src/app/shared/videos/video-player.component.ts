@@ -3,7 +3,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatIconModule } from '@angular/material/icon';
 
-import { VideoSummary } from '../../core/models/videos.models';
+import { VideoSource, VideoSummary } from '../../core/models/videos.models';
 import {
   VIDEO_SPEEDS,
   currentChapterIndex,
@@ -15,7 +15,7 @@ import {
 /**
  * **Le lecteur vidéo** (F-213 / SF-213-02) — un seul composant, pour le fil du terminal comme pour la galerie :
  * le `<video>` natif (lecture progressive par `Range`, avance rapide), la couverture, les **chapitres
- * cliquables** sous le lecteur, la **vitesse** de 0,75 à 2×, le **plein écran** et le téléchargement.
+ * cliquables** sous le lecteur, la **fiche des sources** (F-215 / SF-215-04), la **vitesse** de 0,75 à 2×, le **plein écran** et le téléchargement.
  *
  * <p>La source est l'adresse par ticket rendue par `GET /videos/{id}` : un `<video>` ne porte pas d'en-tête, et
  * un `blob:` ferait tout télécharger avant la première image.</p>
@@ -79,6 +79,29 @@ import {
             </li>
           }
         </ol>
+      }
+      @if (sources().length > 0) {
+        <details class="player__sources">
+          <summary class="player__sources-title">
+            Sources de cette vidéo ({{ sources().length }})
+            @if (toConfirm() > 0) {
+              <span class="player__sources-flag">dont {{ toConfirm() }} à confirmer</span>
+            }
+          </summary>
+          <ul class="player__sources-list" aria-label="Fiche des sources">
+            @for (line of sources(); track $index) {
+              <li class="player__source" [class.player__source--unsure]="line.aConfirmer">
+                <span class="player__source-claim">{{ line.affirmation }}</span>
+                @if (line.source) {
+                  <span class="player__source-ref">{{ line.source }}</span>
+                }
+                @if (line.aConfirmer) {
+                  <span class="player__source-badge">à confirmer</span>
+                }
+              </li>
+            }
+          </ul>
+        </details>
       }
     </div>
   `,
@@ -173,6 +196,61 @@ import {
     .player__chapter--current .player__chapter-time {
       color: var(--cg-accent);
     }
+
+    .player__sources {
+      border-top: 1px solid var(--cg-divider);
+      padding-top: var(--cg-space-2);
+      font-size: 13px;
+    }
+
+    .player__sources-title {
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--cg-text-primary);
+    }
+
+    .player__sources-flag {
+      margin-left: var(--cg-space-2);
+      font-weight: 400;
+      color: var(--cg-accent);
+    }
+
+    .player__sources-list {
+      list-style: none;
+      margin: var(--cg-space-2) 0 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: var(--cg-space-1);
+      max-height: 240px;
+      overflow-y: auto;
+    }
+
+    .player__source {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: var(--cg-space-1) var(--cg-space-2);
+      padding: var(--cg-space-1) var(--cg-space-2);
+      border-radius: 4px;
+      overflow-wrap: anywhere;
+    }
+
+    .player__source--unsure {
+      background: color-mix(in srgb, var(--cg-accent) 12%, transparent);
+    }
+
+    .player__source-ref {
+      font-family: var(--cg-font-mono);
+      font-size: 12px;
+      color: var(--cg-text-secondary);
+    }
+
+    .player__source-badge {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--cg-accent);
+    }
   `,
 })
 export class VideoPlayerComponent {
@@ -208,6 +286,16 @@ export class VideoPlayerComponent {
       const element = this.media().nativeElement;
       element.playbackRate = this.speed();
     });
+  }
+
+  /** La fiche des sources de la version servie (F-215 / SF-215-04). */
+  sources(): VideoSource[] {
+    return this.video().sources ?? [];
+  }
+
+  /** Le nombre de lignes « à confirmer ». */
+  toConfirm(): number {
+    return this.sources().filter((line) => line.aConfirmer).length;
   }
 
   source(): string {

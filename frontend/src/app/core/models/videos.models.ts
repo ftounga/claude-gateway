@@ -7,6 +7,16 @@ export interface VideoChapter {
 }
 
 /**
+ * Une ligne de la **fiche des sources** d'une vidéo (F-215 / SF-215-04) : une affirmation technique et d'où elle
+ * vient, ou « à confirmer » faute de source.
+ */
+export interface VideoSource {
+  affirmation: string;
+  source: string | null;
+  aConfirmer: boolean;
+}
+
+/**
  * Une vidéo (ou une piste audio) telle que `GET /videos/{id}` la rend : les adresses de lecture portent un ticket
  * frais (jamais le JWT), valables quelques heures.
  */
@@ -32,6 +42,10 @@ export interface VideoSummary {
   downloadUrl: string;
   createdAt: string;
   updatedAt: string;
+  /** La fiche des sources de la version servie (F-215 / SF-215-04) ; absente ou vide sinon. */
+  sources?: VideoSource[];
+  /** La voix fixée pour la série (F-215 / SF-215-04), ou `null`. */
+  seriesVoice?: string | null;
 }
 
 /** Une vidéo telle qu'une carte de la galerie la montre (F-213 / SF-213-03). */
