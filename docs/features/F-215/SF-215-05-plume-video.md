@@ -1,7 +1,7 @@
 # Mini-spec — F-215 / SF-215-05 Plume vidéo : le cahier de réalisation
 
 ## Identifiant
-`F-215 / SF-215-05` — Feature parente : F-215 « Le cours vidéo libre (court et long) » — Statut : `in-progress` — 2026-10-25
+`F-215 / SF-215-05` — Feature parente : F-215 « Le cours vidéo libre (court et long) » — Statut : `done` — 2026-10-25 (PR #1283, #1284)
 Branches : `feat/SF-215-05-plume-video` (backend), `feat/SF-215-05-plume-video-ecran` (frontend). Extension de F-193.
 
 ## Objectif
@@ -43,12 +43,12 @@ l'écran, sources, charte, voix, « à confirmer » surlignés) ; pour toute aut
 | phrase non vidéo | chemin F-193 inchangé, `mode: "prompt"` | 200 |
 
 ## Critères d'acceptation
-- [ ] CA1 — Une phrase vidéo emprunte la consigne vidéo (sections du cahier) ; une autre phrase garde la consigne F-193.
-- [ ] CA2 — La matière vidéo liste pages publiées (sujet puis poste), séries du sujet et voix par défaut ; bornée.
-- [ ] CA3 — La consigne vidéo est fixe (identique d'un appel à l'autre) ; aucune donnée de l'utilisateur dedans.
-- [ ] CA4 — `mode` vaut `video` / `prompt` ; `toConfirm` lit « Points à confirmer ».
-- [ ] CA5 — Isolation : pages et séries lues filtrées `user_id` ; sujet d'un autre compte ⇒ 404 sans appel.
-- [ ] CA6 — Écran : badge « cahier de réalisation » en mode vidéo, « enrichi par Plume » sinon ; rien envoyé sans geste.
+- [x] CA1 — Une phrase vidéo emprunte la consigne vidéo (sections du cahier) ; une autre phrase garde la consigne F-193.
+- [x] CA2 — La matière vidéo liste pages publiées (sujet puis poste), séries du sujet et voix par défaut ; bornée.
+- [x] CA3 — La consigne vidéo est fixe (identique d'un appel à l'autre) ; aucune donnée de l'utilisateur dedans.
+- [x] CA4 — `mode` vaut `video` / `prompt` ; `toConfirm` lit « Points à confirmer ».
+- [x] CA5 — Isolation : pages et séries lues filtrées `user_id` ; sujet d'un autre compte ⇒ 404 sans appel.
+- [x] CA6 — Écran : badge « cahier de réalisation » en mode vidéo, « enrichi par Plume » sinon ; rien envoyé sans geste.
 
 ## Contraintes de validation
 | Élément | Borne |
