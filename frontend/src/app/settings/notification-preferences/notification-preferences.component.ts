@@ -10,7 +10,6 @@ import {
   NotificationPreferencesService,
   browserTimeZone,
 } from '../../core/services/notification-preferences.service';
-import { FinishSoundService } from '../../core/services/finish-sound.service';
 
 /**
  * **Ce qui vous prévient** (F-185 / SF-185-06) : une case par événement et des heures calmes. Les
@@ -38,14 +37,6 @@ import { FinishSoundService } from '../../core/services/finish-sound.service';
             </li>
           }
         </ul>
-        <h3 class="prefs__title">Son de fin de tâche</h3>
-        <p class="prefs__text">Un son court quand une tâche d'un autre sujet du poste se termine. Réglé pour cet appareil.</p>
-        <div class="prefs__sound">
-          <mat-checkbox class="prefs__finish-sound" [checked]="sound.enabled()" (change)="sound.setEnabled($event.checked)">
-            Jouer un son à la fin d'une tâche
-          </mat-checkbox>
-          <button mat-button type="button" class="prefs__listen" (click)="sound.play()">Écouter</button>
-        </div>
         <h3 class="prefs__title">Heures calmes</h3>
         <p class="prefs__text">Rien ne sonne pendant cette plage, sauf ce qui attend une décision.</p>
         <div class="prefs__quiet">
@@ -94,14 +85,6 @@ import { FinishSoundService } from '../../core/services/finish-sound.service';
       color: var(--cg-text-secondary);
     }
 
-    .prefs__sound {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: var(--cg-space-2, 8px);
-      margin-bottom: var(--cg-space-3, 12px);
-    }
-
     .prefs__quiet {
       display: flex;
       flex-wrap: wrap;
@@ -126,8 +109,6 @@ import { FinishSoundService } from '../../core/services/finish-sound.service';
 export class NotificationPreferencesComponent implements OnInit {
   private readonly preferences = inject(NotificationPreferencesService);
   private readonly snackBar = inject(MatSnackBar);
-  /** Le son de fin de tâche (F-191 / SF-191-03) : propre à l'appareil, effet immédiat. */
-  protected readonly sound = inject(FinishSoundService);
 
   protected readonly loaded = signal(false);
   protected readonly saving = signal(false);

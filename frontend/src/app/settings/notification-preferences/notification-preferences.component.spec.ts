@@ -1,12 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { signal } from '@angular/core';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { of, throwError } from 'rxjs';
 import { HttpErrorResponse } from '@angular/common/http';
 
 import { NotificationPreferencesComponent } from './notification-preferences.component';
-import { FinishSoundService } from '../../core/services/finish-sound.service';
 import {
   NotificationPreferences,
   NotificationPreferencesService,
@@ -17,7 +15,6 @@ describe('NotificationPreferencesComponent (F-185 / SF-185-06)', () => {
   let fixture: ComponentFixture<NotificationPreferencesComponent>;
   let service: jasmine.SpyObj<NotificationPreferencesService>;
   let snackBar: jasmine.SpyObj<MatSnackBar>;
-  let sound: { enabled: ReturnType<typeof signal<boolean>>; setEnabled: jasmine.Spy; play: jasmine.Spy };
 
   const prefs: NotificationPreferences = {
     mutedEvents: ['WORK_STOPPED'],
@@ -36,18 +33,12 @@ describe('NotificationPreferencesComponent (F-185 / SF-185-06)', () => {
     service.get.and.returnValue(of(prefs));
     service.save.and.returnValue(of(prefs));
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
-    sound = {
-      enabled: signal(false),
-      setEnabled: jasmine.createSpy('setEnabled').and.callFake((on: boolean) => sound.enabled.set(on)),
-      play: jasmine.createSpy('play'),
-    };
     TestBed.configureTestingModule({
       imports: [NotificationPreferencesComponent],
       providers: [
         provideNoopAnimations(),
         { provide: NotificationPreferencesService, useValue: service },
         { provide: MatSnackBar, useValue: snackBar },
-        { provide: FinishSoundService, useValue: sound },
       ],
     });
     fixture = TestBed.createComponent(NotificationPreferencesComponent);
@@ -101,21 +92,5 @@ describe('NotificationPreferencesComponent (F-185 / SF-185-06)', () => {
     })));
     (fixture.nativeElement.querySelector('.prefs__save') as HTMLButtonElement).click();
     expect(snackBar.open).toHaveBeenCalledWith('Heure invalide : 25:00 (format HH:MM).', 'Fermer', jasmine.any(Object));
-  });
-
-  // F-191 / SF-191-03 — le son de fin de tâche, propre à l'appareil
-  it('propose le son de fin de tâche, coupé par défaut ; le cocher l\'active, « Écouter » le joue', () => {
-    build();
-    const box = fixture.nativeElement.querySelector('.prefs__finish-sound input[type="checkbox"]') as HTMLInputElement;
-    expect(box).not.toBeNull();
-    expect(box.checked).toBeFalse();
-
-    box.click();
-    fixture.detectChanges();
-    expect(sound.setEnabled).toHaveBeenCalledWith(true);
-
-    (fixture.nativeElement.querySelector('.prefs__listen') as HTMLButtonElement).click();
-    expect(sound.play).toHaveBeenCalled();
-    expect(service.save).not.toHaveBeenCalled();
   });
 });

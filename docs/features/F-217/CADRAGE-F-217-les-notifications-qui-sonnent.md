@@ -50,8 +50,10 @@ Un site web **ne peut pas imposer un son personnalisé** à une notification sys
 | SF | Objet | Risque |
 |---|---|---|
 | SF-217-01 | Backend : charge Web Push sonore (D1), urgence et TTL (D2), moteur hébergé (D3), notification de test (D4) ; tests | 🟢 |
-| SF-217-02 | Front : carillon deux sons + rejeu 30 s + déblocage au premier geste (D5), onglet qui clignote (D6), fermeture des notifications périmées (D7), branchements terminal / cloche / Fil ; tests Karma | 🟢 |
-| SF-217-03 | Front : préférences du son (D8) + « Tester le son » + guide par plateforme (D9) ; tests Karma | 🟢 |
+| SF-217-02 | Front : service du carillon deux sons + rejeu 30 s + déblocage au premier geste (D5), absorption du son F-191, préférences du son (D8) + « Tester le son » + guide par plateforme (D9) ; tests Karma | 🟢 |
+| SF-217-03 | Front : branchements du carillon (terminal : accord, question, plan, fin de tour ; cloche), onglet qui clignote (D6), fermeture des notifications périmées (D7) ; tests Karma | 🟢 |
+
+> Découpage ajusté le 2026-10-26 : le carillon absorbe le son de fin de tâche de F-191, dont le réglage vivait dans les préférences ; service et préférences sont livrés ensemble (SF-217-02) pour ne laisser aucun réglage orphelin, les branchements suivent (SF-217-03).
 
 ## Hors périmètre
 Son personnalisé des notifications système (impossible pour un site web) ; application native ; préférences du son par compte synchronisées entre appareils ; nouvel événement « rendu vidéo fini » (F-216 en cours, couvert par la fin de tour) ; changement de la règle D7 (le Web Push reste tu quand le terminal est regardé : le carillon prend le relais).

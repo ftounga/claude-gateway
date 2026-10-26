@@ -11,6 +11,12 @@ export type PushActivationResult =
   | 'not-configured'
   | 'denied';
 
+/** Réponse de `POST /api/push/test` (F-217) : push configuré, et appareils du compte visés. */
+export interface PushTestResult {
+  configured: boolean;
+  devices: number;
+}
+
 /** F-204 : « Désactiver » dans Paramètres — ni abonnement silencieux, ni demande ensuite sur cet appareil. */
 export const PUSH_OPT_OUT_KEY = 'cg.push.optOut';
 /** F-204 : la permission a déjà été demandée une fois sur cet appareil — on ne redemande plus. */
@@ -187,6 +193,18 @@ export class PushActivationService {
       .finally(() => {
         this.asking = false;
       });
+  }
+
+  /**
+   * **Notification système de test** (F-217 / SF-217-02, D4) : la gateway l'envoie aux seuls appareils du
+   * compte. Rend ce qu'elle annonce (push configuré, nombre d'appareils visés), ou `null` si l'appel échoue.
+   */
+  async sendTest(): Promise<PushTestResult | null> {
+    try {
+      return await firstValueFrom(this.http.post<PushTestResult>('/api/push/test', null));
+    } catch {
+      return null;
+    }
   }
 
   /** La clé publique VAPID servie par la gateway, ou `null` si le push n'est pas configuré. */
