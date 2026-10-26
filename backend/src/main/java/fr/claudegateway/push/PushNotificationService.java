@@ -3,6 +3,7 @@ package fr.claudegateway.push;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -121,18 +122,52 @@ public class PushNotificationService {
             if (subscriptions.isEmpty()) {
                 return;
             }
-            String payload = buildPayload(event, workspaceId);
-            for (PushSubscription subscription : subscriptions) {
-                WebPushTransport.Result result = transport.send(subscription, payload);
-                if (result == WebPushTransport.Result.EXPIRED) {
-                    // Endpoint mort côté service push : on retire la ligne (révocation implicite).
-                    repository.deleteByEndpoint(subscription.getEndpoint());
-                }
-            }
+            sendAll(subscriptions, buildPayload(event, workspaceId), PushDelivery.forEvent(event));
         } catch (RuntimeException e) {
             // L'émission est best-effort : jamais fatale. Aucune donnée sensible dans le log.
             log.warn("Émission Web Push interrompue : {}", e.getMessage());
         }
+    }
+
+    /** Pousse la charge à chaque appareil ; un endpoint mort (404/410) est purgé (révocation implicite). */
+    private void sendAll(List<PushSubscription> subscriptions, String payload, PushDelivery delivery) {
+        for (PushSubscription subscription : subscriptions) {
+            WebPushTransport.Result result = transport.send(subscription, payload, delivery);
+            if (result == WebPushTransport.Result.EXPIRED) {
+                repository.deleteByEndpoint(subscription.getEndpoint());
+            }
+        }
+    }
+
+    /**
+     * <b>Notification de test</b> (F-217 / SF-217-01, D4) : « Tester le son » depuis les préférences. Vise les
+     * <b>seuls appareils du compte</b> ({@code user_id}), hors cloche, hors anti-doublon et hors préférences —
+     * c'est un geste explicite. Rend aussitôt le nombre d'appareils visés ; l'envoi part sur l'exécuteur dédié.
+     *
+     * @return le nombre d'abonnements du compte (0 si aucun) ; rien n'est envoyé si le push n'est pas configuré
+     */
+    public int sendTest(UUID userId) {
+        if (userId == null) {
+            return 0;
+        }
+        List<PushSubscription> subscriptions = repository.findByUserId(userId);
+        if (subscriptions.isEmpty() || !transport.isEnabled()) {
+            return subscriptions.size();
+        }
+        String payload = buildTestPayload();
+        executor.execute(() -> {
+            try {
+                sendAll(subscriptions, payload, PushDelivery.TEST);
+            } catch (RuntimeException e) {
+                log.warn("Notification de test interrompue : {}", e.getMessage());
+            }
+        });
+        return subscriptions.size();
+    }
+
+    /** Le push peut-il réellement émettre (VAPID configuré) ? */
+    public boolean configured() {
+        return transport.isEnabled();
     }
 
     /**
@@ -199,33 +234,78 @@ public class PushNotificationService {
      * (SF-153-03). Le titre et le corps sont génériques, l'{@code url} porte un identifiant de
      * terminal <b>opaque</b> — jamais un nom de projet ni une commande (D4).
      *
-     * <p>F-185 / SF-185-02 : {@code data.event} porte le code de l'événement ; le {@code tag} par
-     * terminal fait qu'une notification <b>remplace</b> la précédente du même terminal au lieu de
-     * s'empiler.</p>
+     * <p>F-185 / SF-185-02 : {@code data.event} porte le code de l'événement.</p>
+     *
+     * <p>F-217 / SF-217-01 (D1) — une notification <b>qui sonne</b> : {@code silent: false} explicite,
+     * {@code renotify}, {@code vibrate}, {@code timestamp} ; ce qui attend une action reste affiché jusqu'au
+     * geste ({@code requireInteraction}). Le {@code tag} est propre à l'événement : une information remplace
+     * la précédente du même type pour ce terminal ; une demande d'action porte en plus son horodatage — une
+     * occurrence, une notification, donc un son, y compris sur Safari et Firefox qui ignorent
+     * {@code renotify} et remplacent en silence. ngsw recopie ces options telles quelles
+     * ({@code NOTIFICATION_OPTION_NAMES}).</p>
      */
     String buildPayload(PushEvent event, UUID workspaceId) {
         String url = workspaceId != null ? "/atelier/" + workspaceId : "/forge";
-        String tag = "cg-" + (workspaceId != null ? workspaceId : "forge");
-        // Format ngsw : { notification: { title, body, icon, tag, data: { url, event, onActionClick } } }.
-        Map<String, Object> notification = Map.of(
-                "title", event.title(),
-                "body", event.body(),
-                "icon", "/icons/icon-192.png",
-                "tag", tag,
-                "renotify", true,
-                "data", Map.of(
-                        "url", url,
-                        "event", event.name(),
-                        "onActionClick", Map.of(
-                                "default", Map.of("operation", "openWindow", "url", url))));
+        long timestamp = clock.millis();
+        String tag = "cg-" + (workspaceId != null ? workspaceId : "forge") + "-" + event.name()
+                + (event.requiresAction() ? "-" + timestamp : "");
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("url", url);
+        data.put("event", event.name());
+        if (workspaceId != null) {
+            // Identifiant opaque (déjà dans l'URL) : l'écran ferme les notifications de ce terminal (SF-217-02).
+            data.put("workspaceId", workspaceId.toString());
+        }
+        data.put("onActionClick", Map.of("default", Map.of("operation", "openWindow", "url", url)));
+        return payload(event.title(), event.body(), tag, timestamp, event.requiresAction(),
+                event.requiresAction() ? ACTION_VIBRATE : INFO_VIBRATE, data);
+    }
+
+    /** Motif de vibration (Android) de ce qui attend une action : trois impulsions. */
+    static final List<Integer> ACTION_VIBRATE = List.of(200, 100, 200, 100, 200);
+
+    /** Motif de vibration (Android) d'une information : une impulsion. */
+    static final List<Integer> INFO_VIBRATE = List.of(200);
+
+    static final String TEST_TITLE = "Notification de test";
+    static final String TEST_BODY = "Si vous l'entendez, le son de vos notifications est bien réglé.";
+    static final String TEST_URL = "/settings";
+
+    /** La charge de la notification de test (D4) : neutre, sonore, elle ouvre les paramètres au clic. */
+    String buildTestPayload() {
+        long timestamp = clock.millis();
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("url", TEST_URL);
+        data.put("event", "TEST");
+        data.put("onActionClick", Map.of("default", Map.of("operation", "openWindow", "url", TEST_URL)));
+        return payload(TEST_TITLE, TEST_BODY, "cg-test-" + timestamp, timestamp, false, ACTION_VIBRATE, data);
+    }
+
+    private String payload(String title, String body, String tag, long timestamp, boolean requireInteraction,
+            List<Integer> vibrate, Map<String, Object> data) {
+        // Format ngsw : { notification: { title, body, icon, tag, …, data: { url, event, onActionClick } } }.
+        Map<String, Object> notification = new LinkedHashMap<>();
+        notification.put("title", title);
+        notification.put("body", body);
+        notification.put("icon", "/icons/icon-192.png");
+        notification.put("tag", tag);
+        notification.put("renotify", true);
+        notification.put("silent", false);
+        notification.put("requireInteraction", requireInteraction);
+        notification.put("vibrate", vibrate);
+        notification.put("timestamp", timestamp);
+        notification.put("data", data);
         try {
             return objectMapper.writeValueAsString(Map.of("notification", notification));
         } catch (Exception e) {
-            // Repli sans dépendance JSON : les valeurs sont des littéraux + un UUID (rien à échapper
-            // hormis l'apostrophe, qui n'en demande pas en JSON).
-            return "{\"notification\":{\"title\":\"" + event.title() + "\",\"body\":\"" + event.body()
+            // Repli sans dépendance JSON : littéraux, UUID et nombres — rien à échapper hormis l'apostrophe,
+            // qui n'en demande pas en JSON.
+            Object url = data.get("url");
+            return "{\"notification\":{\"title\":\"" + title + "\",\"body\":\"" + body
                     + "\",\"icon\":\"/icons/icon-192.png\",\"tag\":\"" + tag
-                    + "\",\"renotify\":true,\"data\":{\"url\":\"" + url + "\",\"event\":\"" + event.name()
+                    + "\",\"renotify\":true,\"silent\":false,\"requireInteraction\":" + requireInteraction
+                    + ",\"vibrate\":" + vibrate.toString().replace(" ", "") + ",\"timestamp\":" + timestamp
+                    + ",\"data\":{\"url\":\"" + url + "\",\"event\":\"" + data.get("event")
                     + "\",\"onActionClick\":{\"default\":{\"operation\":\"openWindow\",\"url\":\""
                     + url + "\"}}}}}";
         }

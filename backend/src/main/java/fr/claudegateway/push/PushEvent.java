@@ -89,6 +89,15 @@ public enum PushEvent {
         return this == AUTHORIZATION_REQUESTED || this == QUESTION_ASKED || this == QUESTION_REMINDER;
     }
 
+    /**
+     * <b>Attend une action</b> (F-217 / SF-217-01, D1) : les critiques, plus le plan à approuver et la
+     * validation à confirmer. Leur notification reste affichée jusqu'au geste ({@code requireInteraction})
+     * et part en urgence haute.
+     */
+    public boolean requiresAction() {
+        return critical() || this == PLAN_AWAITING || this == VALIDATION_AWAITING;
+    }
+
     /** Émis même si le terminal est regardé (D7 ne s'applique pas). */
     public boolean alwaysDelivered() {
         return alwaysDelivered;

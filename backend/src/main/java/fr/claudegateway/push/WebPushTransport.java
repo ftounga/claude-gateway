@@ -28,4 +28,12 @@ public interface WebPushTransport {
      * {@link Result#FAILED} (ou {@link Result#EXPIRED} sur 404/410).
      */
     Result send(PushSubscription subscription, String payloadJson);
+
+    /**
+     * Pousse une charge avec son <b>urgence</b> et sa <b>durée de vie</b> (F-217 / SF-217-01, D2). Par défaut,
+     * un transport qui ne sait pas les poser envoie sans (comportement antérieur). Ne lève jamais.
+     */
+    default Result send(PushSubscription subscription, String payloadJson, PushDelivery delivery) {
+        return send(subscription, payloadJson);
+    }
 }

@@ -95,12 +95,12 @@ class PushNotificationServiceTest {
     void turnDoneSendsANeutralPayloadToTheOwnersDevices() {
         when(transport.isEnabled()).thenReturn(true);
         when(repository.findByUserId(userId)).thenReturn(List.of(sub("https://push/a"), sub("https://push/b")));
-        when(transport.send(any(), any())).thenReturn(Result.DELIVERED);
+        when(transport.send(any(), any(), any())).thenReturn(Result.DELIVERED);
 
         service.notifyTurnDone(userId, workspaceId);
 
         ArgumentCaptor<String> payload = ArgumentCaptor.forClass(String.class);
-        verify(transport, timeout(2000).times(2)).send(any(), payload.capture());
+        verify(transport, timeout(2000).times(2)).send(any(), payload.capture(), any());
         String json = payload.getValue();
         assertThat(json).contains("Une réponse est prête");
         // Charge neutre : la route porte un identifiant opaque, jamais un nom de projet ni une commande.
@@ -111,12 +111,12 @@ class PushNotificationServiceTest {
     void authorizationRequestedSendsTheCriticalNeutralTitle() {
         when(transport.isEnabled()).thenReturn(true);
         when(repository.findByUserId(userId)).thenReturn(List.of(sub("https://push/a")));
-        when(transport.send(any(), any())).thenReturn(Result.DELIVERED);
+        when(transport.send(any(), any(), any())).thenReturn(Result.DELIVERED);
 
         service.notifyAuthorizationRequested(userId, workspaceId);
 
         ArgumentCaptor<String> payload = ArgumentCaptor.forClass(String.class);
-        verify(transport, timeout(2000)).send(any(), payload.capture());
+        verify(transport, timeout(2000)).send(any(), payload.capture(), any());
         assertThat(payload.getValue()).contains("Une autorisation est demandée");
     }
 
@@ -124,12 +124,12 @@ class PushNotificationServiceTest {
     void questionAskedSendsANeutralTitleAndBodyWithTheTerminalDeepLink() {
         when(transport.isEnabled()).thenReturn(true);
         when(repository.findByUserId(userId)).thenReturn(List.of(sub("https://push/a")));
-        when(transport.send(any(), any())).thenReturn(Result.DELIVERED);
+        when(transport.send(any(), any(), any())).thenReturn(Result.DELIVERED);
 
         service.notifyQuestionAsked(userId, workspaceId);
 
         ArgumentCaptor<String> payload = ArgumentCaptor.forClass(String.class);
-        verify(transport, timeout(2000)).send(any(), payload.capture());
+        verify(transport, timeout(2000)).send(any(), payload.capture(), any());
         assertThat(payload.getValue())
                 .contains("Une question vous attend")
                 .contains("Ouvrez l'application pour répondre.")
@@ -144,7 +144,7 @@ class PushNotificationServiceTest {
 
         Thread.sleep(200);
         verify(repository, never()).findByUserId(any());
-        verify(transport, never()).send(any(), any());
+        verify(transport, never()).send(any(), any(), any());
     }
 
     @Test
@@ -154,7 +154,7 @@ class PushNotificationServiceTest {
 
         Thread.sleep(200);
         verify(repository, never()).findByUserId(any());
-        verify(transport, never()).send(any(), any());
+        verify(transport, never()).send(any(), any(), any());
         verify(journal, never()).record(any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
     }
 
@@ -167,7 +167,8 @@ class PushNotificationServiceTest {
                     mapper.readTree(service.buildPayload(event, workspaceId)).get("notification");
             assertThat(notification.get("title").asText()).isEqualTo(event.title());
             assertThat(notification.get("body").asText()).isEqualTo(event.body());
-            assertThat(notification.get("tag").asText()).isEqualTo("cg-" + workspaceId);
+            // F-217 / SF-217-01 : un tag par événement (et par occurrence pour ce qui attend une action).
+            assertThat(notification.get("tag").asText()).startsWith("cg-" + workspaceId + "-" + event.name());
             assertThat(notification.get("data").get("event").asText()).isEqualTo(event.name());
             assertThat(notification.get("data").get("url").asText()).isEqualTo("/atelier/" + workspaceId);
             // Neutre : aucun identifiant de compte ne voyage.
@@ -175,16 +176,136 @@ class PushNotificationServiceTest {
         }
     }
 
+    // ------------------------------------------------------------------ F-217 / SF-217-01
+
+    private com.fasterxml.jackson.databind.JsonNode notificationOf(PushEvent event) throws Exception {
+        return new ObjectMapper().readTree(service.buildPayload(event, workspaceId)).get("notification");
+    }
+
+    @Test
+    void everyPayloadAsksForASoundAVibrationATimestampAndCarriesTheTerminal() throws Exception {
+        // CA1 : une notification qui sonne, quel que soit l'événement.
+        for (PushEvent event : PushEvent.values()) {
+            com.fasterxml.jackson.databind.JsonNode n = notificationOf(event);
+            assertThat(n.get("silent").isBoolean()).isTrue();
+            assertThat(n.get("silent").asBoolean()).isFalse();
+            assertThat(n.get("renotify").asBoolean()).isTrue();
+            assertThat(n.get("timestamp").asLong()).isEqualTo(clock.millis());
+            assertThat(n.get("vibrate").isArray()).isTrue();
+            assertThat(n.get("vibrate").size()).isPositive();
+            assertThat(n.get("data").get("workspaceId").asText()).isEqualTo(workspaceId.toString());
+        }
+    }
+
+    @Test
+    void onlyWhatAwaitsAnActionStaysOnScreenUntilTheGesture() throws Exception {
+        // CA2 : requireInteraction exactement pour accord, question, rappel, plan, validation.
+        java.util.Set<PushEvent> action = java.util.EnumSet.of(PushEvent.AUTHORIZATION_REQUESTED,
+                PushEvent.QUESTION_ASKED, PushEvent.QUESTION_REMINDER, PushEvent.PLAN_AWAITING,
+                PushEvent.VALIDATION_AWAITING);
+        for (PushEvent event : PushEvent.values()) {
+            assertThat(event.requiresAction()).as(event.name()).isEqualTo(action.contains(event));
+            com.fasterxml.jackson.databind.JsonNode n = notificationOf(event);
+            assertThat(n.get("requireInteraction").asBoolean()).as(event.name()).isEqualTo(action.contains(event));
+            assertThat(n.get("vibrate").size()).as(event.name()).isEqualTo(action.contains(event) ? 5 : 1);
+        }
+    }
+
+    @Test
+    void twoSuccessiveAuthorizationsGetTwoTagsSoBothRingWhileAnInformationReplacesItself() throws Exception {
+        // CA3 : Safari et Firefox ignorent renotify — une occurrence d'action = un tag propre.
+        String first = notificationOf(PushEvent.AUTHORIZATION_REQUESTED).get("tag").asText();
+        clock.advance(java.time.Duration.ofSeconds(5));
+        String second = notificationOf(PushEvent.AUTHORIZATION_REQUESTED).get("tag").asText();
+        assertThat(first).isNotEqualTo(second);
+        assertThat(first).isEqualTo("cg-" + workspaceId + "-AUTHORIZATION_REQUESTED-"
+                + (clock.millis() - 5_000));
+        String done = notificationOf(PushEvent.TURN_DONE).get("tag").asText();
+        clock.advance(java.time.Duration.ofSeconds(5));
+        assertThat(notificationOf(PushEvent.TURN_DONE).get("tag").asText()).isEqualTo(done)
+                .isEqualTo("cg-" + workspaceId + "-TURN_DONE");
+    }
+
+    @Test
+    void theForgeTagIsUsedWithoutTerminal() throws Exception {
+        com.fasterxml.jackson.databind.JsonNode n = new ObjectMapper()
+                .readTree(service.buildPayload(PushEvent.ATTENTES_TO_FOLLOW_UP, null)).get("notification");
+        assertThat(n.get("tag").asText()).isEqualTo("cg-forge-ATTENTES_TO_FOLLOW_UP");
+        assertThat(n.get("data").has("workspaceId")).isFalse();
+    }
+
+    @Test
+    void decisionsLeaveInHighUrgencyWithAShortLifeAndTheRestNormally() {
+        // CA4 : le transport reçoit l'urgence et la durée de vie de l'événement.
+        when(transport.isEnabled()).thenReturn(true);
+        when(repository.findByUserId(userId)).thenReturn(List.of(sub("https://push/a")));
+        when(transport.send(any(), any(), any())).thenReturn(Result.DELIVERED);
+
+        service.notifyAuthorizationRequested(userId, workspaceId);
+        ArgumentCaptor<PushDelivery> delivery = ArgumentCaptor.forClass(PushDelivery.class);
+        verify(transport, timeout(2000)).send(any(), any(), delivery.capture());
+        assertThat(delivery.getValue()).isEqualTo(new PushDelivery(PushUrgency.HIGH, 900));
+
+        service.notifyTurnDone(userId, workspaceId);
+        verify(transport, timeout(2000).times(2)).send(any(), any(), delivery.capture());
+        assertThat(delivery.getValue()).isEqualTo(new PushDelivery(PushUrgency.NORMAL, 86_400));
+    }
+
+    @Test
+    void theTestNotificationGoesToTheAccountsDevicesOnlyOutsideTheBellAndTheDedup() throws Exception {
+        // CA7 / CA8 : seuls les appareils du compte, deux tests de suite partent, rien dans la cloche.
+        when(transport.isEnabled()).thenReturn(true);
+        when(repository.findByUserId(userId)).thenReturn(List.of(sub("https://push/a"), sub("https://push/b")));
+        when(transport.send(any(), any(), any())).thenReturn(Result.DELIVERED);
+
+        assertThat(service.sendTest(userId)).isEqualTo(2);
+        assertThat(service.sendTest(userId)).isEqualTo(2);
+
+        ArgumentCaptor<String> payload = ArgumentCaptor.forClass(String.class);
+        verify(transport, timeout(2000).times(4)).send(any(), payload.capture(), eq(PushDelivery.TEST));
+        com.fasterxml.jackson.databind.JsonNode n = new ObjectMapper().readTree(payload.getValue()).get("notification");
+        assertThat(n.get("title").asText()).isEqualTo("Notification de test");
+        assertThat(n.get("silent").asBoolean()).isFalse();
+        assertThat(n.get("requireInteraction").asBoolean()).isFalse();
+        assertThat(n.get("tag").asText()).startsWith("cg-test-");
+        assertThat(n.get("data").get("url").asText()).isEqualTo("/settings");
+        verify(repository, times(2)).findByUserId(userId);
+        verify(journal, never()).record(any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
+    }
+
+    @Test
+    void theTestNotificationIsNotSentWithoutPushConfiguredButStillCountsTheDevices() throws InterruptedException {
+        when(transport.isEnabled()).thenReturn(false);
+        when(repository.findByUserId(userId)).thenReturn(List.of(sub("https://push/a")));
+
+        assertThat(service.sendTest(userId)).isEqualTo(1);
+        assertThat(service.configured()).isFalse();
+        Thread.sleep(200);
+        verify(transport, never()).send(any(), any(), any());
+        assertThat(service.sendTest(null)).isZero();
+    }
+
+    @Test
+    void aDeadEndpointIsPurgedByTheTestToo() {
+        when(transport.isEnabled()).thenReturn(true);
+        when(repository.findByUserId(userId)).thenReturn(List.of(sub("https://push/dead")));
+        when(transport.send(any(), any(), any())).thenReturn(Result.EXPIRED);
+
+        service.sendTest(userId);
+
+        verify(repository, timeout(2000)).deleteByEndpoint("https://push/dead");
+    }
+
     @Test
     void notifySendsTheCatalogEventToTheOwnersDevicesOnly() {
         when(transport.isEnabled()).thenReturn(true);
         when(repository.findByUserId(userId)).thenReturn(List.of(sub("https://push/a")));
-        when(transport.send(any(), any())).thenReturn(Result.DELIVERED);
+        when(transport.send(any(), any(), any())).thenReturn(Result.DELIVERED);
 
         service.notify(userId, workspaceId, PushEvent.PLAN_AWAITING);
 
         ArgumentCaptor<String> payload = ArgumentCaptor.forClass(String.class);
-        verify(transport, timeout(2000)).send(any(), payload.capture());
+        verify(transport, timeout(2000)).send(any(), payload.capture(), any());
         assertThat(payload.getValue()).contains("Un plan attend votre accord").contains("PLAN_AWAITING");
         verify(repository).findByUserId(userId);
     }
@@ -194,7 +315,7 @@ class PushNotificationServiceTest {
         when(transport.isEnabled()).thenReturn(true);
         service.notify(userId, workspaceId, null);
         Thread.sleep(100);
-        verify(transport, never()).send(any(), any());
+        verify(transport, never()).send(any(), any(), any());
     }
 
     // ------------------------------------------------ F-185 / SF-185-03 : D7 enfin tenue
@@ -202,7 +323,7 @@ class PushNotificationServiceTest {
     private void deliverable() {
         when(transport.isEnabled()).thenReturn(true);
         when(repository.findByUserId(userId)).thenReturn(List.of(sub("https://push/a")));
-        when(transport.send(any(), any())).thenReturn(Result.DELIVERED);
+        when(transport.send(any(), any(), any())).thenReturn(Result.DELIVERED);
     }
 
     @Test
@@ -214,7 +335,7 @@ class PushNotificationServiceTest {
 
         verify(watch, timeout(2000)).watching(userId, workspaceId);
         Thread.sleep(100);
-        verify(transport, never()).send(any(), any());
+        verify(transport, never()).send(any(), any(), any());
     }
 
     @Test
@@ -226,7 +347,7 @@ class PushNotificationServiceTest {
         service.notify(userId, workspaceId, PushEvent.QUESTION_REMINDER);
 
         ArgumentCaptor<String> payload = ArgumentCaptor.forClass(String.class);
-        verify(transport, timeout(2000)).send(any(), payload.capture());
+        verify(transport, timeout(2000)).send(any(), payload.capture(), any());
         assertThat(payload.getValue()).contains("Une question attend toujours");
         verify(journal).record(userId, workspaceId, PushEvent.QUESTION_REMINDER, false);
     }
@@ -238,7 +359,7 @@ class PushNotificationServiceTest {
 
         service.notify(userId, workspaceId, PushEvent.TURN_DONE);
 
-        verify(transport, timeout(2000)).send(any(), any());
+        verify(transport, timeout(2000)).send(any(), any(), any());
         verify(watch).watching(userId, workspaceId);
     }
 
@@ -249,7 +370,7 @@ class PushNotificationServiceTest {
 
         service.notify(userId, workspaceId, PushEvent.QUESTION_ASKED);
 
-        verify(transport, timeout(2000)).send(any(), any());
+        verify(transport, timeout(2000)).send(any(), any(), any());
     }
 
     @Test
@@ -258,16 +379,16 @@ class PushNotificationServiceTest {
 
         service.notify(userId, workspaceId, PushEvent.QUESTION_ASKED);
         service.notify(userId, workspaceId, PushEvent.QUESTION_ASKED);
-        verify(transport, timeout(2000).times(1)).send(any(), any());
+        verify(transport, timeout(2000).times(1)).send(any(), any(), any());
         Thread.sleep(100);
-        verify(transport, times(1)).send(any(), any());
+        verify(transport, times(1)).send(any(), any(), any());
 
         // Un autre événement passe ; le même, après la fenêtre, aussi.
         service.notify(userId, workspaceId, PushEvent.TURN_DONE);
-        verify(transport, timeout(2000).times(2)).send(any(), any());
+        verify(transport, timeout(2000).times(2)).send(any(), any(), any());
         clock.advance(PushNotificationService.DEDUP_WINDOW.plusSeconds(1));
         service.notify(userId, workspaceId, PushEvent.QUESTION_ASKED);
-        verify(transport, timeout(2000).times(3)).send(any(), any());
+        verify(transport, timeout(2000).times(3)).send(any(), any(), any());
     }
 
     @Test
@@ -278,7 +399,7 @@ class PushNotificationServiceTest {
         service.notify(userId, workspaceId, PushEvent.TURN_DONE);
         service.notify(userId, other, PushEvent.TURN_DONE);
 
-        verify(transport, timeout(2000).times(2)).send(any(), any());
+        verify(transport, timeout(2000).times(2)).send(any(), any(), any());
     }
 
     // ------------------------------------------------ F-185 / SF-185-04 : le centre de notifications
@@ -291,7 +412,7 @@ class PushNotificationServiceTest {
 
         verify(journal, timeout(2000)).record(userId, workspaceId, PushEvent.TURN_DONE, false);
         Thread.sleep(100);
-        verify(transport, never()).send(any(), any());
+        verify(transport, never()).send(any(), any(), any());
     }
 
     @Test
@@ -324,7 +445,7 @@ class PushNotificationServiceTest {
 
         service.notify(userId, workspaceId, PushEvent.TURN_DONE);
 
-        verify(transport, timeout(2000)).send(any(), any());
+        verify(transport, timeout(2000)).send(any(), any(), any());
     }
 
     // ------------------------------------------------ F-185 / SF-185-06 : préférences
@@ -338,7 +459,7 @@ class PushNotificationServiceTest {
 
         verify(journal, timeout(2000)).record(userId, workspaceId, PushEvent.TURN_DONE, false);
         Thread.sleep(100);
-        verify(transport, never()).send(any(), any());
+        verify(transport, never()).send(any(), any(), any());
     }
 
     @Test
@@ -348,7 +469,7 @@ class PushNotificationServiceTest {
 
         service.notify(userId, workspaceId, PushEvent.AUTHORIZATION_REQUESTED);
 
-        verify(transport, timeout(2000)).send(any(), any());
+        verify(transport, timeout(2000)).send(any(), any(), any());
         // La règle D5 vit dans l'émetteur : on ne demande même pas.
         verify(preferences, never()).allowsPush(userId, PushEvent.AUTHORIZATION_REQUESTED);
     }
@@ -360,7 +481,7 @@ class PushNotificationServiceTest {
 
         service.notify(userId, workspaceId, PushEvent.TURN_DONE);
 
-        verify(transport, timeout(2000)).send(any(), any());
+        verify(transport, timeout(2000)).send(any(), any(), any());
     }
 
     @Test
@@ -369,8 +490,8 @@ class PushNotificationServiceTest {
         PushSubscription alive = sub("https://push/alive");
         PushSubscription dead = sub("https://push/dead");
         when(repository.findByUserId(userId)).thenReturn(List.of(alive, dead));
-        when(transport.send(eq(alive), any())).thenReturn(Result.DELIVERED);
-        when(transport.send(eq(dead), any())).thenReturn(Result.EXPIRED);
+        when(transport.send(eq(alive), any(), any())).thenReturn(Result.DELIVERED);
+        when(transport.send(eq(dead), any(), any())).thenReturn(Result.EXPIRED);
 
         service.notifyTurnDone(userId, workspaceId);
 
@@ -388,7 +509,7 @@ class PushNotificationServiceTest {
         // Laisse le temps à un éventuel envoi (il ne doit pas y en avoir).
         Thread.sleep(200);
         verify(repository, never()).findByUserId(any());
-        verify(transport, never()).send(any(), any());
+        verify(transport, never()).send(any(), any(), any());
     }
 
     @Test

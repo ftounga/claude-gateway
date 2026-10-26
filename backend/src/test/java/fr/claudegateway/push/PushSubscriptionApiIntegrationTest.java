@@ -186,4 +186,40 @@ class PushSubscriptionApiIntegrationTest {
         assertThat(pushSubscriptionRepository.findByUserId(aliceId)).hasSize(1);
         assertThat(pushSubscriptionRepository.findByUserId(bobId)).hasSize(1);
     }
+
+    // ------------------------------------------------------------------ F-217 / SF-217-01 — test
+
+    @Test
+    void theTestNotificationCountsOnlyTheCurrentAccountsDevices() throws Exception {
+        // CA7 : Alice a deux appareils, Bob un — le test d'Alice n'en vise que deux, jamais celui de Bob.
+        subscribe(aliceToken, "https://push.example/alice-1");
+        subscribe(aliceToken, "https://push.example/alice-2");
+        subscribe(bobToken, "https://push.example/bob-1");
+
+        mockMvc.perform(post("/api/push/test").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.devices").value(2))
+                // Profil test : pas de VAPID, rien ne part — la réponse le dit.
+                .andExpect(jsonPath("$.configured").value(false));
+
+        mockMvc.perform(post("/api/push/test").contextPath("/api")
+                        .header("Authorization", "Bearer " + bobToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.devices").value(1));
+    }
+
+    @Test
+    void theTestNotificationWithoutDeviceSaysZero() throws Exception {
+        mockMvc.perform(post("/api/push/test").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.devices").value(0));
+    }
+
+    @Test
+    void theTestNotificationIsNotReachableWithoutAToken() throws Exception {
+        mockMvc.perform(post("/api/push/test").contextPath("/api"))
+                .andExpect(status().isUnauthorized());
+    }
 }
