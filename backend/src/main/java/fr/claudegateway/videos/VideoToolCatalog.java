@@ -13,8 +13,8 @@ import fr.claudegateway.billing.EntitlementSpace;
 import fr.claudegateway.billing.SpaceEntitlementService;
 
 /**
- * <b>Les outils {@code video_publier} et {@code audio_publier}</b> (F-213 / SF-213-01) — et la garde qui
- * décide s'ils sont donnés.
+ * <b>Les outils {@code video_publier} et {@code audio_publier}</b> (F-213 / SF-213-01), {@code video_retours}
+ * (F-214) et {@code video_devis} (F-216) — et la garde qui décide s'ils sont donnés.
  *
  * <p>Même garde que les pages (F-109) : le <b>droit de l'espace du terminal</b> (Vigie pour un terminal
  * Teams, Forge sinon ; ouvert d'office à l'ADMIN), et en plus une <b>cible poste</b> — la vidéo est un
@@ -32,6 +32,8 @@ public class VideoToolCatalog {
     public static final String AUDIO = "audio_publier";
     /** Lire les retours à la seconde d'une vidéo (F-214 / SF-214-01), en lecture seule. */
     public static final String RETOURS = "video_retours";
+    /** Le devis d'une vidéo, d'une série ou d'une retouche (F-216 / SF-216-01), calculé par la gateway. */
+    public static final String DEVIS = "video_devis";
 
     private final SpaceEntitlementService entitlements;
 
@@ -76,8 +78,38 @@ public class VideoToolCatalog {
     /** Les outils à donner à l'agent pour ce tour, ou la liste vide. */
     public List<AgentTool> toolsFor(UUID userId, Workspace workspace) {
         return isOpenFor(userId, workspace)
-                ? List.of(videoDefinition(), audioDefinition(), retoursDefinition())
+                ? List.of(videoDefinition(), audioDefinition(), retoursDefinition(), devisDefinition())
                 : List.of();
+    }
+
+    /** Vrai si ce nom d'outil est le devis d'une vidéo (F-216). */
+    public static boolean isDevisTool(String tool) {
+        return DEVIS.equals(tool);
+    }
+
+    /** F-216 / SF-216-01 : le devis — texte fixe (préfixe stable) ; le devis lui-même est le résultat de l'outil. */
+    static AgentTool devisDefinition() {
+        return new AgentTool(DEVIS,
+                "Calcule le DEVIS d'une vidéo, d'une série ou d'une retouche, AVANT toute fabrication : fourchette "
+                        + "basse–haute en dollars ventilée voix / agent / rendu (0 $, sur le poste), durée totale et "
+                        + "temps de rendu. Calculé par la gateway (tarifs de la voix, coût moyen mesuré de tes tours) : "
+                        + "n'estime jamais un coût toi-même. Place la ligne « Coût estimé … » rendue dans la question "
+                        + "UNIQUE qui valide la fiche ou le plan (demander). Retouche (video) : annonce le devis ; "
+                        + "question seulement au-delà du seuil indiqué. Gratuit, sans accord.",
+                Map.of("type", "object",
+                        "properties", Map.of(
+                                "episodes", Map.of("type", "integer", "description",
+                                        "Nombre d'épisodes (1 pour une vidéo unique ; 30 au plus)."),
+                                "duree_min", Map.of("type", "number", "description",
+                                        "Durée visée d'UN épisode, en minutes (0,25 à 30)."),
+                                "caracteres", Map.of("type", "integer", "description",
+                                        "Caractères de narration d'UN épisode, si connus (défaut : 900 par minute)."),
+                                "retouches", Map.of("type", "integer", "description",
+                                        "Retouches prévues par épisode (défaut 1 ; 0 à 10)."),
+                                "serie", Map.of("type", "string", "description", "Titre de la série, s'il y en a une."),
+                                "video", Map.of("type", "string", "description",
+                                        "video_id d'une vidéo publiée : devis de sa retouche (durée lue sur la vidéo).")),
+                        "required", List.of()));
     }
 
     /** F-214 / SF-214-01 : la lecture des retours à la seconde — texte fixe (préfixe stable). */

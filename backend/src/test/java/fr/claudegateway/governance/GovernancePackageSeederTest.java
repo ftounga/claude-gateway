@@ -151,7 +151,11 @@ class GovernancePackageSeederTest {
                 .contains("Format long").contains("3 min estimées ou de 4 notions majeures")
                 .contains("5 à 15 épisodes de 1 à 3 min").contains("`demander`").contains("set_plan")
                 .contains("première vidéo d'une série").contains("voix_off(serie")
-                .contains("sous-agent `task`").contains("fiche des sources").contains("a_confirmer");
+                .contains("sous-agent `task`").contains("fiche des sources").contains("a_confirmer")
+                // F-216 / SF-216-01 : le devis serveur avant toute fabrication, vidéo unique comprise, une seule question
+                .contains("video_devis(duree_min").contains("vidéo unique comprise").contains("N'estime jamais")
+                .containsIgnoringCase("une **seule** question").contains("video_devis(video, retouches)").contains("seuil")
+                .doesNotContain("2 à 4 $ de fabrication");
         assertThat(guide.getContent().length()).isLessThan(GovernancePackageFile.MAX_CONTENT_LENGTH);
     }
 

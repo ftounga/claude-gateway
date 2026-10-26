@@ -516,6 +516,14 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   que rouvrir ; l'agent clôt (`TRAITE | REJETE`) via `video_publier(remplace, retours_traites)`. Outil
   `video_retours` en lecture seule. Purge : cascade sur la vidéo et le compte.
 
+- **video_quotes** — **le devis d'une vidéo, d'une série ou d'une retouche** (F-216 / SF-216-01, migration
+  `173`). `id`, `user_id (FK users CASCADE)`, `workspace_id (FK workspaces CASCADE)`, `kind (SINGLE | SERIES |
+  RETOUCHE)`, `series_title`, `video_id (retouche, sans FK)`, `episodes`, `episode_duration_s`,
+  `narration_chars`, `retouches`, fourchettes `voice/agent/low/high_usd`, `turn_cost_usd` + `turn_cost_measured`,
+  `render_minutes`, `status (OPEN | CLOSED)`, `created_at`, `closed_at`. Écrit par l'outil `video_devis`
+  (calcul serveur, aucun contenu) ; un nouveau devis vidéo/série clôt les ouverts du sujet, une retouche ne clôt
+  que les retouches. Toute lecture sous `(user_id, workspace_id)`.
+
 - **speech_preferences** — **la voix off par défaut d'un compte** (F-215 / SF-215-01, migration `170`).
   `user_id (PK)`, `voice (≤ 32, liste blanche du fournisseur)`, `instructions (≤ 1 000, consignes de ton,
   null = D2)`, `updated_at`. Absente = `onyx` + consignes de formateur (D2). Lue par l'outil `voix_off`

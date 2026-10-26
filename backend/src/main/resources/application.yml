@@ -604,6 +604,35 @@ app:
     # Tarifs du journal d'usage (USD) : synthèse par 1 000 caractères, transcription des mots par minute.
     cost-usd-per-thousand-chars: ${APP_SPEECH_COST_USD_PER_1K_CHARS:0.015}
     transcription-cost-usd-per-minute: ${APP_SPEECH_TRANSCRIPTION_COST_USD_PER_MIN:0.006}
+  videos:
+    # DEVIS D'UNE VIDEO (F-216 / SF-216-01) : outil video_devis, calcule par la gateway avant toute fabrication.
+    # voix = caracteres x tarif de voix_off + minutes x tarif d'horodatage (app.speech.*, jamais dupliques) ;
+    # agent = tours estimes x cout moyen d'un tour (atelier_turn_measures du compte, 7 j, modele app.atelier.model ;
+    # defaut si moins de min-turn-samples tours) ; rendu = 0 $ (le poste). Valeur absente ou negative => defaut.
+    cost:
+      # Caracteres de narration par minute (francais pose).
+      chars-per-minute: ${APP_VIDEO_COST_CHARS_PER_MINUTE:900}
+      # Tours de l'agent par minute de video (0,8 a 1,6 : 2 a 4 tours pour 2 min 30, repere mesure F-215).
+      turns-per-minute-low: ${APP_VIDEO_COST_TURNS_PER_MINUTE_LOW:0.8}
+      turns-per-minute-high: ${APP_VIDEO_COST_TURNS_PER_MINUTE_HIGH:1.6}
+      # Tours par retouche et par episode.
+      turns-per-retouche-low: ${APP_VIDEO_COST_TURNS_PER_RETOUCHE_LOW:0.5}
+      turns-per-retouche-high: ${APP_VIDEO_COST_TURNS_PER_RETOUCHE_HIGH:1}
+      # Tours de plan et de charte d'une serie (une fois par serie).
+      series-planning-turns-low: ${APP_VIDEO_COST_SERIES_PLANNING_TURNS_LOW:1}
+      series-planning-turns-high: ${APP_VIDEO_COST_SERIES_PLANNING_TURNS_HIGH:2}
+      # Part de la narration refaite par retouche (borne haute de la voix).
+      retouche-voice-fraction: ${APP_VIDEO_COST_RETOUCHE_VOICE_FRACTION:0.5}
+      # Cout d'un tour quand les mesures manquent (Opus 5.5 en prod : ~1 $), fenetre et echantillon minimal.
+      default-turn-cost-usd: ${APP_VIDEO_COST_DEFAULT_TURN_COST_USD:1.00}
+      turn-cost-window: ${APP_VIDEO_COST_TURN_COST_WINDOW:P7D}
+      min-turn-samples: ${APP_VIDEO_COST_MIN_TURN_SAMPLES:5}
+      # Minutes de rendu sur le poste par minute de video (essai : 7 min pour 2 min 34, 4 workers).
+      render-minutes-per-video-minute: ${APP_VIDEO_COST_RENDER_MINUTES_PER_VIDEO_MINUTE:2.8}
+      # Au-dela (borne haute), une retouche se fait confirmer par une question ; en deca, elle est annoncee.
+      retouche-confirm-threshold-usd: ${APP_VIDEO_COST_RETOUCHE_CONFIRM_THRESHOLD_USD:3.00}
+      # Un devis ouvert sans activite depuis ce delai est clos (SF-216-02).
+      idle-close-hours: ${APP_VIDEO_COST_IDLE_CLOSE_HOURS:48}
   # F-153 / SF-153-02 — WEB PUSH (notifications, app fermée / téléphone verrouillé).
   # ÉTEINT PAR DÉFAUT (DRAPEAU FORT) : tant que les clés VAPID ne sont pas fournies par
   # l'environnement (secrets backend APP_PUSH_VAPID_PUBLIC / APP_PUSH_VAPID_PRIVATE), aucune

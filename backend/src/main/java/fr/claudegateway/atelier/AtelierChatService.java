@@ -1043,6 +1043,8 @@ public class AtelierChatService implements RelayInterruptTarget {
                     fr.claudegateway.atelier.video.VideoToolCatalog.STATUS,
                     // F-214 / SF-214-01 : lire les retours à la seconde d'une vidéo, en lecture seule.
                     fr.claudegateway.videos.VideoToolCatalog.RETOURS,
+                    // F-216 / SF-216-01 : le devis d'une vidéo se calcule AVANT de fabriquer — c'est du plan.
+                    fr.claudegateway.videos.VideoToolCatalog.DEVIS,
                     // F-176 : le parcours du sujet n'écrit rien dans le projet — il organise, comme set_plan.
                     fr.claudegateway.atelier.journey.JourneyToolCatalog.PROPOSE_GUIDED,
                     fr.claudegateway.atelier.journey.JourneyToolCatalog.SET_PLAN,
@@ -2258,6 +2260,17 @@ public class AtelierChatService implements RelayInterruptTarget {
             this.videoToolCatalog = catalog;
         }
         this.videoToolExecutor = executor;
+    }
+
+    /**
+     * Le devis d'une vidéo (F-216 / SF-216-01) — par mutateur : absent (formes historiques / tests), l'outil
+     * {@code video_devis} répond qu'il n'est pas ouvert.
+     */
+    private fr.claudegateway.videos.VideoQuoteService videoQuoteService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setVideoQuotes(fr.claudegateway.videos.VideoQuoteService quotes) {
+        this.videoQuoteService = quotes;
     }
 
     /**
@@ -3783,6 +3796,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                 } else if (fr.claudegateway.videos.VideoToolCatalog.isRetoursTool(call.name())) {
                     // F-214 / SF-214-01 : les retours à la seconde, lus par la gateway (lecture seule, user_id).
                     outcome = applyVideoRetours(userId, workspace, call);
+                } else if (fr.claudegateway.videos.VideoToolCatalog.isDevisTool(call.name())) {
+                    // F-216 / SF-216-01 : le devis est calculé par la gateway, sans accord (gratuit, rien sur le poste).
+                    outcome = applyVideoDevis(userId, workspace, call);
                 } else if (fr.claudegateway.videos.VideoToolCatalog.isVideoTool(call.name())) {
                     // F-213 / SF-213-01 : la vidéo (ou le son) est rapatriée du poste et rangée par la gateway ;
                     // son bloc est admis dans tout terminal.
@@ -5225,6 +5241,19 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
         fr.claudegateway.videos.VideoToolExecutor.VideoOutcome outcome =
                 videoToolExecutor.readComments(userId, call.input());
+        return outcome.error() ? ToolOutcome.error(outcome.content()) : ToolOutcome.info(outcome.content());
+    }
+
+    /**
+     * <b>Le devis d'une vidéo</b> (F-216 / SF-216-01) : même garde que {@code video_publier}, sans accord (un calcul,
+     * gratuit) ; le devis est rangé ouvert dans le sujet et rendu comme résultat d'outil — jamais dans la consigne.
+     */
+    private ToolOutcome applyVideoDevis(UUID userId, Workspace workspace, AgentToolCall call) {
+        if (videoQuoteService == null || !videoToolCatalog.isOpenFor(userId, workspace)) {
+            return ToolOutcome.error("Les vidéos ne sont pas ouvertes dans ce terminal. Réponds en clair.");
+        }
+        fr.claudegateway.videos.VideoQuoteService.Outcome outcome =
+                videoQuoteService.quote(userId, workspace, call.input());
         return outcome.error() ? ToolOutcome.error(outcome.content()) : ToolOutcome.info(outcome.content());
     }
 
@@ -7484,7 +7513,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
         // F-213 / SF-213-01 : la publication de vidéos est traitée par la boucle (garde + accord + bloc).
         if (fr.claudegateway.videos.VideoToolCatalog.isVideoTool(call.name())
-                || fr.claudegateway.videos.VideoToolCatalog.isRetoursTool(call.name())) {
+                || fr.claudegateway.videos.VideoToolCatalog.isRetoursTool(call.name())
+                || fr.claudegateway.videos.VideoToolCatalog.isDevisTool(call.name())) {
             return ToolOutcome.error("La publication de vidéos n'est pas ouverte ici. Réponds en clair.");
         }
         // F-215 / SF-215-01 : la voix off est traitée par la boucle (garde + borne + accord).
