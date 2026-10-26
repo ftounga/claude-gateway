@@ -1,5 +1,7 @@
 package fr.claudegateway.videos;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -14,12 +16,17 @@ public record VideoGalleryResponse(List<SeriesItem> series, List<VideoItem> vide
 
     /** Une vidéo telle qu'une carte la montre. */
     public record VideoItem(UUID id, String title, String description, UUID seriesId, Integer episode,
-            Integer durationS, int currentVersion, int chapterCount, String posterUrl, OffsetDateTime createdAt) {
+            Integer durationS, int currentVersion, int chapterCount, String posterUrl, OffsetDateTime createdAt,
+            BigDecimal costUsd, BigDecimal estimateLowUsd, BigDecimal estimateHighUsd) {
     }
 
-    /** Une série : titre, nombre d'épisodes, durée totale connue, épisodes. */
+    /**
+     * Une série : titre, nombre d'épisodes, durée totale connue, épisodes ; coût et estimation sommés sur les épisodes
+     * (F-216 / SF-216-02 ; {@code null} si aucun épisode n'est mesuré).
+     */
     public record SeriesItem(UUID id, String title, String description, int episodeCount, int totalDurationS,
-            List<VideoItem> episodes, OffsetDateTime createdAt) {
+            List<VideoItem> episodes, OffsetDateTime createdAt, BigDecimal costUsd, BigDecimal estimateLowUsd,
+            BigDecimal estimateHighUsd) {
     }
 
     /**
@@ -34,14 +41,34 @@ public record VideoGalleryResponse(List<SeriesItem> series, List<VideoItem> vide
                     video.getEpisode(), video.getDurationS(), video.getCurrentVersion(),
                     version == null ? 0 : VideoChapter.fromJson(version.getChaptersJson()).size(),
                     version == null || version.getPosterKey() == null ? null : posterUrl.apply(version),
-                    video.getCreatedAt());
+                    video.getCreatedAt(), money(video.getCostUsd()), money(video.getEstimateLowUsd()),
+                    money(video.getEstimateHighUsd()));
         };
         List<SeriesItem> series = gallery.series().stream().map(entry -> {
             List<VideoItem> episodes = entry.episodes().stream().map(item).toList();
             int total = episodes.stream().mapToInt(e -> e.durationS() == null ? 0 : e.durationS()).sum();
             return new SeriesItem(entry.series().getId(), entry.series().getTitle(), entry.series().getDescription(),
-                    episodes.size(), total, episodes, entry.series().getCreatedAt());
+                    episodes.size(), total, episodes, entry.series().getCreatedAt(),
+                    sum(episodes.stream().map(VideoItem::costUsd).toList()),
+                    sum(episodes.stream().map(VideoItem::estimateLowUsd).toList()),
+                    sum(episodes.stream().map(VideoItem::estimateHighUsd).toList()));
         }).toList();
         return new VideoGalleryResponse(series, gallery.standalone().stream().map(item).toList());
+    }
+
+    /** Un montant au cent (F-216 / SF-216-02), ou {@code null}. */
+    static BigDecimal money(BigDecimal value) {
+        return value == null ? null : value.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /** La somme des montants connus, ou {@code null} s'il n'y en a aucun. */
+    private static BigDecimal sum(List<BigDecimal> values) {
+        BigDecimal total = null;
+        for (BigDecimal value : values) {
+            if (value != null) {
+                total = total == null ? value : total.add(value);
+            }
+        }
+        return total;
     }
 }

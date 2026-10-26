@@ -129,6 +129,7 @@ public class VideoQuoteService {
                 .renderMinutes(result.renderMinutes())
                 .status(VideoQuote.Status.OPEN)
                 .createdAt(now)
+                .lastActivityAt(now)
                 .build());
     }
 

@@ -136,4 +136,32 @@ class UsageLedgerServiceTest {
 
         verify(writer).write(alice, project, host, TurnTokens.of(0L, 0L), extras, COST);
     }
+
+    @Test
+    void notifiesListenersAfterWritingAndSwallowsTheirFailures() {
+        // F-216 / SF-216-02 : l'écouteur (coût d'une vidéo) est prévenu après l'écriture ; sa panne ne remonte jamais.
+        java.util.List<UUID> seen = new java.util.ArrayList<>();
+        service.setListeners(java.util.List.of(
+                (user, workspace, cost) -> { throw new IllegalStateException("panne"); },
+                (user, workspace, cost) -> seen.add(workspace)));
+        TurnTokens tokens = TurnTokens.of(1_000L, 200L);
+
+        service.recordTurn(alice, project, host, tokens, TurnExtras.NONE, COST);
+
+        verify(writer).write(alice, project, host, tokens, TurnExtras.NONE, COST);
+        org.assertj.core.api.Assertions.assertThat(seen).containsExactly(project);
+    }
+
+    @Test
+    void doesNotNotifyListenersWhenTheWriteFailed() {
+        java.util.List<UUID> seen = new java.util.ArrayList<>();
+        service.setListeners(java.util.List.of((user, workspace, cost) -> seen.add(workspace)));
+        TurnTokens tokens = TurnTokens.of(1_000L, 200L);
+        org.mockito.Mockito.doThrow(new IllegalStateException("base")).when(writer)
+                .write(alice, project, host, tokens, TurnExtras.NONE, COST);
+
+        service.recordTurn(alice, project, host, tokens, TurnExtras.NONE, COST);
+
+        org.assertj.core.api.Assertions.assertThat(seen).isEmpty();
+    }
 }

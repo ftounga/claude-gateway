@@ -49,6 +49,14 @@ public class VideoService {
     private final AdministratorEntitlement administrators;
     private final TransactionTemplate transactions;
 
+    /** Le coût réel (F-216 / SF-216-02) — par mutateur : absent (tests), la publication ne rattache rien. */
+    private VideoCostTracker costTracker;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setCostTracker(VideoCostTracker costTracker) {
+        this.costTracker = costTracker;
+    }
+
     public VideoService(VideoRepository videos, VideoVersionRepository versions, VideoSeriesRepository series,
             VideoStore store, VideoLimits limits, AdministratorEntitlement administrators,
             PlatformTransactionManager transactionManager) {
@@ -263,6 +271,10 @@ public class VideoService {
                 .posterKey(posterKey).posterMime(posterMime).label(request.label()).build());
         for (VideoVersion old : prepared.purged()) {
             versions.deleteById(old.getId());
+        }
+        if (costTracker != null) {
+            // F-216 / SF-216-02 : la version reçoit ce que son devis a dépensé depuis la publication précédente.
+            costTracker.attach(saved, created);
         }
         return new PublishedVideo(saved, created, inSeries);
     }

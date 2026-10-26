@@ -106,4 +106,18 @@ public class VideoQuote {
 
     @Column(name = "closed_at")
     private OffsetDateTime closedAt;
+
+    /** Ce qui a été dépensé pendant que le devis était ouvert (SF-216-02) — plans abandonnés compris. */
+    @Builder.Default
+    @Column(name = "spent_usd", nullable = false, precision = 12, scale = 6)
+    private BigDecimal spentUsd = BigDecimal.ZERO;
+
+    /** La part de cette dépense pas encore rattachée à une version publiée (SF-216-02). */
+    @Builder.Default
+    @Column(name = "unassigned_usd", nullable = false, precision = 12, scale = 6)
+    private BigDecimal unassignedUsd = BigDecimal.ZERO;
+
+    /** Dernière imputation ou publication (SF-216-02) : au-delà du délai d'inactivité, le devis est clos. */
+    @Column(name = "last_activity_at")
+    private OffsetDateTime lastActivityAt;
 }

@@ -523,6 +523,13 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   `render_minutes`, `status (OPEN | CLOSED)`, `created_at`, `closed_at`. Écrit par l'outil `video_devis`
   (calcul serveur, aucun contenu) ; un nouveau devis vidéo/série clôt les ouverts du sujet, une retouche ne clôt
   que les retouches. Toute lecture sous `(user_id, workspace_id)`.
+  **Coût réel** (SF-216-02, migration `174`) : `video_quotes.spent_usd` (dépensé pendant l'ouverture, plans abandonnés
+  compris), `unassigned_usd`, `last_activity_at` ; `video_versions.quote_id`, `cost_usd`, `cost_pending` ;
+  `videos.cost_usd`, `estimate_low_usd`, `estimate_high_usd`, `last_quote_id` (cumuls : la purge des versions ne
+  fait pas disparaître la dépense). Rattachement : tout relevé du journal d'usage `(user_id, workspace_id)` va aux
+  versions en attente du tour en cours, sinon au devis ouvert le plus récent du sujet ; publication = part non
+  rattachée ; fin de tour = attente levée, clôtures (vidéo unique/retouche ; série complète ; 48 h d'inactivité).
+  Routes : coût et estimation dans `GET /videos`, `GET /videos/{id}` ; `GET /videos/costs` (total du mois du compte).
 
 - **speech_preferences** — **la voix off par défaut d'un compte** (F-215 / SF-215-01, migration `170`).
   `user_id (PK)`, `voice (≤ 32, liste blanche du fournisseur)`, `instructions (≤ 1 000, consignes de ton,
