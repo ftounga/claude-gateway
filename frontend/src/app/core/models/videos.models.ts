@@ -46,6 +46,11 @@ export interface VideoSummary {
   sources?: VideoSource[];
   /** La voix fixée pour la série (F-215 / SF-215-04), ou `null`. */
   seriesVoice?: string | null;
+  /** Coût réel mesuré, en dollars (F-216), ou `null` : publiée sans devis. */
+  costUsd?: number | null;
+  /** Estimation du devis (F-216), ou `null`. */
+  estimateLowUsd?: number | null;
+  estimateHighUsd?: number | null;
 }
 
 /** Une vidéo telle qu'une carte de la galerie la montre (F-213 / SF-213-03). */
@@ -60,6 +65,10 @@ export interface VideoGalleryItem {
   chapterCount: number;
   posterUrl: string | null;
   createdAt: string;
+  /** Coût réel mesuré et estimation (F-216), `null` si non mesuré. */
+  costUsd?: number | null;
+  estimateLowUsd?: number | null;
+  estimateHighUsd?: number | null;
 }
 
 /** Une série : titre, nombre d'épisodes, durée totale connue, épisodes dans l'ordre. */
@@ -71,6 +80,19 @@ export interface VideoGallerySeries {
   totalDurationS: number;
   episodes: VideoGalleryItem[];
   createdAt: string;
+  /** Coût et estimation sommés sur les épisodes (F-216), `null` si aucun n'est mesuré. */
+  costUsd?: number | null;
+  estimateLowUsd?: number | null;
+  estimateHighUsd?: number | null;
+}
+
+/** Ce que le compte a dépensé en vidéos ce mois-ci (F-216 / SF-216-03, `GET /videos/costs`). */
+export interface VideoMonthCost {
+  /** « 2026-10 ». */
+  month: string;
+  spentUsd: number;
+  /** Devis créés ce mois-ci. */
+  quotes: number;
 }
 
 /** La galerie d'un sujet ou d'un poste : les séries, puis les vidéos seules. */
