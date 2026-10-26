@@ -15,6 +15,7 @@ import { BehaviorSubject, Subject, of, throwError } from 'rxjs';
 import { MAX_UPLOAD_BYTES } from '../shared/http-error.util';
 
 import { TabAlertService } from '../core/services/tab-alert.service';
+import { NotificationSoundService } from '../core/services/notification-sound.service';
 import { CurrentClientService } from '../core/services/current-client.service';
 import { AtelierComponent, delayLabel, toThreadItem } from './atelier.component';
 import { AtelierThreadItem } from './atelier.types';
@@ -218,6 +219,71 @@ describe('AtelierComponent', () => {
       const { plan, done } = finish(false);
       expect(done).toHaveBeenCalled();
       expect(plan).not.toHaveBeenCalled();
+    });
+  });
+
+  // F-217 / SF-217-03 — le carillon branché sur le terminal.
+  describe('le carillon du terminal (F-217 / SF-217-03)', () => {
+    let sound: NotificationSoundService;
+
+    function finishWith(planSubmitted: boolean): void {
+      setup();
+      sound = TestBed.inject(NotificationSoundService);
+      spyOn(sound, 'play');
+      spyOn(sound, 'info');
+      component.selectWorkspace(summary);
+      component.engine.set('LOCAL_MACHINE');
+      service.streamChat.and.callFake((_id, _message, handlers) => {
+        handlers.onDone({ reply: 'Voilà.', actions: [], messageId: 'm1', planSubmitted });
+        return Promise.resolve();
+      });
+      component.draft.set('fais-le');
+      component.send();
+    }
+
+    function attached(): AtelierStreamHandlers {
+      setup();
+      sound = TestBed.inject(NotificationSoundService);
+      spyOn(sound, 'actionRequired');
+      spyOn(sound, 'settle');
+      let handlers: AtelierStreamHandlers | undefined;
+      service.attachTurn.and.callFake((_id, _cursor, given) => {
+        handlers = given;
+        return new AbortController();
+      });
+      component.selectWorkspace(summary);
+      fixture.detectChanges();
+      handlers!.onAttached?.({ turnId: 't1', cursor: 0, startedAt: Date.now() });
+      return handlers!;
+    }
+
+    it('fin de tour ordinaire → son « information » ; plan soumis → son « action »', () => {
+      finishWith(false);
+      expect(sound.info).toHaveBeenCalled();
+      expect(sound.play).not.toHaveBeenCalledWith('action');
+    });
+
+    it('plan soumis → son « action »', () => {
+      finishWith(true);
+      expect(sound.play).toHaveBeenCalledWith('action');
+      expect(sound.info).not.toHaveBeenCalled();
+    });
+
+    it('une demande d\'accord sonne une fois (son rejeu d\'état ne re-sonne pas) et se tait à son retrait', () => {
+      const handlers = attached();
+      handlers.onConfirmRequest?.({ toolUseId: 'call-9', tool: 'bash', detail: 'npm test', timeoutMs: 120_000 });
+      handlers.onConfirmRequest?.({ toolUseId: 'call-9', tool: 'bash', detail: 'npm test', timeoutMs: 20_000 });
+      expect(sound.actionRequired).toHaveBeenCalledOnceWith('confirm:call-9');
+      handlers.onConfirmResolved?.({ toolUseId: 'call-9', decision: 'allow' } as never);
+      expect(sound.settle).toHaveBeenCalledWith('confirm:call-9');
+    });
+
+    it('une question en attente sonne, et se tait quand elle est tranchée', () => {
+      const handlers = attached();
+      handlers.onQuestionRequest?.({ callId: 'q-1', questions: [], timeoutMs: 60_000 });
+      expect(sound.actionRequired).toHaveBeenCalledOnceWith('question:q-1');
+      handlers.onQuestionResolved?.({ callId: 'q-1', status: 'answered' } as never);
+      expect(sound.settle).toHaveBeenCalledWith('question:q-1');
     });
   });
 

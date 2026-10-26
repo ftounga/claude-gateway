@@ -36,6 +36,49 @@ export function isWatched(visible: boolean, focused: boolean, lastInteractionAt:
 }
 
 /** Ce qui compte pour une interaction : le geste, pas le simple passage de la souris. */
+/** Ce que l'écran lit d'une notification système affichée (F-217 / SF-217-03). */
+interface ShownNotification {
+  tag?: string;
+  data?: unknown;
+  close(): void;
+}
+
+/** Le strict nécessaire d'un `ServiceWorkerContainer` pour retrouver les notifications affichées. */
+export interface NotificationHost {
+  getRegistration(): Promise<{ getNotifications(): Promise<ShownNotification[]> } | undefined>;
+}
+
+/**
+ * **Ferme les notifications système d'un terminal** (F-217 / SF-217-03, D7) : devant le terminal, ses
+ * notifications encore affichées — persistantes pour ce qui attend une action — n'ont plus d'objet ;
+ * sans cela, elles s'empileraient. Ne touche qu'aux notifications de CE terminal (`data.workspaceId`, ou
+ * tag `cg-<id>-…`). Sans service worker ou en cas d'échec : rien, sans erreur.
+ *
+ * @return le nombre de notifications fermées
+ */
+export async function closeTerminalNotifications(workspaceId: string, host?: NotificationHost | null): Promise<number> {
+  try {
+    const container = host ?? (typeof navigator !== 'undefined' ? (navigator.serviceWorker as unknown as NotificationHost | undefined) : undefined);
+    const registration = await container?.getRegistration();
+    if (!registration) {
+      return 0;
+    }
+    const shown = await registration.getNotifications();
+    let closed = 0;
+    for (const notification of shown) {
+      const data = notification.data as { workspaceId?: unknown } | null | undefined;
+      const mine = data?.workspaceId === workspaceId || (notification.tag ?? '').startsWith(`cg-${workspaceId}-`);
+      if (mine) {
+        notification.close();
+        closed++;
+      }
+    }
+    return closed;
+  } catch {
+    return 0;
+  }
+}
+
 const INTERACTION_EVENTS = ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll'] as const;
 
 /**
@@ -242,6 +285,10 @@ export class LiveTerminalService {
       return;
     }
     const watched = this.watched();
+    if (watched && this.sentWatched !== true) {
+      // F-217 / SF-217-03 (D7) : on regarde de nouveau ce terminal — ses notifications système s'effacent.
+      void closeTerminalNotifications(workspaceId);
+    }
     this.sentWatched = watched;
     const preview = this.preview;
     if (preview) {

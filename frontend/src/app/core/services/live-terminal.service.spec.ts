@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 
-import { LiveTerminalService, WATCH_IDLE_MS, isWatched } from './live-terminal.service';
+import { LiveTerminalService, WATCH_IDLE_MS, closeTerminalNotifications, isWatched } from './live-terminal.service';
 import { LiveTerminals } from '../models/atelier.models';
 
 /**
@@ -275,5 +275,31 @@ describe('LiveTerminalService', () => {
 
       http.expectNone(`/api/workspaces/${workspaceId}/terminal/live`);
     });
+  });
+});
+
+describe('closeTerminalNotifications (F-217 / SF-217-03, D7)', () => {
+  function shown(tag: string, data: unknown): { tag: string; data: unknown; close: jasmine.Spy } {
+    return { tag, data, close: jasmine.createSpy('close') };
+  }
+
+  it('ferme les seules notifications de ce terminal', async () => {
+    const mineByData = shown('cg-w1-AUTHORIZATION_REQUESTED-1', { workspaceId: 'w1' });
+    const mineByTag = shown('cg-w1-TURN_DONE', null);
+    const other = shown('cg-w2-TURN_DONE', { workspaceId: 'w2' });
+    const test = shown('cg-test-5', { event: 'TEST' });
+    const host = {
+      getRegistration: () => Promise.resolve({ getNotifications: () => Promise.resolve([mineByData, mineByTag, other, test]) }),
+    };
+    expect(await closeTerminalNotifications('w1', host)).toBe(2);
+    expect(mineByData.close).toHaveBeenCalled();
+    expect(mineByTag.close).toHaveBeenCalled();
+    expect(other.close).not.toHaveBeenCalled();
+    expect(test.close).not.toHaveBeenCalled();
+  });
+
+  it('sans service worker, ou en cas d\'échec, ne fait rien et ne lève pas', async () => {
+    expect(await closeTerminalNotifications('w1', { getRegistration: () => Promise.resolve(undefined) })).toBe(0);
+    expect(await closeTerminalNotifications('w1', { getRegistration: () => Promise.reject(new Error('x')) })).toBe(0);
   });
 });

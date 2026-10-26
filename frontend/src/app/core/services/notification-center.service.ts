@@ -3,6 +3,8 @@ import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core'
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { Router } from '@angular/router';
 
+import { NotificationSoundService } from './notification-sound.service';
+
 /** Une notification du centre (F-185 / SF-185-04). */
 export interface NotificationItem {
   id: string;
@@ -51,6 +53,18 @@ export function relativeTime(iso: string, now = Date.now()): string {
   return days === 1 ? 'hier' : `il y a ${days} j`;
 }
 
+/**
+ * Les événements qui **attendent une action** (miroir de `PushEvent.requiresAction()` côté gateway) :
+ * leur nouveauté sonne « action requise » ; les autres, « information » (F-217 / SF-217-03).
+ */
+export const ACTION_EVENTS: ReadonlySet<string> = new Set([
+  'AUTHORIZATION_REQUESTED',
+  'QUESTION_ASKED',
+  'QUESTION_REMINDER',
+  'PLAN_AWAITING',
+  'VALIDATION_AWAITING',
+]);
+
 /** Le terminal affiché, lu dans l'URL (`/atelier/{id}`), ou `null`. */
 export function displayedTerminal(url: string): string | null {
   const match = /^\/atelier\/([^/?#]+)/.exec(url);
@@ -71,6 +85,7 @@ export class NotificationCenterService {
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
   private readonly snackBar = inject(MatSnackBar);
+  private readonly sound = inject(NotificationSoundService);
 
   private readonly view = signal<NotificationView>({ unread: 0, items: [] });
   readonly unread = computed(() => this.view().unread);
@@ -157,6 +172,12 @@ export class NotificationCenterService {
     // Les items arrivent du plus récent au plus ancien : le premier nouveau est le plus récent.
     const fresh = view.items.find((i) => !known.has(i.id) && !i.read && i.workspaceId !== here);
     if (fresh) {
+      // F-217 / SF-217-03 : la nouveauté sonne aussi — marquée si elle attend un geste.
+      if (ACTION_EVENTS.has(fresh.event)) {
+        this.sound.play('action');
+      } else {
+        this.sound.info();
+      }
       this.banner(fresh);
     }
   }
