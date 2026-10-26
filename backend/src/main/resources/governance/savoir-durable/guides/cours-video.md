@@ -29,6 +29,15 @@
 - Une vidéo unique dure 1 à 3 min. Au-delà de **3 min estimées ou de 4 notions majeures**, propose plutôt une
   **série** d'épisodes (§ 7) et fais valider le plan avant de fabriquer.
 
+**Fiche, devis, un seul accord — obligatoire avant toute fabrication, vidéo unique comprise.**
+1. `video_devis(duree_min, caracteres?, retouches?)` (série : `episodes`, `serie`) : le serveur chiffre la voix,
+   l'agent et le rendu (0 $, le poste). **N'estime jamais un coût toi-même** ; si la durée ou le découpage change,
+   refais le devis.
+2. Une **seule** question `demander` valide tout : pour une vidéo unique, la **fiche** (titre, objectif, durée, voix,
+   sources) ; pour une série, le plan (§ 7). La ligne « Coût estimé : … » rendue par le devis y figure **telle quelle**.
+   Pas de deuxième question pour le coût.
+3. Rien n'est fabriqué (voix, composition, rendu) avant l'accord.
+
 ## 2. Narration par chapitre
 
 - 3 à 7 chapitres ; **une idée par plan**. Phrases courtes, à l'oral, dans l'ordre où l'image les montre.
@@ -106,7 +115,9 @@ Règles de lisibilité :
    chaque affirmation technique de la narration et sa source ; ce qui n'est pas vérifié est retiré de la
    narration ou listé `a_confirmer: true` (et tu le dis à l'utilisateur). Une nouvelle voix ou une correction =
    nouvelle version (`remplace: <video_id>`), avec sa propre fiche.
-4. Retours à la seconde de l'utilisateur : `video_retours(video)` les liste (instant, image, texte) ; regarde
+4. Retours à la seconde de l'utilisateur : `video_retours(video)` les liste (instant, image, texte) ; avant de
+   corriger, `video_devis(video, retouches)` : **annonce** ce petit devis dans ta réponse, sans question — sauf si le
+   résultat dit qu'il dépasse le seuil : alors fais-le confirmer par `demander`. Regarde
    chaque instant (`video_images`), corrige, puis republie avec `remplace` et
    `retours_traites: [{id, statut: traite|rejete, motif}]` — un retour écarté se motive.
 
@@ -119,9 +130,9 @@ toujours imposer une vidéo unique ou une série.
 1. **Plan d'abord, rien fabriqué avant son accord.** Sommaire de **5 à 15 épisodes de 1 à 3 min** ; pour chacun :
    titre, objectif (ce que l'on sait à la fin), notions affichées, **sources** qui le fondent (réellement
    disponibles : carte, pages, dépôt, comptes rendus — sinon dis ce qui manque). Ajoute la durée totale et le
-   **coût estimé** (repère mesuré : 2 à 4 $ de fabrication + ~0,06 $ de voix par épisode de 2 à 3 min). Fais
-   valider par une **question structurée** (`demander` : « Je lance la série » / « Je modifie le plan » /
-   « Une seule vidéo »).
+   **devis** : `video_devis(episodes, duree_min, serie)` — sa ligne « Coût estimé : … » telle quelle, jamais un
+   chiffre de ton cru. Fais valider le plan **et** le devis par **une seule** question structurée (`demander` :
+   « Je lance la série » / « Je modifie le plan » / « Une seule vidéo »).
 2. **Suivi comme un chantier** : `set_plan` avec **une étape par épisode** (« Ép. 3 — Le réseau : fabriqué,
    relu, publié ») ; mets l'étape à jour à chaque épisode publié. L'utilisateur suit l'avancement dans le
    tableau des chantiers.

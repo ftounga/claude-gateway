@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-216 / SF-216-01 — LE DEVIS D'UNE VIDEO (demande PO du 2026-10-25).
+
+      Un devis est calcule par le serveur (outil video_devis) avant toute fabrication : ce qui est chiffre
+      (episodes, duree, caracteres, retouches), la fourchette par poste (voix, agent ; rendu = 0 sur le poste),
+      le cout d'un tour retenu (mesure ou defaut), et son statut OPEN | CLOSED dans le sujet. Aucun contenu.
+
+      Isolation : user_id sur chaque ligne, toute lecture filtre (id, user_id). Cascade sur le compte et le sujet.
+      video_id (devis de retouche) sans cle etrangere : un devis survit a la video (la depense a eu lieu).
+      Rollback : la table se retire.
+    -->
+
+    <changeSet id="173-video-quotes" author="claude-gateway">
+        <createTable tableName="video_quotes">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_video_quotes_user"
+                             references="users(id)" deleteCascade="true"/>
+            </column>
+            <column name="workspace_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_video_quotes_workspace"
+                             references="workspaces(id)" deleteCascade="true"/>
+            </column>
+            <column name="kind" type="varchar(10)"><constraints nullable="false"/></column>
+            <column name="series_title" type="varchar(120)"/>
+            <column name="video_id" type="uuid"/>
+            <column name="episodes" type="integer"><constraints nullable="false"/></column>
+            <column name="episode_duration_s" type="integer"><constraints nullable="false"/></column>
+            <column name="narration_chars" type="bigint"><constraints nullable="false"/></column>
+            <column name="retouches" type="integer"><constraints nullable="false"/></column>
+            <column name="voice_low_usd" type="numeric(10,4)"><constraints nullable="false"/></column>
+            <column name="voice_high_usd" type="numeric(10,4)"><constraints nullable="false"/></column>
+            <column name="agent_low_usd" type="numeric(10,4)"><constraints nullable="false"/></column>
+            <column name="agent_high_usd" type="numeric(10,4)"><constraints nullable="false"/></column>
+            <column name="low_usd" type="numeric(10,4)"><constraints nullable="false"/></column>
+            <column name="high_usd" type="numeric(10,4)"><constraints nullable="false"/></column>
+            <column name="turn_cost_usd" type="numeric(10,4)"><constraints nullable="false"/></column>
+            <column name="turn_cost_measured" type="boolean"><constraints nullable="false"/></column>
+            <column name="render_minutes" type="integer"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(10)"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="closed_at" type="timestamp with time zone"/>
+        </createTable>
+        <createIndex tableName="video_quotes" indexName="idx_video_quotes_open">
+            <column name="user_id"/>
+            <column name="workspace_id"/>
+            <column name="status"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable tableName="video_quotes"/>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>
