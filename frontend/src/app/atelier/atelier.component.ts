@@ -79,6 +79,7 @@ import { AtelierGuideService } from '../core/services/atelier-guide.service';
 import { HostPresenceService } from '../core/services/host-presence.service';
 import { LiveTerminalService } from '../core/services/live-terminal.service';
 import { TabAlertService } from '../core/services/tab-alert.service';
+import { NotificationSoundService } from '../core/services/notification-sound.service';
 import { ProviderMode } from '../core/models/api-key.models';
 import { GitPushDialogComponent, PickedGitPush } from './git/git-push-dialog.component';
 import { GitRepoDialogComponent, PickedGitRepository } from './git/git-repo-dialog.component';
@@ -274,6 +275,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
   private readonly dialog = inject(MatDialog);
   /** Signal in-tab (F-153 / SF-153-01) : titre d'onglet + favicon quand l'onglet est caché. */
   private readonly tabAlert = inject(TabAlertService);
+  /** F-217 / SF-217-03 — le carillon : il sonne même terminal regardé, là où le Web Push se tait. */
+  private readonly sound = inject(NotificationSoundService);
 
   /**
    * Registre des terminaux vivants (F-70 / SF-70-01). Un terminal ouvert prend une place et la
@@ -2191,8 +2194,10 @@ export class AtelierComponent implements OnInit, OnDestroy {
           // F-185 / SF-185-05 : un plan soumis n'est pas « une réponse prête » — il attend un accord.
           if (done.planSubmitted === true) {
             this.tabAlert.signalPlanAwaiting();
+            this.sound.play('action');
           } else {
             this.tabAlert.signalTurnDone();
+            this.sound.info();
           }
           // F-121 / SF-121-10 : le modèle a-t-il soumis un plan à approbation (exit_plan_mode) ? Si
           // oui, l'écran proposera « Approuver & exécuter ». On retient aussi le dernier plan pour
@@ -2675,6 +2680,11 @@ export class AtelierComponent implements OnInit, OnDestroy {
     // F-153 / SF-153-01 — Transition critique : le silence vaut refus (timeoutMs). Si l'onglet est
     // caché, l'onglet s'allume (« Autorisation demandée ») pour ne pas laisser expirer sans le voir.
     this.tabAlert.signalAwaitingAuthorization();
+    // F-217 / SF-217-03 : une NOUVELLE demande sonne (rejouée à 30 s si elle attend encore) ; l'aparté
+    // `confirm_state` de la même demande ne re-sonne pas.
+    if (known?.toolUseId !== request.toolUseId) {
+      this.sound.actionRequired(`confirm:${request.toolUseId}`);
+    }
     this.nudgeRender();
   }
 
@@ -2684,6 +2694,10 @@ export class AtelierComponent implements OnInit, OnDestroy {
    * et un minuteur oublié à l'un d'eux décompterait dans le vide.
    */
   private clearPendingConfirmation(): void {
+    const pending = this.pendingConfirmation();
+    if (pending) {
+      this.sound.settle(`confirm:${pending.toolUseId}`);
+    }
     this.pendingConfirmation.set(null);
     this.stopConfirmationCountdown();
   }
@@ -2854,6 +2868,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
     if (!id || !pending || pending.answering) {
       return;
     }
+    this.sound.settle(`confirm:${pending.toolUseId}`);
     this.pendingConfirmation.set({ ...pending, answering: true });
     const reason = pending.reason.trim();
     const decision = {
@@ -2929,6 +2944,10 @@ export class AtelierComponent implements OnInit, OnDestroy {
     // F-153 / SF-153-01 : le silence vaut expiration. Si l'onglet est caché, on l'allume pour ne pas
     // laisser la question expirer sans la voir. F-185 / SF-185-05 : avec son vrai nom.
     this.tabAlert.signalQuestionAsked();
+    // F-217 / SF-217-03 : une NOUVELLE question en attente sonne ; un rejeu de la même ne re-sonne pas.
+    if (!sameQuestion && this.pendingQuestion()?.status === 'awaiting') {
+      this.sound.actionRequired(`question:${request.callId}`);
+    }
     this.nudgeRender();
   }
 
@@ -2945,6 +2964,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
     }
     this.stopQuestionCountdown();
     if (pending) {
+      this.sound.settle(`question:${pending.callId}`);
       const expired = resolved.status === 'timeout';
       // F-164 / SF-164-06 : au timeout, l'agent a retenu l'option recommandée — on le montre.
       const defaults = expired ? (resolved.defaults ?? []) : [];
@@ -2971,6 +2991,10 @@ export class AtelierComponent implements OnInit, OnDestroy {
 
   /** Retire l'invite de question **et** arrête son compte à rebours. Un seul point de sortie. */
   private clearPendingQuestion(): void {
+    const pending = this.pendingQuestion();
+    if (pending) {
+      this.sound.settle(`question:${pending.callId}`);
+    }
     this.pendingQuestion.set(null);
     this.stopQuestionCountdown();
   }
@@ -3026,6 +3050,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
     if (!id || !pending || pending.answering || pending.status !== 'awaiting') {
       return;
     }
+    this.sound.settle(`question:${pending.callId}`);
     this.pendingQuestion.set({
       ...pending,
       answering: true,
@@ -4259,6 +4284,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
 
   /** Quitter l'écran ne doit laisser tourner ni le chronomètre, ni le sondage du statut runner. */
   ngOnDestroy(): void {
+    // F-217 / SF-217-03 : quitter le terminal annule les rejeux de son en attente (le tour vit dans le flux).
+    this.sound.settleAll();
     this.paramsSubscription?.unsubscribe();
     this.stopDraftBridge?.();
     // Quitter l'écran rend la place : un terminal qui n'est plus affiché n'est plus vivant, et

@@ -1,5 +1,5 @@
 import { DOCUMENT } from '@angular/common';
-import { TestBed } from '@angular/core/testing';
+import { TestBed, fakeAsync, tick } from '@angular/core/testing';
 
 import { TabAlertService } from './tab-alert.service';
 
@@ -55,6 +55,11 @@ describe('TabAlertService', () => {
     doc = new FakeDoc();
   });
 
+  afterEach(() => {
+    // Le clignotement est un minuteur : on l'arrête après chaque test.
+    service?.clear();
+  });
+
   it('allume titre + favicon quand un tour se termine et que l\'onglet est caché', () => {
     doc.hidden = true;
     build();
@@ -66,13 +71,13 @@ describe('TabAlertService', () => {
     expect(doc.link!.getAttribute('href')).toContain('data:image/svg+xml');
   });
 
-  it('écrit « Autorisation demandée » pour une demande en attente (onglet caché)', () => {
+  it('écrit « Accord requis » pour une demande en attente (onglet caché)', () => {
     doc.hidden = true;
     build();
 
     service.signalAwaitingAuthorization();
 
-    expect(doc.title).toContain('Autorisation demandée');
+    expect(doc.title).toContain('Accord requis');
   });
 
   it('F-185 / SF-185-05 — écrit « Question en attente » et « Plan à approuver » (onglet caché)', () => {
@@ -113,7 +118,7 @@ describe('TabAlertService', () => {
     doc.hidden = true;
     build();
     service.signalAwaitingAuthorization();
-    expect(doc.title).toContain('Autorisation demandée');
+    expect(doc.title).toContain('Accord requis');
 
     doc.becomeVisible();
 
@@ -141,5 +146,39 @@ describe('TabAlertService', () => {
 
     expect(doc.title).toBe('NG Portal');
     expect(doc.link!.getAttribute('href')).toBe('/original.png');
+  });
+
+  describe('onglet qui clignote (F-217 / SF-217-03, D6)', () => {
+    it('alterne chaque seconde entre l\'alerte et le titre d\'origine tant que l\'onglet est caché', fakeAsync(() => {
+      build();
+      service.signalAwaitingAuthorization();
+      expect(doc.title).toBe('● Accord requis — NG Portal');
+      tick(TabAlertService.BLINK_MS);
+      expect(doc.title).toBe('NG Portal');
+      tick(TabAlertService.BLINK_MS);
+      expect(doc.title).toBe('● Accord requis — NG Portal');
+      service.clear();
+    }));
+
+    it('s\'arrête et rétablit tout au retour au premier plan', fakeAsync(() => {
+      build();
+      service.signalQuestionAsked();
+      tick(TabAlertService.BLINK_MS);
+      doc.becomeVisible();
+      expect(doc.title).toBe('NG Portal');
+      tick(TabAlertService.BLINK_MS * 3);
+      expect(doc.title).toBe('NG Portal');
+    }));
+
+    it('un nouveau signal change le libellé sans doubler le minuteur', fakeAsync(() => {
+      build();
+      service.signalTurnDone();
+      service.signalAwaitingAuthorization();
+      expect(doc.title).toBe('● Accord requis — NG Portal');
+      tick(TabAlertService.BLINK_MS * 2);
+      expect(doc.title).toBe('● Accord requis — NG Portal');
+      service.clear();
+      expect(doc.title).toBe('NG Portal');
+    }));
   });
 });

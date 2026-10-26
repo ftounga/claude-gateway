@@ -13,6 +13,7 @@ import {
   notificationLabel,
   relativeTime,
 } from './notification-center.service';
+import { NotificationSoundService } from './notification-sound.service';
 
 describe('NotificationCenterService (F-185 / SF-185-04)', () => {
   let service: NotificationCenterService;
@@ -20,6 +21,7 @@ describe('NotificationCenterService (F-185 / SF-185-04)', () => {
   let snackBar: jasmine.SpyObj<MatSnackBar>;
   let action: Subject<void>;
   let router: Router;
+  let sound: jasmine.SpyObj<NotificationSoundService>;
 
   const item = (id: string, workspaceId: string | null, read = false): NotificationItem => ({
     id,
@@ -39,6 +41,7 @@ describe('NotificationCenterService (F-185 / SF-185-04)', () => {
   beforeEach(() => {
     action = new Subject<void>();
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
+    sound = jasmine.createSpyObj<NotificationSoundService>('NotificationSoundService', ['play', 'info']);
     snackBar.open.and.returnValue({ onAction: () => action.asObservable() } as never);
     TestBed.configureTestingModule({
       providers: [
@@ -46,6 +49,7 @@ describe('NotificationCenterService (F-185 / SF-185-04)', () => {
         provideHttpClientTesting(),
         provideRouter([]),
         { provide: MatSnackBar, useValue: snackBar },
+        { provide: NotificationSoundService, useValue: sound },
       ],
     });
     service = TestBed.inject(NotificationCenterService);
@@ -83,6 +87,18 @@ describe('NotificationCenterService (F-185 / SF-185-04)', () => {
     expect(service.unread()).toBe(1);
     expect(service.items().length).toBe(1);
     expect(snackBar.open).not.toHaveBeenCalled();
+    expect(sound.play).not.toHaveBeenCalled();
+    expect(sound.info).not.toHaveBeenCalled();
+  });
+
+  it('F-217 / SF-217-03 — une nouveauté sonne : « action » si elle attend un geste, « information » sinon', () => {
+    poll(view());
+    poll(view(item('n5', 'w-2')));
+    expect(sound.info).toHaveBeenCalledTimes(1);
+    expect(sound.play).not.toHaveBeenCalled();
+    poll(view({ ...item('n6', 'w-2'), event: 'AUTHORIZATION_REQUESTED' }, item('n5', 'w-2')));
+    expect(sound.play).toHaveBeenCalledOnceWith('action');
+    expect(sound.info).toHaveBeenCalledTimes(1);
   });
 
   it('une nouveauté d\'un autre terminal se dit dans un bandeau, avec [Ouvrir]', () => {
@@ -101,6 +117,7 @@ describe('NotificationCenterService (F-185 / SF-185-04)', () => {
     poll(view());
     poll(view(item('n3', 'w-1'), item('n4', 'w-3', true)));
     expect(snackBar.open).not.toHaveBeenCalled();
+    expect(sound.info).not.toHaveBeenCalled();
   });
 
   it('ouvrir une notification la marque lue et ouvre son terminal', () => {

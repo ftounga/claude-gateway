@@ -24,6 +24,10 @@ export class TabAlertService {
   private savedFaviconHref: string | null = null;
   private raised = false;
   private listenerBound = false;
+  /** Titre « allumé » courant, et minuteur du clignotement (F-217 / SF-217-03, D6). */
+  private alertTitle: string | null = null;
+  private blink: ReturnType<typeof setInterval> | null = null;
+  private blinkOn = false;
 
   /** Favicon d'alerte : pastille orange de marque (DESIGN_SYSTEM), en data-URI SVG. */
   private static readonly ALERT_FAVICON =
@@ -42,7 +46,8 @@ export class TabAlertService {
 
   /** Un tour attend une autorisation : signale « Autorisation demandée » si l'onglet est caché. */
   signalAwaitingAuthorization(): void {
-    this.raise('Autorisation demandée');
+    // F-217 / SF-217-03 : un libellé qui dit ce qu'on attend de l'utilisateur.
+    this.raise('Accord requis');
   }
 
   /** L'agent pose une question (F-185 / SF-185-05) : « Question en attente ». */
@@ -68,13 +73,45 @@ export class TabAlertService {
       this.savedTitle = this.doc.title;
       this.savedFaviconHref = this.faviconLink()?.getAttribute('href') ?? null;
     }
-    this.doc.title = `● ${label} — ${this.savedTitle ?? this.doc.title}`;
+    this.alertTitle = `● ${label} — ${this.savedTitle ?? this.doc.title}`;
+    this.doc.title = this.alertTitle;
+    this.blinkOn = true;
     this.faviconLink()?.setAttribute('href', TabAlertService.ALERT_FAVICON);
     this.raised = true;
+    this.startBlink();
   }
+
+  /**
+   * F-217 / SF-217-03 (D6) — un titre figé ne se remarque pas parmi vingt onglets : tant que l'onglet
+   * est caché, le titre alterne chaque seconde entre l'alerte et le titre d'origine.
+   */
+  private startBlink(): void {
+    if (this.blink !== null) {
+      return;
+    }
+    this.blink = setInterval(() => {
+      if (!this.raised || this.alertTitle === null) {
+        this.stopBlink();
+        return;
+      }
+      this.blinkOn = !this.blinkOn;
+      this.doc.title = this.blinkOn ? this.alertTitle : (this.savedTitle ?? this.alertTitle);
+    }, TabAlertService.BLINK_MS);
+  }
+
+  private stopBlink(): void {
+    if (this.blink !== null) {
+      clearInterval(this.blink);
+      this.blink = null;
+    }
+  }
+
+  /** Période du clignotement du titre. */
+  static readonly BLINK_MS = 1000;
 
   /** Rétablit le titre et le favicon d'origine. Idempotent (sans effet si aucun signal levé). */
   clear(): void {
+    this.stopBlink();
     if (!this.raised) {
       return;
     }
@@ -91,6 +128,7 @@ export class TabAlertService {
     }
     this.savedTitle = null;
     this.savedFaviconHref = null;
+    this.alertTitle = null;
     this.raised = false;
   }
 
