@@ -7,7 +7,7 @@
 `F-217` — Les notifications qui sonnent (cadrage `CADRAGE-F-217-les-notifications-qui-sonnent.md`, décisions D5, D8, D9)
 
 ## Statut
-`in-progress`
+`done`
 
 ## Date de création
 2026-10-26

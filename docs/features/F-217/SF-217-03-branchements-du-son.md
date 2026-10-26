@@ -7,7 +7,7 @@
 `F-217` — Les notifications qui sonnent (cadrage, décisions D5 branchements, D6, D7)
 
 ## Statut
-`in-progress`
+`done`
 
 ## Date de création
 2026-10-26
