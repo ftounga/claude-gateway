@@ -420,6 +420,10 @@ public class AnthropicAgentProvider implements AiAgentProvider {
                 // Testé APRÈS « prompt too long » : ce cas aussi est un invalid_request_error, mais il
                 // se compacte, il ne se réassainit pas.
                 if (status == 400 && isMalformedRequest(ex)) {
+                    // Le message d'erreur seul, borné (F-117 / SF-117-11) : sans lui, diagnostiquer
+                    // un fil bloqué exigeait de le reconstruire à la main depuis la base.
+                    log.warn("Requête refusée comme malformée par le fournisseur (modèle={}) : {}",
+                            model, providerErrorMessage(ex));
                     throw new AgentMalformedRequestException(
                             "La séquence de messages envoyée est invalide.", ex);
                 }
@@ -878,6 +882,17 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         String lower = body.toLowerCase(java.util.Locale.ROOT);
         return lower.contains("invalid_request")
                 && (lower.contains("role") || lower.contains("messages") || lower.contains("content"));
+    }
+
+    /** Champ {@code error.message} du corps d'erreur, borné à 300 caractères ; vide s'il manque. */
+    private static String providerErrorMessage(RestClientResponseException ex) {
+        try {
+            String message = MAPPER.readTree(ex.getResponseBodyAsString()).path("error").path("message")
+                    .asText("");
+            return message.length() <= 300 ? message : message.substring(0, 300) + "…";
+        } catch (com.fasterxml.jackson.core.JsonProcessingException | IllegalArgumentException e) {
+            return "";
+        }
     }
 
     /** Première valeur de l'en-tête {@code Retry-After}, ou {@code null}. */

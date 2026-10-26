@@ -116,6 +116,37 @@ class AtelierChatServiceMalformedSequenceTest {
     }
 
     @Test
+    void theRelaunchAfterAMalformedSequenceCarriesNoReasoning() {
+        // F-117 / SF-117-11 (sujet « waf », 2026-10-26) : un raisonnement signé que le fournisseur
+        // juge modifié bloquait le fil à CHAQUE envoi — le réassainissement ne touche que la
+        // structure. La relance unique part donc sans aucun raisonnement rejoué.
+        OffsetDateTime t0 = OffsetDateTime.now().minusMinutes(10);
+        history.add(msg("USER", "demande", t0));
+        AtelierMessage answer = msg("ASSISTANT", "réponse", t0.plusMinutes(1));
+        answer.setToolTrace("""
+                {"steps":[{"text":"je lis","calls":[{"id":"c1","name":"read_file",
+                 "input":{"path":"a"},"result":"ok","error":false}],
+                 "thoughts":[{"text":"","signature":"SIG-signe-par-le-fournisseur"}]}]}
+                """);
+        history.add(answer);
+        when(messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspaceId, userId))
+                .thenReturn(history);
+
+        AtelierChatService service = service();
+        agentProvider.enqueueMalformedRequest(1);
+        agentProvider.enqueueFinal("Voilà la réponse.");
+
+        AtelierChatService.AtelierChatResult result = service.chat(userId, workspaceId, "continue");
+
+        assertThat(result.reply()).isEqualTo("Voilà la réponse.");
+        assertThat(agentProvider.messageSnapshots).hasSize(2);
+        // Le 1er envoi rejoue le raisonnement (cache F-134) ; la relance, non.
+        assertThat(agentProvider.messageSnapshots.get(0)).contains("SIG-signe-par-le-fournisseur");
+        assertThat(agentProvider.messageSnapshots.get(1)).doesNotContain("SIG-signe-par-le-fournisseur")
+                .contains("read_file");
+    }
+
+    @Test
     void aPersistentMalformedSequenceRendersAClearMessageWithoutCascade() {
         OffsetDateTime t0 = OffsetDateTime.now().minusMinutes(10);
         history.add(msg("USER", "demande", t0));
