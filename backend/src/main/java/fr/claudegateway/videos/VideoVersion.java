@@ -29,6 +29,18 @@ public class VideoVersion {
     @Column(name = "id", nullable = false, updatable = false)
     private UUID id;
 
+    /** Le devis auquel cette version est rattachée (F-216 / SF-216-02), ou {@code null} : coût non mesuré. */
+    @Column(name = "quote_id")
+    private UUID quoteId;
+
+    /** Ce que cette version a coûté (F-216 / SF-216-02), ou {@code null}. */
+    @Column(name = "cost_usd", precision = 12, scale = 6)
+    private java.math.BigDecimal costUsd;
+
+    /** Vrai tant que le tour qui l'a publiée n'est pas fini : son coût lui reviendra (F-216 / SF-216-02). */
+    @Column(name = "cost_pending", nullable = false)
+    private boolean costPending;
+
     @Column(name = "video_id", nullable = false, updatable = false)
     private UUID videoId;
 

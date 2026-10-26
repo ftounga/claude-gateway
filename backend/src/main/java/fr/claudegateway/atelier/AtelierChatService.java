@@ -2268,6 +2268,14 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     private fr.claudegateway.videos.VideoQuoteService videoQuoteService;
 
+    /** Le coût réel des vidéos (F-216 / SF-216-02) — par mutateur : absent, rien n'est rattaché en fin de tour. */
+    private fr.claudegateway.videos.VideoCostTracker videoCostTracker;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setVideoCostTracker(fr.claudegateway.videos.VideoCostTracker tracker) {
+        this.videoCostTracker = tracker;
+    }
+
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setVideoQuotes(fr.claudegateway.videos.VideoQuoteService quotes) {
         this.videoQuoteService = quotes;
@@ -4098,6 +4106,15 @@ public class AtelierChatService implements RelayInterruptTarget {
                 quotaService.recordUsage(userId, recorded, recordedExtras, null, model,
                         toTurnTokens(otherModelShares), lastServedModel[0], workspaceId,
                         workspace.getHostId());
+            }
+        }
+        // F-216 / SF-216-02 : après l'inscription du tour — les vidéos publiées pendant ce tour en ont reçu le coût ;
+        // leur attente est levée et les devis achevés sont clos. Jamais au point de faire échouer le tour.
+        if (videoCostTracker != null) {
+            try {
+                videoCostTracker.turnEnded(userId, workspaceId);
+            } catch (RuntimeException e) {
+                log.warn("Coût des vidéos : fin de tour non traitée ({})", e.getClass().getSimpleName());
             }
         }
 

@@ -32,9 +32,11 @@ public class VideoController {
     private final VideoViewTicketService tickets;
     private final VideoMediaServer mediaServer;
     private final CurrentUser currentUser;
+    private final VideoCostTracker costs;
 
     public VideoController(VideoService videoService, VideoViewTicketService tickets, VideoMediaServer mediaServer,
-            CurrentUser currentUser) {
+            CurrentUser currentUser, VideoCostTracker costs) {
+        this.costs = costs;
         this.videoService = videoService;
         this.tickets = tickets;
         this.mediaServer = mediaServer;
@@ -52,6 +54,15 @@ public class VideoController {
         VideoService.Gallery gallery = videoService.gallery(userId, workspaceId, hostId);
         return VideoGalleryResponse.of(gallery, version -> mediaBase(request,
                 tickets.issue(userId, version.getVideoId(), version.getVersion())) + "/poster");
+    }
+
+    /**
+     * Ce que le compte a dépensé en vidéos ce mois-ci (F-216 / SF-216-02) : somme des devis créés ce mois-ci, plans
+     * abandonnés compris.
+     */
+    @GetMapping("/costs")
+    public VideoCostTracker.MonthCost costs() {
+        return costs.month(currentUser.requireId());
     }
 
     /** Supprime une vidéo du compte, ses versions et ses objets (SF-213-03). */

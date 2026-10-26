@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-216 / SF-216-02 — LE COUT REEL D'UNE VIDEO, MESURE ET RATTACHE.
+
+      video_quotes : ce qui a ete depense pendant que le devis etait ouvert (spent_usd), la part pas encore
+      rattachee a une version (unassigned_usd), la derniere activite (cloture apres inactivite).
+      video_versions : le devis de rattachement, le cout de la version, l'attente du cout du tour qui la publie.
+      videos : cumuls (la purge des anciennes versions ne fait pas disparaitre la depense) et estimation.
+      Aucune cle etrangere vers video_quotes : la depense survit au devis comme a la video.
+      Rollback : colonnes retirees.
+    -->
+
+    <changeSet id="174-video-costs" author="claude-gateway">
+        <addColumn tableName="video_quotes">
+            <column name="spent_usd" type="numeric(12,6)" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="unassigned_usd" type="numeric(12,6)" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="last_activity_at" type="timestamp with time zone"/>
+        </addColumn>
+        <addColumn tableName="video_versions">
+            <column name="quote_id" type="uuid"/>
+            <column name="cost_usd" type="numeric(12,6)"/>
+            <column name="cost_pending" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+        </addColumn>
+        <addColumn tableName="videos">
+            <column name="cost_usd" type="numeric(12,6)"/>
+            <column name="estimate_low_usd" type="numeric(10,4)"/>
+            <column name="estimate_high_usd" type="numeric(10,4)"/>
+            <column name="last_quote_id" type="uuid"/>
+        </addColumn>
+        <createIndex tableName="video_versions" indexName="idx_video_versions_cost_pending">
+            <column name="user_id"/>
+            <column name="cost_pending"/>
+        </createIndex>
+        <createIndex tableName="video_quotes" indexName="idx_video_quotes_month">
+            <column name="user_id"/>
+            <column name="created_at"/>
+        </createIndex>
+
+        <rollback>
+            <dropIndex tableName="video_quotes" indexName="idx_video_quotes_month"/>
+            <dropIndex tableName="video_versions" indexName="idx_video_versions_cost_pending"/>
+            <dropColumn tableName="videos" columnName="last_quote_id"/>
+            <dropColumn tableName="videos" columnName="estimate_high_usd"/>
+            <dropColumn tableName="videos" columnName="estimate_low_usd"/>
+            <dropColumn tableName="videos" columnName="cost_usd"/>
+            <dropColumn tableName="video_versions" columnName="cost_pending"/>
+            <dropColumn tableName="video_versions" columnName="cost_usd"/>
+            <dropColumn tableName="video_versions" columnName="quote_id"/>
+            <dropColumn tableName="video_quotes" columnName="last_activity_at"/>
+            <dropColumn tableName="video_quotes" columnName="unassigned_usd"/>
+            <dropColumn tableName="video_quotes" columnName="spent_usd"/>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>

@@ -1,9 +1,11 @@
 package fr.claudegateway.quota;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 /**
@@ -32,8 +34,16 @@ public class UsageLedgerService {
 
     private final UsageTurnWriter writer;
 
+    /** Les écouteurs du journal (F-216 / SF-216-02) — par mutateur, pour garder un seul constructeur. */
+    private List<UsageRecordedListener> listeners = List.of();
+
     UsageLedgerService(UsageTurnWriter writer) {
         this.writer = writer;
+    }
+
+    @Autowired(required = false)
+    public void setListeners(List<UsageRecordedListener> listeners) {
+        this.listeners = listeners == null ? List.of() : List.copyOf(listeners);
     }
 
     /**
@@ -64,6 +74,16 @@ public class UsageLedgerService {
             log.warn("Relevé de consommation non enregistré pour l'utilisateur {} (projet {}) :"
                     + " la consommation reste comptée par les compteurs de période.",
                     userId, workspaceId, failure);
+            return;
+        }
+        // F-216 / SF-216-02 : après l'écriture, et jamais au point de la faire échouer.
+        for (UsageRecordedListener listener : listeners) {
+            try {
+                listener.onRecorded(userId, workspaceId, cost);
+            } catch (RuntimeException failure) {
+                log.warn("Écouteur du journal d'usage en échec ({}) pour le projet {} : relevé conservé.",
+                        failure.getClass().getSimpleName(), workspaceId);
+            }
         }
     }
 }

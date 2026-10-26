@@ -13,7 +13,8 @@ public record VideoResponse(UUID id, UUID workspaceId, String kind, String title
         String seriesTitle, Integer episode, int currentVersion, int version, Integer durationS, String mime,
         long sizeBytes, String label, List<VideoChapter> chapters, String mediaUrl, String posterUrl,
         String downloadUrl, OffsetDateTime createdAt, OffsetDateTime updatedAt, List<VideoSource> sources,
-        String seriesVoice) {
+        String seriesVoice, java.math.BigDecimal costUsd, java.math.BigDecimal estimateLowUsd,
+        java.math.BigDecimal estimateHighUsd) {
 
     /** Assemble la réponse d'une version servie. */
     public static VideoResponse of(Video video, VideoVersion version, VideoSeries series, String mediaBase) {
@@ -23,7 +24,9 @@ public record VideoResponse(UUID id, UUID workspaceId, String kind, String title
                 version.getSizeBytes(), version.getLabel(), VideoChapter.fromJson(version.getChaptersJson()),
                 mediaBase, version.getPosterKey() == null ? null : mediaBase + "/poster", mediaBase + "?download=1",
                 video.getCreatedAt(), video.getUpdatedAt(), VideoSource.fromJson(version.getSourcesJson()),
-                series == null ? null : series.getVoice());
+                series == null ? null : series.getVoice(), VideoGalleryResponse.money(video.getCostUsd()),
+                VideoGalleryResponse.money(video.getEstimateLowUsd()),
+                VideoGalleryResponse.money(video.getEstimateHighUsd()));
     }
 
     /** Une version conservée, pour la liste des versions. */

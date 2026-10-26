@@ -67,6 +67,21 @@ public class Video {
     @Column(name = "duration_s")
     private Integer durationS;
 
+    /** Le coût réel cumulé de ses versions (F-216 / SF-216-02), ou {@code null} : coût non mesuré. */
+    @Column(name = "cost_usd", precision = 12, scale = 6)
+    private java.math.BigDecimal costUsd;
+
+    /** L'estimation cumulée des devis qui l'ont touchée (F-216 / SF-216-02), ou {@code null}. */
+    @Column(name = "estimate_low_usd", precision = 10, scale = 4)
+    private java.math.BigDecimal estimateLowUsd;
+
+    @Column(name = "estimate_high_usd", precision = 10, scale = 4)
+    private java.math.BigDecimal estimateHighUsd;
+
+    /** Le dernier devis dont l'estimation a été ajoutée (F-216 / SF-216-02) : une seule fois par devis. */
+    @Column(name = "last_quote_id")
+    private UUID lastQuoteId;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
