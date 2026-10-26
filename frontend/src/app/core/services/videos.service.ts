@@ -7,6 +7,7 @@ import {
   VideoCommentsSent,
   VideoGallery,
   VideoGalleryPlace,
+  VideoMonthCost,
   VideoSummary,
   VideoVersionInfo,
 } from '../models/videos.models';
@@ -30,6 +31,11 @@ export class VideosService {
     const params: Record<string, string> =
       'workspaceId' in place ? { workspaceId: place.workspaceId } : { hostId: place.hostId };
     return this.http.get<VideoGallery>('/api/videos', { params });
+  }
+
+  /** Ce que le compte a dépensé en vidéos ce mois-ci (F-216 / SF-216-03). */
+  monthCost(): Observable<VideoMonthCost> {
+    return this.http.get<VideoMonthCost>('/api/videos/costs');
   }
 
   /** Supprime une vidéo, ses versions et ses objets. */

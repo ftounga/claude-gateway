@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 
 import { VideoGallery, VideoGalleryItem, VideoSummary } from '../../core/models/videos.models';
 import { VideosService } from '../../core/services/videos.service';
@@ -47,7 +47,8 @@ describe('VideoGalleryComponent', () => {
       clearPosition(id, 1);
     }
     videos = jasmine.createSpyObj<VideosService>('VideosService',
-      ['gallery', 'get', 'remove', 'removeSeries', 'reportDuration', 'comments', 'versions']);
+      ['gallery', 'get', 'remove', 'removeSeries', 'reportDuration', 'comments', 'versions', 'monthCost']);
+    videos.monthCost.and.returnValue(of({ month: '2026-10', spentUsd: 0, quotes: 0 }));
     videos.comments.and.returnValue(of([]));
     videos.versions.and.returnValue(of([]));
     videos.gallery.and.returnValue(of(gallery));
@@ -189,6 +190,67 @@ describe('VideoGalleryComponent', () => {
       await Promise.resolve();
       expect(navigate).toHaveBeenCalledWith(['/atelier', 'w-9'], { state: { radarDraft: 'Retours…' } });
     });
+  describe('F-216 : le coût', () => {
+    const costed: VideoGallery = {
+      series: [{
+        id: 's-1', title: 'Cours EKS', description: null, episodeCount: 2, totalDurationS: 240,
+        episodes: [item('e-1', 1, { costUsd: 1.4, estimateLowUsd: 1, estimateHighUsd: 2 }), item('e-2', 2)],
+        createdAt: '', costUsd: 1.4, estimateLowUsd: 1, estimateHighUsd: 2,
+      }],
+      videos: [
+        item('v-1', null, { costUsd: 5.63, estimateLowUsd: 4.8, estimateHighUsd: 7.2 }),
+        item('v-2', null),
+      ],
+    };
+
+    it('montre le coût mesuré sur les cartes, rien quand il ne l\'est pas', () => {
+      videos.gallery.and.returnValue(of(costed));
+      const root = create({ workspaceId: 'w-1' }).nativeElement as HTMLElement;
+      const cards = root.querySelectorAll('.gallery__card');
+      expect(cards[0].textContent).toContain('2 épisodes · 4:00 · 1,40\u00a0$');
+      expect(cards[1].textContent).toContain('5,63\u00a0$');
+      expect(cards[2].textContent).not.toContain('$');
+    });
+
+    it('sous le lecteur : coût et estimation, ou « non mesuré »', () => {
+      videos.gallery.and.returnValue(of(costed));
+      const fixture = create({ workspaceId: 'w-1', initialVideoId: 'v-1' });
+      fixture.detectChanges();
+      const root = fixture.nativeElement as HTMLElement;
+      expect(root.querySelector('.gallery__cost')!.textContent).toContain('Coût : 5,63\u00a0$ (estimé 4,80 à 7,20\u00a0$)');
+
+      fixture.componentInstance.play(null, costed.videos[1], false);
+      fixture.detectChanges();
+      expect(root.querySelector('.gallery__cost')!.textContent).toContain('Coût non mesuré');
+    });
+
+    it('série ouverte : total de la série et coût par épisode', () => {
+      videos.gallery.and.returnValue(of(costed));
+      const fixture = create({ workspaceId: 'w-1', initialVideoId: 'e-1' });
+      fixture.detectChanges();
+      const root = fixture.nativeElement as HTMLElement;
+      expect(root.querySelector('.gallery__cost--series')!.textContent)
+        .toContain('Coût de la série : 1,40\u00a0$ (estimé 1,00 à 2,00\u00a0$)');
+      const episodes = root.querySelectorAll('.gallery__episode');
+      expect(episodes[0].textContent).toContain('1,40\u00a0$');
+      expect(episodes[1].textContent).not.toContain('$');
+    });
+
+    it('en-tête : le total du mois, masqué sans devis ce mois-ci ou en cas d\'erreur', () => {
+      videos.monthCost.and.returnValue(of({ month: '2026-10', spentUsd: 12.4, quotes: 3 }));
+      let root = create({ workspaceId: 'w-1' }).nativeElement as HTMLElement;
+      expect(root.querySelector('.gallery__month')!.textContent).toContain('Ce mois-ci : 12,40\u00a0$ en vidéos');
+
+      videos.monthCost.and.returnValue(of({ month: '2026-10', spentUsd: 0, quotes: 0 }));
+      root = create({ workspaceId: 'w-2' }).nativeElement as HTMLElement;
+      expect(root.querySelector('.gallery__month')).toBeNull();
+
+      videos.monthCost.and.returnValue(throwError(() => new Error('500')));
+      root = create({ workspaceId: 'w-3' }).nativeElement as HTMLElement;
+      expect(root.querySelector('.gallery__month')).toBeNull();
+      expect(root.querySelectorAll('.gallery__card').length).toBe(2);
+    });
+  });
 });
 
 describe('video-resume', () => {

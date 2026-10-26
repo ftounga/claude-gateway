@@ -13,6 +13,7 @@ import {
   VideoGalleryItem,
   VideoGalleryPlace,
   VideoGallerySeries,
+  VideoMonthCost,
   VideoSummary,
 } from '../../core/models/videos.models';
 import { VideosService } from '../../core/services/videos.service';
@@ -21,6 +22,7 @@ import { RADAR_DRAFT_MAX_CHARS, RADAR_DRAFT_STATE } from '../radar-draft';
 import { TerminalDraftBridge } from './terminal-draft-bridge';
 import { VideoReviewComponent, VideoReviewSend } from './video-review.component';
 import { clearPosition, readPosition, savePosition } from './video-resume';
+import { costLine, costShort, formatUsd } from './video-cost';
 
 /** Ce qui est ouvert : une série (et l'épisode lu), ou une vidéo seule. */
 interface Opened {
@@ -56,6 +58,9 @@ const SAVE_EVERY_MS = 5000;
           @if (open.series; as series) {
             <h2 class="gallery__heading">{{ series.title }}</h2>
             <p class="gallery__meta">{{ seriesMeta(series) }}</p>
+            @if (series.costUsd != null) {
+              <p class="gallery__cost gallery__cost--series">{{ seriesCostLine(series) }}</p>
+            }
           }
           <div class="gallery__stage">
             <div class="gallery__player">
@@ -63,6 +68,7 @@ const SAVE_EVERY_MS = 5000;
               @if (open.item.description; as description) {
                 <p class="gallery__description">{{ description }}</p>
               }
+              <p class="gallery__cost">{{ costOf(open.item) }}</p>
               @if (summary(); as loaded) {
                 <app-video-review
                   [video]="loaded"
@@ -120,6 +126,9 @@ const SAVE_EVERY_MS = 5000;
       } @else if (isEmpty()) {
         <p class="gallery__state">Aucune vidéo publiée ici pour l'instant.</p>
       } @else {
+        @if (monthLine(); as month) {
+          <p class="gallery__month" aria-live="polite">{{ month }}</p>
+        }
         <ul class="gallery__grid">
           @for (series of gallery()!.series; track series.id) {
             <li>
@@ -227,6 +236,22 @@ const SAVE_EVERY_MS = 5000;
     .gallery__meta,
     .gallery__episode-meta {
       font-size: 12px;
+      color: var(--cg-text-secondary);
+    }
+
+    .gallery__cost {
+      margin: 0 0 var(--cg-space-2);
+      font-size: 12px;
+      color: var(--cg-text-secondary);
+    }
+
+    .gallery__cost--series {
+      margin-bottom: var(--cg-space-3);
+    }
+
+    .gallery__month {
+      margin: 0 0 var(--cg-space-3);
+      font-size: 14px;
       color: var(--cg-text-secondary);
     }
 
@@ -343,12 +368,20 @@ export class VideoGalleryComponent {
   readonly startAt = signal<number | null>(null);
   readonly autoplay = signal(false);
 
+  /** Le total du mois (F-216 / SF-216-03), ou `null` : masqué sans devis ce mois-ci ou en cas d'erreur. */
+  readonly monthCost = signal<VideoMonthCost | null>(null);
+  readonly monthLine = computed(() => {
+    const month = this.monthCost();
+    return month && month.quotes > 0 ? `Ce mois-ci : ${formatUsd(month.spentUsd)} en vidéos` : null;
+  });
+
   readonly isEmpty = computed(() => {
     const gallery = this.gallery();
     return !gallery || (gallery.series.length === 0 && gallery.videos.length === 0);
   });
 
   private loadingGallery: Subscription | null = null;
+  private loadingMonth: Subscription | null = null;
   private loadingVideo: Subscription | null = null;
   private lastSave = 0;
 
@@ -356,6 +389,7 @@ export class VideoGalleryComponent {
     inject(DestroyRef).onDestroy(() => {
       this.loadingGallery?.unsubscribe();
       this.loadingVideo?.unsubscribe();
+      this.loadingMonth?.unsubscribe();
     });
     effect(() => {
       const place = this.place();
@@ -373,10 +407,27 @@ export class VideoGalleryComponent {
     return hostId ? { hostId } : null;
   }
 
-  /** « 3 épisodes · 12:40 ». */
+  /** « 3 épisodes · 12:40 · 5,63 $ » (le coût seulement s'il est mesuré, F-216). */
   seriesMeta(series: VideoGallerySeries): string {
-    const count = `${series.episodeCount} épisode${series.episodeCount > 1 ? 's' : ''}`;
-    return series.totalDurationS > 0 ? `${count} · ${formatClock(series.totalDurationS)}` : count;
+    const parts = [`${series.episodeCount} épisode${series.episodeCount > 1 ? 's' : ''}`];
+    if (series.totalDurationS > 0) {
+      parts.push(formatClock(series.totalDurationS));
+    }
+    const cost = costShort(series);
+    if (cost) {
+      parts.push(cost);
+    }
+    return parts.join(' · ');
+  }
+
+  /** « Coût de la série : 12,40 $ (estimé 10,00 à 15,00 $) » (F-216 / SF-216-03). */
+  seriesCostLine(series: VideoGallerySeries): string {
+    return costLine(series, 'Coût de la série');
+  }
+
+  /** Sous le lecteur : « Coût : 5,63 $ (estimé 4,80 à 7,20 $) », ou « Coût non mesuré » (F-216 / SF-216-03). */
+  costOf(item: VideoGalleryItem): string {
+    return costLine(item);
   }
 
   /** « 2:34 · 4 chapitres · reprise à 1:10 ». */
@@ -392,6 +443,10 @@ export class VideoGalleryComponent {
     const resume = readPosition(item.id, item.currentVersion);
     if (resume != null) {
       parts.push(`reprise à ${formatClock(resume)}`);
+    }
+    const cost = costShort(item);
+    if (cost) {
+      parts.push(cost);
     }
     return parts.join(' · ');
   }
@@ -555,6 +610,12 @@ export class VideoGalleryComponent {
       return;
     }
     this.loading.set(true);
+    // F-216 / SF-216-03 : le total du mois, rafraîchi avec la galerie ; son échec ne gêne rien.
+    this.loadingMonth?.unsubscribe();
+    this.loadingMonth = this.videos.monthCost().subscribe({
+      next: (month) => this.monthCost.set(month),
+      error: () => this.monthCost.set(null),
+    });
     this.loadingGallery = this.videos.gallery(place).subscribe({
       next: (gallery) => {
         this.loading.set(false);
