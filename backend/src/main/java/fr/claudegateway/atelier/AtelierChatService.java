@@ -3385,7 +3385,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                         break;
                     }
                     malformedHandled = true;
-                    messages = buildReplayMessages(userId, workspace);
+                    // Sans aucun raisonnement rejoué (F-117 / SF-117-11) : un raisonnement signé que
+                    // le fournisseur juge modifié bloquerait sinon le fil à chaque envoi — le
+                    // réassainissement ne touche que la structure. L'omettre est toujours accepté.
+                    messages = withoutReasoning(buildReplayMessages(userId, workspace));
                     log.warn("Séquence de messages invalide : fil réassaini puis tour relancé une fois "
                             + "(workspace={}).", workspaceId);
                 }
@@ -4016,7 +4019,7 @@ public class AtelierChatService implements RelayInterruptTarget {
             // tour suivant rejouait un message assistant amputé de son premier bloc : le ruban
             // différait de celui que le fournisseur avait mis en cache, et tout était réécrit.
             trace.add(new AtelierToolTrace.Step(spokenText, List.copyOf(tracedCalls),
-                    thoughtsOf(turn)));
+                    thoughtsOf(turn), usedServerTools(turn)));
             // Le tour suivant remonte à l'effort normal si ce tour a rencontré une difficulté
             // (F-119 / SF-119-01) : c'est là — après un résultat d'outil — qu'il faut réfléchir le plus.
             escalateNextTurn = signalThisTurn;
@@ -4310,6 +4313,34 @@ public class AtelierChatService implements RelayInterruptTarget {
      * retrouver inchangés. Un bloc sans signature ni charge expurgée n'est pas retenu — il
      * n'apporte rien au rejeu et pourrait être refusé.</p>
      */
+    /**
+     * Vrai si la réponse a utilisé un outil serveur du fournisseur (F-117 / SF-117-11) : ses blocs ne
+     * sont pas gardés par la trace, donc ses raisonnements ne se rejoueront pas à l'identique.
+     */
+    private static boolean usedServerTools(AgentTurn turn) {
+        return turn.reasoning().stream().anyMatch(AgentContentBlock.ServerTool.class::isInstance);
+    }
+
+    /**
+     * Historique sans aucun bloc de raisonnement (F-117 / SF-117-11), pour la relance unique après un
+     * 400 structurel. Un message réduit à rien est écarté : l'assainisseur refuserait de l'envoyer.
+     */
+    static List<AgentMessage> withoutReasoning(List<AgentMessage> messages) {
+        List<AgentMessage> kept = new ArrayList<>(messages.size());
+        for (AgentMessage message : messages) {
+            List<AgentContentBlock> blocks = message.content().stream()
+                    .filter(block -> !(block instanceof AgentContentBlock.Reasoning)
+                            && !(block instanceof AgentContentBlock.RedactedReasoning))
+                    .toList();
+            if (blocks.size() == message.content().size()) {
+                kept.add(message);
+            } else if (!blocks.isEmpty()) {
+                kept.add(new AgentMessage(message.role(), blocks, message.effort()));
+            }
+        }
+        return kept;
+    }
+
     private static List<AtelierToolTrace.Thought> thoughtsOf(AgentTurn turn) {
         List<AtelierToolTrace.Thought> thoughts = new ArrayList<>(turn.reasoning().size());
         for (AgentContentBlock block : turn.reasoning()) {

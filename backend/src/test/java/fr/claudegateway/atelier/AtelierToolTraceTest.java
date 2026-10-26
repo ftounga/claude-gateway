@@ -225,4 +225,51 @@ class AtelierToolTraceTest {
         AgentContentBlock first = after.replay().get(0).content().get(0);
         assertThat(((AgentContentBlock.Reasoning) first).signature()).isEqualTo("SIG-round-trip");
     }
+
+    @Test
+    void aStepThatUsedServerToolsReplaysWithoutItsReasoning() {
+        // F-117 / SF-117-11 : les blocs web_search/web_fetch ne sont pas gardés par la trace. Les
+        // raisonnements entrelacés avec eux ne se rejouent donc plus à l'identique, et le
+        // fournisseur refuse le fil à chaque envoi. On les omet ; appels et résultats restent.
+        AtelierToolTrace trace = new AtelierToolTrace(List.of(new AtelierToolTrace.Step(
+                "J'ai les versions corrigées.",
+                List.of(new AtelierToolTrace.Call("c1", "edit_file", input("path", "notes.md"), "ok", false)),
+                List.of(new AtelierToolTrace.Thought("", "SIG-avant-recherche", null)), true)));
+
+        List<AgentMessage> replayed = trace.replay();
+
+        assertThat(replayed.get(0).content())
+                .noneMatch(block -> block instanceof AgentContentBlock.Reasoning)
+                .anyMatch(block -> block instanceof AgentContentBlock.ToolUse);
+        assertThat(replayed.get(1).content()).singleElement()
+                .isInstanceOf(AgentContentBlock.ToolResult.class);
+    }
+
+    @Test
+    void anOlderStepWithSeveralThoughtsReplaysWithoutThem() {
+        // Trace écrite avant SF-117-11, sans `serverTools` : plusieurs raisonnements dans une même
+        // réponse n'arrivent qu'entrelacés avec des outils serveur — cas réel du sujet « waf ».
+        AtelierToolTrace old = AtelierToolTrace.fromJson("""
+                {"steps":[{"text":"texte","calls":[{"id":"c1","name":"edit_file",
+                 "input":{"path":"a"},"result":"ok","error":false}],
+                 "thoughts":[{"text":"","signature":"SIG-1"},{"text":"","signature":"SIG-2"}]}]}
+                """);
+
+        assertThat(old.replay().get(0).content())
+                .noneMatch(block -> block instanceof AgentContentBlock.Reasoning);
+    }
+
+    @Test
+    void theServerToolsFlagSurvivesTheRoundTripAndDefaultsToFalse() {
+        AtelierToolTrace before = new AtelierToolTrace(List.of(new AtelierToolTrace.Step(
+                "texte",
+                List.of(new AtelierToolTrace.Call("c1", "bash", input("cmd", "ls"), "a.txt", false)),
+                List.of(new AtelierToolTrace.Thought("", "SIG", null)), true)));
+
+        assertThat(AtelierToolTrace.fromJson(before.toJson()).steps().get(0).serverTools()).isTrue();
+        assertThat(oneCall("ok").steps().get(0).serverTools()).isFalse();
+        assertThat(AtelierToolTrace.fromJson("""
+                {"steps":[{"text":"t","calls":[{"id":"c1","name":"bash","input":{},"result":"ok"}]}]}
+                """).steps().get(0).serverTools()).isFalse();
+    }
 }

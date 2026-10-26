@@ -56,15 +56,33 @@ public record AtelierToolTrace(List<Step> steps) {
      * c'est tout l'objet du {@code @JsonIgnoreProperties} ci-dessus.</p>
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Step(String text, List<Call> calls, List<Thought> thoughts) {
+    public record Step(String text, List<Call> calls, List<Thought> thoughts, boolean serverTools) {
 
         /** Forme d'avant F-134 / SF-134-04, conservée pour les appelants et les traces déjà écrites. */
         public Step(String text, List<Call> calls) {
-            this(text, calls, List.of());
+            this(text, calls, List.of(), false);
+        }
+
+        /** Forme d'avant F-117 / SF-117-11 : une étape sans outil serveur. */
+        public Step(String text, List<Call> calls, List<Thought> thoughts) {
+            this(text, calls, thoughts, false);
         }
 
         public Step {
             thoughts = thoughts == null ? List.of() : List.copyOf(thoughts);
+        }
+
+        /**
+         * Vrai si les raisonnements de l'étape peuvent être rejoués <b>tels quels</b> (F-117 /
+         * SF-117-11). Ce n'est plus le cas quand la réponse les entrelaçait avec des blocs d'outils
+         * serveur ({@code web_search}, {@code web_fetch}) : la trace ne garde pas ces blocs, le message
+         * rejoué n'est donc plus celui d'origine, et le fournisseur le refuse en {@code 400} — « thinking
+         * blocks in the latest assistant message cannot be modified » — à <b>chaque</b> envoi suivant.
+         * Une trace écrite avant ce correctif ne porte pas {@code serverTools} : plusieurs raisonnements
+         * dans une même réponse trahissent cet entrelacement, seule façon d'en obtenir plus d'un.
+         */
+        boolean reasoningReplayable() {
+            return !serverTools && thoughts.size() <= 1;
         }
     }
 
@@ -187,7 +205,7 @@ public record AtelierToolTrace(List<Step> steps) {
             // Le raisonnement EN TÊTE, avant le texte : c'est l'ordre dans lequel le fournisseur
             // l'a reçu, et donc mis en cache (F-134 / SF-134-04). Le remettre ailleurs — ou pas du
             // tout — suffit à faire réécrire tout ce qui suit.
-            for (Thought thought : step.thoughts()) {
+            for (Thought thought : step.reasoningReplayable() ? step.thoughts() : List.<Thought>of()) {
                 if (thought == null || thought.isEmpty()) {
                     continue;
                 }
