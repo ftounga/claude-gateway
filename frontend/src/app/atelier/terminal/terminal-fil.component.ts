@@ -5,7 +5,7 @@ import { Subscription } from 'rxjs';
 
 import { FilSubAgent, FilTask, PosteTurns } from '../../core/models/terminal-fil.models';
 import { TerminalFilService } from '../../core/services/terminal-fil.service';
-import { FinishSoundService } from '../../core/services/finish-sound.service';
+import { NotificationSoundService } from '../../core/services/notification-sound.service';
 import { CurrentClientService } from '../../core/services/current-client.service';
 import { HOSTED_REF } from '../../postes/forge-fleet';
 
@@ -323,7 +323,7 @@ export class TerminalFilComponent {
 
   private readonly service = inject(TerminalFilService);
   private readonly router = inject(Router);
-  private readonly sound = inject(FinishSoundService);
+  private readonly sound = inject(NotificationSoundService);
   private readonly currentClient = inject(CurrentClientService);
   /**
    * Le poste de la bande, tel que la dernière lecture l'a servi (`null` = Hébergé), `undefined` tant
@@ -470,7 +470,8 @@ export class TerminalFilComponent {
       this.bannerTimer = undefined;
       this.banner.set(null);
     }, FIL_BANNER_MS);
-    this.sound.playIfEnabled();
+    // F-217 / SF-217-02 : le carillon « information » (réglé dans Paramètres › Notifications).
+    this.sound.info();
   }
 
   private schedule(id: string): void {

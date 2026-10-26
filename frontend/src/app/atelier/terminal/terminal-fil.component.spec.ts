@@ -4,7 +4,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { Router, provideRouter } from '@angular/router';
 
 import { FilTask, PosteTurns } from '../../core/models/terminal-fil.models';
-import { FinishSoundService } from '../../core/services/finish-sound.service';
+import { NotificationSoundService } from '../../core/services/notification-sound.service';
 import { CurrentClientService } from '../../core/services/current-client.service';
 import {
   FIL_BANNER_MS,
@@ -96,14 +96,14 @@ describe('TerminalFilComponent (F-191 / SF-191-02)', () => {
   let http: HttpTestingController;
   let router: Router;
   let visibility: jasmine.Spy;
-  let sound: { playIfEnabled: jasmine.Spy };
+  let sound: { info: jasmine.Spy };
 
   function build(id: string | null = 'w1'): void {
-    sound = { playIfEnabled: jasmine.createSpy('playIfEnabled') };
+    sound = { info: jasmine.createSpy('info') };
     TestBed.configureTestingModule({
       imports: [TerminalFilComponent],
       providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([]),
-        { provide: FinishSoundService, useValue: sound }],
+        { provide: NotificationSoundService, useValue: sound }],
     });
     http = TestBed.inject(HttpTestingController);
     router = TestBed.inject(Router);
@@ -306,7 +306,7 @@ describe('TerminalFilComponent (F-191 / SF-191-02)', () => {
     expect(fin.textContent).toContain('migre la base');
     expect(fin.textContent).toContain('est terminé');
     expect(fin.textContent).toContain('1 min');
-    expect(sound.playIfEnabled).toHaveBeenCalledTimes(1);
+    expect(sound.info).toHaveBeenCalledTimes(1);
 
     (fin.querySelector('.fin__open') as HTMLButtonElement).click();
     fixture.detectChanges();
@@ -332,7 +332,7 @@ describe('TerminalFilComponent (F-191 / SF-191-02)', () => {
     tick(FIL_POLL_MS);
     answer([task({ turnId: 'vite', state: 'failed', endedAt: 1_110_000 })]);
     expect(el().querySelector('.fin')).toBeNull();
-    expect(sound.playIfEnabled).toHaveBeenCalledTimes(1);
+    expect(sound.info).toHaveBeenCalledTimes(1);
     fixture.destroy();
   }));
 
@@ -343,7 +343,7 @@ describe('TerminalFilComponent (F-191 / SF-191-02)', () => {
     answer([task({ turnId: 't', here: true, workspaceId: 'w1', state: 'done', endedAt: 1_100_000 })]);
 
     expect(el().querySelector('.fin')).toBeNull();
-    expect(sound.playIfEnabled).not.toHaveBeenCalled();
+    expect(sound.info).not.toHaveBeenCalled();
     fixture.destroy();
   }));
 
