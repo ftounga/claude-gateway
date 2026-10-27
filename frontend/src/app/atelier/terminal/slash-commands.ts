@@ -70,6 +70,14 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
       'utiles et, si pertinent, mise à jour de la documentation du projet. Reste concis.',
   },
   {
+    name: 'autonome',
+    title: '/autonome',
+    description: 'Lancer un chantier en autonome (ex. /autonome 2)',
+    prompt:
+      'Lance en autonome le chantier indiqué ci-dessous avec l’outil lancer_chantier_autonome. S’il n’est ' +
+      'pas prêt, dis-moi précisément ce qui l’empêche de partir ; sinon, termine ton tour tout de suite.',
+  },
+  {
     name: 'resume',
     title: '/resume',
     description: 'Résumer l’état du projet et des changements récents',

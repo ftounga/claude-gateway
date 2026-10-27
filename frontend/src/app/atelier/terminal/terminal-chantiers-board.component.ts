@@ -1,7 +1,18 @@
-import { Component, ElementRef, HostListener, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
+import { Component, DestroyRef, ElementRef, HostListener, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
+
+import {
+  AutonomyBoard,
+  AutonomyBoardEntry,
+  AutonomyConflict,
+  autonomyCurrentStep,
+  autonomyOutcomeLabel,
+} from '../../core/models/autonomy.models';
+import { AutonomyService } from '../../core/services/autonomy.service';
 
 import {
   JOURNEY_PHASES,
@@ -63,6 +74,9 @@ const RING = 2 * Math.PI * 18;
               @if (gestures(c) > 0) {
                 <span class="board__await">à vous</span>
               }
+              @if (running(c.number)) {
+                <span class="board__tab-auto">autonome</span>
+              }
             </button>
           }
         </div>
@@ -85,6 +99,58 @@ const RING = 2 * Math.PI * 18;
                 </button>
               }
             </div>
+
+            @if (autonomyOf(c.number); as auto) {
+              <section class="auto" aria-label="Exécution en autonome" [attr.data-state]="autoState(auto)">
+                @if (auto.run?.status === 'RUNNING') {
+                  <p class="auto__status auto__status--running" role="status">
+                    <mat-icon class="auto__spin" aria-hidden="true">autorenew</mat-icon>
+                    En autonome — étape {{ currentStep(c) }}/{{ c.total }}
+                  </p>
+                  <p class="auto__hint">Vous pouvez quitter l’écran : le travail continue côté serveur.</p>
+                  @if (canSend()) {
+                    <button mat-stroked-button type="button" class="auto__stop" [disabled]="busy()" (click)="takeBack(c)">
+                      <mat-icon>pan_tool</mat-icon>
+                      Reprendre la main
+                    </button>
+                  }
+                } @else if (auto.preflight.ready) {
+                  <p class="auto__status auto__status--ready">
+                    <mat-icon aria-hidden="true">rocket_launch</mat-icon>
+                    Prêt à partir
+                  </p>
+                  @if (canSend()) {
+                    <div class="auto__launch">
+                      <button mat-flat-button type="button" class="auto__go" [disabled]="busy()" (click)="launch(c)">
+                        <mat-icon>play_circle</mat-icon>
+                        Lancer en autonome
+                      </button>
+                      <span class="auto__meta">
+                        @if (auto.estimate; as est) {
+                          ≈ {{ est.usd.toFixed(2) }} $ · {{ est.basis }} ·
+                        }
+                        {{ autonomy()?.running ?? 0 }}/{{ autonomy()?.maxParallel ?? 4 }} chantiers autonomes en cours
+                      </span>
+                    </div>
+                  }
+                } @else {
+                  <p class="auto__status auto__status--not-ready">
+                    <mat-icon aria-hidden="true">block</mat-icon>
+                    Pas prêt à partir en autonome
+                  </p>
+                  <ul class="auto__reasons" aria-label="Ce qui empêche le départ">
+                    @for (r of auto.preflight.reasons; track $index) {
+                      <li>{{ r.label }}</li>
+                    }
+                  </ul>
+                }
+                @if (auto.run && auto.run.status !== 'RUNNING') {
+                  <p class="auto__last">
+                    Dernière course : {{ outcome(auto.run.status) }}{{ auto.run.stopReason ? ' — ' + auto.run.stopReason : '' }}
+                  </p>
+                }
+              </section>
+            }
 
             <ol class="board__phases" aria-label="Phases">
               @for (p of phases; track p.phase) {
@@ -342,6 +408,112 @@ const RING = 2 * Math.PI * 18;
       color: var(--cg-navy);
       font-size: 11px;
       font-weight: 600;
+    }
+
+    .board__tab-auto {
+      padding: 0 6px;
+      border-radius: 8px;
+      background: var(--cg-success);
+      color: var(--cg-navy);
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .auto {
+      display: flex;
+      flex-direction: column;
+      gap: var(--cg-space-2);
+      margin-top: var(--cg-space-3);
+      padding: var(--cg-space-3);
+      border: 1px solid var(--cg-divider);
+      border-radius: 8px;
+    }
+
+    .auto[data-state='ready'] {
+      border-color: var(--cg-success);
+    }
+
+    .auto[data-state='running'] {
+      border-color: var(--cg-accent);
+    }
+
+    .auto__status {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--cg-space-1);
+      margin: 0;
+      font-weight: 600;
+    }
+
+    /* Texte en encre (AA) ; la couleur d'état porte l'icône et le liseré, jamais seule. */
+    .auto__status--ready {
+      color: var(--cg-text-primary);
+    }
+
+    .auto__status--ready mat-icon {
+      color: var(--cg-success);
+    }
+
+    .auto__status--running {
+      color: var(--cg-gold-ink);
+    }
+
+    .auto__status--not-ready {
+      color: var(--cg-text-secondary);
+    }
+
+    .auto__spin {
+      animation: auto-spin 1.6s linear infinite;
+    }
+
+    @keyframes auto-spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .auto__spin {
+        animation: none;
+      }
+    }
+
+    .auto__hint,
+    .auto__meta,
+    .auto__last {
+      margin: 0;
+      font-size: 12px;
+      color: var(--cg-text-secondary);
+    }
+
+    .auto__launch {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--cg-space-2);
+    }
+
+    .auto__go {
+      --mdc-filled-button-container-color: var(--cg-orange-2);
+      --mdc-filled-button-label-text-color: var(--cg-navy);
+    }
+
+    .auto__stop {
+      align-self: flex-start;
+    }
+
+    .auto__reasons {
+      margin: 0;
+      padding-left: var(--cg-space-4);
+      font-size: 13px;
+      color: var(--cg-text-primary);
+    }
+
+    @media (max-width: 599px) {
+      .auto__launch {
+        flex-direction: column;
+        align-items: stretch;
+      }
     }
 
     .board__chantier {
@@ -670,7 +842,16 @@ export class TerminalChantiersBoardComponent {
   readonly focus = output<number>();
 
   private readonly journeys = inject(JourneyService);
+  private readonly autonomyApi = inject(AutonomyService);
+  private readonly snackBar = inject(MatSnackBar);
   private readonly host = inject(ElementRef<HTMLElement>);
+
+  /** L'autonomie des chantiers du sujet (F-219 / SF-219-03) ; `null` tant qu'elle n'est pas lue. */
+  readonly autonomy = signal<AutonomyBoard | null>(null);
+  /** Un lancement ou une reprise en main est en vol. */
+  readonly busy = signal(false);
+  /** Relecture pendant une course (5 s). */
+  private poll: ReturnType<typeof setInterval> | null = null;
 
   readonly phases = JOURNEY_PHASES;
   readonly historyError = 'L’historique n’a pas pu être lu.';
@@ -701,6 +882,15 @@ export class TerminalChantiersBoardComponent {
   });
 
   constructor() {
+    // F-219 / SF-219-03 : l'autonomie est relue à l'ouverture et à chaque changement du parcours.
+    effect(() => {
+      this.journey();
+      const workspaceId = this.workspaceId();
+      if (workspaceId) {
+        untracked(() => this.loadAutonomy());
+      }
+    });
+    inject(DestroyRef).onDestroy(() => this.stopPolling());
     // L'historique suit le chantier choisi et sa version : relu si le plan change pendant qu'il est ouvert.
     effect(() => {
       const c = this.selected();
@@ -765,6 +955,9 @@ export class TerminalChantiersBoardComponent {
 
   /** « après étape 4 · attente cert-gino » pour une étape bloquée ; `null` sinon. */
   blockedText(step: JourneyPlanStep): string | null {
+    if (step.status === 'BLOQUE') {
+      return step.evidence ? `bloquée : ${step.evidence}` : 'bloquée par l’agent';
+    }
     if (stepState(step) !== 'blocked' || !step.blockedBy?.length) {
       return null;
     }
@@ -858,6 +1051,119 @@ export class TerminalChantiersBoardComponent {
       const el = this.host.nativeElement.querySelector('.board__proof--shown') as HTMLElement | null;
       el?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
     });
+  }
+
+  // ------------------------------------------------------------------ F-219 : chantier en autonome
+
+  /** L'autonomie du chantier N, ou `null`. */
+  autonomyOf(number: number): AutonomyBoardEntry | null {
+    return this.autonomy()?.chantiers.find((e) => e.number === number) ?? null;
+  }
+
+  /** Vrai si le chantier N tourne en autonome. */
+  running(number: number): boolean {
+    return this.autonomyOf(number)?.run?.status === 'RUNNING';
+  }
+
+  autoState(entry: AutonomyBoardEntry): 'running' | 'ready' | 'not-ready' {
+    if (entry.run?.status === 'RUNNING') {
+      return 'running';
+    }
+    return entry.preflight.ready ? 'ready' : 'not-ready';
+  }
+
+  currentStep(c: OpenChantier): number {
+    return autonomyCurrentStep(c.done, c.total);
+  }
+
+  outcome(status: string): string {
+    return autonomyOutcomeLabel(status);
+  }
+
+  /** [Lancer en autonome] : un clic, aucune confirmation (F-218). */
+  launch(c: OpenChantier): void {
+    const workspaceId = this.workspaceId();
+    if (!workspaceId || this.busy()) {
+      return;
+    }
+    this.busy.set(true);
+    this.autonomyApi.launch(workspaceId, c.number).subscribe({
+      next: () => {
+        this.busy.set(false);
+        this.snackBar.open(`Chantier ${c.number} lancé en autonome. Vous pouvez quitter l’écran.`, 'OK', { duration: 5000 });
+        this.loadAutonomy();
+      },
+      error: (err: HttpErrorResponse) => {
+        this.busy.set(false);
+        this.snackBar.open(this.conflictMessage(err, 'Le chantier n’a pas pu partir en autonome.'), 'OK', { duration: 8000 });
+        this.loadAutonomy();
+      },
+    });
+  }
+
+  /** [Reprendre la main] : la course s'arrête à la frontière sûre suivante. */
+  takeBack(c: OpenChantier): void {
+    const workspaceId = this.workspaceId();
+    if (!workspaceId || this.busy()) {
+      return;
+    }
+    this.busy.set(true);
+    this.autonomyApi.stop(workspaceId).subscribe({
+      next: () => {
+        this.busy.set(false);
+        this.snackBar.open(`Vous avez repris la main sur le chantier ${c.number}.`, 'OK', { duration: 5000 });
+        this.loadAutonomy();
+      },
+      error: (err: HttpErrorResponse) => {
+        this.busy.set(false);
+        this.snackBar.open(this.conflictMessage(err, 'La reprise en main a échoué.'), 'OK', { duration: 8000 });
+        this.loadAutonomy();
+      },
+    });
+  }
+
+  private conflictMessage(err: HttpErrorResponse, fallback: string): string {
+    const body = err?.error as AutonomyConflict | null;
+    if (!body?.message) {
+      return fallback;
+    }
+    const first = body.reasons?.[0]?.label;
+    return first ? `${body.message} ${first}` : body.message;
+  }
+
+  private loadAutonomy(): void {
+    const workspaceId = this.workspaceId();
+    if (!workspaceId) {
+      return;
+    }
+    this.autonomyApi.board(workspaceId).subscribe({
+      next: (board) => {
+        this.autonomy.set(board);
+        const anyRunning = (board?.chantiers ?? []).some((e) => e.run?.status === 'RUNNING');
+        if (anyRunning) {
+          this.startPolling();
+        } else {
+          this.stopPolling();
+        }
+      },
+      error: () => {
+        this.autonomy.set(null);
+        this.stopPolling();
+      },
+    });
+  }
+
+  private startPolling(): void {
+    if (this.poll === null) {
+      this.poll = setInterval(() => this.loadAutonomy(), 5000);
+    }
+  }
+
+  private stopPolling(): void {
+    if (this.poll !== null) {
+      clearInterval(this.poll);
+      this.poll = null;
+    }
   }
 
   toggleHistory(): void {
