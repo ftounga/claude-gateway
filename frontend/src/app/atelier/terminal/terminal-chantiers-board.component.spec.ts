@@ -215,23 +215,15 @@ describe('F-208 / SF-208-03 — le tableau des chantiers', () => {
       expect(actions(el, 1).querySelector('.board__reason')?.textContent).toContain('plan à valider d’abord');
     });
 
-    it('étape EXTERNE : confirmation explicite ; Annuler n’envoie rien, Confirmer envoie', () => {
+    it('étape EXTERNE : la demande part au premier clic, sans confirmation (F-218)', () => {
       const fixture = mount(journey([chantier(2, { focus: true, plan: EXEC })]));
       const el: HTMLElement = fixture.nativeElement;
       const sent: string[] = [];
       fixture.componentInstance.request.subscribe((r) => sent.push(r));
       (actions(el, 2).querySelector('.board__do') as HTMLButtonElement).click();
       fixture.detectChanges();
-      expect(sent).toEqual([]);
-      expect(actions(el, 2).querySelector('.board__confirm')?.textContent).toContain('hors du poste');
-      (actions(el, 2).querySelector('.board__confirm-no') as HTMLButtonElement).click();
-      fixture.detectChanges();
-      expect(actions(el, 2).querySelector('.board__confirm')).toBeNull();
-      expect(sent).toEqual([]);
-      (actions(el, 2).querySelector('.board__do') as HTMLButtonElement).click();
-      fixture.detectChanges();
-      (actions(el, 2).querySelector('.board__confirm-yes') as HTMLButtonElement).click();
       expect(sent).toEqual(['Chantier 2 — fais l’étape 3 : Pousser en prod']);
+      expect(el.querySelector('[role="alertdialog"]')).toBeNull();
     });
 
     it('« Relancer l’attente », « Voir la preuve », « Mettre au focus »', () => {
