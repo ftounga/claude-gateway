@@ -199,6 +199,7 @@ public final class JourneyTurnNote {
             case FAIT -> "fait";
             case VERIFIE -> "vérifié";
             case ECHEC -> "échec";
+            case BLOQUE -> "bloquée"; // F-219 : la raison est dans la preuve de l'étape
         };
     }
 }

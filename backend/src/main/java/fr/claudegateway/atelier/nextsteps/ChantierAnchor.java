@@ -172,9 +172,10 @@ public final class ChantierAnchor {
     private static int rank(NextStep step, JourneyPlan plan) {
         JourneyPlan.Step target = plan.steps().get(step.stepIndex() - 1);
         boolean todo = target.status() == JourneyPlan.StepStatus.A_FAIRE
-                || target.status() == JourneyPlan.StepStatus.ECHEC;
+                || target.status() == JourneyPlan.StepStatus.ECHEC
+                || target.status() == JourneyPlan.StepStatus.BLOQUE; // F-219 : à faire, mais bloquée
         if (todo) {
-            return step.blockedBy() == null ? 0 : 1;
+            return step.blockedBy() == null && target.status() != JourneyPlan.StepStatus.BLOQUE ? 0 : 1;
         }
         return target.status() == JourneyPlan.StepStatus.FAIT ? 2 : 3;
     }

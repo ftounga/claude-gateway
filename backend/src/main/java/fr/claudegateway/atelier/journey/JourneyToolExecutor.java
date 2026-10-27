@@ -130,6 +130,10 @@ public class JourneyToolExecutor {
                     + "de clore le sujet : résume-lui ce qui a été fait et vérifié.");
             case FAILED -> Outcome.ok("Étape " + step + " en ÉCHEC. Ne force pas : si la cause est comprise, "
                     + "amende le plan (set_subject_plan) ; sinon reopen_investigation.");
+            case BLOCKED -> Outcome.ok("Étape " + step + " BLOQUÉE, raison enregistrée. Arrête-toi là sur ce "
+                    + "chantier : dis à l'utilisateur ce qui manque et ce qu'il faut pour reprendre. Quand c'est "
+                    + "levé, update_plan_step status=A_FAIRE la débloque.");
+            case UNBLOCKED -> Outcome.ok("Étape " + step + " débloquée : de nouveau à faire.");
             case NOT_EXECUTING -> Outcome.error("Aucun plan validé en cours d'exécution : rien à faire avancer.");
             case NO_SUCH_STEP -> Outcome.error("Il n'y a pas d'étape " + step + " dans le plan (numérotées à "
                     + "partir de 1).");
