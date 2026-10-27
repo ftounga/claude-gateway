@@ -2540,6 +2540,22 @@ public class AtelierChatService implements RelayInterruptTarget {
     @org.springframework.beans.factory.annotation.Value("${app.atelier.ask-before-edit:false}")
     private boolean askBeforeEdit;
 
+    /**
+     * <b>Le mode offensif</b> (F-218 / SF-218-02, décision PO du 2026-10-27) : le harnais ne demande plus
+     * d'accord pour publier une page ou une vidéo privée, ni pour écrire dans Microsoft 365 — ces écritures
+     * suivent la politique de permission comme les autres outils (une règle ASK ou DENY de l'utilisateur
+     * reste respectée). Coupe-circuit {@code app.atelier.offensive-mode} (défaut {@code true}) : à
+     * {@code false}, les accords d'avant F-218 reviennent. Les accords de <b>dépense</b> (voix off, images)
+     * et le réglage {@code agent_ask_before_bash} ne sont pas concernés.
+     */
+    @org.springframework.beans.factory.annotation.Value("${app.atelier.offensive-mode:true}")
+    private boolean offensiveMode = true;
+
+    /** Réglage du mode offensif — exposé pour les tests (F-218 / SF-218-02). */
+    void setOffensiveMode(boolean offensiveMode) {
+        this.offensiveMode = offensiveMode;
+    }
+
     /** Branche la politique de permission persistée (F-121 / SF-121-02). */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setPermissionService(AtelierPermissionService permissionService) {
@@ -5163,7 +5179,8 @@ public class AtelierChatService implements RelayInterruptTarget {
             return ToolOutcome.error("La publication de pages n'est pas ouverte dans ce terminal. Réponds en clair.");
         }
         String title = fr.claudegateway.pages.PageToolExecutor.auditTarget(call.input());
-        if (!blanketAllowedTurns.contains(turnKey(userId, workspace.getId()))) {
+        // F-218 / SF-218-02 : en mode offensif, publier une page privée ne demande plus d'accord.
+        if (!offensiveMode && !blanketAllowedTurns.contains(turnKey(userId, workspace.getId()))) {
             RunnerConfirmationGate.Outcome decision = askPermission(userId, workspace.getId(), callId,
                     call.name(), "Publier la page « " + (title == null ? "sans titre" : title)
                             + " » — privée, visible par vous seul", listener);
@@ -5293,7 +5310,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
         boolean audio = fr.claudegateway.videos.VideoToolCatalog.AUDIO.equals(call.name());
         String target = fr.claudegateway.videos.VideoToolExecutor.auditTarget(call.input());
-        if (!blanketAllowedTurns.contains(turnKey(userId, workspace.getId()))) {
+        // F-218 / SF-218-02 : en mode offensif, publier une vidéo ou des sons privés ne demande plus d'accord.
+        if (!offensiveMode && !blanketAllowedTurns.contains(turnKey(userId, workspace.getId()))) {
             RunnerConfirmationGate.Outcome decision = askPermission(userId, workspace.getId(), callId,
                     call.name(), (audio ? "Publier les sons « " : "Publier la vidéo « ")
                             + (target == null ? "sans titre" : target) + " » — privée, visible par vous seul",
@@ -7602,7 +7620,9 @@ public class AtelierChatService implements RelayInterruptTarget {
         // §4.4). Elle n'est donc jamais couverte par « tout autoriser pour ce message », ni soumise
         // au réglage agent_ask_before_bash (qui ne concerne que bash) : c'est une garde du cadrage,
         // pas une commodité réglable. Le libellé présenté nomme l'action et l'emplacement en clair.
-        boolean teamsWrite = fr.claudegateway.teams.TeamsToolCatalog.isWrite(tool);
+        // F-218 / SF-218-02 : en mode offensif, l'écriture Microsoft 365 n'a plus d'accord forcé — elle
+        // suit la politique de permission ci-dessous (défaut ALLOW, une règle ASK/DENY reste respectée).
+        boolean teamsWrite = !offensiveMode && fr.claudegateway.teams.TeamsToolCatalog.isWrite(tool);
         boolean blanket = blanketAllowedTurns.contains(turnKey(userId, workspace.getId()));
         if (teamsWrite) {
             // F-108 / SF-108-02 : une écriture Microsoft 365 est confirmée à CHAQUE fois — hors

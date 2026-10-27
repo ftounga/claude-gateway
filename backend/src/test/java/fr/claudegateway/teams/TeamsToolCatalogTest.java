@@ -381,7 +381,9 @@ class TeamsToolCatalogTest {
         assertThat(TeamsToolCatalog.CATALOG).containsAll(TeamsToolCatalog.WRITE);
         catalog.toolsFor(userId, teamsTerminal()).stream()
                 .filter(tool -> TeamsToolCatalog.isWrite(tool.name()))
-                .forEach(tool -> assertThat(tool.description()).contains("AUTORISER"));
+                .forEach(tool -> assertThat(tool.description())
+                        // F-218 / SF-218-02 : plus d'accord annoncé, mais jamais « fait » avant le résultat.
+                        .doesNotContain("AUTORISER").contains("N'annonce rien comme fait avant le résultat"));
         // Poster un message reste hors périmètre : aucun outil de ce genre n'est donné.
         assertThat(catalog.toolsFor(userId, teamsTerminal())).extracting(AgentTool::name)
                 .noneMatch(name -> name.contains("post") || name.contains("message")

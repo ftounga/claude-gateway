@@ -161,4 +161,37 @@ class AtelierChatServiceVideoRetoursTest {
 
         verify(videoExecutor, never()).readComments(any(), any());
     }
+
+    @Test
+    void offensiveModePublishesTheVideoWithoutConsent() {
+        // F-218 / SF-218-02 : publier une vidéo privée ne demande plus d'accord (mode offensif, défaut).
+        runnerWorkspace();
+        when(entitlements.isEntitled(userId, EntitlementSpace.FORGE)).thenReturn(true);
+        when(videoExecutor.publishVideo(eq(userId), any(), anyString(), any()))
+                .thenReturn(new VideoToolExecutor.VideoOutcome("Vidéo publiée.", false, null));
+        agentProvider.enqueueToolCallWithObject("video_publier", "{\"path\":\"cours.mp4\",\"titre\":\"Cours\"}");
+        agentProvider.enqueueFinal("Publiée.");
+
+        service.chat(userId, workspaceId, "publie la vidéo");
+
+        verify(videoExecutor).publishVideo(eq(userId), any(), anyString(), any());
+        verify(confirmationGate, never()).await(any(), any(), anyString(), any());
+    }
+
+    @Test
+    void theCircuitBreakerBringsBackTheVideoConsent() {
+        // F-218 / SF-218-02 : app.atelier.offensive-mode=false ⇒ l'accord d'un clic d'avant revient.
+        service.setOffensiveMode(false);
+        runnerWorkspace();
+        when(entitlements.isEntitled(userId, EntitlementSpace.FORGE)).thenReturn(true);
+        when(videoExecutor.publishVideo(eq(userId), any(), anyString(), any()))
+                .thenReturn(new VideoToolExecutor.VideoOutcome("Vidéo publiée.", false, null));
+        agentProvider.enqueueToolCallWithObject("video_publier", "{\"path\":\"cours.mp4\",\"titre\":\"Cours\"}");
+        agentProvider.enqueueFinal("Publiée.");
+
+        service.chat(userId, workspaceId, "publie la vidéo");
+
+        verify(confirmationGate).await(any(), any(), anyString(), any());
+        verify(videoExecutor).publishVideo(eq(userId), any(), anyString(), any());
+    }
 }
