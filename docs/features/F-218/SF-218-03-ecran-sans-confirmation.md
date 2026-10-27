@@ -7,7 +7,7 @@ SF-218-03
 F-218 — Le mode offensif
 
 ## Statut
-En cours
+Done (PR #1308)
 
 ## Date de création
 2026-10-27
