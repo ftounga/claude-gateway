@@ -28,6 +28,7 @@ import {
   stepStateLabel,
 } from '../../core/models/journey.models';
 import { JourneyService } from '../../core/services/journey.service';
+import { UnblockerPillComponent } from '../../shared/unblocker-pill/unblocker-pill.component';
 
 /** Circonférence de l'anneau d'avancement (rayon 18). */
 const RING = 2 * Math.PI * 18;
@@ -44,7 +45,7 @@ const RING = 2 * Math.PI * 18;
  */
 @Component({
   selector: 'app-terminal-chantiers-board',
-  imports: [MatButtonModule, MatIconModule, MatTooltipModule],
+  imports: [MatButtonModule, MatIconModule, MatTooltipModule, UnblockerPillComponent],
   template: `
     <div class="board-scrim" (click)="closed.emit()" aria-hidden="true"></div>
     <aside class="board" role="dialog" aria-label="Tableau des chantiers">
@@ -71,6 +72,8 @@ const RING = 2 * Math.PI * 18;
               @if (c.focus) {
                 <span class="board__tab-focus">focus</span>
               }
+              <!-- F-220 / SF-220-04 : qui débloque ce chantier — même pastille que le tableau du client. -->
+              <app-unblocker-pill class="board__tab-who" size="sm" [mark]="c.unblocker"></app-unblocker-pill>
               @if (gestures(c) > 0) {
                 <span class="board__await">à vous</span>
               }
@@ -91,6 +94,12 @@ const RING = 2 * Math.PI * 18;
               <div class="board__summary-text">
                 <h3 class="board__chantier-title">Chantier {{ c.number }}{{ c.title ? ' — ' + c.title : '' }}</h3>
                 <p class="board__count"><strong>{{ c.done }}/{{ c.total }}</strong> étapes faites · {{ planLabel(c) }}</p>
+                @if (c.unblocker; as who) {
+                  <p class="board__who">
+                    <app-unblocker-pill [mark]="who"></app-unblocker-pill>
+                    <span class="board__who-detail">{{ who.detail }}</span>
+                  </p>
+                }
               </div>
               @if (!c.focus) {
                 <button mat-stroked-button type="button" class="board__focus-btn" (click)="focus.emit(c.number)">
@@ -174,6 +183,7 @@ const RING = 2 * Math.PI * 18;
                       <span class="board__step-state">{{ stateLabel(step) }}</span>
                     </button>
                     <p class="board__step-meta">
+                      <app-unblocker-pill class="board__step-who" size="sm" [mark]="step.unblocker"></app-unblocker-pill>
                       <span class="board__risk" [attr.data-risk]="step.risk">{{ step.riskLabel }}</span>
                       @if (blockedText(step); as blocked) {
                         <span class="board__blocked">{{ blocked }}</span>
@@ -560,6 +570,17 @@ const RING = 2 * Math.PI * 18;
     .board__count {
       margin: var(--cg-space-1) 0 0;
       color: var(--cg-text-secondary);
+    }
+
+    /* F-220 / SF-220-04 : qui débloque — la pastille écrit son libellé, la phrase dit le détail. */
+    .board__who {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--cg-space-2);
+      margin: var(--cg-space-2) 0 0;
+      font-size: 13px;
+      color: var(--cg-text-primary);
     }
 
     .board__phases {

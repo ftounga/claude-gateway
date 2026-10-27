@@ -95,6 +95,13 @@ export const UNBLOCKER_ICONS: Record<Unblocker, string> = {
   AUTRUI: 'hourglass_top',
 };
 
+/** Le libellé court de la pastille, là où la place manque (onglets et étapes d'un sujet, SF-220-04). */
+export const UNBLOCKER_SHORT: Record<Unblocker, string> = {
+  OUTIL: 'l\'outil avance',
+  MOI: 'votre décision',
+  AUTRUI: 'on attend',
+};
+
 /** « dormant depuis 6 j », « actif aujourd'hui », « il y a 1 j ». */
 export function idleLabel(chantier: Pick<ClientBoardChantier, 'idleDays' | 'dormant'>): string {
   if (chantier.dormant) {
