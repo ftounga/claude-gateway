@@ -427,6 +427,7 @@ class AtelierChatServiceRunnerGuardTest {
 
     @Test
     void aRefusedTeamsWriteNeverReachesMicrosoft365() {
+        service.setOffensiveMode(false); // F-218 / SF-218-02 : coupe-circuit, l'accord d'avant revient
         stubWorkspace(WorkspaceExecutionTarget.RUNNER);
         listener.answer(false, "pas maintenant");
         agentProvider.enqueueToolCall("teams_create_folder", "name", "Livrables",
@@ -445,6 +446,7 @@ class AtelierChatServiceRunnerGuardTest {
 
     @Test
     void aTeamsUploadNamesTheLocalFileBeforeConsent() {
+        service.setOffensiveMode(false); // F-218 / SF-218-02 : coupe-circuit, l'accord d'avant revient
         stubWorkspace(WorkspaceExecutionTarget.RUNNER);
         listener.answer(false, null);
         agentProvider.enqueueToolCall("teams_upload_file", "file", "/home/u/secret/id_rsa",
@@ -463,6 +465,7 @@ class AtelierChatServiceRunnerGuardTest {
 
     @Test
     void aTeamsWriteAsksWithAClearActionAndLocation() {
+        service.setOffensiveMode(false); // F-218 / SF-218-02 : coupe-circuit, l'accord d'avant revient
         stubWorkspace(WorkspaceExecutionTarget.RUNNER);
         listener.answer(true, null);
         when(runnerToolGateway.teamsRead(eq(runnerTarget), anyString(), eq("teams_create_folder"), any()))
@@ -496,6 +499,7 @@ class AtelierChatServiceRunnerGuardTest {
 
     @Test
     void aTeamsCopyAsksWithAClearActionAndDestination() {
+        service.setOffensiveMode(false); // F-218 / SF-218-02 : coupe-circuit, l'accord d'avant revient
         // F-108 / SF-108-06 : la copie est une écriture, donc confirmée, action et destination en clair.
         stubWorkspace(WorkspaceExecutionTarget.RUNNER);
         listener.answer(true, null);
@@ -532,6 +536,7 @@ class AtelierChatServiceRunnerGuardTest {
 
     @Test
     void everyTeamsWriteIsConfirmedEvenUnderBlanketApproval() {
+        service.setOffensiveMode(false); // F-218 / SF-218-02 : coupe-circuit, l'accord d'avant revient
         stubWorkspace(WorkspaceExecutionTarget.RUNNER);
         // La première commande (bash) est autorisée par « tout autoriser pour ce message » : le
         // raccourci qui dispense les commandes SUIVANTES de redemander (SF-38-20).
@@ -553,6 +558,22 @@ class AtelierChatServiceRunnerGuardTest {
         // F-108 / SF-108-04 : la suppression dit où elle va — la corbeille du site.
         assertThat(listener.requests.get(1).detail())
                 .isEqualTo("Supprimer « vieux.docx » dans Général (corbeille du site)");
+        verify(runnerToolGateway).teamsRead(eq(runnerTarget), anyString(), eq("teams_delete"), any());
+    }
+
+    @Test
+    void offensiveModeSendsATeamsWriteWithoutAsking() {
+        // F-218 / SF-218-02 : en mode offensif (défaut), l'écriture Microsoft 365 n'a plus d'accord forcé ;
+        // sans règle de permission, elle part directement — et l'audit la trace toujours.
+        stubWorkspace(WorkspaceExecutionTarget.RUNNER);
+        when(runnerToolGateway.teamsRead(eq(runnerTarget), anyString(), eq("teams_delete"), any()))
+                .thenReturn(ok("{}"));
+        agentProvider.enqueueToolCall("teams_delete", "name", "vieux.docx", "location", "Général");
+        agentProvider.enqueueFinal("Fait.");
+
+        service.chatStreaming(userId, workspaceId, "supprime le vieux fichier", listener);
+
+        assertThat(listener.requests).isEmpty();
         verify(runnerToolGateway).teamsRead(eq(runnerTarget), anyString(), eq("teams_delete"), any());
     }
 }

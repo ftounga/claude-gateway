@@ -152,8 +152,7 @@ public class VideoToolCatalog {
                         + "chapitres : instants cliquables sous le lecteur. serie + episode : range la vidéo dans "
                         + "une série (tutoriel en plusieurs vidéos, sous un même titre). remplace : publie une "
                         + "nouvelle version d'une vidéo déjà publiée (son video_id). sources : la fiche des sources, "
-                        + "affichée sous le lecteur. voix : fixe la voix de toute la série. L'utilisateur confirme "
-                        + "d'un clic.",
+                        + "affichée sous le lecteur. voix : fixe la voix de toute la série.",
                 Map.of("type", "object",
                         "properties", Map.ofEntries(
                                 Map.entry("path", Map.of("type", "string", "description", "Chemin du fichier vidéo sur la machine.")),
@@ -190,7 +189,7 @@ public class VideoToolCatalog {
         return new AgentTool(AUDIO,
                 "Publie un ou plusieurs SONS de la machine (.mp3, .wav, .m4a ; 20 Mo au plus chacun) que "
                         + "l'utilisateur écoute dans le fil, en lecteurs empilés — par exemple des auditions de voix "
-                        + "à comparer. Pas de galerie. L'utilisateur confirme d'un clic.",
+                        + "à comparer. Pas de galerie.",
                 Map.of("type", "object",
                         "properties", Map.of(
                                 "titre", Map.of("type", "string", "description", "Titre du lot (« Auditions de voix »)."),

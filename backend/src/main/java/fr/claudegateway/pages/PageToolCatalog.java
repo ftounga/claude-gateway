@@ -184,8 +184,7 @@ public class PageToolCatalog {
                         + "page_id republie une page existante en nouvelle version. attachments : fichiers de la "
                         + "machine servis avec la page, référencés par leur nom relatif — texte (css, js, mjs, json, "
                         + "svg, csv, txt, md) ET images (png, jpg, jpeg, gif, webp, ex. une capture : "
-                        + "<img src=\"capture.png\">) ; ou embarque les images en data:. L'utilisateur confirme "
-                        + "d'un clic.",
+                        + "<img src=\"capture.png\">) ; ou embarque les images en data:.",
                 Map.of("type", "object",
                         "properties", Map.of(
                                 "title", Map.of("type", "string",

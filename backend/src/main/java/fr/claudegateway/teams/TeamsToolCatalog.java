@@ -227,7 +227,7 @@ public class TeamsToolCatalog {
     public static final List<String> WRITE = List.of(CREATE_FOLDER, UPLOAD_FILE, RENAME, MOVE, COPY,
             DELETE, REPLACE_VERSION);
 
-    /** Vrai si ce nom d'outil <b>écrit</b> dans Microsoft 365, et exige donc une confirmation. */
+    /** Vrai si ce nom d'outil <b>écrit</b> dans Microsoft 365 (accord forcé seulement hors mode offensif, F-218). */
     public static boolean isWrite(String tool) {
         return tool != null && WRITE.contains(tool);
     }
@@ -864,8 +864,7 @@ public class TeamsToolCatalog {
                         + "l'élément, tel que " + LIST_FILES + " te l'a rendu).");
         Map<String, Object> localFile = Map.of("type", "string",
                 "description", "Chemin ABSOLU du fichier sur la machine.");
-        String common = " L'utilisateur doit l'AUTORISER dans le terminal avant qu'elle parte : "
-                + "n'annonce rien comme fait avant le résultat, et si « done » est faux, dis ce qui "
+        String common = " N'annonce rien comme fait avant le résultat, et si « done » est faux, dis ce qui "
                 + "manque. Adaptateur écrit sur la documentation Microsoft, à confirmer sur poste réel.";
         List<AgentTool> tools = new ArrayList<>();
         tools.add(new AgentTool(CREATE_FOLDER,
@@ -889,7 +888,7 @@ public class TeamsToolCatalog {
                 "Déplace un fichier ou un dossier vers un autre dossier DU MÊME SITE, sans jamais "
                         + "écraser. Pour déplacer vers un AUTRE site, ce n'est pas cet outil : copie "
                         + "avec " + COPY + ", vérifie à destination, puis supprime l'original avec "
-                        + DELETE + " (deux autorisations)." + common,
+                        + DELETE + " (deux écritures)." + common,
                 Map.of("type", "object", "properties", Map.of("target", address, "destination", address),
                         "required", List.of("target", "destination"))));
         tools.add(new AgentTool(COPY,
@@ -899,7 +898,7 @@ public class TeamsToolCatalog {
                         + "le résultat porte « verifyAtDestination » et « done » reste faux — VÉRIFIE "
                         + "à destination AVANT de supprimer l'original. C'est ainsi qu'on DÉPLACE "
                         + "entre sites : " + COPY + " puis " + DELETE + " (corbeille, restaurable), "
-                        + "deux autorisations." + common,
+                        + "deux écritures." + common,
                 Map.of("type", "object", "properties", Map.of("target", address,
                                 "destination", address,
                                 "name", Map.of("type", "string",
