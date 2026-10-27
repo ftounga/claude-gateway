@@ -55,7 +55,7 @@ describe('PostesComponent', () => {
   let params$: BehaviorSubject<ParamMap>;
   /** Les paramètres de requête — `?onglet=` (F-98 / SF-98-02). */
   let query$: BehaviorSubject<ParamMap>;
-  /** L'onglet ouvert à la construction de l'écran ; `null` = Projets. */
+  /** L'onglet ouvert à la construction de l'écran ; `null` = l'onglet d'ouverture (Chantiers depuis F-220). */
   let initialTab: string | null;
 
   const poste: RunnerHostOverview = {
@@ -108,7 +108,9 @@ describe('PostesComponent', () => {
     // Par défaut, l'utilisateur n'a rien confirmé : c'est l'état le plus sûr pour un test, et
     // Jasmine tire l'ordre au sort — sans cette remise à zéro, un test en contaminerait un autre.
     dialogAnswer = false;
-    initialTab = null;
+    // F-220 / SF-220-03 : un poste machine s'ouvre désormais sur « Chantiers ». La plupart de ces tests
+    // portent sur les projets : ils les ouvrent par l'URL, comme le ferait `?onglet=projets`.
+    initialTab = 'projets';
   });
 
   function setup(hosts: RunnerHostOverview[] = [poste]): void {
@@ -1035,13 +1037,31 @@ describe('PostesComponent', () => {
       expect(head.textContent).not.toContain('vu il y a');
     });
 
-    it('propose les onglets d\'une machine (dont Présentations), et Projets seul à « Hébergé »', () => {
+    it('propose les onglets d\'une machine (Chantiers d\'abord, dont Présentations), et Projets seul à « Hébergé »', () => {
       setup();
       expect(tabs().map((node) => node.getAttribute('data-tab')))
-        .toEqual(['projets', 'carte', 'gouvernance', 'activite', 'pages', 'videos', 'presentations']);
+        .toEqual(['chantiers', 'projets', 'carte', 'gouvernance', 'activite', 'pages', 'videos', 'presentations']);
 
       openHost('heberge');
       expect(tabs().map((node) => node.getAttribute('data-tab'))).toEqual(['projets']);
+    });
+
+    it('F-220 : sans ?onglet=, une machine s\'ouvre sur le tableau des chantiers', () => {
+      initialTab = null;
+      setup();
+
+      expect(component.activeTab()).toBe('chantiers');
+      expect(tab('chantiers').getAttribute('aria-selected')).toBe('true');
+      expect((fixture.nativeElement as HTMLElement).querySelector('.poste__chantiers app-client-board')).not.toBeNull();
+    });
+
+    it('F-220 : le badge de l\'onglet Chantiers dit combien le tableau en a lu', () => {
+      setup();
+      expect(tab('chantiers').querySelector('.poste__tab-count')).toBeNull();
+
+      component.onChantierCount('h1', 5);
+      fixture.detectChanges();
+      expect(tab('chantiers').querySelector('.poste__tab-count')?.textContent?.trim()).toBe('5');
     });
 
     it("l'onglet Pages range les pages du poste, en Forge", () => {
@@ -1125,7 +1145,7 @@ describe('PostesComponent', () => {
       expect(component.outdatedOn(poste)).toBe(0);
     });
 
-    it('?onglet=carte ouvre la carte ; un onglet inconnu ouvre Projets', () => {
+    it('?onglet=carte ouvre la carte ; un onglet inconnu ouvre l\'onglet d\'ouverture (Chantiers)', () => {
       setup();
 
       openTab('carte');
@@ -1134,6 +1154,9 @@ describe('PostesComponent', () => {
       expect(text()).not.toContain('Ajouter un projet');
 
       openTab('radar');
+      expect(component.activeTab()).toBe('chantiers');
+
+      openTab('projets');
       expect(component.activeTab()).toBe('projets');
       expect(text()).toContain('Ajouter un projet');
     });
@@ -1147,7 +1170,7 @@ describe('PostesComponent', () => {
       expect(component.activeTab()).toBe('projets');
     });
 
-    it('cliquer un onglet le met dans l\'URL, et Projets l\'en retire', () => {
+    it('cliquer un onglet le met dans l\'URL, et l\'onglet d\'ouverture (Chantiers) l\'en retire', () => {
       setup();
       const navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
 
@@ -1157,6 +1180,11 @@ describe('PostesComponent', () => {
       }));
 
       tab('projets').click();
+      expect(navigate).toHaveBeenCalledWith([], jasmine.objectContaining({
+        queryParams: { onglet: 'projets' },
+      }));
+
+      tab('chantiers').click();
       expect(navigate).toHaveBeenCalledWith([], jasmine.objectContaining({
         queryParams: { onglet: null },
       }));

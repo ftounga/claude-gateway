@@ -9,9 +9,12 @@ import { GovernanceIntegrite, GovernanceMap } from '../core/models/governance.mo
  * regarde.</p>
  */
 
-export type ForgeTab = 'projets' | 'carte' | 'gouvernance' | 'activite' | 'pages' | 'videos' | 'presentations';
+export type ForgeTab =
+  'chantiers' | 'projets' | 'carte' | 'gouvernance' | 'activite' | 'pages' | 'videos' | 'presentations';
 
 export const FORGE_TAB_LABELS: Record<ForgeTab, string> = {
+  // F-220 / SF-220-03 : le tableau du client — ce qui reste à faire, qui le débloque. Onglet d'ouverture.
+  chantiers: 'Chantiers',
   projets: 'Projets',
   carte: 'Carte',
   gouvernance: 'Gouvernance',
@@ -25,9 +28,12 @@ export const FORGE_TAB_LABELS: Record<ForgeTab, string> = {
 };
 
 const MACHINE_TABS: readonly ForgeTab[] =
-  ['projets', 'carte', 'gouvernance', 'activite', 'pages', 'videos', 'presentations'];
+  ['chantiers', 'projets', 'carte', 'gouvernance', 'activite', 'pages', 'videos', 'presentations'];
 
-/** Le poste « Hébergé » n'a pas de racine (F-71) : ni carte, ni gouvernance, ni activité de machine. */
+/**
+ * Le poste « Hébergé » n'a pas de racine (F-71) : ni carte, ni gouvernance, ni activité de machine — et pas
+ * de tableau des chantiers, qui se lit par poste (F-220).
+ */
 const HOSTED_TABS: readonly ForgeTab[] = ['projets'];
 
 /** Les onglets qu'un poste propose. */
@@ -35,10 +41,18 @@ export function tabsFor(host: RunnerHostOverview): readonly ForgeTab[] {
   return host.virtual === true ? HOSTED_TABS : MACHINE_TABS;
 }
 
-/** L'onglet réellement ouvert : celui demandé par `?onglet=` s'il existe pour ce poste, sinon Projets. */
+/**
+ * L'onglet d'ouverture d'un poste : le tableau des chantiers pour une machine (F-220, décision PO : « arriver
+ * et retrouver ce qui me reste à faire »), Projets pour « Hébergé ».
+ */
+export function defaultTab(host: RunnerHostOverview): ForgeTab {
+  return tabsFor(host)[0];
+}
+
+/** L'onglet réellement ouvert : celui demandé par `?onglet=` s'il existe pour ce poste, sinon l'onglet d'ouverture. */
 export function effectiveTab(requested: string | null | undefined, host: RunnerHostOverview): ForgeTab {
   const wanted = (requested ?? '').trim().toLowerCase();
-  return tabsFor(host).find((tab) => tab === wanted) ?? 'projets';
+  return tabsFor(host).find((tab) => tab === wanted) ?? defaultTab(host);
 }
 
 /**

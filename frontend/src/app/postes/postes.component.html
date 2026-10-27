@@ -429,6 +429,11 @@
         >
           {{ tabLabel(tab) }}
           @switch (tab) {
+            @case ('chantiers') {
+              @if (chantierCount(host); as count) {
+                <span class="poste__tab-count">{{ count }}</span>
+              }
+            }
             @case ('projets') {
               <span class="poste__tab-count">{{ host.projects.length }}</span>
             }
@@ -452,6 +457,15 @@
     </nav>
 
     @switch (activeTab()) {
+      @case ('chantiers') {
+        <!-- LE TABLEAU DU CLIENT (F-220 / SF-220-03) : l'onglet d'ouverture — ce qui reste à faire, qui le
+             débloque, depuis quand ça dort ; ouvrir, lancer en autonome (un ou plusieurs), clore. -->
+        <section class="poste__panel poste__chantiers" role="tabpanel">
+          @if (host.id; as hostId) {
+            <app-client-board [hostId]="hostId" (countChange)="onChantierCount(hostId, $event)"></app-client-board>
+          }
+        </section>
+      }
       @case ('projets') {
         <div class="poste__panel" role="tabpanel">
           <!-- LA BARRE DE LA GRILLE (F-98 / SF-98-03) : un tri, et le geste d'ajout. -->

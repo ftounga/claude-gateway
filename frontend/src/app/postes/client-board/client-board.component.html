@@ -1,0 +1,183 @@
+<!-- LE TABLEAU DU CLIENT (F-220 / SF-220-03) : ce qui reste à faire, qui le débloque, depuis quand ça dort. -->
+<section class="cb" aria-labelledby="cb-title">
+  <header class="cb__head">
+    <div class="cb__intro">
+      <h2 id="cb-title" class="cb__title">Ce qui reste à faire</h2>
+      @if (board(); as b) {
+        <p class="cb__subtitle">
+          {{ b.chantiers.length }} chantier{{ b.chantiers.length > 1 ? 's' : '' }} ouvert{{ b.chantiers.length > 1 ? 's' : '' }}
+          · {{ b.autonomy.running }}/{{ b.autonomy.maxParallel }} en autonome
+        </p>
+      }
+    </div>
+    <button mat-icon-button type="button" class="cb__refresh" matTooltip="Relire" aria-label="Relire le tableau"
+      (click)="load()">
+      <mat-icon>refresh</mat-icon>
+    </button>
+  </header>
+
+  @if (board(); as b) {
+    <!-- LES COMPTEURS-FILTRES : la couleur, l'icône et le libellé ensemble — jamais la couleur seule. -->
+    <div class="cb__filters" role="group" aria-label="Filtrer les chantiers">
+      @for (who of order; track who) {
+        <button type="button" class="cb__filter" [class]="'cb__filter cb__filter--' + who"
+          [class.cb__filter--on]="filter() === who" [attr.aria-pressed]="filter() === who"
+          [attr.data-filter]="who" (click)="toggleFilter(who)">
+          <mat-icon aria-hidden="true">{{ icons[who] }}</mat-icon>
+          <span class="cb__filter-count">{{ count(who) }}</span>
+          <span class="cb__filter-label">{{ titles[who] }}</span>
+        </button>
+      }
+      <button type="button" class="cb__filter cb__filter--DORMANT" [class.cb__filter--on]="filter() === 'DORMANT'"
+        [attr.aria-pressed]="filter() === 'DORMANT'" data-filter="DORMANT" (click)="toggleFilter('DORMANT')">
+        <mat-icon aria-hidden="true">bedtime</mat-icon>
+        <span class="cb__filter-count">{{ b.counts.dormant }}</span>
+        <span class="cb__filter-label">Dormants</span>
+      </button>
+    </div>
+
+    @if (b.chantiers.length === 0) {
+      <div class="cb__empty">
+        <mat-icon aria-hidden="true">task_alt</mat-icon>
+        <p><strong>Aucun chantier ouvert chez ce client.</strong></p>
+        <p class="cb__muted">Un chantier naît quand un sujet passe en mode Guidé.</p>
+      </div>
+    } @else if (groups().length === 0) {
+      <p class="cb__muted cb__none">Aucun chantier pour ce filtre.</p>
+    }
+
+    @for (group of groups(); track group.who) {
+      <section class="cb__group" [class]="'cb__group cb__group--' + group.who" [attr.data-group]="group.who"
+        [attr.aria-label]="titles[group.who]">
+        <header class="cb__group-head">
+          <span class="cb__group-icon" aria-hidden="true"><mat-icon>{{ icons[group.who] }}</mat-icon></span>
+          <div>
+            <h3 class="cb__group-title">{{ titles[group.who] }} <span class="cb__group-count">{{ group.chantiers.length }}</span></h3>
+            <p class="cb__group-hint">{{ hints[group.who] }}</p>
+          </div>
+        </header>
+
+        <ul class="cb__cards">
+          @for (c of group.chantiers; track key(c)) {
+            <li class="cb__card" [class]="'cb__card cb__card--' + group.who" [class.cb__card--dormant]="c.dormant"
+              [class.cb__card--selected]="isSelected(c)" [attr.data-key]="key(c)">
+              <div class="cb__card-top">
+                <span class="cb__pill" [class]="'cb__pill cb__pill--' + group.who">
+                  <mat-icon aria-hidden="true">{{ icons[group.who] }}</mat-icon>
+                  {{ c.unblocker?.label ?? titles[group.who] }}
+                </span>
+                @if (running(c)) {
+                  <span class="cb__live cb__live--auto"><span class="cb__pulse" aria-hidden="true"></span>{{ runLabel(c) }}</span>
+                } @else if (c.live) {
+                  <span class="cb__live"><span class="cb__pulse" aria-hidden="true"></span>En cours</span>
+                }
+                <span class="cb__spacer"></span>
+                @if (selectable(c)) {
+                  <mat-checkbox class="cb__select" [checked]="isSelected(c)" (change)="toggleSelected(c)"
+                    [aria-label]="'Sélectionner le chantier ' + c.number + ' pour un lancement groupé'"></mat-checkbox>
+                }
+                <button mat-icon-button type="button" class="cb__more" [matMenuTriggerFor]="more"
+                  [attr.aria-label]="'Plus de gestes sur le chantier ' + c.number">
+                  <mat-icon>more_vert</mat-icon>
+                </button>
+                <mat-menu #more="matMenu">
+                  <button mat-menu-item type="button" class="cb__close" (click)="close(c)">
+                    <mat-icon>archive</mat-icon>
+                    Clore le chantier
+                  </button>
+                </mat-menu>
+              </div>
+
+              <div class="cb__card-main">
+                <svg class="cb__ring" viewBox="0 0 40 40" role="img" [attr.aria-label]="c.done + ' étapes faites sur ' + c.total">
+                  <circle class="cb__ring-track" cx="20" cy="20" r="16"></circle>
+                  <circle class="cb__ring-value" cx="20" cy="20" r="16" [attr.stroke-dasharray]="ringDash(c)"></circle>
+                </svg>
+                <div class="cb__ident">
+                  <p class="cb__subject">{{ subjectName(c) }} · Chantier {{ c.number }}@if (c.phaseLabel) { · {{ c.phaseLabel }}}</p>
+                  <h4 class="cb__card-title">{{ c.title || 'Sans titre' }}</h4>
+                  <p class="cb__progress">{{ c.done }}/{{ c.total }} étape{{ c.total > 1 ? 's' : '' }}</p>
+                </div>
+                <span class="cb__age" [class.cb__age--dormant]="c.dormant">
+                  <mat-icon aria-hidden="true">{{ c.dormant ? 'bedtime' : 'schedule' }}</mat-icon>{{ idle(c) }}
+                </span>
+              </div>
+
+              @if (c.question) {
+                <p class="cb__question"><mat-icon aria-hidden="true">help</mat-icon>{{ c.question }}</p>
+              } @else if (c.unblocker) {
+                <p class="cb__detail">{{ c.unblocker.detail }}</p>
+              }
+              @if (c.unblocker?.who === 'AUTRUI' && (c.unblocker?.waitingOn || since(c))) {
+                <p class="cb__waiting">
+                  @if (c.unblocker?.waitingOn) { Auprès de <strong>{{ c.unblocker?.waitingOn }}</strong> }
+                  @if (since(c); as s) { <span>{{ s }}</span> }
+                </p>
+              }
+              @if (c.nextStep) {
+                <p class="cb__next"><span class="cb__label">Prochaine étape</span> {{ c.nextStep.rank }}. {{ c.nextStep.title }}</p>
+              }
+              @if (!c.ready && !running(c) && c.missing.length > 0) {
+                <div class="cb__missing">
+                  <span class="cb__label">Pour partir en autonome</span>
+                  <ul>
+                    @for (reason of missingShown(c); track $index) {
+                      <li>{{ reason }}</li>
+                    }
+                  </ul>
+                  @if (missingMore(c) > 0) {
+                    <span class="cb__muted">+{{ missingMore(c) }} autre{{ missingMore(c) > 1 ? 's' : '' }}</span>
+                  }
+                </div>
+              }
+
+              <footer class="cb__card-foot">
+                @if (cost(c); as amount) {
+                  <span class="cb__muted cb__cost">Course autonome : {{ amount }}</span>
+                }
+                <span class="cb__spacer"></span>
+                @if (c.ready && !running(c)) {
+                  <button mat-stroked-button type="button" class="cb__launch" [disabled]="launching()"
+                    (click)="launch(c)">
+                    <mat-icon>rocket_launch</mat-icon>
+                    Lancer en autonome
+                  </button>
+                }
+                <button mat-flat-button type="button" class="cb__open" (click)="open(c)">
+                  {{ c.question ? 'Répondre' : 'Ouvrir' }}
+                  <mat-icon iconPositionEnd>arrow_forward</mat-icon>
+                </button>
+              </footer>
+            </li>
+          }
+        </ul>
+      </section>
+    }
+
+    <!-- LA SÉLECTION : lancer plusieurs chantiers prêts d'un coup, dans la limite des courses autonomes. -->
+    @if (selection().length > 0) {
+      <div class="cb__selection" role="region" aria-label="Lancement groupé">
+        <span class="cb__selection-count">{{ selection().length }} sélectionné{{ selection().length > 1 ? 's' : '' }}</span>
+        @if (overLimit(); as refusal) {
+          <span class="cb__refusal" role="alert">{{ refusal }}</span>
+        } @else {
+          <span class="cb__muted">{{ freeSlots() }} place{{ freeSlots() > 1 ? 's' : '' }} libre{{ freeSlots() > 1 ? 's' : '' }}</span>
+        }
+        <span class="cb__spacer"></span>
+        <button mat-button type="button" class="cb__cancel" (click)="clearSelection()">Annuler</button>
+        <button mat-flat-button type="button" class="cb__launch-all" [disabled]="overLimit() !== null || launching()"
+          (click)="launchSelected()">
+          <mat-icon>rocket_launch</mat-icon>
+          Lancer en autonome ({{ selection().length }})
+        </button>
+      </div>
+    }
+  } @else if (error()) {
+    <div class="cb__error" role="alert">
+      <p>{{ error() }}</p>
+      <button mat-stroked-button type="button" (click)="load()">Réessayer</button>
+    </div>
+  } @else if (loading()) {
+    <div class="cb__loading"><mat-spinner diameter="32"></mat-spinner></div>
+  }
+</section>
