@@ -25,8 +25,16 @@ public class JourneyToolExecutor {
 
     private final SubjectJourneyService service;
 
+    /** Le départ en autonome (F-219 / SF-219-04) ; absent dans les tests historiques. */
+    private ChantierAutonomyLauncher autonomy;
+
     public JourneyToolExecutor(SubjectJourneyService service) {
         this.service = service;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setAutonomyLauncher(@org.springframework.context.annotation.Lazy ChantierAutonomyLauncher autonomy) {
+        this.autonomy = autonomy;
     }
 
     /** Le résultat rendu au modèle. */
@@ -50,6 +58,7 @@ public class JourneyToolExecutor {
                 case JourneyToolCatalog.UPDATE_STEP -> updateStep(userId, workspace, input);
                 case JourneyToolCatalog.REOPEN -> reopen(userId, workspace, input);
                 case JourneyToolCatalog.UPDATE_SUB_STEPS -> updateSubSteps(userId, workspace, input);
+                case JourneyToolCatalog.LAUNCH_AUTONOMOUS -> launchAutonomous(userId, workspace, input);
                 default -> Outcome.error("Outil du parcours inconnu : " + tool);
             };
         } catch (InvalidJourneyException e) {
@@ -160,6 +169,18 @@ public class JourneyToolExecutor {
                         + "status=FAIT.");
             }
         });
+    }
+
+    private Outcome launchAutonomous(UUID userId, Workspace workspace, JsonNode input) {
+        Integer chantier = chantier(input);
+        if (chantier == null) {
+            return Outcome.error("chantier est requis : le numéro du chantier à lancer en autonome.");
+        }
+        if (autonomy == null) {
+            return Outcome.error("Le départ en autonome est indisponible ici : dis-le à l'utilisateur.");
+        }
+        ChantierAutonomyLauncher.Result result = autonomy.schedule(userId, workspace, chantier);
+        return result.scheduled() ? Outcome.ok(result.message()) : Outcome.error(result.message());
     }
 
     private Outcome reopen(UUID userId, Workspace workspace, JsonNode input) {
