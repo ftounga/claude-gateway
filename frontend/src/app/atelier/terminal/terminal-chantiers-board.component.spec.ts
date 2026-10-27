@@ -54,7 +54,11 @@ describe('F-208 / SF-208-03 — le tableau des chantiers', () => {
     http = TestBed.inject(HttpTestingController);
   });
 
-  afterEach(() => http.verify());
+  afterEach(() => {
+    // F-219 / SF-219-03 : l'overlay lit aussi l'autonomie des chantiers (couverte par son propre spec).
+    http.match((r) => r.url.endsWith('/journey/autonomy'));
+    http.verify();
+  });
 
   const mount = (j: SubjectJourney | null) => {
     const fixture = TestBed.createComponent(TerminalChantiersBoardComponent);
@@ -126,7 +130,8 @@ describe('F-208 / SF-208-03 — le tableau des chantiers', () => {
   it('l’historique se lit à la demande : ajouts, retraits, modifications ; vide et erreur le disent', () => {
     const fixture = mount(journey([chantier(4, { focus: true, plan: MIGRATION })]));
     const el: HTMLElement = fixture.nativeElement;
-    expect(http.match(() => true).length).toBe(0);
+    // Rien d'autre que l'autonomie des chantiers (F-219) n'est lu à l'ouverture : l'historique attend son clic.
+    expect(http.match((r) => !r.url.endsWith('/journey/autonomy')).length).toBe(0);
     (el.querySelector('.board__history-toggle') as HTMLButtonElement).click();
     fixture.detectChanges();
     http.expectOne('/api/workspaces/w1/journey/chantiers/4/versions').flush([

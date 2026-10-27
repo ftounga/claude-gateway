@@ -130,7 +130,8 @@ export interface JourneyPlanStep {
   waitsOn: string | null;
   /** L'état de cette attente : A_FAIRE, DEMANDE, FAIT, ANNULE — `null` si aucune ne porte la clé. */
   waitsOnStatus: string | null;
-  status: 'A_FAIRE' | 'FAIT' | 'VERIFIE' | 'ECHEC' | string;
+  /** `BLOQUE` (F-219) : un vrai blocage posé par l'agent, la raison est dans `evidence`. */
+  status: 'A_FAIRE' | 'FAIT' | 'VERIFIE' | 'ECHEC' | 'BLOQUE' | string;
   evidence: string | null;
   /** Nouvelle ou modifiée depuis le plan validé (amendement). */
   changed: boolean;
@@ -171,6 +172,7 @@ export function stepState(step: JourneyPlanStep): StepState {
     case 'VERIFIE': return 'verified';
     case 'FAIT': return 'done';
     case 'ECHEC': return 'failed';
+    case 'BLOQUE': return 'blocked';
   }
   if (step.inProgress) {
     return 'progress';
@@ -253,6 +255,7 @@ export function stepStatusLabel(status: string): string {
     case 'FAIT': return 'fait';
     case 'VERIFIE': return 'vérifié';
     case 'ECHEC': return 'échec';
+    case 'BLOQUE': return 'bloquée';
     default: return 'à faire';
   }
 }

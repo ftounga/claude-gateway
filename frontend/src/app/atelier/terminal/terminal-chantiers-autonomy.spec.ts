@@ -1,0 +1,154 @@
+import { TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { MatSnackBar } from '@angular/material/snack-bar';
+
+import { TerminalChantiersBoardComponent } from './terminal-chantiers-board.component';
+import { JourneyPlanStep, OpenChantier, SubjectJourney, stepState, stepStatusLabel } from '../../core/models/journey.models';
+import { AutonomyBoard, AutonomyBoardEntry, AutonomyRun, autonomyCurrentStep } from '../../core/models/autonomy.models';
+import { expandSlashCommand } from './slash-commands';
+
+const step = (title: string, extra: Partial<JourneyPlanStep> = {}): JourneyPlanStep => ({
+  title, risk: 'REVERSIBLE', riskLabel: 'modification réversible', verify: null, rollback: null, waitsOn: null,
+  waitsOnStatus: null, status: 'A_FAIRE', evidence: null, changed: false, dependsOn: [], unlocked: true,
+  blockedBy: [], inProgress: false, subSteps: [], ...extra,
+});
+
+const chantier = (number: number, extra: Partial<OpenChantier> = {}): OpenChantier => ({
+  number, title: `Titre ${number}`, openedAt: null, phase: 'EXECUTION', phaseLabel: 'Exécution', focus: number === 1,
+  planVersion: 3, validatedVersion: 3, awaitingValidation: false, diagnosisPending: false, closeProposed: false,
+  executing: true, done: 2, total: 7, plan: null, ...extra,
+});
+
+const journey = (chantiers: OpenChantier[]): SubjectJourney => ({
+  mode: 'GUIDE', phase: 'EXECUTION', phaseLabel: 'Exécution', phaseChangedAt: null, chantiers,
+  chantier: { number: 1, title: null, openedAt: null },
+}) as SubjectJourney;
+
+const run = (extra: Partial<AutonomyRun> = {}): AutonomyRun => ({
+  id: 'r1', workspaceId: 'w1', chantierNumber: 1, chantierTitle: 'Titre 1', status: 'RUNNING', turns: 1,
+  stepsDone: 2, stepsTotal: 7, costUsd: 0.4, stopReason: null, errorCode: null, startedAt: '2026-10-27T10:00:00Z',
+  finishedAt: null, ...extra,
+});
+
+const entry = (extra: Partial<AutonomyBoardEntry> = {}): AutonomyBoardEntry => ({
+  number: 1, title: 'Titre 1', preflight: { number: 1, ready: true, reasons: [] }, run: null,
+  estimate: { usd: 1.5, turns: 3, basis: 'coût moyen de vos tours sur 30 jours × 3 tour(s)' }, ...extra,
+});
+
+const board = (entries: AutonomyBoardEntry[], running = 0): AutonomyBoard => ({ chantiers: entries, running, maxParallel: 4 });
+
+/** **L'écran du chantier autonome** (F-219 / SF-219-03). */
+describe('F-219 / SF-219-03 — l’écran du chantier autonome', () => {
+  let http: HttpTestingController;
+  let snack: jasmine.SpyObj<MatSnackBar>;
+
+  beforeEach(() => {
+    snack = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
+    TestBed.configureTestingModule({
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideNoopAnimations(),
+        { provide: MatSnackBar, useValue: snack }],
+    });
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => http.verify());
+
+  const mount = (j: SubjectJourney, b: AutonomyBoard, canSend = true) => {
+    const fixture = TestBed.createComponent(TerminalChantiersBoardComponent);
+    fixture.componentRef.setInput('journey', j);
+    fixture.componentRef.setInput('workspaceId', 'w1');
+    fixture.componentRef.setInput('canSend', canSend);
+    fixture.detectChanges();
+    http.expectOne('/api/workspaces/w1/journey/autonomy').flush(b);
+    fixture.detectChanges();
+    return fixture;
+  };
+
+  const el = (fixture: { nativeElement: HTMLElement }) => fixture.nativeElement as HTMLElement;
+
+  it('prêt : badge « Prêt à partir », estimation, et [Lancer en autonome] part au premier clic', () => {
+    const fixture = mount(journey([chantier(1)]), board([entry()], 1));
+    const html = el(fixture);
+    expect(html.querySelector('.auto__status--ready')?.textContent).toContain('Prêt à partir');
+    expect(html.querySelector('.auto__meta')?.textContent).toContain('≈ 1.50 $');
+    expect(html.querySelector('.auto__meta')?.textContent).toContain('1/4 chantiers autonomes en cours');
+
+    (html.querySelector('.auto__go') as HTMLButtonElement).click();
+    const req = http.expectOne('/api/workspaces/w1/journey/chantiers/1/autonomy');
+    expect(req.request.method).toBe('POST');
+    req.flush(run());
+    expect(snack.open).toHaveBeenCalledWith('Chantier 1 lancé en autonome. Vous pouvez quitter l’écran.', 'OK', jasmine.any(Object));
+    http.expectOne('/api/workspaces/w1/journey/autonomy').flush(board([entry({ run: run() })], 2));
+    fixture.detectChanges();
+    expect(html.querySelector('.auto__status--running')?.textContent).toContain('En autonome — étape 3/7');
+    expect(html.querySelector('.board__tab-auto')?.textContent).toContain('autonome');
+    fixture.destroy(); // arrête la relecture
+  });
+
+  it('pas prêt : les raisons du serveur, aucun bouton de lancement', () => {
+    const fixture = mount(journey([chantier(1)]), board([entry({
+      preflight: { number: 1, ready: false, reasons: [
+        { code: 'STEP_BLOCKED', label: 'Étape 2 bloquée : accès VPN refusé', step: 2 },
+        { code: 'WAIT_OPEN', label: 'Étape 4 : en attente de « cert » (demandé).', step: 4 },
+      ] },
+    })]));
+    const html = el(fixture);
+    expect(html.querySelector('.auto__status--not-ready')?.textContent).toContain('Pas prêt à partir');
+    const reasons = Array.from(html.querySelectorAll('.auto__reasons li')).map((li) => li.textContent?.trim());
+    expect(reasons).toEqual(['Étape 2 bloquée : accès VPN refusé', 'Étape 4 : en attente de « cert » (demandé).']);
+    expect(html.querySelector('.auto__go')).toBeNull();
+  });
+
+  it('en cours : « En autonome — étape k/n » et [Reprendre la main]', () => {
+    const fixture = mount(journey([chantier(1)]), board([entry({ run: run() })], 1));
+    const html = el(fixture);
+    expect(html.querySelector('.auto__status--running')?.textContent).toContain('étape 3/7');
+    (html.querySelector('.auto__stop') as HTMLButtonElement).click();
+    const req = http.expectOne('/api/workspaces/w1/journey/autonomy/stop');
+    expect(req.request.method).toBe('POST');
+    req.flush(run({ status: 'STOPPED', stopReason: 'Reprise en main.' }));
+    expect(snack.open).toHaveBeenCalledWith('Vous avez repris la main sur le chantier 1.', 'OK', jasmine.any(Object));
+    http.expectOne('/api/workspaces/w1/journey/autonomy').flush(board([entry({ run: run({ status: 'STOPPED', stopReason: 'Reprise en main.' }) })]));
+    fixture.detectChanges();
+    expect(html.querySelector('.auto__last')?.textContent).toContain('Dernière course : arrêtée — Reprise en main.');
+    fixture.destroy();
+  });
+
+  it('409 au lancement : le message du serveur et sa première raison', () => {
+    const fixture = mount(journey([chantier(1)]), board([entry()]));
+    (el(fixture).querySelector('.auto__go') as HTMLButtonElement).click();
+    http.expectOne('/api/workspaces/w1/journey/chantiers/1/autonomy').flush(
+      { error: 'autonomy_limit_reached', message: 'Quatre chantiers autonomes au maximum en même temps.' },
+      { status: 409, statusText: 'Conflict' });
+    expect(snack.open).toHaveBeenCalledWith('Quatre chantiers autonomes au maximum en même temps.', 'OK', jasmine.any(Object));
+    http.expectOne('/api/workspaces/w1/journey/autonomy').flush(board([entry()]));
+  });
+
+  it('lecture seule : l’état reste lisible, sans bouton', () => {
+    const fixture = mount(journey([chantier(1)]), board([entry()]), false);
+    expect(el(fixture).querySelector('.auto__status--ready')).not.toBeNull();
+    expect(el(fixture).querySelector('.auto__go')).toBeNull();
+  });
+
+  it('étape BLOQUE : état « bloquée » avec la raison de l’agent', () => {
+    const blocked = step('Basculer le DNS', { status: 'BLOQUE', evidence: 'accès registrar manquant', unlocked: true });
+    expect(stepState(blocked)).toBe('blocked');
+    expect(stepStatusLabel('BLOQUE')).toBe('bloquée');
+    const fixture = mount(journey([chantier(1, { plan: {
+      version: 3, validatedVersion: 3, validatedAt: null, awaitingValidation: false, amendment: false, waitingInputs: 0,
+      steps: [blocked],
+    } })]), board([entry()]));
+    expect(el(fixture).querySelector('.board__blocked')?.textContent).toContain('bloquée : accès registrar manquant');
+  });
+
+  it('fonctions pures et /autonome', () => {
+    expect(autonomyCurrentStep(2, 7)).toBe(3);
+    expect(autonomyCurrentStep(7, 7)).toBe(7);
+    expect(autonomyCurrentStep(0, 0)).toBe(0);
+    const prompt = expandSlashCommand('/autonome 2') ?? '';
+    expect(prompt).toContain('lancer_chantier_autonome');
+    expect(prompt.endsWith('2')).toBeTrue();
+  });
+});
