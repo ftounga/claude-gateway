@@ -47,6 +47,14 @@ public class AttentesDigestService {
         this.acces = acces;
     }
 
+    /** Les chantiers dormants (F-220 / SF-220-05) ; absent = pas de rappel des dormants. */
+    private fr.claudegateway.atelier.dashboard.DormantChantierScanner dormant;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setDormant(fr.claudegateway.atelier.dashboard.DormantChantierScanner dormant) {
+        this.dormant = dormant;
+    }
+
     private final TerminalActionRepository actions;
     private final TerminalActionFollowUp followUp;
     private final NotificationDigestWriter digests;
@@ -88,15 +96,24 @@ public class AttentesDigestService {
                 }
             }
         }
+        // F-220 / SF-220-05 : des chantiers ouverts dorment — le moins prioritaire du récapitulatif.
+        Set<UUID> sleeping = new LinkedHashSet<>();
+        if (dormant != null) {
+            try {
+                sleeping.addAll(dormant.usersWithDormant(now));
+            } catch (RuntimeException e) {
+                log.warn("Rappel des chantiers dormants impossible : {}", e.getClass().getSimpleName());
+            }
+        }
         Set<UUID> everyone = new LinkedHashSet<>(due);
         everyone.addAll(morning);
+        everyone.addAll(sleeping);
         int sent = 0;
         for (UUID userId : everyone) {
             try {
                 if (digests.claim(userId, today, now)) {
                     // Une seule notification par jour : elle dit le cas dominant.
-                    push.notify(userId, null, morning.contains(userId)
-                            ? PushEvent.ATTENTES_POINT_DU_MATIN : PushEvent.ATTENTES_TO_FOLLOW_UP);
+                    push.notify(userId, null, dominant(userId, morning, due));
                     sent++;
                 }
             } catch (RuntimeException e) {
@@ -106,5 +123,13 @@ public class AttentesDigestService {
         }
         digests.purgeBefore(today.minusDays(RETENTION_DAYS));
         return sent;
+    }
+
+    /** Le cas dominant d'un compte : point du matin, puis relances, puis chantiers dormants (F-220). */
+    public static PushEvent dominant(UUID userId, Set<UUID> morning, Set<UUID> due) {
+        if (morning.contains(userId)) {
+            return PushEvent.ATTENTES_POINT_DU_MATIN;
+        }
+        return due.contains(userId) ? PushEvent.ATTENTES_TO_FOLLOW_UP : PushEvent.CHANTIERS_DORMANT;
     }
 }

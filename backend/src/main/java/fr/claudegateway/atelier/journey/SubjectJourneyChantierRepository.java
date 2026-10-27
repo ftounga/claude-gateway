@@ -30,6 +30,12 @@ public interface SubjectJourneyChantierRepository extends JpaRepository<SubjectJ
             + "where c.userId = :userId and c.workspaceId = :workspaceId")
     int maxNumber(@Param("userId") UUID userId, @Param("workspaceId") UUID workspaceId);
 
+    /**
+     * Les chantiers d'un statut sans mise à jour depuis {@code before} — tous comptes : le rappel des chantiers
+     * dormants (F-220 / SF-220-05), tâche de fond dont chaque émission porte le {@code user_id} de la ligne.
+     */
+    List<SubjectJourneyChantier> findByStatusAndUpdatedAtBefore(String status, java.time.OffsetDateTime before);
+
     /** Purge à la suppression du compte. */
     @Modifying
     @Query("delete from SubjectJourneyChantier c where c.userId = :userId")

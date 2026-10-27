@@ -74,7 +74,13 @@ public enum PushEvent {
      * Un chantier lancé en autonome s'est arrêté avant la fin : blocage, échec, plafond de tours (F-219 /
      * SF-219-02). Il attend un geste.
      */
-    AUTONOMY_STOPPED("Un chantier autonome s'est arrêté", "Ouvrez le sujet pour voir ce qui le bloque.", true);
+    AUTONOMY_STOPPED("Un chantier autonome s'est arrêté", "Ouvrez le sujet pour voir ce qui le bloque.", true),
+
+    /**
+     * Récapitulatif quotidien (F-220 / SF-220-05) : des chantiers ouverts dorment (aucun geste depuis quelques
+     * jours, non reportés). Le moins prioritaire du récapitulatif : une seule notification par jour.
+     */
+    CHANTIERS_DORMANT("Des chantiers dorment", "Ouvrez la Forge pour retrouver ce qui reste à faire.");
 
     private final String title;
     private final String body;

@@ -16,6 +16,12 @@ public interface SubjectJourneyRepository extends JpaRepository<SubjectJourney, 
     /** Les parcours de plusieurs sujets d'un même utilisateur (F-178 / SF-178-02, {@code sujets_etat}). */
     java.util.List<SubjectJourney> findByUserIdAndWorkspaceIdIn(UUID userId, java.util.Collection<UUID> workspaceIds);
 
+    /**
+     * Les parcours d'un mode sans mise à jour depuis {@code before} — tous comptes : le rappel des chantiers
+     * dormants (F-220 / SF-220-05), tâche de fond dont chaque émission porte le {@code user_id} de la ligne.
+     */
+    java.util.List<SubjectJourney> findByModeAndUpdatedAtBefore(JourneyMode mode, java.time.OffsetDateTime before);
+
     /** Purge à la suppression du compte. */
     @Modifying
     @Query("delete from SubjectJourney j where j.userId = :userId")

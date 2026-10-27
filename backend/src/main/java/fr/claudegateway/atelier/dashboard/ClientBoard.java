@@ -19,8 +19,8 @@ import fr.claudegateway.atelier.journey.ChantierUnblocker;
 public record ClientBoard(UUID hostId, String hostName, OffsetDateTime generatedAt, int dormantAfterDays,
                           Counts counts, Autonomy autonomy, List<Chantier> chantiers) {
 
-    /** Les compteurs de l'en-tête. */
-    public record Counts(int outil, int moi, int autrui, int live, int dormant) {
+    /** Les compteurs de l'en-tête — un chantier reporté ne compte que dans {@code snoozed} (SF-220-05). */
+    public record Counts(int outil, int moi, int autrui, int live, int dormant, int snoozed) {
     }
 
     /** Les courses autonomes du compte : en cours, et combien au plus. */
@@ -45,11 +45,12 @@ public record ClientBoard(UUID hostId, String hostName, OffsetDateTime generated
      * @param live           un tour vivant (chantier au focus) ou une course autonome en cours
      * @param question       la question en suspens (chantier au focus), ou {@code null}
      * @param run            sa course autonome en cours, sinon la dernière ; {@code null} s'il n'a jamais couru
+     * @param snoozedUntil   reporté jusqu'à cette date (SF-220-05), ou {@code null}
      */
     public record Chantier(UUID workspaceId, String workspaceName, boolean hostTerminal, int number, String title,
                            String phase, String phaseLabel, boolean focus, OffsetDateTime openedAt, int done,
                            int total, NextStep nextStep, ChantierUnblocker.Mark unblocker, boolean ready,
                            List<String> missing, OffsetDateTime lastActivityAt, long idleDays, boolean dormant,
-                           boolean live, String question, AutonomyService.RunView run) {
+                           boolean live, String question, AutonomyService.RunView run, OffsetDateTime snoozedUntil) {
     }
 }
