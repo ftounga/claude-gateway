@@ -7,7 +7,7 @@ SF-220-04
 F-220 — Le tableau de bord du client
 
 ## Statut
-in-progress
+Done
 
 ## Date de création
 2026-10-27

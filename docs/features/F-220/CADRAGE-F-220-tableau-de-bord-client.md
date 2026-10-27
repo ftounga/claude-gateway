@@ -1,6 +1,6 @@
 # CADRAGE F-220 — Le tableau de bord du client
 
-**Statut :** complété le 2026-10-27 par l'agent de livraison (vague autonome) — découpage, contrat d'API et arbitrages ci-dessous
+**Statut :** livré le 2026-10-27 (6/6, PR #1315 → #1320, non déployé) — complété par l'agent de livraison (vague autonome) — découpage, contrat d'API et arbitrages ci-dessous
 **Demande PO :** 2026-10-27
 **Dépend de :** F-219 (API de préflight et de lancement en autonome)
 
