@@ -16,6 +16,7 @@ import {
   ClientBoard,
   ClientBoardChantier,
   ClientBoardFilter,
+  SNOOZE_CHOICES,
   UNBLOCKER_HINTS,
   UNBLOCKER_ICONS,
   UNBLOCKER_ORDER,
@@ -27,10 +28,12 @@ import {
   idleLabel,
   isRunning,
   isSelectable,
+  isSnoozed,
   launchSummary,
   matchesFilter,
   overLimitMessage,
   sinceLabel,
+  untilLabel,
 } from '../../core/models/client-board.models';
 import { AutonomyService } from '../../core/services/autonomy.service';
 import { ClientBoardService } from '../../core/services/client-board.service';
@@ -108,10 +111,19 @@ export class ClientBoardComponent {
     return UNBLOCKER_ORDER
       .map((who) => ({
         who,
-        chantiers: board.chantiers.filter((c) => groupOf(c) === who && matchesFilter(c, filter)),
+        chantiers: board.chantiers.filter((c) => !isSnoozed(c) && groupOf(c) === who && matchesFilter(c, filter)),
       }))
       .filter((group) => group.chantiers.length > 0);
   });
+
+  /** Les chantiers reportés (SF-220-06), rangés à part. */
+  readonly snoozed = computed<ClientBoardChantier[]>(() =>
+    (this.board()?.chantiers ?? []).filter((c) => isSnoozed(c)));
+
+  /** La section « Reportés » est dépliée. */
+  readonly showSnoozed = signal(false);
+
+  readonly snoozeChoices = SNOOZE_CHOICES;
 
   /** Les chantiers sélectionnés, tels que le tableau les montre encore. */
   readonly selection = computed<ClientBoardChantier[]>(() => {
@@ -330,6 +342,41 @@ export class ClientBoardComponent {
       map(() => null),
       catchError((err) => of(`${this.subjectName(c)} · chantier ${c.number} — ${httpErrorMessage(err, 'refusé')}`)),
     );
+  }
+
+  /** « 30/10 ». */
+  until(c: ClientBoardChantier): string {
+    return untilLabel(c.snoozedUntil);
+  }
+
+  /** [Reporter] le chantier de `days` jours (SF-220-05) : il quitte les groupes jusqu'à cette date. */
+  snooze(c: ClientBoardChantier, days: number): void {
+    this.boards.snooze(c.workspaceId, c.number, days).subscribe({
+      next: (snooze) => {
+        this.selected.update((current) => {
+          const next = new Set(current);
+          next.delete(chantierKey(c));
+          return next;
+        });
+        this.snackBar.open(`Chantier ${c.number} reporté jusqu'au ${untilLabel(snooze.until)}.`, 'OK',
+          { duration: 4000 });
+        this.load(this.hostId(), false);
+      },
+      error: (err) => this.snackBar.open(httpErrorMessage(err, 'Le report a échoué.'), 'Fermer',
+        { duration: 6000 }),
+    });
+  }
+
+  /** [Ne plus reporter] : le chantier revient dans son groupe. */
+  unsnooze(c: ClientBoardChantier): void {
+    this.boards.unsnooze(c.workspaceId, c.number).subscribe({
+      next: () => {
+        this.snackBar.open(`Chantier ${c.number} de retour dans le tableau.`, 'OK', { duration: 4000 });
+        this.load(this.hostId(), false);
+      },
+      error: (err) => this.snackBar.open(httpErrorMessage(err, 'L\'opération a échoué.'), 'Fermer',
+        { duration: 6000 }),
+    });
   }
 
   /** [Clore le chantier] : confirmation, puis clôture (F-206). */

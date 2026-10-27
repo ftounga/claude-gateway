@@ -55,6 +55,14 @@ export interface ClientBoardChantier {
   live: boolean;
   question: string | null;
   run: AutonomyRun | null;
+  /** Reporté jusqu'à cette date (SF-220-05), ou `null` — absent d'une gateway antérieure. */
+  snoozedUntil?: string | null;
+}
+
+/** Le report d'un chantier (SF-220-05). */
+export interface ChantierSnooze {
+  number: number;
+  until: string;
 }
 
 /** Le tableau d'un client. */
@@ -63,7 +71,7 @@ export interface ClientBoard {
   hostName: string;
   generatedAt: string;
   dormantAfterDays: number;
-  counts: { outil: number; moi: number; autrui: number; live: number; dormant: number };
+  counts: { outil: number; moi: number; autrui: number; live: number; dormant: number; snoozed?: number };
   autonomy: { running: number; maxParallel: number };
   chantiers: ClientBoardChantier[];
 }
@@ -141,10 +149,35 @@ export function isRunning(chantier: ClientBoardChantier): boolean {
   return chantier.run?.status === 'RUNNING';
 }
 
-/** Sélectionnable pour un lancement groupé : prêt et rien ne tourne. */
-export function isSelectable(chantier: ClientBoardChantier): boolean {
-  return chantier.ready && !isRunning(chantier);
+/** Reporté (SF-220-05) : rangé à part, hors des groupes et de la sélection. */
+export function isSnoozed(chantier: Pick<ClientBoardChantier, 'snoozedUntil'>): boolean {
+  return !!chantier.snoozedUntil;
 }
+
+/** Sélectionnable pour un lancement groupé : prêt, rien ne tourne, pas reporté. */
+export function isSelectable(chantier: ClientBoardChantier): boolean {
+  return chantier.ready && !isRunning(chantier) && !isSnoozed(chantier);
+}
+
+/** « 30/10 » — la date de fin d'un report, au format court. */
+export function untilLabel(iso: string | null | undefined): string {
+  if (!iso) {
+    return '';
+  }
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) {
+    return '';
+  }
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(at.getDate())}/${pad(at.getMonth() + 1)}`;
+}
+
+/** Les durées de report proposées (SF-220-06). */
+export const SNOOZE_CHOICES: readonly { days: number; label: string }[] = [
+  { days: 1, label: 'Reporter d\'un jour' },
+  { days: 3, label: 'Reporter de 3 jours' },
+  { days: 7, label: 'Reporter d\'une semaine' },
+];
 
 /** La clé d'un chantier : sujet + numéro. */
 export function chantierKey(chantier: Pick<ClientBoardChantier, 'workspaceId' | 'number'>): string {

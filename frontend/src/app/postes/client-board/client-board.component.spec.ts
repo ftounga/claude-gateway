@@ -70,8 +70,10 @@ describe('ClientBoardComponent', () => {
   });
 
   function build(data: ClientBoard): void {
-    boards = jasmine.createSpyObj<ClientBoardService>('ClientBoardService', ['board']);
+    boards = jasmine.createSpyObj<ClientBoardService>('ClientBoardService', ['board', 'snooze', 'unsnooze']);
     boards.board.and.returnValue(of(data));
+    boards.snooze.and.returnValue(of({ number: 1, until: '2026-10-30T10:00:00' }));
+    boards.unsnooze.and.returnValue(of(undefined));
     autonomy = jasmine.createSpyObj<AutonomyService>('AutonomyService', ['launch']);
     autonomy.launch.and.returnValue(of(run));
     journeys = jasmine.createSpyObj<JourneyService>('JourneyService', ['focus', 'closeChantier']);
@@ -216,6 +218,38 @@ describe('ClientBoardComponent', () => {
     component.load('h1', true);
     fixture.detectChanges();
     expect(el().querySelector('.cb__error')?.textContent).toContain('Le tableau n\'a pas pu être lu.');
+  });
+
+  it('SF-220-06 : reporter appelle la route, annonce la date et relit', () => {
+    build(board([outilReady]));
+    boards.board.calls.reset();
+    component.snooze(outilReady, 3);
+    expect(boards.snooze).toHaveBeenCalledWith('w1', 1, 3);
+    expect(snack.open.calls.mostRecent().args[0]).toBe('Chantier 1 reporté jusqu\'au 30/10.');
+    expect(boards.board).toHaveBeenCalled();
+  });
+
+  it('SF-220-06 : un reporté sort des groupes, se range dans « Reportés » replié, puis revient', () => {
+    const later = card({ workspaceId: 'w9', workspaceName: 'dns', number: 4, snoozedUntil: '2026-10-30T10:00:00' });
+    build(board([outilReady, later]));
+    expect(el().querySelector('[data-key="w9#4"]')).toBeNull();
+    const toggle = el().querySelector('.cb__snoozed-toggle') as HTMLButtonElement;
+    expect(toggle.textContent).toContain('Reportés (1)');
+    toggle.click();
+    fixture.detectChanges();
+    const item = el().querySelector('.cb__snoozed-item[data-key="w9#4"]') as HTMLElement;
+    expect(item.textContent).toContain('reporté jusqu\'au 30/10');
+    (item.querySelector('.cb__unsnooze') as HTMLButtonElement).click();
+    expect(boards.unsnooze).toHaveBeenCalledWith('w9', 4);
+  });
+
+  it('SF-220-06 : un refus du report s\'affiche', () => {
+    build(board([outilReady]));
+    boards.snooze.and.returnValue(throwError(() => new HttpErrorResponse({
+      status: 400, error: { error: 'journey_invalid', message: 'Le chantier 1 n\'est pas ouvert.' },
+    })));
+    component.snooze(outilReady, 1);
+    expect(snack.open.calls.mostRecent().args[0]).toContain('Le chantier 1 n\'est pas ouvert.');
   });
 
   it('aucun chantier : le dit', () => {
