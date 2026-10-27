@@ -65,15 +65,48 @@ export interface ChantierSnooze {
   until: string;
 }
 
+/**
+ * Une attente ouverte hors de tout chantier (SF-220-07) : ce qu'aucun chantier ouvert ne montre déjà.
+ * `unblocker.who` vaut `MOI` (un geste à moi, ou une demande pas encore partie) ou `AUTRUI` (demandée).
+ */
+export interface ClientBoardLooseTask {
+  actionId: string;
+  workspaceId: string;
+  workspaceName: string;
+  hostTerminal: boolean;
+  description: string;
+  blocks: string | null;
+  /** `A_FAIRE` ou `DEMANDE`. */
+  status: 'A_FAIRE' | 'DEMANDE';
+  qui: 'MOI' | 'CLIENT' | 'TIERS' | null;
+  categorie: string | null;
+  person: string | null;
+  requestedTo: string | null;
+  requestedAt: string | null;
+  createdAt: string | null;
+  unblocker: UnblockerMark;
+  lastActivityAt: string | null;
+  idleDays: number;
+  dormant: boolean;
+  /** Demandée depuis assez longtemps pour relancer (F-175). */
+  followUpDue: boolean;
+}
+
 /** Le tableau d'un client. */
 export interface ClientBoard {
   hostId: string;
   hostName: string;
   generatedAt: string;
   dormantAfterDays: number;
-  counts: { outil: number; moi: number; autrui: number; live: number; dormant: number; snoozed?: number };
+  /** `moi`, `autrui` et `dormant` comptent aussi les attentes hors chantier (SF-220-07). */
+  counts: {
+    outil: number; moi: number; autrui: number; live: number; dormant: number; snoozed?: number;
+    horsChantier?: number;
+  };
   autonomy: { running: number; maxParallel: number };
   chantiers: ClientBoardChantier[];
+  /** Les attentes hors chantier (SF-220-07) — absent d'une gateway antérieure. */
+  horsChantier?: ClientBoardLooseTask[];
 }
 
 /** Un filtre de l'en-tête. */
@@ -208,4 +241,31 @@ export function launchSummary(launched: number, refusals: string[]): string {
     return `${ok}.`;
   }
   return `${ok} ; ${refusals.length} refusé${refusals.length > 1 ? 's' : ''} : ${refusals.join(' ; ')}`;
+}
+
+/** Un sous-groupe de la section « Hors chantier » : sa couleur et ses attentes. */
+export interface LooseTaskGroup {
+  who: Unblocker;
+  tasks: ClientBoardLooseTask[];
+}
+
+/**
+ * Les sous-groupes non vides de « Hors chantier », dans l'ordre du tableau (ma décision, puis quelqu'un),
+ * filtre de l'en-tête appliqué (« L'outil peut avancer » ne garde aucune attente).
+ */
+export function looseTaskGroups(tasks: readonly ClientBoardLooseTask[] | null | undefined,
+                                filter: ClientBoardFilter | null): LooseTaskGroup[] {
+  const all = tasks ?? [];
+  return UNBLOCKER_ORDER
+    .map((who) => ({
+      who,
+      tasks: all.filter((t) => t.unblocker.who === who
+        && (filter === null || (filter === 'DORMANT' ? t.dormant : t.unblocker.who === filter))),
+    }))
+    .filter((group) => group.tasks.length > 0);
+}
+
+/** [Marquer demandé] n'a de sens que pour une demande pas encore partie, envers quelqu'un d'autre. */
+export function canMarkRequested(task: Pick<ClientBoardLooseTask, 'status' | 'qui'>): boolean {
+  return task.status === 'A_FAIRE' && task.qui !== 'MOI';
 }

@@ -10,8 +10,14 @@ import java.time.OffsetDateTime;
  * @param qui    {@code MOI}, {@code CLIENT}, {@code TIERS}, ou {@code null} si non qualifiée
  * @param who    à qui (la personne sollicitée, sinon la personne citée), ou {@code null}
  * @param since  depuis quand (la demande, sinon la création), ou {@code null}
+ * @param actionId l'attente lue (SF-220-07 : ce que le tableau montre déjà), ou {@code null}
  */
-public record WaitInfo(String status, String qui, String who, OffsetDateTime since) {
+public record WaitInfo(String status, String qui, String who, OffsetDateTime since, java.util.UUID actionId) {
+
+    /** Une attente sans identifiant connu. */
+    public WaitInfo(String status, String qui, String who, OffsetDateTime since) {
+        this(status, qui, who, since, null);
+    }
 
     /** Une attente dont on ne connaît que l'état. */
     public static WaitInfo ofStatus(String status) {

@@ -16,6 +16,8 @@ import {
   ClientBoard,
   ClientBoardChantier,
   ClientBoardFilter,
+  ClientBoardLooseTask,
+  LooseTaskGroup,
   SNOOZE_CHOICES,
   UNBLOCKER_HINTS,
   UNBLOCKER_ICONS,
@@ -29,7 +31,9 @@ import {
   isRunning,
   isSelectable,
   isSnoozed,
+  canMarkRequested,
   launchSummary,
+  looseTaskGroups,
   matchesFilter,
   overLimitMessage,
   sinceLabel,
@@ -38,6 +42,7 @@ import {
 import { AutonomyService } from '../../core/services/autonomy.service';
 import { ClientBoardService } from '../../core/services/client-board.service';
 import { JourneyService } from '../../core/services/journey.service';
+import { TerminalActionsService } from '../../core/services/terminal-actions.service';
 import { httpErrorMessage } from '../../shared/http-error.util';
 
 /** Relecture du tableau tant que l'onglet du navigateur est visible. */
@@ -58,6 +63,9 @@ interface BoardGroup {
  * décision, quelqu'un d'autre), le plus dormant d'abord. Gestes : ouvrir au focus, lancer en autonome — un
  * seul ou plusieurs d'un coup, dans la limite des courses autonomes (F-219) —, clore.
  *
+ * Sous les chantiers, la section **Hors chantier** (SF-220-07) : les attentes ouvertes qu'aucun chantier ne
+ * montre, même code couleur, gestes des routes F-154/F-175 existantes (ouvrir le sujet, marquer fait, demandé).
+ *
  * <p>La couleur ne porte jamais seule l'information : chaque pastille écrit son libellé et son icône.</p>
  */
 @Component({
@@ -77,6 +85,7 @@ export class ClientBoardComponent {
   private readonly boards = inject(ClientBoardService);
   private readonly autonomy = inject(AutonomyService);
   private readonly journeys = inject(JourneyService);
+  private readonly actions = inject(TerminalActionsService);
   private readonly router = inject(Router);
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialog = inject(MatDialog);
@@ -119,6 +128,16 @@ export class ClientBoardComponent {
   /** Les chantiers reportés (SF-220-06), rangés à part. */
   readonly snoozed = computed<ClientBoardChantier[]>(() =>
     (this.board()?.chantiers ?? []).filter((c) => isSnoozed(c)));
+
+  /** Les attentes hors chantier (SF-220-07), ma décision puis quelqu'un, filtre appliqué. */
+  readonly looseGroups = computed<LooseTaskGroup[]>(() =>
+    looseTaskGroups(this.board()?.horsChantier, this.filter()));
+
+  /** Le nombre d'attentes hors chantier, sans filtre. */
+  readonly looseCount = computed<number>(() => this.board()?.horsChantier?.length ?? 0);
+
+  /** Un geste sur une attente est en cours, par identifiant. */
+  readonly busyTasks = signal<ReadonlySet<string>>(new Set());
 
   /** La section « Reportés » est dépliée. */
   readonly showSnoozed = signal(false);
@@ -376,6 +395,73 @@ export class ClientBoardComponent {
       },
       error: (err) => this.snackBar.open(httpErrorMessage(err, 'L\'opération a échoué.'), 'Fermer',
         { duration: 6000 }),
+    });
+  }
+
+  // ------------------------------------------------------------------ hors chantier (SF-220-07)
+
+  taskSubject(t: ClientBoardLooseTask): string {
+    return t.hostTerminal ? 'Terminal du poste' : t.workspaceName;
+  }
+
+  taskIdle(t: ClientBoardLooseTask): string {
+    return idleLabel(t);
+  }
+
+  taskSince(t: ClientBoardLooseTask): string | null {
+    return sinceLabel(t.unblocker.since);
+  }
+
+  canMarkRequested(t: ClientBoardLooseTask): boolean {
+    return canMarkRequested(t);
+  }
+
+  taskBusy(t: ClientBoardLooseTask): boolean {
+    return this.busyTasks().has(t.actionId);
+  }
+
+  /** [Ouvrir le sujet] : le terminal de l'attente. */
+  openTask(t: ClientBoardLooseTask): void {
+    void this.router.navigate(['/atelier', t.workspaceId]);
+  }
+
+  /** [Marquer fait] : la route F-154 existante (« C'est fait. »). */
+  markDone(t: ClientBoardLooseTask): void {
+    this.taskGesture(t, this.actions.close(t.workspaceId, t.actionId), 'Attente marquée faite.',
+      'L\'attente n\'a pas pu être marquée faite.');
+  }
+
+  /** [Marquer demandé] : la route F-175 existante ; à qui = la personne citée, par défaut (serveur). */
+  markRequested(t: ClientBoardLooseTask): void {
+    this.taskGesture(t, this.actions.changeStatus(t.workspaceId, t.actionId, { status: 'DEMANDE' }),
+      'Attente marquée demandée.', 'L\'attente n\'a pas pu être marquée demandée.');
+  }
+
+  private taskGesture(t: ClientBoardLooseTask, call: Observable<unknown>, done: string, failed: string): void {
+    if (this.taskBusy(t)) {
+      return;
+    }
+    const setBusy = (busy: boolean) => this.busyTasks.update((current) => {
+      const next = new Set(current);
+      if (busy) {
+        next.add(t.actionId);
+      } else {
+        next.delete(t.actionId);
+      }
+      return next;
+    });
+    setBusy(true);
+    call.subscribe({
+      next: () => {
+        setBusy(false);
+        this.snackBar.open(done, 'OK', { duration: 4000 });
+        this.load(this.hostId(), false);
+      },
+      error: (err) => {
+        setBusy(false);
+        this.snackBar.open(httpErrorMessage(err, failed), 'Fermer', { duration: 6000 });
+        this.load(this.hostId(), false);
+      },
     });
   }
 

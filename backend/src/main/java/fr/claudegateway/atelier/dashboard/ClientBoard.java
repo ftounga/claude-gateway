@@ -15,12 +15,17 @@ import fr.claudegateway.atelier.journey.ChantierUnblocker;
  * @param counts           les compteurs par couleur, vivants et dormants
  * @param autonomy         courses autonomes en cours sur le compte, et le plafond (F-219)
  * @param chantiers        Outil, puis Ma décision, puis Quelqu'un ; le plus dormant d'abord dans chaque groupe
+ * @param horsChantier     les attentes ouvertes qu'aucun chantier ouvert ne montre (SF-220-07) : Ma décision,
+ *                         puis Quelqu'un ; le plus dormant d'abord
  */
 public record ClientBoard(UUID hostId, String hostName, OffsetDateTime generatedAt, int dormantAfterDays,
-                          Counts counts, Autonomy autonomy, List<Chantier> chantiers) {
+                          Counts counts, Autonomy autonomy, List<Chantier> chantiers, List<LooseTask> horsChantier) {
 
-    /** Les compteurs de l'en-tête — un chantier reporté ne compte que dans {@code snoozed} (SF-220-05). */
-    public record Counts(int outil, int moi, int autrui, int live, int dormant, int snoozed) {
+    /**
+     * Les compteurs de l'en-tête — un chantier reporté ne compte que dans {@code snoozed} (SF-220-05) ;
+     * {@code moi}, {@code autrui} et {@code dormant} comptent aussi les attentes hors chantier (SF-220-07).
+     */
+    public record Counts(int outil, int moi, int autrui, int live, int dormant, int snoozed, int horsChantier) {
     }
 
     /** Les courses autonomes du compte : en cours, et combien au plus. */
@@ -52,5 +57,22 @@ public record ClientBoard(UUID hostId, String hostName, OffsetDateTime generated
                            int total, NextStep nextStep, ChantierUnblocker.Mark unblocker, boolean ready,
                            List<String> missing, OffsetDateTime lastActivityAt, long idleDays, boolean dormant,
                            boolean live, String question, AutonomyService.RunView run, OffsetDateTime snoozedUntil) {
+    }
+
+    /**
+     * Une attente ouverte hors de tout chantier (SF-220-07), sur sa ligne.
+     *
+     * @param hostTerminal   vrai si son sujet est le terminal du poste
+     * @param unblocker      qui débloque : {@code MOI} ou {@code AUTRUI}, jamais {@code OUTIL}
+     * @param lastActivityAt son dernier geste ({@code updated_at})
+     * @param idleDays       jours entiers écoulés depuis
+     * @param dormant        {@code idleDays ≥ dormantAfterDays}
+     * @param followUpDue    « Demandé » depuis assez longtemps pour relancer (F-175)
+     */
+    public record LooseTask(UUID actionId, UUID workspaceId, String workspaceName, boolean hostTerminal,
+                            String description, String blocks, String status, String qui, String categorie,
+                            String person, String requestedTo, OffsetDateTime requestedAt, OffsetDateTime createdAt,
+                            ChantierUnblocker.Mark unblocker, OffsetDateTime lastActivityAt, long idleDays,
+                            boolean dormant, boolean followUpDue) {
     }
 }

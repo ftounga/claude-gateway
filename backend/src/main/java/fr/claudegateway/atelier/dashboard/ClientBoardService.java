@@ -6,10 +6,12 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import org.slf4j.Logger;
@@ -24,10 +26,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import fr.claudegateway.atelier.AtelierMessageRepository;
 import fr.claudegateway.atelier.Workspace;
 import fr.claudegateway.atelier.WorkspaceService;
+import fr.claudegateway.atelier.actions.TerminalAction;
+import fr.claudegateway.atelier.actions.TerminalActionFollowUp;
+import fr.claudegateway.atelier.actions.TerminalActionQui;
+import fr.claudegateway.atelier.actions.TerminalActionRepository;
+import fr.claudegateway.atelier.actions.TerminalActionStatus;
 import fr.claudegateway.atelier.autonomy.AutonomyService;
 import fr.claudegateway.atelier.journey.ChantierPreflight;
 import fr.claudegateway.atelier.journey.ChantierPreflightService;
 import fr.claudegateway.atelier.journey.ChantierPreflightService.ChantierReadiness;
+import fr.claudegateway.atelier.journey.ChantierUnblocker;
 import fr.claudegateway.atelier.journey.SubjectJourney;
 import fr.claudegateway.atelier.journey.SubjectJourneyChantier;
 import fr.claudegateway.atelier.journey.SubjectJourneyRepository;
@@ -55,6 +63,8 @@ public class ClientBoardService {
     private static final Logger log = LoggerFactory.getLogger(ClientBoardService.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
     static final int MAX_QUESTION = 300;
+    /** Au-delà, la section « Hors chantier » est coupée (SF-220-07). */
+    static final int MAX_LOOSE = 200;
 
     private final RunnerHostService hosts;
     private final WorkspaceService workspaces;
@@ -65,13 +75,16 @@ public class ClientBoardService {
     private final AtelierMessageRepository messages;
     private final LiveTurnRegistry liveTurns;
     private final ChantierSnoozeRepository snoozes;
+    private final TerminalActionRepository actions;
+    private final TerminalActionFollowUp followUp;
     private final Clock clock;
     private final int dormantAfterDays;
 
     public ClientBoardService(RunnerHostService hosts, WorkspaceService workspaces,
             SubjectJourneyRepository journeyRepository, SubjectJourneyService journeys,
             ChantierPreflightService preflights, AutonomyService autonomy, AtelierMessageRepository messages,
-            LiveTurnRegistry liveTurns, ChantierSnoozeRepository snoozes, Clock clock,
+            LiveTurnRegistry liveTurns, ChantierSnoozeRepository snoozes, TerminalActionRepository actions,
+            TerminalActionFollowUp followUp, Clock clock,
             @Value("${app.client-board.dormant-days:2}") int dormantAfterDays) {
         this.hosts = hosts;
         this.workspaces = workspaces;
@@ -82,6 +95,8 @@ public class ClientBoardService {
         this.messages = messages;
         this.liveTurns = liveTurns;
         this.snoozes = snoozes;
+        this.actions = actions;
+        this.followUp = followUp;
         this.clock = clock;
         this.dormantAfterDays = Math.max(1, dormantAfterDays);
     }
@@ -94,6 +109,7 @@ public class ClientBoardService {
         Map<UUID, Workspace> subjects = subjects(userId, hostId);
         List<ClientBoard.Chantier> cards = new ArrayList<>();
         List<AutonomyService.RunView> runs = runs(userId);
+        Set<UUID> shown = new HashSet<>(); // les attentes que les chantiers montrent déjà (SF-220-07)
         if (!subjects.isEmpty()) {
             Map<UUID, OffsetDateTime> lastMessage = lastMessages(userId, subjects);
             Map<String, OffsetDateTime> snoozed = new HashMap<>();
@@ -108,17 +124,88 @@ public class ClientBoardService {
                 }
                 try {
                     cards.addAll(cardsOf(userId, workspace, journeys.withOpenChantiers(row),
-                            lastMessage.get(workspace.getId()), runs, snoozed, now));
+                            lastMessage.get(workspace.getId()), runs, snoozed, now, shown));
                 } catch (RuntimeException e) {
                     log.warn("Tableau du client : sujet illisible ({})", e.getClass().getSimpleName());
                 }
             }
         }
         cards.sort(ORDER);
-        return new ClientBoard(host.getId(), host.getName(), now, dormantAfterDays, counts(cards),
+        List<ClientBoard.LooseTask> loose = looseTasks(userId, subjects, shown, now);
+        return new ClientBoard(host.getId(), host.getName(), now, dormantAfterDays, counts(cards, loose),
                 new ClientBoard.Autonomy(runs.stream().filter(r -> "RUNNING".equals(r.status())).count(),
                         autonomy.maxParallel()),
-                List.copyOf(cards));
+                List.copyOf(cards), loose);
+    }
+
+    /** Ma décision, puis Quelqu'un ; le plus dormant d'abord ; puis la plus ancienne (SF-220-07). */
+    static final Comparator<ClientBoard.LooseTask> LOOSE_ORDER = Comparator
+            .comparingInt((ClientBoard.LooseTask t) -> t.unblocker().who().ordinal())
+            .thenComparing(Comparator.comparingLong(ClientBoard.LooseTask::idleDays).reversed())
+            .thenComparing(t -> t.createdAt() == null ? OffsetDateTime.MAX : t.createdAt());
+
+    /**
+     * <b>Hors chantier</b> (SF-220-07) : les attentes ouvertes, non fusionnées, des sujets du poste, que la
+     * dernière lecture des chantiers n'a pas montrées. Lues sous {@code user_id}, puis gardées seulement si leur
+     * terminal est un sujet possédé du poste. Best-effort : illisibles → section vide, les chantiers restent.
+     */
+    private List<ClientBoard.LooseTask> looseTasks(UUID userId, Map<UUID, Workspace> subjects, Set<UUID> shown,
+            OffsetDateTime now) {
+        if (subjects.isEmpty()) {
+            return List.of();
+        }
+        List<ClientBoard.LooseTask> tasks = new ArrayList<>();
+        try {
+            for (TerminalAction a : actions.findByUserIdAndStatusInOrderByCreatedAtAsc(userId,
+                    TerminalActionStatus.OPEN_STATES)) {
+                Workspace workspace = subjects.get(a.getWorkspaceId());
+                if (workspace == null || !userId.equals(a.getUserId()) || !a.isOpen() || a.getMergedIntoId() != null
+                        || shown.contains(a.getId())) {
+                    continue;
+                }
+                OffsetDateTime last = a.getUpdatedAt() != null ? a.getUpdatedAt() : a.getCreatedAt();
+                long idle = last == null ? 0 : Math.max(0, Duration.between(last, now).toDays());
+                tasks.add(new ClientBoard.LooseTask(a.getId(), workspace.getId(), workspace.getName(),
+                        workspace.isHostTerminal(), a.getDescription(), a.getBlocks(), a.getStatus().name(),
+                        a.getQui() == null ? null : a.getQui().name(),
+                        a.getCategorie() == null ? null : a.getCategorie().name(), a.getPerson(), a.getRequestedTo(),
+                        a.getRequestedAt(), a.getCreatedAt(), markOf(a), last, idle, idle >= dormantAfterDays,
+                        followUp.isDue(a, now)));
+            }
+        } catch (RuntimeException e) {
+            log.warn("Tableau du client : attentes illisibles ({})", e.getClass().getSimpleName());
+            return List.of();
+        }
+        tasks.sort(LOOSE_ORDER);
+        return tasks.size() <= MAX_LOOSE ? List.copyOf(tasks) : List.copyOf(tasks.subList(0, MAX_LOOSE));
+    }
+
+    /**
+     * Qui débloque une attente hors chantier (SF-220-07, même code couleur que SF-220-01) : un geste
+     * {@code qui=MOI}, ou une demande pas encore partie ({@code A_FAIRE}), c'est <b>ma décision</b> ; une demande
+     * partie ({@code DEMANDE}) envers le client ou un tiers, c'est <b>quelqu'un</b> — à qui, depuis quand.
+     */
+    static ChantierUnblocker.Mark markOf(TerminalAction a) {
+        ChantierUnblocker.Who me = ChantierUnblocker.Who.MOI;
+        if (a.getQui() == TerminalActionQui.MOI) {
+            return new ChantierUnblocker.Mark(me, me.label(), "Un geste à faire par vous.", null, null, null);
+        }
+        if (a.getStatus() != TerminalActionStatus.DEMANDE) {
+            String person = blankToNull(a.getPerson());
+            return new ChantierUnblocker.Mark(me, me.label(),
+                    "À demander" + (person == null ? "" : " à " + person) + ".", null, null, null);
+        }
+        ChantierUnblocker.Who other = ChantierUnblocker.Who.AUTRUI;
+        String to = blankToNull(a.getRequestedTo());
+        if (to == null) {
+            to = blankToNull(a.getPerson());
+        }
+        return new ChantierUnblocker.Mark(other, other.label(), "Demandé" + (to == null ? "" : " à " + to) + ".",
+                null, to, a.getRequestedAt() != null ? a.getRequestedAt() : a.getCreatedAt());
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.strip();
     }
 
     /** Outil, puis Ma décision, puis Quelqu'un ; le plus dormant d'abord ; puis sujet et numéro (stable). */
@@ -166,7 +253,7 @@ public class ClientBoardService {
 
     private List<ClientBoard.Chantier> cardsOf(UUID userId, Workspace workspace, SubjectJourney journey,
             OffsetDateTime lastMessage, List<AutonomyService.RunView> runs, Map<String, OffsetDateTime> snoozed,
-            OffsetDateTime now) {
+            OffsetDateTime now, Set<UUID> shown) {
         if (journey == null || journey.getCreatedAt() == null || !journey.isGuided()) {
             return List.of();
         }
@@ -187,6 +274,7 @@ public class ClientBoardService {
         }
         List<ClientBoard.Chantier> cards = new ArrayList<>();
         for (SubjectJourneyResponse.OpenChantier c : view.chantiers()) {
+            shown.addAll(waitedActions(c, waits));
             OffsetDateTime last = c.focus() ? latest(journey.getUpdatedAt(), lastMessage) : updatedAt.get(c.number());
             last = latest(last, c.openedAt());
             long idle = last == null ? 0 : Math.max(0, Duration.between(last, now).toDays());
@@ -203,6 +291,24 @@ public class ClientBoardService {
                     c.focus() ? question : null, run, snoozed.get(workspace.getId() + "#" + c.number())));
         }
         return cards;
+    }
+
+    /** Les attentes que montre ce chantier : celles de ses étapes restantes (SF-220-07). */
+    static Set<UUID> waitedActions(SubjectJourneyResponse.OpenChantier c, Map<String, WaitInfo> waits) {
+        Set<UUID> ids = new HashSet<>();
+        if (c.plan() == null) {
+            return ids;
+        }
+        for (SubjectJourneyResponse.Step step : c.plan().steps()) {
+            if (step.waitsOn() == null || "FAIT".equals(step.status()) || "VERIFIE".equals(step.status())) {
+                continue;
+            }
+            WaitInfo wait = waits.get(step.waitsOn());
+            if (wait != null && wait.actionId() != null) {
+                ids.add(wait.actionId());
+            }
+        }
+        return ids;
     }
 
     private static ClientBoard.NextStep nextStep(SubjectJourneyResponse.OpenChantier c) {
@@ -267,7 +373,7 @@ public class ClientBoardService {
         return text.length() <= MAX_QUESTION ? text : text.substring(0, MAX_QUESTION - 1) + "…";
     }
 
-    private static ClientBoard.Counts counts(List<ClientBoard.Chantier> cards) {
+    static ClientBoard.Counts counts(List<ClientBoard.Chantier> cards, List<ClientBoard.LooseTask> loose) {
         int outil = 0;
         int moi = 0;
         int autrui = 0;
@@ -296,6 +402,16 @@ public class ClientBoardService {
                 dormant++;
             }
         }
-        return new ClientBoard.Counts(outil, moi, autrui, live, dormant, snoozed);
+        for (ClientBoard.LooseTask t : loose) {
+            if (t.unblocker().who() == ChantierUnblocker.Who.MOI) {
+                moi++;
+            } else {
+                autrui++;
+            }
+            if (t.dormant()) {
+                dormant++;
+            }
+        }
+        return new ClientBoard.Counts(outil, moi, autrui, live, dormant, snoozed, loose.size());
     }
 }
