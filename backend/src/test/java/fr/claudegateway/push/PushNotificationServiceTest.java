@@ -199,10 +199,11 @@ class PushNotificationServiceTest {
 
     @Test
     void onlyWhatAwaitsAnActionStaysOnScreenUntilTheGesture() throws Exception {
-        // CA2 : requireInteraction exactement pour accord, question, rappel, plan, validation.
+        // CA2 : requireInteraction exactement pour accord, question, rappel, plan, validation — et le chantier
+        // autonome arrêté (F-219 / SF-219-02), qui attend un geste.
         java.util.Set<PushEvent> action = java.util.EnumSet.of(PushEvent.AUTHORIZATION_REQUESTED,
                 PushEvent.QUESTION_ASKED, PushEvent.QUESTION_REMINDER, PushEvent.PLAN_AWAITING,
-                PushEvent.VALIDATION_AWAITING);
+                PushEvent.VALIDATION_AWAITING, PushEvent.AUTONOMY_STOPPED);
         for (PushEvent event : PushEvent.values()) {
             assertThat(event.requiresAction()).as(event.name()).isEqualTo(action.contains(event));
             com.fasterxml.jackson.databind.JsonNode n = notificationOf(event);

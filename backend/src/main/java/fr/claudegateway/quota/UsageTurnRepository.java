@@ -123,6 +123,16 @@ public interface UsageTurnRepository extends JpaRepository<UsageTurn, UUID> {
             """)
     List<ProjectCostAggregate> aggregateCostByProjectAllTime(@Param("userId") UUID userId);
 
+    /**
+     * Le coût moyen d'un tour d'un compte depuis un instant (F-219 / SF-219-02 — l'estimation d'une course
+     * autonome) ; {@code null} sans tour mesuré. Isolation {@code user_id}.
+     */
+    @Query("""
+            select avg(t.providerCostUsd) from UsageTurn t
+            where t.userId = :userId and t.occurredAt >= :since and t.providerCostUsd is not null
+            """)
+    Double averageCostSince(@Param("userId") UUID userId, @Param("since") OffsetDateTime since);
+
     /** Tours d'un utilisateur, les plus récents d'abord (diagnostic et tests ; isolation `user_id`). */
     List<UsageTurn> findByUserIdOrderByOccurredAtDesc(UUID userId);
 

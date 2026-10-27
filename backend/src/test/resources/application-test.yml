@@ -32,6 +32,10 @@ app:
   # directement.
   routines:
     enabled: false
+  # F-219 / SF-219-02 : fermeture des courses autonomes orphelines désactivée en tests ;
+  # AutonomyService.closeStale() est appelé directement.
+  autonomy:
+    enabled: false
   radar:
     # F-100 : planificateur de la synchro du soir désactivé en tests ; RadarSyncPlanner.runOnce() est
     # appelé directement.
