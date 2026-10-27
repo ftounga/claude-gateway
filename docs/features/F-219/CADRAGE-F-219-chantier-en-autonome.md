@@ -1,6 +1,6 @@
 # CADRAGE F-219 — Exécuter un chantier en autonome
 
-**Statut :** complété le 2026-10-27 par l'agent de livraison (vague autonome) — découpage, contrat d'API et arbitrages ci-dessous
+**Statut :** livré le 2026-10-27 (4/4, PR #1310 → #1313, non déployé) — complété par l'agent de livraison (vague autonome) — découpage, contrat d'API et arbitrages ci-dessous
 **Demande PO :** 2026-10-27
 **Dépend de :** F-218 (mode offensif), à livrer avant
 

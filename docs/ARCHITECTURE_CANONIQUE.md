@@ -468,6 +468,17 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   côté serveur) après `requireOwned`, sous `(user_id, workspace_id)`. Purge : cascade au terminal, purge
   nommée au compte.
 
+- **chantier_autonomy_runs** — **les courses autonomes d'un chantier** (F-219 / SF-219-02, migration `175`) :
+  `id (uuid)`, `user_id (NOT NULL)`, `workspace_id (FK workspaces ON DELETE CASCADE)`, `chantier_number (int)`,
+  `chantier_title (≤ 200)`, `status (RUNNING|DONE|BLOCKED|STOPPED|FAILED)`, `turns`, `steps_done`, `steps_total`,
+  `cost_usd numeric(12,6)`, `stop_reason (≤ 300)`, `error_code (≤ 40)`, `turn_id`, `started_at`, `heartbeat_at`,
+  `finished_at`. Aucun contenu de tour. Index `(status, heartbeat_at)`, `(user_id, status)`,
+  `(workspace_id, started_at)`. Écrite par la boucle autonome (tours sans écran, schéma des routines F-183) ;
+  clôture conditionnelle (`status = RUNNING`) pour qu'une reprise en main ne soit jamais réécrite ; courses
+  orphelines closes après `app.autonomy.stale-after`. Lue par `GET /workspaces/{id}/journey/autonomy` et
+  `GET /atelier/autonomy/runs` après `requireOwned`, sous `user_id`. Vérification avant déploiement :
+  `SELECT … WHERE status = 'RUNNING'` (un rollout tue le tour en cours). Purge : cascade au terminal.
+
 - **message_block_sends** — **les encarts mail/message marqués envoyés** (F-211 / SF-211-01, migration
   `167`) : `id (uuid)`, `user_id (NOT NULL)`, `workspace_id (FK workspaces ON DELETE CASCADE)`,
   `message_id (FK atelier_messages ON DELETE CASCADE)`, `block_index (int)` — rang du bloc mail/message
