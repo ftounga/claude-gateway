@@ -7,7 +7,7 @@ SF-218-01
 F-218 — Le mode offensif (`CADRAGE-F-218-le-mode-offensif.md`)
 
 ## Statut
-En cours
+Done (PR #1305)
 
 ## Date de création
 2026-10-27
