@@ -72,6 +72,7 @@ class AutonomyApiIntegrationTest {
     @Autowired private ChantierAutonomyRunRepository runs;
     @Autowired private AutonomyService service;
     @Autowired private LiveTurnRegistry liveTurns;
+    @Autowired private fr.claudegateway.atelier.journey.JourneyToolExecutor journeyTools;
 
     @MockitoBean private AtelierChatService chat;
 
@@ -103,6 +104,13 @@ class AutonomyApiIntegrationTest {
         if (heldTurn != null) {
             liveTurns.close(heldTurn);
         }
+        service.setDeferredTtl(java.time.Duration.ofMinutes(10));
+    }
+
+    private fr.claudegateway.atelier.journey.JourneyToolExecutor.Outcome launchTool(String json) throws Exception {
+        return journeyTools.execute(alice.getId(), subject,
+                fr.claudegateway.atelier.journey.JourneyToolCatalog.LAUNCH_AUTONOMOUS,
+                new com.fasterxml.jackson.databind.ObjectMapper().readTree(json));
     }
 
     private void executing(Workspace ws) {
@@ -263,6 +271,54 @@ class AutonomyApiIntegrationTest {
         executing(subject);
         call(post(base(subject) + "/chantiers/1/autonomy"), bobToken).andExpect(status().isNotFound());
         call(get(base(subject) + "/autonomy"), bobToken).andExpect(status().isNotFound());
+        assertThat(runs.count()).isZero();
+    }
+
+    @Test
+    @DisplayName("SF-219-04 : l'agent programme le départ ; il part quand le tour est fini, pas avant")
+    void toolSchedulesThenLaunchesWhenIdle() throws Exception {
+        executing(subject);
+        heldTurn = liveTurns.open(alice.getId(), subject.getId()); // le tour qui appelle l'outil
+        fr.claudegateway.atelier.journey.JourneyToolExecutor.Outcome out = launchTool("{\"chantier\":1}");
+        assertThat(out.error()).isFalse();
+        assertThat(out.content()).startsWith("Départ programmé : le chantier 1");
+        assertThat(service.hasDeferred(alice.getId(), subject.getId())).isTrue();
+        assertThat(service.launchDeferred()).isZero();
+        assertThat(runs.count()).isZero();
+        liveTurns.close(heldTurn);
+        heldTurn = null;
+        assertThat(service.launchDeferred()).isEqualTo(1);
+        assertThat(service.hasDeferred(alice.getId(), subject.getId())).isFalse();
+        assertThat(awaitFinished().getChantierNumber()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("SF-219-04 : pas prêt → erreur avec les raisons, rien de programmé ; sans numéro → erreur")
+    void toolRefusesWhenNotReady() throws Exception {
+        journeys.setMode(alice.getId(), subject.getId(), "GUIDE", "Ingress");
+        fr.claudegateway.atelier.journey.JourneyToolExecutor.Outcome out = launchTool("{\"chantier\":1}");
+        assertThat(out.error()).isTrue();
+        assertThat(out.content()).contains("n'est pas prêt").contains("Aucun plan");
+        assertThat(service.hasDeferred(alice.getId(), subject.getId())).isFalse();
+        assertThat(launchTool("{}").error()).isTrue();
+    }
+
+    @Test
+    @DisplayName("SF-219-04 : un départ expiré ne part pas ; un préflight devenu rouge est abandonné")
+    void deferredExpiresOrIsAbandoned() throws Exception {
+        executing(subject);
+        service.setDeferredTtl(java.time.Duration.ofMillis(-1));
+        assertThat(launchTool("{\"chantier\":1}").error()).isFalse();
+        assertThat(service.launchDeferred()).isZero();
+        assertThat(service.hasDeferred(alice.getId(), subject.getId())).isFalse();
+
+        service.setDeferredTtl(java.time.Duration.ofMinutes(10));
+        assertThat(launchTool("{\"chantier\":1}").error()).isFalse();
+        journeys.setPlan(alice.getId(), subject.getId(), JourneyPlan.fromToolInput(
+                new com.fasterxml.jackson.databind.ObjectMapper().readTree(
+                        "[{\"title\":\"Autre chose\",\"risk\":\"REVERSIBLE\"}]"))); // amendement
+        assertThat(service.launchDeferred()).isZero();
+        assertThat(service.hasDeferred(alice.getId(), subject.getId())).isFalse();
         assertThat(runs.count()).isZero();
     }
 }

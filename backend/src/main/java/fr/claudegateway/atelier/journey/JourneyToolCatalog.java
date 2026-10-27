@@ -44,9 +44,12 @@ public class JourneyToolCatalog {
     /** Détailler une étape en sous-étapes cochées (F-208 / SF-208-01). */
     public static final String UPDATE_SUB_STEPS = "update_sub_steps";
 
+    /** Lancer un chantier en autonome, à la demande de l'utilisateur (F-219 / SF-219-04). */
+    public static final String LAUNCH_AUTONOMOUS = "lancer_chantier_autonome";
+
     /** Tous les noms d'outils du parcours. */
     public static final Set<String> NAMES = Set.of(PROPOSE_GUIDED, SET_PLAN, SUBMIT_DIAGNOSIS, UPDATE_STEP, REOPEN,
-            UPDATE_SUB_STEPS);
+            UPDATE_SUB_STEPS, LAUNCH_AUTONOMOUS);
 
     /** Le guide ajouté à la consigne système quand les outils sont donnés (stable). */
     public static final String GUIDE = "--- Parcours du sujet (Libre / Guidé) ---\n"
@@ -158,6 +161,7 @@ public class JourneyToolCatalog {
         tools.add(updateStepDefinition());
         tools.add(reopenDefinition());
         tools.add(updateSubStepsDefinition());
+        tools.add(launchAutonomousDefinition());
         return tools;
     }
 
@@ -252,6 +256,19 @@ public class JourneyToolCatalog {
                                         "description", "Les sous-étapes, dans l'ordre."),
                                 "chantier", CHANTIER_PARAM),
                         "required", List.of("step", "sub_steps")));
+    }
+
+    static AgentTool launchAutonomousDefinition() {
+        return new AgentTool(LAUNCH_AUTONOMOUS,
+                "Lance un chantier EN AUTONOME, quand l'utilisateur le demande (« exécute le chantier 2 en "
+                        + "autonome ») : la gateway vérifie qu'il est prêt (plan validé, rien de bloqué, aucune "
+                        + "attente ni question) et le départ part dès la fin de ce tour ; il enchaîne alors toutes "
+                        + "les étapes sans question. Jamais de ta propre initiative.",
+                Map.of("type", "object",
+                        "properties", Map.of(
+                                "chantier", Map.of("type", "integer",
+                                        "description", "Le numéro du chantier à lancer.")),
+                        "required", List.of("chantier")));
     }
 
     static AgentTool reopenDefinition() {

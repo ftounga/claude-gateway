@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import fr.claudegateway.atelier.AtelierChatService;
 import fr.claudegateway.atelier.Workspace;
 import fr.claudegateway.atelier.WorkspaceService;
+import fr.claudegateway.atelier.journey.ChantierAutonomyLauncher;
 import fr.claudegateway.atelier.journey.ChantierPreflight;
 import fr.claudegateway.atelier.journey.ChantierPreflightService;
 import fr.claudegateway.atelier.journey.ChantierPreflightService.ChantierReadiness;
@@ -43,7 +44,7 @@ import fr.claudegateway.runner.RunnerLiveness;
  * toute lecture du journal filtre par {@code user_id}.</p>
  */
 @Service
-public class AutonomyService {
+public class AutonomyService implements ChantierAutonomyLauncher {
 
     private static final Logger log = LoggerFactory.getLogger(AutonomyService.class);
 
@@ -60,6 +61,14 @@ public class AutonomyService {
     private final Clock clock;
     private final int maxParallel;
     private final Duration staleAfter;
+
+    /** Les départs programmés depuis la conversation (SF-219-04), par sujet — mémoire du pod qui porte le tour. */
+    private final Map<String, Deferred> deferred = new java.util.concurrent.ConcurrentHashMap<>();
+    private Duration deferredTtl = Duration.ofMinutes(10);
+
+    /** Un départ programmé. */
+    record Deferred(UUID userId, UUID workspaceId, int number, OffsetDateTime expiresAt) {
+    }
 
     private RunnerLiveness liveness;
     private UsageTurnRepository usageTurns;
@@ -99,6 +108,11 @@ public class AutonomyService {
 
     public int maxParallel() {
         return maxParallel;
+    }
+
+    @Autowired(required = false)
+    public void setDeferredTtl(@Value("${app.autonomy.deferred-ttl:PT10M}") Duration deferredTtl) {
+        this.deferredTtl = deferredTtl;
     }
 
     // ------------------------------------------------------------------ vues
@@ -261,6 +275,86 @@ public class AutonomyService {
             log.warn("Interruption d'un chantier autonome en échec ({})", e.getClass().getSimpleName());
         }
         return RunView.of(store.find(run.getId()).orElse(run));
+    }
+
+    // ------------------------------------------------------------------ départ dit à l'agent (SF-219-04)
+
+    /**
+     * L'outil {@code lancer_chantier_autonome} : mêmes gardes que le bouton, puis le départ est <b>programmé</b>
+     * — il part dès que le tour courant est fini ({@link #launchDeferred}). Un nouvel appel sur le même sujet
+     * remplace le précédent.
+     */
+    @Override
+    public Result schedule(UUID userId, Workspace workspace, int number) {
+        Optional<ChantierReadiness> readiness = preflights.forOwned(userId, workspace).stream()
+                .filter(c -> c.number() == number)
+                .findFirst();
+        if (readiness.isEmpty()) {
+            return new Result(false, "Le chantier " + number + " n'est pas ouvert : rien n'est programmé.");
+        }
+        ChantierPreflight preflight = readiness.get().preflight();
+        if (!preflight.ready()) {
+            return new Result(false, "Le chantier " + number + " n'est pas prêt à partir en autonome : "
+                    + String.join(" ; ", preflight.reasons().stream().map(ChantierPreflight.Reason::label).toList())
+                    + " Dis-le à l'utilisateur ; rien n'est programmé.");
+        }
+        if (store.running(userId, workspace.getId()).isPresent()) {
+            return new Result(false, "Un chantier tourne déjà en autonome dans ce sujet : un à la fois.");
+        }
+        if (store.countRunning(userId) >= maxParallel) {
+            return new Result(false, maxParallel + " chantiers autonomes tournent déjà sur le compte : c'est le "
+                    + "maximum. Dis-le à l'utilisateur.");
+        }
+        if (hostOffline(userId, workspace)) {
+            return new Result(false, "Le poste de ce sujet est hors ligne : le chantier ne peut pas partir.");
+        }
+        deferred.put(userId + "/" + workspace.getId(), new Deferred(userId, workspace.getId(), number,
+                OffsetDateTime.now(clock).plus(deferredTtl)));
+        return new Result(true, "Départ programmé : le chantier " + number + " partira en autonome dès la fin de "
+                + "ce tour (si le service redémarre d'ici là, il faudra le relancer). Termine ton tour maintenant, "
+                + "en une phrase ; n'exécute pas les étapes toi-même.");
+    }
+
+    /**
+     * Lance les départs programmés dont le sujet est libre ; écarte ceux qui ont expiré. Un départ refusé au
+     * moment de partir (préflight devenu rouge, limite atteinte…) est abandonné et notifié.
+     *
+     * @return le nombre de départs lancés
+     */
+    public int launchDeferred() {
+        int launched = 0;
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        for (Map.Entry<String, Deferred> entry : List.copyOf(deferred.entrySet())) {
+            Deferred d = entry.getValue();
+            if (d.expiresAt().isBefore(now)) {
+                deferred.remove(entry.getKey(), d);
+                continue;
+            }
+            if (liveTurns.find(d.userId(), d.workspaceId()).isPresent()) {
+                continue; // le tour qui a programmé le départ n'est pas fini
+            }
+            if (!deferred.remove(entry.getKey(), d)) {
+                continue;
+            }
+            try {
+                launch(d.userId(), d.workspaceId(), d.number());
+                launched++;
+            } catch (AutonomyConflictException | InvalidJourneyException e) {
+                log.info("Départ autonome programmé abandonné (workspace={}, chantier={}) : {}", d.workspaceId(),
+                        d.number(), e.getMessage());
+                if (notifier != null) {
+                    notifier.notify(d.userId(), d.workspaceId(), AutonomyRunStatus.BLOCKED, false);
+                }
+            } catch (RuntimeException e) {
+                log.warn("Départ autonome programmé en échec ({})", e.getClass().getSimpleName());
+            }
+        }
+        return launched;
+    }
+
+    /** Vrai si un départ est programmé sur ce sujet (tests, écran). */
+    public boolean hasDeferred(UUID userId, UUID workspaceId) {
+        return deferred.containsKey(userId + "/" + workspaceId);
     }
 
     // ------------------------------------------------------------------ orphelines
