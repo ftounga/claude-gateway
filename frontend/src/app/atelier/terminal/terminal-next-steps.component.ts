@@ -302,15 +302,7 @@ export function composeNextSteps(requests: string[]): string {
               </li>
             }
           </ol>
-          @if (confirmingLaunch() === i) {
-            <div class="pre__confirm" role="alertdialog" aria-label="Confirmer une étape externe">
-              <span>{{ externalWarning }}</span>
-              <button type="button" class="pre__yes" (click)="confirmLaunch(i, step)">Confirmer</button>
-              <button type="button" class="pre__no" (click)="confirmingLaunch.set(null)">Annuler</button>
-            </div>
-          } @else {
-            <button type="button" class="pre__launch" (click)="askLaunch(i, step)">Lancer</button>
-          }
+          <button type="button" class="pre__launch" (click)="askLaunch(i, step)">Lancer</button>
         </div>
       }
     </ng-template>
@@ -421,7 +413,6 @@ export function composeNextSteps(requests: string[]): string {
       background: var(--cg-accent); color: var(--cg-navy-2); border: 1px solid var(--cg-accent);
     }
     .pre__no { background: none; color: var(--cg-divider); border-color: color-mix(in srgb, var(--cg-divider) 30%, transparent); }
-    .pre__confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: #F9A825; }
     .pre__launch:focus-visible, .pre__yes:focus-visible, .pre__no:focus-visible { outline: 2px solid var(--cg-accent); outline-offset: 2px; }
     .cap__foot { display: flex; gap: 16px; flex-wrap: wrap; padding: 8px 12px; font-size: 12px; color: #9FB0C4; }
     kbd {
@@ -500,12 +491,8 @@ export class TerminalNextStepsComponent {
     return title ? `Chantier ${n} — ${title}` : `Chantier ${n}`;
   });
 
-  readonly externalWarning = 'Ce lancement comprend une étape externe (push, envoi, production…). Confirmer ?';
-
   /** Les prérequis décochés ou cochés à la main : `option:étape` → coché (F-209). */
   private readonly prereqChoice = signal<Record<string, boolean>>({});
-  /** L'option dont le lancement attend la confirmation d'une étape externe (F-209). */
-  readonly confirmingLaunch = signal<number | null>(null);
 
   /** « Lancer » (F-209) : une demande visible, envoyée dans le fil (précision pendant un tour). */
   readonly launch = output<string>();
@@ -541,7 +528,6 @@ export class TerminalNextStepsComponent {
       this.checked.set([]);
       this.written.set(null);
       this.prereqChoice.set({});
-      this.confirmingLaunch.set(null);
     });
   }
 
@@ -574,28 +560,17 @@ export class TerminalNextStepsComponent {
   togglePrereq(option: number, step: AtelierNextStep, p: AtelierNextStepPrerequisite): void {
     const next = !this.isPrereqChecked(option, step, p);
     this.prereqChoice.update((m) => ({ ...m, [`${option}:${p.step}`]: next }));
-    this.confirmingLaunch.set(null);
   }
 
   private checkedPrereqs(option: number, step: AtelierNextStep): AtelierNextStepPrerequisite[] {
     return (step.prerequisites ?? []).filter((p) => this.isPrereqChecked(option, step, p));
   }
 
-  /** « Lancer » : une étape externe cochée exige une confirmation explicite. */
+  /**
+   * « Lancer » : la demande part tout de suite, étape externe cochée comprise — aucune confirmation de
+   * plus (F-218 / SF-218-03, mode offensif). Cocher l'étape externe EST le choix de l'utilisateur.
+   */
   askLaunch(option: number, step: AtelierNextStep): void {
-    if (this.checkedPrereqs(option, step).some((p) => p.risk === 'EXTERNE')) {
-      this.confirmingLaunch.set(option);
-      return;
-    }
-    this.doLaunch(option, step);
-  }
-
-  confirmLaunch(option: number, step: AtelierNextStep): void {
-    this.confirmingLaunch.set(null);
-    this.doLaunch(option, step);
-  }
-
-  private doLaunch(option: number, step: AtelierNextStep): void {
     this.launch.emit(composeLaunch(step, this.checkedPrereqs(option, step).map((p) => p.step)));
   }
 

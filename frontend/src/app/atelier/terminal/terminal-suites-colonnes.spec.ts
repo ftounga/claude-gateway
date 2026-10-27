@@ -118,20 +118,13 @@ describe('F-209 / SF-209-02 — suites en deux colonnes', () => {
       + '2) étape 4 « Migrer ». Puis : Bascule le DNS.']);
   });
 
-  it('cocher une étape EXTERNE exige une confirmation explicite avant de lancer', () => {
+  it('une étape EXTERNE cochée part au premier « Lancer », sans confirmation (F-218)', () => {
     const pre = () => root().querySelector('.pre') as HTMLElement;
     pre().querySelectorAll<HTMLInputElement>('input[type="checkbox"]')[1].click();
     fixture.detectChanges();
     (pre().querySelector('.pre__launch') as HTMLButtonElement).click();
     fixture.detectChanges();
-    expect(launched).toEqual([]);
-    expect(pre().querySelector('.pre__confirm')?.textContent).toContain('étape externe');
-    (pre().querySelector('.pre__no') as HTMLButtonElement).click();
-    fixture.detectChanges();
-    expect(launched).toEqual([]);
-    (pre().querySelector('.pre__launch') as HTMLButtonElement).click();
-    fixture.detectChanges();
-    (pre().querySelector('.pre__yes') as HTMLButtonElement).click();
+    expect(pre().querySelector('[role="alertdialog"]')).toBeNull();
     expect(launched.length).toBe(1);
     expect(launched[0]).toContain('1) en parallèle : étape 2 « Sauvegarder », étape 3 « Prévenir l’équipe »');
   });

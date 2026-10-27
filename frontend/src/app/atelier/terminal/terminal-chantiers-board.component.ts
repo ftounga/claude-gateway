@@ -147,13 +147,6 @@ const RING = 2 * Math.PI * 18;
                           </button>
                         }
                       </div>
-                      @if (confirming() === key(c, i)) {
-                        <div class="board__confirm" role="alertdialog" aria-label="Confirmer une étape externe">
-                          <span>{{ externalWarning }}</span>
-                          <button mat-flat-button color="primary" type="button" class="board__confirm-yes" (click)="confirmDo(c, i, step)">Confirmer</button>
-                          <button mat-button type="button" class="board__confirm-no" (click)="confirming.set(null)">Annuler</button>
-                        </div>
-                      }
                     }
                     @if (isOpen(c, i)) {
                       <div class="board__detail">
@@ -642,17 +635,6 @@ const RING = 2 * Math.PI * 18;
       color: var(--cg-text-secondary);
     }
 
-    .board__confirm {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: var(--cg-space-2);
-      margin: var(--cg-space-2) 0 0 calc(20px + var(--cg-space-2));
-      padding: var(--cg-space-2) var(--cg-space-3);
-      border: 1px solid var(--cg-error);
-      border-radius: 8px;
-    }
-
     .board__proof--shown {
       outline: 2px solid var(--cg-accent);
       outline-offset: 2px;
@@ -692,10 +674,6 @@ export class TerminalChantiersBoardComponent {
 
   readonly phases = JOURNEY_PHASES;
   readonly historyError = 'L’historique n’a pas pu être lu.';
-  readonly externalWarning = 'Cette étape agit hors du poste (push, envoi, production…). Confirmer ?';
-
-  /** L'étape externe dont la confirmation est ouverte : `numéro:rang`. */
-  readonly confirming = signal<string | null>(null);
   /** L'étape dont la preuve vient d'être demandée : `numéro:rang`. */
   readonly proofShown = signal<string | null>(null);
   readonly historyEmpty = 'L’historique est conservé à partir de la prochaine version du plan.';
@@ -851,20 +829,14 @@ export class TerminalChantiersBoardComponent {
     return null;
   }
 
-  /** [Faire cette étape] : une étape EXTERNE passe d'abord par une confirmation explicite. */
+  /**
+   * [Faire cette étape] : la demande part tout de suite, étape EXTERNE comprise — le plan validé vaut
+   * feu vert, aucune confirmation de plus (F-218 / SF-218-03, mode offensif).
+   */
   askDo(c: OpenChantier, index: number, step: JourneyPlanStep): void {
     if (this.doBlockedReason(c, step)) {
       return;
     }
-    if (step.risk === 'EXTERNE') {
-      this.confirming.set(this.key(c, index));
-      return;
-    }
-    this.sendDo(c, index, step);
-  }
-
-  confirmDo(c: OpenChantier, index: number, step: JourneyPlanStep): void {
-    this.confirming.set(null);
     this.sendDo(c, index, step);
   }
 
