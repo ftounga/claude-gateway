@@ -1,3 +1,5 @@
+import { UnblockerMark } from './client-board.models';
+
 /**
  * **Le parcours du sujet d'un terminal** (F-176) : Libre par défaut, ou Guidé —
  * Investigation → Plan → Exécution → Vérification → Clos.
@@ -64,6 +66,8 @@ export interface OpenChantier {
   total: number;
   /** Le plan détaillé du chantier (F-208), `null` sans plan — absent d'une gateway antérieure. */
   plan?: JourneyPlan | null;
+  /** Qui doit agir pour qu'il avance (F-220 / SF-220-01) — absent d'une gateway antérieure. */
+  unblocker?: UnblockerMark | null;
 }
 
 /** Vrai si un chantier ouvert attend un geste de l'utilisateur (F-206). */
@@ -145,6 +149,8 @@ export interface JourneyPlanStep {
   inProgress?: boolean;
   /** Ses sous-étapes cochées (F-208). */
   subSteps?: JourneySubStep[];
+  /** Qui doit agir pour qu'elle avance (F-220 / SF-220-01) ; `null` si faite. */
+  unblocker?: UnblockerMark | null;
 }
 
 /** Une sous-étape (F-208). */
