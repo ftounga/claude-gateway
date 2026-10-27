@@ -405,6 +405,50 @@
   white-space: nowrap;
 }
 
+// ---- reportés (SF-220-06) ----
+.cb__snoozed {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cg-space-2);
+  padding-top: var(--cg-space-2);
+  border-top: 1px solid var(--cg-divider);
+}
+
+.cb__snoozed-toggle {
+  align-self: flex-start;
+}
+
+.cb__snoozed-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cg-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cb__snoozed-item {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-2) var(--cg-space-3);
+  border: 1px solid var(--cg-divider);
+  border-radius: 8px;
+  background: var(--cg-surface);
+
+  > mat-icon {
+    color: var(--cg-text-secondary);
+  }
+}
+
+.cb__snoozed-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  color: var(--cg-text-primary);
+}
+
 // ---- sélection ----
 .cb__selection {
   position: sticky;

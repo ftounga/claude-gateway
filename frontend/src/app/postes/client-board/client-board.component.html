@@ -43,7 +43,7 @@
         <p class="cb__muted">Un chantier naît quand un sujet passe en mode Guidé.</p>
       </div>
     } @else if (groups().length === 0) {
-      <p class="cb__muted cb__none">Aucun chantier pour ce filtre.</p>
+      <p class="cb__muted cb__none">{{ filter() ? 'Aucun chantier pour ce filtre.' : 'Tous les chantiers ouverts sont reportés.' }}</p>
     }
 
     @for (group of groups(); track group.who) {
@@ -81,6 +81,13 @@
                   <mat-icon>more_vert</mat-icon>
                 </button>
                 <mat-menu #more="matMenu">
+                  @for (choice of snoozeChoices; track choice.days) {
+                    <button mat-menu-item type="button" class="cb__snooze" [attr.data-days]="choice.days"
+                      (click)="snooze(c, choice.days)">
+                      <mat-icon>snooze</mat-icon>
+                      {{ choice.label }}
+                    </button>
+                  }
                   <button mat-menu-item type="button" class="cb__close" (click)="close(c)">
                     <mat-icon>archive</mat-icon>
                     Clore le chantier
@@ -151,6 +158,35 @@
             </li>
           }
         </ul>
+      </section>
+    }
+
+    <!-- LES REPORTÉS (SF-220-06) : hors des groupes et des compteurs, rangés à part, repliés. -->
+    @if (snoozed().length > 0) {
+      <section class="cb__snoozed" aria-label="Chantiers reportés">
+        <button mat-button type="button" class="cb__snoozed-toggle" [attr.aria-expanded]="showSnoozed()"
+          (click)="showSnoozed.set(!showSnoozed())">
+          <mat-icon>{{ showSnoozed() ? 'expand_less' : 'expand_more' }}</mat-icon>
+          Reportés ({{ snoozed().length }})
+        </button>
+        @if (showSnoozed()) {
+          <ul class="cb__snoozed-list">
+            @for (c of snoozed(); track key(c)) {
+              <li class="cb__snoozed-item" [attr.data-key]="key(c)">
+                <mat-icon aria-hidden="true">snooze</mat-icon>
+                <span class="cb__snoozed-text">
+                  <span class="cb__subject">{{ subjectName(c) }} · Chantier {{ c.number }}</span>
+                  <strong>{{ c.title || 'Sans titre' }}</strong>
+                  <span class="cb__muted">reporté jusqu'au {{ until(c) }}</span>
+                </span>
+                <span class="cb__spacer"></span>
+                <button mat-stroked-button type="button" class="cb__unsnooze" (click)="unsnooze(c)">
+                  Ne plus reporter
+                </button>
+              </li>
+            }
+          </ul>
+        }
       </section>
     }
 

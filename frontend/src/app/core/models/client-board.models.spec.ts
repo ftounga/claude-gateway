@@ -4,10 +4,12 @@ import {
   groupOf,
   idleLabel,
   isSelectable,
+  isSnoozed,
   launchSummary,
   matchesFilter,
   overLimitMessage,
   sinceLabel,
+  untilLabel,
 } from './client-board.models';
 
 /** F-220 / SF-220-03 — les lectures pures du tableau du client. */
@@ -51,6 +53,16 @@ describe('client-board.models', () => {
       run: { id: 'r', workspaceId: 'w1', chantierNumber: 1, chantierTitle: null, status: 'RUNNING', turns: 1,
         stepsDone: 1, stepsTotal: 3, costUsd: 0, stopReason: null, errorCode: null, startedAt: '', finishedAt: null },
     }))).toBeFalse();
+  });
+
+  it('SF-220-06 : un reporté n\'est jamais sélectionnable ; date de fin courte', () => {
+    expect(isSnoozed(chantier({ snoozedUntil: '2026-10-30T10:00:00Z' }))).toBeTrue();
+    expect(isSnoozed(chantier({ snoozedUntil: null }))).toBeFalse();
+    expect(isSnoozed(chantier())).toBeFalse();
+    expect(isSelectable(chantier({ snoozedUntil: '2026-10-30T10:00:00Z' }))).toBeFalse();
+    expect(untilLabel('2026-10-30T10:00:00')).toBe('30/10');
+    expect(untilLabel(null)).toBe('');
+    expect(untilLabel('n')).toBe('');
   });
 
   it('places libres et refus écrit au-delà', () => {
