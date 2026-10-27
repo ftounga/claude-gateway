@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-219 / SF-219-02 - UN CHANTIER EN AUTONOME : LE JOURNAL DES COURSES.
+
+      Une ligne par course autonome d'un chantier. status = RUNNING tant que la boucle tourne (finished_at nul) :
+      c'est ce que la verification avant deploiement interroge - un rollout tue le tour en cours.
+
+        SELECT r.id, r.workspace_id, r.chantier_number, r.turns, r.started_at, now() - r.heartbeat_at AS silence
+        FROM chantier_autonomy_runs r WHERE r.status = 'RUNNING' ORDER BY r.started_at;
+
+      status : RUNNING | DONE | BLOCKED | STOPPED | FAILED.
+      Aucun contenu de tour ici : des instants, un statut, un cout, une raison d'arret lisible (300 car.).
+
+      Isolation : user_id + workspace_id sur chaque ligne ; cascade sur le sujet.
+      Rollback : la table se retire.
+    -->
+
+    <changeSet id="175-chantier-autonomy-runs" author="claude-gateway">
+        <createTable tableName="chantier_autonomy_runs">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_chantier_autonomy_runs_workspace"
+                             references="workspaces(id)" deleteCascade="true"/>
+            </column>
+            <column name="chantier_number" type="int"><constraints nullable="false"/></column>
+            <column name="chantier_title" type="varchar(200)"/>
+            <column name="status" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="turns" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="steps_done" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="steps_total" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="cost_usd" type="numeric(12,6)" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="stop_reason" type="varchar(300)"/>
+            <column name="error_code" type="varchar(40)"/>
+            <column name="turn_id" type="uuid"/>
+            <column name="started_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="heartbeat_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="finished_at" type="timestamptz"/>
+        </createTable>
+        <createIndex tableName="chantier_autonomy_runs" indexName="idx_autonomy_runs_status_heartbeat">
+            <column name="status"/>
+            <column name="heartbeat_at"/>
+        </createIndex>
+        <createIndex tableName="chantier_autonomy_runs" indexName="idx_autonomy_runs_user_status">
+            <column name="user_id"/>
+            <column name="status"/>
+        </createIndex>
+        <createIndex tableName="chantier_autonomy_runs" indexName="idx_autonomy_runs_workspace_started">
+            <column name="workspace_id"/>
+            <column name="started_at"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="chantier_autonomy_runs"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

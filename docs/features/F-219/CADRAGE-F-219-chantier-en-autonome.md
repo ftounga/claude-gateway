@@ -90,7 +90,7 @@ Codes de raison du préflight : `NOT_GUIDED`, `PLAN_NOT_VALIDATED`, `NOT_EXECUTI
    de dépense), refus explicite au-delà. Les courses ne prennent pas de place dans `live_terminals` (aucun onglet ouvert).
 5. **Un chantier autonome par sujet** : une course `RUNNING` sur le sujet, ou un tour vivant, refuse le départ
    (`autonomy_subject_busy`).
-6. **Enchaînement de tours** : au plus `app.atelier.autonomy.max-turns` (défaut **8**) tours par course ; un tour sans
+6. **Enchaînement de tours** : au plus `app.autonomy.max-turns` (défaut **8**) tours par course ; un tour sans
    aucune avancée du plan arrête la course (`BLOCKED`, « aucune avancée ») — jamais de boucle à vide.
 7. **Estimation de coût** : coût moyen d'un tour de l'utilisateur sur 30 jours × tours estimés — lu dans
    `usage_turns.provider_cost_usd` (`atelier_turn_measures` ne porte aucun coût, seulement des jetons)

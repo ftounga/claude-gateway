@@ -65,7 +65,16 @@ public enum PushEvent {
 
     /** Une routine n'a pas pu tourner : le poste était hors ligne (F-183 / SF-183-04). */
     ROUTINE_MISSED("Une routine n'a pas pu tourner",
-            "Le poste était hors ligne : elle repartira à sa reconnexion.", true);
+            "Le poste était hors ligne : elle repartira à sa reconnexion.", true),
+
+    /** Un chantier lancé en autonome est allé jusqu'au bout : la clôture est proposée (F-219 / SF-219-02). */
+    AUTONOMY_DONE("Un chantier autonome est terminé", "Ouvrez le sujet pour le relire et le clore.", true),
+
+    /**
+     * Un chantier lancé en autonome s'est arrêté avant la fin : blocage, échec, plafond de tours (F-219 /
+     * SF-219-02). Il attend un geste.
+     */
+    AUTONOMY_STOPPED("Un chantier autonome s'est arrêté", "Ouvrez le sujet pour voir ce qui le bloque.", true);
 
     private final String title;
     private final String body;
@@ -95,7 +104,7 @@ public enum PushEvent {
      * et part en urgence haute.
      */
     public boolean requiresAction() {
-        return critical() || this == PLAN_AWAITING || this == VALIDATION_AWAITING;
+        return critical() || this == PLAN_AWAITING || this == VALIDATION_AWAITING || this == AUTONOMY_STOPPED;
     }
 
     /** Émis même si le terminal est regardé (D7 ne s'applique pas). */
