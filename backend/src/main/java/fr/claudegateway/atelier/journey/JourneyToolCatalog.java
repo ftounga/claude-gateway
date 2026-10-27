@@ -98,7 +98,8 @@ public class JourneyToolCatalog {
             + "status=VERIFIE ou ECHEC avec evidence = ce que tu as observé (commande et résultat). Jamais "
             + "VERIFIE sans preuve. Une vérification rouge, ou une découverte qui contredit le "
             + "diagnostic : reopen_investigation (le plan est gardé) ou un amendement. Toutes vertes : "
-            + "l'utilisateur voit la proposition de clore.\n"
+            + "l'utilisateur voit la proposition de clore. Un VRAI blocage (information manquante, échec "
+            + "sans remède) : update_plan_step status=BLOQUE avec la raison, et arrête-toi sur ce chantier.\n"
             + "LA PORTE : en mode guidé, le harnais REFUSE toute modification hors des notes du sujet "
             + "(édition de fichier, commande qui écrit, push, apply, envoi…) tant que le plan n'est pas "
             + "validé ; la lecture et les notes (STATE.md, PLAN-ACTION.md, notes/, carte/) restent libres. "
@@ -214,15 +215,18 @@ public class JourneyToolCatalog {
     static AgentTool updateStepDefinition() {
         return new AgentTool(UPDATE_STEP,
                 "Fait avancer une étape du plan validé : FAIT après l'avoir exécutée, VERIFIE ou ECHEC "
-                        + "après l'avoir vérifiée comme le plan le dit — avec la preuve.",
+                        + "après l'avoir vérifiée comme le plan le dit — avec la preuve. BLOQUE sur un vrai "
+                        + "blocage (information manquante, échec sans remède), avec la raison ; A_FAIRE la "
+                        + "débloque.",
                 Map.of("type", "object",
                         "properties", Map.of(
                                 "step", Map.of("type", "integer",
                                         "description", "Le numéro de l'étape, à partir de 1."),
                                 "status", Map.of("type", "string",
-                                        "enum", List.of("FAIT", "VERIFIE", "ECHEC")),
+                                        "enum", List.of("FAIT", "VERIFIE", "ECHEC", "BLOQUE", "A_FAIRE")),
                                 "evidence", Map.of("type", "string",
-                                        "description", "Ce que tu as observé (requis pour VERIFIE et ECHEC)."),
+                                        "description", "Ce que tu as observé (requis pour VERIFIE et ECHEC) ; la "
+                                                + "raison du blocage (requise pour BLOQUE)."),
                                 "chantier", CHANTIER_PARAM),
                         "required", List.of("step", "status")));
     }

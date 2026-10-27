@@ -311,7 +311,7 @@ public class SubjectJourneyService {
 
     /** Ce que l'agent apprend en faisant avancer une étape. */
     public enum StepOutcome { UPDATED, TO_VERIFICATION, ALL_VERIFIED, FAILED, NOT_EXECUTING, NO_SUCH_STEP,
-        NOT_GUIDED }
+        NOT_GUIDED, BLOCKED, UNBLOCKED }
 
     /** Le résultat d'une étape avancée : l'issue et le plan à jour. */
     public record StepChange(StepOutcome outcome, JourneyPlan plan) {
@@ -354,7 +354,12 @@ public class SubjectJourneyService {
         }
         JourneyPlan.StepStatus status = parseStepStatus(rawStatus);
         String cleanEvidence = JourneyPlan.bound(evidence, JourneyPlan.MAX_EVIDENCE);
-        if (status != JourneyPlan.StepStatus.FAIT && cleanEvidence == null) {
+        if (status == JourneyPlan.StepStatus.BLOQUE && cleanEvidence == null) {
+            throw new InvalidJourneyException("Un blocage se justifie : evidence est requise (la raison — ce qui "
+                    + "manque ou ce qui a échoué sans remède).");
+        }
+        if ((status == JourneyPlan.StepStatus.VERIFIE || status == JourneyPlan.StepStatus.ECHEC)
+                && cleanEvidence == null) {
             throw new InvalidJourneyException("Une vérification se prouve : evidence est requise (ce que tu as "
                     + "observé, la commande et son résultat).");
         }
@@ -366,6 +371,10 @@ public class SubjectJourneyService {
         StepOutcome outcome = StepOutcome.UPDATED;
         if (status == JourneyPlan.StepStatus.ECHEC) {
             outcome = StepOutcome.FAILED;
+        } else if (status == JourneyPlan.StepStatus.BLOQUE) {
+            outcome = StepOutcome.BLOCKED; // F-219 : la phase ne bouge pas, l'étape attend qu'on la débloque
+        } else if (status == JourneyPlan.StepStatus.A_FAIRE) {
+            outcome = StepOutcome.UNBLOCKED;
         } else if (updated.steps().stream().allMatch(s -> s.status() == JourneyPlan.StepStatus.VERIFIE)) {
             if (journey.getPhase() != JourneyPhase.VERIFICATION) {
                 moveTo(journey, JourneyPhase.VERIFICATION, now);
@@ -373,7 +382,8 @@ public class SubjectJourneyService {
             journey.setCloseProposedAt(now);
             outcome = StepOutcome.ALL_VERIFIED;
         } else if (journey.getPhase() == JourneyPhase.EXECUTION && updated.steps().stream()
-                .noneMatch(s -> s.status() == JourneyPlan.StepStatus.A_FAIRE)) {
+                .noneMatch(s -> s.status() == JourneyPlan.StepStatus.A_FAIRE
+                        || s.status() == JourneyPlan.StepStatus.BLOQUE)) {
             moveTo(journey, JourneyPhase.VERIFICATION, now);
             outcome = StepOutcome.TO_VERIFICATION;
         }
@@ -543,7 +553,9 @@ public class SubjectJourneyService {
             case "FAIT", "DONE" -> JourneyPlan.StepStatus.FAIT;
             case "VERIFIE", "VERIFIED", "OK" -> JourneyPlan.StepStatus.VERIFIE;
             case "ECHEC", "FAILED", "KO" -> JourneyPlan.StepStatus.ECHEC;
-            default -> throw new InvalidJourneyException("status est FAIT, VERIFIE ou ECHEC.");
+            case "BLOQUE", "BLOCKED" -> JourneyPlan.StepStatus.BLOQUE;
+            case "A_FAIRE", "TODO" -> JourneyPlan.StepStatus.A_FAIRE;
+            default -> throw new InvalidJourneyException("status est FAIT, VERIFIE, ECHEC, BLOQUE ou A_FAIRE.");
         };
     }
 

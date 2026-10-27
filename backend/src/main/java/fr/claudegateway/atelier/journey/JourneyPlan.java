@@ -85,9 +85,13 @@ public record JourneyPlan(List<Step> steps) {
         }
     }
 
-    /** Où en est une étape (SF-176-05 la fait avancer). */
+    /**
+     * Où en est une étape (SF-176-05 la fait avancer). {@link #BLOQUE} (F-219 / SF-219-01) : l'agent a
+     * rencontré un vrai blocage (information manquante, échec non récupérable) ; la raison est dans
+     * {@code evidence}. Ni faite ni à faire : elle attend qu'on la débloque.
+     */
     public enum StepStatus {
-        A_FAIRE, FAIT, VERIFIE, ECHEC;
+        A_FAIRE, FAIT, VERIFIE, ECHEC, BLOQUE;
 
         static StepStatus parse(String raw) {
             if (raw == null) {
@@ -99,6 +103,7 @@ public record JourneyPlan(List<Step> steps) {
                 case "FAIT", "DONE" -> FAIT;
                 case "VERIFIE", "VERIFIED", "OK" -> VERIFIE;
                 case "ECHEC", "FAILED", "KO" -> ECHEC;
+                case "BLOQUE", "BLOCKED" -> BLOQUE;
                 default -> A_FAIRE;
             };
         }
