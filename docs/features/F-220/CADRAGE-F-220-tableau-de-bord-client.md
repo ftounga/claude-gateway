@@ -20,6 +20,14 @@
   - **« Prêt à partir en autonome »** : préflight F-219 au vert ;
   - **« Bloqué par quelqu'un »** : attentes F-175 ;
   - **« En cours »** : un tour est vivant, ou le chantier est en autonome.
+- **Code couleur « qui débloque ? » — EXIGENCE PO du 2026-10-27, prioritaire sur la proposition ci-dessus.** Chaque chantier, et chaque tâche ou étape d'un chantier, affiche d'un coup d'œil **qui** doit agir pour qu'il avance. Trois couleurs, mutuellement exclusives, calculées par le serveur à partir de l'état du plan (pas devinées) :
+  1. **Vert — « L'outil peut avancer seul ».** Rien n'attend personne : la suite est technique et faisable directement dans l'application (préflight F-219 au vert, ou prochaine étape exécutable). Geste principal : continuer / lancer en autonome. Ce sont les chantiers à faire avancer en premier ; le vert doit être « très joli » et dominant visuellement.
+  2. **Couleur « J'attends quelqu'un d'autre »** (à choisir dans la palette du `DESIGN_SYSTEM`, par exemple un gris-bleu ou un ambre). Le chantier est bloqué sur une action externe : un message à envoyer, une information à obtenir, un accès, une réponse d'un tiers (attentes F-175, étapes EXTERNE). Afficher **à qui** et **depuis quand** ; gestes : relancer, rédiger le message, marquer reçu.
+  3. **Couleur « Ça attend MA décision »** (troisième couleur distincte, par exemple l'orange d'accent). Rien d'externe : l'agent attend une réponse ou un arbitrage du PO (question `demander` en suspens, choix métier, plan à valider). Le PO peut le débloquer **lui-même, tout de suite**. Afficher la question, avec réponse directe depuis le tableau si c'est simple (sinon ouvrir le terminal sur la question).
+  - Ces trois états structurent la page, en filtre et en regroupement : on voit d'abord le vert (ce que l'outil fait sans moi), puis « ma décision » (ce que je débloque en une réponse), puis « j'attends quelqu'un ».
+  - La même pastille de couleur apparaît dans la vue d'**un sujet** (tableau des chantiers F-208, liste des étapes), pas seulement sur le tableau du client.
+  - Un chantier « En cours » (tour vivant ou autonome) garde un indicateur d'activité **en plus** de sa couleur.
+  - Accessibilité : la couleur ne porte jamais seule l'information ; libellé et icône l'accompagnent.
 - **Ancienneté** visible sur chaque chantier (« dormant depuis 6 j »), mise en avant. C'est le remède à l'oubli.
 - **Carte de chantier** :
   - sujet, titre, phase, anneau d'avancement (étapes faites / total) ;
