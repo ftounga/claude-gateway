@@ -1,6 +1,6 @@
 # CADRAGE F-220 — Le tableau de bord du client
 
-**Statut :** brouillon du 2026-10-27, à compléter par l'agent de livraison (maquette, découpage)
+**Statut :** complété le 2026-10-27 par l'agent de livraison (vague autonome) — découpage, contrat d'API et arbitrages ci-dessous
 **Demande PO :** 2026-10-27
 **Dépend de :** F-219 (API de préflight et de lancement en autonome)
 
@@ -55,3 +55,77 @@
 ## Règles
 - Isolation `user_id` sur toute agrégation.
 - Pas de dashboard dupliquant le Radar : le Radar suit l'organisation (ce que les autres attendent) ; ce tableau suit **mes chantiers**.
+
+---
+
+## Complément de l'agent de livraison (2026-10-27)
+
+### Existant vérifié avant de cadrer
+- **Le préflight et le lancement** (F-219) existent : `GET …/journey/autonomy`, `POST …/chantiers/{n}/autonomy`,
+  `GET /atelier/autonomy/runs` ; 4 courses autonomes au plus par compte, refus explicite. F-220 **les réutilise tels
+  quels** : la multi-sélection appelle le lancement d'F-219 chantier par chantier, sans nouvelle route.
+- **L'état du plan** (F-176/F-206/F-208) porte tout ce qu'il faut pour dire « qui débloque » : phase, plan validé ou
+  non, statut des étapes (`BLOQUE` de F-219 compris), `depends_on`, `waits_on` relié aux attentes F-175, diagnostic et
+  clôture proposés, question en suspens sur le tour vivant.
+- **Les attentes F-175/F-180** disent **qui** doit agir (`qui` = `MOI`, `CLIENT`, `TIERS`), **à qui** (`requested_to`,
+  `person`) et **depuis quand** (`requested_at`, `created_at`) : c'est la matière de « J'attends quelqu'un ».
+- **`sujets_etat`** (F-178) agrège déjà les sujets d'un poste (dernière activité par `lastActivityByWorkspace`) : même
+  schéma de lecture, sous `user_id` + `host_id`.
+- **La page du poste** (F-98) a des onglets (`?onglet=`) : le tableau devient un onglet de plus, ouvert par défaut.
+- **Le Radar** (Vigie) suit ce que l'organisation attend : non dupliqué ici, aucune lecture du Radar.
+
+### Découpage
+| SF | Contenu | Couche |
+|----|---------|--------|
+| SF-220-01 | **Qui débloque ?** — calcul serveur, pur, de la couleur d'un chantier et de chaque étape (Outil / Ma décision / Quelqu'un d'autre) ; exposé dans le parcours du sujet (`GET …/journey`) | backend |
+| SF-220-02 | **Le tableau du client** — `GET /runner-hosts/{hostId}/chantiers` : tous les chantiers ouverts de tous les sujets du poste, couleur, ancienneté, prochaine étape, manque, dernier geste, course autonome, préflight, compteurs | backend |
+| SF-220-03 | **L'écran du tableau** — onglet « Chantiers » d'ouverture de la page du poste : trois groupes, cartes, ancienneté, gestes ouvrir / lancer / **multi-sélection → lancer plusieurs** (refus au-delà de 4) puis mosaïque, clore | frontend |
+| SF-220-04 | **La pastille dans le sujet** — même couleur dans le tableau des chantiers F-208 (onglets et liste des étapes) | frontend |
+| SF-220-05 | **Reporter et rappeler** — reporter un chantier (il sort du tableau jusqu'à une date), rappel des chantiers dormants dans la cloche, sans spam | backend + frontend |
+
+### Règle « Qui débloque ? » (calculée, jamais devinée)
+**Étape** (non faite) :
+1. `BLOQUE` ou `ECHEC` → **Ma décision** (sauf si son `waits_on` est une attente ouverte d'un tiers → **Quelqu'un**).
+2. `waits_on` sans attente enregistrée → **Quelqu'un** (« à obtenir — personne ne le suit »).
+3. `waits_on` sur une attente ouverte : `qui = MOI` → **Ma décision** ; sinon → **Quelqu'un** (à qui, depuis quand).
+4. Bloquée par une étape antérieure non faite → **la couleur de cette étape** (elle l'attend).
+5. Sinon → **L'outil**.
+
+**Chantier** (le premier cas qui s'applique) :
+1. Question ou autorisation en suspens sur le tour vivant (chantier au focus) → **Ma décision** (la question est montrée).
+2. Clôture proposée → **Ma décision**. 3. Diagnostic « Prêt à planifier » en attente → **Ma décision**.
+4. Plan posé mais non validé à sa version courante → **Ma décision**.
+5. Investigation, ou Plan sans plan posé → **L'outil** (l'agent investigue ou rédige).
+6. Toutes les étapes vérifiées → **Ma décision** (« à clore »).
+7. Une étape exécutable (à faire, rien ne la bloque) ou faite à vérifier → **L'outil** (prochaine étape).
+8. Sinon la première étape **Ma décision**, à défaut la première **Quelqu'un**.
+
+Indicateur « En cours » en plus de la couleur : un tour vivant sur le sujet (chantier au focus) ou une course autonome.
+
+### Contrat d'API
+| Méthode | Route | Rôle |
+|---------|-------|------|
+| GET | `/api/workspaces/{ws}/journey` | inchangé + `chantiers[].unblocker` et `plan.steps[].unblocker` (SF-220-01) |
+| GET | `/api/runner-hosts/{hostId}/chantiers` | le tableau du client (SF-220-02) |
+| POST | `/api/workspaces/{ws}/journey/chantiers/{n}/autonomy` | F-219, inchangé — appelé une fois par chantier sélectionné |
+| POST / DELETE | `/api/workspaces/{ws}/journey/chantiers/{n}/snooze` | reporter / ne plus reporter (SF-220-05) |
+
+`unblocker` = `{ who: OUTIL|MOI|AUTRUI, label, detail, step, waitingOn, since }` — `label` court (pastille), `detail`
+la phrase lisible, `step` le rang concerné ou `null`, `waitingOn` à qui (Quelqu'un), `since` depuis quand.
+
+### Arbitrages pris (décider par défaut, réversibles)
+1. **Une étape `EXTERNE` n'est pas « J'attends quelqu'un »** : depuis F-218 l'irréversible part sans confirmation,
+   l'outil l'exécute. Seules les **attentes** (`waits_on`) disent qu'on attend un tiers. *Écarté* : colorer le risque
+   (un push serait « bloqué » alors que l'outil le fait).
+2. **Une attente `qui = MOI`** (se reconnecter, redémarrer le runner) est **Ma décision**, pas « Quelqu'un » (F-180 D1).
+3. **Une information non suivie** (`waits_on` sans attente) est **Quelqu'un** : il faut l'obtenir ; le détail dit que
+   personne ne la suit.
+4. **Multi-sélection** = le lancement F-219 appelé chantier par chantier, dans l'ordre affiché ; les refus (pas prêt,
+   limite de 4, sujet occupé, poste hors ligne) sont rapportés par chantier, les lancés partent quand même ; puis
+   bascule vers la mosaïque (F-83). *Écarté* : une route « lancer N » côté serveur (même garde, doublon).
+5. **Ancienneté** = dernier geste connu du chantier : la plus récente de sa mise à jour (plan, phase) et, pour le
+   chantier au focus, du dernier message du sujet. « Dormant » au-delà de 2 jours.
+6. **Coût** affiché seulement s'il est mesuré **par chantier** : le coût de sa course autonome (F-219). Le coût par
+   sujet (F-143) n'est pas attribuable à un chantier : pas montré sur la carte.
+7. **Réponse directe à une question depuis le tableau** : non — « Répondre » ouvre le terminal du sujet, où la carte
+   de la question est déjà présente (F-164). *Écarté* : dupliquer le composant de réponse.

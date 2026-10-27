@@ -173,8 +173,25 @@ public class SubjectJourneyController {
 
     private SubjectJourneyResponse respond(UUID userId, UUID workspaceId, SubjectJourney journey) {
         SubjectJourney decorated = service.withOpenChantiers(journey);
-        return SubjectJourneyResponse.from(decorated, service.waitsOn(userId, workspaceId, decorated),
-                service.closedChantierCount(userId, workspaceId));
+        return SubjectJourneyResponse.fromWaits(decorated, service.waitInfos(userId, workspaceId, decorated),
+                service.closedChantierCount(userId, workspaceId), questionPending(userId, workspaceId));
+    }
+
+    /** Le tour vivant du sujet attend une réponse ou une autorisation (F-164) — pour « qui débloque » (F-220). */
+    private boolean questionPending(UUID userId, UUID workspaceId) {
+        if (liveTurns == null) {
+            return false;
+        }
+        return liveTurns.find(userId, workspaceId)
+                .map(turn -> turn.pendingQuestion().isPresent() || turn.pendingApproval().isPresent())
+                .orElse(false);
+    }
+
+    private fr.claudegateway.atelier.live.LiveTurnRegistry liveTurns;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setLiveTurns(fr.claudegateway.atelier.live.LiveTurnRegistry liveTurns) {
+        this.liveTurns = liveTurns;
     }
 
     /** Le titre du chantier qui s'ouvre (facultatif, F-206). */

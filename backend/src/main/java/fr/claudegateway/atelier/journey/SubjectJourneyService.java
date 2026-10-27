@@ -666,8 +666,20 @@ public class SubjectJourneyService {
     public java.util.Map<String, String> waitsOn(UUID userId, fr.claudegateway.atelier.Workspace workspace,
             SubjectJourney journey) {
         java.util.Map<String, String> statuses = new java.util.LinkedHashMap<>();
+        waitInfos(userId, workspace, journey).forEach((key, info) -> statuses.put(key, info.status()));
+        return statuses;
+    }
+
+    /**
+     * <b>Les attentes dont dépendent les étapes, détaillées</b> (F-220 / SF-220-01) : clé → état, qui doit agir,
+     * à qui, depuis quand. Une clé sans attente n'y figure pas. Best-effort ; l'appelant a le terminal possédé.
+     */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, WaitInfo> waitInfos(UUID userId, fr.claudegateway.atelier.Workspace workspace,
+            SubjectJourney journey) {
+        java.util.Map<String, WaitInfo> infos = new java.util.LinkedHashMap<>();
         if (terminalActions == null || journey == null || workspace == null) {
-            return statuses;
+            return infos;
         }
         // F-208 : les attentes de TOUS les chantiers ouverts — le tableau détaille chacun d'eux.
         java.util.List<JourneyPlan.Step> steps = new java.util.ArrayList<>(
@@ -676,17 +688,32 @@ public class SubjectJourneyService {
             steps.addAll(JourneyPlan.fromJson(other.getPlanJson()).steps());
         }
         for (JourneyPlan.Step step : steps) {
-            if (step.waitsOn() == null || statuses.containsKey(step.waitsOn())) {
+            if (step.waitsOn() == null || infos.containsKey(step.waitsOn())) {
                 continue;
             }
             try {
-                terminalActions.statusOfKey(userId, workspace, step.waitsOn())
-                        .ifPresent(status -> statuses.put(step.waitsOn(), status.name()));
+                terminalActions.actionOfKey(userId, workspace, step.waitsOn())
+                        .ifPresent(action -> infos.put(step.waitsOn(), waitInfo(action)));
             } catch (RuntimeException ex) {
                 log.debug("Attente d'une étape illisible (best-effort) : {}", ex.getMessage());
             }
         }
-        return statuses;
+        return infos;
+    }
+
+    private static WaitInfo waitInfo(fr.claudegateway.atelier.actions.TerminalAction action) {
+        String who = action.getRequestedTo() != null && !action.getRequestedTo().isBlank()
+                ? action.getRequestedTo() : action.getPerson();
+        return new WaitInfo(action.getStatus() == null ? null : action.getStatus().name(),
+                action.getQui() == null ? null : action.getQui().name(),
+                who == null || who.isBlank() ? null : who.strip(),
+                action.getRequestedAt() != null ? action.getRequestedAt() : action.getCreatedAt());
+    }
+
+    /** Même lecture détaillée, depuis la route : {@code requireOwned} d'abord. */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, WaitInfo> waitInfos(UUID userId, UUID workspaceId, SubjectJourney journey) {
+        return waitInfos(userId, workspaceService.requireOwned(userId, workspaceId), journey);
     }
 
     /** Même lecture, depuis la route : {@code requireOwned} d'abord. */
