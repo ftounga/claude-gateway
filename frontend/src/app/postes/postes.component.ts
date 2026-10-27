@@ -118,11 +118,13 @@ import {
   FORGE_TAB_LABELS,
   ForgeTab,
   GovernanceTabSummary,
+  defaultTab,
   effectiveTab,
   governanceTabSummary,
   mapTabSummary,
   tabsFor,
 } from './forge-tabs';
+import { ClientBoardComponent } from './client-board/client-board.component';
 import {
   KillHostDialogComponent,
   KillHostDialogData,
@@ -207,6 +209,7 @@ const EMPTY_HOSTED: RunnerHostOverview = {
   imports: [
     NgTemplateOutlet,
     RouterLink,
+    ClientBoardComponent,
     HostPagesComponent,
     PresentationsPanelComponent,
     VideoGalleryComponent,
@@ -538,6 +541,19 @@ export class PostesComponent implements OnInit {
    */
   private readonly outdatedByHost = signal<Record<string, number>>({});
 
+  /** Chantiers ouverts par poste (F-220), tels que le tableau les a lus — le badge de l'onglet Chantiers. */
+  private readonly chantierCounts = signal<Record<string, number>>({});
+
+  /** Le badge de l'onglet Chantiers : connu une fois le tableau lu, sinon rien. */
+  chantierCount(host: RunnerHostOverview): number | null {
+    return host.id === null ? null : this.chantierCounts()[host.id] ?? null;
+  }
+
+  /** Le tableau du client a été lu : on retient son nombre de chantiers ouverts. */
+  onChantierCount(hostId: string, count: number): void {
+    this.chantierCounts.update((counts) => ({ ...counts, [hostId]: count }));
+  }
+
   // ---------------------------------------------- suivi de revenu (F-124 / SF-124-01)
 
   /** Le **TJM par poste** (F-124 / SF-124-01), en centimes d'euro HT, indexé par identifiant de poste. */
@@ -663,12 +679,13 @@ export class PostesComponent implements OnInit {
 
   /**
    * Ouvre un onglet : il entre dans l'URL (`?onglet=`), et dans l'historique — un retour arrière
-   * ramène à l'onglet d'avant. Projets, l'onglet par défaut, n'encombre pas l'adresse.
+   * ramène à l'onglet d'avant. L'onglet d'ouverture du poste (Chantiers pour une machine depuis F-220,
+   * Projets pour « Hébergé ») n'encombre pas l'adresse.
    */
   selectTab(tab: ForgeTab): void {
     void this.router.navigate([], {
       relativeTo: this.route,
-      queryParams: { onglet: tab === 'projets' ? null : tab },
+      queryParams: { onglet: tab === defaultTab(this.selectedHost()) ? null : tab },
       queryParamsHandling: 'merge',
     });
   }

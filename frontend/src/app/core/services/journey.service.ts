@@ -82,6 +82,11 @@ export class JourneyService {
     return this.http.post<SubjectJourney>(`/api/workspaces/${workspaceId}/journey/chantiers/${number}/focus`, {});
   }
 
+  /** [Clore] le chantier ouvert `number` (F-206) — le focus ne bouge que si c'était lui (F-220). */
+  closeChantier(workspaceId: string, number: number): Observable<SubjectJourney> {
+    return this.http.post<SubjectJourney>(`/api/workspaces/${workspaceId}/journey/chantiers/${number}/close`, {});
+  }
+
   /** Ouvre un chantier de plus, à côté des autres ; il prend le focus (F-206). */
   openChantier(workspaceId: string, title?: string): Observable<SubjectJourney> {
     return this.http.post<SubjectJourney>(`/api/workspaces/${workspaceId}/journey/chantiers`,
