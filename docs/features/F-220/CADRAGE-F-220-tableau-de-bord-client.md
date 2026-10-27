@@ -81,7 +81,8 @@
 | SF-220-02 | **Le tableau du client** — `GET /runner-hosts/{hostId}/chantiers` : tous les chantiers ouverts de tous les sujets du poste, couleur, ancienneté, prochaine étape, manque, dernier geste, course autonome, préflight, compteurs | backend |
 | SF-220-03 | **L'écran du tableau** — onglet « Chantiers » d'ouverture de la page du poste : trois groupes, cartes, ancienneté, gestes ouvrir / lancer / **multi-sélection → lancer plusieurs** (refus au-delà de 4) puis mosaïque, clore | frontend |
 | SF-220-04 | **La pastille dans le sujet** — même couleur dans le tableau des chantiers F-208 (onglets et liste des étapes) | frontend |
-| SF-220-05 | **Reporter et rappeler** — reporter un chantier (il sort du tableau jusqu'à une date), rappel des chantiers dormants dans la cloche, sans spam | backend + frontend |
+| SF-220-05 | **Reporter et rappeler** — reporter un chantier (il sort des compteurs jusqu'à une date ; table `chantier_snoozes`, migration 176), rappel des chantiers dormants dans le récapitulatif quotidien F-185 (une notification par jour au plus) | backend |
+| SF-220-06 | **Reporter, à l'écran** — « Reporter » (1 j / 3 j / 1 semaine) sur la carte, section « Reportés » repliée, « Ne plus reporter » | frontend |
 
 ### Règle « Qui débloque ? » (calculée, jamais devinée)
 **Étape** (non faite) :

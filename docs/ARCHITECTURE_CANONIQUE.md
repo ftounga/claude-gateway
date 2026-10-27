@@ -479,6 +479,15 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   `GET /atelier/autonomy/runs` après `requireOwned`, sous `user_id`. Vérification avant déploiement :
   `SELECT … WHERE status = 'RUNNING'` (un rollout tue le tour en cours). Purge : cascade au terminal.
 
+- **chantier_snoozes** — **les chantiers reportés du tableau du client** (F-220 / SF-220-05, migration `176`) :
+  `id (uuid)`, `user_id (NOT NULL)`, `workspace_id (FK workspaces ON DELETE CASCADE)`, `chantier_number (int)`,
+  `snoozed_until (timestamptz)`, `created_at`, `updated_at`. Unique `(user_id, workspace_id, chantier_number)` :
+  un report remplace le précédent ; un report échu ne compte plus. Index `(user_id, snoozed_until)`. Écrite par
+  `POST|DELETE /workspaces/{id}/journey/chantiers/{n}/snooze` après `requireOwned` (chantier ouvert exigé) ;
+  lue par `GET /runner-hosts/{hostId}/chantiers` (le chantier est rangé à part et sort des compteurs) et par le
+  rappel quotidien des chantiers dormants (récapitulatif F-185, événement `CHANTIERS_DORMANT`), toujours sous
+  `user_id`. Purge : cascade au terminal.
+
 - **message_block_sends** — **les encarts mail/message marqués envoyés** (F-211 / SF-211-01, migration
   `167`) : `id (uuid)`, `user_id (NOT NULL)`, `workspace_id (FK workspaces ON DELETE CASCADE)`,
   `message_id (FK atelier_messages ON DELETE CASCADE)`, `block_index (int)` — rang du bloc mail/message

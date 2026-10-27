@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-220 / SF-220-05 - LE TABLEAU DU CLIENT : REPORTER UN CHANTIER.
+
+      Une ligne par chantier reporte (un report remplace le precedent) : jusqu'a snoozed_until, le chantier
+      quitte les groupes du tableau du client et le rappel des dormants l'ignore. Un report echu ne compte plus
+      (la ligne peut rester, elle ne dit plus rien).
+
+      Isolation : user_id + workspace_id sur chaque ligne ; cascade sur le sujet.
+      Rollback : la table se retire.
+    -->
+
+    <changeSet id="176-chantier-snoozes" author="claude-gateway">
+        <createTable tableName="chantier_snoozes">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_chantier_snoozes_workspace"
+                             references="workspaces(id)" deleteCascade="true"/>
+            </column>
+            <column name="chantier_number" type="int"><constraints nullable="false"/></column>
+            <column name="snoozed_until" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="chantier_snoozes" columnNames="user_id, workspace_id, chantier_number"
+                             constraintName="uk_chantier_snoozes_chantier"/>
+        <createIndex tableName="chantier_snoozes" indexName="idx_chantier_snoozes_user_until">
+            <column name="user_id"/>
+            <column name="snoozed_until"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="chantier_snoozes"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

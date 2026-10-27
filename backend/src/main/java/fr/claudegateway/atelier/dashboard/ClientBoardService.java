@@ -64,13 +64,14 @@ public class ClientBoardService {
     private final AutonomyService autonomy;
     private final AtelierMessageRepository messages;
     private final LiveTurnRegistry liveTurns;
+    private final ChantierSnoozeRepository snoozes;
     private final Clock clock;
     private final int dormantAfterDays;
 
     public ClientBoardService(RunnerHostService hosts, WorkspaceService workspaces,
             SubjectJourneyRepository journeyRepository, SubjectJourneyService journeys,
             ChantierPreflightService preflights, AutonomyService autonomy, AtelierMessageRepository messages,
-            LiveTurnRegistry liveTurns, Clock clock,
+            LiveTurnRegistry liveTurns, ChantierSnoozeRepository snoozes, Clock clock,
             @Value("${app.client-board.dormant-days:2}") int dormantAfterDays) {
         this.hosts = hosts;
         this.workspaces = workspaces;
@@ -80,6 +81,7 @@ public class ClientBoardService {
         this.autonomy = autonomy;
         this.messages = messages;
         this.liveTurns = liveTurns;
+        this.snoozes = snoozes;
         this.clock = clock;
         this.dormantAfterDays = Math.max(1, dormantAfterDays);
     }
@@ -94,6 +96,11 @@ public class ClientBoardService {
         List<AutonomyService.RunView> runs = runs(userId);
         if (!subjects.isEmpty()) {
             Map<UUID, OffsetDateTime> lastMessage = lastMessages(userId, subjects);
+            Map<String, OffsetDateTime> snoozed = new HashMap<>();
+            for (ChantierSnooze s : snoozes.findByUserIdAndWorkspaceIdInAndSnoozedUntilAfter(userId,
+                    subjects.keySet(), now)) {
+                snoozed.put(s.getWorkspaceId() + "#" + s.getChantierNumber(), s.getSnoozedUntil());
+            }
             for (SubjectJourney row : journeyRepository.findByUserIdAndWorkspaceIdIn(userId, subjects.keySet())) {
                 Workspace workspace = subjects.get(row.getWorkspaceId());
                 if (workspace == null || !userId.equals(row.getUserId())) {
@@ -101,7 +108,7 @@ public class ClientBoardService {
                 }
                 try {
                     cards.addAll(cardsOf(userId, workspace, journeys.withOpenChantiers(row),
-                            lastMessage.get(workspace.getId()), runs, now));
+                            lastMessage.get(workspace.getId()), runs, snoozed, now));
                 } catch (RuntimeException e) {
                     log.warn("Tableau du client : sujet illisible ({})", e.getClass().getSimpleName());
                 }
@@ -158,7 +165,8 @@ public class ClientBoardService {
     }
 
     private List<ClientBoard.Chantier> cardsOf(UUID userId, Workspace workspace, SubjectJourney journey,
-            OffsetDateTime lastMessage, List<AutonomyService.RunView> runs, OffsetDateTime now) {
+            OffsetDateTime lastMessage, List<AutonomyService.RunView> runs, Map<String, OffsetDateTime> snoozed,
+            OffsetDateTime now) {
         if (journey == null || journey.getCreatedAt() == null || !journey.isGuided()) {
             return List.of();
         }
@@ -192,7 +200,7 @@ public class ClientBoardService {
                     nextStep(c), c.unblocker(), pf != null && pf.ready(),
                     pf == null ? List.of() : pf.reasons().stream().map(ChantierPreflight.Reason::label).toList(),
                     last, idle, idle >= dormantAfterDays, running || (c.focus() && turn.isPresent()),
-                    c.focus() ? question : null, run));
+                    c.focus() ? question : null, run, snoozed.get(workspace.getId() + "#" + c.number())));
         }
         return cards;
     }
@@ -265,7 +273,12 @@ public class ClientBoardService {
         int autrui = 0;
         int live = 0;
         int dormant = 0;
+        int snoozed = 0;
         for (ClientBoard.Chantier c : cards) {
+            if (c.snoozedUntil() != null) {
+                snoozed++; // reporté : rangé à part, ne compte nulle part ailleurs (SF-220-05)
+                continue;
+            }
             if (c.unblocker() != null) {
                 switch (c.unblocker().who()) {
                     case OUTIL -> outil++;
@@ -283,6 +296,6 @@ public class ClientBoardService {
                 dormant++;
             }
         }
-        return new ClientBoard.Counts(outil, moi, autrui, live, dormant);
+        return new ClientBoard.Counts(outil, moi, autrui, live, dormant, snoozed);
     }
 }

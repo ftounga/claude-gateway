@@ -17,7 +17,7 @@ class ClientBoardServiceTest {
     private static ClientBoard.Chantier card(String ws, int number, ChantierUnblocker.Who who, long idle) {
         ChantierUnblocker.Mark mark = new ChantierUnblocker.Mark(who, who.label(), "d", null, null, null);
         return new ClientBoard.Chantier(UUID.randomUUID(), ws, false, number, "t", "EXECUTION", "Exécution", true,
-                null, 0, 1, null, mark, false, List.of(), null, idle, idle >= 2, false, null, null);
+                null, 0, 1, null, mark, false, List.of(), null, idle, idle >= 2, false, null, null, null);
     }
 
     @Test
