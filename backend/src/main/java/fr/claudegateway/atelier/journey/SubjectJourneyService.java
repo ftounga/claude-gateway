@@ -707,7 +707,8 @@ public class SubjectJourneyService {
         return new WaitInfo(action.getStatus() == null ? null : action.getStatus().name(),
                 action.getQui() == null ? null : action.getQui().name(),
                 who == null || who.isBlank() ? null : who.strip(),
-                action.getRequestedAt() != null ? action.getRequestedAt() : action.getCreatedAt());
+                action.getRequestedAt() != null ? action.getRequestedAt() : action.getCreatedAt(),
+                action.getId());
     }
 
     /** Même lecture détaillée, depuis la route : {@code requireOwned} d'abord. */

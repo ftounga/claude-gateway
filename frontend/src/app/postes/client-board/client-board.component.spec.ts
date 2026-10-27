@@ -7,11 +7,13 @@ import { Router, provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 
 import { AutonomyRun } from '../../core/models/autonomy.models';
-import { ClientBoard, ClientBoardChantier } from '../../core/models/client-board.models';
+import { ClientBoard, ClientBoardChantier, ClientBoardLooseTask } from '../../core/models/client-board.models';
+import { TerminalAction } from '../../core/models/terminal-actions.models';
 import { SubjectJourney } from '../../core/models/journey.models';
 import { AutonomyService } from '../../core/services/autonomy.service';
 import { ClientBoardService } from '../../core/services/client-board.service';
 import { JourneyService } from '../../core/services/journey.service';
+import { TerminalActionsService } from '../../core/services/terminal-actions.service';
 import { ClientBoardComponent } from './client-board.component';
 
 /** F-220 / SF-220-03 — l'écran du tableau du client, service simulé. */
@@ -23,6 +25,7 @@ describe('ClientBoardComponent', () => {
   let journeys: jasmine.SpyObj<JourneyService>;
   let dialog: jasmine.SpyObj<MatDialog>;
   let snack: jasmine.SpyObj<MatSnackBar>;
+  let actions: jasmine.SpyObj<TerminalActionsService>;
   let dialogAnswer: boolean;
 
   const run: AutonomyRun = {
@@ -83,6 +86,9 @@ describe('ClientBoardComponent', () => {
     dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
     dialog.open.and.callFake(() => ({ afterClosed: () => of(dialogAnswer) }) as never);
     snack = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
+    actions = jasmine.createSpyObj<TerminalActionsService>('TerminalActionsService', ['close', 'changeStatus']);
+    actions.close.and.returnValue(of({} as TerminalAction));
+    actions.changeStatus.and.returnValue(of({} as TerminalAction));
     TestBed.configureTestingModule({
       imports: [ClientBoardComponent],
       providers: [
@@ -91,6 +97,7 @@ describe('ClientBoardComponent', () => {
         { provide: ClientBoardService, useValue: boards },
         { provide: AutonomyService, useValue: autonomy },
         { provide: JourneyService, useValue: journeys },
+        { provide: TerminalActionsService, useValue: actions },
       ],
     });
     TestBed.overrideProvider(MatDialog, { useValue: dialog });
@@ -255,5 +262,72 @@ describe('ClientBoardComponent', () => {
   it('aucun chantier : le dit', () => {
     build(board([]));
     expect(el().querySelector('.cb__empty')?.textContent).toContain('Aucun chantier ouvert chez ce client.');
+  });
+
+  // ---------------------------------------------------------------- SF-220-07 : hors chantier
+  const toAsk: ClientBoardLooseTask = {
+    actionId: 'a1', workspaceId: 'w1', workspaceName: 'ingress', hostTerminal: false,
+    description: 'Ticket DNS chez l\'hébergeur', blocks: 'la bascule', status: 'A_FAIRE', qui: 'TIERS',
+    categorie: null, person: 'Support', requestedTo: null, requestedAt: null, createdAt: null,
+    unblocker: { who: 'MOI', label: 'Ça attend votre décision', detail: 'À demander à Support.', step: null,
+      waitingOn: null, since: null },
+    lastActivityAt: null, idleDays: 1, dormant: false, followUpDue: false,
+  };
+  const asked: ClientBoardLooseTask = {
+    ...toAsk, actionId: 'a2', workspaceId: 'w2', workspaceName: 'vpn', description: 'Ouverture du VPN',
+    status: 'DEMANDE', qui: 'CLIENT', idleDays: 5, dormant: true, followUpDue: true,
+    unblocker: { who: 'AUTRUI', label: 'On attend quelqu\'un', detail: 'Demandé à Marc.', step: null,
+      waitingOn: 'Marc', since: '2026-10-20T09:00:00Z' },
+  };
+  const withLoose = (chantiers: ClientBoardChantier[], tasks: ClientBoardLooseTask[]): ClientBoard =>
+    ({ ...board(chantiers), horsChantier: tasks });
+
+  it('SF-220-07 : la section « Hors chantier », ma décision puis quelqu\'un, pastille icône + libellé', () => {
+    build(withLoose([outilReady], [asked, toAsk]));
+    const section = el().querySelector('[data-section="hors-chantier"]') as HTMLElement;
+    expect(section.textContent).toContain('Hors chantier');
+    const groups = Array.from(section.querySelectorAll('[data-loose-group]')).map((g) => g.getAttribute('data-loose-group'));
+    expect(groups).toEqual(['MOI', 'AUTRUI']);
+    const mine = section.querySelector('[data-action="a1"]') as HTMLElement;
+    expect(mine.querySelector('.cb__pill--MOI')?.textContent).toContain('Ça attend votre décision');
+    expect(mine.querySelector('.cb__pill--MOI mat-icon')?.textContent).toContain('front_hand');
+    expect(mine.textContent).toContain('À demander à Support.');
+    expect(mine.textContent).toContain('ingress');
+    const theirs = section.querySelector('[data-action="a2"]') as HTMLElement;
+    expect(theirs.textContent).toContain('Marc');
+    expect(theirs.textContent).toContain('dormant depuis 5 j');
+    expect(theirs.textContent).toContain('à relancer');
+    expect(theirs.querySelector('.cb__task-requested')).toBeNull();
+    // les chantiers gardent leurs groupes ; la section n'en ajoute pas
+    expect(Array.from(el().querySelectorAll('[data-group]')).map((g) => g.getAttribute('data-group'))).toEqual(['OUTIL']);
+  });
+
+  it('SF-220-07 : marquer fait, marquer demandé, ouvrir le sujet — routes existantes, puis relecture', () => {
+    build(withLoose([], [toAsk]));
+    const router = TestBed.inject(Router);
+    spyOn(router, 'navigate').and.resolveTo(true);
+    boards.board.calls.reset();
+    (el().querySelector('[data-action="a1"] .cb__task-requested') as HTMLButtonElement).click();
+    expect(actions.changeStatus).toHaveBeenCalledWith('w1', 'a1', { status: 'DEMANDE' });
+    (el().querySelector('[data-action="a1"] .cb__task-done') as HTMLButtonElement).click();
+    expect(actions.close).toHaveBeenCalledWith('w1', 'a1');
+    expect(boards.board).toHaveBeenCalledTimes(2);
+    (el().querySelector('[data-action="a1"] .cb__task-open') as HTMLButtonElement).click();
+    expect(router.navigate).toHaveBeenCalledWith(['/atelier', 'w1']);
+    // sans chantier, la section reste montrée et l'état vide n'est pas affiché
+    expect(el().querySelector('.cb__empty')).toBeNull();
+  });
+
+  it('SF-220-07 : le filtre « quelqu\'un » ne garde que les attentes demandées ; un refus s\'affiche', () => {
+    build(withLoose([], [asked, toAsk]));
+    component.toggleFilter('AUTRUI');
+    fixture.detectChanges();
+    expect(el().querySelector('[data-action="a1"]')).toBeNull();
+    expect(el().querySelector('[data-action="a2"]')).not.toBeNull();
+    actions.close.and.returnValue(throwError(() => new HttpErrorResponse({
+      status: 404, error: { message: 'Action introuvable.' },
+    })));
+    component.markDone(asked);
+    expect(snack.open.calls.mostRecent().args[0]).toContain('Action introuvable.');
   });
 });

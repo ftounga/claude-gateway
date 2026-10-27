@@ -27,6 +27,12 @@ import org.springframework.test.web.servlet.ResultActions;
 import fr.claudegateway.atelier.Workspace;
 import fr.claudegateway.atelier.WorkspaceExecutionTarget;
 import fr.claudegateway.atelier.WorkspaceRepository;
+import fr.claudegateway.atelier.actions.TerminalAction;
+import fr.claudegateway.atelier.actions.TerminalActionKind;
+import fr.claudegateway.atelier.actions.TerminalActionQui;
+import fr.claudegateway.atelier.actions.TerminalActionRepository;
+import fr.claudegateway.atelier.actions.TerminalActionService;
+import fr.claudegateway.atelier.actions.TerminalActionStatus;
 import fr.claudegateway.atelier.journey.JourneyPlan;
 import fr.claudegateway.atelier.journey.SubjectJourneyChantierRepository;
 import fr.claudegateway.atelier.journey.SubjectJourneyEventRepository;
@@ -63,6 +69,8 @@ class ClientBoardIntegrationTest {
     @Autowired private LiveTurnRegistry liveTurns;
     @Autowired private JwtService jwtService;
     @Autowired private JdbcTemplate jdbc;
+    @Autowired private TerminalActionService terminalActions;
+    @Autowired private TerminalActionRepository actionRepository;
 
     private String aliceToken;
     private String bobToken;
@@ -76,6 +84,7 @@ class ClientBoardIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        actionRepository.deleteAll();
         eventRepository.deleteAll();
         chantierRepository.deleteAll();
         journeyRepository.deleteAll();
@@ -232,5 +241,105 @@ class ClientBoardIntegrationTest {
         seedIngress();
         board(bobToken, aliceHost.getId()).andExpect(status().isNotFound());
         board(bobToken, UUID.randomUUID()).andExpect(status().isNotFound());
+    }
+
+    // ------------------------------------------------------------------ SF-220-07 : hors chantier
+
+    /** Une attente inscrite par la route de l'agent, puis mise dans l'état voulu. */
+    private TerminalAction attente(Workspace w, String key, String description, String person,
+            TerminalActionStatus status, TerminalActionQui qui) {
+        UUID id = terminalActions.record(aliceId, w.getId(), null, description, null, person,
+                TerminalActionKind.MESSAGE, key).action().getId();
+        TerminalAction action = actionRepository.findById(id).orElseThrow();
+        action.setStatus(status);
+        action.setQui(qui);
+        return actionRepository.save(action);
+    }
+
+    private static final String WAITING_PLAN = "[{\"title\":\"Lire\",\"risk\":\"LECTURE\"},"
+            + "{\"title\":\"Obtenir le certificat\",\"risk\":\"EXTERNE\",\"waits_on\":\"cert-gino\"}]";
+
+    /** Migration : chantier en exécution dont l'étape 2 attend « cert-gino ». */
+    private void seedWaitingChantier() throws Exception {
+        guided(migration, "Bascule");
+        service.submitDiagnosis(aliceId, migration.getId(), "diagnostic", "preuve", "ELEVEE");
+        service.confirmDiagnosis(aliceId, migration.getId());
+        service.setPlan(aliceId, migration.getId(), plan(WAITING_PLAN));
+        service.validatePlan(aliceId, migration.getId(), null);
+    }
+
+    @Test
+    @DisplayName("hors chantier : les attentes qu'aucun chantier ne montre, ma décision avant quelqu'un")
+    void looseTasks() throws Exception {
+        seedWaitingChantier();
+        attente(migration, "cert-gino", "Demander le certificat à Gino", "Gino",
+                TerminalActionStatus.DEMANDE, TerminalActionQui.CLIENT); // citée : déjà visible
+        attente(ingress, "dns-support", "Ticket DNS chez l'hébergeur", "Support",
+                TerminalActionStatus.A_FAIRE, TerminalActionQui.TIERS); // pas encore demandée : à moi
+        TerminalAction asked = attente(ingress, "vpn-marc", "Ouverture du VPN par Marc", "Marc",
+                TerminalActionStatus.DEMANDE, TerminalActionQui.CLIENT);
+        attente(migration, "sso", "Se reconnecter en SSO", null,
+                TerminalActionStatus.A_FAIRE, TerminalActionQui.MOI);
+        attente(elsewhere, "autre-poste", "Attente d'un autre poste", "Paul",
+                TerminalActionStatus.A_FAIRE, TerminalActionQui.CLIENT);
+        attente(teams, "teams-key", "Attente du terminal Teams", "Léa",
+                TerminalActionStatus.A_FAIRE, TerminalActionQui.CLIENT);
+        attente(ingress, "deja-fait", "Déjà obtenu", "Zoé", TerminalActionStatus.FAIT, TerminalActionQui.CLIENT);
+        OffsetDateTime fiveDaysAgo = OffsetDateTime.now().minusDays(5).minusHours(1);
+        jdbc.update("update terminal_actions set requested_to = ?, requested_at = ?, updated_at = ? where id = ?",
+                "Marc Dupont", fiveDaysAgo, fiveDaysAgo, asked.getId());
+
+        board(aliceToken, aliceHost.getId())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.horsChantier", hasSize(3)))
+                .andExpect(jsonPath("$.horsChantier[0].unblocker.who", is("MOI")))
+                .andExpect(jsonPath("$.horsChantier[1].unblocker.who", is("MOI")))
+                .andExpect(jsonPath("$.horsChantier[?(@.description == 'Ticket DNS chez l\\'hébergeur')].unblocker.detail",
+                        org.hamcrest.Matchers.contains("À demander à Support.")))
+                .andExpect(jsonPath("$.horsChantier[?(@.qui == 'MOI')].unblocker.detail",
+                        org.hamcrest.Matchers.contains("Un geste à faire par vous.")))
+                .andExpect(jsonPath("$.horsChantier[2].description", is("Ouverture du VPN par Marc")))
+                .andExpect(jsonPath("$.horsChantier[2].workspaceName", is("ingress")))
+                .andExpect(jsonPath("$.horsChantier[2].unblocker.who", is("AUTRUI")))
+                .andExpect(jsonPath("$.horsChantier[2].unblocker.label", is("On attend quelqu'un")))
+                .andExpect(jsonPath("$.horsChantier[2].unblocker.waitingOn", is("Marc Dupont")))
+                .andExpect(jsonPath("$.horsChantier[2].unblocker.since", org.hamcrest.Matchers.notNullValue()))
+                .andExpect(jsonPath("$.horsChantier[2].idleDays", is(5)))
+                .andExpect(jsonPath("$.horsChantier[2].dormant", is(true)))
+                .andExpect(jsonPath("$.horsChantier[2].followUpDue", is(true)))
+                .andExpect(jsonPath("$.counts.horsChantier", is(3)))
+                // le chantier de migration peut avancer (étape 1) : l'outil ; les tâches s'ajoutent aux couleurs
+                .andExpect(jsonPath("$.counts.outil", is(1)))
+                .andExpect(jsonPath("$.counts.autrui", is(1)))
+                .andExpect(jsonPath("$.counts.moi", is(2)))
+                .andExpect(jsonPath("$.counts.dormant", is(1)));
+    }
+
+    @Test
+    @DisplayName("hors chantier : une attente citée seulement par une étape faite redevient visible")
+    void citedByDoneStepOnly() throws Exception {
+        seedWaitingChantier();
+        attente(migration, "cert-gino", "Demander le certificat à Gino", "Gino",
+                TerminalActionStatus.DEMANDE, TerminalActionQui.CLIENT);
+        board(aliceToken, aliceHost.getId()).andExpect(jsonPath("$.horsChantier", hasSize(0)));
+
+        service.updateStep(aliceId, migration.getId(), 1, "VERIFIE", "lu");
+        service.updateStep(aliceId, migration.getId(), 2, "FAIT", "obtenu");
+        board(aliceToken, aliceHost.getId())
+                .andExpect(jsonPath("$.horsChantier", hasSize(1)))
+                .andExpect(jsonPath("$.horsChantier[0].unblocker.waitingOn", is("Gino")));
+    }
+
+    @Test
+    @DisplayName("hors chantier sans aucun chantier : la section est servie ; Bob ne la lit pas")
+    void looseWithoutChantier() throws Exception {
+        attente(ingress, "dns-support", "Ticket DNS chez l'hébergeur", "Support",
+                TerminalActionStatus.A_FAIRE, null);
+        board(aliceToken, aliceHost.getId())
+                .andExpect(jsonPath("$.chantiers", hasSize(0)))
+                .andExpect(jsonPath("$.horsChantier", hasSize(1)))
+                .andExpect(jsonPath("$.horsChantier[0].unblocker.who", is("MOI")))
+                .andExpect(jsonPath("$.counts.moi", is(1)));
+        board(bobToken, aliceHost.getId()).andExpect(status().isNotFound());
     }
 }

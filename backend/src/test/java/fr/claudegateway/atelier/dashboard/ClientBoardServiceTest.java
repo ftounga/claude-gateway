@@ -43,4 +43,63 @@ class ClientBoardServiceTest {
         assertThat(ClientBoardService.firstQuestion("pas du json")).isNull();
         assertThat(ClientBoardService.firstQuestion(null)).isNull();
     }
+
+    // ------------------------------------------------------------------ SF-220-07
+
+    private static fr.claudegateway.atelier.actions.TerminalAction action(
+            fr.claudegateway.atelier.actions.TerminalActionStatus status,
+            fr.claudegateway.atelier.actions.TerminalActionQui qui, String person, String to) {
+        return fr.claudegateway.atelier.actions.TerminalAction.builder().id(UUID.randomUUID()).status(status)
+                .qui(qui).person(person).requestedTo(to)
+                .createdAt(java.time.OffsetDateTime.parse("2026-10-01T09:00:00Z"))
+                .requestedAt(to == null ? null : java.time.OffsetDateTime.parse("2026-10-20T09:00:00Z")).build();
+    }
+
+    @Test
+    @DisplayName("qui débloque une attente hors chantier : geste à moi, demande à faire, demande partie")
+    void looseMark() {
+        var A = fr.claudegateway.atelier.actions.TerminalActionStatus.A_FAIRE;
+        var D = fr.claudegateway.atelier.actions.TerminalActionStatus.DEMANDE;
+        var moi = fr.claudegateway.atelier.actions.TerminalActionQui.MOI;
+        var client = fr.claudegateway.atelier.actions.TerminalActionQui.CLIENT;
+
+        assertThat(ClientBoardService.markOf(action(D, moi, null, null)).who()).isEqualTo(ChantierUnblocker.Who.MOI);
+        ChantierUnblocker.Mark toAsk = ClientBoardService.markOf(action(A, client, "Gino", null));
+        assertThat(toAsk.who()).isEqualTo(ChantierUnblocker.Who.MOI);
+        assertThat(toAsk.detail()).isEqualTo("À demander à Gino.");
+        assertThat(ClientBoardService.markOf(action(A, null, null, null)).detail()).isEqualTo("À demander.");
+
+        ChantierUnblocker.Mark asked = ClientBoardService.markOf(action(D, client, "Gino", "Gino Rossi"));
+        assertThat(asked.who()).isEqualTo(ChantierUnblocker.Who.AUTRUI);
+        assertThat(asked.waitingOn()).isEqualTo("Gino Rossi");
+        assertThat(asked.since()).isEqualTo(java.time.OffsetDateTime.parse("2026-10-20T09:00:00Z"));
+        ChantierUnblocker.Mark noOne = ClientBoardService.markOf(action(D, null, " ", null));
+        assertThat(noOne.waitingOn()).isNull();
+        assertThat(noOne.since()).isEqualTo(java.time.OffsetDateTime.parse("2026-10-01T09:00:00Z"));
+    }
+
+    private static ClientBoard.LooseTask task(String name, ChantierUnblocker.Who who, long idle) {
+        ChantierUnblocker.Mark mark = new ChantierUnblocker.Mark(who, who.label(), "d", null, null, null);
+        return new ClientBoard.LooseTask(UUID.randomUUID(), UUID.randomUUID(), "ws", false, name, null, "A_FAIRE",
+                null, null, null, null, null, java.time.OffsetDateTime.parse("2026-10-01T09:00:00Z"), mark, null,
+                idle, idle >= 2, false);
+    }
+
+    @Test
+    @DisplayName("hors chantier : ma décision avant quelqu'un, le plus dormant d'abord ; comptées dans l'en-tête")
+    void looseOrderAndCounts() {
+        List<ClientBoard.LooseTask> tasks = new ArrayList<>(List.of(
+                task("a", ChantierUnblocker.Who.AUTRUI, 9),
+                task("b", ChantierUnblocker.Who.MOI, 1),
+                task("c", ChantierUnblocker.Who.MOI, 4)));
+        tasks.sort(ClientBoardService.LOOSE_ORDER);
+        assertThat(tasks).extracting(ClientBoard.LooseTask::description).containsExactly("c", "b", "a");
+
+        ClientBoard.Counts counts = ClientBoardService.counts(
+                List.of(card("x", 1, ChantierUnblocker.Who.MOI, 0)), tasks);
+        assertThat(counts.moi()).isEqualTo(3);
+        assertThat(counts.autrui()).isEqualTo(1);
+        assertThat(counts.dormant()).isEqualTo(2);
+        assertThat(counts.horsChantier()).isEqualTo(3);
+    }
 }
