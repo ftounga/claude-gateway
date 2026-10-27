@@ -1,6 +1,6 @@
 # CADRAGE F-218 — Le mode offensif
 
-**Statut :** brouillon du 2026-10-27, à compléter par l'agent de livraison (preuves fichier:ligne, découpage final)
+**Statut :** complété le 2026-10-27 par l'agent de livraison — inventaire prouvé dans `SF-218-01-doctrine-offensive.md`
 **Demande PO :** 2026-10-27
 
 ## Le besoin, dans les mots du PO
@@ -41,3 +41,8 @@ L'alternative présentée au PO (une seule validation au départ d'un chantier, 
 
 ## Hors périmètre
 L'exécution autonome d'un chantier entier : c'est F-219.
+
+## Découpage final (2026-10-27)
+- **SF-218-01** La doctrine offensive (prompt) : révise le garde-fou F-167, précise `demander` et le guide du parcours. Porte l'inventaire prouvé (fichier:ligne).
+- **SF-218-02** Le harnais aligné : plus d'accord du harnais pour publier une page ou une vidéo, ni pour écrire dans Microsoft 365 (soumis désormais à la politique de permission comme les autres outils). Coupe-circuit `app.atelier.offensive-mode`.
+- **SF-218-03** L'écran aligné : plus de dialogue « Confirmer ? » sur une étape EXTERNE du tableau des chantiers et des suites.
