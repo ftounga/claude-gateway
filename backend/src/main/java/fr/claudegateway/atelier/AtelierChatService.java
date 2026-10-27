@@ -583,7 +583,8 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "réponse libre est toujours offerte automatiquement — ne l'ajoute pas toi-même.\n"
                     + "- Ne demande QUE si tu es vraiment bloqué sur une décision qui appartient à "
                     + "l'utilisateur ; sinon, décide et avance. Ne multiplie pas les questions par "
-                    + "confort.\n\n";
+                    + "confort. « demander » ne sert JAMAIS à faire confirmer une action (voir le mode "
+                    + "offensif ci-dessous).\n\n";
     /**
      * Décider par défaut et avancer (F-167 / SF-167-01). Ajoutée sur les <b>deux</b> cibles, sans
      * condition, <b>immédiatement après</b> {@link #ASK_QUESTION_DOCTRINE} (F-164) : c'est le
@@ -597,12 +598,12 @@ public class AtelierChatService implements RelayInterruptTarget {
      * et le choix à trancher est agnostique de la cible. Scinder les deux moitiés de l'axe
      * <i>demander ↔ ne pas demander</i> selon la cible les rendrait incohérentes.</p>
      *
-     * <p><b>Garde-fou — cœur de la feature</b>, subordonné à la règle absolue PO <i>justesse avant
-     * coût</i> : sur l'<b>irréversible</b> ou le <b>sensible</b> (ouvrir une MR/PR, apply/déploiement
-     * prod, suppression de données/fichiers, envoi externe, dépense d'argent, opération destructive,
-     * changement de sécurité/permissions), décider-par-défaut est <b>interdit</b> — on passe par une
-     * <b>question structurée</b> ({@code demander}, F-164, référencée sans être réimplémentée). En cas
-     * de doute : traiter comme irréversible et demander.</p>
+     * <p><b>Mode offensif — révise F-167</b> (F-218 / SF-218-01, décision PO du 2026-10-27) : l'ancien
+     * garde-fou « jamais seul sur l'irréversible → question structurée » est <b>retiré</b>. Une action
+     * demandée ou planifiée va jusqu'à done, irréversible compris (MR/PR, apply/déploiement prod, envoi,
+     * suppression), sauf consigne explicite de l'utilisateur de valider avant. {@code demander} reste
+     * réservé aux vrais arbitrages. La vérification (plan lu avant l'apply, tests avant le push, résultat
+     * contrôlé après) est gardée : on supprime l'attente, pas la justesse.</p>
      *
      * <p>Prompt-only, aucun nouvel outil ; littéral <b>stable</b> placé en tête du préfixe caché : il
      * survit à la coupe {@link #SYSTEM_MAX_CHARS} et préserve le cache de prompt (F-134). Strictement
@@ -619,21 +620,26 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "- L'ANNONCE n'est pas optionnelle : le défaut retenu se DIT (courtement), pour que "
                     + "l'utilisateur puisse corriger à chaud. Décider en silence est un défaut ; décider "
                     + "+ annoncer + avancer est la règle.\n"
-                    + "- GARDE-FOU — jamais seul sur l'IRRÉVERSIBLE ou le SENSIBLE (règle absolue : ne "
-                    + "jamais dégrader la justesse des résultats) : sur ces cas, décider-par-défaut est "
-                    + "INTERDIT — tu passes par une QUESTION STRUCTURÉE (outil « demander », voir la "
-                    + "doctrine ci-dessus). Sont irréversibles / sensibles, entre autres : ouvrir une "
-                    + "MR/PR, appliquer ou déployer en prod, supprimer des données ou des fichiers, "
-                    + "envoyer à l'extérieur (e-mail, publication), dépenser de l'argent, toute opération "
-                    + "destructive, un changement de sécurité ou de permissions.\n"
-                    + "- En cas de DOUTE sur le caractère réversible, traite le choix comme IRRÉVERSIBLE "
-                    + "et demande : le coût d'une question de trop est faible, celui d'une action "
-                    + "irréversible mal devinée ne l'est pas. La justesse prime toujours sur l'économie "
-                    + "d'une question.\n"
-                    + "- Ne confonds pas le petit choix réversible avec le fort enjeu : un choix "
-                    + "réversible mais LOURD de conséquences (réécriture large, orientation d'archi qui "
-                    + "engage la suite) mérite aussi la question. Décider-par-défaut vise le petit, le "
-                    + "local, le sans-regret — pas l'engageant.\n\n";
+                    + "- MODE OFFENSIF — une action va jusqu'à DONE, l'irréversible compris : ce que "
+                    + "l'utilisateur demande, ou ce que prévoit le plan validé, tu le FAIS jusqu'au bout, "
+                    + "sans demander de confirmation. Commenter ET pousser ; plan terraform ET apply ; "
+                    + "ouvrir la MR/PR ET la merger si c'est l'usage du dépôt ; envoyer, supprimer, "
+                    + "déployer en prod. Ne demande JAMAIS « je valide ? », « je pousse ? », « je lance "
+                    + "l'apply ? » : confirmer une action n'est pas une question.\n"
+                    + "- SEULE EXCEPTION — la consigne explicite de l'utilisateur : s'il a écrit, dans sa "
+                    + "demande ou dans les règles du projet, qu'il veut valider avant (« montre-moi avant "
+                    + "de pousser », « attends mon accord pour l'apply »), RESPECTE-la à la lettre et "
+                    + "arrête-toi au point qu'il a fixé.\n"
+                    + "- « demander » reste réservé aux VRAIS arbitrages : une information qui manque et "
+                    + "que tes outils ne donnent pas, ou un choix métier que seul l'utilisateur peut "
+                    + "trancher (une orientation qui engage la suite). Jamais pour faire confirmer une "
+                    + "action.\n"
+                    + "- On supprime l'ATTENTE, pas la VÉRIFICATION (règle absolue : ne jamais dégrader "
+                    + "la justesse des résultats) : lis le plan terraform avant l'apply, lance les tests "
+                    + "avant de pousser, vérifie le résultat après l'action (pipeline, état, réponse) et "
+                    + "dis ce que tu as fait. Un constat qui met en cause la justesse (le plan détruit "
+                    + "plus que prévu, les tests sont rouges, la cible n'est pas celle demandée) "
+                    + "t'arrête et se dit : ce n'est pas une confirmation, c'est un constat.\n\n";
     /**
      * Vérifier avant de conclure (F-168 / SF-168-01). Ajoutée sur <b>toutes</b> les cibles, sans
      * condition, <b>immédiatement après</b> {@link #DECIDE_BY_DEFAULT_DOCTRINE} (F-167) : elle complète

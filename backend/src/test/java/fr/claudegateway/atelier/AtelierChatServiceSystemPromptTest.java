@@ -479,15 +479,12 @@ class AtelierChatServiceSystemPromptTest {
         assertThat(system).contains("FAIBLE ENJEU et RÉVERSIBLE");
         assertThat(system).contains("je pars sur X");
         assertThat(system).contains("L'ANNONCE n'est pas optionnelle");
-        // Garde-fou (cœur de la feature) : irréversible / sensible → interdit de décider seul.
-        assertThat(system).contains("jamais dégrader la justesse");
-        assertThat(system).contains("décider-par-défaut est INTERDIT");
-        assertThat(system).contains("QUESTION STRUCTURÉE (outil « demander »");
-        // Au moins un exemple irréversible concret énuméré.
-        assertThat(system).contains("ouvrir une MR/PR");
-        assertThat(system).contains("déployer en prod");
-        // Doute → traiter comme irréversible et demander.
-        assertThat(system).contains("traite le choix comme IRRÉVERSIBLE");
+        // F-218 / SF-218-01 : le garde-fou F-167 (irréversible → question) est remplacé par le mode offensif.
+        assertThat(system).contains("MODE OFFENSIF — une action va jusqu'à DONE, l'irréversible compris");
+        assertThat(system).contains("SEULE EXCEPTION — la consigne explicite de l'utilisateur");
+        assertThat(system).contains("On supprime l'ATTENTE, pas la VÉRIFICATION");
+        assertThat(system).doesNotContain("décider-par-défaut est INTERDIT");
+        assertThat(system).doesNotContain("traite le choix comme IRRÉVERSIBLE");
     }
 
     @Test
@@ -516,18 +513,23 @@ class AtelierChatServiceSystemPromptTest {
     }
 
     @Test
-    void theDecideByDefaultGuardrailForbidsDecidingAloneOnIrreversibleActions() {
-        // Le cœur de la feature : sur l'irréversible / sensible, décider-par-défaut est INTERDIT et
-        // renvoie vers la question structurée (F-164), avec des exemples irréversibles énumérés.
+    void theOffensiveModeLetsIrreversibleActionsGoToDoneWithoutConfirmation() {
+        // F-218 / SF-218-01 (révise F-167) : l'irréversible va jusqu'à done, sans confirmation ; seule une
+        // consigne explicite de l'utilisateur fait valider avant ; « demander » reste aux vrais arbitrages ;
+        // la vérification est gardée (justesse avant coût).
         String system = systemPromptOfRunnerProjectDeclaring(null);
 
-        assertThat(system).contains("INTERDIT — tu passes par une QUESTION STRUCTURÉE");
-        assertThat(system).contains("supprimer des données ou des fichiers");
-        assertThat(system).contains("envoyer à l'extérieur (e-mail, publication)");
-        assertThat(system).contains("dépenser de l'argent");
-        assertThat(system).contains("changement de sécurité ou de permissions");
-        // En cas de doute, on demande — la justesse prime sur l'économie d'une question.
-        assertThat(system).contains("La justesse prime toujours sur l'économie");
+        assertThat(system).contains("plan terraform ET apply");
+        assertThat(system).contains("ouvrir la MR/PR ET la merger si c'est l'usage du dépôt");
+        assertThat(system).contains("Ne demande JAMAIS « je valide ? », « je pousse ? »");
+        assertThat(system).contains("RESPECTE-la à la lettre");
+        assertThat(system).contains("« demander » reste réservé aux VRAIS arbitrages");
+        assertThat(system).contains("« demander » ne sert JAMAIS à faire confirmer une action");
+        assertThat(system).contains("lis le plan terraform avant l'apply, lance les tests");
+        assertThat(system).contains("ce n'est pas une confirmation, c'est un constat");
+        // L'ancien garde-fou ne survit nulle part dans le préfixe.
+        assertThat(system).doesNotContain("INTERDIT — tu passes par une QUESTION STRUCTURÉE");
+        assertThat(system).doesNotContain("jamais seul sur l'IRRÉVERSIBLE");
     }
 
     @Test
