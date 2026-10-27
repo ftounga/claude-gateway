@@ -437,21 +437,30 @@ public class TerminalActionService {
      */
     @Transactional(readOnly = true)
     public java.util.Optional<TerminalActionStatus> statusOfKey(UUID userId, Workspace workspace, String key) {
+        return actionOfKey(userId, workspace, key).map(TerminalAction::getStatus);
+    }
+
+    /**
+     * <b>L'attente qui porte cette clé</b> (F-220 / SF-220-01) — même recherche que {@link #statusOfKey} : celle
+     * de ce terminal d'abord, sinon la plus récente du même poste. Lecture seule, sous {@code user_id} ; l'appelant
+     * a déjà le terminal possédé. Vide si aucune attente ne porte la clé.
+     */
+    @Transactional(readOnly = true)
+    public java.util.Optional<TerminalAction> actionOfKey(UUID userId, Workspace workspace, String key) {
         if (userId == null || workspace == null || key == null || key.isBlank()) {
             return java.util.Optional.empty();
         }
         String dedupKey = normalizeKey(key);
         var here = repository.findByUserIdAndWorkspaceIdAndDedupKey(userId, workspace.getId(), dedupKey);
         if (here.isPresent()) {
-            return java.util.Optional.of(here.get().getStatus());
+            return here;
         }
         if (workspace.getHostId() == null) {
             return java.util.Optional.empty();
         }
         return repository.findByUserIdAndHostIdAndDedupKeyOrderByCreatedAtDesc(
                         userId, workspace.getHostId(), dedupKey).stream()
-                .findFirst()
-                .map(TerminalAction::getStatus);
+                .findFirst();
     }
 
     /** Ce qu'une fermeture par clé a donné, et l'action concernée ({@code null} si inconnue). */
