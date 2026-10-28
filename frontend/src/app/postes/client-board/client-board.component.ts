@@ -1,6 +1,5 @@
-import { Component, DestroyRef, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
+import { Component, DestroyRef, ElementRef, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
-import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
@@ -48,9 +47,6 @@ import { httpErrorMessage } from '../../shared/http-error.util';
 /** Relecture du tableau tant que l'onglet du navigateur est visible. */
 export const CLIENT_BOARD_REFRESH_MS = 15_000;
 
-/** Circonférence de l'anneau d'avancement (r = 16). */
-const RING = 2 * Math.PI * 16;
-
 /** Les sujets repliés du tableau (SF-220-08) : un tableau JSON d'identifiants de sujet. */
 export const CLIENT_BOARD_COLLAPSED_KEY = 'cg_client_board_collapsed';
 
@@ -93,7 +89,6 @@ function writeCollapsed(ids: ReadonlySet<string>): void {
   selector: 'app-client-board',
   imports: [
     MatButtonModule,
-    MatCheckboxModule,
     MatIconModule,
     MatMenuModule,
     MatProgressSpinnerModule,
@@ -112,6 +107,7 @@ export class ClientBoardComponent {
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialog = inject(MatDialog);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   /** Le poste ouvert. */
   readonly hostId = input.required<string>();
@@ -126,6 +122,12 @@ export class ClientBoardComponent {
   readonly selected = signal<ReadonlySet<string>>(new Set());
   /** Un lancement (simple ou groupé) est en cours. */
   readonly launching = signal(false);
+  /** La ligne dépliée (SF-220-09) — une seule à la fois : `c:<clé>` (chantier) ou `t:<id>` (attente). */
+  readonly expanded = signal<string | null>(null);
+  /** Le mode sélection (SF-220-09) : les cases restent visibles sans survol. */
+  readonly selectMode = signal(false);
+  /** Les cases sont montrées : mode sélection, ou une sélection existe. */
+  readonly selecting = computed(() => this.selectMode() || this.selection().length > 0);
 
   readonly order = UNBLOCKER_ORDER;
   readonly titles = UNBLOCKER_TITLES;
@@ -174,6 +176,8 @@ export class ClientBoardComponent {
         this.board.set(null);
         this.selected.set(new Set());
         this.filter.set(null);
+        this.expanded.set(null);
+        this.selectMode.set(false);
         this.load(hostId, true);
       });
     });
@@ -302,18 +306,69 @@ export class ClientBoardComponent {
     return usd === undefined || usd === null || usd <= 0 ? null : `${usd.toFixed(2)} $`;
   }
 
-  ringDash(c: ClientBoardChantier): string {
-    const ratio = c.total > 0 ? Math.min(1, c.done / c.total) : 0;
-    return `${(ratio * RING).toFixed(1)} ${RING.toFixed(1)}`;
+  /** L'avancement en pourcentage (mini-barre). */
+  ratio(c: ClientBoardChantier): number {
+    return c.total > 0 ? Math.round(Math.min(1, c.done / c.total) * 100) : 0;
   }
 
-  /** Les raisons à montrer (deux au plus) et le reste. */
-  missingShown(c: ClientBoardChantier): string[] {
-    return c.missing.slice(0, 2);
+  /** « 7 étapes » / « 1 étape » / « rien » — ce qui restera à faire. */
+  remaining(c: ClientBoardChantier): string {
+    const left = Math.max(0, c.total - c.done);
+    return left === 0 ? 'rien' : `${left} étape${left > 1 ? 's' : ''}`;
   }
 
-  missingMore(c: ClientBoardChantier): number {
-    return Math.max(0, c.missing.length - 2);
+  // ------------------------------------------------------------------ lignes dépliables (SF-220-09)
+
+  rowKey(c: ClientBoardChantier): string {
+    return `c:${chantierKey(c)}`;
+  }
+
+  taskKey(t: ClientBoardLooseTask): string {
+    return `t:${t.actionId}`;
+  }
+
+  isExpanded(c: ClientBoardChantier): boolean {
+    return this.expanded() === this.rowKey(c);
+  }
+
+  isTaskExpanded(t: ClientBoardLooseTask): boolean {
+    return this.expanded() === this.taskKey(t);
+  }
+
+  /** Déplie une ligne en place ; en déplier une autre replie la première. */
+  toggleRow(key: string): void {
+    this.expanded.update((current) => (current === key ? null : key));
+  }
+
+  detailId(c: ClientBoardChantier): string {
+    return `cb-detail-${c.workspaceId}-${c.number}`;
+  }
+
+  taskDetailId(t: ClientBoardLooseTask): string {
+    return `cb-detail-task-${t.actionId}`;
+  }
+
+  /** ↑ / ↓ : passer d'une ligne à l'autre au clavier. */
+  rowKeydown(event: KeyboardEvent): void {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') {
+      return;
+    }
+    const rows = Array.from(this.host.nativeElement.querySelectorAll<HTMLElement>('.cb__row-toggle'));
+    const at = rows.indexOf(event.currentTarget as HTMLElement);
+    const next = rows[at + (event.key === 'ArrowDown' ? 1 : -1)];
+    if (at >= 0 && next) {
+      event.preventDefault();
+      next.focus();
+    }
+  }
+
+  toggleSelecting(): void {
+    if (this.selecting()) {
+      this.selectMode.set(false);
+      this.clearSelection();
+    } else {
+      this.selectMode.set(true);
+    }
   }
 
   // ------------------------------------------------------------------ gestes
