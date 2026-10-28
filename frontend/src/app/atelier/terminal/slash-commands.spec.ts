@@ -64,4 +64,11 @@ describe('slash-commands (F-121 / SF-121-23)', () => {
       expect(command.prompt.trim().length).toBeGreaterThan(0);
     }
   });
+
+  it('SF-219-05 : /avancer 7 demande lancer_chantier_autonome en mode UNTIL_BLOCKED', () => {
+    const expanded = expandSlashCommand('/avancer 7') ?? '';
+    expect(expanded).toContain('lancer_chantier_autonome');
+    expect(expanded).toContain('mode=UNTIL_BLOCKED');
+    expect(expanded).toContain('7');
+  });
 });

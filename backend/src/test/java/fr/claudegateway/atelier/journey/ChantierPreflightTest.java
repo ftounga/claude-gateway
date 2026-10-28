@@ -136,4 +136,75 @@ class ChantierPreflightTest {
         assertThat(JourneyPlan.fromJson(plan.toJson()).steps().get(0).status())
                 .isEqualTo(JourneyPlan.StepStatus.BLOQUE);
     }
+
+    // ------------------------------------------------------------------ SF-219-05 : avancer jusqu'au blocage
+
+    private static ChantierPreflight.Advance advance(JourneyPhase phase, String planJson, Integer validated,
+                                                     Map<String, WaitInfo> waits) {
+        return ChantierPreflight.evaluate(new ChantierPreflight.Input(1, true, phase, planJson, 3, validated,
+                Map.of(), false), waits).advance();
+    }
+
+    @Test
+    @DisplayName("avancer : une étape à portée et une attente envers Gino → possible, l'attente dit à qui")
+    void advancePossibleWithWait() {
+        String json = plan(step("A", "A_FAIRE", ",\"dependsOn\":[]"),
+                step("B", "A_FAIRE", ",\"waitsOn\":\"cert\",\"dependsOn\":[]"),
+                step("C", "A_FAIRE", ",\"dependsOn\":[2]"));
+        Map<String, WaitInfo> waits = Map.of("cert", new WaitInfo("DEMANDE", "CLIENT", "Gino", null));
+        ChantierPreflight full = ChantierPreflight.evaluate(new ChantierPreflight.Input(1, true,
+                JourneyPhase.EXECUTION, json, 3, 3, Map.of("cert", "DEMANDE"), false), waits);
+        assertThat(full.ready()).isFalse();
+        ChantierPreflight.Advance a = full.advance();
+        assertThat(a.possible()).isTrue();
+        assertThat(a.toolSteps()).containsExactly(1);
+        assertThat(a.remaining()).hasSize(1); // C hérite de B : pas répétée
+        assertThat(a.remaining().get(0).who()).isEqualTo(ChantierUnblocker.Who.AUTRUI);
+        assertThat(a.remaining().get(0).waitingOn()).isEqualTo("Gino");
+        assertThat(a.label()).contains("1 étape(s)").contains("on attend Gino");
+    }
+
+    @Test
+    @DisplayName("avancer : une étape BLOQUE est « votre décision » ; la suite indépendante reste à portée")
+    void advanceAroundBlocked() {
+        ChantierPreflight.Advance a = advance(JourneyPhase.EXECUTION, plan(
+                step("A", "BLOQUE", ",\"evidence\":\"quel nom de domaine ?\",\"dependsOn\":[]"),
+                step("B", "FAIT", ",\"dependsOn\":[]")), 3, Map.of());
+        assertThat(a.possible()).isTrue();
+        assertThat(a.toolSteps()).containsExactly(2); // faite : l'outil la vérifie
+        assertThat(a.remaining()).extracting(ChantierUnblocker.Mark::who).containsExactly(ChantierUnblocker.Who.MOI);
+        assertThat(a.remaining().get(0).detail()).contains("quel nom de domaine");
+    }
+
+    @Test
+    @DisplayName("avancer : tout attend quelqu'un → impossible, avec la phrase")
+    void advanceNothingInReach() {
+        ChantierPreflight.Advance a = advance(JourneyPhase.EXECUTION, plan(
+                step("A", "A_FAIRE", ",\"waitsOn\":\"cert\"")), 3, Map.of());
+        assertThat(a.possible()).isFalse();
+        assertThat(a.toolSteps()).isEmpty();
+        assertThat(a.label()).contains("Aucune étape n'est à la portée");
+        assertThat(a.remaining()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("avancer : plan non validé ou amendé, investigation, tout vérifié → impossible")
+    void advanceNeedsValidatedPlan() {
+        String json = plan(step("A", "A_FAIRE", ""));
+        assertThat(advance(JourneyPhase.PLAN, json, null, Map.of()).label()).contains("attend votre validation");
+        assertThat(advance(JourneyPhase.EXECUTION, json, 2, Map.of()).label()).contains("amendé");
+        assertThat(advance(JourneyPhase.INVESTIGATION, json, 3, Map.of()).possible()).isFalse();
+        assertThat(advance(JourneyPhase.EXECUTION, plan(step("A", "VERIFIE", "")), 3, Map.of()).possible())
+                .isFalse();
+    }
+
+    @Test
+    @DisplayName("prêt (strict) implique avancer possible")
+    void readyImpliesAdvance() {
+        ChantierPreflight.Advance a = advance(JourneyPhase.EXECUTION, plan(step("A", "FAIT", ""),
+                step("B", "A_FAIRE", "")), 3, Map.of());
+        assertThat(a.possible()).isTrue();
+        assertThat(a.toolSteps()).containsExactly(1, 2);
+        assertThat(a.remaining()).isEmpty();
+    }
 }

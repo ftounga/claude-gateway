@@ -73,20 +73,23 @@ public class ChantierPreflightService {
         if (journey == null || journey.getCreatedAt() == null) {
             return result;
         }
-        Map<String, String> waits = journeys.waitsOn(userId, workspace, journey);
+        Map<String, WaitInfo> infos = journeys.waitInfos(userId, workspace, journey);
+        Map<String, String> waits = new java.util.LinkedHashMap<>();
+        infos.forEach((key, info) -> waits.put(key, info.status()));
         boolean questionPending = questionPending(userId, workspace.getId());
         boolean guided = journey.isGuided();
         if (journey.hasOpenFocus()) {
             int number = Math.max(1, journey.getChantierNumber());
             result.add(new ChantierReadiness(number, journey.getChantierTitle(), ChantierPreflight.evaluate(
                     new ChantierPreflight.Input(number, guided, journey.getPhase(), journey.getPlanJson(),
-                            journey.getPlanVersion(), journey.getValidatedVersion(), waits, questionPending))));
+                            journey.getPlanVersion(), journey.getValidatedVersion(), waits, questionPending),
+                    infos)));
         }
         for (SubjectJourneyChantier row : journey.getOtherOpenChantiers()) {
             result.add(new ChantierReadiness(row.getNumber(), row.getTitle(), ChantierPreflight.evaluate(
                     new ChantierPreflight.Input(row.getNumber(), guided, row.getPhase(), row.getPlanJson(),
                             row.getPlanVersion() == null ? 0 : row.getPlanVersion(), row.getValidatedVersion(),
-                            waits, questionPending))));
+                            waits, questionPending), infos)));
         }
         result.sort(java.util.Comparator.comparingInt(ChantierReadiness::number));
         return List.copyOf(result);

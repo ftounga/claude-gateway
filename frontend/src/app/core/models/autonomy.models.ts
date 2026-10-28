@@ -1,7 +1,23 @@
+import { UnblockerMark } from './client-board.models';
+
 /**
  * **Un chantier en autonome** (F-219) — le contrat de l'API, réutilisé par F-220. Aucun identifiant de
  * compte : la gateway part du JWT.
  */
+
+/** Le mode d'une course : tout le chantier (préflight vert), ou avancer jusqu'au blocage (SF-219-05). */
+export type AutonomyMode = 'STRICT' | 'UNTIL_BLOCKED';
+
+/** « Avancer jusqu'au blocage » (SF-219-05) : possible, les étapes à portée, ce qui restera. */
+export interface ChantierAdvance {
+  possible: boolean;
+  /** Rangs (à partir de 1) des étapes à la portée de l'outil. */
+  toolSteps: number[];
+  /** Ce qui restera : causes premières `MOI` et `AUTRUI`, dans l'ordre du plan. */
+  remaining: UnblockerMark[];
+  /** La phrase lisible telle quelle. */
+  label: string | null;
+}
 
 /** Une raison qui empêche le départ (SF-219-01). */
 export interface AutonomyReason {
@@ -17,9 +33,11 @@ export interface ChantierPreflight {
   number: number;
   ready: boolean;
   reasons: AutonomyReason[];
+  /** SF-219-05 ; absent d'une réponse ancienne. */
+  advance?: ChantierAdvance | null;
 }
 
-export type AutonomyRunStatus = 'RUNNING' | 'DONE' | 'BLOCKED' | 'STOPPED' | 'FAILED';
+export type AutonomyRunStatus = 'RUNNING' | 'DONE' | 'PARTIAL' | 'BLOCKED' | 'STOPPED' | 'FAILED';
 
 /** Une course autonome (SF-219-02). */
 export interface AutonomyRun {
@@ -28,6 +46,8 @@ export interface AutonomyRun {
   chantierNumber: number;
   chantierTitle: string | null;
   status: AutonomyRunStatus | string;
+  /** SF-219-05 ; absent d'une réponse ancienne (= STRICT). */
+  mode?: AutonomyMode | string;
   turns: number;
   stepsDone: number;
   stepsTotal: number;
@@ -75,6 +95,7 @@ export interface AutonomyConflict {
 export function autonomyOutcomeLabel(status: string): string {
   switch (status) {
     case 'DONE': return 'terminée';
+    case 'PARTIAL': return 'avancée jusqu’au blocage';
     case 'BLOCKED': return 'bloquée';
     case 'STOPPED': return 'arrêtée';
     case 'FAILED': return 'en échec';
@@ -85,4 +106,22 @@ export function autonomyOutcomeLabel(status: string): string {
 /** L'étape en cours d'une course : faites + 1, bornée au total. */
 export function autonomyCurrentStep(done: number, total: number): number {
   return total <= 0 ? 0 : Math.min(total, done + 1);
+}
+
+/** « En autonome — étape 3/7 » ou « Jusqu'au blocage — étape 3/7 » selon le mode de la course. */
+export function autonomyRunningLabel(run: Pick<AutonomyRun, 'mode'>, step: number, total: number): string {
+  const prefix = run.mode === 'UNTIL_BLOCKED' ? 'Jusqu’au blocage' : 'En autonome';
+  return `${prefix} — étape ${step}/${total}`;
+}
+
+/** Ce qui restera, groupé : « Ça attend votre décision » et « On attend quelqu'un » (SF-219-05). */
+export function groupRemaining(advance: ChantierAdvance | null | undefined): {
+  decisions: UnblockerMark[];
+  waits: UnblockerMark[];
+} {
+  const remaining = advance?.remaining ?? [];
+  return {
+    decisions: remaining.filter((m) => m.who === 'MOI'),
+    waits: remaining.filter((m) => m.who === 'AUTRUI'),
+  };
 }

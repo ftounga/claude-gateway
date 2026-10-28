@@ -11,6 +11,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import fr.claudegateway.atelier.journey.AutonomyMode;
+
 /**
  * <b>Le journal des courses autonomes</b> (F-219 / SF-219-02) : chaque écriture dans sa propre transaction
  * (la boucle tourne hors transaction, en tâche de fond). Toute lecture filtre par {@code user_id}.
@@ -30,6 +32,13 @@ public class AutonomyRunStore {
     @Transactional
     public ChantierAutonomyRun open(UUID userId, UUID workspaceId, int number, String title, UUID turnId,
             int stepsDone, int stepsTotal) {
+        return open(userId, workspaceId, number, title, turnId, stepsDone, stepsTotal, AutonomyMode.STRICT);
+    }
+
+    /** Écrit la course {@code RUNNING} dans le mode donné (SF-219-05). */
+    @Transactional
+    public ChantierAutonomyRun open(UUID userId, UUID workspaceId, int number, String title, UUID turnId,
+            int stepsDone, int stepsTotal, AutonomyMode mode) {
         OffsetDateTime now = OffsetDateTime.now(clock);
         return repository.save(ChantierAutonomyRun.builder()
                 .userId(userId)
@@ -37,6 +46,7 @@ public class AutonomyRunStore {
                 .chantierNumber(number)
                 .chantierTitle(title == null ? null : title.length() > 200 ? title.substring(0, 200) : title)
                 .status(AutonomyRunStatus.RUNNING)
+                .mode(mode == null ? AutonomyMode.STRICT : mode)
                 .turnId(turnId)
                 .stepsDone(stepsDone)
                 .stepsTotal(stepsTotal)

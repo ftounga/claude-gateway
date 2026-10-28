@@ -263,11 +263,17 @@ public class JourneyToolCatalog {
                 "Lance un chantier EN AUTONOME, quand l'utilisateur le demande (« exécute le chantier 2 en "
                         + "autonome ») : la gateway vérifie qu'il est prêt (plan validé, rien de bloqué, aucune "
                         + "attente ni question) et le départ part dès la fin de ce tour ; il enchaîne alors toutes "
-                        + "les étapes sans question. Jamais de ta propre initiative.",
+                        + "les étapes sans question. mode=UNTIL_BLOCKED quand il demande d'avancer jusqu'au "
+                        + "blocage (« fais toutes les étapes à ta portée ») : il suffit d'un plan validé et d'une "
+                        + "étape à la portée de l'outil ; la course contourne ce qui attend une décision ou "
+                        + "quelqu'un, et s'arrête quand plus rien n'est à sa portée. Jamais de ta propre initiative.",
                 Map.of("type", "object",
                         "properties", Map.of(
                                 "chantier", Map.of("type", "integer",
-                                        "description", "Le numéro du chantier à lancer.")),
+                                        "description", "Le numéro du chantier à lancer."),
+                                "mode", Map.of("type", "string", "enum", List.of("STRICT", "UNTIL_BLOCKED"),
+                                        "description", "STRICT (défaut) : tout le chantier, préflight vert. "
+                                                + "UNTIL_BLOCKED : avancer jusqu'au blocage.")),
                         "required", List.of("chantier")));
     }
 

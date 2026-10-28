@@ -26,8 +26,10 @@ import fr.claudegateway.atelier.AtelierMcpTurnLauncher;
 import fr.claudegateway.atelier.AtelierProgressListener;
 import fr.claudegateway.atelier.Workspace;
 import fr.claudegateway.atelier.WorkspaceNotFoundException;
+import fr.claudegateway.atelier.journey.AutonomyMode;
 import fr.claudegateway.atelier.journey.ChantierPreflight;
 import fr.claudegateway.atelier.journey.ChantierPreflightService;
+import fr.claudegateway.atelier.journey.ChantierUnblocker;
 import fr.claudegateway.atelier.journey.JourneyPlan;
 import fr.claudegateway.atelier.journey.SubjectJourneyService;
 import fr.claudegateway.atelier.live.LiveTurn;
@@ -114,6 +116,86 @@ public class AutonomyTurnRunner {
                 .append(remainingSteps(plan)).toString();
     }
 
+    /**
+     * La demande du premier tour en mode « avancer jusqu'au blocage » (SF-219-05) : chaque étape restante est
+     * annotée — à ta portée, ou qui l'attend.
+     */
+    public static String firstDemandUntilBlocked(int number, String title, JourneyPlan plan, int maxTurns,
+            ChantierPreflight.Advance advance) {
+        return headerUntilBlocked(number, title, 1, maxTurns) + rulesUntilBlocked(number)
+                + annotatedSteps(plan, advance);
+    }
+
+    /** La demande d'un tour de suite en mode « avancer jusqu'au blocage ». */
+    public static String continuationUntilBlocked(int number, String title, JourneyPlan plan, int turn,
+            int maxTurns, List<String> userNotes, ChantierPreflight.Advance advance) {
+        StringBuilder demand = new StringBuilder();
+        if (userNotes != null && !userNotes.isEmpty()) {
+            demand.append("Précisions de l'utilisateur pendant la course :\n");
+            userNotes.forEach(note -> demand.append("- ").append(note.strip()).append('\n'));
+            demand.append('\n');
+        }
+        return demand.append("Poursuis. ").append(headerUntilBlocked(number, title, turn, maxTurns))
+                .append(rulesUntilBlocked(number)).append(annotatedSteps(plan, advance)).toString();
+    }
+
+    private static String headerUntilBlocked(int number, String title, int turn, int maxTurns) {
+        return "Chantier " + number + (title == null || title.isBlank() ? "" : " « " + title.strip() + " »")
+                + " — AVANCER JUSQU'AU BLOCAGE, lancé par l'utilisateur, sans écran ouvert (tour " + turn + "/"
+                + maxTurns + ").\n";
+    }
+
+    private static String rulesUntilBlocked(int number) {
+        return "Le plan validé vaut feu vert pour les étapes marquées « à ta portée » et pour celles qu'elles "
+                + "débloquent en route : exécute-les dans l'ordre de leurs dépendances, puis vérifie chacune comme "
+                + "le plan le dit (update_plan_step FAIT, puis VERIFIE ou ECHEC avec la preuve ; coche les "
+                + "sous-étapes comme preuves). Passe chantier: " + number + " à chaque outil du parcours. Les "
+                + "étapes qui attendent une décision de l'utilisateur ou quelqu'un d'autre : n'y touche pas, "
+                + "contourne-les et ne t'y arrête pas tant qu'une étape reste à ta portée ailleurs. Ne pose "
+                + "AUCUNE question et n'attends aucune confirmation : personne ne regarde. Sur un VRAI blocage "
+                + "d'une étape à ta portée (information manquante découverte en route, échec sans remède), "
+                + "update_plan_step status=BLOQUE avec la raison, puis passe aux autres étapes à ta portée. Quand "
+                + "plus rien n'est à ta portée, termine ton tour en une phrase sur ce qui reste et qui l'attend. "
+                + "Ne coche rien sans preuve.\n";
+    }
+
+    private static String annotatedSteps(JourneyPlan plan, ChantierPreflight.Advance advance) {
+        List<Integer> tool = advance == null ? List.of() : advance.toolSteps();
+        Map<Integer, ChantierUnblocker.Mark> causes = new java.util.HashMap<>();
+        if (advance != null) {
+            advance.remaining().forEach(m -> {
+                if (m.step() != null) {
+                    causes.putIfAbsent(m.step(), m);
+                }
+            });
+        }
+        StringBuilder list = new StringBuilder("Étapes restantes :\n");
+        for (int i = 0; i < plan.steps().size(); i++) {
+            JourneyPlan.Step step = plan.steps().get(i);
+            if (step.status() == JourneyPlan.StepStatus.VERIFIE) {
+                continue;
+            }
+            int rank = i + 1;
+            String title = step.title().length() > MAX_STEP_TITLE
+                    ? step.title().substring(0, MAX_STEP_TITLE - 1) + "…" : step.title();
+            String note;
+            ChantierUnblocker.Mark cause = causes.get(rank);
+            if (tool.contains(rank)) {
+                note = "à ta portée";
+            } else if (cause != null && cause.who() == ChantierUnblocker.Who.MOI) {
+                note = "attend une décision de l'utilisateur — n'y touche pas";
+            } else if (cause != null) {
+                note = "attend quelqu'un" + (cause.waitingOn() == null ? "" : " (" + cause.waitingOn() + ")")
+                        + " — n'y touche pas";
+            } else {
+                note = "attend une étape hors de ta portée — n'y touche pas";
+            }
+            list.append(rank).append(". [").append(label(step.status())).append(" · ").append(note).append("] ")
+                    .append(title).append('\n');
+        }
+        return list.toString();
+    }
+
     private static String header(int number, String title, int turn, int maxTurns) {
         return "Chantier " + number + (title == null || title.isBlank() ? "" : " « " + title.strip() + " »")
                 + " — EXÉCUTION AUTONOME lancée par l'utilisateur, sans écran ouvert (tour " + turn + "/"
@@ -166,11 +248,17 @@ public class AutonomyTurnRunner {
      * @param workspace le terminal, <b>déjà</b> vérifié comme possédé par l'appelant
      */
     public ChantierAutonomyRun launch(LiveTurn turn, Workspace workspace, int number, ChantierSnapshot start) {
+        return launch(turn, workspace, number, start, AutonomyMode.STRICT);
+    }
+
+    /** Même chose, dans le mode donné (SF-219-05) ; le mode est écrit sur la course. */
+    public ChantierAutonomyRun launch(LiveTurn turn, Workspace workspace, int number, ChantierSnapshot start,
+            AutonomyMode mode) {
         UUID userId = turn.userId();
         ChantierAutonomyRun run;
         try {
             run = store.open(userId, workspace.getId(), number, start.title(), turn.turnId(), start.done(),
-                    start.total());
+                    start.total(), mode == null ? AutonomyMode.STRICT : mode);
         } catch (RuntimeException e) {
             liveTurns.close(turn);
             throw e;
@@ -211,15 +299,20 @@ public class AutonomyTurnRunner {
         UUID userId = run.getUserId();
         UUID workspaceId = workspace.getId();
         int number = run.getChantierNumber();
+        boolean untilBlocked = run.getMode() == AutonomyMode.UNTIL_BLOCKED;
         BigDecimal spent = BigDecimal.ZERO;
         AtomicBoolean machineLost = new AtomicBoolean(false);
         chatService.muteOutcomePush(userId, workspaceId);
         try {
             turn.publish("started", Map.of("turnId", turn.turnId().toString(), "startedAt", turn.startedAtMs()));
-            turn.publish("text", Map.of("text", "_Chantier " + number + " — exécution autonome._\n"));
+            turn.publish("text", Map.of("text", "_Chantier " + number + (untilBlocked
+                    ? " — avancer jusqu'au blocage._\n" : " — exécution autonome._\n")));
             AtelierProgressListener listener = headless.headlessListener(turn, () -> machineLost.set(true));
             ChantierSnapshot before = snapshot(userId, workspaceId, number);
-            String demand = firstDemand(number, before.title(), before.plan(), maxTurns);
+            String demand = untilBlocked
+                    ? firstDemandUntilBlocked(number, before.title(), before.plan(), maxTurns,
+                            advanceOf(userId, workspace, number))
+                    : firstDemand(number, before.title(), before.plan(), maxTurns);
             for (int k = 1;; k++) {
                 AtelierChatResult result = chatService.chatStreaming(userId, workspaceId, demand, listener);
                 spent = spent.add(result.costUsd() == null ? BigDecimal.ZERO : result.costUsd());
@@ -238,7 +331,8 @@ public class AutonomyTurnRunner {
                     turn.publish("done", done(result, false));
                     return new Outcome(AutonomyRunStatus.FAILED, "Le poste ne répond plus.", "runner_offline", false);
                 }
-                Outcome end = judge(userId, workspace, number, before, after, k);
+                Outcome end = untilBlocked ? judgeUntilBlocked(userId, workspace, number, before, after, k)
+                        : judge(userId, workspace, number, before, after, k);
                 if (end != null) {
                     turn.publishSteersDropped(turn.sealAndDrain(), "autonomy_ended");
                     turn.publish("done", done(result, false));
@@ -248,7 +342,10 @@ public class AutonomyTurnRunner {
                 turn.publish("done", done(result, true));
                 turn.publish("text", Map.of("text", "_Chantier " + number + " — tour " + (k + 1) + "/" + maxTurns
                         + " en autonome._\n"));
-                demand = continuation(number, after.title(), after.plan(), k + 1, maxTurns, notes);
+                demand = untilBlocked
+                        ? continuationUntilBlocked(number, after.title(), after.plan(), k + 1, maxTurns, notes,
+                                advanceOf(userId, workspace, number))
+                        : continuation(number, after.title(), after.plan(), k + 1, maxTurns, notes);
                 before = after;
             }
         } catch (AtelierAccessDeniedException ex) {
@@ -299,6 +396,56 @@ public class AutonomyTurnRunner {
                     + "pour continuer.", null, false);
         }
         return null;
+    }
+
+    /**
+     * Le jugement après un tour en mode « avancer jusqu'au blocage » (SF-219-05) : plus aucune étape à la portée
+     * de l'outil → {@code PARTIAL} (arrêt propre, ce qui reste attend une décision ou quelqu'un) ; plan plus
+     * validé → {@code BLOCKED} ; mêmes bornes que le mode strict (aucune avancée, plafond de tours).
+     */
+    Outcome judgeUntilBlocked(UUID userId, Workspace workspace, int number, ChantierSnapshot before,
+            ChantierSnapshot after, int turnsDone) {
+        if (!after.open()) {
+            return new Outcome(AutonomyRunStatus.STOPPED, "Le chantier n'est plus ouvert.", null, true);
+        }
+        if (after.allVerified() || after.closeProposed()) {
+            return new Outcome(AutonomyRunStatus.DONE, "Toutes les étapes sont vérifiées : la clôture est proposée.",
+                    null, false);
+        }
+        Optional<ChantierPreflight> preflight = preflightOf(userId, workspace, number);
+        if (preflight.isPresent() && preflight.get().advance() != null && !preflight.get().advance().possible()) {
+            ChantierPreflight.Advance advance = preflight.get().advance();
+            boolean planStillValid = preflight.get().reasons().stream().map(ChantierPreflight.Reason::code)
+                    .noneMatch(c -> c == ChantierPreflight.Code.PLAN_NOT_VALIDATED
+                            || c == ChantierPreflight.Code.NOT_EXECUTING || c == ChantierPreflight.Code.NOT_GUIDED);
+            if (planStillValid) {
+                String rest = ChantierPreflight.summary(advance.remaining());
+                return new Outcome(AutonomyRunStatus.PARTIAL, "Avancé jusqu'au blocage : " + (rest.isEmpty()
+                        ? "plus rien n'est à la portée de l'outil." : rest + "."), null, false);
+            }
+            return new Outcome(AutonomyRunStatus.BLOCKED, advance.label(), null, false);
+        }
+        if (after.progress() <= before.progress()) {
+            return new Outcome(AutonomyRunStatus.BLOCKED, "Aucune avancée sur un tour complet : aucune étape n'a "
+                    + "progressé.", null, false);
+        }
+        if (turnsDone >= maxTurns) {
+            return new Outcome(AutonomyRunStatus.STOPPED, "Plafond de " + maxTurns + " tours atteint : relancez "
+                    + "pour continuer.", null, false);
+        }
+        return null;
+    }
+
+    private Optional<ChantierPreflight> preflightOf(UUID userId, Workspace workspace, int number) {
+        return preflights.forOwned(userId, workspace).stream()
+                .filter(c -> c.number() == number)
+                .map(ChantierPreflightService.ChantierReadiness::preflight)
+                .findFirst();
+    }
+
+    private ChantierPreflight.Advance advanceOf(UUID userId, Workspace workspace, int number) {
+        return preflightOf(userId, workspace, number).map(ChantierPreflight::advance)
+                .orElse(ChantierPreflight.Advance.NONE);
     }
 
     private ChantierSnapshot snapshot(UUID userId, UUID workspaceId, int number) {

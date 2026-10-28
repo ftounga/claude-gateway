@@ -30,7 +30,7 @@ public class AutonomyNotifier {
         }
         return switch (status) {
             case DONE -> PushEvent.AUTONOMY_DONE;
-            case BLOCKED, STOPPED, FAILED -> PushEvent.AUTONOMY_STOPPED;
+            case BLOCKED, PARTIAL, STOPPED, FAILED -> PushEvent.AUTONOMY_STOPPED;
             case RUNNING -> null;
         };
     }

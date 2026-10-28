@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-219 / SF-219-05 - AVANCER JUSQU'AU BLOCAGE : LE MODE D'UNE COURSE.
+
+      mode : STRICT (preflight tout vert, SF-219-02) | UNTIL_BLOCKED (avance jusqu'a ce que plus rien ne soit
+      a la portee de l'outil). Les courses existantes sont STRICT.
+      Le statut gagne la valeur PARTIAL (varchar(16) existant, aucune contrainte en base).
+
+      Rollback : la colonne se retire.
+    -->
+
+    <changeSet id="177-autonomy-run-mode" author="claude-gateway">
+        <addColumn tableName="chantier_autonomy_runs">
+            <column name="mode" type="varchar(16)" defaultValue="STRICT">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="chantier_autonomy_runs" columnName="mode"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

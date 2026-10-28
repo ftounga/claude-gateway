@@ -31,6 +31,12 @@ public class AutonomyExceptionHandler {
                 .body(new ConflictBody(ex.code(), ex.getMessage(), ex.reasons()));
     }
 
+    @ExceptionHandler(AutonomyController.InvalidAutonomyModeException.class)
+    public ResponseEntity<ErrorResponse> invalidMode(AutonomyController.InvalidAutonomyModeException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("autonomy_invalid_mode", ex.getMessage()));
+    }
+
     @ExceptionHandler(InvalidJourneyException.class)
     public ResponseEntity<ErrorResponse> invalid(InvalidJourneyException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorResponse("journey_invalid", ex.getMessage()));

@@ -57,6 +57,8 @@ export interface ClientBoardChantier {
   run: AutonomyRun | null;
   /** Reporté jusqu'à cette date (SF-220-05), ou `null` — absent d'une gateway antérieure. */
   snoozedUntil?: string | null;
+  /** Peut « avancer jusqu'au blocage » (SF-219-05) — absent d'une gateway antérieure. */
+  canAdvance?: boolean;
 }
 
 /** Le report d'un chantier (SF-220-05). */
@@ -187,9 +189,17 @@ export function isSnoozed(chantier: Pick<ClientBoardChantier, 'snoozedUntil'>): 
   return !!chantier.snoozedUntil;
 }
 
-/** Sélectionnable pour un lancement groupé : prêt, rien ne tourne, pas reporté. */
+/** Peut « avancer jusqu'au blocage » (SF-219-05) : un chantier prêt le peut toujours. */
+export function canAdvance(chantier: Pick<ClientBoardChantier, 'ready' | 'canAdvance'>): boolean {
+  return chantier.ready || !!chantier.canAdvance;
+}
+
+/**
+ * Sélectionnable pour un lancement groupé : prêt ou capable d'avancer jusqu'au blocage (SF-219-05), rien ne
+ * tourne, pas reporté.
+ */
 export function isSelectable(chantier: ClientBoardChantier): boolean {
-  return chantier.ready && !isRunning(chantier) && !isSnoozed(chantier);
+  return canAdvance(chantier) && !isRunning(chantier) && !isSnoozed(chantier);
 }
 
 /** « 30/10 » — la date de fin d'un report, au format court. */

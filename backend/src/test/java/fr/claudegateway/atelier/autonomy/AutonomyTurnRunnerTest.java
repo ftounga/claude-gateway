@@ -32,7 +32,9 @@ import fr.claudegateway.atelier.AtelierChatService.AtelierChatResult;
 import fr.claudegateway.atelier.AtelierMcpTurnLauncher;
 import fr.claudegateway.atelier.AtelierProgressListener;
 import fr.claudegateway.atelier.Workspace;
+import fr.claudegateway.atelier.journey.AutonomyMode;
 import fr.claudegateway.atelier.journey.ChantierPreflight;
+import fr.claudegateway.atelier.journey.ChantierUnblocker;
 import fr.claudegateway.atelier.journey.ChantierPreflightService;
 import fr.claudegateway.atelier.journey.JourneyMode;
 import fr.claudegateway.atelier.journey.JourneyPhase;
@@ -78,7 +80,7 @@ class AutonomyTurnRunnerTest {
         when(workspace.getId()).thenReturn(workspaceId);
         run = ChantierAutonomyRun.builder().id(UUID.randomUUID()).userId(userId).workspaceId(workspaceId)
                 .chantierNumber(2).status(AutonomyRunStatus.RUNNING).build();
-        when(store.open(any(), any(), anyInt(), any(), any(), anyInt(), anyInt())).thenReturn(run);
+        when(store.open(any(), any(), anyInt(), any(), any(), anyInt(), anyInt(), any())).thenReturn(run);
         when(store.isRunning(run.getId())).thenReturn(true);
         when(store.finish(any(), any(), any(), any())).thenReturn(true);
         when(journeys.forTurn(userId, workspaceId)).thenAnswer(inv -> journey(plans.size() > 1 ? plans.poll()
@@ -223,5 +225,112 @@ class AutonomyTurnRunnerTest {
                 step("B", "A_FAIRE"))), 2, 8, List.of("utilise la branche hotfix"));
         assertThat(demand).startsWith("Précisions de l'utilisateur").contains("- utilise la branche hotfix")
                 .contains("Chantier 3 —").contains("2. [à faire] B").doesNotContain("1. [");
+    }
+
+    // ------------------------------------------------------------------ SF-219-05 : avancer jusqu'au blocage
+
+    private static final ChantierUnblocker.Mark WAIT_GINO = new ChantierUnblocker.Mark(ChantierUnblocker.Who.AUTRUI,
+            "On attend quelqu'un", "Étape 2 : en attente de « cert » auprès de Gino (demandé).", 2, "Gino", null);
+
+    private void preflightSequence(ChantierPreflight... sequence) {
+        var stubbing = when(preflights.forOwned(userId, workspace));
+        for (ChantierPreflight pf : sequence) {
+            stubbing = stubbing.thenReturn(List.of(new ChantierPreflightService.ChantierReadiness(2, "Ingress", pf)));
+        }
+    }
+
+    private static ChantierPreflight waiting(boolean possible, List<Integer> tool) {
+        return new ChantierPreflight(2, false, List.of(new ChantierPreflight.Reason(ChantierPreflight.Code.WAIT_OPEN,
+                "Étape 2 : en attente de « cert » (demandé).", 2)), new ChantierPreflight.Advance(possible, tool,
+                List.of(WAIT_GINO), possible ? "1 étape(s) à la portée de l'outil ; on attend Gino."
+                : "Aucune étape n'est à la portée de l'outil : tout ce qui reste attend une décision ou quelqu'un."));
+    }
+
+    private ChantierAutonomyRun goUntilBlocked() {
+        run.setMode(AutonomyMode.UNTIL_BLOCKED);
+        LiveTurn turn = runner.prepare(userId, workspaceId, "demande").orElseThrow();
+        return runner.launch(turn, workspace, 2, ChantierSnapshot.of(journey(plans.peek()), 2),
+                AutonomyMode.UNTIL_BLOCKED);
+    }
+
+    @Test
+    @DisplayName("jusqu'au blocage : l'étape à portée est vérifiée, il ne reste que l'attente → PARTIAL, notifié")
+    void untilBlockedPartial() {
+        plans.add(plan(step("A", "A_FAIRE"), step("B", "A_FAIRE")));
+        plans.add(plan(step("A", "VERIFIE"), step("B", "A_FAIRE")));
+        preflightSequence(waiting(true, List.of(1)), waiting(false, List.of()));
+        when(chat.chatStreaming(eq(userId), eq(workspaceId), anyString(), any())).thenReturn(result("0.20"));
+        goUntilBlocked();
+        verify(store).open(any(), any(), anyInt(), any(), any(), anyInt(), anyInt(), eq(AutonomyMode.UNTIL_BLOCKED));
+        ArgumentCaptor<String> demand = ArgumentCaptor.forClass(String.class);
+        verify(chat, times(1)).chatStreaming(eq(userId), eq(workspaceId), demand.capture(), any());
+        assertThat(demand.getValue()).contains("AVANCER JUSQU'AU BLOCAGE").contains("AUCUNE question")
+                .contains("1. [à faire · à ta portée] A").contains("2. [à faire · attend quelqu'un (Gino)")
+                .contains("chantier: 2").contains("status=BLOQUE");
+        ArgumentCaptor<String> reason = ArgumentCaptor.forClass(String.class);
+        verify(store).finish(eq(run.getId()), eq(AutonomyRunStatus.PARTIAL), reason.capture(), eq(null));
+        assertThat(reason.getValue()).startsWith("Avancé jusqu'au blocage").contains("on attend Gino");
+        verify(notifier).notify(userId, workspaceId, AutonomyRunStatus.PARTIAL, false);
+    }
+
+    @Test
+    @DisplayName("jusqu'au blocage : un préflight strict rouge ne l'arrête pas tant qu'il reste du vert")
+    void untilBlockedContinuesPastRedPreflight() {
+        plans.add(plan(step("A", "A_FAIRE"), step("C", "A_FAIRE"), step("B", "A_FAIRE")));
+        plans.add(plan(step("A", "VERIFIE"), step("C", "A_FAIRE"), step("B", "A_FAIRE")));
+        plans.add(plan(step("A", "VERIFIE"), step("C", "VERIFIE"), step("B", "A_FAIRE")));
+        preflightSequence(waiting(true, List.of(1, 2)), waiting(true, List.of(2)), waiting(false, List.of()));
+        when(chat.chatStreaming(eq(userId), eq(workspaceId), anyString(), any())).thenReturn(result("0.20"));
+        goUntilBlocked();
+        ArgumentCaptor<String> demands = ArgumentCaptor.forClass(String.class);
+        verify(chat, times(2)).chatStreaming(eq(userId), eq(workspaceId), demands.capture(), any());
+        assertThat(demands.getAllValues().get(1)).startsWith("Poursuis.").contains("AVANCER JUSQU'AU BLOCAGE")
+                .contains("tour 2/3");
+        verify(store).finish(eq(run.getId()), eq(AutonomyRunStatus.PARTIAL), anyString(), eq(null));
+    }
+
+    @Test
+    @DisplayName("jusqu'au blocage : un tour sans avancée reste borné → BLOCKED")
+    void untilBlockedNoProgress() {
+        plans.add(plan(step("A", "A_FAIRE"), step("B", "A_FAIRE")));
+        preflightSequence(waiting(true, List.of(1)));
+        when(chat.chatStreaming(eq(userId), eq(workspaceId), anyString(), any())).thenReturn(result("0.10"));
+        goUntilBlocked();
+        ArgumentCaptor<String> reason = ArgumentCaptor.forClass(String.class);
+        verify(store).finish(eq(run.getId()), eq(AutonomyRunStatus.BLOCKED), reason.capture(), eq(null));
+        assertThat(reason.getValue()).startsWith("Aucune avancée");
+    }
+
+    @Test
+    @DisplayName("jusqu'au blocage : le plan amendé en route → BLOCKED avec la raison, pas PARTIAL")
+    void untilBlockedPlanAmended() {
+        plans.add(plan(step("A", "A_FAIRE"), step("B", "A_FAIRE")));
+        plans.add(plan(step("A", "FAIT"), step("B", "A_FAIRE")));
+        ChantierPreflight amended = new ChantierPreflight(2, false, List.of(new ChantierPreflight.Reason(
+                ChantierPreflight.Code.PLAN_NOT_VALIDATED, "Le plan a été amendé.", null)),
+                new ChantierPreflight.Advance(false, List.of(), List.of(), "Le plan a été amendé : la nouvelle "
+                        + "version attend votre validation."));
+        preflightSequence(waiting(true, List.of(1)), amended);
+        when(chat.chatStreaming(eq(userId), eq(workspaceId), anyString(), any())).thenReturn(result("0.10"));
+        goUntilBlocked();
+        verify(store).finish(run.getId(), AutonomyRunStatus.BLOCKED,
+                "Le plan a été amendé : la nouvelle version attend votre validation.", null);
+    }
+
+    @Test
+    @DisplayName("la consigne stricte ne parle pas du mode jusqu'au blocage")
+    void strictDemandUnchanged() {
+        String demand = AutonomyTurnRunner.firstDemand(2, "Ingress", JourneyPlan.fromJson(plan(step("A", "A_FAIRE"))),
+                8);
+        assertThat(demand).contains("EXÉCUTION AUTONOME").contains("exécute TOUTES les étapes restantes")
+                .doesNotContain("à ta portée");
+    }
+
+    @Test
+    @DisplayName("PARTIAL est notifié comme un arrêt qui attend un geste")
+    void partialNotifiesStopped() {
+        assertThat(AutonomyNotifier.eventFor(AutonomyRunStatus.PARTIAL, false))
+                .isEqualTo(fr.claudegateway.push.PushEvent.AUTONOMY_STOPPED);
+        assertThat(AutonomyNotifier.eventFor(AutonomyRunStatus.PARTIAL, true)).isNull();
     }
 }

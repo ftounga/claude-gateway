@@ -321,4 +321,108 @@ class AutonomyApiIntegrationTest {
         assertThat(service.hasDeferred(alice.getId(), subject.getId())).isFalse();
         assertThat(runs.count()).isZero();
     }
+
+    // ------------------------------------------------------------------ SF-219-05 : avancer jusqu'au blocage
+
+    /** Un plan validé : l'étape 1 à la portée de l'outil, l'étape 2 attend « cert-gino » (personne ne le suit). */
+    private void executingWithWait(Workspace ws, boolean firstInReach) {
+        UUID user = ws.getUserId();
+        journeys.setMode(user, ws.getId(), "GUIDE", "Ingress");
+        journeys.submitDiagnosis(user, ws.getId(), "cert expiré", "openssl", "ELEVEE");
+        journeys.confirmDiagnosis(user, ws.getId());
+        String first = firstInReach ? "{\"title\":\"Préparer la conf\",\"risk\":\"REVERSIBLE\"},"
+                : "{\"title\":\"Préparer la conf\",\"risk\":\"REVERSIBLE\",\"waitsOn\":\"acces-vpn\"},";
+        try {
+            journeys.setPlan(user, ws.getId(), JourneyPlan.fromToolInput(new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readTree("[" + first + "{\"title\":\"Poser le certificat\",\"risk\":\"REVERSIBLE\","
+                            + "\"waitsOn\":\"cert-gino\",\"dependsOn\":[]}]")));
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new IllegalStateException(e);
+        }
+        journeys.validatePlan(user, ws.getId(), null);
+    }
+
+    private void stepTool(String json) {
+        try {
+            journeyTools.execute(alice.getId(), subject, fr.claudegateway.atelier.journey.JourneyToolCatalog.UPDATE_STEP,
+                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(json));
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    @Test
+    @DisplayName("SF-219-05 : préflight rouge mais du vert → advance possible ; strict 409 ; jusqu'au blocage → PARTIAL")
+    void untilBlockedRunsToPartial() throws Exception {
+        executingWithWait(subject, true);
+        call(get(base(subject) + "/autonomy"), aliceToken)
+                .andExpect(jsonPath("$.chantiers[0].preflight.ready", is(false)))
+                .andExpect(jsonPath("$.chantiers[0].preflight.advance.possible", is(true)))
+                .andExpect(jsonPath("$.chantiers[0].preflight.advance.toolSteps[0]", is(1)))
+                .andExpect(jsonPath("$.chantiers[0].preflight.advance.remaining[0].who", is("AUTRUI")))
+                .andExpect(jsonPath("$.chantiers[0].preflight.advance.remaining[0].step", is(2)));
+        call(get(base(subject) + "/chantiers/1/autonomy/preflight"), aliceToken)
+                .andExpect(jsonPath("$.advance.possible", is(true)));
+        call(post(base(subject) + "/chantiers/1/autonomy"), aliceToken)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error", is("autonomy_not_ready")));
+        call(post(base(subject) + "/chantiers/1/autonomy").param("mode", "FOO"), aliceToken)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", is("autonomy_invalid_mode")));
+        call(post(base(subject) + "/chantiers/1/autonomy").param("mode", "UNTIL_BLOCKED"), bobToken)
+                .andExpect(status().isNotFound());
+        assertThat(runs.count()).isZero();
+
+        when(chat.chatStreaming(any(), any(), anyString(), any())).thenAnswer(inv -> {
+            stepTool("{\"step\":1,\"status\":\"FAIT\",\"evidence\":\"conf écrite\"}");
+            stepTool("{\"step\":1,\"status\":\"VERIFIE\",\"evidence\":\"nginx -t ok\"}");
+            return new AtelierChatResult("ok", List.of(), UUID.randomUUID(), 10, 5, 3, false,
+                    new BigDecimal("0.20"), null);
+        });
+        call(post(base(subject) + "/chantiers/1/autonomy").param("mode", "UNTIL_BLOCKED"), aliceToken)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.mode", is("UNTIL_BLOCKED")));
+        ChantierAutonomyRun run = awaitFinished();
+        assertThat(run.getStatus()).isEqualTo(AutonomyRunStatus.PARTIAL);
+        assertThat(run.getMode()).isEqualTo(fr.claudegateway.atelier.journey.AutonomyMode.UNTIL_BLOCKED);
+        assertThat(run.getStopReason()).startsWith("Avancé jusqu'au blocage").contains("on attend");
+        assertThat(run.getTurns()).isEqualTo(1);
+        verify(chat).chatStreaming(eq(alice.getId()), eq(subject.getId()),
+                org.mockito.ArgumentMatchers.contains("AVANCER JUSQU'AU BLOCAGE"), any());
+        call(get(base(subject) + "/autonomy"), aliceToken)
+                .andExpect(jsonPath("$.chantiers[0].run.status", is("PARTIAL")))
+                .andExpect(jsonPath("$.chantiers[0].run.mode", is("UNTIL_BLOCKED")))
+                .andExpect(jsonPath("$.chantiers[0].preflight.advance.possible", is(false)));
+    }
+
+    @Test
+    @DisplayName("SF-219-05 : rien à la portée de l'outil → 409 autonomy_cannot_advance, rien de lancé")
+    void untilBlockedNothingInReach() throws Exception {
+        executingWithWait(subject, false);
+        call(post(base(subject) + "/chantiers/1/autonomy").param("mode", "UNTIL_BLOCKED"), aliceToken)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error", is("autonomy_cannot_advance")))
+                .andExpect(jsonPath("$.message", startsWith("Ce chantier ne peut pas avancer")));
+        assertThat(runs.count()).isZero();
+        fr.claudegateway.atelier.journey.JourneyToolExecutor.Outcome out =
+                launchTool("{\"chantier\":1,\"mode\":\"UNTIL_BLOCKED\"}");
+        assertThat(out.error()).isTrue();
+        assertThat(out.content()).contains("ne peut pas avancer jusqu'au blocage");
+        assertThat(launchTool("{\"chantier\":1,\"mode\":\"VITE\"}").content()).contains("Mode inconnu");
+    }
+
+    @Test
+    @DisplayName("SF-219-05 : l'outil programme un départ jusqu'au blocage, qui part dans ce mode")
+    void toolSchedulesUntilBlocked() throws Exception {
+        executingWithWait(subject, true);
+        heldTurn = liveTurns.open(alice.getId(), subject.getId());
+        fr.claudegateway.atelier.journey.JourneyToolExecutor.Outcome out =
+                launchTool("{\"chantier\":1,\"mode\":\"UNTIL_BLOCKED\"}");
+        assertThat(out.error()).isFalse();
+        assertThat(out.content()).contains("(jusqu'au blocage)");
+        liveTurns.close(heldTurn);
+        heldTurn = null;
+        assertThat(service.launchDeferred()).isEqualTo(1);
+        assertThat(awaitFinished().getMode()).isEqualTo(fr.claudegateway.atelier.journey.AutonomyMode.UNTIL_BLOCKED);
+    }
 }

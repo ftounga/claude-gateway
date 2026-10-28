@@ -78,6 +78,15 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
       'pas prêt, dis-moi précisément ce qui l’empêche de partir ; sinon, termine ton tour tout de suite.',
   },
   {
+    name: 'avancer',
+    title: '/avancer',
+    description: 'Avancer un chantier jusqu’au blocage (ex. /avancer 7)',
+    prompt:
+      'Lance le chantier indiqué ci-dessous avec l’outil lancer_chantier_autonome et mode=UNTIL_BLOCKED : il ' +
+      'exécute toutes les étapes à ta portée et s’arrête quand plus rien ne l’est. S’il ne peut pas avancer, ' +
+      'dis-moi précisément pourquoi ; sinon, termine ton tour tout de suite.',
+  },
+  {
     name: 'resume',
     title: '/resume',
     description: 'Résumer l’état du projet et des changements récents',

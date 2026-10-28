@@ -173,7 +173,7 @@ describe('ClientBoardComponent', () => {
   it('Lancer en autonome : la route F-219 ; un refus affiche le message du serveur', () => {
     build(board([outilReady]));
     component.launch(outilReady);
-    expect(autonomy.launch).toHaveBeenCalledWith('w1', 1);
+    expect(autonomy.launch).toHaveBeenCalledWith('w1', 1, 'STRICT');
     autonomy.launch.and.returnValue(throwError(() => new HttpErrorResponse({
       status: 409, error: { error: 'autonomy_subject_busy', message: 'Un tour tourne déjà dans ce sujet.' },
     })));
@@ -201,7 +201,7 @@ describe('ClientBoardComponent', () => {
     component.toggleSelected(outilReady);
     component.toggleSelected(outilReady2);
     component.launchSelected();
-    expect(autonomy.launch.calls.allArgs()).toEqual([['w1', 1], ['w2', 2]]);
+    expect(autonomy.launch.calls.allArgs()).toEqual([['w1', 1, 'STRICT'], ['w2', 2, 'STRICT']]);
     expect(snack.open.calls.mostRecent().args[0])
       .toBe('1 chantier lancé en autonome ; 1 refusé : api · chantier 2 — Le poste est hors ligne.');
     expect(component.selection().length).toBe(0);
@@ -329,5 +329,48 @@ describe('ClientBoardComponent', () => {
     })));
     component.markDone(asked);
     expect(snack.open.calls.mostRecent().args[0]).toContain('Action introuvable.');
+  });
+
+  // ------------------------------------------------------------------ SF-219-05 : avancer jusqu'au blocage
+
+  const advanceOnly = card({
+    workspaceId: 'w6', workspaceName: 'edge', number: 7, focus: false, ready: false, canAdvance: true,
+    missing: ['Étape 3 : en attente de « cert » (demandé).'],
+  });
+
+  it('SF-219-05 : une carte qui peut avancer montre [Avancer jusqu\'au blocage], qui part dans ce mode', () => {
+    build(board([advanceOnly]));
+    const cardEl = el().querySelector('[data-key]') as HTMLElement;
+    expect(cardEl.querySelector('.cb__launch')).toBeNull();
+    const advance = cardEl.querySelector('.cb__advance') as HTMLButtonElement;
+    expect(advance.textContent).toContain('Avancer jusqu’au blocage');
+    advance.click();
+    expect(autonomy.launch).toHaveBeenCalledWith('w6', 7, 'UNTIL_BLOCKED');
+    expect(snack.open.calls.mostRecent().args[0]).toBe('Chantier 7 avance jusqu\'au blocage.');
+  });
+
+  it('SF-219-05 : ni blocage possible ni prêt → aucun geste de lancement, pas sélectionnable', () => {
+    build(board([autruiDormant]));
+    expect(el().querySelector('.cb__advance')).toBeNull();
+    expect(component.selectable(autruiDormant)).toBeFalse();
+  });
+
+  it('SF-219-05 : multi-sélection mêlant prêt et « peut avancer » → seul [Avancer jusqu\'au blocage (k)]', () => {
+    build(board([outilReady, advanceOnly]));
+    component.toggleSelected(outilReady);
+    component.toggleSelected(advanceOnly);
+    fixture.detectChanges();
+    expect(el().querySelector('.cb__launch-all')).toBeNull();
+    const all = el().querySelector('.cb__advance-all') as HTMLButtonElement;
+    expect(all.textContent).toContain('Avancer jusqu’au blocage (2)');
+    component.launchSelected('STRICT');
+    expect(autonomy.launch).not.toHaveBeenCalled();
+    all.click();
+    expect(autonomy.launch.calls.allArgs()).toEqual([['w1', 1, 'UNTIL_BLOCKED'], ['w6', 7, 'UNTIL_BLOCKED']]);
+  });
+
+  it('SF-219-05 : une course jusqu\'au blocage se lit « Jusqu\'au blocage — étape k/n »', () => {
+    build(board([card({ workspaceId: 'w3', number: 1, ready: false, live: true, run: { ...run, mode: 'UNTIL_BLOCKED' } })]));
+    expect(component.runLabel(component.board()!.chantiers[0])).toBe('Jusqu’au blocage — étape 3/5');
   });
 });

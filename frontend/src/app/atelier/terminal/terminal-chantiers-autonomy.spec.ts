@@ -151,4 +151,59 @@ describe('F-219 / SF-219-03 — l’écran du chantier autonome', () => {
     expect(prompt).toContain('lancer_chantier_autonome');
     expect(prompt.endsWith('2')).toBeTrue();
   });
+
+  // ------------------------------------------------------------------ SF-219-05 : avancer jusqu'au blocage
+
+  const gino = { who: 'AUTRUI', label: 'On attend quelqu\'un', detail: 'Étape 4 : en attente de « cert » auprès de Gino (demandé).',
+    step: 4, waitingOn: 'Gino', since: null };
+  const decision = { who: 'MOI', label: 'Ça attend votre décision', detail: 'Étape 2 bloquée : quel domaine ?',
+    step: 2, waitingOn: null, since: null };
+
+  it('SF-219-05 : préflight rouge mais du vert → [Avancer jusqu’au blocage] et « Ce qui restera » groupé', () => {
+    const fixture = mount(journey([chantier(1)]), board([entry({
+      preflight: { number: 1, ready: false, reasons: [{ code: 'WAIT_OPEN', label: 'Étape 4 : en attente.', step: 4 }],
+        advance: { possible: true, toolSteps: [1, 3], remaining: [decision, gino] as never,
+          label: '2 étape(s) à la portée de l’outil ; 1 décision(s) vous attendent ; on attend Gino.' } },
+    })], 1));
+    const html = el(fixture);
+    expect(html.querySelector('.auto__status--advance')?.textContent).toContain('Peut avancer jusqu’au blocage');
+    expect(html.querySelector('.auto__status--not-ready')).toBeNull();
+    const rest = html.querySelector('.auto__rest') as HTMLElement;
+    expect(rest.getAttribute('aria-label')).toBe('Ce qui restera');
+    expect(rest.querySelector('[data-who="MOI"]')?.textContent).toContain('Ça attend votre décision');
+    expect(rest.querySelector('[data-who="AUTRUI"]')?.textContent).toContain('On attend quelqu’un');
+    expect(rest.textContent).toContain('quel domaine ?');
+    expect(rest.textContent).toContain('Gino');
+
+    (html.querySelector('.auto__advance') as HTMLButtonElement).click();
+    const req = http.expectOne('/api/workspaces/w1/journey/chantiers/1/autonomy?mode=UNTIL_BLOCKED');
+    expect(req.request.method).toBe('POST');
+    req.flush(run({ mode: 'UNTIL_BLOCKED' }));
+    expect(snack.open).toHaveBeenCalledWith('Chantier 1 avance jusqu’au blocage. Vous pouvez quitter l’écran.', 'OK', jasmine.any(Object));
+    http.expectOne('/api/workspaces/w1/journey/autonomy').flush(board([entry({ run: run({ mode: 'UNTIL_BLOCKED' }) })], 2));
+    fixture.detectChanges();
+    expect(html.querySelector('.auto__status--running')?.textContent).toContain('Jusqu’au blocage — étape 3/7');
+    fixture.destroy();
+  });
+
+  it('SF-219-05 : prêt → les deux boutons côte à côte', () => {
+    const fixture = mount(journey([chantier(1)]), board([entry({
+      preflight: { number: 1, ready: true, reasons: [], advance: { possible: true, toolSteps: [3], remaining: [], label: null } },
+    })]));
+    const html = el(fixture);
+    expect(html.querySelector('.auto__go')?.textContent).toContain('Lancer en autonome');
+    expect(html.querySelector('.auto__advance')?.textContent).toContain('Avancer jusqu’au blocage');
+  });
+
+  it('SF-219-05 : course PARTIAL et plus rien à portée → « avancée jusqu’au blocage » et « Ce qui reste »', () => {
+    const fixture = mount(journey([chantier(1)]), board([entry({
+      preflight: { number: 1, ready: false, reasons: [{ code: 'WAIT_OPEN', label: 'Étape 4 : en attente.', step: 4 }],
+        advance: { possible: false, toolSteps: [], remaining: [gino] as never, label: 'Aucune étape n’est à la portée de l’outil.' } },
+      run: run({ status: 'PARTIAL', mode: 'UNTIL_BLOCKED', stopReason: 'Avancé jusqu’au blocage : on attend Gino.' }),
+    })]));
+    const html = el(fixture);
+    expect(html.querySelector('.auto__advance')).toBeNull();
+    expect(html.querySelector('.auto__rest')?.getAttribute('aria-label')).toBe('Ce qui reste');
+    expect(html.querySelector('.auto__last')?.textContent).toContain('avancée jusqu’au blocage');
+  });
 });

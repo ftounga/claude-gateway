@@ -11,7 +11,7 @@ import { Router } from '@angular/router';
 import { Observable, catchError, concatMap, from, map, of, toArray } from 'rxjs';
 
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../chat/confirm-dialog/confirm-dialog.component';
-import { autonomyCurrentStep } from '../../core/models/autonomy.models';
+import { AutonomyMode, autonomyCurrentStep, autonomyRunningLabel } from '../../core/models/autonomy.models';
 import {
   ClientBoard,
   ClientBoardChantier,
@@ -29,6 +29,7 @@ import {
   groupOf,
   idleLabel,
   isRunning,
+  canAdvance,
   isSelectable,
   isSnoozed,
   canMarkRequested,
@@ -251,7 +252,7 @@ export class ClientBoardComponent {
     if (!run) {
       return '';
     }
-    return `En autonome — étape ${autonomyCurrentStep(run.stepsDone, run.stepsTotal)}/${run.stepsTotal}`;
+    return autonomyRunningLabel(run, autonomyCurrentStep(run.stepsDone, run.stepsTotal), run.stepsTotal);
   }
 
   /** Le coût de la course autonome, s'il y en a une. */
@@ -286,13 +287,25 @@ export class ClientBoardComponent {
     this.journeys.focus(c.workspaceId, c.number).subscribe({ next: go, error: go });
   }
 
-  /** [Lancer en autonome] un chantier (F-219) — aucune confirmation (F-218). */
-  launch(c: ClientBoardChantier): void {
+  /** Peut « avancer jusqu'au blocage » (SF-219-05). */
+  advanceable(c: ClientBoardChantier): boolean {
+    return canAdvance(c);
+  }
+
+  /** Tous les chantiers sélectionnés sont prêts : le lancement groupé strict est possible. */
+  readonly selectionReady = computed(() => this.selection().every((c) => c.ready));
+
+  /**
+   * [Lancer en autonome] un chantier (F-219) — aucune confirmation (F-218). `UNTIL_BLOCKED` : [Avancer jusqu'au
+   * blocage] (SF-219-05).
+   */
+  launch(c: ClientBoardChantier, mode: AutonomyMode = 'STRICT'): void {
     this.launching.set(true);
-    this.autonomy.launch(c.workspaceId, c.number).subscribe({
+    this.autonomy.launch(c.workspaceId, c.number, mode).subscribe({
       next: () => {
         this.launching.set(false);
-        this.snackBar.open(`Chantier ${c.number} lancé en autonome.`, 'OK', { duration: 4000 });
+        const what = mode === 'UNTIL_BLOCKED' ? 'avance jusqu\'au blocage' : 'lancé en autonome';
+        this.snackBar.open(`Chantier ${c.number} ${what}.`, 'OK', { duration: 4000 });
         this.load(this.hostId(), false);
       },
       error: (err) => {
@@ -334,15 +347,16 @@ export class ClientBoardComponent {
    * Au-delà des places libres, rien ne part (refus écrit). Les refus du serveur sont rapportés par chantier ;
    * les lancés partent quand même.
    */
-  launchSelected(): void {
+  launchSelected(mode: AutonomyMode = 'STRICT'): void {
     const chosen = this.selection();
-    if (chosen.length === 0 || this.overLimit() !== null || this.launching()) {
+    if (chosen.length === 0 || this.overLimit() !== null || this.launching()
+      || (mode === 'STRICT' && !this.selectionReady())) {
       return;
     }
     this.launching.set(true);
     from(chosen)
       .pipe(
-        concatMap((c) => this.launchOne(c)),
+        concatMap((c) => this.launchOne(c, mode)),
         toArray(),
       )
       .subscribe((results) => {
@@ -356,8 +370,8 @@ export class ClientBoardComponent {
   }
 
   /** Lance un chantier ; rend `null` s'il est parti, sinon le refus lisible. */
-  private launchOne(c: ClientBoardChantier): Observable<string | null> {
-    return this.autonomy.launch(c.workspaceId, c.number).pipe(
+  private launchOne(c: ClientBoardChantier, mode: AutonomyMode): Observable<string | null> {
+    return this.autonomy.launch(c.workspaceId, c.number, mode).pipe(
       map(() => null),
       catchError((err) => of(`${this.subjectName(c)} · chantier ${c.number} — ${httpErrorMessage(err, 'refusé')}`)),
     );
