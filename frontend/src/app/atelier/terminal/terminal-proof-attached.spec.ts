@@ -63,7 +63,12 @@ describe('AtelierTerminalComponent — captures jointes à l’encart (F-212 / S
     const attached = el.querySelectorAll('app-proof-captures .proof--attached');
     expect(attached.length).toBe(1);
     expect(attached[0].querySelector('img')?.getAttribute('src')).toContain(id2);
-    expect(attached[0].textContent).toContain('Copier le message avec les captures');
+    // SF-212-05 : c'est « Copier » de l'encart qui emporte la capture ; le texte seul reste à un geste.
+    expect(attached[0].textContent).not.toContain('Copier le message avec les captures');
+    expect(encart[0].querySelector('.copy-button')?.getAttribute('aria-label')).toBe('Copier le message et sa capture');
+    expect(encart[0].querySelector('.copy-text-only-button')).not.toBeNull();
+    expect(encart[1].querySelector('.copy-button')?.getAttribute('aria-label')).toBe('Copier le bloc');
+    expect(encart[1].querySelector('.copy-text-only-button')).toBeNull();
     // Les deux blocs du fil restent visibles.
     expect(el.querySelectorAll('app-proof-captures').length).toBe(3);
     expect(encart[0].querySelector('.copy-block-mark-sent')).not.toBeNull();

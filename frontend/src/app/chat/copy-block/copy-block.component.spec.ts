@@ -247,5 +247,99 @@ describe('CopyBlockComponent', () => {
       expect(host().querySelector('.copy-block-rich')?.textContent).not.toContain('Zahi');
     });
   });
-});
 
+  describe('« Copier » emporte les captures jointes (F-212 / SF-212-05)', () => {
+    const message = block({ type: 'message', language: 'message', title: 'Message', content: 'Objet : Fini\n\nC’est **en ligne**.' });
+    const png = () => Promise.resolve(new Blob(['png'], { type: 'image/png' }));
+    const host = () => fixture.nativeElement as HTMLElement;
+
+    function withImages(images: { alt: string; width: number | null; load: () => Promise<Blob> }[]): void {
+      fixture.componentRef.setInput('block', message);
+      fixture.componentRef.setInput('images', images);
+      fixture.detectChanges();
+    }
+
+    function stubWrite(): ClipboardItem[] {
+      const written: ClipboardItem[] = [];
+      stubClipboard({
+        write: (items: ClipboardItem[]) => { written.push(...items); return Promise.resolve(); },
+        writeText: jasmine.createSpy('writeText').and.returnValue(Promise.resolve()),
+      });
+      return written;
+    }
+
+    it('une seule entrée text/html (corps + images data:) et text/plain, sans image/png ; « Message et 2 captures copiés. »', async () => {
+      withImages([{ alt: 'Capture 1', width: 800, load: png }, { alt: 'Capture 2', width: null, load: png }]);
+      const written = stubWrite();
+      const open = spyOn(snackBar, 'open');
+      expect(host().querySelector('.copy-button')?.getAttribute('aria-label')).toBe('Copier le message et ses 2 captures');
+
+      (host().querySelector('.copy-button') as HTMLButtonElement).click();
+      await fixture.whenStable();
+      await new Promise((resolve) => setTimeout(resolve));
+
+      expect(written.length).toBe(1);
+      expect([...written[0].types].sort()).toEqual(['text/html', 'text/plain']);
+      const html = await (await written[0].getType('text/html')).text();
+      const plain = await (await written[0].getType('text/plain')).text();
+      expect(html).toContain('<strong>en ligne</strong>');
+      expect(html).not.toContain('Objet');
+      expect((html.match(/<img src="data:image\/png;base64,/g) ?? []).length).toBe(2);
+      expect(html).toContain('width="800" alt="Capture 1"');
+      expect(html).not.toMatch(/génér|generated/i);
+      expect(plain).toBe('C’est **en ligne**.');
+      expect(open).toHaveBeenCalledWith('Message et 2 captures copiés.', 'Fermer', jasmine.anything());
+      expect(component.copied()).toBeTrue();
+    });
+
+    it('une image introuvable est omise et signalée', async () => {
+      withImages([{ alt: 'Capture 1', width: null, load: png }, { alt: 'Capture 2', width: null, load: () => Promise.reject(new Error('404')) }]);
+      const written = stubWrite();
+      const open = spyOn(snackBar, 'open');
+
+      component.copy();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      const html = await (await written[0].getType('text/html')).text();
+      expect((html.match(/<img /g) ?? []).length).toBe(1);
+      expect(open).toHaveBeenCalledWith('Message et 1 capture copiés (1 indisponible).', 'Fermer', jasmine.anything());
+    });
+
+    it('« Texte seul » copie le message sans les images', async () => {
+      withImages([{ alt: 'Capture 1', width: null, load: png }]);
+      const written = stubWrite();
+      expect(host().querySelector('.copy-button')?.getAttribute('aria-label')).toBe('Copier le message et sa capture');
+
+      (host().querySelector('.copy-text-only-button') as HTMLButtonElement).click();
+      await new Promise((resolve) => setTimeout(resolve));
+
+      const html = await (await written[0].getType('text/html')).text();
+      expect(html).toContain('<strong>en ligne</strong>');
+      expect(html).not.toContain('<img');
+    });
+
+    it('copie avec images refusée par le navigateur : repli sur le texte, signalé', async () => {
+      withImages([{ alt: 'Capture 1', width: null, load: png }]);
+      const writeText = jasmine.createSpy('writeText').and.returnValue(Promise.resolve());
+      stubClipboard({ write: () => Promise.reject(new Error('refusé')), writeText });
+      const open = spyOn(snackBar, 'open');
+
+      component.copy();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(writeText).toHaveBeenCalledWith('C’est **en ligne**.');
+      expect(open).toHaveBeenCalledWith('Texte copié ; les captures n’ont pas pu l’être : copiez chaque image.', 'Fermer', jasmine.anything());
+    });
+
+    it('sans image, un bloc de code ou un encart garde « Copier le bloc » et aucun « Texte seul »', () => {
+      fixture.componentRef.setInput('block', message);
+      fixture.detectChanges();
+      expect(host().querySelector('.copy-button')?.getAttribute('aria-label')).toBe('Copier le bloc');
+      expect(host().querySelector('.copy-text-only-button')).toBeNull();
+      fixture.componentRef.setInput('block', block());
+      fixture.componentRef.setInput('images', [{ alt: 'Capture 1', width: null, load: png }]);
+      fixture.detectChanges();
+      expect(host().querySelector('.copy-text-only-button')).toBeNull();
+    });
+  });
+});

@@ -5,26 +5,9 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { CopyBlock } from '../../shared/copy-block.model';
-import { MarkdownPipe, renderMarkdown } from '../../shared/markdown.pipe';
+import { MarkdownPipe } from '../../shared/markdown.pipe';
+import { ClipboardImage, clipboardHtml, writeMessageWithImages } from '../../shared/message-clipboard';
 import { isMessageBlockType, splitHeaders } from '../../shared/message-segments';
-
-/** Attributs de présentation retirés du HTML copié (F-203) : Outlook / Teams reçoivent des balises simples. */
-const PRESENTATION_ATTRIBUTES = ['class', 'style', 'id'];
-
-/**
- * HTML « propre » pour le presse-papiers (F-203 / SF-203-02) : le Markdown rendu et assaini
- * (DOMPurify, via {@link renderMarkdown}), débarrassé des attributs de présentation pour que le
- * collage dans Outlook ou Teams garde la mise en forme (gras, italique, listes, liens) sans hériter
- * de styles de l'application. Le conteneur n'est jamais attaché au document.
- */
-export function clipboardHtml(markdown: string): string {
-  const container = document.createElement('div');
-  container.innerHTML = renderMarkdown(markdown);
-  container.querySelectorAll('*').forEach((element) => {
-    PRESENTATION_ATTRIBUTES.forEach((attribute) => element.removeAttribute(attribute));
-  });
-  return container.innerHTML;
-}
 
 /**
  * Bloc copiable inline façon ChatGPT (F-26). Affiche l'en-tête (icône + libellé du type/langage),
@@ -71,6 +54,24 @@ export class CopyBlockComponent implements OnDestroy {
 
   /** Lecture seule (F-211) : l'état « Envoyé » se lit, sans bouton ni « Annuler ». */
   readonly sendReadOnly = input(false);
+
+  /**
+   * Images jointes à l'encart (F-212 / SF-212-05, captures de preuve) : « Copier » copie alors le
+   * message ET les images en un seul collage ; « Texte seul » copie le message sans elles.
+   */
+  readonly images = input<readonly ClipboardImage[]>([]);
+
+  /** Vrai pendant le chargement des images à copier. */
+  readonly copyBusy = signal(false);
+
+  /** Libellé accessible du bouton principal. */
+  readonly copyLabel = computed(() => {
+    const count = this.withImages() ? this.images().length : 0;
+    if (count === 0) {
+      return 'Copier le bloc';
+    }
+    return count === 1 ? 'Copier le message et sa capture' : `Copier le message et ses ${count} captures`;
+  });
 
   /** [Marquer envoyé] (F-211). */
   readonly markSent = output<void>();
@@ -137,9 +138,57 @@ export class CopyBlockComponent implements OnDestroy {
   /**
    * Copie le bloc (son corps, sans l'objet). Pour un bloc riche : écrit à la fois le HTML propre
    * (mise en forme préservée) et le texte brut de repli. Pour du code : texte brut uniquement.
-   * Erreur douce si le presse-papiers est indisponible.
+   * Erreur douce si le presse-papiers est indisponible. Avec des images jointes (F-212 / SF-212-05) :
+   * le message ET les images, en un seul collage.
    */
   copy(): void {
+    if (this.withImages()) {
+      void this.copyWithImages();
+      return;
+    }
+    this.copyText();
+  }
+
+  /** Vrai quand « Copier » porte aussi des images (encart riche avec captures jointes). */
+  withImages(): boolean {
+    return this.isRich() && this.images().length > 0;
+  }
+
+  /**
+   * Message + images (F-212 / SF-212-05) : une entrée text/html (images en data:) + text/plain.
+   * Sans presse-papiers riche, ou si le navigateur refuse : repli sur le texte seul, signalé.
+   */
+  private async copyWithImages(): Promise<void> {
+    const clipboard = navigator.clipboard;
+    if (!clipboard || typeof clipboard.write !== 'function' || typeof ClipboardItem === 'undefined') {
+      this.copyText('Texte copié ; les captures ne se copient pas ici : copiez chaque image.');
+      return;
+    }
+    this.copyBusy.set(true);
+    try {
+      const total = this.images().length;
+      const copied = await writeMessageWithImages(clipboard, this.parts().body, this.images());
+      this.markCopied();
+      const what =
+        copied === 0 ? 'Message copié' : copied === 1 ? 'Message et 1 capture copiés' : `Message et ${copied} captures copiés`;
+      const missing = total - copied;
+      this.snackBar.open(
+        missing > 0 ? `${what} (${missing} indisponible${missing > 1 ? 's' : ''}).` : `${what}.`,
+        'Fermer',
+        { duration: 2500 },
+      );
+    } catch {
+      this.copyText('Texte copié ; les captures n’ont pas pu l’être : copiez chaque image.');
+    } finally {
+      this.copyBusy.set(false);
+    }
+  }
+
+  /**
+   * Le texte seul (comportement F-26 / F-203) : HTML propre + texte brut pour un bloc riche, texte
+   * brut pour du code. `notice` remplace le message de réussite (repli de la copie avec images).
+   */
+  copyText(notice = 'Contenu copié.'): void {
     const clipboard = navigator.clipboard;
     if (!clipboard || typeof clipboard.writeText !== 'function') {
       this.snackBar.open('Copie impossible dans ce contexte.', 'Fermer', { duration: 3000 });
@@ -148,7 +197,7 @@ export class CopyBlockComponent implements OnDestroy {
     const content = this.parts().body;
     const ok = () => {
       this.markCopied();
-      this.snackBar.open('Contenu copié.', 'Fermer', { duration: 2000 });
+      this.snackBar.open(notice, 'Fermer', { duration: notice === 'Contenu copié.' ? 2000 : 3500 });
     };
     const ko = () => this.snackBar.open('Copie impossible dans ce contexte.', 'Fermer', { duration: 3000 });
 
