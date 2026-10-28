@@ -288,7 +288,8 @@ public class ClientBoardService {
                     nextStep(c), c.unblocker(), pf != null && pf.ready(),
                     pf == null ? List.of() : pf.reasons().stream().map(ChantierPreflight.Reason::label).toList(),
                     last, idle, idle >= dormantAfterDays, running || (c.focus() && turn.isPresent()),
-                    c.focus() ? question : null, run, snoozed.get(workspace.getId() + "#" + c.number())));
+                    c.focus() ? question : null, run, snoozed.get(workspace.getId() + "#" + c.number()),
+                    pf != null && pf.advance() != null && pf.advance().possible()));
         }
         return cards;
     }

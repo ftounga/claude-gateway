@@ -61,6 +61,12 @@ public class ChantierAutonomyRun {
     @Column(name = "status", nullable = false, length = 16)
     private AutonomyRunStatus status;
 
+    /** STRICT ou UNTIL_BLOCKED (SF-219-05). */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "mode", nullable = false, length = 16, updatable = false)
+    @Builder.Default
+    private fr.claudegateway.atelier.journey.AutonomyMode mode = fr.claudegateway.atelier.journey.AutonomyMode.STRICT;
+
     @Column(name = "turns", nullable = false)
     private int turns;
 

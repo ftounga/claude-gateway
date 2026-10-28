@@ -96,3 +96,20 @@ Codes de raison du préflight : `NOT_GUIDED`, `PLAN_NOT_VALIDATED`, `NOT_EXECUTI
    `usage_turns.provider_cost_usd` (`atelier_turn_measures` ne porte aucun coût, seulement des jetons)
    (une étape restante ≈ un demi-tour, au moins un tour) ; absente sans mesure. Aucune confirmation (F-218).
 8. **Consigne d'autonomie** dans le **message** du tour, jamais dans la consigne système (préfixe stable, F-171).
+
+---
+
+## Complément SF-219-05 — Avancer jusqu'au blocage (2026-10-28)
+Demande PO : le départ strict est trop exigeant ; un mode **semi-autonome** avance jusqu'au blocage.
+
+| Méthode | Route | Changement |
+|---------|-------|-----------|
+| POST | `/api/workspaces/{ws}/journey/chantiers/{n}/autonomy?mode=UNTIL_BLOCKED` | même route ; sans `mode` = `STRICT` (inchangé). `400 autonomy_invalid_mode` ; `409 autonomy_cannot_advance` (rien à la portée de l'outil, ou plan non validé) |
+| GET | `…/chantiers/{n}/autonomy/preflight`, `…/journey/autonomy` | `preflight.advance = { possible, toolSteps, remaining:[marque « qui débloque ? »], label }` |
+| GET | `/api/runner-hosts/{hostId}/chantiers` | `chantiers[].canAdvance` |
+| — | course (`RunView`) | `mode` (`STRICT` / `UNTIL_BLOCKED`) ; statut `PARTIAL` = avancé jusqu'au blocage |
+
+- **Condition de départ** : plan validé à sa version courante, Exécution/Vérification, et au moins une étape à la portée de l'outil (marque `OUTIL` de `ChantierUnblocker`, ou étape faite à vérifier).
+- **Arrêt** : plus aucune étape à la portée de l'outil → `PARTIAL` (arrêt propre) ; bornes inchangées (plafond de tours, aucune avancée, 4 courses, une par sujet, Reprendre la main).
+- **Notification** : `AUTONOMY_STOPPED` (neutre, sonnante) ; « ce qui reste » est lu en direct dans `advance.remaining`.
+- Outil `lancer_chantier_autonome` : paramètre `mode` ; commande `/avancer N`.

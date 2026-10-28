@@ -15,7 +15,15 @@ public interface ChantierAutonomyLauncher {
      * @param workspace le terminal du tour, <b>déjà</b> possédé par {@code userId}
      * @return le résultat à rendre au modèle
      */
-    Result schedule(java.util.UUID userId, Workspace workspace, int number);
+    default Result schedule(java.util.UUID userId, Workspace workspace, int number) {
+        return schedule(userId, workspace, number, AutonomyMode.STRICT);
+    }
+
+    /**
+     * Même chose, dans le mode donné (SF-219-05) : {@link AutonomyMode#UNTIL_BLOCKED} part dès qu'une étape
+     * est à la portée de l'outil.
+     */
+    Result schedule(java.util.UUID userId, Workspace workspace, int number, AutonomyMode mode);
 
     /** Ce que l'outil rend au modèle. */
     record Result(boolean scheduled, String message) {

@@ -9,8 +9,11 @@ import {
   AutonomyBoard,
   AutonomyBoardEntry,
   AutonomyConflict,
+  AutonomyMode,
   autonomyCurrentStep,
   autonomyOutcomeLabel,
+  autonomyRunningLabel,
+  groupRemaining,
 } from '../../core/models/autonomy.models';
 import { AutonomyService } from '../../core/services/autonomy.service';
 
@@ -114,7 +117,7 @@ const RING = 2 * Math.PI * 18;
                 @if (auto.run?.status === 'RUNNING') {
                   <p class="auto__status auto__status--running" role="status">
                     <mat-icon class="auto__spin" aria-hidden="true">autorenew</mat-icon>
-                    En autonome — étape {{ currentStep(c) }}/{{ c.total }}
+                    {{ runningLabel(auto, c) }}
                   </p>
                   <p class="auto__hint">Vous pouvez quitter l’écran : le travail continue côté serveur.</p>
                   @if (canSend()) {
@@ -134,10 +137,33 @@ const RING = 2 * Math.PI * 18;
                         <mat-icon>play_circle</mat-icon>
                         Lancer en autonome
                       </button>
+                      <button mat-stroked-button type="button" class="auto__advance" [disabled]="busy()"
+                              (click)="launch(c, 'UNTIL_BLOCKED')">
+                        <mat-icon>fast_forward</mat-icon>
+                        Avancer jusqu’au blocage
+                      </button>
                       <span class="auto__meta">
                         @if (auto.estimate; as est) {
                           ≈ {{ est.usd.toFixed(2) }} $ · {{ est.basis }} ·
                         }
+                        {{ autonomy()?.running ?? 0 }}/{{ autonomy()?.maxParallel ?? 4 }} chantiers autonomes en cours
+                      </span>
+                    </div>
+                  }
+                } @else if (auto.preflight.advance?.possible) {
+                  <p class="auto__status auto__status--advance">
+                    <mat-icon aria-hidden="true">fast_forward</mat-icon>
+                    Peut avancer jusqu’au blocage
+                  </p>
+                  @if (canSend()) {
+                    <div class="auto__launch">
+                      <button mat-flat-button type="button" class="auto__go auto__advance" [disabled]="busy()"
+                              (click)="launch(c, 'UNTIL_BLOCKED')">
+                        <mat-icon>fast_forward</mat-icon>
+                        Avancer jusqu’au blocage
+                      </button>
+                      <span class="auto__meta">
+                        {{ auto.preflight.advance?.label }} ·
                         {{ autonomy()?.running ?? 0 }}/{{ autonomy()?.maxParallel ?? 4 }} chantiers autonomes en cours
                       </span>
                     </div>
@@ -147,11 +173,42 @@ const RING = 2 * Math.PI * 18;
                     <mat-icon aria-hidden="true">block</mat-icon>
                     Pas prêt à partir en autonome
                   </p>
-                  <ul class="auto__reasons" aria-label="Ce qui empêche le départ">
-                    @for (r of auto.preflight.reasons; track $index) {
-                      <li>{{ r.label }}</li>
+                  @if (!auto.preflight.advance?.remaining?.length) {
+                    <ul class="auto__reasons" aria-label="Ce qui empêche le départ">
+                      @for (r of auto.preflight.reasons; track $index) {
+                        <li>{{ r.label }}</li>
+                      }
+                    </ul>
+                  }
+                }
+                @if (auto.run?.status !== 'RUNNING' && !auto.preflight.ready && auto.preflight.advance?.remaining?.length) {
+                  @let groups = remainingGroups(auto);
+                  @let rest = auto.preflight.advance?.possible ? 'Ce qui restera' : 'Ce qui reste';
+                  <div class="auto__rest" role="group" [attr.aria-label]="rest">
+                    <p class="auto__rest-title">{{ rest }}</p>
+                    @if (groups.decisions.length) {
+                      <p class="auto__rest-group" data-who="MOI">
+                        <mat-icon aria-hidden="true">how_to_reg</mat-icon>
+                        Ça attend votre décision
+                      </p>
+                      <ul class="auto__reasons">
+                        @for (m of groups.decisions; track $index) {
+                          <li>{{ m.detail }}</li>
+                        }
+                      </ul>
                     }
-                  </ul>
+                    @if (groups.waits.length) {
+                      <p class="auto__rest-group" data-who="AUTRUI">
+                        <mat-icon aria-hidden="true">hourglass_top</mat-icon>
+                        On attend quelqu’un
+                      </p>
+                      <ul class="auto__reasons">
+                        @for (m of groups.waits; track $index) {
+                          <li>{{ m.detail }}@if (m.waitingOn) { <span class="auto__who"> — {{ m.waitingOn }}</span> }</li>
+                        }
+                      </ul>
+                    }
+                  </div>
                 }
                 @if (auto.run && auto.run.status !== 'RUNNING') {
                   <p class="auto__last">
@@ -447,6 +504,11 @@ const RING = 2 * Math.PI * 18;
       border-color: var(--cg-accent);
     }
 
+    .auto[data-state='advance'] {
+      border-color: var(--cg-accent);
+      border-style: dashed;
+    }
+
     .auto__status {
       display: inline-flex;
       align-items: center;
@@ -510,6 +572,43 @@ const RING = 2 * Math.PI * 18;
 
     .auto__stop {
       align-self: flex-start;
+    }
+
+    .auto__status--advance {
+      color: var(--cg-text-primary);
+    }
+
+    .auto__rest {
+      display: flex;
+      flex-direction: column;
+      gap: var(--cg-space-1);
+    }
+
+    .auto__rest-title {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--cg-text-primary);
+    }
+
+    .auto__rest-group {
+      display: flex;
+      align-items: center;
+      gap: var(--cg-space-1);
+      margin: 0;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--cg-text-secondary);
+    }
+
+    .auto__rest-group mat-icon {
+      width: 16px;
+      height: 16px;
+      font-size: 16px;
+    }
+
+    .auto__who {
+      color: var(--cg-text-secondary);
     }
 
     .auto__reasons {
@@ -1086,11 +1185,24 @@ export class TerminalChantiersBoardComponent {
     return this.autonomyOf(number)?.run?.status === 'RUNNING';
   }
 
-  autoState(entry: AutonomyBoardEntry): 'running' | 'ready' | 'not-ready' {
+  autoState(entry: AutonomyBoardEntry): 'running' | 'ready' | 'advance' | 'not-ready' {
     if (entry.run?.status === 'RUNNING') {
       return 'running';
     }
-    return entry.preflight.ready ? 'ready' : 'not-ready';
+    if (entry.preflight.ready) {
+      return 'ready';
+    }
+    return entry.preflight.advance?.possible ? 'advance' : 'not-ready';
+  }
+
+  /** « En autonome — étape 3/7 » ou « Jusqu'au blocage — étape 3/7 » (SF-219-05). */
+  runningLabel(entry: AutonomyBoardEntry, c: OpenChantier): string {
+    return autonomyRunningLabel(entry.run ?? {}, this.currentStep(c), c.total);
+  }
+
+  /** Ce qui restera, groupé par « Ça attend votre décision » et « On attend quelqu'un » (SF-219-05). */
+  remainingGroups(entry: AutonomyBoardEntry) {
+    return groupRemaining(entry.preflight.advance);
   }
 
   currentStep(c: OpenChantier): number {
@@ -1101,17 +1213,21 @@ export class TerminalChantiersBoardComponent {
     return autonomyOutcomeLabel(status);
   }
 
-  /** [Lancer en autonome] : un clic, aucune confirmation (F-218). */
-  launch(c: OpenChantier): void {
+  /**
+   * [Lancer en autonome] : un clic, aucune confirmation (F-218). `UNTIL_BLOCKED` : [Avancer jusqu'au blocage]
+   * (SF-219-05).
+   */
+  launch(c: OpenChantier, mode: AutonomyMode = 'STRICT'): void {
     const workspaceId = this.workspaceId();
     if (!workspaceId || this.busy()) {
       return;
     }
     this.busy.set(true);
-    this.autonomyApi.launch(workspaceId, c.number).subscribe({
+    this.autonomyApi.launch(workspaceId, c.number, mode).subscribe({
       next: () => {
         this.busy.set(false);
-        this.snackBar.open(`Chantier ${c.number} lancé en autonome. Vous pouvez quitter l’écran.`, 'OK', { duration: 5000 });
+        const what = mode === 'UNTIL_BLOCKED' ? 'avance jusqu’au blocage' : 'lancé en autonome';
+        this.snackBar.open(`Chantier ${c.number} ${what}. Vous pouvez quitter l’écran.`, 'OK', { duration: 5000 });
         this.loadAutonomy();
       },
       error: (err: HttpErrorResponse) => {

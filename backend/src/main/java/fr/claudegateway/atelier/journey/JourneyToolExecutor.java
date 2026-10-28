@@ -179,7 +179,13 @@ public class JourneyToolExecutor {
         if (autonomy == null) {
             return Outcome.error("Le départ en autonome est indisponible ici : dis-le à l'utilisateur.");
         }
-        ChantierAutonomyLauncher.Result result = autonomy.schedule(userId, workspace, chantier);
+        AutonomyMode mode;
+        try {
+            mode = AutonomyMode.parse(text(input, "mode"));
+        } catch (IllegalArgumentException e) {
+            return Outcome.error(e.getMessage());
+        }
+        ChantierAutonomyLauncher.Result result = autonomy.schedule(userId, workspace, chantier, mode);
         return result.scheduled() ? Outcome.ok(result.message()) : Outcome.error(result.message());
     }
 

@@ -7,9 +7,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import fr.claudegateway.atelier.journey.AutonomyMode;
 import fr.claudegateway.auth.CurrentUser;
 
 /**
@@ -36,11 +38,29 @@ public class AutonomyController {
         return service.board(currentUser.requireId(), workspaceId);
     }
 
-    /** [Lancer en autonome] le chantier N. */
+    /**
+     * [Lancer en autonome] le chantier N ; {@code mode=UNTIL_BLOCKED} : [Avancer jusqu'au blocage]
+     * (SF-219-05). Mode inconnu → 400 {@code autonomy_invalid_mode}.
+     */
     @PostMapping("/workspaces/{workspaceId}/journey/chantiers/{number}/autonomy")
     @ResponseStatus(HttpStatus.CREATED)
-    public AutonomyService.RunView launch(@PathVariable UUID workspaceId, @PathVariable int number) {
-        return service.launch(currentUser.requireId(), workspaceId, number);
+    public AutonomyService.RunView launch(@PathVariable UUID workspaceId, @PathVariable int number,
+            @RequestParam(name = "mode", required = false) String mode) {
+        UUID userId = currentUser.requireId();
+        AutonomyMode parsed;
+        try {
+            parsed = AutonomyMode.parse(mode);
+        } catch (IllegalArgumentException e) {
+            throw new InvalidAutonomyModeException(e.getMessage());
+        }
+        return service.launch(userId, workspaceId, number, parsed);
+    }
+
+    /** Un mode de lancement inconnu (400). */
+    static class InvalidAutonomyModeException extends RuntimeException {
+        InvalidAutonomyModeException(String message) {
+            super(message);
+        }
     }
 
     /** [Reprendre la main] sur le chantier autonome du sujet. */

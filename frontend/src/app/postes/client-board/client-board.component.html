@@ -153,6 +153,13 @@
                     Lancer en autonome
                   </button>
                 }
+                @if (advanceable(c) && !running(c)) {
+                  <button mat-stroked-button type="button" class="cb__advance" [disabled]="launching()"
+                    (click)="launch(c, 'UNTIL_BLOCKED')">
+                    <mat-icon>fast_forward</mat-icon>
+                    Avancer jusqu’au blocage
+                  </button>
+                }
                 <button mat-flat-button type="button" class="cb__open" (click)="open(c)">
                   {{ c.question ? 'Répondre' : 'Ouvrir' }}
                   <mat-icon iconPositionEnd>arrow_forward</mat-icon>
@@ -274,10 +281,17 @@
         }
         <span class="cb__spacer"></span>
         <button mat-button type="button" class="cb__cancel" (click)="clearSelection()">Annuler</button>
-        <button mat-flat-button type="button" class="cb__launch-all" [disabled]="overLimit() !== null || launching()"
-          (click)="launchSelected()">
-          <mat-icon>rocket_launch</mat-icon>
-          Lancer en autonome ({{ selection().length }})
+        @if (selectionReady()) {
+          <button mat-stroked-button type="button" class="cb__launch-all" [disabled]="overLimit() !== null || launching()"
+            (click)="launchSelected()">
+            <mat-icon>rocket_launch</mat-icon>
+            Lancer en autonome ({{ selection().length }})
+          </button>
+        }
+        <button mat-flat-button type="button" class="cb__advance-all" [disabled]="overLimit() !== null || launching()"
+          (click)="launchSelected('UNTIL_BLOCKED')">
+          <mat-icon>fast_forward</mat-icon>
+          Avancer jusqu’au blocage ({{ selection().length }})
         </button>
       </div>
     }

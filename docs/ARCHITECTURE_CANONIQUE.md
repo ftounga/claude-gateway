@@ -470,7 +470,7 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
 
 - **chantier_autonomy_runs** — **les courses autonomes d'un chantier** (F-219 / SF-219-02, migration `175`) :
   `id (uuid)`, `user_id (NOT NULL)`, `workspace_id (FK workspaces ON DELETE CASCADE)`, `chantier_number (int)`,
-  `chantier_title (≤ 200)`, `status (RUNNING|DONE|BLOCKED|STOPPED|FAILED)`, `turns`, `steps_done`, `steps_total`,
+  `chantier_title (≤ 200)`, `status (RUNNING|DONE|PARTIAL|BLOCKED|STOPPED|FAILED)`, `mode (STRICT|UNTIL_BLOCKED, défaut STRICT — SF-219-05, migration 177)`, `turns`, `steps_done`, `steps_total`,
   `cost_usd numeric(12,6)`, `stop_reason (≤ 300)`, `error_code (≤ 40)`, `turn_id`, `started_at`, `heartbeat_at`,
   `finished_at`. Aucun contenu de tour. Index `(status, heartbeat_at)`, `(user_id, status)`,
   `(workspace_id, started_at)`. Écrite par la boucle autonome (tours sans écran, schéma des routines F-183) ;

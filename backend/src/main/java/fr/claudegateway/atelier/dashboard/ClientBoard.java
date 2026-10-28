@@ -51,12 +51,15 @@ public record ClientBoard(UUID hostId, String hostName, OffsetDateTime generated
      * @param question       la question en suspens (chantier au focus), ou {@code null}
      * @param run            sa course autonome en cours, sinon la dernière ; {@code null} s'il n'a jamais couru
      * @param snoozedUntil   reporté jusqu'à cette date (SF-220-05), ou {@code null}
+     * @param canAdvance     peut « avancer jusqu'au blocage » : plan validé et une étape à la portée de l'outil
+     *                       (SF-219-05)
      */
     public record Chantier(UUID workspaceId, String workspaceName, boolean hostTerminal, int number, String title,
                            String phase, String phaseLabel, boolean focus, OffsetDateTime openedAt, int done,
                            int total, NextStep nextStep, ChantierUnblocker.Mark unblocker, boolean ready,
                            List<String> missing, OffsetDateTime lastActivityAt, long idleDays, boolean dormant,
-                           boolean live, String question, AutonomyService.RunView run, OffsetDateTime snoozedUntil) {
+                           boolean live, String question, AutonomyService.RunView run, OffsetDateTime snoozedUntil,
+                           boolean canAdvance) {
     }
 
     /**

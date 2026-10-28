@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
-import { AutonomyBoard, AutonomyRun } from '../models/autonomy.models';
+import { AutonomyBoard, AutonomyMode, AutonomyRun } from '../models/autonomy.models';
 
 /**
  * **Un chantier en autonome** (F-219) : lire l'état, lancer, reprendre la main. Aucun appel ne porte
@@ -17,9 +17,13 @@ export class AutonomyService {
     return this.http.get<AutonomyBoard>(`/api/workspaces/${workspaceId}/journey/autonomy`);
   }
 
-  /** [Lancer en autonome] le chantier N — aucune confirmation (F-218). */
-  launch(workspaceId: string, number: number): Observable<AutonomyRun> {
-    return this.http.post<AutonomyRun>(`/api/workspaces/${workspaceId}/journey/chantiers/${number}/autonomy`, {});
+  /**
+   * [Lancer en autonome] le chantier N — aucune confirmation (F-218). `UNTIL_BLOCKED` : [Avancer jusqu'au
+   * blocage] (SF-219-05), même route.
+   */
+  launch(workspaceId: string, number: number, mode: AutonomyMode = 'STRICT'): Observable<AutonomyRun> {
+    const url = `/api/workspaces/${workspaceId}/journey/chantiers/${number}/autonomy`;
+    return this.http.post<AutonomyRun>(mode === 'UNTIL_BLOCKED' ? `${url}?mode=UNTIL_BLOCKED` : url, {});
   }
 
   /** [Reprendre la main] sur le chantier autonome du sujet. */

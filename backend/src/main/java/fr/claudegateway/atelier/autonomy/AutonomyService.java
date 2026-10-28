@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import fr.claudegateway.atelier.AtelierChatService;
 import fr.claudegateway.atelier.Workspace;
 import fr.claudegateway.atelier.WorkspaceService;
+import fr.claudegateway.atelier.journey.AutonomyMode;
 import fr.claudegateway.atelier.journey.ChantierAutonomyLauncher;
 import fr.claudegateway.atelier.journey.ChantierPreflight;
 import fr.claudegateway.atelier.journey.ChantierPreflightService;
@@ -67,7 +68,7 @@ public class AutonomyService implements ChantierAutonomyLauncher {
     private Duration deferredTtl = Duration.ofMinutes(10);
 
     /** Un départ programmé. */
-    record Deferred(UUID userId, UUID workspaceId, int number, OffsetDateTime expiresAt) {
+    record Deferred(UUID userId, UUID workspaceId, int number, AutonomyMode mode, OffsetDateTime expiresAt) {
     }
 
     private RunnerLiveness liveness;
@@ -119,12 +120,13 @@ public class AutonomyService implements ChantierAutonomyLauncher {
 
     /** Une course telle que l'écran et F-220 la lisent. Jamais d'identifiant de compte. */
     public record RunView(UUID id, UUID workspaceId, int chantierNumber, String chantierTitle, String status,
-                          int turns, int stepsDone, int stepsTotal, BigDecimal costUsd, String stopReason,
-                          String errorCode, OffsetDateTime startedAt, OffsetDateTime finishedAt) {
+                          String mode, int turns, int stepsDone, int stepsTotal, BigDecimal costUsd,
+                          String stopReason, String errorCode, OffsetDateTime startedAt, OffsetDateTime finishedAt) {
 
         static RunView of(ChantierAutonomyRun r) {
             return new RunView(r.getId(), r.getWorkspaceId(), r.getChantierNumber(), r.getChantierTitle(),
-                    r.getStatus().name(), r.getTurns(), r.getStepsDone(), r.getStepsTotal(),
+                    r.getStatus().name(), (r.getMode() == null ? AutonomyMode.STRICT : r.getMode()).name(),
+                    r.getTurns(), r.getStepsDone(), r.getStepsTotal(),
                     r.getCostUsd() == null ? BigDecimal.ZERO : r.getCostUsd().setScale(2, RoundingMode.HALF_UP),
                     r.getStopReason(), r.getErrorCode(), r.getStartedAt(), r.getFinishedAt());
         }
@@ -210,13 +212,33 @@ public class AutonomyService implements ChantierAutonomyLauncher {
      * @throws AutonomyConflictException pas prêt, sujet occupé, limite atteinte, poste hors ligne (409)
      * @throws InvalidJourneyException   le chantier n'est pas ouvert (400)
      */
-    public synchronized RunView launch(UUID userId, UUID workspaceId, int number) {
+    public RunView launch(UUID userId, UUID workspaceId, int number) {
+        return launch(userId, workspaceId, number, AutonomyMode.STRICT);
+    }
+
+    /**
+     * Lancer le chantier ouvert {@code number} dans le mode donné. {@link AutonomyMode#UNTIL_BLOCKED}
+     * (SF-219-05) : il suffit d'un plan validé et d'une étape à la portée de l'outil ; le reste du préflight
+     * dit ce qui restera.
+     *
+     * @throws AutonomyConflictException pas prêt / rien à avancer, sujet occupé, limite atteinte, poste hors ligne
+     * @throws InvalidJourneyException   le chantier n'est pas ouvert (400)
+     */
+    public synchronized RunView launch(UUID userId, UUID workspaceId, int number, AutonomyMode mode) {
+        AutonomyMode m = mode == null ? AutonomyMode.STRICT : mode;
         Workspace workspace = workspaceService.requireOwned(userId, workspaceId); // 404 — TOUJOURS en premier
         ChantierReadiness readiness = preflights.forOwned(userId, workspace).stream()
                 .filter(c -> c.number() == number)
                 .findFirst()
                 .orElseThrow(() -> new InvalidJourneyException("Le chantier " + number + " n'est pas ouvert."));
-        if (!readiness.preflight().ready()) {
+        if (m == AutonomyMode.UNTIL_BLOCKED) {
+            ChantierPreflight.Advance advance = readiness.preflight().advance();
+            if (advance == null || !advance.possible()) {
+                throw new AutonomyConflictException("autonomy_cannot_advance", "Ce chantier ne peut pas avancer "
+                        + "jusqu'au blocage : " + (advance == null || advance.label() == null ? "rien n'est à la "
+                        + "portée de l'outil." : lowerFirst(advance.label())), readiness.preflight().reasons());
+            }
+        } else if (!readiness.preflight().ready()) {
             throw new AutonomyConflictException("autonomy_not_ready", "Ce chantier n'est pas prêt à partir en "
                     + "autonome.", readiness.preflight().reasons());
         }
@@ -234,14 +256,21 @@ public class AutonomyService implements ChantierAutonomyLauncher {
         }
         journeys.focus(userId, workspaceId, number); // le chantier autonome est celui que le sujet montre
         ChantierSnapshot start = ChantierSnapshot.of(journeys.forTurn(userId, workspaceId), number);
-        Optional<LiveTurn> turn = runner.prepare(userId, workspaceId,
-                AutonomyTurnRunner.firstDemand(number, start.title(), start.plan(), runner.maxTurns()));
+        Optional<LiveTurn> turn = runner.prepare(userId, workspaceId, m == AutonomyMode.UNTIL_BLOCKED
+                ? AutonomyTurnRunner.firstDemandUntilBlocked(number, start.title(), start.plan(), runner.maxTurns(),
+                        readiness.preflight().advance())
+                : AutonomyTurnRunner.firstDemand(number, start.title(), start.plan(), runner.maxTurns()));
         if (turn.isEmpty()) {
             throw busy();
         }
-        ChantierAutonomyRun run = runner.launch(turn.get(), workspace, number, start);
-        log.info("Chantier lancé en autonome (workspace={}, chantier={}, course={})", workspaceId, number, run.getId());
+        ChantierAutonomyRun run = runner.launch(turn.get(), workspace, number, start, m);
+        log.info("Chantier lancé en autonome (workspace={}, chantier={}, course={}, mode={})", workspaceId, number,
+                run.getId(), m);
         return RunView.of(store.find(run.getId()).orElse(run));
+    }
+
+    private static String lowerFirst(String text) {
+        return text.isEmpty() ? text : Character.toLowerCase(text.charAt(0)) + text.substring(1);
     }
 
     private static AutonomyConflictException busy() {
@@ -285,7 +314,8 @@ public class AutonomyService implements ChantierAutonomyLauncher {
      * remplace le précédent.
      */
     @Override
-    public Result schedule(UUID userId, Workspace workspace, int number) {
+    public Result schedule(UUID userId, Workspace workspace, int number, AutonomyMode mode) {
+        AutonomyMode m = mode == null ? AutonomyMode.STRICT : mode;
         Optional<ChantierReadiness> readiness = preflights.forOwned(userId, workspace).stream()
                 .filter(c -> c.number() == number)
                 .findFirst();
@@ -293,7 +323,14 @@ public class AutonomyService implements ChantierAutonomyLauncher {
             return new Result(false, "Le chantier " + number + " n'est pas ouvert : rien n'est programmé.");
         }
         ChantierPreflight preflight = readiness.get().preflight();
-        if (!preflight.ready()) {
+        if (m == AutonomyMode.UNTIL_BLOCKED) {
+            ChantierPreflight.Advance advance = preflight.advance();
+            if (advance == null || !advance.possible()) {
+                return new Result(false, "Le chantier " + number + " ne peut pas avancer jusqu'au blocage : "
+                        + (advance == null || advance.label() == null ? "rien n'est à la portée de l'outil."
+                        : advance.label()) + " Dis-le à l'utilisateur ; rien n'est programmé.");
+            }
+        } else if (!preflight.ready()) {
             return new Result(false, "Le chantier " + number + " n'est pas prêt à partir en autonome : "
                     + String.join(" ; ", preflight.reasons().stream().map(ChantierPreflight.Reason::label).toList())
                     + " Dis-le à l'utilisateur ; rien n'est programmé.");
@@ -308,9 +345,10 @@ public class AutonomyService implements ChantierAutonomyLauncher {
         if (hostOffline(userId, workspace)) {
             return new Result(false, "Le poste de ce sujet est hors ligne : le chantier ne peut pas partir.");
         }
-        deferred.put(userId + "/" + workspace.getId(), new Deferred(userId, workspace.getId(), number,
+        deferred.put(userId + "/" + workspace.getId(), new Deferred(userId, workspace.getId(), number, m,
                 OffsetDateTime.now(clock).plus(deferredTtl)));
-        return new Result(true, "Départ programmé : le chantier " + number + " partira en autonome dès la fin de "
+        return new Result(true, "Départ programmé : le chantier " + number + " partira en autonome"
+                + (m == AutonomyMode.UNTIL_BLOCKED ? " (jusqu'au blocage)" : "") + " dès la fin de "
                 + "ce tour (si le service redémarre d'ici là, il faudra le relancer). Termine ton tour maintenant, "
                 + "en une phrase ; n'exécute pas les étapes toi-même.");
     }
@@ -337,7 +375,7 @@ public class AutonomyService implements ChantierAutonomyLauncher {
                 continue;
             }
             try {
-                launch(d.userId(), d.workspaceId(), d.number());
+                launch(d.userId(), d.workspaceId(), d.number(), d.mode());
                 launched++;
             } catch (AutonomyConflictException | InvalidJourneyException e) {
                 log.info("Départ autonome programmé abandonné (workspace={}, chantier={}) : {}", d.workspaceId(),
