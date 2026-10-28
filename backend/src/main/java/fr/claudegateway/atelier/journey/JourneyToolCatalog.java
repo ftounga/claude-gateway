@@ -88,7 +88,17 @@ public class JourneyToolCatalog {
             + "elle dépend ; depends_on = les numéros des étapes ANTÉRIEURES dont elle dépend vraiment (absent = "
             + "les étapes précédentes) — déclare-les quand des étapes sont indépendantes. 40 étapes au plus : "
             + "au-delà, regroupe. Le plan peut être PARTIEL : une inconnue est une étape qui attend son input. "
-            + "Un petit geste = un plan d'une ligne. L'utilisateur valide le plan d'un clic ; tant qu'il "
+            + "Un petit geste = un plan d'une ligne. QUI EXÉCUTE : chaque étape porte actor — OUTIL (tu la fais "
+            + "toi-même avec tes outils), MOI (l'utilisateur la fait) ou TIERS (quelqu'un d'autre la fait). Un geste "
+            + "que tu ne peux pas faire toi-même est MOI ou TIERS, jamais OUTIL : envoyer un message à une personne "
+            + "depuis la messagerie ou le Teams de l'utilisateur (aucun de tes outils n'écrit à un tiers : email_me "
+            + "n'écrit qu'à l'utilisateur, l'écriture Microsoft 365 ne poste pas de message), appeler, approuver à la "
+            + "place de quelqu'un, utiliser un accès que tu n'as pas, faire un geste physique. Ce qu'une commande du "
+            + "poste publie elle-même (commenter une MR avec la CLI) reste OUTIL. Une étape MOI ou TIERS n'est pas "
+            + "exécutée en autonome : quand l'utilisateur dit qu'elle est faite, update_plan_step status=FAIT. Si "
+            + "le bloc « Parcours du sujet » te demande de préciser des acteurs, fais-le avec update_plan_step "
+            + "actor (sans status) : ce n'est pas un amendement.\n"
+            + "L'utilisateur valide le plan d'un clic ; tant qu'il "
             + "ne l'a pas fait, ne modifie rien. Garde PLAN-ACTION.md cohérent avec ce plan.\n"
             + "EXÉCUTION : n'exécute que des étapes du plan validé. Une modification hors plan est un "
             + "AMENDEMENT : rappelle set_subject_plan avec le plan complet modifié — il repasse par la "
@@ -117,6 +127,13 @@ public class JourneyToolCatalog {
     static final Map<String, Object> CHANTIER_PARAM = Map.of("type", "integer",
             "description", "Le numéro du chantier visé, s'il n'est pas le chantier au focus (F-206). Absent = "
                     + "le focus.");
+
+    /** Le paramètre {@code actor} d'une étape (F-219 / SF-219-06) — littéral stable. */
+    static final Map<String, Object> ACTOR_PARAM = Map.of("type", "string",
+            "enum", List.of("OUTIL", "MOI", "TIERS"),
+            "description", "Qui exécute l'étape : OUTIL (toi, avec tes outils), MOI (l'utilisateur : un geste que "
+                    + "tu ne peux pas faire, comme envoyer un message depuis sa messagerie ou son Teams), TIERS "
+                    + "(quelqu'un d'autre).");
 
     private final SpaceEntitlementService entitlements;
 
@@ -184,8 +201,9 @@ public class JourneyToolCatalog {
                                         + "en a une."),
                         "depends_on", Map.of("type", "array", "items", Map.of("type", "integer"),
                                 "description", "Les numéros (à partir de 1) des étapes ANTÉRIEURES dont elle "
-                                        + "dépend. Absent = les étapes précédentes.")),
-                "required", List.of("title", "risk"));
+                                        + "dépend. Absent = les étapes précédentes."),
+                        "actor", ACTOR_PARAM),
+                "required", List.of("title", "risk", "actor"));
         return new AgentTool(SET_PLAN,
                 "Pose (ou amende) le PLAN du sujet guidé : la liste COMPLÈTE des étapes, qui remplace la "
                         + "précédente. L'utilisateur le valide d'un clic ; une modification d'un plan déjà "
@@ -221,7 +239,8 @@ public class JourneyToolCatalog {
                 "Fait avancer une étape du plan validé : FAIT après l'avoir exécutée, VERIFIE ou ECHEC "
                         + "après l'avoir vérifiée comme le plan le dit — avec la preuve. BLOQUE sur un vrai "
                         + "blocage (information manquante, échec sans remède), avec la raison ; A_FAIRE la "
-                        + "débloque.",
+                        + "débloque. actor (sans status) précise qui exécute l'étape : ce n'est pas un "
+                        + "amendement. Donne status, actor, ou les deux.",
                 Map.of("type", "object",
                         "properties", Map.of(
                                 "step", Map.of("type", "integer",
@@ -231,8 +250,9 @@ public class JourneyToolCatalog {
                                 "evidence", Map.of("type", "string",
                                         "description", "Ce que tu as observé (requis pour VERIFIE et ECHEC) ; la "
                                                 + "raison du blocage (requise pour BLOQUE)."),
+                                "actor", ACTOR_PARAM,
                                 "chantier", CHANTIER_PARAM),
-                        "required", List.of("step", "status")));
+                        "required", List.of("step")));
     }
 
     static AgentTool updateSubStepsDefinition() {

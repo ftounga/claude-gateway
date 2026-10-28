@@ -311,7 +311,7 @@ public class SubjectJourneyService {
 
     /** Ce que l'agent apprend en faisant avancer une étape. */
     public enum StepOutcome { UPDATED, TO_VERIFICATION, ALL_VERIFIED, FAILED, NOT_EXECUTING, NO_SUCH_STEP,
-        NOT_GUIDED, BLOCKED, UNBLOCKED }
+        NOT_GUIDED, BLOCKED, UNBLOCKED, ACTOR_SET }
 
     /** Le résultat d'une étape avancée : l'issue et le plan à jour. */
     public record StepChange(StepOutcome outcome, JourneyPlan plan) {
@@ -338,19 +338,44 @@ public class SubjectJourneyService {
     @Transactional
     public StepChange updateStep(UUID userId, UUID workspaceId, Integer chantier, int stepNumber, String rawStatus,
             String evidence) {
+        return updateStep(userId, workspaceId, chantier, stepNumber, rawStatus, evidence, null);
+    }
+
+    /**
+     * Même geste, avec <b>qui exécute l'étape</b> (F-219 / SF-219-06). {@code rawActor} seul (sans état)
+     * requalifie l'étape : permis dès qu'un plan existe, ce n'est <b>pas un amendement</b> (plan courant et plan
+     * validé réécrits ensemble), l'état et la phase ne bougent pas.
+     *
+     * @param rawActor {@code OUTIL}, {@code MOI}, {@code TIERS}, ou vide (inchangé)
+     * @throws InvalidJourneyException acteur inconnu, ou ni état ni acteur
+     */
+    @Transactional
+    public StepChange updateStep(UUID userId, UUID workspaceId, Integer chantier, int stepNumber, String rawStatus,
+            String evidence, String rawActor) {
         SubjectJourney journey = target(userId, workspaceId, chantier);
         JourneyPlan plan = JourneyPlan.fromJson(journey.getPlanJson());
         if (!journey.isGuided()) {
             return new StepChange(StepOutcome.NOT_GUIDED, plan);
         }
+        JourneyPlan.Actor actor = JourneyPlan.Actor.parse(rawActor);
+        boolean statusGiven = rawStatus != null && !rawStatus.isBlank();
+        if (!statusGiven && actor == null) {
+            throw new InvalidJourneyException("status ou actor est requis.");
+        }
         boolean validatedCurrent = journey.getValidatedVersion() != null
                 && journey.getValidatedVersion() == journey.getPlanVersion();
+        if (!statusGiven) {
+            return setActor(journey, plan, stepNumber, actor, validatedCurrent);
+        }
         if (!validatedCurrent || (journey.getPhase() != JourneyPhase.EXECUTION
                 && journey.getPhase() != JourneyPhase.VERIFICATION)) {
             return new StepChange(StepOutcome.NOT_EXECUTING, plan);
         }
         if (stepNumber < 1 || stepNumber > plan.steps().size()) {
             return new StepChange(StepOutcome.NO_SUCH_STEP, plan);
+        }
+        if (actor != null) {
+            plan = plan.withActor(stepNumber - 1, actor);
         }
         JourneyPlan.StepStatus status = parseStepStatus(rawStatus);
         String cleanEvidence = JourneyPlan.bound(evidence, JourneyPlan.MAX_EVIDENCE);
@@ -393,6 +418,26 @@ public class SubjectJourneyService {
             record(saved, SubjectJourneyEvent.CLOSE_PROPOSED, null);
         }
         return new StepChange(outcome, updated);
+    }
+
+    /** SF-219-06 : requalifier qui exécute une étape — ni amendement, ni changement d'état ou de phase. */
+    private StepChange setActor(SubjectJourney journey, JourneyPlan plan, int stepNumber, JourneyPlan.Actor actor,
+            boolean validatedCurrent) {
+        if (plan.isEmpty() || journey.getPhase() == null || journey.getPhase() == JourneyPhase.CLOS) {
+            return new StepChange(StepOutcome.NOT_EXECUTING, plan);
+        }
+        if (stepNumber < 1 || stepNumber > plan.steps().size()) {
+            return new StepChange(StepOutcome.NO_SUCH_STEP, plan);
+        }
+        JourneyPlan updated = plan.withActor(stepNumber - 1, actor);
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        journey.setPlanJson(updated.toJson());
+        if (validatedCurrent) {
+            journey.setValidatedPlanJson(updated.toJson()); // une qualification n'est pas un amendement
+        }
+        SubjectJourney saved = save(journey, now);
+        record(saved, SubjectJourneyEvent.STEP_ACTOR_SET, stepNumber + " · " + actor.name());
+        return new StepChange(StepOutcome.ACTOR_SET, updated);
     }
 
     /**
@@ -739,6 +784,9 @@ public class SubjectJourneyService {
             }
             if (sameTitle && now.subSteps().isEmpty() && !before.subSteps().isEmpty()) {
                 result = result.withSubSteps(i, before.subSteps());
+            }
+            if (sameTitle && now.actor() == null && before.actor() != null) {
+                result = result.withActor(i, before.actor()); // SF-219-06 : renvoyer le plan n'efface pas l'acteur
             }
             if (!result.changedSince(previous, i) && before.status() != JourneyPlan.StepStatus.A_FAIRE) {
                 result = result.withStep(i, before.status(), before.evidence());

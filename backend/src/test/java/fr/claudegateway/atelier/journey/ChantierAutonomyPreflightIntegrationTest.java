@@ -212,6 +212,51 @@ class ChantierAutonomyPreflightIntegrationTest {
     }
 
     @Test
+    @DisplayName("SF-219-06 : plan existant sans acteur — prêt ; l'agent requalifie l'étape 2 en MOI sans amendement, "
+            + "le préflight refuse STEP_ACTOR_MOI ; un acteur inconnu, ou ni état ni acteur, est refusé")
+    void stepActor() throws Exception {
+        executing(TWO_STEPS);
+        read(aliceToken, "chantiers/1/autonomy/preflight").andExpect(jsonPath("$.ready", is(true)));
+        SubjectJourney before = journeyRepository.findByUserIdAndWorkspaceId(aliceId, ws()).orElseThrow();
+        int version = before.getPlanVersion();
+
+        assertThat(tool(JourneyToolCatalog.UPDATE_STEP, "{\"step\":2,\"actor\":\"PERSONNE\"}").error()).isTrue();
+        assertThat(tool(JourneyToolCatalog.UPDATE_STEP, "{\"step\":2}").content()).contains("status ou actor");
+        JourneyToolExecutor.Outcome set = tool(JourneyToolCatalog.UPDATE_STEP, "{\"step\":2,\"actor\":\"MOI\"}");
+        assertThat(set.error()).isFalse();
+        assertThat(set.content()).contains("par vous").contains("pas un amendement");
+
+        SubjectJourney after = journeyRepository.findByUserIdAndWorkspaceId(aliceId, ws()).orElseThrow();
+        assertThat(after.getPlanVersion()).isEqualTo(version);
+        assertThat(after.getValidatedVersion()).isEqualTo(version);
+        assertThat(after.getPhase()).isEqualTo(JourneyPhase.EXECUTION);
+        assertThat(JourneyPlan.fromJson(after.getValidatedPlanJson()).steps().get(1).actor())
+                .isEqualTo(JourneyPlan.Actor.MOI);
+        read(aliceToken, "chantiers/1/autonomy/preflight")
+                .andExpect(jsonPath("$.ready", is(false)))
+                .andExpect(jsonPath("$.reasons[0].code", is("STEP_ACTOR_MOI")))
+                .andExpect(jsonPath("$.reasons[0].label", startsWith("Étape 2 : « Redémarrer l'ingress »")))
+                .andExpect(jsonPath("$.advance.possible", is(true)))
+                .andExpect(jsonPath("$.advance.toolSteps[0]", is(1)))
+                .andExpect(jsonPath("$.advance.remaining[0].who", is("MOI")));
+        mockMvc.perform(get("/api/workspaces/" + workspaceId + "/journey").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(jsonPath("$.plan.steps[0].actor", is("OUTIL")))
+                .andExpect(jsonPath("$.plan.steps[0].actorExplicit", is(false)))
+                .andExpect(jsonPath("$.plan.steps[1].actor", is("MOI")))
+                .andExpect(jsonPath("$.plan.steps[1].actorLabel", is("par vous")))
+                .andExpect(jsonPath("$.plan.steps[1].unblocker.who", is("MOI")));
+
+        // Statut et acteur ensemble : l'étape 1 passe FAIT, explicitement par l'outil.
+        assertThat(tool(JourneyToolCatalog.UPDATE_STEP, "{\"step\":1,\"status\":\"FAIT\",\"actor\":\"OUTIL\"}")
+                .error()).isFalse();
+        JourneyPlan plan = JourneyPlan.fromJson(journeyRepository.findByUserIdAndWorkspaceId(aliceId, ws())
+                .orElseThrow().getPlanJson());
+        assertThat(plan.steps().get(0).actor()).isEqualTo(JourneyPlan.Actor.OUTIL);
+        assertThat(plan.steps().get(0).status()).isEqualTo(JourneyPlan.StepStatus.FAIT);
+    }
+
+    @Test
     @DisplayName("une étape qui attend un input que personne ne suit : MISSING_INFO")
     void missingInfo() throws Exception {
         executing("[{\"title\":\"Obtenir le mot de passe\",\"risk\":\"LECTURE\",\"waits_on\":\"mdp-db\"}]");

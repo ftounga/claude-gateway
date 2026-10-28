@@ -31,6 +31,7 @@ import {
   stepStateLabel,
 } from '../../core/models/journey.models';
 import { JourneyService } from '../../core/services/journey.service';
+import { StepActorComponent } from '../../shared/step-actor/step-actor.component';
 import { UnblockerPillComponent } from '../../shared/unblocker-pill/unblocker-pill.component';
 
 /** Circonférence de l'anneau d'avancement (rayon 18). */
@@ -48,7 +49,7 @@ const RING = 2 * Math.PI * 18;
  */
 @Component({
   selector: 'app-terminal-chantiers-board',
-  imports: [MatButtonModule, MatIconModule, MatTooltipModule, UnblockerPillComponent],
+  imports: [MatButtonModule, MatIconModule, MatTooltipModule, StepActorComponent, UnblockerPillComponent],
   template: `
     <div class="board-scrim" (click)="closed.emit()" aria-hidden="true"></div>
     <aside class="board" role="dialog" aria-label="Tableau des chantiers">
@@ -241,6 +242,7 @@ const RING = 2 * Math.PI * 18;
                     </button>
                     <p class="board__step-meta">
                       <app-unblocker-pill class="board__step-who" size="sm" [mark]="step.unblocker"></app-unblocker-pill>
+                      <app-step-actor class="board__step-actor" [actor]="step.actor"></app-step-actor>
                       <span class="board__risk" [attr.data-risk]="step.risk">{{ step.riskLabel }}</span>
                       @if (blockedText(step); as blocked) {
                         <span class="board__blocked">{{ blocked }}</span>

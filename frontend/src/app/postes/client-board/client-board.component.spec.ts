@@ -138,6 +138,16 @@ describe('ClientBoardComponent', () => {
     clearCollapsed();
   });
 
+  it('SF-219-06 : dans le détail, la prochaine étape faite par un tiers porte sa marque ; celle de l’outil, rien', () => {
+    const tiers = card({ workspaceId: 'w6', workspaceName: 'cab', number: 2, focus: false,
+      nextStep: { rank: 3, title: 'Valider le CAB', actor: 'TIERS' } });
+    build(board([outilReady, tiers]));
+    const opened = expand('[data-key="w6#2"]');
+    expect(opened.querySelector('.cb__facts .actor')?.textContent).toContain('par un tiers');
+    const outil = expand('[data-key="w1#1"]');
+    expect(outil.querySelector('.cb__facts .actor')).toBeNull();
+  });
+
   it('SF-220-08 : un bloc par sujet — décision d\'abord, puis le plus dormant ; pastille icône + libellé', () => {
     build(board([outilReady, autruiDormant, moiQuestion]));
     expect(blockIds()).toEqual(['w4', 'w5', 'w1']);

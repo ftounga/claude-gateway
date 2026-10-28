@@ -63,7 +63,11 @@ public record ChantierPreflight(int number, boolean ready, List<Reason> reasons,
         /** Une étape restante dépend d'une étape bloquée ou en échec. */
         DEPENDENCY_BLOCKED,
         /** Une question ou une demande d'autorisation attend une réponse sur le tour vivant du sujet. */
-        QUESTION_PENDING
+        QUESTION_PENDING,
+        /** Une étape restante est un geste de l'utilisateur, que l'outil ne peut pas faire (SF-219-06). */
+        STEP_ACTOR_MOI,
+        /** Une étape restante est faite par quelqu'un d'autre (SF-219-06). */
+        STEP_ACTOR_TIERS
     }
 
     /**
@@ -228,6 +232,15 @@ public record ChantierPreflight(int number, boolean ready, List<Reason> reasons,
                     reasons.add(new Reason(Code.WAIT_OPEN, "Étape " + rank + " : en attente de « " + step.waitsOn()
                             + " » (" + ("DEMANDE".equals(wait) ? "demandé" : "à demander") + ").", rank));
                 }
+            }
+            if (step.status() == JourneyPlan.StepStatus.A_FAIRE
+                    && step.effectiveActor() == JourneyPlan.Actor.MOI) {
+                reasons.add(new Reason(Code.STEP_ACTOR_MOI, "Étape " + rank + " : « " + step.title()
+                        + " » — un geste à faire par vous : l'outil ne peut pas le faire.", rank));
+            } else if (step.status() == JourneyPlan.StepStatus.A_FAIRE
+                    && step.effectiveActor() == JourneyPlan.Actor.TIERS) {
+                reasons.add(new Reason(Code.STEP_ACTOR_TIERS, "Étape " + rank + " : « " + step.title()
+                        + " » — à faire par quelqu'un d'autre.", rank));
             }
             for (int dep : step.dependsOn()) {
                 JourneyPlan.StepStatus depStatus = plan.steps().get(dep - 1).status();

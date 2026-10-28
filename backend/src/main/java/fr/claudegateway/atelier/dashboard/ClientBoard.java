@@ -32,8 +32,12 @@ public record ClientBoard(UUID hostId, String hostName, OffsetDateTime generated
     public record Autonomy(long running, int maxParallel) {
     }
 
-    /** La prochaine étape : la première ni faite ni vérifiée. */
-    public record NextStep(int rank, String title) {
+    /**
+     * La prochaine étape : la première ni faite ni vérifiée.
+     *
+     * @param actor qui l'exécute (SF-219-06) : {@code OUTIL}, {@code MOI} ou {@code TIERS}
+     */
+    public record NextStep(int rank, String title, String actor) {
     }
 
     /**

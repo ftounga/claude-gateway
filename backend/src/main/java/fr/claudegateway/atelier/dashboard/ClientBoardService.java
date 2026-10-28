@@ -320,7 +320,7 @@ public class ClientBoardService {
         for (int i = 0; i < steps.size(); i++) {
             String status = steps.get(i).status();
             if (!"FAIT".equals(status) && !"VERIFIE".equals(status)) {
-                return new ClientBoard.NextStep(i + 1, steps.get(i).title());
+                return new ClientBoard.NextStep(i + 1, steps.get(i).title(), steps.get(i).actor());
             }
         }
         return null;
