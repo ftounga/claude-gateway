@@ -279,3 +279,91 @@ export function looseTaskGroups(tasks: readonly ClientBoardLooseTask[] | null | 
 export function canMarkRequested(task: Pick<ClientBoardLooseTask, 'status' | 'qui'>): boolean {
   return task.status === 'A_FAIRE' && task.qui !== 'MOI';
 }
+
+/**
+ * Un bloc de sujet (SF-220-08) : le tableau du client est rangé par sujet. Les compteurs et l'ancienneté sont
+ * ceux du sujet **sans filtre** ; les listes sont filtrées.
+ */
+export interface SubjectBlock {
+  workspaceId: string;
+  /** Le nom affiché (« Terminal du poste » pour le terminal du poste). */
+  name: string;
+  hostTerminal: boolean;
+  /** Chantiers non reportés et attentes hors chantier, par couleur, sans filtre. */
+  counts: Record<Unblocker, number>;
+  /** Au moins un élément attend la décision de l'utilisateur. */
+  hasDecision: boolean;
+  /** L'élément le plus dormant du sujet (chantier ou attente). */
+  oldest: { idleDays: number; dormant: boolean };
+  /** Les chantiers du sujet, outil → décision → quelqu'un (ordre du serveur dans chaque couleur), filtrés. */
+  chantiers: ClientBoardChantier[];
+  /** Les attentes hors chantier du sujet, décision puis quelqu'un, filtrées. */
+  tasks: ClientBoardLooseTask[];
+}
+
+/**
+ * Range le tableau par sujet (SF-220-08). Un sujet n'a de bloc que s'il a un chantier non reporté ou une attente
+ * hors chantier. Ordre des sujets, calculé **sans filtre** (les blocs ne sautent pas quand on filtre) :
+ * 1. ceux qui ont un élément « votre décision » ; 2. le plus dormant d'abord ; 3. le nom.
+ * Le filtre s'applique dans les blocs ; un bloc vidé par le filtre n'est pas rendu.
+ */
+export function subjectBlocks(board: Pick<ClientBoard, 'chantiers' | 'horsChantier'> | null,
+                              filter: ClientBoardFilter | null): SubjectBlock[] {
+  if (!board) {
+    return [];
+  }
+  const open = board.chantiers.filter((c) => !isSnoozed(c));
+  const tasks = board.horsChantier ?? [];
+  const byId = new Map<string, { block: SubjectBlock; allChantiers: ClientBoardChantier[]; allTasks: ClientBoardLooseTask[] }>();
+  const entry = (item: { workspaceId: string; workspaceName: string; hostTerminal: boolean }) => {
+    let found = byId.get(item.workspaceId);
+    if (!found) {
+      found = {
+        block: {
+          workspaceId: item.workspaceId,
+          name: item.hostTerminal ? 'Terminal du poste' : item.workspaceName,
+          hostTerminal: item.hostTerminal,
+          counts: { OUTIL: 0, MOI: 0, AUTRUI: 0 },
+          hasDecision: false,
+          oldest: { idleDays: -1, dormant: false },
+          chantiers: [],
+          tasks: [],
+        },
+        allChantiers: [],
+        allTasks: [],
+      };
+      byId.set(item.workspaceId, found);
+    }
+    return found;
+  };
+  const note = (block: SubjectBlock, who: Unblocker, idle: { idleDays: number; dormant: boolean }) => {
+    block.counts[who] += 1;
+    if (idle.idleDays > block.oldest.idleDays || (idle.idleDays === block.oldest.idleDays && idle.dormant)) {
+      block.oldest = { idleDays: idle.idleDays, dormant: idle.dormant };
+    }
+  };
+  for (const c of open) {
+    const e = entry(c);
+    e.allChantiers.push(c);
+    note(e.block, groupOf(c), c);
+  }
+  for (const t of tasks) {
+    const e = entry(t);
+    e.allTasks.push(t);
+    note(e.block, t.unblocker.who, t);
+  }
+  const blocks: SubjectBlock[] = [];
+  for (const { block, allChantiers, allTasks } of byId.values()) {
+    block.hasDecision = block.counts.MOI > 0;
+    block.oldest = { idleDays: Math.max(0, block.oldest.idleDays), dormant: block.oldest.dormant };
+    block.chantiers = UNBLOCKER_ORDER.flatMap((who) =>
+      allChantiers.filter((c) => groupOf(c) === who && matchesFilter(c, filter)));
+    block.tasks = looseTaskGroups(allTasks, filter).flatMap((group) => group.tasks);
+    blocks.push(block);
+  }
+  return blocks
+    .sort((a, b) => (Number(b.hasDecision) - Number(a.hasDecision))
+      || (b.oldest.idleDays - a.oldest.idleDays)
+      || a.name.localeCompare(b.name, 'fr'))
+    .filter((block) => block.chantiers.length > 0 || block.tasks.length > 0);
+}

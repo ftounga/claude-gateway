@@ -45,197 +45,211 @@
         <p><strong>Aucun chantier ouvert chez ce client.</strong></p>
         <p class="cb__muted">Un chantier naît quand un sujet passe en mode Guidé.</p>
       </div>
-    } @else if (groups().length === 0 && (looseCount() === 0 || looseGroups().length === 0)) {
-      <p class="cb__muted cb__none">{{ filter() ? 'Aucun chantier pour ce filtre.' : 'Tous les chantiers ouverts sont reportés.' }}</p>
+    } @else if (blocks().length === 0) {
+      <p class="cb__muted cb__none">{{ filter() ? 'Rien pour ce filtre.' : 'Tous les chantiers ouverts sont reportés.' }}</p>
     }
 
-    @for (group of groups(); track group.who) {
-      <section class="cb__group" [class]="'cb__group cb__group--' + group.who" [attr.data-group]="group.who"
-        [attr.aria-label]="titles[group.who]">
-        <header class="cb__group-head">
-          <span class="cb__group-icon" aria-hidden="true"><mat-icon>{{ icons[group.who] }}</mat-icon></span>
-          <div>
-            <h3 class="cb__group-title">{{ titles[group.who] }} <span class="cb__group-count">{{ group.chantiers.length }}</span></h3>
-            <p class="cb__group-hint">{{ hints[group.who] }}</p>
-          </div>
-        </header>
-
-        <ul class="cb__cards">
-          @for (c of group.chantiers; track key(c)) {
-            <li class="cb__card" [class]="'cb__card cb__card--' + group.who" [class.cb__card--dormant]="c.dormant"
-              [class.cb__card--selected]="isSelected(c)" [attr.data-key]="key(c)">
-              <div class="cb__card-top">
-                <span class="cb__pill" [class]="'cb__pill cb__pill--' + group.who">
-                  <mat-icon aria-hidden="true">{{ icons[group.who] }}</mat-icon>
-                  {{ c.unblocker?.label ?? titles[group.who] }}
-                </span>
-                @if (running(c)) {
-                  <span class="cb__live cb__live--auto"><span class="cb__pulse" aria-hidden="true"></span>{{ runLabel(c) }}</span>
-                } @else if (c.live) {
-                  <span class="cb__live"><span class="cb__pulse" aria-hidden="true"></span>En cours</span>
-                }
-                <span class="cb__spacer"></span>
-                @if (selectable(c)) {
-                  <mat-checkbox class="cb__select" [checked]="isSelected(c)" (change)="toggleSelected(c)"
-                    [aria-label]="'Sélectionner le chantier ' + c.number + ' pour un lancement groupé'"></mat-checkbox>
-                }
-                <button mat-icon-button type="button" class="cb__more" [matMenuTriggerFor]="more"
-                  [attr.aria-label]="'Plus de gestes sur le chantier ' + c.number">
-                  <mat-icon>more_vert</mat-icon>
-                </button>
-                <mat-menu #more="matMenu">
-                  @for (choice of snoozeChoices; track choice.days) {
-                    <button mat-menu-item type="button" class="cb__snooze" [attr.data-days]="choice.days"
-                      (click)="snooze(c, choice.days)">
-                      <mat-icon>snooze</mat-icon>
-                      {{ choice.label }}
-                    </button>
-                  }
-                  <button mat-menu-item type="button" class="cb__close" (click)="close(c)">
-                    <mat-icon>archive</mat-icon>
-                    Clore le chantier
-                  </button>
-                </mat-menu>
-              </div>
-
-              <div class="cb__card-main">
-                <svg class="cb__ring" viewBox="0 0 40 40" role="img" [attr.aria-label]="c.done + ' étapes faites sur ' + c.total">
-                  <circle class="cb__ring-track" cx="20" cy="20" r="16"></circle>
-                  <circle class="cb__ring-value" cx="20" cy="20" r="16" [attr.stroke-dasharray]="ringDash(c)"></circle>
-                </svg>
-                <div class="cb__ident">
-                  <p class="cb__subject">{{ subjectName(c) }} · Chantier {{ c.number }}@if (c.phaseLabel) { · {{ c.phaseLabel }}}</p>
-                  <h4 class="cb__card-title">{{ c.title || 'Sans titre' }}</h4>
-                  <p class="cb__progress">{{ c.done }}/{{ c.total }} étape{{ c.total > 1 ? 's' : '' }}</p>
-                </div>
-                <span class="cb__age" [class.cb__age--dormant]="c.dormant">
-                  <mat-icon aria-hidden="true">{{ c.dormant ? 'bedtime' : 'schedule' }}</mat-icon>{{ idle(c) }}
-                </span>
-              </div>
-
-              @if (c.question) {
-                <p class="cb__question"><mat-icon aria-hidden="true">help</mat-icon>{{ c.question }}</p>
-              } @else if (c.unblocker) {
-                <p class="cb__detail">{{ c.unblocker.detail }}</p>
-              }
-              @if (c.unblocker?.who === 'AUTRUI' && (c.unblocker?.waitingOn || since(c))) {
-                <p class="cb__waiting">
-                  @if (c.unblocker?.waitingOn) { Auprès de <strong>{{ c.unblocker?.waitingOn }}</strong> }
-                  @if (since(c); as s) { <span>{{ s }}</span> }
-                </p>
-              }
-              @if (c.nextStep) {
-                <p class="cb__next"><span class="cb__label">Prochaine étape</span> {{ c.nextStep.rank }}. {{ c.nextStep.title }}</p>
-              }
-              @if (!c.ready && !running(c) && c.missing.length > 0) {
-                <div class="cb__missing">
-                  <span class="cb__label">Pour partir en autonome</span>
-                  <ul>
-                    @for (reason of missingShown(c); track $index) {
-                      <li>{{ reason }}</li>
-                    }
-                  </ul>
-                  @if (missingMore(c) > 0) {
-                    <span class="cb__muted">+{{ missingMore(c) }} autre{{ missingMore(c) > 1 ? 's' : '' }}</span>
-                  }
-                </div>
-              }
-
-              <footer class="cb__card-foot">
-                @if (cost(c); as amount) {
-                  <span class="cb__muted cb__cost">Course autonome : {{ amount }}</span>
-                }
-                <span class="cb__spacer"></span>
-                @if (c.ready && !running(c)) {
-                  <button mat-stroked-button type="button" class="cb__launch" [disabled]="launching()"
-                    (click)="launch(c)">
-                    <mat-icon>rocket_launch</mat-icon>
-                    Lancer en autonome
-                  </button>
-                }
-                @if (advanceable(c) && !running(c)) {
-                  <button mat-stroked-button type="button" class="cb__advance" [disabled]="launching()"
-                    (click)="launch(c, 'UNTIL_BLOCKED')">
-                    <mat-icon>fast_forward</mat-icon>
-                    Avancer jusqu’au blocage
-                  </button>
-                }
-                <button mat-flat-button type="button" class="cb__open" (click)="open(c)">
-                  {{ c.question ? 'Répondre' : 'Ouvrir' }}
-                  <mat-icon iconPositionEnd>arrow_forward</mat-icon>
-                </button>
-              </footer>
-            </li>
-          }
-        </ul>
-      </section>
-    }
-
-    <!-- HORS CHANTIER (SF-220-07) : les attentes qu'aucun chantier ne montre — ma décision, puis quelqu'un. -->
-    @if (looseGroups().length > 0) {
-      <section class="cb__loose" aria-labelledby="cb-loose-title" data-section="hors-chantier">
-        <header class="cb__loose-head">
-          <h3 id="cb-loose-title" class="cb__group-title">Hors chantier <span class="cb__group-count">{{ looseCount() }}</span></h3>
-          <p class="cb__group-hint">Les attentes de vos sujets qu'aucun chantier ouvert ne suit : à ne pas oublier.</p>
-        </header>
-        @for (group of looseGroups(); track group.who) {
-          <div class="cb__loose-group" [attr.data-loose-group]="group.who" role="group" [attr.aria-label]="titles[group.who]">
-            <h4 class="cb__loose-title">
-              <mat-icon aria-hidden="true" [class]="'cb__loose-icon cb__loose-icon--' + group.who">{{ icons[group.who] }}</mat-icon>
-              {{ titles[group.who] }} <span class="cb__group-count">{{ group.tasks.length }}</span>
-            </h4>
-            <ul class="cb__tasks">
-              @for (t of group.tasks; track t.actionId) {
-                <li class="cb__task" [class]="'cb__task cb__task--' + group.who" [class.cb__task--dormant]="t.dormant"
-                  [attr.data-action]="t.actionId">
-                  <div class="cb__task-top">
-                    <span class="cb__pill" [class]="'cb__pill cb__pill--' + group.who">
-                      <mat-icon aria-hidden="true">{{ icons[group.who] }}</mat-icon>
-                      {{ t.unblocker.label }}
+    <!-- LES SUJETS (SF-220-08) : un bloc repliable par sujet — décision attendue d'abord, puis le plus dormant. -->
+    @for (block of blocks(); track block.workspaceId) {
+      <section class="cb__block" [class.cb__block--decision]="block.hasDecision"
+        [class.cb__block--collapsed]="isCollapsed(block)" [attr.data-subject]="block.workspaceId">
+        <div class="cb__block-head">
+          <h3 class="cb__block-title">
+            <button type="button" class="cb__block-toggle" [attr.aria-expanded]="!isCollapsed(block)"
+              [attr.aria-controls]="blockBodyId(block)" (click)="toggleBlock(block)">
+              <mat-icon class="cb__chevron" aria-hidden="true">{{ isCollapsed(block) ? 'chevron_right' : 'expand_more' }}</mat-icon>
+              <span class="cb__block-name">{{ block.name }}</span>
+              <span class="cb__block-meta">
+                @for (w of order; track w) {
+                  @if (block.counts[w] > 0) {
+                    <span class="cb__block-count" [class]="'cb__block-count cb__block-count--' + w" [attr.data-count]="w">
+                      <mat-icon aria-hidden="true">{{ icons[w] }}</mat-icon>{{ block.counts[w] }} {{ short[w] }}
                     </span>
-                    @if (t.followUpDue) {
-                      <span class="cb__followup"><mat-icon aria-hidden="true">notification_important</mat-icon>à relancer</span>
-                    }
-                    <span class="cb__spacer"></span>
-                    <span class="cb__age" [class.cb__age--dormant]="t.dormant">
-                      <mat-icon aria-hidden="true">{{ t.dormant ? 'bedtime' : 'schedule' }}</mat-icon>{{ taskIdle(t) }}
-                    </span>
-                  </div>
-                  <p class="cb__subject">{{ taskSubject(t) }}</p>
-                  <p class="cb__task-title">{{ t.description }}</p>
-                  @if (t.blocks) {
-                    <p class="cb__detail"><span class="cb__label">Bloque</span> {{ t.blocks }}</p>
                   }
-                  @if (group.who === 'AUTRUI') {
-                    <p class="cb__waiting">
-                      @if (t.unblocker.waitingOn) { Auprès de <strong>{{ t.unblocker.waitingOn }}</strong> }
-                      @if (taskSince(t); as s) { <span>{{ s }}</span> }
-                    </p>
-                  } @else {
-                    <p class="cb__detail">{{ t.unblocker.detail }}</p>
-                  }
-                  <footer class="cb__card-foot">
-                    <span class="cb__spacer"></span>
-                    @if (canMarkRequested(t)) {
-                      <button mat-stroked-button type="button" class="cb__task-requested" [disabled]="taskBusy(t)"
-                        (click)="markRequested(t)" [attr.aria-label]="'Marquer demandé : ' + t.description">
-                        <mat-icon>send</mat-icon>
-                        Marquer demandé
+                }
+                <span class="cb__age" [class.cb__age--dormant]="block.oldest.dormant">
+                  <mat-icon aria-hidden="true">{{ block.oldest.dormant ? 'bedtime' : 'schedule' }}</mat-icon>{{ blockIdle(block) }}
+                </span>
+              </span>
+            </button>
+          </h3>
+          <a mat-button class="cb__block-open" [routerLink]="['/atelier', block.workspaceId]"
+            [attr.aria-label]="'Ouvrir le terminal du sujet ' + block.name">
+            <mat-icon>terminal</mat-icon>
+            <span class="cb__block-open-label">Ouvrir le terminal</span>
+          </a>
+        </div>
+
+        @if (!isCollapsed(block)) {
+          <div class="cb__block-body" [id]="blockBodyId(block)">
+            @if (block.chantiers.length > 0) {
+              <ul class="cb__cards">
+                @for (c of block.chantiers; track key(c)) {
+                  <li class="cb__card" [class]="'cb__card cb__card--' + who(c)" [class.cb__card--dormant]="c.dormant"
+                    [class.cb__card--selected]="isSelected(c)" [attr.data-key]="key(c)">
+                    <div class="cb__card-top">
+                      <span class="cb__pill" [class]="'cb__pill cb__pill--' + who(c)">
+                        <mat-icon aria-hidden="true">{{ icons[who(c)] }}</mat-icon>
+                        {{ c.unblocker?.label ?? titles[who(c)] }}
+                      </span>
+                      @if (running(c)) {
+                        <span class="cb__live cb__live--auto"><span class="cb__pulse" aria-hidden="true"></span>{{ runLabel(c) }}</span>
+                      } @else if (c.live) {
+                        <span class="cb__live"><span class="cb__pulse" aria-hidden="true"></span>En cours</span>
+                      }
+                      <span class="cb__spacer"></span>
+                      @if (selectable(c)) {
+                        <mat-checkbox class="cb__select" [checked]="isSelected(c)" (change)="toggleSelected(c)"
+                          [aria-label]="'Sélectionner le chantier ' + c.number + ' pour un lancement groupé'"></mat-checkbox>
+                      }
+                      <button mat-icon-button type="button" class="cb__more" [matMenuTriggerFor]="more"
+                        [attr.aria-label]="'Plus de gestes sur le chantier ' + c.number">
+                        <mat-icon>more_vert</mat-icon>
                       </button>
+                      <mat-menu #more="matMenu">
+                        @for (choice of snoozeChoices; track choice.days) {
+                          <button mat-menu-item type="button" class="cb__snooze" [attr.data-days]="choice.days"
+                            (click)="snooze(c, choice.days)">
+                            <mat-icon>snooze</mat-icon>
+                            {{ choice.label }}
+                          </button>
+                        }
+                        <button mat-menu-item type="button" class="cb__close" (click)="close(c)">
+                          <mat-icon>archive</mat-icon>
+                          Clore le chantier
+                        </button>
+                      </mat-menu>
+                    </div>
+
+                    <div class="cb__card-main">
+                      <svg class="cb__ring" viewBox="0 0 40 40" role="img" [attr.aria-label]="c.done + ' étapes faites sur ' + c.total">
+                        <circle class="cb__ring-track" cx="20" cy="20" r="16"></circle>
+                        <circle class="cb__ring-value" cx="20" cy="20" r="16" [attr.stroke-dasharray]="ringDash(c)"></circle>
+                      </svg>
+                      <div class="cb__ident">
+                        <p class="cb__subject">Chantier {{ c.number }}@if (c.phaseLabel) { · {{ c.phaseLabel }}}</p>
+                        <h4 class="cb__card-title">{{ c.title || 'Sans titre' }}</h4>
+                        <p class="cb__progress">{{ c.done }}/{{ c.total }} étape{{ c.total > 1 ? 's' : '' }}</p>
+                      </div>
+                      <span class="cb__age" [class.cb__age--dormant]="c.dormant">
+                        <mat-icon aria-hidden="true">{{ c.dormant ? 'bedtime' : 'schedule' }}</mat-icon>{{ idle(c) }}
+                      </span>
+                    </div>
+
+                    @if (c.question) {
+                      <p class="cb__question"><mat-icon aria-hidden="true">help</mat-icon>{{ c.question }}</p>
+                    } @else if (c.unblocker) {
+                      <p class="cb__detail">{{ c.unblocker.detail }}</p>
                     }
-                    <button mat-stroked-button type="button" class="cb__task-done" [disabled]="taskBusy(t)"
-                      (click)="markDone(t)" [attr.aria-label]="'Marquer fait : ' + t.description">
-                      <mat-icon>check</mat-icon>
-                      Marquer fait
-                    </button>
-                    <button mat-flat-button type="button" class="cb__task-open" (click)="openTask(t)">
-                      Ouvrir le sujet
-                      <mat-icon iconPositionEnd>arrow_forward</mat-icon>
-                    </button>
-                  </footer>
-                </li>
-              }
-            </ul>
+                    @if (c.unblocker?.who === 'AUTRUI' && (c.unblocker?.waitingOn || since(c))) {
+                      <p class="cb__waiting">
+                        @if (c.unblocker?.waitingOn) { Auprès de <strong>{{ c.unblocker?.waitingOn }}</strong> }
+                        @if (since(c); as s) { <span>{{ s }}</span> }
+                      </p>
+                    }
+                    @if (c.nextStep) {
+                      <p class="cb__next"><span class="cb__label">Prochaine étape</span> {{ c.nextStep.rank }}. {{ c.nextStep.title }}</p>
+                    }
+                    @if (!c.ready && !running(c) && c.missing.length > 0) {
+                      <div class="cb__missing">
+                        <span class="cb__label">Pour partir en autonome</span>
+                        <ul>
+                          @for (reason of missingShown(c); track $index) {
+                            <li>{{ reason }}</li>
+                          }
+                        </ul>
+                        @if (missingMore(c) > 0) {
+                          <span class="cb__muted">+{{ missingMore(c) }} autre{{ missingMore(c) > 1 ? 's' : '' }}</span>
+                        }
+                      </div>
+                    }
+
+                    <footer class="cb__card-foot">
+                      @if (cost(c); as amount) {
+                        <span class="cb__muted cb__cost">Course autonome : {{ amount }}</span>
+                      }
+                      <span class="cb__spacer"></span>
+                      @if (c.ready && !running(c)) {
+                        <button mat-stroked-button type="button" class="cb__launch" [disabled]="launching()"
+                          (click)="launch(c)">
+                          <mat-icon>rocket_launch</mat-icon>
+                          Lancer en autonome
+                        </button>
+                      }
+                      @if (advanceable(c) && !running(c)) {
+                        <button mat-stroked-button type="button" class="cb__advance" [disabled]="launching()"
+                          (click)="launch(c, 'UNTIL_BLOCKED')">
+                          <mat-icon>fast_forward</mat-icon>
+                          Avancer jusqu’au blocage
+                        </button>
+                      }
+                      <button mat-flat-button type="button" class="cb__open" (click)="open(c)">
+                        {{ c.question ? 'Répondre' : 'Ouvrir' }}
+                        <mat-icon iconPositionEnd>arrow_forward</mat-icon>
+                      </button>
+                    </footer>
+                  </li>
+                }
+              </ul>
+            }
+
+            <!-- HORS CHANTIER (SF-220-07) : les attentes de ce sujet qu'aucun chantier ne montre. -->
+            @if (block.tasks.length > 0) {
+              <div class="cb__loose" data-section="hors-chantier" role="group" [attr.aria-label]="'Hors chantier — ' + block.name">
+                <h4 class="cb__loose-title">Hors chantier <span class="cb__group-count">{{ block.tasks.length }}</span></h4>
+                <ul class="cb__tasks">
+                  @for (t of block.tasks; track t.actionId) {
+                    <li class="cb__task" [class]="'cb__task cb__task--' + t.unblocker.who" [class.cb__task--dormant]="t.dormant"
+                      [attr.data-action]="t.actionId">
+                      <div class="cb__task-top">
+                        <span class="cb__pill" [class]="'cb__pill cb__pill--' + t.unblocker.who">
+                          <mat-icon aria-hidden="true">{{ icons[t.unblocker.who] }}</mat-icon>
+                          {{ t.unblocker.label }}
+                        </span>
+                        @if (t.followUpDue) {
+                          <span class="cb__followup"><mat-icon aria-hidden="true">notification_important</mat-icon>à relancer</span>
+                        }
+                        <span class="cb__spacer"></span>
+                        <span class="cb__age" [class.cb__age--dormant]="t.dormant">
+                          <mat-icon aria-hidden="true">{{ t.dormant ? 'bedtime' : 'schedule' }}</mat-icon>{{ taskIdle(t) }}
+                        </span>
+                      </div>
+                      <p class="cb__task-title">{{ t.description }}</p>
+                      @if (t.blocks) {
+                        <p class="cb__detail"><span class="cb__label">Bloque</span> {{ t.blocks }}</p>
+                      }
+                      @if (t.unblocker.who === 'AUTRUI') {
+                        <p class="cb__waiting">
+                          @if (t.unblocker.waitingOn) { Auprès de <strong>{{ t.unblocker.waitingOn }}</strong> }
+                          @if (taskSince(t); as s) { <span>{{ s }}</span> }
+                        </p>
+                      } @else {
+                        <p class="cb__detail">{{ t.unblocker.detail }}</p>
+                      }
+                      <footer class="cb__card-foot">
+                        <span class="cb__spacer"></span>
+                        @if (canMarkRequested(t)) {
+                          <button mat-stroked-button type="button" class="cb__task-requested" [disabled]="taskBusy(t)"
+                            (click)="markRequested(t)" [attr.aria-label]="'Marquer demandé : ' + t.description">
+                            <mat-icon>send</mat-icon>
+                            Marquer demandé
+                          </button>
+                        }
+                        <button mat-stroked-button type="button" class="cb__task-done" [disabled]="taskBusy(t)"
+                          (click)="markDone(t)" [attr.aria-label]="'Marquer fait : ' + t.description">
+                          <mat-icon>check</mat-icon>
+                          Marquer fait
+                        </button>
+                        <button mat-flat-button type="button" class="cb__task-open" (click)="openTask(t)">
+                          Ouvrir le sujet
+                          <mat-icon iconPositionEnd>arrow_forward</mat-icon>
+                        </button>
+                      </footer>
+                    </li>
+                  }
+                </ul>
+              </div>
+            }
           </div>
         }
       </section>

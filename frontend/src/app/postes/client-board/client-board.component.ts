@@ -7,7 +7,7 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { Observable, catchError, concatMap, from, map, of, toArray } from 'rxjs';
 
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../chat/confirm-dialog/confirm-dialog.component';
@@ -17,11 +17,11 @@ import {
   ClientBoardChantier,
   ClientBoardFilter,
   ClientBoardLooseTask,
-  LooseTaskGroup,
   SNOOZE_CHOICES,
-  UNBLOCKER_HINTS,
+  SubjectBlock,
   UNBLOCKER_ICONS,
   UNBLOCKER_ORDER,
+  UNBLOCKER_SHORT,
   UNBLOCKER_TITLES,
   Unblocker,
   chantierKey,
@@ -34,10 +34,9 @@ import {
   isSnoozed,
   canMarkRequested,
   launchSummary,
-  looseTaskGroups,
-  matchesFilter,
   overLimitMessage,
   sinceLabel,
+  subjectBlocks,
   untilLabel,
 } from '../../core/models/client-board.models';
 import { AutonomyService } from '../../core/services/autonomy.service';
@@ -52,19 +51,40 @@ export const CLIENT_BOARD_REFRESH_MS = 15_000;
 /** Circonférence de l'anneau d'avancement (r = 16). */
 const RING = 2 * Math.PI * 16;
 
-/** Un groupe affiché : sa couleur et ses chantiers. */
-interface BoardGroup {
-  who: Unblocker;
-  chantiers: ClientBoardChantier[];
+/** Les sujets repliés du tableau (SF-220-08) : un tableau JSON d'identifiants de sujet. */
+export const CLIENT_BOARD_COLLAPSED_KEY = 'cg_client_board_collapsed';
+
+/** Au plus autant de sujets repliés mémorisés (les plus récents gardés). */
+const COLLAPSED_MAX = 200;
+
+/** Lit les sujets repliés ; toute erreur ou forme inattendue → aucun. */
+function readCollapsed(): Set<string> {
+  try {
+    const raw = localStorage.getItem(CLIENT_BOARD_COLLAPSED_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : []);
+  } catch {
+    return new Set();
+  }
+}
+
+/** Écrit les sujets repliés ; un stockage indisponible n'empêche pas le repli de la page. */
+function writeCollapsed(ids: ReadonlySet<string>): void {
+  try {
+    localStorage.setItem(CLIENT_BOARD_COLLAPSED_KEY, JSON.stringify([...ids].slice(-COLLAPSED_MAX)));
+  } catch {
+    // stockage indisponible : le repli vaut pour la page seulement
+  }
 }
 
 /**
  * **Le tableau de bord du client** (F-220 / SF-220-03) — l'onglet d'ouverture de la page d'un poste dans la
- * Forge : tous les chantiers ouverts de tous ses sujets, groupés par **qui les débloque** (l'outil, ma
- * décision, quelqu'un d'autre), le plus dormant d'abord. Gestes : ouvrir au focus, lancer en autonome — un
- * seul ou plusieurs d'un coup, dans la limite des courses autonomes (F-219) —, clore.
+ * Forge : tous les chantiers ouverts de tous ses sujets, **rangés par sujet** (SF-220-08) — un bloc repliable
+ * par sujet, ses chantiers dans l'ordre **qui les débloque** (l'outil, ma décision, quelqu'un d'autre), le plus
+ * dormant d'abord. Gestes : ouvrir au focus, lancer en autonome — un seul ou plusieurs d'un coup, à travers les
+ * blocs, dans la limite des courses autonomes (F-219) —, clore.
  *
- * Sous les chantiers, la section **Hors chantier** (SF-220-07) : les attentes ouvertes qu'aucun chantier ne
+ * Sous les chantiers d'un sujet, ses attentes **hors chantier** (SF-220-07) : celles qu'aucun chantier ne
  * montre, même code couleur, gestes des routes F-154/F-175 existantes (ouvrir le sujet, marquer fait, demandé).
  *
  * <p>La couleur ne porte jamais seule l'information : chaque pastille écrit son libellé et son icône.</p>
@@ -78,6 +98,7 @@ interface BoardGroup {
     MatMenuModule,
     MatProgressSpinnerModule,
     MatTooltipModule,
+    RouterLink,
   ],
   templateUrl: './client-board.component.html',
   styleUrl: './client-board.component.scss',
@@ -108,31 +129,18 @@ export class ClientBoardComponent {
 
   readonly order = UNBLOCKER_ORDER;
   readonly titles = UNBLOCKER_TITLES;
-  readonly hints = UNBLOCKER_HINTS;
   readonly icons = UNBLOCKER_ICONS;
+  readonly short = UNBLOCKER_SHORT;
 
-  /** Les groupes non vides, dans l'ordre : l'outil, ma décision, quelqu'un. */
-  readonly groups = computed<BoardGroup[]>(() => {
-    const board = this.board();
-    if (!board) {
-      return [];
-    }
-    const filter = this.filter();
-    return UNBLOCKER_ORDER
-      .map((who) => ({
-        who,
-        chantiers: board.chantiers.filter((c) => !isSnoozed(c) && groupOf(c) === who && matchesFilter(c, filter)),
-      }))
-      .filter((group) => group.chantiers.length > 0);
-  });
+  /** Les blocs de sujet (SF-220-08), dans l'ordre du tableau, filtre appliqué à l'intérieur. */
+  readonly blocks = computed<SubjectBlock[]>(() => subjectBlocks(this.board(), this.filter()));
+
+  /** Les sujets repliés, mémorisés dans `localStorage` (SF-220-08). */
+  readonly collapsed = signal<ReadonlySet<string>>(readCollapsed());
 
   /** Les chantiers reportés (SF-220-06), rangés à part. */
   readonly snoozed = computed<ClientBoardChantier[]>(() =>
     (this.board()?.chantiers ?? []).filter((c) => isSnoozed(c)));
-
-  /** Les attentes hors chantier (SF-220-07), ma décision puis quelqu'un, filtre appliqué. */
-  readonly looseGroups = computed<LooseTaskGroup[]>(() =>
-    looseTaskGroups(this.board()?.horsChantier, this.filter()));
 
   /** Le nombre d'attentes hors chantier, sans filtre. */
   readonly looseCount = computed<number>(() => this.board()?.horsChantier?.length ?? 0);
@@ -220,7 +228,40 @@ export class ClientBoardComponent {
     return who === 'OUTIL' ? counts.outil : who === 'MOI' ? counts.moi : counts.autrui;
   }
 
+  // ------------------------------------------------------------------ blocs de sujet (SF-220-08)
+
+  isCollapsed(block: SubjectBlock): boolean {
+    return this.collapsed().has(block.workspaceId);
+  }
+
+  /** Replie ou déplie le bloc d'un sujet, et le mémorise. */
+  toggleBlock(block: SubjectBlock): void {
+    const next = new Set(this.collapsed());
+    if (next.has(block.workspaceId)) {
+      next.delete(block.workspaceId);
+    } else {
+      next.add(block.workspaceId);
+    }
+    this.collapsed.set(next);
+    writeCollapsed(next);
+  }
+
+  /** « dormant depuis 6 j » — l'élément le plus dormant du sujet. */
+  blockIdle(block: SubjectBlock): string {
+    return idleLabel(block.oldest);
+  }
+
+  /** L'identifiant DOM du corps d'un bloc (pour `aria-controls`). */
+  blockBodyId(block: SubjectBlock): string {
+    return `cb-block-${block.workspaceId}`;
+  }
+
   // ------------------------------------------------------------------ carte
+
+  /** La couleur d'une carte de chantier. */
+  who(c: ClientBoardChantier): Unblocker {
+    return groupOf(c);
+  }
 
   key(c: ClientBoardChantier): string {
     return chantierKey(c);
@@ -413,10 +454,6 @@ export class ClientBoardComponent {
   }
 
   // ------------------------------------------------------------------ hors chantier (SF-220-07)
-
-  taskSubject(t: ClientBoardLooseTask): string {
-    return t.hostTerminal ? 'Terminal du poste' : t.workspaceName;
-  }
 
   taskIdle(t: ClientBoardLooseTask): string {
     return idleLabel(t);

@@ -101,70 +101,120 @@
   line-height: 1.3;
 }
 
-// ---- groupes ----
-.cb__group {
-  --cb-tone: var(--cb-autrui);
+// ---- blocs de sujet (SF-220-08) ----
+.cb__block {
   display: flex;
   flex-direction: column;
-  gap: var(--cg-space-2);
+  gap: var(--cg-space-3);
+  padding: var(--cg-space-3);
+  border: 1px solid var(--cg-divider);
+  border-radius: 12px;
+  background: var(--cg-surface);
 
-  &--OUTIL {
-    --cb-tone: var(--cb-outil);
-    // Le vert domine : c'est ce que l'outil fait avancer sans moi — à regarder en premier.
-    padding: var(--cg-space-3);
-    border-radius: 12px;
-    background: color-mix(in srgb, var(--cb-outil) 8%, var(--cg-surface));
-    border: 1px solid color-mix(in srgb, var(--cb-outil) 32%, var(--cg-surface));
+  // Une décision attend l'utilisateur dans ce sujet : un filet orange, discret (l'en-tête l'écrit aussi).
+  &--decision {
+    border-left: 4px solid var(--cb-moi);
   }
 
-  &--MOI { --cb-tone: var(--cb-moi); }
+  &--collapsed {
+    gap: 0;
+  }
 }
 
-.cb__group-head {
+.cb__block-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: var(--cg-space-2);
 }
 
-.cb__group-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: var(--cb-tone);
-  color: var(--cg-surface);
+.cb__block-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
 
-  mat-icon {
-    font-size: 20px;
-    width: 20px;
-    height: 20px;
+.cb__block-toggle {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--cg-space-2);
+  width: 100%;
+  min-height: 48px;
+  padding: var(--cg-space-1) var(--cg-space-2);
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--cg-text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    background: color-mix(in srgb, var(--cg-text-secondary) 6%, var(--cg-surface));
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--cg-orange);
+    outline-offset: var(--cg-space-1);
   }
 }
 
-.cb__group-title {
-  margin: 0;
+.cb__chevron {
+  color: var(--cg-text-secondary);
+}
+
+.cb__block-name {
   font-family: var(--cg-font-heading);
   font-size: 16px;
   font-weight: 600;
-  color: var(--cg-text-primary);
+  overflow-wrap: anywhere;
 }
 
-.cb__group--OUTIL .cb__group-title {
-  font-size: 18px;
+.cb__block-meta {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--cg-space-2);
+  font-family: var(--cg-font-body);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.cb__block-count {
+  --cb-tone: var(--cb-autrui);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  padding: 0 var(--cg-space-2);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--cb-tone) 14%, var(--cg-surface));
+
+  mat-icon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    color: var(--cb-tone);
+  }
+
+  &--OUTIL { --cb-tone: var(--cb-outil); }
+  &--MOI { --cb-tone: var(--cb-moi); }
+}
+
+.cb__block-open {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.cb__block-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cg-space-3);
 }
 
 .cb__group-count {
   margin-left: var(--cg-space-1);
   color: var(--cg-text-secondary);
   font-weight: 500;
-}
-
-.cb__group-hint {
-  margin: 0;
-  font-size: 12px;
-  color: var(--cg-text-secondary);
 }
 
 // ---- cartes ----
@@ -449,38 +499,18 @@
   color: var(--cg-text-primary);
 }
 
-// ---- hors chantier (SF-220-07) : mêmes teintes, cartes plus basses ----
+// ---- hors chantier (SF-220-07), sous les chantiers du sujet (SF-220-08) : mêmes teintes, cartes plus basses ----
 .cb__loose {
-  display: flex;
-  flex-direction: column;
-  gap: var(--cg-space-3);
-  padding-top: var(--cg-space-3);
-  border-top: 1px solid var(--cg-divider);
-}
-
-.cb__loose-group {
   display: flex;
   flex-direction: column;
   gap: var(--cg-space-2);
 }
 
 .cb__loose-title {
-  display: flex;
-  align-items: center;
-  gap: var(--cg-space-1);
   margin: 0;
   font-size: 14px;
   font-weight: 600;
   color: var(--cg-text-primary);
-}
-
-.cb__loose-icon {
-  font-size: 20px;
-  width: 20px;
-  height: 20px;
-  color: var(--cb-autrui);
-
-  &--MOI { color: var(--cb-moi); }
 }
 
 .cb__tasks {
@@ -606,8 +636,20 @@
     grid-template-columns: 1fr;
   }
 
-  .cb__group--OUTIL {
+  .cb__block {
     padding: var(--cg-space-2);
+  }
+
+  .cb__block-head {
+    align-items: flex-start;
+  }
+
+  .cb__block-meta {
+    flex-basis: 100%;
+  }
+
+  .cb__block-open-label {
+    display: none;
   }
 
   .cb__card-main {
