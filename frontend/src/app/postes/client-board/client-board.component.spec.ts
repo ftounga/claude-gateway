@@ -14,7 +14,7 @@ import { AutonomyService } from '../../core/services/autonomy.service';
 import { ClientBoardService } from '../../core/services/client-board.service';
 import { JourneyService } from '../../core/services/journey.service';
 import { TerminalActionsService } from '../../core/services/terminal-actions.service';
-import { ClientBoardComponent } from './client-board.component';
+import { CLIENT_BOARD_COLLAPSED_KEY, ClientBoardComponent } from './client-board.component';
 
 /** F-220 / SF-220-03 — l'écran du tableau du client, service simulé. */
 describe('ClientBoardComponent', () => {
@@ -112,12 +112,28 @@ describe('ClientBoardComponent', () => {
     return fixture.nativeElement as HTMLElement;
   }
 
-  afterEach(() => fixture?.destroy());
+  function blockIds(): (string | null)[] {
+    return Array.from(el().querySelectorAll('[data-subject]')).map((b) => b.getAttribute('data-subject'));
+  }
 
-  it('groupe Outil → Ma décision → Quelqu\'un, chaque pastille écrit icône et libellé', () => {
-    build(board([autruiDormant, moiQuestion, outilReady]));
-    const groups = Array.from(el().querySelectorAll('[data-group]')).map((g) => g.getAttribute('data-group'));
-    expect(groups).toEqual(['OUTIL', 'MOI', 'AUTRUI']);
+  function clearCollapsed(): void {
+    try {
+      localStorage.removeItem(CLIENT_BOARD_COLLAPSED_KEY);
+    } catch {
+      // stockage indisponible : rien à nettoyer
+    }
+  }
+
+  beforeEach(() => clearCollapsed());
+  afterEach(() => {
+    fixture?.destroy();
+    clearCollapsed();
+  });
+
+  it('SF-220-08 : un bloc par sujet — décision d\'abord, puis le plus dormant ; pastille icône + libellé', () => {
+    build(board([outilReady, autruiDormant, moiQuestion]));
+    expect(blockIds()).toEqual(['w4', 'w5', 'w1']);
+    expect(el().querySelector('[data-group]')).toBeNull();
     const pill = el().querySelector('.cb__pill--MOI');
     expect(pill?.textContent).toContain('Ça attend votre décision');
     expect(pill?.querySelector('mat-icon')?.textContent).toContain('front_hand');
@@ -282,24 +298,27 @@ describe('ClientBoardComponent', () => {
   const withLoose = (chantiers: ClientBoardChantier[], tasks: ClientBoardLooseTask[]): ClientBoard =>
     ({ ...board(chantiers), horsChantier: tasks });
 
-  it('SF-220-07 : la section « Hors chantier », ma décision puis quelqu\'un, pastille icône + libellé', () => {
+  it('SF-220-07/08 : les attentes hors chantier dans le bloc de leur sujet, sous ses chantiers', () => {
     build(withLoose([outilReady], [asked, toAsk]));
-    const section = el().querySelector('[data-section="hors-chantier"]') as HTMLElement;
+    // w1 (ingress) a une décision hors chantier : il passe avant w2 (vpn), pourtant plus dormant
+    expect(blockIds()).toEqual(['w1', 'w2']);
+    expect(el().querySelectorAll('[data-section="hors-chantier"]').length).toBe(2);
+    const w1 = el().querySelector('[data-subject="w1"]') as HTMLElement;
+    const children = Array.from(w1.querySelector('.cb__block-body')!.children).map((n) => n.className);
+    expect(children[0]).toContain('cb__cards');
+    expect(children[1]).toContain('cb__loose');
+    const section = w1.querySelector('[data-section="hors-chantier"]') as HTMLElement;
     expect(section.textContent).toContain('Hors chantier');
-    const groups = Array.from(section.querySelectorAll('[data-loose-group]')).map((g) => g.getAttribute('data-loose-group'));
-    expect(groups).toEqual(['MOI', 'AUTRUI']);
     const mine = section.querySelector('[data-action="a1"]') as HTMLElement;
     expect(mine.querySelector('.cb__pill--MOI')?.textContent).toContain('Ça attend votre décision');
     expect(mine.querySelector('.cb__pill--MOI mat-icon')?.textContent).toContain('front_hand');
     expect(mine.textContent).toContain('À demander à Support.');
-    expect(mine.textContent).toContain('ingress');
-    const theirs = section.querySelector('[data-action="a2"]') as HTMLElement;
+    expect(w1.querySelector('.cb__block-name')?.textContent).toContain('ingress');
+    const theirs = el().querySelector('[data-subject="w2"] [data-action="a2"]') as HTMLElement;
     expect(theirs.textContent).toContain('Marc');
     expect(theirs.textContent).toContain('dormant depuis 5 j');
     expect(theirs.textContent).toContain('à relancer');
     expect(theirs.querySelector('.cb__task-requested')).toBeNull();
-    // les chantiers gardent leurs groupes ; la section n'en ajoute pas
-    expect(Array.from(el().querySelectorAll('[data-group]')).map((g) => g.getAttribute('data-group'))).toEqual(['OUTIL']);
   });
 
   it('SF-220-07 : marquer fait, marquer demandé, ouvrir le sujet — routes existantes, puis relecture', () => {
@@ -329,6 +348,112 @@ describe('ClientBoardComponent', () => {
     })));
     component.markDone(asked);
     expect(snack.open.calls.mostRecent().args[0]).toContain('Action introuvable.');
+  });
+
+  // ------------------------------------------------------------------ SF-220-08 : rangé par sujet
+
+  it('SF-220-08 : dans un bloc, l\'outil passe avant votre décision, puis quelqu\'un', () => {
+    const sameMoi = card({ ...moiQuestion, workspaceId: 'w1', workspaceName: 'ingress', number: 2 });
+    const sameAutrui = card({ ...autruiDormant, workspaceId: 'w1', workspaceName: 'ingress', number: 3 });
+    build(board([sameAutrui, sameMoi, outilReady]));
+    expect(blockIds()).toEqual(['w1']);
+    const keys = Array.from(el().querySelectorAll('[data-subject="w1"] [data-key]')).map((c) => c.getAttribute('data-key'));
+    expect(keys).toEqual(['w1#1', 'w1#2', 'w1#3']);
+  });
+
+  it('SF-220-08 : l\'en-tête dit le nom, les compteurs (icône + libellé), le plus dormant et ouvre le terminal', () => {
+    const sameOutil = card({ workspaceId: 'w5', workspaceName: 'vault', number: 4 });
+    build(board([autruiDormant, sameOutil]));
+    const head = el().querySelector('[data-subject="w5"] .cb__block-head') as HTMLElement;
+    expect(head.querySelector('.cb__block-name')?.textContent).toContain('vault');
+    const outil = head.querySelector('[data-count="OUTIL"]') as HTMLElement;
+    expect(outil.textContent).toContain('1 l\'outil avance');
+    expect(outil.querySelector('mat-icon')?.textContent).toContain('bolt');
+    expect(head.querySelector('[data-count="AUTRUI"]')?.textContent).toContain('1 on attend');
+    expect(head.querySelector('[data-count="MOI"]')).toBeNull();
+    expect(head.querySelector('.cb__age--dormant')?.textContent).toContain('dormant depuis 6 j');
+    const link = head.querySelector('.cb__block-open') as HTMLAnchorElement;
+    expect(link.getAttribute('href')).toBe('/atelier/w5');
+    expect(link.getAttribute('aria-label')).toBe('Ouvrir le terminal du sujet vault');
+  });
+
+  it('SF-220-08 : le terminal du poste est un sujet comme un autre', () => {
+    build(board([card({ workspaceId: 'wt', workspaceName: 'poste', hostTerminal: true })]));
+    expect(el().querySelector('[data-subject="wt"] .cb__block-name')?.textContent).toContain('Terminal du poste');
+  });
+
+  it('SF-220-08 : replier un bloc (aria-expanded), le mémoriser, le relire au rendu suivant', () => {
+    build(board([outilReady, outilReady2]));
+    const toggle = el().querySelector('[data-subject="w1"] .cb__block-toggle') as HTMLButtonElement;
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(toggle.getAttribute('aria-controls')).toBe('cb-block-w1');
+    toggle.click();
+    fixture.detectChanges();
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(el().querySelector('[data-key="w1#1"]')).toBeNull();
+    expect(el().querySelector('[data-key="w2#2"]')).not.toBeNull();
+    expect(JSON.parse(localStorage.getItem(CLIENT_BOARD_COLLAPSED_KEY)!)).toEqual(['w1']);
+    fixture.destroy();
+    TestBed.resetTestingModule();
+    build(board([outilReady, outilReady2]));
+    expect(el().querySelector('[data-subject="w1"] .cb__block-toggle')?.getAttribute('aria-expanded')).toBe('false');
+    (el().querySelector('[data-subject="w1"] .cb__block-toggle') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el().querySelector('[data-key="w1#1"]')).not.toBeNull();
+    expect(JSON.parse(localStorage.getItem(CLIENT_BOARD_COLLAPSED_KEY)!)).toEqual([]);
+  });
+
+  it('SF-220-08 : un localStorage qui lève ou illisible ne casse rien — tout déplié, repli en mémoire', () => {
+    localStorage.setItem(CLIENT_BOARD_COLLAPSED_KEY, '{cassé');
+    build(board([outilReady]));
+    expect(el().querySelector('[data-key="w1#1"]')).not.toBeNull();
+    fixture.destroy();
+    TestBed.resetTestingModule();
+    spyOn(Storage.prototype, 'getItem').and.throwError('refusé');
+    spyOn(Storage.prototype, 'setItem').and.throwError('plein');
+    build(board([outilReady]));
+    expect(el().querySelector('[data-key="w1#1"]')).not.toBeNull();
+    (el().querySelector('[data-subject="w1"] .cb__block-toggle') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el().querySelector('[data-key="w1#1"]')).toBeNull();
+  });
+
+  it('SF-220-08 : le filtre agit dans les blocs et masque les blocs vides ; les compteurs du bloc restent', () => {
+    const sameMoi = card({ ...moiQuestion, workspaceId: 'w1', workspaceName: 'ingress', number: 2 });
+    build(board([outilReady, sameMoi, autruiDormant]));
+    (el().querySelector('[data-filter="MOI"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(blockIds()).toEqual(['w1']);
+    expect(Array.from(el().querySelectorAll('[data-key]')).map((c) => c.getAttribute('data-key'))).toEqual(['w1#2']);
+    expect(el().querySelector('[data-subject="w1"] [data-count="OUTIL"]')).not.toBeNull();
+    component.filter.set('DORMANT');
+    fixture.detectChanges();
+    expect(blockIds()).toEqual(['w5']);
+  });
+
+  it('SF-220-08 : un sujet dont tout est reporté n\'a pas de bloc ; un filtre vide le dit', () => {
+    const later = card({ workspaceId: 'w9', workspaceName: 'dns', number: 4, snoozedUntil: '2026-10-30T10:00:00' });
+    build(board([later]));
+    expect(blockIds()).toEqual([]);
+    expect(el().querySelector('.cb__none')?.textContent).toContain('Tous les chantiers ouverts sont reportés.');
+    expect(el().querySelector('.cb__snoozed-toggle')?.textContent).toContain('Reportés (1)');
+    fixture.destroy();
+    TestBed.resetTestingModule();
+    build(board([outilReady]));
+    component.toggleFilter('MOI');
+    fixture.detectChanges();
+    expect(el().querySelector('.cb__none')?.textContent).toContain('Rien pour ce filtre.');
+  });
+
+  it('SF-220-08 : la multi-sélection traverse les blocs, même repliés', () => {
+    build(board([outilReady, outilReady2]));
+    component.toggleSelected(outilReady);
+    (el().querySelector('[data-subject="w1"] .cb__block-toggle') as HTMLButtonElement).click();
+    component.toggleSelected(outilReady2);
+    fixture.detectChanges();
+    expect(el().querySelector('.cb__selection-count')?.textContent).toContain('2 sélectionnés');
+    component.launchSelected();
+    expect(autonomy.launch.calls.allArgs()).toEqual([['w1', 1, 'STRICT'], ['w2', 2, 'STRICT']]);
   });
 
   // ------------------------------------------------------------------ SF-219-05 : avancer jusqu'au blocage

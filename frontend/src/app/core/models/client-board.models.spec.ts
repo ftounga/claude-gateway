@@ -12,6 +12,7 @@ import {
   matchesFilter,
   overLimitMessage,
   sinceLabel,
+  subjectBlocks,
   untilLabel,
 } from './client-board.models';
 
@@ -110,5 +111,72 @@ describe('client-board.models', () => {
     expect(canMarkRequested(task({ qui: null }))).toBeTrue();
     expect(canMarkRequested(task({ qui: 'MOI' }))).toBeFalse();
     expect(canMarkRequested(task({ status: 'DEMANDE' }))).toBeFalse();
+  });
+
+  // ---------------------------------------------------------------- SF-220-08 : rangé par sujet
+  const moi = { who: 'MOI' as const, label: 'Ça attend votre décision', detail: 'd', step: null, waitingOn: null, since: null };
+  const autrui = { who: 'AUTRUI' as const, label: 'On attend quelqu\'un', detail: 'd', step: null, waitingOn: 'Gino', since: null };
+
+  it('SF-220-08 : un bloc par sujet, outil → décision → quelqu\'un, attentes du sujet dans le bloc', () => {
+    const blocks = subjectBlocks({
+      chantiers: [
+        chantier({ number: 3, unblocker: autrui }),
+        chantier({ number: 2, unblocker: moi }),
+        chantier({ number: 1 }),
+        chantier({ workspaceId: 'w2', workspaceName: 'api', number: 1 }),
+      ],
+      horsChantier: [task({ actionId: 'a2', unblocker: autrui, status: 'DEMANDE' }), task()],
+    }, null);
+    expect(blocks.map((b) => b.workspaceId)).toEqual(['w1', 'w2']);
+    expect(blocks[0].chantiers.map((c) => c.number)).toEqual([1, 2, 3]);
+    expect(blocks[0].tasks.map((t) => t.actionId)).toEqual(['a1', 'a2']);
+    expect(blocks[0].counts).toEqual({ OUTIL: 1, MOI: 2, AUTRUI: 2 });
+    expect(blocks[0].hasDecision).toBeTrue();
+    expect(blocks[1].tasks).toEqual([]);
+  });
+
+  it('SF-220-08 : ordre des sujets — décision d\'abord, puis le plus dormant, puis le nom', () => {
+    const blocks = subjectBlocks({
+      chantiers: [
+        chantier({ workspaceId: 'b', workspaceName: 'beta', idleDays: 1 }),
+        chantier({ workspaceId: 'a', workspaceName: 'alpha', idleDays: 1 }),
+        chantier({ workspaceId: 'z', workspaceName: 'zulu', idleDays: 9, dormant: true }),
+        chantier({ workspaceId: 'd', workspaceName: 'delta', idleDays: 0, unblocker: moi }),
+      ],
+      horsChantier: [task({ workspaceId: 't', workspaceName: 'tâches', idleDays: 4, dormant: true, unblocker: autrui })],
+    }, null);
+    expect(blocks.map((b) => b.workspaceId)).toEqual(['d', 'z', 't', 'a', 'b']);
+    expect(blocks[1].oldest).toEqual({ idleDays: 9, dormant: true });
+    expect(blocks[2].oldest).toEqual({ idleDays: 4, dormant: true });
+  });
+
+  it('SF-220-08 : reportés exclus, sujet sans rien d\'ouvert absent, terminal du poste nommé', () => {
+    const blocks = subjectBlocks({
+      chantiers: [
+        chantier({ workspaceId: 'w9', snoozedUntil: '2026-10-30T10:00:00' }),
+        chantier({ workspaceId: 'wt', workspaceName: 'poste', hostTerminal: true }),
+      ],
+    }, null);
+    expect(blocks.map((b) => b.workspaceId)).toEqual(['wt']);
+    expect(blocks[0].name).toBe('Terminal du poste');
+    expect(subjectBlocks(null, null)).toEqual([]);
+  });
+
+  it('SF-220-08 : le filtre agit dans les blocs, masque les blocs vides, garde ordre et compteurs', () => {
+    const board = {
+      chantiers: [
+        chantier({ workspaceId: 'w1', number: 1 }),
+        chantier({ workspaceId: 'w1', number: 2, unblocker: moi }),
+        chantier({ workspaceId: 'w2', workspaceName: 'api', idleDays: 8, dormant: true }),
+      ],
+      horsChantier: [task({ workspaceId: 'w3', workspaceName: 'dns', unblocker: autrui, status: 'DEMANDE' as const })],
+    };
+    const mine = subjectBlocks(board, 'MOI');
+    expect(mine.map((b) => b.workspaceId)).toEqual(['w1']);
+    expect(mine[0].chantiers.map((c) => c.number)).toEqual([2]);
+    expect(mine[0].counts).toEqual({ OUTIL: 1, MOI: 1, AUTRUI: 0 });
+    expect(subjectBlocks(board, 'AUTRUI').map((b) => b.workspaceId)).toEqual(['w3']);
+    expect(subjectBlocks(board, 'DORMANT').map((b) => b.workspaceId)).toEqual(['w2']);
+    expect(subjectBlocks(board, 'OUTIL').map((b) => b.workspaceId)).toEqual(['w1', 'w2']);
   });
 });
