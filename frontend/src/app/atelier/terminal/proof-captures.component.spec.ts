@@ -4,7 +4,9 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { AtelierProofBlock } from '../../core/models/atelier.models';
-import { ProofCapturesComponent, commandFacts, proofBlock, proofImageUrl } from './proof-captures.component';
+import { HttpClient } from '@angular/common/http';
+
+import { ProofCapturesComponent, commandFacts, proofBlock, proofClipboardImages, proofImageUrl } from './proof-captures.component';
 
 describe('ProofCapturesComponent (F-212 / SF-212-04)', () => {
   const proof: AtelierProofBlock = {
@@ -25,11 +27,11 @@ describe('ProofCapturesComponent (F-212 / SF-212-04)', () => {
   let http: HttpTestingController;
   let snack: jasmine.SpyObj<MatSnackBar>;
 
-  function create(message: unknown = null): HTMLElement {
+  function create(attached = false): HTMLElement {
     fixture = TestBed.createComponent(ProofCapturesComponent);
     fixture.componentRef.setInput('proof', proof);
     fixture.componentRef.setInput('workspaceId', 'ws-1');
-    fixture.componentRef.setInput('message', message);
+    fixture.componentRef.setInput('attached', attached);
     fixture.detectChanges();
     return fixture.nativeElement as HTMLElement;
   }
@@ -114,25 +116,21 @@ describe('ProofCapturesComponent (F-212 / SF-212-04)', () => {
     expect(download).toHaveBeenCalled();
   });
 
-  it('jointe à un encart : « Copier le message avec les captures » écrit text/html (images en data:) et text/plain', async () => {
-    const written: ClipboardItem[] = [];
-    stubClipboard({
-      write: (items: ClipboardItem[]) => { written.push(...items); return Promise.resolve(); },
-      writeText: () => Promise.resolve(),
-    });
-    const el = create({ type: 'message', language: 'message', title: 'Message', content: 'Objet : Fini\n\nC’est **en ligne**.' });
-    const button = el.querySelector('.proof__copy-message') as HTMLButtonElement;
-    expect(button).not.toBeNull();
-    const done = fixture.componentInstance.copyMessageWithCaptures();
+  it('jointe à un encart : présentée resserrée, sans second bouton de copie du message (SF-212-05)', () => {
+    const el = create(true);
+    expect(el.querySelector('.proof--attached')).not.toBeNull();
+    expect(el.textContent).not.toContain('Copier le message avec les captures');
+  });
+
+  it('proofClipboardImages : une image par capture, chargée par la route isolée, à mi-largeur, sans mention (SF-212-05)', async () => {
+    create();
+    const images = proofClipboardImages(proof, 'ws-1', TestBed.inject(HttpClient));
+    expect(images.length).toBe(1);
+    expect(images[0].alt).toBe('Capture 1');
+    expect(images[0].width).toBe(800);
+    const loading = images[0].load();
     http.expectOne('/api/workspaces/ws-1/proofs/' + 'a'.repeat(32)).flush(new Blob(['png'], { type: 'image/png' }));
-    await done;
-    expect(written.length).toBe(1);
-    const html = await (await written[0].getType('text/html')).text();
-    const text = await (await written[0].getType('text/plain')).text();
-    expect(html).toContain('<strong>en ligne</strong>');
-    expect(html).toContain('<img src="data:image/png;base64,');
-    expect(html).toContain('width="800"');
-    expect(text).toBe('C’est **en ligne**.');
+    expect((await loading).type).toBe('image/png');
   });
 
   it('nom de fichier, URL, relevés et bloc vivant', () => {

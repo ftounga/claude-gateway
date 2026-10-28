@@ -2271,10 +2271,13 @@
       } @else {
         <!-- F-211 / SF-211-02 : « Marquer envoyé » sur l'encart d'une réponse persistée (pas en direct). -->
         @let sendIndex = sendIndexOf(message, segment.block);
+        <!-- F-212 / SF-212-05 : les captures jointes partent avec « Copier » de l'encart (message + images). -->
+        @let attached = attachedProof(message, segment.block);
         <app-copy-block
           class="terminal-message-block"
           tone="dark"
           [block]="segment.block"
+          [images]="attached ? clipboardImagesOf(attached) : noImages"
           [sendable]="sendIndex >= 0"
           [sentAt]="sentAtOf(message, sendIndex)"
           [sendBusy]="isSending(message, sendIndex)"
@@ -2282,10 +2285,10 @@
           (markSent)="onMarkSent(message, sendIndex)"
           (cancelSent)="onCancelSent(message, sendIndex)"
         ></app-copy-block>
-        <!-- F-212 / SF-212-04 : les captures jointes à l'encart qu'elles prouvent, avec « Copier le message
-             avec les captures ». Les captures restent aussi dans leur bloc du fil. -->
-        @if (attachedProof(message, segment.block); as attached) {
-          <app-proof-captures [proof]="attached" [workspaceId]="projectId" [message]="segment.block"></app-proof-captures>
+        <!-- F-212 / SF-212-04 : les captures jointes à l'encart qu'elles prouvent. Elles restent aussi
+             dans leur bloc du fil. -->
+        @if (attached) {
+          <app-proof-captures [proof]="attached" [workspaceId]="projectId" [attached]="true"></app-proof-captures>
         }
       }
     }

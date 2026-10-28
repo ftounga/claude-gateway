@@ -42,7 +42,7 @@ import { TerminalQuestionTracksComponent } from './terminal-question-tracks.comp
 import { PlumeView, TerminalPlumeComponent, looksLikeVideoRequest } from './terminal-plume.component';
 import { TerminalBarTier, terminalBarTier } from './terminal-bar-tier';
 import { PlumeService } from '../../core/services/plume.service';
-import { HttpErrorResponse } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { AtelierNextStep, AtelierNextStepsChantier, AtelierQuestionAnswer } from '../../core/models/atelier.models';
 import {
   DictationButtonComponent,
@@ -180,7 +180,8 @@ import { AttenteCardComponent } from './attente-card.component';
 import { HandoffCardComponent, HandoffOriginComponent } from './handoff-card.component';
 import { ProposalCardComponent } from './proposal-card.component';
 import { BesoinCardComponent } from './besoin-card.component';
-import { ProofCapturesComponent } from './proof-captures.component';
+import { ProofCapturesComponent, proofClipboardImages } from './proof-captures.component';
+import { ClipboardImage } from '../../shared/message-clipboard';
 import { VideoBlockComponent } from './video-block.component';
 import { VideoReviewSend } from '../../shared/videos/video-review.component';
 import { draftWithMessage } from '../../shared/videos/video-review';
@@ -3082,6 +3083,28 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    * Le rang de l'encart dans la réponse **complète** — même rendu dans « L'essentiel », « Le détail »
    * ou une carte par question —, ou -1 s'il ne se marque pas (flux en direct, message non persisté).
    */
+  private readonly http = inject(HttpClient);
+
+  /** Aucune image jointe : référence stable pour l'encart. */
+  readonly noImages: readonly ClipboardImage[] = [];
+
+  /** Les images d'un encart, mémorisées par terminal et captures (référence stable d'un rendu à l'autre). */
+  private readonly clipboardImagesCache = new Map<string, readonly ClipboardImage[]>();
+
+  /**
+   * **Ce que « Copier » de l'encart emporte** (F-212 / SF-212-05) : les captures jointes, chargées par la
+   * route isolée du propriétaire au moment du clic seulement. Jamais envoyées au modèle.
+   */
+  clipboardImagesOf(proof: AtelierProofBlock): readonly ClipboardImage[] {
+    const key = `${this.projectId ?? ''}|${proof.captures.map((capture) => capture.id).join(',')}`;
+    let images = this.clipboardImagesCache.get(key);
+    if (!images) {
+      images = proofClipboardImages(proof, this.projectId, this.http);
+      this.clipboardImagesCache.set(key, images);
+    }
+    return images;
+  }
+
   /**
    * **Les captures jointes à un encart** (F-212 / SF-212-04, usage cible) : celles que la balise désigne
    * (```message preuves=<id1>,<id2>), cherchées dans tout le fil ; à défaut de référence dans la réponse,
