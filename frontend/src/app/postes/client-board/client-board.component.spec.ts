@@ -112,6 +112,14 @@ describe('ClientBoardComponent', () => {
     return fixture.nativeElement as HTMLElement;
   }
 
+  /** Déplie la ligne d'un chantier ou d'une attente (SF-220-09). */
+  function expand(selector: string): HTMLElement {
+    const item = el().querySelector(selector) as HTMLElement;
+    (item.querySelector('.cb__row-toggle') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    return el().querySelector(selector) as HTMLElement;
+  }
+
   function blockIds(): (string | null)[] {
     return Array.from(el().querySelectorAll('[data-subject]')).map((b) => b.getAttribute('data-subject'));
   }
@@ -134,29 +142,37 @@ describe('ClientBoardComponent', () => {
     build(board([outilReady, autruiDormant, moiQuestion]));
     expect(blockIds()).toEqual(['w4', 'w5', 'w1']);
     expect(el().querySelector('[data-group]')).toBeNull();
-    const pill = el().querySelector('.cb__pill--MOI');
+    // la ligne : un point de couleur, jamais seul — son libellé est lu
+    expect(el().querySelector('[data-key="w4#1"] .cb__dot--MOI')?.textContent).toContain('Ça attend votre décision');
+    // le détail : la pastille complète, icône + libellé
+    const pill = expand('[data-key="w4#1"]').querySelector('.cb__pill--MOI');
     expect(pill?.textContent).toContain('Ça attend votre décision');
     expect(pill?.querySelector('mat-icon')?.textContent).toContain('front_hand');
   });
 
   it('montre l\'ancienneté, à qui et depuis quand, la question, la prochaine étape et ce qui manque', () => {
     build(board([autruiDormant, moiQuestion, outilReady]));
-    const dormant = el().querySelector('[data-key="w5#3"]') as HTMLElement;
-    expect(dormant.querySelector('.cb__age--dormant')?.textContent).toContain('dormant depuis 6 j');
+    expect(el().querySelector('[data-key="w5#3"] .cb__age--dormant')?.textContent).toContain('dormant depuis 6 j');
+    const dormant = expand('[data-key="w5#3"]');
     expect(dormant.textContent).toContain('Gino');
-    expect(dormant.textContent).toContain('+1 autre');
+    // SF-220-09 : toutes les raisons, plus de « +n autres »
+    expect(Array.from(dormant.querySelectorAll('.cb__missing li')).map((li) => li.textContent?.trim()))
+      .toEqual(['a', 'b', 'c']);
     const question = el().querySelector('[data-key="w4#1"]') as HTMLElement;
-    expect(question.querySelector('.cb__question')?.textContent).toContain('Quel namespace viser ?');
-    expect(question.querySelector('.cb__open')?.textContent).toContain('Répondre');
+    expect(question.querySelector('.cb__ask')?.textContent).toContain('Quel namespace viser ?');
+    expect(question.querySelector('.cb__open')?.getAttribute('aria-label')).toContain('Répondre');
+    const opened = expand('[data-key="w4#1"]');
+    expect(opened.querySelector('.cb__question')?.textContent).toContain('Quel namespace viser ?');
+    expect(opened.querySelector('.cb__detail-actions .cb__open')?.textContent).toContain('Répondre');
     expect(el().querySelector('[data-key="w1#1"]')?.textContent).toContain('2. Remplacer le certificat');
   });
 
   it('une course autonome : « En autonome — étape k/n », coût, ni case ni lancement', () => {
     build(board([running], 1));
-    const c = el().querySelector('[data-key="w3#1"]') as HTMLElement;
-    expect(c.textContent).toContain('En autonome — étape 3/5');
+    expect(el().querySelector('[data-key="w3#1"] .cb__row')?.textContent).toContain('En autonome — étape 3/5');
+    const c = expand('[data-key="w3#1"]');
     expect(c.textContent).toContain('1.25 $');
-    expect(c.querySelector('mat-checkbox')).toBeNull();
+    expect(c.querySelector('.cb__check')).toBeNull();
     expect(c.querySelector('.cb__launch')).toBeNull();
   });
 
@@ -164,10 +180,10 @@ describe('ClientBoardComponent', () => {
     build(board([autruiDormant, outilReady]));
     (el().querySelector('[data-filter="DORMANT"]') as HTMLButtonElement).click();
     fixture.detectChanges();
-    expect(el().querySelectorAll('.cb__card').length).toBe(1);
+    expect(el().querySelectorAll('.cb__rows [data-key]').length).toBe(1);
     (el().querySelector('[data-filter="DORMANT"]') as HTMLButtonElement).click();
     fixture.detectChanges();
-    expect(el().querySelectorAll('.cb__card').length).toBe(2);
+    expect(el().querySelectorAll('.cb__rows [data-key]').length).toBe(2);
   });
 
   it('Ouvrir : focus du chantier, puis son terminal', () => {
@@ -305,14 +321,18 @@ describe('ClientBoardComponent', () => {
     expect(el().querySelectorAll('[data-section="hors-chantier"]').length).toBe(2);
     const w1 = el().querySelector('[data-subject="w1"]') as HTMLElement;
     const children = Array.from(w1.querySelector('.cb__block-body')!.children).map((n) => n.className);
-    expect(children[0]).toContain('cb__cards');
+    expect(children[0]).toContain('cb__rows');
     expect(children[1]).toContain('cb__loose');
     const section = w1.querySelector('[data-section="hors-chantier"]') as HTMLElement;
     expect(section.textContent).toContain('Hors chantier');
-    const mine = section.querySelector('[data-action="a1"]') as HTMLElement;
+    const row = section.querySelector('[data-action="a1"]') as HTMLElement;
+    expect(row.querySelector('.cb__who--MOI')?.textContent).toContain('front_hand');
+    expect(row.textContent).toContain('Ça attend votre décision');
+    expect(row.textContent).toContain('À demander à Support.');
+    const mine = expand('[data-subject="w1"] [data-action="a1"]');
     expect(mine.querySelector('.cb__pill--MOI')?.textContent).toContain('Ça attend votre décision');
     expect(mine.querySelector('.cb__pill--MOI mat-icon')?.textContent).toContain('front_hand');
-    expect(mine.textContent).toContain('À demander à Support.');
+    expect(mine.textContent).toContain('la bascule');
     expect(w1.querySelector('.cb__block-name')?.textContent).toContain('ingress');
     const theirs = el().querySelector('[data-subject="w2"] [data-action="a2"]') as HTMLElement;
     expect(theirs.textContent).toContain('Marc');
@@ -456,6 +476,83 @@ describe('ClientBoardComponent', () => {
     expect(autonomy.launch.calls.allArgs()).toEqual([['w1', 1, 'STRICT'], ['w2', 2, 'STRICT']]);
   });
 
+  // ------------------------------------------------------------------ SF-220-09 : liste dense, ligne dépliable
+
+  it('SF-220-09 : une ligne par chantier — fraction, prochaine étape, ancienneté ; pas de carte', () => {
+    build(board([outilReady]));
+    expect(el().querySelector('.cb__card')).toBeNull();
+    const row = el().querySelector('[data-key="w1#1"] .cb__row') as HTMLElement;
+    expect(row.querySelector('.cb__row-name')?.textContent).toContain('Certificat');
+    expect(row.querySelector('.cb__fraction')?.textContent).toContain('1/3');
+    expect(row.querySelector('.cb__progress')?.getAttribute('aria-label')).toBe('1 étapes faites sur 3');
+    expect(row.querySelector('.cb__row-next')?.textContent).toContain('2. Remplacer le certificat');
+    expect(row.querySelector('.cb__age')?.textContent).toContain('actif aujourd\'hui');
+    expect(row.querySelector('.cb__age--dormant')).toBeNull();
+  });
+
+  it('SF-220-09 : cliquer la ligne la déplie en place ; une seule dépliée à la fois', () => {
+    build(board([outilReady, card({ workspaceId: 'w1', number: 2, title: 'Autre' })]));
+    const toggle = (key: string) => el().querySelector(`[data-key="${key}"] .cb__row-toggle`) as HTMLButtonElement;
+    expect(toggle('w1#1').getAttribute('aria-expanded')).toBe('false');
+    expect(el().querySelector('.cb__detail-panel')).toBeNull();
+    toggle('w1#1').click();
+    fixture.detectChanges();
+    expect(toggle('w1#1').getAttribute('aria-expanded')).toBe('true');
+    expect(toggle('w1#1').getAttribute('aria-controls')).toBe('cb-detail-w1-1');
+    const detail = el().querySelector('#cb-detail-w1-1') as HTMLElement;
+    expect(detail.textContent).toContain('Dernier geste');
+    expect(detail.textContent).toContain('2 étapes');
+    expect(detail.querySelector('.cb__launch')).not.toBeNull();
+    toggle('w1#2').click();
+    fixture.detectChanges();
+    expect(toggle('w1#1').getAttribute('aria-expanded')).toBe('false');
+    expect(el().querySelectorAll('.cb__detail-panel').length).toBe(1);
+    toggle('w1#2').click();
+    fixture.detectChanges();
+    expect(el().querySelector('.cb__detail-panel')).toBeNull();
+  });
+
+  it('SF-220-09 : ↑ / ↓ passent d\'une ligne à l\'autre', () => {
+    build(board([outilReady, outilReady2]));
+    const rows = Array.from(el().querySelectorAll<HTMLButtonElement>('.cb__row-toggle'));
+    rows[0].focus();
+    rows[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(document.activeElement).toBe(rows[1]);
+    rows[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+    expect(document.activeElement).toBe(rows[0]);
+  });
+
+  it('SF-220-09 : le menu ⋯ porte tous les gestes — ouvrir, lancer, avancer, reporter, clore', () => {
+    build(board([outilReady]));
+    (el().querySelector('[data-key="w1#1"] .cb__more') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const overlay = document.querySelector('.cdk-overlay-container') as HTMLElement;
+    for (const cls of ['.cb__menu-open', '.cb__menu-launch', '.cb__menu-advance', '.cb__close']) {
+      expect(overlay.querySelector(cls)).withContext(cls).not.toBeNull();
+    }
+    expect(overlay.querySelectorAll('.cb__snooze').length).toBe(3);
+    (overlay.querySelector('.cb__menu-launch') as HTMLButtonElement).click();
+    expect(autonomy.launch).toHaveBeenCalledWith('w1', 1, 'STRICT');
+  });
+
+  it('SF-220-09 : [Sélectionner] montre les cases ; cocher fait paraître la barre flottante', () => {
+    build(board([outilReady, outilReady2]));
+    const mode = el().querySelector('.cb__select-mode') as HTMLButtonElement;
+    expect(el().querySelector('.cb')?.classList).not.toContain('cb--selecting');
+    mode.click();
+    fixture.detectChanges();
+    expect(mode.getAttribute('aria-pressed')).toBe('true');
+    expect(el().querySelector('.cb')?.classList).toContain('cb--selecting');
+    expect(el().querySelector('.cb__selection')).toBeNull();
+    (el().querySelector('[data-key="w2#2"] .cb__check') as HTMLInputElement).click();
+    fixture.detectChanges();
+    expect(el().querySelector('.cb__selection-count')?.textContent).toContain('1 sélectionné');
+    mode.click();
+    fixture.detectChanges();
+    expect(component.selection().length).toBe(0);
+    expect(el().querySelector('.cb')?.classList).not.toContain('cb--selecting');
+  });
+
   // ------------------------------------------------------------------ SF-219-05 : avancer jusqu'au blocage
 
   const advanceOnly = card({
@@ -468,7 +565,7 @@ describe('ClientBoardComponent', () => {
     const cardEl = el().querySelector('[data-key]') as HTMLElement;
     expect(cardEl.querySelector('.cb__launch')).toBeNull();
     const advance = cardEl.querySelector('.cb__advance') as HTMLButtonElement;
-    expect(advance.textContent).toContain('Avancer jusqu’au blocage');
+    expect(advance.getAttribute('aria-label')).toContain('Avancer jusqu’au blocage');
     advance.click();
     expect(autonomy.launch).toHaveBeenCalledWith('w6', 7, 'UNTIL_BLOCKED');
     expect(snack.open.calls.mostRecent().args[0]).toBe('Chantier 7 avance jusqu\'au blocage.');
