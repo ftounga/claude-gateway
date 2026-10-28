@@ -6,9 +6,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { firstValueFrom } from 'rxjs';
 
 import { AtelierProofBlock, AtelierProofCapture, AtelierProofCommand, AtelierTerminalBlock } from '../../core/models/atelier.models';
-import { CopyBlock } from '../../shared/copy-block.model';
-import { clipboardHtml } from '../../chat/copy-block/copy-block.component';
-import { splitHeaders } from '../../shared/message-segments';
+import { ClipboardImage } from '../../shared/message-clipboard';
 
 /** Le bloc de transcription de captures reçues au fil de l'eau (F-212) : rangé comme une carte. */
 export function proofBlock(toolUseId: string, proof: AtelierProofBlock): AtelierTerminalBlock {
@@ -57,18 +55,17 @@ export function commandFacts(command: AtelierProofCommand): string {
   return facts.join(' · ');
 }
 
-/** Lit un blob en URL `data:` (pour un collage autonome dans Outlook ou Teams). */
-function asDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(blob);
-  });
-}
-
-function escapeHtml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+/**
+ * Les captures d'un bloc, prêtes pour « Copier » de l'encart qu'elles prouvent (F-212 / SF-212-05) :
+ * chargées par la route isolée du propriétaire, affichées à mi-largeur (rendu net), sans mention de
+ * génération. Les images ne partent que vers le presse-papiers, jamais vers le modèle.
+ */
+export function proofClipboardImages(proof: AtelierProofBlock, workspaceId: string | null, http: HttpClient): ClipboardImage[] {
+  return proof.captures.map((capture, n) => ({
+    alt: `Capture ${n + 1}`,
+    width: capture.width ? Math.round(capture.width / 2) : null,
+    load: () => firstValueFrom(http.get(proofImageUrl(workspaceId, capture.id), { responseType: 'blob' })),
+  }));
 }
 
 /**
@@ -76,14 +73,14 @@ function escapeHtml(text: string): string {
  * l’image » (presse-papiers image, à coller dans Teams ou un mail), « Télécharger », et les relevés des
  * commandes sous les vignettes — jamais dans l’image.
  *
- * <p>Joint à un encart message (`message`), il offre aussi « Copier le message avec les captures » :
- * le texte mis en forme et les images en un seul collage (text/html + text/plain).</p>
+ * <p>Joint à un encart message (`attached`), il s'affiche resserré sous l'encart : c'est le bouton
+ * « Copier » de l'encart qui copie le message avec ces captures (SF-212-05).</p>
  */
 @Component({
   selector: 'app-proof-captures',
   imports: [MatButtonModule, MatIconModule],
   template: `
-    <section class="proof" [class.proof--attached]="!!message()" [attr.aria-label]="'Captures de preuve : ' + proof().title">
+    <section class="proof" [class.proof--attached]="attached()" [attr.aria-label]="'Captures de preuve : ' + proof().title">
       <p class="proof__headline">
         <mat-icon aria-hidden="true">photo_camera</mat-icon>
         <span>{{ headline() }}</span>
@@ -112,11 +109,6 @@ function escapeHtml(text: string): string {
           </li>
         }
       </ul>
-      @if (message()) {
-        <button mat-flat-button type="button" class="proof__copy-message" [disabled]="busy()" (click)="copyMessageWithCaptures()">
-          <mat-icon aria-hidden="true">forward_to_inbox</mat-icon>Copier le message avec les captures
-        </button>
-      }
       <ul class="proof__commands" aria-label="Commandes exécutées">
         @for (command of proof().commands; track $index) {
           <li><code>$ {{ command.command }}</code> <span class="proof__facts">{{ facts(command) }}</span></li>
@@ -195,10 +187,6 @@ function escapeHtml(text: string): string {
       gap: var(--cg-space-1);
     }
 
-    .proof__copy-message {
-      margin-top: var(--cg-space-2);
-    }
-
     .proof__commands {
       margin: var(--cg-space-2) 0 0;
       padding: 0;
@@ -233,12 +221,11 @@ export class ProofCapturesComponent {
   /** Terminal propriétaire des captures. */
   readonly workspaceId = input<string | null>(null);
 
-  /** L’encart message que ces captures prouvent (F-212, usage cible) ; `null` dans le fil. */
-  readonly message = input<CopyBlock | null>(null);
+  /** Vrai sous l’encart message que ces captures prouvent (F-212, usage cible) ; faux dans le fil. */
+  readonly attached = input(false);
 
   readonly zoomed = signal<string | null>(null);
   readonly broken = signal<ReadonlySet<string>>(new Set());
-  readonly busy = signal(false);
 
   readonly headline = computed(() => {
     const proof = this.proof();
@@ -316,46 +303,5 @@ export class ProofCapturesComponent {
       .replace(/^-|-$/g, '')
       .slice(0, 60);
     return `preuve-${slug || 'terminal'}-${index + 1}.png`;
-  }
-
-  /**
-   * « Copier le message avec les captures » : le corps mis en forme (comme « Copier ») suivi des images
-   * en `data:` dans un seul text/html, et le texte brut en repli — un collage dans Outlook ou Teams.
-   */
-  async copyMessageWithCaptures(): Promise<void> {
-    const block = this.message();
-    const clipboard = navigator.clipboard;
-    if (!block) {
-      return;
-    }
-    const body = splitHeaders(block.content).body;
-    if (!clipboard || typeof clipboard.write !== 'function' || typeof ClipboardItem === 'undefined') {
-      this.snackBar.open('Copie impossible ici : copiez le message, puis chaque image.', 'Fermer', { duration: 3500 });
-      return;
-    }
-    this.busy.set(true);
-    try {
-      const captures = this.proof().captures.filter((capture) => !this.broken().has(capture.id));
-      const images = await Promise.all(captures.map((capture) => this.fetchImage(capture).then(asDataUrl)));
-      const figures = images
-        .map((src, n) => {
-          const width = captures[n].width ? Math.round((captures[n].width as number) / 2) : null;
-          const size = width ? ` width="${width}"` : '';
-          return `<p><img src="${escapeHtml(src)}"${size} alt="Capture ${n + 1}"></p>`;
-        })
-        .join('');
-      const html = clipboardHtml(body) + figures;
-      await clipboard.write([
-        new ClipboardItem({
-          'text/html': new Blob([html], { type: 'text/html' }),
-          'text/plain': new Blob([body], { type: 'text/plain' }),
-        }),
-      ]);
-      this.snackBar.open('Message et captures copiés : collez dans Outlook ou Teams.', 'Fermer', { duration: 2500 });
-    } catch {
-      this.snackBar.open('Copie impossible : copiez le message, puis chaque image.', 'Fermer', { duration: 3500 });
-    } finally {
-      this.busy.set(false);
-    }
   }
 }

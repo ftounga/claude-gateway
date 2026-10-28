@@ -14,6 +14,7 @@
 .copy-block-header {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: var(--cg-space-2);
   padding: var(--cg-space-1) var(--cg-space-3);
@@ -36,7 +37,8 @@
   }
 }
 
-.copy-button {
+.copy-button,
+.copy-text-only-button {
   flex: none;
   font-size: 13px;
 }
@@ -112,6 +114,15 @@
   margin-left: 0;
 }
 
+// SF-212-05 : « Texte seul » ouvre le groupe de droite.
+.copy-text-only-button {
+  margin-left: auto;
+}
+
+:is(.copy-block-mark-sent, .copy-block-sent) ~ .copy-text-only-button {
+  margin-left: 0;
+}
+
 .copy-block-sent {
   display: inline-flex;
   align-items: center;
@@ -153,6 +164,7 @@
   }
 
   .copy-button,
+  .copy-text-only-button,
   .copy-block-mark-sent,
   .copy-block-sent-cancel {
     color: var(--cg-divider);

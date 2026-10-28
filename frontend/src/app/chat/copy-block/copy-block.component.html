@@ -35,13 +35,25 @@
         Marquer envoyé
       </button>
     }
+    @if (withImages()) {
+      <!-- F-212 / SF-212-05 : « Copier » porte les captures ; le texte seul reste à un geste. -->
+      <button
+        mat-button
+        type="button"
+        class="copy-text-only-button"
+        (click)="copyText()"
+        matTooltip="Copier le message sans les captures"
+        aria-label="Copier le message sans les captures"
+      >Texte seul</button>
+    }
     <button
       mat-button
       type="button"
       class="copy-button"
+      [disabled]="copyBusy()"
       (click)="copy()"
-      matTooltip="Copier le bloc"
-      aria-label="Copier le bloc"
+      [matTooltip]="copyLabel()"
+      [attr.aria-label]="copyLabel()"
     >
       <mat-icon>{{ copied() ? 'check' : 'content_copy' }}</mat-icon>
       {{ copied() ? 'Copié' : 'Copier' }}
