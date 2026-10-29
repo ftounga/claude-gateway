@@ -106,7 +106,7 @@ describe('F-219 / SF-219-03 — l’écran du chantier autonome', () => {
     const html = el(fixture);
     expect(html.querySelector('.auto__status--running')?.textContent).toContain('étape 3/7');
     (html.querySelector('.auto__stop') as HTMLButtonElement).click();
-    const req = http.expectOne('/api/workspaces/w1/journey/autonomy/stop');
+    const req = http.expectOne('/api/workspaces/w1/journey/autonomy/stop?chantier=1');
     expect(req.request.method).toBe('POST');
     req.flush(run({ status: 'STOPPED', stopReason: 'Reprise en main.' }));
     expect(snack.open).toHaveBeenCalledWith('Vous avez repris la main sur le chantier 1.', 'OK', jasmine.any(Object));

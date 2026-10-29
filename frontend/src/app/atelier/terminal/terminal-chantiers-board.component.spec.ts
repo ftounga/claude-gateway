@@ -275,4 +275,29 @@ describe('F-208 / SF-208-03 — le tableau des chantiers', () => {
       expect(el.querySelector('.board__see-proof')).not.toBeNull();
     });
   });
+
+  it('F-221 / SF-221-04 : lancer un AUTRE chantier que celui du volet demande « en parallèle », sans partir', () => {
+    const fixture = mount(journey([chantier(7, { focus: true }), chantier(8)]));
+    fixture.componentRef.setInput('shownChantier', 7);
+    const parallel = jasmine.createSpy('parallel');
+    fixture.componentInstance.parallel.subscribe(parallel);
+
+    fixture.componentInstance.launch(chantier(8), 'UNTIL_BLOCKED');
+
+    expect(parallel).toHaveBeenCalledWith({ number: 8, mode: 'UNTIL_BLOCKED' });
+    expect(http.match((r) => r.url.includes('/chantiers/8/autonomy')).length).toBe(0);
+
+    fixture.componentInstance.launch(chantier(7));
+    http.expectOne((r) => r.method === 'POST' && r.url === '/api/workspaces/w1/journey/chantiers/7/autonomy')
+      .flush({});
+  });
+
+  it('F-221 / SF-221-02 : [Reprendre la main] vise SON chantier', () => {
+    const fixture = mount(journey([chantier(7, { focus: true }), chantier(8)]));
+
+    fixture.componentInstance.takeBack(chantier(8));
+
+    http.expectOne((r) => r.method === 'POST' && r.url === '/api/workspaces/w1/journey/autonomy/stop?chantier=8')
+      .flush({});
+  });
 });
