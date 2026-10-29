@@ -99,6 +99,32 @@ public class SubjectJourneyService {
      * L'ouverture du chantier {@code number} (F-221 / SF-221-01), ouvert ou clos : la frontière du passé
      * commun que relit son fil. Vide si le chantier est inconnu.
      */
+    /** Le worktree du chantier {@code number} (F-221 / SF-221-06), s'il en a un : {@code [chemin, branche]}. */
+    public java.util.Optional<String[]> chantierWorktree(UUID userId, UUID workspaceId, int number) {
+        if (chantiers == null) {
+            return java.util.Optional.empty();
+        }
+        return chantiers.findFirstByUserIdAndWorkspaceIdAndNumber(userId, workspaceId, number)
+                .filter(row -> row.getWorktreePath() != null && !row.getWorktreePath().isBlank())
+                .map(row -> new String[] {row.getWorktreePath(), row.getWorktreeBranch()});
+    }
+
+    /**
+     * Enregistre le worktree du chantier {@code number} (F-221 / SF-221-06) — sur SA ligne, filtrée
+     * {@code user_id} + {@code workspace_id}. Sans ligne (chantier inconnu) : rien.
+     */
+    @Transactional
+    public void recordChantierWorktree(UUID userId, UUID workspaceId, int number, String path, String branch) {
+        if (chantiers == null) {
+            return;
+        }
+        chantiers.findFirstByUserIdAndWorkspaceIdAndNumber(userId, workspaceId, number).ifPresent(row -> {
+            row.setWorktreePath(path);
+            row.setWorktreeBranch(branch);
+            chantiers.save(row);
+        });
+    }
+
     public java.util.Optional<java.time.OffsetDateTime> chantierOpenedAt(UUID userId, UUID workspaceId,
             int number) {
         if (chantiers == null) {

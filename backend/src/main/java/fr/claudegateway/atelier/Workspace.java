@@ -352,4 +352,20 @@ public class Workspace {
      */
     @Transient
     private boolean turnSplitView;
+
+    /**
+     * Le worktree où s'exécute le tour en cours (F-221 / SF-221-06), relatif à la racine du poste, ou
+     * {@code null} : la copie principale. Transitoire ; {@link fr.claudegateway.runner.exec.RunnerTargets#of}
+     * le lit pour que TOUS les outils du tour visent le worktree du chantier.
+     */
+    @Transient
+    private String turnWorktreePath;
+
+    /** La branche de ce worktree (F-221 / SF-221-06). Transitoire. */
+    @Transient
+    private String turnWorktreeBranch;
+
+    /** Un autre chantier travaille en même temps dans ce dossier sans isolation possible (F-221 / SF-221-06). */
+    @Transient
+    private boolean turnUnisolated;
 }

@@ -513,4 +513,22 @@ class SubjectJourneyChantiersIntegrationTest {
                         .header("Authorization", "Bearer " + bobToken))
                 .andExpect(status().isNotFound());
     }
+
+    @Test
+    @DisplayName("SF-221-06 : le worktree d'un chantier s'enregistre sur SA ligne et se relit ; Bob n'y touche pas")
+    void chantierWorktreeIsRecorded() throws Exception {
+        chantierOneExecuting();
+        post(aliceToken, "chantiers", "{\"title\":\"Migration DNS\"}");
+        UUID bobId = userRepository.findByEmail("bob-chantiers@ex.com").orElseThrow().getId();
+
+        service.recordChantierWorktree(aliceId, ws(), 2, ".atelier-chantiers/x-ch2", "atelier/chantier-x-ch2");
+        service.recordChantierWorktree(bobId, ws(), 1, ".atelier-chantiers/pirate", "pirate");
+
+        assertThat(service.chantierWorktree(aliceId, ws(), 2)).hasValueSatisfying(w ->
+                assertThat(w).containsExactly(".atelier-chantiers/x-ch2", "atelier/chantier-x-ch2"));
+        assertThat(service.chantierWorktree(aliceId, ws(), 1)).as("la ligne d'Alice n'est pas touchée par Bob").isEmpty();
+        // Un geste sur le focus recopie l'état du chantier : le worktree n'est jamais effacé par ce miroir.
+        service.submitDiagnosis(aliceId, ws(), "zone", "dig", "MOYENNE");
+        assertThat(service.chantierWorktree(aliceId, ws(), 2)).isPresent();
+    }
 }

@@ -246,4 +246,118 @@ class AtelierChatServiceChantierThreadTest {
                 .isNotEqualTo(AtelierChatService.turnKey(userId, workspaceId, 8))
                 .isNotEqualTo(AtelierChatService.turnKey(userId, workspaceId, null));
     }
+
+    // ------------------------------------------------------------------ SF-221-06 : le worktree
+
+    private static RunnerCallResult out(String content, int exit) {
+        return new RunnerCallResult(true, content, false, exit, 5L, null, null, null, content, false);
+    }
+
+    @Test
+    @DisplayName("SF-221-06 : le fil 8 qui démarre pendant le fil 7 crée SON worktree, l'enregistre et y exécute ses outils")
+    void aParallelChantierIsIsolatedInItsWorktree() {
+        String id = LaneWorktree.id(workspaceId, 8);
+        java.util.List<String> commands = java.util.Collections.synchronizedList(new ArrayList<>());
+        java.util.List<String> targets = java.util.Collections.synchronizedList(new ArrayList<>());
+        AtomicReference<String> laneEightSystem = new AtomicReference<>();
+        when(journeyService.chantierWorktree(userId, workspaceId, 8)).thenReturn(Optional.empty());
+        when(runnerToolGateway.bash(any(), anyString(), anyString(), any(), anyLong(), any()))
+                .thenAnswer(invocation -> {
+                    fr.claudegateway.runner.channel.RunnerTarget target = invocation.getArgument(0);
+                    String command = invocation.getArgument(2);
+                    commands.add(command);
+                    targets.add(target.projectPath());
+                    if (command.startsWith("git rev-parse")) {
+                        return out("true\n", 0);
+                    }
+                    if (command.startsWith("git worktree add")) {
+                        return out("Preparing worktree", 0);
+                    }
+                    if ("ls".equals(command)) {
+                        // Le fil 7 tourne : le fil 8 démarre pendant ce temps-là.
+                        service.chatStreaming(userId, workspaceId, 8, "planifie", AgentTurnMode.ACT, listener,
+                                false, List.of());
+                        laneEightSystem.set(agentProvider.lastRequest.system());
+                    }
+                    return out("ok", 0);
+                });
+        agentProvider.enqueueToolCall("bash", "command", "ls");        // fil 7
+        agentProvider.enqueueToolCall("bash", "command", "pwd");       // fil 8, dans son worktree
+        agentProvider.enqueueFinal("Plan du chantier 8.");             // fil 8
+        agentProvider.enqueueFinal("Course du 7.");                    // fil 7
+
+        service.chatStreaming(userId, workspaceId, 7, "course", AgentTurnMode.ACT, listener, false, List.of());
+
+        assertThat(commands).containsSubsequence("ls", "git rev-parse --is-inside-work-tree",
+                "git worktree add -b atelier/chantier-" + id + " ../.atelier-chantiers/" + id + " HEAD", "pwd");
+        assertThat(targets.get(commands.indexOf("pwd"))).as("les outils du fil 8 visent son worktree")
+                .isEqualTo(".atelier-chantiers/" + id);
+        assertThat(targets.get(commands.indexOf("ls"))).as("le fil 7 reste dans la copie principale")
+                .isEqualTo("projet");
+        verify(journeyService).recordChantierWorktree(userId, workspaceId, 8, ".atelier-chantiers/" + id,
+                "atelier/chantier-" + id);
+        assertThat(agentProvider.messageSnapshots).anySatisfy(sent -> assertThat(sent)
+                .contains("[Isolé]", "atelier/chantier-" + id));
+        assertThat(laneEightSystem.get()).as("préfixe stable : le système ne parle pas du worktree")
+                .doesNotContain("[Isolé]").doesNotContain(".atelier-chantiers");
+    }
+
+    @Test
+    @DisplayName("SF-221-06 : collant — un worktree posé est repris, même seul, sans aucune commande git")
+    void anIsolatedChantierStaysInItsWorktree() {
+        when(journeyService.chantierWorktree(userId, workspaceId, 8))
+                .thenReturn(Optional.of(new String[] {".atelier-chantiers/x-ch8", "atelier/chantier-x-ch8"}));
+        java.util.List<String> targets = new ArrayList<>();
+        when(runnerToolGateway.bash(any(), anyString(), anyString(), any(), anyLong(), any()))
+                .thenAnswer(invocation -> {
+                    targets.add(((fr.claudegateway.runner.channel.RunnerTarget) invocation.getArgument(0)).projectPath());
+                    return out("ok", 0);
+                });
+        agentProvider.enqueueToolCall("bash", "command", "pwd");
+        agentProvider.enqueueFinal("Fait.");
+
+        service.chatStreaming(userId, workspaceId, 8, "suite", AgentTurnMode.ACT, listener, false, List.of());
+
+        assertThat(targets).containsExactly(".atelier-chantiers/x-ch8");
+        assertThat(agentProvider.messageSnapshots.get(0)).contains("[Isolé]");
+    }
+
+    @Test
+    @DisplayName("SF-221-06 : seul et sans worktree — la copie principale, aucune commande git, aucune note")
+    void aLoneChantierUsesTheMainCopy() {
+        when(journeyService.chantierWorktree(userId, workspaceId, 8)).thenReturn(Optional.empty());
+        agentProvider.enqueueFinal("Fait.");
+
+        service.chatStreaming(userId, workspaceId, 8, "suite", AgentTurnMode.ACT, listener, false, List.of());
+
+        verify(runnerToolGateway, never()).bash(any(), anyString(), anyString(), any(), anyLong(), any());
+        assertThat(agentProvider.messageSnapshots.get(0)).doesNotContain("[Isolé]").doesNotContain("[Sans isolation]");
+    }
+
+    @Test
+    @DisplayName("SF-221-06 : projet non git — pas de worktree, le tour est prévenu « sans isolation »")
+    void withoutGitTheChantierIsWarned() {
+        when(journeyService.chantierWorktree(userId, workspaceId, 8)).thenReturn(Optional.empty());
+        when(runnerToolGateway.bash(any(), anyString(), anyString(), any(), anyLong(), any()))
+                .thenAnswer(invocation -> {
+                    String command = invocation.getArgument(2);
+                    if (command.startsWith("git rev-parse")) {
+                        return out("fatal: not a git repository", 128);
+                    }
+                    if ("ls".equals(command)) {
+                        service.chatStreaming(userId, workspaceId, 8, "planifie", AgentTurnMode.ACT, listener,
+                                false, List.of());
+                    }
+                    return out("ok", 0);
+                });
+        agentProvider.enqueueToolCall("bash", "command", "ls");
+        agentProvider.enqueueFinal("Plan du 8.");
+        agentProvider.enqueueFinal("Course du 7.");
+
+        service.chatStreaming(userId, workspaceId, 7, "course", AgentTurnMode.ACT, listener, false, List.of());
+
+        verify(journeyService, never()).recordChantierWorktree(any(), any(), org.mockito.ArgumentMatchers.anyInt(),
+                any(), any());
+        assertThat(agentProvider.messageSnapshots).anySatisfy(sent -> assertThat(sent).contains("[Sans isolation]"));
+    }
 }
