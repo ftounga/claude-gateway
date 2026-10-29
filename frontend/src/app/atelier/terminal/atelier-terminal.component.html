@@ -22,6 +22,11 @@
       </div>
     </div>
   }
+  <!-- EN-TÊTE DE VOLET (F-221 / SF-221-03) : en split, chaque volet dit le chantier qu'il montre et se
+       ferme sans rien arrêter — le chantier continue côté serveur. -->
+  @if (paneTitle) {
+    <app-terminal-pane-head [title]="paneTitle" [activity]="paneActivity" (closed)="closePane.emit()"></app-terminal-pane-head>
+  }
   <!-- EN-TÊTE — TOUT LE CHROME DU TERMINAL (F-83 / SF-83-01).
        Une tuile de mosaïque montre LE FLUX, et rien d'autre : le PO a demandé que les terminaux
        prennent une très grosse partie de l'écran. Le fil d'Ariane, le moteur, la garde, git, les

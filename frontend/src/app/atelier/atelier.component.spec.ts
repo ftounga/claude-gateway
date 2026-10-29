@@ -127,6 +127,7 @@ describe('AtelierComponent', () => {
       'confirmChatToolUse',
       'steerChat',
       'getHistory',
+      'getLanes',
       'getResume',
       'restartThread',
       'setExecutionTarget',
@@ -616,7 +617,7 @@ describe('AtelierComponent', () => {
 
       expect(service.followTurnInWindows)
         .withContext('la prise en main n’est pas arrivée : le flux est retenu, on suit par fenêtres')
-        .toHaveBeenCalledWith('w1', jasmine.any(Function), jasmine.anything());
+        .toHaveBeenCalledWith('w1', jasmine.any(Function), jasmine.anything(), { chantier: null });
       const handlers = windows.handlers();
       if (handlers.acceptSeq?.(1) ?? true) {
         handlers.onStarted?.({ turnId: 't1', startedAt: Date.now() });
@@ -729,7 +730,8 @@ describe('AtelierComponent', () => {
       tick(4_000);
 
       expect(aborted).withContext('le rebranchement retenu est abandonné').toHaveBeenCalled();
-      expect(service.followTurnInWindows).toHaveBeenCalledWith('w1', jasmine.any(Function), jasmine.anything());
+      expect(service.followTurnInWindows).toHaveBeenCalledWith('w1', jasmine.any(Function), jasmine.anything(),
+        { chantier: null });
       const handlers = windows.handlers();
       handlers.onAttached?.({ turnId: 't1', cursor: 3, startedAt: Date.now() });
       handlers.onAction({ type: 'bash', path: 'ls -la' });
@@ -811,7 +813,7 @@ describe('AtelierComponent', () => {
         expect(component.unanswered()).toBeFalse();
         expect(component.submitting()).toBeFalse();
         // La fin d'un tour rejoint RECHARGE le fil depuis le serveur (F-84).
-        expect(service.getHistory).toHaveBeenCalledWith('w1');
+        expect(service.getHistory).toHaveBeenCalledWith('w1', null);
         fixture.destroy();
         discardPeriodicTasks();
       }));
@@ -885,7 +887,7 @@ describe('AtelierComponent', () => {
         // L'avant-dernier argument est « demander quand même » (F-161 / SF-161-01) : un rejeu ordinaire
         // ne force RIEN — il repasse par la porte du runner comme le tour d'origine.
         // F-169 / SF-169-02 : dernier argument = pièces jointes désignées (vide pour un rejeu).
-        'w1', 'Analyse le dépôt', jasmine.anything(), jasmine.anything(), false, [],
+        'w1', 'Analyse le dépôt', jasmine.anything(), jasmine.anything(), false, [], null,
       );
       expect(component.unanswered()).toBeFalse();
       expect(component.submitting()).toBeTrue();
@@ -1673,6 +1675,7 @@ describe('AtelierComponent', () => {
       'attachTurn',
       'getTurnState',
       'getHistory',
+      'getLanes',
       'getResume',
       'restartThread',
     ]);
@@ -1771,6 +1774,7 @@ describe('AtelierComponent', () => {
       'attachTurn',
       'getTurnState',
       'getHistory',
+      'getLanes',
       'getResume',
       'restartThread',
     ]);
@@ -1819,6 +1823,7 @@ describe('AtelierComponent', () => {
       'attachTurn',
       'getTurnState',
       'getHistory',
+      'getLanes',
       'getResume',
       'restartThread',
     ]);
@@ -1862,10 +1867,34 @@ describe('AtelierComponent', () => {
 
     component.selectWorkspace(summary);
 
-    expect(service.getHistory).toHaveBeenCalledWith('w1');
+    expect(service.getHistory).toHaveBeenCalledWith('w1', null);
     expect(service.getWorkspace).toHaveBeenCalledWith('w1');
     expect(component.messages().length).toBe(1);
     expect(component.tree()).toEqual(['src/main.ts']);
+  });
+
+  it('F-221 : l\'écran suit le fil du chantier au focus et s\'ouvre en split si un autre chantier est actif', () => {
+    setup();
+    service.getResume.and.returnValue(
+      of({ turns: 0, lastMessageAt: null, threadStartedAt: null, prompt: 'NONE' as const }),
+    );
+    service.getLanes.and.returnValue(of({ lanes: [
+      { chantier: 7, live: true, autonomy: false, startedAt: 1 },
+      { chantier: 8, live: false, autonomy: true, startedAt: 2 },
+    ] }));
+    component.selectWorkspace(summary);
+    service.getHistory.calls.reset();
+
+    component.onFocusChantierChange(7);
+
+    expect(component.chatLane()).toBe(7);
+    expect(service.getHistory).toHaveBeenCalledWith('w1', 7);
+    expect(service.attachTurn.calls.mostRecent().args[3]).toBe(7);
+    expect(component.splitPane()).toEqual({ chantier: 8, autonomous: true });
+
+    component.closeRightPane();
+    component.onFocusChantierChange(7);
+    expect(component.splitPane()).withContext('un volet refermé ne revient pas tout seul').toBeNull();
   });
 
   it('streams a message: relays a step then replaces it with the final reply and refreshes the tree', () => {
@@ -1893,7 +1922,7 @@ describe('AtelierComponent', () => {
     // F-120 / SF-120-02 : le mode du tour est passé en 4e argument (défaut ACT).
     // F-169 / SF-169-02 : 6e argument = pièces jointes désignées (vide sans pièce jointe).
     expect(service.streamChat)
-      .toHaveBeenCalledWith('w1', 'Modifie main.ts', jasmine.anything(), 'ACT', false, []);
+      .toHaveBeenCalledWith('w1', 'Modifie main.ts', jasmine.anything(), 'ACT', false, [], null);
     const messages = component.messages();
     expect(messages.length).toBe(2);
     expect(messages[0].role).toBe('USER');
@@ -1969,7 +1998,7 @@ describe('AtelierComponent', () => {
 
     component.interruptLocalRun();
 
-    expect(service.interruptChat).toHaveBeenCalledWith('w1');
+    expect(service.interruptChat).toHaveBeenCalledWith('w1', null);
     expect(snackBar.open).toHaveBeenCalled();
   });
 
@@ -3160,7 +3189,7 @@ describe('AtelierComponent', () => {
 
     component.interruptRun();
 
-    expect(service.interruptChat).toHaveBeenCalledWith('w1');
+    expect(service.interruptChat).toHaveBeenCalledWith('w1', null);
     expect(service.interruptAgentSession).not.toHaveBeenCalled();
   });
 
@@ -4625,7 +4654,7 @@ describe('AtelierComponent', () => {
 
     component.send();
 
-    expect(service.steerChat).toHaveBeenCalledWith('w1', 'en fait, saute les tests');
+    expect(service.steerChat).toHaveBeenCalledWith('w1', 'en fait, saute les tests', null);
     // Aucun second tour n'est ouvert : c'est une précision, pas une nouvelle demande.
     expect(service.streamChat).not.toHaveBeenCalled();
     // Et elle apparaît tout de suite dans le fil : l'utilisateur doit voir ce qu'il vient de dire.
@@ -4783,7 +4812,7 @@ describe('AtelierComponent', () => {
 
       handlers.onDone({ reply: 'Tests verts.', actions: [], messageId: 'm0' });
 
-      expect(service.getHistory).toHaveBeenCalledWith('w1');
+      expect(service.getHistory).toHaveBeenCalledWith('w1', null);
       expect(component.submitting()).toBeFalse();
     });
   });
@@ -5316,7 +5345,7 @@ describe('AtelierComponent — garde-fous runner (F-38 / SF-38-08)', () => {
 
     expect(service.confirmChatToolUse).toHaveBeenCalledWith('w1', {
       toolUseId: 'toolu_1', decision: 'allow', reason: undefined,
-    });
+    }, null);
     // Le mauvais endpoint laisserait la commande en attente jusqu'à son refus automatique.
     expect(service.confirmToolUse).not.toHaveBeenCalled();
     fixture.destroy();
@@ -5333,7 +5362,7 @@ describe('AtelierComponent — garde-fous runner (F-38 / SF-38-08)', () => {
 
     expect(service.confirmChatToolUse).toHaveBeenCalledWith('w1', {
       toolUseId: 'toolu_1', decision: 'deny', reason: 'pas maintenant',
-    });
+    }, null);
     fixture.destroy();
   });
 

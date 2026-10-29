@@ -262,3 +262,59 @@ a.active {
   font-size: 13px;
   color: var(--cg-orange-2);
 }
+
+// F-221 / SF-221-03 — LE SPLIT. Deux volets égaux, un filet de la charte entre eux ; sur téléphone, des
+// onglets au-dessus d'un seul volet. Aucune couleur nouvelle.
+.lane-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  height: 100%;
+  min-width: 0;
+}
+
+.lane-split--on {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.lane-split--tabs {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.lane-split__pane {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.lane-split--on .lane-split__pane--right {
+  border-left: 2px solid var(--cg-navy-2);
+}
+
+.lane-tabs {
+  display: flex;
+  gap: var(--cg-space-1);
+  padding: var(--cg-space-1) var(--cg-space-2);
+  background: var(--cg-primary);
+}
+
+.lane-tab {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: var(--cg-space-2);
+  border: 1px solid var(--cg-navy-2);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--cg-surface);
+  font: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lane-tab--on {
+  border-color: var(--cg-orange-2);
+  color: var(--cg-orange-2);
+  font-weight: 600;
+}

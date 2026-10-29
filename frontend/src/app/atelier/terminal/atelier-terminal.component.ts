@@ -198,6 +198,7 @@ import {
 import { TerminalJourneyChipComponent } from './terminal-journey-chip.component';
 import { TerminalJourneyChantiersComponent } from './terminal-journey-chantiers.component';
 import { TerminalChantiersBoardComponent } from './terminal-chantiers-board.component';
+import { TerminalPaneHeadComponent } from './terminal-pane-head.component';
 import { TerminalHandComponent } from './terminal-hand.component';
 import { Hand, HandTarget, handOf } from './terminal-hand';
 import { JourneyGesture, TerminalJourneyStripComponent } from './terminal-journey-strip.component';
@@ -294,6 +295,7 @@ export function plumeErrorMessage(failure: HttpErrorResponse | null | undefined)
     TerminalJourneyChipComponent, TerminalJourneyStripComponent, TerminalJourneyChantiersComponent,
     TerminalChantiersBoardComponent,
     TerminalHandComponent,
+    TerminalPaneHeadComponent,
     AtelierTerminalDemandeComponent,
     AtelierSlashPanelComponent, AtelierSlashHelpComponent, AtelierSlashCostComponent,
     AtelierSlashContexteComponent, AtelierSlashQuotaComponent, AtelierSlashBudgetComponent,
@@ -407,6 +409,8 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
       this.loadActionCount(value);
       // F-176 : le parcours du sujet (mode, phase) suit le terminal ouvert.
       this.journey.set(null);
+      // F-221 / SF-221-03 : le focus du nouveau sujet sera redit à l'écran, même numéro compris.
+      this.lastFocusEmitted = undefined;
       this.chantiersOpen.set(false);
       this.boardOpen.set(false);
       this.loadJourney(value);
@@ -1077,6 +1081,42 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   private readonly journeys = inject(JourneyService);
 
   /**
+   * **Le fil de ce volet** (F-221 / SF-221-03) : le chantier qu'un volet du split montre, ou `null` pour le
+   * terminal ordinaire, qui suit le chantier au focus. Avec un fil, la bande du parcours montre CE
+   * chantier (vue du fil, focus persisté intact) et ses gestes le visent.
+   */
+  @Input() laneChantier: number | null = null;
+
+  /** En-tête de volet du split (F-221 / SF-221-03) : « Chantier N · titre », ou `null` hors split. */
+  @Input() paneTitle: string | null = null;
+
+  /** Ce que fait le chantier du volet, dit dans son en-tête : « en autonome », « tour en cours »… */
+  @Input() paneActivity: string | null = null;
+
+  /** [Fermer ce volet] (F-221 / SF-221-03) : le chantier continue côté serveur. */
+  @Output() closePane = new EventEmitter<void>();
+
+  /**
+   * Le chantier au focus a changé (F-221 / SF-221-03) : l'écran ordinaire suit le FIL de ce chantier.
+   * Jamais émis par un volet à fil explicite.
+   */
+  @Output() focusChantierChange = new EventEmitter<number | null>();
+
+  private lastFocusEmitted: number | null | undefined = undefined;
+
+  private readonly emitFocusChange = effect(() => {
+    const focus = focusChantierNumber(this.journey());
+    const loaded = this.journey() !== null;
+    untracked(() => {
+      if (!loaded || this.laneChantier !== null || focus === this.lastFocusEmitted) {
+        return;
+      }
+      this.lastFocusEmitted = focus;
+      this.focusChantierChange.emit(focus);
+    });
+  });
+
+  /**
    * **Le parcours en direct** (F-208 / SF-208-03) : l'événement SSE `journey` signale qu'un outil du parcours
    * vient d'être appliqué ; le terminal QUI TOURNE relit son parcours sans attendre la fin du tour — la
    * bande, la barre et le tableau des chantiers suivent.
@@ -1172,23 +1212,28 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     switch (gesture) {
       case 'accept-guided': call = this.journeys.acceptGuided(workspaceId); break;
       case 'decline-guided': call = this.journeys.declineGuided(workspaceId); break;
-      case 'confirm-diagnosis': call = this.journeys.confirmDiagnosis(workspaceId); break;
-      case 'dismiss-diagnosis': call = this.journeys.dismissDiagnosis(workspaceId); break;
-      case 'close': call = this.journeys.close(workspaceId); break;
-      case 'dismiss-close': call = this.journeys.dismissClose(workspaceId); break;
+      case 'confirm-diagnosis': call = this.journeys.confirmDiagnosis(workspaceId, this.laneChantier); break;
+      case 'dismiss-diagnosis': call = this.journeys.dismissDiagnosis(workspaceId, this.laneChantier); break;
+      case 'close': call = this.journeys.close(workspaceId, this.laneChantier); break;
+      case 'dismiss-close': call = this.journeys.dismissClose(workspaceId, this.laneChantier); break;
       case 'validate-plan':
       case 'validate-plan-only':
         if (!plan) {
           return;
         }
-        call = this.journeys.validatePlan(workspaceId, plan.version);
+        call = this.journeys.validatePlan(workspaceId, plan.version, this.laneChantier);
         break;
     }
     this.journeyBusy.set(true);
     call.subscribe({
       next: journey => {
         if (this.projectId === workspaceId) {
-          this.journey.set(journey);
+          // F-221 / SF-221-03 : un geste par chantier rend le parcours AU FOCUS ; un volet relit son fil.
+          if (this.laneChantier !== null) {
+            this.loadJourney(workspaceId);
+          } else {
+            this.journey.set(journey);
+          }
           this.resumeAfterGesture(gesture, before);
         }
         this.journeyBusy.set(false);
@@ -1211,7 +1256,8 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    */
   onSwitchChantier(number: number): void {
     const workspaceId = this.projectId;
-    if (!workspaceId || number === this.focusChantier()) {
+    // F-221 / SF-221-03 : un volet à fil explicite ne déplace pas le focus — c'est le volet de gauche qui le porte.
+    if (!workspaceId || number === this.focusChantier() || this.laneChantier !== null) {
       return;
     }
     this.journeyBusy.set(true);
@@ -1301,7 +1347,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
   /** Relit le parcours ; un échec laisse l'affichage tel quel (jamais un faux « Guidé »). */
   loadJourney(workspaceId: string): void {
-    this.journeys.get(workspaceId).subscribe({
+    this.journeys.get(workspaceId, this.laneChantier).subscribe({
       next: journey => {
         if (this.projectId === workspaceId) {
           this.journey.set(journey);

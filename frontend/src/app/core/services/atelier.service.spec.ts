@@ -312,6 +312,36 @@ describe('AtelierService', () => {
 
     expect(received).toEqual(history);
   });
+  it('F-221 : les appels d\'un fil portent ?chantier=N, rien pour le fil commun', () => {
+    service.getHistory('w1', 8).subscribe();
+    httpMock.expectOne('/api/workspaces/w1/chat?chantier=8').flush([]);
+    service.getTurnState('w1', 8).subscribe();
+    httpMock.expectOne('/api/workspaces/w1/chat/turn?chantier=8').flush({ live: false });
+    service.interruptChat('w1', 8).subscribe();
+    httpMock.expectOne((r) => r.method === 'POST' && r.url === '/api/workspaces/w1/chat/interrupt?chantier=8')
+      .flush(null);
+    service.steerChat('w1', 'précise', 8).subscribe();
+    httpMock.expectOne('/api/workspaces/w1/chat/steer?chantier=8').flush({ steerId: 's', turnId: 't' });
+    service.confirmChatToolUse('w1', { toolUseId: 'c1', decision: 'allow' }, 8).subscribe();
+    httpMock.expectOne('/api/workspaces/w1/chat/confirm?chantier=8').flush(null);
+    service.getLanes('w1').subscribe();
+    httpMock.expectOne('/api/workspaces/w1/chat/lanes').flush({ lanes: [] });
+    service.getHistory('w1', null).subscribe();
+    httpMock.expectOne('/api/workspaces/w1/chat').flush([]);
+  });
+
+  it('F-221 : le flux d\'un fil envoie chantier dans le corps', async () => {
+    const fetchSpy = spyOn(window, 'fetch').and.returnValue(Promise.resolve(new Response(null, { status: 500 })));
+    const handlers = { onAction: () => undefined, onText: () => undefined, onDone: () => undefined,
+      onError: () => undefined };
+    await service.streamChat('w1', 'go', handlers, 'ACT', false, [], 8);
+    const body = JSON.parse((fetchSpy.calls.mostRecent().args[1] as RequestInit).body as string);
+    expect(body.chantier).toBe(8);
+    await service.streamChat('w1', 'go', handlers);
+    const common = JSON.parse((fetchSpy.calls.mostRecent().args[1] as RequestInit).body as string);
+    expect(common.chantier).toBeUndefined();
+  });
+
   it('POSTs a manual compaction to /api/workspaces/{id}/chat/compact (F-162 / SF-162-04)', () => {
     let received: { compacted: boolean; summarizedTurns: number } | undefined;
     service.compactThread('w1').subscribe((r) => (received = r));

@@ -44,6 +44,12 @@ import {
 import { WorkstationNoticeComponent } from './notice/workstation-notice.component';
 import { TeamsLink, TeamsLinkService } from './teams/teams-link.service';
 import { AtelierTerminalComponent } from './terminal/atelier-terminal.component';
+import { TerminalLanePaneComponent } from './terminal/terminal-lane-pane.component';
+import { toThreadItem } from './thread-item';
+
+export { toThreadItem } from './thread-item';
+import { JourneyService } from '../core/services/journey.service';
+import { AtelierLane } from '../core/services/atelier.service';
 import {
   blockLabel as blockLabelOf,
   formatElapsed,
@@ -74,7 +80,6 @@ import {
 } from '../chat/library-picker/library-picker-dialog.component';
 import { ApiKeyService } from '../core/services/api-key.service';
 import { AtelierService, TURN_STREAM_PROBE_MS } from '../core/services/atelier.service';
-import { normalizeTurnQuestions } from '../core/services/turn-questions';
 import { AtelierGuideService } from '../core/services/atelier-guide.service';
 import { HostPresenceService } from '../core/services/host-presence.service';
 import { LiveTerminalService } from '../core/services/live-terminal.service';
@@ -95,7 +100,6 @@ import {
   AtelierEngine,
   AtelierEngineStatus,
   AtelierRunnerRecommendation,
-  AtelierMessage,
   AtelierTerminalBlock,
   AtelierSubjectHandoff,
   AtelierRole,
@@ -236,6 +240,7 @@ const RUNNER_DOOR_CODES = ['runner_offline', 'runner_missing_capability', 'runne
     MatTooltipModule,
     RouterLink,
     AtelierTerminalComponent,
+    TerminalLanePaneComponent,
     AtelierFilesComponent,
     AtelierGuideComponent,
     WorkstationNoticeComponent,
@@ -368,6 +373,127 @@ export class AtelierComponent implements OnInit, OnDestroy {
    * ouvert — le rappel ne suppose jamais qu'elle existe.
    */
   @ViewChild(AtelierTerminalComponent) private terminalView?: AtelierTerminalComponent;
+
+  // ------------------------------------------------------------------ F-221 / SF-221-03 : le split
+
+  private readonly journeyApi = inject(JourneyService);
+
+  /**
+   * **Le fil de l'écran** (F-221 / SF-221-03) : le chantier au focus d'un sujet guidé, `null` sinon (fil
+   * commun). L'historique, l'envoi, le rebranchement, la précision, l'interruption et l'autorisation
+   * portent ce fil — ce que l'écran montre est exactement ce que le modèle relit.
+   */
+  readonly chatLane = signal<number | null>(null);
+
+  /** Le volet de droite du split, ou `null` hors split. */
+  readonly splitPane = signal<{ chantier: number; autonomous: boolean } | null>(null);
+
+  /** Combien d'autres chantiers sont actifs au-delà des deux volets (renvoi au tableau). */
+  readonly otherActiveLanes = signal(0);
+
+  /** Sur téléphone, un volet à la fois : celui qui est montré. */
+  readonly shownPane = signal<'left' | 'right'>('left');
+
+  /** Écran étroit (< 820 px) : pas de split, des onglets (même seuil que le terminal). */
+  readonly narrowScreen = signal(
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(max-width: 819px)').matches : false);
+
+  /** Volets refermés à la main : ils ne se rouvrent pas tant que leur chantier reste actif. */
+  private readonly dismissedLanes = new Set<number>();
+
+  /** Titre du volet de gauche en split. */
+  leftPaneTitle(): string {
+    const lane = this.chatLane();
+    const base = lane ? `Chantier ${lane}` : 'Fil du sujet';
+    const more = this.otherActiveLanes();
+    return more > 0 ? `${base} · +${more} autre${more > 1 ? 's' : ''} actif${more > 1 ? 's' : ''}` : base;
+  }
+
+  /**
+   * Le chantier au focus a changé (F-221 / SF-221-03) : l'écran suit son FIL — le fil est relu, le tour de
+   * ce fil est rejoint — puis le split est réévalué.
+   */
+  onFocusChantierChange(focus: number | null): void {
+    const id = this.activeWorkspaceId();
+    if (!id) {
+      return;
+    }
+    if (focus !== this.chatLane()) {
+      this.chatLane.set(focus);
+      this.resetTurnState();
+      this.messages.set([]);
+      this.loadHistory(id);
+      this.reloadOnIdleFor = id;
+      this.reattachTurn(id);
+    }
+    this.evaluateSplit(id);
+  }
+
+  /**
+   * **Deux chantiers actifs → deux volets** (F-221 / SF-221-03) : lit les fils actifs du sujet et ouvre
+   * le volet de droite sur un autre chantier actif. Best-effort : un échec laisse l'écran normal.
+   */
+  evaluateSplit(id: string): void {
+    this.atelier.getLanes(id).subscribe({
+      next: ({ lanes }) => {
+        if (!this.isDisplayed(id)) {
+          return;
+        }
+        const decision = splitFor(lanes ?? [], this.chatLane(), this.dismissedLanes);
+        const current = this.splitPane();
+        if (decision.right === null) {
+          this.splitPane.set(null);
+        } else if (current?.chantier !== decision.right.chantier
+            || current.autonomous !== decision.right.autonomy) {
+          this.splitPane.set({ chantier: decision.right.chantier!, autonomous: decision.right.autonomy });
+        }
+        this.otherActiveLanes.set(decision.others);
+      },
+      error: () => undefined,
+    });
+  }
+
+  /** [Fermer ce volet] à droite : le chantier continue côté serveur, le volet ne revient pas tout seul. */
+  closeRightPane(): void {
+    const pane = this.splitPane();
+    if (pane) {
+      this.dismissedLanes.add(pane.chantier);
+    }
+    this.splitPane.set(null);
+    this.shownPane.set('left');
+  }
+
+  /**
+   * [Fermer ce volet] à gauche : le chantier de droite passe au focus et l'écran le suit ; celui de gauche
+   * continue côté serveur et ne revient pas tout seul.
+   */
+  closeLeftPane(): void {
+    const id = this.activeWorkspaceId();
+    const pane = this.splitPane();
+    if (!id || !pane) {
+      return;
+    }
+    const left = this.chatLane();
+    if (left !== null) {
+      this.dismissedLanes.add(left);
+    }
+    this.splitPane.set(null);
+    this.shownPane.set('left');
+    this.journeyApi.focus(id, pane.chantier).subscribe({
+      next: () => this.terminalView?.loadJourney(id),
+      error: () => this.notifyError("Le chantier n'a pas pu passer au premier plan."),
+    });
+  }
+
+  /** Ferme le split et oublie les volets refermés : un autre sujet repart d'un écran normal. */
+  private resetSplit(): void {
+    this.chatLane.set(null);
+    this.splitPane.set(null);
+    this.otherActiveLanes.set(0);
+    this.shownPane.set('left');
+    this.dismissedLanes.clear();
+  }
 
   /** Attribut `accept` du sélecteur de fichier PC (texte/code uniquement, SF-28-13). */
   readonly workspaceTextAccept = WORKSPACE_TEXT_ACCEPT;
@@ -1546,6 +1672,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
       this.handoffOrigin.set(null);
     }
     this.activeWorkspaceId.set(workspace.id);
+    // F-221 / SF-221-03 : le fil et le split appartenaient au sujet quitté.
+    this.resetSplit();
     // F-198 / SF-198-01 : tout ce qui était vivant à l'écran appartenait au sujet quitté.
     this.resetTurnState();
     this.messages.set([]);
@@ -1577,7 +1705,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
   }
 
   private loadHistory(id: string): void {
-    this.atelier.getHistory(id).subscribe({
+    this.atelier.getHistory(id, this.chatLane()).subscribe({
       next: (history) => {
         // F-198 / SF-198-01 : la réponse d'un sujet quitté n'écrit jamais dans le sujet affiché.
         if (!this.isDisplayed(id)) {
@@ -2265,7 +2393,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
     });
     // F-169 / SF-169-02 : les dépôts joints à CE message (première demande du tour) partent avec la
     // requête ; le backend les associe exactement à ce message. Une précision (steer) n'en porte pas.
-    void this.atelier.streamChat(id, content, handlers, this.mode(), force, attachments.ids);
+    void this.atelier.streamChat(id, content, handlers, this.mode(), force, attachments.ids,
+      this.chatLane());
     // Si la prise en main n'arrive pas, un proxy retient le flux : on suit le tour par fenêtres, EN
     // PLUS du flux d'origine — qui garde la fin du tour s'il est relâché le premier.
     this.armStreamProbe(id, handlers);
@@ -2622,7 +2751,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
       return;
     }
     this.interrupting.set(true);
-    this.atelier.interruptChat(id).subscribe({
+    this.atelier.interruptChat(id, this.chatLane()).subscribe({
       next: () => {
         this.interrupting.set(false);
         this.snackBar.open('Interruption demandée : arrêt en cours…', 'Fermer', { duration: 4000 });
@@ -2887,7 +3016,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
     // La question est la même des deux côtés, la destination non : boucle maison sur machine
     // connectée (F-38 / SF-38-08) ou session de bac à sable (F-33).
     const answer = pending.source === 'LOCAL_MACHINE'
-      ? this.atelier.confirmChatToolUse(id, decision)
+      ? this.atelier.confirmChatToolUse(id, decision, this.chatLane())
       : this.atelier.confirmToolUse(id, decision);
     answer
       .subscribe({
@@ -3737,7 +3866,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.detachTurn();
     // F-198 / SF-198-01 : un rebranchement n'écrit que dans le sujet qui l'a ouvert.
     const handlers = this.forThisSubject(this.attachHandlers(id, this.openTurnGate()));
-    this.turnAttach = this.atelier.attachTurn(id, 0, handlers);
+    this.turnAttach = this.atelier.attachTurn(id, 0, handlers, this.chatLane());
     // Même sonde qu'à l'envoi (F-84 / SF-84-04) : l'aparté `attached` — ou `idle` — part tout de
     // suite. S'il n'arrive pas, le rebranchement est retenu : on l'abandonne pour des fenêtres.
     this.armStreamProbe(id, handlers);
@@ -3833,7 +3962,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
       this.turnAttach?.abort();
       this.turnAttach = null;
       this.turnWindows?.stop();
-      this.turnWindows = this.atelier.followTurnInWindows(id, () => this.turnCursor, handlers);
+      this.turnWindows = this.atelier.followTurnInWindows(id, () => this.turnCursor, handlers,
+        { chantier: this.chatLane() });
     }, TURN_STREAM_PROBE_MS);
   }
 
@@ -3880,7 +4010,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
       onIdle: () => this.zone.run(() => this.showUnanswered(generation)),
       onError: () => this.zone.run(() => this.showUnanswered(generation)),
     };
-    this.turnWindows = this.atelier.followTurnInWindows(id, () => this.turnCursor, recovery);
+    this.turnWindows = this.atelier.followTurnInWindows(id, () => this.turnCursor, recovery,
+      { chantier: this.chatLane() });
   }
 
   /**
@@ -3926,7 +4057,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
     }
     this.replaying.set(true);
     // Vérité serveur (F-84) : le tour tourne peut-être encore alors que l'écran croit l'avoir perdu.
-    this.atelier.getTurnState(id).subscribe({
+    this.atelier.getTurnState(id, this.chatLane()).subscribe({
       next: (state) => {
         this.replaying.set(false);
         if (state.live) {
@@ -4402,7 +4533,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
         steer: { steerId: null, status: 'pending' },
       },
     ]);
-    this.atelier.steerChat(id, content).subscribe({
+    this.atelier.steerChat(id, content, this.chatLane()).subscribe({
       next: (accepted) => this.setPrecisionId(itemId, accepted.steerId),
       error: (err: unknown) => {
         // Le tour venait de rendre sa réponse : la précision partira comme un message dès que
@@ -4599,78 +4730,6 @@ function attachOutput(
 }
 
 /**
- * Convertit un message d'historique en tour du fil (F-30 SF-30-09). Une transcription absente ou
- * illisible produit simplement un tour sans terminal : un défaut d'affichage ne doit jamais empêcher
- * de relire sa conversation.
- */
-export function toThreadItem(message: AtelierMessage): AtelierThreadItem {
-  const item: AtelierThreadItem = {
-    id: message.id,
-    role: message.role,
-    content: message.content,
-    actions: [],
-    // F-169 / SF-169-03 : les pièces jointes du message, reconstruites depuis le transcript persistant
-    // (SF-169-02), rendues dans la bulle au rechargement. Absent pour un message sans pièce jointe.
-    ...(message.files && message.files.length > 0 ? { files: message.files } : {}),
-  };
-  const stored = message.terminal;
-  if (!stored) {
-    return item;
-  }
-  // Le drapeau d'interruption vit hors des blocs : un tour interrompu avant d'avoir lancé la moindre
-  // commande n'a pas de transcription, et doit pourtant rester marqué au rechargement (F-32).
-  item.interrupted = stored.interrupted === true;
-  // Même raison pour le plafond de dépense (F-36 SF-36-04) : sans cela, la mention disparaîtrait au
-  // rechargement et l'utilisateur relirait un tour d'apparence normale, arrêté sans motif.
-  item.budgetReached = stored.budgetReached === true;
-  // F-192 / SF-192-02 : les suites proposées par l'agent survivent au rechargement.
-  if (Array.isArray(stored.nextSteps) && stored.nextSteps.length > 0) {
-    item.nextSteps = stored.nextSteps;
-  }
-  // F-196 / SF-196-02 : l'avancement du chantier survit lui aussi au rechargement.
-  if (stored.nextStepsChantier) {
-    item.nextStepsChantier = stored.nextStepsChantier;
-  }
-  // F-210 / SF-210-03 : les questions d'un tour découpé, et leurs réponses, survivent au rechargement.
-  const questions = normalizeTurnQuestions(stored.questions, stored.answers);
-  if (questions) {
-    item.questions = questions;
-  }
-  // Les modifications vivent hors des blocs (F-37 SF-37-02) : un tour peut n'avoir lancé aucune
-  // commande visible et avoir pourtant réécrit des fichiers.
-  const diffs = toDiffViews(stored.diffs);
-  if (diffs.length > 0) {
-    item.diffs = diffs;
-  }
-  // Le coût vit lui aussi hors des blocs (F-39 / SF-39-15) : la boucle maison relève sa
-  // consommation sans persister de transcription, et un tour mesuré perdait sa mesure ici.
-  const tokens = (stored.inputTokens ?? 0) + (stored.outputTokens ?? 0);
-  if (tokens > 0) {
-    // Le montant (F-133 / SF-133-02) n'est présent dans le relevé relu que pour l'administrateur :
-    // la passerelle le retire des autres réponses, il n'est pas filtré ici.
-    item.cost = {
-      elapsedSeconds: stored.activeSeconds ?? 0,
-      tokens,
-      ...(stored.costEur ? { amount: stored.costEur } : {}),
-    };
-  }
-  if (!Array.isArray(stored.blocks) || stored.blocks.length === 0) {
-    return item;
-  }
-  item.terminal = stored.blocks.map((block): AtelierTerminalBlock => ({
-    tool: block.tool,
-    command: block.command ?? undefined,
-    toolUseId: block.toolUseId ?? null,
-    threadId: block.threadId ?? null,
-    output: block.output ?? '',
-    hasOutput: block.hasOutput === true,
-    error: block.error === true,
-    expanded: false,
-  }));
-  return item;
-}
-
-/**
  * Durée annoncée par la gateway, dite en clair (F-47 / SF-47-02) : « dans les 2 minutes ». Sans
  * délai connu, on se replie sur « dans le délai imparti » plutôt que d'inventer une durée.
  */
@@ -4684,4 +4743,24 @@ export function delayLabel(timeoutMs: number | null): string {
   }
   const minutes = Math.round(seconds / 60);
   return minutes === 1 ? 'dans la minute' : `dans les ${minutes} minutes`;
+}
+
+/**
+ * **Le split se décide ici** (F-221 / SF-221-03), en fonction pure : parmi les fils actifs du sujet, les
+ * chantiers autres que celui que l'écran montre et que l'utilisateur n'a pas refermés ; le plus ancien
+ * prend le volet de droite, les autres sont comptés. Un volet refermé dont le chantier n'est plus actif est
+ * oublié (il pourra revenir à sa prochaine activité).
+ */
+export function splitFor(lanes: AtelierLane[], shown: number | null, dismissed: Set<number>):
+    { right: AtelierLane | null; others: number } {
+  const active = lanes.filter((lane) => lane.chantier !== null && (lane.live || lane.autonomy));
+  for (const number of [...dismissed]) {
+    if (!active.some((lane) => lane.chantier === number)) {
+      dismissed.delete(number);
+    }
+  }
+  const candidates = active
+    .filter((lane) => lane.chantier !== shown && !dismissed.has(lane.chantier!))
+    .sort((a, b) => a.startedAt - b.startedAt);
+  return { right: candidates[0] ?? null, others: Math.max(0, candidates.length - 1) };
 }

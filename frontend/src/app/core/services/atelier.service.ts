@@ -119,6 +119,21 @@ export interface TurnWindowOptions {
   waitMs?: number;
   idleRetryMs?: number;
   maxIdle?: number;
+  /** Le fil suivi (F-221 / SF-221-03) : un chantier, ou absent pour le fil commun. */
+  chantier?: number | null;
+}
+
+/** Un fil actif d'un sujet (F-221 / SF-221-02) : `chantier` absent (`null`) = fil commun. */
+export interface AtelierLane {
+  chantier: number | null;
+  live: boolean;
+  autonomy: boolean;
+  startedAt: number;
+}
+
+/** Le paramètre `chantier` d'une requête de fil (F-221) : rien pour le fil commun. */
+export function laneQuery(chantier: number | null | undefined, first = true): string {
+  return chantier ? `${first ? '?' : '&'}chantier=${encodeURIComponent(String(chantier))}` : '';
 }
 
 /**
@@ -297,7 +312,8 @@ export class AtelierService {
    * jamais : les échecs passent par `onError`.
    */
   async streamChat(id: string, message: string, handlers: AtelierStreamHandlers,
-      mode: AtelierTurnMode = 'ACT', force = false, attachedDepositIds: string[] = []): Promise<void> {
+      mode: AtelierTurnMode = 'ACT', force = false, attachedDepositIds: string[] = [],
+      chantier: number | null = null): Promise<void> {
     // F-131 / SF-131-01 : on retient si le tour s'est réellement CONCLU dans ce flux — un `done`
     // non-suite ou une erreur. Sinon, la fermeture du flux est un DÉTACHEMENT (le serveur a peut-être
     // fini, mais l'écran n'a rien reçu) : c'est ce cas qui laissait le spinner tourner sans fin.
@@ -336,6 +352,8 @@ export class AtelierService {
           mode,
           ...(force ? { force: true } : {}),
           ...(attachedDepositIds.length > 0 ? { attachedDepositIds } : {}),
+          // F-221 / SF-221-03 : le fil de l'envoi — absent pour le fil commun.
+          ...(chantier ? { chantier } : {}),
         }),
       });
       if (!response.ok || !response.body) {
@@ -379,9 +397,10 @@ export class AtelierService {
    * Rend un `AbortController` : quitter l'écran **détache le spectateur**, et c'est tout. Depuis
    * F-84, abandonner ce flux n'arrête plus le tour — c'était précisément le défaut.
    */
-  attachTurn(id: string, cursor: number, handlers: AtelierStreamHandlers): AbortController {
+  attachTurn(id: string, cursor: number, handlers: AtelierStreamHandlers,
+      chantier: number | null = null): AbortController {
     const abort = new AbortController();
-    void this.readTurnStream(id, cursor, handlers, abort);
+    void this.readTurnStream(id, cursor, handlers, abort, undefined, chantier);
     return abort;
   }
 
@@ -442,7 +461,7 @@ export class AtelierService {
             ended = true;
             handlers.onError(code, reason);
           },
-        }, current, waitMs);
+        }, current, waitMs, options.chantier ?? null);
         if (stopped || ended) {
           return;
         }
@@ -468,8 +487,13 @@ export class AtelierService {
   }
 
   /** L'état du tour d'un projet : est-ce que ça tourne, et à quel curseur (F-84 / SF-84-02). */
-  getTurnState(id: string): Observable<AtelierTurnState> {
-    return this.http.get<AtelierTurnState>(`/api/workspaces/${id}/chat/turn`);
+  getTurnState(id: string, chantier: number | null = null): Observable<AtelierTurnState> {
+    return this.http.get<AtelierTurnState>(`/api/workspaces/${id}/chat/turn${laneQuery(chantier)}`);
+  }
+
+  /** Les fils actifs du sujet (F-221 / SF-221-02) : tour vivant ou course autonome, par chantier. */
+  getLanes(id: string): Observable<{ lanes: AtelierLane[] }> {
+    return this.http.get<{ lanes: AtelierLane[] }>(`/api/workspaces/${id}/chat/lanes`);
   }
 
   /**
@@ -482,12 +506,14 @@ export class AtelierService {
     handlers: AtelierStreamHandlers,
     abort: AbortController,
     waitMs?: number,
+    chantier: number | null = null,
   ): Promise<void> {
     try {
       const token = this.auth.token();
       const windowParam = waitMs === undefined ? '' : `&waitMs=${encodeURIComponent(String(waitMs))}`;
       const response = await fetch(
-        `/api/workspaces/${id}/chat/attach?cursor=${encodeURIComponent(String(cursor))}${windowParam}`,
+        `/api/workspaces/${id}/chat/attach?cursor=${encodeURIComponent(String(cursor))}${windowParam}`
+          + laneQuery(chantier, false),
         {
           method: 'GET',
           headers: {
@@ -1063,8 +1089,9 @@ export class AtelierService {
    * <p>F-84 / SF-84-06 : rend l'identifiant de la précision, celui que portent les événements du
    * tour. `409 no_live_turn` : le tour vient de finir — l'écran l'envoie alors comme un message.</p>
    */
-  steerChat(id: string, message: string): Observable<AtelierSteerAccepted> {
-    return this.http.post<AtelierSteerAccepted>(`/api/workspaces/${id}/chat/steer`, { message });
+  steerChat(id: string, message: string, chantier: number | null = null): Observable<AtelierSteerAccepted> {
+    return this.http.post<AtelierSteerAccepted>(`/api/workspaces/${id}/chat/steer${laneQuery(chantier)}`,
+      { message });
   }
 
   /**
@@ -1072,8 +1099,9 @@ export class AtelierService {
    * commande sur la machine connectée, ou la refuse avec un motif que le modèle recevra. Sans
    * réponse dans le délai imparti, le backend refuse — le silence ne vaut pas autorisation.
    */
-  confirmChatToolUse(id: string, decision: AtelierConfirmDecision): Observable<void> {
-    return this.http.post<void>(`/api/workspaces/${id}/chat/confirm`, decision);
+  confirmChatToolUse(id: string, decision: AtelierConfirmDecision,
+      chantier: number | null = null): Observable<void> {
+    return this.http.post<void>(`/api/workspaces/${id}/chat/confirm${laneQuery(chantier)}`, decision);
   }
 
   /**
@@ -1110,8 +1138,8 @@ export class AtelierService {
    * commande lancée sur la machine de l'utilisateur est tuée et la boucle s'arrête à la frontière
    * sûre suivante. Idempotent : interrompre alors que rien ne tourne renvoie 204.
    */
-  interruptChat(id: string): Observable<void> {
-    return this.http.post<void>(`/api/workspaces/${id}/chat/interrupt`, null);
+  interruptChat(id: string, chantier: number | null = null): Observable<void> {
+    return this.http.post<void>(`/api/workspaces/${id}/chat/interrupt${laneQuery(chantier)}`, null);
   }
 
   /**
@@ -1155,8 +1183,8 @@ export class AtelierService {
   }
 
   /** Historique de conversation du workspace. */
-  getHistory(id: string): Observable<AtelierMessage[]> {
-    return this.http.get<AtelierMessage[]>(`/api/workspaces/${id}/chat`);
+  getHistory(id: string, chantier: number | null = null): Observable<AtelierMessage[]> {
+    return this.http.get<AtelierMessage[]>(`/api/workspaces/${id}/chat${laneQuery(chantier)}`);
   }
 
   /**
