@@ -249,6 +249,14 @@ public class AutonomyTurnRunner {
     }
 
     /**
+     * Ouvre le tour vivant du <b>fil du chantier</b> {@code number} (F-221 / SF-221-01/02) si — et seulement
+     * si — ce fil est libre : la course d'un chantier ne prend jamais le tour d'un autre fil du sujet.
+     */
+    public Optional<LiveTurn> prepare(UUID userId, UUID workspaceId, int number, String demand) {
+        return liveTurns.openIfIdle(userId, workspaceId, number, demand);
+    }
+
+    /**
      * Écrit la course {@code RUNNING} et lance la boucle en tâche de fond.
      *
      * @param workspace le terminal, <b>déjà</b> vérifié comme possédé par l'appelant
@@ -308,7 +316,10 @@ public class AutonomyTurnRunner {
         boolean untilBlocked = run.getMode() == AutonomyMode.UNTIL_BLOCKED;
         BigDecimal spent = BigDecimal.ZERO;
         AtomicBoolean machineLost = new AtomicBoolean(false);
-        chatService.muteOutcomePush(userId, workspaceId);
+        // F-221 / SF-221-02 : la course tourne dans le FIL de son chantier — elle n'y relit que le passé commun
+        // et ce chantier, et y écrit ; la notification de fin n'est tue que sur ce fil.
+        Integer lane = turn.chantier();
+        chatService.muteOutcomePush(userId, workspaceId, lane);
         try {
             turn.publish("started", Map.of("turnId", turn.turnId().toString(), "startedAt", turn.startedAtMs()));
             turn.publish("text", Map.of("text", "_Chantier " + number + (untilBlocked
@@ -320,7 +331,8 @@ public class AutonomyTurnRunner {
                             advanceOf(userId, workspace, number))
                     : firstDemand(number, before.title(), before.plan(), maxTurns);
             for (int k = 1;; k++) {
-                AtelierChatResult result = chatService.chatStreaming(userId, workspaceId, demand, listener);
+                AtelierChatResult result = chatService.chatStreaming(userId, workspaceId, lane, demand,
+                        fr.claudegateway.agent.AgentTurnMode.ACT, listener, false, List.of());
                 spent = spent.add(result.costUsd() == null ? BigDecimal.ZERO : result.costUsd());
                 if (result.stoppedByMachine()) {
                     machineLost.set(true);
@@ -370,7 +382,7 @@ public class AutonomyTurnRunner {
             log.warn("Échec inattendu d'un chantier autonome ({})", ex.getClass().getSimpleName());
             return fail(turn, "internal_error");
         } finally {
-            chatService.unmuteOutcomePush(userId, workspaceId);
+            chatService.unmuteOutcomePush(userId, workspaceId, lane);
         }
     }
 

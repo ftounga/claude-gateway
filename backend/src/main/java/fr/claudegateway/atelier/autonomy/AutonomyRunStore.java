@@ -88,6 +88,20 @@ public class AutonomyRunStore {
                 AutonomyRunStatus.RUNNING);
     }
 
+    /** La course en cours du chantier {@code number} de ce sujet (F-221 / SF-221-02). */
+    @Transactional(readOnly = true)
+    public Optional<ChantierAutonomyRun> running(UUID userId, UUID workspaceId, int number) {
+        return repository.findFirstByUserIdAndWorkspaceIdAndChantierNumberAndStatusOrderByStartedAtDesc(userId,
+                workspaceId, number, AutonomyRunStatus.RUNNING);
+    }
+
+    /** Les courses en cours de ce sujet, tous chantiers (F-221 / SF-221-02). */
+    @Transactional(readOnly = true)
+    public List<ChantierAutonomyRun> runningOf(UUID userId, UUID workspaceId) {
+        return repository.findByUserIdAndWorkspaceIdAndStatusOrderByStartedAtDesc(userId, workspaceId,
+                AutonomyRunStatus.RUNNING);
+    }
+
     @Transactional(readOnly = true)
     public long countRunning(UUID userId) {
         return repository.countByUserIdAndStatus(userId, AutonomyRunStatus.RUNNING);

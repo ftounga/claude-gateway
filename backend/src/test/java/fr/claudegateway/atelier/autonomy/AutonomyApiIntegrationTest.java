@@ -95,7 +95,7 @@ class AutonomyApiIntegrationTest {
                 .emailVerified(true).provider(AuthProvider.LOCAL).role(UserRole.USER).build());
         bobToken = jwtService.generateToken(bob);
         subject = workspaceRepository.save(Workspace.builder().userId(alice.getId()).name("ingress").build());
-        when(chat.chatStreaming(any(), any(), anyString(), any())).thenReturn(new AtelierChatResult("ok", List.of(),
+        when(chat.chatStreaming(any(), any(), org.mockito.ArgumentMatchers.any(), anyString(), org.mockito.ArgumentMatchers.any(), any(), org.mockito.ArgumentMatchers.anyBoolean(), org.mockito.ArgumentMatchers.any())).thenReturn(new AtelierChatResult("ok", List.of(),
                 UUID.randomUUID(), 10, 5, 3, false, new BigDecimal("0.20"), null));
     }
 
@@ -163,9 +163,10 @@ class AutonomyApiIntegrationTest {
         assertThat(run.getTurns()).isEqualTo(1);
         assertThat(run.getCostUsd()).isEqualByComparingTo("0.20");
         assertThat(run.getUserId()).isEqualTo(alice.getId());
-        verify(chat).chatStreaming(eq(alice.getId()), eq(subject.getId()),
-                org.mockito.ArgumentMatchers.contains("EXÉCUTION AUTONOME"), any());
-        assertThat(liveTurns.find(alice.getId(), subject.getId())).isEmpty();
+        verify(chat).chatStreaming(eq(alice.getId()), eq(subject.getId()), eq(1),
+                org.mockito.ArgumentMatchers.contains("EXÉCUTION AUTONOME"), any(), any(),
+                org.mockito.ArgumentMatchers.anyBoolean(), any());
+        assertThat(liveTurns.find(alice.getId(), subject.getId(), 1)).isEmpty();
 
         call(get(base(subject) + "/autonomy"), aliceToken)
                 .andExpect(status().isOk())
@@ -194,13 +195,102 @@ class AutonomyApiIntegrationTest {
     }
 
     @Test
-    @DisplayName("sujet occupé par un tour : 409 autonomy_subject_busy")
+    @DisplayName("F-221 : le fil du chantier occupé par un tour → 409 ; un tour du fil commun ne bloque plus")
     void busy() throws Exception {
         executing(subject);
-        heldTurn = liveTurns.open(alice.getId(), subject.getId());
+        heldTurn = liveTurns.open(alice.getId(), subject.getId(), 1);
         call(post(base(subject) + "/chantiers/1/autonomy"), aliceToken)
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error", is("autonomy_subject_busy")));
+                .andExpect(jsonPath("$.error", is("autonomy_subject_busy")))
+                .andExpect(jsonPath("$.message", startsWith("Le chantier 1 tourne déjà")));
+        liveTurns.close(heldTurn);
+        heldTurn = liveTurns.open(alice.getId(), subject.getId());
+        call(post(base(subject) + "/chantiers/1/autonomy"), aliceToken).andExpect(status().isCreated());
+        awaitFinished();
+    }
+
+    /** Chantier 1 en Exécution (plan validé), puis chantier 2 ouvert à côté, lui aussi en Exécution (focus). */
+    private void twoExecuting(Workspace ws) {
+        executing(ws);
+        UUID user = ws.getUserId();
+        journeys.openAlongside(user, ws.getId(), "DNS");
+        journeys.submitDiagnosis(user, ws.getId(), "zone mal déléguée", "dig", "ELEVEE");
+        journeys.confirmDiagnosis(user, ws.getId());
+        try {
+            journeys.setPlan(user, ws.getId(), JourneyPlan.fromToolInput(new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readTree("[{\"title\":\"Corriger la délégation\",\"risk\":\"REVERSIBLE\"},"
+                            + "{\"title\":\"Prévenir le client\",\"risk\":\"EXTERNE\"}]")));
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new IllegalStateException(e);
+        }
+        journeys.validatePlan(user, ws.getId(), null);
+    }
+
+    @Test
+    @DisplayName("F-221 / SF-221-02 : deux chantiers du même sujet tournent ensemble, chacun dans son fil")
+    void twoChantiersOfTheSameSubject() throws Exception {
+        twoExecuting(subject);
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        when(chat.chatStreaming(any(), any(), any(), anyString(), any(), any(),
+                org.mockito.ArgumentMatchers.anyBoolean(), any())).thenAnswer(inv -> {
+                    release.await(10, java.util.concurrent.TimeUnit.SECONDS);
+                    return new AtelierChatResult("ok", List.of(), UUID.randomUUID(), 10, 5, 3, false,
+                            new BigDecimal("0.20"), null);
+                });
+        try {
+            // Sujet calme : le premier départ prend le focus.
+            call(post(base(subject) + "/chantiers/1/autonomy"), aliceToken).andExpect(status().isCreated());
+            assertThat(journeys.forTurn(alice.getId(), subject.getId()).getChantierNumber()).isEqualTo(1);
+            // Le chantier 1 tourne : le 2 part quand même, sans voler le focus.
+            call(post(base(subject) + "/chantiers/2/autonomy"), aliceToken).andExpect(status().isCreated());
+            assertThat(journeys.forTurn(alice.getId(), subject.getId()).getChantierNumber()).isEqualTo(1);
+            call(post(base(subject) + "/chantiers/1/autonomy"), aliceToken)
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.message", startsWith("Le chantier 1 tourne déjà")));
+            assertThat(liveTurns.find(alice.getId(), subject.getId(), 1)).isPresent();
+            assertThat(liveTurns.find(alice.getId(), subject.getId(), 2)).isPresent();
+
+            call(get("/api/workspaces/" + subject.getId() + "/chat/lanes"), aliceToken)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.lanes.length()", is(2)))
+                    .andExpect(jsonPath("$.lanes[0].chantier", is(1)))
+                    .andExpect(jsonPath("$.lanes[0].autonomy", is(true)))
+                    .andExpect(jsonPath("$.lanes[0].live", is(true)))
+                    .andExpect(jsonPath("$.lanes[1].chantier", is(2)));
+            call(get("/api/workspaces/" + subject.getId() + "/chat/lanes"), bobToken)
+                    .andExpect(status().isNotFound());
+
+            // Reprendre la main sur le 2 seul : le 1 continue.
+            call(post(base(subject) + "/autonomy/stop").param("chantier", "2"), aliceToken)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.chantierNumber", is(2)))
+                    .andExpect(jsonPath("$.status", is("STOPPED")));
+            verify(chat).interruptChat(alice.getId(), subject.getId(), 2);
+            assertThat(runs.findAll()).filteredOn(r -> r.getChantierNumber() == 1)
+                    .allSatisfy(r -> assertThat(r.getStatus()).isEqualTo(AutonomyRunStatus.RUNNING));
+            call(post(base(subject) + "/autonomy/stop").param("chantier", "2"), aliceToken)
+                    .andExpect(status().isConflict());
+        } finally {
+            release.countDown();
+        }
+        for (int i = 0; i < 100 && runs.findAll().stream().anyMatch(r -> r.getStatus() == AutonomyRunStatus.RUNNING); i++) {
+            Thread.sleep(50);
+        }
+        // Chaque course a tourné dans le fil de SON chantier.
+        verify(chat, org.mockito.Mockito.atLeastOnce()).chatStreaming(eq(alice.getId()), eq(subject.getId()), eq(1),
+                anyString(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean(), any());
+        verify(chat, org.mockito.Mockito.atLeastOnce()).chatStreaming(eq(alice.getId()), eq(subject.getId()), eq(2),
+                anyString(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean(), any());
+    }
+
+    @Test
+    @DisplayName("F-221 / SF-221-02 : keepFocus=true lance sans déplacer le focus, même dans un sujet calme")
+    void keepFocus() throws Exception {
+        twoExecuting(subject); // focus = chantier 2
+        call(post(base(subject) + "/chantiers/1/autonomy").param("keepFocus", "true"), aliceToken)
+                .andExpect(status().isCreated());
+        assertThat(journeys.forTurn(alice.getId(), subject.getId()).getChantierNumber()).isEqualTo(2);
+        awaitFinished();
     }
 
     @Test
@@ -245,7 +335,7 @@ class AutonomyApiIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status", is("STOPPED")))
                 .andExpect(jsonPath("$.stopReason", is("Reprise en main.")));
-        verify(chat).interruptChat(alice.getId(), subject.getId());
+        verify(chat).interruptChat(alice.getId(), subject.getId(), 1);
         call(post(base(subject) + "/autonomy/stop"), aliceToken)
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error", is("autonomy_not_running")));
@@ -373,7 +463,7 @@ class AutonomyApiIntegrationTest {
                 .andExpect(status().isNotFound());
         assertThat(runs.count()).isZero();
 
-        when(chat.chatStreaming(any(), any(), anyString(), any())).thenAnswer(inv -> {
+        when(chat.chatStreaming(any(), any(), org.mockito.ArgumentMatchers.any(), anyString(), org.mockito.ArgumentMatchers.any(), any(), org.mockito.ArgumentMatchers.anyBoolean(), org.mockito.ArgumentMatchers.any())).thenAnswer(inv -> {
             stepTool("{\"step\":1,\"status\":\"FAIT\",\"evidence\":\"conf écrite\"}");
             stepTool("{\"step\":1,\"status\":\"VERIFIE\",\"evidence\":\"nginx -t ok\"}");
             return new AtelierChatResult("ok", List.of(), UUID.randomUUID(), 10, 5, 3, false,
@@ -387,8 +477,9 @@ class AutonomyApiIntegrationTest {
         assertThat(run.getMode()).isEqualTo(fr.claudegateway.atelier.journey.AutonomyMode.UNTIL_BLOCKED);
         assertThat(run.getStopReason()).startsWith("Avancé jusqu'au blocage").contains("on attend");
         assertThat(run.getTurns()).isEqualTo(1);
-        verify(chat).chatStreaming(eq(alice.getId()), eq(subject.getId()),
-                org.mockito.ArgumentMatchers.contains("AVANCER JUSQU'AU BLOCAGE"), any());
+        verify(chat).chatStreaming(eq(alice.getId()), eq(subject.getId()), eq(1),
+                org.mockito.ArgumentMatchers.contains("AVANCER JUSQU'AU BLOCAGE"), any(), any(),
+                org.mockito.ArgumentMatchers.anyBoolean(), any());
         call(get(base(subject) + "/autonomy"), aliceToken)
                 .andExpect(jsonPath("$.chantiers[0].run.status", is("PARTIAL")))
                 .andExpect(jsonPath("$.chantiers[0].run.mode", is("UNTIL_BLOCKED")))

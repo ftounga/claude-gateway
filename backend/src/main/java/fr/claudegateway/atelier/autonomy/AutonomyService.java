@@ -37,8 +37,9 @@ import fr.claudegateway.runner.RunnerLiveness;
 /**
  * <b>Lancer un chantier en autonome, et reprendre la main</b> (F-219 / SF-219-02).
  *
- * <p><b>Gardes de départ</b>, dans l'ordre : préflight vert (SF-219-01) ; un chantier autonome par sujet
- * (aucune course en cours, aucun tour vivant) ; au plus {@code app.autonomy.max-parallel} courses en cours par
+ * <p><b>Gardes de départ</b>, dans l'ordre : préflight vert (SF-219-01) ; une course par <b>chantier</b>
+ * (F-221 / SF-221-02 : aucune course en cours ni tour vivant dans le fil de ce chantier — un autre chantier du
+ * même sujet peut tourner en même temps) ; au plus {@code app.autonomy.max-parallel} courses en cours par
  * compte — garde-fou de dépense, le chiffre de F-70 ; poste du sujet en ligne.</p>
  *
  * <p><b>Isolation</b> : {@code requireOwned(userId, workspaceId)} d'abord (404 sur le terminal d'autrui) ;
@@ -68,7 +69,8 @@ public class AutonomyService implements ChantierAutonomyLauncher {
     private Duration deferredTtl = Duration.ofMinutes(10);
 
     /** Un départ programmé. */
-    record Deferred(UUID userId, UUID workspaceId, int number, AutonomyMode mode, OffsetDateTime expiresAt) {
+    record Deferred(UUID userId, UUID workspaceId, int number, AutonomyMode mode, OffsetDateTime expiresAt,
+            Integer fromLane) {
     }
 
     private RunnerLiveness liveness;
@@ -225,6 +227,17 @@ public class AutonomyService implements ChantierAutonomyLauncher {
      * @throws InvalidJourneyException   le chantier n'est pas ouvert (400)
      */
     public synchronized RunView launch(UUID userId, UUID workspaceId, int number, AutonomyMode mode) {
+        return launch(userId, workspaceId, number, mode, false);
+    }
+
+    /**
+     * Même départ, en disant s'il doit <b>garder le focus</b> du sujet (F-221 / SF-221-02). La course tourne
+     * dans le fil de SON chantier : un autre chantier du même sujet peut tourner en même temps. Le focus
+     * passe au chantier lancé seulement quand le sujet est calme (aucun autre fil actif) et que l'appelant ne
+     * demande pas à le garder — le geste « en parallèle » de l'écran le garde toujours.
+     */
+    public synchronized RunView launch(UUID userId, UUID workspaceId, int number, AutonomyMode mode,
+            boolean keepFocus) {
         AutonomyMode m = mode == null ? AutonomyMode.STRICT : mode;
         Workspace workspace = workspaceService.requireOwned(userId, workspaceId); // 404 — TOUJOURS en premier
         ChantierReadiness readiness = preflights.forOwned(userId, workspace).stream()
@@ -242,8 +255,9 @@ public class AutonomyService implements ChantierAutonomyLauncher {
             throw new AutonomyConflictException("autonomy_not_ready", "Ce chantier n'est pas prêt à partir en "
                     + "autonome.", readiness.preflight().reasons());
         }
-        if (store.running(userId, workspaceId).isPresent() || liveTurns.find(userId, workspaceId).isPresent()) {
-            throw busy();
+        if (store.running(userId, workspaceId, number).isPresent()
+                || liveTurns.find(userId, workspaceId, number).isPresent()) {
+            throw busy(number);
         }
         if (store.countRunning(userId) >= maxParallel) {
             String count = maxParallel == 4 ? "Quatre" : String.valueOf(maxParallel);
@@ -254,14 +268,16 @@ public class AutonomyService implements ChantierAutonomyLauncher {
             throw new AutonomyConflictException("autonomy_host_offline", "Le poste de ce sujet est hors ligne : le "
                     + "chantier ne peut pas partir maintenant.");
         }
-        journeys.focus(userId, workspaceId, number); // le chantier autonome est celui que le sujet montre
-        ChantierSnapshot start = ChantierSnapshot.of(journeys.forTurn(userId, workspaceId), number);
-        Optional<LiveTurn> turn = runner.prepare(userId, workspaceId, m == AutonomyMode.UNTIL_BLOCKED
+        if (!keepFocus && !otherLaneActive(userId, workspaceId, number)) {
+            journeys.focus(userId, workspaceId, number); // sujet calme : le chantier lancé est celui qu'il montre
+        }
+        ChantierSnapshot start = ChantierSnapshot.of(journeys.forLane(userId, workspaceId, number), number);
+        Optional<LiveTurn> turn = runner.prepare(userId, workspaceId, number, m == AutonomyMode.UNTIL_BLOCKED
                 ? AutonomyTurnRunner.firstDemandUntilBlocked(number, start.title(), start.plan(), runner.maxTurns(),
                         readiness.preflight().advance())
                 : AutonomyTurnRunner.firstDemand(number, start.title(), start.plan(), runner.maxTurns()));
         if (turn.isEmpty()) {
-            throw busy();
+            throw busy(number);
         }
         ChantierAutonomyRun run = runner.launch(turn.get(), workspace, number, start, m);
         log.info("Chantier lancé en autonome (workspace={}, chantier={}, course={}, mode={})", workspaceId, number,
@@ -273,9 +289,20 @@ public class AutonomyService implements ChantierAutonomyLauncher {
         return text.isEmpty() ? text : Character.toLowerCase(text.charAt(0)) + text.substring(1);
     }
 
-    private static AutonomyConflictException busy() {
-        return new AutonomyConflictException("autonomy_subject_busy", "Un tour tourne déjà dans ce sujet : un "
-                + "chantier autonome par sujet à la fois.");
+    private static AutonomyConflictException busy(int number) {
+        return new AutonomyConflictException("autonomy_subject_busy", "Le chantier " + number + " tourne déjà : "
+                + "une course à la fois par chantier.");
+    }
+
+    /**
+     * Vrai si un autre fil que celui du chantier {@code number} est actif dans ce sujet (F-221 / SF-221-02) :
+     * un tour vivant ici sur un autre fil (commun compris), ou la course d'un autre chantier.
+     */
+    boolean otherLaneActive(UUID userId, UUID workspaceId, int number) {
+        boolean otherTurn = liveTurns.liveOf(userId, workspaceId).stream()
+                .anyMatch(turn -> turn.chantier() == null || turn.chantier() != number);
+        return otherTurn || store.runningOf(userId, workspaceId).stream()
+                .anyMatch(run -> run.getChantierNumber() != number);
     }
 
     /** Le poste du sujet est hors ligne — seulement pour un terminal qui s'exécute sur un poste. */
@@ -293,17 +320,33 @@ public class AutonomyService implements ChantierAutonomyLauncher {
      * @throws AutonomyConflictException aucune course en cours sur ce sujet (409)
      */
     public RunView stop(UUID userId, UUID workspaceId) {
+        return stop(userId, workspaceId, null);
+    }
+
+    /**
+     * [Reprendre la main] sur le chantier {@code chantier} (F-221 / SF-221-02) : sa course seule s'arrête, son
+     * fil seul est interrompu — l'autre chantier continue. {@code null} : toutes les courses du sujet (le geste
+     * « sujet » d'avant F-221) ; la vue rendue est celle de la plus récente.
+     */
+    public RunView stop(UUID userId, UUID workspaceId, Integer chantier) {
         workspaceService.requireOwned(userId, workspaceId); // 404 — TOUJOURS en premier
-        ChantierAutonomyRun run = store.running(userId, workspaceId)
-                .orElseThrow(() -> new AutonomyConflictException("autonomy_not_running",
-                        "Aucun chantier ne tourne en autonome dans ce sujet."));
-        store.finish(run.getId(), AutonomyRunStatus.STOPPED, AutonomyTurnRunner.TAKEN_BACK, null);
-        try {
-            chatService.interruptChat(userId, workspaceId);
-        } catch (RuntimeException e) {
-            log.warn("Interruption d'un chantier autonome en échec ({})", e.getClass().getSimpleName());
+        List<ChantierAutonomyRun> runs = chantier == null ? store.runningOf(userId, workspaceId)
+                : store.running(userId, workspaceId, chantier).map(List::of).orElse(List.of());
+        if (runs.isEmpty()) {
+            throw new AutonomyConflictException("autonomy_not_running", chantier == null
+                    ? "Aucun chantier ne tourne en autonome dans ce sujet."
+                    : "Le chantier " + chantier + " ne tourne pas en autonome.");
         }
-        return RunView.of(store.find(run.getId()).orElse(run));
+        for (ChantierAutonomyRun run : runs) {
+            store.finish(run.getId(), AutonomyRunStatus.STOPPED, AutonomyTurnRunner.TAKEN_BACK, null);
+            try {
+                chatService.interruptChat(userId, workspaceId, run.getChantierNumber());
+            } catch (RuntimeException e) {
+                log.warn("Interruption d'un chantier autonome en échec ({})", e.getClass().getSimpleName());
+            }
+        }
+        ChantierAutonomyRun first = runs.get(0);
+        return RunView.of(store.find(first.getId()).orElse(first));
     }
 
     // ------------------------------------------------------------------ départ dit à l'agent (SF-219-04)
@@ -335,8 +378,8 @@ public class AutonomyService implements ChantierAutonomyLauncher {
                     + String.join(" ; ", preflight.reasons().stream().map(ChantierPreflight.Reason::label).toList())
                     + " Dis-le à l'utilisateur ; rien n'est programmé.");
         }
-        if (store.running(userId, workspace.getId()).isPresent()) {
-            return new Result(false, "Un chantier tourne déjà en autonome dans ce sujet : un à la fois.");
+        if (store.running(userId, workspace.getId(), number).isPresent()) {
+            return new Result(false, "Le chantier " + number + " tourne déjà en autonome : rien n'est programmé.");
         }
         if (store.countRunning(userId) >= maxParallel) {
             return new Result(false, maxParallel + " chantiers autonomes tournent déjà sur le compte : c'est le "
@@ -345,8 +388,9 @@ public class AutonomyService implements ChantierAutonomyLauncher {
         if (hostOffline(userId, workspace)) {
             return new Result(false, "Le poste de ce sujet est hors ligne : le chantier ne peut pas partir.");
         }
-        deferred.put(userId + "/" + workspace.getId(), new Deferred(userId, workspace.getId(), number, m,
-                OffsetDateTime.now(clock).plus(deferredTtl)));
+        // F-221 / SF-221-02 : un départ par chantier ; il attend la fin du tour qui l'a programmé, dans SON fil.
+        deferred.put(userId + "/" + workspace.getId() + "/" + number, new Deferred(userId, workspace.getId(),
+                number, m, OffsetDateTime.now(clock).plus(deferredTtl), workspace.getTurnChantier()));
         return new Result(true, "Départ programmé : le chantier " + number + " partira en autonome"
                 + (m == AutonomyMode.UNTIL_BLOCKED ? " (jusqu'au blocage)" : "") + " dès la fin de "
                 + "ce tour (si le service redémarre d'ici là, il faudra le relancer). Termine ton tour maintenant, "
@@ -368,7 +412,7 @@ public class AutonomyService implements ChantierAutonomyLauncher {
                 deferred.remove(entry.getKey(), d);
                 continue;
             }
-            if (liveTurns.find(d.userId(), d.workspaceId()).isPresent()) {
+            if (liveTurns.find(d.userId(), d.workspaceId(), d.fromLane()).isPresent()) {
                 continue; // le tour qui a programmé le départ n'est pas fini
             }
             if (!deferred.remove(entry.getKey(), d)) {
@@ -392,7 +436,8 @@ public class AutonomyService implements ChantierAutonomyLauncher {
 
     /** Vrai si un départ est programmé sur ce sujet (tests, écran). */
     public boolean hasDeferred(UUID userId, UUID workspaceId) {
-        return deferred.containsKey(userId + "/" + workspaceId);
+        String prefix = userId + "/" + workspaceId + "/";
+        return deferred.keySet().stream().anyMatch(key -> key.startsWith(prefix));
     }
 
     // ------------------------------------------------------------------ orphelines

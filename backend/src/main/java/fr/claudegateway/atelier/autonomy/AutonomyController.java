@@ -26,10 +26,21 @@ public class AutonomyController {
 
     private final AutonomyService service;
     private final CurrentUser currentUser;
+    private final ChantierLanesService lanes;
 
-    public AutonomyController(AutonomyService service, CurrentUser currentUser) {
+    public AutonomyController(AutonomyService service, CurrentUser currentUser, ChantierLanesService lanes) {
         this.service = service;
         this.currentUser = currentUser;
+        this.lanes = lanes;
+    }
+
+    /**
+     * Les fils actifs du sujet (F-221 / SF-221-02) : tour vivant ou course autonome, par chantier ; l'écran
+     * s'ouvre en split dès que deux chantiers sont actifs.
+     */
+    @GetMapping("/workspaces/{workspaceId}/chat/lanes")
+    public ChantierLanesService.Lanes lanes(@PathVariable UUID workspaceId) {
+        return lanes.lanes(currentUser.requireId(), workspaceId);
     }
 
     /** Les chantiers ouverts du sujet : préflight, course en cours ou dernière, estimation. */
@@ -45,7 +56,8 @@ public class AutonomyController {
     @PostMapping("/workspaces/{workspaceId}/journey/chantiers/{number}/autonomy")
     @ResponseStatus(HttpStatus.CREATED)
     public AutonomyService.RunView launch(@PathVariable UUID workspaceId, @PathVariable int number,
-            @RequestParam(name = "mode", required = false) String mode) {
+            @RequestParam(name = "mode", required = false) String mode,
+            @RequestParam(name = "keepFocus", required = false, defaultValue = "false") boolean keepFocus) {
         UUID userId = currentUser.requireId();
         AutonomyMode parsed;
         try {
@@ -53,7 +65,7 @@ public class AutonomyController {
         } catch (IllegalArgumentException e) {
             throw new InvalidAutonomyModeException(e.getMessage());
         }
-        return service.launch(userId, workspaceId, number, parsed);
+        return service.launch(userId, workspaceId, number, parsed, keepFocus);
     }
 
     /** Un mode de lancement inconnu (400). */
@@ -65,8 +77,10 @@ public class AutonomyController {
 
     /** [Reprendre la main] sur le chantier autonome du sujet. */
     @PostMapping("/workspaces/{workspaceId}/journey/autonomy/stop")
-    public AutonomyService.RunView stop(@PathVariable UUID workspaceId) {
-        return service.stop(currentUser.requireId(), workspaceId);
+    public AutonomyService.RunView stop(@PathVariable UUID workspaceId,
+            @RequestParam(name = "chantier", required = false) Integer chantier) {
+        // F-221 / SF-221-02 : le chantier visé ; absent = toutes les courses du sujet.
+        return service.stop(currentUser.requireId(), workspaceId, chantier != null && chantier >= 1 ? chantier : null);
     }
 
     /** Les courses du compte, tous sujets : en cours d'abord, puis les 20 dernières (F-220). */
