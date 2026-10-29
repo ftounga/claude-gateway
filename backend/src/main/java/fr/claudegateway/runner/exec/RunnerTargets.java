@@ -22,6 +22,11 @@ public final class RunnerTargets {
      * exception : c'est un état réparable, pas une panne.
      */
     public static RunnerTarget of(Workspace workspace) {
+        // F-221 / SF-221-06 : un tour du fil d'un chantier isolé vise SON worktree (champ transitoire, posé par la
+        // boucle sur l'instance du tour) ; partout ailleurs, l'entité chargée n'en porte pas.
+        if (workspace.getTurnWorktreePath() != null && !workspace.getTurnWorktreePath().isBlank()) {
+            return new RunnerTarget(workspace.getHostId(), workspace.getId(), workspace.getTurnWorktreePath());
+        }
         return new RunnerTarget(workspace.getHostId(), workspace.getId(),
                 workspace.getProjectPath() == null ? "" : workspace.getProjectPath());
     }

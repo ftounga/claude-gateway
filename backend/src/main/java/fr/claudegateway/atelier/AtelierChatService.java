@@ -2190,7 +2190,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         // F-221 / SF-221-01 : un tour de chantier le sait — dans le MESSAGE, jamais au système (F-134).
         Integer lane = workspace == null ? null : workspace.getTurnChantier();
         if (lane != null) {
-            note = laneNote(lane) + (workspace.isTurnSplitView() ? splitNote(lane) : "") + note;
+            note = laneNote(lane) + (workspace.isTurnSplitView() ? splitNote(lane) : "")
+                    + isolationNote(workspace) + note;
         }
         return note.isEmpty() ? consigne : note + consigne;
     }
@@ -2214,6 +2215,103 @@ public class AtelierChatService implements RelayInterruptTarget {
         return workspace.isTurnSplitView()
                 ? fr.claudegateway.atelier.nextsteps.ChantierAnchor.chantierOnly(anchored) : anchored;
     }
+
+    /**
+     * Ce que le tour d'un chantier isolé doit savoir (F-221 / SF-221-06) — dans le MESSAGE, jamais au système :
+     * son worktree et sa branche, ou l'absence d'isolation quand un autre chantier partage le dossier.
+     */
+    static String isolationNote(Workspace workspace) {
+        if (workspace.getTurnWorktreePath() != null) {
+            return "[Isolé] Ce chantier travaille dans son worktree git `" + workspace.getTurnWorktreePath()
+                    + "` (branche `" + workspace.getTurnWorktreeBranch() + "`), parti du dernier commit : la copie "
+                    + "principale et l'autre chantier n'y voient rien. Committe sur cette branche ; en fin de "
+                    + "chantier, propose la fusion — ne fusionne rien sans accord.\n";
+        }
+        if (workspace.isTurnUnisolated()) {
+            return "[Sans isolation] Un autre chantier travaille en même temps dans ce dossier : ne modifie pas les "
+                    + "mêmes fichiers ; si c'est inévitable, dis-le à l'utilisateur.\n";
+        }
+        return "";
+    }
+
+    /**
+     * <b>Isole le fil d'un chantier</b> (F-221 / SF-221-06). Le worktree déjà posé est repris (collant) ; sinon,
+     * si un autre fil du sujet tourne sur ce pod, la gateway crée le worktree du chantier sur le poste (deux
+     * commandes git, tracées dans le journal du runner) et l'enregistre. Sans git ou en cas d'échec : la copie
+     * principale, et le tour le sait. Le fil commun et les projets sans poste ne sont jamais isolés.
+     */
+    void isolateLane(UUID userId, Workspace workspace) {
+        Integer lane = workspace.getTurnChantier();
+        if (lane == null || !workspace.isRunnerTarget() || journeyService == null) {
+            return;
+        }
+        try {
+            java.util.Optional<String[]> existing = journeyService.chantierWorktree(userId, workspace.getId(), lane);
+            if (existing.isPresent()) {
+                workspace.setTurnWorktreePath(existing.get()[0]);
+                workspace.setTurnWorktreeBranch(existing.get()[1]);
+                return;
+            }
+            if (!otherLaneActive(userId, workspace.getId(), lane)) {
+                return; // premier fil actif : la copie principale, comme avant
+            }
+            synchronized (worktreeLock(userId, workspace.getId())) {
+                existing = journeyService.chantierWorktree(userId, workspace.getId(), lane);
+                if (existing.isPresent()) {
+                    workspace.setTurnWorktreePath(existing.get()[0]);
+                    workspace.setTurnWorktreeBranch(existing.get()[1]);
+                    return;
+                }
+                String id = LaneWorktree.id(workspace.getId(), lane);
+                String project = workspace.getProjectPath() == null ? "" : workspace.getProjectPath();
+                RunnerTarget projectTarget = new RunnerTarget(workspace.getHostId(), workspace.getId(), project);
+                RunnerCallResult probe = laneGit(userId, projectTarget, LaneWorktree.probeCommand());
+                if (probe == null || !probe.ok() || probe.content() == null || !probe.content().contains("true")) {
+                    workspace.setTurnUnisolated(true);
+                    log.info("Chantier en parallèle sans isolation : pas de dépôt git (workspace={}, chantier={})",
+                            workspace.getId(), lane);
+                    return;
+                }
+                RunnerCallResult added = laneGit(userId, projectTarget, LaneWorktree.addCommand(project, id));
+                if (!succeeded(added)) {
+                    added = laneGit(userId, projectTarget, LaneWorktree.addExistingBranchCommand(project, id));
+                }
+                if (!succeeded(added)) {
+                    workspace.setTurnUnisolated(true);
+                    log.info("Worktree du chantier non créé (workspace={}, chantier={}) : copie principale",
+                            workspace.getId(), lane);
+                    return;
+                }
+                journeyService.recordChantierWorktree(userId, workspace.getId(), lane, LaneWorktree.hostPath(id),
+                        LaneWorktree.branch(id));
+                workspace.setTurnWorktreePath(LaneWorktree.hostPath(id));
+                workspace.setTurnWorktreeBranch(LaneWorktree.branch(id));
+                log.info("Chantier isolé dans son worktree (workspace={}, chantier={}, chemin={})",
+                        workspace.getId(), lane, LaneWorktree.hostPath(id));
+            }
+        } catch (RuntimeException ex) {
+            workspace.setTurnUnisolated(workspace.getTurnWorktreePath() == null);
+            log.debug("Isolement du chantier ignoré (best-effort) : {}", ex.getMessage());
+        }
+    }
+
+    /** Une commande git de la gateway sur le poste, tracée dans le journal du runner. */
+    private RunnerCallResult laneGit(UUID userId, RunnerTarget target, String command) {
+        String callId = "lane-" + UUID.randomUUID();
+        RunnerCallResult result = runnerToolGateway.bash(target, callId, command, null,
+                LANE_GIT_TIMEOUT_MS, null);
+        if (result != null) {
+            runnerAuditService.recordCall(userId, target, callId, "bash", command, result);
+        }
+        return result;
+    }
+
+    private static boolean succeeded(RunnerCallResult result) {
+        return result != null && result.ok() && (result.exitCode() == null || result.exitCode() == 0);
+    }
+
+    /** Délai d'une commande git d'isolement : un {@code worktree add} recopie l'arbre de travail. */
+    static final long LANE_GIT_TIMEOUT_MS = 120_000L;
 
     static String laneNote(int chantier) {
         return "[Fil du chantier " + chantier + "] Ce tour est dans le FIL DU CHANTIER " + chantier
@@ -2990,6 +3088,9 @@ public class AtelierChatService implements RelayInterruptTarget {
         if (!force) {
             checkRunnerDoor(userId, workspace);
         }
+        // F-221 / SF-221-06 : un chantier qui tourne en même temps qu'un autre fil du sujet travaille dans SON
+        // worktree git (collant) ; sans git, il est prévenu. Best-effort : un échec laisse la copie principale.
+        isolateLane(userId, workspace);
         // Mode « Assistant » sur un projet Git (F-31 / SF-31-03) : cette boucle lit et édite le
         // stockage objet, vide sur ce type de projet. Répondre quand même reviendrait à commenter un
         // projet inexistant ; le mode Terminal, lui, a le dépôt réellement cloné.
@@ -7913,7 +8014,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         // F-148 / SF-148-07 : `glob` est servi depuis l'index de repo — sans aller-retour runner —
         // quand c'est sûr (index amorcé ET aucune mutation du projet ce tour). Après la porte, avant
         // toute émission. Si l'index ne peut pas répondre, on retombe sur le glob runner ci-dessous.
-        if ("glob".equals(tool) && projectOverride == null) {
+        if ("glob".equals(tool) && projectOverride == null && workspace.getTurnWorktreePath() == null) {
             ToolOutcome served = serveGlobFromIndex(userId, workspace, runnerTarget, callId, call, target);
             if (served != null) {
                 return served;

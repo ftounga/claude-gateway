@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-221 / SF-221-06 - UN WORKTREE PAR CHANTIER PARALLELE.
+
+      subject_journey_chantiers.worktree_path : le worktree git du chantier, relatif a la racine du poste
+      (.atelier-chantiers/<id>) ; NULL = copie principale. worktree_branch : sa branche (atelier/chantier-<id>).
+      Pose quand le chantier demarre alors qu'un autre fil du sujet tourne ; collant jusqu'a sa cloture.
+
+      Rollback : les colonnes se retirent.
+    -->
+
+    <changeSet id="179-chantier-worktree" author="claude-gateway">
+        <addColumn tableName="subject_journey_chantiers">
+            <column name="worktree_path" type="varchar(255)"/>
+            <column name="worktree_branch" type="varchar(160)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="subject_journey_chantiers" columnName="worktree_path"/>
+            <dropColumn tableName="subject_journey_chantiers" columnName="worktree_branch"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

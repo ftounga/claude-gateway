@@ -91,6 +91,18 @@ public class SubjectJourneyChantier {
     @Column(name = "updated_at")
     private OffsetDateTime updatedAt;
 
+    /**
+     * Le worktree git du chantier (F-221 / SF-221-06), relatif à la racine du poste
+     * ({@code .atelier-chantiers/<id>}) ; {@code null} = la copie principale. Posé quand le chantier démarre
+     * alors qu'un autre fil du sujet tourne ; collant jusqu'à sa clôture.
+     */
+    @Column(name = "worktree_path", length = 255)
+    private String worktreePath;
+
+    /** La branche du worktree ({@code atelier/chantier-<id>}), où le chantier committe son travail. */
+    @Column(name = "worktree_branch", length = 160)
+    private String worktreeBranch;
+
     @Column(name = "diagnosis", length = 1000000)
     private String diagnosis;
 
