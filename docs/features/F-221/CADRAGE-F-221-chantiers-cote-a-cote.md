@@ -1,6 +1,6 @@
 # CADRAGE F-221 — Deux chantiers côte à côte : un fil par chantier, le terminal en split
 
-**Statut :** cadrage du 2026-10-28, livraison par l'agent (gouvernance `CLAUDE.md`, une PR par SF)
+**Statut :** livré le 2026-10-29 (6/6, PR #1335, #1337, #1339, #1341, #1343, #1345 — non déployé)
 **Demande PO :** 2026-10-28
 **Dépend de :** F-206 (plusieurs chantiers ouverts, focus), F-209 (suites en deux colonnes), F-219 (autonome, SF-219-05 « avancer jusqu'au blocage »), F-220 (tableau du client), F-84 (le tour vit côté serveur), F-150 (worktrees de `task`)
 
