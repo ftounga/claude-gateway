@@ -345,4 +345,11 @@ public class Workspace {
      */
     @Transient
     private Integer turnChantier;
+
+    /**
+     * Le fil du tour est montré dans un <b>volet du split</b> (F-221 / SF-221-05) : ses suites se limitent à
+     * son chantier. Transitoire, comme {@link #turnChantier}.
+     */
+    @Transient
+    private boolean turnSplitView;
 }

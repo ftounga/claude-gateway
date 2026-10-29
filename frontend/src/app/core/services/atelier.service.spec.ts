@@ -337,6 +337,9 @@ describe('AtelierService', () => {
     await service.streamChat('w1', 'go', handlers, 'ACT', false, [], 8);
     const body = JSON.parse((fetchSpy.calls.mostRecent().args[1] as RequestInit).body as string);
     expect(body.chantier).toBe(8);
+    expect(body.split).toBeUndefined();
+    await service.streamChat('w1', 'go', handlers, 'ACT', false, [], 8, true);
+    expect(JSON.parse((fetchSpy.calls.mostRecent().args[1] as RequestInit).body as string).split).toBeTrue();
     await service.streamChat('w1', 'go', handlers);
     const common = JSON.parse((fetchSpy.calls.mostRecent().args[1] as RequestInit).body as string);
     expect(common.chantier).toBeUndefined();

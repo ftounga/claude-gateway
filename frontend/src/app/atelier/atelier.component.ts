@@ -2481,7 +2481,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
     // F-169 / SF-169-02 : les dépôts joints à CE message (première demande du tour) partent avec la
     // requête ; le backend les associe exactement à ce message. Une précision (steer) n'en porte pas.
     void this.atelier.streamChat(id, content, handlers, this.mode(), force, attachments.ids,
-      this.chatLane());
+      this.chatLane(), this.splitPane() !== null);
     // Si la prise en main n'arrive pas, un proxy retient le flux : on suit le tour par fenêtres, EN
     // PLUS du flux d'origine — qui garde la fin du tour s'il est relâché le premier.
     this.armStreamProbe(id, handlers);

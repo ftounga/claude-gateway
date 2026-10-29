@@ -299,4 +299,52 @@ class AtelierChatServiceJourneyTest {
         assertThat(result.nextSteps()).allSatisfy(s -> assertThat(s.scope()).isNull());
         assertThat(result.nextStepsChantier()).isNull();
     }
+
+    private SubjectJourney laneEight() {
+        return SubjectJourney.builder()
+                .userId(userId).workspaceId(workspaceId).mode(JourneyMode.GUIDE).phase(JourneyPhase.EXECUTION)
+                .validatedVersion(1).planVersion(1).chantierNumber(8)
+                .planJson("[{\"title\":\"Diagnostiquer\",\"status\":\"VERIFIE\"},"
+                        + "{\"title\":\"Appliquer la policy NAP V12\",\"status\":\"A_FAIRE\"}]")
+                .build();
+    }
+
+    @Test
+    @DisplayName("SF-221-05 : fil 8 montré en split — note « Écran partagé » au message, système identique, HORS retirées")
+    void splitPaneKeepsOnlyItsChantierSuites() {
+        when(journeyService.forLane(userId, workspaceId, 8)).thenReturn(laneEight());
+        agentProvider.enqueueFinal(CAP_BLOCK);
+        agentProvider.enqueueFinal(CAP_BLOCK);
+
+        service.setLaneSplit(userId, workspaceId, 8, false);
+        AtelierChatService.AtelierChatResult plain = service.chatStreaming(userId, workspaceId, 8, "suite",
+                fr.claudegateway.agent.AgentTurnMode.ACT, listener, false, List.of());
+        String systemPlain = agentProvider.lastRequest.system();
+        service.setLaneSplit(userId, workspaceId, 8, true);
+        AtelierChatService.AtelierChatResult split = service.chatStreaming(userId, workspaceId, 8, "suite",
+                fr.claudegateway.agent.AgentTurnMode.ACT, listener, false, List.of());
+
+        assertThat(plain.nextSteps()).extracting(fr.claudegateway.atelier.nextsteps.NextStep::column)
+                .contains(fr.claudegateway.atelier.nextsteps.NextStep.Column.HORS);
+        assertThat(split.nextSteps()).extracting(fr.claudegateway.atelier.nextsteps.NextStep::title)
+                .containsExactly("Policy NAP");
+        assertThat(agentProvider.messageSnapshots.get(0)).doesNotContain("Écran partagé");
+        assertThat(agentProvider.messageSnapshots.get(1)).contains("[Écran partagé]", "chantier 8");
+        assertThat(agentProvider.lastRequest.system()).as("préfixe stable : la consigne système ne bouge pas")
+                .isEqualTo(systemPlain);
+    }
+
+    @Test
+    @DisplayName("SF-221-05 : le fil commun n'est jamais montré en volet — split sans effet")
+    void splitIsIgnoredOnTheCommonLane() {
+        when(journeyService.forTurn(userId, workspaceId)).thenReturn(laneEight());
+        agentProvider.enqueueFinal(CAP_BLOCK);
+
+        service.setLaneSplit(userId, workspaceId, null, true);
+        AtelierChatService.AtelierChatResult result = service.chatStreaming(userId, workspaceId, "suite", listener);
+
+        assertThat(result.nextSteps()).extracting(fr.claudegateway.atelier.nextsteps.NextStep::column)
+                .contains(fr.claudegateway.atelier.nextsteps.NextStep.Column.HORS);
+        assertThat(agentProvider.messageSnapshots.get(0)).doesNotContain("Écran partagé");
+    }
 }

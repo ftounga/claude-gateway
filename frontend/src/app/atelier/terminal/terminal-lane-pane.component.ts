@@ -200,7 +200,7 @@ export class TerminalLanePaneComponent implements OnChanges, OnDestroy {
     this.detach();
     this.beginTurn();
     void this.atelier.streamChat(this.projectId, content, this.handlers(this.generation, true), 'ACT', false,
-      [], this.chantier);
+      [], this.chantier, true);
   }
 
   /** Interrompt le seul fil de ce volet (SF-221-01) : l'autre volet continue. */

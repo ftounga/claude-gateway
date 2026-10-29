@@ -59,7 +59,7 @@ describe('TerminalLanePaneComponent (F-221)', () => {
     pane.interrupt();
 
     expect(atelier.streamChat).toHaveBeenCalledWith('w1', 'continue le chantier 8', jasmine.any(Object), 'ACT',
-      false, [], 8);
+      false, [], 8, true);
     expect(atelier.interruptChat).toHaveBeenCalledWith('w1', 8);
     expect(pane.draft()).toBe('');
   });

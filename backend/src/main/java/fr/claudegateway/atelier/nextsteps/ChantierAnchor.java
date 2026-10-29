@@ -84,6 +84,20 @@ public final class ChantierAnchor {
     public record Anchored(List<NextStep> steps, Progress chantier) {
     }
 
+    /**
+     * <b>Les suites d'un volet du split</b> (F-221 / SF-221-05) : seules celles du chantier du volet restent —
+     * la colonne « Hors chantier » est retirée. Une suite sans colonne (aucun chantier ouvert) reste.
+     */
+    public static Anchored chantierOnly(Anchored anchored) {
+        if (anchored == null) {
+            return null;
+        }
+        List<NextStep> kept = anchored.steps().stream()
+                .filter(step -> step.column() != NextStep.Column.HORS)
+                .toList();
+        return new Anchored(kept, anchored.chantier());
+    }
+
     /** Vrai si le chantier est ouvert : mode guidé, phase posée et non close. */
     static boolean isOpen(SubjectJourney journey) {
         return journey != null && journey.isGuided() && journey.getPhase() != null

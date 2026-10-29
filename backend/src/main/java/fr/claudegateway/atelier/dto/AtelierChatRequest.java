@@ -25,7 +25,8 @@ import jakarta.validation.constraints.Size;
  * message (isolation {@code user_id} + {@code workspace_id} appliquée au service).</p>
  *
  * <p>{@code chantier} (F-221 / SF-221-01) est le <b>fil</b> de l'envoi : absent ⇒ fil commun du sujet
- * (comportement d'avant) ; sinon le tour relit et écrit le fil de ce chantier.</p>
+ * (comportement d'avant) ; sinon le tour relit et écrit le fil de ce chantier. {@code split} (F-221 /
+ * SF-221-05) dit que ce fil est montré dans un volet du split : ses suites se limitent à son chantier.</p>
  */
 public record AtelierChatRequest(
         @NotBlank(message = "Le message est requis.")
@@ -39,26 +40,39 @@ public record AtelierChatRequest(
         List<UUID> attachedDepositIds,
 
         @jakarta.validation.constraints.Positive(message = "Le chantier est un numéro positif.")
-        Integer chantier) {
+        Integer chantier,
+
+        Boolean split) {
 
     /** Forme d'avant le fil par chantier (F-221 / SF-221-01) : fil commun. */
     public AtelierChatRequest(String message, AgentTurnMode mode, Boolean force, List<UUID> attachedDepositIds) {
-        this(message, mode, force, attachedDepositIds, null);
+        this(message, mode, force, attachedDepositIds, null, null);
+    }
+
+    /** Forme d'avant les suites en split (F-221 / SF-221-05) : le fil n'est pas montré dans un volet. */
+    public AtelierChatRequest(String message, AgentTurnMode mode, Boolean force, List<UUID> attachedDepositIds,
+            Integer chantier) {
+        this(message, mode, force, attachedDepositIds, chantier, null);
+    }
+
+    /** Le fil est montré dans un volet du split (F-221 / SF-221-05) : absent ⇒ non. */
+    public boolean splitOrDefault() {
+        return Boolean.TRUE.equals(split);
     }
 
     /** Forme historique sans mode — conservée pour les appelants (défaut {@code ACT} au service). */
     public AtelierChatRequest(String message) {
-        this(message, null, null, null, null);
+        this(message, null, null, null, null, null);
     }
 
     /** Forme d'avant la porte (F-161 / SF-161-01), conservée pour les appelants existants. */
     public AtelierChatRequest(String message, AgentTurnMode mode) {
-        this(message, mode, null, null, null);
+        this(message, mode, null, null, null, null);
     }
 
     /** Forme d'avant les pièces jointes (F-169 / SF-169-02), conservée pour les appelants existants. */
     public AtelierChatRequest(String message, AgentTurnMode mode, Boolean force) {
-        this(message, mode, force, null, null);
+        this(message, mode, force, null, null, null);
     }
 
     /** « Demander quand même » : absent ⇒ la porte s'applique. */

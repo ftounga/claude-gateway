@@ -1020,6 +1020,7 @@
                     (other)="focusDraft()"
                     (switchChantier)="onSuiteOtherChantier($event)"
                     (launch)="onBoardRequest($event)"
+                    [chantierOnly]="paneTitle !== null"
                   ></app-terminal-next-steps>
                 }
               }
@@ -1597,6 +1598,7 @@
         (other)="focusDraft()"
         (switchChantier)="onSuiteOtherChantier($event)"
         (launch)="onBoardRequest($event)"
+        [chantierOnly]="paneTitle !== null"
       ></app-terminal-next-steps>
     }
 

@@ -888,7 +888,7 @@ describe('AtelierComponent', () => {
         // L'avant-dernier argument est « demander quand même » (F-161 / SF-161-01) : un rejeu ordinaire
         // ne force RIEN — il repasse par la porte du runner comme le tour d'origine.
         // F-169 / SF-169-02 : dernier argument = pièces jointes désignées (vide pour un rejeu).
-        'w1', 'Analyse le dépôt', jasmine.anything(), jasmine.anything(), false, [], null,
+        'w1', 'Analyse le dépôt', jasmine.anything(), jasmine.anything(), false, [], null, false,
       );
       expect(component.unanswered()).toBeFalse();
       expect(component.submitting()).toBeTrue();
@@ -1958,7 +1958,7 @@ describe('AtelierComponent', () => {
     // F-120 / SF-120-02 : le mode du tour est passé en 4e argument (défaut ACT).
     // F-169 / SF-169-02 : 6e argument = pièces jointes désignées (vide sans pièce jointe).
     expect(service.streamChat)
-      .toHaveBeenCalledWith('w1', 'Modifie main.ts', jasmine.anything(), 'ACT', false, [], null);
+      .toHaveBeenCalledWith('w1', 'Modifie main.ts', jasmine.anything(), 'ACT', false, [], null, false);
     const messages = component.messages();
     expect(messages.length).toBe(2);
     expect(messages[0].role).toBe('USER');

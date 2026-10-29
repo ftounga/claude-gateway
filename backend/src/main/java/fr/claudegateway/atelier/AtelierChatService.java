@@ -2190,7 +2190,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         // F-221 / SF-221-01 : un tour de chantier le sait — dans le MESSAGE, jamais au système (F-134).
         Integer lane = workspace == null ? null : workspace.getTurnChantier();
         if (lane != null) {
-            note = laneNote(lane) + note;
+            note = laneNote(lane) + (workspace.isTurnSplitView() ? splitNote(lane) : "") + note;
         }
         return note.isEmpty() ? consigne : note + consigne;
     }
@@ -2199,6 +2199,22 @@ public class AtelierChatService implements RelayInterruptTarget {
      * Ce qu'un tour du fil d'un chantier doit savoir (F-221 / SF-221-01) : il ne relit que le passé commun du
      * sujet et ce chantier, et ses outils du parcours visent ce chantier par défaut.
      */
+    /**
+     * Le fil est montré dans un volet du split (F-221 / SF-221-05) : ses suites se limitent à son chantier. Dans
+     * le MESSAGE du tour ; la doctrine des suites du système (F-209) reste identique à l'octet.
+     */
+    static String splitNote(int chantier) {
+        return "[Écran partagé] Ce volet n'affiche que les suites du chantier " + chantier + " : propose "
+                + "uniquement des suites de ce chantier, pas de suite hors chantier ce tour.\n";
+    }
+
+    /** Les suites d'une réponse par question, limitées au chantier du volet en split (F-221 / SF-221-05). */
+    private static fr.claudegateway.atelier.nextsteps.ChantierAnchor.Anchored splitFiltered(Workspace workspace,
+            fr.claudegateway.atelier.nextsteps.ChantierAnchor.Anchored anchored) {
+        return workspace.isTurnSplitView()
+                ? fr.claudegateway.atelier.nextsteps.ChantierAnchor.chantierOnly(anchored) : anchored;
+    }
+
     static String laneNote(int chantier) {
         return "[Fil du chantier " + chantier + "] Ce tour est dans le FIL DU CHANTIER " + chantier
                 + " : tu relis le passé commun du sujet et ce chantier seulement, pas les autres chantiers en "
@@ -2928,6 +2944,24 @@ public class AtelierChatService implements RelayInterruptTarget {
     private final java.util.Map<String, java.util.Set<Integer>> activeLanes =
             new java.util.concurrent.ConcurrentHashMap<>();
 
+    /** Les fils montrés dans un volet du split (F-221 / SF-221-05), clefés comme l'état du tour. */
+    private final java.util.Set<String> splitLanes = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /**
+     * L'écran dit si le fil {@code chantier} est montré dans un volet du split (F-221 / SF-221-05) : ses suites
+     * se limitent alors à son chantier. Le fil commun n'est jamais montré en volet ; sans effet pour lui.
+     */
+    public void setLaneSplit(UUID userId, UUID workspaceId, Integer chantier, boolean split) {
+        if (chantier == null) {
+            return;
+        }
+        if (split) {
+            splitLanes.add(turnKey(userId, workspaceId, chantier));
+        } else {
+            splitLanes.remove(turnKey(userId, workspaceId, chantier));
+        }
+    }
+
     /** Vrai si une boucle tourne sur ce sujet, ici, dans un autre fil que {@code chantier}. */
     boolean otherLaneActive(UUID userId, UUID workspaceId, Integer chantier) {
         java.util.Set<Integer> lanes = activeLanes.get(turnKey(userId, workspaceId));
@@ -2947,6 +2981,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         Workspace workspace = workspaceService.requireOwned(userId, workspaceId); // 404 si non possédé (isolation) — TOUJOURS en premier
         // F-221 / SF-221-01 : le fil du tour voyage avec l'instance chargée pour CE tour, jamais persisté.
         workspace.setTurnChantier(chantier);
+        // F-221 / SF-221-05 : le fil est-il montré dans un volet du split ? (marque posée par l'écran)
+        workspace.setTurnSplitView(chantier != null && splitLanes.contains(turnKey(userId, workspaceId, chantier)));
         // F-161 / SF-161-01 : LA PORTE. Un tour qui a besoin du poste et ne l'aura pas doit être
         // refusé ICI — avant le contexte, avant le modèle, avant le moindre jeton. Sur la session
         // mesurée du 25/09, 8 tours « Non concluant » ont coûté 11 % de la facture pour DÉCOUVRIR
@@ -4285,6 +4321,10 @@ public class AtelierChatService implements RelayInterruptTarget {
             fr.claudegateway.atelier.journey.SubjectJourney journeyForSteps = journeyOf(userId, workspace);
             anchoredSteps = fr.claudegateway.atelier.nextsteps.ChantierAnchor.apply(nextStepsExtraction.steps(),
                     journeyForSteps, waitsOf(userId, workspace, journeyForSteps));
+            if (workspace.isTurnSplitView()) {
+                // F-221 / SF-221-05 : un volet du split ne propose que les suites de son chantier.
+                anchoredSteps = fr.claudegateway.atelier.nextsteps.ChantierAnchor.chantierOnly(anchoredSteps);
+            }
         }
         List<fr.claudegateway.atelier.nextsteps.NextStep> nextSteps = anchoredSteps.steps();
         // F-210 / SF-210-01 : les questions du tour sont closes — abouties si le tour l'est, sinon non
@@ -4301,8 +4341,9 @@ public class AtelierChatService implements RelayInterruptTarget {
             java.util.Map<String, String> waitsAtEnd = waitsOf(userId, workspace, journeyAtEnd);
             List<fr.claudegateway.atelier.questions.QuestionAnswers.Answer> answers =
                     fr.claudegateway.atelier.questions.QuestionAnswers.parse(finalText, questionsSnapshot,
-                            anchorSteps ? steps -> fr.claudegateway.atelier.nextsteps.ChantierAnchor.apply(steps,
-                                    journeyAtEnd, waitsAtEnd) : null);
+                            anchorSteps ? steps -> splitFiltered(workspace,
+                                    fr.claudegateway.atelier.nextsteps.ChantierAnchor.apply(steps, journeyAtEnd,
+                                            waitsAtEnd)) : null);
             questionsOfTurn.markUnanswered(fr.claudegateway.atelier.questions.QuestionAnswers.unanswered(answers));
             questionsSnapshot = questionsOfTurn.snapshot().withAnswers(answers);
             listener.onQuestions(questionsSnapshot);
