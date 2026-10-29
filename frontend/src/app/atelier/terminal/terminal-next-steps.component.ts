@@ -456,6 +456,12 @@ export class TerminalNextStepsComponent {
    */
   readonly globalKeys = input<boolean>(true);
 
+  /**
+   * **Volet du split** (F-221 / SF-221-05) : seules les suites du chantier du volet s'affichent — la colonne
+   * « Hors chantier » disparaît, y compris pour les tours relus d'avant le split.
+   */
+  readonly chantierOnly = input<boolean>(false);
+
   /** Les options cochées : leur enchaînement, à poser dans la saisie — sans envoi (vide ⇒ tout décoché). */
   readonly pick = output<string>();
   /** « Autre chose », ou Entrée après avoir coché : donner la main à la saisie. */
@@ -477,8 +483,8 @@ export class TerminalNextStepsComponent {
     .filter((x) => x.step.column === 'CHANTIER'));
 
   /** Colonne « Hors chantier » (F-209) : tout le reste. */
-  readonly right = computed(() => this.shown().map((step, index) => ({ step, index }))
-    .filter((x) => x.step.column !== 'CHANTIER'));
+  readonly right = computed(() => this.chantierOnly() ? []
+    : this.shown().map((step, index) => ({ step, index })).filter((x) => x.step.column !== 'CHANTIER'));
 
   /** « Chantier 4 — Migration » (F-209). */
   readonly chantierHeading = computed(() => {

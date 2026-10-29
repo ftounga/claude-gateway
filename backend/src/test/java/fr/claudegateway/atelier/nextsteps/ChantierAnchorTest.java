@@ -333,4 +333,19 @@ class ChantierAnchorTest {
         assertThat(anchored.get("prerequisites").get(0).get("level").asInt()).isEqualTo(1);
         assertThat(anchored.get("blockedBy").get(0).asText()).isEqualTo("étape 4");
     }
+
+    @org.junit.jupiter.api.Test
+    @org.junit.jupiter.api.DisplayName("F-221 / SF-221-05 : un volet du split ne garde que la colonne de son chantier")
+    void chantierOnlyDropsTheHorsColumn() {
+        NextStep chantier = new NextStep("a", "w", null, "d", null, null, null, 8, NextStep.Column.CHANTIER,
+                null, null, null, null);
+        NextStep hors = new NextStep("b", "w", null, "d", null, null, null, null, NextStep.Column.HORS,
+                null, null, null, null);
+        NextStep plain = new NextStep("c", "w", null, "d", null, null, null, null, null, null, null, null, null);
+        ChantierAnchor.Anchored anchored = new ChantierAnchor.Anchored(java.util.List.of(chantier, hors, plain), null);
+
+        org.assertj.core.api.Assertions.assertThat(ChantierAnchor.chantierOnly(anchored).steps())
+                .containsExactly(chantier, plain);
+        org.assertj.core.api.Assertions.assertThat(ChantierAnchor.chantierOnly(null)).isNull();
+    }
 }

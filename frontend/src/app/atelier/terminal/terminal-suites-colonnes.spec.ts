@@ -72,6 +72,14 @@ describe('F-209 / SF-209-02 — suites en deux colonnes', () => {
     expect(composeLaunch(STEPS[0], [])).toBe('Bascule le DNS.');
   });
 
+  it('F-221 / SF-221-05 : dans un volet du split, une seule colonne — celle du chantier', () => {
+    fixture.componentRef.setInput('chantierOnly', true);
+    fixture.detectChanges();
+    expect(root().querySelector('.cap__col--hors')).toBeNull();
+    expect(root().querySelector('.cap__col--chantier .col__title')?.textContent).toContain('Chantier 4 — Migration');
+    expect(root().querySelectorAll('.cap__col--chantier .opt').length).toBe(2);
+  });
+
   it('deux colonnes : « Chantier 4 — Migration » avec sa mini-barre à gauche, « Hors chantier » à droite', () => {
     const left = root().querySelector('.cap__col--chantier') as HTMLElement;
     const right = root().querySelector('.cap__col--hors') as HTMLElement;

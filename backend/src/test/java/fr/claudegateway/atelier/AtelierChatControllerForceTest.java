@@ -94,6 +94,24 @@ class AtelierChatControllerForceTest {
                 .isFalse();
     }
 
+    @Test
+    void leFilEtLeSplitDuVoletArriventALaBoucle() throws Exception {
+        Capture capture = new Capture();
+        AtomicReference<Object> lane = new AtomicReference<>();
+        when(chatService.chatStreaming(any(), any(), any(), any(), any(), any(), anyBoolean(), any()))
+                .thenAnswer(invocation -> {
+                    lane.set(invocation.getArgument(2));
+                    capture.latch.countDown();
+                    return new AtelierChatResult("terminé", List.of(), UUID.randomUUID());
+                });
+
+        controller().stream(WORKSPACE, new AtelierChatRequest("avance", null, null, null, 8, true));
+
+        assertThat(capture.latch.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(lane.get()).as("F-221 / SF-221-01 : le fil du volet").isEqualTo(8);
+        Mockito.verify(chatService).setLaneSplit(any(), Mockito.eq(WORKSPACE), Mockito.eq(8), Mockito.eq(true));
+    }
+
     /** Une requête portant explicitement le drapeau, comme l'écran l'envoie après un refus. */
     private static AtelierChatRequest forceRequest(boolean force) {
         return new AtelierChatRequest("lance les tests", null, force);

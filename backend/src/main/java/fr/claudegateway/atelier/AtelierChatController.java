@@ -123,6 +123,7 @@ public class AtelierChatController {
     @PostMapping
     public AtelierChatResponse chat(@PathVariable UUID id, @Valid @RequestBody AtelierChatRequest request) {
         atelierAccess.requireTerminalAccess(id);
+        atelierChatService.setLaneSplit(currentUser.requireId(), id, request.chantier(), request.splitOrDefault());
         AtelierChatResult result = atelierChatService.chat(currentUser.requireId(), id, request.chantier(),
                 request.message(), request.modeOrDefault(), request.forceOrDefault(),
                 request.attachedDepositIdsOrEmpty());
@@ -164,6 +165,8 @@ public class AtelierChatController {
         List<UUID> attachedDepositIds = request.attachedDepositIdsOrEmpty();
         // F-221 / SF-221-01 : le fil de l'envoi — null = fil commun du sujet.
         Integer chantier = request.chantier();
+        // F-221 / SF-221-05 : ce fil est-il montré dans un volet du split ? (ses suites s'y limitent)
+        atelierChatService.setLaneSplit(userId, id, chantier, request.splitOrDefault());
         SseEmitter emitter = newEmitter();
         fr.claudegateway.chat.SseStreamDispatch.submit(chatStreamExecutor, emitter,
                 () -> relay(emitter, userId, id, chantier, request.message(), mode, hasAccess, admin, force,
