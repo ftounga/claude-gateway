@@ -97,7 +97,27 @@
 }
 
 @if (activeWorkspaceId()) {
+  <!-- F-221 / SF-221-03 — LE SPLIT : deux chantiers actifs, deux volets (gauche = le chantier au focus,
+       droite = l'autre). Sur téléphone, des onglets : un volet à la fois, les deux restent branchés. -->
+  <div class="lane-split" [class.lane-split--on]="splitPane() !== null && !narrowScreen()"
+       [class.lane-split--tabs]="splitPane() !== null && narrowScreen()">
+  @if (splitPane() !== null && narrowScreen()) {
+    <div class="lane-tabs" role="tablist" aria-label="Volets du sujet">
+      <button type="button" role="tab" class="lane-tab" [class.lane-tab--on]="shownPane() === 'left'"
+              [attr.aria-selected]="shownPane() === 'left'" (click)="shownPane.set('left')">
+        {{ chatLane() ? 'Chantier ' + chatLane() : 'Fil du sujet' }}
+      </button>
+      <button type="button" role="tab" class="lane-tab" [class.lane-tab--on]="shownPane() === 'right'"
+              [attr.aria-selected]="shownPane() === 'right'" (click)="shownPane.set('right')">
+        Chantier {{ splitPane()!.chantier }}
+      </button>
+    </div>
+  }
+  <div class="lane-split__pane" [hidden]="splitPane() !== null && narrowScreen() && shownPane() === 'right'">
   <app-atelier-terminal
+    [paneTitle]="splitPane() !== null ? leftPaneTitle() : null"
+    (closePane)="closeLeftPane()"
+    (focusChantierChange)="onFocusChantierChange($event)"
     [projectName]="activeName()"
     [projectId]="activeWorkspaceId()"
     [hostName]="activeHostName()"
@@ -190,6 +210,27 @@
     [handoffFromName]="handoffOriginLabel()"
     (handoffReturn)="returnFromHandoff()"
   ></app-atelier-terminal>
+  </div>
+  @if (splitPane(); as pane) {
+    <div class="lane-split__pane lane-split__pane--right"
+         [hidden]="narrowScreen() && shownPane() === 'left'">
+      <app-terminal-lane-pane
+        [projectId]="activeWorkspaceId()!"
+        [chantier]="pane.chantier"
+        [projectName]="activeName()"
+        [paneTitle]="'Chantier ' + pane.chantier"
+        [autonomous]="pane.autonomous"
+        [hostName]="activeHostName()"
+        [hostId]="activeHostId()"
+        [engine]="engine()"
+        [executionTarget]="executionTarget()"
+        [runnerStatus]="displayedRunnerStatus()"
+        [localFolder]="localFolder()"
+        (closed)="closeRightPane()"
+      ></app-terminal-lane-pane>
+    </div>
+  }
+  </div>
 } @else {
 <div class="atelier-layout">
   <!-- Sidebar : projets (workspaces) -->

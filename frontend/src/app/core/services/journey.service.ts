@@ -29,8 +29,10 @@ export class JourneyService {
   }
 
   /** Le mode et la phase du sujet ; Libre s'il n'a jamais été décidé. */
-  get(workspaceId: string): Observable<SubjectJourney> {
-    return this.http.get<SubjectJourney>(`/api/workspaces/${workspaceId}/journey`);
+  get(workspaceId: string, chantier: number | null = null): Observable<SubjectJourney> {
+    // F-221 / SF-221-03 : `chantier` = la vue du fil de ce chantier (volet du split), focus persisté intact.
+    return this.http.get<SubjectJourney>(`/api/workspaces/${workspaceId}/journey`
+      + (chantier ? `?chantier=${encodeURIComponent(String(chantier))}` : ''));
   }
 
   /**
@@ -53,28 +55,33 @@ export class JourneyService {
   }
 
   /** [Valider le plan] (SF-176-03) : un clic valide le plan entier, à la version vue. */
-  validatePlan(workspaceId: string, version: number): Observable<SubjectJourney> {
-    return this.http.post<SubjectJourney>(`/api/workspaces/${workspaceId}/journey/plan/validate`, { version });
+  validatePlan(workspaceId: string, version: number, chantier: number | null = null): Observable<SubjectJourney> {
+    return this.http.post<SubjectJourney>(`/api/workspaces/${workspaceId}/journey/`
+      + (chantier ? `chantiers/${chantier}/` : '') + 'plan/validate', { version });
   }
 
   /** [Planifier] (SF-176-05) : le diagnostic est accepté, le sujet passe en Plan. */
-  confirmDiagnosis(workspaceId: string): Observable<SubjectJourney> {
-    return this.http.post<SubjectJourney>(`/api/workspaces/${workspaceId}/journey/diagnosis/confirm`, {});
+  confirmDiagnosis(workspaceId: string, chantier: number | null = null): Observable<SubjectJourney> {
+    return this.http.post<SubjectJourney>(`/api/workspaces/${workspaceId}/journey/`
+      + (chantier ? `chantiers/${chantier}/` : '') + 'diagnosis/confirm', {});
   }
 
   /** [Continuer l'investigation] (SF-176-05). */
-  dismissDiagnosis(workspaceId: string): Observable<SubjectJourney> {
-    return this.http.post<SubjectJourney>(`/api/workspaces/${workspaceId}/journey/diagnosis/dismiss`, {});
+  dismissDiagnosis(workspaceId: string, chantier: number | null = null): Observable<SubjectJourney> {
+    return this.http.post<SubjectJourney>(`/api/workspaces/${workspaceId}/journey/`
+      + (chantier ? `chantiers/${chantier}/` : '') + 'diagnosis/dismiss', {});
   }
 
   /** [Clore le sujet] (SF-176-05). */
-  close(workspaceId: string): Observable<SubjectJourney> {
-    return this.http.post<SubjectJourney>(`/api/workspaces/${workspaceId}/journey/close`, {});
+  close(workspaceId: string, chantier: number | null = null): Observable<SubjectJourney> {
+    return this.http.post<SubjectJourney>(`/api/workspaces/${workspaceId}/journey/`
+      + (chantier ? `chantiers/${chantier}/` : '') + 'close', {});
   }
 
   /** [Pas encore] — la clôture proposée est écartée (SF-176-05). */
-  dismissClose(workspaceId: string): Observable<SubjectJourney> {
-    return this.http.post<SubjectJourney>(`/api/workspaces/${workspaceId}/journey/close/dismiss`, {});
+  dismissClose(workspaceId: string, chantier: number | null = null): Observable<SubjectJourney> {
+    return this.http.post<SubjectJourney>(`/api/workspaces/${workspaceId}/journey/`
+      + (chantier ? `chantiers/${chantier}/` : '') + 'close/dismiss', {});
   }
 
   /** [Basculer sur le chantier N] (F-206) : le chantier ouvert `number` passe au focus. */

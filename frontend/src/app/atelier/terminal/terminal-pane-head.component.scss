@@ -1,0 +1,52 @@
+/* EN-TÊTE DE VOLET (F-221 / SF-221-03) : une ligne, l'encre de la barre, aucune couleur nouvelle. */
+:host {
+  display: block;
+}
+
+.terminal-pane-head {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  min-width: 0;
+  padding: var(--cg-space-1) var(--cg-space-3);
+  border-bottom: 1px solid var(--cg-navy-2);
+  color: var(--cg-surface);
+  font-size: 13px;
+}
+
+.terminal-pane-head__icon {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+  color: var(--cg-orange-2);
+}
+
+.terminal-pane-head__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.terminal-pane-head__activity {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  color: var(--cg-divider);
+  white-space: nowrap;
+}
+
+.terminal-pane-head__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--cg-success);
+}
+
+.terminal-pane-head__close {
+  color: var(--cg-surface);
+  flex: 0 0 auto;
+}
+

@@ -33,9 +33,17 @@ public class SubjectJourneyController {
 
     /** Le mode, la phase et le plan du sujet ; Libre s'il n'a jamais été décidé. */
     @GetMapping
-    public SubjectJourneyResponse get(@PathVariable UUID workspaceId) {
+    public SubjectJourneyResponse get(@PathVariable UUID workspaceId,
+            @org.springframework.web.bind.annotation.RequestParam(name = "chantier", required = false)
+            Integer chantier) {
         UUID userId = currentUser.requireId();
-        return respond(userId, workspaceId, service.get(userId, workspaceId));
+        SubjectJourney journey = service.get(userId, workspaceId); // 404 — TOUJOURS en premier
+        // F-221 / SF-221-03 : la vue du FIL d'un chantier (volet du split) — le chantier au focus de la vue,
+        // sans toucher au focus persisté ; un chantier qui n'est plus ouvert retombe sur le focus.
+        if (chantier != null && chantier >= 1) {
+            journey = service.forLane(userId, workspaceId, chantier);
+        }
+        return respond(userId, workspaceId, journey);
     }
 
     /** Le menu du terminal : Libre ou Guidé (SF-176-01). */

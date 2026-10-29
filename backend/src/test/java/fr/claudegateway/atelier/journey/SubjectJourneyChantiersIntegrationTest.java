@@ -497,4 +497,20 @@ class SubjectJourneyChantiersIntegrationTest {
         workspace.setTurnChantier(null);
         assertThat(JourneyToolExecutor.chantierOf(null, workspace)).as("fil commun : le focus").isNull();
     }
+
+    @Test
+    @DisplayName("SF-221-03 : GET /journey?chantier=N rend la vue du fil N, le focus persisté intact ; Bob 404")
+    void laneViewOverHttp() throws Exception {
+        chantierOneExecuting();
+        post(aliceToken, "chantiers", "{\"title\":\"Migration DNS\"}"); // focus = 2
+        mockMvc.perform(get("/api/workspaces/" + workspaceId + "/journey").param("chantier", "1").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.chantier.number", is(1)))
+                .andExpect(jsonPath("$.phase", is("EXECUTION")));
+        getJourney(aliceToken).andExpect(jsonPath("$.chantier.number", is(2)));
+        mockMvc.perform(get("/api/workspaces/" + workspaceId + "/journey").param("chantier", "1").contextPath("/api")
+                        .header("Authorization", "Bearer " + bobToken))
+                .andExpect(status().isNotFound());
+    }
 }
