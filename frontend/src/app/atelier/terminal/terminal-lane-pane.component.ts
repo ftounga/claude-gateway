@@ -31,7 +31,7 @@ import {
   AtelierThreadItem,
 } from '../atelier.types';
 import { toThreadItem } from '../thread-item';
-import { AtelierTerminalComponent } from './atelier-terminal.component';
+import { AtelierTerminalComponent, ParallelLaunchRequest } from './atelier-terminal.component';
 import { chatStepsToBlocks } from './chat-steps';
 
 /**
@@ -62,6 +62,7 @@ import { chatStepsToBlocks } from './chat-steps';
       [paneTitle]="paneTitle"
       [paneActivity]="activity()"
       (closePane)="closed.emit()"
+      (parallelLaunch)="parallelLaunch.emit($event)"
       [messages]="messages()"
       [streaming]="streaming()"
       [streamingActive]="streaming() !== null"
@@ -104,6 +105,9 @@ export class TerminalLanePaneComponent implements OnChanges, OnDestroy {
 
   /** [Fermer ce volet] : le chantier continue côté serveur. */
   @Output() closed = new EventEmitter<void>();
+
+  /** Un autre chantier demandé « en parallèle » depuis ce volet (F-221 / SF-221-04). */
+  @Output() parallelLaunch = new EventEmitter<ParallelLaunchRequest>();
 
   readonly messages = signal<AtelierThreadItem[]>([]);
   readonly streaming = signal<AtelierExecStreamingItem | null>(null);

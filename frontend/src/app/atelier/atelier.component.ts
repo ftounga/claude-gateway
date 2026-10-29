@@ -50,6 +50,15 @@ import { toThreadItem } from './thread-item';
 export { toThreadItem } from './thread-item';
 import { JourneyService } from '../core/services/journey.service';
 import { AtelierLane } from '../core/services/atelier.service';
+import { AutonomyService } from '../core/services/autonomy.service';
+import { AutonomyMode } from '../core/models/autonomy.models';
+import { ParallelLaunchRequest } from './terminal/atelier-terminal.component';
+import {
+  ParallelLaunchDecision,
+  ParallelLaunchDialogComponent,
+  ParallelLaunchDialogData,
+} from './parallel/parallel-launch-dialog.component';
+import { parallelChoice } from './parallel/parallel-launch';
 import {
   blockLabel as blockLabelOf,
   formatElapsed,
@@ -402,6 +411,78 @@ export class AtelierComponent implements OnInit, OnDestroy {
   /** Volets refermés à la main : ils ne se rouvrent pas tant que leur chantier reste actif. */
   private readonly dismissedLanes = new Set<number>();
 
+  /** Un volet ouvert à la main (« Ouvrir à côté ») reste ouvert, même chantier inactif (SF-221-04). */
+  private pinnedPane: number | null = null;
+
+  private readonly autonomyApi = inject(AutonomyService);
+
+  /**
+   * **« Lancer le chantier N en parallèle ? »** (F-221 / SF-221-04) — demandé par le tableau des chantiers
+   * ou une suite, depuis un volet. L'overlay lit le préflight, propose le mode (avancer jusqu'au blocage
+   * d'abord) ; valider fait partir le chantier à droite, SANS phrase dans le chat.
+   */
+  onParallelLaunch(request: ParallelLaunchRequest): void {
+    const id = this.activeWorkspaceId();
+    if (!id) {
+      return;
+    }
+    this.autonomyApi.board(id).pipe(catchError(() => of(null))).subscribe((board) => {
+      if (!this.isDisplayed(id)) {
+        return;
+      }
+      const entry = board?.chantiers.find((c) => c.number === request.number) ?? null;
+      const choice = parallelChoice(entry, request.mode);
+      const data: ParallelLaunchDialogData = {
+        number: request.number, title: entry?.title ?? null, choice, offerSwitch: request.source === 'suite',
+      };
+      this.dialog.open<ParallelLaunchDialogComponent, ParallelLaunchDialogData, ParallelLaunchDecision>(
+        ParallelLaunchDialogComponent, { data, autoFocus: 'dialog' }).afterClosed().subscribe((decision) => {
+        if (!this.isDisplayed(id)) {
+          return;
+        }
+        if (decision === 'launch' && choice.mode) {
+          this.launchInParallel(id, request.number, choice.mode);
+        } else if (decision === 'open') {
+          this.openRightPane(request.number, false);
+        } else if (decision === 'switch') {
+          this.journeyApi.focus(id, request.number).subscribe({
+            next: () => this.terminalView?.loadJourney(id),
+            error: () => this.notifyError("Le chantier n'a pas pu passer au premier plan."),
+          });
+        }
+      });
+    });
+  }
+
+  /** Fait partir le chantier à droite (focus gardé à gauche) ; un refus ouvre quand même son volet. */
+  private launchInParallel(id: string, number: number, mode: AutonomyMode): void {
+    this.autonomyApi.launch(id, number, mode, true).subscribe({
+      next: () => {
+        if (this.isDisplayed(id)) {
+          this.openRightPane(number, true);
+        }
+      },
+      error: (err: HttpErrorResponse) => {
+        if (!this.isDisplayed(id)) {
+          return;
+        }
+        const message = (err.error as { message?: string } | null)?.message;
+        this.notifyError(message ?? `Le chantier ${number} n'a pas pu partir.`);
+        this.openRightPane(number, false);
+      },
+    });
+  }
+
+  /** Ouvre le volet de droite sur ce chantier (deux volets au plus : il remplace l'actuel). */
+  private openRightPane(number: number, autonomous: boolean): void {
+    this.dismissedLanes.delete(number);
+    this.pinnedPane = autonomous ? null : number;
+    this.splitPane.set({ chantier: number, autonomous });
+    if (this.narrowScreen()) {
+      this.shownPane.set('right');
+    }
+  }
+
   /** Titre du volet de gauche en split. */
   leftPaneTitle(): string {
     const lane = this.chatLane();
@@ -442,6 +523,10 @@ export class AtelierComponent implements OnInit, OnDestroy {
         }
         const decision = splitFor(lanes ?? [], this.chatLane(), this.dismissedLanes);
         const current = this.splitPane();
+        this.otherActiveLanes.set(decision.others);
+        if (current !== null && current.chantier === this.pinnedPane) {
+          return; // volet ouvert à la main : il reste jusqu'à ce qu'on le ferme
+        }
         if (decision.right === null) {
           this.splitPane.set(null);
         } else if (current?.chantier !== decision.right.chantier
@@ -460,6 +545,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
     if (pane) {
       this.dismissedLanes.add(pane.chantier);
     }
+    this.pinnedPane = null;
     this.splitPane.set(null);
     this.shownPane.set('left');
   }
@@ -493,6 +579,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.otherActiveLanes.set(0);
     this.shownPane.set('left');
     this.dismissedLanes.clear();
+    this.pinnedPane = null;
   }
 
   /** Attribut `accept` du sélecteur de fichier PC (texte/code uniquement, SF-28-13). */

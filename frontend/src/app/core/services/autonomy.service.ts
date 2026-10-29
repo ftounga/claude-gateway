@@ -21,14 +21,22 @@ export class AutonomyService {
    * [Lancer en autonome] le chantier N — aucune confirmation (F-218). `UNTIL_BLOCKED` : [Avancer jusqu'au
    * blocage] (SF-219-05), même route.
    */
-  launch(workspaceId: string, number: number, mode: AutonomyMode = 'STRICT'): Observable<AutonomyRun> {
+  launch(workspaceId: string, number: number, mode: AutonomyMode = 'STRICT', keepFocus = false):
+      Observable<AutonomyRun> {
     const url = `/api/workspaces/${workspaceId}/journey/chantiers/${number}/autonomy`;
-    return this.http.post<AutonomyRun>(mode === 'UNTIL_BLOCKED' ? `${url}?mode=UNTIL_BLOCKED` : url, {});
+    const params = [mode === 'UNTIL_BLOCKED' ? 'mode=UNTIL_BLOCKED' : '',
+      // F-221 / SF-221-04 : un départ « en parallèle » ne vole pas le focus du volet de gauche.
+      keepFocus ? 'keepFocus=true' : ''].filter((p) => p).join('&');
+    return this.http.post<AutonomyRun>(params ? `${url}?${params}` : url, {});
   }
 
-  /** [Reprendre la main] sur le chantier autonome du sujet. */
-  stop(workspaceId: string): Observable<AutonomyRun> {
-    return this.http.post<AutonomyRun>(`/api/workspaces/${workspaceId}/journey/autonomy/stop`, {});
+  /**
+   * [Reprendre la main] sur le chantier autonome `chantier` du sujet (F-221 / SF-221-02) ; sans chantier,
+   * toutes les courses du sujet.
+   */
+  stop(workspaceId: string, chantier: number | null = null): Observable<AutonomyRun> {
+    return this.http.post<AutonomyRun>(`/api/workspaces/${workspaceId}/journey/autonomy/stop`
+      + (chantier ? `?chantier=${chantier}` : ''), {});
   }
 
   /** Les courses du compte, tous sujets (F-220). */

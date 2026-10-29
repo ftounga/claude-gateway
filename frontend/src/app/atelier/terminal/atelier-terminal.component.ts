@@ -198,6 +198,7 @@ import {
 import { TerminalJourneyChipComponent } from './terminal-journey-chip.component';
 import { TerminalJourneyChantiersComponent } from './terminal-journey-chantiers.component';
 import { TerminalChantiersBoardComponent } from './terminal-chantiers-board.component';
+import { AutonomyMode } from '../../core/models/autonomy.models';
 import { TerminalPaneHeadComponent } from './terminal-pane-head.component';
 import { TerminalHandComponent } from './terminal-hand.component';
 import { Hand, HandTarget, handOf } from './terminal-hand';
@@ -1095,6 +1096,24 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
   /** [Fermer ce volet] (F-221 / SF-221-03) : le chantier continue côté serveur. */
   @Output() closePane = new EventEmitter<void>();
+
+  /**
+   * **Lancer un autre chantier en parallèle ?** (F-221 / SF-221-04) — le tableau des chantiers (un autre
+   * chantier que celui du volet) ou une suite « Basculer sur le chantier N ». L'écran ouvre l'overlay.
+   */
+  @Output() parallelLaunch = new EventEmitter<ParallelLaunchRequest>();
+
+  /**
+   * Une suite propose un autre chantier (F-206) : en lecture seule, la bascule d'avant ; sinon l'overlay
+   * « en parallèle » (F-221 / SF-221-04), qui garde [Basculer ici].
+   */
+  onSuiteOtherChantier(number: number): void {
+    if (this.readOnly || !this.projectId) {
+      this.onSwitchChantier(number);
+      return;
+    }
+    this.parallelLaunch.emit({ number, mode: null, source: 'suite' });
+  }
 
   /**
    * Le chantier au focus a changé (F-221 / SF-221-03) : l'écran ordinaire suit le FIL de ce chantier.
@@ -3814,4 +3833,11 @@ function switch_(status: string): string {
     default:
       return '\u00B7';
   }
+}
+
+/** Une demande « en parallèle » (F-221 / SF-221-04) : le chantier, le mode demandé (ou à choisir), l'origine. */
+export interface ParallelLaunchRequest {
+  number: number;
+  mode: AutonomyMode | null;
+  source: 'board' | 'suite';
 }

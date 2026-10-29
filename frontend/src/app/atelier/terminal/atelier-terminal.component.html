@@ -1018,7 +1018,7 @@
                     [globalKeys]="isFirstCardWithSteps(message, answer)"
                     (pick)="onNextStepPick($event)"
                     (other)="focusDraft()"
-                    (switchChantier)="onSwitchChantier($event)"
+                    (switchChantier)="onSuiteOtherChantier($event)"
                     (launch)="onBoardRequest($event)"
                   ></app-terminal-next-steps>
                 }
@@ -1595,7 +1595,7 @@
         [turnKey]="lastTurnId()"
         (pick)="onNextStepPick($event)"
         (other)="focusDraft()"
-        (switchChantier)="onSwitchChantier($event)"
+        (switchChantier)="onSuiteOtherChantier($event)"
         (launch)="onBoardRequest($event)"
       ></app-terminal-next-steps>
     }
@@ -2025,6 +2025,8 @@
       [journey]="journey()"
       [workspaceId]="projectId"
       [canSend]="!readOnly && !liveLimitReached"
+      [shownChantier]="laneChantier ?? focusChantier()"
+      (parallel)="closeBoard(); parallelLaunch.emit({ number: $event.number, mode: $event.mode, source: 'board' })"
       (request)="onBoardRequest($event)"
       (focus)="onSwitchChantier($event)"
       (closed)="closeBoard()"

@@ -963,6 +963,15 @@ export class TerminalChantiersBoardComponent {
   /** [Mettre au focus] le chantier N (F-208 / SF-208-04). */
   readonly focus = output<number>();
 
+  /**
+   * Le chantier que montre le volet qui ouvre ce tableau (F-221 / SF-221-04), ou `null`. Lancer un AUTRE
+   * chantier émet {@link parallel} au lieu de partir : l'écran demande « en parallèle ? ».
+   */
+  readonly shownChantier = input<number | null>(null);
+
+  /** [Lancer] / [Avancer] sur un autre chantier que celui du volet (F-221 / SF-221-04). */
+  readonly parallel = output<{ number: number; mode: AutonomyMode }>();
+
   private readonly journeys = inject(JourneyService);
   private readonly autonomyApi = inject(AutonomyService);
   private readonly snackBar = inject(MatSnackBar);
@@ -1224,6 +1233,12 @@ export class TerminalChantiersBoardComponent {
     if (!workspaceId || this.busy()) {
       return;
     }
+    // F-221 / SF-221-04 : lancer UN AUTRE chantier que celui du volet passe par l'overlay « en parallèle ».
+    const shown = this.shownChantier();
+    if (shown !== null && c.number !== shown) {
+      this.parallel.emit({ number: c.number, mode });
+      return;
+    }
     this.busy.set(true);
     this.autonomyApi.launch(workspaceId, c.number, mode).subscribe({
       next: () => {
@@ -1247,7 +1262,7 @@ export class TerminalChantiersBoardComponent {
       return;
     }
     this.busy.set(true);
-    this.autonomyApi.stop(workspaceId).subscribe({
+    this.autonomyApi.stop(workspaceId, c.number).subscribe({
       next: () => {
         this.busy.set(false);
         this.snackBar.open(`Vous avez repris la main sur le chantier ${c.number}.`, 'OK', { duration: 5000 });

@@ -17,6 +17,7 @@ import { MAX_UPLOAD_BYTES } from '../shared/http-error.util';
 import { TabAlertService } from '../core/services/tab-alert.service';
 import { NotificationSoundService } from '../core/services/notification-sound.service';
 import { CurrentClientService } from '../core/services/current-client.service';
+import { AutonomyService } from '../core/services/autonomy.service';
 import { AtelierComponent, delayLabel, toThreadItem } from './atelier.component';
 import { AtelierThreadItem } from './atelier.types';
 import { AtelierService } from '../core/services/atelier.service';
@@ -1895,6 +1896,41 @@ describe('AtelierComponent', () => {
     component.closeRightPane();
     component.onFocusChantierChange(7);
     expect(component.splitPane()).withContext('un volet refermé ne revient pas tout seul').toBeNull();
+  });
+
+  it('F-221 / SF-221-04 : « en parallèle » validé lance le chantier à droite, focus gardé, sans rien dire au chat', () => {
+    setup();
+    component.selectWorkspace(summary);
+    const autonomy = TestBed.inject(AutonomyService);
+    spyOn(autonomy, 'board').and.returnValue(of({ running: 0, maxParallel: 4, chantiers: [{
+      number: 8, title: 'Bascule DNS', run: null, estimate: null,
+      preflight: { number: 8, ready: false, reasons: [], advance: { possible: true, toolSteps: [1], remaining: [], label: null } },
+    }] }));
+    const launch = spyOn(autonomy, 'launch').and.returnValue(of({} as never as import('../core/models/autonomy.models').AutonomyRun));
+    dialog.open.and.returnValue({ afterClosed: () => of('launch') } as never);
+    service.streamChat.calls.reset();
+
+    component.onParallelLaunch({ number: 8, mode: null, source: 'board' });
+
+    expect(launch).toHaveBeenCalledWith('w1', 8, 'UNTIL_BLOCKED', true);
+    expect(service.streamChat).not.toHaveBeenCalled();
+    expect(component.splitPane()).toEqual({ chantier: 8, autonomous: true });
+  });
+
+  it('F-221 / SF-221-04 : « Ouvrir à côté » ouvre le volet sans rien lancer, et il reste ouvert', () => {
+    setup();
+    component.selectWorkspace(summary);
+    const autonomy = TestBed.inject(AutonomyService);
+    spyOn(autonomy, 'board').and.returnValue(of({ running: 0, maxParallel: 4, chantiers: [] }));
+    const launch = spyOn(autonomy, 'launch');
+    dialog.open.and.returnValue({ afterClosed: () => of('open') } as never);
+    service.getLanes.and.returnValue(of({ lanes: [] }));
+
+    component.onParallelLaunch({ number: 9, mode: null, source: 'suite' });
+    component.evaluateSplit('w1');
+
+    expect(launch).not.toHaveBeenCalled();
+    expect(component.splitPane()).toEqual({ chantier: 9, autonomous: false });
   });
 
   it('streams a message: relays a step then replaces it with the final reply and refreshes the tree', () => {

@@ -118,6 +118,7 @@
     [paneTitle]="splitPane() !== null ? leftPaneTitle() : null"
     (closePane)="closeLeftPane()"
     (focusChantierChange)="onFocusChantierChange($event)"
+    (parallelLaunch)="onParallelLaunch($event)"
     [projectName]="activeName()"
     [projectId]="activeWorkspaceId()"
     [hostName]="activeHostName()"
@@ -227,6 +228,7 @@
         [runnerStatus]="displayedRunnerStatus()"
         [localFolder]="localFolder()"
         (closed)="closeRightPane()"
+        (parallelLaunch)="onParallelLaunch($event)"
       ></app-terminal-lane-pane>
     </div>
   }
