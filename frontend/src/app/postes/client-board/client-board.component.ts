@@ -43,6 +43,7 @@ import { ClientBoardService } from '../../core/services/client-board.service';
 import { JourneyService } from '../../core/services/journey.service';
 import { TerminalActionsService } from '../../core/services/terminal-actions.service';
 import { httpErrorMessage } from '../../shared/http-error.util';
+import { StepActorComponent } from '../../shared/step-actor/step-actor.component';
 
 /** Relecture du tableau tant que l'onglet du navigateur est visible. */
 export const CLIENT_BOARD_REFRESH_MS = 15_000;
@@ -94,6 +95,7 @@ function writeCollapsed(ids: ReadonlySet<string>): void {
     MatProgressSpinnerModule,
     MatTooltipModule,
     RouterLink,
+    StepActorComponent,
   ],
   templateUrl: './client-board.component.html',
   styleUrl: './client-board.component.scss',

@@ -181,11 +181,16 @@ public record SubjectJourneyResponse(
      * @param inProgress    à faire, mais au moins une sous-étape faite (F-208)
      * @param subSteps      ses sous-étapes cochées (F-208)
      * @param unblocker     qui doit agir pour qu'elle avance (F-220 / SF-220-01) ; {@code null} si faite
+     * @param actor         qui l'exécute (SF-219-06) : {@code OUTIL}, {@code MOI}, {@code TIERS} — {@code OUTIL}
+     *                      quand rien n'est précisé
+     * @param actorLabel    « par l'outil », « par vous », « par un tiers »
+     * @param actorExplicit vrai si l'acteur a été précisé (faux pour un plan d'avant SF-219-06)
      */
     public record Step(String title, String risk, String riskLabel, String verify, String rollback,
                        String waitsOn, String waitsOnStatus, String status, String evidence, boolean changed,
                        List<Integer> dependsOn, boolean unlocked, List<String> blockedBy, boolean inProgress,
-                       List<SubStep> subSteps, ChantierUnblocker.Mark unblocker) {
+                       List<SubStep> subSteps, ChantierUnblocker.Mark unblocker, String actor, String actorLabel,
+                       boolean actorExplicit) {
 
         /** L'étape {@code index} du plan, avec l'état de son attente ({@code null} = inconnu). */
         static Step of(JourneyPlan plan, int index, String waitsOnStatus, boolean changed,
@@ -202,7 +207,8 @@ public record SubjectJourneyResponse(
                     .map(sub -> new SubStep(sub.title(), sub.done(), sub.evidence())).toList();
             return new Step(s.title(), s.risk().name(), s.risk().label(), s.verify(), s.rollback(),
                     s.waitsOn(), waitsOnStatus, s.status().name(), s.evidence(), changed, s.dependsOn(),
-                    blockedBy.isEmpty(), List.copyOf(blockedBy), s.inProgress(), subs, unblocker);
+                    blockedBy.isEmpty(), List.copyOf(blockedBy), s.inProgress(), subs, unblocker,
+                    s.effectiveActor().name(), s.effectiveActor().label(), s.actor() != null);
         }
     }
 

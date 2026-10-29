@@ -182,6 +182,12 @@ public class AutonomyTurnRunner {
             ChantierUnblocker.Mark cause = causes.get(rank);
             if (tool.contains(rank)) {
                 note = "à ta portée";
+            } else if (step.status() == JourneyPlan.StepStatus.A_FAIRE && step.waitsOn() == null
+                    && step.effectiveActor() == JourneyPlan.Actor.MOI) {
+                note = "à faire par l'utilisateur, pas par toi — n'y touche pas"; // SF-219-06
+            } else if (step.status() == JourneyPlan.StepStatus.A_FAIRE && step.waitsOn() == null
+                    && step.effectiveActor() == JourneyPlan.Actor.TIERS) {
+                note = "à faire par quelqu'un d'autre — n'y touche pas";
             } else if (cause != null && cause.who() == ChantierUnblocker.Who.MOI) {
                 note = "attend une décision de l'utilisateur — n'y touche pas";
             } else if (cause != null) {

@@ -111,6 +111,19 @@ describe('F-208 / SF-208-03 — le tableau des chantiers', () => {
     expect(steps[1].querySelector('.board__subcount')?.textContent).toContain('sous-étapes 1/2');
   });
 
+  it('SF-219-06 : une étape faite par l’utilisateur ou un tiers porte sa marque ; celle de l’outil, rien', () => {
+    const fixture = mount(journey([chantier(7, { focus: true, plan: plan([
+      step('Revérifier la zone', { actor: 'OUTIL' }),
+      step('Envoyer le message DNS à Dhaou', { actor: 'MOI', actorLabel: 'par vous', actorExplicit: true }),
+      step('Valider le CAB', { actor: 'TIERS', actorLabel: 'par un tiers', actorExplicit: true }),
+    ]) })]));
+    const steps = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.board__step'));
+    expect(steps[0].querySelector('.actor')).toBeNull();
+    expect(steps[1].querySelector('.actor')?.textContent).toContain('par vous');
+    expect(steps[1].querySelector('.actor')?.getAttribute('aria-label')).toContain('Exécutée par vous');
+    expect(steps[2].querySelector('.actor')?.textContent).toContain('par un tiers');
+  });
+
   it('l’étape en cours est dépliée d’office ; une autre se déplie au clic', () => {
     const fixture = mount(journey([chantier(4, { focus: true, plan: MIGRATION })]));
     const el: HTMLElement = fixture.nativeElement;

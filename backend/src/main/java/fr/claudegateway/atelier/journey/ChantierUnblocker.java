@@ -14,7 +14,8 @@ import java.util.Map;
  *
  * <p><b>Calculé, jamais deviné</b> : tout se lit dans le plan persisté, l'état des attentes F-175 (avec leur
  * {@code qui}) et l'état du tour vivant. Calcul pur — aucune dépendance, aucun accès aux données : l'appelant a
- * déjà vérifié la propriété du terminal. La règle est écrite dans
+ * déjà vérifié la propriété du terminal. SF-219-06 : l'<b>acteur</b> de l'étape ({@code MOI}, {@code TIERS}) est lu
+ * comme une attente propre à l'étape. La règle est écrite dans
  * {@code docs/features/F-220/CADRAGE-F-220-tableau-de-bord-client.md}.</p>
  */
 public final class ChantierUnblocker {
@@ -112,6 +113,15 @@ public final class ChantierUnblocker {
             if (wait.open()) {
                 return waitMark(s, rank, wait);
             }
+        }
+        // SF-219-06 : un geste que l'outil ne peut pas faire est sa propre cause première (avant l'héritage).
+        if (s.effectiveActor() == JourneyPlan.Actor.MOI) {
+            return Mark.of(Who.MOI, "Étape " + rank + " : « " + s.title() + " » — un geste à faire par vous : "
+                    + "l'outil ne peut pas le faire.", rank);
+        }
+        if (s.effectiveActor() == JourneyPlan.Actor.TIERS) {
+            return Mark.waiting(Who.AUTRUI, "Étape " + rank + " : « " + s.title() + " » — à faire par quelqu'un "
+                    + "d'autre.", rank, null, null);
         }
         for (int blocking : plan.blockingSteps(index)) {
             Mark upstream = blocking >= 1 && blocking <= before.size() ? before.get(blocking - 1) : null;

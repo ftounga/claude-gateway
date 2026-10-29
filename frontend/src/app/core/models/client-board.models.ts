@@ -27,6 +27,8 @@ export interface UnblockerMark {
 export interface ClientBoardNextStep {
   rank: number;
   title: string;
+  /** Qui l'exécute (F-219 / SF-219-06) : `OUTIL`, `MOI` ou `TIERS`. */
+  actor?: string | null;
 }
 
 /** Un chantier ouvert, sur sa carte. */

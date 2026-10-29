@@ -206,7 +206,7 @@
                         }
                         <dl class="cb__facts">
                           @if (c.nextStep) {
-                            <div><dt>Prochaine étape</dt><dd>{{ c.nextStep.rank }}. {{ c.nextStep.title }}</dd></div>
+                            <div><dt>Prochaine étape</dt><dd>{{ c.nextStep.rank }}. {{ c.nextStep.title }} <app-step-actor class="cb__step-actor" [actor]="c.nextStep.actor"></app-step-actor></dd></div>
                           }
                           @if (c.unblocker?.who === 'AUTRUI' && (c.unblocker?.waitingOn || since(c))) {
                             <div class="cb__waiting"><dt>On attend</dt>

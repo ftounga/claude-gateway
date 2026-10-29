@@ -128,8 +128,12 @@ public class JourneyToolExecutor {
     private Outcome updateStep(UUID userId, Workspace workspace, JsonNode input) {
         int step = input == null ? 0 : input.path("step").asInt(0);
         Integer chantier = chantier(input);
+        String actor = text(input, "actor");
+        if (actor.isEmpty()) {
+            actor = text(input, "acteur");
+        }
         SubjectJourneyService.StepChange change = service.updateStep(userId, workspace.getId(), chantier, step,
-                text(input, "status"), text(input, "evidence"));
+                text(input, "status"), text(input, "evidence"), actor);
         return prefixed(chantier, switch (change.outcome()) {
             case UPDATED -> Outcome.ok("Étape " + step + " à jour.");
             case TO_VERIFICATION -> Outcome.ok("Étape " + step + " à jour. Plus aucune étape à exécuter : le sujet "
@@ -143,11 +147,19 @@ public class JourneyToolExecutor {
                     + "chantier : dis à l'utilisateur ce qui manque et ce qu'il faut pour reprendre. Quand c'est "
                     + "levé, update_plan_step status=A_FAIRE la débloque.");
             case UNBLOCKED -> Outcome.ok("Étape " + step + " débloquée : de nouveau à faire.");
+            case ACTOR_SET -> Outcome.ok("Étape " + step + " : " + actorText(change.plan(), step) + ". Ce n'est pas "
+                    + "un amendement : le plan reste validé.");
             case NOT_EXECUTING -> Outcome.error("Aucun plan validé en cours d'exécution : rien à faire avancer.");
             case NO_SUCH_STEP -> Outcome.error("Il n'y a pas d'étape " + step + " dans le plan (numérotées à "
                     + "partir de 1).");
             case NOT_GUIDED -> Outcome.error("Le sujet est en mode Libre.");
         });
+    }
+
+    /** « exécutée par vous (MOI) » — ce que l'agent vient de poser. */
+    private static String actorText(JourneyPlan plan, int step) {
+        JourneyPlan.Actor actor = plan.steps().get(step - 1).effectiveActor();
+        return "exécutée " + actor.label() + " (" + actor.name() + ")";
     }
 
     private Outcome updateSubSteps(UUID userId, Workspace workspace, JsonNode input) {

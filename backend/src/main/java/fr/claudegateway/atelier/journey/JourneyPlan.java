@@ -109,6 +109,58 @@ public record JourneyPlan(List<Step> steps) {
         }
     }
 
+    /**
+     * <b>Qui exécute l'étape</b> (F-219 / SF-219-06) : l'outil, l'utilisateur, ou quelqu'un d'autre. Une étape
+     * sans acteur explicite vaut {@link #OUTIL} (plans d'avant SF-219-06).
+     */
+    public enum Actor {
+        /** L'outil l'exécute lui-même. */
+        OUTIL("par l'outil"),
+        /** L'utilisateur la fait : un geste que l'outil ne peut pas faire (envoyer depuis sa messagerie…). */
+        MOI("par vous"),
+        /** Quelqu'un d'autre la fait. */
+        TIERS("par un tiers");
+
+        private final String label;
+
+        Actor(String label) {
+            this.label = label;
+        }
+
+        public String label() {
+            return label;
+        }
+
+        /**
+         * Lecture tolérante ; vide = non précisé ({@code null}).
+         *
+         * @throws InvalidJourneyException valeur inconnue (refus explicite, rien n'est enregistré)
+         */
+        public static Actor parse(String raw) {
+            if (raw == null || raw.isBlank()) {
+                return null;
+            }
+            String v = java.text.Normalizer.normalize(raw.strip().toUpperCase(Locale.ROOT),
+                    java.text.Normalizer.Form.NFD).replaceAll("\\p{M}+", "");
+            return switch (v) {
+                case "OUTIL", "TOOL", "AGENT" -> OUTIL;
+                case "MOI", "ME", "USER", "UTILISATEUR" -> MOI;
+                case "TIERS", "OTHER", "AUTRUI", "THIRD_PARTY" -> TIERS;
+                default -> throw new InvalidJourneyException("actor est OUTIL, MOI ou TIERS (reçu « " + raw.strip()
+                        + " »). Rien n'a été enregistré.");
+            };
+        }
+
+        /** Relecture depuis la persistance : une valeur illisible vaut « non précisé », jamais une exception. */
+        static Actor lenient(String raw) {
+            try {
+                return parse(raw);
+            } catch (InvalidJourneyException e) {
+                return null;
+            }
+        }
+    }
+
     /** Une sous-étape d'une étape (F-208) : cochée ou non, avec sa preuve. */
     public record SubStep(String title, boolean done, String evidence) {
     }
@@ -126,13 +178,26 @@ public record JourneyPlan(List<Step> steps) {
      * @param dependsOn les rangs (à partir de 1) des étapes antérieures dont elle dépend (F-208) ; vide =
      *                  les étapes précédentes
      * @param subSteps  ses sous-étapes (F-208), vide si elle n'est pas détaillée
+     * @param actor     qui l'exécute (SF-219-06), {@code null} = non précisé (vaut {@link Actor#OUTIL})
      */
     public record Step(String title, Risk risk, String verify, String rollback, String waitsOn,
-                       StepStatus status, String evidence, List<Integer> dependsOn, List<SubStep> subSteps) {
+                       StepStatus status, String evidence, List<Integer> dependsOn, List<SubStep> subSteps,
+                       Actor actor) {
 
         public Step {
             dependsOn = dependsOn == null ? List.of() : List.copyOf(dependsOn);
             subSteps = subSteps == null ? List.of() : List.copyOf(subSteps);
+        }
+
+        /** Une étape sans acteur précisé (forme d'avant SF-219-06). */
+        public Step(String title, Risk risk, String verify, String rollback, String waitsOn,
+                    StepStatus status, String evidence, List<Integer> dependsOn, List<SubStep> subSteps) {
+            this(title, risk, verify, rollback, waitsOn, status, evidence, dependsOn, subSteps, null);
+        }
+
+        /** Qui l'exécute, en vrai : l'outil quand rien n'est précisé (SF-219-06). */
+        public Actor effectiveActor() {
+            return actor == null ? Actor.OUTIL : actor;
         }
 
         /** Une étape sans dépendances déclarées ni sous-étapes (forme d'avant F-208). */
@@ -143,7 +208,17 @@ public record JourneyPlan(List<Step> steps) {
 
         /** La même étape sans son avancement : ce que l'utilisateur valide (les dépendances en font partie). */
         Step content() {
-            return new Step(title, risk, verify, rollback, waitsOn, StepStatus.A_FAIRE, null, dependsOn, List.of());
+            return new Step(title, risk, verify, rollback, waitsOn, StepStatus.A_FAIRE, null, dependsOn, List.of(),
+                    actor);
+        }
+
+        /**
+         * Ce que fait l'étape, sans son avancement ni son acteur (SF-219-06) : préciser qui l'exécute ne remet
+         * pas à zéro un travail déjà fait.
+         */
+        Step work() {
+            return new Step(title, risk, verify, rollback, waitsOn, StepStatus.A_FAIRE, null, dependsOn, List.of(),
+                    null);
         }
 
         /** Combien de sous-étapes faites. */
@@ -200,7 +275,8 @@ public record JourneyPlan(List<Step> steps) {
                     StepStatus.A_FAIRE,
                     null,
                     dependsOnFromToolInput(node, rank),
-                    List.of()));
+                    List.of(),
+                    Actor.parse(text(node, "actor", "acteur"))));
         }
         return steps.isEmpty() ? EMPTY : new JourneyPlan(List.copyOf(steps));
     }
@@ -285,6 +361,10 @@ public record JourneyPlan(List<Step> steps) {
             node.put("waitsOn", step.waitsOn());
             node.put("status", step.status().name());
             node.put("evidence", step.evidence());
+            // SF-219-06 : écrit seulement s'il est précisé — un plan d'avant se réécrit à l'identique.
+            if (step.actor() != null) {
+                node.put("actor", step.actor().name());
+            }
             // F-208 : écrits seulement s'ils existent — un plan d'avant F-208 reste identique à l'octet.
             if (!step.dependsOn().isEmpty()) {
                 ArrayNode deps = node.putArray("dependsOn");
@@ -334,7 +414,7 @@ public record JourneyPlan(List<Step> steps) {
                 }
                 steps.add(new Step(title, Risk.parse(text(node, "risk")), text(node, "verify"),
                         text(node, "rollback"), text(node, "waitsOn"), StepStatus.parse(text(node, "status")),
-                        text(node, "evidence"), deps, subs));
+                        text(node, "evidence"), deps, subs, Actor.lenient(text(node, "actor"))));
             }
             return steps.isEmpty() ? EMPTY : new JourneyPlan(List.copyOf(steps));
         } catch (Exception e) {
@@ -358,7 +438,7 @@ public record JourneyPlan(List<Step> steps) {
         List<Step> copy = new ArrayList<>(steps);
         Step s = copy.get(index);
         copy.set(index, new Step(s.title(), s.risk(), s.verify(), s.rollback(), s.waitsOn(), status,
-                bound(evidence, MAX_EVIDENCE), s.dependsOn(), s.subSteps()));
+                bound(evidence, MAX_EVIDENCE), s.dependsOn(), s.subSteps(), s.actor()));
         return new JourneyPlan(List.copyOf(copy));
     }
 
@@ -367,7 +447,7 @@ public record JourneyPlan(List<Step> steps) {
         List<Step> copy = new ArrayList<>(steps);
         Step s = copy.get(index);
         copy.set(index, new Step(s.title(), s.risk(), s.verify(), s.rollback(), s.waitsOn(), s.status(),
-                s.evidence(), s.dependsOn(), subSteps));
+                s.evidence(), s.dependsOn(), subSteps, s.actor()));
         return new JourneyPlan(List.copyOf(copy));
     }
 
@@ -376,7 +456,16 @@ public record JourneyPlan(List<Step> steps) {
         List<Step> copy = new ArrayList<>(steps);
         Step s = copy.get(index);
         copy.set(index, new Step(s.title(), s.risk(), s.verify(), s.rollback(), s.waitsOn(), s.status(),
-                s.evidence(), dependsOn, s.subSteps()));
+                s.evidence(), dependsOn, s.subSteps(), s.actor()));
+        return new JourneyPlan(List.copyOf(copy));
+    }
+
+    /** Remplace l'acteur d'une étape (SF-219-06) ; ni son état ni son contenu d'action ne changent. */
+    public JourneyPlan withActor(int index, Actor actor) {
+        List<Step> copy = new ArrayList<>(steps);
+        Step s = copy.get(index);
+        copy.set(index, new Step(s.title(), s.risk(), s.verify(), s.rollback(), s.waitsOn(), s.status(),
+                s.evidence(), s.dependsOn(), s.subSteps(), actor));
         return new JourneyPlan(List.copyOf(copy));
     }
 

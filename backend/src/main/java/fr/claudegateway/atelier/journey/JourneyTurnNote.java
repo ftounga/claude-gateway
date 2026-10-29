@@ -36,7 +36,7 @@ public final class JourneyTurnNote {
     public static String render(SubjectJourney journey, boolean firstTurn) {
         if (journey != null && journey.isGuided() && journey.getPhase() != null) {
             if (journey.getOtherOpenChantiers().isEmpty()) {
-                return HEADER + guided(journey) + proposalPending(journey) + FOOTER;
+                return HEADER + guided(journey) + actorsToQualify(journey) + proposalPending(journey) + FOOTER;
             }
             return HEADER + several(journey) + FOOTER;
         }
@@ -92,6 +92,7 @@ public final class JourneyTurnNote {
             note.append(summary(other));
             shown++;
         }
+        note.append(actorsToQualify(journey));
         note.append(proposalPending(journey));
         return note.toString();
     }
@@ -176,6 +177,9 @@ public final class JourneyTurnNote {
             if (step.waitsOn() != null) {
                 line.append(" · attend : ").append(step.waitsOn());
             }
+            if (step.effectiveActor() != JourneyPlan.Actor.OUTIL) {
+                line.append(" · ").append(step.effectiveActor().label()); // SF-219-06 : pas toi
+            }
             if (!step.dependsOn().isEmpty()) {
                 line.append(" · après ").append(step.dependsOn().stream().map(String::valueOf)
                         .collect(java.util.stream.Collectors.joining(", ")));
@@ -191,6 +195,50 @@ public final class JourneyTurnNote {
             note.append(line);
         }
         return note.toString();
+    }
+
+    /** Étapes citées par chantier dans l'invite à préciser les acteurs, au plus ; au-delà, comptées. */
+    static final int MAX_ACTOR_STEPS = 12;
+
+    /**
+     * SF-219-06 : une ligne qui invite à préciser QUI exécute les étapes restantes (ni faites ni vérifiées) des
+     * chantiers ouverts dont l'acteur n'est pas explicite — plans d'avant SF-219-06. Vide quand tout est précisé.
+     */
+    static String actorsToQualify(SubjectJourney journey) {
+        java.util.List<String> parts = new java.util.ArrayList<>();
+        if (journey.getPhase() != JourneyPhase.CLOS) {
+            addUnqualified(parts, journey.getChantierNumber(), journey.getPlanJson());
+        }
+        for (SubjectJourneyChantier other : journey.getOtherOpenChantiers()) {
+            if (other.getPhase() != JourneyPhase.CLOS) {
+                addUnqualified(parts, other.getNumber(), other.getPlanJson());
+            }
+        }
+        if (parts.isEmpty()) {
+            return "";
+        }
+        return "ACTEURS À PRÉCISER — " + String.join(" ; ", parts) + ". Pour chacune : update_plan_step "
+                + "actor=OUTIL, MOI ou TIERS (sans status ; chantier: N si ce n'est pas le focus). MOI ou TIERS pour "
+                + "tout geste que tu ne peux pas faire toi-même (envoyer un message depuis la messagerie ou le Teams "
+                + "de l'utilisateur, appeler, approuver à sa place…) ; ce n'est pas un amendement.\n";
+    }
+
+    private static void addUnqualified(java.util.List<String> parts, int number, String planJson) {
+        JourneyPlan plan = JourneyPlan.fromJson(planJson);
+        java.util.List<Integer> ranks = new java.util.ArrayList<>();
+        for (int i = 0; i < plan.steps().size(); i++) {
+            JourneyPlan.Step step = plan.steps().get(i);
+            if (!step.isDone() && step.actor() == null) {
+                ranks.add(i + 1);
+            }
+        }
+        if (ranks.isEmpty()) {
+            return;
+        }
+        String shown = ranks.stream().limit(MAX_ACTOR_STEPS).map(String::valueOf)
+                .collect(java.util.stream.Collectors.joining(", "));
+        parts.add("chantier " + number + " : étape" + (ranks.size() > 1 ? "s " : " ") + shown
+                + (ranks.size() > MAX_ACTOR_STEPS ? " (+" + (ranks.size() - MAX_ACTOR_STEPS) + ")" : ""));
     }
 
     private static String statusLabel(JourneyPlan.StepStatus status) {

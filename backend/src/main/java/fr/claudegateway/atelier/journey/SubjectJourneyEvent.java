@@ -51,6 +51,9 @@ public class SubjectJourneyEvent {
     /** L'agent a détaillé une étape en sous-étapes ({@code detail} = étape · faites/total) (F-208). */
     public static final String SUB_STEPS_UPDATED = "SUB_STEPS_UPDATED";
 
+    /** L'agent a précisé qui exécute une étape ({@code detail} = étape · acteur) (F-219 / SF-219-06). */
+    public static final String STEP_ACTOR_SET = "STEP_ACTOR_SET";
+
     /** [Valider le plan] (SF-176-03). */
     public static final String PLAN_VALIDATED = "PLAN_VALIDATED";
 

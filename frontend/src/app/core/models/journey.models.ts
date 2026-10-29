@@ -151,7 +151,16 @@ export interface JourneyPlanStep {
   subSteps?: JourneySubStep[];
   /** Qui doit agir pour qu'elle avance (F-220 / SF-220-01) ; `null` si faite. */
   unblocker?: UnblockerMark | null;
+  /** Qui l'exécute (SF-219-06) — `OUTIL` quand rien n'est précisé. */
+  actor?: StepActor | string;
+  /** « par l'outil », « par vous », « par un tiers ». */
+  actorLabel?: string;
+  /** Faux pour une étape d'un plan d'avant SF-219-06 (acteur non précisé). */
+  actorExplicit?: boolean;
 }
+
+/** Qui exécute une étape (F-219 / SF-219-06) : l'outil, l'utilisateur, ou quelqu'un d'autre. */
+export type StepActor = 'OUTIL' | 'MOI' | 'TIERS';
 
 /** Une sous-étape (F-208). */
 export interface JourneySubStep {

@@ -274,6 +274,29 @@ class AutonomyTurnRunnerTest {
     }
 
     @Test
+    @DisplayName("SF-219-06 : jusqu'au blocage, une étape MOI est annotée « à faire par l'utilisateur »")
+    void untilBlockedAnnotatesActor() {
+        String moi = "{\"title\":\"Envoyer le message à Dhaou\",\"risk\":\"EXTERNE\",\"status\":\"A_FAIRE\","
+                + "\"actor\":\"MOI\"}";
+        plans.add(plan(step("A", "A_FAIRE"), moi));
+        plans.add(plan(step("A", "VERIFIE"), moi));
+        ChantierUnblocker.Mark mine = new ChantierUnblocker.Mark(ChantierUnblocker.Who.MOI, "Ça attend votre décision",
+                "Étape 2 : « Envoyer le message à Dhaou » — un geste à faire par vous.", 2, null, null);
+        ChantierPreflight first = new ChantierPreflight(2, false, List.of(), new ChantierPreflight.Advance(true,
+                List.of(1), List.of(mine), "1 étape(s) à la portée de l'outil ; 1 décision(s) vous attendent."));
+        ChantierPreflight then = new ChantierPreflight(2, false, List.of(), new ChantierPreflight.Advance(false,
+                List.of(), List.of(mine), "Aucune étape n'est à la portée de l'outil."));
+        preflightSequence(first, then);
+        when(chat.chatStreaming(eq(userId), eq(workspaceId), anyString(), any())).thenReturn(result("0.20"));
+        goUntilBlocked();
+        ArgumentCaptor<String> demand = ArgumentCaptor.forClass(String.class);
+        verify(chat, times(1)).chatStreaming(eq(userId), eq(workspaceId), demand.capture(), any());
+        assertThat(demand.getValue()).contains("1. [à faire · à ta portée] A")
+                .contains("2. [à faire · à faire par l'utilisateur, pas par toi — n'y touche pas] Envoyer le message");
+        verify(store).finish(eq(run.getId()), eq(AutonomyRunStatus.PARTIAL), anyString(), eq(null));
+    }
+
+    @Test
     @DisplayName("jusqu'au blocage : un préflight strict rouge ne l'arrête pas tant qu'il reste du vert")
     void untilBlockedContinuesPastRedPreflight() {
         plans.add(plan(step("A", "A_FAIRE"), step("C", "A_FAIRE"), step("B", "A_FAIRE")));
