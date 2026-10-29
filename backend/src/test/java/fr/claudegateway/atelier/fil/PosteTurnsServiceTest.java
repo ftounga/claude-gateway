@@ -155,7 +155,7 @@ class PosteTurnsServiceTest {
     private static TurnSummary summary(UUID user, Workspace w, String state, long startedAt, Long endedAt) {
         return new TurnSummary(UUID.randomUUID(), user, w.getId(), state,
                 "waiting".equals(state) ? "approval" : null, "demande", startedAt, endedAt, 1, 3, "étape", "bash",
-                List.of(new TurnDigest.SubAgent("task", "lire", "running", startedAt)));
+                List.of(new TurnDigest.SubAgent("task", "lire", "running", startedAt)), null);
     }
 
     private static Workspace ws(UUID id, String name, UUID owner, UUID host, boolean root) {

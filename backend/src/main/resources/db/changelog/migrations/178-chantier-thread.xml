@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-221 / SF-221-01 - UN FIL PAR CHANTIER.
+
+      atelier_messages.chantier_number : le chantier du sujet auquel le message appartient ; NULL = fil
+      commun du sujet (tous les messages existants). Le contexte d'un tour du chantier N relit le passe
+      commun (messages d'avant l'ouverture de N), les messages NULL et ceux de N.
+      atelier_turn_measures.chantier_number : la mesure du cache par fil.
+
+      Rollback : l'index et les colonnes se retirent.
+    -->
+
+    <changeSet id="178-chantier-thread" author="claude-gateway">
+        <addColumn tableName="atelier_messages">
+            <column name="chantier_number" type="int"/>
+        </addColumn>
+        <createIndex tableName="atelier_messages" indexName="idx_atelier_messages_ws_user_chantier">
+            <column name="workspace_id"/>
+            <column name="user_id"/>
+            <column name="chantier_number"/>
+        </createIndex>
+        <addColumn tableName="atelier_turn_measures">
+            <column name="chantier_number" type="int"/>
+        </addColumn>
+        <rollback>
+            <dropIndex tableName="atelier_messages" indexName="idx_atelier_messages_ws_user_chantier"/>
+            <dropColumn tableName="atelier_messages" columnName="chantier_number"/>
+            <dropColumn tableName="atelier_turn_measures" columnName="chantier_number"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

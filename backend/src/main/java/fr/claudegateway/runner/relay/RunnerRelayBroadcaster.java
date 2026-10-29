@@ -78,9 +78,18 @@ public class RunnerRelayBroadcaster {
      */
     public boolean broadcastConfirm(UUID userId, UUID workspaceId, String callId, boolean allow,
             String reason) {
+        return broadcastConfirm(userId, workspaceId, null, callId, allow, reason);
+    }
+
+    /** Même diffusion, portant le fil du tour (F-221 / SF-221-01) ; {@code null} = fil commun. */
+    public boolean broadcastConfirm(UUID userId, UUID workspaceId, Integer chantier, String callId,
+            boolean allow, String reason) {
         ObjectNode payload = objectMapper.createObjectNode();
         payload.put("userId", userId.toString());
         payload.put("workspaceId", workspaceId.toString());
+        if (chantier != null) {
+            payload.put("chantier", chantier);
+        }
         payload.put("callId", callId);
         payload.put("allow", allow);
         if (reason == null || reason.isBlank()) {
@@ -112,9 +121,17 @@ public class RunnerRelayBroadcaster {
 
     /** Diffuse l'interruption d'un tour (contrat §6) : best-effort, l'appelant a déjà agi localement. */
     public void broadcastInterrupt(UUID userId, UUID workspaceId, String reason) {
+        broadcastInterrupt(userId, workspaceId, null, reason);
+    }
+
+    /** Diffuse l'interruption du seul fil {@code chantier} (F-221 / SF-221-01) ; {@code null} = fil commun. */
+    public void broadcastInterrupt(UUID userId, UUID workspaceId, Integer chantier, String reason) {
         ObjectNode payload = objectMapper.createObjectNode();
         payload.put("userId", userId.toString());
         payload.put("workspaceId", workspaceId.toString());
+        if (chantier != null) {
+            payload.put("chantier", chantier);
+        }
         payload.put("reason", reason);
         broadcast(INTERRUPT_PATH, payload.toString());
     }

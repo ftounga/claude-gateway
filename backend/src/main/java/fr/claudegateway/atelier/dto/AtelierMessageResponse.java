@@ -24,7 +24,7 @@ import fr.claudegateway.quota.TurnCostView;
  * <b>additif</b>, un client d'avant SF-169-03 l'ignore et se comporte comme avant.</p>
  */
 public record AtelierMessageResponse(UUID id, String role, String content, OffsetDateTime createdAt,
-        JsonNode terminal, List<AttachedFile> files) {
+        JsonNode terminal, List<AttachedFile> files, Integer chantier) {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -66,7 +66,8 @@ public record AtelierMessageResponse(UUID id, String role, String content, Offse
                 : attached.stream().map(AttachedFile::of).toList();
         return new AtelierMessageResponse(message.getId(), message.getRole(), message.getContent(),
                 message.getCreatedAt(),
-                withCost(parseTranscript(message.getTerminalJson()), costView), files);
+                withCost(parseTranscript(message.getTerminalJson()), costView), files,
+                message.getChantierNumber());
     }
 
     /**

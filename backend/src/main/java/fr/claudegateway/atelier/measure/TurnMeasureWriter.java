@@ -38,8 +38,8 @@ public class TurnMeasureWriter {
                             + "max_context_tokens, total_context_tokens, first_pass_cache_write, "
                             + "later_cache_write, input_tokens, output_tokens, cache_read_tokens, "
                             + "cache_write_tokens, web_search_requests, runner_refusals, "
-                            + "runner_busy_waits) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-                            + "?, ?, ?, ?, ?, ?)",
+                            + "runner_busy_waits, chantier_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, "
+                            + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     UUID.randomUUID(), measure.userId(), measure.workspaceId(), measure.hostId(),
                     bounded(measure.model(), MAX_MODEL_CHARS),
                     Timestamp.from(measure.occurredAt()), measure.durationMs(), measure.iterations(),
@@ -49,7 +49,7 @@ public class TurnMeasureWriter {
                     measure.firstPassCacheWrite(), measure.laterCacheWrite(),
                     measure.inputTokens(), measure.outputTokens(), measure.cacheReadTokens(),
                     measure.cacheWriteTokens(), measure.webSearchRequests(),
-                    measure.runnerRefusals(), measure.runnerBusyWaits());
+                    measure.runnerRefusals(), measure.runnerBusyWaits(), measure.chantierNumber());
         } catch (RuntimeException e) {
             log.warn("Mesure du tour non enregistrée (workspace={}) : {}", measure.workspaceId(),
                     e.getMessage());

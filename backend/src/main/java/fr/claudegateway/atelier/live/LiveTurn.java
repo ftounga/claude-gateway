@@ -109,6 +109,8 @@ public final class LiveTurn {
     private final UUID turnId = UUID.randomUUID();
     private final UUID userId;
     private final UUID workspaceId;
+    /** Le fil du tour (F-221 / SF-221-01) : le chantier, ou {@code null} pour le fil commun du sujet. */
+    private final Integer chantier;
     private final long startedAtMs = System.currentTimeMillis();
     private final ObjectMapper objectMapper;
 
@@ -129,8 +131,13 @@ public final class LiveTurn {
     private long endedAtMs;
 
     LiveTurn(UUID userId, UUID workspaceId, ObjectMapper objectMapper) {
+        this(userId, workspaceId, null, objectMapper);
+    }
+
+    LiveTurn(UUID userId, UUID workspaceId, Integer chantier, ObjectMapper objectMapper) {
         this.userId = userId;
         this.workspaceId = workspaceId;
+        this.chantier = chantier;
         this.objectMapper = objectMapper;
     }
 
@@ -144,6 +151,11 @@ public final class LiveTurn {
 
     public UUID workspaceId() {
         return workspaceId;
+    }
+
+    /** Le fil du tour (F-221 / SF-221-01) : le chantier, ou {@code null} pour le fil commun. */
+    public Integer chantier() {
+        return chantier;
     }
 
     /** Instant d'ouverture du tour, en millisecondes depuis l'époque. */
@@ -618,7 +630,7 @@ public final class LiveTurn {
         }
         return new TurnSummary(turnId, userId, workspaceId, state, waiting, digest.demand(), startedAtMs,
                 done ? ended : null, digest.planDone(), digest.planTotal(), digest.planStep(),
-                done ? null : digest.tool(), digest.subagents(done));
+                done ? null : digest.tool(), digest.subagents(done), chantier);
     }
 
     /** Nourrit le résumé : seuls les événements suivis sont relus — jamais une cause d'échec. */

@@ -82,7 +82,9 @@ public class AtelierThreadHandoffService {
             throw new ThreadHandoffConflictException("no_handoff",
                     "Ce fil n'a pas encore de passation : elle apparaît à la première compaction.");
         }
-        if (liveTurns.find(userId, workspaceId).isPresent()
+        // F-221 / SF-221-01 : la passation est le résumé de TOUT le sujet — un tour vivant sur n'importe
+        // lequel de ses fils, ici, l'empêche (le relais des pairs ne sonde que le fil commun).
+        if (liveTurns.anyLive(userId, workspaceId)
                 || remoteTurns.findRemoteTurn(userId, workspaceId).isPresent()) {
             throw new ThreadHandoffConflictException("turn_in_progress",
                     "Un tour est en cours sur ce projet : corrigez la passation une fois qu'il est terminé.");

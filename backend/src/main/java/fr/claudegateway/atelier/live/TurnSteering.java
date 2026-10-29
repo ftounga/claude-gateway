@@ -25,14 +25,19 @@ public final class TurnSteering {
      *         ne tourne plus sur ce projet — ni ici, ni chez un pair joignable
      */
     public Optional<SteerReceipt> steer(UUID userId, UUID workspaceId, String text) {
-        Optional<LiveTurn> local = liveTurns.find(userId, workspaceId);
+        return steer(userId, workspaceId, null, text);
+    }
+
+    /** La précision pour le seul fil {@code chantier} du sujet (F-221 / SF-221-01) ; {@code null} = commun. */
+    public Optional<SteerReceipt> steer(UUID userId, UUID workspaceId, Integer chantier, String text) {
+        Optional<LiveTurn> local = liveTurns.find(userId, workspaceId, chantier);
         if (local.isPresent()) {
             // Scellé ou fini (ENDED) : ce tour a rendu sa réponse et ne lira plus rien — c'est lui qui
             // tourne sur ce projet, inutile de sonder les pairs.
             SteerReceipt receipt = local.get().offerSteer(text);
             return receipt.status() == SteerReceipt.Status.ENDED ? Optional.empty() : Optional.of(receipt);
         }
-        return remoteTurns.steerRemoteTurn(userId, workspaceId, text)
+        return remoteTurns.steerRemoteTurn(userId, workspaceId, chantier, text)
                 .filter(receipt -> receipt.status() != SteerReceipt.Status.ENDED);
     }
 }

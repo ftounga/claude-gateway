@@ -14,6 +14,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -335,4 +336,13 @@ public class Workspace {
     @Column(name = "agent_ask_before_bash", nullable = false)
     @Builder.Default
     private boolean agentAskBeforeBash = false;
+
+    /**
+     * Le <b>fil du tour en cours</b> sur cette instance (F-221 / SF-221-01) : le chantier dont le tour
+     * relit et écrit le fil, ou {@code null} pour le fil commun. Jamais persisté : posé par la boucle
+     * d'atelier sur l'instance qu'elle vient de charger, il porte le fil jusqu'aux clefs d'état du tour et
+     * aux outils du parcours sans traverser quarante signatures.
+     */
+    @Transient
+    private Integer turnChantier;
 }

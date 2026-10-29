@@ -15,10 +15,12 @@ import java.util.UUID;
  * @param laterCacheWrite      réécriture du cache des passes suivantes
  * @param runnerRefusals       résultats {@code denied} rendus au modèle
  * @param runnerBusyWaits      attentes « poste occupé » (F-188 / SF-188-02)
+ * @param chantierNumber       le fil du tour (F-221 / SF-221-01) ; {@code null} = fil commun
  */
 public record TurnMeasure(UUID userId, UUID workspaceId, UUID hostId, String model,
         Instant occurredAt, long durationMs, int iterations, String stopCause,
         long maxContextTokens, long totalContextTokens, long firstPassCacheWrite,
         long laterCacheWrite, long inputTokens, long outputTokens, long cacheReadTokens,
-        long cacheWriteTokens, int webSearchRequests, int runnerRefusals, int runnerBusyWaits) {
+        long cacheWriteTokens, int webSearchRequests, int runnerRefusals, int runnerBusyWaits,
+        Integer chantierNumber) {
 }

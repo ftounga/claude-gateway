@@ -470,4 +470,31 @@ class SubjectJourneyChantiersIntegrationTest {
                 .andExpect(jsonPath("$.chantiers[0].plan.steps[2].blockedBy[0]", is("étape 2")))
                 .andExpect(jsonPath("$.chantiers[0].plan.steps[3].blockedBy[0]", is("étape 3")));
     }
+
+    @Test
+    @DisplayName("SF-221-01 : la vue du fil d'un chantier le met au focus sans toucher au focus persisté")
+    void laneViewKeepsThePersistedFocus() throws Exception {
+        chantierOneExecuting();
+        post(aliceToken, "chantiers", "{\"title\":\"Migration DNS\"}"); // le chantier 2 prend le focus
+
+        SubjectJourney lane = service.forLane(aliceId, ws(), 1);
+
+        assertThat(lane.getChantierNumber()).isEqualTo(1);
+        assertThat(lane.getPhase()).isEqualTo(JourneyPhase.EXECUTION);
+        assertThat(lane.getOtherOpenChantiers()).extracting(SubjectJourneyChantier::getNumber).containsExactly(2);
+        assertThat(service.forTurn(aliceId, ws()).getChantierNumber()).as("focus persisté inchangé").isEqualTo(2);
+        assertThat(service.forLane(aliceId, ws(), 2).getChantierNumber()).isEqualTo(2);
+        assertThat(service.forLane(aliceId, ws(), 9).getChantierNumber()).as("inconnu : le focus").isEqualTo(2);
+        assertThat(service.chantierOpenedAt(aliceId, ws(), 2)).isPresent();
+        assertThat(service.chantierOpenedAt(aliceId, ws(), 9)).isEmpty();
+
+        // Dans un tour du fil 1, un outil du parcours sans numéro vise le chantier 1, pas le focus.
+        fr.claudegateway.atelier.Workspace workspace = workspaceRepository.findById(ws()).orElseThrow();
+        workspace.setTurnChantier(1);
+        assertThat(JourneyToolExecutor.chantierOf(null, workspace)).isEqualTo(1);
+        assertThat(JourneyToolExecutor.chantierOf(new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree("{\"chantier\":2}"), workspace)).isEqualTo(2);
+        workspace.setTurnChantier(null);
+        assertThat(JourneyToolExecutor.chantierOf(null, workspace)).as("fil commun : le focus").isNull();
+    }
 }

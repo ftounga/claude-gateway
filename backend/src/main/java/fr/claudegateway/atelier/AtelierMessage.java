@@ -74,4 +74,13 @@ public class AtelierMessage {
      */
     @Column(name = "tool_trace", columnDefinition = "text")
     private String toolTrace;
+
+    /**
+     * Le fil du message (F-221 / SF-221-01) : le numéro du chantier du sujet auquel il appartient, ou
+     * {@code null} pour le fil commun — tous les messages d'avant F-221, et tout envoi sans chantier.
+     * Le tour du chantier N relit le passé commun et son fil, jamais celui d'un autre chantier
+     * ({@link ChantierThread}).
+     */
+    @Column(name = "chantier_number")
+    private Integer chantierNumber;
 }

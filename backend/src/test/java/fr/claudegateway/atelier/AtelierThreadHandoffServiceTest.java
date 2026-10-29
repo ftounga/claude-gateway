@@ -137,7 +137,7 @@ class AtelierThreadHandoffServiceTest {
 
     @Test
     void refusePendantUnTourVivantLocal() {
-        when(liveTurns.find(userId, workspaceId)).thenReturn(Optional.of(mock(LiveTurn.class)));
+        when(liveTurns.anyLive(userId, workspaceId)).thenReturn(true);
         assertThatThrownBy(() -> service.correct(userId, workspaceId, SUMMARY))
                 .isInstanceOfSatisfying(ThreadHandoffConflictException.class,
                         ex -> assertThat(ex.getCode()).isEqualTo("turn_in_progress"));

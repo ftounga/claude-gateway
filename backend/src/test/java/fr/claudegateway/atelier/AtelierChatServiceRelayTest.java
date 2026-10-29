@@ -89,7 +89,7 @@ class AtelierChatServiceRelayTest {
         order.verify(workspaceService).requireOwned(userId, workspaceId);
         order.verify(confirmationGate).cancelWorkspace(workspaceId);
         order.verify(runnerCallDispatcher).cancelWorkspace(workspaceId, "user_interrupt");
-        order.verify(relayBroadcaster).broadcastInterrupt(userId, workspaceId, "user_interrupt");
+        order.verify(relayBroadcaster).broadcastInterrupt(userId, workspaceId, null, "user_interrupt");
     }
 
     @Test

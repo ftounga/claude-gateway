@@ -24,7 +24,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  * rebranche jamais sur le tour d'autrui, et cela tient à la structure de la clef, pas à un test
  * d'égalité qu'on pourrait oublier d'écrire.</p>
  *
- * <p><b>Un tour vivant par projet</b> : ouvrir un tour ferme le précédent. C'est la règle qui
+ * <p><b>Un tour vivant par fil</b> (F-221 / SF-221-01) : le fil commun du projet et chaque chantier ont
+ * chacun le leur ; avant, c'était un par projet. Ouvrir un tour ferme le précédent. C'est la règle qui
  * existait déjà de fait — un projet n'exécute qu'un tour à la fois — rendue explicite. Depuis
  * F-84 / SF-84-06, un <b>envoi</b> sur un tour vivant ne l'ouvre plus : il y devient une précision
  * ({@link #openOrSteer}). Seul un tour déjà scellé est encore remplacé.</p>
@@ -74,14 +75,22 @@ public class LiveTurnRegistry {
      * utilisateur ne tombe jamais dans ce tour.</p>
      */
     public synchronized Entry openOrSteer(UUID userId, UUID workspaceId, String message) {
-        LiveTurn current = turns.get(key(userId, workspaceId));
+        return openOrSteer(userId, workspaceId, null, message);
+    }
+
+    /**
+     * Même geste, sur le <b>fil</b> {@code chantier} du sujet (F-221 / SF-221-01) : la précision ne tombe
+     * que dans le tour de CE fil ; le tour d'un autre chantier du même sujet n'est jamais touché.
+     */
+    public synchronized Entry openOrSteer(UUID userId, UUID workspaceId, Integer chantier, String message) {
+        LiveTurn current = turns.get(key(userId, workspaceId, chantier));
         if (current != null && current.live()) {
             SteerReceipt receipt = current.offerSteer(message);
             if (receipt.status() != SteerReceipt.Status.ENDED) {
                 return new Entry(current, receipt);
             }
         }
-        LiveTurn opened = open(userId, workspaceId);
+        LiveTurn opened = open(userId, workspaceId, chantier);
         opened.digest().demand(message);
         return new Entry(opened, null);
     }
@@ -94,19 +103,30 @@ public class LiveTurnRegistry {
      * @return le tour ouvert, ou vide si un tour vivant tient déjà ce projet sur ce pod
      */
     public synchronized Optional<LiveTurn> openIfIdle(UUID userId, UUID workspaceId, String message) {
-        LiveTurn current = turns.get(key(userId, workspaceId));
+        return openIfIdle(userId, workspaceId, null, message);
+    }
+
+    /** Même geste, sur le fil {@code chantier} du sujet (F-221 / SF-221-01) : seul CE fil doit être libre. */
+    public synchronized Optional<LiveTurn> openIfIdle(UUID userId, UUID workspaceId, Integer chantier,
+            String message) {
+        LiveTurn current = turns.get(key(userId, workspaceId, chantier));
         if (current != null && current.live()) {
             return Optional.empty();
         }
-        LiveTurn opened = open(userId, workspaceId);
+        LiveTurn opened = open(userId, workspaceId, chantier);
         opened.digest().demand(message);
         return Optional.of(opened);
     }
 
     /** Ouvre un tour pour ce projet, en fermant celui qui tournait encore. */
     public synchronized LiveTurn open(UUID userId, UUID workspaceId) {
-        LiveTurn turn = new LiveTurn(userId, workspaceId, objectMapper);
-        LiveTurn previous = turns.put(key(userId, workspaceId), turn);
+        return open(userId, workspaceId, null);
+    }
+
+    /** Ouvre un tour pour ce <b>fil</b> du projet (F-221 / SF-221-01), en fermant celui du même fil. */
+    public synchronized LiveTurn open(UUID userId, UUID workspaceId, Integer chantier) {
+        LiveTurn turn = new LiveTurn(userId, workspaceId, chantier, objectMapper);
+        LiveTurn previous = turns.put(key(userId, workspaceId, chantier), turn);
         if (previous != null) {
             // Un tour SCELLÉ a déjà rendu sa réponse (SF-84-06) : il ne reste que sa clôture, le
             // remplacer n'abandonne rien.
@@ -126,10 +146,31 @@ public class LiveTurnRegistry {
 
     /** Le tour vivant de ce projet <b>pour cet utilisateur</b>, s'il y en a un ici. */
     public Optional<LiveTurn> find(UUID userId, UUID workspaceId) {
+        return find(userId, workspaceId, null);
+    }
+
+    /** Le tour vivant de ce <b>fil</b> du projet (F-221 / SF-221-01), pour cet utilisateur, ici. */
+    public Optional<LiveTurn> find(UUID userId, UUID workspaceId, Integer chantier) {
         if (userId == null || workspaceId == null) {
             return Optional.empty();
         }
-        return Optional.ofNullable(turns.get(key(userId, workspaceId))).filter(LiveTurn::live);
+        return Optional.ofNullable(turns.get(key(userId, workspaceId, chantier))).filter(LiveTurn::live);
+    }
+
+    /**
+     * Les tours vivants de ce projet <b>sur tous ses fils</b> (F-221 / SF-221-01) — fil commun et chantiers —
+     * pour cet utilisateur, sur ce pod. Isolation à la source, comme {@link #liveTurnsOf}.
+     */
+    public java.util.List<LiveTurn> liveOf(UUID userId, UUID workspaceId) {
+        if (userId == null || workspaceId == null) {
+            return java.util.List.of();
+        }
+        return liveTurnsOf(userId).stream().filter(turn -> workspaceId.equals(turn.workspaceId())).toList();
+    }
+
+    /** Vrai si un tour vit sur ce projet, quel qu'en soit le fil (F-221 / SF-221-01). */
+    public boolean anyLive(UUID userId, UUID workspaceId) {
+        return !liveOf(userId, workspaceId).isEmpty();
     }
 
     /**
@@ -155,7 +196,7 @@ public class LiveTurnRegistry {
         if (turn == null) {
             return;
         }
-        turns.remove(key(turn.userId(), turn.workspaceId()), turn);
+        turns.remove(key(turn.userId(), turn.workspaceId(), turn.chantier()), turn);
         boolean wasLive = turn.live();
         turn.finish();
         if (wasLive) {
@@ -235,7 +276,8 @@ public class LiveTurnRegistry {
         return (int) turns.values().stream().filter(LiveTurn::live).count();
     }
 
-    private static String key(UUID userId, UUID workspaceId) {
-        return userId + ":" + workspaceId;
+    /** La clef : utilisateur, projet, et le fil (F-221 / SF-221-01) — le fil commun garde la clef d'avant. */
+    private static String key(UUID userId, UUID workspaceId, Integer chantier) {
+        return chantier == null ? userId + ":" + workspaceId : userId + ":" + workspaceId + ":ch" + chantier;
     }
 }

@@ -301,6 +301,61 @@ class AtelierChatApiIntegrationTest {
     }
 
     @Test
+    void aMessageSentOnAChantierThreadIsTaggedAndReadBackByItsThreadOnly() throws Exception {
+        UUID ws = createWorkspace(alice, "a.txt", "x");
+        stub.enqueueFinal("Réponse commune.");
+        mockMvc.perform(post("/api/workspaces/" + ws + "/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"commun\"}"))
+                .andExpect(status().isOk());
+        stub.enqueueFinal("Réponse du chantier 3.");
+        mockMvc.perform(post("/api/workspaces/" + ws + "/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"chantier trois\",\"chantier\":3}"))
+                .andExpect(status().isOk());
+        stub.enqueueFinal("Réponse du chantier 4.");
+        mockMvc.perform(post("/api/workspaces/" + ws + "/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"chantier quatre\",\"chantier\":4}"))
+                .andExpect(status().isOk());
+        // Le tour du chantier 4 n'a relu ni la demande ni la réponse du chantier 3.
+        org.assertj.core.api.Assertions.assertThat(String.valueOf(stub.lastRequest.messages()))
+                .contains("commun").doesNotContain("chantier trois");
+
+        mockMvc.perform(get("/api/workspaces/" + ws + "/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(jsonPath("$.length()", is(6)));
+        mockMvc.perform(get("/api/workspaces/" + ws + "/chat").param("chantier", "3").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()", is(4)))
+                .andExpect(jsonPath("$[0].chantier").doesNotExist())
+                .andExpect(jsonPath("$[2].content", is("chantier trois")))
+                .andExpect(jsonPath("$[2].chantier", is(3)))
+                .andExpect(jsonPath("$[3].chantier", is(3)));
+        // Bob : le fil d'un chantier d'Alice est introuvable, historique comme état du tour.
+        mockMvc.perform(get("/api/workspaces/" + ws + "/chat").param("chantier", "3").contextPath("/api")
+                        .header("Authorization", bearer(bobToken)))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/workspaces/" + ws + "/chat/turn").param("chantier", "3").contextPath("/api")
+                        .header("Authorization", bearer(bobToken)))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/workspaces/" + ws + "/chat/turn").param("chantier", "3").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.live", is(false)));
+    }
+
+    @Test
+    void aNonPositiveChantierIsRefused() throws Exception {
+        UUID ws = createWorkspace(alice, "a.txt", "x");
+        mockMvc.perform(post("/api/workspaces/" + ws + "/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"x\",\"chantier\":0}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void resumeAndRestartAreInvisibleOnAnotherUsersWorkspace() throws Exception {
         UUID ws = createWorkspace(alice, "a.txt", "x");
 

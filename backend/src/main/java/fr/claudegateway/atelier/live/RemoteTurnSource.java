@@ -54,6 +54,26 @@ public interface RemoteTurnSource {
     }
 
     /**
+     * L'état du tour du <b>fil</b> {@code chantier} détenu par un pair (F-221 / SF-221-01). Par défaut :
+     * le fil commun seul est relayé (implémentations d'avant F-221).
+     */
+    default Optional<RemoteTurnState> findRemoteTurn(UUID userId, UUID workspaceId, Integer chantier) {
+        return chantier == null ? findRemoteTurn(userId, workspaceId) : Optional.empty();
+    }
+
+    /** Relaie le flux du tour du fil {@code chantier} détenu par un pair (F-221 / SF-221-01). */
+    default boolean streamRemoteTurn(UUID userId, UUID workspaceId, Integer chantier, long cursor,
+            TurnSubscriber subscriber) {
+        return chantier == null && streamRemoteTurn(userId, workspaceId, cursor, subscriber);
+    }
+
+    /** Dépose une précision dans le tour du fil {@code chantier} détenu par un pair (F-221 / SF-221-01). */
+    default Optional<SteerReceipt> steerRemoteTurn(UUID userId, UUID workspaceId, Integer chantier,
+            String message) {
+        return chantier == null ? steerRemoteTurn(userId, workspaceId, message) : Optional.empty();
+    }
+
+    /**
      * L'état d'un tour vivant chez un pair.
      *
      * @param turnId      identifiant du tour, tel que le pod propriétaire l'a créé
