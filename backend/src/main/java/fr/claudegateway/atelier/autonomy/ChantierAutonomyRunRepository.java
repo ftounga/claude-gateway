@@ -22,6 +22,14 @@ public interface ChantierAutonomyRunRepository extends JpaRepository<ChantierAut
     Optional<ChantierAutonomyRun> findFirstByUserIdAndWorkspaceIdAndStatusOrderByStartedAtDesc(UUID userId,
             UUID workspaceId, AutonomyRunStatus status);
 
+    /** La course en cours d'un chantier du sujet, s'il y en a une (F-221 / SF-221-02). */
+    Optional<ChantierAutonomyRun> findFirstByUserIdAndWorkspaceIdAndChantierNumberAndStatusOrderByStartedAtDesc(
+            UUID userId, UUID workspaceId, int chantierNumber, AutonomyRunStatus status);
+
+    /** Les courses en cours d'un sujet, la plus récente d'abord (F-221 / SF-221-02). */
+    List<ChantierAutonomyRun> findByUserIdAndWorkspaceIdAndStatusOrderByStartedAtDesc(UUID userId, UUID workspaceId,
+            AutonomyRunStatus status);
+
     /** Les courses d'un sujet, la plus récente d'abord. */
     List<ChantierAutonomyRun> findByUserIdAndWorkspaceIdOrderByStartedAtDesc(UUID userId, UUID workspaceId,
             Pageable page);
