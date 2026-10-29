@@ -75,6 +75,21 @@ class StepActorTest {
     }
 
     @Test
+    @DisplayName("amender pour préciser les acteurs garde l'avancement ; renvoyer le plan sans acteur les garde")
+    void carryProgressKeepsActorAndWork() {
+        JourneyPlan v1 = toolInput("[{\"title\":\"A\",\"risk\":\"LECTURE\"},{\"title\":\"B\",\"risk\":\"EXTERNE\"}]")
+                .withStep(0, JourneyPlan.StepStatus.VERIFIE, "ok");
+        JourneyPlan v2 = SubjectJourneyService.carryProgress(toolInput("[{\"title\":\"A\",\"risk\":\"LECTURE\","
+                + "\"actor\":\"OUTIL\"},{\"title\":\"B\",\"risk\":\"EXTERNE\",\"actor\":\"MOI\"}]"), v1);
+        assertThat(v2.steps().get(0).status()).isEqualTo(JourneyPlan.StepStatus.VERIFIE);
+        assertThat(v2.steps().get(0).actor()).isEqualTo(JourneyPlan.Actor.OUTIL);
+        JourneyPlan v3 = SubjectJourneyService.carryProgress(toolInput("[{\"title\":\"A\",\"risk\":\"LECTURE\"},"
+                + "{\"title\":\"B\",\"risk\":\"EXTERNE\"}]"), v2);
+        assertThat(v3.steps().get(1).actor()).isEqualTo(JourneyPlan.Actor.MOI);
+        assertThat(v3.steps().get(0).status()).isEqualTo(JourneyPlan.StepStatus.VERIFIE);
+    }
+
+    @Test
     @DisplayName("qui débloque : MOI → votre geste, TIERS → on attend quelqu'un, la suite hérite, faite → rien")
     void unblocker() {
         JourneyPlan plan = toolInput("[{\"title\":\"Envoyer le message à Dhaou\",\"risk\":\"EXTERNE\",\"actor\":\"MOI\"},"

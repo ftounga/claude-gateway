@@ -788,7 +788,9 @@ public class SubjectJourneyService {
             if (sameTitle && now.actor() == null && before.actor() != null) {
                 result = result.withActor(i, before.actor()); // SF-219-06 : renvoyer le plan n'efface pas l'acteur
             }
-            if (!result.changedSince(previous, i) && before.status() != JourneyPlan.StepStatus.A_FAIRE) {
+            // SF-219-06 : l'acteur n'entre pas dans la comparaison — le préciser garde l'avancement.
+            if (java.util.Objects.equals(result.steps().get(i).work(), before.work())
+                    && before.status() != JourneyPlan.StepStatus.A_FAIRE) {
                 result = result.withStep(i, before.status(), before.evidence());
             }
         }

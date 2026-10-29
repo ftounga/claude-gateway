@@ -212,6 +212,15 @@ public record JourneyPlan(List<Step> steps) {
                     actor);
         }
 
+        /**
+         * Ce que fait l'étape, sans son avancement ni son acteur (SF-219-06) : préciser qui l'exécute ne remet
+         * pas à zéro un travail déjà fait.
+         */
+        Step work() {
+            return new Step(title, risk, verify, rollback, waitsOn, StepStatus.A_FAIRE, null, dependsOn, List.of(),
+                    null);
+        }
+
         /** Combien de sous-étapes faites. */
         public int subStepsDone() {
             return (int) subSteps.stream().filter(SubStep::done).count();

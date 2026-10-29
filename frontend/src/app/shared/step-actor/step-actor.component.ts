@@ -40,7 +40,7 @@ const ACTOR_VIEW: Record<'MOI' | 'TIERS', { icon: string; text: string; aria: st
       --tone: var(--cg-text-secondary);
       display: inline-flex;
       align-items: center;
-      gap: 2px;
+      gap: var(--cg-space-1);
       color: var(--cg-text-secondary);
       font-size: 12px;
       line-height: 1.2;
