@@ -24,6 +24,15 @@ public interface RelayInterruptTarget {
     RelayInterruptOutcome interruptLocally(UUID userId, UUID workspaceId, String reason);
 
     /**
+     * Même chose, pour le seul fil {@code chantier} du sujet (F-221 / SF-221-01) ; {@code null} = fil commun.
+     * Par défaut, le fil commun (implémentations d'avant F-221).
+     */
+    default RelayInterruptOutcome interruptLocally(UUID userId, UUID workspaceId, Integer chantier,
+            String reason) {
+        return interruptLocally(userId, workspaceId, reason);
+    }
+
+    /**
      * Effet mesurable d'une interruption sur un pod : rien du tout sur ceux qui ne faisaient rien,
      * ce qui est le cas courant d'une diffusion.
      */

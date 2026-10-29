@@ -91,7 +91,7 @@ public class JourneyToolExecutor {
 
     private Outcome setPlan(UUID userId, Workspace workspace, JsonNode input) {
         JourneyPlan plan = JourneyPlan.fromToolInput(input == null ? null : input.get("steps"));
-        Integer chantier = chantier(input);
+        Integer chantier = chantierOf(input, workspace);
         SubjectJourneyService.PlanChange change = service.setPlan(userId, workspace.getId(), chantier, plan);
         return prefixed(chantier, switch (change.outcome()) {
             case SET -> Outcome.ok("Plan v" + change.version() + " posé (" + plan.steps().size() + " étapes). "
@@ -112,7 +112,7 @@ public class JourneyToolExecutor {
     }
 
     private Outcome submitDiagnosis(UUID userId, Workspace workspace, JsonNode input) {
-        Integer chantier = chantier(input);
+        Integer chantier = chantierOf(input, workspace);
         SubjectJourneyService.DiagnosisOutcome outcome = service.submitDiagnosis(userId, workspace.getId(),
                 chantier, text(input, "diagnosis"), text(input, "evidence"), text(input, "confidence"));
         return prefixed(chantier, switch (outcome) {
@@ -127,7 +127,7 @@ public class JourneyToolExecutor {
 
     private Outcome updateStep(UUID userId, Workspace workspace, JsonNode input) {
         int step = input == null ? 0 : input.path("step").asInt(0);
-        Integer chantier = chantier(input);
+        Integer chantier = chantierOf(input, workspace);
         String actor = text(input, "actor");
         if (actor.isEmpty()) {
             actor = text(input, "acteur");
@@ -164,7 +164,7 @@ public class JourneyToolExecutor {
 
     private Outcome updateSubSteps(UUID userId, Workspace workspace, JsonNode input) {
         int step = input == null ? 0 : input.path("step").asInt(0);
-        Integer chantier = chantier(input);
+        Integer chantier = chantierOf(input, workspace);
         java.util.List<JourneyPlan.SubStep> subSteps =
                 JourneyPlan.subStepsFromToolInput(input == null ? null : input.get("sub_steps"));
         SubjectJourneyService.StepChange change = service.updateSubSteps(userId, workspace.getId(), chantier, step,
@@ -184,7 +184,7 @@ public class JourneyToolExecutor {
     }
 
     private Outcome launchAutonomous(UUID userId, Workspace workspace, JsonNode input) {
-        Integer chantier = chantier(input);
+        Integer chantier = chantier(input); // explicite : jamais déduit du fil
         if (chantier == null) {
             return Outcome.error("chantier est requis : le numéro du chantier à lancer en autonome.");
         }
@@ -202,7 +202,7 @@ public class JourneyToolExecutor {
     }
 
     private Outcome reopen(UUID userId, Workspace workspace, JsonNode input) {
-        Integer chantier = chantier(input);
+        Integer chantier = chantierOf(input, workspace);
         boolean reopened = service.reopenInvestigation(userId, workspace.getId(), chantier, text(input, "reason"));
         return prefixed(chantier, reopened
                 ? Outcome.ok("Retour en INVESTIGATION. Le plan est gardé ; rien ne se modifie avant un nouveau "
@@ -214,6 +214,21 @@ public class JourneyToolExecutor {
      * Le chantier visé (F-206) : un entier ≥ 1, ou {@code null} = le focus. Un numéro, jamais un
      * identifiant : il est relatif au terminal du tour.
      */
+    /**
+     * Le chantier visé par un outil du parcours, dans le <b>fil</b> du tour (F-221 / SF-221-01) : le numéro
+     * donné, sinon le chantier dont le tour relit le fil ({@link Workspace#getTurnChantier()}), sinon
+     * {@code null} = le focus. Dans le volet du chantier 8, « update_plan_step » sans numéro vise le 8 —
+     * jamais le focus du volet d'à côté.
+     */
+    static Integer chantierOf(JsonNode input, Workspace workspace) {
+        Integer given = chantier(input);
+        if (given != null) {
+            return given;
+        }
+        Integer lane = workspace == null ? null : workspace.getTurnChantier();
+        return lane != null && lane >= 1 ? lane : null;
+    }
+
     public static Integer chantier(JsonNode input) {
         if (input == null || !input.hasNonNull("chantier")) {
             return null;

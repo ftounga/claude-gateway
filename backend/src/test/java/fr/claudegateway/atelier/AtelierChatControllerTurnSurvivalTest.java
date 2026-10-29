@@ -60,8 +60,8 @@ class AtelierChatControllerTurnSurvivalTest {
     void leTourVaJusquAuBoutQuandLeFluxEstFermeBrutalement() {
         AtomicInteger steps = new AtomicInteger();
         AtomicBoolean finished = new AtomicBoolean(false);
-        when(chatService.chatStreaming(any(), any(), any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean(), any())).thenAnswer(invocation -> {
-            AtelierProgressListener listener = invocation.getArgument(4);
+        when(chatService.chatStreaming(any(), any(), any(), any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean(), any())).thenAnswer(invocation -> {
+            AtelierProgressListener listener = invocation.getArgument(5);
             listener.onText("je commence");
             steps.incrementAndGet();
             listener.onAction(new AtelierStepEvent("read", "pom.xml"));

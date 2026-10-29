@@ -61,3 +61,17 @@ FROM atelier_turn_measures m LEFT JOIN runner_hosts h ON h.id = m.host_id
 WHERE occurred_at > now() - interval '7 days'
 GROUP BY h.name ORDER BY tours DESC;
 ```
+
+## Par fil de chantier (F-221 / SF-221-01)
+
+`chantier_number` dit dans quel fil le tour a tourné (`NULL` = fil commun du sujet). La part relue du cache, par fil, sur 7 jours :
+
+```sql
+SELECT coalesce(chantier_number::text, 'commun') AS fil, count(*) AS tours,
+       round(100.0 * sum(cache_read_tokens)
+             / nullif(sum(cache_read_tokens + cache_write_tokens + input_tokens), 0), 1) AS relu_pct,
+       sum(cache_write_tokens) AS ecrit
+FROM atelier_turn_measures
+WHERE occurred_at > now() - interval '7 days'
+GROUP BY 1 ORDER BY 2 DESC;
+```

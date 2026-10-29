@@ -2140,7 +2140,9 @@ public class AtelierChatService implements RelayInterruptTarget {
             return null;
         }
         try {
-            return journeyService.forTurn(userId, workspace.getId());
+            // F-221 / SF-221-01 : vu du fil du tour — le chantier du fil au focus, sans toucher au focus.
+            return workspace.getTurnChantier() == null ? journeyService.forTurn(userId, workspace.getId())
+                    : journeyService.forLane(userId, workspace.getId(), workspace.getTurnChantier());
         } catch (RuntimeException ex) {
             log.debug("Parcours du sujet illisible (best-effort) : {}", ex.getMessage());
             return null;
@@ -2185,7 +2187,23 @@ public class AtelierChatService implements RelayInterruptTarget {
                 ? fr.claudegateway.atelier.journey.JourneyTurnNote.render(journey, firstTurn)
                 : (journey != null && journey.isGuided()
                         ? fr.claudegateway.atelier.journey.JourneyTurnNote.render(journey) : "");
+        // F-221 / SF-221-01 : un tour de chantier le sait — dans le MESSAGE, jamais au système (F-134).
+        Integer lane = workspace == null ? null : workspace.getTurnChantier();
+        if (lane != null) {
+            note = laneNote(lane) + note;
+        }
         return note.isEmpty() ? consigne : note + consigne;
+    }
+
+    /**
+     * Ce qu'un tour du fil d'un chantier doit savoir (F-221 / SF-221-01) : il ne relit que le passé commun du
+     * sujet et ce chantier, et ses outils du parcours visent ce chantier par défaut.
+     */
+    static String laneNote(int chantier) {
+        return "[Fil du chantier " + chantier + "] Ce tour est dans le FIL DU CHANTIER " + chantier
+                + " : tu relis le passé commun du sujet et ce chantier seulement, pas les autres chantiers en "
+                + "cours. Les outils du parcours visent le chantier " + chantier + " par défaut. Reste sur ce "
+                + "chantier ; si la demande relève d'un autre, dis-le.\n";
     }
 
     /**
@@ -2617,7 +2635,13 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     public AtelierChatResult chat(UUID userId, UUID workspaceId, String rawMessage,
             AgentTurnMode mode, boolean force, java.util.List<UUID> attachedDepositIds) {
-        return runLoop(userId, workspaceId, rawMessage, mode, AtelierProgressListener.NOOP, force,
+        return chat(userId, workspaceId, null, rawMessage, mode, force, attachedDepositIds);
+    }
+
+    /** Le tour synchrone, sur le fil {@code chantier} (F-221 / SF-221-01) : {@code null} = fil commun. */
+    public AtelierChatResult chat(UUID userId, UUID workspaceId, Integer chantier, String rawMessage,
+            AgentTurnMode mode, boolean force, java.util.List<UUID> attachedDepositIds) {
+        return runLoop(userId, workspaceId, chantier, rawMessage, mode, AtelierProgressListener.NOOP, force,
                 attachedDepositIds);
     }
 
@@ -2662,8 +2686,18 @@ public class AtelierChatService implements RelayInterruptTarget {
     public AtelierChatResult chatStreaming(UUID userId, UUID workspaceId, String rawMessage,
             AgentTurnMode mode, AtelierProgressListener listener, boolean force,
             java.util.List<UUID> attachedDepositIds) {
-        return notifyingOutcome(userId, workspaceId, listener,
-                signals -> runLoop(userId, workspaceId, rawMessage, mode, signals, force, attachedDepositIds));
+        return chatStreaming(userId, workspaceId, null, rawMessage, mode, listener, force, attachedDepositIds);
+    }
+
+    /**
+     * Le flux, sur le <b>fil</b> {@code chantier} du sujet (F-221 / SF-221-01) : {@code null} = fil commun.
+     */
+    public AtelierChatResult chatStreaming(UUID userId, UUID workspaceId, Integer chantier, String rawMessage,
+            AgentTurnMode mode, AtelierProgressListener listener, boolean force,
+            java.util.List<UUID> attachedDepositIds) {
+        return notifyingOutcome(userId, workspaceId, chantier, listener,
+                signals -> runLoop(userId, workspaceId, chantier, rawMessage, mode, signals, force,
+                        attachedDepositIds));
     }
 
     /**
@@ -2676,21 +2710,27 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     private AtelierChatResult notifyingOutcome(UUID userId, UUID workspaceId, AtelierProgressListener listener,
             java.util.function.Function<AtelierProgressListener, AtelierChatResult> turn) {
+        return notifyingOutcome(userId, workspaceId, null, listener, turn);
+    }
+
+    private AtelierChatResult notifyingOutcome(UUID userId, UUID workspaceId, Integer chantier,
+            AtelierProgressListener listener,
+            java.util.function.Function<AtelierProgressListener, AtelierChatResult> turn) {
         TurnSignals signals = new TurnSignals(listener);
         AtelierChatResult result;
         try {
             result = turn.apply(signals);
         } catch (RuntimeException e) {
-            notifyEvent(userId, workspaceId, fr.claudegateway.push.PushEvent.WORK_STOPPED);
+            notifyEvent(userId, workspaceId, chantier, fr.claudegateway.push.PushEvent.WORK_STOPPED);
             throw e;
         }
-        notifyEvent(userId, workspaceId, TurnOutcomes.classify(result, signals));
+        notifyEvent(userId, workspaceId, chantier, TurnOutcomes.classify(result, signals));
         return result;
     }
 
-    private void notifyEvent(UUID userId, UUID workspaceId, fr.claudegateway.push.PushEvent event) {
+    private void notifyEvent(UUID userId, UUID workspaceId, Integer chantier, fr.claudegateway.push.PushEvent event) {
         if (pushNotificationService != null && event != null
-                && !mutedOutcomeTurns.contains(turnKey(userId, workspaceId))) {
+                && !mutedOutcomeTurns.contains(turnKey(userId, workspaceId, chantier))) {
             pushNotificationService.notify(userId, workspaceId, event);
         }
     }
@@ -2704,12 +2744,22 @@ public class AtelierChatService implements RelayInterruptTarget {
 
     /** Tait la notification de fin des tours de ce projet jusqu'à {@link #unmuteOutcomePush} (F-183). */
     public void muteOutcomePush(UUID userId, UUID workspaceId) {
-        mutedOutcomeTurns.add(turnKey(userId, workspaceId));
+        muteOutcomePush(userId, workspaceId, null);
+    }
+
+    /** Même chose, pour le seul fil {@code chantier} (F-221 / SF-221-01). */
+    public void muteOutcomePush(UUID userId, UUID workspaceId, Integer chantier) {
+        mutedOutcomeTurns.add(turnKey(userId, workspaceId, chantier));
     }
 
     /** Rend la notification de fin des tours de ce projet (F-183 / SF-183-04). */
     public void unmuteOutcomePush(UUID userId, UUID workspaceId) {
-        mutedOutcomeTurns.remove(turnKey(userId, workspaceId));
+        unmuteOutcomePush(userId, workspaceId, null);
+    }
+
+    /** Même chose, pour le seul fil {@code chantier} (F-221 / SF-221-01). */
+    public void unmuteOutcomePush(UUID userId, UUID workspaceId, Integer chantier) {
+        mutedOutcomeTurns.remove(turnKey(userId, workspaceId, chantier));
     }
 
     /**
@@ -2844,10 +2894,59 @@ public class AtelierChatService implements RelayInterruptTarget {
     private AtelierChatResult runLoop(UUID userId, UUID workspaceId, String rawMessage,
             AgentTurnMode mode, AtelierProgressListener listener, boolean force,
             java.util.List<UUID> attachedDepositIds) {
+        return runLoop(userId, workspaceId, null, rawMessage, mode, listener, force, attachedDepositIds);
+    }
+
+    /**
+     * Le tour, sur le <b>fil</b> {@code chantier} du sujet (F-221 / SF-221-01) : {@code null} = fil commun
+     * (comportement d'avant). Le fil est posé sur l'instance de workspace du tour ; il décide de ce que le
+     * tour relit ({@link ChantierThread}), de ce qu'il écrit ({@code chantier_number}), de la vue du parcours
+     * (le chantier au focus) et de toutes les clefs d'état du tour.
+     */
+    private AtelierChatResult runLoop(UUID userId, UUID workspaceId, Integer chantier, String rawMessage,
+            AgentTurnMode mode, AtelierProgressListener listener, boolean force,
+            java.util.List<UUID> attachedDepositIds) {
+        Integer lane = chantier != null && chantier >= 1 ? chantier : null;
+        String subject = turnKey(userId, workspaceId);
+        activeLanes.computeIfAbsent(subject, key -> java.util.concurrent.ConcurrentHashMap.newKeySet())
+                .add(lane == null ? 0 : lane);
+        try {
+            return runLoopOnLane(userId, workspaceId, lane, rawMessage, mode, listener, force, attachedDepositIds);
+        } finally {
+            activeLanes.computeIfPresent(subject, (key, lanes) -> {
+                lanes.remove(lane == null ? 0 : lane);
+                return lanes.isEmpty() ? null : lanes;
+            });
+        }
+    }
+
+    /**
+     * Les fils dont une boucle tourne <b>sur ce pod</b>, par sujet (F-221 / SF-221-01) : {@code 0} = fil
+     * commun. Sert à l'interruption d'un fil — n'annuler en bloc les commandes du poste que si aucun autre
+     * fil du sujet ne tourne.
+     */
+    private final java.util.Map<String, java.util.Set<Integer>> activeLanes =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Vrai si une boucle tourne sur ce sujet, ici, dans un autre fil que {@code chantier}. */
+    boolean otherLaneActive(UUID userId, UUID workspaceId, Integer chantier) {
+        java.util.Set<Integer> lanes = activeLanes.get(turnKey(userId, workspaceId));
+        if (lanes == null) {
+            return false;
+        }
+        int own = chantier == null ? 0 : chantier;
+        return lanes.stream().anyMatch(lane -> lane != own);
+    }
+
+    private AtelierChatResult runLoopOnLane(UUID userId, UUID workspaceId, Integer chantier, String rawMessage,
+            AgentTurnMode mode, AtelierProgressListener listener, boolean force,
+            java.util.List<UUID> attachedDepositIds) {
         // Le mode (F-120 / SF-120-02) est normalisé ici : un mode absent vaut ACT (comportement
         // d'avant). Il ne change que la panoplie déclarée et la consigne système — jamais l'isolation.
         AgentTurnMode turnMode = mode == null ? AgentTurnMode.ACT : mode;
         Workspace workspace = workspaceService.requireOwned(userId, workspaceId); // 404 si non possédé (isolation) — TOUJOURS en premier
+        // F-221 / SF-221-01 : le fil du tour voyage avec l'instance chargée pour CE tour, jamais persisté.
+        workspace.setTurnChantier(chantier);
         // F-161 / SF-161-01 : LA PORTE. Un tour qui a besoin du poste et ne l'aura pas doit être
         // refusé ICI — avant le contexte, avant le modèle, avant le moindre jeton. Sur la session
         // mesurée du 25/09, 8 tours « Non concluant » ont coûté 11 % de la facture pour DÉCOUVRIR
@@ -2895,15 +2994,15 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
         // Une interruption demandée alors qu'aucun tour ne tournait ne doit pas tuer celui-ci
         // (même précaution que F-32 SF-32-01).
-        interruptedTurns.remove(turnKey(userId, workspaceId));
+        interruptedTurns.remove(turnKey(userId, workspace));
         // La marque « tout autoriser » ne survit jamais au message qui l'a reçue (SF-38-20).
-        blanketAllowedTurns.remove(turnKey(userId, workspaceId));
+        blanketAllowedTurns.remove(turnKey(userId, workspace));
         // Ni la machine d'hier ni celle d'un tour abandonné ne jugent ce tour-ci (F-93 / SF-93-04).
-        machineOfTurn.remove(turnKey(userId, workspaceId));
+        machineOfTurn.remove(turnKey(userId, workspace));
         // La marque de mutation ne survit jamais au message (F-148 / SF-148-07) : chaque tour part
         // « non muté », si bien que le 1er glob du tour peut être servi par l'index.
-        mutatedTurns.remove(turnKey(userId, workspaceId));
-        turnRunnerCounters.remove(turnKey(userId, workspaceId)); // F-188 / SF-188-03
+        mutatedTurns.remove(turnKey(userId, workspace));
+        turnRunnerCounters.remove(turnKey(userId, workspace)); // F-188 / SF-188-03
         long startedAt = System.currentTimeMillis();
         long deadline = startedAt + turnBudgetMs;
         // F-195 / SF-195-05 : le plafond d'étapes du tour, prolongé (comme `deadline`) par chaque
@@ -2922,7 +3021,11 @@ public class AtelierChatService implements RelayInterruptTarget {
             // Le listener rend la compaction visible (F-162 / SF-162-03) : barre pendant, marqueur
             // « Conversation compactée · N tours » après. De l'affichage seul — rien ne change de ce qui
             // repart au modèle ; best-effort, un échec d'émission ne casse pas la compaction.
-            compaction = compactionService.compactIfOversized(userId, workspace, apiKey, listener);
+            // F-221 / SF-221-01 : deux fils du même sujet peuvent déclencher la compaction ensemble — un
+            // résumé et une frontière par sujet, donc un seul à la fois.
+            synchronized (compactionLock(userId, workspaceId)) {
+                compaction = compactionService.compactIfOversized(userId, workspace, apiKey, listener);
+            }
         }
 
         // Historique de l'atelier (texte) + nouveau message utilisateur.
@@ -3041,7 +3144,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         messages.add(AgentMessage.userText(consigne));
 
         AtelierMessage savedUserMessage = messageRepository.save(AtelierMessage.builder()
-                .workspaceId(workspaceId).userId(userId).role("USER").content(userText).build());
+                .workspaceId(workspaceId).userId(userId).role("USER").content(userText)
+                .chantierNumber(workspace.getTurnChantier()).build());
         // F-169 / SF-169-02 : LIER les dépôts joints à CE message, maintenant que son id existe. Le
         // lien (message_id) rend les pièces jointes persistantes — le rechargement du fil les retrouve
         // (GET /chat). Isolation réappliquée au service. Best-effort : un échec de lien ne casse pas le
@@ -3160,7 +3264,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         long largestIterationTokens = 0L;
         // F-183 / SF-183-03 : le plafond en DOLLARS d'un tour armé par son lanceur (une routine, sans
         // humain). Absent pour un tour au clavier : rien ne change. Il coupe, il ne dégrade jamais.
-        final AtelierSpendCap spendCap = spendCaps.get(turnKey(userId, workspaceId));
+        final AtelierSpendCap spendCap = spendCaps.get(turnKey(userId, workspace));
         /** Itération la plus chère observée, en dollars : majorant de la suivante (même règle D-L8-2). */
         java.math.BigDecimal largestIterationUsd = java.math.BigDecimal.ZERO;
         // F-188 / SF-188-03 : la forme du tour, passe principale par passe principale.
@@ -3267,7 +3371,7 @@ public class AtelierChatService implements RelayInterruptTarget {
 
         for (int iteration = 0; iteration < iterationCap; iteration++) {
             iterationsUsed = iteration + 1;
-            if (interruptedTurns.remove(turnKey(userId, workspaceId))) {
+            if (interruptedTurns.remove(turnKey(userId, workspace))) {
                 finalText = INTERRUPTED_REPLY;
                 interrupted = true;
                 break;
@@ -3279,7 +3383,7 @@ public class AtelierChatService implements RelayInterruptTarget {
             //
             // Le dernier appel fait foi (F-93 / SF-93-04) : un runner revenu en cours de tour a
             // repassé l'état à REACHED, et n'arrête donc rien.
-            if (stopOnRunnerOffline && machineWentOffline(userId, workspaceId)) {
+            if (stopOnRunnerOffline && machineWentOffline(userId, workspace)) {
                 finalText = fr.claudegateway.runner.door.RunnerStopSummary.of(
                         new AtelierToolTrace(List.copyOf(trace)), hostNameOfTurn(workspace));
                 log.info("Tour arrêté net : le poste ne répond plus (workspace={}, étapes={})",
@@ -3323,7 +3427,7 @@ public class AtelierChatService implements RelayInterruptTarget {
             // F-121 / SF-121-11 : elles partent en UN SEUL message utilisateur, chacune étiquetée
             // et datée. Une par message donnait au modèle une rafale de messages utilisateur nus,
             // indiscernables de la demande initiale — le « ressenti messages multiples ».
-            String frontierInterjections = takeAndRecordSteers(listener, userId, workspaceId,
+            String frontierInterjections = takeAndRecordSteers(listener, userId, workspace,
                     iteration + 1);
             if (frontierInterjections != null) {
                 messages.add(AgentMessage.userText(frontierInterjections));
@@ -3547,7 +3651,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                     AtelierCheckpointVerdict verdict = checkpointRunner.runEndOfTurn(
                             AtelierCheckpointContext.endOfTurn(userId, workspace.getHostId(),
                                     workspaceId, finalText, List.copyOf(writtenPaths),
-                                    machineOfTurn.getOrDefault(turnKey(userId, workspaceId),
+                                    machineOfTurn.getOrDefault(turnKey(userId, workspace),
                                             fr.claudegateway.atelier.checkpoint.AtelierMachineReach.UNKNOWN),
                                     planOfTurn.get()),
                             turnMode == AgentTurnMode.ANSWER_PLAN);
@@ -4043,7 +4147,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                 // appel en vol — le geste qui arrête reste l'interruption (F-38 / SF-38-07) —, et
                 // la conversation n'est toujours pas modifiée pendant un appel au fournisseur (D2).
                 String betweenCalls =
-                        takeAndRecordSteers(listener, userId, workspaceId, iteration + 2);
+                        takeAndRecordSteers(listener, userId, workspace, iteration + 2);
                 if (betweenCalls != null) {
                     interjectionsBetweenCalls.add(betweenCalls);
                     requestsInTurn++;
@@ -4077,7 +4181,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                 iterationCap++;
             }
 
-            if (interruptedTurns.remove(turnKey(userId, workspaceId))) {
+            if (interruptedTurns.remove(turnKey(userId, workspace))) {
                 // Interruption arrivée pendant les outils de ce tour : on s'arrête sans rappeler le
                 // fournisseur — l'appel runner en vol a déjà reçu son tool_cancel.
                 finalText = INTERRUPTED_REPLY;
@@ -4097,9 +4201,9 @@ public class AtelierChatService implements RelayInterruptTarget {
             finalText = finalText + unfinishedRequestsNote(requestsOfTurn);
         }
         // Le constat sur la machine ne survit pas au tour (F-93 / SF-93-04).
-        machineOfTurn.remove(turnKey(userId, workspaceId));
+        machineOfTurn.remove(turnKey(userId, workspace));
         // La marque de mutation non plus (F-148 / SF-148-07).
-        mutatedTurns.remove(turnKey(userId, workspaceId));
+        mutatedTurns.remove(turnKey(userId, workspace));
 
         if (hosted) {
             // Le projet et son poste voyagent avec le décompte (F-61 / SF-61-01) : c'est ce qui
@@ -4147,7 +4251,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                 inputTokens + outputTokens,
                 refusalStop ? "refus du fournisseur" : stopCause(interrupted, spendCapReached, finalText));
         // F-188 / SF-188-03 : la même fin de tour, en base — des nombres, jamais de contenu.
-        int[] runnerCounts = turnRunnerCounters.remove(turnKey(userId, workspaceId));
+        int[] runnerCounts = turnRunnerCounters.remove(turnKey(userId, workspace));
         if (turnMeasureWriter != null) {
             turnMeasureWriter.write(new fr.claudegateway.atelier.measure.TurnMeasure(userId,
                     workspaceId, workspace.getHostId(), model, java.time.Instant.now(),
@@ -4157,7 +4261,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                     maxContextTokens, totalContextTokens, firstPassCacheWrite, laterCacheWrite,
                     inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens,
                     webSearchRequests, runnerCounts == null ? 0 : runnerCounts[0],
-                    runnerCounts == null ? 0 : runnerCounts[1]));
+                    runnerCounts == null ? 0 : runnerCounts[1], workspace.getTurnChantier()));
         }
         // F-125 / SF-125-01 : le marqueur de fin de tour parle au produit, pas au lecteur. Les
         // contrôles de fin de tour l'ont déjà lu sur `finalText` (plus haut, et en rejeu sur un
@@ -4230,6 +4334,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                 interrupted, spendCapReached, planOfTurn.get(), List.copyOf(transcript), costUsd);
         AtelierMessage assistant = messageRepository.save(AtelierMessage.builder()
                 .workspaceId(workspaceId).userId(userId).role("ASSISTANT")
+                .chantierNumber(workspace.getTurnChantier())
                 .content(reply)
                 .toolTrace(new AtelierToolTrace(List.copyOf(trace)).toJson())
                 .terminalJson(fr.claudegateway.atelier.questions.TurnQuestions.attachTo(
@@ -4323,7 +4428,8 @@ public class AtelierChatService implements RelayInterruptTarget {
      * @return le texte à joindre à la conversation, ou {@code null} s'il n'y a rien à joindre
      */
     private String takeAndRecordSteers(AtelierProgressListener listener, UUID userId,
-            UUID workspaceId, int readAtStep) {
+            Workspace workspace, int readAtStep) {
+        UUID workspaceId = workspace.getId();
         List<AtelierProgressListener.AtelierSteer> taken = listener.takeSteers();
         if (taken.isEmpty()) {
             return null;
@@ -4334,6 +4440,7 @@ public class AtelierChatService implements RelayInterruptTarget {
             if (!text.isEmpty()) {
                 AtelierMessage savedSteer = messageRepository.save(AtelierMessage.builder()
                         .workspaceId(workspaceId).userId(userId).role("USER").content(text)
+                        .chantierNumber(workspace.getTurnChantier())
                         .build());
                 // F-162 / SF-162-06 : les précisions sont aussi de la parole de l'utilisateur — embeddées
                 // pour le rappel sémantique, best-effort (NONE par défaut ⇒ ne fait rien).
@@ -4448,15 +4555,30 @@ public class AtelierChatService implements RelayInterruptTarget {
         if (summary != null) {
             messages.add(summary);
         }
-        messages.addAll(replayableHistory(
-                workspace.getChatThreadStartedAt() == null
-                        ? messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(
-                                workspace.getId(), userId)
-                        : messageRepository
-                                .findByWorkspaceIdAndUserIdAndCreatedAtGreaterThanEqualOrderByCreatedAtAsc(
-                                        workspace.getId(), userId, workspace.getChatThreadStartedAt()),
+        List<AtelierMessage> past = workspace.getChatThreadStartedAt() == null
+                ? messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspace.getId(), userId)
+                : messageRepository.findByWorkspaceIdAndUserIdAndCreatedAtGreaterThanEqualOrderByCreatedAtAsc(
+                        workspace.getId(), userId, workspace.getChatThreadStartedAt());
+        // F-221 / SF-221-01 : le fil du tour ne relit que le passé commun et le sien, regroupé par tour.
+        messages.addAll(replayableHistory(threadOf(userId, workspace.getId(), workspace.getTurnChantier(), past),
                 replayedTraceTurns));
         return messages;
+    }
+
+    /**
+     * Ce que voit le fil {@code chantier} parmi {@code past} (F-221 / SF-221-01) — la même règle pour le
+     * rejeu et pour l'historique affiché ({@link ChantierThread}).
+     */
+    List<AtelierMessage> threadOf(UUID userId, UUID workspaceId, Integer chantier, List<AtelierMessage> past) {
+        java.time.OffsetDateTime openedAt = null;
+        if (chantier != null && journeyService != null) {
+            try {
+                openedAt = journeyService.chantierOpenedAt(userId, workspaceId, chantier).orElse(null);
+            } catch (RuntimeException ex) {
+                log.debug("Ouverture du chantier illisible (best-effort) : {}", ex.getMessage());
+            }
+        }
+        return ChantierThread.byTurn(ChantierThread.visibleTo(past, chantier, openedAt));
     }
 
     private static List<AgentMessage> replayableHistory(List<AtelierMessage> past, int traceTurns) {
@@ -4752,7 +4874,7 @@ public class AtelierChatService implements RelayInterruptTarget {
      *       l'état ne bouge pas.</li>
      * </ul>
      */
-    private void noteMachine(UUID userId, UUID workspaceId, RunnerCallResult result) {
+    private void noteMachine(UUID userId, Workspace workspace, RunnerCallResult result) {
         if (result == null) {
             return;
         }
@@ -4766,7 +4888,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         } else {
             return;
         }
-        machineOfTurn.put(turnKey(userId, workspaceId), reach);
+        machineOfTurn.put(turnKey(userId, workspace), reach);
     }
 
     /**
@@ -4776,8 +4898,8 @@ public class AtelierChatService implements RelayInterruptTarget {
      *
      * <p>Lu par {@code (userId, workspaceId)} : l'incident d'un autre projet n'arrête pas celui-ci.</p>
      */
-    private boolean machineWentOffline(UUID userId, UUID workspaceId) {
-        return machineOfTurn.get(turnKey(userId, workspaceId))
+    private boolean machineWentOffline(UUID userId, Workspace workspace) {
+        return machineOfTurn.get(turnKey(userId, workspace))
                 == fr.claudegateway.atelier.checkpoint.AtelierMachineReach.OFFLINE;
     }
 
@@ -4828,9 +4950,17 @@ public class AtelierChatService implements RelayInterruptTarget {
      * un pair injoignable est journalisé et ne change pas la réponse rendue au navigateur.</p>
      */
     public void interruptChat(UUID userId, UUID workspaceId) {
+        interruptChat(userId, workspaceId, null);
+    }
+
+    /**
+     * Interrompt le seul fil {@code chantier} du sujet (F-221 / SF-221-01) : {@code null} = fil commun.
+     * L'autre fil continue.
+     */
+    public void interruptChat(UUID userId, UUID workspaceId, Integer chantier) {
         workspaceService.requireOwned(userId, workspaceId);
-        interruptLocally(userId, workspaceId, "user_interrupt");
-        relayBroadcaster.broadcastInterrupt(userId, workspaceId, "user_interrupt");
+        interruptLocally(userId, workspaceId, chantier, "user_interrupt");
+        relayBroadcaster.broadcastInterrupt(userId, workspaceId, chantier, "user_interrupt");
     }
 
     /**
@@ -4842,12 +4972,31 @@ public class AtelierChatService implements RelayInterruptTarget {
      * local et par le relais interne, pour que la boucle la trouve où qu'elle tourne.
      */
     public void allowAllLocally(UUID userId, UUID workspaceId) {
-        blanketAllowedTurns.add(turnKey(userId, workspaceId));
+        allowAllLocally(userId, workspaceId, null);
+    }
+
+    /** « Tout autoriser » pour le seul fil {@code chantier} (F-221 / SF-221-01). */
+    public void allowAllLocally(UUID userId, UUID workspaceId, Integer chantier) {
+        blanketAllowedTurns.add(turnKey(userId, workspaceId, chantier));
     }
 
     @Override
     public RelayInterruptOutcome interruptLocally(UUID userId, UUID workspaceId, String reason) {
-        interruptedTurns.add(turnKey(userId, workspaceId));
+        return interruptLocally(userId, workspaceId, null, reason);
+    }
+
+    /**
+     * Interruption d'un fil sur ce pod (F-221 / SF-221-01). Les autorisations en attente et les commandes en
+     * vol sur le poste sont rattachées au <b>sujet</b>, pas au fil : elles ne sont annulées en bloc que si
+     * aucun autre fil du sujet ne tourne ici. Sinon le fil interrompu s'arrête à la frontière sûre suivante,
+     * et l'autre n'est jamais tué.
+     */
+    @Override
+    public RelayInterruptOutcome interruptLocally(UUID userId, UUID workspaceId, Integer chantier, String reason) {
+        interruptedTurns.add(turnKey(userId, workspaceId, chantier));
+        if (otherLaneActive(userId, workspaceId, chantier)) {
+            return new RelayInterruptOutcome(0, 0);
+        }
         // Une demande d'autorisation encore en attente bloquerait la boucle jusqu'à son échéance,
         // alors que l'utilisateur vient précisément de demander l'arrêt (F-38 / SF-38-08).
         int released = confirmationGate.cancelWorkspace(workspaceId);
@@ -4902,10 +5051,19 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     public void confirmToolUse(UUID userId, UUID workspaceId, String toolUseId, boolean allow,
             String reason, boolean allowAll, boolean alwaysAllowCommand) {
+        confirmToolUse(userId, workspaceId, null, toolUseId, allow, reason, allowAll, alwaysAllowCommand);
+    }
+
+    /**
+     * Même décision, la marque « tout autoriser » posée sur le seul fil {@code chantier} (F-221 / SF-221-01).
+     * La demande elle-même est retrouvée par son identifiant d'appel, unique, quel que soit le fil.
+     */
+    public void confirmToolUse(UUID userId, UUID workspaceId, Integer chantier, String toolUseId, boolean allow,
+            String reason, boolean allowAll, boolean alwaysAllowCommand) {
         workspaceService.requireOwned(userId, workspaceId);
         if (allowAll && allow) {
-            blanketAllowedTurns.add(turnKey(userId, workspaceId));
-            relayBroadcaster.broadcastConfirm(userId, workspaceId, callIdOf(toolUseId), true, reason);
+            blanketAllowedTurns.add(turnKey(userId, workspaceId, chantier));
+            relayBroadcaster.broadcastConfirm(userId, workspaceId, chantier, callIdOf(toolUseId), true, reason);
             // La marque est l'essentiel : « tout autoriser » reste valable même si la demande qui
             // l'a déclenchée vient d'expirer, ou si la boucle n'en attendait plus aucune.
             try {
@@ -5180,7 +5338,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
         String title = fr.claudegateway.pages.PageToolExecutor.auditTarget(call.input());
         // F-218 / SF-218-02 : en mode offensif, publier une page privée ne demande plus d'accord.
-        if (!offensiveMode && !blanketAllowedTurns.contains(turnKey(userId, workspace.getId()))) {
+        if (!offensiveMode && !blanketAllowedTurns.contains(turnKey(userId, workspace))) {
             RunnerConfirmationGate.Outcome decision = askPermission(userId, workspace.getId(), callId,
                     call.name(), "Publier la page « " + (title == null ? "sans titre" : title)
                             + " » — privée, visible par vous seul", listener);
@@ -5244,7 +5402,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "message suivant.");
         }
         String target = fr.claudegateway.speech.SpeechToolExecutor.auditTarget(call.input());
-        if (!blanketAllowedTurns.contains(turnKey(userId, workspace.getId()))) {
+        if (!blanketAllowedTurns.contains(turnKey(userId, workspace))) {
             boolean auditions = call.input() != null && call.input().path("auditions").asBoolean(false);
             RunnerConfirmationGate.Outcome decision = askPermission(userId, workspace.getId(), callId,
                     call.name(), (auditions ? "Faire écouter des voix sur « " : "Produire la voix off « ")
@@ -5311,7 +5469,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         boolean audio = fr.claudegateway.videos.VideoToolCatalog.AUDIO.equals(call.name());
         String target = fr.claudegateway.videos.VideoToolExecutor.auditTarget(call.input());
         // F-218 / SF-218-02 : en mode offensif, publier une vidéo ou des sons privés ne demande plus d'accord.
-        if (!offensiveMode && !blanketAllowedTurns.contains(turnKey(userId, workspace.getId()))) {
+        if (!offensiveMode && !blanketAllowedTurns.contains(turnKey(userId, workspace))) {
             RunnerConfirmationGate.Outcome decision = askPermission(userId, workspace.getId(), callId,
                     call.name(), (audio ? "Publier les sons « " : "Publier la vidéo « ")
                             + (target == null ? "sans titre" : target) + " » — privée, visible par vous seul",
@@ -5388,7 +5546,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
         UUID workspaceId = workspace.getId();
         RunnerTarget runnerTarget = RunnerTargets.of(workspace);
-        boolean blanket = blanketAllowedTurns.contains(turnKey(userId, workspaceId));
+        boolean blanket = blanketAllowedTurns.contains(turnKey(userId, workspace));
         for (int i = 0; i < commands.size(); i++) {
             String subId = callId + "-" + (i + 1);
             AgentToolCall bashCall = new AgentToolCall(subId, "bash",
@@ -5417,14 +5575,14 @@ public class AtelierChatService implements RelayInterruptTarget {
                             + " Aucune commande n'a été exécutée.");
                 }
                 // « Tout autoriser pour ce message » a pu être choisi pendant cette invite.
-                blanket = blanketAllowedTurns.contains(turnKey(userId, workspaceId));
+                blanket = blanketAllowedTurns.contains(turnKey(userId, workspace));
             }
         }
         long remaining = Math.max(RunnerToolGateway.MIN_BASH_TIMEOUT_MS, deadline - System.currentTimeMillis());
         RunnerCallResult result = runnerToolGateway.proof(runnerTarget, callId, commands,
                 Math.min(RunnerToolGateway.MAX_BASH_TIMEOUT_MS, remaining));
-        markTurnMutation(userId, workspaceId, "bash", result);
-        noteMachine(userId, workspaceId, result);
+        markTurnMutation(userId, workspace, "bash", result);
+        noteMachine(userId, workspace, result);
         if (!result.ok()) {
             runnerAuditService.recordCall(userId, runnerTarget, callId, "bash",
                     shorten(String.join(" ; ", commands), AUDIT_TARGET_CHARS), result);
@@ -5483,7 +5641,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "Réponds en clair.");
         }
         String title = fr.claudegateway.presentations.PresentationToolExecutor.auditTarget(call.input());
-        if (!blanketAllowedTurns.contains(turnKey(userId, workspace.getId()))) {
+        if (!blanketAllowedTurns.contains(turnKey(userId, workspace))) {
             RunnerConfirmationGate.Outcome decision = askPermission(userId, workspace.getId(), callId,
                     call.name(), "Capturer la présentation « " + (title == null ? "sans titre" : title)
                             + " » — privée, visible par vous seul", listener);
@@ -5854,7 +6012,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "une image déjà générée, ou poursuis sans nouvelle image.");
         }
         String prompt = fr.claudegateway.images.ImageToolExecutor.auditTarget(call.input());
-        if (!blanketAllowedTurns.contains(turnKey(userId, workspace.getId()))) {
+        if (!blanketAllowedTurns.contains(turnKey(userId, workspace))) {
             RunnerConfirmationGate.Outcome decision = askPermission(userId, workspace.getId(), callId,
                     call.name(), "Générer une image décorative « "
                             + (prompt == null ? "sans description" : prompt) + " »", listener);
@@ -6057,7 +6215,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                                         "Outil indisponible en sous-tâche de lecture : " + subCall.name());
                         return new AtelierTask.ExecutedTool(sub.content(), sub.isError());
                     },
-                    () -> interruptedTurns.contains(turnKey(userId, workspace.getId()))
+                    () -> interruptedTurns.contains(turnKey(userId, workspace))
                             || System.currentTimeMillis() >= deadline,
                     reasoning);
             return new ExplorationOutcome(ToolOutcome.info(result.answer()),
@@ -6141,7 +6299,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                                 : ToolOutcome.error("Outil indisponible en exploration : " + subCall.name());
                         return new AtelierExploration.ExecutedTool(outcome.content(), outcome.isError());
                     },
-                    () -> interruptedTurns.contains(turnKey(userId, workspace.getId()))
+                    () -> interruptedTurns.contains(turnKey(userId, workspace))
                             || System.currentTimeMillis() >= deadline,
                     // F-119 / SF-119-01 : la sous-boucle investigue avec un raisonnement adaptatif
                     // (effort configurable non nul), plus jamais AgentReasoning.none(). Un agent nommé
@@ -6242,7 +6400,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                                 UUID.randomUUID().toString(), subCall, listener, deadline, worktreePath);
                         return new AtelierTask.ExecutedTool(sub.content(), sub.isError());
                     },
-                    () -> interruptedTurns.contains(turnKey(userId, workspace.getId()))
+                    () -> interruptedTurns.contains(turnKey(userId, workspace))
                             || System.currentTimeMillis() >= deadline,
                     reasoning);
             // F-150 / SF-150-05 : restitution — on committe le worktree sur SA branche et on remonte
@@ -6349,6 +6507,13 @@ public class AtelierChatService implements RelayInterruptTarget {
     /** Réglage des sous-tâches parallèles — exposé pour les tests (F-195 / SF-195-04). */
     void setTaskParallelism(int taskParallelism) {
         this.taskParallelism = taskParallelism;
+    }
+
+    /** Verrous de compaction par sujet (F-221 / SF-221-01) : un résumé et une frontière par sujet. */
+    private final java.util.Map<String, Object> compactionLocks = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private Object compactionLock(UUID userId, UUID workspaceId) {
+        return compactionLocks.computeIfAbsent(turnKey(userId, workspaceId), key -> new Object());
     }
 
     /** Verrous par projet : gestes git du worktree, puis invites d'autorisation (F-195 / SF-195-04). */
@@ -6710,13 +6875,37 @@ public class AtelierChatService implements RelayInterruptTarget {
 
     /** Clef de marque d'interruption : l'utilisateur ET le workspace, jamais l'un sans l'autre. */
     private static String turnKey(UUID userId, UUID workspaceId) {
-        return userId + ":" + workspaceId;
+        return turnKey(userId, workspaceId, null);
+    }
+
+    /**
+     * Clef d'état du tour <b>par fil</b> (F-221 / SF-221-01) : utilisateur, workspace et chantier. Deux tours
+     * vivants d'un même sujet — fil commun et chantier, ou deux chantiers — ne partagent jamais
+     * l'interruption, « tout autoriser », le plafond de dépense ni l'état de la machine. Le fil commun garde
+     * la clef d'avant F-221.
+     */
+    static String turnKey(UUID userId, UUID workspaceId, Integer chantier) {
+        return chantier == null ? userId + ":" + workspaceId : userId + ":" + workspaceId + ":ch" + chantier;
+    }
+
+    /** La clef du tour porté par cette instance de workspace (son fil : {@link Workspace#getTurnChantier()}). */
+    private static String turnKey(UUID userId, Workspace workspace) {
+        return turnKey(userId, workspace.getId(), workspace.getTurnChantier());
     }
 
     /** Historique des messages de l'atelier (isolation {@code user_id}). */
     public List<AtelierMessage> history(UUID userId, UUID workspaceId) {
+        return history(userId, workspaceId, null);
+    }
+
+    /**
+     * Historique <b>vu du fil</b> {@code chantier} (F-221 / SF-221-01) : exactement ce que son tour relit,
+     * sans la frontière de rejeu (l'écran montre aussi ce qui a été résumé). {@code null} = tout le sujet.
+     */
+    public List<AtelierMessage> history(UUID userId, UUID workspaceId, Integer chantier) {
         workspaceService.requireOwned(userId, workspaceId);
-        return messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspaceId, userId);
+        List<AtelierMessage> all = messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspaceId, userId);
+        return chantier == null ? all : threadOf(userId, workspaceId, chantier, all);
     }
 
     /**
@@ -7623,7 +7812,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         // F-218 / SF-218-02 : en mode offensif, l'écriture Microsoft 365 n'a plus d'accord forcé — elle
         // suit la politique de permission ci-dessous (défaut ALLOW, une règle ASK/DENY reste respectée).
         boolean teamsWrite = !offensiveMode && fr.claudegateway.teams.TeamsToolCatalog.isWrite(tool);
-        boolean blanket = blanketAllowedTurns.contains(turnKey(userId, workspace.getId()));
+        boolean blanket = blanketAllowedTurns.contains(turnKey(userId, workspace));
         if (teamsWrite) {
             // F-108 / SF-108-02 : une écriture Microsoft 365 est confirmée à CHAQUE fois — hors
             // politique de permission et hors « tout autoriser » (garde du cadrage, pas une commodité).
@@ -7693,19 +7882,19 @@ public class AtelierChatService implements RelayInterruptTarget {
         // protocol_error) est réessayé, borné, AVANT de rendre la main au modèle — ~17 % des appels
         // échouent derrière le proxy en prod, et un négatif rendu au modèle le fait conclure faux.
         RunnerCallResult result =
-                callRunnerWithRetry(userId, workspaceId, runnerTarget, callId, call, listener, deadline);
+                callRunnerWithRetry(userId, workspace, runnerTarget, callId, call, listener, deadline);
         if (result == null) {
             return ToolOutcome.error("Outil inconnu : " + tool);
         }
         if (!result.ok() && "denied".equals(result.errorCode())) {
-            countRunner(userId, workspaceId, 0); // F-188 / SF-188-03 : refus rendu au modèle
+            countRunner(userId, workspace, 0); // F-188 / SF-188-03 : refus rendu au modèle
         }
         runnerAuditService.recordCall(userId, runnerTarget, callId, tool, target, result);
-        noteMachine(userId, workspaceId, result);
+        noteMachine(userId, workspace, result);
         // F-148 / SF-148-07 : dès que ce tour a muté le projet, `glob` ne sera plus servi par l'index
         // (il repart en direct) — un fichier créé ce tour ne peut pas être manqué. Un `bash` marque
         // toujours (il peut créer un fichier sans qu'on le voie) ; write/edit seulement s'ils aboutissent.
-        markTurnMutation(userId, workspaceId, tool, result);
+        markTurnMutation(userId, workspace, tool, result);
         if (RunnerErrorCodes.RUNNER_UNAVAILABLE.equals(result.errorCode())
                 && runnerTarget.hostId() != null) {
             // F-97 / SF-97-02 : le refus est aussi dit à l'écran, pas seulement au modèle.
@@ -7722,7 +7911,7 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     private ToolOutcome serveGlobFromIndex(UUID userId, Workspace workspace, RunnerTarget runnerTarget,
             String callId, AgentToolCall call, String target) {
-        if (mutatedTurns.contains(turnKey(userId, workspace.getId()))
+        if (mutatedTurns.contains(turnKey(userId, workspace))
                 || !repoIndex.isPrimed(userId, workspace)) {
             return null;
         }
@@ -7740,10 +7929,10 @@ public class AtelierChatService implements RelayInterruptTarget {
     }
 
     /** Pose la marque de mutation du tour si l'outil a modifié (ou a pu modifier) le projet. */
-    private void markTurnMutation(UUID userId, UUID workspaceId, String tool, RunnerCallResult result) {
+    private void markTurnMutation(UUID userId, Workspace workspace, String tool, RunnerCallResult result) {
         boolean mutates = "bash".equals(tool) || (isFileWrite(tool) && result.ok());
         if (mutates) {
-            mutatedTurns.add(turnKey(userId, workspaceId));
+            mutatedTurns.add(turnKey(userId, workspace));
         }
     }
 
@@ -7939,16 +8128,26 @@ public class AtelierChatService implements RelayInterruptTarget {
      * désarme.
      */
     public void capSpend(UUID userId, UUID workspaceId, java.math.BigDecimal capUsd) {
+        capSpend(userId, workspaceId, null, capUsd);
+    }
+
+    /** Même plafond, pour le seul fil {@code chantier} du sujet (F-221 / SF-221-01). */
+    public void capSpend(UUID userId, UUID workspaceId, Integer chantier, java.math.BigDecimal capUsd) {
         if (capUsd == null) {
-            releaseSpendCap(userId, workspaceId);
+            releaseSpendCap(userId, workspaceId, chantier);
             return;
         }
-        spendCaps.put(turnKey(userId, workspaceId), new AtelierSpendCap(capUsd));
+        spendCaps.put(turnKey(userId, workspaceId, chantier), new AtelierSpendCap(capUsd));
     }
 
     /** Désarme le plafond en dollars de ce projet (F-183 / SF-183-03). */
     public void releaseSpendCap(UUID userId, UUID workspaceId) {
-        spendCaps.remove(turnKey(userId, workspaceId));
+        releaseSpendCap(userId, workspaceId, null);
+    }
+
+    /** Désarme le plafond du seul fil {@code chantier} (F-221 / SF-221-01). */
+    public void releaseSpendCap(UUID userId, UUID workspaceId, Integer chantier) {
+        spendCaps.remove(turnKey(userId, workspaceId, chantier));
     }
 
     /**
@@ -7971,8 +8170,8 @@ public class AtelierChatService implements RelayInterruptTarget {
     private final java.util.Map<String, int[]> turnRunnerCounters =
             new java.util.concurrent.ConcurrentHashMap<>();
 
-    private void countRunner(UUID userId, UUID workspaceId, int index) {
-        turnRunnerCounters.computeIfAbsent(turnKey(userId, workspaceId), key -> new int[2])[index]++;
+    private void countRunner(UUID userId, Workspace workspace, int index) {
+        turnRunnerCounters.computeIfAbsent(turnKey(userId, workspace), key -> new int[2])[index]++;
     }
 
     /** Réglage de l'attente d'un poste occupé — exposé pour les tests (F-188 / SF-188-02). */
@@ -8024,7 +8223,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         if (effect == PermissionEffect.DENY) {
             return false; // le chemin séquentiel rend le refus, tracé, comme avant
         }
-        return effect != PermissionEffect.ASK || blanketAllowedTurns.contains(turnKey(userId, workspace.getId()));
+        return effect != PermissionEffect.ASK || blanketAllowedTurns.contains(turnKey(userId, workspace));
     }
 
     /** Nombre d'appels de la réponse candidats au parallèle — évite de lire le poste pour rien. */
@@ -8198,7 +8397,7 @@ public class AtelierChatService implements RelayInterruptTarget {
      * dernier essai échoue encore en transport, le résultat est <b>tagué « (réessayé) »</b>, ce que le
      * message « non concluant » (SF-119-04) reprend au modèle.
      */
-    private RunnerCallResult callRunnerWithRetry(UUID userId, UUID workspaceId, RunnerTarget target,
+    private RunnerCallResult callRunnerWithRetry(UUID userId, Workspace workspace, RunnerTarget target,
             String callId, AgentToolCall call, AtelierProgressListener listener, long deadline) {
         RunnerCallResult result = callRunnerOnce(target, callId, call, listener, deadline);
         if (result == null) {
@@ -8210,7 +8409,7 @@ public class AtelierChatService implements RelayInterruptTarget {
             // Le réessai reste DANS le budget du tour, et cède à une interruption : on ne fait pas
             // patienter un tour déjà arrêté.
             if (deadline - System.currentTimeMillis() <= runnerRetryBackoffMs
-                    || interruptedTurns.contains(turnKey(userId, workspaceId))) {
+                    || interruptedTurns.contains(turnKey(userId, workspace))) {
                 break;
             }
             try {
@@ -8228,11 +8427,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
         if (attempts > 0 && isInconclusiveFailure(result.errorCode())) {
             log.info("Appel runner transitoire réessayé {} fois sans succès (workspace={}, outil={})",
-                    attempts, workspaceId, call.name());
+                    attempts, workspace.getId(), call.name());
             return retriedTag(result);
         }
         if (isRunnerBusy(call, result)) {
-            return waitWhileBusy(userId, workspaceId, target, callId, call, listener, deadline, result);
+            return waitWhileBusy(userId, workspace, target, callId, call, listener, deadline, result);
         }
         return result;
     }
@@ -8255,7 +8454,7 @@ public class AtelierChatService implements RelayInterruptTarget {
      * l'interruption. L'autorisation déjà donnée vaut : c'est le même appel. Toujours occupé à la
      * borne : un message qui explique, au lieu d'un refus que l'agent relancerait à l'identique.
      */
-    private RunnerCallResult waitWhileBusy(UUID userId, UUID workspaceId, RunnerTarget target,
+    private RunnerCallResult waitWhileBusy(UUID userId, Workspace workspace, RunnerTarget target,
             String callId, AgentToolCall call, AtelierProgressListener listener, long deadline,
             RunnerCallResult busy) {
         long started = System.currentTimeMillis();
@@ -8265,12 +8464,12 @@ public class AtelierChatService implements RelayInterruptTarget {
         while (runnerBusyWaitMs > 0
                 && System.currentTimeMillis() - started + poll <= runnerBusyWaitMs
                 && deadline - System.currentTimeMillis() > poll
-                && !interruptedTurns.contains(turnKey(userId, workspaceId))) {
+                && !interruptedTurns.contains(turnKey(userId, workspace))) {
             if (!announced) {
                 listener.onOutput("(le poste termine une commande précédente — j'attends qu'il se "
                         + "libère)\n");
                 announced = true;
-                countRunner(userId, workspaceId, 1);
+                countRunner(userId, workspace, 1);
             }
             try {
                 Thread.sleep(poll);
@@ -8285,12 +8484,12 @@ public class AtelierChatService implements RelayInterruptTarget {
             result = retried;
             if (!isRunnerBusy(call, result)) {
                 log.info("Poste libéré après {} ms d'attente (workspace={})",
-                        System.currentTimeMillis() - started, workspaceId);
+                        System.currentTimeMillis() - started, workspace.getId());
                 return result;
             }
         }
         long waited = System.currentTimeMillis() - started;
-        log.info("Poste toujours occupé après {} ms d'attente (workspace={})", waited, workspaceId);
+        log.info("Poste toujours occupé après {} ms d'attente (workspace={})", waited, workspace.getId());
         return new RunnerCallResult(false, result.content(), result.truncated(), result.exitCode(),
                 result.durationMs(), result.bytes(), result.errorCode(),
                 "Une commande précédente tourne encore sur le poste (sa réponse a pu être perdue en "

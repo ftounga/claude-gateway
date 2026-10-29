@@ -74,13 +74,24 @@ public class RelayTurnSource implements RemoteTurnSource {
 
     @Override
     public Optional<RemoteTurnState> findRemoteTurn(UUID userId, UUID workspaceId) {
-        return findOwner(userId, workspaceId).map(Owner::state);
+        return findRemoteTurn(userId, workspaceId, null);
+    }
+
+    @Override
+    public Optional<RemoteTurnState> findRemoteTurn(UUID userId, UUID workspaceId, Integer chantier) {
+        return findOwner(userId, workspaceId, chantier).map(Owner::state);
     }
 
     @Override
     public boolean streamRemoteTurn(UUID userId, UUID workspaceId, long cursor,
             TurnSubscriber subscriber) {
-        Optional<Owner> owner = findOwner(userId, workspaceId);
+        return streamRemoteTurn(userId, workspaceId, null, cursor, subscriber);
+    }
+
+    @Override
+    public boolean streamRemoteTurn(UUID userId, UUID workspaceId, Integer chantier, long cursor,
+            TurnSubscriber subscriber) {
+        Optional<Owner> owner = findOwner(userId, workspaceId, chantier);
         if (owner.isEmpty()) {
             return false;
         }
@@ -91,7 +102,7 @@ public class RelayTurnSource implements RemoteTurnSource {
                     .header(RunnerRelayAuthFilter.SECRET_HEADER, properties.getSecret())
                     .contentType(MediaType.APPLICATION_JSON)
                     .accept(MediaType.APPLICATION_NDJSON)
-                    .body(turnPayload(userId, workspaceId, cursor))
+                    .body(turnPayload(userId, workspaceId, chantier, cursor))
                     .exchange((request, response) -> {
                         if (response.getStatusCode().value() != 200) {
                             log.debug("Pair a refusé le relais de tour (statut={})",
@@ -116,13 +127,22 @@ public class RelayTurnSource implements RemoteTurnSource {
      */
     @Override
     public Optional<SteerReceipt> steerRemoteTurn(UUID userId, UUID workspaceId, String message) {
-        Optional<Owner> owner = findOwner(userId, workspaceId);
+        return steerRemoteTurn(userId, workspaceId, null, message);
+    }
+
+    @Override
+    public Optional<SteerReceipt> steerRemoteTurn(UUID userId, UUID workspaceId, Integer chantier,
+            String message) {
+        Optional<Owner> owner = findOwner(userId, workspaceId, chantier);
         if (owner.isEmpty()) {
             return Optional.empty();
         }
         ObjectNode node = objectMapper.createObjectNode();
         node.put("userId", userId.toString());
         node.put("workspaceId", workspaceId.toString());
+        if (chantier != null) {
+            node.put("chantier", chantier);
+        }
         node.put("message", message);
         Optional<JsonNode> answer = peerClient.post(owner.get().baseUrl(), STEER_PATH, node.toString());
         if (answer.isEmpty()) {
@@ -188,7 +208,7 @@ public class RelayTurnSource implements RemoteTurnSource {
     // ------------------------------------------------------------------ interne
 
     /** Sonde les pairs : le premier qui dit détenir le tour l'emporte, avec son adresse. */
-    private Optional<Owner> findOwner(UUID userId, UUID workspaceId) {
+    private Optional<Owner> findOwner(UUID userId, UUID workspaceId, Integer chantier) {
         if (!properties.isEnabled() || userId == null || workspaceId == null) {
             return Optional.empty();
         }
@@ -199,7 +219,7 @@ public class RelayTurnSource implements RemoteTurnSource {
             log.debug("Résolution des pairs impossible pour un tour : aucun relais");
             return Optional.empty();
         }
-        String body = turnPayload(userId, workspaceId, 0L);
+        String body = turnPayload(userId, workspaceId, chantier, 0L);
         for (String peer : peers) {
             Optional<JsonNode> answer = peerClient.post(peer, OWNER_PATH, body);
             if (answer.isEmpty() || !answer.get().path("owner").asBoolean(false)) {
@@ -260,10 +280,13 @@ public class RelayTurnSource implements RemoteTurnSource {
         return attached;
     }
 
-    private String turnPayload(UUID userId, UUID workspaceId, long cursor) {
+    private String turnPayload(UUID userId, UUID workspaceId, Integer chantier, long cursor) {
         ObjectNode node = objectMapper.createObjectNode();
         node.put("userId", userId.toString());
         node.put("workspaceId", workspaceId.toString());
+        if (chantier != null) {
+            node.put("chantier", chantier);
+        }
         node.put("cursor", cursor);
         return node.toString();
     }

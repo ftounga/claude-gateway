@@ -50,7 +50,7 @@ final class RelayGestureRequests {
     /** Décision de la porte de confirmation (contrat §5). */
     @JsonIgnoreProperties(ignoreUnknown = true)
     record ConfirmRequest(UUID userId, UUID workspaceId, String callId, Boolean allow,
-            String reason) {
+            String reason, Integer chantier) {
 
         boolean isValid() {
             return userId != null && workspaceId != null && callId != null && !callId.isBlank()
@@ -78,7 +78,7 @@ final class RelayGestureRequests {
      * jamais une authentification.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    record TurnRequest(UUID userId, UUID workspaceId, Long cursor) {
+    record TurnRequest(UUID userId, UUID workspaceId, Long cursor, Integer chantier) {
 
         boolean isValid() {
             return userId != null && workspaceId != null;
@@ -101,7 +101,7 @@ final class RelayGestureRequests {
 
     /** Interruption d'un tour d'atelier (contrat §6, clef {@code userId:workspaceId}). */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    record InterruptRequest(UUID userId, UUID workspaceId, String reason) {
+    record InterruptRequest(UUID userId, UUID workspaceId, String reason, Integer chantier) {
 
         boolean isValid() {
             return userId != null && workspaceId != null;
@@ -118,7 +118,7 @@ final class RelayGestureRequests {
      * Ce n'est pas une interruption : on n'arrête rien, on ajoute au contexte.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    record SteerRequest(UUID userId, UUID workspaceId, String message) {
+    record SteerRequest(UUID userId, UUID workspaceId, String message, Integer chantier) {
 
         boolean isValid() {
             return userId != null && workspaceId != null && message != null && !message.isBlank();

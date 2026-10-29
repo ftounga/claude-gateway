@@ -123,7 +123,7 @@ public class AtelierChatController {
     @PostMapping
     public AtelierChatResponse chat(@PathVariable UUID id, @Valid @RequestBody AtelierChatRequest request) {
         atelierAccess.requireTerminalAccess(id);
-        AtelierChatResult result = atelierChatService.chat(currentUser.requireId(), id,
+        AtelierChatResult result = atelierChatService.chat(currentUser.requireId(), id, request.chantier(),
                 request.message(), request.modeOrDefault(), request.forceOrDefault(),
                 request.attachedDepositIdsOrEmpty());
         return new AtelierChatResponse(result.reply(), result.actions(), result.messageId(),
@@ -162,9 +162,11 @@ public class AtelierChatController {
         // Les pièces jointes désignées (F-169 / SF-169-02) sont lues ICI, sur le thread de requête,
         // pour la même raison que le mode et `force` : le relais tourne sur le pool SSE.
         List<UUID> attachedDepositIds = request.attachedDepositIdsOrEmpty();
+        // F-221 / SF-221-01 : le fil de l'envoi — null = fil commun du sujet.
+        Integer chantier = request.chantier();
         SseEmitter emitter = newEmitter();
         fr.claudegateway.chat.SseStreamDispatch.submit(chatStreamExecutor, emitter,
-                () -> relay(emitter, userId, id, request.message(), mode, hasAccess, admin, force,
+                () -> relay(emitter, userId, id, chantier, request.message(), mode, hasAccess, admin, force,
                         attachedDepositIds));
         return emitter;
     }
@@ -199,7 +201,8 @@ public class AtelierChatController {
     @GetMapping(path = "/attach", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter attach(@PathVariable UUID id,
             @RequestParam(name = "cursor", required = false) Long cursor,
-            @RequestParam(name = "waitMs", required = false) Long waitMs) {
+            @RequestParam(name = "waitMs", required = false) Long waitMs,
+            @RequestParam(name = "chantier", required = false) Integer chantier) {
         UUID userId = currentUser.requireId();
         // Gating résolu ICI, comme pour le flux d'émission : le pool n'hérite pas du SecurityContext,
         // et un refus doit partir DANS le flux (jamais un 406 sur un endpoint SSE).
@@ -207,13 +210,33 @@ public class AtelierChatController {
         long from = cursor == null || cursor < 0 ? LiveTurn.FROM_START : cursor;
         SseEmitter emitter = newEmitter();
         fr.claudegateway.chat.SseStreamDispatch.submit(turnAttachExecutor, emitter,
-                () -> attachRelay(emitter, userId, id, from, waitMs, hasAccess));
+                () -> attachRelay(emitter, userId, id, lane(chantier), from, waitMs, hasAccess));
         return emitter;
     }
 
     /** Le rebranchement historique, sans fenêtre (SF-84-02). */
     SseEmitter attach(UUID id, Long cursor) {
-        return attach(id, cursor, null);
+        return attach(id, cursor, null, null);
+    }
+
+    /** Le rebranchement par fenêtres, sur le fil commun (forme d'avant F-221). */
+    SseEmitter attach(UUID id, Long cursor, Long waitMs) {
+        return attach(id, cursor, waitMs, null);
+    }
+
+    /** L'état du tour du fil commun (forme d'avant F-221). */
+    AtelierTurnStateResponse turnState(UUID id) {
+        return turnState(id, null);
+    }
+
+    /** La précision au fil désigné par le corps, sinon au fil commun (forme d'avant F-221). */
+    AtelierSteerResponse steer(UUID id, AtelierChatRequest request) {
+        return steer(id, request, null);
+    }
+
+    /** Le fil demandé (F-221 / SF-221-01) : un numéro ≥ 1, sinon le fil commun. */
+    private static Integer lane(Integer chantier) {
+        return chantier != null && chantier >= 1 ? chantier : null;
     }
 
     /**
@@ -224,10 +247,17 @@ public class AtelierChatController {
      * affaire d'écran.</p>
      */
     @GetMapping("/turn")
-    public AtelierTurnStateResponse turnState(@PathVariable UUID id) {
+    public AtelierTurnStateResponse turnState(@PathVariable UUID id,
+            @RequestParam(name = "chantier", required = false) Integer chantier) {
         atelierAccess.requireTerminalAccess(id);
         UUID userId = currentUser.requireId();
-        Optional<LiveTurn> local = liveTurns.find(userId, id);
+        Integer fil = lane(chantier);
+        if (fil != null) {
+            // Isolation d'abord (F-221 / SF-221-01) : le fil d'un chantier se demande sur SON sujet — un
+            // sujet d'autrui rend 404 avant toute recherche de tour.
+            atelierChatService.requireSteerable(userId, id);
+        }
+        Optional<LiveTurn> local = liveTurns.find(userId, id, fil);
         if (local.isPresent()) {
             LiveTurn turn = local.get();
             return new AtelierTurnStateResponse(true, turn.turnId(), turn.cursor(),
@@ -235,7 +265,7 @@ public class AtelierChatController {
                     turn.pendingApproval().map(AtelierTurnStateResponse.PendingApprovalView::of)
                             .orElse(null));
         }
-        return remoteTurns.findRemoteTurn(userId, id)
+        return remoteTurns.findRemoteTurn(userId, id, fil)
                 .map(state -> new AtelierTurnStateResponse(true, state.turnId(), state.cursor(),
                         state.startedAtMs(),
                         AtelierTurnStateResponse.PendingApprovalView.of(state.pending())))
@@ -249,7 +279,7 @@ public class AtelierChatController {
      * spectateur est inscrit au tour, et c'est la fin du tour qui clôra son flux. Dans le cas
      * <b>relayé</b>, elle tient le thread pendant la lecture du pair — d'où l'exécuteur dédié.</p>
      */
-    private void attachRelay(SseEmitter emitter, UUID userId, UUID workspaceId, long cursor,
+    private void attachRelay(SseEmitter emitter, UUID userId, UUID workspaceId, Integer chantier, long cursor,
             Long waitMs, boolean hasAccess) {
         SseTurnSubscriber sse = new SseTurnSubscriber(emitter);
         TurnSubscriber subscriber = sse;
@@ -258,7 +288,7 @@ public class AtelierChatController {
             subscriber.finish();
             return;
         }
-        Optional<LiveTurn> local = liveTurns.find(userId, workspaceId);
+        Optional<LiveTurn> local = liveTurns.find(userId, workspaceId, chantier);
         if (local.isPresent()) {
             LiveTurn turn = local.get();
             if (waitMs != null) {
@@ -276,7 +306,7 @@ public class AtelierChatController {
             return;
         }
         Optional<RemoteTurnSource.RemoteTurnState> remote =
-                remoteTurns.findRemoteTurn(userId, workspaceId);
+                remoteTurns.findRemoteTurn(userId, workspaceId, chantier);
         if (remote.isEmpty()) {
             subscriber.deliver(TurnAsides.idle());
             subscriber.finish();
@@ -293,7 +323,7 @@ public class AtelierChatController {
         }
         // Le pair peut avoir terminé son tour entre la sonde et le flux : le relais rend alors
         // `false`, et le flux se clôt sans rien inventer.
-        remoteTurns.streamRemoteTurn(userId, workspaceId, cursor, subscriber);
+        remoteTurns.streamRemoteTurn(userId, workspaceId, chantier, cursor, subscriber);
         subscriber.finish();
     }
 
@@ -314,13 +344,16 @@ public class AtelierChatController {
      */
     @PostMapping("/steer")
     public AtelierSteerResponse steer(@PathVariable UUID id,
-            @Valid @RequestBody AtelierChatRequest request) {
+            @Valid @RequestBody AtelierChatRequest request,
+            @RequestParam(name = "chantier", required = false) Integer chantier) {
         atelierAccess.requireTerminalAccess(id);
         UUID userId = currentUser.requireId();
         // Isolation d'abord : un projet d'autrui rend 404, avant de chercher le moindre tour.
         atelierChatService.requireSteerable(userId, id);
+        // F-221 / SF-221-01 : le fil de la précision — le corps ou le paramètre, le corps d'abord.
+        Integer fil = lane(request.chantier() != null ? request.chantier() : chantier);
         SteerReceipt receipt = new TurnSteering(liveTurns, remoteTurns)
-                .steer(userId, id, request.message().trim())
+                .steer(userId, id, fil, request.message().trim())
                 .orElseThrow(() -> new NoLiveTurnException(
                         "Le tour vient de se terminer : envoyez ce message comme une nouvelle demande."));
         if (!receipt.accepted()) {
@@ -340,9 +373,10 @@ public class AtelierChatController {
      * appliquée par le service ({@code requireOwned} d'abord : 404 sur un projet d'autrui).</p>
      */
     @PostMapping("/interrupt")
-    public ResponseEntity<Void> interrupt(@PathVariable UUID id) {
+    public ResponseEntity<Void> interrupt(@PathVariable UUID id,
+            @RequestParam(name = "chantier", required = false) Integer chantier) {
         atelierAccess.requireTerminalAccess(id);
-        atelierChatService.interruptChat(currentUser.requireId(), id);
+        atelierChatService.interruptChat(currentUser.requireId(), id, lane(chantier));
         return ResponseEntity.noContent().build();
     }
 
@@ -358,9 +392,10 @@ public class AtelierChatController {
      */
     @PostMapping("/confirm")
     public ResponseEntity<Void> confirm(@PathVariable UUID id,
-            @Valid @RequestBody AgentConfirmRequest request) {
+            @Valid @RequestBody AgentConfirmRequest request,
+            @RequestParam(name = "chantier", required = false) Integer chantier) {
         atelierAccess.requireTerminalAccess(id);
-        atelierChatService.confirmToolUse(currentUser.requireId(), id, request.toolUseId(),
+        atelierChatService.confirmToolUse(currentUser.requireId(), id, lane(chantier), request.toolUseId(),
                 request.allows(), request.reason(), request.allowsAll(), request.alwaysAllowsCommand());
         return ResponseEntity.noContent().build();
     }
@@ -492,10 +527,13 @@ public class AtelierChatController {
     }
 
     @GetMapping
-    public List<AtelierMessageResponse> history(@PathVariable UUID id) {
+    public List<AtelierMessageResponse> history(@PathVariable UUID id,
+            @RequestParam(name = "chantier", required = false) Integer chantier) {
         atelierAccess.requireTerminalAccess(id);
         UUID userId = currentUser.requireId();
-        List<fr.claudegateway.atelier.AtelierMessage> messages = atelierChatService.history(userId, id);
+        // F-221 / SF-221-01 : sans `chantier`, tout le sujet (inchangé) ; avec, ce que voit le fil.
+        List<fr.claudegateway.atelier.AtelierMessage> messages =
+                atelierChatService.history(userId, id, lane(chantier));
         // F-169 / SF-169-02 : les pièces jointes de chaque message, chargées en UN lot (pas de N+1),
         // isolation (user_id, workspace_id) au service. Un message sans pièce jointe rend `files` vide.
         java.util.Map<UUID, List<fr.claudegateway.atelier.deposit.AtelierAttachedFile>> filesByMessage =
@@ -547,7 +585,7 @@ public class AtelierChatController {
         return amount + " · " + result.reusedPercent() + " % relu";
     }
 
-    private void relay(SseEmitter emitter, UUID userId, UUID workspaceId, String message,
+    private void relay(SseEmitter emitter, UUID userId, UUID workspaceId, Integer chantier, String message,
             fr.claudegateway.agent.AgentTurnMode mode, boolean hasAccess, boolean admin,
             boolean force, List<UUID> attachedDepositIds) {
         LiveTurn turn;
@@ -557,18 +595,20 @@ public class AtelierChatController {
             // l'aveugle, et deux boucles ont tourné en parallèle sur le même projet — l'écran revenu
             // n'avait pas vu le tour, son rebranchement étant retenu par un proxy (SF-84-04).
             String text = message == null ? "" : message.trim();
-            if (liveTurns.find(userId, workspaceId).isEmpty()
-                    && steerRemoteTurn(emitter, userId, workspaceId, text)) {
+            // F-221 / SF-221-01 : la précision et le tour neuf sont cherchés dans le FIL de l'envoi —
+            // un envoi au chantier 8 ne tombe jamais dans la course du chantier 7.
+            if (liveTurns.find(userId, workspaceId, chantier).isEmpty()
+                    && steerRemoteTurn(emitter, userId, workspaceId, chantier, text)) {
                 return;
             }
-            LiveTurnRegistry.Entry entry = liveTurns.openOrSteer(userId, workspaceId, text);
+            LiveTurnRegistry.Entry entry = liveTurns.openOrSteer(userId, workspaceId, chantier, text);
             if (entry.receipt() != null) {
                 followSteeredTurn(emitter, entry);
                 return;
             }
             turn = entry.turn();
         } else {
-            turn = liveTurns.open(userId, workspaceId);
+            turn = liveTurns.open(userId, workspaceId, chantier);
         }
         turn.attach(new SseTurnSubscriber(emitter), LiveTurn.FROM_START);
         String outcome = "echec_fatal";
@@ -798,7 +838,7 @@ public class AtelierChatController {
             List<UUID> attachments = attachedDepositIds;
             for (;;) {
                 AtelierChatResult result = atelierChatService.chatStreaming(
-                        userId, workspaceId, demand, mode, listener, force, attachments);
+                        userId, workspaceId, chantier, demand, mode, listener, force, attachments);
                 if (result.interrupted()) {
                     // L'interruption est le geste qui arrête VRAIMENT (cadrage F-84 §5) : aucune
                     // précision restée en file ne relance un tour derrière elle — mais aucune ne
@@ -881,8 +921,9 @@ public class AtelierChatController {
      * @return {@code true} si un pair a pris (ou refusé, file pleine) la précision — aucun tour ne
      *         doit alors être ouvert ici
      */
-    private boolean steerRemoteTurn(SseEmitter emitter, UUID userId, UUID workspaceId, String text) {
-        Optional<SteerReceipt> receipt = remoteTurns.steerRemoteTurn(userId, workspaceId, text)
+    private boolean steerRemoteTurn(SseEmitter emitter, UUID userId, UUID workspaceId, Integer chantier,
+            String text) {
+        Optional<SteerReceipt> receipt = remoteTurns.steerRemoteTurn(userId, workspaceId, chantier, text)
                 .filter(r -> r.status() != SteerReceipt.Status.ENDED);
         if (receipt.isEmpty()) {
             return false;
@@ -894,7 +935,7 @@ public class AtelierChatController {
             return true;
         }
         if (sse.deliver(TurnAsides.steered(receipt.get().steerId(), receipt.get().turnId(), 0L, 0L))) {
-            remoteTurns.streamRemoteTurn(userId, workspaceId, LiveTurn.FROM_START, sse);
+            remoteTurns.streamRemoteTurn(userId, workspaceId, chantier, LiveTurn.FROM_START, sse);
         }
         sse.finish();
         return true;

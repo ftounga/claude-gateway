@@ -24,7 +24,7 @@ class TurnMeasureWriterIntegrationTest {
     private static TurnMeasure measure(UUID userId, Instant at) {
         return new TurnMeasure(userId, UUID.randomUUID(), null, "claude-opus-5-5", at, 42_000L, 3,
                 "réponse finale", 150_000L, 400_000L, 12_000L, 3_000L, 450_000L, 2_000L, 380_000L,
-                15_000L, 1, 2, 1);
+                15_000L, 1, 2, 1, null);
     }
 
     @Test

@@ -59,6 +59,56 @@ public class SubjectJourneyService {
     }
 
     /**
+     * Le parcours <b>vu du fil</b> du chantier {@code chantier} (F-221 / SF-221-01) : le chantier N au focus,
+     * les autres chantiers ouverts — focus réel compris — résumés. Rien n'est écrit : le focus persisté ne
+     * bouge pas (un volet de droite ne vole jamais le focus du volet de gauche). {@code null}, le focus, ou
+     * un chantier qui n'est plus ouvert ⇒ le parcours du tour ordinaire ({@link #forTurn}).
+     */
+    public SubjectJourney forLane(UUID userId, UUID workspaceId, Integer chantier) {
+        SubjectJourney journey = forTurn(userId, workspaceId);
+        if (chantier == null || journey == null || journey.getCreatedAt() == null
+                || chantier == journey.getChantierNumber()) {
+            return journey;
+        }
+        SubjectJourneyChantier row = openRow(journey, chantier);
+        if (row == null) {
+            return journey;
+        }
+        SubjectJourney view = SubjectJourney.builder()
+                .workspaceId(journey.getWorkspaceId())
+                .userId(journey.getUserId())
+                .mode(journey.getMode())
+                .createdAt(journey.getCreatedAt())
+                .updatedAt(journey.getUpdatedAt())
+                .build();
+        copyInto(row, view);
+        java.util.List<SubjectJourneyChantier> others = new java.util.ArrayList<>();
+        if (chantiers != null) {
+            for (SubjectJourneyChantier other : chantiers.findByUserIdAndWorkspaceIdAndStatusOrderByNumberAsc(
+                    userId, workspaceId, SubjectJourneyChantier.OPEN)) {
+                if (other.getNumber() != chantier) {
+                    others.add(other);
+                }
+            }
+        }
+        view.setOtherOpenChantiers(java.util.List.copyOf(others));
+        return view;
+    }
+
+    /**
+     * L'ouverture du chantier {@code number} (F-221 / SF-221-01), ouvert ou clos : la frontière du passé
+     * commun que relit son fil. Vide si le chantier est inconnu.
+     */
+    public java.util.Optional<java.time.OffsetDateTime> chantierOpenedAt(UUID userId, UUID workspaceId,
+            int number) {
+        if (chantiers == null) {
+            return java.util.Optional.empty();
+        }
+        return chantiers.findFirstByUserIdAndWorkspaceIdAndNumber(userId, workspaceId, number)
+                .map(SubjectJourneyChantier::getOpenedAt);
+    }
+
+    /**
      * <b>Change le mode du sujet</b> (SF-176-01) — le geste du menu du terminal.
      *
      * <p>Passer en Guidé ouvre le parcours en <b>Investigation</b> si le sujet n'a jamais été guidé, ou

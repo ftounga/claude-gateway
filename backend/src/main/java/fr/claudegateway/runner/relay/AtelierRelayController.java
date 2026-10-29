@@ -108,7 +108,8 @@ public class AtelierRelayController {
             return ResponseEntity.badRequest().build();
         }
         RelayInterruptTarget.RelayInterruptOutcome outcome = interruptTarget
-                .interruptLocally(request.userId(), request.workspaceId(), request.safeReason());
+                .interruptLocally(request.userId(), request.workspaceId(), request.chantier(),
+                        request.safeReason());
         log.debug("Interruption relayée appliquée (workspace={}, libérées={}, annulées={})",
                 request.workspaceId(), outcome.released(), outcome.cancelled());
         return ResponseEntity.ok(Map.of(
@@ -131,7 +132,7 @@ public class AtelierRelayController {
         if (request == null || !request.isValid()) {
             return ResponseEntity.badRequest().build();
         }
-        Optional<LiveTurn> turn = liveTurns.find(request.userId(), request.workspaceId());
+        Optional<LiveTurn> turn = liveTurns.find(request.userId(), request.workspaceId(), request.chantier());
         if (turn.isEmpty()) {
             return ResponseEntity.ok(Map.of("status", SteerReceipt.Status.ENDED.name()));
         }
@@ -166,7 +167,7 @@ public class AtelierRelayController {
         if (request == null || !request.isValid()) {
             return ResponseEntity.badRequest().build();
         }
-        Optional<LiveTurn> turn = liveTurns.find(request.userId(), request.workspaceId());
+        Optional<LiveTurn> turn = liveTurns.find(request.userId(), request.workspaceId(), request.chantier());
         if (turn.isEmpty()) {
             return ResponseEntity.ok(Map.of("owner", false));
         }
@@ -220,7 +221,7 @@ public class AtelierRelayController {
         if (request == null || !request.isValid()) {
             return ResponseEntity.badRequest().build();
         }
-        Optional<LiveTurn> found = liveTurns.find(request.userId(), request.workspaceId());
+        Optional<LiveTurn> found = liveTurns.find(request.userId(), request.workspaceId(), request.chantier());
         StreamingResponseBody body = output -> {
             NdjsonTurnSubscriber subscriber = new NdjsonTurnSubscriber(output, objectMapper);
             if (found.isEmpty()) {
