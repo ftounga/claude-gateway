@@ -121,3 +121,42 @@ export function neutralizeQuestionMarkers(content: string): string {
   }
   return text.replace(/\n{3,}/g, '\n\n').trim();
 }
+
+/** Longueur minimale d'une réponse pour qu'un repli d'essentiel ait un sens (SF-126-03). */
+const FALLBACK_MIN_CHARS = 400;
+/** Longueur maximale du premier paragraphe retenu comme essentiel de repli (SF-126-03). */
+const FALLBACK_MAX_ESSENTIAL_CHARS = 450;
+/** Un premier paragraphe structuré (titre, liste, tableau, code, citation, gras seul) n'est pas une réponse directe. */
+const STRUCTURED_START = /^(#|[-*+]\s|\d+[.)]\s|\||```|>|\*\*[^*]+\*\*\s*:?\s*$)/;
+
+/**
+ * Découpage d'un message PERSISTÉ, avec repli (F-126 / SF-126-03). Quand l'agent a oublié les marqueurs
+ * `<<essentiel>>`, une réponse longue dont le premier paragraphe est de la prose courte voit ce paragraphe
+ * mis en avant comme essentiel (la doctrine lui demande justement d'ouvrir par la réponse directe). Pas de
+ * repli sur une réponse découpée par question, une réponse courte, ou un premier paragraphe structuré.
+ * Jamais pendant le flux : le texte vivant est incomplet.
+ */
+export function splitEssentialWithFallback(content: string | null | undefined): EssentialSplit {
+  const split = splitEssential(content);
+  if (split.essential !== null) {
+    return split;
+  }
+  const raw = stripNextSteps(content ?? '');
+  if (split.detail !== raw.trim() && split.detail !== raw) {
+    return split; // réponse découpée par question : pas UN essentiel
+  }
+  const text = split.detail.trim();
+  if (text.length < FALLBACK_MIN_CHARS) {
+    return split;
+  }
+  const cut = text.search(/\n\s*\n/);
+  if (cut <= 0) {
+    return split;
+  }
+  const first = text.slice(0, cut).trim();
+  const rest = text.slice(cut).trim();
+  if (!rest || first.length > FALLBACK_MAX_ESSENTIAL_CHARS || STRUCTURED_START.test(first)) {
+    return split;
+  }
+  return { essential: first, detail: rest };
+}

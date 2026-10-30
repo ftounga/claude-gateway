@@ -1034,8 +1034,9 @@
             F-126 / SF-126-01 : si l'agent a balisé sa réponse essentielle (<<essentiel>>…<</essentiel>>),
             on la met en avant dans un bloc distinct, puis le détail dessous. Sans marqueur (anciens
             messages, ou l'agent n'en met pas), `essential` est null → rendu normal, aucune régression.
+            F-126 / SF-126-03 : marqueurs oubliés → repli sur le premier paragraphe de prose (message persisté seulement).
           -->
-          @let parts = splitEssential(message.content);
+          @let parts = splitEssentialWithFallback(message.content);
           @if (parts.essential) {
             <div class="terminal-essential">
               <span class="terminal-essential-label">L'essentiel</span>
