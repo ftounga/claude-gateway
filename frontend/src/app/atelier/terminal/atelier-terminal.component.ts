@@ -146,7 +146,7 @@ import {
   SubAgentExploreGroup,
   subAgentQuestion,
 } from './sub-agents';
-import { splitEssential } from './essential';
+import { splitEssential, splitEssentialWithFallback } from './essential';
 import { CopyBlockComponent } from '../../chat/copy-block/copy-block.component';
 import { MessageBlocksPipe } from '../../shared/message-blocks.pipe';
 import { hasBlockSegment, messageBlockIndex, splitMessageBlocks } from '../../shared/message-segments';
@@ -3124,6 +3124,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    * d'avant F-126 (repli gracieux).
    */
   splitEssential = splitEssential;
+  splitEssentialWithFallback = splitEssentialWithFallback;
   /** F-203 / SF-203-02 : la réponse porte-t-elle un bloc « message à envoyer » (encart copiable) ? */
   hasBlockSegment = hasBlockSegment;
 

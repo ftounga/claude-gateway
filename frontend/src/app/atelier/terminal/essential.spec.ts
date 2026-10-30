@@ -1,4 +1,4 @@
-import { neutralizeQuestionMarkers, splitEssential, stripNextSteps } from './essential';
+import { neutralizeQuestionMarkers, splitEssential, splitEssentialWithFallback, stripNextSteps } from './essential';
 
 /**
  * Découpage « L'essentiel » / « Le détail » (F-126 / SF-126-01). Fonction pure, testée sans TestBed.
@@ -100,5 +100,44 @@ describe('neutralizeQuestionMarkers (F-210 / SF-210-03)', () => {
 
   it('laisse un texte sans marqueur intact', () => {
     expect(neutralizeQuestionMarkers('Rien à voir << ici >> !')).toBe('Rien à voir << ici >> !');
+  });
+});
+
+describe('splitEssentialWithFallback (F-126 / SF-126-03)', () => {
+  const prose = 'Vu ces deux faits, je change d\'avis : je te recommande la bascule dans `gitlab-runners`.';
+  const detail = '**Inconvénients**\n1. ' + 'Le rôle est partagé. '.repeat(30);
+
+  it('garde le découpage balisé quand les marqueurs sont là', () => {
+    const r = splitEssentialWithFallback('<<essentiel>>\nCourt.\n<</essentiel>>\n\n' + detail);
+    expect(r.essential).toBe('Court.');
+  });
+
+  it('retient le premier paragraphe de prose quand les marqueurs manquent', () => {
+    const r = splitEssentialWithFallback(prose + '\n\n' + detail);
+    expect(r.essential).toBe(prose);
+    expect(r.detail).toBe(detail.trim());
+  });
+
+  it('pas de repli sur une réponse courte', () => {
+    expect(splitEssentialWithFallback(prose + '\n\nUn détail.').essential).toBeNull();
+  });
+
+  it('pas de repli quand le premier paragraphe est structuré', () => {
+    expect(splitEssentialWithFallback('## Titre\n\n' + detail).essential).toBeNull();
+    expect(splitEssentialWithFallback('- point\n- point\n\n' + detail).essential).toBeNull();
+    expect(splitEssentialWithFallback('**1. Chantier 4**\n\n' + detail).essential).toBeNull();
+  });
+
+  it('pas de repli quand le premier paragraphe est trop long', () => {
+    expect(splitEssentialWithFallback('mot '.repeat(150) + '\n\n' + detail).essential).toBeNull();
+  });
+
+  it('pas de repli sur une réponse découpée par question', () => {
+    const r = splitEssentialWithFallback('<<question id="1">>\n' + prose + '\n\n' + detail + '\n<</question>>');
+    expect(r.essential).toBeNull();
+  });
+
+  it('pas de repli sans second paragraphe', () => {
+    expect(splitEssentialWithFallback('mot '.repeat(120)).essential).toBeNull();
   });
 });
