@@ -80,6 +80,25 @@ describe('F-208 / SF-208-03 — le tableau des chantiers', () => {
     expect(chantiersGestures(null)).toBe(0);
   });
 
+  it('SF-176-12 : [Planifier] sur la carte d’un diagnostic en attente, sans changer le focus', () => {
+    const fixture = mount(journey([chantier(6, { focus: true, diagnosisPending: true, plan: null })]));
+    const el: HTMLElement = fixture.nativeElement;
+    const sent: string[] = [];
+    let changed = 0;
+    fixture.componentInstance.request.subscribe((r) => sent.push(r));
+    fixture.componentInstance.changed.subscribe(() => changed++);
+    (el.querySelector('.board__plan-btn') as HTMLButtonElement).click();
+    http.expectOne((r) => r.method === 'POST' && r.url === '/api/workspaces/w1/journey/chantiers/6/diagnosis/confirm')
+      .flush({});
+    expect(changed).toBe(1);
+    expect(sent).toEqual(['✓ Chantier 6 : diagnostic confirmé — pose le plan de ce chantier.']);
+  });
+
+  it('SF-176-12 : pas de [Planifier] sans diagnostic en attente', () => {
+    const fixture = mount(journey([chantier(6, { focus: true, plan: null })]));
+    expect((fixture.nativeElement as HTMLElement).querySelector('.board__plan-btn')).toBeNull();
+  });
+
   it('onglets : le focus d’abord, avec « à vous » sur celui qui attend un geste', () => {
     const fixture = mount(journey([
       chantier(1, { awaitingValidation: true }),

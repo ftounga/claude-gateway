@@ -47,9 +47,12 @@ public class JourneyToolCatalog {
     /** Lancer un chantier en autonome, à la demande de l'utilisateur (F-219 / SF-219-04). */
     public static final String LAUNCH_AUTONOMOUS = "lancer_chantier_autonome";
 
+    /** Confirmer un diagnostic quand l'utilisateur le dit par écrit (F-176 / SF-176-12). */
+    public static final String CONFIRM_DIAGNOSIS = "confirmer_diagnostic";
+
     /** Tous les noms d'outils du parcours. */
     public static final Set<String> NAMES = Set.of(PROPOSE_GUIDED, SET_PLAN, SUBMIT_DIAGNOSIS, UPDATE_STEP, REOPEN,
-            UPDATE_SUB_STEPS, LAUNCH_AUTONOMOUS);
+            UPDATE_SUB_STEPS, LAUNCH_AUTONOMOUS, CONFIRM_DIAGNOSIS);
 
     /** Le guide ajouté à la consigne système quand les outils sont donnés (stable). */
     public static final String GUIDE = "--- Parcours du sujet (Libre / Guidé) ---\n"
@@ -81,7 +84,9 @@ public class JourneyToolCatalog {
             + "(record_blocker, avec une key). Pour EN SORTIR, appelle submit_diagnosis : ce que tu as "
             + "compris, les PREUVES (ce que tu as lu ou observé), et ta confiance (FAIBLE, MOYENNE, "
             + "ELEVEE). Seulement quand il ne reste plus d'inconnue bloquante, ou qu'elle est isolée dans "
-            + "une étape qui attend son input. L'utilisateur confirme le passage au plan.\n"
+            + "une étape qui attend son input. L'utilisateur confirme le passage au plan : d'un clic "
+            + "[Planifier], ou en te le disant (« je confirme le diagnostic », « go pour planifier ») — alors "
+            + "confirmer_diagnostic, puis set_subject_plan dans le même tour.\n"
             + "PLAN : pose le plan avec set_subject_plan — des étapes, chacune avec l'action (title), sa "
             + "classe de risque (risk : LECTURE, NOTES, REVERSIBLE, EXTERNE), comment la vérifier "
             + "(verify), comment revenir en arrière (rollback), et waits_on = la key de l'attente dont "
@@ -179,6 +184,7 @@ public class JourneyToolCatalog {
         tools.add(reopenDefinition());
         tools.add(updateSubStepsDefinition());
         tools.add(launchAutonomousDefinition());
+        tools.add(confirmDiagnosisDefinition());
         return tools;
     }
 
@@ -295,6 +301,22 @@ public class JourneyToolCatalog {
                                         "description", "STRICT (défaut) : tout le chantier, préflight vert. "
                                                 + "UNTIL_BLOCKED : avancer jusqu'au blocage.")),
                         "required", List.of("chantier")));
+    }
+
+    static AgentTool confirmDiagnosisDefinition() {
+        return new AgentTool(CONFIRM_DIAGNOSIS,
+                "Confirme le DIAGNOSTIC d'un chantier en attente (« Prêt à planifier ») quand l'utilisateur te "
+                        + "le dit explicitement dans son message (« je confirme le diagnostic du chantier 6 », "
+                        + "« go pour la planification ») : le chantier passe en Plan, comme sur un clic "
+                        + "[Planifier]. Pose ensuite le plan (set_subject_plan) dans le même tour. Jamais de ta "
+                        + "propre initiative, ni dans une course autonome.",
+                Map.of("type", "object",
+                        "properties", Map.of(
+                                "chantier", Map.of("type", "integer",
+                                        "description", "Le numéro du chantier dont le diagnostic est confirmé."),
+                                "user_words", Map.of("type", "string",
+                                        "description", "Les mots de l'utilisateur qui confirment, cités.")),
+                        "required", List.of("chantier", "user_words")));
     }
 
     static AgentTool reopenDefinition() {

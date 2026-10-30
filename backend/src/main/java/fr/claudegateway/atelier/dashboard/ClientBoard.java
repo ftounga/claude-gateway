@@ -57,13 +57,14 @@ public record ClientBoard(UUID hostId, String hostName, OffsetDateTime generated
      * @param snoozedUntil   reporté jusqu'à cette date (SF-220-05), ou {@code null}
      * @param canAdvance     peut « avancer jusqu'au blocage » : plan validé et une étape à la portée de l'outil
      *                       (SF-219-05)
+     * @param diagnosisPending « Prêt à planifier » attend le clic [Planifier] (SF-176-12)
      */
     public record Chantier(UUID workspaceId, String workspaceName, boolean hostTerminal, int number, String title,
                            String phase, String phaseLabel, boolean focus, OffsetDateTime openedAt, int done,
                            int total, NextStep nextStep, ChantierUnblocker.Mark unblocker, boolean ready,
                            List<String> missing, OffsetDateTime lastActivityAt, long idleDays, boolean dormant,
                            boolean live, String question, AutonomyService.RunView run, OffsetDateTime snoozedUntil,
-                           boolean canAdvance) {
+                           boolean canAdvance, boolean diagnosisPending) {
     }
 
     /**

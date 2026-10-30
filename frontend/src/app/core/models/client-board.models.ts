@@ -61,6 +61,8 @@ export interface ClientBoardChantier {
   snoozedUntil?: string | null;
   /** Peut « avancer jusqu'au blocage » (SF-219-05) — absent d'une gateway antérieure. */
   canAdvance?: boolean;
+  /** « Prêt à planifier » attend [Planifier] (SF-176-12) — absent d'une gateway antérieure. */
+  diagnosisPending?: boolean;
 }
 
 /** Le report d'un chantier (SF-220-05). */
