@@ -4,6 +4,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { RADAR_DRAFT_STATE } from '../../shared/radar-draft';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router, RouterLink } from '@angular/router';
@@ -383,6 +384,28 @@ export class ClientBoardComponent {
       return;
     }
     this.journeys.focus(c.workspaceId, c.number).subscribe({ next: go, error: go });
+  }
+
+  /**
+   * [Planifier] (F-176 / SF-176-12) : le diagnostic du chantier est accepté, puis son sujet s'ouvre au focus de ce
+   * chantier avec la demande de plan prête à envoyer.
+   */
+  planify(c: ClientBoardChantier): void {
+    this.launching.set(true);
+    this.journeys.confirmDiagnosis(c.workspaceId, c.number).subscribe({
+      next: () => {
+        this.launching.set(false);
+        const go = () => void this.router.navigate(['/atelier', c.workspaceId], {
+          state: { [RADAR_DRAFT_STATE]: `✓ Chantier ${c.number} : diagnostic confirmé — pose le plan de ce chantier.` },
+        });
+        this.journeys.focus(c.workspaceId, c.number).subscribe({ next: go, error: go });
+      },
+      error: (err) => {
+        this.launching.set(false);
+        this.snackBar.open(httpErrorMessage(err, 'Le diagnostic n\'a pas pu être confirmé.'), 'Fermer', { duration: 6000 });
+        this.load(this.hostId(), false);
+      },
+    });
   }
 
   /** Peut « avancer jusqu'au blocage » (SF-219-05). */

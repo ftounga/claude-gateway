@@ -227,6 +227,31 @@ class SubjectJourneyChantiersIntegrationTest {
     }
 
     @Test
+    @DisplayName("SF-176-12 : la confirmation écrite du diagnostic d'un chantier hors focus le passe en Plan")
+    void confirmDiagnosisTool() throws Exception {
+        chantierOneExecuting();
+        post(aliceToken, "chantiers", "{\"title\":\"Logs vers Loki\"}");
+        post(aliceToken, "chantiers/1/focus", null);
+        service.submitDiagnosis(aliceId, ws(), 2, "pas de collecteur", "kubectl", "ELEVEE");
+        // Sans numéro ni citation : refusé, rien ne bouge.
+        assertThat(tool(JourneyToolCatalog.CONFIRM_DIAGNOSIS, "{\"user_words\":\"go\"}").error()).isTrue();
+        assertThat(tool(JourneyToolCatalog.CONFIRM_DIAGNOSIS, "{\"chantier\":2}").error()).isTrue();
+        getJourney(aliceToken).andExpect(jsonPath("$.chantiers[1].diagnosisPending", is(true)));
+        JourneyToolExecutor.Outcome ok = tool(JourneyToolCatalog.CONFIRM_DIAGNOSIS,
+                "{\"chantier\":2,\"user_words\":\"go pour la planification\"}");
+        assertThat(ok.error()).isFalse();
+        assertThat(ok.content()).startsWith("Chantier 2 : Diagnostic confirmé");
+        getJourney(aliceToken).andExpect(jsonPath("$.chantiers[1].phase", is("PLAN")))
+                .andExpect(jsonPath("$.chantiers[1].diagnosisPending", is(false)))
+                .andExpect(jsonPath("$.chantier.number", is(1)));
+        // Plus rien à confirmer : erreur lisible, pas d'exception.
+        assertThat(tool(JourneyToolCatalog.CONFIRM_DIAGNOSIS,
+                "{\"chantier\":2,\"user_words\":\"go\"}").content()).contains("Aucun diagnostic");
+        assertThat(service.setPlan(aliceId, ws(), 2, plan("Installer Fluent Bit")).outcome())
+                .isEqualTo(SubjectJourneyService.PlanOutcome.SET);
+    }
+
+    @Test
     @DisplayName("clore le focus avec un autre ouvert : l'autre prend le focus, on reste guidé ; clore le dernier : Libre")
     void closeFocus() throws Exception {
         chantierOneExecuting();

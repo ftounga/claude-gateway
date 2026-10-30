@@ -142,7 +142,8 @@ public final class JourneyTurnNote {
             note.append("Diagnostic (confiance ").append(journey.getDiagnosisConfidence()).append(") : ")
                     .append(diagnosis.replace('\n', ' ')).append('\n');
             if (journey.getPhase() == JourneyPhase.INVESTIGATION && journey.getDiagnosisProposedAt() != null) {
-                note.append("Ton diagnostic attend la confirmation de l'utilisateur (« Prêt à planifier »).\n");
+                note.append("Ton diagnostic attend la confirmation de l'utilisateur (« Prêt à planifier ») : s'il la "
+                        + "donne par écrit, confirmer_diagnostic puis set_subject_plan.\n");
             }
         }
         if (journey.getCloseProposedAt() != null && journey.getPhase() != JourneyPhase.CLOS) {

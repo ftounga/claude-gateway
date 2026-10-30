@@ -79,8 +79,9 @@ describe('ClientBoardComponent', () => {
     boards.unsnooze.and.returnValue(of(undefined));
     autonomy = jasmine.createSpyObj<AutonomyService>('AutonomyService', ['launch']);
     autonomy.launch.and.returnValue(of(run));
-    journeys = jasmine.createSpyObj<JourneyService>('JourneyService', ['focus', 'closeChantier']);
+    journeys = jasmine.createSpyObj<JourneyService>('JourneyService', ['focus', 'closeChantier', 'confirmDiagnosis']);
     journeys.focus.and.returnValue(of({} as SubjectJourney));
+    journeys.confirmDiagnosis.and.returnValue(of({} as SubjectJourney));
     journeys.closeChantier.and.returnValue(of({} as SubjectJourney));
     dialogAnswer = true;
     dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
@@ -210,6 +211,18 @@ describe('ClientBoardComponent', () => {
     const navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
     component.open(outilReady2);
     expect(navigate).toHaveBeenCalledWith(['/atelier', 'w2']);
+  });
+
+  it('SF-176-12 : [Planifier] visible sur un diagnostic en attente ; confirme, met au focus, ouvre avec la demande', () => {
+    const pending = { ...outilReady2, diagnosisPending: true };
+    build(board([pending]));
+    expect(el().querySelector('.cb__plan')).not.toBeNull();
+    const navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+    component.planify(pending);
+    expect(journeys.confirmDiagnosis).toHaveBeenCalledWith('w2', 2);
+    expect(journeys.focus).toHaveBeenCalledWith('w2', 2);
+    expect(navigate).toHaveBeenCalledWith(['/atelier', 'w2'],
+      { state: { radarDraft: '✓ Chantier 2 : diagnostic confirmé — pose le plan de ce chantier.' } });
   });
 
   it('Lancer en autonome : la route F-219 ; un refus affiche le message du serveur', () => {

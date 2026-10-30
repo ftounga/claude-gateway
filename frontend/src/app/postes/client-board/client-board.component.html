@@ -134,6 +134,13 @@
                         </span>
                       </button>
                       <div class="cb__row-actions">
+                        @if (c.diagnosisPending) {
+                          <button type="button" class="cb__icon-btn cb__plan" [disabled]="launching()"
+                            matTooltip="Planifier" [attr.aria-label]="'Planifier le chantier ' + c.number"
+                            (click)="planify(c)">
+                            <mat-icon aria-hidden="true">event_note</mat-icon>
+                          </button>
+                        }
                         @if (c.ready && !running(c)) {
                           <button type="button" class="cb__icon-btn cb__icon-btn--hover cb__launch" [disabled]="launching()"
                             matTooltip="Lancer en autonome" [attr.aria-label]="'Lancer en autonome le chantier ' + c.number"

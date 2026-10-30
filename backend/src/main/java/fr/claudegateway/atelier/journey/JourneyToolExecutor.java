@@ -59,6 +59,7 @@ public class JourneyToolExecutor {
                 case JourneyToolCatalog.REOPEN -> reopen(userId, workspace, input);
                 case JourneyToolCatalog.UPDATE_SUB_STEPS -> updateSubSteps(userId, workspace, input);
                 case JourneyToolCatalog.LAUNCH_AUTONOMOUS -> launchAutonomous(userId, workspace, input);
+                case JourneyToolCatalog.CONFIRM_DIAGNOSIS -> confirmDiagnosis(userId, workspace, input);
                 default -> Outcome.error("Outil du parcours inconnu : " + tool);
             };
         } catch (InvalidJourneyException e) {
@@ -199,6 +200,25 @@ public class JourneyToolExecutor {
         }
         ChantierAutonomyLauncher.Result result = autonomy.schedule(userId, workspace, chantier, mode);
         return result.scheduled() ? Outcome.ok(result.message()) : Outcome.error(result.message());
+    }
+
+    /**
+     * La confirmation écrite du diagnostic (F-176 / SF-176-12) : « je confirme », « go pour planifier » valent le
+     * clic [Planifier]. Le chantier est explicite, et la citation de l'utilisateur est exigée : jamais d'initiative.
+     */
+    private Outcome confirmDiagnosis(UUID userId, Workspace workspace, JsonNode input) {
+        Integer chantier = chantier(input); // explicite : jamais déduit du fil
+        if (chantier == null) {
+            return Outcome.error("chantier est requis : le numéro du chantier dont l'utilisateur confirme le "
+                    + "diagnostic.");
+        }
+        if (text(input, "user_words").isEmpty()) {
+            return Outcome.error("user_words est requis : cite les mots de l'utilisateur qui confirment. Sans "
+                    + "confirmation de sa part, ne confirme pas.");
+        }
+        service.confirmDiagnosis(userId, workspace.getId(), chantier);
+        return prefixed(chantier, Outcome.ok("Diagnostic confirmé : le chantier passe en PLAN. Pose maintenant le "
+                + "plan (set_subject_plan, chantier=" + chantier + ") ; il attendra la validation de l'utilisateur."));
     }
 
     private Outcome reopen(UUID userId, Workspace workspace, JsonNode input) {

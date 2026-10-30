@@ -830,3 +830,8 @@
 .cb__step-actor {
   vertical-align: middle;
 }
+
+/* SF-176-12 : [Planifier] reste visible — c’est ma décision qui attend. */
+.cb__plan {
+  color: var(--cg-accent);
+}

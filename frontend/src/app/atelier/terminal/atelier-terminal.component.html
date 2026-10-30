@@ -2032,6 +2032,7 @@
       (parallel)="closeBoard(); parallelLaunch.emit({ number: $event.number, mode: $event.mode, source: 'board' })"
       (request)="onBoardRequest($event)"
       (focus)="onSwitchChantier($event)"
+      (changed)="projectId && loadJourney(projectId)"
       (closed)="closeBoard()"
     ></app-terminal-chantiers-board>
   }

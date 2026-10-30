@@ -105,6 +105,13 @@ const RING = 2 * Math.PI * 18;
                   </p>
                 }
               </div>
+              @if (c.diagnosisPending && canSend()) {
+                <!-- F-176 / SF-176-12 : [Planifier] sur la carte, sans changer le focus. -->
+                <button mat-flat-button type="button" class="board__plan-btn" [disabled]="busy()" (click)="planify(c)">
+                  <mat-icon>event_note</mat-icon>
+                  Planifier
+                </button>
+              }
               @if (!c.focus) {
                 <button mat-stroked-button type="button" class="board__focus-btn" (click)="focus.emit(c.number)">
                   <mat-icon>center_focus_strong</mat-icon>
@@ -635,6 +642,7 @@ const RING = 2 * Math.PI * 18;
 
     .board__summary {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
       gap: var(--cg-space-3);
     }
@@ -939,6 +947,15 @@ const RING = 2 * Math.PI * 18;
       color: var(--cg-success);
     }
 
+    .board__plan-btn {
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+
+    .board__plan-btn + .board__focus-btn {
+      margin-left: 0;
+    }
+
     .board__diff--removed {
       color: var(--cg-error);
     }
@@ -962,6 +979,8 @@ export class TerminalChantiersBoardComponent {
   readonly request = output<string>();
   /** [Mettre au focus] le chantier N (F-208 / SF-208-04). */
   readonly focus = output<number>();
+  /** Le parcours a changé côté serveur ([Planifier], F-176 / SF-176-12) : le terminal le relit. */
+  readonly changed = output<void>();
 
   /**
    * Le chantier que montre le volet qui ouvre ce tableau (F-221 / SF-221-04), ou `null`. Lancer un AUTRE
@@ -1251,6 +1270,30 @@ export class TerminalChantiersBoardComponent {
         this.busy.set(false);
         this.snackBar.open(this.conflictMessage(err, 'Le chantier n’a pas pu partir en autonome.'), 'OK', { duration: 8000 });
         this.loadAutonomy();
+      },
+    });
+  }
+
+  /**
+   * [Planifier] sur la carte (F-176 / SF-176-12) : le diagnostic du chantier N est accepté sans changer le focus,
+   * puis la demande visible relance l'agent pour poser le plan de CE chantier.
+   */
+  planify(c: OpenChantier): void {
+    const workspaceId = this.workspaceId();
+    if (!workspaceId || this.busy()) {
+      return;
+    }
+    this.busy.set(true);
+    this.journeys.confirmDiagnosis(workspaceId, c.number).subscribe({
+      next: () => {
+        this.busy.set(false);
+        this.changed.emit();
+        this.request.emit(`✓ Chantier ${c.number} : diagnostic confirmé — pose le plan de ce chantier.`);
+      },
+      error: () => {
+        this.busy.set(false);
+        this.snackBar.open('Le diagnostic n’a pas pu être confirmé.', 'OK', { duration: 5000 });
+        this.changed.emit();
       },
     });
   }
