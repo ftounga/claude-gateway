@@ -5,6 +5,11 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 
+import {
+  AtelierProofBlock,
+  AtelierStreamDone,
+  AtelierStreamHandlers,
+} from '../../core/models/atelier.models';
 import { AtelierService } from '../../core/services/atelier.service';
 import { TerminalLanePaneComponent } from './terminal-lane-pane.component';
 
@@ -74,5 +79,57 @@ describe('TerminalLanePaneComponent (F-221)', () => {
 
     expect(closed).toHaveBeenCalled();
     expect(atelier.interruptChat).not.toHaveBeenCalled();
+  });
+
+  describe('captures de preuve dans un volet (F-212 / SF-212-06)', () => {
+    const captureId = '91c4675543ed4324926b4837e9e81777';
+    const proof: AtelierProofBlock = {
+      title: 'DNS on-prem', step: '14', host: 'poste', os: 'macos', shell: 'zsh',
+      captures: [{ id: captureId, width: 2002, height: 1132 }],
+      commands: [{ command: 'date -u', status: 'done', exitCode: 0, durationMs: 5, startedAt: null, truncated: false }],
+    };
+    const encart = 'Voici.\n\n```message preuves=' + captureId + '\nSalut\n```';
+
+    function handlers(): AtelierStreamHandlers {
+      return atelier.attachTurn.calls.mostRecent().args[2] as AtelierStreamHandlers;
+    }
+
+    it('en direct : l’événement proof pose le bloc, qui survit à l’étape suivante', () => {
+      const fixture = create();
+      const pane = fixture.componentInstance;
+
+      handlers().onAction?.({ type: 'bash', path: 'ls' });
+      handlers().onProof?.({ toolUseId: 'p1', proof });
+      handlers().onAction?.({ type: 'bash', path: 'pwd' });
+      handlers().onText?.(encart);
+      fixture.detectChanges();
+
+      const blocks = pane.streaming()?.blocks ?? [];
+      expect(blocks.map((block) => block.proof ? 'proof' : block.tool)).toEqual(['bash', 'proof', 'bash']);
+      const el = fixture.nativeElement as HTMLElement;
+      expect(el.querySelector(`app-proof-captures img[src$="${captureId}"]`)).not.toBeNull();
+      // L'encart du tour vivant trouve la capture du même tour.
+      expect(el.querySelector('app-proof-captures .proof--attached')).not.toBeNull();
+    });
+
+    it('en fin de tour, le fil relu garde la capture et l’image sous l’encart', () => {
+      const fixture = create();
+      atelier.getHistory.and.returnValue(of([{
+        id: '11111111-2222-3333-4444-555555555555', role: 'ASSISTANT', content: encart, createdAt: '2026-10-31T11:58:40Z',
+        terminal: {
+          blocks: [{ tool: 'capturer_preuves', command: null, toolUseId: 'p1', output: 'ok', hasOutput: true, error: false,
+            proof }],
+          omittedBlocks: 0, inputTokens: 1, outputTokens: 1, activeSeconds: 1,
+        },
+      }]));
+
+      handlers().onDone?.({} as AtelierStreamDone);
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.messages()[0].terminal?.[0].proof).toEqual(proof);
+      const el = fixture.nativeElement as HTMLElement;
+      expect(el.querySelectorAll(`app-proof-captures img[src$="${captureId}"]`).length).toBe(2);
+      expect(el.querySelector('app-proof-captures .proof--attached')).not.toBeNull();
+    });
   });
 });

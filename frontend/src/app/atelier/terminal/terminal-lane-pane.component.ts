@@ -21,6 +21,7 @@ import {
   AtelierStreamAction,
   AtelierStreamDone,
   AtelierStreamHandlers,
+  AtelierTerminalBlock,
   RunnerStatus,
   WorkspaceExecutionTarget,
 } from '../../core/models/atelier.models';
@@ -33,6 +34,15 @@ import {
 import { toThreadItem } from '../thread-item';
 import { AtelierTerminalComponent, ParallelLaunchRequest } from './atelier-terminal.component';
 import { chatStepsToBlocks } from './chat-steps';
+import { cardBlock, withCards } from './teams-block';
+import { emailBlock } from './terminal-email';
+import { pageBlock } from './page-block';
+import { attenteBlock } from './attente-card.component';
+import { handoffBlock } from './handoff-card.component';
+import { proposalBlock } from './proposal-card.component';
+import { besoinBlock } from './besoin-card.component';
+import { proofBlock } from './proof-captures.component';
+import { audioBlock, videoBlock } from './video-block';
 
 /**
  * **Un volet du split** (F-221 / SF-221-03) : un terminal complet sur le FIL d'un chantier.
@@ -123,6 +133,12 @@ export class TerminalLanePaneComponent implements OnChanges, OnDestroy {
   readonly pendingQuestion = signal<AtelierPendingQuestion | null>(null);
 
   private steps: AtelierStreamAction[] = [];
+  /**
+   * Les BLOCS RICHES du tour vivant (F-212 / SF-212-06) — captures de preuve, page, courriel, carte… —
+   * rangés avec le nombre d'étapes déjà reçues, comme à l'écran principal : les blocs vivants sont
+   * recalculés à chaque étape, et un bloc simplement ajouté serait effacé au relais suivant.
+   */
+  private richOfTurn: { afterSteps: number; block: AtelierTerminalBlock }[] = [];
   private attach: AbortController | null = null;
   /** Numéro du flux courant : un flux d'un fil quitté n'écrit plus rien. */
   private generation = 0;
@@ -274,8 +290,20 @@ export class TerminalLanePaneComponent implements OnChanges, OnDestroy {
       onStarted: () => live(() => this.streaming.update((s) => (s ? { ...s, accepted: true } : s))),
       onAction: (action) => live(() => {
         this.steps = [...this.steps, action];
-        this.streaming.update((s) => (s ? { ...s, blocks: chatStepsToBlocks(this.steps) } : s));
+        this.refreshBlocks();
       }),
+      // F-212 / SF-212-06 : le volet ne rangeait AUCUN bloc riche du direct — la capture demandée dans
+      // un fil de chantier n'apparaissait pas. Mêmes événements, même rangement qu'à l'écran principal.
+      onCard: (event) => live(() => this.addRich(cardBlock(event.toolUseId, event.card))),
+      onPage: (event) => live(() => this.addRich(pageBlock(event.toolUseId, event.page))),
+      onProposal: (event) => live(() => this.addRich(proposalBlock(event.toolUseId, event.proposal))),
+      onProof: (event) => live(() => this.addRich(proofBlock(event.toolUseId, event.proof))),
+      onVideo: (event) => live(() => this.addRich(videoBlock(event.toolUseId, event.video))),
+      onAudio: (event) => live(() => this.addRich(audioBlock(event.toolUseId, event.audio))),
+      onAppRequest: (event) => live(() => this.addRich(besoinBlock(event.toolUseId, event.besoin))),
+      onHandoff: (event) => live(() => this.addRich(handoffBlock(event.toolUseId, event.handoff))),
+      onAttente: (event) => live(() => this.addRich(attenteBlock(event.toolUseId, event.attente))),
+      onEmail: (event) => live(() => this.addRich(emailBlock(event.toolUseId, event.email))),
       onText: (text) => live(() => this.streaming.update((s) => (s ? { ...s, text: s.text + text } : s))),
       onProgress: (tokens) => live(() => this.streaming.update((s) => (s ? { ...s, tokens } : s))),
       onPlan: (plan) => live(() => this.streaming.update((s) => (s ? { ...s, plan } : s))),
@@ -319,6 +347,15 @@ export class TerminalLanePaneComponent implements OnChanges, OnDestroy {
     };
   }
 
+  private addRich(block: AtelierTerminalBlock): void {
+    this.richOfTurn = [...this.richOfTurn, { afterSteps: this.steps.length, block }];
+    this.refreshBlocks();
+  }
+
+  private refreshBlocks(): void {
+    this.streaming.update((s) => (s ? { ...s, blocks: withCards(chatStepsToBlocks(this.steps), this.richOfTurn) } : s));
+  }
+
   private showConfirmation(request: AtelierConfirmRequest): void {
     this.pendingConfirmation.set({
       toolUseId: request.toolUseId,
@@ -349,6 +386,7 @@ export class TerminalLanePaneComponent implements OnChanges, OnDestroy {
 
   private beginTurn(): void {
     this.steps = [];
+    this.richOfTurn = [];
     this.submitting.set(true);
     this.streaming.set({ status: '', blocks: [], text: '', tokens: null, plan: [] });
   }
@@ -359,6 +397,7 @@ export class TerminalLanePaneComponent implements OnChanges, OnDestroy {
     this.streaming.set(null);
     this.pendingConfirmation.set(null);
     this.steps = [];
+    this.richOfTurn = [];
   }
 
   private resetTurn(): void {
