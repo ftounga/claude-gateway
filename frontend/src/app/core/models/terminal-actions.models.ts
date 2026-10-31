@@ -71,6 +71,27 @@ export interface TerminalAction {
   dueAt?: string | null;
   /** NONE · LATER · TODAY · OVERDUE (attente ouverte seulement). */
   dueState?: 'NONE' | 'LATER' | 'TODAY' | 'OVERDUE' | null;
+  /** Le chantier du sujet sous lequel elle est rangée (F-227), `null` = au fil de l'eau. */
+  chantierNumber?: number | null;
+  /** Qui propose la clôture (F-227 / SF-227-03) : `REVUE` ou `AGENT`. */
+  proposalSource?: 'REVUE' | 'AGENT' | null;
+}
+
+/**
+ * Le texte d'une clôture proposée dans le panneau des attentes (F-227 / SF-227-03) — le même que le tableau du
+ * client : la revue dit sa raison telle quelle ; l'agent, qu'il le pense.
+ */
+export function actionProposalText(a: Pick<TerminalAction, 'proposedStatus' | 'proposedReason' | 'proposalSource'>):
+  string {
+  if (!a.proposedStatus) {
+    return '';
+  }
+  const reason = a.proposedReason?.trim() || '';
+  if (a.proposalSource === 'REVUE') {
+    return reason;
+  }
+  const what = a.proposedStatus === 'ANNULE' ? 'c’est sans objet' : 'c’est fait';
+  return `L’agent pense que ${what}` + (reason ? ` : « ${reason} »` : '');
 }
 
 /** Un accès qui arrive à terme, dans le point du matin. */
@@ -298,6 +319,8 @@ export interface TerminalActionCreate {
   qui?: TerminalActionQui | null;
   /** `aaaa-mm-jj`, facultative (F-180 / SF-180-06). */
   dueAt?: string | null;
+  /** Le fil de chantier affiché (F-227 / SF-227-03) : l'attente s'y range ; absent = chantier du tour. */
+  chantier?: number | null;
 }
 
 /** Un accès obtenu (`GET /api/workspaces/{id}/acces`, F-180 / SF-180-04) — jamais un secret. */

@@ -74,8 +74,9 @@ describe('ClientBoardComponent', () => {
 
   function build(data: ClientBoard): void {
     boards = jasmine.createSpyObj<ClientBoardService>('ClientBoardService', ['board', 'snooze', 'unsnooze',
-      'proposeStale']);
+      'proposeStale', 'closeStale']);
     boards.proposeStale.and.returnValue(of({ days: 14, proposed: 2 }));
+    boards.closeStale.and.returnValue(of({ closed: 2, skipped: 0 }));
     boards.board.and.returnValue(of(data));
     boards.snooze.and.returnValue(of({ number: 1, until: '2026-10-30T10:00:00' }));
     boards.unsnooze.and.returnValue(of(undefined));
@@ -432,7 +433,7 @@ describe('ClientBoardComponent', () => {
   });
 
   it('F-227 : la revue des 14 jours propose ; une proposition se clôt ou se garde, une à une ou en lot', () => {
-    const proposed: ClientBoardLooseTask = { ...toAsk, proposedStatus: 'ANNULE',
+    const proposed: ClientBoardLooseTask = { ...toAsk, proposedStatus: 'ANNULE', proposalSource: 'REVUE',
       proposedReason: 'Sans geste depuis 20 jours : périmée ?' };
     const proposed2: ClientBoardLooseTask = { ...proposed, actionId: 'a7', description: 'Autre' };
     build(withLoose([], [proposed, proposed2]));
@@ -447,7 +448,42 @@ describe('ClientBoardComponent', () => {
     expect(actions.confirmProposal).not.toHaveBeenCalled();
     (el().querySelector('.cb__close-proposed') as HTMLButtonElement).click();
     expect(dialog.open).toHaveBeenCalled();
-    expect(actions.confirmProposal).toHaveBeenCalledTimes(2);
+    // SF-227-03 : un seul appel, la gateway filtre ; jamais la route de confirmation une à une.
+    expect(boards.closeStale).toHaveBeenCalledWith('h1', ['a1', 'a7']);
+    expect(actions.confirmProposal).not.toHaveBeenCalled();
+  });
+
+  it('SF-227-03 : [Clore les N proposées] ignore les propositions de l\'agent — absent sans proposition de la revue', () => {
+    const agentDone: ClientBoardLooseTask = { ...toAsk, proposedStatus: 'FAIT', proposalSource: 'AGENT',
+      proposedReason: 'Karim l\'a envoyé' };
+    const agentCancel: ClientBoardLooseTask = { ...toAsk, actionId: 'a8', description: 'VPN',
+      proposedStatus: 'ANNULE', proposalSource: 'AGENT', proposedReason: 'bastion' };
+    build(withLoose([], [agentDone, agentCancel]));
+    expect(component.proposals()).toEqual([]);
+    expect(el().querySelector('.cb__close-proposed')).toBeNull();
+    const line = el().querySelector('[data-action="a1"] .cb__proposal') as HTMLElement;
+    expect(line.textContent).toContain('Clôture proposée — L’agent pense que c’est fait : « Karim l\'a envoyé »');
+  });
+
+  it('SF-227-03 : [Clore les N proposées] ne compte que la revue', () => {
+    const agentDone: ClientBoardLooseTask = { ...toAsk, proposedStatus: 'FAIT', proposalSource: 'AGENT',
+      proposedReason: 'Karim l\'a envoyé' };
+    const review: ClientBoardLooseTask = { ...toAsk, actionId: 'a9', description: 'Vieille', proposedStatus: 'ANNULE',
+      proposalSource: 'REVUE', proposedReason: 'Sans geste depuis 30 jours : périmée ?' };
+    build(withLoose([], [agentDone, review]));
+    expect(component.proposals().map((t) => t.actionId)).toEqual(['a9']);
+    expect((el().querySelector('.cb__close-proposed') as HTMLElement).textContent).toContain('Clore les 1 proposées');
+  });
+
+  it('SF-227-03 : une attente née pendant des chantiers ouverts propose [Rattacher au chantier N]', () => {
+    const born: ClientBoardLooseTask = { ...toAsk, chantierNumber: null, suggestedChantiers: [1, 2] };
+    build(withLoose([], [born]));
+    const box = el().querySelector('[data-action="a1"] .cb__suggest') as HTMLElement;
+    expect(box.textContent).toContain('Née pendant les chantiers 1 et 2');
+    const buttons = box.querySelectorAll<HTMLButtonElement>('.cb__suggest-attach');
+    expect(buttons.length).toBe(2);
+    buttons[1].click();
+    expect(actions.attachToChantier).toHaveBeenCalledWith('w1', 'a1', 2);
   });
 
   // ------------------------------------------------------------------ SF-220-08 : rangé par sujet

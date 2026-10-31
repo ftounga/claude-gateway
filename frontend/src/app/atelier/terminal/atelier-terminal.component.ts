@@ -1098,6 +1098,16 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    */
   @Input() laneChantier: number | null = null;
 
+  /** Le fil de chantier affiché, pour ranger un ajout à la main (F-227 / SF-227-03) : le volet, sinon le focus. */
+  actionsChantier(): number | null {
+    return this.laneChantier ?? focusChantierNumber(this.journey());
+  }
+
+  /** Les chantiers ouverts du sujet, auxquels rattacher une attente depuis le panneau (F-227 / SF-227-03). */
+  actionsOpenChantiers(): number[] {
+    return (this.journey()?.chantiers ?? []).map((c) => c.number);
+  }
+
   /** En-tête de volet du split (F-221 / SF-221-03) : « Chantier N · titre », ou `null` hors split. */
   @Input() paneTitle: string | null = null;
 

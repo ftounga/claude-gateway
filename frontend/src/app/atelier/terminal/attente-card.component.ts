@@ -86,7 +86,7 @@ export function attenteNature(a: AtelierTerminalAttente): string {
 /**
  * **La carte d'une attente dans le fil** (F-175 / SF-175-05, décision D7) : à l'inscription, à la
  * reconnaissance d'un doublon, au passage à « Demandé », et à la **proposition de fermeture**
- * [Confirmer] [Pas encore]. Sans réponse, l'attente reste ouverte : rien ne sort sans le geste.
+ * [Clore] [Garder] (le même mot partout, F-227 / SF-227-03). Sans réponse, l'attente reste ouverte : rien ne sort sans le geste.
  *
  * <p>La carte est un **instantané** rangé dans la transcription ; l'état vivant vient du tableau des
  * attentes (`live`). Une proposition déjà confirmée ou écartée n'offre plus ses boutons — la carte
@@ -117,9 +117,9 @@ export function attenteNature(a: AtelierTerminalAttente): string {
           } @else if (pending() && !readOnly()) {
             <div class="attente-card__gestures">
               <button mat-flat-button type="button" class="attente-card__confirm" [disabled]="busy()"
-                (click)="confirm()">Confirmer</button>
+                (click)="confirm()">Clore</button>
               <button mat-button type="button" class="attente-card__dismiss" [disabled]="busy()"
-                (click)="dismiss()">Pas encore</button>
+                (click)="dismiss()">Garder</button>
             </div>
           }
         }
