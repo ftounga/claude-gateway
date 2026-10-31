@@ -14,6 +14,9 @@ import org.springframework.data.repository.query.Param;
  */
 public interface AtelierDepositedFileRepository extends JpaRepository<AtelierDepositedFile, UUID> {
 
+    /** Une pièce du terminal, sous le compte (F-228 / SF-228-01) — jamais un chemin libre. */
+    java.util.Optional<AtelierDepositedFile> findByIdAndUserIdAndWorkspaceId(UUID id, UUID userId, UUID workspaceId);
+
     /**
      * Dépôts <b>non consommés</b> d'un projet possédé, du plus ancien au plus récent — c'est ce que la
      * consigne du prochain tour lira (SF-115-03).
