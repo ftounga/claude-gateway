@@ -68,6 +68,11 @@ html {
   --cg-terminal-teams-warn: #8A5200;     // attention (ambre §12 approfondi pour l'AA sur le papier ; #F9A825 tombe à ~1,8:1) — F-89 / SF-89-11
   --cg-terminal-teams-add: #166F38;      // ajout de diff (vert charte approfondi ; --cg-success tombe à ~2,9:1 sur fond clair)
 
+  // Encres du TERMINAL SOMBRE (F-223 / SF-223-02, DESIGN_SYSTEM.md §21) — sur --cg-primary #1A3A5C :
+  // --cg-text-secondary y tombait à 2,66:1 et --cg-success à 4,05:1. Mêmes teintes, éclaircies pour l'AA.
+  --cg-terminal-ink-2: #B8C2CF;          // texte secondaire sur fond sombre (6,46:1 sur --cg-primary)
+  --cg-terminal-success: #4CC38A;        // « fait », phases passées sur fond sombre (5,26:1 sur --cg-primary)
+
   --cg-font-heading: 'Space Grotesk', 'Inter', sans-serif;
   --cg-font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --cg-font-mono: 'JetBrains Mono', ui-monospace, monospace;
@@ -118,6 +123,40 @@ code, pre { font-family: var(--cg-font-mono); }
   --mdc-filled-button-label-text-color: #ffffff;
   --mdc-protected-button-container-color: var(--cg-accent);
   --mdc-protected-button-label-text-color: #ffffff;
+}
+
+// ---- Boutons grisés du terminal sombre (F-223 / SF-223-02) ----
+// Global (le budget de style du terminal est plein) ; borné comme SF-30-15 : pas la peau Teams.
+.terminal-view:not(.terminal-view--teams) {
+  /* F-223 / SF-223-02 — un bouton GRISÉ restait à 1,19:1 (encre Material à 38 % sur le navy) : on lit
+     encore ce qu'il ferait. Encre secondaire du terminal sombre, fond à peine marqué. */
+  --mdc-filled-button-disabled-container-color: color-mix(in srgb, var(--cg-divider) 12%, transparent);
+  --mdc-filled-button-disabled-label-text-color: var(--cg-terminal-ink-2);
+  --mdc-protected-button-disabled-container-color: color-mix(in srgb, var(--cg-divider) 12%, transparent);
+  --mdc-protected-button-disabled-label-text-color: var(--cg-terminal-ink-2);
+  --mdc-text-button-disabled-label-text-color: var(--cg-terminal-ink-2);
+  --mdc-outlined-button-disabled-label-text-color: var(--cg-terminal-ink-2);
+  --mdc-outlined-button-disabled-outline-color: color-mix(in srgb, var(--cg-divider) 30%, transparent);
+}
+
+// ---- Îlot clair posé sur un terminal sombre (F-223 / SF-223-02) ----
+// Le terminal redéfinit les encres Material pour son fond navy (libellés clairs) ; un panneau BLANC posé
+// dessus (tableau des chantiers, attentes, bilan) en héritait : « blanc sur blanc ». L'îlot les remet.
+.cg-light-island {
+  --mdc-text-button-label-text-color: var(--cg-primary);
+  --mdc-text-button-disabled-label-text-color: var(--cg-text-secondary);
+  --mdc-outlined-button-label-text-color: var(--cg-primary);
+  --mdc-outlined-button-outline-color: var(--cg-divider);
+  --mdc-outlined-button-disabled-label-text-color: var(--cg-text-secondary);
+  --mdc-outlined-button-disabled-outline-color: var(--cg-divider);
+  --mdc-filled-button-disabled-container-color: var(--cg-surface-2);
+  --mdc-filled-button-disabled-label-text-color: var(--cg-text-secondary);
+  --mdc-icon-button-icon-color: var(--cg-text-secondary);
+  --mat-standard-button-toggle-text-color: var(--cg-text-primary);
+  --mat-standard-button-toggle-selected-state-text-color: var(--cg-text-primary);
+  --mat-standard-button-toggle-selected-state-background-color: var(--cg-surface-2);
+  --mat-standard-button-toggle-divider-color: var(--cg-divider);
+  color: var(--cg-text-primary);
 }
 
 // ---- Badges / statuts ----

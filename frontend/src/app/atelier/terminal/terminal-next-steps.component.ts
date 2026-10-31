@@ -319,7 +319,7 @@ export function composeNextSteps(requests: string[]): string {
       display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 12px;
       border-bottom: 1px solid color-mix(in srgb, var(--cg-divider) 14%, transparent);
     }
-    .cap__title { margin: 0; font: 600 14px 'Inter', sans-serif; }
+    .cap__title { margin: 0; font: 600 14px 'Inter', sans-serif; color: inherit; }
     .cap__src { font-size: 12px; color: #9FB0C4; }
     .cap__checked { font-size: 12px; color: var(--cg-accent); }
     .cap__chantier { font: 500 12px 'Inter', sans-serif; color: var(--cg-divider); }

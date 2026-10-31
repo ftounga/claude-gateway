@@ -44,7 +44,7 @@ export function elapsedLabel(minutes: number): string {
   selector: 'app-session-bilan-panel',
   imports: [DecimalPipe, MatButtonModule, MatIconModule, MatTooltipModule],
   template: `
-    <aside class="bilan-panel" role="complementary" aria-label="Bilan de la session">
+    <aside class="bilan-panel cg-light-island" role="complementary" aria-label="Bilan de la session">
       <header class="bilan-panel__bar">
         <h2 class="bilan-panel__title">Bilan de la session</h2>
         <span class="bilan-panel__spacer"></span>
