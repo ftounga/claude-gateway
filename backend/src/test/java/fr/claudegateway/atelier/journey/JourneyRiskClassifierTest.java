@@ -42,6 +42,17 @@ class JourneyRiskClassifierTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
+        "python3 jira.py voir PROJ-12", "python scripts/jira.py liste --projet OPS", "./jira.py voir PROJ-1",
+        "node tools/sync.mjs --dry-run", "bash scripts/releve-couts.sh", "./relevé_quotidien.sh --jour 2026-10-30",
+        "python3 -u outils/gitlab.py status", "python3 releve_jira.py", "cd outils && python3 jira.py voir X"
+    })
+    @DisplayName("F-222 / SF-222-02 : les scripts de lecture du poste sont des lectures")
+    void readScripts(String command) {
+        assertThat(JourneyRiskClassifier.classifyCommand(command)).as(command).isEqualTo(Risk.LECTURE);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
         "kubectl apply -f ingress.yaml", "kubectl delete pod api-1", "git push origin main",
         "terraform apply -auto-approve", "helm upgrade api ./chart", "aws s3 cp a s3://b/a",
         "aws ec2 terminate-instances --instance-ids i-1", "curl -X POST https://api/x",
@@ -58,7 +69,10 @@ class JourneyRiskClassifierTest {
     @ValueSource(strings = {
         "echo hello > notes.txt", "sed -i 's/a/b/' conf.yml", "git commit -m x", "git checkout -b fix",
         "mvn package", "python script.py", "npm install", "touch fichier", "mkdir dossier",
-        "cat $(ls)", "inconnu --fait-quelque-chose", "find . -name x -delete", "tee out.log"
+        "cat $(ls)", "inconnu --fait-quelque-chose", "find . -name x -delete", "tee out.log",
+        // F-222 / SF-222-02 : la liste blanche reste conservatrice.
+        "python3 jira.py creer PROJ-1", "python3 -c 'print(1)' voir", "node -e 'x()' --dry-run",
+        "python3 jira.py voir PROJ-1 > rapport.txt", "./deploy.sh", "bash -c 'releve'", "python3 -m pip install x"
     })
     @DisplayName("prudence : le reste est une modification (réversible)")
     void modifies(String command) {

@@ -61,6 +61,24 @@ public final class JourneyRiskClassifier {
             "rsync", "sftp", "sendmail", "mail", "mutt", "reboot", "shutdown", "kill", "pkill", "killall", "oc",
             "tofu", "terragrunt", "podman", "glab");
 
+    /**
+     * <b>Scripts de lecture du poste</b> (F-222 / SF-222-02) — liste blanche CONSERVATRICE : un script lancé par
+     * un interpréteur (ou directement) n'est une lecture que si son nom commence par « releve », si son premier
+     * argument est un verbe de lecture ({@code jira.py voir PROJ-1}), ou s'il porte {@code --dry-run}. Jamais
+     * de code en ligne ({@code -c}, {@code -e}, {@code -m}). En cas de doute : la classification d'avant.
+     */
+    private static final Set<String> SCRIPT_INTERPRETERS = Set.of("python", "python3", "node", "bash", "sh");
+
+    /** Les options d'interpréteur qui exécutent du code en ligne ou un module : jamais une lecture de script. */
+    private static final Set<String> INLINE_CODE_OPTIONS = Set.of("-c", "-e", "-m", "-p", "-i", "--eval", "--print",
+            "--interactive");
+
+    /** Les verbes de lecture reconnus en premier argument d'un script (sans accents, en minuscules). */
+    private static final Set<String> READ_VERBS = Set.of("voir", "lire", "liste", "lister", "list", "show", "get",
+            "status", "statut", "describe", "info", "releve", "relever", "consulter", "afficher");
+
+    private static final Pattern SCRIPT_FILE = Pattern.compile("\\.(py|js|mjs|cjs|sh)$");
+
     /** Redirection vers un fichier (hors /dev/null et duplication de descripteur). */
     private static final Pattern REDIRECT = Pattern.compile("(?<![0-9&])>>?\\s*(?!&|/dev/null)\\S"
             + "|[0-9]>>?\\s*(?!&|/dev/null)[^&\\s]");
@@ -311,6 +329,49 @@ public final class JourneyRiskClassifier {
         };
     }
 
+    /** Vrai si la commande lance un script de LECTURE du poste (F-222 / SF-222-02) — voir {@link #READ_VERBS}. */
+    static boolean isReadScript(String program, List<String> args) {
+        String script;
+        List<String> rest;
+        if (SCRIPT_INTERPRETERS.contains(program)) {
+            int i = 0;
+            while (i < args.size() && args.get(i).startsWith("-")) {
+                if (INLINE_CODE_OPTIONS.contains(args.get(i))) {
+                    return false;
+                }
+                i++;
+            }
+            if (i >= args.size()) {
+                return false;
+            }
+            script = args.get(i);
+            rest = args.subList(i + 1, args.size());
+        } else if (program != null && SCRIPT_FILE.matcher(program).find()) {
+            script = program;
+            rest = args;
+        } else {
+            return false;
+        }
+        String name = plain(script.substring(script.lastIndexOf('/') + 1));
+        if (name.startsWith("releve")) {
+            return true;
+        }
+        for (String arg : rest) {
+            if (arg.equals("--dry-run")) {
+                return true;
+            }
+        }
+        String verb = rest.stream().filter(a -> !a.startsWith("-")).findFirst().map(JourneyRiskClassifier::plain)
+                .orElse("");
+        return READ_VERBS.contains(verb);
+    }
+
+    /** Minuscules, sans accents. */
+    private static String plain(String value) {
+        return java.text.Normalizer.normalize(value.toLowerCase(Locale.ROOT), java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}+", "");
+    }
+
     private static Verdict segment(List<String> raw) {
         List<String> w = stripPrefixes(raw);
         if (w.isEmpty()) {
@@ -320,6 +381,9 @@ public final class JourneyRiskClassifier {
         List<String> args = w.subList(1, w.size());
         if (isWorkstationAuth(program, args)) {
             return Verdict.AUTH;
+        }
+        if (isReadScript(program, args)) {
+            return Verdict.READ; // F-222 / SF-222-02 : la lecture n'attend jamais
         }
         return switch (program) {
             case "rm", "rmdir", "shred", "dd", "mkfs", "ssh", "scp", "rsync", "sftp", "sendmail", "mail",
