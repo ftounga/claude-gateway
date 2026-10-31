@@ -33,6 +33,38 @@ class ProviderCostCalculatorTest {
         assertThat(cost.pricingFallback()).isFalse();
     }
 
+    // ------------------------------------------------- F-224 / SF-224-01 : le modèle réellement appelé
+
+    @Test
+    void aDatedModelIdFindsItsOwnRatesNotTheFallback() {
+        // Haiku 4.5 rapporté sous son identifiant daté retombait sur le tarif de repli (Opus) : surestimation.
+        TurnCost dated = calculator.calculate(new TurnTokens(1_000_000L, 0L, 0L, 0L), "claude-haiku-4-5-20251001");
+        TurnCost plain = calculator.calculate(new TurnTokens(1_000_000L, 0L, 0L, 0L), "claude-haiku-4-5");
+        assertThat(dated.amountUsd()).isEqualByComparingTo(plain.amountUsd());
+        assertThat(dated.pricingFallback()).isFalse();
+        assertThat(calculator.calculate(new TurnTokens(1L, 0L, 0L, 0L), "claude-sonnet-5-latest").pricingFallback())
+                .isFalse();
+        // « claude-opus-5-5 » n'est jamais lu comme « claude-opus-5 » : la ligne exacte prime.
+        assertThat(calculator.calculate(new TurnTokens(1_000_000L, 0L, 0L, 0L), "claude-opus-5-5").amountUsd())
+                .isEqualByComparingTo("4.000000");
+        assertThat(calculator.calculate(new TurnTokens(1L, 0L, 0L, 0L), "modele-inconnu").pricingFallback()).isTrue();
+    }
+
+    @Test
+    void aDelegatedExplorationIsBilledAtItsModelRate() {
+        // Tour Opus 5.5 de 1 M d'entrée dont 600 k lus par l'exploration sur Sonnet : 400 k×4 + 600 k×Sonnet.
+        java.util.Map<String, long[]> shares = new java.util.LinkedHashMap<>();
+        fr.claudegateway.atelier.AtelierChatServiceTestAccess.addDelegatedShare(shares, "claude-opus-5-5",
+                "claude-sonnet-5", 600_000L, 0L, 0L, 0L);
+        fr.claudegateway.atelier.AtelierChatServiceTestAccess.addDelegatedShare(shares, "claude-opus-5-5",
+                "claude-opus-5-5", 999L, 0L, 0L, 0L); // même modèle : rien
+        assertThat(shares).containsOnlyKeys("claude-sonnet-5");
+        TurnCost cost = calculator.calculate(new TurnTokens(1_000_000L, 0L, 0L, 0L), TurnExtras.NONE,
+                "claude-opus-5-5", Map.of("claude-sonnet-5", new TurnTokens(600_000L, 0L, 0L, 0L)), null);
+        TurnCost sonnet = calculator.calculate(new TurnTokens(600_000L, 0L, 0L, 0L), "claude-sonnet-5");
+        assertThat(cost.amountUsd()).isEqualByComparingTo(sonnet.amountUsd().add(new java.math.BigDecimal("1.6")));
+    }
+
     // ------------------------------------------------- F-172 / SF-172-03 : coût juste
 
     @Test
