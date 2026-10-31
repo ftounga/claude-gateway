@@ -68,13 +68,16 @@ public class CostSummaryService {
 
         List<CostSummary.Client> clients = new ArrayList<>();
         BigDecimal spentTotal = BigDecimal.ZERO;
+        BigDecimal spentUsdTotal = BigDecimal.ZERO; // F-224 / SF-224-03 : la devise de la facture
         BigDecimal budgetTotal = BigDecimal.ZERO;
         boolean anyBudget = false;
         List<UUID> seen = new ArrayList<>();
 
         for (HostCost.Client client : costs.clients()) {
             BigDecimal spent = costView.toEur(client.costUsd());
+            BigDecimal spentUsd = usd(client.costUsd());
             spentTotal = spentTotal.add(spent);
+            spentUsdTotal = spentUsdTotal.add(spentUsd);
             // Le seau « hors client » n'a pas de budget : il n'est pas un client.
             Optional<BigDecimal> budget = client.hostId() == null
                     ? Optional.empty()
@@ -88,7 +91,7 @@ public class CostSummaryService {
             }
             clients.add(new CostSummary.Client(client.hostId(), client.hostName(), spent,
                     budget.orElse(null), percentOf(spent, budget.orElse(null)),
-                    hasOwnBudget(userId, client.hostId()), client.totalTokens()));
+                    hasOwnBudget(userId, client.hostId()), client.totalTokens(), spentUsd));
         }
 
         // Puis TOUS LES AUTRES CLIENTS, à zéro (SF-133-13). Le budget est une décision d'avance :
@@ -108,7 +111,7 @@ public class CostSummaryService {
             }
             clients.add(new CostSummary.Client(host.getId(), host.getName(), BigDecimal.ZERO,
                     budget.orElse(null), percentOf(BigDecimal.ZERO, budget.orElse(null)),
-                    hasOwnBudget(userId, host.getId()), 0L));
+                    hasOwnBudget(userId, host.getId()), 0L, BigDecimal.ZERO.setScale(2)));
         }
 
         // Enfin, un budget posé sur un poste qui n'existe plus : il se voit, donc il se retire.
@@ -120,12 +123,19 @@ public class CostSummaryService {
             budgetTotal = budgetTotal.add(budget.getAmountEur());
             clients.add(new CostSummary.Client(budget.getHostId(), null, BigDecimal.ZERO,
                     budget.getAmountEur(), percentOf(BigDecimal.ZERO, budget.getAmountEur()), true,
-                    0L));
+                    0L, BigDecimal.ZERO.setScale(2)));
         }
 
         BigDecimal totalBudget = anyBudget ? budgetTotal : null;
         return new CostSummary(period, window.firstDay(), window.lastDay(),
-                spentTotal, totalBudget, percentOf(spentTotal, totalBudget), List.copyOf(clients));
+                spentTotal, totalBudget, percentOf(spentTotal, totalBudget), List.copyOf(clients),
+                spentUsdTotal, costView.usdToEur());
+    }
+
+    /** Le montant en dollars, arrondi au centime (F-224 / SF-224-03). */
+    private static BigDecimal usd(BigDecimal costUsd) {
+        return (costUsd == null || costUsd.signum() <= 0 ? BigDecimal.ZERO : costUsd)
+                .setScale(2, java.math.RoundingMode.HALF_UP);
     }
 
     /** {@code null} sans budget : l'écran n'affiche alors aucune part, plutôt qu'une part inventée. */
@@ -150,9 +160,10 @@ public class CostSummaryService {
     private CostWindow windowOf(String period) {
         return switch (period == null ? "" : period.trim().toLowerCase()) {
             case "week" -> CostWindow.currentWeek(clock);
+            case "7d" -> CostWindow.lastSevenDays(clock); // F-224 / SF-224-03
             case "month" -> CostWindow.currentMonth(clock);
             default -> throw new InvalidUsageWindowException(
-                    "Période inconnue : attendu « week » ou « month ».");
+                    "Période inconnue : attendu « week », « 7d » ou « month ».");
         };
     }
 }

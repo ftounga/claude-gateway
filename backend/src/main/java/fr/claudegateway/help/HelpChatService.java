@@ -69,7 +69,20 @@ public class HelpChatService {
                 systemPrompt,
                 properties.maxTokens()));
 
+        // F-224 / SF-224-03 : l'aide est un appel annexe — compté, étiqueté, hors quota.
+        if (ledger != null && completion != null) {
+            ledger.recordAnnex(userId, null, completion.model(), completion.inputTokens(), completion.outputTokens(),
+                    completion.cacheReadTokens(), completion.cacheWriteTokens());
+        }
         return new HelpChatResponse(completion.content());
+    }
+
+    /** Le journal du coût (F-224) ; absent = l'appel n'est pas compté (tests historiques). */
+    private fr.claudegateway.quota.UsageLedgerService ledger;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setLedger(fr.claudegateway.quota.UsageLedgerService ledger) {
+        this.ledger = ledger;
     }
 
     /**

@@ -41,6 +41,36 @@ public class UsageLedgerService {
         this.writer = writer;
     }
 
+    /** Le calculateur de coût, pour les appels annexes (F-224) ; absent = coût non établi. */
+    private ProviderCostCalculator calculator;
+
+    @Autowired(required = false)
+    public void setCalculator(ProviderCostCalculator calculator) {
+        this.calculator = calculator;
+    }
+
+    /**
+     * <b>Un appel annexe</b> (F-224 / SF-224-03) — aide, lecture raisonnée, index de la carte — compté dans le journal
+     * du coût, étiqueté {@code ANNEXE}, au tarif de son modèle. Il ne touche PAS au quota de l'utilisateur : ce sont
+     * des appels de la plateforme, pas des tours qu'il a demandés. Best-effort : jamais au point de casser l'appel.
+     *
+     * @param inputTokens entrée TRAITÉE (cache compris, comme {@code ChatCompletionResult})
+     */
+    public void recordAnnex(UUID userId, UUID workspaceId, String model, long inputTokens, long outputTokens,
+            long cacheReadTokens, long cacheWriteTokens) {
+        if (userId == null || inputTokens + outputTokens <= 0L) {
+            return;
+        }
+        try {
+            TurnTokens tokens = new TurnTokens(Math.max(0L, inputTokens - cacheReadTokens - cacheWriteTokens),
+                    outputTokens, cacheReadTokens, cacheWriteTokens);
+            TurnCost cost = calculator == null ? null : calculator.calculate(tokens, model);
+            writer.write(userId, workspaceId, null, tokens, TurnExtras.NONE, cost, UsageTurn.Kind.ANNEXE);
+        } catch (RuntimeException failure) {
+            log.warn("Appel annexe non inscrit au journal du coût ({})", failure.getClass().getSimpleName());
+        }
+    }
+
     @Autowired(required = false)
     public void setListeners(List<UsageRecordedListener> listeners) {
         this.listeners = listeners == null ? List.of() : List.copyOf(listeners);

@@ -133,6 +133,11 @@ public class HostMapSectionExtractor {
                     properties.maxOutputTokens(), true));
             int in = result == null ? 0 : result.inputTokens();
             int out = result == null ? 0 : result.outputTokens();
+            // F-224 / SF-224-03 : sur la clé plateforme (pas BYOK), l'extraction est un appel annexe compté.
+            if (ledger != null && result != null && apiKey == null) {
+                ledger.recordAnnex(userId, null, result.model() == null ? model : result.model(), in, out,
+                        result.cacheReadTokens(), result.cacheWriteTokens());
+            }
             Extraction extraction = parse(result == null ? null : result.content(), facts);
             return new Result(extraction, in, out, model, false);
         } catch (AIProviderUnavailableException ex) {
@@ -141,6 +146,14 @@ public class HostMapSectionExtractor {
             log.debug("Carte : extraction de section en échec ({})", ex.getClass().getSimpleName());
             return new Result(null, 0, 0, model, false);
         }
+    }
+
+    /** Le journal du coût (F-224) ; absent = l'appel n'est pas compté. */
+    private fr.claudegateway.quota.UsageLedgerService ledger;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setLedger(fr.claudegateway.quota.UsageLedgerService ledger) {
+        this.ledger = ledger;
     }
 
     static String material(String path, String heading, List<HostMapSectionSplitter.FactLine> facts,

@@ -132,6 +132,11 @@ public class TurnCostView {
      * « combien cela fait-il en euros ». Les alertes ont déjà passé leur propre garde et n'ont
      * besoin que de la seconde.</p>
      */
+    /** Le taux dollar → euro de l'affichage (F-224 / SF-224-03 : il est écrit à côté des montants). */
+    public BigDecimal usdToEur() {
+        return pricing.usdToEur();
+    }
+
     public BigDecimal toEur(BigDecimal costUsd) {
         if (costUsd == null || costUsd.signum() <= 0) {
             return BigDecimal.ZERO;

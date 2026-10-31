@@ -59,6 +59,15 @@ public record CostWindow(OffsetDateTime start, OffsetDateTime end) {
         return new CostWindow(atUtc(first), atUtc(first.plusMonths(1)));
     }
 
+    /**
+     * Les 7 derniers jours, aujourd'hui compris (F-224 / SF-224-03) : de J-6 00:00 UTC à demain 00:00 UTC. À côté
+     * de la semaine ISO, qui repart à zéro chaque lundi et ne se compare pas à une facture glissante.
+     */
+    public static CostWindow lastSevenDays(Clock clock) {
+        LocalDate today = LocalDate.now(clock.withZone(ZoneOffset.UTC));
+        return new CostWindow(atUtc(today.minusDays(6)), atUtc(today.plusDays(1)));
+    }
+
     /** Le mois calendaire courant. */
     public static CostWindow currentMonth(Clock clock) {
         return month(LocalDate.now(clock.withZone(ZoneOffset.UTC)));

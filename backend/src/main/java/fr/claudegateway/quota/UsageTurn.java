@@ -161,6 +161,20 @@ public class UsageTurn {
     @Column(name = "occurred_at", nullable = false, updatable = false)
     private OffsetDateTime occurredAt;
 
+    /** {@code TOUR} (un tour d'agent) ou {@code ANNEXE} (aide, lecture raisonnée, index de la carte) — F-224. */
+    @Column(name = "kind", nullable = false, length = 8)
+    @jakarta.persistence.Enumerated(jakarta.persistence.EnumType.STRING)
+    @Builder.Default
+    private Kind kind = Kind.TOUR;
+
+    /** La nature d'une ligne du journal (F-224 / SF-224-03). */
+    public enum Kind {
+        /** Un tour d'agent. */
+        TOUR,
+        /** Un appel annexe de la plateforme, hors quota. */
+        ANNEXE
+    }
+
     /**
      * Total de tokens du tour (entrée + sortie). Commodité d'affichage, jamais de tarification.
      *

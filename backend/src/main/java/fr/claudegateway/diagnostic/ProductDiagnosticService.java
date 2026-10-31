@@ -148,7 +148,22 @@ public class ProductDiagnosticService {
         if (finding == null) {
             return java.util.Optional.empty();
         }
-        return reasoned.read(finding, code);
+        java.util.Optional<SourceHypothesis> hypothesis = reasoned.read(finding, code);
+        // F-224 / SF-224-03 : la lecture raisonnée est un appel annexe — compté, étiqueté, hors quota.
+        hypothesis.ifPresent(h -> {
+            if (ledger != null) {
+                ledger.recordAnnex(userId, null, h.model(), h.inputTokens(), h.outputTokens(), 0L, 0L);
+            }
+        });
+        return hypothesis;
+    }
+
+    /** Le journal du coût (F-224) ; absent = l'appel n'est pas compté. */
+    private fr.claudegateway.quota.UsageLedgerService ledger;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setLedger(fr.claudegateway.quota.UsageLedgerService ledger) {
+        this.ledger = ledger;
     }
 
     /** Le gain calculé pèse-t-il assez, rapporté au coût de la période ? */

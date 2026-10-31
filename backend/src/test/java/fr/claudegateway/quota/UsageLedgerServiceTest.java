@@ -45,6 +45,26 @@ class UsageLedgerServiceTest {
     }
 
     @Test
+    void anAnnexCallIsLabelledAndPricedAtItsModel() {
+        // F-224 / SF-224-03 : aide, lecture raisonnée, index de la carte — comptés, étiquetés ANNEXE.
+        service.setCalculator(new ProviderCostCalculator(
+                new ProviderPricingProperties(null, null, null, null, null, null)));
+        service.recordAnnex(alice, null, "claude-haiku-4-5", 1_500L, 200L, 500L, 0L);
+
+        org.mockito.ArgumentCaptor<TurnCost> cost = org.mockito.ArgumentCaptor.forClass(TurnCost.class);
+        verify(writer).write(org.mockito.ArgumentMatchers.eq(alice), org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.eq(new TurnTokens(1_000L, 200L, 500L, 0L)),
+                org.mockito.ArgumentMatchers.eq(TurnExtras.NONE), cost.capture(),
+                org.mockito.ArgumentMatchers.eq(UsageTurn.Kind.ANNEXE));
+        // Haiku 4.5 : 1 000 × 1 + 200 × 5 + 500 × 0,10 ÷ 1e6 = 0,00205 $.
+        org.assertj.core.api.Assertions.assertThat(cost.getValue().amountUsd()).isEqualByComparingTo("0.002050");
+        // Rien consommé, ou pas d'utilisateur : rien d'écrit.
+        service.recordAnnex(alice, null, "claude-haiku-4-5", 0L, 0L, 0L, 0L);
+        service.recordAnnex(null, null, "claude-haiku-4-5", 10L, 10L, 0L, 0L);
+        org.mockito.Mockito.verifyNoMoreInteractions(writer);
+    }
+
+    @Test
     void recordsTurnWithProjectAndHost() {
         TurnTokens tokens = TurnTokens.of(1_000L, 200L);
 
