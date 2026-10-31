@@ -96,7 +96,7 @@ import {
   applyMention,
   suggestPaths,
 } from './file-mentions';
-import { humanFileSize } from '../../shared/http-error.util';
+import { httpErrorMessage, humanFileSize } from '../../shared/http-error.util';
 import { MarkdownPipe } from '../../shared/markdown.pipe';
 import { TeamsLinkBadgeComponent } from '../../shared/teams-link-badge/teams-link-badge.component';
 import { TeamsLink } from '../teams/teams-link.service';
@@ -1229,20 +1229,23 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     }
     const before = this.journey();
     const plan = before?.plan;
+    // F-222 / SF-222-03 : le geste vise le chantier AFFICHÉ, par son numéro — jamais « le focus du moment » côté
+    // serveur, qui a pu changer entre l'affichage et le clic (validation du plan v2 perdue, 29/10).
+    const target = this.laneChantier ?? focusChantierNumber(before);
     let call;
     switch (gesture) {
       case 'accept-guided': call = this.journeys.acceptGuided(workspaceId); break;
       case 'decline-guided': call = this.journeys.declineGuided(workspaceId); break;
-      case 'confirm-diagnosis': call = this.journeys.confirmDiagnosis(workspaceId, this.laneChantier); break;
-      case 'dismiss-diagnosis': call = this.journeys.dismissDiagnosis(workspaceId, this.laneChantier); break;
-      case 'close': call = this.journeys.close(workspaceId, this.laneChantier); break;
-      case 'dismiss-close': call = this.journeys.dismissClose(workspaceId, this.laneChantier); break;
+      case 'confirm-diagnosis': call = this.journeys.confirmDiagnosis(workspaceId, target); break;
+      case 'dismiss-diagnosis': call = this.journeys.dismissDiagnosis(workspaceId, target); break;
+      case 'close': call = this.journeys.close(workspaceId, target); break;
+      case 'dismiss-close': call = this.journeys.dismissClose(workspaceId, target); break;
       case 'validate-plan':
       case 'validate-plan-only':
         if (!plan) {
           return;
         }
-        call = this.journeys.validatePlan(workspaceId, plan.version, this.laneChantier);
+        call = this.journeys.validatePlan(workspaceId, plan.version, target);
         break;
     }
     this.journeyBusy.set(true);
@@ -1259,9 +1262,13 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
         }
         this.journeyBusy.set(false);
       },
-      error: () => {
+      error: (err: unknown) => {
         this.journeyBusy.set(false);
-        this.snackBar.open('Le parcours du sujet n\'a pas pu être mis à jour.', 'OK', { duration: 4000 });
+        // F-222 / SF-222-03 : le geste refusé dit POURQUOI (plan changé depuis, plus rien à valider…) et
+        // l'écran se relit — jamais un clic perdu en silence.
+        this.snackBar.open(httpErrorMessage(err, 'Le parcours du sujet n\'a pas pu être mis à jour.'), 'OK',
+          { duration: 8000 });
+        this.loadJourney(workspaceId);
       },
     });
   }

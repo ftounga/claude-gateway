@@ -316,6 +316,25 @@ class SubjectJourneyChantiersIntegrationTest {
     }
 
     @Test
+    @DisplayName("SF-222-03 : un chantier en Exécution sans geste depuis 3 jours est signalé, daté, jamais clos seul")
+    void staleChantierIsFlagged() throws Exception {
+        chantierOneExecuting();
+        post(aliceToken, "chantiers", "{\"title\":\"Logs vers Loki\"}");
+        getJourney(aliceToken).andExpect(jsonPath("$.chantiers[0].stale", is(false)))
+                .andExpect(jsonPath("$.chantiers[0].lastActivityAt").exists());
+        SubjectJourneyChantier one = chantierRepository.findFirstByUserIdAndWorkspaceIdAndNumber(aliceId, ws(), 1)
+                .orElseThrow();
+        one.setUpdatedAt(java.time.OffsetDateTime.now().minusDays(4));
+        chantierRepository.save(one);
+        getJourney(aliceToken).andExpect(jsonPath("$.chantiers[0].number", is(1)))
+                .andExpect(jsonPath("$.chantiers[0].stale", is(true)))
+                .andExpect(jsonPath("$.chantiers[0].phase", is("EXECUTION")))
+                .andExpect(jsonPath("$.chantiers[1].stale", is(false)));
+        // Bob ne voit rien du parcours d'Alice.
+        getJourney(bobToken).andExpect(status().isNotFound());
+    }
+
+    @Test
     @DisplayName("SF-223-01 : le plan posé demande une phrase au plus puis la fin du tour")
     void planToolAsksForShortPresentation() throws Exception {
         chantierOneExecuting();

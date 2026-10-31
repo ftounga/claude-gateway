@@ -125,4 +125,17 @@ public class SubjectJourneyChantier {
     public boolean isOpen() {
         return OPEN.equals(status);
     }
+
+    /** Au-delà, un chantier en Exécution sans aucun geste est « en sommeil » (F-222 / SF-222-03). */
+    public static final int STALE_DAYS = 3;
+
+    /**
+     * <b>Chantier zombie</b> (F-222 / SF-222-03) : ouvert, en Exécution, et sans aucun geste (sa ligne n'a pas bougé)
+     * depuis {@link #STALE_DAYS} jours. Rendu visible avec [Clore], retiré du détail de la note de tour ; jamais clos
+     * en silence.
+     */
+    public boolean isStale(OffsetDateTime now) {
+        return isOpen() && phase == JourneyPhase.EXECUTION && updatedAt != null && now != null
+                && updatedAt.isBefore(now.minusDays(STALE_DAYS));
+    }
 }

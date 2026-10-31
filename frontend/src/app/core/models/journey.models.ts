@@ -68,6 +68,19 @@ export interface OpenChantier {
   plan?: JourneyPlan | null;
   /** Qui doit agir pour qu'il avance (F-220 / SF-220-01) — absent d'une gateway antérieure. */
   unblocker?: UnblockerMark | null;
+  /** Son dernier geste connu (F-222 / SF-222-03). */
+  lastActivityAt?: string | null;
+  /** En Exécution sans geste depuis 3 jours, hors focus : un chantier « en sommeil » à clore ou reprendre. */
+  stale?: boolean;
+}
+
+/** Jours entiers écoulés depuis le dernier geste d'un chantier, ou `null` si inconnu (F-222 / SF-222-03). */
+export function idleDaysOf(c: OpenChantier, now: number = Date.now()): number | null {
+  if (!c.lastActivityAt) {
+    return null;
+  }
+  const at = new Date(c.lastActivityAt).getTime();
+  return isNaN(at) ? null : Math.max(0, Math.floor((now - at) / 86_400_000));
 }
 
 /** Vrai si un chantier ouvert attend un geste de l'utilisateur (F-206). */

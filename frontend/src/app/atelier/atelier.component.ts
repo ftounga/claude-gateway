@@ -238,6 +238,9 @@ const SEARCH_PROJECT_INSTEAD_PRECISION = 'Autorisé à répondre via le projet �
  */
 const RUNNER_DOOR_CODES = ['runner_offline', 'runner_missing_capability', 'runner_unresponsive'];
 
+/** Un même message renvoyé vers le même sujet dans ce délai est un doublon (F-222 / SF-222-03). */
+const DUPLICATE_SEND_WINDOW_MS = 3000;
+
 @Component({
   selector: 'app-atelier',
   imports: [
@@ -2014,6 +2017,17 @@ export class AtelierComponent implements OnInit, OnDestroy {
     if (!id || content.length === 0) {
       return;
     }
+    // F-222 / SF-222-03 — UN MESSAGE NE PART QU'UNE FOIS. Mesure du 31/10 : 5 messages du PO dupliqués (jusqu'à
+    // trois fois). Deux chemins le permettaient : un envoi avec @-mentions garde la saisie le temps de lire les
+    // fichiers (une 2e Entrée renvoyait le même texte), et un double geste (double clic, Entrée répétée) dans la
+    // même seconde. Le même texte vers le même sujet dans les 3 s, ou pendant la lecture des mentions, est ignoré.
+    const now = Date.now();
+    if (this.resolvingMentions
+        || (this.lastSent !== null && this.lastSent.id === id && this.lastSent.content === content
+            && now - this.lastSent.at < DUPLICATE_SEND_WINDOW_MS)) {
+      return;
+    }
+    this.lastSent = { id, content, at: now };
     // Le plafond refuse cette place : on ne démarre pas un tour dans un terminal qui n'est pas
     // vivant (F-70 / SF-70-01). C'est ce refus qui fait du plafond un garde-fou de dépense.
     if (this.liveTerminals.limitReached()) {
@@ -2029,10 +2043,23 @@ export class AtelierComponent implements OnInit, OnDestroy {
       this.dispatchMessage(id, content);
       return;
     }
-    this.resolveMentions(id, paths).subscribe((files) => {
-      this.dispatchMessage(id, content + buildContextBlock(files));
+    this.resolvingMentions = true;
+    this.resolveMentions(id, paths).subscribe({
+      next: (files) => {
+        this.resolvingMentions = false;
+        this.dispatchMessage(id, content + buildContextBlock(files));
+      },
+      error: () => {
+        this.resolvingMentions = false;
+      },
     });
   }
+
+  /** Les @-mentions d'un envoi sont en lecture : un 2e envoi attendrait le même texte (F-222 / SF-222-03). */
+  private resolvingMentions = false;
+
+  /** Le dernier envoi, pour ne pas faire partir deux fois le même message (F-222 / SF-222-03). */
+  private lastSent: { id: string; content: string; at: number } | null = null;
 
   /**
    * Aiguille un message prêt (mentions déjà résolues) vers un nouveau tour ou une précision.

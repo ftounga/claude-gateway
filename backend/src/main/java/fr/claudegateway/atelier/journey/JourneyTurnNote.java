@@ -83,14 +83,30 @@ public final class JourneyTurnNote {
         note.append("== Chantier ").append(journey.getChantierNumber()).append(" (focus) — ")
                 .append(title(journey.getChantierTitle(), journey.getChantierNumber())).append(" ==\n");
         note.append(guided(journey));
-        int shown = 0;
+        java.time.OffsetDateTime now = java.time.OffsetDateTime.now();
+        java.util.List<SubjectJourneyChantier> active = new java.util.ArrayList<>();
+        java.util.List<String> asleep = new java.util.ArrayList<>();
         for (SubjectJourneyChantier other : others) {
+            if (other.isStale(now)) {
+                asleep.add(String.valueOf(other.getNumber()));
+            } else {
+                active.add(other);
+            }
+        }
+        int shown = 0;
+        for (SubjectJourneyChantier other : active) {
             if (shown == MAX_OTHERS) {
-                note.append("… et ").append(others.size() - shown).append(" autre(s) chantier(s) ouvert(s).\n");
+                note.append("… et ").append(active.size() - shown).append(" autre(s) chantier(s) ouvert(s).\n");
                 break;
             }
             note.append(summary(other));
             shown++;
+        }
+        if (!asleep.isEmpty()) {
+            // F-222 / SF-222-03 : un chantier en Exécution sans geste depuis des jours n'alourdit plus chaque tour.
+            note.append("En sommeil (en Exécution sans geste depuis ").append(SubjectJourneyChantier.STALE_DAYS)
+                    .append(" jours ou plus, non détaillés) : chantier(s) ").append(String.join(", ", asleep))
+                    .append(". N'y touche pas sans demande ; si l'utilisateur en parle, propose de les clore.\n");
         }
         note.append(actorsToQualify(journey));
         note.append(proposalPending(journey));
@@ -212,8 +228,9 @@ public final class JourneyTurnNote {
         if (journey.getPhase() != JourneyPhase.CLOS) {
             addUnqualified(parts, journey.getChantierNumber(), journey.getPlanJson());
         }
+        java.time.OffsetDateTime now = java.time.OffsetDateTime.now();
         for (SubjectJourneyChantier other : journey.getOtherOpenChantiers()) {
-            if (other.getPhase() != JourneyPhase.CLOS) {
+            if (other.getPhase() != JourneyPhase.CLOS && !other.isStale(now)) {
                 addUnqualified(parts, other.getNumber(), other.getPlanJson());
             }
         }

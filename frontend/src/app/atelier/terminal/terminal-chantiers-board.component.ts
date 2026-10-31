@@ -26,6 +26,7 @@ import {
   SubjectJourney,
   chantierGestures,
   currentStepIndex,
+  idleDaysOf,
   stepState,
   stepStateIcon,
   stepStateLabel,
@@ -84,6 +85,9 @@ const RING = 2 * Math.PI * 18;
               @if (running(c.number)) {
                 <span class="board__tab-auto">autonome</span>
               }
+              @if (c.stale) {
+                <span class="board__tab-stale">en sommeil</span>
+              }
             </button>
           }
         </div>
@@ -111,6 +115,17 @@ const RING = 2 * Math.PI * 18;
                   <mat-icon>event_note</mat-icon>
                   Planifier
                 </button>
+              }
+              @if (c.stale) {
+                <!-- F-222 / SF-222-03 : un chantier en Exécution sans geste depuis des jours — visible, jamais clos seul. -->
+                <p class="board__stale" role="status">
+                  <mat-icon aria-hidden="true">bedtime</mat-icon>
+                  {{ staleLabel(c) }}
+                  @if (canSend()) {
+                    <button mat-stroked-button type="button" class="board__stale-close" [disabled]="busy()"
+                      (click)="closeStale(c)">Clore</button>
+                  }
+                </p>
               }
               @if (!c.focus) {
                 <button mat-stroked-button type="button" class="board__focus-btn" (click)="focus.emit(c.number)">
@@ -486,6 +501,15 @@ const RING = 2 * Math.PI * 18;
       font-weight: 600;
     }
 
+    .board__tab-stale {
+      padding: 0 6px;
+      border-radius: 8px;
+      background: #FFF8E1;
+      color: var(--cg-text-primary);
+      font-size: 11px;
+      font-weight: 600;
+    }
+
     .board__tab-auto {
       padding: 0 6px;
       border-radius: 8px;
@@ -679,6 +703,26 @@ const RING = 2 * Math.PI * 18;
     .board__count {
       margin: var(--cg-space-1) 0 0;
       color: var(--cg-text-secondary);
+    }
+
+    /* F-222 / SF-222-03 : chantier en sommeil — ambre de l'attente (§12), filet seul, jamais un fond. */
+    .board__stale {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--cg-space-2);
+      flex-basis: 100%;
+      margin: 0;
+      padding-left: var(--cg-space-2);
+      border-left: 4px solid #F9A825;
+      font-size: 13px;
+      color: var(--cg-text-primary);
+    }
+
+    .board__stale mat-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
     }
 
     /* F-220 / SF-220-04 : qui débloque — la pastille écrit son libellé, la phrase dit le détail. */
@@ -1293,6 +1337,34 @@ export class TerminalChantiersBoardComponent {
       error: () => {
         this.busy.set(false);
         this.snackBar.open('Le diagnostic n’a pas pu être confirmé.', 'OK', { duration: 5000 });
+        this.changed.emit();
+      },
+    });
+  }
+
+  /** « En Exécution sans activité depuis 6 jours » (F-222 / SF-222-03). */
+  staleLabel(c: OpenChantier): string {
+    const days = idleDaysOf(c);
+    return days === null ? 'En Exécution sans activité depuis plusieurs jours'
+      : `En Exécution sans activité depuis ${days} jour${days > 1 ? 's' : ''}`;
+  }
+
+  /** [Clore] un chantier en sommeil (F-222 / SF-222-03) : un geste de l'utilisateur, jamais automatique. */
+  closeStale(c: OpenChantier): void {
+    const workspaceId = this.workspaceId();
+    if (!workspaceId || this.busy()) {
+      return;
+    }
+    this.busy.set(true);
+    this.journeys.closeChantier(workspaceId, c.number).subscribe({
+      next: () => {
+        this.busy.set(false);
+        this.snackBar.open(`Chantier ${c.number} clos.`, 'OK', { duration: 4000 });
+        this.changed.emit();
+      },
+      error: () => {
+        this.busy.set(false);
+        this.snackBar.open('Le chantier n’a pas pu être clos.', 'OK', { duration: 5000 });
         this.changed.emit();
       },
     });
