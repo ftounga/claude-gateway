@@ -94,7 +94,8 @@ public class TerminalActionController {
                 request.person(),
                 request.kind(),
                 new TerminalActionService.Qualification(request.categorie(), request.qui()),
-                request.dueAt()));
+                request.dueAt(),
+                request.chantier()));
     }
 
     /** Édition d'une attente ouverte : seuls les champs donnés changent (F-175 / SF-175-01). */
@@ -188,7 +189,7 @@ public class TerminalActionController {
     public record CreateRequest(UUID subjectId, String description, String blocks,
                                 String person, TerminalActionKind kind,
                                 TerminalActionCategorie categorie, TerminalActionQui qui,
-                                java.time.LocalDate dueAt) {
+                                java.time.LocalDate dueAt, Integer chantier) {
     }
 
     /** Une édition : {@code null} = inchangé ; chaîne vide = effacé (sauf la description). */

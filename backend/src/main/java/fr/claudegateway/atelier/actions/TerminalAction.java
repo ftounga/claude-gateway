@@ -149,6 +149,20 @@ public class TerminalAction {
     private OffsetDateTime proposedAt;
 
     /**
+     * Qui a proposé la clôture en attente (F-227 / SF-227-03) : {@value #SOURCE_REVUE} (la revue des attentes
+     * anciennes) ou {@value #SOURCE_AGENT} (F-175). [Clore les N proposées] ne ferme que les propositions de la revue.
+     */
+    @Column(name = "proposal_source", length = 8)
+    private String proposalSource;
+
+    /**
+     * Le dernier <b>geste réel</b> sur l'attente (F-227 / SF-227-03) : création, état, édition, rattachement,
+     * [Clore]/[Garder]. {@code updated_at}, réécrit par les traitements en lot, ne dit pas « sans geste ».
+     */
+    @Column(name = "last_gesture_at")
+    private OffsetDateTime lastGestureAt;
+
+    /**
      * « À vérifier » (F-175 / SF-175-07) : attente héritée de F-154, dont l'état n'a jamais été dit.
      * Montrée une fois avec un état proposé ; rien ne change sans la validation de l'utilisateur.
      */
@@ -188,6 +202,19 @@ public class TerminalAction {
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 
+    public static final String SOURCE_REVUE = "REVUE";
+    public static final String SOURCE_AGENT = "AGENT";
+
+    /** Le dernier geste réel, à défaut la naissance (F-227 / SF-227-03). */
+    public OffsetDateTime lastGestureOrCreated() {
+        return lastGestureAt != null ? lastGestureAt : createdAt;
+    }
+
+    /** Vrai si la proposition en attente vient de la revue des attentes anciennes et propose « sans objet ». */
+    public boolean isReviewProposal() {
+        return proposedStatus == TerminalActionStatus.ANNULE && SOURCE_REVUE.equals(proposalSource);
+    }
+
     /** Vrai tant que l'action attend encore quelque chose de l'utilisateur. */
     public boolean isOpen() {
         return status != null && status.isOpen();
@@ -203,5 +230,6 @@ public class TerminalAction {
         this.proposedStatus = null;
         this.proposedReason = null;
         this.proposedAt = null;
+        this.proposalSource = null;
     }
 }

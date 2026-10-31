@@ -111,6 +111,7 @@ public class ClientBoardService {
         List<AutonomyService.RunView> runs = runs(userId);
         Set<UUID> shown = new HashSet<>(); // les attentes que les chantiers montrent déjà (SF-220-07)
         Map<UUID, Set<Integer>> openChantiers = new HashMap<>(); // F-227 : sous quels chantiers ranger une attente
+        Ranging ranging = new Ranging(); // F-227 / SF-227-03 : le plan prime, et les naissances ambiguës
         if (!subjects.isEmpty()) {
             Map<UUID, OffsetDateTime> lastMessage = lastMessages(userId, subjects);
             Map<String, OffsetDateTime> snoozed = new HashMap<>();
@@ -127,14 +128,14 @@ public class ClientBoardService {
                     SubjectJourney decorated = journeys.withOpenChantiers(row);
                     openChantiers.put(workspace.getId(), openNumbers(decorated));
                     cards.addAll(cardsOf(userId, workspace, decorated,
-                            lastMessage.get(workspace.getId()), runs, snoozed, now, shown));
+                            lastMessage.get(workspace.getId()), runs, snoozed, now, shown, ranging));
                 } catch (RuntimeException e) {
                     log.warn("Tableau du client : sujet illisible ({})", e.getClass().getSimpleName());
                 }
             }
         }
         cards.sort(ORDER);
-        List<ClientBoard.LooseTask> loose = looseTasks(userId, subjects, shown, openChantiers, now);
+        List<ClientBoard.LooseTask> loose = looseTasks(userId, subjects, shown, openChantiers, ranging, now);
         return new ClientBoard(host.getId(), host.getName(), now, dormantAfterDays, counts(cards, loose),
                 new ClientBoard.Autonomy(runs.stream().filter(r -> "RUNNING".equals(r.status())).count(),
                         autonomy.maxParallel()),
@@ -153,7 +154,7 @@ public class ClientBoardService {
      * terminal est un sujet possédé du poste. Best-effort : illisibles → section vide, les chantiers restent.
      */
     private List<ClientBoard.LooseTask> looseTasks(UUID userId, Map<UUID, Workspace> subjects, Set<UUID> shown,
-            Map<UUID, Set<Integer>> openChantiers, OffsetDateTime now) {
+            Map<UUID, Set<Integer>> openChantiers, Ranging ranging, OffsetDateTime now) {
         if (subjects.isEmpty()) {
             return List.of();
         }
@@ -166,15 +167,19 @@ public class ClientBoardService {
                         || shown.contains(a.getId())) {
                     continue;
                 }
-                OffsetDateTime last = a.getUpdatedAt() != null ? a.getUpdatedAt() : a.getCreatedAt();
+                OffsetDateTime last = a.lastGestureOrCreated(); // F-227 / SF-227-03 : jamais updated_at
                 long idle = last == null ? 0 : Math.max(0, Duration.between(last, now).toDays());
+                Integer planned = ranging.planned(a);
+                Integer chantier = planned != null ? planned : chantierOf(a, openChantiers);
                 tasks.add(new ClientBoard.LooseTask(a.getId(), workspace.getId(), workspace.getName(),
                         workspace.isHostTerminal(), a.getDescription(), a.getBlocks(), a.getStatus().name(),
                         a.getQui() == null ? null : a.getQui().name(),
                         a.getCategorie() == null ? null : a.getCategorie().name(), a.getPerson(), a.getRequestedTo(),
                         a.getRequestedAt(), a.getCreatedAt(), markOf(a), last, idle, idle >= dormantAfterDays,
-                        followUp.isDue(a, now), chantierOf(a, openChantiers),
-                        a.getProposedStatus() == null ? null : a.getProposedStatus().name(), a.getProposedReason()));
+                        followUp.isDue(a, now), chantier,
+                        a.getProposedStatus() == null ? null : a.getProposedStatus().name(), a.getProposedReason(),
+                        a.hasProposal() ? a.getProposalSource() : null,
+                        chantier == null ? ranging.suggestions(a) : List.of()));
             }
         } catch (RuntimeException e) {
             log.warn("Tableau du client : attentes illisibles ({})", e.getClass().getSimpleName());
@@ -199,7 +204,10 @@ public class ClientBoardService {
         return numbers;
     }
 
-    /** Le chantier OUVERT sous lequel ranger l'attente, sinon {@code null} (au fil de l'eau) — F-227 / SF-227-01. */
+    /**
+     * Le chantier OUVERT sous lequel ranger l'attente, sinon {@code null} (au fil de l'eau) — F-227 / SF-227-01. Le
+     * plan prime (SF-227-03) : l'appelant consulte d'abord {@link Ranging#planned}.
+     */
     static Integer chantierOf(TerminalAction a, Map<UUID, Set<Integer>> openChantiers) {
         Integer n = a.getChantierNumber();
         return n != null && openChantiers.getOrDefault(a.getWorkspaceId(), Set.of()).contains(n) ? n : null;
@@ -223,18 +231,96 @@ public class ClientBoardService {
     @Transactional
     public int proposeStaleTasks(UUID userId, UUID hostId, int days) {
         hosts.requireOwned(userId, hostId); // 404 — TOUJOURS en premier
-        Map<UUID, Workspace> subjects = subjects(userId, hostId);
-        if (subjects.isEmpty() || actionService == null) {
+        if (actionService == null) {
             return 0;
         }
-        List<TerminalAction> candidates = new ArrayList<>();
+        // SF-227-03 : seulement les attentes que le tableau montre sur leur propre ligne, avec [Clore]/[Garder] —
+        // jamais celles qu'une étape de chantier montre déjà (la proposition y serait inaccessible).
+        Set<UUID> visible = new HashSet<>();
+        for (ClientBoard.LooseTask t : board(userId, hostId).horsChantier()) {
+            visible.add(t.actionId());
+        }
+        return actionService.proposeStaleClosure(userId, ownedOpen(userId, hostId, visible), days).size();
+    }
+
+    /**
+     * <b>[Clore les N proposées]</b> (F-227 / SF-227-03) : ferme les attentes {@code ids} du poste dont la proposition
+     * vient de la revue ; les autres sont laissées. 404 sur le poste d'autrui.
+     */
+    @Transactional
+    public fr.claudegateway.atelier.actions.TerminalActionService.BulkClose closeStaleTasks(UUID userId, UUID hostId,
+            List<UUID> ids) {
+        hosts.requireOwned(userId, hostId); // 404 — TOUJOURS en premier
+        List<UUID> wanted = ids == null ? List.of() : ids;
+        if (actionService == null || wanted.isEmpty()) {
+            return new fr.claudegateway.atelier.actions.TerminalActionService.BulkClose(0, wanted.size());
+        }
+        return actionService.closeReviewProposals(userId, ownedOpen(userId, hostId, new HashSet<>(wanted)), wanted);
+    }
+
+    /** Les attentes ouvertes, lues sous {@code user_id}, des sujets du poste, restreintes à {@code ids}. */
+    private List<TerminalAction> ownedOpen(UUID userId, UUID hostId, Set<UUID> ids) {
+        Map<UUID, Workspace> subjects = subjects(userId, hostId);
+        List<TerminalAction> owned = new ArrayList<>();
+        if (subjects.isEmpty() || ids.isEmpty()) {
+            return owned;
+        }
         for (TerminalAction a : actions.findByUserIdAndStatusInOrderByCreatedAtAsc(userId,
                 TerminalActionStatus.OPEN_STATES)) {
-            if (userId.equals(a.getUserId()) && subjects.containsKey(a.getWorkspaceId())) {
-                candidates.add(a);
+            if (userId.equals(a.getUserId()) && subjects.containsKey(a.getWorkspaceId()) && ids.contains(a.getId())) {
+                owned.add(a);
             }
         }
-        return actionService.proposeStaleClosure(userId, candidates, days).size();
+        return owned;
+    }
+
+    /**
+     * Ce que la lecture des chantiers apprend pour ranger les attentes (F-227 / SF-227-03) : l'attente qu'attend une
+     * étape d'un seul chantier ouvert (le plan prime), et, par sujet, l'ouverture de chaque chantier ouvert (pour
+     * suggérer un rattachement aux attentes nées pendant eux).
+     */
+    static final class Ranging {
+        private final Map<UUID, Set<String>> waitedBy = new HashMap<>();
+        private final Map<UUID, Map<Integer, OffsetDateTime>> openedAt = new HashMap<>();
+
+        void waited(UUID actionId, UUID workspaceId, int chantier) {
+            waitedBy.computeIfAbsent(actionId, k -> new HashSet<>()).add(workspaceId + "#" + chantier);
+        }
+
+        void opened(UUID workspaceId, int chantier, OffsetDateTime at) {
+            openedAt.computeIfAbsent(workspaceId, k -> new HashMap<>()).put(chantier, at);
+        }
+
+        /**
+         * L'attente → son unique chantier d'après le plan, s'il est de SON sujet (la clé peut retrouver une attente
+         * d'un autre terminal du poste : elle n'est pas rangée chez un autre sujet) ; ambiguë : absente.
+         */
+        Integer planned(TerminalAction a) {
+            Set<String> keys = waitedBy.get(a.getId());
+            if (keys == null || keys.size() != 1) {
+                return null;
+            }
+            String key = keys.iterator().next();
+            String prefix = a.getWorkspaceId() + "#";
+            return key.startsWith(prefix) ? Integer.valueOf(key.substring(prefix.length())) : null;
+        }
+
+        /** Les chantiers ouverts du sujet déjà ouverts à la naissance de l'attente, croissants. */
+        List<Integer> suggestions(TerminalAction a) {
+            Map<Integer, OffsetDateTime> open = openedAt.get(a.getWorkspaceId());
+            if (open == null || a.getCreatedAt() == null || a.getChantierNumber() != null && open.containsKey(
+                    a.getChantierNumber())) {
+                return List.of();
+            }
+            List<Integer> numbers = new ArrayList<>();
+            open.forEach((n, at) -> {
+                if (at != null && !at.isAfter(a.getCreatedAt())) {
+                    numbers.add(n);
+                }
+            });
+            numbers.sort(Comparator.naturalOrder());
+            return List.copyOf(numbers);
+        }
     }
 
     /**
@@ -310,7 +396,7 @@ public class ClientBoardService {
 
     private List<ClientBoard.Chantier> cardsOf(UUID userId, Workspace workspace, SubjectJourney journey,
             OffsetDateTime lastMessage, List<AutonomyService.RunView> runs, Map<String, OffsetDateTime> snoozed,
-            OffsetDateTime now, Set<UUID> shown) {
+            OffsetDateTime now, Set<UUID> shown, Ranging ranging) {
         if (journey == null || journey.getCreatedAt() == null || !journey.isGuided()) {
             return List.of();
         }
@@ -332,6 +418,10 @@ public class ClientBoardService {
         List<ClientBoard.Chantier> cards = new ArrayList<>();
         for (SubjectJourneyResponse.OpenChantier c : view.chantiers()) {
             shown.addAll(waitedActions(c, waits));
+            ranging.opened(workspace.getId(), c.number(), c.openedAt());
+            for (UUID id : plannedActions(c, waits)) {
+                ranging.waited(id, workspace.getId(), c.number());
+            }
             OffsetDateTime last = c.focus() ? latest(journey.getUpdatedAt(), lastMessage) : updatedAt.get(c.number());
             last = latest(last, c.openedAt());
             long idle = last == null ? 0 : Math.max(0, Duration.between(last, now).toDays());
@@ -362,6 +452,21 @@ public class ClientBoardService {
                 continue;
             }
             WaitInfo wait = waits.get(step.waitsOn());
+            if (wait != null && wait.actionId() != null) {
+                ids.add(wait.actionId());
+            }
+        }
+        return ids;
+    }
+
+    /** Les attentes qu'attend une étape de ce chantier, QUEL QUE SOIT son état (F-227 / SF-227-03 : le plan prime). */
+    static Set<UUID> plannedActions(SubjectJourneyResponse.OpenChantier c, Map<String, WaitInfo> waits) {
+        Set<UUID> ids = new HashSet<>();
+        if (c.plan() == null) {
+            return ids;
+        }
+        for (SubjectJourneyResponse.Step step : c.plan().steps()) {
+            WaitInfo wait = step.waitsOn() == null ? null : waits.get(step.waitsOn());
             if (wait != null && wait.actionId() != null) {
                 ids.add(wait.actionId());
             }

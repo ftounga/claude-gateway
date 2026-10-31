@@ -72,7 +72,7 @@ public record ClientBoard(UUID hostId, String hostName, OffsetDateTime generated
      *
      * @param hostTerminal   vrai si son sujet est le terminal du poste
      * @param unblocker      qui débloque : {@code MOI} ou {@code AUTRUI}, jamais {@code OUTIL}
-     * @param lastActivityAt son dernier geste ({@code updated_at})
+     * @param lastActivityAt son dernier geste réel ({@code last_gesture_at}, à défaut sa naissance — SF-227-03)
      * @param idleDays       jours entiers écoulés depuis
      * @param dormant        {@code idleDays ≥ dormantAfterDays}
      * @param followUpDue    « Demandé » depuis assez longtemps pour relancer (F-175)
@@ -81,12 +81,15 @@ public record ClientBoard(UUID hostId, String hostName, OffsetDateTime generated
      * @param proposedStatus la clôture proposée (F-175 ; « Revoir les attentes de plus de 14 jours », F-227), ou
      *                       {@code null}
      * @param proposedReason pourquoi
+     * @param proposalSource qui propose : {@code REVUE} (seule fermable en lot) ou {@code AGENT} (F-227 / SF-227-03)
+     * @param suggestedChantiers au fil de l'eau sans chantier : les chantiers ouverts déjà ouverts à sa naissance, à
+     *                       proposer au rattachement (F-227 / SF-227-03) ; vide sinon
      */
     public record LooseTask(UUID actionId, UUID workspaceId, String workspaceName, boolean hostTerminal,
                             String description, String blocks, String status, String qui, String categorie,
                             String person, String requestedTo, OffsetDateTime requestedAt, OffsetDateTime createdAt,
                             ChantierUnblocker.Mark unblocker, OffsetDateTime lastActivityAt, long idleDays,
                             boolean dormant, boolean followUpDue, Integer chantierNumber, String proposedStatus,
-                            String proposedReason) {
+                            String proposedReason, String proposalSource, List<Integer> suggestedChantiers) {
     }
 }

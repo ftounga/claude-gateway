@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-227 / SF-227-03 - CORRECTIF : LE VRAI DERNIER GESTE, LA SOURCE D'UNE PROPOSITION.
+
+      terminal_actions.last_gesture_at : le dernier geste reel sur l'attente (creation, etat, edition, rattachement,
+      [Clore]/[Garder]...). updated_at, reecrit par les traitements en lot, ne dit pas « sans geste ».
+      Reprise : le plus recent de created_at et requested_at.
+
+      terminal_actions.proposal_source : qui a propose la cloture en attente - REVUE ([Revoir les attentes de plus de
+      14 jours]) ou AGENT (F-175). [Clore les N proposees] ne ferme QUE les propositions REVUE.
+      Reprise : REVUE pour ANNULE + « Sans geste depuis ... », AGENT pour toute autre proposition.
+
+      Rollback : les deux colonnes se retirent.
+    -->
+
+    <changeSet id="182-terminal-action-gesture" author="claude-gateway">
+        <addColumn tableName="terminal_actions">
+            <column name="last_gesture_at" type="timestamptz"/>
+            <column name="proposal_source" type="varchar(8)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="terminal_actions" columnName="proposal_source"/>
+            <dropColumn tableName="terminal_actions" columnName="last_gesture_at"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="182-terminal-action-gesture-reprise" author="claude-gateway">
+        <sql>
+            UPDATE terminal_actions SET last_gesture_at = CASE
+                WHEN requested_at IS NOT NULL AND requested_at &gt; created_at THEN requested_at
+                ELSE created_at END
+            WHERE last_gesture_at IS NULL
+        </sql>
+        <sql>
+            UPDATE terminal_actions SET proposal_source = CASE
+                WHEN proposed_status = 'ANNULE' AND proposed_reason LIKE 'Sans geste depuis %' THEN 'REVUE'
+                ELSE 'AGENT' END
+            WHERE proposed_status IS NOT NULL AND proposal_source IS NULL
+        </sql>
+        <rollback>
+            <sql>UPDATE terminal_actions SET last_gesture_at = NULL, proposal_source = NULL</sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
