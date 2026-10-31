@@ -4,6 +4,7 @@ import {
   EXCLUDE_HINT,
   GENERIC_ERROR,
   httpErrorMessage,
+  httpErrorMessageAsync,
   MAX_UPLOAD_BYTES,
   oversizeMessage,
   TOO_LARGE_MESSAGE,
@@ -69,5 +70,27 @@ describe('oversizeMessage', () => {
 
   it('MAX_UPLOAD_BYTES vaut 150 Mo', () => {
     expect(MAX_UPLOAD_BYTES).toBe(150 * 1024 * 1024);
+  });
+});
+
+/** F-228 / SF-228-04 — l'erreur d'une requête blob arrive en Blob : on la lit. */
+describe('httpErrorMessageAsync', () => {
+  it('lit le message JSON d’un corps Blob', async () => {
+    const error = new HttpErrorResponse({
+      status: 503,
+      error: new Blob([JSON.stringify({ error: 'deposit_unreadable', message: 'Le poste ne répond pas.' })],
+        { type: 'application/json' }),
+    });
+    expect(await httpErrorMessageAsync(error, 'repli')).toBe('Le poste ne répond pas.');
+  });
+
+  it('ne lit jamais une page HTML en Blob : repli', async () => {
+    const error = new HttpErrorResponse({ status: 502, error: new Blob(['<html>Bad gateway</html>']) });
+    expect(await httpErrorMessageAsync(error, 'repli')).toBe('repli');
+  });
+
+  it('un corps déjà désérialisé : comme la version synchrone', async () => {
+    const error = new HttpErrorResponse({ status: 400, error: { message: 'motif' } });
+    expect(await httpErrorMessageAsync(error)).toBe('motif');
   });
 });

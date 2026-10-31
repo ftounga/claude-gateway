@@ -4,9 +4,11 @@
  */
 
 /** La vue d'aperçu d'une pièce. */
-export type PreviewKind = 'image' | 'svg' | 'pdf' | 'video' | 'audio' | 'csv' | 'xlsx' | 'download';
+export type PreviewKind = 'image' | 'svg' | 'pdf' | 'video' | 'audio' | 'csv' | 'xlsx' | 'text' | 'docx' | 'download';
 
 const IMAGE = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp']);
+/** Le texte montré tel quel en `<pre>` (F-228 / SF-228-04). */
+const TEXT = new Set(['txt', 'md', 'log', 'json']);
 const VIDEO = new Set(['mp4', 'webm', 'mov']);
 const AUDIO = new Set(['m4a', 'mp3', 'wav', 'ogg']);
 
@@ -41,7 +43,57 @@ export function previewKindOf(path: string): PreviewKind {
   if (ext === 'xlsx') {
     return 'xlsx';
   }
+  if (TEXT.has(ext)) {
+    return 'text';
+  }
+  if (ext === 'docx') {
+    return 'docx';
+  }
   return 'download';
+}
+
+/** Le plafond d'un aperçu, aligné sur la passerelle (SF-228-01) : au-delà, [Télécharger] seulement. */
+export const MAX_PREVIEW_BYTES = 20 * 1024 * 1024;
+
+/** La route du téléchargement d'une pièce, en flux, jusqu'à 100 Mo (F-228 / SF-228-04). */
+export function depositDownloadUrl(workspaceId: string, depositId: string): string {
+  return `/api/workspaces/${encodeURIComponent(workspaceId)}/deposits/${encodeURIComponent(depositId)}/download`;
+}
+
+/** Au plus autant d'octets (ou de caractères pour un docx) montrés d'un texte (F-228 / SF-228-04). */
+export const MAX_TEXT_BYTES = 200 * 1024;
+
+/** Un texte prêt à afficher en `<pre>` : jamais de HTML, coupé au-delà de {@link MAX_TEXT_BYTES}. */
+export interface PreviewText {
+  text: string;
+  truncated: boolean;
+}
+
+/**
+ * Les {@link MAX_TEXT_BYTES} premiers octets d'un fichier texte, décodés en UTF-8 sans couper un caractère : le
+ * décodage en flux (`stream: true`) garde pour lui un caractère inachevé en fin de tranche au lieu d'un « � ».
+ */
+export function decodeTextPreview(bytes: Uint8Array, max = MAX_TEXT_BYTES): PreviewText {
+  const truncated = bytes.length > max;
+  const text = new TextDecoder('utf-8').decode(truncated ? bytes.subarray(0, max) : bytes, { stream: truncated });
+  return { text, truncated };
+}
+
+/** Un texte déjà décodé (docx), coupé à {@link MAX_TEXT_BYTES} caractères. */
+export function truncateText(text: string, max = MAX_TEXT_BYTES): PreviewText {
+  return text.length > max ? { text: text.slice(0, max), truncated: true } : { text, truncated: false };
+}
+
+/**
+ * Le texte d'un CSV (F-228 / SF-228-04) : UTF-8 s'il en est (BOM compris) ; sinon **Windows-1252** — l'export CSV
+ * d'Excel en français, dont les accents sortaient en « � ».
+ */
+export function decodeCsv(bytes: Uint8Array): string {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    return new TextDecoder('windows-1252').decode(bytes);
+  }
 }
 
 /** La route du contenu d'une pièce (F-228 / SF-228-01). */
@@ -130,13 +182,28 @@ export function parseCsv(text: string, maxRows = MAX_TABLE_ROWS): PreviewSheet {
   return { name: 'CSV', rows, truncated };
 }
 
-/** Une cellule de tableur en texte : date lisible, nombre tel quel, vide pour `null`. */
+/**
+ * Une cellule de tableur en texte : date lisible, nombre tel quel, vide pour `null`. Une date de classeur n'a pas de
+ * fuseau : `read-excel-file` la rend à minuit **UTC** ; la lire en heure locale montrait la veille à l'ouest de
+ * Greenwich (F-228 / SF-228-04). Lue en UTC : `jj/mm/aaaa`, l'heure ajoutée seulement si elle n'est pas minuit.
+ */
 export function cellText(value: unknown): string {
   if (value === null || value === undefined) {
     return '';
   }
   if (value instanceof Date) {
-    return isNaN(value.getTime()) ? '' : value.toLocaleDateString('fr-FR');
+    if (isNaN(value.getTime())) {
+      return '';
+    }
+    const two = (n: number): string => String(n).padStart(2, '0');
+    const day = `${two(value.getUTCDate())}/${two(value.getUTCMonth() + 1)}/${value.getUTCFullYear()}`;
+    const h = value.getUTCHours();
+    const m = value.getUTCMinutes();
+    const s = value.getUTCSeconds();
+    if (h === 0 && m === 0 && s === 0) {
+      return day;
+    }
+    return `${day} ${two(h)}:${two(m)}${s ? `:${two(s)}` : ''}`;
   }
   return String(value);
 }

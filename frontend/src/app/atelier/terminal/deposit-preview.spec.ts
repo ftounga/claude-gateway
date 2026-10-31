@@ -32,7 +32,8 @@ describe('F-228 / SF-228-02 — aperçu des pièces jointes', () => {
     expect(previewKindOf('a/budget.xlsx')).toBe('xlsx');
     expect(previewKindOf('a/export.csv')).toBe('csv');
     expect(previewKindOf('a/page.html')).toBe('download');
-    expect(previewKindOf('a/lettre.docx')).toBe('download');
+    expect(previewKindOf('a/lettre.docx')).toBe('docx'); // SF-228-04 : texte brut via mammoth
+    expect(previewKindOf('a/archive.zip')).toBe('download');
     expect(extensionOf('sans')).toBe('');
     expect(depositFileName('.atelier/entrees/capture.png')).toBe('capture.png');
     expect(depositContentUrl('w1', 'd1')).toBe('/api/workspaces/w1/deposits/d1/content');
@@ -75,13 +76,18 @@ describe('F-228 / SF-228-02 — aperçu des pièces jointes', () => {
     expect(svg.nativeElement.querySelector('svg, iframe')).toBeNull();
   });
 
-  it('poste hors ligne : le message de la passerelle ; pièce inconnue : « introuvable »', () => {
+  it('poste hors ligne : le message de la passerelle, lu dans le Blob d’erreur (SF-228-04)', async () => {
     const fixture = mount('a/capture.png');
     http().expectOne('/api/workspaces/w1/deposits/d1/content').flush(
       new Blob([JSON.stringify({ error: 'deposit_unreadable', message: 'Le poste ne répond pas.' })], { type: 'application/json' }),
       { status: 503, statusText: 'Unavailable' });
+    for (let i = 0; i < 5; i++) {
+      await fixture.whenStable();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
     fixture.detectChanges();
-    expect((fixture.nativeElement as HTMLElement).querySelector('.dp__error')).not.toBeNull();
+    const error =(fixture.nativeElement as HTMLElement).querySelector('.dp__error');
+    expect(error?.textContent).toContain('Le poste ne répond pas.');
   });
 
   it('dans la bulle, une pièce avec identifiant est un bouton qui ouvre l’aperçu ; sans, une puce inerte', () => {

@@ -48,6 +48,26 @@ export function httpErrorMessage(error: unknown, fallback: string = GENERIC_ERRO
 }
 
 /**
+ * Comme {@link httpErrorMessage}, mais lit aussi un corps d'erreur **`Blob`** (F-228 / SF-228-04) : une requête
+ * `responseType: 'blob'` reçoit son erreur JSON en `Blob`, que la version synchrone ne peut pas lire (message générique
+ * à la place du vrai motif). Seul un corps qui ressemble à du JSON est lu — jamais une page HTML.
+ */
+export async function httpErrorMessageAsync(error: unknown, fallback: string = GENERIC_ERROR): Promise<string> {
+  if (error instanceof HttpErrorResponse && error.status !== 413 && error.error instanceof Blob) {
+    try {
+      const message = extractMessage(await error.error.text());
+      if (message) {
+        return message;
+      }
+    } catch {
+      return fallback;
+    }
+    return fallback;
+  }
+  return httpErrorMessage(error, fallback);
+}
+
+/**
  * Taille de fichier dite comme on la lit (F-115 / SF-115-02) : « 820 o », « 2,3 Ko », « 5,4 Mo »,
  * « 1,2 Go ». Sépare la partie décimale par une virgule (locale FR). Sert au bloc « fichier déposé ».
  */
