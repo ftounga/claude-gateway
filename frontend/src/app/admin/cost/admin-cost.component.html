@@ -62,12 +62,10 @@
           <p class="cost-admin__total-label">
             {{ periodLabel(data.period) }} · du {{ data.from }} au {{ data.to }}
           </p>
-          <!-- F-224 / SF-224-04 : la devise de la facture d'abord ; l'euro et son taux en second. -->
-          @if (data.spentUsd !== undefined && data.spentUsd !== null) {
-            <p class="cost-admin__total-amount num">{{ dollars(data.spentUsd) }}</p>
-            <p class="cost-admin__total-eur num">{{ euros(data.spentEur) }} · 1 $ = {{ rate(data.usdToEur) }} €</p>
-          } @else {
-            <p class="cost-admin__total-amount">{{ euros(data.spentEur) }}</p>
+          <!-- F-224 / SF-224-05 : tout en euros (demande PO du 31/10) ; le taux appliqué, discret. -->
+          <p class="cost-admin__total-amount num">{{ euros(data.spentEur) }}</p>
+          @if (rateNote(data.usdToEur); as note) {
+            <p class="cost-admin__total-eur num">{{ note }}</p>
           }
         </div>
         @if (data.budgetEur !== null) {
@@ -112,13 +110,7 @@
             <li class="cost-admin__client">
               <div class="cost-admin__client-head">
                 <span class="cost-admin__client-name">{{ clientName(client) }}</span>
-                <span class="cost-admin__client-spent num">
-                  @if (client.spentUsd !== undefined && client.spentUsd !== null) {
-                    {{ dollars(client.spentUsd) }} <span class="cost-admin__client-eur">· {{ euros(client.spentEur) }}</span>
-                  } @else {
-                    {{ euros(client.spentEur) }}
-                  }
-                </span>
+                <span class="cost-admin__client-spent num">{{ euros(client.spentEur) }}</span>
               </div>
 
               @if (client.budgetEur !== null) {

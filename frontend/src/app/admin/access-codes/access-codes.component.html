@@ -110,7 +110,8 @@
                 <span class="codes-admin__meta">
                   {{ trial.syncCount }} synchro{{ trial.syncCount > 1 ? 's' : '' }} ·
                   {{ trial.consumedTokens | number }} jetons ·
-                  {{ trial.costUsd | number: '1.2-2' }} $
+                  <!-- F-224 / SF-224-05 : en euros, converti par la passerelle. -->
+                  {{ trial.costEur == null ? '—' : (trial.costEur | number: '1.2-2') + ' €' }}
                 </span>
               </div>
               @if (trial.syncs.length > 0) {
@@ -119,7 +120,7 @@
                     <li class="codes-admin__meta">
                       {{ sync.startedAt | date: 'short' }} · {{ sync.status }}
                       @if (sync.firstSync) { · première synchro (hors réserve) }
-                      · {{ sync.consumedTokens | number }} jetons · {{ sync.costUsd | number: '1.2-4' }} $
+                      · {{ sync.consumedTokens | number }} jetons · {{ sync.costEur == null ? '—' : (sync.costEur | number: '1.2-4') + ' €' }}
                       @if (sync.stoppedOnReserve) { · arrêtée sur réserve }
                     </li>
                   }

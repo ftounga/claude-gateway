@@ -6,7 +6,7 @@ import { of, throwError } from 'rxjs';
 
 import { AdminCostComponent } from './admin-cost.component';
 import { AdminCostService } from './admin-cost.service';
-import { AdminCostSummary, CostReconciliation, formatDollars } from './admin-cost.models';
+import { AdminCostSummary, CostReconciliation, formatEuros } from './admin-cost.models';
 
 /**
  * Section « Coût réel » de l'administration (F-133 / SF-133-07).
@@ -75,7 +75,7 @@ describe('AdminCostComponent', () => {
 
   // ---------------------------------------- F-224 / SF-224-04 : ce que je paie
 
-  it('F-224 : le montant en dollars d\'abord, l\'euro et le taux en second ; « 7 derniers jours » offert', () => {
+  it('F-224 / SF-224-05 : tout en euros, le taux en mention discrète ; « 7 derniers jours » offert', () => {
     setup();
     service.summary.and.returnValue(of(summary({ period: '7d', spentUsd: 1234.5, spentEur: 1135.74, usdToEur: 0.92,
       clients: [{ hostId: 'h1', hostName: 'poste-cagip', spentEur: 31.2, budgetEur: 60, percent: 52, ownBudget: true,
@@ -85,11 +85,26 @@ describe('AdminCostComponent', () => {
     const el: HTMLElement = fixture.nativeElement;
     expect(service.summary).toHaveBeenCalledWith('7d');
     expect(el.querySelector('.cost-admin__total-label')?.textContent).toContain('7 derniers jours');
-    expect(el.querySelector('.cost-admin__total-amount')?.textContent).toContain('1\u202f234,50 $');
-    expect(el.querySelector('.cost-admin__total-eur')?.textContent).toContain('1135,74 €');
-    expect(el.querySelector('.cost-admin__total-eur')?.textContent).toContain('1 $ = 0,92 €');
-    expect(el.querySelector('.cost-admin__client-spent')?.textContent).toContain('33,91 $');
-    expect(formatDollars(-2.5)).toBe('−2,50 $');
+    expect(el.querySelector('.cost-admin__total-amount')?.textContent).toContain('1\u202f135,74 €');
+    expect(el.querySelector('.cost-admin__total-amount')?.textContent).not.toContain('$');
+    expect(el.querySelector('.cost-admin__total-eur')?.textContent?.trim()).toBe('taux 1 $ = 0,92 €');
+    const client = el.querySelector('.cost-admin__client-spent')?.textContent ?? '';
+    expect(client).toContain('31,20 €');
+    expect(client).not.toContain('$');
+    // Le dollar ne survit que dans la mention du taux.
+    expect((el.querySelector('.cost-admin__card')?.textContent ?? '').split('$').length - 1).toBe(1);
+    expect(formatEuros(-2.5)).toBe('−2,50 €');
+    expect(formatEuros(undefined)).toBe('—');
+  });
+
+  it('F-224 / SF-224-05 : sans taux rendu (passerelle antérieure), les euros sans mention', () => {
+    setup();
+    service.summary.and.returnValue(of(summary({ spentEur: 12 })));
+    component.reload();
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('.cost-admin__total-amount')?.textContent).toContain('12,00 €');
+    expect(el.querySelector('.cost-admin__total-eur')).toBeNull();
   });
 
   it('F-224 : sans clé Admin, la facture dit comment la créer ; avec, facturé / calculé / écart et les clés', () => {
@@ -100,19 +115,44 @@ describe('AdminCostComponent', () => {
 
     recon = {
       configured: true, setupHint: null, lastFetchedAt: '2026-10-31T06:20:00Z', billedTotalUsd: 80,
-      calculatedTotalUsd: 50.25, days: [{ day: '2026-10-31', billedUsd: 80, calculatedUsd: 50.25, gapUsd: 29.75,
-        keys: [{ apiKeyId: 'apikey_lc', label: 'legalcase (…owAA)', amountUsd: 8, inputTokens: 1, outputTokens: 1 }] }],
+      calculatedTotalUsd: 50.25, usdToEur: 0.92, billedTotalEur: 73.6, calculatedTotalEur: 46.23,
+      days: [
+        { day: '2026-10-31', billedUsd: 80, calculatedUsd: 50.25, gapUsd: 29.75,
+          billedEur: 73.6, calculatedEur: 46.23, gapEur: 27.37,
+          keys: [{ apiKeyId: 'apikey_lc', label: 'legalcase (…owAA)', amountUsd: 8, amountEur: 7.36,
+            inputTokens: 1, outputTokens: 1 }] },
+        // Un écart sous 1 € ne se met pas en évidence (même s'il dépasse 1 $ … ou non) ; un jour non lu : « — ».
+        { day: '2026-10-30', billedUsd: 1.5, calculatedUsd: 0.9, gapUsd: 0.6,
+          billedEur: 1.38, calculatedEur: 0.83, gapEur: 0.55, keys: [] },
+        { day: '2026-10-29', billedUsd: null, calculatedUsd: 2, gapUsd: null,
+          billedEur: null, calculatedEur: 1.84, gapEur: null, keys: [] },
+      ],
     };
     TestBed.resetTestingModule();
     setup();
     const el: HTMLElement = fixture.nativeElement;
-    const row = el.querySelector('.recon__row') as HTMLElement;
-    expect(row.textContent).toContain('80,00 $');
-    expect(row.textContent).toContain('50,25 $');
-    expect(row.querySelector('.recon__gap')?.textContent).toContain('29,75 $');
+    // F-224 / SF-224-05 : facturé, calculé, écart et clés en euros ; une seule mention du taux et de la devise.
+    expect(el.querySelector('.recon__totals')?.textContent).toContain('73,60 €');
+    expect(el.querySelector('.recon__totals')?.textContent).toContain('46,23 €');
+    expect(el.querySelectorAll('.recon__rate').length).toBe(1);
+    expect(el.querySelector('.recon__rate')?.textContent?.trim())
+      .toBe('Montants convertis au taux 1 $ = 0,92 € ; la facture Anthropic est en dollars.');
+    const rows = el.querySelectorAll('.recon__row');
+    const row = rows[0] as HTMLElement;
+    expect(row.textContent).toContain('73,60 €');
+    expect(row.textContent).toContain('46,23 €');
+    expect(row.textContent).not.toContain('$');
+    expect(row.querySelector('.recon__gap')?.textContent).toContain('27,37 €');
+    expect(rows[1].querySelector('.recon__gap')).toBeNull();
+    expect(rows[1].textContent).toContain('0,55 €');
+    expect(rows[2].textContent).toContain('—');
+    expect(rows[2].textContent).toContain('1,84 €');
     (row.querySelector('.recon__toggle') as HTMLButtonElement).click();
     fixture.detectChanges();
     expect(el.querySelector('.recon__key')?.textContent).toContain('legalcase (…owAA)');
+    expect(el.querySelector('.recon__key')?.textContent).toContain('≈ 7,36 € (estimé à la grille)');
+    // Hors de la mention, aucun dollar sur la carte.
+    expect((el.querySelector('.recon')?.textContent ?? '').split('$').length - 1).toBe(1);
     (el.querySelector('.recon__refresh') as HTMLButtonElement).click();
     expect(service.refreshReconciliation).toHaveBeenCalled();
     recon = { ...recon, configured: false, setupHint: 'Créez une clé Admin… APP_ANTHROPIC_ADMIN_KEY', days: [] };

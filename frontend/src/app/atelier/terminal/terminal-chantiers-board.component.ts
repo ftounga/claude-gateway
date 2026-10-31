@@ -34,6 +34,7 @@ import {
 import { JourneyService } from '../../core/services/journey.service';
 import { StepActorComponent } from '../../shared/step-actor/step-actor.component';
 import { UnblockerPillComponent } from '../../shared/unblocker-pill/unblocker-pill.component';
+import { formatEuros } from '../../shared/euros';
 
 /** Circonférence de l'anneau d'avancement (rayon 18). */
 const RING = 2 * Math.PI * 18;
@@ -192,7 +193,9 @@ const RING = 2 * Math.PI * 18;
                       </button>
                       <span class="auto__meta">
                         @if (auto.estimate; as est) {
-                          ≈ {{ est.usd.toFixed(2) }} $ · {{ est.basis }} ·
+                          @if (est.eur != null) {
+                            ≈ {{ euros(est.eur) }} · {{ est.basis }} ·
+                          }
                         }
                         {{ autonomy()?.running ?? 0 }}/{{ autonomy()?.maxParallel ?? 4 }} chantiers autonomes en cours
                       </span>
@@ -1102,6 +1105,11 @@ export class TerminalChantiersBoardComponent {
 
   private readonly journeys = inject(JourneyService);
   private readonly autonomyApi = inject(AutonomyService);
+
+  /** L'estimation d'une course, en euros (F-224 / SF-224-05) — convertie par la passerelle. */
+  euros(amount: number | null | undefined): string {
+    return formatEuros(amount);
+  }
   private readonly snackBar = inject(MatSnackBar);
   private readonly host = inject(ElementRef<HTMLElement>);
 

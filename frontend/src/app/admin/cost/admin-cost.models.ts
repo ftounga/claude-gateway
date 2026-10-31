@@ -6,15 +6,8 @@
  * vérité qui divergerait un jour.
  */
 
-/** « 1 234,56 $ » — la devise de la facture du fournisseur (F-224). */
-export function formatDollars(amount: number | null | undefined): string {
-  if (amount === null || amount === undefined) {
-    return '—';
-  }
-  const [whole, cents] = Math.abs(amount).toFixed(2).split('.');
-  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, '\u202f');
-  return `${amount < 0 ? '−' : ''}${grouped},${cents} $`;
-}
+/** Les montants s'écrivent en euros (F-224 / SF-224-05) : voir `shared/euros`. */
+export { formatEuros, formatRate } from '../../shared/euros';
 
 /** Une ligne de l'écran : un client, sa dépense, son budget. */
 export interface AdminCostClient {
@@ -58,6 +51,8 @@ export interface ReconciliationKey {
   apiKeyId: string;
   label: string | null;
   amountUsd: number;
+  /** Le même montant en euros (F-224 / SF-224-05), absent d'une passerelle antérieure. */
+  amountEur?: number;
   inputTokens: number;
   outputTokens: number;
 }
@@ -69,6 +64,10 @@ export interface ReconciliationDay {
   calculatedUsd: number;
   gapUsd: number | null;
   keys: ReconciliationKey[];
+  /** En euros (F-224 / SF-224-05) : facturé € (`null` non lu), calculé €, écart = facturé € − calculé €. */
+  billedEur?: number | null;
+  calculatedEur?: number;
+  gapEur?: number | null;
 }
 
 /** Le rapprochement avec la facture du fournisseur (F-224 / SF-224-02). */
@@ -80,6 +79,10 @@ export interface CostReconciliation {
   billedTotalUsd: number;
   calculatedTotalUsd: number;
   days: ReconciliationDay[];
+  /** Le taux appliqué aux montants en euros (F-224 / SF-224-05). */
+  usdToEur?: number;
+  billedTotalEur?: number;
+  calculatedTotalEur?: number;
 }
 
 /** Une alerte en cours (F-133 / SF-133-06), calculée à la lecture par la passerelle. */

@@ -45,6 +45,7 @@ import { AutonomyService } from '../../core/services/autonomy.service';
 import { ClientBoardService } from '../../core/services/client-board.service';
 import { JourneyService } from '../../core/services/journey.service';
 import { TerminalActionsService } from '../../core/services/terminal-actions.service';
+import { formatEuros } from '../../shared/euros';
 import { httpErrorMessage } from '../../shared/http-error.util';
 import { StepActorComponent } from '../../shared/step-actor/step-actor.component';
 
@@ -317,10 +318,10 @@ export class ClientBoardComponent {
     return autonomyRunningLabel(run, autonomyCurrentStep(run.stepsDone, run.stepsTotal), run.stepsTotal);
   }
 
-  /** Le coût de la course autonome, s'il y en a une. */
+  /** Le coût de la course autonome, s'il y en a une — en euros, converti par la passerelle (F-224 / SF-224-05). */
   cost(c: ClientBoardChantier): string | null {
-    const usd = c.run?.costUsd;
-    return usd === undefined || usd === null || usd <= 0 ? null : `${usd.toFixed(2)} $`;
+    const eur = c.run?.costEur;
+    return eur === undefined || eur === null || eur <= 0 ? null : formatEuros(eur);
   }
 
   /** L'avancement en pourcentage (mini-barre). */

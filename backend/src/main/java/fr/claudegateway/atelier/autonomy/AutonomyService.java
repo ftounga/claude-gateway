@@ -31,6 +31,7 @@ import fr.claudegateway.atelier.journey.SubjectJourney;
 import fr.claudegateway.atelier.journey.SubjectJourneyService;
 import fr.claudegateway.atelier.live.LiveTurn;
 import fr.claudegateway.atelier.live.LiveTurnRegistry;
+import fr.claudegateway.quota.ProviderPricingProperties;
 import fr.claudegateway.quota.UsageTurnRepository;
 import fr.claudegateway.runner.RunnerLiveness;
 
@@ -76,6 +77,9 @@ public class AutonomyService implements ChantierAutonomyLauncher {
     private RunnerLiveness liveness;
     private UsageTurnRepository usageTurns;
     private AutonomyNotifier notifier;
+    private static final BigDecimal DEFAULT_USD_TO_EUR = new BigDecimal("0.92");
+    /** Taux dollar → euro de la passerelle (F-224 / SF-224-05) ; 0,92 sans configuration. */
+    private BigDecimal usdToEur = DEFAULT_USD_TO_EUR;
 
     public AutonomyService(WorkspaceService workspaceService, ChantierPreflightService preflights,
             SubjectJourneyService journeys, LiveTurnRegistry liveTurns, AutonomyRunStore store,
@@ -105,6 +109,13 @@ public class AutonomyService implements ChantierAutonomyLauncher {
     }
 
     @Autowired(required = false)
+    public void setPricing(ProviderPricingProperties pricing) {
+        if (pricing != null && pricing.usdToEur() != null && pricing.usdToEur().signum() > 0) {
+            this.usdToEur = pricing.usdToEur();
+        }
+    }
+
+    @Autowired(required = false)
     public void setNotifier(AutonomyNotifier notifier) {
         this.notifier = notifier;
     }
@@ -120,18 +131,28 @@ public class AutonomyService implements ChantierAutonomyLauncher {
 
     // ------------------------------------------------------------------ vues
 
-    /** Une course telle que l'écran et F-220 la lisent. Jamais d'identifiant de compte. */
+    /**
+     * Une course telle que l'écran et F-220 la lisent. Jamais d'identifiant de compte. {@code costEur} : le même coût
+     * en euros, au taux de la passerelle (F-224 / SF-224-05).
+     */
     public record RunView(UUID id, UUID workspaceId, int chantierNumber, String chantierTitle, String status,
                           String mode, int turns, int stepsDone, int stepsTotal, BigDecimal costUsd,
-                          String stopReason, String errorCode, OffsetDateTime startedAt, OffsetDateTime finishedAt) {
+                          String stopReason, String errorCode, OffsetDateTime startedAt, OffsetDateTime finishedAt,
+                          BigDecimal costEur) {
 
-        static RunView of(ChantierAutonomyRun r) {
+        static RunView of(ChantierAutonomyRun r, BigDecimal usdToEur) {
+            BigDecimal usd = r.getCostUsd() == null ? BigDecimal.ZERO : r.getCostUsd();
             return new RunView(r.getId(), r.getWorkspaceId(), r.getChantierNumber(), r.getChantierTitle(),
                     r.getStatus().name(), (r.getMode() == null ? AutonomyMode.STRICT : r.getMode()).name(),
-                    r.getTurns(), r.getStepsDone(), r.getStepsTotal(),
-                    r.getCostUsd() == null ? BigDecimal.ZERO : r.getCostUsd().setScale(2, RoundingMode.HALF_UP),
-                    r.getStopReason(), r.getErrorCode(), r.getStartedAt(), r.getFinishedAt());
+                    r.getTurns(), r.getStepsDone(), r.getStepsTotal(), usd.setScale(2, RoundingMode.HALF_UP),
+                    r.getStopReason(), r.getErrorCode(), r.getStartedAt(), r.getFinishedAt(),
+                    usd.multiply(usdToEur).setScale(2, RoundingMode.HALF_UP));
         }
+    }
+
+    /** La vue d'une course, au taux de la passerelle. */
+    private RunView view(ChantierAutonomyRun run) {
+        return RunView.of(run, usdToEur);
     }
 
     /**
@@ -140,8 +161,9 @@ public class AutonomyService implements ChantierAutonomyLauncher {
      * @param usd   coût estimé, en dollars
      * @param turns tours estimés
      * @param basis d'où vient le chiffre, en clair
+     * @param eur   le même coût en euros, au taux de la passerelle (F-224 / SF-224-05)
      */
-    public record Estimate(BigDecimal usd, int turns, String basis) {
+    public record Estimate(BigDecimal usd, int turns, String basis, BigDecimal eur) {
     }
 
     /** Un chantier ouvert : son préflight, sa course en cours ou la dernière, son estimation. */
@@ -172,7 +194,7 @@ public class AutonomyService implements ChantierAutonomyLauncher {
         for (ChantierReadiness c : readiness) {
             ChantierAutonomyRun run = lastRun.get(c.number());
             ChantierSnapshot snapshot = ChantierSnapshot.of(journey, c.number());
-            entries.add(new BoardEntry(c.number(), c.title(), c.preflight(), run == null ? null : RunView.of(run),
+            entries.add(new BoardEntry(c.number(), c.title(), c.preflight(), run == null ? null : view(run),
                     estimate(average, snapshot.remaining().size())));
         }
         return new Board(List.copyOf(entries), store.countRunning(userId), maxParallel);
@@ -180,7 +202,7 @@ public class AutonomyService implements ChantierAutonomyLauncher {
 
     /** Les courses du compte : en cours d'abord, puis les 20 dernières (F-220). */
     public List<RunView> runs(UUID userId) {
-        return store.ofUser(userId).stream().map(RunView::of).toList();
+        return store.ofUser(userId).stream().map(this::view).toList();
     }
 
     /** Le coût moyen d'un tour du compte sur 30 jours, ou {@code null} sans mesure. */
@@ -202,8 +224,10 @@ public class AutonomyService implements ChantierAutonomyLauncher {
             return null;
         }
         int turns = Math.min(runner.maxTurns(), Math.max(1, (remainingSteps + 1) / 2));
-        return new Estimate(averageTurnCost.multiply(BigDecimal.valueOf(turns)).setScale(2, RoundingMode.HALF_UP),
-                turns, "coût moyen de vos tours sur " + ESTIMATE_DAYS + " jours × " + turns + " tour(s)");
+        BigDecimal usd = averageTurnCost.multiply(BigDecimal.valueOf(turns));
+        return new Estimate(usd.setScale(2, RoundingMode.HALF_UP), turns,
+                "coût moyen de vos tours sur " + ESTIMATE_DAYS + " jours × " + turns + " tour(s)",
+                usd.multiply(usdToEur).setScale(2, RoundingMode.HALF_UP));
     }
 
     // ------------------------------------------------------------------ départ
@@ -282,7 +306,7 @@ public class AutonomyService implements ChantierAutonomyLauncher {
         ChantierAutonomyRun run = runner.launch(turn.get(), workspace, number, start, m);
         log.info("Chantier lancé en autonome (workspace={}, chantier={}, course={}, mode={})", workspaceId, number,
                 run.getId(), m);
-        return RunView.of(store.find(run.getId()).orElse(run));
+        return view(store.find(run.getId()).orElse(run));
     }
 
     private static String lowerFirst(String text) {
@@ -346,7 +370,7 @@ public class AutonomyService implements ChantierAutonomyLauncher {
             }
         }
         ChantierAutonomyRun first = runs.get(0);
-        return RunView.of(store.find(first.getId()).orElse(first));
+        return view(store.find(first.getId()).orElse(first));
     }
 
     // ------------------------------------------------------------------ départ dit à l'agent (SF-219-04)

@@ -52,6 +52,8 @@ export interface AutonomyRun {
   stepsDone: number;
   stepsTotal: number;
   costUsd: number;
+  /** Le même coût en euros, converti par la passerelle (F-224 / SF-224-05) ; absent d'une réponse ancienne. */
+  costEur?: number;
   stopReason: string | null;
   errorCode: string | null;
   startedAt: string;
@@ -63,6 +65,8 @@ export interface AutonomyEstimate {
   usd: number;
   turns: number;
   basis: string;
+  /** Le même coût en euros (F-224 / SF-224-05) ; absent d'une réponse ancienne. */
+  eur?: number;
 }
 
 /** Un chantier ouvert du sujet, vu par l'autonomie. */

@@ -85,6 +85,8 @@ class VigieTrialAdminApiIntegrationTest extends RadarIntegrationTestBase {
                 .andExpect(jsonPath("$[0].consumedTokens").value(2_700_000))
                 .andExpect(jsonPath("$[0].syncs[0].firstSync").value(true))
                 .andExpect(jsonPath("$[0].syncs[0].costUsd").exists())
+                .andExpect(jsonPath("$[0].syncs[0].costEur").exists()) // F-224 / SF-224-05
+                .andExpect(jsonPath("$[0].costEur").exists())
                 .andExpect(jsonPath("$[0].syncs[1].firstSync").value(false));
 
         mockMvc.perform(get("/api/admin/vigie-trials").contextPath("/api").header("Authorization", "Bearer " + carolToken))

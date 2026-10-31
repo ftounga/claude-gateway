@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import fr.claudegateway.admin.AdminService;
 import fr.claudegateway.quota.ProviderCostCalculator;
+import fr.claudegateway.quota.ProviderPricingProperties;
 import fr.claudegateway.quota.TurnTokens;
 import fr.claudegateway.quota.UsageTurnRepository;
 
@@ -52,25 +53,32 @@ public class ProviderCostReconciliationService {
     private final ProviderCostCalculator calculator;
     private final AdminService adminService;
     private final Clock clock;
+    private final ProviderPricingProperties pricing;
 
     public ProviderCostReconciliationService(ProviderBillingReport billing, ProviderCostReportRepository reports,
             UsageTurnRepository usageTurns, ProviderCostCalculator calculator, AdminService adminService,
-            Clock clock) {
+            Clock clock, ProviderPricingProperties pricing) {
         this.billing = billing;
         this.reports = reports;
         this.usageTurns = usageTurns;
         this.calculator = calculator;
         this.adminService = adminService;
         this.clock = clock;
+        this.pricing = pricing;
     }
 
-    /** Une journée rapprochée. {@code billedUsd} est {@code null} tant que la facture du jour n'est pas lue. */
+    /**
+     * Une journée rapprochée. {@code billedUsd} (et {@code billedEur}, {@code gap…}) est {@code null} tant que la
+     * facture du jour n'est pas lue. Les montants en euros (F-224 / SF-224-05) sont convertis ici, au taux unique de la
+     * passerelle ; l'écart en euros est facturé € − calculé €, pour que la ligne s'additionne à l'œil.
+     */
     public record Day(LocalDate day, BigDecimal billedUsd, BigDecimal calculatedUsd, BigDecimal gapUsd,
-                      List<Key> keys) {
+                      List<Key> keys, BigDecimal billedEur, BigDecimal calculatedEur, BigDecimal gapEur) {
     }
 
-    /** La consommation d'une clé sur un jour, chiffrée à la grille de la gateway. */
-    public record Key(String apiKeyId, String label, BigDecimal amountUsd, long inputTokens, long outputTokens) {
+    /** La consommation d'une clé sur un jour, chiffrée à la grille de la gateway (et en euros, SF-224-05). */
+    public record Key(String apiKeyId, String label, BigDecimal amountUsd, long inputTokens, long outputTokens,
+                      BigDecimal amountEur) {
     }
 
     /**
@@ -78,9 +86,11 @@ public class ProviderCostReconciliationService {
      *
      * @param configured la clé d'administration est posée
      * @param setupHint  comment la créer, ou {@code null} si elle est posée
+     * @param usdToEur   le taux appliqué aux montants en euros, écrit une fois à l'écran (SF-224-05)
      */
     public record Reconciliation(boolean configured, String setupHint, OffsetDateTime lastFetchedAt,
-                                 BigDecimal billedTotalUsd, BigDecimal calculatedTotalUsd, List<Day> days) {
+                                 BigDecimal billedTotalUsd, BigDecimal calculatedTotalUsd, List<Day> days,
+                                 BigDecimal usdToEur, BigDecimal billedTotalEur, BigDecimal calculatedTotalEur) {
     }
 
     /** Les {@code days} derniers jours (aujourd'hui compris), du plus récent au plus ancien. Administrateur seul. */
@@ -100,28 +110,43 @@ public class ProviderCostReconciliationService {
                 billed.put(r.getDay(), r.getAmountUsd());
             } else {
                 keys.computeIfAbsent(r.getDay(), d -> new ArrayList<>()).add(new Key(r.getApiKeyId(),
-                        r.getApiKeyLabel(), r.getAmountUsd(), r.getInputTokens(), r.getOutputTokens()));
+                        r.getApiKeyLabel(), r.getAmountUsd(), r.getInputTokens(), r.getOutputTokens(),
+                        eur(r.getAmountUsd())));
             }
         }
         List<Day> result = new ArrayList<>();
         BigDecimal billedTotal = BigDecimal.ZERO;
         BigDecimal calculatedTotal = BigDecimal.ZERO;
+        BigDecimal billedTotalEur = BigDecimal.ZERO;
+        BigDecimal calculatedTotalEur = BigDecimal.ZERO;
         for (LocalDate day = today; !day.isBefore(from); day = day.minusDays(1)) {
             BigDecimal calc = calculated.getOrDefault(day, BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
             BigDecimal bill = billed.get(day);
+            BigDecimal calcEur = eur(calc);
             calculatedTotal = calculatedTotal.add(calc);
+            calculatedTotalEur = calculatedTotalEur.add(calcEur);
+            BigDecimal billEur = null;
             if (bill != null) {
                 bill = bill.setScale(2, RoundingMode.HALF_UP);
+                billEur = eur(bill);
                 billedTotal = billedTotal.add(bill);
+                billedTotalEur = billedTotalEur.add(billEur);
             }
             List<Key> dayKeys = new ArrayList<>(keys.getOrDefault(day, List.of()));
             dayKeys.sort((a, b) -> b.amountUsd().compareTo(a.amountUsd()));
-            result.add(new Day(day, bill, calc, bill == null ? null : bill.subtract(calc), List.copyOf(dayKeys)));
+            result.add(new Day(day, bill, calc, bill == null ? null : bill.subtract(calc), List.copyOf(dayKeys),
+                    billEur, calcEur, billEur == null ? null : billEur.subtract(calcEur)));
         }
         OffsetDateTime last = reports.findFirstByOrderByFetchedAtDesc().map(ProviderCostReport::getFetchedAt)
                 .orElse(null);
         return new Reconciliation(billing.configured(), billing.configured() ? null : SETUP_HINT, last,
-                billedTotal, calculatedTotal, List.copyOf(result));
+                billedTotal, calculatedTotal, List.copyOf(result), pricing.usdToEur(), billedTotalEur,
+                calculatedTotalEur);
+    }
+
+    /** Un montant en dollars converti en euros, au centime, au taux unique de la passerelle (signe conservé). */
+    private BigDecimal eur(BigDecimal usd) {
+        return usd == null ? null : usd.multiply(pricing.usdToEur()).setScale(2, RoundingMode.HALF_UP);
     }
 
     /** [Relire maintenant] — administrateur seul. */

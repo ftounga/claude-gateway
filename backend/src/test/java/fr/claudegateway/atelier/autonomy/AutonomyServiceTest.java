@@ -43,6 +43,7 @@ class AutonomyServiceTest {
         AutonomyService.Estimate estimate = service.estimate(avg, 5);
         assertThat(estimate.turns()).isEqualTo(3);
         assertThat(estimate.usd()).isEqualByComparingTo("1.50");
+        assertThat(estimate.eur()).isEqualByComparingTo("1.38"); // F-224 / SF-224-05 : 1,50 $ × 0,92
         assertThat(estimate.basis()).contains("30 jours");
         assertThat(service.estimate(avg, 1).turns()).isEqualTo(1);
         assertThat(service.estimate(avg, 40).turns()).isEqualTo(8); // borné par le plafond
