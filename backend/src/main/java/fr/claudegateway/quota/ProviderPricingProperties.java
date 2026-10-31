@@ -134,18 +134,39 @@ public record ProviderPricingProperties(
             return exact;
         }
         // F-224 / SF-224-01 : le fournisseur rapporte parfois l'identifiant DATÉ (« claude-haiku-4-5-20251001 ») ou
-        // décliné (« …-latest ») : il retrouve la ligne de son modèle, la plus longue qui le préfixe, au lieu du repli.
+        // décliné (« …-latest ») : il retrouve la ligne de son modèle au lieu du repli.
+        // F-224 / SF-224-06 : SEULS ces deux suffixes sont retirés — plus de préfixe libre. « claude-opus-5-9 » ou
+        // « claude-sonnet-5-1 » (un modèle nouveau, absent de la grille) n'est jamais lu au tarif de « claude-opus-5 »
+        // ou « claude-sonnet-5 » : il retombe sur le repli, marqué pricingFallback, et l'avertissement dit de relever
+        // la grille. Un tarif plausible mais faux serait pire qu'un repli signalé.
         String base = id.replaceFirst("-(\\d{8}|latest)$", "");
-        if (!base.equals(id) && models.containsKey(base)) {
-            return models.get(base);
-        }
-        String best = null;
-        for (String key : models.keySet()) {
-            if (id.startsWith(key + "-") && (best == null || key.length() > best.length())) {
-                best = key;
-            }
-        }
-        return best == null ? null : models.get(best);
+        return base.equals(id) ? null : models.get(base);
+    }
+
+    /**
+     * Tarifs d'un modèle, ou ceux de repli s'il est absent de la grille (F-224 / SF-224-06) — pour les lectures qui
+     * estiment (diagnostic, suggestions) et ne doivent jamais échouer sur un modèle inconnu.
+     */
+    public ModelPricing pricingOrFallback(String model) {
+        ModelPricing rates = pricingOf(model);
+        return rates != null ? rates : fallbackPricing();
+    }
+
+    /**
+     * Un montant en dollars converti en euros, au centime ({@code HALF_UP}), au taux unique de la passerelle
+     * (F-224 / SF-224-06) ; {@code null} reste {@code null}. La SEULE conversion des écrans : routines, plafond
+     * d'exécution, vidéos.
+     */
+    public BigDecimal eur(BigDecimal usd) {
+        return usd == null ? null : usd.multiply(usdToEur).setScale(2, java.math.RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Un montant saisi en euros ramené en dollars (la devise des plafonds appliqués), au centime ({@code HALF_UP})
+     * (F-224 / SF-224-06) ; {@code null} reste {@code null}.
+     */
+    public BigDecimal usdOf(BigDecimal eur) {
+        return eur == null ? null : eur.divide(usdToEur, 2, java.math.RoundingMode.HALF_UP);
     }
 
     /** Tarifs de repli. Garantis non nuls : la grille par défaut contient toujours le modèle par défaut. */

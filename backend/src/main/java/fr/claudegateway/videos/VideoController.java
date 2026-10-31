@@ -53,7 +53,7 @@ public class VideoController {
         UUID userId = currentUser.requireId();
         VideoService.Gallery gallery = videoService.gallery(userId, workspaceId, hostId);
         return VideoGalleryResponse.of(gallery, version -> mediaBase(request,
-                tickets.issue(userId, version.getVideoId(), version.getVersion())) + "/poster");
+                tickets.issue(userId, version.getVideoId(), version.getVersion())) + "/poster", costs.usdToEur());
     }
 
     /**
@@ -92,7 +92,7 @@ public class VideoController {
         Video video = videoService.require(userId, id);
         VideoVersion served = videoService.requireVersion(userId, id, version);
         return VideoResponse.of(video, served, videoService.series(userId, video.getSeriesId()).orElse(null),
-                mediaBase(request, tickets.issue(userId, id, served.getVersion())));
+                mediaBase(request, tickets.issue(userId, id, served.getVersion())), costs.usdToEur());
     }
 
     /** Les versions conservées, la plus récente d'abord. */

@@ -1026,6 +1026,9 @@ app:
       base-url: ${APP_ANTHROPIC_ADMIN_BASE_URL:https://api.anthropic.com}
       # Relecture quotidienne des 31 derniers jours (UTC). Idempotente : chaque ligne (jour, cle) est remplacee.
       cron: ${APP_ANTHROPIC_ADMIN_CRON:0 20 6 * * *}
+      # F-224 / SF-224-06 : identifiant (apikey_...) de la cle API de la passerelle chez Anthropic — un IDENTIFIANT,
+      # pas la cle. Pose : l'ecran compare la passerelle a SA cle (perimetre egal). Vide : comparaison a l'organisation.
+      gateway-key-id: ${APP_ANTHROPIC_GATEWAY_KEY_ID:}
     provider:
       pricing-version: ${APP_COST_PRICING_VERSION:2026-10-02}
       # Tarifs de repli quand le modele servi est absent de la grille. Un probleme de tarif ne fait

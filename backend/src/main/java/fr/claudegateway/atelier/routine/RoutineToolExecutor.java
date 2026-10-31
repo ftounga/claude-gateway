@@ -47,9 +47,12 @@ public class RoutineToolExecutor {
             if ("WEEKLY".equals(cadence)) {
                 day = DAYS.get(normalize(str(input, "jour")));
             }
+            // F-224 / SF-224-06 : le budget se dit en euros (« budget_eur ») ; « budget_usd » reste lu pour un appel
+            // formé avant le changement.
             RoutineView view = service.propose(userId, workspace, new RoutineRequest(str(input, "nom"),
                     str(input, "consigne"), cadence, day, str(input, "heure"), null,
-                    amount(input == null ? null : input.get("budget_usd")), null));
+                    amount(input == null ? null : input.get("budget_usd")), null, null,
+                    amount(input == null ? null : input.get("budget_eur")), null));
             return new Outcome("Proposition de routine rangée (« " + view.name() + " ») : elle N'EST PAS "
                     + "active. Dis à l'utilisateur qu'une carte au-dessus du fil lui permet de l'activer, de "
                     + "la modifier ou de la refuser.", false);

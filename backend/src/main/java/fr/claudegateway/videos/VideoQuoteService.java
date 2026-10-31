@@ -55,6 +55,19 @@ public class VideoQuoteService {
         this.clock = clock;
     }
 
+    /**
+     * Le taux de lecture en euros (F-224 / SF-224-06) : le devis est calculé en dollars (la devise des tarifs du
+     * fournisseur) et DIT en euros, au taux unique de la passerelle. Absent = 0,92.
+     */
+    private BigDecimal usdToEur = DEFAULT_USD_TO_EUR;
+
+    static final BigDecimal DEFAULT_USD_TO_EUR = new BigDecimal("0.92");
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setPricing(fr.claudegateway.quota.ProviderPricingProperties pricing) {
+        this.usdToEur = pricing == null ? DEFAULT_USD_TO_EUR : pricing.usdToEur();
+    }
+
     /** Ce que rend l'outil : un texte, en erreur ou non. */
     public record Outcome(String content, boolean error, UUID quoteId) {
 
@@ -226,7 +239,7 @@ public class VideoQuoteService {
             default -> out.append("vidéo unique de ").append(duration(in.durationMin())).append(", ")
                     .append(planned(in.retouches()));
         }
-        out.append(".\n").append(line(result)).append("\n");
+        out.append(".\n").append(line(result, usdToEur)).append("\n");
         out.append("Détail : voix = ").append(group(in.charsPerEpisode())).append(" caractères");
         if (in.kind() != VideoQuoteKind.RETOUCHE && in.episodes() > 1) {
             out.append(" × ").append(in.episodes()).append(" épisodes");
@@ -236,7 +249,8 @@ public class VideoQuoteService {
             out.append(" (borne haute : voix en partie refaite)");
         }
         out.append(" ; agent = ").append(number(result.turnsLow())).append(" à ").append(number(result.turnsHigh()))
-                .append(" tours × ").append(money(turnCost.costUsd())).append(" $ par tour (")
+                .append(" tours × ").append(money(eur(turnCost.costUsd(), usdToEur, RoundingMode.HALF_UP)))
+                .append(" € par tour (")
                 .append(turnCost.measured()
                         ? "coût moyen mesuré de vos tours sur 7 jours, " + turnCost.samples() + " tours"
                         : "valeur par défaut : moins de " + coefficients.minTurnSamples() + " tours mesurés sur 7 jours")
@@ -244,10 +258,12 @@ public class VideoQuoteService {
         if (in.kind() == VideoQuoteKind.RETOUCHE) {
             BigDecimal threshold = coefficients.retoucheConfirmThresholdUsd();
             if (result.high().compareTo(threshold) <= 0) {
-                out.append("Sous le seuil de ").append(money(threshold)).append(" $ : annonce ce devis dans ta réponse "
+                out.append("Sous le seuil de ").append(money(eur(threshold, usdToEur, RoundingMode.HALF_UP)))
+                        .append(" € : annonce ce devis dans ta réponse "
                         + "et lance la retouche, sans question.");
             } else {
-                out.append("Au-dessus du seuil de ").append(money(threshold)).append(" $ : fais confirmer ce devis par "
+                out.append("Au-dessus du seuil de ").append(money(eur(threshold, usdToEur, RoundingMode.HALF_UP)))
+                        .append(" € : fais confirmer ce devis par "
                         + "une question (demander) avant de lancer la retouche.");
             }
         } else {
@@ -258,15 +274,32 @@ public class VideoQuoteService {
         return out.toString();
     }
 
-    /** « Coût estimé : 4,80 à 7,20 $ (voix 0,40 $ · agent 4,40 à 6,80 $ · rendu 0 $ — votre poste) ». */
-    static String line(VideoQuoteCalculator.Result result) {
-        return "Coût estimé : " + range(result.low(), result.high()) + " (voix " + range(result.voiceLow(),
-                result.voiceHigh()) + " · agent " + range(result.agentLow(), result.agentHigh())
-                + " · rendu 0 $ — votre poste)";
+    /**
+     * « Coût estimé : 4,41 à 6,63 € (voix 0,36 € · agent 4,04 à 6,26 € · rendu 0 € — votre poste) » — en euros
+     * (F-224 / SF-224-06), au taux unique de la passerelle. Le devis reste calculé et rangé en dollars.
+     */
+    static String line(VideoQuoteCalculator.Result result, BigDecimal usdToEur) {
+        return "Coût estimé : " + range(result.low(), result.high(), usdToEur) + " (voix "
+                + range(result.voiceLow(), result.voiceHigh(), usdToEur) + " · agent "
+                + range(result.agentLow(), result.agentHigh(), usdToEur) + " · rendu 0 € — votre poste)";
     }
 
-    static String range(BigDecimal low, BigDecimal high) {
-        return low.compareTo(high) == 0 ? money(low) + " $" : money(low) + " à " + money(high) + " $";
+    /**
+     * Une fourchette en euros. Borne basse au cent inférieur, haute au cent supérieur : la conversion ne resserre
+     * jamais la fourchette (même règle que le calcul en dollars).
+     */
+    static String range(BigDecimal low, BigDecimal high, BigDecimal usdToEur) {
+        if (low.compareTo(high) == 0) {
+            return money(eur(low, usdToEur, RoundingMode.HALF_UP)) + " €";
+        }
+        return money(eur(low, usdToEur, RoundingMode.FLOOR)) + " à " + money(eur(high, usdToEur, RoundingMode.CEILING))
+                + " €";
+    }
+
+    /** Un montant en dollars, en euros au centime selon {@code rounding}. */
+    static BigDecimal eur(BigDecimal usd, BigDecimal usdToEur, RoundingMode rounding) {
+        BigDecimal rate = usdToEur == null || usdToEur.signum() <= 0 ? DEFAULT_USD_TO_EUR : usdToEur;
+        return usd.multiply(rate).setScale(2, rounding);
     }
 
     static String money(BigDecimal value) {

@@ -56,6 +56,19 @@ public class VideoCostTracker implements UsageRecordedListener {
         this.clock = clock;
     }
 
+    /** Le taux de lecture en euros (F-224 / SF-224-06) ; absent = 0,92. */
+    private BigDecimal usdToEur = VideoQuoteService.DEFAULT_USD_TO_EUR;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setPricing(fr.claudegateway.quota.ProviderPricingProperties pricing) {
+        this.usdToEur = pricing == null ? VideoQuoteService.DEFAULT_USD_TO_EUR : pricing.usdToEur();
+    }
+
+    /** Le taux appliqué aux montants en euros des vidéos. */
+    public BigDecimal usdToEur() {
+        return usdToEur;
+    }
+
     // ------------------------------------------------------------------ imputation
 
     @Override
@@ -175,7 +188,7 @@ public class VideoCostTracker implements UsageRecordedListener {
     // ------------------------------------------------------------------ récapitulatif
 
     /** Ce que le compte a dépensé en vidéos ce mois-ci. */
-    public record MonthCost(String month, BigDecimal spentUsd, long quotes) {
+    public record MonthCost(String month, BigDecimal spentUsd, long quotes, BigDecimal spentEur) {
     }
 
     /** Le total du mois courant du compte (devis créés ce mois-ci, plans abandonnés compris). */
@@ -185,8 +198,9 @@ public class VideoCostTracker implements UsageRecordedListener {
         YearMonth month = YearMonth.now(clock);
         OffsetDateTime since = month.atDay(1).atStartOfDay(zone).toOffsetDateTime();
         BigDecimal spent = quotes.spentSince(userId, since);
-        return new MonthCost(month.toString(), (spent == null ? BigDecimal.ZERO : spent).setScale(2,
-                RoundingMode.HALF_UP), quotes.countByUserIdAndCreatedAtGreaterThanEqual(userId, since));
+        BigDecimal usd = spent == null ? BigDecimal.ZERO : spent;
+        return new MonthCost(month.toString(), usd.setScale(2, RoundingMode.HALF_UP),
+                quotes.countByUserIdAndCreatedAtGreaterThanEqual(userId, since), VideoGalleryResponse.eur(usd, usdToEur));
     }
 
     // ------------------------------------------------------------------ outils

@@ -58,6 +58,45 @@ class AtelierTaskTest {
     }
 
     @Test
+    void aFailureMidWayCarriesWhatWasAlreadyBilledOnce() {
+        // F-224 / SF-224-06 : le fournisseur tombe au 2e appel — le 1er (10/4, facturé) n'est plus perdu.
+        AiAgentProvider provider = new AiAgentProvider() {
+            private int calls = 0;
+            @Override
+            public AgentTurn nextTurn(AgentTurnRequest request) {
+                if (calls++ == 0) {
+                    return new AgentTurn("", List.of(new AgentToolCall("c0", "write_file",
+                            MAPPER.createObjectNode().put("path", "a"))), false, 10, 4);
+                }
+                throw new IllegalStateException("fournisseur indisponible");
+            }
+        };
+        try {
+            AtelierTask.run(provider, "m", null, "écris a", null, TOOLS, false,
+                    call -> new AtelierTask.ExecutedTool("ok", false), () -> false, AgentReasoning.none());
+        } catch (RuntimeException e) {
+            SubLoopFailure lost = SubLoopFailure.of(e);
+            assertThat(lost).isNotNull();
+            assertThat(lost.inputTokens()).isEqualTo(10);
+            assertThat(lost.outputTokens()).isEqualTo(4);
+            assertThat(lost.getCause()).isInstanceOf(IllegalStateException.class);
+            return;
+        }
+        throw new AssertionError("la panne devait remonter");
+    }
+
+    @Test
+    void aFailureBeforeAnyCallRaisesTheOriginalCause() {
+        AiAgentProvider provider = request -> {
+            throw new IllegalStateException("tout de suite");
+        };
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> AtelierExploration.run(provider, "m", null, "q",
+                        null, TOOLS, call -> new AtelierExploration.ExecutedTool("ok", false), () -> false,
+                        AgentReasoning.none()))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
     void stopHaltsTheLoopBeforeCallingTheProvider() {
         AtomicInteger providerCalls = new AtomicInteger();
         AiAgentProvider provider = request -> {

@@ -17,14 +17,33 @@ import java.util.Locale;
  * <b>première itération est toujours permise</b> (D-L8-3). Le plafond <b>coupe</b>, il ne dégrade
  * jamais : ni le modèle, ni l'effort de raisonnement, ni les outils ne changent (justesse avant coût).</p>
  *
- * @param capUsd plafond en dollars de ce tour (strictement positif)
+ * <p><b>F-224 / SF-224-06</b> : le plafond s'applique en dollars (la devise des coûts du fournisseur) mais se
+ * <b>dit</b> en euros, au taux unique de la passerelle — l'utilisateur a saisi son budget en euros.</p>
+ *
+ * @param capUsd   plafond en dollars de ce tour (strictement positif)
+ * @param usdToEur taux de lecture en euros ({@code app.cost.provider.usd-to-eur}) ; absent ou non positif ⇒ 0,92
  */
-public record AtelierSpendCap(BigDecimal capUsd) {
+public record AtelierSpendCap(BigDecimal capUsd, BigDecimal usdToEur) {
+
+    static final BigDecimal DEFAULT_USD_TO_EUR = new BigDecimal("0.92");
 
     public AtelierSpendCap {
         if (capUsd == null || capUsd.signum() <= 0) {
             capUsd = new BigDecimal("0.01");
         }
+        if (usdToEur == null || usdToEur.signum() <= 0) {
+            usdToEur = DEFAULT_USD_TO_EUR;
+        }
+    }
+
+    /** Plafond au taux par défaut (formes historiques et tests). */
+    public AtelierSpendCap(BigDecimal capUsd) {
+        this(capUsd, null);
+    }
+
+    /** Le plafond en euros, au centime. */
+    public BigDecimal capEur() {
+        return capUsd.multiply(usdToEur).setScale(2, RoundingMode.HALF_UP);
     }
 
     /**
@@ -44,8 +63,8 @@ public record AtelierSpendCap(BigDecimal capUsd) {
     /** La réponse du tour coupé net : marqué INCOMPLET, le travail fait conservé. */
     public String reply() {
         return "INCOMPLET — la routine a atteint son budget de "
-                + capUsd.setScale(2, RoundingMode.HALF_UP).toPlainString().replace('.', ',')
-                + " $ pour cette exécution ; le travail déjà fait est conservé.";
+                + capEur().toPlainString().replace('.', ',')
+                + " € pour cette exécution ; le travail déjà fait est conservé.";
     }
 
     @Override

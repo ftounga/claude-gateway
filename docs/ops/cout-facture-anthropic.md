@@ -18,6 +18,19 @@ par l'API d'administration. Il reste **inactif** tant que la clé n'est pas pos�
 
 La clé n'est jamais journalisée ni renvoyée par l'API de la gateway.
 
+### 1 bis. Désigner la clé de la passerelle (SF-224-06)
+
+« Facturé » couvre **toute l'organisation** ; « calculé » couvre **la passerelle seule**. Pour comparer à périmètre
+égal, l'écran a besoin de l'**identifiant** de la clé API de la passerelle (`apikey_…`, pas la clé elle-même) :
+
+```bash
+kubectl -n claude-gateway-staging patch secret backend-secrets \
+  -p '{"stringData":{"APP_ANTHROPIC_GATEWAY_KEY_ID":"apikey_…"}}'
+```
+
+L'identifiant se lit dans la liste par clé de l'écran (le nom et l'indice de la clé l'accompagnent). Posé, l'écran
+ajoute la colonne « Clé de la passerelle » et l'écart passerelle (clé − calculé).
+
 ## 2. Ce que l'écran compare
 
 | Colonne | Source |
@@ -25,7 +38,12 @@ La clé n'est jamais journalisée ni renvoyée par l'API de la gateway.
 | Facturé | `GET /v1/organizations/cost_report` (montant du jour, toutes clés de l'organisation) |
 | Calculé | somme des `usage_turns.provider_cost_usd` du jour (tours, tours coupés, appels annexes) |
 | Écart | facturé − calculé |
+| Clé de la passerelle | la ligne « par clé » de `APP_ANTHROPIC_GATEWAY_KEY_ID` (même grille) ; écart passerelle = clé − calculé |
 | Par clé | `GET /v1/organizations/usage_report/messages` groupé par clé, **chiffré à la grille** de la gateway (estimation : l'écriture de cache est comptée au tarif 1 h) |
+
+**Aujourd'hui** (UTC) est partiel : la journée n'est pas finie et la facture arrive avec retard. Il est affiché à part,
+sans écart, et n'entre pas dans les totaux (jours complets seulement). Tous les montants sont aussi rendus en euros
+au taux unique `APP_COST_USD_TO_EUR`.
 
 Un écart durable vient presque toujours d'une **autre clé de la même organisation** : la clé legalCase, les sessions
 de développement (Claude Max au-delà du forfait est facturé à part, hors de cette organisation), ou un script.

@@ -45,6 +45,24 @@ public class RoutineRunService {
         this.clock = clock;
     }
 
+    /** Le taux de lecture en euros (F-224 / SF-224-06) ; absent = 0,92. */
+    private java.math.BigDecimal usdToEur;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setPricing(fr.claudegateway.quota.ProviderPricingProperties pricing) {
+        this.usdToEur = pricing == null ? null : pricing.usdToEur();
+    }
+
+    /** Le taux appliqué aux montants en euros des routines (F-224 / SF-224-06). */
+    public java.math.BigDecimal usdToEur() {
+        return usdToEur == null ? RoutineDtos.DEFAULT_USD_TO_EUR : usdToEur;
+    }
+
+    /** La vue d'une exécution, montants en euros compris. */
+    public RoutineRunView view(RoutineRun run) {
+        return RoutineRunView.of(run, usdToEur());
+    }
+
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setReportSources(fr.claudegateway.atelier.actions.TerminalActionRepository actions,
             SubjectRoutineRepository routines) {
@@ -124,7 +142,7 @@ public class RoutineRunService {
             routines.findByUserIdAndWorkspaceIdOrderByCreatedAtAsc(userId, workspaceId)
                     .forEach(r -> names.put(r.getId(), r.getName()));
         }
-        return rows.stream().map(run -> RoutineRunView.of(run, names.get(run.getRoutineId()))).toList();
+        return rows.stream().map(run -> RoutineRunView.of(run, names.get(run.getRoutineId()), usdToEur())).toList();
     }
 
     /** Acquitte une ligne de la bande (SF-183-04) ; idempotent. 404 si l'exécution n'est pas à ce sujet. */
@@ -165,7 +183,7 @@ public class RoutineRunService {
     @Transactional(readOnly = true)
     public List<RoutineRunView> history(UUID userId, UUID workspaceId, UUID routineId) {
         return runs.findByRoutineIdAndUserIdAndWorkspaceIdOrderByStartedAtDesc(routineId, userId, workspaceId,
-                PageRequest.of(0, HISTORY)).stream().map(RoutineRunView::of).toList();
+                PageRequest.of(0, HISTORY)).stream().map(this::view).toList();
     }
 
     /**
@@ -185,6 +203,6 @@ public class RoutineRunService {
     @Transactional(readOnly = true)
     public RoutineRunView last(UUID userId, UUID routineId) {
         return runs.findFirstByRoutineIdAndUserIdOrderByStartedAtDesc(routineId, userId)
-                .map(RoutineRunView::of).orElse(null);
+                .map(this::view).orElse(null);
     }
 }
