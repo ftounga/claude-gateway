@@ -6388,8 +6388,14 @@ public class AtelierChatService implements RelayInterruptTarget {
                     result.inputTokens(), result.outputTokens(),
                     result.cacheReadTokens(), result.cacheWriteTokens(), subModel);
         } catch (RuntimeException ex) {
-            return new ExplorationOutcome(ToolOutcome.error(
-                    "La sous-tâche de lecture a échoué ; poursuis toi-même."), 0, 0, 0, 0);
+            // F-224 / SF-224-06 : ce que la sous-boucle avait déjà consommé reste imputé au tour.
+            SubLoopFailure lost = SubLoopFailure.of(ex);
+            return lost == null
+                    ? new ExplorationOutcome(ToolOutcome.error(
+                            "La sous-tâche de lecture a échoué ; poursuis toi-même."), 0, 0, 0, 0)
+                    : new ExplorationOutcome(ToolOutcome.error(
+                            "La sous-tâche de lecture a échoué ; poursuis toi-même."), lost.inputTokens(),
+                            lost.outputTokens(), lost.cacheReadTokens(), lost.cacheWriteTokens(), subModel);
         }
     }
 
@@ -6514,8 +6520,14 @@ public class AtelierChatService implements RelayInterruptTarget {
                     result.inputTokens(), result.outputTokens(),
                     result.cacheReadTokens(), result.cacheWriteTokens(), subModel);
         } catch (RuntimeException ex) {
-            return new ExplorationOutcome(
-                    ToolOutcome.error("L'exploration a échoué ; poursuis toi-même."), 0, 0, 0, 0);
+            // F-224 / SF-224-06 : ce que la sous-boucle avait déjà consommé reste imputé au tour.
+            SubLoopFailure lost = SubLoopFailure.of(ex);
+            return lost == null
+                    ? new ExplorationOutcome(
+                            ToolOutcome.error("L'exploration a échoué ; poursuis toi-même."), 0, 0, 0, 0)
+                    : new ExplorationOutcome(ToolOutcome.error("L'exploration a échoué ; poursuis toi-même."),
+                            lost.inputTokens(), lost.outputTokens(), lost.cacheReadTokens(),
+                            lost.cacheWriteTokens(), subModel);
         }
     }
 
@@ -6597,6 +6609,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         List<AgentTool> tools = named != null ? named.tools() : taskTools();
         java.util.Set<String> permitted = named == null ? null : named.allowed();
         String agentLabel = named == null ? null : agentName;
+        AtelierTask.Result[] ran = new AtelierTask.Result[1];
         try {
             AtelierTask.Result result = AtelierTask.run(agentProvider, subModel, apiKey, prompt.trim(),
                     scope, tools, false, named == null ? null : named.system(),
@@ -6616,6 +6629,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                     () -> interruptedTurns.contains(turnKey(userId, workspace))
                             || System.currentTimeMillis() >= deadline,
                     reasoning);
+            ran[0] = result;
             // F-150 / SF-150-05 : restitution — on committe le worktree sur SA branche et on remonte
             // la référence (branche + diff résumé) DANS la synthèse. La branche reste dans le dépôt
             // après démontage ; la reprise (merge/cherry-pick) est un acte explicite ultérieur, jamais
@@ -6629,8 +6643,20 @@ public class AtelierChatService implements RelayInterruptTarget {
                     result.inputTokens(), result.outputTokens(),
                     result.cacheReadTokens(), result.cacheWriteTokens(), subModel);
         } catch (RuntimeException ex) {
-            return new TaskOutcome(ToolOutcome.error(
-                    "La sous-tâche a échoué ; poursuis toi-même."), 0, 0, 0, 0);
+            // F-224 / SF-224-06 : la consommation n'est pas perdue — celle de la sous-boucle achevée (panne à la
+            // restitution) ou celle portée par la panne en route ; jamais les deux (le chemin est l'un OU l'autre).
+            AtelierTask.Result finished = ran[0];
+            SubLoopFailure lost = finished == null ? SubLoopFailure.of(ex) : null;
+            if (finished != null) {
+                return new TaskOutcome(ToolOutcome.error("La sous-tâche a échoué ; poursuis toi-même."),
+                        finished.inputTokens(), finished.outputTokens(), finished.cacheReadTokens(),
+                        finished.cacheWriteTokens(), subModel);
+            }
+            return lost == null
+                    ? new TaskOutcome(ToolOutcome.error("La sous-tâche a échoué ; poursuis toi-même."), 0, 0, 0, 0)
+                    : new TaskOutcome(ToolOutcome.error("La sous-tâche a échoué ; poursuis toi-même."),
+                            lost.inputTokens(), lost.outputTokens(), lost.cacheReadTokens(), lost.cacheWriteTokens(),
+                            subModel);
         } finally {
             // Nettoyage GARANTI (D9), y compris sur échec/interruption : « le tour vit dans le flux ».
             synchronized (worktreeLock(userId, workspace.getId())) {
@@ -8370,7 +8396,16 @@ public class AtelierChatService implements RelayInterruptTarget {
             releaseSpendCap(userId, workspaceId, chantier);
             return;
         }
-        spendCaps.put(turnKey(userId, workspaceId, chantier), new AtelierSpendCap(capUsd));
+        spendCaps.put(turnKey(userId, workspaceId, chantier), new AtelierSpendCap(capUsd,
+                providerPricing == null ? null : providerPricing.usdToEur()));
+    }
+
+    /** Le taux de lecture en euros du plafond d'exécution (F-224 / SF-224-06) ; absent = 0,92. */
+    private fr.claudegateway.quota.ProviderPricingProperties providerPricing;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setProviderPricing(fr.claudegateway.quota.ProviderPricingProperties providerPricing) {
+        this.providerPricing = providerPricing;
     }
 
     /** Désarme le plafond en dollars de ce projet (F-183 / SF-183-03). */

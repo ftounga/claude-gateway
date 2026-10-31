@@ -33,8 +33,8 @@ class VideoQuoteCalculatorTest {
         assertThat(result.high()).isEqualByComparingTo("32.44");
         assertThat(result.totalMinutes()).isEqualByComparingTo("15");
         assertThat(result.renderMinutes()).isEqualTo(42);
-        assertThat(VideoQuoteService.line(result))
-                .isEqualTo("Coût estimé : 16,29 à 32,44 $ (voix 0,29 à 0,44 $ · agent 16,00 à 32,00 $ · rendu 0 $ — "
+        assertThat(VideoQuoteService.line(result, new BigDecimal("0.92")))
+                .isEqualTo("Coût estimé : 14,98 à 29,85 € (voix 0,26 à 0,41 € · agent 14,72 à 29,44 € · rendu 0 € — "
                         + "votre poste)");
     }
 
@@ -66,7 +66,7 @@ class VideoQuoteCalculatorTest {
         assertThat(result.low()).isEqualByComparingTo("0.50");
         assertThat(result.high()).isEqualByComparingTo("1.01");
         assertThat(result.renderMinutes()).isEqualTo(2);
-        assertThat(VideoQuoteService.line(result)).contains("voix 0,00 à 0,01 $").contains("agent 0,50 à 1,00 $");
+        assertThat(VideoQuoteService.line(result, new BigDecimal("0.92"))).contains("voix 0,00 à 0,01 €").contains("agent 0,46 à 0,92 €");
     }
 
     @Test
@@ -75,7 +75,7 @@ class VideoQuoteCalculatorTest {
         VideoQuoteCalculator.Result result = VideoQuoteCalculator.compute(new VideoQuoteCalculator.Input(
                 VideoQuoteKind.SINGLE, 1, new BigDecimal("2"), 1_800, 0), rates("1.00"), DEFAULTS);
 
-        assertThat(VideoQuoteService.line(result)).contains("(voix 0,04 $ · agent 1,60 à 3,20 $");
+        assertThat(VideoQuoteService.line(result, new BigDecimal("0.92"))).contains("(voix 0,04 € · agent 1,47 à 2,95 €");
     }
 
     @Test

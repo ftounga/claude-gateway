@@ -126,6 +126,32 @@ class AtelierChatServiceExploreModelTest {
         assertThat(provider.subLoopModel).isEqualTo(provider.mainModel);
     }
 
+    @Test
+    @SuppressWarnings("unchecked")
+    void aSubLoopThatFailsMidWayStillChargesWhatItSpentToItsModelOnce() {
+        // F-224 / SF-224-06 : l'exploration (Sonnet) tombe à son 2e appel — son 1er (7/3), facturé, reste imputé au
+        // tour, dans la part de Sonnet, une seule fois ; le tour continue.
+        provider.failSubLoopOnSecondCall = true;
+        AtelierChatService service = serviceWith(withExploreModel("claude-sonnet-5"));
+
+        service.chat(userId, workspaceId, "audite le dépôt");
+
+        org.mockito.ArgumentCaptor<fr.claudegateway.quota.TurnTokens> total =
+                org.mockito.ArgumentCaptor.forClass(fr.claudegateway.quota.TurnTokens.class);
+        org.mockito.ArgumentCaptor<java.util.Map<String, fr.claudegateway.quota.TurnTokens>> shares =
+                org.mockito.ArgumentCaptor.forClass(java.util.Map.class);
+        org.mockito.Mockito.verify(quotaService, org.mockito.Mockito.times(1)).recordUsage(
+                org.mockito.ArgumentMatchers.eq(userId), total.capture(), any(),
+                org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.eq("claude-opus-5"),
+                shares.capture(), any(), org.mockito.ArgumentMatchers.eq(workspaceId), any());
+        // Boucle principale 5/5 + 5/5, sous-boucle 7/3 (son appel en panne n'a rien rapporté).
+        assertThat(total.getValue().inputTokens()).isEqualTo(17L);
+        assertThat(total.getValue().outputTokens()).isEqualTo(13L);
+        assertThat(shares.getValue()).containsOnlyKeys("claude-sonnet-5");
+        assertThat(shares.getValue().get("claude-sonnet-5").inputTokens()).isEqualTo(7L);
+        assertThat(shares.getValue().get("claude-sonnet-5").outputTokens()).isEqualTo(3L);
+    }
+
     /**
      * Provider scripté minimal : la boucle principale émet un {@code explore} au premier tour puis
      * conclut ; la sous-boucle conclut d'emblée. Chaque appel enregistre le modèle reçu.
@@ -134,8 +160,11 @@ class AtelierChatServiceExploreModelTest {
 
         private final ObjectMapper mapper = new ObjectMapper();
         private int mainCalls = 0;
+        private int subCalls = 0;
         volatile String mainModel;
         volatile String subLoopModel;
+        /** F-224 / SF-224-06 : la sous-boucle demande un outil (7/3) puis tombe à son 2e appel. */
+        volatile boolean failSubLoopOnSecondCall;
 
         @Override
         public AgentTurn nextTurn(AgentTurnRequest request) {
@@ -143,6 +172,13 @@ class AtelierChatServiceExploreModelTest {
             boolean subLoop = system != null && system.startsWith("Tu explores");
             if (subLoop) {
                 subLoopModel = request.model();
+                if (failSubLoopOnSecondCall) {
+                    if (subCalls++ == 0) {
+                        return new AgentTurn("", List.of(new AgentToolCall("s0", "outil_inconnu",
+                                mapper.createObjectNode())), false, 7, 3);
+                    }
+                    throw new IllegalStateException("fournisseur indisponible");
+                }
                 return new AgentTurn("Conclusion de la sous-boucle.", List.of(), true, 5, 5);
             }
             mainModel = request.model();

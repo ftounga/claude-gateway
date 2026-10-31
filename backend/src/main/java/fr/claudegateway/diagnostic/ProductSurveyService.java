@@ -161,8 +161,7 @@ public class ProductSurveyService {
             if (share >= TARGET_CACHE_SHARE) {
                 continue;
             }
-            ProviderPricingProperties.ModelPricing grid = turn.getModel() == null
-                    ? pricing.fallbackPricing() : pricing.pricingOf(turn.getModel());
+            ProviderPricingProperties.ModelPricing grid = pricing.pricingOrFallback(turn.getModel());
             BigDecimal perToken = grid.input().subtract(grid.cacheRead());
             if (perToken.signum() <= 0) {
                 continue;

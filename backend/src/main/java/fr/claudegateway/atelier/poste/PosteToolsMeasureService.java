@@ -40,7 +40,9 @@ public class PosteToolsMeasureService {
     static final String HOST_TERMINALS_SQL = "SELECT id FROM workspaces WHERE user_id = ? AND host_terminal = TRUE";
 
     static final String TURNS_SQL = "SELECT count(*) AS turns, coalesce(sum(provider_cost_usd), 0) AS cost "
-            + "FROM usage_turns WHERE user_id = ? AND workspace_id = ? AND occurred_at >= ? AND occurred_at < ?";
+            + "FROM usage_turns WHERE user_id = ? AND workspace_id = ? AND occurred_at >= ? AND occurred_at < ? "
+            // F-224 / SF-224-06 : des TOURS, jamais des appels annexes.
+            + "AND kind = 'TOUR'";
 
     static final String TRACES_SQL = "SELECT tool_trace FROM atelier_messages WHERE user_id = ? "
             + "AND workspace_id = ? AND tool_trace IS NOT NULL AND created_at >= ? AND created_at < ? "

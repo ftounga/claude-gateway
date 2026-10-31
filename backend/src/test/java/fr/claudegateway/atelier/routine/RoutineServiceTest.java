@@ -111,6 +111,28 @@ class RoutineServiceTest {
     }
 
     @Test
+    void budgetsAreTypedInEurosAndKeptInDollars() {
+        // F-224 / SF-224-06 : 4,60 € saisis = 5,00 $ rangés (taux 0,92) ; 92 € = 100 $. La vue rend les deux.
+        RoutineView view = service.create(userId, workspaceId, new RoutineRequest("n", "x", "DAILY", null,
+                "08:00", null, null, null, null, new BigDecimal("4.60"), new BigDecimal("92")));
+        assertThat(view.maxRunUsd()).isEqualByComparingTo("5.00");
+        assertThat(view.monthlyBudgetUsd()).isEqualByComparingTo("100.00");
+        assertThat(view.maxRunEur()).isEqualByComparingTo("4.60");
+        assertThat(view.monthlyBudgetEur()).isEqualByComparingTo("92.00");
+        assertThat(view.monthSpentEur()).isEqualByComparingTo("0.00");
+        // L'euro prime sur le dollar ; ses bornes sont en euros, et le message aussi.
+        RoutineView both = service.create(userId, workspaceId, new RoutineRequest("n", "x", "DAILY", null,
+                "08:00", null, new BigDecimal("40"), null, null, new BigDecimal("1.84"), null));
+        assertThat(both.maxRunUsd()).isEqualByComparingTo("2.00");
+        assertThatThrownBy(() -> service.create(userId, workspaceId, new RoutineRequest("n", "x", "DAILY", null,
+                "08:00", null, null, null, null, new BigDecimal("50.01"), null)))
+                .isInstanceOf(InvalidRoutineException.class).hasMessageContaining("50,00 €");
+        assertThatThrownBy(() -> service.create(userId, workspaceId, new RoutineRequest("n", "x", "DAILY", null,
+                "08:00", null, null, null, null, null, new BigDecimal("0.99"))))
+                .isInstanceOf(InvalidRoutineException.class).hasMessageContaining("1,00 €");
+    }
+
+    @Test
     void weeklyKeepsTheDayOthersDropIt() {
         RoutineView weekly = service.create(userId, workspaceId, new RoutineRequest("Semaine", "CR", "weekly", 5,
                 "17:00", null, null, null));

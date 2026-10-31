@@ -43,8 +43,8 @@ public class RoutineToolCatalog {
                                             "dimanche"),
                                     "description", "Jour de la semaine, pour le rythme hebdo seulement."),
                             "heure", Map.of("type", "string", "description", "Heure HH:mm, heure du poste."),
-                            "budget_usd", Map.of("type", "number",
-                                    "description", "Budget en dollars par exécution (0,10 à 50 ; 5 par défaut).")),
+                            "budget_eur", Map.of("type", "number",
+                                    "description", "Budget en euros par exécution (0,10 à 50 ; 4,60 par défaut).")),
                     "required", List.of("nom", "consigne", "rythme", "heure")));
 
     /** Vrai si ce nom est l'outil de ce catalogue. */

@@ -123,6 +123,9 @@ final class AtelierTask {
         int cacheWriteTokens = 0;
         String answer = "";
 
+        // F-224 / SF-224-06 : une panne en route ne fait plus disparaître les appels déjà facturés — elle remonte avec
+        // eux (SubLoopFailure), et l'appelant les impute au tour une seule fois.
+        try {
         for (int iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
             if (stop.getAsBoolean()) {
                 answer = answer.isBlank() ? "Sous-tâche interrompue avant sa fin." : answer;
@@ -166,6 +169,10 @@ final class AtelierTask {
                 answer = (turn.text() == null || turn.text().isBlank() ? "" : turn.text() + "\n\n")
                         + "(sous-tâche arrêtée à sa limite d'étapes ; le travail peut être partiel)";
             }
+        }
+
+        } catch (RuntimeException failure) {
+            throw SubLoopFailure.wrap(failure, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens);
         }
 
         if (answer == null || answer.isBlank()) {

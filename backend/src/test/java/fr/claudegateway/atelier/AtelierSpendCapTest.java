@@ -26,7 +26,7 @@ class AtelierSpendCapTest {
 
     @Test
     void saysIncompleteAndTheBudget() {
-        assertThat(cap.reply()).startsWith("INCOMPLET").contains("0,50 $");
+        assertThat(cap.reply()).startsWith("INCOMPLET").contains("0,46 €");
         assertThat(new AtelierSpendCap(null).capUsd()).isPositive();
     }
 }

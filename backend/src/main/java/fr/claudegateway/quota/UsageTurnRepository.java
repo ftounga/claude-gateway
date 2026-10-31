@@ -41,11 +41,20 @@ public interface UsageTurnRepository extends JpaRepository<UsageTurn, UUID> {
             select t.hostId as hostId, t.workspaceId as workspaceId,
                    sum(t.inputTokens) as inputTokens, sum(t.outputTokens) as outputTokens
             from UsageTurn t
-            where t.userId = :userId and t.occurredAt >= :from and t.occurredAt < :to
+            where t.userId = :userId and t.occurredAt >= :from and t.occurredAt < :to and t.kind = :kind
             group by t.hostId, t.workspaceId
             """)
-    List<UsageTurnAggregate> aggregateByHostAndWorkspace(@Param("userId") UUID userId,
-            @Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to);
+    List<UsageTurnAggregate> aggregateByHostAndWorkspaceOfKind(@Param("userId") UUID userId,
+            @Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to, @Param("kind") UsageTurn.Kind kind);
+
+    /**
+     * Les TOURS seulement (F-224 / SF-224-06) : la consommation par client se lit à côté du quota, et les appels
+     * annexes ({@code ANNEXE}) sont hors quota — les compter ici ferait dépasser la somme des lignes du compteur.
+     */
+    default List<UsageTurnAggregate> aggregateByHostAndWorkspace(UUID userId, OffsetDateTime from,
+            OffsetDateTime to) {
+        return aggregateByHostAndWorkspaceOfKind(userId, from, to, UsageTurn.Kind.TOUR);
+    }
 
     /**
      * <b>Dépense réelle</b> d'un utilisateur sur une fenêtre, agrégée par <b>poste</b>
@@ -99,12 +108,17 @@ public interface UsageTurnRepository extends JpaRepository<UsageTurn, UUID> {
                    coalesce(sum(t.providerCostUsd), 0) as costUsd,
                    count(t) as turns
             from UsageTurn t
-            where t.userId = :userId and t.workspaceId is not null
+            where t.userId = :userId and t.workspaceId is not null and t.kind = :kind
                   and t.occurredAt >= :from and t.occurredAt < :to
             group by t.workspaceId
             """)
-    List<ProjectCostAggregate> aggregateCostByProject(@Param("userId") UUID userId,
-            @Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to);
+    List<ProjectCostAggregate> aggregateCostByProjectOfKind(@Param("userId") UUID userId,
+            @Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to, @Param("kind") UsageTurn.Kind kind);
+
+    /** Les TOURS seulement (F-224 / SF-224-06) : {@code turns} compte des tours, jamais des appels annexes. */
+    default List<ProjectCostAggregate> aggregateCostByProject(UUID userId, OffsetDateTime from, OffsetDateTime to) {
+        return aggregateCostByProjectOfKind(userId, from, to, UsageTurn.Kind.TOUR);
+    }
 
     /**
      * <b>Dépense réelle par projet depuis l'origine</b> (F-143 / SF-143-01) — sans borne de temps.
@@ -118,10 +132,16 @@ public interface UsageTurnRepository extends JpaRepository<UsageTurn, UUID> {
                    coalesce(sum(t.providerCostUsd), 0) as costUsd,
                    count(t) as turns
             from UsageTurn t
-            where t.userId = :userId and t.workspaceId is not null
+            where t.userId = :userId and t.workspaceId is not null and t.kind = :kind
             group by t.workspaceId
             """)
-    List<ProjectCostAggregate> aggregateCostByProjectAllTime(@Param("userId") UUID userId);
+    List<ProjectCostAggregate> aggregateCostByProjectAllTimeOfKind(@Param("userId") UUID userId,
+            @Param("kind") UsageTurn.Kind kind);
+
+    /** Les TOURS seulement (F-224 / SF-224-06). */
+    default List<ProjectCostAggregate> aggregateCostByProjectAllTime(UUID userId) {
+        return aggregateCostByProjectAllTimeOfKind(userId, UsageTurn.Kind.TOUR);
+    }
 
     /**
      * Le coût moyen d'un tour d'un compte depuis un instant (F-219 / SF-219-02 — l'estimation d'une course
@@ -130,8 +150,18 @@ public interface UsageTurnRepository extends JpaRepository<UsageTurn, UUID> {
     @Query("""
             select avg(t.providerCostUsd) from UsageTurn t
             where t.userId = :userId and t.occurredAt >= :since and t.providerCostUsd is not null
+                  and t.kind = :kind
             """)
-    Double averageCostSince(@Param("userId") UUID userId, @Param("since") OffsetDateTime since);
+    Double averageCostSinceOfKind(@Param("userId") UUID userId, @Param("since") OffsetDateTime since,
+            @Param("kind") UsageTurn.Kind kind);
+
+    /**
+     * Le coût moyen d'un TOUR (F-224 / SF-224-06) : un appel annexe (aide, index de la carte), bien moins cher qu'un
+     * tour d'agent, ferait baisser la moyenne et sous-estimer la course autonome.
+     */
+    default Double averageCostSince(UUID userId, OffsetDateTime since) {
+        return averageCostSinceOfKind(userId, since, UsageTurn.Kind.TOUR);
+    }
 
     /**
      * Les coûts calculés de la PLATEFORME sur {@code [from, to)} — {@code [occurredAt, providerCostUsd]} — pour le
@@ -167,8 +197,17 @@ public interface UsageTurnRepository extends JpaRepository<UsageTurn, UUID> {
      * Les tours d'un <b>compte</b> sur une période, tous projets confondus (F-156 / SF-156-02) — la
      * matière du diagnostic du produit, qui observe une accumulation et non une session.
      */
-    List<UsageTurn> findByUserIdAndOccurredAtBetweenOrderByOccurredAtAsc(
-            UUID userId, OffsetDateTime from, OffsetDateTime to);
+    List<UsageTurn> findByUserIdAndKindAndOccurredAtBetweenOrderByOccurredAtAsc(
+            UUID userId, UsageTurn.Kind kind, OffsetDateTime from, OffsetDateTime to);
+
+    /**
+     * Les TOURS d'un compte sur une période (F-224 / SF-224-06) : le diagnostic observe des tours d'agent ; un appel
+     * annexe n'y est ni un tour ni un cache froid.
+     */
+    default List<UsageTurn> findByUserIdAndOccurredAtBetweenOrderByOccurredAtAsc(UUID userId, OffsetDateTime from,
+            OffsetDateTime to) {
+        return findByUserIdAndKindAndOccurredAtBetweenOrderByOccurredAtAsc(userId, UsageTurn.Kind.TOUR, from, to);
+    }
 
     /**
      * Purge à la suppression du compte (F-11 / SF-11-03) : le journal décrit l'activité d'un compte

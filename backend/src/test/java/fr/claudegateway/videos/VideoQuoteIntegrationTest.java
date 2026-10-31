@@ -116,7 +116,7 @@ class VideoQuoteIntegrationTest {
 
         assertThat(outcome.error()).as(outcome.content()).isFalse();
         assertThat(outcome.content()).contains("série « Le réseau de CAGIP » de 6 épisodes de 2 min 30")
-                .contains("15 min au total").contains("Coût estimé : ").contains("rendu 0 $ — votre poste")
+                .contains("15 min au total").contains("Coût estimé : ").contains("rendu 0 € — votre poste")
                 .contains("valeur par défaut").contains("question UNIQUE (demander)").contains("le plan de la série");
         VideoQuote quote = quoteRepository.findByIdAndUserId(outcome.quoteId(), alice.getId()).orElseThrow();
         assertThat(quote.getStatus()).isEqualTo(VideoQuote.Status.OPEN);
@@ -169,7 +169,7 @@ class VideoQuoteIntegrationTest {
                 mapper.createObjectNode().put("video", video.toString()));
         assertThat(small.error()).as(small.content()).isFalse();
         assertThat(small.content()).contains("retouche de « Cours EKS » (42 s), 1 retouche")
-                .contains("Sous le seuil de 3,00 $").contains("sans question");
+                .contains("Sous le seuil de 2,76 €").contains("sans question");
         VideoQuote quote = quoteRepository.findById(small.quoteId()).orElseThrow();
         assertThat(quote.getKind()).isEqualTo(VideoQuoteKind.RETOUCHE);
         assertThat(quote.getVideoId()).isEqualTo(video);
@@ -178,7 +178,7 @@ class VideoQuoteIntegrationTest {
 
         VideoQuoteService.Outcome big = quoteService.quote(alice.getId(), workspace,
                 mapper.createObjectNode().put("video", video.toString()).put("retouches", 10));
-        assertThat(big.content()).contains("Au-dessus du seuil de 3,00 $").contains("demander");
+        assertThat(big.content()).contains("Au-dessus du seuil de 2,76 €").contains("demander");
 
         Workspace bobWorkspace = VideoTestSupport.runnerWorkspace(workspaceRepository, bob.getId());
         long before = quoteRepository.count();

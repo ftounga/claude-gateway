@@ -247,14 +247,20 @@ class VideoCostTrackerIntegrationTest {
                 .andExpect(jsonPath("$.series[0].estimateLowUsd").isNumber())
                 .andExpect(jsonPath("$.series[0].episodes[0].costUsd").value(1.23))
                 .andExpect(jsonPath("$.videos[0].costUsd").value(0.50))
-                .andExpect(jsonPath("$.videos[0].estimateHighUsd").isNumber());
+                .andExpect(jsonPath("$.videos[0].estimateHighUsd").isNumber())
+                // F-224 / SF-224-06 : les mêmes montants en euros, au taux unique (0,92).
+                .andExpect(jsonPath("$.series[0].costEur").value(1.14))
+                .andExpect(jsonPath("$.videos[0].costEur").value(0.46))
+                .andExpect(jsonPath("$.videos[0].estimateHighEur").isNumber());
         mockMvc.perform(get("/videos/" + single.getId()).header("Authorization", alice))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.costUsd").value(0.50))
+                .andExpect(jsonPath("$.costEur").value(0.46))
                 .andExpect(jsonPath("$.estimateLowUsd").isNumber());
         mockMvc.perform(get("/videos/costs").header("Authorization", alice))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.spentUsd").value(1.73))
+                .andExpect(jsonPath("$.spentEur").value(1.60))
                 .andExpect(jsonPath("$.quotes").value(2))
                 .andExpect(jsonPath("$.month").isString());
         mockMvc.perform(get("/videos/costs").header("Authorization", bob))

@@ -51,6 +51,20 @@ class ProviderCostCalculatorTest {
     }
 
     @Test
+    void aNewModelSharingAPrefixIsNeverPricedAsItsElder() {
+        // F-224 / SF-224-06 : plus de préfixe libre — « claude-sonnet-5-1 » (absent de la grille) n'est pas lu
+        // « claude-sonnet-5 » : repli signalé, jamais un tarif plausible mais faux.
+        TurnCost sibling = calculator.calculate(new TurnTokens(1_000_000L, 0L, 0L, 0L), "claude-sonnet-5-1");
+        assertThat(sibling.pricingFallback()).isTrue();
+        assertThat(calculator.calculate(new TurnTokens(1L, 0L, 0L, 0L), "claude-opus-5-9").pricingFallback()).isTrue();
+        assertThat(calculator.calculate(new TurnTokens(1L, 0L, 0L, 0L), "claude-haiku-4-5-beta").pricingFallback())
+                .isTrue();
+        // Les suffixes de date et « -latest » restent reconnus.
+        assertThat(calculator.calculate(new TurnTokens(1L, 0L, 0L, 0L), "claude-opus-5-5-20261001").pricingFallback())
+                .isFalse();
+    }
+
+    @Test
     void aDelegatedExplorationIsBilledAtItsModelRate() {
         // Tour Opus 5.5 de 1 M d'entrée dont 600 k lus par l'exploration sur Sonnet : 400 k×4 + 600 k×Sonnet.
         java.util.Map<String, long[]> shares = new java.util.LinkedHashMap<>();

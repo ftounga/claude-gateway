@@ -47,6 +47,15 @@ public class RoutineService {
     public static final BigDecimal DEFAULT_MONTHLY_BUDGET_USD = new BigDecimal("100.00");
     public static final BigDecimal MIN_MONTHLY_BUDGET_USD = new BigDecimal("1.00");
     public static final BigDecimal MAX_MONTHLY_BUDGET_USD = new BigDecimal("2000.00");
+    /**
+     * F-224 / SF-224-06 — les budgets se SAISISSENT en euros : mêmes bornes, en euros. Ils sont rangés et appliqués en
+     * dollars (la devise des coûts du fournisseur), convertis au taux unique de la passerelle : aucune colonne ne
+     * change, et revenir aux dollars ne demande aucune migration.
+     */
+    public static final BigDecimal MIN_MAX_RUN_EUR = new BigDecimal("0.10");
+    public static final BigDecimal MAX_MAX_RUN_EUR = new BigDecimal("50.00");
+    public static final BigDecimal MIN_MONTHLY_BUDGET_EUR = new BigDecimal("1.00");
+    public static final BigDecimal MAX_MONTHLY_BUDGET_EUR = new BigDecimal("2000.00");
 
     private final WorkspaceService workspaceService;
     private final SubjectRoutineRepository routines;
@@ -212,10 +221,20 @@ public class RoutineService {
     /** La vue d'une routine : dernière exécution et dépense du mois quand le journal est branché. */
     private RoutineView view(SubjectRoutine routine, OffsetDateTime now) {
         if (runs == null || routine.getId() == null) {
-            return RoutineView.of(routine, now);
+            return RoutineView.of(routine, now, usdToEur());
         }
         return RoutineView.of(routine, now, runs.last(routine.getUserId(), routine.getId()),
-                runs.monthSpent(routine, now));
+                runs.monthSpent(routine, now), usdToEur());
+    }
+
+    /** Le taux de lecture et de saisie en euros (F-224 / SF-224-06) : celui du journal, sinon 0,92. */
+    private BigDecimal usdToEur() {
+        return runs == null ? RoutineDtos.DEFAULT_USD_TO_EUR : runs.usdToEur();
+    }
+
+    /** Un budget saisi en euros, ramené en dollars au centime (la devise du plafond appliqué). */
+    private BigDecimal usdOf(BigDecimal eur) {
+        return eur.divide(usdToEur(), 2, RoundingMode.HALF_UP);
     }
 
     private static String scheduleKey(SubjectRoutine routine) {
@@ -227,7 +246,7 @@ public class RoutineService {
      * Applique la requête à la routine et valide le résultat. {@code creating} : les champs absents
      * prennent leur défaut ; sinon ils gardent leur valeur.
      */
-    static void apply(SubjectRoutine routine, RoutineRequest request, boolean creating) {
+    void apply(SubjectRoutine routine, RoutineRequest request, boolean creating) {
         if (request == null) {
             throw new InvalidRoutineException("Requête vide.");
         }
@@ -263,14 +282,25 @@ public class RoutineService {
                     .orElseThrow(() -> new InvalidRoutineException("Fuseau horaire inconnu : " + raw + "."));
             routine.setTimeZone(zone.getId());
         }
-        if (request.maxRunUsd() != null || creating) {
+        if (request.maxRunEur() != null) {
+            if (request.maxRunEur().compareTo(MIN_MAX_RUN_EUR) < 0 || request.maxRunEur().compareTo(MAX_MAX_RUN_EUR) > 0) {
+                throw new InvalidRoutineException("Le budget par exécution va de 0,10 € à 50,00 €.");
+            }
+            routine.setMaxRunUsd(usdOf(request.maxRunEur()));
+        } else if (request.maxRunUsd() != null || creating) {
             BigDecimal amount = request.maxRunUsd() == null ? DEFAULT_MAX_RUN_USD : request.maxRunUsd();
             if (amount.compareTo(MIN_MAX_RUN_USD) < 0 || amount.compareTo(MAX_MAX_RUN_USD) > 0) {
                 throw new InvalidRoutineException("Le budget par exécution va de 0,10 $ à 50,00 $.");
             }
             routine.setMaxRunUsd(amount.setScale(2, RoundingMode.HALF_UP));
         }
-        if (request.monthlyBudgetUsd() != null || creating) {
+        if (request.monthlyBudgetEur() != null) {
+            if (request.monthlyBudgetEur().compareTo(MIN_MONTHLY_BUDGET_EUR) < 0
+                    || request.monthlyBudgetEur().compareTo(MAX_MONTHLY_BUDGET_EUR) > 0) {
+                throw new InvalidRoutineException("Le budget mensuel va de 1,00 € à 2 000,00 €.");
+            }
+            routine.setMonthlyBudgetUsd(usdOf(request.monthlyBudgetEur()));
+        } else if (request.monthlyBudgetUsd() != null || creating) {
             BigDecimal monthly = request.monthlyBudgetUsd() == null
                     ? DEFAULT_MONTHLY_BUDGET_USD : request.monthlyBudgetUsd();
             if (monthly.compareTo(MIN_MONTHLY_BUDGET_USD) < 0 || monthly.compareTo(MAX_MONTHLY_BUDGET_USD) > 0) {

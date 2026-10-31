@@ -95,8 +95,7 @@ public class SessionSuggestionService {
             return java.util.Optional.empty();
         }
 
-        ProviderPricingProperties.ModelPricing grid = ledger.model() == null
-                ? pricing.fallbackPricing() : pricing.pricingOf(ledger.model());
+        ProviderPricingProperties.ModelPricing grid = pricing.pricingOrFallback(ledger.model());
         BigDecimal perToken = grid.input().subtract(grid.cacheRead());
         if (perToken.signum() <= 0) {
             return java.util.Optional.empty(); // grille mal réglée : on se tait plutôt que d'inventer

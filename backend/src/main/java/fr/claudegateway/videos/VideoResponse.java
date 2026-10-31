@@ -14,10 +14,12 @@ public record VideoResponse(UUID id, UUID workspaceId, String kind, String title
         long sizeBytes, String label, List<VideoChapter> chapters, String mediaUrl, String posterUrl,
         String downloadUrl, OffsetDateTime createdAt, OffsetDateTime updatedAt, List<VideoSource> sources,
         String seriesVoice, java.math.BigDecimal costUsd, java.math.BigDecimal estimateLowUsd,
-        java.math.BigDecimal estimateHighUsd) {
+        java.math.BigDecimal estimateHighUsd, java.math.BigDecimal costEur, java.math.BigDecimal estimateLowEur,
+        java.math.BigDecimal estimateHighEur) {
 
-    /** Assemble la réponse d'une version servie. */
-    public static VideoResponse of(Video video, VideoVersion version, VideoSeries series, String mediaBase) {
+    /** Assemble la réponse d'une version servie ; les montants aussi en euros, au taux unique (F-224 / SF-224-06). */
+    public static VideoResponse of(Video video, VideoVersion version, VideoSeries series, String mediaBase,
+            java.math.BigDecimal usdToEur) {
         return new VideoResponse(video.getId(), video.getWorkspaceId(), video.getKind().name(), video.getTitle(), video.getDescription(),
                 video.getSeriesId(), series == null ? null : series.getTitle(), video.getEpisode(),
                 video.getCurrentVersion(), version.getVersion(), video.getDurationS(), version.getMime(),
@@ -26,7 +28,10 @@ public record VideoResponse(UUID id, UUID workspaceId, String kind, String title
                 video.getCreatedAt(), video.getUpdatedAt(), VideoSource.fromJson(version.getSourcesJson()),
                 series == null ? null : series.getVoice(), VideoGalleryResponse.money(video.getCostUsd()),
                 VideoGalleryResponse.money(video.getEstimateLowUsd()),
-                VideoGalleryResponse.money(video.getEstimateHighUsd()));
+                VideoGalleryResponse.money(video.getEstimateHighUsd()),
+                VideoGalleryResponse.eur(video.getCostUsd(), usdToEur),
+                VideoGalleryResponse.eur(video.getEstimateLowUsd(), usdToEur),
+                VideoGalleryResponse.eur(video.getEstimateHighUsd(), usdToEur));
     }
 
     /** Une version conservée, pour la liste des versions. */

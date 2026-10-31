@@ -101,7 +101,7 @@ class AtelierChatServiceSpendCapTest {
         AtelierChatResult result = service.chat(userId, workspaceId, "fais le point");
 
         assertThat(result.budgetReached()).isTrue();
-        assertThat(result.reply()).startsWith("INCOMPLET").contains("0,25 $");
+        assertThat(result.reply()).startsWith("INCOMPLET").contains("0,23 €");
         assertThat(agentProvider.remaining()).isEqualTo(3);
         service.releaseSpendCap(userId, workspaceId);
     }

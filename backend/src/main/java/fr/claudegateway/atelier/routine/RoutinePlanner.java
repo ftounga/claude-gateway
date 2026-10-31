@@ -242,6 +242,6 @@ public class RoutinePlanner {
             throw new RoutineConflictException("routine_busy",
                     "Un tour tourne déjà dans ce sujet : réessayez quand il sera fini.");
         }
-        return RoutineRunView.of(runner.launch(turn.get(), routine, RoutineTrigger.MANUAL, null, cap));
+        return runs.view(runner.launch(turn.get(), routine, RoutineTrigger.MANUAL, null, cap));
     }
 }

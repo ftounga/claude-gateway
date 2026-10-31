@@ -17,7 +17,8 @@ public record VideoGalleryResponse(List<SeriesItem> series, List<VideoItem> vide
     /** Une vidéo telle qu'une carte la montre. */
     public record VideoItem(UUID id, String title, String description, UUID seriesId, Integer episode,
             Integer durationS, int currentVersion, int chapterCount, String posterUrl, OffsetDateTime createdAt,
-            BigDecimal costUsd, BigDecimal estimateLowUsd, BigDecimal estimateHighUsd) {
+            BigDecimal costUsd, BigDecimal estimateLowUsd, BigDecimal estimateHighUsd, BigDecimal costEur,
+            BigDecimal estimateLowEur, BigDecimal estimateHighEur) {
     }
 
     /**
@@ -26,15 +27,17 @@ public record VideoGalleryResponse(List<SeriesItem> series, List<VideoItem> vide
      */
     public record SeriesItem(UUID id, String title, String description, int episodeCount, int totalDurationS,
             List<VideoItem> episodes, OffsetDateTime createdAt, BigDecimal costUsd, BigDecimal estimateLowUsd,
-            BigDecimal estimateHighUsd) {
+            BigDecimal estimateHighUsd, BigDecimal costEur, BigDecimal estimateLowEur, BigDecimal estimateHighEur) {
     }
 
     /**
      * Assemble la galerie.
      *
      * @param posterUrl l'adresse de couverture d'une version (ticket), appelée seulement si elle en a une
+     * @param usdToEur  le taux unique de la passerelle : chaque montant est aussi rendu en euros (F-224 / SF-224-06)
      */
-    public static VideoGalleryResponse of(VideoService.Gallery gallery, Function<VideoVersion, String> posterUrl) {
+    public static VideoGalleryResponse of(VideoService.Gallery gallery, Function<VideoVersion, String> posterUrl,
+            BigDecimal usdToEur) {
         Function<Video, VideoItem> item = video -> {
             VideoVersion version = gallery.current().get(video.getId());
             return new VideoItem(video.getId(), video.getTitle(), video.getDescription(), video.getSeriesId(),
@@ -42,7 +45,8 @@ public record VideoGalleryResponse(List<SeriesItem> series, List<VideoItem> vide
                     version == null ? 0 : VideoChapter.fromJson(version.getChaptersJson()).size(),
                     version == null || version.getPosterKey() == null ? null : posterUrl.apply(version),
                     video.getCreatedAt(), money(video.getCostUsd()), money(video.getEstimateLowUsd()),
-                    money(video.getEstimateHighUsd()));
+                    money(video.getEstimateHighUsd()), eur(video.getCostUsd(), usdToEur),
+                    eur(video.getEstimateLowUsd(), usdToEur), eur(video.getEstimateHighUsd(), usdToEur));
         };
         List<SeriesItem> series = gallery.series().stream().map(entry -> {
             List<VideoItem> episodes = entry.episodes().stream().map(item).toList();
@@ -51,7 +55,10 @@ public record VideoGalleryResponse(List<SeriesItem> series, List<VideoItem> vide
                     episodes.size(), total, episodes, entry.series().getCreatedAt(),
                     sum(episodes.stream().map(VideoItem::costUsd).toList()),
                     sum(episodes.stream().map(VideoItem::estimateLowUsd).toList()),
-                    sum(episodes.stream().map(VideoItem::estimateHighUsd).toList()));
+                    sum(episodes.stream().map(VideoItem::estimateHighUsd).toList()),
+                    sum(episodes.stream().map(VideoItem::costEur).toList()),
+                    sum(episodes.stream().map(VideoItem::estimateLowEur).toList()),
+                    sum(episodes.stream().map(VideoItem::estimateHighEur).toList()));
         }).toList();
         return new VideoGalleryResponse(series, gallery.standalone().stream().map(item).toList());
     }
@@ -59,6 +66,15 @@ public record VideoGalleryResponse(List<SeriesItem> series, List<VideoItem> vide
     /** Un montant au cent (F-216 / SF-216-02), ou {@code null}. */
     static BigDecimal money(BigDecimal value) {
         return value == null ? null : value.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /** Un montant en dollars, en euros au centime ({@code HALF_UP}), ou {@code null} (F-224 / SF-224-06). */
+    static BigDecimal eur(BigDecimal usd, BigDecimal usdToEur) {
+        if (usd == null) {
+            return null;
+        }
+        BigDecimal rate = usdToEur == null || usdToEur.signum() <= 0 ? VideoQuoteService.DEFAULT_USD_TO_EUR : usdToEur;
+        return usd.multiply(rate).setScale(2, RoundingMode.HALF_UP);
     }
 
     /** La somme des montants connus, ou {@code null} s'il n'y en a aucun. */
