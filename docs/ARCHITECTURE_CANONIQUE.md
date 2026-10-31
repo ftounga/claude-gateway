@@ -1382,6 +1382,13 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   F-227 : le chantier du sujet sous lequel l'attente est rangée ; nul = « au fil de l'eau » ; reprise des attentes
   ouvertes nées sous un seul chantier ouvert).
 
+- **provider_cost_reports** — **la facture du fournisseur, jour par jour** (F-224 / SF-224-02, migration `181`) :
+  `id`, `report_day (date)`, `kind` (`COST` = montant facturé du jour, `KEY` = consommation d'une clé API chiffrée à la
+  grille), `api_key_id` (vide pour `COST`), `api_key_label`, `amount_usd`, `input_tokens`, `output_tokens`,
+  `fetched_at` ; unique `(report_day, kind, api_key_id)`. Donnée de **plateforme** (la facture de l'organisation),
+  relue chaque jour par l'API d'administration (clé `APP_ANTHROPIC_ADMIN_KEY`), lue par l'administrateur seul.
+- **usage_turns.kind** (migration `181`) : `TOUR` (défaut) ou `ANNEXE` (aide, lecture raisonnée, index de la carte).
+
 - **atelier_turn_measures** — la **mesure par tour** d'agent (F-188 / SF-188-03) : `user_id`, `workspace_id`, `host_id`, `model`, `occurred_at`, `duration_ms`, `iterations`, `stop_cause`, contexte maximal et cumulé par passe, réécriture du cache (1re passe, puis suivantes), totaux de tokens, recherches web, refus et attentes « poste occupé ». **Des nombres seulement, aucun contenu.** Rétention de 180 jours (purge quotidienne) ; purge à la suppression du compte. Requêtes de lecture : `docs/ops/mesure-par-tour.md`.
 
 - **runner_pairing_codes / runner_tokens** — identité du runner (F-38 / SF-38-01, migration `047` ;

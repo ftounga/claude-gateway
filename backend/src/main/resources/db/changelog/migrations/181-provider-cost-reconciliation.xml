@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-224 / SF-224-02 - LE COUT AFFICHE = CE QUE JE PAIE.
+
+      provider_cost_reports : ce que le FOURNISSEUR facture, relu chaque jour par l'API d'administration
+      (cle Admin, APP_ANTHROPIC_ADMIN_KEY ; inactif sans elle). Donnee de la PLATEFORME (la facture de
+      l'organisation), lue par l'administrateur seul - aucune donnee d'un compte client.
+        kind = 'COST'  : le montant facture du jour, toutes cles confondues (cost_report) ;
+        kind = 'KEY'   : la consommation du jour d'une cle API (usage_report), chiffree a la grille.
+      Une ligne par (jour, kind, cle) : la relecture remplace.
+
+      usage_turns.kind : 'TOUR' (defaut, un tour d'agent) ou 'ANNEXE' (aide, lecture raisonnee, index de la
+      carte), pour que les appels annexes soient comptes et reconnaissables (SF-224-03).
+
+      Rollback : la colonne et la table se retirent.
+    -->
+
+    <changeSet id="181-provider-cost-reports" author="claude-gateway">
+        <createTable tableName="provider_cost_reports">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="report_day" type="date"><constraints nullable="false"/></column>
+            <column name="kind" type="varchar(8)"><constraints nullable="false"/></column>
+            <column name="api_key_id" type="varchar(80)" defaultValue="">
+                <constraints nullable="false"/>
+            </column>
+            <column name="api_key_label" type="varchar(120)"/>
+            <column name="amount_usd" type="numeric(16,6)"><constraints nullable="false"/></column>
+            <column name="input_tokens" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="output_tokens" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="fetched_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="provider_cost_reports" columnNames="report_day, kind, api_key_id"
+                             constraintName="uq_provider_cost_reports_day_kind_key"/>
+        <rollback>
+            <dropTable tableName="provider_cost_reports"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="181-usage-turns-kind" author="claude-gateway">
+        <addColumn tableName="usage_turns">
+            <column name="kind" type="varchar(8)" defaultValue="TOUR">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="usage_turns" columnName="kind"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
