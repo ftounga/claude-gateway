@@ -28,7 +28,9 @@ public record CostSummary(
         BigDecimal spentEur,
         BigDecimal budgetEur,
         Integer percent,
-        List<Client> clients) {
+        List<Client> clients,
+        BigDecimal spentUsd,
+        BigDecimal usdToEur) {
 
     /**
      * Une ligne de l'écran.
@@ -48,6 +50,7 @@ public record CostSummary(
             BigDecimal budgetEur,
             Integer percent,
             boolean ownBudget,
-            long totalTokens) {
+            long totalTokens,
+            BigDecimal spentUsd) {
     }
 }

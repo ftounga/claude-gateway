@@ -44,7 +44,15 @@ class UsageTurnWriter {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     void write(UUID userId, UUID workspaceId, UUID hostId, TurnTokens tokens, TurnExtras extras,
             TurnCost cost) {
+        write(userId, workspaceId, hostId, tokens, extras, cost, UsageTurn.Kind.TOUR);
+    }
+
+    /** Même ligne, de nature {@code kind} ({@code TOUR} ou {@code ANNEXE}, F-224 / SF-224-03). */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    void write(UUID userId, UUID workspaceId, UUID hostId, TurnTokens tokens, TurnExtras extras,
+            TurnCost cost, UsageTurn.Kind kind) {
         usageTurnRepository.save(UsageTurn.builder()
+                .kind(kind)
                 .userId(userId)
                 .workspaceId(workspaceId)
                 .hostId(hostId)

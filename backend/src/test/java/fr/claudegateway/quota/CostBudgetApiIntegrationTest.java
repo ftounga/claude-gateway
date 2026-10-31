@@ -187,6 +187,16 @@ class CostBudgetApiIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.period").value("month"));
 
+        // F-224 / SF-224-03 : les 7 derniers jours, en dollars, l'euro et son taux à côté.
+        mockMvc.perform(get("/api/admin/cost/summary?period=7d").contextPath("/api")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.period").value("7d"))
+                .andExpect(jsonPath("$.from").value(java.time.LocalDate.now(java.time.ZoneOffset.UTC).minusDays(6).toString()))
+                .andExpect(jsonPath("$.to").value(java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString()))
+                .andExpect(jsonPath("$.spentUsd").value(0))
+                .andExpect(jsonPath("$.usdToEur").value(0.92));
+
         mockMvc.perform(get("/api/admin/cost/summary?period=trimestre").contextPath("/api")
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isBadRequest());
