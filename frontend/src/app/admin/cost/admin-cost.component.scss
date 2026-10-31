@@ -83,6 +83,15 @@
     font-weight: 600;
   }
 
+  /* F-224 / SF-224-04 : l'euro et son taux, en second. */
+  &__total-eur,
+  &__client-eur {
+    margin: 0;
+    color: var(--cg-text-secondary);
+    font-size: 13px;
+    font-weight: 400;
+  }
+
   &__total-budget {
     margin: 0;
     color: var(--cg-text-secondary);

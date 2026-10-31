@@ -16,6 +16,7 @@
       aria-label="Période observée"
     >
       <mat-button-toggle value="week">Cette semaine</mat-button-toggle>
+      <mat-button-toggle value="7d">7 derniers jours</mat-button-toggle>
       <mat-button-toggle value="month">Ce mois</mat-button-toggle>
     </mat-button-toggle-group>
   </header>
@@ -59,9 +60,15 @@
       <div class="cost-admin__total">
         <div>
           <p class="cost-admin__total-label">
-            {{ data.period === 'week' ? 'Cette semaine' : 'Ce mois' }} · du {{ data.from }} au {{ data.to }}
+            {{ periodLabel(data.period) }} · du {{ data.from }} au {{ data.to }}
           </p>
-          <p class="cost-admin__total-amount">{{ euros(data.spentEur) }}</p>
+          <!-- F-224 / SF-224-04 : la devise de la facture d'abord ; l'euro et son taux en second. -->
+          @if (data.spentUsd !== undefined && data.spentUsd !== null) {
+            <p class="cost-admin__total-amount num">{{ dollars(data.spentUsd) }}</p>
+            <p class="cost-admin__total-eur num">{{ euros(data.spentEur) }} · 1 $ = {{ rate(data.usdToEur) }} €</p>
+          } @else {
+            <p class="cost-admin__total-amount">{{ euros(data.spentEur) }}</p>
+          }
         </div>
         @if (data.budgetEur !== null) {
           <p class="cost-admin__total-budget">
@@ -105,7 +112,13 @@
             <li class="cost-admin__client">
               <div class="cost-admin__client-head">
                 <span class="cost-admin__client-name">{{ clientName(client) }}</span>
-                <span class="cost-admin__client-spent">{{ euros(client.spentEur) }}</span>
+                <span class="cost-admin__client-spent num">
+                  @if (client.spentUsd !== undefined && client.spentUsd !== null) {
+                    {{ dollars(client.spentUsd) }} <span class="cost-admin__client-eur">· {{ euros(client.spentEur) }}</span>
+                  } @else {
+                    {{ euros(client.spentEur) }}
+                  }
+                </span>
               </div>
 
               @if (client.budgetEur !== null) {
@@ -149,4 +162,7 @@
       }
     </mat-card>
   }
+
+  <!-- F-224 / SF-224-04 : ce que le fournisseur facture, à côté de ce que la passerelle calcule. -->
+  <app-admin-cost-reconciliation></app-admin-cost-reconciliation>
 </section>
