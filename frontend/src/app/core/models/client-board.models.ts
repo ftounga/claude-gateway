@@ -96,6 +96,11 @@ export interface ClientBoardLooseTask {
   dormant: boolean;
   /** Demandée depuis assez longtemps pour relancer (F-175). */
   followUpDue: boolean;
+  /** Le chantier ouvert du sujet sous lequel elle est rangée (F-227), `null` = au fil de l'eau. */
+  chantierNumber?: number | null;
+  /** La clôture proposée (F-175 ; revue des 14 jours, F-227), ou `null`. */
+  proposedStatus?: string | null;
+  proposedReason?: string | null;
 }
 
 /** Le tableau d'un client. */
@@ -301,8 +306,10 @@ export interface SubjectBlock {
   oldest: { idleDays: number; dormant: boolean };
   /** Les chantiers du sujet, outil → décision → quelqu'un (ordre du serveur dans chaque couleur), filtrés. */
   chantiers: ClientBoardChantier[];
-  /** Les attentes hors chantier du sujet, décision puis quelqu'un, filtrées. */
+  /** Les attentes « au fil de l'eau » du sujet (rangées sous aucun chantier montré), décision puis quelqu'un, filtrées. */
   tasks: ClientBoardLooseTask[];
+  /** Les attentes rangées sous un chantier montré du bloc, par numéro de chantier (F-227 / SF-227-02), filtrées. */
+  attached: Record<number, ClientBoardLooseTask[]>;
 }
 
 /**
@@ -332,6 +339,7 @@ export function subjectBlocks(board: Pick<ClientBoard, 'chantiers' | 'horsChanti
           oldest: { idleDays: -1, dormant: false },
           chantiers: [],
           tasks: [],
+          attached: {},
         },
         allChantiers: [],
         allTasks: [],
@@ -362,7 +370,17 @@ export function subjectBlocks(board: Pick<ClientBoard, 'chantiers' | 'horsChanti
     block.oldest = { idleDays: Math.max(0, block.oldest.idleDays), dormant: block.oldest.dormant };
     block.chantiers = UNBLOCKER_ORDER.flatMap((who) =>
       allChantiers.filter((c) => groupOf(c) === who && matchesFilter(c, filter)));
-    block.tasks = looseTaskGroups(allTasks, filter).flatMap((group) => group.tasks);
+    const shownChantiers = new Set(block.chantiers.map((c) => c.number));
+    block.tasks = [];
+    block.attached = {};
+    for (const t of looseTaskGroups(allTasks, filter).flatMap((group) => group.tasks)) {
+      // F-227 / SF-227-02 : sous son chantier quand il est montré ; sinon au fil de l'eau (jamais perdue).
+      if (t.chantierNumber != null && shownChantiers.has(t.chantierNumber)) {
+        (block.attached[t.chantierNumber] ??= []).push(t);
+      } else {
+        block.tasks.push(t);
+      }
+    }
     blocks.push(block);
   }
   return blocks
@@ -370,4 +388,9 @@ export function subjectBlocks(board: Pick<ClientBoard, 'chantiers' | 'horsChanti
       || (b.oldest.idleDays - a.oldest.idleDays)
       || a.name.localeCompare(b.name, 'fr'))
     .filter((block) => block.chantiers.length > 0 || block.tasks.length > 0);
+}
+
+/** Les attentes ouvertes sous lesquelles une clôture est proposée (F-227 / SF-227-02). */
+export function proposedTasks(board: Pick<ClientBoard, 'horsChantier'> | null): ClientBoardLooseTask[] {
+  return (board?.horsChantier ?? []).filter((t) => !!t.proposedStatus);
 }

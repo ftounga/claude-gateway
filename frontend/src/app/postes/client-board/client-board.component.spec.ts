@@ -73,7 +73,9 @@ describe('ClientBoardComponent', () => {
   });
 
   function build(data: ClientBoard): void {
-    boards = jasmine.createSpyObj<ClientBoardService>('ClientBoardService', ['board', 'snooze', 'unsnooze']);
+    boards = jasmine.createSpyObj<ClientBoardService>('ClientBoardService', ['board', 'snooze', 'unsnooze',
+      'proposeStale']);
+    boards.proposeStale.and.returnValue(of({ days: 14, proposed: 2 }));
     boards.board.and.returnValue(of(data));
     boards.snooze.and.returnValue(of({ number: 1, until: '2026-10-30T10:00:00' }));
     boards.unsnooze.and.returnValue(of(undefined));
@@ -87,9 +89,13 @@ describe('ClientBoardComponent', () => {
     dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
     dialog.open.and.callFake(() => ({ afterClosed: () => of(dialogAnswer) }) as never);
     snack = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
-    actions = jasmine.createSpyObj<TerminalActionsService>('TerminalActionsService', ['close', 'changeStatus']);
+    actions = jasmine.createSpyObj<TerminalActionsService>('TerminalActionsService',
+      ['close', 'changeStatus', 'attachToChantier', 'confirmProposal', 'dismissProposal']);
     actions.close.and.returnValue(of({} as TerminalAction));
     actions.changeStatus.and.returnValue(of({} as TerminalAction));
+    actions.attachToChantier.and.returnValue(of({} as TerminalAction));
+    actions.confirmProposal.and.returnValue(of({} as TerminalAction));
+    actions.dismissProposal.and.returnValue(of({} as TerminalAction));
     TestBed.configureTestingModule({
       imports: [ClientBoardComponent],
       providers: [
@@ -347,7 +353,7 @@ describe('ClientBoardComponent', () => {
     expect(children[0]).toContain('cb__rows');
     expect(children[1]).toContain('cb__loose');
     const section = w1.querySelector('[data-section="hors-chantier"]') as HTMLElement;
-    expect(section.textContent).toContain('Hors chantier');
+    expect(section.textContent).toContain('Au fil de l\'eau');
     const row = section.querySelector('[data-action="a1"]') as HTMLElement;
     expect(row.querySelector('.cb__who--MOI')?.textContent).toContain('front_hand');
     expect(row.textContent).toContain('Ça attend votre décision');
@@ -391,6 +397,56 @@ describe('ClientBoardComponent', () => {
     })));
     component.markDone(asked);
     expect(snack.open.calls.mostRecent().args[0]).toContain('Action introuvable.');
+  });
+
+  // ------------------------------------------------------------------ F-227 / SF-227-02 : rangées sous leur chantier
+
+  it('F-227 : une attente rangée sous un chantier montré s\'affiche sous lui ; les autres au fil de l\'eau', () => {
+    const under: ClientBoardLooseTask = { ...toAsk, actionId: 'a9', description: 'Demander le certificat', chantierNumber: 1 };
+    const orphan: ClientBoardLooseTask = { ...toAsk, actionId: 'a8', description: 'Chantier fermé', chantierNumber: 7 };
+    build(withLoose([outilReady], [under, orphan, toAsk]));
+    const w1 = el().querySelector('[data-subject="w1"]') as HTMLElement;
+    const rows = w1.querySelector('.cb__rows') as HTMLElement;
+    const attached = rows.querySelector('[data-action="a9"]') as HTMLElement;
+    expect(attached).not.toBeNull();
+    expect(attached.classList).toContain('cb__item--attached');
+    // juste après la ligne de son chantier
+    expect(attached.previousElementSibling?.getAttribute('data-key')).toBe('w1#1');
+    const loose = w1.querySelector('[data-section="hors-chantier"]') as HTMLElement;
+    expect(loose.querySelector('[data-action="a9"]')).toBeNull();
+    expect(loose.querySelector('[data-action="a8"]')).not.toBeNull();
+    expect(loose.querySelector('[data-action="a1"]')).not.toBeNull();
+    expect(component.looseCount()).toBe(2);
+  });
+
+  it('F-227 : [Rattacher au chantier N] et [Ranger au fil de l\'eau] — les chantiers ouverts du même sujet', () => {
+    const other = card({ number: 2, focus: false });
+    build(withLoose([outilReady, other], [toAsk]));
+    expect(component.attachChoices(toAsk)).toEqual([1, 2]);
+    expect(component.attachChoices({ ...toAsk, chantierNumber: 2 })).toEqual([1]);
+    component.attach(toAsk, 2);
+    expect(actions.attachToChantier).toHaveBeenCalledWith('w1', 'a1', 2);
+    component.attach({ ...toAsk, chantierNumber: 2 }, null);
+    expect(actions.attachToChantier).toHaveBeenCalledWith('w1', 'a1', null);
+  });
+
+  it('F-227 : la revue des 14 jours propose ; une proposition se clôt ou se garde, une à une ou en lot', () => {
+    const proposed: ClientBoardLooseTask = { ...toAsk, proposedStatus: 'ANNULE',
+      proposedReason: 'Sans geste depuis 20 jours : périmée ?' };
+    const proposed2: ClientBoardLooseTask = { ...proposed, actionId: 'a7', description: 'Autre' };
+    build(withLoose([], [proposed, proposed2]));
+    (el().querySelector('.cb__review-stale') as HTMLButtonElement).click();
+    expect(boards.proposeStale).toHaveBeenCalledWith('h1');
+    expect(snack.open.calls.mostRecent().args[0]).toContain('clôture proposée');
+    fixture.detectChanges();
+    const line = el().querySelector('[data-action="a1"] .cb__proposal') as HTMLElement;
+    expect(line.textContent).toContain('Sans geste depuis 20 jours');
+    (line.querySelector('.cb__proposal-dismiss') as HTMLButtonElement).click();
+    expect(actions.dismissProposal).toHaveBeenCalledWith('w1', 'a1');
+    expect(actions.confirmProposal).not.toHaveBeenCalled();
+    (el().querySelector('.cb__close-proposed') as HTMLButtonElement).click();
+    expect(dialog.open).toHaveBeenCalled();
+    expect(actions.confirmProposal).toHaveBeenCalledTimes(2);
   });
 
   // ------------------------------------------------------------------ SF-220-08 : rangé par sujet

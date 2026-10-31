@@ -345,7 +345,7 @@ annuelle de deux mois. Ce sont des **valeurs de départ**, pas des décisions fi
 | F-224 | Le coût affiché = ce que je paie | **Demande PO du 2026-10-31.** Cadrage `docs/features/F-224/CADRAGE-F-224-cout-exact.md`. | À faire |
 | F-225 | Le point de situation d'un terminal | **Demande PO du 2026-10-31.** Cadrage `docs/features/F-225/CADRAGE-F-225-point-de-situation.md`. | À faire |
 | F-226 | Suggérer le chantier parallèle et clarifier les gestes | **Demande PO du 2026-10-31.** Cadrage `docs/features/F-226/CADRAGE-F-226-suggerer-chantier-parallele.md`. | À faire |
-| F-227 | Chaque action rangée sous son chantier | **Demande PO du 2026-10-31.** Cadrage `docs/features/F-227/CADRAGE-F-227-actions-rattachees-au-chantier.md`. | En cours (1/2) |
+| F-227 | Chaque action rangée sous son chantier | **Demande PO du 2026-10-31.** Cadrage `docs/features/F-227/CADRAGE-F-227-actions-rattachees-au-chantier.md`. | Terminée (2/2) |
 | F-228 | Aperçu des pièces jointes | **Demande PO du 2026-10-31.** Cadrage `docs/features/F-228/CADRAGE-F-228-apercu-pieces-jointes.md`. | À faire |
 
 **Découpage** : **SF-44-01** construire le paquet Windows (build croisé, structure, test) ; **SF-44-02** le servir et le proposer à l'écran ; **SF-44-03** le paquet **macOS** `aarch64`/`x64` — construction, deux routes, et un écran qui présélectionne le format du poste qui consulte.
@@ -366,6 +366,7 @@ annuelle de deux mois. Ce sont des **valeurs de départ**, pas des décisions fi
 
 | Date | Modification | Validé par |
 |------|--------------|------------|
+| 2026-10-31 | F-227 | SF-227-02 : écrans — attentes sous leur chantier (tableau du client et tableau des chantiers), section « Au fil de l'eau », [Rattacher au chantier N] / [Ranger au fil de l'eau], [Revoir les attentes de plus de 14 jours] avec [Clore]/[Garder] et clôture en lot confirmée. **F-227 TERMINÉE.** |
 | 2026-10-31 | F-227 | SF-227-01 : migration 180 terminal_actions.chantier_number (+ reprise des attentes nées sous un seul chantier ouvert), attente inscrite rangée sous le chantier du tour, [Rattacher] (PUT …/actions/{id}/chantier), attentes par chantier dans le parcours et le tableau du client, revue des attentes de plus de 14 jours (clôture proposée F-175) |
 | 2026-10-31 | F-222 | SF-222-03 : la validation vise le chantier affiché par son numéro et dit pourquoi elle échoue ; chantiers zombies (Exécution sans geste ≥ 3 j) signalés « en sommeil » avec [Clore] et retirés du détail de la note de tour ; un même message n'est envoyé qu'une fois (3 s, mentions en lecture). **F-222 TERMINÉE.** |
 | 2026-10-31 | F-222 | SF-222-02 : liste blanche conservatrice des scripts de lecture du poste (releve*, verbe de lecture en premier argument, --dry-run) classés LECTURE ; jamais de code en ligne |

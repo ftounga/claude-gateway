@@ -92,6 +92,12 @@ export class TerminalActionsService {
       `/api/workspaces/${workspaceId}/actions/${actionId}/proposal/dismiss`, {});
   }
 
+  /** [Rattacher à un chantier] (F-227) : le chantier ouvert du sujet, ou `null` = au fil de l'eau. */
+  attachToChantier(workspaceId: string, actionId: string, chantier: number | null): Observable<TerminalAction> {
+    return this.http.put<TerminalAction>(
+      `/api/workspaces/${workspaceId}/actions/${actionId}/chantier`, { chantier });
+  }
+
   /** « Rétablir » — la fermeture s'était trompée. */
   reopen(workspaceId: string, actionId: string): Observable<TerminalAction> {
     return this.http.post<TerminalAction>(

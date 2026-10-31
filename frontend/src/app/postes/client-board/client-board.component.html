@@ -7,7 +7,7 @@
       @if (board(); as b) {
         <p class="cb__subtitle">
           {{ b.chantiers.length }} chantier{{ b.chantiers.length > 1 ? 's' : '' }} ouvert{{ b.chantiers.length > 1 ? 's' : '' }}
-          @if (looseCount() > 0) { · {{ looseCount() }} hors chantier }
+          @if (looseCount() > 0) { · {{ looseCount() }} au fil de l’eau }
           · {{ b.autonomy.running }}/{{ b.autonomy.maxParallel }} en autonome
         </p>
       }
@@ -36,6 +36,18 @@
         </button>
       </div>
       <span class="cb__spacer"></span>
+      <!-- F-227 / SF-227-02 : la revue des attentes anciennes PROPOSE leur clôture ; rien ne se ferme sans un clic. -->
+      @if (proposals().length > 0) {
+        <button type="button" class="cb__tool cb__close-proposed" [disabled]="reviewing()" (click)="confirmAllProposals()">
+          <mat-icon aria-hidden="true">inventory_2</mat-icon>
+          <span class="cb__tool-label">Clore les {{ proposals().length }} proposées</span>
+        </button>
+      }
+      <button type="button" class="cb__tool cb__review-stale" [disabled]="reviewing()" (click)="reviewStale()"
+        matTooltip="Proposer la clôture des attentes sans geste depuis 14 jours">
+        <mat-icon aria-hidden="true">history</mat-icon>
+        <span class="cb__tool-label">Revoir les attentes de plus de 14 jours</span>
+      </button>
       <button type="button" class="cb__tool cb__select-mode" [class.cb__tool--on]="selecting()"
         [attr.aria-pressed]="selecting()" (click)="toggleSelecting()">
         <mat-icon aria-hidden="true">checklist</mat-icon>
@@ -272,117 +284,20 @@
                       </div>
                     }
                   </li>
+                  @for (t of attachedTo(block, c); track t.actionId) {
+                    <ng-container *ngTemplateOutlet="taskItem; context: { $implicit: t, attached: true }"></ng-container>
+                  }
                 }
               </ul>
             }
 
-            <!-- HORS CHANTIER (SF-220-07) : les attentes de ce sujet qu'aucun chantier ne montre — lignes légères. -->
+            <!-- AU FIL DE L'EAU (SF-220-07, F-227 / SF-227-02) : les attentes de ce sujet rangées sous aucun chantier. -->
             @if (block.tasks.length > 0) {
-              <div class="cb__loose" data-section="hors-chantier" role="group" [attr.aria-label]="'Hors chantier — ' + block.name">
-                <h4 class="cb__loose-title">Hors chantier <span class="cb__group-count">· {{ block.tasks.length }}</span></h4>
+              <div class="cb__loose" data-section="hors-chantier" role="group" [attr.aria-label]="'Au fil de l’eau — ' + block.name">
+                <h4 class="cb__loose-title">Au fil de l'eau <span class="cb__group-count">· {{ block.tasks.length }}</span></h4>
                 <ul class="cb__rows">
                   @for (t of block.tasks; track t.actionId) {
-                    <li [class]="'cb__item cb__item--task cb__task cb__task--' + t.unblocker.who" [class.cb__item--open]="isTaskExpanded(t)"
-                      [attr.data-action]="t.actionId">
-                      <div class="cb__row">
-                        <span class="cb__check-slot"></span>
-                        <button type="button" class="cb__row-toggle cb__row-toggle--task" [attr.aria-expanded]="isTaskExpanded(t)"
-                          [attr.aria-controls]="taskDetailId(t)" (click)="toggleRow(taskKey(t))" (keydown)="rowKeydown($event)">
-                          <mat-icon [class]="'cb__who cb__who--' + t.unblocker.who" aria-hidden="true">{{ icons[t.unblocker.who] }}</mat-icon>
-                          <span class="cb-sr">{{ t.unblocker.label }} — </span>
-                          <span class="cb__row-title"><span class="cb__row-name cb__task-title">{{ t.description }}</span></span>
-                          <span class="cb__row-next">
-                            @if (t.followUpDue) {
-                              <span class="cb__followup"><mat-icon aria-hidden="true">notification_important</mat-icon>à relancer</span>
-                            }
-                            @if (t.unblocker.who === 'AUTRUI') {
-                              @if (t.unblocker.waitingOn) { Auprès de {{ t.unblocker.waitingOn }} }@if (taskSince(t); as s) { · {{ s }}}
-                            } @else {
-                              {{ t.unblocker.detail }}
-                            }
-                          </span>
-                          <span class="cb__age" [class.cb__age--dormant]="t.dormant">
-                            @if (t.dormant) { <mat-icon aria-hidden="true">bedtime</mat-icon> }{{ taskIdle(t) }}
-                          </span>
-                        </button>
-                        <div class="cb__row-actions">
-                          @if (canMarkRequested(t)) {
-                            <button type="button" class="cb__icon-btn cb__icon-btn--hover cb__task-requested" [disabled]="taskBusy(t)"
-                              matTooltip="Marquer demandé" (click)="markRequested(t)" [attr.aria-label]="'Marquer demandé : ' + t.description">
-                              <mat-icon aria-hidden="true">send</mat-icon>
-                            </button>
-                          }
-                          <button type="button" class="cb__icon-btn cb__icon-btn--hover cb__task-done" [disabled]="taskBusy(t)"
-                            matTooltip="Marquer fait" (click)="markDone(t)" [attr.aria-label]="'Marquer fait : ' + t.description">
-                            <mat-icon aria-hidden="true">check</mat-icon>
-                          </button>
-                          <button type="button" class="cb__icon-btn cb__icon-btn--hover cb__task-open" matTooltip="Ouvrir le sujet"
-                            (click)="openTask(t)" [attr.aria-label]="'Ouvrir le sujet de : ' + t.description">
-                            <mat-icon aria-hidden="true">arrow_forward</mat-icon>
-                          </button>
-                          <button type="button" class="cb__icon-btn cb__more cb__more--touch" [matMenuTriggerFor]="taskMore"
-                            [attr.aria-label]="'Gestes sur : ' + t.description">
-                            <mat-icon aria-hidden="true">more_horiz</mat-icon>
-                          </button>
-                          <mat-menu #taskMore="matMenu" xPosition="before">
-                            @if (canMarkRequested(t)) {
-                              <button mat-menu-item type="button" [disabled]="taskBusy(t)" (click)="markRequested(t)">
-                                <mat-icon>send</mat-icon>
-                                Marquer demandé
-                              </button>
-                            }
-                            <button mat-menu-item type="button" [disabled]="taskBusy(t)" (click)="markDone(t)">
-                              <mat-icon>check</mat-icon>
-                              Marquer fait
-                            </button>
-                            <button mat-menu-item type="button" (click)="openTask(t)">
-                              <mat-icon>arrow_forward</mat-icon>
-                              Ouvrir le sujet
-                            </button>
-                          </mat-menu>
-                        </div>
-                      </div>
-
-                      @if (isTaskExpanded(t)) {
-                        <div class="cb__detail-panel" [id]="taskDetailId(t)">
-                          <div class="cb__detail-head">
-                            <span [class]="'cb__pill cb__pill--' + t.unblocker.who">
-                              <mat-icon aria-hidden="true">{{ icons[t.unblocker.who] }}</mat-icon>
-                              {{ t.unblocker.label }}
-                            </span>
-                          </div>
-                          <p class="cb__detail">{{ t.unblocker.detail }}</p>
-                          <dl class="cb__facts">
-                            @if (t.blocks) {
-                              <div><dt>Bloque</dt><dd>{{ t.blocks }}</dd></div>
-                            }
-                            @if (t.unblocker.who === 'AUTRUI' && (t.unblocker.waitingOn || taskSince(t))) {
-                              <div class="cb__waiting"><dt>On attend</dt>
-                                <dd>@if (t.unblocker.waitingOn) {<strong>{{ t.unblocker.waitingOn }}</strong> }@if (taskSince(t); as s) {<span class="cb__muted">{{ s }}</span>}</dd>
-                              </div>
-                            }
-                            <div><dt>Dernier geste</dt><dd>{{ taskIdle(t) }}</dd></div>
-                          </dl>
-                          <div class="cb__detail-actions">
-                            @if (canMarkRequested(t)) {
-                              <button mat-button type="button" [disabled]="taskBusy(t)" (click)="markRequested(t)">
-                                <mat-icon>send</mat-icon>
-                                Marquer demandé
-                              </button>
-                            }
-                            <button mat-button type="button" [disabled]="taskBusy(t)" (click)="markDone(t)">
-                              <mat-icon>check</mat-icon>
-                              Marquer fait
-                            </button>
-                            <span class="cb__spacer"></span>
-                            <button mat-flat-button type="button" (click)="openTask(t)">
-                              Ouvrir le sujet
-                              <mat-icon iconPositionEnd>arrow_forward</mat-icon>
-                            </button>
-                          </div>
-                        </div>
-                      }
-                    </li>
+                    <ng-container *ngTemplateOutlet="taskItem; context: { $implicit: t, attached: false }"></ng-container>
                   }
                 </ul>
               </div>
@@ -454,3 +369,130 @@
     <div class="cb__loading"><mat-spinner diameter="32"></mat-spinner></div>
   }
 </section>
+
+<!-- F-227 / SF-227-02 : UNE attente, au fil de l'eau ou rangée sous son chantier — un seul gabarit pour les deux. -->
+<ng-template #taskItem let-t let-attached="attached">
+                    <li [class]="'cb__item cb__item--task cb__task cb__task--' + t.unblocker.who" [class.cb__item--open]="isTaskExpanded(t)"
+    [class.cb__item--attached]="attached" [class.cb__task--proposed]="!!t.proposedStatus"
+                      [attr.data-action]="t.actionId">
+                      <div class="cb__row">
+                        <span class="cb__check-slot"></span>
+                        <button type="button" class="cb__row-toggle cb__row-toggle--task" [attr.aria-expanded]="isTaskExpanded(t)"
+                          [attr.aria-controls]="taskDetailId(t)" (click)="toggleRow(taskKey(t))" (keydown)="rowKeydown($event)">
+                          <mat-icon [class]="'cb__who cb__who--' + t.unblocker.who" aria-hidden="true">{{ taskIcon(t) }}</mat-icon>
+                          <span class="cb-sr">{{ t.unblocker.label }} — </span>
+                          <span class="cb__row-title"><span class="cb__row-name cb__task-title">{{ t.description }}</span></span>
+                          <span class="cb__row-next">
+                            @if (t.followUpDue) {
+                              <span class="cb__followup"><mat-icon aria-hidden="true">notification_important</mat-icon>à relancer</span>
+                            }
+                            @if (t.unblocker.who === 'AUTRUI') {
+                              @if (t.unblocker.waitingOn) { Auprès de {{ t.unblocker.waitingOn }} }@if (taskSince(t); as s) { · {{ s }}}
+                            } @else {
+                              {{ t.unblocker.detail }}
+                            }
+                          </span>
+                          <span class="cb__age" [class.cb__age--dormant]="t.dormant">
+                            @if (t.dormant) { <mat-icon aria-hidden="true">bedtime</mat-icon> }{{ taskIdle(t) }}
+                          </span>
+                        </button>
+                        <div class="cb__row-actions">
+                          @if (canMarkRequested(t)) {
+                            <button type="button" class="cb__icon-btn cb__icon-btn--hover cb__task-requested" [disabled]="taskBusy(t)"
+                              matTooltip="Marquer demandé" (click)="markRequested(t)" [attr.aria-label]="'Marquer demandé : ' + t.description">
+                              <mat-icon aria-hidden="true">send</mat-icon>
+                            </button>
+                          }
+                          <button type="button" class="cb__icon-btn cb__icon-btn--hover cb__task-done" [disabled]="taskBusy(t)"
+                            matTooltip="Marquer fait" (click)="markDone(t)" [attr.aria-label]="'Marquer fait : ' + t.description">
+                            <mat-icon aria-hidden="true">check</mat-icon>
+                          </button>
+                          <button type="button" class="cb__icon-btn cb__icon-btn--hover cb__task-open" matTooltip="Ouvrir le sujet"
+                            (click)="openTask(t)" [attr.aria-label]="'Ouvrir le sujet de : ' + t.description">
+                            <mat-icon aria-hidden="true">arrow_forward</mat-icon>
+                          </button>
+                          <button type="button" class="cb__icon-btn cb__more cb__more--touch" [matMenuTriggerFor]="taskMore"
+                            [attr.aria-label]="'Gestes sur : ' + t.description">
+                            <mat-icon aria-hidden="true">more_horiz</mat-icon>
+                          </button>
+                          <mat-menu #taskMore="matMenu" xPosition="before">
+                            @if (canMarkRequested(t)) {
+                              <button mat-menu-item type="button" [disabled]="taskBusy(t)" (click)="markRequested(t)">
+                                <mat-icon>send</mat-icon>
+                                Marquer demandé
+                              </button>
+                            }
+                            <button mat-menu-item type="button" [disabled]="taskBusy(t)" (click)="markDone(t)">
+                              <mat-icon>check</mat-icon>
+                              Marquer fait
+                            </button>
+    <button mat-menu-item type="button" (click)="openTask(t)">
+      <mat-icon>arrow_forward</mat-icon>
+      Ouvrir le sujet
+    </button>
+    @for (n of attachChoices(t); track n) {
+      <button mat-menu-item type="button" class="cb__attach" [disabled]="taskBusy(t)" (click)="attach(t, n)">
+        <mat-icon>link</mat-icon>
+        Rattacher au chantier {{ n }}
+      </button>
+    }
+    @if (t.chantierNumber) {
+      <button mat-menu-item type="button" class="cb__detach" [disabled]="taskBusy(t)" (click)="attach(t, null)">
+        <mat-icon>link_off</mat-icon>
+        Ranger au fil de l'eau
+      </button>
+    }
+  </mat-menu>
+                        </div>
+                      </div>
+
+  @if (t.proposedStatus) {
+    <!-- F-227 / SF-227-02 : la clôture proposée (revue des attentes anciennes) attend un geste — rien n'est fermé seul. -->
+    <div class="cb__proposal" role="group" [attr.aria-label]="'Clôture proposée : ' + t.description">
+      <mat-icon aria-hidden="true">inventory_2</mat-icon>
+      <span class="cb__proposal-text">Clôture proposée{{ t.proposedReason ? ' — ' + t.proposedReason : '' }}</span>
+      <button mat-button type="button" class="cb__proposal-confirm" [disabled]="taskBusy(t)" (click)="confirmProposal(t)">Clore</button>
+      <button mat-button type="button" class="cb__proposal-dismiss" [disabled]="taskBusy(t)" (click)="dismissProposal(t)">Garder</button>
+    </div>
+  }
+                      @if (isTaskExpanded(t)) {
+                        <div class="cb__detail-panel" [id]="taskDetailId(t)">
+                          <div class="cb__detail-head">
+                            <span [class]="'cb__pill cb__pill--' + t.unblocker.who">
+                              <mat-icon aria-hidden="true">{{ taskIcon(t) }}</mat-icon>
+                              {{ t.unblocker.label }}
+                            </span>
+                          </div>
+                          <p class="cb__detail">{{ t.unblocker.detail }}</p>
+                          <dl class="cb__facts">
+                            @if (t.blocks) {
+                              <div><dt>Bloque</dt><dd>{{ t.blocks }}</dd></div>
+                            }
+                            @if (t.unblocker.who === 'AUTRUI' && (t.unblocker.waitingOn || taskSince(t))) {
+                              <div class="cb__waiting"><dt>On attend</dt>
+                                <dd>@if (t.unblocker.waitingOn) {<strong>{{ t.unblocker.waitingOn }}</strong> }@if (taskSince(t); as s) {<span class="cb__muted">{{ s }}</span>}</dd>
+                              </div>
+                            }
+                            <div><dt>Dernier geste</dt><dd>{{ taskIdle(t) }}</dd></div>
+                          </dl>
+                          <div class="cb__detail-actions">
+                            @if (canMarkRequested(t)) {
+                              <button mat-button type="button" [disabled]="taskBusy(t)" (click)="markRequested(t)">
+                                <mat-icon>send</mat-icon>
+                                Marquer demandé
+                              </button>
+                            }
+                            <button mat-button type="button" [disabled]="taskBusy(t)" (click)="markDone(t)">
+                              <mat-icon>check</mat-icon>
+                              Marquer fait
+                            </button>
+                            <span class="cb__spacer"></span>
+                            <button mat-flat-button type="button" (click)="openTask(t)">
+                              Ouvrir le sujet
+                              <mat-icon iconPositionEnd>arrow_forward</mat-icon>
+                            </button>
+                          </div>
+                        </div>
+                      }
+                    </li>
+</ng-template>

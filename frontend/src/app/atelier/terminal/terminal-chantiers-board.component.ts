@@ -135,6 +135,24 @@ const RING = 2 * Math.PI * 18;
               }
             </div>
 
+            @if (c.attentes?.length) {
+              <!-- F-227 / SF-227-02 : les attentes nées dans ce chantier (ou rattachées), même sans étape qui les attend. -->
+              <section class="board__attentes" aria-label="Attentes rangées sous ce chantier">
+                <h4 class="board__attentes-title">Attentes de ce chantier · {{ c.attentes!.length }}</h4>
+                <ul class="board__attentes-list">
+                  @for (a of c.attentes!; track a.id) {
+                    <li class="board__attente">
+                      <span class="board__attente-status">{{ a.status === 'DEMANDE' ? 'demandée' : 'à faire' }}</span>
+                      <span class="board__attente-text">{{ a.description }}</span>
+                      @if (a.person) {
+                        <span class="board__attente-person">· {{ a.person }}</span>
+                      }
+                    </li>
+                  }
+                </ul>
+              </section>
+            }
+
             @if (autonomyOf(c.number); as auto) {
               <section class="auto" aria-label="Exécution en autonome" [attr.data-state]="autoState(auto)">
                 @if (auto.run?.status === 'RUNNING') {
@@ -702,6 +720,39 @@ const RING = 2 * Math.PI * 18;
 
     .board__count {
       margin: var(--cg-space-1) 0 0;
+      color: var(--cg-text-secondary);
+    }
+
+    .board__attentes {
+      margin: var(--cg-space-2) var(--cg-space-4) 0;
+    }
+
+    .board__attentes-title {
+      margin: 0 0 var(--cg-space-1);
+      font: 600 12px 'Inter', sans-serif;
+      color: var(--cg-text-secondary);
+    }
+
+    .board__attentes-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .board__attente {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--cg-space-1) var(--cg-space-2);
+      padding: var(--cg-space-1) 0;
+      font-size: 13px;
+    }
+
+    .board__attente-status {
+      color: var(--cg-gold-ink);
+      font-weight: 600;
+    }
+
+    .board__attente-person {
       color: var(--cg-text-secondary);
     }
 

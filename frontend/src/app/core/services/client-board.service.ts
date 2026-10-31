@@ -24,6 +24,15 @@ export class ClientBoardService {
       { days });
   }
 
+  /**
+   * [Revoir les attentes de plus de 14 jours] (F-227 / SF-227-02) : la gateway PROPOSE la clôture des attentes
+   * sans geste depuis `days` jours ; rien n'est fermé.
+   */
+  proposeStale(hostId: string, days = 14): Observable<{ days: number; proposed: number }> {
+    return this.http.post<{ days: number; proposed: number }>(
+      `/api/runner-hosts/${hostId}/chantiers/stale-tasks/propose`, {}, { params: { days } });
+  }
+
   /** [Ne plus reporter] le chantier N. */
   unsnooze(workspaceId: string, number: number): Observable<void> {
     return this.http.delete<void>(`/api/workspaces/${workspaceId}/journey/chantiers/${number}/snooze`);
