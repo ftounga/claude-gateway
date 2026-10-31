@@ -42,7 +42,9 @@ public record TerminalActionResponse(
         String interlocuteurName,
         java.time.LocalDate dueAt,
         String dueState,
-        Integer chantierNumber) {
+        Integer chantierNumber,
+        String proposalSource,
+        OffsetDateTime lastGestureAt) {
 
     /** Le jour de référence de l'échéance : Paris, comme le récapitulatif de 9 h. */
     static final java.time.ZoneId ZONE = java.time.ZoneId.of("Europe/Paris");
@@ -73,7 +75,8 @@ public record TerminalActionResponse(
         return new TerminalActionResponse(id, workspaceId, workspaceName, hostId, subjectId, description, blocks,
                 person, kind, status, requestedAt, requestedTo, channel, closedReason, closedAt, proposedStatus,
                 proposedReason, proposedAt, createdAt, updatedAt, followUpDue, categorie, qui, subject, step,
-                mergedIntoId, interlocuteurId, interlocuteurName, dueAt, dueState, chantierNumber);
+                mergedIntoId, interlocuteurId, interlocuteurName, dueAt, dueState, chantierNumber, proposalSource,
+                lastGestureAt);
     }
 
     /** La même attente, avec le nom de son interlocuteur normalisé (F-180 / SF-180-03). */
@@ -81,7 +84,8 @@ public record TerminalActionResponse(
         return new TerminalActionResponse(id, workspaceId, workspaceName, hostId, subjectId, description, blocks,
                 person, kind, status, requestedAt, requestedTo, channel, closedReason, closedAt, proposedStatus,
                 proposedReason, proposedAt, createdAt, updatedAt, followUpDue, categorie, qui, subjectName,
-                blockedStep, mergedIntoId, interlocuteurId, name, dueAt, dueState, chantierNumber);
+                blockedStep, mergedIntoId, interlocuteurId, name, dueAt, dueState, chantierNumber, proposalSource,
+                lastGestureAt);
     }
 
     public static TerminalActionResponse from(TerminalAction action) {
@@ -125,6 +129,8 @@ public record TerminalActionResponse(
                 null,
                 action.getDueAt(),
                 dueStateOf(action, java.time.LocalDate.now(ZONE)),
-                action.getChantierNumber());
+                action.getChantierNumber(),
+                action.getProposalSource(),
+                action.lastGestureOrCreated());
     }
 }

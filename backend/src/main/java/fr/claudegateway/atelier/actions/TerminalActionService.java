@@ -37,6 +37,10 @@ public class TerminalActionService {
     static final int MAX_KEY = 200;
     static final int MAX_REQUESTED_TO = 120;
     static final int MAX_CHANNEL = 60;
+    /** Le début de la raison posée par la revue des attentes anciennes (F-227). */
+    public static final String STALE_REASON_PREFIX = "Sans geste depuis ";
+    /** Au plus, par clôture en lot (F-227 / SF-227-03). */
+    public static final int MAX_BULK_CLOSE = 200;
 
     private final TerminalActionRepository repository;
     private final WorkspaceService workspaceService;
@@ -182,6 +186,7 @@ public class TerminalActionService {
                 .dedupKey(dedupKey)
                 .createdAt(now)
                 .updatedAt(now)
+                .lastGestureAt(now)
                 .build();
         linkInterlocuteur(built);
         TerminalAction saved = repository.save(built);
@@ -581,6 +586,7 @@ public class TerminalActionService {
             }
         }
         action.setUpdatedAt(now);
+        action.setLastGestureAt(now); // F-227 / SF-227-03 : un vrai geste
         action.setReviewPending(false); // un geste de l'utilisateur vaut vérification (SF-175-07)
         return repository.save(action);
     }
@@ -628,7 +634,7 @@ public class TerminalActionService {
         if (qualification != null && qualification.qui() != null) {
             action.setQui(qualification.qui());
         }
-        action.setUpdatedAt(OffsetDateTime.now(clock));
+        gesture(action, OffsetDateTime.now(clock));
         TerminalAction saved = repository.save(action);
         if (description != null) {
             embedAfterCommit(saved); // le sens a changé : le vecteur suit (F-175 / SF-175-03)
@@ -649,7 +655,7 @@ public class TerminalActionService {
         }
         reopenAs(action, action.getRequestedAt() != null
                 ? TerminalActionStatus.DEMANDE : TerminalActionStatus.A_FAIRE);
-        action.setUpdatedAt(OffsetDateTime.now(clock));
+        gesture(action, OffsetDateTime.now(clock));
         return repository.save(action);
     }
 
@@ -705,7 +711,7 @@ public class TerminalActionService {
             return action;
         }
         action.setDueAt(due);
-        action.setUpdatedAt(OffsetDateTime.now(clock));
+        gesture(action, OffsetDateTime.now(clock));
         return repository.save(action);
     }
 
@@ -740,15 +746,12 @@ public class TerminalActionService {
     public TerminalAction attachToChantier(UUID userId, UUID workspaceId, UUID actionId, Integer chantier) {
         TerminalAction action = require(userId, workspaceId, actionId);
         if (chantier != null) {
-            boolean open = chantier > 0 && chantiers != null && chantiers
-                    .findFirstByUserIdAndWorkspaceIdAndNumber(userId, workspaceId, chantier)
-                    .filter(fr.claudegateway.atelier.journey.SubjectJourneyChantier::isOpen).isPresent();
-            if (!open) {
+            if (!isOpenChantier(userId, workspaceId, chantier)) {
                 throw new InvalidTerminalActionException("Le chantier " + chantier + " n'est pas ouvert sur ce sujet.");
             }
         }
         action.setChantierNumber(chantier);
-        action.setUpdatedAt(OffsetDateTime.now(clock));
+        gesture(action, OffsetDateTime.now(clock));
         return repository.save(action);
     }
 
@@ -775,18 +778,117 @@ public class TerminalActionService {
         OffsetDateTime threshold = now.minusDays(Math.max(1, days));
         List<TerminalAction> proposed = new java.util.ArrayList<>();
         for (TerminalAction a : candidates) {
-            OffsetDateTime last = a.getUpdatedAt() != null ? a.getUpdatedAt() : a.getCreatedAt();
+            OffsetDateTime last = a.lastGestureOrCreated(); // F-227 / SF-227-03 : jamais updated_at
             if (!userId.equals(a.getUserId()) || !a.isOpen() || a.getMergedIntoId() != null || a.hasProposal()
                     || last == null || !last.isBefore(threshold)) {
                 continue;
             }
             long idle = java.time.Duration.between(last, now).toDays();
             a.setProposedStatus(TerminalActionStatus.ANNULE);
-            a.setProposedReason("Sans geste depuis " + idle + " jours : périmée ?");
+            a.setProposedReason(STALE_REASON_PREFIX + idle + " jours : périmée ?");
             a.setProposedAt(now);
+            a.setProposalSource(TerminalAction.SOURCE_REVUE);
             proposed.add(repository.save(a));
         }
         return proposed;
+    }
+
+    /**
+     * <b>[Clore les N proposées]</b> (F-227 / SF-227-03) : ferme (« n'avait plus lieu d'être », raison recopiée) les
+     * attentes de {@code ids} prises parmi {@code candidates} (déjà lues sous l'isolation, poste possédé) dont la
+     * proposition vient de la REVUE et propose ANNULE. Toute autre — proposée par l'agent, proposée « faite », sans
+     * proposition, fermée, inconnue — est laissée telle quelle et comptée dans {@code skipped}.
+     *
+     * @throws InvalidTerminalActionException plus de {@value #MAX_BULK_CLOSE} identifiants
+     */
+    @Transactional
+    public BulkClose closeReviewProposals(UUID userId, List<TerminalAction> candidates, java.util.Collection<UUID> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return new BulkClose(0, 0);
+        }
+        java.util.Set<UUID> wanted = new java.util.LinkedHashSet<>(ids);
+        wanted.remove(null);
+        if (wanted.size() > MAX_BULK_CLOSE) {
+            throw new InvalidTerminalActionException(MAX_BULK_CLOSE + " attentes au plus par clôture.");
+        }
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        int closed = 0;
+        for (TerminalAction a : candidates) {
+            if (!wanted.contains(a.getId()) || !userId.equals(a.getUserId()) || !a.isOpen()
+                    || a.getMergedIntoId() != null || !a.isReviewProposal()) {
+                continue;
+            }
+            a.setStatus(TerminalActionStatus.ANNULE);
+            a.setClosedReason(a.getProposedReason());
+            a.setClosedAt(now);
+            a.clearProposal();
+            gesture(a, now);
+            a.setReviewPending(false);
+            repository.save(a);
+            closed++;
+        }
+        return new BulkClose(closed, wanted.size() - closed);
+    }
+
+    /** Le bilan d'une clôture en lot : fermées, laissées. */
+    public record BulkClose(int closed, int skipped) {
+    }
+
+    /** Le parcours du sujet, pour le chantier du tour (F-227) ; absent = au fil de l'eau. */
+    private fr.claudegateway.atelier.journey.SubjectJourneyService journeys;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setJourneys(@org.springframework.context.annotation.Lazy
+            fr.claudegateway.atelier.journey.SubjectJourneyService journeys) {
+        this.journeys = journeys;
+    }
+
+    /**
+     * <b>Le chantier du tour</b> (F-227 / SF-227-01, déplacé en SF-227-03 pour servir aussi l'ajout à la main) : le
+     * fil du chantier (F-221), sinon le chantier au focus d'un sujet guidé ; {@code null} en Libre. Best-effort.
+     */
+    public Integer chantierOfTurn(UUID userId, Workspace workspace) {
+        if (workspace == null) {
+            return null;
+        }
+        if (workspace.getTurnChantier() != null) {
+            return workspace.getTurnChantier();
+        }
+        if (journeys == null) {
+            return null;
+        }
+        try {
+            fr.claudegateway.atelier.journey.SubjectJourney journey = journeys.forTurn(userId, workspace.getId());
+            return journey != null && journey.isGuided() && journey.hasOpenFocus() && journey.getChantierNumber() > 0
+                    ? journey.getChantierNumber() : null;
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** Vrai si {@code chantier} est un chantier OUVERT du sujet (lecture sous {@code user_id}). */
+    private boolean isOpenChantier(UUID userId, UUID workspaceId, Integer chantier) {
+        return chantier != null && chantier > 0 && chantiers != null && chantiers
+                .findFirstByUserIdAndWorkspaceIdAndNumber(userId, workspaceId, chantier)
+                .filter(fr.claudegateway.atelier.journey.SubjectJourneyChantier::isOpen).isPresent();
+    }
+
+    /**
+     * <b>L'ajout à la main, rangé</b> (F-227 / SF-227-03) : sous {@code chantier} (le fil affiché) s'il est ouvert sur
+     * ce sujet, sinon sous le chantier du tour ; un numéro non ouvert est ignoré — la création n'échoue pas pour si peu.
+     */
+    @Transactional
+    public TerminalAction create(UUID userId, UUID workspaceId, UUID subjectId, String description, String blocks,
+                                 String person, TerminalActionKind kind, Qualification qualification,
+                                 java.time.LocalDate due, Integer chantier) {
+        TerminalAction created = create(userId, workspaceId, subjectId, description, blocks, person, kind,
+                qualification, due);
+        Integer target = isOpenChantier(userId, workspaceId, chantier) ? chantier : null;
+        if (target == null) {
+            Integer turn = chantierOfTurn(userId, workspaceService.requireOwned(userId, workspaceId));
+            target = isOpenChantier(userId, workspaceId, turn) ? turn : null;
+        }
+        return applyChantier(created, target);
     }
 
     /** Purge des actions d'un projet supprimé. */
@@ -984,6 +1086,7 @@ public class TerminalActionService {
         action.setProposedStatus(cancelled ? TerminalActionStatus.ANNULE : TerminalActionStatus.FAIT);
         action.setProposedReason(cleanReason);
         action.setProposedAt(now);
+        action.setProposalSource(TerminalAction.SOURCE_AGENT); // F-227 / SF-227-03
         action.setUpdatedAt(now);
         return new AgentChange(repository.save(action), AgentChangeOutcome.PROPOSED);
     }
@@ -1021,7 +1124,7 @@ public class TerminalActionService {
         action.setClosedReason(reason);
         action.setClosedAt(now);
         action.clearProposal();
-        action.setUpdatedAt(now);
+        gesture(action, now);
         action.setReviewPending(false);
         return repository.save(action);
     }
@@ -1034,8 +1137,14 @@ public class TerminalActionService {
             return action;
         }
         action.clearProposal();
-        action.setUpdatedAt(OffsetDateTime.now(clock));
+        gesture(action, OffsetDateTime.now(clock)); // [Garder] : la revue suivante ne la repropose pas
         return repository.save(action);
+    }
+
+    /** Un vrai geste (F-227 / SF-227-03) : {@code updated_at} ET {@code last_gesture_at}. */
+    private static void gesture(TerminalAction action, OffsetDateTime now) {
+        action.setUpdatedAt(now);
+        action.setLastGestureAt(now);
     }
 
     private static void reopenAs(TerminalAction action, TerminalActionStatus status) {
@@ -1057,7 +1166,7 @@ public class TerminalActionService {
         OffsetDateTime now = OffsetDateTime.now(clock);
         action.setClosedAt(now);
         action.clearProposal();
-        action.setUpdatedAt(now);
+        gesture(action, now);
         action.setReviewPending(false);
         return repository.save(action);
     }

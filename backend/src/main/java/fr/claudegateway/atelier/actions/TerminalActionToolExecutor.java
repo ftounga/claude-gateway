@@ -29,36 +29,9 @@ public class TerminalActionToolExecutor {
 
     private final TerminalActionService service;
 
-    /** Le parcours du sujet, pour ranger une attente sous le chantier du tour (F-227) ; absent = au fil de l'eau. */
-    private fr.claudegateway.atelier.journey.SubjectJourneyService journeys;
-
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
-    public void setJourneys(@org.springframework.context.annotation.Lazy
-            fr.claudegateway.atelier.journey.SubjectJourneyService journeys) {
-        this.journeys = journeys;
-    }
-
-    /**
-     * <b>Le chantier du tour</b> (F-227 / SF-227-01) : le fil du chantier (F-221, la même source que le message),
-     * sinon le chantier au focus d'un sujet guidé ; {@code null} en Libre. Best-effort.
-     */
+    /** Le chantier du tour (F-227) : la règle vit dans le service, partagée avec l'ajout à la main (SF-227-03). */
     Integer chantierOfTurn(UUID userId, Workspace workspace) {
-        if (workspace == null) {
-            return null;
-        }
-        if (workspace.getTurnChantier() != null) {
-            return workspace.getTurnChantier();
-        }
-        if (journeys == null) {
-            return null;
-        }
-        try {
-            fr.claudegateway.atelier.journey.SubjectJourney journey = journeys.forTurn(userId, workspace.getId());
-            return journey != null && journey.isGuided() && journey.hasOpenFocus() && journey.getChantierNumber() > 0
-                    ? journey.getChantierNumber() : null;
-        } catch (RuntimeException e) {
-            return null;
-        }
+        return service.chantierOfTurn(userId, workspace);
     }
 
     public TerminalActionToolExecutor(TerminalActionService service) {

@@ -82,7 +82,7 @@ class ClientBoardServiceTest {
         ChantierUnblocker.Mark mark = new ChantierUnblocker.Mark(who, who.label(), "d", null, null, null);
         return new ClientBoard.LooseTask(UUID.randomUUID(), UUID.randomUUID(), "ws", false, name, null, "A_FAIRE",
                 null, null, null, null, null, java.time.OffsetDateTime.parse("2026-10-01T09:00:00Z"), mark, null,
-                idle, idle >= 2, false, null, null, null);
+                idle, idle >= 2, false, null, null, null, null, java.util.List.of());
     }
 
     @Test

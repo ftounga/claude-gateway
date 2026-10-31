@@ -289,8 +289,8 @@ class ClientBoardIntegrationTest {
                 TerminalActionStatus.A_FAIRE, TerminalActionQui.CLIENT);
         attente(ingress, "deja-fait", "Déjà obtenu", "Zoé", TerminalActionStatus.FAIT, TerminalActionQui.CLIENT);
         OffsetDateTime fiveDaysAgo = OffsetDateTime.now().minusDays(5).minusHours(1);
-        jdbc.update("update terminal_actions set requested_to = ?, requested_at = ?, updated_at = ? where id = ?",
-                "Marc Dupont", fiveDaysAgo, fiveDaysAgo, asked.getId());
+        jdbc.update("update terminal_actions set requested_to = ?, requested_at = ?, updated_at = ?, last_gesture_at = ? "
+                + "where id = ?", "Marc Dupont", fiveDaysAgo, fiveDaysAgo, fiveDaysAgo, asked.getId());
 
         board(aliceToken, aliceHost.getId())
                 .andExpect(status().isOk())
@@ -405,8 +405,8 @@ class ClientBoardIntegrationTest {
         TerminalAction fresh = terminalActions.create(aliceId, migration.getId(), null, "Valider le budget",
                 null, null, TerminalActionKind.ACTION);
         OffsetDateTime twentyDaysAgo = OffsetDateTime.now().minusDays(20);
-        jdbc.update("update terminal_actions set updated_at = ?, created_at = ? where id = ?",
-                twentyDaysAgo, twentyDaysAgo, old.getId());
+        jdbc.update("update terminal_actions set updated_at = ?, created_at = ?, last_gesture_at = ? where id = ?",
+                twentyDaysAgo, twentyDaysAgo, twentyDaysAgo, old.getId());
         String path = "/api/runner-hosts/" + aliceHost.getId() + "/chantiers/stale-tasks/propose";
         mockMvc.perform(post(path).contextPath("/api").header("Authorization", "Bearer " + bobToken))
                 .andExpect(status().isNotFound());
@@ -457,6 +457,160 @@ class ClientBoardIntegrationTest {
         assertThat(actionRepository.findById(ambiguous.getId()).orElseThrow().getChantierNumber()).isNull();
         assertThat(actionRepository.findById(older.getId()).orElseThrow().getChantierNumber()).isNull();
         assertThat(actionRepository.findById(closed.getId()).orElseThrow().getChantierNumber()).isNull();
+    }
+
+    // ------------------------------------------------------------------ F-227 / SF-227-03
+
+    @Autowired private fr.claudegateway.atelier.actions.AttenteChantierReprise reprise;
+
+    private String reviewPath() {
+        return "/api/runner-hosts/" + aliceHost.getId() + "/chantiers/stale-tasks/propose";
+    }
+
+    private void ageGesture(TerminalAction a, int days) {
+        jdbc.update("update terminal_actions set last_gesture_at = ? where id = ?",
+                OffsetDateTime.now().minusDays(days), a.getId());
+    }
+
+    private TerminalAction plain(Workspace w, String description) {
+        return terminalActions.create(aliceId, w.getId(), null, description, null, null, TerminalActionKind.ACTION);
+    }
+
+    @Test
+    @DisplayName("SF-227-03 : [Clore les N proposées] ne ferme QUE les propositions de la revue — jamais celles de l'agent")
+    void bulkCloseOnlyClosesReviewProposals() throws Exception {
+        TerminalAction stale = plain(ingress, "Relancer le support");
+        TerminalAction agentDone = plain(ingress, "Certificat reçu");
+        TerminalAction agentCancel = plain(migration, "Plus besoin du VPN");
+        agentDone.setDedupKey("cert-recu");
+        agentCancel.setDedupKey("vpn-plus");
+        actionRepository.save(agentDone);
+        actionRepository.save(agentCancel);
+        ageGesture(stale, 20);
+        mockMvc.perform(post(reviewPath()).contextPath("/api").header("Authorization", "Bearer " + aliceToken))
+                .andExpect(jsonPath("$.proposed", is(1)));
+        Workspace ing = workspaceRepository.findById(ingress.getId()).orElseThrow();
+        Workspace mig = workspaceRepository.findById(migration.getId()).orElseThrow();
+        terminalActions.proposeClose(aliceId, ing, "cert-recu", null, "Karim l'a envoyé", false);
+        terminalActions.proposeClose(aliceId, mig, "vpn-plus", null, "On passe par le bastion", true);
+
+        board(aliceToken, aliceHost.getId())
+                .andExpect(jsonPath("$.horsChantier[?(@.description == 'Relancer le support')].proposalSource")
+                        .value(org.hamcrest.Matchers.contains("REVUE")))
+                .andExpect(jsonPath("$.horsChantier[?(@.description == 'Certificat reçu')].proposalSource")
+                        .value(org.hamcrest.Matchers.contains("AGENT")));
+
+        String close = "/api/runner-hosts/" + aliceHost.getId() + "/chantiers/stale-tasks/close";
+        String body = "{\"actionIds\":[\"" + stale.getId() + "\",\"" + agentDone.getId() + "\",\""
+                + agentCancel.getId() + "\"]}";
+        mockMvc.perform(post(close).contextPath("/api").contentType(MediaType.APPLICATION_JSON).content(body)
+                        .header("Authorization", "Bearer " + bobToken))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(post(close).contextPath("/api").contentType(MediaType.APPLICATION_JSON).content(body)
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.closed", is(1)))
+                .andExpect(jsonPath("$.skipped", is(2)));
+
+        TerminalAction closed = actionRepository.findById(stale.getId()).orElseThrow();
+        assertThat(closed.getStatus()).isEqualTo(TerminalActionStatus.ANNULE);
+        assertThat(closed.getClosedReason()).startsWith("Sans geste depuis 20 jours");
+        assertThat(closed.getProposalSource()).isNull();
+        TerminalAction done = actionRepository.findById(agentDone.getId()).orElseThrow();
+        assertThat(done.isOpen()).as("la proposition « fait » de l'agent n'est pas touchée").isTrue();
+        assertThat(done.getProposedStatus()).isEqualTo(TerminalActionStatus.FAIT);
+        assertThat(done.getProposalSource()).isEqualTo("AGENT");
+        TerminalAction cancel = actionRepository.findById(agentCancel.getId()).orElseThrow();
+        assertThat(cancel.isOpen()).as("même « sans objet », l'agent n'est pas la revue").isTrue();
+    }
+
+    @Test
+    @DisplayName("SF-227-03 : « sans geste » se lit sur le dernier geste réel ; [Garder] est un geste")
+    void staleReviewReadsLastGesture() throws Exception {
+        TerminalAction batchTouched = plain(ingress, "Touchée par un lot");
+        TerminalAction recentGesture = plain(ingress, "Geste récent");
+        OffsetDateTime old = OffsetDateTime.now().minusDays(30);
+        // updated_at récent (traitement en lot), dernier geste ancien → proposée
+        jdbc.update("update terminal_actions set created_at = ?, last_gesture_at = ?, updated_at = ? where id = ?",
+                old, old, OffsetDateTime.now(), batchTouched.getId());
+        // updated_at ancien, dernier geste récent → pas proposée
+        jdbc.update("update terminal_actions set created_at = ?, updated_at = ? where id = ?",
+                old, old, recentGesture.getId());
+        mockMvc.perform(post(reviewPath()).contextPath("/api").header("Authorization", "Bearer " + aliceToken))
+                .andExpect(jsonPath("$.proposed", is(1)));
+        assertThat(actionRepository.findById(batchTouched.getId()).orElseThrow().isReviewProposal()).isTrue();
+        assertThat(actionRepository.findById(recentGesture.getId()).orElseThrow().hasProposal()).isFalse();
+
+        terminalActions.dismissProposal(aliceId, ingress.getId(), batchTouched.getId()); // [Garder]
+        mockMvc.perform(post(reviewPath()).contextPath("/api").header("Authorization", "Bearer " + aliceToken))
+                .andExpect(jsonPath("$.proposed", is(0)));
+    }
+
+    @Test
+    @DisplayName("SF-227-03 : la revue ne propose pas une attente qu'une étape de chantier montre (inaccessible)")
+    void staleReviewSkipsStepShownTasks() throws Exception {
+        seedWaitingChantier();
+        TerminalAction cited = attente(migration, "cert-gino", "Demander le certificat à Gino", "Gino",
+                TerminalActionStatus.DEMANDE, TerminalActionQui.CLIENT);
+        ageGesture(cited, 30);
+        mockMvc.perform(post(reviewPath()).contextPath("/api").header("Authorization", "Bearer " + aliceToken))
+                .andExpect(jsonPath("$.proposed", is(0)));
+        assertThat(actionRepository.findById(cited.getId()).orElseThrow().hasProposal()).isFalse();
+    }
+
+    @Test
+    @DisplayName("SF-227-03 : le plan prime — l'attente qu'attend une étape du chantier 1 est rangée sous lui")
+    void planWaitsOnWins() throws Exception {
+        seedWaitingChantier(); // migration, chantier 1 : l'étape 2 attend « cert-gino »
+        service.updateStep(aliceId, migration.getId(), 1, "VERIFIE", "lu");
+        service.updateStep(aliceId, migration.getId(), 2, "FAIT", "obtenu");
+        service.openAlongside(aliceId, migration.getId(), "Autre"); // chantier 2 au focus
+        TerminalAction gino = attente(migration, "cert-gino", "Demander le certificat à Gino", "Gino",
+                TerminalActionStatus.DEMANDE, TerminalActionQui.CLIENT);
+        jdbc.update("update terminal_actions set chantier_number = 2 where id = ?", gino.getId());
+
+        String body = board(aliceToken, aliceHost.getId()).andReturn().getResponse().getContentAsString();
+        java.util.List<Integer> numbers = com.jayway.jsonpath.JsonPath.read(body,
+                "$.horsChantier[?(@.description == 'Demander le certificat à Gino')].chantierNumber");
+        assertThat(numbers).containsExactly(1);
+
+        assertThat(reprise.run()).isEqualTo(1);
+        assertThat(actionRepository.findById(gino.getId()).orElseThrow().getChantierNumber()).isEqualTo(1);
+        assertThat(reprise.run()).as("idempotente").isZero();
+    }
+
+    @Test
+    @DisplayName("SF-227-03 : une attente née pendant deux chantiers ouverts porte les deux en suggestion")
+    void ambiguousAttentesAreSuggested() throws Exception {
+        seedIngress(); // chantiers 1 et 2 ouverts
+        plain(ingress, "Née pendant deux chantiers");
+        board(aliceToken, aliceHost.getId())
+                .andExpect(jsonPath("$.horsChantier[0].chantierNumber", nullValue()))
+                .andExpect(jsonPath("$.horsChantier[0].suggestedChantiers", org.hamcrest.Matchers.contains(1, 2)));
+    }
+
+    @Test
+    @DisplayName("SF-227-03 : l'attente ajoutée à la main se range sous le fil affiché, sinon le chantier du tour")
+    void userCreatedAttenteUnderChantier() throws Exception {
+        seedIngress(); // chantier 1, chantier 2 au focus
+        String url = "/api/workspaces/" + ingress.getId() + "/actions";
+        mockMvc.perform(post(url).contextPath("/api").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"description\":\"Dans le fil 1\",\"chantier\":1}")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.chantierNumber", is(1)))
+                .andExpect(jsonPath("$.lastGestureAt", org.hamcrest.Matchers.notNullValue()));
+        mockMvc.perform(post(url).contextPath("/api").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"description\":\"Fil fermé\",\"chantier\":9}")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.chantierNumber", is(2)));
+        mockMvc.perform(post("/api/workspaces/" + migration.getId() + "/actions").contextPath("/api")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"description\":\"Libre\"}")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.chantierNumber", nullValue()));
+        mockMvc.perform(post(url).contextPath("/api").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"description\":\"Chez Alice\",\"chantier\":1}")
+                        .header("Authorization", "Bearer " + bobToken))
+                .andExpect(status().isNotFound());
     }
 
     /** Le SQL de la reprise, lu dans la migration elle-même (ce qui est testé est ce qui tourne en prod). */
