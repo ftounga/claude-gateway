@@ -96,8 +96,9 @@ public class JourneyToolExecutor {
         SubjectJourneyService.PlanChange change = service.setPlan(userId, workspace.getId(), chantier, plan);
         return prefixed(chantier, switch (change.outcome()) {
             case SET -> Outcome.ok("Plan v" + change.version() + " posé (" + plan.steps().size() + " étapes). "
-                    + "Il attend la VALIDATION de l'utilisateur, d'un clic : présente-le en quelques lignes "
-                    + "et ne modifie rien avant qu'il l'ait validé.");
+                    + "Il attend la VALIDATION de l'utilisateur, d'un clic : il le voit déjà à l'écran. "
+                    + "Présente-le en une phrase au plus, puis termine ton tour ; ne modifie rien avant qu'il "
+                    + "l'ait validé.");
             case AMENDMENT -> Outcome.ok("Amendement : plan v" + change.version() + " posé. Il remplace le "
                     + "plan validé et doit être REVALIDÉ par l'utilisateur : dis-lui ce qui change et pourquoi, "
                     + "et ne modifie rien avant sa validation.");

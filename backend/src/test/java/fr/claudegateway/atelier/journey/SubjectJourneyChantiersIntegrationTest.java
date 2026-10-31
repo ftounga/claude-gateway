@@ -252,6 +252,20 @@ class SubjectJourneyChantiersIntegrationTest {
     }
 
     @Test
+    @DisplayName("SF-223-01 : le plan posé demande une phrase au plus puis la fin du tour")
+    void planToolAsksForShortPresentation() throws Exception {
+        chantierOneExecuting();
+        post(aliceToken, "chantiers", "{\"title\":\"Logs vers Loki\"}");
+        service.submitDiagnosis(aliceId, ws(), 2, "pas de collecteur", "kubectl", "ELEVEE");
+        tool(JourneyToolCatalog.CONFIRM_DIAGNOSIS, "{\"chantier\":2,\"user_words\":\"go\"}");
+        JourneyToolExecutor.Outcome set = tool(JourneyToolCatalog.SET_PLAN,
+                "{\"chantier\":2,\"steps\":[{\"title\":\"Installer Fluent Bit\",\"risk\":\"REVERSIBLE\"}]}");
+        assertThat(set.error()).isFalse();
+        assertThat(set.content()).contains("une phrase au plus, puis termine ton tour")
+                .doesNotContain("en quelques lignes");
+    }
+
+    @Test
     @DisplayName("clore le focus avec un autre ouvert : l'autre prend le focus, on reste guidé ; clore le dernier : Libre")
     void closeFocus() throws Exception {
         chantierOneExecuting();

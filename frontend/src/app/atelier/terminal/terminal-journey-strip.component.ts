@@ -188,6 +188,9 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
                 <span class="journey-plan__hint">
                   {{ validationHint() }}
                 </span>
+                @if (busyReason(); as reason) {
+                  <span class="journey-plan__why" role="status">{{ reason }}</span>
+                }
                 <span class="journey-card__actions">
                   <button mat-flat-button type="button" class="journey-plan__validate" [disabled]="busy()" (click)="gesture.emit('validate-plan')">
                     {{ validateLabel() }}
@@ -401,6 +404,16 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
     .journey-plan__steps {
       margin: var(--cg-space-1) 0 0;
       padding-left: var(--cg-space-5);
+      /* F-223 / SF-223-01 : la carte ne mange plus le fil — les étapes défilent, les actions restent. */
+      max-height: 26vh;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+
+    .journey-plan__why {
+      flex-basis: 100%;
+      color: var(--cg-orange-2);
+      font-size: 12px;
     }
 
     .journey-plan__step {
@@ -507,8 +520,24 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
 export class TerminalJourneyStripComponent {
   readonly journey = input<SubjectJourney | null>(null);
 
-  /** Un geste est en cours : les boutons attendent. */
+  /** Un geste est en cours d'envoi : les boutons attendent (F-223 : seulement l'envoi, jamais le tour). */
   readonly busy = input(false);
+
+  /**
+   * Un tour tourne (F-223 / SF-223-01) : les boutons restent ACTIFS — le geste part tout de suite et la
+   * reprise attend la fin du tour. On le dit, pour que personne n'attende un bouton.
+   */
+  readonly turnRunning = input(false);
+
+  /** Pourquoi les boutons sont grisés, ou ce qui se passera après le clic pendant un tour. */
+  readonly busyReason = computed(() => {
+    if (this.busy()) {
+      return 'Envoi du geste…';
+    }
+    return this.turnRunning()
+      ? "Un tour est en cours : la validation part tout de suite, l'exécution démarrera à la fin du tour."
+      : null;
+  });
 
   /** Le geste de l'utilisateur ; le terminal appelle la gateway. */
   readonly gesture = output<JourneyGesture>();
@@ -670,7 +699,9 @@ export class TerminalJourneyStripComponent {
 
   /** Le plan est déplié tant qu'il attend une validation ; replié sinon (l'utilisateur peut l'ouvrir). */
   private readonly planToggled = signal<boolean | null>(null);
-  readonly planOpen = computed(() => this.planToggled() ?? !!this.plan()?.awaitingValidation);
+  /** Écran bas (F-223 / SF-223-01) : le plan part replié, les actions restent sous les yeux. */
+  private readonly lowScreen = isLowScreen();
+  readonly planOpen = computed(() => this.planToggled() ?? (!!this.plan()?.awaitingValidation && !this.lowScreen));
 
   togglePlan(): void {
     this.planToggled.set(!this.planOpen());
@@ -704,6 +735,17 @@ export class TerminalJourneyStripComponent {
 }
 
 const DISMISSED_KEY = 'cg.journey.closedDismissed';
+
+/** Hauteur d'écran au-dessous de laquelle le plan part replié (à 1366×700, il ne restait que 119 px de fil). */
+const LOW_SCREEN_QUERY = '(max-height: 760px)';
+
+function isLowScreen(): boolean {
+  try {
+    return typeof matchMedia === 'function' && matchMedia(LOW_SCREEN_QUERY).matches;
+  } catch {
+    return false;
+  }
+}
 
 function readDismissed(): string | null {
   try {

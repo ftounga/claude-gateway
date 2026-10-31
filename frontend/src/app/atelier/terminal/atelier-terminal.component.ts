@@ -401,6 +401,8 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     const previous = this.projectIdValue();
     this.projectIdValue.set(value ?? null);
     if (value !== previous) {
+      // F-223 / SF-223-01 : une reprise différée appartient au sujet quitté — jamais envoyée ailleurs.
+      this.deferredResume = null;
       // F-193 : Plume appartient au terminal ouvert ; changer de terminal le referme.
       this.closePlume();
       // F-198 / SF-198-01 : l'historique révélé l'était pour le terminal quitté ; le suivant repart replié.
@@ -1302,12 +1304,47 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    */
   private resumeAfterGesture(gesture: JourneyGesture, before: SubjectJourney | null): void {
     const message = journeyResumeMessage(gesture, before);
-    if (!message || this.readOnly || this.submittingValue || this.liveLimitReached) {
+    if (!message || this.readOnly || this.liveLimitReached) {
       return;
     }
+    if (this.submittingValue) {
+      // F-223 / SF-223-01 : le geste est enregistré TOUT DE SUITE ; seule la reprise attend la fin du tour.
+      this.deferredResume = { workspaceId: this.projectId, message };
+      return;
+    }
+    this.emitResume(message);
+  }
+
+  private emitResume(message: string): void {
     const draft = (this.draft ?? '').trim();
     this.draftChange.emit(draft.length > 0 ? `${message}\n\n${draft}` : message);
     this.send.emit();
+  }
+
+  /** La reprise d'un geste fait pendant un tour (F-223 / SF-223-01), envoyée une fois à sa fin. */
+  private deferredResume: { workspaceId: string | null; message: string } | null = null;
+
+  /** Vrai tant qu'une reprise attend la fin du tour : la bande le dit. */
+  get resumeDeferred(): boolean {
+    return this.deferredResume !== null;
+  }
+
+  private flushDeferredResume(): void {
+    const pending = this.deferredResume;
+    if (!pending) {
+      return;
+    }
+    // Après le cycle courant : l'écran a pu relancer un tour (précisions différées) — on attend alors sa fin.
+    queueMicrotask(() => {
+      if (this.deferredResume !== pending || this.submittingValue) {
+        return;
+      }
+      this.deferredResume = null;
+      if (pending.workspaceId !== this.projectId || this.readOnly || this.liveLimitReached) {
+        return;
+      }
+      this.emitResume(pending.message);
+    });
   }
 
   /**
@@ -1471,6 +1508,8 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     const wasSubmitting = this.submittingValue;
     this.submittingValue = value === true;
     if (wasSubmitting && !this.submittingValue) {
+      // F-223 / SF-223-01 : le geste validé pendant le tour relance le travail maintenant qu'il est fini.
+      this.flushDeferredResume();
       // F-175 / SF-175-04 : le tour a pu inscrire, faire avancer ou proposer de fermer une attente —
       // la bande se relit à chaque fin de tour.
       if (this.projectId) {
