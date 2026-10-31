@@ -59,6 +59,8 @@ export interface VigieTrialSync {
   consumedTokens: number;
   /** Coût estimé aux tarifs configurés (USD). */
   costUsd: number;
+  /** Le même coût en euros, converti par la passerelle (F-224 / SF-224-05). */
+  costEur?: number;
   stoppedOnReserve: boolean;
 }
 
@@ -73,6 +75,8 @@ export interface VigieTrialMeasure {
   syncCount: number;
   consumedTokens: number;
   costUsd: number;
+  /** Le même coût en euros, converti par la passerelle (F-224 / SF-224-05). */
+  costEur?: number;
   syncs: VigieTrialSync[];
 }
 

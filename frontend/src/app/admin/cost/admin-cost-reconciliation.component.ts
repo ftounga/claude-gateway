@@ -7,12 +7,13 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { AdminCostService } from './admin-cost.service';
-import { CostReconciliation, ReconciliationDay, formatDollars } from './admin-cost.models';
+import { CostReconciliation, ReconciliationDay, formatEuros, formatRate } from './admin-cost.models';
 
 /**
  * **Facturé par Anthropic / calculé** (F-224 / SF-224-04) — le rapprochement, jour par jour, avec l'écart et la
- * consommation par clé API. Rien n'est calculé ici : la passerelle rend les montants, en dollars (la devise de la
- * facture). Sans clé d'administration, la carte dit comment la créer.
+ * consommation par clé API. Rien n'est calculé ici : la passerelle rend les montants, convertis en euros au taux
+ * unique `app.cost.usd-to-eur` (F-224 / SF-224-05) ; la facture Anthropic, elle, est en dollars, et la carte le dit
+ * une fois. Sans clé d'administration, la carte dit comment la créer.
  */
 @Component({
   selector: 'app-admin-cost-reconciliation',
@@ -45,12 +46,15 @@ import { CostReconciliation, ReconciliationDay, formatDollars } from './admin-co
           </p>
         } @else {
           <p class="recon__totals num">
-            30 jours : facturé <strong>{{ dollars(d.billedTotalUsd) }}</strong> · calculé
-            <strong>{{ dollars(d.calculatedTotalUsd) }}</strong>
+            30 jours : facturé <strong>{{ euros(d.billedTotalEur) }}</strong> · calculé
+            <strong>{{ euros(d.calculatedTotalEur) }}</strong>
             @if (d.lastFetchedAt) {
               <span class="recon__muted"> · lu le {{ fetchedAt(d.lastFetchedAt) }}</span>
             }
           </p>
+          @if (rateNote(d.usdToEur); as note) {
+            <p class="recon__muted recon__rate">{{ note }}</p>
+          }
           <table class="recon__table">
             <thead>
               <tr><th scope="col">Jour</th><th scope="col">Facturé</th><th scope="col">Calculé</th><th scope="col">Écart</th></tr>
@@ -66,15 +70,15 @@ import { CostReconciliation, ReconciliationDay, formatDollars } from './admin-co
                       {{ day.day }}
                     }
                   </td>
-                  <td class="num">{{ day.billedUsd === null ? '—' : dollars(day.billedUsd) }}</td>
-                  <td class="num">{{ dollars(day.calculatedUsd) }}</td>
-                  <td class="num" [class.recon__gap]="gapNotable(day)">{{ day.gapUsd === null ? '—' : dollars(day.gapUsd) }}</td>
+                  <td class="num">{{ euros(day.billedEur) }}</td>
+                  <td class="num">{{ euros(day.calculatedEur) }}</td>
+                  <td class="num" [class.recon__gap]="gapNotable(day)">{{ euros(day.gapEur) }}</td>
                 </tr>
                 @if (open() === day.day) {
                   @for (key of day.keys; track key.apiKeyId) {
                     <tr class="recon__key">
                       <td>{{ key.label || key.apiKeyId }}</td>
-                      <td class="num" colspan="3">≈ {{ dollars(key.amountUsd) }} (estimé à la grille)</td>
+                      <td class="num" colspan="3">≈ {{ euros(key.amountEur) }} (estimé à la grille)</td>
                     </tr>
                   }
                 }
@@ -92,7 +96,8 @@ import { CostReconciliation, ReconciliationDay, formatDollars } from './admin-co
     .recon__title { margin: 0; }
     .recon__subtitle, .recon__muted { margin: var(--cg-space-1) 0 0; color: var(--cg-text-secondary); font-size: 13px; }
     .recon__setup, .recon__error { display: flex; gap: var(--cg-space-2); align-items: flex-start; margin: var(--cg-space-3) 0 0; }
-    .recon__totals { margin: var(--cg-space-3) 0; }
+    .recon__totals { margin: var(--cg-space-3) 0 0; }
+    .recon__rate { margin: var(--cg-space-1) 0 var(--cg-space-3); }
     .recon__table { width: 100%; border-collapse: collapse; font-size: 13px; }
     .recon__table th, .recon__table td { padding: var(--cg-space-1) var(--cg-space-2); text-align: left; border-bottom: 1px solid var(--cg-divider); }
     .recon__table .num { text-align: right; font-variant-numeric: tabular-nums; }
@@ -152,13 +157,20 @@ export class AdminCostReconciliationComponent implements OnInit {
     this.open.set(this.open() === day.day ? null : day.day);
   }
 
-  /** Un écart de plus d'un dollar se voit. */
+  /** Un écart d'un euro ou plus se voit (F-224 / SF-224-05 : le seuil suit la devise de l'écran). */
   gapNotable(day: ReconciliationDay): boolean {
-    return day.gapUsd !== null && Math.abs(day.gapUsd) >= 1;
+    return day.gapEur !== null && day.gapEur !== undefined && Math.abs(day.gapEur) >= 1;
   }
 
-  dollars(amount: number | null | undefined): string {
-    return formatDollars(amount);
+  euros(amount: number | null | undefined): string {
+    return formatEuros(amount);
+  }
+
+  /** La mention unique : les montants sont convertis, la facture du fournisseur est en dollars. */
+  rateNote(value: number | null | undefined): string | null {
+    const rate = formatRate(value);
+    return rate === null ? null
+      : `Montants convertis au taux 1 $ = ${rate} € ; la facture Anthropic est en dollars.`;
   }
 
   fetchedAt(iso: string): string {

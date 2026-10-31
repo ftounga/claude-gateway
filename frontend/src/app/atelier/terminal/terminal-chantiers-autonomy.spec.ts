@@ -34,7 +34,7 @@ const run = (extra: Partial<AutonomyRun> = {}): AutonomyRun => ({
 
 const entry = (extra: Partial<AutonomyBoardEntry> = {}): AutonomyBoardEntry => ({
   number: 1, title: 'Titre 1', preflight: { number: 1, ready: true, reasons: [] }, run: null,
-  estimate: { usd: 1.5, turns: 3, basis: 'coût moyen de vos tours sur 30 jours × 3 tour(s)' }, ...extra,
+  estimate: { usd: 1.5, eur: 1.38, turns: 3, basis: 'coût moyen de vos tours sur 30 jours × 3 tour(s)' }, ...extra,
 });
 
 const board = (entries: AutonomyBoardEntry[], running = 0): AutonomyBoard => ({ chantiers: entries, running, maxParallel: 4 });
@@ -72,7 +72,8 @@ describe('F-219 / SF-219-03 — l’écran du chantier autonome', () => {
     const fixture = mount(journey([chantier(1)]), board([entry()], 1));
     const html = el(fixture);
     expect(html.querySelector('.auto__status--ready')?.textContent).toContain('Prêt à partir');
-    expect(html.querySelector('.auto__meta')?.textContent).toContain('≈ 1.50 $');
+    expect(html.querySelector('.auto__meta')?.textContent).toContain('≈ 1,38 €'); // F-224 / SF-224-05 : en euros, plus de dollar
+    expect(html.querySelector('.auto__meta')?.textContent).not.toContain('$');
     expect(html.querySelector('.auto__meta')?.textContent).toContain('1/4 chantiers autonomes en cours');
 
     (html.querySelector('.auto__go') as HTMLButtonElement).click();

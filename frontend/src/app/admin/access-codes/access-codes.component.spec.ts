@@ -125,12 +125,12 @@ describe('AccessCodesComponent', () => {
     component.trials.set([
       {
         codeId: 't1', label: 'essai ACME', email: 'carol@example.com', startedAt: '2026-09-13T09:00:00Z',
-        endsAt: '2026-09-27T09:00:00Z', active: true, syncCount: 2, consumedTokens: 2700000, costUsd: 18.4,
+        endsAt: '2026-09-27T09:00:00Z', active: true, syncCount: 2, consumedTokens: 2700000, costUsd: 18.4, costEur: 16.93,
         syncs: [
           { syncId: 's1', hostId: 'h1', startedAt: '2026-09-13T20:00:00Z', status: 'SUCCEEDED', firstSync: true,
-            consumedTokens: 2000000, costUsd: 14.2, stoppedOnReserve: false },
+            consumedTokens: 2000000, costUsd: 14.2, costEur: 13.064, stoppedOnReserve: false },
           { syncId: 's2', hostId: 'h1', startedAt: '2026-09-14T20:00:00Z', status: 'SUCCEEDED', firstSync: false,
-            consumedTokens: 700000, costUsd: 4.2, stoppedOnReserve: false },
+            consumedTokens: 700000, costUsd: 4.2, costEur: 3.864, stoppedOnReserve: false },
         ],
       },
     ]);
@@ -141,6 +141,10 @@ describe('AccessCodesComponent', () => {
     expect(section.textContent).toContain('essai ACME');
     expect(section.textContent).toContain('2 synchros');
     expect(section.textContent).toContain('première synchro (hors réserve)');
+    // F-224 / SF-224-05 : les coûts en euros, plus aucun dollar.
+    expect(section.textContent).toContain('16.93 €');
+    expect(section.textContent).toContain('13.064 €');
+    expect(section.textContent).not.toContain('$');
   });
 
   it('affiche le code en clair après création, et recharge la liste', () => {

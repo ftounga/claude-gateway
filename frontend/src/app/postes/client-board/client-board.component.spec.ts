@@ -30,7 +30,7 @@ describe('ClientBoardComponent', () => {
 
   const run: AutonomyRun = {
     id: 'r1', workspaceId: 'w3', chantierNumber: 1, chantierTitle: 'Bascule', status: 'RUNNING', turns: 1,
-    stepsDone: 2, stepsTotal: 5, costUsd: 1.25, stopReason: null, errorCode: null, startedAt: '', finishedAt: null,
+    stepsDone: 2, stepsTotal: 5, costUsd: 1.25, costEur: 1.15, stopReason: null, errorCode: null, startedAt: '', finishedAt: null,
   };
 
   const card = (extra: Partial<ClientBoardChantier>): ClientBoardChantier => ({
@@ -188,7 +188,8 @@ describe('ClientBoardComponent', () => {
     build(board([running], 1));
     expect(el().querySelector('[data-key="w3#1"] .cb__row')?.textContent).toContain('En autonome — étape 3/5');
     const c = expand('[data-key="w3#1"]');
-    expect(c.textContent).toContain('1.25 $');
+    expect(c.textContent).toContain('1,15 €'); // F-224 / SF-224-05
+    expect(c.textContent).not.toContain('1.25 $');
     expect(c.querySelector('.cb__check')).toBeNull();
     expect(c.querySelector('.cb__launch')).toBeNull();
   });

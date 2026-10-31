@@ -17,7 +17,8 @@ import {
   AdminCostClient,
   AdminCostPeriod,
   AdminCostSummary,
-  formatDollars,
+  formatEuros,
+  formatRate,
 } from './admin-cost.models';
 
 /**
@@ -175,14 +176,13 @@ export class AdminCostComponent implements OnInit {
     return `${budgeted} ${word} · ${this.euros(data.budgetEur)} de plafond au total cette semaine`;
   });
 
-  /** Montant en dollars, la devise de la facture (F-224 / SF-224-04). */
-  dollars(amount: number | null | undefined): string {
-    return formatDollars(amount);
-  }
-
-  /** Le taux dollar → euro, écrit à la française. */
-  rate(value: number | null | undefined): string {
-    return value === null || value === undefined ? '—' : String(value).replace('.', ',');
+  /**
+   * La mention discrète du taux appliqué (F-224 / SF-224-05) : « taux 1 $ = 0,92 € », ou `null` si la passerelle
+   * ne le rend pas. Les montants sont en euros ; le dollar ne survit qu'ici, pour dire d'où ils viennent.
+   */
+  rateNote(value: number | null | undefined): string | null {
+    const rate = formatRate(value);
+    return rate === null ? null : `taux 1 $ = ${rate} €`;
   }
 
   /** L'intitulé d'une période. */
@@ -190,12 +190,9 @@ export class AdminCostComponent implements OnInit {
     return period === 'week' ? 'Cette semaine' : period === '7d' ? '7 derniers jours' : 'Ce mois';
   }
 
-  /** Montant en euros, à la française. */
-  euros(amount: number | null): string {
-    if (amount === null || amount === undefined) {
-      return '—';
-    }
-    return `${amount.toFixed(2).replace('.', ',')} €`;
+  /** Montant en euros, à la française (F-224 / SF-224-05 : la devise de tous les montants de l'écran). */
+  euros(amount: number | null | undefined): string {
+    return formatEuros(amount);
   }
 
   /** Nom affiché d'un client. « Hors client » n'est pas un client : il se nomme comme tel. */

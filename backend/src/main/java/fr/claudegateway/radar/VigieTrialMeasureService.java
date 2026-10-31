@@ -1,6 +1,7 @@
 package fr.claudegateway.radar;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -16,6 +17,7 @@ import fr.claudegateway.access.AccessCode;
 import fr.claudegateway.access.AccessCodeRepository;
 import fr.claudegateway.admin.AdminService;
 import fr.claudegateway.billing.EntitlementSpace;
+import fr.claudegateway.quota.ProviderPricingProperties;
 import fr.claudegateway.radar.analysis.RadarAnalysisReport;
 import fr.claudegateway.radar.analysis.RadarSyncAnalysisView;
 import fr.claudegateway.user.User;
@@ -40,15 +42,17 @@ public class VigieTrialMeasureService {
     private final RadarSyncRepository syncs;
     private final RadarAnalysisReport report;
     private final Clock clock;
+    private final ProviderPricingProperties pricing;
 
     public VigieTrialMeasureService(AdminService adminService, AccessCodeRepository codes, UserRepository users,
-            RadarSyncRepository syncs, RadarAnalysisReport report, Clock clock) {
+            RadarSyncRepository syncs, RadarAnalysisReport report, Clock clock, ProviderPricingProperties pricing) {
         this.adminService = adminService;
         this.codes = codes;
         this.users = users;
         this.syncs = syncs;
         this.report = report;
         this.clock = clock;
+        this.pricing = pricing;
     }
 
     /**
@@ -73,7 +77,7 @@ public class VigieTrialMeasureService {
                     users.findById(userId).map(User::getEmail).orElse(null),
                     code.getRedeemedAt(), code.getGrantedUntil(),
                     code.getGrantedUntil() != null && now.isBefore(code.getGrantedUntil()),
-                    measures.size(), tokens, cost, measures));
+                    measures.size(), tokens, cost, measures, eur(cost, 2)));
         }
         return trials;
     }
@@ -86,11 +90,16 @@ public class VigieTrialMeasureService {
         byHost.forEach((hostId, hostSyncs) -> analyses.putAll(report.bySync(new RadarScope(userId, hostId), hostSyncs)));
         return window.stream().map(sync -> {
             RadarSyncAnalysisView analysis = analyses.get(sync.getId());
+            BigDecimal costUsd = analysis == null || analysis.costUsd() == null ? BigDecimal.ZERO : analysis.costUsd();
             return new SyncMeasure(sync.getId(), sync.getHostId(), sync.getStartedAt(), sync.getStatus().name(),
-                    sync.isReserveExempt(), sync.getConsumedTokens(),
-                    analysis == null ? BigDecimal.ZERO : analysis.costUsd(),
-                    analysis != null && analysis.stoppedOnReserve());
+                    sync.isReserveExempt(), sync.getConsumedTokens(), costUsd,
+                    analysis != null && analysis.stoppedOnReserve(), eur(costUsd, 4));
         }).toList();
+    }
+
+    /** Le coût en euros (F-224 / SF-224-05), au taux unique de la passerelle. */
+    private BigDecimal eur(BigDecimal usd, int scale) {
+        return usd.multiply(pricing.usdToEur()).setScale(scale, RoundingMode.HALF_UP);
     }
 
     /**
@@ -106,10 +115,11 @@ public class VigieTrialMeasureService {
      * @param consumedTokens jetons consommés, première synchro comprise
      * @param costUsd       coût estimé total (USD, tarifs configurés)
      * @param syncs         détail synchro par synchro
+     * @param costEur       le même coût en euros, au taux de la passerelle (F-224 / SF-224-05)
      */
     public record TrialMeasure(UUID codeId, String label, String email, OffsetDateTime startedAt,
             OffsetDateTime endsAt, boolean active, int syncCount, long consumedTokens, BigDecimal costUsd,
-            List<SyncMeasure> syncs) {
+            List<SyncMeasure> syncs, BigDecimal costEur) {
     }
 
     /**
@@ -123,8 +133,9 @@ public class VigieTrialMeasureService {
      * @param consumedTokens   jetons consommés
      * @param costUsd          coût estimé (USD)
      * @param stoppedOnReserve arrêtée sur réserve épuisée
+     * @param costEur          le même coût en euros (F-224 / SF-224-05)
      */
     public record SyncMeasure(UUID syncId, UUID hostId, OffsetDateTime startedAt, String status, boolean firstSync,
-            long consumedTokens, BigDecimal costUsd, boolean stoppedOnReserve) {
+            long consumedTokens, BigDecimal costUsd, boolean stoppedOnReserve, BigDecimal costEur) {
     }
 }

@@ -111,7 +111,18 @@ class ProviderCostReconciliationApiIntegrationTest {
                 .andExpect(jsonPath("$.days[0].keys[0].apiKeyId").value("apikey_lc"))
                 .andExpect(jsonPath("$.days[0].keys[0].amountUsd").value(8.0))
                 .andExpect(jsonPath("$.days[0].keys[1].label").value("gateway (…owXY)"))
-                .andExpect(jsonPath("$.days[1].billedUsd").doesNotExist());
+                .andExpect(jsonPath("$.days[1].billedUsd").doesNotExist())
+                // F-224 / SF-224-05 : les mêmes montants en euros, au taux unique de la passerelle (0,92).
+                .andExpect(jsonPath("$.usdToEur").value(0.92))
+                .andExpect(jsonPath("$.billedTotalEur").value(73.60))
+                .andExpect(jsonPath("$.calculatedTotalEur").value(46.23))
+                .andExpect(jsonPath("$.days[0].billedEur").value(73.60))
+                .andExpect(jsonPath("$.days[0].calculatedEur").value(46.23))
+                .andExpect(jsonPath("$.days[0].gapEur").value(27.37))
+                .andExpect(jsonPath("$.days[0].keys[0].amountEur").value(7.36))
+                .andExpect(jsonPath("$.days[1].billedEur").doesNotExist())
+                .andExpect(jsonPath("$.days[1].gapEur").doesNotExist())
+                .andExpect(jsonPath("$.days[1].calculatedEur").value(0.0));
 
         // Relire remplace, ne double pas.
         mockMvc.perform(post("/api/admin/cost/reconciliation/refresh").param("days", "7").contextPath("/api")
