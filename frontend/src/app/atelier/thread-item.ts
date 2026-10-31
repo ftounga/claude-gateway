@@ -1,4 +1,4 @@
-import { AtelierMessage, AtelierTerminalBlock } from '../core/models/atelier.models';
+import { ATELIER_RICH_BLOCK_FIELDS, AtelierMessage, AtelierTerminalBlock } from '../core/models/atelier.models';
 import { normalizeTurnQuestions } from '../core/services/turn-questions';
 import { AtelierThreadItem } from './atelier.types';
 import { toDiffViews } from './terminal/terminal-diff';
@@ -62,16 +62,28 @@ export function toThreadItem(message: AtelierMessage): AtelierThreadItem {
   if (!Array.isArray(stored.blocks) || stored.blocks.length === 0) {
     return item;
   }
-  item.terminal = stored.blocks.map((block): AtelierTerminalBlock => ({
-    tool: block.tool,
-    command: block.command ?? undefined,
-    toolUseId: block.toolUseId ?? null,
-    threadId: block.threadId ?? null,
-    output: block.output ?? '',
-    hasOutput: block.hasOutput === true,
-    error: block.error === true,
-    expanded: false,
-  }));
+  item.terminal = stored.blocks.map((block): AtelierTerminalBlock => {
+    const restored: AtelierTerminalBlock = {
+      tool: block.tool,
+      command: block.command ?? undefined,
+      toolUseId: block.toolUseId ?? null,
+      threadId: block.threadId ?? null,
+      output: block.output ?? '',
+      hasOutput: block.hasOutput === true,
+      error: block.error === true,
+      expanded: false,
+    };
+    // F-212 / SF-212-06 : les BLOCS RICHES survivent à la relecture. Le compte rendu les porte depuis
+    // longtemps (captures de preuve, page, courriel, carte, vidéo…), mais ils étaient laissés ici :
+    // au rechargement — et toujours dans un volet de chantier — la capture demandée n'apparaissait pas.
+    for (const field of ATELIER_RICH_BLOCK_FIELDS) {
+      const value = block[field];
+      if (value) {
+        (restored as unknown as Record<string, unknown>)[field] = value;
+      }
+    }
+    return restored;
+  });
   return item;
 }
 

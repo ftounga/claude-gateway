@@ -3412,29 +3412,33 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
   /**
    * **Les captures jointes à un encart** (F-212 / SF-212-04, usage cible) : celles que la balise désigne
-   * (```message preuves=<id1>,<id2>), cherchées dans tout le fil ; à défaut de référence dans la réponse,
+   * (```message preuves=<id1>,<id2>), cherchées dans tout le fil et dans le tour en cours — une capture
+   * introuvable est affichée quand même par sa route (SF-212-06) ; à défaut de référence dans la réponse,
    * celles du tour s’affichent sous son DERNIER encart. `null` : rien à joindre.
    */
   attachedProof(message: AtelierThreadItem | null | undefined, block: CopyBlock): AtelierProofBlock | null {
     if (block.preuves && block.preuves.length > 0) {
-      const found: { capture: AtelierProofCapture; proof: AtelierProofBlock }[] = [];
+      // F-212 / SF-212-06 : les blocs du fil chargé ET ceux du tour en cours — l'encart s'écrit souvent
+      // dans le tour même qui a pris les captures.
+      const blocks = [
+        ...this.messages.flatMap((item) => item.terminal ?? []),
+        ...(this.streaming?.blocks ?? []),
+      ];
+      const found: { capture: AtelierProofCapture; proof: AtelierProofBlock | null }[] = [];
       for (const id of block.preuves) {
-        for (const item of this.messages) {
-          for (const terminalBlock of item.terminal ?? []) {
-            const capture = terminalBlock.proof?.captures.find((candidate) => candidate.id === id);
-            if (capture && terminalBlock.proof) {
-              found.push({ capture, proof: terminalBlock.proof });
-            }
-          }
-        }
+        const owner = blocks.find((candidate) => candidate.proof?.captures.some((capture) => capture.id === id));
+        const capture = owner?.proof?.captures.find((candidate) => candidate.id === id);
+        // REPLI (SF-212-06) : une capture qui n'est pas dans le fil chargé (autre fil, tour non relu) est
+        // affichée quand même, par sa route isolée — mieux qu'une image qui ne vient jamais.
+        found.push(capture && owner?.proof ? { capture, proof: owner.proof } : { capture: { id, width: null, height: null }, proof: null });
       }
-      if (found.length === 0) {
-        return null;
-      }
-      const proofs = [...new Set(found.map((entry) => entry.proof))];
+      const proofs = [...new Set(found.map((entry) => entry.proof).filter((proof): proof is AtelierProofBlock => !!proof))];
       return {
-        ...proofs[0],
-        title: proofs.map((proof) => proof.title).join(' · '),
+        title: proofs.length > 0 ? proofs.map((proof) => proof.title).join(' · ') : 'Captures jointes',
+        step: proofs[0]?.step ?? null,
+        host: proofs[0]?.host ?? null,
+        os: proofs[0]?.os ?? null,
+        shell: proofs[0]?.shell ?? null,
         captures: found.map((entry) => entry.capture),
         commands: proofs.flatMap((proof) => proof.commands),
       };

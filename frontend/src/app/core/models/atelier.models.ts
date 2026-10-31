@@ -461,11 +461,22 @@ export interface AtelierFileDiff {
 }
 
 /**
+ * Les **blocs riches** qu'un bloc de transcription peut porter (F-89, F-109, F-110, F-175, F-177, F-179,
+ * F-205, F-212, F-213). Le compte rendu persisté les porte (`AtelierTurnReport.Block`) : la relecture
+ * (`toThreadItem`) doit les rendre tels quels (F-212 / SF-212-06).
+ */
+export const ATELIER_RICH_BLOCK_FIELDS = [
+  'card', 'email', 'page', 'attente', 'handoff', 'proposal', 'besoin', 'proof', 'video', 'audio',
+] as const;
+
+export type AtelierRichBlockField = (typeof ATELIER_RICH_BLOCK_FIELDS)[number];
+
+/**
  * Transcription d'un tour Terminal telle que stockée (F-30 SF-30-09) : commandes appariées à leurs
  * sorties côté backend, coût du tour, et nombre de blocs omis par la borne de persistance.
  */
 export interface AtelierPersistedTranscript {
-  blocks: {
+  blocks: ({
     tool: string;
     command: string | null;
     toolUseId: string | null;
@@ -477,7 +488,7 @@ export interface AtelierPersistedTranscript {
      * séquentiel — et pour tous les tours écrits avant F-35, qui restent lisibles sans marquage.
      */
     threadId?: string | null;
-  }[];
+  } & Partial<Pick<AtelierTerminalBlock, AtelierRichBlockField>>)[];
   omittedBlocks: number;
   inputTokens: number;
   outputTokens: number;
