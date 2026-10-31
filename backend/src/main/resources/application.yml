@@ -1019,6 +1019,13 @@ app:
     # https://platform.claude.com/docs/en/about-claude/pricing et REVUS CHAQUE TRIMESTRE (decision
     # D9 du cadrage F-133). `pricing-version` date le releve et accompagne chaque montant enregistre
     # dans `usage_turns` : un cout ancien reste explicable quand les tarifs auront change.
+    # F-224 / SF-224-02 — Rapprochement avec la facture du fournisseur. Cle Admin (sk-ant-admin...) : LECTURE de la
+    # facture seulement, jamais journalisee ni renvoyee. Absente => rapprochement inactif, l'ecran dit comment la creer.
+    anthropic-admin:
+      key: ${APP_ANTHROPIC_ADMIN_KEY:}
+      base-url: ${APP_ANTHROPIC_ADMIN_BASE_URL:https://api.anthropic.com}
+      # Relecture quotidienne des 31 derniers jours (UTC). Idempotente : chaque ligne (jour, cle) est remplacee.
+      cron: ${APP_ANTHROPIC_ADMIN_CRON:0 20 6 * * *}
     provider:
       pricing-version: ${APP_COST_PRICING_VERSION:2026-10-02}
       # Tarifs de repli quand le modele servi est absent de la grille. Un probleme de tarif ne fait

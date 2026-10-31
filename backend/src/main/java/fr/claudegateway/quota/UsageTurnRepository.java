@@ -133,6 +133,17 @@ public interface UsageTurnRepository extends JpaRepository<UsageTurn, UUID> {
             """)
     Double averageCostSince(@Param("userId") UUID userId, @Param("since") OffsetDateTime since);
 
+    /**
+     * Les coûts calculés de la PLATEFORME sur {@code [from, to)} — {@code [occurredAt, providerCostUsd]} — pour le
+     * rapprochement avec la facture du fournisseur (F-224 / SF-224-02). Agrégat de plateforme, lu par
+     * l'administrateur seul ; aucune donnée de compte n'en sort (le service ne rend que des sommes par jour).
+     */
+    @Query("""
+            select t.occurredAt, t.providerCostUsd from UsageTurn t
+            where t.occurredAt >= :from and t.occurredAt < :to and t.providerCostUsd is not null
+            """)
+    List<Object[]> costsBetween(@Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to);
+
     /** Tours d'un utilisateur, les plus récents d'abord (diagnostic et tests ; isolation `user_id`). */
     List<UsageTurn> findByUserIdOrderByOccurredAtDesc(UUID userId);
 
