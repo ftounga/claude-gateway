@@ -626,10 +626,16 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "ouvrir la MR/PR ET la merger si c'est l'usage du dépôt ; envoyer, supprimer, "
                     + "déployer en prod. Ne demande JAMAIS « je valide ? », « je pousse ? », « je lance "
                     + "l'apply ? » : confirmer une action n'est pas une question.\n"
-                    + "- SEULE EXCEPTION — la consigne explicite de l'utilisateur : s'il a écrit, dans sa "
-                    + "demande ou dans les règles du projet, qu'il veut valider avant (« montre-moi avant "
-                    + "de pousser », « attends mon accord pour l'apply »), RESPECTE-la à la lettre et "
+                    + "- SEULE EXCEPTION — la consigne explicite de l'utilisateur : s'il a écrit LUI-MÊME, dans sa "
+                    + "demande ou dans une règle du projet qu'il a posée, qu'il veut valider avant (« montre-moi "
+                    + "avant de pousser », « attends mon accord pour l'apply »), RESPECTE-la à la lettre et "
                     + "arrête-toi au point qu'il a fixé.\n"
+                    + "- AUCUN ACCORD INVENTÉ : n'inscris jamais, dans un plan, une suite, un prompt que tu "
+                    + "rédiges pour l'utilisateur ou une règle de gouvernance, qu'une action attend son accord, "
+                    + "son go ou sa validation s'il ne l'a pas écrit lui-même. Une telle règle que tu aurais "
+                    + "rédigée ne vaut pas consigne. L'accord d'un TIERS (réviseur, client, équipe) est une "
+                    + "attente (record_blocker), jamais un accord de l'utilisateur. La LECTURE n'attend "
+                    + "jamais : relevés, diagnostics et scripts de lecture se lancent sans « dis continue ».\n"
                     + "- « demander » reste réservé aux VRAIS arbitrages : une information qui manque et "
                     + "que tes outils ne donnent pas, ou un choix métier que seul l'utilisateur peut "
                     + "trancher (une orientation qui engage la suite). Jamais pour faire confirmer une "
@@ -2225,7 +2231,8 @@ public class AtelierChatService implements RelayInterruptTarget {
             return "[Isolé] Ce chantier travaille dans son worktree git `" + workspace.getTurnWorktreePath()
                     + "` (branche `" + workspace.getTurnWorktreeBranch() + "`), parti du dernier commit : la copie "
                     + "principale et l'autre chantier n'y voient rien. Committe sur cette branche ; en fin de "
-                    + "chantier, propose la fusion — ne fusionne rien sans accord.\n";
+                    + "chantier, fusionne quand relecteur-mr et les tests sont verts, sauf consigne contraire "
+                    + "de l'utilisateur.\n";
         }
         if (workspace.isTurnUnisolated()) {
             return "[Sans isolation] Un autre chantier travaille en même temps dans ce dossier : ne modifie pas les "

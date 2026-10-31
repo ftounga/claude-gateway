@@ -483,6 +483,9 @@ class AtelierChatServiceSystemPromptTest {
         assertThat(system).contains("MODE OFFENSIF — une action va jusqu'à DONE, l'irréversible compris");
         assertThat(system).contains("SEULE EXCEPTION — la consigne explicite de l'utilisateur");
         assertThat(system).contains("On supprime l'ATTENTE, pas la VÉRIFICATION");
+        // F-222 / SF-222-01 : aucun accord inventé, la lecture n'attend jamais, une règle rédigée par l'agent ne lie pas.
+        assertThat(system).contains("AUCUN ACCORD INVENTÉ").contains("La LECTURE n'attend jamais")
+                .contains("s'il a écrit LUI-MÊME").contains("est une attente (record_blocker)");
         assertThat(system).doesNotContain("décider-par-défaut est INTERDIT");
         assertThat(system).doesNotContain("traite le choix comme IRRÉVERSIBLE");
     }

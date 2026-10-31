@@ -48,10 +48,11 @@ public final class JourneyGate {
                     ? "L'amendement du plan (v" + journey.getPlanVersion() + ") attend la validation de "
                             + "l'utilisateur."
                     : "Le plan (v" + journey.getPlanVersion() + ") attend la validation de l'utilisateur.")
-                    + " Attends son clic : n'essaie pas d'autre chemin pour modifier, et dis-lui que le plan "
-                    + "attend sa validation.";
+                    + " Attends sa validation (un clic, ou un « go » écrit : valider_plan) : n'essaie pas d'autre "
+                    + "chemin pour modifier, et dis-lui que le plan attend sa validation.";
             case EXECUTION -> "Aucun plan validé ne couvre cette modification : amende le plan avec "
-                    + "set_subject_plan, il repassera par la validation de l'utilisateur.";
+                    + "set_subject_plan — same_objective=true s'il garde l'objectif du chantier (appliqué sans "
+                    + "clic, à annoncer), sinon il repassera par la validation de l'utilisateur.";
             case VERIFICATION -> "Phase Vérification : on vérifie, on ne modifie plus. Si une correction "
                     + "est nécessaire, amende le plan (set_subject_plan) ou reviens en investigation.";
             case CLOS -> ""; // jamais atteint : un sujet clos n'a plus de porte (SF-176-07)

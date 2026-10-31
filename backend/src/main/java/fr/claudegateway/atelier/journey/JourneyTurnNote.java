@@ -165,9 +165,11 @@ public final class JourneyTurnNote {
             note.append(" — VALIDÉ par l'utilisateur.\n");
         } else if (validated != null) {
             note.append(" — AMENDEMENT EN ATTENTE DE VALIDATION (v").append(validated)
-                    .append(" était validé) : ne modifie rien avant sa validation.\n");
+                    .append(" était validé) : ne modifie rien avant sa validation (un clic, ou un « go » écrit → "
+                            + "valider_plan).\n");
         } else {
-            note.append(" — EN ATTENTE DE VALIDATION : ne modifie rien avant sa validation.\n");
+            note.append(" — EN ATTENTE DE VALIDATION (un clic, ou un « go » écrit → valider_plan) : ne modifie "
+                    + "rien avant sa validation.\n");
         }
         int index = 0;
         for (JourneyPlan.Step step : plan.steps()) {

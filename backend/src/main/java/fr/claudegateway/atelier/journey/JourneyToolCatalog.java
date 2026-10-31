@@ -50,9 +50,12 @@ public class JourneyToolCatalog {
     /** Confirmer un diagnostic quand l'utilisateur le dit par écrit (F-176 / SF-176-12). */
     public static final String CONFIRM_DIAGNOSIS = "confirmer_diagnostic";
 
+    /** Valider un plan quand l'utilisateur le dit par écrit — un « go » (F-222 / SF-222-01). */
+    public static final String VALIDATE_PLAN = "valider_plan";
+
     /** Tous les noms d'outils du parcours. */
     public static final Set<String> NAMES = Set.of(PROPOSE_GUIDED, SET_PLAN, SUBMIT_DIAGNOSIS, UPDATE_STEP, REOPEN,
-            UPDATE_SUB_STEPS, LAUNCH_AUTONOMOUS, CONFIRM_DIAGNOSIS);
+            UPDATE_SUB_STEPS, LAUNCH_AUTONOMOUS, CONFIRM_DIAGNOSIS, VALIDATE_PLAN);
 
     /** Le guide ajouté à la consigne système quand les outils sont donnés (stable). */
     public static final String GUIDE = "--- Parcours du sujet (Libre / Guidé) ---\n"
@@ -103,11 +106,18 @@ public class JourneyToolCatalog {
             + "exécutée en autonome : quand l'utilisateur dit qu'elle est faite, update_plan_step status=FAIT. Si "
             + "le bloc « Parcours du sujet » te demande de préciser des acteurs, fais-le avec update_plan_step "
             + "actor (sans status) : ce n'est pas un amendement.\n"
-            + "L'utilisateur valide le plan d'un clic ; tant qu'il "
-            + "ne l'a pas fait, ne modifie rien. Garde PLAN-ACTION.md cohérent avec ce plan.\n"
+            + "L'utilisateur valide le PREMIER plan d'un chantier d'un clic [Valider], ou en te le disant "
+            + "(« go », « je valide le plan du chantier 4 ») — alors valider_plan (chantier et citation exigés), "
+            + "jamais de ta propre initiative ni dans une course autonome. Tant qu'il ne l'a pas validé, ne "
+            + "modifie rien. Garde PLAN-ACTION.md cohérent avec ce plan.\n"
             + "EXÉCUTION : n'exécute que des étapes du plan validé. Une modification hors plan est un "
-            + "AMENDEMENT : rappelle set_subject_plan avec le plan complet modifié — il repasse par la "
-            + "validation de l'utilisateur. Le plan validé VAUT FEU VERT : chacune de ses étapes s'exécute "
+            + "AMENDEMENT : rappelle set_subject_plan avec le plan complet modifié. MÊME OBJECTIF (le chantier "
+            + "garde son but : une étape ajoutée, précisée, découpée ou réordonnée, une correction trouvée en "
+            + "route) : same_objective=true — l'amendement s'applique SANS CLIC, il est journalisé, le plan reste "
+            + "validé, et tu l'annonces en une phrase dans ta réponse (ce qui change et pourquoi). OBJECTIF "
+            + "CHANGÉ (autre cible, autre périmètre, autre résultat attendu) : sans same_objective — il repasse "
+            + "par la validation de l'utilisateur. Dans le doute, c'est un changement d'objectif. Le plan validé "
+            + "VAUT FEU VERT : chacune de ses étapes s'exécute "
             + "jusqu'au bout, EXTERNE comprise (push, merge, apply, envoi), sans redemander de "
             + "confirmation (F-218). Après chaque étape exécutée : update_plan_step status=FAIT. Une "
             + "étape longue se détaille avec update_sub_steps (la liste complète de ses sous-étapes, cochées "
@@ -185,6 +195,7 @@ public class JourneyToolCatalog {
         tools.add(updateSubStepsDefinition());
         tools.add(launchAutonomousDefinition());
         tools.add(confirmDiagnosisDefinition());
+        tools.add(validatePlanDefinition());
         return tools;
     }
 
@@ -212,14 +223,34 @@ public class JourneyToolCatalog {
                 "required", List.of("title", "risk", "actor"));
         return new AgentTool(SET_PLAN,
                 "Pose (ou amende) le PLAN du sujet guidé : la liste COMPLÈTE des étapes, qui remplace la "
-                        + "précédente. L'utilisateur le valide d'un clic ; une modification d'un plan déjà "
-                        + "validé est un amendement, revalidé. Mode guidé seulement.",
+                        + "précédente. L'utilisateur valide le premier plan ; une modification d'un plan déjà "
+                        + "validé est un amendement : appliqué sans clic s'il garde l'objectif (same_objective), "
+                        + "revalidé sinon. Mode guidé seulement.",
                 Map.of("type", "object",
                         "properties", Map.of(
                                 "steps", Map.of("type", "array", "items", step,
                                         "description", "Les étapes, dans l'ordre (40 au plus)."),
-                                "chantier", CHANTIER_PARAM),
+                                "chantier", CHANTIER_PARAM,
+                                "same_objective", Map.of("type", "boolean",
+                                        "description", "Amendement d'un plan validé qui GARDE l'objectif du "
+                                                + "chantier : appliqué sans clic, journalisé, à annoncer. Absent ou "
+                                                + "false = l'objectif change, l'utilisateur revalide.")),
                         "required", List.of("steps")));
+    }
+
+    static AgentTool validatePlanDefinition() {
+        return new AgentTool(VALIDATE_PLAN,
+                "Valide le PLAN d'un chantier qui attend sa validation quand l'utilisateur te le dit explicitement "
+                        + "dans son message (« go », « je valide le plan du chantier 4 », « c'est bon, lance ») : "
+                        + "le chantier passe en Exécution, comme sur un clic [Valider]. Exécute ensuite son plan. "
+                        + "Jamais de ta propre initiative, ni dans une course autonome.",
+                Map.of("type", "object",
+                        "properties", Map.of(
+                                "chantier", Map.of("type", "integer",
+                                        "description", "Le numéro du chantier dont le plan est validé."),
+                                "user_words", Map.of("type", "string",
+                                        "description", "Les mots de l'utilisateur qui valident, cités.")),
+                        "required", List.of("chantier", "user_words")));
     }
 
     static AgentTool submitDiagnosisDefinition() {

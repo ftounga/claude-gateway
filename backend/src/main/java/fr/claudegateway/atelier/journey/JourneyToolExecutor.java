@@ -60,6 +60,7 @@ public class JourneyToolExecutor {
                 case JourneyToolCatalog.UPDATE_SUB_STEPS -> updateSubSteps(userId, workspace, input);
                 case JourneyToolCatalog.LAUNCH_AUTONOMOUS -> launchAutonomous(userId, workspace, input);
                 case JourneyToolCatalog.CONFIRM_DIAGNOSIS -> confirmDiagnosis(userId, workspace, input);
+                case JourneyToolCatalog.VALIDATE_PLAN -> validatePlan(userId, workspace, input);
                 default -> Outcome.error("Outil du parcours inconnu : " + tool);
             };
         } catch (InvalidJourneyException e) {
@@ -93,15 +94,20 @@ public class JourneyToolExecutor {
     private Outcome setPlan(UUID userId, Workspace workspace, JsonNode input) {
         JourneyPlan plan = JourneyPlan.fromToolInput(input == null ? null : input.get("steps"));
         Integer chantier = chantierOf(input, workspace);
-        SubjectJourneyService.PlanChange change = service.setPlan(userId, workspace.getId(), chantier, plan);
+        boolean sameObjective = input != null && input.path("same_objective").asBoolean(false);
+        SubjectJourneyService.PlanChange change = service.setPlan(userId, workspace.getId(), chantier, plan,
+                sameObjective);
         return prefixed(chantier, switch (change.outcome()) {
             case SET -> Outcome.ok("Plan v" + change.version() + " posé (" + plan.steps().size() + " étapes). "
                     + "Il attend la VALIDATION de l'utilisateur, d'un clic : il le voit déjà à l'écran. "
                     + "Présente-le en une phrase au plus, puis termine ton tour ; ne modifie rien avant qu'il "
                     + "l'ait validé.");
-            case AMENDMENT -> Outcome.ok("Amendement : plan v" + change.version() + " posé. Il remplace le "
-                    + "plan validé et doit être REVALIDÉ par l'utilisateur : dis-lui ce qui change et pourquoi, "
-                    + "et ne modifie rien avant sa validation.");
+            case AMENDMENT -> Outcome.ok("Amendement : plan v" + change.version() + " posé. L'objectif change : il "
+                    + "remplace le plan validé et doit être REVALIDÉ par l'utilisateur (un clic, ou un « go » écrit "
+                    + "→ valider_plan). Dis-lui ce qui change et pourquoi, et ne modifie rien avant sa validation.");
+            case AMENDMENT_APPLIED -> Outcome.ok("Amendement dans l'objectif : plan v" + change.version()
+                    + " appliqué SANS CLIC et journalisé ; le plan reste validé. Annonce-le en une phrase dans ta "
+                    + "réponse (ce qui change et pourquoi), puis continue l'exécution.");
             case NOT_GUIDED -> Outcome.error("Le sujet est en mode Libre : le plan structuré sert au mode "
                     + "guidé. Utilise set_plan pour organiser ton tour, ou propose le mode guidé.");
             case CLOSED -> Outcome.error("Le sujet est clos : rien à planifier. S'il faut reprendre, "
@@ -220,6 +226,24 @@ public class JourneyToolExecutor {
         service.confirmDiagnosis(userId, workspace.getId(), chantier);
         return prefixed(chantier, Outcome.ok("Diagnostic confirmé : le chantier passe en PLAN. Pose maintenant le "
                 + "plan (set_subject_plan, chantier=" + chantier + ") ; il attendra la validation de l'utilisateur."));
+    }
+
+    /**
+     * La validation écrite du plan (F-222 / SF-222-01) : un « go » vaut le clic [Valider]. Le chantier est explicite,
+     * la citation de l'utilisateur est exigée : jamais d'initiative.
+     */
+    private Outcome validatePlan(UUID userId, Workspace workspace, JsonNode input) {
+        Integer chantier = chantier(input); // explicite : jamais déduit du fil
+        if (chantier == null) {
+            return Outcome.error("chantier est requis : le numéro du chantier dont l'utilisateur valide le plan.");
+        }
+        if (text(input, "user_words").isEmpty()) {
+            return Outcome.error("user_words est requis : cite les mots de l'utilisateur qui valident. Sans "
+                    + "validation de sa part, ne valide pas.");
+        }
+        service.validatePlan(userId, workspace.getId(), chantier, null);
+        return prefixed(chantier, Outcome.ok("Plan validé par l'utilisateur : le chantier passe en EXÉCUTION. "
+                + "Exécute ses étapes jusqu'au bout (update_plan_step après chacune)."));
     }
 
     private Outcome reopen(UUID userId, Workspace workspace, JsonNode input) {
