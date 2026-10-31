@@ -7,6 +7,7 @@ import {
   AdminCostBudgets,
   AdminCostPeriod,
   AdminCostSummary,
+  CostReconciliation,
 } from './admin-cost.models';
 
 /**
@@ -23,6 +24,20 @@ export class AdminCostService {
   summary(period: AdminCostPeriod): Observable<AdminCostSummary> {
     return this.http.get<AdminCostSummary>('/api/admin/cost/summary', {
       params: new HttpParams().set('period', period),
+    });
+  }
+
+  /** Facturé par le fournisseur / calculé, par jour (F-224 / SF-224-02). */
+  reconciliation(days = 30): Observable<CostReconciliation> {
+    return this.http.get<CostReconciliation>('/api/admin/cost/reconciliation', {
+      params: new HttpParams().set('days', days),
+    });
+  }
+
+  /** [Relire maintenant] : la passerelle relit la facture puis rend le rapprochement. */
+  refreshReconciliation(days = 30): Observable<CostReconciliation> {
+    return this.http.post<CostReconciliation>('/api/admin/cost/reconciliation/refresh', {}, {
+      params: new HttpParams().set('days', days),
     });
   }
 

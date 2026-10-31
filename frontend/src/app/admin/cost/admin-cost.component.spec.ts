@@ -6,7 +6,7 @@ import { of, throwError } from 'rxjs';
 
 import { AdminCostComponent } from './admin-cost.component';
 import { AdminCostService } from './admin-cost.service';
-import { AdminCostSummary } from './admin-cost.models';
+import { AdminCostSummary, CostReconciliation, formatDollars } from './admin-cost.models';
 
 /**
  * Section « Coût réel » de l'administration (F-133 / SF-133-07).
@@ -41,13 +41,21 @@ describe('AdminCostComponent', () => {
     ...over,
   });
 
+  let recon: CostReconciliation = {
+    configured: false, setupHint: 'Créez une clé Admin… APP_ANTHROPIC_ADMIN_KEY', lastFetchedAt: null,
+    billedTotalUsd: 0, calculatedTotalUsd: 0, days: [],
+  };
+
   function setup(): void {
     service = jasmine.createSpyObj<AdminCostService>('AdminCostService', [
-      'summary', 'alerts', 'setDefaultBudget', 'setHostBudget', 'clearHostBudget',
+      'summary', 'alerts', 'setDefaultBudget', 'setHostBudget', 'clearHostBudget', 'reconciliation',
+      'refreshReconciliation',
     ]);
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
     service.summary.and.returnValue(of(summary()));
     service.alerts.and.returnValue(of([]));
+    service.reconciliation.and.returnValue(of(recon));
+    service.refreshReconciliation.and.returnValue(of(recon));
 
     TestBed.configureTestingModule({
       imports: [AdminCostComponent, NoopAnimationsModule],
@@ -64,6 +72,51 @@ describe('AdminCostComponent', () => {
   function text(): string {
     return (fixture.nativeElement as HTMLElement).textContent ?? '';
   }
+
+  // ---------------------------------------- F-224 / SF-224-04 : ce que je paie
+
+  it('F-224 : le montant en dollars d\'abord, l\'euro et le taux en second ; « 7 derniers jours » offert', () => {
+    setup();
+    service.summary.and.returnValue(of(summary({ period: '7d', spentUsd: 1234.5, spentEur: 1135.74, usdToEur: 0.92,
+      clients: [{ hostId: 'h1', hostName: 'poste-cagip', spentEur: 31.2, budgetEur: 60, percent: 52, ownBudget: true,
+        totalTokens: 1000, spentUsd: 33.91 }] })));
+    component.selectPeriod('7d');
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(service.summary).toHaveBeenCalledWith('7d');
+    expect(el.querySelector('.cost-admin__total-label')?.textContent).toContain('7 derniers jours');
+    expect(el.querySelector('.cost-admin__total-amount')?.textContent).toContain('1\u202f234,50 $');
+    expect(el.querySelector('.cost-admin__total-eur')?.textContent).toContain('1135,74 €');
+    expect(el.querySelector('.cost-admin__total-eur')?.textContent).toContain('1 $ = 0,92 €');
+    expect(el.querySelector('.cost-admin__client-spent')?.textContent).toContain('33,91 $');
+    expect(formatDollars(-2.5)).toBe('−2,50 $');
+  });
+
+  it('F-224 : sans clé Admin, la facture dit comment la créer ; avec, facturé / calculé / écart et les clés', () => {
+    setup();
+    expect(text()).toContain('Rapprochement inactif');
+    expect(text()).toContain('APP_ANTHROPIC_ADMIN_KEY');
+    expect((fixture.nativeElement as HTMLElement).querySelector('.recon__refresh')).toBeNull();
+
+    recon = {
+      configured: true, setupHint: null, lastFetchedAt: '2026-10-31T06:20:00Z', billedTotalUsd: 80,
+      calculatedTotalUsd: 50.25, days: [{ day: '2026-10-31', billedUsd: 80, calculatedUsd: 50.25, gapUsd: 29.75,
+        keys: [{ apiKeyId: 'apikey_lc', label: 'legalcase (…owAA)', amountUsd: 8, inputTokens: 1, outputTokens: 1 }] }],
+    };
+    TestBed.resetTestingModule();
+    setup();
+    const el: HTMLElement = fixture.nativeElement;
+    const row = el.querySelector('.recon__row') as HTMLElement;
+    expect(row.textContent).toContain('80,00 $');
+    expect(row.textContent).toContain('50,25 $');
+    expect(row.querySelector('.recon__gap')?.textContent).toContain('29,75 $');
+    (row.querySelector('.recon__toggle') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.querySelector('.recon__key')?.textContent).toContain('legalcase (…owAA)');
+    (el.querySelector('.recon__refresh') as HTMLButtonElement).click();
+    expect(service.refreshReconciliation).toHaveBeenCalled();
+    recon = { ...recon, configured: false, setupHint: 'Créez une clé Admin… APP_ANTHROPIC_ADMIN_KEY', days: [] };
+  });
 
   // ---------------------------------------- le budget par défaut, expliqué (SF-133-14)
 
@@ -87,8 +140,9 @@ describe('AdminCostComponent', () => {
 
   it("n'écrit aucun plafond total quand aucun budget n'est posé", () => {
     service = jasmine.createSpyObj<AdminCostService>('AdminCostService', [
-      'summary', 'alerts', 'setDefaultBudget', 'setHostBudget', 'clearHostBudget',
+      'summary', 'alerts', 'setDefaultBudget', 'setHostBudget', 'clearHostBudget', 'reconciliation',
     ]);
+    service.reconciliation.and.returnValue(of(recon));
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
     service.summary.and.returnValue(of(summary({ budgetEur: null, percent: null })));
     service.alerts.and.returnValue(of([]));
@@ -111,8 +165,9 @@ describe('AdminCostComponent', () => {
     // SF-133-13 : le résumé liste désormais tous les clients. L'écran doit leur proposer le champ,
     // sans quoi la correction backend resterait invisible.
     service = jasmine.createSpyObj<AdminCostService>('AdminCostService', [
-      'summary', 'alerts', 'setDefaultBudget', 'setHostBudget', 'clearHostBudget',
+      'summary', 'alerts', 'setDefaultBudget', 'setHostBudget', 'clearHostBudget', 'reconciliation',
     ]);
+    service.reconciliation.and.returnValue(of(recon));
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
     service.summary.and.returnValue(of(summary({
       spentEur: 0,
@@ -156,8 +211,9 @@ describe('AdminCostComponent', () => {
   it('n\'affiche aucune part quand le client n\'a pas de budget', () => {
     // Une part inventée serait pire que pas de part du tout.
     service = jasmine.createSpyObj<AdminCostService>('AdminCostService', [
-      'summary', 'alerts', 'setDefaultBudget', 'setHostBudget', 'clearHostBudget',
+      'summary', 'alerts', 'setDefaultBudget', 'setHostBudget', 'clearHostBudget', 'reconciliation',
     ]);
+    service.reconciliation.and.returnValue(of(recon));
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
     service.alerts.and.returnValue(of([]));
     service.summary.and.returnValue(of(summary({

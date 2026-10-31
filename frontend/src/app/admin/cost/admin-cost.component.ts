@@ -11,11 +11,13 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { AdminCostService } from './admin-cost.service';
+import { AdminCostReconciliationComponent } from './admin-cost-reconciliation.component';
 import {
   AdminCostAlert,
   AdminCostClient,
   AdminCostPeriod,
   AdminCostSummary,
+  formatDollars,
 } from './admin-cost.models';
 
 /**
@@ -44,6 +46,7 @@ import {
     MatIconModule,
     MatInputModule,
     MatProgressBarModule,
+    AdminCostReconciliationComponent,
   ],
   templateUrl: './admin-cost.component.html',
   styleUrl: './admin-cost.component.scss',
@@ -171,6 +174,21 @@ export class AdminCostComponent implements OnInit {
     const word = budgeted > 1 ? 'clients budgétés' : 'client budgété';
     return `${budgeted} ${word} · ${this.euros(data.budgetEur)} de plafond au total cette semaine`;
   });
+
+  /** Montant en dollars, la devise de la facture (F-224 / SF-224-04). */
+  dollars(amount: number | null | undefined): string {
+    return formatDollars(amount);
+  }
+
+  /** Le taux dollar → euro, écrit à la française. */
+  rate(value: number | null | undefined): string {
+    return value === null || value === undefined ? '—' : String(value).replace('.', ',');
+  }
+
+  /** L'intitulé d'une période. */
+  periodLabel(period: AdminCostPeriod): string {
+    return period === 'week' ? 'Cette semaine' : period === '7d' ? '7 derniers jours' : 'Ce mois';
+  }
 
   /** Montant en euros, à la française. */
   euros(amount: number | null): string {

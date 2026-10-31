@@ -82,8 +82,12 @@ describe('AdminComponent', () => {
 
     // Et pour la section Coût réel (F-133 / SF-133-07), qui a elle aussi son propre spec.
     const costSpy = jasmine.createSpyObj<AdminCostService>('AdminCostService', [
-      'summary', 'alerts', 'setDefaultBudget', 'setHostBudget', 'clearHostBudget',
+      'summary', 'alerts', 'setDefaultBudget', 'setHostBudget', 'clearHostBudget', 'reconciliation',
     ]);
+    // F-224 / SF-224-04 : la carte « Facture Anthropic » se lit avec la section du coût.
+    costSpy.reconciliation.and.returnValue(of({
+      configured: false, setupHint: null, lastFetchedAt: null, billedTotalUsd: 0, calculatedTotalUsd: 0, days: [],
+    }));
     costSpy.summary.and.returnValue(
       of({
         period: 'week' as const,
