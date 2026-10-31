@@ -346,7 +346,7 @@ annuelle de deux mois. Ce sont des **valeurs de départ**, pas des décisions fi
 | F-225 | Le point de situation d'un terminal | **Demande PO du 2026-10-31.** Cadrage `docs/features/F-225/CADRAGE-F-225-point-de-situation.md`. | Terminée (2/2) |
 | F-226 | Suggérer le chantier parallèle et clarifier les gestes | **Demande PO du 2026-10-31.** Cadrage `docs/features/F-226/CADRAGE-F-226-suggerer-chantier-parallele.md`. | Terminée (2/2) |
 | F-227 | Chaque action rangée sous son chantier | **Demande PO du 2026-10-31.** Cadrage `docs/features/F-227/CADRAGE-F-227-actions-rattachees-au-chantier.md`. | Terminée (2/2) |
-| F-228 | Aperçu des pièces jointes | **Demande PO du 2026-10-31.** Cadrage `docs/features/F-228/CADRAGE-F-228-apercu-pieces-jointes.md`. | À faire |
+| F-228 | Aperçu des pièces jointes | **Demande PO du 2026-10-31.** Cadrage `docs/features/F-228/CADRAGE-F-228-apercu-pieces-jointes.md`. | En cours (1/3) |
 
 **Découpage** : **SF-44-01** construire le paquet Windows (build croisé, structure, test) ; **SF-44-02** le servir et le proposer à l'écran ; **SF-44-03** le paquet **macOS** `aarch64`/`x64` — construction, deux routes, et un écran qui présélectionne le format du poste qui consulte.
 
@@ -366,6 +366,7 @@ annuelle de deux mois. Ce sont des **valeurs de départ**, pas des décisions fi
 
 | Date | Modification | Validé par |
 |------|--------------|------------|
+| 2026-10-31 | F-228 | SF-228-01 : GET /api/workspaces/{id}/deposits/{depositId}/content — seulement une pièce inscrite du compte et du terminal, lue là où vit le projet (20 Mo), type par extension, jamais de HTML rendu (nosniff, CSP sandbox) ; l'historique porte l'identifiant des pièces |
 | 2026-10-31 | F-226 | SF-226-02 : onglets du tableau des chantiers lisibles (à la ligne, titre entier en info-bulle), onglets du split sur téléphone avec titre et état (« tourne », « à vous »), bande des chantiers non répétée dans le volet de droite. **F-226 TERMINÉE.** |
 | 2026-10-31 | F-226 | SF-226-01 : puce « Ch.N peut avancer seul · [Lancer à côté] · ✕ » aux moments creux (coupable au menu), trois verbes (Afficher, Lancer à côté, Reprendre la main), [Lancer à côté] sur les onglets, [Valider le plan] au tableau des chantiers par numéro |
 | 2026-10-31 | F-225 | SF-225-02 : carte « Point de situation » — ouverte à l'entrée après N h d'inactivité (réglable, défaut 4 h), par le menu et par /situation ; mails « pas marqué envoyé » avec [Marquer envoyé] et [Voir] ; essentiel du dernier échange. **F-225 TERMINÉE.** |
