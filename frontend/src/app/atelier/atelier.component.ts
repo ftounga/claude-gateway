@@ -52,6 +52,8 @@ import { JourneyService } from '../core/services/journey.service';
 import { AtelierLane } from '../core/services/atelier.service';
 import { AutonomyService } from '../core/services/autonomy.service';
 import { AutonomyMode } from '../core/models/autonomy.models';
+import { OpenChantier } from '../core/models/journey.models';
+import { laneLabelOf, laneStateOf } from './lane-tabs';
 import { ParallelLaunchRequest } from './terminal/atelier-terminal.component';
 import {
   ParallelLaunchDecision,
@@ -402,6 +404,19 @@ export class AtelierComponent implements OnInit, OnDestroy {
 
   /** Combien d'autres chantiers sont actifs au-delà des deux volets (renvoi au tableau). */
   readonly otherActiveLanes = signal(0);
+
+  /** Les chantiers ouverts du sujet, lus par le terminal (F-226 / SF-226-02 : titres et états des onglets). */
+  readonly paneChantiers = signal<OpenChantier[]>([]);
+
+  /** « Chantier 2 · Logs » — l'onglet ou l'en-tête d'un volet (F-226 / SF-226-02). */
+  laneLabel(number: number | null): string {
+    return laneLabelOf(number, this.paneChantiers());
+  }
+
+  /** L'état écrit d'un volet : « tourne », « à vous », ou rien. */
+  laneState(number: number | null, autonomous = false): string | null {
+    return laneStateOf(number, this.paneChantiers(), this.activeLanes(), autonomous);
+  }
 
   /** Les chantiers dont le fil tourne (tour vivant ou course autonome) — F-226 : on ne les suggère pas. */
   readonly activeLanes = signal<number[]>([]);

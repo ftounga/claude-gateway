@@ -68,7 +68,7 @@ const RING = 2 * Math.PI * 18;
       } @else {
         <div class="board__tabs" role="tablist" aria-label="Chantiers ouverts">
           @for (c of tabs(); track c.number) {
-            <button type="button" role="tab" class="board__tab"
+            <button type="button" role="tab" class="board__tab" [attr.title]="'Chantier ' + c.number + (c.title ? ' — ' + c.title : '')"
               [class.board__tab--active]="c.number === selected()?.number"
               [attr.aria-selected]="c.number === selected()?.number"
               (click)="select(c.number)">
@@ -470,10 +470,11 @@ const RING = 2 * Math.PI * 18;
     }
 
     .board__tabs {
+      /* F-226 / SF-226-02 : les onglets passent à la ligne — plus de « Ch.1 R… » ni de barre de défilement. */
       display: flex;
+      flex-wrap: wrap;
       gap: var(--cg-space-1);
       padding: var(--cg-space-2) var(--cg-space-4) 0;
-      overflow-x: auto;
       border-bottom: 1px solid var(--cg-divider);
     }
 
@@ -481,7 +482,7 @@ const RING = 2 * Math.PI * 18;
       display: inline-flex;
       align-items: center;
       gap: var(--cg-space-1);
-      max-width: 280px;
+      max-width: min(320px, 100%);
       padding: var(--cg-space-1) var(--cg-space-3);
       border: 0;
       border-bottom: 2px solid transparent;
