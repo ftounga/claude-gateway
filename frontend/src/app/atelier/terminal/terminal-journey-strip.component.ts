@@ -90,6 +90,13 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
                   <span class="journey-chantier__await">à vous</span>
                 }
               </button>
+              @if (!c.focus && canLaunchAside()) {
+                <!-- F-226 / SF-226-01 : deux gestes, deux boutons — l'onglet AFFICHE, celui-ci LANCE À CÔTÉ. -->
+                <button type="button" class="journey-chantier journey-chantier__aside"
+                  [attr.aria-label]="'Lancer à côté le chantier ' + c.number" (click)="launchAside.emit(c.number)">
+                  Lancer à côté
+                </button>
+              }
             }
           </div>
         }
@@ -507,6 +514,10 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
       outline-offset: 2px;
     }
 
+    .journey-chantier__aside {
+      border-style: dashed;
+    }
+
     .journey-chantier__await {
       color: var(--cg-orange-2);
       font-size: 12px;
@@ -544,8 +555,14 @@ export class TerminalJourneyStripComponent {
   /** Le geste de l'utilisateur ; le terminal appelle la gateway. */
   readonly gesture = output<JourneyGesture>();
 
-  /** [Chantier N] : basculer le focus sur un autre chantier ouvert (F-206). */
+  /** [Chantier N] : AFFICHER un autre chantier ouvert (F-206 ; vocabulaire F-226). */
   readonly switchChantier = output<number>();
+
+  /** [à côté] : lancer un autre chantier dans le volet de droite (F-226 / SF-226-01). */
+  readonly launchAside = output<number>();
+
+  /** Le terminal peut ouvrir un volet à côté (pas en lecture seule, pas déjà dans un volet de droite). */
+  readonly canLaunchAside = input(false);
 
   /** Les chantiers ouverts du sujet (F-206) — des onglets dès qu'il y en a deux. */
   readonly openChantiers = computed<OpenChantier[]>(() => (this.guided() ? this.journey()?.chantiers ?? [] : []));

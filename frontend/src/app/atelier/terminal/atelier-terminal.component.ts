@@ -1101,6 +1101,82 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   /** Ce que fait le chantier du volet, dit dans son en-tête : « en autonome », « tour en cours »… */
   @Input() paneActivity: string | null = null;
 
+  /** Les chantiers dont le fil tourne déjà (tour vivant ou course autonome) — F-226 : jamais suggérés. */
+  @Input() set activeLanes(value: number[] | null) {
+    this.activeLanesValue.set(value ?? []);
+  }
+  private readonly activeLanesValue = signal<number[]>([]);
+
+  /** Au plus autant de courses en même temps (F-219) : au-delà, on ne suggère plus. */
+  static readonly MAX_PARALLEL = 4;
+
+  /** La suggestion est coupée dans le menu (préférence de l'appareil). */
+  readonly suggestOff = signal<boolean>(readFlag(SUGGEST_OFF_KEY));
+
+  /** Les suggestions masquées par ✕, jusqu'à ce que l'état du chantier change (clé = numéro + état). */
+  private readonly dismissedSuggestions = signal<ReadonlySet<string>>(new Set());
+
+  /** Vrai juste après « Valider et lancer », jusqu'à la fin du tour qui s'ensuit (moment creux). */
+  readonly justLaunched = signal(false);
+
+  /** Les chantiers qui peuvent avancer seuls (qui débloque : l'outil). */
+  readonly asideCapable = computed<number[]>(() => (this.journey()?.chantiers ?? [])
+    .filter((c) => c.unblocker?.who === 'OUTIL').map((c) => c.number));
+
+  /**
+   * **⚡ Ch.N peut avancer seul · [Lancer à côté] · ✕** (F-226 / SF-226-01) — sans pop-up, dans la barre du bas,
+   * aux seuls moments creux : le chantier affiché attend l'utilisateur ou un tiers (hors tour), juste après
+   * « Valider et lancer », ou pendant une course autonome du chantier affiché. Un chantier non affiché, que
+   * l'outil peut faire avancer, qui ne tourne pas, avec moins de 4 courses en cours. Données déjà présentes.
+   */
+  suggestion(): { number: number; title: string | null } | null {
+    const j = this.journey();
+    if (!j || this.suggestOff() || this.readOnly || this.laneChantier !== null) {
+      return null;
+    }
+    const chantiers = j.chantiers ?? [];
+    const shown = focusChantierNumber(j);
+    const displayed = chantiers.find((c) => c.number === shown);
+    const running = this.activeLanesValue();
+    if (running.length >= AtelierTerminalComponent.MAX_PARALLEL || !displayed) {
+      return null;
+    }
+    const who = displayed.unblocker?.who;
+    const quiet = (!this.submittingValue && (who === 'MOI' || who === 'AUTRUI'))
+      || this.justLaunched() || running.includes(displayed.number);
+    if (!quiet) {
+      return null;
+    }
+    const dismissed = this.dismissedSuggestions();
+    const candidate = chantiers.find((c) => c.number !== shown && c.unblocker?.who === 'OUTIL'
+      && !running.includes(c.number) && !dismissed.has(suggestionKey(c)));
+    return candidate ? { number: candidate.number, title: candidate.title } : null;
+  }
+
+  /** [Lancer à côté] depuis la suggestion, l'onglet de la bande ou une suite : l'overlay « à côté » existant. */
+  launchAside(number: number, source: ParallelLaunchRequest['source'] = 'tab'): void {
+    if (this.readOnly || !this.projectId) {
+      return;
+    }
+    this.parallelLaunch.emit({ number, mode: null, source });
+  }
+
+  /** ✕ sur la suggestion : masquée jusqu'à ce que l'état du chantier change. */
+  dismissSuggestion(number: number): void {
+    const c = (this.journey()?.chantiers ?? []).find((x) => x.number === number);
+    if (!c) {
+      return;
+    }
+    this.dismissedSuggestions.update((set) => new Set([...set, suggestionKey(c)]));
+  }
+
+  /** Menu ⚙ : couper ou rétablir la suggestion du chantier parallèle. */
+  toggleSuggestions(): void {
+    const off = !this.suggestOff();
+    this.suggestOff.set(off);
+    writeFlag(SUGGEST_OFF_KEY, off);
+  }
+
   /** [Fermer ce volet] (F-221 / SF-221-03) : le chantier continue côté serveur. */
   @Output() closePane = new EventEmitter<void>();
 
@@ -1115,6 +1191,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    * « en parallèle » (F-221 / SF-221-04), qui garde [Basculer ici].
    */
   onSuiteOtherChantier(number: number): void {
+    // F-226 : depuis une suite, « Lancer à côté » (le chantier peut avancer seul) ouvre l'overlay ; [Afficher ici] y reste.
     if (this.readOnly || !this.projectId) {
       this.onSwitchChantier(number);
       return;
@@ -1264,6 +1341,10 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
             this.journey.set(journey);
           }
           this.resumeAfterGesture(gesture, before);
+          // F-226 / SF-226-01 : juste après « Valider et lancer », un moment creux — la suggestion peut paraître.
+          if (gesture === 'validate-plan') {
+            this.justLaunched.set(true);
+          }
         }
         this.journeyBusy.set(false);
       },
@@ -1520,6 +1601,10 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     const wasSubmitting = this.submittingValue;
     this.submittingValue = value === true;
     if (wasSubmitting && !this.submittingValue) {
+      // F-226 / SF-226-01 : le tour qui suivait « Valider et lancer » est fini ; la règle ordinaire reprend.
+      if (!this.deferredResume) {
+        this.justLaunched.set(false);
+      }
       // F-223 / SF-223-01 : le geste validé pendant le tour relance le travail maintenant qu'il est fini.
       this.flushDeferredResume();
       // F-175 / SF-175-04 : le tour a pu inscrire, faire avancer ou proposer de fermer une attente —
@@ -3934,5 +4019,34 @@ function switch_(status: string): string {
 export interface ParallelLaunchRequest {
   number: number;
   mode: AutonomyMode | null;
-  source: 'board' | 'suite';
+  /** F-226 : `suggestion` (la puce de la barre du bas), `tab` (l'onglet de la bande). */
+  source: 'board' | 'suite' | 'suggestion' | 'tab';
+}
+
+/** La préférence « ne plus suggérer de chantier parallèle » (F-226), par appareil. */
+const SUGGEST_OFF_KEY = 'cg.suggestParallel.off';
+
+function readFlag(key: string): boolean {
+  try {
+    return localStorage.getItem(key) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeFlag(key: string, on: boolean): void {
+  try {
+    if (on) {
+      localStorage.setItem(key, '1');
+    } else {
+      localStorage.removeItem(key);
+    }
+  } catch {
+    // stockage indisponible : la préférence vaut pour la page
+  }
+}
+
+/** La clé d'une suggestion masquée : elle revient quand l'état du chantier change. */
+function suggestionKey(c: { number: number; phase: string | null; done: number; unblocker?: { detail?: string | null } | null }): string {
+  return `${c.number}|${c.phase}|${c.done}|${c.unblocker?.detail ?? ''}`;
 }

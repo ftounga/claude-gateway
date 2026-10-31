@@ -116,6 +116,7 @@
   <div class="lane-split__pane" [hidden]="splitPane() !== null && narrowScreen() && shownPane() === 'right'">
   <app-atelier-terminal
     [paneTitle]="splitPane() !== null ? leftPaneTitle() : null"
+    [activeLanes]="activeLanes()"
     (closePane)="closeLeftPane()"
     (focusChantierChange)="onFocusChantierChange($event)"
     (parallelLaunch)="onParallelLaunch($event)"

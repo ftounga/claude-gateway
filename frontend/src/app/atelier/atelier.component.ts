@@ -403,6 +403,9 @@ export class AtelierComponent implements OnInit, OnDestroy {
   /** Combien d'autres chantiers sont actifs au-delà des deux volets (renvoi au tableau). */
   readonly otherActiveLanes = signal(0);
 
+  /** Les chantiers dont le fil tourne (tour vivant ou course autonome) — F-226 : on ne les suggère pas. */
+  readonly activeLanes = signal<number[]>([]);
+
   /** Sur téléphone, un volet à la fois : celui qui est montré. */
   readonly shownPane = signal<'left' | 'right'>('left');
 
@@ -524,6 +527,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
         if (!this.isDisplayed(id)) {
           return;
         }
+        this.activeLanes.set((lanes ?? []).filter((lane) => lane.chantier !== null && (lane.live || lane.autonomy))
+          .map((lane) => lane.chantier as number));
         const decision = splitFor(lanes ?? [], this.chatLane(), this.dismissedLanes);
         const current = this.splitPane();
         this.otherActiveLanes.set(decision.others);

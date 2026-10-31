@@ -92,7 +92,7 @@ describe('F-209 / SF-209-02 — suites en deux colonnes', () => {
     expect(left.querySelector('.badge')?.textContent).toContain('Ch.4 · étape 6/14');
     expect(left.querySelector('.blocked')?.textContent).toContain('bloquée : après les étapes 4, 5');
     expect(right.querySelectorAll('.badge')[0]?.textContent).toContain('Ch.3 · étape 2/2');
-    expect(right.querySelector('.switch')?.textContent).toContain('Basculer sur le chantier 3');
+    expect(right.querySelector('.switch')?.textContent).toContain('Afficher le chantier 3'); // F-226
     // Côte à côte au bureau (1440 px) : mesure réelle, composant attaché au document.
     document.body.appendChild(root());
     try {

@@ -42,25 +42,25 @@ describe('ParallelLaunchDialogComponent (F-221)', () => {
     return { el: fixture.nativeElement as HTMLElement, ref };
   }
 
-  it('peut partir : « Lancer en parallèle » rend launch', () => {
+  it('peut partir : « Lancer à côté » rend launch (F-226 : trois verbes)', () => {
     const { el, ref } = mount({ number: 8, title: 'Bascule DNS', offerSwitch: false,
       choice: { mode: 'UNTIL_BLOCKED', reasons: [] } });
-    expect(el.textContent).toContain('Lancer le chantier 8 en parallèle ?');
+    expect(el.textContent).toContain('Lancer le chantier 8 à côté ?');
     expect(el.textContent).toContain('jusqu’au blocage');
-    (Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.includes('Lancer en parallèle')) as HTMLElement).click();
+    (Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.includes('Lancer à côté')) as HTMLElement).click();
     expect(ref.close).toHaveBeenCalledWith('launch');
   });
 
-  it('ne peut pas partir : les raisons, « Ouvrir à côté », et « Basculer ici » pour une suite', () => {
+  it('ne peut pas partir : les raisons, « Afficher à côté », et « Afficher ici » pour une suite', () => {
     const { el, ref } = mount({ number: 8, title: null, offerSwitch: true,
       choice: { mode: null, reasons: ['Le plan n’est pas validé.'] } });
     expect(el.textContent).toContain('ne peut pas partir maintenant');
     expect(el.textContent).toContain('Le plan n’est pas validé.');
     const buttons = Array.from(el.querySelectorAll('button'));
-    expect(buttons.some((b) => b.textContent?.includes('Lancer en parallèle'))).toBeFalse();
-    (buttons.find((b) => b.textContent?.includes('Basculer ici')) as HTMLElement).click();
+    expect(buttons.some((b) => b.textContent?.includes('Lancer à côté'))).toBeFalse();
+    (buttons.find((b) => b.textContent?.includes('Afficher ici')) as HTMLElement).click();
     expect(ref.close).toHaveBeenCalledWith('switch');
-    (buttons.find((b) => b.textContent?.includes('Ouvrir à côté')) as HTMLElement).click();
+    (buttons.find((b) => b.textContent?.includes('Afficher à côté')) as HTMLElement).click();
     expect(ref.close).toHaveBeenCalledWith('open');
   });
 });
