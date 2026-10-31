@@ -103,13 +103,20 @@
        [class.lane-split--tabs]="splitPane() !== null && narrowScreen()">
   @if (splitPane() !== null && narrowScreen()) {
     <div class="lane-tabs" role="tablist" aria-label="Volets du sujet">
+      <!-- F-226 / SF-226-02 : chaque onglet dit son chantier (titre) et son état (« tourne », « à vous »). -->
       <button type="button" role="tab" class="lane-tab" [class.lane-tab--on]="shownPane() === 'left'"
               [attr.aria-selected]="shownPane() === 'left'" (click)="shownPane.set('left')">
-        {{ chatLane() ? 'Chantier ' + chatLane() : 'Fil du sujet' }}
+        <span class="lane-tab__title">{{ laneLabel(chatLane()) }}</span>
+        @if (laneState(chatLane()); as state) {
+          <span class="lane-tab__state">{{ state }}</span>
+        }
       </button>
       <button type="button" role="tab" class="lane-tab" [class.lane-tab--on]="shownPane() === 'right'"
               [attr.aria-selected]="shownPane() === 'right'" (click)="shownPane.set('right')">
-        Chantier {{ splitPane()!.chantier }}
+        <span class="lane-tab__title">{{ laneLabel(splitPane()!.chantier) }}</span>
+        @if (laneState(splitPane()!.chantier, splitPane()!.autonomous); as state) {
+          <span class="lane-tab__state">{{ state }}</span>
+        }
       </button>
     </div>
   }
@@ -117,6 +124,7 @@
   <app-atelier-terminal
     [paneTitle]="splitPane() !== null ? leftPaneTitle() : null"
     [activeLanes]="activeLanes()"
+    (chantiersChange)="paneChantiers.set($event)"
     (closePane)="closeLeftPane()"
     (focusChantierChange)="onFocusChantierChange($event)"
     (parallelLaunch)="onParallelLaunch($event)"
@@ -220,7 +228,7 @@
         [projectId]="activeWorkspaceId()!"
         [chantier]="pane.chantier"
         [projectName]="activeName()"
-        [paneTitle]="'Chantier ' + pane.chantier"
+        [paneTitle]="laneLabel(pane.chantier)"
         [autonomous]="pane.autonomous"
         [hostName]="activeHostName()"
         [hostId]="activeHostId()"

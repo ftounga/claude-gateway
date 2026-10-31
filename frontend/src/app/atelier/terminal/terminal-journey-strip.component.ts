@@ -73,7 +73,7 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
     }
     @if (guided()) {
       <section class="journey-strip" aria-label="Parcours guidé du sujet">
-        @if (openChantiers().length > 1) {
+        @if (openChantiers().length > 1 && !compact()) {
           <div class="journey-chantiers" role="group" aria-label="Chantiers ouverts du sujet">
             @for (c of openChantiers(); track c.number) {
               <button
@@ -560,6 +560,12 @@ export class TerminalJourneyStripComponent {
 
   /** [à côté] : lancer un autre chantier dans le volet de droite (F-226 / SF-226-01). */
   readonly launchAside = output<number>();
+
+  /**
+   * Volet de droite du split (F-226 / SF-226-02) : la bande des chantiers n'y est pas répétée — le volet de gauche
+   * la porte déjà, et l'en-tête du volet dit de quel chantier il s'agit.
+   */
+  readonly compact = input(false);
 
   /** Le terminal peut ouvrir un volet à côté (pas en lecture seule, pas déjà dans un volet de droite). */
   readonly canLaunchAside = input(false);

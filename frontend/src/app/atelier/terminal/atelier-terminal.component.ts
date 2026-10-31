@@ -208,8 +208,8 @@ import { Hand, HandTarget, handOf } from './terminal-hand';
 import { JourneyGesture, TerminalJourneyStripComponent } from './terminal-journey-strip.component';
 import { JourneyService } from '../../core/services/journey.service';
 import {
-  ChantierResolution, ClosedChantier, JourneyMode, SubjectJourney, chantierResolution, chantiersGestures,
-  focusChantierNumber, journeyResumeMessage,
+  ChantierResolution, ClosedChantier, JourneyMode, OpenChantier, SubjectJourney, chantierResolution,
+  chantiersGestures, focusChantierNumber, journeyResumeMessage,
 } from '../../core/models/journey.models';
 import { TerminalAction, TerminalActionBoard } from '../../core/models/terminal-actions.models';
 import { AtelierTerminalDemandeComponent } from './atelier-terminal-demande.component';
@@ -1176,6 +1176,18 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     this.suggestOff.set(off);
     writeFlag(SUGGEST_OFF_KEY, off);
   }
+
+  /** Les chantiers ouverts du sujet, à chaque relecture du parcours (F-226 : titres et états des onglets du split). */
+  @Output() chantiersChange = new EventEmitter<OpenChantier[]>();
+
+  private readonly emitChantiers = effect(() => {
+    const chantiers = this.journey()?.chantiers ?? [];
+    untracked(() => {
+      if (this.laneChantier === null) {
+        this.chantiersChange.emit(chantiers);
+      }
+    });
+  });
 
   /** [Fermer ce volet] (F-221 / SF-221-03) : le chantier continue côté serveur. */
   @Output() closePane = new EventEmitter<void>();

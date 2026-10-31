@@ -9,6 +9,8 @@ import { TerminalChantiersBoardComponent } from './terminal-chantiers-board.comp
 import { TerminalNextStepsComponent } from './terminal-next-steps.component';
 import { OpenChantier, SubjectJourney } from '../../core/models/journey.models';
 import { Unblocker } from '../../core/models/client-board.models';
+import { TerminalJourneyStripComponent } from './terminal-journey-strip.component';
+import { laneLabelOf, laneStateOf } from '../lane-tabs';
 
 const mark = (who: Unblocker, detail = 'd') => ({ who, label: who, detail, step: null, waitingOn: null, since: null });
 
@@ -85,6 +87,52 @@ describe('F-226 / SF-226-01 — la suggestion du chantier parallèle', () => {
     expect(component.suggestion()?.number).toBe(2);
     component.readOnly = true;
     expect(component.suggestion()).toBeNull();
+  });
+});
+
+describe('F-226 / SF-226-02 — onglets lisibles, split allégé', () => {
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideNoopAnimations(), provideRouter([])],
+    });
+  });
+
+  afterEach(() => TestBed.inject(HttpTestingController).match(() => true));
+
+  it('les onglets du tableau passent à la ligne (pas de défilement horizontal) et portent leur titre entier', () => {
+    const fixture = TestBed.createComponent(TerminalChantiersBoardComponent);
+    fixture.componentRef.setInput('journey', journey([chantier(1, 'MOI', { focus: true, title: 'Rotation des certificats du cluster de recette' }),
+      chantier(2, 'OUTIL')], 1));
+    fixture.componentRef.setInput('workspaceId', 'w1');
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    const tabs = el.querySelector('.board__tabs') as HTMLElement;
+    expect(getComputedStyle(tabs).flexWrap).toBe('wrap');
+    expect(getComputedStyle(tabs).overflowX).not.toBe('auto');
+    expect(el.querySelector('.board__tab')?.getAttribute('title'))
+      .toBe('Chantier 1 — Rotation des certificats du cluster de recette');
+  });
+
+  it('dans le volet de droite, la bande ne répète pas les onglets des chantiers', () => {
+    const fixture = TestBed.createComponent(TerminalJourneyStripComponent);
+    fixture.componentRef.setInput('journey', journey([chantier(1, 'MOI', { focus: true }), chantier(2, 'OUTIL')], 1));
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('.journey-chantiers')).not.toBeNull();
+    fixture.componentRef.setInput('compact', true);
+    fixture.detectChanges();
+    expect(el.querySelector('.journey-chantiers')).toBeNull();
+  });
+
+  it('les onglets du split sur téléphone : titre et état (« tourne », « à vous »)', () => {
+    const list = [chantier(1, 'MOI', { title: 'Ingress', awaitingValidation: true }), chantier(2, 'OUTIL', { title: 'Logs' })];
+    expect(laneLabelOf(1, list)).toBe('Chantier 1 · Ingress');
+    expect(laneLabelOf(9, list)).toBe('Chantier 9');
+    expect(laneLabelOf(null, list)).toBe('Fil du sujet');
+    expect(laneStateOf(1, list, [])).toBe('à vous');
+    expect(laneStateOf(2, list, [2])).toBe('tourne');
+    expect(laneStateOf(2, list, [], true)).toBe('tourne');
+    expect(laneStateOf(2, list, [])).toBeNull();
   });
 });
 
