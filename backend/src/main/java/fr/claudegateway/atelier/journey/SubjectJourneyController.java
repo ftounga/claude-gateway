@@ -181,8 +181,10 @@ public class SubjectJourneyController {
 
     private SubjectJourneyResponse respond(UUID userId, UUID workspaceId, SubjectJourney journey) {
         SubjectJourney decorated = service.withOpenChantiers(journey);
-        return SubjectJourneyResponse.fromWaits(decorated, service.waitInfos(userId, workspaceId, decorated),
-                service.closedChantierCount(userId, workspaceId), questionPending(userId, workspaceId));
+        java.util.Map<String, WaitInfo> waits = service.waitInfos(userId, workspaceId, decorated);
+        return SubjectJourneyResponse.fromWaits(decorated, waits,
+                service.closedChantierCount(userId, workspaceId), questionPending(userId, workspaceId))
+                .withAttentes(service.linkedAttentes(userId, workspaceId, waits)); // F-227 / SF-227-01
     }
 
     /** Le tour vivant du sujet attend une réponse ou une autorisation (F-164) — pour « qui débloque » (F-220). */

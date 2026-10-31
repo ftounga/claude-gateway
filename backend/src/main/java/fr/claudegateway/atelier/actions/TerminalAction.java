@@ -175,6 +175,13 @@ public class TerminalAction {
     @Column(name = "registry_dismissed_at")
     private OffsetDateTime registryDismissedAt;
 
+    /**
+     * Le chantier du sujet sous lequel l'attente est rangée (F-227 / SF-227-01) : celui dans le fil duquel elle est
+     * née, ou celui auquel l'utilisateur l'a rattachée. Nul = « au fil de l'eau ».
+     */
+    @Column(name = "chantier_number")
+    private Integer chantierNumber;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 

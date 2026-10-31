@@ -110,6 +110,7 @@ public class ClientBoardService {
         List<ClientBoard.Chantier> cards = new ArrayList<>();
         List<AutonomyService.RunView> runs = runs(userId);
         Set<UUID> shown = new HashSet<>(); // les attentes que les chantiers montrent déjà (SF-220-07)
+        Map<UUID, Set<Integer>> openChantiers = new HashMap<>(); // F-227 : sous quels chantiers ranger une attente
         if (!subjects.isEmpty()) {
             Map<UUID, OffsetDateTime> lastMessage = lastMessages(userId, subjects);
             Map<String, OffsetDateTime> snoozed = new HashMap<>();
@@ -123,7 +124,9 @@ public class ClientBoardService {
                     continue;
                 }
                 try {
-                    cards.addAll(cardsOf(userId, workspace, journeys.withOpenChantiers(row),
+                    SubjectJourney decorated = journeys.withOpenChantiers(row);
+                    openChantiers.put(workspace.getId(), openNumbers(decorated));
+                    cards.addAll(cardsOf(userId, workspace, decorated,
                             lastMessage.get(workspace.getId()), runs, snoozed, now, shown));
                 } catch (RuntimeException e) {
                     log.warn("Tableau du client : sujet illisible ({})", e.getClass().getSimpleName());
@@ -131,7 +134,7 @@ public class ClientBoardService {
             }
         }
         cards.sort(ORDER);
-        List<ClientBoard.LooseTask> loose = looseTasks(userId, subjects, shown, now);
+        List<ClientBoard.LooseTask> loose = looseTasks(userId, subjects, shown, openChantiers, now);
         return new ClientBoard(host.getId(), host.getName(), now, dormantAfterDays, counts(cards, loose),
                 new ClientBoard.Autonomy(runs.stream().filter(r -> "RUNNING".equals(r.status())).count(),
                         autonomy.maxParallel()),
@@ -150,7 +153,7 @@ public class ClientBoardService {
      * terminal est un sujet possédé du poste. Best-effort : illisibles → section vide, les chantiers restent.
      */
     private List<ClientBoard.LooseTask> looseTasks(UUID userId, Map<UUID, Workspace> subjects, Set<UUID> shown,
-            OffsetDateTime now) {
+            Map<UUID, Set<Integer>> openChantiers, OffsetDateTime now) {
         if (subjects.isEmpty()) {
             return List.of();
         }
@@ -170,7 +173,8 @@ public class ClientBoardService {
                         a.getQui() == null ? null : a.getQui().name(),
                         a.getCategorie() == null ? null : a.getCategorie().name(), a.getPerson(), a.getRequestedTo(),
                         a.getRequestedAt(), a.getCreatedAt(), markOf(a), last, idle, idle >= dormantAfterDays,
-                        followUp.isDue(a, now)));
+                        followUp.isDue(a, now), chantierOf(a, openChantiers),
+                        a.getProposedStatus() == null ? null : a.getProposedStatus().name(), a.getProposedReason()));
             }
         } catch (RuntimeException e) {
             log.warn("Tableau du client : attentes illisibles ({})", e.getClass().getSimpleName());
@@ -178,6 +182,59 @@ public class ClientBoardService {
         }
         tasks.sort(LOOSE_ORDER);
         return tasks.size() <= MAX_LOOSE ? List.copyOf(tasks) : List.copyOf(tasks.subList(0, MAX_LOOSE));
+    }
+
+    /** Les numéros des chantiers ouverts d'un sujet guidé, focus compris (F-227 / SF-227-01). */
+    static Set<Integer> openNumbers(SubjectJourney journey) {
+        Set<Integer> numbers = new HashSet<>();
+        if (journey == null || !journey.isGuided()) {
+            return numbers;
+        }
+        if (journey.hasOpenFocus() && journey.getChantierNumber() > 0) {
+            numbers.add(journey.getChantierNumber());
+        }
+        for (SubjectJourneyChantier other : journey.getOtherOpenChantiers()) {
+            numbers.add(other.getNumber());
+        }
+        return numbers;
+    }
+
+    /** Le chantier OUVERT sous lequel ranger l'attente, sinon {@code null} (au fil de l'eau) — F-227 / SF-227-01. */
+    static Integer chantierOf(TerminalAction a, Map<UUID, Set<Integer>> openChantiers) {
+        Integer n = a.getChantierNumber();
+        return n != null && openChantiers.getOrDefault(a.getWorkspaceId(), Set.of()).contains(n) ? n : null;
+    }
+
+    /** Le service des attentes, pour proposer la clôture des attentes anciennes (F-227) ; absent = sans effet. */
+    private fr.claudegateway.atelier.actions.TerminalActionService actionService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setActionService(fr.claudegateway.atelier.actions.TerminalActionService actionService) {
+        this.actionService = actionService;
+    }
+
+    /**
+     * <b>[Revoir les attentes de plus de N jours]</b> (F-227 / SF-227-01) : propose la clôture (F-175) des attentes
+     * ouvertes des sujets du poste sans geste depuis {@code days} jours. Rien n'est fermé sans le clic de l'utilisateur.
+     * 404 sur le poste d'autrui.
+     *
+     * @return le nombre d'attentes proposées
+     */
+    @Transactional
+    public int proposeStaleTasks(UUID userId, UUID hostId, int days) {
+        hosts.requireOwned(userId, hostId); // 404 — TOUJOURS en premier
+        Map<UUID, Workspace> subjects = subjects(userId, hostId);
+        if (subjects.isEmpty() || actionService == null) {
+            return 0;
+        }
+        List<TerminalAction> candidates = new ArrayList<>();
+        for (TerminalAction a : actions.findByUserIdAndStatusInOrderByCreatedAtAsc(userId,
+                TerminalActionStatus.OPEN_STATES)) {
+            if (userId.equals(a.getUserId()) && subjects.containsKey(a.getWorkspaceId())) {
+                candidates.add(a);
+            }
+        }
+        return actionService.proposeStaleClosure(userId, candidates, days).size();
     }
 
     /**
@@ -413,6 +470,12 @@ public class ClientBoardService {
                 dormant++;
             }
         }
-        return new ClientBoard.Counts(outil, moi, autrui, live, dormant, snoozed, loose.size());
+        int horsChantier = 0; // F-227 : seules les attentes « au fil de l'eau »
+        for (ClientBoard.LooseTask t : loose) {
+            if (t.chantierNumber() == null) {
+                horsChantier++;
+            }
+        }
+        return new ClientBoard.Counts(outil, moi, autrui, live, dormant, snoozed, horsChantier);
     }
 }

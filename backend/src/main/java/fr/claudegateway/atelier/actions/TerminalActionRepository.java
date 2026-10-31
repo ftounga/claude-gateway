@@ -110,6 +110,10 @@ public interface TerminalActionRepository extends JpaRepository<TerminalAction, 
     /** Les attentes d'un poste, tous états (F-180 / SF-180-05 : délais par personne). */
     List<TerminalAction> findByUserIdAndHostId(UUID userId, UUID hostId);
 
+    /** Les attentes d'un sujet rangées sous un chantier (F-227 / SF-227-01), dans les états donnés. */
+    List<TerminalAction> findByUserIdAndWorkspaceIdAndChantierNumberIsNotNullAndStatusIn(UUID userId,
+            UUID workspaceId, Collection<TerminalActionStatus> statuses);
+
     /** Reporte les attentes d'un interlocuteur fusionné sur celui qu'on garde (F-180 / SF-180-03). */
     @Modifying
     @Query("update TerminalAction a set a.interlocuteurId = :into where a.userId = :userId "

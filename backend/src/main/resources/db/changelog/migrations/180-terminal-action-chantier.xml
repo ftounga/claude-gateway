@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-227 / SF-227-01 - CHAQUE ATTENTE RANGEE SOUS SON CHANTIER.
+
+      terminal_actions.chantier_number : le chantier du sujet (meme terminal) dans le fil duquel l'attente est nee ;
+      NULL = « au fil de l'eau » (sujet sans chantier, ou attente hors de tout chantier). Pose a l'inscription par
+      l'agent (le chantier du tour : son fil F-221, sinon le chantier au focus), modifiable par [Rattacher].
+
+      Reprise : une attente OUVERTE, non fusionnee, sans chantier, nee pendant qu'UN SEUL chantier du meme sujet etait
+      ouvert (opened_at <= created_at <= closed_at ou ouvert) est rattachee a ce chantier. Ambigu (plusieurs) : rien.
+
+      Rollback : la reprise s'efface (colonne remise a NULL), puis l'index et la colonne se retirent.
+    -->
+
+    <changeSet id="180-terminal-action-chantier" author="claude-gateway">
+        <addColumn tableName="terminal_actions">
+            <column name="chantier_number" type="int"/>
+        </addColumn>
+        <createIndex tableName="terminal_actions" indexName="idx_terminal_actions_user_ws_chantier">
+            <column name="user_id"/>
+            <column name="workspace_id"/>
+            <column name="chantier_number"/>
+        </createIndex>
+        <rollback>
+            <dropIndex tableName="terminal_actions" indexName="idx_terminal_actions_user_ws_chantier"/>
+            <dropColumn tableName="terminal_actions" columnName="chantier_number"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="180-terminal-action-chantier-reprise" author="claude-gateway">
+        <sql>
+            UPDATE terminal_actions SET chantier_number = (
+                SELECT MIN(c.number) FROM subject_journey_chantiers c
+                WHERE c.user_id = terminal_actions.user_id
+                  AND c.workspace_id = terminal_actions.workspace_id
+                  AND c.opened_at IS NOT NULL
+                  AND c.opened_at &lt;= terminal_actions.created_at
+                  AND (c.closed_at IS NULL OR c.closed_at &gt;= terminal_actions.created_at))
+            WHERE chantier_number IS NULL
+              AND merged_into_id IS NULL
+              AND status IN ('A_FAIRE', 'DEMANDE')
+              AND 1 = (
+                SELECT COUNT(*) FROM subject_journey_chantiers c2
+                WHERE c2.user_id = terminal_actions.user_id
+                  AND c2.workspace_id = terminal_actions.workspace_id
+                  AND c2.opened_at IS NOT NULL
+                  AND c2.opened_at &lt;= terminal_actions.created_at
+                  AND (c2.closed_at IS NULL OR c2.closed_at &gt;= terminal_actions.created_at))
+        </sql>
+        <rollback>
+            <sql>UPDATE terminal_actions SET chantier_number = NULL</sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

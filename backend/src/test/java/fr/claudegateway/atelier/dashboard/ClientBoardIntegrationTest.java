@@ -1,9 +1,11 @@
 package fr.claudegateway.atelier.dashboard;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -71,6 +73,7 @@ class ClientBoardIntegrationTest {
     @Autowired private JdbcTemplate jdbc;
     @Autowired private TerminalActionService terminalActions;
     @Autowired private TerminalActionRepository actionRepository;
+    @Autowired private fr.claudegateway.atelier.actions.TerminalActionToolExecutor actionTool;
 
     private String aliceToken;
     private String bobToken;
@@ -341,5 +344,129 @@ class ClientBoardIntegrationTest {
                 .andExpect(jsonPath("$.horsChantier[0].unblocker.who", is("MOI")))
                 .andExpect(jsonPath("$.counts.moi", is(1)));
         board(bobToken, aliceHost.getId()).andExpect(status().isNotFound());
+    }
+
+    // ------------------------------------------------------------------ F-227 / SF-227-01
+
+    private static com.fasterxml.jackson.databind.JsonNode json(String raw) throws Exception {
+        return new com.fasterxml.jackson.databind.ObjectMapper().readTree(raw);
+    }
+
+    @Test
+    @DisplayName("SF-227-01 : l'attente née dans un chantier est rangée sous lui ; les autres sont au fil de l'eau")
+    void attentesUnderTheirChantier() throws Exception {
+        seedIngress(); // chantier 1 en Exécution, chantier 2 au focus
+        var born = actionTool.execute(aliceId, workspaceRepository.findById(ingress.getId()).orElseThrow(),
+                json("{\"description\":\"Demander le certificat à Karim\",\"key\":\"cert-karim\"}"));
+        assertThat(born.error()).isFalse();
+        TerminalAction linked = actionRepository.findAll().stream()
+                .filter(a -> "cert-karim".equals(a.getDedupKey())).findFirst().orElseThrow();
+        assertThat(linked.getChantierNumber()).as("le chantier du tour : le focus").isEqualTo(2);
+        TerminalAction loose = terminalActions.create(aliceId, ingress.getId(), null, "Relire la doc",
+                null, null, TerminalActionKind.ACTION);
+        assertThat(loose.getChantierNumber()).isNull();
+
+        board(aliceToken, aliceHost.getId()).andExpect(status().isOk())
+                .andExpect(jsonPath("$.horsChantier", hasSize(2)))
+                .andExpect(jsonPath("$.counts.horsChantier", is(1)));
+        String body = board(aliceToken, aliceHost.getId()).andReturn().getResponse().getContentAsString();
+        java.util.List<Integer> numbers = com.jayway.jsonpath.JsonPath.read(body,
+                "$.horsChantier[?(@.description == 'Demander le certificat à Karim')].chantierNumber");
+        assertThat(numbers).containsExactly(2);
+
+        // Le tableau des chantiers (parcours) range l'attente sous le chantier 2.
+        String journey = mockMvc.perform(get("/api/workspaces/" + ingress.getId() + "/journey").contextPath("/api")
+                .header("Authorization", "Bearer " + aliceToken)).andReturn().getResponse().getContentAsString();
+        java.util.List<String> under = com.jayway.jsonpath.JsonPath.read(journey,
+                "$.chantiers[?(@.number == 2)].attentes[*].description");
+        assertThat(under).containsExactly("Demander le certificat à Karim");
+
+        // [Rattacher à un chantier] : un chantier ouvert du sujet, ou rien ; jamais chez autrui.
+        String url = "/api/workspaces/" + ingress.getId() + "/actions/" + loose.getId() + "/chantier";
+        mockMvc.perform(put(url).contextPath("/api").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"chantier\":1}").header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.chantierNumber", is(1)));
+        mockMvc.perform(put(url).contextPath("/api").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"chantier\":9}").header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(put(url).contextPath("/api").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"chantier\":1}").header("Authorization", "Bearer " + bobToken))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(put(url).contextPath("/api").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"chantier\":null}").header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.chantierNumber", nullValue()));
+    }
+
+    @Test
+    @DisplayName("SF-227-01 : « Revoir les attentes de plus de 14 jours » PROPOSE leur clôture, rien n'est fermé")
+    void staleReviewProposesClosure() throws Exception {
+        TerminalAction old = terminalActions.create(aliceId, ingress.getId(), null, "Relancer le support",
+                null, null, TerminalActionKind.ACTION);
+        TerminalAction fresh = terminalActions.create(aliceId, migration.getId(), null, "Valider le budget",
+                null, null, TerminalActionKind.ACTION);
+        OffsetDateTime twentyDaysAgo = OffsetDateTime.now().minusDays(20);
+        jdbc.update("update terminal_actions set updated_at = ?, created_at = ? where id = ?",
+                twentyDaysAgo, twentyDaysAgo, old.getId());
+        String path = "/api/runner-hosts/" + aliceHost.getId() + "/chantiers/stale-tasks/propose";
+        mockMvc.perform(post(path).contextPath("/api").header("Authorization", "Bearer " + bobToken))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(post(path).contextPath("/api").header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.days", is(14)))
+                .andExpect(jsonPath("$.proposed", is(1)));
+        TerminalAction proposed = actionRepository.findById(old.getId()).orElseThrow();
+        assertThat(proposed.isOpen()).isTrue();
+        assertThat(proposed.getProposedStatus()).isEqualTo(TerminalActionStatus.ANNULE);
+        assertThat(proposed.getProposedReason()).startsWith("Sans geste depuis 20 jours");
+        assertThat(proposed.getUpdatedAt()).as("l'ancienneté reste lisible").isBefore(OffsetDateTime.now().minusDays(19));
+        assertThat(actionRepository.findById(fresh.getId()).orElseThrow().hasProposal()).isFalse();
+        board(aliceToken, aliceHost.getId())
+                .andExpect(jsonPath("$.horsChantier[?(@.description == 'Relancer le support')].proposedStatus")
+                        .value(org.hamcrest.Matchers.contains("ANNULE")));
+        // Deuxième passage : déjà proposée, rien de plus.
+        mockMvc.perform(post(path).contextPath("/api").header("Authorization", "Bearer " + aliceToken))
+                .andExpect(jsonPath("$.proposed", is(0)));
+    }
+
+    @Test
+    @DisplayName("SF-227-01 : la reprise de la migration 180 range une attente née sous UN seul chantier ouvert")
+    void migrationRepriseIsUnambiguous() throws Exception {
+        seedIngress(); // ingress : chantiers 1 et 2 ouverts en même temps → ambigu
+        guided(migration, "Bascule"); // migration : un seul chantier
+        OffsetDateTime later = OffsetDateTime.now().plusMinutes(1);
+        OffsetDateTime before = OffsetDateTime.now().minusDays(10);
+        TerminalAction single = terminalActions.create(aliceId, migration.getId(), null, "A", null, null,
+                TerminalActionKind.ACTION);
+        TerminalAction ambiguous = terminalActions.create(aliceId, ingress.getId(), null, "B", null, null,
+                TerminalActionKind.ACTION);
+        TerminalAction older = terminalActions.create(aliceId, migration.getId(), null, "C", null, null,
+                TerminalActionKind.ACTION);
+        TerminalAction closed = terminalActions.create(aliceId, migration.getId(), null, "D", null, null,
+                TerminalActionKind.ACTION);
+        jdbc.update("update terminal_actions set created_at = ? where id in (?, ?, ?)", later, single.getId(),
+                ambiguous.getId(), closed.getId());
+        jdbc.update("update terminal_actions set created_at = ? where id = ?", before, older.getId());
+        jdbc.update("update terminal_actions set status = 'FAIT' where id = ?", closed.getId());
+        // F-206 : la ligne du chantier au focus naît à la première écriture — on s'assure qu'elle existe.
+        jdbc.update("update subject_journey_chantiers set opened_at = ? where workspace_id in (?, ?)",
+                OffsetDateTime.now().minusDays(1), migration.getId(), ingress.getId());
+
+        jdbc.execute(repriseSql());
+
+        assertThat(actionRepository.findById(single.getId()).orElseThrow().getChantierNumber()).isEqualTo(1);
+        assertThat(actionRepository.findById(ambiguous.getId()).orElseThrow().getChantierNumber()).isNull();
+        assertThat(actionRepository.findById(older.getId()).orElseThrow().getChantierNumber()).isNull();
+        assertThat(actionRepository.findById(closed.getId()).orElseThrow().getChantierNumber()).isNull();
+    }
+
+    /** Le SQL de la reprise, lu dans la migration elle-même (ce qui est testé est ce qui tourne en prod). */
+    private static String repriseSql() throws Exception {
+        String xml = new String(new org.springframework.core.io.ClassPathResource(
+                "db/changelog/migrations/180-terminal-action-chantier.xml").getInputStream().readAllBytes(),
+                java.nio.charset.StandardCharsets.UTF_8);
+        int set = xml.indexOf("id=\"180-terminal-action-chantier-reprise\"");
+        int from = xml.indexOf("<sql>", set) + "<sql>".length();
+        int to = xml.indexOf("</sql>", from);
+        return xml.substring(from, to).replace("&lt;", "<").replace("&gt;", ">").strip();
     }
 }
