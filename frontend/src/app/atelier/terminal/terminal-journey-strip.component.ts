@@ -212,6 +212,8 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
     .journey-strip,
     .journey-card,
     .journey-closed {
+      /* F-223 / SF-223-02 : la bande vit sur le terminal sombre — encre claire, jamais héritée (1,24:1). */
+      color: var(--cg-divider);
       margin: 0 0 var(--cg-space-2);
       padding: var(--cg-space-1) var(--cg-space-3);
       border: 1px solid var(--cg-divider);
@@ -228,7 +230,7 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
     }
 
     .journey-closed {
-      color: var(--cg-text-secondary);
+      color: var(--cg-terminal-ink-2);
     }
 
     .journey-closed__line {
@@ -239,7 +241,7 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
     }
 
     .journey-closed__icon {
-      color: var(--cg-success);
+      color: var(--cg-terminal-success);
       font-size: 16px;
       width: 16px;
       height: 16px;
@@ -283,7 +285,7 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
     }
 
     .journey-card__hint {
-      color: var(--cg-text-secondary);
+      color: var(--cg-terminal-ink-2);
       font-size: 12px;
     }
 
@@ -306,17 +308,17 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
       display: inline-flex;
       align-items: center;
       gap: 2px;
-      color: var(--cg-text-secondary);
+      color: var(--cg-terminal-ink-2);
     }
 
     .journey-step + .journey-step::before {
       content: '→';
       margin-right: var(--cg-space-2);
-      color: var(--cg-text-secondary);
+      color: var(--cg-terminal-ink-2);
     }
 
     .journey-step--done {
-      color: var(--cg-success);
+      color: var(--cg-terminal-success);
     }
 
     .journey-step--current {
@@ -344,7 +346,7 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
     }
 
     .journey-decision__hint {
-      color: var(--cg-text-secondary);
+      color: var(--cg-terminal-ink-2);
       font-size: 12px;
     }
 
@@ -353,7 +355,7 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
       align-items: center;
       gap: var(--cg-space-1);
       margin-top: var(--cg-space-1);
-      color: var(--cg-text-secondary);
+      color: var(--cg-terminal-ink-2);
       font-size: 12px;
     }
 
@@ -397,7 +399,7 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
     }
 
     .journey-plan__ok {
-      color: var(--cg-success);
+      color: var(--cg-terminal-success);
       font-size: 12px;
     }
 
@@ -432,30 +434,30 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
     }
 
     .journey-plan__status {
-      color: var(--cg-text-secondary);
+      color: var(--cg-terminal-ink-2);
       font-size: 12px;
     }
 
     .journey-plan__status[data-status='VERIFIE'],
     .journey-plan__status[data-status='FAIT'] {
-      color: var(--cg-success);
+      color: var(--cg-terminal-success);
     }
 
     .journey-plan__status[data-status='ECHEC'] {
-      color: var(--cg-error);
+      color: var(--cg-orange-2);
     }
 
     .journey-plan__risk {
-      color: var(--cg-text-secondary);
+      color: var(--cg-terminal-ink-2);
       font-size: 12px;
     }
 
     .journey-plan__risk[data-risk='EXTERNE'] {
-      color: var(--cg-error);
+      color: var(--cg-orange-2);
     }
 
     .journey-plan__detail {
-      color: var(--cg-text-secondary);
+      color: var(--cg-terminal-ink-2);
       font-size: 12px;
     }
 
@@ -469,7 +471,7 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
     }
 
     .journey-plan__hint {
-      color: var(--cg-text-secondary);
+      color: var(--cg-terminal-ink-2);
       font-size: 12px;
     }
 
@@ -489,7 +491,7 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
       background: none;
       border: 1px solid var(--cg-divider);
       border-radius: 4px;
-      color: var(--cg-text-secondary);
+      color: var(--cg-terminal-ink-2);
       font: 500 12px 'Inter', sans-serif;
       cursor: pointer;
     }

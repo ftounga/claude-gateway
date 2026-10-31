@@ -52,7 +52,7 @@ const RING = 2 * Math.PI * 18;
   imports: [MatButtonModule, MatIconModule, MatTooltipModule, StepActorComponent, UnblockerPillComponent],
   template: `
     <div class="board-scrim" (click)="closed.emit()" aria-hidden="true"></div>
-    <aside class="board" role="dialog" aria-label="Tableau des chantiers">
+    <aside class="board cg-light-island" role="dialog" aria-label="Tableau des chantiers">
       <header class="board__bar">
         <h2 class="board__title">Chantiers</h2>
         <span class="board__spacer"></span>

@@ -884,6 +884,27 @@ neuf : les jours travaillés sont l'**inverse d'affichage** de `cumul = jours ×
 
 ---
 
+## 21 — Les encres du terminal sombre (ajout F-223 / SF-223-02, 2026-10-31)
+
+Le terminal de projet a un fond `--cg-primary` `#1A3A5C`. Les encres des écrans clairs y tombent sous
+l'AA (4,5:1) : texte secondaire `--cg-text-secondary` 2,66:1, succès `--cg-success` 4,05:1, erreur
+`--cg-error` 2,34:1, titre hérité `--cg-text-primary` 1,24:1. Sur ce fond, et seulement sur lui :
+
+| Rôle | Jeton | Valeur | Contraste sur `--cg-primary` |
+|---|---|---|---|
+| Texte principal | `--cg-divider` | `#E0E4EA` | 9,12:1 |
+| Texte secondaire (phases, cadenas, Vérifier / Retour arrière / Preuve, statut, risque) | `--cg-terminal-ink-2` | `#B8C2CF` | 6,46:1 |
+| « fait », phases passées, « validé » | `--cg-terminal-success` | `#4CC38A` | 5,26:1 |
+| Risque externe, échec d'étape | `--cg-orange-2` | `#F0954F` | 5,05:1 |
+| Bouton grisé | libellé `--cg-terminal-ink-2`, fond `--cg-divider` à 12 % | — | lisible |
+
+**Îlot clair** : un panneau blanc posé sur le terminal (tableau des chantiers, attentes, bilan) porte la
+classe globale `.cg-light-island`, qui remet les encres Material des écrans clairs ; sinon il hérite des
+libellés clairs du terminal (« blanc sur blanc », ≈ 1,0:1).
+
+**Hors périmètre, signalé** : le blanc sur or des boutons pleins de toute l'application (2,63:1) est un
+point de charte, non tranché ici.
+
 ## Logo & marque (ajout 2026-07-03)
 
 - **Logo de l'application** : `frontend/public/ng-portal-logo.png` (« NG Portal » — bouclier hexagonal, tête + étincelle, bulle de chat, orbite). Utilisé comme **favicon** (`index.html`) et sur la **landing** (nav, hero, footer). Nom de marque affiché : **« NG Portal »** (renommé en F-29 SF-29-01 : le terme « Proxy » faisait classer le domaine en catégorie « anonymizer » par les filtres d'entreprise).

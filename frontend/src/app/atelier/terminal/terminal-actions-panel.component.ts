@@ -86,7 +86,7 @@ interface Column {
     TerminalAccesViewComponent,
   ],
   template: `
-    <aside class="actions-panel" role="complementary" aria-label="Attentes">
+    <aside class="actions-panel cg-light-island" role="complementary" aria-label="Attentes">
       <header class="actions-panel__bar">
         <h2 class="actions-panel__title">Attentes</h2>
         <span class="actions-panel__spacer"></span>
