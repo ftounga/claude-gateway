@@ -255,6 +255,10 @@
                 <span>{{ askBeforeBash ? 'Validation activée' : 'Valider les commandes' }}</span>
               </button>
             }
+            <button mat-menu-item type="button" class="terminal-situation-entry" (click)="openSituationPanel()">
+              <mat-icon>assignment</mat-icon>
+              <span>Point de situation</span>
+            </button>
             @if (hasOpenChantiers()) {
               <button mat-menu-item type="button" class="terminal-board-entry" (click)="openBoard()">
                 <mat-icon>view_kanban</mat-icon>
@@ -1550,6 +1554,11 @@
               [state]="panel.posteState ?? 'loading'"
               [poste]="panel.poste ?? null"
             />
+          }
+          @case ('situation') {
+            <!-- F-225 / SF-225-02 — LE POINT DE SITUATION : une lecture, aucun tour. -->
+            <app-terminal-situation [workspaceId]="projectId" [readOnly]="readOnly"
+              (markSent)="onSituationMarkSent($event)" />
           }
           @case ('sujet') {
             <app-atelier-slash-sujet
