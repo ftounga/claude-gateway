@@ -48,6 +48,9 @@ public class SubjectJourneyEvent {
     /** L'agent a modifié un plan déjà validé : un amendement (SF-176-03/04). */
     public static final String PLAN_AMENDED = "PLAN_AMENDED";
 
+    /** Amendement dans le même objectif, appliqué sans clic (F-222 / SF-222-01). */
+    public static final String PLAN_AMENDED_IN_SCOPE = "PLAN_AMENDED_IN_SCOPE";
+
     /** L'agent a détaillé une étape en sous-étapes ({@code detail} = étape · faites/total) (F-208). */
     public static final String SUB_STEPS_UPDATED = "SUB_STEPS_UPDATED";
 

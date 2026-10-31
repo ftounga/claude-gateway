@@ -252,6 +252,70 @@ class SubjectJourneyChantiersIntegrationTest {
     }
 
     @Test
+    @DisplayName("SF-222-01 : un amendement dans l'objectif s'applique sans clic, un changement d'objectif se revalide")
+    void amendmentInScopeAppliesWithoutClick() throws Exception {
+        chantierOneExecuting();
+        JourneyToolExecutor.Outcome inScope = tool(JourneyToolCatalog.SET_PLAN, "{\"same_objective\":true,\"steps\":["
+                + "{\"title\":\"Remplacer le certificat\",\"risk\":\"REVERSIBLE\",\"actor\":\"OUTIL\"},"
+                + "{\"title\":\"Recharger l'ingress\",\"risk\":\"REVERSIBLE\",\"actor\":\"OUTIL\"}]}");
+        assertThat(inScope.error()).isFalse();
+        assertThat(inScope.content()).contains("SANS CLIC").contains("Annonce-le");
+        getJourney(aliceToken).andExpect(jsonPath("$.phase", is("EXECUTION")))
+                .andExpect(jsonPath("$.plan.version", is(2)))
+                .andExpect(jsonPath("$.plan.validatedVersion", is(2)))
+                .andExpect(jsonPath("$.plan.awaitingValidation", is(false)));
+        assertThat(eventRepository.countByUserIdAndWorkspaceIdAndType(aliceId, ws(),
+                SubjectJourneyEvent.PLAN_AMENDED_IN_SCOPE)).isEqualTo(1);
+        // Changement d'objectif : revalidation, la porte se referme.
+        JourneyToolExecutor.Outcome change = tool(JourneyToolCatalog.SET_PLAN,
+                "{\"steps\":[{\"title\":\"Migrer vers cert-manager\",\"risk\":\"EXTERNE\",\"actor\":\"OUTIL\"}]}");
+        assertThat(change.content()).contains("REVALIDÉ");
+        getJourney(aliceToken).andExpect(jsonPath("$.phase", is("PLAN")))
+                .andExpect(jsonPath("$.plan.awaitingValidation", is(true)));
+        // Un amendement « même objectif » posé sur un amendement EN ATTENTE ne le valide pas en douce.
+        assertThat(service.setPlan(aliceId, ws(), null, plan("Autre chose"), true).outcome())
+                .isEqualTo(SubjectJourneyService.PlanOutcome.AMENDMENT);
+        getJourney(aliceToken).andExpect(jsonPath("$.phase", is("PLAN")));
+    }
+
+    @Test
+    @DisplayName("SF-222-01 : le premier plan garde le clic, même annoncé « même objectif »")
+    void firstPlanKeepsTheClick() throws Exception {
+        mockMvc.perform(put("/api/workspaces/" + workspaceId + "/journey/mode").contextPath("/api")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"mode\":\"GUIDE\",\"title\":\"Ingress\"}")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk());
+        service.submitDiagnosis(aliceId, ws(), "cert expiré", "openssl", "ELEVEE");
+        service.confirmDiagnosis(aliceId, ws());
+        assertThat(service.setPlan(aliceId, ws(), null, plan("Remplacer"), true).outcome())
+                .isEqualTo(SubjectJourneyService.PlanOutcome.SET);
+        getJourney(aliceToken).andExpect(jsonPath("$.phase", is("PLAN")))
+                .andExpect(jsonPath("$.plan.awaitingValidation", is(true)));
+    }
+
+    @Test
+    @DisplayName("SF-222-01 : un « go » écrit valide le plan d'un chantier, numéro et citation exigés")
+    void validatePlanTool() throws Exception {
+        chantierOneExecuting();
+        post(aliceToken, "chantiers", "{\"title\":\"Logs vers Loki\"}");
+        service.submitDiagnosis(aliceId, ws(), 2, "pas de collecteur", "kubectl", "ELEVEE");
+        service.confirmDiagnosis(aliceId, ws(), 2);
+        service.setPlan(aliceId, ws(), 2, plan("Installer Fluent Bit"));
+        post(aliceToken, "chantiers/1/focus", null);
+        assertThat(tool(JourneyToolCatalog.VALIDATE_PLAN, "{\"user_words\":\"go\"}").error()).isTrue();
+        assertThat(tool(JourneyToolCatalog.VALIDATE_PLAN, "{\"chantier\":2}").error()).isTrue();
+        getJourney(aliceToken).andExpect(jsonPath("$.chantiers[1].phase", is("PLAN")));
+        JourneyToolExecutor.Outcome ok = tool(JourneyToolCatalog.VALIDATE_PLAN,
+                "{\"chantier\":2,\"user_words\":\"go pour le chantier 2\"}");
+        assertThat(ok.error()).isFalse();
+        assertThat(ok.content()).startsWith("Chantier 2 : Plan validé");
+        getJourney(aliceToken).andExpect(jsonPath("$.chantiers[1].phase", is("EXECUTION")))
+                .andExpect(jsonPath("$.chantier.number", is(1)));
+        // Plus rien à valider : erreur lisible, pas d'exception.
+        assertThat(tool(JourneyToolCatalog.VALIDATE_PLAN, "{\"chantier\":2,\"user_words\":\"go\"}").error()).isTrue();
+    }
+
+    @Test
     @DisplayName("SF-223-01 : le plan posé demande une phrase au plus puis la fin du tour")
     void planToolAsksForShortPresentation() throws Exception {
         chantierOneExecuting();

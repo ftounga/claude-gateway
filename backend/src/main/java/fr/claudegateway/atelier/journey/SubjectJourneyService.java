@@ -289,8 +289,10 @@ public class SubjectJourneyService {
     public enum PlanOutcome {
         /** Le plan est posé, il attend la validation de l'utilisateur. */
         SET,
-        /** Un plan déjà validé a été modifié : c'est un amendement, à revalider. */
+        /** Un plan déjà validé a été modifié et l'objectif change : c'est un amendement, à revalider. */
         AMENDMENT,
+        /** Amendement dans le même objectif (F-222 / SF-222-01) : appliqué sans clic, le plan reste validé. */
+        AMENDMENT_APPLIED,
         /** Le sujet est en Libre : le plan structuré est celui du mode guidé. */
         NOT_GUIDED,
         /** Le sujet est clos. */
@@ -700,6 +702,18 @@ public class SubjectJourneyService {
     /** Même geste, sur le chantier ouvert {@code chantier} ({@code null} = le focus) — F-206. */
     @Transactional
     public PlanChange setPlan(UUID userId, UUID workspaceId, Integer chantier, JourneyPlan plan) {
+        return setPlan(userId, workspaceId, chantier, plan, false);
+    }
+
+    /**
+     * Même geste, en disant si l'amendement <b>garde l'objectif</b> du chantier (F-222 / SF-222-01). Un amendement
+     * dans l'objectif, sur un plan validé et courant (aucun autre amendement en attente), en Exécution ou en
+     * Vérification, s'applique <b>sans clic</b> : la nouvelle version est validée d'office, l'événement
+     * {@link SubjectJourneyEvent#PLAN_AMENDED_IN_SCOPE} le journalise. Le premier plan d'un chantier garde le clic.
+     */
+    @Transactional
+    public PlanChange setPlan(UUID userId, UUID workspaceId, Integer chantier, JourneyPlan plan,
+            boolean sameObjective) {
         SubjectJourney journey = target(userId, workspaceId, chantier);
         if (!journey.isGuided()) {
             return new PlanChange(PlanOutcome.NOT_GUIDED, journey.getPlanVersion());
@@ -718,6 +732,19 @@ public class SubjectJourneyService {
         JourneyPlan carried = carryProgress(plan, previous);
         boolean amendment = journey.getValidatedVersion() != null;
         OffsetDateTime now = OffsetDateTime.now(clock);
+        if (sameObjective && amendment && journey.getValidatedVersion() == journey.getPlanVersion()
+                && (journey.getPhase() == JourneyPhase.EXECUTION || journey.getPhase() == JourneyPhase.VERIFICATION)) {
+            journey.setPlanJson(carried.toJson());
+            journey.setPlanVersion(journey.getPlanVersion() + 1);
+            journey.setValidatedVersion(journey.getPlanVersion());
+            journey.setValidatedPlanJson(journey.getPlanJson());
+            moveTo(journey, JourneyPhase.EXECUTION, now);
+            SubjectJourney saved = save(journey, now);
+            recordVersion(saved, carried, now);
+            record(saved, SubjectJourneyEvent.PLAN_AMENDED_IN_SCOPE,
+                    "v" + saved.getPlanVersion() + " · " + carried.steps().size() + " étapes · même objectif");
+            return new PlanChange(PlanOutcome.AMENDMENT_APPLIED, saved.getPlanVersion());
+        }
         journey.setPlanJson(carried.toJson());
         journey.setPlanVersion(journey.getPlanVersion() + 1);
         moveTo(journey, JourneyPhase.PLAN, now);
