@@ -10,17 +10,24 @@ export interface ParallelLaunchDialogData {
   number: number;
   title: string | null;
   choice: ParallelChoice;
-  /** Une suite a proposé ce chantier : [Afficher ici] reste offert (F-226 : « Basculer ici » avant). */
+  /**
+   * Une suite a proposé ce chantier : [Afficher ici] est offert à côté de [Lancer à côté] (F-226 : « Basculer ici »
+   * avant). Un chantier qui ne peut pas partir offre toujours [Afficher ici], seul.
+   */
   offerSwitch: boolean;
 }
 
-/** Le choix rendu : partir à côté, ouvrir à côté sans partir, basculer ici, ou rien (`undefined`). */
-export type ParallelLaunchDecision = 'launch' | 'open' | 'switch';
+/**
+ * Le choix rendu : partir à côté, l'afficher ici, ou rien (`undefined`). F-226 / SF-226-03 : « Afficher à côté »
+ * (ouvrir le volet sans rien lancer) a disparu — il se confondait avec [Lancer à côté].
+ */
+export type ParallelLaunchDecision = 'launch' | 'switch';
 
 /**
  * **« Lancer le chantier N en parallèle ? »** (F-221 / SF-221-04) — l'overlay demandé par le PO. Valider
  * ouvre le split et fait partir le chantier à droite, sans phrase dans le chat. Charte : `MatDialog`, jamais
- * `window.confirm` ; action principale en `mat-flat-button`.
+ * `window.confirm` ; action principale en `mat-flat-button`. **Deux boutons d'action au plus** (F-226 / SF-226-03) :
+ * [Lancer à côté] et [Afficher ici] — un chantier qui ne peut pas partir n'offre que [Afficher ici], avec le pourquoi.
  */
 @Component({
   selector: 'app-parallel-launch-dialog',
@@ -44,7 +51,7 @@ export type ParallelLaunchDecision = 'launch' | 'open' | 'switch';
         <p>Il partira <strong>en autonome</strong> dans un volet à droite : toutes les étapes restantes, sans
           question. Ce terminal-ci continue à gauche.</p>
       } @else {
-        <p>Vous pouvez l’ouvrir à droite pour voir ce qui l’empêche, et le débloquer.</p>
+        <p>Affichez-le ici pour voir ce qui l’empêche et le débloquer.</p>
       }
       @if (data.choice.reasons.length > 0) {
         <ul class="pl__reasons" [attr.aria-label]="data.choice.mode ? 'Ce qui restera' : 'Ce qui l’empêche'">
@@ -56,18 +63,18 @@ export type ParallelLaunchDecision = 'launch' | 'open' | 'switch';
     </mat-dialog-content>
     <mat-dialog-actions align="end">
       <button mat-button type="button" (click)="close()">Annuler</button>
-      @if (data.offerSwitch) {
-        <button mat-button type="button" (click)="close('switch')">Afficher ici</button>
-      }
       @if (data.choice.mode) {
+        @if (data.offerSwitch) {
+          <button mat-button type="button" class="pl__switch" (click)="close('switch')">Afficher ici</button>
+        }
         <button mat-flat-button type="button" class="pl__go" (click)="close('launch')" cdkFocusInitial>
           <mat-icon>view_column</mat-icon>
           Lancer à côté
         </button>
       } @else {
-        <button mat-flat-button type="button" class="pl__go" (click)="close('open')" cdkFocusInitial>
-          <mat-icon>view_column</mat-icon>
-          Afficher à côté
+        <button mat-flat-button type="button" class="pl__switch pl__go" (click)="close('switch')" cdkFocusInitial>
+          <mat-icon>center_focus_strong</mat-icon>
+          Afficher ici
         </button>
       }
     </mat-dialog-actions>

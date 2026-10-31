@@ -183,12 +183,12 @@ const RING = 2 * Math.PI * 18;
                     <div class="auto__launch">
                       <button mat-flat-button type="button" class="auto__go" [disabled]="busy()" (click)="launch(c)">
                         <mat-icon>{{ aside(c) ? 'view_column' : 'play_circle' }}</mat-icon>
-                        {{ aside(c) ? 'Lancer à côté' : 'Lancer en autonome' }}
+                        {{ aside(c) ? 'Lancer à côté' : 'Lancer' }}
                       </button>
                       <button mat-stroked-button type="button" class="auto__advance" [disabled]="busy()"
                               (click)="launch(c, 'UNTIL_BLOCKED')">
                         <mat-icon>fast_forward</mat-icon>
-                        {{ aside(c) ? 'Lancer à côté jusqu’au blocage' : 'Avancer jusqu’au blocage' }}
+                        {{ aside(c) ? 'Lancer à côté jusqu’au blocage' : 'Lancer jusqu’au blocage' }}
                       </button>
                       <span class="auto__meta">
                         @if (auto.estimate; as est) {
@@ -201,14 +201,14 @@ const RING = 2 * Math.PI * 18;
                 } @else if (auto.preflight.advance?.possible) {
                   <p class="auto__status auto__status--advance">
                     <mat-icon aria-hidden="true">fast_forward</mat-icon>
-                    Peut avancer jusqu’au blocage
+                    Peut être lancé jusqu’au blocage
                   </p>
                   @if (canSend()) {
                     <div class="auto__launch">
                       <button mat-flat-button type="button" class="auto__go auto__advance" [disabled]="busy()"
                               (click)="launch(c, 'UNTIL_BLOCKED')">
                         <mat-icon>fast_forward</mat-icon>
-                        {{ aside(c) ? 'Lancer à côté jusqu’au blocage' : 'Avancer jusqu’au blocage' }}
+                        {{ aside(c) ? 'Lancer à côté jusqu’au blocage' : 'Lancer jusqu’au blocage' }}
                       </button>
                       <span class="auto__meta">
                         {{ auto.preflight.advance?.label }} ·
@@ -219,7 +219,7 @@ const RING = 2 * Math.PI * 18;
                 } @else {
                   <p class="auto__status auto__status--not-ready">
                     <mat-icon aria-hidden="true">block</mat-icon>
-                    Pas prêt à partir en autonome
+                    Pas prêt à être lancé
                   </p>
                   @if (!auto.preflight.advance?.remaining?.length) {
                     <ul class="auto__reasons" aria-label="Ce qui empêche le départ">
@@ -1080,7 +1080,7 @@ export class TerminalChantiersBoardComponent {
   readonly closed = output<void>();
   /** Une demande visible à envoyer dans le fil (F-208 / SF-208-04). */
   readonly request = output<string>();
-  /** [Mettre au focus] le chantier N (F-208 / SF-208-04). */
+  /** [Afficher] le chantier N (F-208 / SF-208-04 ; « Mettre au focus » avant F-226). */
   readonly focus = output<number>();
   /** Le parcours a changé côté serveur ([Planifier], F-176 / SF-176-12) : le terminal le relit. */
   readonly changed = output<void>();
@@ -1093,6 +1093,12 @@ export class TerminalChantiersBoardComponent {
 
   /** [Lancer] / [Avancer] sur un autre chantier que celui du volet (F-221 / SF-221-04). */
   readonly parallel = output<{ number: number; mode: AutonomyMode }>();
+
+  /**
+   * Un chantier vient d'être lancé ou repris en main depuis ce tableau (F-226 / SF-226-03) : l'écran relit ses fils
+   * actifs, pour que la suggestion ne propose jamais un chantier déjà en course.
+   */
+  readonly lanesChanged = output<void>();
 
   private readonly journeys = inject(JourneyService);
   private readonly autonomyApi = inject(AutonomyService);
@@ -1347,8 +1353,8 @@ export class TerminalChantiersBoardComponent {
   }
 
   /**
-   * [Lancer en autonome] : un clic, aucune confirmation (F-218). `UNTIL_BLOCKED` : [Avancer jusqu'au blocage]
-   * (SF-219-05).
+   * [Lancer] : un clic, aucune confirmation (F-218). `UNTIL_BLOCKED` : [Lancer jusqu'au blocage] (SF-219-05 ;
+   * vocabulaire SF-226-03).
    */
   launch(c: OpenChantier, mode: AutonomyMode = 'STRICT'): void {
     const workspaceId = this.workspaceId();
@@ -1365,14 +1371,16 @@ export class TerminalChantiersBoardComponent {
     this.autonomyApi.launch(workspaceId, c.number, mode).subscribe({
       next: () => {
         this.busy.set(false);
-        const what = mode === 'UNTIL_BLOCKED' ? 'avance jusqu’au blocage' : 'lancé en autonome';
+        const what = mode === 'UNTIL_BLOCKED' ? 'lancé jusqu’au blocage' : 'lancé';
         this.snackBar.open(`Chantier ${c.number} ${what}. Vous pouvez quitter l’écran.`, 'OK', { duration: 5000 });
         this.loadAutonomy();
+        this.lanesChanged.emit();
       },
       error: (err: HttpErrorResponse) => {
         this.busy.set(false);
-        this.snackBar.open(this.conflictMessage(err, 'Le chantier n’a pas pu partir en autonome.'), 'OK', { duration: 8000 });
+        this.snackBar.open(this.conflictMessage(err, 'Le chantier n’a pas pu être lancé.'), 'OK', { duration: 8000 });
         this.loadAutonomy();
+        this.lanesChanged.emit();
       },
     });
   }
@@ -1471,6 +1479,7 @@ export class TerminalChantiersBoardComponent {
         this.busy.set(false);
         this.snackBar.open(`Vous avez repris la main sur le chantier ${c.number}.`, 'OK', { duration: 5000 });
         this.loadAutonomy();
+        this.lanesChanged.emit();
       },
       error: (err: HttpErrorResponse) => {
         this.busy.set(false);

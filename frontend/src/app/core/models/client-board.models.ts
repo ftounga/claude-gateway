@@ -135,7 +135,7 @@ export const UNBLOCKER_TITLES: Record<Unblocker, string> = {
 
 /** La phrase sous le titre du groupe. */
 export const UNBLOCKER_HINTS: Record<Unblocker, string> = {
-  OUTIL: 'Rien n\'attend personne : à faire avancer en premier, ou à lancer en autonome.',
+  OUTIL: 'Rien n\'attend personne : à faire avancer en premier, ou à lancer.',
   MOI: 'Une réponse, une validation ou un arbitrage — vous pouvez le débloquer tout de suite.',
   AUTRUI: 'Un message, une information, un accès ou la réponse d\'un tiers.',
 };
@@ -255,7 +255,7 @@ export function overLimitMessage(selected: number, board: Pick<ClientBoard, 'aut
 
 /** Le bilan d'un lancement groupé, en une phrase. */
 export function launchSummary(launched: number, refusals: string[]): string {
-  const ok = launched === 0 ? 'Aucun chantier lancé' : `${launched} chantier${launched > 1 ? 's' : ''} lancé${launched > 1 ? 's' : ''} en autonome`;
+  const ok = launched === 0 ? 'Aucun chantier lancé' : `${launched} chantier${launched > 1 ? 's' : ''} lancé${launched > 1 ? 's' : ''}`;
   if (refusals.length === 0) {
     return `${ok}.`;
   }

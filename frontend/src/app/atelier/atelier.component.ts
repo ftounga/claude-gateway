@@ -432,7 +432,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
   /** Volets refermés à la main : ils ne se rouvrent pas tant que leur chantier reste actif. */
   private readonly dismissedLanes = new Set<number>();
 
-  /** Un volet ouvert à la main (« Ouvrir à côté ») reste ouvert, même chantier inactif (SF-221-04). */
+  /** Un volet ouvert à la main (refus d'un lancement à côté) reste ouvert, même chantier inactif (SF-221-04). */
   private pinnedPane: number | null = null;
 
   private readonly autonomyApi = inject(AutonomyService);
@@ -463,8 +463,6 @@ export class AtelierComponent implements OnInit, OnDestroy {
         }
         if (decision === 'launch' && choice.mode) {
           this.launchInParallel(id, request.number, choice.mode);
-        } else if (decision === 'open') {
-          this.openRightPane(request.number, false);
         } else if (decision === 'switch') {
           this.journeyApi.focus(id, request.number).subscribe({
             next: () => this.terminalView?.loadJourney(id),
@@ -475,22 +473,52 @@ export class AtelierComponent implements OnInit, OnDestroy {
     });
   }
 
-  /** Fait partir le chantier à droite (focus gardé à gauche) ; un refus ouvre quand même son volet. */
+  /**
+   * Fait partir le chantier à droite (focus gardé à gauche) ; un refus ouvre quand même son volet. Dans les deux
+   * cas les fils actifs sont relus (F-226 / SF-226-03) ; un refus `409` masque en plus la suggestion de ce
+   * chantier — « tourne déjà » dit clairement qu'une course est en cours ailleurs.
+   */
   private launchInParallel(id: string, number: number, mode: AutonomyMode): void {
     this.autonomyApi.launch(id, number, mode, true).subscribe({
       next: () => {
         if (this.isDisplayed(id)) {
           this.openRightPane(number, true);
+          this.refreshActiveLanes(id);
         }
       },
       error: (err: HttpErrorResponse) => {
         if (!this.isDisplayed(id)) {
           return;
         }
-        const message = (err.error as { message?: string } | null)?.message;
-        this.notifyError(message ?? `Le chantier ${number} n'a pas pu partir.`);
+        const body = err.error as { code?: string; message?: string } | null;
+        if (err.status === 409) {
+          this.terminalView?.dismissSuggestion(number);
+        }
+        this.notifyError(body?.code === 'autonomy_subject_busy'
+          ? `Le chantier ${number} tourne déjà : il s'affiche à droite.`
+          : body?.message ?? `Le chantier ${number} n'a pas pu partir.`);
         this.openRightPane(number, false);
+        this.refreshActiveLanes(id);
       },
+    });
+  }
+
+  /**
+   * **Relit les fils actifs** (F-226 / SF-226-03) — à chaque fin de tour, après un lancement ou une reprise en
+   * main : la suggestion ne propose jamais un chantier déjà en course. Lecture seule : le split n'est pas
+   * réévalué (il ne bouge qu'au changement de focus). Un échec garde la dernière liste connue.
+   */
+  refreshActiveLanes(id: string | null = this.activeWorkspaceId()): void {
+    if (!id) {
+      return;
+    }
+    this.atelier.getLanes(id).subscribe({
+      next: ({ lanes }) => {
+        if (this.isDisplayed(id)) {
+          this.activeLanes.set(activeLaneNumbers(lanes ?? []));
+        }
+      },
+      error: () => undefined,
     });
   }
 
@@ -542,8 +570,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
         if (!this.isDisplayed(id)) {
           return;
         }
-        this.activeLanes.set((lanes ?? []).filter((lane) => lane.chantier !== null && (lane.live || lane.autonomy))
-          .map((lane) => lane.chantier as number));
+        this.activeLanes.set(activeLaneNumbers(lanes ?? []));
         const decision = splitFor(lanes ?? [], this.chatLane(), this.dismissedLanes);
         const current = this.splitPane();
         this.otherActiveLanes.set(decision.others);
@@ -2451,6 +2478,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
           this.stopTurnWindows();
           this.submitting.set(false);
           this.interrupting.set(false);
+          // F-226 / SF-226-03 : un tour fini a pu lancer ou arrêter un chantier — les fils actifs sont relus.
+          this.refreshActiveLanes(id);
           // F-153 / SF-153-01 — Le tour s'achève : si l'onglet est caché, l'onglet s'allume
           // (« Réponse prête »). Un « tour de suite » (followUp) est déjà reparti ci-dessus.
           // F-185 / SF-185-05 : un plan soumis n'est pas « une réponse prête » — il attend un accord.
@@ -4530,6 +4559,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
           this.submitting.set(false);
           this.interrupting.set(false);
           this.endTurnDisplay();
+          this.refreshActiveLanes(id); // F-226 / SF-226-03
           // Le fil est rechargé plutôt que complété : ce tour a été demandé avant l'ouverture de
           // cet écran, qui n'a donc aucun message optimiste à corriger.
           this.loadHistory(id);
@@ -4877,6 +4907,12 @@ export function delayLabel(timeoutMs: number | null): string {
   }
   const minutes = Math.round(seconds / 60);
   return minutes === 1 ? 'dans la minute' : `dans les ${minutes} minutes`;
+}
+
+/** Les chantiers dont le fil tourne : tour vivant ou course autonome (F-226). */
+export function activeLaneNumbers(lanes: AtelierLane[]): number[] {
+  return lanes.filter((lane) => lane.chantier !== null && (lane.live || lane.autonomy))
+    .map((lane) => lane.chantier as number);
 }
 
 /**

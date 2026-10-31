@@ -128,6 +128,7 @@
     (closePane)="closeLeftPane()"
     (focusChantierChange)="onFocusChantierChange($event)"
     (parallelLaunch)="onParallelLaunch($event)"
+    (lanesChanged)="refreshActiveLanes()"
     [projectName]="activeName()"
     [projectId]="activeWorkspaceId()"
     [hostName]="activeHostName()"
@@ -238,6 +239,7 @@
         [localFolder]="localFolder()"
         (closed)="closeRightPane()"
         (parallelLaunch)="onParallelLaunch($event)"
+        (lanesChanged)="refreshActiveLanes()"
       ></app-terminal-lane-pane>
     </div>
   }

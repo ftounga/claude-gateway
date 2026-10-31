@@ -79,8 +79,8 @@ describe('client-board.models', () => {
   });
 
   it('bilan d\'un lancement groupé', () => {
-    expect(launchSummary(3, [])).toBe('3 chantiers lancés en autonome.');
-    expect(launchSummary(1, ['api · chantier 2 — occupé'])).toBe('1 chantier lancé en autonome ; 1 refusé : api · chantier 2 — occupé');
+    expect(launchSummary(3, [])).toBe('3 chantiers lancés.');
+    expect(launchSummary(1, ['api · chantier 2 — occupé'])).toBe('1 chantier lancé ; 1 refusé : api · chantier 2 — occupé');
     expect(launchSummary(0, ['a', 'b'])).toBe('Aucun chantier lancé ; 2 refusés : a ; b');
   });
 

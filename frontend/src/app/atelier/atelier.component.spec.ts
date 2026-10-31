@@ -149,6 +149,8 @@ describe('AtelierComponent', () => {
     service.getRunnerStatus.and.returnValue(of({ connected: false, lastSeenAt: null }));
     service.getWorkspace.and.returnValue(of(detail));
     service.getHistory.and.returnValue(of([]));
+    // F-226 / SF-226-03 : les fils actifs sont relus à chaque fin de tour — aucun par défaut.
+    service.getLanes.and.returnValue(of({ lanes: [] }));
     // F-84 / SF-84-02 : par défaut, aucun tour n'est en cours — se rebrancher ne trouve rien et
     // rend simplement de quoi se détacher.
     service.attachTurn.and.returnValue(new AbortController());
@@ -1946,20 +1948,65 @@ describe('AtelierComponent', () => {
     expect(component.splitPane()).toEqual({ chantier: 8, autonomous: true });
   });
 
-  it('F-221 / SF-221-04 : « Ouvrir à côté » ouvre le volet sans rien lancer, et il reste ouvert', () => {
+  it('SF-226-03 : un lancement à côté réussi relit les fils actifs', () => {
     setup();
     component.selectWorkspace(summary);
     const autonomy = TestBed.inject(AutonomyService);
-    spyOn(autonomy, 'board').and.returnValue(of({ running: 0, maxParallel: 4, chantiers: [] }));
-    const launch = spyOn(autonomy, 'launch');
-    dialog.open.and.returnValue({ afterClosed: () => of('open') } as never);
-    service.getLanes.and.returnValue(of({ lanes: [] }));
+    spyOn(autonomy, 'board').and.returnValue(of({ running: 0, maxParallel: 4, chantiers: [{
+      number: 8, title: null, run: null, estimate: null, preflight: { number: 8, ready: true, reasons: [] },
+    }] }));
+    spyOn(autonomy, 'launch').and.returnValue(of({} as never as import('../core/models/autonomy.models').AutonomyRun));
+    dialog.open.and.returnValue({ afterClosed: () => of('launch') } as never);
+    service.getLanes.and.returnValue(of({ lanes: [{ chantier: 8, live: false, autonomy: true, startedAt: 1 }] }));
 
-    component.onParallelLaunch({ number: 9, mode: null, source: 'suite' });
-    component.evaluateSplit('w1');
+    component.onParallelLaunch({ number: 8, mode: null, source: 'suggestion' });
 
-    expect(launch).not.toHaveBeenCalled();
-    expect(component.splitPane()).toEqual({ chantier: 9, autonomous: false });
+    expect(component.activeLanes()).toEqual([8]);
+  });
+
+  it('SF-226-03 : 409 « tourne déjà » → message clair, suggestion masquée, fils actifs relus', () => {
+    setup();
+    component.selectWorkspace(summary);
+    const autonomy = TestBed.inject(AutonomyService);
+    spyOn(autonomy, 'board').and.returnValue(of({ running: 1, maxParallel: 4, chantiers: [{
+      number: 8, title: null, run: null, estimate: null, preflight: { number: 8, ready: true, reasons: [] },
+    }] }));
+    spyOn(autonomy, 'launch').and.returnValue(throwError(() => new HttpErrorResponse({ status: 409,
+      error: { code: 'autonomy_subject_busy', message: 'Le chantier 8 tourne déjà : une course à la fois par chantier.' } })));
+    dialog.open.and.returnValue({ afterClosed: () => of('launch') } as never);
+    service.getLanes.and.returnValue(of({ lanes: [{ chantier: 8, live: true, autonomy: false, startedAt: 1 }] }));
+    const terminal = { dismissSuggestion: jasmine.createSpy('dismissSuggestion') };
+    (component as unknown as { terminalView: unknown }).terminalView = terminal;
+    snackBar.open.calls.reset();
+
+    component.onParallelLaunch({ number: 8, mode: null, source: 'suggestion' });
+
+    expect(terminal.dismissSuggestion).toHaveBeenCalledWith(8);
+    expect(snackBar.open.calls.mostRecent().args[0]).toBe('Le chantier 8 tourne déjà : il s\'affiche à droite.');
+    expect(component.activeLanes()).toEqual([8]);
+    expect(component.splitPane()?.chantier).toBe(8);
+  });
+
+  it('SF-226-03 : la fin d’un tour relit les fils actifs, sans réévaluer le split', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.engine.set('LOCAL_MACHINE');
+    service.streamChat.and.callFake((_id, _message, handlers) => {
+      handlers.onDone({ reply: 'Fait.', actions: [], messageId: 'm1' });
+      return Promise.resolve();
+    });
+    service.getLanes.and.returnValue(of({ lanes: [
+      { chantier: 3, live: false, autonomy: true, startedAt: 1 },
+      { chantier: null, live: true, autonomy: false, startedAt: 2 },
+    ] }));
+    service.getLanes.calls.reset();
+
+    component.draft.set('Lance le chantier 3');
+    component.send();
+
+    expect(service.getLanes).toHaveBeenCalledWith('w1');
+    expect(component.activeLanes()).toEqual([3]);
+    expect(component.splitPane()).withContext('le split ne bouge qu’au changement de focus').toBeNull();
   });
 
   it('streams a message: relays a step then replaces it with the final reply and refreshes the tree', () => {
@@ -4910,7 +4957,7 @@ describe('AtelierComponent — projet demandé par l\'URL (F-30 SF-30-10)', () =
     service = jasmine.createSpyObj<AtelierService>('AtelierService', [
       'createWorkspace', 'listWorkspaces', 'getWorkspace',
       'getEngine', 'getFile', 'writeFile',
-      'importLibrary', 'chat', 'streamChat', 'streamAgent', 'resetAgentSession', 'getHistory', 'getResume', 'restartThread',
+      'importLibrary', 'chat', 'streamChat', 'streamAgent', 'resetAgentSession', 'getHistory', 'getLanes', 'getResume', 'restartThread',
       'attachTurn',
       'getTurnState',
     ]);
@@ -4932,6 +4979,8 @@ describe('AtelierComponent — projet demandé par l\'URL (F-30 SF-30-10)', () =
     service.listWorkspaces.and.returnValue(of([urlSummary]));
     service.getWorkspace.and.returnValue(of(urlDetail));
     service.getHistory.and.returnValue(of([]));
+    // F-226 / SF-226-03 : les fils actifs sont relus à chaque fin de tour — aucun par défaut.
+    service.getLanes.and.returnValue(of({ lanes: [] }));
     // F-84 / SF-84-02 : par défaut, aucun tour n'est en cours — se rebrancher ne trouve rien et
     // rend simplement de quoi se détacher.
     service.attachTurn.and.returnValue(new AbortController());
@@ -5078,7 +5127,7 @@ describe('AtelierComponent — écrans runner (F-38 SF-38-06)', () => {
     service = jasmine.createSpyObj<AtelierService>('AtelierService', [
       'createWorkspace', 'listWorkspaces', 'getWorkspace',
       'getEngine', 'getFile', 'writeFile',
-      'importLibrary', 'chat', 'streamChat', 'streamAgent', 'resetAgentSession', 'getHistory', 'getResume', 'restartThread',
+      'importLibrary', 'chat', 'streamChat', 'streamAgent', 'resetAgentSession', 'getHistory', 'getLanes', 'getResume', 'restartThread',
       'setExecutionTarget', 'getRunnerStatus', 'createHostPairingCode', 'downloadRunnerJar',
       'attachTurn',
       'getTurnState',
@@ -5095,6 +5144,8 @@ describe('AtelierComponent — écrans runner (F-38 SF-38-06)', () => {
     service.listWorkspaces.and.returnValue(of([runnerSummary]));
     service.getWorkspace.and.returnValue(of(detail));
     service.getHistory.and.returnValue(of([]));
+    // F-226 / SF-226-03 : les fils actifs sont relus à chaque fin de tour — aucun par défaut.
+    service.getLanes.and.returnValue(of({ lanes: [] }));
     // F-84 / SF-84-02 : par défaut, aucun tour n'est en cours — se rebrancher ne trouve rien et
     // rend simplement de quoi se détacher.
     service.attachTurn.and.returnValue(new AbortController());
@@ -5314,7 +5365,7 @@ describe('AtelierComponent — garde-fous runner (F-38 / SF-38-08)', () => {
     service = jasmine.createSpyObj<AtelierService>('AtelierService', [
       'createWorkspace', 'listWorkspaces', 'getWorkspace',
       'getEngine', 'getFile', 'writeFile',
-      'importLibrary', 'chat', 'streamChat', 'streamAgent', 'resetAgentSession', 'getHistory', 'getResume', 'restartThread',
+      'importLibrary', 'chat', 'streamChat', 'streamAgent', 'resetAgentSession', 'getHistory', 'getLanes', 'getResume', 'restartThread',
       'setExecutionTarget', 'getRunnerStatus', 'createHostPairingCode', 'downloadRunnerJar',
       'confirmToolUse', 'confirmChatToolUse', 'killHost', 'getRunnerAudit', 'interruptChat',
       // F-82 / SF-82-05 : la confirmation du coupe-circuit NOMME les projets du poste, et le
@@ -5334,6 +5385,8 @@ describe('AtelierComponent — garde-fous runner (F-38 / SF-38-08)', () => {
     service.listWorkspaces.and.returnValue(of([summary]));
     service.getWorkspace.and.returnValue(of(runnerDetail));
     service.getHistory.and.returnValue(of([]));
+    // F-226 / SF-226-03 : les fils actifs sont relus à chaque fin de tour — aucun par défaut.
+    service.getLanes.and.returnValue(of({ lanes: [] }));
     // F-84 / SF-84-02 : par défaut, aucun tour n'est en cours — se rebrancher ne trouve rien et
     // rend simplement de quoi se détacher.
     service.attachTurn.and.returnValue(new AbortController());
@@ -5574,7 +5627,7 @@ describe("AtelierComponent — guide d'accueil (F-53 / SF-53-01)", () => {
     service = jasmine.createSpyObj<AtelierService>('AtelierService', [
       'createWorkspace', 'createLocalWorkspace', 'listWorkspaces', 'getWorkspace',
       'getEngine', 'getFile', 'writeFile', 'importLibrary', 'chat', 'streamChat', 'streamAgent',
-      'resetAgentSession', 'getHistory', 'getResume', 'restartThread', 'setExecutionTarget',
+      'resetAgentSession', 'getHistory', 'getLanes', 'getResume', 'restartThread', 'setExecutionTarget',
       'getRunnerStatus', 'createHostPairingCode', 'downloadRunnerJar', 'killHost', 'getRunnerAudit',
       'attachTurn',
       'getTurnState',
@@ -5590,6 +5643,8 @@ describe("AtelierComponent — guide d'accueil (F-53 / SF-53-01)", () => {
     service.listWorkspaces.and.returnValue(of(projects));
     service.getWorkspace.and.returnValue(of(guideDetail));
     service.getHistory.and.returnValue(of([]));
+    // F-226 / SF-226-03 : les fils actifs sont relus à chaque fin de tour — aucun par défaut.
+    service.getLanes.and.returnValue(of({ lanes: [] }));
     // F-84 / SF-84-02 : par défaut, aucun tour n'est en cours — se rebrancher ne trouve rien et
     // rend simplement de quoi se détacher.
     service.attachTurn.and.returnValue(new AbortController());
@@ -5833,7 +5888,7 @@ describe('AtelierComponent — rappel de journalisation (F-57 / SF-57-03)', () =
     const service = jasmine.createSpyObj<AtelierService>('AtelierService', [
       'createWorkspace', 'createLocalWorkspace', 'listWorkspaces', 'getWorkspace',
       'getEngine', 'getFile', 'writeFile', 'importLibrary', 'chat', 'streamChat', 'streamAgent',
-      'resetAgentSession', 'getHistory', 'getResume', 'restartThread', 'setExecutionTarget',
+      'resetAgentSession', 'getHistory', 'getLanes', 'getResume', 'restartThread', 'setExecutionTarget',
       'getRunnerStatus', 'createHostPairingCode', 'downloadRunnerJar', 'killHost', 'getRunnerAudit',
       'attachTurn',
       'getTurnState',
@@ -5848,6 +5903,8 @@ describe('AtelierComponent — rappel de journalisation (F-57 / SF-57-03)', () =
     } as ApiKeyStatus));
     service.listWorkspaces.and.returnValue(of([summary]));
     service.getHistory.and.returnValue(of([]));
+    // F-226 / SF-226-03 : les fils actifs sont relus à chaque fin de tour — aucun par défaut.
+    service.getLanes.and.returnValue(of({ lanes: [] }));
     // F-84 / SF-84-02 : par défaut, aucun tour n'est en cours — se rebrancher ne trouve rien et
     // rend simplement de quoi se détacher.
     service.attachTurn.and.returnValue(new AbortController());
@@ -5927,7 +5984,7 @@ describe('AtelierComponent — terminal Teams sans la Forge (F-107 / SF-107-07)'
 
   function setup(id: string | null, vigieList: WorkspaceSummary[]) {
     service = jasmine.createSpyObj<AtelierService>('AtelierService', [
-      'listWorkspaces', 'getWorkspace', 'getEngine', 'getHistory', 'getResume', 'attachTurn',
+      'listWorkspaces', 'getWorkspace', 'getEngine', 'getHistory', 'getLanes', 'getResume', 'attachTurn',
       'getTurnState', 'teamsAccess', 'getRunnerStatus', 'streamChat', 'streamAgent',
     ]);
     const apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
@@ -5936,6 +5993,8 @@ describe('AtelierComponent — terminal Teams sans la Forge (F-107 / SF-107-07)'
       space === 'VIGIE' ? of(vigieList) : forbidden());
     service.getWorkspace.and.returnValue(of(teamsDetail));
     service.getHistory.and.returnValue(of([]));
+    // F-226 / SF-226-03 : les fils actifs sont relus à chaque fin de tour — aucun par défaut.
+    service.getLanes.and.returnValue(of({ lanes: [] }));
     service.attachTurn.and.returnValue(new AbortController());
     service.getTurnState.and.returnValue(
       of({ live: false, turnId: null, cursor: 0, startedAt: null, pending: null }));

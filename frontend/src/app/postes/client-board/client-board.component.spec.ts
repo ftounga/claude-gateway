@@ -203,7 +203,7 @@ describe('ClientBoardComponent', () => {
     expect(el().querySelectorAll('.cb__rows [data-key]').length).toBe(2);
   });
 
-  it('Ouvrir : focus du chantier, puis son terminal', () => {
+  it('Afficher : focus du chantier, puis son terminal', () => {
     build(board([outilReady2]));
     const navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
     component.open(outilReady2);
@@ -211,7 +211,7 @@ describe('ClientBoardComponent', () => {
     expect(navigate).toHaveBeenCalledWith(['/atelier', 'w2']);
   });
 
-  it('Ouvrir : le terminal s\'ouvre même si le focus échoue', () => {
+  it('Afficher : le terminal s\'ouvre même si le focus échoue', () => {
     build(board([outilReady2]));
     journeys.focus.and.returnValue(throwError(() => new HttpErrorResponse({ status: 400 })));
     const navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
@@ -231,7 +231,7 @@ describe('ClientBoardComponent', () => {
       { state: { radarDraft: '✓ Chantier 2 : diagnostic confirmé — pose le plan de ce chantier.' } });
   });
 
-  it('Lancer en autonome : la route F-219 ; un refus affiche le message du serveur', () => {
+  it('Lancer : la route F-219 ; un refus affiche le message du serveur', () => {
     build(board([outilReady]));
     component.launch(outilReady);
     expect(autonomy.launch).toHaveBeenCalledWith('w1', 1, 'STRICT');
@@ -264,7 +264,7 @@ describe('ClientBoardComponent', () => {
     component.launchSelected();
     expect(autonomy.launch.calls.allArgs()).toEqual([['w1', 1, 'STRICT'], ['w2', 2, 'STRICT']]);
     expect(snack.open.calls.mostRecent().args[0])
-      .toBe('1 chantier lancé en autonome ; 1 refusé : api · chantier 2 — Le poste est hors ligne.');
+      .toBe('1 chantier lancé ; 1 refusé : api · chantier 2 — Le poste est hors ligne.');
     expect(component.selection().length).toBe(0);
   });
 
@@ -639,15 +639,15 @@ describe('ClientBoardComponent', () => {
     missing: ['Étape 3 : en attente de « cert » (demandé).'],
   });
 
-  it('SF-219-05 : une carte qui peut avancer montre [Avancer jusqu\'au blocage], qui part dans ce mode', () => {
+  it('SF-219-05 : une carte qui peut avancer montre [Lancer jusqu\'au blocage], qui part dans ce mode', () => {
     build(board([advanceOnly]));
     const cardEl = el().querySelector('[data-key]') as HTMLElement;
     expect(cardEl.querySelector('.cb__launch')).toBeNull();
     const advance = cardEl.querySelector('.cb__advance') as HTMLButtonElement;
-    expect(advance.getAttribute('aria-label')).toContain('Avancer jusqu’au blocage');
+    expect(advance.getAttribute('aria-label')).toContain('Lancer jusqu’au blocage');
     advance.click();
     expect(autonomy.launch).toHaveBeenCalledWith('w6', 7, 'UNTIL_BLOCKED');
-    expect(snack.open.calls.mostRecent().args[0]).toBe('Chantier 7 avance jusqu\'au blocage.');
+    expect(snack.open.calls.mostRecent().args[0]).toBe('Chantier 7 lancé jusqu\'au blocage.');
   });
 
   it('SF-219-05 : ni blocage possible ni prêt → aucun geste de lancement, pas sélectionnable', () => {
@@ -656,14 +656,14 @@ describe('ClientBoardComponent', () => {
     expect(component.selectable(autruiDormant)).toBeFalse();
   });
 
-  it('SF-219-05 : multi-sélection mêlant prêt et « peut avancer » → seul [Avancer jusqu\'au blocage (k)]', () => {
+  it('SF-219-05 : multi-sélection mêlant prêt et « peut avancer » → seul [Lancer jusqu\'au blocage (k)]', () => {
     build(board([outilReady, advanceOnly]));
     component.toggleSelected(outilReady);
     component.toggleSelected(advanceOnly);
     fixture.detectChanges();
     expect(el().querySelector('.cb__launch-all')).toBeNull();
     const all = el().querySelector('.cb__advance-all') as HTMLButtonElement;
-    expect(all.textContent).toContain('Avancer jusqu’au blocage (2)');
+    expect(all.textContent).toContain('Lancer jusqu’au blocage (2)');
     component.launchSelected('STRICT');
     expect(autonomy.launch).not.toHaveBeenCalled();
     all.click();
@@ -673,5 +673,48 @@ describe('ClientBoardComponent', () => {
   it('SF-219-05 : une course jusqu\'au blocage se lit « Jusqu\'au blocage — étape k/n »', () => {
     build(board([card({ workspaceId: 'w3', number: 1, ready: false, live: true, run: { ...run, mode: 'UNTIL_BLOCKED' } })]));
     expect(component.runLabel(component.board()!.chantiers[0])).toBe('Jusqu’au blocage — étape 3/5');
+  });
+
+  // ------------------------------------------------------------------ F-226 / SF-226-03 : un seul vocabulaire
+
+  it('SF-226-03 : Lancer, Lancer jusqu’au blocage, Afficher — jamais « Lancer en autonome » ni « Avancer »', () => {
+    build(board([outilReady, advanceOnly]));
+    const old = ['Lancer en autonome', 'Avancer jusqu’au blocage', 'Mettre au focus', 'Afficher à côté'];
+    const all = () => {
+      const html = el();
+      const attrs = Array.from(html.querySelectorAll('[aria-label], [ng-reflect-message]'))
+        .map((n) => `${n.getAttribute('aria-label') ?? ''} ${n.getAttribute('ng-reflect-message') ?? ''}`);
+      return `${html.textContent ?? ''} ${attrs.join(' ')}`;
+    };
+    const labels = (selector: string) => Array.from(el().querySelectorAll(`.cb__row-actions ${selector}`))
+      .map((b) => b.getAttribute('aria-label'));
+    expect(labels('.cb__launch')).toContain('Lancer le chantier 1');
+    expect(labels('.cb__advance')).toContain('Lancer jusqu’au blocage le chantier 7');
+    expect(labels('.cb__open')).toContain('Afficher — chantier 1');
+
+    // Les lignes dépliées : les boutons du détail.
+    component.toggleRow(component.rowKey(outilReady));
+    fixture.detectChanges();
+    const detail = el().querySelector('.cb__detail-actions') as HTMLElement;
+    expect(detail.querySelector('.cb__launch')?.textContent?.trim()).toMatch(/Lancer$/);
+    expect(detail.querySelector('.cb__open')?.textContent).toContain('Afficher');
+    for (const verb of old) {
+      expect(all()).not.toContain(verb);
+    }
+
+    // Le lancement groupé : « Lancer (k) ».
+    component.toggleSelected(outilReady);
+    fixture.detectChanges();
+    expect(el().querySelector('.cb__launch-all')?.textContent).toContain('Lancer (1)');
+    expect(el().querySelector('.cb__advance-all')?.textContent).toContain('Lancer jusqu’au blocage (1)');
+    for (const verb of old) {
+      expect(all()).not.toContain(verb);
+    }
+  });
+
+  it('SF-226-03 : le snackbar d’un lancement dit « lancé »', () => {
+    build(board([outilReady]));
+    component.launch(outilReady);
+    expect(snack.open.calls.mostRecent().args[0]).toBe('Chantier 1 lancé.');
   });
 });
