@@ -68,6 +68,26 @@ describe('F-208 / SF-208-03 — le tableau des chantiers', () => {
     return fixture;
   };
 
+  it('F-222 / SF-222-03 : un chantier en sommeil est daté, avec [Clore] — jamais clos sans clic', () => {
+    const fiveDaysAgo = new Date(Date.now() - 5 * 86_400_000 - 60_000).toISOString();
+    const fixture = mount(journey([
+      chantier(2, { focus: true }),
+      chantier(3, { stale: true, lastActivityAt: fiveDaysAgo }),
+    ]));
+    const el: HTMLElement = fixture.nativeElement;
+    const tabs = Array.from(el.querySelectorAll('.board__tab')) as HTMLButtonElement[];
+    expect(tabs[1].textContent).toContain('en sommeil');
+    expect(tabs[0].textContent).not.toContain('en sommeil');
+    tabs[1].click();
+    fixture.detectChanges();
+    const stale = el.querySelectorAll('.board__stale');
+    expect(stale.length).toBe(1);
+    expect(stale[0].textContent).toContain('En Exécution sans activité depuis 5 jours');
+    http.expectNone('/api/workspaces/w1/journey/chantiers/3/close');
+    (el.querySelector('.board__stale-close') as HTMLButtonElement).click();
+    http.expectOne('/api/workspaces/w1/journey/chantiers/3/close').flush({});
+  });
+
   it('fonctions pures : état affiché, étape en cours, gestes attendus', () => {
     expect(MIGRATION.steps.map(stepState)).toEqual(['verified', 'progress', 'blocked', 'failed', 'done']);
     expect(currentStepIndex(MIGRATION)).toBe(1);

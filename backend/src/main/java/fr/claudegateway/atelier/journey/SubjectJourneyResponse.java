@@ -49,12 +49,22 @@ public record SubjectJourneyResponse(
      * @param total              étapes du plan
      * @param plan               le plan détaillé du chantier (F-208), ou {@code null} sans plan
      * @param unblocker          qui doit agir pour qu'il avance (F-220 / SF-220-01)
+     * @param lastActivityAt     son dernier geste connu (F-222 / SF-222-03)
+     * @param stale              en Exécution sans geste depuis {@link SubjectJourneyChantier#STALE_DAYS} jours, hors
+     *                           focus : un « zombie » à montrer avec [Clore] (F-222 / SF-222-03)
      */
     public record OpenChantier(int number, String title, OffsetDateTime openedAt, String phase, String phaseLabel,
                                boolean focus, int planVersion, Integer validatedVersion,
                                boolean awaitingValidation, boolean diagnosisPending, boolean closeProposed,
                                boolean executing, int done, int total, Plan plan,
-                               ChantierUnblocker.Mark unblocker) {
+                               ChantierUnblocker.Mark unblocker, OffsetDateTime lastActivityAt, boolean stale) {
+
+        /** Le même chantier, daté de son dernier geste (F-222 / SF-222-03). */
+        OpenChantier withActivity(OffsetDateTime lastActivityAt, boolean stale) {
+            return new OpenChantier(number, title, openedAt, phase, phaseLabel, focus, planVersion, validatedVersion,
+                    awaitingValidation, diagnosisPending, closeProposed, executing, done, total, plan, unblocker,
+                    lastActivityAt, stale);
+        }
 
         static OpenChantier of(int number, String title, OffsetDateTime openedAt, JourneyPhase phase, boolean focus,
                                int planVersion, Integer validatedVersion, String planJson,
@@ -82,7 +92,7 @@ public record SubjectJourneyResponse(
                             validatedPlanJson, phase, true, waits),
                     ChantierUnblocker.chantier(new ChantierUnblocker.Input(guided, phase, planJson, planVersion,
                             validatedVersion, diagnosisPending, closeProposedAt != null, focus && questionPending,
-                            waits)));
+                            waits)), null, false);
         }
     }
 
@@ -91,18 +101,21 @@ public record SubjectJourneyResponse(
                                             boolean questionPending) {
         boolean guided = journey.isGuided();
         List<OpenChantier> open = new ArrayList<>();
+        OffsetDateTime now = OffsetDateTime.now();
         if (journey.hasOpenFocus()) {
+            // Le focus est le chantier regardé : jamais « en sommeil » (F-222 / SF-222-03).
             open.add(OpenChantier.of(Math.max(1, journey.getChantierNumber()), journey.getChantierTitle(),
                     journey.getChantierOpenedAt(), journey.getPhase(), true, journey.getPlanVersion(),
                     journey.getValidatedVersion(), journey.getPlanJson(), journey.getDiagnosisProposedAt(),
                     journey.getCloseProposedAt(), journey.getValidatedPlanJson(), journey.getPlanValidatedAt(),
-                    waits, guided, questionPending));
+                    waits, guided, questionPending).withActivity(journey.getUpdatedAt(), false));
         }
         for (SubjectJourneyChantier c : journey.getOtherOpenChantiers()) {
             open.add(OpenChantier.of(c.getNumber(), c.getTitle(), c.getOpenedAt(), c.getPhase(), false,
                     c.getPlanVersion() == null ? 0 : c.getPlanVersion(), c.getValidatedVersion(), c.getPlanJson(),
                     c.getDiagnosisProposedAt(), c.getCloseProposedAt(), c.getValidatedPlanJson(),
-                    c.getPlanValidatedAt(), waits, guided, questionPending));
+                    c.getPlanValidatedAt(), waits, guided, questionPending)
+                    .withActivity(c.getUpdatedAt(), c.isStale(now)));
         }
         open.sort(java.util.Comparator.comparingInt(OpenChantier::number));
         return List.copyOf(open);

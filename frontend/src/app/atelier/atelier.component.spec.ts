@@ -194,6 +194,35 @@ describe('AtelierComponent', () => {
     expect(getComputedStyle(fixture.nativeElement as HTMLElement).overflowX).toBe('clip');
   });
 
+  // F-222 / SF-222-03 — un message ne part qu'une fois.
+  describe('un message ne part qu’une fois (F-222 / SF-222-03)', () => {
+    afterEach(() => jasmine.clock().uninstall());
+
+    it('le même texte renvoyé dans les 3 s est ignoré ; au-delà, il repart', () => {
+      setup();
+      component.selectWorkspace(summary);
+      component.engine.set('LOCAL_MACHINE');
+      jasmine.clock().install();
+      jasmine.clock().mockDate(new Date('2026-10-31T10:00:00Z'));
+      // Le tour reste en cours : un 2e envoi deviendrait une PRÉCISION — c'est là que naissaient les doublons.
+      service.streamChat.and.returnValue(new Promise<void>(() => undefined));
+      service.steerChat.and.returnValue(of({ steerId: 's1' }) as never);
+      const sends = () => service.streamChat.calls.count() + service.steerChat.calls.count();
+      component.draft.set('relance le déploiement');
+      component.send();
+      component.draft.set('relance le déploiement');
+      component.send();
+      expect(sends()).toBe(1);
+      component.draft.set('autre chose');
+      component.send();
+      expect(sends()).toBe(2);
+      jasmine.clock().tick(3100);
+      component.draft.set('autre chose');
+      component.send();
+      expect(sends()).toBe(3);
+    });
+  });
+
   describe('alerte d\'onglet en fin de tour (F-185 / SF-185-05)', () => {
     function finish(planSubmitted: boolean): { plan: jasmine.Spy; done: jasmine.Spy } {
       setup();

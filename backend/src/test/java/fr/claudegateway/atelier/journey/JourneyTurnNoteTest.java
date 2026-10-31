@@ -74,6 +74,34 @@ class JourneyTurnNoteTest {
     }
 
     @Test
+    @DisplayName("F-222 / SF-222-03 : un chantier en Exécution sans geste depuis 3 jours n'est plus détaillé, il est nommé")
+    void staleChantiersAreNamedNotDetailed() {
+        SubjectJourney j = journey(JourneyMode.GUIDE, JourneyPhase.PLAN);
+        j.setChantierNumber(9);
+        java.time.OffsetDateTime old = java.time.OffsetDateTime.now().minusDays(5);
+        java.util.List<SubjectJourneyChantier> others = new java.util.ArrayList<>();
+        for (int n : new int[] {3, 6}) {
+            others.add(SubjectJourneyChantier.builder().number(n).title("Zombie " + n).status("OPEN")
+                    .phase(JourneyPhase.EXECUTION).planVersion(1).validatedVersion(1).updatedAt(old)
+                    .planJson("[{\"title\":\"a\",\"risk\":\"REVERSIBLE\"}]").build());
+        }
+        others.add(SubjectJourneyChantier.builder().number(4).title("Vivant").status("OPEN")
+                .phase(JourneyPhase.EXECUTION).updatedAt(java.time.OffsetDateTime.now()).build());
+        // En Plan depuis longtemps : il attend un geste, il n'est pas « en sommeil ».
+        others.add(SubjectJourneyChantier.builder().number(5).title("Attente").status("OPEN")
+                .phase(JourneyPhase.PLAN).updatedAt(old).build());
+        j.setOtherOpenChantiers(others);
+        String note = JourneyTurnNote.render(j);
+        assertThat(note).contains("== Chantier 4 — Vivant").contains("== Chantier 5 — Attente")
+                .doesNotContain("Zombie 3").doesNotContain("Zombie 6")
+                .contains("En sommeil (en Exécution sans geste depuis 3 jours ou plus, non détaillés) : chantier(s) 3, 6.")
+                .doesNotContain("ACTEURS À PRÉCISER");
+        assertThat(others.get(0).isStale(java.time.OffsetDateTime.now())).isTrue();
+        assertThat(others.get(2).isStale(java.time.OffsetDateTime.now())).isFalse();
+        assertThat(others.get(3).isStale(java.time.OffsetDateTime.now())).isFalse();
+    }
+
+    @Test
     @DisplayName("le mode se lit avec ou sans accent")
     void parseMode() {
         assertThat(JourneyMode.parse("guidé")).isEqualTo(JourneyMode.GUIDE);

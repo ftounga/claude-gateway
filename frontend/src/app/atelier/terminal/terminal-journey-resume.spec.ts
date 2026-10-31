@@ -82,6 +82,26 @@ describe('F-176 / SF-176-09 — un clic fait avancer', () => {
     expect(sent).toBe(0);
   });
 
+  /** F-222 / SF-222-03 — le clic vise le chantier affiché, par son numéro, et dit pourquoi il échoue. */
+  it('la validation vise le chantier AFFICHÉ par son numéro, jamais « le focus du moment »', () => {
+    component.journey.set({ ...planPhase(), chantier: { number: 4, title: 'data-platform', openedAt: null } });
+    component.onJourneyGesture('validate-plan-only');
+    http.expectOne('/api/workspaces/ws-1/journey/chantiers/4/plan/validate')
+      .flush({ ...planPhase(), phase: 'EXECUTION' });
+  });
+
+  it('un geste refusé dit pourquoi (message du serveur) et relit le parcours', () => {
+    component.journey.set({ ...planPhase(), chantier: { number: 4, title: null, openedAt: null } });
+    const snack = spyOn((component as unknown as { snackBar: { open: (m: string) => void } }).snackBar, 'open');
+    component.onJourneyGesture('validate-plan');
+    http.expectOne('/api/workspaces/ws-1/journey/chantiers/4/plan/validate').flush(
+      { error: 'journey_invalid', message: 'Le plan a changé depuis (version 3) : relisez-le avant de le valider.' },
+      { status: 400, statusText: 'Bad Request' });
+    expect(snack.calls.mostRecent().args[0]).toContain('Le plan a changé depuis');
+    expect(http.match('/api/workspaces/ws-1/journey').length).toBeGreaterThan(0);
+    expect(sent).toBe(0);
+  });
+
   it('jamais en lecture seule', () => {
     component.readOnly = true;
     validate('validate-plan');
