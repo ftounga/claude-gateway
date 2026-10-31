@@ -110,7 +110,31 @@ class DepositContentApiIntegrationTest {
         assertThat(DepositContentService.nameOf(".atelier/entrees/capture.png")).isEqualTo("capture.png");
     }
 
+    @Test
+    @DisplayName("SF-228-04 : le téléchargement rend les octets à enregistrer, jamais à ouvrir ; inconnu et Bob → 404")
+    void downloadsAsAttachmentAndIsolated() throws Exception {
+        String html = deposit("page.html", "text/html", "<script>alert(1)</script>".getBytes(StandardCharsets.UTF_8));
+        byte[] body = mockMvc.perform(get(downloadUrl(html)).contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "application/octet-stream"))
+                .andExpect(header().string("X-Content-Type-Options", "nosniff"))
+                .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.startsWith("attachment")))
+                .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("page.html")))
+                .andReturn().getResponse().getContentAsByteArray();
+        assertThat(new String(body, StandardCharsets.UTF_8)).isEqualTo("<script>alert(1)</script>");
+        mockMvc.perform(get(downloadUrl(UUID.randomUUID().toString())).contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get(downloadUrl(html)).contextPath("/api").header("Authorization", "Bearer " + bobToken))
+                .andExpect(status().isNotFound());
+    }
+
     // ---- outillage ----
+
+    private String downloadUrl(String depositId) {
+        return "/api/workspaces/" + workspaceId + "/deposits/" + depositId + "/download";
+    }
 
     private String url(String depositId) {
         return "/api/workspaces/" + workspaceId + "/deposits/" + depositId + "/content";

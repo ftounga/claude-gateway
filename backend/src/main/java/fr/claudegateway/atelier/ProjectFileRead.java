@@ -1,6 +1,7 @@
 package fr.claudegateway.atelier;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.util.Base64;
 import java.util.UUID;
 
@@ -58,28 +59,54 @@ public class ProjectFileRead {
 
     /** Les octets d'un fichier du projet, bornés — au-delà, un refus dit. */
     public Read read(UUID userId, Workspace workspace, String callId, String path, long cap, String tool) {
-        if (workspace.isRunnerTarget()) {
-            return fromRunner(userId, RunnerTargets.of(workspace), callId, path, cap, tool);
-        }
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        Read read;
         try {
-            byte[] content = workspaceService.readFileBytes(userId, workspace.getId(), path);
-            if (content.length > cap) {
-                return Read.error("Fichier trop lourd (" + path + ") : maximum " + cap + " octets.");
-            }
-            return Read.ok(content);
+            read = stream(userId, workspace, callId, path, cap, tool, out::writeBytes);
+        } catch (IOException e) { // impossible : un tampon mémoire n'échoue pas
+            return Read.error("Fichier illisible (" + path + ").");
+        }
+        return read.failed() ? read : Read.ok(out.toByteArray());
+    }
+
+    /** Reçoit les tranches d'un fichier, dans l'ordre, au fil de la lecture. */
+    @FunctionalInterface
+    public interface ChunkSink {
+        void accept(byte[] part) throws IOException;
+    }
+
+    /**
+     * <b>Lit en flux</b> (F-228 / SF-228-04) : chaque tranche est remise à {@code sink} dès qu'elle est lue — jamais
+     * tout le fichier en mémoire. La première tranche est lue AVANT le premier appel au sink : un poste hors ligne se
+     * dit par un {@link Read#error} sans qu'aucun octet ne soit parti. Le {@link Read} rendu en succès ne porte pas
+     * d'octets ({@code content} vide). Une {@link IOException} du sink remonte telle quelle.
+     */
+    public Read stream(UUID userId, Workspace workspace, String callId, String path, long cap, String tool,
+            ChunkSink sink) throws IOException {
+        if (workspace.isRunnerTarget()) {
+            return fromRunner(userId, RunnerTargets.of(workspace), callId, path, cap, tool, sink);
+        }
+        byte[] content;
+        try {
+            content = workspaceService.readFileBytes(userId, workspace.getId(), path);
         } catch (RuntimeException e) {
             return Read.error("Fichier illisible dans le projet hébergé (" + path + ").");
         }
+        if (content.length > cap) {
+            return Read.error("Fichier trop lourd (" + path + ") : maximum " + cap + " octets.");
+        }
+        sink.accept(content);
+        return Read.ok(new byte[0]);
     }
 
     private Read fromRunner(UUID userId, RunnerTarget target, String callId, String path, long cap,
-            String tool) {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
+            String tool, ChunkSink sink) throws IOException {
+        long total = 0;
         RunnerCallResult last = null;
         int chunk = 0;
         while (true) {
             RunnerCallResult result = runnerToolGateway.readFileBytes(target, callId + "." + chunk, path,
-                    out.size(), CHUNK_BYTES);
+                    total, CHUNK_BYTES);
             last = result;
             if (!result.ok()) {
                 runnerAuditService.recordCall(userId, target, callId, tool, path, result);
@@ -96,14 +123,15 @@ public class ProjectFileRead {
                 runnerAuditService.recordCall(userId, target, callId, tool, path, result);
                 return Read.error("Fichier illisible sur la machine (" + path + ") : réponse invalide.");
             }
-            out.writeBytes(part);
-            if (out.size() > cap) {
+            total += part.length;
+            if (total > cap) {
                 runnerAuditService.recordCall(userId, target, callId, tool, path, result);
                 return Read.error("Fichier trop lourd (" + path + ") : maximum " + cap + " octets.");
             }
+            sink.accept(part);
             if (!result.truncated()) {
                 runnerAuditService.recordCall(userId, target, callId, tool, path, last);
-                return Read.ok(out.toByteArray());
+                return Read.ok(new byte[0]);
             }
             chunk++;
         }

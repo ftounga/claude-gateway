@@ -2573,6 +2573,9 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
       case 'csv':
       case 'xlsx':
         return 'table_chart';
+      case 'text':
+      case 'docx':
+        return 'description';
       default:
         return 'insert_drive_file';
     }

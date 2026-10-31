@@ -29,7 +29,8 @@ describe('F-228 / SF-228-03 — tableurs', () => {
   it('une cellule : date lisible, vide pour null', () => {
     expect(cellText(null)).toBe('');
     expect(cellText(12.5)).toBe('12.5');
-    expect(cellText(new Date(2026, 9, 31))).toBe('31/10/2026');
+    // SF-228-04 : read-excel-file rend les dates à minuit UTC ; elles sont lues en UTC.
+    expect(cellText(new Date(Date.UTC(2026, 9, 31)))).toBe('31/10/2026');
   });
 
   describe('dans la boîte d’aperçu', () => {

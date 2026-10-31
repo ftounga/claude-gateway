@@ -8,9 +8,10 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 
-import { httpErrorMessage, humanFileSize } from '../../shared/http-error.util';
+import { httpErrorMessageAsync, humanFileSize } from '../../shared/http-error.util';
 import {
-  MAX_TABLE_ROWS, PreviewKind, PreviewSheet, cellText, depositContentUrl, depositFileName, parseCsv, previewKindOf,
+  MAX_PREVIEW_BYTES, MAX_TABLE_ROWS, MAX_TEXT_BYTES, PreviewKind, PreviewSheet, PreviewText, cellText, decodeCsv,
+  decodeTextPreview, depositContentUrl, depositDownloadUrl, depositFileName, parseCsv, previewKindOf, truncateText,
 } from './deposit-preview';
 
 /** Ce que l'aperçu reçoit : le terminal et la pièce (identifiant de dépôt, chemin, taille). */
@@ -37,6 +38,9 @@ export interface DepositPreviewData {
         <div class="dp__loading"><mat-spinner diameter="32"></mat-spinner></div>
       } @else if (state() === 'error') {
         <p class="dp__error" role="alert"><mat-icon aria-hidden="true">error_outline</mat-icon>{{ error() }}</p>
+      } @else if (state() === 'too-large') {
+        <!-- F-228 / SF-228-04 : au-delà de 20 Mo, pas d'aperçu demandé ; le fichier se télécharge en flux. -->
+        <p class="dp__note dp__too-large">Pièce trop lourde pour l'aperçu (plus de 20 Mo) : téléchargez-la.</p>
       } @else {
         @switch (kind) {
           @case ('image') {
@@ -64,6 +68,12 @@ export interface DepositPreviewData {
           }
           @case ('xlsx') {
             <ng-container [ngTemplateOutlet]="table"></ng-container>
+          }
+          @case ('text') {
+            <ng-container [ngTemplateOutlet]="plain"></ng-container>
+          }
+          @case ('docx') {
+            <ng-container [ngTemplateOutlet]="plain"></ng-container>
           }
           @default {
             <p class="dp__note">Pas d'aperçu pour ce type de fichier : téléchargez-le.</p>
@@ -104,12 +114,28 @@ export interface DepositPreviewData {
         }
       }
     </ng-template>
+    <!-- F-228 / SF-228-04 : un texte (txt, md, log, json) ou le texte brut d'un Word, en <pre> : jamais de HTML. -->
+    <ng-template #plain>
+      @if (textError(); as message) {
+        <p class="dp__error" role="alert">{{ message }}</p>
+      } @else if (text()) {
+        <pre class="dp__text">{{ text()!.text }}</pre>
+        @if (text()!.truncated) {
+          <p class="dp__note">Les {{ maxTextKo }} premiers Ko seulement : téléchargez le fichier pour le reste.</p>
+        }
+      } @else {
+        <div class="dp__loading"><mat-spinner diameter="32"></mat-spinner></div>
+      }
+    </ng-template>
     <mat-dialog-actions align="end">
       @if (state() === 'ready' && kind === 'image') {
         <button mat-button type="button" class="dp__copy" (click)="copy()"><mat-icon>content_copy</mat-icon>Copier</button>
       }
-      @if (state() === 'ready') {
-        <button mat-button type="button" class="dp__download" (click)="download()"><mat-icon>download</mat-icon>Télécharger</button>
+      @if (canDownload()) {
+        <button mat-button type="button" class="dp__download" [disabled]="downloading()" (click)="download()">
+          @if (downloading()) { <mat-spinner diameter="16" class="dp__dl-spin"></mat-spinner> } @else { <mat-icon>download</mat-icon> }
+          Télécharger
+        </button>
       }
       <button mat-flat-button type="button" mat-dialog-close>Fermer</button>
     </mat-dialog-actions>
@@ -137,6 +163,10 @@ export interface DepositPreviewData {
     .dp__table th, .dp__table td { padding: 2px var(--cg-space-2); border: 1px solid var(--cg-divider);
       text-align: left; white-space: nowrap; }
     .dp__table th { position: sticky; top: 0; background: var(--cg-surface-2); }
+    .dp__text { max-height: 60vh; overflow: auto; margin: 0; padding: var(--cg-space-2); border: 1px solid var(--cg-divider);
+      background: var(--cg-surface-2); color: var(--cg-text-primary); font-family: var(--cg-font-mono, monospace);
+      font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .dp__dl-spin { display: inline-block; margin-right: var(--cg-space-1); }
     @media (max-width: 599px) { .dp { min-width: 0; } .dp__pdf { height: 60vh; } }
   `,
 })
@@ -150,7 +180,14 @@ export class DepositPreviewDialogComponent implements OnInit, OnDestroy {
   readonly name = depositFileName(this.data.path);
   readonly size = humanFileSize(this.data.size ?? 0);
 
-  readonly state = signal<'loading' | 'ready' | 'error'>('loading');
+  readonly state = signal<'loading' | 'ready' | 'error' | 'too-large'>('loading');
+  /** La pièce est inconnue (404) : rien à télécharger non plus. */
+  readonly notFound = signal(false);
+  /** Un téléchargement en flux est en cours (F-228 / SF-228-04). */
+  readonly downloading = signal(false);
+  /** [Télécharger] : la pièce est lue, ou trop lourde pour l'aperçu, ou l'aperçu a échoué (sauf pièce inconnue). */
+  readonly canDownload = computed(() => this.state() === 'ready' || this.state() === 'too-large'
+    || (this.state() === 'error' && !this.notFound()));
   readonly error = signal<string>('');
   readonly zoomed = signal(false);
   readonly objectUrl = signal<string | null>(null);
@@ -166,11 +203,38 @@ export class DepositPreviewDialogComponent implements OnInit, OnDestroy {
   readonly tableError = signal<string | null>(null);
   readonly maxRows = MAX_TABLE_ROWS;
 
+  /** Le texte montré (txt, md, log, json, docx), coupé à 200 Ko (F-228 / SF-228-04). */
+  readonly text = signal<PreviewText | null>(null);
+  readonly textError = signal<string | null>(null);
+  readonly maxTextKo = MAX_TEXT_BYTES / 1024;
+
+  /**
+   * Lit un texte : les 200 premiers Ko, en UTF-8. Un docx : son texte brut par `mammoth.extractRawText`, bibliothèque
+   * chargée À CE CLIC seulement — jamais `convertToHtml` (aucun HTML inséré).
+   */
+  private async readText(blob: Blob): Promise<void> {
+    try {
+      if (this.kind === 'text') {
+        this.text.set(decodeTextPreview(new Uint8Array(await blob.arrayBuffer())));
+        return;
+      }
+      const mammoth = await import('mammoth');
+      const extract = mammoth.extractRawText ?? (mammoth as unknown as { default: typeof mammoth }).default.extractRawText;
+      const result = await extract({ arrayBuffer: await blob.arrayBuffer() });
+      this.text.set(truncateText(result.value ?? ''));
+    } catch {
+      this.textError.set(this.kind === 'docx'
+        ? 'Ce document n’a pas pu être lu : téléchargez-le.'
+        : 'Ce texte n’a pas pu être lu : téléchargez-le.');
+    }
+  }
+
   /** Lit le tableur : CSV par l'analyseur maison ; xlsx par une bibliothèque chargée À CE CLIC seulement. */
   private async readTable(blob: Blob): Promise<void> {
     try {
       if (this.kind === 'csv') {
-        this.sheets.set([parseCsv(await blob.text())]);
+        // F-228 / SF-228-04 : UTF-8, sinon Windows-1252 (export CSV d'Excel en français).
+        this.sheets.set([parseCsv(decodeCsv(new Uint8Array(await blob.arrayBuffer())))]);
         return;
       }
       const { default: readXlsxFile } = await import('read-excel-file/browser');
@@ -186,6 +250,10 @@ export class DepositPreviewDialogComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
+    if ((this.data.size ?? 0) > MAX_PREVIEW_BYTES) {
+      this.state.set('too-large'); // F-228 / SF-228-04 : la passerelle refuserait ; on n'essaie pas.
+      return;
+    }
     this.http.get(depositContentUrl(this.data.workspaceId, this.data.depositId), { responseType: 'blob' }).subscribe({
       next: (blob) => {
         this.blob = blob;
@@ -196,11 +264,22 @@ export class DepositPreviewDialogComponent implements OnInit, OnDestroy {
         this.state.set('ready');
         if (this.kind === 'csv' || this.kind === 'xlsx') {
           void this.readTable(blob);
+        } else if (this.kind === 'text' || this.kind === 'docx') {
+          void this.readText(blob);
         }
       },
       error: (err: HttpErrorResponse) => {
-        this.error.set(err.status === 404 ? 'Pièce introuvable.' : httpErrorMessage(err, 'La pièce n’a pas pu être lue.'));
-        this.state.set('error');
+        if (err.status === 404) {
+          this.notFound.set(true);
+          this.error.set('Pièce introuvable.');
+          this.state.set('error');
+          return;
+        }
+        // F-228 / SF-228-04 : l'erreur d'une requête blob est un Blob — le vrai motif y est, on le lit.
+        void httpErrorMessageAsync(err, 'La pièce n’a pas pu être lue.').then((message) => {
+          this.error.set(message);
+          this.state.set('error');
+        });
       },
     });
   }
@@ -230,12 +309,37 @@ export class DepositPreviewDialogComponent implements OnInit, OnDestroy {
     );
   }
 
-  /** [Télécharger] la pièce, sous son nom. */
+  /**
+   * [Télécharger] la pièce, sous son nom : depuis les octets déjà lus ; sinon (plus de 20 Mo, ou aperçu en échec) par
+   * la route de téléchargement en flux (F-228 / SF-228-04) — reçue en Blob, le jeton ne voyageant pas dans un lien.
+   */
   download(): void {
     const url = this.objectUrl();
-    if (!url) {
+    if (url) {
+      this.save(url);
       return;
     }
+    if (this.downloading()) {
+      return;
+    }
+    this.downloading.set(true);
+    this.http.get(depositDownloadUrl(this.data.workspaceId, this.data.depositId), { responseType: 'blob' }).subscribe({
+      next: (blob) => {
+        this.downloading.set(false);
+        const saved = URL.createObjectURL(blob);
+        this.save(saved);
+        setTimeout(() => URL.revokeObjectURL(saved), 60_000);
+      },
+      error: (err: HttpErrorResponse) => {
+        void httpErrorMessageAsync(err, 'Le téléchargement a échoué.').then((message) => {
+          this.downloading.set(false);
+          this.snackBar.open(err.status === 404 ? 'Pièce introuvable.' : message, 'Fermer', { duration: 5000 });
+        });
+      },
+    });
+  }
+
+  private save(url: string): void {
     const anchor = document.createElement('a');
     anchor.href = url;
     anchor.download = this.name;
