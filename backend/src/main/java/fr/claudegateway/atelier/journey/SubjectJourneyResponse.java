@@ -52,18 +52,28 @@ public record SubjectJourneyResponse(
      * @param lastActivityAt     son dernier geste connu (F-222 / SF-222-03)
      * @param stale              en Exécution sans geste depuis {@link SubjectJourneyChantier#STALE_DAYS} jours, hors
      *                           focus : un « zombie » à montrer avec [Clore] (F-222 / SF-222-03)
+     * @param attentes           les attentes ouvertes rangées sous ce chantier qu'aucune étape n'attend déjà
+     *                           (F-227 / SF-227-01)
      */
     public record OpenChantier(int number, String title, OffsetDateTime openedAt, String phase, String phaseLabel,
                                boolean focus, int planVersion, Integer validatedVersion,
                                boolean awaitingValidation, boolean diagnosisPending, boolean closeProposed,
                                boolean executing, int done, int total, Plan plan,
-                               ChantierUnblocker.Mark unblocker, OffsetDateTime lastActivityAt, boolean stale) {
+                               ChantierUnblocker.Mark unblocker, OffsetDateTime lastActivityAt, boolean stale,
+                               List<LinkedAttente> attentes) {
 
         /** Le même chantier, daté de son dernier geste (F-222 / SF-222-03). */
         OpenChantier withActivity(OffsetDateTime lastActivityAt, boolean stale) {
             return new OpenChantier(number, title, openedAt, phase, phaseLabel, focus, planVersion, validatedVersion,
                     awaitingValidation, diagnosisPending, closeProposed, executing, done, total, plan, unblocker,
-                    lastActivityAt, stale);
+                    lastActivityAt, stale, attentes);
+        }
+
+        /** Le même chantier, avec les attentes rangées sous lui (F-227 / SF-227-01). */
+        OpenChantier withAttentes(List<LinkedAttente> linked) {
+            return new OpenChantier(number, title, openedAt, phase, phaseLabel, focus, planVersion, validatedVersion,
+                    awaitingValidation, diagnosisPending, closeProposed, executing, done, total, plan, unblocker,
+                    lastActivityAt, stale, linked == null ? List.of() : List.copyOf(linked));
         }
 
         static OpenChantier of(int number, String title, OffsetDateTime openedAt, JourneyPhase phase, boolean focus,
@@ -92,8 +102,31 @@ public record SubjectJourneyResponse(
                             validatedPlanJson, phase, true, waits),
                     ChantierUnblocker.chantier(new ChantierUnblocker.Input(guided, phase, planJson, planVersion,
                             validatedVersion, diagnosisPending, closeProposedAt != null, focus && questionPending,
-                            waits)), null, false);
+                            waits)), null, false, List.of());
         }
+    }
+
+    /**
+     * Une attente rangée sous un chantier (F-227 / SF-227-01), telle que le tableau des chantiers la montre.
+     *
+     * @param qui    {@code MOI}, {@code CLIENT}, {@code TIERS}… ou {@code null}
+     * @param person à qui la demander, ou {@code null}
+     */
+    public record LinkedAttente(java.util.UUID id, String description, String status, String qui, String person,
+                                OffsetDateTime createdAt) {
+    }
+
+    /** Le même parcours, chaque chantier ouvert portant les attentes rangées sous lui (F-227 / SF-227-01). */
+    public SubjectJourneyResponse withAttentes(Map<Integer, List<LinkedAttente>> byChantier) {
+        if (byChantier == null || byChantier.isEmpty() || chantiers == null || chantiers.isEmpty()) {
+            return this;
+        }
+        List<OpenChantier> enriched = new ArrayList<>();
+        for (OpenChantier c : chantiers) {
+            enriched.add(c.withAttentes(byChantier.getOrDefault(c.number(), List.of())));
+        }
+        return new SubjectJourneyResponse(mode, phase, phaseLabel, phaseChangedAt, guidedProposal, guidedDeclined, plan,
+                diagnosis, closeProposed, gateClosed, gateMessage, chantier, closedChantiers, List.copyOf(enriched));
     }
 
     /** Les chantiers ouverts du sujet, focus compris, par numéro croissant (F-206), plan détaillé (F-208). */

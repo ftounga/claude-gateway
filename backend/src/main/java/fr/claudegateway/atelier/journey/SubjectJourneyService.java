@@ -849,6 +849,43 @@ public class SubjectJourneyService {
         return infos;
     }
 
+    /**
+     * <b>Les attentes rangées sous chaque chantier ouvert</b> (F-227 / SF-227-01) — ouvertes, non fusionnées, et
+     * qu'aucune étape n'attend déjà (celles-là, la ligne de l'étape les montre). Lues sous {@code user_id} ; l'appelant
+     * a le terminal possédé. Best-effort : illisibles → rien.
+     */
+    @Transactional(readOnly = true)
+    public java.util.Map<Integer, java.util.List<SubjectJourneyResponse.LinkedAttente>> linkedAttentes(UUID userId,
+            UUID workspaceId, java.util.Map<String, WaitInfo> waits) {
+        java.util.Map<Integer, java.util.List<SubjectJourneyResponse.LinkedAttente>> byChantier =
+                new java.util.LinkedHashMap<>();
+        if (terminalActions == null) {
+            return byChantier;
+        }
+        java.util.Set<UUID> waited = new java.util.HashSet<>();
+        if (waits != null) {
+            waits.values().forEach(w -> {
+                if (w != null && w.actionId() != null) {
+                    waited.add(w.actionId());
+                }
+            });
+        }
+        try {
+            for (fr.claudegateway.atelier.actions.TerminalAction a : terminalActions.openByChantier(userId, workspaceId)) {
+                if (waited.contains(a.getId())) {
+                    continue;
+                }
+                byChantier.computeIfAbsent(a.getChantierNumber(), k -> new java.util.ArrayList<>())
+                        .add(new SubjectJourneyResponse.LinkedAttente(a.getId(), a.getDescription(),
+                                a.getStatus() == null ? null : a.getStatus().name(),
+                                a.getQui() == null ? null : a.getQui().name(), a.getPerson(), a.getCreatedAt()));
+            }
+        } catch (RuntimeException ex) {
+            log.debug("Attentes rangées par chantier illisibles (best-effort) : {}", ex.getMessage());
+        }
+        return byChantier;
+    }
+
     private static WaitInfo waitInfo(fr.claudegateway.atelier.actions.TerminalAction action) {
         String who = action.getRequestedTo() != null && !action.getRequestedTo().isBlank()
                 ? action.getRequestedTo() : action.getPerson();

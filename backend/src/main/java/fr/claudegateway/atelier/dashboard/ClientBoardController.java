@@ -4,6 +4,8 @@ import java.util.UUID;
 
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import fr.claudegateway.atelier.AtelierAccessService;
@@ -36,5 +38,20 @@ public class ClientBoardController {
     public ClientBoard board(@PathVariable UUID hostId) {
         atelierAccess.requireRunnerAccess();
         return service.board(currentUser.requireId(), hostId);
+    }
+
+    /**
+     * [Revoir les attentes de plus de 14 jours] (F-227 / SF-227-01) : PROPOSE la clôture des attentes anciennes du
+     * poste ; l'utilisateur confirme chacune ou toutes. {@code days} borné à [1, 365].
+     */
+    @PostMapping("/runner-hosts/{hostId}/chantiers/stale-tasks/propose")
+    public StaleReview proposeStale(@PathVariable UUID hostId, @RequestParam(defaultValue = "14") int days) {
+        atelierAccess.requireRunnerAccess();
+        int bounded = Math.max(1, Math.min(365, days));
+        return new StaleReview(bounded, service.proposeStaleTasks(currentUser.requireId(), hostId, bounded));
+    }
+
+    /** Le résultat de la revue : le seuil appliqué et le nombre d'attentes proposées à la clôture. */
+    public record StaleReview(int days, int proposed) {
     }
 }

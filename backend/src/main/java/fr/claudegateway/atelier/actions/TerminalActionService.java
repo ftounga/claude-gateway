@@ -709,6 +709,86 @@ public class TerminalActionService {
         return repository.save(action);
     }
 
+    /**
+     * Range une attente que l'agent vient d'inscrire sous le chantier de son tour (F-227 / SF-227-01). Sans effet
+     * sur une attente déjà rangée (une attente existante retrouvée par sa clé garde son chantier).
+     */
+    @Transactional
+    TerminalAction applyChantier(TerminalAction action, Integer chantier) {
+        if (action == null || chantier == null || chantier <= 0 || action.getChantierNumber() != null) {
+            return action;
+        }
+        action.setChantierNumber(chantier);
+        return repository.save(action);
+    }
+
+    /** Les chantiers du sujet, pour vérifier un rattachement (F-227) ; absent = rattachement refusé. */
+    private fr.claudegateway.atelier.journey.SubjectJourneyChantierRepository chantiers;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setChantiers(fr.claudegateway.atelier.journey.SubjectJourneyChantierRepository chantiers) {
+        this.chantiers = chantiers;
+    }
+
+    /**
+     * <b>[Rattacher à un chantier]</b> (F-227 / SF-227-01) : range l'attente sous le chantier OUVERT {@code chantier}
+     * de son sujet, ou la rend « au fil de l'eau » ({@code null}). {@code requireOwned} d'abord : 404 chez autrui.
+     *
+     * @throws InvalidTerminalActionException le chantier n'est pas ouvert sur ce sujet
+     */
+    @Transactional
+    public TerminalAction attachToChantier(UUID userId, UUID workspaceId, UUID actionId, Integer chantier) {
+        TerminalAction action = require(userId, workspaceId, actionId);
+        if (chantier != null) {
+            boolean open = chantier > 0 && chantiers != null && chantiers
+                    .findFirstByUserIdAndWorkspaceIdAndNumber(userId, workspaceId, chantier)
+                    .filter(fr.claudegateway.atelier.journey.SubjectJourneyChantier::isOpen).isPresent();
+            if (!open) {
+                throw new InvalidTerminalActionException("Le chantier " + chantier + " n'est pas ouvert sur ce sujet.");
+            }
+        }
+        action.setChantierNumber(chantier);
+        action.setUpdatedAt(OffsetDateTime.now(clock));
+        return repository.save(action);
+    }
+
+    /** Les attentes ouvertes d'un sujet rangées sous un chantier (F-227) — l'appelant a le terminal possédé. */
+    @Transactional(readOnly = true)
+    public List<TerminalAction> openByChantier(UUID userId, UUID workspaceId) {
+        return repository.findByUserIdAndWorkspaceIdAndChantierNumberIsNotNullAndStatusIn(userId, workspaceId,
+                TerminalActionStatus.OPEN_STATES).stream()
+                .filter(a -> userId.equals(a.getUserId()) && a.getMergedIntoId() == null)
+                .toList();
+    }
+
+    /**
+     * <b>[Revoir les attentes de plus de N jours]</b> (F-227 / SF-227-01) : PROPOSE la clôture (F-175, « n'a plus lieu
+     * d'être ») de chaque attente ouverte, non fusionnée, sans proposition, sans geste depuis {@code days} jours,
+     * parmi {@code candidates} (déjà lues sous l'isolation). Rien n'est fermé : l'utilisateur confirme. La date du
+     * dernier geste n'est PAS touchée (l'ancienneté reste lisible).
+     *
+     * @return les attentes proposées
+     */
+    @Transactional
+    public List<TerminalAction> proposeStaleClosure(UUID userId, List<TerminalAction> candidates, int days) {
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        OffsetDateTime threshold = now.minusDays(Math.max(1, days));
+        List<TerminalAction> proposed = new java.util.ArrayList<>();
+        for (TerminalAction a : candidates) {
+            OffsetDateTime last = a.getUpdatedAt() != null ? a.getUpdatedAt() : a.getCreatedAt();
+            if (!userId.equals(a.getUserId()) || !a.isOpen() || a.getMergedIntoId() != null || a.hasProposal()
+                    || last == null || !last.isBefore(threshold)) {
+                continue;
+            }
+            long idle = java.time.Duration.between(last, now).toDays();
+            a.setProposedStatus(TerminalActionStatus.ANNULE);
+            a.setProposedReason("Sans geste depuis " + idle + " jours : périmée ?");
+            a.setProposedAt(now);
+            proposed.add(repository.save(a));
+        }
+        return proposed;
+    }
+
     /** Purge des actions d'un projet supprimé. */
     @Transactional
     public int purgeWorkspace(UUID userId, UUID workspaceId) {

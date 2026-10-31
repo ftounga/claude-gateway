@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -106,6 +107,19 @@ public class TerminalActionController {
                 request.description(), request.blocks(), request.person(), request.kind(),
                 new TerminalActionService.Qualification(request.categorie(), request.qui()),
                 request.dueAt()));
+    }
+
+    /** [Rattacher à un chantier] (F-227 / SF-227-01) : {@code chantier} nul = « au fil de l'eau ». */
+    @PutMapping("/{actionId}/chantier")
+    public TerminalActionResponse attach(@PathVariable UUID workspaceId,
+                                         @PathVariable UUID actionId,
+                                         @RequestBody(required = false) ChantierRequest request) {
+        return TerminalActionResponse.from(service.attachToChantier(currentUser.requireId(), workspaceId, actionId,
+                request == null ? null : request.chantier()));
+    }
+
+    /** Le corps de [Rattacher à un chantier] : le numéro du chantier ouvert, ou {@code null}. */
+    public record ChantierRequest(Integer chantier) {
     }
 
     /** Le point du matin : relances dues, échéances, accès qui expirent (F-180 / SF-180-06). */

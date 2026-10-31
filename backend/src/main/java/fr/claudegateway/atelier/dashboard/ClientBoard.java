@@ -76,11 +76,17 @@ public record ClientBoard(UUID hostId, String hostName, OffsetDateTime generated
      * @param idleDays       jours entiers écoulés depuis
      * @param dormant        {@code idleDays ≥ dormantAfterDays}
      * @param followUpDue    « Demandé » depuis assez longtemps pour relancer (F-175)
+     * @param chantierNumber le chantier OUVERT du sujet sous lequel elle est rangée (F-227), ou {@code null} = au fil
+     *                       de l'eau
+     * @param proposedStatus la clôture proposée (F-175 ; « Revoir les attentes de plus de 14 jours », F-227), ou
+     *                       {@code null}
+     * @param proposedReason pourquoi
      */
     public record LooseTask(UUID actionId, UUID workspaceId, String workspaceName, boolean hostTerminal,
                             String description, String blocks, String status, String qui, String categorie,
                             String person, String requestedTo, OffsetDateTime requestedAt, OffsetDateTime createdAt,
                             ChantierUnblocker.Mark unblocker, OffsetDateTime lastActivityAt, long idleDays,
-                            boolean dormant, boolean followUpDue) {
+                            boolean dormant, boolean followUpDue, Integer chantierNumber, String proposedStatus,
+                            String proposedReason) {
     }
 }
