@@ -106,6 +106,48 @@
   font-weight: 600;
 }
 
+/* F-226 / SF-226-01 — la suggestion du chantier parallèle : une puce, jamais une pop-up. */
+.terminal-dock__suggest {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  min-width: 0;
+  height: 22px;
+  padding: 0 4px 0 7px;
+  border: 1px dashed var(--cg-terminal-success);
+  border-radius: 11px;
+  color: var(--cg-divider);
+  font-size: 12px;
+}
+
+.terminal-dock__suggest-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.terminal-dock__suggest-go,
+.terminal-dock__suggest-close {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--cg-orange-2);
+  font: 600 12px var(--cg-font-body);
+  cursor: pointer;
+}
+
+.terminal-dock__suggest-close {
+  color: var(--cg-terminal-ink-2);
+}
+
+.terminal-dock__suggest-close mat-icon {
+  font-size: 14px;
+  width: 14px;
+  height: 14px;
+}
+
 .terminal-dock__spacer {
   flex: 1 1 auto;
 }

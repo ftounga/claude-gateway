@@ -279,7 +279,14 @@ export function composeNextSteps(requests: string[]): string {
         <span class="tag" [attr.data-tone]="tone(step.label)">{{ label(step.label) }}</span>
       </button>
       @if (otherChantier(step); as n) {
-        <button type="button" class="switch" (click)="switchChantier.emit(n)">Basculer sur le chantier {{ n }}</button>
+        @if (canAdvanceAlone(n)) {
+          <!-- F-226 / SF-226-01 : il peut avancer seul — on le lance à côté, la pastille dit qui débloque. -->
+          <button type="button" class="switch switch--aside" (click)="launchAside.emit(n)">
+            Lancer à côté le chantier {{ n }}<span class="switch__who">l’outil peut avancer</span>
+          </button>
+        } @else {
+          <button type="button" class="switch" (click)="switchChantier.emit(n)">Afficher le chantier {{ n }}</button>
+        }
       }
       @if (step.prerequisites?.length) {
         <div class="pre" role="group" [attr.aria-label]="'Prérequis de l’option ' + (i + 1)">
@@ -323,6 +330,10 @@ export function composeNextSteps(requests: string[]): string {
     .cap__src { font-size: 12px; color: #9FB0C4; }
     .cap__checked { font-size: 12px; color: var(--cg-accent); }
     .cap__chantier { font: 500 12px 'Inter', sans-serif; color: var(--cg-divider); }
+    .switch__who {
+      margin-left: 8px; padding: 0 6px; border-radius: 8px; font-size: 11px;
+      color: var(--cg-navy); background: var(--cg-terminal-success);
+    }
     .scope {
       justify-self: start; font: 500 12px 'Inter', sans-serif; padding: 0 8px; border-radius: 4px;
       color: #9FB0C4; border: 1px solid color-mix(in srgb, var(--cg-divider) 30%, transparent);
@@ -468,6 +479,16 @@ export class TerminalNextStepsComponent {
   readonly other = output<void>();
   /** [Basculer sur le chantier N] (F-206 / SF-206-04). */
   readonly switchChantier = output<number>();
+
+  /** [Lancer à côté] un autre chantier qui peut avancer seul (F-226 / SF-226-01). */
+  readonly launchAside = output<number>();
+
+  /** Les chantiers qui peuvent avancer seuls (qui débloque : l'outil) — F-226. */
+  readonly asideCapable = input<number[]>([]);
+
+  canAdvanceAlone(n: number): boolean {
+    return this.asideCapable().includes(n);
+  }
 
   /** Le focus retenu : le parcours en direct, sinon celui de la réponse. */
   private readonly focusNumber = computed(() => this.focus() ?? this.chantier()?.number ?? null);

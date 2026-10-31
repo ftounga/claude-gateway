@@ -109,6 +109,13 @@ const RING = 2 * Math.PI * 18;
                   </p>
                 }
               </div>
+              @if (c.awaitingValidation && canSend()) {
+                <!-- F-226 / SF-226-01 : [Valider le plan] sur la carte, par numéro, sans changer de focus. -->
+                <button mat-flat-button type="button" class="board__validate-btn" [disabled]="busy()" (click)="validatePlan(c)">
+                  <mat-icon>task_alt</mat-icon>
+                  Valider le plan
+                </button>
+              }
               @if (c.diagnosisPending && canSend()) {
                 <!-- F-176 / SF-176-12 : [Planifier] sur la carte, sans changer le focus. -->
                 <button mat-flat-button type="button" class="board__plan-btn" [disabled]="busy()" (click)="planify(c)">
@@ -130,7 +137,7 @@ const RING = 2 * Math.PI * 18;
               @if (!c.focus) {
                 <button mat-stroked-button type="button" class="board__focus-btn" (click)="focus.emit(c.number)">
                   <mat-icon>center_focus_strong</mat-icon>
-                  Mettre au focus
+                  Afficher
                 </button>
               }
             </div>
@@ -175,13 +182,13 @@ const RING = 2 * Math.PI * 18;
                   @if (canSend()) {
                     <div class="auto__launch">
                       <button mat-flat-button type="button" class="auto__go" [disabled]="busy()" (click)="launch(c)">
-                        <mat-icon>play_circle</mat-icon>
-                        Lancer en autonome
+                        <mat-icon>{{ aside(c) ? 'view_column' : 'play_circle' }}</mat-icon>
+                        {{ aside(c) ? 'Lancer à côté' : 'Lancer en autonome' }}
                       </button>
                       <button mat-stroked-button type="button" class="auto__advance" [disabled]="busy()"
                               (click)="launch(c, 'UNTIL_BLOCKED')">
                         <mat-icon>fast_forward</mat-icon>
-                        Avancer jusqu’au blocage
+                        {{ aside(c) ? 'Lancer à côté jusqu’au blocage' : 'Avancer jusqu’au blocage' }}
                       </button>
                       <span class="auto__meta">
                         @if (auto.estimate; as est) {
@@ -201,7 +208,7 @@ const RING = 2 * Math.PI * 18;
                       <button mat-flat-button type="button" class="auto__go auto__advance" [disabled]="busy()"
                               (click)="launch(c, 'UNTIL_BLOCKED')">
                         <mat-icon>fast_forward</mat-icon>
-                        Avancer jusqu’au blocage
+                        {{ aside(c) ? 'Lancer à côté jusqu’au blocage' : 'Avancer jusqu’au blocage' }}
                       </button>
                       <span class="auto__meta">
                         {{ auto.preflight.advance?.label }} ·
@@ -1365,6 +1372,36 @@ export class TerminalChantiersBoardComponent {
         this.busy.set(false);
         this.snackBar.open(this.conflictMessage(err, 'Le chantier n’a pas pu partir en autonome.'), 'OK', { duration: 8000 });
         this.loadAutonomy();
+      },
+    });
+  }
+
+  /** Lancer CE chantier passerait par le volet de droite (un autre que celui montré) — F-226 : « Lancer à côté ». */
+  aside(c: OpenChantier): boolean {
+    const shown = this.shownChantier();
+    return shown !== null && c.number !== shown;
+  }
+
+  /**
+   * [Valider le plan] sur la carte (F-226 / SF-226-01) : le plan du chantier N, à la version vue, par son numéro —
+   * le focus ne bouge pas, aucun tour ne part. Un refus dit pourquoi (plan changé depuis…).
+   */
+  validatePlan(c: OpenChantier): void {
+    const workspaceId = this.workspaceId();
+    if (!workspaceId || this.busy()) {
+      return;
+    }
+    this.busy.set(true);
+    this.journeys.validatePlan(workspaceId, c.planVersion, c.number).subscribe({
+      next: () => {
+        this.busy.set(false);
+        this.snackBar.open(`Plan du chantier ${c.number} validé.`, 'OK', { duration: 4000 });
+        this.changed.emit();
+      },
+      error: (err: HttpErrorResponse) => {
+        this.busy.set(false);
+        this.snackBar.open(this.conflictMessage(err, 'Le plan n’a pas pu être validé.'), 'OK', { duration: 8000 });
+        this.changed.emit();
       },
     });
   }

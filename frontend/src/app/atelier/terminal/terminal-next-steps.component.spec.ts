@@ -271,7 +271,7 @@ describe('TerminalNextStepsComponent — plusieurs chantiers ouverts', () => {
     expect(options[2].querySelector('.scope')?.textContent?.trim()).toBe('Chantier 1');
     const buttons = root().querySelectorAll('.switch') as NodeListOf<HTMLButtonElement>;
     expect(buttons.length).toBe(2);
-    expect(buttons[0].textContent).toContain('Basculer sur le chantier 1');
+    expect(buttons[0].textContent).toContain('Afficher le chantier 1'); // F-226 : « Afficher »
     buttons[0].click();
     expect(switched).toEqual([1]);
     expect(root().querySelector('.cap__chantier')?.textContent).toContain('Chantier 2 : 3/10 · Chantier 1 : 1/2');

@@ -10,7 +10,7 @@ export interface ParallelLaunchDialogData {
   number: number;
   title: string | null;
   choice: ParallelChoice;
-  /** Une suite a proposé ce chantier : [Basculer ici] reste offert. */
+  /** Une suite a proposé ce chantier : [Afficher ici] reste offert (F-226 : « Basculer ici » avant). */
   offerSwitch: boolean;
 }
 
@@ -28,7 +28,7 @@ export type ParallelLaunchDecision = 'launch' | 'open' | 'switch';
   template: `
     <h2 mat-dialog-title>
       @if (data.choice.mode) {
-        Lancer le chantier {{ data.number }} en parallèle ?
+        Lancer le chantier {{ data.number }} à côté ?
       } @else {
         Le chantier {{ data.number }} ne peut pas partir maintenant
       }
@@ -57,17 +57,17 @@ export type ParallelLaunchDecision = 'launch' | 'open' | 'switch';
     <mat-dialog-actions align="end">
       <button mat-button type="button" (click)="close()">Annuler</button>
       @if (data.offerSwitch) {
-        <button mat-button type="button" (click)="close('switch')">Basculer ici</button>
+        <button mat-button type="button" (click)="close('switch')">Afficher ici</button>
       }
       @if (data.choice.mode) {
         <button mat-flat-button type="button" class="pl__go" (click)="close('launch')" cdkFocusInitial>
           <mat-icon>view_column</mat-icon>
-          Lancer en parallèle
+          Lancer à côté
         </button>
       } @else {
         <button mat-flat-button type="button" class="pl__go" (click)="close('open')" cdkFocusInitial>
           <mat-icon>view_column</mat-icon>
-          Ouvrir à côté
+          Afficher à côté
         </button>
       }
     </mat-dialog-actions>

@@ -255,6 +255,10 @@
                 <span>{{ askBeforeBash ? 'Validation activée' : 'Valider les commandes' }}</span>
               </button>
             }
+            <button mat-menu-item type="button" class="terminal-suggest-toggle" (click)="toggleSuggestions()">
+              <mat-icon>bolt</mat-icon>
+              <span>{{ suggestOff() ? 'Suggérer un chantier parallèle' : 'Ne plus suggérer de chantier parallèle' }}</span>
+            </button>
             <button mat-menu-item type="button" class="terminal-situation-entry" (click)="openSituationPanel()">
               <mat-icon>assignment</mat-icon>
               <span>Point de situation</span>
@@ -1022,7 +1026,9 @@
                     [globalKeys]="isFirstCardWithSteps(message, answer)"
                     (pick)="onNextStepPick($event)"
                     (other)="focusDraft()"
-                    (switchChantier)="onSuiteOtherChantier($event)"
+                    (switchChantier)="onSwitchChantier($event)"
+                    (launchAside)="onSuiteOtherChantier($event)"
+                    [asideCapable]="asideCapable()"
                     (launch)="onBoardRequest($event)"
                     [chantierOnly]="paneTitle !== null"
                   ></app-terminal-next-steps>
@@ -1606,7 +1612,9 @@
         [turnKey]="lastTurnId()"
         (pick)="onNextStepPick($event)"
         (other)="focusDraft()"
-        (switchChantier)="onSuiteOtherChantier($event)"
+        (switchChantier)="onSwitchChantier($event)"
+        (launchAside)="onSuiteOtherChantier($event)"
+        [asideCapable]="asideCapable()"
         (launch)="onBoardRequest($event)"
         [chantierOnly]="paneTitle !== null"
       ></app-terminal-next-steps>
@@ -1666,7 +1674,7 @@
          Chaque puce peut être retirée (préférence par appareil). Le fil des tâches, lui, reste affiché. -->
     @if (journeyAwaitsGesture()) {
       <div class="terminal-dock__decision">
-        <app-terminal-journey-strip [journey]="journey()" [busy]="journeyBusy()" [turnRunning]="submitting" (gesture)="onJourneyGesture($event)" (switchChantier)="onSwitchChantier($event)"></app-terminal-journey-strip>
+        <app-terminal-journey-strip [journey]="journey()" [busy]="journeyBusy()" [turnRunning]="submitting" [canLaunchAside]="!readOnly && laneChantier === null" (gesture)="onJourneyGesture($event)" (switchChantier)="onSwitchChantier($event)" (launchAside)="launchAside($event, 'tab')"></app-terminal-journey-strip>
       </div>
     }
     <div
@@ -1680,7 +1688,7 @@
       >
         <div class="terminal-dock__drawer" id="terminal-dock-drawer">
           @if (!journeyAwaitsGesture() && dockShows('chantier')) {
-            <app-terminal-journey-strip [journey]="journey()" [busy]="journeyBusy()" [turnRunning]="submitting" (gesture)="onJourneyGesture($event)" (switchChantier)="onSwitchChantier($event)"></app-terminal-journey-strip>
+            <app-terminal-journey-strip [journey]="journey()" [busy]="journeyBusy()" [turnRunning]="submitting" [canLaunchAside]="!readOnly && laneChantier === null" (gesture)="onJourneyGesture($event)" (switchChantier)="onSwitchChantier($event)" (launchAside)="launchAside($event, 'tab')"></app-terminal-journey-strip>
           }
           @if (dockShows('plan') && !streaming && carriedPlan.length > 0) {
             <!-- Plan REPORTÉ (F-121 / SF-121-10) : le dernier plan encore actif du fil, au repos. -->
@@ -1737,6 +1745,16 @@
                 <span class="terminal-dock__await terminal-dock__board-badge">{{ chantiersBadge() }}</span>
               }
             </button>
+          }
+          @if (suggestion(); as s) {
+            <!-- F-226 / SF-226-01 — LA SUGGESTION, sans pop-up : un autre chantier peut avancer seul. -->
+            <span class="terminal-dock__suggest" role="status">
+              <mat-icon class="terminal-dock__chip-icon" aria-hidden="true">bolt</mat-icon>
+              <span class="terminal-dock__suggest-text" [attr.title]="s.title">Ch.{{ s.number }} peut avancer seul</span>
+              <button type="button" class="terminal-dock__suggest-go" (click)="launchAside(s.number, 'suggestion')">Lancer à côté</button>
+              <button type="button" class="terminal-dock__suggest-close" [attr.aria-label]="'Masquer la suggestion du chantier ' + s.number"
+                (click)="dismissSuggestion(s.number)"><mat-icon aria-hidden="true">close</mat-icon></button>
+            </span>
           }
           <span class="terminal-dock__spacer"></span>
           <button
