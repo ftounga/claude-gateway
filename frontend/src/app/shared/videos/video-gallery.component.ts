@@ -22,7 +22,7 @@ import { RADAR_DRAFT_MAX_CHARS, RADAR_DRAFT_STATE } from '../radar-draft';
 import { TerminalDraftBridge } from './terminal-draft-bridge';
 import { VideoReviewComponent, VideoReviewSend } from './video-review.component';
 import { clearPosition, readPosition, savePosition } from './video-resume';
-import { costLine, costShort, formatUsd } from './video-cost';
+import { costLine, costShort, formatEur } from './video-cost';
 
 /** Ce qui est ouvert : une série (et l'épisode lu), ou une vidéo seule. */
 interface Opened {
@@ -372,7 +372,8 @@ export class VideoGalleryComponent {
   readonly monthCost = signal<VideoMonthCost | null>(null);
   readonly monthLine = computed(() => {
     const month = this.monthCost();
-    return month && month.quotes > 0 ? `Ce mois-ci : ${formatUsd(month.spentUsd)} en vidéos` : null;
+    return month && month.quotes > 0 && month.spentEur != null
+      ? `Ce mois-ci : ${formatEur(month.spentEur)} en vidéos` : null;
   });
 
   readonly isEmpty = computed(() => {
@@ -407,7 +408,7 @@ export class VideoGalleryComponent {
     return hostId ? { hostId } : null;
   }
 
-  /** « 3 épisodes · 12:40 · 5,63 $ » (le coût seulement s'il est mesuré, F-216). */
+  /** « 3 épisodes · 12:40 · 5,18 € » (le coût seulement s'il est mesuré, F-216 ; en euros, F-224). */
   seriesMeta(series: VideoGallerySeries): string {
     const parts = [`${series.episodeCount} épisode${series.episodeCount > 1 ? 's' : ''}`];
     if (series.totalDurationS > 0) {
@@ -420,12 +421,12 @@ export class VideoGalleryComponent {
     return parts.join(' · ');
   }
 
-  /** « Coût de la série : 12,40 $ (estimé 10,00 à 15,00 $) » (F-216 / SF-216-03). */
+  /** « Coût de la série : 11,41 € (estimé 9,20 à 13,80 €) » (F-216 / SF-216-03 ; en euros, F-224). */
   seriesCostLine(series: VideoGallerySeries): string {
     return costLine(series, 'Coût de la série');
   }
 
-  /** Sous le lecteur : « Coût : 5,63 $ (estimé 4,80 à 7,20 $) », ou « Coût non mesuré » (F-216 / SF-216-03). */
+  /** Sous le lecteur : « Coût : 5,18 € (estimé 4,41 à 6,62 €) », ou « Coût non mesuré » (F-216 / SF-216-03). */
   costOf(item: VideoGalleryItem): string {
     return costLine(item);
   }

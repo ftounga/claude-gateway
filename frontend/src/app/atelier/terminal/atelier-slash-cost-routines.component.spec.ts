@@ -10,9 +10,10 @@ function routine(over: Partial<Routine> = {}): Routine {
     id: 'r-1', workspaceId: 'w-1', name: 'Point du matin', instruction: 'CR', cadence: 'WEEKDAYS',
     dayOfWeek: null, runTime: '08:00', timeZone: 'Europe/Paris', maxRunUsd: 5, active: true, proposed: false,
     origin: 'USER', nextRunAt: null, createdAt: '', updatedAt: '', monthlyBudgetUsd: 100, monthSpentUsd: 3.42,
+    maxRunEur: 4.6, monthlyBudgetEur: 92, monthSpentEur: 3.15,
     lastRun: {
       id: 'x', routineId: 'r-1', slotAt: null, trigger: 'SCHEDULED', status: 'DONE', startedAt: '',
-      finishedAt: '', costUsd: 0.84, capUsd: 5, errorCode: null, summary: null,
+      finishedAt: '', costUsd: 0.84, capUsd: 5, errorCode: null, summary: null, costEur: 0.77, capEur: 4.6,
     },
     ...over,
   };
@@ -42,9 +43,11 @@ describe('Les routines dans /cout (F-183 / SF-183-03)', () => {
     create(of([routine()]));
     const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain('Routines de ce sujet');
-    expect(text).toContain('3,42 $ / 100,00 $ ce mois');
-    expect(text).toContain('5,00 $ max par exécution');
-    expect(text).toContain('dernier passage 0,84 $');
+    // F-224 / SF-224-06 : en euros, convertis par la passerelle.
+    expect(text).toContain('3,15 € / 92,00 € ce mois');
+    expect(text).toContain('4,60 € max par exécution');
+    expect(text).toContain('dernier passage 0,77 €');
+    expect(text).not.toContain('$');
   });
 
   it('ignore les propositions et reste absente sans routine', () => {

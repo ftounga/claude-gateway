@@ -194,11 +194,14 @@ describe('VideoGalleryComponent', () => {
     const costed: VideoGallery = {
       series: [{
         id: 's-1', title: 'Cours EKS', description: null, episodeCount: 2, totalDurationS: 240,
-        episodes: [item('e-1', 1, { costUsd: 1.4, estimateLowUsd: 1, estimateHighUsd: 2 }), item('e-2', 2)],
-        createdAt: '', costUsd: 1.4, estimateLowUsd: 1, estimateHighUsd: 2,
+        episodes: [item('e-1', 1, { costUsd: 1.4, estimateLowUsd: 1, estimateHighUsd: 2, costEur: 1.29,
+          estimateLowEur: 0.92, estimateHighEur: 1.84 }), item('e-2', 2)],
+        createdAt: '', costUsd: 1.4, estimateLowUsd: 1, estimateHighUsd: 2, costEur: 1.29, estimateLowEur: 0.92,
+        estimateHighEur: 1.84,
       }],
       videos: [
-        item('v-1', null, { costUsd: 5.63, estimateLowUsd: 4.8, estimateHighUsd: 7.2 }),
+        item('v-1', null, { costUsd: 5.63, estimateLowUsd: 4.8, estimateHighUsd: 7.2, costEur: 5.18,
+          estimateLowEur: 4.41, estimateHighEur: 6.63 }),
         item('v-2', null),
       ],
     };
@@ -207,9 +210,10 @@ describe('VideoGalleryComponent', () => {
       videos.gallery.and.returnValue(of(costed));
       const root = create({ workspaceId: 'w-1' }).nativeElement as HTMLElement;
       const cards = root.querySelectorAll('.gallery__card');
-      expect(cards[0].textContent).toContain('2 épisodes · 4:00 · 1,40\u00a0$');
-      expect(cards[1].textContent).toContain('5,63\u00a0$');
-      expect(cards[2].textContent).not.toContain('$');
+      expect(cards[0].textContent).toContain('2 épisodes · 4:00 · 1,29 €');
+      expect(cards[1].textContent).toContain('5,18 €');
+      expect(cards[2].textContent).not.toContain('€');
+      expect(root.textContent).not.toContain('$');
     });
 
     it('sous le lecteur : coût et estimation, ou « non mesuré »', () => {
@@ -217,7 +221,7 @@ describe('VideoGalleryComponent', () => {
       const fixture = create({ workspaceId: 'w-1', initialVideoId: 'v-1' });
       fixture.detectChanges();
       const root = fixture.nativeElement as HTMLElement;
-      expect(root.querySelector('.gallery__cost')!.textContent).toContain('Coût : 5,63\u00a0$ (estimé 4,80 à 7,20\u00a0$)');
+      expect(root.querySelector('.gallery__cost')!.textContent).toContain('Coût : 5,18 € (estimé 4,41 à 6,63 €)');
 
       fixture.componentInstance.play(null, costed.videos[1], false);
       fixture.detectChanges();
@@ -230,16 +234,16 @@ describe('VideoGalleryComponent', () => {
       fixture.detectChanges();
       const root = fixture.nativeElement as HTMLElement;
       expect(root.querySelector('.gallery__cost--series')!.textContent)
-        .toContain('Coût de la série : 1,40\u00a0$ (estimé 1,00 à 2,00\u00a0$)');
+        .toContain('Coût de la série : 1,29 € (estimé 0,92 à 1,84 €)');
       const episodes = root.querySelectorAll('.gallery__episode');
-      expect(episodes[0].textContent).toContain('1,40\u00a0$');
-      expect(episodes[1].textContent).not.toContain('$');
+      expect(episodes[0].textContent).toContain('1,29 €');
+      expect(episodes[1].textContent).not.toContain('€');
     });
 
     it('en-tête : le total du mois, masqué sans devis ce mois-ci ou en cas d\'erreur', () => {
-      videos.monthCost.and.returnValue(of({ month: '2026-10', spentUsd: 12.4, quotes: 3 }));
+      videos.monthCost.and.returnValue(of({ month: '2026-10', spentUsd: 12.4, quotes: 3, spentEur: 11.41 }));
       let root = create({ workspaceId: 'w-1' }).nativeElement as HTMLElement;
-      expect(root.querySelector('.gallery__month')!.textContent).toContain('Ce mois-ci : 12,40\u00a0$ en vidéos');
+      expect(root.querySelector('.gallery__month')!.textContent).toContain('Ce mois-ci : 11,41 € en vidéos');
 
       videos.monthCost.and.returnValue(of({ month: '2026-10', spentUsd: 0, quotes: 0 }));
       root = create({ workspaceId: 'w-2' }).nativeElement as HTMLElement;

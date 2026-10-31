@@ -51,6 +51,10 @@ export interface VideoSummary {
   /** Estimation du devis (F-216), ou `null`. */
   estimateLowUsd?: number | null;
   estimateHighUsd?: number | null;
+  /** Les mêmes montants en euros, convertis par la passerelle (F-224 / SF-224-06). */
+  costEur?: number | null;
+  estimateLowEur?: number | null;
+  estimateHighEur?: number | null;
 }
 
 /** Une vidéo telle qu'une carte de la galerie la montre (F-213 / SF-213-03). */
@@ -69,6 +73,10 @@ export interface VideoGalleryItem {
   costUsd?: number | null;
   estimateLowUsd?: number | null;
   estimateHighUsd?: number | null;
+  /** Les mêmes montants en euros, convertis par la passerelle (F-224 / SF-224-06). */
+  costEur?: number | null;
+  estimateLowEur?: number | null;
+  estimateHighEur?: number | null;
 }
 
 /** Une série : titre, nombre d'épisodes, durée totale connue, épisodes dans l'ordre. */
@@ -84,6 +92,10 @@ export interface VideoGallerySeries {
   costUsd?: number | null;
   estimateLowUsd?: number | null;
   estimateHighUsd?: number | null;
+  /** Les mêmes montants en euros, convertis par la passerelle (F-224 / SF-224-06). */
+  costEur?: number | null;
+  estimateLowEur?: number | null;
+  estimateHighEur?: number | null;
 }
 
 /** Ce que le compte a dépensé en vidéos ce mois-ci (F-216 / SF-216-03, `GET /videos/costs`). */
@@ -93,6 +105,8 @@ export interface VideoMonthCost {
   spentUsd: number;
   /** Devis créés ce mois-ci. */
   quotes: number;
+  /** Le même total en euros (F-224 / SF-224-06). */
+  spentEur?: number | null;
 }
 
 /** La galerie d'un sujet ou d'un poste : les séries, puis les vidéos seules. */

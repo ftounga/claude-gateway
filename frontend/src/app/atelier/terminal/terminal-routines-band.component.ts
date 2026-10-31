@@ -4,7 +4,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { Observable } from 'rxjs';
 
-import { Routine, RoutineRun, ago, cadenceLabel, runIcon, usd } from '../../core/models/routine.models';
+import { Routine, RoutineRun, ago, cadenceLabel, eur, runIcon } from '../../core/models/routine.models';
 import { RoutineService } from '../../core/services/routine.service';
 
 /**
@@ -28,7 +28,7 @@ import { RoutineService } from '../../core/services/routine.service';
       <div class="routine-run" role="status" [class.routine-run--stopped]="run.status !== 'DONE'">
         <mat-icon class="routine-run__icon" aria-hidden="true">{{ icon(run) }}</mat-icon>
         <span class="routine-run__summary">{{ run.summary || run.routineName }}</span>
-        <span class="routine-run__meta">{{ when(run) }}@if (run.costUsd) { · {{ money(run.costUsd) }}}</span>
+        <span class="routine-run__meta">{{ when(run) }}@if (run.costUsd) { · {{ money(run.costEur) }}}</span>
         @if (run.status !== 'MISSED_OFFLINE' && run.status !== 'SKIPPED_BUDGET' && run.routineName) {
           <button mat-button type="button" class="routine-run__see" (click)="reveal.emit(run.routineName)">Voir</button>
         }
@@ -45,7 +45,7 @@ import { RoutineService } from '../../core/services/routine.service';
         <mat-icon class="routine-card__icon" aria-hidden="true">lightbulb</mat-icon>
         <div class="routine-card__body">
           <p class="routine-card__headline">Routine proposée · {{ routine.name }}</p>
-          <p class="routine-card__when">{{ cadence(routine) }} · {{ money(routine.maxRunUsd) }} max par exécution</p>
+          <p class="routine-card__when">{{ cadence(routine) }} · {{ money(routine.maxRunEur) }} max par exécution</p>
           <p class="routine-card__instruction">{{ routine.instruction }}</p>
           @if (!readOnly()) {
             <div class="routine-card__gestures">
@@ -177,8 +177,8 @@ export class TerminalRoutinesBandComponent {
     return cadenceLabel(routine);
   }
 
-  money(value: number): string {
-    return usd(value);
+  money(value: number | null | undefined): string {
+    return eur(value);
   }
 
   accept(routine: Routine): void {

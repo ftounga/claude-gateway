@@ -55,6 +55,8 @@ export interface ReconciliationKey {
   amountEur?: number;
   inputTokens: number;
   outputTokens: number;
+  /** La clé de la passerelle (`APP_ANTHROPIC_GATEWAY_KEY_ID`, F-224 / SF-224-06). */
+  gateway?: boolean;
 }
 
 /** Un jour rapproché : facturé par le fournisseur (ou `null` s'il n'est pas encore lu), calculé, écart. */
@@ -68,6 +70,20 @@ export interface ReconciliationDay {
   billedEur?: number | null;
   calculatedEur?: number;
   gapEur?: number | null;
+  /** Aujourd'hui (UTC) : partiel, sans écart, hors des totaux (F-224 / SF-224-06). */
+  partial?: boolean;
+  /** La clé de la passerelle ce jour-là (`null` : non désignée ou non relue) et l'écart à périmètre égal. */
+  gatewayKeyEur?: number | null;
+  gatewayGapEur?: number | null;
+}
+
+/** Ce que couvre chaque montant, en clair (F-224 / SF-224-06). */
+export interface ReconciliationScopes {
+  billed: string;
+  calculated: string;
+  gatewayKey: string;
+  keys: string;
+  today: string;
 }
 
 /** Le rapprochement avec la facture du fournisseur (F-224 / SF-224-02). */
@@ -83,6 +99,11 @@ export interface CostReconciliation {
   usdToEur?: number;
   billedTotalEur?: number;
   calculatedTotalEur?: number;
+  /** F-224 / SF-224-06 : le périmètre de chaque montant ; la clé de la passerelle (ou comment la désigner). */
+  scopes?: ReconciliationScopes;
+  gatewayApiKeyId?: string | null;
+  gatewayKeyHint?: string | null;
+  gatewayKeyTotalEur?: number | null;
 }
 
 /** Une alerte en cours (F-133 / SF-133-06), calculée à la lecture par la passerelle. */

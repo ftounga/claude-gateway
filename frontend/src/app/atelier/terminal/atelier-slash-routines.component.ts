@@ -13,7 +13,7 @@ import { Observable } from 'rxjs';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../chat/confirm-dialog/confirm-dialog.component';
 import {
   ROUTINE_DAYS, Routine, RoutineCadence, RoutineRequest, RoutineRun, browserTimeZone, cadenceLabel, runStatusLabel,
-  shortDateTime, usd,
+  eur, shortDateTime,
 } from '../../core/models/routine.models';
 import { RoutineService } from '../../core/services/routine.service';
 
@@ -24,15 +24,16 @@ export interface RoutineDraft {
   cadence: RoutineCadence;
   dayOfWeek: number;
   runTime: string;
-  maxRunUsd: number;
-  monthlyBudgetUsd: number;
+  /** Budgets SAISIS EN EUROS (F-224 / SF-224-06) ; la passerelle les range en dollars. */
+  maxRunEur: number;
+  monthlyBudgetEur: number;
 }
 
-/** Brouillon vierge : jours ouvrés à 8 h, 5 $ par exécution (défauts serveur). */
+/** Brouillon vierge : jours ouvrés à 8 h, 5 € par exécution, 100 € par mois. */
 export function emptyDraft(): RoutineDraft {
   return {
-    name: '', instruction: '', cadence: 'WEEKDAYS', dayOfWeek: 1, runTime: '08:00', maxRunUsd: 5,
-    monthlyBudgetUsd: 100,
+    name: '', instruction: '', cadence: 'WEEKDAYS', dayOfWeek: 1, runTime: '08:00', maxRunEur: 5,
+    monthlyBudgetEur: 100,
   };
 }
 
@@ -44,8 +45,8 @@ export function draftOf(routine: Routine): RoutineDraft {
     cadence: routine.cadence,
     dayOfWeek: routine.dayOfWeek ?? 1,
     runTime: routine.runTime,
-    maxRunUsd: routine.maxRunUsd,
-    monthlyBudgetUsd: routine.monthlyBudgetUsd ?? 100,
+    maxRunEur: routine.maxRunEur ?? 5,
+    monthlyBudgetEur: routine.monthlyBudgetEur ?? 100,
   };
 }
 
@@ -65,12 +66,12 @@ export function draftErrors(draft: RoutineDraft): string[] {
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.runTime ?? '')) {
     errors.push("L'heure s'écrit HH:mm.");
   }
-  if (!(draft.maxRunUsd >= 0.1 && draft.maxRunUsd <= 50)) {
-    errors.push('Le budget par exécution va de 0,10 $ à 50,00 $.');
+  if (!(draft.maxRunEur >= 0.1 && draft.maxRunEur <= 50)) {
+    errors.push('Le budget par exécution va de 0,10 € à 50,00 €.');
   }
-  if (!(draft.monthlyBudgetUsd >= 1 && draft.monthlyBudgetUsd <= 2000)) {
-    errors.push('Le budget mensuel va de 1,00 $ à 2 000,00 $.');
-  } else if (draft.monthlyBudgetUsd < draft.maxRunUsd) {
+  if (!(draft.monthlyBudgetEur >= 1 && draft.monthlyBudgetEur <= 2000)) {
+    errors.push('Le budget mensuel va de 1,00 € à 2 000,00 €.');
+  } else if (draft.monthlyBudgetEur < draft.maxRunEur) {
     errors.push('Le budget mensuel ne peut pas être inférieur au budget par exécution.');
   }
   return errors;
@@ -85,8 +86,8 @@ export function requestOf(draft: RoutineDraft): RoutineRequest {
     dayOfWeek: draft.cadence === 'WEEKLY' ? draft.dayOfWeek : null,
     runTime: draft.runTime,
     timeZone: browserTimeZone(),
-    maxRunUsd: Math.round(draft.maxRunUsd * 100) / 100,
-    monthlyBudgetUsd: Math.round(draft.monthlyBudgetUsd * 100) / 100,
+    maxRunEur: Math.round(draft.maxRunEur * 100) / 100,
+    monthlyBudgetEur: Math.round(draft.monthlyBudgetEur * 100) / 100,
   };
 }
 
@@ -131,27 +132,27 @@ export function requestOf(draft: RoutineDraft): RoutineRequest {
                 <span class="routine__badge">{{ statusLabel(routine) }}</span>
               </div>
               <p class="routine__when">
-                {{ cadence(routine) }} · {{ money(routine.maxRunUsd) }} max par exécution
+                {{ cadence(routine) }} · {{ money(routine.maxRunEur) }} max par exécution
                 @if (routine.nextRunAt) {
                   · prochain passage {{ when(routine.nextRunAt) }}
                 }
               </p>
               <p class="routine__instruction">{{ routine.instruction }}</p>
               @if (routine.monthlyBudgetUsd) {
-                <p class="routine__last">Ce mois : {{ money(routine.monthSpentUsd ?? 0) }} sur {{ money(routine.monthlyBudgetUsd) }}</p>
+                <p class="routine__last">Ce mois : {{ money(routine.monthSpentEur) }} sur {{ money(routine.monthlyBudgetEur) }}</p>
               }
               @if (routine.lastRun; as last) {
                 <p class="routine__last">
                   Dernier passage {{ when(last.startedAt) }} · {{ runLabel(last) }}
                   @if (last.costUsd) {
-                    · {{ money(last.costUsd) }}
+                    · {{ money(last.costEur) }}
                   }
                 </p>
               }
               @if (historyOf() === routine.id) {
                 <ul class="routine__history" aria-label="Historique des exécutions">
                   @for (run of history(); track run.id) {
-                    <li>{{ when(run.startedAt) }} · {{ runLabel(run) }}@if (run.costUsd) { · {{ money(run.costUsd) }}}</li>
+                    <li>{{ when(run.startedAt) }} · {{ runLabel(run) }}@if (run.costUsd) { · {{ money(run.costEur) }}}</li>
                   } @empty {
                     <li>Aucune exécution pour l'instant.</li>
                   }
@@ -217,12 +218,12 @@ export function requestOf(draft: RoutineDraft): RoutineRequest {
                   <input matInput type="time" name="runTime" [(ngModel)]="draft.runTime" required>
                 </mat-form-field>
                 <mat-form-field appearance="outline" class="routine-form__field routine-form__field--short">
-                  <mat-label>Budget par exécution ($)</mat-label>
-                  <input matInput type="number" name="maxRunUsd" [(ngModel)]="draft.maxRunUsd" min="0.1" max="50" step="0.5" required>
+                  <mat-label>Budget par exécution (€)</mat-label>
+                  <input matInput type="number" name="maxRunEur" [(ngModel)]="draft.maxRunEur" min="0.1" max="50" step="0.5" required>
                 </mat-form-field>
                 <mat-form-field appearance="outline" class="routine-form__field routine-form__field--short">
-                  <mat-label>Budget du mois ($)</mat-label>
-                  <input matInput type="number" name="monthlyBudgetUsd" [(ngModel)]="draft.monthlyBudgetUsd" min="1" max="2000" step="5" required>
+                  <mat-label>Budget du mois (€)</mat-label>
+                  <input matInput type="number" name="monthlyBudgetEur" [(ngModel)]="draft.monthlyBudgetEur" min="1" max="2000" step="5" required>
                 </mat-form-field>
               </div>
               @for (message of errors(); track message) {
@@ -369,8 +370,8 @@ export class AtelierSlashRoutinesComponent {
     return cadenceLabel(routine);
   }
 
-  money(value: number): string {
-    return usd(value);
+  money(value: number | null | undefined): string {
+    return eur(value);
   }
 
   when(iso: string | null): string {

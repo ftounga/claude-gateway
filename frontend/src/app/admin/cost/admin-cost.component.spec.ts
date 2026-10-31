@@ -158,6 +158,56 @@ describe('AdminCostComponent', () => {
     recon = { ...recon, configured: false, setupHint: 'Créez une clé Admin… APP_ANTHROPIC_ADMIN_KEY', days: [] };
   });
 
+  it('F-224 / SF-224-06 : périmètre de chaque montant, aujourd’hui partiel, clé de la passerelle', () => {
+    const saved = recon;
+    const scopes = {
+      billed: 'Facturé : toute l’organisation Anthropic.', calculated: 'Calculé : la passerelle.',
+      gatewayKey: 'Clé de la passerelle : à périmètre égal.', keys: 'Par clé : estimation.',
+      today: 'Aujourd’hui est partiel.',
+    };
+    const days = [
+      { day: '2026-10-31', billedUsd: 3, calculatedUsd: 10, gapUsd: null, billedEur: 2.76, calculatedEur: 9.2,
+        gapEur: null, partial: true, gatewayKeyEur: null, gatewayGapEur: null, keys: [] },
+      { day: '2026-10-30', billedUsd: 80, calculatedUsd: 50.25, gapUsd: 29.75, billedEur: 73.6, calculatedEur: 46.23,
+        gapEur: 27.37, partial: false, gatewayKeyEur: 47.84, gatewayGapEur: 1.61,
+        keys: [{ apiKeyId: 'apikey_gw', label: 'gateway', amountUsd: 52, amountEur: 47.84, inputTokens: 1,
+          outputTokens: 1, gateway: true }] },
+    ];
+    recon = {
+      configured: true, setupHint: null, lastFetchedAt: null, billedTotalUsd: 80, calculatedTotalUsd: 50.25,
+      usdToEur: 0.92, billedTotalEur: 73.6, calculatedTotalEur: 46.23, scopes, gatewayApiKeyId: 'apikey_gw',
+      gatewayKeyHint: null, gatewayKeyTotalEur: 47.84, days,
+    };
+    TestBed.resetTestingModule();
+    setup();
+    const el: HTMLElement = fixture.nativeElement;
+    const scopeItems = Array.from(el.querySelectorAll('.recon__scopes li')).map((li) => li.textContent?.trim());
+    expect(scopeItems).toEqual([scopes.billed, scopes.calculated, scopes.gatewayKey, scopes.keys, scopes.today]);
+    expect(el.querySelector('.recon__totals')?.textContent).toContain('Jours complets');
+    expect(el.querySelector('.recon__totals')?.textContent).toContain('clé de la passerelle 47,84 €');
+    expect(el.querySelectorAll('.recon__table th').length).toBe(6);
+    const rows = el.querySelectorAll('.recon__row');
+    expect(rows[0].classList).toContain('recon__row--partial');
+    expect(rows[0].textContent).toContain('(partiel)');
+    expect(rows[0].querySelector('.recon__gap')).toBeNull();
+    expect(rows[1].textContent).toContain('47,84 €');
+    expect(rows[1].textContent).toContain('1,61 €');
+    (rows[1].querySelector('.recon__toggle') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.querySelector('.recon__key .recon__badge')?.textContent).toContain('passerelle');
+
+    // Clé non désignée : pas de colonnes passerelle, la carte dit comment la poser.
+    recon = { ...recon, gatewayApiKeyId: null, gatewayKeyTotalEur: null,
+      gatewayKeyHint: 'Posez APP_ANTHROPIC_GATEWAY_KEY_ID.' };
+    TestBed.resetTestingModule();
+    setup();
+    const bare: HTMLElement = fixture.nativeElement;
+    expect(bare.querySelectorAll('.recon__table th').length).toBe(4);
+    expect(bare.querySelector('.recon__hint')?.textContent).toContain('APP_ANTHROPIC_GATEWAY_KEY_ID');
+    expect(bare.querySelectorAll('.recon__scopes li').length).toBe(4);
+    recon = saved;
+  });
+
   // ---------------------------------------- le budget par défaut, expliqué (SF-133-14)
 
   it('dit que le budget par défaut vaut PAR CLIENT, pas en enveloppe commune', () => {
