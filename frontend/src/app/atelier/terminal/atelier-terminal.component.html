@@ -1657,7 +1657,7 @@
          Chaque puce peut être retirée (préférence par appareil). Le fil des tâches, lui, reste affiché. -->
     @if (journeyAwaitsGesture()) {
       <div class="terminal-dock__decision">
-        <app-terminal-journey-strip [journey]="journey()" [busy]="journeyBusy() || submitting" (gesture)="onJourneyGesture($event)" (switchChantier)="onSwitchChantier($event)"></app-terminal-journey-strip>
+        <app-terminal-journey-strip [journey]="journey()" [busy]="journeyBusy()" [turnRunning]="submitting" (gesture)="onJourneyGesture($event)" (switchChantier)="onSwitchChantier($event)"></app-terminal-journey-strip>
       </div>
     }
     <div
@@ -1671,7 +1671,7 @@
       >
         <div class="terminal-dock__drawer" id="terminal-dock-drawer">
           @if (!journeyAwaitsGesture() && dockShows('chantier')) {
-            <app-terminal-journey-strip [journey]="journey()" [busy]="journeyBusy() || submitting" (gesture)="onJourneyGesture($event)" (switchChantier)="onSwitchChantier($event)"></app-terminal-journey-strip>
+            <app-terminal-journey-strip [journey]="journey()" [busy]="journeyBusy()" [turnRunning]="submitting" (gesture)="onJourneyGesture($event)" (switchChantier)="onSwitchChantier($event)"></app-terminal-journey-strip>
           }
           @if (dockShows('plan') && !streaming && carriedPlan.length > 0) {
             <!-- Plan REPORTÉ (F-121 / SF-121-10) : le dernier plan encore actif du fil, au repos. -->
