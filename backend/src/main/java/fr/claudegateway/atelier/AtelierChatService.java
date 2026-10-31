@@ -3513,6 +3513,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         AtelierFileFreshness freshness = new AtelierFileFreshness(fileStateHints);
         seedFreshnessFromHistory(freshness, messages);
 
+        // F-224 / SF-224-01 — UN TOUR COUPÉ EST COMPTÉ. L'inscription se faisait en fin de tour seulement : un tour en
+        // échec, interrompu par une exception ou tué par un déploiement ne laissait aucune trace de ce qu'il avait déjà
+        // coûté (12 déploiements et 34 messages sans réponse enregistrée la semaine du 24/10). Sur une sortie anormale,
+        // ce qui a été facturé jusqu'à la coupure est inscrit — une seule fois : le chemin normal n'est alors pas atteint.
+        try {
         for (int iteration = 0; iteration < iterationCap; iteration++) {
             iterationsUsed = iteration + 1;
             if (interruptedTurns.remove(turnKey(userId, workspace))) {
@@ -4011,6 +4016,8 @@ public class AtelierChatService implements RelayInterruptTarget {
                         outputTokens += explored.outputTokens();
                         cacheReadTokens += explored.cacheReadTokens();
                         cacheWriteTokens += explored.cacheWriteTokens();
+                        addDelegatedShare(otherModelShares, model, explored.model(), explored.inputTokens(),
+                                explored.outputTokens(), explored.cacheReadTokens(), explored.cacheWriteTokens());
                         listener.onProgress((long) inputTokens + outputTokens);
                         outcome = explored.outcome();
                     }
@@ -4025,6 +4032,8 @@ public class AtelierChatService implements RelayInterruptTarget {
                     outputTokens += readTask.outputTokens();
                     cacheReadTokens += readTask.cacheReadTokens();
                     cacheWriteTokens += readTask.cacheWriteTokens();
+                    addDelegatedShare(otherModelShares, model, readTask.model(), readTask.inputTokens(),
+                            readTask.outputTokens(), readTask.cacheReadTokens(), readTask.cacheWriteTokens());
                     listener.onProgress((long) inputTokens + outputTokens);
                     outcome = readTask.outcome();
                     // Même relais au fil de l'eau que la sous-tâche écrivaine (F-150 / SF-150-06) :
@@ -4054,6 +4063,8 @@ public class AtelierChatService implements RelayInterruptTarget {
                         outputTokens += done.outputTokens();
                         cacheReadTokens += done.cacheReadTokens();
                         cacheWriteTokens += done.cacheWriteTokens();
+                        addDelegatedShare(otherModelShares, model, done.model(), done.inputTokens(),
+                                done.outputTokens(), done.cacheReadTokens(), done.cacheWriteTokens());
                         listener.onProgress((long) inputTokens + outputTokens);
                         outcome = done.outcome();
                         // F-150 / SF-150-06 : la synthèse du sous-agent (avec branche/diff, SF-150-05)
@@ -4338,6 +4349,12 @@ public class AtelierChatService implements RelayInterruptTarget {
                         : spokenText;
                 budgetExhausted = true;
             }
+        }
+        } catch (RuntimeException | Error cut) {
+            recordCutTurn(userId, workspace, hosted, model, inputTokens, outputTokens, cacheReadTokens,
+                    cacheWriteTokens, webSearchRequests, otherModelShares, lastServedModel[0], startedAt,
+                    iterationsUsed, cut);
+            throw cut;
         }
         // F-195 / SF-195-05 : arrêté sur son budget alors que plusieurs demandes sont arrivées — on dit
         // lesquelles, pour que celle qui n'a pas abouti ne disparaisse pas sans trace.
@@ -6369,10 +6386,49 @@ public class AtelierChatService implements RelayInterruptTarget {
                     reasoning);
             return new ExplorationOutcome(ToolOutcome.info(result.answer()),
                     result.inputTokens(), result.outputTokens(),
-                    result.cacheReadTokens(), result.cacheWriteTokens());
+                    result.cacheReadTokens(), result.cacheWriteTokens(), subModel);
         } catch (RuntimeException ex) {
             return new ExplorationOutcome(ToolOutcome.error(
                     "La sous-tâche de lecture a échoué ; poursuis toi-même."), 0, 0, 0, 0);
+        }
+    }
+
+    /**
+     * <b>Inscrit un tour coupé</b> (F-224 / SF-224-01) : ce qui a été consommé jusqu'à la coupure, au coût réel, et sa
+     * mesure (cause « coupé »). Best-effort : une inscription qui échoue ne masque jamais la cause de la coupure.
+     */
+    private void recordCutTurn(UUID userId, Workspace workspace, boolean hosted, String model, int inputTokens,
+            int outputTokens, int cacheReadTokens, int cacheWriteTokens, int webSearchRequests,
+            java.util.Map<String, long[]> otherModelShares, String lastServedModel, long startedAt, int iterationsUsed,
+            Throwable cut) {
+        if (inputTokens + outputTokens <= 0) {
+            return;
+        }
+        try {
+            if (hosted) {
+                TurnTokens recorded = new TurnTokens(Math.max(0, inputTokens - cacheReadTokens - cacheWriteTokens),
+                        outputTokens, cacheReadTokens, cacheWriteTokens);
+                TurnExtras extras = new TurnExtras(webSearchRequests, 0L);
+                if (otherModelShares.isEmpty()) {
+                    quotaService.recordUsage(userId, recorded, extras, null, model, workspace.getId(),
+                            workspace.getHostId());
+                } else {
+                    quotaService.recordUsage(userId, recorded, extras, null, model, toTurnTokens(otherModelShares),
+                            lastServedModel, workspace.getId(), workspace.getHostId());
+                }
+            }
+            if (turnMeasureWriter != null) {
+                turnMeasureWriter.write(new fr.claudegateway.atelier.measure.TurnMeasure(userId, workspace.getId(),
+                        workspace.getHostId(), model, java.time.Instant.now(),
+                        Math.max(0L, System.currentTimeMillis() - startedAt), iterationsUsed,
+                        "coupé (" + cut.getClass().getSimpleName() + ")", 0L, 0L, 0L, 0L,
+                        inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, webSearchRequests, 0, 0,
+                        workspace.getTurnChantier()));
+            }
+            log.info("Tour d'atelier coupé : {} étape(s), {} tokens inscrits ({})", iterationsUsed,
+                    inputTokens + outputTokens, cut.getClass().getSimpleName());
+        } catch (RuntimeException e) {
+            log.warn("Tour coupé : consommation non inscrite ({})", e.getClass().getSimpleName());
         }
     }
 
@@ -6456,16 +6512,24 @@ public class AtelierChatService implements RelayInterruptTarget {
                     named != null ? reasoning : exploreReasoning);
             return new ExplorationOutcome(ToolOutcome.info(result.answer()),
                     result.inputTokens(), result.outputTokens(),
-                    result.cacheReadTokens(), result.cacheWriteTokens());
+                    result.cacheReadTokens(), result.cacheWriteTokens(), subModel);
         } catch (RuntimeException ex) {
             return new ExplorationOutcome(
                     ToolOutcome.error("L'exploration a échoué ; poursuis toi-même."), 0, 0, 0, 0);
         }
     }
 
-    /** Issue d'une délégation : le résultat rendu au modèle, et ce qu'elle a consommé. */
+    /**
+     * Issue d'une délégation : le résultat rendu au modèle, ce qu'elle a consommé, et le modèle qui l'a servie
+     * (F-224 / SF-224-01 : facturée à SON tarif — Sonnet en exploration —, pas à celui du tour) ; {@code null} = rien
+     * de servi.
+     */
     private record ExplorationOutcome(ToolOutcome outcome, int inputTokens, int outputTokens,
-            int cacheReadTokens, int cacheWriteTokens) {
+            int cacheReadTokens, int cacheWriteTokens, String model) {
+        ExplorationOutcome(ToolOutcome outcome, int inputTokens, int outputTokens, int cacheReadTokens,
+                int cacheWriteTokens) {
+            this(outcome, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, null);
+        }
     }
 
     /**
@@ -6563,7 +6627,7 @@ public class AtelierChatService implements RelayInterruptTarget {
             String synthesis = result.answer() + restitution;
             return new TaskOutcome(ToolOutcome.info(synthesis),
                     result.inputTokens(), result.outputTokens(),
-                    result.cacheReadTokens(), result.cacheWriteTokens());
+                    result.cacheReadTokens(), result.cacheWriteTokens(), subModel);
         } catch (RuntimeException ex) {
             return new TaskOutcome(ToolOutcome.error(
                     "La sous-tâche a échoué ; poursuis toi-même."), 0, 0, 0, 0);
@@ -6748,7 +6812,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                             + String.join(", ", overlap)
                             + ". Les branches sont séparées : réconcilie-les avant de les intégrer, rien n'a été "
                             + "écrasé."), outcome.inputTokens(), outcome.outputTokens(),
-                            outcome.cacheReadTokens(), outcome.cacheWriteTokens());
+                            outcome.cacheReadTokens(), outcome.cacheWriteTokens(), outcome.model());
                 }
                 done.put(group.get(i), new ParallelTask(ids.get(i), outcome));
             }
@@ -6827,9 +6891,29 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
     }
 
-    /** Issue d'une sous-tâche : le résultat rendu au modèle, et ce qu'elle a consommé (imputé au tour). */
+    /** Issue d'une sous-tâche : le résultat rendu au modèle, ce qu'elle a consommé (imputé au tour), son modèle. */
     private record TaskOutcome(ToolOutcome outcome, int inputTokens, int outputTokens,
-            int cacheReadTokens, int cacheWriteTokens) {
+            int cacheReadTokens, int cacheWriteTokens, String model) {
+        TaskOutcome(ToolOutcome outcome, int inputTokens, int outputTokens, int cacheReadTokens,
+                int cacheWriteTokens) {
+            this(outcome, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, null);
+        }
+    }
+
+    /**
+     * Impute la consommation d'une sous-boucle servie par un AUTRE modèle que celui du tour à la part de ce modèle
+     * (F-224 / SF-224-01) : le relevé la chiffre à son tarif. Le volume du tour ne change pas.
+     */
+    static void addDelegatedShare(java.util.Map<String, long[]> shares, String turnModel, String subModel,
+            long inputTokens, long outputTokens, long cacheReadTokens, long cacheWriteTokens) {
+        if (subModel == null || subModel.isBlank() || subModel.equals(turnModel)) {
+            return;
+        }
+        long[] acc = shares.computeIfAbsent(subModel, k -> new long[4]);
+        acc[0] += Math.max(0L, inputTokens - cacheReadTokens - cacheWriteTokens);
+        acc[1] += outputTokens;
+        acc[2] += cacheReadTokens;
+        acc[3] += cacheWriteTokens;
     }
 
     private static final com.fasterxml.jackson.databind.ObjectMapper TASK_MAPPER =

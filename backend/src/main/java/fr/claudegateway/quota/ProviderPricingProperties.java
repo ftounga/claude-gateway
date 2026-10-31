@@ -125,7 +125,27 @@ public record ProviderPricingProperties(
      * @param model identifiant du modèle, éventuellement {@code null}
      */
     public ModelPricing pricingOf(String model) {
-        return model == null || model.isBlank() ? null : models.get(model.trim());
+        if (model == null || model.isBlank()) {
+            return null;
+        }
+        String id = model.trim();
+        ModelPricing exact = models.get(id);
+        if (exact != null) {
+            return exact;
+        }
+        // F-224 / SF-224-01 : le fournisseur rapporte parfois l'identifiant DATÉ (« claude-haiku-4-5-20251001 ») ou
+        // décliné (« …-latest ») : il retrouve la ligne de son modèle, la plus longue qui le préfixe, au lieu du repli.
+        String base = id.replaceFirst("-(\\d{8}|latest)$", "");
+        if (!base.equals(id) && models.containsKey(base)) {
+            return models.get(base);
+        }
+        String best = null;
+        for (String key : models.keySet()) {
+            if (id.startsWith(key + "-") && (best == null || key.length() > best.length())) {
+                best = key;
+            }
+        }
+        return best == null ? null : models.get(best);
     }
 
     /** Tarifs de repli. Garantis non nuls : la grille par défaut contient toujours le modèle par défaut. */

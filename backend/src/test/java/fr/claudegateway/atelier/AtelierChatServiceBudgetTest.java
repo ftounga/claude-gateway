@@ -275,6 +275,25 @@ class AtelierChatServiceBudgetTest {
                 fr.claudegateway.quota.TurnExtras.NONE, null, "claude-opus-5", workspaceId, null);
     }
 
+    @Test
+    void aCutTurnStillCountsWhatWasSpentOnce() {
+        // F-224 / SF-224-01 : le fournisseur casse au 2e appel (panne, déploiement) — le 1er appel, déjà facturé,
+        // est inscrit une seule fois, au coût réel, et la coupure remonte telle quelle.
+        hostedWithRemainingQuota(12_000_000L);
+        serviceWithTurnCap(null);
+        agentProvider.enqueueToolCallCosting("read_file", 7, 3);
+        agentProvider.onTurn(() -> agentProvider.onTurn(() -> {
+            throw new IllegalStateException("coupure simulée");
+        }));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.chat(userId, workspaceId, "lis tout"))
+                .hasMessageContaining("coupure simulée");
+
+        verify(quotaService, org.mockito.Mockito.times(1)).recordUsage(userId,
+                new fr.claudegateway.quota.TurnTokens(7L, 3L, 0L, 0L),
+                fr.claudegateway.quota.TurnExtras.NONE, null, "claude-opus-5", workspaceId, null);
+    }
+
     // ------------------------------------------------------------ la consommation est visible
 
     @Test
