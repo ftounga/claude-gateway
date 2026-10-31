@@ -343,7 +343,7 @@ annuelle de deux mois. Ce sont des **valeurs de départ**, pas des décisions fi
 | F-222 | Le profil offensif — plus d'attente fabriquée | **Demande PO du 2026-10-31.** Cadrage `docs/features/F-222/CADRAGE-F-222-profil-offensif.md`. | Terminée (3/3) |
 | F-223 | Terminal lisible et « Valider » actif tout de suite | **Demande PO du 2026-10-31.** Cadrage `docs/features/F-223/CADRAGE-F-223-terminal-lisible-valider-immediat.md`. | Terminée (2/2) |
 | F-224 | Le coût affiché = ce que je paie | **Demande PO du 2026-10-31.** Cadrage `docs/features/F-224/CADRAGE-F-224-cout-exact.md`. | Terminée (4/4) |
-| F-225 | Le point de situation d'un terminal | **Demande PO du 2026-10-31.** Cadrage `docs/features/F-225/CADRAGE-F-225-point-de-situation.md`. | En cours (1/2) |
+| F-225 | Le point de situation d'un terminal | **Demande PO du 2026-10-31.** Cadrage `docs/features/F-225/CADRAGE-F-225-point-de-situation.md`. | Terminée (2/2) |
 | F-226 | Suggérer le chantier parallèle et clarifier les gestes | **Demande PO du 2026-10-31.** Cadrage `docs/features/F-226/CADRAGE-F-226-suggerer-chantier-parallele.md`. | À faire |
 | F-227 | Chaque action rangée sous son chantier | **Demande PO du 2026-10-31.** Cadrage `docs/features/F-227/CADRAGE-F-227-actions-rattachees-au-chantier.md`. | Terminée (2/2) |
 | F-228 | Aperçu des pièces jointes | **Demande PO du 2026-10-31.** Cadrage `docs/features/F-228/CADRAGE-F-228-apercu-pieces-jointes.md`. | À faire |
@@ -366,6 +366,7 @@ annuelle de deux mois. Ce sont des **valeurs de départ**, pas des décisions fi
 
 | Date | Modification | Validé par |
 |------|--------------|------------|
+| 2026-10-31 | F-225 | SF-225-02 : carte « Point de situation » — ouverte à l'entrée après N h d'inactivité (réglable, défaut 4 h), par le menu et par /situation ; mails « pas marqué envoyé » avec [Marquer envoyé] et [Voir] ; essentiel du dernier échange. **F-225 TERMINÉE.** |
 | 2026-10-31 | F-225 | SF-225-01 : GET /api/workspaces/{id}/situation — chantiers et étape suivante, attentes, encarts mail/message des 7 derniers jours (envoyés ou non, attente liée), dernière demande et réponse, pièces, suites ; aucun appel modèle |
 | 2026-10-31 | F-224 | SF-224-04 : écran du coût en dollars (euro et taux en second), « 7 derniers jours », carte « Facture Anthropic » (facturé, calculé, écart, clés ; inactive sans clé Admin, dit comment la créer). **F-224 TERMINÉE.** |
 | 2026-10-31 | F-224 | SF-224-03 : appels annexes (aide, lecture raisonnée, index de la carte) comptés dans le journal du coût, étiquetés ANNEXE, hors quota ; résumé du coût : période 7d, montants en dollars et taux de l'euro |

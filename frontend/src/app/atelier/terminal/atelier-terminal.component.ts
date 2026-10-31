@@ -80,6 +80,9 @@ import { AtelierSlashQuotaComponent } from './atelier-slash-quota.component';
 import { AtelierSlashBudgetComponent } from './atelier-slash-budget.component';
 import { AtelierSlashPosteComponent } from './atelier-slash-poste.component';
 import { AtelierSlashSujetComponent } from './atelier-slash-sujet.component';
+import { TerminalSituationComponent } from './terminal-situation.component';
+import { SituationService } from '../../core/services/situation.service';
+import { situationIdleThreshold, situationOpensOnEntry } from '../../core/models/situation.models';
 import { AtelierSlashRecallComponent } from './atelier-slash-recall.component';
 import { AtelierSlashActionComponent } from './atelier-slash-action.component';
 import { AtelierSlashRoutinesComponent } from './atelier-slash-routines.component';
@@ -300,7 +303,7 @@ export function plumeErrorMessage(failure: HttpErrorResponse | null | undefined)
     AtelierTerminalDemandeComponent,
     AtelierSlashPanelComponent, AtelierSlashHelpComponent, AtelierSlashCostComponent,
     AtelierSlashContexteComponent, AtelierSlashQuotaComponent, AtelierSlashBudgetComponent,
-    AtelierSlashPosteComponent, AtelierSlashSujetComponent,
+    AtelierSlashPosteComponent, AtelierSlashSujetComponent, TerminalSituationComponent,
     AtelierSlashRecallComponent, AtelierSlashActionComponent, AtelierSlashPassationComponent,
     AtelierSlashRoutinesComponent, TerminalRoutinesBandComponent, AtelierSlashCostRoutinesComponent,
     MatButtonToggleModule, MatIconModule, MatMenuModule, MatProgressBarModule, MatProgressSpinnerModule,
@@ -423,6 +426,8 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
       this.loadAgents(value);
       // F-211 / SF-211-02 : les encarts déjà marqués envoyés.
       this.loadSentBlocks(value);
+      // F-225 / SF-225-02 : revenu après une longue absence, le point de situation s'ouvre de lui-même.
+      this.openSituationIfIdle(value);
       // F-175 / SF-175-07 : après la pose des entrées (lecture seule comprise), la reprise de l'existant.
       void Promise.resolve().then(() => this.checkReview(true));
     }
@@ -2951,6 +2956,49 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
         .querySelectorAll<HTMLElement>('app-atelier-slash-panel');
       panels[panels.length - 1]?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
     });
+  }
+
+  private readonly situations = inject(SituationService);
+
+  /**
+   * **Le point de situation** (F-225 / SF-225-02) — [Point de situation] du menu, `/situation`, ou de lui-même à
+   * l'entrée. Ouvert SANS toucher au brouillon (ce n'est pas une commande tapée), puis amené en vue.
+   */
+  openSituationPanel(): void {
+    const command = findPanelCommand('situation');
+    if (!command || this.slashPanels().some((p) => p.panelKind === 'situation')) {
+      return;
+    }
+    const id = `slash-${this.slashPanelSeq++}`;
+    this.slashPanels.update((panels) => [...panels, buildPanel(command, '', id)]);
+    setTimeout(() => {
+      const panels = (this.hostElement.nativeElement as HTMLElement)
+        .querySelectorAll<HTMLElement>('app-atelier-slash-panel');
+      panels[panels.length - 1]?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
+  /** À l'entrée : inactif depuis au moins le seuil réglé (défaut 4 h) → la carte s'ouvre. Jamais en lecture seule. */
+  private openSituationIfIdle(workspaceId: string): void {
+    const threshold = situationIdleThreshold();
+    if (this.readOnly || threshold <= 0) {
+      return;
+    }
+    this.situations.situation(workspaceId).subscribe({
+      next: (situation) => {
+        if (this.projectId === workspaceId && situationOpensOnEntry(situation, threshold)) {
+          this.openSituationPanel();
+        }
+      },
+      error: () => {
+        // Best-effort : sans lecture, rien ne s'ouvre ; le menu et `/situation` restent là.
+      },
+    });
+  }
+
+  /** [Marquer envoyé] depuis le point de situation : le geste F-211 existant, sans tour. */
+  onSituationMarkSent(event: { messageId: string; index: number }): void {
+    this.onMarkSent({ id: event.messageId } as AtelierThreadItem, event.index);
   }
 
   /** F-117 / SF-117-09 — la passation vient d'être corrigée : le panneau montre le texte enregistré. */

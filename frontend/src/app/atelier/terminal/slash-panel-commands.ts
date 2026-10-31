@@ -131,6 +131,16 @@ export const SLASH_PANEL_COMMANDS: readonly SlashPanelCommand[] = [
     panelKind: 'sujet',
   },
   {
+    // F-225 / SF-225-02 : « où on en était » — une VUE, un GET de lecture, jamais un tour.
+    name: 'situation',
+    title: '/situation',
+    description: 'Où on en était : chantiers, attentes, mails à envoyer, dernier échange',
+    kind: 'view',
+    takesArgument: false,
+    icon: 'assignment',
+    panelKind: 'situation',
+  },
+  {
     name: 'routines',
     title: '/routines',
     description: 'Les routines du sujet : travail programmé, exécuté sans écran sur le poste',
@@ -577,6 +587,9 @@ export function buildPanel(command: SlashPanelCommand, arg: string, id: string):
   if (command.panelKind === 'poste') {
     // La donnée arrive d'un GET de lecture (`/api/runner-hosts`, jamais le modèle) : chargement d'abord.
     return { ...base, title: 'Le poste', posteState: 'loading' };
+  }
+  if (command.panelKind === 'situation') {
+    return { ...base, title: 'Point de situation' };
   }
   if (command.panelKind === 'sujet') {
     // La donnée arrive d'un GET de lecture (`/resume`, jamais le modèle) : chargement d'abord.
