@@ -43,7 +43,7 @@ import { PlumeView, TerminalPlumeComponent, looksLikeVideoRequest } from './term
 import { TerminalBarTier, terminalBarTier } from './terminal-bar-tier';
 import { PlumeService } from '../../core/services/plume.service';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { AtelierNextStep, AtelierNextStepsChantier, AtelierQuestionAnswer } from '../../core/models/atelier.models';
+import { AtelierNextStep, AtelierNextStepsChantier, AtelierQuestionAnswer, DepositedFileRef } from '../../core/models/atelier.models';
 import {
   DictationButtonComponent,
   DictationState,
@@ -81,6 +81,9 @@ import { AtelierSlashBudgetComponent } from './atelier-slash-budget.component';
 import { AtelierSlashPosteComponent } from './atelier-slash-poste.component';
 import { AtelierSlashSujetComponent } from './atelier-slash-sujet.component';
 import { TerminalSituationComponent } from './terminal-situation.component';
+import { MatDialog } from '@angular/material/dialog';
+import { DepositPreviewData, DepositPreviewDialogComponent } from './deposit-preview-dialog.component';
+import { previewKindOf } from './deposit-preview';
 import { SituationService } from '../../core/services/situation.service';
 import { situationIdleThreshold, situationOpensOnEntry } from '../../core/models/situation.models';
 import { AtelierSlashRecallComponent } from './atelier-slash-recall.component';
@@ -2529,6 +2532,38 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
   private readonly changeDetector = inject(ChangeDetectorRef);
   private readonly snackBar = inject(MatSnackBar);
+
+  private readonly previewDialog = inject(MatDialog);
+
+  /** [Aperçu] d'une pièce jointe (F-228 / SF-228-02) : au clic, dans une boîte ; jamais au survol. */
+  openDeposit(file: DepositedFileRef): void {
+    const workspaceId = this.projectId;
+    if (!workspaceId || !file.id) {
+      return;
+    }
+    const data: DepositPreviewData = { workspaceId, depositId: file.id, path: file.path, size: file.size };
+    this.previewDialog.open(DepositPreviewDialogComponent, { data, maxWidth: '96vw', autoFocus: 'dialog' });
+  }
+
+  /** L'icône d'une pièce, par sa vue d'aperçu. */
+  depositIcon(path: string): string {
+    switch (previewKindOf(path)) {
+      case 'image':
+      case 'svg':
+        return 'image';
+      case 'pdf':
+        return 'picture_as_pdf';
+      case 'video':
+        return 'movie';
+      case 'audio':
+        return 'audiotrack';
+      case 'csv':
+      case 'xlsx':
+        return 'table_chart';
+      default:
+        return 'insert_drive_file';
+    }
+  }
   private readonly pushActivation = inject(PushActivationService);
   /** Horloge des libellés datés (F-97 / SF-97-02), partagée avec la Forge. */
   private readonly presence = inject(HostPresenceService);

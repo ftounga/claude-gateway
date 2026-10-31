@@ -519,6 +519,8 @@ export interface AtelierPersistedTranscript {
 export interface DepositedFileRef {
   path: string;
   size: number;
+  /** L'identifiant du dépôt (F-228) : la puce ouvre son aperçu. Absent d'une passerelle antérieure. */
+  id?: string | null;
 }
 
 /** Message de l'historique. Réponse de `GET /api/workspaces/{id}/chat`. */
