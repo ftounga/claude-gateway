@@ -825,11 +825,21 @@
               <span class="terminal-attachments terminal-attachments--in-bubble" role="group"
                     aria-label="Pièces jointes envoyées avec ce message">
                 @for (file of message.files; track file.path) {
-                  <span class="terminal-attachment terminal-attachment--in-bubble">
-                    <mat-icon class="terminal-attachment__icon" aria-hidden="true">insert_drive_file</mat-icon>
-                    <span class="terminal-attachment__name" [title]="file.path">{{ shortName(file.path) }}</span>
-                    <span class="terminal-attachment__size">{{ fileSizeLabel(file.size) }}</span>
-                  </span>
+                  @if (file.id && projectId) {
+                    <!-- F-228 / SF-228-02 : la puce s'ouvre en aperçu, AU CLIC (le survol lirait le poste). -->
+                    <button type="button" class="terminal-attachment terminal-attachment--in-bubble terminal-attachment--open"
+                      [attr.aria-label]="'Aperçu de ' + shortName(file.path)" (click)="openDeposit(file)">
+                      <mat-icon class="terminal-attachment__icon" aria-hidden="true">{{ depositIcon(file.path) }}</mat-icon>
+                      <span class="terminal-attachment__name" [title]="file.path">{{ shortName(file.path) }}</span>
+                      <span class="terminal-attachment__size">{{ fileSizeLabel(file.size) }}</span>
+                    </button>
+                  } @else {
+                    <span class="terminal-attachment terminal-attachment--in-bubble">
+                      <mat-icon class="terminal-attachment__icon" aria-hidden="true">insert_drive_file</mat-icon>
+                      <span class="terminal-attachment__name" [title]="file.path">{{ shortName(file.path) }}</span>
+                      <span class="terminal-attachment__size">{{ fileSizeLabel(file.size) }}</span>
+                    </span>
+                  }
                 }
               </span>
             }

@@ -492,7 +492,7 @@ describe('AtelierComponent', () => {
       expect(args[5]).toEqual(['dep-1']);
       // Le message local porte ses pièces jointes, pour le rendu dans la bulle.
       const userItem = component.messages().find((m) => m.role === 'USER');
-      expect(userItem?.files).toEqual([{ path: 'entrees/capture.png', size: 2_411_000 }]);
+      expect(userItem?.files).toEqual([{ path: 'entrees/capture.png', size: 2_411_000, id: 'dep-1' }]); // F-228 : l'aperçu
     });
 
     it('n\'envoie aucune réf de dépôt quand le message n\'a pas de pièce jointe (send)', () => {

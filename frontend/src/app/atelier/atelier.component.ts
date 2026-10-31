@@ -2124,7 +2124,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
       if (notice.error || notice.cancelled || !notice.path) {
         continue;
       }
-      files.push({ path: notice.path, size: notice.size ?? 0 });
+      files.push({ path: notice.path, size: notice.size ?? 0, id: notice.depositId ?? null });
       if (notice.depositId) {
         ids.push(notice.depositId);
       }

@@ -183,6 +183,18 @@
   background: transparent;
 }
 
+// F-228 / SF-228-02 : une puce qui s'ouvre en aperçu — un bouton, l'encre héritée, la main au survol.
+.terminal-attachment--open {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    border-color: var(--cg-orange-2);
+  }
+}
+
 // Progression du dépôt : elle aussi prend une ligne entière du composer, au-dessus de la saisie.
 .terminal-deposit-progress {
   flex: 1 1 100%;
