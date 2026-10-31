@@ -68,7 +68,7 @@ describe('F-219 / SF-219-03 — l’écran du chantier autonome', () => {
 
   const el = (fixture: { nativeElement: HTMLElement }) => fixture.nativeElement as HTMLElement;
 
-  it('prêt : badge « Prêt à partir », estimation, et [Lancer en autonome] part au premier clic', () => {
+  it('prêt : badge « Prêt à partir », estimation, et [Lancer] part au premier clic', () => {
     const fixture = mount(journey([chantier(1)]), board([entry()], 1));
     const html = el(fixture);
     expect(html.querySelector('.auto__status--ready')?.textContent).toContain('Prêt à partir');
@@ -79,7 +79,7 @@ describe('F-219 / SF-219-03 — l’écran du chantier autonome', () => {
     const req = http.expectOne('/api/workspaces/w1/journey/chantiers/1/autonomy');
     expect(req.request.method).toBe('POST');
     req.flush(run());
-    expect(snack.open).toHaveBeenCalledWith('Chantier 1 lancé en autonome. Vous pouvez quitter l’écran.', 'OK', jasmine.any(Object));
+    expect(snack.open).toHaveBeenCalledWith('Chantier 1 lancé. Vous pouvez quitter l’écran.', 'OK', jasmine.any(Object));
     http.expectOne('/api/workspaces/w1/journey/autonomy').flush(board([entry({ run: run() })], 2));
     fixture.detectChanges();
     expect(html.querySelector('.auto__status--running')?.textContent).toContain('En autonome — étape 3/7');
@@ -95,7 +95,7 @@ describe('F-219 / SF-219-03 — l’écran du chantier autonome', () => {
       ] },
     })]));
     const html = el(fixture);
-    expect(html.querySelector('.auto__status--not-ready')?.textContent).toContain('Pas prêt à partir');
+    expect(html.querySelector('.auto__status--not-ready')?.textContent).toContain('Pas prêt à être lancé');
     const reasons = Array.from(html.querySelectorAll('.auto__reasons li')).map((li) => li.textContent?.trim());
     expect(reasons).toEqual(['Étape 2 bloquée : accès VPN refusé', 'Étape 4 : en attente de « cert » (demandé).']);
     expect(html.querySelector('.auto__go')).toBeNull();
@@ -159,14 +159,14 @@ describe('F-219 / SF-219-03 — l’écran du chantier autonome', () => {
   const decision = { who: 'MOI', label: 'Ça attend votre décision', detail: 'Étape 2 bloquée : quel domaine ?',
     step: 2, waitingOn: null, since: null };
 
-  it('SF-219-05 : préflight rouge mais du vert → [Avancer jusqu’au blocage] et « Ce qui restera » groupé', () => {
+  it('SF-219-05 : préflight rouge mais du vert → [Lancer jusqu’au blocage] et « Ce qui restera » groupé', () => {
     const fixture = mount(journey([chantier(1)]), board([entry({
       preflight: { number: 1, ready: false, reasons: [{ code: 'WAIT_OPEN', label: 'Étape 4 : en attente.', step: 4 }],
         advance: { possible: true, toolSteps: [1, 3], remaining: [decision, gino] as never,
           label: '2 étape(s) à la portée de l’outil ; 1 décision(s) vous attendent ; on attend Gino.' } },
     })], 1));
     const html = el(fixture);
-    expect(html.querySelector('.auto__status--advance')?.textContent).toContain('Peut avancer jusqu’au blocage');
+    expect(html.querySelector('.auto__status--advance')?.textContent).toContain('Peut être lancé jusqu’au blocage');
     expect(html.querySelector('.auto__status--not-ready')).toBeNull();
     const rest = html.querySelector('.auto__rest') as HTMLElement;
     expect(rest.getAttribute('aria-label')).toBe('Ce qui restera');
@@ -179,7 +179,7 @@ describe('F-219 / SF-219-03 — l’écran du chantier autonome', () => {
     const req = http.expectOne('/api/workspaces/w1/journey/chantiers/1/autonomy?mode=UNTIL_BLOCKED');
     expect(req.request.method).toBe('POST');
     req.flush(run({ mode: 'UNTIL_BLOCKED' }));
-    expect(snack.open).toHaveBeenCalledWith('Chantier 1 avance jusqu’au blocage. Vous pouvez quitter l’écran.', 'OK', jasmine.any(Object));
+    expect(snack.open).toHaveBeenCalledWith('Chantier 1 lancé jusqu’au blocage. Vous pouvez quitter l’écran.', 'OK', jasmine.any(Object));
     http.expectOne('/api/workspaces/w1/journey/autonomy').flush(board([entry({ run: run({ mode: 'UNTIL_BLOCKED' }) })], 2));
     fixture.detectChanges();
     expect(html.querySelector('.auto__status--running')?.textContent).toContain('Jusqu’au blocage — étape 3/7');
@@ -191,8 +191,8 @@ describe('F-219 / SF-219-03 — l’écran du chantier autonome', () => {
       preflight: { number: 1, ready: true, reasons: [], advance: { possible: true, toolSteps: [3], remaining: [], label: null } },
     })]));
     const html = el(fixture);
-    expect(html.querySelector('.auto__go')?.textContent).toContain('Lancer en autonome');
-    expect(html.querySelector('.auto__advance')?.textContent).toContain('Avancer jusqu’au blocage');
+    expect(html.querySelector('.auto__go')?.textContent?.trim()).toMatch(/Lancer$/);
+    expect(html.querySelector('.auto__advance')?.textContent).toContain('Lancer jusqu’au blocage');
   });
 
   it('SF-219-05 : course PARTIAL et plus rien à portée → « avancée jusqu’au blocage » et « Ce qui reste »', () => {
@@ -205,5 +205,60 @@ describe('F-219 / SF-219-03 — l’écran du chantier autonome', () => {
     expect(html.querySelector('.auto__advance')).toBeNull();
     expect(html.querySelector('.auto__rest')?.getAttribute('aria-label')).toBe('Ce qui reste');
     expect(html.querySelector('.auto__last')?.textContent).toContain('avancée jusqu’au blocage');
+  });
+
+  // ------------------------------------------------------------ F-226 / SF-226-03 : un seul vocabulaire
+
+  const OLD_VERBS = ['Lancer en autonome', 'Avancer jusqu’au blocage', 'Mettre au focus', 'Afficher à côté'];
+
+  it('SF-226-03 : aucun ancien verbe, quel que soit l’état (prêt, peut avancer, pas prêt, en cours)', () => {
+    const states: AutonomyBoardEntry[] = [
+      entry({ preflight: { number: 1, ready: true, reasons: [], advance: { possible: true, toolSteps: [3], remaining: [], label: null } } }),
+      entry({ preflight: { number: 1, ready: false, reasons: [], advance: { possible: true, toolSteps: [3], remaining: [], label: '1 étape' } } }),
+      entry({ preflight: { number: 1, ready: false, reasons: [{ code: 'X', label: 'Plan non validé.', step: null }] } }),
+      entry({ run: run() }),
+    ];
+    for (const state of states) {
+      const fixture = mount(journey([chantier(1), chantier(2, { focus: false })]), board([state]));
+      const text = el(fixture).textContent ?? '';
+      for (const verb of OLD_VERBS) {
+        expect(text).not.toContain(verb);
+      }
+      fixture.destroy();
+    }
+  });
+
+  it('SF-226-03 : un autre chantier que celui du volet → « Lancer à côté » / « Lancer à côté jusqu’au blocage »', () => {
+    const fixture = TestBed.createComponent(TerminalChantiersBoardComponent);
+    fixture.componentRef.setInput('journey', journey([chantier(1, { focus: false }), chantier(2, { focus: true })]));
+    fixture.componentRef.setInput('workspaceId', 'w1');
+    fixture.componentRef.setInput('canSend', true);
+    fixture.componentRef.setInput('shownChantier', 2);
+    fixture.detectChanges();
+    http.expectOne('/api/workspaces/w1/journey/autonomy').flush(board([entry({
+      preflight: { number: 1, ready: true, reasons: [], advance: { possible: true, toolSteps: [3], remaining: [], label: null } },
+    })]));
+    fixture.componentInstance.select(1);
+    fixture.detectChanges();
+    const html = el(fixture);
+    expect(html.querySelector('.auto__go')?.textContent).toContain('Lancer à côté');
+    expect(html.querySelector('.auto__advance')?.textContent).toContain('Lancer à côté jusqu’au blocage');
+    fixture.destroy();
+  });
+
+  it('SF-226-03 : lancer et reprendre la main émettent lanesChanged (l’écran relit les fils actifs)', () => {
+    const fixture = mount(journey([chantier(1)]), board([entry()]));
+    let emitted = 0;
+    fixture.componentInstance.lanesChanged.subscribe(() => emitted++);
+    (el(fixture).querySelector('.auto__go') as HTMLButtonElement).click();
+    http.expectOne('/api/workspaces/w1/journey/chantiers/1/autonomy').flush(run());
+    http.expectOne('/api/workspaces/w1/journey/autonomy').flush(board([entry({ run: run() })], 1));
+    expect(emitted).toBe(1);
+    fixture.detectChanges();
+    (el(fixture).querySelector('.auto__stop') as HTMLButtonElement).click();
+    http.expectOne('/api/workspaces/w1/journey/autonomy/stop?chantier=1').flush(run({ status: 'STOPPED' }));
+    http.expectOne('/api/workspaces/w1/journey/autonomy').flush(board([entry()]));
+    expect(emitted).toBe(2);
+    fixture.destroy();
   });
 });

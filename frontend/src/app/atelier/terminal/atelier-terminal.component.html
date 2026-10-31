@@ -2070,6 +2070,7 @@
       (request)="onBoardRequest($event)"
       (focus)="onSwitchChantier($event)"
       (changed)="projectId && loadJourney(projectId)"
+      (lanesChanged)="lanesChanged.emit()"
       (closed)="closeBoard()"
     ></app-terminal-chantiers-board>
   }

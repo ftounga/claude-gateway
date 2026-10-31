@@ -63,6 +63,7 @@ import { chatStepsToBlocks } from './chat-steps';
       [paneActivity]="activity()"
       (closePane)="closed.emit()"
       (parallelLaunch)="parallelLaunch.emit($event)"
+      (lanesChanged)="lanesChanged.emit()"
       [messages]="messages()"
       [streaming]="streaming()"
       [streamingActive]="streaming() !== null"
@@ -108,6 +109,9 @@ export class TerminalLanePaneComponent implements OnChanges, OnDestroy {
 
   /** Un autre chantier demandé « en parallèle » depuis ce volet (F-221 / SF-221-04). */
   @Output() parallelLaunch = new EventEmitter<ParallelLaunchRequest>();
+
+  /** Un chantier lancé ou repris en main au tableau de ce volet (F-226 / SF-226-03) : l'écran relit les fils actifs. */
+  @Output() lanesChanged = new EventEmitter<void>();
 
   readonly messages = signal<AtelierThreadItem[]>([]);
   readonly streaming = signal<AtelierExecStreamingItem | null>(null);

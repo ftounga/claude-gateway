@@ -51,16 +51,40 @@ describe('ParallelLaunchDialogComponent (F-221)', () => {
     expect(ref.close).toHaveBeenCalledWith('launch');
   });
 
-  it('ne peut pas partir : les raisons, « Afficher à côté », et « Afficher ici » pour une suite', () => {
+  /** Les boutons d'action : tout sauf [Annuler]. */
+  function actions(el: HTMLElement): string[] {
+    return Array.from(el.querySelectorAll('mat-dialog-actions button'))
+      .map((b) => (b.textContent ?? '').replace(/\s+/g, ' ').trim()
+        .replace(/^(view_column|center_focus_strong) /, ''))
+      .filter((label) => label !== 'Annuler');
+  }
+
+  it('ne peut pas partir : les raisons, et « Afficher ici » seul — jamais « Afficher à côté » (SF-226-03)', () => {
+    for (const offerSwitch of [true, false]) {
+      TestBed.resetTestingModule();
+      const { el, ref } = mount({ number: 8, title: null, offerSwitch,
+        choice: { mode: null, reasons: ['Le plan n’est pas validé.'] } });
+      expect(el.textContent).toContain('ne peut pas partir maintenant');
+      expect(el.textContent).toContain('Le plan n’est pas validé.');
+      expect(el.textContent).not.toContain('Afficher à côté');
+      expect(actions(el)).toEqual(['Afficher ici']);
+      (el.querySelector('.pl__switch') as HTMLElement).click();
+      expect(ref.close).toHaveBeenCalledWith('switch');
+    }
+  });
+
+  it('deux boutons d’action au plus : « Afficher ici » et « Lancer à côté » depuis une suite (SF-226-03)', () => {
     const { el, ref } = mount({ number: 8, title: null, offerSwitch: true,
-      choice: { mode: null, reasons: ['Le plan n’est pas validé.'] } });
-    expect(el.textContent).toContain('ne peut pas partir maintenant');
-    expect(el.textContent).toContain('Le plan n’est pas validé.');
-    const buttons = Array.from(el.querySelectorAll('button'));
-    expect(buttons.some((b) => b.textContent?.includes('Lancer à côté'))).toBeFalse();
-    (buttons.find((b) => b.textContent?.includes('Afficher ici')) as HTMLElement).click();
+      choice: { mode: 'STRICT', reasons: [] } });
+    expect(actions(el)).toEqual(['Afficher ici', 'Lancer à côté']);
+    expect(el.textContent).not.toContain('Afficher à côté');
+    (el.querySelector('.pl__switch') as HTMLElement).click();
     expect(ref.close).toHaveBeenCalledWith('switch');
-    (buttons.find((b) => b.textContent?.includes('Afficher à côté')) as HTMLElement).click();
-    expect(ref.close).toHaveBeenCalledWith('open');
+  });
+
+  it('hors suite, un chantier qui peut partir n’offre que « Lancer à côté » (SF-226-03)', () => {
+    const { el } = mount({ number: 8, title: null, offerSwitch: false,
+      choice: { mode: 'UNTIL_BLOCKED', reasons: [] } });
+    expect(actions(el)).toEqual(['Lancer à côté']);
   });
 });

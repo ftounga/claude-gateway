@@ -1201,6 +1201,9 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    */
   @Output() parallelLaunch = new EventEmitter<ParallelLaunchRequest>();
 
+  /** Un chantier a été lancé ou repris en main au tableau (F-226 / SF-226-03) : l'écran relit les fils actifs. */
+  @Output() lanesChanged = new EventEmitter<void>();
+
   /**
    * Une suite propose un autre chantier (F-206) : en lecture seule, la bascule d'avant ; sinon l'overlay
    * « en parallèle » (F-221 / SF-221-04), qui garde [Basculer ici].

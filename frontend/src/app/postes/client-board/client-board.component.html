@@ -155,21 +155,21 @@
                         }
                         @if (c.ready && !running(c)) {
                           <button type="button" class="cb__icon-btn cb__icon-btn--hover cb__launch" [disabled]="launching()"
-                            matTooltip="Lancer en autonome" [attr.aria-label]="'Lancer en autonome le chantier ' + c.number"
+                            matTooltip="Lancer" [attr.aria-label]="'Lancer le chantier ' + c.number"
                             (click)="launch(c)">
                             <mat-icon aria-hidden="true">rocket_launch</mat-icon>
                           </button>
                         }
                         @if (advanceable(c) && !running(c)) {
                           <button type="button" class="cb__icon-btn cb__icon-btn--hover cb__advance" [disabled]="launching()"
-                            matTooltip="Avancer jusqu’au blocage" [attr.aria-label]="'Avancer jusqu’au blocage le chantier ' + c.number"
+                            matTooltip="Lancer jusqu’au blocage" [attr.aria-label]="'Lancer jusqu’au blocage le chantier ' + c.number"
                             (click)="launch(c, 'UNTIL_BLOCKED')">
                             <mat-icon aria-hidden="true">fast_forward</mat-icon>
                           </button>
                         }
                         <button type="button" class="cb__icon-btn cb__icon-btn--hover cb__open"
-                          [matTooltip]="c.question ? 'Répondre' : 'Ouvrir'"
-                          [attr.aria-label]="(c.question ? 'Répondre' : 'Ouvrir') + ' — chantier ' + c.number" (click)="open(c)">
+                          [matTooltip]="c.question ? 'Répondre' : 'Afficher'"
+                          [attr.aria-label]="(c.question ? 'Répondre' : 'Afficher') + ' — chantier ' + c.number" (click)="open(c)">
                           <mat-icon aria-hidden="true">{{ c.question ? 'reply' : 'arrow_forward' }}</mat-icon>
                         </button>
                         <button type="button" class="cb__icon-btn cb__more" [matMenuTriggerFor]="more" matTooltip="Plus de gestes"
@@ -179,19 +179,19 @@
                         <mat-menu #more="matMenu" xPosition="before">
                           <button mat-menu-item type="button" class="cb__menu-open" (click)="open(c)">
                             <mat-icon>{{ c.question ? 'reply' : 'arrow_forward' }}</mat-icon>
-                            {{ c.question ? 'Répondre' : 'Ouvrir' }}
+                            {{ c.question ? 'Répondre' : 'Afficher' }}
                           </button>
                           @if (c.ready && !running(c)) {
                             <button mat-menu-item type="button" class="cb__menu-launch" [disabled]="launching()" (click)="launch(c)">
                               <mat-icon>rocket_launch</mat-icon>
-                              Lancer en autonome
+                              Lancer
                             </button>
                           }
                           @if (advanceable(c) && !running(c)) {
                             <button mat-menu-item type="button" class="cb__menu-advance" [disabled]="launching()"
                               (click)="launch(c, 'UNTIL_BLOCKED')">
                               <mat-icon>fast_forward</mat-icon>
-                              Avancer jusqu’au blocage
+                              Lancer jusqu’au blocage
                             </button>
                           }
                           @for (choice of snoozeChoices; track choice.days) {
@@ -240,7 +240,7 @@
                         </dl>
                         @if (!c.ready && !running(c) && c.missing.length > 0) {
                           <div class="cb__missing">
-                            <span class="cb__label">Pour partir en autonome</span>
+                            <span class="cb__label">Pour pouvoir le lancer</span>
                             <ul>
                               @for (reason of c.missing; track $index) {
                                 <li>{{ reason }}</li>
@@ -252,14 +252,14 @@
                           @if (c.ready && !running(c)) {
                             <button mat-button type="button" class="cb__launch" [disabled]="launching()" (click)="launch(c)">
                               <mat-icon>rocket_launch</mat-icon>
-                              Lancer en autonome
+                              Lancer
                             </button>
                           }
                           @if (advanceable(c) && !running(c)) {
                             <button mat-button type="button" class="cb__advance" [disabled]="launching()"
                               (click)="launch(c, 'UNTIL_BLOCKED')">
                               <mat-icon>fast_forward</mat-icon>
-                              Avancer jusqu’au blocage
+                              Lancer jusqu’au blocage
                             </button>
                           }
                           <button mat-button type="button" class="cb__snooze-menu" [matMenuTriggerFor]="snoozeMenu">
@@ -277,7 +277,7 @@
                           </button>
                           <span class="cb__spacer"></span>
                           <button mat-flat-button type="button" class="cb__open" (click)="open(c)">
-                            {{ c.question ? 'Répondre' : 'Ouvrir' }}
+                            {{ c.question ? 'Répondre' : 'Afficher' }}
                             <mat-icon iconPositionEnd>arrow_forward</mat-icon>
                           </button>
                         </div>
@@ -350,13 +350,13 @@
           <button mat-stroked-button type="button" class="cb__launch-all" [disabled]="overLimit() !== null || launching()"
             (click)="launchSelected()">
             <mat-icon>rocket_launch</mat-icon>
-            Lancer en autonome ({{ selection().length }})
+            Lancer ({{ selection().length }})
           </button>
         }
         <button mat-flat-button type="button" class="cb__advance-all" [disabled]="overLimit() !== null || launching()"
           (click)="launchSelected('UNTIL_BLOCKED')">
           <mat-icon>fast_forward</mat-icon>
-          Avancer jusqu’au blocage ({{ selection().length }})
+          Lancer jusqu’au blocage ({{ selection().length }})
         </button>
       </div>
     }

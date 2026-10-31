@@ -42,3 +42,5 @@ Quand le PO est absorbé par un chantier, l'écran lui suggère, sans pop-up, de
 
 ## Hors périmètre
 Lisibilité des onglets du tableau, onglets du split sur téléphone, split allégé (SF-226-02).
+
+> **Révisé par SF-226-03 (2026-10-31)** : un seul vocabulaire partout (Lancer / Lancer à côté, Afficher, Reprendre la main ; « jusqu'au blocage » devient un qualificatif du lancement), overlay à deux boutons au plus (« Afficher à côté » supprimé), fils actifs relus à chaque fin de tour.

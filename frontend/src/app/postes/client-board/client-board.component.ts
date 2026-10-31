@@ -81,7 +81,7 @@ function writeCollapsed(ids: ReadonlySet<string>): void {
  * **Le tableau de bord du client** (F-220 / SF-220-03) — l'onglet d'ouverture de la page d'un poste dans la
  * Forge : tous les chantiers ouverts de tous ses sujets, **rangés par sujet** (SF-220-08) — un bloc repliable
  * par sujet, ses chantiers dans l'ordre **qui les débloque** (l'outil, ma décision, quelqu'un d'autre), le plus
- * dormant d'abord. Gestes : ouvrir au focus, lancer en autonome — un seul ou plusieurs d'un coup, à travers les
+ * dormant d'abord. Gestes (SF-226-03) : afficher, lancer — un seul ou plusieurs d'un coup, à travers les
  * blocs, dans la limite des courses autonomes (F-219) —, clore.
  *
  * Sous les chantiers d'un sujet, ses attentes **hors chantier** (SF-220-07) : celles qu'aucun chantier ne
@@ -390,7 +390,7 @@ export class ClientBoardComponent {
 
   // ------------------------------------------------------------------ gestes
 
-  /** [Ouvrir] : le chantier passe au focus, puis son terminal s'ouvre (même si le focus échoue). */
+  /** [Afficher] (SF-226-03, « Ouvrir » avant) : le chantier passe au focus, puis son terminal s'ouvre (même si le focus échoue). */
   open(c: ClientBoardChantier): void {
     const go = () => void this.router.navigate(['/atelier', c.workspaceId]);
     if (c.focus) {
@@ -431,15 +431,15 @@ export class ClientBoardComponent {
   readonly selectionReady = computed(() => this.selection().every((c) => c.ready));
 
   /**
-   * [Lancer en autonome] un chantier (F-219) — aucune confirmation (F-218). `UNTIL_BLOCKED` : [Avancer jusqu'au
-   * blocage] (SF-219-05).
+   * [Lancer] un chantier (F-219) — aucune confirmation (F-218). `UNTIL_BLOCKED` : [Lancer jusqu'au blocage]
+   * (SF-219-05 ; vocabulaire SF-226-03).
    */
   launch(c: ClientBoardChantier, mode: AutonomyMode = 'STRICT'): void {
     this.launching.set(true);
     this.autonomy.launch(c.workspaceId, c.number, mode).subscribe({
       next: () => {
         this.launching.set(false);
-        const what = mode === 'UNTIL_BLOCKED' ? 'avance jusqu\'au blocage' : 'lancé en autonome';
+        const what = mode === 'UNTIL_BLOCKED' ? 'lancé jusqu\'au blocage' : 'lancé';
         this.snackBar.open(`Chantier ${c.number} ${what}.`, 'OK', { duration: 4000 });
         this.load(this.hostId(), false);
       },
@@ -478,7 +478,7 @@ export class ClientBoardComponent {
   }
 
   /**
-   * [Lancer en autonome (k)] : chaque chantier sélectionné part **l'un après l'autre**, par la route de F-219.
+   * [Lancer (k)] (SF-226-03) : chaque chantier sélectionné part **l'un après l'autre**, par la route de F-219.
    * Au-delà des places libres, rien ne part (refus écrit). Les refus du serveur sont rapportés par chantier ;
    * les lancés partent quand même.
    */

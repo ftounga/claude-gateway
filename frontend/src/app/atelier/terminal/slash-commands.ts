@@ -72,7 +72,7 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   {
     name: 'autonome',
     title: '/autonome',
-    description: 'Lancer un chantier en autonome (ex. /autonome 2)',
+    description: 'Lancer un chantier (ex. /autonome 2)',
     prompt:
       'Lance en autonome le chantier indiqué ci-dessous avec l’outil lancer_chantier_autonome. S’il n’est ' +
       'pas prêt, dis-moi précisément ce qui l’empêche de partir ; sinon, termine ton tour tout de suite.',
@@ -80,7 +80,7 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   {
     name: 'avancer',
     title: '/avancer',
-    description: 'Avancer un chantier jusqu’au blocage (ex. /avancer 7)',
+    description: 'Lancer un chantier jusqu’au blocage (ex. /avancer 7)',
     prompt:
       'Lance le chantier indiqué ci-dessous avec l’outil lancer_chantier_autonome et mode=UNTIL_BLOCKED : il ' +
       'exécute toutes les étapes à ta portée et s’arrête quand plus rien ne l’est. S’il ne peut pas avancer, ' +

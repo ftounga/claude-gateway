@@ -459,7 +459,7 @@
     @switch (activeTab()) {
       @case ('chantiers') {
         <!-- LE TABLEAU DU CLIENT (F-220 / SF-220-03) : l'onglet d'ouverture — ce qui reste à faire, qui le
-             débloque, depuis quand ça dort ; ouvrir, lancer en autonome (un ou plusieurs), clore. -->
+             débloque, depuis quand ça dort ; afficher, lancer (un ou plusieurs), clore. -->
         <section class="poste__panel poste__chantiers" role="tabpanel">
           @if (host.id; as hostId) {
             <app-client-board [hostId]="hostId" (countChange)="onChantierCount(hostId, $event)"></app-client-board>
