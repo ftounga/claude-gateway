@@ -344,7 +344,7 @@ annuelle de deux mois. Ce sont des **valeurs de départ**, pas des décisions fi
 | F-223 | Terminal lisible et « Valider » actif tout de suite | **Demande PO du 2026-10-31.** Cadrage `docs/features/F-223/CADRAGE-F-223-terminal-lisible-valider-immediat.md`. | Terminée (2/2) |
 | F-224 | Le coût affiché = ce que je paie | **Demande PO du 2026-10-31.** Cadrage `docs/features/F-224/CADRAGE-F-224-cout-exact.md`. | Terminée (4/4) |
 | F-225 | Le point de situation d'un terminal | **Demande PO du 2026-10-31.** Cadrage `docs/features/F-225/CADRAGE-F-225-point-de-situation.md`. | Terminée (2/2) |
-| F-226 | Suggérer le chantier parallèle et clarifier les gestes | **Demande PO du 2026-10-31.** Cadrage `docs/features/F-226/CADRAGE-F-226-suggerer-chantier-parallele.md`. | Terminée (2/2) |
+| F-226 | Suggérer le chantier parallèle et clarifier les gestes | **Demande PO du 2026-10-31.** Cadrage `docs/features/F-226/CADRAGE-F-226-suggerer-chantier-parallele.md`. | Terminée (3/3) |
 | F-227 | Chaque action rangée sous son chantier | **Demande PO du 2026-10-31.** Cadrage `docs/features/F-227/CADRAGE-F-227-actions-rattachees-au-chantier.md`. | Terminée (2/2) |
 | F-228 | Aperçu des pièces jointes | **Demande PO du 2026-10-31.** Cadrage `docs/features/F-228/CADRAGE-F-228-apercu-pieces-jointes.md`. | Terminée (3/3) |
 
@@ -366,6 +366,7 @@ annuelle de deux mois. Ce sont des **valeurs de départ**, pas des décisions fi
 
 | Date | Modification | Validé par |
 |------|--------------|------------|
+| 2026-10-31 | F-226 | SF-226-03 (correctif, PR #1368) : un seul vocabulaire partout — Lancer (Lancer à côté vers le volet de droite), Afficher, Reprendre la main ; « jusqu'au blocage » devient un qualificatif (« Lancer jusqu'au blocage ») ; tableau du client « Lancer (k) », « Ouvrir » → « Afficher » ; overlay à deux boutons au plus (« Afficher à côté » supprimé) ; fils actifs relus à chaque fin de tour et après lancement/reprise, 409 → message clair et suggestion masquée. F-226 reste Terminée. |
 | 2026-10-31 | F-228 | SF-228-03 : tableurs en aperçu — CSV (analyseur maison) et xlsx (read-excel-file chargé au clic), premier onglet et sélecteur, 500 lignes au plus, lecture seule. **F-228 TERMINÉE.** |
 | 2026-10-31 | F-228 | SF-228-02 : la puce d'une pièce jointe s'ouvre en aperçu au clic — image (zoom, Copier, Télécharger), PDF (lecteur du navigateur), vidéo et audio natifs, SVG en image seulement, le reste en téléchargement |
 | 2026-10-31 | F-228 | SF-228-01 : GET /api/workspaces/{id}/deposits/{depositId}/content — seulement une pièce inscrite du compte et du terminal, lue là où vit le projet (20 Mo), type par extension, jamais de HTML rendu (nosniff, CSP sandbox) ; l'historique porte l'identifiant des pièces |
