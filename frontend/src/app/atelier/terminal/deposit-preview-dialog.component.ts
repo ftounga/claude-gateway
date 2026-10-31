@@ -1,5 +1,6 @@
+import { NgTemplateOutlet } from '@angular/common';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MAT_DIALOG_DATA, MatDialogModule } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
@@ -8,7 +9,9 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 
 import { httpErrorMessage, humanFileSize } from '../../shared/http-error.util';
-import { PreviewKind, depositContentUrl, depositFileName, previewKindOf } from './deposit-preview';
+import {
+  MAX_TABLE_ROWS, PreviewKind, PreviewSheet, cellText, depositContentUrl, depositFileName, parseCsv, previewKindOf,
+} from './deposit-preview';
 
 /** Ce que l'aperçu reçoit : le terminal et la pièce (identifiant de dépôt, chemin, taille). */
 export interface DepositPreviewData {
@@ -26,7 +29,7 @@ export interface DepositPreviewData {
  */
 @Component({
   selector: 'app-deposit-preview-dialog',
-  imports: [MatDialogModule, MatButtonModule, MatIconModule, MatProgressSpinnerModule],
+  imports: [MatDialogModule, MatButtonModule, MatIconModule, MatProgressSpinnerModule, NgTemplateOutlet],
   template: `
     <h2 mat-dialog-title class="dp__title">{{ name }} <span class="dp__size">{{ size }}</span></h2>
     <mat-dialog-content class="dp">
@@ -56,12 +59,51 @@ export interface DepositPreviewData {
           @case ('audio') {
             <audio class="dp__audio" controls [src]="safeUrl()"></audio>
           }
+          @case ('csv') {
+            <ng-container [ngTemplateOutlet]="table"></ng-container>
+          }
+          @case ('xlsx') {
+            <ng-container [ngTemplateOutlet]="table"></ng-container>
+          }
           @default {
             <p class="dp__note">Pas d'aperçu pour ce type de fichier : téléchargez-le.</p>
           }
         }
       }
     </mat-dialog-content>
+    <!-- F-228 / SF-228-03 : un tableur en lecture seule — premier onglet, sélecteur, 500 lignes au plus. -->
+    <ng-template #table>
+      @if (tableError(); as message) {
+        <p class="dp__error" role="alert">{{ message }}</p>
+      } @else if (sheets().length === 0) {
+        <div class="dp__loading"><mat-spinner diameter="32"></mat-spinner></div>
+      } @else {
+        @if (sheets().length > 1) {
+          <div class="dp__sheets" role="tablist" aria-label="Onglets du classeur">
+            @for (s of sheets(); track $index; let i = $index) {
+              <button type="button" role="tab" class="dp__sheet" [class.dp__sheet--on]="i === sheetIndex()"
+                [attr.aria-selected]="i === sheetIndex()" (click)="sheetIndex.set(i)">{{ s.name }}</button>
+            }
+          </div>
+        }
+        @if (currentSheet(); as s) {
+          <div class="dp__table-wrap">
+            <table class="dp__table">
+              @for (row of s.rows; track $index; let r = $index) {
+                <tr>
+                  @for (cell of row; track $index) {
+                    @if (r === 0) { <th scope="col">{{ cell }}</th> } @else { <td>{{ cell }}</td> }
+                  }
+                </tr>
+              }
+            </table>
+          </div>
+          @if (s.truncated) {
+            <p class="dp__note">Les {{ maxRows }} premières lignes seulement : téléchargez le fichier pour le reste.</p>
+          }
+        }
+      }
+    </ng-template>
     <mat-dialog-actions align="end">
       @if (state() === 'ready' && kind === 'image') {
         <button mat-button type="button" class="dp__copy" (click)="copy()"><mat-icon>content_copy</mat-icon>Copier</button>
@@ -86,6 +128,15 @@ export interface DepositPreviewData {
     .dp__media { display: block; width: 100%; max-height: 70vh; }
     .dp__audio { width: 100%; }
     .dp__note { color: var(--cg-text-secondary); }
+    .dp__sheets { display: flex; flex-wrap: wrap; gap: var(--cg-space-1); margin-bottom: var(--cg-space-2); }
+    .dp__sheet { padding: var(--cg-space-1) var(--cg-space-2); border: 1px solid var(--cg-divider); border-radius: 4px;
+      background: var(--cg-surface); color: var(--cg-text-primary); font: inherit; cursor: pointer; }
+    .dp__sheet--on { border-color: var(--cg-primary); font-weight: 600; }
+    .dp__table-wrap { max-height: 60vh; overflow: auto; border: 1px solid var(--cg-divider); }
+    .dp__table { border-collapse: collapse; font-size: 13px; }
+    .dp__table th, .dp__table td { padding: 2px var(--cg-space-2); border: 1px solid var(--cg-divider);
+      text-align: left; white-space: nowrap; }
+    .dp__table th { position: sticky; top: 0; background: var(--cg-surface-2); }
     @media (max-width: 599px) { .dp { min-width: 0; } .dp__pdf { height: 60vh; } }
   `,
 })
@@ -108,6 +159,32 @@ export class DepositPreviewDialogComponent implements OnInit, OnDestroy {
   /** Les octets reçus (pour Copier, Télécharger, et les tableurs). */
   blob: Blob | null = null;
 
+  /** Les onglets d'un tableur lu (F-228 / SF-228-03), le premier montré d'abord. */
+  readonly sheets = signal<PreviewSheet[]>([]);
+  readonly sheetIndex = signal(0);
+  readonly currentSheet = computed(() => this.sheets()[this.sheetIndex()] ?? null);
+  readonly tableError = signal<string | null>(null);
+  readonly maxRows = MAX_TABLE_ROWS;
+
+  /** Lit le tableur : CSV par l'analyseur maison ; xlsx par une bibliothèque chargée À CE CLIC seulement. */
+  private async readTable(blob: Blob): Promise<void> {
+    try {
+      if (this.kind === 'csv') {
+        this.sheets.set([parseCsv(await blob.text())]);
+        return;
+      }
+      const { default: readXlsxFile } = await import('read-excel-file/browser');
+      const sheets = await readXlsxFile(blob);
+      this.sheets.set(sheets.map((s) => ({
+        name: s.sheet,
+        rows: s.data.slice(0, MAX_TABLE_ROWS).map((row) => row.map((cell) => cellText(cell))),
+        truncated: s.data.length > MAX_TABLE_ROWS,
+      })));
+    } catch {
+      this.tableError.set('Ce tableur n’a pas pu être lu : téléchargez-le.');
+    }
+  }
+
   ngOnInit(): void {
     this.http.get(depositContentUrl(this.data.workspaceId, this.data.depositId), { responseType: 'blob' }).subscribe({
       next: (blob) => {
@@ -117,6 +194,9 @@ export class DepositPreviewDialogComponent implements OnInit, OnDestroy {
         // Une URL blob: de NOS octets, servis `nosniff` + CSP sandbox : jamais du HTML (passerelle).
         this.safeUrl.set(this.sanitizer.bypassSecurityTrustResourceUrl(url));
         this.state.set('ready');
+        if (this.kind === 'csv' || this.kind === 'xlsx') {
+          void this.readTable(blob);
+        }
       },
       error: (err: HttpErrorResponse) => {
         this.error.set(err.status === 404 ? 'Pièce introuvable.' : httpErrorMessage(err, 'La pièce n’a pas pu être lue.'));
