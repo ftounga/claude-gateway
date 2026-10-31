@@ -14,6 +14,10 @@ import { CostReconciliation, ReconciliationDay, formatEuros, formatRate } from '
  * consommation par clé API. Rien n'est calculé ici : la passerelle rend les montants, convertis en euros au taux
  * unique `app.cost.usd-to-eur` (F-224 / SF-224-05) ; la facture Anthropic, elle, est en dollars, et la carte le dit
  * une fois. Sans clé d'administration, la carte dit comment la créer.
+ *
+ * <p>F-224 / SF-224-06 : chaque montant dit ce qu'il couvre (facturé = toute l'organisation, calculé = la passerelle),
+ * aujourd'hui est marqué partiel et sort des totaux, et la clé de la passerelle, une fois désignée, donne l'écart à
+ * périmètre égal.</p>
  */
 @Component({
   selector: 'app-admin-cost-reconciliation',
@@ -46,8 +50,11 @@ import { CostReconciliation, ReconciliationDay, formatEuros, formatRate } from '
           </p>
         } @else {
           <p class="recon__totals num">
-            30 jours : facturé <strong>{{ euros(d.billedTotalEur) }}</strong> · calculé
+            Jours complets : facturé <strong>{{ euros(d.billedTotalEur) }}</strong> · calculé
             <strong>{{ euros(d.calculatedTotalEur) }}</strong>
+            @if (d.gatewayApiKeyId) {
+              · clé de la passerelle <strong>{{ euros(d.gatewayKeyTotalEur) }}</strong>
+            }
             @if (d.lastFetchedAt) {
               <span class="recon__muted"> · lu le {{ fetchedAt(d.lastFetchedAt) }}</span>
             }
@@ -55,13 +62,32 @@ import { CostReconciliation, ReconciliationDay, formatEuros, formatRate } from '
           @if (rateNote(d.usdToEur); as note) {
             <p class="recon__muted recon__rate">{{ note }}</p>
           }
+          @if (d.scopes; as scopes) {
+            <ul class="recon__scopes">
+              <li>{{ scopes.billed }}</li>
+              <li>{{ scopes.calculated }}</li>
+              @if (d.gatewayApiKeyId) {
+                <li>{{ scopes.gatewayKey }}</li>
+              }
+              <li>{{ scopes.keys }}</li>
+              <li>{{ scopes.today }}</li>
+            </ul>
+          }
+          @if (d.gatewayKeyHint; as hint) {
+            <p class="recon__muted recon__hint"><mat-icon aria-hidden="true">info_outline</mat-icon>{{ hint }}</p>
+          }
           <table class="recon__table">
             <thead>
-              <tr><th scope="col">Jour</th><th scope="col">Facturé</th><th scope="col">Calculé</th><th scope="col">Écart</th></tr>
+              <tr>
+                <th scope="col">Jour</th><th scope="col">Facturé</th><th scope="col">Calculé</th><th scope="col">Écart</th>
+                @if (d.gatewayApiKeyId) {
+                  <th scope="col">Clé passerelle</th><th scope="col">Écart passerelle</th>
+                }
+              </tr>
             </thead>
             <tbody>
               @for (day of d.days; track day.day) {
-                <tr class="recon__row" [class.recon__row--open]="open() === day.day">
+                <tr class="recon__row" [class.recon__row--open]="open() === day.day" [class.recon__row--partial]="day.partial">
                   <td>
                     @if (day.keys.length > 0) {
                       <button type="button" class="recon__toggle" [attr.aria-expanded]="open() === day.day"
@@ -69,16 +95,23 @@ import { CostReconciliation, ReconciliationDay, formatEuros, formatRate } from '
                     } @else {
                       {{ day.day }}
                     }
+                    @if (day.partial) {
+                      <span class="recon__partial">(partiel)</span>
+                    }
                   </td>
                   <td class="num">{{ euros(day.billedEur) }}</td>
                   <td class="num">{{ euros(day.calculatedEur) }}</td>
-                  <td class="num" [class.recon__gap]="gapNotable(day)">{{ euros(day.gapEur) }}</td>
+                  <td class="num" [class.recon__gap]="gapNotable(day.gapEur)">{{ euros(day.gapEur) }}</td>
+                  @if (d.gatewayApiKeyId) {
+                    <td class="num">{{ euros(day.gatewayKeyEur) }}</td>
+                    <td class="num" [class.recon__gap]="gapNotable(day.gatewayGapEur)">{{ euros(day.gatewayGapEur) }}</td>
+                  }
                 </tr>
                 @if (open() === day.day) {
                   @for (key of day.keys; track key.apiKeyId) {
                     <tr class="recon__key">
-                      <td>{{ key.label || key.apiKeyId }}</td>
-                      <td class="num" colspan="3">≈ {{ euros(key.amountEur) }} (estimé à la grille)</td>
+                      <td>{{ key.label || key.apiKeyId }}@if (key.gateway) { <span class="recon__badge">passerelle</span>}</td>
+                      <td class="num" [attr.colspan]="d.gatewayApiKeyId ? 5 : 3">≈ {{ euros(key.amountEur) }} (estimé à la grille)</td>
                     </tr>
                   }
                 }
@@ -104,6 +137,11 @@ import { CostReconciliation, ReconciliationDay, formatEuros, formatRate } from '
     .recon__toggle { padding: 0; border: 0; background: none; color: var(--cg-primary); font: inherit; text-decoration: underline; cursor: pointer; }
     .recon__key td { color: var(--cg-text-secondary); padding-left: var(--cg-space-4); }
     .recon__gap { color: var(--cg-gold-ink); font-weight: 600; }
+    .recon__scopes { margin: 0 0 var(--cg-space-3); padding-left: var(--cg-space-4); color: var(--cg-text-secondary); font-size: 13px; }
+    .recon__hint { display: flex; gap: var(--cg-space-2); align-items: flex-start; margin-bottom: var(--cg-space-3); }
+    .recon__partial { margin-left: var(--cg-space-1); color: var(--cg-text-secondary); font-size: 12px; }
+    .recon__row--partial td { color: var(--cg-text-secondary); }
+    .recon__badge { margin-left: var(--cg-space-1); color: var(--cg-primary); font-size: 12px; font-weight: 600; }
     @media (max-width: 599px) { .recon__table { font-size: 12px; } }
   `,
 })
@@ -158,8 +196,8 @@ export class AdminCostReconciliationComponent implements OnInit {
   }
 
   /** Un écart d'un euro ou plus se voit (F-224 / SF-224-05 : le seuil suit la devise de l'écran). */
-  gapNotable(day: ReconciliationDay): boolean {
-    return day.gapEur !== null && day.gapEur !== undefined && Math.abs(day.gapEur) >= 1;
+  gapNotable(gapEur: number | null | undefined): boolean {
+    return gapEur !== null && gapEur !== undefined && Math.abs(gapEur) >= 1;
   }
 
   euros(amount: number | null | undefined): string {

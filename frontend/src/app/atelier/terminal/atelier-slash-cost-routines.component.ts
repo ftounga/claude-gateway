@@ -1,6 +1,6 @@
 import { Component, effect, inject, input, signal } from '@angular/core';
 
-import { Routine, monthPercent, usd } from '../../core/models/routine.models';
+import { Routine, eur, monthPercent } from '../../core/models/routine.models';
 import { RoutineService } from '../../core/services/routine.service';
 
 /**
@@ -16,22 +16,22 @@ import { RoutineService } from '../../core/services/routine.service';
   template: `
     @if (routines().length > 0) {
       <section class="cost-routines" aria-label="Routines de ce sujet">
-        <h4 class="cost-routines__title">Routines de ce sujet (en $)</h4>
+        <h4 class="cost-routines__title">Routines de ce sujet (en €)</h4>
         <ul class="cost-routines__list">
           @for (routine of routines(); track routine.id) {
             <li class="cost-routine">
               <div class="cost-routine__head">
                 <span class="cost-routine__name">{{ routine.name }}</span>
-                <span class="cost-routine__figure">{{ money(routine.monthSpentUsd ?? 0) }} / {{ money(routine.monthlyBudgetUsd ?? 0) }} ce mois</span>
+                <span class="cost-routine__figure">{{ money(routine.monthSpentEur) }} / {{ money(routine.monthlyBudgetEur) }} ce mois</span>
               </div>
               <div class="cost-routine__bar" role="img"
                    [attr.aria-label]="percent(routine) + ' % du budget du mois'">
                 <span class="cost-routine__fill" [style.width.%]="percent(routine)"></span>
               </div>
               <p class="cost-routine__detail">
-                {{ money(routine.maxRunUsd) }} max par exécution
-                @if (routine.lastRun?.costUsd; as last) {
-                  · dernier passage {{ money(last) }}
+                {{ money(routine.maxRunEur) }} max par exécution
+                @if (routine.lastRun?.costUsd) {
+                  · dernier passage {{ money(routine.lastRun?.costEur) }}
                 }
                 @if (!routine.active) {
                   · en pause
@@ -92,7 +92,7 @@ export class AtelierSlashCostRoutinesComponent {
     return monthPercent(routine);
   }
 
-  money(value: number): string {
-    return usd(value);
+  money(value: number | null | undefined): string {
+    return eur(value);
   }
 }

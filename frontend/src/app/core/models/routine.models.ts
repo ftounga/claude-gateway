@@ -18,6 +18,10 @@ export interface RoutineRequest {
   active?: boolean;
   /** Budget mensuel en dollars (SF-183-03), 1 … 2 000 $. */
   monthlyBudgetUsd?: number;
+  /** Budget par exécution SAISI EN EUROS (F-224 / SF-224-06), 0,10 … 50 € ; prime sur `maxRunUsd`. */
+  maxRunEur?: number;
+  /** Budget mensuel saisi en euros (F-224 / SF-224-06), 1 … 2 000 € ; prime sur `monthlyBudgetUsd`. */
+  monthlyBudgetEur?: number;
 }
 
 /** Une routine telle que l'écran la montre. */
@@ -45,6 +49,10 @@ export interface Routine {
   monthlyBudgetUsd?: number;
   /** Dépensé depuis le 1er du mois, dans le fuseau de la routine (SF-183-03). */
   monthSpentUsd?: number;
+  /** Les mêmes montants en euros, convertis par la passerelle (F-224 / SF-224-06). */
+  maxRunEur?: number | null;
+  monthlyBudgetEur?: number | null;
+  monthSpentEur?: number | null;
 }
 
 /** Part du budget du mois consommée, bornée à 100 % (barre). */
@@ -71,6 +79,9 @@ export interface RoutineRun {
   finishedAt: string | null;
   costUsd: number | null;
   capUsd: number | null;
+  /** Coût et plafond en euros (F-224 / SF-224-06). */
+  costEur?: number | null;
+  capEur?: number | null;
   errorCode: string | null;
   summary: string | null;
   /** Attentes créées ou modifiées pendant l'exécution (SF-183-04). */
@@ -169,6 +180,12 @@ export function cadenceLabel(routine: Pick<Routine, 'cadence' | 'dayOfWeek' | 'r
 export function usd(value: number | null | undefined): string {
   return `${(value ?? 0).toFixed(2).replace('.', ',')} $`;
 }
+
+/**
+ * Un montant en euros déjà converti par la passerelle (F-224 / SF-224-06) : « 4,60 € », ou « — » s'il manque
+ * (jamais un dollar présenté comme euro).
+ */
+export { formatEuros as eur } from '../../shared/euros';
 
 /** Une date courte en français : « lun. 19 oct., 08:00 ». */
 export function shortDateTime(iso: string | null | undefined): string {

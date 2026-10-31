@@ -6,7 +6,7 @@ import { of, throwError } from 'rxjs';
 import {
   AtelierSlashRoutinesComponent, draftErrors, draftOf, emptyDraft, requestOf,
 } from './atelier-slash-routines.component';
-import { Routine, RoutineRun, cadenceLabel, runStatusLabel, usd } from '../../core/models/routine.models';
+import { Routine, RoutineRun, cadenceLabel, eur, runStatusLabel, usd } from '../../core/models/routine.models';
 import { RoutineService } from '../../core/services/routine.service';
 import { SLASH_PANEL_COMMANDS, findPanelCommand } from './slash-panel-commands';
 
@@ -14,7 +14,7 @@ export function routine(over: Partial<Routine> = {}): Routine {
   return {
     id: 'r-1', workspaceId: 'w-1', name: 'Point du matin',
     instruction: 'le CR du daily d’aujourd’hui, version scriptée', cadence: 'WEEKDAYS', dayOfWeek: null,
-    runTime: '08:00', timeZone: 'Europe/Paris', maxRunUsd: 5, active: true, proposed: false, origin: 'USER',
+    runTime: '08:00', timeZone: 'Europe/Paris', maxRunUsd: 5, maxRunEur: 4.6, active: true, proposed: false, origin: 'USER',
     nextRunAt: '2026-10-19T06:00:00Z', createdAt: '2026-10-16T07:00:00Z', updatedAt: '2026-10-16T07:00:00Z',
     ...over,
   };
@@ -37,6 +37,9 @@ describe('Le panneau /routines (F-183 / SF-183-01)', () => {
       expect(cadenceLabel(routine({ cadence: 'WEEKLY', dayOfWeek: 5, runTime: '17:00' })))
         .toBe('Chaque vendredi à 17:00');
       expect(usd(2.5)).toBe('2,50 $');
+      // F-224 / SF-224-06 : les montants s'écrivent en euros, déjà convertis ; absent = « — ».
+      expect(eur(4.6)).toBe('4,60 €');
+      expect(eur(null)).toBe('—');
       expect(runStatusLabel({ status: 'DONE', trigger: 'CATCH_UP', errorCode: null })).toBe('Rattrapée');
       expect(runStatusLabel({ status: 'FAILED', trigger: 'SCHEDULED', errorCode: 'quota_exceeded' }))
         .toBe('Échec (quota_exceeded)');
@@ -47,10 +50,10 @@ describe('Le panneau /routines (F-183 / SF-183-01)', () => {
       const ok = { ...emptyDraft(), name: 'Matin', instruction: 'CR' };
       expect(draftErrors(ok)).toEqual([]);
       expect(draftErrors({ ...ok, runTime: '8h' })).toContain('L\'heure s\'écrit HH:mm.');
-      expect(draftErrors({ ...ok, maxRunUsd: 0.05 })).toContain('Le budget par exécution va de 0,10 $ à 50,00 $.');
-      expect(draftErrors({ ...ok, maxRunUsd: 51 }).length).toBe(1);
-      expect(draftErrors({ ...ok, monthlyBudgetUsd: 0.5 })).toContain('Le budget mensuel va de 1,00 $ à 2 000,00 $.');
-      expect(draftErrors({ ...ok, maxRunUsd: 10, monthlyBudgetUsd: 5 }))
+      expect(draftErrors({ ...ok, maxRunEur: 0.05 })).toContain('Le budget par exécution va de 0,10 € à 50,00 €.');
+      expect(draftErrors({ ...ok, maxRunEur: 51 }).length).toBe(1);
+      expect(draftErrors({ ...ok, monthlyBudgetEur: 0.5 })).toContain('Le budget mensuel va de 1,00 € à 2 000,00 €.');
+      expect(draftErrors({ ...ok, maxRunEur: 10, monthlyBudgetEur: 5 }))
         .toContain('Le budget mensuel ne peut pas être inférieur au budget par exécution.');
     });
 
@@ -91,7 +94,7 @@ describe('Le panneau /routines (F-183 / SF-183-01)', () => {
       const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
       expect(text).toContain('Point du matin');
       expect(text).toContain('Chaque jour ouvré à 08:00');
-      expect(text).toContain('5,00 $ max par exécution');
+      expect(text).toContain('4,60 € max par exécution');
       expect(text).toContain('Active');
     });
 
@@ -105,7 +108,7 @@ describe('Le panneau /routines (F-183 / SF-183-01)', () => {
       component.changed.subscribe(() => changed++);
       component.save();
       expect(service.create).toHaveBeenCalledWith('w-1', jasmine.objectContaining({
-        name: 'Matin', cadence: 'WEEKDAYS', runTime: '08:00', maxRunUsd: 5, monthlyBudgetUsd: 100,
+        name: 'Matin', cadence: 'WEEKDAYS', runTime: '08:00', maxRunEur: 5, monthlyBudgetEur: 100,
       }));
       expect(component.editing()).toBeFalse();
       expect(changed).toBe(1);
@@ -150,8 +153,8 @@ describe('Le panneau /routines (F-183 / SF-183-01)', () => {
     });
 
     it('montre la dépense du mois (SF-183-03)', () => {
-      create([routine({ monthlyBudgetUsd: 100, monthSpentUsd: 3.42 })]);
-      expect((fixture.nativeElement as HTMLElement).textContent).toContain('Ce mois : 3,42 $ sur 100,00 $');
+      create([routine({ monthlyBudgetUsd: 100, monthSpentUsd: 3.42, monthlyBudgetEur: 92, monthSpentEur: 3.15 })]);
+      expect((fixture.nativeElement as HTMLElement).textContent).toContain('Ce mois : 3,15 € sur 92,00 €');
     });
 
     it('montre le dernier passage en clair (SF-183-02)', () => {

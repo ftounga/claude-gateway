@@ -1,21 +1,28 @@
 /**
  * **Le coût d'une vidéo à l'écran** (F-216 / SF-216-03) : montants au format français, ligne « Coût : … (estimé …) ».
- * Fonctions pures : la gateway mesure et estime, l'écran ne calcule rien.
+ * Fonctions pures : la gateway mesure, estime **et convertit** — en euros depuis F-224 / SF-224-06, au taux unique de
+ * la passerelle (champs `…Eur`) ; l'écran ne calcule rien.
  */
+
+import { formatEuros } from '../euros';
 
 /** Ce qui porte un coût mesuré et une estimation (carte, série, fiche). */
 export interface CostCarrier {
   costUsd?: number | null;
   estimateLowUsd?: number | null;
   estimateHighUsd?: number | null;
+  /** Les mêmes montants en euros (F-224 / SF-224-06), absents d'une passerelle antérieure. */
+  costEur?: number | null;
+  estimateLowEur?: number | null;
+  estimateHighEur?: number | null;
 }
 
-/** « 5,63 $ » (virgule, deux décimales, espace insécable avant le symbole). */
-export function formatUsd(value: number): string {
-  return `${value.toFixed(2).replace('.', ',')} $`;
+/** « 5,18 € » : la seule écriture des euros de l'application (`shared/euros`). */
+export function formatEur(value: number): string {
+  return formatEuros(value);
 }
 
-/** « 4,80 à 7,20 $ », ou un seul montant si les bornes sont égales ; `null` sans estimation. */
+/** « 4,41 à 6,62 € », ou un seul montant si les bornes sont égales ; `null` sans estimation. */
 export function formatRange(low: number | null | undefined, high: number | null | undefined): string | null {
   if (low == null && high == null) {
     return null;
@@ -23,18 +30,24 @@ export function formatRange(low: number | null | undefined, high: number | null 
   const lo = low ?? high!;
   const hi = high ?? low!;
   if (lo.toFixed(2) === hi.toFixed(2)) {
-    return formatUsd(lo);
+    return formatEur(lo);
   }
-  return `${lo.toFixed(2).replace('.', ',')} à ${formatUsd(hi)}`;
-}
-
-/** Le coût mesuré seul (« 5,63 $ »), ou `null` s'il ne l'est pas. */
-export function costShort(item: CostCarrier | null | undefined): string | null {
-  return item?.costUsd == null ? null : formatUsd(item.costUsd);
+  return `${lo.toFixed(2).replace('.', ',')} à ${formatEur(hi)}`;
 }
 
 /**
- * « Coût : 5,63 $ (estimé 4,80 à 7,20 $) », « Coût : 5,63 $ », ou « Coût non mesuré (publiée sans devis) ».
+ * Le coût mesuré seul (« 5,18 € »), ou `null` s'il ne l'est pas. Mesuré mais sans euros (passerelle antérieure) :
+ * « — », jamais un dollar présenté comme euro.
+ */
+export function costShort(item: CostCarrier | null | undefined): string | null {
+  if (item?.costUsd == null) {
+    return null;
+  }
+  return item.costEur == null ? '—' : formatEur(item.costEur);
+}
+
+/**
+ * « Coût : 5,18 € (estimé 4,41 à 6,62 €) », « Coût : 5,18 € », ou « Coût non mesuré (publiée sans devis) ».
  *
  * @param label le début de la ligne (« Coût », « Coût de la série »)
  */
@@ -42,7 +55,7 @@ export function costLine(item: CostCarrier | null | undefined, label = 'Coût'):
   if (item?.costUsd == null) {
     return `${label} non mesuré (publiée sans devis)`;
   }
-  const estimate = formatRange(item.estimateLowUsd, item.estimateHighUsd);
-  return estimate ? `${label} : ${formatUsd(item.costUsd)} (estimé ${estimate})`
-    : `${label} : ${formatUsd(item.costUsd)}`;
+  const measured = item.costEur == null ? '—' : formatEur(item.costEur);
+  const estimate = formatRange(item.estimateLowEur, item.estimateHighEur);
+  return estimate ? `${label} : ${measured} (estimé ${estimate})` : `${label} : ${measured}`;
 }

@@ -23,7 +23,7 @@ describe('La bande des routines (F-183 / SF-183-01)', () => {
     return {
       id: 'run-1', routineId: 'r-1', slotAt: null, trigger: 'SCHEDULED', status: 'DONE',
       startedAt: new Date(Date.now() - 2 * 3_600_000).toISOString(),
-      finishedAt: new Date(Date.now() - 2 * 3_600_000).toISOString(), costUsd: 0.84, capUsd: 5, errorCode: null,
+      finishedAt: new Date(Date.now() - 2 * 3_600_000).toISOString(), costUsd: 0.84, capUsd: 5, costEur: 0.77, capEur: 4.6, errorCode: null,
       summary: 'Routine du matin — 3 attentes mises à jour', attentesUpdated: 3, routineName: 'Routine du matin',
       acknowledgedAt: null, ...over,
     };
@@ -79,7 +79,7 @@ describe('La bande des routines (F-183 / SF-183-01)', () => {
     const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain('Routine du matin — 3 attentes mises à jour');
     expect(text).toContain('il y a 2 h');
-    expect(text).toContain('0,84 $');
+    expect(text).toContain('0,77 €');
   });
 
   it('[Voir] amène la demande ; [×] ferme la ligne (SF-183-04)', () => {
