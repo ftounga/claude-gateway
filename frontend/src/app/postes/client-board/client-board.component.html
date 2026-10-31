@@ -446,11 +446,22 @@
                         </div>
                       </div>
 
+  @if (!t.chantierNumber && (t.suggestedChantiers?.length ?? 0) > 0) {
+    <!-- F-227 / SF-227-03 : née pendant des chantiers ouverts, sans chantier — on propose, on ne range pas seul. -->
+    <div class="cb__suggest" role="group" [attr.aria-label]="suggestionLabel(t) + ' : ' + t.description">
+      <span class="cb__suggest-text">{{ suggestionLabel(t) }} :</span>
+      @for (n of t.suggestedChantiers; track n) {
+        <button mat-button type="button" class="cb__suggest-attach" [disabled]="taskBusy(t)" (click)="attach(t, n)">
+          Rattacher au chantier {{ n }}
+        </button>
+      }
+    </div>
+  }
   @if (t.proposedStatus) {
     <!-- F-227 / SF-227-02 : la clôture proposée (revue des attentes anciennes) attend un geste — rien n'est fermé seul. -->
     <div class="cb__proposal" role="group" [attr.aria-label]="'Clôture proposée : ' + t.description">
       <mat-icon aria-hidden="true">inventory_2</mat-icon>
-      <span class="cb__proposal-text">Clôture proposée{{ t.proposedReason ? ' — ' + t.proposedReason : '' }}</span>
+      <span class="cb__proposal-text">Clôture proposée{{ proposalText(t) ? ' — ' + proposalText(t) : '' }}</span>
       <button mat-button type="button" class="cb__proposal-confirm" [disabled]="taskBusy(t)" (click)="confirmProposal(t)">Clore</button>
       <button mat-button type="button" class="cb__proposal-dismiss" [disabled]="taskBusy(t)" (click)="dismissProposal(t)">Garder</button>
     </div>

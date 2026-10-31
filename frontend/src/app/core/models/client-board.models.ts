@@ -101,6 +101,10 @@ export interface ClientBoardLooseTask {
   /** La clôture proposée (F-175 ; revue des 14 jours, F-227), ou `null`. */
   proposedStatus?: string | null;
   proposedReason?: string | null;
+  /** Qui propose (F-227 / SF-227-03) : `REVUE` (seule fermable en lot) ou `AGENT`. */
+  proposalSource?: 'REVUE' | 'AGENT' | null;
+  /** Au fil de l'eau sans chantier : les chantiers ouverts déjà ouverts à sa naissance, à proposer (SF-227-03). */
+  suggestedChantiers?: number[];
 }
 
 /** Le tableau d'un client. */
@@ -390,7 +394,33 @@ export function subjectBlocks(board: Pick<ClientBoard, 'chantiers' | 'horsChanti
     .filter((block) => block.chantiers.length > 0 || block.tasks.length > 0);
 }
 
-/** Les attentes ouvertes sous lesquelles une clôture est proposée (F-227 / SF-227-02). */
+/**
+ * Les attentes dont la clôture est proposée PAR LA REVUE, « sans objet » (F-227 / SF-227-03) — les seules que
+ * [Clore les N proposées] ferme. Une proposition de l'agent (« c'est fait », ou même « sans objet ») se confirme une
+ * à une, jamais en lot.
+ */
 export function proposedTasks(board: Pick<ClientBoard, 'horsChantier'> | null): ClientBoardLooseTask[] {
-  return (board?.horsChantier ?? []).filter((t) => !!t.proposedStatus);
+  return (board?.horsChantier ?? []).filter((t) => isReviewProposal(t));
+}
+
+/** Vrai si la proposition vient de la revue des attentes anciennes et propose « sans objet ». */
+export function isReviewProposal(t: Pick<ClientBoardLooseTask, 'proposedStatus' | 'proposalSource'>): boolean {
+  return t.proposedStatus === 'ANNULE' && t.proposalSource === 'REVUE';
+}
+
+/**
+ * Le texte d'une clôture proposée (F-227 / SF-227-03), le même partout : la revue dit sa raison telle quelle ; une
+ * proposition de l'agent dit que c'est l'agent qui le pense.
+ */
+export function proposalText(t: Pick<ClientBoardLooseTask, 'proposedStatus' | 'proposedReason' | 'proposalSource'>):
+  string {
+  if (!t.proposedStatus) {
+    return '';
+  }
+  const reason = t.proposedReason?.trim() || '';
+  if (t.proposalSource === 'REVUE') {
+    return reason;
+  }
+  const what = t.proposedStatus === 'FAIT' ? 'c’est fait' : 'c’est sans objet';
+  return `L’agent pense que ${what}` + (reason ? ` : « ${reason} »` : '');
 }

@@ -36,6 +36,7 @@ import {
   canMarkRequested,
   launchSummary,
   overLimitMessage,
+  proposalText,
   proposedTasks,
   sinceLabel,
   subjectBlocks,
@@ -670,7 +671,27 @@ export class ClientBoardComponent {
     });
   }
 
-  /** [Clore les N proposées] : une confirmation, puis chaque clôture proposée est confirmée, une à une. */
+  /** Le texte de la clôture proposée, le même que dans le panneau des attentes (SF-227-03). */
+  proposalText(t: ClientBoardLooseTask): string {
+    return proposalText(t);
+  }
+
+  /** « Née pendant les chantiers 1 et 2 » — les chantiers à proposer au rattachement (SF-227-03). */
+  suggestionLabel(t: ClientBoardLooseTask): string {
+    const n = t.suggestedChantiers ?? [];
+    if (n.length === 0) {
+      return '';
+    }
+    if (n.length === 1) {
+      return `Née pendant le chantier ${n[0]}`;
+    }
+    return `Née pendant les chantiers ${n.slice(0, -1).join(', ')} et ${n[n.length - 1]}`;
+  }
+
+  /**
+   * [Clore les N proposées] : une confirmation, puis UN appel — la gateway ne ferme que les propositions de la revue
+   * (F-227 / SF-227-03 : jamais une proposition de l'agent).
+   */
   confirmAllProposals(): void {
     const tasks = this.proposals();
     if (tasks.length === 0 || this.reviewing()) {
@@ -690,16 +711,20 @@ export class ClientBoardComponent {
           return;
         }
         this.reviewing.set(true);
-        from(tasks).pipe(
-          concatMap((t) => this.actions.confirmProposal(t.workspaceId, t.actionId).pipe(
-            map(() => true), catchError(() => of(false)))),
-          toArray(),
-        ).subscribe((results) => {
-          this.reviewing.set(false);
-          const done = results.filter(Boolean).length;
-          this.snackBar.open(`${done} attente${done > 1 ? 's' : ''} close${done > 1 ? 's' : ''}`
-            + (done < results.length ? ` · ${results.length - done} en échec` : '') + '.', 'OK', { duration: 6000 });
-          this.load(this.hostId(), false);
+        this.boards.closeStale(this.hostId(), tasks.map((t) => t.actionId)).subscribe({
+          next: (result) => {
+            this.reviewing.set(false);
+            const done = result.closed;
+            this.snackBar.open(`${done} attente${done > 1 ? 's' : ''} close${done > 1 ? 's' : ''}`
+              + (result.skipped > 0 ? ` · ${result.skipped} laissée${result.skipped > 1 ? 's' : ''}` : '') + '.',
+              'OK', { duration: 6000 });
+            this.load(this.hostId(), false);
+          },
+          error: (err) => {
+            this.reviewing.set(false);
+            this.snackBar.open(httpErrorMessage(err, 'La clôture des attentes a échoué.'), 'Fermer', { duration: 6000 });
+            this.load(this.hostId(), false);
+          },
         });
       });
   }

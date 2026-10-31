@@ -5,6 +5,7 @@ import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
+import { MatMenuModule } from '@angular/material/menu';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -12,6 +13,7 @@ import { Observable } from 'rxjs';
 
 import {
   AccesProposal,
+  actionProposalText,
   ageLabel,
   CATEGORIES,
   CATEGORIE_LABELS,
@@ -82,7 +84,7 @@ interface Column {
   selector: 'app-terminal-actions-panel',
   imports: [
     FormsModule, MatButtonModule, MatButtonToggleModule, MatFormFieldModule, MatIconModule,
-    MatInputModule, MatSelectModule, MatTooltipModule, TerminalPeopleViewComponent,
+    MatInputModule, MatMenuModule, MatSelectModule, MatTooltipModule, TerminalPeopleViewComponent,
     TerminalAccesViewComponent,
   ],
   template: `
@@ -326,15 +328,16 @@ interface Column {
                     </p>
 
                     @if (action.proposedStatus && isOpen(action)) {
-                      <div class="action__proposal" role="group" aria-label="Fermeture proposée">
+                      <!-- F-227 / SF-227-03 : le même mot et les mêmes gestes que le tableau du client. -->
+                      <div class="action__proposal" role="group" [attr.aria-label]="'Clôture proposée : ' + action.description">
                         <p class="action__proposal-text">
-                          L'agent pense que c'est {{ action.proposedStatus === 'ANNULE' ? 'sans objet' : 'réglé' }}@if (action.proposedReason) { : « {{ action.proposedReason }} »}.
+                          Clôture proposée{{ proposalText(action) ? ' — ' + proposalText(action) : '' }}
                         </p>
                         <div class="action__gestures">
                           <button mat-flat-button type="button" class="action__confirm" [disabled]="busy() === action.id"
-                            (click)="confirm(action)">Confirmer</button>
+                            (click)="confirm(action)">Clore</button>
                           <button mat-button type="button" class="action__dismiss" [disabled]="busy() === action.id"
-                            (click)="dismiss(action)">Pas encore</button>
+                            (click)="dismiss(action)">Garder</button>
                         </div>
                       </div>
                     }
@@ -363,6 +366,23 @@ interface Column {
                           <button mat-button type="button" class="action__reopen" [disabled]="busy() === action.id"
                             (click)="reopen(action)">Rétablir</button>
                         }
+                      }
+                      @if (isOpen(action) && action.workspaceId === workspaceId()
+                        && (attachChoices(action).length > 0 || action.chantierNumber)) {
+                        <!-- F-227 / SF-227-03 : ranger l'attente depuis le terminal, comme depuis le tableau du client. -->
+                        <button mat-icon-button type="button" class="action__attach-btn" matTooltip="Ranger sous un chantier"
+                          [attr.aria-label]="'Ranger : ' + action.description" [matMenuTriggerFor]="attachMenu">
+                          <mat-icon>link</mat-icon></button>
+                        <mat-menu #attachMenu="matMenu" xPosition="before">
+                          @for (n of attachChoices(action); track n) {
+                            <button mat-menu-item type="button" class="action__attach" [disabled]="busy() === action.id"
+                              (click)="attach(action, n)">Rattacher au chantier {{ n }}</button>
+                          }
+                          @if (action.chantierNumber) {
+                            <button mat-menu-item type="button" class="action__detach" [disabled]="busy() === action.id"
+                              (click)="attach(action, null)">Ranger au fil de l'eau</button>
+                          }
+                        </mat-menu>
                       }
                       @if (isOpen(action)) {
                         <button mat-icon-button type="button" class="action__edit-btn" matTooltip="Modifier"
@@ -690,6 +710,12 @@ export class TerminalActionsPanelComponent implements OnInit {
   /** Le terminal courant. */
   readonly workspaceId = input.required<string>();
 
+  /** Le fil de chantier affiché (F-227 / SF-227-03) : un ajout à la main s'y range ; `null` = chantier du tour. */
+  readonly chantier = input<number | null>(null);
+
+  /** Les chantiers ouverts du sujet (F-227 / SF-227-03), auxquels rattacher une attente de ce terminal. */
+  readonly openChantiers = input<number[]>([]);
+
   /** Fermeture demandée (croix, Échap). */
   readonly closed = output<void>();
 
@@ -969,6 +995,22 @@ export class TerminalActionsPanelComponent implements OnInit {
       this.service.confirmProposal(action.workspaceId, action.id));
   }
 
+  /** Le texte de la clôture proposée — le même que le tableau du client (SF-227-03). */
+  proposalText(action: TerminalAction): string {
+    return actionProposalText(action);
+  }
+
+  /** Les chantiers ouverts du sujet auxquels rattacher l'attente, sauf le sien (F-227 / SF-227-03). */
+  attachChoices(action: TerminalAction): number[] {
+    return [...this.openChantiers()].filter((n) => n !== action.chantierNumber).sort((a, b) => a - b);
+  }
+
+  /** [Rattacher au chantier N] / [Ranger au fil de l'eau] (F-227 / SF-227-03). */
+  attach(action: TerminalAction, chantier: number | null): void {
+    this.apply(action, { ...action, chantierNumber: chantier },
+      this.service.attachToChantier(action.workspaceId, action.id, chantier));
+  }
+
   dismiss(action: TerminalAction): void {
     this.apply(action, { ...action, proposedStatus: null, proposedReason: null },
       this.service.dismissProposal(action.workspaceId, action.id));
@@ -1007,7 +1049,7 @@ export class TerminalActionsPanelComponent implements OnInit {
     this.busy.set('new');
     this.service.create(this.workspaceId(), {
       description, person: this.newPerson.trim() || null, categorie: this.newCategorie, qui: this.newQui,
-      dueAt: this.newDue || null,
+      dueAt: this.newDue || null, chantier: this.chantier(),
     })
       .subscribe({
         next: created => {

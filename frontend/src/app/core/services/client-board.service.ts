@@ -33,6 +33,15 @@ export class ClientBoardService {
       `/api/runner-hosts/${hostId}/chantiers/stale-tasks/propose`, {}, { params: { days } });
   }
 
+  /**
+   * [Clore les N proposées] (F-227 / SF-227-03) : la gateway ne ferme que les propositions de la revue ; toute autre
+   * est laissée et comptée dans `skipped`.
+   */
+  closeStale(hostId: string, actionIds: string[]): Observable<{ closed: number; skipped: number }> {
+    return this.http.post<{ closed: number; skipped: number }>(
+      `/api/runner-hosts/${hostId}/chantiers/stale-tasks/close`, { actionIds });
+  }
+
   /** [Ne plus reporter] le chantier N. */
   unsnooze(workspaceId: string, number: number): Observable<void> {
     return this.http.delete<void>(`/api/workspaces/${workspaceId}/journey/chantiers/${number}/snooze`);

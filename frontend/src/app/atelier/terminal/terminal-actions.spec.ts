@@ -256,7 +256,7 @@ describe('Les attentes du terminal (F-175 / SF-175-04)', () => {
       const a = action('a-1', 'Obtenir l’accès VPN',
         { proposedStatus: 'FAIT', proposedReason: 'Karim a ouvert l’accès' });
       build(board([a]));
-      expect(fixture.nativeElement.textContent).toContain('L\'agent pense que c\'est réglé');
+      expect(fixture.nativeElement.textContent).toContain('Clôture proposée — L’agent pense que c’est fait');
       expect(fixture.nativeElement.textContent).toContain('Karim a ouvert l’accès');
 
       service.dismissProposal.and.returnValue(of({ ...a, proposedStatus: null }));
@@ -266,6 +266,38 @@ describe('Les attentes du terminal (F-175 / SF-175-04)', () => {
       service.confirmProposal.and.returnValue(of({ ...a, status: 'FAIT', proposedStatus: null }));
       component.confirm(a);
       expect(service.confirmProposal).toHaveBeenCalledWith('w-1', 'a-1');
+    });
+
+    it('SF-227-03 : la proposition de la revue dit sa raison, sans « L’agent pense » ; [Clore] / [Garder]', () => {
+      const a = action('a-1', 'Vieille attente', { proposedStatus: 'ANNULE', proposalSource: 'REVUE',
+        proposedReason: 'Sans geste depuis 20 jours : périmée ?' });
+      build(board([a]));
+      const box = fixture.nativeElement.querySelector('.action__proposal') as HTMLElement;
+      expect(box.textContent).toContain('Clôture proposée — Sans geste depuis 20 jours : périmée ?');
+      expect(box.textContent).not.toContain('agent');
+      expect(box.querySelector('.action__confirm')?.textContent).toContain('Clore');
+      expect(box.querySelector('.action__dismiss')?.textContent).toContain('Garder');
+      expect(fixture.nativeElement.textContent).not.toContain('Fermeture proposée');
+    });
+
+    it('SF-227-03 : rattacher depuis le terminal, et l’ajout se range sous le fil affiché', () => {
+      const a = action('a-1', 'Demander le VPN', { chantierNumber: 1 });
+      build(board([a]));
+      fixture.componentRef.setInput('openChantiers', [2, 1]);
+      fixture.componentRef.setInput('chantier', 2);
+      fixture.detectChanges();
+      expect(component.attachChoices(a)).toEqual([2]);
+      service.attachToChantier.and.returnValue(of({ ...a, chantierNumber: 2 }));
+      component.attach(a, 2);
+      expect(service.attachToChantier).toHaveBeenCalledWith('w-1', 'a-1', 2);
+      service.attachToChantier.and.returnValue(of({ ...a, chantierNumber: null }));
+      component.attach(a, null);
+      expect(service.attachToChantier).toHaveBeenCalledWith('w-1', 'a-1', null);
+
+      service.create.and.returnValue(of(action('a-2', 'Nouvelle')));
+      component.newDescription = 'Nouvelle';
+      component.add();
+      expect(service.create).toHaveBeenCalledWith('w-1', jasmine.objectContaining({ chantier: 2 }));
     });
 
     it('Rétablir, ajouter, éditer', () => {
@@ -278,7 +310,8 @@ describe('Les attentes du terminal (F-175 / SF-175-04)', () => {
       service.create.and.returnValue(of(action('a-2', 'Obtenir la dérogation')));
       component.newDescription = 'Obtenir la dérogation';
       component.add();
-      expect(service.create).toHaveBeenCalledWith('w-1', { description: 'Obtenir la dérogation', person: null, categorie: null, qui: null, dueAt: null });
+      expect(service.create).toHaveBeenCalledWith('w-1', { description: 'Obtenir la dérogation', person: null, categorie: null, qui: null, dueAt: null,
+        chantier: null });
 
       const open = action('a-3', 'Demander');
       service.edit.and.returnValue(of({ ...open, description: 'Demander le VPN' }));

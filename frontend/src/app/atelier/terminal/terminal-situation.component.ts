@@ -10,6 +10,7 @@ import {
   situationIdleThreshold,
 } from '../../core/models/situation.models';
 import { SituationService } from '../../core/services/situation.service';
+import { SituationAttente } from '../../core/models/situation.models';
 import { humanFileSize } from '../../shared/http-error.util';
 import { splitEssentialWithFallback } from './essential';
 
@@ -91,14 +92,20 @@ import { splitEssentialWithFallback } from './essential';
       @if (s.attentes.length > 0) {
         <section class="sit__block" aria-label="Ce qui attend">
           <h4 class="sit__title">Ce qui attend</h4>
-          <ul class="sit__list">
-            @for (a of s.attentes; track a.id) {
-              <li class="sit__item">
-                {{ a.description }}
-                <span class="sit__muted"> · {{ a.status === 'DEMANDE' ? 'demandé' : 'à faire' }}{{ a.to ? ' · ' + a.to : '' }}{{ a.since ? ' · depuis le ' + day(a.since) : '' }}</span>
-              </li>
+          <!-- F-227 / SF-227-03 : groupé par chantier, puis « Au fil de l'eau » — comme le tableau du client. -->
+          @for (g of attenteGroups(); track g.key) {
+            @if (attenteGroups().length > 1 || g.chantier !== null) {
+              <h5 class="sit__sub" [attr.data-group]="g.key">{{ g.label }}</h5>
             }
-          </ul>
+            <ul class="sit__list">
+              @for (a of g.items; track a.id) {
+                <li class="sit__item">
+                  {{ a.description }}
+                  <span class="sit__muted"> · {{ a.status === 'DEMANDE' ? 'demandée' : 'à faire' }}{{ a.to ? ' · ' + a.to : '' }}{{ a.since ? ' · depuis le ' + day(a.since) : '' }}</span>
+                </li>
+              }
+            </ul>
+          }
         </section>
       }
 
@@ -156,6 +163,7 @@ import { splitEssentialWithFallback } from './essential';
     .sit__block { margin: 0 0 var(--cg-space-3); }
     .sit__title { margin: 0 0 var(--cg-space-1); font: 600 13px var(--cg-font-body); color: var(--cg-surface); }
     .sit__list { margin: 0; padding: 0; list-style: none; }
+    .sit__sub { margin: var(--cg-space-1) 0; font: 600 12px var(--cg-font-body); color: var(--cg-terminal-ink-2); }
     .sit__item { margin: 0 0 var(--cg-space-1); }
     .sit__muted { color: var(--cg-terminal-ink-2); }
     .sit__await, .sit__warn { color: var(--cg-orange-2); }
@@ -181,6 +189,32 @@ export class TerminalSituationComponent {
   readonly shown = signal<string | null>(null);
   readonly threshold = signal<number>(situationIdleThreshold());
   readonly choices = SITUATION_IDLE_CHOICES;
+
+  /**
+   * « Ce qui attend », groupé (F-227 / SF-227-03) : un groupe par chantier ouvert qui a des attentes, dans l'ordre des
+   * chantiers, puis « Au fil de l'eau » (sans chantier, ou rangée sous un chantier qui n'est plus ouvert).
+   */
+  readonly attenteGroups = computed<AttenteGroup[]>(() => {
+    const s = this.data();
+    if (!s) {
+      return [];
+    }
+    const groups: AttenteGroup[] = [];
+    const placed = new Set<string>();
+    for (const c of s.chantiers) {
+      const items = s.attentes.filter((a) => a.chantierNumber === c.number);
+      if (items.length > 0) {
+        items.forEach((a) => placed.add(a.id));
+        groups.push({ key: `c${c.number}`, chantier: c.number,
+          label: `Chantier ${c.number}${c.title ? ' — ' + c.title : ''}`, items });
+      }
+    }
+    const loose = s.attentes.filter((a) => !placed.has(a.id));
+    if (loose.length > 0) {
+      groups.push({ key: 'loose', chantier: null, label: 'Au fil de l’eau', items: loose });
+    }
+    return groups;
+  });
 
   readonly pending = computed(() => (this.data()?.envois ?? []).filter((e) => !e.sentAt));
   readonly done = computed(() => (this.data()?.envois ?? []).filter((e) => !!e.sentAt));
@@ -276,4 +310,12 @@ export class TerminalSituationComponent {
   size(bytes: number): string {
     return humanFileSize(bytes);
   }
+}
+
+/** Un groupe de « Ce qui attend » (F-227 / SF-227-03). */
+interface AttenteGroup {
+  key: string;
+  chantier: number | null;
+  label: string;
+  items: SituationAttente[];
 }

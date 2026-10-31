@@ -75,6 +75,26 @@ describe('F-225 / SF-225-02 — le point de situation', () => {
     expect(text).toContain('Relancer Zahi');
   });
 
+  it('SF-227-03 : « Ce qui attend » est groupé par chantier, puis au fil de l’eau', () => {
+    const fixture = TestBed.createComponent(TerminalSituationComponent);
+    fixture.componentRef.setInput('workspaceId', 'ws-1');
+    fixture.detectChanges();
+    http.expectOne('/api/workspaces/ws-1/situation').flush({ ...SITUATION, attentes: [
+      ...SITUATION.attentes,
+      { id: 'a2', description: 'Relire la doc', status: 'A_FAIRE', qui: 'MOI', to: null, since: null, chantierNumber: null },
+      { id: 'a3', description: 'Ancien chantier', status: 'A_FAIRE', qui: null, to: null, since: null, chantierNumber: 7 },
+    ] });
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    const groups = Array.from(el.querySelectorAll('.sit__sub')).map((h) => h.textContent?.trim());
+    expect(groups).toEqual(['Chantier 2 — Logs', 'Au fil de l’eau']);
+    const lists = el.querySelectorAll('[aria-label="Ce qui attend"] .sit__list');
+    expect(lists[0].textContent).toContain('Compte forge');
+    expect(lists[0].textContent).toContain('demandée');
+    expect(lists[1].textContent).toContain('Relire la doc');
+    expect(lists[1].textContent).toContain('Ancien chantier');
+  });
+
   it('[Voir] montre le texte, [Marquer envoyé] émet le geste et met la carte à jour', () => {
     const fixture = mount();
     const el: HTMLElement = fixture.nativeElement;

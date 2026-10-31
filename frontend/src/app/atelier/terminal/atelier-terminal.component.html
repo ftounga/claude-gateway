@@ -2078,6 +2078,8 @@
   @if (actionsOpen() && projectId) {
     <app-terminal-actions-panel
       [workspaceId]="projectId"
+      [chantier]="actionsChantier()"
+      [openChantiers]="actionsOpenChantiers()"
       (changed)="onBoardChanged($event)"
       (followUp)="onFollowUp($event)"
       (closed)="closeActions()"
