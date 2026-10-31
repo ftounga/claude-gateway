@@ -312,3 +312,26 @@ code, pre { font-family: var(--cg-font-mono); }
   width: min(380px, calc(100vw - 32px));
   max-width: min(380px, calc(100vw - 32px));
 }
+
+// Tableau du client (F-227 / SF-227-02) — global : le budget de style du composant est plein.
+/* une attente rangée sous son chantier : en retrait, filet gauche ; la clôture proposée. */
+.cb__item--attached {
+  margin-left: var(--cg-space-5);
+  border-left: 2px solid var(--cg-divider);
+}
+
+.cb__proposal {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cg-space-1) var(--cg-space-2);
+  padding: var(--cg-space-1) var(--cg-space-3);
+  font-size: 13px;
+  color: var(--cg-text-primary);
+  background: #FFF8E1;
+}
+
+.cb__proposal-text {
+  flex: 1;
+  min-width: 12rem;
+}

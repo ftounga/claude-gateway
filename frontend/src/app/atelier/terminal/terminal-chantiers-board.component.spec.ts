@@ -68,6 +68,23 @@ describe('F-208 / SF-208-03 — le tableau des chantiers', () => {
     return fixture;
   };
 
+  it('F-227 / SF-227-02 : les attentes rangées sous le chantier sont listées sur sa carte', () => {
+    const fixture = mount(journey([chantier(2, {
+      focus: true,
+      attentes: [
+        { id: 'a1', description: 'Demander le certificat à Karim', status: 'DEMANDE', qui: 'TIERS', person: 'Karim', createdAt: null },
+        { id: 'a2', description: 'Relire la doc', status: 'A_FAIRE', qui: 'MOI', person: null, createdAt: null },
+      ],
+    })]));
+    const el: HTMLElement = fixture.nativeElement;
+    const items = el.querySelectorAll('.board__attente');
+    expect(items.length).toBe(2);
+    expect(items[0].textContent).toContain('demandée');
+    expect(items[0].textContent).toContain('Karim');
+    expect(el.querySelector('.board__attentes-title')?.textContent).toContain('Attentes de ce chantier · 2');
+    expect(mount(journey([chantier(3, { focus: true })])).nativeElement.querySelector('.board__attentes')).toBeNull();
+  });
+
   it('F-222 / SF-222-03 : un chantier en sommeil est daté, avec [Clore] — jamais clos sans clic', () => {
     const fiveDaysAgo = new Date(Date.now() - 5 * 86_400_000 - 60_000).toISOString();
     const fixture = mount(journey([

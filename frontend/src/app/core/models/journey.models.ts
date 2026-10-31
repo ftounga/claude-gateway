@@ -72,6 +72,19 @@ export interface OpenChantier {
   lastActivityAt?: string | null;
   /** En Exécution sans geste depuis 3 jours, hors focus : un chantier « en sommeil » à clore ou reprendre. */
   stale?: boolean;
+  /** Les attentes ouvertes rangées sous ce chantier qu'aucune étape n'attend déjà (F-227 / SF-227-01). */
+  attentes?: LinkedAttente[];
+}
+
+/** Une attente rangée sous un chantier (F-227 / SF-227-01). */
+export interface LinkedAttente {
+  id: string;
+  description: string;
+  /** `A_FAIRE` ou `DEMANDE`. */
+  status: string | null;
+  qui: string | null;
+  person: string | null;
+  createdAt: string | null;
 }
 
 /** Jours entiers écoulés depuis le dernier geste d'un chantier, ou `null` si inconnu (F-222 / SF-222-03). */

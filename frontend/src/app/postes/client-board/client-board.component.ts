@@ -7,6 +7,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { RADAR_DRAFT_STATE } from '../../shared/radar-draft';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { NgTemplateOutlet } from '@angular/common';
 import { Router, RouterLink } from '@angular/router';
 import { Observable, catchError, concatMap, from, map, of, toArray } from 'rxjs';
 
@@ -35,6 +36,7 @@ import {
   canMarkRequested,
   launchSummary,
   overLimitMessage,
+  proposedTasks,
   sinceLabel,
   subjectBlocks,
   untilLabel,
@@ -95,6 +97,7 @@ function writeCollapsed(ids: ReadonlySet<string>): void {
     MatMenuModule,
     MatProgressSpinnerModule,
     MatTooltipModule,
+    NgTemplateOutlet,
     RouterLink,
     StepActorComponent,
   ],
@@ -147,8 +150,19 @@ export class ClientBoardComponent {
   readonly snoozed = computed<ClientBoardChantier[]>(() =>
     (this.board()?.chantiers ?? []).filter((c) => isSnoozed(c)));
 
-  /** Le nombre d'attentes hors chantier, sans filtre. */
-  readonly looseCount = computed<number>(() => this.board()?.horsChantier?.length ?? 0);
+  /** Le nombre d'attentes au fil de l'eau (rangées sous aucun chantier), sans filtre — F-227. */
+  readonly looseCount = computed<number>(() => {
+    const board = this.board();
+    const shown = new Set((board?.chantiers ?? []).filter((c) => !isSnoozed(c)).map((c) => chantierKey(c)));
+    return (board?.horsChantier ?? []).filter((t) => t.chantierNumber == null
+      || !shown.has(`${t.workspaceId}#${t.chantierNumber}`)).length;
+  });
+
+  /** Les attentes dont la clôture est proposée (F-227 / SF-227-02). */
+  readonly proposals = computed<ClientBoardLooseTask[]>(() => proposedTasks(this.board()));
+
+  /** Une revue des attentes anciennes, ou une clôture en lot, est en cours. */
+  readonly reviewing = signal(false);
 
   /** Un geste sur une attente est en cours, par identifiant. */
   readonly busyTasks = signal<ReadonlySet<string>>(new Set());
@@ -594,6 +608,99 @@ export class ClientBoardComponent {
         this.load(this.hostId(), false);
       },
     });
+  }
+
+  /** L'icône de qui débloque une attente — typée (le gabarit partagé `#taskItem` reçoit l'attente sans type). */
+  taskIcon(t: ClientBoardLooseTask): string {
+    return this.icons[t.unblocker.who];
+  }
+
+  /** Les attentes rangées sous ce chantier (F-227 / SF-227-02). */
+  attachedTo(block: SubjectBlock, c: ClientBoardChantier): ClientBoardLooseTask[] {
+    return block.attached[c.number] ?? [];
+  }
+
+  /** Les chantiers ouverts du sujet de l'attente auxquels la rattacher (F-227), sauf le sien. */
+  attachChoices(t: ClientBoardLooseTask): number[] {
+    return (this.board()?.chantiers ?? [])
+      .filter((c) => c.workspaceId === t.workspaceId && c.number !== t.chantierNumber)
+      .map((c) => c.number)
+      .sort((a, b) => a - b);
+  }
+
+  /** [Rattacher au chantier N] / [Ranger au fil de l'eau] (F-227 / SF-227-02). */
+  attach(t: ClientBoardLooseTask, chantier: number | null): void {
+    this.taskGesture(t, this.actions.attachToChantier(t.workspaceId, t.actionId, chantier),
+      chantier === null ? 'Attente rangée au fil de l’eau.' : `Attente rattachée au chantier ${chantier}.`,
+      'L\'attente n\'a pas pu être rangée.');
+  }
+
+  /** [Clore] une attente dont la clôture est proposée — la route F-175 existante. */
+  confirmProposal(t: ClientBoardLooseTask): void {
+    this.taskGesture(t, this.actions.confirmProposal(t.workspaceId, t.actionId), 'Attente close.',
+      'L\'attente n\'a pas pu être close.');
+  }
+
+  /** [Garder] — la proposition est écartée, l'attente reste ouverte. */
+  dismissProposal(t: ClientBoardLooseTask): void {
+    this.taskGesture(t, this.actions.dismissProposal(t.workspaceId, t.actionId), 'Attente gardée.',
+      'La proposition n\'a pas pu être écartée.');
+  }
+
+  /** [Revoir les attentes de plus de 14 jours] : la gateway PROPOSE leur clôture ; l'écran les montre. */
+  reviewStale(): void {
+    if (this.reviewing()) {
+      return;
+    }
+    this.reviewing.set(true);
+    this.boards.proposeStale(this.hostId()).subscribe({
+      next: (review) => {
+        this.reviewing.set(false);
+        this.snackBar.open(review.proposed === 0
+          ? `Aucune attente sans geste depuis ${review.days} jours.`
+          : `${review.proposed} attente${review.proposed > 1 ? 's' : ''} sans geste depuis ${review.days} jours : `
+            + 'clôture proposée, à confirmer.', 'OK', { duration: 6000 });
+        this.load(this.hostId(), false);
+      },
+      error: (err) => {
+        this.reviewing.set(false);
+        this.snackBar.open(httpErrorMessage(err, 'La revue des attentes a échoué.'), 'Fermer', { duration: 6000 });
+      },
+    });
+  }
+
+  /** [Clore les N proposées] : une confirmation, puis chaque clôture proposée est confirmée, une à une. */
+  confirmAllProposals(): void {
+    const tasks = this.proposals();
+    if (tasks.length === 0 || this.reviewing()) {
+      return;
+    }
+    const data: ConfirmDialogData = {
+      title: `Clore ${tasks.length} attente${tasks.length > 1 ? 's' : ''} ?`,
+      message: 'Les attentes dont la clôture est proposée passeront « n’avait plus lieu d’être ». Elles restent '
+        + 'consultables et peuvent être rétablies depuis le panneau des attentes.',
+      confirmLabel: 'Clore',
+    };
+    this.dialog
+      .open<ConfirmDialogComponent, ConfirmDialogData, boolean>(ConfirmDialogComponent, { data, width: '440px' })
+      .afterClosed()
+      .subscribe((confirmed) => {
+        if (!confirmed) {
+          return;
+        }
+        this.reviewing.set(true);
+        from(tasks).pipe(
+          concatMap((t) => this.actions.confirmProposal(t.workspaceId, t.actionId).pipe(
+            map(() => true), catchError(() => of(false)))),
+          toArray(),
+        ).subscribe((results) => {
+          this.reviewing.set(false);
+          const done = results.filter(Boolean).length;
+          this.snackBar.open(`${done} attente${done > 1 ? 's' : ''} close${done > 1 ? 's' : ''}`
+            + (done < results.length ? ` · ${results.length - done} en échec` : '') + '.', 'OK', { duration: 6000 });
+          this.load(this.hostId(), false);
+        });
+      });
   }
 
   /** [Clore le chantier] : confirmation, puis clôture (F-206). */
