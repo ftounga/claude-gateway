@@ -1,0 +1,231 @@
+import { HttpClient } from '@angular/common/http';
+import { Injectable, inject } from '@angular/core';
+import { Observable } from 'rxjs';
+
+import { AuthService } from './auth.service';
+
+/** Ce qui peut empêcher Jarvis de parler (F-231 / SF-231-01) — l'écran retombe alors sur le texte. */
+export type JarvisVoiceError = 'budget' | 'non-configure' | 'echec' | 'interrompu';
+
+/** L'état de la voix (F-231 / SF-231-01), montants en euros. */
+export interface JarvisVoiceStatus {
+  enabled: boolean;
+  voice: string;
+  monthlyBudgetEur: number;
+  monthSpentEur: number;
+  budgetReached: boolean;
+}
+
+/** Ce que l'écran garde d'une lecture : de quoi l'arrêter. */
+interface Playback {
+  audio: HTMLAudioElement;
+  abort: AbortController;
+  url: string;
+  done: (error?: JarvisVoiceError) => void;
+}
+
+/**
+ * **La voix de Jarvis, côté écran** (F-231 / SF-231-02) : lit une phrase par `POST /api/jarvis/speech` et la joue
+ * **pendant qu'elle arrive** (MediaSource quand le navigateur sait lire l'mp3 en flux, sinon l'audio entier).
+ *
+ * <p>Le niveau sonore de la lecture est exposé (`level()`) pour que l'orbe parle avec la voix. Une seule lecture à
+ * la fois : en lancer une autre, ou `stop()`, coupe la précédente — c'est l'interruption.</p>
+ */
+@Injectable({ providedIn: 'root' })
+export class JarvisVoiceService {
+  private readonly http = inject(HttpClient);
+  private readonly auth = inject(AuthService);
+
+  private context: AudioContext | null = null;
+  private analyser: AnalyserNode | null = null;
+  private samples: Uint8Array | null = null;
+  private current: Playback | null = null;
+
+  /** La voix est-elle là, et combien a-t-elle coûté ce mois ? */
+  status(): Observable<JarvisVoiceStatus> {
+    return this.http.get<JarvisVoiceStatus>('/api/jarvis/voice');
+  }
+
+  /** Vrai pendant qu'une phrase est jouée. */
+  get speaking(): boolean {
+    return this.current !== null;
+  }
+
+  /**
+   * Débloque la lecture audio. À appeler dans un geste de l'utilisateur (un appui) : les navigateurs refusent le son
+   * avant le premier geste.
+   */
+  unlock(): void {
+    const context = this.ensureContext();
+    if (context && context.state === 'suspended') {
+      void context.resume().catch(() => undefined);
+    }
+  }
+
+  /**
+   * Dit `text` à voix haute. La promesse se résout à la fin de la phrase (ou à son interruption) ; elle est rejetée
+   * avec un {@link JarvisVoiceError} si la voix n'a pas pu parler.
+   */
+  async speak(text: string, workspaceId: string | null = null): Promise<void> {
+    this.stop();
+    const abort = new AbortController();
+    const token = this.auth.token();
+    let response: Response;
+    try {
+      response = await fetch('/api/jarvis/speech', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'audio/mpeg',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ text, ...(workspaceId ? { workspaceId } : {}) }),
+        signal: abort.signal,
+      });
+    } catch {
+      throw (abort.signal.aborted ? 'interrompu' : 'echec') as JarvisVoiceError;
+    }
+    if (!response.ok) {
+      throw voiceErrorOf(response.status);
+    }
+    const audio = new Audio();
+    const url = canStream(response) ? this.streamInto(response) : URL.createObjectURL(await response.blob());
+    audio.src = url;
+    this.connect(audio);
+    return new Promise<void>((resolve, reject) => {
+      const playback: Playback = {
+        audio, abort, url,
+        done: (error) => {
+          if (this.current === playback) {
+            this.current = null;
+          }
+          audio.pause();
+          URL.revokeObjectURL(url);
+          // Une interruption n'est pas un échec : la phrase s'arrête, l'écran continue.
+          if (error && error !== 'interrompu') {
+            reject(error);
+          } else {
+            resolve();
+          }
+        },
+      };
+      this.current = playback;
+      audio.onended = () => playback.done();
+      audio.onerror = () => playback.done('echec');
+      audio.play().catch(() => playback.done('echec'));
+    });
+  }
+
+  /** Coupe la phrase en cours (interruption). Sans effet s'il n'y en a pas. */
+  stop(): void {
+    const playback = this.current;
+    if (playback) {
+      playback.abort.abort();
+      playback.done('interrompu');
+    }
+  }
+
+  /** Le niveau sonore de la phrase jouée, de 0 à 1 (0 en silence). */
+  level(): number {
+    if (!this.analyser || !this.samples || !this.current) {
+      return 0;
+    }
+    this.analyser.getByteTimeDomainData(this.samples);
+    return rmsLevel(this.samples);
+  }
+
+  private ensureContext(): AudioContext | null {
+    if (this.context) {
+      return this.context;
+    }
+    const Ctor = typeof window !== 'undefined'
+      ? (window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)
+      : undefined;
+    if (!Ctor) {
+      return null;
+    }
+    try {
+      this.context = new Ctor();
+      this.analyser = this.context.createAnalyser();
+      this.analyser.fftSize = 512;
+      this.samples = new Uint8Array(this.analyser.fftSize);
+      this.analyser.connect(this.context.destination);
+    } catch {
+      this.context = null;
+    }
+    return this.context;
+  }
+
+  /** Branche l'audio sur l'analyseur (l'orbe lit son niveau) ; sans contexte audio, il joue directement. */
+  private connect(audio: HTMLAudioElement): void {
+    const context = this.ensureContext();
+    if (!context || !this.analyser) {
+      return;
+    }
+    try {
+      context.createMediaElementSource(audio).connect(this.analyser);
+    } catch {
+      // Déjà branché ou refusé : la voix joue quand même, l'orbe reste calme.
+    }
+  }
+
+  /** Lit l'mp3 au fil de son arrivée : chaque morceau reçu est ajouté à la source pendant que l'audio joue. */
+  private streamInto(response: Response): string {
+    const source = new MediaSource();
+    const url = URL.createObjectURL(source);
+    source.addEventListener('sourceopen', () => {
+      void (async () => {
+        try {
+          const buffer = source.addSourceBuffer('audio/mpeg');
+          const reader = response.body!.getReader();
+          for (;;) {
+            const { value, done } = await reader.read();
+            if (done) {
+              break;
+            }
+            await appendChunk(buffer, value);
+          }
+          if (source.readyState === 'open') {
+            source.endOfStream();
+          }
+        } catch {
+          if (source.readyState === 'open') {
+            source.endOfStream('network');
+          }
+        }
+      })();
+    }, { once: true });
+    return url;
+  }
+}
+
+/** Le refus de la passerelle, en mots de l'écran. */
+export function voiceErrorOf(status: number): JarvisVoiceError {
+  return status === 429 ? 'budget' : status === 503 ? 'non-configure' : 'echec';
+}
+
+/** Le navigateur sait-il lire cet mp3 pendant qu'il arrive ? */
+function canStream(response: Response): boolean {
+  return !!response.body && typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported?.('audio/mpeg');
+}
+
+function appendChunk(buffer: SourceBuffer, chunk: Uint8Array): Promise<void> {
+  return new Promise((resolve, reject) => {
+    buffer.addEventListener('updateend', () => resolve(), { once: true });
+    buffer.addEventListener('error', () => reject(new Error('append')), { once: true });
+    buffer.appendBuffer(chunk as BufferSource);
+  });
+}
+
+/** Niveau RMS d'un échantillon temporel (octets centrés sur 128), ramené de 0 à 1. */
+export function rmsLevel(samples: Uint8Array): number {
+  if (samples.length === 0) {
+    return 0;
+  }
+  let sum = 0;
+  for (const s of samples) {
+    const v = (s - 128) / 128;
+    sum += v * v;
+  }
+  return Math.min(1, Math.sqrt(sum / samples.length) * 3);
+}

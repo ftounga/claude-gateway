@@ -67,6 +67,14 @@ describe('app.routes', () => {
     expect((routes[guardedParentIndex()].children ?? []).some((c) => c.path === 'pages/:id')).toBeTrue();
   });
 
+  it('F-231 / SF-231-02 — /jarvis est plein écran (hors coquille) mais garde l’authGuard, avant le joker', () => {
+    const index = routes.findIndex((r: Route) => r.path === 'jarvis');
+    expect(index).withContext('route /jarvis absente').toBeGreaterThan(-1);
+    expect(routes[index].canActivate).toContain(authGuard);
+    expect(routes[index].children).toBeUndefined();
+    expect(index).toBeLessThan(routes.findIndex((r: Route) => r.path === '**'));
+  });
+
   it('conserve le joker en dernière position', () => {
     expect(routes[routes.length - 1].path).toBe('**');
   });

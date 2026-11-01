@@ -1,0 +1,58 @@
+<main class="jv" [attr.data-state]="state()">
+  <header class="jv__top">
+    <a mat-icon-button class="jv__back" routerLink="/atelier" aria-label="Quitter Jarvis">
+      <mat-icon>arrow_back</mat-icon>
+    </a>
+    <button mat-button type="button" class="jv__subject" [matMenuTriggerFor]="subjectMenu"
+            [attr.aria-label]="'Sujet : ' + (subject()?.name ?? 'aucun') + '. Changer de sujet'">
+      <mat-icon aria-hidden="true">folder_open</mat-icon>
+      <span class="jv__subject-name">{{ subject()?.name ?? 'Choisir un sujet' }}</span>
+      <mat-icon aria-hidden="true">expand_more</mat-icon>
+    </button>
+    <mat-menu #subjectMenu="matMenu">
+      @for (s of subjects(); track s.id) {
+        <button mat-menu-item type="button" (click)="chooseSubject(s.id)">{{ s.name }}</button>
+      }
+    </mat-menu>
+    <button mat-icon-button type="button" class="jv__terminal" aria-label="Ouvrir le terminal du sujet"
+            [disabled]="!subjectId()" (click)="openTerminal()">
+      <mat-icon>terminal</mat-icon>
+    </button>
+  </header>
+
+  <section class="jv__stage">
+    <button type="button" class="jv__orb-button" (click)="talk()" [attr.aria-label]="statusLabel()">
+      <app-jarvis-orb class="jv__orb" [state]="state()" [level]="orbLevel" />
+    </button>
+    <p class="jv__status" role="status" aria-live="polite">{{ statusLabel() }}</p>
+  </section>
+
+  <section class="jv__exchange" aria-label="Dernier échange">
+    @if (said(); as text) {
+      <p class="jv__said">« {{ text }} »</p>
+    }
+    @if (spoken(); as phrase) {
+      <p class="jv__spoken">{{ phrase }}</p>
+    }
+    @if (notice(); as message) {
+      <p class="jv__notice" role="alert">{{ message }}</p>
+    }
+    @if (detail(); as reply) {
+      <button mat-button type="button" class="jv__detail-toggle" [attr.aria-expanded]="showDetail()"
+              (click)="showDetail.set(!showDetail())">
+        <mat-icon aria-hidden="true">{{ showDetail() ? 'expand_less' : 'notes' }}</mat-icon>
+        {{ showDetail() ? 'Masquer le détail' : 'Voir le détail' }}
+      </button>
+      @if (showDetail()) {
+        <div class="jv__detail" [innerHTML]="reply | markdown"></div>
+      }
+    }
+  </section>
+
+  <footer class="jv__controls">
+    <button mat-fab extended color="primary" type="button" class="jv__talk" (click)="talk()">
+      <mat-icon>{{ state() === 'ecoute' ? 'send' : state() === 'parole' ? 'stop' : 'mic' }}</mat-icon>
+      {{ state() === 'ecoute' ? 'J’ai fini' : state() === 'parole' ? 'Interrompre' : 'Parler' }}
+    </button>
+  </footer>
+</main>

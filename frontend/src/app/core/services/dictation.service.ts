@@ -44,6 +44,14 @@ export class DictationService {
   }
 
   /**
+   * Le flux du micro de l'enregistrement en cours, ou `null` (F-231 / SF-231-02) : l'écran Jarvis y lit le
+   * niveau sonore — l'orbe réagit à la voix et la fin de phrase est repérée au silence. Rien d'autre n'en sort.
+   */
+  get stream(): MediaStream | null {
+    return this.recorder?.stream ?? null;
+  }
+
+  /**
    * Ouvre le micro et commence à enregistrer.
    *
    * @throws 'micro-refuse' si l'utilisateur ou le navigateur refuse
