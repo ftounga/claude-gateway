@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-232 / SF-232-03 - LES ANNONCES TELEPHONE VERROUILLE (D1b).
+
+      jarvis_companions : un compagnon Android appaire au compte. La ligne nait a la generation du code
+      (pairing_code_hash, pairing_expires_at) ; l'echange du code pose token_hash et paired_at et efface le code.
+      Le jeton n'ouvre QUE la lecture des annonces Jarvis. Seules les empreintes SHA-256 sont stockees, jamais
+      le clair. Echeance glissante : last_seen_at + 60 j. Revocation : revoked_at.
+      Isolation : user_id sur chaque ligne.
+
+      Index (user_id, via, created_at) sur atelier_messages : les annonces sont relues toutes les 20 s.
+
+      Rollback : la table et l'index se retirent.
+    -->
+
+    <changeSet id="194-jarvis-companions" author="claude-gateway">
+        <createTable tableName="jarvis_companions">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="label" type="varchar(80)"><constraints nullable="false"/></column>
+            <column name="pairing_code_hash" type="varchar(64)"/>
+            <column name="pairing_expires_at" type="timestamptz"/>
+            <column name="token_hash" type="varchar(64)"/>
+            <column name="paired_at" type="timestamptz"/>
+            <column name="last_seen_at" type="timestamptz"/>
+            <column name="revoked_at" type="timestamptz"/>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="jarvis_companions" columnNames="token_hash"
+                             constraintName="uq_jarvis_companions_token"/>
+        <createIndex tableName="jarvis_companions" indexName="idx_jarvis_companions_user">
+            <column name="user_id"/>
+        </createIndex>
+        <createIndex tableName="jarvis_companions" indexName="idx_jarvis_companions_code">
+            <column name="pairing_code_hash"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="jarvis_companions"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="194-atelier-messages-user-via-idx" author="claude-gateway">
+        <createIndex tableName="atelier_messages" indexName="idx_atelier_messages_user_via_created">
+            <column name="user_id"/>
+            <column name="via"/>
+            <column name="created_at"/>
+        </createIndex>
+        <rollback>
+            <dropIndex tableName="atelier_messages" indexName="idx_atelier_messages_user_via_created"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

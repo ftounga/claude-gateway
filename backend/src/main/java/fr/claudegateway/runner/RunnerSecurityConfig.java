@@ -61,6 +61,13 @@ public class RunnerSecurityConfig {
                         // public, sans jeton ni secret, servi seulement si sa signature est la bonne.
                         .requestMatchers(HttpMethod.GET, "/runner/download/android").permitAll()
                         .requestMatchers(HttpMethod.GET, "/runner/download/android/version").permitAll()
+                        // Annonces téléphone verrouillé du compagnon (F-232 / SF-232-03) : l'appairage
+                        // s'authentifie par le code porté dans le corps ; la relève par le JETON DÉDIÉ du
+                        // compagnon (en-tête X-Jarvis-Token), vérifié PAR LE CONTRÔLEUR
+                        // (JarvisCompanionDeviceController), rien dans le SecurityContext (D9). Déclarées
+                        // une par une, jamais `/runner/jarvis/**` : ce jeton n'ouvre que ces deux routes.
+                        .requestMatchers(HttpMethod.POST, "/runner/jarvis/pair").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/runner/jarvis/announcements").permitAll()
                         // Mise à jour du runner (F-111 / SF-111-03) : manifeste, jar signé, empreinte et
                         // signature. Même nature que le téléchargement — un client public ; ce qui
                         // protège est la signature Ed25519 vérifiée PAR LE RUNNER avec sa clé embarquée,

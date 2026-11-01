@@ -4,6 +4,7 @@ import android.Manifest;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.KeyguardManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.BroadcastReceiver;
@@ -12,15 +13,26 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
+import android.media.AudioAttributes;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
 import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.PowerManager;
+import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
 import android.util.Log;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Locale;
+
+import fr.claudegateway.jarvis.companion.core.AnnouncementPolicy;
 
 import fr.claudegateway.jarvis.companion.core.BatteryPolicy;
 import fr.claudegateway.jarvis.companion.core.WakeEngine;
@@ -31,10 +43,15 @@ import fr.claudegateway.jarvis.companion.core.WakeProfile;
  * <b>« Jarvis écoute »</b> — le service de premier plan de type micro (F-232 / SF-232-01, D1, D3).
  *
  * <p>Il lit le micro à 16 kHz, découpe les mots isolés et compare chacun aux gabarits appris, <b>sur
- * l'appareil</b>. Rien n'est enregistré, rien ne sort : aucune permission réseau n'est même demandée.
+ * l'appareil</b>. Rien n'est enregistré, rien de ce qu'il entend ne sort (le réseau ne sert qu'aux annonces).
  * Au mot, il relâche le micro (la PWA en aura besoin pour la dictée) et réveille l'écran Jarvis par une
  * notification à intention plein écran ; l'écoute reprend quand l'écran s'éteint, ou au plus tard
  * {@link #RESUME_AFTER_WAKE_MS} après le mot.</p>
+ *
+ * <p><b>SF-232-03 — les annonces téléphone verrouillé (D1b).</b> Appairé, il relève toutes les 20 s les annonces de
+ * la gateway (fins de tour lancés via Jarvis, alertes de veille) avec son jeton dédié ; téléphone verrouillé ou écran
+ * éteint, il les <b>dit à voix haute</b>, puis écoute {@link AnnouncementPolicy#REPLY_WINDOW_MS} ms : le premier mot
+ * entendu ouvre Jarvis, sans mot d'éveil. En pause ou batterie faible, il ne relève rien.</p>
  */
 public final class CompanionService extends Service {
 
@@ -64,6 +81,20 @@ public final class CompanionService extends Service {
     private final Runnable resumeAfterWake = this::resumeAfterWake;
     private final Runnable retryMic = this::refresh;
 
+    // ---- SF-232-03 : les annonces ----
+    private static final String LAST_UTTERANCE = "jarvis-last";
+    private final AnnouncementPolicy announcer = new AnnouncementPolicy();
+    private HandlerThread network;
+    private Handler networkHandler;
+    private TextToSpeech tts;
+    private volatile boolean ttsReady;
+    /** Vrai pendant que le compagnon parle : le micro est rendu (pas d'écho dans le mot d'éveil). */
+    private boolean speaking;
+    /** Vrai pendant l'écoute courte de la réponse, après une annonce. */
+    private boolean replyWindow;
+    private final Runnable poll = this::poll;
+    private final Runnable endReplyWindow = this::endReplyWindow;
+
     private final BroadcastReceiver batteryReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -90,6 +121,41 @@ public final class CompanionService extends Service {
             onBattery(sticky);
         }
         registerReceiver(screenOffReceiver, new IntentFilter(Intent.ACTION_SCREEN_OFF));
+        network = new HandlerThread("jarvis-announce");
+        network.start();
+        networkHandler = new Handler(network.getLooper());
+        tts = new TextToSpeech(this, status -> {
+            if (status == TextToSpeech.SUCCESS) {
+                tts.setLanguage(Locale.FRANCE);
+                tts.setAudioAttributes(new AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build());
+                tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                    @Override
+                    public void onStart(String utteranceId) {
+                        // Rien : le micro est déjà rendu.
+                    }
+
+                    @Override
+                    public void onDone(String utteranceId) {
+                        if (LAST_UTTERANCE.equals(utteranceId)) {
+                            main.post(CompanionService.this::afterSpeaking);
+                        }
+                    }
+
+                    @Override
+                    public void onError(String utteranceId) {
+                        main.post(() -> {
+                            speaking = false;
+                            refresh();
+                        });
+                    }
+                });
+                ttsReady = true;
+            }
+        });
+        main.postDelayed(poll, 2_000L);
     }
 
     @Override
@@ -121,6 +187,12 @@ public final class CompanionService extends Service {
     public void onDestroy() {
         stopCapture();
         main.removeCallbacksAndMessages(null);
+        if (tts != null) {
+            tts.shutdown();
+        }
+        if (network != null) {
+            network.quitSafely();
+        }
         unregisterReceiver(batteryReceiver);
         unregisterReceiver(screenOffReceiver);
         super.onDestroy();
@@ -137,9 +209,15 @@ public final class CompanionService extends Service {
     private void refresh() {
         main.removeCallbacks(retryMic);
         WakeProfile profile = prefs.profile();
-        boolean wanted = prefs.listening() && !awaitingResume && !battery.pausedForBattery() && profile != null;
+        if (replyWindow) {
+            // L'écoute courte de la réponse tient le micro ; elle rend la main à sa fin.
+            notifyListen();
+            return;
+        }
+        boolean wanted = prefs.listening() && !awaitingResume && !speaking && !battery.pausedForBattery()
+                && profile != null;
         if (wanted && !capturing) {
-            startCapture(profile);
+            startCapture(WakeListener.forWake(profile, () -> main.post(this::onWake)));
         } else if (!wanted && capturing) {
             stopCapture();
         }
@@ -171,6 +249,8 @@ public final class CompanionService extends Service {
 
     private void onWake() {
         Log.i(TAG, "Mot d'éveil reconnu");
+        replyWindow = false;
+        main.removeCallbacks(endReplyWindow);
         awaitingResume = true;
         stopCapture();
         main.removeCallbacks(resumeAfterWake);
@@ -188,7 +268,7 @@ public final class CompanionService extends Service {
 
     // ------------------------------------------------------------------ micro
 
-    private void startCapture(WakeProfile profile) {
+    private void startCapture(WakeListener listener) {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             status = "Autorise le micro dans l'application";
             return;
@@ -210,7 +290,6 @@ public final class CompanionService extends Service {
             return;
         }
         capturing = true;
-        WakeListener listener = WakeListener.forWake(profile, () -> main.post(this::onWake));
         Thread thread = new Thread(() -> {
             short[] pcm = new short[WakeEngine.RATE / 10];
             try {
@@ -256,6 +335,105 @@ public final class CompanionService extends Service {
                 Thread.currentThread().interrupt();
             }
         }
+    }
+
+    // ------------------------------------------------------------------ annonces (SF-232-03)
+
+    /** Une relève : seulement appairé, à l'écoute et hors batterie faible ; le réseau hors du fil principal. */
+    private void poll() {
+        main.removeCallbacks(poll);
+        String token = prefs.token();
+        if (token == null || !prefs.listening() || battery.pausedForBattery()) {
+            main.postDelayed(poll, AnnouncementPolicy.POLL_MS);
+            return;
+        }
+        String gateway = prefs.gateway();
+        String cursor = prefs.cursor();
+        networkHandler.post(() -> {
+            try {
+                AnnouncementClient.Feed feed = AnnouncementClient.fetch(gateway, token, cursor);
+                main.post(() -> onFeed(feed));
+            } catch (AnnouncementClient.Unauthorized e) {
+                main.post(this::onRevoked);
+            } catch (IOException | RuntimeException e) {
+                // Jamais dit à voix haute : on réessaie plus tard, en espaçant. Jamais le jeton dans le journal.
+                Log.w(TAG, "Relève des annonces impossible : " + e.getClass().getSimpleName());
+                main.post(() -> main.postDelayed(poll, announcer.nextDelay(false)));
+            }
+        });
+    }
+
+    private void onFeed(AnnouncementClient.Feed feed) {
+        if (feed.cursor != null) {
+            prefs.setCursor(feed.cursor);
+        }
+        List<AnnouncementPolicy.Item> fresh = announcer.fresh(feed.items);
+        if (!fresh.isEmpty() && ttsReady && AnnouncementPolicy.shouldSpeak(locked(), screenOn(), awaitingResume)) {
+            speak(fresh);
+        }
+        main.postDelayed(poll, announcer.nextDelay(true));
+    }
+
+    private void onRevoked() {
+        Log.i(TAG, "Jeton des annonces refusé : réappairage nécessaire");
+        prefs.setToken(null);
+        status = "Annonces coupées : réappaire le compagnon";
+        notifyListen();
+        main.postDelayed(poll, AnnouncementPolicy.POLL_MS);
+    }
+
+    private void speak(List<AnnouncementPolicy.Item> items) {
+        speaking = true;
+        refresh(); // rend le micro du mot d'éveil : pas d'écho de notre propre voix
+        for (int i = 0; i < items.size(); i++) {
+            String id = i == items.size() - 1 ? LAST_UTTERANCE : "jarvis-" + i;
+            tts.speak(items.get(i).text, TextToSpeech.QUEUE_ADD, null, id);
+        }
+    }
+
+    /** Fin de la dernière annonce : on écoute la réponse quelques secondes, sans mot d'éveil. */
+    private void afterSpeaking() {
+        speaking = false;
+        if (awaitingResume || !prefs.listening() || battery.pausedForBattery()
+                || checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            refresh();
+            return;
+        }
+        stopCapture();
+        replyWindow = true;
+        startCapture(new WakeListener(features -> {
+            if (features.length >= WakeEngine.MIN_WORD_FRAMES) {
+                main.post(this::onReplyHeard);
+            }
+        }));
+        main.postDelayed(endReplyWindow, AnnouncementPolicy.REPLY_WINDOW_MS);
+        status = "Jarvis t'écoute";
+        notifyListen();
+    }
+
+    private void onReplyHeard() {
+        if (replyWindow) {
+            onWake(); // ouvre Jarvis, qui écoute aussitôt (SF-232-02)
+        }
+    }
+
+    private void endReplyWindow() {
+        if (!replyWindow) {
+            return;
+        }
+        replyWindow = false;
+        stopCapture();
+        refresh();
+    }
+
+    private boolean locked() {
+        KeyguardManager keyguard = getSystemService(KeyguardManager.class);
+        return keyguard != null && keyguard.isKeyguardLocked();
+    }
+
+    private boolean screenOn() {
+        PowerManager power = getSystemService(PowerManager.class);
+        return power == null || power.isInteractive();
     }
 
     // ------------------------------------------------------------------ notifications

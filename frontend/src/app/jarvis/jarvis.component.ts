@@ -39,6 +39,7 @@ import {
   ACK_DELAY_MS, ACK_PHRASE, isStopCommand, oralPhrase, subjectSwitch, withEndAnnouncement,
 } from './jarvis-oral';
 import { JarvisOrbComponent, JarvisState } from './jarvis-orb.component';
+import { JarvisCompanionsComponent } from './jarvis-companions.component';
 
 /** Le sujet retenu sur cet appareil, d'une ouverture de Jarvis à l'autre. */
 export const JARVIS_SUBJECT_KEY = 'cg.jarvis.subject';
@@ -84,7 +85,7 @@ export function companionOffer(version: JarvisCompanionVersion, installed: numbe
  */
 @Component({
   selector: 'app-jarvis',
-  imports: [JarvisOrbComponent, MarkdownPipe, MatButtonModule, MatIconModule, MatMenuModule, RouterLink],
+  imports: [JarvisCompanionsComponent, JarvisOrbComponent, MarkdownPipe, MatButtonModule, MatIconModule, MatMenuModule, RouterLink],
   templateUrl: './jarvis.component.html',
   styleUrl: './jarvis.component.scss',
 })
@@ -138,6 +139,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
   /** Le compagnon à installer ou mettre à jour, ou `null`. */
   readonly companion = signal<CompanionOffer | null>(null);
   readonly companionHref = JARVIS_COMPANION_DOWNLOAD_PATH;
+  /** F-232 / SF-232-03 — sur Android, l'appairage des annonces téléphone verrouillé est proposé. */
+  readonly android = /Android/i.test(this.userAgent);
 
   constructor() {
     // L'écoute du mot d'éveil se tait pendant que la dictée tient le micro, et reprend ensuite.
@@ -189,7 +192,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   /** F-232 / SF-232-02 — propose le compagnon Android ; une gateway qui ne le sert pas n'affiche rien. */
   private loadCompanion(installed: number | null): void {
-    const android = /Android/i.test(this.userAgent);
+    const android = this.android;
     if (installed === null && !android) {
       return;
     }

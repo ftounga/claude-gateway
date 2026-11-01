@@ -55,7 +55,8 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     voice = jasmine.createSpyObj<JarvisVoiceService>('JarvisVoiceService', ['speak', 'stop', 'unlock', 'level']);
     voice.speak.and.resolveTo();
     voice.level.and.returnValue(0);
-    jarvisApi = jasmine.createSpyObj<JarvisService>('JarvisService', ['usage', 'companion']);
+    jarvisApi = jasmine.createSpyObj<JarvisService>('JarvisService', ['usage', 'companion', 'companions']);
+    jarvisApi.companions.and.returnValue(of([]));
     jarvisApi.companion.and.returnValue(of(NO_COMPANION));
     userAgent = 'Mozilla/5.0 (X11; Linux x86_64) Chrome/130';
     veilles = jasmine.createSpyObj<VeilleService>('VeilleService', ['alert', 'openAlert']);
