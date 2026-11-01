@@ -3,8 +3,10 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 
-import { TerminalJourneyStripComponent } from './terminal-journey-strip.component';
+import { LOW_SCREEN_MEDIA, TerminalJourneyStripComponent } from './terminal-journey-strip.component';
 import { TerminalChantiersBoardComponent } from './terminal-chantiers-board.component';
+import { TerminalHandComponent } from './terminal-hand.component';
+import { TerminalJourneyChantiersComponent } from './terminal-journey-chantiers.component';
 import { JourneyPlanStep, OpenChantier, SubjectJourney } from '../../core/models/journey.models';
 
 /** Luminance relative WCAG d'une couleur CSS calculée (`rgb(…)` / `rgba(…)`). */
@@ -38,7 +40,8 @@ const step = (title: string, extra: Partial<JourneyPlanStep> = {}): JourneyPlanS
 describe('F-223 / SF-223-02 — contrastes du terminal', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [provideHttpClient(), provideHttpClientTesting(), provideNoopAnimations()],
+      // Écran déclaré haut (SF-223-03) : le plan est déplié quelle que soit la fenêtre du navigateur de test.
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideNoopAnimations(), { provide: LOW_SCREEN_MEDIA, useValue: null }],
     });
   });
 
@@ -96,5 +99,86 @@ describe('F-223 / SF-223-02 — contrastes du terminal', () => {
     }
     TestBed.inject(HttpTestingController).match(() => true);
     wrapper.remove();
+  });
+});
+
+/**
+ * **F-223 / SF-223-03 — boutons pleins or au texte navy, encres du terminal en jetons** : mesurés sur les couleurs
+ * RENDUES (styles globaux compris), dans un ancêtre `.terminal-view` comme dans l'application.
+ */
+describe('F-223 / SF-223-03 — boutons et encres du terminal sombre', () => {
+  let host: HTMLElement;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      // Écran déclaré haut (SF-223-03) : le plan est déplié quelle que soit la fenêtre du navigateur de test.
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideNoopAnimations(), { provide: LOW_SCREEN_MEDIA, useValue: null }],
+    });
+    host = document.createElement('div');
+    host.className = 'terminal-view';
+    host.style.background = NAVY;
+    document.body.appendChild(host);
+  });
+
+  afterEach(() => host.remove());
+
+  it('« Valider le plan et lancer » : or, libellé navy ≥ 4,5:1 (le blanc faisait 2,63:1)', () => {
+    const fixture = TestBed.createComponent(TerminalJourneyStripComponent);
+    fixture.componentRef.setInput('journey', {
+      mode: 'GUIDE', phase: 'PLAN', phaseLabel: 'Plan', phaseChangedAt: null,
+      plan: { version: 1, validatedVersion: null, validatedAt: null, awaitingValidation: true, amendment: false,
+        waitingInputs: 0, steps: [step('Lire')] },
+    } as unknown as SubjectJourney);
+    host.appendChild(fixture.nativeElement);
+    fixture.detectChanges();
+    const button = (fixture.nativeElement as HTMLElement).querySelector('.journey-plan__validate') as HTMLElement;
+    const style = getComputedStyle(button);
+    expect(style.backgroundColor).toBe('rgb(201, 151, 58)'); // --cg-accent, l'or de la charte
+    expect(contrast(style.color, style.backgroundColor)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('hors du terminal, le bouton plein garde son libellé blanc (charte inchangée)', () => {
+    const outside = document.createElement('div');
+    document.body.appendChild(outside);
+    const fixture = TestBed.createComponent(TerminalJourneyStripComponent);
+    fixture.componentRef.setInput('journey', {
+      mode: 'GUIDE', phase: 'PLAN', phaseLabel: 'Plan', phaseChangedAt: null,
+      plan: { version: 1, validatedVersion: null, validatedAt: null, awaitingValidation: true, amendment: false,
+        waitingInputs: 0, steps: [] },
+    } as unknown as SubjectJourney);
+    outside.appendChild(fixture.nativeElement);
+    fixture.detectChanges();
+    const button = (fixture.nativeElement as HTMLElement).querySelector('.journey-plan__validate') as HTMLElement;
+    expect(getComputedStyle(button).color).toBe(WHITE);
+    outside.remove();
+  });
+
+  it('« À qui la main » ≥ 4,5:1 sur le navy', () => {
+    const fixture = TestBed.createComponent(TerminalHandComponent);
+    fixture.componentRef.setInput('hand', { state: 'user', label: 'À vous', target: null });
+    host.appendChild(fixture.nativeElement);
+    fixture.detectChanges();
+    const color = getComputedStyle((fixture.nativeElement as HTMLElement).querySelector('.terminal-hand') as Element).color;
+    expect(contrast(color, NAVY)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('les chantiers clos : titre, dates, statuts « fait » et « échec » ≥ 4,5:1 sur le navy', () => {
+    const fixture = TestBed.createComponent(TerminalJourneyChantiersComponent);
+    fixture.componentRef.setInput('chantiers', [{
+      number: 1, title: 'WAF', openedAt: '2026-10-01T10:00:00Z', closedAt: '2026-10-02T10:00:00Z',
+      diagnosis: 'cause', diagnosisConfidence: 'HAUTE', planVersion: 1,
+      plan: [step('Lire', { status: 'FAIT', evidence: 'ok' }), step('Basculer', { status: 'ECHEC' })],
+    }]);
+    host.appendChild(fixture.nativeElement);
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    (el.querySelector('.chantiers__toggle') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const color = (selector: string) => getComputedStyle(el.querySelector(selector) as Element).color;
+    expect(contrast(color('.chantiers__title'), NAVY)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(color('.chantiers__dates'), NAVY)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(color('.chantiers__line'), NAVY)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(color(".chantiers__status[data-status='FAIT']"), NAVY)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(color(".chantiers__status[data-status='ECHEC']"), NAVY)).toBeGreaterThanOrEqual(4.5);
   });
 });

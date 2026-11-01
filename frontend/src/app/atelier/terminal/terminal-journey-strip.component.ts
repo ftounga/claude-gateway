@@ -1,4 +1,4 @@
-import { Component, computed, input, output, signal } from '@angular/core';
+import { Component, DestroyRef, InjectionToken, computed, inject, input, output, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 
@@ -469,6 +469,12 @@ export type JourneyGesture = 'accept-guided' | 'decline-guided' | 'validate-plan
     }
 
     .journey-plan__actions {
+      /* F-223 / SF-223-03 : la zone de décision défile (40 vh) — la rangée d'actions reste collée en bas. */
+      position: sticky;
+      bottom: 0;
+      z-index: 1;
+      padding-bottom: var(--cg-space-1);
+      background: var(--cg-primary);
       display: flex;
       flex-wrap: wrap;
       align-items: center;
@@ -724,9 +730,22 @@ export class TerminalJourneyStripComponent {
 
   /** Le plan est déplié tant qu'il attend une validation ; replié sinon (l'utilisateur peut l'ouvrir). */
   private readonly planToggled = signal<boolean | null>(null);
-  /** Écran bas (F-223 / SF-223-01) : le plan part replié, les actions restent sous les yeux. */
-  private readonly lowScreen = isLowScreen();
-  readonly planOpen = computed(() => this.planToggled() ?? (!!this.plan()?.awaitingValidation && !this.lowScreen));
+  /**
+   * Écran bas (F-223 / SF-223-01) : le plan part replié, les actions restent sous les yeux. SF-223-03 : suivi
+   * EN CONTINU (redimensionnement, rotation) ; un choix explicite de l'utilisateur prime toujours.
+   */
+  private readonly lowScreen = signal(false);
+  readonly planOpen = computed(() => this.planToggled() ?? (!!this.plan()?.awaitingValidation && !this.lowScreen()));
+
+  constructor() {
+    const media = inject(LOW_SCREEN_MEDIA);
+    if (media) {
+      this.lowScreen.set(media.matches);
+      const onChange = (event: { matches: boolean }) => this.lowScreen.set(event.matches);
+      media.addEventListener('change', onChange);
+      inject(DestroyRef).onDestroy(() => media.removeEventListener('change', onChange));
+    }
+  }
 
   togglePlan(): void {
     this.planToggled.set(!this.planOpen());
@@ -764,13 +783,23 @@ const DISMISSED_KEY = 'cg.journey.closedDismissed';
 /** Hauteur d'écran au-dessous de laquelle le plan part replié (à 1366×700, il ne restait que 119 px de fil). */
 const LOW_SCREEN_QUERY = '(max-height: 760px)';
 
-function isLowScreen(): boolean {
-  try {
-    return typeof matchMedia === 'function' && matchMedia(LOW_SCREEN_QUERY).matches;
-  } catch {
-    return false;
-  }
-}
+/**
+ * La requête « écran bas » (F-223 / SF-223-03), injectable pour que les tests la pilotent sans dépendre de la
+ * fenêtre du navigateur de test. `null` si `matchMedia` est absent ou lève : écran considéré haut.
+ */
+export const LOW_SCREEN_MEDIA = new InjectionToken<Pick<MediaQueryList, 'matches' | 'addEventListener' | 'removeEventListener'> | null>(
+  'LOW_SCREEN_MEDIA',
+  {
+    providedIn: 'root',
+    factory: () => {
+      try {
+        return typeof matchMedia === 'function' ? matchMedia(LOW_SCREEN_QUERY) : null;
+      } catch {
+        return null;
+      }
+    },
+  },
+);
 
 function readDismissed(): string | null {
   try {

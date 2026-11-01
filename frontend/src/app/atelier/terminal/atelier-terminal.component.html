@@ -1687,6 +1687,13 @@
         <app-terminal-journey-strip [journey]="journey()" [busy]="journeyBusy()" [turnRunning]="submitting" [compact]="laneChantier !== null" [canLaunchAside]="!readOnly && laneChantier === null" (gesture)="onJourneyGesture($event)" (switchChantier)="onSwitchChantier($event)" (launchAside)="launchAside($event, 'tab')"></app-terminal-journey-strip>
       </div>
     }
+    <!-- F-223 / SF-223-03 — LA REPRISE DIFFÉRÉE SE VOIT : le geste est enregistré, la reprise attend la fin du tour. -->
+    @if (deferredResume(); as pending) {
+      <p class="terminal-dock__deferred" role="status">
+        <span>Reprise en attente : « {{ pending.message }} » partira à la fin du tour.</span>
+        <button type="button" class="terminal-dock__deferred-cancel" (click)="cancelDeferredResume()">Annuler</button>
+      </p>
+    }
     <div
         class="terminal-dock"
         [class.terminal-dock--open]="dockOpen() && dockChips().length > 0"

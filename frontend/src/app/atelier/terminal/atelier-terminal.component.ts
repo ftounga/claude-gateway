@@ -408,7 +408,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     this.projectIdValue.set(value ?? null);
     if (value !== previous) {
       // F-223 / SF-223-01 : une reprise différée appartient au sujet quitté — jamais envoyée ailleurs.
-      this.deferredResume = null;
+      this.deferredResume.set(null);
       // F-193 : Plume appartient au terminal ouvert ; changer de terminal le referme.
       this.closePlume();
       // F-198 / SF-198-01 : l'historique révélé l'était pour le terminal quitté ; le suivant repart replié.
@@ -1342,6 +1342,8 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     // F-222 / SF-222-03 : le geste vise le chantier AFFICHÉ, par son numéro — jamais « le focus du moment » côté
     // serveur, qui a pu changer entre l'affichage et le clic (validation du plan v2 perdue, 29/10).
     const target = this.laneChantier ?? focusChantierNumber(before);
+    // F-223 / SF-223-03 : le brouillon tel qu'au CLIC — c'est lui qui part avec une reprise différée.
+    const draftAtClick = currentDraft(this.draft);
     let call;
     switch (gesture) {
       case 'accept-guided': call = this.journeys.acceptGuided(workspaceId); break;
@@ -1368,7 +1370,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
           } else {
             this.journey.set(journey);
           }
-          this.resumeAfterGesture(gesture, before);
+          this.resumeAfterGesture(gesture, before, draftAtClick);
           // F-226 / SF-226-01 : juste après « Valider et lancer », un moment creux — la suggestion peut paraître.
           if (gesture === 'validate-plan') {
             this.justLaunched.set(true);
@@ -1423,48 +1425,74 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    * normal, avec un message visible dans le fil (« ✓ Plan v2 validé — exécution lancée. »). Un brouillon
    * en cours part avec lui, rien n'est perdu. Jamais pendant un tour, en lecture seule ou au plafond.
    */
-  private resumeAfterGesture(gesture: JourneyGesture, before: SubjectJourney | null): void {
+  private resumeAfterGesture(gesture: JourneyGesture, before: SubjectJourney | null, draftAtClick: string): void {
     const message = journeyResumeMessage(gesture, before);
     if (!message || this.readOnly || this.liveLimitReached) {
       return;
     }
     if (this.submittingValue) {
       // F-223 / SF-223-01 : le geste est enregistré TOUT DE SUITE ; seule la reprise attend la fin du tour.
-      this.deferredResume = { workspaceId: this.projectId, message };
+      // SF-223-03 : le brouillon et le chantier visés sont ceux du CLIC, pas ceux de la fin du tour.
+      this.deferredResume.set({ workspaceId: this.projectId, chantier: this.actionsChantier(), message,
+        draft: draftAtClick });
       return;
     }
-    this.emitResume(message);
+    this.emitResume(message, currentDraft(this.draft));
   }
 
-  private emitResume(message: string): void {
-    const draft = (this.draft ?? '').trim();
+  /** La reprise part avec le brouillon donné (celui du clic) ; un message vide de brouillon part seul. */
+  private emitResume(message: string, draft: string): void {
     this.draftChange.emit(draft.length > 0 ? `${message}\n\n${draft}` : message);
     this.send.emit();
   }
 
-  /** La reprise d'un geste fait pendant un tour (F-223 / SF-223-01), envoyée une fois à sa fin. */
-  private deferredResume: { workspaceId: string | null; message: string } | null = null;
+  /**
+   * La reprise d'un geste fait pendant un tour (F-223 / SF-223-01), envoyée une fois à sa fin. SF-223-03 : elle
+   * MÉMORISE au clic le brouillon et le chantier visé, et se voit sous la carte (« Reprise en attente »).
+   */
+  readonly deferredResume = signal<DeferredResume | null>(null);
 
-  /** Vrai tant qu'une reprise attend la fin du tour : la bande le dit. */
+  /** Vrai tant qu'une reprise attend la fin du tour. */
   get resumeDeferred(): boolean {
-    return this.deferredResume !== null;
+    return this.deferredResume() !== null;
+  }
+
+  /** [Annuler] la reprise en attente (F-223 / SF-223-03) : le geste reste enregistré, rien ne repart. */
+  cancelDeferredResume(): void {
+    this.deferredResume.set(null);
   }
 
   private flushDeferredResume(): void {
-    const pending = this.deferredResume;
+    const pending = this.deferredResume();
     if (!pending) {
       return;
     }
     // Après le cycle courant : l'écran a pu relancer un tour (précisions différées) — on attend alors sa fin.
     queueMicrotask(() => {
-      if (this.deferredResume !== pending || this.submittingValue) {
+      if (this.deferredResume() !== pending || this.submittingValue) {
         return;
       }
-      this.deferredResume = null;
+      this.deferredResume.set(null);
       if (pending.workspaceId !== this.projectId || this.readOnly || this.liveLimitReached) {
         return;
       }
-      this.emitResume(pending.message);
+      // SF-223-03 : un autre chantier est affiché — la reprise l'appliquerait au mauvais chantier. On le dit.
+      if (pending.chantier !== this.actionsChantier()) {
+        this.snackBar.open(`La reprise du chantier ${pending.chantier ?? ''} n'est pas partie : un autre chantier est affiché. `
+          + 'Revenez-y pour relancer.', 'OK', { duration: 8000 });
+        return;
+      }
+      // SF-223-03 : un brouillon retouché pendant le tour n'est jamais envoyé à la place de l'utilisateur —
+      // la reprise part seule (avec le brouillon du clic s'il est resté tel quel) et la saisie est rendue.
+      const now = currentDraft(this.draft);
+      if (now === pending.draft) {
+        this.emitResume(pending.message, pending.draft);
+        return;
+      }
+      this.emitResume(pending.message, '');
+      if (now.length > 0) {
+        this.draftChange.emit(now);
+      }
     });
   }
 
@@ -1630,7 +1658,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     this.submittingValue = value === true;
     if (wasSubmitting && !this.submittingValue) {
       // F-226 / SF-226-01 : le tour qui suivait « Valider et lancer » est fini ; la règle ordinaire reprend.
-      if (!this.deferredResume) {
+      if (!this.deferredResume()) {
         this.justLaunched.set(false);
       }
       // F-223 / SF-223-01 : le geste validé pendant le tour relance le travail maintenant qu'il est fini.
@@ -4092,6 +4120,20 @@ export interface ParallelLaunchRequest {
 
 /** La préférence « ne plus suggérer de chantier parallèle » (F-226), par appareil. */
 const SUGGEST_OFF_KEY = 'cg.suggestParallel.off';
+
+/** Une reprise différée (F-223 / SF-223-01) et ce qu'elle a mémorisé au clic (SF-223-03). */
+interface DeferredResume {
+  workspaceId: string | null;
+  /** Le chantier visé au clic (volet ou focus) : jamais appliquée à un autre. */
+  chantier: number | null;
+  message: string;
+  /** Le brouillon au clic : il ne part que s'il est resté tel quel. */
+  draft: string;
+}
+
+function currentDraft(draft: string | null | undefined): string {
+  return (draft ?? '').trim();
+}
 
 function readFlag(key: string): boolean {
   try {
