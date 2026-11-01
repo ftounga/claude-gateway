@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-233 / SF-233-07 - LA VOIX DE JARVIS CHOISIE A L'AVEUGLE.
+
+      jarvis_voice_choices : les choix de voix d'un compte a l'audition (le plus recent fait foi).
+      provider + voice = la voix (nom OpenAI ou identifiant ElevenLabs), label = la lettre sous laquelle
+      elle a ete entendue. Aucun contenu.
+
+      Isolation : user_id sur chaque ligne ; lectures et ecritures sous user_id.
+      Rollback : la table se retire.
+    -->
+
+    <changeSet id="198-jarvis-voice-choices" author="claude-gateway">
+        <createTable tableName="jarvis_voice_choices">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="provider" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="voice" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="label" type="varchar(8)"/>
+            <column name="chosen_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="jarvis_voice_choices" indexName="idx_jarvis_voice_choices_user_chosen">
+            <column name="user_id"/>
+            <column name="chosen_at"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="jarvis_voice_choices"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

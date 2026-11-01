@@ -49,8 +49,8 @@ public class JarvisClipService {
         if (text == null) {
             throw new IllegalArgumentException("Clip inconnu.");
         }
-        voice.requireVoice();
-        String key = voice.voice() + '|' + name;
+        voice.requireVoice(userId);
+        String key = voice.voice(userId) + '|' + name;
         byte[] cached = cache.get(key);
         if (cached != null) {
             return cached;

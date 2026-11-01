@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 
 import fr.claudegateway.atelier.Workspace;
 import fr.claudegateway.atelier.WorkspaceRepository;
+import fr.claudegateway.jarvis.audition.JarvisVoiceChoiceRepository;
 import fr.claudegateway.quota.ProviderPricingProperties;
 import fr.claudegateway.speech.SpeechProperties;
 import fr.claudegateway.speech.elevenlabs.ElevenLabsProperties;
@@ -50,6 +51,7 @@ public class JarvisVoiceService {
     /** F-233 / SF-233-06 — la voix ElevenLabs, candidate (absente si non déclarée). */
     private ElevenLabsSpeechProvider elevenLabs;
     private ElevenLabsProperties elevenLabsProperties;
+    private JarvisVoiceChoiceRepository choices;
 
     public JarvisVoiceService(SpeechProvider provider, SpeechProperties speech, JarvisVoiceProperties properties,
             SpeechUsage ledger, JarvisUsageService usage, WorkspaceRepository workspaces) {
@@ -75,26 +77,45 @@ public class JarvisVoiceService {
         this.elevenLabsProperties = elevenLabsProperties;
     }
 
-    /** F-233 / SF-233-06 — la voix de Jarvis en service : fournisseur et voix. */
+    /** F-233 / SF-233-07 — les choix de voix faits à l'audition (absent hors contexte Spring). */
+    @Autowired(required = false)
+    public void setChoices(JarvisVoiceChoiceRepository choices) {
+        this.choices = choices;
+    }
+
+    /** F-233 / SF-233-06 — la voix de Jarvis par défaut (configuration) : fournisseur et voix. */
     public VoiceRef current() {
         return new VoiceRef(properties.provider(), properties.voice());
+    }
+
+    /**
+     * F-233 / SF-233-07 — la voix de Jarvis <b>pour ce compte</b> : celle choisie à l'audition (la plus récente),
+     * sinon la configuration.
+     */
+    public VoiceRef current(UUID userId) {
+        if (choices != null && userId != null) {
+            return choices.findFirstByUserIdOrderByChosenAtDesc(userId)
+                    .map(c -> new VoiceRef(c.getProvider(), c.getVoice()))
+                    .orElseGet(this::current);
+        }
+        return current();
     }
 
     /** L'état de la voix pour l'écran : allumée, voix, plafond et dépense du mois en euros. */
     public VoiceStatus status(UUID userId) {
         BigDecimal spent = eur(usage.monthSpeechCostUsd(userId));
         BigDecimal budget = properties.monthlyBudgetEur().setScale(2, RoundingMode.HALF_UP);
-        VoiceRef voice = current();
+        VoiceRef voice = current(userId);
         return new VoiceStatus(available(voice) && budget.signum() > 0, voice.voice(), budget, spent,
                 reached(spent, budget), voice.provider());
     }
 
     /** La voix est-elle appelable (fournisseur configuré, voix valide) ? Aucun appel. */
-    boolean available(VoiceRef voice) {
+    public boolean available(VoiceRef voice) {
         if (ElevenLabsSpeechProvider.NAME.equals(voice.provider())) {
             return elevenLabs != null && elevenLabs.isConfigured() && ElevenLabsSpeechProvider.isVoiceId(voice.voice());
         }
-        return speech.isActive() && speech.allows(voice.voice());
+        return "openai".equals(voice.provider()) && speech.isActive() && speech.allows(voice.voice());
     }
 
     private SpeechProvider providerFor(VoiceRef voice) {
@@ -116,7 +137,7 @@ public class JarvisVoiceService {
         if (text.length() > properties.maxRequestChars()) {
             throw new IllegalArgumentException("Texte trop long pour être lu à voix haute.");
         }
-        requireVoice();
+        requireVoice(userId);
         VoiceStatus status = status(userId);
         if (status.budgetReached()) {
             throw new JarvisVoiceBudgetException();
@@ -135,40 +156,58 @@ public class JarvisVoiceService {
      * @return le nombre d'octets écrits
      */
     public long speak(Reading reading, OutputStream out) throws IOException {
-        VoiceRef voice = current();
+        VoiceRef voice = current(reading.userId());
         long written = providerFor(voice).synthesizeStream(reading.text(), voice.voice(), properties.instructions(),
                 out);
-        account(reading.userId(), reading.workspaceId(), reading.hostId(), reading.text().length());
+        account(reading.userId(), reading.workspaceId(), reading.hostId(), voice, reading.text().length());
         return written;
     }
 
     /**
-     * F-233 / SF-233-02 — synthétise d'un coup une phrase <b>fixe</b> (clip de réaction), avec la voix de Jarvis, et la
-     * compte. Le plafond est vérifié avant l'appel.
+     * F-233 / SF-233-02 — synthétise d'un coup une phrase <b>fixe</b> (clip de réaction), avec la voix de Jarvis du
+     * compte, et la compte. Le plafond est vérifié avant l'appel.
      *
      * @throws SpeechProviderUnavailableException voix éteinte ou non configurée
      * @throws JarvisVoiceBudgetException         plafond du mois atteint
      */
     public byte[] synthesizeClip(UUID userId, String text) {
-        requireVoice();
+        return synthesizeWith(userId, current(userId), text);
+    }
+
+    /**
+     * F-233 / SF-233-07 — synthétise d'un coup une phrase <b>fixe</b> avec une voix donnée (échantillon d'audition),
+     * plafonnée et comptée au tarif de son fournisseur.
+     *
+     * @throws SpeechProviderUnavailableException voix indisponible
+     * @throws JarvisVoiceBudgetException         plafond du mois atteint
+     */
+    public byte[] synthesizeWith(UUID userId, VoiceRef voice, String text) {
+        if (!available(voice)) {
+            throw new SpeechProviderUnavailableException("Cette voix n'est pas disponible sur cette installation.");
+        }
         if (status(userId).budgetReached()) {
             throw new JarvisVoiceBudgetException();
         }
-        VoiceRef voice = current();
         byte[] audio = providerFor(voice).synthesize(text, voice.voice(), properties.instructions()).bytes();
-        account(userId, null, null, text.length());
+        account(userId, null, null, voice, text.length());
         return audio;
     }
 
-    /** La voix de Jarvis en service, « fournisseur:voix » (sert de clé aux clips : changer de voix les régénère). */
+    /** La voix de Jarvis du compte, « fournisseur:voix » (clé des clips : changer de voix les régénère). */
+    public String voice(UUID userId) {
+        VoiceRef voice = current(userId);
+        return voice.provider() + ':' + voice.voice();
+    }
+
+    /** La voix de Jarvis par défaut, « fournisseur:voix ». */
     public String voice() {
         VoiceRef voice = current();
         return voice.provider() + ':' + voice.voice();
     }
 
-    /** Vérifie que la voix est allumée, configurée et dans la liste blanche. */
-    void requireVoice() {
-        VoiceRef voice = current();
+    /** Vérifie que la voix du compte est allumée, configurée et dans la liste blanche. */
+    void requireVoice(UUID userId) {
+        VoiceRef voice = current(userId);
         if (ElevenLabsSpeechProvider.NAME.equals(voice.provider())) {
             if (!available(voice)) {
                 throw new SpeechProviderUnavailableException("La voix ElevenLabs de Jarvis n'est pas configurée.");
@@ -184,15 +223,20 @@ public class JarvisVoiceService {
     }
 
     /** Compte une lecture : journal d'usage et journée Jarvis. On journalise la LONGUEUR, jamais le texte. */
-    private void account(UUID userId, UUID workspaceId, UUID hostId, long characters) {
+    private void account(UUID userId, UUID workspaceId, UUID hostId, VoiceRef voice, long characters) {
         ledger.record(userId, workspaceId, hostId, characters, 0d);
-        usage.addSpeech(userId, characters, costUsd(characters));
+        usage.addSpeech(userId, characters, costUsd(voice, characters));
         log.debug("Jarvis a parlé ({} caractères)", characters);
     }
 
-    /** Le coût en dollars de {@code characters} caractères lus, au tarif de la voix off. */
+    /** Le coût en dollars de {@code characters} caractères lus avec la voix par défaut. */
     BigDecimal costUsd(long characters) {
-        BigDecimal perThousand = ElevenLabsSpeechProvider.NAME.equals(current().provider()) && elevenLabsProperties != null
+        return costUsd(current(), characters);
+    }
+
+    /** Le coût en dollars de {@code characters} caractères lus avec {@code voice}, au tarif de son fournisseur. */
+    BigDecimal costUsd(VoiceRef voice, long characters) {
+        BigDecimal perThousand = ElevenLabsSpeechProvider.NAME.equals(voice.provider()) && elevenLabsProperties != null
                 ? elevenLabsProperties.ttsCostUsdPerThousandChars() : speech.costUsdPerThousandChars();
         return perThousand.multiply(BigDecimal.valueOf(characters))
                 .divide(BigDecimal.valueOf(1000), 6, RoundingMode.HALF_UP);

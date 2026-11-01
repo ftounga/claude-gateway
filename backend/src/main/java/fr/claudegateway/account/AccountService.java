@@ -143,6 +143,14 @@ public class AccountService {
         this.subjectRoutineRepository = repository;
     }
 
+    /** La voix de Jarvis choisie à l'audition (F-233 / SF-233-07) ; purge nommée à la suppression du compte. */
+    private fr.claudegateway.jarvis.audition.JarvisVoiceChoiceRepository jarvisVoiceChoiceRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setJarvisVoiceChoiceRepository(fr.claudegateway.jarvis.audition.JarvisVoiceChoiceRepository repository) {
+        this.jarvisVoiceChoiceRepository = repository;
+    }
+
     /** Les veilles Jarvis (F-230 / SF-230-01) ; purge nommée à la suppression du compte. */
     private fr.claudegateway.atelier.veille.JarvisWatchRepository jarvisWatchRepository;
 
@@ -473,6 +481,10 @@ public class AccountService {
         // Les veilles Jarvis (F-230) : elles suivent aussi le sujet (cascade) ; la purge nommée couvre le compte.
         if (jarvisWatchRepository != null) {
             jarvisWatchRepository.purgeUser(userId);
+        }
+        // La voix de Jarvis choisie à l'audition (F-233 / SF-233-07).
+        if (jarvisVoiceChoiceRepository != null) {
+            jarvisVoiceChoiceRepository.deleteByUser(userId);
         }
         // Le parcours des sujets (F-176) : mode, phase, plan, journal. Les lignes suivent aussi le
         // terminal (cascade) ; la purge nommée couvre le compte.
