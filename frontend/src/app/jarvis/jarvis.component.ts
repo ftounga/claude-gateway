@@ -11,6 +11,10 @@ import { AtelierService } from '../core/services/atelier.service';
 import { DictationError, DictationService } from '../core/services/dictation.service';
 import { JarvisVoiceError, JarvisVoiceService, SpeakHooks } from '../core/services/jarvis-voice.service';
 import { TurnClock } from './jarvis-turn-clock';
+import { JarvisStreamOpener, LISTEN_AUDIO, LiveListening } from './jarvis-stream-listener';
+import { HttpErrorResponse } from '@angular/common/http';
+import { firstValueFrom } from 'rxjs';
+import { JarvisSttTicket } from '../core/models/jarvis.models';
 import { MarkdownPipe } from '../shared/markdown.pipe';
 import { EndOfSpeech, MicMeter, silenceMs } from './jarvis-mic-meter';
 import { asksConfirmation, classifyConfirmation, confirmationQuestion } from './jarvis-confirm';
@@ -210,6 +214,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.clearAck();
     this.stopMeter();
     this.dictation.cancel();
+    this.closeStreaming();
     this.wakeEngine.stop();
     this.restoreManifest();
   }
@@ -397,14 +402,18 @@ export class JarvisComponent implements OnInit, OnDestroy {
     // Le micro passe à la dictée : l'écoute du mot d'éveil se tait d'abord.
     this.wakeEngine.stop();
     this.listenStartedAt = performance.now();
-    try {
-      await this.dictation.start();
-    } catch (error) {
-      this.notice.set(dictationMessage(error as DictationError));
-      return;
+    // F-233 / SF-233-05 — l'écoute en flux d'abord ; sinon (non configurée, refus, réseau) la dictée batch.
+    const streaming = await this.startStreaming();
+    if (!streaming) {
+      try {
+        await this.dictation.start(LISTEN_AUDIO);
+      } catch (error) {
+        this.notice.set(dictationMessage(error as DictationError));
+        return;
+      }
     }
     this.state.set('ecoute');
-    const stream = this.dictation.stream;
+    const stream = this.live?.listening.stream ?? this.dictation.stream;
     if (stream) {
       this.meter = new MicMeter(stream);
       const end = new EndOfSpeech(performance.now(), silenceMs());
@@ -419,6 +428,99 @@ export class JarvisComponent implements OnInit, OnDestroy {
         };
         this.listenFrame = requestAnimationFrame(tick);
       });
+    }
+  }
+
+  // ---- F-233 / SF-233-05 : écouter en flux ----
+  private readonly streamOpener = inject(JarvisStreamOpener);
+  /** Le texte provisoire, affiché sous l'orbe pendant la parole. */
+  readonly partial = signal<string | null>(null);
+  /** Vrai quand la passerelle a dit que le flux n'est pas configuré : on n'essaie plus pendant cette ouverture. */
+  private streamOff = false;
+  private live: {
+    ticket: JarvisSttTicket;
+    listening: LiveListening;
+    committed: string[];
+    lastPartial: string;
+    onCommit: (() => void) | null;
+  } | null = null;
+
+  /** SF-233-05 — après une fin de tour forcée par l'écran, on attend la validation du fournisseur au plus autant. */
+  static readonly COMMIT_WAIT_MS = 1_500;
+
+  /** Ouvre une session d'écoute en flux ; `false` si elle n'est pas possible (repli sur la dictée). */
+  private async startStreaming(): Promise<boolean> {
+    if (this.streamOff) {
+      return false;
+    }
+    let ticket: JarvisSttTicket;
+    try {
+      ticket = await firstValueFrom(this.jarvis.sttSession());
+    } catch (error) {
+      if (error instanceof HttpErrorResponse && error.status === 503) {
+        this.streamOff = true;
+      }
+      return false;
+    }
+    const live = { ticket, listening: null as unknown as LiveListening, committed: [] as string[], lastPartial: '',
+      onCommit: null as (() => void) | null };
+    try {
+      live.listening = await this.streamOpener.open(ticket, {
+        onPartial: (text) => this.zone.run(() => {
+          live.lastPartial = text;
+          this.partial.set([...live.committed, text].join(' ').trim() || null);
+        }),
+        onCommitted: (text) => this.zone.run(() => {
+          if (text.trim()) {
+            live.committed.push(text.trim());
+          }
+          live.lastPartial = '';
+          this.partial.set(live.committed.join(' ') || null);
+          live.onCommit?.();
+          // D6 — la fin de tour du fournisseur clôt la phrase.
+          if (this.live === live && this.state() === 'ecoute' && live.committed.length > 0) {
+            void this.finishListening();
+          }
+        }),
+        onError: () => this.zone.run(() => {
+          live.onCommit?.();
+          if (this.live === live && this.state() === 'ecoute') {
+            void this.finishListening();
+          }
+        }),
+      });
+    } catch {
+      this.jarvis.closeSttSession(ticket.sessionId, 0);
+      return false;
+    }
+    this.live = live;
+    this.partial.set(null);
+    return true;
+  }
+
+  /** Clôt l'écoute en flux et rend ce qui a été dit (validé, sinon le dernier provisoire). */
+  private async finishStreaming(): Promise<string> {
+    const live = this.live!;
+    if (live.committed.length === 0) {
+      live.listening.commit();
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, JarvisComponent.COMMIT_WAIT_MS);
+        live.onCommit = () => {
+          clearTimeout(timer);
+          resolve();
+        };
+      });
+    }
+    this.closeStreaming();
+    return live.committed.length > 0 ? live.committed.join(' ') : live.lastPartial;
+  }
+
+  private closeStreaming(): void {
+    const live = this.live;
+    this.live = null;
+    this.partial.set(null);
+    if (live) {
+      this.jarvis.closeSttSession(live.ticket.sessionId, live.listening.close());
     }
   }
 
@@ -441,12 +543,18 @@ export class JarvisComponent implements OnInit, OnDestroy {
     // SF-231-05 — la mesure d'adoption : les secondes parlées (D9).
     this.jarvis.usage('SPOKEN', Math.max(0, (performance.now() - this.listenStartedAt) / 1000));
     let text = '';
-    try {
-      text = (await this.dictation.stop()).trim();
-    } catch (error) {
-      this.state.set('repos');
-      this.notice.set(dictationMessage(error as DictationError));
-      return;
+    if (this.live) {
+      clock.listenMode = 'STREAM';
+      clock.sttProvider = this.live.ticket.provider;
+      text = (await this.finishStreaming()).trim();
+    } else {
+      try {
+        text = (await this.dictation.stop()).trim();
+      } catch (error) {
+        this.state.set('repos');
+        this.notice.set(dictationMessage(error as DictationError));
+        return;
+      }
     }
     if (!text) {
       this.state.set(this.turnRunning ? 'reflexion' : 'repos');

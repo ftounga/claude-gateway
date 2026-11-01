@@ -109,3 +109,16 @@ export interface TurnTimingReport {
   acknowledgements: number;
   falseTriggers: number;
 }
+
+/** F-233 / SF-233-04 — une session d'écoute en flux : de quoi parler directement au fournisseur (jamais la clé). */
+export interface JarvisSttTicket {
+  sessionId: string;
+  provider: string;
+  /** L'URL WebSocket, sans le jeton. */
+  url: string;
+  /** Le jeton éphémère (usage unique). */
+  token: string;
+  expiresAt: string;
+  sampleRate: number;
+  maxSeconds: number;
+}

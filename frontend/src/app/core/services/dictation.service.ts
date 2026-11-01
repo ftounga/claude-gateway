@@ -56,13 +56,14 @@ export class DictationService {
    *
    * @throws 'micro-refuse' si l'utilisateur ou le navigateur refuse
    */
-  async start(): Promise<void> {
+  async start(audio: boolean | MediaTrackConstraints = true): Promise<void> {
     if (this.recorder) {
       return;
     }
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // F-233 / SF-233-05 : Jarvis demande l'annulation d'écho (sa propre voix au haut-parleur).
+      stream = await navigator.mediaDevices.getUserMedia({ audio });
     } catch {
       throw 'micro-refuse' as DictationError;
     }

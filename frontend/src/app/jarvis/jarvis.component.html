@@ -28,6 +28,10 @@
   </section>
 
   <section class="jv__exchange" aria-label="Dernier échange">
+    @if (state() === 'ecoute' && partial(); as text) {
+      <!-- F-233 / SF-233-05 : ce qui est entendu, pendant la parole. -->
+      <p class="jv__partial" aria-live="polite">{{ text }}</p>
+    }
     @if (said(); as text) {
       <p class="jv__said">« {{ text }} »</p>
     }
