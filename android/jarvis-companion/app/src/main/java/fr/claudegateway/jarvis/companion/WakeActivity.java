@@ -54,7 +54,7 @@ public final class WakeActivity extends Activity {
     }
 
     private void openJarvis() {
-        String url = JarvisLink.jarvisUrl(new Prefs(this).gateway());
+        String url = JarvisLink.jarvisUrl(new Prefs(this).gateway(), BuildConfig.VERSION_CODE);
         Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         try {
             startActivity(view);

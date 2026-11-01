@@ -57,6 +57,10 @@ public class RunnerSecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/runner/download/macos-aarch64").permitAll()
                         .requestMatchers(HttpMethod.GET, "/runner/download/macos-x64").permitAll()
                         .requestMatchers(HttpMethod.GET, "/runner/download/formats").permitAll()
+                        // Compagnon Android de Jarvis (F-232 / SF-232-02) : même nature — un client
+                        // public, sans jeton ni secret, servi seulement si sa signature est la bonne.
+                        .requestMatchers(HttpMethod.GET, "/runner/download/android").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/runner/download/android/version").permitAll()
                         // Mise à jour du runner (F-111 / SF-111-03) : manifeste, jar signé, empreinte et
                         // signature. Même nature que le téléchargement — un client public ; ce qui
                         // protège est la signature Ed25519 vérifiée PAR LE RUNNER avec sa clé embarquée,

@@ -59,3 +59,16 @@ export function toSendLabel(item: JarvisToSend): string {
   const subject = item.subject ? ` — ${item.subject}` : '';
   return `${what}${to}${subject}`;
 }
+
+/**
+ * F-232 / SF-232-02 — le compagnon Android servi par la gateway (`GET /api/runner/download/android/version`).
+ * Tous les champs sont `null` quand `available` est faux (absent, mal configuré ou mal signé).
+ */
+export interface JarvisCompanionVersion {
+  available: boolean;
+  versionCode: number | null;
+  versionName: string | null;
+  sha256: string | null;
+  signingCertSha256: string | null;
+  sizeBytes: number | null;
+}

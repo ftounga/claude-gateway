@@ -31,6 +31,10 @@ android {
                 keyAlias System.getenv('JARVIS_SIGNING_KEY_ALIAS')
                 keyPassword System.getenv('JARVIS_SIGNING_KEY_PASSWORD')
             }
+            // v2 pour Android ; v1 (JAR) AUSSI, pour que la gateway vérifie la signature avec le seul
+            // JDK avant de servir l'APK (SF-232-02). Avec minSdk >= 24, AGP omet v1 par défaut.
+            enableV1Signing true
+            enableV2Signing true
         }
     }
 

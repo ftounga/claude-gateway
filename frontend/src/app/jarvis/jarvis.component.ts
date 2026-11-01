@@ -1,5 +1,5 @@
 import {
-  Component, DestroyRef, NgZone, OnDestroy, OnInit, computed, effect, inject, signal, untracked,
+  Component, DestroyRef, InjectionToken, NgZone, OnDestroy, OnInit, computed, effect, inject, signal, untracked,
 } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -16,7 +16,8 @@ import { asksConfirmation, classifyConfirmation, confirmationQuestion } from './
 import {
   ENROLL_COUNT, MIN_WORD_FRAMES, TemplateWakeWordEngine, enrollThreshold, readWakeProfile, saveWakeProfile,
 } from './jarvis-wake';
-import { JarvisService } from '../core/services/jarvis.service';
+import { JARVIS_COMPANION_DOWNLOAD_PATH, JarvisService } from '../core/services/jarvis.service';
+import { JarvisCompanionVersion } from '../core/models/jarvis.models';
 import { VeilleService } from '../core/services/veille.service';
 
 /** SF-231-05 — le mot d'éveil allumé sur cet appareil. */
@@ -41,6 +42,34 @@ import { JarvisOrbComponent, JarvisState } from './jarvis-orb.component';
 
 /** Le sujet retenu sur cet appareil, d'une ouverture de Jarvis à l'autre. */
 export const JARVIS_SUBJECT_KEY = 'cg.jarvis.subject';
+
+/** F-232 / SF-232-02 — l'agent utilisateur, injectable pour les tests (le lien d'installation ne vaut que sur Android). */
+export const JARVIS_USER_AGENT = new InjectionToken<string>('JARVIS_USER_AGENT', {
+  providedIn: 'root',
+  factory: () => (typeof navigator === 'undefined' ? '' : navigator.userAgent),
+});
+
+/** F-232 / SF-232-02 — ce que l'écran propose du compagnon Android : l'installer, ou le mettre à jour. */
+export interface CompanionOffer {
+  kind: 'install' | 'update';
+  versionName: string;
+}
+
+/**
+ * F-232 / SF-232-02 — décide, pur : rien si le compagnon n'est pas servi ; ouvert par le compagnon (`installed` connu),
+ * la mise à jour seulement si la gateway sert plus récent ; sinon, l'installation, sur Android uniquement.
+ */
+export function companionOffer(version: JarvisCompanionVersion, installed: number | null, android: boolean):
+    CompanionOffer | null {
+  if (!version.available || version.versionCode === null) {
+    return null;
+  }
+  const versionName = version.versionName ?? String(version.versionCode);
+  if (installed !== null) {
+    return version.versionCode > installed ? { kind: 'update', versionName } : null;
+  }
+  return android ? { kind: 'install', versionName } : null;
+}
 
 /**
  * **L'écran Jarvis** (F-231 / SF-231-02, D1, D6) — `/jarvis`, plein écran, téléphone d'abord.
@@ -104,6 +133,12 @@ export class JarvisComponent implements OnInit, OnDestroy {
   private wakeStarting = false;
   private previousManifest: string | null = null;
 
+  // ---- F-232 / SF-232-02 : le compagnon Android ----
+  private readonly userAgent = inject(JARVIS_USER_AGENT);
+  /** Le compagnon à installer ou mettre à jour, ou `null`. */
+  readonly companion = signal<CompanionOffer | null>(null);
+  readonly companionHref = JARVIS_COMPANION_DOWNLOAD_PATH;
+
   constructor() {
     // L'écoute du mot d'éveil se tait pendant que la dictée tient le micro, et reprend ensuite.
     effect(() => {
@@ -126,6 +161,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.jarvis.usage('SESSION');
     const wanted = this.route.snapshot.queryParamMap.get('sujet');
     const alertId = this.route.snapshot.queryParamMap.get('alerte');
+    // F-232 : ouvert par le compagnon Android, qui vient d'entendre « Jarvis » et passe sa version.
+    const fromCompanion = this.route.snapshot.queryParamMap.get('source') === 'compagnon';
+    const rawInstalled = Number(this.route.snapshot.queryParamMap.get('compagnon'));
+    const installed = fromCompanion && Number.isInteger(rawInstalled) && rawInstalled >= 1 ? rawInstalled : null;
+    this.loadCompanion(installed);
     this.atelier.listWorkspaces().subscribe({
       next: (list) => {
         this.subjects.set(list);
@@ -137,11 +177,26 @@ export class JarvisComponent implements OnInit, OnDestroy {
         }
         if (alertId) {
           this.readAlert(alertId);
+        } else if (fromCompanion && pick) {
+          // Le PO vient de dire « Jarvis » au téléphone : on l'écoute, et le réveil compte (D9).
+          void this.onWake();
         }
       },
       error: () => this.notice.set('Les sujets n’ont pas pu être lus. Réessaie.'),
     });
     this.destroyRef.onDestroy(() => this.voice.stop());
+  }
+
+  /** F-232 / SF-232-02 — propose le compagnon Android ; une gateway qui ne le sert pas n'affiche rien. */
+  private loadCompanion(installed: number | null): void {
+    const android = /Android/i.test(this.userAgent);
+    if (installed === null && !android) {
+      return;
+    }
+    this.jarvis.companion().subscribe({
+      next: (version) => this.companion.set(companionOffer(version, installed, android)),
+      error: () => this.companion.set(null),
+    });
   }
 
   ngOnDestroy(): void {
