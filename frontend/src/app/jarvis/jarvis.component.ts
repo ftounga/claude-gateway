@@ -839,6 +839,12 @@ export class JarvisComponent implements OnInit, OnDestroy {
           this.clock.toolTurn = true;
         }
       },
+      // F-234 / SF-234-05 — la sortie d'une commande : ses 2 dernières lignes, masquées, en filigrane (S3).
+      onOutput: (chunk) => {
+        if (latest()) {
+          this.scenes.output(chunk);
+        }
+      },
       onText: (delta) => this.zone.run(() => {
         if (latest()) {
           this.scenes.text(delta);

@@ -25,8 +25,45 @@ import { JarvisSceneBus } from './jarvis-scene-bus.service';
           @if (s.entity) {
             <p class="scene__entity"><span class="scene__dot"></span>{{ s.entity.label }}</p>
           }
-          @if (s.detail) {
-            <p class="scene__detail">{{ s.detail }}</p>
+          @switch (s.id) {
+            @case ('S3') {
+              <!-- SF-234-05 — S3 : la commande en filigrane, ses 2 dernières lignes (masquées, D11). -->
+              <div class="term">
+                @if (s.detail) { <p class="term__cmd"><span aria-hidden="true">$ </span>{{ s.detail }}</p> }
+                @for (line of s.data?.lines ?? []; track $index) { <p class="term__line">{{ line }}</p> }
+              </div>
+            }
+            @case ('S4') {
+              <!-- SF-234-05 — S4 : les tickets en éventail, avec leurs clés. -->
+              @if (s.data?.tickets?.length) {
+                <div class="tickets">
+                  @for (key of s.data!.tickets!; track key; let i = $index) {
+                    <span class="ticket" [style.--i]="i">{{ key }}</span>
+                  }
+                </div>
+              } @else if (s.detail) {
+                <p class="scene__detail">{{ s.detail }}</p>
+              }
+            }
+            @case ('S5') {
+              <!-- SF-234-05 — S5 : les feuillets s'empilent ; la loupe pour une recherche. -->
+              @if (s.data?.mode === 'search') {
+                <p class="lens"><span class="lens__glass" aria-hidden="true"></span>{{ s.data?.pattern ?? s.detail }}</p>
+              } @else if (s.data?.files?.length) {
+                <div class="sheets" [attr.data-mode]="s.data?.mode">
+                  @for (file of s.data!.files!; track file; let last = $last) {
+                    <span class="sheet" [class.is-last]="last">{{ file }}</span>
+                  }
+                </div>
+              } @else if (s.detail) {
+                <p class="scene__detail">{{ s.detail }}</p>
+              }
+            }
+            @default {
+              @if (s.detail) {
+                <p class="scene__detail">{{ s.detail }}</p>
+              }
+            }
           }
         </div>
       </div>
@@ -82,6 +119,38 @@ import { JarvisSceneBus } from './jarvis-scene-bus.service';
       color: color-mix(in srgb, var(--cg-cream) 75%, transparent);
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
+    .term { margin-top: 4px; font-family: var(--cg-font-mono); font-size: 12px; overflow: hidden; }
+    .term__cmd, .term__line { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .term__cmd { color: color-mix(in srgb, var(--cg-cream) 85%, transparent); }
+    .term__line { color: color-mix(in srgb, var(--cg-cream) 60%, transparent); animation: term-up 200ms ease-out; }
+    .tickets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .ticket {
+      font-family: var(--cg-font-mono); font-size: 12px; font-weight: 600; color: var(--cg-cream);
+      padding: 4px 8px; border-radius: 6px; border: 1px solid color-mix(in srgb, var(--cg-cream) 30%, transparent);
+      background: var(--cg-navy); transform: rotate(calc((var(--i, 0) - 1) * 2deg));
+      animation: scene-in 240ms ease-out backwards; animation-delay: calc(var(--i, 0) * 60ms);
+    }
+    .sheets { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+    .sheet {
+      font-family: var(--cg-font-mono); font-size: 12px; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+      white-space: nowrap; padding: 2px 6px; border-radius: 3px 8px 3px 3px;
+      color: color-mix(in srgb, var(--cg-cream) 70%, transparent);
+      border: 1px solid color-mix(in srgb, var(--cg-cream) 18%, transparent);
+    }
+    .sheet.is-last { color: var(--cg-cream); border-color: var(--cg-orange-2); }
+    .sheets[data-mode='write'] .sheet.is-last { border-style: dashed; }
+    .lens {
+      display: flex; align-items: center; gap: 8px; margin: 6px 0 0; font-family: var(--cg-font-mono); font-size: 12px;
+      color: var(--cg-cream); overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    }
+    .lens__glass {
+      flex: none; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--cg-orange-2); position: relative;
+    }
+    .lens__glass::after {
+      content: ''; position: absolute; width: 2px; height: 6px; right: -4px; bottom: -6px;
+      background: var(--cg-orange-2); transform: rotate(-45deg);
+    }
+    @keyframes term-up { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
     .show { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 2px; }
     .show__item {
       display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: 14px;
@@ -103,7 +172,8 @@ import { JarvisSceneBus } from './jarvis-scene-bus.service';
       100% { box-shadow: 0 0 0 10px transparent; }
     }
     @media (prefers-reduced-motion: reduce) {
-      .scene, .scene__pulse { animation: none; }
+      .scene, .scene__pulse, .term__line, .ticket { animation: none; }
+      .ticket { transform: none; }
     }
   `,
 })

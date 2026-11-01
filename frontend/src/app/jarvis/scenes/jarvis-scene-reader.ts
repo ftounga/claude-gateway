@@ -34,6 +34,74 @@ export interface LitNode {
   at: number;
 }
 
+/** Ce qu'une scène dédiée dessine en plus du libellé (jamais un corps, jamais un secret). */
+export interface SceneData {
+  /** S3 — les 2 dernières lignes de la sortie, masquées, 80 car. au plus (D11). */
+  lines?: string[];
+  /** S4 — les clés de tickets vues (« FORGE-41 »), au plus {@link MAX_TICKETS}. */
+  tickets?: string[];
+  /** S4 — Jira ou Confluence. */
+  source?: 'Jira' | 'Confluence';
+  /** S5 — les fichiers lus ou écrits (noms courts), au plus {@link MAX_FILES}, le plus récent en dernier. */
+  files?: string[];
+  /** S5 — lecture, écriture, liste ou recherche (loupe). */
+  mode?: 'read' | 'write' | 'list' | 'search';
+  /** S5 — le motif cherché (loupe). */
+  pattern?: string;
+}
+
+/** S3 : lignes de sortie montrées (D11). */
+export const OUTPUT_LINES = 2;
+/** S4 : cartes de tickets au plus. */
+export const MAX_TICKETS = 6;
+/** S5 : feuillets empilés au plus. */
+export const MAX_FILES = 6;
+
+/** Une commande qui vise Jira / Confluence (S4). */
+const TICKET_COMMAND = /\b(?:jira|atlassian|confluence|acli)\b|\/rest\/api\/|\/wiki\//i;
+/** Une clé de ticket : `ABC-123`. */
+const TICKET_KEY = /\b[A-Z][A-Z0-9]{1,9}-\d{1,6}\b/g;
+
+/** Les clés de tickets d'un texte, dans l'ordre, sans doublon. */
+export function ticketKeys(text: string | null | undefined): string[] {
+  return [...new Set((text ?? '').match(TICKET_KEY) ?? [])];
+}
+
+/** La commande vise-t-elle Jira ou Confluence ? */
+export function ticketSource(command: string | null | undefined): 'Jira' | 'Confluence' | null {
+  const c = command ?? '';
+  if (!TICKET_COMMAND.test(c)) {
+    return null;
+  }
+  return /confluence|\/wiki\//i.test(c) ? 'Confluence' : 'Jira';
+}
+
+/** Le mode d'une action sur les fichiers (S5), ou `null`. */
+export function fileMode(type: string): SceneData['mode'] | null {
+  switch (type) {
+    case 'read': case 'read_file': return 'read';
+    case 'write': case 'write_file': case 'edit_file': case 'multi_edit': return 'write';
+    case 'list': case 'list_files': return 'list';
+    case 'search': case 'grep': case 'glob': case 'search_files': return 'search';
+    default: return null;
+  }
+}
+
+/** `src/app/x.ts` → `x.ts`. */
+export function baseName(path: string): string {
+  const flat = (path ?? '').trim().replace(/[\\/]+$/, '');
+  return flat.slice(Math.max(flat.lastIndexOf('/'), flat.lastIndexOf('\\')) + 1) || flat;
+}
+
+/** Les dernières lignes d'une sortie, masquées et coupées (D11). */
+export function outputTail(output: string): string[] {
+  return output.split(/\r?\n/).map((l) => l.replace(/\s+$/, '')).filter((l) => l.trim().length > 0)
+    .slice(-OUTPUT_LINES).map((l) => {
+      const masked = maskSecrets(l);
+      return masked.length <= DETAIL_CHARS ? masked : `${masked.slice(0, DETAIL_CHARS - 1)}…`;
+    });
+}
+
 /** La scène à l'écran. */
 export interface SceneView {
   /** La scène rendue (`GENERIQUE` aujourd'hui, `S2` pour l'autorisation). */
@@ -50,6 +118,8 @@ export interface SceneView {
   pinned: boolean;
   since: number;
   updatedAt: number;
+  /** Ce que la scène dédiée dessine (S3, S4, S5…). */
+  data?: SceneData;
 }
 
 /** Ce que l'écran dessine. */
@@ -102,6 +172,8 @@ export class JarvisSceneReader {
   private pulses = 0;
   private toSendAdded = 0;
   private showRequest: ShowRequest | null = null;
+  /** S3 — la sortie de la commande en cours (fin seulement). */
+  private output = '';
   private line = '';
   private scanned = 0;
   private block: { kind: BlockKind; to: string | null; subject: string | null } | null = null;
@@ -145,20 +217,68 @@ export class JarvisSceneReader {
       this.light(node, 2, now);
     }
     this.pulses++;
+    // S4 — une commande qui vise Jira / Confluence devient des cartes de tickets (heuristique, D11).
+    const source = resolved.scene === 'S3' ? ticketSource(action.path) : null;
+    const sceneId = source ? 'S4' : resolved.scene;
+    const key = source ? `tickets-${source}` : type;
     const current = this.scene;
     const entity = named[0] ?? this.currentSubject();
-    if (current && !current.pinned && current.key === type && now - current.updatedAt <= BURST_MS) {
+    if (sceneId === 'S3') {
+      this.output = '';
+    }
+    if (current && !current.pinned && current.key === key && now - current.updatedAt <= BURST_MS) {
       const count = current.count + 1;
       this.scene = {
-        ...current, count, libelle: burstLabel(resolved, count), detail: sceneDetail(action.path) ?? current.detail,
-        entity: named[0] ?? current.entity, updatedAt: now,
+        ...current, count, libelle: source ? ticketLabel(source) : burstLabel(resolved, count),
+        detail: sceneDetail(action.path) ?? current.detail, entity: named[0] ?? current.entity, updatedAt: now,
+        data: this.sceneData(sceneId, type, action.path, source, current.data),
       };
       return;
     }
     this.show({
-      id: resolved.scene, key: type, libelle: resolved.libelle, count: 1, detail: sceneDetail(action.path),
-      entity, pinned: false, since: now, updatedAt: now,
+      id: sceneId, key, libelle: source ? ticketLabel(source) : resolved.libelle, count: 1,
+      detail: sceneDetail(action.path), entity, pinned: false, since: now, updatedAt: now,
+      data: this.sceneData(sceneId, type, action.path, source, undefined),
     }, now);
+  }
+
+  /** S3 — un morceau de sortie de la commande en cours : seules les 2 dernières lignes, masquées (D11). */
+  commandOutput(chunk: string, now: number): void {
+    if (!chunk) {
+      return;
+    }
+    this.output = (this.output + chunk).slice(-2000);
+    const target = this.next?.id === 'S3' ? this.next : this.scene?.id === 'S3' ? this.scene : null;
+    if (!target) {
+      return;
+    }
+    const updated: SceneView = { ...target, data: { ...target.data, lines: outputTail(this.output) }, updatedAt: now };
+    if (target === this.next) {
+      this.next = updated;
+    } else {
+      this.scene = updated;
+    }
+  }
+
+  private sceneData(sceneId: string, type: string, path: string | undefined, source: 'Jira' | 'Confluence' | null,
+      previous: SceneData | undefined): SceneData | undefined {
+    if (sceneId === 'S3') {
+      return { lines: [] };
+    }
+    if (sceneId === 'S4' && source) {
+      const tickets = [...new Set([...(previous?.tickets ?? []), ...ticketKeys(path)])].slice(-MAX_TICKETS);
+      return { tickets, source };
+    }
+    const mode = fileMode(type);
+    if (sceneId === 'S5' && mode) {
+      if (mode === 'search') {
+        return { mode, pattern: sceneDetail(path) ?? undefined };
+      }
+      const name = path ? baseName(path) : null;
+      const files = [...(previous?.files ?? []).filter((f) => f !== name), ...(name ? [name] : [])].slice(-MAX_FILES);
+      return { mode, files };
+    }
+    return previous;
   }
 
   /** Un morceau de réponse. Les noms sont reconnus au fil de l'écriture ; le corps d'un message n'est jamais lu. */
@@ -288,6 +408,14 @@ export class JarvisSceneReader {
       return; // le corps d'un message n'est ni lu ni rendu
     }
     this.lightFrom(line.slice(Math.max(0, this.scanned - OVERLAP)), trimmed.startsWith('🎙') ? 1 : 0, now);
+    // S4 — les clés citées dans la réponse rejoignent les cartes pendant que la scène est là.
+    if (this.scene?.id === 'S4' && this.scene.data?.tickets) {
+      const keys = ticketKeys(line);
+      if (keys.length) {
+        const tickets = [...new Set([...this.scene.data.tickets, ...keys])].slice(-MAX_TICKETS);
+        this.scene = { ...this.scene, data: { ...this.scene.data, tickets }, updatedAt: now };
+      }
+    }
   }
 
   /** La ligne en cours : relue depuis la dernière frontière de mot, avec un recouvrement. */
@@ -356,4 +484,9 @@ export class JarvisSceneReader {
   private currentSubject(): NodeRef | null {
     return this.index.node(this.subjectId);
   }
+}
+
+/** « Jira · consultation », « Confluence · page ». */
+function ticketLabel(source: 'Jira' | 'Confluence'): string {
+  return source === 'Jira' ? 'Jira · consultation' : 'Confluence · page';
 }
