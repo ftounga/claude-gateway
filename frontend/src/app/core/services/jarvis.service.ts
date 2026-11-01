@@ -4,7 +4,7 @@ import { Observable } from 'rxjs';
 
 import {
   JarvisAbsence, JarvisCompanionDevice, JarvisCompanionPairingCode, JarvisCompanionVersion, JarvisToSendList,
-  TurnTimingReport,
+  JarvisSttTicket, TurnTimingReport,
 } from '../models/jarvis.models';
 
 /** F-232 / SF-232-02 — l'APK du compagnon Android, servi par le chemin des paquets du runner (F-44). */
@@ -41,6 +41,20 @@ export class JarvisService {
    */
   timings(report: TurnTimingReport): void {
     this.http.post<void>('/api/jarvis/timings', report).subscribe({ error: () => undefined });
+  }
+
+  /**
+   * F-233 / SF-233-04 — une session d'écoute en flux (jeton éphémère). 503 : le flux n'est pas configuré, l'écran
+   * reste sur la dictée.
+   */
+  sttSession(): Observable<JarvisSttTicket> {
+    return this.http.post<JarvisSttTicket>('/api/jarvis/stt-session', {});
+  }
+
+  /** F-233 / SF-233-04 — clôt la session et déclare sa durée (comptée, bornée par la passerelle). Best-effort. */
+  closeSttSession(sessionId: string, seconds: number): void {
+    this.http.post<void>(`/api/jarvis/stt-session/${sessionId}/close`, { seconds: Math.max(0, Math.round(seconds)) })
+      .subscribe({ error: () => undefined });
   }
 
   /** Les encarts mail ou message pas encore marqués envoyés, pour les sujets d'un poste. */

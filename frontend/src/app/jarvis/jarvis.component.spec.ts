@@ -1,7 +1,8 @@
 import { TestBed, fakeAsync, flushMicrotasks, tick } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
-import { of } from 'rxjs';
+import { HttpErrorResponse } from '@angular/common/http';
+import { of, throwError } from 'rxjs';
 
 import { JARVIS_USER_AGENT, JarvisComponent, companionOffer } from './jarvis.component';
 import { AtelierStreamHandlers, WorkspaceSummary } from '../core/models/atelier.models';
@@ -10,6 +11,7 @@ import { DictationService } from '../core/services/dictation.service';
 import { JarvisVoiceService } from '../core/services/jarvis-voice.service';
 import { JarvisService } from '../core/services/jarvis.service';
 import { VeilleService } from '../core/services/veille.service';
+import { JarvisStreamOpener, StreamHandlers } from './jarvis-stream-listener';
 
 const NO_COMPANION = {
   available: false, versionCode: null, versionName: null, sha256: null, signingCertSha256: null, sizeBytes: null,
@@ -32,6 +34,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
   let jarvisApi: jasmine.SpyObj<JarvisService>;
   let veilles: jasmine.SpyObj<VeilleService>;
   let userAgent: string;
+  let opener: jasmine.SpyObj<JarvisStreamOpener>;
 
   beforeEach(() => {
     try {
@@ -60,7 +63,9 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     voice.playClip.and.resolveTo(false);
     voice.hasClip.and.returnValue(false);
     voice.level.and.returnValue(0);
-    jarvisApi = jasmine.createSpyObj<JarvisService>('JarvisService', ['usage', 'companion', 'companions', 'timings']);
+    jarvisApi = jasmine.createSpyObj<JarvisService>('JarvisService', ['usage', 'companion', 'companions', 'timings', 'sttSession', 'closeSttSession']);
+    jarvisApi.sttSession.and.returnValue(throwError(() => new HttpErrorResponse({ status: 503 })));
+    opener = jasmine.createSpyObj<JarvisStreamOpener>('JarvisStreamOpener', ['open']);
     jarvisApi.companions.and.returnValue(of([]));
     jarvisApi.companion.and.returnValue(of(NO_COMPANION));
     userAgent = 'Mozilla/5.0 (X11; Linux x86_64) Chrome/130';
@@ -80,6 +85,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
         { provide: JarvisVoiceService, useValue: voice },
         { provide: JarvisService, useValue: jarvisApi },
         { provide: VeilleService, useValue: veilles },
+        { provide: JarvisStreamOpener, useValue: opener },
         { provide: JARVIS_USER_AGENT, useFactory: () => userAgent },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: convertToParamMap(params) } } },
       ],
@@ -401,4 +407,54 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     flushMicrotasks();
     expect(voice.speak).toHaveBeenCalledWith('Bonjour Monsieur. Tout va bien.', 'w-2');
   }));
+
+  it('F-233 / SF-233-05 — écoute en flux : texte partiel, fin de tour du fournisseur, session close et comptée',
+    fakeAsync(() => {
+      jarvisApi.sttSession.and.returnValue(of({
+        sessionId: 's-1', provider: 'elevenlabs', url: 'wss://x/realtime?model_id=m', token: 't',
+        expiresAt: '2030-01-01T00:00:00Z', sampleRate: 16000, maxSeconds: 120,
+      }));
+      let stt: StreamHandlers | null = null;
+      const listening = jasmine.createSpyObj('LiveListening', ['commit', 'close'], { stream: undefined });
+      listening.close.and.returnValue(4);
+      opener.open.and.callFake((_t, h) => {
+        stt = h;
+        return Promise.resolve(listening);
+      });
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.detectChanges();
+      const jarvis = fixture.componentInstance;
+
+      void jarvis.talk();
+      flushMicrotasks();
+      expect(jarvis.state()).toBe('ecoute');
+      expect(dictation.start).not.toHaveBeenCalled();
+      stt!.onPartial('Où en est');
+      fixture.detectChanges();
+      expect((fixture.nativeElement as HTMLElement).textContent).toContain('Où en est');
+
+      stt!.onCommitted('Où en est la migration ?');
+      flushMicrotasks();
+      expect(atelier.streamChat).toHaveBeenCalledWith('w-2', 'Où en est la migration ?', jasmine.any(Object), 'ACT',
+        false, [], null, false, 'JARVIS');
+      expect(jarvisApi.closeSttSession).toHaveBeenCalledWith('s-1', 4);
+      handlers!.onDone({ reply: '🎙 Étape 4.', actions: [], messageId: 'm-1' });
+      flushMicrotasks();
+      expect(jarvisApi.timings.calls.mostRecent().args[0].listenMode).toBe('STREAM');
+      expect(jarvisApi.timings.calls.mostRecent().args[0].sttProvider).toBe('elevenlabs');
+    }));
+
+  it('F-233 / SF-233-05 — flux non configuré (503) : dictée batch, et on n’essaie plus pendant l’ouverture',
+    fakeAsync(() => {
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.detectChanges();
+      const jarvis = fixture.componentInstance;
+      void jarvis.talk();
+      flushMicrotasks();
+      expect(dictation.start).toHaveBeenCalledWith(jasmine.objectContaining({ echoCancellation: true }));
+      jarvis.state.set('repos');
+      void jarvis.talk();
+      flushMicrotasks();
+      expect(jarvisApi.sttSession).toHaveBeenCalledTimes(1);
+    }));
 });
