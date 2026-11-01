@@ -1199,12 +1199,29 @@ class AnthropicAgentProviderTest {
         // Une réponse portant des éditions appliquées se traduit normalement : rien n'est altéré.
         assertThat(turn.text()).isEqualTo("ok");
         assertThat(turn.inputTokens()).isEqualTo(1);
+        // F-229 / SF-229-01 : l'édition appliquée remonte en fait neutre, pour la mesure du ruban.
+        assertThat(turn.contextEdited()).isTrue();
         server.verify();
         try {
             return new com.fasterxml.jackson.databind.ObjectMapper().readTree(captured.get());
         } catch (Exception ex) {
             throw new IllegalStateException(ex);
         }
+    }
+
+    @Test
+    void anEditIsReportedOnlyWhenTheProviderReallyClearedSomething() throws Exception {
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        assertThat(AnthropicAgentProvider.contextEdited(mapper.readTree("{}"))).isFalse();
+        assertThat(AnthropicAgentProvider.contextEdited(mapper.readTree(
+                "{\"context_management\":{\"applied_edits\":[]}}"))).isFalse();
+        assertThat(AnthropicAgentProvider.contextEdited(mapper.readTree(
+                "{\"context_management\":{\"applied_edits\":[{\"type\":\"x\",\"cleared_tool_uses\":0,"
+                        + "\"cleared_input_tokens\":0}]}}"))).isFalse();
+        assertThat(AnthropicAgentProvider.contextEdited(mapper.readTree(
+                "{\"context_management\":{\"applied_edits\":[{\"type\":\"x\"}]}}"))).isTrue();
+        assertThat(AnthropicAgentProvider.contextEdited(mapper.readTree(
+                "{\"context_management\":{\"applied_edits\":[{\"cleared_tool_uses\":2}]}}"))).isTrue();
     }
 
     @Test

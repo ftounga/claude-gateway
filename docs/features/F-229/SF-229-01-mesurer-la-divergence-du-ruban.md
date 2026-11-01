@@ -22,8 +22,9 @@ Pour chaque tour, savoir à quel bloc l'historique rejoué cesse de coïncider a
      - `WINDOW_MOVED` : `firstTracedIndex` a bougé ;
      - `NO_PREVIOUS` : pas d'empreinte précédente (premier tour, ancienne ligne) ;
      - `OTHER`.
-3. **Requête de lecture** ajoutée à `docs/ops/mesure-par-tour.md` (§6) : sur 7 jours, la part de `prefix_lost_chars` par cause et par délai entre tours. Elle doit pouvoir se rapprocher de `first_pass_cache_write`.
-4. **Best-effort.** Un échec de calcul n'altère jamais le tour (journal en `debug`, colonnes laissées à `NULL`). La requête envoyée au fournisseur est **identique à l'octet** à celle d'avant.
+3. **Ce que coûterait un rejeu intégral** (pour chiffrer la porte de SF-229-02). À la fin de chaque tour, on enregistre `replay_cut_chars` : les caractères retirés au stockage par rapport à ce qui a été envoyé (résultats coupés à `MAX_RESULT_CHARS` et étapes abandonnées par `MAX_TRACE_CHARS`). C'est le contexte qu'ajouterait un rejeu intégral.
+4. **Requête de lecture** ajoutée à `docs/ops/mesure-par-tour.md` (§6) : sur 7 jours, la part de `prefix_lost_chars` par cause et par délai entre tours. Elle doit pouvoir se rapprocher de `first_pass_cache_write`.
+5. **Best-effort.** Un échec de calcul n'altère jamais le tour (journal en `debug`, colonnes laissées à `NULL`). La requête envoyée au fournisseur est **identique à l'octet** à celle d'avant.
 
 ## Erreurs
 
@@ -40,8 +41,17 @@ Pour chaque tour, savoir à quel bloc l'historique rejoué cesse de coïncider a
 - [ ] Une compaction entre deux tours : cause `COMPACTION`.
 - [ ] Deux chantiers parallèles d'un même terminal : chaque fil est comparé à **son** tour précédent, jamais à celui de l'autre chantier.
 - [ ] Le corps envoyé au fournisseur est identique avant et après la SF (test de non-régression sur le corps sérialisé).
+- [ ] Un tour dont un résultat dépasse 8 000 caractères enregistre un `replay_cut_chars` égal au surplus coupé ; un tour sans coupe enregistre 0.
 - [ ] Aucune colonne ne contient de texte issu de la conversation : seulement des hachages et des nombres.
 - [ ] Isolation : un tour de Bob n'est jamais comparé à une empreinte d'Alice.
+
+## Contraintes de validation
+
+| Champ | Règle |
+|---|---|
+| `ribbon_fingerprint` | JSON `[[hachage, taille], …]`, hachage = 16 caractères hexadécimaux (SHA-256 tronqué), 4 000 blocs au plus (au-delà : `NULL`, cause `OTHER`) |
+| `prefix_divergence_cause` | une des 8 valeurs listées, jamais de texte libre |
+| `prefix_lost_chars`, `replay_cut_chars` | ≥ 0 |
 
 ## Plan de test
 
@@ -56,7 +66,7 @@ Pour chaque tour, savoir à quel bloc l'historique rejoué cesse de coïncider a
 - `atelier/measure/TurnMeasureWriter` et l'enregistrement de mesure (champs ajoutés).
 - `AtelierChatService` (calcul à la fin du tour et au premier appel).
 - Nouvelle classe `atelier/measure/RibbonFingerprint`.
-- Migration : 4 colonnes nullables sur `atelier_turn_measures` (`ribbon_fingerprint` text, `prefix_divergence_index` int, `prefix_lost_chars` bigint, `prefix_divergence_cause` varchar(32)). Prendre le prochain numéro libre.
+- Migration : 5 colonnes nullables sur `atelier_turn_measures` (`ribbon_fingerprint` text, `prefix_divergence_index` int, `prefix_lost_chars` bigint, `prefix_divergence_cause` varchar(32), `replay_cut_chars` bigint). Prendre le prochain numéro libre. Retour arrière : `<rollback>` qui supprime les 5 colonnes ; elles sont nullables, donc aucun code existant n'en dépend.
 - `docs/ops/mesure-par-tour.md` §6.
 - **Préoccupations transversales** : aucune (ni auth, ni tenant nouveau, ni plans, ni navigation).
 

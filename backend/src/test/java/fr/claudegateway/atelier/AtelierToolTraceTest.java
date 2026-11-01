@@ -272,4 +272,57 @@ class AtelierToolTraceTest {
                 {"steps":[{"text":"t","calls":[{"id":"c1","name":"bash","input":{},"result":"ok"}]}]}
                 """).steps().get(0).serverTools()).isFalse();
     }
+
+    // ------------------------------------------------------------------ F-229 / SF-229-01
+
+    @Test
+    void storingWithNothingToReportGivesExactlyTheSameDocumentAsBefore() {
+        AtelierToolTrace trace = oneCall("fichier.txt");
+
+        AtelierToolTrace.Stored stored = trace.store(false);
+
+        assertThat(stored.json()).isEqualTo(trace.toJson()).doesNotContain("droppedSteps").doesNotContain("contextEdited");
+        assertThat(stored.droppedSteps()).isZero();
+        assertThat(stored.droppedChars()).isZero();
+        assertThat(AtelierToolTrace.factsOf(stored.json())).isEqualTo(new AtelierToolTrace.Facts(false, false, false));
+    }
+
+    @Test
+    void droppedStepsAreCountedAndTheReplayIsUnchanged() {
+        List<AtelierToolTrace.Step> steps = new ArrayList<>();
+        for (int i = 0; i < 12; i++) {
+            String result = AtelierToolTrace.boundResult("r".repeat(9_000));
+            steps.add(new AtelierToolTrace.Step("étape " + i,
+                    List.of(new AtelierToolTrace.Call("c" + i, "bash", input("command", "ls"), result, false))));
+        }
+        AtelierToolTrace trace = new AtelierToolTrace(steps);
+
+        AtelierToolTrace.Stored stored = trace.store(true);
+
+        assertThat(stored.droppedSteps()).isPositive();
+        assertThat(stored.droppedChars()).isGreaterThan(8_000L * stored.droppedSteps());
+        assertThat(AtelierToolTrace.fromJson(stored.json()).replay())
+                .isEqualTo(AtelierToolTrace.fromJson(trace.toJson()).replay());
+        assertThat(AtelierToolTrace.factsOf(stored.json())).isEqualTo(new AtelierToolTrace.Facts(true, false, true));
+    }
+
+    @Test
+    void theSurplusCutFromAResultIsWhatTheReplayLoses() {
+        assertThat(AtelierToolTrace.cutChars("a".repeat(8_000))).isZero();
+        assertThat(AtelierToolTrace.cutChars("a".repeat(8_123))).isEqualTo(123L);
+        assertThat(AtelierToolTrace.cutChars(null)).isZero();
+        assertThat(AtelierToolTrace.isTruncatedResult(AtelierToolTrace.boundResult("a".repeat(8_123)))).isTrue();
+        assertThat(AtelierToolTrace.isTruncatedResult("court")).isFalse();
+    }
+
+    @Test
+    void aReasoningThatCannotBeReplayedIsAFact() {
+        AtelierToolTrace trace = new AtelierToolTrace(List.of(new AtelierToolTrace.Step("t",
+                List.of(new AtelierToolTrace.Call("c1", "bash", input("command", "ls"), "ok", false)),
+                List.of(new AtelierToolTrace.Thought("", "sig-a", null), new AtelierToolTrace.Thought("", "sig-b", null)),
+                false)));
+
+        assertThat(AtelierToolTrace.factsOf(trace.toJson()).reasoningDropped()).isTrue();
+        assertThat(AtelierToolTrace.factsOf("illisible")).isEqualTo(new AtelierToolTrace.Facts(false, false, false));
+    }
 }

@@ -25,6 +25,12 @@ public class StubAiAgentProvider implements AiAgentProvider {
      */
     public final List<String> messageSnapshots =
             java.util.Collections.synchronizedList(new ArrayList<>());
+    /**
+     * Les messages de <b>chaque</b> appel, figés au moment de l'appel (F-229 / SF-229-01) : le ruban
+     * réellement parti, bloc par bloc, pour comparer deux tours ou deux réglages à l'identique.
+     */
+    public final List<List<AgentMessage>> requestSnapshots =
+            java.util.Collections.synchronizedList(new ArrayList<>());
     /** Tous les noms d'outils offerts, tous appels confondus — pour vérifier ce qu'a vu une sous-boucle. */
     public final java.util.Set<String> toolNamesSeen = java.util.concurrent.ConcurrentHashMap.newKeySet();
     /**
@@ -89,6 +95,7 @@ public class StubAiAgentProvider implements AiAgentProvider {
         script.clear();
         lastRequest = null;
         messageSnapshots.clear();
+        requestSnapshots.clear();
         duringTurn = null;
         toolNamesSeen.clear();
         toolBelts.clear();
@@ -315,6 +322,7 @@ public class StubAiAgentProvider implements AiAgentProvider {
     public AgentTurn nextTurn(AgentTurnRequest request) {
         this.lastRequest = request;
         messageSnapshots.add(String.valueOf(request.messages()));
+        requestSnapshots.add(new ArrayList<>(request.messages()));
         reasoningSnapshots.add(request.reasoning());
         // Le niveau EFFECTIF : celui de la requête, sauf si une consigne glissée dans la
         // conversation l'a changé depuis (F-134 / SF-134-05). C'est lui qui gouverne la réponse,
