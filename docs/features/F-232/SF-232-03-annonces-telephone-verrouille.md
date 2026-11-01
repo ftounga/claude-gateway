@@ -82,16 +82,16 @@
 
 ## Critères d'acceptation
 
-- [ ] Un code généré dans l'écran Jarvis s'échange une fois contre un jeton ; une 2ᵉ fois → 401.
-- [ ] Le jeton lit les annonces d'Alice ; jamais celles de Bob (isolation `user_id`).
-- [ ] Le jeton du compagnon est refusé ailleurs : `X-Runner-Token` d'une route runner, `Authorization: Bearer` de la chaîne principale.
-- [ ] Un jeton runner est refusé par `/runner/jarvis/announcements`.
-- [ ] Révoqué → 401 immédiat ; absent de la liste.
-- [ ] Premier appel sans curseur → aucune annonce ; un tour via Jarvis puis une alerte → deux annonces dans l'ordre ; un tour tapé → rien.
-- [ ] Annonce plus vieille que 10 min → jamais rendue.
-- [ ] Le compagnon ne parle que téléphone verrouillé / écran éteint, ne répète jamais une annonce (déduplication par `id`), écoute 8 s après.
-- [ ] Le jeton n'est jamais journalisé ; il est stocké haché côté gateway.
-- [ ] Design system : jetons `--cg-*`, Angular Material.
+- [x] Un code généré dans l'écran Jarvis s'échange une fois contre un jeton ; une 2ᵉ fois → 401.
+- [x] Le jeton lit les annonces d'Alice ; jamais celles de Bob (isolation `user_id`).
+- [x] Le jeton du compagnon est refusé ailleurs : `X-Runner-Token` d'une route runner, `Authorization: Bearer` de la chaîne principale.
+- [x] Un jeton runner est refusé par `/runner/jarvis/announcements`.
+- [x] Révoqué → 401 immédiat ; absent de la liste.
+- [x] Premier appel sans curseur → aucune annonce ; un tour via Jarvis puis une alerte → deux annonces dans l'ordre ; un tour tapé → rien.
+- [x] Annonce plus vieille que 10 min → jamais rendue.
+- [x] Le compagnon ne parle que téléphone verrouillé / écran éteint, ne répète jamais une annonce (déduplication par `id`), écoute 8 s après.
+- [x] Le jeton n'est jamais journalisé ; il est stocké haché côté gateway.
+- [x] Design system : jetons `--cg-*`, Angular Material.
 
 ---
 
@@ -134,4 +134,4 @@
 - La reconnaissance de la réponse par le compagnon lui-même (il ouvre Jarvis, qui écoute — la parole reste dans la PWA).
 - Les annonces sur iPhone ; Web Push (F-153) inchangé.
 - La lecture en flux et l'interruption (F-233).
-- Compiler et essayer l'APK (pas de SDK Android ici ; à faire sur le téléphone du PO).
+- Essayer l'APK sur le téléphone du PO (compilé ici : `assembleDebug`, `assembleRelease` et tests unitaires verts ; jamais exécuté sur un appareil).
