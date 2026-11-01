@@ -1,4 +1,4 @@
-import { TestBed, fakeAsync, flushMicrotasks } from '@angular/core/testing';
+import { TestBed, fakeAsync, flushMicrotasks, tick } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { of } from 'rxjs';
@@ -27,7 +27,8 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       // ignoré
     }
     handlers = null;
-    atelier = jasmine.createSpyObj<AtelierService>('AtelierService', ['listWorkspaces', 'streamChat']);
+    atelier = jasmine.createSpyObj<AtelierService>('AtelierService', ['listWorkspaces', 'streamChat', 'interruptChat']);
+    atelier.interruptChat.and.returnValue(of(undefined));
     atelier.listWorkspaces.and.returnValue(of([subject('w-1', 'Connecteur AGENOR'), subject('w-2', 'CAGIP')]));
     atelier.streamChat.and.callFake((_id: string, _text: string, h: AtelierStreamHandlers) => {
       handlers = h;
@@ -106,6 +107,36 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     expect(voice.stop).toHaveBeenCalled();
     expect(dictation.start).toHaveBeenCalled();
     expect(jarvis.state()).toBe('ecoute');
+  }));
+
+  it('SF-231-03 — un tour qui tarde reçoit un accusé, puis s’annonce terminé', fakeAsync(() => {
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+
+    jarvis.send('w-2', 'Lance les tests');
+    tick(5_000);
+    expect(voice.speak).toHaveBeenCalledWith('Je m’en occupe.', 'w-2');
+    expect(jarvis.state()).toBe('reflexion');
+
+    tick(30_000);
+    handlers!.onDone({ reply: '🎙 Les tests passent.', actions: [], messageId: 'm-1' });
+    flushMicrotasks();
+    expect(voice.speak).toHaveBeenCalledWith('C’est terminé. Les tests passent.', 'w-2');
+  }));
+
+  it('SF-231-03 — « stop » interrompt le travail en cours', fakeAsync(() => {
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    jarvis.send('w-2', 'Lance les tests');
+
+    void jarvis.handle('Stop !');
+    flushMicrotasks();
+
+    expect(atelier.interruptChat).toHaveBeenCalledWith('w-2');
+    expect(voice.speak).toHaveBeenCalledWith('J’arrête.', 'w-2');
+    expect(atelier.streamChat).toHaveBeenCalledTimes(1);
   }));
 
   it('sans voix (plafond atteint), la phrase reste écrite', fakeAsync(() => {

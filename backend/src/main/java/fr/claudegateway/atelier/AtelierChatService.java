@@ -3340,6 +3340,12 @@ public class AtelierChatService implements RelayInterruptTarget {
         // F-176 / SF-176-02 : aucun tour rejoué = premier message du sujet (ou nouveau départ) — l'agent
         // y qualifie la demande. Posé APRÈS la relecture de l'historique pour le savoir.
         consigne = withJourney(userId, workspace, consigne, messages.isEmpty());
+        // F-231 / SF-231-03 — PARLER COURT : un tour né à la voix reçoit la consigne orale DANS LE MESSAGE (jamais
+        // dans la consigne système : le préfixe reste stable et le cache F-134 intact). Texte fixe, ajouté APRÈS la
+        // parole de l'utilisateur ; le message PERSISTÉ reste sa parole. Tour tapé : consigne inchangée à l'octet près.
+        if (viaJarvis) {
+            consigne = fr.claudegateway.jarvis.JarvisOralNote.appendTo(consigne);
+        }
         messages.add(AgentMessage.userText(consigne));
         // F-229 / SF-229-01 : le ruban du premier appel comparé à celui du dernier appel du tour précédent
         // du même fil. Lecture seule : la requête n'en dépend pas. Best-effort.

@@ -10,7 +10,9 @@ import { DictationError, DictationService } from '../core/services/dictation.ser
 import { JarvisVoiceError, JarvisVoiceService } from '../core/services/jarvis-voice.service';
 import { MarkdownPipe } from '../shared/markdown.pipe';
 import { EndOfSpeech, MicMeter } from './jarvis-mic-meter';
-import { oralPhrase, subjectSwitch } from './jarvis-oral';
+import {
+  ACK_DELAY_MS, ACK_PHRASE, isStopCommand, oralPhrase, subjectSwitch, withEndAnnouncement,
+} from './jarvis-oral';
 import { JarvisOrbComponent, JarvisState } from './jarvis-orb.component';
 
 /** Le sujet retenu sur cet appareil, d'une ouverture de Jarvis à l'autre. */
@@ -80,6 +82,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.clearAck();
     this.stopMeter();
     this.dictation.cancel();
   }
@@ -171,8 +174,21 @@ export class JarvisComponent implements OnInit, OnDestroy {
     await this.handle(text);
   }
 
-  /** Ce qui a été dit : un changement de sujet (sur l'appareil), sinon une demande au cerveau. */
+  /** Ce qui a été dit : un ordre d'arrêt, un changement de sujet (sur l'appareil), sinon une demande au cerveau. */
   async handle(text: string): Promise<void> {
+    if (isStopCommand(text)) {
+      // SF-231-03 — l'interruption par la parole : « stop » arrête le travail en cours, comme le bouton du terminal.
+      const id = this.subjectId();
+      if (this.turnRunning && id) {
+        this.turnRunning = false;
+        this.clearAck();
+        this.atelier.interruptChat(id).subscribe({ error: () => undefined });
+        await this.say('J’arrête.');
+      } else {
+        await this.say('Rien ne tourne en ce moment.');
+      }
+      return;
+    }
     const target = subjectSwitch(text, this.subjects());
     if (target) {
       this.chooseSubject(target.id);
@@ -197,6 +213,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
     // être lue deux fois.
     const seq = ++this.sendSeq;
     const latest = () => seq === this.sendSeq;
+    if (!this.turnRunning) {
+      this.turnStartedAt = Date.now();
+    }
+    this.turnRunning = true;
+    this.armAck(subjectId, latest);
     void this.atelier.streamChat(subjectId, text, {
       onAction: () => undefined,
       onText: () => undefined,
@@ -212,6 +233,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
       }),
       onClosed: () => this.zone.run(() => {
         if (latest()) {
+          this.endTurn();
           this.state.set('repos');
           this.notice.set('La réponse n’est pas arrivée ici : elle sera dans le terminal.');
         }
@@ -220,18 +242,53 @@ export class JarvisComponent implements OnInit, OnDestroy {
   }
 
   private sendSeq = 0;
+  /** Un tour tourne pour un envoi de cet écran. */
+  private turnRunning = false;
+  private turnStartedAt = 0;
+  private ackTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * SF-231-03 — l'accusé : si la réponse tarde, Jarvis dit « Je m'en occupe. » sans quitter la réflexion. La réponse,
+   * quand elle arrive, coupe l'accusé s'il est encore en cours.
+   */
+  private armAck(subjectId: string, latest: () => boolean): void {
+    this.clearAck();
+    this.ackTimer = setTimeout(() => {
+      this.ackTimer = null;
+      if (latest() && this.turnRunning && this.state() === 'reflexion') {
+        this.spoken.set(ACK_PHRASE);
+        this.voice.speak(ACK_PHRASE, subjectId).catch(() => undefined);
+      }
+    }, ACK_DELAY_MS);
+  }
+
+  private clearAck(): void {
+    if (this.ackTimer) {
+      clearTimeout(this.ackTimer);
+      this.ackTimer = null;
+    }
+  }
+
+  private endTurn(): void {
+    this.turnRunning = false;
+    this.clearAck();
+  }
 
   private async onDone(done: AtelierStreamDone): Promise<void> {
     if (done.followUp === true) {
       // Un tour de suite démarre dans le même flux : la réponse finale viendra ensuite.
       return;
     }
+    const elapsed = Date.now() - this.turnStartedAt;
+    this.endTurn();
     this.detail.set(done.reply);
     const phrase = oralPhrase(done.reply) || 'C’est fait. Le détail est à l’écran.';
-    await this.say(phrase);
+    // SF-231-03 — un tour long s'annonce : le PO a pu passer à autre chose.
+    await this.say(withEndAnnouncement(phrase, elapsed));
   }
 
   private onTurnError(code: string, reason?: string): void {
+    this.endTurn();
     this.state.set('repos');
     this.notice.set(reason ?? (code === 'forbidden' ? 'Ce sujet ne t’est pas ouvert.' : 'Le tour n’a pas abouti.'));
   }

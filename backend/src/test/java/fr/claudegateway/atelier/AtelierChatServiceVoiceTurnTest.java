@@ -100,6 +100,34 @@ class AtelierChatServiceVoiceTurnTest {
     }
 
     @Test
+    void SF_231_03_laConsigneOraleVaDansLeMessageJamaisDansLeSysteme() {
+        service.markVoiceTurn(userId, workspaceId, null);
+        agentProvider.enqueueFinal("🎙 C'est fait.");
+
+        service.chat(userId, workspaceId, "valide l'étape trois");
+
+        assertThat(sentToModel()).contains("[Mode Jarvis").contains("email_me");
+        assertThat(agentProvider.lastRequest.system()).doesNotContain("Mode Jarvis");
+        // Le fil garde la parole de l'utilisateur, pas la consigne.
+        assertThat(saved()).filteredOn(m -> "USER".equals(m.getRole()))
+                .extracting(AtelierMessage::getContent).containsExactly("valide l'étape trois");
+    }
+
+    @Test
+    void SF_231_03_unTourTapeNeRecoitPasLaConsigneOrale() {
+        agentProvider.enqueueFinal("ok");
+
+        service.chat(userId, workspaceId, "bonjour");
+
+        assertThat(sentToModel()).doesNotContain("Mode Jarvis");
+    }
+
+    private String sentToModel() {
+        return agentProvider.lastRequest.messages().stream().map(Object::toString)
+                .reduce("", String::concat);
+    }
+
+    @Test
     void laMarqueNeVautQuUneFois() {
         service.markVoiceTurn(userId, workspaceId, null);
 
