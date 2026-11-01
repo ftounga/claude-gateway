@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 
 import {
   JarvisAbsence, JarvisCompanionDevice, JarvisCompanionPairingCode, JarvisCompanionVersion, JarvisToSendList,
+  TurnTimingReport,
 } from '../models/jarvis.models';
 
 /** F-232 / SF-232-02 — l'APK du compagnon Android, servi par le chemin des paquets du runner (F-44). */
@@ -32,6 +33,14 @@ export class JarvisService {
   usage(event: 'SESSION' | 'SPOKEN' | 'WAKE', seconds?: number): void {
     this.http.post<void>('/api/jarvis/usage', seconds === undefined ? { event } : { event, seconds: Math.round(seconds) })
       .subscribe({ error: () => undefined });
+  }
+
+  /**
+   * F-233 / SF-233-01 — la mesure d'un tour vocal (marques en ms depuis la fin de parole, aucun contenu).
+   * Best-effort : un envoi raté ne gêne jamais Jarvis.
+   */
+  timings(report: TurnTimingReport): void {
+    this.http.post<void>('/api/jarvis/timings', report).subscribe({ error: () => undefined });
   }
 
   /** Les encarts mail ou message pas encore marqués envoyés, pour les sujets d'un poste. */

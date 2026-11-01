@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-233 / SF-233-01 - CHRONOMETRER LE TOUR VOCAL DE JARVIS (D2).
+
+      jarvis_turn_timings : UNE ligne par tour vocal. Marques en millisecondes depuis la fin de parole
+      detectee (t0), nulles si l'etape n'a pas eu lieu ; fournisseurs utilises ; compteurs d'interruption.
+      AUCUN CONTENU : ni texte dit, ni texte lu, ni audio. Purge a 90 jours.
+
+      Isolation : user_id sur chaque ligne ; lectures sous user_id.
+      Rollback : la table se retire.
+    -->
+
+    <changeSet id="196-jarvis-turn-timings" author="claude-gateway">
+        <createTable tableName="jarvis_turn_timings">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid"/>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="listen_mode" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="stt_provider" type="varchar(32)"/>
+            <column name="tts_provider" type="varchar(32)"/>
+            <column name="tool_turn" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="speech_ms" type="int"/>
+            <column name="transcript_ms" type="int"/>
+            <column name="reaction_ms" type="int"/>
+            <column name="sent_ms" type="int"/>
+            <column name="first_token_ms" type="int"/>
+            <column name="first_oral_sentence_ms" type="int"/>
+            <column name="first_audio_byte_ms" type="int"/>
+            <column name="first_sound_ms" type="int"/>
+            <column name="done_ms" type="int"/>
+            <column name="interruptions_detected" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="interruptions_restored" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="interruptions_confirmed" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="acknowledgements" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="false_triggers" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="jarvis_turn_timings" indexName="idx_jarvis_turn_timings_user_created">
+            <column name="user_id"/>
+            <column name="created_at"/>
+        </createIndex>
+        <createIndex tableName="jarvis_turn_timings" indexName="idx_jarvis_turn_timings_created">
+            <column name="created_at"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="jarvis_turn_timings"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

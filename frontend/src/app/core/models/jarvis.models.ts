@@ -86,3 +86,26 @@ export interface JarvisCompanionDevice {
   pairedAt: string;
   lastSeenAt: string | null;
 }
+
+/** F-233 / SF-233-01 — Ce que l'écran déclare (`POST /api/jarvis/timings`). */
+export interface TurnTimingReport {
+  workspaceId: string | null;
+  listenMode: 'BATCH' | 'STREAM';
+  sttProvider: string | null;
+  ttsProvider: string | null;
+  toolTurn: boolean;
+  speechMs: number | null;
+  transcriptMs: number | null;
+  reactionMs: number | null;
+  sentMs: number | null;
+  firstTokenMs: number | null;
+  firstOralSentenceMs: number | null;
+  firstAudioByteMs: number | null;
+  firstSoundMs: number | null;
+  doneMs: number | null;
+  interruptionsDetected: number;
+  interruptionsRestored: number;
+  interruptionsConfirmed: number;
+  acknowledgements: number;
+  falseTriggers: number;
+}

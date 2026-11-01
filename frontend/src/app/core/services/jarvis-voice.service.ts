@@ -16,6 +16,14 @@ export interface JarvisVoiceStatus {
   budgetReached: boolean;
 }
 
+/** F-233 / SF-233-01 — ce que la lecture signale au chronomètre du tour. */
+export interface SpeakHooks {
+  /** La réponse audio commence à arriver. */
+  onFirstByte?: () => void;
+  /** Le premier son est joué. */
+  onPlaying?: () => void;
+}
+
 /** Ce que l'écran garde d'une lecture : de quoi l'arrêter. */
 interface Playback {
   audio: HTMLAudioElement;
@@ -66,7 +74,7 @@ export class JarvisVoiceService {
    * Dit `text` à voix haute. La promesse se résout à la fin de la phrase (ou à son interruption) ; elle est rejetée
    * avec un {@link JarvisVoiceError} si la voix n'a pas pu parler.
    */
-  async speak(text: string, workspaceId: string | null = null): Promise<void> {
+  async speak(text: string, workspaceId: string | null = null, hooks?: SpeakHooks): Promise<void> {
     this.stop();
     const abort = new AbortController();
     const token = this.auth.token();
@@ -88,6 +96,7 @@ export class JarvisVoiceService {
     if (!response.ok) {
       throw voiceErrorOf(response.status);
     }
+    hooks?.onFirstByte?.();
     const audio = new Audio();
     const url = canStream(response) ? this.streamInto(response) : URL.createObjectURL(await response.blob());
     audio.src = url;
@@ -110,6 +119,7 @@ export class JarvisVoiceService {
         },
       };
       this.current = playback;
+      audio.onplaying = () => hooks?.onPlaying?.();
       audio.onended = () => playback.done();
       audio.onerror = () => playback.done('echec');
       audio.play().catch(() => playback.done('echec'));
