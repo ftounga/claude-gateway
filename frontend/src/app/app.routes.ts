@@ -1,4 +1,4 @@
-import { inject } from '@angular/core';
+import { inject, isDevMode } from '@angular/core';
 import { RedirectFunction, Router, Routes, UrlMatchResult, UrlSegment } from '@angular/router';
 import { authGuard } from './core/guards/auth.guard';
 
@@ -135,6 +135,12 @@ export const routes: Routes = [
 
   // F-231 / SF-231-02 — LE MODE JARVIS : plein écran, donc hors coquille, sous la même garde d'authentification.
   // `?sujet=` choisit le sujet ; `?alerte=` (F-230, SF-231-05) fait lire une alerte de veille.
+  // F-236 / SF-236-01 — banc de captures de la 3D, DÉVELOPPEMENT SEULEMENT (jamais apparié en production).
+  {
+    path: 'jarvis-banc',
+    canMatch: [() => isDevMode()],
+    loadComponent: () => import('./jarvis/stage3d/jarvis-banc.component').then((m) => m.JarvisBancComponent),
+  },
   {
     path: 'jarvis',
     canActivate: [authGuard],
