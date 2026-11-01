@@ -91,7 +91,8 @@ class JarvisAlertApiIntegrationTest {
                 .andExpect(jsonPath("$.chantierNumber").value(2))
                 .andExpect(jsonPath("$.costEur").isNumber())
                 .andExpect(jsonPath("$.openedAt").doesNotExist())
-                .andExpect(jsonPath("$.link").value("/atelier/" + subject.getId() + "?alerte=" + alert.getId()));
+                // F-231 / SF-231-05 : l'écran Jarvis existe, l'alerte y mène (app.jarvis.route-enabled=true).
+                .andExpect(jsonPath("$.link").value("/jarvis?alerte=" + alert.getId()));
         mockMvc.perform(as(post("/api/jarvis/alerts/" + alert.getId() + "/open"), aliceToken))
                 .andExpect(status().isNoContent());
         mockMvc.perform(as(post("/api/jarvis/alerts/" + alert.getId() + "/open"), aliceToken))

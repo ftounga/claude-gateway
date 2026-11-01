@@ -17,6 +17,7 @@
           "/favicon.ico",
           "/index.html",
           "/manifest.webmanifest",
+          "/jarvis.webmanifest",
           "/*.css",
           "/*.js"
         ]

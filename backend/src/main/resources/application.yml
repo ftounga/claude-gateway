@@ -605,6 +605,9 @@ app:
     cost-usd-per-thousand-chars: ${APP_SPEECH_COST_USD_PER_1K_CHARS:0.015}
     transcription-cost-usd-per-minute: ${APP_SPEECH_TRANSCRIPTION_COST_USD_PER_MIN:0.006}
   jarvis:
+    # F-231 / SF-231-05 : l'écran /jarvis existe ; les alertes de veille (F-230) y mènent (/jarvis?alerte=…).
+    # false = repli sur le fil du sujet (/atelier/{sujet}?alerte=…).
+    route-enabled: ${APP_JARVIS_ROUTE_ENABLED:true}
     # LE MODE JARVIS (F-231). La voix (SF-231-01) relaie la voix off (app.speech.*, meme fournisseur, meme cle,
     # memes tarifs) : AUCUN NOUVEAU SECRET. Voix masculine posee par defaut (onyx), phrases courtes, plafond
     # mensuel en euros (0 = voix coupee, l'ecran retombe sur le texte).

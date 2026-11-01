@@ -9,6 +9,15 @@
   "orientation": "any",
   "theme_color": "#0B1020",
   "background_color": "#0B1020",
+  "shortcuts": [
+    {
+      "name": "Jarvis",
+      "short_name": "Jarvis",
+      "description": "Parler à son terminal, à voix haute",
+      "url": "/jarvis",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ],
   "icons": [
     {
       "src": "icons/icon-192.png",

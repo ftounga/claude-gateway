@@ -50,6 +50,23 @@
   </section>
 
   <footer class="jv__controls">
+    <!-- SF-231-05 — « Jarvis… » : le mot d'éveil, reconnu SUR L'APPAREIL. Rien ne sort avant le mot. -->
+    <div class="jv__wake">
+      @if (enrolling() !== null) {
+        <span class="jv__wake-state" role="status">Apprentissage : {{ enrolling() }} / 3</span>
+        <button mat-button type="button" class="jv__wake-button" (click)="cancelLearn()">Annuler</button>
+      } @else if (wakeLearned()) {
+        <button mat-button type="button" class="jv__wake-button" [attr.aria-pressed]="wakeOn()" (click)="toggleWake()">
+          <mat-icon aria-hidden="true">{{ wakeOn() ? 'hearing' : 'hearing_disabled' }}</mat-icon>
+          {{ wakeOn() ? '« Jarvis » écouté sur cet appareil' : 'Mot d’éveil éteint' }}
+        </button>
+        <button mat-button type="button" class="jv__wake-button" (click)="learnWake()">Réapprendre</button>
+      } @else {
+        <button mat-button type="button" class="jv__wake-button" (click)="learnWake()">
+          <mat-icon aria-hidden="true">record_voice_over</mat-icon> Apprendre « Jarvis »
+        </button>
+      }
+    </div>
     <button mat-fab extended color="primary" type="button" class="jv__talk" (click)="talk()">
       <mat-icon>{{ state() === 'ecoute' ? 'send' : state() === 'parole' ? 'stop' : 'mic' }}</mat-icon>
       {{ state() === 'ecoute' ? 'J’ai fini' : state() === 'parole' ? 'Interrompre' : 'Parler' }}

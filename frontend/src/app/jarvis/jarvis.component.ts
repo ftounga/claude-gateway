@@ -1,4 +1,6 @@
-import { Component, DestroyRef, NgZone, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import {
+  Component, DestroyRef, NgZone, OnDestroy, OnInit, computed, effect, inject, signal, untracked,
+} from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
@@ -11,6 +13,22 @@ import { JarvisVoiceError, JarvisVoiceService } from '../core/services/jarvis-vo
 import { MarkdownPipe } from '../shared/markdown.pipe';
 import { EndOfSpeech, MicMeter } from './jarvis-mic-meter';
 import { asksConfirmation, classifyConfirmation, confirmationQuestion } from './jarvis-confirm';
+import {
+  ENROLL_COUNT, MIN_WORD_FRAMES, TemplateWakeWordEngine, enrollThreshold, readWakeProfile, saveWakeProfile,
+} from './jarvis-wake';
+import { JarvisService } from '../core/services/jarvis.service';
+import { VeilleService } from '../core/services/veille.service';
+
+/** SF-231-05 — le mot d'éveil allumé sur cet appareil. */
+export const WAKE_ON_KEY = 'cg.jarvis.wake.on';
+
+function readWakeOn(): boolean {
+  try {
+    return localStorage.getItem(WAKE_ON_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
 
 /** SF-231-04 — ce que Jarvis dit quand la réponse n'est ni « oui » ni « non ». */
 export const DOUBT_PHRASE = 'Je n’ai pas compris : je ne fais rien. Tu peux confirmer depuis le terminal.';
@@ -70,8 +88,44 @@ export class JarvisComponent implements OnInit, OnDestroy {
   /** Le niveau que l'orbe suit : le micro en écoute, la voix de Jarvis en parole. */
   readonly orbLevel = (): number => (this.state() === 'parole' ? this.voice.level() : this.micLevel);
 
+  // ---- SF-231-05 : le mot d'éveil, l'alerte de veille, la mesure d'adoption ----
+  private readonly jarvis = inject(JarvisService);
+  private readonly veilles = inject(VeilleService);
+  private readonly wakeEngine = new TemplateWakeWordEngine(() => readWakeProfile());
+  /** Le mot d'éveil est-il allumé sur cet appareil ? */
+  readonly wakeOn = signal(readWakeOn());
+  /** Un profil « Jarvis » a-t-il été appris sur cet appareil ? */
+  readonly wakeLearned = signal(readWakeProfile() !== null);
+  /** Apprentissage en cours : le nombre de « Jarvis » déjà entendus, ou `null`. */
+  readonly enrolling = signal<number | null>(null);
+  /** L'alerte de veille à lire, quand le navigateur a refusé le son avant le premier geste. */
+  private pendingAlert: string | null = null;
+  private listenStartedAt = 0;
+  private wakeStarting = false;
+  private previousManifest: string | null = null;
+
+  constructor() {
+    // L'écoute du mot d'éveil se tait pendant que la dictée tient le micro, et reprend ensuite.
+    effect(() => {
+      const state = this.state();
+      const on = this.wakeOn() && this.wakeLearned() && this.enrolling() === null;
+      untracked(() => {
+        if (state === 'ecoute' || !on) {
+          if (this.enrolling() === null) {
+            this.wakeEngine.stop();
+          }
+        } else {
+          void this.startWake();
+        }
+      });
+    });
+  }
+
   ngOnInit(): void {
+    this.useJarvisManifest();
+    this.jarvis.usage('SESSION');
     const wanted = this.route.snapshot.queryParamMap.get('sujet');
+    const alertId = this.route.snapshot.queryParamMap.get('alerte');
     this.atelier.listWorkspaces().subscribe({
       next: (list) => {
         this.subjects.set(list);
@@ -80,6 +134,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
         this.subjectId.set(pick);
         if (!pick) {
           this.notice.set('Aucun sujet : ouvre d’abord un terminal.');
+        }
+        if (alertId) {
+          this.readAlert(alertId);
         }
       },
       error: () => this.notice.set('Les sujets n’ont pas pu être lus. Réessaie.'),
@@ -91,6 +148,140 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.clearAck();
     this.stopMeter();
     this.dictation.cancel();
+    this.wakeEngine.stop();
+    this.restoreManifest();
+  }
+
+  /**
+   * SF-231-05 (D7) — l'alerte d'une veille (F-230) : Jarvis passe sur son sujet, la lit, puis écoute la réponse.
+   * Si le navigateur refuse le son avant le premier geste, l'alerte reste écrite et sera dite au premier appui.
+   */
+  readAlert(alertId: string): void {
+    this.veilles.alert(alertId).subscribe({
+      next: (alert) => {
+        if (this.subjects().some((s) => s.id === alert.workspaceId)) {
+          this.chooseSubject(alert.workspaceId);
+        }
+        this.veilles.openAlert(alertId).subscribe({ error: () => undefined });
+        const phrase = `${alert.watchName ? `Veille ${alert.watchName} : ` : ''}${alert.sentence} Que veux-tu faire ?`;
+        void this.sayAlert(phrase);
+      },
+      error: () => this.notice.set('Cette alerte est introuvable.'),
+    });
+  }
+
+  private async sayAlert(phrase: string): Promise<void> {
+    this.spoken.set(phrase);
+    this.state.set('parole');
+    try {
+      await this.voice.speak(phrase, this.subjectId());
+    } catch {
+      this.pendingAlert = phrase;
+      this.state.set('repos');
+      this.notice.set('Touche l’orbe pour écouter l’alerte.');
+      return;
+    }
+    this.state.set('repos');
+    await this.listen();
+  }
+
+  /** SF-231-05 — allume ou éteint le mot d'éveil sur cet appareil. */
+  toggleWake(): void {
+    const on = !this.wakeOn();
+    this.wakeOn.set(on);
+    try {
+      localStorage.setItem(WAKE_ON_KEY, on ? '1' : '0');
+    } catch {
+      // Stockage indisponible : le réglage vaut pour cette ouverture.
+    }
+  }
+
+  /**
+   * SF-231-05 — apprendre « Jarvis » : le PO le dit trois fois ; l'empreinte reste sur l'appareil. Rien n'est
+   * envoyé.
+   */
+  async learnWake(): Promise<void> {
+    this.wakeEngine.stop();
+    const templates: number[][][] = [];
+    this.enrolling.set(0);
+    this.notice.set(`Dis « Jarvis », seul, ${ENROLL_COUNT} fois, en marquant une pause.`);
+    try {
+      await this.wakeEngine.enroll((features) => this.zone.run(() => {
+        if (features.length < MIN_WORD_FRAMES || this.enrolling() === null) {
+          return;
+        }
+        templates.push(features);
+        this.enrolling.set(templates.length);
+        if (templates.length >= ENROLL_COUNT) {
+          this.wakeEngine.stop();
+          saveWakeProfile({ templates, threshold: enrollThreshold(templates) });
+          this.enrolling.set(null);
+          this.wakeLearned.set(true);
+          if (!this.wakeOn()) {
+            this.toggleWake();
+          }
+          this.notice.set('C’est appris : dis « Jarvis » pour me réveiller.');
+        }
+      }));
+    } catch {
+      this.enrolling.set(null);
+      this.notice.set('Le micro est refusé : autorise-le dans le navigateur.');
+    }
+  }
+
+  /** Abandonne l'apprentissage en cours. */
+  cancelLearn(): void {
+    this.wakeEngine.stop();
+    this.enrolling.set(null);
+    this.notice.set(null);
+  }
+
+  private async startWake(): Promise<void> {
+    if (this.wakeEngine.running || this.wakeStarting) {
+      return;
+    }
+    this.wakeStarting = true;
+    try {
+      await this.wakeEngine.start(() => this.zone.run(() => void this.onWake()));
+    } catch {
+      this.wakeOn.set(false);
+      this.notice.set('Le mot d’éveil n’a pas pu ouvrir le micro.');
+    } finally {
+      this.wakeStarting = false;
+    }
+  }
+
+  /** « Jarvis » entendu : il coupe sa voix s'il parlait, et écoute. */
+  private async onWake(): Promise<void> {
+    if (this.state() === 'ecoute') {
+      return;
+    }
+    this.jarvis.usage('WAKE');
+    if (this.state() === 'parole') {
+      this.voice.stop();
+    }
+    await this.listen();
+  }
+
+  /**
+   * SF-231-05 — l'écran Jarvis porte **son propre manifeste** (« Jarvis », `start_url /jarvis`) : installé, il devient
+   * une application nommée Jarvis, que « Ok Google, ouvre Jarvis » lance directement en mode Jarvis.
+   */
+  private useJarvisManifest(): void {
+    const link = typeof document !== 'undefined'
+      ? document.querySelector<HTMLLinkElement>('link[rel="manifest"]') : null;
+    if (link) {
+      this.previousManifest = link.getAttribute('href');
+      link.setAttribute('href', 'jarvis.webmanifest');
+    }
+  }
+
+  private restoreManifest(): void {
+    const link = typeof document !== 'undefined'
+      ? document.querySelector<HTMLLinkElement>('link[rel="manifest"]') : null;
+    if (link && this.previousManifest) {
+      link.setAttribute('href', this.previousManifest);
+    }
   }
 
   /** Change de sujet (menu ou voix) et le retient sur cet appareil. */
@@ -108,6 +299,13 @@ export class JarvisComponent implements OnInit, OnDestroy {
    */
   async talk(): Promise<void> {
     this.voice.unlock();
+    if (this.pendingAlert && this.state() === 'repos') {
+      const phrase = this.pendingAlert;
+      this.pendingAlert = null;
+      this.notice.set(null);
+      await this.sayAlert(phrase);
+      return;
+    }
     switch (this.state()) {
       case 'ecoute':
         await this.finishListening();
@@ -132,6 +330,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
       return;
     }
     this.notice.set(null);
+    // Le micro passe à la dictée : l'écoute du mot d'éveil se tait d'abord.
+    this.wakeEngine.stop();
+    this.listenStartedAt = performance.now();
     try {
       await this.dictation.start();
     } catch (error) {
@@ -164,6 +365,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
     this.stopMeter();
     this.state.set('reflexion');
+    // SF-231-05 — la mesure d'adoption : les secondes parlées (D9).
+    this.jarvis.usage('SPOKEN', Math.max(0, (performance.now() - this.listenStartedAt) / 1000));
     let text = '';
     try {
       text = (await this.dictation.stop()).trim();

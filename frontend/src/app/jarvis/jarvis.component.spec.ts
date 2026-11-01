@@ -8,6 +8,8 @@ import { AtelierStreamHandlers, WorkspaceSummary } from '../core/models/atelier.
 import { AtelierService } from '../core/services/atelier.service';
 import { DictationService } from '../core/services/dictation.service';
 import { JarvisVoiceService } from '../core/services/jarvis-voice.service';
+import { JarvisService } from '../core/services/jarvis.service';
+import { VeilleService } from '../core/services/veille.service';
 
 function subject(id: string, name: string): WorkspaceSummary {
   return { id, name, createdAt: '2026-11-01T08:00:00Z', source: 'LOCAL', gitRepo: null } as WorkspaceSummary;
@@ -19,6 +21,8 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
   let dictation: jasmine.SpyObj<DictationService>;
   let voice: jasmine.SpyObj<JarvisVoiceService>;
   let handlers: AtelierStreamHandlers | null;
+  let jarvisApi: jasmine.SpyObj<JarvisService>;
+  let veilles: jasmine.SpyObj<VeilleService>;
 
   beforeEach(() => {
     try {
@@ -42,6 +46,14 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     voice = jasmine.createSpyObj<JarvisVoiceService>('JarvisVoiceService', ['speak', 'stop', 'unlock', 'level']);
     voice.speak.and.resolveTo();
     voice.level.and.returnValue(0);
+    jarvisApi = jasmine.createSpyObj<JarvisService>('JarvisService', ['usage']);
+    veilles = jasmine.createSpyObj<VeilleService>('VeilleService', ['alert', 'openAlert']);
+    veilles.openAlert.and.returnValue(of(undefined));
+    configure({ sujet: 'w-2' });
+  });
+
+  function configure(params: Record<string, string>): void {
+    TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       imports: [JarvisComponent],
       providers: [
@@ -49,10 +61,54 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
         { provide: AtelierService, useValue: atelier },
         { provide: DictationService, useValue: dictation },
         { provide: JarvisVoiceService, useValue: voice },
-        { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: convertToParamMap({ sujet: 'w-2' }) } } },
+        { provide: JarvisService, useValue: jarvisApi },
+        { provide: VeilleService, useValue: veilles },
+        { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: convertToParamMap(params) } } },
       ],
     });
-  });
+  }
+
+  it('SF-231-05 — compte la session, et l’alerte de veille est lue sur son sujet, puis Jarvis écoute', fakeAsync(() => {
+    veilles.alert.and.returnValue(of({
+      id: 'a-1', watchId: 'v-1', watchName: 'Jira AGENOR', platform: 'Jira', workspaceId: 'w-1', chantierNumber: null,
+      sentence: 'AG-2 est passé en Bloqué.', changes: [], aiWritten: true, costEur: 0.01,
+      createdAt: '2026-11-01T09:00:00Z', openedAt: null, link: '/jarvis?alerte=a-1',
+    }));
+    configure({ alerte: 'a-1' });
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    const jarvis = fixture.componentInstance;
+
+    expect(jarvisApi.usage).toHaveBeenCalledWith('SESSION');
+    expect(jarvis.subjectId()).toBe('w-1');
+    expect(veilles.openAlert).toHaveBeenCalledWith('a-1');
+    expect(voice.speak).toHaveBeenCalledWith('Veille Jira AGENOR : AG-2 est passé en Bloqué. Que veux-tu faire ?', 'w-1');
+    expect(jarvis.state()).toBe('ecoute');
+    jarvis.ngOnDestroy();
+  }));
+
+  it('SF-231-05 — le son refusé avant le premier geste : l’alerte attend l’appui', fakeAsync(() => {
+    veilles.alert.and.returnValue(of({
+      id: 'a-1', watchId: 'v-1', watchName: null, platform: null, workspaceId: 'w-1', chantierNumber: null,
+      sentence: 'Deux tickets ont bougé.', changes: [], aiWritten: false, costEur: null,
+      createdAt: '2026-11-01T09:00:00Z', openedAt: null, link: '/jarvis?alerte=a-1',
+    }));
+    voice.speak.and.rejectWith('echec');
+    configure({ alerte: 'a-1' });
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    const jarvis = fixture.componentInstance;
+    expect(jarvis.notice()).toContain('Touche l’orbe');
+
+    voice.speak.and.resolveTo();
+    void jarvis.talk();
+    flushMicrotasks();
+    expect(voice.speak).toHaveBeenCalledTimes(2);
+    expect(jarvis.state()).toBe('ecoute');
+    jarvis.ngOnDestroy();
+  }));
 
   it('ouvre sur le sujet demandé par le lien (?sujet=)', () => {
     const fixture = TestBed.createComponent(JarvisComponent);
