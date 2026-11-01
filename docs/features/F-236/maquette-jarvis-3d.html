@@ -1,0 +1,311 @@
+<title>Jarvis holographique</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout : scène 3D plein écran ; HUD en surimpression (titre, sous-titre de Jarvis, commandes de démo, compteur « À envoyer »). Look unique sombre, assumé. */
+:root {
+  color-scheme: dark;
+  --void: #030814; --holo: #5fd4ff; --holo-dim: rgba(95,212,255,.35); --ink: #dff6ff; --muted: #7fa3b8;
+  --amber: #ff9a3d; --green: #4cf2a0; --panel: rgba(8,24,44,.72);
+  --f-hud: "Chakra Petch", "Segoe UI", sans-serif; --f-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+html, body { height: 100%; }
+body { margin: 0; background: var(--void); color: var(--ink); font-family: var(--f-hud); overflow: hidden; }
+#stage { position: fixed; inset: 0; }
+#stage canvas { display: block; }
+#labels { position: fixed; inset: 0; pointer-events: none; }
+.hud { position: fixed; z-index: 5; pointer-events: none; }
+.top { top: env(safe-area-inset-top, 0px); left: 0; right: 0; padding: 14px max(16px, env(safe-area-inset-right, 0px)) 0 max(16px, env(safe-area-inset-left, 0px)); display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.brand { font-weight: 600; letter-spacing: .32em; font-size: 15px; color: var(--holo); text-shadow: 0 0 12px var(--holo-dim); }
+.brand small { display: block; font: 400 11px var(--f-mono); letter-spacing: .08em; color: var(--muted); margin-top: 4px; }
+.state { font: 500 12px var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--holo); border: 1px solid var(--holo-dim); padding: 5px 10px; border-radius: 3px; background: rgba(3,8,20,.5); }
+.state.amber { color: var(--amber); border-color: rgba(255,154,61,.5); }
+#subtitle { left: 50%; transform: translateX(-50%); bottom: calc(118px + env(safe-area-inset-bottom, 0px)); width: min(720px, calc(100% - 32px)); text-align: center; font-size: clamp(16px, 2.4vw, 21px); line-height: 1.4; text-shadow: 0 0 18px rgba(0,0,0,.9), 0 0 2px #000; min-height: 2.8em; }
+#subtitle .who { display: block; font: 500 11px var(--f-mono); letter-spacing: .2em; color: var(--holo); margin-bottom: 4px; }
+.controls { left: 0; right: 0; bottom: 0; padding: 0 max(16px, env(safe-area-inset-right, 0px)) calc(14px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); pointer-events: auto; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.controls button { font: 600 13px var(--f-hud); letter-spacing: .04em; color: var(--ink); background: rgba(8,24,44,.75); border: 1px solid var(--holo-dim); padding: 8px 13px; border-radius: 4px; cursor: pointer; }
+.controls button:hover { border-color: var(--holo); box-shadow: 0 0 14px rgba(95,212,255,.35); }
+.controls button:focus-visible { outline: 2px solid var(--holo); outline-offset: 2px; }
+.controls button[aria-pressed="true"] { background: rgba(95,212,255,.18); border-color: var(--holo); color: #fff; }
+#outbox { right: max(16px, env(safe-area-inset-right, 0px)); top: calc(64px + env(safe-area-inset-top, 0px)); font: 500 12px var(--f-mono); color: var(--ink); border: 1px solid var(--holo-dim); background: var(--panel); padding: 8px 12px; border-radius: 4px; }
+#outbox b { color: var(--amber); font-size: 15px; }
+#outbox.bump { animation: bump .6s ease; }
+@keyframes bump { 40% { transform: scale(1.12); box-shadow: 0 0 24px rgba(255,154,61,.6); } }
+.example { left: max(16px, env(safe-area-inset-left, 0px)); top: calc(64px + env(safe-area-inset-top, 0px)); font: 400 11px var(--f-mono); color: var(--muted); }
+/* étiquettes 3D */
+.lbl { font: 600 13px var(--f-hud); letter-spacing: .08em; color: var(--ink); text-shadow: 0 0 10px rgba(95,212,255,.8); white-space: nowrap; transform: translateY(-22px); transition: opacity .5s, color .5s, font-size .5s; display: flex; align-items: center; gap: 6px; }
+.lbl i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); box-shadow: 0 0 6px currentColor; display: inline-block; }
+.lbl.on i { background: var(--green); color: var(--green); }
+.lbl.dim { opacity: .22; }
+.lbl.lit { color: #fff; font-size: 16px; text-shadow: 0 0 14px var(--holo), 0 0 30px var(--holo); }
+.lbl.green { color: var(--green); text-shadow: 0 0 14px rgba(76,242,160,.9); }
+.sub { font: 500 11px var(--f-mono); color: var(--holo); opacity: 0; transition: opacity .6s; white-space: nowrap; transform: translate(10px, -10px); text-shadow: 0 0 8px rgba(95,212,255,.8); }
+.sub.show { opacity: .95; }
+.sub .bar { display: block; height: 2px; margin-top: 3px; background: rgba(95,212,255,.25); }
+.sub .bar span { display: block; height: 100%; background: var(--holo); box-shadow: 0 0 6px var(--holo); }
+/* panneaux holographiques */
+.panel { position: fixed; z-index: 4; pointer-events: none; width: 210px; font: 400 12px var(--f-mono); color: var(--ink); background: linear-gradient(180deg, rgba(95,212,255,.13), rgba(8,24,44,.78)); border: 1px solid rgba(95,212,255,.55); border-radius: 3px; padding: 9px 11px; box-shadow: 0 0 22px rgba(95,212,255,.25), inset 0 0 18px rgba(95,212,255,.08); opacity: 0; transform: scale(.6); transition: opacity .45s, transform .45s cubic-bezier(.2,.9,.3,1.2); overflow: hidden; }
+.panel::after { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(255,255,255,.04) 0 1px, transparent 1px 3px); }
+.panel.show { opacity: 1; transform: scale(1); }
+.panel h4 { margin: 0 0 4px; font: 600 13px var(--f-hud); letter-spacing: .06em; color: var(--holo); }
+.panel .k { color: var(--amber); }
+.panel.amber { border-color: rgba(255,154,61,.7); box-shadow: 0 0 26px rgba(255,154,61,.35); background: linear-gradient(180deg, rgba(255,154,61,.16), rgba(20,12,6,.8)); }
+.panel.amber h4 { color: var(--amber); }
+.panel.fly { transition: left 1.1s cubic-bezier(.6,0,.3,1), top 1.1s cubic-bezier(.6,0,.3,1), transform 1.1s, opacity 1.1s; transform: scale(.25); opacity: .2; }
+@media (max-width: 600px) { .panel { width: 168px; font-size: 11px; } .controls button { padding: 7px 10px; font-size: 12px; } #subtitle { bottom: calc(150px + env(safe-area-inset-bottom, 0px)); } }
+@media (prefers-reduced-motion: reduce) { .panel, .lbl, .sub { transition: none; } }
+</style>
+
+<div id="stage" aria-hidden="true"></div>
+<div id="labels" aria-hidden="true"></div>
+
+<div class="hud top">
+  <div class="brand">J · A · R · V · I · S<small>maquette 3D · F-236</small></div>
+  <div class="state" id="state" role="status">Au repos</div>
+</div>
+<div class="hud example">Données d’exemple</div>
+<div class="hud" id="outbox">À envoyer <b id="outn">2</b></div>
+<div class="hud" id="subtitle" aria-live="polite"><span class="who">JARVIS</span><span id="say">Bonsoir, Monsieur. Tout est calme.</span></div>
+
+<nav class="hud controls" aria-label="Scènes de démonstration">
+  <button type="button" id="b-auto" aria-pressed="true">Démo auto</button>
+  <button type="button" id="b-ecoute">Écoute</button>
+  <button type="button" id="b-reflexion">Réflexion</button>
+  <button type="button" id="b-edenred">Parle d’Edenred</button>
+  <button type="button" id="b-tickets">Tickets bloqués</button>
+  <button type="button" id="b-connectes">Montre les connectés</button>
+  <button type="button" id="b-mail">Prépare un mail</button>
+  <button type="button" id="b-oui">Attend un « oui »</button>
+  <button type="button" id="b-vue">Vue d’ensemble</button>
+</nav>
+
+<div class="panel" id="p-t1"><h4>EDR-1423 · Bloqué</h4>Paiement SEPA en échec<br><span class="k">attend : équipe Paiement</span></div>
+<div class="panel" id="p-t2"><h4>EDR-1431 · Bloqué</h4>Montée de version API<br><span class="k">attend : validation sécurité</span></div>
+<div class="panel" id="p-t3"><h4>EDR-1398 · En cours</h4>Release 4.2 · recette</div>
+<div class="panel" id="p-mail"><h4>✉ Message à préparer</h4>À : Claire Martin (Edenred)<br>Objet : relance EDR-1423<br><span class="k">brouillon · non envoyé</span></div>
+<div class="panel amber" id="p-oui"><h4>Confirmation attendue</h4>Relancer l’équipe Paiement ?<br>Dites « oui » · <span id="cd">10</span> s</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const small = innerWidth < 640;
+const HOLO = new THREE.Color('#5fd4ff'), GREEN = new THREE.Color('#4cf2a0'), AMBER = new THREE.Color('#ff9a3d'), DIM = new THREE.Color('#2a4256');
+
+const stage = document.getElementById('stage');
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, small ? 1.5 : 1.75));
+renderer.setSize(innerWidth, innerHeight);
+renderer.setClearColor(0x030814, 1);
+stage.appendChild(renderer.domElement);
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.setSize(innerWidth, innerHeight);
+document.getElementById('labels').appendChild(labelRenderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x030814, 0.012);
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 400);
+camera.position.set(0, 8, small ? 40 : 30);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 1.15, 0.65, 0.08);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+// texture lumineuse partagée
+const glow = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
+  const r = g.createRadialGradient(32, 32, 0, 32, 32, 32); r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(.25, 'rgba(255,255,255,.55)'); r.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = r; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
+const pmat = (color, size, opacity = 1) => new THREE.PointsMaterial({ color, size, map: glow, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending });
+
+// --- champ d'étoiles et sol polaire
+{ const n = small ? 900 : 1800, p = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { const r = 80 + Math.random() * 120, a = Math.random() * Math.PI * 2, b = Math.acos(2 * Math.random() - 1);
+    p.set([r * Math.sin(b) * Math.cos(a), r * Math.cos(b), r * Math.sin(b) * Math.sin(a)], i * 3); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p, 3));
+  scene.add(new THREE.Points(g, pmat(0x7fb8d8, 0.5, 0.55))); }
+const grid = new THREE.PolarGridHelper(22, 16, 10, 96, 0x1b5f80, 0x0e3247);
+grid.position.y = -7; grid.material.transparent = true; grid.material.opacity = 0.35; scene.add(grid);
+
+// --- le cœur
+const core = new THREE.Group(); scene.add(core);
+const fib = (n, r) => { const p = new Float32Array(n * 3), ga = Math.PI * (3 - Math.sqrt(5));
+  for (let i = 0; i < n; i++) { const y = 1 - (i / (n - 1)) * 2, rr = Math.sqrt(1 - y * y), t = ga * i; p.set([Math.cos(t) * rr * r, y * r, Math.sin(t) * rr * r], i * 3); } return p; };
+const shell = new THREE.BufferGeometry(); shell.setAttribute('position', new THREE.BufferAttribute(fib(small ? 1400 : 2600, 2.2), 3));
+const shellPts = new THREE.Points(shell, pmat(HOLO, 0.09)); core.add(shellPts);
+const innerG = new THREE.BufferGeometry(); { const n = small ? 500 : 1000, p = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { const r = Math.cbrt(Math.random()) * 1.6, a = Math.random() * 6.283, b = Math.acos(2 * Math.random() - 1); p.set([r * Math.sin(b) * Math.cos(a), r * Math.cos(b), r * Math.sin(b) * Math.sin(a)], i * 3); }
+  innerG.setAttribute('position', new THREE.BufferAttribute(p, 3)); }
+const innerPts = new THREE.Points(innerG, pmat(0xbff0ff, 0.07, 0.9)); core.add(innerPts);
+const ico = new THREE.Mesh(new THREE.IcosahedronGeometry(1.1, 1), new THREE.MeshBasicMaterial({ color: HOLO, wireframe: true, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending }));
+core.add(ico);
+const heart = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: 0xaee9ff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+heart.scale.setScalar(3.2); core.add(heart);
+const rings = [2.9, 3.5, 4.2].map((r, i) => { const m = new THREE.Mesh(new THREE.TorusGeometry(r, 0.018, 8, 160), new THREE.MeshBasicMaterial({ color: HOLO, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending }));
+  m.rotation.x = [1.2, 0.4, 1.9][i]; m.rotation.y = [0.3, 1.1, 0.6][i]; core.add(m); return m; });
+// segments d'arc qui tournent (effet HUD)
+const arcs = [3.2, 3.9].map((r, i) => { const m = new THREE.Mesh(new THREE.TorusGeometry(r, 0.05, 6, 64, Math.PI * 0.35), new THREE.MeshBasicMaterial({ color: i ? AMBER : HOLO, transparent: true, opacity: i ? 0 : 0.9, blending: THREE.AdditiveBlending }));
+  m.rotation.x = Math.PI / 2; core.add(m); return m; });
+// ondes d'écoute
+const waves = [];
+function spawnWave(color = HOLO) { const m = new THREE.Mesh(new THREE.RingGeometry(2.3, 2.38, 96), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }));
+  m.lookAt(camera.position); m.userData.t = 0; scene.add(m); waves.push(m); }
+
+// --- l'univers (données d'exemple)
+const CLIENTS = [
+  { name: 'CAGIP', on: true, r: 9, inc: 0.25, a: 0.3, chantiers: [['Migration Kafka', .7], ['Audit IAM', .4], ['Pipeline CI', .9]] },
+  { name: 'Edenred', on: true, r: 12, inc: -0.35, a: 2.2, chantiers: [['Tickets bloqués', .3], ['Release 4.2', .6]] },
+  { name: 'NG IT Consulting', on: true, r: 15, inc: 0.15, a: 4.0, chantiers: [['Jarvis', .8], ['Facturation', .5]] },
+  { name: 'Banque Alpha', on: false, r: 10.5, inc: 0.5, a: 5.3, chantiers: [['Cadrage', .2]] },
+  { name: 'Assur Beta', on: false, r: 13.5, inc: -0.1, a: 1.1, chantiers: [['Audit', .1], ['POC', .3]] },
+];
+const linkMat = () => new THREE.LineBasicMaterial({ color: HOLO, transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false });
+for (const c of CLIENTS) {
+  c.group = new THREE.Group(); scene.add(c.group);
+  c.node = new THREE.Mesh(new THREE.SphereGeometry(0.32, 24, 16), new THREE.MeshBasicMaterial({ color: HOLO }));
+  c.halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: HOLO, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false }));
+  c.halo.scale.setScalar(2.2); c.group.add(c.node, c.halo);
+  c.ring = new THREE.Mesh(new THREE.TorusGeometry(0.7, 0.012, 6, 64), new THREE.MeshBasicMaterial({ color: HOLO, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending }));
+  c.group.add(c.ring);
+  const el = document.createElement('div'); el.className = 'lbl' + (c.on ? ' on' : ''); el.innerHTML = `<i></i>${c.name}`;
+  c.label = new CSS2DObject(el); c.label.position.set(0, 0.55, 0); c.group.add(c.label); c.el = el;
+  // orbite visible
+  const orbit = new THREE.Mesh(new THREE.TorusGeometry(c.r, 0.008, 4, 200), new THREE.MeshBasicMaterial({ color: 0x1d6b8f, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending }));
+  orbit.rotation.x = Math.PI / 2 + c.inc; scene.add(orbit); c.orbit = orbit;
+  // lien lumineux cœur → client
+  c.linkGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+  c.link = new THREE.Line(c.linkGeo, linkMat()); scene.add(c.link);
+  c.pulses = []; c.lit = 0; c.litTarget = 0; c.tint = HOLO.clone(); c.tintTarget = HOLO.clone(); c.dim = 0; c.dimTarget = 0;
+  // chantiers en satellites
+  c.sats = c.chantiers.map(([name, prog], i) => { const s = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 8), new THREE.MeshBasicMaterial({ color: 0x9fe6ff }));
+    const sl = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), linkMat());
+    const d = document.createElement('div'); d.className = 'sub'; d.innerHTML = `${name}<span class="bar"><span style="width:${Math.round(prog * 100)}%"></span></span>`;
+    const lab = new CSS2DObject(d); s.add(lab); scene.add(s, sl); return { mesh: s, line: sl, el: d, a: i * (Math.PI * 2 / c.chantiers.length), spread: 0 }; });
+}
+const pulseMat = new THREE.SpriteMaterial({ map: glow, color: 0xcff6ff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
+function spawnPulse(c, color) { const s = new THREE.Sprite(pulseMat.clone()); s.material.color.copy(color || c.tint); s.scale.setScalar(0.7); s.userData.t = 0; scene.add(s); c.pulses.push(s); }
+
+// --- état et scènes
+const S = { mode: 'repos', focus: null, show: null, camTarget: new THREE.Vector3(), camPos: camera.position.clone() };
+const stateEl = document.getElementById('state'), sayEl = document.getElementById('say');
+const panels = { t1: 'p-t1', t2: 'p-t2', t3: 'p-t3', mail: 'p-mail', oui: 'p-oui' };
+const panelAnchor = {};
+for (const k in panels) panels[k] = document.getElementById(panels[k]);
+function hidePanels() { for (const k in panels) { panels[k].classList.remove('show', 'fly'); delete panelAnchor[k]; } }
+function say(t) { sayEl.style.opacity = 0; setTimeout(() => { sayEl.textContent = t; sayEl.style.opacity = 1; }, 180); }
+sayEl.style.transition = 'opacity .18s';
+function setState(label, amber) { stateEl.textContent = label; stateEl.classList.toggle('amber', !!amber); }
+const byName = n => CLIENTS.find(c => c.name === n);
+function resetUniverse() { for (const c of CLIENTS) { c.litTarget = 0; c.dimTarget = 0; c.tintTarget.copy(HOLO); c.el.classList.remove('dim', 'lit', 'green'); c.sats.forEach(s => s.el.classList.remove('show')); } S.focus = null; S.show = null; arcs[1].material.opacity = 0; }
+function overview() { S.camTarget.set(0, 0, 0); S.camPos.set(0, 8, small ? 40 : 30); }
+function focusOn(c, dist = 6.5) { S.focus = c; for (const o of CLIENTS) { if (o !== c) { o.dimTarget = 1; o.el.classList.add('dim'); } }
+  c.litTarget = 1; c.el.classList.add('lit'); c.sats.forEach(s => s.el.classList.add('show')); S.focusDist = small ? dist * 1.5 : dist; }
+
+const SCENES = {
+  repos() { resetUniverse(); hidePanels(); overview(); S.mode = 'repos'; setState('Au repos'); say('Bonsoir, Monsieur. Tout est calme.'); },
+  ecoute() { resetUniverse(); hidePanels(); overview(); S.mode = 'ecoute'; setState('À l’écoute'); say('« Jarvis, où en est Edenred ? »'); },
+  reflexion() { resetUniverse(); hidePanels(); overview(); S.mode = 'reflexion'; setState('Réflexion'); say('Je regarde les tickets d’Edenred.'); },
+  edenred() { resetUniverse(); hidePanels(); S.mode = 'parole'; focusOn(byName('Edenred')); setState('Parle'); say('Edenred : deux chantiers ouverts. La release 4.2 est en recette, le reste attend.'); },
+  tickets() { resetUniverse(); hidePanels(); const c = byName('Edenred'); S.mode = 'parole'; focusOn(c, 7.5); setState('Parle');
+    ['t1', 't2', 't3'].forEach((k, i) => { panelAnchor[k] = { c, off: [[-3.4, 1.6, 0], [3.4, 1.2, 0], [0, -2.6, 0]][i] }; setTimeout(() => panels[k].classList.add('show'), 350 + i * 260); });
+    say('Deux tickets bloqués, Monsieur. EDR-1423 attend l’équipe Paiement, EDR-1431 la validation sécurité.'); },
+  connectes() { resetUniverse(); hidePanels(); overview(); S.mode = 'parole'; setState('Montre');
+    for (const c of CLIENTS) { if (c.on) { c.litTarget = 1; c.tintTarget.copy(GREEN); c.el.classList.add('green'); } else { c.dimTarget = 1; c.el.classList.add('dim'); } }
+    S.show = 'connectes'; say('Trois postes connectés : CAGIP, Edenred et NG IT Consulting. Les deux autres sont hors ligne.'); },
+  mail() { resetUniverse(); hidePanels(); const c = byName('Edenred'); S.mode = 'parole'; focusOn(c, 7); setState('Prépare');
+    panelAnchor.mail = { c, off: [0, 2.4, 0] }; setTimeout(() => panels.mail.classList.add('show'), 400);
+    setTimeout(() => { const ob = document.getElementById('outbox').getBoundingClientRect(); delete panelAnchor.mail; const p = panels.mail; p.classList.add('fly'); p.style.left = (ob.left) + 'px'; p.style.top = (ob.top) + 'px'; }, 3400);
+    setTimeout(() => { const n = document.getElementById('outn'); n.textContent = (+n.textContent + 1); const o = document.getElementById('outbox'); o.classList.remove('bump'); void o.offsetWidth; o.classList.add('bump'); panels.mail.classList.remove('show', 'fly'); }, 4600);
+    say('J’ai préparé une relance pour Claire Martin. Elle vous attend dans « À envoyer ».'); },
+  oui() { resetUniverse(); hidePanels(); const c = byName('Edenred'); S.mode = 'oui'; focusOn(c, 8); setState('Attend votre accord', true);
+    arcs[1].material.opacity = 0.95; panelAnchor.oui = { core: true, off: [0, 3.4, 0] }; setTimeout(() => panels.oui.classList.add('show'), 300);
+    let n = 10; document.getElementById('cd').textContent = n; clearInterval(S.cd); S.cd = setInterval(() => { n--; document.getElementById('cd').textContent = Math.max(n, 0); if (n <= 0) clearInterval(S.cd); }, 1000);
+    say('Je relance l’équipe Paiement au sujet d’EDR-1423. Vous confirmez ?'); },
+  vue() { SCENES.repos(); say('Vue d’ensemble : cinq clients, dix chantiers, deux messages à envoyer.'); },
+};
+const ORDER = ['ecoute', 'reflexion', 'edenred', 'tickets', 'connectes', 'mail', 'oui', 'vue'];
+const btn = id => document.getElementById('b-' + id);
+let auto = true, autoIdx = 0, autoTimer = null;
+function run(name, fromAuto) { clearInterval(S.cd); SCENES[name](); document.querySelectorAll('.controls button').forEach(b => { if (b.id !== 'b-auto') b.setAttribute('aria-pressed', b.id === 'b-' + name); }); if (!fromAuto) stopAuto(); }
+function stopAuto() { auto = false; btn('auto').setAttribute('aria-pressed', 'false'); clearTimeout(autoTimer); }
+function tick() { if (!auto) return; run(ORDER[autoIdx % ORDER.length], true); autoIdx++; autoTimer = setTimeout(tick, ORDER[(autoIdx - 1) % ORDER.length] === 'mail' ? 6200 : 5200); }
+ORDER.forEach(n => btn(n).addEventListener('click', () => run(n)));
+btn('auto').addEventListener('click', () => { if (auto) stopAuto(); else { auto = true; btn('auto').setAttribute('aria-pressed', 'true'); tick(); } });
+
+// --- boucle
+const clock = new THREE.Clock(); let waveT = 0, pulseT = 0;
+const tmp = new THREE.Vector3(), tmp2 = new THREE.Vector3();
+function placePanels() {
+  for (const k in panelAnchor) { const a = panelAnchor[k]; const base = a.core ? tmp.set(0, 0, 0) : tmp.copy(a.c.group.position);
+    base.add(tmp2.set(...a.off)); base.project(camera); const p = panels[k];
+    p.style.left = ((base.x + 1) / 2 * innerWidth - p.offsetWidth / 2) + 'px'; p.style.top = ((1 - base.y) / 2 * innerHeight - p.offsetHeight / 2) + 'px'; }
+}
+function frame() {
+  const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime, sp = reduced ? 0.25 : 1;
+  const m = S.mode;
+  // cœur selon l'état
+  const think = m === 'reflexion' ? 1 : 0, talk = m === 'parole' ? 1 : 0, listen = m === 'ecoute' ? 1 : 0;
+  shellPts.rotation.y += dt * sp * (0.12 + think * 1.4); shellPts.rotation.x += dt * sp * think * 0.5;
+  innerPts.rotation.y -= dt * sp * (0.25 + think * 2.2); ico.rotation.x += dt * sp * 0.3; ico.rotation.y += dt * sp * (0.2 + think);
+  const env = talk ? 0.08 + 0.07 * Math.abs(Math.sin(t * 9) * Math.sin(t * 3.7)) : 0;
+  const breathe = 1 + 0.03 * Math.sin(t * 1.6) + env + listen * 0.04 * Math.sin(t * 6);
+  core.scale.setScalar(breathe);
+  heart.material.opacity = 0.55 + think * 0.3 + env * 3;
+  rings.forEach((r, i) => { r.rotation.z += dt * sp * (0.15 + i * 0.07) * (1 + think * 3); });
+  arcs[0].rotation.z += dt * sp * (0.8 + think * 3); arcs[1].rotation.z -= dt * sp * 1.6;
+  if (m === 'oui') arcs[1].material.opacity = 0.6 + 0.35 * Math.sin(t * 5);
+  shellPts.material.color.lerp(m === 'oui' ? AMBER : HOLO, 0.05);
+  // ondes
+  waveT += dt; if ((listen || m === 'oui') && waveT > (listen ? 0.55 : 1.1)) { waveT = 0; spawnWave(m === 'oui' ? AMBER : HOLO); }
+  for (let i = waves.length - 1; i >= 0; i--) { const w = waves[i]; w.userData.t += dt * sp; w.scale.setScalar(1 + w.userData.t * 2.4); w.material.opacity = 0.8 * (1 - w.userData.t / 1.6); w.lookAt(camera.position);
+    if (w.userData.t > 1.6) { scene.remove(w); w.geometry.dispose(); w.material.dispose(); waves.splice(i, 1); } }
+  // clients
+  pulseT += dt;
+  for (const c of CLIENTS) {
+    c.a += dt * sp * (0.05 * 9 / c.r) * (S.focus === c ? 0.2 : 1);
+    const x = Math.cos(c.a) * c.r, z = Math.sin(c.a) * c.r;
+    c.group.position.set(x, Math.sin(c.a) * c.r * Math.sin(-c.inc) , z * Math.cos(c.inc));
+    c.lit += (c.litTarget - c.lit) * 0.06; c.dim += (c.dimTarget - c.dim) * 0.06; c.tint.lerp(c.tintTarget, 0.06);
+    const col = c.on || S.show !== 'connectes' ? c.tint : DIM;
+    c.node.material.color.copy(col).lerp(DIM, c.dim * 0.8);
+    c.halo.material.color.copy(col); c.halo.material.opacity = (0.55 + c.lit * 0.45) * (1 - c.dim * 0.8); c.halo.scale.setScalar(2.2 + c.lit * 1.6 + Math.sin(t * 3) * 0.15 * c.lit);
+    c.ring.lookAt(camera.position); c.ring.scale.setScalar(1 + c.lit * 0.6 + 0.1 * Math.sin(t * 2 + c.r)); c.ring.material.color.copy(col); c.ring.material.opacity = 0.5 * (1 - c.dim * 0.85) + c.lit * 0.3;
+    c.orbit.material.opacity = 0.35 * (1 - c.dim * 0.7) + c.lit * 0.25;
+    const pos = c.linkGeo.attributes.position; pos.setXYZ(1, c.group.position.x, c.group.position.y, c.group.position.z); pos.needsUpdate = true;
+    c.link.material.color.copy(col); c.link.material.opacity = 0.12 + c.lit * 0.75 + think * 0.25 - c.dim * 0.1;
+    const rate = c.lit > 0.5 ? 0.18 : think ? 0.35 : 3.5;
+    if (!reduced && Math.random() < dt / rate) spawnPulse(c, col);
+    for (let i = c.pulses.length - 1; i >= 0; i--) { const p = c.pulses[i]; p.userData.t += dt * (0.55 + think * 0.6); p.position.lerpVectors(tmp.set(0, 0, 0), c.group.position, p.userData.t); p.material.opacity = Math.sin(Math.PI * Math.min(p.userData.t, 1)) * (1 - c.dim * 0.8);
+      if (p.userData.t >= 1) { scene.remove(p); p.material.dispose(); c.pulses.splice(i, 1); } }
+    // satellites : déployés quand le client a le focus
+    c.sats.forEach((s, i) => { s.spread += ((S.focus === c ? 1 : 0.35) - s.spread) * 0.07; s.a += dt * sp * 0.4;
+      const rr = 0.9 + s.spread * 1.5; s.mesh.position.set(c.group.position.x + Math.cos(s.a) * rr, c.group.position.y + Math.sin(s.a * 1.3) * 0.5 * s.spread, c.group.position.z + Math.sin(s.a) * rr);
+      s.mesh.scale.setScalar(0.6 + s.spread * 0.8); s.mesh.material.color.copy(col).lerp(DIM, c.dim * 0.8);
+      const lp = s.line.geometry.attributes.position; lp.setXYZ(0, c.group.position.x, c.group.position.y, c.group.position.z); lp.setXYZ(1, s.mesh.position.x, s.mesh.position.y, s.mesh.position.z); lp.needsUpdate = true;
+      s.line.material.opacity = 0.1 + s.spread * 0.5 * (1 - c.dim); s.line.material.color.copy(col); });
+  }
+  // caméra : zoom et dézoom en douceur
+  if (S.focus) { S.camTarget.copy(S.focus.group.position); const dir = tmp.copy(S.focus.group.position).normalize(); S.camPos.copy(S.focus.group.position).addScaledVector(dir, S.focusDist).add(tmp2.set(0, S.focusDist * 0.35, 0)); }
+  const k = reduced ? 0.2 : 0.035;
+  camera.position.lerp(S.camPos, k); S._look = (S._look || new THREE.Vector3()).lerp(S.camTarget, k * 1.4); camera.lookAt(S._look);
+  if (!S.focus) { camera.position.x += Math.sin(t * 0.07) * 0.02; }
+  placePanels();
+  composer.render(); labelRenderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight); labelRenderer.setSize(innerWidth, innerHeight); });
+SCENES.repos(); frame(); setTimeout(tick, 2500);
+</script>
