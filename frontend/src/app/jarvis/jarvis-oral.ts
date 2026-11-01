@@ -91,7 +91,39 @@ export function withEndAnnouncement(phrase: string, elapsedMs: number): string {
 /** SF-231-03 — « stop », « arrête », « annule » : l'ordre d'interrompre le travail en cours (dit seul). */
 export function isStopCommand(said: string): boolean {
   const words = normalize(said).replace(/^jarvis\s+/, '');
-  return /^(stop|arrete|arrete tout|arrete toi|annule|laisse tomber|interromps)$/.test(words);
+  return /^(stop|arrete|arrete tout|arrete toi|arrete ca|annule|laisse tomber|interromps)$/.test(words);
+}
+
+/** F-233 / SF-233-09 (D9) — ce que vaut une parole qui a coupé Jarvis. */
+export type InterruptionKind = 'ack' | 'silence' | 'cancel' | 'request';
+
+const ACKS = /^(ok|okay|ok ok|d accord|ah d accord|mmh|mm|mmm|hum|hmm|oui|oui oui|ouais|ouais ouais|je vois|tres bien|parfait|super|compris|vas y|allez y|continue|continuez|je t ecoute|je vous ecoute|ah oui|ah ok)$/;
+const SILENCES = /^(stop|chut|tais toi|taisez vous|silence|c est bon|ca suffit|ca va|merci c est bon|c est bon merci|arrete de parler|merci)$/;
+const CANCELS = /^(annule|laisse tomber|arrete ca|arrete tout|interromps|arrete)$/;
+
+/**
+ * F-233 / SF-233-09 (D9) — classement **local**, sans appel modèle, de la parole qui a coupé Jarvis :
+ * - `ack` (« ok », « mmh », « d'accord ») → il reprend à la phrase coupée ;
+ * - `silence` (« stop », « chut », « c'est bon ») → il se tait, et rien d'autre ;
+ * - `cancel` (« laisse tomber », « annule », « arrête ça ») → l'interruption du travail en cours (D11) ;
+ * - `request` → tout le reste : écouté et traité comme une demande. **Dans le doute, c'est une demande** (jamais une
+ *   action).
+ */
+export function classifyInterruption(said: string | null | undefined): InterruptionKind {
+  const words = normalize(said ?? '').replace(/^jarvis\s+/, '').trim();
+  if (!words) {
+    return 'request';
+  }
+  if (ACKS.test(words)) {
+    return 'ack';
+  }
+  if (SILENCES.test(words)) {
+    return 'silence';
+  }
+  if (CANCELS.test(words)) {
+    return 'cancel';
+  }
+  return 'request';
 }
 
 /** Sans accents ni casse, espaces repliés : de quoi comparer ce qui a été dit à un nom de sujet. */

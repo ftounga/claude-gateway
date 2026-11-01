@@ -41,6 +41,25 @@ public final class JarvisOralNote {
     private JarvisOralNote() {
     }
 
+    /** F-233 / SF-233-09 — au-delà, la part entendue est coupée (début gardé). */
+    public static final int MAX_HEARD_CHARS = 600;
+
+    /**
+     * F-233 / SF-233-09 (D10) — la note fixe d'une réponse orale coupée, jointe au message du tour suivant : seule la
+     * part <b>entendue</b> est citée. {@code consigne} inchangée si rien n'a été entendu.
+     */
+    public static String appendCut(String consigne, String heardBeforeCut) {
+        if (heardBeforeCut == null || heardBeforeCut.isBlank()) {
+            return consigne;
+        }
+        String heard = heardBeforeCut.strip().replaceAll("\\s+", " ").replace('»', '"').replace('«', '"');
+        if (heard.length() > MAX_HEARD_CHARS) {
+            heard = heard.substring(0, MAX_HEARD_CHARS) + "…";
+        }
+        return consigne + "\n[Jarvis — ta réponse orale a été coupée après : « " + heard
+                + " ». Le reste n'a pas été entendu.]";
+    }
+
     /** La consigne du tour, suivie de la consigne orale. */
     public static String appendTo(String consigne) {
         return (consigne == null ? "" : consigne) + "\n\n" + TEXT;
