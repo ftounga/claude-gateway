@@ -121,6 +121,13 @@ public class JarvisFastBrainService {
     private ProviderCostCalculator costs;
     private QuotaService quota;
     private BigDecimal usdToEur = DEFAULT_USD_TO_EUR;
+    private JarvisFastContextBuilder contextBuilder;
+    private JarvisFastMemory memory;
+    private JarvisDelegationRegistry delegations;
+    /** Dernier pré-chauffage par compte (D6) : au plus un toutes les {@link #WARM_EVERY}. */
+    private final java.util.Map<UUID, java.time.Instant> warmed = new java.util.concurrent.ConcurrentHashMap<>();
+    static final java.time.Duration WARM_EVERY = java.time.Duration.ofMinutes(4);
+    static final String WARM_TEXT = "[Pré-chauffage — ne réponds rien]";
 
     public JarvisFastBrainService(AiAgentProvider provider, JarvisFastBrainProperties properties,
             JarvisUsageService usage, WorkspaceRepository workspaces, Clock clock) {
@@ -138,6 +145,15 @@ public class JarvisFastBrainService {
         this.ledger = ledger;
         this.costs = costs;
         this.quota = quota;
+    }
+
+    /** F-235 / SF-235-02 — le contexte compact, la mémoire de session, les délégations en cours. */
+    @Autowired(required = false)
+    public void setContext(JarvisFastContextBuilder contextBuilder, JarvisFastMemory memory,
+            JarvisDelegationRegistry delegations) {
+        this.contextBuilder = contextBuilder;
+        this.memory = memory;
+        this.delegations = delegations;
     }
 
     @Autowired(required = false)
@@ -162,6 +178,59 @@ public class JarvisFastBrainService {
      * d'office ou un repli.
      */
     public Outcome converse(Request request, Sink sink) {
+        Outcome outcome = decide(request, sink);
+        // SF-235-02 : la mémoire de session (mots seuls) et le registre des délégations en cours.
+        if (memory != null && outcome.kind() != Kind.FALLBACK) {
+            memory.remember(request.userId(), request.text(), outcome.kind() == Kind.ANSWER ? outcome.spokenText()
+                    : outcome.delegation().annonce());
+        }
+        if (delegations != null && outcome.kind() == Kind.DELEGATE) {
+            Delegation d = outcome.delegation();
+            String name = request.workspace() != null && request.workspace().getId().equals(d.subjectId())
+                    ? request.workspace().getName()
+                    : workspaces.findByIdAndUserId(d.subjectId(), request.userId()).map(Workspace::getName).orElse("");
+            delegations.started(request.userId(), d.delegationId(), d.subjectId(), name, d.chantier(),
+                    d.label() == null || d.label().isBlank() ? d.demande() : d.label());
+        }
+        return outcome;
+    }
+
+    /**
+     * Pré-chauffage du cache (D6) : un appel {@code max_tokens: 0} portant la consigne et l'outil, au plus toutes les
+     * 4 min par compte. Rend vrai s'il est parti. Ne lève jamais.
+     */
+    /** Le pré-chauffage en tâche de fond : la requête HTTP n'attend jamais le modèle. */
+    public void warmAsync(UUID userId, Workspace workspace) {
+        calls.execute(() -> warm(userId, workspace));
+    }
+
+    public boolean warm(UUID userId, Workspace workspace) {
+        java.time.Instant now = clock.instant();
+        java.time.Instant last = warmed.get(userId);
+        if (last != null && last.plus(WARM_EVERY).isAfter(now)) {
+            return false;
+        }
+        if (overBudget(userId)) {
+            return false;
+        }
+        warmed.put(userId, now);
+        try {
+            String apiKey = byok == null ? null : byok.resolveActiveApiKey(userId).orElse(null);
+            AgentTurn turn = provider.nextTurn(new AgentTurnRequest(properties.model(), JarvisFastBrainPrompt.system(),
+                    List.of(AgentMessage.userText(WARM_TEXT)), List.of(JarvisFastBrainPrompt.delegateTool()), apiKey,
+                    AgentReasoning.off(properties.effort()), AgentContextPolicy.none(), AgentTurnMode.ACT,
+                    AgentCallShape.compact(0)));
+            if (turn != null) {
+                account(userId, workspace, turn);
+            }
+            return true;
+        } catch (RuntimeException e) {
+            log.debug("Cerveau rapide : pré-chauffage en échec ({})", e.getClass().getSimpleName());
+            return true;
+        }
+    }
+
+    Outcome decide(Request request, Sink sink) {
         Sink out = sink == null ? delta -> { } : sink;
         UUID userId = request.userId();
         if (overBudget(userId)) {
@@ -240,8 +309,26 @@ public class JarvisFastBrainService {
 
     /** Les messages de l'appel : la parole et son contexte, dans le message (jamais dans la consigne système). */
     List<AgentMessage> messages(Request request) {
-        List<AgentMessage> messages = new ArrayList<>(1);
-        messages.add(AgentMessage.userText(message(context(request), request.text())));
+        return messages(request, context(request));
+    }
+
+    /**
+     * Les échanges de la session (mots seuls, D6) puis le dernier message, seul à porter le contexte. Un échange
+     * dont la réponse est vide n'est pas rejoué (la conversation doit alterner).
+     */
+    List<AgentMessage> messages(Request request, String context) {
+        List<AgentMessage> messages = new ArrayList<>();
+        if (memory != null) {
+            for (JarvisFastMemory.Exchange e : memory.recall(request.userId())) {
+                if (e.answered() == null || e.answered().isBlank()) {
+                    continue;
+                }
+                messages.add(AgentMessage.userText(e.said()));
+                messages.add(AgentMessage.assistant(List.of(new fr.claudegateway.agent.AgentContentBlock.Text(
+                        e.answered()))));
+            }
+        }
+        messages.add(AgentMessage.userText(message(context, request.text())));
         return messages;
     }
 
@@ -251,8 +338,12 @@ public class JarvisFastBrainService {
                 + (text == null ? "" : text.strip());
     }
 
-    /** Le contexte minimal : l'heure, le sujet et le chantier courants (enrichi par SF-235-02). */
+    /** Le contexte de l'échange (SF-235-02) ; à défaut de constructeur, l'heure, le sujet et le chantier courants. */
     String context(Request request) {
+        if (contextBuilder != null) {
+            return contextBuilder.build(request.userId(), request.workspace(), request.chantier(),
+                    request.heardBeforeCut());
+        }
         StringBuilder context = new StringBuilder();
         context.append("Maintenant : ").append(ZonedDateTime.now(clock).withZoneSameInstant(ZONE).format(STAMP))
                 .append('\n');

@@ -84,6 +84,26 @@ public class JarvisFastBrainController {
         return ResponseEntity.ok().contentType(MediaType.TEXT_EVENT_STREAM).body(emitter);
     }
 
+    /** La demande de pré-chauffage : le sujet ouvert (facultatif, pour le journal du coût). */
+    public record WarmRequest(UUID subjectId) {
+    }
+
+    /**
+     * Pré-chauffage du cache du cerveau rapide (F-235 / SF-235-02, D6) — à l'ouverture de {@code /jarvis} et au mot
+     * d'éveil. 503 éteint ; 204 sinon (parti, ou trop tôt : au plus un toutes les 4 min).
+     */
+    @PostMapping("/jarvis/converse/warm")
+    public ResponseEntity<Void> warm(@RequestBody(required = false) WarmRequest request) {
+        if (!service.enabled()) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build();
+        }
+        UUID userId = currentUser.requireId();
+        Workspace workspace = request == null || request.subjectId() == null ? null
+                : workspaces.findByIdAndUserId(request.subjectId(), userId).orElse(null);
+        service.warmAsync(userId, workspace);
+        return ResponseEntity.noContent().build();
+    }
+
     private void relay(SseEmitter emitter, JarvisFastBrainService.Request call, Long turnSeq) {
         try {
             JarvisFastBrainService.Outcome outcome = service.converse(call, delta -> send(emitter, "text",
