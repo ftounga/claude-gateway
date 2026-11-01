@@ -32,13 +32,16 @@ Téléphone : **Android**.
 | D6 | **Écran Jarvis** : route `/jarvis` en plein écran, orbe neuronal animé (états écoute / réflexion / parole, réagit au niveau sonore), sujet et chantier courants affichés et changeables à la voix (« passe sur CAGIP »), interruption par la parole. Couleurs de `DESIGN_SYSTEM.md`, téléphone d'abord. | Exigence PO |
 | D7 | **Alerte de veille (F-230)** : la notification ouvre `/jarvis?alerte=…`, Jarvis la lit et attend la réponse. | Boucle complète |
 | D8 | **Confidentialité, décision à acter** : la voix part déjà chez le fournisseur de transcription (F-145) ; avec Jarvis, **le texte des réponses part aussi chez le fournisseur de synthèse**, données client comprises. Même régime que F-145, à valider explicitement par le PO. | Prolonge la décision D2 de F-128 |
+| D10 | **Retour au terminal : pas de réconciliation à faire, une trace et une reprise.** Jarvis écrit dans **le fil du sujet** (D1) : quand le PO revient sur l'écran, tout est déjà dans le terminal, au même endroit que s'il avait tapé. S'y ajoutent : (a) chaque message et chaque tour nés à la voix portent la marque « 🎙 via Jarvis » ; (b) au retour sur un terminal où Jarvis a agi depuis la dernière visite, un encart « Pendant ton absence, via Jarvis » liste les actions (étapes validées, chantiers lancés, attentes créées) et **les messages à envoyer** ; (c) le point de situation (F-225) les reprend. | Le PO doit retrouver ce qui a été fait sans relire le fil |
+| D11 | **Messages pour des tiers : Jarvis prépare, le PO envoie.** Jarvis n'envoie rien à un tiers (règle existante : aucun outil n'écrit à un tiers). Un message demandé à la voix devient l'encart mail ou message existant (F-203), avec Copier et « Marquer envoyé » (F-211 : l'attente liée passe à DEMANDE). Jarvis le dit à l'oral : « Message pour X prêt, à envoyer depuis le terminal ». Sur demande (« envoie-le-moi »), il se l'envoie **au PO lui-même** (`email_me`), qui peut le transférer depuis son téléphone sans ouvrir l'application. Dans le tableau du client, un compteur « À envoyer (n) » liste les encarts non marqués envoyés, tous sujets confondus. | Rien ne se perd entre la voix et l'envoi |
 | D9 | **Mesure d'adoption** : sessions Jarvis par jour, minutes parlées, coût voix en €. Elle conditionne F-232. | Leçon « mécanisme livré qui dort » |
 
 ## Coût estimé
 
 - **Cerveau** : aucun surcoût (mêmes tours ; réponses orales plus courtes).
 - **Transcription** : quelques €/mois.
-- **Synthèse** : ≈ 10 €/mois (voix standard) à ≈ 100 €/mois (voix premium), pour un usage quotidien soutenu. À confirmer au choix du fournisseur.
+- **Mot d'éveil** : 0 € (modèle exécuté sur l'appareil, aucun service appelé).
+- **Synthèse** (la voix qui parle, c'est elle qui coûte) : ≈ 10 €/mois (voix standard) à ≈ 100 €/mois (voix premium), pour un usage quotidien soutenu. À confirmer au choix du fournisseur.
 
 ## Découpage
 
@@ -48,6 +51,7 @@ Téléphone : **Android**.
 | SF-231-02 | **L'écran Jarvis** : `/jarvis`, orbe, appuyer pour parler (dictée réutilisée), envoi dans le fil du sujet, lecture de la phrase orale, détail consultable. | 2 j |
 | SF-231-03 | **Parler court** : consigne orale dans le message, accusé et annonce de fin des tours longs, interruption par la parole. | 1,5 j |
 | SF-231-04 | **Confirmer à voix haute** : actions engageantes et outils `ask` posés en question orale, « oui » requis. | 1,5 j |
+| SF-231-06 | **De retour au terminal** : marque « via Jarvis », encart « Pendant ton absence » (actions et messages à envoyer), reprise dans le point de situation, « envoie-le-moi » par `email_me`, compteur « À envoyer (n) » dans le tableau du client (D10, D11). | 2 j |
 | SF-231-05 | **« Jarvis… »** : mot d'éveil sur l'appareil, lancement « Ok Google, ouvre Jarvis », alertes de veille lues, mesure d'adoption. | 2 j |
 
 ## Préoccupations transversales
