@@ -1387,6 +1387,14 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   `changes_json`, `change_count`, `ai_written`, `cost_usd`, `opened_at` (mesure D8), `created_at`. Lue par
   Jarvis (F-231) via `GET /api/jarvis/alerts/{id}`. La dépense du mois d'une veille est la somme de
   `cost_usd` depuis le 1er (UTC).
+- **jarvis_usage_days** — **une journée du mode Jarvis par compte** (F-231 / SF-231-01, migration `190`) : `user_id`,
+  `usage_day` (unique avec `user_id`), `chars_spoken` + `speech_cost_usd` (la voix de Jarvis : sert le **plafond
+  mensuel en euros** `app.jarvis.voice.monthly-budget-eur`), `sessions`, `spoken_seconds`, `wakes` (mesure d'adoption
+  D9, SF-231-05, `GET /api/admin/jarvis/measure`), `updated_at`. **Aucun contenu** (ni texte ni audio).
+- **atelier_messages.via** — **l'origine d'un message** (F-231 / SF-231-06, migration `191`) : `JARVIS` pour une
+  demande dite à la voix dans l'écran Jarvis **et** la réponse de ce tour, `NULL` sinon. Donnée d'affichage : marque
+  « 🎙 via Jarvis », encart « Pendant ton absence » (`GET /api/workspaces/{id}/jarvis/absence`), point de situation,
+  compteur « À envoyer (n) » (`GET /api/jarvis/to-send`).
 - **interlocuteurs** — **les interlocuteurs d'un poste** (F-180 / SF-180-03, migration `160`) : une
   personne dont on attend quelque chose, normalisée. `id`, `user_id`, `host_id` (NOT NULL — un terminal
   hébergé garde le texte libre), `display_name (120)`, `normalized_name (120)` (unique par `user_id` +
