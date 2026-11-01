@@ -111,4 +111,17 @@ describe('chatStepsToBlocks (F-39 SF-39-08)', () => {
     expect(blocks[1].command).toBe("vidéo · suivi de l'extraction");
     expect(blocks[2].command).toBe('vidéo');
   });
+
+  it('F-234 / SF-234-04 : une étape web dit la requête ou le domaine ; un outil métier son étiquette', () => {
+    const blocks = chatStepsToBlocks([
+      { type: 'web', path: 'TTL DNS route53' },
+      { type: 'web' },
+      { type: 'update_plan_step', path: 'chantier 3 · étape 2 · faite' },
+    ]);
+
+    expect(blocks[0].command).toBe('web · TTL DNS route53');
+    expect(blocks[1].command).toBe('web');
+    expect(blocks[2].tool).toBe('update_plan_step');
+    expect(blocks[2].command).toBe('chantier 3 · étape 2 · faite');
+  });
 });
