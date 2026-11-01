@@ -130,7 +130,26 @@
 
 .jv__controls {
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--cg-space-2);
+}
+
+.jv__wake {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: center;
+  gap: var(--cg-space-1);
+  font-size: 13px;
+}
+
+.jv__wake-button {
+  color: var(--cg-cream);
+}
+
+.jv__wake-state {
+  opacity: 0.85;
 }
 
 .jv__talk {

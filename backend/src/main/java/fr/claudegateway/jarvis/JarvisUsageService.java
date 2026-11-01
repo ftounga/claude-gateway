@@ -48,6 +48,26 @@ public class JarvisUsageService {
         });
     }
 
+    /** SF-231-05 — une ouverture de l'écran Jarvis (mesure d'adoption, D9). */
+    public void addSession(UUID userId) {
+        bump(userId, day -> day.setSessions(day.getSessions() + 1));
+    }
+
+    /** SF-231-05 — des secondes parlées par le PO (bornées par l'appelant). */
+    public void addSpoken(UUID userId, long seconds) {
+        bump(userId, day -> day.setSpokenSeconds(day.getSpokenSeconds() + Math.max(0L, seconds)));
+    }
+
+    /** SF-231-05 — un réveil par le mot « Jarvis ». */
+    public void addWake(UUID userId) {
+        bump(userId, day -> day.setWakes(day.getWakes() + 1));
+    }
+
+    /** SF-231-05 — les journées du compte depuis {@code days} jours (aujourd'hui compris), les plus anciennes d'abord. */
+    public java.util.List<JarvisUsageDay> lastDays(UUID userId, int days) {
+        return repository.findByUserIdAndDayGreaterThanEqualOrderByDayAsc(userId, today().minusDays(Math.max(1, days) - 1L));
+    }
+
     /** Le dollar dépensé par la voix depuis le premier jour du mois courant. */
     public BigDecimal monthSpeechCostUsd(UUID userId) {
         LocalDate first = today().withDayOfMonth(1);
