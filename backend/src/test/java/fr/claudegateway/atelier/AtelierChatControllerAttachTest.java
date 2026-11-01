@@ -181,6 +181,39 @@ class AtelierChatControllerAttachTest {
     }
 
     @Test
+    void lEtatDuTourPorteLaQuestionEnAttentePourQuunVoletRouvertLaReaffiche() throws Exception {
+        // F-226 / SF-226-04 : la question se lit dans l'état JSON du tour, sans dépendre du flux de rebranchement.
+        LiveTurn turn = liveTurns.open(ALICE, PROJET);
+        turn.publishQuestionRequest(new Payload("question"),
+                new fr.claudegateway.atelier.live.PendingQuestion("q-1",
+                        "[{\"id\":\"q\",\"question\":\"Quel port ?\",\"options\":[]}]",
+                        120_000L, System.currentTimeMillis() - 100_000L));
+
+        AtelierTurnStateResponse state = controller(new RecordingEmitter(),
+                RelayTurnSource.disabled()).turnState(PROJET);
+
+        assertThat(state.pendingQuestion()).isNotNull();
+        assertThat(state.pendingQuestion().callId()).isEqualTo("q-1");
+        assertThat(state.pendingQuestion().remainingMs()).isLessThanOrEqualTo(20_000L).isGreaterThan(15_000L);
+        String json = new ObjectMapper().writeValueAsString(state);
+        assertThat(json).as("le lot de questions part tel quel, pas en chaîne échappée")
+                .contains("\"questions\":[{\"id\":\"q\"");
+    }
+
+    @Test
+    void uneQuestionExpireeNestJamaisRendue() {
+        LiveTurn turn = liveTurns.open(ALICE, PROJET);
+        turn.publishQuestionRequest(new Payload("question"),
+                new fr.claudegateway.atelier.live.PendingQuestion("q-2", "[]", 1_000L,
+                        System.currentTimeMillis() - 60_000L));
+
+        AtelierTurnStateResponse state = controller(new RecordingEmitter(),
+                RelayTurnSource.disabled()).turnState(PROJET);
+
+        assertThat(state.pendingQuestion()).isNull();
+    }
+
+    @Test
     void sansAttenteLetatDuTourNePorteAucuneInvite() {
         liveTurns.open(ALICE, PROJET).publish("text", new Payload("je réfléchis"));
 

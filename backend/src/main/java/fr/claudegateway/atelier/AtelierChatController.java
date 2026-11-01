@@ -266,6 +266,9 @@ public class AtelierChatController {
             return new AtelierTurnStateResponse(true, turn.turnId(), turn.cursor(),
                     turn.startedAtMs(),
                     turn.pendingApproval().map(AtelierTurnStateResponse.PendingApprovalView::of)
+                            .orElse(null),
+                    // F-226 / SF-226-04 : la question en attente, lisible sans le flux (volet rouvert).
+                    turn.pendingQuestion().map(AtelierTurnStateResponse.PendingQuestionView::of)
                             .orElse(null));
         }
         return remoteTurns.findRemoteTurn(userId, id, fil)

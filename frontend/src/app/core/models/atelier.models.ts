@@ -1023,6 +1023,18 @@ export interface AtelierTurnState {
    * est un ÉTAT du tour, pas un événement qu'on rate si l'on n'était pas branché au bon moment.
    */
   pending: AtelierTurnPendingApproval | null;
+  /**
+   * La question structurée que le tour attend **à l'instant** (F-226 / SF-226-04), ou absente : un volet
+   * rouvert la réaffiche dès cette lecture JSON, sans attendre le flux (qu'un proxy peut retenir). Additif.
+   */
+  pendingQuestion?: AtelierTurnPendingQuestion | null;
+}
+
+/** Une question en attente, avec son temps restant **venu de la gateway** (F-226 / SF-226-04). */
+export interface AtelierTurnPendingQuestion {
+  callId: string;
+  questions: AtelierQuestion[];
+  remainingMs: number;
 }
 
 /** Une demande d'autorisation en attente, avec son temps restant **venu de la gateway**. */

@@ -132,4 +132,42 @@ describe('TerminalLanePaneComponent (F-221)', () => {
       expect(el.querySelector('app-proof-captures .proof--attached')).not.toBeNull();
     });
   });
+
+  describe('F-226 / SF-226-04 — le volet rouvert réaffiche ce qui l’attend', () => {
+    const QUESTIONS = [{ id: 'q', question: 'Quel port ?', options: [] }];
+
+    it('l’autorisation et la question en attente reviennent dès l’état du tour, sans attendre le flux', () => {
+      atelier.getTurnState.and.returnValue(of({ live: true, turnId: 't', cursor: 3, startedAt: 1,
+        pending: { toolUseId: 'call-1', tool: 'bash', detail: 'rm -rf build', remainingMs: 20_000 },
+        pendingQuestion: { callId: 'q-1', questions: QUESTIONS as never, remainingMs: 30_000 } }));
+      const fixture = create();
+      const pane = fixture.componentInstance;
+      expect(pane.pendingConfirmation()?.toolUseId).toBe('call-1');
+      expect(pane.pendingConfirmation()?.deadline).not.toBeNull();
+      expect(pane.pendingQuestion()?.callId).toBe('q-1');
+      expect(pane.pendingQuestion()?.status).toBe('awaiting');
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('app-atelier-terminal-demande')).not.toBeNull();
+    });
+
+    it('la même question rejouée par le flux ne perd pas la réponse en cours', () => {
+      atelier.getTurnState.and.returnValue(of({ live: true, turnId: 't', cursor: 3, startedAt: 1, pending: null,
+        pendingQuestion: { callId: 'q-1', questions: QUESTIONS as never, remainingMs: 30_000 } }));
+      const fixture = create();
+      const pane = fixture.componentInstance;
+      pane.pendingQuestion.update((q) => (q ? { ...q, answering: true, answeredHere: true } : q));
+      const handlers = atelier.attachTurn.calls.mostRecent().args[2];
+      handlers.onQuestionRequest?.({ callId: 'q-1', questions: QUESTIONS as never, timeoutMs: 25_000 });
+      expect(pane.pendingQuestion()?.answering).toBeTrue();
+      expect(pane.pendingQuestion()?.answeredHere).toBeTrue();
+    });
+
+    it('une attente expirée ou un tour fini : rien ne s’affiche', () => {
+      atelier.getTurnState.and.returnValue(of({ live: false, turnId: null, cursor: 0, startedAt: null,
+        pending: null, pendingQuestion: { callId: 'q-1', questions: QUESTIONS as never, remainingMs: 30_000 } }));
+      const pane = create().componentInstance;
+      expect(pane.pendingQuestion()).toBeNull();
+      expect(atelier.attachTurn).not.toHaveBeenCalled();
+    });
+  });
 });

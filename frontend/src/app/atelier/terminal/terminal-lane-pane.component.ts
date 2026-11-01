@@ -179,6 +179,17 @@ export class TerminalLanePaneComponent implements OnChanges, OnDestroy {
           return;
         }
         this.beginTurn();
+        // F-226 / SF-226-04 : ce que le tour attend À L'INSTANT se réaffiche dès la lecture de son état — un volet
+        // rouvert ne dépend plus du flux de rebranchement (qu'un proxy d'entreprise peut retenir) pour montrer
+        // l'autorisation ou la question qui l'attend. L'aparté rejoué ensuite par le flux retombe sur la même invite.
+        if (state.pending && state.pending.remainingMs > 0) {
+          this.showConfirmation({ toolUseId: state.pending.toolUseId, tool: state.pending.tool,
+            detail: state.pending.detail, timeoutMs: state.pending.remainingMs });
+        }
+        const question = state.pendingQuestion;
+        if (question && question.remainingMs > 0 && Array.isArray(question.questions) && question.questions.length > 0) {
+          this.showQuestion({ callId: question.callId, questions: question.questions, timeoutMs: question.remainingMs });
+        }
         this.attach = this.atelier.attachTurn(id, 0, this.handlers(generation, false), this.chantier);
       },
       error: () => undefined,
@@ -357,6 +368,14 @@ export class TerminalLanePaneComponent implements OnChanges, OnDestroy {
   }
 
   private showConfirmation(request: AtelierConfirmRequest): void {
+    const known = this.pendingConfirmation();
+    if (known && known.toolUseId === request.toolUseId) {
+      // La même demande, relue (état du tour) puis rejouée (flux) : on garde la saisie en cours, on recale l'échéance.
+      this.pendingConfirmation.set({ ...known,
+        deadline: request.timeoutMs ? Date.now() + request.timeoutMs : known.deadline,
+        timeoutMs: request.timeoutMs ?? known.timeoutMs });
+      return;
+    }
     this.pendingConfirmation.set({
       toolUseId: request.toolUseId,
       tool: request.tool,
@@ -372,6 +391,14 @@ export class TerminalLanePaneComponent implements OnChanges, OnDestroy {
   }
 
   private showQuestion(request: AtelierQuestionRequest): void {
+    const known = this.pendingQuestion();
+    if (known && known.callId === request.callId && known.status === 'awaiting') {
+      // Même question relue puis rejouée : la réponse en cours n'est pas effacée, seule l'échéance est recalée.
+      this.pendingQuestion.set({ ...known,
+        deadline: request.timeoutMs ? Date.now() + request.timeoutMs : known.deadline,
+        timeoutMs: request.timeoutMs ?? known.timeoutMs });
+      return;
+    }
     this.pendingQuestion.set({
       callId: request.callId,
       questions: request.questions,
