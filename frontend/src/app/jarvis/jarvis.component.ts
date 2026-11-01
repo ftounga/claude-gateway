@@ -903,6 +903,22 @@ export class JarvisComponent implements OnInit, OnDestroy {
           this.scenes.questions(turn.questions);
         }
       },
+      // F-234 / SF-234-08 — mémoire, résumé du fil, passation : à l'écran (S12, S10).
+      onRecalled: (event) => {
+        if (latest()) {
+          this.scenes.recalled(event.repere);
+        }
+      },
+      onCompaction: (event) => {
+        if (latest() && event.running) {
+          this.scenes.compaction(event.summarizedTurns);
+        }
+      },
+      onHandoff: (event) => {
+        if (latest()) {
+          this.scenes.handoff(event.handoff.name, event.handoff.workspaceId);
+        }
+      },
       onClosed: () => this.zone.run(() => {
         if (latest()) {
           this.scenes.aborted();

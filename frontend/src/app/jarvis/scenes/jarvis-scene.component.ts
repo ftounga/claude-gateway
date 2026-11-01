@@ -135,6 +135,41 @@ export interface SceneChantier {
                 </p>
               }
             }
+            @case ('S6') {
+              <!-- SF-234-08 — S6 : la barre d'adresse (la requête, ou le domaine seul d'une page lue). -->
+              <p class="address" [attr.data-web]="s.data?.web">
+                <span class="address__icon" aria-hidden="true"></span>{{ s.data?.address ?? s.detail }}
+              </p>
+            }
+            @case ('S10') {
+              <!-- SF-234-08 — S10 : le fil glisse d'un sujet à l'autre. -->
+              <p class="handoff">
+                @if (s.data?.fromLabel) { <span class="handoff__from">{{ s.data?.fromLabel }}</span> }
+                <span class="handoff__thread" aria-hidden="true"></span>
+                <span class="handoff__to">{{ s.data?.toLabel ?? s.detail }}</span>
+              </p>
+            }
+            @case ('S12') {
+              <!-- SF-234-08 — S12 : « tour 34 » remonte ; la carte du savoir ; une règle proposée s'inscrit. -->
+              @if (s.data?.repere) { <p class="memory"><span class="memory__badge">{{ s.data?.repere }}</span></p> }
+              @if (s.detail) { <p class="scene__detail">{{ s.detail }}</p> }
+            }
+            @case ('S13') {
+              <!-- SF-234-08 — S13 : une orbe satellite par sous-agent, avec sa question. -->
+              <ul class="swarm">
+                @for (q of s.data?.satellites ?? []; track $index; let i = $index) {
+                  <li class="swarm__item" [style.--i]="i"><span class="swarm__orb" aria-hidden="true"></span>{{ q }}</li>
+                }
+              </ul>
+            }
+            @case ('S15') {
+              <!-- SF-234-08 — S15 : le point — tous les sujets du client s'allument en vague (constellation). -->
+              <p class="scene__detail">{{ pointLabel() }}</p>
+            }
+            @case ('S17') {
+              <!-- SF-234-08 — S17 : une horloge s'attache au sujet. -->
+              <p class="clockline"><span class="clockline__icon" aria-hidden="true"></span>{{ s.detail ?? s.entity?.label }}</p>
+            }
             @case ('S14') {
               <!-- SF-234-06 — S14 : une puce par point de route, pleine quand il est traité. -->
               <ul class="route">
@@ -333,6 +368,48 @@ export interface SceneChantier {
     .tosend__plus { color: var(--cg-orange-2); font-weight: 700; animation: scene-in 300ms ease-out; }
     @keyframes letter-fold { from { transform: scaleY(0.2); opacity: 0; } to { transform: none; opacity: 1; } }
     @keyframes letter-go { 0% { transform: none; } 60% { transform: translateX(6px) scale(0.92); } 100% { transform: none; } }
+    .address {
+      display: flex; align-items: center; gap: 8px; margin: 6px 0 0; padding: 4px 10px; border-radius: 14px;
+      font-family: var(--cg-font-mono); font-size: 12px; color: var(--cg-cream); min-width: 0;
+      background: var(--cg-navy); border: 1px solid color-mix(in srgb, var(--cg-cream) 25%, transparent);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .address__icon {
+      flex: none; width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--cg-orange-2);
+    }
+    .address[data-web='search'] .address__icon { border-radius: 50% 50% 50% 0; }
+    .handoff { display: flex; align-items: center; gap: 6px; margin: 6px 0 0; font-size: 14px; min-width: 0; }
+    .handoff__from { color: color-mix(in srgb, var(--cg-cream) 70%, transparent); white-space: nowrap; }
+    .handoff__to { color: var(--cg-orange-2); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .handoff__thread {
+      flex: 1; min-width: 24px; max-width: 80px; height: 2px; border-radius: 1px;
+      background: linear-gradient(90deg, transparent, var(--cg-orange-2));
+      animation: thread-slide 700ms ease-out;
+    }
+    .memory { margin: 6px 0 0; }
+    .memory__badge {
+      display: inline-block; padding: 2px 10px; border-radius: 10px; font-family: var(--cg-font-mono); font-size: 12px;
+      color: var(--cg-navy); background: var(--cg-cream); animation: memory-up 500ms ease-out;
+    }
+    .swarm { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 3px; }
+    .swarm__item {
+      display: flex; align-items: center; gap: 6px; font-size: 13px; min-width: 0; white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis; color: color-mix(in srgb, var(--cg-cream) 85%, transparent);
+      animation: scene-in 300ms ease-out backwards; animation-delay: calc(var(--i, 0) * 80ms);
+    }
+    .swarm__orb {
+      flex: none; width: 9px; height: 9px; border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, var(--cg-cream), var(--cg-accent));
+    }
+    .clockline { display: flex; align-items: center; gap: 8px; margin: 6px 0 0; font-size: 14px; color: var(--cg-cream); }
+    .clockline__icon {
+      position: relative; flex: none; width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--cg-orange-2);
+    }
+    .clockline__icon::after {
+      content: ''; position: absolute; left: 5px; top: 2px; width: 1.5px; height: 4px; background: var(--cg-orange-2);
+    }
+    @keyframes thread-slide { from { transform: scaleX(0); transform-origin: left; } to { transform: none; } }
+    @keyframes memory-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
     .show { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 2px; }
     .show__item {
       display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: 14px;
@@ -358,6 +435,7 @@ export interface SceneChantier {
       .ticket { transform: none; }
       .progress__fill { transition: none; }
       .letter__shape, .letter.is-done .letter__shape, .tosend__plus { animation: none; }
+      .handoff__thread, .memory__badge, .swarm__item { animation: none; }
       .stepline.is-done .stepline__tick { animation: none; }
     }
   `,
@@ -402,6 +480,18 @@ export class JarvisSceneComponent implements OnInit {
 
   /** SF-234-07 — « À envoyer (n) » : le compteur de l'univers + les messages finis pendant le tour. */
   readonly toSendCount = computed(() => (this.bus.universe()?.toSendCount ?? 0) + this.bus.state().toSendAdded);
+
+  /** SF-234-08 — S15 : « 6 sujets chez CAGIP ». */
+  readonly pointLabel = computed(() => {
+    const universe = this.bus.universe();
+    const subjectId = this.bus.subjectId();
+    const client = universe?.clients.find((c) => c.subjects.some((x) => x.id === subjectId)) ?? universe?.clients[0];
+    if (!client) {
+      return 'Tour d’horizon des sujets';
+    }
+    const n = client.subjects.filter((x) => !x.hostTerminal).length;
+    return `${n} sujet${n > 1 ? 's' : ''} chez ${client.name}`;
+  });
 
   /** « 0:42 ». */
   clock(seconds: number): string {
