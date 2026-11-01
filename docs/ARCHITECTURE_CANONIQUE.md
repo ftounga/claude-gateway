@@ -1392,9 +1392,10 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   mensuel en euros** `app.jarvis.voice.monthly-budget-eur`), `sessions`, `spoken_seconds`, `wakes` (mesure d'adoption
   D9, SF-231-05, `GET /api/admin/jarvis/measure`), `updated_at`. **Aucun contenu** (ni texte ni audio).
   F-233 / SF-233-04 (migration `197`) : `stt_stream_seconds` + `stt_stream_cost_usd` (l'écoute en flux, comptée à la
-  durée de session) ; le plafond mensuel somme lecture **et** écoute.
+  durée de session) ; le plafond mensuel somme lecture **et** écoute. F-233 / SF-233-11 (migration `199`) :
+  `conversation_idle_ends` (retours au repos de la conversation mains libres après un long silence, événement `IDLE_END`).
 - **jarvis_turn_timings** — **un tour vocal chronométré** (F-233 / SF-233-01, migration `196`) : `user_id`,
-  `workspace_id` (nul si sujet d'autrui), `created_at`, `listen_mode` (`BATCH|STREAM`), `stt_provider`, `tts_provider`,
+  `workspace_id` (nul si sujet d'autrui), `created_at`, `listen_mode` (`BATCH|STREAM|CONV_BATCH|CONV_STREAM`, SF-233-11), `stt_provider`, `tts_provider`,
   `tool_turn`, marques en ms depuis la fin de parole (`speech_ms`, `transcript_ms`, `reaction_ms`, `sent_ms`,
   `first_token_ms`, `first_oral_sentence_ms`, `first_audio_byte_ms`, `first_sound_ms`, `done_ms`), compteurs
   d'interruption (`interruptions_detected|restored|confirmed`, `acknowledgements`, `false_triggers`). **Aucun
