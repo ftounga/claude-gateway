@@ -113,6 +113,28 @@ export interface SceneChantier {
                 }
               </p>
             }
+            @case ('S1') {
+              <!-- SF-234-07 — S1 : l'enveloppe (ou la bulle) se forme ; destinataire et objet ; « À envoyer (n) ». -->
+              <div class="letter" [attr.data-kind]="s.data?.envelope" [class.is-done]="s.data?.finished">
+                <span class="letter__shape" aria-hidden="true">
+                  @if (s.data?.proof) { <span class="letter__lens"></span> }
+                </span>
+                <div class="letter__lines">
+                  @if (s.data?.forMe) {
+                    <p class="letter__to">Pour vous</p>
+                  } @else if (s.data?.to) {
+                    <p class="letter__to">À : {{ s.data?.to }}</p>
+                  }
+                  @if (s.data?.subject) { <p class="letter__subject">{{ s.data?.proof && !s.data?.to ? '' : 'Objet : ' }}{{ s.data?.subject }}</p> }
+                  @if (s.data?.proof) { <p class="letter__proof">Preuve jointe</p> }
+                </div>
+              </div>
+              @if (!s.data?.forMe && s.data?.envelope && !(s.data?.proof && !s.data?.to)) {
+                <p class="tosend" [class.is-added]="s.data?.finished">
+                  À envoyer ({{ toSendCount() }})@if (s.data?.finished) { <span class="tosend__plus">+1</span> }
+                </p>
+              }
+            }
             @case ('S14') {
               <!-- SF-234-06 — S14 : une puce par point de route, pleine quand il est traité. -->
               <ul class="route">
@@ -281,6 +303,36 @@ export interface SceneChantier {
     }
     .route__item[data-state='TERMINEE'] .route__dot { border-color: var(--cg-terminal-success); background: var(--cg-terminal-success); }
     .route__item[data-state='NON_ABOUTIE'] { text-decoration: line-through; opacity: 0.7; }
+    .letter { display: flex; gap: 10px; align-items: center; margin-top: 6px; min-width: 0; }
+    .letter__shape {
+      position: relative; flex: none; width: 44px; height: 30px; border-radius: 4px;
+      border: 1.5px solid color-mix(in srgb, var(--cg-cream) 70%, transparent);
+      background:
+        linear-gradient(to bottom right, transparent 49%, color-mix(in srgb, var(--cg-cream) 70%, transparent) 50%, transparent 52%) left top / 50% 60% no-repeat,
+        linear-gradient(to bottom left, transparent 49%, color-mix(in srgb, var(--cg-cream) 70%, transparent) 50%, transparent 52%) right top / 50% 60% no-repeat;
+      animation: letter-fold 500ms ease-out;
+    }
+    .letter[data-kind='message'] .letter__shape { border-radius: 12px 12px 12px 3px; background: none; }
+    .letter.is-done .letter__shape { border-color: var(--cg-orange-2); animation: letter-go 600ms ease-in; }
+    .letter__lens {
+      position: absolute; right: -6px; bottom: -6px; width: 14px; height: 14px; border-radius: 50%;
+      background: var(--cg-navy); border: 2px solid var(--cg-orange-2);
+    }
+    .letter__lines { min-width: 0; }
+    .letter__to, .letter__subject, .letter__proof {
+      margin: 0; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .letter__to { color: var(--cg-orange-2); font-weight: 600; }
+    .letter__subject { color: var(--cg-cream); }
+    .letter__proof { font-size: 12px; color: color-mix(in srgb, var(--cg-cream) 75%, transparent); }
+    .tosend {
+      display: inline-flex; gap: 6px; align-items: center; margin: 6px 0 0; padding: 2px 10px; border-radius: 12px;
+      font-size: 13px; color: var(--cg-cream); border: 1px solid color-mix(in srgb, var(--cg-cream) 30%, transparent);
+    }
+    .tosend.is-added { border-color: var(--cg-orange-2); }
+    .tosend__plus { color: var(--cg-orange-2); font-weight: 700; animation: scene-in 300ms ease-out; }
+    @keyframes letter-fold { from { transform: scaleY(0.2); opacity: 0; } to { transform: none; opacity: 1; } }
+    @keyframes letter-go { 0% { transform: none; } 60% { transform: translateX(6px) scale(0.92); } 100% { transform: none; } }
     .show { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 2px; }
     .show__item {
       display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: 14px;
@@ -305,6 +357,7 @@ export interface SceneChantier {
       .scene, .scene__pulse, .term__line, .ticket { animation: none; }
       .ticket { transform: none; }
       .progress__fill { transition: none; }
+      .letter__shape, .letter.is-done .letter__shape, .tosend__plus { animation: none; }
       .stepline.is-done .stepline__tick { animation: none; }
     }
   `,
@@ -346,6 +399,9 @@ export class JarvisSceneComponent implements OnInit {
     }
     return null;
   }
+
+  /** SF-234-07 — « À envoyer (n) » : le compteur de l'univers + les messages finis pendant le tour. */
+  readonly toSendCount = computed(() => (this.bus.universe()?.toSendCount ?? 0) + this.bus.state().toSendAdded);
 
   /** « 0:42 ». */
   clock(seconds: number): string {
