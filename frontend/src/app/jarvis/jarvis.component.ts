@@ -33,11 +33,12 @@ function readWakeOn(): boolean {
 }
 
 /** SF-231-04 — ce que Jarvis dit quand la réponse n'est ni « oui » ni « non ». */
-export const DOUBT_PHRASE = 'Je n’ai pas compris : je ne fais rien. Tu peux confirmer depuis le terminal.';
+export const DOUBT_PHRASE = 'Je n’ai pas compris : je ne fais rien. Vous pouvez confirmer depuis le terminal.';
 /** SF-231-04 — ce que Jarvis dit quand personne ne répond. */
 export const NO_ANSWER_PHRASE = 'Sans réponse, je ne fais rien.';
 import {
-  ACK_DELAY_MS, ACK_PHRASE, REACTION_CLIPS, WAKE_CLIP, isStopCommand, oralPhrase, subjectSwitch, withEndAnnouncement,
+  ACK_DELAY_MS, ACK_PHRASE, LONG_TURN_MS, OralStream, REACTION_CLIPS, WAKE_CLIP, isStopCommand, oralPhrase,
+  subjectSwitch, withEndAnnouncement,
 } from './jarvis-oral';
 import { JarvisOrbComponent, JarvisState } from './jarvis-orb.component';
 import { JarvisCompanionsComponent } from './jarvis-companions.component';
@@ -224,7 +225,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
           this.chooseSubject(alert.workspaceId);
         }
         this.veilles.openAlert(alertId).subscribe({ error: () => undefined });
-        const phrase = `${alert.watchName ? `Veille ${alert.watchName} : ` : ''}${alert.sentence} Que veux-tu faire ?`;
+        const phrase = `${alert.watchName ? `Veille ${alert.watchName} : ` : ''}${alert.sentence} Que voulez-vous faire ?`;
         void this.sayAlert(phrase);
       },
       error: () => this.notice.set('Cette alerte est introuvable.'),
@@ -515,6 +516,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const seq = ++this.sendSeq;
     const latest = () => seq === this.sendSeq;
     this.startClock();
+    // SF-233-03 — la parole au fil de l'écriture : un nouveau lecteur de lignes 🎙 par envoi.
+    const oral = new OralStream();
+    this.oral = oral;
+    this.streamedText = '';
     if (!this.turnRunning) {
       this.turnStartedAt = Date.now();
     }
@@ -526,11 +531,12 @@ export class JarvisComponent implements OnInit, OnDestroy {
           this.clock.toolTurn = true;
         }
       },
-      onText: () => {
+      onText: (delta) => this.zone.run(() => {
         if (latest()) {
           this.clock?.mark('firstToken');
+          this.speakAsWritten(subjectId, oral, delta);
         }
-      },
+      }),
       onDone: (done) => this.zone.run(() => {
         if (latest()) {
           void this.onDone(done);
@@ -555,7 +561,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
       }),
       onQuestionRequest: () => this.zone.run(() => {
         if (latest()) {
-          void this.say('J’ai une question pour toi, à l’écran du terminal.');
+          void this.say('J’ai une question pour vous, à l’écran du terminal.');
         }
       }),
       onClosed: () => this.zone.run(() => {
@@ -642,6 +648,39 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.clearAck();
   }
 
+  /** SF-233-03 — le lecteur des lignes 🎙 de l'envoi en cours, et ce qu'il a déjà fait dire. */
+  private oral: OralStream | null = null;
+  private streamedText = '';
+
+  /**
+   * SF-233-03 (D4) — dit chaque phrase 🎙 dès qu'elle est complète, dans la file (la suivante se synthétise pendant
+   * que la précédente joue). Pas pendant une confirmation, ni au-delà d'un tour long (la fin s'annonce alors).
+   */
+  private speakAsWritten(subjectId: string, oral: OralStream, delta: string): void {
+    const sentences = oral.push(delta);
+    if (sentences.length === 0 || this.pendingConfirm
+        || (this.turnStartedAt > 0 && Date.now() - this.turnStartedAt >= LONG_TURN_MS)) {
+      return;
+    }
+    for (const sentence of sentences) {
+      const first = this.streamedText === '';
+      this.clearAck();
+      this.streamedText = first ? sentence : `${this.streamedText} ${sentence}`;
+      this.spoken.set(this.streamedText);
+      this.state.set('parole');
+      if (first) {
+        this.clock?.mark('firstOralSentence');
+      }
+      this.voice.enqueue(sentence, subjectId, first ? this.clockHooks() : undefined);
+    }
+    // La file dite, le tour continue (outils) : l'orbe repasse en réflexion.
+    void this.voice.idle().then(() => this.zone.run(() => {
+      if (this.turnRunning && this.oral === oral && this.state() === 'parole') {
+        this.state.set('reflexion');
+      }
+    }));
+  }
+
   private async onDone(done: AtelierStreamDone): Promise<void> {
     if (done.followUp === true) {
       // Un tour de suite démarre dans le même flux : la réponse finale viendra ensuite.
@@ -652,9 +691,28 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.detail.set(done.reply);
     const phrase = oralPhrase(done.reply) || 'C’est fait. Le détail est à l’écran.';
     this.pendingConfirm = null;
-    this.clock?.mark('firstOralSentence');
-    // SF-231-03 — un tour long s'annonce : le PO a pu passer à autre chose.
-    await this.say(withEndAnnouncement(phrase, elapsed), this.clockHooks());
+    const oral = this.oral;
+    const streamed = this.streamedText;
+    this.oral = null;
+    this.streamedText = '';
+    if (streamed) {
+      // SF-233-03 — déjà dit au fil de l'écriture : la file va au bout, puis le reste de la phrase finale.
+      await this.voice.idle();
+      const rest = oral?.remaining(phrase) ?? '';
+      // Interrompu (il écoute déjà) : on ne reprend pas la parole.
+      if (rest && this.state() !== 'ecoute') {
+        await this.say(rest);
+      } else if (this.voice.lastQueueError && this.voice.lastQueueError !== 'interrompu') {
+        this.notice.set(voiceMessage(this.voice.lastQueueError));
+      }
+      if (this.state() === 'parole' || this.state() === 'reflexion') {
+        this.state.set('repos');
+      }
+    } else {
+      this.clock?.mark('firstOralSentence');
+      // SF-231-03 — un tour long s'annonce : le PO a pu passer à autre chose.
+      await this.say(withEndAnnouncement(phrase, elapsed), this.clockHooks());
+    }
     this.clock?.mark('done');
     this.reportClock();
     // SF-231-04 — l'agent a reformulé une action qui engage et attend « oui » : Jarvis écoute la réponse.
@@ -705,6 +763,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   private onTurnError(code: string, reason?: string): void {
     this.reportClock();
+    this.oral = null;
+    this.streamedText = '';
     this.endTurn();
     this.state.set('repos');
     this.notice.set(reason ?? (code === 'forbidden' ? 'Ce sujet ne t’est pas ouvert.' : 'Le tour n’a pas abouti.'));

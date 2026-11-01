@@ -24,6 +24,15 @@ export interface SpeakHooks {
   onPlaying?: () => void;
 }
 
+/** SF-233-03 — une phrase en file : son audio est demandé à l'avance (`url`). */
+interface QueuedSentence {
+  text: string;
+  workspaceId: string | null;
+  hooks?: SpeakHooks;
+  abort: AbortController;
+  url: Promise<string> | null;
+}
+
 /** Ce que l'écran garde d'une lecture : de quoi l'arrêter. */
 interface Playback {
   audio: HTMLAudioElement;
@@ -48,6 +57,12 @@ export class JarvisVoiceService {
   private analyser: AnalyserNode | null = null;
   private samples: Uint8Array | null = null;
   private current: Playback | null = null;
+  /** SF-233-03 — la file de phrases à dire, et l'attente de sa fin. */
+  private queue: QueuedSentence[] = [];
+  private queueRunning = false;
+  private idleWaiters: (() => void)[] = [];
+  /** SF-233-03 — ce qui a arrêté la file (voix absente, plafond), ou `null`. */
+  private queueError: JarvisVoiceError | null = null;
   /** SF-233-02 — les clips de réaction chargés (URL locales), par nom. */
   private readonly clips = new Map<string, string>();
 
@@ -79,6 +94,87 @@ export class JarvisVoiceService {
   async speak(text: string, workspaceId: string | null = null, hooks?: SpeakHooks): Promise<void> {
     this.stop();
     const abort = new AbortController();
+    const url = await this.fetchAudio(text, workspaceId, abort, hooks);
+    return this.play(url, abort, hooks, true);
+  }
+
+  /**
+   * F-233 / SF-233-03 (D4) — met une phrase dans la **file** : elle sera dite après celles qui la précèdent, et sa
+   * synthèse est demandée dès que la phrase d'avant joue (préchargement d'une phrase). Coupe une phrase isolée en
+   * cours (l'accusé), jamais la file.
+   */
+  enqueue(text: string, workspaceId: string | null = null, hooks?: SpeakHooks): void {
+    if (!this.queueRunning && this.queue.length === 0) {
+      this.queueError = null;
+      this.stopCurrent();
+    }
+    this.queue.push({ text, workspaceId, hooks, abort: new AbortController(), url: null });
+    this.prefetch();
+    if (!this.queueRunning) {
+      void this.runQueue();
+    }
+  }
+
+  /** SF-233-03 — se résout quand la file est vide (tout dit, ou interrompu). */
+  idle(): Promise<void> {
+    if (!this.queueRunning && this.queue.length === 0) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => this.idleWaiters.push(resolve));
+  }
+
+  /** SF-233-03 — ce qui a arrêté la dernière file (voix absente, plafond, échec), ou `null`. */
+  get lastQueueError(): JarvisVoiceError | null {
+    return this.queueError;
+  }
+
+  private prefetch(): void {
+    for (const item of this.queue.slice(0, 2)) {
+      if (!item.url) {
+        item.url = this.fetchAudio(item.text, item.workspaceId, item.abort, item.hooks);
+        item.url.catch(() => undefined);
+      }
+    }
+  }
+
+  private async runQueue(): Promise<void> {
+    this.queueRunning = true;
+    while (this.queue.length > 0) {
+      const item = this.queue[0];
+      this.prefetch();
+      try {
+        const url = await item.url!;
+        if (this.queue[0] !== item) {
+          continue;
+        }
+        await this.play(url, item.abort, item.hooks, true);
+      } catch (error) {
+        if (this.queue[0] === item) {
+          // Voix absente ou plafond : inutile d'essayer les suivantes, elles restent écrites.
+          this.queueError = (error as JarvisVoiceError) ?? 'echec';
+          this.clearQueue();
+          break;
+        }
+      }
+      if (this.queue[0] === item) {
+        this.queue.shift();
+      }
+    }
+    this.queueRunning = false;
+    const waiters = this.idleWaiters;
+    this.idleWaiters = [];
+    waiters.forEach((resolve) => resolve());
+  }
+
+  private clearQueue(): void {
+    const pending = this.queue;
+    this.queue = [];
+    pending.forEach((item) => item.abort.abort());
+  }
+
+  /** Demande l'audio d'une phrase ; rend une URL jouable (flux MediaSource si possible). */
+  private async fetchAudio(text: string, workspaceId: string | null, abort: AbortController,
+                           hooks?: SpeakHooks): Promise<string> {
     const token = this.auth.token();
     let response: Response;
     try {
@@ -99,8 +195,7 @@ export class JarvisVoiceService {
       throw voiceErrorOf(response.status);
     }
     hooks?.onFirstByte?.();
-    const url = canStream(response) ? this.streamInto(response) : URL.createObjectURL(await response.blob());
-    return this.play(url, abort, hooks, true);
+    return canStream(response) ? this.streamInto(response) : URL.createObjectURL(await response.blob());
   }
 
   /**
@@ -137,7 +232,7 @@ export class JarvisVoiceService {
     if (!url) {
       return false;
     }
-    this.stop();
+    this.stopCurrent();
     try {
       await this.play(url, new AbortController(), hooks, false);
       return true;
@@ -178,8 +273,14 @@ export class JarvisVoiceService {
     });
   }
 
-  /** Coupe la phrase en cours (interruption). Sans effet s'il n'y en a pas. */
+  /** Coupe la phrase en cours **et vide la file** (interruption). Sans effet s'il n'y a rien. */
   stop(): void {
+    this.clearQueue();
+    this.stopCurrent();
+  }
+
+  /** Coupe la seule phrase en cours. */
+  private stopCurrent(): void {
     const playback = this.current;
     if (playback) {
       playback.abort.abort();
