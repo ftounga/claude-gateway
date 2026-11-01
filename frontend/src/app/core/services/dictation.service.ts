@@ -121,6 +121,27 @@ export class DictationService {
     }
   }
 
+  /**
+   * F-233 / SF-233-08 — transcrit un extrait déjà capté (la parole qui a coupé Jarvis, captée par la détection de
+   * voix), par la même route que la dictée.
+   */
+  async transcribe(blob: Blob, filename = 'coupure.wav'): Promise<string> {
+    if (blob.size === 0) {
+      return '';
+    }
+    const form = new FormData();
+    form.append('audio', blob, filename);
+    try {
+      const answer = await firstValueFrom(
+        this.http.post<{ text?: string }>('/api/atelier/transcription', form),
+      );
+      return answer?.text ?? '';
+    } catch (error) {
+      const status = (error as { status?: number })?.status;
+      throw (status === 503 ? 'non-configure' : status === 413 ? 'trop-long' : 'echec') as DictationError;
+    }
+  }
+
   /** Arrête sans transcrire — pour quitter l'écran proprement. */
   cancel(): void {
     const recorder = this.recorder;

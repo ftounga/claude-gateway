@@ -10,7 +10,9 @@ import { AtelierConfirmRequest, AtelierStreamDone, WorkspaceSummary } from '../c
 import { AtelierService } from '../core/services/atelier.service';
 import { DictationError, DictationService } from '../core/services/dictation.service';
 import { JarvisVoiceError, JarvisVoiceService, SpeakHooks } from '../core/services/jarvis-voice.service';
-import { TurnClock } from './jarvis-turn-clock';
+import { TurnClock, TurnCounter } from './jarvis-turn-clock';
+import { BargeInController, JarvisVadService, RunningVad, bargeInEnabled, encodeWav } from './jarvis-barge-in';
+import { CutSnapshot } from '../core/services/jarvis-voice.service';
 import { JarvisStreamOpener, LISTEN_AUDIO, LiveListening } from './jarvis-stream-listener';
 import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
@@ -154,6 +156,20 @@ export class JarvisComponent implements OnInit, OnDestroy {
   readonly android = /Android/i.test(this.userAgent);
 
   constructor() {
+    // F-233 / SF-233-08 — pendant que Jarvis parle, le micro reste ouvert : la détection de voix peut le couper.
+    effect(() => {
+      const state = this.state();
+      untracked(() => {
+        if (state === 'parole') {
+          if (!this.bargeIn.capturing) {
+            this.bargeIn.reset();
+          }
+          void this.startVad();
+        } else if (!this.bargeIn.capturing) {
+          this.stopVad();
+        }
+      });
+    });
     // L'écoute du mot d'éveil se tait pendant que la dictée tient le micro, et reprend ensuite.
     effect(() => {
       const state = this.state();
@@ -222,6 +238,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.stopMeter();
     this.dictation.cancel();
     this.closeStreaming();
+    this.stopVad();
     this.wakeEngine.stop();
     this.restoreManifest();
   }
@@ -531,9 +548,112 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
   }
 
+  // ---- F-233 / SF-233-08 : se laisser couper ----
+  private readonly vadService = inject(JarvisVadService);
+  private vad: RunningVad | null = null;
+  private vadStarting = false;
+  /** La détection de voix n'a pas pu se charger : on n'essaie plus pendant cette ouverture. */
+  private vadFailed = false;
+  /** Ce que Jarvis avait dit quand il a été coupé (SF-233-09 s'en sert). */
+  protected lastCut: CutSnapshot | null = null;
+  /** Les compteurs d'interruption survenus hors d'un tour chronométré : portés par le tour suivant. */
+  private pendingCounts: TurnCounter[] = [];
+  readonly bargeIn = new BargeInController({
+    speaking: () => this.state() === 'parole',
+    duck: (on) => this.voice.duck(on),
+    cut: () => {
+      this.lastCut = this.voice.interrupt();
+      this.clearAck();
+      this.state.set('ecoute');
+    },
+    count: (counter) => this.countInterruption(counter),
+  });
+
+  private countInterruption(counter: TurnCounter): void {
+    if (this.clock) {
+      this.clock.count(counter);
+    } else {
+      this.pendingCounts.push(counter);
+    }
+  }
+
+  private applyPendingCounts(clock: TurnClock): void {
+    this.pendingCounts.forEach((counter) => clock.count(counter));
+    this.pendingCounts = [];
+  }
+
+  private async startVad(): Promise<void> {
+    if (this.vad || this.vadStarting || this.vadFailed || !bargeInEnabled()) {
+      return;
+    }
+    this.vadStarting = true;
+    try {
+      const vad = await this.vadService.start({
+        onSpeechStart: () => this.zone.run(() => this.bargeIn.voiceStart()),
+        onSpeechConfirmed: () => this.zone.run(() => this.bargeIn.voiceConfirmed()),
+        onMisfire: () => this.zone.run(() => this.bargeIn.misfire()),
+        onSpeechEnd: (audio) => this.zone.run(() => {
+          if (this.bargeIn.capturing) {
+            void this.onBargeInSpeech(audio);
+          }
+        }),
+      });
+      this.vad = vad;
+      if (this.state() !== 'parole' && !this.bargeIn.capturing) {
+        this.stopVad();
+      }
+    } catch {
+      // Modèle ou micro indisponible : Jarvis reste interruptible par l'appui et le mot d'éveil.
+      this.vadFailed = true;
+    } finally {
+      this.vadStarting = false;
+    }
+  }
+
+  private stopVad(): void {
+    this.vad?.stop();
+    this.vad = null;
+  }
+
+  /**
+   * SF-233-08 — la parole qui a coupé Jarvis, captée en entier par la détection de voix : transcrite par la dictée,
+   * puis traitée (SF-233-09 : acquiescement, arrêt ou demande).
+   */
+  private async onBargeInSpeech(audio: Float32Array): Promise<void> {
+    this.bargeIn.reset();
+    this.stopVad();
+    this.state.set('reflexion');
+    const endOfSpeech = performance.now();
+    const clock = new TurnClock(endOfSpeech, (audio.length / 16_000) * 1000);
+    clock.workspaceId = this.subjectId();
+    clock.ttsProvider = this.ttsProvider;
+    this.applyPendingCounts(clock);
+    let text = '';
+    try {
+      text = (await this.dictation.transcribe(encodeWav(audio))).trim();
+    } catch {
+      text = '';
+    }
+    if (!text) {
+      clock.count('falseTriggers');
+      this.jarvis.timings(clock.takeReport()!);
+      this.state.set(this.turnRunning ? 'reflexion' : 'repos');
+      return;
+    }
+    clock.mark('transcript');
+    this.pendingClock = clock;
+    this.said.set(text);
+    await this.handleInterruption(text);
+  }
+
+  /** SF-233-08 — ce qui a été dit en coupant Jarvis. Dans le doute, c'est une demande (D9). */
+  protected async handleInterruption(text: string): Promise<void> {
+    await this.handle(text);
+  }
+
   /** Arrête l'écoute, transcrit, puis agit sur ce qui a été dit. */
   async finishListening(): Promise<void> {
-    if (this.state() !== 'ecoute') {
+    if (this.state() !== 'ecoute' || this.bargeIn.capturing) {
       return;
     }
     this.stopMeter();
@@ -543,6 +663,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const clock = new TurnClock(endOfSpeech, endOfSpeech - this.listenStartedAt);
     clock.workspaceId = this.subjectId();
     clock.ttsProvider = this.ttsProvider;
+    this.applyPendingCounts(clock);
     // SF-233-02 (D3) — réagir tout de suite : un clip local, pendant que la transcription part. Pas pendant une
     // confirmation (la réponse attendue est « oui » ou « non », pas une demande).
     if (!this.pendingConfirm && !this.awaitingVerbal) {
@@ -801,6 +922,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
       this.state.set('parole');
       if (first) {
         this.clock?.mark('firstOralSentence');
+        // SF-233-08 — une nouvelle réponse : ce qui sera « entendu » repart de zéro.
+        this.voice.resetHeard();
       }
       this.voice.enqueue(sentence, subjectId, first ? this.clockHooks() : undefined);
     }
@@ -841,6 +964,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
       }
     } else {
       this.clock?.mark('firstOralSentence');
+      this.voice.resetHeard();
       // SF-231-03 — un tour long s'annonce : le PO a pu passer à autre chose.
       await this.say(withEndAnnouncement(phrase, elapsed), this.clockHooks());
     }

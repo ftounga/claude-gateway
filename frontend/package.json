@@ -27,6 +27,7 @@
     "@angular/platform-browser-dynamic": "^19.2.0",
     "@angular/router": "^19.2.0",
     "@angular/service-worker": "^19.2.25",
+    "@ricky0123/vad-web": "0.0.31",
     "cytoscape": "^3.34.3",
     "dompurify": "^3.4.11",
     "mammoth": "1.13.0",

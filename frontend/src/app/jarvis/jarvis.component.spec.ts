@@ -12,6 +12,7 @@ import { JarvisVoiceService } from '../core/services/jarvis-voice.service';
 import { JarvisService } from '../core/services/jarvis.service';
 import { VeilleService } from '../core/services/veille.service';
 import { JarvisStreamOpener, StreamHandlers } from './jarvis-stream-listener';
+import { JarvisVadService, VadHandlers } from './jarvis-barge-in';
 
 const NO_COMPANION = {
   available: false, versionCode: null, versionName: null, sha256: null, signingCertSha256: null, sizeBytes: null,
@@ -35,6 +36,9 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
   let veilles: jasmine.SpyObj<VeilleService>;
   let userAgent: string;
   let opener: jasmine.SpyObj<JarvisStreamOpener>;
+  let vadService: jasmine.SpyObj<JarvisVadService>;
+  let vad: VadHandlers | null;
+  let vadStop: jasmine.Spy;
 
   beforeEach(() => {
     try {
@@ -52,11 +56,13 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       handlers = h;
       return Promise.resolve();
     });
-    dictation = jasmine.createSpyObj<DictationService>('DictationService', ['start', 'stop', 'cancel'],
+    dictation = jasmine.createSpyObj<DictationService>('DictationService', ['start', 'stop', 'cancel', 'transcribe'],
       { supported: true, stream: null });
     dictation.start.and.resolveTo();
     voice = jasmine.createSpyObj<JarvisVoiceService>('JarvisVoiceService',
-      ['speak', 'stop', 'unlock', 'level', 'preloadClips', 'playClip', 'hasClip', 'enqueue', 'idle', 'status']);
+      ['speak', 'stop', 'unlock', 'level', 'preloadClips', 'playClip', 'hasClip', 'enqueue', 'idle', 'status',
+        'duck', 'interrupt', 'resetHeard']);
+    voice.interrupt.and.returnValue(null);
     voice.status.and.returnValue(of({
       enabled: true, voice: 'onyx', monthlyBudgetEur: 100, monthSpentEur: 0, budgetReached: false, provider: 'openai',
     }));
@@ -69,6 +75,13 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     jarvisApi = jasmine.createSpyObj<JarvisService>('JarvisService', ['usage', 'companion', 'companions', 'timings', 'sttSession', 'closeSttSession']);
     jarvisApi.sttSession.and.returnValue(throwError(() => new HttpErrorResponse({ status: 503 })));
     opener = jasmine.createSpyObj<JarvisStreamOpener>('JarvisStreamOpener', ['open']);
+    vad = null;
+    vadStop = jasmine.createSpy('vadStop');
+    vadService = jasmine.createSpyObj<JarvisVadService>('JarvisVadService', ['start']);
+    vadService.start.and.callFake((h: VadHandlers) => {
+      vad = h;
+      return Promise.resolve({ stop: vadStop });
+    });
     jarvisApi.companions.and.returnValue(of([]));
     jarvisApi.companion.and.returnValue(of(NO_COMPANION));
     userAgent = 'Mozilla/5.0 (X11; Linux x86_64) Chrome/130';
@@ -89,6 +102,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
         { provide: JarvisService, useValue: jarvisApi },
         { provide: VeilleService, useValue: veilles },
         { provide: JarvisStreamOpener, useValue: opener },
+        { provide: JarvisVadService, useValue: vadService },
         { provide: JARVIS_USER_AGENT, useFactory: () => userAgent },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: convertToParamMap(params) } } },
       ],
@@ -460,5 +474,60 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       void jarvis.talk();
       flushMicrotasks();
       expect(jarvisApi.sttSession).toHaveBeenCalledTimes(1);
+    }));
+
+  it('F-233 / SF-233-08 — Jarvis parle : voix détectée → volume baissé ; confirmée → coupé, et ce qui est dit est traité',
+    fakeAsync(() => {
+      voice.interrupt.and.returnValue({ heard: 'La migration est', resume: ['La migration est à l’étape 4.'] });
+      dictation.transcribe.and.resolveTo('Et les tests ?');
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.detectChanges();
+      const jarvis = fixture.componentInstance;
+      jarvis.state.set('parole');
+      fixture.detectChanges();
+      flushMicrotasks();
+      expect(vadService.start).toHaveBeenCalled();
+
+      vad!.onSpeechStart();
+      expect(voice.duck).toHaveBeenCalledWith(true);
+      vad!.onSpeechConfirmed();
+      expect(voice.interrupt).toHaveBeenCalled();
+      expect(jarvis.state()).toBe('ecoute');
+      fixture.detectChanges();
+      expect(vadStop).not.toHaveBeenCalled();
+
+      vad!.onSpeechEnd(new Float32Array(8000));
+      flushMicrotasks();
+      expect(dictation.transcribe).toHaveBeenCalled();
+      expect(vadStop).toHaveBeenCalled();
+      expect(atelier.streamChat).toHaveBeenCalledWith('w-2', 'Et les tests ?', jasmine.any(Object), 'ACT', false, [],
+        null, false, 'JARVIS');
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-233 / SF-233-08 — une fausse alerte rend le volume ; une coupure sans mots compte un faux déclenchement',
+    fakeAsync(() => {
+      dictation.transcribe.and.resolveTo('');
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.detectChanges();
+      const jarvis = fixture.componentInstance;
+      jarvis.state.set('parole');
+      fixture.detectChanges();
+      flushMicrotasks();
+      vad!.onSpeechStart();
+      vad!.onMisfire();
+      expect(voice.duck).toHaveBeenCalledWith(false);
+      expect(voice.interrupt).not.toHaveBeenCalled();
+
+      vad!.onSpeechStart();
+      vad!.onSpeechConfirmed();
+      vad!.onSpeechEnd(new Float32Array(1600));
+      flushMicrotasks();
+      expect(atelier.streamChat).not.toHaveBeenCalled();
+      const report = jarvisApi.timings.calls.mostRecent().args[0];
+      expect(report.falseTriggers).toBe(1);
+      expect(report.interruptionsConfirmed).toBe(1);
+      expect(report.interruptionsRestored).toBe(1);
+      jarvis.ngOnDestroy();
     }));
 });
