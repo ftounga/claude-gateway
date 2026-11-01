@@ -2,7 +2,9 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
-import { JarvisAlert, JarvisWatch, JarvisWatchRun, JarvisWatchTest } from '../models/veille.models';
+import {
+  JarvisAlert, JarvisWatch, JarvisWatchRun, JarvisWatchSummary, JarvisWatchTest, JarvisWatchUpdate,
+} from '../models/veille.models';
 
 /**
  * **Les veilles Jarvis d'un sujet** (F-230). Aucun appel ne porte d'identifiant de compte : la gateway part du
@@ -39,6 +41,17 @@ export class VeilleService {
   /** Les 20 derniers passages (SF-230-02). */
   history(workspaceId: string, watchId: string): Observable<JarvisWatchRun[]> {
     return this.http.get<JarvisWatchRun[]>(`${this.base(workspaceId)}/${watchId}/runs`);
+  }
+
+  /** Pause, reprise, heures, budget mensuel en euros (SF-230-04) ; un champ absent garde sa valeur. */
+  update(workspaceId: string, watchId: string, request: JarvisWatchUpdate): Observable<JarvisWatch> {
+    return this.http.put<JarvisWatch>(`${this.base(workspaceId)}/${watchId}`, request);
+  }
+
+  /** Les veilles du compte, ou celles des sujets d'un poste (SF-230-04, tableau du client). */
+  listForAccount(hostId?: string | null): Observable<JarvisWatchSummary[]> {
+    const params: Record<string, string> = hostId ? { hostId } : {};
+    return this.http.get<JarvisWatchSummary[]>('/api/jarvis/watches', { params });
   }
 
   /** Une alerte de veille (SF-230-03). */

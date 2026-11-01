@@ -9,6 +9,7 @@ import { ConfirmDialogComponent, ConfirmDialogData } from '../../chat/confirm-di
 import { ago, shortDateTime } from '../../core/models/routine.models';
 import { JarvisWatch, runStatusLabel, watchScheduleLabel, watchStateLabel } from '../../core/models/veille.models';
 import { VeilleService } from '../../core/services/veille.service';
+import { formatEuros } from '../../shared/euros';
 
 /**
  * **`/veilles` — les veilles Jarvis du sujet** (F-230 / SF-230-01) : un panneau du fil, **aucun tour modèle**.
@@ -43,8 +44,28 @@ import { VeilleService } from '../../core/services/veille.service';
             @if (watch.nextRunAt) {
               <p class="veilles__line">Prochain passage : {{ when(watch.nextRunAt) }}</p>
             }
+            @if (!watch.proposed) {
+              <p class="veilles__line">Rédaction IA ce mois-ci : {{ money(watch.monthSpentEur ?? 0) }} sur {{ money(watch.monthlyBudgetEur) }}</p>
+            }
             @if (!readOnly()) {
               <div class="veilles__gestures">
+                @if (!watch.proposed) {
+                  @if (watch.active) {
+                    <button mat-stroked-button type="button" class="veilles__secondary" [disabled]="busy()"
+                            [attr.aria-label]="'Mettre en pause la veille ' + watch.name" (click)="setActive(watch, false)">
+                      <mat-icon aria-hidden="true">pause</mat-icon> Pause
+                    </button>
+                  } @else {
+                    <button mat-stroked-button type="button" class="veilles__secondary" [disabled]="busy()"
+                            [attr.aria-label]="'Reprendre la veille ' + watch.name" (click)="setActive(watch, true)">
+                      <mat-icon aria-hidden="true">play_arrow</mat-icon> Reprendre
+                    </button>
+                  }
+                  <button mat-stroked-button type="button" class="veilles__secondary" [disabled]="busy()"
+                          [attr.aria-label]="'Lancer maintenant la veille ' + watch.name" (click)="runNow(watch)">
+                    <mat-icon aria-hidden="true">radar</mat-icon> Lancer maintenant
+                  </button>
+                }
                 <button mat-button type="button" class="veilles__secondary" [disabled]="busy()"
                         [attr.aria-label]="'Supprimer la veille ' + watch.name" (click)="remove(watch)">
                   <mat-icon aria-hidden="true">delete</mat-icon> Supprimer
@@ -55,13 +76,16 @@ import { VeilleService } from '../../core/services/veille.service';
         }
       </ul>
     }
+    @if (notice()) {
+      <p class="veilles__notice" role="status">{{ notice() }}</p>
+    }
     @if (failure()) {
       <p class="veilles__error" role="alert">{{ failure() }}</p>
     }
   `,
   styles: `
     :host { display: block; font-family: var(--cg-font-body); }
-    .veilles__hint, .veilles__line, .veilles__error { margin: var(--cg-space-1) 0 0; font-size: 13px; overflow-wrap: anywhere; }
+    .veilles__hint, .veilles__line, .veilles__error, .veilles__notice { margin: var(--cg-space-1) 0 0; font-size: 13px; overflow-wrap: anywhere; }
     .veilles__hint { opacity: 0.85; }
     .veilles__list { list-style: none; margin: 0; padding: 0; }
     .veilles__item { padding: var(--cg-space-2) 0; border-bottom: 1px solid var(--cg-divider); }
@@ -133,6 +157,44 @@ export class AtelierSlashVeillesComponent {
 
   lastRun(watch: JarvisWatch): string {
     return runStatusLabel(watch.lastRunStatus);
+  }
+
+  money(value: number | null): string {
+    return formatEuros(value);
+  }
+
+  readonly notice = signal<string | null>(null);
+
+  /** [Pause] / [Reprendre] (SF-230-04) : la reprise repart du prochain créneau, sans rafale de rattrapage. */
+  setActive(watch: JarvisWatch, active: boolean): void {
+    const workspaceId = this.workspaceId();
+    if (workspaceId) {
+      this.notice.set(null);
+      this.run(this.service.update(workspaceId, watch.id, { active }));
+    }
+  }
+
+  /** [Lancer maintenant] (SF-230-02/04) : un passage, tout de suite ; l'issue est dite ici. */
+  runNow(watch: JarvisWatch): void {
+    const workspaceId = this.workspaceId();
+    if (!workspaceId) {
+      return;
+    }
+    this.notice.set(null);
+    this.busy.set(true);
+    this.failure.set(null);
+    this.service.runNow(workspaceId, watch.id).subscribe({
+      next: (run) => {
+        this.busy.set(false);
+        this.notice.set(`« ${watch.name} » : ${runStatusLabel(run.status, run.changeCount)}.`);
+        this.load(workspaceId);
+        this.changed.emit();
+      },
+      error: (error: HttpErrorResponse) => {
+        this.busy.set(false);
+        this.failure.set(error?.error?.message ?? 'Le passage a échoué. Réessayez dans un instant.');
+      },
+    });
   }
 
   remove(watch: JarvisWatch): void {

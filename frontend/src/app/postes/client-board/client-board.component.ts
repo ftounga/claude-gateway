@@ -49,6 +49,7 @@ import { TerminalActionsService } from '../../core/services/terminal-actions.ser
 import { formatEuros } from '../../shared/euros';
 import { httpErrorMessage } from '../../shared/http-error.util';
 import { StepActorComponent } from '../../shared/step-actor/step-actor.component';
+import { ClientBoardVeillesComponent } from './client-board-veilles.component';
 
 /** Relecture du tableau tant que l'onglet du navigateur est visible. */
 export const CLIENT_BOARD_REFRESH_MS = 15_000;
@@ -102,6 +103,7 @@ function writeCollapsed(ids: ReadonlySet<string>): void {
     NgTemplateOutlet,
     RouterLink,
     StepActorComponent,
+    ClientBoardVeillesComponent,
   ],
   templateUrl: './client-board.component.html',
   styleUrl: './client-board.component.scss',

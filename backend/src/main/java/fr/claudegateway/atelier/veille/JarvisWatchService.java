@@ -193,6 +193,84 @@ public class JarvisWatchService {
         return save(watch);
     }
 
+    /** Bornes du budget mensuel d'une veille, saisi en euros (SF-230-04). */
+    public static final BigDecimal MIN_MONTHLY_BUDGET_EUR = new BigDecimal("0.50");
+    public static final BigDecimal MAX_MONTHLY_BUDGET_EUR = new BigDecimal("100.00");
+
+    /**
+     * <b>Tenir une veille</b> (SF-230-04) : pause, reprise, heures, budget mensuel. Un champ absent garde sa valeur.
+     * Une reprise ou un changement d'heures repose le créneau consommé sur le créneau dû : pas de rafale de
+     * rattrapage. Une proposition ne se met pas en pause (elle ne tourne pas encore).
+     */
+    @Transactional
+    public JarvisWatchView update(UUID userId, UUID workspaceId, UUID watchId, JarvisWatchDtos.UpdateRequest request) {
+        workspaceService.requireOwned(userId, workspaceId);
+        JarvisWatch watch = require(userId, workspaceId, watchId);
+        if (request == null) {
+            throw new InvalidWatchException("Requête vide.");
+        }
+        boolean reslot = false;
+        if (request.active() != null && watch.isProposed()) {
+            throw new WatchConflictException("watch_conflict",
+                    "Cette veille est une proposition : testez-la puis activez-la d'abord.");
+        }
+        if (request.active() != null && request.active() != watch.isActive()) {
+            watch.setActive(request.active());
+            reslot = request.active();
+        }
+        if (request.runTimes() != null) {
+            String times = runTimes(request.runTimes());
+            reslot = reslot || !times.equals(watch.getRunTimes());
+            watch.setRunTimes(times);
+        }
+        if (request.monthlyBudgetEur() != null) {
+            BigDecimal eur = request.monthlyBudgetEur();
+            if (eur.compareTo(MIN_MONTHLY_BUDGET_EUR) < 0 || eur.compareTo(MAX_MONTHLY_BUDGET_EUR) > 0) {
+                throw new InvalidWatchException("Le budget mensuel d'une veille va de 0,50 € à 100 €.");
+            }
+            watch.setMonthlyBudgetUsd(eur.divide(usdToEur, 2, java.math.RoundingMode.HALF_UP));
+        }
+        if (reslot && watch.isScheduled()) {
+            watch.setLastSlotAt(JarvisWatchSlots.dueSlot(watch, OffsetDateTime.now(clock)).orElse(null));
+            watch.setMissedSlotAt(null);
+        }
+        return save(watch);
+    }
+
+    /**
+     * Les veilles du compte (SF-230-04), avec le nom de leur sujet — filtrées sur les sujets d'un poste si
+     * {@code hostId} est donné (le tableau du client). Sujets relus sous le même {@code user_id}.
+     */
+    @Transactional(readOnly = true)
+    public List<JarvisWatchDtos.JarvisWatchSummaryView> listForAccount(UUID userId, UUID hostId) {
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        List<JarvisWatch> all = watches.findByUserIdOrderByCreatedAtAsc(userId);
+        if (all.isEmpty() || workspaces == null) {
+            return List.of();
+        }
+        java.util.Map<UUID, Workspace> subjects = new java.util.HashMap<>();
+        for (Workspace workspace : workspaces.findAllById(
+                all.stream().map(JarvisWatch::getWorkspaceId).distinct().toList())) {
+            if (userId.equals(workspace.getUserId())) {
+                subjects.put(workspace.getId(), workspace);
+            }
+        }
+        return all.stream()
+                .filter(watch -> subjects.containsKey(watch.getWorkspaceId()))
+                .filter(watch -> hostId == null || hostId.equals(subjects.get(watch.getWorkspaceId()).getHostId()))
+                .map(watch -> new JarvisWatchDtos.JarvisWatchSummaryView(view(watch, now),
+                        subjects.get(watch.getWorkspaceId()).getName()))
+                .toList();
+    }
+
+    /** Les sujets, pour nommer les veilles du compte (SF-230-04). */
+    private fr.claudegateway.atelier.WorkspaceRepository workspaces;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setWorkspaces(fr.claudegateway.atelier.WorkspaceRepository workspaces) {
+        this.workspaces = workspaces;
+    }
+
     /** Supprime une veille — et refuse ainsi une proposition de l'agent. */
     @Transactional
     public void delete(UUID userId, UUID workspaceId, UUID watchId) {

@@ -8,6 +8,8 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -50,6 +52,13 @@ public class JarvisWatchController {
     @PostMapping("/{watchId}/accept")
     public JarvisWatchView accept(@PathVariable UUID workspaceId, @PathVariable UUID watchId) {
         return service.accept(currentUser.requireId(), workspaceId, watchId);
+    }
+
+    /** Pause, reprise, heures, budget mensuel en euros (SF-230-04). */
+    @PutMapping("/{watchId}")
+    public JarvisWatchView update(@PathVariable UUID workspaceId, @PathVariable UUID watchId,
+            @RequestBody JarvisWatchDtos.UpdateRequest request) {
+        return service.update(currentUser.requireId(), workspaceId, watchId, request);
     }
 
     /** « Lancer maintenant » (SF-230-02) : synchrone, rend le passage terminé. */

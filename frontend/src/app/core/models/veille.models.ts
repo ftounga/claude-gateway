@@ -37,6 +37,19 @@ export interface JarvisWatch {
   monthSpentEur: number | null;
 }
 
+/** Tenir une veille (SF-230-04) : un champ absent garde sa valeur. */
+export interface JarvisWatchUpdate {
+  active?: boolean;
+  runTimes?: string[];
+  monthlyBudgetEur?: number;
+}
+
+/** Une veille du compte, avec le nom de son sujet (SF-230-04). */
+export interface JarvisWatchSummary {
+  watch: JarvisWatch;
+  workspaceName: string;
+}
+
 /** Un changement vu par une veille (SF-230-03). */
 export interface JarvisWatchChange {
   kind: 'NEW' | 'GONE' | 'STATUS' | 'ASSIGNEE' | 'COMMENT' | 'UPDATED';
