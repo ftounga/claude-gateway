@@ -46,6 +46,8 @@ import {
 } from './jarvis-oral';
 import { JarvisOrbComponent, JarvisState } from './jarvis-orb.component';
 import { JarvisCompanionsComponent } from './jarvis-companions.component';
+import { JarvisSceneBus } from './scenes/jarvis-scene-bus.service';
+import { JarvisSceneComponent } from './scenes/jarvis-scene.component';
 
 /** Le sujet retenu sur cet appareil, d'une ouverture de Jarvis à l'autre. */
 export const JARVIS_SUBJECT_KEY = 'cg.jarvis.subject';
@@ -91,7 +93,7 @@ export function companionOffer(version: JarvisCompanionVersion, installed: numbe
  */
 @Component({
   selector: 'app-jarvis',
-  imports: [JarvisCompanionsComponent, JarvisOrbComponent, MarkdownPipe, MatButtonModule, MatIconModule, MatMenuModule, RouterLink],
+  imports: [JarvisCompanionsComponent, JarvisOrbComponent, JarvisSceneComponent, MarkdownPipe, MatButtonModule, MatIconModule, MatMenuModule, RouterLink],
   templateUrl: './jarvis.component.html',
   styleUrl: './jarvis.component.scss',
 })
@@ -103,6 +105,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly zone = inject(NgZone);
   private readonly destroyRef = inject(DestroyRef);
+  /** F-234 — l'écran vivant : l'écran lui relaie les événements du tour qu'il reçoit déjà. */
+  private readonly scenes = inject(JarvisSceneBus);
 
   readonly state = signal<JarvisState>('repos');
   readonly subjects = signal<WorkspaceSummary[]>([]);
@@ -636,36 +640,48 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
     this.turnRunning = true;
     this.armAck(subjectId, latest);
+    this.scenes.setSubject(subjectId);
+    this.scenes.turnStarted();
     void this.atelier.streamChat(subjectId, text, {
-      onAction: () => {
+      onAction: (action) => {
+        if (latest()) {
+          this.scenes.action(action);
+        }
         if (latest() && this.clock) {
           this.clock.toolTurn = true;
         }
       },
       onText: (delta) => this.zone.run(() => {
         if (latest()) {
+          this.scenes.text(delta);
           this.clock?.mark('firstToken');
           this.speakAsWritten(subjectId, oral, delta);
         }
       }),
       onDone: (done) => this.zone.run(() => {
         if (latest()) {
+          if (!done.followUp) {
+            this.scenes.done();
+          }
           void this.onDone(done);
         }
       }),
       onError: (code, reason) => this.zone.run(() => {
         if (latest()) {
+          this.scenes.aborted();
           this.onTurnError(code, reason);
         }
       }),
       // SF-231-04 — une autorisation d'outil (`ask`) : reformulée à l'oral, « oui » requis.
       onConfirmRequest: (request) => this.zone.run(() => {
         if (latest()) {
+          this.scenes.confirm(request.detail);
           void this.askToolConfirmation(request);
         }
       }),
       onConfirmResolved: (resolved) => this.zone.run(() => {
         // Tranchée ailleurs (terminal, autre appareil, délai) : la question n'a plus lieu d'être.
+        this.scenes.confirmResolved();
         if (this.pendingConfirm?.toolUseId === resolved.toolUseId) {
           this.pendingConfirm = null;
         }
@@ -677,6 +693,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
       }),
       onClosed: () => this.zone.run(() => {
         if (latest()) {
+          this.scenes.aborted();
           this.reportClock();
           this.endTurn();
           this.state.set('repos');
