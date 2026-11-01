@@ -762,6 +762,14 @@
       (changed)="onRoutinesChanged()"
       (reveal)="revealRoutine($event)"
     ></app-terminal-routines-band>
+    <!-- F-230 — LES VEILLES JARVIS EN TÊTE DU FIL : la carte qui fait tester puis activer une veille proposée par
+         l'agent (SF-230-01). Absente quand rien n'est à montrer. Relue avec la bande des routines. -->
+    <app-terminal-veilles-band
+      [workspaceId]="projectId"
+      [refresh]="routinesTick()"
+      [readOnly]="readOnly"
+      (changed)="onRoutinesChanged()"
+    ></app-terminal-veilles-band>
     @if (messages.length === 0 && !streaming) {
       @if (readOnly) {
         <!-- LA LECTURE SEULE NE PEUT RIEN INVITER À FAIRE (F-83 / SF-83-01) : il n'y a pas d'invite
@@ -1592,6 +1600,14 @@
               [readOnly]="readOnly"
               (changed)="onRoutinesChanged()"
               (started)="routineStarted.emit()"
+            />
+          }
+          @case ('veilles') {
+            <!-- F-230 / SF-230-01 — LES VEILLES JARVIS DU SUJET : liste et suppression. Aucun tour. -->
+            <app-atelier-slash-veilles
+              [workspaceId]="projectId"
+              [readOnly]="readOnly"
+              (changed)="onRoutinesChanged()"
             />
           }
           @case ('compact') {

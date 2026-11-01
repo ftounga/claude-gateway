@@ -143,6 +143,14 @@ public class AccountService {
         this.subjectRoutineRepository = repository;
     }
 
+    /** Les veilles Jarvis (F-230 / SF-230-01) ; purge nommée à la suppression du compte. */
+    private fr.claudegateway.atelier.veille.JarvisWatchRepository jarvisWatchRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setJarvisWatchRepository(fr.claudegateway.atelier.veille.JarvisWatchRepository repository) {
+        this.jarvisWatchRepository = repository;
+    }
+
     /** Purge des interlocuteurs et du registre des accès (F-180) ; absente = formes historiques. */
     private fr.claudegateway.atelier.actions.AttentesAccountPurge attentesPurge;
 
@@ -461,6 +469,10 @@ public class AccountService {
         // couvre le compte.
         if (subjectRoutineRepository != null) {
             subjectRoutineRepository.purgeUser(userId);
+        }
+        // Les veilles Jarvis (F-230) : elles suivent aussi le sujet (cascade) ; la purge nommée couvre le compte.
+        if (jarvisWatchRepository != null) {
+            jarvisWatchRepository.purgeUser(userId);
         }
         // Le parcours des sujets (F-176) : mode, phase, plan, journal. Les lignes suivent aussi le
         // terminal (cascade) ; la purge nommée couvre le compte.

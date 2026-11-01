@@ -2369,6 +2369,30 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.routineToolExecutor = executor;
     }
 
+    /**
+     * L'outil qui propose une veille Jarvis (F-230 / SF-230-01) — par mutateur, comme les routines : sans
+     * exécuteur (formes historiques / tests), l'outil n'est jamais donné.
+     */
+    private fr.claudegateway.atelier.veille.JarvisWatchToolCatalog watchToolCatalog;
+    private fr.claudegateway.atelier.veille.JarvisWatchToolExecutor watchToolExecutor;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setWatchTools(fr.claudegateway.atelier.veille.JarvisWatchToolCatalog catalog,
+            fr.claudegateway.atelier.veille.JarvisWatchToolExecutor executor) {
+        this.watchToolCatalog = catalog;
+        this.watchToolExecutor = executor;
+    }
+
+    /** Exécute l'outil de proposition de veille (F-230) : le terminal et le compte sont ceux du tour. */
+    private ToolOutcome applyWatchTool(UUID userId, Workspace workspace, AgentToolCall call) {
+        if (watchToolExecutor == null) {
+            return ToolOutcome.error("Les veilles ne sont pas disponibles dans ce terminal : réponds sans elles.");
+        }
+        fr.claudegateway.atelier.veille.JarvisWatchToolExecutor.Outcome outcome =
+                watchToolExecutor.execute(userId, workspace, call.name(), call.input());
+        return outcome.error() ? ToolOutcome.error(outcome.content()) : ToolOutcome.info(outcome.content());
+    }
+
     /** Exécute l'outil de proposition de routine (F-183) : le terminal et le compte sont ceux du tour. */
     private ToolOutcome applyRoutineTool(UUID userId, Workspace workspace, AgentToolCall call) {
         if (routineToolExecutor == null) {
@@ -4197,6 +4221,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                 } else if (fr.claudegateway.atelier.routine.RoutineToolCatalog.isRoutineTool(call.name())) {
                     // F-183 / SF-183-01 : la proposition de routine est rangée par la gateway, inactive.
                     outcome = applyRoutineTool(userId, workspace, call);
+                } else if (fr.claudegateway.atelier.veille.JarvisWatchToolCatalog.isWatchTool(call.name())) {
+                    // F-230 / SF-230-01 : la proposition de veille est rangée par la gateway, inactive.
+                    outcome = applyWatchTool(userId, workspace, call);
                 } else if (fr.claudegateway.images.ImageToolCatalog.isImageTool(call.name())) {
                     // F-142 / SF-142-04 : l'image décorative est générée par la gateway (relais fournisseur),
                     // rangée, puis déposée dans le projet — jamais un schéma d'architecture.
@@ -10358,6 +10385,10 @@ public class AtelierChatService implements RelayInterruptTarget {
         // F-183 / SF-183-01 : proposer une routine, dans le terminal d'un sujet sur poste seulement.
         if (routineToolExecutor != null && routineToolCatalog != null) {
             tools.addAll(routineToolCatalog.toolsFor(userId, workspace));
+        }
+        // F-230 / SF-230-01 : poser une veille Jarvis, sous la même garde que les routines.
+        if (watchToolExecutor != null && watchToolCatalog != null) {
+            tools.addAll(watchToolCatalog.toolsFor(userId, workspace));
         }
         // F-210 / SF-210-01 : découper un message en questions et en suivre l'avancement — dans tout
         // terminal, sans garde (rien n'est écrit). Définitions littérales stables, en dernier.
