@@ -1,5 +1,6 @@
 import { NameIndex } from './jarvis-name-matcher';
 import { burstLabel, resolveScene } from './jarvis-scene-registry';
+import { ShowRequest, isShowLine, parseShowLine } from './jarvis-show';
 import { NodeRef } from './jarvis-universe.models';
 
 /**
@@ -59,6 +60,8 @@ export interface ReaderState {
   pulses: number;
   /** Les messages terminés dans ce tour, pas encore comptés par l'univers (« À envoyer (n) » +1). */
   toSendAdded: number;
+  /** SF-234-13 — ce que le PO a demandé à voir (ligne « 🖥 montrer: »), jusqu'au tour suivant ou « c'est bon ». */
+  show: ShowRequest | null;
 }
 
 /** Masque les motifs de secret d'une ligne (D11) : jetons, en-têtes d'autorisation, mots de passe, clés. */
@@ -98,6 +101,7 @@ export class JarvisSceneReader {
   private next: SceneView | null = null;
   private pulses = 0;
   private toSendAdded = 0;
+  private showRequest: ShowRequest | null = null;
   private line = '';
   private scanned = 0;
   private block: { kind: BlockKind; to: string | null; subject: string | null } | null = null;
@@ -122,6 +126,14 @@ export class JarvisSceneReader {
     this.line = '';
     this.scanned = 0;
     this.block = null;
+    this.showRequest = null; // SF-234-13 : le tour suivant rend l'écran à son état normal
+  }
+
+  /** SF-234-13 — « c'est bon » : l'écran revient à l'état normal. Rend vrai si quelque chose était montré. */
+  clearShow(): boolean {
+    const had = this.showRequest !== null;
+    this.showRequest = null;
+    return had;
   }
 
   /** Une étape d'outil (avant son exécution). */
@@ -218,7 +230,10 @@ export class JarvisSceneReader {
   }
 
   state(): ReaderState {
-    return { lit: [...this.lit], scene: this.scene, pulses: this.pulses, toSendAdded: this.toSendAdded };
+    return {
+      lit: [...this.lit], scene: this.scene, pulses: this.pulses, toSendAdded: this.toSendAdded,
+      show: this.showRequest,
+    };
   }
 
   // ---- interne ----
@@ -235,6 +250,14 @@ export class JarvisSceneReader {
   private completeLine(raw: string, now: number): void {
     const line = raw.replace(/\r$/, '');
     const trimmed = line.trim();
+    if (!this.block && isShowLine(trimmed)) {
+      // SF-234-13 (D18) : la ligne « Montrer » est un ordre d'écran — ni nom à allumer, ni texte.
+      const request = parseShowLine(trimmed);
+      if (request) {
+        this.showRequest = request;
+      }
+      return;
+    }
     const fence = /^```\s*(mail|message)\s*$/i.exec(trimmed);
     if (!this.block && fence) {
       this.block = { kind: fence[1].toLowerCase() as BlockKind, to: null, subject: null };
@@ -269,7 +292,7 @@ export class JarvisSceneReader {
 
   /** La ligne en cours : relue depuis la dernière frontière de mot, avec un recouvrement. */
   private scanPartial(now: number): void {
-    if (this.block || !this.line) {
+    if (this.block || !this.line || isShowLine(this.line)) {
       return;
     }
     const boundary = Math.max(this.line.lastIndexOf(' '), this.line.lastIndexOf(','), this.line.lastIndexOf('.'));

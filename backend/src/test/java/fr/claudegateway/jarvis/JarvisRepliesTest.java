@@ -29,4 +29,9 @@ class JarvisRepliesTest {
     void uneLigneTropLongueEstCoupee() {
         assertThat(JarvisReplies.oralLine("a".repeat(400))).hasSize(JarvisReplies.MAX_LINE).endsWith("…");
     }
+
+    @Test
+    void SF_234_13_laLigneMontrerNEstJamaisLeResume() {
+        assertThat(JarvisReplies.oralLine("🖥 montrer: clients\nVoici vos trois clients.")).isEqualTo("Voici vos trois clients.");
+    }
 }

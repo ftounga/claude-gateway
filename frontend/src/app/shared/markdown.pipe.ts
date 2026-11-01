@@ -36,8 +36,14 @@ const TURN_METADATA_MARKER = /<!--\s*fin-de-tour\s*:[\s\S]*?-->/gi;
  * marqueur ne doit jamais être visible ni « expliqué » dans le fil.</p>
  */
 export function stripTurnMetadata(value: string): string {
-  return value.replace(TURN_METADATA_MARKER, '').replace(/\n{3,}/g, '\n\n').trim();
+  return value.replace(TURN_METADATA_MARKER, '').replace(SHOW_LINE, '').replace(/\n{3,}/g, '\n\n').trim();
 }
+
+/**
+ * La ligne « Montrer » d'une réponse de Jarvis (F-234 / SF-234-13, D18) : un ordre pour l'écran `/jarvis`
+ * (`🖥 montrer: clients`), jamais montré dans un fil. On ne vise QUE cette forme précise.
+ */
+const SHOW_LINE = /^[ \t]*🖥\uFE0F?[ \t]*montrer[ \t]*:[^\n]*(?:\n|$)/gim;
 
 export function renderMarkdown(value: string | null | undefined): string {
   if (!value) {

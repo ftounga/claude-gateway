@@ -17,8 +17,18 @@ package fr.claudegateway.jarvis;
  * <p>F-233 / SF-233-03 : la ligne 🎙 est lue <b>pendant que la réponse s'écrit</b> ; avant d'utiliser des outils,
  * l'agent annonce en une phrase ce qu'il va faire (D-PO-7) ; à l'oral, il vouvoie et dit « Monsieur », avec
  * parcimonie (D-PO-8). Aucune contrainte sur le raisonnement : seulement la forme de ce qui est dit.</p>
+ *
+ * <p>F-234 / SF-234-13 (D18) : « montre-moi mes clients » — l'agent ajoute une ligne {@code 🖥 montrer: <filtre>} que
+ * l'écran résout sur l'univers déjà chargé ; aucun outil réservé à Jarvis (préfixe identique au terminal).</p>
  */
 public final class JarvisOralNote {
+
+    /**
+     * F-234 / SF-234-13 (D18) — la marque de la ligne « Montrer » : l'écran Jarvis la lit et la masque. Un outil
+     * aurait changé la liste d'outils, donc le préfixe ; une ligne dans la réponse, demandée par cette consigne
+     * (portée par le <b>message</b>), ne change rien au préfixe d'un tour terminal du même fil.
+     */
+    public static final String SHOW_MARK = "🖥";
 
     /** Le texte de la consigne orale. */
     public static final String TEXT = """
@@ -36,7 +46,8 @@ public final class JarvisOralNote {
             - Avant toute action qui engage (lancer un chantier en autonome, envoyer un courriel, valider une étape, \
             publier, pousser du code), n'agis pas : reformule-la en une phrase dans la ligne 🎙, terminée par « Vous \
             confirmez ? ». Tu n'agis qu'au tour suivant, sur un « oui » explicite ; « non », un silence ou une réponse \
-            ambiguë : tu n'agis pas.""";
+            ambiguë : tu n'agis pas.
+            - Si l'utilisateur demande à VOIR une partie de son univers (ses clients, les postes connectés ou             déconnectés, les chantiers bloqués, les étapes en cours, les messages à envoyer), ajoute sous ta ligne 🎙             une ligne « 🖥 montrer: <filtre> » — <filtre> parmi clients, connectes, deconnectes, chantiers-bloques,             etapes-en-cours, a-envoyer — suivie si besoin du nom d'un client. L'écran l'affiche ; elle n'est ni lue             ni montrée.""";
 
     private JarvisOralNote() {
     }

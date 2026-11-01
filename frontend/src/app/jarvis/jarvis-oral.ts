@@ -9,6 +9,9 @@
 /** La marque de la phrase orale en tête de réponse (D3). */
 export const ORAL_MARK = '🎙';
 
+/** F-234 / SF-234-13 — la marque de la ligne « Montrer » (lue par l'écran, jamais dite). */
+export const SHOW_LINE_MARK = '🖥';
+
 /** Au-delà, la phrase orale est coupée : Jarvis ne lit pas un compte rendu. */
 export const MAX_ORAL_CHARS = 400;
 
@@ -25,8 +28,8 @@ export function oralPhrase(reply: string | null | undefined): string {
       inFence = !inFence;
       continue;
     }
-    if (inFence || !line) {
-      continue;
+    if (inFence || !line || line.startsWith(SHOW_LINE_MARK)) {
+      continue; // F-234 / SF-234-13 : la ligne « 🖥 montrer: » est pour l'écran, jamais dite
     }
     if (line.startsWith(ORAL_MARK)) {
       return cutOral(clean(line.slice(ORAL_MARK.length)));

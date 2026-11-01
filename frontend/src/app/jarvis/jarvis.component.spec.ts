@@ -5,6 +5,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { of, throwError } from 'rxjs';
 
 import { JARVIS_USER_AGENT, JarvisComponent, companionOffer } from './jarvis.component';
+import { JarvisSceneBus } from './scenes/jarvis-scene-bus.service';
 import { AtelierStreamHandlers, WorkspaceSummary } from '../core/models/atelier.models';
 import { AtelierService } from '../core/services/atelier.service';
 import { DictationService } from '../core/services/dictation.service';
@@ -202,6 +203,23 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     expect(jarvis.subjectId()).toBe('w-1');
     expect(atelier.streamChat).not.toHaveBeenCalled();
     expect(voice.speak).toHaveBeenCalledWith('Je passe sur Connecteur AGENOR.', 'w-1');
+  }));
+
+  it('F-234 / SF-234-13 — « c’est bon » referme ce qui est montré, sur l’appareil, sans tour', fakeAsync(() => {
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    const bus = TestBed.inject(JarvisSceneBus);
+    bus.turnStarted();
+    bus.text('🖥 montrer: clients\n');
+    bus.done();
+    expect(bus.state().show).not.toBeNull();
+
+    void jarvis.handle('C’est bon');
+    flushMicrotasks();
+
+    expect(bus.state().show).toBeNull();
+    expect(atelier.streamChat).not.toHaveBeenCalled();
   }));
 
   it('un appui pendant que Jarvis parle le coupe et réécoute (interruption)', fakeAsync(() => {

@@ -929,6 +929,9 @@ ajoutent **aucune couleur** :
 | Fil lumineux nœud → orbe | trait 0,6 | `--cg-orange-2` à 80 % | — |
 | Anneau qui pulse (un appel d'outil) | cercle | `--cg-accent` | — |
 | Scène (carte) | fond `--cg-navy-2` à 70 %, liseré crème 18 % ; autorisation : liseré `--cg-accent` | — | titre crème |
+| « Montrer » (SF-234-13) : poste connecté | halo (anneau) autour du client montré, et note écrite « connecté » | `--cg-terminal-success` (§21) | — (forme + note) |
+| « Montrer » : poste déconnecté | halo pointillé éteint, note « déconnecté » | `--cg-cream` à 30 % | — |
+| « Montrer » : le reste | estompé | opacité 0,22 | — |
 
 - **Polices** : noms en **Inter** ; titres de scène en **Space Grotesk** (`--cg-font-heading`) ; commandes, chemins et
   clés en **JetBrains Mono**.

@@ -30,6 +30,26 @@ import { JarvisSceneBus } from './jarvis-scene-bus.service';
           }
         </div>
       </div>
+    } @else {
+      @if (focus(); as f) {
+      <!-- SF-234-13 — « Montrer » : la liste écrite de ce que la constellation met au premier plan. -->
+      <div class="scene scene--show" aria-hidden="true" data-scene="S20">
+        <div class="scene__body">
+          <p class="scene__title">{{ f.title }}</p>
+          <ul class="show">
+            @for (item of f.items; track item.node.key) {
+              <li class="show__item">
+                <span class="show__dot" [class.is-on]="item.connected === true"
+                      [class.is-off]="item.connected === false" [attr.data-kind]="item.node.kind"></span>
+                <span class="show__name">{{ item.node.label }}</span>
+                @if (item.note) { <span class="show__note">· {{ item.note }}</span> }
+              </li>
+            }
+            @if (f.more > 0) { <li class="show__item show__more">et {{ f.more }} de plus</li> }
+          </ul>
+        </div>
+      </div>
+      }
     }
   `,
   styles: `
@@ -62,6 +82,21 @@ import { JarvisSceneBus } from './jarvis-scene-bus.service';
       color: color-mix(in srgb, var(--cg-cream) 75%, transparent);
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
+    .show { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 2px; }
+    .show__item {
+      display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: 14px;
+      color: color-mix(in srgb, var(--cg-cream) 85%, transparent);
+    }
+    .show__name { font-weight: 600; color: var(--cg-orange-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .show__note { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .show__dot {
+      flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--cg-accent); align-self: center;
+    }
+    .show__dot[data-kind='chantier'] { border-radius: 1px; transform: rotate(45deg); }
+    .show__dot[data-kind='person'] { border-radius: 2px; }
+    .show__dot.is-on { background: var(--cg-terminal-success); }
+    .show__dot.is-off { background: transparent; border: 1px dashed color-mix(in srgb, var(--cg-cream) 45%, transparent); }
+    .show__more { font-style: italic; }
     @keyframes scene-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
     @keyframes scene-pulse {
       0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--cg-accent) 60%, transparent); }
@@ -81,6 +116,8 @@ export class JarvisSceneComponent implements OnInit {
   }
 
   readonly scene = computed(() => this.bus.state().scene);
+  /** SF-234-13 — ce que le PO a demandé à voir (affiché quand aucune action n'est en cours). */
+  readonly focus = computed(() => this.bus.focus());
   /** « × n » seulement quand le libellé ne dit pas déjà le nombre (pluriel du registre). */
   readonly showCount = computed(() => {
     const s = this.scene();
